@@ -133,7 +133,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|import|profile|clear-profile|surface)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|import|profile|clear-profile|surface|control)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -229,6 +229,12 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
           || (body.action !== "open" && typeof body.id !== "string") || (body.mode !== undefined && body.mode !== "pane" && body.mode !== "window") || (body.action === "mode" && body.mode === undefined)) { writeJson(res, 400, { error: "invalid_request" }); return true; }
         browserService.surface(objectiveId, body.action, typeof body.id === "string" ? body.id : undefined, body.mode as "pane" | "window" | undefined);
         writeJson(res, 200, { surface: browserService.state(objectiveId).surface }); return true;
+      }
+      if (action === "control") {
+        // 사람의 제어 동작 — 셸이 그린 알약의 가져오기·돌려주기·중지가 이 길로 온다.
+        const space = spaceId(body);
+        if (!space || (body.action !== "take" && body.action !== "return" && body.action !== "stop")) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        writeJson(res, 200, { spaceId: space, control: browserService.setControl(objectiveId, space, body.action) }); return true;
       }
       if (action === "inspect") {
         if (typeof body.x !== "number" || typeof body.y !== "number") { writeJson(res, 400, { error: "invalid_request" }); return true; }

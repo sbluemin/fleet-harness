@@ -18,7 +18,7 @@ await mkdir(dirname(nodeManifestDestination), { recursive: true });
 await cp(join(desktopDirectory, "assets", "entry"), entryDestination, { recursive: true });
 // 브라우저 크롬 문서(주소줄·레일)의 정적 HTML·CSS. 주입 프로그램(chrome.js)은 tsup.chrome.config.ts 가 같은 폴더에 먼저 만들어 둔다.
 await mkdir(chromeDestination, { recursive: true });
-for (const name of ["bar.html", "rail.html", "stage.html", "chrome.css"]) await cp(join(desktopDirectory, "assets", "browser-chrome", name), join(chromeDestination, name));
+for (const name of ["bar.html", "rail.html", "stage.html", "guard.html", "chrome.css"]) await cp(join(desktopDirectory, "assets", "browser-chrome", name), join(chromeDestination, name));
 // 진입 화면의 워드마크·본문 글꼴(OFL-1.1). Console과 같은 Fontsource 패키지에서 라틴 가변 글꼴만 옮긴다 —
 // 진입 CSP는 font-src 'self'만 열어 두므로 이 폴더 밖의 글꼴은 로드되지 않는다.
 const requireFromDesktop = createRequire(join(desktopDirectory, "package.json"));

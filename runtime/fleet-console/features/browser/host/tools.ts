@@ -1,6 +1,6 @@
 import type { AgentToolCtx, AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { DESKTOP_BROWSER_DEFAULT_SPACE_ID } from "@fleet-console/protocol/desktop";
-import { BrowserPolicyError, type BrowserCaller, type BrowserService } from "./service.js";
+import { BROWSER_HANDOFF_MAX_MS, BrowserPolicyError, type BrowserCaller, type BrowserService } from "./service.js";
 import { actOnBrowser, waitForBrowser, type BrowserCondition, type BrowserTarget } from "./semantic.js";
 import type { BrowserScreenshotStore } from "./screenshot-store.js";
 
@@ -34,9 +34,12 @@ const callerOf = (context: AgentToolCtx, browserId: string): Caller => {
 };
 /**
  * 대상 탭을 어떻게 고르는가. read·write 는 tabId 가 없으면 작업 탭이고, 다른 스페이스의 탭은 read 만 된다.
- * open 은 작업 탭이 없을 때 새 탭을 여는 navigate 의 몫이고, none 은 도구가 스스로 고른다(tabs_*).
+ * open 은 작업 탭이 없을 때 새 탭을 여는 navigate 의 몫이고, change 와 none 은 도구가 스스로 고른다(tabs_*).
+ *
+ * write·open·change 는 **조작 호출**이다 — 사람이 그 스페이스의 제어를 가져간 동안에는 거절된다. change 는 탭을 고르지 않지만
+ * 스페이스를 바꾸는 호출(탭 열기·닫기·고르기, 뷰포트)이고, read 와 none 은 읽기라 그동안에도 된다.
  */
-type Access = "read" | "write" | "open" | "none";
+type Access = "read" | "write" | "open" | "change" | "none";
 
 type TextBlock = { type: "text"; text: string };
 type BrowserContent = TextBlock | { type: "image"; data: string; mimeType: "image/jpeg" };
@@ -56,7 +59,7 @@ function failure(error: unknown): ToolResult {
 const TAB_ID = { type: "string", description: "Target tab ID." };
 
 /**
- * 서버 instructions — 공유·스페이스·작업 탭 원칙을 한 번만 말한다. 도구 설명은 각 도구의 고유 동작만 말하고 이 원칙을 되풀이하지 않는다.
+ * 서버 instructions — 공유·스페이스·작업 탭·제어권 원칙을 한 번만 말한다. 도구 설명은 각 도구의 고유 동작만 말하고 이 원칙을 되풀이하지 않는다.
  * 다른 스페이스와, 디폴트 스페이스에서 남이 연 탭은 읽기만 된다.
  */
 export const BROWSER_MCP_INSTRUCTIONS = [
@@ -64,6 +67,7 @@ export const BROWSER_MCP_INSTRUCTIONS = [
   "Your current-tab selection is private; tabs are shared. For tab-targeted calls, omitted tabId uses your current-tab selection: the tab in your space that you last opened, navigated, or chose with tabs_select. Other agents and the person never change it. Closing the selected tab clears it.",
   "Calls do not switch the displayed tab; tabs_select(show:true) reveals a tab.",
   "tabs_context(all:true) lists the other spaces. Tabs in other spaces, and tabs in the default space that you did not open, are read-only and require explicit tabId; JavaScript is refused there.",
+  "The person can take control of your space. While they have control, calls that change browser state, and all JavaScript calls, are refused with browser_user_in_control; read-only tools still work.",
 ].join("\n\n");
 
 export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
@@ -78,6 +82,8 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
         return await service.agentCall(objectiveId, context.signal, (signal) => {
           const input = { ...(args ?? {}) } as Record<string, any>;
           const mode = typeof access === "function" ? access(input) : access;
+          // 사람이 제어 중이면 조작 호출은 대상 탭을 정하기도 전에 멈춘다 — 페이지에도 탭에도 아무것도 가지 않는다.
+          if (mode === "write" || mode === "open" || mode === "change") service.assertAgentControl(objectiveId, caller.spaceId);
           // 대상 탭은 여기서 한 번 정한다 — 이후 서비스 호출은 늘 명시 tabId 를 받으므로 사람이 띄운 탭으로 새지 않는다.
           if (mode === "read" || mode === "write") input.tabId = service.agentTab(objectiveId, caller, input.tabId, mode);
           else if (mode === "open") input.tabId = input.tabId || service.currentTabOf(objectiveId, caller.participantId) ? service.agentTab(objectiveId, caller, input.tabId, "write") : null;
@@ -273,28 +279,41 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
 
   const resizeWindow = spec("resize_window", "Set the viewport of your space's tabs. Presets: mobile (375x812), tablet (768x1024), or desktop (clears emulation and follows the native pane size). Arbitrary width/height emulates that CSS size (not the previous preset). Optionally emulate prefers-color-scheme. The person sees the same size and a “set by agent” mark.", {
     type: "object", properties: { preset: { type: "string", enum: ["mobile", "tablet", "desktop"] }, width: { type: "number", description: "CSS px width to emulate. With desktop/responsive, this locks an emulated size instead of the native pane." }, height: { type: "number", description: "CSS px height to emulate." }, colorScheme: { type: "string", enum: ["light", "dark", "system"] } }, additionalProperties: false,
-  }, "none", async (args, objectiveId, _signal, caller) => {
+  }, "change", async (args, objectiveId, _signal, caller) => {
     const preset = args.preset === "desktop" ? "responsive" : args.preset;
     const viewport = await service.setViewport(objectiveId, { preset, width: typeof args.width === "number" ? args.width : undefined, height: typeof args.height === "number" ? args.height : undefined, colorScheme: args.colorScheme === "system" ? null : args.colorScheme }, "agent", caller.spaceId);
     return text({ viewport });
   });
 
   const tabsContextTool = spec("tabs_context", "List your space's tabs with ids, URLs and titles, marking your current tab and the displayed tab, plus the viewport. all lists every space.", { type: "object", properties: { all: { type: "boolean" } }, additionalProperties: false }, "none", async (args, objectiveId, _signal, caller) => text(tabsContext(objectiveId, caller, args.all === true)));
-  const tabsCreate = spec("tabs_create", "Open a blank tab in your space as your current tab and return its tabId. Prefer navigate with a url when you know the destination.", { type: "object", properties: {}, additionalProperties: false }, "none", async (_args, objectiveId, _signal, caller) => { const tab = await service.createTab(objectiveId, null, "agent", { caller }); return text({ tabId: tab.id }); });
-  const tabsClose = spec("tabs_close", "Close one tab in your space.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, "none", async (args, objectiveId, _signal, caller) => {
+  const tabsCreate = spec("tabs_create", "Open a blank tab in your space as your current tab and return its tabId. Prefer navigate with a url when you know the destination.", { type: "object", properties: {}, additionalProperties: false }, "change", async (_args, objectiveId, _signal, caller) => { const tab = await service.createTab(objectiveId, null, "agent", { caller }); return text({ tabId: tab.id }); });
+  const tabsClose = spec("tabs_close", "Close one tab in your space.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, "change", async (args, objectiveId, _signal, caller) => {
     const tabId = String(args.tabId);
     service.assertOwnTab(objectiveId, caller, tabId);
     await service.closeTab(objectiveId, tabId);
     return text({ closed: tabId, ...tabsContext(objectiveId, caller) });
   });
-  const tabsSelect = spec("tabs_select", "Make a tab in your space your current tab. show reveals it on the person's screen.", { type: "object", properties: { tabId: { type: "string" }, show: { type: "boolean" } }, required: ["tabId"], additionalProperties: false }, "none", async (args, objectiveId, _signal, caller) => {
+  const tabsSelect = spec("tabs_select", "Make a tab in your space your current tab. show reveals it on the person's screen.", { type: "object", properties: { tabId: { type: "string" }, show: { type: "boolean" } }, required: ["tabId"], additionalProperties: false }, "change", async (args, objectiveId, _signal, caller) => {
     const tabId = String(args.tabId);
     service.setCurrentTab(objectiveId, caller, tabId);
     if (args.show === true) await service.selectTab(objectiveId, tabId);
     return text(tabsContext(objectiveId, caller));
   });
 
+  /**
+   * 제어권 주고받기. 결과의 note 는 상황마다 다음 행동 하나를 말한다 — 돌아왔으면 다시 읽고, 아직이면 다시 기다린다.
+   * 이 도구의 설명·note 는 '프롬프트 자문'을 거친 문구다.
+   */
+  const handoff = spec("handoff", `action "wait": wait for control without changing the existing request. action "request": when you have control, give the person control and display reason for a step that requires them, then wait. Returns when you have control or timeout_ms expires (default and maximum ${BROWSER_HANDOFF_MAX_MS}).`, {
+    type: "object", properties: { action: { type: "string", enum: ["wait", "request"] }, reason: { type: "string", maxLength: 200, description: "The person's next step, in one sentence. Required for request." }, timeout_ms: { type: "integer", minimum: 0, maximum: BROWSER_HANDOFF_MAX_MS } }, required: ["action"], additionalProperties: false,
+  }, "none", async (args, objectiveId, signal, caller) => {
+    if (args.action !== "wait" && args.action !== "request") throw new BrowserPolicyError("browser_action_invalid", `Unknown action ${String(args.action)}.`);
+    const result = await service.handoff(objectiveId, caller, { action: args.action, reason: args.reason, timeoutMs: typeof args.timeout_ms === "number" ? args.timeout_ms : undefined }, signal);
+    return text({ ...result, note: result.returned ? "You have control. Read the page again before resuming; control return is not task completion or approval." : 'The person still has control. Call handoff with action "wait" again.' });
+  });
+
   const singles = [observe, act, waitFor, capture, navigate, computer, readPage, find, formInput, getPageText, consoleMessages, network, javascript, resizeWindow, tabsContextTool, tabsCreate, tabsClose, tabsSelect];
+  // handoff 는 배치에 넣지 않는다 — 제어가 돌아온 뒤 페이지를 다시 읽지 않고 뒤 스텝이 이어지면 안 된다.
   const byName = new Map(singles.map((tool) => [tool.id, tool]));
 
   const batch: AgentToolSpec = {
@@ -320,5 +339,5 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     },
   };
 
-  return [...singles, batch];
+  return [...singles, handoff, batch];
 }

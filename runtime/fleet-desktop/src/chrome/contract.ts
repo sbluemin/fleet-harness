@@ -1,11 +1,11 @@
 /**
- * 브라우저 크롬 문서(주소줄·레일)와 셸 main 사이의 좁은 양방향 계약. 두 쪽이 같은 타입 파일을 쓴다 — 문서는 이 파일의 타입만 import 하고
+ * 브라우저 크롬 문서(주소줄·레일·스테이지·가드)와 셸 main 사이의 좁은 양방향 계약. 두 쪽이 같은 타입 파일을 쓴다 — 문서는 이 파일의 타입만 import 하고
  * 번들되며, main 은 아래 검증기로 문서가 보낸 문장을 한 번 더 걸러 받는다. 문서는 Node 도 raw IPC 도 모르고, main 에게 말하는 길은
  * `console-message` 한 줄 JSON, 문서가 받는 길은 main 이 `executeJavaScript` 로 호출하는 `__fleetChrome` 뿐이다.
  */
 import type { DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
 
-export type ChromeRole = "bar" | "rail" | "stage";
+export type ChromeRole = "bar" | "rail" | "stage" | "guard";
 export const CHROME_CHANNEL = "fleet-chrome";
 
 export interface ChromeSuggestion { readonly value: string; readonly title: string; readonly favicon: string | null; readonly history: boolean }
@@ -26,6 +26,19 @@ export type ChromeOverlay =
   | { readonly kind: "switch"; readonly profile: string | null }
   | { readonly kind: "clear" }
   | { readonly kind: "annotate" };
+
+/**
+ * 지금 보는 화면의 제어권 — main 이 Console 투영에서 한 번 정해 모든 문서에 똑같이 준다. `agent` 는 에이전트가 표시 탭을 모는 중이라
+ * 사람의 입력을 막는 상태, `user` 는 사람이 그 스페이스의 제어를 쥔 상태다. 둘 다 아니면 null 이고 가드는 아무것도 그리지 않는다.
+ */
+export interface ChromeControl {
+  readonly holder: "agent" | "user";
+  readonly spaceId: string;
+  /** 에이전트가 사람에게 부탁한 일. 없으면 null. */
+  readonly reason: string | null;
+  /** 에이전트의 마지막 포인터 — 가드 문서의 CSS px(페이지 자리 왼쪽 위 기준). 표시 탭의 것이 아니면 null. `actor` 는 그 입력을 보낸 AI 의 이름(모르면 빈 문자열). */
+  readonly pointer: { readonly x: number; readonly y: number; readonly kind: "move" | "click" | "type" | "scroll"; readonly seq: number; readonly actor: string } | null;
+}
 
 export interface ChromeColors { readonly scheme: "dark" | "light"; readonly tokens: Readonly<Record<string, string>>; readonly fonts?: Readonly<Record<string, { readonly family: string; readonly size: number }>> }
 
@@ -65,6 +78,7 @@ export interface ChromeUiState {
   readonly importUnavailable: boolean;
   /** 주소줄에 되돌려 줄 글 — 다른 표면에서 쓰던 주소 초안. */
   readonly draft: string | null;
+  readonly control: ChromeControl | null;
 }
 
 export type ChromeAction =
@@ -102,6 +116,10 @@ export type ChromeAction =
   | { readonly action: "dialog-close" }
   | { readonly action: "info-action" }
   | { readonly action: "draft"; readonly value: string | null }
+  /** 제어 알약의 단추 — 가져오기·돌려주기·중지. 어느 스페이스인지는 main 이 지금 화면에서 정한다. */
+  | { readonly action: "control"; readonly control: "take" | "return" | "stop" }
+  /** 가드 문서가 잰 알약의 크기(CSS px) — 사람이 제어 중일 때 가드 뷰는 이 자리만 차지한다. */
+  | { readonly action: "guard-size"; readonly width: number; readonly height: number }
   | { readonly action: "ready" };
 
 const PROFILES = new Set<unknown>([null, "default"]);
@@ -113,7 +131,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
   if (text.length > 4_000_000) return null;
   let value: unknown;
   try { value = JSON.parse(text); } catch { return null; }
-  if (!Array.isArray(value) || value.length !== 4 || value[0] !== CHROME_CHANNEL || (value[1] !== "bar" && value[1] !== "rail" && value[1] !== "stage")) return null;
+  if (!Array.isArray(value) || value.length !== 4 || value[0] !== CHROME_CHANNEL || (value[1] !== "bar" && value[1] !== "rail" && value[1] !== "stage" && value[1] !== "guard")) return null;
   const name = value[2];
   const body = (typeof value[3] === "object" && value[3] !== null ? value[3] : {}) as Record<string, unknown>;
   const role = value[1] as ChromeRole;
@@ -137,6 +155,8 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "viewport": return make(body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? { action: "viewport", preset: body.preset } : null);
     case "profile": case "profile-confirm": case "default-profile": return make(PROFILES.has(body.profile) ? { action: name, profile: body.profile as string | null } : null);
     case "import-run": return make(str(body.profileId, 200) && body.profileId.length > 0 ? { action: "import-run", profileId: body.profileId } : null);
+    case "control": return make(body.control === "take" || body.control === "return" || body.control === "stop" ? { action: "control", control: body.control } : null);
+    case "guard-size": return make(typeof body.width === "number" && typeof body.height === "number" && body.width >= 0 && body.width <= 4096 && body.height >= 0 && body.height <= 4096 ? { action: "guard-size", width: body.width, height: body.height } : null);
     case "draft": return make(body.value === null || str(body.value, 4096) ? { action: "draft", value: body.value as string | null } : null);
     default: return null;
   }

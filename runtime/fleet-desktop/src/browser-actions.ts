@@ -106,7 +106,21 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
 
     switch (action.action) {
       // 표시 탭이 없으면 주소는 보고 있는 스페이스의 새 탭으로 열린다 — 어느 스페이스인지는 셸만 안다.
-      case "navigate": void run("navigate", { url: action.url, spaceId: control.space() }); return;
+      // 에이전트가 모는 표시 탭은 주소줄로도 움직이지 않는다 — 문서가 그 단추를 잠그고 여기서 한 번 더 막는다.
+      case "navigate": if (control.control()?.holder === "agent") return; void run("navigate", { url: action.url, spaceId: control.space() }); return;
+      case "control": {
+        // 가져오기는 에이전트가 모는 중일 때만, 돌려주기는 사람이 쥐었을 때만 뜻이 있다. 중지는 두 상태 모두에서 된다. 상태는 Console 이 바꾸고 다음 스냅샷으로 돌아온다.
+        const held = control.control();
+        if (!held || (action.control === "take" && held.holder !== "agent") || (action.control === "return" && held.holder !== "user")) return;
+        void run("control", { spaceId: held.spaceId, action: action.control }, { quiet: true });
+        return;
+      }
+      case "guard-size": {
+        const pill = control.ui().guardPill;
+        const next = { width: Math.ceil(action.width), height: Math.ceil(action.height) };
+        if (!pill || pill.width !== next.width || pill.height !== next.height) control.patch({ guardPill: next });
+        return;
+      }
       case "new-tab": if (control.ui().overlay?.kind === "tabs-menu") closeOverlay(); void run("tabs", { action: "create", spaceId: control.space() }); return;
       case "select-tab": void run("tabs", { action: "select", tabId: action.id }); return;
       case "close-tab": void run("tabs", { action: "close", tabId: action.id }); return;

@@ -94,7 +94,7 @@ describe("desktop native browser views across a Console restart", () => {
       const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false, close: vi.fn(), focus: vi.fn(), reload: vi.fn(), setZoomFactor: vi.fn(),
         setWindowOpenHandler: vi.fn(), loadURL: vi.fn(async (url: string) => { mainFrame.url = url; }),
         loadFile: vi.fn(async (file: string) => { mainFrame.url = pathToFileURL(file).href; }), executeJavaScript: vi.fn(async () => undefined) });
-      return { webContents, setBounds: vi.fn(), setBackgroundColor: vi.fn() };
+      return { webContents, setBounds: vi.fn(), setVisible: vi.fn(), setBackgroundColor: vi.fn() };
     };
     const consoleView = makeView();
     const stack = createDesktopViewStack(base as never, consoleView as never);
@@ -117,7 +117,7 @@ describe("desktop native browser views across a Console restart", () => {
       relay: vi.fn(), changed, log: vi.fn(),
     });
     surface.apply({ id: "surface-1", browserId: "global", mode: "pane" }, null, "http://127.0.0.1:1");
-    const [bar, rail, , divider] = views as [ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>];
+    const [bar, rail, , , divider] = views as [ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>];
     const send = (doc: ReturnType<typeof makeView>, message: unknown[], frame = doc.webContents.mainFrame) => doc.webContents.emit("console-message", { frame, message: JSON.stringify(message) });
     // 첫 배치: 선호 폭 560 — Console | 손잡이 | (주소줄·레일·페이지) 가 한 번에 정해진다.
     expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
@@ -179,7 +179,7 @@ describe("desktop native browser views across a Console restart", () => {
     const mainHost = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 1200, height: 800 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 2, reclaimFocus: vi.fn() } satisfies PageHost;
     const childHost = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 1000, height: 760 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 2, reclaimFocus: vi.fn() } satisfies PageHost;
     let target: { host: PageHost; page: { x: number; y: number; width: number; height: number } } | null = null;
-    const surface = { apply: vi.fn(), target: () => target, lastPage: () => null, refresh: vi.fn(), dispose: vi.fn() };
+    const surface = { apply: vi.fn(), target: () => target, lastPage: () => null, inputLocked: () => false, refresh: vi.fn(), dispose: vi.fn() };
     const views = createDesktopBrowserViews({
       shell: () => mainHost,
       consoleContents: () => null,

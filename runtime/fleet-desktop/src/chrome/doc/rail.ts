@@ -1,7 +1,7 @@
 import type { DesktopBrowserChromeTab } from "@fleet-console/protocol/desktop";
 import type { ChromeUiState } from "../contract.js";
 import { agentGlyph, clear, G, glyph, h, hostOf, keyed } from "./dom.js";
-import { paintColors, post, shownSpace, spaceHue, spaceName, tabCount, tr, type T } from "./shared.js";
+import { paintColors, post, shownSpace, spaceName, tr, type T } from "./shared.js";
 
 const LEAVE_MS = 160;
 /** 접힘 전환이 끝났다고 보는 여유 — 전환 시간 뒤 이만큼 더 기다렸다가 main 에 뷰 폭을 줄여 달라고 한다. */
@@ -9,7 +9,7 @@ const SETTLE_MS = 30;
 
 /**
  * 탭 표시줄 문서. 세로 레일(접힘·호버 펼침·고정)과 가로 표시줄(주소줄 위 한 줄)을 이 한 문서가 그린다 — 뷰의 자리와 크기만 main 이 바꾼다.
- * 표시줄은 지금 띄운 스페이스 하나의 탭만 그린다. 머리가 어느 스페이스인지 말하고, 누르면 스페이스 선택 화면이 열린다.
+ * 표시줄은 지금 띄운 스페이스 하나의 탭만 그린다. 어느 스페이스인지는 주소줄의 스페이스 단추가 말한다 — 표시줄에는 스페이스 머리가 없다.
  * 세로 레일의 폭은 CSS 전환으로 이어져 변한다: 펼칠 때는 main 이 뷰를 먼저 넓히고, 접을 때는 전환이 끝난 뒤에 뷰를 줄여 달라고 한다.
  */
 export function mountRail(): (state: ChromeUiState) => void {
@@ -18,11 +18,6 @@ export function mountRail(): (state: ChromeUiState) => void {
   const pinButton = h("button", { class: "row rail-pin", type: "button", on: { click: () => post("rail", "pin", { pinned: !last?.pinned }) } });
   const pinLabel = h("span", { class: "label" });
   pinButton.append(h("span", { class: "glyph" }, glyph(G.pin)), pinLabel);
-  // 스페이스 머리 — 접힌 레일에서는 표식(글리프·머리글자) 하나, 펼치면 이름과 탭 수가 붙는다.
-  const spaceMark = h("span", { class: "space-mark" });
-  const spaceLabel = h("span", { class: "label space-name" });
-  const spaceTabs = h("span", { class: "space-count" });
-  const spaceHead = h("button", { class: "row space-head", type: "button", attrs: { "aria-haspopup": "dialog" }, on: { click: () => post("rail", "overlay", { kind: last?.overlay?.kind === "spaces" ? null : "spaces" }) } }, spaceMark, spaceLabel, spaceTabs);
   const scroll = h("div", { class: "scroll" });
   const tabsBox = h("div", { class: "tabs", attrs: { role: "tablist" } });
   const newButton = h("button", { class: "row new", type: "button", on: { click: () => post("rail", "new-tab") } });
@@ -32,7 +27,7 @@ export function mountRail(): (state: ChromeUiState) => void {
   // 가로 표시줄이 맨 위 줄일 때 신호등·캡션 버튼 자리를 비우는 여백 — 세로 레일에서는 자리를 차지하지 않는다.
   const leading = h("span", { class: "pad" });
   const trailing = h("span", { class: "pad" });
-  root.append(leading, pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), spaceHead, scroll, trailing);
+  root.append(leading, pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), scroll, trailing);
 
   let last: ChromeUiState | null = null;
   let hovered = false;
@@ -40,7 +35,6 @@ export function mountRail(): (state: ChromeUiState) => void {
   let leave: ReturnType<typeof setTimeout> | null = null;
   let settle: ReturnType<typeof setTimeout> | null = null;
   const tabCache = new Map<string, HTMLElement>();
-  let markKey = "";
 
   const horizontal = (): boolean => last?.orientation === "horizontal";
   const open = (): boolean => !horizontal() && (last?.pinned === true || hovered || keyboard);
@@ -155,9 +149,8 @@ export function mountRail(): (state: ChromeUiState) => void {
     tabsBox.setAttribute("aria-orientation", state.orientation);
     leading.style.width = `${flat ? state.leading : 0}px`; trailing.style.width = `${flat ? state.trailing : 0}px`;
     if (flat && (hovered || keyboard)) { hovered = false; keyboard = false; }
-    // 조작 중 표시는 지금 보는 스페이스의 것이다(주소줄과 같은 규칙).
-    const shownDriving = shownSpace(state)?.driving === true;
-    root.classList.toggle("driving", shownDriving);
+    // 조작 중임은 페이지 위 화면(가드)이 보인다 — 표시줄은 물들지 않고 접근성 이름으로만 알린다.
+    const shownDriving = shownSpace(state)?.driving === true && shownSpace(state)?.control !== "user";
     root.setAttribute("aria-label", shownDriving ? t("driving") : t("tabs"));
     // 고정을 풀면(메뉴의 「탭 접기」) 포인터가 레일 밖에 있으니 접히는 것을 보인 뒤에 뷰를 줄인다 — main 은 그동안 뷰를 펼친 폭으로 둔다.
     if (previous?.orientation !== state.orientation || previous?.pinned !== state.pinned) { if (previous?.pinned === true && !state.pinned && !flat && !hovered && !keyboard) collapse(); else syncOpen(); }
@@ -167,31 +160,12 @@ export function mountRail(): (state: ChromeUiState) => void {
     pinButton.classList.toggle("set", state.pinned);
     pinLabel.textContent = pinText;
     newButton.title = t("newTab"); newButton.setAttribute("aria-label", t("newTab"));
-    // 스페이스 머리 — 스냅샷이 오기 전에도 자리를 지킨다(디폴트로 그린다).
     const space = shownSpace(state);
     const name = spaceName(t, space);
     const tabs = chrome ? chrome.tabs.filter((tab) => tab.spaceId === state.spaceId) : [];
-    const key = `${space?.kind ?? "default"}:${name}`;
-    if (key !== markKey) {
-      markKey = key;
-      clear(spaceMark);
-      if (space?.kind === "commodore") spaceMark.append(h("span", { class: "space-initial", text: Array.from(name)[0] ?? "" }));
-      else spaceMark.append(glyph(G.home));
-    }
-    spaceHead.dataset.kind = space?.kind ?? "default";
-    spaceHead.style.setProperty("--space-hue", String(spaceHue(state.spaceId)));
-    spaceHead.classList.toggle("driving", space?.driving === true);
-    spaceHead.classList.toggle("open", state.overlay?.kind === "spaces");
-    const headTip = `${t("spaces.head", { name })} · ${tabCount(t, tabs.length)}${space?.driving ? ` · ${t("space.driving")}` : ""}`;
-    spaceHead.title = state.overlay?.kind === "spaces" ? "" : headTip; spaceHead.setAttribute("aria-label", headTip);
-    spaceHead.setAttribute("aria-expanded", String(state.overlay?.kind === "spaces"));
-    spaceLabel.textContent = name;
-    spaceTabs.textContent = String(tabs.length);
-    spaceTabs.hidden = tabs.length === 0;
     if (!chrome) { tabsBox.hidden = true; return; }
     const ready = chrome.available;
     newButton.disabled = !ready || state.busy;
-    spaceHead.disabled = !ready;
     tabsBox.hidden = tabs.length === 0;
     tabsBox.setAttribute("aria-label", `${name} — ${t("tabs")}`);
     keyed(tabsBox, tabs, (tab) => tab.id, makeTab, updateTab(t, chrome.activeTabId, new Set(space?.agentTabIds ?? [])), tabCache);

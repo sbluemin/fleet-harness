@@ -57,6 +57,8 @@ export interface BrowserSurfaceHost {
   target(): { readonly host: PageHost; readonly page: Rectangle } | null;
   /** 표면이 마지막으로 가졌던 페이지 크기 — 표면이 닫힌 동안 새로 만든 뷰도 한 브라우저의 한 크기를 따르게 한다. 한 번도 열리지 않았으면 null. */
   lastPage(): { readonly width: number; readonly height: number } | null;
+  /** 에이전트가 표시 탭을 모는 중이라 사람의 입력이 그 페이지에 닿으면 안 되는가. 포인터는 표면의 가드 뷰가 막고, 키보드는 이 값으로 막는다. */
+  inputLocked(): boolean;
   refresh(): void;
   dispose(): void;
 }
@@ -211,6 +213,11 @@ interface LiveView {
   /** 마지막 표시 크기 — 주차 중 창에 맞춘 일시적인 축소로 덮어쓰지 않는다. */
   parkViewport: ParkViewport;
   lastBounds: { x: number; y: number; width: number; height: number } | null;
+  /**
+   * 에이전트가 방금 이 뷰로 보낸 키(CDP `Input.dispatchKeyEvent`). 글자가 없는 키(rawKeyDown)와 keyUp 은 사람의 키와 똑같이 `before-input-event` 를
+   * 지나므로, 잠긴 동안에는 여기 적힌 것만 통과시킨다. 오래된 것은 버린다.
+   */
+  agentKeys: { type: "keyDown" | "keyUp"; code: string; at: number }[];
 }
 
 /**
@@ -271,6 +278,9 @@ function formatBeforeInputChord(input: {
   parts.push(input.code);
   return parts.join("+");
 }
+
+/** 에이전트가 보낸 키를 기다려 주는 시간 — 명령을 보낸 뒤 이 안에 같은 키가 지나가면 에이전트의 것으로 본다. */
+const AGENT_KEY_PASS_MS = 2_000;
 
 /** 물리 코드(event.code)를 Electron sendInputEvent 가 인식하는 keyCode 로 변환한다. */
 function codeToKeyCode(code: string): string {
@@ -440,7 +450,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (entry.lastScale !== host.scale()) reportSize(entry.spec.id, nextBounds);
     // 이 통합에서는 hidden/0×0 대신 visible + z-order parking — macOS CDP 실험에서 더 안정적이었다.
     entry.view.setVisible(true);
-    const reclaimFocus = !presented && entry.view.webContents.isFocused();
+    // 잠긴 페이지가 초점을 쥐고 있으면 사람의 키 입력이 에이전트가 모는 페이지로 간다 — 보이지 않게 된 페이지와 같이 초점을 거둔다.
+    const reclaimFocus = (!presented || deps.surface.inputLocked()) && entry.view.webContents.isFocused();
     if (presented) host.present(entry.view);
     else host.park(entry.view);
     // Parked behind Console but still holding focus leaves keyboard input on an invisible page.
@@ -464,9 +475,20 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     });
   };
 
-  const attachShortcutSource = (contents: WebContents): void => {
+  /** `pageId` 를 주면 그 페이지 뷰의 잠금도 함께 본다 — 크롬 문서처럼 페이지가 아닌 출처는 단축키만 돌려보낸다. */
+  const attachShortcutSource = (contents: WebContents, pageId?: string): void => {
     contents.on("before-input-event", (event, input) => {
-      if (input.type !== "keyDown" || input.isAutoRepeat || !matchesRegisteredShortcut(input, registeredShortcuts)) return;
+      if (input.type !== "keyDown" || input.isAutoRepeat || !matchesRegisteredShortcut(input, registeredShortcuts)) {
+        // 에이전트가 모는 표시 탭에는 사람의 키가 닿지 않는다. 에이전트의 키도 이 문을 지나므로(글자 없는 키와 keyUp) 방금 보낸 것만 통과시킨다.
+        const entry = pageId === undefined ? undefined : live.get(pageId);
+        if (!entry || !entry.spec.visible || !deps.surface.inputLocked()) return;
+        const now = Date.now();
+        entry.agentKeys = entry.agentKeys.filter((key) => now - key.at < AGENT_KEY_PASS_MS);
+        const sent = entry.agentKeys.findIndex((key) => key.type === input.type && key.code === input.code);
+        if (sent >= 0) entry.agentKeys.splice(sent, 1);
+        else event.preventDefault();
+        return;
+      }
       event.preventDefault();
       const target = deps.consoleContents();
       if (!target || target.isDestroyed() || target === contents) return;
@@ -492,7 +514,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const target = deps.surface.target();
     const known = target && target.page.width > 0 && target.page.height > 0 ? target.page : deps.surface.lastPage();
     const parkViewport = known ? { width: known.width, height: known.height } : defaultParkViewport(contentBounds);
-    const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null };
+    const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null, agentKeys: [] };
     live.set(spec.id, entry);
     const contents = view.webContents;
     markSession(contents.session);
@@ -503,7 +525,12 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     shell.park(view);
     // 페이지가 새 창을 열려 하면 같은 뷰에서 연다 — 이 뷰 밖으로 나가는 창은 없다.
     contents.setWindowOpenHandler(({ url }) => { void contents.loadURL(url).catch(() => undefined); return { action: "deny" }; });
-    attachShortcutSource(contents);
+    attachShortcutSource(contents, spec.id);
+    // 잠긴 페이지가 초점을 얻으면(뷰 사이 Tab 이동 등) 사람의 키가 에이전트가 모는 페이지로 향한다 — 곧바로 거둔다.
+    contents.on("focus", () => {
+      const current = live.get(spec.id);
+      if (current?.spec.visible && deps.surface.inputLocked()) { try { current.parent?.reclaimFocus(); } catch { /* 창이 먼저 닫혔다. */ } }
+    });
     contents.on("render-process-gone", () => drop(spec.id, true));
     contents.on("destroyed", () => drop(spec.id, true));
     try {
@@ -601,6 +628,10 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     // 걸려 있는 사이 수명이 바뀌면(뷰가 닫혀 거부되는 것 포함) 이 답은 옛 프로세스의 것이다 — 명령 id 는 새 프로세스에서
     // 다시 세므로, 올리면 새 프로세스의 엉뚱한 명령을 풀어 버린다.
     const token = session;
+    if (command.method === "Input.dispatchKeyEvent" && (command.params.type === "rawKeyDown" || command.params.type === "keyUp") && typeof command.params.code === "string") {
+      entry.agentKeys.push({ type: command.params.type === "keyUp" ? "keyUp" : "keyDown", code: command.params.code, at: Date.now() });
+      if (entry.agentKeys.length > 64) entry.agentKeys.splice(0, entry.agentKeys.length - 64);
+    }
     entry.view.webContents.debugger.sendCommand(command.method, command.params)
       .then((result) => { if (session === token) push({ results: [{ id: command.id, result }] }); })
       .catch((error: unknown) => { if (session === token) push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }); });

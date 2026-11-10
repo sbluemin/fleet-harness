@@ -440,6 +440,32 @@ describe("session browser host contract", () => {
           expect((await client.callTool({ name: "resize_window", arguments: { width: 640, height: 480 } })).isError).not.toBe(true);
           expect(service.agentTabs(BROWSER_GLOBAL_ID, otherCaller, false).viewport).toEqual(foreignViewport);
           expect(service.agentTabs(BROWSER_GLOBAL_ID, { participantId: "own", spaceId: scopeId, ownerId: scopeId }, false).viewport).toMatchObject({ width: 640, height: 480 });
+          // 사람이 제어를 가져가면 조작 호출은 셸로 아무것도 보내지 않고 거절되고, 읽기는 된다.
+          const controlOf = () => service.state(BROWSER_GLOBAL_ID).spaces.find((space) => space.id === scopeId);
+          expect(service.setControl(BROWSER_GLOBAL_ID, scopeId, "take")).toBe("user");
+          const dispatched = answered.size;
+          for (const [name, args] of [
+            ["navigate", { url: "https://example.com/taken" }],
+            ["javascript_tool", { code: "document.title" }],
+            ["computer", { action: "type", text: "taken" }],
+            ["tabs_create", {}],
+            ["handoff", { action: "request", reason: "Sign in" }],
+          ] as const) {
+            const refused = await client.callTool({ name, arguments: args });
+            expect(refused.isError).toBe(true);
+            expect(JSON.stringify(refused.content)).toContain("browser_user_in_control");
+          }
+          expect(answered.size).toBe(dispatched);
+          expect(controlOf()).toMatchObject({ control: "user", attention: null });
+          expect((await client.callTool({ name: "read_console_messages", arguments: {} })).isError).not.toBe(true);
+          // 돌려받은 뒤 에이전트가 사람을 부르면 제어가 넘어가고, 사람이 돌려주면 기다리던 호출이 풀려 다시 조작한다.
+          service.setControl(BROWSER_GLOBAL_ID, scopeId, "return");
+          const asked = client.callTool({ name: "handoff", arguments: { action: "request", reason: "Sign in" } });
+          await vi.waitFor(() => expect(controlOf()).toMatchObject({ control: "user", attention: { reason: "Sign in" } }));
+          service.setControl(BROWSER_GLOBAL_ID, scopeId, "return");
+          expect(JSON.parse(((await asked).content as { text: string }[])[0]!.text)).toMatchObject({ control: "agent", returned: true });
+          expect(controlOf()).toMatchObject({ control: "agent", attention: null });
+          expect((await client.callTool({ name: "tabs_select", arguments: { tabId: own.id } })).isError).not.toBe(true);
           // Objective 를 거두면 그 Objective 가 연 탭만 닫힌다 — 같은 스페이스의 사령관 탭은 남는다.
           await service.closeOwner("objective-x");
           await service.closeTab(BROWSER_GLOBAL_ID, objectiveTab.id);

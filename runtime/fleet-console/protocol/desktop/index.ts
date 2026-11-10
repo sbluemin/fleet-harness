@@ -274,6 +274,18 @@ export interface DesktopBrowserChromeTab {
   readonly canGoForward: boolean;
 }
 export type DesktopBrowserViewportPreset = "responsive" | "mobile" | "tablet";
+/** 스페이스의 에이전트 탭을 누가 모는가. 사람이 가져가면 돌려줄 때까지 `user` 다. */
+export type DesktopBrowserControl = "agent" | "user";
+/** 에이전트가 마지막으로 보낸 포인터 — 셸이 페이지 위에 커서를 그린다. 좌표는 그 탭 뷰포트의 CSS px 이고, `seq` 는 같은 자리의 연속 동작도 가른다. */
+export interface DesktopBrowserPointer {
+  readonly tabId: string;
+  readonly x: number;
+  readonly y: number;
+  readonly kind: "move" | "click" | "type" | "scroll";
+  readonly seq: number;
+  /** 그 입력을 보낸 AI 의 표시 이름(사령관·지휘관·구성원). 모르면 없거나 빈 문자열이고 셸이 스페이스 이름으로 대신한다. */
+  readonly actor?: string;
+}
 /** 크롬 투영의 스페이스 한 칸. 디폴트와 모든 사령관 스페이스가 탭이 없어도 실린다 — 디폴트가 맨 앞이다. */
 export interface DesktopBrowserChromeSpace {
   readonly id: string;
@@ -286,6 +298,11 @@ export interface DesktopBrowserChromeSpace {
   readonly agentTabIds: readonly string[];
   /** 이 스페이스의 뷰포트 프리셋 — 뷰포트는 스페이스마다 따로다. */
   readonly viewportPreset: DesktopBrowserViewportPreset;
+  /** 제어권. 없으면 `agent` 다 — 이 필드를 모르는 Console 과 섞여도 브라우저가 닫히지 않게 선택 항목이다. */
+  readonly control?: DesktopBrowserControl;
+  /** 에이전트가 사람에게 부탁한 일. 사람이 제어를 돌려주면 사라진다. */
+  readonly attention?: { readonly reason: string } | null;
+  readonly pointer?: DesktopBrowserPointer | null;
 }
 /** Console 이 소유한 브라우저 상태의 크롬용 투영. 셸은 이것을 그리기만 하고 바꾸는 일은 Console 의 REST 로 요청한다. */
 export interface DesktopBrowserChrome {
@@ -353,11 +370,20 @@ export function isDesktopBrowserSurface(value: unknown): value is DesktopBrowser
 const isShortText = (value: unknown, max = 4096): value is string => typeof value === "string" && value.length <= max;
 const isFaviconUrl = (value: unknown): value is string | null => value === null || (typeof value === "string" && value.length <= 65536 && /^(?:data:image\/[a-z0-9.+-]+[;,]|https?:)/iu.test(value));
 
+function isDesktopBrowserPointer(value: unknown): value is DesktopBrowserPointer {
+  return isRecord(value) && isSafeId(value.tabId) && isFiniteNumber(value.x) && isFiniteNumber(value.y)
+    && (value.kind === "move" || value.kind === "click" || value.kind === "type" || value.kind === "scroll") && Number.isSafeInteger(value.seq)
+    && (value.actor === undefined || isShortText(value.actor, 256));
+}
+
 export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserChrome {
   if (!isRecord(value) || !isSafeId(value.browserId) || !Array.isArray(value.spaces) || !Array.isArray(value.tabs) || value.tabs.length > 64 || value.spaces.length > 64) return false;
   const viewport = value.viewport;
   return value.spaces.every((space) => isRecord(space) && isSafeId(space.id) && (space.kind === "commodore" || space.kind === "default") && isShortText(space.label, 512)
-      && typeof space.driving === "boolean" && Array.isArray(space.agentTabIds) && space.agentTabIds.every(isSafeId) && ["responsive", "mobile", "tablet"].includes(String(space.viewportPreset)))
+      && typeof space.driving === "boolean" && Array.isArray(space.agentTabIds) && space.agentTabIds.every(isSafeId) && ["responsive", "mobile", "tablet"].includes(String(space.viewportPreset))
+      && (space.control === undefined || space.control === "agent" || space.control === "user")
+      && (space.attention === undefined || space.attention === null || (isRecord(space.attention) && isShortText(space.attention.reason, 512)))
+      && (space.pointer === undefined || space.pointer === null || isDesktopBrowserPointer(space.pointer)))
     && value.tabs.every((tab) => isRecord(tab) && isSafeId(tab.id) && isSafeId(tab.spaceId) && isShortText(tab.url, 4096) && isShortText(tab.title, 1024) && isFaviconUrl(tab.favicon)
       && typeof tab.loading === "boolean" && typeof tab.canGoBack === "boolean" && typeof tab.canGoForward === "boolean")
     && (value.activeTabId === null || isSafeId(value.activeTabId))

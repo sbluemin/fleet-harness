@@ -5,7 +5,7 @@ import type { DesktopBrowserChrome, DesktopBrowserSurface, DesktopBrowserSurface
 
 import { createBrowserSpaceView, type BrowserSpaceRequest } from "./browser-spaces.js";
 import type { BrowserSurfaceHost, PageHost } from "./browser-views.js";
-import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeOverlay, type ChromeRole, type ChromeTabsOrientation, type ChromeUiState } from "./chrome/contract.js";
+import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeControl, type ChromeOverlay, type ChromeRole, type ChromeTabsOrientation, type ChromeUiState } from "./chrome/contract.js";
 import type { BrowserStripPrefs } from "./desktop-state.js";
 import type { DesktopShellWindow } from "./shell-window.js";
 
@@ -26,6 +26,11 @@ const WINDOWS_CAPTION_PX = 138;
 const WINDOW_FALLBACK_MS = 3_000;
 const TOAST_MS = 4_000;
 const TOAST_ACTION_MS = 8_000;
+/** 가드 문서가 알약 크기를 알려 주기 전까지 쓰는 크기(CSS px)와, 알약 둘레에 그림자·아래 여백으로 더 잡는 자리. */
+const GUARD_PILL_DEFAULT = { width: 420, height: 48 };
+const GUARD_PILL_MARGIN_X = 24;
+const GUARD_PILL_MARGIN_TOP = 24;
+const GUARD_PILL_BOTTOM = 18;
 
 /** 문서가 동작을 요청하는 경로의 반대쪽 — 동작 처리기가 표면을 고칠 때 쓰는 손잡이. */
 export interface SurfaceControl {
@@ -43,6 +48,8 @@ export interface SurfaceControl {
   evaluate(role: ChromeRole, code: string): void;
   /** 키보드 초점을 그 크롬 문서의 뷰로 옮긴다. */
   focus(role: ChromeRole): void;
+  /** 지금 화면의 제어권 — 에이전트가 표시 탭을 모는 중인지, 사람이 쥐었는지. 없으면 null. */
+  control(): ChromeControl | null;
 }
 
 export interface SurfaceUi {
@@ -57,6 +64,8 @@ export interface SurfaceUi {
   suggest: ChromeUiState["suggest"];
   suggestions: ChromeUiState["suggestions"];
   draft: string | null;
+  /** 가드 문서가 잰 제어 알약의 크기(CSS px). 아직 모르면 null. */
+  guardPill: { width: number; height: number } | null;
 }
 
 export interface BrowserSurfaceDeps {
@@ -106,10 +115,11 @@ export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base
  * 전부 여기서 같은 main 틱에 정한다. Console 은 상태와 정책만 보내고(스냅샷), 이 표면은 사람의 동작을 REST 로 돌려보낸다.
  */
 export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; captionInset(kind: "pane" | "window"): number } {
+  type Docs = { bar: ChromeDoc; rail: ChromeDoc; stage: ChromeDoc; guard: ChromeDoc };
   let surface: DesktopBrowserSurface | null = null;
   let chrome: DesktopBrowserChrome | null = null;
   let chromeJson = "";
-  let docs: { bar: ChromeDoc; rail: ChromeDoc; stage: ChromeDoc } | null = null;
+  let docs: Docs | null = null;
   let divider: WebContentsView | null = null;
   let windowBase: BaseWindow | null = null;
   let windowStack: ReturnType<typeof createWindowStack> | null = null;
@@ -118,7 +128,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   let page: Rectangle = { x: 0, y: 0, width: 0, height: 0 };
   let paneWidth = 560;
   const remembered = deps.stripPrefs?.load() ?? null;
-  let ui: SurfaceUi = { pinned: remembered?.pinned ?? false, expanded: false, orientation: remembered?.orientation ?? "vertical", autoExpand: remembered?.autoExpand ?? true, overlay: null, busy: false, notice: null, info: null, suggest: null, suggestions: [], draft: null };
+  let ui: SurfaceUi = { pinned: remembered?.pinned ?? false, expanded: false, orientation: remembered?.orientation ?? "vertical", autoExpand: remembered?.autoExpand ?? true, overlay: null, busy: false, notice: null, info: null, suggest: null, suggestions: [], draft: null, guardPill: null };
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   let focusSeen = 0;
   let closing: ReturnType<typeof setTimeout> | null = null;
@@ -159,13 +169,44 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   /** 주소줄 뷰의 높이 — 그 뷰는 `top`(가로 탭 표시줄) 아래에서 시작한다. */
   const barHeight = (rect: Rectangle, top: number): number => { const room = Math.max(1, rect.height - top); return ui.overlay !== null ? room : ui.notice || ui.info ? Math.min(room, stripPx() + dip(TOAST_BAND_PX)) : Math.min(room, stripPx()); };
 
+  const allDocs = (set: Docs): ChromeDoc[] => [set.bar, set.rail, set.stage, set.guard];
+
+  /**
+   * 지금 화면의 제어권. 사람이 쥔 스페이스를 보고 있으면 어느 탭에서든 `user` 다 — 돌려줄 단추가 늘 손에 닿아야 한다.
+   * `agent` 는 보는 탭이 그 스페이스 에이전트의 작업 탭이고 에이전트가 쓰는 중일 때뿐이다. 사람이 연 다른 탭은 잠기지 않는다.
+   */
+  const controlState = (): ChromeControl | null => {
+    if (!chrome || !chrome.available) return null;
+    const space = chrome.spaces.find((candidate) => candidate.id === spaces.current());
+    // 제어권을 모르는 Console(이 필드가 없는 옛 투영)에서는 가드를 세우지 않는다 — 풀어 줄 길(제어 요청 경로)이 그쪽에 없어 잠그면 사람이 그 탭을 쓸 수 없게 된다.
+    if (!space || space.control === undefined) return null;
+    if (space.control === "user") return { holder: "user", spaceId: space.id, reason: space.attention?.reason ?? null, pointer: null };
+    const tabId = chrome.activeTabId;
+    if (!space.driving || tabId === null || !space.agentTabIds.includes(tabId)) return null;
+    const z = zoom();
+    const pointer = space.pointer && space.pointer.tabId === tabId ? { x: space.pointer.x / z, y: space.pointer.y / z, kind: space.pointer.kind, seq: space.pointer.seq, actor: space.pointer.actor ?? "" } : null;
+    return { holder: "agent", spaceId: space.id, reason: null, pointer };
+  };
+
+  const heldKey = (): string => { const held = controlState(); return held ? `${held.holder}:${held.spaceId}` : ""; };
+  let heldSeen = "";
+
+  /** 가드 뷰의 자리 — 에이전트가 모는 중이면 페이지 전체(사람의 포인터가 페이지에 닿지 않는다), 사람이 쥐었으면 아래 가운데 알약 자리뿐이다. */
+  const guardBounds = (control: ChromeControl): Rectangle => {
+    if (control.holder === "agent") return { x: page.x, y: page.y, width: Math.max(1, page.width), height: Math.max(1, page.height) };
+    const pill = ui.guardPill ?? GUARD_PILL_DEFAULT;
+    const width = Math.max(1, Math.min(page.width, dip(pill.width + GUARD_PILL_MARGIN_X * 2)));
+    const height = Math.max(1, Math.min(page.height, dip(pill.height + GUARD_PILL_BOTTOM + GUARD_PILL_MARGIN_TOP)));
+    return { x: page.x + Math.round((page.width - width) / 2), y: page.y + page.height - height, width, height };
+  };
+
   /** 모든 뷰의 자리를 같은 틱에 정한다. 상태 문서에 알리는 것은 이 뒤다 — 뷰 크기와 문서 레이아웃이 어긋난 프레임이 없게. */
   const layout = (): void => {
     if (!docs) return;
     const rect = surfaceRect();
     if (!rect) return;
     const z = zoom();
-    if (z !== appliedZoom) { appliedZoom = z; for (const doc of [docs.bar, docs.rail, docs.stage]) if (!doc.view.webContents.isDestroyed()) doc.view.webContents.setZoomFactor(z); }
+    if (z !== appliedZoom) { appliedZoom = z; for (const doc of allDocs(docs)) if (!doc.view.webContents.isDestroyed()) doc.view.webContents.setZoomFactor(z); }
     const top = Math.min(tabsPx(), rect.height);
     const strip = Math.min(stripPx(), Math.max(0, rect.height - top));
     const side = layoutRailWidth();
@@ -177,11 +218,15 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       ? { x: rect.x, y: rect.y, width: rect.width, height: Math.max(1, top) }
       : { x: rect.x, y: rect.y + strip, width: Math.min(railWidth(), rect.width), height: Math.max(1, rect.height - strip) });
     docs.stage.view.setBounds({ x: page.x, y: page.y, width: Math.max(1, page.width), height: Math.max(1, page.height) });
+    // 가드는 제어권이 걸린 동안만 선다 — 그 밖에는 숨겨서 페이지가 포인터를 그대로 받는다.
+    const held = page.width > 0 && page.height > 0 ? controlState() : null;
+    if (held) docs.guard.view.setBounds(guardBounds(held));
+    docs.guard.view.setVisible(held !== null);
     if (hostKind === "pane") {
       const main = deps.main();
       if (main && !main.isDestroyed() && divider) {
         const left = rect.x - DIVIDER_PX;
-        main.stack.setBrowserPane({ stage: docs.stage.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left });
+        main.stack.setBrowserPane({ stage: docs.stage.view, guard: docs.guard.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left });
         divider.setBounds({ x: left, y: 0, width: DIVIDER_PX, height: rect.height });
       }
     }
@@ -201,6 +246,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       page: rect ? { x: layoutRailWidth() / z, y: Math.min(stripPx(), Math.max(0, rect.height - tabsPx())) / z, width: Math.max(0, rect.width - layoutRailWidth()) / z, height: Math.max(0, rect.height - tabsPx() - stripPx()) / z } : { x: 0, y: 0, width: 0, height: 0 },
       zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null,
       suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
+      control: controlState(),
     };
   };
 
@@ -211,7 +257,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     const scheme = deps.colors()?.scheme ?? "";
     if (divider && scheme && scheme !== dividerScheme && !divider.webContents.isDestroyed()) { dividerScheme = scheme; void divider.webContents.executeJavaScript(`document.documentElement.style.colorScheme = ${JSON.stringify(scheme)}`).catch(() => undefined); }
     const json = escapeScript(JSON.stringify(state()));
-    for (const doc of [docs.bar, docs.rail, docs.stage]) {
+    for (const doc of allDocs(docs)) {
       if (!doc.ready || doc.view.webContents.isDestroyed() || doc.lastJson === json) continue;
       doc.lastJson = json;
       void doc.view.webContents.executeJavaScript(`window.__fleetChrome && window.__fleetChrome.apply(${json})`).catch(() => undefined);
@@ -247,6 +293,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       const doc = docs?.[role];
       if (doc && !doc.view.webContents.isDestroyed()) doc.view.webContents.focus();
     },
+    control: controlState,
   };
 
   const isTrusted = (doc: ChromeDoc, details: { frame: { url: string } | null }): boolean => {
@@ -355,7 +402,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     } else {
       if (!windowBase || windowBase.isDestroyed()) makeWindow();
       hostKind = "window";
-      windowStack!.set(docs.stage.view, docs.rail.view, docs.bar.view);
+      windowStack!.set(docs.stage.view, docs.guard.view, docs.rail.view, docs.bar.view);
       host = windowStack!.host(() => deps.scaleFactor(windowBase!), () => { if (docs && !docs.bar.view.webContents.isDestroyed()) docs.bar.view.webContents.focus(); });
       if (windowBase && !windowBase.isDestroyed()) { windowBase.show(); }
     }
@@ -370,10 +417,10 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     detachFromHost();
     destroyWindow();
     const oldDivider = divider;
-    docs = null; divider = null; surface = null; chrome = null; chromeJson = ""; focusSeen = 0; drag = null;
+    docs = null; divider = null; surface = null; chrome = null; chromeJson = ""; focusSeen = 0; drag = null; heldSeen = "";
     spaces.observe(null);
-    for (const view of [old?.bar.view, old?.rail.view, old?.stage.view, oldDivider]) { if (view && !view.webContents.isDestroyed()) { try { view.webContents.close(); } catch { /* 이미 닫혔다. */ } } }
-    ui = { ...ui, expanded: false, overlay: null, busy: false, notice: null, info: null, suggestions: [], draft: null };
+    for (const view of [old?.bar.view, old?.rail.view, old?.stage.view, old?.guard.view, oldDivider]) { if (view && !view.webContents.isDestroyed()) { try { view.webContents.close(); } catch { /* 이미 닫혔다. */ } } }
+    ui = { ...ui, expanded: false, overlay: null, busy: false, notice: null, info: null, suggestions: [], draft: null, guardPill: null };
     page = { x: 0, y: 0, width: 0, height: 0 };
     deps.changed();
   };
@@ -384,7 +431,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       const first = surface?.id !== next.id;
       if (first && docs) closeSurface();
       surface = next;
-      if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail"), stage: makeDoc("stage") }; }
+      if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail"), stage: makeDoc("stage"), guard: makeDoc("guard") }; }
       const json = JSON.stringify(nextChrome);
       const chromeChanged = json !== chromeJson;
       chrome = nextChrome; chromeJson = json;
@@ -398,7 +445,10 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
         if (windowBase.isMinimized()) windowBase.restore();
         windowBase.show(); windowBase.focus();
       } else if ((next.focusRequest ?? 0) > focusSeen) { focusSeen = next.focusRequest ?? 0; docs.bar.view.webContents.focus(); }
-      if (chromeChanged || spaces.current() !== spaceBefore) push();
+      // 제어권이 바뀌었으면 가드의 자리를 같은 틱에 다시 정한 뒤 문서에 알린다. 포인터만 움직인 투영은 자리를 건드리지 않는다.
+      const heldNow = heldKey();
+      if (heldNow !== heldSeen) { heldSeen = heldNow; update(); }
+      else if (chromeChanged || spaces.current() !== spaceBefore) push();
       else layout();
       if (request) deps.act(control, "bar", { action: "show-tab", id: request.kind === "select" ? request.tabId : null });
     },
@@ -412,24 +462,27 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     // Console 테마(라이트·다크·시스템)가 바뀌었다 — 새로고침 없이 크롬 문서와 손잡이가 같은 순간 새 색으로 다시 칠해진다.
     retheme() { if (docs) push(); },
     // Windows 캡션 버튼이 이 표면의 맨 위 줄에 설 때, 그 줄이 주소줄이면 아래 구분선(1 CSS px)만큼 캡션 띠를 낮춘다. 가로 탭 표시줄은 아래 선이 없어 덜지 않는다.
+    // 에이전트가 표시 탭을 모는 동안에는 사람의 키보드도 그 페이지에 닿지 않아야 한다 — browser-views 가 이 값으로 키 입력을 막고 초점을 거둔다.
+    inputLocked: () => controlState()?.holder === "agent",
     captionInset: (kind) => (docs && hostKind === kind && !horizontal() ? Math.max(1, Math.round(zoom())) : 0),
   };
 }
 
-/** 독립 창의 뷰 쌓기 — 표시 중인 페이지 뷰 < 레일 < 주소줄. 이 창에는 Console 도 주차된 뷰도 없다. */
+/** 독립 창의 뷰 쌓기 — 표시 중인 페이지 뷰 < 가드 < 레일 < 주소줄. 이 창에는 Console 도 주차된 뷰도 없다. */
 function createWindowStack(base: BaseWindow) {
   const presented = new Set<WebContentsView>();
   let stage: WebContentsView | null = null;
+  let guard: WebContentsView | null = null;
   let rail: WebContentsView | null = null;
   let bar: WebContentsView | null = null;
   const relayout = (): void => {
-    const ordered = [...(stage ? [stage] : []), ...presented, ...(rail ? [rail] : []), ...(bar ? [bar] : [])];
+    const ordered = [...(stage ? [stage] : []), ...presented, ...(guard ? [guard] : []), ...(rail ? [rail] : []), ...(bar ? [bar] : [])];
     for (let index = 0; index < ordered.length; index += 1) base.contentView.addChildView(ordered[index]!, index);
   };
   const remove = (view: WebContentsView): void => { presented.delete(view); try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } };
   return {
-    set(nextStage: WebContentsView, nextRail: WebContentsView, nextBar: WebContentsView): void { stage = nextStage; rail = nextRail; bar = nextBar; relayout(); },
-    clear(): void { for (const view of [stage, rail, bar]) if (view) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } } stage = null; rail = null; bar = null; },
+    set(nextStage: WebContentsView, nextGuard: WebContentsView, nextRail: WebContentsView, nextBar: WebContentsView): void { stage = nextStage; guard = nextGuard; rail = nextRail; bar = nextBar; relayout(); },
+    clear(): void { for (const view of [stage, guard, rail, bar]) if (view) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } } stage = null; guard = null; rail = null; bar = null; },
     host(scale: () => number, focus: () => void): PageHost {
       return {
         isDestroyed: () => base.isDestroyed(),

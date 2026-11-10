@@ -6,7 +6,7 @@ import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./his
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type DesktopBrowserChrome, type DesktopBrowserChromeSpace } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserPointer } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
 /**
@@ -199,7 +199,18 @@ interface Space {
   /** true 이면 논리 뷰포트가 네이티브 pane 을 따른다(에뮬레이션 없음). */
   viewportFollowsPane: boolean;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
-  agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string> } | null;
+  agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string>; /** 마지막으로 호출을 연 참가자. */ last: string } | null;
+  /**
+   * 이 스페이스의 에이전트 탭을 누가 모는가. 사람이 가져가면(`user`) 돌려줄 때까지 남는다 — 에이전트 턴이 끝나도 풀지 않는다.
+   * 사람이 로그인하는 중에 다음 턴이 말없이 페이지를 가져가면 안 되기 때문이다. 메모리 상태라 Console 이 다시 뜨면 `agent` 다.
+   */
+  control: DesktopBrowserControl;
+  /** 에이전트가 `handoff` 로 사람에게 부탁한 일. 사람이 제어를 돌려주면 지운다. */
+  attention: { reason: string } | null;
+  /** 에이전트가 마지막으로 보낸 포인터 — 셸이 페이지 위에 커서를 그린다. 사용 세션이 닫히면 지운다. */
+  pointer: DesktopBrowserPointer | null;
+  /** 제어가 돌아오기를 기다리는 `handoff` 호출들을 깨우는 함수. */
+  controlWaiters: Set<() => void>;
 }
 
 /** Console 전체의 브라우저 하나. 필드 이름은 옛 Objective 단위에서 왔다. */
@@ -313,6 +324,8 @@ export interface BrowserServiceDeps {
   readonly defaultProfile: { read(): string | null; write(profile: string | null): void };
   /** 스페이스의 사람이 읽는 이름(사령관 이름). 모르면 빈 문자열. */
   readonly spaceLabel?: (browserId: string, spaceId: string) => string;
+  /** 참가자(도구를 부른 세션)의 표시 이름 — 사령관·지휘관·구성원. 셸이 에이전트 커서에 붙인다. 모르면 빈 문자열. */
+  readonly actorLabel?: (participantId: string) => string;
   /** 지금 있는 사령관들의 id — 사령관마다 스페이스가 하나 선다. 없으면 탭이 있는 사령관 스페이스만 안다. */
   readonly commodores?: () => readonly string[];
 }
@@ -337,6 +350,10 @@ function editCommand(key: string, mods: Modifiers): string | undefined {
 
 /** 마지막 도구 호출 뒤 이만큼 조용하면 세션을 닫는다 — computer-use 와 같은 값. */
 const AGENT_SESSION_IDLE_MS = 5 * 60_000;
+/** `handoff` 한 번이 기다리는 최대 시간. */
+export const BROWSER_HANDOFF_MAX_MS = 240_000;
+/** 사람이 제어 중일 때 조작 호출이 받는 말. 에이전트가 읽는 문구다 — '프롬프트 자문'을 거친 문구만 쓴다. */
+const USER_IN_CONTROL_MESSAGE = 'This action was not dispatched because the person controls this space. Call handoff with action "wait" instead of retrying it.';
 
 const SEARCH_URL = "https://www.google.com/search?q=";
 /** 스킴 없는 입력이 호스트처럼 보이는가 — 점이 있는 이름, localhost, IP, 포트. 아니면 검색어로 본다. */
@@ -386,6 +403,8 @@ export class BrowserService {
     return this.browsingHistory.favicon(this.historyScope(this.objectiveRecord(objectiveId)), id);
   }
   private disposed = false;
+  /** 포인터 투영의 일련번호 — 같은 자리의 연속 동작도 셸이 가려 그린다. */
+  private pointerSeq = 0;
   private engine: BrowserServiceStatus["engine"] = "idle";
   private engineError: string | null = null;
   private readonly objectiveRecords = new Map<string, ObjectiveBrowser>();
@@ -538,7 +557,7 @@ export class BrowserService {
   private space(op: ObjectiveBrowser, spaceId: string): Space {
     let space = op.spaces.get(spaceId);
     if (!space) {
-      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, agentSession: null };
+      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, agentSession: null, control: "agent", attention: null, pointer: null, controlWaiters: new Set() };
       if (op.pane) space.viewport = { ...space.viewport, width: op.pane.width, height: op.pane.height };
       op.spaces.set(spaceId, space);
     }
@@ -761,11 +780,11 @@ export class BrowserService {
     const active = this.activeSpace(op);
     const agentTabs = new Set(op.currentTabs.values());
     // 디폴트가 맨 앞, 그 뒤로 지금 있는 사령관들. 목록에 없는데 탭이 남은 스페이스(지워지는 중인 사령관)는 끝에 붙는다.
-    const spaceIds = [...new Set([DESKTOP_BROWSER_DEFAULT_SPACE_ID, ...(this.deps.commodores?.() ?? []).map(commodoreBrowserSpaceId), ...[...op.tabs.values()].map((tab) => tab.spaceId), ...[...op.spaces.values()].filter((space) => space.agentSession).map((space) => space.id)])];
+    const spaceIds = [...new Set([DESKTOP_BROWSER_DEFAULT_SPACE_ID, ...(this.deps.commodores?.() ?? []).map(commodoreBrowserSpaceId), ...[...op.tabs.values()].map((tab) => tab.spaceId), ...[...op.spaces.values()].filter((space) => space.agentSession || space.control === "user").map((space) => space.id)])];
     const spaces: BrowserSpaceState[] = spaceIds.map((id) => {
       const space = op.spaces.get(id);
       const tabs = this.spaceTabs(op, id);
-      return { id, kind: browserSpaceKindOf(id), label: this.deps.spaceLabel?.(objectiveId, id) ?? "", driving: space?.agentSession != null, agentTabIds: tabs.filter((tab) => agentTabs.has(tab.id)).map((tab) => tab.id), viewportPreset: space?.viewport.preset ?? "responsive" };
+      return { id, kind: browserSpaceKindOf(id), label: this.deps.spaceLabel?.(objectiveId, id) ?? "", driving: space?.agentSession != null, agentTabIds: tabs.filter((tab) => agentTabs.has(tab.id)).map((tab) => tab.id), viewportPreset: space?.viewport.preset ?? "responsive", control: space?.control ?? "agent", attention: space?.attention ?? null, pointer: space?.pointer ?? null };
     });
     return {
       owner: { kind: "objectiveRecord", objectiveId },
@@ -963,9 +982,10 @@ export class BrowserService {
     if (!spaceId) return;
     const space = this.space(op, spaceId);
     const now = Date.now();
-    if (!space.agentSession) { space.agentSession = { since: now, lastCallAt: now, idle: null, participants: new Set() }; this.deps.log(`agent session started for ${op.objectiveId} space ${spaceId}`); }
+    if (!space.agentSession) { space.agentSession = { since: now, lastCallAt: now, idle: null, participants: new Set(), last: participantId }; this.deps.log(`agent session started for ${op.objectiveId} space ${spaceId}`); }
     const session = space.agentSession;
     session.participants.add(participantId);
+    session.last = participantId;
     session.lastCallAt = now;
     if (session.idle) clearTimeout(session.idle);
     session.idle = setTimeout(() => {
@@ -979,6 +999,7 @@ export class BrowserService {
     if (!space.agentSession) return;
     if (space.agentSession.idle) clearTimeout(space.agentSession.idle);
     space.agentSession = null;
+    space.pointer = null;
     this.deps.log(`agent session ended for ${op.objectiveId} space ${space.id} (${reason})`);
     this.pruneSpace(op, space.id);
     this.emitState(op);
@@ -1003,6 +1024,98 @@ export class BrowserService {
     let closed = false;
     for (const space of [...op.spaces.values()]) if (space.agentSession) { this.closeSpaceSession(op, space, reason); closed = true; }
     return closed;
+  }
+
+  // ---------- 제어권 ----------
+
+  /**
+   * 사람의 제어 동작. `take` 는 그 스페이스의 조작 호출을 거절하기 시작하고, `return` 은 에이전트에게 돌려주며 기다리던 `handoff` 를 깨운다.
+   * `stop` 은 그 스페이스의 진행 중 호출을 끊고 사용 세션을 닫은 뒤 제어를 에이전트로 되돌린다 — 다른 스페이스의 호출은 그대로다.
+   */
+  setControl(objectiveId: string, spaceId: string, action: "take" | "return" | "stop"): DesktopBrowserControl {
+    const op = this.objectiveRecord(objectiveId);
+    const space = op.spaces.get(spaceId);
+    if (!space) throw new BrowserPolicyError("browser_space_not_found", "That space does not exist. Check tabs_context(all:true).", { spaceId });
+    if (action === "take") {
+      if (space.control !== "user") { space.control = "user"; this.deps.log(`control taken by the person in ${op.objectiveId} space ${spaceId}`); }
+      this.emitState(op);
+      return space.control;
+    }
+    if (action === "stop") {
+      // 배치는 스텝마다 새 호출을 열므로 참가자 세대를 올려 남은 스텝이 시작하지 못하게 한다.
+      const participants = new Set([...op.participantSpaces].filter(([, id]) => id === spaceId).map(([participant]) => participant));
+      for (const participant of participants) op.participantSerials.set(participant, (op.participantSerials.get(participant) ?? 0) + 1);
+      for (const [call, participant] of [...op.callParticipants]) if (participants.has(participant)) { call.abort(); op.agentCalls.delete(call); op.callParticipants.delete(call); }
+    }
+    this.releaseControl(space);
+    this.deps.log(`control ${action === "stop" ? "stopped" : "returned to the agent"} in ${op.objectiveId} space ${spaceId}`);
+    if (action === "stop" && space.agentSession) this.closeSpaceSession(op, space, "interrupt");
+    else this.emitState(op);
+    return space.control;
+  }
+
+  private releaseControl(space: Space): void {
+    space.control = "agent";
+    space.attention = null;
+    for (const wake of [...space.controlWaiters]) wake();
+  }
+
+  /** 사람이 제어 중이면 조작 호출을 거절한다 — 페이지와 탭에는 아무것도 가지 않는다. 읽기는 이 문을 지나지 않는다. */
+  assertAgentControl(objectiveId: string, spaceId: string): void {
+    const space = this.objectiveRecords.get(objectiveId)?.spaces.get(spaceId);
+    if (space?.control === "user") throw new BrowserPolicyError("browser_user_in_control", USER_IN_CONTROL_MESSAGE, { spaceId });
+  }
+
+  /**
+   * 에이전트의 `handoff`. `request` 는 사람에게 제어를 넘기고 부탁을 띄운다 — 이미 사람이 제어 중이면 상태를 바꾸지 않고 거절한다.
+   * 두 갈래 모두 제어가 돌아오거나 시간이 다할 때까지 기다린다. 확인과 변경은 한 동기 구간이라 사이에 사람의 동작이 끼어들지 못한다.
+   */
+  async handoff(objectiveId: string, caller: BrowserCaller, input: { action: "wait" | "request"; reason?: string; timeoutMs?: number }, signal: AbortSignal): Promise<{ control: DesktopBrowserControl; returned: boolean; waitedMs: number }> {
+    const op = this.objectiveRecord(objectiveId);
+    const space = this.space(op, caller.spaceId);
+    if (input.action === "request") {
+      const reason = typeof input.reason === "string" ? input.reason.trim() : "";
+      if (!reason) throw new BrowserPolicyError("browser_handoff_reason_required", "request needs a reason: one sentence saying what the person should do.");
+      if (space.control === "user") throw new BrowserPolicyError("browser_user_in_control", USER_IN_CONTROL_MESSAGE, { spaceId: space.id });
+      space.control = "user";
+      space.attention = { reason: reason.slice(0, 200) };
+      this.deps.log(`control handed to the person in ${op.objectiveId} space ${space.id}`);
+      this.emitState(op);
+    }
+    if (space.control === "agent") return { control: "agent", returned: true, waitedMs: 0 };
+    const started = Date.now();
+    const limit = Math.min(BROWSER_HANDOFF_MAX_MS, Math.max(0, input.timeoutMs ?? BROWSER_HANDOFF_MAX_MS));
+    await new Promise<void>((resolve) => {
+      const done = () => { clearTimeout(timer); signal.removeEventListener("abort", done); space.controlWaiters.delete(done); resolve(); };
+      const timer = setTimeout(done, limit);
+      signal.addEventListener("abort", done, { once: true });
+      space.controlWaiters.add(done);
+      if (signal.aborted) done();
+    });
+    if (signal.aborted) throw new Error("browser_call_interrupted");
+    // 기다리는 사이 사람이 돌려줬을 수 있다 — 위에서 좁혀진 타입이 아니라 지금 값을 읽는다.
+    const control = space.control as DesktopBrowserControl;
+    return { control, returned: control === "agent", waitedMs: Date.now() - started };
+  }
+
+  /** 에이전트가 보낸 포인터를 적는다 — 셸이 그 좌표로 커서를 옮긴다. 페이지에는 아무것도 넣지 않는다. */
+  private notePointer(op: ObjectiveBrowser, tab: Tab, kind: DesktopBrowserPointer["kind"], at?: { x: number; y: number }): void {
+    const space = this.spaceOfTab(op, tab);
+    // 좌표 없는 입력(글자·키)은 마지막 포인터 자리에, 그것도 없으면 뷰포트 가운데에 선다.
+    const point = at ?? (space.pointer?.tabId === tab.id ? space.pointer : { x: space.viewport.width / 2, y: space.viewport.height / 2 });
+    this.pointerSeq += 1;
+    // 누가 보냈는가 — 그 탭을 작업 탭으로 쥔 참가자가 하나면 그 참가자, 아니면 이 스페이스에서 마지막으로 호출을 연 참가자다.
+    const holders = [...op.currentTabs].filter(([, id]) => id === tab.id).map(([participant]) => participant);
+    const participant = holders.length === 1 ? holders[0]! : space.agentSession?.last ?? null;
+    let actor = "";
+    if (participant) { try { actor = (this.deps.actorLabel?.(participant) ?? "").slice(0, 120); } catch { actor = ""; } }
+    space.pointer = { tabId: tab.id, x: Math.round(point.x), y: Math.round(point.y), kind, seq: this.pointerSeq, ...(actor ? { actor } : {}) };
+    this.emitState(op);
+  }
+
+  /** 에이전트 입력의 마지막 문 — 도구가 시작된 뒤 사람이 제어를 가져가도 남은 입력이 페이지로 가지 않는다. */
+  private guardInput(op: ObjectiveBrowser, tab: Tab): void {
+    if (op.spaces.get(tab.spaceId)?.control === "user") throw new BrowserPolicyError("browser_user_in_control", USER_IN_CONTROL_MESSAGE, { spaceId: tab.spaceId });
   }
 
   // ---------- 탭 ----------
@@ -1113,6 +1226,8 @@ export class BrowserService {
   /** 탭이 사라졌다 — 그 탭을 작업 탭으로 쥔 참가자의 기억에서 뺀다. */
   private forgetTab(op: ObjectiveBrowser, tab: Tab): void {
     for (const [participant, id] of [...op.currentTabs]) if (id === tab.id) op.currentTabs.delete(participant);
+    const space = op.spaces.get(tab.spaceId);
+    if (space?.pointer?.tabId === tab.id) space.pointer = null;
   }
 
   /** 사람 화면에 탭을 띄운다(표시 탭). 사람의 선택과 `tabs_select(show)` 만 부른다. */
@@ -1564,6 +1679,8 @@ export class BrowserService {
     const modifiers = modifierBits(input.modifiers ?? { alt: false, ctrl: false, meta: false, shift: false });
     // 페이지 마우스 이벤트의 clientX/Y 는 정수다 — 보내는 값과 보고하는 값이 같도록 보내기 전에 한 방식으로 반올림한다.
     const base = { x: Math.round(input.x), y: Math.round(input.y), modifiers };
+    this.guardInput(op, tab);
+    this.notePointer(op, tab, input.type === "wheel" ? "scroll" : input.type === "down" || input.type === "click" ? "click" : "move", base);
     if (input.type === "wheel") { await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseWheel", deltaX: input.deltaX ?? 0, deltaY: input.deltaY ?? 0 }, tab.sessionId); return; }
     if (input.type === "move") {
       // 누른 채 움직이면 드래그다 — Chromium 은 mouseMoved 에 실린 button/buttons 로 드래그·선택을 이어간다.
@@ -1692,6 +1809,8 @@ export class BrowserService {
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const modifiers = modifierBits(mods);
+    this.guardInput(op, tab);
+    this.notePointer(op, tab, "type");
     const common = { key: descriptor.key, code: descriptor.code, windowsVirtualKeyCode: descriptor.keyCode, nativeVirtualKeyCode: descriptor.keyCode, modifiers };
     // macOS 편집 단축키(cmd+a·c·v·x·z)는 Chromium이 commands 로 받아야 실제 편집이 일어난다.
     const command = editCommand(descriptor.key, mods);
@@ -1705,7 +1824,9 @@ export class BrowserService {
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const parts = text.split("\n");
+    this.notePointer(op, tab, "type");
     for (let i = 0; i < parts.length; i += 1) {
+      this.guardInput(op, tab);
       if (parts[i]) await client.send("Input.insertText", { text: parts[i] }, tab.sessionId);
       if (i < parts.length - 1) await this.keyChord(objectiveId, "Return", tabId);
     }
@@ -1946,6 +2067,8 @@ export class BrowserService {
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const { objectId } = await this.resolveRef(client, tab, ref);
+    // 대상을 찾는 사이 사람이 제어를 가져갔으면 값을 바꾸지 않는다 — 포인터·키와 같은 전송 직전의 문이다.
+    this.guardInput(op, tab);
     const result = await client.send<{ result: { value?: string } }>("Runtime.callFunctionOn", { objectId, returnByValue: true, arguments: [{ value }], functionDeclaration: `function(v){
       const el = this; const tag = el.tagName ? el.tagName.toLowerCase() : "";
       const fire = () => { el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); };
