@@ -117,18 +117,29 @@ export function createConsoleSectionController(deps: Dependencies) {
       nextIds.set(key, id);
     };
     const { reachable, ...homeExtra } = relations;
-    if (!reachable) {
-      // The managed home Console is not running: its own lists cannot be read, and that is not a failure to report.
-      // The row stays, with the name it last had, so the person can see what happened and start it again.
+    /**
+     * The home Console does not answer, so its own lists cannot be read. The row stays, with the name it last had and
+     * the relations the manager just proved, so the person sees what happened instead of the last list that worked.
+     */
+    const homeOnly = async (): Promise<void> => {
       const before = [...targets.values()].find((target) => target.entry.home)?.entry;
       append(origin, "local", before?.label, before?.version, "unreachable", homeExtra);
       if (current && current !== origin) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, { management: "unknown", path: isLoopbackConsoleOrigin(current) ? "loopback" : "remote" });
       targets = next;
       ids = nextIds;
       await publish();
-      return;
+    };
+    // A managed home Console that is stopped is not a failure to report.
+    if (!reachable) { await homeOnly(); return; }
+    let lists: readonly [Record<string, unknown>, Record<string, unknown>, Record<string, unknown>];
+    try {
+      lists = await Promise.all([json("/api/v1/remote-hosts"), json("/api/v1/local-consoles"), json("/api/v1/status")]);
+    } catch (error) {
+      // Another owner's Console in the slot, or one that cannot be judged: still unreachable from here, and reported.
+      if (deps.managedHome && epoch === generation) await homeOnly();
+      throw error;
     }
-    const [saved, nearby, status] = await Promise.all([json("/api/v1/remote-hosts"), json("/api/v1/local-consoles"), json("/api/v1/status")]);
+    const [saved, nearby, status] = lists;
     if (epoch !== generation) return;
     // An older shell sent no relation at all; without a manager this shell keeps doing so.
     const relate = (management: ConsoleManagementRelation, path: ConsoleAccessPath): Relations => deps.managedHome ? { management, path } : {};
@@ -159,7 +170,7 @@ export function createConsoleSectionController(deps: Dependencies) {
   function refresh(): Promise<void> {
     if (refreshRunning) { refreshAgain = true; return refreshRunning; }
     refreshRunning = (async () => {
-      do { refreshAgain = false; try { await load(); } catch (error) { deps.report(error); await publish(); } } while (refreshAgain && contents);
+      do { refreshAgain = false; try { await load(); } catch (error) { deps.report(error); if (!deps.managedHome) await publish(); } } while (refreshAgain && contents);
     })().finally(() => { refreshRunning = null; });
     return refreshRunning;
   }

@@ -29,7 +29,10 @@ export function RemoteConsoleButton({ state, command, compact }: {
   const current = state.entries.find((entry) => entry.active);
   const grouped = state.entries.some((entry) => entry.path !== undefined);
   const statusText = (entry: ConsoleSectionEntry | undefined) => entry?.status === "unreachable" ? t("chrome.hosts.unreachable") : entry?.status === "untrusted" ? t("chrome.hosts.untrusted") : entry?.status === "stopping" ? t("chrome.hosts.stopping") : entry?.status === "slow" ? t("chrome.hosts.slow") : "";
-  const label = `${t("chrome.hosts.aria")}: ${current?.label ?? ""}${statusText(current) ? `, ${statusText(current)}` : ""}`;
+  // 관리 대상의 생명주기가 연결 상태보다 먼저다 — 꺼진 콘솔은 "연결 불가"가 아니라 "중지됨"이다.
+  const currentLifecycle = current ? consoleLifecycleKey(current) : null;
+  const currentState = currentLifecycle ? t(currentLifecycle) : statusText(current);
+  const label = `${t("chrome.hosts.aria")}: ${current?.label ?? ""}${currentState ? `, ${currentState}` : ""}`;
   const clearTimers = () => { clearTimeout(opening.current); clearTimeout(closing.current); };
   const close = (focus = false) => {
     clearTimers(); setOpen(false); setPinned(false); setEditing(null); setConfirming(false);
