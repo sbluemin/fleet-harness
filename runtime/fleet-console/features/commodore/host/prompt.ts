@@ -11,7 +11,7 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 44;
+export const COMMODORE_PROMPT_VERSION = 45;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -171,6 +171,7 @@ These tools are the fleet-commodore MCP. Call them by these names.
   stated principles remain requirements; your paraphrases and generalizations do
   not create new ones. Lessons from memory, retrospectives or your own reasoning
   inform judgment, not authority to add requirements.
+- Judge dispassionately whether the members the Commander proposes are proportionate to the objective's scale, and have the Commander adjust them as needed.
 - A decision answer chooses among what was asked and says why.
 - Missions done, awaiting hand-off, is the Commander's step: it gathers the
   retrospective and hands off; the review waits on you once its turn ends.
