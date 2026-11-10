@@ -29,6 +29,11 @@ export interface RemoteBridgeDeps {
   /** 로컬 Console은 평문 루프백이라 Node의 fetch로 충분하다. */
   readonly localFetch?: typeof fetch;
   readonly localOrigin: () => string | null;
+  /**
+   * 이 Desktop이 관리하고 방금 정체를 증명한 콘솔의 origin인가. 그런 콘솔은 집의 발견 목록에 없어도 연다 —
+   * 관리자가 직접 시작했고 lock의 token으로 확인한 주소다.
+   */
+  readonly isManagedLocal?: (origin: string) => Promise<boolean>;
   /** 원격 콘솔의 세션 목록에 남을 이 기기의 이름. */
   readonly deviceName?: string;
   readonly loadConsole: (url: string) => Promise<void>;
@@ -129,7 +134,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
      * 사용자 기계의 전혀 다른 서비스를 가리킨다. 로컬 Console이 실제로 발견한 것만 연다.
      */
     if (isLoopbackConsoleOrigin(origin)) {
-      if (!(await isDiscoveredLocally(origin))) throw new Error("remote_host_unknown");
+      if (!(await deps.isManagedLocal?.(origin)) && !(await isDiscoveredLocally(origin))) throw new Error("remote_host_unknown");
       return openLocal(origin, url);
     }
     const response = await askLocalConsole(HANDOFF_PATH, { origin });

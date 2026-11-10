@@ -1,12 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
-import { CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, isConsoleRosterSummary, parseConsoleSectionCommand, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, CONSOLE_WSL_EVENT, isConsoleRosterSummary, parseConsoleSectionCommand, type ConsoleManagedDetail, type ConsoleWslInspection, type ConsoleWslState, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
 import { consoleLifecycleActions, type ConsoleAccessPath, type ConsoleLifecycleAction, type ConsoleManagedLifecycle, type ConsoleManagementRelation } from "@fleet-console/protocol/lifecycle/management";
 
 type Contents = Pick<WebContents, "on" | "removeListener" | "getURL" | "isDestroyed" | "executeJavaScript">;
 type Overlay = Pick<WebContents, "on" | "once" | "getURL" | "isDestroyed" | "executeJavaScript">;
-interface Target { readonly origin: string; readonly recordId?: string; readonly entry: ConsoleSectionEntry }
+/** `origin` is empty for a managed Console that is not running; `managedKey` names it to its manager. */
+interface Target { readonly origin: string; readonly recordId?: string; readonly managedKey?: string; readonly entry: ConsoleSectionEntry }
 /** The management relation of one Console as this Desktop proved it (docs/console-lifecycle-contract.md). */
 export interface ManagedConsoleState {
   readonly management: ConsoleManagementRelation;
@@ -21,6 +22,31 @@ export interface ManagedHomeConsole {
    * stood on this Console when the action was asked for, so it goes to the Console that comes back.
    */
   readonly run: (action: ConsoleLifecycleAction, follow: boolean) => Promise<void>;
+}
+/** A Console this Desktop manages besides its home one, as its manager judged it just now. */
+export interface ManagedConsoleView {
+  readonly key: string;
+  readonly label: string;
+  /** Where it answers, once it proved itself; null while it does not run. */
+  readonly origin: string | null;
+  readonly version: string | null;
+  readonly path: ConsoleAccessPath;
+  readonly state: ManagedConsoleState;
+  readonly detail: ConsoleManagedDetail;
+}
+/** The managers of those Consoles. On Windows these are WSL distributions; the port names no OS. */
+export interface ManagedConsoles {
+  readonly list: () => Promise<readonly ManagedConsoleView[]>;
+  /** Carries out an action this controller judged allowed and resolves to where the Console answers afterwards. */
+  readonly run: (key: string, action: ConsoleLifecycleAction) => Promise<string | null>;
+  readonly takeOver: (key: string) => Promise<string | null>;
+  /** Drops the registration only. */
+  readonly remove: (key: string) => Promise<boolean>;
+  readonly wsl: {
+    readonly distros: () => Promise<ConsoleWslState["distros"]>;
+    readonly inspect: (distro: string) => Promise<ConsoleWslInspection>;
+    readonly add: (distro: string) => Promise<void>;
+  };
 }
 type Relations = Pick<ConsoleSectionEntry, "management" | "path" | "lifecycle" | "actions">;
 interface Dependencies {
@@ -42,6 +68,9 @@ interface Dependencies {
   readonly managedHome?: ManagedHomeConsole;
   /** The shell's own question before it starts its Console for a document that Console does not serve. */
   readonly confirmStart?: (label: string) => Promise<boolean>;
+  readonly managedConsoles?: ManagedConsoles;
+  /** The shell's own question before it drops a managed Console's registration. */
+  readonly confirmUnmanage?: (label: string) => Promise<boolean>;
   readonly confirmForget: (label: string) => Promise<boolean>;
   readonly report: (error: unknown) => void;
 }
@@ -88,6 +117,8 @@ export function createConsoleSectionController(deps: Dependencies) {
   let failed = false;
   /** A lifecycle request is being judged, confirmed, or carried out. */
   let judging = false;
+  const noWsl: ConsoleWslState = { v: 1, distros: [], inspection: null, busy: null, added: null, error: null };
+  let wslState = noWsl;
   let switchSerial = 0;
   let arrival: Arrival | null = null;
   let arrivalTimer: ReturnType<typeof setTimeout> | null = null;
@@ -123,7 +154,7 @@ export function createConsoleSectionController(deps: Dependencies) {
   /** 집과 지금 서 있는 콘솔은 남기고, 잘리는 것은 뒤쪽의 나머지다. 남은 항목의 순서는 바꾸지 않는다. */
   function trimEntries(list: readonly Target[], homeOrigin: string, current: string | null): Target[] {
     const next = [...list];
-    const kept = (target: Target): boolean => target.origin === homeOrigin || target.origin === current;
+    const kept = (target: Target): boolean => target.origin === homeOrigin || target.origin === current || target.managedKey !== undefined;
     const drop = (): boolean => {
       for (let index = next.length - 1; index >= 0; index -= 1) {
         const candidate = next[index];
@@ -165,7 +196,7 @@ export function createConsoleSectionController(deps: Dependencies) {
   }
   function rosterEntries(): ConsoleRosterEntry[] {
     const standing = at();
-    return [...targets.values()].filter((target) => target.origin !== standing).map((target) => {
+    return [...targets.values()].filter((target) => target.origin !== "" && target.origin !== standing).map((target) => {
       const memory = rosterMemory.get(target.origin);
       return { id: target.entry.id, status: memory?.status ?? "unavailable", at: memory?.at ?? null, commodores: memory?.commodores ?? [], more: memory?.more ?? 0 };
     });
@@ -269,7 +300,7 @@ export function createConsoleSectionController(deps: Dependencies) {
   async function collectRosters(epoch: number, next: Map<string, Target>): Promise<void> {
     if (epoch !== generation || targets !== next) return;
     const standing = at();
-    await Promise.all([...next.values()].filter((target) => target.origin !== standing).map((target) => fetchRoster(target)));
+    await Promise.all([...next.values()].filter((target) => target.origin !== "" && target.origin !== standing).map((target) => fetchRoster(target)));
     if (epoch !== generation || targets !== next) return;
     await publishRoster();
   }
@@ -285,6 +316,31 @@ export function createConsoleSectionController(deps: Dependencies) {
     const current = at();
     // An older shell sent no relation at all; without a manager this shell keeps doing so.
     const relate = (management: ConsoleManagementRelation, path: ConsoleAccessPath): Relations => deps.managedHome ? { management, path } : {};
+    const managed = deps.managedConsoles ? await deps.managedConsoles.list().catch((error: unknown) => { deps.report(error); return []; }) : [];
+    if (epoch !== generation) return;
+    /**
+     * Consoles this Desktop manages besides its home one. They come from its own registry, not from the home Console's
+     * lists, so they stand whether or not the home Console answers, and whether or not they run.
+     */
+    const appendManaged = (): void => {
+      for (const view of managed) {
+        if (view.origin !== null && seen.has(view.origin)) continue;
+        const key = `managed:${view.key}`;
+        const id = ids.get(key) ?? randomUUID();
+        const label = text(view.label, "WSL");
+        const removable = view.state.management !== "this-desktop" || view.state.lifecycle === "stopped" || view.state.lifecycle === "failed";
+        const entry: ConsoleSectionEntry = {
+          id, kind: "local", label, address: view.origin ? new URL(view.origin).host : label, version: view.version ? text(view.version, "", 64) || null : null,
+          active: view.origin !== null && view.origin === current, home: false,
+          status: view.origin !== null ? "ready" : view.state.lifecycle === "stopping" ? "stopping" : "unreachable",
+          management: view.state.management, path: view.path, lifecycle: view.state.lifecycle, actions: consoleLifecycleActions({ ...view.state, home: false }),
+          managed: { ...view.detail, ...(removable ? { removable: true as const } : {}) },
+        };
+        built.push({ origin: view.origin ?? "", managedKey: view.key, entry });
+        nextIds.set(key, id);
+        if (view.origin !== null) seen.add(view.origin);
+      }
+    };
     const append = (targetOrigin: unknown, kind: "local" | "remote", label: unknown, version: unknown, state: ConsoleSectionEntry["status"], extra: Relations, recordId?: string) => {
       if (typeof targetOrigin !== "string" || !(kind === "local" ? isLoopbackConsoleOrigin(targetOrigin) : isRemoteConsoleOrigin(targetOrigin))) return;
       if (seen.has(targetOrigin)) return;
@@ -303,6 +359,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     const homeOnly = async (): Promise<void> => {
       const before = [...targets.values()].find((target) => target.entry.home)?.entry;
       append(origin, "local", before?.label, before?.version, "unreachable", homeExtra);
+      appendManaged();
       if (current && !seen.has(current)) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, {});
       targets = new Map(built.map((target) => [target.entry.id, target]));
       ids = nextIds;
@@ -323,6 +380,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     if (epoch !== generation) return;
     // 순서는 활성과 무관하게 고정한다. 밝기만 active로 바뀐다.
     append(origin, "local", status.name, status.version, "ready", homeExtra);
+    appendManaged();
     const hosts = Array.isArray(saved.hosts) ? saved.hosts.map(record) : [];
     const identities = new Map<string, RemoteIdentity>();
     for (const host of hosts) {
@@ -373,7 +431,9 @@ export function createConsoleSectionController(deps: Dependencies) {
   async function runLifecycle(id: string, action: ConsoleLifecycleAction, fromHome: boolean): Promise<void> {
     const target = targets.get(id);
     // One request at a time, held from before the first await: a second press must not start a second transition.
-    if (!target?.entry.home || !deps.managedHome || judging) return;
+    if (!target || judging) return;
+    if (target.managedKey !== undefined) { await runManaged(target, target.managedKey, action, fromHome); return; }
+    if (!target.entry.home || !deps.managedHome) return;
     judging = true;
     try {
       const state = await deps.managedHome.state();
@@ -398,6 +458,65 @@ export function createConsoleSectionController(deps: Dependencies) {
     } finally {
       judging = false;
     }
+  }
+  /**
+   * The same judgment for a Console this Desktop manages besides its home one. Its manager keeps its own transition
+   * state, so the request is held only until the action is handed over: a first start may install for minutes.
+   */
+  async function runManaged(target: Target, key: string, action: ConsoleLifecycleAction, fromHome: boolean): Promise<void> {
+    const consoles = deps.managedConsoles;
+    if (!consoles) return;
+    let standing = false;
+    judging = true;
+    try {
+      const view = (await consoles.list()).find((entry) => entry.key === key);
+      if (!view || !consoleLifecycleActions({ ...view.state, home: false }).includes(action)) { await refresh(); return; }
+      if (!fromHome && !await deps.confirmStart?.(target.entry.label)) { await refresh(); return; }
+      standing = target.origin !== "" && at() === target.origin;
+      // The window cannot stay on a Console that is about to stop.
+      const back = home();
+      if (standing && action === "stop" && back) await deps.open(back);
+    } finally {
+      judging = false;
+    }
+    try {
+      const origin = await consoles.run(key, action);
+      if (standing && action === "restart" && origin) await deps.open(origin);
+    } catch (error) {
+      deps.report(error);
+    } finally {
+      await refresh();
+    }
+  }
+  async function publishWsl(): Promise<void> {
+    const origin = home();
+    // Only the home Console's own surface hears this: it names distributions and a Linux user.
+    if (!overlay || overlay.isDestroyed() || !origin) return;
+    const script = `if(location.origin===${JSON.stringify(origin)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_WSL_EVENT)},{detail:${JSON.stringify(wslState)}}))`;
+    await overlay.executeJavaScript(script).catch(() => undefined);
+  }
+  /** The WSL add flow. Listing starts no distribution; inspecting one is the person's explicit step and may. */
+  async function runWsl(request: Extract<ConsoleSectionCommand, { readonly wsl: unknown }>["wsl"]): Promise<void> {
+    const port = deps.managedConsoles?.wsl;
+    if (!port) return;
+    try {
+      if ("inspect" in request) {
+        wslState = { ...wslState, inspection: null, busy: "inspect", added: null, error: null };
+        await publishWsl();
+        wslState = { ...wslState, inspection: await port.inspect(request.inspect), busy: null };
+      } else if ("add" in request) {
+        await port.add(request.add);
+        wslState = { ...wslState, added: request.add, error: null };
+        await refresh();
+      } else {
+        wslState = noWsl;
+      }
+      wslState = { ...wslState, distros: await port.distros() };
+    } catch (error) {
+      // The surface says what went wrong itself; this is not a window-level failure.
+      wslState = { ...wslState, busy: null, error: error instanceof Error && error.message === "wsl_distro_unusable" ? "unusable" : "failed" };
+    }
+    await publishWsl();
   }
   async function command(value: ConsoleSectionCommand, fromHome: boolean): Promise<void> {
     // 막 적재된 문서는 도착할 사령관을 기다리며 「다 그렸다」를 미룬다. 집 목록과 명부를 다시 읽기 전에
@@ -427,19 +546,30 @@ export function createConsoleSectionController(deps: Dependencies) {
       if (fromHome || (value.lifecycle.action === "start" && deps.confirmStart)) await runLifecycle(value.lifecycle.id, value.lifecycle.action, fromHome);
       return;
     }
+    if ("wsl" in value) { if (fromHome) await runWsl(value.wsl); return; }
+    if ("takeover" in value) {
+      // The person hands a Console they started from a terminal to this Desktop, from the surface the home Console draws.
+      const taken = targets.get(value.takeover);
+      if (!fromHome || !taken?.managedKey || !taken.entry.managed?.takeover || !deps.managedConsoles) return;
+      try { await deps.managedConsoles.takeOver(taken.managedKey); } catch (error) { deps.report(error); } finally { await refresh(); }
+      return;
+    }
     const id = "switch" in value ? value.switch : "forget" in value ? value.forget : "manage" in value ? value.manage : value.rename.id;
     const target = targets.get(id);
     if (!target) return;
     if ("manage" in value) {
       const origin = home();
       // The surface is the home Console's document, so it opens only while that Console answers.
-      if (!origin || !deps.manage || target.entry.management === undefined || target.entry.status === "unreachable") return;
+      const homeDown = [...targets.values()].some((entry) => entry.entry.home && entry.entry.status === "unreachable");
+      if (!origin || !deps.manage || target.entry.management === undefined || homeDown) return;
       const url = new URL("/console/", origin);
       url.searchParams.set("desktop-surface", "host-picker"); url.searchParams.set("intent", "manage"); url.searchParams.set("target", id); url.searchParams.set("at", at() ?? origin);
       deps.manage(url.toString());
       return;
     }
     if ("switch" in value) {
+      // A managed Console that is not running has nowhere to go; it is started first.
+      if (target.origin === "") return;
       const serial = ++switchSerial;
       // 다음 전환이 시작되면 이전 도착 표시는 바로 지운다. 실패해도 다시 켜지 않는다.
       clearArrival();
@@ -463,6 +593,12 @@ export function createConsoleSectionController(deps: Dependencies) {
       return;
     }
     // Renaming and forgetting act on a saved record. The record grants them, not the kind the section is drawn with.
+    if (target.managedKey !== undefined) {
+      // Dropping a managed Console forgets its registration only, after the shell's own question.
+      if (!("forget" in value) || !target.entry.managed?.removable || !deps.managedConsoles || !await deps.confirmUnmanage?.(target.entry.label)) return;
+      try { await deps.managedConsoles.remove(target.managedKey); } catch (error) { deps.report(error); } finally { await refresh(); }
+      return;
+    }
     if (!target.recordId || mutating) return;
     const epoch = generation;
     mutating = true;
@@ -509,11 +645,11 @@ export function createConsoleSectionController(deps: Dependencies) {
         if (now - budgetStart >= 1000) { budgetStart = now; budget = 0; }
         if (++budget > 20) return;
         const value = parseConsoleSectionCommand(url.searchParams.get("command") ?? "");
-        if (value && ("lifecycle" in value || "request" in value)) void command(value, true).catch((error) => { deps.report(error); void publish(); });
+        if (value && ("lifecycle" in value || "request" in value || "takeover" in value || "wsl" in value)) void command(value, true).catch((error) => { deps.report(error); void publish(); });
       }) as never);
       view.on("did-finish-load", (() => { if (overlay === view && epoch === generation) void refresh(); }) as never);
       // 성공·취소·Escape·렌더러 종료 모두 덮개 수명이 끝난 뒤 집의 상태를 다시 읽는다.
-      view.once("destroyed", () => { if (overlay === view) overlay = null; if (contents && epoch === generation) void refresh(); });
+      view.once("destroyed", () => { if (overlay === view) { overlay = null; wslState = noWsl; } if (contents && epoch === generation) void refresh(); });
     },
     attach(receiver: Contents): void {
       close();
