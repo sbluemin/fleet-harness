@@ -20,10 +20,8 @@
 //   sdk-mcp/calls-<ts>-<pid>.json  each call's args, isError, error code and full JSON-RPC result (mode 0600)
 // FAKE_CLAUDE_VERSION (optional): the --version answer (default "2.1.999 (Claude Code)").
 // FAKE_CLAUDE_TOOLS (optional): JSON array of tool names advertised in init.tools (default []).
-// FAKE_CLAUDE_REPLIES (optional): directory of one-shot reply fixtures; <sessionId>.md, then
-//   <model-prefix>.md (model id up to "["), each consumed once. Unset (or no match) keeps the fixed reply.
-// Scripted replies and configured init.tools are input fixtures; a server's tools/list is the advertised
-// contract, while actual tools/call results and session state are host-observed evidence.
+// FAKE_CLAUDE_REPLIES (optional): directory of best-effort one-shot reply fixtures; <sessionId>.md, then
+//   <model-prefix>.md (model id up to "["). Unset (or no match) keeps the fixed reply.
 //
 // Modes: `--version`; chat/SDK when `--input-format stream-json`; otherwise an interactive terminal
 // that prints a banner and echoes input until SIGTERM/SIGHUP.
@@ -60,7 +58,7 @@ const configuredTools = (() => {
     return [];
   }
 })();
-// One-shot reply fixtures under FAKE_CLAUDE_REPLIES; null (unset) keeps the fixed canned reply.
+// Best-effort one-shot reply fixtures under FAKE_CLAUDE_REPLIES; null (unset) keeps the fixed canned reply.
 const repliesDir = process.env.FAKE_CLAUDE_REPLIES || null;
 const readScriptedReply = (sessionId, turnModel) => {
   if (!repliesDir) return null;
