@@ -995,6 +995,8 @@
   border-color: var(--hairline);
   border-style: dashed;
 }
+/* 라이트에서 흐린 글자가 4.5:1에 못 미치는 짙은 면(단계 결과 칩·승인 카드 발치) 위는 보조 글자색을 쓴다. */
+:root[data-theme="light"] :is(.agent-chat-step-out.is-unknown, .agent-chat-ask-hint) { color: var(--text-secondary); }
 
 /* ── 질문·계획 카드 ─────────────────────────────────────────────────────────
    모델이 멈춰 서서 기다리는 자리. 상태 채널은 aurora가 진다 — 코어 활동축에서 awaiting이

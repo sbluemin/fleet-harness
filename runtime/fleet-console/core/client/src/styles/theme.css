@@ -183,6 +183,15 @@
   --mongle-plum: oklch(80% 0.075 318);
   --mongle-rose: oklch(81% 0.075 350);
   --mongle-face: oklch(24% 0.02 260);
+  /* 사람 말풍선 면 — 아바타 몸색을 주로 남기고 얼굴색으로 눌러 밝은 글자를 받친다. */
+  --identity-bubble-crimson: color-mix(in oklab, var(--mongle-crimson) 70%, var(--mongle-face));
+  --identity-bubble-amber: color-mix(in oklab, var(--mongle-amber) 70%, var(--mongle-face));
+  --identity-bubble-moss: color-mix(in oklab, var(--mongle-moss) 70%, var(--mongle-face));
+  --identity-bubble-teal: color-mix(in oklab, var(--mongle-teal) 70%, var(--mongle-face));
+  --identity-bubble-cerulean: color-mix(in oklab, var(--mongle-cerulean) 70%, var(--mongle-face));
+  --identity-bubble-indigo: color-mix(in oklab, var(--mongle-indigo) 70%, var(--mongle-face));
+  --identity-bubble-plum: color-mix(in oklab, var(--mongle-plum) 70%, var(--mongle-face));
+  --identity-bubble-rose: color-mix(in oklab, var(--mongle-rose) 70%, var(--mongle-face));
   --mongle-blush: oklch(72% 0.11 15 / 45%);
   --mongle-blush-ink: oklch(66% 0.12 15);
   --mongle-bulb: oklch(95% 0.07 95);
@@ -570,8 +579,15 @@
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-spectral);
   --text-tertiary: var(--ink-fog);
-  /* 사람 말풍선 면에서 아바타 몸색이 차지하는 몫. 70%면 밝은 글자가 3.0~3.6:1이라, 라이트는 50%로 낮춰 여덟 톤 모두 4.5:1 이상으로 둔다. */
-  --identity-bubble-body-share: 50%;
+  /* 라이트의 사람 말풍선 면 — 몸색의 색상과 채도는 그대로 두고 명도만 53%로 내려, 밝은 글자가 여덟 톤 모두 본문 AA 4.5:1을 넘는다. */
+  --identity-bubble-crimson: oklch(53% 0.085 25);
+  --identity-bubble-amber: oklch(53% 0.08 70);
+  --identity-bubble-moss: oklch(53% 0.075 140);
+  --identity-bubble-teal: oklch(53% 0.07 190);
+  --identity-bubble-cerulean: oklch(53% 0.075 235);
+  --identity-bubble-indigo: oklch(53% 0.075 278);
+  --identity-bubble-plum: oklch(53% 0.075 318);
+  --identity-bubble-rose: oklch(53% 0.075 350);
   --text-on-brass: oklch(99.5% 0 0);
 
   /* 물결 트러프는 텍스트 사다리와 별개다. 마루는 --text-primary 그대로고, 트러프는
@@ -1006,8 +1022,15 @@
   --text-secondary: var(--m-text-nav);
   --text-tertiary: var(--m-text-muted);
   --text-on-brass: var(--m-on-inverse);
-  /* 모바일 사람 말풍선은 Console 테마와 무관하게 몸색 몫을 그대로 둔다. */
-  --identity-bubble-body-share: 70%;
+  /* 모바일 사람 말풍선 면은 Console 테마와 무관하게 한 벌이다. */
+  --identity-bubble-crimson: color-mix(in oklab, var(--mongle-crimson) 70%, var(--mongle-face));
+  --identity-bubble-amber: color-mix(in oklab, var(--mongle-amber) 70%, var(--mongle-face));
+  --identity-bubble-moss: color-mix(in oklab, var(--mongle-moss) 70%, var(--mongle-face));
+  --identity-bubble-teal: color-mix(in oklab, var(--mongle-teal) 70%, var(--mongle-face));
+  --identity-bubble-cerulean: color-mix(in oklab, var(--mongle-cerulean) 70%, var(--mongle-face));
+  --identity-bubble-indigo: color-mix(in oklab, var(--mongle-indigo) 70%, var(--mongle-face));
+  --identity-bubble-plum: color-mix(in oklab, var(--mongle-plum) 70%, var(--mongle-face));
+  --identity-bubble-rose: color-mix(in oklab, var(--mongle-rose) 70%, var(--mongle-face));
   --live-sweep-trough: var(--m-text-faint);
   --live-sweep-crest: var(--m-text);
 

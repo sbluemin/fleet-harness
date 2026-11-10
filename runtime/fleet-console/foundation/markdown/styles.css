@@ -432,6 +432,8 @@ code.hljs {
   flex: 1;
   text-align: left;
   color: var(--text-tertiary);
+  /* 라이트의 도구줄 면(#e4e4e4) 위에서는 흐린 글자가 4.5:1에 못 미쳐 보조 글자색을 쓴다. */
+  color: light-dark(var(--text-secondary), var(--text-tertiary));
   font-family: var(--font-code);
   font-size: var(--t-xs);
   letter-spacing: 0;
@@ -448,6 +450,7 @@ code.hljs {
   border: 0;
   background: transparent;
   color: var(--text-tertiary);
+  color: light-dark(var(--text-secondary), var(--text-tertiary));
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
@@ -844,7 +847,7 @@ code.hljs {
 .openui-steps { display: flex; flex-direction: column; gap: 0.55em; font-size: calc(var(--font-content-size) * 0.928571); line-height: 1.45; }
 .openui-step { display: grid; grid-template-columns: 1.75em minmax(0, 1fr) auto; column-gap: 0.75em; align-items: center; }
 /* 번호 칸은 쉬는 컨트롤 면이 한 겹 더 밝아 보조 잉크를 한 단계만 끌어올린다. */
-.openui-step-index { --openui-muted: light-dark(var(--text-tertiary), color-mix(in oklch, var(--text-tertiary) 60%, var(--text-secondary))); display: grid; place-items: center; width: 1.75em; height: 1.75em; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--openui-muted); font-size: calc(var(--font-content-size) * 0.857143); font-variant-numeric: tabular-nums; }
+.openui-step-index { --openui-muted: light-dark(var(--text-secondary), color-mix(in oklch, var(--text-tertiary) 60%, var(--text-secondary))); display: grid; place-items: center; width: 1.75em; height: 1.75em; border-radius: var(--radius-xs); background: var(--control-rest); color: var(--openui-muted); font-size: calc(var(--font-content-size) * 0.857143); font-variant-numeric: tabular-nums; }
 .openui-step-body { display: flex; flex-direction: column; min-width: 0; }
 .openui-step-label, .openui-step-note, .openui-moment-label, .openui-moment-note, .openui-callout-text { overflow-wrap: anywhere; }
 .openui-step-label { color: var(--text-primary); }

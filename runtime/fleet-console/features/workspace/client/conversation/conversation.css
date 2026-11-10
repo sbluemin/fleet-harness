@@ -1682,6 +1682,8 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 라이트에서 고른 줄의 면(#eaeaea) 위는 흐린 글자가 4.5:1에 못 미쳐 보조 글자색을 쓴다. */
+:root[data-theme="light"] .side-bar-theater-header.is-active .side-bar-theater-sub { color: var(--text-secondary); }
 .side-bar-theater-alias-input {
   width: 100%;
   min-width: 0;
