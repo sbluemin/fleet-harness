@@ -54,7 +54,6 @@ describe("ai-gateway settings store", () => {
     store.write({ models: [{ id: "xai--grok-4.7" }] });
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({
       version: 1,
-      rosterSeedVersion: 5,
       models: [{ id: "xai--grok-4.7" }],
     });
   });
@@ -63,18 +62,17 @@ describe("ai-gateway settings store", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
 
     store.write({ providerPriority: ["codex"] });
-    expect(store.read()).toEqual({ version: 1, rosterSeedVersion: 5, models: [], providerPriority: ["codex"] });
+    expect(store.read()).toEqual({ version: 1, models: [], providerPriority: ["codex"] });
 
     store.write({ models: [{ id: "codex--gpt-6-luna" }] });
     expect(store.read()).toEqual({
       version: 1,
-      rosterSeedVersion: 5,
       models: [{ id: "codex--gpt-6-luna" }],
       providerPriority: ["codex"],
     });
 
     store.write({ providerPriority: [] });
-    expect(store.read()).toEqual({ version: 1, rosterSeedVersion: 5, models: [] });
+    expect(store.read()).toEqual({ version: 1, models: [] });
   });
 
   it("persists compactCeiling independently of models", () => {
@@ -83,14 +81,12 @@ describe("ai-gateway settings store", () => {
     store.writeCompactCeiling("early");
     expect(store.read()).toEqual({
       version: 1,
-      rosterSeedVersion: 5,
       models: [{ id: "codex--gpt-6-luna" }],
       compactCeiling: "early",
     });
     store.write({ models: [{ id: "codex--gpt-6.1-sol" }] });
     expect(store.read()).toEqual({
       version: 1,
-      rosterSeedVersion: 5,
       models: [{ id: "codex--gpt-6.1-sol" }],
       compactCeiling: "early",
     });
@@ -99,7 +95,6 @@ describe("ai-gateway settings store", () => {
     store.writeCompactCeiling(undefined);
     expect(store.read()).toEqual({
       version: 1,
-      rosterSeedVersion: 5,
       models: [{ id: "codex--gpt-6.1-sol" }],
     });
   });
@@ -110,7 +105,6 @@ describe("ai-gateway settings store", () => {
     store.writeXaiEndpoint("cli-proxy");
     expect(store.read()).toEqual({
       version: 1,
-      rosterSeedVersion: 5,
       models: [{ id: "codex--gpt-6-luna" }],
       xaiEndpoint: "cli-proxy",
     });
@@ -120,7 +114,6 @@ describe("ai-gateway settings store", () => {
     store.writeXaiEndpoint(undefined);
     expect(store.read()).toEqual({
       version: 1,
-      rosterSeedVersion: 5,
       models: [{ id: "codex--gpt-6.1-sol" }],
     });
   });
@@ -129,11 +122,11 @@ describe("ai-gateway settings store", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
     store.write({ models: [{ id: "codex--gpt-6-luna" }] });
     store.writeWireLogEnabled(false);
-    expect(store.read()).toEqual({ version: 1, rosterSeedVersion: 5, models: [{ id: "codex--gpt-6-luna" }], wireLogEnabled: false });
+    expect(store.read()).toEqual({ version: 1, models: [{ id: "codex--gpt-6-luna" }], wireLogEnabled: false });
     store.write(undefined);
-    expect(store.read()).toEqual({ version: 1, rosterSeedVersion: 5, models: [], wireLogEnabled: false });
+    expect(store.read()).toEqual({ version: 1, models: [], wireLogEnabled: false });
     store.writeWireLogEnabled(undefined);
-    expect(store.read()).toEqual({ version: 1, rosterSeedVersion: 5, models: [] });
+    expect(store.read()).toEqual({ version: 1, models: [] });
   });
 
   it("adopts the settings from the host directory it is given, without announcing it", () => {
@@ -191,7 +184,7 @@ describe("ai-gateway settings store", () => {
     createAiGatewaySettingsStore({ dataDir }).write({ models: [{ id: "codex--gpt-6-luna" }] });
 
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
-    expect(store.read()).toEqual({ version: 1, models: [{ id: "codex--gpt-6-luna" }], rosterSeedVersion: 5 });
+    expect(store.read()).toEqual({ version: 1, models: [{ id: "codex--gpt-6-luna" }] });
   });
 
   it("treats an emptied selection as a real state rather than something to re-adopt or re-seed", () => {
@@ -201,7 +194,7 @@ describe("ai-gateway settings store", () => {
     createAiGatewaySettingsStore({ dataDir }).write(undefined);
 
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
-    expect(store.read()).toEqual({ version: 1, models: [], rosterSeedVersion: 5 });
+    expect(store.read()).toEqual({ version: 1, models: [] });
     expect(store.seedModels(["claude--sonnet"])).toBe(false);
     expect(store.read()).toEqual({ version: 1, models: [], rosterSeedVersion: 5 });
   });
@@ -253,7 +246,12 @@ describe("ai-gateway settings store", () => {
     const onDisk = (value: unknown) => {
       const dataDir = createDataDir();
       writeFileSync(path.join(dataDir, "ai-gateway.json"), JSON.stringify(value), "utf-8");
-      return createAiGatewaySettingsStore({ dataDir });
+      const store = createAiGatewaySettingsStore({ dataDir });
+      // CLI처럼 호스트 시드 없이 저장해도 아직 수행하지 않은 이행 표식은 건너뛰지 않는다.
+      const before = store.read();
+      store.write({ models: before.models });
+      expect(store.read().rosterSeedVersion).toBe(before.rosterSeedVersion);
+      return store;
     };
 
     // 1판까지 끝난 설치 — Claude hostOnly는 그 시기 화면에서 꺼진 것으로 보였다. 한 번 지우고, 다른 공급자 표식·강도는 둔다.
@@ -342,7 +340,10 @@ describe("ai-gateway settings store", () => {
 
     const off = parseAiGatewayUpdate({ models: [{ id, fast: true, efforts: ["low", "medium"] }] });
     if (!off.ok) throw new Error("valid effort choice rejected");
+    // 4판 표식에서도 시드보다 먼저 온 저장은 high 끔을 보존하며 5판으로 넘어간다.
+    writeFileSync(store.path, JSON.stringify({ ...store.read(), rosterSeedVersion: 4 }));
     store.write(off.value);
+    expect(store.read().rosterSeedVersion).toBe(5);
     store.writeWireLogEnabled(false);
     const restarted = createAiGatewaySettingsStore({ dataDir });
     expect(restarted.seedModels([])).toBe(false);

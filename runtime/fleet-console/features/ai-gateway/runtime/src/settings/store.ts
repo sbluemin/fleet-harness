@@ -164,9 +164,11 @@ export function createAiGatewaySettingsStore(
       ...(current.providerPriority ? { providerPriority: current.providerPriority } : {}),
       ...(current.compactCeiling !== undefined ? { compactCeiling: current.compactCeiling } : {}),
       ...(current.xaiEndpoint !== undefined ? { xaiEndpoint: current.xaiEndpoint } : {}),
-      // 이행 표식은 사용자의 저장과 무관하게 남아야 한다 — 지우면 다음 기동이 끈 Claude를 되살린다.
-      // 읽은 구 설정은 high를 이미 이월했다. 새 입력에서 명시해 뺀 high는 구판 이행이 되살리지 않는다.
-      rosterSeedVersion: Math.max(current.rosterSeedVersion ?? 0, ROSTER_SEED_VERSION),
+      // 4판까지 이행했으면 새 입력의 high 끔을 보존한다. 그 전 표식은 그대로 남겨 아직 끝내지 않은
+      // Claude·hostOnly 이행을 건너뛰지 않는다. 5판 이후 표식도 뒤로 돌리지 않는다.
+      ...(current.rosterSeedVersion !== undefined ? {
+        rosterSeedVersion: current.rosterSeedVersion === 4 ? ROSTER_SEED_VERSION : current.rosterSeedVersion,
+      } : {}),
       // 선별을 저장하는 것은 그 자체로 선택이다. 모델이 없으면 빈 배열로 남겨 기본 로스터 이행과 구별한다.
       models: [],
       ...(value ?? {}),
