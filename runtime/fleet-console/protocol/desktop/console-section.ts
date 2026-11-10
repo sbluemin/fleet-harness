@@ -39,8 +39,8 @@ export type ConsoleRosterRun = "working" | "waiting" | "quiet";
 export interface ConsoleRosterCommodore {
   readonly id: string;
   readonly name: string;
-  /** The avatar book entry of that Console; null when it has none yet. */
-  readonly look: { readonly base: string; readonly tone: string | null } | null;
+  /** The avatar book entry of that Console (base index and identity tone); null when it has none yet. */
+  readonly look: { readonly base: number; readonly tone: string | null } | null;
   readonly run: ConsoleRosterRun;
 }
 export interface ConsoleRosterSummary {
@@ -78,7 +78,7 @@ const clean = (value: unknown, max: number): value is string => typeof value ===
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const anchor = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100_000;
 const rosterCommodore = (value: unknown): value is ConsoleRosterCommodore => object(value) && clean(value.id, 128) && clean(value.name, 120)
-  && (value.look === null || (object(value.look) && clean(value.look.base, 64) && (value.look.tone === null || clean(value.look.tone, 64))))
+  && (value.look === null || (object(value.look) && Number.isSafeInteger(value.look.base) && (value.look.base as number) >= 0 && (value.look.base as number) < 10_000 && (value.look.tone === null || clean(value.look.tone, 64))))
   && (value.run === "working" || value.run === "waiting" || value.run === "quiet");
 const rosterList = (value: Record<string, unknown>): boolean => Array.isArray(value.commodores) && value.commodores.length <= CONSOLE_ROSTER_MAX_COMMODORES
   && value.commodores.every(rosterCommodore) && Number.isSafeInteger(value.more) && (value.more as number) >= 0;
