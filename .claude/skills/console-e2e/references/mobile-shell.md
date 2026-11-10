@@ -102,7 +102,7 @@ adb -s "$SERIAL" shell "am start -W -a android.intent.action.VIEW -d '$(cat "$E2
 
 **Observe.** Screenshot to an absolute path outside the worktree: `adb -s "$SERIAL" exec-out screencap -p > <evidence>/shot.png`. App-side logs: `adb -s "$SERIAL" logcat -d | grep -i -e ReactNativeJS -e AndroidRuntime`. The shell logs nothing when it refuses a navigation; judge from the screenshot and `adb -s "$SERIAL" shell dumpsys activity activities | grep topResumedActivity` (an OS browser takes over there, a refusal leaves `MainActivity`). Console-side proof that the device paired: the owner's Settings → Remote access table, or the device count in `$E2E_DIR/console/remote/paired-devices.json` (count only; the file holds device names).
 
-**Desktop-only surfaces.** The mobile layout opens no companion panel such as the Session Browser, and there is no control that switches the layout. The Fleet Mobile shell stays mobile. A browser follows the viewport: mobile at `max-width: 767px`, desktop at `min-width: 832px`. At a phone's physical density a desktop layout clips the bottom row of a companion panel; on your own emulator, `adb -s "$SERIAL" shell wm density 200` in landscape widens the viewport enough that the automatic rule selects desktop (undo with `wm density reset`). A density change recreates the activity and reloads the page.
+**Desktop-only surfaces.** The mobile layout opens no companion panel such as the Session Browser. The Fleet Mobile shell is always the mobile layout, at any width or density, and no control switches it, so such a surface cannot be reached in the shell. Check it in a browser at desktop width instead ([Narrow viewports use the mobile layout](verification.md#narrow-viewports-use-the-mobile-layout)).
 
 ## 4. iOS simulator
 
