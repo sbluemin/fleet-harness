@@ -3078,7 +3078,8 @@
   overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  --side-chips-gap: 2px;
+  gap: var(--side-chips-gap);
 }
 
 .side-bar-theater-section {

@@ -1,5 +1,5 @@
 import { ChevronGlyph } from "@fleet-console/ui/react";
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_EVENT, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl,
   isConsoleRosterState, isConsoleSectionState,
@@ -96,6 +96,25 @@ export function useConsoleSections(): ConsoleSections {
   };
 }
 
+/**
+ * 붙어 있는 머리글의 제자리(sticky가 끌어내린 만큼 위)를 스크롤 내용 좌표로 잰다.
+ * 붙어 있지 않으면 null — 제자리에 보이는 머리글을 접을 때는 스크롤을 건드리지 않는다.
+ */
+function stuckHeadScrollTop(head: HTMLElement, list: HTMLElement): number | null {
+  const place = () => head.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+  const before = list.scrollTop;
+  const visual = place();
+  const previous = head.style.position;
+  head.style.position = "relative";
+  let natural = visual;
+  try { natural = place(); } finally {
+    head.style.position = previous;
+    if (list.scrollTop !== before) list.scrollTop = before;
+  }
+  if (natural + 1 >= visual) return null;
+  return Math.max(0, natural);
+}
+
 /** 전환을 막는 상태 — 지금의 전환 메뉴와 같은 규칙이다. */
 export function consoleSwitchBlocked(entry: ConsoleSectionEntry): boolean {
   return entry.active || entry.status === "unreachable" || entry.status === "untrusted" || entry.status === "stopping";
@@ -120,9 +139,29 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const startable = !compact && entry.actions?.includes("start") === true;
   const switchable = compact && !consoleSwitchBlocked(entry);
   const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
-  const press = compact ? () => { if (switchable) sections.command({ switch: entry.id }); } : () => sections.fold(entry.id, !folded);
+  // 접힌 뒤에는 상자가 머리글뿐이라 붙지 못한다. 붙어 있던 머리글은 접히기 전에 재 둔 제자리로 스크롤을 맞춰 목록 위에 남긴다.
+  const pinScroll = useRef<{ readonly list: HTMLElement; readonly top: number } | null>(null);
+  useLayoutEffect(() => {
+    const pin = pinScroll.current;
+    if (!pin) return;
+    pinScroll.current = null;
+    pin.list.scrollTop = pin.top;
+  });
+  const press = (event: { currentTarget: HTMLButtonElement }) => {
+    if (compact) { if (switchable) sections.command({ switch: entry.id }); return; }
+    const folding = !folded;
+    pinScroll.current = null;
+    if (folding) {
+      const list = event.currentTarget.closest<HTMLElement>(".objective-records-side-bar-chips");
+      const head = event.currentTarget.closest<HTMLElement>(".side-console-head");
+      const top = list && head ? stuckHeadScrollTop(head, list) : null;
+      if (list && top !== null) pinScroll.current = { list, top };
+    }
+    sections.fold(entry.id, folding);
+  };
   if (editing) {
     return <div className="side-console-head is-editing" data-status={entry.status ?? undefined}>
+      <div className="side-console-plate">
       <form className="side-console-form" onSubmit={(event) => { event.preventDefault(); const next = name.trim(); if (!next) return; sections.command({ rename: { id: entry.id, label: next } }); setEditing(false); }}>
         <input autoFocus aria-label={t("settings.remote.hosts.rename")} value={name} maxLength={120} onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); setEditing(false); } }} />
@@ -130,9 +169,11 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
           {/* 빼기 전의 확인은 셸이 자기 대화상자로 묻는다 — 여기서 한 번 더 묻지 않는다. */}
           {!entry.active ? <button type="button" className="is-danger" onClick={() => { sections.command({ forget: entry.id }); setEditing(false); }}>{t("settings.remote.hosts.forget")}</button> : null}</div>
       </form>
+      </div>
     </div>;
   }
   return <div className={`side-console-head${entry.active ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
+    <div className="side-console-plate">
     <button type="button" className="side-console-toggle" aria-expanded={compact ? undefined : !folded} title={title} onClick={press}>
       <ConsoleGlyph remote={entry.kind === "remote"} />
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
@@ -151,6 +192,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
       onClick={() => { setName(entry.label); setEditing(true); }}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m3 11-.5 2.5L5 13l7-7-2-2-7 7Zm6-6 2 2" /></svg>
     </button> : null}
+    </div>
   </div>;
 }
 

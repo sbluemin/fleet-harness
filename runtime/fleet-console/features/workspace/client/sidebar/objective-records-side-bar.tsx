@@ -1,5 +1,5 @@
 import { FolderIcon, PencilIcon, PlusIcon, TaskforceIcon, TrashIcon } from "./sidebar-menu-icons.js";
-import { ConsoleAddRow, ConsoleSectionHead, useConsoleSections } from "../../../remote-access/client/console-sections.js";
+import { ConsoleAddRow, ConsoleSectionHead, useConsoleSections, type ConsoleSections } from "../../../remote-access/client/console-sections.js";
 
 /**
  * 사이드바 머리 한 줄 — 사령관 section 이 `TheaterInfo` 모양으로 선다. `id` 와 `commodore.id` 는 그 사령관 UUID 이고,
@@ -150,6 +150,26 @@ interface TheaterActionsMenuProps {
   readonly onNewSession: () => void;
   readonly onEditAlias: () => void;
   readonly onClose: () => void;
+}
+
+/**
+ * 지금 떠 있는 콘솔의 머리글과 그 목록을 한 상자에 둔다.
+ * 붙는 머리글은 자기 상자 높이 안에서만 버틴다. 머리글만 따로 두면 상자가 머리글만큼이라 목록을 스크롤해도 붙지 않는다.
+ * 콘솔이 하나뿐이면 머리글이 없으므로 목록을 그대로 돌려준다.
+ */
+function ActiveConsoleSection({ entry, folded, count, sections, compact, children }: {
+  readonly entry: ConsoleSections["active"];
+  readonly folded: boolean;
+  readonly count: number;
+  readonly sections: ConsoleSections;
+  readonly compact: boolean;
+  readonly children: ReactNode;
+}) {
+  if (!entry) return <>{children}</>;
+  return <li className="side-console is-active" data-console-id={entry.id}>
+    <ConsoleSectionHead entry={entry} folded={folded} count={count} sections={sections} compact={compact} />
+    {folded ? null : <ol className="side-console-own" aria-label={entry.label}>{children}</ol>}
+  </li>;
 }
 
 const DRAG_THRESHOLD_PX = 6;
@@ -475,12 +495,7 @@ export function ObjectiveRecordsSideBar({
   const activeConsoleIndex = consoles.entries.findIndex((entry) => entry.active);
   const ownConsoleFolded = consoles.sectioned && !compact && consoles.active !== null && consoles.folded(consoles.active.id);
   const rosterSection = (entry: (typeof consoles.entries)[number]) => <ConsoleRosterSection key={entry.id} entry={entry} sections={consoles} list={() => listRef.current} compact={compact} />;
-  const consoleLead = consoles.sectioned && consoles.active ? <>
-    {consoles.entries.slice(0, activeConsoleIndex).map(rosterSection)}
-    <li className="side-console is-active" data-console-id={consoles.active.id}>
-      <ConsoleSectionHead entry={consoles.active} folded={ownConsoleFolded} count={faces.length} sections={consoles} compact={compact} />
-    </li>
-  </> : null;
+  const consolesBefore = consoles.sectioned && consoles.active ? consoles.entries.slice(0, activeConsoleIndex).map(rosterSection) : null;
   const consoleTail = consoles.sectioned ? consoles.entries.slice(activeConsoleIndex + 1).map(rosterSection) : null;
 
   return (
@@ -503,7 +518,8 @@ export function ObjectiveRecordsSideBar({
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")}>
-        {consoleLead}
+        {consolesBefore}
+        <ActiveConsoleSection entry={consoles.sectioned ? consoles.active : null} folded={ownConsoleFolded} count={faces.length} sections={consoles} compact={compact}>
         {ownConsoleFolded ? null : <>
         {sidebarBuckets.map((bucket) => {
           const rows = bucket.rows.map((face) => {
@@ -642,6 +658,7 @@ export function ObjectiveRecordsSideBar({
           </li>
         ) : null}
         </>}
+        </ActiveConsoleSection>
         {consoleTail}
         {consoles.capable && !compact ? <ConsoleAddRow sections={consoles} /> : null}
       </ol>

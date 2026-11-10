@@ -3,9 +3,12 @@
 .side-console { list-style: none; min-width: 0; }
 .side-console + .side-console,
 .objective-records-side-bar-chips > :not(.side-console) + .side-console { margin-top: 8px; }
-.side-console-head { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; margin: 0 6px; border-radius: 10px; background: var(--surface-capsule); box-shadow: inset 0 0 0 1px var(--surface-rim); }
+/* 머리글은 자기 섹션 상자 안에서 스크롤 영역 위에 붙는다. 면은 사이드바 바탕이라 모서리로 행이 비치지 않고, 캡슐은 안의 판이 그린다.
+   세로 안쪽 여백은 두지 않는다 — 두면 스크롤 0의 섹션 간격이 늘어난다. 붙은 뒤 목록 위 여백으로 행이 새지 않게 같은 색 그림자만 깐다. */
+.side-console-head { position: sticky; top: 0; z-index: 2; background: var(--conversation-side, var(--canvas-side)); box-shadow: 0 calc(-1 * var(--space-1)) 0 0 var(--conversation-side, var(--canvas-side)); }
+.side-console-plate { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; margin: 0 6px; border-radius: 10px; background: var(--surface-capsule); box-shadow: inset 0 0 0 1px var(--surface-rim); }
 .side-console-head button { font: inherit; cursor: pointer; }
-.side-console-head button:focus-visible, .side-console-row:focus-visible, .side-console-enter:focus-visible, .side-console-add:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.side-console-head button:focus-visible, .side-console-row:focus-visible, .side-console-enter:focus-visible, .side-console-cert:focus-visible, .side-console-add:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .side-console-toggle { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 34px; padding: 0 8px 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); text-align: left; }
 .side-console-head.is-active .side-console-toggle { color: var(--text-primary); }
 .side-console-toggle svg { display: block; flex: none; width: 15px; height: 15px; }
@@ -31,7 +34,7 @@
 /* 꺼진 관리 대상을 다시 켜는 단추. 머리글 안의 한 가지 동작이라 늘 보인다. */
 .side-console-start { flex: none; margin-right: 6px; border: 0; border-radius: 8px; padding: 3px 10px; background: var(--wash-hover); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; }
 .side-console-start:hover { background: var(--control-rest-hover); }
-.side-console-head.is-editing { display: block; padding: 8px 10px 10px; }
+.side-console-head.is-editing .side-console-plate { display: block; padding: 8px 10px 10px; }
 .side-console-form { display: grid; gap: 8px; min-width: 0; }
 .side-console-form input { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--surface-rim-strong); border-radius: 8px; background: var(--canvas-side); color: var(--text-primary); font: inherit; font-size: var(--t-md); }
 .side-console-form > div { display: flex; flex-wrap: wrap; gap: 6px; }
@@ -55,16 +58,21 @@
 .side-console-more { padding: 2px 18px; font-size: var(--t-xs); color: var(--text-tertiary); }
 .side-console-note { display: flex; flex-direction: column; gap: 6px; margin: 2px 10px 4px; padding: 8px 10px; border-radius: 10px; background: var(--wash-hover); font-size: var(--t-xs); line-height: 1.5; color: var(--text-secondary); }
 .side-console-note p { margin: 0; }
-.side-console-enter { align-self: flex-start; padding: 3px 9px; border: 0; border-radius: 8px; background: transparent; box-shadow: inset 0 0 0 1px var(--surface-rim-strong); color: var(--text-primary); font: inherit; font-size: var(--t-xs); font-weight: var(--weight-medium); cursor: pointer; }
-.side-console-enter:hover { background: var(--wash-hover); }
+.side-console-enter, .side-console-cert { align-self: flex-start; padding: 3px 9px; border: 0; border-radius: 8px; background: transparent; box-shadow: inset 0 0 0 1px var(--surface-rim-strong); color: var(--text-primary); font: inherit; font-size: var(--t-xs); font-weight: var(--weight-medium); cursor: pointer; }
+.side-console-enter:hover, .side-console-cert:hover { background: var(--wash-hover); }
 
 .side-console-add-item { list-style: none; margin-top: 6px; }
 .side-console-add { display: flex; align-items: center; gap: 8px; width: calc(100% - 12px); height: 32px; margin: 0 6px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
 .side-console-add svg { display: block; flex: none; width: 15px; height: 15px; }
 .side-console-add:hover { background: var(--wash-hover); color: var(--text-primary); }
 
-/* 좁은 열 — 머리글은 콘솔 글리프만, 명부는 아바타만 선다. 접힘은 넓은 목록에서만 쓴다. */
-.objective-records-side-bar.is-compact .side-console-head { justify-content: center; margin: 0; background: transparent; box-shadow: none; }
+/* 지금 콘솔의 자기 목록. 머리글과 한 상자에 있어도, 머리글과 첫 행 사이는 예전 목록 gap과 같다.
+   isolation은 행의 z-index(호버 독)를 이 목록 안에 가둬 붙은 머리글 위로 올라오지 않게 한다. overflow는 그대로라 행 안 독은 잘리지 않는다. */
+.side-console-own { isolation: isolate; display: flex; flex-direction: column; gap: var(--side-chips-gap, 2px); min-width: 0; margin: var(--side-chips-gap, 2px) 0 0; padding: 0; list-style: none; }
+
+/* 좁은 열 — 머리글은 콘솔 글리프만, 명부는 아바타만 선다. 접힘은 넓은 목록에서만 쓴다. 안내와 확인 단추도 넓은 목록에서만 보인다. */
+.objective-records-side-bar.is-compact .side-console-head { position: static; z-index: auto; padding: 0; background: transparent; box-shadow: none; }
+.objective-records-side-bar.is-compact .side-console-plate { justify-content: center; margin: 0; background: transparent; box-shadow: none; }
 .objective-records-side-bar.is-compact .side-console-toggle { flex: none; justify-content: center; width: 28px; height: 24px; padding: 0; color: var(--text-tertiary); }
 .objective-records-side-bar.is-compact .side-console-head.is-active .side-console-toggle { color: var(--text-primary); }
 .objective-records-side-bar.is-compact :is(.side-console-name, .side-console-home, .side-console-here, .side-console-status, .side-console-count, .side-console-chevron, .side-console-edit, .side-console-row-name, .side-console-row-run, .side-console-row-hint, .side-console-more, .side-console-note) { display: none; }
@@ -74,6 +82,6 @@
   .side-console-chevron, .side-console-avatar { transition: none; }
 }
 @media (forced-colors: active) {
-  .side-console-head { border: 1px solid CanvasText; }
+  .side-console-plate { border: 1px solid CanvasText; }
   .side-console-here { background: Highlight; color: HighlightText; }
 }
