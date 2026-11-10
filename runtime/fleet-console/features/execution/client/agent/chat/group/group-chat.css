@@ -172,6 +172,13 @@
 
 /* 아직 집어가지 않은 말 — 같은 말풍선이되 흐리게. 처리가 시작되면 이 흐림만 걷힌다. */
 .group-chat-bubble.is-human.is-pending { opacity: 0.62; }
+/* 라이트의 흐림은 밝은 글자를 옅어진 면에 묻는다(1.8:1) — 면을 옅게 비우고 본문 잉크와 점선 테두리로 「아직」을 말한다. */
+:root[data-theme="light"]:not([data-view-mode="mobile"]) .group-chat-bubble.is-human.is-pending {
+  opacity: 1;
+  border: 1px dashed var(--hairline-strong);
+  background: color-mix(in oklab, var(--conversation-bubble-fill, var(--ink-veil)) 14%, transparent);
+  color: var(--text-primary);
+}
 .group-chat-pending { padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }
 .group-chat-human { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; }
 .group-chat-human-to { display: inline-flex; align-items: center; gap: var(--space-1); padding-right: var(--space-1); font-size: var(--t-sm); color: var(--text-tertiary); }

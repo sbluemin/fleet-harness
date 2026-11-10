@@ -9374,7 +9374,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   white-space: nowrap;
 }
 .fc-composer-deck-token { font-size: var(--t-xs); }
-.fc-composer-deck-row.is-active .fc-composer-deck-token { color: var(--text-secondary); }
+.fc-composer-deck-row.is-active :is(.fc-composer-deck-token, .fc-composer-deck-meta) { color: var(--text-secondary); }
 .fc-composer-deck-check { color: var(--text-primary); }
 .fc-composer-deck-empty {
   grid-column: 1 / -1;
