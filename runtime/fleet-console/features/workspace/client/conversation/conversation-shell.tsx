@@ -41,6 +41,7 @@ import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserSurf
 import { publishBrowserPluginAttach } from "../../../browser/client/browser-engine.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
+import { useCommodoreBrowserUse } from "../../../computer-use/client/computer-screen-share.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
@@ -762,6 +763,9 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   }, [hasSessionAttach]);
   const sessionPluginId = sessionScopeId === null ? null : surfaceDescriptor?.pluginId ?? null;
   const sessionSubjectKey = sessionPluginId === null || sessionScopeId === null ? null : `${sessionPluginId}:${sessionScopeId}`;
+  // 사령관 대화면 그 사령관 — 대화의 세션 scope 가 그 사령관의 것일 때만이다(TaskForce 대화의 세션은 어느 한 사령관의 것이 아니다).
+  const surfaceCommodoreId = typeof surface?.params.commodoreId === "string" ? surface.params.commodoreId : null;
+  const surfaceOwnerCommodoreId = surfaceCommodoreId !== null && sessionScopeId === `commodore:${surfaceCommodoreId}` ? surfaceCommodoreId : null;
   // 가운데 칸에 선 대화가 곧 활성 Objective 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
   const activeObjectiveId = state.activeObjectiveId;
@@ -931,7 +935,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           theme={state.activeTheme}
           onToggleDetails={toggleDetails}
           tools={tools}
-          sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey } : null}
+          sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey, commodoreId: surfaceOwnerCommodoreId } : null}
           browserSurfaceOpen={browserOpen}
         />
       ) : subject ? (
@@ -1758,6 +1762,8 @@ interface SurfaceSessionBrowser {
   readonly scopeId: string;
   /** 이 대화의 세션 열쇠 — `<pluginId>:<scopeId>`. */
   readonly subjectKey: string;
+  /** 이 대화가 사령관의 것이면 그 사령관 — 그 세션이 브라우저를 쓰는 동안 지구본이 표식이 된다. */
+  readonly commodoreId: string | null;
 }
 
 /**
@@ -1765,7 +1771,7 @@ interface SurfaceSessionBrowser {
  * 열고 닫는다. 독립 창이 열려 있으면 그 창으로 이동한다. 엔진이 없거나 공유 중이면 지구본 자체가 닫힌 채
  * 까닭을 말한다. 웹 브라우저 Console 에서는 서지 않는다(시안 v2 규칙 g).
  */
-function SurfaceBrowserButton({ language, splitOpen }: {
+function SurfaceBrowserButton({ session, language, splitOpen }: {
   readonly session: SurfaceSessionBrowser;
   readonly language: "en" | "ko";
   readonly splitOpen: boolean;
@@ -1774,12 +1780,14 @@ function SurfaceBrowserButton({ language, splitOpen }: {
   const engine = useBrowserEngine();
   const engineMissing = engine !== null && !engine.available;
   const detached = useBrowserSurface()?.mode === "window";
+  // 이 사령관의 세션이 브라우저를 쓰는 동안 — Objective 대화의 지구본과 같은 표식·같은 말이다.
+  const agentUsing = useCommodoreBrowserUse(session.commodoreId);
   const base = engineMissing
     ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
-    : t(detached ? "terminal.browser.focus" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
+    : t(detached ? "terminal.browser.focus" : agentUsing ? "terminal.browser.agentUsing" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
   return (
     <span className="conversation-pill-browser">
-      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} onClick={toggleBrowserPane}>
+      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} agent={agentUsing} onClick={toggleBrowserPane}>
         <CaptionBrowserUseGlyph />
       </CaptionActionButton>
     </span>

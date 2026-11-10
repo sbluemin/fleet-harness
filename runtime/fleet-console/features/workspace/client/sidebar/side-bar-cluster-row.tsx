@@ -534,7 +534,7 @@ const ROW_TOOL_USE_LEAVE_MS = 160;
  * 도구 사용 문구 — 상태 줄 자리에 글리프와 문구로 서고, 문구 위로 명도 물결이 지나간다. 끝나면 페이드하고 걷힌다.
  * 물결은 밝은 사본을 비추는 창이 transform 으로만 지나가고 사본은 반대로 움직여 제자리에 선다(conversation.css).
  */
-function RowToolUse({ tool, label }: { readonly tool: ObjectiveUseTool | null; readonly label: string | null }) {
+export function RowToolUse({ tool, label }: { readonly tool: ObjectiveUseTool | null; readonly label: string | null }) {
   const live = tool !== null && label !== null ? { tool, label } : null;
   const [shown, setShown] = useState(live);
   useEffect(() => {

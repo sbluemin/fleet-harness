@@ -948,8 +948,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 공유 컨텍스트에서는 기기의 주인(computer)이 루트이고, 지금 조작하는 참가자는 따로 싣는다 — 그룹채팅의 조작자 칩·진행 줄이 읽는다.
     const computerActor = owner && computerObjective ? computerUseMcp.actorForOwner(owner) : null;
     // 브라우저는 Console 전체에 하나고 사용 표식은 묶음 단위다 — Objective 세션의 묶음이 곧 그 루트 Objective 다.
-    const browserObjectiveRecords = browserService.drivingOwners().filter((id) => !!objectiveRecords.get(id));
-    return { console: [] as string[], computer: computerObjective, computerActor, browser: browserObjectiveRecords };
+    const drivingOwners = browserService.drivingOwners();
+    const browserObjectiveRecords = drivingOwners.filter((id) => !!objectiveRecords.get(id));
+    // 사령관 자신의 세션은 Objective 가 아니다 — 그 묶음 id 는 사령관의 스페이스 id 라, 사령관 id 로 따로 싣는다(사이드바의 사령관 줄과 사령관 대화의 지구본이 읽는다).
+    const browserCommodores = drivingOwners.flatMap((id) => { const commodoreId = commodoreOfBrowserSpace(id); return commodoreId ? [commodoreId] : []; });
+    return { console: [] as string[], computer: computerObjective, computerActor, browser: browserObjectiveRecords, browserCommodores };
   };
   const consoleActions = createWorkspaceActions({ objectiveRecords, deletionCoordinator, archive: objectiveRecordArchive.archive, listObjectiveUse, patchObjective: (id, input) => consoleFeaturePorts.objectiveRecords.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged });
   // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.
@@ -2133,6 +2136,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       computer: using.computer ? [using.computer] : [],
       computerActor: using.computerActor,
       browser: using.browser,
+      browserCommodores: using.browserCommodores,
       requests: requests.filter((request) => live.has(request.objectiveId)),
     };
   }
