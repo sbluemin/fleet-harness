@@ -66,8 +66,9 @@
 .side-console-add svg { display: block; flex: none; width: 15px; height: 15px; }
 .side-console-add:hover { background: var(--wash-hover); color: var(--text-primary); }
 
-/* 지금 콘솔의 자기 목록. 머리글과 한 상자에 있어도, 머리글과 첫 행 사이는 예전 목록 gap과 같다. */
-.side-console-own { display: flex; flex-direction: column; gap: var(--side-chips-gap, 2px); min-width: 0; margin: var(--side-chips-gap, 2px) 0 0; padding: 0; list-style: none; }
+/* 지금 콘솔의 자기 목록. 머리글과 한 상자에 있어도, 머리글과 첫 행 사이는 예전 목록 gap과 같다.
+   isolation은 행의 z-index(호버 독)를 이 목록 안에 가둬 붙은 머리글 위로 올라오지 않게 한다. overflow는 그대로라 행 안 독은 잘리지 않는다. */
+.side-console-own { isolation: isolate; display: flex; flex-direction: column; gap: var(--side-chips-gap, 2px); min-width: 0; margin: var(--side-chips-gap, 2px) 0 0; padding: 0; list-style: none; }
 
 /* 좁은 열 — 머리글은 콘솔 글리프만, 명부는 아바타만 선다. 접힘은 넓은 목록에서만 쓴다. 안내와 확인 단추도 넓은 목록에서만 보인다. */
 .objective-records-side-bar.is-compact .side-console-head { position: static; z-index: auto; padding: 0; background: transparent; box-shadow: none; }
