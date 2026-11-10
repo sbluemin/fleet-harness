@@ -3,8 +3,8 @@ import { translator } from "./chrome/messages.js";
 import type { SurfaceControl } from "./browser-surface.js";
 
 /**
- * 크롬 문서가 요청한 동작을 Console 의 기존 REST 로 옮긴다. 상태의 원천은 Console 이므로 여기서 상태를 바꾸지 않고 요청만 보낸다 — 결과는 다음 스냅샷으로 돌아와
- * 문서가 그린다. 이 모듈이 아는 로컬 상태는 표면 UI(고정·펼침·오버레이·알림)뿐이고 그것은 SurfaceControl 이 쥔다.
+ * 크롬 문서가 요청한 동작을 Console 의 기존 REST 로 옮긴다. 탭·프로필 상태의 원천은 Console 이므로 여기서 그 상태를 바꾸지 않고 요청만 보낸다 — 결과는 다음 스냅샷으로 돌아와
+ * 문서가 그린다. 이 모듈이 아는 로컬 상태는 표면 UI(고정·펼침·오버레이·알림)와 표시 스페이스뿐이고 그것은 SurfaceControl 이 쥔다.
  */
 export interface BrowserActionDeps {
   readonly fetch: typeof fetch;
@@ -44,8 +44,10 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
   };
   const failureText = async (response: Response): Promise<string> => {
     try {
-      const body = await response.json() as { error?: string; message?: string; reason?: string | null };
+      const body = await response.json() as { error?: string; message?: string; reason?: string | null; spaceId?: unknown; limit?: unknown };
       if (body.error === "browser_unavailable") return t(body.reason === "shared" ? "unavailable.shared" : "unavailable.desktop_required");
+      // 탭 상한은 사람이 직접 부딪히는 거절이다 — Console 의 문장(에이전트가 읽는 영어) 대신 화면의 말로 알린다.
+      if (body.error === "browser_tab_limit" && typeof body.limit === "number") return t(typeof body.spaceId === "string" ? "tabLimit.space" : "tabLimit.total", { limit: String(body.limit) });
       if (body.message) return body.message;
       if (body.error) return body.error;
     } catch { /* 본문 없음 */ }
@@ -103,11 +105,19 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
     };
 
     switch (action.action) {
-      case "navigate": void run("navigate", { url: action.url }); return;
-      case "new-tab": void run("tabs", { action: "create" }); return;
+      // 표시 탭이 없으면 주소는 보고 있는 스페이스의 새 탭으로 열린다 — 어느 스페이스인지는 셸만 안다.
+      case "navigate": void run("navigate", { url: action.url, spaceId: control.space() }); return;
+      case "new-tab": void run("tabs", { action: "create", spaceId: control.space() }); return;
       case "select-tab": void run("tabs", { action: "select", tabId: action.id }); return;
       case "close-tab": void run("tabs", { action: "close", tabId: action.id }); return;
-      case "select-space": void run("space", { spaceId: action.id }); return;
+      case "select-space": {
+        // 스페이스를 옮기는 것은 셸의 일이다. Console 에는 그 스페이스의 탭을 띄워 달라고(없으면 내려 달라고)만 요청한다.
+        closeOverlay();
+        const request = control.chooseSpace(action.id);
+        if (request) void run("tabs", request.kind === "select" ? { action: "select", tabId: request.tabId } : { action: "deselect" }, { quiet: true });
+        return;
+      }
+      case "show-tab": void run("tabs", action.id === null ? { action: "deselect" } : { action: "select", tabId: action.id }, { quiet: true }); return;
       case "pin": control.patch({ pinned: action.pinned, expanded: action.pinned ? false : control.ui().expanded }); return;
       case "expand": if (!control.ui().pinned) control.patch({ expanded: action.expanded }); return;
       case "toggle-mode": {
@@ -125,7 +135,7 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
       case "draft": control.patch({ draft: action.value }); return;
       case "overlay": {
         if (action.kind === null) { closeOverlay(); return; }
-        if (action.kind === "menu") { suggestAbort?.abort(); control.patch({ overlay: { kind: "menu" }, suggestions: [] }); return; }
+        if (action.kind === "menu" || action.kind === "spaces") { suggestAbort?.abort(); control.patch({ overlay: { kind: action.kind }, suggestions: [] }); return; }
         control.patch({ overlay: { kind: "suggestions" } });
         return;
       }
@@ -233,7 +243,7 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
         void (async () => { control.patch({ busy: true }); const ok = await attach("annotation", action.png!); control.patch({ busy: false }); if (ok) closeOverlay(); })();
         return;
       }
-      case "viewport": closeOverlay(); void run("viewport", { preset: action.preset }); return;
+      case "viewport": closeOverlay(); void run("viewport", { preset: action.preset, spaceId: control.space() }); return;
       case "profile": {
         if ((control.chrome()?.profile ?? null) === action.profile) { closeOverlay(); return; }
         // 탭이 열려 있으면 먼저 확인을 받는다 — 전환은 그 탭들을 닫는 일이다.

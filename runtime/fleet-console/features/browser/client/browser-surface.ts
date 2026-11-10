@@ -1,9 +1,9 @@
 import * as React from "react";
 import type { DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
-import { DESKTOP_BROWSER_SURFACE_CAPABILITY } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_SURFACE_CAPABILITY } from "@fleet-console/protocol/desktop";
 import { desktopShellCapabilities } from "../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
-import { BROWSER_GLOBAL_ID, HUMAN_SPACE_ID } from "../shared/spaces.js";
+import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
 /**
  * 플릿 브라우저 표면(메인 창 오른쪽 칸 또는 독립 창)의 Console 쪽 손잡이. 표면 자체 — 크롬·레이아웃·입력 — 은 Desktop 셸이 그리고 소유한다.
@@ -80,7 +80,7 @@ export function toggleBrowserPane(): void {
 }
 
 /**
- * CLI·채팅에서 고른 주소를 브라우저로 연다. 표면을 열고, 링크는 새 탭에서 — 사람이 보던 빈 탭만 그 자리에서 쓴다(사람이 보던 페이지를 링크 하나가 밀어내지 않게).
+ * CLI·채팅에서 고른 주소를 브라우저로 연다. 표면을 열고, 링크는 디폴트 스페이스의 새 탭에서 — 사람이 거기서 보던 빈 탭만 그 자리에서 쓴다(사람이 보던 페이지를 링크 하나가 밀어내지 않게).
  * 표면 안의 화면은 Desktop 이 그리므로 이 요청은 서버의 탭 REST 로 곧장 간다.
  */
 export async function openBrowserLink(url: string): Promise<void> {
@@ -89,7 +89,7 @@ export async function openBrowserLink(url: string): Promise<void> {
     const stateResponse = await fetch(`${endpoint}/state`);
     const state = stateResponse.ok ? await stateResponse.json() as { activeTabId?: string | null; tabs?: { id: string; url: string; spaceId: string }[] } : null;
     const active = state?.tabs?.find((tab) => tab.id === state.activeTabId) ?? null;
-    const intoActive = active === null || (active.url === "about:blank" && active.spaceId === HUMAN_SPACE_ID);
+    const intoActive = active === null || (active.url === "about:blank" && active.spaceId === DESKTOP_BROWSER_DEFAULT_SPACE_ID);
     await fetch(`${endpoint}/${intoActive ? "navigate" : "tabs"}`, {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify(intoActive ? { url } : { action: "create", url }),

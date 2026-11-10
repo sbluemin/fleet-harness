@@ -46,7 +46,7 @@ describe("desktop native browser engine", () => {
     expect(() => engine.openSurface("op-2", "pane")).toThrow("browser_surface_busy");
     expect(published.at(-1)?.views[0]).toMatchObject({ id: targetId, partition: context.browserContextId, visible: true });
     expect(published.at(-1)?.surface).toMatchObject({ id: lease.id, browserId: "op-1", mode: "pane" });
-    engine.setChrome({ browserId: "op-1", spaces: [], displayedSpaceId: null, tabs: [], activeTabId: null, viewport: { preset: "responsive", width: 1, height: 1, setBy: null }, driving: false, profile: null, defaultProfile: null, available: true, reason: null });
+    engine.setChrome({ browserId: "op-1", spaces: [], tabs: [], activeTabId: null, viewport: { preset: "responsive", width: 1, height: 1, setBy: null }, driving: false, profile: null, defaultProfile: null, available: true, reason: null });
     expect(published.at(-1)?.chrome?.browserId).toBe("op-1");
     // 모드·포커스는 현재 표면에만 닿는다. 낡은 id 는 무시된다.
     engine.setSurfaceMode("stale", "window");

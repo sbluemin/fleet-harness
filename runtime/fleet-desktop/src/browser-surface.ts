@@ -3,6 +3,7 @@ import { pathToFileURL } from "node:url";
 import type { BaseWindow, Rectangle, WebContents, WebContentsView } from "electron";
 import type { DesktopBrowserChrome, DesktopBrowserSurface, DesktopBrowserSurfaceRelay } from "@fleet-console/protocol/desktop";
 
+import { createBrowserSpaceView, type BrowserSpaceRequest } from "./browser-spaces.js";
 import type { BrowserSurfaceHost, PageHost } from "./browser-views.js";
 import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeOverlay, type ChromeRole, type ChromeUiState } from "./chrome/contract.js";
 import type { DesktopShellWindow } from "./shell-window.js";
@@ -31,6 +32,10 @@ export interface SurfaceControl {
   notify(text: string | null, kind?: "info" | "error", action?: string): void;
   chrome(): DesktopBrowserChrome | null;
   surface(): DesktopBrowserSurface | null;
+  /** 지금 화면에 띄운 스페이스 — 새 탭·주소·뷰포트 요청이 이 스페이스를 겨눈다. */
+  space(): string;
+  /** 사람이 고른 스페이스를 띄운다. 화면을 맞추려고 Console 에 보낼 요청을 돌려준다(없으면 null). */
+  chooseSpace(spaceId: string): BrowserSpaceRequest | null;
   /** 주소줄 문서에 직접 호출을 보낸다(주석 요소 조회 답). */
   evaluate(role: ChromeRole, code: string): void;
 }
@@ -111,6 +116,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   let appliedZoom = 1;
   /** 표면이 닫혀도 남는다 — 닫힌 동안 만들어지는 뷰가 마지막 페이지 크기를 따르게. */
   let lastPageSize: { width: number; height: number } | null = null;
+  /** 어느 스페이스를 보여 주는가 — 표면이 닫혀도 남는다. 다시 열면 보던 스페이스에서 이어진다. */
+  const spaces = createBrowserSpaceView();
 
   const surfaceRect = (): Rectangle | null => {
     if (hostKind === "pane") {
@@ -168,7 +175,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     const leading = hostKind === "window" && deps.platform === "darwin" ? MAC_TRAFFIC_LIGHTS_PX / z : 0;
     const trailing = deps.platform === "win32" ? WINDOWS_CAPTION_PX / z : 0;
     return {
-      lang: deps.lang, platform: deps.platform, mode: surface?.mode ?? "pane", colors: deps.colors(), chrome, pinned: ui.pinned, expanded: ui.expanded,
+      lang: deps.lang, platform: deps.platform, mode: surface?.mode ?? "pane", colors: deps.colors(), chrome, spaceId: spaces.current(), pinned: ui.pinned, expanded: ui.expanded,
       leading, trailing,
       page: rect ? { x: layoutRailWidth() / z, y: Math.min(stripPx(), rect.height) / z, width: Math.max(0, rect.width - layoutRailWidth()) / z, height: Math.max(0, rect.height - stripPx()) / z } : { x: 0, y: 0, width: 0, height: 0 },
       zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null,
@@ -204,6 +211,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     },
     chrome: () => chrome,
     surface: () => surface,
+    space: () => spaces.current(),
+    chooseSpace(spaceId) { const request = spaces.choose(spaceId, chrome); update(); return request; },
     evaluate(role, code) {
       const doc = docs?.[role];
       if (doc && doc.ready && !doc.view.webContents.isDestroyed()) void doc.view.webContents.executeJavaScript(code).catch(() => undefined);
@@ -332,6 +341,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     destroyWindow();
     const oldDivider = divider;
     docs = null; divider = null; surface = null; chrome = null; chromeJson = ""; focusSeen = 0; drag = null;
+    spaces.observe(null);
     for (const view of [old?.bar.view, old?.rail.view, old?.stage.view, oldDivider]) { if (view && !view.webContents.isDestroyed()) { try { view.webContents.close(); } catch { /* 이미 닫혔다. */ } } }
     ui = { ...ui, expanded: false, overlay: null, busy: false, notice: null, info: null, suggestions: [], draft: null };
     page = { x: 0, y: 0, width: 0, height: 0 };
@@ -348,6 +358,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       const json = JSON.stringify(nextChrome);
       const chromeChanged = json !== chromeJson;
       chrome = nextChrome; chromeJson = json;
+      // 표시 스페이스는 여기서 정한다 — 표시 탭이 다른 스페이스로 옮겨 갔으면 따라가고, 화면이 어긋나 있으면 맞춰 달라고 요청한다.
+      const spaceBefore = spaces.current();
+      const request = chromeChanged ? spaces.observe(nextChrome) : null;
       ensureHost(next);
       if (hostKind === null) return;
       if (next.mode === "window" && (next.focusRequest ?? 0) > focusSeen && windowBase && !windowBase.isDestroyed()) {
@@ -355,8 +368,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
         if (windowBase.isMinimized()) windowBase.restore();
         windowBase.show(); windowBase.focus();
       } else if ((next.focusRequest ?? 0) > focusSeen) { focusSeen = next.focusRequest ?? 0; docs.bar.view.webContents.focus(); }
-      if (chromeChanged) push();
+      if (chromeChanged || spaces.current() !== spaceBefore) push();
       else layout();
+      if (request) deps.act(control, "bar", { action: "show-tab", id: request.kind === "select" ? request.tabId : null });
     },
     target() {
       return host && !host.isDestroyed() && page.width > 0 ? { host, page: { ...page } } : null;

@@ -1,34 +1,39 @@
-import type { DesktopBrowserChromeSpace, DesktopBrowserChromeTab } from "@fleet-console/protocol/desktop";
+import type { DesktopBrowserChromeTab } from "@fleet-console/protocol/desktop";
 import type { ChromeUiState } from "../contract.js";
 import { agentGlyph, clear, G, glyph, h, hostOf, keyed } from "./dom.js";
-import { paintColors, post, spaceHue, tr, type T } from "./shared.js";
+import { paintColors, post, shownSpace, spaceHue, spaceName, tabCount, tr, type T } from "./shared.js";
 
 const LEAVE_MS = 160;
-const HUMAN = "human";
 
-/** 세로 탭 레일 문서. 접힘(아이콘 열)·호버 펼침·고정은 이 한 문서가 그린다 — 뷰 폭만 main 이 바꾼다. */
+/**
+ * 세로 탭 레일 문서. 접힘(아이콘 열)·호버 펼침·고정은 이 한 문서가 그린다 — 뷰 폭만 main 이 바꾼다.
+ * 레일은 지금 띄운 스페이스 하나의 탭만 그린다. 맨 위 머리가 어느 스페이스인지 말하고, 누르면 스페이스 선택 화면이 열린다.
+ */
 export function mountRail(): (state: ChromeUiState) => void {
   const root = h("div", { class: "rail", attrs: { role: "group" } });
   document.body.append(root);
   const pinButton = h("button", { class: "row rail-pin", type: "button", on: { click: () => post("rail", "pin", { pinned: !last?.pinned }) } });
   const pinLabel = h("span", { class: "label" });
   pinButton.append(h("span", { class: "glyph" }, glyph(G.pin)), pinLabel);
+  // 스페이스 머리 — 접힌 레일에서는 표식(글리프·머리글자) 하나, 펼치면 이름과 탭 수가 붙는다.
+  const spaceMark = h("span", { class: "space-mark" });
+  const spaceLabel = h("span", { class: "label space-name" });
+  const spaceTabs = h("span", { class: "space-count" });
+  const spaceHead = h("button", { class: "row space-head", type: "button", attrs: { "aria-haspopup": "dialog" }, on: { click: () => post("rail", "overlay", { kind: last?.overlay?.kind === "spaces" ? null : "spaces" }) } }, spaceMark, spaceLabel, spaceTabs);
   const scroll = h("div", { class: "scroll" });
-  const humanBox = h("div", { class: "tabs human", attrs: { role: "tablist" } });
-  const groupsBox = h("div", { class: "groups" });
+  const tabsBox = h("div", { class: "tabs", attrs: { role: "tablist" } });
   const newButton = h("button", { class: "row new", type: "button", on: { click: () => post("rail", "new-tab") } });
   // Chrome 의 새 탭 단추처럼 글자 없이 가운데 「+」 하나 — 「새 탭」은 접근성 이름(aria-label·title)으로 남는다.
   newButton.append(h("span", { class: "glyph", text: "+" }));
-  scroll.append(humanBox, groupsBox, newButton);
-  root.append(pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), scroll);
+  scroll.append(tabsBox, newButton);
+  root.append(pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), spaceHead, scroll);
 
   let last: ChromeUiState | null = null;
   let hovered = false;
   let keyboard = false;
   let leave: ReturnType<typeof setTimeout> | null = null;
-  const openSpaces = new Set<string>();
   const tabCache = new Map<string, HTMLElement>();
-  const groupCache = new Map<string, HTMLElement>();
+  let markKey = "";
 
   const open = (): boolean => last?.pinned === true || hovered || keyboard;
   const syncOpen = (): void => { root.classList.toggle("open", open()); };
@@ -91,8 +96,6 @@ export function mountRail(): (state: ChromeUiState) => void {
     (element.querySelector(".tab-close") as HTMLElement).setAttribute("aria-label", t("closeTab"));
   };
 
-  const spaceName = (t: T, space: DesktopBrowserChromeSpace): string => ((space.kind === "objective" || space.kind === "commodore") && space.label) || t(`space.${space.kind === "human" ? "session" : space.kind}`);
-
   const render = (state: ChromeUiState): void => {
     const previous = last;
     last = state;
@@ -102,66 +105,45 @@ export function mountRail(): (state: ChromeUiState) => void {
     const t = tr(state);
     const chrome = state.chrome;
     root.classList.toggle("pinned", state.pinned);
-    root.classList.toggle("driving", chrome?.driving === true);
-    root.setAttribute("aria-label", chrome?.driving ? t("driving") : t("tabs"));
+    // 조작 중 표시는 지금 보는 스페이스의 것이다(주소줄과 같은 규칙).
+    const shownDriving = shownSpace(state)?.driving === true;
+    root.classList.toggle("driving", shownDriving);
+    root.setAttribute("aria-label", shownDriving ? t("driving") : t("tabs"));
     if (previous?.pinned !== state.pinned) syncOpen();
     const pinText = t(state.pinned ? "rail.unpin" : "rail.pin");
     pinButton.title = pinText; pinButton.setAttribute("aria-label", pinText); pinButton.setAttribute("aria-pressed", String(state.pinned));
     pinButton.classList.toggle("set", state.pinned);
     pinLabel.textContent = pinText;
     newButton.title = t("newTab"); newButton.setAttribute("aria-label", t("newTab"));
-    if (!chrome) { humanBox.hidden = true; clear(groupsBox); groupCache.clear(); return; }
+    // 스페이스 머리 — 스냅샷이 오기 전에도 자리를 지킨다(디폴트로 그린다).
+    const space = shownSpace(state);
+    const name = spaceName(t, space);
+    const tabs = chrome ? chrome.tabs.filter((tab) => tab.spaceId === state.spaceId) : [];
+    const key = `${space?.kind ?? "default"}:${name}`;
+    if (key !== markKey) {
+      markKey = key;
+      clear(spaceMark);
+      if (space?.kind === "commodore") spaceMark.append(h("span", { class: "space-initial", text: Array.from(name)[0] ?? "" }));
+      else spaceMark.append(glyph(G.home));
+    }
+    spaceHead.dataset.kind = space?.kind ?? "default";
+    spaceHead.style.setProperty("--space-hue", String(spaceHue(state.spaceId)));
+    spaceHead.classList.toggle("driving", space?.driving === true);
+    spaceHead.classList.toggle("open", state.overlay?.kind === "spaces");
+    const headTip = `${t("spaces.head", { name })} · ${tabCount(t, tabs.length)}${space?.driving ? ` · ${t("space.driving")}` : ""}`;
+    spaceHead.title = state.overlay?.kind === "spaces" ? "" : headTip; spaceHead.setAttribute("aria-label", headTip);
+    spaceHead.setAttribute("aria-expanded", String(state.overlay?.kind === "spaces"));
+    spaceLabel.textContent = name;
+    spaceTabs.textContent = String(tabs.length);
+    spaceTabs.hidden = tabs.length === 0;
+    if (!chrome) { tabsBox.hidden = true; return; }
     const ready = chrome.available;
     newButton.disabled = !ready || state.busy;
-    const agentIds = new Set(chrome.spaces.flatMap((space) => space.agentTabIds));
-    const humanTabs = chrome.tabs.filter((tab) => tab.spaceId === HUMAN);
-    humanBox.hidden = humanTabs.length === 0;
-    humanBox.setAttribute("aria-label", t("tabs"));
-    keyed(humanBox, humanTabs, (tab) => tab.id, makeTab, updateTab(t, chrome.activeTabId, agentIds), tabCache);
-    // 그룹은 탭이 있거나 에이전트가 쓰는 중인 스페이스만. 프레임이 싣지 않은 스페이스(탭만 아는 것)는 여기서 채운다.
-    const grouped = chrome.tabs.filter((tab) => tab.spaceId !== HUMAN);
-    const byId = new Map<string, DesktopBrowserChromeSpace>();
-    for (const space of chrome.spaces) if (space.id !== HUMAN) byId.set(space.id, space);
-    for (const tab of grouped) if (!byId.has(tab.spaceId)) byId.set(tab.spaceId, { id: tab.spaceId, kind: "objective", label: "", driving: false, agentTabIds: [] });
-    const displayed = chrome.displayedSpaceId;
-    const groups = [...byId.values()]
-      .sort((a, b) => Number(b.id === displayed) - Number(a.id === displayed))
-      .map((space) => ({ space, tabs: grouped.filter((tab) => tab.spaceId === space.id), open: space.id === displayed || openSpaces.has(space.id) }))
-      .filter((group) => group.tabs.length > 0 || group.space.driving);
-    keyed(groupsBox, groups, (group) => group.space.id, () => {
-      const chip = h("button", { class: "space", type: "button" }, h("span", { class: "space-initial" }), h("span", { class: "space-name" }), h("span", { class: "space-count" }));
-      const list = h("div", { class: "tabs", attrs: { role: "tablist" } });
-      return h("div", { class: "space-group" }, chip, list);
-    }, (element, group) => {
-      const { space } = group;
-      const name = spaceName(t, space);
-      element.dataset.spaceId = space.id;
-      element.dataset.kind = space.kind;
-      element.style.setProperty("--space-hue", String(spaceHue(space.id)));
-      element.classList.toggle("open", group.open);
-      const chip = element.querySelector(".space") as HTMLButtonElement;
-      const count = String(group.tabs.length);
-      const tip = `${t("space.chip", { name, count })}${space.driving ? ` · ${t("space.driving")}` : ""}`;
-      chip.title = tip; chip.setAttribute("aria-label", tip); chip.setAttribute("aria-expanded", String(group.open));
-      chip.disabled = !ready;
-      chip.classList.toggle("open", group.open);
-      chip.onclick = () => {
-        if (group.open) { openSpaces.delete(space.id); if (displayed === space.id) post("rail", "select-space", { id: "human" }); }
-        else { openSpaces.add(space.id); post("rail", "select-space", { id: space.id }); }
-        if (last) rerender();
-      };
-      (chip.querySelector(".space-initial") as HTMLElement).textContent = Array.from(name)[0] ?? "";
-      (chip.querySelector(".space-name") as HTMLElement).textContent = name;
-      const counter = chip.querySelector(".space-count") as HTMLElement;
-      counter.textContent = count; counter.hidden = group.open;
-      const list = element.querySelector(".tabs") as HTMLElement;
-      list.hidden = !(group.open && group.tabs.length > 0);
-      list.setAttribute("aria-label", `${name} — ${t("tabs")}`);
-      const cache = (element as HTMLElement & { tabCache?: Map<string, HTMLElement> }).tabCache ?? ((element as HTMLElement & { tabCache?: Map<string, HTMLElement> }).tabCache = new Map());
-      keyed(list, group.open ? group.tabs : [], (tab) => tab.id, makeTab, updateTab(t, chrome.activeTabId, new Set(space.agentTabIds)), cache);
-    }, groupCache);
+    spaceHead.disabled = !ready;
+    tabsBox.hidden = tabs.length === 0;
+    tabsBox.setAttribute("aria-label", `${name} — ${t("tabs")}`);
+    keyed(tabsBox, tabs, (tab) => tab.id, makeTab, updateTab(t, chrome.activeTabId, new Set(space?.agentTabIds ?? [])), tabCache);
   };
 
-  function rerender(): void { if (last) render(last); }
   return render;
 }

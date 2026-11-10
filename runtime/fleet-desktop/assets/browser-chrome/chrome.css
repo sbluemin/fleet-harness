@@ -144,7 +144,7 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 .icon svg { width: 14px; height: 14px; }
 .reload.loading svg { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.url { position: relative; flex: 1; min-width: 120px; display: flex; align-items: center; height: 30px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
+.url { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center; height: 30px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
 .url:hover { background: var(--ink-rim); }
 .url:focus-within { box-shadow: var(--field-focus-edge); }
 .url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-ui); font-size: var(--t-sm); user-select: text; -webkit-user-select: text; }
@@ -154,6 +154,8 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 .url-display { position: absolute; inset: 0 var(--space-3); display: flex; align-items: center; justify-content: center; pointer-events: none; font-size: var(--t-sm); white-space: nowrap; overflow: hidden; }
 .url-host { color: var(--text-primary); }
 .url-rest { color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; }
+/* 칸이 가장 좁을 때(320)는 단추와 간격을 조금 조여 주소가 잘리지 않게 한다. */
+@media (max-width: 360px) { .strip { gap: 2px; padding: 0 6px; } .strip > .icon { width: 28px; } }
 .more-button { border-radius: var(--radius-pill); }
 .more-button.open { background: var(--ink-rim); color: var(--text-primary); }
 .more-glyph { overflow: visible; }
@@ -283,12 +285,11 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .row.new { justify-content: center; padding: 0; background: var(--ink-veil); }
 .row.new .glyph { width: auto; height: auto; font-size: 20px; font-weight: 300; }
 .row.new:hover:not(:disabled) { background: var(--ink-rim); }
-.row:focus-visible, .tab:focus-visible, .space:focus-visible, .tab-close:focus-visible { box-shadow: var(--focus-face); }
+.row:focus-visible, .tab:focus-visible, .tab-close:focus-visible { box-shadow: var(--focus-face); }
 .glyph { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
 .glyph svg { width: 14px; height: 14px; }
 .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.rail:not(.open) :is(.label, .tab-title, .tab-close, .space-name, .space-count) { display: none; }
-.rail.open .space-initial { display: none; }
+.rail:not(.open) :is(.label, .tab-title, .tab-close, .space-count) { display: none; }
 .tabs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tabs[hidden] { display: none; }
 .tab { position: relative; flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px 0 12px; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-sm); line-height: 18px; }
@@ -305,23 +306,63 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .tab.loading .tab-icon { animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .tab.loading .tab-icon { animation: none; } }
-.groups { display: flex; flex-direction: column; gap: var(--space-1); }
-.space-group { --space-c: oklch(70% 0.09 var(--space-hue, 250)); --space-ink: var(--ink-deep); position: relative; flex: none; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-:root[data-scheme="light"] .space-group { --space-c: oklch(56% 0.1 var(--space-hue, 250)); --space-ink: var(--text-on-identity); }
-.space-group.open::after { content: ""; position: absolute; left: 0; top: 26px; bottom: 0; width: 2px; border-radius: var(--radius-pill); background: var(--space-c); pointer-events: none; }
-.space { display: flex; align-items: center; justify-content: center; gap: var(--space-1); width: 100%; height: 24px; padding: 0 var(--space-2); border: 0; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--space-c) 92%, var(--ink-deep)); color: var(--space-ink); font-size: var(--t-xs); font-weight: var(--weight-medium); cursor: pointer; }
-.rail.open .space { justify-content: flex-start; }
-.space.open { background: var(--space-c); }
-.space:hover:not(:disabled) { background-image: linear-gradient(var(--wash-hover), var(--wash-hover)); }
-.space:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+/* ---- 스페이스: 레일 머리와 주소줄 단추가 지금 보는 스페이스를 말하고, 선택 화면이 모든 스페이스를 그리드로 편다.
+   스페이스 색(--space-c)은 그 스페이스를 가리키는 표식 하나다 — id 에서 정한 색상환(--space-hue)에 테마별 밝기를 입힌다. ---- */
+.space-head, .spaces-button, .space-tile { --space-c: oklch(70% 0.09 var(--space-hue, 250)); --space-ink: var(--ink-deep); }
+:root[data-scheme="light"] :is(.space-head, .spaces-button, .space-tile) { --space-c: oklch(56% 0.1 var(--space-hue, 250)); --space-ink: var(--text-on-identity); }
+.space-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--radius-xs); background: var(--ink-veil); color: var(--text-secondary); font-size: var(--t-xs); font-weight: var(--weight-medium); line-height: 1; }
+.space-mark svg { width: 14px; height: 14px; }
+[data-kind="commodore"] > .space-mark, [data-kind="commodore"] .tile-top > .space-mark { background: var(--space-c); color: var(--space-ink); }
 .space-initial { text-transform: uppercase; }
-.space-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.space-count { flex: none; margin-inline-start: auto; opacity: 0.7; font-size: var(--t-2xs); }
-.space-group .tab.active { box-shadow: inset 0 0 0 1px var(--space-c); }
+/* 레일 머리 — 접힌 레일에서는 표식 하나가 가운데 서고, 펼치면 이름과 탭 수가 붙는다. */
+.row.space-head { gap: var(--space-2); padding: 0 8px; color: var(--text-primary); font-weight: var(--weight-medium); }
+.rail:not(.open) .row.space-head { justify-content: center; padding: 0; }
+.row.space-head.open { background: var(--ink-rim); }
+.space-head .space-name { flex: 1 1 auto; }
+.space-count { flex: none; margin-inline-start: auto; padding-inline-end: var(--space-1); color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-regular); font-variant-numeric: tabular-nums; }
+.space-count[hidden] { display: none; }
+.space-head.driving .space-mark { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--agent-control-badge); }
+/* 주소줄 단추 — 사령관 스페이스를 보는 동안 글리프가 그 스페이스의 색을 입는다. */
+.spaces-button { border-radius: var(--radius-pill); }
+.spaces-button svg { width: 16px; height: 16px; }
+.spaces-button.in-space { color: var(--space-c); }
+.spaces-button.in-space:hover:not(:disabled), .spaces-button.in-space:focus-visible { color: var(--space-c); }
+.spaces-button.open, .spaces-button.in-space.open { background: var(--ink-rim); color: var(--text-primary); }
+/* 다른 스페이스에서 에이전트가 일하는 중 — 단추 모서리의 점 하나(조작 신호 토큰). */
+.spaces-button { position: relative; }
+.spaces-button.elsewhere::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--agent-control-badge); box-shadow: 0 0 0 1.5px var(--surface); }
+/* 선택 화면 — 주소줄 아래 표면 전체(레일·페이지 위)를 덮는 한 화면. */
+.backdrop.spaces-screen { top: var(--strip); overflow-x: hidden; overflow-y: auto; padding: var(--space-6) var(--space-4); background: var(--surface); scrollbar-width: thin; animation: spaces-in var(--duration-fast) ease-out; }
+@keyframes spaces-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .backdrop.spaces-screen { animation: none; } }
+.spaces-panel { display: flex; flex-direction: column; gap: var(--space-4); width: 100%; max-width: 760px; margin: 0 auto; }
+.spaces-head { display: flex; flex-direction: column; gap: var(--space-1); padding: 0 2px; }
+.spaces-head h2 { margin: 0; color: var(--text-primary); font-size: var(--t-base); font-weight: var(--weight-medium); }
+.spaces-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: var(--space-2); }
+.spaces-cell { display: flex; min-width: 0; }
+.space-tile { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: stretch; gap: var(--space-1); min-height: 84px; padding: var(--space-3); background: var(--control-rest); border: 1px solid var(--hairline); border-radius: var(--radius-md); color: var(--text-primary); text-align: start; cursor: pointer; transition: background var(--motion-tap), border-color var(--motion-tap); }
+.space-tile:hover:not(:disabled) { background: var(--control-rest-hover); border-color: var(--hairline-strong); }
+.space-tile:focus-visible { box-shadow: var(--focus-face); border-color: var(--hairline-strong); }
+.space-tile:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.space-tile.current { border-color: var(--text-secondary); background: var(--control-rest-hover); }
+.space-tile[data-kind="commodore"].current { border-color: var(--space-c); }
+.tile-top { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.tile-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-md); font-weight: var(--weight-medium); }
+.tile-current { flex: none; margin-inline-start: auto; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--ink-veil); color: var(--text-secondary); font-size: var(--t-2xs); font-weight: var(--weight-medium); white-space: nowrap; }
+.tile-agent { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: var(--radius-xs); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
+.tile-agent svg { width: 10px; height: 10px; }
+.tile-foot { display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin-top: auto; padding-top: var(--space-2); }
+.tile-icons { flex: none; display: flex; align-items: center; gap: var(--space-1); }
+.tile-icons .tab-icon { color: var(--text-tertiary); }
+.tile-more { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.tile-count { flex: none; margin-inline-start: auto; color: var(--text-secondary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.space-tile.no-tabs .tile-count { color: var(--text-tertiary); }
+@media (prefers-reduced-motion: reduce) { .space-tile { transition: none; } }
 
 /* ---- 스테이지: 표시할 페이지가 없을 때 페이지 자리를 채우는 빈 상태·사용 불가 안내 ---- */
 .empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-6); text-align: center; color: var(--text-secondary); }
 .empty-glyph { display: inline-flex; width: 28px; height: 28px; color: var(--text-tertiary); }
 .empty-glyph svg { width: 28px; height: 28px; }
+.empty-title, .empty-body { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
 .empty-title { margin: 0; color: var(--text-primary); font-size: var(--t-base); font-weight: var(--weight-medium); }
 .empty-body { margin: 0; max-width: 40ch; font-size: var(--t-sm); color: var(--text-secondary); }

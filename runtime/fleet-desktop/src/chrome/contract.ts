@@ -16,6 +16,8 @@ export interface ChromeImportSources {
 }
 export type ChromeOverlay =
   | { readonly kind: "menu" }
+  /** 스페이스 선택 화면 — 디폴트와 모든 사령관 스페이스를 그리드로 보여 준다. */
+  | { readonly kind: "spaces" }
   | { readonly kind: "suggestions" }
   | { readonly kind: "import"; readonly sources: ChromeImportSources }
   | { readonly kind: "switch"; readonly profile: string | null }
@@ -31,6 +33,8 @@ export interface ChromeUiState {
   readonly mode: "pane" | "window";
   readonly colors: ChromeColors | null;
   readonly chrome: DesktopBrowserChrome | null;
+  /** 지금 화면에 띄운 스페이스 — 셸이 정한다. 레일은 이 스페이스의 탭만 그린다. */
+  readonly spaceId: string;
   readonly pinned: boolean;
   /** 레일이 호버·포커스로 펼쳐졌는가(고정과 별개). */
   readonly expanded: boolean;
@@ -62,13 +66,15 @@ export type ChromeAction =
   | { readonly action: "select-tab"; readonly id: string }
   | { readonly action: "close-tab"; readonly id: string }
   | { readonly action: "select-space"; readonly id: string }
+  /** main 이 스스로 내는 동작 — 표시 스페이스를 맞추려고 그 탭을 띄우거나(`id`) 표시 탭을 내린다(`null`). 문서가 보낸 문장으로는 만들어지지 않는다. */
+  | { readonly action: "show-tab"; readonly id: string | null }
   | { readonly action: "pin"; readonly pinned: boolean }
   | { readonly action: "expand"; readonly expanded: boolean }
   | { readonly action: "toggle-mode" }
   | { readonly action: "open-external" }
   | { readonly action: "suggest"; readonly query: string }
   | { readonly action: "suggest-settings"; readonly enabled: boolean }
-  | { readonly action: "overlay"; readonly kind: "menu" | "suggestions" | null }
+  | { readonly action: "overlay"; readonly kind: "menu" | "spaces" | "suggestions" | null }
   | { readonly action: "attach-screenshot" }
   | { readonly action: "annotate" }
   | { readonly action: "annotate-inspect"; readonly x: number; readonly y: number; readonly seq: number }
@@ -110,7 +116,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "expand": return make(typeof body.expanded === "boolean" ? { action: "expand", expanded: body.expanded } : null);
     case "suggest": return make(str(body.query, 2048) ? { action: "suggest", query: body.query } : null);
     case "suggest-settings": return make(typeof body.enabled === "boolean" ? { action: "suggest-settings", enabled: body.enabled } : null);
-    case "overlay": return make(body.kind === null || body.kind === "menu" || body.kind === "suggestions" ? { action: "overlay", kind: body.kind } : null);
+    case "overlay": return make(body.kind === null || body.kind === "menu" || body.kind === "spaces" || body.kind === "suggestions" ? { action: "overlay", kind: body.kind } : null);
     case "annotate-inspect": return make(typeof body.x === "number" && typeof body.y === "number" && Number.isFinite(body.x) && Number.isFinite(body.y) && typeof body.seq === "number" ? { action: "annotate-inspect", x: body.x, y: body.y, seq: body.seq } : null);
     case "annotate-capture": return make(typeof body.seq === "number" ? { action: "annotate-capture", seq: body.seq } : null);
     case "annotate-done": return make(body.png === null || (typeof body.png === "string" && body.png.length <= 3_500_000) ? { action: "annotate-done", png: body.png as string | null } : null);

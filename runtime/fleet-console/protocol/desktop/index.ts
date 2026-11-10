@@ -211,10 +211,12 @@ export interface DesktopBrowserSnapshot {
 }
 
 /**
- * 셸이 브라우저 표면(칸·독립 창)과 그 크롬을 자기가 그린다는 능력. 이 능력이 없는 셸에서는 플릿 브라우저가 열리지 않는다 —
- * Console 이 크롬을 그리던 길은 남아 있지 않다. 이 능력을 모르는 Console 은 표면을 만들지 않으므로 셸의 브라우저도 열리지 않는다.
+ * 셸이 브라우저 표면(칸·독립 창)과 그 크롬을 자기가 그리고, 어느 스페이스를 보여 줄지도 자기가 정한다는 능력. 이 능력이 없는 셸에서는
+ * 플릿 브라우저가 열리지 않는다 — Console 이 크롬을 그리던 길은 남아 있지 않다. 이 능력을 모르는 Console 은 표면을 만들지 않으므로
+ * 셸의 브라우저도 열리지 않는다. 크롬 투영의 모양이 바뀌면 이름을 바꾼다: 셸과 Console 은 따로 갱신되므로, 짝이 맞지 않는 동안에는
+ * 서로 다른 모양을 주고받는 대신 브라우저가 닫혀 있어야 한다(옛 이름 `browser-surface` 는 탭 그룹 시절의 투영이다).
  */
-export const DESKTOP_BROWSER_SURFACE_CAPABILITY = "browser-surface";
+export const DESKTOP_BROWSER_SURFACE_CAPABILITY = "browser-surface-spaces";
 export interface DesktopBrowserSurface {
   readonly id: string;
   readonly browserId: string;
@@ -228,7 +230,38 @@ export interface DesktopBrowserSurfaceRelay {
   readonly status: "opened" | "closed";
 }
 
-export type DesktopBrowserSpaceKind = "commodore" | "objective" | "session" | "human";
+/**
+ * 플릿 브라우저 스페이스 계약 — Console(탭의 소속·쓰기 정책·상한)과 셸(표시·선택·그리드)이 함께 읽는다.
+ *
+ * 브라우저는 Console 전체에 하나이고 쿠키·로그인 프로필도 하나다. 그 안의 탭은 스페이스로 나뉘어 화면만 따로 보인다.
+ * - 사령관 스페이스(`commodore:<commodoreId>`) — 사령관마다 하나. 그 사령관 세션과 그 사령관이 소유한 Objective 의 지휘관·구성원이
+ *   함께 쓴다. 사령관이 있는 동안 탭이 없어도 존재한다.
+ * - 디폴트 스페이스(`DESKTOP_BROWSER_DEFAULT_SPACE_ID`) — 사람이 연 탭과, 사령관에 묶이지 않은 세션의 탭이 선다.
+ * 어느 스페이스를 화면에 띄울지는 셸이 정하고 기억한다. Console 은 탭마다 스페이스와 연 쪽을 적어 에이전트의 쓰기를 가리고,
+ * 표시 탭(`activeTabId`) 하나만 안다.
+ */
+export const DESKTOP_BROWSER_DEFAULT_SPACE_ID = "default";
+export const DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX = "commodore:";
+/** 동시 생성 예약까지 센 탭 상한 — 네이티브 뷰의 자원 사용을 제한한다. 사령관 스페이스는 그 사령관의 모든 Objective 가 모이므로 디폴트의 두 배다. */
+export const DESKTOP_BROWSER_TAB_LIMITS = { commodore: 16, default: 8, total: 32 } as const;
+export type DesktopBrowserSpaceKind = "commodore" | "default";
+
+export function commodoreBrowserSpaceId(commodoreId: string): string {
+  return `${DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX}${commodoreId}`;
+}
+
+export function commodoreOfBrowserSpace(spaceId: string): string | null {
+  return spaceId.startsWith(DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX) ? spaceId.slice(DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX.length) || null : null;
+}
+
+export function browserSpaceKindOf(spaceId: string): DesktopBrowserSpaceKind {
+  return commodoreOfBrowserSpace(spaceId) ? "commodore" : "default";
+}
+
+export function browserSpaceTabLimit(spaceId: string): number {
+  return DESKTOP_BROWSER_TAB_LIMITS[browserSpaceKindOf(spaceId)];
+}
+
 export interface DesktopBrowserChromeTab {
   readonly id: string;
   readonly spaceId: string;
@@ -240,23 +273,26 @@ export interface DesktopBrowserChromeTab {
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
 }
+export type DesktopBrowserViewportPreset = "responsive" | "mobile" | "tablet";
+/** 크롬 투영의 스페이스 한 칸. 디폴트와 모든 사령관 스페이스가 탭이 없어도 실린다 — 디폴트가 맨 앞이다. */
 export interface DesktopBrowserChromeSpace {
   readonly id: string;
   readonly kind: DesktopBrowserSpaceKind;
-  /** 사람이 읽는 이름 — Objective 제목, 사령관 이름. 모르면 빈 문자열이고 크롬이 기본 낱말을 쓴다. */
+  /** 사람이 읽는 이름 — 사령관 이름. 모르면 빈 문자열이고 크롬이 기본 낱말을 쓴다. */
   readonly label: string;
   /** 이 스페이스의 에이전트가 지금 브라우저를 쓰는 중인가. */
   readonly driving: boolean;
   /** 에이전트의 작업 탭인 이 스페이스의 탭들. */
   readonly agentTabIds: readonly string[];
+  /** 이 스페이스의 뷰포트 프리셋 — 뷰포트는 스페이스마다 따로다. */
+  readonly viewportPreset: DesktopBrowserViewportPreset;
 }
-export type DesktopBrowserViewportPreset = "responsive" | "mobile" | "tablet";
 /** Console 이 소유한 브라우저 상태의 크롬용 투영. 셸은 이것을 그리기만 하고 바꾸는 일은 Console 의 REST 로 요청한다. */
 export interface DesktopBrowserChrome {
   readonly browserId: string;
   readonly spaces: readonly DesktopBrowserChromeSpace[];
-  readonly displayedSpaceId: string | null;
   readonly tabs: readonly DesktopBrowserChromeTab[];
+  /** 사람 화면에 띄운 탭. 셸은 이 탭의 스페이스를 따라가고, 스페이스를 옮길 때는 이 값을 바꿔 달라고 요청한다. */
   readonly activeTabId: string | null;
   readonly viewport: { readonly preset: DesktopBrowserViewportPreset; readonly width: number; readonly height: number; readonly setBy: "user" | "agent" | null };
   /** 에이전트가 브라우저를 조작 중인가. */
@@ -320,11 +356,11 @@ const isFaviconUrl = (value: unknown): value is string | null => value === null 
 export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserChrome {
   if (!isRecord(value) || !isSafeId(value.browserId) || !Array.isArray(value.spaces) || !Array.isArray(value.tabs) || value.tabs.length > 64 || value.spaces.length > 64) return false;
   const viewport = value.viewport;
-  return value.spaces.every((space) => isRecord(space) && isSafeId(space.id) && ["commodore", "objective", "session", "human"].includes(String(space.kind)) && isShortText(space.label, 512)
-      && typeof space.driving === "boolean" && Array.isArray(space.agentTabIds) && space.agentTabIds.every(isSafeId))
+  return value.spaces.every((space) => isRecord(space) && isSafeId(space.id) && (space.kind === "commodore" || space.kind === "default") && isShortText(space.label, 512)
+      && typeof space.driving === "boolean" && Array.isArray(space.agentTabIds) && space.agentTabIds.every(isSafeId) && ["responsive", "mobile", "tablet"].includes(String(space.viewportPreset)))
     && value.tabs.every((tab) => isRecord(tab) && isSafeId(tab.id) && isSafeId(tab.spaceId) && isShortText(tab.url, 4096) && isShortText(tab.title, 1024) && isFaviconUrl(tab.favicon)
       && typeof tab.loading === "boolean" && typeof tab.canGoBack === "boolean" && typeof tab.canGoForward === "boolean")
-    && (value.displayedSpaceId === null || isSafeId(value.displayedSpaceId)) && (value.activeTabId === null || isSafeId(value.activeTabId))
+    && (value.activeTabId === null || isSafeId(value.activeTabId))
     && isRecord(viewport) && ["responsive", "mobile", "tablet"].includes(String(viewport.preset)) && isFiniteNumber(viewport.width) && isFiniteNumber(viewport.height)
     && (viewport.setBy === null || viewport.setBy === "user" || viewport.setBy === "agent")
     && typeof value.driving === "boolean" && (value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
