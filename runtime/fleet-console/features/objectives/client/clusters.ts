@@ -1,3 +1,5 @@
+import { followupGate, isFollowupSelectable, requestFollowupFocus, setFollowupOpen } from "./followups.js";
+import { openObjectivePopup } from "./objectives-panel.js";
 import type { ConversationMemberProfile, GroupBoardActions } from "../../execution/shared/conversation/types.js";
 import type { LocalizedText } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
@@ -16,7 +18,7 @@ import { answeringText, commodoreAliasOf, commodoreBoardOf, commodoreRevision, d
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
-import { activeObjectiveId, viewedCommodoreId, findFinishedObjective, finishedObjectivesRevision, focusObjective, isObjectiveSurfaceOpen, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, objectiveRecordSummaries, post, readAllTheaters, readOwnerView, revealObjective, runtimeHydration, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
+import { viewedCommodoreId, findFinishedObjective, finishedObjectivesRevision, focusObjective, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, objectiveRecordSummaries, post, readAllTheaters, runtimeHydration, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
 
 /**
  * 목표 → 호스트 묶음 서술자.
@@ -229,8 +231,13 @@ function reviewObjective(objective: Objective, language: "en" | "ko"): void {
   if (openFollowups(objective).length > 0) {
     // 후보 칸은 그 목표의 구성원 채팅 입력창 위에 선다 — 가운데 칸이 다른 대화여도 그 지휘관 대화부터 연다.
     if (listedObjectiveSummaries().some((summary) => summary.id === objective.id)) focusObjective(objective.id);
-    revealObjective({ objectiveId: objective.id, followups: true });
     openObjectiveFromCluster(objective.theaterId, objective.id);
+    if (isFollowupSelectable(objective)) {
+      setFollowupOpen(objective.id, true);
+      requestFollowupFocus(objective.id);
+    } else if (followupGate(objective) === "criteria") {
+      openObjectivePopup(objective.id);
+    }
     return;
   }
   const api = objectivesApi();
@@ -261,12 +268,11 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     // 목록 밖 표면의 결정 표식(얼굴 「!」·칩·궤도·폰 대화 행)은 사람의 차례인 요청에만 — 사령관이 맡은 요청은 사람을 기다리지 않는다.
     const personDecision = decisionTurn(objective, boardOf(objective.commodoreId).active) === "person";
     const openDetail = () => {
-      revealObjective({ objectiveId: objective.id });
       openObjectiveFromCluster(objective.theaterId, objective.id);
       // 대화 중심 화면 — 시작 전 목표는 가운데 칸에 시작 화면으로 선다(활성 Objective 이 비고 세 영역이 이 목표를 가리킨다).
       if (row?.glyph === "fresh") openFreshConversation(objective.id);
     };
-    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, openDetail, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
+    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, () => openObjectivePopup(objective.id), (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
       { state: (objectiveId) => shownActivity(activity.get(objectiveId) ?? "closed"), roster }, boardOf(objective.commodoreId).active);
     const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
     if (!structured) {
@@ -330,8 +336,8 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       const missionId = objectiveId
         ? objectiveId.startsWith("mission:") ? objectiveId.slice("mission:".length) : representative.get(objectiveId)
         : undefined;
-      revealObjective(missionId ? { objectiveId: objective.id, missionId } : { objectiveId: objective.id });
-      openObjectiveFromCluster(objective.theaterId, objective.id);
+      if (missionId) openObjectivePopup(objective.id, "crew", missionId);
+      else openObjectiveFromCluster(objective.theaterId, objective.id);
     };
     out.push({ id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, root: commander, members, conversation, open, ...(personDecision ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
   }
@@ -378,7 +384,7 @@ let cachedInputs: readonly unknown[] = [];
  * 것으로 센다. 가운데 칸의 완료 화면 입력창이 이 서술자의 보드 동작(지휘관에게만 가는 메시지·범위 넓히기 칩)을 읽는다.
  */
 function doneStandInCluster(objective: Objective, roster: ModelRoster | null, boardOf: (theaterId: string) => CommodoreBoard): ObjectiveCluster {
-  const open = () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId); };
+  const open = () => openObjectivePopup(objective.id);
   const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, open, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
     { state: () => "closed", roster }, boardOf(objective.commodoreId).active);
   return { id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, avatarObjectiveId: objective.id, members: [], conversation };
@@ -400,19 +406,15 @@ export const objectivesClusterSource: ObjectiveClusterSource = {
   get: () => {
     const summaries = objectiveRecordSummaries();
     const theaterStates = readAllTheaters();
-    // 줄의 선택 표시는 표면이 열려 보고 있는 목표에만 선다 — 표면은 활성 Theater 를 보므로 비활성 Theater 의 줄에는 서지 않는다.
-    // Objective 이 활성인 동안은 그 줄(칩)이 하이라이트를 가지므로 표면 선택으로는 서지 않는다 — 사이드바 하이라이트는 언제나 한 줄이다.
-    const surfaceOpen = isObjectiveSurfaceOpen() && !activeObjectiveId();
     const commodoreId = viewedCommodoreId();
-    // 가운데 칸에 시작 전 목표가 서 있으면 그 줄이 하이라이트를 가진다 — 패널을 닫아도 가운데 칸이 가리키는 대상은 그대로다.
-    const selected = freshConversationObjectiveId() ?? (surfaceOpen ? readOwnerView(commodoreId).selected : null);
+    const selected = freshConversationObjectiveId();
     // 기한 지남은 날짜로, 정체는 시간으로 판정하므로 날·정체 점검 간격이 바뀌면 다시 셈한다.
     const now = Date.now();
     // 런타임 축이 수화되기 전(pending)과 끊긴 동안(degraded)의 요약 활동은 관측이 아니라 폴백(ended·idle)이다 — 「모름」을
     // 휴면·유휴로 접어 정체를 세우지 않도록, 축을 신뢰할 수 있을 때만 보드가 직접 센다. 전이는 호스트 상태 통지로 깨어난다.
     const runtimeReady = runtimeHydration() === "ready";
     const roster = readLaunchRoster();
-    const inputs = [summaries, surfaceOpen, commodoreId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), roster, finishedObjectivesRevision(), ...theaterStates];
+    const inputs = [summaries, commodoreId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), roster, finishedObjectivesRevision(), ...theaterStates];
     if (inputs.length === cachedInputs.length && inputs.every((input, index) => input === cachedInputs[index])) return cached;
     const activity = new Map(summaries.map((summary) => [summary.id, summary.activity]));
     // 보관(describe) 요약은 화면에선 휴면으로 서지만 관측이 아니다 — 서버처럼 관측 없음(null)으로 두어 정체로 세지 않는다.

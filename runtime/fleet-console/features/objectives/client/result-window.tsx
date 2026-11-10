@@ -89,9 +89,8 @@ function fit(rect: Rect): Rect {
   return { x: clamp(rect.x, GAP, window.innerWidth - GAP - w), y: clamp(rect.y, GAP, window.innerHeight - GAP - h), w, h };
 }
 function defaultRect(): Rect {
-  const railLeft = document.querySelector(".objectives-container")?.getBoundingClientRect().left ?? window.innerWidth;
   const composerTop = visibleComposer()?.getBoundingClientRect().top ?? window.innerHeight - 76;
-  return fit({ x: (railLeft > MIN_W + GAP * 2 ? railLeft : window.innerWidth) - 732, y: 72, w: 720, h: Math.min(560, composerTop - 84) });
+  return fit({ x: window.innerWidth - 732, y: 72, w: 720, h: Math.min(560, composerTop - 84) });
 }
 function initialRect(): Rect {
   try {

@@ -154,7 +154,6 @@ function ObjectiveMark({ commodoreId, objectiveId, size }: { readonly commodoreI
   return <ObjectiveAvatar objectiveId={objectiveId} role="commander" state={commanderMongleState(objective, activity === "background" ? "running" : activity)} size={size} />;
 }
 export const commodoreBoard: CommodoreBoardClient = {
-  railEntryIds: ["objectives"],
   serverReached: noteAlive,
   read(commodoreId) { const source = readBoard(commodoreId); let hit = snapshots.get(source); if (!hit) { hit = { loaded: source.loaded, objectives: projectList(source.objectives) }; snapshots.set(source, hit); } return hit; },
   subscribe: subscribeObjective,

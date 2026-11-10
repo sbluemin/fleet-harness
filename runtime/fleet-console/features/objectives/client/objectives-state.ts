@@ -1,6 +1,6 @@
 import { commodoreIds, subscribeCommodore } from "./board-commodore.js";
 import type { ObjectivesClientDeps } from "./deps.js";
-import { useEffect, useSyncExternalStore } from "react";
+import { useSyncExternalStore } from "react";
 
 import { OBJECTIVE_PURGED_EVENT } from "../shared/records/archive.js";
 import { accessObjective, describeObjective } from "../../execution/client/objective-records.js";
@@ -35,9 +35,6 @@ interface OwnerState {
 
 export interface RevealTarget {
   readonly objectiveId: string;
-  readonly missionId?: string;
-  /** 사이드바 검토 대기 글리프에서 왔다 — 표면이 후속 후보 선택을 연다. */
-  readonly followups?: boolean;
   readonly at: number;
 }
 
@@ -292,8 +289,6 @@ function setBoard(commodoreId: string, next: Partial<OwnerState>): void {
   boards.set(commodoreId, { ...(boards.get(commodoreId) ?? EMPTY), ...next });
   notify();
   describeMissingObjectiveRecords();
-  // 보드에 없어 미뤄 둔 선택 — 기다리던 목표가 이번에 들어왔으면 고른다(아직이면 다시 미룬다).
-  awaitedSelection?.();
 }
 
 /** 사령관 UUID 목록으로 보드를 읽고, 관측 기록(Objective 의 소유 사령관)은 보완한다. Theater 에서 주인을 찾지 않는다. */
@@ -388,7 +383,8 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
   });
   // 활성 Theater 를 먼저 읽고, 그 요청이 끝난 뒤 등록된 나머지 Theater 와 최상위 에이전트 Objective 이 속한 Theater 를 읽는다.
   // 캡션 칩은 표면이 닫혀 있어도, 그리고 그 Theater 가 활성이 아니어도 서야 한다. loadBoard 는 멱등이다.
-  let lastContextObjective = contextObjectiveId(ctx);
+  const currentObjective = () => ctx.consoleState.getSelectedObjectiveId?.() ?? ctx.consoleState.getActiveObjectiveId() ?? null;
+  let previousObjective = currentObjective();
   let listedCommodores = new Set(commodoreIds());
   let lastConnection = ctx.consoleState.getConnection?.() ?? "live";
   objectiveRecordsSnapshot = ctx.consoleState.getObjectiveRecords({ nested: true });
@@ -403,17 +399,11 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
     const listed = new Set(commodoreIds());
     for (const [commodoreId, retry] of [...loadRetries]) if (retry.permanent && listed.has(commodoreId) && !listedCommodores.has(commodoreId)) unsettle(commodoreId);
     listedCommodores = listed;
-    // 가장 마지막 선택이 이긴다 — 어느 경로로든 Objective 이 활성이 되거나 사이드바에서 열지 않고 골라지면 그 전에 줄·팔레트가
-    // 남긴 reveal 은 버리고, 표면이 열려 있으면 그 Objective 의 목표로 옮긴다. 닫혀 있으면 다음에 열릴 때 따라간다.
-    const contextObjective = contextObjectiveId(ctx);
-    if (contextObjective !== lastContextObjective) {
-      lastContextObjective = contextObjective;
-      // 사령관 목록이 다른 살아 있는 목표로 옮기면 표면 id는 그대로 null이다. 앞 대화에서 고른 보기가 새 목표를 가리지 않게 먼저 비운다.
-      if (selectionTheater) clearSelectionTheater();
-      if (contextObjective) {
-        reveal = null;
-        followActiveObjective();
-      }
+    // 다른 대화를 고르면 폰의 아직 소비하지 않은 이전 착지 예약을 취소한다.
+    const objective = currentObjective();
+    if (objective !== previousObjective) {
+      previousObjective = objective;
+      if (objective) reveal = null;
     }
     objectiveRecordsSnapshot = ctx.consoleState.getObjectiveRecords({ nested: true });
     loadRegisteredTheaters(ctx.api);
@@ -421,35 +411,9 @@ export function installObjectiveState(ctx: ObjectivesClientDeps): () => void {
     notify();
     describeMissingObjectiveRecords();
   });
-  let focusOutTimer: ReturnType<typeof setTimeout> | null = null;
-  const onFocusOut = (event: FocusEvent) => {
-    if (focusOutTimer !== null) { clearTimeout(focusOutTimer); focusOutTimer = null; }
-    if (!pendingSelectionObjectiveId || isObjectiveEditing(event.relatedTarget)) return;
-    // 실제 포인터 이동은 focusout과 다음 focus 사이에 microtask를 실행할 수 있다.
-    // 이동 대상을 먼저 확인하고, 전체 포커스 전이가 끝난 다음 task에서 한 번 더 판정한다.
-    focusOutTimer = setTimeout(() => {
-      focusOutTimer = null;
-      if (installed !== ctx || isObjectiveEditing()) return;
-      const objectiveId = pendingSelectionObjectiveId;
-      pendingSelectionObjectiveId = null;
-      if (objectiveId) handleMapObjectiveSelected(objectiveId);
-    }, 0);
-  };
-  if (typeof document !== "undefined") document.addEventListener("focusout", onFocusOut);
-  let seenSurfaceObjectiveId = conversationSurfaceObjectiveId();
-  const offConversation = ctx.conversation?.subscribe(() => {
-    const next = conversationSurfaceObjectiveId();
-    if (next === seenSurfaceObjectiveId) return;
-    seenSurfaceObjectiveId = next;
-    // 시작 전·완료 표면의 목표가 바뀌거나 걷히면, 그 표면에 묶어 둔 보기를 비운다. 새 선택은 이 알림 다음에 다시 선다.
-    if (selectionTheater && selectionTheater.surfaceObjectiveId !== next) clearSelectionTheater();
-  }) ?? (() => {});
   return () => {
-    offConversation();
     offOwnerRemoved(); offItem(); offArchived(); offRestored(); offGroup(); offPurged(); offRemoved(); offReconnect?.(); offOwners(); offConsole();
-    if (typeof document !== "undefined") document.removeEventListener("focusout", onFocusOut);
-    if (focusOutTimer !== null) clearTimeout(focusOutTimer);
-    if (installed === ctx) { installed = null; clearSelectionTheater(); }
+    if (installed === ctx) installed = null;
     clearRetryTimer();
   };
 }
@@ -737,7 +701,6 @@ export function forgetObjectiveOwner(commodoreId: string): void {
   for (const id of ids) { objectiveRequests.delete(id); fetching.delete(id); describing.delete(id); unknownToServer.delete(id); objectiveRecordLocations.set(id, "deleted"); }
   removedOwnerObjectiveIds.set(commodoreId, ids);
   objectiveRecordsSnapshot = objectiveRecordsSnapshot.filter((row) => row.commodoreId !== commodoreId);
-  if (selectionTheater?.commodoreId === commodoreId) selectionTheater = null;
   if (reveal && ids.has(reveal.objectiveId)) reveal = null;
   finishedRevision += 1; describedRevision += 1; noteFinished(); notify();
   for (const listener of [...viewListeners]) listener();
@@ -790,18 +753,8 @@ export function runtimeHydration(): ObjectiveRuntimeHydration {
   return installed?.consoleState.getObjectiveRuntimeHydration?.() ?? "ready";
 }
 
-/** 목표가 따라가는 Objective — 패널 머리 하위 탭이 패널이 닫힌 동안 어느 목표의 탭을 세울지 고를 때 읽는다. */
-export function followedObjectiveId(): string | null {
-  return contextObjectiveId();
-}
-
-/** 목표가 따라가는 Objective — 사이드바에서 열지 않고 고른 것이 있으면 그것, 없으면 캔버스의 활성 Objective. */
-function contextObjectiveId(host: ObjectivesClientDeps | null = installed): string | null {
-  return host?.consoleState.getSelectedObjectiveId?.() ?? host?.consoleState.getActiveObjectiveId() ?? null;
-}
-
-/** 팔레트·캡션에서 "이 항목으로" — 표면이 마운트되어 있으면 즉시, 아니면 열릴 때 집는다. */
-export function revealObjective(target: { objectiveId: string; missionId?: string; followups?: boolean }): void {
+/** 폰의 목표 정보·목적지 화면이 열릴 때 집는 착지 대상. */
+export function revealObjective(target: { objectiveId: string }): void {
   reveal = { ...target, at: Date.now() };
   notify();
 }
@@ -814,20 +767,8 @@ export function useReveal(): RevealTarget | null {
   return useSyncExternalStore(subscribeObjective, () => reveal, () => reveal);
 }
 
-/**
- * 표면의 보기 상태 — 고른 목록 · 펼친 항목 · 구획 접힘 · 기한 필터. 표면을 닫으면 컴포넌트는 내려가지만 보던 자리는
- * 여기 Theater 별로 남아, 다시 열면 그대로 선다. 보는 사람의 편의라 메모리에만 둔다(새로고침이면 처음부터).
- */
-export interface ObjectiveViewState {
-  readonly list: string;
-  readonly selected: string | null;
-  readonly collapsed: Readonly<Record<string, boolean>>;
-  readonly dueFilter: string;
-  readonly externalSelectionId?: string | null;
-  /** 목표 상세에서 고른 탭 — Theater 마다 하나, 다른 목표로 가도 그 탭으로 연다. 없으면 「목표」. */
-  readonly detailTab?: string;
-}
-const VIEW_DEFAULT: ObjectiveViewState = { list: "all", selected: null, collapsed: { done: true }, dueFilter: "all", externalSelectionId: null };
+export interface ObjectiveViewState { readonly detailTab?: string; }
+const VIEW_DEFAULT: ObjectiveViewState = {};
 const views = new Map<string, ObjectiveViewState>();
 const viewListeners = new Set<() => void>();
 export function readOwnerView(commodoreId: string | null): ObjectiveViewState {
@@ -837,19 +778,8 @@ export function patchOwnerView(commodoreId: string | null, patch: (current: Obje
   if (!commodoreId || removedOwners.has(commodoreId)) return;
   const current = readOwnerView(commodoreId);
   const next = { ...current, ...patch(current) };
-  if (
-    next.list === current.list &&
-    next.selected === current.selected &&
-    next.collapsed === current.collapsed &&
-    next.dueFilter === current.dueFilter &&
-    next.externalSelectionId === current.externalSelectionId &&
-    next.detailTab === current.detailTab
-  ) return;
+  if (next.detailTab === current.detailTab) return;
   views.set(commodoreId, next);
-  for (const listener of viewListeners) listener();
-}
-/** 표면이 열리고 닫힌 것을 보기 구독자에게 알린다 — 사이드바 줄의 선택 표시는 표면이 열려 있을 때만 선다. */
-export function notifyObjectiveSurface(): void {
   for (const listener of viewListeners) listener();
 }
 export function subscribeObjectiveView(listener: () => void): () => void {
@@ -862,137 +792,6 @@ export function useOwnerView(commodoreId: string | null): ObjectiveViewState {
     () => readOwnerView(commodoreId),
     () => readOwnerView(commodoreId),
   );
-}
-
-let latestSelectionToken = 0;
-let pendingSelectionObjectiveId: string | null = null;
-/**
- * 보드에 아직 없는 목표를 고르려던 선택 — 새 세션이 첫 메시지로 선 직후처럼 Objective 이 목표보다 먼저 도착하면, 그 목표가 보드에
- * 들어오는(사건·재조회) setBoard 에서 마저 고른다. 이것이 없으면 사령관 보기 상태의 예전 선택(다른 목표)이 패널에 남는다.
- */
-let awaitedSelection: (() => void) | null = null;
-
-function isObjectiveEditing(element: EventTarget | null = typeof document === "undefined" ? null : document.activeElement): boolean {
-  return typeof HTMLElement !== "undefined" && element instanceof HTMLElement
-    && !!element.closest(".objectives-root")
-    && (element.isContentEditable || !!element.closest('input, textarea, [contenteditable=""], [contenteditable="true"], [contenteditable="plaintext-only"], [role="textbox"]'));
-}
-
-let selectionTheater: { readonly contextTheaterId: string | null; readonly commodoreId: string; readonly surfaceObjectiveId: string | null } | null = null;
-
-function conversationSurfaceObjectiveId(): string | null {
-  const id = installed?.conversation?.current()?.params.objectiveId;
-  return typeof id === "string" ? id : null;
-}
-
-function conversationSurfaceCommodoreId(): string | null {
-  const id = installed?.conversation?.current()?.params.commodoreId;
-  return typeof id === "string" ? id : null;
-}
-
-function clearSelectionTheater(): void {
-  pendingSelectionObjectiveId = null;
-  awaitedSelection = null;
-  selectionTheater = null;
-  latestSelectionToken += 1;
-  notify();
-}
-
-/** 전역 Theater와 다른 무대도 목표 표면만 따라간다. 다른 레일 도구의 문맥은 바꾸지 않는다. */
-export function objectiveDisplayOwnerId(contextTheaterId: string | null): string | null {
-  const surfaceObjective = conversationSurfaceObjectiveId();
-  const surfaceCommodore = conversationSurfaceCommodoreId();
-  // 사람이 고른 보기는 그 표면에서만 표면 사령관보다 앞선다. 다른 목표로 옮기면 맞지 않아 새 목표를 가리지 않는다.
-  if (selectionTheater?.contextTheaterId === contextTheaterId && selectionTheater.surfaceObjectiveId === surfaceObjective) return selectionTheater.commodoreId;
-  if (surfaceObjective && surfaceCommodore) return surfaceCommodore;
-  const activeId = contextObjectiveId();
-  const objectiveId = activeId ?? surfaceObjective;
-  return objectiveId ? findAnyObjective(objectiveId)?.commodoreId ?? objectiveRecordsSnapshot.find((row) => row.id === objectiveId)?.commodoreId ?? viewedCommodoreId() : viewedCommodoreId();
-}
-export function useObjectiveDisplayOwner(contextTheaterId: string | null): string | null {
-  const read = () => objectiveDisplayOwnerId(contextTheaterId);
-  const theaterId = useSyncExternalStore(subscribeObjective, read, read);
-  useEffect(() => {
-    if (selectionTheater && selectionTheater.contextTheaterId !== contextTheaterId) clearSelectionTheater();
-  }, [contextTheaterId]);
-  return theaterId;
-}
-
-/**
- * 사이드바에서 Objective을 고르면 열린 목표 레일에 반영한다.
- * 레일이 닫혀 있거나 확장 전용 표면일 때는 자동 열기/전환 없이 조용히 무시하고, 미연결 Objective 은 기존 선택을 보존한다.
- */
-export function handleMapObjectiveSelected(objectiveId: string): void {
-  selectObjectiveObjective(objectiveId, () => !!installed?.rail.isOpen(OBJECTIVE_PANEL_ID));
-}
-
-function selectObjectiveObjective(objectiveId: string, shown: () => boolean): void {
-  if (!installed || !shown()) return;
-  const token = ++latestSelectionToken;
-  pendingSelectionObjectiveId = null;
-  // 자동 등단으로 현재 목표의 편집 DOM을 교체하지 않는다. 입력을 떠나면 가장 최근 등단만 적용한다.
-  if (isObjectiveEditing()) {
-    pendingSelectionObjectiveId = objectiveId;
-    return;
-  }
-
-  const allOps = objectiveRecordsSnapshot;
-  const op = allOps.find((candidate) => candidate.id === objectiveId)
-    ?? installed.consoleState.getObjectiveRecords({ nested: true }).find((candidate) => candidate.id === objectiveId);
-
-  let targetTheaterId: string | null = op?.commodoreId ?? null;
-  if (!targetTheaterId) {
-    for (const [tId, tState] of boards) {
-      if (tState.objectives.some((objective) => objective.id === objectiveId || objective.members.some((m) => m.id === objectiveId && m.sessionName !== null))) {
-        targetTheaterId = tId;
-        break;
-      }
-    }
-  }
-  if (!targetTheaterId) {
-    targetTheaterId = viewedCommodoreId();
-  }
-  if (!targetTheaterId) return;
-
-  const theaterId = targetTheaterId;
-  selectionTheater = { contextTheaterId: viewedTheaterId(), commodoreId: theaterId, surfaceObjectiveId: conversationSurfaceObjectiveId() };
-  awaitedSelection = null;
-  const select = () => {
-    if (token !== latestSelectionToken || !shown()) return;
-    if (selectionTheater?.commodoreId !== theaterId) return;
-    // 조회를 기다리는 사이 시작한 편집도 같은 보류 규칙을 따른다.
-    if (isObjectiveEditing()) { pendingSelectionObjectiveId = objectiveId; return; }
-    const matchingObjective = boards.get(theaterId)?.objectives.find(
-      (objective) => objective.id === objectiveId || objective.members.some((member) => member.id === objectiveId && member.sessionName !== null),
-    );
-    if (!matchingObjective) {
-      // 목표가 될 최상위 에이전트 Objective 이면 그 목표가 도착할 때 마저 고르고, 그동안 같은 사령관의 다른 목표를 보이지 않게 자리를 비운다.
-      // 서버가 목표가 아니라고 답한 Objective(미연결)은 보던 자리를 그대로 둔다.
-      if (op?.type === "agent" && !op.parentObjectiveId && !unknownToServer.has(objectiveId)) {
-        patchOwnerView(theaterId, () => ({ selected: null, externalSelectionId: null }));
-        // 기다리는 사이 사람이 패널에서 다른 목표를 고르면 그 선택이 이긴다.
-        awaitedSelection = () => { awaitedSelection = null; if (readOwnerView(theaterId).selected === null) select(); };
-      }
-      return;
-    }
-    patchOwnerView(theaterId, () => ({ selected: matchingObjective.id, externalSelectionId: matchingObjective.id }));
-  };
-  if (boards.get(theaterId)?.loaded) select();
-  else { rearm(theaterId); void loadBoard(installed.api, theaterId).then(select); }
-  // 연결된 목표가 없어도 목록은 무대 소속 Theater만 보여 준다.
-  notify();
-}
-
-/**
- * 표면이 열릴 때 — 사람이 줄·팔레트로 가리킨 목표(reveal)가 없으면 사이드바에서 고른 Objective, 없으면 캔버스의 활성 Objective 을
- * 따라간다. 사이드바가 그 줄을 활성·선택으로 보이는 동안 표면이 빈 채 서지 않게 한다. 선택 규칙(편집 중 보류, 연결 목표가 없으면
- * 보던 자리 유지)은 위와 같고, 따라갈 Objective 이 없으면 보던 자리 그대로다.
- */
-export function followActiveObjective(): void {
-  if (reveal) return;
-  const objectiveId = contextObjectiveId();
-  // 열린 레일 패널이 활성 Objective 의 목표를 보인다.
-  if (objectiveId) selectObjectiveObjective(objectiveId, isObjectiveSurfaceOpen);
 }
 
 const ACCESS_ARRIVAL_TIMEOUT_MS = 5_000;
@@ -1025,77 +824,13 @@ export function focusObjective(objectiveId: string): void {
     .catch(() => { /* 복원하지 못하면 그 자리에 머문다 — 줄은 그대로 휴면으로 남는다 */ });
 }
 
-const OBJECTIVE_PANEL_ID = "objectives";
-/** 아이콘·단축키 — 레일의 목표 패널을 여닫는다. 목표는 레일에만 선다. */
-export function toggleObjectivePanel(rail = installed?.rail): void {
-  if (!rail) return;
-  if (rail.isOpen(OBJECTIVE_PANEL_ID)) rail.close(OBJECTIVE_PANEL_ID);
-  else rail.open(OBJECTIVE_PANEL_ID);
-}
-
-export function isObjectiveSurfaceOpen(): boolean {
-  return !!installed && installed.rail.isOpen(OBJECTIVE_PANEL_ID);
-}
-
-/** 목표가 하나도 없는 Theater 의 입구 — 목표는 새 Objective 에서 시작하니 호스트 컴포저를 연다. 어느 모양으로 서는지는 호스트 몫이다. */
-export function openNewObjective(): void {
-  installed?.composer.open();
-}
-
-/**
- * 사이드바 줄·캡션 칩·질문 카드·팔레트의 「이 목표로」 — 레일의 목표 패널을 연다.
- * 지금 보는 대화가 다른 Theater 의 것이면 그 Theater 를 본 뒤 연다. reveal 은 패널이 새 Theater 의 목록을 읽을 때 집힌다.
- * 대화 중심 화면에서는 그 목표의 대화(지휘관 Objective, 없으면 시작 전 화면)를 가운데 칸에 세운다 — 보이는 Theater 가 그 대화에서
- * 파생되고, 패널·오른쪽 패널이 그 Theater 를 따른다. Theater 옮기기(viewTheater)는 가운데 대화를 걷고 그 Theater 의 Inbox(Theater
- * 설정)를 여므로, 세울 대화가 없을 때(폰 배치·목표를 모를 때)만 부른다. 이미 그 Theater 를 보고 있으면 아무것도 옮기지 않는다.
- */
+/** 목표 대화로만 이동한다 — 우측 사이드바를 열거나 바꾸지 않는다. */
 export function openObjectiveFromCluster(theaterId?: string, objectiveId?: string): void {
-  if (objectiveId) selectObjectiveObjective(objectiveId, () => true);
-  const viewed = installed?.consoleState.getViewedTheaterId?.() ?? installed?.consoleState.getActiveTheaterId() ?? null;
-  if (installed && theaterId && viewed !== theaterId) {
-    if (objectiveId && showObjectiveConversation(objectiveId, theaterId)) {
-      // 대화 이동은 호스트가 다음 커밋의 effect 에서 마저 한다. 보이는 Theater 는 같은 커밋의 더 이른 effect 에서 바뀌므로,
-      // 바뀐 뒤 그 커밋이 끝나기를 한 번 더 기다려 패널을 연다. 목표의 theaterId 는 사령관 목표 폴더의 해시라 보이는 Theater 와
-      // 같아질 일이 없다 — 보이는 Theater 가 움직였는지, 움직이지 않아도(같은 사령관) 다음 커밋이 지났는지를 기다린다.
-      whenViewMoves(viewed, () => { setTimeout(openObjectivePanel, 0); });
-      return;
-    }
-    installed.consoleState.viewTheater?.(theaterId);
-  }
-  openObjectivePanel();
+  if (!objectiveId) return;
+  const objective = findAnyObjective(objectiveId);
+  showObjectiveConversation(objectiveId, theaterId ?? objective?.theaterId ?? "");
 }
 
-/**
- * 이미 열려 있어도 다시 연다: 호스트의 열기는 여닫기가 아니라 드러내기이고, 폰에서는 레일 스토어가 열림으로 남아 있어도
- * 목적지 화면으로 옮기는 것이 이 열기다.
- */
-function openObjectivePanel(): void {
-  installed?.rail.open(OBJECTIVE_PANEL_ID);
-}
-
-/**
- * 보이는 대화의 Theater 가 from 에서 움직이면 한 번 부른다. 움직이지 않으면(같은 사령관의 대화로 옮긴 경우) 호스트의 다음 커밋이
- * 끝난 뒤 — 다음 프레임 — 에 그대로 부른다. 호스트의 대화 이동은 다음 렌더 안에 끝난다.
- */
-function whenViewMoves(from: string | null, run: () => void): void {
-  const host = installed;
-  if (!host) return;
-  let done = false;
-  const finish = () => {
-    if (done) return;
-    done = true;
-    off();
-    run();
-  };
-  const off = host.consoleState.subscribe(() => { if ((host.consoleState.getViewedTheaterId?.() ?? null) !== from) finish(); });
-  if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => { setTimeout(finish, 0); });
-  else setTimeout(finish, 0);
-}
-
-/**
- * 대화 중심 화면 — 그 목표의 대화를 가운데 칸에 세운다. 지휘관 Objective 이 목록에 있으면 그 대화로 옮기고(보관된 지휘관은 복원하지
- * 않는다), 아직 개시하지 않은 목표면 시작 화면을 세운다. 세웠으면 true — 대화 중심 화면이 아니거나 세울 대화가 없으면 false.
- */
 function showObjectiveConversation(objectiveId: string, theaterId: string): boolean {
   const host = installed;
   const conversation = host?.conversation;
@@ -1105,7 +840,7 @@ function showObjectiveConversation(objectiveId: string, theaterId: string): bool
     return true;
   }
   const objective = findAnyObjective(objectiveId);
-  if (!objective || objective.commander.started) return false;
+  if (!objective || (objective.commander.started && !objective.done)) return false;
   // 목표의 theaterId 는 등록 Theater 가 아니다 — 호스트가 오른쪽 패널·도구모음의 Theater 를 사령관으로 고르게 함께 싣는다.
   return conversation.open(FRESH_SURFACE_ID, { objectiveId, theaterId, commodoreId: objective.commodoreId });
 }
@@ -1148,6 +883,6 @@ export function openObjectiveOnPhone(objectiveId: string, theaterId?: string): v
   if (theaterId) host.consoleState.viewTheater?.(theaterId);
   revealObjective({ objectiveId });
   const hasCommander = host.consoleState.getObjectiveRecords({ nested: true }).some((objectiveRecord) => objectiveRecord.id === objectiveId);
-  if (hasCommander) host.rail.open(OBJECTIVE_PANEL_ID, { objectiveId: objectiveId });
-  else host.rail.open(OBJECTIVE_PANEL_ID);
+  if (hasCommander) host.rail.open("objectives", { objectiveId: objectiveId });
+  else host.rail.open("objectives");
 }

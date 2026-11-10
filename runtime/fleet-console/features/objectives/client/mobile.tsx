@@ -32,7 +32,7 @@ import "./mobile.css";
  * 폰의 목표 — 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무) 하나를 두 자리에 세운다. 증거는 증거 뷰어가 연다. 폰에는 목표 목록(보드)이 없다.
  * 대화 정보 화면의 「목표」 탭(호스트가 `mobile.conversationPane` 으로 대화 주인 Objective 을 싣는다, 막대 없음 — 동작은 본문 맨 위 줄)과,
  * 지휘관 Objective 이 없는 목표가 착지하는 목표 화면(칩 없는 목적지, 호스트가 `mobileBar` 를 싣는다 — 제목·⋮ 항목만 선언한다)이다.
- * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
+ * 데스크톱 목표 팝업·대화와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
  * 노출 판정도 구성원 채팅 입력창의 보드 동작과 같은 판정(`bandChoices`)을 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
  * 호스트의 모바일 설정 문법 안에서 공유 선택기가 좌표 시트로 선다.
  */
@@ -75,7 +75,7 @@ const activityOf = (objectiveRecords: ObjectiveIndex, id: string): string => obj
 const ownActivityOf = (objectiveRecords: ObjectiveIndex, id: string): string => { const objectiveRecord = objectiveRecords.get(id); return objectiveRecord ? objectiveRecord.ownActivity ?? objectiveRecord.activity : "closed"; };
 
 /**
- * 지휘관 표식 — 목표 Objective 의 몽글 아바타. 데스크톱 보드·사이드바와 같은 기준(검토 대기 › 결정 요청 › 구성원 활동을 끌어올린 활동)이다.
+ * 지휘관 표식 — 목표 Objective 의 몽글 아바타. 데스크톱 팝업·사이드바와 같은 기준(검토 대기 › 결정 요청 › 구성원 활동을 끌어올린 활동)이다.
  * 표식은 장식이다 — 이름은 곁의 글자가 말한다.
  */
 const CommanderMark = ({ objective, objectiveRecords }: { readonly objective: Objective; readonly objectiveRecords: ObjectiveIndex }) =>
@@ -146,7 +146,7 @@ export function useObjectiveMobileRowValues(objectiveId: string, locale: Console
 const requestCount = (objective: Objective) => (hasDecisionRequest(objective) ? 1 : 0);
 /**
  * 목록에 서는 목표 — 기록이 없는 항목(`recorded === false`, 따로 만든 에이전트 Objective 이 「목표 밖」에 선 것)은 목표가 아니다.
- * 데스크톱 보드는 그것을 「목표 밖」으로 가르지만, 모바일 목표 화면에는 그 구역이 없다.
+ * 모바일 목표 화면은 목표가 없는 일반 세션을 목록에 싣지 않는다.
  */
 const isListedObjective = (objective: Objective) => !objective.removed && objective.recorded !== false;
 
@@ -1135,7 +1135,7 @@ function BriefCard({ objective, t, language, api, say }: { readonly objective: O
 /**
  * 지휘관의 달성 기준 제안 — 줄마다 거절·승인, 2건 이상이면 「모두 승인」. 제안이 남아 있으면 서버가 개시·스티어링을
  * `criteria_pending`으로 거부하므로, 폰에서도 이 카드로 풀 수 있어야 한다. 데스크톱 `ProposalRow`와 같은 경로(/criterion/*)이고
- * 어노테이션·「다시 구상」·기준 직접 편집은 데스크톱에만 둔다.
+ * 어노테이션·기준 직접 편집은 데스크톱 목표 팝업에서, 「다시 구상」은 대화 입력창에서 한다.
  */
 function ProposalsCard({ objective, t, language, api, say }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
   // 보낸 요청이 돌아올 때까지 모든 단추를 잠근다 — 두 번 눌러 이미 처리된 제안에 다시 보내지 않게.

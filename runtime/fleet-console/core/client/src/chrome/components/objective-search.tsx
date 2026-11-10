@@ -381,7 +381,7 @@ export function ObjectiveSearch({
       // 여기서 갈라 주지 않으면 팔레트로 고른 결과가 아무 데도 착지하지 않는다.
       const surfaceId = railPanels.find((panel) => panel.id === panelId)?.surfaceId;
       if (surfaceId) openExpandedSurface({ surfaceId });
-      else presentRailPanel(panelId);
+      else if (!railPanels.find((panel) => panel.id === panelId)?.searchOnly) presentRailPanel(panelId);
     }
     closeObjectiveSearch();
   };

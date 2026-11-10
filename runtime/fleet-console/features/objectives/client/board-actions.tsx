@@ -1,3 +1,4 @@
+import { openObjectivePopup } from "./objectives-panel.js";
 import { useEffect, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import type { GroupBoardAction, GroupBoardActions, GroupBoardPanelContext, GroupBoardRunResult } from "../../execution/shared/conversation/types.js";
@@ -23,7 +24,7 @@ import {
 import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { localized } from "./launch-control.js";
-import { findAnyObjective, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, post, readBoard, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
+import { findAnyObjective, listedObjectiveSummaries, objectivesApi, post, readBoard, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
@@ -243,7 +244,7 @@ function noteOf(objective: Objective, choices: ReturnType<typeof choicesOf>, liv
     return {
       tone: "lock",
       text: localized((t) => t("objectives.composer.locked", { word: t(edited ? "objectives.steer" : "objectives.commander.start"), reason: t("objectives.band.gated", { count }) })),
-      reveal: { label: localized((t) => t("objectives.composer.reveal")), run: () => { revealObjective({ objectiveId: objective.id }); openObjectiveFromCluster(objective.theaterId); } },
+      reveal: { label: localized((t) => t("objectives.composer.reveal")), run: () => openObjectivePopup(objective.id) },
     };
   }
   if (choices.primary === "decide") return { tone: "awaiting", text: localized((t) => t("objectives.composer.awaitingCommander")) };

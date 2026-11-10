@@ -1,50 +1,29 @@
-import { useState, type CSSProperties, type ReactNode } from "react";
-import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
-import { openCommanderConversation } from "./commander-navigation.js";
-import { CommanderGoalDialog, CommanderMissionsDialog, type DetailTab } from "../../../objectives/client/objectives-panel.js";
+import type { ReactNode } from "react";
+import { openObjectivePopup } from "../../../objectives/client/objectives-panel.js";
 import { openResultWindow } from "../../../objectives/client/result-window.js";
 import type { CommanderRowGlyphTab } from "./commander-row-glyphs.js";
 import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
-import { commodoreAvatarKey } from "../../shared/avatars.js";
-import { useAvatarAccent } from "../avatar-accent.js";
+import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import type { RowPopups, SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
 
-type PopupState = { readonly kind: "goal" | "missions"; readonly start: DetailTab; readonly objectiveId: string; readonly title: string; readonly opener: HTMLElement };
-
-/**
- * 지휘관 행의 팝업 — 아바타는 목표 팝업, 임무 게이지는 임무 팝업을 연다. 우측 작업 탭 카드와 좌측 사이드바가 함께 쓴다.
- * `openTab` 은 행 글리프가 팝업을 열 때 쓴다(목표·구성원은 각각 목표·임무 팝업, 증거는 증거 뷰어). 닫으면 연 단추로 초점이 돌아간다.
- * 팝업은 body 포털이라 오른쪽·왼쪽 패널의 지휘관 강조색을 물려받지 못한다 — 같은 값을 팝업에 직접 건넨다.
- */
-export function useCommanderPopups(commodoreId: string): {
+/** 좌우 목록과 대화 링크는 같은 목표·임무 팝업을 연다. 증거는 증거 뷰어를 연다. */
+export function useCommanderPopups(_commodoreId: string): {
   readonly rowPopups: (item: SideBarRowItem, objectiveId: string) => RowPopups;
   readonly openTab: (item: SideBarRowItem, objectiveId: string, tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
   readonly dialogs: ReactNode;
 } {
-  const language = useConsoleLocale() === "ko" ? "ko" : "en";
-  const objectivesT = getObjectivesT(language);
-  const [dialog, setDialog] = useState<PopupState | null>(null);
-  const accent: CSSProperties | undefined = useAvatarAccent(commodoreAvatarKey(commodoreId));
-  const open = (kind: PopupState["kind"], start: DetailTab, item: SideBarRowItem, objectiveId: string, opener: HTMLElement) => setDialog({ kind, start, objectiveId, title: item.layout.cluster.title, opener });
-  const rowPopups = (item: SideBarRowItem, objectiveId: string): RowPopups => ({
-    // 아바타는 목표 팝업을 연다 — 지휘관 대화는 행 본문이 연다.
-    avatarLabel: `${item.layout.cluster.title} · ${objectivesT("objectives.popover.openGoal")}`,
-    progressLabel: (done, total) => objectivesT("objectives.popover.missions", { done, total }),
-    onAvatar: (opener) => open("goal", "goal", item, objectiveId, opener),
-    onProgress: (opener) => open("missions", "crew", item, objectiveId, opener),
-  });
-  const openTab = (item: SideBarRowItem, objectiveId: string, tab: CommanderRowGlyphTab, opener: HTMLElement) => {
-    if (tab === "results") {
-      openResultWindow(objectiveId, "", opener);
-      return;
-    }
-    open(tab === "crew" ? "missions" : "goal", tab, item, objectiveId, opener);
+  const t = getObjectivesT(useConsoleLocale() === "ko" ? "ko" : "en");
+  return {
+    rowPopups: (item, objectiveId) => ({
+      avatarLabel: `${item.layout.cluster.title} · ${t("objectives.popover.openGoal")}`,
+      progressLabel: (done, total) => t("objectives.popover.missions", { done, total }),
+      onAvatar: (opener) => openObjectivePopup(objectiveId, "goal", undefined, opener),
+      onProgress: (opener) => openObjectivePopup(objectiveId, "crew", undefined, opener),
+    }),
+    openTab: (_item, objectiveId, tab, opener) => {
+      if (tab === "results") openResultWindow(objectiveId, "", opener);
+      else openObjectivePopup(objectiveId, tab, undefined, opener);
+    },
+    dialogs: null,
   };
-  const PopupDialog = dialog?.kind === "missions" ? CommanderMissionsDialog : CommanderGoalDialog;
-  const dialogs = dialog ? (
-    <PopupDialog commodoreId={commodoreId} objectiveId={dialog.objectiveId} title={dialog.title} language={language} start={dialog.start} {...(accent ? { accent } : {})}
-      onOpenObjective={(id) => openCommanderConversation(commodoreId, id)}
-      onClose={() => { const opener = dialog.opener; setDialog(null); if (opener.isConnected) opener.focus(); }} />
-  ) : null;
-  return { rowPopups, openTab, dialogs };
 }

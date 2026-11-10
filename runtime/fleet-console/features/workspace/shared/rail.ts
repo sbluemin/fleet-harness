@@ -159,12 +159,12 @@ export interface RailEntryDescriptor {
   readonly surfaceId?: string;
   /**
    * 아이콘을 눌러도 캔버스의 활성 Objective 을 풀지 않는다. 레일 도구를 누르면 기본으로 활성이 풀리지만(Map 밖의 누름),
-   * 지금 보는 Objective 을 그대로 이어 여는 도구 — 활성 Objective 의 목표를 여는 목표 표면처럼 — 만 켠다.
+   * 지금 보는 Objective 을 그대로 이어 여는 도구 — 현재 Objective 에 딸린 표면처럼 — 만 켠다.
    */
   readonly keepsObjectiveActive?: boolean;
   /**
    * 대화 중심 화면에서 Objective 대화의 오른쪽 패널은 도구 줄을 세우지 않는다. 이 값을 켠 도구만 거기서도 남아 대상의 글자 탭
-   * (구성원 등) 오른쪽에 같은 문법의 글자 단추로 선다 — 지금 보는 대화에서 곧장 이어 가는 도구(목표)만 켠다.
+   * (구성원 등) 오른쪽에 같은 문법의 글자 단추로 선다 — 지금 보는 대화에서 곧장 이어 가는 도구만 켠다.
    * Theater 를 연 패널과 기존 배치의 레일은 이 값을 읽지 않는다.
    */
   readonly conversationTab?: boolean;
@@ -386,7 +386,7 @@ export interface RailEntryConversationTabs {
   readonly read: (theaterId: string | null) => RailEntryConversationTabsState;
   readonly select: (tabId: string, theaterId: string | null) => void;
   /**
-   * 하위 탭 줄 위 한 줄(Theater 섹션 줄 자리)에 설 도구(예: 목표의 오늘·기한) — 하위 탭이 설 때만 그린다.
+   * 하위 탭 줄 위 한 줄(Theater 섹션 줄 자리)에 설 도구 — 하위 탭이 설 때만 그린다.
    * 모양과 접근성 묶음(role·aria-label)은 플러그인이 진다. 아무것도 그리지 않으면 줄도 남지 않는다.
    */
   readonly renderTools?: (ctx: { readonly theaterId: string | null; readonly language: ConsoleLocale }) => ReactNode;
