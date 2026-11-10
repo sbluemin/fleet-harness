@@ -82,6 +82,8 @@ export interface WslConsoleManagerOptions {
   readonly probeTimeoutMs?: number;
   readonly startTimeoutMs?: number;
   readonly stopTimeoutMs?: number;
+  /** How long Quit waits for a transition already under way before it looks at the Console as it stands. */
+  readonly quitWaitMs?: number;
 }
 
 interface Layout { readonly runtime: string; readonly node: string; readonly pkg: string; readonly cli: string; readonly lock: string; readonly data: string | null; readonly fleet: string; }
@@ -108,6 +110,9 @@ export class WslConsoleManager {
   private readonly failures = new Map<string, WslConsoleFailure>();
   private readonly inspections = new Map<string, WslConsoleRecord>();
   private readonly health = createConsoleHealthClient();
+  /** The transition each Console is in, so Quit can wait for it instead of skipping a Console that is busy. */
+  private readonly inFlight = new Map<string, Promise<unknown>>();
+  private quitting = false;
   private watching: ReturnType<typeof setInterval> | null = null;
   private lastSeen = "";
 
@@ -215,6 +220,8 @@ echo slots=$(ls -d /tmp/fleet-console-*-stable 2>/dev/null | tr '\\n' ' ')
       // Another owner's Console holds the slot. It is neither stopped nor started beside.
       if (before.lifecycle !== "stopped") throw this.fail(record, "other-owner");
       await this.ensureRuntime(record);
+      // Desktop began to quit while the runtime was being installed: nothing is launched behind it.
+      if (this.quitting) throw new Error("wsl_console_quitting");
       this.busy.set(record.id, "starting");
       this.options.onChange?.();
       const launched = await this.options.host.sh(record.distro, record.user, this.launchScript(record), 60_000);
@@ -260,11 +267,24 @@ echo slots=$(ls -d /tmp/fleet-console-*-stable 2>/dev/null | tr '\\n' ' ')
     return this.start(key);
   }
 
-  /** Quit: the Consoles this Desktop manages and that answer as its own are asked to stop. A stopped distribution is not woken. */
+  /**
+   * Quit: the Consoles this Desktop manages and that answer as its own are asked to stop. A stopped distribution is not
+   * woken. From here on nothing is started, and a transition already under way is waited for, within a bound, so a
+   * Console that was just launched is stopped rather than left behind.
+   */
   async stopAll(): Promise<void> {
+    this.quitting = true;
     if (this.records.length === 0) return;
     const running = new Set((await this.options.host.distros().catch(() => [])).filter((distro) => distro.running).map((distro) => distro.name));
-    await Promise.all(this.records.filter((record) => running.has(record.distro)).map((record) => this.stop(record.id).catch((error) => this.options.log.error(`wsl stop on quit ${record.distro}: ${String(error)}`))));
+    await Promise.all(this.records.filter((record) => running.has(record.distro)).map(async (record) => {
+      try {
+        await Promise.race([this.inFlight.get(record.id), sleep(this.options.quitWaitMs ?? 15_000)]);
+        const seen = await this.observe(record);
+        if (seen.management === "this-desktop" && seen.identityProven && seen.lock) await this.requestStop(record, seen.lock);
+      } catch (error) {
+        this.options.log.error(`wsl stop on quit ${record.distro}: ${String(error)}`);
+      }
+    }));
   }
 
   /**
@@ -295,11 +315,19 @@ echo slots=$(ls -d /tmp/fleet-console-*-stable 2>/dev/null | tr '\\n' ' ')
   }
 
   private async exclusive<T>(record: WslConsoleRecord, phase: "starting" | "stopping", run: () => Promise<T>): Promise<T> {
+    if (this.quitting && phase === "starting") throw new Error("wsl_console_quitting");
     if (this.busy.has(record.id)) throw new Error("wsl_console_busy");
     this.busy.set(record.id, phase);
     this.failures.delete(record.id);
     this.options.onChange?.();
-    try { return await run(); } finally { this.busy.delete(record.id); this.options.onChange?.(); }
+    const work = run();
+    const settled = work.then(() => undefined, () => undefined);
+    this.inFlight.set(record.id, settled);
+    try { return await work; } finally {
+      if (this.inFlight.get(record.id) === settled) this.inFlight.delete(record.id);
+      this.busy.delete(record.id);
+      this.options.onChange?.();
+    }
   }
 
   private fail(record: WslConsoleRecord, failure: WslConsoleFailure): Error {
