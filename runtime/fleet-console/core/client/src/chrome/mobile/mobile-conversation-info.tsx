@@ -32,11 +32,11 @@ type InfoTab =
   /** 대화 중심 화면의 오른쪽 패널 앞 묶음이 등록한 탭(`registerConversationObjectiveTab`) — 데스크톱과 같은 원천이다. */
   | { readonly kind: "panel"; readonly id: string; readonly title: string; readonly render: (ctx: RailPanelContext) => React.ReactNode }
   /** 레일 엔트리가 `conversationTab`과 `mobile.conversationPane`으로 선언한 도구(목표) — 그 페인을 탭 본문에 그대로 세운다. */
-  | { readonly kind: "pane"; readonly id: string; readonly routeId: string; readonly title: string; readonly paneId: string; readonly selected: boolean; readonly replacesMembers?: boolean; readonly select?: () => void; readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: string } };
+  | { readonly kind: "pane"; readonly id: string; readonly routeId: string; readonly title: string; readonly paneId: string; readonly selected: boolean; readonly external?: boolean; readonly replacesMembers?: boolean; readonly select?: () => void; readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: string } };
 
 /**
  * 대화 정보 화면 — Objective 화면 머리 pill이 연다. 구역이 둘 이상이면 사령관 세부와 같이 큰 아바타 · 이름 · 상태 · 「편집」과
- * 구역 행(정보·목표·구성원·결과물)이고, 행은 그 본문으로 들어갔다가 ‹ 로 프로필에 돌아온다. 구역이 정보 하나뿐이면 그 본문을 바로 그린다.
+ * 구역 행(정보·목표·구성원·증거)이고, 증거는 본문으로 들어가지 않고 증거 뷰어를 연다. 나머지 행은 그 본문으로 들어갔다가 ‹ 로 프로필에 돌아온다. 구역이 정보 하나뿐이면 그 본문을 바로 그린다.
  * 「정보」는 모델·강도·하네스·Theater·이름 변경·보관(본문이 ⋮에 끼운 항목)이고, 대화 탭 등록부(구성원 등)는 그 본문을 그대로 그리며,
  * `conversationTab` 엔트리(목표)는 `mobile.conversationPane`이 말한 페인을 대화 주인 Objective으로 세운다(막대 창구 없이).
  * 구성원 구역에서 구성원을 고르면 그 대화로 돌아간다. 고른 구역은 목적지(`?dest=info:<탭>`)가 들어 새로고침·착지 요청이 그 구역을 세운다.
@@ -101,6 +101,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
         for (const view of views.tabs) list.push({
           kind: "pane", id: `${routeId}:${view.id}`, routeId, paneId: pane.paneId,
           title: resolveLocalizedText(view.title, locale), selected: view.id === views.selected,
+          ...(view.external ? { external: true } : {}),
           ...(view.replacesMembers ? { replacesMembers: true } : {}),
           select: () => source.select(view.id, objectiveRecord.id),
           ...(view.dot ? { dot: { tone: view.dot.tone, label: resolveLocalizedText(view.dot.label, locale) } } : {}),
@@ -168,7 +169,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
       else runAfterOverlayRelease(held, syncMobileDestinationUrl);
     };
   }, [inSection]);
-  // 프로필에 실린 지금 할 일이 결과물로 보내면(넘긴 후보) 그 구역을 연다. 프로필에 들어온 순간의 선택은 기준이라 따라가지 않는다.
+  // 프로필에 실린 지금 할 일이 다른 구역으로 보내면(넘긴 후보 → 목표) 그 구역을 연다. 프로필에 들어온 순간의 선택은 기준이라 따라가지 않는다.
   const profileSelection = useRef<string | null>(null);
   useEffect(() => {
     if (!profile) { profileSelection.current = null; return; }
@@ -285,7 +286,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
             {tabs.map((item) => {
               const value = sectionValue(item, infoModel, theaterLabel, rowValues);
               return (
-                <button type="button" data-press="r2" className="mobile-info-prow" key={item.id} onClick={() => { if (item.kind === "pane") item.select?.(); setTabId(item.id); }}>
+                <button type="button" data-press="r2" className="mobile-info-prow" key={item.id} onClick={() => { if (item.kind === "pane" && item.external) { item.select?.(); return; } if (item.kind === "pane") item.select?.(); setTabId(item.id); }}>
                   <span className="mobile-info-prow-ic" aria-hidden="true"><MobileIcon name={sectionIcon(item)} /></span>
                   <span className="mobile-info-prow-lb">{item.title}</span>
                   {value ? <span className={`mobile-info-prow-val${value.tone ? ` is-${value.tone}` : ""}`}>{value.text}</span> : null}
@@ -321,7 +322,7 @@ function sectionIcon(item: InfoTab): "info" | "target" | "commanders" | "file" |
   const viewId = item.id.startsWith(`${item.routeId}:`) ? item.id.slice(item.routeId.length + 1) : "";
   if (viewId === "goal") return "target";
   if (viewId === "crew") return "commanders";
-  if (viewId === "results") return "file";
+  if (viewId === "evidence") return "file";
   return "grid";
 }
 
@@ -331,7 +332,7 @@ function sectionValue(item: InfoTab, model: string, theater: string, rows: Retur
   const viewId = item.id.startsWith(`${item.routeId}:`) ? item.id.slice(item.routeId.length + 1) : "";
   if (viewId === "goal") return rows.goal;
   if (viewId === "crew") return rows.crew;
-  if (viewId === "results") return rows.results;
+  if (viewId === "evidence") return rows.results;
   return null;
 }
 

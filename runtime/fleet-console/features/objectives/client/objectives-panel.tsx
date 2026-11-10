@@ -12,11 +12,10 @@ import { commanderMode, extensionOf, missionReady, missionTitle, unseenRecords, 
 import { DecisionList } from "./decisions.js";
 import { Retrospective } from "./retrospective.js";
 import { ExtensionChip, ExtensionDivider, ExtensionHistory } from "./extensions.js";
-import { ObjectiveResults, ResultsGlyph, resultGroupKey } from "./results.js";
-import { SharedFolderRows } from "./shared-folder.js";
-import { briefHasContent, objectiveTabHasContent } from "./detail-content.js";
+import { ResultsGlyph } from "./results.js";
+import { briefHasContent } from "./detail-content.js";
+import { openResultWindow } from "./result-window.js";
 import { ToolbarTipLayer } from "../../../core/client/src/chrome/toolbar/toolbar-tip.js";
-import { useSharedFileCount, useSharedFolder } from "./shared-folder-count.js";
 import { AttachButton, AttachmentDropVeil, NoteAttachments, imageFiles, useAttachmentUpload } from "./attachments.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { CoordinationGraph, MissionNodeIcon, graphMissionStates, setGraphOrientation, useGraphOrientation, type MissionDetailActions, type MissionState } from "./graph.js";
@@ -59,15 +58,15 @@ type T = Translate<ObjectiveMessageKey>;
 const TrashGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M5 4.5l.6 8h4.8l.6-8" /></svg>;
 
 /**
- * 상세 탭 — Console 오른쪽 패널 머리(아바타·이름 아래)에 「목표 · 구성원 · 결과물」 세 낱말 한 줄로 선다
- * (head-tabs.tsx). 결정 내역은 목표 탭 맨 아래, 임무 그래프는 구성원 탭 맨 아래에 섹션 머리로 이어 붙는다. 「구성원」은 대상의 구성원 탭을 대신한다. 탭은 요청한 내용만 담고,
+ * 상세 탭 — Console 오른쪽 패널 머리(아바타·이름 아래)에 「목표 · 구성원」 두 낱말로 선다
+ * (head-tabs.tsx). 증거는 탭이 아니라 증거 뷰어다. 결정 내역은 목표 탭 맨 아래, 임무 그래프는 구성원 탭 맨 아래에 섹션 머리로 이어 붙는다. 「구성원」은 대상의 구성원 탭을 대신한다. 탭은 요청한 내용만 담고,
  * 목표 전체의 상태는 머리에, 지금 할 일은 하단 띠에 둔다. 고른 탭은 Theater 별 보기 상태에 하나로 남는다(목표를 바꿔도 그 탭으로 연다).
  * 목록 칸은 없다 — 목표는 Console 사이드바 그룹 트리의 줄로 서고, 사이드바가 접힌 자리에서는 제목 ⌄ 전환 목록이 대신한다.
  */
-export const DETAIL_TABS = ["goal", "crew", "results"] as const;
+export const DETAIL_TABS = ["goal", "crew"] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
-/** 합쳐진 옛 탭 — 임무는 구성원 탭 아래로, 결정사항은 목표 탭 아래로 갔다. 같은 세션의 옛 값과 옛 id 의 select 를 그 자리로 보낸다. */
-const MERGED_TABS: Readonly<Record<string, DetailTab>> = { missions: "crew", decisions: "goal" };
+/** 합쳐진 옛 탭 — 임무는 구성원 아래로, 결정사항과 옛 결과물 탭은 목표 아래로 갔다. 증거는 뷰어가 연다. */
+const MERGED_TABS: Readonly<Record<string, DetailTab>> = { missions: "crew", decisions: "goal", results: "goal" };
 export const detailTabOf = (value: string | undefined): DetailTab => (DETAIL_TABS as readonly string[]).includes(value ?? "") ? value as DetailTab : MERGED_TABS[value ?? ""] ?? "goal";
 /** 목록 칸 시절의 폭 기억 — 읽는 곳이 없으니 거둔다. */
 const RETIRED_WIDTH_KEYS = ["fleet.objectives.three-pane-width", "fleet.objectives.detail-width", "fleet.objectives.rail-detail-width"] as const;
@@ -108,8 +107,8 @@ function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: st
   );
 }
 
-/** 한 목표의 상세 한 탭을 그린다 — 우측 작업 탭의 임무 팝업·행 펼침이 쓴다.
- * 탭 줄은 두지 않는다. 팝업 안의 길(결정·결과물로 가기)이 탭을 바꾼다.
+/** 한 목표의 상세 한 탭을 그린다 — 우측 작업 탭의 임무 팝업이 쓴다.
+ * 탭 줄은 두지 않는다. 팝업 안의 길(결정·임무로 가기)이 탭을 바꾼다. 증거는 뷰어를 연다.
  */
 export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenObjective, tab, onGlyphTab, onGraphFitWidth, readOnly = false }: {
   readonly commodoreId: string;
@@ -119,10 +118,10 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
   readonly onOpenObjective: (objectiveId: string) => void;
   /** 그릴 내용. */
   readonly tab: DetailTab;
-  /** 내용 안의 길(결정·임무·결과물로 가기)이 탭을 바꿀 때 알린다. */
+  /** 내용 안의 길(결정·임무로 가기)이 탭을 바꿀 때 알린다. 증거는 뷰어를 연다. */
   readonly onGlyphTab: (tab: DetailTab) => void;
   readonly onGraphFitWidth?: (width: number) => void;
-  /** 사이드바 펼침과 팝업의 목표·결과물 탭은 읽기 전용이다 — 팝업의 구성원 탭만 같은 패널을 편집 가능하게 쓴다. */
+  /** 팝업의 목표 탭은 읽기 전용이다 — 팝업의 구성원 탭만 같은 패널을 편집 가능하게 쓴다. */
   readonly readOnly?: boolean;
 }) {
   const t = getT(language);
@@ -131,7 +130,6 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
   const api = objectivesApi();
   useEffect(() => { if (api !== null) void loadBoard(api, commodoreId); }, [api, commodoreId]);
   const [collapsed, setCollapsed] = useState<Readonly<Record<string, boolean>>>({});
-  const [groupCollapsed, setGroupCollapsed] = useState<Readonly<Record<string, boolean>>>({});
   const detailRef = useRef<HTMLElement | null>(null);
   // 중앙 하단 알림은 두지 않는다 — 결과는 화면 자체가 말한다. 호출부는 남겨 두되 아무것도 띄우지 않는다.
   const toast = useCallback((_text: string, _undo?: () => Promise<void>) => undefined, []);
@@ -182,9 +180,7 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
       compact
       sectionOpen={(key) => key in collapsed ? !collapsed[key] : false}
       onToggleSection={(key) => setCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
-      groupOpen={(key) => key in groupCollapsed ? !groupCollapsed[key] : false}
-      onToggleGroup={(key) => setGroupCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
-      onOpenGroup={(key) => setGroupCollapsed((current) => ({ ...current, [key]: false }))}
+      onOpenGroup={(key) => setCollapsed((current) => ({ ...current, [key]: false }))}
       highlightMission={null}
       detailRef={detailRef}
       onToggleEdge={(from, to, linked) => toggleEdge(objective, from, to, linked)}
@@ -197,7 +193,7 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
 
 /**
  * 우측 작업 탭의 임무 팝업 — 행의 임무 게이지가 연다. 구성원 로스터(지휘관·구성원·구성원 추가)를 위에, 임무 그래프를 아래에 두는
- * 구성원 탭을 편성 확대본과 같은 오버레이에 담는다. 안의 길이 결과물·목표로 가면 같은 팝업에서 그 내용을 보이고 「임무로」가 되돌린다.
+ * 구성원 탭을 편성 확대본과 같은 오버레이에 담는다. 안의 길이 목표로 가면 같은 팝업에서 그 내용을 보이고 「임무로」가 되돌린다. 증거는 뷰어를 연다.
  */
 export function CommanderMissionsDialog(props: CommanderDialogProps) {
   return <CommanderDetailDialog {...props} home="crew" />;
@@ -205,7 +201,7 @@ export function CommanderMissionsDialog(props: CommanderDialogProps) {
 
 /**
  * 우측 작업 탭의 목표 팝업 — 행의 지휘관 아바타가 연다. 목표 탭(브리핑·달성 기준·결정·회고·후속 목표)을 임무 팝업과 같은 오버레이에 담는다.
- * 안의 길이 임무·결과물로 가면 같은 팝업에서 그 내용을 보이고 「목표로」가 되돌린다.
+ * 안의 길이 임무로 가면 같은 팝업에서 그 내용을 보이고 「목표로」가 되돌린다. 증거는 뷰어를 연다.
  */
 export function CommanderGoalDialog(props: CommanderDialogProps) {
   return <CommanderDetailDialog {...props} home="goal" />;
@@ -230,12 +226,12 @@ function CommanderDetailDialog({ commodoreId, objectiveId, title, language, acce
   // 그래프가 알려 준 폭까지 넓힌다 — 로스터가 읽히는 최소 폭은 지킨다.
   const [fitWidth, setFitWidth] = useState<number | null>(null);
   // 머리 제목은 지금 보이는 탭의 이름이다 — 목표·임무 두 팝업이 같은 계약이고, 팝업 안에서 탭을 옮겨도 제목이 따라간다.
-  const category = t(tab === "goal" ? "objectives.tabs.goal" : tab === "crew" ? "objectives.missions.title" : "objectives.tabs.results");
+  const category = t(tab === "goal" ? "objectives.tabs.goal" : "objectives.missions.title");
   const back = home === "goal" ? "objectives.goal.back" : "objectives.missions.back";
   return createPortal(
     <LineupZoom t={t} title={title} category={category} width={Math.max(COMMANDER_MISSIONS_WIDTH, fitWidth ?? 0)} onClose={onClose}
       tools={tab === home ? null : <button type="button" className="objectives-popup-text-button" onClick={() => setTab(home)}>{t(back)}</button>}>
-      {/* 목표·결과물 탭은 사이드바 세 탭과 같은 읽기 전용이다(편집·첨부·빈 섹션 없음). 임무 조작(구성원 탭)만 팝업이 편집한다. */}
+      {/* 목표 탭은 읽기 전용이다(편집·첨부·빈 섹션 없음). 임무 조작(구성원 탭)만 팝업이 편집한다. */}
       {/* workspace-avatar-panel 이 --conversation-accent* 를 --brass* 행동 강조 토큰에 묶는다 — 변수만 건네면 이 팝업은 중립으로 남는다. */}
       <div className={`commander-missions-dialog is-${tab}${accent ? " workspace-avatar-panel" : ""}`} {...(accent ? { style: accent } : {})}>
         <CommanderRowPanel readOnly={tab !== "crew"} commodoreId={commodoreId} objectiveId={objectiveId} language={language} tab={tab} onGlyphTab={setTab} onGraphFitWidth={setFitWidth} onOpenObjective={(id) => { onClose(); onOpenObjective(id); }} />
@@ -493,8 +489,6 @@ export function ObjectivePanel({ ctx }: { readonly ctx: ObjectiveContext }) {
         onTab={(next) => patchOwnerView(commodoreId, () => ({ detailTab: next }))}
         sectionOpen={(key) => isOpen(key, false)}
         onToggleSection={(key) => toggleSection(key, false)}
-        groupOpen={(key) => isOpen(key, false)}
-        onToggleGroup={(key) => toggleSection(key, false)}
         onOpenGroup={(key) => patchOwnerView(commodoreId, (view) => ({ collapsed: { ...view.collapsed, [key]: false } }))}
         highlightMission={highlightMission}
         detailRef={detailRef}
@@ -744,7 +738,7 @@ function NewMemberAssign({ t, onCreate }: { t: T; onCreate: (role: string) => Pr
   }} /><span>{t("objectives.members.newHint")}</span></div>;
 }
 
-export type DetailSection = "detail:decisions" | "detail:consultations" | "detail:retro" | "detail:followupResults" | "detail:extensions" | "detail:shared";
+export type DetailSection = "detail:decisions" | "detail:consultations" | "detail:retro" | "detail:followupResults" | "detail:extensions";
 
 interface DetailProps {
   readonly objective: Objective;
@@ -763,12 +757,9 @@ interface DetailProps {
   /** 고른 탭 — Theater별 메모리 보기 상태에 하나로 남는다. */
   readonly tab: DetailTab;
   readonly onTab: (tab: DetailTab) => void;
-  /** 결과물 탭 아래 묶음 접힘 — Theater별 메모리 보기 상태에 보존하며 기본은 접힘. */
+  /** 목표 탭 아래 묶음 접힘 — Theater별 메모리 보기 상태에 보존하며 기본은 접힘. */
   readonly sectionOpen: (key: DetailSection) => boolean;
   readonly onToggleSection: (key: DetailSection) => void;
-  /** 결과물 묶음은 목표·임무 키별로 기억하며 기본은 접힘. 구획 접힘과는 독립이다. */
-  readonly groupOpen: (key: string) => boolean;
-  readonly onToggleGroup: (key: string) => void;
   readonly onOpenGroup: (key: string) => void;
   readonly highlightMission: string | null;
   readonly detailRef: RefObject<HTMLElement | null>;
@@ -805,8 +796,24 @@ function LineupZoom({ t, title, category, width, tools, onClose, children }: { r
     // 캡처 단계에서 삼킨다 — 같은 Esc 가 창의 처리기까지 올라가 상세를 함께 닫지 않도록.
     // Tab 은 카드 안에서만 돈다(aria-modal): 뒤의 패널로 초점이 새면 열린 채로 숨은 조작이 가능해진다.
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") { if (document.querySelector("[data-graph-popup]:not(.is-closing)")) return; event.preventDefault(); event.stopPropagation(); onClose(); return; }
+      if (event.key === "Escape") {
+        if (document.querySelector("[data-graph-popup]:not(.is-closing)")) return;
+        // 증거 뷰어가 이 창 위에 있으면 Esc 는 뷰어만 닫는다. 초점은 뷰어가 연 곳으로 돌린다.
+        if (document.activeElement?.closest(".objectives-result-window, .objectives-rw-menu")) return;
+        event.preventDefault(); event.stopPropagation(); onClose(); return;
+      }
       if (event.key !== "Tab" || !cardRef.current) return;
+      // 증거 뷰어가 이 창 위에 있으면 Tab 은 뷰어 안에서 돈다 — 이 창의 고리가 초점을 뒤로 끌어오지 않는다.
+      const viewer = document.activeElement?.closest<HTMLElement>(".objectives-result-window, .objectives-rw-menu");
+      if (viewer) {
+        const inner = [...viewer.querySelectorAll<HTMLElement>("button, a[href], input, textarea, [tabindex]:not([tabindex='-1'])")].filter((el) => !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0);
+        const edge = event.shiftKey ? inner[0] : inner[inner.length - 1];
+        if (inner.length && (document.activeElement === edge || (event.shiftKey && document.activeElement === viewer))) {
+          event.preventDefault();
+          (event.shiftKey ? inner[inner.length - 1] : inner[0])?.focus();
+        }
+        return;
+      }
       const card = cardRef.current;
       const stops = [...card.querySelectorAll<HTMLElement | SVGElement>("button, input, textarea, [tabindex]:not([tabindex='-1'])")].filter((el) => !(el as HTMLButtonElement).disabled);
       const active = document.activeElement;
@@ -966,14 +973,6 @@ function WrapText({ className, label, editLabel, value, readOnly, maxLength, pla
  * 섹션 머리 — 구분선 한 줄에 오른쪽 셈과 도구만 그린다. 라벨은 화면에서 숨기고 접근 가능한 이름으로만 남긴다. 접히는 섹션은 행 전체가 버튼이고 셰브런이 맨 끝에 선다(접힘 0°, 펼침 90°).
  * 항목이 없으면 접지 않는다 — 추가 행이 늘 보이게 셰브런 없는 정적 머리로 둔다.
  */
-function SharedFolderSection({ objective, t, language, open, onToggle, named }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly open: boolean; readonly onToggle: () => void; readonly named?: boolean }) {
-  const state = useSharedFolder(objective, open);
-  return <>
-    <SectionHead label={t("objectives.shared.title")} controls="objectives-sec-shared" expanded={open} onToggle={onToggle} named={named} />
-    <div id="objectives-sec-shared" hidden={!open}><SharedFolderRows objective={objective} t={t} language={language} state={state} /></div>
-  </>;
-}
-
 function SectionHead({ label, tools, actions, controls, expanded, onToggle, named = false, fold = false, line = false }: {
   readonly label: string;
   /** 접히는 머리가 이름 없는 셰브런만 남지 않게 이름을 보인다 — 읽기 전용 펼침에서 쓴다. */
@@ -1289,10 +1288,8 @@ function quietMissionLabel(objective: Objective, mission: ObjectiveMission, read
   return describeQuietMission(elapsed / 60_000, language);
 }
 
-export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, objectiveRecordTitle, objectiveRecordState, objectiveRecordOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, groupOpen, onToggleGroup, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective, embedded = false, readOnly = false, compact = false, onGraphFitWidth }: DetailProps) {
+export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, objectiveRecordTitle, objectiveRecordState, objectiveRecordOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective, embedded = false, readOnly = false, compact = false, onGraphFitWidth }: DetailProps) {
   const launchRows = useLaunchRows();
-  // 읽기 전용 펼침만 공유 폴더의 파일 수를 미리 읽는다 — 비었다고 확인되면(0) 그 머리를 그리지 않고, 모르면(null) 열어 볼 수 있게 둔다.
-  const sharedFiles = useSharedFileCount(readOnly ? objective : null, readOnly);
   const [quietNow, setQuietNow] = useState(() => Date.now());
   // 문장은 경과 분이다. 임계에 닿은 뒤에도 1분마다 다시 읽어, 뱃지가 처음 분수에 멈물지 않게 한다.
   useEffect(() => {
@@ -1364,8 +1361,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     if (drop.length) setOpenRecords((current) => drop.some((id) => id in current) ? Object.fromEntries(Object.entries(current).filter(([id]) => !drop.includes(id))) : current);
   };
   const [missionReveal, setMissionReveal] = useState<{ id: string; at: number } | null>(null);
-  const [resultReveal, setResultReveal] = useState<{ id: string; at: number } | null>(null);
-  useEffect(() => { setResultReveal(null); setMissionReveal(null); }, [objective.id]);
+  useEffect(() => { setMissionReveal(null); }, [objective.id]);
   const numberOf = (missionId: string) => objective.missions.findIndex((mission) => mission.id === missionId) + 1;
   const zoomTriggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -1382,18 +1378,15 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     const timer = setTimeout(() => setDecisionFlash(null), 1600);
     return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
   }, [decisionFlash, detailRef]);
-  // 결정·임무·결과물로 가는 길 — 그 섹션이 사는 탭으로 바꾼다. 결정은 목표 탭 맨 아래의 접히는 섹션이라 함께 편다.
+  // 결정·임무로 가는 길 — 그 섹션이 사는 탭으로 바꾼다. 결정은 목표 탭 맨 아래의 접히는 섹션이라 함께 편다. 증거는 그 임무를 고른 뷰어를 연다.
   const showDecision = (decisionId: string) => { onTab("goal"); onOpenGroup("detail:decisions"); setDecisionFlash(decisionId); };
   const showMission = (missionId: string) => {
     onTab("crew");
     setMissionReveal({ id: missionId, at: Date.now() });
   };
-  const showResults = (missionId: string) => {
-    setZoomOpen(false);
-    setMissionReveal(null);
-    onTab("results");
-    onOpenGroup(resultGroupKey(objective.id, missionId));
-    setResultReveal({ id: missionId, at: Date.now() });
+  const showResults = (missionId: string, opener: HTMLElement | null) => {
+    const first = objective.results.find((result) => result.sourceMissionId === missionId);
+    if (first) openResultWindow(objective.id, first.id, opener);
   };
 
   // 달성 기준 제안 — 결정(승인·거절)과 어노테이션은 줄마다 한다. 열린 어노테이션 칸은 한 번에 하나다.
@@ -1408,17 +1401,6 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   const pendingCount = proposals.length > 0 ? t("objectives.criteria.pending", { count: proposals.length }) : null;
   const approveAll = proposals.length > 1 && touchable;
   useStackedProposalCount(criteriaHeadRef, pendingCount, `${approveAll}:${criteriaCollapsible}`);
-  const resultsOpen = tab === "results";
-  useEffect(() => {
-    if (!resultReveal || !resultsOpen || zoomOpen) return;
-    const frame = requestAnimationFrame(() => {
-      const group = detailRef.current?.querySelector<HTMLElement>(`[data-result-mission="${CSS.escape(resultReveal.id)}"]`);
-      group?.scrollIntoView({ block: "start" });
-      group?.querySelector<HTMLButtonElement>(".objectives-result-group-head")?.focus({ preventScroll: true });
-    });
-    const timer = setTimeout(() => setResultReveal(null), 1600);
-    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
-  }, [resultReveal, resultsOpen, zoomOpen, detailRef]);
   // 「이 임무로」 — 구성원 탭(맨 아래 임무 그래프)으로 바꾸고 그래프가 그 노드를 드러낸다. onTab 은 렌더마다 새로 만들어지므로 ref 로 읽는다(의존성에 넣으면 무한 렌더).
   const onTabRef = useRef(onTab);
   onTabRef.current = onTab;
@@ -1544,18 +1526,6 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         </div>
       </div>
   </>);
-  const sResults = (<>
-      {/* 결과물 장부 — 임무 순서의 묶음과 마지막 기록 한 줄. 임무 밖 연결은 끝에 남기고, 그래프 팝업과 묶음 머리가 왕복한다.
-          사람은 읽기만 한다. PR 관측은 SSE로 갱신하고 Artifact는 외부 링크만 연다. 결과물 0개도 유효하다. */}
-      {readOnly && objective.results.length === 0 ? null : <div className="objectives-group objectives-results-group">
-        {readOnly ? null : <SectionHead label={objective.results.length > 0 ? `${t("objectives.results.title")} ${objective.results.length}` : t("objectives.results.title")} />}
-        {objective.results.length > 0 ? <div id="objectives-sec-results"><ObjectiveResults objective={objective} t={t} language={language} onShowMission={showMission} highlightMission={resultReveal?.id ?? null} groupOpen={groupOpen} onToggleGroup={onToggleGroup} /></div> : null}
-      </div>}
-      {/* 공유 폴더 — 증거 아래 독립 섹션. 증거가 0건이어도 보이고, 기본 접힘이며, 머리에 개수·배지를 두지 않는다. */}
-      {readOnly && sharedFiles === 0 ? null : <div className="objectives-group">
-        <SharedFolderSection objective={objective} t={t} language={language} open={sectionOpen("detail:shared")} onToggle={() => onToggleSection("detail:shared")} named={readOnly} />
-      </div>}
-  </>);
   const renderMissionDetail = (mission: ObjectiveMission, { close, select, state }: MissionDetailActions) => {
     const index = numberOf(mission.id), member = objective.members.find(m => m.id === mission.member);
     const allowed = canEditMission(mission.id), recordsOpen = mission.id in openRecords, unseen = unseenRecords(mission);
@@ -1593,7 +1563,11 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
       <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.parents")} {mission.prerequisites.length}</div>{mission.prerequisites.map(id => { const parent = objective.missions.find(m => m.id === id); return parent ? edgeRow(parent, parent.id, mission.id) : null; })}{mission.unplaced ? <p className="objectives-popup-hint">{t("objectives.graph.unplacedHint")}</p> : null}</div>
       {children.length ? <div className="objectives-popup-group"><div className="objectives-popup-group-head">{t("objectives.graph.children")} {children.length}</div>{children.map(child => edgeRow(child, mission.id, child.id))}</div> : null}
       {mission.records.length ? <div className="objectives-popup-group"><button type="button" className="objectives-popup-text-button" aria-expanded={recordsOpen} onClick={() => togglePopupRecords(mission)}>{t("objectives.records.count", { index, count: mission.records.length })}{unseen ? ` · ${t("objectives.records.unseen", { count: unseen })}` : ""} {recordsOpen ? "−" : "+"}</button>{recordsOpen ? <MissionRecords id={`graph-records-${mission.id}`} records={mission.records} seenAtOpen={openRecords[mission.id] ?? EMPTY_IDS} open t={t} language={language} /> : <p className="objectives-popup-hint">{mission.records.at(-1)?.lines[0] ? <LinkText text={mission.records.at(-1)!.lines[0]!} /> : null}</p>}</div> : null}
-      {((count) => count > 0 ? <div className="objectives-popup-group"><button type="button" className="objectives-popup-text-button objectives-popup-results-link" onClick={() => { close(); showResults(mission.id); }}><ResultsGlyph />{t("objectives.graph.results", { count })}<span aria-hidden="true">↗</span></button></div> : null)(objective.results.filter((result) => result.sourceMissionId === mission.id).length)}
+      {((count) => count > 0 ? <div className="objectives-popup-group"><button type="button" className="objectives-popup-text-button objectives-popup-results-link" onClick={(event) => {
+        const node = event.currentTarget.closest(".objectives-zoom")?.querySelector<HTMLElement>(`[data-graph-node="${CSS.escape(mission.id)}"]`);
+        close();
+        showResults(mission.id, node ?? event.currentTarget);
+      }}><ResultsGlyph />{t("objectives.graph.results", { count })}<span aria-hidden="true">↗</span></button></div> : null)(objective.results.filter((result) => result.sourceMissionId === mission.id).length)}
       {objective.decisions.filter(d => d.missionId === mission.id).map(d => <button key={d.id} type="button" className="objectives-popup-text-button" onClick={() => { close(); showDecision(d.id); }}>{t("objectives.decisions.missionLink", { index, count: 1 })}</button>)}
       {readOnly ? null : <div className="objectives-popup-actions"><button type="button" className="objectives-popup-text-button" disabled={!editable} onClick={() => patch({ done: !mission.done })}>{t(mission.done ? "objectives.graph.reopen" : "objectives.missions.done")}</button><button type="button" className="objectives-popup-text-button is-danger" disabled={mission.done || !touchable} onClick={() => void call("/mission/remove", { objectiveId: objective.id, missionId: mission.id })}>{t("objectives.missions.remove")}</button></div>}
       {!editable && !readOnly ? <p className="objectives-popup-hint">{t(objective.done ? "objectives.graph.locked" : "objectives.graph.doneLocked")}</p> : null}
@@ -1720,8 +1694,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   // 상세 aside > 탭 칸(스크롤). 넘긴 이유와 돌려주기는 구성원 채팅 카드에서 보인다.
   // 탭 칸(.objectives-detail-scroll)이 상세의 스크롤 컨테이너다 — 그래프의 드래그 자동 스크롤·팝업 앵커가 이 칸을 기준으로 삼는다.
   const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}{sConsultations}{sRetro}{sFollowups}{sExtensions}</>
-    : tab === "crew" ? <>{sCrew}{sMissions}</>
-    : <>{sResults}</>;
+    : <>{sCrew}{sMissions}</>;
   return (
     <aside ref={detailRef} className={`objectives-detail${busy ? " is-busy" : ""}`} aria-label={objective.title}>
       <div className="objectives-detail-scroll">

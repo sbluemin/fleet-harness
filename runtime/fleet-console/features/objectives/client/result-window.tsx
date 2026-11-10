@@ -49,15 +49,33 @@ function visibleComposer(): HTMLTextAreaElement | undefined {
     .find((node) => !node.disabled && node.getClientRects().length > 0 && !node.closest("[hidden], [inert]"));
 }
 
+function focusReturnTarget(opener: HTMLElement | null | undefined): void {
+  // 연 컨트롤이 아직 보이면 그곳으로. 글리프처럼 가리킬 때만 뜨는 단추는 rects 가 비므로, 그 행·창으로 올라간다.
+  if (opener?.isConnected && opener.getClientRects().length && !opener.closest("[hidden], [inert]")) {
+    // 임무 노드는 Tab으로 들어올 때만 팝오버를 연다. 뷰어를 닫고 되돌리는 초점은 그 고리를 켜지 않는다.
+    opener.focus({ preventScroll: true, ...(opener.hasAttribute("data-graph-node") ? { focusVisible: false } : {}) });
+    return;
+  }
+  // 글리프는 가리킬 때만 떠서 닫을 때 사라진다. 그 행의 제목 단추(늘 보임)로 올린다.
+  const rowMain = opener?.closest(".side-bar-cluster-row")?.querySelector<HTMLElement>(".side-bar-cluster-row-main");
+  if (rowMain?.isConnected && rowMain.getClientRects().length && !rowMain.closest("[hidden], [inert]")) {
+    rowMain.focus({ preventScroll: true });
+    return;
+  }
+  const host = opener?.closest<HTMLElement>(".objectives-zoom, .mobile-info-screen, .objectives-m");
+  if (host?.isConnected && host.getClientRects().length && !host.closest("[hidden], [inert]")) {
+    if (!host.hasAttribute("tabindex")) host.tabIndex = -1;
+    host.focus({ preventScroll: true });
+    return;
+  }
+  // 행도 없으면 현재 화면의 채팅 입력으로 돌아간다. 대화 전환·초안 변경은 하지 않는다.
+  visibleComposer()?.focus({ preventScroll: true });
+}
+
 function closeWindow() {
   const opener = selection?.opener;
   updateSelection(null);
-  if (opener?.isConnected && opener.getClientRects().length && !opener.closest("[hidden], [inert]")) {
-    opener.focus({ preventScroll: true });
-    return;
-  }
-  // 연 단추가 탭 전환으로 사라졌으면, 현재 화면의 채팅 입력으로 돌아간다. 대화 전환·초안 변경은 하지 않는다.
-  visibleComposer()?.focus({ preventScroll: true });
+  focusReturnTarget(opener);
 }
 
 type Rect = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
@@ -115,7 +133,8 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   const [rect, setRect] = useState(initialRect);
   const [dragging, setDragging] = useState(false);
   // 지휘관 창과 겹치면 나중에 손댄 쪽이 위다.
-  const zIndex = useFloatingWindowZ(RESULT_WINDOW_ID, 59);
+  // 임무 창(60)과 그래프 팝업(66)보다 위. 메뉴·토스트(80~)보다는 아래다.
+  const zIndex = useFloatingWindowZ(RESULT_WINDOW_ID, 70);
   const drag = usePointerDrag();
   const groups = objective ? objective.missions.map((mission, index) => ({ id: mission.id, n: index + 1, title: missionTitle(mission), record: mission.records.at(-1), results: objective.results.filter((result) => result.sourceMissionId === mission.id) })).filter((group) => group.results.length > 0) : [];
   const loose = objective?.results.filter((result) => !result.sourceMissionId || !objective.missions.some((mission) => mission.id === result.sourceMissionId)) ?? [];
@@ -157,7 +176,9 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
     updateSelection({ ...opened, shared: { ...opened.shared, path } });
   };
   const sharedName = shared?.path.split("/").at(-1) ?? "";
-  const sharedList = useSharedFolder(objective, !attachmentMode && !sharedMode).list;
+  // 첨부가 아닌 동안은 공유 폴더를 계속 읽는다 — 증거 모드에서도 실패를 알고, 공유 모드에서도 잘림을 말한다.
+  const sharedFolder = useSharedFolder(objective, !attachmentMode);
+  const sharedList = sharedFolder.list;
   useEffect(() => {
     if (!sharedMode && !attachmentMode && objective && objective.results.length === 0 && opened.resultId === null && sharedList) {
       const first = groupSharedFolderEntries(sharedList.entries)[0]?.entries[0];
@@ -256,7 +277,7 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
       <span className="objectives-rw-objective" title={objective?.title}>{objective?.title}</span></span>
       {narrow ? <span className="objectives-rw-grip" aria-hidden="true" title={objective?.title}>⠿</span> : null}
       {narrow && group ? <MissionSwitcher label={t("objectives.missions.title")} value={group.id} options={groups.map((item) => ({ value: item.id, label: `${label(item)} (${item.results.length})` }))} onChange={chooseGroup} /> : null}
-      {objective && !attachmentMode ? <SourceSwitch objective={objective} opened={opened} sharedMode={sharedMode} t={t} /> : null}
+      {objective && !attachmentMode ? <SourceSwitch objective={objective} opened={opened} sharedMode={sharedMode} folder={sharedFolder} t={t} /> : null}
       {!mobile ? <button type="button" className="objectives-rw-reset" aria-label={t("objectives.results.window.reset")} title={t("objectives.results.window.reset")} onClick={() => { const next = defaultRect(); setRect(next); saveRect(next); }}>↺</button> : null}
       <button type="button" className="objectives-rw-close" aria-label={t("objectives.detail.close")} title={t("objectives.detail.close")} onClick={closeWindow}><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" /></svg></button>
     </header>
@@ -271,12 +292,16 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
             ? attachment
               ? <img className="objectives-rw-image" key={attachment.id} src={attachmentFileUrl(opened.objectiveId, attachment.id)} alt={attachmentLabel} draggable={false} />
               : <p className="objectives-result-textstate" role="status">{t("objectives.results.window.empty")}</p>
+            : sharedMode && sharedFolder.failed
+              ? <p className="objectives-result-textstate" role="status">{t("objectives.shared.failed")}</p>
+            : sharedMode && !shared
+              ? <p className="objectives-result-textstate" role="status">{t("objectives.shared.empty")}</p>
             : shared ? !sharedFolderPreviewable(shared)
               ? <div className="objectives-rw-link-card"><div className="objectives-rw-artifact"><b>{sharedName}</b><span>{t("objectives.shared.noPreview")} · {bytesLabel(shared.bytes)}</span><a href={sharedFileUrl(opened.objectiveId, shared.path, true)} download>{t("objectives.shared.download")}</a></div></div>
               : shared.kind === "image"
                 ? <img className="objectives-rw-image" key={shared.path} src={sharedFileUrl(opened.objectiveId, shared.path)} alt={sharedName} draggable={false} />
                 : <EvidenceTextContent key={shared.path} t={t} plain={!/\.md$/i.test(sharedName)} src={sharedFileUrl(opened.objectiveId, shared.path)} name={sharedName} />
-            : !result || !objective ? <p className="objectives-result-textstate" role="status">{t("objectives.results.window.empty")}</p>
+            : !result || !objective ? <p className="objectives-result-textstate" role="status">{t(!sharedMode && sharedFolder.failed && (objective?.results.length ?? 0) === 0 ? "objectives.shared.failed" : "objectives.results.window.empty")}</p>
             : result.kind === "evidence" ? result.mediaType === "text/plain"
               ? <EvidenceTextContent key={`${result.id}:${result.evidenceId}`} t={t} src={resultFileUrl(objective.id, result)} name={result.name} />
               : <img className="objectives-rw-image" key={`${result.id}:${result.evidenceId}`} src={resultFileUrl(objective.id, result)} alt={title} draggable={false} />
@@ -297,7 +322,7 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
         <div ref={footRef} className="objectives-rw-foot">
         {attachmentMode
           ? attachment ? <div className="objectives-rw-caption" aria-live="polite"><b>{attachmentLabel}</b><span>{t("objectives.att.position", { n: shownAttachmentAt + 1, count: attachments.length })}{` · ${attachment.name}`}{attachment.width && attachment.height ? ` · ${attachment.width}×${attachment.height}` : ""}</span></div> : null
-          : shared ? <div className="objectives-rw-caption" aria-live="polite"><b>{sharedName}</b>{shared.path !== sharedName ? <span className="is-mono">{shared.path}</span> : null}<span>{t("objectives.att.position", { n: sharedIndex + 1, count: sharedOrdered.length })} · {bytesLabel(shared.bytes)} · {absolute(shared.modifiedAt, language)}</span><a className="objectives-rw-download" href={sharedFileUrl(opened.objectiveId, shared.path, true)} download>{t("objectives.shared.download")}</a></div>
+          : shared ? <div className="objectives-rw-caption" aria-live="polite"><b>{sharedName}</b>{shared.path !== sharedName ? <span className="is-mono">{shared.path}</span> : null}<span>{t("objectives.att.position", { n: sharedIndex + 1, count: sharedOrdered.length })} · {bytesLabel(shared.bytes)} · {absolute(shared.modifiedAt, language)}{sharedFolder.list?.truncated ? ` · ${t("objectives.shared.truncated")}` : ""}</span><a className="objectives-rw-download" href={sharedFileUrl(opened.objectiveId, shared.path, true)} download>{t("objectives.shared.download")}</a></div>
         : result ? <div className="objectives-rw-caption" aria-live="polite"><b>{title}</b>{result.note && result.kind === "evidence" ? <span><LinkText text={result.note} /></span> : null}<span>{t("objectives.att.position", { n: index + 1, count: ordered.length })}{result.kind === "evidence" ? ` · ${result.name} · ${bytesLabel(result.bytes)}${result.width && result.height ? ` · ${result.width}×${result.height}` : ""} · ${absolute(result.capturedAt, language)}` : ""}</span></div> : null}
         {attachmentMode
           ? attachments.length > 0 ? <nav className="objectives-rw-strip" aria-label={heading}>
@@ -316,16 +341,16 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
 }
 
 /**
- * 증거 ↔ 공유 폴더 전환 — 같은 창에서 다른 쪽 목록으로 옮겨 간다. 옮겨 갈 곳이 비었으면 서지 않는다.
- * 공유 폴더는 보드 방송 없이도 늘어나므로 목록은 창이 읽은 값(보드 객체가 바뀔 때 다시 읽는다)을 따른다.
+ * 증거 ↔ 공유 폴더 전환 — 같은 창에서 다른 쪽 목록으로 옮겨 간다.
+ * 폴더가 비었으면 서지 않는다. 읽기 실패는 남긴다 — 누르면 그 모드에서 실패 문구를 본다.
  */
-function SourceSwitch({ objective, opened, sharedMode, t }: { readonly objective: Objective; readonly opened: Selection; readonly sharedMode: boolean; readonly t: ReturnType<typeof getT> }) {
-  const { list } = useSharedFolder(objective, !sharedMode);
-  const entries = list?.entries ?? [];
+function SourceSwitch({ objective, opened, sharedMode, folder, t }: { readonly objective: Objective; readonly opened: Selection; readonly sharedMode: boolean; readonly folder: { readonly list: { readonly entries: readonly SharedFolderEntry[] } | null; readonly failed: boolean }; readonly t: ReturnType<typeof getT> }) {
+  const entries = folder.list?.entries ?? [];
   const first = groupSharedFolderEntries(entries)[0]?.entries[0];
-  if (sharedMode ? objective.results.length === 0 : !first) return null;
+  if (!sharedMode && !first && !(folder.failed && objective.results.length > 0)) return null;
+  if (sharedMode && objective.results.length === 0) return null;
   const label = t(sharedMode ? "objectives.results.title" : "objectives.shared.title");
-  const toggle = () => updateSelection(sharedMode ? { objectiveId: opened.objectiveId, resultId: null, opener: opened.opener } : { objectiveId: opened.objectiveId, resultId: null, opener: opened.opener, shared: { entries, path: first!.path } });
+  const toggle = () => updateSelection(sharedMode ? { objectiveId: opened.objectiveId, resultId: null, opener: opened.opener } : { objectiveId: opened.objectiveId, resultId: null, opener: opened.opener, shared: { entries, path: first?.path ?? "" } });
   return <button type="button" className="objectives-rw-source" aria-label={label} title={label} onClick={toggle}>{label}</button>;
 }
 

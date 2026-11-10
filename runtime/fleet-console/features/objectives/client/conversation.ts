@@ -157,7 +157,7 @@ function conversationHolds(objective: Objective): readonly ConversationHold[] {
           : followupHoldRoute(objective);
     const reveal = target === "criteria"
       ? { label: localized((t) => t("objectives.composer.reveal")), run: () => {
-          // 구성원·결과물 탭에 남아 있어도 기준이 보이게, 목표 탭으로 연다.
+          // 구성원 탭에 남아 있어도 기준이 보이게, 목표 탭으로 연다.
           patchOwnerView(objective.commodoreId, () => ({ detailTab: "goal" }));
           revealObjective({ objectiveId: objective.id });
           openObjectiveFromCluster(objective.theaterId);

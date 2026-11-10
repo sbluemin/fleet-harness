@@ -11,7 +11,7 @@ import type { SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
  * 작업 탭 「목표」 섹션이 쓰는 목록 — 조립(호스트)이 commodore feature에 넘기는 렌더러다.
  * commodore feature가 workspace 목록을 직접 가져오면 순환이 생기므로, 이 모듈 한 곳에서만 잇는다.
  * 행을 누르면 지휘관 대화가 바로 열리고, 아바타를 누르면 목표 팝업, 임무 게이지를 누르면 임무 팝업이 뜬다.
- * 행의 글리프(목표·구성원·라이브러리)는 각각 목표·임무·라이브러리 팝업을 연다 — 행 아래로 펼치지 않으며 가운데 대화는 그대로 둔다.
+ * 행의 글리프(목표·구성원·증거)는 목표·임무 팝업 또는 증거 뷰어를 연다 — 행 아래로 펼치지 않으며 가운데 대화는 그대로 둔다.
  */
 export function TasksCommanderList({ commodoreId, selectedId, heading, onSelect }: CommodoreTasksListProps) {
   const state = useConsoleState();
