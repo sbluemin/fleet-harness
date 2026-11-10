@@ -4,10 +4,13 @@ import { agentGlyph, clear, G, glyph, h, hostOf, keyed } from "./dom.js";
 import { paintColors, post, shownSpace, spaceHue, spaceName, tabCount, tr, type T } from "./shared.js";
 
 const LEAVE_MS = 160;
+/** 접힘 전환이 끝났다고 보는 여유 — 전환 시간 뒤 이만큼 더 기다렸다가 main 에 뷰 폭을 줄여 달라고 한다. */
+const SETTLE_MS = 30;
 
 /**
- * 세로 탭 레일 문서. 접힘(아이콘 열)·호버 펼침·고정은 이 한 문서가 그린다 — 뷰 폭만 main 이 바꾼다.
- * 레일은 지금 띄운 스페이스 하나의 탭만 그린다. 맨 위 머리가 어느 스페이스인지 말하고, 누르면 스페이스 선택 화면이 열린다.
+ * 탭 표시줄 문서. 세로 레일(접힘·호버 펼침·고정)과 가로 표시줄(주소줄 위 한 줄)을 이 한 문서가 그린다 — 뷰의 자리와 크기만 main 이 바꾼다.
+ * 표시줄은 지금 띄운 스페이스 하나의 탭만 그린다. 머리가 어느 스페이스인지 말하고, 누르면 스페이스 선택 화면이 열린다.
+ * 세로 레일의 폭은 CSS 전환으로 이어져 변한다: 펼칠 때는 main 이 뷰를 먼저 넓히고, 접을 때는 전환이 끝난 뒤에 뷰를 줄여 달라고 한다.
  */
 export function mountRail(): (state: ChromeUiState) => void {
   const root = h("div", { class: "rail", attrs: { role: "group" } });
@@ -26,35 +29,68 @@ export function mountRail(): (state: ChromeUiState) => void {
   // Chrome 의 새 탭 단추처럼 글자 없이 가운데 「+」 하나 — 「새 탭」은 접근성 이름(aria-label·title)으로 남는다.
   newButton.append(h("span", { class: "glyph", text: "+" }));
   scroll.append(tabsBox, newButton);
-  root.append(pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), spaceHead, scroll);
+  // 가로 표시줄이 맨 위 줄일 때 신호등·캡션 버튼 자리를 비우는 여백 — 세로 레일에서는 자리를 차지하지 않는다.
+  const leading = h("span", { class: "pad" });
+  const trailing = h("span", { class: "pad" });
+  root.append(leading, pinButton, h("div", { class: "divider", attrs: { role: "separator" } }), spaceHead, scroll, trailing);
 
   let last: ChromeUiState | null = null;
   let hovered = false;
   let keyboard = false;
   let leave: ReturnType<typeof setTimeout> | null = null;
+  let settle: ReturnType<typeof setTimeout> | null = null;
   const tabCache = new Map<string, HTMLElement>();
   let markKey = "";
 
-  const open = (): boolean => last?.pinned === true || hovered || keyboard;
+  const horizontal = (): boolean => last?.orientation === "horizontal";
+  const open = (): boolean => !horizontal() && (last?.pinned === true || hovered || keyboard);
   const syncOpen = (): void => { root.classList.toggle("open", open()); };
+  /** 폭 전환이 도는 시간(ms). 동작 줄이기에서는 0 이다 — CSS 가 정한 값을 그대로 읽는다. */
+  const widthMotionMs = (): number => {
+    const first = getComputedStyle(root).transitionDuration.split(",")[0]?.trim() ?? "";
+    const value = Number.parseFloat(first);
+    return Number.isFinite(value) ? value * (first.endsWith("ms") ? 1 : 1000) : 0;
+  };
+  const expand = (): void => {
+    if (settle !== null) { clearTimeout(settle); settle = null; }
+    syncOpen();
+    post("rail", "expand", { expanded: true });
+  };
+  /** 접는다 — 클래스를 먼저 내려 폭이 줄어드는 것을 보이고, 전환이 끝난 뒤에 main 이 뷰를 줄인다(먼저 줄이면 접히는 모습이 잘린다). */
+  const collapse = (): void => {
+    syncOpen();
+    if (settle !== null) clearTimeout(settle);
+    const done = (): void => { settle = null; if (!open()) post("rail", "expand", { expanded: false }); };
+    const ms = widthMotionMs();
+    if (ms <= 0) done(); else settle = setTimeout(done, ms + SETTLE_MS);
+  };
 
-  // 호버는 이 문서가 직접 받는다. 펼치면 main 이 뷰 폭을 키우므로 펼친 영역 안에 머무는 포인터는 떠나지 않은 것이다.
-  document.documentElement.addEventListener("pointerenter", (event) => {
-    if (event.pointerType === "touch") return;
+  // 호버는 표시줄 몸이 직접 받는다. 펼치면 main 이 뷰 폭을 키우므로 펼친 영역 안에 머무는 포인터는 떠나지 않은 것이고,
+  // 접히는 동안 뷰의 빈 자리(이미 줄어든 몸 바깥)를 지나는 포인터는 다시 펼치지 않는다.
+  root.addEventListener("pointerenter", (event) => {
+    if (event.pointerType === "touch" || horizontal() || last?.autoExpand === false) return;
     if (leave !== null) { clearTimeout(leave); leave = null; }
-    if (!hovered) { hovered = true; syncOpen(); post("rail", "expand", { expanded: true }); }
+    if (!hovered) { hovered = true; expand(); }
   });
-  document.documentElement.addEventListener("pointerleave", (event) => {
-    if (event.pointerType === "touch") return;
+  root.addEventListener("pointerleave", (event) => {
+    if (event.pointerType === "touch" || !hovered) return;
     if (leave !== null) clearTimeout(leave);
-    leave = setTimeout(() => { leave = null; hovered = false; syncOpen(); if (!keyboard) post("rail", "expand", { expanded: false }); }, LEAVE_MS);
+    leave = setTimeout(() => { leave = null; hovered = false; if (!keyboard) collapse(); }, LEAVE_MS);
   });
-  root.addEventListener("focusin", (event) => { if ((event.target as HTMLElement).matches(":focus-visible")) { keyboard = true; syncOpen(); post("rail", "expand", { expanded: true }); } });
+  root.addEventListener("focusin", (event) => { if (!horizontal() && (event.target as HTMLElement).matches(":focus-visible")) { keyboard = true; expand(); } });
   root.addEventListener("focusout", (event) => {
     const next = (event as FocusEvent).relatedTarget as Node | null;
     if (next && root.contains(next)) return;
-    keyboard = false; syncOpen(); if (!hovered) post("rail", "expand", { expanded: false });
+    if (!keyboard) return;
+    keyboard = false; if (!hovered) collapse();
   });
+  // 표시줄 어디서든 우클릭하면 표시줄 메뉴가 뜬다 — 메뉴는 주소줄 문서가 그리므로 자리만 알린다.
+  document.addEventListener("contextmenu", (event) => { event.preventDefault(); post("rail", "tabs-menu", { x: event.clientX, y: event.clientY }); });
+  document.addEventListener("keydown", (event) => { if (event.key === "Escape" && last?.overlay?.kind === "tabs-menu") post("rail", "overlay", { kind: null }); });
+  // 가로 표시줄은 주소줄 뷰 위에 있어 메뉴의 바깥 누름이 여기로 온다 — 다른 곳을 누르면 메뉴를 닫는다.
+  document.addEventListener("pointerdown", (event) => { if (event.button !== 2 && last?.overlay?.kind === "tabs-menu") post("rail", "overlay", { kind: null }); });
+  // 가로 표시줄은 세로 휠로도 옆으로 넘긴다.
+  scroll.addEventListener("wheel", (event) => { if (horizontal() && event.deltaX === 0 && event.deltaY !== 0) { scroll.scrollLeft += event.deltaY; event.preventDefault(); } }, { passive: false });
 
   const makeTab = (): HTMLElement => {
     const icon = h("span", { class: "tab-icon" });
@@ -104,12 +140,20 @@ export function mountRail(): (state: ChromeUiState) => void {
     document.documentElement.dataset.platform = state.platform;
     const t = tr(state);
     const chrome = state.chrome;
-    root.classList.toggle("pinned", state.pinned);
+    const flat = state.orientation === "horizontal";
+    document.documentElement.dataset.orientation = state.orientation;
+    root.classList.toggle("horizontal", flat);
+    root.classList.toggle("pinned", state.pinned && !flat);
+    tabsBox.setAttribute("aria-orientation", state.orientation);
+    leading.style.width = `${flat ? state.leading : 0}px`; trailing.style.width = `${flat ? state.trailing : 0}px`;
+    if (flat && (hovered || keyboard)) { hovered = false; keyboard = false; }
     // 조작 중 표시는 지금 보는 스페이스의 것이다(주소줄과 같은 규칙).
     const shownDriving = shownSpace(state)?.driving === true;
     root.classList.toggle("driving", shownDriving);
     root.setAttribute("aria-label", shownDriving ? t("driving") : t("tabs"));
-    if (previous?.pinned !== state.pinned) syncOpen();
+    // 고정을 풀면(메뉴의 「탭 접기」) 포인터가 레일 밖에 있으니 접히는 것을 보인 뒤에 뷰를 줄인다 — main 은 그동안 뷰를 펼친 폭으로 둔다.
+    if (previous?.orientation !== state.orientation || previous?.pinned !== state.pinned) { if (previous?.pinned === true && !state.pinned && !flat && !hovered && !keyboard) collapse(); else syncOpen(); }
+    if (previous && previous.autoExpand !== state.autoExpand && !state.autoExpand && hovered) { hovered = false; if (!keyboard) collapse(); }
     const pinText = t(state.pinned ? "rail.unpin" : "rail.pin");
     pinButton.title = pinText; pinButton.setAttribute("aria-label", pinText); pinButton.setAttribute("aria-pressed", String(state.pinned));
     pinButton.classList.toggle("set", state.pinned);

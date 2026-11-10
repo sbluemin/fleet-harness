@@ -370,6 +370,8 @@ async function boot(): Promise<void> {
    * 브라우저 표면(칸·독립 창)과 그 크롬. 크롬 문서는 셸의 정적 자산이고 Console 의 문서·렌더러를 거치지 않는다 — 사람의 동작은 Console 의 기존 REST 로 돌아가고,
    * 상태는 스냅샷으로 온다. 문서는 sandbox·Node 없음이고 사전 로드 스크립트도 없다 — 주입 프로그램만 main 이 넣는다.
    */
+  // 줌·창·브라우저 탭 표시줄 모양이 한 파일에 남는다. 브라우저 표면이 첫 모양을 여기서 읽으므로 표면보다 먼저 연다.
+  const desktopState = createDesktopState(path.join(app.getPath("userData"), "desktop-state.json"));
   const chromeViewPreferences = { sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, webviewTag: false, allowRunningInsecureContent: false } as const;
   let browserOrigin: string | null = null;
   let chromeProgram: string | null = null;
@@ -404,6 +406,7 @@ async function boot(): Promise<void> {
     lang: entryLanguage,
     platform: process.platform,
     zoom: () => window && !window.isDestroyed() ? window.consoleContents.getZoomFactor() : 1,
+    stripPrefs: desktopState.browserStrip,
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
     act: createBrowserActions({ fetch: consoleFetch, origin: () => browserOrigin, lang: entryLanguage, openExternal: (url) => { void shell.openExternal(url); }, log: (message) => logger.info(message) }),
     relay: (surface) => browserViews.relaySurface(surface),
@@ -517,7 +520,6 @@ async function boot(): Promise<void> {
   /** 몇 번째 넘겨주기인가. 뒤에 온 넘겨주기가 있으면 앞선 것의 동기화와 되돌리기는 손을 떼야 한다. */
   let handoffGeneration = 0;
   let refreshNativeUpdateActions: (() => void) | null = null;
-  const desktopState = createDesktopState(path.join(app.getPath("userData"), "desktop-state.json"));
   const zoomState = desktopState.zoom;
   const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.(), zoomApplied: () => browserViews.refresh() });
   /**

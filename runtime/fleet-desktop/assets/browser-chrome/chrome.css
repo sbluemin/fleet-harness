@@ -13,6 +13,8 @@
   --font-ui: "Pretendard Variable", "Manrope Variable", system-ui, sans-serif;
   --surface: var(--canvas-abyss);
   --rail-collapsed: 54px; --rail-expanded: 237px; --strip: 52px;
+  /* 펼친 레일 안 한 줄의 폭(레일 폭 − 좌우 여백 16 − 경계선 1)과 폭 전환의 박자. */
+  --rail-row: calc(var(--rail-expanded) - 17px); --rail-motion: 220ms; --rail-ease: cubic-bezier(0.2, 0, 0, 1);
 }
 :root[data-scheme="light"] { color-scheme: light; }
 /* ==== Console 테마 토큰 (theme.css 의 대화 중심 화면 값) — design-contract.test.ts 가 이 블록과 theme.css 의 일치를 지킨다. 손으로 고치지 않는다. ==== */
@@ -122,7 +124,7 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 :focus-visible { outline: none; }
 button { font: inherit; color: inherit; }
 svg { display: block; }
-html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"] .strip { background: var(--surface); }
+html[data-role="stage"] body, html[data-role="bar"] .strip { background: var(--surface); }
 
 /* ---- 주소줄 ---- */
 .strip { position: relative; z-index: 2; border-bottom: 1px solid var(--hairline); display: flex; align-items: center; gap: var(--space-1); height: var(--strip); padding: 0 var(--space-2); -webkit-app-region: drag; }
@@ -135,6 +137,8 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 .rail::before { background: linear-gradient(180deg, var(--agent-glow) 0%, transparent 38%, var(--agent-glow) 72%, transparent 100%); background-size: 100% 200%; }
 .strip.driving::before, .rail.driving::before { opacity: 1; animation: agent-sweep-x 6s ease-in-out infinite alternate; }
 .rail.driving::before { animation-name: agent-sweep-y; }
+.rail.horizontal::before { background: linear-gradient(90deg, var(--agent-glow) 0%, transparent 38%, var(--agent-glow) 72%, transparent 100%); background-size: 200% 100%; }
+.rail.horizontal.driving::before { animation-name: agent-sweep-x; }
 @keyframes agent-sweep-x { from { background-position: 0% 0; } to { background-position: 100% 0; } }
 @keyframes agent-sweep-y { from { background-position: 0 0%; } to { background-position: 0 100%; } }
 @media (prefers-reduced-motion: reduce) { .strip.driving::before, .rail.driving::before { animation: none; } .strip::before, .rail::before { transition: none; } }
@@ -168,10 +172,13 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 /* ---- 오버레이: 이 문서가 표면 높이로 커졌을 때 페이지 위를 덮는다. 투명한 빈 곳은 바깥 누름(닫기)을 받고, 페이지 뷰는 그 아래에서 계속 그려진다. ---- */
 .overlay { position: absolute; z-index: 1; left: 0; right: 0; top: 0; bottom: 0; }
 .overlay[hidden] { display: none; }
+.overlay.over-strip { z-index: 3; }
 .backdrop { position: absolute; inset: 0; }
 .backdrop.scrim { position: absolute; background: var(--dialog-scrim); display: flex; align-items: center; justify-content: center; padding: var(--space-4); }
 .backdrop.modal:not(.scrim) { background: transparent; }
 .menu { position: absolute; right: var(--space-2); top: calc(var(--strip) + var(--space-1)); display: flex; flex-direction: column; gap: var(--popover-list-gap); min-width: 248px; max-width: 320px; max-height: calc(100% - 72px); overflow-y: auto; padding: var(--popover-pad); background: var(--popover-face); border-radius: var(--popover-radius); box-shadow: var(--popover-surface-shadow); }
+/* 탭 표시줄 우클릭 메뉴 — 누른 자리에 뜬다(자리는 문서가 정한다). */
+.menu.tabs-menu { right: auto; min-width: 220px; }
 .menu-item { display: flex; align-items: flex-start; gap: var(--popover-row-gap); text-align: start; background: transparent; border: 0; color: var(--text-primary); font-size: var(--popover-font-size); min-height: var(--popover-row); padding: 6px var(--popover-row-inline); border-radius: var(--popover-row-radius); line-height: var(--popover-line-height); letter-spacing: 0; cursor: pointer; }
 .menu-item[aria-checked="true"] { color: var(--brass-ink); }
 .menu-item:hover:not(:disabled):not([aria-disabled="true"]), .menu-item:focus-visible { background: var(--wash-hover); color: var(--text-primary); outline: none; box-shadow: none; }
@@ -270,15 +277,16 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 .swatch:focus-visible { box-shadow: var(--focus-face); }
 .swatch-red { background: var(--id-crimson); } .swatch-blue { background: var(--id-cerulean); } .swatch-green { background: var(--id-moss); } .swatch-black { background: var(--ink-abyss); }
 
-/* ---- 세로 탭 레일 ---- */
+/* ---- 탭 표시줄: 세로 레일(기본)과 가로 표시줄. 몸(.rail)만 바탕을 칠한다 — 접히는 동안 뷰의 남는 자리는 비쳐 보여야 한다. ---- */
 html[data-role="rail"] body { width: var(--rail-expanded); }
-.rail { isolation: isolate; position: absolute; top: 0; bottom: 0; left: 0; border-right: 1px solid var(--hairline); width: var(--rail-collapsed); display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--surface); color: var(--text-secondary); font-size: var(--t-xs); }
+.rail { isolation: isolate; position: absolute; top: 0; bottom: 0; left: 0; border-right: 1px solid var(--hairline); width: var(--rail-collapsed); display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--surface); color: var(--text-secondary); font-size: var(--t-xs); transition: width var(--rail-motion) var(--rail-ease), box-shadow var(--rail-motion) var(--rail-ease); }
 .rail.open { width: var(--rail-expanded); }
+.rail > .pad { display: none; }
 .rail.open:not(.pinned) { box-shadow: 0 18px 38px -22px oklch(0% 0 0 / 30%); }
 .divider { flex: none; height: 1px; margin: 2px var(--space-1); background: var(--hairline); }
 .scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-1); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .rail.open .scroll { scrollbar-width: thin; }
-.row { flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); font-size: var(--t-sm); text-align: start; white-space: nowrap; cursor: pointer; }
+.row { flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; overflow: hidden; padding: 0 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); font-size: var(--t-sm); text-align: start; white-space: nowrap; cursor: pointer; }
 .row:hover:not(:disabled), .tab:hover { background: var(--ink-veil); color: var(--text-primary); }
 .row:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
 .row.set { color: var(--brass-ink); }
@@ -289,10 +297,17 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .glyph { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
 .glyph svg { width: 14px; height: 14px; }
 .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.rail:not(.open) :is(.label, .tab-title, .tab-close, .space-count) { display: none; }
+/* 접힌 레일은 글자·닫기·탭 수를 감출 뿐 자리는 펼친 폭 그대로 둔다 — 폭이 변하는 동안 글자가 다시 말줄임되지 않고, 줄이 넓어지는 만큼 드러난다. */
+.rail :is(.label, .tab-title, .tab-close, .space-count) { transition: opacity 140ms ease 60ms, visibility 0s; }
+.rail:not(.open):not(.horizontal) :is(.label, .tab-title, .tab-close, .space-count) { opacity: 0; visibility: hidden; transition: opacity 90ms ease, visibility 0s 90ms; }
+.rail:not(.horizontal) .label { flex: none; }
+.rail:not(.horizontal) .tab-title { flex: none; width: calc(var(--rail-row) - 76px); }
+.rail.open:not(.horizontal) .tab.is-agent .tab-title { width: calc(var(--rail-row) - 100px); }
+.rail:not(.horizontal) .space-head .space-name { flex: none; width: calc(var(--rail-row) - 82px); }
+@media (prefers-reduced-motion: reduce) { .rail, .rail :is(.label, .tab-title, .tab-close, .space-count) { transition: none; } }
 .tabs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tabs[hidden] { display: none; }
-.tab { position: relative; flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; padding: 0 8px 0 12px; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-sm); line-height: 18px; }
+.tab { position: relative; flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; overflow: hidden; padding: 0 8px 0 12px; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-sm); line-height: 18px; }
 .tab.active { background: var(--ink-rim); color: var(--text-primary); }
 .tab-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-close { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-inline-start: auto; padding: 0; background: transparent; border: 0; color: var(--text-tertiary); font-size: var(--t-md); line-height: 1; cursor: pointer; border-radius: var(--radius-pill); }
@@ -301,8 +316,8 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .tab-agent { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: var(--radius-xs); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
 .tab-agent[hidden] { display: none; }
 .tab-agent svg { width: 10px; height: 10px; }
-.rail:not(.open) .tab-agent { position: absolute; top: 3px; right: 3px; width: 12px; height: 12px; }
-.rail:not(.open) .tab-agent svg { width: 8px; height: 8px; }
+.rail:not(.open):not(.horizontal) .tab-agent { position: absolute; top: 3px; right: 3px; width: 12px; height: 12px; }
+.rail:not(.open):not(.horizontal) .tab-agent svg { width: 8px; height: 8px; }
 .tab.loading .tab-icon { animation: pulse 1s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 @media (prefers-reduced-motion: reduce) { .tab.loading .tab-icon { animation: none; } }
@@ -316,12 +331,25 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .space-initial { text-transform: uppercase; }
 /* 레일 머리 — 접힌 레일에서는 표식 하나가 가운데 서고, 펼치면 이름과 탭 수가 붙는다. */
 .row.space-head { gap: var(--space-2); padding: 0 8px; color: var(--text-primary); font-weight: var(--weight-medium); }
-.rail:not(.open) .row.space-head { justify-content: center; padding: 0; }
 .row.space-head.open { background: var(--ink-rim); }
 .space-head .space-name { flex: 1 1 auto; }
 .space-count { flex: none; margin-inline-start: auto; padding-inline-end: var(--space-1); color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-regular); font-variant-numeric: tabular-nums; }
 .space-count[hidden] { display: none; }
 .space-head.driving .space-mark { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--agent-control-badge); }
+/* ---- 가로 탭 표시줄: 같은 문서가 주소줄 위 한 줄로 눕는다. 맨 위 줄이므로 신호등·캡션 자리를 비우고(.pad), 그 여백으로 창을 끈다.
+   탭이 놓이는 자리는 끌기 영역이 아니다 — 끌기 영역은 우클릭을 받지 못해 표시줄 메뉴가 뜨지 않는다. ---- */
+html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
+.rail.horizontal { right: 0; bottom: auto; width: auto; height: var(--strip); flex-direction: row; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border-right: 0; transition: none; }
+.rail.horizontal > .pad { display: block; flex: none; height: 100%; -webkit-app-region: drag; }
+.rail.horizontal :is(.rail-pin, .divider) { display: none; }
+.rail.horizontal .row.space-head { flex: none; width: auto; max-width: 180px; }
+.rail.horizontal .space-head .space-name { flex: 0 1 auto; max-width: 104px; }
+.rail.horizontal .space-count { margin-inline-start: 0; }
+.rail.horizontal .scroll { flex: 1 1 auto; min-width: 0; height: 100%; flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.rail.horizontal .tabs { flex: 0 1 auto; flex-direction: row; min-width: 0; }
+.rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; }
+.rail.horizontal .tab-title { flex: 1 1 auto; }
+.rail.horizontal .row.new { flex: none; width: 34px; }
 /* 주소줄 단추 — 사령관 스페이스를 보는 동안 글리프가 그 스페이스의 색을 입는다. */
 .spaces-button { border-radius: var(--radius-pill); }
 .spaces-button svg { width: 16px; height: 16px; }
