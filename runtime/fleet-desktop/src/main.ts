@@ -23,9 +23,9 @@ import { createLaunchController, type RuntimeEntryState } from "./launch-control
 import { createDesktopNotifier } from "./desktop-notices.js";
 import { createHostPickerView } from "./host-picker-view.js";
 import { createConsoleSectionController } from "./console-section-controller.js";
-import { CONSOLE_DIRECTORY_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
-import { releaseFetchBody } from "./remote-access.js";
+import { confirmRemoteIdentity, releaseFetchBody } from "./remote-access.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { createShellNetwork } from "./shell-network.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
@@ -64,7 +64,7 @@ const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
-const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY];
+const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -633,6 +633,10 @@ async function boot(): Promise<void> {
   const consoleSection = createConsoleSectionController({
     home: () => localConsoleOrigin,
     fetch: (url, init) => fetch(url, init),
+    // 원격 명부는 창 세션의 페어링 쿠키로 읽는다. 조인은 열 때만 하고, 여기서는 부르지 않는다.
+    rosterFetch: (url, init) => consoleFetch(url, init),
+    confirmIdentity: (hostname, port, fingerprint) => confirmRemoteIdentity(hostname, port, fingerprint, 5_000),
+    pinRemote: (hostname, fingerprint) => remotePins.pin(hostname, fingerprint),
     open: (origin) => bridge.open(origin),
     add: (url) => picker.open(url).catch((error) => bridge.report(error)),
     confirmForget: async (label) => {
