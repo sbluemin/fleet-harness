@@ -389,8 +389,10 @@ export function applyDesktopShellMarker(): void {
  * 131%에서 40 DIP), 축소하면 신호등 위로 올라탔다(76%에서 8.5 DIP 겹침). Windows에서는 같은
  * 어긋남이 축소 쪽에서 도움말·호스트 칩을 캡션 버튼 아래로 밀어 넣는다.
  *
- * 창 폭(outerWidth, DIP)과 뷰포트 폭(innerWidth, CSS px)의 비가 곧 줌이다 — 타이틀바를 숨긴
- * 창(hiddenInset·hidden)에는 웹 콘텐츠 밖의 가로 크롬이 없어 두 값이 같은 창을 잰다. 그 비를
+ * 창 높이(outerHeight, DIP)와 뷰포트 높이(innerHeight, CSS px)의 비가 곧 줌이다 — 타이틀바를 숨긴
+ * 창(hiddenInset·hidden)에는 웹 콘텐츠 밖의 크롬이 없고 Console 뷰는 늘 창의 전체 높이를 쓴다.
+ * 폭으로는 재지 않는다: 플릿 브라우저 칸이 창 오른쪽에 붙으면 Console 뷰가 창보다 좁아져
+ * 폭의 비는 줌이 아니라 창 폭 ÷ Console 폭이 된다(실측: 줌 1, 1440 창에 872 뷰에서 1.65). 그 비를
  * 문서에 심어 예약 폭을 DIP로 되돌리면 양 끝 클러스터는 어느 줌에서든 네이티브 컨트롤 옆
  * 같은 자리에 선다. 세로 정렬은 이 축의 몫이 아니다 — 셸이 신호등을 밴드 중앙으로 옮기고
  * 캡션 스트립 높이를 줌만큼 키워 맡는다(window-policy.ts·title-bar-overlay-refresh.ts).
@@ -411,11 +413,11 @@ function trackDesktopZoomFactor(): void {
     if (document.visibilityState === "visible") apply();
   };
   const apply = (): void => {
-    const outerWidth = window.outerWidth;
-    const innerWidth = window.innerWidth;
-    // 비활성 창을 다시 읽으면 폭이 0일 수 있다. 이전 줌을 보존하고 유효한 폭을 얻을 때까지만 임시 신호로 재시도한다.
+    const outerHeight = window.outerHeight;
+    const innerHeight = window.innerHeight;
+    // 비활성 창을 다시 읽으면 높이가 0일 수 있다. 이전 줌을 보존하고 유효한 높이를 얻을 때까지만 임시 신호로 재시도한다.
     // resize를 상시 관측하면 아래에 기록한 전체화면 전환의 서로 다른 프레임을 줌으로 오인하므로 대기가 끝나면 반드시 걷는다.
-    if (outerWidth <= 0 || innerWidth <= 0) {
+    if (outerHeight <= 0 || innerHeight <= 0) {
       if (!pendingMeasurement) {
         pendingMeasurement = true;
         window.addEventListener("resize", retry);
@@ -430,7 +432,7 @@ function trackDesktopZoomFactor(): void {
       window.removeEventListener("focus", retry);
       document.removeEventListener("visibilitychange", retryWhenVisible);
     }
-    const factor = outerWidth / innerWidth;
+    const factor = outerHeight / innerHeight;
     desktopZoomFactor = factor;
     const style = document.documentElement.style;
     style.setProperty("--desktop-zoom", `${factor}`);
@@ -442,12 +444,12 @@ function trackDesktopZoomFactor(): void {
   /**
    * 다시 재는 신호는 resize가 아니라 devicePixelRatio의 변화다. 줌이 바뀌면 둘 다 오지만,
    * resize는 줌과 무관한 전환에서도 오고 그중 네이티브 전체화면 전환은 두 값이 서로 다른
-   * 프레임에 갱신된다 — 실측에서 innerWidth는 이미 전체화면인데 outerWidth는 아직 창
-   * 크기여서, 줌 1.31인 창이 0.64로 기록됐다(전체화면은 이 여백을 쓰지 않아 눈에 띄지 않을 뿐
-   * 그대로 남는 거짓값이다). devicePixelRatio는 줌이 실제로 바뀔 때만 움직이고, 그 순간
-   * 창 폭은 건드려지지 않으므로 두 값이 언제나 같은 창을 가리킨다.
+   * 프레임에 갱신된다 — 폭으로 재던 때의 실측에서 innerWidth는 이미 전체화면인데 outerWidth는
+   * 아직 창 크기여서, 줌 1.31인 창이 0.64로 기록됐다(전체화면은 이 여백을 쓰지 않아 눈에 띄지
+   * 않을 뿐 그대로 남는 거짓값이다). devicePixelRatio는 줌이 실제로 바뀔 때만 움직이고, 그 순간
+   * 창 크기는 건드려지지 않으므로 두 값이 언제나 같은 창을 가리킨다.
    *
-   * 배율이 다른 모니터로 건너가도 이 신호가 오지만, 그때 두 폭은 그대로라 같은 줌이 다시
+   * 배율이 다른 모니터로 건너가도 이 신호가 오지만, 그때 두 높이는 그대로라 같은 줌이 다시
    * 계산될 뿐이다. 미디어 쿼리는 현재 배율에서만 참이므로 한 번 울릴 때마다 다시 건다.
    */
   const watch = (): void => {
