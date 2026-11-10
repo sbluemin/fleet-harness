@@ -1,5 +1,5 @@
 import { FolderIcon, PencilIcon, PlusIcon, TaskforceIcon, TrashIcon } from "./sidebar-menu-icons.js";
-import { ConsoleSectionSlot } from "../../../remote-access/client/console-section-slot.js";
+import { ConsoleAddRow, ConsoleSectionHead, useConsoleSections } from "../../../remote-access/client/console-sections.js";
 
 /**
  * 사이드바 머리 한 줄 — 사령관 section 이 `TheaterInfo` 모양으로 선다. `id` 와 `commodore.id` 는 그 사령관 UUID 이고,
@@ -43,6 +43,7 @@ import { openTheaterInbox } from "../theater-inbox/store.js";
 import { resolveObjectiveActivity } from "../../../execution/client/objective-activity.js";
 import { commodoreSectionDropFromPoint, type CommodoreSectionDrop, reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
 import { CommodoreSidebarSection, CommodoreSectionMoveMenu, useCommodoreSidebarSections, type SidebarSectionsController } from "./commodore-sidebar-sections.js";
+import { ConsoleRosterSection } from "./console-roster.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import { useAvatarClaims } from "../avatars.js";
 import { useLongPress } from "../long-press.js";
@@ -175,6 +176,7 @@ export function ObjectiveRecordsSideBar({
   const surface = useConversationSurface();
   const expandedCommanders = useCommanderExpanded();
   const sidebarSections = useCommodoreSidebarSections();
+  const consoles = useConsoleSections();
   const sidebarSectionsRef = useRef(sidebarSections);
   const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
   const [drag, setDrag] = useState<TheaterDragState | null>(null);
@@ -210,6 +212,26 @@ export function ObjectiveRecordsSideBar({
   // 순위에 없는 행(저장 전 새 행)은 뒤에 붙는다. TF 미리보기가 비었으면 원장을 읽어 채운다.
   const commodoreSections = useSidebarCommodores(objectiveRecords, groups, t("sidebar.commodore.fallback"));
   const commodoresLoaded = useCommodoreListLoaded();
+  // 다른 콘솔에서 사령관을 눌러 넘어온 화면 — 목록이 선 뒤 그 사령관의 대화를 열고, 눌렀던 높이에 그 행을 맞춘다.
+  // 그 사령관이 더는 없으면 열지 않고 도착만 알린다.
+  const arrival = consoles.arrival;
+  const consoleArrived = useRef(consoles.arrived);
+  consoleArrived.current = consoles.arrived;
+  useEffect(() => {
+    if (!arrival || !commodoresLoaded) return;
+    const known = commodoreSections.some((section) => section.commodoreId === arrival.commodore);
+    if (known) openCommodoreConversation(arrival.commodore);
+    const frame = requestAnimationFrame(() => {
+      const list = listRef.current;
+      const row = known && list ? list.querySelector<HTMLElement>(`.side-bar-theater-section[data-theater-id="${CSS.escape(arrival.commodore)}"]`) : null;
+      if (list && row) {
+        if (arrival.anchorY !== null) list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - arrival.anchorY;
+        else row.scrollIntoView({ block: "nearest" });
+      }
+      consoleArrived.current();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [arrival, commodoresLoaded, commodoreSections]);
   const taskforceExperiment = useTaskforceExperiment();
   const allTaskforces = useTaskforces();
   // 실험이 꺼져 있으면 TF 행을 그리지 않는다 — 순서·소속 저장은 그대로 두어 다시 켜면 돌아온다.
@@ -439,9 +461,22 @@ export function ObjectiveRecordsSideBar({
     onFinishAliasEdit: finishAliasEdit,
   });
 
+  // 콘솔이 둘 이상이면 목록을 콘솔 섹션으로 나눈다. 순서는 셸이 준 그대로이고, 지금 콘솔의 머리글 아래에는 이 문서의
+  // 자기 목록이, 다른 콘솔의 머리글 아래에는 셸이 건넨 명부가 선다. 콘솔이 하나뿐이면 머리글 없이 지금과 같다.
+  const activeConsoleIndex = consoles.entries.findIndex((entry) => entry.active);
+  const ownConsoleFolded = consoles.sectioned && !compact && consoles.active !== null && consoles.folded(consoles.active.id);
+  const rosterSection = (entry: (typeof consoles.entries)[number]) => <ConsoleRosterSection key={entry.id} entry={entry} sections={consoles} list={() => listRef.current} compact={compact} />;
+  const consoleLead = consoles.sectioned && consoles.active ? <>
+    {consoles.entries.slice(0, activeConsoleIndex).map(rosterSection)}
+    <li className="side-console is-active" data-console-id={consoles.active.id}>
+      <ConsoleSectionHead entry={consoles.active} folded={ownConsoleFolded} count={faces.length} sections={consoles} />
+    </li>
+  </> : null;
+  const consoleTail = consoles.sectioned ? consoles.entries.slice(activeConsoleIndex + 1).map(rosterSection) : null;
+
   return (
     <aside
-      className={`objective-records-side-bar${compact ? " is-compact" : ""}`}
+      className={`objective-records-side-bar${compact ? " is-compact" : ""}${consoles.sectioned ? " has-consoles" : ""}`}
       ref={rootRef}
       data-resizing={resizing ? "true" : undefined}
       data-snapping={snapping ? "true" : undefined}
@@ -453,13 +488,14 @@ export function ObjectiveRecordsSideBar({
         {topStripTrailing}
       </div>
 
-      {!compact ? <ConsoleSectionSlot compact={false} /> : null}
       <div className="side-bar-wide">
       {addFailure ? <p className="side-bar-theater-error" role="alert">{addFailure}</p> : null}
       {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")}>
+        {consoleLead}
+        {ownConsoleFolded ? null : <>
         {sidebarBuckets.map((bucket) => {
           const rows = bucket.rows.map((face) => {
           const theaterIndex = faces.indexOf(face);
@@ -596,10 +632,12 @@ export function ObjectiveRecordsSideBar({
             </p>
           </li>
         ) : null}
+        </>}
+        {consoleTail}
+        {consoles.capable && !compact ? <ConsoleAddRow sections={consoles} /> : null}
       </ol>
       </div>
 
-      {compact ? <ConsoleSectionSlot compact /> : null}
       {bottomAccessory}
       <SideBarResizeHandle onPointerDown={onResizePointerDown} />
 
