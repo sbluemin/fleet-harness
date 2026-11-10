@@ -254,7 +254,7 @@
 .objectives-m-followups .objectives-followup-row.is-readonly + .objectives-followup-detail { padding-left: 4px; }
 .objectives-m-followups .objectives-followup-lab { color: var(--m-text-faint); font-family: var(--m-sans); font-size: var(--m-fs-small); }
 /*
- * 결과물 탭의 후속 목표 — 데스크톱 묶음과 같은 줄·결과 구성요소(followups-view.tsx)를 모바일 여백·글자로 입힌다. 근거 수는 시트와 같은 글자이고,
+ * 목표 구역의 후속 목표 — 데스크톱 묶음과 같은 줄·결과 구성요소(followups-view.tsx)를 모바일 여백·글자로 입힌다. 근거 수는 시트와 같은 글자이고,
  * 결과 줄은 좁은 폭에서 제목을 자르지 않고 상태를 그 아래 줄로 내린다. 남긴 후보 펼침은 누름 칸 44.
  */
 .objectives-m-followup-results { display: flex; flex-direction: column; gap: 4px; }
@@ -279,63 +279,6 @@
 .objectives-m-followups .objectives-followup-trace { margin: 4px 4px 0; border-top-color: var(--m-hairline); color: var(--m-text-faint); font-size: var(--m-fs-caption); }
 .objectives-m-sheet-layer .objectives-m-followups .objectives-followup-trace > button { min-height: 32px; }
 
-/*
- * 결과물 — 데스크톱 장부(results.tsx)의 같은 마크업을 이 범위에서만 모바일 묶음 카드로 다시 입힌다. 데스크톱 규칙은 건드리지 않는다.
- * 임무 묶음 하나 = 카드 하나(모서리 22), 머리 행 52, 결과 행 ≥ 56 · 「열기」 알약 40. 색은 모바일 토큰만 — 상태 글리프와 같은 신호색이다.
- * 행·머리의 hover 면은 터치에서 남으므로 걷고, 누름은 :active 면(--m-selected)으로 대신한다.
- */
-.objectives-m-results .objectives-results { gap: 10px; padding-bottom: 0; }
-.objectives-m-results .objectives-result-group { overflow: hidden; border-radius: 22px; background: var(--m-surface); transition: none; }
-.objectives-m-results .objectives-result-group-bar { padding-right: 0; }
-.objectives-m .objectives-m-results .objectives-result-group-head { gap: 10px; min-height: 52px; padding: 8px 16px; color: var(--m-text); font-size: var(--m-fs-list); }
-.objectives-m .objectives-m-results .objectives-result-group-head:hover { background: none; }
-.objectives-m .objectives-m-results .objectives-result-group-head:active { background: var(--m-selected); }
-.objectives-m-results .objectives-result-mission-n { min-width: 16px; font-family: var(--m-mono); font-size: var(--m-fs-caption); color: var(--m-text-muted); }
-.objectives-m-results .objectives-result-mission-title { font-size: var(--m-fs-list); font-weight: var(--weight-bold); line-height: 1.4; }
-.objectives-m .objectives-m-results .objectives-result-group-count { font-family: var(--m-sans); font-size: var(--m-fs-caption); color: var(--m-text-muted); }
-.objectives-m-results .objectives-section-chev { width: 18px; height: 18px; color: var(--m-text-muted); }
-.objectives-m-results .objectives-section-chev svg { width: 16px; height: 16px; }
-.objectives-m-results .objectives-result-group-body { padding-bottom: 6px; }
-.objectives-m-results .objectives-result-record { margin: 0 16px 6px 42px; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
-.objectives-m-results .objectives-result-record time { color: var(--m-text-faint); }
-/* 이미지 줄 — 썸네일 104×66, 이름 한 줄. */
-.objectives-m-results .objectives-result-strip { gap: 10px; padding: 4px 16px 10px; }
-.objectives-m-results .objectives-result-thumb { width: 104px; gap: 4px; }
-.objectives-m-results .objectives-result-img { width: 104px; height: 66px; border-color: var(--m-hairline-strong); border-radius: 10px; background: var(--m-chip); }
-.objectives-m .objectives-m-results .objectives-result-thumb:hover .objectives-result-img { border-color: var(--m-hairline-strong); }
-.objectives-m-results .objectives-result-thumb-hit:active .objectives-result-img { border-color: var(--m-text-muted); }
-.objectives-m-results .objectives-result-name { font-family: var(--m-sans); font-size: var(--m-fs-small); color: var(--m-text-muted); }
-/* 문서·Artifact·PR 행 — 행 사이 머리선, 아이콘 20. */
-.objectives-m-results .objectives-result-row { align-items: center; gap: 12px; min-height: 56px; box-sizing: border-box; padding: 10px 16px; border-top: 1px solid var(--m-hairline); color: var(--m-text); font-size: var(--m-fs-secondary); }
-.objectives-m .objectives-m-results .objectives-result-row:hover { background: none; }
-.objectives-m .objectives-m-results .objectives-result-row.is-button:active { background: var(--m-selected); }
-.objectives-m-results .objectives-row-ic { width: 20px; height: 20px; color: var(--m-text-muted); }
-.objectives-m-results .objectives-row-ic svg { width: 20px; height: 20px; }
-.objectives-m-results .objectives-result-row > .objectives-row-ic { margin-top: 0; }
-.objectives-m-results .objectives-result-body { gap: 2px; }
-.objectives-m-results .objectives-result-title { color: var(--m-text); line-height: 1.4; }
-/* 데스크톱의 mono 제목은 파일 이름 결이지만, 사람이 붙인 이름표(한글)가 mono 칸 폭으로 벌어지므로 폰에서는 본문 서체로 읽는다. */
-.objectives-m-results .objectives-result-title.is-mono { font-family: var(--m-sans); font-size: var(--m-fs-secondary); }
-.objectives-m-results .objectives-result-title.is-placeholder { color: var(--m-text-muted); }
-.objectives-m-results .objectives-result-num { font-family: var(--m-mono); font-size: var(--m-fs-mono); color: var(--m-text-muted); }
-.objectives-m-results .objectives-result-sub { font-size: var(--m-fs-caption); color: var(--m-text-muted); }
-.objectives-m-results .objectives-result-sub .is-mono { font-family: var(--m-mono); }
-.objectives-m-results .objectives-result-sub.is-error { color: var(--m-danger); }
-.objectives-m-results .objectives-result-stale { color: var(--m-running); }
-.objectives-m-results .objectives-link { color: inherit; }
-/* 「열기」·「새 탭」 — 칩 알약 40. Artifact 의 알약은 행 전체가 누름 칸이라 모양만 같다. */
-.objectives-m .objectives-m-results .objectives-result-open { display: inline-flex; align-items: center; gap: 4px; height: 40px; margin: 0; padding: 0 16px; border-radius: 20px; background: var(--m-chip); color: var(--m-text); font-family: var(--m-sans); font-size: var(--m-fs-meta); font-weight: var(--weight-medium); white-space: nowrap; }
-.objectives-m .objectives-m-results .objectives-result-row.is-button:hover .objectives-result-open { color: var(--m-text); }
-.objectives-m-results .objectives-result-state { margin-top: 0; font-family: var(--m-sans); font-size: var(--m-fs-caption); letter-spacing: 0; color: var(--m-text-muted); }
-.objectives-m-results .objectives-result-state.is-merged { color: var(--m-idle); }
-.objectives-m-results .objectives-result-state.is-merged i { background: var(--m-idle); }
-.objectives-m-results .objectives-result-state.is-open { color: var(--m-text); }
-.objectives-m-results .objectives-result-state.is-open i { border-color: var(--m-idle); }
-.objectives-m-results .objectives-result-state.is-closed i { background: var(--m-text-faint); }
-.objectives-m-results .objectives-result-state.is-error { color: var(--m-danger); }
-.objectives-m-results .objectives-result-state.is-error i { background: var(--m-danger); }
-.objectives-m-results .objectives-result-state.is-unchecked i { border-color: var(--m-text-faint); }
-.objectives-m-results .objectives-artifact-notice { margin: 0; padding: 0 4px; font-size: var(--m-fs-caption); color: var(--m-text-faint); }
 
 /*
  * 결과물 보기(body 포털) — 모바일 배치에서는 전체 화면이다. 데스크톱의 떠 있는 유리 틀·바깥 모서리 닫기 대신 위 머리 줄(설명 · 닫기 44)과
@@ -365,22 +308,3 @@ html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m
   .objectives-m-sheet, .objectives-m-scrim, .objectives-m-toast, .objectives-m-field.is-unfold { animation: none; transition: none; }
 }
 
-/* 공유 폴더 — 섹션 제목이 접고 펴는 단추다. 행은 증거 카드 문법을 그대로 쓴다. */
-.objectives-m-fold { display: flex; align-items: center; gap: 8px; width: 100%; min-height: 44px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-.objectives-m-fold-ic { display: inline-grid; width: 18px; height: 18px; }
-.objectives-m-fold-ic svg { width: 18px; height: 18px; }
-.objectives-m-fold .objectives-section-chev { margin-left: auto; width: 18px; height: 18px; }
-.objectives-m-fold .objectives-section-chev svg { width: 16px; height: 16px; }
-.objectives-m-fold[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
-.objectives-m-shared .objectives-shared-note { padding: 14px 16px; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
-.objectives-m-shared a.objectives-result-open { color: var(--m-text-muted); font-size: var(--m-fs-caption); }
-.objectives-m-shared .objectives-shared-groups > .objectives-result-group { border: 0; }
-.objectives-m-shared .objectives-shared-grid { gap: 10px 8px; padding: 4px 16px 10px; }
-.objectives-m-shared .objectives-shared-grid .objectives-result-thumb { width: auto; }
-.objectives-m-shared .objectives-shared-grid .objectives-result-img { width: 100%; height: auto; border-radius: 10px; border-color: var(--m-hairline-strong); background: var(--m-chip); }
-.objectives-m-shared .objectives-shared-grid .objectives-result-thumb-hit:hover:not(:focus-visible) { box-shadow: none; }
-.objectives-m-shared .objectives-shared-grid .objectives-result-thumb:hover .objectives-result-img, .objectives-m-shared .objectives-shared-grid .objectives-result-thumb-hit:focus-visible .objectives-result-img { border-color: var(--m-hairline-strong); }
-.objectives-m-shared .objectives-shared-grid .objectives-result-img > svg, .objectives-m-shared .objectives-shared-dir { color: var(--m-text-muted); }
-.objectives-m-shared .objectives-shared-more { min-height: 44px; margin: 0 16px 6px; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
-.objectives-m-shared .objectives-shared-more:hover { background: none; }
-.objectives-m-shared .objectives-shared-more:active { background: var(--m-selected); }

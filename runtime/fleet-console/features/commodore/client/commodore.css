@@ -92,7 +92,6 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 @media (forced-colors: active) {
 .objectives-btn { border-color: ButtonBorder; }
 }
-.objectives-glyph.objectives-result-goto, .objectives-result-goto-space { flex: none; width: 22px; height: 22px; }
 .objectives-result-row > .objectives-row-ic { margin-top: 1px; }
 .objectives-asks { flex: none; display: flex; flex-direction: column; gap: var(--space-3); }
 .objectives-menu-head { display: grid; gap: 2px; margin: 0 0 4px; padding: 8px 12px; border-bottom: 1px solid var(--popover-divider); font-size: var(--t-sm); line-height: 1.45; color: var(--text-secondary); }

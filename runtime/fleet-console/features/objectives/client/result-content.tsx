@@ -82,7 +82,7 @@ function sharedFolderGroupId(entry: SharedFolderEntry): typeof SHARED_FOLDER_GRO
   return SHARED_FOLDER_GROUPS.find((group) => (group.extensions as readonly string[]).includes(ext))?.id ?? "other";
 }
 
-/** 라이브러리와 창의 띠·이전/다음이 같은 형식 순서와 묶음 안 최신순을 쓴다. */
+/** 증거 뷰어의 띠·이전/다음이 같은 형식 순서와 묶음 안 최신순을 쓴다. */
 export function groupSharedFolderEntries(entries: readonly SharedFolderEntry[]) {
   const sorted = [...entries].sort((a, b) => b.modifiedAt - a.modifiedAt);
   return SHARED_FOLDER_GROUPS.map((group) => ({ id: group.id, entries: sorted.filter((entry) => sharedFolderGroupId(entry) === group.id) })).filter((group) => group.entries.length > 0);

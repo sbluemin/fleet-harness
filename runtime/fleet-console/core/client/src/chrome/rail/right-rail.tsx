@@ -719,7 +719,10 @@ export function useConversationTabsState(tabs: RailEntryConversationTabs | null 
 export function openConversationTab(entry: RailEntryDescriptor, context: RailToolContext, tabId: string, isActive: boolean): void {
   const theaterId = entry.scope === "fleet" ? null : context.theaterId;
   if (theaterId === null && entry.scope !== "fleet") return;
+  const external = entry.conversationTabs?.read(theaterId)?.tabs.some((tab) => tab.id === tabId && tab.external) ?? false;
   entry.conversationTabs?.select(tabId, theaterId);
+  // 증거처럼 패널 밖을 여는 칸은 세부 정보 패널을 열거나 바꾸지 않는다.
+  if (external) return;
   if (isActive) return;
   if (entry.activate) entry.activate(context);
   else presentRailPanel(entry.id);

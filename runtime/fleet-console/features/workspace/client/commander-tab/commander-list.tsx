@@ -25,7 +25,7 @@ import "./commander-list.css";
 
 /** 고스트 목록과 폰 시트가 같은 두 줄 행·정렬을 쓴다. 작업 탭 목표 섹션도 이 목록을 빌려 쓴다(조립이 렌더러를 넘긴다). */
 /**
- * 지휘관 행의 글리프(목표·구성원·라이브러리)가 팝업을 열 때 부르는 처리기 — 우측 작업 탭과 좌측 사이드바가 같은 팝업을 쓴다.
+ * 지휘관 행의 글리프(목표·구성원·증거)가 팝업이나 증거 뷰어를 열 때 부르는 처리기 — 우측 작업 탭과 좌측 사이드바가 같은 길을 쓴다.
  * `item`·`opener` 는 팝업을 여는 쪽이 제목과 초점 복귀에 쓴다. 팝오버·폰은 글리프를 두지 않는다.
  */
 export type CommanderGlyphOpen = (objectiveId: string, tab: CommanderRowGlyphTab, item: SideBarRowItem, opener: HTMLElement) => void;

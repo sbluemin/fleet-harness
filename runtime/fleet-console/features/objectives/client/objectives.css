@@ -734,37 +734,6 @@ button.objectives-row-main:hover .objectives-origin-goto { color: var(--brass-in
 .objectives-retro-table td + td { color: var(--text-secondary); }
 .objectives-retro-table tbody tr + tr td { border-top: 1px solid color-mix(in oklch, var(--hairline) 70%, transparent); }
 .objectives-retro-none { margin: 2px 14px 8px; font-size: var(--t-xs); color: var(--text-tertiary); }
-/* 결과물 장부 — 임무별 마지막 기록과 현재 결과물. 묶음 안은 이미지·텍스트·Artifact·PR 순서이며 임무 밖 연결은 끝에 남긴다.
-   행은 기준 행의 아이콘 열을 공유한다. PR 상태만 관측 신호이고 Artifact의 오른쪽 표시는 외부 열기다. */
-.objectives-results { display: flex; flex-direction: column; padding-bottom: var(--space-3); }
-.objectives-result-group { scroll-margin-block: 12px; transition: background-color var(--duration-slow) var(--ease-glide), box-shadow var(--duration-slow) var(--ease-glide); }
-.objectives-result-group-bar { display: flex; align-items: center; padding-right: 12px; }
-.objectives-result-group-body { padding-bottom: var(--space-3); }
-.objectives-result-group.is-highlight { background: color-mix(in oklch, var(--brass) 9%, transparent); box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 45%, transparent); }
-.objectives-result-group-head { display: flex; flex: 1; min-width: 0; align-items: center; gap: var(--space-2); box-sizing: border-box; padding: calc(var(--space-1) + 2px) var(--space-2) calc(var(--space-1) + 2px) 22px; border: 0; background: none; color: var(--text-primary); font: inherit; text-align: left; }
-.objectives-result-group-head[aria-expanded="true"] .objectives-section-chev { transform: rotate(90deg); }
-.objectives-glyph.objectives-result-goto, .objectives-result-goto-space { flex: none; width: 22px; height: 22px; }
-button.objectives-result-group-head { cursor: pointer; }
-button.objectives-result-group-head:hover { background: var(--control-rest); }
-button.objectives-result-group-head:focus-visible { box-shadow: var(--focus-face); }
-.objectives-result-mission-n { flex: none; min-width: 14px; text-align: right; font-family: var(--font-ui); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
-.objectives-result-mission-title { flex: 1; min-width: 0; font-size: var(--t-xs); font-weight: var(--weight-medium); line-height: 1.45; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.objectives-result-group-count { flex: none; font-family: var(--font-ui); font-size: var(--t-2xs); white-space: nowrap; color: var(--text-tertiary); }
-button.objectives-result-group-head:hover .objectives-result-group-count { color: var(--brass-ink); }
-.objectives-result-record { display: flex; flex-wrap: wrap; gap: 2px 8px; margin: 0 20px 5px 54px; font-size: var(--t-2xs); line-height: 1.5; color: var(--text-secondary); }
-.objectives-result-record > span { flex: 1 1 160px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-result-record time { color: var(--text-tertiary); white-space: nowrap; }
-.objectives-artifact-notice { display: flex; align-items: flex-start; gap: 6px; margin: var(--space-3) 20px 0 22px; font-size: var(--t-2xs); line-height: 1.5; color: var(--text-tertiary); }
-.objectives-artifact-notice svg { flex: none; margin-top: 1px; }
-.objectives-result-title.is-placeholder { color: var(--text-secondary); }
-.objectives-result-strip { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 20px 6px 54px; }
-.objectives-result-thumb { display: flex; flex-direction: column; gap: 3px; width: 82px; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; }
-.objectives-result-thumb-hit { display: block; padding: 0; border: 0; background: none; color: inherit; cursor: zoom-in; }
-.objectives-result-img { display: block; width: 82px; height: 52px; overflow: hidden; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-panel-raised); transition: border-color var(--duration-fast); }
-.objectives-result-img img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.objectives-result-thumb:hover .objectives-result-img, .objectives-result-thumb-hit:focus-visible .objectives-result-img { border-color: var(--brass); }
-.objectives-result-thumb-hit:focus-visible { outline: none; }
-.objectives-result-name { font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .objectives-result-row { display: flex; gap: 14px; align-items: flex-start; width: 100%; padding: 7px 20px 7px 22px; border: 0; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); text-align: left; }
 .objectives-result-row:hover { background: var(--control-rest); }
 .objectives-result-row.is-button { cursor: pointer; }
@@ -825,16 +794,12 @@ button.objectives-result-open:focus-visible { color: var(--brass-ink); box-shado
   .objectives-followup-detail { padding-left: 10px; padding-right: 8px; }
   .objectives-retro { padding-left: 8px; padding-right: 8px; }
   .objectives-retro-none { margin-left: 8px; margin-right: 8px; }
-  .objectives-result-strip { padding-left: 22px; }
-  .objectives-result-group-head { padding-left: 12px; }
-  .objectives-result-record { margin-left: 22px; margin-right: 12px; }
   .objectives-result-row { gap: 10px; padding-right: 12px; }
   .objectives-origin-impact { margin-left: 8px; margin-right: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .objectives-followup-spin { animation: none; }
   .objectives-followup-meta svg, .objectives-followup-trace > button svg { transition: none; }
-  .objectives-result-group { transition: none; }
 }
 
 /* 질문 머리말 — 지휘관이 붙인 짧은 이름표. 상태가 아니라 분류라 신호색 없이 옅은 면 위 무채색 잉크. 「결정」 기록 줄에서 질문 앞에 선다. */
@@ -930,21 +895,6 @@ button.objectives-result-open:focus-visible { color: var(--brass-ink); box-shado
 .objectives-fresh-foot { flex: none; padding: 12px clamp(16px, 4cqi, 48px) 16px; }
 .objectives-fresh-composer { display: flex; align-items: center; min-height: 48px; box-sizing: border-box; padding: 7px var(--space-4); border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: var(--surface-panel-raised); color: var(--text-tertiary); font-size: var(--t-md); opacity: 0.6; cursor: default; }
 
-/* 공유 폴더 — 증거 행 문법을 그대로 쓰고, 하위 폴더 경로만 회색 mono 접두로 더한다. */
-.objectives-shared-note { margin: 0; padding: 7px 20px 7px 22px; font-size: var(--t-2xs); color: var(--text-tertiary); }
-.objectives-shared-dir { font-family: var(--font-mono, monospace); color: var(--text-tertiary); opacity: 0.8; }
-.objectives-shared-groups > .objectives-result-group + .objectives-result-group { border-top: 1px solid var(--hairline); }
-.objectives-shared-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; padding: 4px 20px 6px 22px; }
-.objectives-shared-grid .objectives-result-thumb { min-width: 0; width: auto; }
-.objectives-shared-grid .objectives-result-img { display: grid; place-items: center; box-sizing: border-box; width: 100%; height: auto; aspect-ratio: 16 / 10; }
-.objectives-shared-grid .objectives-result-img > svg { width: 20px; height: 20px; color: var(--text-tertiary); }
-.objectives-shared-grid .objectives-result-thumb-hit { border-radius: var(--radius-xs); }
-.objectives-shared-grid .objectives-result-thumb:hover .objectives-result-img, .objectives-shared-grid .objectives-result-thumb-hit:focus-visible .objectives-result-img { border-color: var(--surface-rim); }
-.objectives-shared-grid .objectives-result-thumb-hit:hover, .objectives-shared-grid .objectives-result-thumb-hit:focus-visible { box-shadow: var(--focus-face); }
-.objectives-shared-grid .objectives-shared-dir { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.objectives-shared-more { margin: 0 20px 4px 22px; padding: 4px 8px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); cursor: pointer; }
-.objectives-shared-more:hover { background: var(--control-rest); }
-.objectives-shared-more:focus-visible { box-shadow: var(--focus-face); }
 a.objectives-result-open { text-decoration: none; }
 a.objectives-result-open:focus-visible { color: var(--brass-ink); box-shadow: var(--focus-face); }
 

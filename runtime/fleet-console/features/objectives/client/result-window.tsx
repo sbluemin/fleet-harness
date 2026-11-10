@@ -49,15 +49,32 @@ function visibleComposer(): HTMLTextAreaElement | undefined {
     .find((node) => !node.disabled && node.getClientRects().length > 0 && !node.closest("[hidden], [inert]"));
 }
 
-function closeWindow() {
-  const opener = selection?.opener;
-  updateSelection(null);
+function focusReturnTarget(opener: HTMLElement | null | undefined): void {
+  // 연 컨트롤이 아직 보이면 그곳으로. 글리프처럼 가리킬 때만 뜨는 단추는 rects 가 비므로, 그 행·창으로 올라간다.
   if (opener?.isConnected && opener.getClientRects().length && !opener.closest("[hidden], [inert]")) {
     opener.focus({ preventScroll: true });
     return;
   }
-  // 연 단추가 탭 전환으로 사라졌으면, 현재 화면의 채팅 입력으로 돌아간다. 대화 전환·초안 변경은 하지 않는다.
+  // 글리프는 가리킬 때만 떠서 닫을 때 사라진다. 그 행의 제목 단추(늘 보임)로 올린다.
+  const rowMain = opener?.closest(".side-bar-cluster-row")?.querySelector<HTMLElement>(".side-bar-cluster-row-main");
+  if (rowMain?.isConnected && rowMain.getClientRects().length && !rowMain.closest("[hidden], [inert]")) {
+    rowMain.focus({ preventScroll: true });
+    return;
+  }
+  const host = opener?.closest<HTMLElement>(".objectives-zoom, .mobile-info-screen, .objectives-m");
+  if (host?.isConnected && host.getClientRects().length && !host.closest("[hidden], [inert]")) {
+    if (!host.hasAttribute("tabindex")) host.tabIndex = -1;
+    host.focus({ preventScroll: true });
+    return;
+  }
+  // 행도 없으면 현재 화면의 채팅 입력으로 돌아간다. 대화 전환·초안 변경은 하지 않는다.
   visibleComposer()?.focus({ preventScroll: true });
+}
+
+function closeWindow() {
+  const opener = selection?.opener;
+  updateSelection(null);
+  focusReturnTarget(opener);
 }
 
 type Rect = { readonly x: number; readonly y: number; readonly w: number; readonly h: number };
@@ -115,7 +132,8 @@ function ResultWindow({ opened, objective, language, mobile }: { readonly opened
   const [rect, setRect] = useState(initialRect);
   const [dragging, setDragging] = useState(false);
   // 지휘관 창과 겹치면 나중에 손댄 쪽이 위다.
-  const zIndex = useFloatingWindowZ(RESULT_WINDOW_ID, 59);
+  // 임무 창(60)과 그래프 팝업(66)보다 위. 메뉴·토스트(80~)보다는 아래다.
+  const zIndex = useFloatingWindowZ(RESULT_WINDOW_ID, 70);
   const drag = usePointerDrag();
   const groups = objective ? objective.missions.map((mission, index) => ({ id: mission.id, n: index + 1, title: missionTitle(mission), record: mission.records.at(-1), results: objective.results.filter((result) => result.sourceMissionId === mission.id) })).filter((group) => group.results.length > 0) : [];
   const loose = objective?.results.filter((result) => !result.sourceMissionId || !objective.missions.some((mission) => mission.id === result.sourceMissionId)) ?? [];

@@ -199,7 +199,7 @@ function nextScreenKeepsCommodoreTabs(clusterIndex: ClusterIndex): boolean {
 
 /**
  * 가운데 대화(지휘관·구성원·시작 전 목표)의 사령관 — 우측 사이드바는 목표 대화에서도 이 사령관의 탭(작업·정보·설정)과 머리만 싣는다.
- * 목표·구성원·라이브러리는 채팅 머리의 목표 창과 작업 탭 행 펼침이 보인다. 사령관 묶음의 지휘관이 아니면 null 이다.
+ * 목표·구성원·증거는 채팅 머리의 목표 창과 작업 탭 행 글리프가 보인다. 증거는 뷰어를 연다. 사령관 묶음의 지휘관이 아니면 null 이다.
  */
 function useKeptCommodoreOwner(): string | null {
   const clusterIndex = useClusterIndex();

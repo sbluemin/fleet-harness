@@ -16,22 +16,20 @@ import { answeringText, commodoreAliasOf, commodoreBoardOf, decisionTurn, openAs
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, launchReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
-import { ObjectiveLinkOpenProvider } from "./link-open-context.js";
+import { openResultWindow } from "./result-window.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
 import { NoteAttachments } from "./attachments.js";
 import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupHoldRoute, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readBatches, readHistory, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
-import { ObjectiveResults } from "./results.js";
-import { MobileSharedFolder } from "./shared-folder.js";
 import { Retrospective } from "./retrospective.js";
 import { detailTabOf, type DetailTab } from "./objectives-panel.js";
 import { viewedCommodoreId, loadObjective, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, objectiveRecordSummaries, openObjectiveOnPhone, patchOwnerView, post, returnPersonHold, readAllTheaters, readBoard, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useOwnerView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
- * 폰의 목표 — 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무·결과물) 하나를 두 자리에 세운다. 폰에는 목표 목록(보드)이 없다.
+ * 폰의 목표 — 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무) 하나를 두 자리에 세운다. 증거는 증거 뷰어가 연다. 폰에는 목표 목록(보드)이 없다.
  * 대화 정보 화면의 「목표」 탭(호스트가 `mobile.conversationPane` 으로 대화 주인 Objective 을 싣는다, 막대 없음 — 동작은 본문 맨 위 줄)과,
  * 지휘관 Objective 이 없는 목표가 착지하는 목표 화면(칩 없는 목적지, 호스트가 `mobileBar` 를 싣는다 — 제목·⋮ 항목만 선언한다)이다.
  * 데스크톱 보드와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
@@ -575,7 +573,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
       ) : null}
       {/* 지금 할 일(결정 요청·넘김·개시)은 프로필과 구역 맨 위에 선다. 결정 내역은 목표 구역 맨 아래다. */}
       <DecisionSection objective={objective} objectiveRecords={objectiveRecords} t={t} language={language} api={api} say={say} />
-      <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} onShowLeftover={() => { pickTab("results"); revealFollowupResults(); }} />
+      <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} onShowLeftover={() => { pickTab("goal"); revealFollowupResults(); }} />
       {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} /> : null}
     </>
   );
@@ -593,7 +591,12 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
             <div className="objectives-m-rows">
               <DetailRow tab="goal" icon={<GoalIcon />} label={t("objectives.tabs.goal")} value={rows.goal} onOpen={pickTab} />
               <DetailRow tab="crew" icon={<CrewIcon />} label={t("objectives.tabs.crew")} value={rows.crew} onOpen={pickTab} />
-              <DetailRow tab="results" icon={<ResultsIcon />} label={t("objectives.tabs.results")} value={rows.results} onOpen={pickTab} />
+              <button type="button" data-press="r2" className="objectives-m-prow" onClick={(event) => openResultWindow(objective.id, "", event.currentTarget)}>
+                <span className="objectives-m-prow-ic"><ResultsIcon /></span>
+                <span className="objectives-m-prow-lb">{t("objectives.results.title")}</span>
+                {rows.results ? <span className={`objectives-m-prow-val${rows.results.tone ? ` is-${rows.results.tone}` : ""}`}>{rows.results.text}</span> : null}
+                <span className="objectives-m-prow-caret"><Chevron open={false} size={18} /></span>
+              </button>
             </div>
           </nav>
           {rows.foot ? <p className="objectives-m-profile-foot">{rows.foot}</p> : null}
@@ -611,6 +614,8 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
           <BriefCard objective={objective} t={t} language={language} api={api} say={say} />
           <ProposalsCard objective={objective} t={t} language={language} api={api} say={say} />
           <DecisionHistory objective={objective} t={t} />
+          <FollowupResults objective={objective} t={t} language={language} api={api} say={say} />
+          <RetroCard objective={objective} t={t} />
         </> : activeTab === "crew" ? <>
           <CrewSection objective={objective} objectiveRecords={objectiveRecords} t={t} crew={crew} />
           <SubagentsSection objective={objective} t={t} crew={crew} />
@@ -631,10 +636,6 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
               })}
             </div>
           </> : null}
-        </> : activeTab === "results" ? <>
-          <ResultsSection objective={objective} t={t} language={language} openLink={ctx.openLink ?? null} />
-          <FollowupResults objective={objective} t={t} language={language} api={api} say={say} />
-          <RetroCard objective={objective} t={t} />
         </> : null}
       </div>
       {overlays}
@@ -691,7 +692,7 @@ function followupNote(objective: Objective, finish: ObjectiveActions["finish"], 
  * 「완료」는 데스크톱 띠와 같은 `/objective/complete` 이고, 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다.
  * 띠가 지금 완료를 세우지 못하면(작업 중·허용 대기·기준 제안·스티어링) 단추를 흐리게 두고 막힌 상태를 말한다.
  * 둘이 함께 서면 두 카드가 같은 시트를 연다 — 넘김은 따로 돌려줄 수 있어, 하나를 돌려준 뒤에도 남은 카드만으로 답이 된다.
- * 후속 카드는 고를 수 없는 동안에도 시트를 열어 후보를 읽고 폐기할 수 있다. 완료 뒤에는 고르기 시트가 없으므로 결과물 탭의 남긴 후보로 잇는다.
+ * 후속 카드는 고를 수 없는 동안에도 시트를 열어 후보를 읽고 폐기할 수 있다. 완료 뒤에는 고르기 시트가 없으므로 목표 구역의 남긴 후보로 잇는다.
  */
 function HoldAnswers({ objective, finish, t, language, api, onPick, onShowLeftover }: {
   readonly objective: Objective;
@@ -872,43 +873,19 @@ function CommenceCard({ objective, commence, t, language, api, say }: { readonly
   );
 }
 
-// ── 결과물 ──
-
-/**
- * 결과물 — 데스크톱 장부(`ObjectiveResults`)를 그대로 세운다. 보고서·이미지 보기와 증거 문서의 무력화도 데스크톱과 같은
- * 구성요소·같은 경로다. 그래프가 없으므로 ↗(그래프에서 보기)는 넘기지 않고, 임무 묶음은 처음부터 모두 펼쳐 둔다(접은 것만 이 화면이 기억한다).
- * 모양은 mobile.css 의 `.objectives-m-results` 범위와 모바일 배치의 보기 규칙이 맡는다.
- */
-function ResultsSection({ objective, t, language, openLink }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly openLink: NonNullable<PaneContext["openLink"]> | null }) {
-  const [closed, setClosed] = useState<ReadonlySet<string>>(() => new Set());
-  const toggle = useCallback((key: string) => setClosed((current) => {
-    const next = new Set(current);
-    if (!next.delete(key)) next.add(key);
-    return next;
-  }), []);
-  return (
-    <>
-      {objective.results.length === 0 ? null : <>
-        <h2 className="objectives-m-glab">{t("objectives.results.title")}</h2>
-        <ObjectiveLinkOpenProvider value={openLink}>
-          <div className="objectives-m-results">
-            <ObjectiveResults objective={objective} t={t} language={language} highlightMission={null} groupOpen={(key) => !closed.has(key)} onToggleGroup={toggle} />
-          </div>
-        </ObjectiveLinkOpenProvider>
-      </>}
-      <MobileSharedFolder objective={objective} t={t} language={language} />
-    </>
-  );
-}
-
 const FOLLOWUP_RESULTS_ID = "objectives-m-followup-results";
-/** 넘김 카드에서 결과물 탭으로 건너온 뒤, 탭이 그려지면 후속 목표 묶음을 화면에 들인다. */
+/** 넘김 카드에서 목표 구역으로 건너온 뒤, 구역이 그려지면 후속 목표 묶음을 화면에 들인다. */
 function revealFollowupResults(): void {
-  requestAnimationFrame(() => document.getElementById(FOLLOWUP_RESULTS_ID)?.scrollIntoView({ block: "start" }));
+  const go = (left: number) => {
+    const node = document.getElementById(FOLLOWUP_RESULTS_ID);
+    if (node) { node.scrollIntoView({ block: "start" }); return; }
+    if (left > 0) requestAnimationFrame(() => go(left - 1));
+  };
+  requestAnimationFrame(() => go(4));
 }
 
 /**
- * 후속 목표 — 데스크톱 결과물 탭의 「후속 목표」 묶음과 같은 내용이다. 진행 중에는 모인 후보를 읽기만 하고(고르기·폐기는
+ * 후속 목표 — 데스크톱 목표 탭의 「후속 목표」 묶음과 같은 내용이다. 진행 중에는 모인 후보를 읽기만 하고(고르기·폐기는
  * 검토 대기의 시트), 완료 뒤에는 고른 후보의 생성 결과(다시 시도)와 남긴 후보를 보인다. 폰은 접지 않고 펼쳐 둔다.
  */
 function FollowupResults({ objective, t, language, api, say }: { readonly objective: Objective; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
@@ -950,7 +927,7 @@ function FollowupResults({ objective, t, language, api, say }: { readonly object
 }
 const NO_SELECTION: ReadonlySet<string> = new Set();
 
-/** 회고 — 데스크톱 결과물 탭의 접힌 묶음과 같다. 인계 기록이 있을 때만 서고, 접힌 채 「더 보기」로 편다. 내용은 데스크톱 회고와 같은 구성요소다. */
+/** 회고 — 데스크톱 목표 탭의 접힌 묶음과 같다. 인계 기록이 있을 때만 서고, 접힌 채 「더 보기」로 편다. 내용은 데스크톱 회고와 같은 구성요소다. */
 function RetroCard({ objective, t }: { readonly objective: Objective; readonly t: T }) {
   const [open, setOpen] = useState(false);
   const handoff = objective.handoff;

@@ -358,6 +358,10 @@ export interface RailEntryActive {
 export interface RailEntryConversationTab {
   readonly id: string;
   readonly title: LocalizedText;
+  /**
+   * 패널 본문으로 들어가지 않는다. 호스트는 누르면 `select` 만 부르고 칸을 열거나 켜진 탭으로 삼지 않는다.
+   */
+  readonly external?: boolean;
   /** 낱말 곁 점 — `attention` 은 사람이 답할 일, `unseen` 은 안 읽은 것. `label` 은 스크린 리더가 읽는다. */
   readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: LocalizedText };
   /**

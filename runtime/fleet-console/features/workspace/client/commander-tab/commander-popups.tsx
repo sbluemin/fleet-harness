@@ -3,6 +3,7 @@ import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { openCommanderConversation } from "./commander-navigation.js";
 import { CommanderGoalDialog, CommanderMissionsDialog, type DetailTab } from "../../../objectives/client/objectives-panel.js";
 import { openResultWindow } from "../../../objectives/client/result-window.js";
+import type { CommanderRowGlyphTab } from "./commander-row-glyphs.js";
 import { getT as getObjectivesT } from "../../../objectives/client/i18n/index.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
 import { useAvatarAccent } from "../avatar-accent.js";
@@ -12,12 +13,12 @@ type PopupState = { readonly kind: "goal" | "missions"; readonly start: DetailTa
 
 /**
  * 지휘관 행의 팝업 — 아바타는 목표 팝업, 임무 게이지는 임무 팝업을 연다. 우측 작업 탭 카드와 좌측 사이드바가 함께 쓴다.
- * `openTab` 은 행 글리프가 팝업을 열 때 쓴다(목표·구성원은 각각 목표·임무 팝업, 결과물은 결과물 창). 닫으면 연 단추로 초점이 돌아간다.
+ * `openTab` 은 행 글리프가 팝업을 열 때 쓴다(목표·구성원은 각각 목표·임무 팝업, 증거는 증거 뷰어). 닫으면 연 단추로 초점이 돌아간다.
  * 팝업은 body 포털이라 오른쪽·왼쪽 패널의 지휘관 강조색을 물려받지 못한다 — 같은 값을 팝업에 직접 건넨다.
  */
 export function useCommanderPopups(commodoreId: string): {
   readonly rowPopups: (item: SideBarRowItem, objectiveId: string) => RowPopups;
-  readonly openTab: (item: SideBarRowItem, objectiveId: string, tab: DetailTab, opener: HTMLElement) => void;
+  readonly openTab: (item: SideBarRowItem, objectiveId: string, tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
   readonly dialogs: ReactNode;
 } {
   const language = useConsoleLocale() === "ko" ? "ko" : "en";
@@ -32,7 +33,7 @@ export function useCommanderPopups(commodoreId: string): {
     onAvatar: (opener) => open("goal", "goal", item, objectiveId, opener),
     onProgress: (opener) => open("missions", "crew", item, objectiveId, opener),
   });
-  const openTab = (item: SideBarRowItem, objectiveId: string, tab: DetailTab, opener: HTMLElement) => {
+  const openTab = (item: SideBarRowItem, objectiveId: string, tab: CommanderRowGlyphTab, opener: HTMLElement) => {
     if (tab === "results") {
       openResultWindow(objectiveId, "", opener);
       return;

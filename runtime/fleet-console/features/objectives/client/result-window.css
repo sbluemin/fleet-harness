@@ -1,5 +1,5 @@
 /* 결과물 창 — 배경을 덮지 않는다. 다이어그램·브리핑 모달보다 아래, 채팅·레일보다 위에 선다. */
-.objectives-result-window { position: fixed; z-index: 59; display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; min-height: 0; border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); outline: none; container: objectives-result / inline-size; }
+.objectives-result-window { position: fixed; z-index: 70; display: flex; flex-direction: column; box-sizing: border-box; min-width: 0; min-height: 0; border: 0; border-radius: var(--dialog-radius); background: var(--dialog-face); box-shadow: var(--dialog-surface-shadow); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); outline: none; container: objectives-result / inline-size; }
 .objectives-result-window:focus-visible { box-shadow: var(--focus-face); }
 .objectives-result-window.is-dragging { user-select: none; }
 .objectives-result-window.is-dragging * { user-select: none; }
@@ -16,7 +16,7 @@
 .objectives-rw-switch { flex: 1; min-width: 0; max-width: 100%; }
 .objectives-rw-switch .fc-select__trigger { display: flex; width: 100%; height: 26px; padding: 0 8px; background: var(--control-rest); color: var(--text-primary); }
 .objectives-rw-switch .fc-select__value { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
-.objectives-rw-menu { z-index: 61; }
+.objectives-rw-menu { z-index: 80; }
 .objectives-rw-body { flex: 1; display: grid; grid-template-columns: 170px minmax(0, 1fr); min-width: 0; min-height: 0; overflow: hidden; border-radius: 0 0 var(--radius-lg) var(--radius-lg); }
 .objectives-rw-missions { min-width: 0; overflow: auto; padding: 8px 6px; border-right: 1px solid var(--hairline); overscroll-behavior: contain; }
 .objectives-rw-missions button { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 6px; align-items: center; width: 100%; min-height: 32px; padding: 4px 8px; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); text-align: left; cursor: pointer; }
@@ -64,7 +64,7 @@
 }
 
 /* 폰은 기존 전체 화면 읽기를 유지하고 임무 칩을 더한다. 데스크톱의 기하 기억은 건드리지 않는다. */
-.objectives-result-window.is-mobile { inset: 0; z-index: 60; border: 0; border-radius: 0; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
+.objectives-result-window.is-mobile { inset: 0; z-index: 70; border: 0; border-radius: 0; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
 .objectives-result-window.is-mobile { --rw-head-h: calc(56px + var(--m-safe-top, 0px)); --rw-top-pad: var(--rw-top-h, var(--rw-head-h)); }
 .objectives-result-window.is-mobile .objectives-rw-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; box-sizing: border-box; height: var(--rw-head-h); padding: var(--m-safe-top, 0px) 12px 0 16px; background: var(--m-fade-top, var(--m-fade-down, var(--m-bg))); border: 0; cursor: default; touch-action: auto; }
 .objectives-result-window.is-mobile .objectives-rw-close { width: 40px; height: 40px; border: 1px solid var(--m-hairline-strong); border-radius: 50%; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); }

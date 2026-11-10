@@ -205,9 +205,15 @@ export function CoordinationGraph({ objective, t, states, onEdge, canEdit, rende
       const target = event.target as Node;
       if (document.getElementById(popupId)?.contains(target)) return;
       if (box.current?.contains(target) && nodeId(target)) return;
+      // 증거 뷰어는 이 팝업 위에서 연다. 뷰어를 누르는 것이 팝업(과 그 안의 연 단추)을 걷지 않는다.
+      if (target instanceof Element && target.closest(".objectives-result-window, .objectives-rw-menu")) return;
       close();
     };
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); close(true); } };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (document.activeElement?.closest(".objectives-result-window, .objectives-rw-menu")) return;
+      event.preventDefault(); event.stopPropagation(); close(true);
+    };
     document.addEventListener("pointerdown", outside); document.addEventListener("keydown", escape);
     return () => { document.removeEventListener("pointerdown", outside); document.removeEventListener("keydown", escape); };
   }, [popup, popupId]);
