@@ -6,8 +6,8 @@ import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./his
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_IMPORT_COOKIES, type DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
-import { BROWSER_GLOBAL_ID, BROWSER_SPACE_TAB_LIMIT, BROWSER_TOTAL_TAB_LIMIT, HUMAN_SPACE_ID, SESSION_SPACE_ID, spaceKindOf, type BrowserSpaceState } from "../shared/spaces.js";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type DesktopBrowserChrome, type DesktopBrowserChromeSpace } from "@fleet-console/protocol/desktop";
+import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
 /**
  * Fleet Browser — Console 전체의 단일 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
@@ -53,6 +53,14 @@ export interface BrowserViewport { readonly width: number; readonly height: numb
 export interface BrowserTabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean; readonly spaceId: string }
 /** Console 전역 브라우저 id의 호스트 호환 이름. Objective·세션 id 로는 계속 예약한다. */
 export const GLOBAL_BROWSER_OWNER_ID = BROWSER_GLOBAL_ID;
+/** 상태 프레임의 스페이스 한 칸 — 셸이 그리는 크롬 투영과 같은 모양이다. */
+export type BrowserSpaceState = DesktopBrowserChromeSpace;
+/**
+ * 에이전트 호출자 — 작업 탭의 주인(participantId), 그 스페이스, 그리고 그 호출이 속한 묶음(ownerId).
+ * 사령관 스페이스에는 사령관 세션과 그 사령관의 Objective 들이 함께 서므로, 한 Objective 를 거둘 때 무엇을 닫을지는 스페이스가 아니라
+ * 이 묶음으로 가린다: 사령관 세션은 그 스페이스 id, Objective 세션은 루트 Objective id, 그 밖의 세션은 자기 별칭이다.
+ */
+export interface BrowserCaller { readonly participantId: string; readonly spaceId: string; readonly ownerId: string }
 
 export interface BrowserObjectiveState {
   readonly owner?: { readonly kind: "objectiveRecord"; readonly objectiveId: string };
@@ -60,10 +68,8 @@ export interface BrowserObjectiveState {
   readonly objectiveId: string;
   readonly browserId: string;
   readonly surface: ReturnType<DesktopEngine["surfaceState"]>;
-  /** 탭이 있거나 에이전트가 쓰는 중인 스페이스들. 탭의 `spaceId` 가 이 목록을 가리킨다. */
+  /** 디폴트와 모든 사령관 스페이스 — 탭이 없어도 실린다. 탭의 `spaceId` 가 이 목록을 가리킨다. 어느 스페이스를 띄울지는 셸이 정한다. */
   readonly spaces: readonly BrowserSpaceState[];
-  /** 사람 화면에 띄운 스페이스. 그 스페이스에 탭이 없으면 `activeTabId` 는 null 이다. */
-  readonly displayedSpaceId: string | null;
   /** 모든 스페이스가 함께 쓰는 영속 프로필. `null` 이면 임시 세션이다 — 닫히면 로그인이 사라진다. */
   readonly profile: string | null;
   /** 전역 브라우저가 처음 열릴 때 쓰는 세션. 현재 열린 브라우저의 프로필과는 별도인 Console 설정이다. */
@@ -160,6 +166,8 @@ interface Tab {
   readonly id: string;
   /** 이 탭이 속한 스페이스. 만들 때 정해지고 바뀌지 않는다. */
   readonly spaceId: string;
+  /** 이 탭을 연 묶음(`BrowserCaller.ownerId`). 사람이 열었으면 null 이다. */
+  readonly ownerId: string | null;
   readonly targetId: string;
   sessionId: string;
   url: string;
@@ -181,16 +189,15 @@ interface Tab {
 }
 
 /**
- * 스페이스 하나 — 크롬 탭 그룹. 사령관 스페이스와 Objective 스페이스가 한 브라우저(쿠키 저장소 하나) 안에 선다.
+ * 스페이스 하나 — 사령관 스페이스들과 디폴트 스페이스가 한 브라우저(쿠키 저장소 하나) 안에 선다.
  * 뷰포트와 에이전트 사용 세션은 스페이스마다 따로다: 한 스페이스의 에이전트가 모바일 크기로 바꿔도 다른 스페이스는 그대로다.
+ * 어느 스페이스가 화면에 떠 있는지는 여기 없다 — 셸이 정하고 기억한다.
  */
 interface Space {
   readonly id: string;
   viewport: BrowserViewport;
   /** true 이면 논리 뷰포트가 네이티브 pane 을 따른다(에뮬레이션 없음). */
   viewportFollowsPane: boolean;
-  /** 사람이 이 스페이스에서 마지막으로 띄운 탭 — 스페이스를 고르면 이 탭이 다시 뜬다. */
-  lastShownTabId: string | null;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string> } | null;
 }
@@ -206,15 +213,15 @@ interface ObjectiveBrowser {
   /** 사람이 고른 세션의 정체. 기본은 임시(`null`) — 에이전트가 모는 브라우저라 로그인이 기본으로 남으면 안 된다. */
   profile: string | null;
   tabs: Map<string, Tab>;
-  /** 사람 화면에 띄운 탭(표시 탭). 사람의 선택과 `tabs_select(show)` 만 바꾼다. */
+  /** 사람 화면에 띄운 탭(표시 탭). 사람의 선택과 `tabs_select(show)` 만 바꾼다. 셸이 탭 없는 스페이스를 띄우면 null 이다. */
   activeTabId: string | null;
-  /** 사람 화면에 띄운 스페이스. 탭이 없는 스페이스를 띄우면 `activeTabId` 는 null 이다. */
-  displayedSpaceId: string | null;
   spaces: Map<string, Space>;
   /** 참가자(호출한 세션) → 작업 탭. 자기 스페이스의 탭만 들어가고, 그 탭이 닫히면 빠진다. */
   currentTabs: Map<string, string>;
   /** 참가자 → 그 참가자의 스페이스. 턴 종료·중단이 어느 스페이스의 사용 세션을 닫을지 정한다. */
   participantSpaces: Map<string, string>;
+  /** 참가자 → 그 참가자의 묶음. 묶음 하나를 거둘 때 끊을 호출과, 사용 표식이 가리킬 Objective 를 정한다. */
+  participantOwners: Map<string, string>;
   /**
    * 셸이 놓은 네이티브 뷰의 실제 CSS px. 에뮬레이션(프리셋·임의 크기)과 분리한다 — 반응형으로 돌아올 때
    * 직전 모바일/태블릿 숫자를 붙잡지 않도록 항상 갱신한다.
@@ -241,6 +248,8 @@ interface ObjectiveBrowser {
   pendingSpaces: Map<string, number>;
   /** 스페이스별 닫힘 세대 — 닫힌 스페이스에 진행 중이던 생성이 끝나 탭을 등록하며 스페이스를 되살리지 못하게 한다. */
   spaceGenerations: Map<string, number>;
+  /** 묶음별 닫힘 세대 — 거둔 묶음이 진행 중이던 생성으로 탭을 되살리지 못하게 한다. */
+  ownerGenerations: Map<string, number>;
   agentCalls: Set<AbortController>;
 }
 
@@ -302,8 +311,10 @@ export interface BrowserServiceDeps {
   readonly desktop: DesktopEngine;
   /** 전역 브라우저의 초기 세션 — Console 설정 파일의 한 항목. 서비스는 값의 자리를 모르고 이 포트로만 읽고 쓴다. */
   readonly defaultProfile: { read(): string | null; write(profile: string | null): void };
-  /** 스페이스의 사람이 읽는 이름(Objective 제목, 사령관 이름). 모르면 빈 문자열. */
+  /** 스페이스의 사람이 읽는 이름(사령관 이름). 모르면 빈 문자열. */
   readonly spaceLabel?: (browserId: string, spaceId: string) => string;
+  /** 지금 있는 사령관들의 id — 사령관마다 스페이스가 하나 선다. 없으면 탭이 있는 사령관 스페이스만 안다. */
+  readonly commodores?: () => readonly string[];
 }
 
 export interface BrowserServiceStatus {
@@ -461,7 +472,6 @@ export class BrowserService {
       op.tabs.clear();
       op.activeTabId = null;
       op.currentTabs.clear();
-      for (const space of op.spaces.values()) space.lastShownTabId = null;
       op.contextId = "";
       op.contextPending = null;
       this.emitState(op);
@@ -508,7 +518,7 @@ export class BrowserService {
     if (!op) {
       // 전역 브라우저는 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
       const preferred = this.deps.defaultProfile.read();
-      op = { objectiveId, contextId: "", contextPending: null, resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, displayedSpaceId: null, spaces: new Map(), currentTabs: new Map(), participantSpaces: new Map(), pane: null, agentCalls: new Set(), callParticipants: new Map(), participantSerials: new Map(), interruptSerial: 0, pointer: null, pendingTabs: 0, pendingSpaces: new Map(), spaceGenerations: new Map() };
+      op = { objectiveId, contextId: "", contextPending: null, resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, spaces: new Map(), currentTabs: new Map(), participantSpaces: new Map(), participantOwners: new Map(), pane: null, agentCalls: new Set(), callParticipants: new Map(), participantSerials: new Map(), interruptSerial: 0, pointer: null, pendingTabs: 0, pendingSpaces: new Map(), spaceGenerations: new Map(), ownerGenerations: new Map() };
       this.objectiveRecords.set(objectiveId, op);
     }
     return op;
@@ -519,7 +529,7 @@ export class BrowserService {
   private space(op: ObjectiveBrowser, spaceId: string): Space {
     let space = op.spaces.get(spaceId);
     if (!space) {
-      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, lastShownTabId: null, agentSession: null };
+      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, agentSession: null };
       if (op.pane) space.viewport = { ...space.viewport, width: op.pane.width, height: op.pane.height };
       op.spaces.set(spaceId, space);
     }
@@ -529,11 +539,33 @@ export class BrowserService {
   /** 탭이 속한 스페이스 — 뷰포트·에뮬레이션은 이것을 따른다. */
   private spaceOfTab(op: ObjectiveBrowser, tab: Tab): Space { return this.space(op, tab.spaceId); }
 
-  /** 사람 화면의 스페이스 — 탭이 없을 때의 뷰포트 표시와 사람의 뷰포트 변경이 이것을 쓴다. */
-  private displayedSpace(op: ObjectiveBrowser): Space | null {
+  /** 표시 탭의 스페이스 — 스페이스를 주지 않은 사람의 뷰포트 변경과 상태의 뷰포트가 이것을 쓴다. 표시 탭이 없으면 null 이다. */
+  private activeSpace(op: ObjectiveBrowser): Space | null {
     const active = op.activeTabId ? op.tabs.get(op.activeTabId) : null;
-    const id = active?.spaceId ?? op.displayedSpaceId;
-    return id ? this.space(op, id) : null;
+    return active ? this.space(op, active.spaceId) : null;
+  }
+
+  /** 열 수 있는 스페이스인가 — 디폴트이거나 지금 있는 사령관의 스페이스다. 사령관 목록을 모르면 사령관 모양의 id 를 받는다. */
+  private admitSpace(spaceId: string): void {
+    if (spaceId === DESKTOP_BROWSER_DEFAULT_SPACE_ID) return;
+    const commodoreId = commodoreOfBrowserSpace(spaceId);
+    if (commodoreId && (this.deps.commodores?.().includes(commodoreId) ?? true)) return;
+    throw new BrowserPolicyError("browser_space_not_found", "That space does not exist. Check tabs_context(all:true).", { spaceId });
+  }
+
+  /**
+   * 그 호출자가 이 탭에 쓸 수 있는가. 같은 스페이스의 탭만 되고, 디폴트 스페이스에서는 자기 묶음이 연 탭만 된다 —
+   * 디폴트에는 사람의 탭과 서로 모르는 세션들의 탭이 함께 서기 때문이다. 사령관 스페이스는 그 팀의 공용이라 사람이 거기서 연 탭도 쓴다.
+   */
+  private writable(tab: Tab, caller: BrowserCaller): boolean {
+    if (tab.spaceId !== caller.spaceId) return false;
+    return tab.spaceId !== DESKTOP_BROWSER_DEFAULT_SPACE_ID || tab.ownerId === caller.ownerId;
+  }
+
+  /** 참가자의 스페이스와 묶음을 적어 둔다 — 턴 종료·중단·회수가 이것으로 대상을 찾는다. */
+  private bindParticipant(op: ObjectiveBrowser, caller: BrowserCaller): void {
+    op.participantSpaces.set(caller.participantId, caller.spaceId);
+    op.participantOwners.set(caller.participantId, caller.ownerId);
   }
 
   private spaceTabs(op: ObjectiveBrowser, spaceId: string): Tab[] { return [...op.tabs.values()].filter((tab) => tab.spaceId === spaceId); }
@@ -541,7 +573,7 @@ export class BrowserService {
   /** 스페이스가 비고 에이전트도 쓰지 않으면 거둔다 — 뷰포트 설정도 함께 사라진다(다음에 새로 연다). */
   private pruneSpace(op: ObjectiveBrowser, spaceId: string): void {
     const space = op.spaces.get(spaceId);
-    if (!space || space.agentSession || this.spaceTabs(op, spaceId).length > 0 || op.displayedSpaceId === spaceId) return;
+    if (!space || space.agentSession || this.spaceTabs(op, spaceId).length > 0) return;
     op.spaces.delete(spaceId);
   }
 
@@ -549,12 +581,13 @@ export class BrowserService {
    * 에이전트 호출의 대상 탭을 정한다. tabId 를 주면 그 탭(다른 스페이스면 읽기만), 없으면 그 참가자의 작업 탭이다.
    * 사람이 띄운 탭은 결코 기본 대상이 되지 않는다.
    */
-  agentTab(objectiveId: string, caller: { participantId: string; spaceId: string }, tabId: string | null | undefined, access: "read" | "write"): string {
+  agentTab(objectiveId: string, caller: BrowserCaller, tabId: string | null | undefined, access: "read" | "write"): string {
     const op = this.objectiveRecord(objectiveId);
     if (tabId) {
       const tab = op.tabs.get(tabId);
       if (!tab) throw new BrowserPolicyError("browser_tab_not_found", `Tab ${tabId} is not open. Check tabs_context.`, { tabId });
-      if (access === "write" && tab.spaceId !== caller.spaceId) {
+      if (access === "write" && !this.writable(tab, caller)) {
+        if (tab.spaceId === caller.spaceId) throw new BrowserPolicyError("browser_space_read_only", `Tab ${tabId} was opened by ${tab.ownerId === null ? "the person" : "another session"} in the default space and is read-only to you.`, { tabId, spaceId: tab.spaceId });
         const label = this.deps.spaceLabel?.(objectiveId, tab.spaceId) || tab.spaceId;
         throw new BrowserPolicyError("browser_space_read_only", `Tab ${tabId} is in the ${label} space and is read-only to you.`, { tabId, spaceId: tab.spaceId });
       }
@@ -572,15 +605,21 @@ export class BrowserService {
     return null;
   }
 
-  /** 그 참가자의 작업 탭을 바꾼다. 자기 스페이스의 탭만 된다. */
-  setCurrentTab(objectiveId: string, caller: { participantId: string; spaceId: string }, tabId: string): void {
+  /** 그 참가자의 작업 탭을 바꾼다. 쓸 수 있는 탭만 된다. */
+  setCurrentTab(objectiveId: string, caller: BrowserCaller, tabId: string): void {
+    const op = this.objectiveRecord(objectiveId);
+    this.assertOwnTab(objectiveId, caller, tabId);
+    op.currentTabs.set(caller.participantId, tabId);
+    this.bindParticipant(op, caller);
+    this.emitState(op);
+  }
+
+  /** 그 호출자가 닫거나 작업 탭으로 삼을 수 있는 탭인지 확인한다 — 아니면 거절한다. */
+  assertOwnTab(objectiveId: string, caller: BrowserCaller, tabId: string): void {
     const op = this.objectiveRecord(objectiveId);
     const tab = op.tabs.get(tabId);
     if (!tab) throw new BrowserPolicyError("browser_tab_not_found", `Tab ${tabId} is not open. Check tabs_context.`, { tabId });
-    if (tab.spaceId !== caller.spaceId) throw new BrowserPolicyError("browser_space_foreign", "Only tabs in your space can be your current tab or be closed by you.", { tabId, spaceId: tab.spaceId });
-    op.currentTabs.set(caller.participantId, tab.id);
-    op.participantSpaces.set(caller.participantId, caller.spaceId);
-    this.emitState(op);
+    if (!this.writable(tab, caller)) throw new BrowserPolicyError("browser_space_foreign", "Only tabs you can write to can be your current tab or be closed by you.", { tabId, spaceId: tab.spaceId });
   }
 
   /** 그 참가자의 작업 탭(없으면 null). */
@@ -589,45 +628,51 @@ export class BrowserService {
     return op ? this.currentTab(op, participantId) : null;
   }
 
-  /** 에이전트가 보는 탭 목록 — 자기 스페이스, 또는 `all` 이면 모든 스페이스. */
-  agentTabs(objectiveId: string, caller: { participantId: string; spaceId: string }, all: boolean): { space: { id: string; label: string }; currentTabId: string | null; tabs: { tabId: string; url: string; title: string; current?: true; displayed?: true }[]; viewport: { width: number; height: number; preset: ViewportPreset }; spaces?: { id: string; label: string; yours: boolean; tabs: { tabId: string; url: string; title: string; displayed?: true }[] }[] } {
+  /**
+   * 에이전트가 보는 탭 목록 — 자기 스페이스에서 쓸 수 있는 탭, 또는 `all` 이면 모든 스페이스. 디폴트 스페이스의 호출자에게
+   * `tabs` 는 자기 묶음이 연 탭뿐이고, 같은 스페이스의 나머지(사람·다른 세션의 탭)는 `all` 목록에 읽기 전용으로 보인다.
+   */
+  agentTabs(objectiveId: string, caller: BrowserCaller, all: boolean): { space: { id: string; label: string }; currentTabId: string | null; tabs: { tabId: string; url: string; title: string; current?: true; displayed?: true }[]; viewport: { width: number; height: number; preset: ViewportPreset }; spaces?: { id: string; label: string; yours: boolean; tabs: { tabId: string; url: string; title: string; displayed?: true; readOnly?: true }[] }[] } {
     const op = this.objectiveRecord(objectiveId);
     const current = this.currentTab(op, caller.participantId);
     const label = (spaceId: string) => this.deps.spaceLabel?.(objectiveId, spaceId) ?? "";
     const row = (tab: Tab) => ({ tabId: tab.id, url: tab.url, title: tab.title, ...(tab.id === current ? { current: true as const } : {}), ...(tab.id === op.activeTabId ? { displayed: true as const } : {}) });
     const own = this.space(op, caller.spaceId);
-    const result = { space: { id: caller.spaceId, label: label(caller.spaceId) }, currentTabId: current, tabs: this.spaceTabs(op, caller.spaceId).map(row), viewport: { width: own.viewport.width, height: own.viewport.height, preset: own.viewport.preset } };
+    const result = { space: { id: caller.spaceId, label: label(caller.spaceId) }, currentTabId: current, tabs: this.spaceTabs(op, caller.spaceId).filter((tab) => this.writable(tab, caller)).map(row), viewport: { width: own.viewport.width, height: own.viewport.height, preset: own.viewport.preset } };
     if (!all) return result;
     const ids = [...new Set([caller.spaceId, ...[...op.tabs.values()].map((tab) => tab.spaceId)])];
-    return { ...result, spaces: ids.map((id) => ({ id, label: label(id), yours: id === caller.spaceId, tabs: this.spaceTabs(op, id).map((tab) => ({ tabId: tab.id, url: tab.url, title: tab.title, ...(tab.id === op.activeTabId ? { displayed: true as const } : {}) })) })) };
+    return { ...result, spaces: ids.map((id) => ({ id, label: label(id), yours: id === caller.spaceId, tabs: this.spaceTabs(op, id).map((tab) => ({ tabId: tab.id, url: tab.url, title: tab.title, ...(tab.id === op.activeTabId ? { displayed: true as const } : {}), ...(id === caller.spaceId && !this.writable(tab, caller) ? { readOnly: true as const } : {}) })) })) };
   }
 
-  /** 사람이 스페이스를 고른다 — 그 스페이스에서 마지막으로 띄운 탭(없으면 첫 탭)을 띄운다. 탭이 없으면 빈 스페이스를 띄운다. */
-  async showSpace(objectiveId: string, spaceId: string): Promise<BrowserObjectiveState> {
+  /**
+   * 표시 탭을 내린다 — 셸이 탭 없는 스페이스를 띄울 때. 탭은 그대로 남고 화면에서만 물러난다.
+   */
+  deselectTab(objectiveId: string): void {
     const op = this.objectiveRecord(objectiveId);
-    const space = this.space(op, spaceId);
-    const previous = op.displayedSpaceId;
-    const tabs = this.spaceTabs(op, spaceId);
-    const target = (space.lastShownTabId && op.tabs.get(space.lastShownTabId)?.spaceId === spaceId ? space.lastShownTabId : null) ?? tabs[0]?.id ?? null;
-    op.displayedSpaceId = spaceId;
-    if (target) await this.selectTab(objectiveId, target);
-    else {
-      op.activeTabId = null;
-      this.deps.desktop.deactivate(op.objectiveId);
-      this.emitState(op);
+    if (op.activeTabId === null) return;
+    op.activeTabId = null;
+    this.deps.desktop.deactivate(op.objectiveId);
+    this.emitState(op);
+  }
+
+  /** 에이전트가 브라우저를 쓰는 중인 묶음들 — 사용 표식(objective-use)이 Objective 를 가려 읽는다. */
+  drivingOwners(): string[] {
+    const out = new Set<string>();
+    for (const op of this.objectiveRecords.values()) for (const space of op.spaces.values()) for (const participant of space.agentSession?.participants ?? []) {
+      const owner = op.participantOwners.get(participant);
+      if (owner) out.add(owner);
     }
-    if (previous && previous !== spaceId) this.pruneSpace(op, previous);
-    return this.state(objectiveId);
+    return [...out];
   }
 
-  /** 에이전트가 쓰는 중인 Objective 스페이스들 — 사용 표식(objective-use)이 읽는다. */
-  drivingSpaces(): { browserId: string; spaceId: string }[] {
-    const out: { browserId: string; spaceId: string }[] = [];
-    for (const op of this.objectiveRecords.values()) for (const space of op.spaces.values()) if (space.agentSession) out.push({ browserId: op.objectiveId, spaceId: space.id });
-    return out;
+  /** 참가자를 기억에서 지운다 — 작업 탭·스페이스·묶음. */
+  private dropParticipant(op: ObjectiveBrowser, participantId: string): void {
+    op.currentTabs.delete(participantId);
+    op.participantSpaces.delete(participantId);
+    op.participantOwners.delete(participantId);
   }
 
-  /** 스페이스 하나를 거둔다 — 그 Objective 가 보관되거나 지워질 때. 같은 브라우저의 다른 스페이스는 그대로다. */
+  /** 스페이스 하나를 통째로 거둔다 — 그 사령관이 지워질 때. 같은 브라우저의 다른 스페이스는 그대로다. */
   async closeSpace(spaceId: string): Promise<void> {
     for (const op of [...this.objectiveRecords.values()]) {
       if (!op.spaces.has(spaceId) && !this.spaceTabs(op, spaceId).length && !op.pendingSpaces.has(spaceId)) continue;
@@ -636,9 +681,29 @@ export class BrowserService {
       for (const tab of this.spaceTabs(op, spaceId)) await this.closeTab(op.objectiveId, tab.id).catch(() => undefined);
       const space = op.spaces.get(spaceId);
       if (space?.agentSession) { if (space.agentSession.idle) clearTimeout(space.agentSession.idle); space.agentSession = null; }
-      for (const [participant, id] of [...op.participantSpaces]) if (id === spaceId) { op.participantSpaces.delete(participant); op.currentTabs.delete(participant); }
-      if (op.displayedSpaceId === spaceId) op.displayedSpaceId = null;
+      for (const [participant, id] of [...op.participantSpaces]) if (id === spaceId) this.dropParticipant(op, participant);
       op.spaces.delete(spaceId);
+      this.emitState(op);
+    }
+  }
+
+  /**
+   * 묶음 하나를 거둔다 — 그 Objective 가 보관되거나 지워질 때, 사령관에 묶이지 않은 세션이 끝날 때. 그 묶음이 연 탭만 닫고
+   * 그 묶음 참가자의 호출만 끊는다. 같은 스페이스를 쓰는 사령관과 다른 Objective 의 탭·호출은 그대로다.
+   */
+  async closeOwner(ownerId: string): Promise<void> {
+    for (const op of [...this.objectiveRecords.values()]) {
+      const participants = new Set([...op.participantOwners].filter(([, owner]) => owner === ownerId).map(([participant]) => participant));
+      const tabs = [...op.tabs.values()].filter((tab) => tab.ownerId === ownerId);
+      if (participants.size === 0 && tabs.length === 0 && op.pendingTabs === 0) continue;
+      op.ownerGenerations.set(ownerId, (op.ownerGenerations.get(ownerId) ?? 0) + 1);
+      for (const [call, participant] of [...op.callParticipants]) if (participants.has(participant)) { call.abort(); op.agentCalls.delete(call); op.callParticipants.delete(call); }
+      for (const tab of tabs) await this.closeTab(op.objectiveId, tab.id).catch(() => undefined);
+      for (const participant of participants) {
+        const space = op.spaces.get(op.participantSpaces.get(participant) ?? "");
+        if (space?.agentSession) { space.agentSession.participants.delete(participant); if (space.agentSession.participants.size === 0) this.closeSpaceSession(op, space, "revoke"); }
+        this.dropParticipant(op, participant);
+      }
       this.emitState(op);
     }
   }
@@ -684,13 +749,14 @@ export class BrowserService {
   state(objectiveId: string): BrowserObjectiveState {
     const op = this.objectiveRecord(objectiveId);
     const { available, reason } = this.availability();
-    const displayed = this.displayedSpace(op);
+    const active = this.activeSpace(op);
     const agentTabs = new Set(op.currentTabs.values());
-    const spaceIds = [...new Set([...[...op.tabs.values()].map((tab) => tab.spaceId), ...[...op.spaces.values()].filter((space) => space.agentSession).map((space) => space.id)])];
+    // 디폴트가 맨 앞, 그 뒤로 지금 있는 사령관들. 목록에 없는데 탭이 남은 스페이스(지워지는 중인 사령관)는 끝에 붙는다.
+    const spaceIds = [...new Set([DESKTOP_BROWSER_DEFAULT_SPACE_ID, ...(this.deps.commodores?.() ?? []).map(commodoreBrowserSpaceId), ...[...op.tabs.values()].map((tab) => tab.spaceId), ...[...op.spaces.values()].filter((space) => space.agentSession).map((space) => space.id)])];
     const spaces: BrowserSpaceState[] = spaceIds.map((id) => {
       const space = op.spaces.get(id);
       const tabs = this.spaceTabs(op, id);
-      return { id, kind: spaceKindOf(id), label: this.deps.spaceLabel?.(objectiveId, id) ?? "", driving: space?.agentSession != null, agentTabIds: tabs.filter((tab) => agentTabs.has(tab.id)).map((tab) => tab.id), lastShownTabId: space?.lastShownTabId && op.tabs.has(space.lastShownTabId) ? space.lastShownTabId : null };
+      return { id, kind: browserSpaceKindOf(id), label: this.deps.spaceLabel?.(objectiveId, id) ?? "", driving: space?.agentSession != null, agentTabIds: tabs.filter((tab) => agentTabs.has(tab.id)).map((tab) => tab.id), viewportPreset: space?.viewport.preset ?? "responsive" };
     });
     return {
       owner: { kind: "objectiveRecord", objectiveId },
@@ -698,14 +764,13 @@ export class BrowserService {
       browserId: objectiveId,
       surface: this.deps.desktop.surfaceState(),
       spaces,
-      displayedSpaceId: displayed?.id ?? null,
       profile: op.profile,
       defaultProfile: this.defaultProfile(),
       available,
       reason,
       tabs: [...op.tabs.values()].map((tab) => this.tabState(tab)),
       activeTabId: op.activeTabId,
-      viewport: displayed?.viewport ?? { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null },
+      viewport: active?.viewport ?? { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null },
       driving: [...op.spaces.values()].some((space) => space.agentSession !== null),
       consoleErrors: [...op.tabs.values()].reduce((sum, tab) => sum + tab.consoleErrors, 0),
       engine: this.engine,
@@ -716,8 +781,7 @@ export class BrowserService {
   private chromeOf(state: BrowserObjectiveState): DesktopBrowserChrome {
     return {
       browserId: state.browserId,
-      spaces: state.spaces.map((space) => ({ id: space.id, kind: space.kind, label: space.label, driving: space.driving, agentTabIds: space.agentTabIds })),
-      displayedSpaceId: state.displayedSpaceId,
+      spaces: state.spaces,
       tabs: state.tabs.map((tab) => ({ id: tab.id, spaceId: tab.spaceId, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.canGoBack, canGoForward: tab.canGoForward })),
       activeTabId: state.activeTabId,
       viewport: { preset: state.viewport.preset, width: state.viewport.width, height: state.viewport.height, setBy: state.viewport.setBy },
@@ -786,7 +850,6 @@ export class BrowserService {
     // 진행 중 생성은 리셋 뒤에도 자기 finally에서 예약을 해제한다. 먼저 0으로 덮으면 음수가 된다.
     op.activeTabId = null;
     op.currentTabs.clear();
-    for (const space of op.spaces.values()) space.lastShownTabId = null;
   }
 
   /** 전역 브라우저 컨텍스트를 엔진에서 거둔다. 그 파티션의 뷰가 함께 닫힌다. */
@@ -850,18 +913,18 @@ export class BrowserService {
     for (const op of this.objectiveRecords.values()) {
       if (!op.participantSpaces.has(participantId)) continue;
       this.interrupt(op.objectiveId, participantId);
-      op.currentTabs.delete(participantId);
-      op.participantSpaces.delete(participantId);
+      this.dropParticipant(op, participantId);
       this.emitState(op);
     }
   }
 
   /** 에이전트 도구 호출 하나를 감싼다 — 조작 중 표시와 중단이 이 경계에서 결정된다. 사용 세션은 그 참가자의 스페이스에 선다. */
-  async agentCall<T>(objectiveId: string, signal: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>, participantId: string = objectiveId, spaceId: string = participantId): Promise<T> {
+  async agentCall<T>(objectiveId: string, signal: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>, caller: BrowserCaller = { participantId: objectiveId, spaceId: DESKTOP_BROWSER_DEFAULT_SPACE_ID, ownerId: objectiveId }): Promise<T> {
+    const participantId = caller.participantId;
     const { available, reason } = this.availability();
     if (!available) throw new BrowserPolicyError("browser_unavailable", unavailableMessage(reason), { reason });
     const op = this.objectiveRecord(objectiveId);
-    op.participantSpaces.set(participantId, spaceId);
+    this.bindParticipant(op, caller);
     const call = new AbortController();
     const onAbort = () => call.abort();
     signal?.addEventListener("abort", onAbort, { once: true });
@@ -947,16 +1010,19 @@ export class BrowserService {
   }
 
   /**
-   * 탭을 연다. 스페이스를 주지 않으면 사람이 연 탭은 사람 스페이스(그룹 없음)에, 에이전트의 탭은 세션 스페이스에 선다. 사람이 연 탭은 화면에 뜨고, 에이전트가 연 탭은 그 참가자의 작업 탭이
-   * 될 뿐 사람 화면을 바꾸지 않는다(`show` 를 주면 띄운다).
+   * 탭을 연다. 스페이스를 주지 않으면 디폴트 스페이스에 선다 — 셸은 사람이 보고 있는 스페이스를, 에이전트 호출 계층은 그 호출자의 스페이스를 준다.
+   * 사람이 연 탭은 화면에 뜨고, 에이전트가 연 탭은 그 참가자의 작업 탭이 될 뿐 사람 화면을 바꾸지 않는다(`show` 를 주면 띄운다).
    */
-  async createTab(objectiveId: string, url: string | null, actor: "user" | "agent", options: { spaceId?: string; participantId?: string; show?: boolean } = {}): Promise<BrowserTabState> {
+  async createTab(objectiveId: string, url: string | null, actor: "user" | "agent", options: { spaceId?: string; caller?: BrowserCaller; show?: boolean } = {}): Promise<BrowserTabState> {
     const op = this.objectiveRecord(objectiveId);
-    // 스페이스를 정하지 않은 사람의 열기는 그룹 없는 사람 스페이스로 간다. 에이전트는 호출 계층이 늘 스페이스를 주므로, 없는 경우만 세션 스페이스다.
-    const spaceId = options.spaceId ?? (actor === "user" ? HUMAN_SPACE_ID : SESSION_SPACE_ID);
+    const caller = options.caller ?? null;
+    const spaceId = caller?.spaceId ?? options.spaceId ?? DESKTOP_BROWSER_DEFAULT_SPACE_ID;
+    const ownerId = caller?.ownerId ?? null;
+    this.admitSpace(spaceId);
     const pendingInSpace = (op.pendingSpaces.get(spaceId) ?? 0);
-    if (this.spaceTabs(op, spaceId).length + pendingInSpace >= BROWSER_SPACE_TAB_LIMIT) throw new BrowserPolicyError("browser_tab_limit", `Your space has ${BROWSER_SPACE_TAB_LIMIT} tabs, the most it can hold. Close one before opening another.`);
-    if (op.tabs.size + op.pendingTabs >= BROWSER_TOTAL_TAB_LIMIT) throw new BrowserPolicyError("browser_tab_limit", `This browser has ${BROWSER_TOTAL_TAB_LIMIT} tabs across all spaces, the most it can hold. Close one before opening another.`);
+    const spaceLimit = browserSpaceTabLimit(spaceId);
+    if (this.spaceTabs(op, spaceId).length + pendingInSpace >= spaceLimit) throw new BrowserPolicyError("browser_tab_limit", `${spaceId === DESKTOP_BROWSER_DEFAULT_SPACE_ID ? "The default space" : "This space"} has ${spaceLimit} tabs, the most it can hold. Close one before opening another.`, { spaceId, limit: spaceLimit });
+    if (op.tabs.size + op.pendingTabs >= DESKTOP_BROWSER_TAB_LIMITS.total) throw new BrowserPolicyError("browser_tab_limit", `This browser has ${DESKTOP_BROWSER_TAB_LIMITS.total} tabs across all spaces, the most it can hold. Close one before opening another.`, { limit: DESKTOP_BROWSER_TAB_LIMITS.total });
     const target = url ? this.admit(op, url, actor) : null;
     // 상한 검사·동기 주소 검증·예약을 첫 await 전에 마친다. 부착 중 생성도 한 자리를 차지하고,
     // 마지막 완성 탭이 닫혀도 진행 중 생성의 컨텍스트는 거두지 않는다.
@@ -964,8 +1030,9 @@ export class BrowserService {
     op.pendingSpaces.set(spaceId, pendingInSpace + 1);
     const generation = op.resetGeneration;
     const spaceGeneration = op.spaceGenerations.get(spaceId) ?? 0;
+    const ownerGeneration = ownerId === null ? 0 : op.ownerGenerations.get(ownerId) ?? 0;
     const assertSpace = () => {
-      if ((op.spaceGenerations.get(spaceId) ?? 0) !== spaceGeneration) throw new BrowserPolicyError("browser_call_interrupted", "The tab creation was interrupted because its space was closed. Do not retry automatically.");
+      if ((op.spaceGenerations.get(spaceId) ?? 0) !== spaceGeneration || (ownerId !== null && (op.ownerGenerations.get(ownerId) ?? 0) !== ownerGeneration)) throw new BrowserPolicyError("browser_call_interrupted", "The tab creation was interrupted because its space was closed. Do not retry automatically.");
     };
     let client: CdpClient;
     let tab: Tab;
@@ -980,7 +1047,7 @@ export class BrowserService {
         const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
         this.assertContextGeneration(op, generation);
         assertSpace();
-        tab = { id: crypto.randomUUID().slice(0, 8), spaceId, targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
+        tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId, targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
         op.tabs.set(tab.id, tab);
       } catch (error) {
         // 리셋으로 등록이 거부되거나 부착이 실패한 타깃은 생성자가 끝까지 정리한다.
@@ -1003,10 +1070,9 @@ export class BrowserService {
     ]);
     this.deps.desktop.bindView(tab.targetId, op.objectiveId);
     await this.applyViewport(client, tab, op);
-    if (options.participantId) { op.currentTabs.set(options.participantId, tab.id); op.participantSpaces.set(options.participantId, spaceId); }
-    // 에이전트의 탭은 사람 화면을 빼앗지 않는다. 다만 화면이 비어 있으면(띄운 탭이 없고 그 스페이스를 보고 있으면) 띄운다 — 빈 칸보다 낫다.
-    const displayedEmpty = op.activeTabId === null && (op.displayedSpaceId === null || op.displayedSpaceId === spaceId);
-    if (actor === "user" || options.show || displayedEmpty) await this.selectTab(objectiveId, tab.id);
+    if (caller) { op.currentTabs.set(caller.participantId, tab.id); this.bindParticipant(op, caller); }
+    // 에이전트의 탭은 사람 화면을 빼앗지 않는다. 사람이 그 스페이스의 빈 화면을 보고 있었다면 셸이 이 탭을 띄워 달라고 요청한다.
+    if (actor === "user" || options.show) await this.selectTab(objectiveId, tab.id);
     else this.emitState(op);
     if (target) await this.navigateTab(op, tab, target.href);
     return this.tabState(this.tab(op, tab.id));
@@ -1023,7 +1089,6 @@ export class BrowserService {
     if (op.activeTabId === tab.id) {
       const next = this.spaceTabs(op, tab.spaceId).pop()?.id ?? null;
       op.activeTabId = null;
-      op.displayedSpaceId = tab.spaceId;
       if (next) { await this.selectTab(objectiveId, next); this.scheduleIdle(); return; }
       this.deps.desktop.deactivate(op.objectiveId);
     }
@@ -1036,21 +1101,17 @@ export class BrowserService {
     this.scheduleIdle();
   }
 
-  /** 탭이 사라졌다 — 그 탭을 작업 탭으로 쥔 참가자와 스페이스의 기억에서 뺀다. */
+  /** 탭이 사라졌다 — 그 탭을 작업 탭으로 쥔 참가자의 기억에서 뺀다. */
   private forgetTab(op: ObjectiveBrowser, tab: Tab): void {
     for (const [participant, id] of [...op.currentTabs]) if (id === tab.id) op.currentTabs.delete(participant);
-    const space = op.spaces.get(tab.spaceId);
-    if (space?.lastShownTabId === tab.id) space.lastShownTabId = null;
   }
 
   /** 사람 화면에 탭을 띄운다(표시 탭). 사람의 선택과 `tabs_select(show)` 만 부른다. */
   async selectTab(objectiveId: string, tabId: string): Promise<void> {
     const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
-    const previous = op.displayedSpaceId;
+    const previous = op.activeTabId ? op.tabs.get(op.activeTabId)?.spaceId ?? null : null;
     op.activeTabId = tab.id;
-    op.displayedSpaceId = tab.spaceId;
-    this.space(op, tab.spaceId).lastShownTabId = tab.id;
     if (previous && previous !== tab.spaceId) this.pruneSpace(op, previous);
     if (this.client) { try { await this.client.send("Target.activateTarget", { targetId: tab.targetId }); } catch { /* 뷰가 사라지는 중 */ } }
     const size = this.paneOfTab(tab);
@@ -1087,16 +1148,15 @@ export class BrowserService {
 
   /**
    * 탭을 이동한다. 사람은 tabId 가 없으면 띄운 탭을, 에이전트는 호출 계층이 정한 작업 탭을 준다. 대상 탭이 없으면 새 탭을 연다 —
-   * 에이전트의 새 탭은 자기 스페이스에 열리고 작업 탭이 된다.
+   * 에이전트의 새 탭은 자기 스페이스에 열리고 작업 탭이 되며, 사람의 새 탭은 셸이 알려 준 스페이스(`spaceId`, 없으면 디폴트)에 열린다.
    */
-  async navigate(objectiveId: string, target: string, actor: "user" | "agent", tabId?: string | null, caller?: { participantId: string; spaceId: string }): Promise<{ tab: BrowserTabState; ok: boolean; error: string | null }> {
+  async navigate(objectiveId: string, target: string, actor: "user" | "agent", tabId?: string | null, caller?: BrowserCaller, spaceId?: string): Promise<{ tab: BrowserTabState; ok: boolean; error: string | null }> {
     const op = this.objectiveRecord(objectiveId);
     const existing = tabId ? this.tab(op, tabId) : actor === "user" && op.activeTabId ? op.tabs.get(op.activeTabId) ?? null : null;
     if (!existing && (target === "back" || target === "forward" || target === "reload")) throw new BrowserPolicyError("browser_tab_not_found", "No tab is open.");
     const tab = existing;
-    // 사람의 새 탭은 사람 스페이스(그룹 없음)에 열린다.
-    if (!tab) { const created = await this.createTab(objectiveId, target, actor, caller ? { spaceId: caller.spaceId, participantId: caller.participantId } : {}); return { tab: created, ok: true, error: null }; }
-    if (caller && tab.spaceId === caller.spaceId) { op.currentTabs.set(caller.participantId, tab.id); op.participantSpaces.set(caller.participantId, caller.spaceId); }
+    if (!tab) { const created = await this.createTab(objectiveId, target, actor, caller ? { caller } : spaceId ? { spaceId } : {}); return { tab: created, ok: true, error: null }; }
+    if (caller && this.writable(tab, caller)) { op.currentTabs.set(caller.participantId, tab.id); this.bindParticipant(op, caller); }
     const client = await this.engineClient();
     let outcome: { ok: boolean; error: string | null } = { ok: true, error: null };
     if (target === "back" || target === "forward") {
@@ -1437,11 +1497,12 @@ export class BrowserService {
   }
 
   /**
-   * 스페이스 하나의 뷰포트를 정한다. 스페이스를 주지 않으면(사람의 패널) 띄운 스페이스다. 그 스페이스의 탭에만 걸린다.
+   * 스페이스 하나의 뷰포트를 정한다. 스페이스를 주지 않으면 표시 탭의 스페이스다 — 셸은 사람이 보고 있는 스페이스를 준다. 그 스페이스의 탭에만 걸린다.
    */
   async setViewport(objectiveId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent", spaceId?: string): Promise<BrowserViewport> {
     const op = this.objectiveRecord(objectiveId);
-    const targetSpace = spaceId ?? this.displayedSpace(op)?.id ?? null;
+    if (spaceId !== undefined) this.admitSpace(spaceId);
+    const targetSpace = spaceId ?? this.activeSpace(op)?.id ?? null;
     // 색 구성만 맞추는 요청(테마 따라가기)은 표시 동기화다 — 띄운 스페이스가 없으면 모든 스페이스에 건다.
     const displayOnly = request.preset === undefined && request.width === undefined && request.height === undefined;
     const spaces = displayOnly && !spaceId ? [...op.spaces.values()] : targetSpace ? [this.space(op, targetSpace)] : [];

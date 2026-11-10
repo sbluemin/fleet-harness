@@ -12,7 +12,8 @@ import type { DesktopBrowserRelay, DesktopBrowserSnapshot } from "@fleet-console
 import { DesktopEngine } from "../features/browser/host/desktop-engine.js";
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID } from "../features/browser/host/service.js";
 import { createBrowserRouter } from "../features/browser/host/routes.js";
-import { BROWSER_GLOBAL_ID, BROWSER_TOTAL_TAB_LIMIT, commodoreSpaceId, sessionSpaceId } from "../features/browser/shared/spaces.js";
+import { BROWSER_GLOBAL_ID } from "../features/browser/shared/browser-id.js";
+import { DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_TAB_LIMITS, commodoreBrowserSpaceId } from "@fleet-console/protocol/desktop";
 
 describe("session browser host contract", () => {
   it("sends suggestions only after consent, never sends addresses, and degrades without leaking input", async () => {
@@ -139,7 +140,7 @@ describe("session browser host contract", () => {
     expect(engine.viewObjective(targetId)).toBe("global");
   });
 
-  it("resolves every caller home to the same global frame and keeps shortcut origin gates", async () => {
+  it("resolves every caller alias to the same global frame and keeps shortcut origin gates", async () => {
     const published: DesktopBrowserSnapshot[] = [];
     const engine = new DesktopEngine({ publish: (s) => published.push(s), log: () => {} });
     let defaultProfileValue: string | null = null;
@@ -184,14 +185,15 @@ describe("session browser host contract", () => {
     expect(handledState).toBe(true);
     expect((stateRes as unknown as { status: number }).status).toBe(404);
 
-    // 전역 경로와 문맥별 별칭은 같은 상태를 주되 HOME 만 다르다. 자식은 루트 공간으로 풀린다.
+    // 전역 경로와 문맥별 별칭은 모두 같은 상태를 준다. 어느 스페이스를 띄울지는 셸의 일이라 응답에 실리지 않는다.
     objectiveRecords.set("root", { id: "root", commodoreId: "c", payload: {} });
     objectiveRecords.set("child", { id: "child", commodoreId: "c", payload: {} });
-    for (const [id, homeSpaceId] of [[BROWSER_GLOBAL_ID, "human"], ["root", "root"], ["child", "root"], ["commodore:c", "commodore:c"], ["plugin-browser:s", "session:plugin-browser:s"]]) {
+    for (const id of [BROWSER_GLOBAL_ID, "root", "child", "commodore:c", "plugin-browser:s"]) {
       const state = {} as ServerResponse & { status: number; body: Record<string, unknown> };
-      await router({ req: { method: "GET" } as IncomingMessage, res: state, pathname: `/api/v1/browser/objectives/${encodeURIComponent(id!)}/state` });
+      await router({ req: { method: "GET" } as IncomingMessage, res: state, pathname: `/api/v1/browser/objectives/${encodeURIComponent(id)}/state` });
       expect(state.status).toBe(200);
-      expect(state.body).toEqual({ ...service.state(BROWSER_GLOBAL_ID), homeSpaceId });
+      expect(state.body).toEqual(service.state(BROWSER_GLOBAL_ID));
+      expect(state.body.spaces).toMatchObject([{ id: DESKTOP_BROWSER_DEFAULT_SPACE_ID, kind: "default" }]);
     }
     writeAdmitted = false;
     const denied = {} as ServerResponse & { status: number };
@@ -314,7 +316,7 @@ describe("session browser host contract", () => {
         await service.importFromChrome(BROWSER_GLOBAL_ID, "Default");
         expect(await service.historySuggestions(BROWSER_GLOBAL_ID, "가져온")).toHaveLength(1);
         // 임시 프로필도 전역이다. 다른 스페이스가 열려 있어도 같은 이력을 읽는다.
-        const temporary = await service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: "temporary-space" });
+        const temporary = await service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: commodoreBrowserSpaceId("temporary") });
         expect(await service.historySuggestions(BROWSER_GLOBAL_ID, "가져온")).toHaveLength(1);
         expect(historyWrites).toHaveLength(writesBefore);
         await service.closeTab(BROWSER_GLOBAL_ID, temporary.id);
@@ -338,39 +340,50 @@ describe("session browser host contract", () => {
       expect(await interrupted).toMatchObject({ code: "browser_call_interrupted" });
       expect(engine.snapshot().views.map((view) => view.id)).toEqual(viewsBeforeReset);
 
-      // 서로 다른 공간의 첫 탭도 같은 임시 파티션에 선다. 스페이스 회수는 다른 탭을 닫지 않는다.
+      // 서로 다른 스페이스의 첫 탭도 같은 임시 파티션에 선다. 한 사령관 스페이스를 함께 쓰는 두 Objective 중 하나를 거둬도 다른 탭은 남는다.
       await service.setProfile(BROWSER_GLOBAL_ID, null);
-      const spaces = ["objective-a", "objective-b", commodoreSpaceId("other")];
-      const sharedTabs = await Promise.all(spaces.map((spaceId) => service.createTab(BROWSER_GLOBAL_ID, null, "agent", { spaceId })));
+      const team = commodoreBrowserSpaceId("team");
+      const callers = [
+        { participantId: "objective-a", spaceId: team, ownerId: "objective-a" },
+        { participantId: "objective-b", spaceId: team, ownerId: "objective-b" },
+        { participantId: "other", spaceId: commodoreBrowserSpaceId("other"), ownerId: commodoreBrowserSpaceId("other") },
+      ];
+      const sharedTabs = await Promise.all(callers.map((caller) => service.createTab(BROWSER_GLOBAL_ID, null, "agent", { caller })));
+      expect(sharedTabs.map((tab) => tab.spaceId)).toEqual([team, team, commodoreBrowserSpaceId("other")]);
       expect(new Set(engine.snapshot().views.map((view) => view.partition)).size).toBe(1);
       expect(engine.snapshot().views.every((view) => view.profile === null && view.objectiveId === BROWSER_GLOBAL_ID)).toBe(true);
-      await service.closeSpace("objective-a");
+      await service.closeOwner("objective-a");
       expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual(sharedTabs.slice(1).map((tab) => tab.id));
       foreign = sharedTabs[2]!;
+      // 없는 스페이스에는 열 수 없다 — 스페이스는 디폴트와 사령관의 것뿐이다.
+      await expect(service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: "objective-a" })).rejects.toMatchObject({ code: "browser_space_not_found" });
 
-      // 생성 예약까지 세어 공간별 8개와 Console 전체 24개를 함께 지킨다.
-      for (let index = 0; index < 7; index += 1) await service.createTab(BROWSER_GLOBAL_ID, null, "agent", { spaceId: "limited" });
-      const concurrent = await Promise.allSettled(Array.from({ length: 4 }, () => service.createTab(BROWSER_GLOBAL_ID, null, "agent", { spaceId: "limited" })));
+      // 생성 예약까지 세어 디폴트 8개·사령관 스페이스 16개·Console 전체 32개를 함께 지킨다.
+      for (let index = 0; index < DESKTOP_BROWSER_TAB_LIMITS.default - 1; index += 1) await service.createTab(BROWSER_GLOBAL_ID, null, "user");
+      const concurrent = await Promise.allSettled(Array.from({ length: 4 }, () => service.createTab(BROWSER_GLOBAL_ID, null, "user")));
       expect(concurrent.filter((result) => result.status === "fulfilled")).toHaveLength(1);
       expect(concurrent.filter((result) => result.status === "rejected").map((result) => result.reason.code)).toEqual([
         "browser_tab_limit", "browser_tab_limit", "browser_tab_limit",
       ]);
-      const fill = await Promise.allSettled(Array.from({ length: BROWSER_TOTAL_TAB_LIMIT }, (_, index) => service.createTab(BROWSER_GLOBAL_ID, null, "agent", { spaceId: `fill-${index}` })));
-      expect(service.state(BROWSER_GLOBAL_ID).tabs).toHaveLength(BROWSER_TOTAL_TAB_LIMIT);
+      const limited = { participantId: "limited", spaceId: commodoreBrowserSpaceId("limited"), ownerId: commodoreBrowserSpaceId("limited") };
+      for (let index = 0; index < DESKTOP_BROWSER_TAB_LIMITS.commodore; index += 1) await service.createTab(BROWSER_GLOBAL_ID, null, "agent", { caller: limited });
+      await expect(service.createTab(BROWSER_GLOBAL_ID, null, "agent", { caller: limited })).rejects.toMatchObject({ code: "browser_tab_limit", detail: { limit: DESKTOP_BROWSER_TAB_LIMITS.commodore } });
+      const fill = await Promise.allSettled(Array.from({ length: DESKTOP_BROWSER_TAB_LIMITS.total }, (_, index) => service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: commodoreBrowserSpaceId(`fill-${index}`) })));
+      expect(service.state(BROWSER_GLOBAL_ID).tabs).toHaveLength(DESKTOP_BROWSER_TAB_LIMITS.total);
       expect(fill.filter((result) => result.status === "rejected").every((result) => result.reason.code === "browser_tab_limit")).toBe(true);
-      for (const spaceId of service.state(BROWSER_GLOBAL_ID).spaces.map((space) => space.id)) if (spaceId !== commodoreSpaceId("other")) await service.closeSpace(spaceId);
+      for (const spaceId of service.state(BROWSER_GLOBAL_ID).spaces.map((space) => space.id)) if (spaceId !== commodoreBrowserSpaceId("other")) await service.closeSpace(spaceId);
 
-      // 스페이스 회수와 생성이 겹쳐도 그 공간은 되살아나지 않고 공유 브라우저와 다른 공간은 남는다.
-      const closing = service.createTab(BROWSER_GLOBAL_ID, null, "agent", { spaceId: "obj-closed", participantId: "p" }).catch((error: unknown) => error);
-      await service.closeSpace("obj-closed");
+      // 묶음 회수와 생성이 겹쳐도 그 묶음의 탭은 되살아나지 않고 공유 브라우저와 다른 스페이스는 남는다.
+      const closing = service.createTab(BROWSER_GLOBAL_ID, null, "agent", { caller: { participantId: "p", spaceId: team, ownerId: "obj-closed" } }).catch((error: unknown) => error);
+      await service.closeOwner("obj-closed");
       expect(await closing).toMatchObject({ code: "browser_call_interrupted" });
       expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual([foreign.id]);
 
-      // 사령관은 실제 AgentHost가 실은 MCP로 자기 공간만 조작한다. 다른 사령관 공간도 읽을 수 있다.
+      // 사령관은 실제 AgentHost가 실은 MCP로 자기 스페이스만 조작한다. 다른 사령관과 디폴트 스페이스는 읽기만 한다.
       let client: Client | null = null;
       let ownId = "";
       let browserTurn: (turn: ClaudeGatewayTurn) => Promise<void>;
-      const scopeId = commodoreSpaceId("00000000-0000-0000-0000-000000000001");
+      const scopeId = commodoreBrowserSpaceId("00000000-0000-0000-0000-000000000001");
       const agent = createPluginAgentHost({
         baseUrl: () => "http://127.0.0.1:1",
         browserMcp: { connectPlugin: (options) => browser.connectPlugin({ ...options, pluginId: "commodore" }) },
@@ -384,7 +397,7 @@ describe("session browser host contract", () => {
       });
       try {
         const session = await agent.createSession({ model: "sonnet", systemPrompt: "test", continuation: "conversation", settlement: "result", tools: { browser: { scopeId } } });
-        expect(browser.resolveSessionOwner("commodore", scopeId)).toBe(scopeId);
+        expect(browser.isSessionOwner(scopeId)).toBe(true);
         expect(browser.isSessionOwner(BROWSER_GLOBAL_ID)).toBe(false);
         browserTurn = async (turn) => {
           expect(turn.allowedTools).toContain("mcp__fleet-browser__tabs_create");
@@ -397,11 +410,16 @@ describe("session browser host contract", () => {
           expect((await client.callTool({ name: "tabs_create", arguments: {} })).isError).not.toBe(true);
           const own = service.state(BROWSER_GLOBAL_ID).tabs.find((tab) => tab.spaceId === scopeId)!;
           ownId = own.id;
-          const objectiveTab = await service.createTab(BROWSER_GLOBAL_ID, "https://example.com/objective", "user", { spaceId: "op-space" });
+          const objectiveTab = await service.createTab(BROWSER_GLOBAL_ID, "https://example.com/objective", "user");
           expect(service.state(BROWSER_GLOBAL_ID).activeTabId).toBe(objectiveTab.id);
-          const context = JSON.parse(String(((await client.callTool({ name: "tabs_context", arguments: { all: true } })).content as { text: string }[])[0]!.text)) as { currentTabId: string; spaces: { id: string }[] };
+          // 이 사령관의 Objective 가 같은 스페이스에 연 탭은 팀의 것이다 — 사령관이 작업 탭으로 삼을 수 있다.
+          const teammate = await service.createTab(BROWSER_GLOBAL_ID, null, "agent", { caller: { participantId: "member", spaceId: scopeId, ownerId: "objective-x" } });
+          expect((await client.callTool({ name: "tabs_select", arguments: { tabId: teammate.id } })).isError).not.toBe(true);
+          expect((await client.callTool({ name: "tabs_select", arguments: { tabId: own.id } })).isError).not.toBe(true);
+          const context = JSON.parse(String(((await client.callTool({ name: "tabs_context", arguments: { all: true } })).content as { text: string }[])[0]!.text)) as { currentTabId: string; tabs: { tabId: string }[]; spaces: { id: string }[] };
           expect(context.currentTabId).toBe(own.id);
-          expect(context.spaces.map((space) => space.id).sort()).toEqual([scopeId, commodoreSpaceId("other"), "op-space"].sort());
+          expect(context.tabs.map((tab) => tab.tabId)).toEqual([own.id, teammate.id]);
+          expect(context.spaces.map((space) => space.id).sort()).toEqual([scopeId, commodoreBrowserSpaceId("other"), DESKTOP_BROWSER_DEFAULT_SPACE_ID].sort());
           expect((await client.callTool({ name: "read_console_messages", arguments: { tabId: foreign.id } })).isError).not.toBe(true);
           expect((await client.callTool({ name: "read_console_messages", arguments: { tabId: objectiveTab.id } })).isError).not.toBe(true);
           for (const tabId of [foreign.id, objectiveTab.id]) {
@@ -417,11 +435,14 @@ describe("session browser host contract", () => {
             expect(JSON.stringify(close.content)).toContain("browser_space_foreign");
             expect((await client.callTool({ name: "tabs_select", arguments: { tabId } })).isError).toBe(true);
           }
-          const foreignViewport = service.agentTabs(BROWSER_GLOBAL_ID, { participantId: "other", spaceId: foreign.spaceId }, false).viewport;
+          const otherCaller = { participantId: "other", spaceId: foreign.spaceId, ownerId: foreign.spaceId };
+          const foreignViewport = service.agentTabs(BROWSER_GLOBAL_ID, otherCaller, false).viewport;
           expect((await client.callTool({ name: "resize_window", arguments: { width: 640, height: 480 } })).isError).not.toBe(true);
-          expect(service.agentTabs(BROWSER_GLOBAL_ID, { participantId: "other", spaceId: foreign.spaceId }, false).viewport).toEqual(foreignViewport);
-          expect(service.agentTabs(BROWSER_GLOBAL_ID, { participantId: "own", spaceId: scopeId }, false).viewport).toMatchObject({ width: 640, height: 480 });
-          await service.closeSpace("op-space");
+          expect(service.agentTabs(BROWSER_GLOBAL_ID, otherCaller, false).viewport).toEqual(foreignViewport);
+          expect(service.agentTabs(BROWSER_GLOBAL_ID, { participantId: "own", spaceId: scopeId, ownerId: scopeId }, false).viewport).toMatchObject({ width: 640, height: 480 });
+          // Objective 를 거두면 그 Objective 가 연 탭만 닫힌다 — 같은 스페이스의 사령관 탭은 남는다.
+          await service.closeOwner("objective-x");
+          await service.closeTab(BROWSER_GLOBAL_ID, objectiveTab.id);
           expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual([foreign.id, own.id]);
         };
         await session.send("open shared browser tab");
@@ -440,12 +461,27 @@ describe("session browser host contract", () => {
         expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual([foreign.id, ownId]);
         expect(released).not.toContain(BROWSER_GLOBAL_ID);
         const reconnected = browser.connectPlugin({ pluginId: "commodore", scopeId, enabled: () => true });
-        expect(browser.resolveSessionOwner("commodore", scopeId)).toBe(scopeId);
+        // 사령관에 묶이지 않은 세션은 디폴트 스페이스에 자기 묶음으로 선다. 사람이 거기서 연 탭은 그 세션에게 읽기 전용이고, 세션이 끝나면 자기가 연 탭만 닫힌다.
         const another = browser.connectPlugin({ pluginId: "another", scopeId, enabled: () => true });
-        const alias = browser.resolveSessionOwner("another", scopeId)!;
-        const sessionTab = await service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: sessionSpaceId(alias) });
-        await reconnected.dispose(); await another.dispose();
-        expect(service.state(BROWSER_GLOBAL_ID).tabs.some((tab) => tab.id === sessionTab.id)).toBe(false);
+        const [plainCaller, plainReceiver] = InMemoryTransport.createLinkedPair();
+        const plain = new Client({ name: "plain-session", version: "1" });
+        await (another.embeddedServer as unknown as { instance: McpServer }).instance.connect(plainReceiver);
+        await plain.connect(plainCaller);
+        try {
+          expect((await plain.callTool({ name: "tabs_create", arguments: {} })).isError).not.toBe(true);
+          const sessionTab = service.state(BROWSER_GLOBAL_ID).tabs.find((tab) => tab.spaceId === DESKTOP_BROWSER_DEFAULT_SPACE_ID)!;
+          const humanTab = await service.createTab(BROWSER_GLOBAL_ID, null, "user");
+          expect(humanTab.spaceId).toBe(DESKTOP_BROWSER_DEFAULT_SPACE_ID);
+          expect(JSON.stringify((await plain.callTool({ name: "tabs_close", arguments: { tabId: humanTab.id } })).content)).toContain("browser_space_foreign");
+          expect(JSON.stringify((await plain.callTool({ name: "javascript_tool", arguments: { code: "document.title", tabId: humanTab.id } })).content)).toContain("browser_space_read_only");
+          await reconnected.dispose(); await another.dispose();
+          expect(service.state(BROWSER_GLOBAL_ID).tabs.some((tab) => tab.id === sessionTab.id)).toBe(false);
+          expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual([foreign.id, ownId, humanTab.id]);
+          // 표시 탭을 내려도 탭은 남는다 — 셸이 탭 없는 스페이스를 띄울 때의 길이다.
+          service.deselectTab(BROWSER_GLOBAL_ID);
+          expect(service.state(BROWSER_GLOBAL_ID)).toMatchObject({ activeTabId: null });
+          await service.closeTab(BROWSER_GLOBAL_ID, humanTab.id);
+        } finally { await plain.close(); }
         expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual([foreign.id, ownId]);
       } finally { await agent.dispose(); await (client as Client | null)?.close(); }
 
@@ -454,16 +490,13 @@ describe("session browser host contract", () => {
         isWriteAdmitted: () => true, isExactConsoleOrigin: () => true,
         writeJson: (res, status, body) => { Object.assign(res, { status, body }); },
         readJsonBody: async <T>() => ({} as T),
-        readUrl: () => new URL(`http://localhost:50212/api/v1/browser/sessions/resolve?pluginId=commodore&scopeId=${encodeURIComponent(scopeId)}`),
+        readUrl: () => new URL("http://localhost:50212/"),
         withSecurityHeaders: (headers) => headers,
       });
-      const resolved = {} as ServerResponse & { status: number; body: { ownerId: string; homeSpaceId: string } };
-      await router({ req: { method: "GET" } as IncomingMessage, res: resolved, pathname: "/api/v1/browser/sessions/resolve" });
-      expect(resolved.body).toEqual({ ownerId: BROWSER_GLOBAL_ID, homeSpaceId: scopeId });
-      const sessionState = {} as ServerResponse & { status: number; body: { objectiveId: string; homeSpaceId: string } };
+      const sessionState = {} as ServerResponse & { status: number; body: { objectiveId: string } };
       await router({ req: { method: "GET" } as IncomingMessage, res: sessionState, pathname: `/api/v1/browser/objectives/${encodeURIComponent(scopeId)}/state` });
       expect(sessionState.status).toBe(200);
-      expect(sessionState.body).toMatchObject({ objectiveId: BROWSER_GLOBAL_ID, homeSpaceId: scopeId });
+      expect(sessionState.body).toMatchObject({ objectiveId: BROWSER_GLOBAL_ID });
       expect(service.status().objectiveRecords).toEqual([BROWSER_GLOBAL_ID]);
 
       const notices: { available: boolean }[] = [];

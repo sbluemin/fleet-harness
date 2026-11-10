@@ -272,7 +272,7 @@ describe("objectiveRecord browser service contracts", () => {
     const desktop = createStubDesktop({ layout: { width: 1386, height: 1163 } });
     const service = createService(desktop);
     try {
-      await service.createTab(OBJECTIVE, null, "agent");
+      await service.createTab(OBJECTIVE, null, "agent", { show: true });
       desktop.setPaneSize({ width: 1386, height: 1163, scale: 2 });
 
       await service.setViewport(OBJECTIVE, { preset: "mobile" }, "agent");
@@ -299,7 +299,7 @@ describe("objectiveRecord browser service contracts", () => {
     });
     const service = createService(desktop);
     try {
-      const tab = await service.createTab(OBJECTIVE, null, "agent");
+      const tab = await service.createTab(OBJECTIVE, null, "agent", { show: true });
       // read_page 가 남긴 것처럼 매핑만 있고 노드는 이미 떨어졌다.
       const opTab = (service as unknown as { objectiveRecords: Map<string, { tabs: Map<string, { refs: Map<string, number> }> }> }).objectiveRecords.get(OBJECTIVE)!.tabs.get(tab.id)!;
       opTab.refs.set("ref_1", 99);
@@ -322,7 +322,7 @@ describe("objectiveRecord browser service contracts", () => {
     });
     const service = createService(desktop);
     try {
-      const tab = await service.createTab(OBJECTIVE, null, "agent");
+      const tab = await service.createTab(OBJECTIVE, null, "agent", { show: true });
       const opTab = (service as unknown as { objectiveRecords: Map<string, { tabs: Map<string, { refs: Map<string, number> }> }> }).objectiveRecords.get(OBJECTIVE)!.tabs.get(tab.id)!;
       opTab.refs.set("ref_1", 7);
 
@@ -341,7 +341,7 @@ describe("objectiveRecord browser service contracts", () => {
     const desktop = createStubDesktop({ layout: { width: 1386, height: 1163 } });
     const service = createService(desktop);
     try {
-      await service.createTab(OBJECTIVE, null, "agent");
+      await service.createTab(OBJECTIVE, null, "agent", { show: true });
       desktop.setPaneSize({ width: 1386, height: 1163, scale: 1 });
       await service.setViewport(OBJECTIVE, { preset: "mobile" }, "agent");
       // 에뮬레이션을 직접 걷어 layout 만 desktop 크기로 두고, 저장 뷰포트는 mobile 로 남겨 stale 을 재현한다.
@@ -363,9 +363,9 @@ describe("objectiveRecord browser service contracts", () => {
     const desktop = createStubDesktop({ layout: { width: 1280, height: 800 } });
     const service = createService(desktop);
     try {
-      const first = await service.createTab(OBJECTIVE, null, "agent");
+      const first = await service.createTab(OBJECTIVE, null, "agent", { show: true });
       desktop.setPaneSize({ width: 800, height: 600, scale: 1 });
-      const second = await service.createTab(OBJECTIVE, null, "agent");
+      const second = await service.createTab(OBJECTIVE, null, "agent", { show: true });
       desktop.setPaneSize({ width: 1280, height: 800, scale: 1 });
       await service.selectTab(OBJECTIVE, first.id);
 

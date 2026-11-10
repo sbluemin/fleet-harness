@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
-import { BROWSER_GLOBAL_ID, commodoreOfSpace, HUMAN_SPACE_ID, sessionSpaceId } from "../shared/spaces.js";
+import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 import { writeImageToClipboard } from "./clipboard.js";
 import { DEFAULT_BROWSER_SUGGESTION_SETTINGS, suggestionSkipReason, type BrowserSuggestionSettings } from "../shared/suggestions.js";
 
@@ -18,7 +18,6 @@ interface BrowserRouteDeps {
   readonly logSuggestion?: (event: { readonly event: "browser.suggest"; readonly timestamp: string; readonly transmitted: boolean; readonly reason: string; readonly count: number }) => void;
   readonly browserMcp: {
     pasteIntoTerminal(id: string): boolean;
-    resolveSessionOwner?(pluginId: string, scopeId: string): string | null;
     isSessionOwner?(id: string): boolean;
   };
   readonly objectiveRecords: { get(id: string): { id: string; commodoreId: string; [key: string]: unknown } | null };
@@ -41,13 +40,6 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
   return async ({ req, res, pathname }) => {
     if (!isWriteAdmitted(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, browserService.status()); return true; }
-    if (req.method === "GET" && pathname === "/api/v1/browser/sessions/resolve") {
-      const query = readUrl(req).searchParams;
-      const ownerId = browserMcp.resolveSessionOwner?.(query.get("pluginId") ?? "", query.get("scopeId") ?? "") ?? null;
-      const homeSpaceId = ownerId ? commodoreOfSpace(ownerId) ? ownerId : sessionSpaceId(ownerId) : null;
-      writeJson(res, 200, { ownerId: ownerId ? BROWSER_GLOBAL_ID : null, homeSpaceId });
-      return true;
-    }
     if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") {
       if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
       try { writeJson(res, 200, await browserService.importSources()); }
@@ -141,11 +133,11 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|import|profile|clear-profile|space|surface)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|import|profile|clear-profile|surface)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
-    // 전역 id 는 Objective 로 해석하지 않는다. 문맥별 별칭은 HOME 만 정하고 모두 같은 브라우저를 연다.
+    // 전역 id 는 Objective 로 해석하지 않는다. 문맥별 별칭도 모두 같은 브라우저를 연다.
     const global = requestedId === GLOBAL_BROWSER_OWNER_ID;
     const requested = global ? null : objectiveRecords.get(requestedId);
     const rootId = requested ? deps.browserOwnerOf?.(requested.id) ?? requested.id : null;
@@ -153,7 +145,8 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     const sessionOwner = !requested && !global && browserMcp.isSessionOwner?.(requestedId) === true;
     if (!global && !objectiveRecord && !sessionOwner) { writeJson(res, 404, { error: "objectiveRecord_not_found" }); return true; }
     const objectiveId = BROWSER_GLOBAL_ID;
-    const homeSpaceId = objectiveRecord ? objectiveRecord.id : global ? HUMAN_SPACE_ID : commodoreOfSpace(requestedId) ? requestedId : sessionSpaceId(requestedId);
+    // 사람이 보고 있는 스페이스는 셸이 안다 — 표시 탭이 없을 때의 새 탭·뷰포트 요청에 실어 보낸다.
+    const spaceId = (body: Record<string, unknown>): string | undefined => typeof body.spaceId === "string" && body.spaceId && body.spaceId.length <= 256 ? body.spaceId : undefined;
     // 상태는 쓸 수 없을 때도 답한다 — 패널이 왜 닫혀 있는지 그 답으로 듣는다.
     if (action !== "state" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
     const fail = (error: unknown) => {
@@ -163,7 +156,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     };
     if (req.method === "GET" && action === "state") {
       // 뒤따르는 변화는 Objective 스트림의 browser:state 로 간다 — 이 답은 그 스트림에 붙는 화면의 출발점이다.
-      writeJson(res, 200, { ...browserService.state(objectiveId), homeSpaceId });
+      writeJson(res, 200, browserService.state(objectiveId));
       return true;
     }
     if (req.method === "GET" && action === "favicon") {
@@ -215,23 +208,21 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       }
       if (action === "tabs") {
         const tabId = typeof body.tabId === "string" ? body.tabId : null;
-        if (body.action === "create") { const tab = await browserService.createTab(objectiveId, typeof body.url === "string" ? body.url : null, "user", typeof body.spaceId === "string" && body.spaceId ? { spaceId: body.spaceId } : {}); writeJson(res, 200, { tab }); return true; }
+        if (body.action === "create") { const space = spaceId(body); const tab = await browserService.createTab(objectiveId, typeof body.url === "string" ? body.url : null, "user", space ? { spaceId: space } : {}); writeJson(res, 200, { tab }); return true; }
         if (body.action === "close" && tabId) { await browserService.closeTab(objectiveId, tabId); writeJson(res, 200, { closed: tabId }); return true; }
         if (body.action === "select" && tabId) { await browserService.selectTab(objectiveId, tabId); writeJson(res, 200, { selected: tabId }); return true; }
+        // 셸이 탭 없는 스페이스를 띄운다 — 표시 탭만 내리고 탭은 그대로 둔다.
+        if (body.action === "deselect") { browserService.deselectTab(objectiveId); writeJson(res, 200, { selected: null }); return true; }
         writeJson(res, 400, { error: "invalid_request" }); return true;
-      }
-      if (action === "space") {
-        if (typeof body.spaceId !== "string" || !body.spaceId || body.spaceId.length > 256) { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        writeJson(res, 200, await browserService.showSpace(objectiveId, body.spaceId)); return true;
       }
       if (action === "navigate") {
         if (typeof body.url !== "string") { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        writeJson(res, 200, await browserService.navigate(objectiveId, body.url, "user", typeof body.tabId === "string" ? body.tabId : null)); return true;
+        writeJson(res, 200, await browserService.navigate(objectiveId, body.url, "user", typeof body.tabId === "string" ? body.tabId : null, undefined, spaceId(body))); return true;
       }
       if (action === "viewport") {
         const preset = body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? body.preset : undefined;
         const colorScheme = body.colorScheme === "light" || body.colorScheme === "dark" ? body.colorScheme : body.colorScheme === null ? null : undefined;
-        writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user") }); return true;
+        writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user", spaceId(body)) }); return true;
       }
       if (action === "surface") {
         if ((body.action !== "open" && body.action !== "close" && body.action !== "focus" && body.action !== "mode")

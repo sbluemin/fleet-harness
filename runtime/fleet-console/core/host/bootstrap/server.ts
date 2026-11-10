@@ -49,7 +49,7 @@ import { createConsoleControl } from "../../../features/execution/host/console-c
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { createApprovalCore } from "@fleet-console/approval";
 import { APPROVAL_CHANNEL, APPROVAL_NOTICE_CHANNEL } from "@fleet-console/approval/contract";
@@ -60,7 +60,6 @@ import { createBrowserMcpHost, SESSION_BROWSER_OWNER_PREFIX } from "../../../fea
 import { createBrowserRouter } from "../../../features/browser/host/routes.js";
 import { createBrowserScreenshotStore } from "../../../features/browser/host/screenshot-store.js";
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } from "../../../features/browser/host/service.js";
-import { BROWSER_COMMODORE_PREFIX, SESSION_SPACE_PREFIX, commodoreOfSpace, commodoreSpaceId, spaceKindOf } from "../../../features/browser/shared/spaces.js";
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
 import { createUseRequestBroker, type ComputerUseLedger } from "../../../features/computer-use/host/use-requests.js";
@@ -400,7 +399,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/browser", summary: "Read whether the Fleet Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/sessions/resolve", summary: "Resolve a plugin session's browser owner for its panel.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/state", summary: "Read an Objective's browser tab state; later changes arrive on the Objective event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/screenshot", summary: "Capture the active tab of an Objective's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/tabs", summary: "Create, close or select a tab in an Objective's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
@@ -487,8 +485,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     onGroupChanged: (event) => publishPluginEvent(OBJECTIVE_GROUPED_EVENT_CHANNEL, event),
     onGroupRemoved: (event) => publishPluginEvent(OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, event),
-    // 전역 브라우저·스페이스의 예약 id 는 Objective 으로 만들 수 없다.
-    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || id.startsWith(BROWSER_COMMODORE_PREFIX) || id.startsWith(SESSION_SPACE_PREFIX) || archiveStorage.isReserved(id) || archiveStorage.entries().some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingObjective(id),
+    // 전역 브라우저와 브라우저 묶음(사령관·일반 세션)의 예약 id 는 Objective 으로 만들 수 없다.
+    isReserved: (id) => id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) || id.startsWith(DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX) || archiveStorage.isReserved(id) || archiveStorage.entries().some((entry) => entry.objectiveRecord.id === id || entry.objectiveRecord.sessions?.some((child) => child.id === id)) || deletionCoordinator.hasPendingObjective(id),
     assertRelationMutable: (id) => objectiveRecordArchive.assertMutable(id),
   });
   const folderGrants = createFolderGrantStore();
@@ -881,11 +879,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       read: () => consoleSettingsStore.readSnapshot().browser?.defaultProfile ?? null,
       write: (profile) => { consoleSettingsStore.update((current) => ({ ...current, browser: { ...current.browser, defaultProfile: profile } })); },
     },
-    // 전역 목록에서도 각 사령관의 스페이스를 이름으로 구별한다. 일반 세션·사람 스페이스는 패널의 기본 낱말을 쓴다.
+    // 각 사령관의 스페이스를 이름으로 구별한다. 디폴트 스페이스는 셸의 기본 낱말을 쓴다.
     spaceLabel: (_browserId, spaceId) => {
-      const commodoreId = commodoreOfSpace(spaceId);
-      if (commodoreId) { try { return commodore?.label(commodoreId) ?? ""; } catch { return ""; } }
-      return spaceKindOf(spaceId) === "objective" ? objectiveRecords.get(spaceId)?.title ?? "" : "";
+      const commodoreId = commodoreOfBrowserSpace(spaceId);
+      if (!commodoreId) return "";
+      try { return commodore?.label(commodoreId) ?? ""; } catch { return ""; }
+    },
+    // 사령관마다 스페이스가 하나 선다 — 사이드바와 같은 순서로, 지워지는 중인 사령관은 뺀다.
+    commodores: () => {
+      try { return (commodore?.commodoreIds() ?? ownership?.entities.ids() ?? []).filter((id) => !ownership?.isDeleting(id)); } catch { return []; }
     },
   });
   /**
@@ -934,8 +936,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const computerObjective = owner && experiments.computerUse ? computerUseMcp.objectiveIdForOwner(owner) : null;
     // 공유 컨텍스트에서는 기기의 주인(computer)이 루트이고, 지금 조작하는 참가자는 따로 싣는다 — 그룹채팅의 조작자 칩·진행 줄이 읽는다.
     const computerActor = owner && computerObjective ? computerUseMcp.actorForOwner(owner) : null;
-    // 브라우저는 Console 전체에 하나고 사용 표식은 스페이스 단위다 — Objective 스페이스가 곧 그 Objective 다.
-    const browserObjectiveRecords = [...new Set(browserService.drivingSpaces().map((entry) => entry.spaceId))].filter((id) => !!objectiveRecords.get(id));
+    // 브라우저는 Console 전체에 하나고 사용 표식은 묶음 단위다 — Objective 세션의 묶음이 곧 그 루트 Objective 다.
+    const browserObjectiveRecords = browserService.drivingOwners().filter((id) => !!objectiveRecords.get(id));
     return { console: [] as string[], computer: computerObjective, computerActor, browser: browserObjectiveRecords };
   };
   const consoleActions = createWorkspaceActions({ objectiveRecords, deletionCoordinator, archive: objectiveRecordArchive.archive, listObjectiveUse, patchObjective: (id, input) => consoleFeaturePorts.objectiveRecords.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged });
@@ -2645,7 +2647,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             // 이미 시작한 보관 전이가 정지 뒤 저장하지 않도록 소유자 차단 후 큐를 비운다.
             await objectiveRecordArchive.settled();
             for (const node of ownerRecords(id).flatMap(archiveSessionNodes)) await execution.stopForArchive(node, false);
-            await browserService.closeSpace(commodoreSpaceId(id));
+            await browserService.closeSpace(commodoreBrowserSpaceId(id));
           },
           detachObjectives: (id) => {
             const previous = objectiveRecords.list(), groups = objectiveRecords.listAllGroups(), tombstones = deletionCoordinator.list();

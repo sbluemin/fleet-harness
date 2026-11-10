@@ -1,5 +1,6 @@
 import type { AgentToolCtx, AgentToolSpec } from "@fleet-console/agent-runtime/tools";
-import { BrowserPolicyError, type BrowserService } from "./service.js";
+import { DESKTOP_BROWSER_DEFAULT_SPACE_ID } from "@fleet-console/protocol/desktop";
+import { BrowserPolicyError, type BrowserCaller, type BrowserService } from "./service.js";
 import { actOnBrowser, waitForBrowser, type BrowserCondition, type BrowserTarget } from "./semantic.js";
 import type { BrowserScreenshotStore } from "./screenshot-store.js";
 
@@ -23,13 +24,13 @@ export interface BrowserToolDeps {
  * MCP 호스트가 도구에 싣는 문맥 — 브라우저의 주인(`sessionLabel`)과 별개로 실제로 부른 참가자를 함께 싣는다. 자식 세션이
  * 루트의 브라우저를 함께 쓰므로, 턴 종료·중단은 이 참가자의 호출만 끊는다. 없으면 주인 자신이다.
  */
-export type BrowserToolCtx = AgentToolCtx & { readonly participantId?: string; readonly spaceId?: string };
+export type BrowserToolCtx = AgentToolCtx & { readonly participantId?: string; readonly spaceId?: string; readonly ownerId?: string };
 const participantOf = (context: AgentToolCtx): string | undefined => (context as BrowserToolCtx).participantId;
-/** 호출자 — 작업 탭의 주인(participantId)과 그 스페이스. MCP 호스트가 싣지 않으면 브라우저 주인 자신의 한 스페이스다. */
-interface Caller { readonly participantId: string; readonly spaceId: string }
+/** 호출자 — 작업 탭의 주인(participantId), 그 스페이스, 그 묶음. MCP 호스트가 싣지 않으면 디폴트 스페이스에 선 자기 혼자의 묶음이다. */
+type Caller = BrowserCaller;
 const callerOf = (context: AgentToolCtx, browserId: string): Caller => {
   const participantId = participantOf(context) ?? browserId;
-  return { participantId, spaceId: (context as BrowserToolCtx).spaceId ?? participantId };
+  return { participantId, spaceId: (context as BrowserToolCtx).spaceId ?? DESKTOP_BROWSER_DEFAULT_SPACE_ID, ownerId: (context as BrowserToolCtx).ownerId ?? participantId };
 };
 /**
  * 대상 탭을 어떻게 고르는가. read·write 는 tabId 가 없으면 작업 탭이고, 다른 스페이스의 탭은 read 만 된다.
@@ -56,13 +57,13 @@ const TAB_ID = { type: "string", description: "Target tab ID." };
 
 /**
  * 서버 instructions — 공유·스페이스·작업 탭 원칙을 한 번만 말한다. 도구 설명은 각 도구의 고유 동작만 말하고 이 원칙을 되풀이하지 않는다.
- * 다른 스페이스는 읽기만 된다(사람이 승인한 P1).
+ * 다른 스페이스와, 디폴트 스페이스에서 남이 연 탭은 읽기만 된다.
  */
 export const BROWSER_MCP_INSTRUCTIONS = [
-  "Fleet Browser is shared Console-wide, with spaces like tab groups. All spaces share cookies and login state in one browser profile. Each commodore has its own space; an objective's commander and members share that objective's space.",
+  "Fleet Browser is shared Console-wide and divided into spaces. All spaces share cookies and login state in one browser profile. Each commodore has one space, shared by that commodore and the commanders and members of its objectives. Sessions that belong to no commodore, and the person's own tabs, are in the default space.",
   "Your current-tab selection is private; tabs are shared. For tab-targeted calls, omitted tabId uses your current-tab selection: the tab in your space that you last opened, navigated, or chose with tabs_select. Other agents and the person never change it. Closing the selected tab clears it.",
   "Calls do not switch the displayed tab; tabs_select(show:true) reveals a tab.",
-  "tabs_context(all:true) lists the other spaces. Other spaces are read-only and require explicit tabId; JavaScript is refused there.",
+  "tabs_context(all:true) lists the other spaces. Tabs in other spaces, and tabs in the default space that you did not open, are read-only and require explicit tabId; JavaScript is refused there.",
 ].join("\n\n");
 
 export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
@@ -81,14 +82,13 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
           if (mode === "read" || mode === "write") input.tabId = service.agentTab(objectiveId, caller, input.tabId, mode);
           else if (mode === "open") input.tabId = input.tabId || service.currentTabOf(objectiveId, caller.participantId) ? service.agentTab(objectiveId, caller, input.tabId, "write") : null;
           return run(input, objectiveId, signal, caller);
-        }, caller.participantId, caller.spaceId);
+        }, caller);
       }
       catch (error) { return failure(error); }
     },
   });
 
   const tabsContext = (objectiveId: string, caller: Caller, all = false) => service.agentTabs(objectiveId, caller, all);
-  const spaceOfTab = (objectiveId: string, tabId: string): string | null => service.state(objectiveId).tabs.find((tab) => tab.id === tabId)?.spaceId ?? null;
 
   /**
    * 한 장의 스크린샷. 화질은 JPEG 압축으로 줄이되 **해상도는 건드리지 않는다** — 줄인 해상도는 UI 의 작은
@@ -114,8 +114,8 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     if (signal.aborted) return [{ type: "text", text: geometry }];
     if (deps.screenshotDelivery === "inline") return [{ type: "text", text: geometry }, { type: "image", data: shot.data, mimeType: "image/jpeg" }];
     try {
-      // 사본은 부른 쪽의 스페이스 자리에 둔다 — Objective 를 거둘 때 그 Objective 가 찍은 장만 함께 거둔다.
-      const filePath = deps.screenshots.save(caller?.spaceId ?? objectiveId, Buffer.from(shot.data, "base64"), "jpg");
+      // 사본은 부른 쪽 묶음의 자리에 둔다 — Objective 를 거둘 때 그 Objective 가 찍은 장만 함께 거둔다.
+      const filePath = deps.screenshots.save(caller?.ownerId ?? objectiveId, Buffer.from(shot.data, "base64"), "jpg");
       return [{ type: "text", text: `${geometry}\nThe image was written to this machine — the same machine you are running on. Read the image file to see it: ${filePath}` }];
     } catch {
       // 앞선 조작은 이미 일어났다 — 실패로 되돌리면 에이전트가 같은 클릭을 되풀이한다. 이 장만 포기하고
@@ -279,14 +279,11 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return text({ viewport });
   });
 
-  const foreign = (tabId: string, spaceId: string) => new BrowserPolicyError("browser_space_foreign", "Only tabs in your space can be your current tab or be closed by you.", { tabId, spaceId });
   const tabsContextTool = spec("tabs_context", "List your space's tabs with ids, URLs and titles, marking your current tab and the displayed tab, plus the viewport. all lists every space.", { type: "object", properties: { all: { type: "boolean" } }, additionalProperties: false }, "none", async (args, objectiveId, _signal, caller) => text(tabsContext(objectiveId, caller, args.all === true)));
-  const tabsCreate = spec("tabs_create", "Open a blank tab in your space as your current tab and return its tabId. Prefer navigate with a url when you know the destination.", { type: "object", properties: {}, additionalProperties: false }, "none", async (_args, objectiveId, _signal, caller) => { const tab = await service.createTab(objectiveId, null, "agent", { spaceId: caller.spaceId, participantId: caller.participantId }); return text({ tabId: tab.id }); });
+  const tabsCreate = spec("tabs_create", "Open a blank tab in your space as your current tab and return its tabId. Prefer navigate with a url when you know the destination.", { type: "object", properties: {}, additionalProperties: false }, "none", async (_args, objectiveId, _signal, caller) => { const tab = await service.createTab(objectiveId, null, "agent", { caller }); return text({ tabId: tab.id }); });
   const tabsClose = spec("tabs_close", "Close one tab in your space.", { type: "object", properties: { tabId: { type: "string" } }, required: ["tabId"], additionalProperties: false }, "none", async (args, objectiveId, _signal, caller) => {
     const tabId = String(args.tabId);
-    const spaceId = spaceOfTab(objectiveId, tabId);
-    if (spaceId === null) throw new BrowserPolicyError("browser_tab_not_found", `Tab ${tabId} is not open. Check tabs_context.`, { tabId });
-    if (spaceId !== caller.spaceId) throw foreign(tabId, spaceId);
+    service.assertOwnTab(objectiveId, caller, tabId);
     await service.closeTab(objectiveId, tabId);
     return text({ closed: tabId, ...tabsContext(objectiveId, caller) });
   });
