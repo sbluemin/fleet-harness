@@ -395,7 +395,7 @@
 }
 .conversation-pill-controls:not(:has(button)),
 .conversation-caption-shelf:empty { display: none; }
-/* Console Use·Computer Use 와 시선 말풍선은 면 없는 선반에 선다 — 별도 동작 캡슐을 되살리지 않는다. */
+/* Computer Use 와 시선 말풍선은 면 없는 선반에 선다 — 별도 동작 캡슐을 되살리지 않는다. */
 .conversation-caption-shelf { gap: 2px; }
 
 /* 공통 도구모음 — 평면 도구다(Theater │ Console ⋯). 면·캡슐 없이 구분선만 남기고, 켜짐은 기존 레일의 brass 링을 따른다.

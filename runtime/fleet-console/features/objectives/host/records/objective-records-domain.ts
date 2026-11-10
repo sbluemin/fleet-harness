@@ -160,7 +160,7 @@ export interface ObjectiveRecordsStoreDeps {
   readonly assertRelationMutable?: (id: string) => void;
   readonly assertOwnerMutable?: (commodoreId: string) => void;
   /**
-   * Objective 의 그룹이 실제로 바뀐 순간 — 모든 이동(HTTP·Console Use·플러그인 patch·그룹 삭제)이 이 저장소의 쓰기를
+   * Objective 의 그룹이 실제로 바뀐 순간 — 모든 이동(HTTP·플러그인 patch·그룹 삭제)이 이 저장소의 쓰기를
    * 지나므로 여기서 한 번만 알린다. 재수화(replace)는 이동이 아니라 알리지 않는다.
    */
   readonly onGroupChanged?: (event: ObjectiveGroupedEvent) => void;

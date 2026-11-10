@@ -1,6 +1,6 @@
 /**
  * 사령관 세션의 MCP 묶음. 기억·루틴·인텔과 보드·사령관 도구가 이 하나다.
- * Console Use 기여(`console_` 이름)나 `console` 묶음으로는 싣지 않는다.
+ * `console_` 이름이나 `console` 묶음으로는 싣지 않는다.
  */
 export const FLEET_COMMODORE_TOOL_GROUP = "fleet-commodore";
 
@@ -10,7 +10,7 @@ export const COMMODORES_TOOL = "commodores";
 
 /**
  * 저장된 기록에 남은 옛 이름. 화면·집계는 새 이름과 같이 알아본다.
- * Console Use 기여 도구는 이 이름을 그대로 쓴다.
+ * `console_` 도구는 이 이름을 그대로 쓴다.
  */
 export const LEGACY_BOARD_LIST_TOOL = "console_objectives";
 export const LEGACY_BOARD_DETAIL_TOOL = "console_objectives_detail";

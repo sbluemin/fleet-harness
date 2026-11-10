@@ -259,7 +259,7 @@ describe("Computer Use authorization and lifecycle", () => {
   });
 
   it("refuses every device tool until the caller Objective is allowed, and revoking drops its device session", async () => {
-    // 콘솔 사용과 같은 정책: 실험 플래그와 호출자 Objective의 토글이 둘 다 참일 때만 통과하고,
+    // 실험 플래그와 호출자 Objective의 토글이 둘 다 참일 때만 통과하고,
     // 거부는 어느 스위치가 꺼졌는지와 어디서 켜는지를 에이전트에게 말한다. 회수는 진행 중인 기기 소유를 놓는다.
     const f = setup();
     let experiment = true;

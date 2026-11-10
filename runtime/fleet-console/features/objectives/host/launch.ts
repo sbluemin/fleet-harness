@@ -280,7 +280,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (!ctx.objectiveRecords.patch(sessionId, patch)) throw new ObjectiveStoreError("unknown_objective");
   };
   /**
-   * 알림 문구의 언어를 그 Objective 에 남긴다. 콘솔 사용은 켜지 않는다 — 지휘관은 `fleet-commander` 로,
+   * 알림 문구의 언어를 그 Objective 에 남긴다. 지휘관은 `fleet-commander` 로,
    * 구성원은 `fleet-member` 로 일하고(지휘관은 읽고 쓰고, 구성원은 읽고 보고한다), Console 이 필요하면 사람이 그 Objective 에서 허용한다.
    */
   const rememberLanguage = (sessionId: string, language: PromptLanguage) => {
@@ -1829,7 +1829,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (current.done) throw new ObjectiveStoreError("objective_done");
       if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
       const notice = await openCommander(objectiveId, options);
-      // 따로 만든 Objective 도 지휘관이 될 수 있다 — 보드를 읽고 쓰려면 콘솔 사용이 켜져 있어야 한다.
+      // 따로 만든 Objective 도 지휘관이 될 수 있다.
       rememberLanguage(objectiveId, language);
       // 개시는 구상을 끝내고 구성원을 먼저 대기 기동·재개한다.
       if (current.planning) current = store.setPlanning(objectiveId, false);

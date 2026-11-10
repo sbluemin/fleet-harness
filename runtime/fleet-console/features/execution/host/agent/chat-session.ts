@@ -203,7 +203,7 @@ export interface AgentChatSessionSeed {
    * 그 조용한 거짓말이 이 계약이 존재하는 이유다.
    */
   readonly reportActivity: (working: boolean) => boolean;
-  /** 자식에 닿았던 턴이 어떤 결말로든 닫힐 때 — 중단을 포함한다. 에이전트 사용 표식(브라우저·Console Use·Computer Use)이 여기서 내려간다. */
+  /** 자식에 닿았던 턴이 어떤 결말로든 닫힐 때 — 중단을 포함한다. 에이전트 사용 표식(브라우저·Computer Use)이 여기서 내려간다. */
   readonly onTurnSettled?: () => void;
   readonly onTurnEnd?: (output: import("../../shared/control.js").ConsoleObjectiveObservation["output"]) => void;
   /**
@@ -1197,7 +1197,7 @@ class AgentChatSession {
   private consoleOutputCache: { readonly seq: number; readonly busy: boolean; readonly value: import("../../shared/control.js").ConsoleObjectiveObservation["output"] } | undefined;
 
   /**
-   * Console Use 의 전사 페이지 — 저널을 seq 순으로 잘라 준다. 표시용 이벤트(델타·큐·맥박)는 빼고
+   * 플러그인 제어 경로의 전사 페이지 — 저널을 seq 순으로 잘라 준다. 표시용 이벤트(델타·큐·맥박)는 빼고
    * 사람이 읽는 것과 같은 줄(지시·답·도구·질문·턴 결말·잡 결말)만 싣는다. 본문 정화는 호출자가 한다.
    */
   readJournalPage(afterSeq: number, limit: number): { readonly entries: readonly AgentChatJournalEvent[]; readonly nextSeq: number | null; readonly headCut: boolean } {
@@ -1213,7 +1213,7 @@ class AgentChatSession {
     return { entries: rows.slice(-limit), earlier: rows.length > limit || this.journal.length >= JOURNAL_CAP };
   }
 
-  /** 지금 열려 있는 질문 카드 — Console Use 가 답할 수 있는 좌표와 형식. 답 본문(원본 질문 키)은 싣지 않는다. */
+  /** 지금 열려 있는 질문 카드 — 플러그인 제어 경로가 답할 수 있는 좌표와 형식. 답 본문(원본 질문 키)은 싣지 않는다. */
   listPendingAsks(): readonly { readonly id: string; readonly form: "question" | "plan"; readonly questions: readonly AgentChatQuestion[] }[] {
     return [...this.pendingAsks].map(([id, pending]) => ({ id, form: pending.form, questions: pending.questions }));
   }

@@ -40,7 +40,7 @@ const commodores = defineConsoleTool({
   },
 });
 
-/** 사령관 세션의 fleet-commodore 묶음에만 싣는다. Console Use·목표 세션에 기여하지 않는다. 광고 이름은 commodores. */
+/** 사령관 세션의 fleet-commodore 묶음에만 싣는다. 목표 세션에 기여하지 않는다. 광고 이름은 commodores. */
 export function createCommodoreManagementTools(options: {
   readonly hasPersonMessage: () => boolean;
   readonly stopping: () => boolean;

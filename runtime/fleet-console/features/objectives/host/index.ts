@@ -24,7 +24,7 @@ export { FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER } from "./objective
  * 목표와 실행 신분은 사령관의 `objectives/<목표>/objective.json`에 함께 산다.
  * Objective은 실행·화면 호환을 위한 메모리 어댑터다. 목록의 그룹은 Objective 그룹 그 자체이고, 변경은 전부 `objectives:objective` 사건으로 브라우저에 닿는다.
  * 목표를 수행하는 세션은 역할 서버 하나만 받는다 — 지휘관은 `fleet-commander` 로, 구성원은 `fleet-member` 로.
- * Console Use 는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로,
+ * 보드는 `console_objectives`(목록 화면)·`console_objectives_detail`(목표 화면)로,
  * 사령관 세션은 같은 보드를 `fleet-commodore` 의 `objective` 하나로 쓴다.
  */
 const objectiveIdOf = (payload: unknown): string | null => {
@@ -103,7 +103,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     on("objective:renamed", (objectiveId) => launch.objectiveRecordChanged(objectiveId));
     // 사람이 채팅 화면에서 모델을 바꾸거나 채팅↔터미널을 전환해도 명단은 지금 세션 좌표를 말해야 한다 — 지휘관이든 구성원이든 그 목표를 다시 방송한다.
     on(OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, (objectiveId) => launch.objectiveRecordChanged(objectiveId));
-    // 목표의 그룹은 지휘관 Objective 의 그룹이다 — 옮겨지면(사이드바·Console Use·목표 화면) 담당이 따라가고 화면을 다시 방송한다.
+    // 목표의 그룹은 지휘관 Objective 의 그룹이다 — 옮겨지면(사이드바·목표 화면) 담당이 따라가고 화면을 다시 방송한다.
     on(OBJECTIVE_GROUPED_EVENT_CHANNEL, (_objectiveId, payload) => {
       const event = payload as Partial<ObjectiveGroupedEvent>;
       if (typeof event.commodoreId !== "string" || typeof event.theaterId !== "string" || (event.groupId !== null && typeof event.groupId !== "string")) return;

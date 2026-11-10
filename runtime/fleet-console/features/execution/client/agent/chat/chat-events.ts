@@ -33,7 +33,7 @@ export interface AgentChatQuestion {
 export type AgentChatAskForm = "question" | "plan";
 export type AgentChatAskOutcome = "answered" | "dismissed" | "approved" | "revised";
 
-/** 사람이 아닌 발화자 — Console Use 로 보낸·답한 다른 Objective. 제목만 온다. */
+/** 사람이 아닌 발화자 — 플러그인·다른 Objective 가 보낸·답한 것. 제목만 온다. */
 export type AgentChatOrigin = { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string; readonly roster?: true } | { readonly kind: "plugin"; readonly pluginId: string; readonly label?: string; readonly humanInput?: ConsoleActionInput["humanInput"] };
 export function readChatOrigin(value: unknown): AgentChatOrigin | undefined {
   if (!value || typeof value !== "object") return undefined;

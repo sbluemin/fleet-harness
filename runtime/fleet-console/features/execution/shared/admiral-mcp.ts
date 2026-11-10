@@ -32,9 +32,9 @@ export interface McpServerTools {
 
 export interface AdmiralMcpHost {
   /**
-   * 호출 플러그인의 id로 fleet-{pluginId} 서버를 등록한다. 다른 플러그인의 이름은 지정할 수 없다. 이 서버는 Console Use
-   * 토글과 무관하게 모든 Objective 세션에 실린다 — 호출자에 따른 권한은 도구가 `context.caller` 로 스스로 가른다.
-   * 화면 제스처는 없다(제스처는 Console Use 도구의 것이다).
+   * 호출 플러그인의 id로 fleet-{pluginId} 서버를 등록한다. 다른 플러그인의 이름은 지정할 수 없다. 이 서버는
+   * 모든 Objective 세션에 실린다 — 호출자에 따른 권한은 도구가 `context.caller` 로 스스로 가른다.
+   * 화면 제스처는 없다(제스처는 `console_` 도구의 것이다).
    */
   register(tools: readonly ConsoleMcpTool[], options?: AdmiralMcpRegistration): () => void;
   /** 등록 순서와 무관하게 세션을 만들 때 활성 플러그인의 MCP를 연결한다. */

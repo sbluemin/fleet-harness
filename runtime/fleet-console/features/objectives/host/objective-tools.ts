@@ -17,7 +17,7 @@ import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_MISSION_TI
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
- * `fleet-commander` — 지휘관 세션의 작업 도구(구성원은 `fleet-member` 로 같은 원천에서 가른다). Console Use 토글과 무관하게 모든 Objective 에 실리므로
+ * `fleet-commander` — 지휘관 세션의 작업 도구(구성원은 `fleet-member` 로 같은 원천에서 가른다). 모든 Objective 에 실리므로
  * 어느 목표인지는 입력으로 받지 않고 호스트가 넘긴 호출자(`context.caller`)로 고른다. 권한도 그 호출자로 가른다: 읽기는 그 목표의 참여자만, 쓰기는 지휘관만.
  * 구성원은 보드를 읽고 자기 root의 증거만 보존할 수 있다 — 결과물 연결·보드 기록은 지휘관이 한다. 화면 제스처는 없다.
  * 구상 중(「구상」을 누른 뒤 「개시」 전)에는 편성만 쓴다 — 임무 완료·기동은 거절한다. 구성원 전용 서버는 같은 원천에서 가른다.

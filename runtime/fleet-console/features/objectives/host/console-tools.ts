@@ -21,7 +21,7 @@ import { searchInputShape, searchObjectives } from "./search.js";
 
 /**
  * 바깥 루프의 보드 자료 도구. `console_objectives` 는 목표 목록(그룹·확인 필요·진행 중·이력·모델, 추가·정리)을,
- * `console_objectives_detail` 은 목표 하나의 자료(읽기·증거, 사람의 행위)를 다룬다. Console Use 는 이 이름을 그대로 쓰고,
+ * `console_objectives_detail` 은 목표 하나의 자료(읽기·증거, 사람의 행위)를 다룬다. `console_` 정의는 이 이름을 그대로 쓰고,
  * 사령관 세션은 두 도구의 action 합집합을 `objective` 하나로 `fleet-commodore` 에 싣는다.
  * 호출자는 행위의 귀속과 사령관의 Theater 경계만 가른다.
  *
@@ -96,7 +96,7 @@ const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD
 const scope = { commodoreId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe(offsetPages), limit: z.number().int().min(1).max(100).optional() };
 const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("Objective IDs the action applies to.");
-/** 목록 화면의 action — Console Use(`console_objectives`)와 사령관의 `objective` 가 같은 정의를 쓴다. */
+/** 목록 화면의 action — `console_objectives`와 사령관의 `objective` 가 같은 정의를 쓴다. */
 const listActions = {
     groups: { kind: "read", input: z.object(scope) },
     list: { kind: "read", input: z.object({ ...rows, filter: z.enum(["today", "due", "all"]).optional().describe("all adds completed objectives here; archived lists the archive.") }) },
@@ -126,7 +126,7 @@ const followupTarget = { batchId: ids, candidateId: ids };
  * 목표 화면 — 목표의 행위와 제목·브리핑·기한 편집. 임무·달성 기준·구성원은 지휘관의 구상이 정하고(기준은 제안·승인), 이 화면은 그것을 쓰지 않는다.
  * 전사는 목표가 무언가를 기다리거나 일하는 세션이 없을 때만 연다(objective_working).
  */
-/** 목표 화면의 action — Console Use(`console_objectives_detail`)와 사령관의 `objective` 가 같은 정의를 쓴다. */
+/** 목표 화면의 action — `console_objectives_detail`와 사령관의 `objective` 가 같은 정의를 쓴다. */
 const detailActions = {
     read: { kind: "read", input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional().describe("Omitted, a bounded summary naming sections."), offset: sliceOffset }) },
     evidence: { kind: "read", input: z.object({ ...target, resultId: ids, offset: sliceOffset }) },
@@ -168,7 +168,7 @@ const detailTool = defineConsoleTool({
   actions: detailActions,
 });
 /**
- * 사령관 세션의 목록·편집 — 화면 둘을 나누지 않고 view·edit 입력으로 받는다. Console Use 기여는 위의 둘을 그대로 둔다.
+ * 사령관 세션의 목록·편집 — 화면 둘을 나누지 않고 view·edit 입력으로 받는다. `console_` 정의는 위의 둘을 그대로 둔다.
  * list의 view를 생략하면 기본 목록이고, archivedBefore는 archived 보드에서만 받는다. edit은 title·brief·dueDate·
  * commanderModel·commanderEffort 중 적어도 하나가 있어야 하고, attachmentIds는 brief와 함께만 받는다. dueDate null은 기한을 지운다.
  * 지휘관 모델은 세션이 있는 휴면·유휴일 때만 후보로 확인한 뒤 고친다. 세션이 없으면 plan·commence 가 고른다.
@@ -192,7 +192,7 @@ const sessionEditInput = z.object({
 const { list: _retiredList, inbox: _retiredInbox, fleet: _retiredFleet, history: _retiredHistory, archived: _retiredArchived, ...sessionListBase } = listActions;
 const { edit_title: _retiredEditTitle, edit_brief: _retiredEditBrief, edit_due: _retiredEditDue, ...sessionDetailBase } = detailActions;
 /**
- * 사령관 세션의 보드 도구 하나 — 목록·편집을 view·edit 입력으로 합친 형태. Console Use 기여는 위의 둘을 그대로 둔다.
+ * 사령관 세션의 보드 도구 하나 — 목록·편집을 view·edit 입력으로 합친 형태. `console_` 정의는 위의 둘을 그대로 둔다.
  * 목록 고르기와 조각 읽기는 action 안의 입력으로 받고, 화면·구역마다 도구를 나누지 않는다. 옛 목록·편집 action 이름으로
  * 불러도 아래 실행이 같은 길로 잇는다(광고에는 새 이름만 싣는다).
  */
@@ -206,7 +206,7 @@ const objectiveTool = defineConsoleTool({
     edit: { kind: "write", input: sessionEditInput },
   },
 });
-/** Console Use 표식의 행위 낱말 — 내부 action 이름을 보이지 않는다. 쓰기 action 이 늘면 타입이 여기 낱말을 요구한다. */
+/** `console_` 표식의 행위 낱말 — 내부 action 이름을 보이지 않는다. 쓰기 action 이 늘면 타입이 여기 낱말을 요구한다. */
 type DetailWriteAction = { [K in keyof typeof detailTool.actions]: (typeof detailTool.actions)[K]["kind"] extends "write" ? K : never }[keyof typeof detailTool.actions];
 const DETAIL_WRITE_WORDS: Record<Exclude<DetailWriteAction, "edit_due">, string> = {
   edit_title: "제목 변경", edit_brief: "브리핑 편집", criteria_approve: "기준 승인", criteria_reject: "기준 거절", answer: "결정 응답",

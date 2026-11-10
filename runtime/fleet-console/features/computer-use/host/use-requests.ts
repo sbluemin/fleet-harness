@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 /**
- * 패널 안 허용 요청 — Objective 의 AI 가 허용받지 않은 콘솔 사용·컴퓨터 사용 도구를 부르면, 거부하는 대신
+ * 패널 안 허용 요청 — Objective 의 AI 가 허용받지 않은 컴퓨터 사용 도구를 부르면, 거부하는 대신
  * 그 호출을 붙잡아 두고 그 Objective 패널에 허용/거절 카드를 띄운다. 사람의 답이 호출의 결말이 된다.
  *
  * - 한 Objective 의 한 도구군에는 요청이 하나뿐이다. 그사이 들어온 호출은 같은 요청에 합쳐져 한 번의 답을 함께 받는다.
@@ -60,7 +60,6 @@ export interface UseRequestBroker {
 
 /**
  * 컴퓨터 사용 허용 요청의 기록. 브로커는 붙잡힌 호출만 들고, 보이는 요청은 이 장부를 투영한다.
- * 콘솔 사용은 이 장부에 넣지 않는다.
  */
 export interface ComputerUseLedger {
   upsert(input: { readonly objectiveId: string; readonly participantId?: string; readonly tool: string }): { readonly id: string; readonly expiresAt: number };

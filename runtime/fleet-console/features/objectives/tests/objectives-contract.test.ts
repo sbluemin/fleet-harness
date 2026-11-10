@@ -1133,7 +1133,7 @@ describe("Objectives contract", () => {
     expect(fs.readFileSync(recoveryBytes, "utf8")).toBe("recovery evidence");
   });
 
-  it("adds an objective from Console Use with a title and brief only, through the same action gate the host checks", async () => {
+  it("adds an objective from console_objectives with a title and brief only, through the same action gate the host checks", async () => {
     const { store, objectiveRecords, add, savedIds, workspace, launches, consoleTool } = harness();
     const caller = add("console-caller", { title: "Console caller", groupId: "g-console" });
     // 호스트와 같은 선검사 — Objective 연결의 action 판별·strict 검증을 먼저 지난 뒤, 호스트처럼 검증된 값(call)으로 execute 가 돈다.
@@ -1145,7 +1145,7 @@ describe("Objectives contract", () => {
       if (!parsed.ok) throw new Error("action gate rejected representative input");
       return await use(parsed.call);
     };
-    const created = await throughGate({ action: "add", theaterId: "t1", title: "From Console Use", note: "brief" });
+    const created = await throughGate({ action: "add", theaterId: "t1", title: "From board add", note: "brief" });
     expect(created.isError).toBe(false);
     const id = created.structuredContent.objectiveId as string;
     // 브리핑만 들고, 기준·임무·구성원 없이, 호출 Objective 의 그룹과 만든 표시를 들고 태어난다. 저장본을 다시 읽어도 같다.
@@ -1163,7 +1163,7 @@ describe("Objectives contract", () => {
     expect(savedIds()).toEqual([id]);
   });
 
-  it("keeps merge sources in the receiving record and archives all objectives restorably through Console Use until public purge", async () => {
+  it("keeps merge sources in the receiving record and archives all objectives restorably through console_objectives until public purge", async () => {
     let autoMemoryEnabled = true;
     const { ctx, store, launch, add, workspace, consoleTool, consoleDetail, objectiveRecords, archivedObjectiveRecords, route, savedIds, launches, objectiveFile } = harness(() => null, { commodoreAutoMemoryEnabled: () => autoMemoryEnabled });
     const caller = add("tidy-caller", { title: "Tidy caller" });
@@ -1185,7 +1185,7 @@ describe("Objectives contract", () => {
     // 시작 전 목표의 지휘관은 닫힘이 아니다.
     const detail = (await use({ action: "read", objectiveId: waiting.id }, consoleDetail)).structuredContent as { objective: { graph: { commander: { state: string } } } };
     expect(detail.objective.graph.commander.state).toBe("not_started");
-    // 완료해도 자동 보관하지 않는다. Console Use로 따로 보관하면 완료 기록이 그대로 남는다.
+    // 완료해도 자동 보관하지 않는다. console_objectives 로 따로 보관하면 완료 기록이 그대로 남는다.
     await launch.complete(started.id);
     expect(byId(await rows()).has(started.id)).toBe(false);
     expect(byId(await rows("all")).has(started.id)).toBe(true);

@@ -20,7 +20,7 @@ export function subscribeInstalledExperiments(listener: () => void): () => void 
   return installedExperiments?.subscribe(listener) ?? (() => undefined);
 }
 
-/** 서버 `server.ts`의 채널 이름과 같은 값 — Console Use 의 console_reveal 이 사용자 화면에 보내는 사건. */
+/** 서버 `server.ts`의 채널 이름과 같은 값 — 사용자 화면에 보내는 사건. */
 export const OBJECTIVE_REVEAL_EVENT_CHANNEL = "objective:reveal";
 
 export interface ObjectiveReveal {

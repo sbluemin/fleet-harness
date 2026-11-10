@@ -831,7 +831,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     localControl: () => !access.hasSession("remote", "full") && !access.hasSession("remote", "monitoring"),
     onActiveOwnerChange: () => scheduleObjectiveUseBroadcast(),
   });
-  // 패널 안 허용 요청 — 콘솔 사용과 컴퓨터 사용이 같은 브로커를 나눠 쓴다. 메모리 전용이라 재시작하면 비어 있다.
+  // 패널 안 허용 요청 — 컴퓨터 사용 브로커. 메모리 전용이라 재시작하면 비어 있다.
   // 컴퓨터 사용 허용의 기록은 승인 코어다. 브로커는 그 장부가 생긴 뒤에야 붙잡힌 호출을 넘긴다.
   let computerLedger: ComputerUseLedger | null = null;
   const useRequests = createUseRequestBroker({ onChange: () => scheduleObjectiveUseBroadcast(), computerLedger: () => computerLedger });
