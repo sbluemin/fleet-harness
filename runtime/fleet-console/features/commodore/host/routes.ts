@@ -1,4 +1,5 @@
 import type { ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
+import { CONSOLE_ROSTER_MAX_COMMODORES, CONSOLE_ROSTER_PATH, type ConsoleRosterCommodore, type ConsoleRosterSummary } from "../../../protocol/desktop/console-section.js";
 import { commodoreSidebarCommandSchema } from "../shared/contracts/sidebar-layout.js";
 import type { createCommodoreSidebar } from "./sidebar-layout.js";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
@@ -62,6 +63,7 @@ export interface CommodoreRouteHooks {
   readonly assertWritable?: (commodoreId: string) => void;
   readonly create?: (alias: string) => string;
   readonly list?: () => readonly ConsoleCommodoreSummary[];
+  readonly roster?: () => readonly ConsoleRosterCommodore[];
   readonly sidebar?: ReturnType<typeof createCommodoreSidebar>;
   readonly setOrder?: (commodoreIds: readonly string[]) => void;
   /** 좌측 목록 한 줄의 전체 순서(사령관 + TF). 목록·순서·섹션 응답이 함께 내린다. */
@@ -199,6 +201,18 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       return hooks.deletion.remove(commodoreId, alias, language);
     }, false) },
     { name: "commodore/alias", method: "POST", summary: "Set or clear a Commodore alias by UUID, independently of autonomous work.", handler: json(commodoreRef.extend({ alias: z.union([z.string(), z.null()]).transform(normalizeCommodoreAlias).pipe(z.string().nullable()) }).strict(), ({ commodoreId, alias }) => { read(commodoreId); return view(commodoreId, store.setAlias(commodoreId, alias)); }) },
+    { name: CONSOLE_ROSTER_PATH.slice("/api/v1/".length), method: "GET", summary: "Read the minimized sidebar roster without opening a remote session.", handler: ({ req, res }) => {
+      if (req.method !== "GET" && req.method !== "HEAD") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+      const all = hooks.roster?.() ?? [];
+      // 개수와 UTF-8 바이트를 함께 제한한다. 다국어 이름이 길어도 명부는 16 KiB를 넘지 않는다.
+      const commodores = all.slice(0, CONSOLE_ROSTER_MAX_COMMODORES).map(({ id, name, look, run }) => ({ id, name, look: look === null ? null : { base: look.base, tone: look.tone }, run }));
+      const summary = (): ConsoleRosterSummary => ({ v: 1, commodores, more: all.length - commodores.length });
+      while (Buffer.byteLength(JSON.stringify(summary()), "utf8") > 16_384 && commodores.length > 0) commodores.pop();
+      res.setHeader("Cache-Control", "no-store");
+      ctx.host.http.writeJson(res, 200, summary());
+      return true;
+    } },
     { name: "commodore/list", method: "POST", summary: "List Commodores independently of registered Theaters.", handler: json(z.object({}).strict(), () => ({ commodores: hooks.list?.() ?? [], order: hooks.order?.() ?? [], sidebarLayout: hooks.sidebar?.read() })) },
     { name: "commodore/sidebar", method: "POST", summary: "Manage shared sidebar sections without changing Commodore ownership.", handler: json(commodoreSidebarCommandSchema, (command) => {
       if (!hooks.sidebar) throw new CommodoreStoreError("commodore_unavailable");

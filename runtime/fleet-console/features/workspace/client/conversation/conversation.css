@@ -1525,13 +1525,6 @@
 .console-shell.is-objective-records-view :is(.side-bar-top-strip .conversation-round, .conversation-round.conversation-panel-close):focus-visible {
   box-shadow: var(--focus-face);
 }
-.console-shell.is-objective-records-view .side-bar-top-strip .remote-console-button.is-away {
-  color: var(--brass-ink);
-  background: color-mix(in oklch, var(--brass) 12%, var(--surface-round-control));
-}
-.console-shell.is-objective-records-view .side-bar-top-strip .remote-console-button.is-away:is(:hover, [aria-expanded="true"]) {
-  background: color-mix(in oklch, var(--brass) 20%, var(--surface-round-control));
-}
 .conversation-round:disabled {
   cursor: wait;
   opacity: 0.55;
