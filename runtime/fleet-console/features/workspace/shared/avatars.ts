@@ -115,7 +115,7 @@ export interface MongleFacts {
   /** 지휘관 — 끝나지 않은 목표에 사람에게 청한 결정 요청이 섰다. */
   readonly decisionRequest?: boolean;
   /**
-   * 안 본 답이 도착했다. 통일 기준의 예외 — 도착 표시를 아는 사이드바만 넘긴다. 다른 표면(레일·대화 머리·목표 보드)은
+   * 안 본 답이 도착했다. 통일 기준의 예외 — 도착 표시를 아는 사이드바만 넘긴다. 다른 표면(레일·대화 머리·목표 팝업)은
    * 이 사실을 읽지 않으므로 같은 순간에 사이드바만 unseen 얼굴일 수 있다.
    */
   readonly unseen?: boolean;
@@ -124,7 +124,7 @@ export interface MongleFacts {
 }
 
 /**
- * 한 사람의 얼굴 상태 — 사이드바·지휘관 탭 레일·대화 머리·목표 보드가 모두 이 기준 하나를 지난다.
+ * 한 사람의 얼굴 상태 — 사이드바·지휘관 탭 레일·대화 머리·목표 팝업가 모두 이 기준 하나를 지난다.
  * 우선순위: 시작 전 › 검토 대기 › 결정 요청 › 사람 대기 › 작업 중 › 안 본 답 › 임무 완료 › 휴면 › 쉼.
  */
 export function mongleStateOf(facts: MongleFacts): MongleState {

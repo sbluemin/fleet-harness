@@ -108,7 +108,7 @@ export function isCommodoreConversationOpen(commodoreId: string): boolean {
   return params?.commodoreId === commodoreId && !params.readOnly;
 }
 
-/** 대화 배치 여부를 따라 다시 그리는 훅 — 우측 사이드바의 목표 상세가 머리를 걷을지 정한다. */
+/** 대화 배치 여부를 따라 다시 그리는 훅 — 대화 배치의 구독자가 현재 표면을 다시 읽는다. */
 export function useCommodoreConversationActive(): boolean {
   return useSyncExternalStore(
     subscribeCommodoreConversationActive,
@@ -185,7 +185,7 @@ export function CommodoreZoneHost(): null {
   return null;
 }
 
-/* ── 턴 드러내기 — 가운데 기록과 오른쪽 목표 탭이 함께 쓴다 ─────────────── */
+/* ── 턴 드러내기 — 가운데 기록과 사령관 패널이 함께 쓴다 ─────────────── */
 
 let reveal: { readonly commodoreId: string; readonly at: number; readonly nonce: number } | null = null;
 const revealListeners = new Set<() => void>();
@@ -348,7 +348,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   } : null), [reveal, target]);
   const references = useCommodoreReferenceHost(t, commodoreId);
   const openUIOpen = useCommodoreOpenUIPort(commodoreId, undefined, openCommodoreConversation);
-  // 행위 줄이 여는 목표 — 기록 토큰과 같은 착지(가운데 칸에 그 목표의 대화, 레일의 목표 패널)다. 보드가 열려 있어야만 닿는 reveal 이 아니다.
+  // 행위 줄과 기록 참조는 가운데 칸의 목표 대화로 간다. 우측 사령관 패널의 열림은 바꾸지 않는다.
   const openBoardAction = useMemo<AgentConversationProps["openBoardAction"]>(() => ({
     label: t("commodore.trail.open"),
     open: (entry) => {

@@ -1,3 +1,4 @@
+import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
 import { useSyncExternalStore } from "react";
 import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot } from "../../objectives/shared/commodore-board-client.js";
 
@@ -29,7 +30,6 @@ export const findFinishedObjective = (id: string) => board?.findFinished(id) ?? 
 export const goToObjective = (id: string, theaterId: string, done?: boolean) => board?.openObjective(id, theaterId, done);
 export const openObjectiveFromCluster = (theaterId?: string, objectiveId?: string) => board?.openObjectiveFromCluster(theaterId, objectiveId);
 export const openObjectiveOnPhone = (objectiveId: string, theaterId?: string) => board?.openObjectiveOnPhone(objectiveId, theaterId);
-export const revealObjective = (input: { readonly objectiveId: string }) => board?.revealObjective(input);
 export const renderObjectiveAvatar = (commodoreId: string, objectiveId: string, size: number) => board?.renderObjectiveAvatar(commodoreId, objectiveId, size) ?? null;
 export const isRunningObjective = (objective: CommodoreBoardObjective) => objective.running;
 export const isCommodoreWaiting = (objective: CommodoreBoardObjective) => objective.waiting;
@@ -39,3 +39,9 @@ export function openOwnedObjectiveOnPhone(commodoreId: string, objectiveId: stri
   const objective = board?.read(commodoreId).objectives.find((row) => row.id === objectiveId) ?? board?.findFinished(objectiveId);
   board?.openObjectiveOnPhone(objectiveId, objective?.theaterId);
 }
+
+/** 폰의 기존 착지 예약은 유지하고, 데스크톱 출처 링크는 목표 대화로 간다. */
+export const revealObjective = (input: { readonly objectiveId: string }) => {
+  if (getViewModeSnapshot().effective === "mobile") board?.revealObjective(input);
+  else board?.openObjectiveFromCluster(undefined, input.objectiveId);
+};

@@ -1,3 +1,4 @@
+import { openObjectivePopup } from "./objectives-panel.js";
 import { objectiveOpenUIPort } from "./openui-ports.js";
 import type { ConversationConsultReply, ConversationDecision, ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
@@ -6,7 +7,7 @@ import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
 import { answeringText, commodoreAliasOf, decisionInCommodoreConversation, decisionTurn } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
-import { openObjectiveFromCluster, patchOwnerView, returnPersonHold, revealObjective } from "./objectives-state.js";
+import { returnPersonHold } from "./objectives-state.js";
 import { followupPickable } from "./board-actions.js";
 import { followupHoldRoute, openFollowups, setFollowupOpen } from "./followups.js";
 import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberStatus, type LaunchShown } from "./launch-control.js";
@@ -156,12 +157,7 @@ function conversationHolds(objective: Objective): readonly ConversationHold[] {
         : pickable && !objective.done ? "objectives.followup.sub"
           : followupHoldRoute(objective);
     const reveal = target === "criteria"
-      ? { label: localized((t) => t("objectives.composer.reveal")), run: () => {
-          // 구성원 탭에 남아 있어도 기준이 보이게, 목표 탭으로 연다.
-          patchOwnerView(objective.commodoreId, () => ({ detailTab: "goal" }));
-          revealObjective({ objectiveId: objective.id });
-          openObjectiveFromCluster(objective.theaterId);
-        } }
+      ? { label: localized((t) => t("objectives.composer.reveal")), run: () => openObjectivePopup(objective.id) }
       : pickable ? { label: localized((t) => t("objectives.hold.pick")), run: () => setFollowupOpen(objective.id, true) } : undefined;
     return [{
       id: `hold:${objective.id}:${target}:${hold.at}`,

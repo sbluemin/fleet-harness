@@ -390,7 +390,6 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
     const objectiveId = commanderObjectiveId(layout.cluster);
     if (objectiveId === null) { layout.cluster.open?.(); return; }
     onFocus(objectiveId);
-    if (anchor) registry.objectives.objectiveRecordSelected(anchor.objectiveRecord.id);
   };
   // 제목 글자 위 더블클릭은 이름 변경이다 — 제목 칸은 줄 폭으로 늘어나 있으므로 글자 자리로 판정한다. 이름 변경이면 dblclick 이
   // 버튼까지 번지지 않게 여기서 멈춘다. 터치의 더블 탭은 이름 변경으로 읽지 않는다.

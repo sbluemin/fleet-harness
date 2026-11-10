@@ -119,6 +119,7 @@ const UNASSIGNED_GROUP_KEY = "__unassigned__";
  * 이 최소 형태를 받는다 — 그래야 두 계약이 같은 목록에 함께 설 수 있다.
  */
 export interface PaletteSearchPanel {
+  readonly searchOnly?: boolean;
   readonly fileReferences?: boolean;
   readonly id: string;
   readonly title: LocalizedText;

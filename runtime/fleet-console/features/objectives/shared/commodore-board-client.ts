@@ -42,7 +42,6 @@ export interface CommodoreBoardSnapshot {
 }
 
 export interface CommodoreBoardClient {
-  readonly railEntryIds: readonly string[];
   /** 사령관 요청이 인가된 서버에 닿았다 — 보드의 일시 조회 게이트도 같은 연결 증거를 받는다. */
   serverReached(): void;
   read(commodoreId: string): CommodoreBoardSnapshot;

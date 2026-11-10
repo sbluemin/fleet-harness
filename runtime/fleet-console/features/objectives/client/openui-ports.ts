@@ -1,7 +1,8 @@
+import { openObjectivePopup } from "./objectives-panel.js";
 import type { OpenUIOpenPort, OpenUIOpenTarget } from "../../execution/shared/chat-renderer.js";
 import type { Objective } from "../shared/types.js";
 import { goToObjective } from "./fresh-conversation.js";
-import { findAnyObjective, findFinishedObjective, openObjectiveFromCluster, readBoard, revealObjective, viewedCommodoreId } from "./objectives-state.js";
+import { findAnyObjective, findFinishedObjective, readBoard, viewedCommodoreId } from "./objectives-state.js";
 
 /** 기록 토큰과 같은 착지 — 완료로 보관된 목표는 읽어 둔 끝난 목표에서 완료를 읽는다. */
 function openListedObjective(theaterId: string, objectiveId: string): void {
@@ -23,8 +24,7 @@ export function objectiveOpenUIPort(theaterId: string, objective?: Objective, op
       else if (target.kind === "mission" && objective) {
         const found = mission(target.number);
         if (!found) return;
-        revealObjective({ objectiveId: objective.id, missionId: found.id });
-        openObjectiveFromCluster(theaterId, objective.id);
+        openObjectivePopup(objective.id, "crew", found.id);
       }
     },
   };

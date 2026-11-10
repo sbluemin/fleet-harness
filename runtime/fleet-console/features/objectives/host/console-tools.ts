@@ -20,13 +20,13 @@ import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS 
 import { searchInputShape, searchObjectives } from "./search.js";
 
 /**
- * 바깥 루프의 보드 — 화면 둘. `console_objectives` 는 목표 목록 화면(그룹·목록·확인 필요·진행 중·이력·모델, 추가·정리)이고
- * `console_objectives_detail` 은 목표 하나의 화면(읽기·증거, 사람의 행위)이다. Console Use 는 이 이름을 그대로 쓰고,
- * 사령관 세션은 두 화면의 action 합집합을 `objective` 하나로 `fleet-commodore` 에 싣는다.
+ * 바깥 루프의 보드 자료 도구. `console_objectives` 는 목표 목록(그룹·확인 필요·진행 중·이력·모델, 추가·정리)을,
+ * `console_objectives_detail` 은 목표 하나의 자료(읽기·증거, 사람의 행위)를 다룬다. Console Use 는 이 이름을 그대로 쓰고,
+ * 사령관 세션은 두 도구의 action 합집합을 `objective` 하나로 `fleet-commodore` 에 싣는다.
  * 호출자는 행위의 귀속과 사령관의 Theater 경계만 가른다.
  *
  * 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 임무·달성 기준·구성원(모델 포함)은 지휘관의 구상에서 나오고, 기준은 지휘관의 제안을
- * 승인·거절해 바뀐다. 두 화면이 쓰는 것은 목표의 행위(구상·개시·스티어링·중단·결정 응답·기준 제안 판단·검토로 인계·완료·확장)와
+ * 승인·거절해 바뀐다. 두 도구가 쓰는 것은 목표의 행위(구상·개시·스티어링·중단·결정 응답·기준 제안 판단·검토로 인계·완료·확장)와
  * 제목·브리핑·기한 편집뿐이다. 메시지는 사람·Objective·플러그인 호출자의 발화이고, 사령관의 첨언은 스티어링이다.
  * 지휘관에게 건네는 말은 짧은 첨언으로 상한을 둔다.
  */
@@ -601,7 +601,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
   }
 
   if (bound) {
-    // 사령관 세션에는 보드 한 도구 — 목록·편집은 view·edit 입력으로 합친 형태로 받고, 나머지는 두 화면의 실행을 action 이름으로 골라 그대로 둔다.
+    // 사령관 세션에는 보드 한 도구 — 목록·편집은 view·edit 입력으로 합친 형태로 받고, 나머지는 두 도구의 실행을 action 이름으로 골라 그대로 둔다.
     const objective: ConsoleMcpTool = objectiveTool.plugin({
       surface: {
         panelId: "objectives",
