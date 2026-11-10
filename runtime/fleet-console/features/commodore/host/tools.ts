@@ -137,7 +137,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
 
   const memorySpec = defineConsoleTool({
     name: "console_memory",
-    description: "Your fleet-memory: facts that should outlive the conversation, filed by branch. Confirm an entry before you rely on it.",
+    description: "Private fleet-memory: save durable facts absent from other records; recheck before relying on them. Commanders cannot read it; pass relevant context in remarks.",
     actions: {
       list: { kind: "read", callers: ["commodore"], input: z.object({}) },
       view: { kind: "read", callers: ["commodore"], input: z.object({ ref: memoryRefSchema.describe("Entry ref (branch/topic/slug). stale marks entries needing a recheck.") }) },
@@ -353,7 +353,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
   };
   const routinesSpec = defineConsoleTool({
     name: "console_routines",
-    description: "Your routines with enabled state and next run time.",
+    description: "Your routines with enabled state and next run time. Intel sources do not push updates; use a routine when periodic checks are needed.",
     actions: {
       list: { kind: "read", callers: ["commodore"], input: z.object({}) },
       add: { kind: "write", callers: ["commodore"], input: z.object(routineFields) },
@@ -382,7 +382,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
   // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
   const taskforceSpec = defineConsoleTool({
     name: "console_taskforce",
-    description: "Speak in a TaskForce you belong to.",
+    description: "Speak only when useful in a TaskForce you belong to; otherwise make no call. Refer to speakers and gist, not hidden sequence IDs.",
     actions: {
       post: { kind: "write", callers: ["commodore"], input: z.object({ taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce").describe("Exact TaskForce id from context or tools; never guess."), text: z.string().trim().min(1).max(MAX_TASKFORCE_TEXT).describe("Conclusion only; over 2000 refused. Goes to the shared ledger, never the 1:1 log."), mentions: z.array(z.string().regex(TASKFORCE_ID, "invalid_request")).max(MAX_TASKFORCE_MEMBERS).optional().describe("Fellow member ids this is for.") }) },
     },

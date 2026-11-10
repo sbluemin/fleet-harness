@@ -33,7 +33,7 @@ import { searchInputShape, searchObjectives } from "./search.js";
 
 
 const ids = z.string().min(1).max(128);
-const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("This turn's image IDs for the brief. No paths.");
+const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("This turn's image IDs only; no paths. Preserve request images in the brief before plan/steer.");
 const MAX_ADD_PER_TURN = 10;
 /** 일하는 세션이 있어도 전사를 읽을 수 있는 대기 사유 — 바깥의 판단을 기다리거나 막힌 목표다. */
 const TRANSCRIPT_REASONS: ReadonlySet<string> = new Set(["decision", "stalled", "member-failed", "review"]);
@@ -185,7 +185,7 @@ const sessionEditInput = z.object({
   title: z.string().trim().min(1).max(MAX_TITLE).optional().describe("Provide title, brief, dueDate, commanderModel or commanderEffort."),
   brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
   dueDate: dueDate.optional(),
-  attachmentIds: attachmentIds.optional().describe("This turn's image IDs; requires brief."),
+  attachmentIds: attachmentIds.optional().describe("This turn's image IDs only; requires brief. Preserve request images before plan/steer."),
   commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates. Dormant or idle Commander session only."),
   commanderEffort: z.string().trim().min(1).max(32).optional().describe("From the new or current model's efforts. Omitted keeps current; unsupported effort is refused."),
 }).strict();
@@ -198,7 +198,7 @@ const { edit_title: _retiredEditTitle, edit_brief: _retiredEditBrief, edit_due: 
  */
 const objectiveTool = defineConsoleTool({
   name: "console_objective",
-  description: "The Objectives board: lists and one objective's detail, acts and tidy. archive/remove: restorable. purge: archived only, irreversible after a 10s grace; restart cancels pending purges.",
+  description: "Objectives board: lists, detail, acts, tidy. archive/remove: restorable; purge: archived only, irreversible after 10s. hand_off: all-idle stalls only. Judge follow-ups together at review.",
   actions: {
     ...sessionListBase,
     list: { kind: "read", input: sessionListInput },
