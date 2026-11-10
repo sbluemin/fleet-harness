@@ -347,8 +347,10 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .rail.horizontal .space-count { margin-inline-start: 0; }
 .rail.horizontal .scroll { flex: 1 1 auto; min-width: 0; height: 100%; flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .rail.horizontal .tabs { flex: 0 1 auto; flex-direction: row; min-width: 0; }
-.rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; }
+.rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; container-type: inline-size; }
 .rail.horizontal .tab-title { flex: 1 1 auto; }
+/* 탭이 좁아지면 보고 있지 않은 탭은 닫기 단추를 접어 제목에 자리를 준다(보는 탭의 닫기는 남는다). */
+@container (max-width: 112px) { .rail.horizontal .tab:not(.active) .tab-close { display: none; } }
 .rail.horizontal .row.new { flex: none; width: 34px; }
 /* 주소줄 단추 — 사령관 스페이스를 보는 동안 글리프가 그 스페이스의 색을 입는다. */
 .spaces-button { border-radius: var(--radius-pill); }
