@@ -536,6 +536,12 @@ function LineupZoom({ t, title, category, width, tools, onClose, children }: { r
         if (document.querySelector("[data-graph-popup]:not(.is-closing)")) return;
         // 증거 뷰어가 이 창 위에 있으면 Esc 는 뷰어만 닫는다. 초점은 뷰어가 연 곳으로 돌린다.
         if (document.activeElement?.closest(".objectives-result-window, .objectives-rw-menu")) return;
+        // 편집 중인 칸의 Esc 는 그 칸의 것이다 — 칸이 값을 되돌리고 떠난다. 창은 닫지 않는다. 자기 처리기가 없는 칸은 떠나게만 한다.
+        const field = document.activeElement;
+        if (field instanceof HTMLElement && cardRef.current?.contains(field) && field.matches("textarea, input:not([type='file'])")) {
+          setTimeout(() => { if (document.activeElement === field) field.blur(); }, 0);
+          return;
+        }
         event.preventDefault(); event.stopPropagation(); onClose(); return;
       }
       if (event.key !== "Tab" || !cardRef.current) return;
