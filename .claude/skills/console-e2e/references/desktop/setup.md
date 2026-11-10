@@ -127,7 +127,7 @@ node <worktree>/.claude/skills/console-e2e/scripts/set-owned-zoom.mjs <inspector
 node <worktree>/.claude/skills/console-e2e/scripts/set-owned-zoom.mjs <inspector-port> <owned-pid> <evidence-dir> <label> <zoom-factor>
 ```
 
-It calls `setZoomFactor` on the Console view and reads `getZoomFactor` back (exit 0 reached, 2 settled elsewhere, 1 refusal, including a window with no Console child such as a detached Browser window, which reads `consoleZoomFactor` null). It does not run the menu zoom actions, save the zoom store, or refresh native chrome, and it does not verify OS shortcuts or the menu: those need a separate authorized OS-input run. Follow it with the renderer read above.
+It calls `setZoomFactor` on the Console view and reads `getZoomFactor` back (exit 0 reached, 2 settled elsewhere, 1 refusal, including a window with no Console child such as a detached Browser window, which reads `consoleZoomFactor` null). It does not run the menu zoom actions, save the zoom store, or refresh native chrome, and it does not verify OS shortcuts or the menu: those need a separate authorized OS-input run. Follow it with the renderer read above. Set the zoom only after the startup handoff finishes (entry window gone, renderer at `/console/objectives`): a set made while it runs read back 1.2 but reverted to 1 about 0.5 s later (a saved-zoom reapply is the unconfirmed candidate), so read it back again after a delay to confirm it held. Identify the Console CDP page by the `/console/` pathname prefix, not exactly `/console/`.
 
 ## Viewport emulation
 
