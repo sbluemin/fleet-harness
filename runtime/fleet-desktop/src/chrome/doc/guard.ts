@@ -14,7 +14,9 @@ export function mountGuard(): (state: ChromeUiState) => void {
   // 조작 중 애니메이션의 층들 — 모양과 움직임은 CSS 가 정하고, 여기서는 커서 자리와 누름만 알려 준다.
   const ripple = h("div", { class: "guard-ripple" });
   const fx = h("div", { class: "guard-fx", attrs: { "aria-hidden": "true" } },
-    h("div", { class: "guard-dots" }), h("div", { class: "guard-halo" }), h("div", { class: "guard-scan" }), h("div", { class: "guard-edge" }), h("div", { class: "guard-beam" }),
+    h("div", { class: "guard-dots" }), h("div", { class: "guard-halo" }),
+    ...["top", "bottom", "left", "right"].flatMap((side) => [h("div", { class: `guard-spectrum ${side}` }), h("div", { class: `guard-spectrum ${side} b` })]),
+    h("div", { class: "guard-edge" }), h("div", { class: "guard-beam" }),
     h("div", { class: "guard-corner tl" }), h("div", { class: "guard-corner tr" }), h("div", { class: "guard-corner br" }), h("div", { class: "guard-corner bl" }), ripple);
   const cursorGlyph = glyph(G.pointer, 18);
   const cursorLabel = h("span", { class: "guard-cursor-label" });

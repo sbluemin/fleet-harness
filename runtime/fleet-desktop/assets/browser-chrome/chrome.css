@@ -349,6 +349,10 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 /* 다른 스페이스에서 에이전트가 일하는 중 — 단추 모서리의 점 하나(조작 신호 토큰). */
 .spaces-button { position: relative; }
 .spaces-button.elsewhere::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--agent-control-badge); box-shadow: 0 0 0 1.5px var(--surface); }
+/* 다른 스페이스에서 에이전트가 일하는 중 — 표식 둘레를 빛줄기가 돌고 점에서 고리가 퍼진다. 보고 있지 않은 곳에서 일이 벌어지고 있다는 표시다. */
+.spaces-button.working .spaces-glyph::after { content: ""; position: absolute; inset: -3px; border-radius: 7px; padding: 1.5px; background: conic-gradient(from var(--guard-beam), transparent 0 52%, var(--agent-control-badge) 80%, color-mix(in oklab, var(--agent-control-badge) 60%, white) 96%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: guard-beam 2.2s linear infinite; pointer-events: none; }
+.spaces-button.working::before { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: var(--radius-pill); border: 1px solid var(--agent-control-badge); animation: guard-pulse 1.8s ease-out infinite; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .spaces-button.working .spaces-glyph::after, .spaces-button.working::before { animation: none; } .spaces-button.working::before { display: none; } }
 /* 다른 스페이스가 사람을 기다린다 — 같은 점이 기다림 색이 된다. */
 .spaces-button.attention::after { background: var(--aurora); }
 /* 선택 화면 — 주소줄 아래 표면 전체(레일·페이지 위)를 덮는 한 화면. */
@@ -391,8 +395,8 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 /* ---- 가드 — 페이지 바로 위의 제어권 화면: 제어 알약, 에이전트 커서, 조작 중 애니메이션. 조작 중임을 알리는 것은 이 화면뿐이다(주소줄·탭 표시줄은 물들지 않는다).
    색은 조작 신호 토큰 하나다. 에이전트가 모는 동안에는 뷰가 페이지 자리 전체를 덮어 포인터를 받고, 사람이 쥔 동안에는 알약 자리만 차지한다.
    층은 여럿이지만 모두 옅다 — 페이지를 어둡게 덮지 않고, 글을 읽는 데 걸리지 않는다:
-   가장자리 빛(숨쉬듯 밝기가 변한다) · 테두리를 마주 도는 두 빛줄기 · 네 모서리의 조준 표식 · 위에서 아래로 훑는 주사선 · 대각선으로 지나가는 점 격자 ·
-   커서를 따라다니는 점 격자의 밝은 자리 · 누를 때 커서에서 퍼지는 고리. ---- */
+   네 변의 스펙트럼(변에서 번지는 빛과 촘촘한 점이 변을 따라 일렁이며 깊어졌다 얕아진다) · 가장자리 빛 · 테두리를 마주 도는 두 빛줄기 · 네 모서리의 조준 표식 ·
+   대각선으로 지나가는 점 격자 · 커서를 따라다니는 점 격자의 밝은 자리 · 누를 때 커서에서 퍼지는 고리. ---- */
 @property --guard-beam { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 @property --guard-x { syntax: "<length>"; inherits: true; initial-value: -400px; }
 @property --guard-y { syntax: "<length>"; inherits: true; initial-value: -400px; }
@@ -404,7 +408,7 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .guard.agent .guard-fx { display: block; animation: guard-in 500ms ease both; }
 .guard-fx > * { position: absolute; }
 /* 가장자리 빛 — 안쪽으로 번지는 얇은 테두리가 숨쉬듯 밝아졌다 잦아든다. */
-.guard-edge { inset: 0; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--agent-control-badge) 55%, transparent), inset 0 0 44px -8px var(--guard-glow); animation: guard-breathe 4.8s ease-in-out infinite; }
+.guard-edge { inset: 0; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--agent-control-badge) 55%, transparent), inset 0 0 30px -10px var(--guard-glow); animation: guard-breathe 4.8s ease-in-out infinite; }
 /* 테두리를 마주 도는 두 빛줄기 — 원뿔 그라디언트를 2px 고리로 잘랐다. 한 바퀴 7초. */
 .guard-beam { inset: 0; padding: 2px; background: conic-gradient(from var(--guard-beam), transparent 0 30%, var(--guard-line) 41%, transparent 48% 80%, var(--guard-line) 91%, transparent 98%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: guard-beam 7s linear infinite; }
 /* 네 모서리의 조준 표식 — ㄱ자 두 획. */
@@ -413,8 +417,31 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .guard-corner.tr { right: 8px; top: 8px; border-right-width: 1.5px; border-top-width: 1.5px; border-top-right-radius: 5px; animation-delay: -0.8s; }
 .guard-corner.br { right: 8px; bottom: 8px; border-right-width: 1.5px; border-bottom-width: 1.5px; border-bottom-right-radius: 5px; animation-delay: -1.6s; }
 .guard-corner.bl { left: 8px; bottom: 8px; border-left-width: 1.5px; border-bottom-width: 1.5px; border-bottom-left-radius: 5px; animation-delay: -2.4s; }
-/* 주사선 — 옅은 빛띠가 위에서 아래로 훑고, 끝에 가는 선 하나가 선다. 9초에 한 번. */
-.guard-scan { left: 0; right: 0; top: 0; height: 120px; background: linear-gradient(180deg, transparent 0%, color-mix(in oklab, var(--agent-control-badge) 9%, transparent) 78%, color-mix(in oklab, var(--agent-control-badge) 22%, transparent) 100%); border-bottom: 1px solid color-mix(in oklab, var(--guard-line) 55%, transparent); transform: translateY(-120px); animation: guard-scan 9s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+/* 네 변의 스펙트럼 — 변에서 안쪽으로 번지는 빛이 변을 따라 일렁인다. 빛의 깊이는 변을 따라 흘러가는 봉우리들이 정한다(가리개가 봉우리들이다).
+   변마다 두 겹이다: 번지는 빛 한 겹과, 같은 자리에 찍힌 촘촘한 점 한 겹(커서 둘레의 점 격자와 같은 무늬). 두 겹이 서로 다른 빠르기로 마주 흐르고
+   깊이도 따로 숨쉬어서, 어느 순간에도 같은 모양이 되풀이되지 않는다. */
+.guard-spectrum { --tile: 560px; --from: 0px; --to: 560px; --edge: 0%; --dir: 180deg; --depth: clamp(44px, 13vmin, 96px); opacity: 0.6; background: linear-gradient(var(--dir), color-mix(in oklab, var(--agent-control-badge) 62%, transparent) 0%, var(--guard-glow) 30%, transparent 100%); }
+.guard-spectrum.b { --tile: 390px; --from: 390px; --to: 0px; opacity: 0.8; background: radial-gradient(circle, var(--guard-line) 0 1px, transparent 1.5px) 0 0 / 8px 8px; }
+.guard-spectrum.top, .guard-spectrum.bottom { left: 0; right: 0; height: var(--depth);
+  -webkit-mask-image: radial-gradient(ellipse 20% 100% at 22% var(--edge), #000 18%, transparent 100%), radial-gradient(ellipse 12% 58% at 58% var(--edge), #000 18%, transparent 100%), radial-gradient(ellipse 16% 80% at 86% var(--edge), #000 18%, transparent 100%), linear-gradient(var(--dir), #000 0%, transparent 26%); mask-image: radial-gradient(ellipse 20% 100% at 22% var(--edge), #000 18%, transparent 100%), radial-gradient(ellipse 12% 58% at 58% var(--edge), #000 18%, transparent 100%), radial-gradient(ellipse 16% 80% at 86% var(--edge), #000 18%, transparent 100%), linear-gradient(var(--dir), #000 0%, transparent 26%);
+  -webkit-mask-size: var(--tile) 100%, var(--tile) 100%, var(--tile) 100%, auto; mask-size: var(--tile) 100%, var(--tile) 100%, var(--tile) 100%, auto;
+  -webkit-mask-repeat: repeat-x, repeat-x, repeat-x, no-repeat; mask-repeat: repeat-x, repeat-x, repeat-x, no-repeat;
+  animation: guard-spectrum-x 9s linear infinite, guard-spectrum-rise 2.8s ease-in-out infinite alternate; }
+.guard-spectrum.top { top: 0; }
+.guard-spectrum.bottom { bottom: 0; --edge: 100%; --dir: 0deg; animation-delay: -3s, -1.1s; }
+/* 좌우 변은 같은 그림을 세로로 세운 것이다 — 봉우리가 위아래로 흐른다. */
+.guard-spectrum.left, .guard-spectrum.right { top: 0; bottom: 0; width: var(--depth); --dir: 90deg;
+  -webkit-mask-image: radial-gradient(ellipse 100% 20% at var(--edge) 22%, #000 18%, transparent 100%), radial-gradient(ellipse 58% 12% at var(--edge) 58%, #000 18%, transparent 100%), radial-gradient(ellipse 80% 16% at var(--edge) 86%, #000 18%, transparent 100%), linear-gradient(var(--dir), #000 0%, transparent 26%); mask-image: radial-gradient(ellipse 100% 20% at var(--edge) 22%, #000 18%, transparent 100%), radial-gradient(ellipse 58% 12% at var(--edge) 58%, #000 18%, transparent 100%), radial-gradient(ellipse 80% 16% at var(--edge) 86%, #000 18%, transparent 100%), linear-gradient(var(--dir), #000 0%, transparent 26%);
+  -webkit-mask-size: 100% var(--tile), 100% var(--tile), 100% var(--tile), auto; mask-size: 100% var(--tile), 100% var(--tile), 100% var(--tile), auto;
+  -webkit-mask-repeat: repeat-y, repeat-y, repeat-y, no-repeat; mask-repeat: repeat-y, repeat-y, repeat-y, no-repeat;
+  animation: guard-spectrum-y 9s linear infinite, guard-spectrum-side 2.8s ease-in-out infinite alternate; animation-delay: -5s, -0.6s; }
+.guard-spectrum.left { left: 0; }
+.guard-spectrum.right { right: 0; --edge: 100%; --dir: 270deg; animation-delay: -1.5s, -1.7s; }
+.guard-spectrum.b.top, .guard-spectrum.b.bottom, .guard-spectrum.b.left, .guard-spectrum.b.right { animation-duration: 6.5s, 2.1s; }
+@keyframes guard-spectrum-x { from { -webkit-mask-position: var(--from) 0, var(--from) 0, var(--from) 0, 0 0; mask-position: var(--from) 0, var(--from) 0, var(--from) 0, 0 0; } to { -webkit-mask-position: var(--to) 0, var(--to) 0, var(--to) 0, 0 0; mask-position: var(--to) 0, var(--to) 0, var(--to) 0, 0 0; } }
+@keyframes guard-spectrum-y { from { -webkit-mask-position: 0 var(--from), 0 var(--from), 0 var(--from), 0 0; mask-position: 0 var(--from), 0 var(--from), 0 var(--from), 0 0; } to { -webkit-mask-position: 0 var(--to), 0 var(--to), 0 var(--to), 0 0; mask-position: 0 var(--to), 0 var(--to), 0 var(--to), 0 0; } }
+@keyframes guard-spectrum-rise { from { height: calc(var(--depth) * 0.62); } to { height: calc(var(--depth) * 1.16); } }
+@keyframes guard-spectrum-side { from { width: calc(var(--depth) * 0.62); } to { width: calc(var(--depth) * 1.16); } }
 /* 점 격자 — 대각선 띠가 지나가는 자리에서 드러난다. 6초 왕복. */
 .guard-dots { inset: 0; background-image: radial-gradient(circle, var(--guard-dot) 0 1px, transparent 1.5px); background-size: 16px 16px; -webkit-mask-image: linear-gradient(115deg, transparent 0%, #000 22%, transparent 44%); mask-image: linear-gradient(115deg, transparent 0%, #000 22%, transparent 44%); -webkit-mask-size: 260% 100%; mask-size: 260% 100%; opacity: 0.5; animation: guard-drift 6s ease-in-out infinite alternate; }
 /* 커서 둘레 — 같은 점 격자가 에이전트 커서 가까이에서 더 밝다. 커서를 따라 옮겨 간다. */
@@ -428,7 +455,6 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 @keyframes guard-breathe { 0%, 100% { opacity: 0.72; } 50% { opacity: 1; } }
 @keyframes guard-beam { to { --guard-beam: 360deg; } }
 @keyframes guard-corner { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.95; } }
-@keyframes guard-scan { 0% { transform: translateY(-120px); opacity: 0; } 8% { opacity: 1; } 62% { opacity: 1; } 70%, 100% { transform: translateY(100vh); opacity: 0; } }
 @keyframes guard-drift { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0% 0; mask-position: 0% 0; } }
 @keyframes guard-ripple { from { transform: scale(0.6); opacity: 0.9; } to { transform: scale(5.5); opacity: 0; } }
 /* 에이전트 커서 — 에이전트가 보낸 좌표로 옮겨 가고 동작 이름이 붙는다. */
@@ -468,8 +494,8 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 /* 동작 줄이기 — 아무것도 움직이지 않는다. 가장자리 빛·모서리 표식·옅은 점 격자만 가만히 남아 조작 중임을 알린다. */
 @media (prefers-reduced-motion: reduce) {
   .guard { transition: none; }
-  .guard.agent .guard-fx, .guard-edge, .guard-corner, .guard-dots, .guard-cursor.click svg, .guard-pill.nudge, .guard-cursor.type .guard-cursor-label::after, .guard.agent .guard-mark svg { animation: none; }
-  .guard-beam, .guard-scan, .guard-ripple, .guard.agent .guard-mark::after { display: none; }
+  .guard.agent .guard-fx, .guard-edge, .guard-corner, .guard-dots, .guard-spectrum, .guard-cursor.click svg, .guard-pill.nudge, .guard-cursor.type .guard-cursor-label::after, .guard.agent .guard-mark svg { animation: none; }
+  .guard-beam, .guard-ripple, .guard.agent .guard-mark::after { display: none; }
   .guard-dots { -webkit-mask-image: none; mask-image: none; opacity: 0.18; }
   .guard-cursor.placed, .guard-button { transition: none; }
 }

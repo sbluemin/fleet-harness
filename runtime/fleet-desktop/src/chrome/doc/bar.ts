@@ -430,6 +430,8 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const needsYou = chrome?.spaces.some((other) => other.control === "user" && other.id !== state.spaceId) === true;
     spacesButton.classList.toggle("elsewhere", elsewhere || needsYou);
     spacesButton.classList.toggle("attention", needsYou);
+    // 보고 있지 않은 스페이스에서 에이전트가 일하는 동안에는 단추가 움직인다 — 사람을 기다리는 스페이스가 있으면 그 신호가 먼저라 가만히 둔다.
+    spacesButton.classList.toggle("working", elsewhere && !needsYou);
     const elsewhereTip = needsYou ? t("spaces.needsYou") : elsewhere ? t("spaces.elsewhere") : null;
     if (!spacesOpen && elsewhereTip) spacesButton.title = `${spacesTip} · ${elsewhereTip}`;
     spacesButton.ariaLabel = elsewhereTip ? `${spacesTip} · ${elsewhereTip}` : spacesTip;
