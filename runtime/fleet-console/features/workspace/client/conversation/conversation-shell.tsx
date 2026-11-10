@@ -43,7 +43,7 @@ import { publishBrowserPluginAttach } from "../../../browser/client/browser-engi
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
 import { useCommodoreBrowserUse } from "../../../computer-use/client/computer-screen-share.js";
-import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
+import { desktopPickerUrl, isDesktopShell, PICKER_SURFACE_OPEN, useDesktopHomeOrigin } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../objective-clusters.js";
@@ -62,7 +62,8 @@ import { openDefaultNewSession, resolveNewSessionCommodoreId } from "./new-sessi
 import { TaskforceCreateMenu } from "../../../commodore/client/taskforce/create-menu.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { ConsoleGlyph } from "../../../remote-access/client/console-section.js";
-import { useConsoleSections } from "../../../remote-access/client/console-sections.js";
+import { consoleSectionManageable, useConsoleSections } from "../../../remote-access/client/console-sections.js";
+import { ConsoleManageIcon } from "../sidebar/sidebar-menu-icons.js";
 import { useTaskforceExperiment } from "../../../commodore/client/taskforce/state.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench } from "./workbench/conversation-workbench.js";
@@ -262,20 +263,37 @@ export function ConversationSideBarActions() {
   const compact = useSideBarState().compact;
   // 목록 쪽 훅이 상태를 묻는다. 여기서는 능력만 읽어 주기를 겹치지 않는다.
   const consoles = useConsoleSections({ refresh: false });
+  const home = useDesktopHomeOrigin();
   // 좁은 열은 아바타 열만 남긴다 — 찾기(⌘K)와 만들기는 팔레트·단축키로 닿는다.
   if (compact) return <span className="conversation-side-actions" />;
   const menu = enabled || consoles.capable;
+  // 콘솔이 둘 이상이면 지금 콘솔에 머리글이 없다. 관리·이름 바꾸기가 가능할 때만 메뉴에 둔다.
+  const active = consoles.capable && consoles.entries.length > 1 ? consoles.active : null;
+  const canManage = active !== null && consoleSectionManageable(active);
+  const canRename = active !== null && active.kind === "remote";
+  const openRename = () => {
+    if (!home.origin) return;
+    // 집의 관리 목록(intent=manage, 대상 없음)은 원격 콘솔의 연필을 연다. 셸이 이 항해를 이미 가로챈다.
+    const url = new URL(desktopPickerUrl(home.origin, PICKER_SURFACE_OPEN, location.origin));
+    url.searchParams.set("intent", "manage");
+    location.assign(url.toString());
+  };
+  const trailing = consoles.capable ? 1 + (canManage || canRename ? 1 : 0) : 0;
   return (
     <span className="conversation-side-actions">
       <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      {menu ? <TaskforceCreateMenu taskforce={enabled} extra={consoles.capable ? (close) => (
+      {menu ? <TaskforceCreateMenu taskforce={enabled} extraCount={trailing} extra={consoles.capable ? (close) => <>
         <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); consoles.command({ add: true }); }}>
           <span className="theater-menu-check" aria-hidden="true"><ConsoleGlyph remote /></span>
           <span className="theater-menu-label">{t("chrome.hosts.add")}</span>
         </button>
-      ) : undefined}><PlusGlyph /></TaskforceCreateMenu> : <button type="button" className="conversation-round" onClick={() => requestCommodoreCreate()} aria-label={t("sidebar.commodore.createTitle")} title={t("sidebar.commodore.createTitle")}><PlusGlyph /></button>}
+        {canManage || canRename ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); if (canManage && active) consoles.command({ manage: active.id }); else openRename(); }}>
+          <span className="theater-menu-check" aria-hidden="true"><ConsoleManageIcon /></span>
+          <span className="theater-menu-label">{t("chrome.consoles.manageThis")}</span>
+        </button> : null}
+      </> : undefined}><PlusGlyph /></TaskforceCreateMenu> : <button type="button" className="conversation-round" onClick={() => requestCommodoreCreate()} aria-label={t("sidebar.commodore.createTitle")} title={t("sidebar.commodore.createTitle")}><PlusGlyph /></button>}
     </span>
   );
 }

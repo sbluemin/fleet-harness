@@ -254,6 +254,9 @@ export function ObjectiveRecordsSideBar({
       if (!list || !row) return;
       // 도착한 목록은 맨 위에서 시작한다. 누르기 전의 높이(anchorY)에 맞추면 그 위의 사령관이 스크롤 밖으로 밀리므로, 고른 행이 보이게만 한다.
       (row.querySelector<HTMLElement>(".side-bar-theater-header") ?? row).scrollIntoView({ block: "nearest" });
+      // 머리만 맞추면 섹션 아래 여백이 목록 끝보다 몇 px 남는다. 큰 목록을 끌어올리지는 않는다.
+      const overflow = row.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
+      if (overflow > 0 && overflow <= 8) list.scrollTop += overflow;
     };
     const attempt = () => {
       if (!known || isCommodoreConversationOpen(arrival.commodore) || performance.now() > deadline) { place(); consoleArrived.current(); return; }

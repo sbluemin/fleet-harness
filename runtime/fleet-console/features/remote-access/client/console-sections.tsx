@@ -122,6 +122,11 @@ export function consoleSwitchBlocked(entry: ConsoleSectionEntry): boolean {
   return entry.active || entry.status === "unreachable" || entry.status === "untrusted" || entry.status === "stopping";
 }
 
+/** 관리 카드가 열리는 콘솔. 원격 경로와 닿지 않는 콘솔은 빠진다. 좁은 열인지는 부르는 쪽이 본다. */
+export function consoleSectionManageable(entry: ConsoleSectionEntry): boolean {
+  return entry.management !== undefined && entry.path !== "remote" && entry.status !== "unreachable";
+}
+
 /**
  * 콘솔 하나의 머리글. 누르면 그 섹션이 접힌다. 원격 콘솔은 이름을 바꾸거나 뺄 수 있다.
  * 다른 콘솔은 캡슐 대신 목록의 한 행(appearance "row")으로 선다. 지금 콘솔은 콘솔이 하나뿐이고 머리글이 필요할 때만 캡슐이다.
@@ -140,7 +145,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const status = lifecycle ? t(lifecycle) : entry.status === "unreachable" ? t("chrome.hosts.unreachable") : entry.status === "untrusted" ? t("chrome.hosts.untrusted")
     : entry.status === "stopping" ? t("chrome.hosts.stopping") : entry.status === "slow" ? t("chrome.hosts.slow") : null;
   // 관리 화면은 집 Console이 그린다. 이 Desktop이 관계를 실어 보낸 이 컴퓨터의 콘솔에만, 그 콘솔이 답하는 동안에만 문을 둔다.
-  const manageable = !compact && entry.management !== undefined && entry.path !== "remote" && entry.status !== "unreachable";
+  const manageable = !compact && consoleSectionManageable(entry);
   const startable = !compact && entry.actions?.includes("start") === true;
   const switchable = compact && !consoleSwitchBlocked(entry);
   const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
