@@ -33,7 +33,7 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
     : roster.status === "ok" && roster.commodores.length === 0 ? t("chrome.consoles.rosterEmpty") : null;
   const rows = entry.status === "untrusted" ? [] : roster?.commodores ?? [];
   return <li className={`side-console${blocked ? " is-blocked" : ""}`} data-console-id={entry.id} data-status={entry.status ?? undefined}>
-    <ConsoleSectionHead entry={entry} folded={folded} count={rows.length + (roster?.more ?? 0)} sections={sections} />
+    <ConsoleSectionHead entry={entry} folded={folded} count={rows.length + (roster?.more ?? 0)} sections={sections} compact={compact} />
     {folded ? null : <ol className="side-console-roster" aria-label={entry.label}>
       {rows.map((commodore) => {
         const look = commodore.look ?? { base: fallbackMongleBase(commodoreAvatarKey(commodore.id)), tone: null };
