@@ -130,6 +130,42 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   };
 
   /**
+   * 탭 표시줄 우클릭 메뉴 — 표시줄(세로 레일·가로 표시줄) 자체의 모양을 바꾸는 항목만 있다. 세로일 때만 접기·자동 펼치기가 뜻이 있다.
+   * 자리는 우클릭한 곳이고, 표면 밖으로 넘치면 안쪽으로 당긴다.
+   */
+  const buildTabsMenu = (state: ChromeUiState, t: T, at: { readonly x: number; readonly y: number }): HTMLElement => {
+    const ready = state.chrome !== null && state.chrome.available && !state.busy;
+    const flat = state.orientation === "horizontal";
+    const menu = h("div", { class: "menu tabs-menu", role: "menu", attrs: { "aria-label": t("tabsMenu") } });
+    menu.append(item(t, G.plus, t("newTab"), () => post("bar", "new-tab"), { disabled: !ready }));
+    menu.append(h("div", { class: "menu-sep", role: "separator" }));
+    menu.append(item(t, flat ? G.tabsVertical : G.tabsHorizontal, t(flat ? "tabsMenu.vertical" : "tabsMenu.horizontal"), () => post("bar", "orientation", { orientation: flat ? "vertical" : "horizontal" })));
+    if (!flat) {
+      menu.append(item(t, state.pinned ? G.tabsCollapse : G.pin, t(state.pinned ? "tabsMenu.collapse" : "tabsMenu.expand"), () => post("bar", "pin", { pinned: !state.pinned })));
+      menu.append(item(t, G.pointer, t(state.autoExpand ? "tabsMenu.autoExpandOff" : "tabsMenu.autoExpandOn"), () => post("bar", "auto-expand", { enabled: !state.autoExpand })));
+    }
+    menu.style.left = `${at.x}px`; menu.style.top = `${at.y}px`;
+    // 위·아래 화살표로 항목을 오간다(우클릭 메뉴의 관례).
+    menu.addEventListener("keydown", (event) => {
+      const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+      if (step === 0) return;
+      const items = Array.from(menu.querySelectorAll<HTMLButtonElement>(".menu-item:not(:disabled)"));
+      if (items.length === 0) return;
+      event.preventDefault();
+      const index = items.indexOf(document.activeElement as HTMLButtonElement);
+      items[(index + step + items.length) % items.length]!.focus();
+    });
+    return menu;
+  };
+  /** 메뉴가 표면을 넘지 않게 당긴다 — 붙인 뒤에야 크기를 안다. */
+  const fitTabsMenu = (menu: HTMLElement): void => {
+    const box = menu.getBoundingClientRect();
+    const margin = 8;
+    menu.style.left = `${Math.max(margin, Math.min(box.left, window.innerWidth - box.width - margin))}px`;
+    menu.style.top = `${Math.max(margin, Math.min(box.top, window.innerHeight - box.height - margin))}px`;
+  };
+
+  /**
    * 스페이스 선택 화면 — 디폴트와 모든 사령관 스페이스를 그리드로. 칸을 누르면 그 스페이스로 옮긴다(옮기는 일은 main 이 한다).
    * 칸은 이름, 열린 탭의 아이콘과 수, 에이전트가 쓰는 중인지만 말한다 — 고르는 데 필요 없는 설명은 싣지 않는다.
    */
@@ -262,13 +298,15 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   function renderOverlay(state: ChromeUiState): void {
     const t = tr(state);
     const current = state.overlay;
-    const modal = current !== null && current.kind !== "menu" && current.kind !== "suggestions" && current.kind !== "spaces";
+    const modal = current !== null && current.kind !== "menu" && current.kind !== "suggestions" && current.kind !== "spaces" && current.kind !== "tabs-menu";
     const showing = current !== null && state.overlayReady;
     overlay.hidden = !showing && !state.info && !state.notice;
+    // 표시줄 메뉴는 누른 자리에 뜬다 — 가로 표시줄에서는 그 자리가 주소줄 위라, 이 메뉴가 떠 있는 동안만 오버레이가 주소줄보다 앞에 선다.
+    overlay.classList.toggle("over-strip", showing && current!.kind === "tabs-menu");
     if (current?.kind !== "annotate" && annotator) { annotator.dispose(); annotator = null; }
     // 스페이스 선택 화면이 닫히면 초점을 그 단추로 돌려준다 — 키보드로 연 사람이 화면 밖에서 길을 잃지 않게.
     const leavingSpaces = overlayKey.startsWith("spaces:") && !(showing && current!.kind === "spaces") && overlay.contains(document.activeElement);
-    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : "none";
+    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : "none";
     const toastKey = `${state.notice ?? ""}|${state.info?.text ?? ""}|${state.info?.action ?? ""}`;
     if (current?.kind === "annotate" && showing) {
       if (!annotator) { clear(overlay); annotator = mountAnnotate(overlay, state, t); overlayKey = "annotate"; }
@@ -287,6 +325,11 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
         if (current!.kind === "menu") {
           const menu = buildMenu(state, t);
           backdrop.append(menu);
+        } else if (current!.kind === "tabs-menu") {
+          const menu = buildTabsMenu(state, t, current!);
+          backdrop.append(menu);
+          // 열릴 때 첫 항목에 초점을 둔다 — main 이 이 뷰로 초점을 옮겨 두었다.
+          queueMicrotask(() => { if (!menu.isConnected) return; fitTabsMenu(menu); menu.querySelector<HTMLElement>(".menu-item:not(:disabled)")?.focus({ preventScroll: true }); });
         } else if (current!.kind === "spaces") {
           // 주소줄 아래 표면 전체를 덮는 한 화면 — 레일과 페이지 위에 선다. 빈 곳을 누르면 닫힌다.
           const hadFocus = overlay.contains(document.activeElement);
@@ -337,7 +380,9 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const chrome = state.chrome;
     const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId) ?? null;
     const available = chrome?.available === true;
-    leading.style.width = `${state.leading}px`; trailing.style.width = `${state.trailing}px`;
+    // 가로 탭 표시줄이 맨 위 줄이면 신호등·캡션 자리는 그 줄이 비운다 — 이 줄은 그 아래에 있어 비울 것이 없다.
+    const top = state.orientation !== "horizontal";
+    leading.style.width = `${top ? state.leading : 0}px`; trailing.style.width = `${top ? state.trailing : 0}px`;
     // 조작 중 표시는 지금 보는 스페이스의 것이다 — 다른 스페이스의 에이전트가 일하는 동안 이 화면이 물들면 여기 탭이 조작되는 것처럼 읽힌다.
     // 다른 스페이스에서 일하는 중이면 스페이스 단추에 점 하나로 알린다.
     strip.classList.toggle("driving", shownSpace(state)?.driving === true);

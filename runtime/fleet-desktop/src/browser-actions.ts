@@ -1,6 +1,6 @@
 import type { ChromeAction, ChromeRole, ChromeSuggestion } from "./chrome/contract.js";
 import { translator } from "./chrome/messages.js";
-import type { SurfaceControl } from "./browser-surface.js";
+import { BROWSER_STRIP_PX, type SurfaceControl } from "./browser-surface.js";
 
 /**
  * 크롬 문서가 요청한 동작을 Console 의 기존 REST 로 옮긴다. 탭·프로필 상태의 원천은 Console 이므로 여기서 그 상태를 바꾸지 않고 요청만 보낸다 — 결과는 다음 스냅샷으로 돌아와
@@ -107,7 +107,7 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
     switch (action.action) {
       // 표시 탭이 없으면 주소는 보고 있는 스페이스의 새 탭으로 열린다 — 어느 스페이스인지는 셸만 안다.
       case "navigate": void run("navigate", { url: action.url, spaceId: control.space() }); return;
-      case "new-tab": void run("tabs", { action: "create", spaceId: control.space() }); return;
+      case "new-tab": if (control.ui().overlay?.kind === "tabs-menu") closeOverlay(); void run("tabs", { action: "create", spaceId: control.space() }); return;
       case "select-tab": void run("tabs", { action: "select", tabId: action.id }); return;
       case "close-tab": void run("tabs", { action: "close", tabId: action.id }); return;
       case "select-space": {
@@ -118,8 +118,21 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
         return;
       }
       case "show-tab": void run("tabs", action.id === null ? { action: "deselect" } : { action: "select", tabId: action.id }, { quiet: true }); return;
-      case "pin": control.patch({ pinned: action.pinned, expanded: action.pinned ? false : control.ui().expanded }); return;
-      case "expand": if (!control.ui().pinned) control.patch({ expanded: action.expanded }); return;
+      // 고정을 풀 때는 뷰를 펼친 폭으로 남긴다 — 레일 문서가 접히는 것을 보인 뒤(또는 포인터가 떠난 뒤) 스스로 줄여 달라고 한다.
+      case "pin": control.patch({ pinned: action.pinned, expanded: !action.pinned, ...(control.ui().overlay?.kind === "tabs-menu" ? { overlay: null } : {}) }); return;
+      // 펼침은 세로 레일의 일이다 — 고정됐거나 가로 표시줄이면 뷰 폭을 건드리지 않는다. 접는 쪽은 언제나 받는다(자동 펼침을 끈 직후에도 접힌다).
+      case "expand": if (!control.ui().pinned && (!action.expanded || control.ui().orientation === "vertical")) control.patch({ expanded: action.expanded }); return;
+      case "tabs-menu": {
+        // 좌표는 탭 표시줄 문서의 것이다. 메뉴는 주소줄 문서가 그리므로 그 문서의 좌표로 옮긴다: 세로 레일은 주소줄 아래에서 시작하고, 가로 표시줄은 주소줄 위에 있어 메뉴가 주소줄 맨 위에 붙는다.
+        suggestAbort?.abort();
+        const horizontal = control.ui().orientation === "horizontal";
+        control.patch({ overlay: { kind: "tabs-menu", x: Math.max(0, action.x), y: horizontal ? 0 : Math.max(0, action.y) + BROWSER_STRIP_PX }, suggestions: [] });
+        // 메뉴는 주소줄 문서에 있다 — 키보드로 항목을 오갈 수 있게 초점을 그 뷰로 옮긴다.
+        control.focus("bar");
+        return;
+      }
+      case "orientation": control.patch({ orientation: action.orientation, expanded: false, overlay: null, suggestions: [] }); return;
+      case "auto-expand": control.patch({ autoExpand: action.enabled, expanded: action.enabled ? control.ui().expanded : false, overlay: null, suggestions: [] }); return;
       case "toggle-mode": {
         const surface = control.surface();
         if (!surface) return;

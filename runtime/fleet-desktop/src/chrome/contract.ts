@@ -14,10 +14,13 @@ export interface ChromeImportSources {
   readonly reason: "chrome_required" | "no_profiles" | null;
   readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[];
 }
+export type ChromeTabsOrientation = "vertical" | "horizontal";
 export type ChromeOverlay =
   | { readonly kind: "menu" }
   /** 스페이스 선택 화면 — 디폴트와 모든 사령관 스페이스를 그리드로 보여 준다. */
   | { readonly kind: "spaces" }
+  /** 탭 표시줄 우클릭 메뉴 — 주소줄 문서 좌표(CSS px)의 그 자리에 뜬다. */
+  | { readonly kind: "tabs-menu"; readonly x: number; readonly y: number }
   | { readonly kind: "suggestions" }
   | { readonly kind: "import"; readonly sources: ChromeImportSources }
   | { readonly kind: "switch"; readonly profile: string | null }
@@ -38,11 +41,15 @@ export interface ChromeUiState {
   readonly pinned: boolean;
   /** 레일이 호버·포커스로 펼쳐졌는가(고정과 별개). */
   readonly expanded: boolean;
+  /** 탭 표시줄의 방향 — 세로 레일(주소줄 아래 왼쪽) 또는 가로 표시줄(주소줄 위). 가로일 때 맨 위 줄은 탭 표시줄이다. */
+  readonly orientation: ChromeTabsOrientation;
+  /** 접힌 세로 레일이 포인터를 올리면 스스로 펼쳐지는가. */
+  readonly autoExpand: boolean;
   /** 창 모드의 macOS 신호등 자리(DIP). 칸이면 0. */
   readonly leading: number;
   /** 윈도우 캡션 단추가 차지하는 오른쪽 자리(DIP). */
   readonly trailing: number;
-  /** 표면 안에서 페이지가 놓인 자리(표면 왼쪽 위 기준 DIP). 대화상자·주석이 이 자리를 덮는다. */
+  /** 주소줄 뷰 안에서 페이지가 놓인 자리(주소줄 뷰 왼쪽 위 기준 CSS px). 대화상자·주석이 이 자리를 덮는다. */
   readonly page: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   /** Console 창 배율 — 크롬 문서의 CSS px 하나는 페이지 CSS px `zoom` 개와 같다(주석 좌표 변환). */
   readonly zoom: number;
@@ -70,6 +77,10 @@ export type ChromeAction =
   | { readonly action: "show-tab"; readonly id: string | null }
   | { readonly action: "pin"; readonly pinned: boolean }
   | { readonly action: "expand"; readonly expanded: boolean }
+  /** 탭 표시줄의 빈 곳을 우클릭했다 — 좌표는 그 문서의 CSS px. */
+  | { readonly action: "tabs-menu"; readonly x: number; readonly y: number }
+  | { readonly action: "orientation"; readonly orientation: ChromeTabsOrientation }
+  | { readonly action: "auto-expand"; readonly enabled: boolean }
   | { readonly action: "toggle-mode" }
   | { readonly action: "open-external" }
   | { readonly action: "suggest"; readonly query: string }
@@ -114,6 +125,9 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "select-tab": case "close-tab": case "select-space": return make(safeId(body.id) ? { action: name, id: body.id } : null);
     case "pin": return make(typeof body.pinned === "boolean" ? { action: "pin", pinned: body.pinned } : null);
     case "expand": return make(typeof body.expanded === "boolean" ? { action: "expand", expanded: body.expanded } : null);
+    case "tabs-menu": return make(typeof body.x === "number" && typeof body.y === "number" && Number.isFinite(body.x) && Number.isFinite(body.y) ? { action: "tabs-menu", x: body.x, y: body.y } : null);
+    case "orientation": return make(body.orientation === "vertical" || body.orientation === "horizontal" ? { action: "orientation", orientation: body.orientation } : null);
+    case "auto-expand": return make(typeof body.enabled === "boolean" ? { action: "auto-expand", enabled: body.enabled } : null);
     case "suggest": return make(str(body.query, 2048) ? { action: "suggest", query: body.query } : null);
     case "suggest-settings": return make(typeof body.enabled === "boolean" ? { action: "suggest-settings", enabled: body.enabled } : null);
     case "overlay": return make(body.kind === null || body.kind === "menu" || body.kind === "spaces" || body.kind === "suggestions" ? { action: "overlay", kind: body.kind } : null);

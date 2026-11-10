@@ -17,9 +17,21 @@ let current: DesktopBrowserSurface | null = null;
 const listeners = new Set<() => void>();
 let started = false;
 
+/**
+ * 칸이 메인 창 오른쪽에 붙어 있는가를 문서 루트에 남긴다. Windows 에서는 창의 캡션 버튼(최소화·최대화·닫기)이 그 칸의 맨 위 줄 끝에 서므로,
+ * Console 의 맨 위 줄이 캡션 자리를 비울 까닭이 없다 — conversation.css·layout.css 의 캡션 예약이 이 표식을 읽고 물러난다.
+ * 독립 창이거나 표면이 없으면 캡션 버튼은 Console 위에 그대로 서 있으므로 표식을 걷는다.
+ */
+function markDockedPane(next: DesktopBrowserSurface | null): void {
+  if (typeof document === "undefined") return;
+  if (next?.mode === "pane") document.documentElement.setAttribute("data-browser-pane", "true");
+  else document.documentElement.removeAttribute("data-browser-pane");
+}
+
 function publish(next: DesktopBrowserSurface | null): void {
   if (current?.id === next?.id && current?.mode === next?.mode) return;
   current = next;
+  markDockedPane(next);
   for (const listener of listeners) listener();
 }
 

@@ -5,13 +5,16 @@ import type { DesktopBrowserChrome, DesktopBrowserSurface, DesktopBrowserSurface
 
 import { createBrowserSpaceView, type BrowserSpaceRequest } from "./browser-spaces.js";
 import type { BrowserSurfaceHost, PageHost } from "./browser-views.js";
-import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeOverlay, type ChromeRole, type ChromeUiState } from "./chrome/contract.js";
+import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeOverlay, type ChromeRole, type ChromeTabsOrientation, type ChromeUiState } from "./chrome/contract.js";
+import type { BrowserStripPrefs } from "./desktop-state.js";
 import type { DesktopShellWindow } from "./shell-window.js";
 
 /** 상단 줄(주소줄)의 높이 — Console 대화 화면의 맨 위 줄(52px)과 같다. 레일·페이지는 그 아래에서 시작한다. */
 export const BROWSER_STRIP_PX = 52;
 export const BROWSER_RAIL_COLLAPSED_PX = 54;
 export const BROWSER_RAIL_EXPANDED_PX = 237;
+/** 가로 탭 표시줄의 높이 — 맨 위 줄이 되므로 주소줄과 같은 52px 이다(신호등·Windows 캡션 띠가 그 높이에 맞춰 서 있다). 주소줄은 그 아래로 내려간다. */
+export const BROWSER_TABSTRIP_PX = BROWSER_STRIP_PX;
 /** 알림이 떠 있는 동안 주소줄 뷰가 아래로 더 가지는 높이. */
 const TOAST_BAND_PX = 52;
 const DIVIDER_PX = 8;
@@ -38,11 +41,15 @@ export interface SurfaceControl {
   chooseSpace(spaceId: string): BrowserSpaceRequest | null;
   /** 주소줄 문서에 직접 호출을 보낸다(주석 요소 조회 답). */
   evaluate(role: ChromeRole, code: string): void;
+  /** 키보드 초점을 그 크롬 문서의 뷰로 옮긴다. */
+  focus(role: ChromeRole): void;
 }
 
 export interface SurfaceUi {
   pinned: boolean;
   expanded: boolean;
+  orientation: ChromeTabsOrientation;
+  autoExpand: boolean;
   overlay: ChromeOverlay | null;
   busy: boolean;
   notice: string | null;
@@ -67,6 +74,8 @@ export interface BrowserSurfaceDeps {
   readonly scaleFactor: (base: BaseWindow) => number;
   /** Console 창의 확대·축소 배율. 크롬 문서는 이 배율로 그려지고 줄·레일·알림 띠의 DIP 크기도 같은 배율을 따른다(Console 맨 위 줄이 확대되는 것처럼). */
   readonly zoom: () => number;
+  /** 탭 표시줄의 고정·방향·자동 펼침 — 앱을 다시 켜도 남는다. 없으면 기억하지 않는다. */
+  readonly stripPrefs?: { load(): BrowserStripPrefs | null; save(prefs: BrowserStripPrefs): void };
   /** 문서가 보낸 동작 하나를 처리한다. */
   readonly act: (control: SurfaceControl, role: ChromeRole, action: ChromeAction) => void;
   readonly relay: (surface: DesktopBrowserSurfaceRelay) => void;
@@ -96,7 +105,7 @@ export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base
  * 브라우저 표면 — 칸(메인 창 오른쪽)과 독립 창을 같은 구조로 소유한다: 상단 줄 뷰·세로 레일 뷰·페이지 뷰. 레이아웃·오버레이 크기·페이지 자리는
  * 전부 여기서 같은 main 틱에 정한다. Console 은 상태와 정책만 보내고(스냅샷), 이 표면은 사람의 동작을 REST 로 돌려보낸다.
  */
-export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void } {
+export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; captionInset(kind: "pane" | "window"): number } {
   let surface: DesktopBrowserSurface | null = null;
   let chrome: DesktopBrowserChrome | null = null;
   let chromeJson = "";
@@ -108,7 +117,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   let hostKind: "pane" | "window" | null = null;
   let page: Rectangle = { x: 0, y: 0, width: 0, height: 0 };
   let paneWidth = 560;
-  let ui: SurfaceUi = { pinned: false, expanded: false, overlay: null, busy: false, notice: null, info: null, suggest: null, suggestions: [], draft: null };
+  const remembered = deps.stripPrefs?.load() ?? null;
+  let ui: SurfaceUi = { pinned: remembered?.pinned ?? false, expanded: false, orientation: remembered?.orientation ?? "vertical", autoExpand: remembered?.autoExpand ?? true, overlay: null, busy: false, notice: null, info: null, suggest: null, suggestions: [], draft: null };
   let toastTimer: ReturnType<typeof setTimeout> | null = null;
   let focusSeen = 0;
   let closing: ReturnType<typeof setTimeout> | null = null;
@@ -140,9 +150,14 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   /** CSS px(크롬 문서의 치수)를 DIP 로. */
   const dip = (cssPx: number): number => Math.round(cssPx * zoom());
   const stripPx = (): number => dip(BROWSER_STRIP_PX);
+  const horizontal = (): boolean => ui.orientation === "horizontal";
+  /** 주소줄 위에 서는 가로 탭 표시줄의 높이 — 세로 레일이면 0. */
+  const tabsPx = (): number => (horizontal() ? dip(BROWSER_TABSTRIP_PX) : 0);
   const railWidth = (): number => dip(ui.pinned || ui.expanded ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
-  const layoutRailWidth = (): number => dip(ui.pinned ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
-  const barHeight = (rect: Rectangle): number => (ui.overlay !== null ? rect.height : ui.notice || ui.info ? Math.min(rect.height, stripPx() + dip(TOAST_BAND_PX)) : Math.min(rect.height, stripPx()));
+  /** 페이지 왼쪽을 차지하는 레일 폭 — 호버 펼침은 페이지 위에 겹칠 뿐 자리를 밀지 않고, 가로 표시줄이면 0. */
+  const layoutRailWidth = (): number => (horizontal() ? 0 : dip(ui.pinned ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX));
+  /** 주소줄 뷰의 높이 — 그 뷰는 `top`(가로 탭 표시줄) 아래에서 시작한다. */
+  const barHeight = (rect: Rectangle, top: number): number => { const room = Math.max(1, rect.height - top); return ui.overlay !== null ? room : ui.notice || ui.info ? Math.min(room, stripPx() + dip(TOAST_BAND_PX)) : Math.min(room, stripPx()); };
 
   /** 모든 뷰의 자리를 같은 틱에 정한다. 상태 문서에 알리는 것은 이 뒤다 — 뷰 크기와 문서 레이아웃이 어긋난 프레임이 없게. */
   const layout = (): void => {
@@ -151,12 +166,16 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     if (!rect) return;
     const z = zoom();
     if (z !== appliedZoom) { appliedZoom = z; for (const doc of [docs.bar, docs.rail, docs.stage]) if (!doc.view.webContents.isDestroyed()) doc.view.webContents.setZoomFactor(z); }
-    const strip = Math.min(stripPx(), rect.height);
+    const top = Math.min(tabsPx(), rect.height);
+    const strip = Math.min(stripPx(), Math.max(0, rect.height - top));
     const side = layoutRailWidth();
-    page = { x: rect.x + Math.min(side, rect.width), y: rect.y + strip, width: Math.max(0, rect.width - side), height: Math.max(0, rect.height - strip) };
+    page = { x: rect.x + Math.min(side, rect.width), y: rect.y + top + strip, width: Math.max(0, rect.width - side), height: Math.max(0, rect.height - top - strip) };
     if (page.width > 0 && page.height > 0) lastPageSize = { width: page.width, height: page.height };
-    docs.bar.view.setBounds({ x: rect.x, y: rect.y, width: rect.width, height: barHeight(rect) });
-    docs.rail.view.setBounds({ x: rect.x, y: rect.y + strip, width: Math.min(railWidth(), rect.width), height: Math.max(1, rect.height - strip) });
+    docs.bar.view.setBounds({ x: rect.x, y: rect.y + top, width: rect.width, height: barHeight(rect, top) });
+    // 탭 표시줄 뷰 — 세로면 주소줄 아래 왼쪽의 레일, 가로면 주소줄 위의 한 줄이다. 같은 문서가 두 모양을 그린다.
+    docs.rail.view.setBounds(horizontal()
+      ? { x: rect.x, y: rect.y, width: rect.width, height: Math.max(1, top) }
+      : { x: rect.x, y: rect.y + strip, width: Math.min(railWidth(), rect.width), height: Math.max(1, rect.height - strip) });
     docs.stage.view.setBounds({ x: page.x, y: page.y, width: Math.max(1, page.width), height: Math.max(1, page.height) });
     if (hostKind === "pane") {
       const main = deps.main();
@@ -176,8 +195,10 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     const trailing = deps.platform === "win32" ? WINDOWS_CAPTION_PX / z : 0;
     return {
       lang: deps.lang, platform: deps.platform, mode: surface?.mode ?? "pane", colors: deps.colors(), chrome, spaceId: spaces.current(), pinned: ui.pinned, expanded: ui.expanded,
+      orientation: ui.orientation, autoExpand: ui.autoExpand,
       leading, trailing,
-      page: rect ? { x: layoutRailWidth() / z, y: Math.min(stripPx(), rect.height) / z, width: Math.max(0, rect.width - layoutRailWidth()) / z, height: Math.max(0, rect.height - stripPx()) / z } : { x: 0, y: 0, width: 0, height: 0 },
+      // 주소줄 뷰 기준이다 — 가로 탭 표시줄은 그 뷰 위에 따로 서므로 여기 높이에서 빠진다.
+      page: rect ? { x: layoutRailWidth() / z, y: Math.min(stripPx(), Math.max(0, rect.height - tabsPx())) / z, width: Math.max(0, rect.width - layoutRailWidth()) / z, height: Math.max(0, rect.height - tabsPx() - stripPx()) / z } : { x: 0, y: 0, width: 0, height: 0 },
       zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null,
       suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
     };
@@ -201,7 +222,12 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
 
   const control: SurfaceControl = {
     ui: () => ui,
-    patch(change) { ui = { ...ui, ...change }; update(); },
+    patch(change) {
+      const before = ui;
+      ui = { ...ui, ...change };
+      if (ui.pinned !== before.pinned || ui.orientation !== before.orientation || ui.autoExpand !== before.autoExpand) deps.stripPrefs?.save({ pinned: ui.pinned, orientation: ui.orientation, autoExpand: ui.autoExpand });
+      update();
+    },
     notify(text, kind = "info", action) {
       if (toastTimer !== null) { clearTimeout(toastTimer); toastTimer = null; }
       if (!text) { ui = { ...ui, notice: null, info: null }; update(); return; }
@@ -216,6 +242,10 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     evaluate(role, code) {
       const doc = docs?.[role];
       if (doc && doc.ready && !doc.view.webContents.isDestroyed()) void doc.view.webContents.executeJavaScript(code).catch(() => undefined);
+    },
+    focus(role) {
+      const doc = docs?.[role];
+      if (doc && !doc.view.webContents.isDestroyed()) doc.view.webContents.focus();
     },
   };
 
@@ -381,6 +411,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     relay: (value) => deps.relay(value),
     // Console 테마(라이트·다크·시스템)가 바뀌었다 — 새로고침 없이 크롬 문서와 손잡이가 같은 순간 새 색으로 다시 칠해진다.
     retheme() { if (docs) push(); },
+    // Windows 캡션 버튼이 이 표면의 맨 위 줄에 설 때, 그 줄이 주소줄이면 아래 구분선(1 CSS px)만큼 캡션 띠를 낮춘다. 가로 탭 표시줄은 아래 선이 없어 덜지 않는다.
+    captionInset: (kind) => (docs && hostKind === kind && !horizontal() ? Math.max(1, Math.round(zoom())) : 0),
   };
 }
 
