@@ -138,7 +138,7 @@ Clear it in this order:
 1. From the **same** CDP session that set it, send `Emulation.clearDeviceMetricsOverride` and wait for its response. Overrides belong to the session that set them; another session cannot clear them.
 2. Close that session.
 3. Reload the Console page.
-4. Run the renderer read above: `desktopZoom` equal to `consoleZoomFactor` (`"1"` at the default zoom) with `outer[0] === viewport[0]`, and `viewport` equal to the `contentBounds` size from `resize-owned-window.mjs --dry-run` divided by that factor.
+4. Run the renderer read above: `desktopZoom` equal to `consoleZoomFactor` (`"1"` at the default zoom, where alone `outer[0] === viewport[0]`), and `viewport` equal to the `contentBounds` size from `resize-owned-window.mjs --dry-run` divided by that factor.
 
 Do not count on a detach to clear it. With agent-browser 0.27.0 on headless Chrome, device-metrics and touch overrides set over a page WebSocket or a flattened `Target.attachToTarget` session were gone once that session detached. Whether an Electron renderer keeps a device-metrics override after detach is unverified: one Desktop run reported that it did, and that has not been reproduced. Do not use agent-browser `set viewport` or `set device` on a Desktop session: its daemon keeps the connection, so the override outlives the command and reloads, and the CLI has no command to clear it. If step 4 still fails, report that state and do not measure on it.
 
