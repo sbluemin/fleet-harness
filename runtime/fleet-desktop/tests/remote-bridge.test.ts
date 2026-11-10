@@ -305,7 +305,15 @@ describe("host picker surface", () => {
     const report = vi.fn();
     let agreed = false;
     const confirmStart = vi.fn(async () => agreed);
-    const section = createConsoleSectionController({ home: () => LOCAL, fetch, open: vi.fn(async () => undefined), add: vi.fn(), manage, managedHome: { state: async () => state, run }, confirmStart, confirmForget: vi.fn(async () => false), report });
+    // 집 밖의 관리 대상(WSL 배포판의 콘솔). 처음에는 없다.
+    let managed: Array<{ key: string; label: string; origin: string | null; version: string | null; path: "wsl"; state: { management: "this-desktop" | "cli"; lifecycle: "running" | "stopped" | null; identityProven: boolean }; detail: { takeover?: true } }> = [];
+    const runManaged = vi.fn(async () => "http://127.0.0.1:3950");
+    const takeOver = vi.fn(async () => "http://127.0.0.1:3950");
+    const remove = vi.fn(async () => true);
+    const distros = vi.fn(async () => []);
+    const confirmUnmanage = vi.fn(async () => false);
+    const section = createConsoleSectionController({ home: () => LOCAL, fetch, open: vi.fn(async () => undefined), add: vi.fn(), manage, managedHome: { state: async () => state, run }, confirmStart, confirmForget: vi.fn(async () => false), report,
+      managedConsoles: { list: async () => managed, run: runManaged, takeOver, remove, wsl: { distros, inspect: vi.fn(), add: vi.fn() } }, confirmUnmanage });
     section.attach(active as never);
     const send = (value: ConsoleSectionCommand) => active.emit("will-navigate", { preventDefault: vi.fn() }, consoleSectionCommandUrl(new URL(url).origin, value), undefined, true);
     // 명부 이벤트도 같은 문서로 오므로 목록 상태만 고른다.
@@ -360,6 +368,34 @@ describe("host picker surface", () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       expect(run).toHaveBeenCalledTimes(2);
       expect(report).not.toHaveBeenCalled();
+      // 집 밖의 관리 대상도 같은 규칙이다. 터미널에서 켠 콘솔이 자리에 있으면 동작은 없고, 인계는 집 문서에서만 받는다.
+      state = { management: "this-desktop", lifecycle: "running", identityProven: true };
+      managed = [{ key: "wsl-1", label: "Ubuntu", origin: "http://127.0.0.1:3950", version: "1.2.3", path: "wsl", state: { management: "cli", lifecycle: null, identityProven: true }, detail: { takeover: true } }];
+      url = `${REMOTE}/console/`;
+      await section.refresh();
+      const wsl = entries().find((entry) => entry.label === "Ubuntu")!;
+      expect(wsl).toMatchObject({ kind: "local", path: "wsl", management: "cli", actions: [], status: "ready", managed: { takeover: true, removable: true } });
+      send({ takeover: wsl.id });
+      send({ wsl: { list: true } });
+      send({ lifecycle: { id: wsl.id, action: "stop" } });
+      // 관리 해제는 셸이 사람에게 직접 물은 뒤에만 한다.
+      send({ forget: wsl.id });
+      await vi.waitFor(() => expect(confirmUnmanage).toHaveBeenCalledWith("Ubuntu"));
+      expect(takeOver).not.toHaveBeenCalled();
+      expect(distros).not.toHaveBeenCalled();
+      expect(runManaged).not.toHaveBeenCalled();
+      expect(remove).not.toHaveBeenCalled();
+      url = `${LOCAL}/console/`;
+      await section.refresh();
+      send({ takeover: wsl.id });
+      await vi.waitFor(() => expect(takeOver).toHaveBeenCalledWith("wsl-1"));
+      // 꺼진 관리 대상은 집 문서에서 묻지 않고 시작한다.
+      managed = [{ ...managed[0]!, origin: null, state: { management: "this-desktop", lifecycle: "stopped", identityProven: false }, detail: {} }];
+      await section.refresh();
+      expect(entries().find((entry) => entry.label === "Ubuntu")).toMatchObject({ lifecycle: "stopped", actions: ["start"], status: "unreachable" });
+      send({ lifecycle: { id: wsl.id, action: "start" } });
+      await vi.waitFor(() => expect(runManaged).toHaveBeenCalledWith("wsl-1", "start"));
+      expect(confirmStart).toHaveBeenCalledTimes(2);
     } finally { section.close(); }
   });
 
