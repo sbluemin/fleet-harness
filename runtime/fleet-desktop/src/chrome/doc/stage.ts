@@ -16,11 +16,11 @@ export function mountStage(): (state: ChromeUiState) => void {
     if (!chrome || (chrome.available && chrome.activeTabId !== null)) return;
     // 방금 열려 탭이 아직 없는 동안과 못 여는 까닭을 같은 자리에서 말한다.
     const unavailable = !chrome.available;
-    // 사령관 스페이스의 빈 화면은 그 스페이스가 무엇인지 말한다 — 탭이 없는 까닭이 「아무도 아직 열지 않았다」임을 알 수 있게.
+    // 사령관 스페이스의 빈 화면은 어느 스페이스가 비어 있는지만 한 줄로 말한다.
     const space = shownSpace(state);
     const inCommodore = !unavailable && space?.kind === "commodore";
     const title = unavailable ? t(chrome.reason === "shared" ? "unavailable.shared" : "unavailable.desktop_required") : inCommodore ? t("spaces.emptyTitle", { name: spaceName(t, space) }) : t("emptyTitle");
-    const body = unavailable ? (chrome.reason === "shared" ? t("unavailable.sharedBody") : null) : inCommodore ? t("spaces.emptyBody") : t("emptyBody");
+    const body = unavailable ? (chrome.reason === "shared" ? t("unavailable.sharedBody") : null) : inCommodore ? null : t("emptyBody");
     root.append(h("span", { class: "empty-glyph" }, glyph(G.globe, 28)), h("p", { class: "empty-title", text: title }));
     if (body) root.append(h("p", { class: "empty-body", text: body }));
   };

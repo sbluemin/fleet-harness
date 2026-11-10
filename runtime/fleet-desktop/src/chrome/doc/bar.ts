@@ -131,7 +131,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
 
   /**
    * 스페이스 선택 화면 — 디폴트와 모든 사령관 스페이스를 그리드로. 칸을 누르면 그 스페이스로 옮긴다(옮기는 일은 main 이 한다).
-   * 칸은 이름, 누가 쓰는 스페이스인지, 열린 탭의 아이콘과 수, 에이전트가 쓰는 중인지를 말한다.
+   * 칸은 이름, 열린 탭의 아이콘과 수, 에이전트가 쓰는 중인지만 말한다 — 고르는 데 필요 없는 설명은 싣지 않는다.
    */
   const buildSpaces = (state: ChromeUiState, t: T): HTMLElement => {
     const chrome = state.chrome;
@@ -159,7 +159,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       const foot = h("span", { class: "tile-foot" }, icons, h("span", { class: "tile-count", text: count }));
       const label = `${t("spaces.tile", { name, tabs: count })}${current ? ` · ${t("spaces.current")}` : ""}${space.driving ? ` · ${t("space.driving")}` : ""}`;
       const tile = h("button", { class: `space-tile${current ? " current" : ""}${tabs.length === 0 ? " no-tabs" : ""}`, type: "button", disabled: !chrome!.available, attrs: { "aria-label": label, "aria-current": current ? "true" : null, "data-kind": space.kind }, on: { click: () => post("bar", "select-space", { id: space.id }) } },
-        top, h("span", { class: "tile-help", text: t(space.kind === "commodore" ? "spaces.commodoreHelp" : "spaces.defaultHelp") }), foot);
+        top, foot);
       tile.style.setProperty("--space-hue", String(spaceHue(space.id)));
       if (current) top.append(h("span", { class: "tile-current", text: t("spaces.current") }));
       grid.append(h("div", { class: "spaces-cell", role: "listitem" }, tile));
@@ -175,7 +175,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       tiles[(index + step + tiles.length) % tiles.length]!.focus();
     });
     return h("div", { class: "spaces-panel", role: "dialog", attrs: { "aria-label": t("spaces.title") } },
-      h("div", { class: "spaces-head" }, h("h2", { text: t("spaces.title") }), h("p", { text: t("spaces.hint") })), grid);
+      h("div", { class: "spaces-head" }, h("h2", { text: t("spaces.title") })), grid);
   };
   const spacesKey = (state: ChromeUiState): string => JSON.stringify([state.spaceId, state.chrome?.available, state.chrome?.spaces.map((space) => [space.id, space.label, space.driving]), state.chrome?.tabs.map((tab) => [tab.id, tab.spaceId, tab.favicon?.length ?? 0])]);
 
