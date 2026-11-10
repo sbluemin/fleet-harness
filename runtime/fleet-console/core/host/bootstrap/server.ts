@@ -2624,10 +2624,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         ...objectiveRecords.list(), ...archiveStorage.entries().map((entry) => entry.objectiveRecord),
         ...deletionCoordinator.list().flatMap(deletionObjectiveRecords),
       ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
-      // 사령관이 생기거나 이름·순서가 바뀌면 스페이스 목록이 바뀐다. 탭 사건이 없어도 셸의 그리드가 따라오게 브라우저 상태를 다시 흘린다.
+      // 사령관이 생기거나 지워지거나 이름·순서가 바뀌면 스페이스 목록이 바뀐다. 탭 사건이 없어도 셸의 그리드가 따라오게 브라우저 상태를
+      // 다시 흘린다 — 탭이 없던 사령관을 지우면 closeSpace 가 흘릴 것이 없어, 이 길이 아니면 지워진 칸이 남는다.
       consoleFeaturePorts.events.subscribe(COMMODORE_CHANNEL, (payload) => {
         const event = payload as CommodoreEvent;
-        if (event.op === "state" && (event.change === "created" || event.change === "alias" || event.change === "order")) browserService.spacesChanged();
+        if (event.op === "removing" || event.op === "removed"
+          || (event.op === "state" && (event.change === "created" || event.change === "alias" || event.change === "order"))) browserService.spacesChanged();
       });
       commodore = createCommodoreFeature({
         approvals,
