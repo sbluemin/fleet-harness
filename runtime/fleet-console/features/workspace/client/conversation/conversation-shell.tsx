@@ -257,10 +257,9 @@ export function ConversationSideBarActions() {
   const { enabled } = useTaskforceExperiment();
   const compact = useSideBarState().compact;
   // 좁은 열은 아바타 열만 남긴다 — 찾기(⌘K)와 만들기는 팔레트·단축키로 닿는다.
-  if (compact) return <span className="conversation-side-actions"><span className="remote-console-anchor" data-remote-console-anchor /></span>;
+  if (compact) return <span className="conversation-side-actions" />;
   return (
     <span className="conversation-side-actions">
-      <span className="remote-console-anchor" data-remote-console-anchor />
       <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
