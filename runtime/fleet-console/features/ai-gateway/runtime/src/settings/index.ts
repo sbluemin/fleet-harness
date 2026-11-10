@@ -259,7 +259,9 @@ function contextTokens(id: string): number {
 function withCanonicalEfforts(entry: LegacyStoredModel): AiGatewayStoredModel {
   const model = findGatewayModel(entry.id);
   if (!model) return { id: entry.id, ...(entry.efforts ? { efforts: entry.efforts } : {}) };
-  const efforts = canonicalEffortSelection(exposableEffortLadder(model), entry.efforts);
+  const efforts = hasUnresolvedEffortLadder(model)
+    ? entry.efforts
+    : canonicalEffortSelection(exposableEffortLadder(model), entry.efforts);
   return { id: entry.id, ...(entry.fast ? { fast: true } : {}), ...(efforts ? { efforts: [...efforts] } : {}) };
 }
 
@@ -324,16 +326,23 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   };
 }
 
+/** CLI가 아직 알려 주지 않은 빈 사다리는 지원하지 않는다는 확정이 아니다. */
+function hasUnresolvedEffortLadder(model: GatewayModel): boolean {
+  return model.provider === "claude" && model.upstreamId === undefined && !model.effort.supported;
+}
+
 /**
  * 저장된 강도 선택을 그 모델이 실제로 내보낼 수 있는 사다리로 좁힌다.
- * 사다리 순서를 유지하고, 좁히지 않는 선택(전체이거나 겹치는 게 없음)은
+ * 미해결 사다리의 명시 선택은 보존한다 — 기동 시 시드나 다른 설정 저장이 사용자의 선택을 지우면 안 된다.
+ * 알려진 사다리는 순서를 유지하고, 좁히지 않는 선택(전체이거나 겹치는 게 없음)은
  * `undefined`를 돌려 노출 맵에서 아예 빠지게 한다.
  */
 function narrowEffortLadder(
   model: GatewayModel,
   efforts: readonly string[] | undefined,
-): readonly GatewayReasoningEffort[] | undefined {
+): readonly string[] | undefined {
   if (!efforts || efforts.length === 0) return undefined;
+  if (hasUnresolvedEffortLadder(model)) return [...new Set(efforts)];
   const ladder = buildGatewayModelConstraints(model).effortLadder;
   const narrowed = ladder.filter((rung) => efforts.includes(rung));
   if (narrowed.length === 0 || narrowed.length === ladder.length) return undefined;

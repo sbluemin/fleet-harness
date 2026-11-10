@@ -17,10 +17,12 @@ import { normalizeAiGatewaySettings, parseAiGatewayUpdate, resolveAiGatewaySelec
 import { buildGatewayCandidates } from "../../src/fleet/model-loadout.js";
 import { decideGatewayRoutingAssignment } from "../../src/fleet/routing-decision.js";
 import { createAiGatewaySettingsStore } from "../../src/settings/store.js";
+import { applyClaudeNativeModels } from "../../src/models.js";
 
 const temporaryDirectories: string[] = [];
 
 afterEach(() => {
+  applyClaudeNativeModels([]);
   while (temporaryDirectories.length > 0) {
     rmSync(temporaryDirectories.pop()!, { recursive: true, force: true });
   }
@@ -358,6 +360,37 @@ describe("ai-gateway settings store", () => {
 
     restarted.write({ models: [{ id, fast: true, efforts: ["low", "medium", "high"] }] });
     expect(buildGatewayCandidates(resolveAiGatewaySelection(restarted.read())).candidates[0]?.efforts).toEqual(["low", "medium", "high"]);
+  });
+
+  it("preserves explicit effort choices while the native ladder is unresolved across restarts", () => {
+    const dataDir = createDataDir();
+    const id = "claude--haiku-1m";
+    const ladder = ["low", "medium", "high", "xhigh", "max"];
+    const resolve = () => applyClaudeNativeModels([
+      { value: "haiku[1m]", resolvedModel: "claude-haiku-5-5[1m]", displayName: "Haiku 5.5", effortLevels: ladder },
+    ]);
+    const store = createAiGatewaySettingsStore({ dataDir });
+    store.seedModels([]);
+    resolve();
+    store.write({ models: [{ id, efforts: ["low", "medium"] }] });
+    const chosen = [{ id, efforts: ["low", "medium"] }];
+
+    // 재기동 직후에는 CLI 표가 없다. 현행판 시드도 저장을 거치므로 이때 선택을 지우면 안 된다.
+    applyClaudeNativeModels([]);
+    const restarted = createAiGatewaySettingsStore({ dataDir });
+    expect(restarted.read().models).toEqual(chosen);
+    expect(restarted.seedModels([])).toBe(false);
+    restarted.writeWireLogEnabled(false);
+    expect(JSON.parse(readFileSync(restarted.path, "utf-8")).models).toEqual(chosen);
+    expect(normalizeAiGatewaySettings(restarted.read()).models).toEqual(chosen);
+
+    resolve();
+    expect(buildGatewayCandidates(resolveAiGatewaySelection(restarted.read())).candidates[0]?.efforts).toEqual(["low", "medium"]);
+    // 사다리가 알려지면 없는 단계 제거와 전체 사다리의 키 생략은 종전처럼 적용한다.
+    restarted.write({ models: [{ id, efforts: ["low", "medium", "retired"] }] });
+    expect(restarted.read().models).toEqual(chosen);
+    restarted.write({ models: [{ id, efforts: ladder }] });
+    expect(restarted.read().models).toEqual([{ id }]);
   });
 
   it("stays unconfigured when the host directory holds nothing usable", () => {
