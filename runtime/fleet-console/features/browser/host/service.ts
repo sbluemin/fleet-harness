@@ -2090,14 +2090,16 @@ export class BrowserService {
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     let backendNodeId: number;
+    let objectId: string;
     try {
-      // DOM 에이전트는 문서를 한 번 요청한 뒤에야 좌표 조회에 답한다 — 항해마다 문서가 바뀌므로 매번 가볍게 요청한다.
-      await client.send("DOM.getDocument", { depth: 0 }, tab.sessionId);
-      const found = await client.send<{ backendNodeId: number }>("DOM.getNodeForLocation", { x: Math.round(x), y: Math.round(y), includeUserAgentShadowDOM: false }, tab.sessionId);
-      backendNodeId = found.backendNodeId;
+      // 입력(Input.dispatchMouseEvent)과 같은 뷰포트 좌표로 페이지 안에서 찾는다 — DOM.getNodeForLocation 은 스크롤된 페이지에서 스크롤만큼 어긋난 요소를 준다.
+      const found = await client.send<{ result: { objectId?: string }; exceptionDetails?: { text?: string } }>("Runtime.evaluate", { expression: `(${ELEMENT_AT_POINT_FUNCTION})(${Math.round(x)}, ${Math.round(y)})`, returnByValue: false }, tab.sessionId);
+      if (found.exceptionDetails) throw new Error(found.exceptionDetails.text ?? "evaluation failed");
+      if (!found.result.objectId) return null;
+      objectId = found.result.objectId;
+      backendNodeId = (await client.send<{ node: { backendNodeId: number } }>("DOM.describeNode", { objectId }, tab.sessionId)).node.backendNodeId;
     } catch (error) { this.deps.log(`inspect failed: ${error instanceof Error ? error.message : "unknown"}`); return null; }
-    const resolved = await client.send<{ object: { objectId: string } }>("DOM.resolveNode", { backendNodeId }, tab.sessionId);
-    const result = await client.send<{ result: { value?: ElementInfo }; exceptionDetails?: { text?: string; exception?: { description?: string } } }>("Runtime.callFunctionOn", { objectId: resolved.object.objectId, returnByValue: true, functionDeclaration: INSPECT_FUNCTION }, tab.sessionId);
+    const result = await client.send<{ result: { value?: ElementInfo }; exceptionDetails?: { text?: string; exception?: { description?: string } } }>("Runtime.callFunctionOn", { objectId, returnByValue: true, functionDeclaration: INSPECT_FUNCTION }, tab.sessionId);
     if (result.exceptionDetails) this.deps.log(`inspect script failed: ${result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? "unknown"}`);
     const info = result.result.value ?? null;
     if (info) { const ref = `ref_i${backendNodeId}`; tab.refs.set(ref, backendNodeId); return { ...info, ref }; }
@@ -2185,6 +2187,24 @@ const HIT_TEST_FUNCTION = `function () {
   if (!within) return { ok: false, reason: 'occluded', x, y, disabled, hit };
   if (disabled) return { ok: false, reason: 'disabled', x, y, disabled: true, hit };
   return { ok: true, x, y, disabled: false, hit };
+}`;
+
+/** 페이지 안에서 실행 — 뷰포트 좌표에서 포인터 입력이 닿는 요소. 열린 shadow root 와 같은 출처 프레임은 안쪽 요소까지 내려간다. */
+const ELEMENT_AT_POINT_FUNCTION = `function (x, y) {
+  let doc = document, el = null;
+  for (let depth = 0; depth < 16; depth += 1) {
+    let cur = doc.elementFromPoint(x, y);
+    while (cur && cur.shadowRoot) { const inner = cur.shadowRoot.elementFromPoint(x, y); if (!inner || inner === cur) break; cur = inner; }
+    if (!cur) break;
+    el = cur;
+    if (cur.tagName !== 'IFRAME' && cur.tagName !== 'FRAME') break;
+    let inner = null;
+    try { inner = cur.contentDocument; } catch { inner = null; }
+    if (!inner) break;
+    const box = cur.getBoundingClientRect();
+    x -= box.left + cur.clientLeft; y -= box.top + cur.clientTop; doc = inner;
+  }
+  return el;
 }`;
 
 /** 페이지 안에서 실행 — 셀렉터, React 파이버의 컴포넌트 이름과 개발 빌드의 소스 위치를 읽는다. */
