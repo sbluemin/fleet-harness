@@ -146,7 +146,8 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
       <ChevronGlyph direction="down" className="side-console-chevron" />
     </button>
     {startable ? <button type="button" className="side-console-start" onClick={() => sections.command({ lifecycle: { id: entry.id, action: "start" } })}>{t("chrome.consoles.start")}</button> : null}
-    {manageable ? <button type="button" className="side-console-edit" aria-label={`${entry.label}: ${t("chrome.consoles.manage")}`} title={t("chrome.consoles.manage")}
+    {/* 시작 단추가 있는 머리글에서는 관리 단추를 그 옆에 늘 보이게 둔다 — 가리킬 때만 뜨는 자리는 시작 단추 위다. */}
+    {manageable ? <button type="button" className={`side-console-edit${startable ? " is-inline" : ""}`} aria-label={`${entry.label}: ${t("chrome.consoles.manage")}`} title={t("chrome.consoles.manage")}
       onClick={() => sections.command({ manage: entry.id })}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" /></svg>
     </button> : null}

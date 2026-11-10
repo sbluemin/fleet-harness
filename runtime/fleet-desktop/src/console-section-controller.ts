@@ -645,7 +645,7 @@ export function createConsoleSectionController(deps: Dependencies) {
         if (now - budgetStart >= 1000) { budgetStart = now; budget = 0; }
         if (++budget > 20) return;
         const value = parseConsoleSectionCommand(url.searchParams.get("command") ?? "");
-        if (value && ("lifecycle" in value || "request" in value || "takeover" in value || "wsl" in value)) void command(value, true).catch((error) => { deps.report(error); void publish(); });
+        if (value && ("lifecycle" in value || "request" in value || "takeover" in value || "wsl" in value || "forget" in value)) void command(value, true).catch((error) => { deps.report(error); void publish(); });
       }) as never);
       view.on("did-finish-load", (() => { if (overlay === view && epoch === generation) void refresh(); }) as never);
       // 성공·취소·Escape·렌더러 종료 모두 덮개 수명이 끝난 뒤 집의 상태를 다시 읽는다.
