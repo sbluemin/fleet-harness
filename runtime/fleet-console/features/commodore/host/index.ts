@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import type { ConsoleRosterCommodore } from "../../../protocol/desktop/console-section.js";
 import { createCommodoreSidebar, type CommodoreSidebarPersistence } from "./sidebar-layout.js";
 import { COMMODORE_SIDEBAR_CHANNEL } from "../shared/contracts/sidebar-layout.js";
 import os from "node:os";
@@ -76,6 +77,8 @@ export interface CommodoreFeatureDeps {
   readonly gatewayTools?: import("../../execution/shared/agent.js").AgentToolGroup;
   /** 사령관의 응답 말투 — 조립이 아바타 책을 읽어 주입한다. 사령관 호스트는 아바타 책을 직접 읽지 않는다. */
   readonly voiceOf?: (commodoreId: string) => import("./prompt.js").CommodoreVoice | null;
+  /** 명부는 아바타 책의 표시용 모습만 받는다 — 처음 배정한 모습·저장 경로는 건네지 않는다. */
+  readonly rosterLookOf?: (commodoreId: string) => ConsoleRosterCommodore["look"];
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -301,6 +304,18 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, globalPluginReachChanged, deletion, assertWritable: ownership.assertWritable,
     theaterIds, summary, list: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map(summary),
     order: orderedIds,
+    roster: () => {
+      const layout = sidebar.read();
+      const ids = orderedIds().filter((id) => entities.dirOf(id) !== null);
+      // 접힘은 빼고 섹션을 펼친 순서다. 섹션 없는 행은 사이드바처럼 맨 뒤에 둔다.
+      const ordered = [...layout.sections.flatMap((section) => ids.filter((id) => layout.membership[id] === section.id)), ...ids.filter((id) => !layout.membership[id])];
+      return ordered.map((id): ConsoleRosterCommodore => {
+        const state = store.read(id);
+        const name = state?.alias || ownership.theaterSummaries(id).find((theater) => theater.label)?.label || "Commodore";
+        return { id, name: name.replace(/[\u0000-\u001f\u007f]/gu, " ").slice(0, 120), look: deps.rosterLookOf?.(id) ?? null,
+          run: supervisor.status(id)?.phase === "turn" ? "working" : state?.asks?.some((ask) => !ask.settled) ? "waiting" : "quiet" };
+      });
+    },
     setOrder: (requested) => {
       if (!deps.order) throw new CommodoreStoreError("commodore_unavailable");
       const known = knownRowIds();

@@ -7,6 +7,7 @@ import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
+import { CONSOLE_ROSTER_PATH } from "../../../protocol/desktop/console-section.js";
 import { COMMODORE_CHANNEL, type CommodoreEvent } from "../../../features/commodore/shared/contracts/types.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
@@ -1622,12 +1623,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * 원격 리스너는 기본 거부다. 조인 문서와 조인 엔드포인트만 세션 없이 지나갈 수 있고,
-   * 나머지는 모두 이 리스너에서 발급된 세션을 요구한다. 라우트마다 흩어진 게이트에 원격을
-   * 맡기면 하나만 빠져도 통째로 열리므로, 판정을 라우팅 이전 한 곳에서 끝낸다.
+   * 원격 리스너는 기본 거부다. 조인은 세션 없이, 최소 명부 읽기는 유효한 페어링만으로
+   * 지나간다. 나머지는 이 리스너에서 발급된 세션을 요구한다. 라우트마다 흩어진 게이트에
+   * 원격을 맡기면 하나만 빠져도 통째로 열리므로, 판정을 라우팅 이전 한 곳에서 끝낸다.
    */
   function remoteRequestAdmission(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): { admitted: true; sessionHandle: string | null } | { admitted: false; reason?: ControlReclaimedReason } {
-    // 세션 없이 지나는 경로는 이 하나뿐이다. 페어링은 전용 앱으로만 이루어지고 브라우저는
+    // 자격 없이 판정까지 가는 경로는 조인뿐이다. 페어링은 전용 앱으로만 이루어지고 브라우저는
     // 자기서명 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
     //
     // join은 어떤 세션에도 묶이지 않는다 — 들고 온 옛 세션 쿠키도 여기서 해석하지 않는다. 재합류는
@@ -1635,6 +1636,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 그 세션을 닫는 종료 신호가 재합류 응답 자체를 파기한다. 페어링된 기기가 조용히 돌아오는 길이
     // 이 한 줄에 걸려 있다.
     if (pathname === "/api/v1/join") return { admitted: true, sessionHandle: null };
+    if (pathname === CONSOLE_ROSTER_PATH) {
+      if (!isReadOnlyRequest(req)) return { admitted: false };
+      // 페어링 명부는 접속이 아니다. 세션 쿠키가 함께 와도 세션을 해석·연장·묶지 않고,
+      // peek만 써서 lastSeenAt과 제어권, 끝난 세션의 사유까지 그대로 둔다.
+      if (pairedDeviceStore.peek(readPairingCookie(req.headers, listener.port), listener.audience) !== null) return { admitted: true, sessionHandle: null };
+    }
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
     if (session !== null) {
       // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
@@ -2649,6 +2656,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         approvals,
         // 사령관 호스트는 아바타 책을 직접 읽지 않는다 — 사령관 키의 모습에서 말투만 건넨다.
         voiceOf: (commodoreId) => { const look = avatarStore.load().avatars[commodoreAvatarKey(commodoreId)]; return look ? mongleVoiceOf(look.base) : null; },
+        rosterLookOf: (commodoreId) => { const look = avatarStore.load().avatars[commodoreAvatarKey(commodoreId)]; return look ? { base: look.base, tone: look.tone } : null; },
         gatewayTools: { name: FLEET_AI_GATEWAY_MCP_SERVER, tools: [gatewayCandidatesTool], alwaysLoad: true },
         ownership,
         folderGrants,
