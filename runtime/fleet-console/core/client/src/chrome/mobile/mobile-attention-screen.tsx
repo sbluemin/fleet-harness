@@ -19,6 +19,7 @@ import { useClaimMobileBar } from "./mobile-bar-context.js";
 import { attentionMovesFirst, entryIconOf } from "./mobile-destinations.js";
 import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { openMobilePluginDestination, setMobileDestination } from "./mobile-store.js";
+import { focusDecision } from "../../../../../features/objectives/client/objectives-state.js";
 import { openApprovalList } from "../../../../../features/execution/client/approval/store.js";
 
 /** S-35 「확인 필요」 전체 화면 — 홈 맨 위 묶음이 세 건까지만 싣는 것의 전부. 답하면 이 목록에서 빠진다. */
@@ -55,7 +56,7 @@ export function MobileAttentionScreen() {
                     <span className="mobile-group-row-copy">{row.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
                   </button>
                 ) : row.kind === "decision" ? (
-                  <button type="button" className="mobile-group-row is-two" onClick={() => { setMobileDestination({ kind: "home" }); navigateConsoleRoute("/objectives"); focusObjective(row.objectiveId); }}>
+                  <button type="button" className="mobile-group-row is-two" onClick={() => { setMobileDestination({ kind: "home" }); navigateConsoleRoute("/objectives"); focusDecision(row.objectiveId); }}>
                     <span className="mobile-group-row-copy">{row.title}<small className="is-awaiting"><AttentionReason row={row} /></small></span>
                   </button>
                 ) : (

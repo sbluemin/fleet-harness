@@ -9,7 +9,7 @@ import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/
 import { resolveObjectiveActivity } from "../../../../../features/execution/client/objective-activity.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { approvalItems, approvalTick, subscribeApprovals } from "../../../../../features/execution/client/approval/store.js";
-import { readAllTheaters } from "../../../../../features/objectives/client/objectives-state.js";
+import { decisionConversationOwner, readAllTheaters } from "../../../../../features/objectives/client/objectives-state.js";
 import { objectiveRecordClusterId } from "../../integration/feature-registry.js";
 import type { ObjectiveRecord, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
@@ -178,7 +178,7 @@ export function useMobileAttention(state: ConsoleState, commodoreId?: string): {
   }, [approvalVersion, bindings, commodoreId, locale, pluginCommodoreId, state.objectiveRecordRuntime, state.objectiveRecords, t, theaterId, tick, useRequests]);
 }
 
-function approvalAttentionRows(t: (key: "approval.computerTitle" | "approval.descTitle" | "approval.intelTitle" | "approval.until" | "approval.decisionLink") => string, state: ConsoleState, commodoreId: string | undefined): MobileAttentionRow[] {
+function approvalAttentionRows(t: (key: "approval.computerTitle" | "approval.descTitle" | "approval.intelTitle" | "approval.until" | "approval.decisionLink" | "approval.decisionCommodoreLink") => string, state: ConsoleState, commodoreId: string | undefined): MobileAttentionRow[] {
   const rows: MobileAttentionRow[] = [];
   for (const item of approvalItems()) {
     if (item.type === "computer.use") {
@@ -196,7 +196,7 @@ function approvalAttentionRows(t: (key: "approval.computerTitle" | "approval.des
     for (const objective of board.objectives) {
       if (!objective.decisionRequest || objective.done || objective.removed) continue;
       if (commodoreId !== undefined && objective.commodoreId !== commodoreId) continue;
-      rows.push({ kind: "decision", key: `decision:${objective.id}`, title: objective.title, detail: t("approval.decisionLink"), objectiveId: objective.id });
+      rows.push({ kind: "decision", key: `decision:${objective.id}`, title: objective.title, detail: t(decisionConversationOwner(objective) ? "approval.decisionCommodoreLink" : "approval.decisionLink"), objectiveId: objective.id });
     }
   }
   return rows;

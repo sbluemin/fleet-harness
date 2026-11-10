@@ -5,7 +5,7 @@ import type { Translate } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
-import { answeringText, commodoreAliasOf, decisionInCommodoreConversation, decisionTurn } from "./board-commodore.js";
+import { answeringText, commodoreAliasOf, decisionInCommodoreConversation, decisionTurn, openCommodoreConversation } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { returnPersonHold } from "./objectives-state.js";
 import { followupPickable } from "./board-actions.js";
@@ -144,13 +144,21 @@ function boardAct(kind: string) {
   });
 }
 
-/** 대화에 세울 넘김 대상은 이 한 곳에서 정한다. 결정 요청은 자체 카드의 handed 를 쓴다. */
-const HOLD_TARGETS = ["criteria", "review", "followup"] as const;
+/** 대화에 세울 넘김 대상. 결정은 답을 복제하지 않고 사령관 대화로 가는 안내만 세운다. */
+const HOLD_TARGETS = ["decision", "criteria", "review", "followup"] as const;
 
 function conversationHolds(objective: Objective): readonly ConversationHold[] {
   return HOLD_TARGETS.flatMap((target): ConversationHold[] => {
     const hold = livePersonHold(objective, target);
     if (!hold) return [];
+    if (target === "decision") return decisionInCommodoreConversation(objective) ? [{
+      id: `hold:${objective.id}:decision:${hold.at}`,
+      notice: true,
+      title: localized((t) => t("objectives.decision.handedNotice")),
+      createdAt: hold.at,
+      handed: { label: localized((t) => t("objectives.decision.handed")), reason: hold.reason },
+      reveal: { label: localized((t) => t("objectives.decision.openCommodore")), run: () => { openCommodoreConversation(objective.commodoreId); } },
+    }] : [];
     const pickable = target === "followup" && followupPickable(objective);
     const routeKey: ObjectiveMessageKey = target === "criteria" ? "objectives.hold.route.criteria"
       : target === "review" ? "objectives.hold.route.review"

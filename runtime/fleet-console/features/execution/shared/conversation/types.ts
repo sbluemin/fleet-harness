@@ -31,8 +31,10 @@ export interface ConversationHanded {
   readonly giveBack?: { readonly label: LocalizedText; readonly run: () => Promise<void> };
 }
 
-/** 결정 요청 밖의 넘김. 답은 원래 보드·입력창에서 하고, 카드는 이유·돌려주기와 그 자리로 가는 길을 보인다. */
+/** 넘김 카드·안내. 답은 원래 보드·입력창이나 옮겨 간 대화에서 하고, 이곳은 그 자리로 가는 길을 보인다. */
 export interface ConversationHold {
+  /** 답이 다른 대화에 선 안내. 질문·답·돌려주기 없이 제목과 이동 단추만 보이며 폰에도 선다. */
+  readonly notice?: true;
   /** 같은 대상에 새 넘김이 서면 바뀌는 열쇠. */
   readonly id: string;
   readonly title: LocalizedText;
@@ -181,7 +183,7 @@ export interface ObjectiveClusterConversation {
   readonly events: readonly GroupTimelineEntry[];
   readonly truncated?: boolean;
   readonly decision: ConversationDecision | null;
-  /** 결정 요청 밖의 넘김 — 넘긴 순서대로. 없으면 카드가 서지 않는다. */
+  /** 넘김 카드·다른 대화로 옮긴 결정의 안내 — 넘긴 순서대로. 없으면 서지 않는다. */
   readonly holds?: readonly ConversationHold[];
   /**
    * 보드 사건(`board-action`) 줄에서 그 행위의 기록을 연다 — 사령관 행위면 읽기 전용 사령관 기록을 그 턴 위치로. 쓰기는 없다.

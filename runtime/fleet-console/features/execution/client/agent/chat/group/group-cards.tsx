@@ -186,7 +186,7 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
   );
 }
 
-/** 결정 요청 밖의 넘김 — 답하는 길은 늘 원래 입력창·보드에 두고 이유와 돌려주기만 이 카드가 진다. */
+/** 넘김 카드·안내 — 결정의 이동 안내에는 질문이나 답·돌려주기 동작을 복제하지 않는다. */
 export function HoldCard({ hold, language }: { readonly hold: ConversationHold; readonly language: ConsoleLocale | undefined }) {
   const t = getGroupT(language);
   const locale = language ?? "en";
@@ -201,6 +201,12 @@ export function HoldCard({ hold, language }: { readonly hold: ConversationHold; 
     setGiveBackFailed(false);
     try { await giveBack.run(); } catch { setGiveBackFailed(true); } finally { setGivingBack(false); }
   };
+  if (hold.notice) return (
+    <section className="group-card-handed" aria-label={text(hold.title)} onKeyDown={ignoreRepeat}>
+      <span className="group-card-handed-label">{text(hold.title)}</span>
+      {hold.reveal ? <button type="button" className="group-chat-link" onClick={hold.reveal.run}>{text(hold.reveal.label)}</button> : null}
+    </section>
+  );
   return (
     <section className="group-card is-hold" aria-label={text(hold.title)} onKeyDown={ignoreRepeat}>
       <div className="group-card-head">
