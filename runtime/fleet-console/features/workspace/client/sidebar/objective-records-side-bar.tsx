@@ -212,8 +212,8 @@ export function ObjectiveRecordsSideBar({
   // 순위에 없는 행(저장 전 새 행)은 뒤에 붙는다. TF 미리보기가 비었으면 원장을 읽어 채운다.
   const commodoreSections = useSidebarCommodores(objectiveRecords, groups, t("sidebar.commodore.fallback"));
   const commodoresLoaded = useCommodoreListLoaded();
-  // 다른 콘솔에서 사령관을 눌러 넘어온 화면 — 목록이 선 뒤 그 사령관의 대화를 열고, 눌렀던 높이에 그 행을 맞춘다.
-  // 그 사령관이 더는 없으면 열지 않고 도착만 알린다.
+  // 다른 콘솔에서 사령관을 눌러 넘어온 화면 — 눌렀던 높이에 그 행을 맞추고 그 사령관의 대화를 연다.
+  // 대화 화면은 첫 목록을 칠한 뒤에야 열 수 있으므로, 열릴 때까지 프레임마다 다시 시도한다. 그 사령관이 더는 없으면 도착만 알린다.
   const arrival = consoles.arrival;
   const consoleArrived = useRef(consoles.arrived);
   consoleArrived.current = consoles.arrived;
@@ -223,16 +223,21 @@ export function ObjectiveRecordsSideBar({
   useEffect(() => {
     if (!arrival || !commodoresLoaded) return;
     const known = arrivalSections.current.some((section) => section.commodoreId === arrival.commodore);
-    if (known) openCommodoreConversation(arrival.commodore);
-    const frame = requestAnimationFrame(() => {
+    let frame = 0;
+    const deadline = performance.now() + 3_000;
+    const place = () => {
       const list = listRef.current;
       const row = known && list ? list.querySelector<HTMLElement>(`.side-bar-theater-section[data-theater-id="${CSS.escape(arrival.commodore)}"]`) : null;
-      if (list && row) {
-        if (arrival.anchorY !== null) list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - arrival.anchorY;
-        else row.scrollIntoView({ block: "nearest" });
-      }
-      consoleArrived.current();
-    });
+      if (!list || !row) return;
+      if (arrival.anchorY !== null) list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - arrival.anchorY;
+      else row.scrollIntoView({ block: "nearest" });
+    };
+    const attempt = () => {
+      if (!known || isCommodoreConversationOpen(arrival.commodore) || performance.now() > deadline) { place(); consoleArrived.current(); return; }
+      openCommodoreConversation(arrival.commodore);
+      frame = requestAnimationFrame(attempt);
+    };
+    frame = requestAnimationFrame(() => { place(); attempt(); });
     return () => cancelAnimationFrame(frame);
   }, [arrival, commodoresLoaded]);
   const taskforceExperiment = useTaskforceExperiment();

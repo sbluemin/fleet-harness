@@ -15,27 +15,6 @@ import { getState, subscribe } from "./store.js";
  * 이 창의 셸에게만 흘린다(desktop-contract). 셸이 아닌 브라우저에는 들을 셸이 없으므로 보내지 않는다.
  * 실패는 조용히 버린다 — 셸은 상한 타이머로 옛 화면을 걷는다.
  */
-let holds = 0;
-let recheck: (() => void) | null = null;
-
-/**
- * 「다 그렸다」를 잠깐 미룬다 — 전환해 도착한 화면이 열 사령관을 아직 모를 때, 빈 본문을 먼저 드러내지 않기 위해서다.
- * 돌려준 함수를 부르거나 상한이 지나면 풀린다. 상한이 있으므로 놓지 못한 붙잡음이 화면을 가두지 않는다.
- */
-export function holdDesktopReady(capMs: number): () => void {
-  let held = true;
-  holds += 1;
-  const release = (): void => {
-    if (!held) return;
-    held = false;
-    holds -= 1;
-    clearTimeout(timer);
-    recheck?.();
-  };
-  const timer = setTimeout(release, capMs);
-  return release;
-}
-
 export function announceDesktopReady(): void {
   if (typeof document === "undefined" || document.documentElement.getAttribute("data-desktop-shell") !== "true") return;
   let announced = false;
@@ -44,9 +23,8 @@ export function announceDesktopReady(): void {
     if (announced) return;
     const state = getState();
     // 목록 조회가 실패해도 bootstrapped는 선다. Objective 목록이 끝내 오지 않으면 알리지 않는다 — 상한이 걷는다.
-    if (!state.bootstrapped || !state.objectiveRecordsHydrated || holds > 0) return;
+    if (!state.bootstrapped || !state.objectiveRecordsHydrated) return;
     announced = true;
-    recheck = null;
     unsubscribe?.();
     unsubscribe = null;
     // 이 상태로 React가 커밋하고(구독 갱신은 다음 마이크로태스크에 동기 반영된다) 한 프레임이 칠해진 뒤에 알린다.
@@ -64,6 +42,5 @@ export function announceDesktopReady(): void {
     }));
   };
   unsubscribe = subscribe(check);
-  recheck = check;
   check();
 }

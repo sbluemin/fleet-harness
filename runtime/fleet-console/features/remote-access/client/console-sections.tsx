@@ -1,24 +1,16 @@
 import { ChevronGlyph } from "@fleet-console/ui/react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import {
   CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_EVENT, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl,
   isConsoleRosterState, isConsoleSectionState,
   type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState,
 } from "@fleet-console/protocol/desktop/console-section";
-import { holdDesktopReady } from "../../../core/client/src/integration/desktop-ready.js";
 import { isDesktopShell, useDesktopHomeOrigin } from "../../../core/client/src/integration/desktop-shell.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { ConsoleGlyph } from "./console-section.js";
 import { subscribeRemoteHostsChanged } from "./remote-hosts.js";
 import "./console-sections.css";
-
-/** 도착할 사령관을 열 때까지 「다 그렸다」를 붙잡는 상한. 넘기면 그냥 알린다. */
-const ARRIVAL_HOLD_MS = 600;
-/** 섹션 상태 뒤에 명부가 따라오지 않으면 명부를 모르는 옛 셸이다 — 이만큼만 기다린다. */
-const ROSTER_FOLLOW_MS = 40;
-/** 셸이 아무것도 건네지 않으면 콘솔 목록을 모르는 셸이다 — 이만큼만 기다린다. */
-const SHELL_SILENT_MS = 120;
 
 /**
  * 셸은 문서가 적재되자마자 상태를 건넨다 — 사이드바가 서기 전일 수 있다. 그래서 묶음이 평가되는 순간부터 듣고
@@ -63,15 +55,7 @@ export function useConsoleSections(): ConsoleSections {
   const rosterCapable = capable && (rosters !== null || shell.capabilities.includes(CONSOLE_ROSTER_CAPABILITY));
   const [localFolds, setLocalFolds] = useState<Readonly<Record<string, boolean>>>({});
   const [arrivalDone, setArrivalDone] = useState<string | null>(null);
-  const release = useRef<() => void>(() => {});
   const command = useCallback((value: ConsoleSectionCommand) => { location.assign(consoleSectionCommandUrl(location.origin, value)); }, []);
-  // 커밋된 사이드바만 붙잡는다 — 렌더 중에 걸면 버려진 렌더가 놓지 못한 붙잡음을 남긴다. 셸이 아니면 붙잡지 않는다.
-  useLayoutEffect(() => {
-    if (!desktop) return;
-    const held = holdDesktopReady(ARRIVAL_HOLD_MS);
-    release.current = held;
-    return held;
-  }, [desktop]);
   useEffect(() => {
     if (!capable) return;
     // 이름·저장 목록이 바뀌어도 표시는 셸이 다시 준 상태만 쓴다.
@@ -81,14 +65,6 @@ export function useConsoleSections(): ConsoleSections {
     reload();
     return () => { unsubscribe(); window.removeEventListener("focus", reload); };
   }, [capable, consoleName, command]);
-  // 붙잡음을 놓는 때: 명부에 도착이 없을 때, 명부가 따라오지 않을 때, 셸이 조용할 때. 도착이 있으면 arrived()가 놓는다.
-  const waiting = rosters !== null ? "roster" : state !== null ? "section" : "silent";
-  const hasArrival = rosters?.arrival != null;
-  useEffect(() => {
-    if (waiting === "roster") { if (!hasArrival) release.current(); return; }
-    const timer = setTimeout(() => release.current(), waiting === "section" ? ROSTER_FOLLOW_MS : SHELL_SILENT_MS);
-    return () => clearTimeout(timer);
-  }, [waiting, hasArrival]);
   const entries = capable ? state?.entries ?? [] : [];
   const byId = useMemo(() => new Map((rosters?.rosters ?? []).map((entry) => [entry.id, entry])), [rosters]);
   const shellFolds = useMemo(() => new Set(rosters?.folded ?? []), [rosters]);
@@ -97,7 +73,6 @@ export function useConsoleSections(): ConsoleSections {
   const arrivalAnchor = rosters?.arrival?.anchorY ?? null;
   const arrival = useMemo(() => arrivalCommodore === null || arrivalCommodore === arrivalDone ? null : { commodore: arrivalCommodore, anchorY: arrivalAnchor }, [arrivalCommodore, arrivalAnchor, arrivalDone]);
   const arrived = useCallback(() => {
-    release.current();
     // 셸이 도착을 지운 상태를 다시 줄 때까지 같은 도착을 두 번 열지 않는다.
     setArrivalDone(arrivalCommodore);
     if (rosterCapable) command({ arrived: true });
