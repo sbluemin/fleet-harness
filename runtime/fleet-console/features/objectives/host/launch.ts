@@ -44,7 +44,7 @@ export type DecisionOutcome = { readonly answers: readonly DecisionAnswer[] } | 
 export interface LaunchService {
   describe(): { readonly available: boolean };
   /** 목표 레코드만 만든다. 후속 후보는 안정적인 objectiveId 를 지정할 수 있다. */
-  create(input: { readonly commodoreId: string; readonly cwd?: string; readonly theaterId: string; readonly theaterIdSpecified?: boolean; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string; readonly commander?: { readonly model: string; readonly effort?: string } } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
+  create(input: { readonly commodoreId: string; readonly cwd?: string; readonly theaterId: string; readonly theaterIdSpecified?: boolean; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
   /**
    * 고른 후속 후보와 함께 완료한다 — 완료·배치 기록을 한 번에 쓴 뒤 Core에 보관을 요청하고 후속 목표 레코드를
    * 뒤에서 만든다. 같은 배치로 다시 부르면 그대로 돌려준다.
@@ -90,7 +90,7 @@ export interface LaunchService {
   /** 지휘관의 모델·강도 — 미기동·휴면·유휴일 때만 고친다. 턴이 도는 동안은 거절한다. */
   setPreset(objectiveId: string, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Promise<Objective>;
   /** 개시 — 구성원을 모은 뒤 지휘관에게 첫 알림을 보낸다. 띄우지 못한 구성원은 failed 로 알리고 개시는 이어 간다. */
-  startCommander(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string; readonly failed: readonly { readonly id: string; readonly role: string; readonly error: string }[] }>;
+  startCommander(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string; readonly failed: readonly { readonly id: string; readonly role: string; readonly error: string }[]; readonly notice?: string }>;
   /** 「이번 턴 뒤」 예약을 거둔다 — 세션은 실행값 그대로이고 예약 전 선택으로 돌아간다. 실패 표시도 같은 길로 닫는다. */
   memberNextCancel(objectiveId: string, memberId: string): Promise<Objective>;
   /**
@@ -99,7 +99,7 @@ export interface LaunchService {
    * 예약을 놓으므로, 돌아온 뒤에는 여기서 다시 걸어야 옛 모델로 깨지 않는다.
    */
   resumeReservations(sessionId?: string): void;
-  requestPlan(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string }>;
+  requestPlan(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string; readonly notice?: string }>;
   missionPatched(objectiveId: string, missionId: string, patch: MissionPatchInput): Objective;
   /** 사람이 더한 임무(`by: "human"`)는 선행을 함께 주지 않았다면 미분류로 들어간다 — 지휘관의 추가는 지휘관이 이미 자리를 안다. */
   missionAdded(objectiveId: string, input: MissionAddInput, options?: { readonly by?: ObjectiveActor }): Objective;
@@ -192,12 +192,19 @@ export interface LaunchOptions {
   readonly language?: PromptLanguage;
   /** 사람이 개시·스티어링에 덧붙인 말 — 그 알림 아래 인용으로 한 번 간다(저장하지 않는다). 구상의 말은 목표의 `planRequest` 에 산다. */
   readonly context?: string;
+  /** 세션이 아직 없는 목표의 첫 구상·개시에서만 쓴다. 세션이 있으면 적용하지 않는다. */
+  readonly commander?: { readonly model?: string; readonly effort?: string };
+  readonly signal?: AbortSignal;
 }
 
 const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.language === "ko" ? "ko" : "en");
 /** 모델을 고르지 않은 구성원 — 판단기로 대신 고르지 않는다. */
-/** 사령관이 지휘관 모델을 고르지 않았고 사람이 정한 사령관 설정도 없다. */
-export const COMMANDER_MODEL_REQUIRED_HINT = "Choose the Commander model with commanderModel from fleet-ai-gateway candidates.";
+/** 첫 구상·개시에서 지휘관 모델이 없고, 호출자가 사령관이며, 사람이 정한 설정도 없다. 이 힌트는 그 거절에만 쓴다. */
+export const COMMANDER_MODEL_REQUIRED_HINT = "Pass commanderModel from fleet-ai-gateway candidates to this call.";
+/** 사람 설정이 호출이 넘긴 모델보다 앞선다. plan·commence 가 이 문장을 그대로 돌려준다. */
+export const PERSON_COMMANDER_NOTICE = "Supplied model/effort ignored; using person's Commander setting.";
+/** 세션이 있는 목표에 plan·commence 가 모델이나 강도를 넘겼다. */
+export const SESSION_COMMANDER_NOTICE = "Model/effort ignored: the Commander already has a session. Change them through edit.";
 export const MEMBER_MODEL_REQUIRED_HINT = "Set this member's model with member_set_launch, choosing from fleet-ai-gateway candidates.";
 /** 받는 세션의 답장 도구 — 받는 이가 지휘관이면 member_message, 구성원이면 message_commander. 광고명 단일 진실원천에서 찾고, 없으면 바로 실패한다. */
 export function recipientReplyTool(server: string): string {
@@ -214,7 +221,7 @@ const commanderSession = () => `objective-${randomUUID().slice(0, 6)}-cmdr`;
 const memberSession = (objectiveId: string, commander: string | null, index: number) => `${commander ? commander.replace(/-cmdr$/, "") : `objective-${objectiveId.slice(0, 6)}`}-member-${index}`;
 
 export interface LaunchServiceOptions {
-  /** 사람이 그 사령관에 정한 지휘관 모델·강도. 없으면 null — 사령관이 만드는 목표는 지휘관 모델을 직접 골라야 한다. */
+  /** 사람이 그 사령관에 정한 지휘관 모델·강도. 첫 구상·개시가 호출이 넘긴 모델보다 이 설정을 먼저 쓴다. 없으면 null. */
   readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null;
   /** 지휘관 레코드 생성 시에만 읽는다. 지연 최초 기동·구성원 생성에는 저장값을 쓴다. */
   readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean;
@@ -423,7 +430,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
 
   // 최초 기동은 목표의 UUID 에 묶는다. 실패 후 재시도는 기존 Objective 을 되찾는다.
-  const ensureCommander = async (objectiveId: string): Promise<void> => {
+  // choice 가 없으면(구성원 전달이 세션 없는 지휘관을 깨울 때) 같은 순서로 고른다. 호출자가 사령관이 아니면 보드 기본이다.
+  const ensureCommander = async (objectiveId: string, choice?: { readonly model: string; readonly effort?: string; readonly modelSpeed?: ObjectiveModelSpeed }): Promise<void> => {
     // 에이전트가 지운 목표는 사람이 되돌리기 전에는 기동하지 않는다.
     if (store.find(objectiveId)?.removed) throw new ObjectiveStoreError("objective_removed");
     const pendingCommander = store.pending(objectiveId);
@@ -438,8 +446,14 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       return;
     }
     if (!pendingCommander) throw new ObjectiveStoreError("unknown_objectiveRecord");
+    const preset = choice ?? (await resolveFirstCommander(objectiveId)).choice;
+    // 저장된 모델은 읽지 않는다. 지금 고른 값만 기동 요청에 싣고, 거절되면 세션은 생기지 않는다.
+    const { model: _ignoredModel, effort: _ignoredEffort, modelSpeed: _ignoredSpeed, ...rest } = pendingCommander;
     // 지휘관은 늘 채팅으로 선다 — 구성원 채팅 입력창이 보드 동작을 받는다. 옛 터미널 프리셋이 저장된 목표도 채팅으로 띄운다.
-    const launchedId = await launch({ ...pendingCommander, viewMode: "chat", objectiveId, dormant: true, newObjectiveId: objectiveId }).catch(asStoreError);
+    const launchedId = await launch({
+      ...rest, model: preset.model, ...(preset.effort ? { effort: preset.effort } : {}), ...(preset.modelSpeed ? { modelSpeed: preset.modelSpeed } : {}),
+      viewMode: "chat", objectiveId, dormant: true, newObjectiveId: objectiveId,
+    }).catch(asStoreError);
     if (launchedId !== objectiveId) throw new ObjectiveStoreError("objectiveRecord_id_taken");
     if (store.pending(objectiveId)) store.launched(objectiveId);
   };
@@ -474,6 +488,48 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }
       throw error;
     }
+  };
+  /**
+   * 세션이 아직 없는 목표의 첫 구상·개시에서 모델을 고른다. 사람 설정, 호출이 넘긴 모델, 사령관이면 거절, 그 밖은 보드 기본.
+   * 거절은 세션을 만들기 전에 난다. 이 힌트는 이 길에서만 쓴다.
+   */
+  const resolveFirstCommander = async (objectiveId: string, options?: LaunchOptions): Promise<{ readonly choice: { readonly model: string; readonly effort?: string; readonly modelSpeed?: ObjectiveModelSpeed }; readonly notice?: string }> => {
+    const current = objective(objectiveId);
+    const suppliedModel = options?.commander?.model;
+    const suppliedEffort = options?.commander?.effort;
+    const supplied = suppliedModel !== undefined || suppliedEffort !== undefined;
+    const configured = serviceOptions.commodoreCommander?.(current.commodoreId) ?? null;
+    if (configured) {
+      await modelCatalog.checkAvailable({ model: configured.model }, options?.signal);
+      return {
+        choice: {
+          model: configured.model,
+          ...(configured.effort ? { effort: configured.effort } : {}),
+          ...(typeof configured.fast === "boolean" ? { modelSpeed: { model: configured.model, fast: configured.fast } } : {}),
+        },
+        ...(supplied ? { notice: PERSON_COMMANDER_NOTICE } : {}),
+      };
+    }
+    if (suppliedModel !== undefined) {
+      const checked = await modelCatalog.checkCommander({ model: suppliedModel, ...(suppliedEffort !== undefined ? { effort: suppliedEffort } : {}) }, options?.signal);
+      return { choice: { model: checked.model, ...(checked.effort ? { effort: checked.effort } : {}) } };
+    }
+    if (suppliedEffort !== undefined || (typeof options?.actor === "object" && options.actor.kind === "commodore")) {
+      throw new ObjectiveStoreError("commander_model_required", undefined, { hint: COMMANDER_MODEL_REQUIRED_HINT });
+    }
+    return { choice: { model: COMMANDER_PRESET.model, effort: COMMANDER_PRESET.effort } };
+  };
+  /** 세션이 있으면 넘긴 모델은 적용하지 않고 후보 재확인만 한다. 없으면 고른 모델로 기동한다. */
+  const openCommander = async (objectiveId: string, options?: LaunchOptions): Promise<string | undefined> => {
+    const supplied = options?.commander?.model !== undefined || options?.commander?.effort !== undefined;
+    if (referenceNode(objectiveId)) {
+      await assertCommanderCandidate(objectiveId);
+      await ensureCommander(objectiveId);
+      return supplied ? SESSION_COMMANDER_NOTICE : undefined;
+    }
+    const decided = await resolveFirstCommander(objectiveId, options);
+    await ensureCommander(objectiveId, decided.choice);
+    return decided.notice;
   };
 
   /** 재시작 뒤 잇지 못한 목표 — 사령관이 꺼내 갈 때까지 메모리에만 둔다. */
@@ -996,8 +1052,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const language = languageOf(options);
     let current = objective(objectiveId);
     if (current.done) throw new ObjectiveStoreError("objective_done");
-    await assertCommanderCandidate(objectiveId);
-    await ensureCommander(objectiveId);
+    const notice = await openCommander(objectiveId, options);
     rememberLanguage(objectiveId, language);
     store.recordStage(objectiveId, "planned");
     // 구상은 계획과 메모만이다 — 임무 수행도, 담당 기동도 「시작」이 한다.
@@ -1010,7 +1065,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     // 요청이 지휘관에게 닿은 뒤에만 누가 구상을 청했는지 남긴다. 행위자를 받지 않은 호출은 사람의 것이다(옛 관례와 같다).
     if (recordAs) current = store.recordStage(objectiveId, "planned", options?.actor ?? "human");
     current = store.setStopped(objectiveId, false);
-    return { objective: current, objectiveId: objectiveId };
+    return { objective: current, objectiveId: objectiveId, ...(notice ? { notice } : {}) };
   };
 
   /** 지휘관 통지의 거절 — 호스트의 오류 코드와 메시지를 자르거나 요약하지 않는다. */
@@ -1497,27 +1552,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     describe: () => ({ available: !!ctx.consoleControl }),
 
     async create(input, options) {
-      const { objectiveId, commander: chosen, ...init } = input;
+      const { objectiveId, ...init } = input;
       checkedCriteria(init);
       const id = objectiveId ?? randomUUID();
       if (store.recorded(id)) return objective(id);
       if (referenceNode(id)) throw new ObjectiveStoreError("objectiveRecord_id_taken");
-      // 사령관이 만든 목표(직접 추가·사령관이 고른 후속)는 사령관 설정의 지휘관으로 시작한다. 지휘관의 뷰는 누가 만들든 채팅이다 —
+      // 생성은 모델을 저장하지 않는다. 첫 구상·개시가 고른다. 지휘관의 뷰는 누가 만들든 채팅이다 —
       // 보드 동작이 구성원 채팅 입력창에 서므로 보기 선택은 없다(옛 요청의 viewMode 는 받되 쓰지 않는다).
       const actor = options?.actor ?? init.by;
       const byCommodore = !!actor && typeof actor === "object" && actor.kind === "commodore";
       if (byCommodore && actor.commodoreId !== input.commodoreId) throw new ObjectiveStoreError("other_commodore");
-      // 사령관이 만드는 목표의 지휘관 — 생성 호출이 고른 모델(호출이 candidates 로 이미 확인했다), 아니면 사람이 그 사령관에 정한
-      // 지휘관 모델(사람의 명시 선택이라 실행 카탈로그 가용성만 본다). 둘 다 없으면 보드 기본으로 넘어가지 않고 거절한다.
-      // 사람이 설정에 정했으면 Console 도구가 사령관의 지정을 버리고 넘기므로 여기엔 호출의 모델이 오지 않는다.
-      // 사람이 화면에서 만드는 목표는 사람이 고른 모델, 없으면 보드 기본이다.
-      let commander: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = chosen ?? null;
-      if (byCommodore && !chosen) {
-        const configured = serviceOptions.commodoreCommander?.(input.commodoreId) ?? null;
-        if (!configured) throw new ObjectiveStoreError("commander_model_required", undefined, { hint: COMMANDER_MODEL_REQUIRED_HINT });
-        await modelCatalog.checkAvailable({ model: configured.model }, undefined);
-        commander = configured;
-      }
       const requested = typeof input.theaterId === "string" ? input.theaterId : "";
       const owned = ctx.ownedTheaterIds?.(input.commodoreId);
       const known = requested !== "" && (!owned || owned.includes(requested));
@@ -1534,9 +1578,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         ...(bound ? { theaterIdExplicit: true as const } : {}),
         cwd, title: input.title, groupId: input.groupId, createdAt: Date.now(),
         disableAutoMemory: !(serviceOptions.commodoreAutoMemoryEnabled?.(input.commodoreId) ?? true),
-        sessionName: commanderSession(), ...(commander ? { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } : COMMANDER_PRESET), viewMode: "chat",
-        // 사람이 사령관 설정에서 고른 속도만 싣는다 — 사령관이 candidates로 고른 지휘관은 명시가 없어 토글을 따른다.
-        ...(commander && typeof commander.fast === "boolean" ? { modelSpeed: { model: commander.model, fast: commander.fast } } : {}),
+        sessionName: commanderSession(), viewMode: "chat",
       });
     },
 
@@ -1723,10 +1765,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 지휘관의 뷰는 채팅으로 고정이다 — 옛 클라이언트가 보내는 viewMode 는 받되 쓰지 않는다.
       editableObjective(objectiveId);
       const node = referenceNode(objectiveId);
-      if (!node && store.pending(objectiveId)) {
-        if (pending.has(objectiveId)) throw new ObjectiveStoreError("objective_busy");
-        return store.patchPending(objectiveId, preset);
-      }
+      // 세션이 없는 목표는 모델을 고치지 못한다. 첫 모델은 구상·개시가 고른다.
+      if (!node && store.pending(objectiveId)) throw new ObjectiveStoreError("not_started");
       // 보관이 만든 휴면 메타데이터는 세션이 있어도 아직 첫 기동 전이다. 모델을 고를 수 있다.
       if (!node) throw new ObjectiveStoreError("unknown_objective");
       // 미기동·휴면·유휴만 모델을 고친다. 복원으로 그 제약을 우회하지 않는다.
@@ -1760,8 +1800,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       let current = objective(objectiveId);
       if (current.done) throw new ObjectiveStoreError("objective_done");
       if (current.criteriaProposals.length) throw new ObjectiveStoreError("criteria_pending");
-      await assertCommanderCandidate(objectiveId);
-      await ensureCommander(objectiveId);
+      const notice = await openCommander(objectiveId, options);
       // 따로 만든 Objective 도 지휘관이 될 수 있다 — 보드를 읽고 쓰려면 콘솔 사용이 켜져 있어야 한다.
       rememberLanguage(objectiveId, language);
       // 개시는 구상을 끝내고 구성원을 먼저 대기 기동·재개한다.
@@ -1780,7 +1819,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       store.recordStage(objectiveId, "commenced", options?.actor ?? "human");
       store.setStopped(objectiveId, false);
       // 알림이 닿았을 때만 지운다 — 못 닿았으면 다음 시작이 다시 말한다.
-      return { objective: store.setEdited(objectiveId, null), objectiveId: objectiveId, failed };
+      return { objective: store.setEdited(objectiveId, null), objectiveId: objectiveId, failed, ...(notice ? { notice } : {}) };
     }, "start"),
 
     resumeReservations(sessionId) {

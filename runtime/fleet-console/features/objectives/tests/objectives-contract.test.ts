@@ -259,7 +259,7 @@ title: input.title});
         launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableAutoMemory: input.disableAutoMemory, groupId: input.groupId });
         // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
         activity.set(id, input.dormant ? "dormant" : "idle");
-        const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), session: { harness: "claude-code", ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}), ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
+        const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), session: { harness: "claude-code", ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}), ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.modelSpeed ? { modelSpeed: input.modelSpeed } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
         if (input.childSessionId && input.parentObjectiveId) {
           const parent = objectiveRecords.get(input.parentObjectiveId)!;
           parent.sessions = [...(parent.sessions ?? []), { id, ...payload, ts: { createdAt: clock++, updatedAt: clock } }];
@@ -851,8 +851,9 @@ describe("Objectives contract", () => {
     await edge(true);
     expect((await route("edge/toggle", { objectiveId: objective.id, from: c!.id, to: a!.id, linked: true })).status).toBeGreaterThanOrEqual(400);
     expect(store.find(objective.id)!.missions.find(m => m.id === a!.id)!.prerequisites).toEqual([]);
-    // 지휘관의 뷰는 채팅으로 고정이다 — 옛 클라이언트의 터미널 요청은 받되 쓰지 않는다.
-    expect((await launch.setPreset(objective.id, { viewMode: "terminal" })).commander.viewMode).toBe("chat");
+    // 지휘관의 뷰는 채팅으로 고정이다. 세션이 없는 목표의 모델 수정은 거절하고, 생성 때의 채팅은 그대로다.
+    await expect(launch.setPreset(objective.id, { viewMode: "terminal" })).rejects.toThrow("not_started");
+    expect(store.find(objective.id)!.commander.viewMode).toBe("chat");
     await launch.rename(objective.id, "Release renamed");
     expect(store.find(objective.id)!.title).toBe("Release renamed");
     // 구성원 명단 — 임무는 구성원만 가리킨다. 두 임무가 한 구성원을 나눠 쓴다.
@@ -2082,9 +2083,9 @@ describe("Objectives contract", () => {
     expect(createObjectiveStore({ storage: persistence.board, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(into)!.merged).toContainEqual(expect.objectContaining({ sourceId: targetId }));
   });
 
-  it("refuses plan and commence when the Commander model leaves candidates, and edits it while pending or idle", async () => {
-    let configured: { readonly model: string; readonly effort?: string } | null = null;
-    const { ctx, store, launch, workspace, launches, activity, surfaces, objectiveRecords } = harness(() => "http://console.invalid", { commodoreCommander: () => configured });
+  it("chooses the Commander model at plan or commence and edits it only after a session exists", async () => {
+    let configured: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = null;
+    const { ctx, store, launch, workspace, launches, activity, surfaces, objectiveRecords, objectivesDir, objectiveRecordsHost } = harness(() => "http://console.invalid", { commodoreCommander: () => configured });
     const catalog = { plugins: [{ id: "terminal", kinds: [{ id: "agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }, { id: "high", label: "HIGH", launch: { effort: "high" } }] },
       { id: "opus", label: "Opus", launch: { model: "opus[1m]" }, chips: [{ id: "high", label: "HIGH", launch: { effort: "high" } }] },
@@ -2102,45 +2103,69 @@ describe("Objectives contract", () => {
     });
     const [commodore] = createCommodoreBoardTools(ctx, store, launch, "c1");
     const call = async (args: Record<string, unknown>) => commodore!.execute(args, { cwd: workspace }) as Promise<{ structuredContent: Record<string, unknown> }>;
-    const created = await call({ action: "add", theaterId: "t1", title: "Stale", commanderModel: "sonnet[1m]", commanderEffort: "low" });
+    const created = await call({ action: "add", theaterId: "t1", title: "Stale" });
     expect(created.structuredContent).toMatchObject({ ok: true });
+    expect(created.structuredContent).not.toHaveProperty("notice");
     const id = created.structuredContent.objectiveId as string;
+    expect(store.pending(id)).not.toHaveProperty("model");
+    expect(store.find(id)!.commander).not.toHaveProperty("model");
+    // 파일에 남은 옛 모델은 다시 읽어도 구상·개시에 쓰이지 않는다.
+    const legacyFile = path.join(objectivesDir, id, "objective.json");
+    const legacy = JSON.parse(fs.readFileSync(legacyFile, "utf8")) as { session: Record<string, unknown> };
+    legacy.session.model = "sonnet[1m]";
+    legacy.session.effort = "low";
+    legacy.session.modelSpeed = { model: "sonnet[1m]", fast: true };
+    fs.writeFileSync(legacyFile, JSON.stringify(legacy));
     candidates.candidates = candidates.candidates.filter((entry) => entry.model !== "sonnet[1m]");
-    const refused = await call({ action: "plan", objectiveId: id });
-    expect(refused.structuredContent).toMatchObject({
+    const reloaded = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
+    const relaunch = createLaunchService(ctx, reloaded, { commodoreCommander: () => configured });
+    launchServices.push(relaunch);
+    const [reloadedTool] = createCommodoreBoardTools(ctx, reloaded, relaunch, "c1");
+    const again = async (args: Record<string, unknown>) => reloadedTool!.execute(args, { cwd: workspace }) as Promise<{ structuredContent: Record<string, unknown> }>;
+    expect(reloaded.pending(id)).not.toHaveProperty("model");
+    expect(reloaded.find(id)!.commander).not.toHaveProperty("model");
+    const refused = await again({ action: "plan", objectiveId: id });
+    expect(refused.structuredContent).toMatchObject({ error: "commander_model_required", hint: "Pass commanderModel from fleet-ai-gateway candidates to this call." });
+    expect(launches).toHaveLength(0);
+    expect((await again({ action: "commence", objectiveId: id })).structuredContent.error).toBe("commander_model_required");
+    expect((await again({ action: "plan", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "low" })).structuredContent).toMatchObject({
       error: "model_not_in_gateway_models",
       model: "sonnet[1m]",
       candidates: candidates.candidates,
       hint: expect.stringContaining("commanderModel"),
     });
-    expect(launches).toHaveLength(0);
-    expect((await call({ action: "commence", objectiveId: id })).structuredContent.error).toBe("model_not_in_gateway_models");
-    expect((await call({ action: "edit", objectiveId: id, commanderModel: "xai--grok-4.7" })).structuredContent).toMatchObject({ error: "model_not_in_gateway_models", candidates: candidates.candidates });
-    expect(store.pending(id)?.model).toBe("sonnet[1m]");
-    expect((await call({ action: "edit", objectiveId: id, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true, stored: { commanderModel: "opus[1m]", commanderEffort: "high" } });
-    expect(store.pending(id)).toMatchObject({ model: "opus[1m]", effort: "high" });
-    expect((await call({ action: "plan", objectiveId: id })).structuredContent).toMatchObject({ ok: true });
+    expect((await again({ action: "edit", objectiveId: id, commanderModel: "xai--grok-4.7" })).structuredContent).toMatchObject({ error: "not_started", hint: "No Commander session yet; use plan or commence for initial model selection." });
+    expect((await again({ action: "edit", objectiveId: id, title: "Renamed while pending" })).structuredContent).toMatchObject({ ok: true, stored: { title: "Renamed while pending" } });
+    expect(reloaded.pending(id)).not.toHaveProperty("model");
+    expect(objectiveRecords.has(id)).toBe(false);
+    expect((await again({ action: "plan", objectiveId: id, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true });
     expect(launches).toHaveLength(1);
+    expect(objectiveRecords.get(id)!.session).toMatchObject({ model: "opus[1m]", effort: "high" });
     const node = objectiveRecords.get(id)!;
     node.session = { ...(node.session as object), id: "captured-session", capturedAt: "2026-09-25T00:00:00Z", source: "hook" };
     activity.set(id, "idle");
     candidates.candidates.push({ model: "sonnet[1m]", efforts: ["low", "high"], summary: "Sonnet", pressure: "ok" });
-    expect((await call({ action: "edit", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true, stored: { commanderModel: "sonnet[1m]", commanderEffort: "high" } });
+    expect((await again({ action: "edit", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true, stored: { commanderModel: "sonnet[1m]", commanderEffort: "high" } });
     surfaces.set(id, "terminal");
     activity.set(id, "dormant");
-    expect((await call({ action: "edit", objectiveId: id, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true, stored: { commanderModel: "opus[1m]" } });
+    expect((await again({ action: "edit", objectiveId: id, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true, stored: { commanderModel: "opus[1m]" } });
+    expect((await again({ action: "plan", objectiveId: id, commanderModel: "sonnet[1m]" })).structuredContent).toMatchObject({ ok: true, notice: "Model/effort ignored: the Commander already has a session. Change them through edit." });
+    expect(objectiveRecords.get(id)!.session).toMatchObject({ model: "opus[1m]" });
     surfaces.delete(id);
     activity.set(id, "running");
-    expect((await call({ action: "edit", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "high" })).structuredContent.error).toBe("objective_busy");
-    // 사람이 사령관 설정에 명시한 모델은 후보에서 빠져도 실행 카탈로그에 있으면 구상을 막지 않는다.
-    configured = { model: "opus[1m]", effort: "high" };
+    expect((await again({ action: "edit", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "high" })).structuredContent.error).toBe("objective_busy");
+    // 사람이 사령관 설정에 명시한 모델은 후보에서 빠져도 실행 카탈로그에 있으면 구상·개시가 그 모델로 기동한다. 호출이 넘긴 값은 버린다.
+    configured = { model: "opus[1m]", effort: "high", fast: true };
     candidates.candidates = candidates.candidates.filter((entry) => entry.model !== "opus[1m]");
-    const person = await call({ action: "add", theaterId: "t1", title: "Person chose" });
+    const person = await again({ action: "add", theaterId: "t1", title: "Person chose" });
     expect(person.structuredContent).toMatchObject({ ok: true });
-    expect((await call({ action: "plan", objectiveId: person.structuredContent.objectiveId })).structuredContent).toMatchObject({ ok: true });
-    // 사람이 사령관 설정에 지휘관 모델을 정해 둔 경우 edit의 commanderModel/Effort는 add와 같이 무시되고 notice를 돌려준다.
-    const editPerson = await call({ action: "edit", objectiveId: person.structuredContent.objectiveId, commanderModel: "sonnet[1m]" });
-    expect(editPerson.structuredContent).toMatchObject({ ok: true, notice: expect.stringContaining("ignored") });
+    const personId = person.structuredContent.objectiveId as string;
+    expect(reloaded.find(personId)!.commander).not.toHaveProperty("model");
+    expect((await again({ action: "plan", objectiveId: personId, commanderModel: "not-a-model", commanderEffort: "low" })).structuredContent).toMatchObject({ ok: true, notice: "Supplied model/effort ignored; using person's Commander setting." });
+    expect(objectiveRecords.get(personId)!.session).toMatchObject({ model: "opus[1m]", effort: "high", modelSpeed: { model: "opus[1m]", fast: true } });
+    const editPerson = await again({ action: "edit", objectiveId: personId, commanderModel: "sonnet[1m]" });
+    expect(editPerson.structuredContent).toMatchObject({ ok: true, notice: expect.stringContaining("person's Commander setting") });
+    expect(objectiveRecords.get(personId)!.session).toMatchObject({ model: "opus[1m]" });
   });
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
@@ -2188,25 +2213,27 @@ describe("Objectives contract", () => {
       expect(result.isError).toBe(false);
       return result.structuredContent;
     };
-    // 사령관이 candidates 밖의 모델을 고르면, 또는 고르지 않았고 사람의 설정도 없으면 목표를 만들지 않는다 — 보드 기본이나 라우팅으로 넘어가지 않는다.
+    // 생성은 모델을 받지 않는다. 사령관이 모델 없이, 또는 candidates 밖의 모델로 구상하면 세션을 만들지 않는다.
     const offAdd = async (args: Record<string, unknown>) => ((await commodore.execute({ action: "add", theaterId: "t1", title: "Off model", ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
-    expect(await offAdd({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_in_gateway_models", model: "xai--grok-4.7" });
-    expect(await offAdd({})).toMatchObject({ error: "commander_model_required", hint: expect.stringContaining("candidates") });
-    expect(store.list("c1")).toEqual([]);
+    const unmodeled = await offAdd({});
+    expect(unmodeled).toMatchObject({ ok: true });
+    expect(unmodeled).not.toHaveProperty("notice");
+    const unmodeledId = unmodeled.objectiveId as string;
+    expect(store.find(unmodeledId)!.commander).not.toHaveProperty("model");
+    const offPlan = async (args: Record<string, unknown>) => ((await commodore.execute({ action: "plan", objectiveId: unmodeledId, ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
+    expect(await offPlan({})).toMatchObject({ error: "commander_model_required", hint: "Pass commanderModel from fleet-ai-gateway candidates to this call." });
+    expect(await offPlan({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_in_gateway_models", model: "xai--grok-4.7" });
+    expect(objectiveRecords.has(unmodeledId)).toBe(false);
     expect(judged).toEqual([]);
-    // 사람이 정한 사령관 설정은 사람의 명시 선택이다 — candidates 에 없어도 실행 카탈로그에서 고를 수 있으면 그 모델로 만든다.
+    // 사람이 정한 사령관 설정은 사람의 명시 선택이다 — candidates 에 없어도 실행 카탈로그에서 고를 수 있으면 구상·개시가 그 모델을 쓴다.
     configured = { model: "opus[1m]", effort: "high", fast: true };
     const actor = { kind: "commodore", commodoreId: "c1" };
     const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
     const created = await board({ action: "add", theaterId: "t1", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31", attachmentIds: [firstImage], requestSource });
     expect(created).toMatchObject({ stored: { dueDate: "2026-10-31", requestSource } });
     const id = created.objectiveId as string;
-    expect(store.find(id)!.commander).toMatchObject({ model: "opus[1m]", effort: "high" });
-    // 사람이 정한 지휘관 모델이 있으면 사령관이 넘긴 모델·effort는 검증 없이 버리고 설정 모델과 속도로 만들며, 응답이 그 사실을 알린다.
-    const overridden = await board({ action: "add", theaterId: "t1", title: "Overridden", commanderModel: "not-a-model", commanderEffort: "low" });
-    expect(overridden).toMatchObject({ notice: expect.stringContaining("ignored") });
-    expect(store.find(overridden.objectiveId as string)!.commander).toMatchObject({ model: "opus[1m]", effort: "high" });
-    expect(store.pending(overridden.objectiveId as string)).toMatchObject({ model: "opus[1m]", effort: "high", modelSpeed: { model: "opus[1m]", fast: true } });
+    expect(store.find(id)!.commander).not.toHaveProperty("model");
+    expect(store.pending(id)).not.toHaveProperty("model");
     expect(created).not.toHaveProperty("notice");
     candidates.candidates.push({ model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" });
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor, requestSource });
