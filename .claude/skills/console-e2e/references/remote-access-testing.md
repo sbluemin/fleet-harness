@@ -142,25 +142,25 @@ Confirm the wire, not the state: read the certificate the listener actually pres
 
 ## Standing away from home
 
-Away is which origin this window is standing on. It is not the public endpoint (`publicEndpointEnabled` does not enter the predicate; [Turn the listener on](#turn-the-listener-on) leaves it off) and it is not a second loopback Console. The host chip and the dock dot share `isStandingAtHome` in `runtime/fleet-console/core/client/src/chrome/components/command-band-system-cluster.tsx`:
+Away is which origin this window is standing on. It is not the public endpoint (`publicEndpointEnabled` does not enter the predicate; [Turn the listener on](#turn-the-listener-on) leaves it off) and it is not a second loopback Console. The dock dot reads `isStandingAtHome` in `runtime/fleet-console/core/client/src/chrome/components/command-band-system-cluster.tsx`:
 
 - With no Desktop shell, home is a loopback `http` origin (`127.0.0.1`, `localhost`, or `[::1]`). The remote listener's `https://<LAN>:<remotePort>` is away. Another isolated Console at `http://127.0.0.1:<other port>` is still home.
 - With a Desktop shell, home is `location.origin` equal to the shell's published `homeOrigin` (`GET /api/v1/desktop/shell`). Until that answer arrives the shell is pending and the window is not treated as home. A neighbor Console is away once the window origin differs, even when that neighbor is also loopback.
 
 On `/objectives`, while the connection is live:
 
-| Where | `.conversation-dock-status` | `.host-switcher-chip` |
-|---|---|---|
-| Home, no guest holding control | absent | present, class `command-band-button host-switcher-chip`, `data-tip` `Local` |
-| Away, this browser on the remote listener | present, `data-connection="live"` | absent |
-| Owner loopback while a full guest holds control | absent | present with `is-shared`, not `is-away` |
-| Desktop window on its home Console | absent | present, no `is-away`, `data-tip` `Local` |
-| Desktop window on the neighbor Console | present, `data-connection="live"` | present with `is-away`; `data-tip` is the host name, not `Local` |
-| Desktop window back on its home Console | absent | no `is-away`, `data-tip` `Local` |
+| Where | `.conversation-dock-status` |
+|---|---|
+| Home, no guest holding control | absent |
+| Away, this browser on the remote listener | present, `data-connection="live"` |
+| Owner loopback while a full guest holds control | absent |
+| Desktop window on its home Console | absent |
+| Desktop window on the neighbor Console | present, `data-connection="live"` |
+| Desktop window back on its home Console | absent |
 
-`data-connection="offline"` is the coral disconnect dot. It is not away. A throwaway Theater is not required for either element: with no Theater the sidebar is the starter (`[data-testid=side-bar-starter]`) and the dock still renders. The chip is omitted on a non-loopback page because the nearby scan and the saved-host list run only for a loopback origin, and without a shell home nothing keeps the chip as the way back. Registering a Theater does not put the chip back. The chip is in the DOM on the home page even while its menu is `hidden`, so a document-wide query is the check; opening the avatar is not.
+`data-connection="offline"` is the coral disconnect dot. It is not away. A throwaway Theater is not required: with no Theater the sidebar is the starter (`[data-testid=side-bar-starter]`) and the dock still renders.
 
-**A synthesized shell URL is not away.** `desktopPickerUrl` (`/console/?desktop-surface=host-picker`, including `place=side`) only asks the shell to draw the host picker over the home page. The window origin stays home, so the dot stays absent and the chip does not gain `is-away`. That places the overlay. It does not show the window standing on another console.
+**A synthesized shell URL is not away.** `desktopPickerUrl` (`/console/?desktop-surface=host-picker`, including `place=side`) only asks the shell to draw the host picker over the home page. The window origin stays home, so the dot stays absent. That places the overlay. It does not show the window standing on another console.
 
 ### Browser: load the remote listener
 
@@ -180,19 +180,18 @@ agent-browser --session <id> open "<listener origin>/console/objectives"
 ({
   origin: location.origin,
   dot: document.querySelector(".conversation-dock-status")?.getAttribute("data-connection") ?? null,
-  chip: document.querySelector(".host-switcher-chip")?.className ?? null,
 })
 ```
 
-Away is reproduced when `origin` is the listener origin, `dot` is `"live"`, and `chip` is `null`. Then `DELETE /api/v1/access-sessions/:handle` from the owner side (the lock token stays inside the Node process). The handle is `devices[].sessionHandle` on `GET /api/v1/access-links` for the owner origin, the same body as [Turn the listener on](#turn-the-listener-on); it is null when that device is not connected. After the delete, read the same Console's loopback `/console/objectives` in another browser session: `dot` is `null`, and the chip's class has neither `is-away` nor `is-shared`, with `data-tip` `Local`. While the full guest still holds control, the owner's chip is `is-shared` and is not a home reading.
+Away is reproduced when `origin` is the listener origin and `dot` is `"live"`. Then `DELETE /api/v1/access-sessions/:handle` from the owner side (the lock token stays inside the Node process). The handle is `devices[].sessionHandle` on `GET /api/v1/access-links` for the owner origin, the same body as [Turn the listener on](#turn-the-listener-on); it is null when that device is not connected. After the delete, that device's `sessionHandle` is `null` on the same route, and the same Console's loopback `/console/objectives` in another browser session has `dot` `null` and no `.control-curtain-scrim`. While the full guest still holds control, `sessionHandle` is set and the owner's page carries the scrim; that is not a home reading.
 
 Delete the cookie file with the run directory. It holds the session secret.
 
 ### Desktop shell
 
-The browser result above does not need Desktop. Launching Desktop takes OS focus; do not launch it for the browser check. A raw navigation to the neighbor does not switch the window: `will-navigate` in `runtime/fleet-desktop/src/window-policy.ts` blocks a URL outside the active Console and the pending one. The shell's host switch (`runtime/fleet-desktop/src/remote-bridge.ts`) is what changes the window origin. The menu below is that switch.
+The browser result above does not need Desktop. Launching Desktop takes OS focus; do not launch it for the browser check. A raw navigation to the neighbor does not switch the window: `will-navigate` in `runtime/fleet-desktop/src/window-policy.ts` blocks a URL outside the active Console and the pending one. The shell's host switch (`runtime/fleet-desktop/src/remote-bridge.ts`) is what changes the window origin. The sidebar console section below is that switch.
 
-`listLocalConsoles` (`runtime/fleet-console/core/host/bootstrap/local-consoles.ts`, `canonicalLockFiles`) lists two locks only: the stable slot and `<packageRoot>/../../.fleet/console`, where `packageRoot` is the running checkout's `runtime/fleet-console`. A Console whose `FLEET_CONSOLE_DATA_DIR` is an e2e run directory is absent from that list on purpose. The neighbor has to be the local slot of **this** worktree, or the menu has no row for it.
+`listLocalConsoles` (`runtime/fleet-console/core/host/bootstrap/local-consoles.ts`, `canonicalLockFiles`) lists two locks only: the stable slot and `<packageRoot>/../../.fleet/console`, where `packageRoot` is the running checkout's `runtime/fleet-console`. A Console whose `FLEET_CONSOLE_DATA_DIR` is an e2e run directory is absent from that list on purpose. The neighbor has to be the local slot of **this** worktree, or the sidebar has no section for it.
 
 That slot is one directory per checkout. It is not `~/.fleet` and it is not another worktree's `.fleet/console`, so this worktree's slot does not collide with the user's Console or with a neighbor in a different checkout. It does collide with another session that already serves this same worktree's local slot. Before starting, the wrapper's `--check` must pass. If it reports a live pid this run did not start, choose nothing: do not stop that Console and do not delete the directory.
 
@@ -230,23 +229,22 @@ After that check, stop the home `serve` with `cli.mjs stop` through the same wra
 
 Launch Desktop once, under its own authorization, as in [Desktop setup](desktop/setup.md#preflight-and-ownership). `FLEET_CONSOLE_DATA_DIR` for that launch is the **home** run's `console` directory, not `$SLOT`. The shell's `homeOrigin` is that home.
 
-In the window, open the dock avatar (accessible name starts with "Hosts" / "호스트"). Activate the host item whose name ends with `Local` ("Hosts: Local" / "호스트: Local"). Then activate the radio whose detail line is `127.0.0.1:<neighbor port>`. Its status reads "discovered" / "발견됨" and its name is "Fleet Console" unless that row is already current. Matching the port is the check. A row for any other port, including the user's Console, is not the neighbor.
+In the window, the sidebar lists one section per console (`.side-console`, header name in `.side-console-name b`). Find the section whose header reads `127.0.0.1:<neighbor port>` and press one of its commodore rows (`.side-console-row`), or its "Switch to this console" / "이 콘솔로 전환" button when it lists none. Matching the port is the check. A section for any other port, including the user's Console, is not the neighbor.
 
-Do not assign `location` to the neighbor. The menu selection is the navigation the bridge takes. When the window has switched, read:
+Do not assign `location` to the neighbor. The section press is the navigation the bridge takes. When the window has switched, read:
 
 ```js
 ({
   origin: location.origin,
   home: (await (await fetch("/api/v1/desktop/shell")).json()).homeOrigin,
   dot: document.querySelector(".conversation-dock-status")?.getAttribute("data-connection") ?? null,
-  chip: document.querySelector(".host-switcher-chip")?.className ?? null,
-  tip: document.querySelector(".host-switcher-chip")?.getAttribute("data-tip") ?? null,
+  here: document.querySelector(".side-console-head.is-active .side-console-name b")?.textContent ?? null,
 })
 ```
 
-Away on Desktop: `origin` is `http://127.0.0.1:<neighbor port>`, `home` is the home origin, `dot` is `"live"`, `chip` contains `is-away`, and `tip` is the host name rather than `Local`.
+Away on Desktop is `origin` equal to `http://127.0.0.1:<neighbor port>` while `home` is the home origin. `dot` is `"live"`, and `here` shows that section's label, which for a discovered local neighbor is its address.
 
-Return by the same menu, opened again from the avatar and then the item that ends with `Local`. Activate the radio whose detail line is `127.0.0.1:<home port>`. Its name is "Managed console" / "관리형 콘솔". After it, `origin` is the home origin, `dot` is `null`, `chip` has no `is-away`, and `tip` is `Local`.
+Return through the home section marked `.side-console-home`, using a commodore row or "Switch to this console" when no rows are listed. Confirm `origin === home` and `dot === null`; `here` is the home console's label.
 
 Stop the neighbor with the same wrapper flags. That `stop` runs only when `$SLOT/console.lock`'s pid equals `<run-dir>/canonical-console.pid`, which the wrapper writes when this run's `serve` starts. No record, a different pid, or the main checkout (`mainCheckoutOf`, the same test as [the Desktop preflight](desktop/setup.md#read-only-preflight)) is refused before the command starts. Then:
 

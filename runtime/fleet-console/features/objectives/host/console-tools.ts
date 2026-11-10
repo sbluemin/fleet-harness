@@ -20,20 +20,20 @@ import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS 
 import { searchInputShape, searchObjectives } from "./search.js";
 
 /**
- * 바깥 루프의 보드 — 화면 둘. `console_objectives` 는 목표 목록 화면(그룹·목록·확인 필요·진행 중·이력·모델, 추가·정리)이고
- * `console_objectives_detail` 은 목표 하나의 화면(읽기·증거, 사람의 행위)이다. Console Use 는 이 이름을 그대로 쓰고,
- * 사령관 세션은 두 화면의 action 합집합을 `objective` 하나로 `fleet-commodore` 에 싣는다.
+ * 바깥 루프의 보드 자료 도구. `console_objectives` 는 목표 목록(그룹·확인 필요·진행 중·이력·모델, 추가·정리)을,
+ * `console_objectives_detail` 은 목표 하나의 자료(읽기·증거, 사람의 행위)를 다룬다. Console Use 는 이 이름을 그대로 쓰고,
+ * 사령관 세션은 두 도구의 action 합집합을 `objective` 하나로 `fleet-commodore` 에 싣는다.
  * 호출자는 행위의 귀속과 사령관의 Theater 경계만 가른다.
  *
  * 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 임무·달성 기준·구성원(모델 포함)은 지휘관의 구상에서 나오고, 기준은 지휘관의 제안을
- * 승인·거절해 바뀐다. 두 화면이 쓰는 것은 목표의 행위(구상·개시·스티어링·중단·결정 응답·기준 제안 판단·검토로 인계·완료·확장)와
+ * 승인·거절해 바뀐다. 두 도구가 쓰는 것은 목표의 행위(구상·개시·스티어링·중단·결정 응답·기준 제안 판단·검토로 인계·완료·확장)와
  * 제목·브리핑·기한 편집뿐이다. 메시지는 사람·Objective·플러그인 호출자의 발화이고, 사령관의 첨언은 스티어링이다.
  * 지휘관에게 건네는 말은 짧은 첨언으로 상한을 둔다.
  */
 
 
 const ids = z.string().min(1).max(128);
-const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("This turn's image IDs for the brief. No paths.");
+const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("This turn's image IDs only; no paths. Preserve request images in the brief before plan/steer.");
 const MAX_ADD_PER_TURN = 10;
 /** 일하는 세션이 있어도 전사를 읽을 수 있는 대기 사유 — 바깥의 판단을 기다리거나 막힌 목표다. */
 const TRANSCRIPT_REASONS: ReadonlySet<string> = new Set(["decision", "stalled", "member-failed", "review"]);
@@ -185,7 +185,7 @@ const sessionEditInput = z.object({
   title: z.string().trim().min(1).max(MAX_TITLE).optional().describe("Provide title, brief, dueDate, commanderModel or commanderEffort."),
   brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
   dueDate: dueDate.optional(),
-  attachmentIds: attachmentIds.optional().describe("This turn's image IDs; requires brief."),
+  attachmentIds: attachmentIds.optional().describe("This turn's image IDs only; requires brief. Preserve request images before plan/steer."),
   commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates. Dormant or idle Commander session only."),
   commanderEffort: z.string().trim().min(1).max(32).optional().describe("From the new or current model's efforts. Omitted keeps current; unsupported effort is refused."),
 }).strict();
@@ -198,7 +198,7 @@ const { edit_title: _retiredEditTitle, edit_brief: _retiredEditBrief, edit_due: 
  */
 const objectiveTool = defineConsoleTool({
   name: "console_objective",
-  description: "The Objectives board: lists and one objective's detail, acts and tidy. archive/remove: restorable. purge: archived only, irreversible after a 10s grace; restart cancels pending purges.",
+  description: "Objectives board: lists, detail, acts, tidy. archive/remove: restorable; purge: archived only, irreversible after 10s. hand_off: all-idle stalls only. Judge follow-ups together at review.",
   actions: {
     ...sessionListBase,
     list: { kind: "read", input: sessionListInput },
@@ -601,7 +601,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
   }
 
   if (bound) {
-    // 사령관 세션에는 보드 한 도구 — 목록·편집은 view·edit 입력으로 합친 형태로 받고, 나머지는 두 화면의 실행을 action 이름으로 골라 그대로 둔다.
+    // 사령관 세션에는 보드 한 도구 — 목록·편집은 view·edit 입력으로 합친 형태로 받고, 나머지는 두 도구의 실행을 action 이름으로 골라 그대로 둔다.
     const objective: ConsoleMcpTool = objectiveTool.plugin({
       surface: {
         panelId: "objectives",

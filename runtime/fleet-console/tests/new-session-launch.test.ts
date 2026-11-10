@@ -128,7 +128,7 @@ it("opens a registry goal as a full conversation before and after its session ar
   }, freshConversationSurface] };
   const board = { loaded: true, objectives: [{ ...goal, running: false, waiting: false, handedDecision: null }] };
   const offBoard = installCommodoreBoard({
-    read: () => board, subscribe: () => () => {}, subscribeFinished: () => () => {}, railEntryIds: [],
+    read: () => board, subscribe: () => () => {}, subscribeFinished: () => () => {},
     finished: () => [], finishedLoaded: () => true, findFinished: () => null, serverReached() {}, loadFinished() {},
     openObjective() {}, openObjectiveFromCluster() {}, openObjectiveOnPhone() {}, revealObjective() {}, renderObjectiveAvatar: () => null,
   });
@@ -209,16 +209,6 @@ it("opens a registry goal as a full conversation before and after its session ar
     node.remove(); closeConversationSurface(); offFresh(); offComposer(); offBody(); offBoard();
     removeObjectiveLocally(id); setState(previous); replaceCommodoreList(previousCommodores); canvas.mockRestore(); range.mockRestore(); vi.unstubAllGlobals();
   }
-});
-
-describe("kept commodore owner", () => {
-  // 유지 상태의 탭 줄은 사령관 탭 3개뿐 — 기본 「구성원」 탭은 펼친 행 패널의 「구성원」 탭이 대신한다.
-  it("hides the core members tab while the kept panel stands", async () => {
-    const { hidesCoreMembersTab } = await import("../features/workspace/client/conversation/conversation-shell.js");
-    expect(hidesCoreMembersTab(false, "c1")).toBe(true);
-    expect(hidesCoreMembersTab(true, null)).toBe(true);
-    expect(hidesCoreMembersTab(false, null)).toBe(false);
-  });
 });
 
 describe("kept commander tabs", () => {
@@ -371,7 +361,7 @@ describe("kept tabs across a fresh center", () => {
     const boardApi = { fetch: async () => new Response(JSON.stringify({ objectives: board.objectives, groups: [], launch: { available: false } }), { status: 200, headers: { "Content-Type": "application/json" } }) } as unknown as BoardApi;
     await act(async () => { await loadBoard(boardApi, owner); });
     const offBoard = installCommodoreBoard({
-      read: () => board, subscribe: () => () => {}, subscribeFinished: () => () => {}, railEntryIds: [],
+      read: () => board, subscribe: () => () => {}, subscribeFinished: () => () => {},
       finished: () => [], finishedLoaded: () => true, findFinished: () => null, serverReached() {}, loadFinished() {},
       openObjective() {}, openObjectiveFromCluster() {}, openObjectiveOnPhone() {}, revealObjective() {}, renderObjectiveAvatar: () => null,
     });

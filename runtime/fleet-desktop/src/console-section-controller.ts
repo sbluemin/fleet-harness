@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
-import { CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, parseConsoleSectionCommand, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, isConsoleRosterSummary, parseConsoleSectionCommand, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
 import { consoleLifecycleActions, type ConsoleAccessPath, type ConsoleLifecycleAction, type ConsoleManagedLifecycle, type ConsoleManagementRelation } from "@fleet-console/protocol/lifecycle/management";
 
 type Contents = Pick<WebContents, "on" | "removeListener" | "getURL" | "isDestroyed" | "executeJavaScript">;
@@ -19,9 +19,19 @@ export interface ManagedHomeConsole {
   /** Runs an action this controller judged allowed. Rejects when it could not be carried out. */
   readonly run: (action: ConsoleLifecycleAction) => Promise<void>;
 }
+type Relations = Pick<ConsoleSectionEntry, "management" | "path" | "lifecycle" | "actions">;
 interface Dependencies {
   readonly home: () => string | null;
   readonly fetch: (url: string, init?: RequestInit) => Promise<Response>;
+  /**
+   * 명부 GET. 생산 경로는 창 세션의 페어링 쿠키를 베껴 오는 shellNetwork.fetch다.
+   * 루프백은 그 함수가 Node fetch로 넘긴다. 조인 URL은 여기서 부르지 않는다.
+   */
+  readonly rosterFetch?: (url: string, init?: RequestInit) => Promise<Response>;
+  /** 평문 소켓으로 지문을 대조한다. 실패하면 그 원격에는 세션 fetch를 보내지 않는다. */
+  readonly confirmIdentity?: (hostname: string, port: number, fingerprint: string) => Promise<void>;
+  /** 대조가 끝난 뒤에만 핀한다. 핀은 세션 fetch가 인증서를 받아들이게 할 뿐 조인을 대신하지 않는다. */
+  readonly pinRemote?: (hostname: string, fingerprint: string) => void;
   readonly open: (origin: string) => Promise<void>;
   readonly add: (url: string) => void;
   /** Opens the management surface the home Console draws. Absent in a shell that offers none. */
@@ -30,11 +40,26 @@ interface Dependencies {
   readonly confirmForget: (label: string) => Promise<boolean>;
   readonly report: (error: unknown) => void;
 }
-type Relations = Pick<ConsoleSectionEntry, "management" | "path" | "lifecycle" | "actions">;
+interface RosterMemory {
+  readonly status: ConsoleRosterEntry["status"];
+  readonly at: number | null;
+  readonly commodores: readonly ConsoleRosterCommodore[];
+  readonly more: number;
+  readonly attemptedAt: number;
+}
+interface Arrival { readonly origin: string; readonly commodore: string; readonly anchorY: number | null }
+/** 집의 원격 목록에 있는 신원. 핸드오프(토큰 소진)로는 받지 않고, 문서에도 보내지 않는다. */
+interface RemoteIdentity { readonly hostname: string; readonly port: number; readonly fingerprint: string }
+
+const ROSTER_INTERVAL_MS = 15_000;
+const ROSTER_TIMEOUT_MS = 5_000;
+const ARRIVAL_TTL_MS = 30_000;
+
 const text = (value: unknown, fallback: string, max = 120): string => (typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/gu, "").trim().slice(0, max) : "") || fallback;
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 /** A Console found on this computer says who started it; that names its manager, it does not make this Desktop one. */
 const managementOfLocal = (owner: unknown): ConsoleManagementRelation => owner === "desktop" ? "other-desktop" : owner === "cli" ? "cli" : "unknown";
+const cleanId = (value: string): boolean => value.length > 0 && value.length <= 128 && !/[\u0000-\u001f\u007f]/u.test(value);
 
 /** 불투명 id는 창 하나가 소유한다. 활성 문서에는 명시한 표시 필드만 보낸다. */
 export function createConsoleSectionController(deps: Dependencies) {
@@ -53,6 +78,12 @@ export function createConsoleSectionController(deps: Dependencies) {
   /** The lifecycle action in flight on the home Console, and whether the last one failed. */
   let running: ConsoleLifecycleAction | null = null;
   let failed = false;
+  let switchSerial = 0;
+  let arrival: Arrival | null = null;
+  let arrivalTimer: ReturnType<typeof setTimeout> | null = null;
+  const folded = new Set<string>();
+  const rosterMemory = new Map<string, RosterMemory>();
+  let remoteIdentities = new Map<string, RemoteIdentity>();
   const at = () => {
     try { const url = new URL(contents?.getURL() ?? ""); return url.pathname.startsWith("/console/") ? url.origin : null; } catch { return null; }
   };
@@ -68,9 +99,35 @@ export function createConsoleSectionController(deps: Dependencies) {
     if (response.status === 204 || alreadyForgotten) return {};
     return record(await response.json());
   }
+  function clearArrival(): void {
+    arrival = null;
+    if (arrivalTimer) clearTimeout(arrivalTimer);
+    arrivalTimer = null;
+  }
+  function foldedIds(): string[] {
+    return [...folded].filter(cleanId).slice(0, 100);
+  }
+  function sectionFrame(entries: readonly ConsoleSectionEntry[]): number {
+    return new TextEncoder().encode(JSON.stringify({ v: 1, expanded, entries })).length;
+  }
+  /** 집과 지금 서 있는 콘솔은 남기고, 잘리는 것은 뒤쪽의 나머지다. 남은 항목의 순서는 바꾸지 않는다. */
+  function trimEntries(list: readonly Target[], homeOrigin: string, current: string | null): Target[] {
+    const next = [...list];
+    const kept = (target: Target): boolean => target.origin === homeOrigin || target.origin === current;
+    const drop = (): boolean => {
+      for (let index = next.length - 1; index >= 0; index -= 1) {
+        const candidate = next[index];
+        if (candidate && !kept(candidate)) { next.splice(index, 1); return true; }
+      }
+      return false;
+    };
+    while (next.length > 100 && drop()) { /* 검증기가 100개를 넘기면 거절한다. */ }
+    while (next.length > 1 && sectionFrame(next.map((target) => target.entry)) > CONSOLE_SECTION_MAX_FRAME && drop()) { /* 틀은 뒤쪽부터. */ }
+    return next;
+  }
   /**
-   * The home Console's relations. Management comes only from the manager's own proof; while an action runs, the row
-   * says so and offers nothing. A shell without a manager sends no relation, as shells did before this contract.
+   * The home Console's relations. Management comes only from the manager's own proof; while an action runs, the
+   * section says so and offers nothing. A shell without a manager sends no relation, as shells did before this contract.
    */
   async function homeRelations(): Promise<Relations & { readonly reachable: boolean }> {
     if (!deps.managedHome) return { reachable: true };
@@ -96,38 +153,150 @@ export function createConsoleSectionController(deps: Dependencies) {
     const homeOrigin = home();
     if (overlay && homeOrigin) await send(overlay, homeOrigin);
   }
+  function rosterEntries(): ConsoleRosterEntry[] {
+    const standing = at();
+    return [...targets.values()].filter((target) => target.origin !== standing).map((target) => {
+      const memory = rosterMemory.get(target.origin);
+      return { id: target.entry.id, status: memory?.status ?? "unavailable", at: memory?.at ?? null, commodores: memory?.commodores ?? [], more: memory?.more ?? 0 };
+    });
+  }
+  /** 뒤쪽 명부의 사령관부터 빼고, 뺀 수만큼 그 명부의 more를 올린다. 기억은 건드리지 않는다. */
+  function fitRosters(entries: readonly ConsoleRosterEntry[], foldedList: readonly string[], arrivalField: ConsoleRosterState["arrival"]): ConsoleRosterEntry[] {
+    const rosters = entries.map((entry) => ({ ...entry, commodores: [...entry.commodores] }));
+    const bytes = (): number => new TextEncoder().encode(JSON.stringify({ v: 1, rosters, folded: foldedList, arrival: arrivalField })).length;
+    while (bytes() > CONSOLE_ROSTER_MAX_FRAME) {
+      let index = -1;
+      for (let cursor = rosters.length - 1; cursor >= 0; cursor -= 1) {
+        if ((rosters[cursor]?.commodores.length ?? 0) > 0) { index = cursor; break; }
+      }
+      const chosen = index >= 0 ? rosters[index] : undefined;
+      if (chosen) { chosen.commodores.pop(); chosen.more += 1; continue; }
+      if (rosters.length === 0) break;
+      rosters.pop();
+    }
+    return rosters;
+  }
+  async function publishRoster(): Promise<void> {
+    const receiver = contents;
+    const origin = at();
+    if (!receiver || receiver.isDestroyed() || !origin) return;
+    const foldedList = foldedIds();
+    // arrival은 전환이 도착한 그 origin의 문서에만 실린다. 다른 문서의 스크립트에는 null이다.
+    const arrivalField: ConsoleRosterState["arrival"] = arrival && origin === arrival.origin ? { commodore: arrival.commodore, anchorY: arrival.anchorY } : null;
+    const state: ConsoleRosterState = { v: 1, rosters: fitRosters(rosterEntries(), foldedList, arrivalField), folded: foldedList, arrival: arrivalField };
+    const script = `if(location.origin===${JSON.stringify(origin)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_ROSTER_EVENT)},{detail:${JSON.stringify(state)}}))`;
+    await receiver.executeJavaScript(script).catch(() => undefined);
+  }
+  function rememberUnavailable(origin: string, previous: RosterMemory | undefined, attemptedAt: number): void {
+    const keep = previous && previous.status !== "unsupported";
+    rosterMemory.set(origin, { status: "unavailable", at: keep ? previous.at : null, commodores: keep ? previous.commodores : [], more: keep ? previous.more : 0, attemptedAt });
+  }
+  async function drain(response: Response): Promise<void> {
+    try { await response.body?.cancel(); } catch { /* 이미 읽었거나 비어 있다. */ }
+  }
+  /** 404·다른 형식은 unsupported. 401·그 밖 실패는 unavailable이고 마지막 성공 목록을 남긴다. */
+  async function classify(response: Response, previous: RosterMemory | undefined, attemptedAt: number): Promise<RosterMemory> {
+    if (response.status === 404) { await drain(response); return { status: "unsupported", at: null, commodores: [], more: 0, attemptedAt }; }
+    if (response.status === 401 || !response.ok) { await drain(response); return unavailableFrom(previous, attemptedAt); }
+    try {
+      const body: unknown = await response.json();
+      if (!isConsoleRosterSummary(body)) return { status: "unsupported", at: null, commodores: [], more: 0, attemptedAt };
+      return { status: "ok", at: attemptedAt, commodores: [...body.commodores], more: body.more, attemptedAt };
+    } catch {
+      return { status: "unsupported", at: null, commodores: [], more: 0, attemptedAt };
+    }
+  }
+  function unavailableFrom(previous: RosterMemory | undefined, attemptedAt: number): RosterMemory {
+    const keep = previous && previous.status !== "unsupported";
+    return { status: "unavailable", at: keep ? previous.at : null, commodores: keep ? previous.commodores : [], more: keep ? previous.more : 0, attemptedAt };
+  }
+  function remoteIdentity(host: Record<string, unknown>): RemoteIdentity | null {
+    const hostname = host.hostname;
+    const port = host.port;
+    const fingerprint = host.fingerprint;
+    if (typeof hostname !== "string" || hostname.length === 0 || hostname.length > 255) return null;
+    if (typeof fingerprint !== "string" || fingerprint.length === 0) return null;
+    if (!Number.isInteger(port) || (port as number) <= 0 || (port as number) > 65_535) return null;
+    return { hostname, port: port as number, fingerprint };
+  }
+  /**
+   * 목록에 있는 지문으로만 대조하고, 맞은 뒤에만 핀한다. 핸드오프는 부르지 않는다 —
+   * 그 호출은 1회용 토큰을 소진하고 연 시각을 남긴다. 목록에 없으면 세션 fetch도 없다.
+   */
+  async function admitRemote(origin: string): Promise<boolean> {
+    if (!deps.confirmIdentity || !deps.pinRemote) return false;
+    const identity = remoteIdentities.get(origin);
+    if (!identity) return false;
+    try { await deps.confirmIdentity(identity.hostname, identity.port, identity.fingerprint); } catch { return false; }
+    deps.pinRemote(identity.hostname, identity.fingerprint);
+    return true;
+  }
+  async function fetchRoster(target: Target): Promise<void> {
+    const origin = target.origin;
+    const previous = rosterMemory.get(origin);
+    const now = Date.now();
+    if (previous && now - previous.attemptedAt < ROSTER_INTERVAL_MS) return;
+    // 집 프로브가 이미 거절한 원격에는 세션 fetch를 보내지 않는다.
+    if (target.entry.kind === "remote" && (target.entry.status === "untrusted" || target.entry.status === "unreachable")) {
+      rememberUnavailable(origin, previous, now);
+      return;
+    }
+    if (target.entry.kind === "remote" && !await admitRemote(origin)) {
+      rememberUnavailable(origin, previous, Date.now());
+      return;
+    }
+    const http = target.entry.kind === "remote" ? deps.rosterFetch : (deps.rosterFetch ?? deps.fetch);
+    if (!http) { rememberUnavailable(origin, previous, Date.now()); return; }
+    const attemptedAt = Date.now();
+    try {
+      const headers = new Headers();
+      // 루프백 API는 다른 Origin을 401로 거절한다. 대상 자신을 싣는다.
+      headers.set("Origin", origin);
+      const response = await http(new URL(CONSOLE_ROSTER_PATH, origin).toString(), { method: "GET", headers, redirect: "error", signal: AbortSignal.timeout(ROSTER_TIMEOUT_MS) });
+      rosterMemory.set(origin, await classify(response, previous, attemptedAt));
+    } catch { rememberUnavailable(origin, previous, attemptedAt); }
+  }
+  async function collectRosters(epoch: number, next: Map<string, Target>): Promise<void> {
+    if (epoch !== generation || targets !== next) return;
+    const standing = at();
+    await Promise.all([...next.values()].filter((target) => target.origin !== standing).map((target) => fetchRoster(target)));
+    if (epoch !== generation || targets !== next) return;
+    await publishRoster();
+  }
   async function load(): Promise<void> {
     const origin = home();
     const epoch = generation;
     if (!origin || !contents || !at()) return;
-    const relations = await homeRelations();
+    const { reachable, ...homeExtra } = await homeRelations();
     if (epoch !== generation) return;
-    const current = at();
-    const next = new Map<string, Target>();
+    const built: Target[] = [];
     const nextIds = new Map<string, string>();
+    const seen = new Set<string>();
+    const current = at();
+    // An older shell sent no relation at all; without a manager this shell keeps doing so.
+    const relate = (management: ConsoleManagementRelation, path: ConsoleAccessPath): Relations => deps.managedHome ? { management, path } : {};
     const append = (targetOrigin: unknown, kind: "local" | "remote", label: unknown, version: unknown, state: ConsoleSectionEntry["status"], extra: Relations, recordId?: string) => {
       if (typeof targetOrigin !== "string" || !(kind === "local" ? isLoopbackConsoleOrigin(targetOrigin) : isRemoteConsoleOrigin(targetOrigin))) return;
-      if (next.size >= 100 || [...next.values()].some((target) => target.origin === targetOrigin)) return;
+      if (seen.has(targetOrigin)) return;
       const key = `${kind}:${recordId ?? targetOrigin}`;
       const id = ids.get(key) ?? randomUUID();
       const entry: ConsoleSectionEntry = { id, kind, label: text(label, new URL(targetOrigin).host), address: new URL(targetOrigin).host, version: typeof version === "string" && version ? text(version, "", 64) || null : null, active: targetOrigin === current, home: targetOrigin === origin, status: kind === "remote" ? targets.get(id)?.entry.status ?? state : state, ...extra };
-      const candidate = { v: 1, expanded, entries: [...next.values()].map((target) => target.entry).concat(entry) };
-      if (new TextEncoder().encode(JSON.stringify(candidate)).length > CONSOLE_SECTION_MAX_FRAME) return;
-      next.set(id, { origin: targetOrigin, ...(recordId ? { recordId } : {}), entry });
+      built.push({ origin: targetOrigin, ...(recordId ? { recordId } : {}), entry });
       nextIds.set(key, id);
+      seen.add(targetOrigin);
     };
-    const { reachable, ...homeExtra } = relations;
     /**
-     * The home Console does not answer, so its own lists cannot be read. The row stays, with the name it last had and
-     * the relations the manager just proved, so the person sees what happened instead of the last list that worked.
+     * The home Console does not answer, so its own lists cannot be read. Its section stays, with the name it last had
+     * and the relations the manager just proved, so the person sees what happened instead of the last list that worked.
      */
     const homeOnly = async (): Promise<void> => {
       const before = [...targets.values()].find((target) => target.entry.home)?.entry;
       append(origin, "local", before?.label, before?.version, "unreachable", homeExtra);
-      if (current && current !== origin) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, { management: "unknown", path: isLoopbackConsoleOrigin(current) ? "loopback" : "remote" });
-      targets = next;
+      if (current && !seen.has(current)) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, { management: "unknown", path: isLoopbackConsoleOrigin(current) ? "loopback" : "remote" });
+      targets = new Map(built.map((target) => [target.entry.id, target]));
       ids = nextIds;
       await publish();
+      await publishRoster();
     };
     // A managed home Console that is stopped is not a failure to report.
     if (!reachable) { await homeOnly(); return; }
@@ -141,18 +310,25 @@ export function createConsoleSectionController(deps: Dependencies) {
     }
     const [saved, nearby, status] = lists;
     if (epoch !== generation) return;
-    // An older shell sent no relation at all; without a manager this shell keeps doing so.
-    const relate = (management: ConsoleManagementRelation, path: ConsoleAccessPath): Relations => deps.managedHome ? { management, path } : {};
+    // 순서는 활성과 무관하게 고정한다. 밝기만 active로 바뀐다.
     append(origin, "local", status.name, status.version, "ready", homeExtra);
     const hosts = Array.isArray(saved.hosts) ? saved.hosts.map(record) : [];
+    const identities = new Map<string, RemoteIdentity>();
+    for (const host of hosts) {
+      if (typeof host.origin !== "string") continue;
+      const identity = remoteIdentity(host);
+      if (identity) identities.set(host.origin, identity);
+    }
     const locals = Array.isArray(nearby.consoles) ? nearby.consoles.map(record) : [];
-    // 크기 상한에 닿더라도 집과 지금 서 있는 Console은 남긴다.
-    const activeRemote = hosts.find((host) => host.origin === current);
-    if (activeRemote && typeof activeRemote.id === "string") append(activeRemote.origin, "remote", activeRemote.label, null, null, relate("unknown", "remote"), activeRemote.id);
-    if (current && current !== origin && !activeRemote) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, relate("unknown", isLoopbackConsoleOrigin(current) ? "loopback" : "remote"));
     for (const local of locals) append(local.origin, "local", local.origin === origin ? status.name : undefined, local.version, local.state === "stopping" ? "stopping" : local.state === "unresponsive" ? "slow" : "ready",
       relate(managementOfLocal(local.owner), typeof local.distro === "string" && local.distro ? "wsl" : "loopback"));
     for (const host of hosts) if (typeof host.id === "string") append(host.origin, "remote", host.label, null, null, relate("unknown", "remote"), host.id);
+    // 저장되지 않은 현재 origin은 맨 뒤에 둔다. 틀을 넘기면 집·현재가 아닌 뒤쪽부터 뺀다.
+    if (current && !seen.has(current)) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, relate("unknown", isLoopbackConsoleOrigin(current) ? "loopback" : "remote"));
+    const trimmed = trimEntries(built, origin, current);
+    const keptIds = new Set(trimmed.map((target) => target.entry.id));
+    for (const [key, id] of nextIds) if (!keptIds.has(id)) nextIds.delete(key);
+    const next = new Map(trimmed.map((target) => [target.entry.id, target]));
     targets = next;
     ids = nextIds;
     await publish();
@@ -165,12 +341,16 @@ export function createConsoleSectionController(deps: Dependencies) {
         next.set(id, { ...target, entry: { ...target.entry, status: reach.reachable !== true ? "unreachable" : reach.trusted !== true ? "untrusted" : "ready" } });
       } catch { /* 조회 실패는 알 수 없음이지 인증서 불일치 판정이 아니다. */ }
     }));
-    if (epoch === generation && targets === next) await publish();
+    if (epoch === generation && targets === next) {
+      remoteIdentities = identities;
+      await publish();
+      await collectRosters(epoch, next);
+    }
   }
   function refresh(): Promise<void> {
     if (refreshRunning) { refreshAgain = true; return refreshRunning; }
     refreshRunning = (async () => {
-      do { refreshAgain = false; try { await load(); } catch (error) { deps.report(error); if (!deps.managedHome) await publish(); } } while (refreshAgain && contents);
+      do { refreshAgain = false; try { await load(); } catch (error) { deps.report(error); if (!deps.managedHome) await publish(); await publishRoster(); } } while (refreshAgain && contents);
     })().finally(() => { refreshRunning = null; });
     return refreshRunning;
   }
@@ -199,20 +379,31 @@ export function createConsoleSectionController(deps: Dependencies) {
     }
   }
   async function command(value: ConsoleSectionCommand, fromHome: boolean): Promise<void> {
-    if ("request" in value) { await refresh(); return; }
+    // 막 적재된 문서는 도착할 사령관을 기다리며 「다 그렸다」를 미룬다. 집 목록과 명부를 다시 읽기 전에
+    // 지금 아는 상태를 먼저 건네야 그 기다림이 조회 시간만큼 늘어나지 않는다.
+    if ("request" in value) { await publish(); await publishRoster(); await refresh(); return; }
     if ("expanded" in value) { expanded = value.expanded; await publish(); if (expanded) await refresh(); return; }
     if ("add" in value) {
       const origin = home();
       if (origin) { const url = new URL("/console/", origin); url.searchParams.set("desktop-surface", "host-picker"); url.searchParams.set("intent", "add"); url.searchParams.set("at", at() ?? origin); deps.add(url.toString()); }
       return;
     }
-    // Lifecycle is the manager's alone. A page of another Console may show the row, but only a document the home
+    if ("fold" in value) {
+      if (value.fold.folded) folded.add(value.fold.id); else folded.delete(value.fold.id);
+      await publishRoster();
+      return;
+    }
+    // 도착 확인은 그 문서를 연 origin에서만 받는다. 다른 문서의 arrived는 지우지 않는다.
+    if ("arrived" in value) {
+      if (arrival && at() === arrival.origin) { clearArrival(); await publishRoster(); }
+      return;
+    }
+    // Lifecycle is the manager's alone. A page of another Console may show the section, but only a document the home
     // Console serves may ask: the stale home page of a stopped Console, or the management surface.
     if ("lifecycle" in value) { if (fromHome) await runLifecycle(value.lifecycle.id, value.lifecycle.action); return; }
     const id = "switch" in value ? value.switch : "forget" in value ? value.forget : "manage" in value ? value.manage : value.rename.id;
     const target = targets.get(id);
     if (!target) return;
-    if ("switch" in value) { await deps.open(target.origin); return; }
     if ("manage" in value) {
       const origin = home();
       // The surface is the home Console's document, so it opens only while that Console answers.
@@ -222,7 +413,30 @@ export function createConsoleSectionController(deps: Dependencies) {
       deps.manage(url.toString());
       return;
     }
-    // Renaming and forgetting act on a saved record. The record grants them, not the kind the row is drawn with.
+    if ("switch" in value) {
+      const serial = ++switchSerial;
+      // 다음 전환이 시작되면 이전 도착 표시는 바로 지운다. 실패해도 다시 켜지 않는다.
+      clearArrival();
+      const commodore = value.commodore ?? null;
+      const anchorY = value.anchorY ?? null;
+      // 새 문서는 적재되자마자 상태를 요청한다. open이 끝나기 전에 세워 두어야 그 요청에 실린다.
+      // publishRoster는 도착한 origin에서만 arrival을 넣으므로 떠나는 문서에는 새지 않는다.
+      if (commodore) {
+        arrival = { origin: target.origin, commodore, anchorY };
+        arrivalTimer = setTimeout(() => {
+          if (switchSerial === serial && arrival?.origin === target.origin && arrival.commodore === commodore) { clearArrival(); void publishRoster(); }
+        }, ARRIVAL_TTL_MS);
+        arrivalTimer.unref?.();
+      }
+      try { await deps.open(target.origin); } catch (error) {
+        if (serial === switchSerial) clearArrival();
+        throw error;
+      }
+      if (serial !== switchSerial) return;
+      await publishRoster();
+      return;
+    }
+    // Renaming and forgetting act on a saved record. The record grants them, not the kind the section is drawn with.
     if (!target.recordId || mutating) return;
     const epoch = generation;
     mutating = true;
@@ -233,13 +447,6 @@ export function createConsoleSectionController(deps: Dependencies) {
       await refresh();
     } finally { mutating = false; }
   }
-  /** Rate-limits and parses a command navigation. Returns the command, or null when it is to be dropped. */
-  function accept(url: URL): ConsoleSectionCommand | null {
-    const now = Date.now();
-    if (now - budgetStart >= 1000) { budgetStart = now; budget = 0; }
-    if (++budget > 20) return null;
-    return parseConsoleSectionCommand(url.searchParams.get("command") ?? "");
-  }
   function close(): void {
     generation++;
     detach(); detach = () => {};
@@ -247,6 +454,11 @@ export function createConsoleSectionController(deps: Dependencies) {
     overlay = null;
     targets.clear(); ids.clear(); expanded = true;
     budget = 0; budgetStart = 0;
+    switchSerial++;
+    clearArrival();
+    folded.clear();
+    rosterMemory.clear();
+    remoteIdentities = new Map();
   }
   return {
     refresh,
@@ -267,7 +479,10 @@ export function createConsoleSectionController(deps: Dependencies) {
         let from: string;
         try { from = new URL(view.getURL()).origin; } catch { return; }
         if (from !== home()) return;
-        const value = accept(url);
+        const now = Date.now();
+        if (now - budgetStart >= 1000) { budgetStart = now; budget = 0; }
+        if (++budget > 20) return;
+        const value = parseConsoleSectionCommand(url.searchParams.get("command") ?? "");
         if (value && ("lifecycle" in value || "request" in value)) void command(value, true).catch((error) => { deps.report(error); void publish(); });
       }) as never);
       view.on("did-finish-load", (() => { if (overlay === view && epoch === generation) void refresh(); }) as never);
@@ -283,14 +498,18 @@ export function createConsoleSectionController(deps: Dependencies) {
         if (url.searchParams.get("desktop-surface") !== CONSOLE_SECTION_COMMAND) return;
         event.preventDefault();
         if (mainFrame === false || contents !== receiver || receiver.isDestroyed() || url.origin !== at() || url.pathname !== "/console/") return;
-        const value = accept(url);
-        if (value) void command(value, at() === home()).catch((error) => { deps.report(error); void publish(); });
+        const now = Date.now();
+        if (now - budgetStart >= 1000) { budgetStart = now; budget = 0; }
+        if (++budget > 20) return;
+        const value = parseConsoleSectionCommand(url.searchParams.get("command") ?? "");
+        if (value) void command(value, at() === home()).catch((error) => { deps.report(error); void publish(); void publishRoster(); });
       };
-      const arrived = () => { generation++; void refresh(); };
+      const arrived = () => { generation++; void publish().then(publishRoster).finally(() => { void refresh(); }); };
       receiver.on("will-navigate", navigate as never);
       receiver.on("did-navigate", arrived);
       receiver.on("did-finish-load", arrived);
       detach = () => { receiver.removeListener("will-navigate", navigate as never); receiver.removeListener("did-navigate", arrived); receiver.removeListener("did-finish-load", arrived); };
+      void refresh();
     },
   };
 }

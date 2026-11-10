@@ -99,7 +99,7 @@ export function createCommodoreClient(board: CommodoreBoardClient | null) {
     mentionTargets: commodoreMentionTargets,
     subscribeMentionTargets: subscribeCommodoreMentions,
     messageMentionTarget: messageCommodoreMention,
-    theaterInboxSections: [{ ...commodoreInboxSection, omitsRailEntries: board?.railEntryIds ?? [] }],
+    theaterInboxSections: [commodoreInboxSection],
     sidebarFooterEntries: [{ id: "global-plugins", layout: "fill", render: () => <GlobalPluginsEntry /> }],
     persistentComponents: [
       { id: "global-plugins", render: () => <GlobalPluginsHost /> },

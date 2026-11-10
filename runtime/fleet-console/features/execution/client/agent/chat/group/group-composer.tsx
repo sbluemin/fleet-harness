@@ -73,7 +73,7 @@ const MENTION_QUERY = /(?:^|\s)@([^\s@]*)$/u;
 const ARM_MS = 4000;
 
 const glyphPath = (d: string) => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={d} /></svg>;
-/** 보드 동작 글리프 — 목표 보드의 같은 동작과 같은 모양이다. */
+/** 목표 동작 글리프 — 구상·개시·스티어링을 같은 모양으로 나타낸다. */
 const BOARD_GLYPHS: Readonly<Record<GroupBoardActionGlyph, React.ReactNode>> = {
   plan: glyphPath("M3 13l7-7M10 3l.6 1.6L12.2 5l-1.6.6L10 7.2 9.4 5.6 7.8 5l1.6-.6zM13 9l.4 1 1 .4-1 .4-.4 1-.4-1-1-.4 1-.4z"),
   start: glyphPath("M4.5 3.5l8 4.5-8 4.5z"),

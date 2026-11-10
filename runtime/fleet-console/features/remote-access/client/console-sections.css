@@ -1,0 +1,79 @@
+/* 사이드바의 콘솔 섹션. 지금 콘솔의 머리글 아래에는 이 문서의 자기 목록이, 다른 콘솔 아래에는 흐린 명부가 선다.
+   흐림은 제품 글자 토큰(둘째·셋째 단)과 무채색 아바타로 내고, 행 전체를 투명하게 하지 않는다 — 글자 대비를 지키기 위해서다. */
+.side-console { list-style: none; min-width: 0; }
+.side-console + .side-console,
+.objective-records-side-bar-chips > :not(.side-console) + .side-console { margin-top: 8px; }
+.side-console-head { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; margin: 0 6px; border-radius: 10px; background: var(--surface-capsule); box-shadow: inset 0 0 0 1px var(--surface-rim); }
+.side-console-head button { font: inherit; cursor: pointer; }
+.side-console-head button:focus-visible, .side-console-row:focus-visible, .side-console-enter:focus-visible, .side-console-add:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.side-console-toggle { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 34px; padding: 0 8px 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); text-align: left; }
+.side-console-head.is-active .side-console-toggle { color: var(--text-primary); }
+.side-console-toggle svg { display: block; flex: none; width: 15px; height: 15px; }
+.side-console-name { display: flex; flex: 1; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--t-sm); }
+.side-console-name b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-bold); }
+.side-console-name small { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
+.side-console-home { display: grid; flex: none; place-items: center; color: var(--text-tertiary); }
+.side-console-here { flex: none; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--text-primary); color: var(--canvas-side); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
+.side-console-status { flex: none; font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--warn-ink); }
+.side-console-head[data-status="unreachable"] .side-console-status { color: var(--coral-ink); }
+.side-console-count { flex: none; font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+.side-console-toggle .side-console-chevron { width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-base) var(--ease-glide); }
+.side-console-head.is-folded .side-console-chevron { transform: rotate(-90deg); }
+/* 연필은 머리글 위에 얹는다 — 자리를 따로 잡으면 원격 콘솔의 펼침 화살표만 다른 머리글과 어긋난다. */
+.side-console-edit { position: absolute; top: 4px; right: 26px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: linear-gradient(var(--surface-capsule), var(--surface-capsule)), var(--canvas-side); color: var(--text-tertiary); opacity: 0; }
+.side-console-edit svg { width: 14px; height: 14px; }
+.side-console-head:hover .side-console-edit, .side-console-head:focus-within .side-console-edit { opacity: 1; }
+.side-console-edit:hover { background: linear-gradient(var(--wash-hover), var(--wash-hover)), var(--canvas-side); color: var(--text-primary); }
+/* 관리 대상의 생명주기 — 꺼져 있음은 사실일 뿐 경고가 아니고, 움직이는 중과 실패만 신호 색을 쓴다. */
+.side-console-head[data-lifecycle="stopped"] .side-console-status { color: var(--text-tertiary); }
+.side-console-head[data-lifecycle="starting"] .side-console-status, .side-console-head[data-lifecycle="stopping"] .side-console-status { color: var(--aurora-ink); }
+.side-console-head[data-lifecycle="failed"] .side-console-status { color: var(--coral-ink); }
+/* 꺼진 관리 대상을 다시 켜는 단추. 머리글 안의 한 가지 동작이라 늘 보인다. */
+.side-console-start { flex: none; margin-right: 6px; border: 0; border-radius: 8px; padding: 3px 10px; background: var(--wash-hover); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; }
+.side-console-start:hover { background: var(--control-rest-hover); }
+.side-console-head.is-editing { display: block; padding: 8px 10px 10px; }
+.side-console-form { display: grid; gap: 8px; min-width: 0; }
+.side-console-form input { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--surface-rim-strong); border-radius: 8px; background: var(--canvas-side); color: var(--text-primary); font: inherit; font-size: var(--t-md); }
+.side-console-form > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.side-console-form button { padding: 4px 10px; border: 0; border-radius: 8px; background: var(--wash-hover); color: var(--text-secondary); font-size: var(--t-xs); }
+.side-console-form button:disabled { cursor: default; opacity: .5; }
+.side-console-form .is-danger { color: var(--coral-ink); }
+
+.side-console-roster { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 2px 0 0; list-style: none; }
+.side-console-row { display: flex; align-items: center; gap: 10px; width: calc(100% - 8px); min-width: 0; height: 40px; margin: 0 4px; padding: 0 8px 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); font: inherit; text-align: left; cursor: pointer; }
+.side-console-avatar { flex: none; filter: saturate(.25); opacity: .75; transition: filter var(--duration-base), opacity var(--duration-base); }
+.side-console-row-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-md); font-weight: var(--weight-medium); }
+.side-console-row-run { flex: none; font-size: var(--t-xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
+.side-console-row-run[data-run="working"] { color: color-mix(in oklch, var(--id-teal) 55%, var(--text-secondary)); }
+.side-console-row-run[data-run="waiting"] { color: color-mix(in oklch, var(--warn-ink) 55%, var(--text-secondary)); }
+.side-console-row-hint { flex: none; margin-left: auto; font-size: var(--t-2xs); color: var(--text-tertiary); opacity: 0; }
+.side-console-row:not([aria-disabled="true"]):is(:hover, :focus-visible) { background: var(--wash-hover); color: var(--text-primary); }
+.side-console-row:not([aria-disabled="true"]):is(:hover, :focus-visible) .side-console-avatar { filter: none; opacity: 1; }
+.side-console-row:not([aria-disabled="true"]):is(:hover, :focus-visible) .side-console-row-hint { opacity: 1; }
+.side-console-row[aria-disabled="true"] { cursor: default; color: var(--text-tertiary); }
+.side-console-row[aria-disabled="true"] .side-console-avatar { opacity: .45; }
+.side-console-more { padding: 2px 18px; font-size: var(--t-xs); color: var(--text-tertiary); }
+.side-console-note { display: flex; flex-direction: column; gap: 6px; margin: 2px 10px 4px; padding: 8px 10px; border-radius: 10px; background: var(--wash-hover); font-size: var(--t-xs); line-height: 1.5; color: var(--text-secondary); }
+.side-console-note p { margin: 0; }
+.side-console-enter { align-self: flex-start; padding: 3px 9px; border: 0; border-radius: 8px; background: transparent; box-shadow: inset 0 0 0 1px var(--surface-rim-strong); color: var(--text-primary); font: inherit; font-size: var(--t-xs); font-weight: var(--weight-medium); cursor: pointer; }
+.side-console-enter:hover { background: var(--wash-hover); }
+
+.side-console-add-item { list-style: none; margin-top: 6px; }
+.side-console-add { display: flex; align-items: center; gap: 8px; width: calc(100% - 12px); height: 32px; margin: 0 6px; padding: 0 12px; border: 0; border-radius: 10px; background: transparent; color: var(--text-tertiary); font: inherit; font-size: var(--t-sm); text-align: left; cursor: pointer; }
+.side-console-add svg { display: block; flex: none; width: 15px; height: 15px; }
+.side-console-add:hover { background: var(--wash-hover); color: var(--text-primary); }
+
+/* 좁은 열 — 머리글은 콘솔 글리프만, 명부는 아바타만 선다. 접힘은 넓은 목록에서만 쓴다. */
+.objective-records-side-bar.is-compact .side-console-head { justify-content: center; margin: 0; background: transparent; box-shadow: none; }
+.objective-records-side-bar.is-compact .side-console-toggle { flex: none; justify-content: center; width: 28px; height: 24px; padding: 0; color: var(--text-tertiary); }
+.objective-records-side-bar.is-compact .side-console-head.is-active .side-console-toggle { color: var(--text-primary); }
+.objective-records-side-bar.is-compact :is(.side-console-name, .side-console-home, .side-console-here, .side-console-status, .side-console-count, .side-console-chevron, .side-console-edit, .side-console-row-name, .side-console-row-run, .side-console-row-hint, .side-console-more, .side-console-note) { display: none; }
+.objective-records-side-bar.is-compact .side-console-roster { align-items: center; gap: calc(8px / var(--compact-layout-zoom, 1)); }
+.objective-records-side-bar.is-compact .side-console-row { justify-content: center; width: 36px; height: 32px; margin: 0; padding: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .side-console-chevron, .side-console-avatar { transition: none; }
+}
+@media (forced-colors: active) {
+  .side-console-head { border: 1px solid CanvasText; }
+  .side-console-here { background: Highlight; color: HighlightText; }
+}

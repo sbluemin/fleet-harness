@@ -569,7 +569,7 @@ export function persistWorkbench(): void {
 
 // ── 도구 질의 ─────────────────────────────────────────────────────────────
 
-/** 칸으로 여는 레일 엔트리(도구) — 대화 칸이 지금 레지스트리에서 골라 알린다. 오른쪽 사이드바의 탭(대상의 탭·목표·설정)은 여기 없다. */
+/** 칸으로 여는 레일 엔트리(도구) — 대화 칸이 지금 레지스트리에서 골라 알린다. 오른쪽 사이드바의 탭(대상의 탭·설정)은 여기 없다. */
 let toolEntryIds: ReadonlySet<string> = new Set();
 
 export function setWorkbenchToolEntries(ids: Iterable<string>): void {

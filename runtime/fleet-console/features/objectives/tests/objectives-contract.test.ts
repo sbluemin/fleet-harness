@@ -3605,8 +3605,12 @@ describe("Objectives contract", () => {
     const legacyByName = new Map(legacy.map((tool) => [tool.name, tool] as const));
     for (const tool of [...commander, ...member]) {
       const old = [...Object.entries(COMMANDER_TOOL_RENAMES), ...Object.entries(MEMBER_TOOL_RENAMES)].find(([, renamed]) => renamed === tool.name)?.[0] ?? tool.name;
-      expect(tool.description).toBe(legacyByName.get(old)!.description);
+      // mine 만 공통 문장 뒤에 그 역할의 기본 역할이 붙는다.
+      if (old === "mine") expect(tool.description.startsWith(`${legacyByName.get(old)!.description} `)).toBe(true);
+      else expect(tool.description).toBe(legacyByName.get(old)!.description);
     }
+    // 지휘관과 구성원은 서로 다른 기본 역할을 받는다.
+    expect(commander.find((tool) => tool.name === "objective_mine")!.description).not.toBe(member.find((tool) => tool.name === "objective_mine")!.description);
     // 지휘관 전용 16개는 구성원 서버에 실리지 않는다 — 수신 자체가 없어 거절이 생기지 않는다. message 는 역할마다 이름이 다르다.
     for (const tool of commander) {
       if (tool.name === "member_message" || ([...FLEET_MEMBER_TOOL_NAMES] as readonly string[]).includes(tool.name)) continue;

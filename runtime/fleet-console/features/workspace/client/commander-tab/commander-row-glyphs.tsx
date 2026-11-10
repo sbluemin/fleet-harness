@@ -63,7 +63,7 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
         const dotLabel = decision && tab === "goal" ? t("commanderTab.rowGlyph.decision") : null;
         const Glyph = TAB_GLYPH[tab];
         // 보여 줄 것이 하나도 없는 탭은 흐리고 열리지 않는다 — 안내 문구는 두지 않는다. 보드를 읽기 전에는 비었다고 단정하지 않는다.
-        const empty = objective !== null && !objectiveTabHasContent(objective, tab, sharedFiles);
+        const empty = objective !== null && !(tab === "goal" && !objective.done) && !objectiveTabHasContent(objective, tab, sharedFiles);
         return (
           <button
             key={tab}

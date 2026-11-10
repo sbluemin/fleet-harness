@@ -8,7 +8,7 @@ import type { CommodoreAsk } from "../shared/contracts/types.js";
 import { MAX_DECISION_ANSWER_INPUT } from "../shared/contracts/questions.js";
 import { answerCommodoreAsk, askObjectiveTitle, commodoreDecisionCardRenderer, openAsks, useCommodore } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
-import { openObjectiveFromCluster, openObjectiveOnPhone, revealObjective, useObjectiveTheater } from "./board.js";
+import { openObjectiveFromCluster, openObjectiveOnPhone, useObjectiveTheater } from "./board.js";
 
 type T = Translate<CommodoreMessageKey>;
 
@@ -61,7 +61,6 @@ export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, languag
           key={`${objective.id}:${decision.id}`}
           decision={{ ...decision, open: () => {
             if (phone) { const open = () => openObjectiveOnPhone(objective.id, objective.theaterId); if (leave) leave(open); else open(); return; }
-            revealObjective({ objectiveId: objective.id });
             openObjectiveFromCluster(objective.theaterId, objective.id);
           } }}
           asker={{ kind: "commander", name: objective.title, objectiveId: objective.id }}
@@ -114,7 +113,6 @@ function askDecision(ask: CommodoreAsk, { theaterId, contextTheaterId, t, phone,
     ...(objectiveId && objectiveOnBoard ? {
       open: () => {
         if (phone) { const open = () => openObjectiveOnPhone(objectiveId, contextTheaterId); if (leave) leave(open); else open(); return; }
-        revealObjective({ objectiveId });
         openObjectiveFromCluster(contextTheaterId, objectiveId);
       },
     } : {}),

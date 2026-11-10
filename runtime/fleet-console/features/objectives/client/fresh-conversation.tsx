@@ -5,12 +5,12 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 
 import type { Objective } from "../shared/types.js";
 import { getT } from "./i18n/index.js";
-import { FRESH_SURFACE_ID, loadObjective, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesFailed, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusObjective, listedObjectiveSummaries, openObjectiveFromCluster, patchOwnerView, revealObjective, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
+import { FRESH_SURFACE_ID, loadObjective, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesFailed, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusObjective, listedObjectiveSummaries, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 /**
  * 대화 중심 화면의 「시작 전」 목표 — 지휘관 Objective 이 아직 없는 목표를 첫 메시지가 없는 대화처럼 가운데 칸에 세운다.
  * 완료해 지휘관이 보관된 목표도 같은 칸에 「완료」로 선다 — 입력창의 말은 지휘관에게 가고(범위 넓히기는 고르는 칩), 보내면 서버가 지휘관을 휴면으로 복원한다.
- * 칸이 서 있는 동안 호스트는 활성 Objective 을 비우므로 가운데 칸·오른쪽 패널 머리·사이드바 하이라이트가 모두 이 목표를 가리킨다.
+ * 칸이 서 있는 동안 호스트는 활성 Objective 을 비우므로 가운데 칸과 사이드바 하이라이트는 이 목표를 가리키고 우측 패널은 사령관을 유지한다.
  * 개시해 지휘관 Objective 이 서면 그 대화로 넘긴다(호스트의 포커스가 이 칸을 걷는다). 여닫기는 SDK 능력(`ctx.conversation`)만 쓴다.
  */
 
@@ -49,18 +49,8 @@ export function openObjectiveConversation(objectiveId: string, theaterId: string
   return openFreshConversation(objectiveId, theaterId);
 }
 
-/**
- * 데스크톱에서 한 목표로 간다 — 가운데 칸에 그 목표의 대화(지휘관 대화, 없으면 시작·완료 화면)를 세우고 레일의 목표 패널을 연다. 레일만
- * 바꾸면 가운데 칸과 입력창이 앞 목표에 남는다. 완료로 보관된 목표(`done`)는 살아 있는 목록에 없으므로, 보드가 reveal 대신 가운데 완료 화면이
- * 읽은 끝난 목표 레코드를 고르게 한다. 대화를 세웠으면 Theater 를 따로 옮기지 않는다(옮기기는 가운데 대화를 걷는다). 팔레트의 목표 결과와
- * 사령관 기록의 참조 토큰이 이 하나로 연다.
- */
-export function goToObjective(objectiveId: string, theaterId: string, done: boolean): void {
-  const shown = openObjectiveConversation(objectiveId, theaterId);
-  if (done && shown) patchOwnerView(findAnyObjective(objectiveId)?.commodoreId ?? null, () => ({ selected: objectiveId, externalSelectionId: null }));
-  else revealObjective({ objectiveId });
-  if (shown) openObjectiveFromCluster();
-  else openObjectiveFromCluster(theaterId, objectiveId);
+export function goToObjective(objectiveId: string, theaterId: string, _done: boolean): void {
+  openObjectiveConversation(objectiveId, theaterId);
 }
 
 /** 지금 가운데 칸에 시작 화면이 선 목표. 없으면 null. */
@@ -72,7 +62,7 @@ export function freshConversationObjectiveId(): string | null {
 }
 
 /**
- * 가운데 완료 화면이 세운 보관된 완료 목표 — 살아 있는 목록에 없고 읽어 둔 끝난 목표에만 있는 레코드. 레일의 보드가 같은 레코드를 보인다.
+ * 가운데 완료 화면이 세운 보관된 완료 목표 — 살아 있는 목록에 없고 읽어 둔 끝난 목표에만 있는 레코드. 팝업도 같은 레코드를 읽는다.
  * 없으면 null. 같은 상태면 같은 참조다.
  */
 export function shownFinishedObjective(): Objective | null {
@@ -157,7 +147,7 @@ function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, compose
   );
 }
 
-/** Console 이 가운데 칸·오른쪽 패널 머리에 세우는 시작 전 목표. 오른쪽 패널의 「목표」는 목표 레일 패널이, 「구성원」은 Console 이 명부로 진다. */
+/** Console 이 가운데 칸에 세우는 시작 전 목표. 상세·편집은 목표 팝업이, 우측 사이드바는 사령관 패널이 맡는다. */
 export const freshConversationSurface: ConversationSurfaceDescriptor = {
   id: FRESH_SURFACE_ID,
   title: (ctx) => findObjective(objectiveIdOf(ctx.params))?.title ?? getT(ctx.language)("objectives.state.fresh"),
@@ -169,7 +159,7 @@ export const freshConversationSurface: ConversationSurfaceDescriptor = {
     return objectiveId && objective ? { key: objectiveRecordAvatarKey(objectiveId), role: "commander", label: objective.title, state: objective.done ? "done" : "fresh" } : null;
   },
   subscribe: (listener) => subscribeObjectiveOrFinished(listener),
-  // 개시하면 이 목표 id 로 지휘관 Objective 이 선다 — 오른쪽 패널은 진행 중 Objective 과 같은 머리(「목표 | 구성원」 글자 탭)로 선다.
+  // 개시하면 이 목표 id 로 지휘관 Objective 이 선다 — 오른쪽 패널은 같은 사령관의 탭을 유지한다.
   standInObjectiveId: (ctx) => objectiveIdOf(ctx.params),
   commodoreId: (ctx) => findObjective(objectiveIdOf(ctx.params))?.commodoreId ?? null,
   render: (ctx) => {

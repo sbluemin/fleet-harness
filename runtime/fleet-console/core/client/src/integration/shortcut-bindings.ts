@@ -34,7 +34,6 @@ export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   // 사령관·지휘관과 무관한 독립 Claude Code CLI. Ctrl+₩ 는 한국어 자판의 Backquote 자리다 — 물리 코드로 받으므로 자판이 달라도
   // 같은 자리다. macOS 에서도 ⌘ 가 아니라 ⌃ 이다(⌘` 는 OS 의 창 전환이라 페이지에 닿지 않는다).
   { id: "console.standalone-cli", group: "console", descriptionKey: "shortcuts.console.standaloneCli", defaults: ["Ctrl+Backquote"] },
-  { id: "console.toggle-objectives", group: "console", descriptionKey: "shortcuts.console.toggleObjectives", defaults: ["Mod+Shift+KeyY"], railEntryId: "objectives" },
   { id: "console.undo-close", group: "console", descriptionKey: "shortcuts.objectiveRecords.undoClose", defaults: ["Mod+KeyZ"] },
 ];
 

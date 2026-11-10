@@ -237,16 +237,18 @@ describe("host picker surface", () => {
     try {
       send({ request: "state" });
       await section.refresh();
-      expect(events.length).toBeGreaterThan(0);
+      const sectionEvents = events.filter((event) => event.type === CONSOLE_SECTION_EVENT);
+      expect(sectionEvents.length).toBeGreaterThan(0);
       for (const event of events) {
-        expect(event.type).toBe(CONSOLE_SECTION_EVENT);
-        expect(Object.keys(event.detail).sort()).toEqual(["entries", "expanded", "v"]);
-        for (const entry of event.detail.entries) expect(Object.keys(entry).sort()).toEqual(["active", "address", "home", "id", "kind", "label", "status", "version"]);
         const frame = JSON.stringify(event.detail);
         for (const secret of [LOCAL, REMOTE, FINGERPRINT, "private-record-id", "grant-token", "fleet://", "/private/local-path", "addedAt"]) expect(frame).not.toContain(secret);
       }
-      const remote = events.at(-1)!.detail.entries.find((entry) => entry.active)!;
-      const home = events.at(-1)!.detail.entries.find((entry) => entry.home)!;
+      for (const event of sectionEvents) {
+        expect(Object.keys(event.detail).sort()).toEqual(["entries", "expanded", "v"]);
+        for (const entry of event.detail.entries) expect(Object.keys(entry).sort()).toEqual(["active", "address", "home", "id", "kind", "label", "status", "version"]);
+      }
+      const remote = sectionEvents.at(-1)!.detail.entries.find((entry) => entry.active)!;
+      const home = sectionEvents.at(-1)!.detail.entries.find((entry) => entry.home)!;
       expect(remote).toMatchObject({ label: "Studio", address: "100.84.12.7:6768", kind: "remote", active: true });
       const before = fetch.mock.calls.length;
       send({ switch: "unknown-id" }); send({ rename: { id: "unknown-id", label: "Other" } }); send({ forget: "unknown-id" });
@@ -281,7 +283,7 @@ describe("host picker surface", () => {
    * 또는 남의 콘솔이 서빙한 문서의 요청으로 이 Desktop의 Console이 다시 시작되면 안 된다.
    */
   it("carries out a lifecycle command only for the Console it manages, and only for a document the home Console serves", async () => {
-    const events: Array<{ detail: ConsoleSectionState }> = [];
+    const events: Array<{ type: string; detail: ConsoleSectionState }> = [];
     let url = `${REMOTE}/console/`;
     const active = Object.assign(new EventEmitter(), {
       getURL: () => url, isDestroyed: () => false,
@@ -304,7 +306,9 @@ describe("host picker surface", () => {
     const section = createConsoleSectionController({ home: () => LOCAL, fetch, open: vi.fn(async () => undefined), add: vi.fn(), manage, managedHome: { state: async () => state, run }, confirmForget: vi.fn(async () => false), report });
     section.attach(active as never);
     const send = (value: ConsoleSectionCommand) => active.emit("will-navigate", { preventDefault: vi.fn() }, consoleSectionCommandUrl(new URL(url).origin, value), undefined, true);
-    const entries = () => events.at(-1)!.detail.entries;
+    // 명부 이벤트도 같은 문서로 오므로 목록 상태만 고른다.
+    const sectionState = () => events.filter((event) => event.type === CONSOLE_SECTION_EVENT).at(-1)!.detail;
+    const entries = () => sectionState().entries;
     try {
       await section.refresh();
       const home = entries().find((entry) => entry.home)!;
@@ -312,7 +316,7 @@ describe("host picker surface", () => {
       // 터미널에서 켠 WSL 콘솔: 경로는 wsl이고 관리자는 cli다. 배포판 이름은 문서로 가지 않는다.
       expect(entries().find((entry) => entry.address === "127.0.0.1:3900")).toMatchObject({ management: "cli", path: "wsl" });
       expect(entries().find((entry) => entry.kind === "remote")).toMatchObject({ management: "unknown", path: "remote" });
-      expect(JSON.stringify(events.at(-1)!.detail)).not.toContain("Private-Distro");
+      expect(JSON.stringify(events.map((event) => event.detail))).not.toContain("Private-Distro");
       // 남의 콘솔 문서는 관리 화면을 청할 수 있지만 생명주기는 시키지 못한다.
       send({ lifecycle: { id: home.id, action: "restart" } });
       send({ manage: home.id });

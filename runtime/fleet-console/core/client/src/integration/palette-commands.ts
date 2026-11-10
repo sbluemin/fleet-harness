@@ -17,6 +17,7 @@ import type { ConsoleState, ThemeId } from "./types.js";
 import { resolveConsoleLanguage } from "../../../../features/updates/client/whatsnew-i18n.js";
 
 export interface PaletteRailPanelInfo {
+  readonly searchOnly?: boolean;
   readonly id: string;
   readonly title: LocalizedText;
   /** 페인 대신 확대 표면을 여는 엔트리라면 그 표면의 id — "패널 열기"가 이 값을 따른다. */
@@ -225,7 +226,7 @@ export function buildPaletteCommands(
   for (const panel of railPanels) {
     // 설정은 아래에서 자기 이름의 일급 명령(open-settings)으로 선다 — 같은 표면을 여는
     // "Open panel: Settings"까지 만들면 팔레트에 같은 문이 두 개 선다.
-    if (panel.id === "settings") continue;
+    if (panel.id === "settings" || panel.searchOnly) continue;
     const title = resolveLocalizedText(panel.title, language);
     push({
       commandId: `open-rail-panel:${panel.id}`,
