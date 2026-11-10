@@ -2141,6 +2141,8 @@ describe("commodore supervisor", () => {
     const rejected: string[] = [];
     let fail = true;
     let nextReply: string | undefined;
+    let hold = false;
+    let finishCancellation: (() => void) | undefined;
     let created = 0;
     const agent: AgentHost = { createSession: async (options) => { created += 1; return ({
       send: async (input) => {
@@ -2150,9 +2152,10 @@ describe("commodore supervisor", () => {
           try { readTurnAttachments([foreign]); } catch (error) { rejected.push((error as Error).message); }
         }
         if (nextReply) { options.onEvent?.({ kind: "text", text: nextReply }); nextReply = undefined; }
+        if (hold) { await new Promise<void>((resolve) => { finishCancellation = () => { finishCancellation = undefined; options.onEvent?.({ kind: "cancelled" }); resolve(); }; }); return; }
         options.onEvent?.({ kind: "result", isError: fail, source: "message", ...(fail ? { detail: "network" } : {}) });
       },
-      steer: () => false, cancel() {}, dispose: async () => undefined,
+      steer: () => false, cancel: () => finishCancellation?.(), dispose: async () => undefined,
     }); } };
     const supervisor = createCommodoreSupervisor({ store: h.store, agent, attachments, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: (_theaterId, read) => { readTurnAttachments = read; return []; }, emit: () => undefined });
     const hooks = { acceptsMessage: (id: string) => supervisor.acceptsMessage(id), run: (id: string) => supervisor.status(id), clear: (id: string) => supervisor.clear(id) };
@@ -2212,6 +2215,18 @@ describe("commodore supervisor", () => {
       expect((await sendImage()).result.status).toBe(200);
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       expect(promptText(turns.at(-1)!)).not.toContain(feedback);
+      // 사람이 멈춘 턴에 이미 건넨 이미지 입력은 소비된다 — 전달 원본은 풀고 기록 사본은 남긴다.
+      hold = true;
+      const consumed = await sendImage();
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      const turnCount = turns.length;
+      await supervisor.stopTurn("t1");
+      expect(attachments.read("t1", consumed.entry.messageId)).toEqual([]);
+      expect(() => readTurnAttachments!([consumed.id])).toThrow("attachment_not_available");
+      expect(await h.route("commodore/attachment", { commodoreId: "t1", messageId: consumed.entry.messageId, attachmentId: consumed.id })).toMatchObject({ status: 200, value: { bytes: png } });
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + COALESCE_MS + 1);
+      expect(turns).toHaveLength(turnCount);
+      hold = false;
       const tooLarge = Buffer.alloc(MAX_COMMODORE_MESSAGE_IMAGE_BYTES + 1); png.copy(tooLarge);
       const over = await sendImage(tooLarge);
       expect(over.result).toMatchObject({ status: 400, value: { error: "attachment_budget_exceeded" } });
@@ -2250,7 +2265,8 @@ describe("commodore supervisor", () => {
         steer: (_text, id) => { hosted.push(id); return true; }, cancel, dispose: async () => { entry.disposed = true; },
       };
     } };
-    const supervisor = createCommodoreSupervisor({ store: h.store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+    const makeSupervisor = () => createCommodoreSupervisor({ store: h.store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+    let supervisor = makeSupervisor();
     const hooks = { acceptsMessage: (id: string) => supervisor.acceptsMessage(id), stopTurn: (id: string) => supervisor.stopTurn(id), clear: (id: string) => supervisor.clear(id), run: (id: string) => supervisor.status(id) };
     try {
       h.setExperiments({ commodore: true });
@@ -2259,7 +2275,7 @@ describe("commodore supervisor", () => {
       h.store.setCoordinates("t1", { model: "sonnet", effort: "high" });
       h.store.setCommander("t1", { model: "opus[1m]", effort: "high" });
       h.store.routineAdd("t1", { name: "Standing routine", task: "Keep the routine", schedule: { kind: "every", minutes: 120 } });
-      h.store.transcriptAppend("t1", { kind: "message", text: "Old active instruction." });
+      const initial = h.store.transcriptAppend("t1", { kind: "message", text: "Old active instruction.", references: [{ kind: "commodore", id: "peer", title: "Peer" }] });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       h.store.askAdd("t1", { reason: "Keep the person's pending decision", questions: [{ text: "Continue?", options: [] }], objective: null });
       const read = h.store.transcriptAppend("t1", { kind: "message", text: "Already read steered instruction." });
@@ -2277,8 +2293,9 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.disposed).toBe(false);
       expect(h.store.read("t1")).toEqual(beforeStop);
       expect(h.store.transcriptRead("t1").entries.slice(0, retained.length)).toEqual(retained);
-      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "cancelled" });
-      // 취소된 입력은 보존하되 자동 재시도·즉시 후속 턴은 없다. 유휴 중지는 언어·질문·예약·기록도 바꾸지 않는다.
+      expect(h.store.transcriptRead("t1").entries.findLast((entry) => entry.kind === "result")).toMatchObject({ kind: "result", outcome: "cancelled" });
+      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "mention-result", messageSeq: initial.seq, unrelayed: [{ id: "peer", alias: "Peer" }] });
+      // 건넨 입력은 소비하고 미독 steer만 보존하되 자동 재시도·즉시 후속 턴은 없다. 유휴 중지는 언어·질문·예약·기록도 바꾸지 않는다.
       await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + COALESCE_MS + 1);
       expect(sessions[0]!.sent).toHaveLength(1);
       const idleRun = supervisor.status("t1");
@@ -2295,7 +2312,7 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent[1]).toContain("Continue in this conversation.");
       expect(sessions[0]!.sent[1]).toContain("Unread steered instruction.");
       expect(sessions[0]!.sent[1]).not.toContain("Already read steered instruction.");
-      expect(sessions[0]!.sent[1]).toContain("Old active instruction.");
+      expect(sessions[0]!.sent[1]).not.toContain("Old active instruction.");
       h.store.setDescription("t1", "A later autonomous wake still runs.");
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       expect(sessions[0]!.sent).toHaveLength(3);
@@ -2350,6 +2367,25 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(1);
       expect(fs.existsSync(file)).toBe(false);
       expect(h.store.transcriptRead("t1").entries).toEqual([]);
+      // 미독 입력이 없는 명시적 중지 뒤 종료·재생성해도 그 지시를 미배달로 되살리거나 다시 깨우지 않는다.
+      const consumed = h.store.transcriptAppend("t1", { kind: "message", text: "Stop this instruction permanently." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      await supervisor.stopTurn("t1");
+      await supervisor.dispose();
+      expect(h.store.transcriptRead("t1").entries.some((entry) => entry.kind === "undelivered" && entry.seqs.includes(consumed.seq))).toBe(false);
+      const openedBeforeRestart = sessions.length;
+      supervisor = makeSupervisor();
+      supervisor.sync("restart");
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + COALESCE_MS + 1);
+      expect(sessions).toHaveLength(openedBeforeRestart);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      expect(h.store.transcriptRead("t1").entries.some((entry) => entry.kind === "requeued" && entry.seqs.includes(consumed.seq))).toBe(false);
+      expect(h.store.transcriptRead("t1").entries.some((entry) => entry.seq === consumed.seq && entry.kind === "message")).toBe(true);
+      hold = false;
+      h.store.transcriptAppend("t1", { kind: "message", text: "A different instruction after restart." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions.at(-1)!.sent[0]).toContain("A different instruction after restart.");
+      expect(sessions.at(-1)!.sent[0]).not.toContain("Stop this instruction permanently.");
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
   it("runs only enabled routines, removes one-time schedules, defers person removals and skips missed repeats on restart without routine person authority", async () => {
