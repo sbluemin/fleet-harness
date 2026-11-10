@@ -59,6 +59,16 @@ const objectiveQuestion = decisionQuestionSchema.extend({
 /** decision_request 가 사람의 답을 기다리는 최대 시간. 그 뒤의 답은 프롬프트로 간다. */
 export const DECISION_WAIT_MS = 4 * 60_000;
 
+/**
+ * `objective_mine` 설명 — 공통 문장에 역할 서버별 기본 역할을 덧붙여 싣는다. '프롬프트 자문'을 거친 문구다.
+ */
+const MINE_COMMON = "An objective organizes a brief, success criteria and missions on one board. Returns your role and the board as that role sees it. planning: true means the person requested a lineup, not execution. Notices quote words the person added during work.";
+const MINE_COMMANDER_ROLE = "Plan and lead the objective through hand-off. Only the Commander changes the board through fleet-commander. Size the member lineup to the objective's scale; prioritize parallel missions wherever dependencies allow. Own verification of the work; the Commodore evaluates the outcome. Enlist review-only members only when necessary for this objective, not as a routine extra layer. Route decisions for the person through the board; objective_read states the rules.";
+const MINE_MEMBER_ROLE = "Carry out your assigned missions and report to the Commander with message_commander. The board is read-only to you; you may seal evidence. Never ask the person directly; take needed decisions and directives that seem reversed or unreadable to the Commander first.";
+/** 역할 서버가 싣는 `mine` 설명에 그 역할의 기본 역할을 덧붙인다. */
+const withMineRole = (tools: readonly ConsoleMcpTool[], role: string): readonly ConsoleMcpTool[] =>
+  tools.map((tool) => (tool.name === "mine" ? { ...tool, description: `${MINE_COMMON} ${role}` } : tool));
+
 /** 지휘관 역할 서버 이름. 지휘관 세션에만 토큰을 낸다(예약 등록·역할 승인). */
 export const FLEET_COMMANDER_MCP_SERVER = "fleet-commander";
 /** 구성원 역할 서버 이름. 구성원 세션에만 토큰을 낸다(예약 등록·역할 승인). */
@@ -262,7 +272,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
   });
 
   return [
-    tool("mine", `Your role in this session's objective (commander or member) and the board as that role sees it. Only the Commander changes the board — planning, mustering, completing, marking — through the fleet-commander tools. Members are read-only: they read the board, seal evidence, and report to the Commander with message_commander. Members never ask the person; a decision they need, or a directive that reads reversed or unreadable, goes to the Commander first. planning: true means the person asked for a lineup, not its execution. A short notice quotes words the person added while you work. At hand-off the Commander collects each member's retrospective and created resources. Decisions for the person go through the board; objective_read states the request rules.`, z.object({}).strict(), (_args, caller) => {
+    tool("mine", MINE_COMMON, z.object({}).strict(), (_args, caller) => {
       if (caller?.kind !== "objectiveRecord") return refuse("not_participant");
       const assigned = store.findMember(caller.objectiveId);
       if (assigned) {
@@ -508,7 +518,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
  * 구성원 전용 필터는 구성원 서버 임무에서 같은 원천으로 가른다.
  */
 export function createCommanderMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
-  return renamedTools(createObjectiveMcpTools(ctx, store, launch, prStatus, options), COMMANDER_TOOL_RENAMES);
+  return renamedTools(withMineRole(createObjectiveMcpTools(ctx, store, launch, prStatus, options), MINE_COMMANDER_ROLE), COMMANDER_TOOL_RENAMES);
 }
 
 /**
@@ -517,7 +527,7 @@ export function createCommanderMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
  */
 export function createMemberMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
   const allowed = new Set<string>(Object.keys(MEMBER_TOOL_RENAMES));
-  return renamedTools(createObjectiveMcpTools(ctx, store, launch, prStatus, options).filter((tool) => allowed.has(tool.name)), MEMBER_TOOL_RENAMES);
+  return renamedTools(withMineRole(createObjectiveMcpTools(ctx, store, launch, prStatus, options).filter((tool) => allowed.has(tool.name)), MINE_MEMBER_ROLE), MEMBER_TOOL_RENAMES);
 }
 
 /** 인계 대기가 아닌 이유 — 남은 임무·미충족 기준 번호, 이미 넘겼거나 완료된 목표. */
