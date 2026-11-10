@@ -10,7 +10,7 @@ import { MobileArchivedFinished } from "./mobile-archived-finished.js";
 import { MobileCommanderList } from "./mobile-commander-list.js";
 import { attentionMovesFirst, entryIconOf, useMobileAttention } from "./mobile-destinations.js";
 import { openApprovalList } from "../../../../../features/execution/client/approval/store.js";
-import { focusObjective } from "../../integration/store.js";
+import { focusDecision } from "../../../../../features/objectives/client/objectives-state.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 import { openMobilePluginDestination } from "./mobile-store.js";
@@ -58,7 +58,7 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
                 </span>
               </button>
             ) : row.kind === "decision" ? (
-              <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => leave(() => focusObjective(row.objectiveId))}>
+              <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => leave(() => focusDecision(row.objectiveId))}>
                 <span className="mobile-conv-row-copy">
                   <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.title}</span></span>
                   <span className="mobile-conv-row-sub"><span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span></span>

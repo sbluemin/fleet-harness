@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, typ
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { loadCommodore, useCommodore } from "../../../commodore/client/commodore-state.js";
 import { readCommodoreList, subscribeCommodoreList } from "../../../commodore/client/commodore-list.js";
-import { focusObjective, readAllTheaters, subscribeObjective } from "../../../objectives/client/objectives-state.js";
+import { decisionConversationOwner, focusDecision, readAllTheaters, subscribeObjective } from "../../../objectives/client/objectives-state.js";
 
 import { NATIVE_VIEW_COVER_ATTRIBUTE } from "@fleet-console/ui/native-view";
 
@@ -101,12 +101,12 @@ function ApprovalList() {
         ) : null}
         {decisions.length > 0 ? (
           <section>
-            <h3 className="approval-group">{t("approval.decisions")}<span>{t("approval.decisionsNote")}</span></h3>
+            <h3 className="approval-group">{t("approval.decisions")}<span>{t(decisions.every((row) => row.commodoreId) ? "approval.decisionsCommodoreNote" : decisions.some((row) => row.commodoreId) ? "approval.decisionsMixedNote" : "approval.decisionsNote")}</span></h3>
             <div className="approval-stack">
               {decisions.map((row) => (
                 <div className="approval-link" key={row.id}>
                   <span>{row.title}</span>
-                  <button type="button" onClick={() => { closeApprovalList(); focusObjective(row.id); }}>{t("approval.decisionLink")}</button>
+                  <button type="button" onClick={() => { closeApprovalList(); focusDecision(row.id); }}>{t(row.commodoreId ? "approval.decisionCommodoreLink" : "approval.decisionLink")}</button>
                 </div>
               ))}
             </div>
@@ -190,22 +190,23 @@ function IntelRow({ item }: { readonly item: ApprovalItem }) {
   );
 }
 
-const NO_DECISIONS: readonly { readonly id: string; readonly title: string }[] = [];
-let decisionSnapshot: readonly { readonly id: string; readonly title: string }[] = NO_DECISIONS;
+const NO_DECISIONS: readonly { readonly id: string; readonly title: string; readonly commodoreId: string | null }[] = [];
+let decisionSnapshot: readonly { readonly id: string; readonly title: string; readonly commodoreId: string | null }[] = NO_DECISIONS;
 let decisionKey = "";
 
 /**
  * `useSyncExternalStore` 의 스냅숏은 내용이 같으면 같은 참조여야 한다.
  * 부를 때마다 새 배열을 돌려주면 렌더가 끝나지 않는다.
  */
-function decisionRows(): readonly { readonly id: string; readonly title: string }[] {
-  const rows: { id: string; title: string }[] = [];
+function decisionRows(): readonly { readonly id: string; readonly title: string; readonly commodoreId: string | null }[] {
+  const rows: { id: string; title: string; commodoreId: string | null }[] = [];
   let key = "";
   for (const board of readAllTheaters()) {
     for (const objective of board.objectives) {
       if (!objective.decisionRequest || objective.done || objective.removed) continue;
-      rows.push({ id: objective.id, title: objective.title });
-      key += `${objective.id}\0${objective.title}\n`;
+      const commodoreId = decisionConversationOwner(objective);
+      rows.push({ id: objective.id, title: objective.title, commodoreId });
+      key += `${objective.id}\0${objective.title}\0${commodoreId ?? ""}\n`;
     }
   }
   if (key === decisionKey) return decisionSnapshot;
