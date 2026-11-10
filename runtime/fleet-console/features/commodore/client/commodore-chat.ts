@@ -177,7 +177,7 @@ function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "me
 
 /**
  * 사령관 기록 → 대화 중심 화면의 대화 어휘(SDK `ctx.chat.Conversation`). Objective 대화와 같은 문법이다: 사람의 말은 오른쪽 말풍선,
- * 사령관의 글은 왼쪽 말풍선(턴 안의 글마다 하나 — 그룹 대화의 저널과 같다), 보드에 쓴 행위는 가운데 행위 줄, 실패와 모델 대체는
+ * 사령관의 글은 왼쪽 말풍선(턴 안의 글마다 하나 — 그룹 대화의 저널과 같다), 보드에 쓴 행위는 가운데 행위 줄, 턴 중지·실패와 모델 대체는
  * 노트 줄이다. 보드를 읽기만 한 도구는 Objective 대화가 도구 단계를 본류에 두지 않듯 세우지 않는다. 메신저처럼 대화만 남도록
  * 깨움·세션 교대(열림·재시작·멈춤)·문맥 압축 같은 실행 경과는 세우지 않는다 — 그 경과는 펼친 턴 기록(`commodoreChatEntries`)이 보인다.
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
@@ -233,6 +233,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       }
       case "result":
         if (entry.outcome === "error") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("commodore.meta.error") }) });
+        else if (entry.outcome === "cancelled") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: t("commodore.log.turnStopped") });
         break;
       // 세션 교대 자체는 세우지 않고, 고른 모델 대신 다른 모델로 돈다는 안내만 남긴다 — 사람이 모델을 다시 골라야 할 수 있다.
       case "session": {
