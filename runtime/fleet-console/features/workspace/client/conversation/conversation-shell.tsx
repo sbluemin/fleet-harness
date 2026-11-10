@@ -61,6 +61,8 @@ import { NewSessionColumn } from "./new-session.js";
 import { openDefaultNewSession, resolveNewSessionCommodoreId } from "./new-session-entry.js";
 import { TaskforceCreateMenu } from "../../../commodore/client/taskforce/create-menu.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
+import { ConsoleGlyph } from "../../../remote-access/client/console-section.js";
+import { useConsoleSections } from "../../../remote-access/client/console-sections.js";
 import { useTaskforceExperiment } from "../../../commodore/client/taskforce/state.js";
 import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/client/theater-owner.js";
 import { ConversationWorkbench } from "./workbench/conversation-workbench.js";
@@ -250,20 +252,30 @@ const PlusGlyph = () => (
 /**
  * 사이드바 맨 위 줄 오른쪽 — 찾기(⌘K)와 만들기 메뉴. 「+」에서 새 사령관과 새 TaskForce를 고른다.
  * TF 실험이 꺼져 있으면 메뉴 없이 바로 사령관 만들기로 간다(TF 도입 전 동작).
+ * Desktop 셸이 콘솔 추가를 받을 때는 TF가 꺼져 있어도 메뉴로 열고, 맨 아래에 구분선과 콘솔 추가를 둔다.
+ * 브라우저로 연 Console은 콘솔 추가가 없으므로 지금과 같다. 좁은 열에는 +가 없다.
  * 새 Theater는 새 세션 화면의 「Theater 추가…」와 팔레트(⌘K)에 있다.
  */
 export function ConversationSideBarActions() {
   const t = useT();
   const { enabled } = useTaskforceExperiment();
   const compact = useSideBarState().compact;
+  // 목록 쪽 훅이 상태를 묻는다. 여기서는 능력만 읽어 주기를 겹치지 않는다.
+  const consoles = useConsoleSections({ refresh: false });
   // 좁은 열은 아바타 열만 남긴다 — 찾기(⌘K)와 만들기는 팔레트·단축키로 닿는다.
   if (compact) return <span className="conversation-side-actions" />;
+  const menu = enabled || consoles.capable;
   return (
     <span className="conversation-side-actions">
       <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      {enabled ? <TaskforceCreateMenu><PlusGlyph /></TaskforceCreateMenu> : <button type="button" className="conversation-round" onClick={() => requestCommodoreCreate()} aria-label={t("sidebar.commodore.createTitle")} title={t("sidebar.commodore.createTitle")}><PlusGlyph /></button>}
+      {menu ? <TaskforceCreateMenu taskforce={enabled} extra={consoles.capable ? (close) => (
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); consoles.command({ add: true }); }}>
+          <span className="theater-menu-check" aria-hidden="true"><ConsoleGlyph remote /></span>
+          <span className="theater-menu-label">{t("chrome.hosts.add")}</span>
+        </button>
+      ) : undefined}><PlusGlyph /></TaskforceCreateMenu> : <button type="button" className="conversation-round" onClick={() => requestCommodoreCreate()} aria-label={t("sidebar.commodore.createTitle")} title={t("sidebar.commodore.createTitle")}><PlusGlyph /></button>}
     </span>
   );
 }

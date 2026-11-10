@@ -229,7 +229,7 @@ After that check, stop the home `serve` with `cli.mjs stop` through the same wra
 
 Launch Desktop once, under its own authorization, as in [Desktop setup](desktop/setup.md#preflight-and-ownership). `FLEET_CONSOLE_DATA_DIR` for that launch is the **home** run's `console` directory, not `$SLOT`. The shell's `homeOrigin` is that home.
 
-In the window, the sidebar lists one section per console (`.side-console`, header name in `.side-console-name b`). Find the section whose header reads `127.0.0.1:<neighbor port>` and press one of its commodore rows (`.side-console-row`), or its "Switch to this console" / "이 콘솔로 전환" button when it lists none. Matching the port is the check. A section for any other port, including the user's Console, is not the neighbor.
+In the window, the sidebar lists the current console's commodores at the top with no header, then one row per other console (`.side-console`, name in `.side-console-name b`). Find the row whose name reads `127.0.0.1:<neighbor port>` and press one of its commodore rows (`.side-console-row`), or its "Switch to this console" / "이 콘솔로 전환" button when it lists none. Matching the port is the check. A row for any other port, including the user's Console, is not the neighbor.
 
 Do not assign `location` to the neighbor. The section press is the navigation the bridge takes. When the window has switched, read:
 
@@ -238,13 +238,14 @@ Do not assign `location` to the neighbor. The section press is the navigation th
   origin: location.origin,
   home: (await (await fetch("/api/v1/desktop/shell")).json()).homeOrigin,
   dot: document.querySelector(".conversation-dock-status")?.getAttribute("data-connection") ?? null,
-  here: document.querySelector(".side-console-head.is-active .side-console-name b")?.textContent ?? null,
+  activeHead: document.querySelector(".side-console-head.is-active .side-console-name b")?.textContent ?? null,
+  homeRow: document.querySelector(".side-console-home") !== null,
 })
 ```
 
-Away on Desktop is `origin` equal to `http://127.0.0.1:<neighbor port>` while `home` is the home origin. `dot` is `"live"`, and `here` shows that section's label, which for a discovered local neighbor is its address.
+Away on Desktop is `origin` equal to `http://127.0.0.1:<neighbor port>` while `home` is the home origin. `dot` is `"live"`. The console you are on has no header, so `activeHead` is null, and `homeRow` is true because the home console is one of the rows below, marked `.side-console-home`.
 
-Return through the home section marked `.side-console-home`, using a commodore row or "Switch to this console" when no rows are listed. Confirm `origin === home` and `dot === null`; `here` is the home console's label.
+Return through that home row, using a commodore row or "Switch to this console" when no rows are listed. Confirm `origin === home` and `dot === null`. `activeHead` stays null when more than one console is listed, and a `.side-console-name b` then reads the neighbor address.
 
 Stop the neighbor with the same wrapper flags. That `stop` runs only when `$SLOT/console.lock`'s pid equals `<run-dir>/canonical-console.pid`, which the wrapper writes when this run's `serve` starts. No record, a different pid, or the main checkout (`mainCheckoutOf`, the same test as [the Desktop preflight](desktop/setup.md#read-only-preflight)) is refused before the command starts. Then:
 
