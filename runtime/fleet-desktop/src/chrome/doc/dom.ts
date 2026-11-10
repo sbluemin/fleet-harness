@@ -83,6 +83,13 @@ export const G = {
   close: '<path d="M4 4l8 8M12 4l-8 8"/>',
   detach: '<path d="M6.5 3.5H4A1.5 1.5 0 0 0 2.5 5v7A1.5 1.5 0 0 0 4 13.5h7a1.5 1.5 0 0 0 1.5-1.5V9.5M9.5 2.5H13.5V6.5M13.5 2.5 7.5 8.5"/>',
   attach: '<path d="M9.5 6.5v-4H5.5M2.5 13.5 9.5 6.5M13.5 9.5V12A1.5 1.5 0 0 1 12 13.5H4A1.5 1.5 0 0 1 2.5 12V5A1.5 1.5 0 0 1 4 3.5h2.5"/>',
+  /** 탭 표시줄 방향 — 창 위쪽의 가로 줄, 창 왼쪽의 세로 줄. */
+  tabsHorizontal: '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M1.5 6.2h13"/>',
+  tabsVertical: '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M5.7 2.5v11"/>',
+  /** 세로 표시줄 접기 — 왼쪽 줄로 밀어 넣는다. */
+  tabsCollapse: '<rect x="1.5" y="2.5" width="13" height="11" rx="1.5"/><path d="M5.7 2.5v11"/><path d="M11 6.2 9.2 8l1.8 1.8"/>',
+  /** 포인터를 올리면 스스로 펼쳐진다. */
+  pointer: '<path d="M3.2 2.6 12.6 6.6 8.7 8.3 7 12.4z"/>',
   /** 스페이스 — 나란히 놓인 네 칸. 누르면 스페이스들이 이 모양(그리드)으로 펼쳐진다. */
   spaces: '<rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/>',
   /** 디폴트 스페이스 — 사람 자신의 자리. */

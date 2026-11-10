@@ -419,6 +419,7 @@ describe("objectiveRecord browser tool target admission", () => {
         return { dispatched: true as const, x: 3, y: 4, button: "left" as const, clickCount: 1, ref: "ref_1", hit: null, note: null };
       },
       agentTab: (_id: string, _caller: unknown, tabId: string | null | undefined) => tabId ?? "tab-1",
+      assertAgentControl: () => {},
       agentTabs: () => ({ viewport: { width: 1404, height: 1177 } }),
     };
     const computer = createBrowserToolSpecs({ service: service as never, screenshots }).find((spec) => spec.id === "computer")!;

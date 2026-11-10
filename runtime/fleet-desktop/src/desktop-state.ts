@@ -36,10 +36,23 @@ export interface WindowStateStore {
   save(state: WindowState): void;
 }
 
-/** desktop-state.json 한 파일을 줌과 창이 나눠 쓴다 — 한쪽을 쓸 때 다른 쪽을 지우지 않는다. */
+/** 플릿 브라우저 탭 표시줄의 모양 — 세로 레일을 펼쳐 두는가, 세로인가 가로인가, 접힌 레일이 포인터에 스스로 펼쳐지는가. */
+export interface BrowserStripPrefs {
+  readonly pinned: boolean;
+  readonly orientation: "vertical" | "horizontal";
+  readonly autoExpand: boolean;
+}
+
+export interface BrowserStripStore {
+  load(): BrowserStripPrefs | null;
+  save(prefs: BrowserStripPrefs): void;
+}
+
+/** desktop-state.json 한 파일을 줌·창·브라우저 탭 표시줄이 나눠 쓴다 — 한쪽을 쓸 때 다른 쪽을 지우지 않는다. */
 export interface DesktopState {
   readonly zoom: ZoomState;
   readonly window: WindowStateStore;
+  readonly browserStrip: BrowserStripStore;
 }
 
 export function clampZoomLevel(zoomLevel: number): number {
@@ -50,6 +63,7 @@ export function clampZoomLevel(zoomLevel: number): number {
 interface PersistedDesktopState {
   zoomLevel?: number;
   window?: WindowState;
+  browserStrip?: BrowserStripPrefs;
 }
 
 export function createDesktopState(statePath: string, fileSystem: DesktopStateFileSystem = fs): DesktopState {
@@ -64,6 +78,8 @@ export function createDesktopState(statePath: string, fileSystem: DesktopStateFi
       if (typeof record.zoomLevel === "number") state.zoomLevel = record.zoomLevel;
       const window = parseWindowState(record.window);
       if (window) state.window = window;
+      const browserStrip = parseBrowserStrip(record.browserStrip);
+      if (browserStrip) state.browserStrip = browserStrip;
       return state;
     } catch {
       return {};
@@ -87,7 +103,18 @@ export function createDesktopState(statePath: string, fileSystem: DesktopStateFi
       load: () => read().window ?? null,
       save: (state) => write({ window: state }),
     },
+    browserStrip: {
+      load: () => read().browserStrip ?? null,
+      save: (prefs) => write({ browserStrip: { pinned: prefs.pinned, orientation: prefs.orientation, autoExpand: prefs.autoExpand } }),
+    },
   };
+}
+
+function parseBrowserStrip(value: unknown): BrowserStripPrefs | null {
+  if (typeof value !== "object" || value === null) return null;
+  const { pinned, orientation, autoExpand } = value as Record<string, unknown>;
+  if (typeof pinned !== "boolean" || typeof autoExpand !== "boolean" || (orientation !== "vertical" && orientation !== "horizontal")) return null;
+  return { pinned, orientation, autoExpand };
 }
 
 function parseWindowState(value: unknown): WindowState | null {

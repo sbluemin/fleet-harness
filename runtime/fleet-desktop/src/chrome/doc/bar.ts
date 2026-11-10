@@ -21,9 +21,32 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   const input = h("input", { class: "url-input", type: "text", autocomplete: "off", spellcheck: false, attrs: { inputmode: "url", role: "combobox", "aria-autocomplete": "list" } });
   const form = h("form", { class: "url" }, display, input);
   const detach = h("button", { class: "icon detach", type: "button", on: { mousedown: (event) => event.preventDefault(), click: () => post("bar", "toggle-mode") } }, "↗");
-  // 스페이스 — 도구 메뉴 바로 왼쪽. 누르면 스페이스들이 그리드로 펼쳐지고, 사령관 스페이스를 보는 동안에는 그 스페이스의 색으로 물든다.
+  // 스페이스 — 도구 메뉴 바로 왼쪽. 단추의 그림이 지금 보는 스페이스의 표식(사령관은 머리글자, 디폴트는 집)이고, 누르면 스페이스들이 그리드로 펼쳐진다.
   // 누르면 초점이 주소줄을 떠난다(mousedown 을 막지 않는다): 스페이스를 옮긴 뒤 주소줄이 고치던 중으로 남아 옛 주소를 붙잡지 않게.
-  const spacesButton = h("button", { class: "icon spaces-button", type: "button", attrs: { "aria-haspopup": "dialog" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "spaces" ? null : "spaces" }) } }, glyph(G.spaces, 16));
+  const spacesButton = h("button", { class: "icon spaces-button", type: "button", attrs: { "aria-haspopup": "dialog" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "spaces" ? null : "spaces" }) } });
+  const spacesGlyph = h("span", { class: "spaces-glyph" });
+  spacesButton.append(spacesGlyph);
+  let spacesGlyphKey = "";
+  /** 스페이스가 바뀌면 옛 표식이 물러나고 새 표식이 들어선다 — 처음 그릴 때는 움직이지 않는다. */
+  const paintSpacesGlyph = (id: string, kind: "commodore" | "default", name: string): void => {
+    const initial = Array.from(name)[0] ?? "";
+    const key = `${id}:${kind}:${initial}`;
+    if (key === spacesGlyphKey) return;
+    const first = spacesGlyphKey === "";
+    spacesGlyphKey = key;
+    const mark = h("span", { class: "space-mark" });
+    if (kind === "commodore") mark.append(h("span", { class: "space-initial", text: initial })); else mark.append(glyph(G.home));
+    const face = h("span", { class: `spaces-face${first ? "" : " entering"}`, attrs: { "data-kind": kind } }, mark);
+    face.style.setProperty("--space-hue", String(spaceHue(id)));
+    for (const old of Array.from(spacesGlyph.children)) {
+      if (first) { old.remove(); continue; }
+      old.classList.remove("entering");
+      old.classList.add("leaving");
+      old.addEventListener("animationend", () => old.remove(), { once: true });
+      setTimeout(() => old.remove(), 400);
+    }
+    spacesGlyph.append(face);
+  };
   const more = h("button", { class: "icon more-button", type: "button", attrs: { "aria-haspopup": "menu" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "menu" ? null : "menu" }) } }, moreGlyph());
   const leading = h("span", { class: "pad" });
   const trailing = h("span", { class: "pad" });
@@ -131,6 +154,42 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   };
 
   /**
+   * 탭 표시줄 우클릭 메뉴 — 표시줄(세로 레일·가로 표시줄) 자체의 모양을 바꾸는 항목만 있다. 세로일 때만 접기·자동 펼치기가 뜻이 있다.
+   * 자리는 우클릭한 곳이고, 표면 밖으로 넘치면 안쪽으로 당긴다.
+   */
+  const buildTabsMenu = (state: ChromeUiState, t: T, at: { readonly x: number; readonly y: number }): HTMLElement => {
+    const ready = state.chrome !== null && state.chrome.available && !state.busy;
+    const flat = state.orientation === "horizontal";
+    const menu = h("div", { class: "menu tabs-menu", role: "menu", attrs: { "aria-label": t("tabsMenu") } });
+    menu.append(item(t, G.plus, t("newTab"), () => post("bar", "new-tab"), { disabled: !ready }));
+    menu.append(h("div", { class: "menu-sep", role: "separator" }));
+    menu.append(item(t, flat ? G.tabsVertical : G.tabsHorizontal, t(flat ? "tabsMenu.vertical" : "tabsMenu.horizontal"), () => post("bar", "orientation", { orientation: flat ? "vertical" : "horizontal" })));
+    if (!flat) {
+      menu.append(item(t, state.pinned ? G.tabsCollapse : G.pin, t(state.pinned ? "tabsMenu.collapse" : "tabsMenu.expand"), () => post("bar", "pin", { pinned: !state.pinned })));
+      menu.append(item(t, G.pointer, t(state.autoExpand ? "tabsMenu.autoExpandOff" : "tabsMenu.autoExpandOn"), () => post("bar", "auto-expand", { enabled: !state.autoExpand })));
+    }
+    menu.style.left = `${at.x}px`; menu.style.top = `${at.y}px`;
+    // 위·아래 화살표로 항목을 오간다(우클릭 메뉴의 관례).
+    menu.addEventListener("keydown", (event) => {
+      const step = event.key === "ArrowDown" ? 1 : event.key === "ArrowUp" ? -1 : 0;
+      if (step === 0) return;
+      const items = Array.from(menu.querySelectorAll<HTMLButtonElement>(".menu-item:not(:disabled)"));
+      if (items.length === 0) return;
+      event.preventDefault();
+      const index = items.indexOf(document.activeElement as HTMLButtonElement);
+      items[(index + step + items.length) % items.length]!.focus();
+    });
+    return menu;
+  };
+  /** 메뉴가 표면을 넘지 않게 당긴다 — 붙인 뒤에야 크기를 안다. */
+  const fitTabsMenu = (menu: HTMLElement): void => {
+    const box = menu.getBoundingClientRect();
+    const margin = 8;
+    menu.style.left = `${Math.max(margin, Math.min(box.left, window.innerWidth - box.width - margin))}px`;
+    menu.style.top = `${Math.max(margin, Math.min(box.top, window.innerHeight - box.height - margin))}px`;
+  };
+
+  /**
    * 스페이스 선택 화면 — 디폴트와 모든 사령관 스페이스를 그리드로. 칸을 누르면 그 스페이스로 옮긴다(옮기는 일은 main 이 한다).
    * 칸은 이름, 열린 탭의 아이콘과 수, 에이전트가 쓰는 중인지만 말한다 — 고르는 데 필요 없는 설명은 싣지 않는다.
    */
@@ -145,7 +204,8 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       const mark = h("span", { class: "space-mark" });
       if (space.kind === "commodore") mark.append(h("span", { class: "space-initial", text: Array.from(name)[0] ?? "" })); else mark.append(glyph(G.home));
       const top = h("span", { class: "tile-top" }, mark, h("span", { class: "tile-name", text: name }));
-      if (space.driving) top.append(h("span", { class: "tile-agent", title: t("space.driving"), attrs: { role: "img", "aria-label": t("space.driving") } }, agentGlyph()));
+      const needsYou = space.control === "user";
+      if (space.driving && !needsYou) top.append(h("span", { class: "tile-agent", title: t("space.driving"), attrs: { role: "img", "aria-label": t("space.driving") } }, agentGlyph()));
       const icons = h("span", { class: "tile-icons" });
       for (const tab of tabs.slice(0, TILE_ICONS)) {
         const icon = h("span", { class: "tab-icon" });
@@ -158,11 +218,13 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       }
       if (tabs.length > TILE_ICONS) icons.append(h("span", { class: "tile-more", text: `+${tabs.length - TILE_ICONS}` }));
       const foot = h("span", { class: "tile-foot" }, icons, h("span", { class: "tile-count", text: count }));
-      const label = `${t("spaces.tile", { name, tabs: count })}${current ? ` · ${t("spaces.current")}` : ""}${space.driving ? ` · ${t("space.driving")}` : ""}`;
+      const label = `${t("spaces.tile", { name, tabs: count })}${current ? ` · ${t("spaces.current")}` : ""}${needsYou ? ` · ${t("control.needsYou")}` : space.driving ? ` · ${t("space.driving")}` : ""}`;
       const tile = h("button", { class: `space-tile${current ? " current" : ""}${tabs.length === 0 ? " no-tabs" : ""}`, type: "button", disabled: !chrome!.available, attrs: { "aria-label": label, "aria-current": current ? "true" : null, "data-kind": space.kind }, on: { click: () => post("bar", "select-space", { id: space.id }) } },
         top, foot);
       tile.style.setProperty("--space-hue", String(spaceHue(space.id)));
       if (current) top.append(h("span", { class: "tile-current", text: t("spaces.current") }));
+      // 사람이 제어를 쥔 스페이스 — 에이전트가 부탁했든 사람이 가져갔든, 돌려줄 때까지 이 표식이 남는다.
+      if (needsYou) foot.prepend(h("span", { class: "tile-attention", text: t("control.needsYou"), title: space.attention?.reason ?? "" }));
       grid.append(h("div", { class: "spaces-cell", role: "listitem" }, tile));
     }
     // 방향키로 칸 사이를 오간다 — 줄 수는 폭에 따라 달라지므로 앞뒤로만 옮긴다.
@@ -178,7 +240,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     return h("div", { class: "spaces-panel", role: "dialog", attrs: { "aria-label": t("spaces.title") } },
       h("div", { class: "spaces-head" }, h("h2", { text: t("spaces.title") })), grid);
   };
-  const spacesKey = (state: ChromeUiState): string => JSON.stringify([state.spaceId, state.chrome?.available, state.chrome?.spaces.map((space) => [space.id, space.label, space.driving]), state.chrome?.tabs.map((tab) => [tab.id, tab.spaceId, tab.favicon?.length ?? 0])]);
+  const spacesKey = (state: ChromeUiState): string => JSON.stringify([state.spaceId, state.chrome?.available, state.chrome?.spaces.map((space) => [space.id, space.label, space.driving, space.control ?? "agent", space.attention?.reason ?? ""]), state.chrome?.tabs.map((tab) => [tab.id, tab.spaceId, tab.favicon?.length ?? 0])]);
 
   const buildSuggestions = (state: ChromeUiState, t: T): HTMLElement | null => {
     const settings = state.suggest;
@@ -281,15 +343,17 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   function renderOverlay(state: ChromeUiState): void {
     const t = tr(state);
     const current = state.overlay;
-    const modal = current !== null && current.kind !== "menu" && current.kind !== "suggestions" && current.kind !== "spaces";
+    const modal = current !== null && current.kind !== "menu" && current.kind !== "suggestions" && current.kind !== "spaces" && current.kind !== "tabs-menu";
     const showing = current !== null && state.overlayReady;
     // 다른 오버레이가 없을 때만 그린다 — 메뉴를 닫으면 다시 보인다.
     const asked = showing ? null : pageDialogOf(state);
     overlay.hidden = !showing && !asked && !state.info && !state.notice;
+    // 표시줄 메뉴는 누른 자리에 뜬다 — 가로 표시줄에서는 그 자리가 주소줄 위라, 이 메뉴가 떠 있는 동안만 오버레이가 주소줄보다 앞에 선다.
+    overlay.classList.toggle("over-strip", showing && current!.kind === "tabs-menu");
     if (current?.kind !== "annotate" && annotator) { annotator.dispose(); annotator = null; }
     // 스페이스 선택 화면이 닫히면 초점을 그 단추로 돌려준다 — 키보드로 연 사람이 화면 밖에서 길을 잃지 않게.
     const leavingSpaces = overlayKey.startsWith("spaces:") && !(showing && current!.kind === "spaces") && overlay.contains(document.activeElement);
-    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.page])}` : "none";
+    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.page])}` : "none";
     const toastKey = `${state.notice ?? ""}|${state.info?.text ?? ""}|${state.info?.action ?? ""}`;
     if (current?.kind === "annotate" && showing) {
       if (!annotator) { clear(overlay); annotator = mountAnnotate(overlay, state, t); overlayKey = "annotate"; }
@@ -308,6 +372,11 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
         if (current!.kind === "menu") {
           const menu = buildMenu(state, t);
           backdrop.append(menu);
+        } else if (current!.kind === "tabs-menu") {
+          const menu = buildTabsMenu(state, t, current!);
+          backdrop.append(menu);
+          // 열릴 때 첫 항목에 초점을 둔다 — main 이 이 뷰로 초점을 옮겨 두었다.
+          queueMicrotask(() => { if (!menu.isConnected) return; fitTabsMenu(menu); menu.querySelector<HTMLElement>(".menu-item:not(:disabled)")?.focus({ preventScroll: true }); });
         } else if (current!.kind === "spaces") {
           // 주소줄 아래 표면 전체를 덮는 한 화면 — 레일과 페이지 위에 선다. 빈 곳을 누르면 닫힌다.
           const hadFocus = overlay.contains(document.activeElement);
@@ -363,12 +432,15 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const chrome = state.chrome;
     const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId) ?? null;
     const available = chrome?.available === true;
-    leading.style.width = `${state.leading}px`; trailing.style.width = `${state.trailing}px`;
-    // 조작 중 표시는 지금 보는 스페이스의 것이다 — 다른 스페이스의 에이전트가 일하는 동안 이 화면이 물들면 여기 탭이 조작되는 것처럼 읽힌다.
-    // 다른 스페이스에서 일하는 중이면 스페이스 단추에 점 하나로 알린다.
-    strip.classList.toggle("driving", shownSpace(state)?.driving === true);
+    // 가로 탭 표시줄이 맨 위 줄이면 신호등·캡션 자리는 그 줄이 비운다 — 이 줄은 그 아래에 있어 비울 것이 없다.
+    const top = state.orientation !== "horizontal";
+    leading.style.width = `${top ? state.leading : 0}px`; trailing.style.width = `${top ? state.trailing : 0}px`;
+    // 조작 중임은 페이지 위 화면(가드)이 보인다 — 주소줄은 물들지 않는다. 다른 스페이스에서 일하는 중이면 스페이스 단추에 점 하나로 알린다.
+    // 에이전트가 모는 표시 탭은 주소줄로도 움직이지 않는다(페이지 위 가드와 같은 잠금). 탭 전환·새 탭·스페이스 이동은 그대로다.
+    const locked = state.control?.holder === "agent";
     back.title = back.ariaLabel = t("back"); forward.title = forward.ariaLabel = t("forward"); reload.title = reload.ariaLabel = t("reload");
-    back.disabled = !tab?.canGoBack || state.busy; forward.disabled = !tab?.canGoForward || state.busy; reload.disabled = !tab || state.busy;
+    if (locked) back.title = forward.title = reload.title = t("control.locked");
+    back.disabled = !tab?.canGoBack || state.busy || locked; forward.disabled = !tab?.canGoForward || state.busy || locked; reload.disabled = !tab || state.busy || locked;
     reload.classList.toggle("loading", tab?.loading === true);
     detach.textContent = state.mode === "window" ? "↙" : "↗";
     detach.title = detach.ariaLabel = t(state.mode === "window" ? "reattach" : "detach");
@@ -378,17 +450,22 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     spacesButton.title = spacesOpen ? "" : spacesTip; spacesButton.ariaLabel = spacesTip;
     spacesButton.setAttribute("aria-expanded", String(spacesOpen));
     spacesButton.classList.toggle("open", spacesOpen);
-    spacesButton.classList.toggle("in-space", space?.kind === "commodore");
+    paintSpacesGlyph(state.spaceId, space?.kind ?? "default", spaceName(t, space));
     const elsewhere = chrome?.spaces.some((other) => other.driving && other.id !== state.spaceId) === true;
-    spacesButton.classList.toggle("elsewhere", elsewhere);
-    if (!spacesOpen && elsewhere) spacesButton.title = `${spacesTip} · ${t("spaces.elsewhere")}`;
-    spacesButton.ariaLabel = elsewhere ? `${spacesTip} · ${t("spaces.elsewhere")}` : spacesTip;
-    spacesButton.style.setProperty("--space-hue", String(spaceHue(state.spaceId)));
+    // 다른 스페이스가 사람을 기다리면 그 신호가 먼저다 — 점이 기다림 색이 된다.
+    const needsYou = chrome?.spaces.some((other) => other.control === "user" && other.id !== state.spaceId) === true;
+    spacesButton.classList.toggle("elsewhere", elsewhere || needsYou);
+    spacesButton.classList.toggle("attention", needsYou);
+    // 보고 있지 않은 스페이스에서 에이전트가 일하는 동안에는 단추가 움직인다 — 사람을 기다리는 스페이스가 있으면 그 신호가 먼저라 가만히 둔다.
+    spacesButton.classList.toggle("working", elsewhere && !needsYou);
+    const elsewhereTip = needsYou ? t("spaces.needsYou") : elsewhere ? t("spaces.elsewhere") : null;
+    if (!spacesOpen && elsewhereTip) spacesButton.title = `${spacesTip} · ${elsewhereTip}`;
+    spacesButton.ariaLabel = elsewhereTip ? `${spacesTip} · ${elsewhereTip}` : spacesTip;
     spacesButton.disabled = chrome === null;
     more.title = state.overlay?.kind === "menu" ? "" : t("moreTools"); more.ariaLabel = t("moreTools");
     more.setAttribute("aria-expanded", String(state.overlay?.kind === "menu"));
     more.classList.toggle("open", state.overlay?.kind === "menu");
-    input.disabled = !available;
+    input.disabled = !available || locked;
     input.placeholder = t("urlPlaceholder"); input.setAttribute("aria-label", t("pageUrl"));
     input.setAttribute("aria-expanded", String(suggestionsOf().length > 0));
     // 사람이 고치는 중이 아니면 입력은 활성 탭의 주소를 따른다. 고치던 글은 탭이 바뀌어도 남는다(draft).

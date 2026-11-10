@@ -17,21 +17,25 @@ describe("desktop state", () => {
   };
   afterEach(() => { for (const root of roots.splice(0)) fs.rmSync(root, { recursive: true, force: true }); });
 
-  it("keeps zoom and window together in one file and survives a corrupt half", () => {
+  it("keeps zoom, window, and browser strip together in one file and survives a corrupt part", () => {
     const file = statePath();
     const state = createDesktopState(file);
     state.zoom.save(1.5);
     state.window.save({ x: 10, y: 20, width: 1200, height: 800, maximized: true });
+    state.browserStrip.save({ pinned: true, orientation: "horizontal", autoExpand: false });
     state.zoom.save(-1);
     expect(createDesktopState(file).zoom.load()).toBe(-1);
     expect(createDesktopState(file).window.load()).toEqual({ x: 10, y: 20, width: 1200, height: 800, maximized: true });
+    expect(createDesktopState(file).browserStrip.load()).toEqual({ pinned: true, orientation: "horizontal", autoExpand: false });
 
-    fs.writeFileSync(file, JSON.stringify({ zoomLevel: 2, window: { x: "left", width: 1 } }));
+    fs.writeFileSync(file, JSON.stringify({ zoomLevel: 2, window: { x: "left", width: 1 }, browserStrip: { pinned: true, orientation: "diagonal", autoExpand: true } }));
     expect(state.zoom.load()).toBe(2);
     expect(state.window.load()).toBeNull();
+    expect(state.browserStrip.load()).toBeNull();
     fs.writeFileSync(file, "{broken");
     expect(state.zoom.load()).toBe(0);
     expect(state.window.load()).toBeNull();
+    expect(state.browserStrip.load()).toBeNull();
   });
 
   it("never throws when the state directory cannot be written", () => {

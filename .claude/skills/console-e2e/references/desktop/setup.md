@@ -114,20 +114,31 @@ cat <<'EOF' | ab --session <session> eval --stdin
 EOF
 ```
 
-The window reached the requested size when the client exits 0 with `consoleZoomFactor` 1, and `viewport` equals the requested width and height. `desktopZoom` must be `"1"` with `outer[0] === viewport[0]`: the Console records `outerWidth / innerWidth` as `--desktop-zoom` only at page load and on a `devicePixelRatio` change (`trackDesktopZoomFactor` in `runtime/fleet-console/core/client/src/integration/store.ts`), so a resize keeps a correct value correct, and any other value means the document loaded under a viewport override.
+The window reached the requested size when the client exits 0 (`contentBounds` is the window) and `viewport` equals the requested width and height divided by `consoleZoomFactor` (the same size at 1; `consoleZoomFactor` is the Console webContents' `getZoomFactor`, a separate value). A non-1 `consoleZoomFactor` is normal when Desktop's saved zoom or [Console zoom](#console-zoom) set it. The Console records `outerHeight / innerHeight` as `--desktop-zoom` only at page load and on a `devicePixelRatio` change (`trackDesktopZoomFactor` in `runtime/fleet-console/core/client/src/integration/store.ts`), so a resize keeps a correct value correct. With `consoleZoomFactor` 1, `desktopZoom` must be `"1"` with `outer[1] === viewport[1]` (the widths differ while the Browser pane is docked), and any other value means the document loaded under a viewport override; with a zoom other than 1, compare `desktopZoom` against `consoleZoomFactor` instead, and a mismatch there means an override.
 
 The size itself is judged from these two outputs, so a locked screen does not block it. Before OS pixel capture on an unlocked screen, run the [occlusion check](native-and-package.md#native-and-runtime-workflow); on a locked screen skip it and report occlusion as unverified. If another app's window covers the owned window, move only the owned window within the authorized position or display and check again. Never move, hide, minimize, close, or activate another app's window, and activate the owned window only by its PID and only when the authorization included it. If it stays covered, stop the pixel lane and report; the inspector lane remains available, and a launch beyond the authorized count is not.
 
+## Console zoom
+
+Desktop's saved zoom (`zoomLevel` in its userData state, 1.2× per level, clamped ±3) is applied to the Console on load, so a non-1 `getZoomFactor` can be a normal start state. To start at a zoom, seed that file before launch. To change it on a running owned window, use `scripts/set-owned-zoom.mjs` under the same authorization, PID, one-window, and no-focus rules as the resize client (add `--page` the same way); the zoom factor is the person's authorized value, and `--dry-run` only reads `consoleZoomFactor`:
+
+```bash
+node <worktree>/.claude/skills/console-e2e/scripts/set-owned-zoom.mjs <inspector-port> <owned-pid> <evidence-dir> <label> --dry-run
+node <worktree>/.claude/skills/console-e2e/scripts/set-owned-zoom.mjs <inspector-port> <owned-pid> <evidence-dir> <label> <zoom-factor>
+```
+
+It calls `setZoomFactor` on the Console view and reads `getZoomFactor` back (exit 0 reached, 2 settled elsewhere, 1 refusal, including a window with no Console child such as a detached Browser window, which reads `consoleZoomFactor` null). It does not run the menu zoom actions, save the zoom store, or refresh native chrome, and it does not verify OS shortcuts or the menu: those need a separate authorized OS-input run. Follow it with the renderer read above. Set the zoom only after the startup handoff finishes (entry window gone, renderer at `/console/objectives`): a set made while it runs read back 1.2 but reverted to 1 about 0.5 s later (a saved-zoom reapply is the unconfirmed candidate), so read it back again after a delay to confirm it held. Identify the Console CDP page by the `/console/` pathname prefix, not exactly `/console/`.
+
 ## Viewport emulation
 
-Emulate the renderer viewport only when the claim is about that viewport rather than the window. `Emulation.setDeviceMetricsOverride` leaves the native window and its native Browser views at their real bounds, and a reload under it records a false `--desktop-zoom` (a 1440×900 override in a 900×600 window gives 0.625). Discard every measurement from a document loaded under the override.
+Emulate the renderer viewport only when the claim is about that viewport rather than the window. `Emulation.setDeviceMetricsOverride` leaves the native window and its native Browser views at their real bounds, and a reload under it records a false `--desktop-zoom` (a 1440×900 override in a 900×600 window gives 0.667). Discard every measurement from a document loaded under the override.
 
 Clear it in this order:
 
 1. From the **same** CDP session that set it, send `Emulation.clearDeviceMetricsOverride` and wait for its response. Overrides belong to the session that set them; another session cannot clear them.
 2. Close that session.
 3. Reload the Console page.
-4. Run the renderer read above: `desktopZoom` `"1"`, `outer[0] === viewport[0]`, and `viewport` equal to the `contentBounds` size from `resize-owned-window.mjs --dry-run`.
+4. Run the renderer read above: `desktopZoom` equal to `consoleZoomFactor` (`"1"` at the default zoom, where alone `outer[1] === viewport[1]`), and `viewport` equal to the `contentBounds` size from `resize-owned-window.mjs --dry-run` divided by that factor.
 
 Do not count on a detach to clear it. With agent-browser 0.27.0 on headless Chrome, device-metrics and touch overrides set over a page WebSocket or a flattened `Target.attachToTarget` session were gone once that session detached. Whether an Electron renderer keeps a device-metrics override after detach is unverified: one Desktop run reported that it did, and that has not been reproduced. Do not use agent-browser `set viewport` or `set device` on a Desktop session: its daemon keeps the connection, so the override outlives the command and reloads, and the CLI has no command to clear it. If step 4 still fails, report that state and do not measure on it.
 

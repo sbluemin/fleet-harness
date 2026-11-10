@@ -1,11 +1,11 @@
 /**
- * 브라우저 크롬 문서(주소줄·레일)와 셸 main 사이의 좁은 양방향 계약. 두 쪽이 같은 타입 파일을 쓴다 — 문서는 이 파일의 타입만 import 하고
+ * 브라우저 크롬 문서(주소줄·레일·스테이지·가드)와 셸 main 사이의 좁은 양방향 계약. 두 쪽이 같은 타입 파일을 쓴다 — 문서는 이 파일의 타입만 import 하고
  * 번들되며, main 은 아래 검증기로 문서가 보낸 문장을 한 번 더 걸러 받는다. 문서는 Node 도 raw IPC 도 모르고, main 에게 말하는 길은
  * `console-message` 한 줄 JSON, 문서가 받는 길은 main 이 `executeJavaScript` 로 호출하는 `__fleetChrome` 뿐이다.
  */
 import type { DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
 
-export type ChromeRole = "bar" | "rail" | "stage";
+export type ChromeRole = "bar" | "rail" | "stage" | "guard";
 export const CHROME_CHANNEL = "fleet-chrome";
 
 export interface ChromeSuggestion { readonly value: string; readonly title: string; readonly favicon: string | null; readonly history: boolean }
@@ -14,15 +14,31 @@ export interface ChromeImportSources {
   readonly reason: "chrome_required" | "no_profiles" | null;
   readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[];
 }
+export type ChromeTabsOrientation = "vertical" | "horizontal";
 export type ChromeOverlay =
   | { readonly kind: "menu" }
   /** 스페이스 선택 화면 — 디폴트와 모든 사령관 스페이스를 그리드로 보여 준다. */
   | { readonly kind: "spaces" }
+  /** 탭 표시줄 우클릭 메뉴 — 주소줄 문서 좌표(CSS px)의 그 자리에 뜬다. */
+  | { readonly kind: "tabs-menu"; readonly x: number; readonly y: number }
   | { readonly kind: "suggestions" }
   | { readonly kind: "import"; readonly sources: ChromeImportSources }
   | { readonly kind: "switch"; readonly profile: string | null }
   | { readonly kind: "clear" }
   | { readonly kind: "annotate" };
+
+/**
+ * 지금 보는 화면의 제어권 — main 이 Console 투영에서 한 번 정해 모든 문서에 똑같이 준다. `agent` 는 에이전트가 표시 탭을 모는 중이라
+ * 사람의 입력을 막는 상태, `user` 는 사람이 그 스페이스의 제어를 쥔 상태다. 둘 다 아니면 null 이고 가드는 아무것도 그리지 않는다.
+ */
+export interface ChromeControl {
+  readonly holder: "agent" | "user";
+  readonly spaceId: string;
+  /** 에이전트가 사람에게 부탁한 일. 없으면 null. */
+  readonly reason: string | null;
+  /** 에이전트의 마지막 포인터 — 가드 문서의 CSS px(페이지 자리 왼쪽 위 기준). 표시 탭의 것이 아니면 null. `actor` 는 그 입력을 보낸 AI 의 이름(모르면 빈 문자열). */
+  readonly pointer: { readonly x: number; readonly y: number; readonly kind: "move" | "click" | "type" | "scroll"; readonly seq: number; readonly actor: string } | null;
+}
 
 export interface ChromeColors { readonly scheme: "dark" | "light"; readonly tokens: Readonly<Record<string, string>>; readonly fonts?: Readonly<Record<string, { readonly family: string; readonly size: number }>> }
 
@@ -38,11 +54,15 @@ export interface ChromeUiState {
   readonly pinned: boolean;
   /** 레일이 호버·포커스로 펼쳐졌는가(고정과 별개). */
   readonly expanded: boolean;
+  /** 탭 표시줄의 방향 — 세로 레일(주소줄 아래 왼쪽) 또는 가로 표시줄(주소줄 위). 가로일 때 맨 위 줄은 탭 표시줄이다. */
+  readonly orientation: ChromeTabsOrientation;
+  /** 접힌 세로 레일이 포인터를 올리면 스스로 펼쳐지는가. */
+  readonly autoExpand: boolean;
   /** 창 모드의 macOS 신호등 자리(DIP). 칸이면 0. */
   readonly leading: number;
   /** 윈도우 캡션 단추가 차지하는 오른쪽 자리(DIP). */
   readonly trailing: number;
-  /** 표면 안에서 페이지가 놓인 자리(표면 왼쪽 위 기준 DIP). 대화상자·주석이 이 자리를 덮는다. */
+  /** 주소줄 뷰 안에서 페이지가 놓인 자리(주소줄 뷰 왼쪽 위 기준 CSS px). 대화상자·주석이 이 자리를 덮는다. */
   readonly page: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
   /** Console 창 배율 — 크롬 문서의 CSS px 하나는 페이지 CSS px `zoom` 개와 같다(주석 좌표 변환). */
   readonly zoom: number;
@@ -58,6 +78,7 @@ export interface ChromeUiState {
   readonly importUnavailable: boolean;
   /** 주소줄에 되돌려 줄 글 — 다른 표면에서 쓰던 주소 초안. */
   readonly draft: string | null;
+  readonly control: ChromeControl | null;
   /** 오를 때마다 페이지 대화상자 카드의 기본 단추로 초점을 옮긴다. */
   readonly pageDialogFocus?: number;
 }
@@ -72,6 +93,10 @@ export type ChromeAction =
   | { readonly action: "show-tab"; readonly id: string | null }
   | { readonly action: "pin"; readonly pinned: boolean }
   | { readonly action: "expand"; readonly expanded: boolean }
+  /** 탭 표시줄의 빈 곳을 우클릭했다 — 좌표는 그 문서의 CSS px. */
+  | { readonly action: "tabs-menu"; readonly x: number; readonly y: number }
+  | { readonly action: "orientation"; readonly orientation: ChromeTabsOrientation }
+  | { readonly action: "auto-expand"; readonly enabled: boolean }
   | { readonly action: "toggle-mode" }
   | { readonly action: "open-external" }
   | { readonly action: "suggest"; readonly query: string }
@@ -95,6 +120,10 @@ export type ChromeAction =
   | { readonly action: "page-dialog"; readonly id: string; readonly dialogId: string; readonly accept: boolean }
   | { readonly action: "info-action" }
   | { readonly action: "draft"; readonly value: string | null }
+  /** 제어 알약의 단추 — 가져오기·돌려주기·중지. 어느 스페이스인지는 main 이 지금 화면에서 정한다. */
+  | { readonly action: "control"; readonly control: "take" | "return" | "stop" }
+  /** 가드 문서가 잰 알약의 크기(CSS px) — 사람이 제어 중일 때 가드 뷰는 이 자리만 차지한다. */
+  | { readonly action: "guard-size"; readonly width: number; readonly height: number }
   | { readonly action: "ready" };
 
 const PROFILES = new Set<unknown>([null, "default"]);
@@ -106,7 +135,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
   if (text.length > 4_000_000) return null;
   let value: unknown;
   try { value = JSON.parse(text); } catch { return null; }
-  if (!Array.isArray(value) || value.length !== 4 || value[0] !== CHROME_CHANNEL || (value[1] !== "bar" && value[1] !== "rail" && value[1] !== "stage")) return null;
+  if (!Array.isArray(value) || value.length !== 4 || value[0] !== CHROME_CHANNEL || (value[1] !== "bar" && value[1] !== "rail" && value[1] !== "stage" && value[1] !== "guard")) return null;
   const name = value[2];
   const body = (typeof value[3] === "object" && value[3] !== null ? value[3] : {}) as Record<string, unknown>;
   const role = value[1] as ChromeRole;
@@ -119,6 +148,9 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "page-dialog": return make(safeId(body.id) && safeId(body.dialogId) && typeof body.accept === "boolean" ? { action: "page-dialog", id: body.id, dialogId: body.dialogId, accept: body.accept } : null);
     case "pin": return make(typeof body.pinned === "boolean" ? { action: "pin", pinned: body.pinned } : null);
     case "expand": return make(typeof body.expanded === "boolean" ? { action: "expand", expanded: body.expanded } : null);
+    case "tabs-menu": return make(typeof body.x === "number" && typeof body.y === "number" && Number.isFinite(body.x) && Number.isFinite(body.y) ? { action: "tabs-menu", x: body.x, y: body.y } : null);
+    case "orientation": return make(body.orientation === "vertical" || body.orientation === "horizontal" ? { action: "orientation", orientation: body.orientation } : null);
+    case "auto-expand": return make(typeof body.enabled === "boolean" ? { action: "auto-expand", enabled: body.enabled } : null);
     case "suggest": return make(str(body.query, 2048) ? { action: "suggest", query: body.query } : null);
     case "suggest-settings": return make(typeof body.enabled === "boolean" ? { action: "suggest-settings", enabled: body.enabled } : null);
     case "overlay": return make(body.kind === null || body.kind === "menu" || body.kind === "spaces" || body.kind === "suggestions" ? { action: "overlay", kind: body.kind } : null);
@@ -128,6 +160,8 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "viewport": return make(body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? { action: "viewport", preset: body.preset } : null);
     case "profile": case "profile-confirm": case "default-profile": return make(PROFILES.has(body.profile) ? { action: name, profile: body.profile as string | null } : null);
     case "import-run": return make(str(body.profileId, 200) && body.profileId.length > 0 ? { action: "import-run", profileId: body.profileId } : null);
+    case "control": return make(body.control === "take" || body.control === "return" || body.control === "stop" ? { action: "control", control: body.control } : null);
+    case "guard-size": return make(typeof body.width === "number" && typeof body.height === "number" && body.width >= 0 && body.width <= 4096 && body.height >= 0 && body.height <= 4096 ? { action: "guard-size", width: body.width, height: body.height } : null);
     case "draft": return make(body.value === null || str(body.value, 4096) ? { action: "draft", value: body.value as string | null } : null);
     default: return null;
   }
