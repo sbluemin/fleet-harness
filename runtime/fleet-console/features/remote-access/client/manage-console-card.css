@@ -1,0 +1,14 @@
+/* 콘솔 관리 화면 — 콘솔 추가 팝업(.add-host-*)의 카드 문법을 그대로 빌린다. 여기에는 그 위에 얹는 것만 둔다. */
+.manage-console-title { display: grid; gap: var(--space-1); min-width: 0; }
+.manage-console-state { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
+.manage-console-lifecycle.is-starting, .manage-console-lifecycle.is-stopping { color: var(--aurora-ink); }
+.manage-console-lifecycle.is-failed { color: var(--coral-ink); }
+/* 관리·조작·경로는 서로를 대신하지 않는 세 가지 사실이다 — 한 줄에 섞지 않고 이름표와 값으로 나란히 둔다. */
+.manage-console-relations { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--t-md); line-height: 1.55; }
+.manage-console-relations dt { color: var(--text-tertiary); }
+.manage-console-relations dd { margin: 0; color: var(--text-primary); min-width: 0; }
+.manage-console-relations small { display: block; color: var(--text-tertiary); font-size: var(--t-sm); }
+.manage-console-path { display: inline-flex; align-items: center; gap: var(--space-2); }
+.manage-console-path svg { width: 14px; height: 14px; flex: none; color: var(--text-secondary); }
+.manage-console-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.manage-console-confirm { display: grid; gap: var(--space-3); }

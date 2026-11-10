@@ -2,23 +2,44 @@ import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import { CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, parseConsoleSectionCommand, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
+import { consoleLifecycleActions, type ConsoleAccessPath, type ConsoleLifecycleAction, type ConsoleManagedLifecycle, type ConsoleManagementRelation } from "@fleet-console/protocol/lifecycle/management";
 
 type Contents = Pick<WebContents, "on" | "removeListener" | "getURL" | "isDestroyed" | "executeJavaScript">;
+type Overlay = Pick<WebContents, "on" | "once" | "getURL" | "isDestroyed" | "executeJavaScript">;
 interface Target { readonly origin: string; readonly recordId?: string; readonly entry: ConsoleSectionEntry }
+/** The management relation of one Console as this Desktop proved it (docs/console-lifecycle-contract.md). */
+export interface ManagedConsoleState {
+  readonly management: ConsoleManagementRelation;
+  readonly lifecycle: ConsoleManagedLifecycle | null;
+  readonly identityProven: boolean;
+}
+/** The Console this Desktop's window lives on, as its lifecycle manager sees it. */
+export interface ManagedHomeConsole {
+  readonly state: () => Promise<ManagedConsoleState>;
+  /** Runs an action this controller judged allowed. Rejects when it could not be carried out. */
+  readonly run: (action: ConsoleLifecycleAction) => Promise<void>;
+}
 interface Dependencies {
   readonly home: () => string | null;
   readonly fetch: (url: string, init?: RequestInit) => Promise<Response>;
   readonly open: (origin: string) => Promise<void>;
   readonly add: (url: string) => void;
+  /** Opens the management surface the home Console draws. Absent in a shell that offers none. */
+  readonly manage?: (url: string) => void;
+  readonly managedHome?: ManagedHomeConsole;
   readonly confirmForget: (label: string) => Promise<boolean>;
   readonly report: (error: unknown) => void;
 }
+type Relations = Pick<ConsoleSectionEntry, "management" | "path" | "lifecycle" | "actions">;
 const text = (value: unknown, fallback: string, max = 120): string => (typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/gu, "").trim().slice(0, max) : "") || fallback;
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+/** A Console found on this computer says who started it; that names its manager, it does not make this Desktop one. */
+const managementOfLocal = (owner: unknown): ConsoleManagementRelation => owner === "desktop" ? "other-desktop" : owner === "cli" ? "cli" : "unknown";
 
 /** 불투명 id는 창 하나가 소유한다. 활성 문서에는 명시한 표시 필드만 보낸다. */
 export function createConsoleSectionController(deps: Dependencies) {
   let contents: Contents | null = null;
+  let overlay: Overlay | null = null;
   let detach = () => {};
   let generation = 0;
   let expanded = true;
@@ -29,6 +50,9 @@ export function createConsoleSectionController(deps: Dependencies) {
   let budgetStart = 0;
   let budget = 0;
   let mutating = false;
+  /** The lifecycle action in flight on the home Console, and whether the last one failed. */
+  let running: ConsoleLifecycleAction | null = null;
+  let failed = false;
   const at = () => {
     try { const url = new URL(contents?.getURL() ?? ""); return url.pathname.startsWith("/console/") ? url.origin : null; } catch { return null; }
   };
@@ -44,44 +68,80 @@ export function createConsoleSectionController(deps: Dependencies) {
     if (response.status === 204 || alreadyForgotten) return {};
     return record(await response.json());
   }
+  /**
+   * The home Console's relations. Management comes only from the manager's own proof; while an action runs, the row
+   * says so and offers nothing. A shell without a manager sends no relation, as shells did before this contract.
+   */
+  async function homeRelations(): Promise<Relations & { readonly reachable: boolean }> {
+    if (!deps.managedHome) return { reachable: true };
+    let state: ManagedConsoleState;
+    try { state = await deps.managedHome.state(); } catch { return { management: "unknown", path: "loopback", lifecycle: null, actions: [], reachable: true }; }
+    if (running !== null) return { management: state.management, path: "loopback", lifecycle: running === "stop" ? "stopping" : state.lifecycle === "stopping" ? "stopping" : "starting", actions: [], reachable: state.lifecycle === "running" };
+    if (state.lifecycle === "running") failed = false;
+    const lifecycle = failed && state.lifecycle === "stopped" ? "failed" : state.lifecycle;
+    return { management: state.management, path: "loopback", lifecycle, actions: consoleLifecycleActions({ ...state, lifecycle, home: true }), reachable: state.lifecycle === "running" || state.lifecycle === null };
+  }
   async function publish(): Promise<void> {
-    const receiver = contents;
     const origin = at();
-    if (!receiver || receiver.isDestroyed() || !origin) return;
+    if (!origin) return;
     const state: ConsoleSectionState = { v: 1, expanded, entries: [...targets.values()].map(({ origin: target, entry }) => ({ ...entry, active: target === origin })) };
-    // 실행 직전에 문서가 바뀌어도 옛 origin의 상태를 새 문서로 넘기지 않는다.
-    const script = `if(location.origin===${JSON.stringify(origin)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_SECTION_EVENT)},{detail:${JSON.stringify(state)}}))`;
-    await receiver.executeJavaScript(script).catch(() => undefined);
+    const send = async (receiver: Pick<WebContents, "isDestroyed" | "executeJavaScript"> | null, expected: string): Promise<void> => {
+      if (!receiver || receiver.isDestroyed()) return;
+      // 실행 직전에 문서가 바뀌어도 옛 origin의 상태를 새 문서로 넘기지 않는다.
+      const script = `if(location.origin===${JSON.stringify(expected)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_SECTION_EVENT)},{detail:${JSON.stringify(state)}}))`;
+      await receiver.executeJavaScript(script).catch(() => undefined);
+    };
+    await send(contents, origin);
+    // The management surface is the home Console's own document; it never receives another origin's state.
+    const homeOrigin = home();
+    if (overlay && homeOrigin) await send(overlay, homeOrigin);
   }
   async function load(): Promise<void> {
     const origin = home();
     const epoch = generation;
     if (!origin || !contents || !at()) return;
-    const [saved, nearby, status] = await Promise.all([json("/api/v1/remote-hosts"), json("/api/v1/local-consoles"), json("/api/v1/status")]);
+    const relations = await homeRelations();
     if (epoch !== generation) return;
+    const current = at();
     const next = new Map<string, Target>();
     const nextIds = new Map<string, string>();
-    const current = at();
-    const append = (targetOrigin: unknown, kind: "local" | "remote", label: unknown, version: unknown, state: ConsoleSectionEntry["status"], recordId?: string) => {
+    const append = (targetOrigin: unknown, kind: "local" | "remote", label: unknown, version: unknown, state: ConsoleSectionEntry["status"], extra: Relations, recordId?: string) => {
       if (typeof targetOrigin !== "string" || !(kind === "local" ? isLoopbackConsoleOrigin(targetOrigin) : isRemoteConsoleOrigin(targetOrigin))) return;
       if (next.size >= 100 || [...next.values()].some((target) => target.origin === targetOrigin)) return;
       const key = `${kind}:${recordId ?? targetOrigin}`;
       const id = ids.get(key) ?? randomUUID();
-      const entry: ConsoleSectionEntry = { id, kind, label: text(label, new URL(targetOrigin).host), address: new URL(targetOrigin).host, version: typeof version === "string" && version ? text(version, "", 64) || null : null, active: targetOrigin === current, home: targetOrigin === origin, status: kind === "remote" ? targets.get(id)?.entry.status ?? state : state };
+      const entry: ConsoleSectionEntry = { id, kind, label: text(label, new URL(targetOrigin).host), address: new URL(targetOrigin).host, version: typeof version === "string" && version ? text(version, "", 64) || null : null, active: targetOrigin === current, home: targetOrigin === origin, status: kind === "remote" ? targets.get(id)?.entry.status ?? state : state, ...extra };
       const candidate = { v: 1, expanded, entries: [...next.values()].map((target) => target.entry).concat(entry) };
       if (new TextEncoder().encode(JSON.stringify(candidate)).length > CONSOLE_SECTION_MAX_FRAME) return;
       next.set(id, { origin: targetOrigin, ...(recordId ? { recordId } : {}), entry });
       nextIds.set(key, id);
     };
-    append(origin, "local", status.name, status.version, "ready");
+    const { reachable, ...homeExtra } = relations;
+    if (!reachable) {
+      // The managed home Console is not running: its own lists cannot be read, and that is not a failure to report.
+      // The row stays, with the name it last had, so the person can see what happened and start it again.
+      const before = [...targets.values()].find((target) => target.entry.home)?.entry;
+      append(origin, "local", before?.label, before?.version, "unreachable", homeExtra);
+      if (current && current !== origin) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, { management: "unknown", path: isLoopbackConsoleOrigin(current) ? "loopback" : "remote" });
+      targets = next;
+      ids = nextIds;
+      await publish();
+      return;
+    }
+    const [saved, nearby, status] = await Promise.all([json("/api/v1/remote-hosts"), json("/api/v1/local-consoles"), json("/api/v1/status")]);
+    if (epoch !== generation) return;
+    // An older shell sent no relation at all; without a manager this shell keeps doing so.
+    const relate = (management: ConsoleManagementRelation, path: ConsoleAccessPath): Relations => deps.managedHome ? { management, path } : {};
+    append(origin, "local", status.name, status.version, "ready", homeExtra);
     const hosts = Array.isArray(saved.hosts) ? saved.hosts.map(record) : [];
     const locals = Array.isArray(nearby.consoles) ? nearby.consoles.map(record) : [];
     // 크기 상한에 닿더라도 집과 지금 서 있는 Console은 남긴다.
     const activeRemote = hosts.find((host) => host.origin === current);
-    if (activeRemote && typeof activeRemote.id === "string") append(activeRemote.origin, "remote", activeRemote.label, null, null, activeRemote.id);
-    if (current && current !== origin && !activeRemote) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null);
-    for (const local of locals) append(local.origin, "local", local.origin === origin ? status.name : undefined, local.version, local.state === "stopping" ? "stopping" : local.state === "unresponsive" ? "slow" : "ready");
-    for (const host of hosts) if (typeof host.id === "string") append(host.origin, "remote", host.label, null, null, host.id);
+    if (activeRemote && typeof activeRemote.id === "string") append(activeRemote.origin, "remote", activeRemote.label, null, null, relate("unknown", "remote"), activeRemote.id);
+    if (current && current !== origin && !activeRemote) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, relate("unknown", isLoopbackConsoleOrigin(current) ? "loopback" : "remote"));
+    for (const local of locals) append(local.origin, "local", local.origin === origin ? status.name : undefined, local.version, local.state === "stopping" ? "stopping" : local.state === "unresponsive" ? "slow" : "ready",
+      relate(managementOfLocal(local.owner), typeof local.distro === "string" && local.distro ? "wsl" : "loopback"));
+    for (const host of hosts) if (typeof host.id === "string") append(host.origin, "remote", host.label, null, null, relate("unknown", "remote"), host.id);
     targets = next;
     ids = nextIds;
     await publish();
@@ -103,7 +163,31 @@ export function createConsoleSectionController(deps: Dependencies) {
     })().finally(() => { refreshRunning = null; });
     return refreshRunning;
   }
-  async function command(value: ConsoleSectionCommand): Promise<void> {
+  /**
+   * A lifecycle action on the Console this Desktop manages. Authority is judged here, from the manager's fresh proof,
+   * never from what the page was last told: the entry must be the home Console and the action one the contract allows
+   * for its present state.
+   */
+  async function runLifecycle(id: string, action: ConsoleLifecycleAction): Promise<void> {
+    const target = targets.get(id);
+    if (!target?.entry.home || !deps.managedHome || running !== null) return;
+    const state = await deps.managedHome.state();
+    const lifecycle = failed && state.lifecycle === "stopped" ? "failed" : state.lifecycle;
+    if (!consoleLifecycleActions({ ...state, lifecycle, home: true }).includes(action)) { await refresh(); return; }
+    running = action;
+    failed = false;
+    await refresh();
+    try {
+      await deps.managedHome.run(action);
+    } catch (error) {
+      failed = true;
+      deps.report(error);
+    } finally {
+      running = null;
+      await refresh();
+    }
+  }
+  async function command(value: ConsoleSectionCommand, fromHome: boolean): Promise<void> {
     if ("request" in value) { await refresh(); return; }
     if ("expanded" in value) { expanded = value.expanded; await publish(); if (expanded) await refresh(); return; }
     if ("add" in value) {
@@ -111,11 +195,24 @@ export function createConsoleSectionController(deps: Dependencies) {
       if (origin) { const url = new URL("/console/", origin); url.searchParams.set("desktop-surface", "host-picker"); url.searchParams.set("intent", "add"); url.searchParams.set("at", at() ?? origin); deps.add(url.toString()); }
       return;
     }
-    const id = "switch" in value ? value.switch : "forget" in value ? value.forget : value.rename.id;
+    // Lifecycle is the manager's alone. A page of another Console may show the row, but only a document the home
+    // Console serves may ask: the stale home page of a stopped Console, or the management surface.
+    if ("lifecycle" in value) { if (fromHome) await runLifecycle(value.lifecycle.id, value.lifecycle.action); return; }
+    const id = "switch" in value ? value.switch : "forget" in value ? value.forget : "manage" in value ? value.manage : value.rename.id;
     const target = targets.get(id);
     if (!target) return;
     if ("switch" in value) { await deps.open(target.origin); return; }
-    if (!target.recordId || target.entry.kind !== "remote" || mutating) return;
+    if ("manage" in value) {
+      const origin = home();
+      // The surface is the home Console's document, so it opens only while that Console answers.
+      if (!origin || !deps.manage || target.entry.management === undefined || target.entry.status === "unreachable") return;
+      const url = new URL("/console/", origin);
+      url.searchParams.set("desktop-surface", "host-picker"); url.searchParams.set("intent", "manage"); url.searchParams.set("target", id); url.searchParams.set("at", at() ?? origin);
+      deps.manage(url.toString());
+      return;
+    }
+    // Renaming and forgetting act on a saved record. The record grants them, not the kind the row is drawn with.
+    if (!target.recordId || mutating) return;
     const epoch = generation;
     mutating = true;
     try {
@@ -125,20 +222,46 @@ export function createConsoleSectionController(deps: Dependencies) {
       await refresh();
     } finally { mutating = false; }
   }
+  /** Rate-limits and parses a command navigation. Returns the command, or null when it is to be dropped. */
+  function accept(url: URL): ConsoleSectionCommand | null {
+    const now = Date.now();
+    if (now - budgetStart >= 1000) { budgetStart = now; budget = 0; }
+    if (++budget > 20) return null;
+    return parseConsoleSectionCommand(url.searchParams.get("command") ?? "");
+  }
   function close(): void {
     generation++;
     detach(); detach = () => {};
     contents = null;
+    overlay = null;
     targets.clear(); ids.clear(); expanded = true;
     budget = 0; budgetStart = 0;
   }
   return {
     refresh,
     close,
-    observeHomeOverlay(overlay: Pick<WebContents, "once">): void {
-      // 성공·취소·Escape·렌더러 종료 모두 덮개 수명이 끝난 뒤 집의 상태를 다시 읽는다.
+    /**
+     * The home Console's own overlay: the add dialog and the management surface. It hears the same minimized state,
+     * and it is the one place besides the home page itself whose lifecycle commands are honored.
+     */
+    observeHomeOverlay(view: Overlay): void {
       const epoch = generation;
-      overlay.once("destroyed", () => { if (contents && epoch === generation) void refresh(); });
+      overlay = view;
+      view.on("will-navigate", ((event: { preventDefault(): void }, raw: string, _redirect?: unknown, mainFrame?: boolean) => {
+        let url: URL;
+        try { url = new URL(raw); } catch { return; }
+        if (url.searchParams.get("desktop-surface") !== CONSOLE_SECTION_COMMAND) return;
+        event.preventDefault();
+        if (mainFrame === false || overlay !== view || view.isDestroyed() || epoch !== generation || url.origin !== home() || url.pathname !== "/console/") return;
+        let from: string;
+        try { from = new URL(view.getURL()).origin; } catch { return; }
+        if (from !== home()) return;
+        const value = accept(url);
+        if (value && ("lifecycle" in value || "request" in value)) void command(value, true).catch((error) => { deps.report(error); void publish(); });
+      }) as never);
+      view.on("did-finish-load", (() => { if (overlay === view && epoch === generation) void refresh(); }) as never);
+      // 성공·취소·Escape·렌더러 종료 모두 덮개 수명이 끝난 뒤 집의 상태를 다시 읽는다.
+      view.once("destroyed", () => { if (overlay === view) overlay = null; if (contents && epoch === generation) void refresh(); });
     },
     attach(receiver: Contents): void {
       close();
@@ -149,11 +272,8 @@ export function createConsoleSectionController(deps: Dependencies) {
         if (url.searchParams.get("desktop-surface") !== CONSOLE_SECTION_COMMAND) return;
         event.preventDefault();
         if (mainFrame === false || contents !== receiver || receiver.isDestroyed() || url.origin !== at() || url.pathname !== "/console/") return;
-        const now = Date.now();
-        if (now - budgetStart >= 1000) { budgetStart = now; budget = 0; }
-        if (++budget > 20) return;
-        const value = parseConsoleSectionCommand(url.searchParams.get("command") ?? "");
-        if (value) void command(value).catch((error) => { deps.report(error); void publish(); });
+        const value = accept(url);
+        if (value) void command(value, at() === home()).catch((error) => { deps.report(error); void publish(); });
       };
       const arrived = () => { generation++; void refresh(); };
       receiver.on("will-navigate", navigate as never);

@@ -39,6 +39,11 @@
       "import": "./lifecycle/index.ts",
       "default": "./lifecycle/index.ts"
     },
+    "./lifecycle/management": {
+      "types": "./lifecycle/management.ts",
+      "import": "./lifecycle/management.ts",
+      "default": "./lifecycle/management.ts"
+    },
     "./lifecycle/update": {
       "types": "./lifecycle/update.ts",
       "import": "./lifecycle/update.ts",

@@ -53,6 +53,7 @@ export const CONSOLE_LIFECYCLE_CONTRACT_VERSION = 2;
 export * from "./budgets.js";
 export * from "./update.js";
 export * from "./wait.js";
+export * from "./management.js";
 
 // ---------- Identity ----------
 

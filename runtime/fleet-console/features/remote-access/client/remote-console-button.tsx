@@ -1,9 +1,13 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { Fragment, useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 import { createPortal } from "react-dom";
 import type { ConsoleSectionCommand, ConsoleSectionEntry, ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { ConsoleGlyph } from "./console-section.js";
+import { consoleLifecycleKey } from "./manage-console-card.js";
 import "./remote-console-button.css";
+
+/** 행이 서는 구역. 경로가 정한다 — 이 컴퓨터(루프백·WSL)인가, 다른 컴퓨터인가. */
+const groupOf = (entry: ConsoleSectionEntry): "here" | "remote" => (entry.path ?? (entry.kind === "remote" ? "remote" : "loopback")) === "remote" ? "remote" : "here";
 
 /** 셸의 최소 표시 상태만 사용한다. 패널 열림은 기존 expanded 명령으로 알린다. */
 export function RemoteConsoleButton({ state, command, compact }: {
@@ -23,6 +27,7 @@ export function RemoteConsoleButton({ state, command, compact }: {
   const [name, setName] = useState("");
   const [position, setPosition] = useState<CSSProperties>({});
   const current = state.entries.find((entry) => entry.active);
+  const grouped = state.entries.some((entry) => entry.path !== undefined);
   const statusText = (entry: ConsoleSectionEntry | undefined) => entry?.status === "unreachable" ? t("chrome.hosts.unreachable") : entry?.status === "untrusted" ? t("chrome.hosts.untrusted") : entry?.status === "stopping" ? t("chrome.hosts.stopping") : entry?.status === "slow" ? t("chrome.hosts.slow") : "";
   const label = `${t("chrome.hosts.aria")}: ${current?.label ?? ""}${statusText(current) ? `, ${statusText(current)}` : ""}`;
   const clearTimers = () => { clearTimeout(opening.current); clearTimeout(closing.current); };
@@ -90,19 +95,29 @@ export function RemoteConsoleButton({ state, command, compact }: {
         if (at < 0) return;
         event.preventDefault(); rows[(at + (event.key === "ArrowDown" ? 1 : -1) + rows.length) % rows.length]?.focus();
       }}>
-      {state.entries.map((entry) => {
+      {state.entries.map((entry, index) => {
         const blocked = entry.active || entry.status === "unreachable" || entry.status === "untrusted" || entry.status === "stopping";
-        return <div key={entry.id} className={`remote-console-entry${entry.active ? " is-current" : ""}`}>
+        // 관리 대상의 생명주기가 연결 상태보다 먼저다 — 꺼진 콘솔은 "연결 불가"가 아니라 "중지됨"이다.
+        const lifecycle = consoleLifecycleKey(entry);
+        const state_ = lifecycle ? t(lifecycle) : statusText(entry);
+        // 셸이 관계를 실어 보낼 때만 구역을 나눈다. 구역은 경로이고, 관리 여부는 행이 따로 말한다.
+        const group = grouped && (index === 0 || groupOf(entry) !== groupOf(state.entries[index - 1]!)) ? groupOf(entry) : null;
+        return <Fragment key={entry.id}>
+          {group ? <p className="remote-console-group">{t(group === "remote" ? "chrome.hosts.saved" : "chrome.hosts.nearby")}</p> : null}
+          <div className={`remote-console-entry${entry.active ? " is-current" : ""}`}>
           {editing === entry.id ? confirming ? <div className="remote-console-form"><p>{t("chrome.consoles.forgetWarning")}</p><div><button type="button" autoFocus onClick={() => setConfirming(false)}>{t("common.cancel")}</button><button type="button" className="is-danger" onClick={() => { command({ forget: entry.id }); setEditing(null); setConfirming(false); }}>{t("settings.remote.hosts.forget")}</button></div></div> : <form className="remote-console-form" onSubmit={(event) => { event.preventDefault(); if (name.trim()) { command({ rename: { id: entry.id, label: name.trim() } }); setEditing(null); } }}>
             <input autoFocus aria-label={t("settings.remote.hosts.rename")} value={name} maxLength={120} onChange={(event) => setName(event.target.value)} />
             <div><button type="submit" disabled={!name.trim()}>{t("chrome.consoles.save")}</button><button type="button" onClick={() => setEditing(null)}>{t("common.cancel")}</button>{!entry.active ? <button type="button" className="is-danger" onClick={() => setConfirming(true)}>{t("settings.remote.hosts.forget")}</button> : null}</div>
           </form> : <>
             <button type="button" data-console-nav className="remote-console-row" aria-current={entry.active ? "location" : undefined} aria-disabled={blocked} onClick={() => { if (!blocked) act({ switch: entry.id }); }} title={`${entry.label} · ${entry.address}`}>
-              <ConsoleGlyph remote={entry.kind === "remote"} /><span className="remote-console-text"><span className="remote-console-name">{entry.label}{entry.home && current && !current.home ? <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-label={t("chrome.consoles.home")}><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg> : null}</span><span className="remote-console-detail">{statusText(entry) ? <><span className={`remote-console-status is-${entry.status}`}>{statusText(entry)}</span> · </> : null}{entry.address}{entry.version ? ` · v${entry.version}` : ""}</span></span>
+              <ConsoleGlyph remote={entry.kind === "remote"} /><span className="remote-console-text"><span className="remote-console-name">{entry.label}{entry.home && current && !current.home ? <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-label={t("chrome.consoles.home")}><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg> : null}</span><span className="remote-console-detail">{state_ ? <><span className={`remote-console-status is-${lifecycle ? entry.lifecycle : entry.status}`}>{state_}</span> · </> : null}{entry.address}{entry.version ? ` · v${entry.version}` : ""}</span></span>
             </button>
+            {entry.actions?.includes("start") ? <button type="button" className="remote-console-mini" onClick={() => { clearTimers(); setPinned(true); command({ lifecycle: { id: entry.id, action: "start" } }); }}>{t("chrome.consoles.start")}</button> : null}
+            {entry.management !== undefined && entry.path !== "remote" && entry.status !== "unreachable" ? <button type="button" className="remote-console-edit is-manage" aria-label={`${entry.label}: ${t("chrome.consoles.manage")}`} title={t("chrome.consoles.manage")} onClick={() => act({ manage: entry.id })}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" /></svg></button> : null}
             {entry.kind === "remote" ? <button type="button" className="remote-console-edit" aria-label={`${entry.label}: ${t("settings.remote.hosts.rename")}`} title={t("settings.remote.hosts.rename")} onClick={() => { clearTimers(); setPinned(true); setEditing(entry.id); setName(entry.label); setConfirming(false); }}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m10.5 2.8 2.7 2.7L6 12.7l-3.2.5.5-3.2z" /></svg></button> : null}
           </>}
-        </div>;
+          </div>
+        </Fragment>;
       })}
       <div className="remote-console-separator" />
       <button type="button" data-console-nav className="remote-console-add" onClick={() => act({ add: true })}><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="M8 3v10M3 8h10" /></svg>{t("chrome.hosts.add")}</button>

@@ -68,12 +68,15 @@ describe("sidecar supervisor", () => {
     const before = fs.readFileSync(lockFile, "utf8");
     const fetchHealth = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({ error: "console_starting", pid: process.pid }), { status: 503 }))
-      .mockResolvedValue(new Response(JSON.stringify({ pid: process.pid }), { status: 200 }));
+      .mockImplementation(async () => new Response(JSON.stringify({ pid: process.pid }), { status: 200 }));
     vi.stubGlobal("fetch", fetchHealth);
     const kill = vi.spyOn(process, "kill");
     const waits: string[] = [];
-    await expect(supervisor().startOrAdopt({ wait: (wait) => { waits.push(wait); } })).resolves.toBe("http://127.0.0.1:4310/console/");
+    const adopted = supervisor();
+    await expect(adopted.startOrAdopt({ wait: (wait) => { waits.push(wait); } })).resolves.toBe("http://127.0.0.1:4310/console/");
     expect(waits).toEqual(["owner-starting"]);
+    // Management is this Desktop's, and the running instance proved itself by its authenticated answer.
+    await expect(adopted.managedState()).resolves.toEqual({ management: "this-desktop", lifecycle: "running", identityProven: true });
     expect(fs.readFileSync(lockFile, "utf8")).toBe(before);
     expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
   });
@@ -88,6 +91,10 @@ describe("sidecar supervisor", () => {
     await expect(instance.startOrAdopt()).rejects.toThrow("cli_daemon_requires_confirmation");
     expect(resolveRuntime).not.toHaveBeenCalled();
     expect(fetchFor).toHaveBeenCalledOnce();
+    // A healthy Console at a loopback address is still not this Desktop's to manage: no lifecycle, nothing proven.
+    await expect(instance.managedState()).resolves.toEqual({ management: "cli", lifecycle: null, identityProven: false });
+    await expect(instance.restart()).rejects.toThrow("cli_daemon_requires_confirmation");
+    expect(fetchFor).toHaveBeenCalledTimes(2);
     expect(String(fetchFor.mock.calls[0]![0])).toBe("http://127.0.0.1:4310/api/v1/health");
     expect(kill.mock.calls.every(([, signal]) => signal === 0)).toBe(true);
   });

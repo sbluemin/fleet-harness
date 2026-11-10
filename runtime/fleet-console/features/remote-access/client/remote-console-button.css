@@ -47,6 +47,15 @@
 .remote-console-form > div { display: flex; flex-wrap: wrap; gap: 6px; }
 .remote-console-form button { border: 0; border-radius: 8px; padding: 4px 10px; background: var(--wash-hover); color: var(--text-secondary); font-size: var(--t-xs); }
 .remote-console-form p { margin: 0; font-size: var(--t-xs); color: var(--text-secondary); }
+/* 구역 이름표는 경로를 말한다(이 컴퓨터 / 다른 컴퓨터). 행이 아니므로 hover·선택 면을 갖지 않는다. */
+.remote-console-group { margin: 0; padding: 7px 10px 3px; color: var(--text-tertiary); font-size: var(--t-2xs); font-weight: var(--weight-medium); }
+.remote-console-status.is-starting, .remote-console-status.is-stopping { color: var(--aurora-ink); }
+.remote-console-status.is-failed { color: var(--coral-ink); }
+/* 행 끝의 생명주기 동작 — 이름 바꾸기 폼의 단추와 같은 중립 면이다. */
+.remote-console-mini { flex: none; margin-right: 4px; border: 0; border-radius: 8px; padding: 4px 10px; background: var(--wash-hover); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; }
+.remote-console-mini:hover { background: var(--control-rest-hover); }
+/* 관리 창으로 가는 문은 포인터를 올리기 전에도 보여야 한다 — 상태를 본 자리에서 바로 찾을 수 있어야 하기 때문이다. */
+.remote-console-edit.is-manage { opacity: 1; }
 .remote-console-separator { height: 1px; margin: var(--popover-divider-space); background: var(--popover-divider); }
 .remote-console-add { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); text-align: left; font-size: var(--t-sm) !important; }
 .remote-console-add:hover { color: var(--text-primary); background: var(--wash-hover); }

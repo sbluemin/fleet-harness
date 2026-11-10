@@ -277,6 +277,73 @@ describe("host picker surface", () => {
   });
 
   /**
+   * 생명주기는 관리 관계만이 준다(docs/console-lifecycle-contract.md). 목록에 보이거나 루프백이라는 이유로,
+   * 또는 남의 콘솔이 서빙한 문서의 요청으로 이 Desktop의 Console이 다시 시작되면 안 된다.
+   */
+  it("carries out a lifecycle command only for the Console it manages, and only for a document the home Console serves", async () => {
+    const events: Array<{ detail: ConsoleSectionState }> = [];
+    let url = `${REMOTE}/console/`;
+    const active = Object.assign(new EventEmitter(), {
+      getURL: () => url, isDestroyed: () => false,
+      executeJavaScript: async (script: string) => runInNewContext(script, {
+        location: { origin: new URL(url).origin, pathname: "/console/" },
+        window: { dispatchEvent: (event: typeof events[number]) => events.push(event) },
+        CustomEvent: class { constructor(readonly type: string, readonly init: { detail: unknown }) {} get detail() { return this.init.detail; } },
+      }),
+    });
+    const fetch = vi.fn(async (target: string) => {
+      if (target.endsWith("/api/v1/remote-hosts")) return Response.json({ hosts: [{ id: "private-record-id", origin: REMOTE, label: "Studio" }] });
+      if (target.endsWith("/api/v1/local-consoles")) return Response.json({ consoles: [{ origin: "http://127.0.0.1:3900", version: "1.2.3", owner: "cli", distro: "Private-Distro" }] });
+      if (target.endsWith("/api/v1/status")) return Response.json({ name: "Home", version: "1.2.3" });
+      return Response.json({ reachable: true, trusted: true });
+    });
+    let state: { management: "this-desktop" | "cli"; lifecycle: "running" | "stopped" | null; identityProven: boolean } = { management: "this-desktop", lifecycle: "running", identityProven: true };
+    const run = vi.fn(async () => { state = { management: "this-desktop", lifecycle: "running", identityProven: true }; });
+    const manage = vi.fn();
+    const report = vi.fn();
+    const section = createConsoleSectionController({ home: () => LOCAL, fetch, open: vi.fn(async () => undefined), add: vi.fn(), manage, managedHome: { state: async () => state, run }, confirmForget: vi.fn(async () => false), report });
+    section.attach(active as never);
+    const send = (value: ConsoleSectionCommand) => active.emit("will-navigate", { preventDefault: vi.fn() }, consoleSectionCommandUrl(new URL(url).origin, value), undefined, true);
+    const entries = () => events.at(-1)!.detail.entries;
+    try {
+      await section.refresh();
+      const home = entries().find((entry) => entry.home)!;
+      expect(home).toMatchObject({ management: "this-desktop", path: "loopback", lifecycle: "running", actions: ["restart"] });
+      // 터미널에서 켠 WSL 콘솔: 경로는 wsl이고 관리자는 cli다. 배포판 이름은 문서로 가지 않는다.
+      expect(entries().find((entry) => entry.address === "127.0.0.1:3900")).toMatchObject({ management: "cli", path: "wsl" });
+      expect(entries().find((entry) => entry.kind === "remote")).toMatchObject({ management: "unknown", path: "remote" });
+      expect(JSON.stringify(events.at(-1)!.detail)).not.toContain("Private-Distro");
+      // 남의 콘솔 문서는 관리 화면을 청할 수 있지만 생명주기는 시키지 못한다.
+      send({ lifecycle: { id: home.id, action: "restart" } });
+      send({ manage: home.id });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(run).not.toHaveBeenCalled();
+      expect(new URL(manage.mock.calls[0]![0]).origin).toBe(LOCAL);
+      expect(new URL(manage.mock.calls[0]![0]).searchParams.get("target")).toBe(home.id);
+      // 집 문서라도 관리자가 허용하지 않는 동작(집 콘솔 중지)과 관리하지 않는 항목은 실행하지 않는다.
+      url = `${LOCAL}/console/`;
+      await section.refresh();
+      send({ lifecycle: { id: home.id, action: "stop" } });
+      send({ lifecycle: { id: entries().find((entry) => entry.address === "127.0.0.1:3900")!.id, action: "restart" } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(run).not.toHaveBeenCalled();
+      // 밖에서 꺼진 관리 대상은 중지됨으로 남고 시작만 받는다. 꺼진 콘솔의 목록을 읽지 못한 것은 오류가 아니다.
+      state = { management: "this-desktop", lifecycle: "stopped", identityProven: false };
+      await section.refresh();
+      expect(entries().find((entry) => entry.home)).toMatchObject({ status: "unreachable", lifecycle: "stopped", actions: ["start"] });
+      send({ lifecycle: { id: home.id, action: "start" } });
+      await vi.waitFor(() => expect(run).toHaveBeenCalledWith("start"));
+      await vi.waitFor(() => expect(entries().find((entry) => entry.home)).toMatchObject({ lifecycle: "running", actions: ["restart"] }));
+      // 관리자가 이 Desktop이 아니면 집 문서의 요청도 실행하지 않는다.
+      state = { management: "cli", lifecycle: null, identityProven: false };
+      send({ lifecycle: { id: home.id, action: "restart" } });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(report).not.toHaveBeenCalled();
+    } finally { section.close(); }
+  });
+
+  /**
    * 이 판정이 consoleTarget보다 늦으면 목록이 열리는 대신 창이 집으로 넘어간다 — 고치려던
    * 2단 동선 그대로다. 리스너 등록 순서가 아니라 이 다리 안의 순서가 그것을 정한다.
    */

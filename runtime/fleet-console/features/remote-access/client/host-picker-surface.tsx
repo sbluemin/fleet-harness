@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { ConsoleSection } from "./console-section.js";
+import { ManageConsoleCard } from "./manage-console-card.js";
 import { desktopPickerUrl, PICKER_SURFACE_DISMISS } from "../../../core/client/src/integration/desktop-shell.js";
 
 import { placeSubmenu, submenuContentHeight, type HostPickerAnchor, type HostPickerContext } from "../../../core/client/src/chrome/components/command-band-system-cluster.js";
@@ -27,6 +28,11 @@ const EDGE = 12;
 export function HostPickerScreen({ surface }: { readonly surface: HostPickerContext }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const { anchor, side } = surface;
+  // 관리 화면은 목록이 아니라 콘솔 하나의 카드다. 대상은 셸이 정한 창 소유 불투명 id로만 온다.
+  const params = new URLSearchParams(location.search);
+  const intent = params.get("intent");
+  const target = params.get("target");
+  const manageTarget = intent === "manage" && target !== null && /^[A-Za-z0-9-]{1,128}$/u.test(target) ? target : null;
   useEffect(() => {
     const frame = requestAnimationFrame(() => {
       if (!document.querySelector(".add-host-card")) rootRef.current?.querySelector<HTMLElement>("button")?.focus();
@@ -70,7 +76,7 @@ export function HostPickerScreen({ surface }: { readonly surface: HostPickerCont
         if (event.shiftKey && document.activeElement === entries[0]) { event.preventDefault(); entries.at(-1)?.focus(); }
         else if (!event.shiftKey && document.activeElement === entries.at(-1)) { event.preventDefault(); entries[0]?.focus(); }
       }}>
-      <ConsoleSection pickerAt={surface.at} initialAdd={new URLSearchParams(location.search).get("intent") === "add"} />
+      {manageTarget ? <ManageConsoleCard target={manageTarget} /> : <ConsoleSection pickerAt={surface.at} initialAdd={intent === "add"} />}
     </div>
   );
 }
