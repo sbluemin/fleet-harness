@@ -232,10 +232,11 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const answer = (accept: boolean): void => post("bar", "page-dialog", { id: asked.tab.id, dialogId: asked.dialog.id, accept });
     const ok = h("button", { class: "button primary", type: "button", text: t("jsDialog.ok"), disabled: state.busy, on: { click: () => answer(true) } });
     const actions = asked.dialog.type === "confirm" ? [h("button", { class: "button", type: "button", text: t("jsDialog.cancel"), disabled: state.busy, on: { click: () => answer(false) } }), ok] : [ok];
-    // 대화상자를 띄운 프레임의 출처로 말한다 — 다른 출처의 iframe 이면 탭이 아니라 그 페이지임을 밝힌다.
-    const origin = (url: string): string => { try { return new URL(url).origin; } catch { return url; } };
-    const source = asked.dialog.url ?? asked.tab.url;
-    const title = origin(source) === origin(asked.tab.url) ? t("jsDialog.title", { host: hostOf(source) }) : t("jsDialog.embeddedTitle", { host: hostOf(source) });
+    // 대화상자를 띄운 프레임의 출처로 말한다 — 다른 출처의 iframe 이면 탭이 아니라 그 페이지임을 밝힌다. 출처를 싣지 않는 옛 Console 만 탭으로 말한다.
+    const tabOrigin = ((): string => { try { return new URL(asked.tab.url).origin; } catch { return "null"; } })();
+    const source = asked.dialog.origin ?? tabOrigin;
+    const title = source === tabOrigin ? t("jsDialog.title", { host: hostOf(asked.tab.url) })
+      : source === "null" ? t("jsDialog.embeddedOpaqueTitle") : t("jsDialog.embeddedTitle", { host: hostOf(source) });
     return dialog(t, title, null, [h("p", { class: "page-dialog-message", text: asked.dialog.message })], actions, "page-dialog");
   };
 

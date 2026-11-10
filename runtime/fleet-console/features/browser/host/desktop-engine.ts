@@ -237,8 +237,9 @@ export class DesktopEngine implements CdpClient {
       // beforeunload 는 셸이 곧바로 결정하고 prompt 는 거절하므로, 답을 기다리는 대화상자는 alert·confirm 뿐이다.
       if (event.method === "Page.javascriptDialogOpening" && (event.params.type === "alert" || event.params.type === "confirm")) {
         const message = String(event.params.message ?? "");
-        const url = typeof event.params.url === "string" && event.params.url.length <= 4096 ? event.params.url : undefined;
-        view.dialog = { id: `dialog-${++this.dialogSerial}`, type: event.params.type, message: message.length > DIALOG_MESSAGE_MAX ? `${message.slice(0, DIALOG_MESSAGE_MAX - 1)}…` : message, ...(url ? { url } : {}) };
+        // 띄운 프레임을 알 수 없으면 탭으로 돌아가지 않고 불투명 출처로 둔다 — 탭의 이름을 빌려 줄 수는 없다.
+        const origin = ((): string => { try { const value = new URL(String(event.params.url ?? "")).origin; return value.length <= 512 ? value : "null"; } catch { return "null"; } })();
+        view.dialog = { id: `dialog-${++this.dialogSerial}`, type: event.params.type, message: message.length > DIALOG_MESSAGE_MAX ? `${message.slice(0, DIALOG_MESSAGE_MAX - 1)}…` : message, origin };
         view.answering = null;
         this.failPendingFor(view.id, dialogBlocked(view.dialog));
         this.publish();

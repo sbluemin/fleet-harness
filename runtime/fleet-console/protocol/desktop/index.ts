@@ -275,8 +275,11 @@ export interface DesktopBrowserPageDialog {
   readonly id: string;
   readonly type: "alert" | "confirm";
   readonly message: string;
-  /** 대화상자를 띄운 프레임의 주소 — 끼워 넣은 다른 출처의 페이지가 탭의 이름으로 말하지 못하게 크롬이 이 출처를 보인다. */
-  readonly url?: string;
+  /**
+   * 대화상자를 띄운 프레임의 출처 — 끼워 넣은 다른 출처의 페이지가 탭의 이름으로 말하지 못하게 크롬이 이 출처를 보인다.
+   * 주소 전체가 아니라 출처만 실어 길이로 잘려 나가는 일이 없다. 불투명 출처(sandbox·data:)는 `"null"` 이다.
+   */
+  readonly origin?: string;
 }
 export interface DesktopBrowserChromeTab {
   readonly id: string;
@@ -377,7 +380,7 @@ export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserC
       && typeof space.driving === "boolean" && Array.isArray(space.agentTabIds) && space.agentTabIds.every(isSafeId) && ["responsive", "mobile", "tablet"].includes(String(space.viewportPreset)))
     && value.tabs.every((tab) => isRecord(tab) && isSafeId(tab.id) && isSafeId(tab.spaceId) && isShortText(tab.url, 4096) && isShortText(tab.title, 1024) && isFaviconUrl(tab.favicon)
       && typeof tab.loading === "boolean" && typeof tab.canGoBack === "boolean" && typeof tab.canGoForward === "boolean"
-      && (tab.dialog === undefined || (isRecord(tab.dialog) && isSafeId(tab.dialog.id) && (tab.dialog.type === "alert" || tab.dialog.type === "confirm") && isShortText(tab.dialog.message, 2000) && (tab.dialog.url === undefined || isShortText(tab.dialog.url, 4096)))))
+      && (tab.dialog === undefined || (isRecord(tab.dialog) && isSafeId(tab.dialog.id) && (tab.dialog.type === "alert" || tab.dialog.type === "confirm") && isShortText(tab.dialog.message, 2000) && (tab.dialog.origin === undefined || isShortText(tab.dialog.origin, 512)))))
     && (value.activeTabId === null || isSafeId(value.activeTabId))
     && isRecord(viewport) && ["responsive", "mobile", "tablet"].includes(String(viewport.preset)) && isFiniteNumber(viewport.width) && isFiniteNumber(viewport.height)
     && (viewport.setBy === null || viewport.setBy === "user" || viewport.setBy === "agent")
