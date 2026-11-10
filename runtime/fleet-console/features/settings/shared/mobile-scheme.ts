@@ -3,7 +3,7 @@ import type { ConsoleTheme } from "./theme.js";
 /**
  * 모바일 팔레트의 공개 신호 — 루트(`<html>`) 속성 두 개다.
  *
- * - `data-view-mode="mobile"`: 모바일 배치 전체(Fleet Mobile 앱, 좁은 창, 명시 선호).
+ * - `data-view-mode="mobile"`: 모바일 배치 전체(Fleet Mobile 앱, 좁은 창).
  * - `data-mobile-scheme="dark" | "light"`: 모바일 전용 색상 모드가 정한 극성.
  *
  * 두 속성이 함께 설 때만 theme.css의 모바일 블록이 매치되고, 그동안 루트 토큰은 Console 테마가

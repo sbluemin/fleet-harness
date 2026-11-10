@@ -28,8 +28,11 @@
 // 모바일 팔레트(theme.css의 :root[data-view-mode="mobile"][data-mobile-scheme] 블록)가 첫 페인트부터
 // 서도록 루트 속성을 미리 붙인다. data-view-mode는 원래 React effect가 첫 렌더 뒤에 붙여서, 그 사이
 // 한 프레임은 데스크톱 팔레트로 그려졌다. 판정 규칙은 view-mode-store.ts의 createSnapshot과 수동
-// 동기화한다(플레인 JS라 import 불가): Electron은 언제나 desktop, 명시 선호가 이기고, auto면
-// FleetMobile UA 또는 폭 767px 이하. 같은 규칙이라 뒤이은 effect가 값을 뒤집지 않는다.
+// 동기화한다(플레인 JS라 import 불가): Electron은 언제나 desktop, Fleet Mobile 셸(UA)은 mobile,
+// 그 외 브라우저는 폭 767px 이하면 mobile이고 아니면 desktop이다. 768–831px의 첫 페인트도 desktop —
+// 스토어의 초기 viewportNarrow가 false인 것과 같다. 그 사이 폭에서 이전 배치를 유지하는 것은 이후
+// 리사이즈를 보는 스토어의 몫이라 이 스크립트는 첫 페인트만 정한다. 같은 규칙이라 뒤이은 effect가
+// 값을 뒤집지 않는다.
 // 색상 모드·글자 배율은 mobile-appearance-store.ts와 같은 규칙이다(키·전역 이름·화이트리스트 수동
 // 동기화): Fleet Mobile 앱이 문서 시작에 심은 window.__fleetMobileAppearance가 있으면 그것이 정본,
 // 없으면 브라우저 저장값, "시스템"은 prefers-color-scheme. 데스크톱에서도 붙여 둔다 — 블록이
@@ -39,23 +42,20 @@ function stampMobileAppearance() {
   const userAgent = typeof navigator === "undefined" ? "" : navigator.userAgent || "";
   const isMode = (value) => value === "system" || value === "dark" || value === "light";
   const isScale = (value) => value === "small" || value === "default" || value === "large";
-  let preference = "auto";
   let colorMode = "system";
   let fontScale = "default";
   try {
-    const storedView = localStorage.getItem("fleet-console.view-mode.preference");
-    if (storedView === "mobile" || storedView === "desktop") preference = storedView;
     const storedMode = localStorage.getItem("fleet-console.mobile-color-mode");
     if (isMode(storedMode)) colorMode = storedMode;
     const storedScale = localStorage.getItem("fleet-console.mobile-font-scale");
     if (isScale(storedScale)) fontScale = storedScale;
   } catch {
-    // 저장소가 막힌 환경에서는 auto·system·default로 판정한다.
+    // 저장소가 막힌 환경에서는 system·default로 판정한다. 배치는 저장값을 읽지 않는다.
   }
   const matches = (query) => typeof window.matchMedia === "function" && window.matchMedia(query).matches;
   const mobile = userAgent.includes("Electron")
     ? false
-    : preference === "auto" ? /(?:^|\s)FleetMobile\/\d/.test(userAgent) || matches("(max-width: 767px)") : preference === "mobile";
+    : /(?:^|\s)FleetMobile\/\d/.test(userAgent) || matches("(max-width: 767px)");
   root.setAttribute("data-view-mode", mobile ? "mobile" : "desktop");
   let systemScheme = matches("(prefers-color-scheme: light)") ? "light" : "dark";
   const native = window.__fleetMobileAppearance;

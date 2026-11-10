@@ -6,10 +6,8 @@ import { useFeatureRegistry } from "../../../../core/client/src/integration/feat
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import type { ConsoleState } from "../../../../core/client/src/integration/types.js";
-import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { ConsoleHelpMenu, useSideSubmenuGroup, useStandingAway } from "../../../../core/client/src/chrome/components/command-band-system-cluster.js";
 import { ConsoleUpdateNotice } from "../../../../core/client/src/chrome/components/update-notice-bubble.js";
-import { ViewModeToggle } from "../../../../core/client/src/chrome/components/view-mode-toggle.js";
 import { SettingsButton } from "../../../../core/client/src/chrome/toolbar/settings-button.js";
 import { useMenuButtonKeyboard } from "../../../../core/client/src/chrome/components/use-menu-button-keyboard.js";
 import { ArchiveMenuItem } from "../archive/archive-entry.js";
@@ -18,7 +16,7 @@ import "./conversation-dock.css";
 
 /**
  * 대화 화면의 하단 줄 — 아바타의 앱 메뉴와 선언형 플러그인 요약을 둔다.
- * 콘솔 전환은 위 공용 섹션이 맡고, 앱 메뉴에는 보기 모드(브라우저만)와 도움말·설정이 남는다.
+ * 콘솔 전환은 위 공용 섹션이 맡고, 앱 메뉴에는 도움말·설정이 남는다.
  */
 function SidebarFooterEntries({ popoverAnchorRef }: SidebarFooterEntryContext) {
   const registry = useFeatureRegistry();
@@ -104,8 +102,6 @@ export function ConversationSideBarBottom({ connection }: { readonly connection:
         <div {...(open ? { "data-covers-native-view": "" } : {})} key={String(open)} ref={menuRef} id="conversation-host-menu" className="conversation-dock-menu" role={open ? "menu" : undefined} aria-label={label} hidden={!open}>
           <ArchiveMenuItem onBeforeOpen={() => { setOpen(false); triggerRef.current?.focus({ preventScroll: true }); }} />
           <div className="conversation-dock-divider" role="separator" />
-          {/* Desktop에는 보기 모드가 없다. 브라우저에서만 보기 설정과 도움말·설정을 구분한다. */}
-          {!isDesktopShell() ? <><ViewModeToggle className="conversation-dock-view" menuItem /><div className="conversation-dock-divider" role="separator" /></> : null}
           <ConsoleHelpMenu menuItem sideSubmenuGroup={sideSubmenus} />
           <div className="conversation-dock-settings" onClick={() => setOpen(false)}><SettingsButton menuItem /></div>
         </div>

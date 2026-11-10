@@ -1,9 +1,4 @@
 export const chromeEn = {
-  // command-band
-  "chrome.viewMode.auto": "View mode: Auto",
-  "chrome.viewMode.mobile": "View mode: Mobile",
-  "chrome.viewMode.desktop": "View mode: Desktop",
-
   // console link
   "chrome.link.offline": "Connection lost",
   "chrome.runtime.degraded": "Objective activity is unavailable right now — what you see may be out of date.",
@@ -617,10 +612,6 @@ export const chromeEn = {
 } as const;
 
 export const chromeKo: Record<keyof typeof chromeEn, string> = {
-  "chrome.viewMode.auto": "보기 모드: 자동",
-  "chrome.viewMode.mobile": "보기 모드: 모바일",
-  "chrome.viewMode.desktop": "보기 모드: 데스크톱",
-
   "chrome.link.offline": "연결 끊김",
   "chrome.runtime.degraded": "목표 활동 상태를 지금 확인할 수 없어요. 화면 표시가 최신이 아닐 수 있어요.",
   "chrome.link.reconnecting": "다시 연결하는 중…",

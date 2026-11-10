@@ -19,13 +19,13 @@ import { closeTheaterInbox, readTheaterInboxState } from "../features/workspace/
 import { getViewedTheaterId } from "../core/client/src/integration/viewed-theater.js";
 import { replaceCommodoreList, setZoneCommodore } from "../features/commodore/client/commodore-list.js";
 import { EMPTY_RUN_TOTALS } from "../features/commodore/shared/contracts/types.js";
-import { setViewModePreference } from "../core/client/src/integration/view-mode-store.js";
+import { __setViewportNarrowForTests } from "../core/client/src/integration/view-mode-store.js";
 import { getMobileDestination, registerMobileDestinationEntries, setMobileDestination } from "../core/client/src/chrome/mobile/mobile-store.js";
 
 // 기존 팔레트·컴포저 검사는 외부 처리기의 Theater 착지와 재요청을 실행하지 않는다.
 // 이 대표 경로는 SDK 요청과 팔레트가 같은 저장소 경계에서 주소를 보존하는지 확인한다.
 // 파일을 읽으려는 요청이 대화를 닫거나 설정 포커스 요청을 남기지 않는지도 같은 경계에서 확인한다.
-afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); closeConversationSurface(); closeTheaterInbox(); registerMobileDestinationEntries(new Set()); setMobileDestination({ kind: "home" }); setViewModePreference("auto"); replaceCommodoreList([]); setZoneCommodore(null); });
+afterEach(() => { __resetPaneStoreForTests(); closeSettingsModal(); closeConversationSurface(); closeTheaterInbox(); registerMobileDestinationEntries(new Set()); setMobileDestination({ kind: "home" }); __setViewportNarrowForTests(false); replaceCommodoreList([]); setZoneCommodore(null); });
 
 it("lands SDK and palette targets in the requested Theater with a fresh request id", async () => {
   const unbind = bindConsoleNavigate(() => undefined);
@@ -81,7 +81,7 @@ it("lands SDK and palette targets in the requested Theater with a fresh request 
     const destinationPane = { ...pane, id: "destination-pane", role: "primary" as const };
     const destinationHost = createHostCapabilities(undefined, { railBindings: [{ entry: { id: "destination", title: "Destination", icon: null, panes: [destinationPane.id], mobile: { destination: { order: 0 } } }, panes: [destinationPane] }] });
     // 모바일 틀이 아직 목적지 목록을 등록하지 않은 배치 전환 순간에도 선언만으로 화면에 착지한다.
-    setViewModePreference("mobile");
+    __setViewportNarrowForTests(true);
     destinationHost.rail.open("destination", { theaterId: "b", page: "details" });
     const address = getMobileDestination();
     expect(address).toMatchObject({ kind: "plugin", entryId: "destination", params: { theaterId: "b", page: "details" } });
@@ -122,7 +122,7 @@ it("reads an unregistered objective theater as the owning commodore's registered
 // 기존 이동 검사는 삭제 뒤 늦게 실행되는 기본 선택이 다른 수신자를 활성화하는 경계를 지나지 않는다.
 it("keeps a deleted conversation's stage empty until an explicit conversation is opened", () => {
   const before = getState();
-  setViewModePreference("desktop");
+  __setViewportNarrowForTests(false);
   try {
     setState({ newSession: null });
     openConversationSurface("commodore", { commodoreId: "deleted-owner" });

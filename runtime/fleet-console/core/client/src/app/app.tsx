@@ -157,8 +157,8 @@ function ConnectedApp() {
   const desktopObjectiveRecordsVisible = !mobileLayout && objectiveRecordsViewVisible;
 
   /*
-   * 모바일 여부는 폭만으로 정해지지 않는다 — Fleet Console 앱은 UA로, 사용자는 명시 선호로 켤 수
-   * 있어 넓은 화면에서도 모바일 셸이 선다. 그 판정을 루트에 실어야 포털로 body에 그려지는 표면처럼
+   * 모바일 여부는 폭만으로 정해지지 않는다 — Electron은 언제나 데스크톱이고, Fleet Mobile 셸은
+   * UA로 모바일이다. 그 판정을 루트에 실어야 포털로 body에 그려지는 표면처럼
    * React 트리 밖에 놓인 CSS도 같은 답을 읽는다(미디어 쿼리는 거기서 어긋난다).
    */
   useEffect(() => {

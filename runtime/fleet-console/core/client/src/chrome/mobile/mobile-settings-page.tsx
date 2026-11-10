@@ -4,7 +4,6 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import { MobileGlobalPluginsRow } from "../../../../../features/commodore/client/commodore-plugins.js";
 import { SettingsRow, SettingsToggle } from "../../../../../features/settings/client/preferences-context.js";
 
-import { isFleetMobileShell } from "@fleet-console/link/core";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
@@ -23,7 +22,6 @@ import { useConsoleState } from "../../hooks/use-store.js";
 import { openConsoleSwitcher, setMobileColorMode, setMobileFontScale, useMobileAppearance, type MobileAppearanceSnapshot, type MobileColorMode, type MobileFontScale } from "../../integration/mobile-appearance-store.js";
 import { openWhatsNew } from "../../integration/store.js";
 import type { GlobalSettingsState } from "../../integration/types.js";
-import { setViewModePreference, useViewMode, type ViewModePreference } from "../../integration/view-mode-store.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileMonogram } from "./mobile-monogram.js";
 import { refreshConsole, resolveUpdateApplyCopyFor, useVersionRefresh, type VersionRefreshState } from "../components/console-update-action.js";
@@ -46,7 +44,7 @@ import "../../styles/mobile.css";
 
 /**
  * 폰의 설정(S-47/S-48): 위에 지금 Console 카드, 아래에 눈에 보이는 머리 없는 묶음 넷 — 화면 · 에이전트 · 사용 · 정보.
- * 행을 열면 상세(push)다. 색상 모드·글자 크기·화면 배치는 폰 전용 선호(모바일 외관 스토어·보기 모드)라 서버 설정을 쓰지 않는다 —
+ * 행을 열면 상세(push)다. 색상 모드·글자 크기는 폰 전용 선호(모바일 외관 스토어)라 서버 설정을 쓰지 않는다 —
  * Console 테마 선택은 없다(BD-G7 a). 그 밖의 섹션은 현행 설정 본문을 그대로 그린다.
  */
 
@@ -56,7 +54,7 @@ type LocalSectionId = "help";
 const LOCAL_IDS: ReadonlySet<string> = new Set(["help"]);
 
 /** 상세 화면이 없는 목록 행의 id(팝업·시트·토글·정보). */
-type PopupRowId = "color-mode" | "font-scale" | "layout" | "whatsnew" | "version" | "reduce-motion";
+type PopupRowId = "color-mode" | "font-scale" | "whatsnew" | "version" | "reduce-motion";
 
 interface MobileSettingsRow {
   readonly id: MobileSectionId | PopupRowId;
@@ -107,7 +105,6 @@ export function MobileSettingsPage({ embedded = false }: {
   const location = useLocation();
   const navigate = useNavigate();
   const appearance = useMobileAppearance();
-  const viewMode = useViewMode();
   const consoleState = useConsoleState();
 
   useEffect(() => {
@@ -128,7 +125,7 @@ export function MobileSettingsPage({ embedded = false }: {
     navigate({ pathname: "/settings", search: `?section=${encodeURIComponent(id)}` }, { state: entry });
   };
   const versionRefresh = useVersionRefresh(refreshConsole);
-  const groups = buildMobileSettingsGroups({ state, savingFields: settings.savingFields, appearance, viewMode: viewMode.preference, version: consoleState.version, update: { available: consoleState.updateAvailable, latestVersion: consoleState.latestVersion, shellRequired: consoleState.shellUpdateRequired, refresh: versionRefresh }, pluginSections, t, locale });
+  const groups = buildMobileSettingsGroups({ state, savingFields: settings.savingFields, appearance, version: consoleState.version, update: { available: consoleState.updateAvailable, latestVersion: consoleState.latestVersion, shellRequired: consoleState.shellUpdateRequired, refresh: versionRefresh }, pluginSections, t, locale });
   const rows = groups.flatMap((group) => group.rows);
   const requested = embedded ? null : new URLSearchParams(location.search).get("section");
   // 폰 전용 상세는 그대로, 그 밖의 옛 id와 상대 레이아웃이 만든 id는 데스크톱과 같은 판정으로 옮긴다.
@@ -306,11 +303,10 @@ function LocalDetail({ id: _id }: { readonly id: LocalSectionId }) {
  * 두 레이아웃이 같은 주소를 공유하므로 한쪽만 아는 섹션이 생기면 그 링크가 다른 쪽에서 끊긴다.
  * 각 행은 열지 않고도 지금 무엇이 들어 있는지 말한다. 행의 대응은 spec-decisions D37.
  */
-function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, version, update, pluginSections, t, locale }: {
+function buildMobileSettingsGroups({ state, savingFields, appearance, version, update, pluginSections, t, locale }: {
   readonly savingFields: ReadonlySet<string>;
   readonly state: GlobalSettingsState | null;
   readonly appearance: MobileAppearanceSnapshot;
-  readonly viewMode: ViewModePreference;
   readonly version: string;
   readonly update: {
     readonly available: boolean;
@@ -333,7 +329,6 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, 
   // 선택형 행은 하위 화면 없이 목록 위 팝업으로 고친다 — 보조 줄이 지금 값을 말한다.
   const choose = (title: string, value: string, options: readonly HostChoiceOption[], onSelect: (next: string) => void) =>
     (anchor: { readonly top: number; readonly bottom: number }) => openMobileChoice({ title, value, options, onSelect, anchor });
-  const app = isFleetMobileShell();
   const display: MobileSettingsRow[] = [
     {
       id: "color-mode", title: t("mobile.settings.colorMode"), value: t(`mobile.settings.color.${appearance.colorMode}`), icon: <MobileIcon name="moon" />,
@@ -354,15 +349,6 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, viewMode, 
         { value: "en", label: t("settings.language.en") },
         { value: "ko", label: t("settings.language.ko") },
       ], (next) => { void setGlobalSettingsField("language", next as GlobalSettingsState["language"]); }),
-    },
-    {
-      // Fleet 앱에서는 데스크톱 배치를 고를 수 없다(D38) — 브라우저에서는 활성이고 여기서 늘 돌아올 수 있다.
-      id: "layout", title: t("mobile.settings.layout"), value: t(`mobile.settings.layout.${viewMode}`), icon: <MobileIcon name="layout" />,
-      act: choose(t("mobile.settings.layout"), viewMode, [
-        { value: "auto", label: t("mobile.settings.layout.auto"), description: t("mobile.settings.layout.autoSub") },
-        { value: "mobile", label: t("mobile.settings.layout.mobile"), description: t("mobile.settings.layout.mobileSub") },
-        { value: "desktop", label: t("mobile.settings.layout.desktop"), ...(app ? { description: t("mobile.settings.layout.desktopApp"), disabled: true } : {}) },
-      ], (next) => setViewModePreference(next as ViewModePreference)),
     },
   ];
   // 플러그인이 선언한 group은 두 레이아웃에서 같은 뜻이어야 한다 — 터미널·AI Gateway 같은 작업 섹션이 「에이전트」, 고급이 그 끝이다.

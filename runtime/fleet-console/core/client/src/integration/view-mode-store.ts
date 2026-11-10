@@ -1,28 +1,27 @@
 import { useSyncExternalStore } from "react";
 import { isFleetMobileShell } from "@fleet-console/link/core";
 
-export type ViewModePreference = "auto" | "mobile" | "desktop";
 export type ResolvedViewMode = "mobile" | "desktop";
 
 export type ViewModeSnapshot = {
-  readonly preference: ViewModePreference;
   readonly viewportNarrow: boolean;
   readonly effective: ResolvedViewMode;
 };
 
 type Listener = () => void;
 
-const PREFS_VIEW_MODE = "fleet-console.view-mode.preference";
 const listeners = new Set<Listener>();
 let narrowViewportQuery: MediaQueryList | null = null;
 let wideViewportQuery: MediaQueryList | null = null;
 
 // The Fleet Mobile shell stamps its user agent (detection lives in foundation/link so features can
-// read it too). Auto resolves mobile there; an explicit desktop preference still wins.
+// read it too). That shell is mobile. An Electron renderer is always desktop. Every other browser
+// follows the viewport: mobile at max-width 767px, desktop at min-width 832px, and the previous
+// layout in between. A page first opened in that gap starts on desktop.
 const fleetMobileShell = isFleetMobileShell();
 const desktopShell = typeof navigator !== "undefined" && navigator.userAgent.includes("Electron");
 
-let store: ViewModeSnapshot = createSnapshot(readStoredPreference(), false);
+let store: ViewModeSnapshot = createSnapshot(false);
 
 initializeViewportQueries();
 
@@ -39,19 +38,10 @@ export function useViewMode(): ViewModeSnapshot {
   return useSyncExternalStore(subscribeViewMode, getViewModeSnapshot);
 }
 
-export function setViewModePreference(preference: ViewModePreference): void {
-  if (desktopShell || store.preference === preference) return;
-  setStore(createSnapshot(preference, store.viewportNarrow));
-  saveStoredPreference(preference);
-}
-
-export function cycleViewModePreference(): void {
-  const next = store.preference === "auto"
-    ? "mobile"
-    : store.preference === "mobile"
-      ? "desktop"
-      : "auto";
-  setViewModePreference(next);
+/** Test-only. Overrides the viewport input; device rules still decide the layout. */
+export function __setViewportNarrowForTests(viewportNarrow: boolean): void {
+  if (store.viewportNarrow === viewportNarrow) return;
+  setStore(createSnapshot(viewportNarrow));
 }
 
 function initializeViewportQueries(): void {
@@ -68,26 +58,14 @@ function updateViewportNarrow(): void {
   if (narrowViewportQuery?.matches) viewportNarrow = true;
   else if (wideViewportQuery?.matches) viewportNarrow = false;
   if (viewportNarrow === store.viewportNarrow) return;
-  setStore(createSnapshot(store.preference, viewportNarrow));
+  setStore(createSnapshot(viewportNarrow));
 }
 
-function createSnapshot(preference: ViewModePreference, viewportNarrow: boolean): ViewModeSnapshot {
+function createSnapshot(viewportNarrow: boolean): ViewModeSnapshot {
   return {
-    preference,
     viewportNarrow,
-    effective: desktopShell ? "desktop" : preference === "auto" ? (fleetMobileShell || viewportNarrow ? "mobile" : "desktop") : preference,
+    effective: desktopShell ? "desktop" : (fleetMobileShell || viewportNarrow ? "mobile" : "desktop"),
   };
-}
-
-function readStoredPreference(): ViewModePreference {
-  try {
-    const stored = localStorage.getItem(PREFS_VIEW_MODE);
-    return stored === "mobile" || stored === "desktop" ? stored : "auto";
-  } catch { return "auto"; }
-}
-
-function saveStoredPreference(preference: ViewModePreference): void {
-  try { localStorage.setItem(PREFS_VIEW_MODE, preference); } catch { /* ignore */ }
 }
 
 function setStore(next: ViewModeSnapshot): void {
