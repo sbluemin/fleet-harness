@@ -5,12 +5,12 @@ Use `mcp__fleet-browser__*` only when [agent-browser](agent-browser.md) cannot r
 ## Connection and ownership
 
 1. Inspect `tabs_context` before navigation. Create a fresh tab with `tabs_create`, record its ID, and pass that ID explicitly afterwards. Existing tabs belong to the user unless explicitly assigned to this run.
-2. Navigate only the owned tab to the isolated Console URL from [setup](setup.md). Verify the final URL and loaded page, not just transport success. Do not import user cookies or point at the canonical Console.
+2. Navigate only the owned tab to the isolated Console URL from [setup](setup.md). A loopback host is the machine where this browser runs; when that is not the Console host, reach it only by a route already approved for this run. Verify the final URL and loaded page, not just transport success. Do not import user cookies or point at the canonical Console.
 3. Record host OS/architecture, browser engine, and actual display mode. The pane is visible, so never label its evidence headless; a claim that requires headless or pre-navigation instrumentation stays unverified on this route.
 
 ## Observe and interact
 
-- Use `read_page`/`find` for fresh references, `computer` for real pointer/keyboard input and screenshots, and `form_input` for supported form controls. Read each tool's schema rather than assuming agent-browser syntax.
+- Use `read_page`/`find` for fresh references, `computer` for real pointer/keyboard input and screenshots, and `form_input` for supported form controls. Read each tool's schema rather than assuming agent-browser syntax. When `capture` returns a file and that image is evidence, copy that exact file at once into the objective evidence directory — or the session scratchpad when the run has no objective — and cite the copy. The returned path is not the citation; do not copy its directory, and do not invent a path for an image the tool did not write to a file.
 - Use `javascript_tool` for read-only DOM/state/geometry inspection, not to replace the interaction under test with DOM mutation or synthetic `.click()`.
 - Use filtered `read_console_messages` and `read_network_requests`. Capture a baseline before acting and distinguish new entries on a repeat run; the tools do not promise a clear operation or complete socket/rejection capture.
 - An accepted input call does not prove the UI received it; confirm with a screenshot or visible postcondition.
