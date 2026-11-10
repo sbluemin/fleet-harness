@@ -184,10 +184,10 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(objectiveId, caller) }, !result.ok);
   });
 
-  const computer = spec("computer", "Use a mouse and keyboard on a Fleet Browser tab and take screenshots. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
+  const computer = spec("computer", "Use a mouse and keyboard on a Fleet Browser tab and take screenshots. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom, accept_dialog, dismiss_dialog. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). accept_dialog/dismiss_dialog answer the page's open alert or confirm (OK/Cancel); while one is open, other page calls are refused and tabs_context shows it. No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
     type: "object", properties: {
       observe: { type: "string", enum: ["none", "snapshot", "screenshot"], description: "Optional post-action observation; default none." },
-      action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom"] },
+      action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom", "accept_dialog", "dismiss_dialog"] },
       coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "[x, y] in viewport CSS pixels. Add the capture offset when using a zoom crop." },
       geometry_version: { type: "string", description: "Geometry from capture; reject coordinate input if viewport changed. Recommended for coordinates." },
       start_coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "Drag start for left_click_drag." },
@@ -233,6 +233,12 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
         break;
       }
       case "scroll_to": { if (typeof args.ref !== "string") throw new BrowserPolicyError("browser_ref_required", "ref is required for scroll_to."); await service.scrollToRef(objectiveId, args.ref, tabId); break; }
+      case "accept_dialog": case "dismiss_dialog": {
+        const accept = args.action === "accept_dialog";
+        const dialog = await service.answerDialog(objectiveId, accept, tabId);
+        dispatchSummary = `${args.action}: answered the page's ${dialog?.type ?? "JavaScript"} dialog${dialog ? ` ${JSON.stringify(dialog.message)}` : ""} with ${accept ? "OK" : "Cancel"}. Confirm with the screenshot or page state.`;
+        break;
+      }
       case "wait": { const seconds = Math.min(10, Math.max(0, Number(args.duration ?? 1))); await new Promise<void>((resolve) => { const timer = setTimeout(resolve, seconds * 1000); signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true }); }); return text(`Waited for ${seconds} seconds`); }
       default: throw new BrowserPolicyError("browser_action_invalid", `Unknown action ${String(args.action)}.`);
     }

@@ -262,6 +262,8 @@ export function browserSpaceTabLimit(spaceId: string): number {
   return DESKTOP_BROWSER_TAB_LIMITS[browserSpaceKindOf(spaceId)];
 }
 
+/** 페이지가 띄워 답을 기다리는 alert·confirm. 크롬은 페이지 위에 그리고, 답은 Console 의 REST 로 보낸다. */
+export interface DesktopBrowserPageDialog { readonly type: "alert" | "confirm"; readonly message: string }
 export interface DesktopBrowserChromeTab {
   readonly id: string;
   readonly spaceId: string;
@@ -272,6 +274,7 @@ export interface DesktopBrowserChromeTab {
   readonly loading: boolean;
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
+  readonly dialog?: DesktopBrowserPageDialog;
 }
 export type DesktopBrowserViewportPreset = "responsive" | "mobile" | "tablet";
 /** 크롬 투영의 스페이스 한 칸. 디폴트와 모든 사령관 스페이스가 탭이 없어도 실린다 — 디폴트가 맨 앞이다. */
@@ -359,7 +362,8 @@ export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserC
   return value.spaces.every((space) => isRecord(space) && isSafeId(space.id) && (space.kind === "commodore" || space.kind === "default") && isShortText(space.label, 512)
       && typeof space.driving === "boolean" && Array.isArray(space.agentTabIds) && space.agentTabIds.every(isSafeId) && ["responsive", "mobile", "tablet"].includes(String(space.viewportPreset)))
     && value.tabs.every((tab) => isRecord(tab) && isSafeId(tab.id) && isSafeId(tab.spaceId) && isShortText(tab.url, 4096) && isShortText(tab.title, 1024) && isFaviconUrl(tab.favicon)
-      && typeof tab.loading === "boolean" && typeof tab.canGoBack === "boolean" && typeof tab.canGoForward === "boolean")
+      && typeof tab.loading === "boolean" && typeof tab.canGoBack === "boolean" && typeof tab.canGoForward === "boolean"
+      && (tab.dialog === undefined || (isRecord(tab.dialog) && (tab.dialog.type === "alert" || tab.dialog.type === "confirm") && isShortText(tab.dialog.message, 2000))))
     && (value.activeTabId === null || isSafeId(value.activeTabId))
     && isRecord(viewport) && ["responsive", "mobile", "tablet"].includes(String(viewport.preset)) && isFiniteNumber(viewport.width) && isFiniteNumber(viewport.height)
     && (viewport.setBy === null || viewport.setBy === "user" || viewport.setBy === "agent")

@@ -211,6 +211,8 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         if (body.action === "create") { const space = spaceId(body); const tab = await browserService.createTab(objectiveId, typeof body.url === "string" ? body.url : null, "user", space ? { spaceId: space } : {}); writeJson(res, 200, { tab }); return true; }
         if (body.action === "close" && tabId) { await browserService.closeTab(objectiveId, tabId); writeJson(res, 200, { closed: tabId }); return true; }
         if (body.action === "select" && tabId) { await browserService.selectTab(objectiveId, tabId); writeJson(res, 200, { selected: tabId }); return true; }
+        // 크롬 표시줄의 확인·취소 — 그 탭의 alert·confirm 에 답한다.
+        if (body.action === "dialog" && tabId && typeof body.accept === "boolean") { await browserService.answerDialog(objectiveId, body.accept, tabId); writeJson(res, 200, { answered: tabId }); return true; }
         // 셸이 탭 없는 스페이스를 띄운다 — 표시 탭만 내리고 탭은 그대로 둔다.
         if (body.action === "deselect") { browserService.deselectTab(objectiveId); writeJson(res, 200, { selected: null }); return true; }
         writeJson(res, 400, { error: "invalid_request" }); return true;

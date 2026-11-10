@@ -89,6 +89,8 @@ export type ChromeAction =
   | { readonly action: "clear-open" }
   | { readonly action: "clear-run" }
   | { readonly action: "dialog-close" }
+  /** 페이지의 alert·confirm 에 답한다(`id` 는 탭). */
+  | { readonly action: "page-dialog"; readonly id: string; readonly accept: boolean }
   | { readonly action: "info-action" }
   | { readonly action: "draft"; readonly value: string | null }
   | { readonly action: "ready" };
@@ -112,6 +114,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "new-tab": case "toggle-mode": case "open-external": case "attach-screenshot": case "annotate": case "import-open": case "clear-open": case "clear-run": case "dialog-close": case "info-action": case "ready":
       return make({ action: name });
     case "select-tab": case "close-tab": case "select-space": return make(safeId(body.id) ? { action: name, id: body.id } : null);
+    case "page-dialog": return make(safeId(body.id) && typeof body.accept === "boolean" ? { action: "page-dialog", id: body.id, accept: body.accept } : null);
     case "pin": return make(typeof body.pinned === "boolean" ? { action: "pin", pinned: body.pinned } : null);
     case "expand": return make(typeof body.expanded === "boolean" ? { action: "expand", expanded: body.expanded } : null);
     case "suggest": return make(str(body.query, 2048) ? { action: "suggest", query: body.query } : null);

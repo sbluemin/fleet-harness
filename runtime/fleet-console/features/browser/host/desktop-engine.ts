@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserChrome, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserSurface, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserChrome, type DesktopBrowserPageDialog, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserSurface, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
@@ -22,8 +22,16 @@ const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
-interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null }
+interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null; dialog?: BrowserPageDialog | null }
 export type BrowserSurfaceState = DesktopBrowserSurface;
+/** 페이지가 띄운 alert·confirm. 답할 때까지 렌더러가 멈춰 있다. */
+export type BrowserPageDialog = DesktopBrowserPageDialog;
+const DIALOG_MESSAGE_MAX = 2000;
+
+/** 대화상자가 떠 있는 동안 페이지에 닿는 명령은 답이 오지 않는다 — 60초를 기다리는 대신 이 안내로 곧바로 끝낸다. */
+function dialogBlocked(dialog: BrowserPageDialog): string {
+  return `A JavaScript ${dialog.type} dialog is open on this tab: ${JSON.stringify(dialog.message)}. The page is paused until it is answered, so this call did not complete; nothing was retried, so do not repeat its input. Answer it with the computer action accept_dialog or dismiss_dialog on this tab, then read the page again.`;
+}
 
 export interface DesktopEngineDeps {
   /** 스냅샷이 바뀌었다 — 호스트 셸에는 전체를, 다른 셸에는 빈 스냅샷을 보낸다. */
@@ -182,6 +190,8 @@ export class DesktopEngine implements CdpClient {
   /** 셸이 알려 준 **그 뷰**의 실제 크기 — 다른 탭 pane 과 섞지 않는다. */
   viewSize(viewId: string): { width: number; height: number; scale: number } | null { return this.views.get(viewId)?.size ?? null; }
   viewOwner(viewId: string): string | null { return this.views.get(viewId)?.objectiveId ?? null; }
+  /** 그 뷰에 떠서 답을 기다리는 대화상자. */
+  viewDialog(viewId: string): BrowserPageDialog | null { return this.views.get(viewId)?.dialog ?? null; }
   viewObjective(viewId: string): string | null { return this.viewOwner(viewId); }
 
   /** 셸이 되돌려 보낸 것들. 호스트가 아닌 셸의 것은 자기소개만 받고 나머지는 무시한다 — 그 창에는 뷰가 없다. */
@@ -216,7 +226,14 @@ export class DesktopEngine implements CdpClient {
       if (entry.error !== undefined) waiting.reject(new CdpError(waiting.command.method, -32000, entry.error)); else waiting.resolve(entry.result ?? {});
     }
     for (const event of body.events ?? []) {
-      if (!this.views.has(event.viewId)) continue;
+      const view = this.views.get(event.viewId);
+      if (!view) continue;
+      // beforeunload 는 셸이 곧바로 결정하고 prompt 는 거절하므로, 답을 기다리는 대화상자는 alert·confirm 뿐이다.
+      if (event.method === "Page.javascriptDialogOpening" && (event.params.type === "alert" || event.params.type === "confirm")) {
+        view.dialog = { type: event.params.type, message: String(event.params.message ?? "").slice(0, DIALOG_MESSAGE_MAX) };
+        this.failPendingFor(view.id, dialogBlocked(view.dialog));
+        this.publish();
+      } else if (event.method === "Page.javascriptDialogClosed" || (event.method === "Page.frameNavigated" && !(event.params.frame as { parentId?: unknown } | undefined)?.parentId)) view.dialog = null;
       this.emit({ method: event.method, params: event.params, sessionId: event.viewId });
     }
     if ((body.attached?.length ?? 0) + (body.detached?.length ?? 0) > 0 || (body.results?.length ?? 0) > 0) this.publish();
@@ -269,6 +286,8 @@ export class DesktopEngine implements CdpClient {
     // 셸 자신에게 묻는 명령 — 뷰가 없어도 창을 든 기계가 답한다(이 기계의 Chrome 프로필·쿠키 가져오기).
     if (method.startsWith("Fleet.")) return this.dispatch<T>(DESKTOP_BROWSER_SHELL_VIEW, method, params);
     if (!sessionId || !this.views.has(sessionId)) throw new CdpError(method, -32601, "desktop_engine_unsupported");
+    const dialog = this.views.get(sessionId)!.dialog;
+    if (dialog && method !== "Page.handleJavaScriptDialog") throw new CdpError(method, -32000, dialogBlocked(dialog));
     // 뷰 세션에는 브라우저 컨텍스트가 없다 — 컨텍스트를 짚는 인자는 뷰 자신을 뜻하므로 뗀다.
     const { browserContextId: _context, ...rest } = params;
     return this.dispatch<T>(sessionId, method, rest);

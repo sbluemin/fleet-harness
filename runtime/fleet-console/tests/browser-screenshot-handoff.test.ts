@@ -142,6 +142,7 @@ function createStubDesktop(options: StubOptions = {}) {
     get connected() { return true; },
     closed: new Promise<void>(() => undefined),
     viewSize: (id: string) => sizes.get(id) ?? null,
+    viewDialog: () => null,
     viewObjective: () => OBJECTIVE,
     place: () => undefined,
     bindView: () => undefined,

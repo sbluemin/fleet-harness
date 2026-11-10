@@ -142,7 +142,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   const stripPx = (): number => dip(BROWSER_STRIP_PX);
   const railWidth = (): number => dip(ui.pinned || ui.expanded ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
   const layoutRailWidth = (): number => dip(ui.pinned ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
-  const barHeight = (rect: Rectangle): number => (ui.overlay !== null ? rect.height : ui.notice || ui.info ? Math.min(rect.height, stripPx() + dip(TOAST_BAND_PX)) : Math.min(rect.height, stripPx()));
+  // 표시 탭의 alert·confirm 은 페이지 자리를 덮어 그린다 — 페이지는 크롬 문서 아래의 네이티브 뷰라, 문서 뷰를 키워야 그 위에 보인다.
+  const pageDialog = (): boolean => chrome?.tabs.some((tab) => tab.id === chrome?.activeTabId && tab.dialog !== undefined) === true;
+  const barHeight = (rect: Rectangle): number => (ui.overlay !== null || pageDialog() ? rect.height : ui.notice || ui.info ? Math.min(rect.height, stripPx() + dip(TOAST_BAND_PX)) : Math.min(rect.height, stripPx()));
 
   /** 모든 뷰의 자리를 같은 틱에 정한다. 상태 문서에 알리는 것은 이 뒤다 — 뷰 크기와 문서 레이아웃이 어긋난 프레임이 없게. */
   const layout = (): void => {
@@ -357,6 +359,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail"), stage: makeDoc("stage") }; }
       const json = JSON.stringify(nextChrome);
       const chromeChanged = json !== chromeJson;
+      const dialogBefore = pageDialog();
       chrome = nextChrome; chromeJson = json;
       // 표시 스페이스는 여기서 정한다 — 표시 탭이 다른 스페이스로 옮겨 갔으면 따라가고, 화면이 어긋나 있으면 맞춰 달라고 요청한다.
       const spaceBefore = spaces.current();
@@ -368,7 +371,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
         if (windowBase.isMinimized()) windowBase.restore();
         windowBase.show(); windowBase.focus();
       } else if ((next.focusRequest ?? 0) > focusSeen) { focusSeen = next.focusRequest ?? 0; docs.bar.view.webContents.focus(); }
-      if (chromeChanged || spaces.current() !== spaceBefore) push();
+      // 대화상자가 뜨고 질 때는 크롬 문서의 높이도 바뀐다.
+      if (pageDialog() !== dialogBefore) update();
+      else if (chromeChanged || spaces.current() !== spaceBefore) push();
       else layout();
       if (request) deps.act(control, "bar", { action: "show-tab", id: request.kind === "select" ? request.tabId : null });
     },

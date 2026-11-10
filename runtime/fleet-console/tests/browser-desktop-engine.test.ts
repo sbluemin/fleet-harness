@@ -76,6 +76,18 @@ describe("desktop native browser engine", () => {
     engine.relay("local", { events: [{ viewId: targetId, method: "Page.frameNavigated", params: { frame: { id: "f" } } }] });
     expect(events).toEqual([`${targetId}:Page.frameNavigated`]);
 
+    // 페이지의 confirm 이 뜨면 렌더러가 멈춘다 — 기다리던 명령은 60초 대신 곧바로 대화상자 안내로 끝나고, 답하기 전의
+    // 명령은 거절되며 답하는 명령만 나간다. 닫히면 다시 열린다.
+    const clicking = engine.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 1, y: 1 }, sessionId);
+    engine.relay("local", { events: [{ viewId: targetId, method: "Page.javascriptDialogOpening", params: { type: "confirm", message: "Run build?" } }] });
+    await expect(clicking).rejects.toThrow(/confirm dialog is open.*"Run build\?".*accept_dialog/s);
+    expect(engine.viewDialog(targetId)).toEqual({ type: "confirm", message: "Run build?" });
+    await expect(engine.send("Runtime.evaluate", { expression: "1" }, sessionId)).rejects.toThrow(/confirm dialog is open/);
+    void engine.send("Page.handleJavaScriptDialog", { accept: true }, sessionId).catch(() => undefined);
+    expect(published.at(-1)?.commands.map((entry) => entry.method)).toEqual(["Page.handleJavaScriptDialog"]);
+    engine.relay("local", { results: [{ id: published.at(-1)!.commands[0]!.id, result: {} }], events: [{ viewId: targetId, method: "Page.javascriptDialogClosed", params: { result: true } }] });
+    expect(engine.viewDialog(targetId)).toBeNull();
+
     // 스트림이 잠깐 끊겼다 돌아오면 뷰와 명령은 그대로다 — 절전·순단은 창이 닫힌 것이 아니다.
     vi.useFakeTimers();
     try {

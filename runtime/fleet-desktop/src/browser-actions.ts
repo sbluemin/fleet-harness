@@ -110,6 +110,7 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
       case "new-tab": void run("tabs", { action: "create", spaceId: control.space() }); return;
       case "select-tab": void run("tabs", { action: "select", tabId: action.id }); return;
       case "close-tab": void run("tabs", { action: "close", tabId: action.id }); return;
+      case "page-dialog": void run("tabs", { action: "dialog", tabId: action.id, accept: action.accept }); return;
       case "select-space": {
         // 스페이스를 옮기는 것은 셸의 일이다. Console 에는 그 스페이스의 탭을 띄워 달라고(없으면 내려 달라고)만 요청한다.
         closeOverlay();

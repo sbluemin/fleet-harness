@@ -202,6 +202,33 @@ export interface DesktopBrowserViews {
   attachShortcutSource(contents: WebContents): void;
 }
 
+/**
+ * 페이지의 alert·confirm 을 OS 메시지 상자 대신 브라우저 안에서 답하게 한다. Electron 의 기본 처리는 WebContents 마다 붙는
+ * 비공개 `-run-dialog` 리스너가 `dialog.showMessageBox` 로 앱 밖 창을 띄우는 것이고(v43.1.0 `lib/browser/api/web-contents.ts`),
+ * CDP 로 답해도 그 창은 남는다. 리스너를 바꿔 창을 띄우지 않고 콜백만 쥔다 — 대화상자는 `Page.javascriptDialogOpening` 으로
+ * Console 에 올라가고, 사람(크롬 표시줄)과 에이전트(`computer`)가 `Page.handleJavaScriptDialog` 로 답한다. prompt 는 기본과
+ * 같이 거절한다. 문서를 떠나는 항해가 시작되면 크롬처럼 취소로 닫는다 — 대화상자에 막힌 렌더러는 항해를 끝내지 못하고, 그때는
+ * CDP 로도 답할 수 없다. 비공개 이벤트이므로 Electron 을 올릴 때 다시 확인한다.
+ */
+function holdPageDialogs(contents: WebContents): (accept: boolean | null) => void {
+  type Answer = (success: boolean, input: string) => void;
+  const emitter = contents as unknown as NodeJS.EventEmitter;
+  // WebContents 에는 한 번에 대화상자 하나만 뜬다.
+  let held: Answer | null = null;
+  const release = (accept: boolean | null): void => {
+    const answer = held;
+    held = null;
+    if (answer && accept !== null) { try { answer(accept, ""); } catch { /* 이미 닫힌 페이지 */ } }
+  };
+  emitter.removeAllListeners("-run-dialog");
+  emitter.on("-run-dialog", (info: { dialogType?: string }, callback: Answer) => {
+    if (info.dialogType === "prompt") { callback(false, ""); return; }
+    held = callback;
+  });
+  contents.on("did-start-navigation", (details) => { if (details.isMainFrame && !details.isSameDocument) release(false); });
+  return release;
+}
+
 interface LiveView {
   readonly view: WebContentsView;
   readonly spec: DesktopBrowserView;
@@ -504,6 +531,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     // 페이지가 새 창을 열려 하면 같은 뷰에서 연다 — 이 뷰 밖으로 나가는 창은 없다.
     contents.setWindowOpenHandler(({ url }) => { void contents.loadURL(url).catch(() => undefined); return { action: "deny" }; });
     attachShortcutSource(contents);
+    const releaseDialog = holdPageDialogs(contents);
     contents.on("render-process-gone", () => drop(spec.id, true));
     contents.on("destroyed", () => drop(spec.id, true));
     try {
@@ -511,9 +539,12 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       contents.debugger.on("message", (_event, method, params, sessionId) => {
         // 하위 타깃(iframe·워커)의 세션 이벤트는 콘솔이 다루지 않는다 — 페이지 세션의 것만 올린다.
         if (sessionId) return;
+        // CDP 가 대화상자에 답했다 — 쥐고 있던 콜백은 이미 쓰인 것이라 버린다.
+        if (method === "Page.javascriptDialogClosed") releaseDialog(null);
         push({ events: [{ viewId: spec.id, method, params: (params ?? {}) as Record<string, unknown> }] });
       });
-      contents.debugger.on("detach", (_event, reason) => { log(`browser view debugger detached: ${reason}`); drop(spec.id, true); });
+      // 디버거가 떨어지면 대화상자에 답할 길이 없다 — 취소로 풀어 렌더러가 멈춘 채 남지 않게 한다.
+      contents.debugger.on("detach", (_event, reason) => { log(`browser view debugger detached: ${reason}`); releaseDialog(false); drop(spec.id, true); });
       entry.attached = true;
       push({ attached: [spec.id] });
       reportSize(spec.id, initialBounds);
