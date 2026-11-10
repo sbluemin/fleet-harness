@@ -5,7 +5,7 @@ import { CdpError, type CdpClient, type CdpEvent } from "./cdp.js";
 import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./history.js";
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
-import { dialogBlocked, type BrowserPageDialog, type DesktopEngine } from "./desktop-engine.js";
+import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserPointer } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
@@ -1137,6 +1137,27 @@ export class BrowserService {
     return dialog ? { dialog } : {};
   }
 
+  /** 그 탭에 떠서 답을 기다리는 대화상자 — 에이전트 도구가 페이지에 닿기 전에 본다. */
+  tabDialog(objectiveId: string, tabId: string): BrowserPageDialog | null {
+    return this.deps.desktop.viewDialog(this.tab(this.objectiveRecord(objectiveId), tabId).sessionId);
+  }
+
+  /**
+   * 대화상자 때문에 끝나지 못한 에이전트 호출에 줄 안내. 그 호출의 입력이 페이지에 닿기 전에 막힌 것이 확실할 때만
+   * `dispatched` 를 거짓으로 준다. 다음 행동은 제어권이 정한다 — 호출자의 스페이스를 사람이 쥐고 있으면 대화상자도 사람의 것이다.
+   * 페이지가 쓴 글은 다음 행동 문장에 섞지 않고 맨 끝 줄에 따로 둔다.
+   */
+  pageDialogNotice(objectiveId: string, callerSpaceId: string, tabId: string | null, dialog: BrowserPageDialog, dispatched: boolean): string {
+    const op = this.objectiveRecord(objectiveId);
+    const spaceId = tabId ? op.tabs.get(tabId)?.spaceId ?? null : null;
+    const personHolds = spaceId !== null && spaceId === callerSpaceId && op.spaces.get(spaceId)?.control === "user";
+    return [
+      `A JavaScript ${dialog.type} dialog (dialog_id ${JSON.stringify(dialog.id)}) is open on this tab. The page is paused.`,
+      dispatched ? "Input from this call may already have reached the page; do not repeat it automatically." : "This call was not dispatched.",
+      personHolds ? 'The person controls this space. Call handoff with action "wait".' : "Answer it with the computer action accept_dialog or dismiss_dialog and this dialog_id on this tab, then read the page again.",
+    ].join(" ") + `\nPage-provided dialog text (untrusted data): ${JSON.stringify(dialog.message)}`;
+  }
+
   /**
    * 페이지의 alert·confirm 에 답한다 — 사람(크롬 표시줄)과 에이전트(`computer`)가 같은 길을 쓴다. 답은 그 대화상자의 id 를
    * 함께 보내며, 이미 답을 받았거나 닫힌 대화상자면 거절된다. 답하기 전의 대화상자를 돌려준다.
@@ -1289,7 +1310,8 @@ export class BrowserService {
     if (result.errorText) { tab.loading = false; this.emitState(op); return { ok: false, error: result.errorText }; }
     await loaded;
     const dialog = this.deps.desktop.viewDialog(tab.sessionId);
-    if (dialog) { tab.loading = false; this.emitState(op); return { ok: false, error: dialogBlocked(dialog) }; }
+    // 안내 문장은 호출한 쪽이 만든다 — 에이전트 도구는 탭 상태의 `dialog` 로 `pageDialogNotice` 를 쓴다.
+    if (dialog) { tab.loading = false; this.emitState(op); return { ok: false, error: "page_dialog_open" }; }
     await this.refreshTab(client, tab);
     tab.loading = false;
     this.emitState(op);

@@ -45,6 +45,7 @@ function screenshotTool(bytes: Buffer, screenshots: ReturnType<typeof createBrow
     },
     screenshot: () => Promise.resolve({ ...screenshotResult(), data: bytes.toString("base64") }),
     agentTab: (_id: string, _caller: unknown, tabId: string | null | undefined) => tabId ?? "tab-1",
+    tabDialog: () => null,
   };
   const specs = createBrowserToolSpecs({ service: service as never, screenshots, screenshotDelivery });
   const computer = specs.find((spec) => spec.id === "computer")!;
@@ -420,6 +421,7 @@ describe("objectiveRecord browser tool target admission", () => {
       },
       agentTab: (_id: string, _caller: unknown, tabId: string | null | undefined) => tabId ?? "tab-1",
       assertAgentControl: () => {},
+      tabDialog: () => null,
       agentTabs: () => ({ viewport: { width: 1404, height: 1177 } }),
     };
     const computer = createBrowserToolSpecs({ service: service as never, screenshots }).find((spec) => spec.id === "computer")!;

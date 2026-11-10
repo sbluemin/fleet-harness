@@ -28,14 +28,17 @@ export type BrowserSurfaceState = DesktopBrowserSurface;
 export type BrowserPageDialog = DesktopBrowserPageDialog;
 const DIALOG_MESSAGE_MAX = 2000;
 
-/** 대화상자가 떠 있는 동안 페이지에 닿는 명령은 답이 오지 않는다 — 60초를 기다리는 대신 이 안내로 곧바로 끝낸다. */
-export function dialogBlocked(dialog: BrowserPageDialog): string {
-  return `A JavaScript ${dialog.type} dialog (dialog_id ${JSON.stringify(dialog.id)}) is open on this tab: ${JSON.stringify(dialog.message)}. The page is paused until it is answered, so this call did not complete; nothing was retried, so do not repeat its input. Answer it with the computer action accept_dialog or dismiss_dialog and this dialog_id on this tab, then read the page again.`;
+/**
+ * 대화상자가 떠 있는 동안 페이지에 닿는 명령은 답이 오지 않는다 — 60초를 기다리는 대신 이 오류로 곧바로 끝낸다.
+ * 에이전트에게 줄 안내 문장은 여기서 만들지 않는다. 다음 행동은 제어권이 정하고, 그것을 아는 쪽은 서비스다(`pageDialogNotice`).
+ */
+export class PageDialogOpenError extends CdpError {
+  constructor(method: string, readonly dialog: BrowserPageDialog) { super(method, -32000, "page_dialog_open"); this.name = "PageDialogOpenError"; }
 }
 
-/** 답이 가리킨 대화상자가 이미 답을 받았거나 닫혔다 — 다음 대화상자에 잘못 적용하지 않고 아무것도 보내지 않는다. */
+/** 답이 가리킨 대화상자가 지금 열린 것이 아니거나 이미 답이 가는 중이다 — 다음 대화상자에 잘못 적용하지 않고 아무것도 보내지 않는다. */
 function dialogAnswered(dialogId: string): string {
-  return `The dialog ${JSON.stringify(dialogId)} was already answered or has closed, so nothing was sent. Check tabs_context for the dialog that is open now and answer it only if you still mean to.`;
+  return `The dialog ${JSON.stringify(dialogId)} is not the current open dialog or is already being answered, so nothing was sent. Check tabs_context for any open dialog and answer it only if you still mean to.`;
 }
 
 export interface DesktopEngineDeps {
@@ -241,7 +244,8 @@ export class DesktopEngine implements CdpClient {
         const origin = ((): string => { try { const value = new URL(String(event.params.url ?? "")).origin; return value.length <= 512 ? value : "null"; } catch { return "null"; } })();
         view.dialog = { id: `dialog-${++this.dialogSerial}`, type: event.params.type, message: message.length > DIALOG_MESSAGE_MAX ? `${message.slice(0, DIALOG_MESSAGE_MAX - 1)}…` : message, origin };
         view.answering = null;
-        this.failPendingFor(view.id, dialogBlocked(view.dialog));
+        const opened = view.dialog;
+        this.failPendingFor(view.id, (method) => new PageDialogOpenError(method, opened));
         this.publish();
       } else if (event.method === "Page.javascriptDialogClosed" || (event.method === "Page.frameNavigated" && !(event.params.frame as { parentId?: unknown } | undefined)?.parentId)) { view.dialog = null; view.answering = null; }
       this.emit({ method: event.method, params: event.params, sessionId: event.viewId });
@@ -306,7 +310,7 @@ export class DesktopEngine implements CdpClient {
       // 답이 실패하면 그 대화상자에 다시 답할 수 있게 표시를 푼다.
       return this.dispatch<T>(sessionId, method, answer).catch((error: unknown) => { if (view.answering === answering) view.answering = null; throw error; });
     }
-    if (view.dialog) throw new CdpError(method, -32000, dialogBlocked(view.dialog));
+    if (view.dialog) throw new PageDialogOpenError(method, view.dialog);
     // 뷰 세션에는 브라우저 컨텍스트가 없다 — 컨텍스트를 짚는 인자는 뷰 자신을 뜻하므로 뗀다.
     const { browserContextId: _context, ...rest } = params;
     return this.dispatch<T>(sessionId, method, rest);
@@ -363,12 +367,12 @@ export class DesktopEngine implements CdpClient {
     this.failPendingFor(id, "desktop_view_closed");
   }
 
-  private failPendingFor(viewId: string, reason: string): void {
+  private failPendingFor(viewId: string, reason: string | ((method: string) => Error)): void {
     for (const [commandId, entry] of this.pending) {
       if (entry.command.viewId !== viewId) continue;
       this.pending.delete(commandId);
       clearTimeout(entry.timer);
-      entry.reject(new CdpError(entry.command.method, -32000, reason));
+      entry.reject(typeof reason === "string" ? new CdpError(entry.command.method, -32000, reason) : reason(entry.command.method));
     }
   }
 
