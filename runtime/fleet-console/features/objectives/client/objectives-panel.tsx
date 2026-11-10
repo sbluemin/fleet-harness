@@ -803,6 +803,17 @@ function LineupZoom({ t, title, category, width, tools, onClose, children }: { r
         event.preventDefault(); event.stopPropagation(); onClose(); return;
       }
       if (event.key !== "Tab" || !cardRef.current) return;
+      // 증거 뷰어가 이 창 위에 있으면 Tab 은 뷰어 안에서 돈다 — 이 창의 고리가 초점을 뒤로 끌어오지 않는다.
+      const viewer = document.activeElement?.closest<HTMLElement>(".objectives-result-window, .objectives-rw-menu");
+      if (viewer) {
+        const inner = [...viewer.querySelectorAll<HTMLElement>("button, a[href], input, textarea, [tabindex]:not([tabindex='-1'])")].filter((el) => !(el as HTMLButtonElement).disabled && el.getClientRects().length > 0);
+        const edge = event.shiftKey ? inner[0] : inner[inner.length - 1];
+        if (inner.length && (document.activeElement === edge || (event.shiftKey && document.activeElement === viewer))) {
+          event.preventDefault();
+          (event.shiftKey ? inner[inner.length - 1] : inner[0])?.focus();
+        }
+        return;
+      }
       const card = cardRef.current;
       const stops = [...card.querySelectorAll<HTMLElement | SVGElement>("button, input, textarea, [tabindex]:not([tabindex='-1'])")].filter((el) => !(el as HTMLButtonElement).disabled);
       const active = document.activeElement;

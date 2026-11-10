@@ -89,7 +89,10 @@ export const objectiveMobileConversationTabs: NonNullable<RailEntryConversationP
   select: (tabId, objectiveId) => {
     if (tabId === "evidence") {
       const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      if (objectiveId) openResultWindow(objectiveId, "", opener);
+      // 구성원 대화에서는 objectiveId 가 구성원 id 다 — 뷰어에는 그 구성원이 속한 목표를 넘긴다.
+      // 목록에 없는(끝난) 목표는 받은 id 그대로 연다.
+      const target = objectiveOfObjective(objectiveId)?.id ?? objectiveId;
+      if (target) openResultWindow(target, "", opener);
       return;
     }
     const objective = objectiveOfObjective(objectiveId);
