@@ -2189,7 +2189,7 @@ const HIT_TEST_FUNCTION = `function () {
   return { ok: true, x, y, disabled: false, hit };
 }`;
 
-/** 페이지 안에서 실행 — 뷰포트 좌표에서 포인터 입력이 닿는 요소. 열린 shadow root 와 같은 출처 프레임은 안쪽 요소까지 내려간다. */
+/** 페이지 안에서 실행 — 뷰포트 좌표에서 포인터 입력이 닿는 요소. 열린 shadow root 와 변환되지 않은 같은 출처 프레임은 안쪽 요소까지 내려간다. */
 const ELEMENT_AT_POINT_FUNCTION = `function (x, y) {
   let doc = document, el = null;
   for (let depth = 0; depth < 16; depth += 1) {
@@ -2202,6 +2202,10 @@ const ELEMENT_AT_POINT_FUNCTION = `function (x, y) {
     try { inner = cur.contentDocument; } catch { inner = null; }
     if (!inner) break;
     const box = cur.getBoundingClientRect();
+    // 변환·확대된 프레임은 상자 원점을 빼는 것만으로 안쪽 좌표가 되지 않는다 — 그때는 프레임 요소에서 멈춘다.
+    let plain = Math.abs(box.width - cur.offsetWidth) < 1 && Math.abs(box.height - cur.offsetHeight) < 1;
+    for (let node = cur; plain && node; node = node.parentElement) { const style = getComputedStyle(node); plain = [style.transform, style.scale, style.rotate].every((v) => !v || v === 'none') && (!style.zoom || style.zoom === '1'); }
+    if (!plain) break;
     x -= box.left + cur.clientLeft; y -= box.top + cur.clientTop; doc = inner;
   }
   return el;
