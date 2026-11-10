@@ -92,6 +92,14 @@ export function mountRail(): (state: ChromeUiState) => void {
   // 가로 표시줄은 세로 휠로도 옆으로 넘긴다.
   scroll.addEventListener("wheel", (event) => { if (horizontal() && event.deltaX === 0 && event.deltaY !== 0) { scroll.scrollLeft += event.deltaY; event.preventDefault(); } }, { passive: false });
 
+  /** 가로 표시줄의 탭이 좁아졌는가 — 닫기 단추를 접을지 CSS 가 이 표식으로 정한다. 탭 폭은 닫기 단추와 무관하게 정해지므로 표식이 폭을 되먹이지 않는다. */
+  const TIGHT_TAB_PX = 112;
+  const fitTabs = (): void => {
+    const first = tabsBox.firstElementChild;
+    tabsBox.classList.toggle("tight", horizontal() && first !== null && first.getBoundingClientRect().width < TIGHT_TAB_PX);
+  };
+  new ResizeObserver(fitTabs).observe(tabsBox);
+
   const makeTab = (): HTMLElement => {
     const icon = h("span", { class: "tab-icon" });
     const title = h("span", { class: "tab-title" });
@@ -187,6 +195,7 @@ export function mountRail(): (state: ChromeUiState) => void {
     tabsBox.hidden = tabs.length === 0;
     tabsBox.setAttribute("aria-label", `${name} — ${t("tabs")}`);
     keyed(tabsBox, tabs, (tab) => tab.id, makeTab, updateTab(t, chrome.activeTabId, new Set(space?.agentTabIds ?? [])), tabCache);
+    fitTabs();
   };
 
   return render;
