@@ -519,16 +519,44 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     return { choice: { model: COMMANDER_PRESET.model, effort: COMMANDER_PRESET.effort } };
   };
-  /** 세션이 있으면 넘긴 모델은 적용하지 않고 후보 재확인만 한다. 없으면 고른 모델로 기동한다. */
+  /**
+   * 보관이 세션 레코드만 만든 목표 — 첫 턴이 없고 모델도 없다. 구상·개시가 pending 과 같은 순서로 모델을 정한 뒤 깨운다.
+   * 모델이 이미 있으면 그대로 두고, 바꾸는 길은 edit 이다. `started` 는 세션에 첫 턴이 잡혔는가(`readObjectiveLaunch`)다.
+   */
+  const unstartedWithoutModel = (node: Record<string, unknown>): boolean => {
+    const info = readObjectiveLaunch(node);
+    return !info.started && !info.model;
+  };
+  /** 이미 있는 미시작 레코드에 고른 모델을 쓴다. 거절은 이 함수 앞에서 나므로 모델 없는 깨움은 없다. */
+  const writeUnstartedModel = async (objectiveId: string, choice: { readonly model: string; readonly effort?: string; readonly modelSpeed?: ObjectiveModelSpeed }): Promise<void> => {
+    await accessObjective(objectiveId);
+    const active = ctx.objectiveRecords.get(objectiveId);
+    if (!active) throw new ObjectiveStoreError("unknown_objective");
+    const apply = ctx.consoleControl?.setUnstartedPreset;
+    if (apply && active.chatMode === true) {
+      const result = await apply(objectiveId, { model: choice.model, effort: choice.effort ?? null });
+      if (!result.ok) throw coordinatesError(result);
+    } else patchObjective(objectiveId, withObjectiveLaunchPreset(active, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }));
+    if (choice.modelSpeed) {
+      const node = ctx.objectiveRecords.get(objectiveId);
+      if (!node) throw new ObjectiveStoreError("unknown_objective");
+      const session = node.session && typeof node.session === "object" && !Array.isArray(node.session) ? node.session as Record<string, unknown> : {};
+      patchObjective(objectiveId, { session: { ...session, modelSpeed: choice.modelSpeed } });
+    }
+    store.refresh(objectiveId);
+  };
+  /** 세션이 있고 모델이 있으면 넘긴 값은 적용하지 않고 후보만 다시 확인한다. 없거나 미시작·무모델이면 고른 모델로 기동한다. */
   const openCommander = async (objectiveId: string, options?: LaunchOptions): Promise<string | undefined> => {
     const supplied = options?.commander?.model !== undefined || options?.commander?.effort !== undefined;
-    if (referenceNode(objectiveId)) {
+    const node = referenceNode(objectiveId);
+    if (node && !unstartedWithoutModel(node)) {
       await assertCommanderCandidate(objectiveId);
       await ensureCommander(objectiveId);
       return supplied ? SESSION_COMMANDER_NOTICE : undefined;
     }
     const decided = await resolveFirstCommander(objectiveId, options);
-    await ensureCommander(objectiveId, decided.choice);
+    if (node) await writeUnstartedModel(objectiveId, decided.choice);
+    await ensureCommander(objectiveId, node ? undefined : decided.choice);
     return decided.notice;
   };
 

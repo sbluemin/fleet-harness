@@ -1449,8 +1449,8 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
         {readOnly ? <span className="objectives-sr">{t("objectives.commander.brief")}</span> : <span className="objectives-member-brief">{t("objectives.commander.brief")}</span>}
       </div>
       <div className="objectives-member-meta">
-        <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={locked || !editable}
-          onChange={(next) => void call("/objective/patch", { objectiveId: objective.id, patch: { launch: next } })} />
+        {!objective.commander.started && !objective.hasSession ? null : <LaunchControl t={t} model={objective.commander.model} effort={objective.commander.effort} locked={locked || !editable}
+          onChange={(next) => void call("/objective/patch", { objectiveId: objective.id, patch: { launch: next } })} />}
         {commanderState !== "closed" ? <span className={`objectives-member-status is-${commanderState}${objective.commander.outcome === "failed" && commanderState !== "running" && commanderState !== "awaiting" ? " is-failed" : ""}`}>{memberStateWord(commanderState, objective.commander.outcome)}</span> : null}
       </div>
     </div>

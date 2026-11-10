@@ -2132,7 +2132,7 @@ describe("Objectives contract", () => {
       error: "model_not_in_gateway_models",
       model: "sonnet[1m]",
       candidates: candidates.candidates,
-      hint: expect.stringContaining("commanderModel"),
+      hint: "Choose a model from fleet-ai-gateway candidates.",
     });
     expect((await again({ action: "edit", objectiveId: id, commanderModel: "xai--grok-4.7" })).structuredContent).toMatchObject({ error: "not_started", hint: "No Commander session yet; use plan or commence for initial model selection." });
     expect((await again({ action: "edit", objectiveId: id, title: "Renamed while pending" })).structuredContent).toMatchObject({ ok: true, stored: { title: "Renamed while pending" } });
@@ -2154,6 +2154,17 @@ describe("Objectives contract", () => {
     surfaces.delete(id);
     activity.set(id, "running");
     expect((await again({ action: "edit", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "high" })).structuredContent.error).toBe("objective_busy");
+    // 보관이 세션만 만든 미시작 목표는 모델이 없으면 구상이 정하고, 이미 있으면 그대로 둔다.
+    activity.set(id, "idle");
+    const shelved = await again({ action: "add", theaterId: "t1", title: "Shelved" });
+    const shelvedId = shelved.structuredContent.objectiveId as string;
+    await relaunch.archive(shelvedId);
+    expect(reloaded.find(shelvedId)).toMatchObject({ hasSession: true, commander: { started: false } });
+    expect(reloaded.find(shelvedId)!.commander).not.toHaveProperty("model");
+    expect((await again({ action: "plan", objectiveId: shelvedId })).structuredContent.error).toBe("commander_model_required");
+    expect(reloaded.find(shelvedId)!.commander).not.toHaveProperty("model");
+    expect((await again({ action: "plan", objectiveId: shelvedId, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true });
+    expect(objectiveRecords.get(shelvedId)!.session).toMatchObject({ model: "opus[1m]", effort: "high" });
     // 사람이 사령관 설정에 명시한 모델은 후보에서 빠져도 실행 카탈로그에 있으면 구상·개시가 그 모델로 기동한다. 호출이 넘긴 값은 버린다.
     configured = { model: "opus[1m]", effort: "high", fast: true };
     candidates.candidates = candidates.candidates.filter((entry) => entry.model !== "opus[1m]");
