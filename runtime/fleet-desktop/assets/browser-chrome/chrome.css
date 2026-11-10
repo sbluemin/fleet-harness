@@ -349,16 +349,17 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .tile-agent svg { width: 10px; height: 10px; }
 .tile-help { color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tile-foot { display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin-top: auto; padding-top: var(--space-2); }
-.tile-icons { display: flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+.tile-icons { flex: none; display: flex; align-items: center; gap: var(--space-1); }
 .tile-icons .tab-icon { color: var(--text-tertiary); }
 .tile-more { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .tile-count { flex: none; margin-inline-start: auto; color: var(--text-secondary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.space-tile.empty .tile-count { color: var(--text-tertiary); }
+.space-tile.no-tabs .tile-count { color: var(--text-tertiary); }
 @media (prefers-reduced-motion: reduce) { .space-tile { transition: none; } }
 
 /* ---- 스테이지: 표시할 페이지가 없을 때 페이지 자리를 채우는 빈 상태·사용 불가 안내 ---- */
 .empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--space-2); padding: var(--space-6); text-align: center; color: var(--text-secondary); }
 .empty-glyph { display: inline-flex; width: 28px; height: 28px; color: var(--text-tertiary); }
 .empty-glyph svg { width: 28px; height: 28px; }
+.empty-title, .empty-body, .spaces-head p { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
 .empty-title { margin: 0; color: var(--text-primary); font-size: var(--t-base); font-weight: var(--weight-medium); }
 .empty-body { margin: 0; max-width: 40ch; font-size: var(--t-sm); color: var(--text-secondary); }

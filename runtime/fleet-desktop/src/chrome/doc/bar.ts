@@ -6,7 +6,7 @@ import { paintColors, post, shownSpace, spaceHue, spaceName, tabCount, tr, type 
 const SUGGEST_DELAY_MS = 200;
 const PERSISTENT = "default";
 /** 스페이스 칸 하나가 미리 보여 주는 탭 아이콘 수 — 넘치면 「+n」으로 줄인다. */
-const TILE_ICONS = 5;
+const TILE_ICONS = 4;
 
 /** 주소줄 문서. 메뉴·스페이스 선택 화면·주소 제안·대화상자·주석은 이 문서가 같은 몸으로 그린다 — 오버레이가 열리면 main 이 이 뷰를 표면 높이로 키운다. */
 export function mountBar(): { render(state: ChromeUiState): void; inspected(seq: number, element: unknown): void; captured(seq: number, shot: unknown): void } {
@@ -22,7 +22,8 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   const form = h("form", { class: "url" }, display, input);
   const detach = h("button", { class: "icon detach", type: "button", on: { mousedown: (event) => event.preventDefault(), click: () => post("bar", "toggle-mode") } }, "↗");
   // 스페이스 — 도구 메뉴 바로 왼쪽. 누르면 스페이스들이 그리드로 펼쳐지고, 사령관 스페이스를 보는 동안에는 그 스페이스의 색으로 물든다.
-  const spacesButton = h("button", { class: "icon spaces-button", type: "button", attrs: { "aria-haspopup": "dialog" }, on: { mousedown: (event) => event.preventDefault(), click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "spaces" ? null : "spaces" }) } }, glyph(G.spaces, 16));
+  // 누르면 초점이 주소줄을 떠난다(mousedown 을 막지 않는다): 스페이스를 옮긴 뒤 주소줄이 고치던 중으로 남아 옛 주소를 붙잡지 않게.
+  const spacesButton = h("button", { class: "icon spaces-button", type: "button", attrs: { "aria-haspopup": "dialog" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "spaces" ? null : "spaces" }) } }, glyph(G.spaces, 16));
   const more = h("button", { class: "icon more-button", type: "button", attrs: { "aria-haspopup": "menu" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "menu" ? null : "menu" }) } }, moreGlyph());
   const leading = h("span", { class: "pad" });
   const trailing = h("span", { class: "pad" });
@@ -157,7 +158,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       if (tabs.length > TILE_ICONS) icons.append(h("span", { class: "tile-more", text: `+${tabs.length - TILE_ICONS}` }));
       const foot = h("span", { class: "tile-foot" }, icons, h("span", { class: "tile-count", text: count }));
       const label = `${t("spaces.tile", { name, tabs: count })}${current ? ` · ${t("spaces.current")}` : ""}${space.driving ? ` · ${t("space.driving")}` : ""}`;
-      const tile = h("button", { class: `space-tile${current ? " current" : ""}${tabs.length === 0 ? " empty" : ""}`, type: "button", disabled: !chrome!.available, attrs: { "aria-label": label, "aria-current": current ? "true" : null, "data-kind": space.kind }, on: { click: () => post("bar", "select-space", { id: space.id }) } },
+      const tile = h("button", { class: `space-tile${current ? " current" : ""}${tabs.length === 0 ? " no-tabs" : ""}`, type: "button", disabled: !chrome!.available, attrs: { "aria-label": label, "aria-current": current ? "true" : null, "data-kind": space.kind }, on: { click: () => post("bar", "select-space", { id: space.id }) } },
         top, h("span", { class: "tile-help", text: t(space.kind === "commodore" ? "spaces.commodoreHelp" : "spaces.defaultHelp") }), foot);
       tile.style.setProperty("--space-hue", String(spaceHue(space.id)));
       if (current) top.append(h("span", { class: "tile-current", text: t("spaces.current") }));
@@ -265,6 +266,8 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const showing = current !== null && state.overlayReady;
     overlay.hidden = !showing && !state.info && !state.notice;
     if (current?.kind !== "annotate" && annotator) { annotator.dispose(); annotator = null; }
+    // 스페이스 선택 화면이 닫히면 초점을 그 단추로 돌려준다 — 키보드로 연 사람이 화면 밖에서 길을 잃지 않게.
+    const leavingSpaces = overlayKey.startsWith("spaces:") && !(showing && current!.kind === "spaces") && overlay.contains(document.activeElement);
     const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : "none";
     const toastKey = `${state.notice ?? ""}|${state.info?.text ?? ""}|${state.info?.action ?? ""}`;
     if (current?.kind === "annotate" && showing) {
@@ -277,6 +280,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (key !== overlayKey) {
       overlayKey = key;
       clear(overlay);
+      if (leavingSpaces) spacesButton.focus({ preventScroll: true });
       if (showing) {
         const backdrop = h("div", { class: `backdrop${modal ? " modal" : ""}` });
         backdrop.addEventListener("pointerdown", (event) => { if (event.target === backdrop && !modal) post("bar", "overlay", { kind: null }); });

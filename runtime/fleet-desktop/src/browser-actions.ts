@@ -44,8 +44,10 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
   };
   const failureText = async (response: Response): Promise<string> => {
     try {
-      const body = await response.json() as { error?: string; message?: string; reason?: string | null };
+      const body = await response.json() as { error?: string; message?: string; reason?: string | null; spaceId?: unknown; limit?: unknown };
       if (body.error === "browser_unavailable") return t(body.reason === "shared" ? "unavailable.shared" : "unavailable.desktop_required");
+      // 탭 상한은 사람이 직접 부딪히는 거절이다 — Console 의 문장(에이전트가 읽는 영어) 대신 화면의 말로 알린다.
+      if (body.error === "browser_tab_limit" && typeof body.limit === "number") return t(typeof body.spaceId === "string" ? "tabLimit.space" : "tabLimit.total", { limit: String(body.limit) });
       if (body.message) return body.message;
       if (body.error) return body.error;
     } catch { /* 본문 없음 */ }
