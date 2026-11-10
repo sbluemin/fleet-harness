@@ -10,7 +10,7 @@ import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import type { DecisionAnswersInput, MemberLaunch, MemberPatchInput, MissionAddInput, MissionPatchInput, Objective, ObjectiveEditKind, ObjectivePersonHold, ObjectiveReviewer, PatchObjectiveInput, PersonHoldTarget } from "../shared/types.js";
 
 type Ref = { readonly objectiveId: string; readonly language?: "en" | "ko" };
-type ContextRef = Ref & { readonly context?: string };
+type ContextRef = Ref & { readonly context?: string; readonly commander?: { readonly model?: string; readonly effort?: string }; readonly signal?: AbortSignal };
 type MissionRef = Ref & { readonly missionId: string };
 export interface CompleteAction extends Ref {
   readonly undone?: boolean;
@@ -21,7 +21,11 @@ export interface CompleteAction extends Ref {
 /** 화면과 보드 도구의 바깥 루프. 행위자는 호출 경계에서 정하고 입력 JSON에서는 받지 않는다. */
 export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, actor: ObjectiveReviewer) {
   const objective = (value: Objective) => ({ objective: value });
-  const options = (body: ContextRef): LaunchOptions => ({ actor, language: body.language, context: body.context });
+  const options = (body: ContextRef): LaunchOptions => ({
+    actor, language: body.language, context: body.context,
+    ...(body.commander ? { commander: body.commander } : {}),
+    ...(body.signal ? { signal: body.signal } : {}),
+  });
   const unlessBusy = <A extends Ref, R>(run: (body: A) => R) => (body: A): R => {
     if (launch.busy(body.objectiveId)) throw new ObjectiveStoreError("objective_busy");
     return run(body);

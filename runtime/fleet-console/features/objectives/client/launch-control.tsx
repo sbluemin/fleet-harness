@@ -286,7 +286,9 @@ export function memberLaunchShown(member: ObjectiveMember, launched: boolean, t:
 }
 
 /** 지휘관 행의 모델 줄 — 보드의 지휘관 트리거(기본 좌표를 둔 공유 선택기)가 그리는 낱말과 hover 글. */
-export function commanderLaunchShown(objective: Objective, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
+export function commanderLaunchShown(objective: Objective, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown | null {
+  // 시작 전(세션 없음·미시작)은 모델 자리가 비어 있다. 기본 좌표 낱말도 두지 않는다.
+  if (!objective.commander.started && !objective.hasSession) return null;
   const { model, effort } = objective.commander;
   const shown = modelCoordinateDisplay(roster, { ...(model ? { model } : {}), ...(effort ? { effort } : {}) }, DEFAULT_LAUNCH, pickerLabels(t));
   return { label: shown.words.model, effort: shown.words.effort || null, title: shown.title, provider: shown.provider, ...(shown.struck && shown.removedProvider ? { providerName: shown.removedProvider } : {}), struck: shown.struck, badge: shown.badge };

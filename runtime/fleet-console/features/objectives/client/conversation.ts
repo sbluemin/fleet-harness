@@ -196,7 +196,8 @@ function memberProfile(objective: Objective, member: ObjectiveMember, crew: Conv
 
 /** 보드의 지휘관 행은 모델·강도만 보인다 — 그 한 줄만 싣는다. */
 function commanderProfile(objective: Objective, roster: ModelRoster | null): ConversationMemberProfile {
-  return { launch: launchLine((t) => commanderLaunchShown(objective, t, roster)) };
+  if (!commanderLaunchShown(objective, getT("en"), roster)) return {};
+  return { launch: launchLine((t) => commanderLaunchShown(objective, t, roster)!) };
 }
 
 /** 트리거 낱말 한 줄을 계약의 모양으로 — 글은 로케일마다 다시 풀고, 글리프·취소선은 한 번만 센다. */

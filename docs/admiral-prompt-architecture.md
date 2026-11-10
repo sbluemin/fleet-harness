@@ -40,8 +40,8 @@ append, the `fleet://ai-gateway/*` resources, the `assets/ai-gateway/` prose, an
 in section 2.1. The `fleet-ai-gateway` MCP server serves one tool, `candidates`, only to
 Commodore sessions (an in-process group) and Objective Commander sessions (a reserved HTTP
 server whose token is issued, and whose calls are re-checked, only for Commanders).
-A Commodore chooses each objective's Commander model from it unless the person set one for
-that Commodore. A Commander must give every member it plans or enlists a model from it, and
+A Commodore chooses each objective's Commander model from it when it first plans or commences
+that objective, unless the person set one for that Commodore. A Commander must give every member it plans or enlists a model from it, and
 changes a member through `set_member_launch`; a member without a model is not launched.
 Existing sessions apply a model selection when idle or after their current turn. The
 Commander cannot overwrite a person's chosen model; legacy selections without recorded

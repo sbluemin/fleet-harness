@@ -11,7 +11,7 @@ import { FOLLOWUPS_AT_REVIEW_HINT, criteriaSettleAdvice, followupsJudgeable, inb
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, type BriefAttachmentInput } from "./attachments.js";
 import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
-import { COMMANDER_MODEL_REQUIRED_HINT, createLaunchService, MEMBER_MODEL_REQUIRED_HINT, type LaunchService } from "./launch.js";
+import { COMMANDER_MODEL_REQUIRED_HINT, createLaunchService, MEMBER_MODEL_REQUIRED_HINT, PERSON_COMMANDER_NOTICE, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { CONSULT_ANSWER_DESCRIPTION, CONSULT_ANSWER_OMIT, CONSULT_ANSWER_SOURCE } from "../shared/consultations.js";
 import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, MAX_CONSULTATION_TEXT, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
@@ -47,6 +47,10 @@ const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON).optional();
 export const MAX_REMARK = 600;
 const remark = z.string().trim().min(1).max(MAX_REMARK).describe("What you judged and why.");
 const context = z.string().max(MAX_REMARK).optional().describe("What you judged and why.");
+const commanderModelInput = z.string().trim().min(1).max(128).optional().describe("From candidates. Ignored if a Commander session or person-set model exists; otherwise required for a Commodore caller.");
+const commanderEffortInput = z.string().trim().min(1).max(32).optional().describe("From commanderModel's efforts; omitted uses its default.");
+/** edit 가 세션 없는 목표의 모델·강도를 거절할 때만 붙인다. 전사 읽기의 not_started 와 공유하지 않는다. */
+const NO_COMMANDER_SESSION_HINT = "No Commander session yet; use plan or commence for initial model selection.";
 const answers = z.array(decisionAnswersSchema.shape.answers.element).min(1).max(MAX_DECISION_QUESTIONS);
 const offsetPages = "Follow nextOffset with the same view until null; slices restart at 0 if the revision changes.";
 /** 조각 읽기의 위치 — 목표 구역(UTF-16 문자, 8000바이트 예산)과 증거(16000자) 모두 nextOffset 을 따라간다. */
@@ -102,9 +106,7 @@ const listActions = {
     archived: { kind: "read", input: z.object({ ...rows, archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (epoch ms); newest first.") }) },
     // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관·구성원의 objective_search 와 같은 핵심·같은 입력. searchInputShape 은 지휘관·구성원 서버와 공유하므로 그대로 둔다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
-    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("direct (default), or taskforce with id and starting seq."), note: z.string().max(20_000).optional().describe("The brief: request and purpose. Missions, method and evidence come from the plan."),
-      commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates; required unless the person set a Commander model."),
-      commanderEffort: z.string().trim().min(1).max(32).optional().describe("From commanderModel's efforts; omitted uses its default.") }) },
+    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("direct (default), or taskforce with id and starting seq."), note: z.string().max(20_000).optional().describe("The brief: request and purpose. Missions, method and evidence come from the plan.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Target receiving brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
@@ -141,8 +143,8 @@ const detailActions = {
     followup_abandon: write(followupTarget),
     // 후보는 보드의 후보 객체 그대로({id, rev}) 가리킨다 — complete 와 같은 모양이고, 그새 고쳐진 후보는 버리지 않는다.
     followup_discard: write({ followups: followupSelectionSchema.shape.followups.describe("Open candidates to drop; refused as not_in_review before review.") }),
-    plan: write({ context }),
-    commence: write({ context }),
+    plan: write({ context, commanderModel: commanderModelInput, commanderEffort: commanderEffortInput }),
+    commence: write({ context, commanderModel: commanderModelInput, commanderEffort: commanderEffortInput }),
     steer: write({ context }),
     // 사람·Objective·플러그인의 발화. 사령관의 첨언은 steer 이고, 사령관 스키마에는 이 액션이 없다.
     message: { kind: "write", callers: ["objectiveRecord", "plugin"], input: z.object({ ...target, memberId: ids.nullable().optional(), text: remark }) },
@@ -169,7 +171,7 @@ const detailTool = defineConsoleTool({
  * 사령관 세션의 목록·편집 — 화면 둘을 나누지 않고 view·edit 입력으로 받는다. Console Use 기여는 위의 둘을 그대로 둔다.
  * list의 view를 생략하면 기본 목록이고, archivedBefore는 archived 보드에서만 받는다. edit은 title·brief·dueDate·
  * commanderModel·commanderEffort 중 적어도 하나가 있어야 하고, attachmentIds는 brief와 함께만 받는다. dueDate null은 기한을 지운다.
- * 지휘관 모델은 미기동·휴면·유휴일 때만 후보로 확인한 뒤 고친다.
+ * 지휘관 모델은 세션이 있는 휴면·유휴일 때만 후보로 확인한 뒤 고친다. 세션이 없으면 plan·commence 가 고른다.
  */
 const sessionListInput = z.object({
   groupId: ids.optional(),
@@ -184,7 +186,7 @@ const sessionEditInput = z.object({
   brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
   dueDate: dueDate.optional(),
   attachmentIds: attachmentIds.optional().describe("This turn's image IDs; requires brief."),
-  commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates. Pending, dormant, or idle Commander only."),
+  commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates. Dormant or idle Commander session only."),
   commanderEffort: z.string().trim().min(1).max(32).optional().describe("From the new or current model's efforts. Omitted keeps current; unsupported effort is refused."),
 }).strict();
 const { list: _retiredList, inbox: _retiredInbox, fleet: _retiredFleet, history: _retiredHistory, archived: _retiredArchived, ...sessionListBase } = listActions;
@@ -354,17 +356,12 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         // 목표는 제목과 브리핑, 선택 기한으로 태어난다 — 달성 기준·임무·구성원은 지휘관의 구상이 제안한다. AI 생성 표시는 목표의 addedBy 로 남는다.
         const inherited = caller?.kind === "objectiveRecord" ? ctx.objectiveRecords.get(caller.objectiveId)?.theaterId : undefined;
         const specified = call.theaterId !== undefined;
-        // 사람이 사령관 설정에 지휘관 모델을 정했으면 사령관이 넘긴 모델·effort는 검증 없이 버리고, 생성이 설정 모델과 속도로 시작한다.
-        const personChose = caller?.kind === "commodore" && !!ctx.commodoreCommander?.(commodoreId);
-        const overridden = personChose && (call.commanderModel !== undefined || call.commanderEffort !== undefined);
-        const commander = personChose ? null : await chosenCommander(call.commanderModel, call.commanderEffort, context.signal);
         const objective = await launch.create({
           commodoreId, theaterId: call.theaterId ?? inherited ?? "", theaterIdSpecified: specified, groupId, title: call.title, requestSource: call.requestSource, attachments: briefAttachments(call.attachmentIds), ...(call.note ? { note: call.note } : {}), ...(call.dueDate !== undefined ? { dueDate: call.dueDate } : {}),
           ...(caller?.kind === "objectiveRecord" ? { addedBy: caller.objectiveId } : caller?.kind === "commodore" ? { addedBy: caller } : {}),
-          ...(commander ? { commander } : {}),
         }, { language: language(caller), ...(actorOf(caller) ? { actor: actorOf(caller)! } : {}) });
         const kept = store.find(objective.id) ?? objective;
-        return text({ ok: true, objectiveId: objective.id, ...(overridden ? { notice: "Supplied model/effort ignored; using person's Commander setting." } : {}), stored: { title: kept.title, dueDate: kept.dueDate, requestSource: kept.requestSource, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) } });
+        return text({ ok: true, objectiveId: objective.id, stored: { title: kept.title, dueDate: kept.dueDate, requestSource: kept.requestSource, ...(kept.note ? { note: storedText(kept.note) } : {}), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) } });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });
         return refuse("objectives_failed");
@@ -416,8 +413,8 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         if (call.action === "complete" && call.batchId !== undefined && call.followups === undefined) return refuse("invalid_arguments", { issues: [{ path: ["followups"], code: "invalid_type" }] });
         const result = await (async () => {
           switch (call.action) {
-            case "plan": return actions.plan({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
-            case "commence": return actions.commence({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
+            case "plan": return actions.plan({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}), ...commanderCall(call, context.signal) });
+            case "commence": return actions.commence({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}), ...commanderCall(call, context.signal) });
             case "criteria_approve": return call.proposalId === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: call.proposalId });
             case "criteria_reject": return actions.reject({ ...ref, proposalId: call.proposalId });
             case "answer": return actions.answer({ ...ref, requestId: call.requestId, answers: call.answers });
@@ -520,13 +517,12 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     return text({ ok: true, scheduled, warning });
   }
 
-  /** 생성 호출이 고른 지휘관을 실행 카탈로그와 candidates로 확인한다. 목록을 읽지 못하면 추측으로 통과시키지 않는다. */
-  async function chosenCommander(model: string | undefined, effort: string | undefined, signal: AbortSignal | undefined) {
-    if (model === undefined) {
-      if (effort !== undefined) throw new ObjectiveStoreError("commander_model_required", undefined, { hint: "commanderEffort needs commanderModel." });
-      return null;
-    }
-    return await modelCatalog.checkCommander({ model, effort }, signal);
+  /** plan·commence 에 넘긴 모델. 고르는 순서와 거절은 기동 서비스가 맡는다. */
+  function commanderCall(call: { readonly commanderModel?: string; readonly commanderEffort?: string }, signal: AbortSignal | undefined) {
+    const commander = call.commanderModel !== undefined || call.commanderEffort !== undefined
+      ? { ...(call.commanderModel !== undefined ? { model: call.commanderModel } : {}), ...(call.commanderEffort !== undefined ? { effort: call.commanderEffort } : {}) }
+      : undefined;
+    return { ...(commander ? { commander } : {}), ...(signal ? { signal } : {}) };
   }
 
   /**
@@ -672,10 +668,14 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
       if (attachmentIds !== undefined && brief === undefined) {
         return refuse("invalid_arguments", { issues: [{ path: ["attachmentIds"], code: "invalid_type" }], hint: "attachmentIds copies images with a new brief; give brief." });
       }
+      // 세션이 없으면 모델·강도만 거절한다. 제목·브리핑·기한은 그대로 고친다. 이 힌트는 이 거절에만 붙인다.
+      if ((commanderModel !== undefined || commanderEffort !== undefined) && store.pending(current.id) && !ctx.objectiveRecords.get(current.id)) {
+        throw new ObjectiveStoreError("not_started", undefined, { hint: NO_COMMANDER_SESSION_HINT });
+      }
       // 기한은 바쁠 때 patch가 거절한다 — 브리핑을 먼저 쓰고 뒤집지 않게 여기서 같은 거절로 막는다.
       if (dueDate !== undefined && launch.busy(current.id)) return refuse("objective_busy");
       const commodoreId = bound?.commodoreId ?? ownerOfCaller(caller);
-      // 사람이 사령관 설정에 지휘관 모델을 정했으면 add와 같이 사령관이 넘긴 모델·effort는 무시하고 알린다.
+      // 사람이 사령관 설정에 지휘관 모델을 정했으면 세션이 있는 목표의 모델·effort도 무시하고 알린다.
       const personChose = caller?.kind === "commodore" && !!(commodoreId && ctx.commodoreCommander?.(commodoreId));
       const overridden = personChose && (commanderModel !== undefined || commanderEffort !== undefined);
       // 쓰기 전에 후보로 확인한다. 사람이 설정에 명시한 모델이 아니라, 이 목표에 새로 고른 모델이다.
@@ -709,7 +709,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         ...(dueDate !== undefined ? { dueDate: kept.dueDate } : {}),
         ...(commanderPreset ? { commanderModel: kept.commander.model, ...(kept.commander.effort ? { commanderEffort: kept.commander.effort } : {}) } : {}),
       };
-      return text({ ok: true, objectiveId: updated.id, ...details, ...(overridden ? { notice: "Supplied model/effort ignored; using person's Commander setting." } : {}), ...(stored ? { stored } : {}) });
+      return text({ ok: true, objectiveId: updated.id, ...details, ...(overridden ? { notice: PERSON_COMMANDER_NOTICE } : {}), ...(stored ? { stored } : {}) });
     } catch (error) {
       if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });
       return refuse("objectives_failed");
