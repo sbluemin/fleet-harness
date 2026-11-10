@@ -284,7 +284,9 @@ export function createConsoleSectionController(deps: Dependencies) {
     return refreshRunning;
   }
   async function command(value: ConsoleSectionCommand): Promise<void> {
-    if ("request" in value) { await refresh(); return; }
+    // 막 적재된 문서는 도착할 사령관을 기다리며 「다 그렸다」를 미룬다. 집 목록과 명부를 다시 읽기 전에
+    // 지금 아는 상태를 먼저 건네야 그 기다림이 조회 시간만큼 늘어나지 않는다.
+    if ("request" in value) { await publish(); await publishRoster(); await refresh(); return; }
     if ("expanded" in value) { expanded = value.expanded; await publish(); if (expanded) await refresh(); return; }
     if ("add" in value) {
       const origin = home();
@@ -372,7 +374,7 @@ export function createConsoleSectionController(deps: Dependencies) {
         const value = parseConsoleSectionCommand(url.searchParams.get("command") ?? "");
         if (value) void command(value).catch((error) => { deps.report(error); void publish(); void publishRoster(); });
       };
-      const arrived = () => { generation++; void refresh(); };
+      const arrived = () => { generation++; void publish().then(publishRoster).finally(() => { void refresh(); }); };
       receiver.on("will-navigate", navigate as never);
       receiver.on("did-navigate", arrived);
       receiver.on("did-finish-load", arrived);
