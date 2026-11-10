@@ -349,6 +349,9 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .rail.horizontal .tabs { flex: 0 1 auto; flex-direction: row; min-width: 0; }
 .rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; }
 .rail.horizontal .tab-title { flex: 1 1 auto; }
+/* 보는 탭은 닫기 단추가 탭 안에 다 보일 만큼은 남는다(여백 12+8, 아이콘 14, 닫기 22, 간격 10×2 = 76; 에이전트 표식이 붙으면 +24). 넘치면 줄이 옆으로 넘어간다. */
+.rail.horizontal .tab.active { min-width: 76px; }
+.rail.horizontal .tab.active.is-agent { min-width: 100px; }
 /* 탭이 좁아지면(문서가 .tight 를 건다) 보고 있지 않은 탭은 닫기 단추를 접어 제목에 자리를 준다 — 보는 탭의 닫기는 남는다.
    컨테이너 질의는 쓰지 않는다: 탭에 크기 격리를 걸면 탭 줄의 폭 계산에서 탭이 0 으로 세어져 모든 탭이 최소 폭으로 쪼그라든다. */
 .rail.horizontal .tabs.tight .tab:not(.active) .tab-close { display: none; }
