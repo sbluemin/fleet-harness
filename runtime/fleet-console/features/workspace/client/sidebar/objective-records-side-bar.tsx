@@ -217,9 +217,12 @@ export function ObjectiveRecordsSideBar({
   const arrival = consoles.arrival;
   const consoleArrived = useRef(consoles.arrived);
   consoleArrived.current = consoles.arrived;
+  // 대화를 열면 목록이 다시 그려진다. 목록을 의존성에 두면 그 갱신이 이 효과를 다시 불러 끝없이 돈다 — 최신 목록은 ref로 읽는다.
+  const arrivalSections = useRef(commodoreSections);
+  arrivalSections.current = commodoreSections;
   useEffect(() => {
     if (!arrival || !commodoresLoaded) return;
-    const known = commodoreSections.some((section) => section.commodoreId === arrival.commodore);
+    const known = arrivalSections.current.some((section) => section.commodoreId === arrival.commodore);
     if (known) openCommodoreConversation(arrival.commodore);
     const frame = requestAnimationFrame(() => {
       const list = listRef.current;
@@ -231,7 +234,7 @@ export function ObjectiveRecordsSideBar({
       consoleArrived.current();
     });
     return () => cancelAnimationFrame(frame);
-  }, [arrival, commodoresLoaded, commodoreSections]);
+  }, [arrival, commodoresLoaded]);
   const taskforceExperiment = useTaskforceExperiment();
   const allTaskforces = useTaskforces();
   // 실험이 꺼져 있으면 TF 행을 그리지 않는다 — 순서·소속 저장은 그대로 두어 다시 켜면 돌아온다.

@@ -76,6 +76,10 @@ export function useConsoleSections(): ConsoleSections {
   const entries = state?.entries ?? [];
   const byId = useMemo(() => new Map((rosters?.rosters ?? []).map((entry) => [entry.id, entry])), [rosters]);
   const shellFolds = useMemo(() => new Set(rosters?.folded ?? []), [rosters]);
+  // 명부 이벤트마다 새 객체가 오므로, 같은 도착은 같은 값으로 돌려준다 — 받는 쪽 효과가 한 번만 돈다.
+  const arrivalCommodore = rosters?.arrival?.commodore ?? null;
+  const arrivalAnchor = rosters?.arrival?.anchorY ?? null;
+  const arrival = useMemo(() => arrivalCommodore === null ? null : { commodore: arrivalCommodore, anchorY: arrivalAnchor }, [arrivalCommodore, arrivalAnchor]);
   const arrived = useCallback(() => {
     release.current?.();
     setRosters((current) => current && current.arrival ? { ...current, arrival: null } : current);
@@ -91,7 +95,7 @@ export function useConsoleSections(): ConsoleSections {
     active: entries.find((entry) => entry.active) ?? null,
     roster: (id) => byId.get(id) ?? null,
     folded: (id) => localFolds[id] ?? shellFolds.has(id),
-    arrival: rosters?.arrival ?? null,
+    arrival,
   };
 }
 
