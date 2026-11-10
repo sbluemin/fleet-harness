@@ -76,6 +76,31 @@ describe("desktop native browser engine", () => {
     engine.relay("local", { events: [{ viewId: targetId, method: "Page.frameNavigated", params: { frame: { id: "f" } } }] });
     expect(events).toEqual([`${targetId}:Page.frameNavigated`]);
 
+    // 페이지의 confirm 이 뜨면 렌더러가 멈춘다 — 기다리던 명령은 60초 대신 곧바로 거절되고, 답하기 전의 명령도 거절되며
+    // 그 대화상자의 id 를 단 답만 한 번 나간다. 먼저 간 답으로 닫힌 뒤 뜬 다음 대화상자에 같은 id 의 늦은 답이 닿지 않는다.
+    const answers = () => published.at(-1)!.commands.filter((entry) => entry.method === "Page.handleJavaScriptDialog");
+    const clicking = engine.send("Input.dispatchMouseEvent", { type: "mouseReleased", x: 1, y: 1 }, sessionId);
+    engine.relay("local", { events: [{ viewId: targetId, method: "Page.javascriptDialogOpening", params: { type: "confirm", message: "Run build?" } }] });
+    await expect(clicking).rejects.toThrow();
+    const first = engine.viewDialog(targetId)!;
+    expect(first).toMatchObject({ type: "confirm", message: "Run build?" });
+    await expect(engine.send("Runtime.evaluate", { expression: "1" }, sessionId)).rejects.toThrow();
+    expect(published.at(-1)?.commands).toHaveLength(0);
+    void engine.send("Page.handleJavaScriptDialog", { accept: true, dialogId: first.id }, sessionId).catch(() => undefined);
+    expect(answers()).toHaveLength(1);
+    expect(answers()[0]!.params).toEqual({ accept: true });
+    await expect(engine.send("Page.handleJavaScriptDialog", { accept: true, dialogId: first.id }, sessionId)).rejects.toThrow();
+    engine.relay("local", { results: [{ id: answers()[0]!.id, result: {} }], events: [
+      { viewId: targetId, method: "Page.javascriptDialogClosed", params: { result: true } },
+      { viewId: targetId, method: "Page.javascriptDialogOpening", params: { type: "confirm", message: "Deploy?" } },
+    ] });
+    const second = engine.viewDialog(targetId)!;
+    expect(second.id).not.toBe(first.id);
+    await expect(engine.send("Page.handleJavaScriptDialog", { accept: true, dialogId: first.id }, sessionId)).rejects.toThrow();
+    expect(answers()).toHaveLength(0);
+    engine.relay("local", { events: [{ viewId: targetId, method: "Page.javascriptDialogClosed", params: { result: false } }] });
+    expect(engine.viewDialog(targetId)).toBeNull();
+
     // 스트림이 잠깐 끊겼다 돌아오면 뷰와 명령은 그대로다 — 절전·순단은 창이 닫힌 것이 아니다.
     vi.useFakeTimers();
     try {

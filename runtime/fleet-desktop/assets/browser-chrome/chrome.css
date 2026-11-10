@@ -206,6 +206,7 @@ html[data-role="stage"] body, html[data-role="bar"] .strip { background: var(--s
 .dialog-head > div { flex: 1; min-width: 0; }
 .dialog h3 { margin: 0; font-size: var(--t-base); font-weight: var(--weight-medium); color: var(--text-primary); }
 .dialog p { margin: 2px 0 0; font-size: var(--t-sm); color: var(--text-secondary); }
+.dialog .page-dialog-message { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 40vh; overflow-y: auto; font-size: var(--t-sm); color: var(--text-primary); }
 .dialog-row { display: flex; align-items: center; gap: var(--space-3); }
 .dialog-key { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); }
 .select { flex: 1; min-width: 0; height: 30px; padding: 0 var(--space-2); background: var(--control-field); color: var(--text-primary); border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); font-family: var(--font-ui); font-size: var(--t-sm); }

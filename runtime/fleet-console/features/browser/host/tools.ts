@@ -1,6 +1,7 @@
 import type { AgentToolCtx, AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { DESKTOP_BROWSER_DEFAULT_SPACE_ID } from "@fleet-console/protocol/desktop";
 import { BROWSER_HANDOFF_MAX_MS, BrowserPolicyError, type BrowserCaller, type BrowserService } from "./service.js";
+import { PageDialogOpenError, type BrowserPageDialog } from "./desktop-engine.js";
 import { actOnBrowser, waitForBrowser, type BrowserCondition, type BrowserTarget } from "./semantic.js";
 import type { BrowserScreenshotStore } from "./screenshot-store.js";
 
@@ -67,8 +68,15 @@ export const BROWSER_MCP_INSTRUCTIONS = [
   "Your current-tab selection is private; tabs are shared. For tab-targeted calls, omitted tabId uses your current-tab selection: the tab in your space that you last opened, navigated, or chose with tabs_select. Other agents and the person never change it. Closing the selected tab clears it.",
   "Calls do not switch the displayed tab; tabs_select(show:true) reveals a tab.",
   "tabs_context(all:true) lists the other spaces. Tabs in other spaces, and tabs in the default space that you did not open, are read-only and require explicit tabId; JavaScript is refused there.",
-  "The person can take control of your space. While they have control, calls that change browser state, and all JavaScript calls, are refused with browser_user_in_control; read-only tools still work.",
+  "The person can take control of your space. While they have control, calls that change browser state, and all JavaScript calls, are refused with browser_user_in_control.",
 ].join("\n\n");
+
+/** 열린 대화상자가 막는 호출인가 — 대화상자에 답하는 동작, 페이지에 닿지 않는 기다림, 이미 모아 둔 기록 읽기는 그대로 간다. */
+function touchesPage(id: string, args: Record<string, any>): boolean {
+  if (id === "computer") return args.action !== "accept_dialog" && args.action !== "dismiss_dialog" && args.action !== "wait";
+  if (id === "read_network_requests") return typeof args.requestId === "string";
+  return id !== "read_console_messages";
+}
 
 export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
   const { service } = deps;
@@ -78,8 +86,10 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       const objectiveId = context.sessionLabel ?? "";
       if (!objectiveId) return text({ error: "browser_caller_unresolved" }, true);
       const caller = callerOf(context, objectiveId);
+      let target: string | null = null;
+      const dialogOpen = (dialog: BrowserPageDialog, dispatched: boolean): ToolResult => text({ error: "browser_dialog_open", message: service.pageDialogNotice(objectiveId, caller.spaceId, target, dialog, dispatched), dialog_id: dialog.id }, true);
       try {
-        return await service.agentCall(objectiveId, context.signal, (signal) => {
+        return await service.agentCall(objectiveId, context.signal, async (signal) => {
           const input = { ...(args ?? {}) } as Record<string, any>;
           const mode = typeof access === "function" ? access(input) : access;
           // 사람이 제어 중이면 조작 호출은 대상 탭을 정하기도 전에 멈춘다 — 페이지에도 탭에도 아무것도 가지 않는다.
@@ -87,10 +97,14 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
           // 대상 탭은 여기서 한 번 정한다 — 이후 서비스 호출은 늘 명시 tabId 를 받으므로 사람이 띄운 탭으로 새지 않는다.
           if (mode === "read" || mode === "write") input.tabId = service.agentTab(objectiveId, caller, input.tabId, mode);
           else if (mode === "open") input.tabId = input.tabId || service.currentTabOf(objectiveId, caller.participantId) ? service.agentTab(objectiveId, caller, input.tabId, "write") : null;
+          target = typeof input.tabId === "string" ? input.tabId : null;
+          // 대화상자가 이미 떠 있으면 페이지에 닿는 호출은 시작하지 않는다 — 「보내지 않았다」고 말할 수 있는 것은 이 자리뿐이다.
+          if (target !== null && mode !== "none" && mode !== "change" && touchesPage(id, input)) { const open = service.tabDialog(objectiveId, target); if (open) return dialogOpen(open, false); }
           return run(input, objectiveId, signal, caller);
         }, caller);
       }
-      catch (error) { return failure(error); }
+      // 호출 도중에 뜬 대화상자 — 이 호출의 입력이 어디까지 갔는지는 알 수 없다.
+      catch (error) { return error instanceof PageDialogOpenError ? dialogOpen(error.dialog, true) : failure(error); }
     },
   });
 
@@ -187,13 +201,15 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     type: "object", properties: { url: { type: "string", description: "Absolute URL, or one of \"back\", \"forward\", \"reload\"." }, tabId: TAB_ID }, required: ["url"], additionalProperties: false,
   }, "open", async (args, objectiveId, _signal, caller) => {
     const result = await service.navigate(objectiveId, String(args.url), "agent", args.tabId ?? null, caller);
-    return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(objectiveId, caller) }, !result.ok);
+    // 로드 중에 뜬 대화상자로 끝났다 — 항해는 이미 페이지에 갔다.
+    const error = !result.ok && result.tab.dialog ? service.pageDialogNotice(objectiveId, caller.spaceId, result.tab.id, result.tab.dialog, true) : result.error;
+    return text({ ok: result.ok, error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(objectiveId, caller) }, !result.ok);
   });
 
-  const computer = spec("computer", "Use a mouse and keyboard on a Fleet Browser tab and take screenshots. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
+  const computer = spec("computer", "Use a mouse and keyboard on a Fleet Browser tab and take screenshots. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom, accept_dialog, dismiss_dialog. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). accept_dialog/dismiss_dialog close an open alert or answer a confirm with OK/Cancel respectively. No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
     type: "object", properties: {
       observe: { type: "string", enum: ["none", "snapshot", "screenshot"], description: "Optional post-action observation; default none." },
-      action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom"] },
+      action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom", "accept_dialog", "dismiss_dialog"] },
       coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "[x, y] in viewport CSS pixels. Add the capture offset when using a zoom crop." },
       geometry_version: { type: "string", description: "Geometry from capture; reject coordinate input if viewport changed. Recommended for coordinates." },
       start_coordinate: { type: "array", items: { type: "number" }, minItems: 2, maxItems: 2, description: "Drag start for left_click_drag." },
@@ -203,6 +219,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       ref: { type: "string", description: "Element ref (ref_N) for scroll_to or click actions." },
       duration: { type: "number", description: "Seconds for wait (max 10)." },
       region: { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4, description: "[x, y, width, height] for zoom." },
+      dialog_id: { type: "string", description: "Required for accept_dialog/dismiss_dialog: the open dialog's id from tabs_context or the refusal message." },
       tabId: TAB_ID,
     }, required: ["action"], additionalProperties: false,
   }, (args) => args.action === "screenshot" || args.action === "zoom" || args.action === "wait" ? "read" : "write", async (args, objectiveId, signal, caller) => {
@@ -239,6 +256,17 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
         break;
       }
       case "scroll_to": { if (typeof args.ref !== "string") throw new BrowserPolicyError("browser_ref_required", "ref is required for scroll_to."); await service.scrollToRef(objectiveId, args.ref, tabId); break; }
+      case "accept_dialog": case "dismiss_dialog": {
+        const accept = args.action === "accept_dialog";
+        // 필수로 둔다 — 선택이면 id 없는 답이 늦은 답을 막는 대조를 건너뛴다.
+        if (typeof args.dialog_id !== "string" || !args.dialog_id) throw new Error("dialog_id is required for accept_dialog and dismiss_dialog. Read it from tabs_context or the refusal message.");
+        const dialog = await service.answerDialog(objectiveId, accept, args.dialog_id, tabId, "agent");
+        // 페이지가 쓴 글은 결과에 다시 싣지 않는다 — 대화상자는 id 로만 가리킨다.
+        dispatchSummary = dialog?.type === "alert"
+          ? `${args.action}: closed the page's alert dialog ${JSON.stringify(args.dialog_id)}. Check the page state; do not assume task success.`
+          : `${args.action}: answered the page's confirm dialog ${JSON.stringify(args.dialog_id)} with ${accept ? "OK" : "Cancel"}. Check the page state; do not assume task success.`;
+        break;
+      }
       case "wait": { const seconds = Math.min(10, Math.max(0, Number(args.duration ?? 1))); await new Promise<void>((resolve) => { const timer = setTimeout(resolve, seconds * 1000); signal.addEventListener("abort", () => { clearTimeout(timer); resolve(); }, { once: true }); }); return text(`Waited for ${seconds} seconds`); }
       default: throw new BrowserPolicyError("browser_action_invalid", `Unknown action ${String(args.action)}.`);
     }

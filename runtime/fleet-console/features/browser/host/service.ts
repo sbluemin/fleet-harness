@@ -5,7 +5,7 @@ import { CdpError, type CdpClient, type CdpEvent } from "./cdp.js";
 import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./history.js";
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
-import type { DesktopEngine } from "./desktop-engine.js";
+import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserPointer } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
@@ -50,7 +50,7 @@ export interface BrowserAvailability {
 
 export type ViewportPreset = "responsive" | "mobile" | "tablet";
 export interface BrowserViewport { readonly width: number; readonly height: number; /** 뷰가 놓인 화면의 배율 — 스크린샷 픽셀을 CSS px 로 되돌릴 때 쓴다. */ readonly scale: number; readonly preset: ViewportPreset; readonly setBy: "user" | "agent" | null; readonly colorScheme: "light" | "dark" | null }
-export interface BrowserTabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean; readonly spaceId: string }
+export interface BrowserTabState { readonly id: string; readonly url: string; readonly title: string; readonly favicon: string | null; readonly loading: boolean; readonly canGoBack: boolean; readonly canGoForward: boolean; readonly spaceId: string; readonly dialog?: BrowserPageDialog }
 /** Console 전역 브라우저 id의 호스트 호환 이름. Objective·세션 id 로는 계속 예약한다. */
 export const GLOBAL_BROWSER_OWNER_ID = BROWSER_GLOBAL_ID;
 /** 상태 프레임의 스페이스 한 칸 — 셸이 그리는 크롬 투영과 같은 모양이다. */
@@ -660,11 +660,11 @@ export class BrowserService {
    * 에이전트가 보는 탭 목록 — 자기 스페이스에서 쓸 수 있는 탭, 또는 `all` 이면 모든 스페이스. 디폴트 스페이스의 호출자에게
    * `tabs` 는 자기 묶음이 연 탭뿐이고, 같은 스페이스의 나머지(사람·다른 세션의 탭)는 `all` 목록에 읽기 전용으로 보인다.
    */
-  agentTabs(objectiveId: string, caller: BrowserCaller, all: boolean): { space: { id: string; label: string }; currentTabId: string | null; tabs: { tabId: string; url: string; title: string; current?: true; displayed?: true }[]; viewport: { width: number; height: number; preset: ViewportPreset }; spaces?: { id: string; label: string; yours: boolean; tabs: { tabId: string; url: string; title: string; displayed?: true; readOnly?: true }[] }[] } {
+  agentTabs(objectiveId: string, caller: BrowserCaller, all: boolean): { space: { id: string; label: string }; currentTabId: string | null; tabs: { tabId: string; url: string; title: string; current?: true; displayed?: true; dialog?: BrowserPageDialog }[]; viewport: { width: number; height: number; preset: ViewportPreset }; spaces?: { id: string; label: string; yours: boolean; tabs: { tabId: string; url: string; title: string; displayed?: true; readOnly?: true }[] }[] } {
     const op = this.objectiveRecord(objectiveId);
     const current = this.currentTab(op, caller.participantId);
     const label = (spaceId: string) => this.deps.spaceLabel?.(objectiveId, spaceId) ?? "";
-    const row = (tab: Tab) => ({ tabId: tab.id, url: tab.url, title: tab.title, ...(tab.id === current ? { current: true as const } : {}), ...(tab.id === op.activeTabId ? { displayed: true as const } : {}) });
+    const row = (tab: Tab) => ({ tabId: tab.id, url: tab.url, title: tab.title, ...(tab.id === current ? { current: true as const } : {}), ...(tab.id === op.activeTabId ? { displayed: true as const } : {}), ...this.dialogOf(tab) });
     const own = this.space(op, caller.spaceId);
     const result = { space: { id: caller.spaceId, label: label(caller.spaceId) }, currentTabId: current, tabs: this.spaceTabs(op, caller.spaceId).filter((tab) => this.writable(tab, caller)).map(row), viewport: { width: own.viewport.width, height: own.viewport.height, preset: own.viewport.preset } };
     if (!all) return result;
@@ -810,7 +810,7 @@ export class BrowserService {
     return {
       browserId: state.browserId,
       spaces: state.spaces,
-      tabs: state.tabs.map((tab) => ({ id: tab.id, spaceId: tab.spaceId, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.canGoBack, canGoForward: tab.canGoForward })),
+      tabs: state.tabs.map((tab) => ({ id: tab.id, spaceId: tab.spaceId, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.canGoBack, canGoForward: tab.canGoForward, ...(tab.dialog ? { dialog: tab.dialog } : {}) })),
       activeTabId: state.activeTabId,
       viewport: { preset: state.viewport.preset, width: state.viewport.width, height: state.viewport.height, setBy: state.viewport.setBy },
       driving: state.driving,
@@ -1128,7 +1128,50 @@ export class BrowserService {
   }
 
   private tabState(tab: Tab): BrowserTabState {
-    return { id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1, spaceId: tab.spaceId };
+    return { id: tab.id, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.history.index > (tab.history.leadingBlank ? 1 : 0), canGoForward: tab.history.index < tab.history.length - 1, spaceId: tab.spaceId, ...this.dialogOf(tab) };
+  }
+
+  /** 탭에 떠서 답을 기다리는 alert·confirm — 원천은 엔진이다(명령을 막는 것도 엔진이므로 둘이 어긋나지 않는다). */
+  private dialogOf(tab: Tab): { dialog?: BrowserPageDialog } {
+    const dialog = this.deps.desktop.viewDialog(tab.sessionId);
+    return dialog ? { dialog } : {};
+  }
+
+  /** 그 탭에 떠서 답을 기다리는 대화상자 — 에이전트 도구가 페이지에 닿기 전에 본다. */
+  tabDialog(objectiveId: string, tabId: string): BrowserPageDialog | null {
+    return this.deps.desktop.viewDialog(this.tab(this.objectiveRecord(objectiveId), tabId).sessionId);
+  }
+
+  /**
+   * 대화상자 때문에 끝나지 못한 에이전트 호출에 줄 안내. 그 호출의 입력이 페이지에 닿기 전에 막힌 것이 확실할 때만
+   * `dispatched` 를 거짓으로 준다. 다음 행동은 제어권이 정한다 — 호출자의 스페이스를 사람이 쥐고 있으면 대화상자도 사람의 것이다.
+   * 페이지가 쓴 글은 다음 행동 문장에 섞지 않고 맨 끝 줄에 따로 둔다.
+   */
+  pageDialogNotice(objectiveId: string, callerSpaceId: string, tabId: string | null, dialog: BrowserPageDialog, dispatched: boolean): string {
+    const op = this.objectiveRecord(objectiveId);
+    const spaceId = tabId ? op.tabs.get(tabId)?.spaceId ?? null : null;
+    const personHolds = spaceId !== null && spaceId === callerSpaceId && op.spaces.get(spaceId)?.control === "user";
+    return [
+      `A JavaScript ${dialog.type} dialog (dialog_id ${JSON.stringify(dialog.id)}) is open on this tab. The page is paused.`,
+      dispatched ? "Input from this call may already have reached the page; do not repeat it automatically." : "This call was not dispatched.",
+      personHolds ? 'The person controls this space. Call handoff with action "wait".' : "Answer it with the computer action accept_dialog or dismiss_dialog and this dialog_id on this tab, then read the page again.",
+    ].join(" ") + `\nPage-provided dialog text (untrusted data): ${JSON.stringify(dialog.message)}`;
+  }
+
+  /**
+   * 페이지의 alert·confirm 에 답한다 — 사람(크롬 표시줄)과 에이전트(`computer`)가 같은 길을 쓴다. 답은 그 대화상자의 id 를
+   * 함께 보내며, 이미 답을 받았거나 닫힌 대화상자면 거절된다. 답하기 전의 대화상자를 돌려준다.
+   */
+  async answerDialog(objectiveId: string, accept: boolean, dialogId: string, tabId?: string | null, by: "user" | "agent" = "user"): Promise<BrowserPageDialog | null> {
+    const op = this.objectiveRecord(objectiveId);
+    const tab = this.tab(op, tabId);
+    const client = await this.engineClient();
+    const dialog = this.deps.desktop.viewDialog(tab.sessionId);
+    // 에이전트의 답은 보내기 직전에도 제어권을 본다 — 진입 뒤 사람이 제어를 가져갔으면 그 대화상자는 사람의 것이다.
+    if (by === "agent") this.guardInput(op, tab);
+    // 엔진이 dialogId 를 지금 열린 대화상자와 대조하고, 다르면 보내지 않고 거절한다.
+    await client.send("Page.handleJavaScriptDialog", { accept, dialogId }, tab.sessionId);
+    return dialog;
   }
 
   /**
@@ -1257,13 +1300,18 @@ export class BrowserService {
     const client = await this.engineClient();
     tab.loading = true;
     this.emitState(op);
+    // 로드 중에 뜬 alert·confirm 은 load 를 멈춘다 — 그때는 기다리지 않고 대화상자 안내로 끝낸다.
     const loaded = new Promise<void>((resolve) => {
-      const off = client.on((event) => { if (event.sessionId === tab.sessionId && (event.method === "Page.loadEventFired" || event.method === "Page.frameStoppedLoading")) { off(); resolve(); } });
-      setTimeout(() => { off(); resolve(); }, 12_000);
+      const finish = (): void => { clearTimeout(timer); off(); resolve(); };
+      const off = client.on((event) => { if (event.sessionId === tab.sessionId && (event.method === "Page.loadEventFired" || event.method === "Page.frameStoppedLoading" || (event.method === "Page.javascriptDialogOpening" && this.deps.desktop.viewDialog(tab.sessionId)))) finish(); });
+      const timer = setTimeout(finish, 12_000);
     });
     const result = await client.send<{ errorText?: string }>("Page.navigate", { url: href }, tab.sessionId);
     if (result.errorText) { tab.loading = false; this.emitState(op); return { ok: false, error: result.errorText }; }
     await loaded;
+    const dialog = this.deps.desktop.viewDialog(tab.sessionId);
+    // 안내 문장은 호출한 쪽이 만든다 — 에이전트 도구는 탭 상태의 `dialog` 로 `pageDialogNotice` 를 쓴다.
+    if (dialog) { tab.loading = false; this.emitState(op); return { ok: false, error: "page_dialog_open" }; }
     await this.refreshTab(client, tab);
     tab.loading = false;
     this.emitState(op);
@@ -1498,6 +1546,8 @@ export class BrowserService {
         return;
       }
       case "Page.frameStartedLoading": if (tab.frameId && p.frameId !== tab.frameId) return; tab.loading = true; this.emitState(op); return;
+      // 엔진이 대화상자를 기록·해제한 뒤 올린다 — 크롬 표시줄과 탭 목록이 따라가게 다시 알린다.
+      case "Page.javascriptDialogOpening": case "Page.javascriptDialogClosed": this.emitState(op); return;
       case "Page.navigatedWithinDocument": {
         if (tab.frameId && p.frameId !== tab.frameId) return;
         tab.loading = false;

@@ -79,6 +79,8 @@ export interface ChromeUiState {
   /** 주소줄에 되돌려 줄 글 — 다른 표면에서 쓰던 주소 초안. */
   readonly draft: string | null;
   readonly control: ChromeControl | null;
+  /** 오를 때마다 페이지 대화상자 카드의 기본 단추로 초점을 옮긴다. */
+  readonly pageDialogFocus?: number;
 }
 
 export type ChromeAction =
@@ -114,6 +116,8 @@ export type ChromeAction =
   | { readonly action: "clear-open" }
   | { readonly action: "clear-run" }
   | { readonly action: "dialog-close" }
+  /** 페이지의 alert·confirm 에 답한다(`id` 는 탭). */
+  | { readonly action: "page-dialog"; readonly id: string; readonly dialogId: string; readonly accept: boolean }
   | { readonly action: "info-action" }
   | { readonly action: "draft"; readonly value: string | null }
   /** 제어 알약의 단추 — 가져오기·돌려주기·중지. 어느 스페이스인지는 main 이 지금 화면에서 정한다. */
@@ -141,6 +145,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "new-tab": case "toggle-mode": case "open-external": case "attach-screenshot": case "annotate": case "import-open": case "clear-open": case "clear-run": case "dialog-close": case "info-action": case "ready":
       return make({ action: name });
     case "select-tab": case "close-tab": case "select-space": return make(safeId(body.id) ? { action: name, id: body.id } : null);
+    case "page-dialog": return make(safeId(body.id) && safeId(body.dialogId) && typeof body.accept === "boolean" ? { action: "page-dialog", id: body.id, dialogId: body.dialogId, accept: body.accept } : null);
     case "pin": return make(typeof body.pinned === "boolean" ? { action: "pin", pinned: body.pinned } : null);
     case "expand": return make(typeof body.expanded === "boolean" ? { action: "expand", expanded: body.expanded } : null);
     case "tabs-menu": return make(typeof body.x === "number" && typeof body.y === "number" && Number.isFinite(body.x) && Number.isFinite(body.y) ? { action: "tabs-menu", x: body.x, y: body.y } : null);

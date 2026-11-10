@@ -45,6 +45,7 @@ function screenshotTool(bytes: Buffer, screenshots: ReturnType<typeof createBrow
     },
     screenshot: () => Promise.resolve({ ...screenshotResult(), data: bytes.toString("base64") }),
     agentTab: (_id: string, _caller: unknown, tabId: string | null | undefined) => tabId ?? "tab-1",
+    tabDialog: () => null,
   };
   const specs = createBrowserToolSpecs({ service: service as never, screenshots, screenshotDelivery });
   const computer = specs.find((spec) => spec.id === "computer")!;
@@ -142,6 +143,7 @@ function createStubDesktop(options: StubOptions = {}) {
     get connected() { return true; },
     closed: new Promise<void>(() => undefined),
     viewSize: (id: string) => sizes.get(id) ?? null,
+    viewDialog: () => null,
     viewObjective: () => OBJECTIVE,
     place: () => undefined,
     bindView: () => undefined,
@@ -419,6 +421,7 @@ describe("objectiveRecord browser tool target admission", () => {
       },
       agentTab: (_id: string, _caller: unknown, tabId: string | null | undefined) => tabId ?? "tab-1",
       assertAgentControl: () => {},
+      tabDialog: () => null,
       agentTabs: () => ({ viewport: { width: 1404, height: 1177 } }),
     };
     const computer = createBrowserToolSpecs({ service: service as never, screenshots }).find((spec) => spec.id === "computer")!;

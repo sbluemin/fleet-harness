@@ -26,6 +26,8 @@ const WINDOWS_CAPTION_PX = 138;
 const WINDOW_FALLBACK_MS = 3_000;
 const TOAST_MS = 4_000;
 const TOAST_ACTION_MS = 8_000;
+/** 페이지에서 대화상자가 뜬 뒤 Console 을 돌아 크롬에 카드가 서기까지 기다리는 한도. */
+const DIALOG_FOCUS_WINDOW_MS = 5_000;
 /** 가드 문서가 알약 크기를 알려 주기 전까지 쓰는 크기(CSS px)와, 알약 둘레에 그림자·아래 여백으로 더 잡는 자리. */
 const GUARD_PILL_DEFAULT = { width: 420, height: 48 };
 const GUARD_PILL_MARGIN_X = 24;
@@ -166,8 +168,20 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   const railWidth = (): number => dip(ui.pinned || ui.expanded ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
   /** 페이지 왼쪽을 차지하는 레일 폭 — 호버 펼침은 페이지 위에 겹칠 뿐 자리를 밀지 않고, 가로 표시줄이면 0. */
   const layoutRailWidth = (): number => (horizontal() ? 0 : dip(ui.pinned ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX));
+  // 표시 탭의 alert·confirm 은 페이지 자리를 덮어 그린다 — 페이지는 크롬 문서 아래의 네이티브 뷰라, 문서 뷰를 키워야 그 위에 보인다.
+  const pageDialog = (): boolean => chrome?.tabs.some((tab) => tab.id === chrome?.activeTabId && tab.dialog !== undefined) === true;
+  // 페이지에 초점이 있던 사람의 대화상자는 카드가 서는 순간 크롬으로 초점을 옮긴다. 늦게 오는 다른 대화상자가 이 요청을 쓰지 않게 잠깐만 유효하다.
+  let dialogFocusAt = 0;
+  let dialogFocusToken = 0;
+  const takeDialogFocus = (): boolean => {
+    if (!docs || !pageDialog() || Date.now() - dialogFocusAt > DIALOG_FOCUS_WINDOW_MS) return false;
+    dialogFocusAt = 0;
+    dialogFocusToken += 1;
+    if (!docs.bar.view.webContents.isDestroyed()) docs.bar.view.webContents.focus();
+    return true;
+  };
   /** 주소줄 뷰의 높이 — 그 뷰는 `top`(가로 탭 표시줄) 아래에서 시작한다. */
-  const barHeight = (rect: Rectangle, top: number): number => { const room = Math.max(1, rect.height - top); return ui.overlay !== null ? room : ui.notice || ui.info ? Math.min(room, stripPx() + dip(TOAST_BAND_PX)) : Math.min(room, stripPx()); };
+  const barHeight = (rect: Rectangle, top: number): number => { const room = Math.max(1, rect.height - top); return ui.overlay !== null || pageDialog() ? room : ui.notice || ui.info ? Math.min(room, stripPx() + dip(TOAST_BAND_PX)) : Math.min(room, stripPx()); };
 
   const allDocs = (set: Docs): ChromeDoc[] => [set.bar, set.rail, set.stage, set.guard];
 
@@ -222,11 +236,15 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     const held = page.width > 0 && page.height > 0 ? controlState() : null;
     if (held) docs.guard.view.setBounds(guardBounds(held));
     docs.guard.view.setVisible(held !== null);
+    // 대화상자 카드는 주소줄 문서가 페이지 자리를 덮어 그린다 — 그동안은 가드를 그 위로 올려 제어 알약이 보이고 눌리게 한다.
+    // 에이전트가 모는 중이면 가드가 카드도 덮어, 사람의 포인터가 잠긴 페이지의 대화상자에 닿지 않는다.
+    const guardOnTop = held !== null && ui.overlay === null && pageDialog();
+    if (hostKind === "window") windowStack?.raiseGuard(guardOnTop);
     if (hostKind === "pane") {
       const main = deps.main();
       if (main && !main.isDestroyed() && divider) {
         const left = rect.x - DIVIDER_PX;
-        main.stack.setBrowserPane({ stage: docs.stage.view, guard: docs.guard.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left });
+        main.stack.setBrowserPane({ stage: docs.stage.view, guard: docs.guard.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left, guardOnTop });
         divider.setBounds({ x: left, y: 0, width: DIVIDER_PX, height: rect.height });
       }
     }
@@ -244,7 +262,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       leading, trailing,
       // 주소줄 뷰 기준이다 — 가로 탭 표시줄은 그 뷰 위에 따로 서므로 여기 높이에서 빠진다.
       page: rect ? { x: layoutRailWidth() / z, y: Math.min(stripPx(), Math.max(0, rect.height - tabsPx())) / z, width: Math.max(0, rect.width - layoutRailWidth()) / z, height: Math.max(0, rect.height - tabsPx() - stripPx()) / z } : { x: 0, y: 0, width: 0, height: 0 },
-      zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null,
+      zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null, pageDialogFocus: dialogFocusToken,
       suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
       control: controlState(),
     };
@@ -434,6 +452,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail"), stage: makeDoc("stage"), guard: makeDoc("guard") }; }
       const json = JSON.stringify(nextChrome);
       const chromeChanged = json !== chromeJson;
+      const dialogBefore = pageDialog();
       chrome = nextChrome; chromeJson = json;
       // 표시 스페이스는 여기서 정한다 — 표시 탭이 다른 스페이스로 옮겨 갔으면 따라가고, 화면이 어긋나 있으면 맞춰 달라고 요청한다.
       const spaceBefore = spaces.current();
@@ -445,9 +464,12 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
         if (windowBase.isMinimized()) windowBase.restore();
         windowBase.show(); windowBase.focus();
       } else if ((next.focusRequest ?? 0) > focusSeen) { focusSeen = next.focusRequest ?? 0; docs.bar.view.webContents.focus(); }
+      // 대화상자가 뜨고 질 때는 크롬 문서의 높이도 바뀐다.
+      const dialogChanged = pageDialog() !== dialogBefore;
+      if (dialogChanged) takeDialogFocus();
       // 제어권이 바뀌었으면 가드의 자리를 같은 틱에 다시 정한 뒤 문서에 알린다. 포인터만 움직인 투영은 자리를 건드리지 않는다.
       const heldNow = heldKey();
-      if (heldNow !== heldSeen) { heldSeen = heldNow; update(); }
+      if (heldNow !== heldSeen || dialogChanged) { heldSeen = heldNow; update(); }
       else if (chromeChanged || spaces.current() !== spaceBefore) push();
       else layout();
       if (request) deps.act(control, "bar", { action: "show-tab", id: request.kind === "select" ? request.tabId : null });
@@ -457,6 +479,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     },
     refresh() { if (docs) update(); },
     lastPage: () => (lastPageSize ? { ...lastPageSize } : null),
+    focusPageDialog() { dialogFocusAt = Date.now(); if (takeDialogFocus()) update(); },
     dispose: closeSurface,
     relay: (value) => deps.relay(value),
     // Console 테마(라이트·다크·시스템)가 바뀌었다 — 새로고침 없이 크롬 문서와 손잡이가 같은 순간 새 색으로 다시 칠해진다.
@@ -475,14 +498,18 @@ function createWindowStack(base: BaseWindow) {
   let guard: WebContentsView | null = null;
   let rail: WebContentsView | null = null;
   let bar: WebContentsView | null = null;
+  let guardOnTop = false;
   const relayout = (): void => {
-    const ordered = [...(stage ? [stage] : []), ...presented, ...(guard ? [guard] : []), ...(rail ? [rail] : []), ...(bar ? [bar] : [])];
+    const chromeViews = [...(rail ? [rail] : []), ...(bar ? [bar] : [])];
+    const ordered = [...(stage ? [stage] : []), ...presented, ...(guard && !guardOnTop ? [guard] : []), ...chromeViews, ...(guard && guardOnTop ? [guard] : [])];
     for (let index = 0; index < ordered.length; index += 1) base.contentView.addChildView(ordered[index]!, index);
   };
   const remove = (view: WebContentsView): void => { presented.delete(view); try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } };
   return {
     set(nextStage: WebContentsView, nextGuard: WebContentsView, nextRail: WebContentsView, nextBar: WebContentsView): void { stage = nextStage; guard = nextGuard; rail = nextRail; bar = nextBar; relayout(); },
-    clear(): void { for (const view of [stage, guard, rail, bar]) if (view) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } } stage = null; guard = null; rail = null; bar = null; },
+    /** 대화상자 카드가 떠 있는 동안 가드를 주소줄 위로 올린다 — 바뀔 때만 다시 쌓는다. */
+    raiseGuard(on: boolean): void { if (on === guardOnTop) return; guardOnTop = on; relayout(); },
+    clear(): void { for (const view of [stage, guard, rail, bar]) if (view) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } } stage = null; guard = null; rail = null; bar = null; guardOnTop = false; },
     host(scale: () => number, focus: () => void): PageHost {
       return {
         isDestroyed: () => base.isDestroyed(),

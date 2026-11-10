@@ -160,6 +160,11 @@ export interface DesktopBrowserView {
   readonly visible: boolean;
   /** 처음 열 때의 주소. 그 뒤의 항해는 CDP 명령으로 온다. */
   readonly url: string;
+  /**
+   * 콘솔이 페이지의 alert·confirm 을 받아 크롬 안에서 답하게 하는가. 셸은 이 값이 참일 때만 OS 메시지 상자를 띄우지 않는다 —
+   * 옛 콘솔은 이 필드를 싣지 않으므로, 답할 길이 없는 그 콘솔에서는 OS 상자가 그대로 뜬다.
+   */
+  readonly pageDialogs?: boolean;
 }
 
 /**
@@ -262,6 +267,20 @@ export function browserSpaceTabLimit(spaceId: string): number {
   return DESKTOP_BROWSER_TAB_LIMITS[browserSpaceKindOf(spaceId)];
 }
 
+/**
+ * 페이지가 띄워 답을 기다리는 alert·confirm. 크롬은 페이지 위에 그리고, 답은 Console 의 REST 로 보낸다. `id` 는 대화상자마다
+ * 새로 붙는다 — 답은 이 id 를 함께 보내고, 이미 닫힌 대화상자에 대한 늦은 답이 다음 대화상자에 적용되지 않게 한다.
+ */
+export interface DesktopBrowserPageDialog {
+  readonly id: string;
+  readonly type: "alert" | "confirm";
+  readonly message: string;
+  /**
+   * 대화상자를 띄운 프레임의 출처 — 끼워 넣은 다른 출처의 페이지가 탭의 이름으로 말하지 못하게 크롬이 이 출처를 보인다.
+   * 주소 전체가 아니라 출처만 실어 길이로 잘려 나가는 일이 없다. 불투명 출처(sandbox·data:)는 `"null"` 이다.
+   */
+  readonly origin?: string;
+}
 export interface DesktopBrowserChromeTab {
   readonly id: string;
   readonly spaceId: string;
@@ -272,6 +291,7 @@ export interface DesktopBrowserChromeTab {
   readonly loading: boolean;
   readonly canGoBack: boolean;
   readonly canGoForward: boolean;
+  readonly dialog?: DesktopBrowserPageDialog;
 }
 export type DesktopBrowserViewportPreset = "responsive" | "mobile" | "tablet";
 /** 스페이스의 에이전트 탭을 누가 모는가. 사람이 가져가면 돌려줄 때까지 `user` 다. */
@@ -346,7 +366,7 @@ const isSafeId = (value: unknown): value is string => typeof value === "string" 
 export function isDesktopBrowserView(value: unknown): value is DesktopBrowserView {
   return isRecord(value) && isSafeId(value.id) && typeof value.objectiveId === "string" && isSafeId(value.partition)
     && (value.profile === undefined || value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
-    && typeof value.visible === "boolean" && typeof value.url === "string";
+    && typeof value.visible === "boolean" && typeof value.url === "string" && (value.pageDialogs === undefined || typeof value.pageDialogs === "boolean");
 }
 
 export function isDesktopBrowserCommand(value: unknown): value is DesktopBrowserCommand {
@@ -385,7 +405,8 @@ export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserC
       && (space.attention === undefined || space.attention === null || (isRecord(space.attention) && isShortText(space.attention.reason, 512)))
       && (space.pointer === undefined || space.pointer === null || isDesktopBrowserPointer(space.pointer)))
     && value.tabs.every((tab) => isRecord(tab) && isSafeId(tab.id) && isSafeId(tab.spaceId) && isShortText(tab.url, 4096) && isShortText(tab.title, 1024) && isFaviconUrl(tab.favicon)
-      && typeof tab.loading === "boolean" && typeof tab.canGoBack === "boolean" && typeof tab.canGoForward === "boolean")
+      && typeof tab.loading === "boolean" && typeof tab.canGoBack === "boolean" && typeof tab.canGoForward === "boolean"
+      && (tab.dialog === undefined || (isRecord(tab.dialog) && isSafeId(tab.dialog.id) && (tab.dialog.type === "alert" || tab.dialog.type === "confirm") && isShortText(tab.dialog.message, 2000) && (tab.dialog.origin === undefined || isShortText(tab.dialog.origin, 512)))))
     && (value.activeTabId === null || isSafeId(value.activeTabId))
     && isRecord(viewport) && ["responsive", "mobile", "tablet"].includes(String(viewport.preset)) && isFiniteNumber(viewport.width) && isFiniteNumber(viewport.height)
     && (viewport.setBy === null || viewport.setBy === "user" || viewport.setBy === "agent")

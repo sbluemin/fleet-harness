@@ -62,6 +62,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   let infoTimer: ReturnType<typeof setTimeout> | null = null;
   let infoKey = "";
   let lastUrl = "";
+  let dialogFocusSeen = 0;
 
   const submit = (value: string): void => {
     dirty = false; editing = false;
@@ -283,6 +284,28 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   const dialogItem = (glyphPaths: string, strong: string, help: string, target = false): HTMLElement =>
     h("div", { class: `dialog-item${target ? " is-target" : ""}` }, h("span", { class: "dialog-glyph" }, glyph(glyphPaths)), h("span", {}, h("strong", { text: strong }), h("span", { class: "help", text: help })));
 
+  /** 표시 탭의 페이지가 띄워 답을 기다리는 alert·confirm. */
+  const pageDialogOf = (state: ChromeUiState) => {
+    const tab = state.chrome?.tabs.find((candidate) => candidate.id === state.chrome?.activeTabId) ?? null;
+    return tab?.dialog ? { tab, dialog: tab.dialog } : null;
+  };
+  /** 크롬의 페이지 대화상자처럼 페이지 위에 띄운다 — 답은 Console 로 가고, 대화상자가 닫히면 다음 상태가 이 카드를 거둔다. */
+  const buildPageDialog = (state: ChromeUiState, t: T, asked: NonNullable<ReturnType<typeof pageDialogOf>>): HTMLElement => {
+    const answer = (accept: boolean): void => post("bar", "page-dialog", { id: asked.tab.id, dialogId: asked.dialog.id, accept });
+    // 에이전트가 모는 탭의 대화상자는 사람이 답하지 못한다 — 답하려면 제어를 가져온다(주소줄 단추와 같은 잠금).
+    const locked = state.control?.holder === "agent";
+    const off = state.busy || locked;
+    const hint = locked ? t("control.locked") : undefined;
+    const ok = h("button", { class: "button primary", type: "button", text: t("jsDialog.ok"), title: hint, disabled: off, on: { click: () => answer(true) } });
+    const actions = asked.dialog.type === "confirm" ? [h("button", { class: "button", type: "button", text: t("jsDialog.cancel"), title: hint, disabled: off, on: { click: () => answer(false) } }), ok] : [ok];
+    // 대화상자를 띄운 프레임의 출처로 말한다 — 다른 출처의 iframe 이면 탭이 아니라 그 페이지임을 밝힌다. 출처를 싣지 않는 옛 Console 만 탭으로 말한다.
+    const tabOrigin = ((): string => { try { return new URL(asked.tab.url).origin; } catch { return "null"; } })();
+    const source = asked.dialog.origin ?? tabOrigin;
+    const title = source === tabOrigin ? t("jsDialog.title", { host: hostOf(asked.tab.url) })
+      : source === "null" ? t("jsDialog.embeddedOpaqueTitle") : t("jsDialog.embeddedTitle", { host: hostOf(source) });
+    return dialog(t, title, null, [h("p", { class: "page-dialog-message", text: asked.dialog.message })], actions, "page-dialog");
+  };
+
   let importProfile = "";
   const buildDialog = (state: ChromeUiState, t: T, overlayState: Extract<ChromeOverlay, { kind: "import" | "switch" | "clear" }>): HTMLElement => {
     const busy = state.busy;
@@ -326,13 +349,15 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const current = state.overlay;
     const modal = current !== null && current.kind !== "menu" && current.kind !== "suggestions" && current.kind !== "spaces" && current.kind !== "tabs-menu";
     const showing = current !== null && state.overlayReady;
-    overlay.hidden = !showing && !state.info && !state.notice;
+    // 다른 오버레이가 없을 때만 그린다 — 메뉴를 닫으면 다시 보인다.
+    const asked = showing ? null : pageDialogOf(state);
+    overlay.hidden = !showing && !asked && !state.info && !state.notice;
     // 표시줄 메뉴는 누른 자리에 뜬다 — 가로 표시줄에서는 그 자리가 주소줄 위라, 이 메뉴가 떠 있는 동안만 오버레이가 주소줄보다 앞에 선다.
     overlay.classList.toggle("over-strip", showing && current!.kind === "tabs-menu");
     if (current?.kind !== "annotate" && annotator) { annotator.dispose(); annotator = null; }
     // 스페이스 선택 화면이 닫히면 초점을 그 단추로 돌려준다 — 키보드로 연 사람이 화면 밖에서 길을 잃지 않게.
     const leavingSpaces = overlayKey.startsWith("spaces:") && !(showing && current!.kind === "spaces") && overlay.contains(document.activeElement);
-    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : "none";
+    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : "none";
     const toastKey = `${state.notice ?? ""}|${state.info?.text ?? ""}|${state.info?.action ?? ""}`;
     if (current?.kind === "annotate" && showing) {
       if (!annotator) { clear(overlay); annotator = mountAnnotate(overlay, state, t); overlayKey = "annotate"; }
@@ -372,6 +397,11 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
           backdrop.append(buildDialog(state, t, current as Extract<ChromeOverlay, { kind: "import" | "switch" | "clear" }>));
         }
         overlay.append(backdrop);
+      } else if (asked) {
+        const backdrop = h("div", { class: "backdrop modal scrim" });
+        placePage(backdrop, state);
+        backdrop.append(buildPageDialog(state, t, asked));
+        overlay.append(backdrop);
       }
     }
     placeToast(state, t, toastKey);
@@ -383,7 +413,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (infoTimer !== null && key !== infoKey) { clearTimeout(infoTimer); infoTimer = null; }
     infoKey = key;
     const text = state.notice ?? state.info?.text ?? null;
-    if (!text) { overlay.hidden = state.overlay === null || !state.overlayReady; return; }
+    if (!text) { overlay.hidden = (state.overlay === null || !state.overlayReady) && !pageDialogOf(state); return; }
     overlay.hidden = false;
     const toast = h("div", { class: `toast${state.notice ? " is-error" : ""}${state.info?.action ? " has-action" : ""}`, role: state.notice ? "alert" : "status", text });
     if (!state.notice && state.info?.action) {
@@ -461,6 +491,12 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     // 새 탭을 열면 주소줄로 초점을 옮긴다(예전 「새 탭」 동작).
     if (previous && previous.chrome && chrome && chrome.tabs.length > previous.chrome.tabs.length && tab?.url === "about:blank" && !editing) { input.focus(); }
     renderOverlay(state);
+    // 셸이 초점을 넘겨준 대화상자면 기본 단추(confirm 은 OK — 옛 OS 창의 기본값)로 옮긴다.
+    const focusToken = state.pageDialogFocus ?? 0;
+    if (focusToken > dialogFocusSeen) {
+      const button = overlay.querySelector<HTMLButtonElement>(".dialog .button.primary");
+      if (button) { dialogFocusSeen = focusToken; button.focus({ preventScroll: true }); }
+    }
   };
 
   return {
