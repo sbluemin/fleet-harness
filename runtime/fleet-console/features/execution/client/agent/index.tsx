@@ -647,7 +647,7 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
         theme={context.theme}
         mobile={mobileSurface}
         awaitingConfirm={mobileSurface && awaitingInput}
-        {...(mobileSurface ? { mobileDockTop: <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} language={context.language} placement="terminal" /> } : {})}
+        {...(mobileSurface ? { mobileDockTop: <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="terminal" /> } : {})}
         locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.objectiveId, detail)}
         onOpenLink={links.choose}
@@ -658,7 +658,7 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
       />
       <ComputerScreenShare objectiveId={context.objectiveId} />
       {/* 모바일은 같은 카드를 터미널 독 맨 위(mobileDockTop)에 쌓는다 — 여기 떠 있으면 확인 줄을 덮는다. */}
-      {mobileSurface ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} language={context.language} placement="terminal" />}
+      {mobileSurface ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="terminal" />}
       {links.card}
     </div>
   );

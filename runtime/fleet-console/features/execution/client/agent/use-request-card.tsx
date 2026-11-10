@@ -1,4 +1,3 @@
-import type { ConsoleLocale } from "@fleet-console/i18n";
 import * as React from "react";
 import { useObjectiveUseRequests, type ObjectiveUseRequest } from "../../../computer-use/client/computer-screen-share.js";
 import { ApprovalComputerCard } from "../approval/cards.js";
@@ -20,7 +19,7 @@ export function useUseRequestClock(active: boolean): number {
   return now;
 }
 
-export function UseRequestCards({ objectiveId, childSessionIds, placement }: { readonly objectiveId: string; readonly childSessionIds?: readonly string[]; readonly language?: ConsoleLocale | undefined; readonly placement: "chat" | "terminal" }) {
+export function UseRequestCards({ objectiveId, childSessionIds, placement }: { readonly objectiveId: string; readonly childSessionIds?: readonly string[]; readonly placement: "chat" | "terminal" }) {
   const requests = useObjectiveUseRequests(objectiveId, childSessionIds);
   const now = useUseRequestClock(requests.length > 0);
   if (requests.length === 0) return null;

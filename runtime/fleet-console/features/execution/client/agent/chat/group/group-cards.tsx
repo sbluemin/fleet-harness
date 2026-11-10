@@ -219,12 +219,7 @@ export function HoldCard({ hold, language }: { readonly hold: ConversationHold; 
 }
 
 /** 허용 요청 카드 — 컴퓨터 사용은 승인 카드로 그린다. */
-export function UseRequestGroupCard({ request }: {
-  readonly request: ObjectiveUseRequest;
-  readonly speakers: readonly ConversationSpeaker[];
-  readonly shared: boolean;
-  readonly language: ConsoleLocale | undefined;
-}) {
+export function UseRequestGroupCard({ request }: { readonly request: ObjectiveUseRequest }) {
   const now = useUseRequestClock(true);
   return <ApprovalComputerCard id={request.id} objectiveId={request.objectiveId} expiresAt={request.expiresAt} now={now} />;
 }
