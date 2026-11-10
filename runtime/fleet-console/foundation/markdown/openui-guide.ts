@@ -6,8 +6,8 @@
  * 빠지고(다 빠지면 블록을 숨긴다) 다음 턴 입력으로 모델에게 알린다(openui-feedback). 프롬프트 증가분을 작게 두려고 업스트림이 생성하는 전체 문법 설명 대신 시그니처만 싣는다.
  */
 export const OPENUI_GUIDE = `# Visual blocks
-- Add at most one fenced \`openui-lang\` block to a reply, and only when it carries what prose would make hard to scan: three or more parallel items (objectives, checks, metrics), a timed flow, or a before/after. For a single status, a short answer or a plan the board already shows, write prose without a block.
-- The block holds the detail. Around it write only the conclusion and what the person must do, in one to three sentences that stand on their own (elsewhere the block stays code); do not also list the block's items or options in prose. Keep a card to two or three kinds of children.
+- Use at most one fenced \`openui-lang\` block only when clearer than prose for 3+ parallel items, a timed flow or before/after; otherwise use prose, including plans the board already shows.
+- Keep detail in the block without repeating it outside. Use 2-3 child kinds and 1-3 standalone sentences for the conclusion and required action.
 - One statement per line, \`root = Card(...)\` first, positional arguments, double-quoted strings. Only these render:
   Card(title, children: (Stats | Steps | Bars | Table | Facts | Callout | Progress | Timeline | Compare | Tags | Sparklines | Button | Form)[])   // at most 8 children
   Stats(items: Stat[]); Stat(label, value, note?, tone?: "good" | "warn" | "bad")
