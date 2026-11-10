@@ -12,3 +12,5 @@
 .manage-console-path svg { width: 14px; height: 14px; flex: none; color: var(--text-secondary); }
 .manage-console-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .manage-console-confirm { display: grid; gap: var(--space-3); }
+/* 관리 해제는 드문 동작이라 나머지 동작과 떨어뜨려 조용히 둔다. */
+.manage-console-quiet { margin-left: auto; color: var(--text-tertiary); }

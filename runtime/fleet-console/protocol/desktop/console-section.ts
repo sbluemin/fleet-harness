@@ -78,6 +78,8 @@ export type ConsoleSectionCommand = { readonly request: "state" }
  * document another Console serves: it names distributions and a Linux user. Listing starts no distribution.
  */
 export const CONSOLE_WSL_EVENT = "fleet:console-wsl-state";
+/** The shell runs on Windows and answers the `wsl` commands. A page asks nothing of a shell without it. */
+export const CONSOLE_WSL_CAPABILITY = "console-wsl";
 export interface ConsoleWslDistro {
   readonly name: string;
   readonly running: boolean;

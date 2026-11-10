@@ -12,6 +12,14 @@ const MANAGEMENT: Record<NonNullable<ConsoleSectionEntry["management"]>, readonl
   cli: ["chrome.consoles.management.cli", "chrome.consoles.management.cliNote"],
   unknown: ["chrome.consoles.management.unknown", null],
 };
+const FAILURE: Record<NonNullable<NonNullable<ConsoleSectionEntry["managed"]>["failure"]>, CoreMessageKey> = {
+  "build-tools": "chrome.consoles.failure.buildTools",
+  download: "chrome.consoles.failure.download",
+  install: "chrome.consoles.failure.install",
+  start: "chrome.consoles.failure.start",
+  "other-owner": "chrome.consoles.failure.otherOwner",
+  stop: "chrome.consoles.failure.stop",
+};
 const PATH: Record<NonNullable<ConsoleSectionEntry["path"]>, CoreMessageKey> = {
   loopback: "chrome.consoles.path.loopback",
   wsl: "chrome.consoles.path.wsl",
@@ -20,6 +28,7 @@ const PATH: Record<NonNullable<ConsoleSectionEntry["path"]>, CoreMessageKey> = {
 
 /** 행의 상태 문구. 관리 대상의 생명주기가 연결 상태보다 먼저다 — 꺼진 콘솔은 "연결 불가"가 아니라 "중지됨"이다. */
 export function consoleLifecycleKey(entry: ConsoleSectionEntry): CoreMessageKey | null {
+  if (entry.managed?.installing) return "chrome.consoles.lifecycle.installing";
   if (entry.lifecycle === "stopped") return "chrome.consoles.lifecycle.stopped";
   if (entry.lifecycle === "starting") return "chrome.consoles.lifecycle.starting";
   if (entry.lifecycle === "stopping") return "chrome.hosts.stopping";
@@ -36,7 +45,7 @@ export function consoleLifecycleKey(entry: ConsoleSectionEntry): CoreMessageKey 
 export function ManageConsoleCard({ target }: { readonly target: string }) {
   const t = useT();
   const [entry, setEntry] = useState<ConsoleSectionEntry | null | undefined>(undefined);
-  const [confirming, setConfirming] = useState<"restart" | null>(null);
+  const [confirming, setConfirming] = useState<"restart" | "stop" | "takeover" | null>(null);
   const card = useRef<HTMLDivElement>(null);
   const send = (value: ConsoleSectionCommand) => location.assign(consoleSectionCommandUrl(location.origin, value));
   const close = () => location.assign(desktopPickerUrl(location.origin, PICKER_SURFACE_DISMISS));
@@ -70,7 +79,7 @@ export function ManageConsoleCard({ target }: { readonly target: string }) {
     return () => document.removeEventListener("keydown", onKey, true);
   }, []);
   // 동작이 더는 허용되지 않으면(이미 다른 상태가 됐으면) 확인도 거둔다.
-  useEffect(() => { if (confirming && !entry?.actions?.includes(confirming)) setConfirming(null); }, [entry, confirming]);
+  useEffect(() => { if (confirming && !(confirming === "takeover" ? entry?.managed?.takeover : entry?.actions?.includes(confirming))) setConfirming(null); }, [entry, confirming]);
 
   const lifecycle = entry ? consoleLifecycleKey(entry) : null;
   const management = entry?.management ? MANAGEMENT[entry.management] : null;
@@ -84,7 +93,7 @@ export function ManageConsoleCard({ target }: { readonly target: string }) {
             <h2 className="add-host-title">{entry?.label ?? t("chrome.hosts.manage")}</h2>
             {entry ? <p className="manage-console-state">
               {lifecycle ? <span className={`manage-console-lifecycle is-${entry.lifecycle}`}>{t(lifecycle)}</span> : null}
-              {lifecycle ? " · " : ""}{entry.address}{entry.version ? ` · v${entry.version}` : ""}
+              {lifecycle && (entry.address !== entry.label || entry.version) ? " · " : ""}{entry.address !== entry.label ? entry.address : ""}{entry.version ? `${entry.address !== entry.label ? " · " : ""}v${entry.version}` : ""}
             </p> : null}
           </div>
           <button type="button" className="add-host-close" onClick={close} aria-label={t("common.close")}>×</button>
@@ -99,15 +108,21 @@ export function ManageConsoleCard({ target }: { readonly target: string }) {
             <dt>{t("chrome.consoles.relation.path")}</dt>
             <dd><span className="manage-console-path"><ConsoleGlyph remote={entry.kind === "remote"} />{entry.path ? t(PATH[entry.path]) : null}</span></dd>
           </dl>
+          {entry.managed?.failure ? <p className="add-host-error" role="alert">{t(FAILURE[entry.managed.failure])}</p> : null}
           {confirming ? <div className="manage-console-confirm">
-            <p className="add-host-lede">{t("chrome.consoles.restartConfirm")}</p>
+            <p className="add-host-lede">{t(confirming === "restart" ? "chrome.consoles.restartConfirm" : confirming === "stop" ? "chrome.consoles.stopConfirm" : "chrome.consoles.takeoverConfirm")}</p>
             <div className="add-host-actions">
               <button type="button" className="add-host-cancel" onClick={() => setConfirming(null)}>{t("common.cancel")}</button>
-              <button type="button" className="add-host-submit" onClick={() => { send({ lifecycle: { id: entry.id, action: confirming } }); setConfirming(null); }}>{t("chrome.consoles.restart")}</button>
+              <button type="button" className="add-host-submit" onClick={() => { send(confirming === "takeover" ? { takeover: entry.id } : { lifecycle: { id: entry.id, action: confirming } }); setConfirming(null); }}>
+                {t(confirming === "restart" ? "chrome.consoles.restart" : confirming === "stop" ? "chrome.consoles.stop" : "chrome.consoles.takeover")}</button>
             </div>
-          </div> : actions.length ? <div className="manage-console-actions">
+          </div> : actions.length || entry.managed?.takeover || entry.managed?.removable ? <div className="manage-console-actions">
             {actions.includes("start") ? <button type="button" className="add-host-submit" onClick={() => send({ lifecycle: { id: entry.id, action: "start" } })}>{t("chrome.consoles.start")}</button> : null}
             {actions.includes("restart") ? <button type="button" className="add-host-cancel" onClick={() => setConfirming("restart")}>{t("chrome.consoles.restart")}</button> : null}
+            {actions.includes("stop") ? <button type="button" className="add-host-cancel" onClick={() => setConfirming("stop")}>{t("chrome.consoles.stop")}</button> : null}
+            {entry.managed?.takeover ? <button type="button" className="add-host-cancel" onClick={() => setConfirming("takeover")}>{t("chrome.consoles.takeover")}</button> : null}
+            {/* 관리 해제의 확인은 셸이 자기 대화상자로 묻는다 — 여기서 한 번 더 묻지 않는다. */}
+            {entry.managed?.removable ? <button type="button" className="add-host-cancel manage-console-quiet" onClick={() => send({ forget: entry.id })}>{t("chrome.consoles.unmanage")}</button> : null}
           </div> : null}
           {entry.home && entry.management === "this-desktop" ? <p className="add-host-note">{t("chrome.consoles.homeStopNote")}</p> : null}
         </> : null}

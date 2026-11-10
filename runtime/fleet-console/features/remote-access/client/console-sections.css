@@ -28,6 +28,8 @@
 .side-console-head[data-lifecycle="stopped"] .side-console-status { color: var(--text-tertiary); }
 .side-console-head[data-lifecycle="starting"] .side-console-status, .side-console-head[data-lifecycle="stopping"] .side-console-status { color: var(--aurora-ink); }
 .side-console-head[data-lifecycle="failed"] .side-console-status { color: var(--coral-ink); }
+/* 이 컴퓨터 안의 WSL 배포판에서 도는 콘솔이라는 표지. 경로일 뿐 상태가 아니라 조용한 색을 쓴다. */
+.side-console-tag { flex: none; padding: 0 5px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--surface-rim); color: var(--text-tertiary); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 16px; }
 /* 꺼진 관리 대상을 다시 켜는 단추. 머리글 안의 한 가지 동작이라 늘 보인다. */
 .side-console-start { flex: none; margin-right: 6px; border: 0; border-radius: 8px; padding: 3px 10px; background: var(--wash-hover); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; }
 .side-console-start:hover { background: var(--control-rest-hover); }

@@ -116,7 +116,9 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const status = lifecycle ? t(lifecycle) : entry.status === "unreachable" ? t("chrome.hosts.unreachable") : entry.status === "untrusted" ? t("chrome.hosts.untrusted")
     : entry.status === "stopping" ? t("chrome.hosts.stopping") : entry.status === "slow" ? t("chrome.hosts.slow") : null;
   // 관리 화면은 집 Console이 그린다. 이 Desktop이 관계를 실어 보낸 이 컴퓨터의 콘솔에만, 그 콘솔이 답하는 동안에만 문을 둔다.
-  const manageable = !compact && entry.management !== undefined && entry.path !== "remote" && entry.status !== "unreachable";
+  // 집이 답하지 않으면 그 화면을 그릴 문서가 없다. 꺼져 있는 관리 대상은 집이 답하는 한 관리할 수 있다.
+  const homeDown = sections.entries.some((item) => item.home && item.status === "unreachable");
+  const manageable = !compact && entry.management !== undefined && entry.path !== "remote" && !homeDown;
   const startable = !compact && entry.actions?.includes("start") === true;
   const switchable = compact && !consoleSwitchBlocked(entry);
   const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
@@ -136,6 +138,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
     <button type="button" className="side-console-toggle" aria-expanded={compact ? undefined : !folded} title={title} onClick={press}>
       <ConsoleGlyph remote={entry.kind === "remote"} />
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
+      {entry.path === "wsl" ? <span className="side-console-tag">{t("chrome.consoles.wslTag")}</span> : null}
       {entry.home ? <span className="side-console-home" title={t("chrome.consoles.thisComputer")} aria-label={t("chrome.consoles.thisComputer")} role="img"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg></span> : null}
       {entry.active ? <span className="side-console-here">{t("chrome.consoles.here")}</span> : null}
       {status ? <span className="side-console-status">{status}</span> : null}
