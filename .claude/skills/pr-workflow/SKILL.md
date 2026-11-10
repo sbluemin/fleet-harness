@@ -41,7 +41,7 @@ Use signal-driven background waiting. Launch a wait (the review poll or a CI wat
 
 ## Merge and delivery
 
-Record `FINAL_AUDIT_BASE`; check base advancement and PR-file overlap again immediately before merging. Conflicts or overlapping advancement require head integration through `rebase-on-canary`, validation, and **head-only** `--force-with-lease`, then repeated audit/remote checks. Do not rewrite history in the ordinary path.
+Record `FINAL_AUDIT_BASE` and re-check mergeability immediately before merging. Rebase only for a confirmed merge conflict, using `rebase-on-canary` and an authorized **head-only** `--force-with-lease`; repeat validation, audit and remote checks afterward.
 
 Merge also requires the re-check evidence when the gate in [Merge and cleanup](references/merge-and-cleanup.md) applies. Inside an objective, the Commander performs that gate's (b) and the Commodore evaluates the result; never enlist or assign members to review or re-check. Merge only through `gh pr merge`. Never use `--admin`, protected-branch direct pushes, or required-check bypasses. Green PR checks do not cover jobs that run only on a `canary` push: cover them locally before merge, and after merge watch the merge commit's `canary` runs to completion, as [Merge and cleanup](references/merge-and-cleanup.md) describes. Confirm actual `MERGED` state before cleaning the owned head worktree through `git-worktree`. Preserve draft/blocked/unmerged work.
 
