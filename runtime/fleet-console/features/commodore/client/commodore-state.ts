@@ -648,6 +648,7 @@ export const setCommodoreAutoMemory = (commodoreId: string, autoMemoryEnabled: b
 export const toggleCommodoreRoutine = (commodoreId: string, routineId: string, enabled: boolean) => write(commodoreId, "/commodore/routine-toggle", { routineId, enabled });
 export const removeCommodoreRoutine = (commodoreId: string, routineId: string) => write(commodoreId, "/commodore/routine-remove", { routineId });
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
+export const stopCommodore = (commodoreId: string) => write(commodoreId, "/commodore/stop", {});
 export const clearCommodore = (theaterId: string) => write(theaterId, "/commodore/clear", { confirm: true });
 
 /** 이미 끝났거나 사라진 질문의 거절 — 화면이 낡았다는 뜻이라 상태를 한 번 다시 읽는다. */

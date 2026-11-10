@@ -401,7 +401,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
+        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
     </footer>
   );
   return (

@@ -58,6 +58,7 @@ import {
   INTEL_EDIT_ATTRIBUTE,
   useCommodoreIntelEdits,
   retryCommodore,
+  stopCommodore,
   saveCommodoreDescription,
   setCommodoreCommander,
   setCommodoreAutoMemory,
@@ -267,7 +268,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
       {failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}
-      {tab === "log" ? <footer ref={dockRef} className="objectives-commodore-foot">{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+      {tab === "log" ? <footer ref={dockRef} className="objectives-commodore-foot">{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
   );
 }
@@ -673,6 +674,7 @@ interface CommodoreComposerProps {
   readonly t: T;
   readonly theaterId: string;
   readonly active: boolean;
+  readonly running?: boolean;
   readonly phone?: CommodoreComposerPhone;
   readonly topEntries?: ReactNode;
   readonly placeholder?: string;
@@ -700,7 +702,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`Execution composer primitives`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, running = false, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel }: CommodoreComposerProps) {
   const accent = useAvatarAccent(commodoreAvatarKey(theaterId));
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId, attachmentPort, attachmentLimits);
@@ -719,6 +721,13 @@ function CommodoreComposerBody({ t, theaterId, active, phone, topEntries, placeh
   const mounted = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [stopping, setStopping] = useState(false);
+  const stop = () => {
+    if (!running || stopping || (phone && !phone.online)) return;
+    onClear();
+    setStopping(true);
+    void stopCommodore(theaterId).catch((error) => { if (mounted.current) onFail(error); }).finally(() => { if (mounted.current) setStopping(false); });
+  };
   const plusRootRef = useRef<HTMLDivElement | null>(null);
   const plusRef = useRef<HTMLButtonElement | null>(null);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -872,6 +881,9 @@ function CommodoreComposerBody({ t, theaterId, active, phone, topEntries, placeh
         onKeyUp={clearKey.up}
         onBlur={() => { clearKey.up(); clear.disarm(); }}
       />
+      {running ? <ComposerSendButton aria-label={t("commodore.composer.stop")} title={t("commodore.composer.stop")} disabled={stopping || clear.busy || (phone ? !phone.online : false)} onClick={stop}>
+        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor" /></svg>
+      </ComposerSendButton> : null}
       {/* 폰의 빈 원은 흐리지만 눌린다 — 누르면 입력칸으로 초점만 간다(FD-19). 올리는 중·보내는 중에는 잠긴다. */}
       <ComposerSendButton
         className={armed ? undefined : "is-idle"}
