@@ -57,6 +57,8 @@ export interface BrowserSurfaceHost {
   target(): { readonly host: PageHost; readonly page: Rectangle } | null;
   /** 표면이 마지막으로 가졌던 페이지 크기 — 표면이 닫힌 동안 새로 만든 뷰도 한 브라우저의 한 크기를 따르게 한다. 한 번도 열리지 않았으면 null. */
   lastPage(): { readonly width: number; readonly height: number } | null;
+  /** 사람이 초점을 둔 페이지가 alert·confirm 을 띄웠다 — 크롬 카드가 서면 그 단추로 초점을 옮긴다. */
+  focusPageDialog?(): void;
   refresh(): void;
   dispose(): void;
 }
@@ -542,6 +544,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
         if (sessionId) return;
         // CDP 가 대화상자에 답했다 — 쥐고 있던 콜백은 이미 쓰인 것이라 버린다.
         if (method === "Page.javascriptDialogClosed") releaseDialog(null);
+        // OS 창이 하던 대로 키보드를 대화상자로 옮긴다 — 사람이 이 페이지에 초점을 두고 있었을 때만. Console 입력은 빼앗지 않는다.
+        if (method === "Page.javascriptDialogOpening" && spec.pageDialogs === true && contents.isFocused()) deps.surface.focusPageDialog?.();
         push({ events: [{ viewId: spec.id, method, params: (params ?? {}) as Record<string, unknown> }] });
       });
       // 디버거가 떨어지면 대화상자에 답할 길이 없다 — 취소로 풀어 렌더러가 멈춘 채 남지 않게 한다.

@@ -23,6 +23,8 @@ const WINDOWS_CAPTION_PX = 138;
 const WINDOW_FALLBACK_MS = 3_000;
 const TOAST_MS = 4_000;
 const TOAST_ACTION_MS = 8_000;
+/** 페이지에서 대화상자가 뜬 뒤 Console 을 돌아 크롬에 카드가 서기까지 기다리는 한도. */
+const DIALOG_FOCUS_WINDOW_MS = 5_000;
 
 /** 문서가 동작을 요청하는 경로의 반대쪽 — 동작 처리기가 표면을 고칠 때 쓰는 손잡이. */
 export interface SurfaceControl {
@@ -144,6 +146,16 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   const layoutRailWidth = (): number => dip(ui.pinned ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
   // 표시 탭의 alert·confirm 은 페이지 자리를 덮어 그린다 — 페이지는 크롬 문서 아래의 네이티브 뷰라, 문서 뷰를 키워야 그 위에 보인다.
   const pageDialog = (): boolean => chrome?.tabs.some((tab) => tab.id === chrome?.activeTabId && tab.dialog !== undefined) === true;
+  // 페이지에 초점이 있던 사람의 대화상자는 카드가 서는 순간 크롬으로 초점을 옮긴다. 늦게 오는 다른 대화상자가 이 요청을 쓰지 않게 잠깐만 유효하다.
+  let dialogFocusAt = 0;
+  let dialogFocusToken = 0;
+  const takeDialogFocus = (): boolean => {
+    if (!docs || !pageDialog() || Date.now() - dialogFocusAt > DIALOG_FOCUS_WINDOW_MS) return false;
+    dialogFocusAt = 0;
+    dialogFocusToken += 1;
+    if (!docs.bar.view.webContents.isDestroyed()) docs.bar.view.webContents.focus();
+    return true;
+  };
   const barHeight = (rect: Rectangle): number => (ui.overlay !== null || pageDialog() ? rect.height : ui.notice || ui.info ? Math.min(rect.height, stripPx() + dip(TOAST_BAND_PX)) : Math.min(rect.height, stripPx()));
 
   /** 모든 뷰의 자리를 같은 틱에 정한다. 상태 문서에 알리는 것은 이 뒤다 — 뷰 크기와 문서 레이아웃이 어긋난 프레임이 없게. */
@@ -180,7 +192,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       lang: deps.lang, platform: deps.platform, mode: surface?.mode ?? "pane", colors: deps.colors(), chrome, spaceId: spaces.current(), pinned: ui.pinned, expanded: ui.expanded,
       leading, trailing,
       page: rect ? { x: layoutRailWidth() / z, y: Math.min(stripPx(), rect.height) / z, width: Math.max(0, rect.width - layoutRailWidth()) / z, height: Math.max(0, rect.height - stripPx()) / z } : { x: 0, y: 0, width: 0, height: 0 },
-      zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null,
+      zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null, pageDialogFocus: dialogFocusToken,
       suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
     };
   };
@@ -372,7 +384,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
         windowBase.show(); windowBase.focus();
       } else if ((next.focusRequest ?? 0) > focusSeen) { focusSeen = next.focusRequest ?? 0; docs.bar.view.webContents.focus(); }
       // 대화상자가 뜨고 질 때는 크롬 문서의 높이도 바뀐다.
-      if (pageDialog() !== dialogBefore) update();
+      if (pageDialog() !== dialogBefore) { takeDialogFocus(); update(); }
       else if (chromeChanged || spaces.current() !== spaceBefore) push();
       else layout();
       if (request) deps.act(control, "bar", { action: "show-tab", id: request.kind === "select" ? request.tabId : null });
@@ -382,6 +394,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     },
     refresh() { if (docs) update(); },
     lastPage: () => (lastPageSize ? { ...lastPageSize } : null),
+    focusPageDialog() { dialogFocusAt = Date.now(); if (takeDialogFocus()) update(); },
     dispose: closeSurface,
     relay: (value) => deps.relay(value),
     // Console 테마(라이트·다크·시스템)가 바뀌었다 — 새로고침 없이 크롬 문서와 손잡이가 같은 순간 새 색으로 다시 칠해진다.

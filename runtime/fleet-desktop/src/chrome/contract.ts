@@ -58,6 +58,8 @@ export interface ChromeUiState {
   readonly importUnavailable: boolean;
   /** 주소줄에 되돌려 줄 글 — 다른 표면에서 쓰던 주소 초안. */
   readonly draft: string | null;
+  /** 오를 때마다 페이지 대화상자 카드의 기본 단추로 초점을 옮긴다. */
+  readonly pageDialogFocus?: number;
 }
 
 export type ChromeAction =

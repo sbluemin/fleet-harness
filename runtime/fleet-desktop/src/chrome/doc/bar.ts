@@ -39,6 +39,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   let infoTimer: ReturnType<typeof setTimeout> | null = null;
   let infoKey = "";
   let lastUrl = "";
+  let dialogFocusSeen = 0;
 
   const submit = (value: string): void => {
     dirty = false; editing = false;
@@ -231,7 +232,11 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const answer = (accept: boolean): void => post("bar", "page-dialog", { id: asked.tab.id, dialogId: asked.dialog.id, accept });
     const ok = h("button", { class: "button primary", type: "button", text: t("jsDialog.ok"), disabled: state.busy, on: { click: () => answer(true) } });
     const actions = asked.dialog.type === "confirm" ? [h("button", { class: "button", type: "button", text: t("jsDialog.cancel"), disabled: state.busy, on: { click: () => answer(false) } }), ok] : [ok];
-    return dialog(t, t("jsDialog.title", { host: hostOf(asked.tab.url) }), null, [h("p", { class: "page-dialog-message", text: asked.dialog.message })], actions, "page-dialog");
+    // 대화상자를 띄운 프레임의 출처로 말한다 — 다른 출처의 iframe 이면 탭이 아니라 그 페이지임을 밝힌다.
+    const origin = (url: string): string => { try { return new URL(url).origin; } catch { return url; } };
+    const source = asked.dialog.url ?? asked.tab.url;
+    const title = origin(source) === origin(asked.tab.url) ? t("jsDialog.title", { host: hostOf(source) }) : t("jsDialog.embeddedTitle", { host: hostOf(source) });
+    return dialog(t, title, null, [h("p", { class: "page-dialog-message", text: asked.dialog.message })], actions, "page-dialog");
   };
 
   let importProfile = "";
@@ -404,6 +409,12 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     // 새 탭을 열면 주소줄로 초점을 옮긴다(예전 「새 탭」 동작).
     if (previous && previous.chrome && chrome && chrome.tabs.length > previous.chrome.tabs.length && tab?.url === "about:blank" && !editing) { input.focus(); }
     renderOverlay(state);
+    // 셸이 초점을 넘겨준 대화상자면 기본 단추(confirm 은 OK — 옛 OS 창의 기본값)로 옮긴다.
+    const focusToken = state.pageDialogFocus ?? 0;
+    if (focusToken > dialogFocusSeen) {
+      const button = overlay.querySelector<HTMLButtonElement>(".dialog .button.primary");
+      if (button) { dialogFocusSeen = focusToken; button.focus({ preventScroll: true }); }
+    }
   };
 
   return {

@@ -271,7 +271,13 @@ export function browserSpaceTabLimit(spaceId: string): number {
  * 페이지가 띄워 답을 기다리는 alert·confirm. 크롬은 페이지 위에 그리고, 답은 Console 의 REST 로 보낸다. `id` 는 대화상자마다
  * 새로 붙는다 — 답은 이 id 를 함께 보내고, 이미 닫힌 대화상자에 대한 늦은 답이 다음 대화상자에 적용되지 않게 한다.
  */
-export interface DesktopBrowserPageDialog { readonly id: string; readonly type: "alert" | "confirm"; readonly message: string }
+export interface DesktopBrowserPageDialog {
+  readonly id: string;
+  readonly type: "alert" | "confirm";
+  readonly message: string;
+  /** 대화상자를 띄운 프레임의 주소 — 끼워 넣은 다른 출처의 페이지가 탭의 이름으로 말하지 못하게 크롬이 이 출처를 보인다. */
+  readonly url?: string;
+}
 export interface DesktopBrowserChromeTab {
   readonly id: string;
   readonly spaceId: string;
@@ -371,7 +377,7 @@ export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserC
       && typeof space.driving === "boolean" && Array.isArray(space.agentTabIds) && space.agentTabIds.every(isSafeId) && ["responsive", "mobile", "tablet"].includes(String(space.viewportPreset)))
     && value.tabs.every((tab) => isRecord(tab) && isSafeId(tab.id) && isSafeId(tab.spaceId) && isShortText(tab.url, 4096) && isShortText(tab.title, 1024) && isFaviconUrl(tab.favicon)
       && typeof tab.loading === "boolean" && typeof tab.canGoBack === "boolean" && typeof tab.canGoForward === "boolean"
-      && (tab.dialog === undefined || (isRecord(tab.dialog) && isSafeId(tab.dialog.id) && (tab.dialog.type === "alert" || tab.dialog.type === "confirm") && isShortText(tab.dialog.message, 2000))))
+      && (tab.dialog === undefined || (isRecord(tab.dialog) && isSafeId(tab.dialog.id) && (tab.dialog.type === "alert" || tab.dialog.type === "confirm") && isShortText(tab.dialog.message, 2000) && (tab.dialog.url === undefined || isShortText(tab.dialog.url, 4096)))))
     && (value.activeTabId === null || isSafeId(value.activeTabId))
     && isRecord(viewport) && ["responsive", "mobile", "tablet"].includes(String(viewport.preset)) && isFiniteNumber(viewport.width) && isFiniteNumber(viewport.height)
     && (viewport.setBy === null || viewport.setBy === "user" || viewport.setBy === "agent")
