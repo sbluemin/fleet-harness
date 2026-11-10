@@ -202,9 +202,11 @@ export function HoldCard({ hold, language }: { readonly hold: ConversationHold; 
     try { await giveBack.run(); } catch { setGiveBackFailed(true); } finally { setGivingBack(false); }
   };
   if (hold.notice) return (
-    <section className="group-card-handed" aria-label={text(hold.title)} onKeyDown={ignoreRepeat}>
-      <span className="group-card-handed-label">{text(hold.title)}</span>
-      {hold.reveal ? <button type="button" className="group-chat-link" onClick={hold.reveal.run}>{text(hold.reveal.label)}</button> : null}
+    <section className="group-card is-hold" aria-label={text(hold.title)} onKeyDown={ignoreRepeat}>
+      <div className="group-card-head">
+        <span className="group-card-who">{text(hold.title)}</span>
+        {hold.reveal ? <button type="button" className="group-chat-link" onClick={hold.reveal.run}>{text(hold.reveal.label)}</button> : null}
+      </div>
     </section>
   );
   return (
