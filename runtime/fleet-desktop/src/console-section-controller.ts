@@ -57,8 +57,11 @@ const ARRIVAL_TTL_MS = 30_000;
 
 const text = (value: unknown, fallback: string, max = 120): string => (typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/gu, "").trim().slice(0, max) : "") || fallback;
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-/** A Console found on this computer says who started it; that names its manager, it does not make this Desktop one. */
-const managementOfLocal = (owner: unknown): ConsoleManagementRelation => owner === "desktop" ? "other-desktop" : owner === "cli" ? "cli" : "unknown";
+/**
+ * A Console found on this computer says who started it; that names its manager, it does not make this Desktop one.
+ * The list carries only locks it could read and trust, so one without a Desktop owner is a Console no Desktop started.
+ */
+const managementOfLocal = (owner: unknown): ConsoleManagementRelation => owner === "desktop" ? "other-desktop" : owner === "cli" || owner === null ? "cli" : "unknown";
 const cleanId = (value: string): boolean => value.length > 0 && value.length <= 128 && !/[\u0000-\u001f\u007f]/u.test(value);
 
 /** 불투명 id는 창 하나가 소유한다. 활성 문서에는 명시한 표시 필드만 보낸다. */

@@ -12,7 +12,11 @@
  * This module is pure and browser-safe; the proof behind `identityProven` belongs to `@fleet-console/lifecycle`.
  */
 
-/** The Desktop this Console's lock names as its lifecycle owner, as seen from one Desktop. */
+/**
+ * The Desktop this Console's lock names as its lifecycle owner, as seen from one Desktop. `cli` is a Console no
+ * Desktop started: the `fleet` launcher publishes its lock without an owner record. `unknown` is a record that
+ * cannot be read as either.
+ */
 export type ConsoleManagementRelation = "this-desktop" | "other-desktop" | "cli" | "unknown";
 export const CONSOLE_MANAGEMENT_RELATIONS: readonly ConsoleManagementRelation[] = ["this-desktop", "other-desktop", "cli", "unknown"];
 
@@ -34,9 +38,11 @@ export const CONSOLE_LIFECYCLE_ACTIONS: readonly ConsoleLifecycleAction[] = ["st
 
 /**
  * Reads the owner record a Console published in its lock. The owner id is adoption policy, not a credential: it names
- * the manager, and only a token-authenticated answer from the lock's own pid proves the instance behind it.
+ * the manager, and only a token-authenticated answer from the lock's own pid proves the instance behind it. A lock
+ * with no owner record names no Desktop at all, which is how a Console started from a terminal publishes it.
  */
 export function classifyConsoleManagement(owner: unknown, desktopOwnerId: string | null): ConsoleManagementRelation {
+  if (owner === undefined) return "cli";
   if (owner === null || typeof owner !== "object" || Array.isArray(owner)) return "unknown";
   const { kind, id } = owner as { readonly kind?: unknown; readonly id?: unknown };
   if (kind === "cli") return "cli";
