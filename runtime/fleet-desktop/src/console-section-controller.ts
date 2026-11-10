@@ -111,6 +111,8 @@ export function createConsoleSectionController(deps: Dependencies) {
       if (origin) { const url = new URL("/console/", origin); url.searchParams.set("desktop-surface", "host-picker"); url.searchParams.set("intent", "add"); url.searchParams.set("at", at() ?? origin); deps.add(url.toString()); }
       return;
     }
+    // 명부 계약의 접힘·도착 확인은 아직 받기만 한다 — 명부 수집과 함께 구현한다.
+    if ("fold" in value || "arrived" in value) return;
     const id = "switch" in value ? value.switch : "forget" in value ? value.forget : value.rename.id;
     const target = targets.get(id);
     if (!target) return;
