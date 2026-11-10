@@ -12,6 +12,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { readConsoleLockFile } from "@fleet-console/lifecycle";
 import { PAIRED_DEVICE_LIMIT } from "../features/remote-access/host/paired-devices.js";
+import * as remoteAuth from "../features/remote-access/host/auth.js";
+import { CONSOLE_ROSTER_PATH, isConsoleRosterSummary } from "../protocol/desktop/console-section.js";
 import { normalizeFingerprint } from "../features/remote-access/host/remote-identity.js";
 import { parseAccessLink } from "../features/remote-access/host/access-link.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
@@ -83,6 +85,70 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "GET", "/api/v1/objectives/records")).resolves.toMatchObject({ status: 401 });
     await expect(remoteRequest(fixture, "GET", "/console/")).resolves.toMatchObject({ status: 401 });
     await expect(remoteRequest(fixture, "GET", "/api/v1/status")).resolves.toMatchObject({ status: 401 });
+  });
+
+  it("reads only the minimized roster with a live pairing without opening or changing a session", async () => {
+    // 실제 레지스트리를 관찰한다 — 인증·세션 판정은 대역으로 바꾸지 않는다.
+    const registryFactory = vi.spyOn(remoteAuth, "createAccessRegistry");
+    const fixture = await startFixture({ remote: true });
+    const access = registryFactory.mock.results[0]!.value as remoteAuth.AccessRegistry;
+    const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+    const created = await fetch(`${origin}/api/v1/commodore/create`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ alias: "명부 사령관" }) });
+    expect(created.status).toBe(200);
+    const { commodoreId } = await created.json() as { commodoreId: string };
+    const painted = await fetch(`${origin}/api/v1/avatars`, { method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ mode: "set", key: `theater:commodore:${commodoreId}`, base: 2, tone: "teal" }) });
+    expect(painted.status).toBe(200);
+    const expected = { v: 1, commodores: [{ id: commodoreId, name: "명부 사령관", look: { base: 2, tone: "teal" }, run: "quiet" }], more: 0 };
+    for (const headers of [{} as Record<string, string>, { Origin: origin }]) {
+      const response = await fetch(`${origin}${CONSOLE_ROSTER_PATH}`, { headers });
+      expect(response.status).toBe(200);
+      expect(await response.json()).toEqual(expected);
+    }
+    expect((await fetch(`${origin}${CONSOLE_ROSTER_PATH}`, { headers: { Origin: "http://other.invalid" } })).status).toBe(401);
+    expect((await fetch(`${origin}${CONSOLE_ROSTER_PATH}`, { method: "POST" })).status).toBe(405);
+    expect((await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH)).status).toBe(401);
+
+    const snapshot = () => ({ full: access.hasSession("remote", "full"), monitoring: access.hasSession("remote", "monitoring"), sessions: access.listSessions("remote") });
+    const readWithoutChange = async (cookie: string) => {
+      const before = snapshot();
+      const devices = (await readRemoteStatus(fixture)).devices;
+      const response = await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH, undefined, cookie);
+      expect(response.status).toBe(200);
+      expect(response.headers["cache-control"]).toBe("no-store");
+      expect(response.headers["set-cookie"]).toBeUndefined();
+      expect(Buffer.byteLength(response.body, "utf8")).toBeLessThanOrEqual(16_384);
+      expect(isConsoleRosterSummary(JSON.parse(response.body))).toBe(true);
+      expect(JSON.parse(response.body)).toEqual(expected);
+      expect(snapshot()).toEqual(before);
+      expect((await readRemoteStatus(fixture)).devices).toEqual(devices);
+    };
+    const full = await joinAs(fixture, "full", "roster-device");
+    expect(snapshot()).toMatchObject({ full: true, monitoring: false });
+    await readWithoutChange(full);
+    expect((await remoteRequest(fixture, "POST", CONSOLE_ROSTER_PATH, "{}", full)).status).toBe(401);
+    const fullSession = full.split("; ").find((cookie) => cookie.startsWith("fleet_console_session_"))!;
+    expect((await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH, undefined, fullSession)).status).toBe(200);
+    const paired = full.split("; ").find((cookie) => cookie.startsWith("fleet_console_pairing_"))!;
+    // 다른 기기가 제어 중인 경우에도 페어링 명부가 그 세션을 바꾸면 안 된다.
+    const monitoring = await joinAs(fixture, "monitoring", "roster-monitor");
+    expect(snapshot()).toMatchObject({ full: false, monitoring: true });
+    await readWithoutChange(monitoring);
+    await readWithoutChange(paired);
+    const monitoringSession = monitoring.split("; ").find((cookie) => cookie.startsWith("fleet_console_session_"))!;
+    expect((await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH, undefined, monitoringSession)).status).toBe(200);
+    const held = (await readRemoteStatus(fixture)).devices.find((device) => device.device === "roster-monitor")!;
+    expect(await revoke(fixture, `access-sessions/${held.sessionHandle}`)).toBe(204);
+    expect(snapshot()).toMatchObject({ full: false, monitoring: false });
+    await readWithoutChange(paired);
+    const head = await remoteRequest(fixture, "HEAD", CONSOLE_ROSTER_PATH, undefined, paired);
+    expect(head.status).toBe(200);
+    expect(head.body).toBe("");
+    for (const method of ["POST", "PUT", "DELETE"]) expect((await remoteRequest(fixture, method, CONSOLE_ROSTER_PATH, "{}", paired)).status).toBe(401);
+    expect((await remoteRequest(fixture, "GET", "/api/v1/objectives/records", undefined, paired)).status).toBe(401);
+    const device = (await readRemoteStatus(fixture)).devices.find((entry) => entry.device === "roster-device")!;
+    expect(await revoke(fixture, `paired-devices/${device.id}`)).toBe(204);
+    expect((await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH, undefined, paired)).status).toBe(401);
+    expect(snapshot()).toMatchObject({ full: false, monitoring: false });
   });
 
   it("admits the console only after the link grant is exchanged", async () => {
