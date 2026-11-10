@@ -92,6 +92,8 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
   let opening: Promise<Child> | null = null;
   let current: Turn | null = null;
   let queueTail: Promise<void> = Promise.resolve();
+  // 취소 대상은 가장 앞의 요청 하나다 — 아직 큐·자식 시작 구간이어도 뒤의 다른 입력은 건드리지 않는다.
+  const requests: { cancelled: boolean }[] = [];
   // 자식이 낸 result의 비용은 그 자식의 누적이다 — 턴의 몫은 직전 누적과의 차이다. 자식이 바뀌면 0부터 다시 센다.
   let childCost = 0;
   // 턴 밖에 흐른 사건(쥔 결말이 상한을 넘은 뒤 늦게 집힌 말)의 짝짓기.
@@ -230,15 +232,18 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
     if (!sdk) return Promise.reject(new Error("Session not started"));
     try { assertClaudeGatewayInput(prompt); }
     catch (error) { return Promise.reject(error); }
-    const work = queueTail.then(() => runTurn(prompt));
+    const request = { cancelled: false };
+    requests.push(request);
+    const work = queueTail.then(() => runTurn(prompt, request)).finally(() => { requests.splice(requests.indexOf(request), 1); });
     queueTail = work.catch(() => undefined);
     return work;
   }
 
-  async function runTurn(prompt: ClaudeGatewayInput): Promise<void> {
-    if (disposed) return;
+  async function runTurn(prompt: ClaudeGatewayInput, request: { cancelled: boolean }): Promise<void> {
+    if (disposed || request.cancelled) return;
     const owner = await ensureChild();
-    if (disposed) return;
+    // 여는 동안 멈췄으면 프롬프트를 보내지 않는다. 열린 유휴 자식과 그 대화는 다음 요청이 그대로 쓴다.
+    if (disposed || request.cancelled) return;
     let resolveTurn!: () => void;
     let rejectTurn!: (error: unknown) => void;
     const done = new Promise<void>((resolve, reject) => { resolveTurn = resolve; rejectTurn = reject; });
@@ -281,6 +286,7 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
   }
 
   function cancel(): void {
+    if (requests[0]) requests[0].cancelled = true;
     const turn = current;
     if (!turn) return;
     // 자식을 접는다. 집히지 않은 말은 모델에 닿지 못했다 — 호출자에게 돌려준다. 다음 턴은 같은 대화를 resume한다.

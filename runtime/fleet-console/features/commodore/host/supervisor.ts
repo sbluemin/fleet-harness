@@ -103,6 +103,8 @@ export interface CommodoreSupervisor {
   status(commodoreId: string): Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying`. */
   retry(commodoreId: string): Promise<void>;
+  /** 진행 중인 턴만 멈춘다. 세션·대기 입력·자율 운영은 그대로 둔다. */
+  stopTurn(commodoreId: string): Promise<void>;
   /** 진행 턴·대기 메시지를 거두고 요약 없이 새 문맥으로 시작한다. 기록 파일도 지운다. */
   clear(commodoreId: string): Promise<void>;
   stopForDeletion(commodoreId: string): Promise<void>;
@@ -240,6 +242,8 @@ interface Runner {
   retryAttempt: number;
   inflight: Promise<void> | null;
   stopping: boolean;
+  /** 사람이 멈춘 턴의 정산 중 — 듣지 못한 입력은 보존하되 스스로 재시작하지 않는다. */
+  turnStopRequested: boolean;
   /** 마지막 턴이 끝났을 때의 대화 크기(마지막 호출의 입력 토큰). */
   lastInputTokens: number;
   /** 마지막 턴이 끝난 시각(ms, now()) — 유휴 교대 판정용. 아직 돈 턴이 없으면 null. */
@@ -318,7 +322,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       return image;
     });
   };
-  const inTurn = (runner: Runner) => !disposed && !runner.stopping && runner.phase === "turn";
+  const inTurn = (runner: Runner) => !disposed && !runner.stopping && !runner.turnStopRequested && runner.phase === "turn";
   const hasPersonMessage = (runner: Runner) => () => inTurn(runner) && runner.turnMessages.length > 0;
   const boardTools = (runner: Runner): readonly ConsoleMcpTool[] => {
     const turn: CommodoreTurnBindings = {
@@ -330,7 +334,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         return reader(ids);
       },
       hasPersonMessage: hasPersonMessage(runner),
-      stopping: () => disposed || runner.stopping,
+      stopping: () => disposed || runner.stopping || runner.turnStopRequested,
     };
     return [
       ...(deps.board()?.tools(runner.commodoreId, turn) ?? []).map((tool) => runner.board?.attribute(tool, turn) ?? tool),
@@ -1061,6 +1065,13 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         // 요약이 실패한 채 턴이 오류로 끝난 세션은 넘친 대화를 그대로 안고 있다 — 같은 세션으로 다시 시도하면 같은 오류다.
         // 다음 시도는 최근 행위 요약으로 새 세션을 연다. 요약만 실패하고 턴이 끝난 세션은 다음 턴에 자식이 다시 요약한다.
         else if (outcome.outcome === "error" && outcome.compactionFailed) { runner.rotateNext ??= "replaced"; }
+        if (runner.turnStopRequested) {
+          // 중지는 실패 재시도가 아니다. 이번 입력과 턴 중 돌아온 미배달 입력·깨움은 다음 새 사건에 함께 싣는다.
+          runner.retryAttempt = 0;
+          setPhase(runner, "idle");
+          scheduleRoutines(runner);
+          return;
+        }
         scheduleRetry(runner, outcome.error ?? "turn_failed");
         return;
       }
@@ -1073,8 +1084,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       scheduleRoutines(runner);
     })().finally(() => {
       runner.inflight = null;
-      // 턴 중에 온 이유는 다음 턴 하나로.
-      if (runner.pending.size && !runner.stopping && !disposed && runner.phase !== "retrying" && runner.phase !== "error") scheduleTurn(runner);
+      const stoppedTurn = runner.turnStopRequested;
+      runner.turnStopRequested = false;
+      // 사람이 멈춘 턴의 대기 입력은 남기되 즉시 되살리지 않는다. 이후 새 메시지·보드·루틴 깨움은 평소대로 돈다.
+      if (!stoppedTurn && runner.pending.size && !runner.stopping && !disposed && runner.phase !== "retrying" && runner.phase !== "error") scheduleTurn(runner);
     });
     return runner.inflight;
   };
@@ -1148,7 +1161,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, turnStopRequested: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),
@@ -1320,7 +1333,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       const message: QueuedMessage = { seq: entry.seq, text, mentions: mentionsOf(entry), ...(entry.messageId ? { messageId: entry.messageId, attachments: entry.attachments, imageBytes: entry.imageBytes } : {}) };
       // 턴이 돌고 있으면 그 턴에 건넨다 — 다음 도구 경계에서 같은 턴이 읽는다. 이미지가 붙은 말은 보관·예산을 지는 다음 턴에 싣는다.
       const id = `m${entry.seq}`;
-      if (!message.messageId && runner.phase === "turn" && !runner.stopping && runner.session?.steer(text, id)) { runner.hosted.set(id, message); return; }
+      if (!message.messageId && runner.phase === "turn" && !runner.stopping && !runner.turnStopRequested && runner.session?.steer(text, id)) { runner.hosted.set(id, message); return; }
       runner.messages.push(message); wake(runner, "message");
     }
   }));
@@ -1426,6 +1439,15 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       wake(runner, "retry");
       clearTimer(runner, "coalesce");
       await runTurn(runner);
+    },
+    async stopTurn(commodoreId) {
+      const runner = runners.get(commodoreId);
+      if (!runner || runner.stopping || runner.phase !== "turn") return;
+      if (!runner.turnStopRequested) {
+        runner.turnStopRequested = true;
+        runner.session?.cancel();
+      }
+      await runner.inflight;
     },
     clear(commodoreId) {
       const pending = clears.get(commodoreId);

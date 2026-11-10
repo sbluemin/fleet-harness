@@ -2225,22 +2225,33 @@ describe("commodore supervisor", () => {
       expect(h.store.transcriptRead("t1").entries.some((entry) => entry.kind === "undelivered")).toBe(true);
     } finally { await supervisor.dispose(); attachments.dispose(); files.cleanup(); vi.useRealTimers(); }
   });
-  it("clears the active session and transcript without losing standing state or reviving deleted history", async () => {
+  it("stops only the active turn, preserves queued input and context, and clears history only on confirmed clear", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-08T12:00:00Z"));
     const h = harness(Date.now);
     const sessions: { options: AgentSessionOptions; sent: string[]; disposed: boolean }[] = [];
     let hold = true;
-    let cancel: (() => void) | undefined;
+    let finish: ((stopped?: boolean) => void) | undefined;
+    const cancel = vi.fn(() => finish?.(true));
     const agent: AgentHost = { createSession: async (options) => {
       const entry = { options, sent: [] as string[], disposed: false }; sessions.push(entry);
+      const hosted: string[] = [];
       return {
-        send: async (text) => { if (typeof text !== "string") throw new Error("Expected text-only turn"); entry.sent.push(text); if (hold) await new Promise<void>((resolve) => { cancel = () => { options.onEvent?.({ kind: "cancelled" }); resolve(); }; }); else options.onEvent?.({ kind: "result", isError: false, source: "message" }); },
-        steer: () => false, cancel: () => cancel?.(), dispose: async () => { entry.disposed = true; },
+        send: async (text) => {
+          if (typeof text !== "string") throw new Error("Expected text-only turn");
+          entry.sent.push(text);
+          if (hold) await new Promise<void>((resolve) => { finish = (stopped = false) => {
+            for (const id of hosted.splice(0)) options.onEvent?.({ kind: "input-cancelled", id });
+            options.onEvent?.(stopped ? { kind: "cancelled" } : { kind: "result", isError: false, source: "message" });
+            resolve();
+          }; });
+          else options.onEvent?.({ kind: "result", isError: false, source: "message" });
+        },
+        steer: (_text, id) => { hosted.push(id); return true; }, cancel, dispose: async () => { entry.disposed = true; },
       };
     } };
     const supervisor = createCommodoreSupervisor({ store: h.store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
-    const hooks = { acceptsMessage: (id: string) => supervisor.acceptsMessage(id), clear: (id: string) => supervisor.clear(id), run: (id: string) => supervisor.status(id) };
+    const hooks = { acceptsMessage: (id: string) => supervisor.acceptsMessage(id), stopTurn: (id: string) => supervisor.stopTurn(id), clear: (id: string) => supervisor.clear(id), run: (id: string) => supervisor.status(id) };
     try {
       h.setExperiments({ commodore: true });
       h.store.setDescription("t1", "Keep the description.");
@@ -2249,6 +2260,55 @@ describe("commodore supervisor", () => {
       h.store.setCommander("t1", { model: "opus[1m]", effort: "high" });
       h.store.routineAdd("t1", { name: "Standing routine", task: "Keep the routine", schedule: { kind: "every", minutes: 120 } });
       h.store.transcriptAppend("t1", { kind: "message", text: "Old active instruction." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      h.store.askAdd("t1", { reason: "Keep the person's pending decision", questions: [{ text: "Continue?", options: [] }], objective: null });
+      const read = h.store.transcriptAppend("t1", { kind: "message", text: "Already read steered instruction." });
+      sessions[0]!.options.onEvent?.({ kind: "input-started", id: `m${read.seq}` });
+      h.store.transcriptAppend("t1", { kind: "message", text: "Unread steered instruction." });
+      const beforeStop = h.store.read("t1");
+      const retained = h.store.transcriptRead("t1").entries;
+      h.setAuthorized(false);
+      expect((await h.route("commodore/stop", { commodoreId: "t1" }, hooks)).status).toBe(401);
+      expect(cancel).not.toHaveBeenCalled();
+      h.setAuthorized(true);
+      const [stopped] = await Promise.all([h.route("commodore/stop", { commodoreId: "t1" }, hooks), supervisor.stopTurn("t1")]);
+      expect(stopped).toMatchObject({ status: 200, value: { active: true, enabled: true, run: { phase: "idle" } } });
+      expect(cancel).toHaveBeenCalledOnce();
+      expect(sessions[0]!.disposed).toBe(false);
+      expect(h.store.read("t1")).toEqual(beforeStop);
+      expect(h.store.transcriptRead("t1").entries.slice(0, retained.length)).toEqual(retained);
+      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "cancelled" });
+      // 취소된 입력은 보존하되 자동 재시도·즉시 후속 턴은 없다. 유휴 중지는 언어·질문·예약·기록도 바꾸지 않는다.
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + COALESCE_MS + 1);
+      expect(sessions[0]!.sent).toHaveLength(1);
+      const idleRun = supervisor.status("t1");
+      const idleTranscript = h.store.transcriptRead("t1").entries;
+      expect((await h.route("commodore/stop", { commodoreId: "t1", language: "ko" }, hooks)).status).toBe(200);
+      expect(supervisor.status("t1")).toEqual(idleRun);
+      expect(h.store.read("t1")).toEqual(beforeStop);
+      expect(h.store.transcriptRead("t1").entries).toEqual(idleTranscript);
+      expect(cancel).toHaveBeenCalledOnce();
+      hold = false;
+      h.store.transcriptAppend("t1", { kind: "message", text: "Continue in this conversation." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0]!.sent[1]).toContain("Continue in this conversation.");
+      expect(sessions[0]!.sent[1]).toContain("Unread steered instruction.");
+      expect(sessions[0]!.sent[1]).not.toContain("Already read steered instruction.");
+      expect(sessions[0]!.sent[1]).toContain("Old active instruction.");
+      h.store.setDescription("t1", "A later autonomous wake still runs.");
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions[0]!.sent).toHaveLength(3);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      // 자연 종료를 먼저 관찰했으면 중지가 늦게 와도 성공 결말을 덮거나 재시도하지 않는다.
+      hold = true;
+      h.store.transcriptAppend("t1", { kind: "message", text: "Finish naturally while stop arrives." });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      finish!();
+      await supervisor.stopTurn("t1");
+      expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "ok" });
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      h.store.transcriptAppend("t1", { kind: "message", text: "Old active instruction before clear." });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
       h.store.transcriptAppend("t1", { kind: "message", text: "Old queued instruction." });
       const before = h.store.read("t1")!;
