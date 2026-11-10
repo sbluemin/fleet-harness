@@ -90,11 +90,15 @@ describe("Console-owned plugin Agent", () => {
     const opened: Record<string, unknown>[] = []; const homes: unknown[] = []; const settingSources: unknown[] = []; let push: (message: ClaudeGatewayMessage) => void = () => undefined; let closeChild = () => {}; let dieChild = () => {};
     // 자식 하나 — 보낸 말마다 스크립트가 답한다. 트랜스크립트는 Claude Code처럼 홈의 projects 아래에 쌓인다.
     let reply: (text: string, messageId?: string) => void = () => undefined;
+    let openingGate: Promise<void> | null = null;
+    let onOpening = () => {};
     // 실제 SDK처럼 한 인스턴스의 슬롯은 하나이고 `close()`로만 돌아온다 — 스스로 끝난 자식도 닫지 않으면 다음 자식이 막힌다.
     const engine = (configDir: string) => { let slot = false; return { configDir, dispose: vi.fn(async () => undefined), openSession: vi.fn(async (request: Record<string, unknown>) => {
       if (slot) throw new Error("A turn or session is already running on this instance.");
       slot = true;
       opened.push(request);
+      const gate = openingGate; openingGate = null;
+      if (gate) { onOpening(); await gate; }
       const id = (request.resume ?? request.sessionId) as string;
       await fs.mkdir(path.join(configDir, "projects", "-cwd"), { recursive: true }); await fs.writeFile(path.join(configDir, "projects", "-cwd", `${id}.jsonl`), "{}\n");
       const queue: ClaudeGatewayMessage[] = []; let wake: (() => void) | null = null; let done = false;
@@ -146,9 +150,21 @@ describe("Console-owned plugin Agent", () => {
     expect(events.at(-1)).toEqual({ kind: "cancelled" });
     expect(events).toContainEqual({ kind: "input-cancelled", id: "m3" });
 
+    // 자식 시작 중의 중지는 그 입력만 막는다 — 뒤에 수락한 입력은 순서대로 같은 대화를 resume한다.
+    let releaseOpening!: () => void;
+    const openingEntered = new Promise<void>((resolve) => { onOpening = resolve; });
+    openingGate = new Promise<void>((resolve) => { releaseOpening = resolve; });
+    const sentAfterStop: string[] = [];
+    reply = (text) => { sentAfterStop.push(text); push({ type: "result", is_error: false }); };
+    const preparing = session.send("cancel while opening");
+    await openingEntered;
+    const queued = session.send("third");
+    session.cancel(); session.cancel();
+    releaseOpening();
+    await preparing; await queued;
+    expect(sentAfterStop).toEqual(["third"]);
+    expect(events.at(-1)).toMatchObject({ kind: "result", isError: false });
     // 같은 살아 있는 세션은 중지 뒤 자기 scratch의 대화만 다시 연다.
-    reply = () => push({ type: "result", is_error: false });
-    await session.send("third");
     expect(opened.at(-1)).toEqual(expect.objectContaining({ resume: (opened[0] as { sessionId: string }).sessionId }));
     // 자식이 스스로 죽었다(close 없이 스트림이 끝남) — 다음 턴은 슬롯을 되찾아 같은 대화를 다시 resume한다.
     dieChild(); await new Promise((r) => setTimeout(r, 0));

@@ -365,7 +365,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     },
     async turn(input) {
       if (disposed) throw new Error("session_disposed");
-      await this.start();
+      if (!session) await this.start();
       if (!session) throw new Error("session_disposed");
       // 결말은 턴마다 하나 — 전 턴의 잔재가 이번 결말이 되지 않게 비운다.
       turnActions = 0; turnResult = null; compactionFailed = false; textBuffer = ""; quietText = !!input.quietText; turnTextBlocks.length = 0; thinkingBuffer = ""; pendingTools.clear(); toolErrors.clear(); toolResultObjectives.clear(); createdCommodores.length = 0;

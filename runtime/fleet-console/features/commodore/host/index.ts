@@ -359,7 +359,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       store.setTheaters(id, entities.theatersOf(id).filter((row) => row.path !== root));
     },
     acceptsMessage: (id) => supervisor.acceptsMessage(id),
-    run: (id) => supervisor.status(id), retry: (id) => supervisor.retry(id), clear: (id) => supervisor.clear(id),
+    run: (id) => supervisor.status(id), retry: (id) => supervisor.retry(id), stopTurn: (id) => supervisor.stopTurn(id), clear: (id) => supervisor.clear(id),
     boardReady: () => board !== null,
     objective: (id) => {
       for (const commodoreId of entities.ids()) {

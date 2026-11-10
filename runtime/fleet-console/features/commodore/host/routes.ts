@@ -78,6 +78,7 @@ export interface CommodoreRouteHooks {
   readonly run?: (commodoreId: string) => Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기(`retrying`·`error`)를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying` 을 던진다. */
   readonly retry?: (commodoreId: string) => Promise<void> | void;
+  readonly stopTurn?: (commodoreId: string) => Promise<void>;
   readonly clear?: (commodoreId: string) => Promise<void>;
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly commodoreId: string; readonly title: string; readonly removed?: unknown } | null;
   /** 보드 어댑터가 등록돼 있는가 — 없으면 감독자가 runner를 세우지 않으므로 사령관은 꺼진 것으로 보이고 켜지지 않는다. */
@@ -418,6 +419,11 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       await hooks.retry(commodoreId);
       return view(commodoreId, read(commodoreId));
     }) },
+    { name: "commodore/stop", method: "POST", summary: "Stop only the running Commodore turn, keeping the session context, transcript and queued inputs without changing autonomous settings. No-op when no turn is running.", handler: json(commodoreRef.strict(), async ({ commodoreId }) => {
+      read(commodoreId);
+      await hooks.stopTurn?.(commodoreId);
+      return view(commodoreId, read(commodoreId));
+    }, false) },
     { name: "commodore/clear", method: "POST", summary: "Cancel the current turn, discard the session context and delete the transcript. Keep the description, intel, settings, the board and routines.", handler: json(commodoreRef.extend({ confirm: z.literal(true) }).strict(), async ({ commodoreId }) => {
       read(commodoreId);
       if (!hooks.clear) throw new CommodoreStoreError("commodore_inactive");
