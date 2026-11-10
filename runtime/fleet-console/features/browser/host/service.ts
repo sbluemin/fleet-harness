@@ -2067,6 +2067,8 @@ export class BrowserService {
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const { objectId } = await this.resolveRef(client, tab, ref);
+    // 대상을 찾는 사이 사람이 제어를 가져갔으면 값을 바꾸지 않는다 — 포인터·키와 같은 전송 직전의 문이다.
+    this.guardInput(op, tab);
     const result = await client.send<{ result: { value?: string } }>("Runtime.callFunctionOn", { objectId, returnByValue: true, arguments: [{ value }], functionDeclaration: `function(v){
       const el = this; const tag = el.tagName ? el.tagName.toLowerCase() : "";
       const fire = () => { el.dispatchEvent(new Event('input', {bubbles:true})); el.dispatchEvent(new Event('change', {bubbles:true})); };

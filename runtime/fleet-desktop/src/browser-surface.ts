@@ -178,7 +178,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   const controlState = (): ChromeControl | null => {
     if (!chrome || !chrome.available) return null;
     const space = chrome.spaces.find((candidate) => candidate.id === spaces.current());
-    if (!space) return null;
+    // 제어권을 모르는 Console(이 필드가 없는 옛 투영)에서는 가드를 세우지 않는다 — 풀어 줄 길(제어 요청 경로)이 그쪽에 없어 잠그면 사람이 그 탭을 쓸 수 없게 된다.
+    if (!space || space.control === undefined) return null;
     if (space.control === "user") return { holder: "user", spaceId: space.id, reason: space.attention?.reason ?? null, pointer: null };
     const tabId = chrome.activeTabId;
     if (!space.driving || tabId === null || !space.agentTabIds.includes(tabId)) return null;
