@@ -167,4 +167,4 @@ if (invokedDirectly) {
   });
 }
 
-export { expression, parseArgs };
+export { expression, parseArgs, readSource, pagePath };
