@@ -553,6 +553,8 @@
 .agent-chat-tally-sep {
   color: var(--hairline-strong);
 }
+/* 라이트의 선 색(#b1b1b1)은 종이 위 글리프로는 2.1:1이라 흐린 글자색으로 올린다. */
+:root[data-theme="light"] .agent-chat-tally-sep { color: var(--text-tertiary); }
 
 /* 계열 글리프와 그 문구는 한 덩어리다 — 절 사이 간격(space-2)을 그대로 쓰면 글리프가 앞
    절 끝에 붙어 읽혀 무엇을 세는 표식인지 알 수 없다. */

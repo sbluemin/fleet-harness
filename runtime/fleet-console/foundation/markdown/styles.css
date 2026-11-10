@@ -2,7 +2,7 @@
    Consumed by Markdown surfaces such as chat. Token references (--brass, --aurora, etc.) are declared
    in the consuming surface's theme.css and must be present at render time. */
 
-/* highlight.js 팔레트 — 다크 쪽은 테마별로 재조율되는 신택스 역할 채널(--syntax-*, theme.css)을 쓴다. 고정 GitHub-dark hex는 다크 테마에서 같은 채도(C≈.12~.18)로 튀었다. 라이트 쪽만 vendored GitHub(light) raw 리터럴이 sanctioned 예외로 남는다(다크 보정 범위 밖). 전환은 각 테마의 color-scheme을 따르는 light-dark()가 수행하며, color-scheme 미선언 표면은 다크 값을 쓴다. 역할 배정은 코드 뷰어와 마크다운에서 같은 코드가 다른 색으로 읽히지 않게 맞춘다. */
+/* highlight.js 팔레트 — 다크 쪽은 테마별로 재조율되는 신택스 역할 채널(--syntax-*, theme.css)을 쓴다. 고정 GitHub-dark hex는 다크 테마에서 같은 채도(C≈.12~.18)로 튀었다. 라이트 쪽만 GitHub(light) 계열 raw 리터럴이 sanctioned 예외로 남는다(다크 보정 범위 밖). 그중 코드블록 면(#e4e4e4) 위에서 4.5:1에 못 미치던 키워드·내장·주석·태그 색은 같은 계열의 더 짙은 값으로 둔다. 전환은 각 테마의 color-scheme을 따르는 light-dark()가 수행하며, color-scheme 미선언 표면은 다크 값을 쓴다. 역할 배정은 코드 뷰어와 마크다운에서 같은 코드가 다른 색으로 읽히지 않게 맞춘다. */
 pre code.hljs {
   display: block;
   overflow-x: auto;
@@ -26,7 +26,7 @@ code.hljs {
 .hljs-type,
 .hljs-variable.language_ {
   color: var(--syntax-key);
-  color: light-dark(#d73a49, var(--syntax-key));
+  color: light-dark(#b31d28, var(--syntax-key));
 }
 
 .hljs-title,
@@ -65,14 +65,14 @@ code.hljs {
 .hljs-built_in,
 .hljs-symbol {
   color: var(--syntax-function);
-  color: light-dark(#e36209, var(--syntax-function));
+  color: light-dark(#953800, var(--syntax-function));
 }
 
 .hljs-comment,
 .hljs-code,
 .hljs-formula {
   color: var(--syntax-comment);
-  color: light-dark(#6a737d, var(--syntax-comment));
+  color: light-dark(#57606a, var(--syntax-comment));
 }
 
 .hljs-name,
@@ -80,7 +80,7 @@ code.hljs {
 .hljs-selector-tag,
 .hljs-selector-pseudo {
   color: var(--syntax-tag);
-  color: light-dark(#22863a, var(--syntax-tag));
+  color: light-dark(#116329, var(--syntax-tag));
 }
 
 .hljs-subst {
@@ -113,7 +113,7 @@ code.hljs {
 
 .hljs-addition {
   color: var(--positive-ink);
-  color: light-dark(#22863a, var(--positive-ink));
+  color: light-dark(#116329, var(--positive-ink));
   background-color: color-mix(in oklch, var(--positive) 14%, transparent);
   background-color: light-dark(#f0fff4, color-mix(in oklch, var(--positive) 14%, transparent));
 }
