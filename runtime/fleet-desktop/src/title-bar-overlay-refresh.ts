@@ -44,6 +44,11 @@ export interface TitleBarOverlayRefresherDeps {
   readonly screen: OverlayRefreshScreen;
   readonly initialOverlay: DesktopTitleBarOverlay;
   readonly getZoomFactor?: () => number;
+  /**
+   * 오버레이 아래쪽에서 덜어 낼 높이(DIP). 캡션 버튼이 플릿 브라우저 주소줄 위에 설 때 그 줄의 아래 구분선을 가리지 않게 한다 —
+   * 오버레이는 불투명한 띠라, 줄 전체 높이로 서면 구분선이 캡션 버튼 아래에서 끊겨 보인다.
+   */
+  readonly inset?: () => number;
   readonly refreshDelayMs?: number;
   readonly setTimeout?: (callback: () => void, delay: number) => ReturnType<typeof setTimeout>;
   readonly clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
@@ -74,7 +79,8 @@ export function createTitleBarOverlayRefresher(
   const measure = (): { height: number; currentScaleFactor: number } => {
     const currentScaleFactor = deps.screen.getDisplayMatching(window.getBounds()).scaleFactor;
     const zoomFactor = deps.getZoomFactor?.() ?? 1;
-    return { height: zoomedOverlayHeight(overlay.height, zoomFactor), currentScaleFactor };
+    const inset = Math.max(0, Math.round(deps.inset?.() ?? 0));
+    return { height: Math.max(1, zoomedOverlayHeight(overlay.height, zoomFactor) - inset), currentScaleFactor };
   };
 
   // 같은 높이라도 모니터 배율이 달라졌으면 스테일 배치다 — 재적용만이 현재 배율로 되돌린다.

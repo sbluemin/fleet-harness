@@ -1740,16 +1740,18 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .console-body.is
 
 /* Windows 캡션 버튼 — 셸이 대화 바탕색의 52px 띠로 오른쪽 위에 세운다. 맨 오른쪽 열(세부 정보가 열렸으면 그 맨 위 줄, 닫혔으면
    작업 영역 맨 위 줄 — 도구모음이 그 바로 왼쪽에 선다)이 그 폭을 비운다. 도구 분할은 맨 위 줄 아래만 쓰므로 띠에 덮이지 않는다.
-   식은 layout.css 밴드 오른쪽 클러스터와 같다(env 실측과 46 DIP × 3 계약 중 큰 쪽). */
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation {
+   식은 layout.css 밴드 오른쪽 클러스터와 같다(env 실측과 46 DIP × 3 계약 중 큰 쪽).
+   플릿 브라우저 칸이 창 오른쪽에 붙어 있으면(data-browser-pane) 캡션 버튼은 그 칸의 맨 위 줄 끝에 서므로 이 예약 전체가 물러난다 —
+   남겨 두면 세부 정보 닫기·지구본이 빈자리만큼 왼쪽으로 밀린다. */
+html[data-desktop-shell="true"][data-desktop-platform="win32"]:not([data-browser-pane="true"]) .console-body.is-conversation {
   --conversation-caption-width: max(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw), 138px / var(--desktop-zoom, 1));
 }
 
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation .conversation-panel-toolbar {
+html[data-desktop-shell="true"][data-desktop-platform="win32"]:not([data-browser-pane="true"]) .console-body.is-conversation .conversation-panel-toolbar {
   padding-right: calc(var(--space-2) + var(--conversation-caption-width));
 }
 
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)) {
+html[data-desktop-shell="true"][data-desktop-platform="win32"]:not([data-browser-pane="true"]) .console-body.is-conversation:not(:has(.right-rail.is-open)) {
   --conversation-caption-reserve: var(--conversation-caption-width);
 }
 
@@ -1757,7 +1759,7 @@ html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-
    서서, 그 밑으로 흘러 올라가는 말풍선이 띠의 불투명 사각형 가장자리에서 칼같이 잘린다. 본문을 맨 위 줄 아래로 내리면 이번엔 열 전체
    폭에 가로 경계선이 생기므로, 본문은 다른 배치처럼 그대로 흐르게 두고 띠 둘레만 대화 바탕색으로 왼쪽·아래로 흐려 띠에 잇는다.
    띠와 같은 색이라 띠 안쪽은 이어지고, 잘리던 가장자리는 그라디언트가 된다. */
-html[data-desktop-shell="true"][data-desktop-platform="win32"] .console-body.is-conversation:not(:has(.right-rail.is-open)):not(:has(.conversation-workbench:is([data-mode="side"], [data-mode="stacked"]))) .conversation-column::after {
+html[data-desktop-shell="true"][data-desktop-platform="win32"]:not([data-browser-pane="true"]) .console-body.is-conversation:not(:has(.right-rail.is-open)):not(:has(.conversation-workbench:is([data-mode="side"], [data-mode="stacked"]))) .conversation-column::after {
   content: "";
   position: absolute;
   top: 0;

@@ -386,7 +386,7 @@ async function boot(): Promise<void> {
         movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true,
         ...(entryPalette ? { backgroundColor: entryPalette.canvas } : {}),
       });
-      const refresher = process.platform === "win32" ? createTitleBarOverlayRefresher(base, { screen, initialOverlay: companionOverlay, getZoomFactor: () => 1 }) : null;
+      const refresher = process.platform === "win32" ? createTitleBarOverlayRefresher(base, { screen, initialOverlay: companionOverlay, getZoomFactor: () => 1, inset: () => browserSurface.captionInset("window") }) : null;
       companionOverlayRefresher = refresher;
       const refreshChrome = () => {
         if (base.isDestroyed()) return;
@@ -410,7 +410,8 @@ async function boot(): Promise<void> {
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
     act: createBrowserActions({ fetch: consoleFetch, origin: () => browserOrigin, lang: entryLanguage, openExternal: (url) => { void shell.openExternal(url); }, log: (message) => logger.info(message) }),
     relay: (surface) => browserViews.relaySurface(surface),
-    changed: () => browserViews.places(),
+    // 표면의 자리·모양이 바뀌면 캡션 띠의 높이도 다시 본다(Windows 만 — 다른 OS 에서는 리프레셔가 없다). 높이가 그대로면 아무 일도 하지 않는다.
+    changed: () => { browserViews.places(); overlayRefresher?.refresh(); companionOverlayRefresher?.refresh(); },
     log: (message) => logger.info(message),
   });
   browserRetheme = () => browserSurface.retheme();
@@ -693,6 +694,7 @@ async function boot(): Promise<void> {
             screen,
             initialOverlay: rememberedTheme?.titleBarOverlay ?? INITIAL_WINDOWS_TITLE_BAR_OVERLAY,
             getZoomFactor: () => createdWindow.consoleContents.getZoomFactor(),
+            inset: () => browserSurface.captionInset("pane"),
           })
           : null;
         createdWindow.base.once("closed", () => {
