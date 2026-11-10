@@ -128,7 +128,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections }: {
   return <div className={`side-console-head${entry.active ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined}>
     <button type="button" className="side-console-toggle" aria-expanded={!folded} title={title} onClick={() => sections.fold(entry.id, !folded)}>
       <ConsoleGlyph remote={entry.kind === "remote"} />
-      <span className="side-console-name"><b>{entry.label}</b>{entry.home ? null : <small>{entry.address}</small>}</span>
+      <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
       {entry.home ? <span className="side-console-home" title={t("chrome.consoles.thisComputer")} aria-label={t("chrome.consoles.thisComputer")} role="img"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg></span> : null}
       {entry.active ? <span className="side-console-here">{t("chrome.consoles.here")}</span> : null}
       {status ? <span className="side-console-status">{status}</span> : null}
