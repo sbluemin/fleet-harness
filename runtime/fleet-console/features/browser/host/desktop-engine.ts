@@ -22,15 +22,20 @@ const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
-interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null; dialog?: BrowserPageDialog | null }
+interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null; dialog?: BrowserPageDialog | null; answering?: string | null }
 export type BrowserSurfaceState = DesktopBrowserSurface;
 /** 페이지가 띄운 alert·confirm. 답할 때까지 렌더러가 멈춰 있다. */
 export type BrowserPageDialog = DesktopBrowserPageDialog;
 const DIALOG_MESSAGE_MAX = 2000;
 
 /** 대화상자가 떠 있는 동안 페이지에 닿는 명령은 답이 오지 않는다 — 60초를 기다리는 대신 이 안내로 곧바로 끝낸다. */
-function dialogBlocked(dialog: BrowserPageDialog): string {
-  return `A JavaScript ${dialog.type} dialog is open on this tab: ${JSON.stringify(dialog.message)}. The page is paused until it is answered, so this call did not complete; nothing was retried, so do not repeat its input. Answer it with the computer action accept_dialog or dismiss_dialog on this tab, then read the page again.`;
+export function dialogBlocked(dialog: BrowserPageDialog): string {
+  return `A JavaScript ${dialog.type} dialog (dialog_id ${JSON.stringify(dialog.id)}) is open on this tab: ${JSON.stringify(dialog.message)}. The page is paused until it is answered, so this call did not complete; nothing was retried, so do not repeat its input. Answer it with the computer action accept_dialog or dismiss_dialog and this dialog_id on this tab, then read the page again.`;
+}
+
+/** 답이 가리킨 대화상자가 이미 답을 받았거나 닫혔다 — 다음 대화상자에 잘못 적용하지 않고 아무것도 보내지 않는다. */
+function dialogAnswered(dialogId: string): string {
+  return `The dialog ${JSON.stringify(dialogId)} was already answered or has closed, so nothing was sent. Check tabs_context for the dialog that is open now and answer it only if you still mean to.`;
 }
 
 export interface DesktopEngineDeps {
@@ -93,6 +98,7 @@ export class DesktopEngine implements CdpClient {
     for (const listener of this.surfaceListeners) listener();
   }
   private nextCommandId = 1;
+  private dialogSerial = 0;
   private generation = 0;
   /** 이 프로세스의 수명 표 — generation·명령 id 가 0 부터 다시 시작했음을 셸이 알아보게 한다. */
   private readonly epoch = crypto.randomUUID();
@@ -152,7 +158,7 @@ export class DesktopEngine implements CdpClient {
     const views: DesktopBrowserView[] = [...this.views.values()].map((view) => {
       // `visible` 은 표면 presentation — 표시 탭이고 그 브라우저의 표면이 열려 있을 때. 자리와 크기는 셸이 정한다.
       const visible = view.active && this.surface?.browserId === view.objectiveId;
-      return { id: view.id, objectiveId: view.objectiveId, partition: view.partition, profile: view.profile, visible, url: view.url };
+      return { id: view.id, objectiveId: view.objectiveId, partition: view.partition, profile: view.profile, visible, url: view.url, pageDialogs: true };
     });
     return {
       generation: this.generation,
@@ -230,10 +236,12 @@ export class DesktopEngine implements CdpClient {
       if (!view) continue;
       // beforeunload 는 셸이 곧바로 결정하고 prompt 는 거절하므로, 답을 기다리는 대화상자는 alert·confirm 뿐이다.
       if (event.method === "Page.javascriptDialogOpening" && (event.params.type === "alert" || event.params.type === "confirm")) {
-        view.dialog = { type: event.params.type, message: String(event.params.message ?? "").slice(0, DIALOG_MESSAGE_MAX) };
+        const message = String(event.params.message ?? "");
+        view.dialog = { id: `dialog-${++this.dialogSerial}`, type: event.params.type, message: message.length > DIALOG_MESSAGE_MAX ? `${message.slice(0, DIALOG_MESSAGE_MAX - 1)}…` : message };
+        view.answering = null;
         this.failPendingFor(view.id, dialogBlocked(view.dialog));
         this.publish();
-      } else if (event.method === "Page.javascriptDialogClosed" || (event.method === "Page.frameNavigated" && !(event.params.frame as { parentId?: unknown } | undefined)?.parentId)) view.dialog = null;
+      } else if (event.method === "Page.javascriptDialogClosed" || (event.method === "Page.frameNavigated" && !(event.params.frame as { parentId?: unknown } | undefined)?.parentId)) { view.dialog = null; view.answering = null; }
       this.emit({ method: event.method, params: event.params, sessionId: event.viewId });
     }
     if ((body.attached?.length ?? 0) + (body.detached?.length ?? 0) > 0 || (body.results?.length ?? 0) > 0) this.publish();
@@ -286,8 +294,17 @@ export class DesktopEngine implements CdpClient {
     // 셸 자신에게 묻는 명령 — 뷰가 없어도 창을 든 기계가 답한다(이 기계의 Chrome 프로필·쿠키 가져오기).
     if (method.startsWith("Fleet.")) return this.dispatch<T>(DESKTOP_BROWSER_SHELL_VIEW, method, params);
     if (!sessionId || !this.views.has(sessionId)) throw new CdpError(method, -32601, "desktop_engine_unsupported");
-    const dialog = this.views.get(sessionId)!.dialog;
-    if (dialog && method !== "Page.handleJavaScriptDialog") throw new CdpError(method, -32000, dialogBlocked(dialog));
+    const view = this.views.get(sessionId)!;
+    if (method === "Page.handleJavaScriptDialog") {
+      // 답은 지금 열린 그 대화상자에 한 번만 간다 — 먼저 간 답으로 닫힌 뒤 열린 다음 대화상자를 늦은 답이 건드리지 않게.
+      const { dialogId, ...answer } = params;
+      if (!view.dialog || view.dialog.id !== dialogId || view.answering === view.dialog.id) throw new CdpError(method, -32000, dialogAnswered(String(dialogId ?? "")));
+      const answering = view.dialog.id;
+      view.answering = answering;
+      // 답이 실패하면 그 대화상자에 다시 답할 수 있게 표시를 푼다.
+      return this.dispatch<T>(sessionId, method, answer).catch((error: unknown) => { if (view.answering === answering) view.answering = null; throw error; });
+    }
+    if (view.dialog) throw new CdpError(method, -32000, dialogBlocked(view.dialog));
     // 뷰 세션에는 브라우저 컨텍스트가 없다 — 컨텍스트를 짚는 인자는 뷰 자신을 뜻하므로 뗀다.
     const { browserContextId: _context, ...rest } = params;
     return this.dispatch<T>(sessionId, method, rest);

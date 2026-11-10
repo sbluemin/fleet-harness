@@ -531,7 +531,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     // 페이지가 새 창을 열려 하면 같은 뷰에서 연다 — 이 뷰 밖으로 나가는 창은 없다.
     contents.setWindowOpenHandler(({ url }) => { void contents.loadURL(url).catch(() => undefined); return { action: "deny" }; });
     attachShortcutSource(contents);
-    const releaseDialog = holdPageDialogs(contents);
+    // 대화상자에 답할 줄 아는 콘솔일 때만 OS 상자를 거둔다 — 옛 콘솔에서는 기본 동작이 유일한 답할 길이다.
+    const releaseDialog = spec.pageDialogs === true ? holdPageDialogs(contents) : () => undefined;
     contents.on("render-process-gone", () => drop(spec.id, true));
     contents.on("destroyed", () => drop(spec.id, true));
     try {

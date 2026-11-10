@@ -228,7 +228,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   };
   /** 크롬의 페이지 대화상자처럼 페이지 위에 띄운다 — 답은 Console 로 가고, 대화상자가 닫히면 다음 상태가 이 카드를 거둔다. */
   const buildPageDialog = (state: ChromeUiState, t: T, asked: NonNullable<ReturnType<typeof pageDialogOf>>): HTMLElement => {
-    const answer = (accept: boolean): void => post("bar", "page-dialog", { id: asked.tab.id, accept });
+    const answer = (accept: boolean): void => post("bar", "page-dialog", { id: asked.tab.id, dialogId: asked.dialog.id, accept });
     const ok = h("button", { class: "button primary", type: "button", text: t("jsDialog.ok"), disabled: state.busy, on: { click: () => answer(true) } });
     const actions = asked.dialog.type === "confirm" ? [h("button", { class: "button", type: "button", text: t("jsDialog.cancel"), disabled: state.busy, on: { click: () => answer(false) } }), ok] : [ok];
     return dialog(t, t("jsDialog.title", { host: hostOf(asked.tab.url) }), null, [h("p", { class: "page-dialog-message", text: asked.dialog.message })], actions, "page-dialog");

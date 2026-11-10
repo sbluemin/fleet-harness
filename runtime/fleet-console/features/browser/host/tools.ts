@@ -184,7 +184,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
     return text({ ok: result.ok, error: result.error, tab: { tabId: result.tab.id, url: result.tab.url, title: result.tab.title }, ...tabsContext(objectiveId, caller) }, !result.ok);
   });
 
-  const computer = spec("computer", "Use a mouse and keyboard on a Fleet Browser tab and take screenshots. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom, accept_dialog, dismiss_dialog. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). accept_dialog/dismiss_dialog answer the page's open alert or confirm (OK/Cancel); while one is open, other page calls are refused and tabs_context shows it. No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
+  const computer = spec("computer", "Use a mouse and keyboard on a Fleet Browser tab and take screenshots. Coordinates are CSS pixels relative to the viewport origin. For zoom crops, add the reported capture offset to image points. Actions: screenshot, left_click, right_click, double_click, triple_click, type, key, scroll, scroll_to, left_click_drag, hover, wait, zoom, accept_dialog, dismiss_dialog. Prefer element refs from read_page/find for clicks and scroll_to before coordinate clicks. Click actions accept ref or coordinate; ref scrolls into view, hit-tests, then dispatches a real pointer. Replies report input dispatched (not page success) plus hit diagnostics. type inserts text (Unicode ok; newlines press Enter). key uses xdotool names (Return, Tab, Escape, cmd+a). accept_dialog/dismiss_dialog answer the page's open alert or confirm (OK/Cancel) and require its dialog_id; while one is open, other page calls are refused and tabs_context shows it. No automatic screenshot. Use act for ordinary controls, capture for images, or the observe option (snapshot/screenshot) for optional post-action observation.", {
     type: "object", properties: {
       observe: { type: "string", enum: ["none", "snapshot", "screenshot"], description: "Optional post-action observation; default none." },
       action: { type: "string", enum: ["screenshot", "left_click", "right_click", "double_click", "triple_click", "type", "key", "scroll", "scroll_to", "left_click_drag", "hover", "wait", "zoom", "accept_dialog", "dismiss_dialog"] },
@@ -197,6 +197,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       ref: { type: "string", description: "Element ref (ref_N) for scroll_to or click actions." },
       duration: { type: "number", description: "Seconds for wait (max 10)." },
       region: { type: "array", items: { type: "number" }, minItems: 4, maxItems: 4, description: "[x, y, width, height] for zoom." },
+      dialog_id: { type: "string", description: "Required for accept_dialog/dismiss_dialog: the open dialog's id from tabs_context or the refusal message." },
       tabId: TAB_ID,
     }, required: ["action"], additionalProperties: false,
   }, (args) => args.action === "screenshot" || args.action === "zoom" || args.action === "wait" ? "read" : "write", async (args, objectiveId, signal, caller) => {
@@ -235,7 +236,9 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
       case "scroll_to": { if (typeof args.ref !== "string") throw new BrowserPolicyError("browser_ref_required", "ref is required for scroll_to."); await service.scrollToRef(objectiveId, args.ref, tabId); break; }
       case "accept_dialog": case "dismiss_dialog": {
         const accept = args.action === "accept_dialog";
-        const dialog = await service.answerDialog(objectiveId, accept, tabId);
+        // 필수로 둔다 — 선택이면 id 없는 답이 늦은 답을 막는 대조를 건너뛴다.
+        if (typeof args.dialog_id !== "string" || !args.dialog_id) throw new Error("dialog_id is required for accept_dialog and dismiss_dialog. Read it from tabs_context or the refusal message.");
+        const dialog = await service.answerDialog(objectiveId, accept, args.dialog_id, tabId);
         dispatchSummary = `${args.action}: answered the page's ${dialog?.type ?? "JavaScript"} dialog${dialog ? ` ${JSON.stringify(dialog.message)}` : ""} with ${accept ? "OK" : "Cancel"}. Confirm with the screenshot or page state.`;
         break;
       }

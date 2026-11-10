@@ -5,7 +5,7 @@ import { CdpError, type CdpClient, type CdpEvent } from "./cdp.js";
 import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./history.js";
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
-import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
+import { dialogBlocked, type BrowserPageDialog, type DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type DesktopBrowserChrome, type DesktopBrowserChromeSpace } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
@@ -1025,15 +1025,16 @@ export class BrowserService {
   }
 
   /**
-   * 페이지의 alert·confirm 에 답한다 — 사람(크롬 표시줄)과 에이전트(`computer`)가 같은 길을 쓴다. 떠 있는 대화상자가 없으면
-   * CDP 의 거절이 그대로 올라간다. 답하기 전의 대화상자를 돌려준다.
+   * 페이지의 alert·confirm 에 답한다 — 사람(크롬 표시줄)과 에이전트(`computer`)가 같은 길을 쓴다. 답은 그 대화상자의 id 를
+   * 함께 보내며, 이미 답을 받았거나 닫힌 대화상자면 거절된다. 답하기 전의 대화상자를 돌려준다.
    */
-  async answerDialog(objectiveId: string, accept: boolean, tabId?: string | null): Promise<BrowserPageDialog | null> {
+  async answerDialog(objectiveId: string, accept: boolean, dialogId: string, tabId?: string | null): Promise<BrowserPageDialog | null> {
     const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const dialog = this.deps.desktop.viewDialog(tab.sessionId);
-    await client.send("Page.handleJavaScriptDialog", { accept }, tab.sessionId);
+    // 엔진이 dialogId 를 지금 열린 대화상자와 대조하고, 다르면 보내지 않고 거절한다.
+    await client.send("Page.handleJavaScriptDialog", { accept, dialogId }, tab.sessionId);
     return dialog;
   }
 
@@ -1161,13 +1162,17 @@ export class BrowserService {
     const client = await this.engineClient();
     tab.loading = true;
     this.emitState(op);
+    // 로드 중에 뜬 alert·confirm 은 load 를 멈춘다 — 그때는 기다리지 않고 대화상자 안내로 끝낸다.
     const loaded = new Promise<void>((resolve) => {
-      const off = client.on((event) => { if (event.sessionId === tab.sessionId && (event.method === "Page.loadEventFired" || event.method === "Page.frameStoppedLoading")) { off(); resolve(); } });
-      setTimeout(() => { off(); resolve(); }, 12_000);
+      const finish = (): void => { clearTimeout(timer); off(); resolve(); };
+      const off = client.on((event) => { if (event.sessionId === tab.sessionId && (event.method === "Page.loadEventFired" || event.method === "Page.frameStoppedLoading" || (event.method === "Page.javascriptDialogOpening" && this.deps.desktop.viewDialog(tab.sessionId)))) finish(); });
+      const timer = setTimeout(finish, 12_000);
     });
     const result = await client.send<{ errorText?: string }>("Page.navigate", { url: href }, tab.sessionId);
     if (result.errorText) { tab.loading = false; this.emitState(op); return { ok: false, error: result.errorText }; }
     await loaded;
+    const dialog = this.deps.desktop.viewDialog(tab.sessionId);
+    if (dialog) { tab.loading = false; this.emitState(op); return { ok: false, error: dialogBlocked(dialog) }; }
     await this.refreshTab(client, tab);
     tab.loading = false;
     this.emitState(op);
