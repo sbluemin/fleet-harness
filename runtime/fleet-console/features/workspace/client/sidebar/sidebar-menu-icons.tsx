@@ -55,3 +55,14 @@ export function CommodoreIcon() {
     <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5 9.4 6.6 13.5 8 9.4 9.4 8 13.5 6.6 9.4 2.5 8 6.6 6.6Z" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" /></svg>
   );
 }
+
+/** 콘솔 관리 — 머리글의 슬라이더와 같은 조형. 메뉴 칸은 다른 아이콘과 같은 16px 상자다. */
+export function ConsoleManageIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.2 4.8h5.2M11.2 4.8h2.6M2.2 11.2h2.6M8.6 11.2h5.2" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+      <circle cx="9.6" cy="4.8" r="1.6" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <circle cx="6.4" cy="11.2" r="1.6" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
