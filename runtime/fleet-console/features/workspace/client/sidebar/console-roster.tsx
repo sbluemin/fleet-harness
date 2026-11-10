@@ -56,7 +56,8 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
         </li>;
       })}
       {roster && roster.more > 0 && rows.length > 0 ? <li className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(roster.more) })}</li> : null}
-      {note || rows.length === 0 ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}{blocked ? null : enter}</li> : null}
+      {/* 말할 것도 갈 길도 없으면 빈 상자를 두지 않는다 — 꺼져 있는 콘솔은 머리글이 이미 말한다. */}
+      {note || (rows.length === 0 && !blocked) ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}{blocked ? null : enter}</li> : null}
     </ol>}
   </li>;
 }

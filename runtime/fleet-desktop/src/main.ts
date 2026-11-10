@@ -23,7 +23,9 @@ import { createLaunchController, type RuntimeEntryState } from "./launch-control
 import { createDesktopNotifier } from "./desktop-notices.js";
 import { createHostPickerView } from "./host-picker-view.js";
 import { createConsoleSectionController } from "./console-section-controller.js";
-import { CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
+import { WslConsoleManager } from "./wsl-console-manager.js";
+import { createWslHost } from "./wsl-host.js";
+import { CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_WSL_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
 import { confirmRemoteIdentity, releaseFetchBody } from "./remote-access.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
@@ -36,7 +38,7 @@ import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
 import { createConsoleInstallerDependencies, installConsole, reconcileConsoleInstallations, repairConsoleNativeExecutables } from "./runtime/console-installer.js";
 import { bootstrapNodeRuntime, isManagedNodeRuntimeValid, reconcileNodeRuntime, satisfiesNodeEngine, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
-import { createReleaseChecker } from "./runtime/release-check.js";
+import { createReleaseChecker, downloadVerifiedConsoleTarball } from "./runtime/release-check.js";
 import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
@@ -64,7 +66,7 @@ const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
-const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY];
+const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, ...(process.platform === "win32" ? [CONSOLE_WSL_CAPABILITY] : [])];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -590,6 +592,7 @@ async function boot(): Promise<void> {
     // 지문 대조 뒤에 브리지가 부른다. 소켓 둘이면 조인 뒤 확인과 문서 적재가 새 연결을 덜 연다.
     preconnect: (origin) => { consoleSession.preconnect({ url: origin, numSockets: 2 }); },
     localOrigin: () => localConsoleOrigin,
+    isManagedLocal: async (origin) => wslConsoles !== null && (await wslConsoles.origins()).includes(origin),
     deviceName: os.hostname().replace(/\.local$/iu, ""),
     loadConsole: (url) => {
       const generation = ++handoffGeneration;
@@ -633,6 +636,38 @@ async function boot(): Promise<void> {
     attachBridge: (contents) => { bridge.attachPicker(contents); consoleSection.observeHomeOverlay(contents); },
     log: (message) => logger.error(message),
   });
+  /**
+   * WSL Consoles this Desktop manages (Windows only). A packaged Desktop uses the Linux user's own Fleet directory and
+   * standard slot; a development run keeps runtime and data in a directory of its own, so it never touches that user's
+   * Fleet data, and takes its Console package from FLEET_DESKTOP_WSL_CONSOLE_TARBALL.
+   */
+  const wslHost = createWslHost();
+  const wslCache = path.join(app.getPath("userData"), "wsl-runtime-cache");
+  const wslConsoles = wslHost === null ? null : new WslConsoleManager({
+    host: wslHost,
+    ownerId: environment.ownerId,
+    registryFile: path.join(app.getPath("userData"), "wsl-consoles.json"),
+    cacheDirectory: wslCache,
+    fleetDirectory: isPackaged ? ".fleet" : `.fleet-dev/${environment.ownerId.slice(0, 8)}`,
+    isolatedData: !isPackaged,
+    desktopVersion: app.getVersion(),
+    development: !isPackaged,
+    packageName: PACKAGE_NAME,
+    nodeManifest: () => JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest,
+    consoleTarball: async () => {
+      if (!isPackaged) {
+        const local = process.env.FLEET_DESKTOP_WSL_CONSOLE_TARBALL;
+        if (!local || !path.isAbsolute(local)) throw new Error("wsl_console_tarball_unset");
+        return local;
+      }
+      const found = await releases.check("");
+      if (!found.release) throw new Error("console_release_unavailable");
+      return downloadVerifiedConsoleTarball(found.release, { directory: wslCache });
+    },
+    ...(isPackaged ? {} : { extraEnvironment: readDevelopmentWslEnvironment(process.env.FLEET_DESKTOP_WSL_CONSOLE_ENV) }),
+    log: logger,
+    onChange: () => { void consoleSection.refresh(); },
+  });
   const consoleSection = createConsoleSectionController({
     home: () => localConsoleOrigin,
     fetch: (url, init) => fetch(url, init),
@@ -673,6 +708,34 @@ async function boot(): Promise<void> {
         buttons: korean ? ["취소", "시작"] : ["Cancel", "Start"], defaultId: 1, cancelId: 0, noLink: true,
       })).response === 1;
     },
+    ...(wslConsoles === null ? {} : {
+      managedConsoles: {
+        list: async () => (await wslConsoles.list()).map((view) => ({
+          key: view.key, label: view.distro, origin: view.origin, version: view.version, path: "wsl" as const,
+          state: { management: view.management, lifecycle: view.lifecycle, identityProven: view.identityProven },
+          detail: { ...(view.installing ? { installing: true as const } : {}), ...(view.failure ? { failure: view.failure } : {}), ...(view.takeover ? { takeover: true as const } : {}) },
+        })),
+        run: (key, action) => action === "start" ? wslConsoles.start(key) : action === "restart" ? wslConsoles.restart(key) : wslConsoles.stop(key).then(() => null),
+        takeOver: (key) => wslConsoles.takeOver(key),
+        remove: (key) => wslConsoles.remove(key),
+        wsl: {
+          distros: () => wslConsoles.distros(),
+          inspect: async (distro) => { const seen = await wslConsoles.inspect(distro); return { distro: seen.distro, user: seen.user, runtime: seen.runtime, missingTools: seen.missingTools, existing: seen.existing, ownFleet: seen.ownFleet }; },
+          add: async (distro) => { wslConsoles.add(distro); },
+        },
+      },
+    }),
+    confirmUnmanage: async (label) => {
+      if (!window || window.isDestroyed()) return false;
+      const korean = entryLanguage === "ko";
+      return (await dialog.showMessageBox(window.base, {
+        type: "question",
+        title: korean ? "관리 해제" : "Stop managing",
+        message: korean ? `“${label}” 콘솔을 관리 대상에서 뺄까요?` : `Stop managing the “${label}” console?`,
+        detail: korean ? "등록만 지워요. 콘솔 데이터, 설치한 런타임, 배포판은 그대로 남아요." : "Only the registration is removed. The console's data, the installed runtime, and the distribution stay.",
+        buttons: korean ? ["취소", "관리 해제"] : ["Cancel", "Stop managing"], defaultId: 0, cancelId: 0, noLink: true,
+      })).response === 1;
+    },
     confirmForget: async (label) => {
       if (!window || window.isDestroyed()) return false;
       const korean = entryLanguage === "ko";
@@ -687,6 +750,7 @@ async function boot(): Promise<void> {
     report: (error) => bridge.report(error),
   });
   homeConsoleExited = () => { void consoleSection.refresh(); };
+  wslConsoles?.watch(15_000);
   /** Console을 보여 주고 있는 창만 인사한다 — 진입 화면에서 떠날 때는 이미 그 화면이 떠 있다. */
   let consoleShown = false;
   const createEntryView = (): WebContentsView => {
@@ -849,7 +913,12 @@ async function boot(): Promise<void> {
       startOrAdopt: (report) => supervisor.startOrAdopt(report),
     });
     return launch.start() as Promise<DesktopShellWindow>;
-  }, () => farewell.run(async () => { bridge.dispose(); await supervisor.stop(); }));
+  }, () => farewell.run(async () => {
+    bridge.dispose();
+    wslConsoles?.unwatch();
+    // Quit ends the WSL Consoles this Desktop manages together with its own, each through its stop request.
+    await Promise.all([supervisor.stop(), wslConsoles?.stopAll()]);
+  }));
   const consoleRelaunch = isPackaged
     ? createConsoleRelaunchController({
       currentVersion: () => readInstalledVersion(runtimePaths.latest) ?? "",
@@ -963,6 +1032,16 @@ async function resolvePackagedRuntime(runtimePaths: ReturnType<typeof resolveRun
     if (!readInstalledVersion(runtimePaths.latest)) throw new Error("console_runtime_unavailable", { cause: error });
     throw error;
   }
+}
+
+/** Development isolation only: extra variables for a managed WSL Console, as a JSON object of plain strings. */
+function readDevelopmentWslEnvironment(raw: string | undefined): Record<string, string> {
+  if (!raw) return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return Object.fromEntries(Object.entries(parsed).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
+  } catch { return {}; }
 }
 
 function createInstallerFileSystem(): Parameters<typeof reconcileConsoleInstallations>[1] {

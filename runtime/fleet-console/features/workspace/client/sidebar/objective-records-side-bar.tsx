@@ -166,7 +166,7 @@ function ActiveConsoleSection({ entry, folded, count, sections, compact, childre
   readonly children: ReactNode;
 }) {
   if (!entry) return <>{children}</>;
-  if (sections.entries.length === 1) {
+  if (sections.ownHead) {
     return <li className="side-console is-active" data-console-id={entry.id}>
       <ConsoleSectionHead entry={entry} folded={folded} count={count} sections={sections} compact={compact} />
       {folded ? null : <ol className="side-console-own" aria-label={entry.label}>{children}</ol>}
@@ -497,7 +497,7 @@ export function ObjectiveRecordsSideBar({
 
   // 콘솔이 둘 이상이면 지금 콘솔의 목록이 맨 위이고, 다른 콘솔은 셸이 준 순서(활성만 뺀 순서)로 그 아래에 선다.
   // 지금 콘솔은 머리글이 없으므로 접지 않는다. 콘솔이 하나뿐이면 꺼짐·시작 중일 때만 예전 머리글이 서고, 그때만 접힌다.
-  const soleConsole = consoles.sectioned && consoles.entries.length === 1;
+  const soleConsole = consoles.sectioned && consoles.ownHead;
   const ownConsoleFolded = soleConsole && !compact && consoles.active !== null && consoles.folded(consoles.active.id);
   const rosterSection = (entry: (typeof consoles.entries)[number]) => <ConsoleRosterSection key={entry.id} entry={entry} sections={consoles} list={() => listRef.current} compact={compact} />;
   const otherConsoles = consoles.sectioned ? consoles.entries.filter((entry) => !entry.active).map(rosterSection) : null;

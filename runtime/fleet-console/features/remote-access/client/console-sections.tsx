@@ -36,6 +36,11 @@ export interface ConsoleSections {
   readonly sectioned: boolean;
   readonly entries: readonly ConsoleSectionEntry[];
   readonly active: ConsoleSectionEntry | null;
+  /**
+   * 지금 콘솔에 머리글을 세우는가. 콘솔이 하나뿐일 때, 그리고 여럿이어도 지금 콘솔이 꺼져 있거나 시작·종료 중일 때다 —
+   * 이 Desktop이 따로 관리하는 콘솔이 등록돼 있으면 콘솔은 늘 여럿이고, 그 사실과 시작 단추가 설 자리는 머리글뿐이다.
+   */
+  readonly ownHead: boolean;
   /** 셸이 명부를 건네는가. 옛 셸이면 머리글만 선다. */
   readonly rosterCapable: boolean;
   readonly roster: (id: string) => ConsoleRosterEntry | null;
@@ -88,11 +93,13 @@ export function useConsoleSections(options?: { readonly refresh?: boolean }): Co
     setLocalFolds((current) => ({ ...current, [id]: folded }));
     if (rosterCapable) command({ fold: { id, folded } });
   }, [rosterCapable, command]);
+  const active = entries.find((entry) => entry.active) ?? null;
   return {
     capable, rosterCapable, entries, command, arrived, fold, arrival,
+    ownHead: active !== null && (entries.length === 1 || consoleLifecycleKey(active) !== null),
     // 콘솔이 하나뿐이어도 관리 대상이 꺼져 있거나 시작·종료 중이면 머리글을 세운다 — 그 사실과 시작 단추가 설 자리가 머리글뿐이다.
     sectioned: capable && (entries.length > 1 || entries.some((entry) => consoleLifecycleKey(entry) !== null)),
-    active: entries.find((entry) => entry.active) ?? null,
+    active,
     roster: (id) => byId.get(id) ?? null,
     folded: (id) => localFolds[id] ?? shellFolds.has(id),
   };
@@ -122,9 +129,9 @@ export function consoleSwitchBlocked(entry: ConsoleSectionEntry): boolean {
   return entry.active || entry.status === "unreachable" || entry.status === "untrusted" || entry.status === "stopping";
 }
 
-/** 관리 카드가 열리는 콘솔. 원격 경로와 닿지 않는 콘솔은 빠진다. 좁은 열인지는 부르는 쪽이 본다. */
+/** 관리 카드가 열리는 콘솔. 원격 경로와 닿지 않는 콘솔은 빠진다 — 이 Desktop이 따로 관리하는 콘솔은 꺼져 있어도 남는다. 좁은 열인지는 부르는 쪽이 본다. */
 export function consoleSectionManageable(entry: ConsoleSectionEntry): boolean {
-  return entry.management !== undefined && entry.path !== "remote" && entry.status !== "unreachable";
+  return entry.management !== undefined && entry.path !== "remote" && (entry.managed !== undefined || entry.status !== "unreachable");
 }
 
 /**
@@ -145,7 +152,9 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const status = lifecycle ? t(lifecycle) : entry.status === "unreachable" ? t("chrome.hosts.unreachable") : entry.status === "untrusted" ? t("chrome.hosts.untrusted")
     : entry.status === "stopping" ? t("chrome.hosts.stopping") : entry.status === "slow" ? t("chrome.hosts.slow") : null;
   // 관리 화면은 집 Console이 그린다. 이 Desktop이 관계를 실어 보낸 이 컴퓨터의 콘솔에만, 그 콘솔이 답하는 동안에만 문을 둔다.
-  const manageable = !compact && consoleSectionManageable(entry);
+  // 관리 카드는 집 Console이 그린다. 집이 답하지 않으면 그릴 문서가 없다.
+  const homeDown = sections.entries.some((item) => item.home && item.status === "unreachable");
+  const manageable = !compact && consoleSectionManageable(entry) && !homeDown;
   const startable = !compact && entry.actions?.includes("start") === true;
   const switchable = compact && !consoleSwitchBlocked(entry);
   const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
@@ -191,6 +200,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
     <button type="button" className="side-console-toggle" aria-expanded={compact ? undefined : !folded} title={title} onClick={press}>
       {glyph}
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
+      {entry.path === "wsl" ? <span className="side-console-tag">{t("chrome.consoles.wslTag")}</span> : null}
       {entry.home ? <span className="side-console-home" title={t("chrome.consoles.thisComputer")} aria-label={t("chrome.consoles.thisComputer")} role="img"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg></span> : null}
       {entry.active && !row ? <span className="side-console-here">{t("chrome.consoles.here")}</span> : null}
       {status ? <span className="side-console-status">{status}</span> : null}
@@ -198,7 +208,8 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
       <ChevronGlyph direction="down" className="side-console-chevron" />
     </button>
     {startable ? <button type="button" className="side-console-start" onClick={() => sections.command({ lifecycle: { id: entry.id, action: "start" } })}>{t("chrome.consoles.start")}</button> : null}
-    {manageable ? <button type="button" className="side-console-edit" aria-label={`${entry.label}: ${t("chrome.consoles.manage")}`} title={t("chrome.consoles.manage")}
+    {/* 시작 단추가 있는 머리글에서는 관리 단추를 그 옆에 늘 보이게 둔다 — 가리킬 때만 뜨는 자리는 시작 단추 위다. */}
+    {manageable ? <button type="button" className={`side-console-edit${startable ? " is-inline" : ""}`} aria-label={`${entry.label}: ${t("chrome.consoles.manage")}`} title={t("chrome.consoles.manage")}
       onClick={() => sections.command({ manage: entry.id })}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" /></svg>
     </button> : null}

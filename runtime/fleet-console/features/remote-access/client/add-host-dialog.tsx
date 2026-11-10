@@ -1,7 +1,11 @@
 import { useEffect, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
+import { CONSOLE_WSL_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
+
+import { useDesktopHomeOrigin } from "../../../core/client/src/integration/desktop-shell.js";
 import { useT, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
+import { AddWslConsole } from "./add-wsl-console.js";
 import { addRemoteHost } from "./remote-hosts.js";
 
 const FOCUSABLE_SELECTOR = 'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
@@ -22,6 +26,9 @@ export function AddHostDialog({ onClose, openerRef }: {
   readonly openerRef?: RefObject<HTMLElement | null>;
 }) {
   const t = useT();
+  // WSL 배포판은 Windows의 Desktop이 집 Console의 덮개에서 이 카드를 열었을 때만 고를 수 있다 — 그 밖에서는 물을 셸이 없다.
+  const shell = useDesktopHomeOrigin();
+  const wsl = shell.capabilities.includes(CONSOLE_WSL_CAPABILITY) && new URLSearchParams(location.search).get("desktop-surface") === "host-picker";
   const [link, setLink] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -149,6 +156,7 @@ export function AddHostDialog({ onClose, openerRef }: {
 
         {error ? <p className="add-host-error" role="alert">{t(remoteHostErrorKey(error))}</p> : null}
         <p className="add-host-note">{t("settings.remote.hosts.pinned")}</p>
+        {wsl ? <AddWslConsole onAdded={onClose} /> : null}
       </div>
     </div>,
     document.body,

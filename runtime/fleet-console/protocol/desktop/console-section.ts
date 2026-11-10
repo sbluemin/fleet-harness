@@ -34,7 +34,22 @@ export interface ConsoleSectionEntry {
   readonly path?: ConsoleAccessPath;
   readonly lifecycle?: ConsoleManagedLifecycle | null;
   readonly actions?: readonly ConsoleLifecycleAction[];
+  /** More about a Console this Desktop manages besides its home one. Additive and display only, like the relations. */
+  readonly managed?: ConsoleManagedDetail;
 }
+/**
+ * `installing`: its runtime is being installed before the first start. `failure`: why the last action did not finish.
+ * `takeover`: a Console started from a terminal holds its slot and the person may hand it to this Desktop.
+ * `removable`: the registration may be dropped now (the Console is not running under this Desktop).
+ */
+export interface ConsoleManagedDetail {
+  readonly installing?: true;
+  readonly failure?: ConsoleManagedFailure;
+  readonly takeover?: true;
+  readonly removable?: true;
+}
+export type ConsoleManagedFailure = "build-tools" | "download" | "install" | "start" | "other-owner" | "stop";
+export const CONSOLE_MANAGED_FAILURES: readonly ConsoleManagedFailure[] = ["build-tools", "download", "install", "start", "other-owner", "stop"];
 export interface ConsoleSectionState {
   readonly v: 1;
   readonly expanded: boolean;
@@ -52,7 +67,44 @@ export type ConsoleSectionCommand = { readonly request: "state" }
   /** Opens the management surface for an entry. The surface is drawn by the home Console, never by the active document. */
   | { readonly manage: string }
   /** A lifecycle action on a managed entry. The shell honors it only from a document of the home Console. */
-  | { readonly lifecycle: { readonly id: string; readonly action: ConsoleLifecycleAction } };
+  | { readonly lifecycle: { readonly id: string; readonly action: ConsoleLifecycleAction } }
+  /** Hands a Console the person started from a terminal to this Desktop. Honored only from a document of the home Console. */
+  | { readonly takeover: string }
+  /** The WSL add flow, drawn by the home Console and honored only from its documents. `inspect` may start a stopped distribution. */
+  | { readonly wsl: { readonly list: true } | { readonly inspect: string } | { readonly add: string } };
+
+/**
+ * What the shell tells the home Console's add surface about WSL on this computer. Renderer-only and never sent to a
+ * document another Console serves: it names distributions and a Linux user. Listing starts no distribution.
+ */
+export const CONSOLE_WSL_EVENT = "fleet:console-wsl-state";
+/** The shell runs on Windows and answers the `wsl` commands. A page asks nothing of a shell without it. */
+export const CONSOLE_WSL_CAPABILITY = "console-wsl";
+export interface ConsoleWslDistro {
+  readonly name: string;
+  readonly running: boolean;
+  readonly version: 1 | 2 | null;
+  /** Already registered with this Desktop. */
+  readonly managed: boolean;
+}
+export interface ConsoleWslInspection {
+  readonly distro: string;
+  readonly user: string;
+  readonly runtime: "ready" | "missing";
+  readonly missingTools: readonly string[];
+  /** A Console already in that user's standard slot, by who manages it; `stale` is a lock an ended Console left. */
+  readonly existing: "none" | "stale" | ConsoleManagementRelation;
+  readonly ownFleet: boolean;
+}
+export interface ConsoleWslState {
+  readonly v: 1;
+  readonly distros: readonly ConsoleWslDistro[];
+  readonly inspection: ConsoleWslInspection | null;
+  readonly busy: "inspect" | null;
+  /** The distribution that was just registered; the surface closes on it. */
+  readonly added: string | null;
+  readonly error: "unusable" | "failed" | null;
+}
 
 /**
  * A Console's own roster summary: names, looks, order and one run word. No previews, theaters or objectives.
@@ -126,7 +178,7 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return null; }
   if (!object(value)) return null;
-  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle"].filter((key) => key in value);
+  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle", "takeover", "wsl"].filter((key) => key in value);
   if (keys.length !== 1) return null;
   if (value.request === "state") return { request: "state" };
   if (clean(value.switch, 128)) {
@@ -140,6 +192,13 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
   if (value.add === true) return { add: true };
   if (clean(value.forget, 128)) return { forget: value.forget };
   if (clean(value.manage, 128)) return { manage: value.manage };
+  if (clean(value.takeover, 128)) return { takeover: value.takeover };
+  if (object(value.wsl)) {
+    if (value.wsl.list === true) return { wsl: { list: true } };
+    if (clean(value.wsl.inspect, 64)) return { wsl: { inspect: value.wsl.inspect } };
+    if (clean(value.wsl.add, 64)) return { wsl: { add: value.wsl.add } };
+    return null;
+  }
   if (object(value.lifecycle) && clean(value.lifecycle.id, 128) && isConsoleLifecycleAction(value.lifecycle.action)) {
     return { lifecycle: { id: value.lifecycle.id, action: value.lifecycle.action } };
   }
@@ -149,6 +208,7 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
   return null;
 }
 const oneOf = (allowed: readonly string[], value: unknown): boolean => typeof value === "string" && allowed.includes(value);
+const flag = (value: unknown): boolean => value === undefined || value === true;
 export function isConsoleSectionState(value: unknown): value is ConsoleSectionState {
   if (!object(value) || value.v !== 1 || typeof value.expanded !== "boolean" || !Array.isArray(value.entries) || value.entries.length > 100) return false;
   try { if (new TextEncoder().encode(JSON.stringify(value)).length > CONSOLE_SECTION_MAX_FRAME) return false; } catch { return false; }
@@ -159,7 +219,18 @@ export function isConsoleSectionState(value: unknown): value is ConsoleSectionSt
     && (entry.management === undefined || oneOf(CONSOLE_MANAGEMENT_RELATIONS, entry.management))
     && (entry.path === undefined || oneOf(CONSOLE_ACCESS_PATHS, entry.path))
     && (entry.lifecycle === undefined || entry.lifecycle === null || oneOf(CONSOLE_MANAGED_LIFECYCLES, entry.lifecycle))
-    && (entry.actions === undefined || (Array.isArray(entry.actions) && entry.actions.length <= CONSOLE_LIFECYCLE_ACTIONS.length && entry.actions.every(isConsoleLifecycleAction))));
+    && (entry.actions === undefined || (Array.isArray(entry.actions) && entry.actions.length <= CONSOLE_LIFECYCLE_ACTIONS.length && entry.actions.every(isConsoleLifecycleAction)))
+    && (entry.managed === undefined || (object(entry.managed) && flag(entry.managed.installing) && flag(entry.managed.takeover) && flag(entry.managed.removable)
+      && (entry.managed.failure === undefined || oneOf(CONSOLE_MANAGED_FAILURES, entry.managed.failure)))));
+}
+export function isConsoleWslState(value: unknown): value is ConsoleWslState {
+  if (!object(value) || value.v !== 1 || !Array.isArray(value.distros) || value.distros.length > 64) return false;
+  if (!value.distros.every((distro: unknown) => object(distro) && clean(distro.name, 64) && typeof distro.running === "boolean" && [1, 2, null].includes(distro.version as null) && typeof distro.managed === "boolean")) return false;
+  if (![null, "inspect"].includes(value.busy as null) || ![null, "unusable", "failed"].includes(value.error as null) || !(value.added === null || clean(value.added, 64))) return false;
+  const seen = value.inspection;
+  return seen === null || (object(seen) && clean(seen.distro, 64) && clean(seen.user, 64) && (seen.runtime === "ready" || seen.runtime === "missing")
+    && Array.isArray(seen.missingTools) && seen.missingTools.length <= 8 && seen.missingTools.every((tool: unknown) => clean(tool, 32))
+    && (seen.existing === "none" || seen.existing === "stale" || oneOf(CONSOLE_MANAGEMENT_RELATIONS, seen.existing)) && typeof seen.ownFleet === "boolean");
 }
 /** Desktop intercepts this navigation before it leaves the active document. */
 export function consoleSectionCommandUrl(origin: string, command: ConsoleSectionCommand): string {

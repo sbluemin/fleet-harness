@@ -1,0 +1,19 @@
+/* 콘솔 추가 카드 안의 WSL 배포판 고르기 — 카드의 문법(.add-host-*)을 그대로 쓰고, 여기에는 목록과 계획만 둔다. */
+.add-wsl { display: grid; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--surface-rim); }
+.add-wsl-title { margin: 0; font-size: var(--t-md); font-weight: var(--weight-bold); color: var(--text-primary); }
+.add-wsl-list { display: grid; gap: var(--space-1); margin: 0; padding: 0; list-style: none; }
+.add-wsl-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); width: 100%; padding: var(--space-2) var(--space-3); border: 0; border-radius: 8px; background: var(--wash-hover); color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; }
+.add-wsl-row:hover:not(:disabled) { background: var(--control-rest-hover); }
+.add-wsl-row.is-picked { box-shadow: inset 0 0 0 1px var(--text-secondary); }
+.add-wsl-row:disabled { color: var(--text-tertiary); cursor: default; }
+.add-wsl-row:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.add-wsl-row b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+.add-wsl-row small { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); }
+.add-wsl-step { display: grid; gap: var(--space-3); justify-items: start; }
+.add-wsl-step .add-host-actions { justify-self: stretch; }
+/* 확인한 사실은 이름표와 값으로 나란히 둔다 — 관리 창의 세 줄과 같은 문법이다. */
+.add-wsl-plan { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; font-size: var(--t-md); line-height: 1.55; }
+.add-wsl-plan dt { color: var(--text-tertiary); }
+.add-wsl-plan dd { margin: 0; min-width: 0; color: var(--text-primary); }
+.add-wsl-plan small { display: block; color: var(--text-tertiary); font-size: var(--t-sm); }
+.add-wsl-plan small.add-wsl-warn { color: var(--warn-ink); }
