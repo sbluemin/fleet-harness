@@ -26,6 +26,7 @@ const MAX_FACTOR = 1.2 ** 3;
 
 function parseArgs(argv) {
   const factorIndex = argv.findIndex((value, i) => i >= 4 && value !== '--page' && argv[i - 1] !== '--page' && value !== '--dry-run');
+  if (factorIndex !== -1 && argv.includes('--dry-run')) throw new Error('--dry-run and <zoom-factor> are mutually exclusive');
   if (factorIndex === -1) return { ...parseResizeArgs(argv), factor: null };
   const rest = argv.filter((_, i) => i !== factorIndex);
   const base = parseResizeArgs([...rest, '--dry-run'].filter((v, i, a) => !(v === '--dry-run' && a.indexOf(v) !== i)));
