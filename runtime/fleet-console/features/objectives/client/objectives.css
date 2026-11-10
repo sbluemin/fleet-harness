@@ -112,6 +112,8 @@ button.objectives-row:disabled { opacity: 0.5; cursor: default; }
 .objectives-section-head-bar { display: flex; align-items: center; position: relative; }
 .objectives-section-head-bar > .objectives-row { flex: 1; min-width: 0; padding-right: 6px; }
 .objectives-section-head-actions { flex: none; display: inline-flex; align-items: center; padding-right: 14px; }
+/* is-tight 가 그래프를 14px 끌어올려 구분선 줄(22px)의 아래 14px를 덮는다. 그 겹침은 지휘관 레인 위 빈 띠를 걷으려는 배치라 그래프는 그대로 두고, 줄 끝의 스위치·크게 보기만 그래프 자식(z-index 3)보다 위에 둔다. 팝업(65)·확대(60)보다는 아래다. */
+.objectives-section-head-bar.is-line > .objectives-section-head-actions { position: relative; z-index: 4; }
 /* 접히는 섹션 머리(달성 기준·임무) — 행 전체가 버튼. 셰브런은 목록 구획 머리와 같은 뜻: 접힘 0°, 펼침 90°. 높이 모션은 없다. */
 button.objectives-row.objectives-acc-hd { color: var(--text-secondary); }
 .objectives-acc-hd .objectives-section-chev { margin-left: -6px; }
