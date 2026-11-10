@@ -57,7 +57,8 @@ export const DEFAULT_ROSTER_SEED_MODEL_IDS: readonly string[] = ["claude--fable-
  *   영속한다. 같은 가족의 두 좌표는 한 행으로 합친다({@link normalizeAiGatewaySettings}). 끈 Claude·빈 로스터는 되살리지 않는다.
  * - 4: 켠 목록이 곧 위임 후보가 된다. `hostOnly: true` 항목은 켠 목록에서 빼고, 한 계열의 변형은 컨텍스트 창이 가장 큰
  *   것 하나만 남기며(같으면 저장 순서상 먼저), 강도는 low·medium·high를 합치고 켜 둔 xhigh·max만 유지한다.
- * - 5: high를 선택 항목으로 옮긴다. 구 저장값은 명시 목록에서도 high를 켠 채 읽고, 표식을 영속한 뒤에는 사용자가 끈 high를 유지한다.
+ * - 5: high를 선택 항목으로 옮기고 독립 강도 의미 표식을 영속한다. 구 목록은 high를 켠 채 읽되, CLI·HTTP가 새로 쓴 선택은
+ *   로스터 이행 전이라도 high 끔을 유지한다.
  */
 export const ROSTER_SEED_VERSION = 5;
 
@@ -82,6 +83,8 @@ export interface AiGatewayStoredSettings {
    * 마지막으로 끝난 모델 로스터 이행 판({@link ROSTER_SEED_VERSION}). 부재는 이행 전이다. 이행은 이 표식으로 한 번만 돈다.
    */
   readonly rosterSeedVersion?: number;
+  /** high가 선택 항목인 저장 의미. 로스터 이행과 별개로 CLI·HTTP의 새 선택을 구 목록과 구분한다. */
+  readonly effortSelectionVersion?: 1;
   /**
    * 부재는 env(`FLEET_GATEWAY_WIRE_LOG`) 폴백, true/false는 호스트가 강제하는 On/Off다.
    * **false를 정규형에서 지우면 안 된다** — env를 켜 둔 설치에서
@@ -145,9 +148,12 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     && value.rosterSeedVersion > 0
     ? value.rosterSeedVersion
     : 0;
+  const effortSelectionVersion = value.effortSelectionVersion === 1 ? 1 : undefined;
+  // 독립 표식 도입 전에 쓰인 5판의 high 끔도 보존한다.
+  const selectableHigh = effortSelectionVersion === 1 || rosterSeedVersion >= 5;
   const models = Array.isArray(value.models)
     ? canonicalizeStoredModels(value.models.filter((entry): entry is LegacyStoredModel =>
-      isRecord(entry) && typeof entry.id === "string" && entry.id.length > 0), rosterSeedVersion)
+      isRecord(entry) && typeof entry.id === "string" && entry.id.length > 0), rosterSeedVersion, selectableHigh)
     : [];
   // 레거시 defaultModel 키는 조용히 버린다 — 저장하지도, 보존하지도 않는다.
   const providerPriority = sanitizeProviderPriority(value.providerPriority);
@@ -161,6 +167,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     // 기본 로스터 이행(seedDefaultModels)의 대상이 아니다.
     ...(Array.isArray(value.models) ? { models } : {}),
     ...(rosterSeedVersion > 0 ? { rosterSeedVersion } : {}),
+    ...(effortSelectionVersion !== undefined ? { effortSelectionVersion } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
     // 옛 위임 라우팅 키(delegationRouting*)는 옮겨 적지 않는다 — 읽을 때 무시되고 다음 저장에서 사라진다.
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
@@ -205,10 +212,10 @@ function mergeStoredModels(entries: readonly LegacyStoredModel[], keepHostOnly: 
 
 /**
  * 저장 모델을 카탈로그에 접고, 4판부터는 계열당 하나·기본 강도 합집합으로 정규화한다.
- * 5판 이전의 명시 목록에도 high를 합친다. 부재·빈 배열은 기존처럼 전체 사다리다.
+ * 새 강도 의미 표식이 없는 5판 이전 목록에만 high를 합친다. 부재·빈 배열은 기존처럼 전체 사다리다.
  * 4판 이전에는 `hostOnly`를 보존한다 — 시드가 그 표식을 보고 항목을 빼기 전에 정규화가 지우면 안 된다.
  */
-function canonicalizeStoredModels(entries: readonly LegacyStoredModel[], rosterSeedVersion: number): AiGatewayStoredModel[] {
+function canonicalizeStoredModels(entries: readonly LegacyStoredModel[], rosterSeedVersion: number, selectableHigh: boolean): AiGatewayStoredModel[] {
   const keepHostOnly = rosterSeedVersion < 4;
   const folded = mergeStoredModels(entries.flatMap((entry) => {
     const model = findGatewayModel(entry.id);
@@ -218,7 +225,7 @@ function canonicalizeStoredModels(entries: readonly LegacyStoredModel[], rosterS
       : [];
     // 카탈로그에 대조해 지금 고를 수 있는 단계만 남긴다. 빈 배열은 부재(사다리 전체)로 접는다.
     const narrowed = efforts.length > 0 ? narrowEffortLadder(model, efforts) : undefined;
-    const exposed = narrowed && rosterSeedVersion < 5
+    const exposed = narrowed && !selectableHigh
       ? narrowEffortLadder(model, [...narrowed, "high"])
       : narrowed;
     return [{
@@ -309,7 +316,9 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   const effortExposure: Record<string, readonly GatewayReasoningEffort[]> = {};
   // 정규화를 거치지 않은 저장값도 같은 규칙으로 읽는다. 4판 이전이면 hostOnly를 보존한 채 두고,
   // 시드가 빼기 전에는 켠 목록에 남긴다(표식은 위임에서 더 이상 갈라내지 않는다).
-  const entries = canonicalizeStoredModels((settings?.models ?? []) as readonly LegacyStoredModel[], settings?.rosterSeedVersion ?? 0);
+  const rosterSeedVersion = settings?.rosterSeedVersion ?? 0;
+  const entries = canonicalizeStoredModels((settings?.models ?? []) as readonly LegacyStoredModel[], rosterSeedVersion,
+    settings?.effortSelectionVersion === 1 || rosterSeedVersion >= 5);
   for (const entry of entries) {
     const model = findGatewayModel(entry.id);
     if (!model || enabled.some((existing) => existing.id === model.id)) continue;
@@ -410,7 +419,7 @@ export function parseAiGatewayUpdate(value: unknown):
       });
     }
   }
-  const mergedModels = canonicalizeStoredModels(models, ROSTER_SEED_VERSION);
+  const mergedModels = canonicalizeStoredModels(models, ROSTER_SEED_VERSION, true);
 
   // 레거시 defaultModel 키는 허용하되 무시한다 — 저장하지도, extra key로 거부하지도 않는다.
 

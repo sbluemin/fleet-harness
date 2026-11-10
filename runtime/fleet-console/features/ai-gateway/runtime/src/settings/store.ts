@@ -58,7 +58,8 @@ export interface AiGatewaySettingsStore {
    * 이어서 정규화가 계열당 창이 가장 큰 변형 하나만 남기고, 강도에 low·medium·high를 합친다. 반환값은 1·2·4판의
    * 목록 변경만 알린다.
    *
-   * 5판(high 선택): 읽기 정규화가 구 명시 목록에 합친 high를 표식과 함께 영속한다. 이후 끈 high는 되살리지 않는다.
+   * 5판(high 선택): 읽기 정규화가 구 목록에 합친 high와 독립 강도 의미 표식을 영속한다.
+   * CLI·HTTP가 이행 전에 새로 쓴 high 끔도 독립 표식으로 보존한다.
    *
    * 어느 경우든 표식을 남기므로 다시 불러도, 그 뒤 사용자가 Claude를 꺼도 되돌리지 않는다(멱등).
    * 승계(legacyDirs)를 먼저 마친 뒤 판단한다. 목록을 바꿨으면 true.
@@ -164,11 +165,9 @@ export function createAiGatewaySettingsStore(
       ...(current.providerPriority ? { providerPriority: current.providerPriority } : {}),
       ...(current.compactCeiling !== undefined ? { compactCeiling: current.compactCeiling } : {}),
       ...(current.xaiEndpoint !== undefined ? { xaiEndpoint: current.xaiEndpoint } : {}),
-      // 4판까지 이행했으면 새 입력의 high 끔을 보존한다. 그 전 표식은 그대로 남겨 아직 끝내지 않은
-      // Claude·hostOnly 이행을 건너뛰지 않는다. 5판 이후 표식도 뒤로 돌리지 않는다.
-      ...(current.rosterSeedVersion !== undefined ? {
-        rosterSeedVersion: current.rosterSeedVersion === 4 ? ROSTER_SEED_VERSION : current.rosterSeedVersion,
-      } : {}),
+      // 새 강도 선택의 의미만 표시한다. 로스터 표식은 그대로 이월하여 아직 끝내지 않은 이행을 건너뛰지 않는다.
+      effortSelectionVersion: 1,
+      ...(current.rosterSeedVersion !== undefined ? { rosterSeedVersion: current.rosterSeedVersion } : {}),
       // 선별을 저장하는 것은 그 자체로 선택이다. 모델이 없으면 빈 배열로 남겨 기본 로스터 이행과 구별한다.
       models: [],
       ...(value ?? {}),
@@ -177,7 +176,7 @@ export function createAiGatewaySettingsStore(
       let seeded = false;
       update((current) => {
         const from = current.rosterSeedVersion ?? 0;
-        if (from >= ROSTER_SEED_VERSION) return current;
+        if (from >= ROSTER_SEED_VERSION) return normalizeAiGatewaySettings({ ...current, effortSelectionVersion: 1 });
         let models = current.models;
         if (from < 1) {
           // 새로 켜는 모델과 같다. 강도 없이 넣으면 사다리 전체로 읽혀 xhigh·max가 기본으로 켜진다.
@@ -211,10 +210,10 @@ export function createAiGatewaySettingsStore(
             .filter((entry) => entry.hostOnly !== true)
             .map(({ hostOnly: _removed, ...entry }) => entry);
           if (kept.length !== rows.length) seeded = true;
-          else if (rosterRulesChange(kept)) seeded = true;
+          else if (rosterRulesChange(kept, current.effortSelectionVersion)) seeded = true;
           models = kept;
         }
-        return normalizeAiGatewaySettings({ ...current, ...(models !== undefined ? { models } : {}), rosterSeedVersion: ROSTER_SEED_VERSION });
+        return normalizeAiGatewaySettings({ ...current, ...(models !== undefined ? { models } : {}), rosterSeedVersion: ROSTER_SEED_VERSION, effortSelectionVersion: 1 });
       });
       return seeded;
     },
@@ -251,9 +250,9 @@ export function createAiGatewaySettingsStore(
   };
 }
 
-function rosterRulesChange(models: readonly LegacyRosterModel[]): boolean {
-  const before = normalizeAiGatewaySettings({ version: 1, models, rosterSeedVersion: 3 }).models;
-  const after = normalizeAiGatewaySettings({ version: 1, models, rosterSeedVersion: 4 }).models;
+function rosterRulesChange(models: readonly LegacyRosterModel[], effortSelectionVersion: 1 | undefined): boolean {
+  const before = normalizeAiGatewaySettings({ version: 1, models, rosterSeedVersion: 3, effortSelectionVersion }).models;
+  const after = normalizeAiGatewaySettings({ version: 1, models, rosterSeedVersion: 4, effortSelectionVersion }).models;
   return JSON.stringify(before) !== JSON.stringify(after);
 }
 
