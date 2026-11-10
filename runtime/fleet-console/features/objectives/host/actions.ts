@@ -59,7 +59,7 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
   };
   /**
    * 사람에게 넘긴 항목의 경계 — 사령관은 넘긴 항목을 처리하는 행위(답·승인·거절·완료·확장·스티어링·후속 폐기)를 하지 못한다.
-   * 사람 쪽(사람·Console Use Objective)의 같은 행위가 그 항목을 끝내면 넘김은 「사람이 답함」으로 남아 사령관을 깨운다.
+   * 사람 쪽(사람·Objective)의 같은 행위가 그 항목을 끝내면 넘김은 「사람이 답함」으로 남아 사령관을 깨운다.
    */
   const holding = <A extends Ref, R>(targets: (body: A) => readonly PersonHoldTarget[], run: (body: A) => Promise<R> | R, settles = true, ended?: (body: A) => readonly PersonHoldTarget[]) => async (body: A): Promise<R> => {
     const held = liveHolds(body.objectiveId, targets(body));

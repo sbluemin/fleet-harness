@@ -33,14 +33,13 @@ const CaptureContext = createContext<Capture | null>(null);
 export interface ObjectiveUseRequest {
   readonly id: string;
   readonly objectiveId: string;
-  readonly capability: "console" | "computer";
+  readonly capability: "computer";
   readonly tools: readonly string[];
   /** 이 요청을 기다리는 참가자(호출한 세션). 공유 컨텍스트에서는 루트(objectiveId)와 다를 수 있다. */
   readonly requestedBy: readonly string[];
   readonly expiresAt: number;
 }
 type ObjectiveUseActivity = {
-  console: string[];
   computer: string[];
   /** 컴퓨터를 지금 조작하는 참가자 — 공유 컨텍스트에서는 기기의 주인(computer, 루트)과 다르다. */
   computerActor: string | null;
@@ -49,12 +48,11 @@ type ObjectiveUseActivity = {
   browserCommodores: string[];
   requests: ObjectiveUseRequest[];
 };
-const EMPTY_ACTIVITY: ObjectiveUseActivity = { console: [], computer: [], computerActor: null, browser: [], browserCommodores: [], requests: [] };
+const EMPTY_ACTIVITY: ObjectiveUseActivity = { computer: [], computerActor: null, browser: [], browserCommodores: [], requests: [] };
 const ObjectiveUseContext = createContext<ObjectiveUseActivity>(EMPTY_ACTIVITY);
 export function useObjectiveUse(objectiveId: string) {
   const activity = useContext(ObjectiveUseContext);
   return {
-    console: activity.console.includes(objectiveId),
     computer: activity.computer.includes(objectiveId),
     browser: activity.browser.includes(objectiveId),
   };
@@ -64,9 +62,9 @@ export function useCommodoreBrowserUse(commodoreId: string | null): boolean {
   const activity = useContext(ObjectiveUseContext);
   return commodoreId !== null && activity.browserCommodores.includes(commodoreId);
 }
-export type ObjectiveUseTool = "computer" | "browser" | "console";
+export type ObjectiveUseTool = "computer" | "browser";
 /**
- * 여러 Objective(지휘관 목록 줄의 뿌리와 구성원) 가운데 지금 도구를 쓰는 하나. 한 줄에 여럿이면 컴퓨터 → 브라우저 → 콘솔 순으로 하나만 말한다.
+ * 여러 Objective(지휘관 목록 줄의 뿌리와 구성원) 가운데 지금 도구를 쓰는 하나. 한 줄에 여럿이면 컴퓨터 → 브라우저 순으로 하나만 말한다.
  * `actor` 는 쓰는 참가자 — 컴퓨터는 조작자(공유 컨텍스트면 루트와 다르다), 나머지는 걸린 id 다.
  */
 export function useObjectivesToolUse(objectiveIds: readonly string[]): { readonly tool: ObjectiveUseTool; readonly actor: string | null } | null {
@@ -77,9 +75,7 @@ export function useObjectivesToolUse(objectiveIds: readonly string[]): { readonl
     if (actor !== null) return { tool: "computer", actor };
   }
   const browser = first(activity.browser);
-  if (browser !== null) return { tool: "browser", actor: browser };
-  const consoleUse = first(activity.console);
-  return consoleUse !== null ? { tool: "console", actor: consoleUse } : null;
+  return browser !== null ? { tool: "browser", actor: browser } : null;
 }
 /** 이 Objective 이 답을 기다리는 허용 요청(도구군마다 하나). */
 export function useObjectiveUseRequests(objectiveId: string, childSessionIds: readonly string[] = []): readonly ObjectiveUseRequest[] {
@@ -102,7 +98,7 @@ function readRequests(value: unknown): ObjectiveUseRequest[] {
   return value.flatMap((item): ObjectiveUseRequest[] => {
     if (!item || typeof item !== "object") return [];
     const record = item as Record<string, unknown>;
-    if (typeof record.id !== "string" || typeof record.objectiveId !== "string" || (record.capability !== "console" && record.capability !== "computer") || typeof record.expiresAt !== "number") return [];
+    if (typeof record.id !== "string" || typeof record.objectiveId !== "string" || record.capability !== "computer" || typeof record.expiresAt !== "number") return [];
     const tools = Array.isArray(record.tools) ? record.tools.filter((tool): tool is string => typeof tool === "string") : [];
     const requestedBy = Array.isArray(record.requestedBy) ? record.requestedBy.filter((id): id is string => typeof id === "string") : [];
     return [{ id: record.id, objectiveId: record.objectiveId, capability: record.capability, tools, requestedBy: requestedBy.length > 0 ? requestedBy : [record.objectiveId], expiresAt: record.expiresAt }];
@@ -115,7 +111,7 @@ function readActivity(value: unknown): ObjectiveUseActivity {
   const record = value as Record<string, unknown>;
   const ids = (v: unknown) => Array.isArray(v) ? v.filter((id): id is string => typeof id === "string") : [];
   const requests = readRequests(record.requests);
-  return { console: ids(record.console), computer: ids(record.computer), computerActor: typeof record.computerActor === "string" ? record.computerActor : null, browser: ids(record.browser), browserCommodores: ids(record.browserCommodores), requests };
+  return { computer: ids(record.computer), computerActor: typeof record.computerActor === "string" ? record.computerActor : null, browser: ids(record.browser), browserCommodores: ids(record.browserCommodores), requests };
 }
 
 /** 영상 수명은 Console가, 표시 위치는 해당 Objective이 소유한다. */

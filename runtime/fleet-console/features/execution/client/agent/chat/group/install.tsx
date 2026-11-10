@@ -231,7 +231,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
           onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
         />
       ) : null}
-      {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} shared={shared} speakers={(shared ? request.requestedBy : [request.objectiveId]).flatMap((id) => { const speaker = speakerOf(id); return speaker ? [speaker] : []; })} language={language} />)}
+      {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} />)}
       {!phone ? snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />) : null}
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>

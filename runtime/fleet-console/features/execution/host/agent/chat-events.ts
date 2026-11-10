@@ -167,7 +167,7 @@ export type AgentChatStreamEvent =
    */
   | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
-  /** `by` 는 사람이 아닌 저자 — Console Use 로 다른 Objective 이 보낸 지시. 없으면 사람이 친 것이다. */
+  /** `by` 는 사람이 아닌 저자 — 플러그인·다른 Objective 이 보낸 지시. 없으면 사람이 친 것이다. */
   | { readonly kind: "dispatch"; readonly text: string; readonly format?: "markdown"; readonly attachments?: readonly ChatAttachment[]; readonly at?: number; readonly by?: ChatOrigin }
   /**
    * 도는 턴이 사용자의 말 하나를 집어갔다 — 새 턴을 열지 않고 **그 턴 안에** 선다.
@@ -293,7 +293,7 @@ export type AgentChatStreamEvent =
       readonly kind: "ask-settled";
       readonly id: string;
       readonly outcome: "answered" | "dismissed" | "approved" | "revised";
-      /** 사람이 아닌 답변자 — Console Use 로 답한 Objective. */
+      /** 사람이 아닌 답변자 — 플러그인·다른 Objective. */
       readonly by?: ChatOrigin;
       /** 접힌 줄이 보일 값 — header → 사용자가 고른 것. */
       readonly answers?: readonly { readonly header: string; readonly value: string }[];
@@ -1113,7 +1113,7 @@ function foldPathsUnlessFull(value: string, options: ChatEventMapOptions): strin
  * 접으면 마크다운 보고가 통째로 한 문단이 되어, 제목·목록·코드 블록이 전부 원문 기호로 남는다.
  */
 /**
- * Console Use 전사용 정화 — 경로 정규화·축약·비밀 마스킹만 하고 꼬리를 자르지 않는다. 상한을 넘는 본문만
+ * 전사용 정화 — 경로 정규화·축약·비밀 마스킹만 하고 꼬리를 자르지 않는다. 상한을 넘는 본문만
  * 앞부분을 남기고 `truncated` 로 알린다(잡 꼬리 helper 는 마지막 줄들을 남기므로 대화 본문에는 맞지 않는다).
  */
 export function maskChatText(raw: string, options: ChatEventMapOptions = {}, max = 64_000): { readonly text: string; readonly truncated: boolean } {

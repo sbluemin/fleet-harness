@@ -7,7 +7,6 @@ import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
 /**
  * 컴퓨터 사용 허용 요청의 기록은 승인 코어뿐이다.
  * objective-use 스냅숏의 computer 요청과 예전 응답 라우트는 이 기록을 투영한다.
- * 콘솔 사용 요청은 여기 없다.
  */
 
 export const COMPUTER_USE_APPROVAL_TYPE = "computer.use";

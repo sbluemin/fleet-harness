@@ -187,7 +187,7 @@ export function connectObjectiveRecordsSse(): void {
     }
   });
 
-  // 삭제 유예에 들어간 Objective — 누른 창은 스스로 다시 조회하지만, 다른 창과 Console Use 의 닫기는 이 프레임으로만 온다.
+  // 삭제 유예에 들어간 Objective — 누른 창은 스스로 다시 조회하지만, 다른 창의 닫기는 이 프레임으로만 온다.
   source.addEventListener("objective:removed", (e) => {
     if (!acceptFrame()) return;
     try {
@@ -240,7 +240,7 @@ export function connectObjectiveRecordsSse(): void {
     }
   });
 
-  // 다른 창·API·Console Use가 사령관 Theater를 바꾸는 순간. 목록은 사령관 목록 재수화로 따라간다.
+  // 다른 창·API가 사령관 Theater를 바꾸는 순간. 목록은 사령관 목록 재수화로 따라간다.
   // 전역 theater:* 프레임은 호스트 퇴역 전까지 올 수 있지만 무시한다.
   for (const event of ["registered", "forgotten", "restored", "updated"] as const) {
     source.addEventListener(`theater:${event}`, () => {

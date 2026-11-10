@@ -15,7 +15,7 @@ export interface ComputerUseMcpDeps {
   readonly onFailure?: (kind: string, error: unknown) => void;
   /**
    * 호출자 Objective 단위 판정의 재료. 주어지면 조회·정리를 포함한 **모든** 도구가 실험 플래그와
-   * 그 Objective의 토글을 둘 다 요구한다 — 콘솔 사용과 같은 정책이다. 없으면(테스트·플러그인 없는
+   * 그 Objective의 토글을 둘 다 요구한다. 없으면(테스트·플러그인 없는
    * 구성) 실험 플래그만 본다.
    */
   readonly objectiveRecords?: () => readonly ObjectiveRecord[];
@@ -23,7 +23,7 @@ export interface ComputerUseMcpDeps {
   readonly experimentEnabled?: () => boolean;
   readonly language?: () => "en" | "ko" | null;
   /**
-   * 패널 안 허용 요청 — 콘솔 사용과 같은 요청 브로커를 호스트 조립이 주입한다(이 기능은 콘솔 사용 구현을 모른다).
+   * 패널 안 허용 요청 브로커를 호스트 조립이 주입한다.
    * 주어지면 허용받지 않은 Objective 호출은 거부 대신 붙잡혀 그 패널에 카드를 띄운다. 답은 거절 또는 계속 허용이다.
    */
   readonly requests?: ComputerUseRequestPort;
@@ -70,7 +70,7 @@ export function readComputerUseFlag(payload: Record<string, unknown> | undefined
   return { enabled: true, language: record.language === "ko" ? "ko" : "en" };
 }
 
-/** 세션 라벨 → 호출자 Objective id. Chat 세션은 `chat:` 접두를 단다(콘솔 사용과 같은 규약). */
+/** 세션 라벨 → 호출자 Objective id. Chat 세션은 `chat:` 접두를 단다. */
 export function objectiveIdFromSessionLabel(label: string | undefined): string {
   const value = label ?? "";
   return value.startsWith("chat:") ? value.slice(5) : value;
@@ -136,7 +136,7 @@ function refuse(reason: ComputerUseRefusal, objectiveId: string | null, language
 }
 
 /**
- * 호출자 Objective 단위 판정 — 콘솔 사용과 같은 규칙이다. 실험 플래그와 그 Objective의 토글이
+ * 호출자 Objective 단위 판정. 실험 플래그와 그 Objective의 토글이
  * 둘 다 참일 때만 통과하고, 어느 쪽이 막았는지를 구분해 돌려준다. 신원이 풀리지 않으면 거부한다.
  */
 function computerUseDenial(deps: ComputerUseMcpDeps, sessionLabel: string | undefined): { readonly reason: ComputerUseRefusal; readonly objectiveId: string | null; readonly language: "en" | "ko" } | null {
@@ -370,8 +370,8 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
     },
     /**
      * Objective이 아닌 호출자(플러그인 에이전트 세션)에게 붙는 서버. HTTP 세션 토큰 대신 세션에
-     * 묻어 들어가는 임베디드 서버이고, 허용은 호출마다 `enabled()`와 실험 스위치를 함께 묻는다 —
-     * 콘솔 사용의 플러그인 연결과 같은 정책이다. 소유자 라벨은 연결마다 유일해 `revoke()`가 자기
+     * 묻어 들어가는 임베디드 서버이고, 허용은 호출마다 `enabled()`와 실험 스위치를 함께 묻는다.
+     * 소유자 라벨은 연결마다 유일해 `revoke()`가 자기
      * 것만 놓는다. 실험 스위치가 꺼져 있으면 서버를 내주지 않는다(null) — Objective 런치와 같이 꺼진 채
      * 연 세션에는 도구가 없다.
      */

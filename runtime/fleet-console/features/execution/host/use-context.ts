@@ -1,15 +1,15 @@
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
 
 /**
- * 사용 컨텍스트 — Fleet Browser·Console Use·Computer Use 가 「누구의 것인가」를 정하는 실행 도메인의 규칙.
+ * 사용 컨텍스트 — Fleet Browser·Computer Use 가 「누구의 것인가」를 정하는 실행 도메인의 규칙.
  *
  * 자식 세션(부모 레코드 안의 `sessions`)은 Objective 이 아니다. 자기 SDK 세션만 따로 가질 뿐, 브라우저 탭·
- * 허용·기기·화면공유는 부모(루트)의 것을 함께 쓴다. 그래서 세 도구는 호출한 세션을 둘로 나눠 본다:
+ * 허용·기기·화면공유는 부모(루트)의 것을 함께 쓴다. 그래서 두 도구는 호출한 세션을 둘로 나눠 본다:
  * - `contextId` — 상태와 허용의 주인(루트). 탭·허용 카드·기기 소유·사용 표식이 이 키에 선다.
  * - `participantId` — 실제로 호출한 세션. 턴 종료·중단은 이 참가자의 진행 중 호출만 끊는다.
  * 자식이 없는 일반 Objective 은 두 값이 같아 예전 경로와 똑같다.
  *
- * 계보는 실행 도메인의 사실(부모·자식 레코드)이고 목표(objectives) 판정이 아니다. 세 기능은 이 모듈을 import 하지
+ * 계보는 실행 도메인의 사실(부모·자식 레코드)이고 목표(objectives) 판정이 아니다. 두 기능은 이 모듈을 import 하지
  * 않고, 부트스트랩이 같은 객체를 각자의 포트로 넘긴다.
  */
 export interface UseContextResolution {

@@ -28,7 +28,7 @@ import { getTerminalPrefsSnapshot, setChatReadingWidth, setTerminalInactiveFlush
 import "./agent-cli.css";
 import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
 import { useObjectiveLinks } from "./objective-links.js";
-import { UseRequestCards, setUseRequestApi } from "./use-request-card.js";
+import { UseRequestCards } from "./use-request-card.js";
 import { MobileGlyph, MobileSurfaceProvider, mobileObjectiveOf, useMobileMenuItems, useMobileSurface, type MobileMenuItemLike, type MobileObjectiveLike } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, readComputerUseEnabled, readInstalledExperiments, recordObjectiveReveal, setComputerUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
@@ -86,7 +86,7 @@ export const agentObjectiveKind: ObjectiveKindDescriptor = ({
   captionActions: (context) => <AgentCaptionActions context={context} part="shelf" />,
   captionViewSwitch: (context) => <AgentCaptionActions context={context} part="view-switch" />,
   captionToolsLead: (context) => <AgentCaptionActions context={context} part="tools-lead" />,
-  // 이 Objective에 **대한** 실험 스위치(관찰·콘솔 사용·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
+  // 이 Objective에 **대한** 실험 스위치(관찰·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
   // 사이드바 우클릭도 같은 메뉴를 열므로 어디서 열든 같은 스위치를 본다.
   objectiveRecordMenu: (context) => <AgentObjectiveMenu context={context} />,
   // 켜진 스위치는 사이드바 칩에도 마크로 선다 — 목록에서 "이 세션은 콘솔을 잡고 있다"가 읽히게.
@@ -250,12 +250,11 @@ let installedApi: ExecutionClientDeps["api"] | null = null;
 export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
   installedNotifications = ctx.notifications;
   installedApi = ctx.api;
-  setUseRequestApi(ctx.api);
   setInstalledExperiments(ctx.experiments);
   const disposeViewState = installObjectiveViewState(ctx.consoleState);
   const disposeGroupTimeline = installGroupTimeline(ctx);
   const disposeGroupConversation = installGroupConversationSurface();
-  // Console Use 의 console_reveal — 에이전트가 "여기를 봐 달라"고 한 Objective 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
+  // `objective:reveal` — 에이전트가 "여기를 봐 달라"고 한 Objective 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
   // 사용자가 입력 중이면(활성 요소가 편집 가능) 포커스를 빼앗지 않고 말풍선만 띄운다.
   const disposeReveal = ctx.consoleEvents.subscribe(OBJECTIVE_REVEAL_EVENT_CHANNEL, (payload) => {
     if (!isObjectiveRevealEvent(payload)) return;
@@ -648,7 +647,7 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
         theme={context.theme}
         mobile={mobileSurface}
         awaitingConfirm={mobileSurface && awaitingInput}
-        {...(mobileSurface ? { mobileDockTop: <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} language={context.language} placement="terminal" /> } : {})}
+        {...(mobileSurface ? { mobileDockTop: <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="terminal" /> } : {})}
         locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.objectiveId, detail)}
         onOpenLink={links.choose}
@@ -659,14 +658,14 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
       />
       <ComputerScreenShare objectiveId={context.objectiveId} />
       {/* 모바일은 같은 카드를 터미널 독 맨 위(mobileDockTop)에 쌓는다 — 여기 떠 있으면 확인 줄을 덮는다. */}
-      {mobileSurface ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} language={context.language} placement="terminal" />}
+      {mobileSurface ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="terminal" />}
       {links.card}
     </div>
   );
 }
 
 /**
- * Objective 메뉴의 실험 섹션 — 컴퓨터 사용 스위치만 선다. 콘솔 사용은 목표 세션에 열지 않아 여기 없다.
+ * Objective 메뉴의 실험 섹션 — 컴퓨터 사용 스위치만 선다.
  * 켜져 있는지는 Objective payload가 말한다(서버가 쓴다). 켜고 끄는 것은 재연결 없이 다음 도구 호출부터 듣는다.
  */
 function AgentObjectiveMenu({ context }: { readonly context: ObjectiveMenuContext }) {

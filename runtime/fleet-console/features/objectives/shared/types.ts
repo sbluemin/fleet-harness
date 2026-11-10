@@ -1297,7 +1297,7 @@ export type MissionAddInput = z.output<typeof missionAddSchema>;
 export type MissionPatchInput = z.output<typeof missionPatchSchema>;
 export type PlanInput = z.output<typeof planSchema>;
 
-/** 브라우저·Console Use 양쪽으로 나가는 사건 프레임. */
+/** 브라우저와 구독자 양쪽으로 나가는 사건 프레임. */
 export const OBJECTIVE_CHANNEL = "objectives:objective";
 
 export interface ObjectiveEvent {

@@ -1,6 +1,6 @@
 import type { ConsoleActionInput, ConsoleActionResult, ConsoleCoordinates, ConsoleCoordinatesResult, ConsoleObjectiveObservation, ConsoleTranscriptPage, ConsoleTurnEnd } from "./control.js";
 /**
- * Console Use 와 같은 제어 경로로 Objective 을 시작하거나 그 입력창에 메시지를 넣는 능력. 호출자는 이 플러그인
+ * 플러그인 제어 경로로 Objective 을 시작하거나 그 입력창에 메시지를 넣는 능력. 호출자는 이 플러그인
  * 자신이며(`{ kind: "plugin", pluginId }`), 목표의 `launchedBy`에는 `{ kind: "feature", featureId }`로 남는다. 시트를 거치지
  * 않는다 — `console_launcher` 가 쓰는 서버 경로 그대로다. 없는 호스트에서는 없다.
  */
@@ -48,7 +48,7 @@ export interface ConsoleControlHost {
    */
   advertisedTools?(objectiveId: string): readonly string[] | null;
   /**
-   * Agent Objective 의 전사 한 쪽 — Console Use `console_objective_session` 의 transcript 읽기와 같은 줄(사람의 말·답·도구·질문·턴 결말)이고
+   * Agent Objective 의 전사 한 쪽 — transcript 읽기와 같은 줄(사람의 말·답·도구·질문·턴 결말)이고
    * 본문은 자격증명 마스킹을 지난 신뢰할 수 없는 데이터다. 이 플러그인이 띄운 Objective(또는 그 자식)만 받는다 — 아니면 `forbidden`.
    * 커서 없이 `tail` 이면 마지막 `limit` 줄(그 앞이 남았으면 truncated)이고, 아니면 커서부터 앞으로 읽는다.
    */

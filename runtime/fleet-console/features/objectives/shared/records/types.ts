@@ -183,7 +183,7 @@ export interface ObjectiveRecordPatchInput {
 }
 
 /**
- * 서버 안 이벤트 채널 — Objective 의 그룹이 실제로 바뀌면 한 번 난다. 사이드바 끌기·메뉴, Console Use, 플러그인의
+ * 서버 안 이벤트 채널 — Objective 의 그룹이 실제로 바뀌면 한 번 난다. 사이드바 끌기·메뉴, 플러그인의
  * patch, 그룹 삭제(멤버가 그룹 밖으로)가 모두 같은 저장 쓰기를 지나므로 이 채널 하나로 전부 들린다. 브라우저로는 나가지 않는다.
  */
 export const OBJECTIVE_GROUPED_EVENT_CHANNEL = "objective:grouped";
@@ -197,7 +197,7 @@ export interface ObjectiveGroupedEvent {
 }
 
 /**
- * 서버 안 이벤트 채널 — 사이드바 그룹 하나가 지워진 뒤 한 번 난다(사이드바 DELETE·Console Use·플러그인 groups.delete 가 모두
+ * 서버 안 이벤트 채널 — 사이드바 그룹 하나가 지워진 뒤 한 번 난다(사이드바 DELETE·플러그인 groups.delete 가 모두
  * 같은 저장 쓰기를 지난다). 멤버 Objective 의 이동은 `objectiveRecord:grouped` 가 따로 알린다. 그룹 id 를 따로 쥔 플러그인이 비울 때 쓴다.
  */
 export const OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL = "objective:group-removed";

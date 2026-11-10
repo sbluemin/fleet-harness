@@ -22,7 +22,7 @@ import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
 import { MAX_ASK_REASON, MAX_DESCRIPTION, MAX_INTEL_TEXT, routineScheduleSchema, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
 
 /**
- * 사령관 전용 도구 — `fleet-commodore` 묶음으로 사령관 세션에만 실린다. 다른 세션·Console Use 에는 없다.
+ * 사령관 전용 도구 — `fleet-commodore` 묶음으로 사령관 세션에만 실린다. 다른 세션에는 없다.
  *
  * 여덟 도구다: description·intel·memory·conversation·ask·routines·taskforce와
  * 사령관 연락·생성의 commodores(console-tools). 바꾸는 일은 같은 도구의

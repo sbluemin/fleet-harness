@@ -54,7 +54,7 @@ export function MobileRequestBanner({ state, viewingObjectiveId, onOpen }: {
   if (!shown) return null;
   const objectiveRecord = state.objectiveRecords.find((item) => item.id === shown.objectiveId);
   const title = objectiveRecord?.title ?? "";
-  const kind = shown.capability === "computer" ? t("mobile.banner.computer", { time: formatRemaining(shown.expiresAt - now) }) : t("mobile.banner.console", { time: formatRemaining(shown.expiresAt - now) });
+  const kind = t("mobile.banner.computer", { time: formatRemaining(shown.expiresAt - now) });
   return (
     <div className={`mobile-request-banner${leaving ? " is-leaving" : ""}`} role="status" aria-live="polite">
       {objectiveRecord ? <ObjectiveStatusIcon objectiveRecord={objectiveRecord} status={resolveObjectiveMarkVisual({ activity: resolveObjectiveActivity(objectiveRecord, state.objectiveRecordRuntime), objectiveId: objectiveRecord.id, idleArrivalIds: getIdleArrivalIds() })} size={28} decorative /> : null}

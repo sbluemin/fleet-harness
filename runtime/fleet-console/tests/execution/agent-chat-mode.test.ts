@@ -286,7 +286,7 @@ describe("agent chat mode routes", () => {
       outcome: "succeeded", report: { sentTo: [], byPerson: false, answer: "Waiting for CI.", pendingWork: true },
     }));
     const receivedBeforeConsoleSend = received().length;
-    // Console Use 발신은 그대로 Objective 출처의 지시로 선다 — 수신 줄로 두 번 서지 않는다.
+    // Objective 출처 발신은 그대로 지시로 선다 — 수신 줄로 두 번 서지 않는다.
     expect(frames.map(({ event }) => event)).toContainEqual(expect.objectContaining({ kind: "dispatch", text: "Begin the objective", by: expect.objectContaining({ kind: "objectiveRecord", objectiveId: sessionId }) }));
     // 플러그인 발신도 같은 자리에서 제 출처를 지킨다. 서버가 실은 값에서 끝내지 않고 브라우저가 읽는
     // 문까지 통과시킨다 — 화면이 세우는 라벨이 같은 pluginId여야 "누가 보냈는가"가 보존된 것이다.
@@ -1049,7 +1049,7 @@ ts: { createdAt, updatedAt: createdAt }};
     removeTranscript: () => {
       rmSync(transcriptDir, { recursive: true, force: true });
     },
-    /** Console 실행 경로를 보려면 그 Objective이 콘솔 사용을 허용받고 있어야 한다. */
+    /** 플러그인 제어 경로를 보려면 그 Objective이 `consoleUse` 를 허용받고 있어야 한다. */
     allowConsoleUse: (sessionId: string) => {
       const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
       if (!objectiveRecord) throw new Error("Objective not found");

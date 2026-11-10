@@ -2,7 +2,7 @@ import { z } from "zod";
 import { inputIssues, type ConsoleMcpTool } from "./tools.js";
 
 /**
- * Console Use 도구 하나는 Console 화면 하나다. 그 화면에서 하는 동사는 필수 `action` 필드 하나로 고르고,
+ * `console_` 도구 하나는 Console 화면 하나다. 그 화면에서 하는 동사는 필수 `action` 필드 하나로 고르고,
  * action마다 자기 필드만 받는 strict 스키마를 갖는다. 호스트 코어 도구와 플러그인 기여 도구가 이 헬퍼 한 벌을 쓴다.
  *
  * 광고하는 inputSchema 는 최상위 `type: "object"` 하나다 — 프로바이더 tool schema 는 최상위 anyOf/oneOf 를 받지 않는다.
@@ -89,7 +89,7 @@ export interface ConsoleTool<C extends Readonly<Record<string, unknown>>> extend
   parse(args: unknown, filter?: ConsoleToolFilter): ConsoleToolParse<C>;
   /**
    * 플러그인 도구 한 벌로 감싼다. `filter` 는 설명·inputSchema 만 거른다(사령관 묶음처럼 플러그인이 직접 싣는 도구용) —
-   * Console Use 기여는 거르지 않고 넘기며, 호스트가 연결마다 다시 거른다.
+   * `filter` 를 생략하면 거르지 않고 넘기며, 호스트가 연결마다 다시 거른다.
    */
   plugin(implementation: Pick<ConsoleMcpTool, "execute" | "surface">, filter?: ConsoleToolFilter): ConsoleMcpTool;
 }
@@ -99,28 +99,28 @@ const ACTION_NAME = /^[a-z][a-z_]{0,31}$/;
 
 type JsonSchema = Record<string, unknown>;
 
-/** `{ kind, input }` 를 action 마다 선언한 Console Use 도구. */
+/** `{ kind, input }` 를 action 마다 선언한 `console_` 도구. */
 export function defineConsoleTool<const A extends Readonly<Record<string, ConsoleToolAction>>>(spec: { readonly name: string; readonly description: string; readonly actions: A }): ConsoleTool<ConsoleToolCall<A>>;
 /** 동작이 하나뿐인 도구 — `action` 필드 없이 그 입력만 받는다. */
 export function defineConsoleTool<S extends z.ZodObject>(spec: { readonly name: string; readonly description: string } & ConsoleToolAction<S>): ConsoleTool<z.output<S>>;
 export function defineConsoleTool(spec: { readonly name: string; readonly description: string; readonly actions?: Readonly<Record<string, ConsoleToolAction>> } & Partial<ConsoleToolAction>): ConsoleTool<Readonly<Record<string, unknown>>> {
-  if (!TOOL_NAME.test(spec.name)) throw new Error(`Invalid Console Use tool name: ${spec.name}`);
-  if (spec.description.length > MAX_TOOL_DESCRIPTION) throw new Error(`Console Use tool description exceeds ${MAX_TOOL_DESCRIPTION} characters: ${spec.name}`);
+  if (!TOOL_NAME.test(spec.name)) throw new Error(`Invalid tool definition name: ${spec.name}`);
+  if (spec.description.length > MAX_TOOL_DESCRIPTION) throw new Error(`Tool description exceeds ${MAX_TOOL_DESCRIPTION} characters: ${spec.name}`);
   const discriminated = spec.actions !== undefined;
   const SINGLE = "";
   const actions: Readonly<Record<string, ConsoleToolAction>> = discriminated
     ? spec.actions!
     : { [SINGLE]: { kind: spec.kind!, input: spec.input!, ...(spec.callers ? { callers: spec.callers } : {}), ...(spec.refusal ? { refusal: spec.refusal } : {}) } };
   const names = Object.keys(actions);
-  if (!names.length) throw new Error(`Console Use tool needs an action: ${spec.name}`);
+  if (!names.length) throw new Error(`Tool needs an action: ${spec.name}`);
   for (const name of names) {
-    if (discriminated && !ACTION_NAME.test(name)) throw new Error(`Invalid Console Use action name: ${spec.name}.${name}`);
-    if (Object.hasOwn(actions[name]!.input.shape, "action")) throw new Error(`Console Use action input must not declare action: ${spec.name}.${name}`);
+    if (discriminated && !ACTION_NAME.test(name)) throw new Error(`Invalid action name: ${spec.name}.${name}`);
+    if (Object.hasOwn(actions[name]!.input.shape, "action")) throw new Error(`Action input must not declare "action": ${spec.name}.${name}`);
   }
   const fields = new Map(names.map((name) => [name, fieldSchemas(actions[name]!.input)]));
   for (const [name, schema] of fields) {
     const long = longDescription(schema.properties);
-    if (long) throw new Error(`Console Use field description exceeds ${MAX_FIELD_DESCRIPTION} characters: ${spec.name}${name ? `.${name}` : ""}.${long}`);
+    if (long) throw new Error(`Field description exceeds ${MAX_FIELD_DESCRIPTION} characters: ${spec.name}${name ? `.${name}` : ""}.${long}`);
   }
   // 정의 단계에서 한 번 합쳐 본다 — 같은 이름에 타입이 다른 필드는 광고 스키마를 거짓으로 만들므로 등록 전에 막는다.
   mergeFields(spec.name, names.map((name) => fields.get(name)!));
@@ -208,7 +208,7 @@ export function defineConsoleTool(spec: { readonly name: string; readonly descri
     parse,
     plugin: (implementation, filter) => {
       const advertised = filter ? advertise(filter) : unfiltered;
-      if (!advertised) throw new Error(`Console Use tool has no action for this caller: ${spec.name}`);
+      if (!advertised) throw new Error(`Tool has no action for this caller: ${spec.name}`);
       return { name: spec.name, description: advertised.description, inputSchema: advertised.inputSchema, actionSchema: tool, ...implementation };
     },
   };
@@ -280,7 +280,7 @@ function mergeField(tool: string, key: string, variants: readonly JsonSchema[]):
   if (new Set(shapes.map((shape) => JSON.stringify(shape))).size === 1) return description ? { ...shapes[0]!, description } : shapes[0]!;
   const kinds = distinct.map(baseTypes);
   const signature = (types: ReadonlySet<string>) => [...types].filter((type) => type !== "null").map((type) => type === "integer" ? "number" : type).sort().join("|");
-  if (new Set(kinds.map(signature)).size !== 1) throw new Error(`Console Use field ${tool}.${key} has conflicting types across actions`);
+  if (new Set(kinds.map(signature)).size !== 1) throw new Error(`Field ${tool}.${key} has conflicting types across actions`);
   const nullable = kinds.some((types) => types.has("null"));
   const branches = distinct.map((variant) => nonNull(variant));
   const types = [...new Set(kinds.flatMap((types) => [...types]).filter((type) => type !== "null"))];

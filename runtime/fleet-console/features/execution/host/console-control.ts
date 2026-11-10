@@ -59,8 +59,7 @@ export class ConsoleControlError extends Error {
 }
 
 /**
- * Objective 단위 콘솔 사용 허용 표식 — 서버가 쓰고 게이트가 읽는다. 전역 Console Use는 항상
- * 열려 있고, 이 Objective 토글이 실제 권한이다.
+ * Objective 단위 `consoleUse` 허용 표식 — 서버가 쓰고 게이트가 읽는다.
  */
 export function readConsoleUseFlag(payload: Record<string, unknown> | undefined): { readonly enabled: true; readonly language: "en" | "ko" } | null {
   const value = payload?.consoleUse;
@@ -85,7 +84,7 @@ export interface ConsoleExecutionAdapter {
   unstartedPreset?(objectiveId: string, input: { readonly model: string; readonly effort: string | null }, owned: boolean): Promise<ConsoleCoordinatesResult>;
   /** 떠 있는 채팅 세션이 init 에서 광고한 도구 이름. 모르면 null. */
   advertisedTools?(objectiveId: string): readonly string[] | null;
-  /** 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 함수다. 소유는 여기서 이미 따졌다. */
+  /** 전사 한 쪽. 소유는 여기서 이미 따졌다. */
   transcript?(objectiveId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }>;
   markNextOpenFresh?(objectiveId: string): void;
   isNextOpenFresh?(objectiveId: string): boolean;
@@ -194,7 +193,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
   function node(id: string) { return deps.resolveObjective?.(id) ?? deps.objectiveRecords().find((op) => op.id === id); }
   function callerAvailable(caller: ConsoleCaller) { return caller.kind === "objectiveRecord" ? !!node(caller.objectiveId) : deps.pluginAvailable?.(caller.pluginId) === true; }
   /**
-   * 소유자가 아직 콘솔 사용을 허용받고 있는가. 존재(`callerAvailable`)와 다른 축이다 — 살아 있는
+   * 소유자가 아직 `consoleUse` 를 허용받고 있는가. 존재(`callerAvailable`)와 다른 축이다 — 살아 있는
    * Objective이 허용만 거둔 경우가 있고, 그때 사용자가 할 일도 다르다.
    *
    * 이 판정이 여기에도 서야 하는 이유는 자동 운영이다: 정책은 소유자를 대신해 **나중에** 실행되므로,
@@ -432,7 +431,7 @@ export function createConsoleControl(deps: ConsoleControlDeps) {
     });
   }
   /**
-   * 전사 한 쪽 — Console Use 의 transcript 읽기와 같은 줄과 마스킹이다. 세션의 말은 민감한 상태라 좌표 바꾸기와 같은 소유 규칙을 지난다:
+   * 전사 한 쪽 — 줄과 마스킹. 세션의 말은 민감한 상태라 좌표 바꾸기와 같은 소유 규칙을 지난다:
    * 그 플러그인이 띄운 Objective(또는 그 자식)만.
    */
   async function transcript(caller: ConsoleCaller, objectiveId: string, input: { readonly cursor?: string; readonly limit: number; readonly tail?: boolean }, signal?: AbortSignal): Promise<ConsoleTranscriptPage | { readonly error: string }> {

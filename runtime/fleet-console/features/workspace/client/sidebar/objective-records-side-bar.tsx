@@ -1048,4 +1048,3 @@ function autoScrollSideBar(clientY: number, chipsElement: HTMLOListElement | nul
   }
 }
 
-/** Console Use 시선 — 에이전트가 이 Theater 의 목록을 훑거나 그룹을 만지면 헤더에 점이 두 번 맥동한다. */

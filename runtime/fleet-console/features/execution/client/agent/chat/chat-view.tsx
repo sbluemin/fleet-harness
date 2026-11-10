@@ -224,7 +224,7 @@ export function AgentChatView({
   // 있음"은 아직 모른다는 뜻이고, 그것을 초대로 읽으면 과거가 있는 세션에도 초대가 잠깐 스친다.
   const awaitingFirstTurn = state.turns.length === 0 && !state.replaying && state.connection === "open";
   // 모바일 「다시 시도」는 마지막 턴에 사람이 보낸 지시를 같은 길로 한 번 더 보낸다 — 새 턴이 서고, 지난 턴은
-  // 기록에 남는다. 플러그인·Console Use가 보낸 지시는 사람이 쓴 문면이 아니므로 대상이 아니다.
+  // 기록에 남는다. 플러그인·다른 Objective가 보낸 지시는 사람이 쓴 문면이 아니므로 대상이 아니다.
   const lastDispatch = state.turns[state.turns.length - 1]?.dispatch;
   const retryText = lastDispatch && !lastDispatch.by && lastDispatch.text ? lastDispatch.text : null;
   const retry = React.useCallback(() => {
@@ -824,7 +824,7 @@ export function AgentChatView({
         ) : null}
         {/* 패널 안 허용 요청 — 대화 면 바닥, 컴포저 바로 위에 선다. 초점은 가져가지 않는다. */}
         {/* 그룹 루트의 허용 요청은 그룹채팅의 카드 하나가 답한다 — 지휘관 원장 틀 안에서는 다시 그리지 않는다. */}
-        {commanderLedger ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} language={language} placement="chat" />}
+        {commanderLedger ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="chat" />}
         </div>
 
         {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로, 언제나 서 있다. 말풍선 문
@@ -1279,7 +1279,7 @@ export const ChatTurn = React.memo(function ChatTurn({
             {turn.dispatch.attachments && turn.dispatch.attachments.length > 0
               ? <ChatDispatchAttachments attachments={turn.dispatch.attachments} language={language} />
               : null}
-            {/* 플러그인·Console Use 저자가 준 문면은 마크다운일 수 있다 — 자식에게 간 프롬프트와 별개인, 사람이 읽을 요약. */}
+            {/* 플러그인·다른 Objective 저자가 준 문면은 마크다운일 수 있다 — 자식에게 간 프롬프트와 별개인, 사람이 읽을 요약. */}
             {turn.dispatch.text
               ? turn.dispatch.format === "markdown"
                 ? <StreamedMarkdown text={turn.dispatch.text} streaming={false} className="agent-chat-dispatch-md" language={language} />

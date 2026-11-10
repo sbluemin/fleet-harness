@@ -259,7 +259,7 @@ describe("Computer Use authorization and lifecycle", () => {
   });
 
   it("refuses every device tool until the caller Objective is allowed, and revoking drops its device session", async () => {
-    // 콘솔 사용과 같은 정책: 실험 플래그와 호출자 Objective의 토글이 둘 다 참일 때만 통과하고,
+    // 실험 플래그와 호출자 Objective의 토글이 둘 다 참일 때만 통과하고,
     // 거부는 어느 스위치가 꺼졌는지와 어디서 켜는지를 에이전트에게 말한다. 회수는 진행 중인 기기 소유를 놓는다.
     const f = setup();
     let experiment = true;
@@ -321,7 +321,6 @@ describe("Computer Use authorization and lifecycle", () => {
       writeJson: (_res, status, value) => { replied = { status, value: value as { error?: string } }; },
     });
     try {
-      const consoleHold = requests.hold({ objectiveId: "op-a", capability: "console", tool: "console_context", authorized: () => false });
       const held = requests.hold({ objectiveId: "op-a", capability: "computer", tool: "computer_status", authorized: () => objectives[0]?.computerUse?.enabled === true });
       const view = requests.list().requests.find((request) => request.capability === "computer");
       expect(view?.tools).toEqual(["computer_status"]);
@@ -331,7 +330,7 @@ describe("Computer Use authorization and lifecycle", () => {
       expect(await held).toBe("always");
       expect(objectives[0]?.computerUse).toEqual({ enabled: true, language: "en" });
       expect(approvals.snapshot().requests).toEqual([]);
-      expect(requests.list().requests.map((request) => request.capability)).toEqual(["console"]);
+      expect(requests.list().requests).toEqual([]);
       body = { id: view!.id, decision: "always" };
       await router({ req: { method: "POST" } as never, res: {} as never, pathname: APPROVAL_ANSWER_PATH });
       expect(replied).toEqual({ status: 404, value: { error: "unknown_request" } });
@@ -346,8 +345,6 @@ describe("Computer Use authorization and lifecycle", () => {
       expect(objectives[0]?.computerUse).toBeUndefined();
       expect(requests.answer("op-a", offView!.id, "deny")).toEqual({ ok: true, capability: "computer" });
       expect(await heldOff).toBe("declined");
-      requests.answer("op-a", requests.list().requests[0]!.id, "deny");
-      await consoleHold;
     } finally {
       requests.dispose();
       binding.dispose();

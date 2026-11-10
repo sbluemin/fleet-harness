@@ -128,7 +128,7 @@ const CLAUDE_HARNESS_ID = "claude";
  * 그 문장은 자식에게 오류 결과로 전달된다 — 새 지시를 보내는 통로가 아니므로 길 필요가 없다.
  */
 const MAX_CHAT_ANSWER_MESSAGE_CHARS = 2_000;
-/** Console Use 의 sleep 이 PTY 종료 → 휴면 전이를 기다려 주는 상한. 넘기면 `ending` 으로 답한다. */
+/** 플러그인 제어 경로의 sleep 이 PTY 종료 → 휴면 전이를 기다려 주는 상한. 넘기면 `ending` 으로 답한다. */
 const SLEEP_SETTLE_MS = 5_000;
 /** 터미널을 넘겨받은 채팅이 옛 CLI의 실제 종료를 기다리는 한도. 넘기면 첫 메시지가 자식을 연다. */
 
@@ -430,7 +430,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     else if (!event.session.attentionPending) consoleAttentionReasons.delete(event.session.sessionId);
   });
   ctx.host.lifecycle.registerCleanup(unsubscribeConsoleObservation);
-  // Console Use 확장면의 실행층 묶음 — 재개·뷰·대화·질문 답. 서버가 만든 같은 객체에 채운다.
+  // 플러그인 제어 경로의 실행층 묶음 — 재개·뷰·대화·질문 답. 서버가 만든 같은 객체에 채운다.
   const TRANSCRIPT_PAGE_BYTES = 512 * 1024;
   // 정화만 한다(경로·비밀). 본문이 상한을 넘으면 앞부분을 남기고 항목에 `truncated` 를 싣는다 — 꼬리 helper 처럼
   // 조용히 앞을 버리면 호출자가 부분 메시지를 전체로 오해한다.
@@ -708,7 +708,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const sanitized = sanitizeLaunchPrompt(text);
     return sanitized === undefined ? undefined : neutralizeChatOriginTag(sanitized);
   };
-  /** Console Use 호출자를 채팅 원장의 저자로 — 제목만 싣는다. 사람이면 undefined. */
+  /** 호출자를 채팅 원장의 저자로 — 제목만 싣는다. 사람이면 undefined. */
   const chatOrigin = (by: ConsoleCaller | undefined): ChatOrigin | undefined => {
     if (!by) return undefined;
     if (by.kind === "plugin") return { kind: "plugin", pluginId: by.pluginId };
@@ -1518,7 +1518,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return true;
   }
 
-  /** handleResume 의 본체 — Console Use 의 console_resume 도 같은 길을 쓴다. 끝난 목표는 채팅으로만 연다. */
+  /** handleResume 의 본체 — 플러그인 제어 경로의 resume 도 같은 길을 쓴다. 끝난 목표는 채팅으로만 연다. */
   async function resumeObjective(sessionId: string, fresh: boolean): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
     if (ctx.host.objectiveRecords.isTransitioning?.(sessionId)) return { ok: false, status: 409, error: "objectiveRecord_busy" };
     const node = ctx.host.objectiveRecords.get(sessionId);

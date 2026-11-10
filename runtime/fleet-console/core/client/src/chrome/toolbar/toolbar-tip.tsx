@@ -138,7 +138,7 @@ export function ToolbarTipLayer({ rootRef }: { readonly rootRef: RefObject<HTMLE
       }
       releaseTarget();
       shownFor = item;
-      // 접근 이름과 다른 말(단축키·Console Use 안내)을 할 때만 설명으로 잇는다. 같은 말을 두 번 읽히지 않게.
+      // 접근 이름과 다른 말(단축키 안내)을 할 때만 설명으로 잇는다. 같은 말을 두 번 읽히지 않게.
       if (text !== item.getAttribute("aria-label") && !item.hasAttribute("aria-describedby")) {
         item.setAttribute("aria-describedby", tipId);
         describedBy = item;

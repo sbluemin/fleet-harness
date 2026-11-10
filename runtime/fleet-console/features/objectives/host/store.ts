@@ -148,7 +148,7 @@ export interface ObjectiveInit {
   readonly dueDate?: string | null;
   readonly today?: boolean;
   readonly missions?: readonly { readonly text: string; readonly prerequisites?: readonly number[] }[];
-  /** Console Use 가 함께 받은 달성 기준 문장 — 저장될 때 기본 요구사항으로 by "human" 이 된다. */
+  /** 함께 받은 달성 기준 문장 — 저장될 때 기본 요구사항으로 by "human" 이 된다. */
   readonly criteria?: readonly string[];
   readonly by?: ObjectiveActor;
   readonly addedBy?: StoredObjective["addedBy"];

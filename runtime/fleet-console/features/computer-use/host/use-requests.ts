@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 /**
- * 패널 안 허용 요청 — Objective 의 AI 가 허용받지 않은 콘솔 사용·컴퓨터 사용 도구를 부르면, 거부하는 대신
+ * 패널 안 허용 요청 — Objective 의 AI 가 허용받지 않은 컴퓨터 사용 도구를 부르면, 거부하는 대신
  * 그 호출을 붙잡아 두고 그 Objective 패널에 허용/거절 카드를 띄운다. 사람의 답이 호출의 결말이 된다.
  *
  * - 한 Objective 의 한 도구군에는 요청이 하나뿐이다. 그사이 들어온 호출은 같은 요청에 합쳐져 한 번의 답을 함께 받는다.
@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
  * - 붙잡는 시간은 MCP 호출 상한(5분)보다 짧다. 답이 없으면 `no_response` 로 끝나 에이전트가 먼저 회신을 받는다.
  */
 
-export type UseCapability = "console" | "computer";
+export type UseCapability = "computer";
 export type UseAnswer = "deny" | "always";
 /**
  * 붙잡은 호출의 결말. `authorized` 는 사람이 답하기 전에 다른 길(메뉴 스위치 등)로 허용이 선 경우고,
@@ -60,7 +60,6 @@ export interface UseRequestBroker {
 
 /**
  * 컴퓨터 사용 허용 요청의 기록. 브로커는 붙잡힌 호출만 들고, 보이는 요청은 이 장부를 투영한다.
- * 콘솔 사용은 이 장부에 넣지 않는다.
  */
 export interface ComputerUseLedger {
   upsert(input: { readonly objectiveId: string; readonly participantId?: string; readonly tool: string }): { readonly id: string; readonly expiresAt: number };
@@ -165,7 +164,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       if (disposed || input.signal?.aborted) return Promise.resolve("stopped");
       if (input.withdrawn?.() === true) return Promise.resolve("withdrawn");
       if (input.authorized()) return Promise.resolve("authorized");
-      const book = input.capability === "computer" ? ledger() : null;
+      const book = ledger();
       if (book) {
         const created = book.upsert({ objectiveId: input.objectiveId, participantId: input.participantId, tool: input.tool });
         const waiters = computerWaiters.get(created.id) ?? new Set();
@@ -235,10 +234,8 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
     settle(objectiveId) {
       const book = ledger();
       for (const request of book?.list() ?? []) if (request.objectiveId === objectiveId) { finishComputer(request.id, "stopped"); book!.release(request.id); }
-      for (const capability of ["console", "computer"] as const) {
-        const request = pending.get(key(objectiveId, capability));
-        if (request) finish(request, "stopped");
-      }
+      const pendingRequest = pending.get(key(objectiveId, "computer"));
+      if (pendingRequest) finish(pendingRequest, "stopped");
       syncRecheck();
     },
     leave(objectiveId, participantId) {
@@ -252,14 +249,16 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
         for (const waiter of leaving) { waiters.delete(waiter); waiter.resolve("stopped"); }
         options.onChange?.();
       }
-      for (const capability of ["console", "computer"] as const) {
-        const request = pending.get(key(objectiveId, capability));
-        if (!request) continue;
+      const request = pending.get(key(objectiveId, "computer"));
+      if (request) {
         const leaving = [...request.waiters].filter((waiter) => (waiter.input.participantId ?? objectiveId) === participantId);
-        if (!leaving.length) continue;
-        if (leaving.length === request.waiters.size) { finish(request, "stopped"); continue; }
-        for (const waiter of leaving) { request.waiters.delete(waiter); waiter.resolve("stopped"); }
-        options.onChange?.();
+        if (leaving.length) {
+          if (leaving.length === request.waiters.size) finish(request, "stopped");
+          else {
+            for (const waiter of leaving) { request.waiters.delete(waiter); waiter.resolve("stopped"); }
+            options.onChange?.();
+          }
+        }
       }
     },
     revoke(objectiveId, capability) {
@@ -272,7 +271,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       syncRecheck();
     },
     list() {
-      const own = [...pending.values()].filter((request) => request.capability !== "computer" || !ledger()).map((request) => ({
+      const own = [...pending.values()].filter(() => !ledger()).map((request) => ({
         id: request.id,
         objectiveId: request.objectiveId,
         capability: request.capability,
