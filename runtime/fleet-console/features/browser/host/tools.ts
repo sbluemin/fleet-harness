@@ -244,7 +244,7 @@ export function createBrowserToolSpecs(deps: BrowserToolDeps): AgentToolSpec[] {
         const accept = args.action === "accept_dialog";
         // 필수로 둔다 — 선택이면 id 없는 답이 늦은 답을 막는 대조를 건너뛴다.
         if (typeof args.dialog_id !== "string" || !args.dialog_id) throw new Error("dialog_id is required for accept_dialog and dismiss_dialog. Read it from tabs_context or the refusal message.");
-        const dialog = await service.answerDialog(objectiveId, accept, args.dialog_id, tabId);
+        const dialog = await service.answerDialog(objectiveId, accept, args.dialog_id, tabId, "agent");
         dispatchSummary = `${args.action}: answered the page's ${dialog?.type ?? "JavaScript"} dialog${dialog ? ` ${JSON.stringify(dialog.message)}` : ""} with ${accept ? "OK" : "Cancel"}. Confirm with the screenshot or page state.`;
         break;
       }

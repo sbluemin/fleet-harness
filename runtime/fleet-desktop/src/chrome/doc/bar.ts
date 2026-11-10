@@ -292,8 +292,12 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   /** 크롬의 페이지 대화상자처럼 페이지 위에 띄운다 — 답은 Console 로 가고, 대화상자가 닫히면 다음 상태가 이 카드를 거둔다. */
   const buildPageDialog = (state: ChromeUiState, t: T, asked: NonNullable<ReturnType<typeof pageDialogOf>>): HTMLElement => {
     const answer = (accept: boolean): void => post("bar", "page-dialog", { id: asked.tab.id, dialogId: asked.dialog.id, accept });
-    const ok = h("button", { class: "button primary", type: "button", text: t("jsDialog.ok"), disabled: state.busy, on: { click: () => answer(true) } });
-    const actions = asked.dialog.type === "confirm" ? [h("button", { class: "button", type: "button", text: t("jsDialog.cancel"), disabled: state.busy, on: { click: () => answer(false) } }), ok] : [ok];
+    // 에이전트가 모는 탭의 대화상자는 사람이 답하지 못한다 — 답하려면 제어를 가져온다(주소줄 단추와 같은 잠금).
+    const locked = state.control?.holder === "agent";
+    const off = state.busy || locked;
+    const hint = locked ? t("control.locked") : undefined;
+    const ok = h("button", { class: "button primary", type: "button", text: t("jsDialog.ok"), title: hint, disabled: off, on: { click: () => answer(true) } });
+    const actions = asked.dialog.type === "confirm" ? [h("button", { class: "button", type: "button", text: t("jsDialog.cancel"), title: hint, disabled: off, on: { click: () => answer(false) } }), ok] : [ok];
     // 대화상자를 띄운 프레임의 출처로 말한다 — 다른 출처의 iframe 이면 탭이 아니라 그 페이지임을 밝힌다. 출처를 싣지 않는 옛 Console 만 탭으로 말한다.
     const tabOrigin = ((): string => { try { return new URL(asked.tab.url).origin; } catch { return "null"; } })();
     const source = asked.dialog.origin ?? tabOrigin;
@@ -353,7 +357,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (current?.kind !== "annotate" && annotator) { annotator.dispose(); annotator = null; }
     // 스페이스 선택 화면이 닫히면 초점을 그 단추로 돌려준다 — 키보드로 연 사람이 화면 밖에서 길을 잃지 않게.
     const leavingSpaces = overlayKey.startsWith("spaces:") && !(showing && current!.kind === "spaces") && overlay.contains(document.activeElement);
-    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.page])}` : "none";
+    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : "none";
     const toastKey = `${state.notice ?? ""}|${state.info?.text ?? ""}|${state.info?.action ?? ""}`;
     if (current?.kind === "annotate" && showing) {
       if (!annotator) { clear(overlay); annotator = mountAnnotate(overlay, state, t); overlayKey = "annotate"; }

@@ -1141,11 +1141,13 @@ export class BrowserService {
    * 페이지의 alert·confirm 에 답한다 — 사람(크롬 표시줄)과 에이전트(`computer`)가 같은 길을 쓴다. 답은 그 대화상자의 id 를
    * 함께 보내며, 이미 답을 받았거나 닫힌 대화상자면 거절된다. 답하기 전의 대화상자를 돌려준다.
    */
-  async answerDialog(objectiveId: string, accept: boolean, dialogId: string, tabId?: string | null): Promise<BrowserPageDialog | null> {
+  async answerDialog(objectiveId: string, accept: boolean, dialogId: string, tabId?: string | null, by: "user" | "agent" = "user"): Promise<BrowserPageDialog | null> {
     const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
     const client = await this.engineClient();
     const dialog = this.deps.desktop.viewDialog(tab.sessionId);
+    // 에이전트의 답은 보내기 직전에도 제어권을 본다 — 진입 뒤 사람이 제어를 가져갔으면 그 대화상자는 사람의 것이다.
+    if (by === "agent") this.guardInput(op, tab);
     // 엔진이 dialogId 를 지금 열린 대화상자와 대조하고, 다르면 보내지 않고 거절한다.
     await client.send("Page.handleJavaScriptDialog", { accept, dialogId }, tab.sessionId);
     return dialog;

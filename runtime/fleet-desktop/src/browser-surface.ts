@@ -236,11 +236,15 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     const held = page.width > 0 && page.height > 0 ? controlState() : null;
     if (held) docs.guard.view.setBounds(guardBounds(held));
     docs.guard.view.setVisible(held !== null);
+    // 대화상자 카드는 주소줄 문서가 페이지 자리를 덮어 그린다 — 그동안은 가드를 그 위로 올려 제어 알약이 보이고 눌리게 한다.
+    // 에이전트가 모는 중이면 가드가 카드도 덮어, 사람의 포인터가 잠긴 페이지의 대화상자에 닿지 않는다.
+    const guardOnTop = held !== null && ui.overlay === null && pageDialog();
+    if (hostKind === "window") windowStack?.raiseGuard(guardOnTop);
     if (hostKind === "pane") {
       const main = deps.main();
       if (main && !main.isDestroyed() && divider) {
         const left = rect.x - DIVIDER_PX;
-        main.stack.setBrowserPane({ stage: docs.stage.view, guard: docs.guard.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left });
+        main.stack.setBrowserPane({ stage: docs.stage.view, guard: docs.guard.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left, guardOnTop });
         divider.setBounds({ x: left, y: 0, width: DIVIDER_PX, height: rect.height });
       }
     }
@@ -494,14 +498,18 @@ function createWindowStack(base: BaseWindow) {
   let guard: WebContentsView | null = null;
   let rail: WebContentsView | null = null;
   let bar: WebContentsView | null = null;
+  let guardOnTop = false;
   const relayout = (): void => {
-    const ordered = [...(stage ? [stage] : []), ...presented, ...(guard ? [guard] : []), ...(rail ? [rail] : []), ...(bar ? [bar] : [])];
+    const chromeViews = [...(rail ? [rail] : []), ...(bar ? [bar] : [])];
+    const ordered = [...(stage ? [stage] : []), ...presented, ...(guard && !guardOnTop ? [guard] : []), ...chromeViews, ...(guard && guardOnTop ? [guard] : [])];
     for (let index = 0; index < ordered.length; index += 1) base.contentView.addChildView(ordered[index]!, index);
   };
   const remove = (view: WebContentsView): void => { presented.delete(view); try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } };
   return {
     set(nextStage: WebContentsView, nextGuard: WebContentsView, nextRail: WebContentsView, nextBar: WebContentsView): void { stage = nextStage; guard = nextGuard; rail = nextRail; bar = nextBar; relayout(); },
-    clear(): void { for (const view of [stage, guard, rail, bar]) if (view) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } } stage = null; guard = null; rail = null; bar = null; },
+    /** 대화상자 카드가 떠 있는 동안 가드를 주소줄 위로 올린다 — 바뀔 때만 다시 쌓는다. */
+    raiseGuard(on: boolean): void { if (on === guardOnTop) return; guardOnTop = on; relayout(); },
+    clear(): void { for (const view of [stage, guard, rail, bar]) if (view) { try { base.contentView.removeChildView(view); } catch { /* 이미 떨어졌다. */ } } stage = null; guard = null; rail = null; bar = null; guardOnTop = false; },
     host(scale: () => number, focus: () => void): PageHost {
       return {
         isDestroyed: () => base.isDestroyed(),
