@@ -105,8 +105,10 @@ export function mountRail(): (state: ChromeUiState) => void {
     const t = tr(state);
     const chrome = state.chrome;
     root.classList.toggle("pinned", state.pinned);
-    root.classList.toggle("driving", chrome?.driving === true);
-    root.setAttribute("aria-label", chrome?.driving ? t("driving") : t("tabs"));
+    // 조작 중 표시는 지금 보는 스페이스의 것이다(주소줄과 같은 규칙).
+    const shownDriving = shownSpace(state)?.driving === true;
+    root.classList.toggle("driving", shownDriving);
+    root.setAttribute("aria-label", shownDriving ? t("driving") : t("tabs"));
     if (previous?.pinned !== state.pinned) syncOpen();
     const pinText = t(state.pinned ? "rail.unpin" : "rail.pin");
     pinButton.title = pinText; pinButton.setAttribute("aria-label", pinText); pinButton.setAttribute("aria-pressed", String(state.pinned));

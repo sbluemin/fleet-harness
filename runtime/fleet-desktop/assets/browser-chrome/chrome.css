@@ -144,7 +144,7 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 .icon svg { width: 14px; height: 14px; }
 .reload.loading svg { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.url { position: relative; flex: 1; min-width: 120px; display: flex; align-items: center; height: 30px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
+.url { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center; height: 30px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
 .url:hover { background: var(--ink-rim); }
 .url:focus-within { box-shadow: var(--field-focus-edge); }
 .url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-ui); font-size: var(--t-sm); user-select: text; -webkit-user-select: text; }
@@ -154,6 +154,8 @@ html[data-role="rail"] body, html[data-role="stage"] body, html[data-role="bar"]
 .url-display { position: absolute; inset: 0 var(--space-3); display: flex; align-items: center; justify-content: center; pointer-events: none; font-size: var(--t-sm); white-space: nowrap; overflow: hidden; }
 .url-host { color: var(--text-primary); }
 .url-rest { color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; }
+/* 칸이 가장 좁을 때(320)는 단추와 간격을 조금 조여 주소가 잘리지 않게 한다. */
+@media (max-width: 360px) { .strip { gap: 2px; padding: 0 6px; } .strip > .icon { width: 28px; } }
 .more-button { border-radius: var(--radius-pill); }
 .more-button.open { background: var(--ink-rim); color: var(--text-primary); }
 .more-glyph { overflow: visible; }
@@ -326,6 +328,9 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .spaces-button.in-space { color: var(--space-c); }
 .spaces-button.in-space:hover:not(:disabled), .spaces-button.in-space:focus-visible { color: var(--space-c); }
 .spaces-button.open, .spaces-button.in-space.open { background: var(--ink-rim); color: var(--text-primary); }
+/* 다른 스페이스에서 에이전트가 일하는 중 — 단추 모서리의 점 하나(조작 신호 토큰). */
+.spaces-button { position: relative; }
+.spaces-button.elsewhere::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--agent-control-badge); box-shadow: 0 0 0 1.5px var(--surface); }
 /* 선택 화면 — 주소줄 아래 표면 전체(레일·페이지 위)를 덮는 한 화면. */
 .backdrop.spaces-screen { top: var(--strip); overflow-x: hidden; overflow-y: auto; padding: var(--space-6) var(--space-4); background: var(--surface); scrollbar-width: thin; animation: spaces-in var(--duration-fast) ease-out; }
 @keyframes spaces-in { from { opacity: 0; } to { opacity: 1; } }

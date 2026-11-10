@@ -338,7 +338,9 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId) ?? null;
     const available = chrome?.available === true;
     leading.style.width = `${state.leading}px`; trailing.style.width = `${state.trailing}px`;
-    strip.classList.toggle("driving", chrome?.driving === true);
+    // 조작 중 표시는 지금 보는 스페이스의 것이다 — 다른 스페이스의 에이전트가 일하는 동안 이 화면이 물들면 여기 탭이 조작되는 것처럼 읽힌다.
+    // 다른 스페이스에서 일하는 중이면 스페이스 단추에 점 하나로 알린다.
+    strip.classList.toggle("driving", shownSpace(state)?.driving === true);
     back.title = back.ariaLabel = t("back"); forward.title = forward.ariaLabel = t("forward"); reload.title = reload.ariaLabel = t("reload");
     back.disabled = !tab?.canGoBack || state.busy; forward.disabled = !tab?.canGoForward || state.busy; reload.disabled = !tab || state.busy;
     reload.classList.toggle("loading", tab?.loading === true);
@@ -351,6 +353,10 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     spacesButton.setAttribute("aria-expanded", String(spacesOpen));
     spacesButton.classList.toggle("open", spacesOpen);
     spacesButton.classList.toggle("in-space", space?.kind === "commodore");
+    const elsewhere = chrome?.spaces.some((other) => other.driving && other.id !== state.spaceId) === true;
+    spacesButton.classList.toggle("elsewhere", elsewhere);
+    if (!spacesOpen && elsewhere) spacesButton.title = `${spacesTip} · ${t("spaces.elsewhere")}`;
+    spacesButton.ariaLabel = elsewhere ? `${spacesTip} · ${t("spaces.elsewhere")}` : spacesTip;
     spacesButton.style.setProperty("--space-hue", String(spaceHue(state.spaceId)));
     spacesButton.disabled = chrome === null;
     more.title = state.overlay?.kind === "menu" ? "" : t("moreTools"); more.ariaLabel = t("moreTools");
