@@ -76,7 +76,7 @@
 }
 .conversation-dock-menu[hidden] { display: none; }
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) { position: relative; display: block; width: 100%; }
-.conversation-dock-menu > :is(.conversation-dock-view, .conversation-dock-archive),
+.conversation-dock-menu > :is(.conversation-dock-archive),
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button {
   display: flex;
   align-items: center;
@@ -96,9 +96,9 @@
   min-height: var(--popover-row);
   font-weight: var(--weight-regular);
 }
-.conversation-dock-menu > :is(.conversation-dock-view, .conversation-dock-archive):hover,
+.conversation-dock-menu > :is(.conversation-dock-archive):hover,
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button:hover { background: var(--wash-hover); }
-.conversation-dock-menu > :is(.conversation-dock-view, .conversation-dock-archive) > svg,
+.conversation-dock-menu > :is(.conversation-dock-archive) > svg,
 .conversation-dock-menu > :is(.command-band-system-anchor, .conversation-dock-settings) > button > svg { width: var(--popover-icon); height: var(--popover-icon); flex: none; }
 .conversation-dock-count { flex: none; color: var(--text-tertiary); font-size: var(--t-sm); font-variant-numeric: tabular-nums; }
 .conversation-dock-label { flex: 1; min-width: 0; text-align: left; }
