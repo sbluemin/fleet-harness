@@ -124,6 +124,13 @@
   white-space: pre-wrap;
 }
 .group-chat-bubble.is-human :is(.agent-chat-dispatch-md, .agent-chat-dispatch-md :is(p, h1, h2, h3, h4, blockquote, th, a), .agent-chat-dispatch-text, .fc-mention-chip, .fc-mention-chip-label) { color: inherit; }
+/* 앞머리의 행위 문구와 구분점도 말풍선 글자색을 진다 — 보조 글자·선 색은 일반 면 기준이라 색 면 위에서는 묻힌다. */
+.group-chat-human .group-chat-bubble.is-human :is(.group-chat-via, .group-chat-line-sep) { color: inherit; }
+/* 보낸 인용 칩도 같다 — 칩 글자·종류 글리프·따옴표·덧말이 말풍선 글자색을 지고, 테두리는 그 색을 옅게 쓴다. */
+.group-chat-bubble.is-human .fc-composer-quote.is-sent { border-color: color-mix(in oklab, currentColor 40%, transparent); color: inherit; }
+.group-chat-bubble.is-human .fc-composer-quote.is-sent :is(.fc-composer-quote__kind, .fc-composer-quote__note),
+.group-chat-bubble.is-human .fc-composer-quote.is-sent .fc-composer-quote__excerpt::before,
+.group-chat-bubble.is-human .fc-composer-quote.is-sent .fc-composer-quote__excerpt::after { color: inherit; }
 .group-chat-bubble.is-markdown { white-space: normal; }
 .group-chat-bubble.is-agent {
   background: var(--surface-panel-raised);
@@ -276,6 +283,8 @@
 .group-chat-line-who { flex: none; color: var(--text-secondary); white-space: nowrap; }
 .group-chat-line-arrow,
 .group-chat-line-sep { flex: none; color: var(--hairline-strong); }
+/* 라이트의 선 색(#b1b1b1)은 종이 위 글리프로는 2.1:1이라 흐린 글자색으로 올린다. */
+:root[data-theme="light"] :is(.group-chat-line-arrow, .group-chat-line-sep) { color: var(--text-tertiary); }
 /* 행위 내용의 첫 줄 — 행위 낱말 뒤에 이어 서고, 좁으면 이것부터 말줄임으로 준다. */
 .group-chat-line-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .group-chat-line-status { flex: none; white-space: nowrap; }

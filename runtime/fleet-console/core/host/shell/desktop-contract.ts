@@ -352,14 +352,14 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
     canvas: "#fcfcfc",
     tokens: {
       "ink-abyss": "oklch(97% 0 0)", "ink-deep": "oklch(95.5% 0 0)", "ink-veil": "oklch(90.5% 0 0)",
-      "ink-rim": "oklch(80% 0 0)", "ink-fog": "oklch(60% 0 0)", "ink-muted": "oklch(55% 0 0)",
+      "ink-rim": "oklch(80% 0 0)", "ink-fog": "oklch(53% 0 0)", "ink-muted": "oklch(52% 0 0)",
       "ink-spectral": "oklch(50.7% 0 0)", "ink-pearl": "oklch(22.6% 0 0)", brass: "oklch(56% 0.125 82)",
       aurora: "oklch(50% 0.1 210)", positive: "oklch(50% 0.12 160)", coral: "oklch(52% 0.16 25)",
       hairline: "oklch(86% 0 0)", "hairline-strong": "oklch(76% 0 0)",
     },
     browser: {
       "ink-abyss": "oklch(97% 0 0)", "canvas-abyss": "oklch(99.1% 0 0)", "ink-deep": "oklch(95.5% 0 0)", "ink-veil": "oklch(90.5% 0 0)",
-      "ink-rim": "oklch(80% 0 0)", "ink-fog": "oklch(60% 0 0)", "ink-muted": "oklch(55% 0 0)", "ink-spectral": "oklch(50.7% 0 0)", "ink-pearl": "oklch(22.6% 0 0)",
+      "ink-rim": "oklch(80% 0 0)", "ink-fog": "oklch(53% 0 0)", "ink-muted": "oklch(52% 0 0)", "ink-spectral": "oklch(50.7% 0 0)", "ink-pearl": "oklch(22.6% 0 0)",
       hairline: "oklch(86% 0 0)", "hairline-strong": "oklch(76% 0 0)", "popover-face": "oklch(100% 0 0)",
       "id-crimson": "oklch(54% 0.1 25)", "id-cerulean": "oklch(52% 0.09 235)", "id-moss": "oklch(53% 0.09 140)",
       "agent-control-badge": "oklch(57% 0.24 285)", "agent-control-badge-ink": "oklch(100% 0 0)", aurora: "oklch(50% 0.1 210)", coral: "oklch(52% 0.16 25)",
