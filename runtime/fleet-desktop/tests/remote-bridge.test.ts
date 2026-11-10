@@ -303,7 +303,9 @@ describe("host picker surface", () => {
     const run = vi.fn(async () => { state = { management: "this-desktop", lifecycle: "running", identityProven: true }; });
     const manage = vi.fn();
     const report = vi.fn();
-    const section = createConsoleSectionController({ home: () => LOCAL, fetch, open: vi.fn(async () => undefined), add: vi.fn(), manage, managedHome: { state: async () => state, run }, confirmForget: vi.fn(async () => false), report });
+    let agreed = false;
+    const confirmStart = vi.fn(async () => agreed);
+    const section = createConsoleSectionController({ home: () => LOCAL, fetch, open: vi.fn(async () => undefined), add: vi.fn(), manage, managedHome: { state: async () => state, run }, confirmStart, confirmForget: vi.fn(async () => false), report });
     section.attach(active as never);
     const send = (value: ConsoleSectionCommand) => active.emit("will-navigate", { preventDefault: vi.fn() }, consoleSectionCommandUrl(new URL(url).origin, value), undefined, true);
     // 명부 이벤트도 같은 문서로 오므로 목록 상태만 고른다.
@@ -324,25 +326,39 @@ describe("host picker surface", () => {
       expect(run).not.toHaveBeenCalled();
       expect(new URL(manage.mock.calls[0]![0]).origin).toBe(LOCAL);
       expect(new URL(manage.mock.calls[0]![0]).searchParams.get("target")).toBe(home.id);
+      // 꺼진 관리 대상의 시작만은 남의 문서에서도 받되, 셸이 사람에게 직접 물은 뒤에만 한다. 창은 보던 콘솔에 남는다.
+      state = { management: "this-desktop", lifecycle: "stopped", identityProven: false };
+      await section.refresh();
+      send({ lifecycle: { id: home.id, action: "start" } });
+      await vi.waitFor(() => expect(confirmStart).toHaveBeenCalledWith("Home"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(run).not.toHaveBeenCalled();
+      agreed = true;
+      send({ lifecycle: { id: home.id, action: "start" } });
+      await vi.waitFor(() => expect(run).toHaveBeenCalledWith("start", false));
       // 집 문서라도 관리자가 허용하지 않는 동작(집 콘솔 중지)과 관리하지 않는 항목은 실행하지 않는다.
       url = `${LOCAL}/console/`;
       await section.refresh();
       send({ lifecycle: { id: home.id, action: "stop" } });
       send({ lifecycle: { id: entries().find((entry) => entry.address === "127.0.0.1:3900")!.id, action: "restart" } });
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(run).not.toHaveBeenCalled();
+      expect(run).toHaveBeenCalledTimes(1);
       // 밖에서 꺼진 관리 대상은 중지됨으로 남고 시작만 받는다. 꺼진 콘솔의 목록을 읽지 못한 것은 오류가 아니다.
       state = { management: "this-desktop", lifecycle: "stopped", identityProven: false };
       await section.refresh();
       expect(entries().find((entry) => entry.home)).toMatchObject({ status: "unreachable", lifecycle: "stopped", actions: ["start"] });
+      // 집 문서의 요청은 묻지 않고 하고, 창이 따라간다. 연달아 두 번 눌러도 전환은 한 번이다.
       send({ lifecycle: { id: home.id, action: "start" } });
-      await vi.waitFor(() => expect(run).toHaveBeenCalledWith("start"));
+      send({ lifecycle: { id: home.id, action: "start" } });
+      await vi.waitFor(() => expect(run).toHaveBeenCalledWith("start", true));
       await vi.waitFor(() => expect(entries().find((entry) => entry.home)).toMatchObject({ lifecycle: "running", actions: ["restart"] }));
+      expect(run).toHaveBeenCalledTimes(2);
+      expect(confirmStart).toHaveBeenCalledTimes(2);
       // 관리자가 이 Desktop이 아니면 집 문서의 요청도 실행하지 않는다.
       state = { management: "cli", lifecycle: null, identityProven: false };
       send({ lifecycle: { id: home.id, action: "restart" } });
       await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(run).toHaveBeenCalledTimes(1);
+      expect(run).toHaveBeenCalledTimes(2);
       expect(report).not.toHaveBeenCalled();
     } finally { section.close(); }
   });

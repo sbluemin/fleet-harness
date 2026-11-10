@@ -16,8 +16,11 @@ export interface ManagedConsoleState {
 /** The Console this Desktop's window lives on, as its lifecycle manager sees it. */
 export interface ManagedHomeConsole {
   readonly state: () => Promise<ManagedConsoleState>;
-  /** Runs an action this controller judged allowed. Rejects when it could not be carried out. */
-  readonly run: (action: ConsoleLifecycleAction) => Promise<void>;
+  /**
+   * Runs an action this controller judged allowed. Rejects when it could not be carried out. `follow` says the window
+   * stood on this Console when the action was asked for, so it goes to the Console that comes back.
+   */
+  readonly run: (action: ConsoleLifecycleAction, follow: boolean) => Promise<void>;
 }
 type Relations = Pick<ConsoleSectionEntry, "management" | "path" | "lifecycle" | "actions">;
 interface Dependencies {
@@ -37,6 +40,8 @@ interface Dependencies {
   /** Opens the management surface the home Console draws. Absent in a shell that offers none. */
   readonly manage?: (url: string) => void;
   readonly managedHome?: ManagedHomeConsole;
+  /** The shell's own question before it starts its Console for a document that Console does not serve. */
+  readonly confirmStart?: (label: string) => Promise<boolean>;
   readonly confirmForget: (label: string) => Promise<boolean>;
   readonly report: (error: unknown) => void;
 }
@@ -81,6 +86,8 @@ export function createConsoleSectionController(deps: Dependencies) {
   /** The lifecycle action in flight on the home Console, and whether the last one failed. */
   let running: ConsoleLifecycleAction | null = null;
   let failed = false;
+  /** A lifecycle request is being judged, confirmed, or carried out. */
+  let judging = false;
   let switchSerial = 0;
   let arrival: Arrival | null = null;
   let arrivalTimer: ReturnType<typeof setTimeout> | null = null;
@@ -291,11 +298,12 @@ export function createConsoleSectionController(deps: Dependencies) {
     /**
      * The home Console does not answer, so its own lists cannot be read. Its section stays, with the name it last had
      * and the relations the manager just proved, so the person sees what happened instead of the last list that worked.
+     * The Console being viewed carries no relation here: the management surface is the home Console's to draw.
      */
     const homeOnly = async (): Promise<void> => {
       const before = [...targets.values()].find((target) => target.entry.home)?.entry;
       append(origin, "local", before?.label, before?.version, "unreachable", homeExtra);
-      if (current && !seen.has(current)) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, { management: "unknown", path: isLoopbackConsoleOrigin(current) ? "loopback" : "remote" });
+      if (current && !seen.has(current)) append(current, isLoopbackConsoleOrigin(current) ? "local" : "remote", new URL(current).host, null, null, {});
       targets = new Map(built.map((target) => [target.entry.id, target]));
       ids = nextIds;
       await publish();
@@ -362,23 +370,33 @@ export function createConsoleSectionController(deps: Dependencies) {
    * never from what the page was last told: the entry must be the home Console and the action one the contract allows
    * for its present state.
    */
-  async function runLifecycle(id: string, action: ConsoleLifecycleAction): Promise<void> {
+  async function runLifecycle(id: string, action: ConsoleLifecycleAction, fromHome: boolean): Promise<void> {
     const target = targets.get(id);
-    if (!target?.entry.home || !deps.managedHome || running !== null) return;
-    const state = await deps.managedHome.state();
-    const lifecycle = failed && state.lifecycle === "stopped" ? "failed" : state.lifecycle;
-    if (!consoleLifecycleActions({ ...state, lifecycle, home: true }).includes(action)) { await refresh(); return; }
-    running = action;
-    failed = false;
-    await refresh();
+    // One request at a time, held from before the first await: a second press must not start a second transition.
+    if (!target?.entry.home || !deps.managedHome || judging) return;
+    judging = true;
     try {
-      await deps.managedHome.run(action);
-    } catch (error) {
-      failed = true;
-      deps.report(error);
-    } finally {
-      running = null;
+      const state = await deps.managedHome.state();
+      const lifecycle = failed && state.lifecycle === "stopped" ? "failed" : state.lifecycle;
+      if (!consoleLifecycleActions({ ...state, lifecycle, home: true }).includes(action)) { await refresh(); return; }
+      // A document the home Console does not serve cannot speak for the person, so the shell asks them itself.
+      if (!fromHome && !await deps.confirmStart?.(target.entry.label)) { await refresh(); return; }
+      // The window follows only when it stands on this Console; a person working on another one stays there.
+      const follow = at() === home();
+      running = action;
+      failed = false;
       await refresh();
+      try {
+        await deps.managedHome.run(action, follow);
+      } catch (error) {
+        failed = true;
+        deps.report(error);
+      } finally {
+        running = null;
+        await refresh();
+      }
+    } finally {
+      judging = false;
     }
   }
   async function command(value: ConsoleSectionCommand, fromHome: boolean): Promise<void> {
@@ -401,9 +419,14 @@ export function createConsoleSectionController(deps: Dependencies) {
       if (arrival && at() === arrival.origin) { clearArrival(); await publishRoster(); }
       return;
     }
-    // Lifecycle is the manager's alone. A page of another Console may show the section, but only a document the home
-    // Console serves may ask: the stale home page of a stopped Console, or the management surface.
-    if ("lifecycle" in value) { if (fromHome) await runLifecycle(value.lifecycle.id, value.lifecycle.action); return; }
+    // Lifecycle is the manager's alone. A document the home Console serves may ask: the stale home page of a stopped
+    // Console, or the management surface. A page of another Console shows the section too, and a stopped Console has
+    // no surface of its own to be asked from, so from there only `start` is taken up, and only after the shell's own
+    // confirmation.
+    if ("lifecycle" in value) {
+      if (fromHome || (value.lifecycle.action === "start" && deps.confirmStart)) await runLifecycle(value.lifecycle.id, value.lifecycle.action, fromHome);
+      return;
+    }
     const id = "switch" in value ? value.switch : "forget" in value ? value.forget : "manage" in value ? value.manage : value.rename.id;
     const target = targets.get(id);
     if (!target) return;
