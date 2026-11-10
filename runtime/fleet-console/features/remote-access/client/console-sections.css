@@ -24,6 +24,13 @@
 .side-console-edit svg { width: 14px; height: 14px; }
 .side-console-head:hover .side-console-edit, .side-console-head:focus-within .side-console-edit { opacity: 1; }
 .side-console-edit:hover { background: linear-gradient(var(--wash-hover), var(--wash-hover)), var(--canvas-side); color: var(--text-primary); }
+/* 관리 대상의 생명주기 — 꺼져 있음은 사실일 뿐 경고가 아니고, 움직이는 중과 실패만 신호 색을 쓴다. */
+.side-console-head[data-lifecycle="stopped"] .side-console-status { color: var(--text-tertiary); }
+.side-console-head[data-lifecycle="starting"] .side-console-status, .side-console-head[data-lifecycle="stopping"] .side-console-status { color: var(--aurora-ink); }
+.side-console-head[data-lifecycle="failed"] .side-console-status { color: var(--coral-ink); }
+/* 꺼진 관리 대상을 다시 켜는 단추. 머리글 안의 한 가지 동작이라 늘 보인다. */
+.side-console-start { flex: none; margin-right: 6px; border: 0; border-radius: 8px; padding: 3px 10px; background: var(--wash-hover); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; }
+.side-console-start:hover { background: var(--control-rest-hover); }
 .side-console-head.is-editing { display: block; padding: 8px 10px 10px; }
 .side-console-form { display: grid; gap: 8px; min-width: 0; }
 .side-console-form input { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--surface-rim-strong); border-radius: 8px; background: var(--canvas-side); color: var(--text-primary); font: inherit; font-size: var(--t-md); }

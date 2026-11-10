@@ -9,6 +9,7 @@ import { isDesktopShell, useDesktopHomeOrigin } from "../../../core/client/src/i
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { useT } from "../../../core/client/src/i18n/index.js";
 import { ConsoleGlyph } from "./console-section.js";
+import { consoleLifecycleKey } from "./manage-console-card.js";
 import { subscribeRemoteHostsChanged } from "./remote-hosts.js";
 import "./console-sections.css";
 
@@ -87,7 +88,8 @@ export function useConsoleSections(): ConsoleSections {
   }, [rosterCapable, command]);
   return {
     capable, rosterCapable, entries, command, arrived, fold, arrival,
-    sectioned: capable && entries.length > 1,
+    // 콘솔이 하나뿐이어도 관리 대상이 꺼져 있거나 시작·종료 중이면 머리글을 세운다 — 그 사실과 시작 단추가 설 자리가 머리글뿐이다.
+    sectioned: capable && (entries.length > 1 || entries.some((entry) => consoleLifecycleKey(entry) !== null)),
     active: entries.find((entry) => entry.active) ?? null,
     roster: (id) => byId.get(id) ?? null,
     folded: (id) => localFolds[id] ?? shellFolds.has(id),
@@ -109,8 +111,13 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const t = useT();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(entry.label);
-  const status = entry.status === "unreachable" ? t("chrome.hosts.unreachable") : entry.status === "untrusted" ? t("chrome.hosts.untrusted")
+  // 관리 대상의 생명주기가 연결 상태보다 먼저다 — 꺼진 콘솔은 "연결 불가"가 아니라 "중지됨"이다.
+  const lifecycle = consoleLifecycleKey(entry);
+  const status = lifecycle ? t(lifecycle) : entry.status === "unreachable" ? t("chrome.hosts.unreachable") : entry.status === "untrusted" ? t("chrome.hosts.untrusted")
     : entry.status === "stopping" ? t("chrome.hosts.stopping") : entry.status === "slow" ? t("chrome.hosts.slow") : null;
+  // 관리 화면은 집 Console이 그린다. 이 Desktop이 관계를 실어 보낸 이 컴퓨터의 콘솔에만, 그 콘솔이 답하는 동안에만 문을 둔다.
+  const manageable = !compact && entry.management !== undefined && entry.path !== "remote" && entry.status !== "unreachable";
+  const startable = !compact && entry.actions?.includes("start") === true;
   const switchable = compact && !consoleSwitchBlocked(entry);
   const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
   const press = compact ? () => { if (switchable) sections.command({ switch: entry.id }); } : () => sections.fold(entry.id, !folded);
@@ -125,7 +132,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
       </form>
     </div>;
   }
-  return <div className={`side-console-head${entry.active ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined}>
+  return <div className={`side-console-head${entry.active ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
     <button type="button" className="side-console-toggle" aria-expanded={compact ? undefined : !folded} title={title} onClick={press}>
       <ConsoleGlyph remote={entry.kind === "remote"} />
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
@@ -135,6 +142,11 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
       {folded && count !== null && count > 0 ? <span className="side-console-count">{count}</span> : null}
       <ChevronGlyph direction="down" className="side-console-chevron" />
     </button>
+    {startable ? <button type="button" className="side-console-start" onClick={() => sections.command({ lifecycle: { id: entry.id, action: "start" } })}>{t("chrome.consoles.start")}</button> : null}
+    {manageable ? <button type="button" className="side-console-edit" aria-label={`${entry.label}: ${t("chrome.consoles.manage")}`} title={t("chrome.consoles.manage")}
+      onClick={() => sections.command({ manage: entry.id })}>
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" /></svg>
+    </button> : null}
     {entry.kind === "remote" ? <button type="button" className="side-console-edit" aria-label={`${entry.label}: ${t("settings.remote.hosts.rename")}`} title={t("settings.remote.hosts.rename")}
       onClick={() => { setName(entry.label); setEditing(true); }}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m3 11-.5 2.5L5 13l7-7-2-2-7 7Zm6-6 2 2" /></svg>

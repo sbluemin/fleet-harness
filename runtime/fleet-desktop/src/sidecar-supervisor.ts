@@ -34,8 +34,11 @@ import {
   STOP_POLL_MS,
   describeOwnerlessConsoleLock,
   describeRefusedConsoleLock,
+  classifyConsoleManagement,
   describeReplacedLockAuthor,
   type ConsoleLifecycleWait,
+  type ConsoleManagedLifecycle,
+  type ConsoleManagementRelation,
 } from "@fleet-console/protocol/lifecycle";
 
 type LifecycleWaitReport = { wait(wait: ConsoleLifecycleWait): void };
@@ -64,7 +67,25 @@ export interface SidecarSupervisorOptions {
    * Development runtimes carry the repository's version, which says nothing about the code, so they never take this path.
    */
   readonly legacyLockCleanup?: boolean;
+  /**
+   * The Console this Desktop started ended after it was ready, and this Desktop did not ask it to. The manager is told
+   * so the person is not left on a window whose Console is gone; a Console adopted without a child handle has no such
+   * event and is found by `managedState` instead.
+   */
+  readonly onUnexpectedExit?: (ending: SidecarEnding | null) => void;
   readonly log: { info(message: string): void; error(message: string): void };
+}
+
+/**
+ * What this Desktop can say about the Console in its slot, for the management relation
+ * (docs/console-lifecycle-contract.md, "Management, operation, and access path").
+ */
+export interface SidecarManagedState {
+  readonly management: ConsoleManagementRelation;
+  /** `null` when the slot holds a Console this Desktop does not manage or cannot judge. */
+  readonly lifecycle: ConsoleManagedLifecycle | null;
+  /** A running Console proved it is the lock's instance: an unreaped own child, or an authenticated health answer. */
+  readonly identityProven: boolean;
 }
 
 /** How a sidecar ended: its exit status and the outcome its exit record names (null when it left none). */
@@ -284,6 +305,7 @@ export class SidecarSupervisor {
       }
       // An unknown or missing record is never reported as a clean stop.
       this.options.log.error(`${failure.message} outcome=${ending?.outcome ?? "unrecorded"}`);
+      if (sidecarReady) this.options.onUnexpectedExit?.(ending);
     });
     const deadline = this.clock.now() + CONSOLE_START_TIMEOUT_MS;
     report?.wait("spawned-starting");
@@ -344,6 +366,42 @@ export class SidecarSupervisor {
       if (this.stoppingChild === child) this.stoppingChild = null;
     }
     return failure;
+  }
+  /**
+   * The management relation of the Console in this Desktop's slot and what it is doing. Reads only: the lock through
+   * the contract's observer and, for a live owner, one authenticated health probe. An empty slot, or a lock whose pid
+   * has exited, is a stopped Console this Desktop may start, as it does at launch.
+   */
+  async managedState(): Promise<SidecarManagedState> {
+    const read = await this.readLockSettled();
+    if (read.kind === "absent") return { management: "this-desktop", lifecycle: "stopped", identityProven: false };
+    if (read.kind !== "trusted") return read.kind === "untrusted" && !read.alive
+      ? { management: "this-desktop", lifecycle: "stopped", identityProven: false }
+      : { management: "unknown", lifecycle: null, identityProven: false };
+    const { lock } = read.stored;
+    if (!read.alive) return { management: "this-desktop", lifecycle: "stopped", identityProven: false };
+    const management = classifyConsoleManagement(lock.owner, this.options.ownerId);
+    if (management !== "this-desktop") return { management, lifecycle: null, identityProven: false };
+    if (this.isOwnLiveChild(lock.pid) && this.stoppingChild?.pid === lock.pid) return { management, lifecycle: "stopping", identityProven: true };
+    const observed = await this.observe(lock);
+    const own = this.isOwnLiveChild(lock.pid);
+    if (observed.state === "exited") return { management, lifecycle: "stopped", identityProven: false };
+    if (observed.state === "starting") return { management, lifecycle: "starting", identityProven: own };
+    if (observed.state === "stopping" || observed.state === "releasing") return { management, lifecycle: "stopping", identityProven: own };
+    // The proof adoption uses: this Desktop's unreaped child, or an authenticated health answer from the lock's pid.
+    if (observed.state !== "replaced" && (own || this.answersFor(observed.probe, lock.pid))) return { management, lifecycle: "running", identityProven: true };
+    // Unverified or replaced: the owner record alone proves nothing, so nothing is offered.
+    return { management, lifecycle: null, identityProven: false };
+  }
+  /**
+   * Stops the Console this Desktop manages and starts one again. The stop is the Quit stop: it signals only a Console
+   * this Desktop owns and has proven, and leaves any other running. `startOrAdopt` then decides from the slot as it
+   * finds it, so a Console that was left running is adopted or reported as a conflict, never started beside.
+   */
+  async restart(report?: LifecycleWaitReport): Promise<string> {
+    report?.wait("stop-ladder");
+    await this.stop();
+    return this.startOrAdopt(report);
   }
   /** Quit. Never removes the lock: a lock left by an exited Console is reclaimed by the next Console that starts. */
   async stop(): Promise<void> {

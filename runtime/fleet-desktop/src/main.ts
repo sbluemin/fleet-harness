@@ -159,8 +159,11 @@ async function boot(): Promise<void> {
     ownerId: environment.ownerId,
     legacyLockCleanup: isPackaged,
     serviceVersion: initialServiceVersion,
+    // The Console section is composed further down; the manager only learns that its Console ended.
+    onUnexpectedExit: () => homeConsoleExited(),
     log: logger,
   });
+  let homeConsoleExited: () => void = () => {};
   let window: DesktopShellWindow | null = null;
   let startupEntry: WebContentsView | null = null;
   const dismissStartupEntry = (): void => {
@@ -639,6 +642,37 @@ async function boot(): Promise<void> {
     pinRemote: (hostname, fingerprint) => remotePins.pin(hostname, fingerprint),
     open: (origin) => bridge.open(origin),
     add: (url) => picker.open(url).catch((error) => bridge.report(error)),
+    manage: (url) => picker.open(url).catch((error) => bridge.report(error)),
+    /**
+     * This Desktop manages the Console its window lives on (docs/console-lifecycle-contract.md, "Management,
+     * operation, and access path"). The controller judges authority from this state; the actions below only carry
+     * out what it allowed. Stopping the home Console is Quit's, never an in-window action.
+     */
+    managedHome: {
+      state: () => supervisor.managedState(),
+      run: async (action, follow) => {
+        if (action === "stop") throw new Error("console_home_stop_unsupported");
+        // The management surface is served by the Console that is about to go away.
+        picker.close();
+        const url = action === "restart" ? await supervisor.restart() : await supervisor.startOrAdopt();
+        const origin = new URL(url).origin;
+        // A Console that starts again may publish another port: the home origin follows it before the window does.
+        localConsoleOrigin = origin;
+        // A window that stood on another Console stays there; its list shows this one again.
+        if (follow) await bridge.open(origin);
+      },
+    },
+    confirmStart: async (label) => {
+      if (!window || window.isDestroyed()) return false;
+      const korean = entryLanguage === "ko";
+      return (await dialog.showMessageBox(window.base, {
+        type: "question",
+        title: korean ? "콘솔 시작" : "Start console",
+        message: korean ? `“${label}” 콘솔을 시작할까요?` : `Start the “${label}” console?`,
+        detail: korean ? "Fleet Desktop이 관리하는 콘솔이에요. 지금 보고 있는 콘솔은 그대로 열려 있어요." : "Fleet Desktop manages this console. The console you are viewing stays open.",
+        buttons: korean ? ["취소", "시작"] : ["Cancel", "Start"], defaultId: 1, cancelId: 0, noLink: true,
+      })).response === 1;
+    },
     confirmForget: async (label) => {
       if (!window || window.isDestroyed()) return false;
       const korean = entryLanguage === "ko";
@@ -652,6 +686,7 @@ async function boot(): Promise<void> {
     },
     report: (error) => bridge.report(error),
   });
+  homeConsoleExited = () => { void consoleSection.refresh(); };
   /** Console을 보여 주고 있는 창만 인사한다 — 진입 화면에서 떠날 때는 이미 그 화면이 떠 있다. */
   let consoleShown = false;
   const createEntryView = (): WebContentsView => {
