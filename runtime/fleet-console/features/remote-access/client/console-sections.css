@@ -10,10 +10,10 @@
 .side-console-head.is-active .side-console-toggle { color: var(--text-primary); }
 .side-console-toggle svg { display: block; flex: none; width: 15px; height: 15px; }
 .side-console-name { display: flex; flex: 1; align-items: baseline; gap: 6px; min-width: 0; font-size: var(--t-sm); }
-.side-console-name b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.side-console-name b { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-bold); }
 .side-console-name small { flex: 1 1 0; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--text-tertiary); }
 .side-console-home { display: grid; flex: none; place-items: center; color: var(--text-tertiary); }
-.side-console-here { flex: none; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--text-primary); color: var(--canvas-side); font-size: var(--t-2xs); font-weight: 700; }
+.side-console-here { flex: none; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--text-primary); color: var(--canvas-side); font-size: var(--t-2xs); font-weight: var(--weight-bold); }
 .side-console-status { flex: none; font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--warn-ink); }
 .side-console-head[data-status="unreachable"] .side-console-status { color: var(--coral-ink); }
 .side-console-count { flex: none; font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
