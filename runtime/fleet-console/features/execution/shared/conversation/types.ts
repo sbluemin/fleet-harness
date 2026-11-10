@@ -41,7 +41,8 @@ export interface ConversationHold {
   readonly createdAt: number;
   readonly handed: ConversationHanded;
   readonly route?: LocalizedText;
-  readonly reveal?: { readonly label: LocalizedText; readonly run: () => void };
+  /** 표시 호스트가 폰 여부를 싣는다 — 공급자가 대화 칸과 폰 목적지 중 실제 이동 경로를 고른다. */
+  readonly reveal?: { readonly label: LocalizedText; readonly run: (options?: { readonly mobile: boolean }) => void };
 }
 
 export interface ConversationDecision {

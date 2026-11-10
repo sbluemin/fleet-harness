@@ -187,7 +187,7 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
 }
 
 /** 넘김 카드·안내 — 결정의 이동 안내에는 질문이나 답·돌려주기 동작을 복제하지 않는다. */
-export function HoldCard({ hold, language }: { readonly hold: ConversationHold; readonly language: ConsoleLocale | undefined }) {
+export function HoldCard({ hold, language, phone = false }: { readonly hold: ConversationHold; readonly language: ConsoleLocale | undefined; readonly phone?: boolean }) {
   const t = getGroupT(language);
   const locale = language ?? "en";
   const text = (value: Parameters<typeof resolveLocalizedText>[0]) => resolveLocalizedText(value, locale);
@@ -205,7 +205,7 @@ export function HoldCard({ hold, language }: { readonly hold: ConversationHold; 
     <section className="group-card is-hold" aria-label={text(hold.title)} onKeyDown={ignoreRepeat}>
       <div className="group-card-head">
         <span className="group-card-who">{text(hold.title)}</span>
-        {hold.reveal ? <button type="button" className="group-chat-link" onClick={hold.reveal.run}>{text(hold.reveal.label)}</button> : null}
+        {hold.reveal ? <button type="button" className="group-chat-link" onClick={() => hold.reveal?.run({ mobile: phone })}>{text(hold.reveal.label)}</button> : null}
       </div>
     </section>
   );
@@ -214,7 +214,7 @@ export function HoldCard({ hold, language }: { readonly hold: ConversationHold; 
       <div className="group-card-head">
         <SpeakerMark speaker={{ kind: "commodore", name: t("group.commodore") }} size="sm" />
         <span className="group-card-who">{`${t("group.commodore")} · ${text(hold.title)}`}</span>
-        {hold.reveal ? <button type="button" className="group-chat-link" onClick={hold.reveal.run}>{text(hold.reveal.label)}</button> : null}
+        {hold.reveal ? <button type="button" className="group-chat-link" onClick={() => hold.reveal?.run({ mobile: phone })}>{text(hold.reveal.label)}</button> : null}
       </div>
       <div className="group-card-handed"><span className="group-card-handed-label">{text(hold.handed.label)}</span><CardMarkdown text={hold.handed.reason} language={locale} lead /></div>
       <div className="group-card-foot">

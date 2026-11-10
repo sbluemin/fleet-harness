@@ -157,7 +157,7 @@ function conversationHolds(objective: Objective): readonly ConversationHold[] {
       title: localized((t) => t("objectives.decision.handedNotice")),
       createdAt: hold.at,
       handed: { label: localized((t) => t("objectives.decision.handed")), reason: hold.reason },
-      reveal: { label: localized((t) => t("objectives.decision.openCommodore")), run: () => { openCommodoreConversation(objective.commodoreId); } },
+      reveal: { label: localized((t) => t("objectives.decision.openCommodore")), run: (options) => { openCommodoreConversation(objective.commodoreId, options?.mobile ? { mobile: true, tab: "log" } : undefined); } },
     }] : [];
     const pickable = target === "followup" && followupPickable(objective);
     const routeKey: ObjectiveMessageKey = target === "criteria" ? "objectives.hold.route.criteria"

@@ -232,7 +232,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
         />
       ) : null}
       {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} />)}
-      {snapshot.holds.filter((hold) => !phone || hold.notice).map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />)}
+      {snapshot.holds.filter((hold) => !phone || hold.notice).map((hold) => <HoldCard key={hold.id} hold={hold} language={language} phone={phone} />)}
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );
