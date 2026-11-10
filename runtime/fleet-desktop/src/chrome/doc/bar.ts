@@ -21,9 +21,32 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   const input = h("input", { class: "url-input", type: "text", autocomplete: "off", spellcheck: false, attrs: { inputmode: "url", role: "combobox", "aria-autocomplete": "list" } });
   const form = h("form", { class: "url" }, display, input);
   const detach = h("button", { class: "icon detach", type: "button", on: { mousedown: (event) => event.preventDefault(), click: () => post("bar", "toggle-mode") } }, "↗");
-  // 스페이스 — 도구 메뉴 바로 왼쪽. 누르면 스페이스들이 그리드로 펼쳐지고, 사령관 스페이스를 보는 동안에는 그 스페이스의 색으로 물든다.
+  // 스페이스 — 도구 메뉴 바로 왼쪽. 단추의 그림이 지금 보는 스페이스의 표식(사령관은 머리글자, 디폴트는 집)이고, 누르면 스페이스들이 그리드로 펼쳐진다.
   // 누르면 초점이 주소줄을 떠난다(mousedown 을 막지 않는다): 스페이스를 옮긴 뒤 주소줄이 고치던 중으로 남아 옛 주소를 붙잡지 않게.
-  const spacesButton = h("button", { class: "icon spaces-button", type: "button", attrs: { "aria-haspopup": "dialog" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "spaces" ? null : "spaces" }) } }, glyph(G.spaces, 16));
+  const spacesButton = h("button", { class: "icon spaces-button", type: "button", attrs: { "aria-haspopup": "dialog" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "spaces" ? null : "spaces" }) } });
+  const spacesGlyph = h("span", { class: "spaces-glyph" });
+  spacesButton.append(spacesGlyph);
+  let spacesGlyphKey = "";
+  /** 스페이스가 바뀌면 옛 표식이 물러나고 새 표식이 들어선다 — 처음 그릴 때는 움직이지 않는다. */
+  const paintSpacesGlyph = (id: string, kind: "commodore" | "default", name: string): void => {
+    const initial = Array.from(name)[0] ?? "";
+    const key = `${id}:${kind}:${initial}`;
+    if (key === spacesGlyphKey) return;
+    const first = spacesGlyphKey === "";
+    spacesGlyphKey = key;
+    const mark = h("span", { class: "space-mark" });
+    if (kind === "commodore") mark.append(h("span", { class: "space-initial", text: initial })); else mark.append(glyph(G.home));
+    const face = h("span", { class: `spaces-face${first ? "" : " entering"}`, attrs: { "data-kind": kind } }, mark);
+    face.style.setProperty("--space-hue", String(spaceHue(id)));
+    for (const old of Array.from(spacesGlyph.children)) {
+      if (first) { old.remove(); continue; }
+      old.classList.remove("entering");
+      old.classList.add("leaving");
+      old.addEventListener("animationend", () => old.remove(), { once: true });
+      setTimeout(() => old.remove(), 400);
+    }
+    spacesGlyph.append(face);
+  };
   const more = h("button", { class: "icon more-button", type: "button", attrs: { "aria-haspopup": "menu" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "menu" ? null : "menu" }) } }, moreGlyph());
   const leading = h("span", { class: "pad" });
   const trailing = h("span", { class: "pad" });
@@ -180,7 +203,8 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       const mark = h("span", { class: "space-mark" });
       if (space.kind === "commodore") mark.append(h("span", { class: "space-initial", text: Array.from(name)[0] ?? "" })); else mark.append(glyph(G.home));
       const top = h("span", { class: "tile-top" }, mark, h("span", { class: "tile-name", text: name }));
-      if (space.driving) top.append(h("span", { class: "tile-agent", title: t("space.driving"), attrs: { role: "img", "aria-label": t("space.driving") } }, agentGlyph()));
+      const needsYou = space.control === "user";
+      if (space.driving && !needsYou) top.append(h("span", { class: "tile-agent", title: t("space.driving"), attrs: { role: "img", "aria-label": t("space.driving") } }, agentGlyph()));
       const icons = h("span", { class: "tile-icons" });
       for (const tab of tabs.slice(0, TILE_ICONS)) {
         const icon = h("span", { class: "tab-icon" });
@@ -193,11 +217,13 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       }
       if (tabs.length > TILE_ICONS) icons.append(h("span", { class: "tile-more", text: `+${tabs.length - TILE_ICONS}` }));
       const foot = h("span", { class: "tile-foot" }, icons, h("span", { class: "tile-count", text: count }));
-      const label = `${t("spaces.tile", { name, tabs: count })}${current ? ` · ${t("spaces.current")}` : ""}${space.driving ? ` · ${t("space.driving")}` : ""}`;
+      const label = `${t("spaces.tile", { name, tabs: count })}${current ? ` · ${t("spaces.current")}` : ""}${needsYou ? ` · ${t("control.needsYou")}` : space.driving ? ` · ${t("space.driving")}` : ""}`;
       const tile = h("button", { class: `space-tile${current ? " current" : ""}${tabs.length === 0 ? " no-tabs" : ""}`, type: "button", disabled: !chrome!.available, attrs: { "aria-label": label, "aria-current": current ? "true" : null, "data-kind": space.kind }, on: { click: () => post("bar", "select-space", { id: space.id }) } },
         top, foot);
       tile.style.setProperty("--space-hue", String(spaceHue(space.id)));
       if (current) top.append(h("span", { class: "tile-current", text: t("spaces.current") }));
+      // 사람이 제어를 쥔 스페이스 — 에이전트가 부탁했든 사람이 가져갔든, 돌려줄 때까지 이 표식이 남는다.
+      if (needsYou) foot.prepend(h("span", { class: "tile-attention", text: t("control.needsYou"), title: space.attention?.reason ?? "" }));
       grid.append(h("div", { class: "spaces-cell", role: "listitem" }, tile));
     }
     // 방향키로 칸 사이를 오간다 — 줄 수는 폭에 따라 달라지므로 앞뒤로만 옮긴다.
@@ -213,7 +239,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     return h("div", { class: "spaces-panel", role: "dialog", attrs: { "aria-label": t("spaces.title") } },
       h("div", { class: "spaces-head" }, h("h2", { text: t("spaces.title") })), grid);
   };
-  const spacesKey = (state: ChromeUiState): string => JSON.stringify([state.spaceId, state.chrome?.available, state.chrome?.spaces.map((space) => [space.id, space.label, space.driving]), state.chrome?.tabs.map((tab) => [tab.id, tab.spaceId, tab.favicon?.length ?? 0])]);
+  const spacesKey = (state: ChromeUiState): string => JSON.stringify([state.spaceId, state.chrome?.available, state.chrome?.spaces.map((space) => [space.id, space.label, space.driving, space.control ?? "agent", space.attention?.reason ?? ""]), state.chrome?.tabs.map((tab) => [tab.id, tab.spaceId, tab.favicon?.length ?? 0])]);
 
   const buildSuggestions = (state: ChromeUiState, t: T): HTMLElement | null => {
     const settings = state.suggest;
@@ -383,11 +409,12 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     // 가로 탭 표시줄이 맨 위 줄이면 신호등·캡션 자리는 그 줄이 비운다 — 이 줄은 그 아래에 있어 비울 것이 없다.
     const top = state.orientation !== "horizontal";
     leading.style.width = `${top ? state.leading : 0}px`; trailing.style.width = `${top ? state.trailing : 0}px`;
-    // 조작 중 표시는 지금 보는 스페이스의 것이다 — 다른 스페이스의 에이전트가 일하는 동안 이 화면이 물들면 여기 탭이 조작되는 것처럼 읽힌다.
-    // 다른 스페이스에서 일하는 중이면 스페이스 단추에 점 하나로 알린다.
-    strip.classList.toggle("driving", shownSpace(state)?.driving === true);
+    // 조작 중임은 페이지 위 화면(가드)이 보인다 — 주소줄은 물들지 않는다. 다른 스페이스에서 일하는 중이면 스페이스 단추에 점 하나로 알린다.
+    // 에이전트가 모는 표시 탭은 주소줄로도 움직이지 않는다(페이지 위 가드와 같은 잠금). 탭 전환·새 탭·스페이스 이동은 그대로다.
+    const locked = state.control?.holder === "agent";
     back.title = back.ariaLabel = t("back"); forward.title = forward.ariaLabel = t("forward"); reload.title = reload.ariaLabel = t("reload");
-    back.disabled = !tab?.canGoBack || state.busy; forward.disabled = !tab?.canGoForward || state.busy; reload.disabled = !tab || state.busy;
+    if (locked) back.title = forward.title = reload.title = t("control.locked");
+    back.disabled = !tab?.canGoBack || state.busy || locked; forward.disabled = !tab?.canGoForward || state.busy || locked; reload.disabled = !tab || state.busy || locked;
     reload.classList.toggle("loading", tab?.loading === true);
     detach.textContent = state.mode === "window" ? "↙" : "↗";
     detach.title = detach.ariaLabel = t(state.mode === "window" ? "reattach" : "detach");
@@ -397,17 +424,20 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     spacesButton.title = spacesOpen ? "" : spacesTip; spacesButton.ariaLabel = spacesTip;
     spacesButton.setAttribute("aria-expanded", String(spacesOpen));
     spacesButton.classList.toggle("open", spacesOpen);
-    spacesButton.classList.toggle("in-space", space?.kind === "commodore");
+    paintSpacesGlyph(state.spaceId, space?.kind ?? "default", spaceName(t, space));
     const elsewhere = chrome?.spaces.some((other) => other.driving && other.id !== state.spaceId) === true;
-    spacesButton.classList.toggle("elsewhere", elsewhere);
-    if (!spacesOpen && elsewhere) spacesButton.title = `${spacesTip} · ${t("spaces.elsewhere")}`;
-    spacesButton.ariaLabel = elsewhere ? `${spacesTip} · ${t("spaces.elsewhere")}` : spacesTip;
-    spacesButton.style.setProperty("--space-hue", String(spaceHue(state.spaceId)));
+    // 다른 스페이스가 사람을 기다리면 그 신호가 먼저다 — 점이 기다림 색이 된다.
+    const needsYou = chrome?.spaces.some((other) => other.control === "user" && other.id !== state.spaceId) === true;
+    spacesButton.classList.toggle("elsewhere", elsewhere || needsYou);
+    spacesButton.classList.toggle("attention", needsYou);
+    const elsewhereTip = needsYou ? t("spaces.needsYou") : elsewhere ? t("spaces.elsewhere") : null;
+    if (!spacesOpen && elsewhereTip) spacesButton.title = `${spacesTip} · ${elsewhereTip}`;
+    spacesButton.ariaLabel = elsewhereTip ? `${spacesTip} · ${elsewhereTip}` : spacesTip;
     spacesButton.disabled = chrome === null;
     more.title = state.overlay?.kind === "menu" ? "" : t("moreTools"); more.ariaLabel = t("moreTools");
     more.setAttribute("aria-expanded", String(state.overlay?.kind === "menu"));
     more.classList.toggle("open", state.overlay?.kind === "menu");
-    input.disabled = !available;
+    input.disabled = !available || locked;
     input.placeholder = t("urlPlaceholder"); input.setAttribute("aria-label", t("pageUrl"));
     input.setAttribute("aria-expanded", String(suggestionsOf().length > 0));
     // 사람이 고치는 중이 아니면 입력은 활성 탭의 주소를 따른다. 고치던 글은 탭이 바뀌어도 남는다(draft).

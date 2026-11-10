@@ -1,5 +1,6 @@
 import type { ChromeRole, ChromeUiState } from "../contract.js";
 import { mountBar } from "./bar.js";
+import { mountGuard } from "./guard.js";
 import { mountRail } from "./rail.js";
 import { mountStage } from "./stage.js";
 import { post } from "./shared.js";
@@ -23,4 +24,8 @@ if (role === "bar") {
   const render = mountStage();
   window.__fleetChrome = { apply: render, inspected: () => undefined, captured: () => undefined };
   post("stage", "ready");
+} else if (role === "guard") {
+  const render = mountGuard();
+  window.__fleetChrome = { apply: render, inspected: () => undefined, captured: () => undefined };
+  post("guard", "ready");
 }

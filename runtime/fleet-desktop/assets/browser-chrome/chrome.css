@@ -130,18 +130,6 @@ html[data-role="stage"] body, html[data-role="bar"] .strip { background: var(--s
 .strip { position: relative; z-index: 2; border-bottom: 1px solid var(--hairline); display: flex; align-items: center; gap: var(--space-1); height: var(--strip); padding: 0 var(--space-2); -webkit-app-region: drag; }
 .strip > * { -webkit-app-region: no-drag; }
 .strip > .pad { flex: none; height: 100%; -webkit-app-region: drag; }
-/* AI 사용 중 — 주소줄과 레일이 같은 토큰·같은 상태(chrome.driving)로 칠한다. 칠하는 층(::before)만 따로 두어 켜짐·꺼짐은 부드럽게 번지고, 켜진 동안은 잔잔히 흐른다. */
-.strip::before, .rail::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: 0; transition: opacity 500ms ease; --agent-glow: color-mix(in oklab, var(--agent-control-badge) 48%, transparent); }
-:root[data-scheme="light"] .strip::before, :root[data-scheme="light"] .rail::before { --agent-glow: color-mix(in oklab, var(--agent-control-badge) 40%, transparent); }
-.strip::before { background: linear-gradient(90deg, var(--agent-glow) 0%, transparent 38%, var(--agent-glow) 72%, transparent 100%); background-size: 200% 100%; }
-.rail::before { background: linear-gradient(180deg, var(--agent-glow) 0%, transparent 38%, var(--agent-glow) 72%, transparent 100%); background-size: 100% 200%; }
-.strip.driving::before, .rail.driving::before { opacity: 1; animation: agent-sweep-x 6s ease-in-out infinite alternate; }
-.rail.driving::before { animation-name: agent-sweep-y; }
-.rail.horizontal::before { background: linear-gradient(90deg, var(--agent-glow) 0%, transparent 38%, var(--agent-glow) 72%, transparent 100%); background-size: 200% 100%; }
-.rail.horizontal.driving::before { animation-name: agent-sweep-x; }
-@keyframes agent-sweep-x { from { background-position: 0% 0; } to { background-position: 100% 0; } }
-@keyframes agent-sweep-y { from { background-position: 0 0%; } to { background-position: 0 100%; } }
-@media (prefers-reduced-motion: reduce) { .strip.driving::before, .rail.driving::before { animation: none; } .strip::before, .rail::before { transition: none; } }
 .icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-secondary); font-size: var(--t-md); text-decoration: none; cursor: pointer; }
 .icon:hover:not(:disabled), .icon:focus-visible { color: var(--brass-ink); background: var(--ink-veil); outline: none; }
 .icon:disabled { opacity: 0.35; cursor: default; }
@@ -298,13 +286,12 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .glyph svg { width: 14px; height: 14px; }
 .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 /* 접힌 레일은 글자·닫기·탭 수를 감출 뿐 자리는 펼친 폭 그대로 둔다 — 폭이 변하는 동안 글자가 다시 말줄임되지 않고, 줄이 넓어지는 만큼 드러난다. */
-.rail :is(.label, .tab-title, .tab-close, .space-count) { transition: opacity 140ms ease 60ms, visibility 0s; }
-.rail:not(.open):not(.horizontal) :is(.label, .tab-title, .tab-close, .space-count) { opacity: 0; visibility: hidden; transition: opacity 90ms ease, visibility 0s 90ms; }
+.rail :is(.label, .tab-title, .tab-close) { transition: opacity 140ms ease 60ms, visibility 0s; }
+.rail:not(.open):not(.horizontal) :is(.label, .tab-title, .tab-close) { opacity: 0; visibility: hidden; transition: opacity 90ms ease, visibility 0s 90ms; }
 .rail:not(.horizontal) .label { flex: none; }
 .rail:not(.horizontal) .tab-title { flex: none; width: calc(var(--rail-row) - 76px); }
 .rail.open:not(.horizontal) .tab.is-agent .tab-title { width: calc(var(--rail-row) - 100px); }
-.rail:not(.horizontal) .space-head .space-name { flex: none; width: calc(var(--rail-row) - 82px); }
-@media (prefers-reduced-motion: reduce) { .rail, .rail :is(.label, .tab-title, .tab-close, .space-count) { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .rail, .rail :is(.label, .tab-title, .tab-close) { transition: none; } }
 .tabs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tabs[hidden] { display: none; }
 .tab { position: relative; flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; overflow: hidden; padding: 0 8px 0 12px; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-sm); line-height: 18px; }
@@ -323,28 +310,19 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 @media (prefers-reduced-motion: reduce) { .tab.loading .tab-icon { animation: none; } }
 /* ---- 스페이스: 레일 머리와 주소줄 단추가 지금 보는 스페이스를 말하고, 선택 화면이 모든 스페이스를 그리드로 편다.
    스페이스 색(--space-c)은 그 스페이스를 가리키는 표식 하나다 — id 에서 정한 색상환(--space-hue)에 테마별 밝기를 입힌다. ---- */
-.space-head, .spaces-button, .space-tile { --space-c: oklch(70% 0.09 var(--space-hue, 250)); --space-ink: var(--ink-deep); }
-:root[data-scheme="light"] :is(.space-head, .spaces-button, .space-tile) { --space-c: oklch(56% 0.1 var(--space-hue, 250)); --space-ink: var(--text-on-identity); }
+.spaces-face, .space-tile { --space-c: oklch(70% 0.09 var(--space-hue, 250)); --space-ink: var(--ink-deep); }
+:root[data-scheme="light"] :is(.spaces-face, .space-tile) { --space-c: oklch(56% 0.1 var(--space-hue, 250)); --space-ink: var(--text-on-identity); }
 .space-mark { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: var(--radius-xs); background: var(--ink-veil); color: var(--text-secondary); font-size: var(--t-xs); font-weight: var(--weight-medium); line-height: 1; }
 .space-mark svg { width: 14px; height: 14px; }
 [data-kind="commodore"] > .space-mark, [data-kind="commodore"] .tile-top > .space-mark { background: var(--space-c); color: var(--space-ink); }
 .space-initial { text-transform: uppercase; }
 /* 레일 머리 — 접힌 레일에서는 표식 하나가 가운데 서고, 펼치면 이름과 탭 수가 붙는다. */
-.row.space-head { gap: var(--space-2); padding: 0 8px; color: var(--text-primary); font-weight: var(--weight-medium); }
-.row.space-head.open { background: var(--ink-rim); }
-.space-head .space-name { flex: 1 1 auto; }
-.space-count { flex: none; margin-inline-start: auto; padding-inline-end: var(--space-1); color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-regular); font-variant-numeric: tabular-nums; }
-.space-count[hidden] { display: none; }
-.space-head.driving .space-mark { box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px var(--agent-control-badge); }
 /* ---- 가로 탭 표시줄: 같은 문서가 주소줄 위 한 줄로 눕는다. 맨 위 줄이므로 신호등·캡션 자리를 비우고(.pad), 그 여백으로 창을 끈다.
    탭이 놓이는 자리는 끌기 영역이 아니다 — 끌기 영역은 우클릭을 받지 못해 표시줄 메뉴가 뜨지 않는다. ---- */
 html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .rail.horizontal { right: 0; bottom: auto; width: auto; height: var(--strip); flex-direction: row; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border-right: 0; transition: none; }
 .rail.horizontal > .pad { display: block; flex: none; height: 100%; -webkit-app-region: drag; }
 .rail.horizontal :is(.rail-pin, .divider) { display: none; }
-.rail.horizontal .row.space-head { flex: none; width: auto; max-width: 180px; }
-.rail.horizontal .space-head .space-name { flex: 0 1 auto; max-width: 104px; }
-.rail.horizontal .space-count { margin-inline-start: 0; }
 .rail.horizontal .scroll { flex: 1 1 auto; min-width: 0; height: 100%; flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .rail.horizontal .tabs { flex: 0 1 auto; flex-direction: row; min-width: 0; }
 .rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; }
@@ -359,12 +337,20 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 /* 주소줄 단추 — 사령관 스페이스를 보는 동안 글리프가 그 스페이스의 색을 입는다. */
 .spaces-button { border-radius: var(--radius-pill); }
 .spaces-button svg { width: 16px; height: 16px; }
-.spaces-button.in-space { color: var(--space-c); }
-.spaces-button.in-space:hover:not(:disabled), .spaces-button.in-space:focus-visible { color: var(--space-c); }
-.spaces-button.open, .spaces-button.in-space.open { background: var(--ink-rim); color: var(--text-primary); }
+.spaces-button.open { background: var(--ink-rim); color: var(--text-primary); }
+/* 단추의 그림은 지금 보는 스페이스의 표식이다. 스페이스를 옮기면 옛 표식이 위로 물러나고 새 표식이 아래에서 들어선다. */
+.spaces-glyph { position: relative; display: inline-flex; width: 22px; height: 22px; }
+.spaces-face { position: absolute; inset: 0; display: inline-flex; }
+.spaces-face.entering { animation: space-face-in 320ms var(--rail-ease) both; }
+.spaces-face.leaving { animation: space-face-out 220ms ease both; }
+@keyframes space-face-in { from { opacity: 0; transform: translateY(7px) scale(0.6) rotate(-14deg); } to { opacity: 1; transform: none; } }
+@keyframes space-face-out { to { opacity: 0; transform: translateY(-7px) scale(0.6) rotate(14deg); } }
+@media (prefers-reduced-motion: reduce) { .spaces-face.entering { animation: none; } .spaces-face.leaving { display: none; } }
 /* 다른 스페이스에서 에이전트가 일하는 중 — 단추 모서리의 점 하나(조작 신호 토큰). */
 .spaces-button { position: relative; }
 .spaces-button.elsewhere::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--agent-control-badge); box-shadow: 0 0 0 1.5px var(--surface); }
+/* 다른 스페이스가 사람을 기다린다 — 같은 점이 기다림 색이 된다. */
+.spaces-button.attention::after { background: var(--aurora); }
 /* 선택 화면 — 주소줄 아래 표면 전체(레일·페이지 위)를 덮는 한 화면. */
 .backdrop.spaces-screen { top: var(--strip); overflow-x: hidden; overflow-y: auto; padding: var(--space-6) var(--space-4); background: var(--surface); scrollbar-width: thin; animation: spaces-in var(--duration-fast) ease-out; }
 @keyframes spaces-in { from { opacity: 0; } to { opacity: 1; } }
@@ -385,6 +371,7 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .tile-current { flex: none; margin-inline-start: auto; padding: 1px 6px; border-radius: var(--radius-pill); background: var(--ink-veil); color: var(--text-secondary); font-size: var(--t-2xs); font-weight: var(--weight-medium); white-space: nowrap; }
 .tile-agent { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: var(--radius-xs); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
 .tile-agent svg { width: 10px; height: 10px; }
+.tile-attention { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; padding: 1px 6px; border-radius: var(--radius-pill); background: color-mix(in oklab, var(--aurora) 18%, transparent); color: var(--aurora); font-size: var(--t-2xs); font-weight: var(--weight-medium); white-space: nowrap; }
 .tile-foot { display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin-top: auto; padding-top: var(--space-2); }
 .tile-icons { flex: none; display: flex; align-items: center; gap: var(--space-1); }
 .tile-icons .tab-icon { color: var(--text-tertiary); }
@@ -400,3 +387,89 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .empty-title, .empty-body { word-break: keep-all; overflow-wrap: anywhere; text-wrap: pretty; }
 .empty-title { margin: 0; color: var(--text-primary); font-size: var(--t-base); font-weight: var(--weight-medium); }
 .empty-body { margin: 0; max-width: 40ch; font-size: var(--t-sm); color: var(--text-secondary); }
+
+/* ---- 가드 — 페이지 바로 위의 제어권 화면: 제어 알약, 에이전트 커서, 조작 중 애니메이션. 조작 중임을 알리는 것은 이 화면뿐이다(주소줄·탭 표시줄은 물들지 않는다).
+   색은 조작 신호 토큰 하나다. 에이전트가 모는 동안에는 뷰가 페이지 자리 전체를 덮어 포인터를 받고, 사람이 쥔 동안에는 알약 자리만 차지한다.
+   층은 여럿이지만 모두 옅다 — 페이지를 어둡게 덮지 않고, 글을 읽는 데 걸리지 않는다:
+   가장자리 빛(숨쉬듯 밝기가 변한다) · 테두리를 마주 도는 두 빛줄기 · 네 모서리의 조준 표식 · 위에서 아래로 훑는 주사선 · 대각선으로 지나가는 점 격자 ·
+   커서를 따라다니는 점 격자의 밝은 자리 · 누를 때 커서에서 퍼지는 고리. ---- */
+@property --guard-beam { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@property --guard-x { syntax: "<length>"; inherits: true; initial-value: -400px; }
+@property --guard-y { syntax: "<length>"; inherits: true; initial-value: -400px; }
+.guard { position: absolute; inset: 0; overflow: hidden; --guard-glow: color-mix(in oklab, var(--agent-control-badge) 46%, transparent); --guard-dot: color-mix(in oklab, var(--agent-control-badge) 60%, transparent); --guard-line: color-mix(in oklab, var(--agent-control-badge) 78%, white); transition: --guard-x 280ms var(--rail-ease), --guard-y 280ms var(--rail-ease); }
+:root[data-scheme="light"] .guard { --guard-glow: color-mix(in oklab, var(--agent-control-badge) 38%, transparent); --guard-dot: color-mix(in oklab, var(--agent-control-badge) 52%, transparent); --guard-line: var(--agent-control-badge); }
+.guard[hidden] { display: none; }
+.guard.agent { cursor: default; }
+.guard-fx { position: absolute; inset: 0; pointer-events: none; display: none; }
+.guard.agent .guard-fx { display: block; animation: guard-in 500ms ease both; }
+.guard-fx > * { position: absolute; }
+/* 가장자리 빛 — 안쪽으로 번지는 얇은 테두리가 숨쉬듯 밝아졌다 잦아든다. */
+.guard-edge { inset: 0; box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--agent-control-badge) 55%, transparent), inset 0 0 44px -8px var(--guard-glow); animation: guard-breathe 4.8s ease-in-out infinite; }
+/* 테두리를 마주 도는 두 빛줄기 — 원뿔 그라디언트를 2px 고리로 잘랐다. 한 바퀴 7초. */
+.guard-beam { inset: 0; padding: 2px; background: conic-gradient(from var(--guard-beam), transparent 0 30%, var(--guard-line) 41%, transparent 48% 80%, var(--guard-line) 91%, transparent 98%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: guard-beam 7s linear infinite; }
+/* 네 모서리의 조준 표식 — ㄱ자 두 획. */
+.guard-corner { width: 18px; height: 18px; border: 0 solid var(--guard-line); opacity: 0.85; animation: guard-corner 3.2s ease-in-out infinite; }
+.guard-corner.tl { left: 8px; top: 8px; border-left-width: 1.5px; border-top-width: 1.5px; border-top-left-radius: 5px; }
+.guard-corner.tr { right: 8px; top: 8px; border-right-width: 1.5px; border-top-width: 1.5px; border-top-right-radius: 5px; animation-delay: -0.8s; }
+.guard-corner.br { right: 8px; bottom: 8px; border-right-width: 1.5px; border-bottom-width: 1.5px; border-bottom-right-radius: 5px; animation-delay: -1.6s; }
+.guard-corner.bl { left: 8px; bottom: 8px; border-left-width: 1.5px; border-bottom-width: 1.5px; border-bottom-left-radius: 5px; animation-delay: -2.4s; }
+/* 주사선 — 옅은 빛띠가 위에서 아래로 훑고, 끝에 가는 선 하나가 선다. 9초에 한 번. */
+.guard-scan { left: 0; right: 0; top: 0; height: 120px; background: linear-gradient(180deg, transparent 0%, color-mix(in oklab, var(--agent-control-badge) 9%, transparent) 78%, color-mix(in oklab, var(--agent-control-badge) 22%, transparent) 100%); border-bottom: 1px solid color-mix(in oklab, var(--guard-line) 55%, transparent); transform: translateY(-120px); animation: guard-scan 9s cubic-bezier(0.45, 0, 0.55, 1) infinite; }
+/* 점 격자 — 대각선 띠가 지나가는 자리에서 드러난다. 6초 왕복. */
+.guard-dots { inset: 0; background-image: radial-gradient(circle, var(--guard-dot) 0 1px, transparent 1.5px); background-size: 16px 16px; -webkit-mask-image: linear-gradient(115deg, transparent 0%, #000 22%, transparent 44%); mask-image: linear-gradient(115deg, transparent 0%, #000 22%, transparent 44%); -webkit-mask-size: 260% 100%; mask-size: 260% 100%; opacity: 0.5; animation: guard-drift 6s ease-in-out infinite alternate; }
+/* 커서 둘레 — 같은 점 격자가 에이전트 커서 가까이에서 더 밝다. 커서를 따라 옮겨 간다. */
+.guard-halo { inset: 0; background-image: radial-gradient(circle, var(--guard-line) 0 1.2px, transparent 1.7px); background-size: 16px 16px; -webkit-mask-image: radial-gradient(circle 130px at var(--guard-x) var(--guard-y), #000 0%, transparent 100%); mask-image: radial-gradient(circle 130px at var(--guard-x) var(--guard-y), #000 0%, transparent 100%); opacity: 0.75; }
+/* 누름 — 커서 자리에서 고리 둘이 퍼져 나간다. */
+.guard-ripple { left: var(--guard-x); top: var(--guard-y); width: 0; height: 0; }
+.guard-ripple::before, .guard-ripple::after { content: ""; position: absolute; left: -8px; top: -8px; width: 16px; height: 16px; border-radius: 50%; border: 1.5px solid var(--guard-line); opacity: 0; }
+.guard-ripple.go::before { animation: guard-ripple 620ms ease-out; }
+.guard-ripple.go::after { animation: guard-ripple 620ms ease-out 140ms; }
+@keyframes guard-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes guard-breathe { 0%, 100% { opacity: 0.72; } 50% { opacity: 1; } }
+@keyframes guard-beam { to { --guard-beam: 360deg; } }
+@keyframes guard-corner { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.95; } }
+@keyframes guard-scan { 0% { transform: translateY(-120px); opacity: 0; } 8% { opacity: 1; } 62% { opacity: 1; } 70%, 100% { transform: translateY(100vh); opacity: 0; } }
+@keyframes guard-drift { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0% 0; mask-position: 0% 0; } }
+@keyframes guard-ripple { from { transform: scale(0.6); opacity: 0.9; } to { transform: scale(5.5); opacity: 0; } }
+/* 에이전트 커서 — 에이전트가 보낸 좌표로 옮겨 가고 동작 이름이 붙는다. */
+.guard-cursor { position: absolute; left: 0; top: 0; display: none; align-items: flex-start; gap: 6px; pointer-events: none; will-change: transform; }
+.guard.agent .guard-cursor.shown { display: flex; }
+.guard-cursor.placed { transition: transform 280ms var(--rail-ease); }
+.guard-cursor svg { flex: none; width: 18px; height: 18px; fill: var(--agent-control-badge); stroke: var(--agent-control-badge-ink); stroke-width: 1.1; filter: drop-shadow(0 1px 2px oklch(0% 0 0 / 35%)) drop-shadow(0 0 6px var(--guard-glow)); transform-origin: 20% 16%; }
+.guard-cursor.click svg { animation: guard-click 320ms ease-out; }
+.guard-cursor-label { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; padding: 3px 8px; border-radius: var(--radius-pill); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); font-size: var(--t-2xs); font-weight: var(--weight-medium); white-space: nowrap; box-shadow: 0 0 12px -2px var(--guard-glow); }
+/* 입력 중에는 이름 뒤에서 캐럿이 깜빡인다. */
+.guard-cursor.type .guard-cursor-label::after { content: ""; width: 1.5px; height: 0.9em; background: currentColor; animation: guard-caret 900ms steps(1) infinite; }
+@keyframes guard-click { 0% { transform: scale(1); } 40% { transform: scale(0.78); } 100% { transform: scale(1); } }
+@keyframes guard-caret { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+/* 제어 알약 — 아래 가운데. 누가 쥐었는지와 넘기는 단추 둘. */
+.guard-pill { position: absolute; left: 50%; bottom: 18px; translate: -50% 0; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); width: max-content; max-width: min(560px, var(--guard-room, 560px)); padding: 6px 6px 6px 12px; background: var(--popover-face); border-radius: var(--radius-pill); box-shadow: var(--popover-surface-shadow), 0 10px 30px -12px oklch(0% 0 0 / 55%); color: var(--text-primary); font-size: var(--t-sm); }
+.guard.agent .guard-pill { box-shadow: var(--popover-surface-shadow), 0 0 0 1px color-mix(in oklab, var(--agent-control-badge) 38%, transparent), 0 10px 30px -12px oklch(0% 0 0 / 55%), 0 0 26px -6px var(--guard-glow); }
+.guard-pill.nudge { animation: guard-nudge 360ms var(--rail-ease); }
+@keyframes guard-nudge { 0%, 100% { translate: -50% 0; } 35% { translate: -50% -5px; } 70% { translate: -50% 1px; } }
+.guard-mark { position: relative; flex: none; display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 6px; background: var(--agent-control-badge); color: var(--agent-control-badge-ink); }
+/* 에이전트가 모는 동안 표식에서 고리가 잔잔히 퍼진다 — 지금 살아 움직이는 중이라는 표시. */
+.guard.agent .guard-mark::after { content: ""; position: absolute; inset: 0; border-radius: inherit; border: 1.5px solid var(--agent-control-badge); animation: guard-pulse 2.4s ease-out infinite; }
+.guard.agent .guard-mark svg { animation: guard-twinkle 2.4s ease-in-out infinite; }
+@keyframes guard-pulse { from { transform: scale(1); opacity: 0.7; } to { transform: scale(1.9); opacity: 0; } }
+@keyframes guard-twinkle { 0%, 100% { transform: scale(1) rotate(0deg); } 50% { transform: scale(0.82) rotate(45deg); } }
+.guard.user .guard-mark { background: var(--ink-veil); color: var(--text-primary); }
+.guard.user.asked .guard-mark { background: color-mix(in oklab, var(--aurora) 18%, transparent); color: var(--aurora); }
+.guard-mark svg { width: 12px; height: 12px; }
+.guard-who { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; line-height: 1.3; }
+.guard-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-medium); }
+.guard-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-2xs); color: color-mix(in oklab, var(--agent-control-badge) 68%, var(--text-primary)); }
+.guard.user .guard-status { color: var(--text-secondary); }
+.guard.user.asked .guard-status { color: var(--aurora); }
+.guard-button { flex: none; border: 0; border-radius: var(--radius-pill); padding: 6px 12px; background: color-mix(in oklch, currentColor 9%, transparent); color: var(--text-primary); font-size: var(--t-sm); white-space: nowrap; cursor: pointer; transition: background var(--motion-tap); }
+.guard-button:hover { background: color-mix(in oklch, currentColor 16%, transparent); }
+.guard-button:focus-visible { box-shadow: var(--focus-face); }
+.guard-button.stop { color: var(--coral); }
+/* 동작 줄이기 — 아무것도 움직이지 않는다. 가장자리 빛·모서리 표식·옅은 점 격자만 가만히 남아 조작 중임을 알린다. */
+@media (prefers-reduced-motion: reduce) {
+  .guard { transition: none; }
+  .guard.agent .guard-fx, .guard-edge, .guard-corner, .guard-dots, .guard-cursor.click svg, .guard-pill.nudge, .guard-cursor.type .guard-cursor-label::after, .guard.agent .guard-mark svg { animation: none; }
+  .guard-beam, .guard-scan, .guard-ripple, .guard.agent .guard-mark::after { display: none; }
+  .guard-dots { -webkit-mask-image: none; mask-image: none; opacity: 0.18; }
+  .guard-cursor.placed, .guard-button { transition: none; }
+}
