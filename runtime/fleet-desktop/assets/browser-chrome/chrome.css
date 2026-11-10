@@ -491,7 +491,7 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 /* 동작 줄이기 — 아무것도 움직이지 않는다. 가장자리 빛·모서리 표식·옅은 점 격자만 가만히 남아 조작 중임을 알린다. */
 @media (prefers-reduced-motion: reduce) {
   .guard { transition: none; }
-  .guard.agent .guard-fx, .guard-edge, .guard-corner, .guard-dots, .guard-spectrum, .guard-cursor.click svg, .guard-pill.nudge, .guard.agent .guard-mark svg { animation: none; }
+  .guard.agent .guard-fx, .guard-edge, .guard-corner, .guard-dots, .guard .guard-fx .guard-spectrum, .guard-cursor.click svg, .guard-pill.nudge, .guard.agent .guard-mark svg { animation: none; }
   .guard-beam, .guard-ripple, .guard.agent .guard-mark::after { display: none; }
   .guard-dots { -webkit-mask-image: none; mask-image: none; opacity: 0.18; }
   .guard-cursor.placed, .guard-button { transition: none; }
