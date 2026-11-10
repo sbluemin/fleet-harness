@@ -101,23 +101,19 @@ export function ConsoleSectionHead({ entry, folded, count, sections }: {
 }) {
   const t = useT();
   const [editing, setEditing] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [name, setName] = useState(entry.label);
   const status = entry.status === "unreachable" ? t("chrome.hosts.unreachable") : entry.status === "untrusted" ? t("chrome.hosts.untrusted")
     : entry.status === "stopping" ? t("chrome.hosts.stopping") : entry.status === "slow" ? t("chrome.hosts.slow") : null;
   const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}`;
   if (editing) {
     return <div className="side-console-head is-editing" data-status={entry.status ?? undefined}>
-      {confirming ? <div className="side-console-form">
-        <p>{t("chrome.consoles.forgetWarning")}</p>
-        <div><button type="button" autoFocus onClick={() => setConfirming(false)}>{t("common.cancel")}</button>
-          <button type="button" className="is-danger" onClick={() => { sections.command({ forget: entry.id }); setEditing(false); setConfirming(false); }}>{t("settings.remote.hosts.forget")}</button></div>
-      </div> : <form className="side-console-form" onSubmit={(event) => { event.preventDefault(); const next = name.trim(); if (!next) return; sections.command({ rename: { id: entry.id, label: next } }); setEditing(false); }}>
+      <form className="side-console-form" onSubmit={(event) => { event.preventDefault(); const next = name.trim(); if (!next) return; sections.command({ rename: { id: entry.id, label: next } }); setEditing(false); }}>
         <input autoFocus aria-label={t("settings.remote.hosts.rename")} value={name} maxLength={120} onChange={(event) => setName(event.target.value)}
           onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); setEditing(false); } }} />
         <div><button type="submit" disabled={!name.trim()}>{t("chrome.consoles.save")}</button><button type="button" onClick={() => setEditing(false)}>{t("common.cancel")}</button>
-          {!entry.active ? <button type="button" className="is-danger" onClick={() => setConfirming(true)}>{t("settings.remote.hosts.forget")}</button> : null}</div>
-      </form>}
+          {/* 빼기 전의 확인은 셸이 자기 대화상자로 묻는다 — 여기서 한 번 더 묻지 않는다. */}
+          {!entry.active ? <button type="button" className="is-danger" onClick={() => { sections.command({ forget: entry.id }); setEditing(false); }}>{t("settings.remote.hosts.forget")}</button> : null}</div>
+      </form>
     </div>;
   }
   return <div className={`side-console-head${entry.active ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined}>
@@ -131,7 +127,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections }: {
       <ChevronGlyph direction="down" className="side-console-chevron" />
     </button>
     {entry.kind === "remote" ? <button type="button" className="side-console-edit" aria-label={`${entry.label}: ${t("settings.remote.hosts.rename")}`} title={t("settings.remote.hosts.rename")}
-      onClick={() => { setName(entry.label); setConfirming(false); setEditing(true); }}>
+      onClick={() => { setName(entry.label); setEditing(true); }}>
       <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m3 11-.5 2.5L5 13l7-7-2-2-7 7Zm6-6 2 2" /></svg>
     </button> : null}
   </div>;
