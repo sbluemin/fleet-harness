@@ -3,8 +3,9 @@
 .side-console { list-style: none; min-width: 0; }
 .side-console + .side-console,
 .objective-records-side-bar-chips > :not(.side-console) + .side-console { margin-top: 8px; }
-/* 머리글은 자기 섹션 상자 안에서 스크롤 영역 위에 붙는다. 면은 사이드바 바탕이라 모서리·여백으로 행이 비치지 않고, 캡슐은 안의 판이 그린다. */
-.side-console-head { position: sticky; top: 0; z-index: 2; padding: 2px 0; background: var(--conversation-side, var(--canvas-side)); box-shadow: 0 calc(-1 * var(--space-1)) 0 0 var(--conversation-side, var(--canvas-side)); }
+/* 머리글은 자기 섹션 상자 안에서 스크롤 영역 위에 붙는다. 면은 사이드바 바탕이라 모서리로 행이 비치지 않고, 캡슐은 안의 판이 그린다.
+   세로 안쪽 여백은 두지 않는다 — 두면 스크롤 0의 섹션 간격이 늘어난다. 붙은 뒤 목록 위 여백으로 행이 새지 않게 같은 색 그림자만 깐다. */
+.side-console-head { position: sticky; top: 0; z-index: 2; background: var(--conversation-side, var(--canvas-side)); box-shadow: 0 calc(-1 * var(--space-1)) 0 0 var(--conversation-side, var(--canvas-side)); }
 .side-console-plate { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; margin: 0 6px; border-radius: 10px; background: var(--surface-capsule); box-shadow: inset 0 0 0 1px var(--surface-rim); }
 .side-console-head button { font: inherit; cursor: pointer; }
 .side-console-head button:focus-visible, .side-console-row:focus-visible, .side-console-enter:focus-visible, .side-console-cert:focus-visible, .side-console-add:focus-visible { box-shadow: var(--focus-face); outline: none; }
@@ -65,8 +66,8 @@
 .side-console-add svg { display: block; flex: none; width: 15px; height: 15px; }
 .side-console-add:hover { background: var(--wash-hover); color: var(--text-primary); }
 
-/* 지금 콘솔의 자기 목록. 간격은 사이드바 목록과 같은 값을 받아, 머리글과 한 상자에 넣어도 줄 사이가 그대로다. */
-.side-console-own { display: flex; flex-direction: column; gap: var(--side-chips-gap, 2px); min-width: 0; margin: 0; padding: 0; list-style: none; }
+/* 지금 콘솔의 자기 목록. 머리글과 한 상자에 있어도, 머리글과 첫 행 사이는 예전 목록 gap과 같다. */
+.side-console-own { display: flex; flex-direction: column; gap: var(--side-chips-gap, 2px); min-width: 0; margin: var(--side-chips-gap, 2px) 0 0; padding: 0; list-style: none; }
 
 /* 좁은 열 — 머리글은 콘솔 글리프만, 명부는 아바타만 선다. 접힘은 넓은 목록에서만 쓴다. 안내와 확인 단추도 넓은 목록에서만 보인다. */
 .objective-records-side-bar.is-compact .side-console-head { position: static; z-index: auto; padding: 0; background: transparent; box-shadow: none; }
