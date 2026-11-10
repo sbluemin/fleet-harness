@@ -48,24 +48,28 @@ describe("console roster", () => {
       const parsed = new URL(input);
       calls.push({ url: input, init });
       trace.push(`fetch:${parsed.origin}${parsed.pathname}`);
-      if (parsed.pathname === "/api/v1/remote-hosts") return Response.json({ hosts: [{ id: "rec-trusted", origin: TRUSTED, label: "Studio" }, { id: "rec-untrusted", origin: UNTRUSTED, label: "Old" }] });
+      if (parsed.pathname === "/api/v1/remote-hosts") return Response.json({ hosts: [
+        { id: "rec-trusted", origin: TRUSTED, label: "Studio", hostname: "100.84.12.7", port: 6768, fingerprint: "FINGERPRINT-TRUSTED", token: TOKEN },
+        { id: "rec-untrusted", origin: UNTRUSTED, label: "Old", hostname: "100.84.12.8", port: 6769, fingerprint: "FINGERPRINT-UNTRUSTED" },
+      ] });
       if (parsed.pathname === "/api/v1/local-consoles") return Response.json({ consoles: [{ origin: HOME, version: "1.2.3" }, { origin: NEARBY, version: "1.2.3" }] });
       if (parsed.pathname === "/api/v1/status") return Response.json({ name: "Home", version: "1.2.3" });
       if (parsed.pathname.endsWith("/probes")) return Response.json({ reachable: true, trusted: !parsed.pathname.includes("rec-untrusted") });
-      if (parsed.pathname === "/api/v1/desktop/handoff") {
-        const origin = (JSON.parse(String(init?.body)) as { origin?: string }).origin;
-        trace.push(`handoff:${origin}`);
-        if (origin === TRUSTED) return Response.json({ origin: TRUSTED, hostname: "100.84.12.7", port: 6768, fingerprint: "AA", token: TOKEN });
-        return Response.json({ origin }, { status: 404 });
-      }
       if (parsed.pathname === "/api/v1/console-roster") return Response.json(roster);
       if (parsed.pathname === "/api/v1/join") return new Response(null, { status: 204 });
       return Response.json({ ok: true });
     });
+    let openFinished = false;
+    let releaseOpen = (): void => {};
+    const openGate = new Promise<void>((resolve) => { releaseOpen = resolve; });
     const open = vi.fn(async (origin: string) => {
       trace.push(`open:${origin}`);
+      await section.refresh();
       url = `${origin}/console/`;
       contents.emit("did-finish-load");
+      send({ request: "state" });
+      await openGate;
+      openFinished = true;
     });
     const section = createConsoleSectionController({
       home: () => HOME,
@@ -94,7 +98,8 @@ describe("console roster", () => {
       expect(lastSection()?.detail.entries?.map((entry) => entry.id)).toEqual(standingAtHome);
       expect(lastSection()?.detail.entries?.find((entry) => entry.active)?.address).toBe("100.84.12.7:6768");
       expect(trace).not.toContain(`fetch:${UNTRUSTED}/api/v1/console-roster`);
-      expect(trace).not.toContain(`handoff:${UNTRUSTED}`);
+      // 명부 읽기 동안 /api/v1/desktop/handoff가 한 번도 호출되지 않는다.
+      expect(calls.some((call) => new URL(call.url).pathname === "/api/v1/desktop/handoff")).toBe(false);
       expect(trace.some((line) => line.includes("/api/v1/join"))).toBe(false);
       const confirmAt = trace.indexOf("confirm:100.84.12.7");
       const pinAt = trace.indexOf("pin:100.84.12.7");
@@ -108,13 +113,18 @@ describe("console roster", () => {
       const nearbyId = lastSection()?.detail.entries?.find((entry) => entry.address === "127.0.0.1:4311")?.id;
       expect(nearbyId).toBeTruthy();
       send({ switch: nearbyId!, commodore: "cmdr-9", anchorY: 80 });
-      await vi.waitFor(() => deliveries().some((item) => item.type === CONSOLE_ROSTER_EVENT && item.origin === NEARBY && item.detail.arrival?.commodore === "cmdr-9"));
+      await vi.waitFor(() => {
+        expect(deliveries().some((item) => item.type === CONSOLE_ROSTER_EVENT && item.origin === NEARBY && item.detail.arrival?.commodore === "cmdr-9")).toBe(true);
+      });
+      expect(openFinished).toBe(false);
+      expect(calls.some((call) => new URL(call.url).pathname === "/api/v1/desktop/handoff")).toBe(false);
       const rosters = deliveries().filter((item) => item.type === CONSOLE_ROSTER_EVENT);
       for (const item of rosters) if (item.origin !== NEARBY) expect(item.detail.arrival).toBeNull();
       expect(rosters.filter((item) => item.origin === NEARBY).at(-1)?.detail.arrival).toEqual({ commodore: "cmdr-9", anchorY: 80 });
       expect(scripts.join("\n")).not.toContain(TOKEN);
+      expect(scripts.join("\n")).not.toContain("FINGERPRINT-TRUSTED");
       expect(trace.filter((line) => line.startsWith("open:"))).toEqual([`open:${NEARBY}`]);
       expect(lastSection()?.detail.entries?.map((entry) => entry.id)).toEqual(standingAtHome);
-    } finally { section.close(); }
+    } finally { releaseOpen(); section.close(); }
   });
 });

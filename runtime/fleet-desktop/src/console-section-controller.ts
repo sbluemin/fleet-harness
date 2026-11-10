@@ -30,12 +30,12 @@ interface RosterMemory {
   readonly attemptedAt: number;
 }
 interface Arrival { readonly origin: string; readonly commodore: string; readonly anchorY: number | null }
+/** 집의 원격 목록에 있는 신원. 핸드오프(토큰 소진)로는 받지 않고, 문서에도 보내지 않는다. */
+interface RemoteIdentity { readonly hostname: string; readonly port: number; readonly fingerprint: string }
 
 const ROSTER_INTERVAL_MS = 15_000;
 const ROSTER_TIMEOUT_MS = 5_000;
 const ARRIVAL_TTL_MS = 30_000;
-/** 열기 경로와 같은 집 API. 지문만 꺼내고 자격(token)은 읽지 않는다. */
-const HANDOFF_PATH = "/api/v1/desktop/handoff";
 
 const text = (value: unknown, fallback: string, max = 120): string => (typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/gu, "").trim().slice(0, max) : "") || fallback;
 const record = (value: unknown): Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -59,6 +59,7 @@ export function createConsoleSectionController(deps: Dependencies) {
   let arrivalTimer: ReturnType<typeof setTimeout> | null = null;
   const folded = new Set<string>();
   const rosterMemory = new Map<string, RosterMemory>();
+  let remoteIdentities = new Map<string, RemoteIdentity>();
   const at = () => {
     try { const url = new URL(contents?.getURL() ?? ""); return url.pathname.startsWith("/console/") ? url.origin : null; } catch { return null; }
   };
@@ -166,23 +167,25 @@ export function createConsoleSectionController(deps: Dependencies) {
     const keep = previous && previous.status !== "unsupported";
     return { status: "unavailable", at: keep ? previous.at : null, commodores: keep ? previous.commodores : [], more: keep ? previous.more : 0, attemptedAt };
   }
+  function remoteIdentity(host: Record<string, unknown>): RemoteIdentity | null {
+    const hostname = host.hostname;
+    const port = host.port;
+    const fingerprint = host.fingerprint;
+    if (typeof hostname !== "string" || hostname.length === 0 || hostname.length > 255) return null;
+    if (typeof fingerprint !== "string" || fingerprint.length === 0) return null;
+    if (!Number.isInteger(port) || (port as number) <= 0 || (port as number) > 65_535) return null;
+    return { hostname, port: port as number, fingerprint };
+  }
   /**
-   * 열기와 같은 순서: 집 핸드오프에서 지문을 받고, 평문 소켓으로 대조한 뒤에만 핀한다.
-   * 자격은 꺼내지 않고 조인도 부르지 않는다. 대조 실패는 핀도 세션 fetch도 없다.
+   * 목록에 있는 지문으로만 대조하고, 맞은 뒤에만 핀한다. 핸드오프는 부르지 않는다 —
+   * 그 호출은 1회용 토큰을 소진하고 연 시각을 남긴다. 목록에 없으면 세션 fetch도 없다.
    */
   async function admitRemote(origin: string): Promise<boolean> {
     if (!deps.confirmIdentity || !deps.pinRemote) return false;
-    let body: Record<string, unknown>;
-    try {
-      body = await json(HANDOFF_PATH, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ origin }) });
-    } catch { return false; }
-    const hostname = body.hostname;
-    const port = body.port;
-    const fingerprint = body.fingerprint;
-    if (typeof hostname !== "string" || hostname.length === 0 || hostname.length > 255 || typeof fingerprint !== "string" || fingerprint.length === 0) return false;
-    if (!Number.isInteger(port) || (port as number) <= 0 || (port as number) > 65_535) return false;
-    try { await deps.confirmIdentity(hostname, port as number, fingerprint); } catch { return false; }
-    deps.pinRemote(hostname, fingerprint);
+    const identity = remoteIdentities.get(origin);
+    if (!identity) return false;
+    try { await deps.confirmIdentity(identity.hostname, identity.port, identity.fingerprint); } catch { return false; }
+    deps.pinRemote(identity.hostname, identity.fingerprint);
     return true;
   }
   async function fetchRoster(target: Target): Promise<void> {
@@ -190,7 +193,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     const previous = rosterMemory.get(origin);
     const now = Date.now();
     if (previous && now - previous.attemptedAt < ROSTER_INTERVAL_MS) return;
-    // 집 프로브가 이미 거절한 원격에는 핸드오프도 세션 fetch도 보내지 않는다.
+    // 집 프로브가 이미 거절한 원격에는 세션 fetch를 보내지 않는다.
     if (target.entry.kind === "remote" && (target.entry.status === "untrusted" || target.entry.status === "unreachable")) {
       rememberUnavailable(origin, previous, now);
       return;
@@ -240,6 +243,12 @@ export function createConsoleSectionController(deps: Dependencies) {
     // 순서는 활성과 무관하게 고정한다. 밝기만 active로 바뀐다.
     append(origin, "local", status.name, status.version, "ready");
     const hosts = Array.isArray(saved.hosts) ? saved.hosts.map(record) : [];
+    const identities = new Map<string, RemoteIdentity>();
+    for (const host of hosts) {
+      if (typeof host.origin !== "string") continue;
+      const identity = remoteIdentity(host);
+      if (identity) identities.set(host.origin, identity);
+    }
     const locals = Array.isArray(nearby.consoles) ? nearby.consoles.map(record) : [];
     for (const local of locals) append(local.origin, "local", local.origin === origin ? status.name : undefined, local.version, local.state === "stopping" ? "stopping" : local.state === "unresponsive" ? "slow" : "ready");
     for (const host of hosts) if (typeof host.id === "string") append(host.origin, "remote", host.label, null, null, host.id);
@@ -262,6 +271,7 @@ export function createConsoleSectionController(deps: Dependencies) {
       } catch { /* 조회 실패는 알 수 없음이지 인증서 불일치 판정이 아니다. */ }
     }));
     if (epoch === generation && targets === next) {
+      remoteIdentities = identities;
       await publish();
       await collectRosters(epoch, next);
     }
@@ -300,14 +310,20 @@ export function createConsoleSectionController(deps: Dependencies) {
       clearArrival();
       const commodore = value.commodore ?? null;
       const anchorY = value.anchorY ?? null;
+      // 새 문서는 적재되자마자 상태를 요청한다. open이 끝나기 전에 세워 두어야 그 요청에 실린다.
+      // publishRoster는 도착한 origin에서만 arrival을 넣으므로 떠나는 문서에는 새지 않는다.
+      if (commodore) {
+        arrival = { origin: target.origin, commodore, anchorY };
+        arrivalTimer = setTimeout(() => {
+          if (switchSerial === serial && arrival?.origin === target.origin && arrival.commodore === commodore) { clearArrival(); void publishRoster(); }
+        }, ARRIVAL_TTL_MS);
+        arrivalTimer.unref?.();
+      }
       try { await deps.open(target.origin); } catch (error) {
         if (serial === switchSerial) clearArrival();
         throw error;
       }
-      if (serial !== switchSerial || !commodore) return;
-      arrival = { origin: target.origin, commodore, anchorY };
-      arrivalTimer = setTimeout(() => { if (arrival?.commodore === commodore && arrival.origin === target.origin) { clearArrival(); void publishRoster(); } }, ARRIVAL_TTL_MS);
-      arrivalTimer.unref?.();
+      if (serial !== switchSerial) return;
       await publishRoster();
       return;
     }
@@ -331,6 +347,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     clearArrival();
     folded.clear();
     rosterMemory.clear();
+    remoteIdentities = new Map();
   }
   return {
     refresh,
