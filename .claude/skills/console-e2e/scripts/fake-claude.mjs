@@ -19,6 +19,11 @@
 //   sdk-calls-<sessionId>  same, scoped to this launch's --session-id/--resume
 //   sdk-mcp/calls-<ts>-<pid>.json  each call's args, isError, error code and full JSON-RPC result (mode 0600)
 // FAKE_CLAUDE_VERSION (optional): the --version answer (default "2.1.999 (Claude Code)").
+// FAKE_CLAUDE_TOOLS (optional): JSON array of tool names advertised in init.tools (default []).
+// FAKE_CLAUDE_REPLIES (optional): directory of one-shot reply fixtures; <sessionId>.md, then
+//   <model-prefix>.md (model id up to "["), each consumed once. Unset (or no match) keeps the fixed reply.
+// Scripted replies and configured init.tools are input fixtures; a server's tools/list is the advertised
+// contract, while actual tools/call results and session state are host-observed evidence.
 //
 // Modes: `--version`; chat/SDK when `--input-format stream-json`; otherwise an interactive terminal
 // that prints a banner and echoes input until SIGTERM/SIGHUP.
@@ -39,6 +44,40 @@ if (!dir) {
 }
 mkdirSync(join(dir, "mcp"), { recursive: true });
 const log = (entry) => appendFileSync(join(dir, "log.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...entry })}\n`);
+// Configured init.tools: a JSON array only; unset or unparsable advertises [] as before.
+const configuredTools = (() => {
+  const raw = process.env.FAKE_CLAUDE_TOOLS;
+  if (raw === undefined || raw === "") return [];
+  try {
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) {
+      log({ event: "tools-config-ignored", reason: "not-array" });
+      return [];
+    }
+    return value.filter((name) => typeof name === "string");
+  } catch (error) {
+    log({ event: "tools-config-ignored", reason: String(error?.message ?? error) });
+    return [];
+  }
+})();
+// One-shot reply fixtures under FAKE_CLAUDE_REPLIES; null (unset) keeps the fixed canned reply.
+const repliesDir = process.env.FAKE_CLAUDE_REPLIES || null;
+const readScriptedReply = (sessionId, turnModel) => {
+  if (!repliesDir) return null;
+  const role = String(turnModel).replace(/\[.*$/, "");
+  for (const name of [`${sessionId}.md`, `${role}.md`]) {
+    const file = join(repliesDir, name);
+    try {
+      const text = readFileSync(file, "utf8");
+      try { unlinkSync(file); } catch {}
+      log({ event: "scripted-reply", sessionId, file: name });
+      return text;
+    } catch (error) {
+      if (error.code !== "ENOENT") log({ event: "reply-file-error", sessionId, file: name, error: String(error?.message ?? error) });
+    }
+  }
+  return null;
+};
 // Accept both `--flag value` and `--flag=value`; the SDK passes some flags in the joined form.
 const argAfter = (flag) => {
   const i = args.indexOf(flag);
@@ -254,7 +293,7 @@ if (!sdk) {
     const turnModel = model;
     log({ event: "turn-start", model: turnModel, chars: text.length });
     if (!inited) {
-      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: [], mcp_servers: [...mcpServers.map(({ name }) => name), ...sdkServers].map((name) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
+      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: configuredTools, mcp_servers: [...mcpServers.map(({ name }) => name), ...sdkServers].map((name) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
       inited = true;
     }
     const tokens = ctx();
@@ -279,7 +318,13 @@ if (!sdk) {
     } else {
       await new Promise((r) => setTimeout(r, 150));
     }
-    const reply = interrupted ? "fake turn interrupted" : `fake reply from model=${turnModel}`;
+    const scripted = interrupted ? null : readScriptedReply(sessionId, turnModel);
+    if (scripted !== null) {
+      out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }, ...envelope() });
+      out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: scripted } }, ...envelope() });
+      out({ type: "stream_event", event: { type: "content_block_stop", index: 0 }, ...envelope() });
+    }
+    const reply = interrupted ? "fake turn interrupted" : scripted ?? `fake reply from model=${turnModel}`;
     out({ type: "assistant", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [{ type: "text", text: reply }], stop_reason: "end_turn", stop_sequence: null, usage }, ...envelope() });
     out({ type: "result", subtype: "success", is_error: false, duration_ms: 200, duration_api_ms: 100, num_turns: 1, result: reply, stop_reason: "end_turn", session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
     log({ event: "turn-end", model: turnModel, contextTokens: tokens, ...(interrupted ? { interrupted: true } : {}) });
@@ -294,7 +339,7 @@ if (!sdk) {
     const turnModel = model;
     log({ event: "turn-start", model: turnModel, wakeKind: wake.kind ?? "peer", wake });
     if (!inited) {
-      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: [], mcp_servers: [...mcpServers.map(({ name }) => name), ...sdkServers].map((name) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
+      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: configuredTools, mcp_servers: [...mcpServers.map(({ name }) => name), ...sdkServers].map((name) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
       inited = true;
     }
     const tokens = ctx();
