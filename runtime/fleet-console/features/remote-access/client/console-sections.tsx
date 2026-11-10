@@ -16,6 +16,8 @@ import "./console-sections.css";
  * 셸은 문서가 적재되자마자 상태를 건넨다 — 사이드바가 서기 전일 수 있다. 그래서 묶음이 평가되는 순간부터 듣고
  * 마지막 값을 쥐고 있는다. 셸이 능력을 게시하는 조회는 첫 화면 뒤로 미뤄져 있으므로, 받은 상태 자체를 능력의 증거로 쓴다.
  */
+/** 보이는 동안 명부를 다시 묻는 간격. 셸이 콘솔마다 읽기를 솎으므로 여기서는 물음만 띄운다. */
+const ROSTER_REFRESH_MS = 30_000;
 let sectionState: ConsoleSectionState | null = null;
 let rosterState: ConsoleRosterState | null = null;
 const stateListeners = new Set<() => void>();
@@ -62,9 +64,11 @@ export function useConsoleSections(): ConsoleSections {
     const reload = () => command({ request: "state" });
     const unsubscribe = subscribeRemoteHostsChanged(reload);
     window.addEventListener("focus", reload);
+    // 창이 계속 앞에 있으면 포커스가 다시 오지 않는다 — 다른 콘솔의 명부가 굳지 않게, 보이는 동안에는 주기적으로 다시 묻는다.
+    const timer = rosterCapable ? setInterval(() => { if (document.visibilityState === "visible") reload(); }, ROSTER_REFRESH_MS) : undefined;
     reload();
-    return () => { unsubscribe(); window.removeEventListener("focus", reload); };
-  }, [capable, consoleName, command]);
+    return () => { unsubscribe(); window.removeEventListener("focus", reload); clearInterval(timer); };
+  }, [capable, rosterCapable, consoleName, command]);
   const entries = capable ? state?.entries ?? [] : [];
   const byId = useMemo(() => new Map((rosters?.rosters ?? []).map((entry) => [entry.id, entry])), [rosters]);
   const shellFolds = useMemo(() => new Set(rosters?.folded ?? []), [rosters]);
@@ -95,16 +99,21 @@ export function consoleSwitchBlocked(entry: ConsoleSectionEntry): boolean {
   return entry.active || entry.status === "unreachable" || entry.status === "untrusted" || entry.status === "stopping";
 }
 
-/** 콘솔 하나의 머리글. 누르면 그 섹션이 접힌다. 원격 콘솔은 이름을 바꾸거나 뺄 수 있다. */
-export function ConsoleSectionHead({ entry, folded, count, sections }: {
-  readonly entry: ConsoleSectionEntry; readonly folded: boolean; readonly count: number | null; readonly sections: ConsoleSections;
+/**
+ * 콘솔 하나의 머리글. 누르면 그 섹션이 접힌다. 원격 콘솔은 이름을 바꾸거나 뺄 수 있다.
+ * 좁은 열에는 글리프만 남고 접힘도 쓰지 않으므로, 거기서는 누르면 그 콘솔로 전환한다 — 사령관 행이 없는 콘솔로 가는 길이 이것뿐이다.
+ */
+export function ConsoleSectionHead({ entry, folded, count, sections, compact = false }: {
+  readonly entry: ConsoleSectionEntry; readonly folded: boolean; readonly count: number | null; readonly sections: ConsoleSections; readonly compact?: boolean;
 }) {
   const t = useT();
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(entry.label);
   const status = entry.status === "unreachable" ? t("chrome.hosts.unreachable") : entry.status === "untrusted" ? t("chrome.hosts.untrusted")
     : entry.status === "stopping" ? t("chrome.hosts.stopping") : entry.status === "slow" ? t("chrome.hosts.slow") : null;
-  const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}`;
+  const switchable = compact && !consoleSwitchBlocked(entry);
+  const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
+  const press = compact ? () => { if (switchable) sections.command({ switch: entry.id }); } : () => sections.fold(entry.id, !folded);
   if (editing) {
     return <div className="side-console-head is-editing" data-status={entry.status ?? undefined}>
       <form className="side-console-form" onSubmit={(event) => { event.preventDefault(); const next = name.trim(); if (!next) return; sections.command({ rename: { id: entry.id, label: next } }); setEditing(false); }}>
@@ -117,7 +126,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections }: {
     </div>;
   }
   return <div className={`side-console-head${entry.active ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined}>
-    <button type="button" className="side-console-toggle" aria-expanded={!folded} title={title} onClick={() => sections.fold(entry.id, !folded)}>
+    <button type="button" className="side-console-toggle" aria-expanded={compact ? undefined : !folded} title={title} onClick={press}>
       <ConsoleGlyph remote={entry.kind === "remote"} />
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
       {entry.home ? <span className="side-console-home" title={t("chrome.consoles.thisComputer")} aria-label={t("chrome.consoles.thisComputer")} role="img"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg></span> : null}

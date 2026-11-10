@@ -478,7 +478,7 @@ export function ObjectiveRecordsSideBar({
   const consoleLead = consoles.sectioned && consoles.active ? <>
     {consoles.entries.slice(0, activeConsoleIndex).map(rosterSection)}
     <li className="side-console is-active" data-console-id={consoles.active.id}>
-      <ConsoleSectionHead entry={consoles.active} folded={ownConsoleFolded} count={faces.length} sections={consoles} />
+      <ConsoleSectionHead entry={consoles.active} folded={ownConsoleFolded} count={faces.length} sections={consoles} compact={compact} />
     </li>
   </> : null;
   const consoleTail = consoles.sectioned ? consoles.entries.slice(activeConsoleIndex + 1).map(rosterSection) : null;
