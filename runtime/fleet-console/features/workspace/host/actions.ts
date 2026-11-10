@@ -13,7 +13,7 @@ export interface WorkspaceActions {
   rename?(objectiveId: string, title: string): boolean;
   groups?(commodoreId: string, theaterId?: string): readonly { readonly id: string; readonly name: string; readonly color: string; readonly theaterId: string; readonly order: number }[];
   groupPatch?(input: { readonly commodoreId: string; readonly id: string; readonly name?: string; readonly color?: string; readonly delete?: boolean; readonly position?: SidebarPosition }): { readonly ok: true; readonly name: string; readonly theaterId: string; readonly groupOrder?: readonly string[] } | { readonly ok: false; readonly error: string };
-  using?(): { readonly console: readonly string[]; readonly computer: string | null; readonly browser: readonly string[] };
+  using?(): { readonly computer: string | null; readonly browser: readonly string[] };
   group?(input: { readonly commodoreId: string; readonly mode: "create" | "assign" | "remove"; readonly theaterId: string; readonly name?: string; readonly color?: string; readonly groupId?: string; readonly objectiveIds: readonly string[] }): { readonly group: { readonly id: string; readonly name: string; readonly color: string } | null; readonly members: readonly string[] };
   reorder?(input: { readonly commodoreId: string; readonly theaterId: string; readonly objectiveIds: readonly string[]; readonly position: SidebarPosition; readonly groupId: string | null }): { readonly objectiveIds: readonly string[]; readonly groupId: string | null; readonly members: readonly string[] };
   reveal?(objectiveId: string, reason: string, caller?: ConsoleCaller): void;

@@ -146,7 +146,7 @@
 :where(:root[data-view-mode="mobile"]) :where(
   [data-press="r3"], .mobile-pill, .mobile-pill-secondary, .mobile-avatar, .mobile-request-banner button,
   .agent-chat-composer-attach, .agent-chat-composer-send, .agent-chat-composer-stop, .agent-chat-coord.is-control,
-  .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
+  .agent-chat-ask-send, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
   .terminal-confirm-row .terminal-key
 ) {
   position: relative;
@@ -154,7 +154,7 @@
 :root[data-view-mode="mobile"] :is(
   [data-press="r3"], .mobile-pill, .mobile-pill-secondary, .mobile-avatar, .mobile-request-banner button,
   .agent-chat-composer-attach, .agent-chat-composer-send, .agent-chat-composer-stop, .agent-chat-coord.is-control,
-  .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
+  .agent-chat-ask-send, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
   .terminal-confirm-row .terminal-key
 )::after {
   position: absolute;
@@ -169,7 +169,7 @@
 :root[data-view-mode="mobile"] :is(
   [data-press="r3"], .mobile-pill, .mobile-pill-secondary, .mobile-avatar, .mobile-request-banner button,
   .agent-chat-composer-attach, .agent-chat-composer-send, .agent-chat-composer-stop, .agent-chat-coord.is-control,
-  .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
+  .agent-chat-ask-send, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
   .terminal-confirm-row .terminal-key
 ):active:not(:disabled, [aria-disabled="true"])::after {
   opacity: 0.12;
@@ -181,7 +181,7 @@
   [data-press="r2"], [data-press="r3"], button.mobile-group-row, label.mobile-group-row, .mls-gr, .mobile-console-card,
   .mobile-pill, .mobile-pill-secondary, .mobile-avatar, .mobile-request-banner button,
   .agent-chat-composer-attach, .agent-chat-composer-send, .agent-chat-composer-stop, .agent-chat-coord.is-control,
-  .agent-chat-ask-send, .use-request-pill, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
+  .agent-chat-ask-send, .terminal-key-bar.is-mobile .terminal-key, .terminal-key-keyboard,
   .terminal-confirm-row .terminal-key
 ):focus-visible {
   box-shadow: var(--focus-face);

@@ -399,7 +399,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/install", summary: "Install a Fleet-managed Cua Driver after local request.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
-  { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using Console, the computer, or the browser.", category: "Observer", gate: "loopback", transport: "http" },
+  { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using the computer or the browser.", category: "Observer", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/browser", summary: "Read whether the Fleet Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/state", summary: "Read an Objective's browser tab state; later changes arrive on the Objective event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/screenshot", summary: "Capture the active tab of an Objective's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -953,7 +953,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const browserObjectiveRecords = drivingOwners.filter((id) => !!objectiveRecords.get(id));
     // 사령관 자신의 세션은 Objective 가 아니다 — 그 묶음 id 는 사령관의 스페이스 id 라, 사령관 id 로 따로 싣는다(사이드바의 사령관 줄과 사령관 대화의 지구본이 읽는다).
     const browserCommodores = drivingOwners.flatMap((id) => { const commodoreId = commodoreOfBrowserSpace(id); return commodoreId ? [commodoreId] : []; });
-    return { console: [] as string[], computer: computerObjective, computerActor, browser: browserObjectiveRecords, browserCommodores };
+    return { computer: computerObjective, computerActor, browser: browserObjectiveRecords, browserCommodores };
   };
   const consoleActions = createWorkspaceActions({ objectiveRecords, deletionCoordinator, archive: objectiveRecordArchive.archive, listObjectiveUse, patchObjective: (id, input) => consoleFeaturePorts.objectiveRecords.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged });
   // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.
@@ -2125,7 +2125,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * Objective 사용 스냅샷 — /api/v1/objective-use 응답과 같은 모양. 콘솔·컴퓨터·브라우저 사용과 패널 안 허용
+   * Objective 사용 스냅샷 — /api/v1/objective-use 응답과 같은 모양. 컴퓨터·브라우저 사용과 패널 안 허용
    * 요청을 한 번에 싣는다. 도구 이름·사유·시한뿐이라 경로·인자 같은 민감 정보는 없다.
    * 원천(ComputerUseService.owner, browserService, useRequests)이 바뀔 때마다
    * scheduleObjectiveUseBroadcast 로 이 스냅샷을 objectiveRecords SSE 로 밀어 내보낸다.
@@ -2139,7 +2139,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const live = new Set(objectiveRecords.list().flatMap((objectiveRecord) => [objectiveRecord.id, ...(objectiveRecord.sessions ?? []).map((child) => child.id)]));
     const { requests } = useRequests.list();
     return {
-      console: using.console,
       computer: using.computer ? [using.computer] : [],
       computerActor: using.computerActor,
       browser: using.browser,

@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
  * - 붙잡는 시간은 MCP 호출 상한(5분)보다 짧다. 답이 없으면 `no_response` 로 끝나 에이전트가 먼저 회신을 받는다.
  */
 
-export type UseCapability = "console" | "computer";
+export type UseCapability = "computer";
 export type UseAnswer = "deny" | "always";
 /**
  * 붙잡은 호출의 결말. `authorized` 는 사람이 답하기 전에 다른 길(메뉴 스위치 등)로 허용이 선 경우고,
@@ -164,7 +164,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       if (disposed || input.signal?.aborted) return Promise.resolve("stopped");
       if (input.withdrawn?.() === true) return Promise.resolve("withdrawn");
       if (input.authorized()) return Promise.resolve("authorized");
-      const book = input.capability === "computer" ? ledger() : null;
+      const book = ledger();
       if (book) {
         const created = book.upsert({ objectiveId: input.objectiveId, participantId: input.participantId, tool: input.tool });
         const waiters = computerWaiters.get(created.id) ?? new Set();
@@ -234,10 +234,8 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
     settle(objectiveId) {
       const book = ledger();
       for (const request of book?.list() ?? []) if (request.objectiveId === objectiveId) { finishComputer(request.id, "stopped"); book!.release(request.id); }
-      for (const capability of ["console", "computer"] as const) {
-        const request = pending.get(key(objectiveId, capability));
-        if (request) finish(request, "stopped");
-      }
+      const pendingRequest = pending.get(key(objectiveId, "computer"));
+      if (pendingRequest) finish(pendingRequest, "stopped");
       syncRecheck();
     },
     leave(objectiveId, participantId) {
@@ -251,14 +249,16 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
         for (const waiter of leaving) { waiters.delete(waiter); waiter.resolve("stopped"); }
         options.onChange?.();
       }
-      for (const capability of ["console", "computer"] as const) {
-        const request = pending.get(key(objectiveId, capability));
-        if (!request) continue;
+      const request = pending.get(key(objectiveId, "computer"));
+      if (request) {
         const leaving = [...request.waiters].filter((waiter) => (waiter.input.participantId ?? objectiveId) === participantId);
-        if (!leaving.length) continue;
-        if (leaving.length === request.waiters.size) { finish(request, "stopped"); continue; }
-        for (const waiter of leaving) { request.waiters.delete(waiter); waiter.resolve("stopped"); }
-        options.onChange?.();
+        if (leaving.length) {
+          if (leaving.length === request.waiters.size) finish(request, "stopped");
+          else {
+            for (const waiter of leaving) { request.waiters.delete(waiter); waiter.resolve("stopped"); }
+            options.onChange?.();
+          }
+        }
       }
     },
     revoke(objectiveId, capability) {
@@ -271,7 +271,7 @@ export function createUseRequestBroker(options: UseRequestBrokerOptions = {}): U
       syncRecheck();
     },
     list() {
-      const own = [...pending.values()].filter((request) => request.capability !== "computer" || !ledger()).map((request) => ({
+      const own = [...pending.values()].filter(() => !ledger()).map((request) => ({
         id: request.id,
         objectiveId: request.objectiveId,
         capability: request.capability,

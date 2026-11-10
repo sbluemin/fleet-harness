@@ -28,7 +28,7 @@ import { getTerminalPrefsSnapshot, setChatReadingWidth, setTerminalInactiveFlush
 import "./agent-cli.css";
 import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
 import { useObjectiveLinks } from "./objective-links.js";
-import { UseRequestCards, setUseRequestApi } from "./use-request-card.js";
+import { UseRequestCards } from "./use-request-card.js";
 import { MobileGlyph, MobileSurfaceProvider, mobileObjectiveOf, useMobileMenuItems, useMobileSurface, type MobileMenuItemLike, type MobileObjectiveLike } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, readComputerUseEnabled, readInstalledExperiments, recordObjectiveReveal, setComputerUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
@@ -250,7 +250,6 @@ let installedApi: ExecutionClientDeps["api"] | null = null;
 export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
   installedNotifications = ctx.notifications;
   installedApi = ctx.api;
-  setUseRequestApi(ctx.api);
   setInstalledExperiments(ctx.experiments);
   const disposeViewState = installObjectiveViewState(ctx.consoleState);
   const disposeGroupTimeline = installGroupTimeline(ctx);

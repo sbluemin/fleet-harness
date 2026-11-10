@@ -22,7 +22,7 @@ import { KeyedAvatar, ObjectiveAvatar, clusterWorkingMembers, mongleStateOfMark 
 import { commodoreAvatarKey, objectiveRecordAvatarKey, type MongleActivity, type MongleState } from "../../shared/avatars.js";
 import { CONVERSATION_ROW_PHRASE } from "./side-bar-row-style.js";
 import { useObjectivesToolUse, type ObjectiveUseTool } from "../../../computer-use/client/computer-screen-share.js";
-import { CaptionBrowserUseGlyph, CaptionComputerUseGlyph, CaptionConsoleUseGlyph } from "../components/caption-actions.js";
+import { CaptionBrowserUseGlyph, CaptionComputerUseGlyph } from "../components/caption-actions.js";
 
 /**
  * 묶음 줄 — 플러그인이 `row` 로 선언한 묶음(목표)이 사령관의 지휘관 목록에 서는 한 줄.
@@ -303,7 +303,7 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
   const { layout, row, anchor } = item;
-  // 지휘관이나 구성원이 브라우저·컴퓨터를 쓰는 동안 상태 줄이 그 도구를 말한다. 호스트가 콘솔 사용을 알리면 그 표시도 남긴다.
+  // 지휘관이나 구성원이 브라우저·컴퓨터를 쓰는 동안 상태 줄이 그 도구를 말한다.
   const toolUse = useObjectivesToolUse(rowUseIds(item));
   const toolUseLabel = toolUse ? rowToolUseLabel(item, toolUse, t) : null;
   const activity = useClusterRowActivity(item);
@@ -516,7 +516,7 @@ export function rowUseIds(item: SideBarRowItem): readonly string[] {
   return ids.filter((id): id is string => typeof id === "string");
 }
 
-const ROW_TOOL_USE_KEY = { browser: "sidebar.row.use.browser", console: "sidebar.row.use.console", computer: "sidebar.row.use.computer" } as const;
+const ROW_TOOL_USE_KEY = { browser: "sidebar.row.use.browser", computer: "sidebar.row.use.computer" } as const;
 
 /** 쓰는 이가 구성원이면 그 이름을 앞에 단다. 지휘관 자신이면 도구만 말한다. */
 export function rowToolUseLabel(item: SideBarRowItem, use: { readonly tool: ObjectiveUseTool; readonly actor: string | null }, t: ReturnType<typeof useT>): string {
@@ -543,7 +543,7 @@ export function RowToolUse({ tool, label }: { readonly tool: ObjectiveUseTool | 
   }, [tool, label]);
   const current = live ?? shown;
   if (!current) return null;
-  const glyph = current.tool === "browser" ? <CaptionBrowserUseGlyph /> : current.tool === "console" ? <CaptionConsoleUseGlyph /> : <CaptionComputerUseGlyph />;
+  const glyph = current.tool === "browser" ? <CaptionBrowserUseGlyph /> : <CaptionComputerUseGlyph />;
   return (
     <span className={`side-bar-cluster-row-use is-${current.tool}${live ? "" : " is-leaving"}`}>
       <span className="side-bar-cluster-row-use-glyph">{glyph}</span>

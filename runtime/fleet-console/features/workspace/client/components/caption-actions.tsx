@@ -37,20 +37,6 @@ function UsePointer() {
   return <path d="M8.7 8.2 14 10.3 11.7 11.2 10.8 13.6Z" fill="currentColor" stroke="currentColor" strokeWidth={0.9} strokeLinejoin="round" />;
 }
 
-/** 모서리를 비운 창 — Console·Browser Use가 같은 프레임을 쓰고 안의 표식으로만 갈린다. */
-const USE_WINDOW = "M8 12.8H3.7A1.6 1.6 0 0 1 2.1 11.2V4.8A1.6 1.6 0 0 1 3.7 3.2h8.6a1.6 1.6 0 0 1 1.6 1.6v2.6";
-
-/** 콘솔 사용(실험) — Shell 마크와 같은 창 + 프롬프트 ❯. fleet-console 자체를 잡는다는 뜻이다. */
-export function CaptionConsoleUseGlyph() {
-  return (
-    <CaptionGlyph>
-      <path d={USE_WINDOW} {...STROKE} />
-      <path d="M4.9 6.3 6.7 8 4.9 9.7" {...STROKE} />
-      <UsePointer />
-    </CaptionGlyph>
-  );
-}
-
 /** 컴퓨터 사용 — 화면 + 받침대. OS 화면 전체를 뜻하는 가장 작은 실루엣이다. */
 export function CaptionComputerUseGlyph() {
   return (
@@ -63,7 +49,7 @@ export function CaptionComputerUseGlyph() {
 }
 
 /** 브라우저 사용 — 창 + 주소 표시줄 한 선. 탭·지구본 없이도 14px에서 브라우저로 읽힌다. */
-/** 브라우저는 지구본 — 「Use」 계열(창+포인터)과 갈라 놓아야 세 기능이 한눈에 구분된다. 포인터는 없다. */
+/** 브라우저는 지구본 — 「Use」 계열(창+포인터)과 갈라 놓아야 두 기능이 한눈에 구분된다. 포인터는 없다. */
 export function CaptionBrowserUseGlyph() {
   return (
     <CaptionGlyph>
