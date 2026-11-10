@@ -886,6 +886,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (!commodoreId) return "";
       try { return commodore?.label(commodoreId) ?? ""; } catch { return ""; }
     },
+    // 에이전트 커서에 붙는 이름 — 사령관 세션은 그 사령관의 이름, Objective 세션(지휘관·구성원)은 그 세션의 표시 이름이다.
+    actorLabel: (participantId) => {
+      try {
+        const scope = /^commodore-session:(.+)$/u.exec(participantId)?.[1];
+        const commodoreId = scope ? commodoreOfBrowserSpace(scope) : null;
+        if (commodoreId) return commodore?.label(commodoreId) ?? "";
+        const title = objectiveRecords.get(participantId)?.title;
+        return typeof title === "string" ? title : "";
+      } catch { return ""; }
+    },
     // 사령관마다 스페이스가 하나 선다 — 사이드바와 같은 순서로, 지워지는 중인 사령관은 뺀다.
     commodores: () => {
       try { return (commodore?.commodoreIds() ?? ownership?.entities.ids() ?? []).filter((id) => !ownership?.isDeleting(id)); } catch { return []; }

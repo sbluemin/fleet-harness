@@ -199,7 +199,7 @@ interface Space {
   /** true 이면 논리 뷰포트가 네이티브 pane 을 따른다(에뮬레이션 없음). */
   viewportFollowsPane: boolean;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
-  agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string> } | null;
+  agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string>; /** 마지막으로 호출을 연 참가자. */ last: string } | null;
   /**
    * 이 스페이스의 에이전트 탭을 누가 모는가. 사람이 가져가면(`user`) 돌려줄 때까지 남는다 — 에이전트 턴이 끝나도 풀지 않는다.
    * 사람이 로그인하는 중에 다음 턴이 말없이 페이지를 가져가면 안 되기 때문이다. 메모리 상태라 Console 이 다시 뜨면 `agent` 다.
@@ -324,6 +324,8 @@ export interface BrowserServiceDeps {
   readonly defaultProfile: { read(): string | null; write(profile: string | null): void };
   /** 스페이스의 사람이 읽는 이름(사령관 이름). 모르면 빈 문자열. */
   readonly spaceLabel?: (browserId: string, spaceId: string) => string;
+  /** 참가자(도구를 부른 세션)의 표시 이름 — 사령관·지휘관·구성원. 셸이 에이전트 커서에 붙인다. 모르면 빈 문자열. */
+  readonly actorLabel?: (participantId: string) => string;
   /** 지금 있는 사령관들의 id — 사령관마다 스페이스가 하나 선다. 없으면 탭이 있는 사령관 스페이스만 안다. */
   readonly commodores?: () => readonly string[];
 }
@@ -980,9 +982,10 @@ export class BrowserService {
     if (!spaceId) return;
     const space = this.space(op, spaceId);
     const now = Date.now();
-    if (!space.agentSession) { space.agentSession = { since: now, lastCallAt: now, idle: null, participants: new Set() }; this.deps.log(`agent session started for ${op.objectiveId} space ${spaceId}`); }
+    if (!space.agentSession) { space.agentSession = { since: now, lastCallAt: now, idle: null, participants: new Set(), last: participantId }; this.deps.log(`agent session started for ${op.objectiveId} space ${spaceId}`); }
     const session = space.agentSession;
     session.participants.add(participantId);
+    session.last = participantId;
     session.lastCallAt = now;
     if (session.idle) clearTimeout(session.idle);
     session.idle = setTimeout(() => {
@@ -1101,7 +1104,12 @@ export class BrowserService {
     // 좌표 없는 입력(글자·키)은 마지막 포인터 자리에, 그것도 없으면 뷰포트 가운데에 선다.
     const point = at ?? (space.pointer?.tabId === tab.id ? space.pointer : { x: space.viewport.width / 2, y: space.viewport.height / 2 });
     this.pointerSeq += 1;
-    space.pointer = { tabId: tab.id, x: Math.round(point.x), y: Math.round(point.y), kind, seq: this.pointerSeq };
+    // 누가 보냈는가 — 그 탭을 작업 탭으로 쥔 참가자가 하나면 그 참가자, 아니면 이 스페이스에서 마지막으로 호출을 연 참가자다.
+    const holders = [...op.currentTabs].filter(([, id]) => id === tab.id).map(([participant]) => participant);
+    const participant = holders.length === 1 ? holders[0]! : space.agentSession?.last ?? null;
+    let actor = "";
+    if (participant) { try { actor = (this.deps.actorLabel?.(participant) ?? "").slice(0, 120); } catch { actor = ""; } }
+    space.pointer = { tabId: tab.id, x: Math.round(point.x), y: Math.round(point.y), kind, seq: this.pointerSeq, ...(actor ? { actor } : {}) };
     this.emitState(op);
   }
 

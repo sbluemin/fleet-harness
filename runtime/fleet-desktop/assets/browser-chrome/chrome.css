@@ -457,17 +457,14 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 @keyframes guard-corner { 0%, 100% { opacity: 0.45; } 50% { opacity: 0.95; } }
 @keyframes guard-drift { from { -webkit-mask-position: 100% 0; mask-position: 100% 0; } to { -webkit-mask-position: 0% 0; mask-position: 0% 0; } }
 @keyframes guard-ripple { from { transform: scale(0.6); opacity: 0.9; } to { transform: scale(5.5); opacity: 0; } }
-/* 에이전트 커서 — 에이전트가 보낸 좌표로 옮겨 가고 동작 이름이 붙는다. */
+/* 에이전트 커서 — 에이전트가 보낸 좌표로 옮겨 가고, 그 도구를 쓰는 AI 의 이름이 붙는다. */
 .guard-cursor { position: absolute; left: 0; top: 0; display: none; align-items: flex-start; gap: 6px; pointer-events: none; will-change: transform; }
 .guard.agent .guard-cursor.shown { display: flex; }
 .guard-cursor.placed { transition: transform 280ms var(--rail-ease); }
 .guard-cursor svg { flex: none; width: 18px; height: 18px; fill: var(--agent-control-badge); stroke: var(--agent-control-badge-ink); stroke-width: 1.1; filter: drop-shadow(0 1px 2px oklch(0% 0 0 / 35%)) drop-shadow(0 0 6px var(--guard-glow)); transform-origin: 20% 16%; }
 .guard-cursor.click svg { animation: guard-click 320ms ease-out; }
-.guard-cursor-label { display: inline-flex; align-items: center; gap: 5px; margin-top: 12px; padding: 3px 8px; border-radius: var(--radius-pill); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); font-size: var(--t-2xs); font-weight: var(--weight-medium); white-space: nowrap; box-shadow: 0 0 12px -2px var(--guard-glow); }
-/* 입력 중에는 이름 뒤에서 캐럿이 깜빡인다. */
-.guard-cursor.type .guard-cursor-label::after { content: ""; width: 1.5px; height: 0.9em; background: currentColor; animation: guard-caret 900ms steps(1) infinite; }
+.guard-cursor-label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; margin-top: 12px; padding: 3px 8px; border-radius: var(--radius-pill); background: var(--agent-control-badge); color: var(--agent-control-badge-ink); font-size: var(--t-2xs); font-weight: var(--weight-medium); white-space: nowrap; box-shadow: 0 0 12px -2px var(--guard-glow); }
 @keyframes guard-click { 0% { transform: scale(1); } 40% { transform: scale(0.78); } 100% { transform: scale(1); } }
-@keyframes guard-caret { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
 /* 제어 알약 — 아래 가운데. 누가 쥐었는지와 넘기는 단추 둘. */
 .guard-pill { position: absolute; left: 50%; bottom: 18px; translate: -50% 0; box-sizing: border-box; display: flex; align-items: center; gap: var(--space-3); width: max-content; max-width: min(560px, var(--guard-room, 560px)); padding: 6px 6px 6px 12px; background: var(--popover-face); border-radius: var(--radius-pill); box-shadow: var(--popover-surface-shadow), 0 10px 30px -12px oklch(0% 0 0 / 55%); color: var(--text-primary); font-size: var(--t-sm); }
 .guard.agent .guard-pill { box-shadow: var(--popover-surface-shadow), 0 0 0 1px color-mix(in oklab, var(--agent-control-badge) 38%, transparent), 0 10px 30px -12px oklch(0% 0 0 / 55%), 0 0 26px -6px var(--guard-glow); }
@@ -494,7 +491,7 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 /* 동작 줄이기 — 아무것도 움직이지 않는다. 가장자리 빛·모서리 표식·옅은 점 격자만 가만히 남아 조작 중임을 알린다. */
 @media (prefers-reduced-motion: reduce) {
   .guard { transition: none; }
-  .guard.agent .guard-fx, .guard-edge, .guard-corner, .guard-dots, .guard-spectrum, .guard-cursor.click svg, .guard-pill.nudge, .guard-cursor.type .guard-cursor-label::after, .guard.agent .guard-mark svg { animation: none; }
+  .guard.agent .guard-fx, .guard-edge, .guard-corner, .guard-dots, .guard-spectrum, .guard-cursor.click svg, .guard-pill.nudge, .guard.agent .guard-mark svg { animation: none; }
   .guard-beam, .guard-ripple, .guard.agent .guard-mark::after { display: none; }
   .guard-dots { -webkit-mask-image: none; mask-image: none; opacity: 0.18; }
   .guard-cursor.placed, .guard-button { transition: none; }

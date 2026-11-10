@@ -283,6 +283,8 @@ export interface DesktopBrowserPointer {
   readonly y: number;
   readonly kind: "move" | "click" | "type" | "scroll";
   readonly seq: number;
+  /** 그 입력을 보낸 AI 의 표시 이름(사령관·지휘관·구성원). 모르면 없거나 빈 문자열이고 셸이 스페이스 이름으로 대신한다. */
+  readonly actor?: string;
 }
 /** 크롬 투영의 스페이스 한 칸. 디폴트와 모든 사령관 스페이스가 탭이 없어도 실린다 — 디폴트가 맨 앞이다. */
 export interface DesktopBrowserChromeSpace {
@@ -370,7 +372,8 @@ const isFaviconUrl = (value: unknown): value is string | null => value === null 
 
 function isDesktopBrowserPointer(value: unknown): value is DesktopBrowserPointer {
   return isRecord(value) && isSafeId(value.tabId) && isFiniteNumber(value.x) && isFiniteNumber(value.y)
-    && (value.kind === "move" || value.kind === "click" || value.kind === "type" || value.kind === "scroll") && Number.isSafeInteger(value.seq);
+    && (value.kind === "move" || value.kind === "click" || value.kind === "type" || value.kind === "scroll") && Number.isSafeInteger(value.seq)
+    && (value.actor === undefined || isShortText(value.actor, 256));
 }
 
 export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserChrome {

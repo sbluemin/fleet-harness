@@ -183,7 +183,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     const tabId = chrome.activeTabId;
     if (!space.driving || tabId === null || !space.agentTabIds.includes(tabId)) return null;
     const z = zoom();
-    const pointer = space.pointer && space.pointer.tabId === tabId ? { x: space.pointer.x / z, y: space.pointer.y / z, kind: space.pointer.kind, seq: space.pointer.seq } : null;
+    const pointer = space.pointer && space.pointer.tabId === tabId ? { x: space.pointer.x / z, y: space.pointer.y / z, kind: space.pointer.kind, seq: space.pointer.seq, actor: space.pointer.actor ?? "" } : null;
     return { holder: "agent", spaceId: space.id, reason: null, pointer };
   };
 

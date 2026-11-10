@@ -83,9 +83,9 @@ export function mountGuard(): (state: ChromeUiState) => void {
     else {
       // 점 격자의 밝은 자리와 누름 고리가 같은 좌표를 쓴다.
       root.style.setProperty("--guard-x", `${pointer.x}px`); root.style.setProperty("--guard-y", `${pointer.y}px`);
-      cursor.classList.toggle("type", pointer.kind === "type");
       cursor.style.transform = `translate(${pointer.x - TIP.x}px, ${pointer.y - TIP.y}px)`;
-      cursorLabel.textContent = t(`control.cursor.${pointer.kind}`);
+      // 커서에는 그 도구를 쓰는 AI 의 이름이 붙는다 — 모르면 스페이스의 이름(사령관), 그것도 없으면 「에이전트」.
+      cursorLabel.textContent = pointer.actor || (shownSpace(state)?.kind === "commodore" ? name : t("control.cursor.agent"));
       if (!cursor.classList.contains("shown")) { cursor.classList.add("shown"); requestAnimationFrame(() => cursor.classList.add("placed")); }
       if (pointer.seq !== seq) {
         seq = pointer.seq;

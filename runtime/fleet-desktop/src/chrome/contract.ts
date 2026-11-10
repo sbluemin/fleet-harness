@@ -36,8 +36,8 @@ export interface ChromeControl {
   readonly spaceId: string;
   /** 에이전트가 사람에게 부탁한 일. 없으면 null. */
   readonly reason: string | null;
-  /** 에이전트의 마지막 포인터 — 가드 문서의 CSS px(페이지 자리 왼쪽 위 기준). 표시 탭의 것이 아니면 null. */
-  readonly pointer: { readonly x: number; readonly y: number; readonly kind: "move" | "click" | "type" | "scroll"; readonly seq: number } | null;
+  /** 에이전트의 마지막 포인터 — 가드 문서의 CSS px(페이지 자리 왼쪽 위 기준). 표시 탭의 것이 아니면 null. `actor` 는 그 입력을 보낸 AI 의 이름(모르면 빈 문자열). */
+  readonly pointer: { readonly x: number; readonly y: number; readonly kind: "move" | "click" | "type" | "scroll"; readonly seq: number; readonly actor: string } | null;
 }
 
 export interface ChromeColors { readonly scheme: "dark" | "light"; readonly tokens: Readonly<Record<string, string>>; readonly fonts?: Readonly<Record<string, { readonly family: string; readonly size: number }>> }
