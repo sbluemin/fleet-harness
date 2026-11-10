@@ -915,6 +915,25 @@
   animation: none;
 }
 
+/* 사령관 카드의 둘째 줄 — 사령관이 자기 세션으로 플릿 브라우저를 쓰는 동안 요약 자리에 목표 줄과 같은 도구 문구가 선다. */
+.side-bar-theater-swap {
+  display: grid;
+  min-width: 0;
+}
+
+.side-bar-theater-swap > * {
+  grid-area: 1 / 1;
+  min-width: 0;
+}
+
+.side-bar-theater-swap > .side-bar-theater-sub {
+  transition: opacity var(--duration-fast) ease;
+}
+
+.side-bar-theater-swap.is-tool-using > .side-bar-theater-sub {
+  opacity: 0;
+}
+
 .side-bar-cluster-row-use {
   display: flex;
   align-items: center;

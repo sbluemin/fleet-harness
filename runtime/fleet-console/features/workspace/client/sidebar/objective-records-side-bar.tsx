@@ -54,6 +54,8 @@ import { clusterHasPersonDecision } from "../../../objectives/shared/objective-c
 import { useClusterIndex } from "../objective-clusters.js";
 import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpanded, reselectCommander, useCommanderExpanded, useCommanderShowSettled } from "./commander-expansion.js";
 import { CommodoreHoverDock } from "./commodore-hover-dock.js";
+import { RowToolUse } from "./side-bar-cluster-row.js";
+import { useCommodoreBrowserUse } from "../../../computer-use/client/computer-screen-share.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
@@ -698,6 +700,9 @@ function TheaterSectionHeader({
   }, [editingAlias]);
   const displayName = theater.commodore?.alias ?? theater.label;
   const summaryText = lastResponse ?? t("sidebar.commodore.noConversation");
+  // 사령관이 자기 세션으로 플릿 브라우저를 쓰는 동안 둘째 줄이 그 도구를 말한다 — 목표 줄이 지휘관의 사용을 말하는 것과 같은 문구·물결이다.
+  // 그 사령관의 목표가 쓰는 것은 목표 줄의 몫이고, 자기 아바타를 가진 행(TaskForce)은 사령관이 아니다.
+  const browsing = useCommodoreBrowserUse(avatarOverride ? null : theater.commodore?.id ?? null);
   const headerClassName = [
     "side-bar-theater-header",
     active ? "is-active" : "",
@@ -822,7 +827,10 @@ function TheaterSectionHeader({
           {mark === null ? avatarOverride ?? avatarAnchor(true) : null}
           <span className="side-bar-theater-text">
             <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onDoubleClick={() => onStartAliasEdit(theater.id)}>{displayName}</span>
-            <span className="side-bar-theater-sub">{summaryText}</span>
+            <span className={`side-bar-theater-swap${browsing ? " is-tool-using" : ""}`}>
+              <span className="side-bar-theater-sub">{summaryText}</span>
+              <RowToolUse tool={browsing ? "browser" : null} label={browsing ? t("sidebar.row.use.browser") : null} />
+            </span>
           </span>
         </button>
       )}
