@@ -441,6 +441,15 @@ export class BrowserService {
     for (const op of this.objectiveRecords.values()) this.emitState(op);
   }
 
+  /**
+   * 스페이스 목록의 바깥 원천(사령관 목록·이름·순서)이 바뀌었다. 탭은 그대로여도 셸이 그리는 스페이스가 달라지므로
+   * 상태를 다시 흘린다 — 그러지 않으면 열려 있는 브라우저의 그리드는 다음 탭 사건까지 옛 목록을 보인다.
+   */
+  spacesChanged(): void {
+    if (this.disposed) return;
+    for (const op of this.objectiveRecords.values()) this.emitState(op);
+  }
+
   // ---------- 엔진 ----------
 
   private async engineClient(): Promise<CdpClient> {

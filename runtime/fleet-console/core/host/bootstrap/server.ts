@@ -7,6 +7,7 @@ import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
+import { COMMODORE_CHANNEL, type CommodoreEvent } from "../../../features/commodore/shared/contracts/types.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
 import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../../features/workspace/host/objective-archive-storage.js";
@@ -2623,6 +2624,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         ...objectiveRecords.list(), ...archiveStorage.entries().map((entry) => entry.objectiveRecord),
         ...deletionCoordinator.list().flatMap(deletionObjectiveRecords),
       ].filter((node) => node.commodoreId === id).map((node) => [node.id, node])).values()];
+      // 사령관이 생기거나 이름·순서가 바뀌면 스페이스 목록이 바뀐다. 탭 사건이 없어도 셸의 그리드가 따라오게 브라우저 상태를 다시 흘린다.
+      consoleFeaturePorts.events.subscribe(COMMODORE_CHANNEL, (payload) => {
+        const event = payload as CommodoreEvent;
+        if (event.op === "state" && (event.change === "created" || event.change === "alias" || event.change === "order")) browserService.spacesChanged();
+      });
       commodore = createCommodoreFeature({
         approvals,
         // 사령관 호스트는 아바타 책을 직접 읽지 않는다 — 사령관 키의 모습에서 말투만 건넨다.
