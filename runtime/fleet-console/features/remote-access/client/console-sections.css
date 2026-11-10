@@ -3,7 +3,7 @@
 .side-console { list-style: none; min-width: 0; }
 .side-console + .side-console,
 .objective-records-side-bar-chips > :not(.side-console) + .side-console { margin-top: 8px; }
-.side-console-head { display: flex; align-items: center; gap: 2px; min-width: 0; margin: 0 6px; border-radius: 10px; background: var(--surface-capsule); box-shadow: inset 0 0 0 1px var(--surface-rim); }
+.side-console-head { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; margin: 0 6px; border-radius: 10px; background: var(--surface-capsule); box-shadow: inset 0 0 0 1px var(--surface-rim); }
 .side-console-head button { font: inherit; cursor: pointer; }
 .side-console-head button:focus-visible, .side-console-row:focus-visible, .side-console-enter:focus-visible, .side-console-add:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .side-console-toggle { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; height: 34px; padding: 0 8px 0 10px; border: 0; border-radius: 10px; background: transparent; color: var(--text-secondary); text-align: left; }
@@ -19,10 +19,11 @@
 .side-console-count { flex: none; font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
 .side-console-toggle .side-console-chevron { width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-base) var(--ease-glide); }
 .side-console-head.is-folded .side-console-chevron { transform: rotate(-90deg); }
-.side-console-edit { display: grid; flex: none; place-items: center; width: 26px; height: 26px; margin-right: 4px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-tertiary); opacity: 0; }
+/* 연필은 머리글 위에 얹는다 — 자리를 따로 잡으면 원격 콘솔의 펼침 화살표만 다른 머리글과 어긋난다. */
+.side-console-edit { position: absolute; top: 4px; right: 26px; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: 6px; background: linear-gradient(var(--surface-capsule), var(--surface-capsule)), var(--canvas-side); color: var(--text-tertiary); opacity: 0; }
 .side-console-edit svg { width: 14px; height: 14px; }
 .side-console-head:hover .side-console-edit, .side-console-head:focus-within .side-console-edit { opacity: 1; }
-.side-console-edit:hover { background: var(--wash-hover); color: var(--text-primary); }
+.side-console-edit:hover { background: linear-gradient(var(--wash-hover), var(--wash-hover)), var(--canvas-side); color: var(--text-primary); }
 .side-console-head.is-editing { display: block; padding: 8px 10px 10px; }
 .side-console-form { display: grid; gap: 8px; min-width: 0; }
 .side-console-form input { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--surface-rim-strong); border-radius: 8px; background: var(--canvas-side); color: var(--text-primary); font: inherit; font-size: var(--t-md); }

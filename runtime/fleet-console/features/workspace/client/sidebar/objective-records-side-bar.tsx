@@ -230,7 +230,8 @@ export function ObjectiveRecordsSideBar({
       const row = known && list ? list.querySelector<HTMLElement>(`.side-bar-theater-section[data-theater-id="${CSS.escape(arrival.commodore)}"]`) : null;
       if (!list || !row) return;
       if (arrival.anchorY !== null) list.scrollTop += row.getBoundingClientRect().top - list.getBoundingClientRect().top - arrival.anchorY;
-      else row.scrollIntoView({ block: "nearest" });
+      // 이 콘솔의 행은 명부 행보다 높다 — 목록 끝에서 눌렀다면 아래가 잘리지 않을 만큼만 올린다.
+      (row.querySelector<HTMLElement>(".side-bar-theater-header") ?? row).scrollIntoView({ block: "nearest" });
     };
     const attempt = () => {
       if (!known || isCommodoreConversationOpen(arrival.commodore) || performance.now() > deadline) { place(); consoleArrived.current(); return; }
