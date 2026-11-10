@@ -59,6 +59,12 @@
 .side-console-head.is-row:hover .side-console-edit,
 .side-console-head.is-row:focus-within .side-console-edit { background: var(--wash-hover); }
 .side-console-head.is-row .side-console-edit:hover { background: var(--wash-hover); color: var(--text-primary); }
+/* 가리키거나 포커스가 들어온 동안만, 얹힌 단추(right 26px · 너비 26px)가 차지하는 칸을 화살표 앞에 비운다.
+   화살표는 끝 칸이라 밀리지 않고, 집·상태·숫자·WSL 표지는 왼쪽으로 가며 주소는 말줄임된다.
+   단추 왼쪽 끝은 plate 오른쪽에서 52px. 화살표 왼쪽 끝은 padding 8 + 너비 12 = 20px이고 그 앞 flex gap(행 10 · 캡슐 8)이 이미 있다.
+   margin-left 26px면 내용 끝이 행 56px · 캡슐 54px이라 단추와 2~4px 떨어진다.
+   인라인 관리(시작 단추 옆, 늘 보임)만 있는 줄은 :has가 빠진다. 좁은 열은 이 선택자 밖에 둔다 — 거기서 단추는 없다. */
+.objective-records-side-bar:not(.is-compact) .side-console-head:is(:hover, :focus-within):has(> .side-console-plate > .side-console-edit:not(.is-inline)) .side-console-toggle .side-console-chevron { margin-left: 26px; }
 .side-console-head.is-row.is-editing .side-console-plate { margin: 2px 4px 4px 27px; background: var(--wash-hover); box-shadow: none; }
 
 /* 사령관 행은 콘솔 행 아래 23px 들여쓰고, 왼쪽 1px 가지선으로 소속을 보인다. */
