@@ -126,7 +126,7 @@ export function BrowserViewer({ language }: { readonly language: ConsoleLocale |
 
   if (!open || engine?.surfaceMode === "native") return null;
   const place = host?.accessPath === "wsl"
-    ? t("terminal.browser.executionWsl")
+    ? (host.hostLabel ? `${t("terminal.browser.executionWsl")} · ${host.hostLabel}` : t("terminal.browser.executionWsl"))
     : host?.hostLabel
       ? t("terminal.browser.executionHost", { host: host.hostLabel })
       : t("terminal.browser.executionDesktop");

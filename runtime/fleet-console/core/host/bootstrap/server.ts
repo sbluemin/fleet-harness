@@ -2453,10 +2453,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function viewerFrameRead(req: http.IncomingMessage): "ok" | "unauthorized" | "forbidden" {
     const listener = listenerForRequest(req);
     if (listener === null) return "forbidden";
-    if (listener.audience === "remote") {
-      return access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience) ? "ok" : "unauthorized";
+    if (listener.audience === "remote" && !access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience)) {
+      return "unauthorized";
     }
-    return isSameOriginConsoleRead(req) ? "ok" : "forbidden";
+    const admitted = req.method === "POST" ? isExactConsoleOrigin(req) : isSameOriginConsoleRead(req);
+    return admitted ? "ok" : "forbidden";
   }
 
   function broadcastBrowserState(state: ReturnType<BrowserService["state"]>): void {
