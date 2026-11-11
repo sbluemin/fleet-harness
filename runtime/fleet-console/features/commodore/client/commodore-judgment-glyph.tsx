@@ -1,7 +1,7 @@
 import type { ReactElement, SVGProps } from "react";
 
 /**
- * 「사령관 판단」의 글리프 — 지휘관 모델 선택기의 행과 트리거가 이 하나만 쓴다. 한 점에서 여러 갈래로 나뉘어 하나를 고르는 모양이다.
+ * 「라우팅」의 글리프 — 지휘관 모델 선택기의 행과 트리거가 이 하나만 쓴다. 한 점에서 여러 갈래로 나뉘어 하나를 고르는 모양이다.
  * 색은 호출부가 `objectives-commodore-judgment`(`--aurora`)로 얹는다. 글리프 자체는 currentColor다.
  */
 export function CommodoreJudgmentGlyph(props: SVGProps<SVGSVGElement>): ReactElement {

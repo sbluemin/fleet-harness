@@ -68,7 +68,7 @@ export interface CommodoreStore {
   removeIntel(commodoreId: string, intelId: string): CommodoreState;
   setCoordinates(commodoreId: string, coordinates: CommodoreCoordinates | null): CommodoreState;
   setAutoMemoryEnabled(commodoreId: string, enabled: boolean): CommodoreState;
-  /** 사령관이 만드는 목표의 지휘관 모델·강도·속도 — null 은 「사령관 판단」(사령관이 목표마다 지휘관 모델을 고른다)이다. */
+  /** 사령관이 만드는 목표의 지휘관 모델·강도·속도 — null 은 「라우팅」이다. */
   setCommander(commodoreId: string, commander: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null): CommodoreState;
   /** 사람이 고른 플러그인 목록 — 비면 필드를 지운다. 같으면 아무 일도 없다(세션을 헛되이 교체하지 않는다). 빠진 id는 목표 세션 제외 목록에서도 떨어진다. */
   setPlugins(commodoreId: string, plugins: readonly string[]): CommodoreState;

@@ -17,7 +17,7 @@ type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
 /**
  * 사령관·지휘관 좌표 한 칸 — Console 공유 선택기(설정 행의 선택 상자). 로스터 밖 저장값은 「꺼짐」으로 남아 보이고, 실행만 폴백한다. 폰 설정 화면 안에서는
  * 호스트의 좌표 시트로 열린다. 값이 비면 `fallback`(기본 좌표)을 보이고, `reset`은 그 기본값의 낱말을 설명으로 단다.
- * `judgment`를 넘기면 메뉴 맨 위에 「사령관 판단」이 서고, 활성이면 트리거도 글리프와 그 낱말이다(`fallback`을 보이지 않는다).
+ * `judgment`를 넘기면 메뉴 맨 위에 「라우팅」이 서고, 활성이면 트리거도 글리프와 그 낱말이다(`fallback`을 보이지 않는다). 저장값 null은 그대로다.
  */
 export function CommodoreCoordinateField({ t, target, label, value, fallback, disabled, reset, judgment, onChange }: {
   readonly t: T;
@@ -88,7 +88,7 @@ export function commodoreCoordinates(state: CommodoreStateFields, defaults: Comm
   return { model, effort, ...(typeof fast === "boolean" ? { fast } : {}) };
 }
 
-/** 지휘관 좌표의 저장값 — 비어 있으면 「사령관 판단」이다(사령관이 목표마다 commanderModel을 고른다). */
+/** 지휘관 좌표의 저장값 — 비어 있으면 「라우팅」이다(AI Gateway가 이 사령관 세션의 모델로 고른다). */
 export function commanderValue(state: CommodoreStateFields): ModelCoordinateValue {
   return state.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}), ...(typeof state.commanderFast === "boolean" ? { fast: state.commanderFast } : {}) } : {};
 }
