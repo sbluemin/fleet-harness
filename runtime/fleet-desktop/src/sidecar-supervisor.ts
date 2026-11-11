@@ -23,6 +23,7 @@ import {
   type ConsoleStopLadderResult,
 } from "@fleet-console/lifecycle";
 import { isCompatibleDesktopOwner, type ConsoleOwnerMetadata } from "@fleet-console/protocol/desktop";
+import type { ManagedBrowserConnection } from "./browser-connection.js";
 import {
   CONSOLE_EXIT_RECORD_VERSION,
   CONSOLE_SERVE_EXIT_LOCK_HELD,
@@ -373,25 +374,42 @@ export class SidecarSupervisor {
    * has exited, is a stopped Console this Desktop may start, as it does at launch.
    */
   async managedState(): Promise<SidecarManagedState> {
+    return (await this.readManaged()).state;
+  }
+  /**
+   * The proven running Console this Desktop manages, for the browser engine.
+   * Null before start, after stop, or when another owner holds the slot.
+   */
+  async managedBrowser(): Promise<ManagedBrowserConnection | null> {
+    const { state, lock } = await this.readManaged();
+    if (state.management !== "this-desktop" || state.lifecycle !== "running" || !state.identityProven || lock === null) return null;
+    if (!this.isOwned(lock)) return null;
+    let origin: string;
+    try { origin = new URL(lock.endpoint).origin; } catch { return null; }
+    if (!origin || origin === "null") return null;
+    return { key: "home", origin, token: lock.token, ownerId: this.options.ownerId, accessPath: "loopback" };
+  }
+  private async readManaged(): Promise<{ readonly state: SidecarManagedState; readonly lock: LockPayload | null }> {
+    const plain = (state: SidecarManagedState) => ({ state, lock: null as LockPayload | null });
     const read = await this.readLockSettled();
-    if (read.kind === "absent") return { management: "this-desktop", lifecycle: "stopped", identityProven: false };
-    if (read.kind !== "trusted") return read.kind === "untrusted" && !read.alive
+    if (read.kind === "absent") return plain({ management: "this-desktop", lifecycle: "stopped", identityProven: false });
+    if (read.kind !== "trusted") return plain(read.kind === "untrusted" && !read.alive
       ? { management: "this-desktop", lifecycle: "stopped", identityProven: false }
-      : { management: "unknown", lifecycle: null, identityProven: false };
+      : { management: "unknown", lifecycle: null, identityProven: false });
     const { lock } = read.stored;
-    if (!read.alive) return { management: "this-desktop", lifecycle: "stopped", identityProven: false };
+    if (!read.alive) return plain({ management: "this-desktop", lifecycle: "stopped", identityProven: false });
     const management = classifyConsoleManagement(lock.owner, this.options.ownerId);
-    if (management !== "this-desktop") return { management, lifecycle: null, identityProven: false };
-    if (this.isOwnLiveChild(lock.pid) && this.stoppingChild?.pid === lock.pid) return { management, lifecycle: "stopping", identityProven: true };
+    if (management !== "this-desktop") return plain({ management, lifecycle: null, identityProven: false });
+    if (this.isOwnLiveChild(lock.pid) && this.stoppingChild?.pid === lock.pid) return plain({ management, lifecycle: "stopping", identityProven: true });
     const observed = await this.observe(lock);
     const own = this.isOwnLiveChild(lock.pid);
-    if (observed.state === "exited") return { management, lifecycle: "stopped", identityProven: false };
-    if (observed.state === "starting") return { management, lifecycle: "starting", identityProven: own };
-    if (observed.state === "stopping" || observed.state === "releasing") return { management, lifecycle: "stopping", identityProven: own };
+    if (observed.state === "exited") return plain({ management, lifecycle: "stopped", identityProven: false });
+    if (observed.state === "starting") return plain({ management, lifecycle: "starting", identityProven: own });
+    if (observed.state === "stopping" || observed.state === "releasing") return plain({ management, lifecycle: "stopping", identityProven: own });
     // The proof adoption uses: this Desktop's unreaped child, or an authenticated health answer from the lock's pid.
-    if (observed.state !== "replaced" && (own || this.answersFor(observed.probe, lock.pid))) return { management, lifecycle: "running", identityProven: true };
+    if (observed.state !== "replaced" && (own || this.answersFor(observed.probe, lock.pid))) return { state: { management, lifecycle: "running", identityProven: true }, lock };
     // Unverified or replaced: the owner record alone proves nothing, so nothing is offered.
-    return { management, lifecycle: null, identityProven: false };
+    return plain({ management, lifecycle: null, identityProven: false });
   }
   /**
    * Stops the Console this Desktop manages and starts one again. The stop is the Quit stop: it signals only a Console

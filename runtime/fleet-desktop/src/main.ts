@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
 
-import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, type DesktopBrowserPlatform } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 import { autoUpdater } from "electron-updater";
@@ -50,7 +50,9 @@ import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher, type Des
 import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission } from "./computer-capture.js";
 import { createBrowserSurface, createMainPageHost } from "./browser-surface.js";
 import { createBrowserActions } from "./browser-actions.js";
-import { createDesktopBrowserViews } from "./browser-views.js";
+import { createDesktopBrowserViews, type BrowserSurfaceHost } from "./browser-views.js";
+import { createManagedBrowserHost } from "./browser-host.js";
+import { managedBrowserHeaders, shellPublishHeaders, type ManagedBrowserConnection } from "./browser-connection.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import { readChromeHistory } from "./chrome-history.js";
 import { createBrowserHistoryStorage } from "./browser-history-storage.js";
@@ -380,8 +382,9 @@ async function boot(): Promise<void> {
   // 줌·창·브라우저 탭 표시줄 모양이 한 파일에 남는다. 브라우저 표면이 첫 모양을 여기서 읽으므로 표면보다 먼저 연다.
   const desktopState = createDesktopState(path.join(app.getPath("userData"), "desktop-state.json"));
   const chromeViewPreferences = { sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: false, nodeIntegrationInWorker: false, nodeIntegrationInSubFrames: false, webviewTag: false, allowRunningInsecureContent: false } as const;
-  let browserOrigin: string | null = null;
   let chromeProgram: string | null = null;
+  const browserPlatform: DesktopBrowserPlatform | undefined = process.platform === "darwin" || process.platform === "win32" || process.platform === "linux" ? process.platform : undefined;
+  const browserHostLabel = (): string => os.hostname().replace(/\.local$/iu, "");
   const browserSurface = createBrowserSurface({
     main: () => window,
     createChromeView: () => new WebContentsView({ webPreferences: { ...chromeViewPreferences, partition: "fleet-browser-chrome" } }),
@@ -415,17 +418,50 @@ async function boot(): Promise<void> {
     zoom: () => window && !window.isDestroyed() ? window.consoleContents.getZoomFactor() : 1,
     stripPrefs: desktopState.browserStrip,
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
-    act: createBrowserActions({ fetch: consoleFetch, origin: () => browserOrigin, lang: entryLanguage, openExternal: (url) => { void shell.openExternal(url); }, log: (message) => logger.info(message) }),
-    relay: (surface) => browserViews.relaySurface(surface),
+    act: createBrowserActions({
+      fetch: consoleFetch,
+      origin: () => browserHost.shownOrigin(),
+      headers: () => {
+        const shown = browserHost.shownConnection();
+        return shown ? managedBrowserHeaders(shown) : {};
+      },
+      lang: entryLanguage,
+      openExternal: (url) => { void shell.openExternal(url); },
+      log: (message) => logger.info(message),
+    }),
+    relay: (surface) => browserHost.relaySurface(surface),
     // 표면의 자리·모양이 바뀌면 캡션 띠의 높이도 다시 본다(Windows 만 — 다른 OS 에서는 리프레셔가 없다). 높이가 그대로면 아무 일도 하지 않는다.
-    changed: () => { browserViews.places(); overlayRefresher?.refresh(); companionOverlayRefresher?.refresh(); },
+    changed: () => { browserHost.places(); overlayRefresher?.refresh(); companionOverlayRefresher?.refresh(); },
     log: (message) => logger.info(message),
   });
   browserRetheme = () => browserSurface.retheme();
-  const browserViews = createDesktopBrowserViews({
+  const captureViewerFrame = async (view: WebContentsView): Promise<{ jpeg: Buffer; width: number; height: number } | null> => {
+    const contents = view.webContents;
+    if (contents.isDestroyed()) return null;
+    let image;
+    try { image = await contents.capturePage(); } catch { return null; }
+    if (image.isEmpty()) {
+      try {
+        const shot = await contents.debugger.sendCommand("Page.captureScreenshot", { format: "jpeg", quality: 72 }) as { data?: unknown };
+        if (typeof shot.data !== "string" || shot.data.length === 0) return null;
+        image = nativeImage.createFromBuffer(Buffer.from(shot.data, "base64"));
+      } catch { return null; }
+    }
+    if (image.isEmpty()) return null;
+    const size = image.getSize();
+    if (size.width > 1280 && size.width > 0) image = image.resize({ width: 1280, height: Math.max(1, Math.round(size.height * (1280 / size.width))), quality: "good" });
+    const jpeg = image.toJPEG(72);
+    if (jpeg.length === 0 || jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return null;
+    const encoded = image.getSize();
+    return { jpeg, width: encoded.width, height: encoded.height };
+  };
+  const browserHost = createManagedBrowserHost({
+    display: browserSurface,
+    log: (message) => logger.error(message),
+    createSession: (connection: ManagedBrowserConnection, surface: BrowserSurfaceHost) => createDesktopBrowserViews({
     shell: () => window && !window.isDestroyed() ? createMainPageHost(window, (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } }) : null,
     consoleContents: () => window && !window.isDestroyed() ? window.consoleContents : null,
-    surface: browserSurface,
+    surface,
     // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
     // 사람이 뷰를 직접 클릭해 포커스를 옮기는 경로는 그대로 둔다.
     // 영속 프로필이면 그 프로필의 디스크 세션에, 아니면 Objective 의 메모리 파티션에 뷰를 연다.
@@ -438,6 +474,11 @@ async function boot(): Promise<void> {
     product: () => `Chrome/${process.versions.chrome}`,
     // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다.
     userAgent: () => (window?.consoleContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
+    auth: () => ({ token: connection.token, ownerId: connection.ownerId }),
+    hostLabel: browserHostLabel,
+    ...(browserPlatform ? { platform: browserPlatform } : {}),
+    accessPath: connection.accessPath,
+    captureViewerFrame,
     fetch: consoleFetch,
     log: (message) => logger.info(message),
     /**
@@ -496,13 +537,34 @@ async function boot(): Promise<void> {
       }
       return (format === "jpeg" ? image.toJPEG(quality) : image.toPNG()).toString("base64");
     },
+  }),
   });
-  const synchronizeBrowserViews = async (origin: string): Promise<void> => {
-    browserOrigin = origin;
-    try { await browserViews.start(origin); } catch (error) { logger.error(`browser views failed: ${describeError(error)}`); }
+  let browserSyncTimer: ReturnType<typeof setInterval> | null = null;
+  /** 증명된 홈·WSL 콘솔에만 엔진을 맞춘다. 원격 origin 에는 연결도 자격도 없다. */
+  const syncManagedBrowsers = async (shownOrigin: string | null): Promise<void> => {
+    const open = (): boolean => window !== null && !window.isDestroyed();
+    if (!open()) return;
+    const next: ManagedBrowserConnection[] = [];
+    try {
+      const home = await supervisor.managedBrowser();
+      if (home) next.push(home);
+      if (wslConsoles) next.push(...await wslConsoles.managedBrowsers());
+    } catch (error) {
+      logger.error(`managed browser lookup failed: ${describeError(error)}`);
+    }
+    if (!open()) return;
+    await browserHost.sync(next, shownOrigin, open);
+  };
+  const managedConnectionFor = async (origin: string): Promise<ManagedBrowserConnection | null> => {
+    if (isRemoteConsoleOrigin(origin)) return null;
+    const home = await supervisor.managedBrowser();
+    if (home?.origin === origin) return home;
+    if (wslConsoles === null) return null;
+    return (await wslConsoles.managedBrowsers()).find((connection) => connection.origin === origin) ?? null;
   };
   /**
-   * 창이 서 있는 콘솔을 셸의 배관이 따라간다 — 테마, 감독하는 설치본의 갱신, 셸 갱신 명령, 창 명령, 브라우저 뷰.
+   * 창이 서 있는 콘솔을 셸의 배관이 따라간다 — 테마, 감독하는 설치본의 갱신, 셸 갱신 명령, 창 명령, 브라우저 표면.
+   * 매니지드 콘솔의 브라우저 엔진은 창이 다른 콘솔을 봐도 멈추지 않는다.
    * `stillCurrent`가 거짓이 되면 멈춘다: 원격이 오류 문서에 착지해 집으로 되돌아가는 동안, 늦게 끝난 원격 쪽 동기화가
    * 집으로 옮겨 간 배관을 다시 원격으로 끌고 가지 않게 한다.
    */
@@ -514,22 +576,22 @@ async function boot(): Promise<void> {
     await subscribeShellUpdates(origin);
     await listenWindowCommands(origin, restart);
     if (!stillCurrent()) return;
-    await synchronizeBrowserViews(origin);
+    await syncManagedBrowsers(origin);
   };
   /**
    * 적재 전에 창을 새 콘솔 쪽으로 미리 돌린다(console-handoff). 판이 옛 화면을 쥔 뒤라 이 변화는 그 아래에서 일어난다.
-   * - 옛 콘솔의 네이티브 브라우저 뷰를 먼저 내린다 — 남겨 두면 새 콘솔이 그리는 동안 그 위에 옛 페이지가 떠 있다.
+   * - 매니지드 콘솔의 브라우저 엔진은 닫지 않고 주차한다. 원격·비관리 콘솔에는 엔진을 붙이지 않고 네이티브 표면만 내린다.
    * - 새 콘솔의 테마로 창 바탕을 칠하고(타이틀바·신호등은 판이 걷히는 순간), 그 콘솔의 ready를 듣기 시작한다.
    */
   const prepareConsoleSwitch = async (origin: string): Promise<void> => {
-    browserViews.stop();
+    await syncManagedBrowsers(origin);
     await Promise.all([synchronizeThemeAt(origin), listenWindowCommands(origin)]);
   };
   /** 몇 번째 넘겨주기인가. 뒤에 온 넘겨주기가 있으면 앞선 것의 동기화와 되돌리기는 손을 떼야 한다. */
   let handoffGeneration = 0;
   let refreshNativeUpdateActions: (() => void) | null = null;
   const zoomState = desktopState.zoom;
-  const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.(), zoomApplied: () => browserViews.refresh() });
+  const controls = createConsoleControls({ zoomState, refreshNativeActions: () => refreshNativeUpdateActions?.(), zoomApplied: () => browserHost.refresh() });
   /**
    * 다른 콘솔로 건너가는 화면은 Console 안에 있다. Desktop이 남기는 것은 인증서 한 겹뿐이라,
    * 이 다리는 메뉴에도 트레이에도 나타나지 않는다.
@@ -557,9 +619,11 @@ async function boot(): Promise<void> {
     const home = localConsoleOrigin;
     if (!home) return "rejected";
     try {
+      // 이 origin 이 증명된 매니지드 콘솔일 때만 락 토큰을 싣는다. 원격·비관리에는 자격을 보내지 않는다.
+      const headers = shellPublishHeaders(origin, await managedConnectionFor(origin));
       const put = (body: Record<string, unknown>) => consoleFetch(`${origin}${DESKTOP_SHELL_PATH}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json", Origin: origin },
+        headers,
         body: JSON.stringify(body),
       });
       // 돌아갈 줄이 버전 표기보다 중요하다. 게시 전체는 창을 띄우는 마감(console-handoff.ts)과 경주하므로,
@@ -675,7 +739,7 @@ async function boot(): Promise<void> {
     consoleTarball: async () => (await wslConsoleTarget()).tarball(),
     ...(isPackaged ? {} : { extraEnvironment: readDevelopmentWslEnvironment(process.env.FLEET_DESKTOP_WSL_CONSOLE_ENV) }),
     log: logger,
-    onChange: () => { void consoleSection.refresh(); },
+    onChange: () => { void consoleSection.refresh(); void syncManagedBrowsers(policy?.currentConsoleOrigin() ?? null); },
   });
   const consoleSection = createConsoleSectionController({
     home: () => localConsoleOrigin,
@@ -703,6 +767,7 @@ async function boot(): Promise<void> {
         // A Console that starts again may publish another port: the home origin follows it before the window does.
         localConsoleOrigin = origin;
         // A window that stood on another Console stays there; its list shows this one again.
+        await syncManagedBrowsers(policy?.currentConsoleOrigin() ?? origin);
         if (follow) await bridge.open(origin);
       },
     },
@@ -759,7 +824,9 @@ async function boot(): Promise<void> {
     },
     report: (error) => bridge.report(error),
   });
-  homeConsoleExited = () => { void consoleSection.refresh(); };
+  homeConsoleExited = () => { void consoleSection.refresh(); void syncManagedBrowsers(policy?.currentConsoleOrigin() ?? null); };
+  browserSyncTimer = setInterval(() => { void syncManagedBrowsers(policy?.currentConsoleOrigin() ?? null); }, 15_000);
+  browserSyncTimer.unref?.();
   wslConsoles?.watch(15_000);
   /** Console을 보여 주고 있는 창만 인사한다 — 진입 화면에서 떠날 때는 이미 그 화면이 떠 있다. */
   let consoleShown = false;
@@ -813,7 +880,7 @@ async function boot(): Promise<void> {
         createdWindow.base.once("closed", () => {
           themeSynchronizer.stop();
           updateSynchronizer.stop();
-          browserViews.stop();
+          browserHost.stopAll();
           consoleFullscreen?.stop();
           consoleFullscreen = null;
           windowCommands.stop();
@@ -864,13 +931,13 @@ async function boot(): Promise<void> {
         createdWindow.consoleContents.on("zoom-changed", (_event, zoomDirection) => {
           controls.zoomChanged(createdWindow.consoleContents, zoomDirection);
           refreshNativeChrome();
-          browserViews.refresh();
+          browserHost.refresh();
         });
         // 칸의 자리와 페이지 자리는 이 셸이 정한다 — 창 크기가 바뀌면 같은 틱에 Console·크롬·페이지를 함께 다시 놓는다.
         createdWindow.base.on("resize", () => {
           const bounds = createdWindow.stack.layoutConsole();
           startupEntry?.setBounds(bounds);
-          browserViews.refresh();
+          browserHost.refresh();
         });
         // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 네이티브 크롬의 기하를 재확인한다.
         createdWindow.consoleContents.on("did-finish-load", () => refreshNativeChrome());
@@ -924,6 +991,9 @@ async function boot(): Promise<void> {
     });
     return launch.start() as Promise<DesktopShellWindow>;
   }, () => farewell.run(async () => {
+    if (browserSyncTimer) clearInterval(browserSyncTimer);
+    browserSyncTimer = null;
+    browserHost.stopAll();
     bridge.dispose();
     wslConsoles?.unwatch();
     // Quit ends the WSL Consoles this Desktop manages together with its own, each through its stop request.

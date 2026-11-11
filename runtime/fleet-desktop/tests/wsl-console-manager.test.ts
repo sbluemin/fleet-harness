@@ -39,6 +39,7 @@ describe("WSL console manager", () => {
     try {
       // A stopped distribution runs nothing: its files are not read (reading would start it) and Quit asks nothing of it.
       expect(await manager.list()).toMatchObject([{ distro: "Ubuntu", lifecycle: "stopped", origin: null }]);
+      expect(await manager.managedBrowsers()).toEqual([]);
       await manager.stopAll();
       expect(windowsPath).not.toHaveBeenCalled();
       expect(requests).toEqual([]);
@@ -47,6 +48,7 @@ describe("WSL console manager", () => {
       running = true;
       publish({ kind: "desktop", id: "another-desktop", protocolVersion: 1 });
       expect(await manager.list()).toMatchObject([{ management: "other-desktop", lifecycle: null, origin: "http://127.0.0.1:4310", takeover: false }]);
+      expect(await manager.managedBrowsers()).toEqual([]);
       await expect(manager.stop("one")).rejects.toThrow("wsl_console_other_owner");
       await expect(manager.takeOver("one")).rejects.toThrow("wsl_console_other_owner");
       await manager.stopAll();
@@ -55,6 +57,7 @@ describe("WSL console manager", () => {
       // Its own Console is proved by the owner record and the authenticated answer, then asked to stop once.
       publish({ kind: "desktop", id: "this-desktop", protocolVersion: 1 });
       expect(await manager.list()).toMatchObject([{ management: "this-desktop", lifecycle: "running", identityProven: true }]);
+      expect(await manager.managedBrowsers()).toEqual([{ key: "wsl:one", origin: "http://127.0.0.1:4310", token: "secret", ownerId: "this-desktop", accessPath: "wsl" }]);
       const stopping = manager.stop("one");
       await vi.waitFor(() => expect(requests).toContain("POST /api/v1/lifecycle/stop"));
       fs.rmSync(lockFile);

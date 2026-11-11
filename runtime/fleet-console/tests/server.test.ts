@@ -141,7 +141,7 @@ describe("console terminal observability", () => {
 
     // Objective 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 붙어 있지 않으면 열리지 않고, 그 까닭을 말한다.
     const status = await fetch(new URL("api/v1/browser", fixture.endpoint));
-    expect(await status.json()).toMatchObject({ available: false, reason: "desktop_required" });
+    expect(await status.json()).toMatchObject({ available: false, reason: "desktop_required", executionHost: { managed: false, connected: false, status: "unmanaged", hostLabel: null, platform: null, accessPath: null }, surfaceMode: "viewer" });
   });
 
   it("commences an owned-directory objective and retains its Commander and member in records without a registered Theater", async () => {

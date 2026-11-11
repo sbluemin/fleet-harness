@@ -24,8 +24,8 @@ const linkOpenKo: Record<keyof typeof linkOpenEn, string> = {
 };
 
 const messages = {
-  en: { ...linkOpenEn, "terminal.browser.shared": browserEn["terminal.browser.shared"], "terminal.browser.desktopOnly": browserEn["terminal.browser.desktopOnly"] },
-  ko: { ...linkOpenKo, "terminal.browser.shared": browserKo["terminal.browser.shared"], "terminal.browser.desktopOnly": browserKo["terminal.browser.desktopOnly"] },
+  en: { ...linkOpenEn, "terminal.browser.shared": browserEn["terminal.browser.shared"], "terminal.browser.desktopOnly": browserEn["terminal.browser.desktopOnly"], "terminal.browser.viewerLink": browserEn["terminal.browser.viewerLink"], "terminal.browser.unmanaged": browserEn["terminal.browser.unmanaged"], "terminal.browser.managerDisconnected": browserEn["terminal.browser.managerDisconnected"] },
+  ko: { ...linkOpenKo, "terminal.browser.shared": browserKo["terminal.browser.shared"], "terminal.browser.desktopOnly": browserKo["terminal.browser.desktopOnly"], "terminal.browser.viewerLink": browserKo["terminal.browser.viewerLink"], "terminal.browser.unmanaged": browserKo["terminal.browser.unmanaged"], "terminal.browser.managerDisconnected": browserKo["terminal.browser.managerDisconnected"] },
 };
 const translators = { en: createTranslator(messages, "en"), ko: createTranslator(messages, "ko") };
 

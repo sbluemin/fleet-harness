@@ -1,6 +1,8 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
+import { DESKTOP_BROWSER_FRAME_AT_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_SEQ_HEADER, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, type BrowserExecutionHost, type BrowserSurfaceModeKind } from "@fleet-console/protocol/desktop";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
+import { ViewerFrameClosedError, ViewerFrameDisconnectedError, ViewerFrameTimeoutError, type DesktopEngine } from "./desktop-engine.js";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 import { writeImageToClipboard } from "./clipboard.js";
 import { DEFAULT_BROWSER_SUGGESTION_SETTINGS, suggestionSkipReason, type BrowserSuggestionSettings } from "../shared/suggestions.js";
@@ -11,6 +13,7 @@ export interface BrowserSetShortcutsInput {
 
 interface BrowserRouteDeps {
   readonly browserService: BrowserService;
+  readonly desktopEngine: DesktopEngine;
   readonly suggestionSettings?: {
     read(): BrowserSuggestionSettings;
     write(settings: BrowserSuggestionSettings): void;
@@ -27,6 +30,14 @@ interface BrowserRouteDeps {
   readonly publishAttach?: (attach: { readonly kind: "screenshot" | "annotation"; readonly mime: "image/png"; readonly data: string }) => boolean;
   readonly isWriteAdmitted: (req: IncomingMessage) => boolean;
   readonly isExactConsoleOrigin: (req: IncomingMessage) => boolean;
+  /** 이 요청의 창 표면. 원격·웹·비관리 Desktop 은 viewer. */
+  readonly surfaceMode: (req: IncomingMessage) => BrowserSurfaceModeKind;
+  /** 관리 창 또는 락 토큰을 가진 관리 Desktop 메인 프로세스만 사람 조작을 쓴다. */
+  readonly isNativeBrowserWrite: (req: IncomingMessage) => boolean;
+  /** 락 토큰으로 증명된 관리 Desktop 메인 프로세스. Origin 이 없는 브라우저 액션을 이 경우에만 허용한다. */
+  readonly isManagingDesktopProcess: (req: IncomingMessage) => boolean;
+  /** 보기 전용 프레임을 읽을 수 있는 세션인가. 아니면 401/403. */
+  readonly viewerFrameRead: (req: IncomingMessage) => "ok" | "unauthorized" | "forbidden";
   readonly writeJson: (res: ServerResponse, status: number, body: unknown) => void;
   readonly readJsonBody: <T>(req: IncomingMessage, maxBytes?: number) => Promise<T | null>;
   readonly readUrl: (req: IncomingMessage) => URL;
@@ -35,11 +46,20 @@ interface BrowserRouteDeps {
 
 const BROWSER_PASTE_MAX_BYTES = 48 * 1024 * 1024;
 
+const VIEWER_FRAME_PATH = "/api/v1/browser/viewer/frame";
+const VIEWER_UNWATCH_PATH = "/api/v1/browser/viewer/unwatch";
+const DEFAULT_FRAME_WAIT_MS = 12_000;
+const MAX_FRAME_WAIT_MS = 15_000;
+
 export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
-  const { browserService, browserMcp, objectiveRecords, isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders } = deps;
+  const { browserService, desktopEngine, browserMcp, objectiveRecords, isWriteAdmitted, isExactConsoleOrigin, surfaceMode, isNativeBrowserWrite, isManagingDesktopProcess, viewerFrameRead, writeJson, readJsonBody, readUrl, withSecurityHeaders } = deps;
+  const withSurface = <T extends object>(req: IncomingMessage, body: T) => ({ ...body, surfaceMode: surfaceMode(req) });
+  const executionHost = (): BrowserExecutionHost => browserService.availability().executionHost;
   return async ({ req, res, pathname }) => {
     if (!isWriteAdmitted(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
-    if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, browserService.status()); return true; }
+    if (pathname === VIEWER_FRAME_PATH || pathname === VIEWER_UNWATCH_PATH) return serveViewer(req, res, pathname);
+    if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, withSurface(req, browserService.status())); return true; }
+    if (!pathname.startsWith("/api/v1/browser/objectives/") && !isNativeBrowserWrite(req)) { writeJson(res, 403, { error: "browser_viewer_read_only" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") {
       if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
       try { writeJson(res, 200, await browserService.importSources()); }
@@ -53,7 +73,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         return true;
       }
       if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
       const body = await readJsonBody<Record<string, unknown>>(req, 4096);
       if (!body || typeof body.enabled !== "boolean") { writeJson(res, 400, { error: "invalid_request" }); return true; }
       if (!deps.suggestionSettings) { writeJson(res, 503, { error: "settings_unavailable" }); return true; }
@@ -65,7 +85,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     }
     if (pathname === "/api/v1/browser/suggest") {
       if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
       res.setHeader("Cache-Control", "no-store");
       const finish = (transmitted: boolean, reason: string, suggestions: string[] = []) => {
         // 입력 원문·URL·예외 본문은 기록하지 않는다. 판정과 결과 개수만 남긴다.
@@ -102,7 +122,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     if (pathname === "/api/v1/browser/default-profile") {
       // Console 전체의 설정이라 Objective 아래가 아니다. 엔진이 없어도 정할 수 있다 — 다음 Objective 을 위한 값이다.
       if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
       const body = await readJsonBody<Record<string, unknown>>(req);
       if (!body || (body.profile !== null && typeof body.profile !== "string")) { writeJson(res, 400, { error: "invalid_request" }); return true; }
       try { writeJson(res, 200, { defaultProfile: browserService.setDefaultProfile(body.profile) }); }
@@ -114,7 +134,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     }
     if (pathname === "/api/v1/browser/attach") {
       if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
       const body = await readJsonBody<Record<string, unknown>>(req, BROWSER_PASTE_MAX_BYTES);
       if (!body || (body.kind !== "screenshot" && body.kind !== "annotation") || body.mime !== "image/png" || typeof body.data !== "string" || body.data.length === 0 || !/^[A-Za-z0-9+/]+={0,2}$/u.test(body.data)) { writeJson(res, 400, { error: "invalid_request" }); return true; }
       // 받을 Console 화면(Desktop 안의 렌더러)이 없으면 이미지는 갈 곳이 없다.
@@ -124,7 +144,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     }
     if (pathname === "/api/v1/browser/shortcuts") {
       if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-      if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
       const body = await readJsonBody<Record<string, unknown>>(req);
       if (!body || !Array.isArray(body.shortcuts) || !body.shortcuts.every((item) => typeof item === "string")) {
         writeJson(res, 400, { error: "invalid_request" }); return true;
@@ -148,6 +168,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     // 사람이 보고 있는 스페이스는 셸이 안다 — 표시 탭이 없을 때의 새 탭·뷰포트 요청에 실어 보낸다.
     const spaceId = (body: Record<string, unknown>): string | undefined => typeof body.spaceId === "string" && body.spaceId && body.spaceId.length <= 256 ? body.spaceId : undefined;
     // 상태는 쓸 수 없을 때도 답한다 — 패널이 왜 닫혀 있는지 그 답으로 듣는다.
+    if (!isHumanRead(req.method ?? "GET", pathname, action) && !isNativeBrowserWrite(req)) { writeJson(res, 403, { error: "browser_viewer_read_only" }); return true; }
     if (action !== "state" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
     const fail = (error: unknown) => {
       if (error instanceof BrowserPolicyError) { writeJson(res, 400, { error: error.code, message: error.message, ...error.detail }); return; }
@@ -156,7 +177,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     };
     if (req.method === "GET" && action === "state") {
       // 뒤따르는 변화는 Objective 스트림의 browser:state 로 간다 — 이 답은 그 스트림에 붙는 화면의 출발점이다.
-      writeJson(res, 200, browserService.state(objectiveId));
+      writeJson(res, 200, withSurface(req, browserService.state(objectiveId)));
       return true;
     }
     if (req.method === "GET" && action === "favicon") {
@@ -184,7 +205,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       return true;
     }
     if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    if (!isExactConsoleOrigin(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+    if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
     const body = await readJsonBody<Record<string, unknown>>(req, action === "paste" ? BROWSER_PASTE_MAX_BYTES : undefined);
     if (!body) { writeJson(res, 400, { error: "invalid_request" }); return true; }
     try {
@@ -258,5 +279,71 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 404, { error: "not_found" });
     } catch (error) { fail(error); }
     return true;
+
+    async function serveViewer(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
+      const admission = viewerFrameRead(req);
+      if (admission !== "ok") { writeJson(res, admission === "unauthorized" ? 401 : 403, { error: admission === "unauthorized" ? "unauthorized" : "forbidden" }); return true; }
+      const params = readUrl(req).searchParams;
+      const tabId = params.get("tabId") ?? "";
+      if (!/^[A-Za-z0-9._:-]{1,128}$/u.test(tabId)) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+      if (req.method === "POST" && pathname === VIEWER_UNWATCH_PATH) {
+        const viewId = browserService.viewIdOfTab(BROWSER_GLOBAL_ID, tabId);
+        if (viewId) desktopEngine.releaseWatchLease(viewId);
+        res.writeHead(204, withSecurityHeaders({ "Cache-Control": "no-store" }));
+        res.end();
+        return true;
+      }
+      if (req.method !== "GET" || pathname !== VIEWER_FRAME_PATH) { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      const host = executionHost();
+      if (host.status !== "connected") { writeJson(res, 409, { error: "browser_unavailable", executionHost: host }); return true; }
+      const viewId = browserService.viewIdOfTab(BROWSER_GLOBAL_ID, tabId);
+      if (!viewId) { writeJson(res, 404, { error: "tab_not_found" }); return true; }
+      const afterSeq = Number(params.get("afterSeq") ?? "0");
+      const requestedWait = params.has("waitMs") ? Number(params.get("waitMs")) : DEFAULT_FRAME_WAIT_MS;
+      const waitMs = Number.isFinite(requestedWait) ? Math.min(MAX_FRAME_WAIT_MS, Math.max(0, requestedWait)) : DEFAULT_FRAME_WAIT_MS;
+      const release = desktopEngine.acquireWatch(viewId);
+      const abort = new AbortController();
+      let settled = false;
+      const finish = (lease: boolean) => { if (settled) return; settled = true; release(lease); };
+      const onClose = () => { if (!res.writableEnded) { abort.abort(); finish(false); } };
+      res.on("close", onClose);
+      try {
+        const frame = await desktopEngine.waitForFrame(viewId, Number.isFinite(afterSeq) ? afterSeq : 0, waitMs, abort.signal);
+        if (res.writableEnded || res.destroyed) { finish(false); return true; }
+        res.writeHead(200, withSecurityHeaders({
+          "Content-Type": "image/jpeg",
+          "Cache-Control": "no-store",
+          "Content-Length": String(frame.bytes.length),
+          [DESKTOP_BROWSER_FRAME_SEQ_HEADER]: String(frame.seq),
+          [DESKTOP_BROWSER_FRAME_WIDTH_HEADER]: String(frame.width),
+          [DESKTOP_BROWSER_FRAME_HEIGHT_HEADER]: String(frame.height),
+          [DESKTOP_BROWSER_FRAME_AT_HEADER]: String(frame.at),
+        }));
+        res.end(frame.bytes);
+        finish(true);
+      } catch (error) {
+        if (res.writableEnded || res.destroyed) { finish(false); return true; }
+        if (error instanceof ViewerFrameTimeoutError || abort.signal.aborted) {
+          if (abort.signal.aborted) { finish(false); return true; }
+          res.writeHead(204, withSecurityHeaders({ "Cache-Control": "no-store" }));
+          res.end();
+          finish(true);
+          return true;
+        }
+        if (error instanceof ViewerFrameClosedError) { writeJson(res, 404, { error: "tab_not_found" }); finish(false); return true; }
+        if (error instanceof ViewerFrameDisconnectedError) { writeJson(res, 409, { error: "browser_unavailable", executionHost: executionHost() }); finish(false); return true; }
+        writeJson(res, 500, { error: "browser_request_failed" });
+        finish(false);
+      } finally {
+        res.off("close", onClose);
+      }
+      return true;
+    }
   };
+}
+
+function isHumanRead(method: string, pathname: string, action: string | null): boolean {
+  if (method === "GET" && (pathname === "/api/v1/browser" || pathname === VIEWER_FRAME_PATH)) return true;
+  if (method === "POST" && pathname === VIEWER_UNWATCH_PATH) return true;
+  return method === "GET" && (action === "state" || action === "favicon");
 }

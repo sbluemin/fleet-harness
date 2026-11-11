@@ -7,6 +7,7 @@ import { DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, 
 import { classifyConsoleManagement, type ConsoleManagedLifecycle, type ConsoleManagementRelation } from "@fleet-console/protocol/lifecycle/management";
 
 import type { ConsoleRuntimeUpdate } from "@fleet-console/protocol/desktop/console-section";
+import type { ManagedBrowserConnection } from "./browser-connection.js";
 import { isNewerConsoleVersion } from "./runtime/release-check.js";
 import { downloadVerifiedNodeArchive, type NodeRuntimeManifest } from "./runtime/node-bootstrap.js";
 import type { WslHost } from "./wsl-host.js";
@@ -145,6 +146,24 @@ export class WslConsoleManager {
   /** The origins of managed Consoles that proved themselves just now; the window may be sent to these. */
   async origins(): Promise<readonly string[]> {
     return (await this.list()).filter((view) => view.origin !== null && view.identityProven).map((view) => view.origin!);
+  }
+
+  /**
+   * Proven running Consoles this Desktop manages, for the browser engine.
+   * A stopped distribution is not observed: reading its files would start it.
+   * Callers refresh the browser host from `onChange` (start, stop, restart, update, takeOver, remove, and watch).
+   */
+  async managedBrowsers(): Promise<readonly ManagedBrowserConnection[]> {
+    if (this.records.length === 0) return [];
+    const running = new Set((await this.options.host.distros()).filter((distro) => distro.running).map((distro) => distro.name));
+    const connections: ManagedBrowserConnection[] = [];
+    for (const record of this.records) {
+      if (!running.has(record.distro)) continue;
+      const seen = await this.observe(record).catch(() => unknown());
+      if (seen.management !== "this-desktop" || !seen.identityProven || seen.lifecycle !== "running" || !seen.origin || !seen.lock) continue;
+      connections.push({ key: `wsl:${record.id}`, origin: seen.origin, token: seen.lock.token, ownerId: this.options.ownerId, accessPath: "wsl" });
+    }
+    return connections;
   }
 
   async list(): Promise<readonly WslConsoleView[]> {

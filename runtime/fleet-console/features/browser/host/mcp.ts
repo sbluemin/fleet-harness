@@ -46,12 +46,12 @@ function placeOf(deps: BrowserMcpDeps, root: ObjectiveRecord, participantId: str
   return { browserId: BROWSER_GLOBAL_ID, spaceId, ownerId: root.id, participantId };
 }
 
-type BrowserRefusal = "caller_unresolved" | "desktop_required" | "shared";
+type BrowserRefusal = "caller_unresolved" | "desktop_required" | "unmanaged";
 
 const REFUSAL_INSTRUCTION: Record<BrowserRefusal, string> = {
   caller_unresolved: "This session has no active Console browser binding, so the Fleet Browser can never answer it. Do not retry and do not ask the user to change a setting. Continue without the browser.",
-  desktop_required: "The Fleet Browser runs only inside the Fleet Desktop app, and no Desktop window is showing this Console right now. Do not retry until the user says they opened this Console in Fleet Desktop.",
-  shared: "The Fleet Browser is paused because this Console is also open in a regular browser tab or on a phone. Do not retry until the user says only Fleet Desktop windows remain.",
+  unmanaged: "This Console is not managed by Fleet Desktop. Do not retry or substitute a remote Desktop; continue without Fleet Browser.",
+  desktop_required: "This Console's managing Fleet Desktop is disconnected. Do not retry until the user reconnects it.",
 };
 
 const REFUSAL_MESSAGE: Record<BrowserRefusal, Record<"en" | "ko", string>> = {
@@ -59,17 +59,29 @@ const REFUSAL_MESSAGE: Record<BrowserRefusal, Record<"en" | "ko", string>> = {
     en: "This session has no active Console browser binding, so the Fleet Browser is unavailable to it.",
     ko: "이 세션에는 활성 Console 브라우저 연결이 없어 플릿 브라우저를 쓸 수 없습니다.",
   },
-  desktop_required: { en: "The Fleet Browser needs a Fleet Desktop window showing this Console.", ko: "플릿 브라우저는 Fleet Desktop 창에서만 열립니다. 지금 이 Console 을 보는 Desktop 창이 없습니다." },
-  shared: { en: "The Fleet Browser is paused while this Console is also open in a browser or on a phone.", ko: "이 Console 이 브라우저·모바일에서도 열려 있어 플릿 브라우저가 멈춰 있습니다." },
+  unmanaged: {
+    en: "This Console is not managed by Fleet Desktop, so the Fleet Browser is unavailable.",
+    ko: "이 Console은 Fleet Desktop이 관리하지 않아 플릿 브라우저를 쓸 수 없습니다.",
+  },
+  desktop_required: {
+    en: "This Console's managing Fleet Desktop is disconnected, so the Fleet Browser is unavailable.",
+    ko: "이 Console을 관리하는 Fleet Desktop 연결이 끊겨 플릿 브라우저를 쓸 수 없습니다.",
+  },
 };
 
 function refuse(reason: BrowserRefusal, objectiveId: string | null, language: "en" | "ko") {
-  const actionable = reason !== "caller_unresolved";
+  const retryable = reason === "desktop_required";
   return { content: [{ type: "text" as const, text: JSON.stringify({
-    error: "browser_not_authorized", reason, retryable: actionable, retryAfter: actionable ? "user_action" : "never",
+    error: "browser_not_authorized", reason, retryable, retryAfter: retryable ? "user_action" : "never",
     remedy: { actor: "none", surface: "none", path: [] },
     agentInstruction: REFUSAL_INSTRUCTION[reason], message: REFUSAL_MESSAGE[reason][language],
   }) }], isError: true };
+}
+
+function refusalForAvailability(availability: { readonly available: boolean; readonly host: string | null; readonly executionHost?: { readonly status?: string } }): BrowserRefusal | null {
+  if (availability.available) return null;
+  if (availability.executionHost?.status === "unmanaged" || (availability.executionHost === undefined && availability.host === null)) return "unmanaged";
+  return "desktop_required";
 }
 
 function deny(deps: BrowserMcpDeps, sessionLabel: string | undefined) {
@@ -85,7 +97,8 @@ function deny(deps: BrowserMcpDeps, sessionLabel: string | undefined) {
   const place = placeOf(deps, root, scope.participantId);
   // 브라우저는 Desktop 앱의 것이다 — 창을 든 Desktop 이 있고 브라우저·모바일 화면이 없을 때만 열린다.
   const availability = deps.service.availability();
-  if (!availability.available) return { denied: refuse(availability.reason === "shared" ? "shared" : "desktop_required", place.browserId, fallback), place };
+  const refusal = refusalForAvailability(availability);
+  if (refusal) return { denied: refuse(refusal, place.browserId, fallback), place };
   return { denied: null, place };
 }
 
@@ -222,7 +235,8 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
         return defineTool(spec.id, spec.description, schema.shape, async (args) => {
           if (closed || controller.signal.aborted || !options.enabled()) return refuse("caller_unresolved", null, language());
           const availability = deps.service.availability();
-          if (!availability.available) return refuse(availability.reason === "shared" ? "shared" : "desktop_required", owner, language());
+          const refusal = refusalForAvailability(availability);
+          if (refusal) return refuse(refusal, owner, language());
           const parsed = schema.safeParse(args);
           if (!parsed.success) return { content: [{ type: "text", text: JSON.stringify({ error: "browser_arguments_invalid", issues: parsed.error.issues.map((issue) => describeArgumentIssue(args, issue)) }) }], isError: true };
           const call = new AbortController();

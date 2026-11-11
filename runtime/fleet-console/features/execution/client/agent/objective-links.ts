@@ -1,10 +1,9 @@
-import { gestureFromEvent, openInDefaultOsBrowser } from "@fleet-console/link/core";
+import { gestureFromEvent } from "@fleet-console/link/core";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { ClientNavigateCapability } from "../../../workspace/shared/navigation.js";
 import * as React from "react";
 
 import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
-import { notifySharedFallback } from "../../../browser/client/browser-shared-fallback.js";
 import { createChatFileLinkPorts } from "./chat-file-links.js";
 import { createChatLinkInterceptor, openObjectiveLink, useLinkOpenChoice, type LinkOpenAt } from "./link-open.js";
 
@@ -44,8 +43,8 @@ export function useObjectiveLinks(target: ObjectiveLinkTarget): ObjectiveLinks {
   const linkOpen = useLinkOpenChoice(target);
   const engine = useBrowserEngine();
   const availability = React.useMemo(() => ({
-    canOffer: engine === null || engine.available,
-    isShared: engine !== null && !engine.available && engine.reason === "shared",
+    canOffer: engine?.surfaceMode === "viewer" || engine === null || engine.available,
+    viewOnly: engine?.surfaceMode === "viewer",
   }), [engine]);
   const { objectiveId, openCompanion, theaterId, navigate } = target;
   const openDirect = React.useCallback((url: string, event: LinkGestureEvent) => openObjectiveLink(
@@ -54,14 +53,7 @@ export function useObjectiveLinks(target: ObjectiveLinkTarget): ObjectiveLinks {
     { objectiveId, openCompanion },
     availability,
   ), [objectiveId, openCompanion, availability]);
-  const choose = React.useCallback((url: string, at: LinkOpenAt) => {
-    if (availability.isShared) {
-      notifySharedFallback();
-      openInDefaultOsBrowser(url);
-      return true;
-    }
-    return linkOpen.choose(url, at);
-  }, [availability, linkOpen.choose]);
+  const choose = React.useCallback((url: string, at: LinkOpenAt) => linkOpen.choose(url, at), [linkOpen.choose]);
   const onLinkClick = React.useMemo(() => createChatLinkInterceptor(choose, openDirect), [choose, openDirect]);
   const [fileLinkFailure, setFileLinkFailure] = React.useState<"unsupported" | "failed" | null>(null);
   const fileLinks = React.useMemo(() => createChatFileLinkPorts(theaterId, navigate, setFileLinkFailure, objectiveId), [theaterId, navigate, objectiveId]);

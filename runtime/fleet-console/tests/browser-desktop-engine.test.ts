@@ -122,21 +122,18 @@ describe("desktop native browser engine", () => {
       await expect(engine.send("Runtime.evaluate", {}, sessionId)).rejects.toThrow(/desktop_browser_disconnected/);
     } finally { vi.useRealTimers(); }
 
-    // 제어가 원격 Desktop 으로 넘어가면 그 창이 호스트다 — 이 기계의 창에 살던 뷰는 옮길 수 없으므로 닫힌다.
+    // 제어가 다른 셸로 넘어가도 호스트와 열린 뷰는 그대로다.
     engine.subscriberOpened("local");
     const nextContext = await engine.send<{ browserContextId: string }>("Target.createBrowserContext", {});
     const recreating = engine.send<{ targetId: string }>("Target.createTarget", { url: "about:blank", browserContextId: nextContext.browserContextId });
     engine.relay("local", { attached: [published.at(-1)!.views[0]!.id] });
     await recreating;
-    let handedOff = false;
-    void engine.closed.then(() => { handedOff = true; });
     engine.openSurface("op-1", "pane");
-    expect(engine.setHost("remote-guest")).toBe(true);
-    await Promise.resolve();
-    expect(handedOff).toBe(true);
-    expect(engine.currentHost).toBe("remote-guest");
+    const kept = published.at(-1)?.views.length ?? 0;
+    expect(engine.setHost("remote-guest")).toBe(false);
+    expect(engine.currentHost).toBe("local");
     expect(engine.connected).toBe(true);
-    expect(published.at(-1)?.views).toHaveLength(0);
-    expect(engine.surfaceState()).toBeNull();
+    expect(published.at(-1)?.views).toHaveLength(kept);
+    expect(engine.surfaceState()).not.toBeNull();
   });
 });

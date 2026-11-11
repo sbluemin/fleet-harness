@@ -42,7 +42,7 @@
 - The Console server is the sole durable-state writer. Development and published channels intentionally use separate data roots; an explicit Console-directory override relocates runtime and durable data together. Restored terminal objective sessions are dormant until explicitly relaunched; restored chat sessions stay live and idle, and their SDK child starts only on the next send or an explicit host preparation.
 - Browser preferences are local and volatile; settings are server-durable. Neither channel is a credential or raw-path store.
 - Within core folder-selection APIs, explicit browsing and grant responses are the only browser payloads permitted to carry selected absolute paths.
-- The Fleet Browser is a Fleet Desktop feature: Console never locates or launches a local Chrome, tabs render only as native views inside an attached Desktop window, and the feature pauses (closing every tab) while any non-Desktop client is connected. A remote Desktop that holds control hosts the views on its own machine; that trust boundary is a product decision, not an accident to fix.
+- Fleet Browser runs only in this Console's managing Desktop (native or WSL), under the [lifecycle management contract](../../docs/console-lifecycle-contract.md#management-operation-and-access-path). Console never locates or launches local Chrome or substitutes a remote Desktop. Remote connections, Console switches, and control changes do not move tabs to another host or close them. Other clients admitted to this Console get only a read-only viewer of its latest Browser image frames.
 
 ## Design invariants
 

@@ -9,6 +9,8 @@ import { BROWSER_STRIP_PX, type SurfaceControl } from "./browser-surface.js";
 export interface BrowserActionDeps {
   readonly fetch: typeof fetch;
   readonly origin: () => string | null;
+  /** 지금 보는 콘솔이 이 Desktop 의 매니지드 콘솔일 때만 락 토큰과 소유자 헤더. 그 밖에는 빈 객체. */
+  readonly headers?: () => Record<string, string>;
   readonly lang: "ko" | "en";
   readonly openExternal: (url: string) => void;
   readonly log: (message: string) => void;
@@ -37,7 +39,7 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
     if (!origin) throw new Error("console_unavailable");
     return deps.fetch(`${origin}${path}`, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-      headers: { "Content-Type": "application/json", Origin: origin },
+      headers: { "Content-Type": "application/json", Origin: origin, ...(deps.headers?.() ?? {}) },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
       ...(init.signal ? { signal: init.signal } : {}),
     });

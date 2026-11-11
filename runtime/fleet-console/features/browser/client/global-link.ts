@@ -6,7 +6,6 @@ import {
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { getBrowserEngineSnapshot } from "./browser-engine.js";
-import { notifySharedFallback } from "./browser-shared-fallback.js";
 
 /**
  * Session 이 없는 표면(목표·Wiki·파일·도움말·Settings 등)의 링크 열기.
@@ -18,14 +17,14 @@ import { notifySharedFallback } from "./browser-shared-fallback.js";
 
 export interface OtherLinkAvailability {
   readonly canOffer: boolean;
-  readonly isShared: boolean;
+  readonly viewOnly: boolean;
 }
 
 export function readOtherLinkAvailability(): OtherLinkAvailability {
   const engine = getBrowserEngineSnapshot();
   return {
     canOffer: engine === null || engine.available,
-    isShared: engine !== null && !engine.available && engine.reason === "shared",
+    viewOnly: engine?.surfaceMode === "viewer",
   };
 }
 
@@ -33,10 +32,7 @@ export function openOtherSurfaceLink(url: string, _gesture: OpenLinkGesture): bo
   if (!isDesktopShell()) return false;
   if (!isRoutableLink(url, typeof window !== "undefined" ? window.location.origin : undefined)) return false;
   const availability = readOtherLinkAvailability();
-  if (!availability.canOffer) {
-    if (!availability.isShared) return false;
-    notifySharedFallback();
-  }
+  if (availability.viewOnly || !availability.canOffer) return false;
   openInDefaultOsBrowser(url);
   return true;
 }

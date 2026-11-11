@@ -2,11 +2,18 @@ import type { Rectangle, Session, WebContents, WebContentsView } from "electron"
 import {
   DESKTOP_BROWSER_EVENT,
   DESKTOP_BROWSER_EVENTS_PATH,
+  DESKTOP_BROWSER_FRAME_HEIGHT_HEADER,
+  DESKTOP_BROWSER_FRAME_MAX_BYTES,
+  DESKTOP_BROWSER_FRAME_PATH,
+  DESKTOP_BROWSER_FRAME_WIDTH_HEADER,
+  DESKTOP_BROWSER_OWNER_HEADER,
   DESKTOP_BROWSER_PATH,
   DESKTOP_BROWSER_RELAY_PATH,
   DESKTOP_BROWSER_SHELL_VIEW,
   DESKTOP_BROWSER_VIEW_HEADER,
   isDesktopBrowserSnapshot,
+  type DesktopBrowserAccessPath,
+  type DesktopBrowserPlatform,
   type DesktopBrowserRelay,
   type DesktopBrowserSnapshot,
   type DesktopBrowserChrome,
@@ -23,9 +30,9 @@ import { defaultParkViewport, parkedNativeBounds, type ParkViewport } from "./sh
  * Objective 브라우저를 창 안의 실제 Chromium 뷰로 그린다.
  *
  * 콘솔은 탭·정책·도구를 소유하고, 이 셸은 "어디에 어떤 뷰를 놓을지"와 "그 뷰의 디버거로 이 명령을 보내라"를
- * 스냅샷으로 받아 수행할 뿐이다. 사람은 뷰를 직접 보고 만진다 — 픽셀을 찍어 보내는 일이 없다. 에이전트의
- * 눈과 손은 콘솔이 보낸 CDP 명령이고, 그 응답과 페이지 이벤트는 relay 로 되돌아간다. 방향은 테마·업데이트
- * 동기화와 같다: 셸이 구독하고, 셸이 되돌려 보낸다. 렌더러는 이 배관을 모른다.
+ * 스냅샷으로 받아 수행할 뿐이다. 사람은 뷰를 직접 보고 만진다. 원격 보기 전용 화면이 그 뷰를 열람 중일 때만
+ * 최신 프레임 한 장을 올린다. 에이전트의 눈과 손은 콘솔이 보낸 CDP 명령이고, 그 응답과 페이지 이벤트는 relay 로
+ * 되돌아간다. 방향은 테마·업데이트 동기화와 같다: 셸이 구독하고, 셸이 되돌려 보낸다. 렌더러는 이 배관을 모른다.
  */
 
 export const MAX_DESKTOP_BROWSER_SSE_BUFFER_CHARS = 16 * 1024 * 1024;
@@ -74,6 +81,22 @@ export interface DesktopBrowserViewsDeps {
   readonly createView: (partition: string, profile: string | null) => WebContentsView;
   readonly product: () => string;
   readonly userAgent: () => string;
+  /** 이 세션이 붙는 매니지드 콘솔의 락 토큰. 없으면 자격 헤더를 보내지 않는다. */
+  readonly auth?: () => { readonly token: string; readonly ownerId: string } | null;
+  /** 정제된 머신 표시 이름. 경로와 자격은 넣지 않는다. */
+  readonly hostLabel?: () => string;
+  readonly platform?: DesktopBrowserPlatform;
+  readonly accessPath?: DesktopBrowserAccessPath;
+  /**
+   * 열람 중인 뷰의 JPEG 한 장. 없으면 프레임을 찍지 않는다. 테스트가 캡처 시각을 대신한다.
+   * CDP 명령 큐와 분리된 경로에서만 부른다.
+   */
+  readonly captureViewerFrame?: (view: WebContentsView) => Promise<ViewerFrame | null>;
+  /** 시청 중 저주파 변경 확인 간격. 250ms 보다 짧아지지 않는다. */
+  readonly viewerPollMs?: number;
+  readonly now?: () => number;
+  readonly schedule?: (callback: () => void, delayMs: number) => unknown;
+  readonly cancel?: (handle: unknown) => void;
   readonly fetch?: typeof fetch;
   readonly log?: (message: string) => void;
   /**
@@ -102,6 +125,14 @@ export interface CapturePlan {
 
 /** CDP 가 jpeg quality 를 받지 않았을 때 Chromium 이 쓰는 값. */
 const DEFAULT_JPEG_QUALITY = 80;
+/** 시청 중 프레임 캡처의 최소 간격. 그 사이에 쌓인 변화는 한 장으로 합친다. */
+const VIEWER_FRAME_INTERVAL_MS = 250;
+
+export interface ViewerFrame {
+  readonly jpeg: Buffer;
+  readonly width: number;
+  readonly height: number;
+}
 
 /**
  * 이번 native 캡처의 명시적 안전 한도. 넘으면 오류로 끝내고 옛 clip 경로로 돌아가지 않는다 — 그 길은 사람이 보는 뷰를
@@ -382,6 +413,146 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   let captureChain: Promise<void> = Promise.resolve();
   let capturesWaiting = 0;
   const captureTasks = new Set<{ expire: () => void }>();
+  const viewerPollMs = Math.max(VIEWER_FRAME_INTERVAL_MS, deps.viewerPollMs ?? VIEWER_FRAME_INTERVAL_MS);
+  const now = deps.now ?? (() => Date.now());
+  const schedule = deps.schedule ?? ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
+  const cancel = deps.cancel ?? ((handle: unknown) => { clearTimeout(handle as ReturnType<typeof setTimeout>); });
+
+  const authHeaders = (): Record<string, string> => {
+    const auth = deps.auth?.() ?? null;
+    if (!auth?.token || !auth.ownerId) return {};
+    return { Authorization: `Bearer ${auth.token}`, [DESKTOP_BROWSER_OWNER_HEADER]: auth.ownerId };
+  };
+  const helloRelay = (): DesktopBrowserRelay => ({
+    hello: {
+      product: deps.product(),
+      userAgent: deps.userAgent(),
+      ...(deps.hostLabel ? { hostLabel: deps.hostLabel() } : {}),
+      ...(deps.platform ? { platform: deps.platform } : {}),
+      ...(deps.accessPath ? { accessPath: deps.accessPath } : {}),
+    },
+  });
+
+  interface ViewerWatch {
+    watching: boolean;
+    dirty: boolean;
+    inflight: boolean;
+    immediate: boolean;
+    lastStarted: number;
+    lastJpeg: Buffer | null;
+    sent: boolean;
+    timer: unknown;
+    poll: unknown;
+  }
+  const watches = new Map<string, ViewerWatch>();
+  const watchOf = (id: string): ViewerWatch => {
+    let watch = watches.get(id);
+    if (!watch) {
+      watch = { watching: false, dirty: false, inflight: false, immediate: false, lastStarted: 0, lastJpeg: null, sent: false, timer: null, poll: null };
+      watches.set(id, watch);
+    }
+    return watch;
+  };
+  const clearHandle = (watch: ViewerWatch, key: "timer" | "poll"): void => {
+    if (watch[key] === null) return;
+    cancel(watch[key]);
+    watch[key] = null;
+  };
+  const stopWatch = (id: string): void => {
+    const watch = watches.get(id);
+    if (!watch) return;
+    watch.watching = false;
+    watch.dirty = false;
+    watch.immediate = false;
+    clearHandle(watch, "timer");
+    clearHandle(watch, "poll");
+  };
+  function armPoll(id: string): void {
+    const watch = watches.get(id);
+    if (!watch || !watch.watching || watch.poll !== null || !deps.captureViewerFrame) return;
+    watch.poll = schedule(() => {
+      const current = watches.get(id);
+      if (!current) return;
+      current.poll = null;
+      if (!current.watching) return;
+      current.dirty = true;
+      kick(id);
+      armPoll(id);
+    }, viewerPollMs);
+  }
+  function kick(id: string): void {
+    const watch = watches.get(id);
+    if (!watch || !watch.watching || watch.inflight || watch.timer !== null) return;
+    if (!watch.dirty && !watch.immediate) return;
+    const elapsed = now() - watch.lastStarted;
+    const wait = watch.immediate || watch.lastStarted === 0 ? 0 : Math.max(0, VIEWER_FRAME_INTERVAL_MS - elapsed);
+    watch.immediate = false;
+    watch.timer = schedule(() => {
+      const current = watches.get(id);
+      if (current) current.timer = null;
+      void captureFrame(id);
+    }, wait);
+  }
+  function markDirty(id: string): void {
+    const watch = watches.get(id);
+    if (!watch?.watching) return;
+    watch.dirty = true;
+    kick(id);
+  }
+  async function captureFrame(id: string): Promise<void> {
+    const capture = deps.captureViewerFrame;
+    const watch = watches.get(id);
+    const entry = live.get(id);
+    const contents = entry?.view.webContents;
+    if (!capture || !watch || !watch.watching || watch.inflight || !entry || !contents || (typeof contents.isDestroyed === "function" && contents.isDestroyed())) return;
+    watch.inflight = true;
+    watch.dirty = false;
+    watch.lastStarted = now();
+    const token = session;
+    const target = origin;
+    try {
+      const frame = await capture(entry.view);
+      if (session !== token || !watch.watching || !target || !frame || frame.jpeg.length === 0 || frame.jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return;
+      if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return;
+      const response = await fetchFor(`${target}${DESKTOP_BROWSER_FRAME_PATH}`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          [DESKTOP_BROWSER_VIEW_HEADER]: id,
+          [DESKTOP_BROWSER_FRAME_WIDTH_HEADER]: String(frame.width),
+          [DESKTOP_BROWSER_FRAME_HEIGHT_HEADER]: String(frame.height),
+          "Content-Type": "image/jpeg",
+          Origin: target,
+        },
+        body: frame.jpeg,
+      });
+      if (session === token && watch.watching && response.ok) {
+        watch.lastJpeg = Buffer.from(frame.jpeg);
+        watch.sent = true;
+      }
+    } catch (error) {
+      log(`browser frame failed: ${error instanceof Error ? error.message : "unknown"}`);
+    } finally {
+      watch.inflight = false;
+      if (watch.watching && watch.dirty) kick(id);
+    }
+  }
+  function reconcileWatched(ids: ReadonlySet<string>): void {
+    if (!deps.captureViewerFrame) return;
+    for (const id of [...watches.keys()]) if (!ids.has(id) || !live.has(id)) stopWatch(id);
+    for (const id of ids) {
+      if (!live.has(id)) continue;
+      const watch = watchOf(id);
+      if (watch.watching) continue;
+      watch.watching = true;
+      watch.immediate = true;
+      watch.dirty = true;
+      watch.sent = false;
+      watch.lastJpeg = null;
+      kick(id);
+      armPoll(id);
+    }
+  }
 
   function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[] }; }
 
@@ -418,7 +589,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
 
   const send = async (target: string, body: DesktopBrowserRelay): Promise<boolean> => {
     try {
-      const response = await fetchFor(`${target}${DESKTOP_BROWSER_RELAY_PATH}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: target }, body: JSON.stringify(body) });
+      const response = await fetchFor(`${target}${DESKTOP_BROWSER_RELAY_PATH}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: target, ...authHeaders() }, body: JSON.stringify(body) });
       if (response.ok) return true;
       log(`browser relay rejected status=${response.status}`);
       // 콘솔이 몸을 거절한 것(400)은 다시 보내도 같다 — 버린다. 나머지는 잠시 뒤 다시.
@@ -564,6 +735,13 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const releaseDialog = spec.pageDialogs === true ? holdPageDialogs(contents) : () => undefined;
     contents.on("render-process-gone", () => drop(spec.id, true));
     contents.on("destroyed", () => drop(spec.id, true));
+    if (deps.captureViewerFrame) {
+      const dirty = (): void => markDirty(spec.id);
+      contents.on("did-stop-loading", dirty);
+      contents.on("did-navigate", dirty);
+      contents.on("did-navigate-in-page", dirty);
+      contents.on("dom-ready", dirty);
+    }
     try {
       contents.debugger.attach("1.3");
       contents.debugger.on("message", (_event, method, params, sessionId) => {
@@ -593,6 +771,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const entry = live.get(id);
     if (!entry) return;
     live.delete(id);
+    stopWatch(id);
     const shell = entry.parent;
     try { if (shell && !shell.isDestroyed()) shell.remove(entry.view); } catch { /* 창이 먼저 닫혔다. */ }
     try { if (entry.view.webContents.debugger.isAttached()) entry.view.webContents.debugger.detach(); } catch { /* 이미 떨어졌다. */ }
@@ -615,6 +794,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       settled = true;
       // 중지나 다른 콘솔로의 이동 뒤에는 새 연결의 outbox 로 옛 명령의 답을 흘리지 않는다.
       if (session === token) push({ results: [{ id, ...outcome }] });
+      markDirty(entry.spec.id);
     };
     const task = {
       expire: (): void => {
@@ -670,7 +850,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     }
     entry.view.webContents.debugger.sendCommand(command.method, command.params)
       .then((result) => { if (session === token) push({ results: [{ id: command.id, result }] }); })
-      .catch((error: unknown) => { if (session === token) push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }); });
+      .catch((error: unknown) => { if (session === token) push({ results: [{ id: command.id, error: error instanceof Error ? error.message : "desktop_command_failed" }] }); })
+      .finally(() => { if (session === token) markDirty(command.viewId); });
   };
 
   const apply = (snapshot: DesktopBrowserSnapshot): void => {
@@ -698,6 +879,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       place(entry);
     }
     for (const command of snapshot.commands) run(command);
+    reconcileWatched(new Set(snapshot.watchedViewIds ?? []));
   };
 
   const stream: DesktopEventStream = createDesktopEventStream<DesktopBrowserSnapshot>({
@@ -708,6 +890,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     apply,
     maxFrameChars: MAX_DESKTOP_BROWSER_SSE_BUFFER_CHARS,
     normalizeOrigin: (value) => normalizeAnyConsoleOrigin(value, "desktop_browser_origin_invalid"),
+    headers: authHeaders,
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
   });
 
@@ -716,8 +899,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       stop();
       session += 1;
       origin = normalizeAnyConsoleOrigin(target, "desktop_browser_origin_invalid");
-      // 누구인지 먼저 알린다 — 콘솔이 UA 를 이 Chromium 의 것으로 맞춘다.
-      await send(origin, { hello: { product: deps.product(), userAgent: deps.userAgent() } });
+      // 누구인지 먼저 알린다 — 콘솔이 UA 와 실행 위치를 이 셸의 것으로 맞춘다.
+      await send(origin, helloRelay());
       await stream.start(origin);
     },
     stop,
@@ -753,6 +936,6 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   function restartLifetime(): void {
     log("browser views: console process changed; resetting native views");
     resetLifetime();
-    if (origin) void send(origin, { hello: { product: deps.product(), userAgent: deps.userAgent() } });
+    if (origin) void send(origin, helloRelay());
   }
 }

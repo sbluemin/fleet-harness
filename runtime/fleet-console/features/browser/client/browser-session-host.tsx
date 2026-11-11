@@ -6,9 +6,9 @@ import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
 import { getState, subscribe } from "../../../core/client/src/integration/store.js";
-import { publishBrowserEngine, useBrowserPluginAttach, type BrowserUnavailableReason } from "./browser-engine.js";
+import { publishBrowserEngine, readBrowserEngineBody, useBrowserPluginAttach, watchBrowserEngine, type BrowserExecutionHost } from "./browser-engine.js";
 import { useBrowserShortcutsSync } from "./browser-shortcuts-sync.js";
-import { dismissSharedFallback, useSharedFallbackNotice } from "./browser-shared-fallback.js";
+import { BrowserViewer } from "./browser-viewer.js";
 import { getT } from "./i18n.js";
 
 export interface BrowserClientServices {
@@ -43,7 +43,7 @@ function pngFile(payload: AttachPayload): File {
  * - 네이티브 뷰가 포커스를 가져도 단축키가 따라가게 한다.
  * - 엔진 가용성을 지구본에 알린다.
  * - Desktop 이 넘긴 이미지를 지금 보는 대화의 입력창으로 올린다: 채팅이면 컴포저 칩, 터미널이면 서버가 CLI 기계의 클립보드에 올려 붙여넣는다.
- * - shared 중 내 브라우저로 연 링크를 한 번 안내한다.
+ * - 웹·원격·비관리 창에서는 보기 전용 뷰어를 연다.
  */
 export function BrowserSessionHost({ language, services }: {
   readonly language: ConsoleLocale | undefined;
@@ -52,7 +52,6 @@ export function BrowserSessionHost({ language, services }: {
   useBrowserShortcutsSync(isDesktopShell());
   useBrowserAvailabilityWatch();
   const t = getT(language);
-  const fallbackNotice = useSharedFallbackNotice();
   const toastHost = typeof document === "undefined" ? null : document.querySelector(".app-toast-host");
   const attach = useActiveAttachTarget();
   const pluginAttach = useBrowserPluginAttach();
@@ -86,10 +85,7 @@ export function BrowserSessionHost({ language, services }: {
   React.useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 4000); return () => clearTimeout(timer); }, [notice]);
   return (
     <>
-      {fallbackNotice && toastHost ? createPortal(
-        <Toast open tone="info" title={t("terminal.browser.sharedFallback")} onDismiss={() => dismissSharedFallback()} />,
-        toastHost,
-      ) : null}
+      <BrowserViewer language={language} />
       {notice && toastHost ? createPortal(<Toast open tone="info" title={notice} onDismiss={() => setNotice(null)} />, toastHost) : null}
     </>
   );
@@ -97,17 +93,15 @@ export function BrowserSessionHost({ language, services }: {
 
 function publishAvailability(payload: unknown): void {
   if (!payload || typeof payload !== "object") return;
-  const body = payload as { available?: unknown; reason?: unknown };
-  if (typeof body.available !== "boolean") return;
-  const reason: BrowserUnavailableReason = body.reason === "shared" ? "shared" : "desktop_required";
-  publishBrowserEngine(body.available ? { available: true } : { available: false, reason });
+  const next = readBrowserEngineBody(payload as { available?: unknown; surfaceMode?: unknown; executionHost?: Partial<BrowserExecutionHost> | null });
+  if (next) publishBrowserEngine(next);
 }
 
 function useBrowserAvailabilityWatch(): void {
   React.useEffect(() => {
-    if (!isDesktopShell()) return;
+    const stopPoll = watchBrowserEngine();
     const unsubscribeState = subscribeConsoleChannel("browser:state", publishAvailability);
     const unsubscribeAvailability = subscribeConsoleChannel("browser:availability", publishAvailability);
-    return () => { unsubscribeState(); unsubscribeAvailability(); };
+    return () => { stopPoll(); unsubscribeState(); unsubscribeAvailability(); };
   }, []);
 }

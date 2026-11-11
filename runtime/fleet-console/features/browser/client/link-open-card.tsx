@@ -32,7 +32,9 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
   const t = getLinkOpenT(language);
   const engine = useBrowserEngine();
   // 아직 물어보지 못한 동안(null)은 문을 닫지 않는다 — 캡션의 지구본과 같은 판정이다.
-  const engineMissing = engine !== null && !engine.available;
+  // 보기 전용 화면은 연결되어 있어도 사람이 탭을 열 수 없다.
+  const viewOnly = engine?.surfaceMode === "viewer";
+  const engineMissing = viewOnly || (engine !== null && !engine.available);
   const hasCompanion = companion !== undefined;
   const cardRef = React.useRef<HTMLDivElement | null>(null);
   // Session 행이 기본 포커스다. 문이 닫혀 있거나 Session 이 없으면 내 브라우저가 첫 손잡이가 된다.
@@ -118,8 +120,10 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
     openInDefaultOsBrowser(url);
   };
 
-  const unavailableHelp = engine !== null && !engine.available
-    ? t(engine.reason === "shared" ? "terminal.browser.shared" : "terminal.browser.desktopOnly")
+  const unavailableHelp = viewOnly
+    ? t("terminal.browser.viewerLink")
+    : engine !== null && !engine.available
+    ? t(engine.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.desktopOnly")
     : null;
 
   return createPortal(

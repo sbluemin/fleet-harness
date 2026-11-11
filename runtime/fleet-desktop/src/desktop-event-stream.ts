@@ -23,6 +23,8 @@ export interface DesktopEventStreamDeps<T> {
   readonly apply: (snapshot: T) => void;
   readonly maxFrameChars: number;
   readonly normalizeOrigin: (origin: string) => string;
+  /** 관리 Desktop 증명 헤더. 스냅샷과 이벤트 스트림 양쪽에 붙는다. */
+  readonly headers?: () => Record<string, string>;
   readonly fetch?: typeof fetch;
   readonly reconnectDelayMs?: number;
   readonly setTimeout?: (callback: () => void, delay: number) => ReturnType<typeof setTimeout>;
@@ -38,6 +40,7 @@ type SnapshotEndpointStatus = "supported" | "legacy" | "transient";
 
 export function createDesktopEventStream<T>(deps: DesktopEventStreamDeps<T>): DesktopEventStream {
   const fetchFor = deps.fetch ?? globalThis.fetch;
+  const extraHeaders = (): Record<string, string> => deps.headers?.() ?? {};
   const reconnectDelayMs = deps.reconnectDelayMs ?? DEFAULT_RECONNECT_DELAY_MS;
   const schedule = deps.setTimeout ?? globalThis.setTimeout;
   const cancelSchedule = deps.clearTimeout ?? globalThis.clearTimeout;
@@ -83,7 +86,7 @@ export function createDesktopEventStream<T>(deps: DesktopEventStreamDeps<T>): De
   };
 
   async function consumeEvents(signal: AbortSignal, url: string): Promise<void> {
-    const response = await fetchFor(url, { headers: { Accept: "text/event-stream", Origin: new URL(url).origin }, signal });
+    const response = await fetchFor(url, { headers: { Accept: "text/event-stream", Origin: new URL(url).origin, ...extraHeaders() }, signal });
     if (!response.ok || !response.body) throw new Error("desktop_event_stream_unavailable");
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
@@ -112,7 +115,7 @@ export function createDesktopEventStream<T>(deps: DesktopEventStreamDeps<T>): De
   async function loadInitialSnapshot(origin: string): Promise<SnapshotEndpointStatus> {
     try {
       const response = await fetchFor(streamUrl(origin, deps.snapshotPath), {
-        headers: { Accept: "application/json", Origin: origin },
+        headers: { Accept: "application/json", Origin: origin, ...extraHeaders() },
         signal: AbortSignal.timeout(INITIAL_LOAD_TIMEOUT_MS),
       });
       if (response.status === 404 || response.status === 405) return "legacy";
