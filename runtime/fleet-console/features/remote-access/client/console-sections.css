@@ -33,14 +33,20 @@
 .side-console-head[data-lifecycle="stopped"] .side-console-status { color: var(--text-tertiary); }
 .side-console-head[data-lifecycle="starting"] .side-console-status, .side-console-head[data-lifecycle="stopping"] .side-console-status { color: var(--aurora-ink); }
 .side-console-head[data-lifecycle="failed"] .side-console-status { color: var(--coral-ink); }
+/* 실패한 관리 대상 — 인라인 상태 글자가 빠지더라도 글리프에 산호색을 둘러 실패 사실을 분명히 알린다. */
+.side-console-head[data-lifecycle="failed"] .side-console-glyph { color: var(--coral-ink); background: color-mix(in oklch, var(--coral-ink) 14%, var(--wash-hover)); }
+/* 시작 단추가 있는 행의 상태 글자 — 화면에서는 숨겨 이름 칸을 넓히고, DOM과 접근성 이름에는 남긴다. */
+.side-console-status.is-quiet { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
 /* 이 컴퓨터 안의 WSL 배포판에서 도는 콘솔이라는 표지. 경로일 뿐 상태가 아니라 조용한 색을 쓴다. */
 .side-console-tag { flex: none; padding: 0 5px; border-radius: 5px; box-shadow: inset 0 0 0 1px var(--surface-rim); color: var(--text-tertiary); font-size: var(--t-2xs); font-weight: var(--weight-medium); line-height: 16px; }
 /* 꺼진 관리 대상을 다시 켜는 단추. 머리글 안의 한 가지 동작이라 늘 보인다. */
-.side-console-start { flex: none; margin-right: 6px; border: 0; border-radius: 8px; padding: 3px 10px; background: var(--wash-hover); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; }
+.side-console-start { flex: none; margin-right: 6px; border: 0; border-radius: 8px; padding: 3px 8px; background: var(--wash-hover); color: var(--text-primary); font-size: var(--t-xs); white-space: nowrap; }
 .side-console-start:hover { background: var(--control-rest-hover); }
 .side-console-head .side-console-edit.is-inline { position: static; flex: none; margin-right: 4px; background: transparent; opacity: 1; }
 .side-console-head .side-console-edit.is-inline:hover { background: var(--wash-hover); }
 .side-console-start:has(+ .side-console-edit.is-inline) { margin-right: 2px; }
+/* 시작 단추가 있는 행은 시작 단추와 인라인 관리 단추가 오른쪽을 차지하므로, 이름이 말줄임 없이 다 보이도록 오른쪽 여백을 정돈한다. 왼쪽 gap은 다른 행과 열(x=48)을 맞추기 위해 10px를 유지한다. */
+.side-console-head.is-row:has(.side-console-start) .side-console-toggle { padding-right: 4px; }
 .side-console-head.is-editing .side-console-plate { display: block; padding: 8px 10px 10px; }
 .side-console-form { display: grid; gap: 8px; min-width: 0; }
 .side-console-form input { width: 100%; min-width: 0; padding: 5px 8px; border: 1px solid var(--surface-rim-strong); border-radius: 8px; background: var(--canvas-side); color: var(--text-primary); font: inherit; font-size: var(--t-md); }

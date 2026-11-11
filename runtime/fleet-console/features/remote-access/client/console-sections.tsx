@@ -157,7 +157,14 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const manageable = !compact && consoleSectionManageable(entry) && !homeDown;
   const startable = !compact && entry.actions?.includes("start") === true;
   const switchable = compact && !consoleSwitchBlocked(entry);
-  const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
+  const row = appearance === "row";
+  // 캡슐 머리글(plate)은 단일 콘솔의 지금 머리글이라 상태를 글자로 다 밝히고, 다른 콘솔 행(row)에서만 시작 단추와 인라인 관리를 위해 상태 글자를 시각적으로 숨긴다.
+  const quiet = row && startable;
+  // 주소가 이름과 같을 때만 툴팁에서 중복 표기를 뺀다.
+  const addressInTitle = entry.address !== entry.label;
+  const title = `${entry.label}${addressInTitle ? ` · ${entry.address}` : ""}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
+  // 캡슐 머리글은 펼침 화살표를 그대로 두고, 다른 콘솔 행(row)은 켜져 있다가 꺼져 사령관 행(count > 0)이 남았을 때만 화살표를 두고 접기를 허용한다.
+  const foldable = !quiet || (count !== null && count > 0);
   // 접힌 뒤에는 상자가 머리글뿐이라 붙지 못한다. 붙어 있던 머리글은 접히기 전에 재 둔 제자리로 스크롤을 맞춰 목록 위에 남긴다.
   const pinScroll = useRef<{ readonly list: HTMLElement; readonly top: number } | null>(null);
   useLayoutEffect(() => {
@@ -168,6 +175,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   });
   const press = (event: { currentTarget: HTMLButtonElement }) => {
     if (compact) { if (switchable) sections.command({ switch: entry.id }); return; }
+    if (!foldable) return;
     const folding = !folded;
     pinScroll.current = null;
     if (folding) {
@@ -178,7 +186,6 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
     }
     sections.fold(entry.id, folding);
   };
-  const row = appearance === "row";
   const glyph = row
     ? <span className="side-console-glyph"><ConsoleGlyph remote={entry.kind === "remote"} /></span>
     : <ConsoleGlyph remote={entry.kind === "remote"} />;
@@ -197,15 +204,17 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   }
   return <div className={`side-console-head${row ? " is-row" : ""}${entry.active && !row ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
     <div className="side-console-plate">
-    <button type="button" className="side-console-toggle" aria-expanded={compact ? undefined : !folded} title={title} onClick={press}>
+    <button type="button" className="side-console-toggle" aria-expanded={compact || !foldable ? undefined : !folded} title={title} onClick={press}>
       {glyph}
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
       {entry.path === "wsl" ? <span className="side-console-tag">{t("chrome.consoles.wslTag")}</span> : null}
       {entry.home ? <span className="side-console-home" title={t("chrome.consoles.thisComputer")} aria-label={t("chrome.consoles.thisComputer")} role="img"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg></span> : null}
       {entry.active && !row ? <span className="side-console-here">{t("chrome.consoles.here")}</span> : null}
-      {status ? <span className="side-console-status">{status}</span> : null}
+      {/* 시작 단추가 있는 다른 콘솔 행(row)은 상태를 DOM에 남겨 접근성 이름을 보존하되 화면에서는 숨긴다(is-quiet). 캡슐 머리글은 그대로 표시한다. */}
+      {status ? <span className={`side-console-status${quiet ? " is-quiet" : ""}`}>{status}</span> : null}
       {folded && count !== null && count > 0 ? <span className="side-console-count">{count}</span> : null}
-      <ChevronGlyph direction="down" className="side-console-chevron" />
+      {/* 접을 내용이 있을 때만 화살표를 둔다 — 사령관 행이 없는 꺼진 행에서는 화살표를 뺀다. */}
+      {foldable ? <ChevronGlyph direction="down" className="side-console-chevron" /> : null}
     </button>
     {startable ? <button type="button" className="side-console-start" onClick={() => sections.command({ lifecycle: { id: entry.id, action: "start" } })}>{t("chrome.consoles.start")}</button> : null}
     {/* 시작 단추가 있는 머리글에서는 관리 단추를 그 옆에 늘 보이게 둔다 — 가리킬 때만 뜨는 자리는 시작 단추 위다. */}
