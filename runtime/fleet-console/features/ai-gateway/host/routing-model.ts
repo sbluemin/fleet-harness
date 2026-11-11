@@ -16,6 +16,8 @@ interface RoutingModelTurn {
   readonly spawnProcess: ClaudeProcessSpawner;
   /** 공급자 로그인. 없으면 미상으로 보고 카탈로그 전체를 쓴다. */
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
+  /** Console이 세션을 띄울 때 쓰는 그 Claude 실행 파일. 판단도 윗선 세션과 같은 CLI로 돈다. 없으면 SDK 내장 CLI다. */
+  readonly resolveExecutable?: () => Promise<string | undefined>;
   readonly schema: {
     readonly type: "object";
     readonly properties: Readonly<Record<string, { readonly type: "string"; readonly enum: readonly string[] }>>;
@@ -48,6 +50,8 @@ export async function chooseRoutingModels(input: {
   readonly spawnProcess: ClaudeProcessSpawner;
   /** 공급자 로그인. 없으면 미상으로 보고 카탈로그 전체를 쓴다. */
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
+  /** Console이 세션을 띄울 때 쓰는 그 Claude 실행 파일. 판단도 윗선 세션과 같은 CLI로 돈다. 없으면 SDK 내장 CLI다. */
+  readonly resolveExecutable?: () => Promise<string | undefined>;
 }): Promise<Record<string, RoutingChoice>> {
   const keys = Object.keys(input.criteria);
   const levels = Object.keys(input.difficulty.criteria);
@@ -104,6 +108,7 @@ async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
   process.stderr.write(`[fleet-routing-model] ${JSON.stringify({ ts: new Date().toISOString(), event: "judge_request", model: input.judge.model, effort: effort ?? null, tasks: input.schema.required.length / 2 })}\n`);
   let sdk: Awaited<ReturnType<typeof createClaudeGatewaySdk>> | undefined;
   try {
+    const executablePath = await input.resolveExecutable?.();
     sdk = await createClaudeGatewaySdk({
       modelPolicy: claudeGatewayModelPolicy,
       baseUrl: input.baseUrl,
@@ -113,6 +118,7 @@ async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
       settingSources: [],
       allowAmbientMcpServers: false,
       spawnProcess: input.spawnProcess,
+      ...(executablePath === undefined ? {} : { executablePath }),
     });
     if (controller.signal.aborted) throw controller.signal.reason;
     const run = await sdk.startTurn({

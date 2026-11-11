@@ -249,6 +249,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
           ...question, ...(signal ? { signal } : {}), judge: input.judge,
           baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
           directory: path.join(ctx.dataDir, "routing-model"), spawnProcess: ctx.spawnAgentProcess, readProviderStatuses,
+          ...(ctx.resolveClaudeExecutable ? { resolveExecutable: ctx.resolveClaudeExecutable } : {}),
         }),
         refreshExposure: currentExposure, signal: controller.signal,
       });
