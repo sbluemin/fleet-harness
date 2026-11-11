@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.296.0] - 2026-11-11
+
+### fleet-console
+
+#### Added
+- Choose Gemini 4 Carbon, with low, medium, and high effort, from the Antigravity models.
+
+### fleet-desktop
+
+#### Added
+- On Windows, Fleet Desktop can manage the Console inside a WSL distribution. Add a distribution from "Add console", then start, stop, or restart its Console from its section in the sidebar; Desktop installs the runtime it needs in that distribution on the first start and finds the Console again after Desktop restarts. Quitting Fleet Desktop stops the WSL Consoles it manages. The first start needs `python3`, `make`, and `g++` in the distribution.
+- Update a managed WSL console's runtime from its management window when a newer version is available, with confirmation before stopping it and the previous installation preserved if installation fails.
+
 ## [1.295.0] - 2026-11-10
 
 ### fleet-console
