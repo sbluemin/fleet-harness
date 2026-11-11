@@ -82,16 +82,22 @@ describe("WSL console manager", () => {
     let downloadFails = false;
     let stops = 0;
     let launches = 0;
+    let withholdLock = false;
     const publish = () => fs.writeFileSync(lockFile, JSON.stringify({ pid: 4321, host: "127.0.0.1", port: 4310, endpoint: "http://127.0.0.1:4310/", startedAt: Date.now(), token: "secret", version, owner: { kind: "desktop", id: owner, protocolVersion: 1 } }), { mode: 0o600 });
     publish();
-    const target = vi.fn(async () => ({ version: "1.3.0", tarball: async () => { if (downloadFails) throw new Error("download"); return "verified.tgz"; } }));
+    let resolveTarget!: () => void;
+    let resolveVersions!: () => void;
+    const targetReady = new Promise<void>((resolve) => { resolveTarget = resolve; });
+    const versionsReady = new Promise<void>((resolve) => { resolveVersions = resolve; });
+    const target = vi.fn(async () => { await targetReady; return { version: "1.3.0", tarball: async () => { if (downloadFails) throw new Error("download"); return "verified.tgz"; } }; });
     const host: WslHost = {
       distros: async () => [{ name: "Ubuntu", running: true, version: 2 }], windowsPath: () => lockFile,
       pipe: vi.fn(async () => ({ code: transferFails ? 1 : 0, stdout: "", stderr: "transfer" })),
       sh: vi.fn(async (_distro, _user, script) => {
-        if (script.includes("nohup setsid")) { launches++; publish(); return { code: 0, stdout: "launched", stderr: "" }; }
+        if (script.includes("nohup setsid")) { launches++; if (!withholdLock) publish(); return { code: 0, stdout: "launched", stderr: "" }; }
         if (script.includes("npm install")) return { code: installFails ? 1 : 0, stdout: installFails ? "" : "prepared", stderr: "install" };
         if (script.includes("echo installed")) { version = "1.3.0"; return { code: 0, stdout: "installed", stderr: "" }; }
+        if (script.includes("echo node=")) await versionsReady;
         return { code: 0, stdout: `node=v22.0.0\nconsole=1\nconsole_version=${version}\n`, stderr: "" };
       }),
     };
@@ -101,12 +107,18 @@ describe("WSL console manager", () => {
     }));
     const manager = new WslConsoleManager({ host, ownerId: "this-desktop", registryFile, cacheDirectory: root, fleetDirectory: ".fleet", isolatedData: true,
       desktopVersion: "1.0.0", development: false, packageName: "@dotobokuri/fleet-console", nodeManifest: () => ({ version: "22.0.0", source: "", targets: {} }),
-      consoleTarget: target, consoleTarball: async () => "verified.tgz", log: { info: () => undefined, error: () => undefined }, stopTimeoutMs: 1000,
+      consoleTarget: target, consoleTarball: async () => "verified.tgz", log: { info: () => undefined, error: () => undefined }, stopTimeoutMs: 1000, startTimeoutMs: 20,
     });
     try {
-      expect(await manager.list()).toMatchObject([{ update: { node: { installed: "22.0.0", target: "22.0.0" }, console: { installed: "1.2.3", target: "1.3.0" } } }]);
+      // The directory answers even while both background sources are unresolved.
+      expect(await manager.list()).toMatchObject([{ update: null, lifecycle: "running" }]);
       await manager.list();
+      expect(host.sh).toHaveBeenCalledTimes(1);
+      resolveVersions(); resolveTarget();
+      await vi.waitFor(async () => expect(await manager.list()).toMatchObject([{ update: { node: { installed: "22.0.0", target: "22.0.0" }, console: { installed: "1.2.3", target: "1.3.0" } } }]));
+      await manager.list(); await manager.list();
       expect(target).toHaveBeenCalledTimes(1);
+      expect(host.sh).toHaveBeenCalledTimes(1);
       expect(host.pipe).not.toHaveBeenCalled();
       expect(stops).toBe(0);
       owner = "other-desktop"; publish();
@@ -135,6 +147,13 @@ describe("WSL console manager", () => {
       expect(stops).toBe(2);
       expect(launches).toBe(2);
       expect(await manager.list()).toMatchObject([{ update: null, failure: null }]);
+      // A late healthy start clears its obsolete timeout, unlike a failed update on the still-running old Console.
+      await manager.stop("one");
+      withholdLock = true;
+      await expect(manager.start("one")).rejects.toThrow("start");
+      expect(await manager.list()).toMatchObject([{ failure: "start", lifecycle: "failed" }]);
+      publish();
+      expect(await manager.list()).toMatchObject([{ failure: null, lifecycle: "running" }]);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 

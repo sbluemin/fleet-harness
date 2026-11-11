@@ -92,6 +92,8 @@ export interface WslConsoleManagerOptions {
   readonly quitWaitMs?: number;
 }
 
+type ConsoleTarget = Awaited<ReturnType<NonNullable<WslConsoleManagerOptions["consoleTarget"]>>>;
+interface InstalledVersions { readonly nodeVersion: string; readonly consoleVersion: string; }
 interface Layout { readonly runtime: string; readonly node: string; readonly pkg: string; readonly cli: string; readonly lock: string; readonly data: string | null; readonly fleet: string; }
 interface Observed {
   readonly management: ConsoleManagementRelation;
@@ -113,7 +115,11 @@ const fields = (output: string): Map<string, string> => new Map(output.split(/\r
 export class WslConsoleManager {
   private records: WslConsoleRecord[] = [];
   private readonly busy = new Map<string, "installing" | "starting" | "stopping" | "updating">();
-  private targetCache: { until: number; value: ReturnType<NonNullable<WslConsoleManagerOptions["consoleTarget"]>> } | null = null;
+  private targetCache: { until: number; value: Promise<ConsoleTarget>; resolved: ConsoleTarget | null } | null = null;
+  private readonly installedVersions = new Map<string, InstalledVersions>();
+  private readonly versionReads = new Map<string, Promise<void>>();
+  /** Update failures can remain relevant even while the previous Console is still running. */
+  private readonly runningFailures = new Set<string>();
   private readonly failures = new Map<string, WslConsoleFailure>();
   private readonly inspections = new Map<string, WslConsoleRecord>();
   private readonly health = createConsoleHealthClient();
@@ -148,8 +154,12 @@ export class WslConsoleManager {
       // A stopped distribution runs nothing, and reading its files would start it.
       const seen = running.has(record.distro) ? await this.observe(record).catch(() => unknown()) : STOPPED;
       const phase = this.busy.get(record.id);
-      const update = !phase && !this.quitting && seen.management === "this-desktop" && seen.identityProven && seen.lifecycle === "running"
-        ? await this.availableUpdate(record).catch(() => null) : null;
+      if (seen.lifecycle !== "running") this.invalidateVersions(record.id);
+      else if (!this.runningFailures.has(record.id)) this.failures.delete(record.id);
+      const eligible = !phase && !this.quitting && seen.management === "this-desktop" && seen.identityProven && seen.lifecycle === "running";
+      // Neither release lookup nor the first installed-version read delays the directory or its periodic observation.
+      if (eligible) this.refreshVersions(record);
+      const update = eligible ? this.cachedUpdate(record) : null;
       const failure = this.failures.get(record.id) ?? null;
       const lifecycle = phase === "stopping" ? "stopping" : phase ? "starting" : failure && seen.lifecycle === "stopped" ? "failed" : seen.lifecycle;
       return {
@@ -217,6 +227,8 @@ echo slots=$(ls -d /tmp/fleet-console-*-stable 2>/dev/null | tr '\\n' ' ')
     if (!view || this.busy.has(key) || (view.management === "this-desktop" && view.lifecycle !== "stopped" && view.lifecycle !== "failed")) return false;
     this.records = this.records.filter((record) => record.id !== key);
     this.failures.delete(key);
+    this.runningFailures.delete(key);
+    this.invalidateVersions(key);
     this.save();
     return true;
   }
@@ -268,16 +280,41 @@ echo slots=$(ls -d /tmp/fleet-console-*-stable 2>/dev/null | tr '\\n' ' ')
     if (!this.options.consoleTarget) return null;
     if (!this.targetCache || this.targetCache.until <= Date.now()) {
       const value = this.options.consoleTarget();
-      this.targetCache = { until: Date.now() + 60 * 60_000, value };
-      void value.catch(() => { if (this.targetCache?.value === value) this.targetCache.until = Date.now() + 60_000; });
+      const cache = { until: Date.now() + 60 * 60_000, value, resolved: this.targetCache?.resolved ?? null };
+      this.targetCache = cache;
+      void value.then((resolved) => {
+        if (this.targetCache !== cache) return;
+        cache.resolved = resolved;
+        this.options.onChange?.();
+      }, () => { if (this.targetCache === cache) cache.until = Date.now() + 60_000; });
     }
     return this.targetCache.value;
   }
 
-  private async availableUpdate(record: WslConsoleRecord): Promise<ConsoleRuntimeUpdate | null> {
-    const target = await this.target();
-    if (!target) return null;
-    const installed = await this.runtime(record);
+  private invalidateVersions(key: string): void {
+    this.installedVersions.delete(key);
+    // A pending read may finish after a transition. Dropping its identity prevents it from repopulating stale values.
+    this.versionReads.delete(key);
+  }
+
+  private refreshVersions(record: WslConsoleRecord): void {
+    if (!this.options.consoleTarget) return;
+    void this.target().catch(() => undefined);
+    if (this.installedVersions.has(record.id) || this.versionReads.has(record.id)) return;
+    const work = this.runtime(record).then((installed) => {
+      if (this.versionReads.get(record.id) !== work || this.busy.has(record.id) || this.quitting) return;
+      this.installedVersions.set(record.id, installed);
+      this.options.onChange?.();
+    }, () => {
+      if (this.versionReads.get(record.id) === work) this.installedVersions.set(record.id, { nodeVersion: "", consoleVersion: "" });
+    }).finally(() => {
+      if (this.versionReads.get(record.id) === work) this.versionReads.delete(record.id);
+    });
+    this.versionReads.set(record.id, work);
+  }
+
+  private cachedUpdate(record: WslConsoleRecord, target = this.targetCache?.resolved, installed = this.installedVersions.get(record.id)): ConsoleRuntimeUpdate | null {
+    if (!target || !installed) return null;
     const node = { installed: installed.nodeVersion, target: this.options.nodeManifest().version };
     const console = { installed: installed.consoleVersion, target: target.version };
     if (!node.installed || !console.installed) return null;
@@ -294,14 +331,14 @@ echo slots=$(ls -d /tmp/fleet-console-*-stable 2>/dev/null | tr '\\n' ' ')
         return seen.lock;
       };
       await prove();
-      await this.recover(record);
-      const update = await this.availableUpdate(record);
+      await this.recover(record, { running: true, cleanup: true });
       const target = await this.target();
+      const update = this.cachedUpdate(record, target, await this.runtime(record));
       if (!update || !target) throw this.fail(record, "install");
       const changeNode = isNewerConsoleVersion(update.node.target, update.node.installed);
       const changeConsole = isNewerConsoleVersion(update.console.target, update.console.installed);
       const { runtime } = this.layout(record);
-      const stage = `${runtime}/.update-${randomUUID()}`;
+      const stage = `${runtime}/.runtime-staging-${randomUUID()}`;
       let archive: string | null = null;
       let tarball: string | null = null;
       try {
@@ -327,6 +364,7 @@ echo slots=$(ls -d /tmp/fleet-console-*-stable 2>/dev/null | tr '\\n' ' ')
         // Downloading may have taken minutes: authority is proved again immediately before the stop request.
         await this.requestStop(record, await prove());
         if ((await this.observe(record)).lifecycle !== "stopped") throw this.fail(record, "other-owner");
+        await this.recover(record);
         const installed = await this.options.host.sh(record.distro, record.user, this.updateScript(record, stage, update, changeNode, changeConsole), INSTALL_TIMEOUT_MS);
         if (installed.code !== 0 || !installed.stdout.includes("prepared")) {
           this.options.log.error(`wsl update install ${record.distro}: ${installed.stderr.slice(-600)}`);
@@ -336,7 +374,7 @@ echo slots=$(ls -d /tmp/fleet-console-*-stable 2>/dev/null | tr '\\n' ' ')
         if (this.quitting) throw new Error("wsl_console_quitting");
         const placed = await this.options.host.sh(record.distro, record.user, this.promoteScript(record, stage, changeNode), 20_000);
         if (placed.code !== 0 || !placed.stdout.includes("installed")) {
-          await this.options.host.sh(record.distro, record.user, this.recoveryScript(record, true), 20_000).catch(() => undefined);
+          await this.options.host.sh(record.distro, record.user, this.recoveryScript(record, { forceRestore: true }), 20_000).catch(() => undefined);
           throw this.fail(record, "install");
         }
         promoted = true;
@@ -375,14 +413,14 @@ echo prepared
   }
 
   /** A durable rollback directory also recovers a shell abandoned before its EXIT trap could run. */
-  private recoveryScript(record: WslConsoleRecord, restore = false): string {
+  private recoveryScript(record: WslConsoleRecord, options: { readonly forceRestore?: boolean; readonly running?: boolean; readonly cleanup?: boolean } = {}): string {
     const { runtime } = this.layout(record);
     return `
 set -eu
 runtime="${runtime}"
 backup="$runtime/.update-rollback"
-if [ -d "$backup" ]; then
-  ${restore ? 'rm -f "$backup/committed"' : ':'}
+if [ -d "$backup" ] && ${options.running ? '[ -f "$backup/committed" ]' : 'true'}; then
+  ${options.forceRestore ? 'rm -f "$backup/committed"' : ':'}
   if [ ! -f "$backup/committed" ]; then
     if [ -d "$backup/console" ]; then rm -rf "$runtime/console/latest"; mv "$backup/console" "$runtime/console/latest"; fi
     if [ -d "$backup/node" ]; then rm -rf "$runtime/node"; mv "$backup/node" "$runtime/node"; fi
@@ -391,11 +429,15 @@ if [ -d "$backup" ]; then
   mv "$backup" "$retired"
   rm -rf "$retired" || :
 fi
+${options.cleanup ? `for staging in "$runtime"/.runtime-staging-* "$runtime"/.update-????????-????-????-????-????????????; do
+  [ ! -d "$staging" ] || rm -rf "$staging"
+done` : ''}
 `;
   }
 
-  private async recover(record: WslConsoleRecord): Promise<void> {
-    const recovered = await this.options.host.sh(record.distro, record.user, this.recoveryScript(record), 20_000);
+  private async recover(record: WslConsoleRecord, options: { readonly running?: boolean; readonly cleanup?: boolean } = {}): Promise<void> {
+    this.invalidateVersions(record.id);
+    const recovered = await this.options.host.sh(record.distro, record.user, this.recoveryScript(record, options), 20_000);
     if (recovered.code !== 0) throw this.fail(record, "install");
   }
 
@@ -494,13 +536,19 @@ echo installed
     if (this.quitting && phase !== "stopping") throw new Error("wsl_console_quitting");
     if (this.busy.has(record.id)) throw new Error("wsl_console_busy");
     this.busy.set(record.id, phase);
+    this.invalidateVersions(record.id);
+    this.runningFailures.delete(record.id);
     this.failures.delete(record.id);
     this.options.onChange?.();
     const work = run();
     const settled = work.then(() => undefined, () => undefined);
     this.inFlight.set(record.id, settled);
-    try { return await work; } finally {
+    try { return await work; } catch (error) {
+      if (phase === "updating" && this.failures.has(record.id) && this.failures.get(record.id) !== "start") this.runningFailures.add(record.id);
+      throw error;
+    } finally {
       if (this.inFlight.get(record.id) === settled) this.inFlight.delete(record.id);
+      this.invalidateVersions(record.id);
       this.busy.delete(record.id);
       this.options.onChange?.();
     }
@@ -580,7 +628,7 @@ for tool in ${BUILD_TOOLS.join(" ")}; do command -v "$tool" >/dev/null 2>&1 || e
 
   /** Installs what is missing of the managed runtime. Files are downloaded and verified on Windows, then handed in. */
   private async ensureRuntime(record: WslConsoleRecord): Promise<void> {
-    await this.recover(record);
+    await this.recover(record, { cleanup: true });
     const present = await this.runtime(record);
     if (present.node && present.console) return;
     // Desktop does not run sudo: the person installs the build tools, then starts again.
