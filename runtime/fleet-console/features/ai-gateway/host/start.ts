@@ -22,6 +22,9 @@ import {
   GatewayRoutingDistribution,
   decideGatewayRoutingAssignment,
   buildGatewayCandidates,
+  buildGatewayEnabledModels,
+  decideGatewayRoutingBatch,
+  NoEnabledGatewayModelsError,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
   createAiGatewaySettingsStore,
@@ -56,6 +59,7 @@ interface GatewayStartContext {
   /** Console's owned-process port. The Claude CLI queried for supported models must be a child the Console's deadline ends. */
   readonly spawnAgentProcess: ClaudeProcessSpawner;
 }
+import { chooseRoutingModels } from "./routing-model.js";
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
 import { registerConsoleOAuthRoutes } from "./oauth-routes.js";
@@ -207,7 +211,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
       void quota.getSummary().catch(() => undefined);
       return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), currentExposure());
   }
-  /** HTTP 라우트와 `fleet-ai-gateway` candidates 도구가 같은 본문을 읽는다. 갱신은 비동기로, 응답은 현재 캐시로 낸다. */
+  /** 설정 카드의 코드 규칙 후보. 갱신은 비동기로, 응답은 현재 캐시로 낸다. */
   const readCandidates = () => {
     void quota.getSummary().catch(() => undefined);
     return buildGatewayCandidates(currentExposure());
@@ -218,6 +222,45 @@ export function startAiGateway(ctx: GatewayStartContext) {
     ctx.host.http.writeJson(res, 200, readCandidates());
     return true;
   }, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  /** `enabled-models` 라우트와 `fleet-ai-gateway` models 도구가 같은 본문을 읽는다. 로그인 상태가 목록을 가르므로 갱신도 같이 건다. */
+  const readEnabledModels = () => {
+    void quota.getSummary().catch(() => undefined);
+    return buildGatewayEnabledModels(currentExposure());
+  };
+  ctx.registerRouter("ai-gateway/enabled-models", async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    ctx.host.http.writeJson(res, 200, readEnabledModels());
+    return true;
+  }, [{ method: "GET", path: "", summary: "Read enabled models in settings order, without quota pressure.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  ctx.registerRouter("ai-gateway/routing-assign", async ({ req, res }) => {
+    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
+    const input = parseRoutingAssignRequest(await ctx.host.http.readJsonBody<unknown>(req));
+    if (!input) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    void quota.getSummary().catch(() => undefined);
+    const controller = new AbortController();
+    const abort = () => { if (!res.writableEnded) controller.abort(); };
+    res.once("close", abort);
+    try {
+      const decisions = await decideGatewayRoutingBatch(input.items, currentExposure(), {
+        choose: (question, signal) => chooseRoutingModels({
+          ...question, ...(signal ? { signal } : {}), judge: input.judge,
+          baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
+          directory: path.join(ctx.dataDir, "routing-model"), spawnProcess: ctx.spawnAgentProcess, readProviderStatuses,
+          ...(ctx.resolveClaudeExecutable ? { resolveExecutable: ctx.resolveClaudeExecutable } : {}),
+        }),
+        refreshExposure: currentExposure, signal: controller.signal,
+      });
+      if (!res.destroyed && !controller.signal.aborted) ctx.host.http.writeJson(res, 200, { decisions });
+    } catch (error) {
+      if (res.destroyed || controller.signal.aborted) return true;
+      if (error instanceof NoEnabledGatewayModelsError) ctx.host.http.writeJson(res, 409, { error: "no_enabled_models" });
+      else throw error;
+    } finally { res.off("close", abort); }
+    return true;
+  }, [{ method: "POST", path: "", summary: "Route tasks with the caller's judge, then deterministic fallbacks.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
   const resolveClaudeExecutable = ctx.resolveClaudeExecutable;
   // Claude alias가 가리키는 버전은 Console이 띄우는 그 CLI가 정한다. 필요한 순간에만 묻는다.
   const claudeNativeListeners = new Set<() => void>();
@@ -256,5 +299,27 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
-  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readCandidates };
+  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readCandidates, readEnabledModels };
+}
+
+function parseRoutingAssignRequest(body: unknown): { judge: { model: string; effort?: string }; items: { key: string; prompt: string }[] } | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const { judge, items } = body as { judge?: unknown; items?: unknown };
+  if (!judge || typeof judge !== "object") return undefined;
+  const { model, effort } = judge as { model?: unknown; effort?: unknown };
+  if (typeof model !== "string" || !model.trim() || (effort !== undefined && typeof effort !== "string")) return undefined;
+  if (!Array.isArray(items) || items.length < 1 || items.length > 20) return undefined;
+  const seen = new Set<string>();
+  let total = 0;
+  const parsed: { key: string; prompt: string }[] = [];
+  for (const item of items) {
+    if (!item || typeof item !== "object") return undefined;
+    const { key, prompt } = item as { key?: unknown; prompt?: unknown };
+    if (typeof key !== "string" || !/^[A-Za-z0-9._:-]{1,64}$/.test(key) || seen.has(key)
+      || typeof prompt !== "string" || !prompt.trim() || prompt.length > 16_384) return undefined;
+    total += prompt.length;
+    if (total > 131_072) return undefined;
+    seen.add(key); parsed.push({ key, prompt });
+  }
+  return { judge: { model, ...(typeof effort === "string" ? { effort } : {}) }, items: parsed };
 }

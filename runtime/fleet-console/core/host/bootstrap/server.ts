@@ -45,7 +45,7 @@ import { readLaunchVariantGroups } from "../../../features/objectives/shared/rec
 import { OBJECTIVE_GROUP_REMOVED_EVENT_CHANNEL, OBJECTIVE_GROUPED_EVENT_CHANNEL, OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, readObjectiveLaunch, withSubagentSpawn, type ObjectiveLaunchChangedEvent } from "../../../features/objectives/shared/records/types.js";
 import { resolveExperimentSettings, type ConsoleExperimentSettings } from "../../../features/settings/shared/experiments.js";
 import { readConsoleQuotaSnapshot } from "../../../features/ai-gateway/host/gateway-loadout.js";
-import { COMMANDER_CANDIDATES_INSTRUCTIONS, createGatewayCandidatesTool, FLEET_AI_GATEWAY_MCP_SERVER } from "../../../features/ai-gateway/host/candidates-tool.js";
+import { COMMANDER_MODELS_INSTRUCTIONS, createGatewayModelsTool, FLEET_AI_GATEWAY_MCP_SERVER } from "../../../features/ai-gateway/host/models-tool.js";
 import { createModelRosterHost } from "../../../features/ai-gateway/host/model-roster.js";
 import { createConsoleControl } from "../../../features/execution/host/console-control.js";
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
@@ -2638,7 +2638,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       stopForArchive = execution.stopForArchive;
       purgeCoreObjective = execution.purgeObjective;
       // 사령관·지휘관만 받는 Gateway 후보 도구 — 사령관은 세션 묶음으로, 지휘관은 예약 HTTP 서버로 받는다.
-      const gatewayCandidatesTool = createGatewayCandidatesTool(execution.readGatewayCandidates);
+      const gatewayModelsTool = createGatewayModelsTool(execution.readGatewayEnabledModels);
       const deletedOwnerKeys = new Map<string, { objectives: Set<string>; avatars: Set<string> }>();
       const ownerRecords = (id: string) => [...new Map([
         ...objectiveRecords.list(), ...archiveStorage.entries().map((entry) => entry.objectiveRecord),
@@ -2656,7 +2656,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         // 사령관 호스트는 아바타 책을 직접 읽지 않는다 — 사령관 키의 모습에서 말투만 건넨다.
         voiceOf: (commodoreId) => { const look = avatarStore.load().avatars[commodoreAvatarKey(commodoreId)]; return look ? mongleVoiceOf(look.base) : null; },
         rosterLookOf: (commodoreId) => { const look = avatarStore.load().avatars[commodoreAvatarKey(commodoreId)]; return look ? { base: look.base, tone: look.tone } : null; },
-        gatewayTools: { name: FLEET_AI_GATEWAY_MCP_SERVER, tools: [gatewayCandidatesTool], alwaysLoad: true },
+        gatewayTools: { name: FLEET_AI_GATEWAY_MCP_SERVER, tools: [gatewayModelsTool], alwaysLoad: true },
         ownership,
         folderGrants,
         // 사령관 세션만 사람의 Claude 홈에서 MCP·스킬·켜 둔 플러그인을 더한다 — 설정·훅·CLAUDE.md 는 싣지 않는다.
@@ -2797,16 +2797,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
         registerMcp: (name, tools, scope) => scope ? pluginMcp.registerReserved(name, tools, scope) : pluginMcp.register(name, tools),
         commodoreCommander: commodore.host.commander,
+        commodoreSession: commodore.host.session,
         commodoreAutoMemoryEnabled: commodore.commanderAutoMemoryEnabled,
       });
       consoleAgentOwners.add("objectives");
       // 구성원 세션에는 토큰을 내지 않고, 직접 불러도 실행 전에 거절한다.
       const objectivesFeature = objectives;
-      featureCleanupCallbacks.add(pluginMcp.registerReserved(FLEET_AI_GATEWAY_MCP_SERVER, [gatewayCandidatesTool], {
+      featureCleanupCallbacks.add(pluginMcp.registerReserved(FLEET_AI_GATEWAY_MCP_SERVER, [gatewayModelsTool], {
         admit: (caller) => caller.kind === "objectiveRecord" && objectivesFeature.isCommanderSession(caller.objectiveId),
         refusal: "not_commander",
         alwaysLoad: true,
-        instructions: COMMANDER_CANDIDATES_INSTRUCTIONS,
+        instructions: COMMANDER_MODELS_INSTRUCTIONS,
       }));
       releaseObjectivesBoard = commodore.host.registerBoard(objectives.board);
       for (const route of objectives.routes) {

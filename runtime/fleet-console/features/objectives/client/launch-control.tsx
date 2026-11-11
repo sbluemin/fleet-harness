@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { ModelCoordinatePicker, modelCoordinateDisplay } from "../../ai-gateway/client/components/model-coordinate-picker.js";
+import { ModelCoordinatePicker, modelCoordinateDisplay, type ModelCoordinatePickerExtra } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import { canonicalModelId as sdkCanonicalModelId, type ModelRoster } from "../../ai-gateway/shared/models.js";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import type { LocalizedText, Translate } from "@fleet-console/i18n";
@@ -178,6 +178,8 @@ interface LaunchControlProps {
   readonly head?: ReactNode;
   /** 열 때 모델 목록(1단계)부터 — 배정 메뉴는 특별 항목을 먼저 보여야 한다. */
   readonly startAtList?: boolean;
+  /** 모델 목록 맨 위의 선택. 구성원 메뉴의 「라우팅」이 여기 선다. */
+  readonly extras?: readonly ModelCoordinatePickerExtra[];
   /**
    * 구성원 기동 설정의 서브에이전트 허용. 메뉴 맨 아래 체크이며, 모델을 고르는 것과 달리 눌러도 메뉴는 닫히지 않는다.
    * 지휘관 메뉴에는 넘기지 않는다.
@@ -192,7 +194,7 @@ function useLaunchRoster(): ModelRoster | null {
   return useModelRoster(models, "launch");
 }
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, trigger, triggerLabel, triggerText, triggerTitle, unset = false, startAtList = false, subagents, head, reconfirm = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, viewMode, trigger, triggerLabel, triggerText, triggerTitle, unset = false, startAtList = false, subagents, head, extras, reconfirm = false }: LaunchControlProps) {
   const roster = useLaunchRoster();
   const viewPrefix = viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} /><span className="objectives-launch-view-word">{startViewLabel(t, viewMode)}</span></span><span className="objectives-launch-separator" aria-hidden="true" /></> : undefined;
   const footer = subagents ? (
@@ -242,18 +244,19 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, tr
         className: `objectives-launch${trigger ? " objectives-glyph" : ""}`,
       }}
       {...(head ? { head } : {})}
+      {...(extras ? { extras } : {})}
       {...(footer ? { footer } : {})}
       {...(subagents ? { menuWidth: 232 } : {})}
     />
   );
 }
 
-/** 사람이 고른 기동 모델 — 고르지 않았으면 null(띄울 때 지휘관이 정한다). */
+/** 사람이 고른 기동 모델 — 고르지 않았으면 null(라우팅). */
 export const pickedLaunch = (member: ObjectiveMember): MemberLaunch | null => (member.launch && member.launch.mode === "model" ? member.launch : null);
 
 /**
  * 구성원 트리거의 표시 — 실행과 설정을 가른다. 띄운 Objective 이 있으면 어떤 방식이든 그 Objective 의 모델이 실제 실행값이다(연결 뒤
- * 설정을 바꿔도 기존 Objective 은 옛 모델로 재개된다). 띄우기 전에는 고른 값 그대로, 고르지 않았으면 「지휘관이 지정」.
+ * 설정을 바꿔도 기존 Objective 은 옛 모델로 재개된다). 띄우기 전에는 고른 값 그대로, 고르지 않았으면 「라우팅」.
  * 메뉴의 선택 표시(model·effort·active)는 이 값이 아니라 member.launch 만 따른다.
  */
 export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, rows: readonly ObjectiveLaunchVariantRow[]): { text?: ReactNode; title: string; label: string } {
@@ -268,8 +271,8 @@ export function memberLaunchDisplay(member: ObjectiveMember, launched: boolean, 
   return { title: chosen.title, label: `${chosen.words.model} · ${chosen.words.effort}` };
 }
 /**
- * 대화 명부(오른쪽 「구성원」 탭)가 보이는 구성원 모델 줄 — 보드 행 트리거가 실제로 그리는 낱말과 같다. 띄운 구성원·지휘관이 지정할
- * 구성원은 위 표시의 낱말, 모델 지정은 공유 선택기의 트리거 낱말(메뉴처럼 기본 좌표 없이)이다. hover 글은 보드 트리거의 title 그대로다.
+ * 대화 명부(오른쪽 「구성원」 탭)가 보이는 구성원 모델 줄 — 보드 행 트리거가 실제로 그리는 낱말과 같다. 띄운 구성원은 실행 모델,
+ * 아직 고르지 않은 구성원은 「라우팅」이다. hover 글은 보드 트리거의 title 그대로다.
  */
 export function memberLaunchShown(member: ObjectiveMember, launched: boolean, t: Translate<ObjectiveMessageKey>, roster: ModelRoster | null): LaunchShown {
   const groups = toLaunchGroups(roster);
@@ -301,7 +304,7 @@ export function commanderLaunchShown(objective: Objective, t: Translate<Objectiv
 export interface LaunchShown {
   /** 모델 낱말. 취소선은 이 낱말에만 긋는다(보드 트리거와 같게). */
   readonly label: string;
-  /** 강도 낱말 — 말하지 않는 행(지휘관이 지정·강도 사다리 없는 모델)이면 null. */
+  /** 강도 낱말 — 말하지 않는 행(라우팅·강도 사다리 없는 모델)이면 null. */
   readonly effort: string | null;
   readonly title: string;
   readonly provider: LaunchProviderGlyphId | null;
@@ -379,24 +382,27 @@ interface MemberLaunchControlProps {
   readonly onPickLaunched: (choice: MemberLaunchChoice) => void;
   /** 띄우기 전 선택 — 저장값만 바꾼다. */
   readonly onPatchLaunch: (choice: MemberLaunchChoice) => void;
+  /** 「라우팅」 — launch 를 비운다. 뜬 모델 칸은 실행값을 그대로 보인다. */
+  readonly onClearLaunch: () => void;
   readonly onToggleSubagents: () => void;
 }
 
 /**
  * 구성원 한 명의 기동 선택 — 데스크톱 명단과 모바일 보드가 같은 이 컨트롤을 쓴다. 띄운 구성원은 실행값과 모델 목록만 보인다
- * 띄우기 전에는 사람이 고른 값(없으면 「지휘관이 지정」)을 보인다. 폰에서는 그 선택기가 호스트의
+ * 띄우기 전에는 사람이 고른 값(없으면 「라우팅」)을 보인다. 폰에서는 그 선택기가 호스트의
  * 좌표 시트로 서고, 머리·사유 줄·서브에이전트 footer 는 메뉴 밖(보드의 행·묶음)이 맡는다.
  */
-export function MemberLaunchControl({ t, objective: _objective, member, state, rows, touchable, onPickLaunched, onPatchLaunch, onToggleSubagents }: MemberLaunchControlProps) {
+export function MemberLaunchControl({ t, objective: _objective, member, state, rows, touchable, onPickLaunched, onPatchLaunch, onClearLaunch, onToggleSubagents }: MemberLaunchControlProps) {
   const launched = member.sessionName !== null && state !== "closed";
   const display = memberLaunchDisplay(member, launched, t, rows);
   const subagents = touchable ? { allowed: memberSubagents(member), onToggle: onToggleSubagents } : undefined;
   const triggerLabel = t("objectives.members.modelAria", { role: member.role });
+  const routing = [{ id: "member-routing", label: t("objectives.members.assigned"), hint: t("objectives.members.assignedHint"), active: member.launch === null, ...(touchable ? {} : { disabled: true }), onPick: onClearLaunch }];
   if (launched) {
     // 띄운 구성원 — 행은 실행값이다. 고른 값은 곧바로 또는 이번 턴 뒤 바뀌고, 그 경과는 칩 곁 말풍선(폰은 행의 설명 줄)이 말한다.
     const reserved = member.next && !member.next.failed ? member.next : null;
     return (
-      <LaunchControl t={t} model={reserved ? reserved.model : member.model} effort={reserved ? reserved.effort : member.effort} locked={!touchable} startAtList reconfirm triggerLabel={triggerLabel}
+      <LaunchControl t={t} model={reserved ? reserved.model : member.model} effort={reserved ? reserved.effort : member.effort} locked={!touchable} startAtList reconfirm triggerLabel={triggerLabel} extras={routing}
         triggerText={display.text} triggerTitle={display.title}
         head={<><b>{t(state === "ended" ? "objectives.members.menuHead.last" : "objectives.members.menuHead.running", { model: display.label })}</b><span>{t(state === "ended" ? "objectives.members.menuHead.dormant" : state === "idle" ? "objectives.members.menuHead.idle" : "objectives.members.menuHead.working")}</span></>}
         {...(subagents ? { subagents } : {})}
@@ -405,7 +411,7 @@ export function MemberLaunchControl({ t, objective: _objective, member, state, r
   }
   const picked = pickedLaunch(member);
   return (
-    <LaunchControl t={t} model={picked?.model} effort={picked?.effort} locked={!touchable} startAtList={!picked} unset={!picked} reconfirm triggerLabel={triggerLabel}
+    <LaunchControl t={t} model={picked?.model} effort={picked?.effort} locked={!touchable} startAtList={!picked} unset={!picked} reconfirm triggerLabel={triggerLabel} extras={routing}
       triggerText={picked ? display.text : <span className="objectives-launch-model">{display.label}</span>} triggerTitle={display.title}
       {...(subagents ? { subagents } : {})}
       onChange={(next) => { const model = next.model ?? picked?.model; if (model) onPatchLaunch({ mode: "model", model, effort: next.effort }); }} />

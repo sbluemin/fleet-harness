@@ -1064,6 +1064,7 @@ function CrewSection({ objective, objectiveRecords, t, crew }: { readonly object
               <MemberLaunchControl t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
                 onPickLaunched={(launch) => patchMember(member, launch)}
                 onPatchLaunch={(launch) => patchMember(member, launch)}
+                onClearLaunch={() => { crew.send("/member/patch", { memberId: member.id, patch: { launch: null } }).catch(crew.fail); }}
                 onToggleSubagents={() => crew.toggleSubagents(member)} />
             </CrewControls>
           </SettingsRow>

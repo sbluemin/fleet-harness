@@ -60,15 +60,15 @@ const documentContext = (commodoreId: string) => ({ commodoreId, legacyTheaterId
 
 /** 사람이 고른 구성원 모델 — 모델 없는 구성원은 띄우지 않으므로 띄울 구성원에는 이 선택을 준다. */
 const SONNET = { mode: "model" as const, model: "sonnet[1m]" };
-/** 지휘관이 구성원 모델을 확인하는 candidates — 루프백 origin 이 있는 harness 와 함께 쓴다. */
-const stubCandidates = () => vi.stubGlobal("fetch", async (url: string) => url.endsWith("/api/v1/ai-gateway/candidates")
-  ? Response.json({ candidates: [
-      { model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" },
-      { model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" },
+/** 지휘관이 구성원 모델을 확인하는 enabled-models — 루프백 origin 이 있는 harness 와 함께 쓴다. */
+const stubEnabledModels = () => vi.stubGlobal("fetch", async (url: string) => String(url).endsWith("/api/v1/ai-gateway/enabled-models")
+  ? Response.json({ models: [
+      { model: "sonnet[1m]", fast: false, efforts: ["low"], summary: "Sonnet" },
+      { model: "opus[1m]", fast: false, efforts: ["high"], summary: "Opus" },
     ] })
   : new Response("", { status: 404 }));
 
-function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null }) {
+function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null; readonly commodoreSession?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null }) {
   // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
@@ -314,13 +314,14 @@ title: input.title});
       },
     },
     ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}),
+    ...(options?.commodoreSession ? { commodoreSession: options.commodoreSession } : {}),
     paths: { workspaceHash: () => "t1", resolveCommodoreTheaterPath: () => theaterPath, resolveObjectiveOwner: () => "c1", listCommodoreTheaters: () => [{ id: "t1", label: "Project" }], resolveObjectivePath: () => theaterPath },
   } as unknown as ObjectivesFeatureDeps;
-  const launchOptions = { now: () => clock, commodoreAutoMemoryEnabled: options?.commodoreAutoMemoryEnabled, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}), ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}) };
-  vi.stubGlobal("fetch", async (url: string) => String(url).endsWith("/api/v1/ai-gateway/candidates")
-    ? Response.json({ candidates: [
-        { model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" },
-        { model: "sonnet[1m]", efforts: ["low", "high"], summary: "Sonnet", pressure: "ok" },
+  const launchOptions = { now: () => clock, commodoreAutoMemoryEnabled: options?.commodoreAutoMemoryEnabled, ...(options?.reportQuietMs !== undefined ? { reportQuietMs: options.reportQuietMs } : {}), ...(options?.commodoreCommander ? { commodoreCommander: options.commodoreCommander } : {}), ...(options?.commodoreSession ? { commodoreSession: options.commodoreSession } : {}) };
+  vi.stubGlobal("fetch", async (url: string) => String(url).endsWith("/api/v1/ai-gateway/enabled-models")
+    ? Response.json({ models: [
+        { model: "opus[1m]", fast: false, efforts: ["high"], summary: "Opus" },
+        { model: "sonnet[1m]", fast: false, efforts: ["low", "high"], summary: "Sonnet" },
       ] })
     : new Response("", { status: 404 }));
   const launch = createLaunchService(ctx, store, launchOptions);
@@ -709,16 +710,16 @@ describe("Objectives contract", () => {
 
     // 그새 노출이 꺼졌다 — 새로 띄울 구성원 하나가 거절돼도 나머지와 지휘관 알림은 이어진다.
     const late = store.memberAdd(objective.id, { role: "late", launch: { mode: "model", model: "fable" } }, "human").members.at(-1)!;
-    // 사람이 모델 없이 더한 구성원은 라우팅으로 띄우지 않는다 — 그 구성원만 member_model_required 로 알린다.
+    // 사람이 모델 없이 더한 구성원은 라우팅으로 묻는다. Gateway 가 답하지 않으면 그 구성원만 실패하고, 지휘관 모델로 대신 띄우지 않는다.
     const unchosen = store.memberAdd(objective.id, { role: "unchosen" }, "human").members.at(-1)!;
     assign(late.id); assign(unchosen.id);
     hostFault.rejectModel = "fable[1m]";
     const started = await launch.startCommander(objective.id);
-    expect(started.failed).toEqual([{ id: late.id, role: "late", error: "gateway_model_not_enabled" }, { id: unchosen.id, role: "unchosen", error: "member_model_required" }]);
+    expect(started.failed).toEqual([{ id: late.id, role: "late", error: "gateway_model_not_enabled" }, { id: unchosen.id, role: "unchosen", error: "gateway_models_unavailable" }]);
     expect(resumed).toEqual([reviewer.id]);
     expect(store.find(objective.id)!.members.find((member) => member.id === late.id)!.sessionName).toBeNull();
     expect(objectiveRecords.has(unchosen.id)).toBe(false);
-    // 사람이 고른 모델을 다시 비우면 지휘관이 지정할 자리다 — 사람 보호로 남기지 않는다.
+    // 사람이 고른 모델을 다시 비우면 라우팅이고, 지휘관이 모델을 넘길 수 있는 자리다 — 사람 보호로 남기지 않는다.
     await route("member/patch", { objectiveId: objective.id, memberId: unchosen.id, patch: { launch: SONNET } });
     await route("member/patch", { objectiveId: objective.id, memberId: unchosen.id, patch: { launch: null } });
     expect(store.storedMember(objective.id, unchosen.id)).toMatchObject({ launch: undefined, launchBy: "commander" });
@@ -732,6 +733,36 @@ describe("Objectives contract", () => {
     expect(legacyRead.members.find((member) => member.id === unchosen.id)).not.toHaveProperty("routed");
     expect(legacyRead.commander).not.toHaveProperty("routing");
     await launch.memberRemoved(objective.id, unchosen.id);
+
+    // 라우팅이 자리를 주면 그 모델로 띄우고 launch 는 비워 둔다. judge 는 지휘관 세션의 모델·강도다.
+    const routedMember = store.memberAdd(objective.id, { role: "routed" }, "human").members.at(-1)!;
+    assign(routedMember.id);
+    const routingBodies: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: { body?: string }) => {
+      if (String(url).endsWith("/api/v1/ai-gateway/routing-assign")) {
+        routingBodies.push(String(init?.body ?? ""));
+        return Response.json({ decisions: [{ key: routedMember.id, model: "sonnet[1m]", effort: "low", via: "route", because: "fit" }] });
+      }
+      return new Response("", { status: 404 });
+    });
+    const brought = await launch.muster(objective.id);
+    expect(brought.find((member) => member.id === routedMember.id)).toMatchObject({ state: "launched" });
+    expect(store.find(objective.id)!.members.find((member) => member.id === routedMember.id)!.launch).toBeNull();
+    expect(JSON.parse(routingBodies[0] ?? "{}")).toMatchObject({ judge: { model: "opus[1m]", effort: "high" }, items: [expect.objectContaining({ key: routedMember.id })] });
+    expect(objectiveRecords.get(objective.id)!.sessions?.find((child) => child.id === routedMember.id)?.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
+    await launch.memberRemoved(objective.id, routedMember.id);
+
+    // 판단을 기다리는 사이 사람이 모델을 고르면 라우팅 자리가 아니라 그 선택으로 띄운다.
+    const racedMember = store.memberAdd(objective.id, { role: "raced" }, "human").members.at(-1)!;
+    assign(racedMember.id);
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (!String(url).endsWith("/api/v1/ai-gateway/routing-assign")) return new Response("", { status: 404 });
+      store.memberPatch(objective.id, racedMember.id, { launch: { mode: "model", model: "opus[1m]", effort: "high" } }, "human");
+      return Response.json({ decisions: [{ key: racedMember.id, model: "sonnet[1m]", effort: "low", via: "route", because: "fit" }] });
+    });
+    expect((await launch.muster(objective.id)).find((member) => member.id === racedMember.id)).toMatchObject({ state: "launched" });
+    expect(objectiveRecords.get(objective.id)!.sessions?.find((child) => child.id === racedMember.id)?.session).toMatchObject({ model: "opus[1m]", effort: "high" });
+    await launch.memberRemoved(objective.id, racedMember.id);
 
     vi.useFakeTimers();
     try {
@@ -1381,13 +1412,13 @@ describe("Objectives contract", () => {
 
   it("lets only the objective's own Commander write, gives members read-only access and outsiders none, and keeps planning and the person's missions and assignments intact", async () => {
     const { ctx, store, call, launch, workspace, events, objectiveFile, objectiveRecords, objectiveRecordsHost, objectivesDir } = harness(() => "http://console.invalid");
-    // 지휘관의 구성원 모델은 candidates 로 확인한다. 라우팅 배정은 부르지 않는다.
+    // 지휘관의 구성원 모델은 enabled-models 로 확인한다. 모델이 있는 구성원의 소집은 라우팅을 부르지 않는다.
     const fetched: string[] = [];
     vi.stubGlobal("fetch", async (url: string) => {
       fetched.push(url);
-      return url.endsWith("/api/v1/ai-gateway/candidates") ? Response.json({ candidates: [
-        { model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" },
-        { model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" },
+      return url.endsWith("/api/v1/ai-gateway/enabled-models") ? Response.json({ models: [
+        { model: "sonnet[1m]", fast: false, efforts: ["low"], summary: "Sonnet" },
+        { model: "opus[1m]", fast: false, efforts: ["high"], summary: "Opus" },
       ] }) : new Response("", { status: 404 });
     });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Guarded", groupId: null, missions: [{ text: "one" }, { text: "two", prerequisites: [1] }] });
@@ -1406,11 +1437,13 @@ describe("Objectives contract", () => {
     expect((await call("read", {}, other)).structuredContent.objective).toMatchObject({ id: other });
     expect(store.find(objective.id)!.missions.map((mission) => mission.text)).toEqual(["one", "two"]);
     // 구상 중에는 편성만 — 명단이 비었을 때만 지휘관이 구성원을 제안하고, 임무에 구성원을 표시한다.
-    // 구성원마다 모델이 필요하다 — 빠지면 라우팅으로 넘기지 않고 아무도 더하지 않은 채 거절한다. 임무 수행 쓰기와 구성원 기동은 거절된다.
+    // 모델을 빼면 launch 를 비워 라우팅으로 둔다. 그 명단을 지운 뒤 모델을 명시한 편성을 다시 쓴다. 임무 수행 쓰기와 구성원 기동은 거절된다.
     store.setPlanning(objective.id, true);
     const lineup = { objectiveId: objective.id, missions: [{ title: "p1", text: "p1", member: "build" }, { title: "p2", text: "p2", prerequisites: [{ n: 1 }] }] };
-    expect((await call("plan", { ...lineup, members: [{ role: "build", brief: "implements" }] }, commander)).structuredContent).toMatchObject({ error: "invalid_arguments" });
-    expect(store.find(objective.id)!.members).toEqual([]);
+    const openRoster = await call("plan", { ...lineup, members: [{ role: "build", brief: "implements" }] }, commander);
+    expect(openRoster.isError).toBe(false);
+    expect(store.find(objective.id)!.members).toMatchObject([{ role: "build", launch: null }]);
+    store.memberRemove(objective.id, store.find(objective.id)!.members[0]!.id);
     const planned = await call("plan", { ...lineup, members: [{ role: "build", brief: "implements", model: "sonnet" }] }, commander);
     expect(planned.isError).toBe(false);
     expect(planned.structuredContent).toMatchObject({ stored: { members: [{ role: "build", brief: "implements" }] } });
@@ -1420,7 +1453,10 @@ describe("Objectives contract", () => {
     // 명단이 있으면 지휘관은 명단을 다시 쓰지 못한다(빈 명단으로 지우는 것도).
     expect((await call("plan", { objectiveId: objective.id, missions: [{ title: "p3", text: "p3" }], members: [] }, commander)).structuredContent.error).toBe("members_exist");
     // 명단이 선 뒤의 일손은 enlist 로 더한다 — 서브에이전트 호출을 대신하는 자리다.
-    expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review" }] }, commander)).structuredContent.error).toBe("invalid_arguments");
+    const enlistedOpen = await call("enlist", { objectiveId: objective.id, members: [{ role: "open" }] }, commander);
+    expect(enlistedOpen.isError).toBe(false);
+    expect(store.find(objective.id)!.members.at(-1)).toMatchObject({ role: "open", launch: null });
+    store.memberRemove(objective.id, store.find(objective.id)!.members.at(-1)!.id);
     expect((await call("enlist", { objectiveId: objective.id, members: [{ role: "review", model: "sonnet" }] }, commander)).structuredContent.members).toMatchObject([{ role: "review" }]);
     expect(store.find(objective.id)!.members).toMatchObject([{ role: "build" }, { role: "review", by: "commander" }]);
     store.setPlanning(objective.id, false);
@@ -1590,7 +1626,7 @@ describe("Objectives contract", () => {
 
   it("keeps the person's answers to a decision request as decisions only once delivered, and clears a request the board no longer supports without recording one", async () => {
     const { ctx, store, call, launch, route, sent, activity, hostFault, objectiveRecordsHost, objectivesDir } = harness(() => "http://console.invalid");
-    stubCandidates();
+    stubEnabledModels();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Ask", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -1731,7 +1767,7 @@ describe("Objectives contract", () => {
 
   it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
     const { store, call, launch, route, sent, deliveries, activity, hostFault, objectiveRecords, objectiveRecordsHost } = harness(() => "http://console.invalid");
-    stubCandidates();
+    stubEnabledModels();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Talk", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -2085,20 +2121,30 @@ describe("Objectives contract", () => {
 
   it("chooses the Commander model at plan or commence and edits it only after a session exists", async () => {
     let configured: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = null;
-    const { ctx, store, launch, workspace, launches, activity, surfaces, objectiveRecords, objectivesDir, objectiveRecordsHost } = harness(() => "http://console.invalid", { commodoreCommander: () => configured });
+    const judge = { model: "codex--gpt-6.1-sol", effort: "medium" };
+    const { ctx, store, launch, workspace, launches, activity, surfaces, objectiveRecords, objectivesDir, objectiveRecordsHost } = harness(() => "http://console.invalid", { commodoreCommander: () => configured, commodoreSession: () => judge });
     const catalog = { plugins: [{ id: "terminal", kinds: [{ id: "agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }, { id: "high", label: "HIGH", launch: { effort: "high" } }] },
       { id: "opus", label: "Opus", launch: { model: "opus[1m]" }, chips: [{ id: "high", label: "HIGH", launch: { effort: "high" } }] },
     ] }, { id: "gateway:xai", label: "xAI", rows: [
       { id: "xai--grok-4.7", label: "Grok", launch: { model: "xai--grok-4.7" } },
     ] }] }] }] };
-    const candidates = { candidates: [
-      { model: "sonnet[1m]", efforts: ["low", "high"], summary: "Sonnet", pressure: "ok" as const },
-      { model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" as const },
+    const enabled = { models: [
+      { model: "sonnet[1m]", fast: false, efforts: ["low", "high"], summary: "Sonnet" },
+      { model: "opus[1m]", fast: false, efforts: ["high"], summary: "Opus" },
     ] };
-    vi.stubGlobal("fetch", async (url: string) => {
-      if (String(url).endsWith("/api/v1/objectives/records/catalog")) return Response.json(catalog);
-      if (String(url).endsWith("/api/v1/ai-gateway/candidates")) return Response.json(candidates);
+    let routingStatus = 503;
+    const routingBodies: string[] = [];
+    vi.stubGlobal("fetch", async (url: string, init?: { body?: string }) => {
+      const target = String(url);
+      if (target.endsWith("/api/v1/objectives/records/catalog")) return Response.json(catalog);
+      if (target.endsWith("/api/v1/ai-gateway/enabled-models")) return Response.json(enabled);
+      if (target.endsWith("/api/v1/ai-gateway/routing-assign")) {
+        routingBodies.push(String(init?.body ?? ""));
+        if (routingStatus !== 200) return new Response("unavailable", { status: routingStatus });
+        const body = JSON.parse(String(init?.body ?? "{}")) as { items?: { key: string }[] };
+        return Response.json({ decisions: (body.items ?? []).map((item) => ({ key: item.key, model: "sonnet[1m]", effort: "low", via: "route", because: "fit" })) });
+      }
       return new Response("", { status: 404 });
     });
     const [commodore] = createCommodoreBoardTools(ctx, store, launch, "c1");
@@ -2116,23 +2162,26 @@ describe("Objectives contract", () => {
     legacy.session.effort = "low";
     legacy.session.modelSpeed = { model: "sonnet[1m]", fast: true };
     fs.writeFileSync(legacyFile, JSON.stringify(legacy));
-    candidates.candidates = candidates.candidates.filter((entry) => entry.model !== "sonnet[1m]");
+    enabled.models = enabled.models.filter((entry) => entry.model !== "sonnet[1m]");
     const reloaded = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined });
-    const relaunch = createLaunchService(ctx, reloaded, { commodoreCommander: () => configured });
+    const relaunch = createLaunchService(ctx, reloaded, { commodoreCommander: () => configured, commodoreSession: () => judge });
     launchServices.push(relaunch);
     const [reloadedTool] = createCommodoreBoardTools(ctx, reloaded, relaunch, "c1");
     const again = async (args: Record<string, unknown>) => reloadedTool!.execute(args, { cwd: workspace }) as Promise<{ structuredContent: Record<string, unknown> }>;
     expect(reloaded.pending(id)).not.toHaveProperty("model");
     expect(reloaded.find(id)!.commander).not.toHaveProperty("model");
     const refused = await again({ action: "plan", objectiveId: id });
-    expect(refused.structuredContent).toMatchObject({ error: "commander_model_required", hint: "Pass commanderModel from fleet-ai-gateway candidates to this call." });
+    expect(refused.structuredContent).toMatchObject({ error: "gateway_models_unavailable", hint: "AI Gateway routing could not assign a model." });
     expect(launches).toHaveLength(0);
-    expect((await again({ action: "commence", objectiveId: id })).structuredContent.error).toBe("commander_model_required");
+    expect(JSON.parse(routingBodies.at(-1) ?? "{}")).toMatchObject({ judge, items: [expect.objectContaining({ key: id })] });
+    expect((await again({ action: "commence", objectiveId: id })).structuredContent.error).toBe("gateway_models_unavailable");
+    expect((await again({ action: "plan", objectiveId: id, commanderEffort: "high" })).structuredContent.error).toBe("invalid_arguments");
+    expect(routingBodies).toHaveLength(2);
     expect((await again({ action: "plan", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "low" })).structuredContent).toMatchObject({
       error: "model_not_in_gateway_models",
       model: "sonnet[1m]",
-      candidates: candidates.candidates,
-      hint: "Choose a model from fleet-ai-gateway candidates.",
+      models: enabled.models,
+      hint: "Choose one of the supplied models.",
     });
     expect((await again({ action: "edit", objectiveId: id, commanderModel: "xai--grok-4.7" })).structuredContent).toMatchObject({ error: "not_started", hint: "No Commander session yet; use plan or commence for initial model selection." });
     expect((await again({ action: "edit", objectiveId: id, title: "Renamed while pending" })).structuredContent).toMatchObject({ ok: true, stored: { title: "Renamed while pending" } });
@@ -2144,7 +2193,7 @@ describe("Objectives contract", () => {
     const node = objectiveRecords.get(id)!;
     node.session = { ...(node.session as object), id: "captured-session", capturedAt: "2026-09-25T00:00:00Z", source: "hook" };
     activity.set(id, "idle");
-    candidates.candidates.push({ model: "sonnet[1m]", efforts: ["low", "high"], summary: "Sonnet", pressure: "ok" });
+    enabled.models.push({ model: "sonnet[1m]", fast: false, efforts: ["low", "high"], summary: "Sonnet" });
     expect((await again({ action: "edit", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true, stored: { commanderModel: "sonnet[1m]", commanderEffort: "high" } });
     surfaces.set(id, "terminal");
     activity.set(id, "dormant");
@@ -2161,13 +2210,13 @@ describe("Objectives contract", () => {
     await relaunch.archive(shelvedId);
     expect(reloaded.find(shelvedId)).toMatchObject({ hasSession: true, commander: { started: false } });
     expect(reloaded.find(shelvedId)!.commander).not.toHaveProperty("model");
-    expect((await again({ action: "plan", objectiveId: shelvedId })).structuredContent.error).toBe("commander_model_required");
+    expect((await again({ action: "plan", objectiveId: shelvedId })).structuredContent).toMatchObject({ error: "gateway_models_unavailable", hint: "AI Gateway routing could not assign a model." });
     expect(reloaded.find(shelvedId)!.commander).not.toHaveProperty("model");
     expect((await again({ action: "plan", objectiveId: shelvedId, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true });
     expect(objectiveRecords.get(shelvedId)!.session).toMatchObject({ model: "opus[1m]", effort: "high" });
     // 사람이 사령관 설정에 명시한 모델은 후보에서 빠져도 실행 카탈로그에 있으면 구상·개시가 그 모델로 기동한다. 호출이 넘긴 값은 버린다.
     configured = { model: "opus[1m]", effort: "high", fast: true };
-    candidates.candidates = candidates.candidates.filter((entry) => entry.model !== "opus[1m]");
+    enabled.models = enabled.models.filter((entry) => entry.model !== "opus[1m]");
     const person = await again({ action: "add", theaterId: "t1", title: "Person chose" });
     expect(person.structuredContent).toMatchObject({ ok: true });
     const personId = person.structuredContent.objectiveId as string;
@@ -2177,13 +2226,25 @@ describe("Objectives contract", () => {
     const editPerson = await again({ action: "edit", objectiveId: personId, commanderModel: "sonnet[1m]" });
     expect(editPerson.structuredContent).toMatchObject({ ok: true, notice: expect.stringContaining("person's Commander setting") });
     expect(objectiveRecords.get(personId)!.session).toMatchObject({ model: "opus[1m]" });
+    // 사람 설정도 넘긴 모델도 없으면 사령관 세션의 모델·강도로 라우팅을 묻고, 받은 모델로 띄운다.
+    configured = null;
+    routingStatus = 200;
+    const beforeRoute = launches.length;
+    const routed = await again({ action: "add", theaterId: "t1", title: "Routed" });
+    const routedId = routed.structuredContent.objectiveId as string;
+    const asked = routingBodies.length;
+    expect((await again({ action: "plan", objectiveId: routedId })).structuredContent).toMatchObject({ ok: true });
+    expect(objectiveRecords.get(routedId)!.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
+    expect(JSON.parse(routingBodies[asked] ?? "{}")).toMatchObject({ judge, items: [expect.objectContaining({ key: routedId })] });
+    expect(launches).toHaveLength(beforeRoute + 1);
   });
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
     // 사람이 이 사령관에 정한 지휘관 모델 — 처음에는 없다.
     let configured: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = null;
-    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid", { commodoreCommander: () => configured });
+    const judge = { model: "codex--gpt-6.1-sol", effort: "high" };
+    const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid", { commodoreCommander: () => configured, commodoreSession: () => judge });
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
       { id: "sonnet[1m]", label: "Sonnet", launch: { model: "sonnet[1m]" }, chips: [{ id: "low", label: "LOW", launch: { effort: "low" } }] },
@@ -2194,12 +2255,12 @@ describe("Objectives contract", () => {
     const quota = { providers: { xai: { status: "ok", windows: [
       { id: "weekly", usedPercent: 20 },
     ] } } };
-    // candidates — 지휘관이 고른 구성원 모델과 사령관 쪽 지휘관 모델은 이 목록으로 확인된 뒤 그대로 launch 설정값이 된다.
-    const candidates = { candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] };
+    // enabled-models — 지휘관이 고른 구성원 모델과 사령관이 넘긴 지휘관 모델은 이 목록으로 확인된 뒤 그대로 launch 설정값이 된다.
+    const enabled = { models: [{ model: "sonnet[1m]", fast: false, efforts: ["low"], summary: "Sonnet" }] };
     const judged: string[] = [];
     vi.stubGlobal("fetch", async (url: string, init?: { body?: string }) => {
       if (url.endsWith("/api/v1/objectives/records/catalog")) return Response.json(catalog);
-      if (url.endsWith("/api/v1/ai-gateway/candidates")) return Response.json(candidates);
+      if (url.endsWith("/api/v1/ai-gateway/enabled-models")) return Response.json(enabled);
       if (url.endsWith("/api/v1/ai-gateway/routing-assign")) { judged.push(String(init?.body ?? "")); return new Response("unavailable", { status: 503 }); }
       return Response.json(quota);
     });
@@ -2224,7 +2285,7 @@ describe("Objectives contract", () => {
       expect(result.isError).toBe(false);
       return result.structuredContent;
     };
-    // 생성은 모델을 받지 않는다. 사령관이 모델 없이, 또는 candidates 밖의 모델로 구상하면 세션을 만들지 않는다.
+    // 생성은 모델을 받지 않는다. 사령관이 모델 없이 구상하면 라우팅을 묻고, 목록 밖 모델은 세션을 만들지 않는다.
     const offAdd = async (args: Record<string, unknown>) => ((await commodore.execute({ action: "add", theaterId: "t1", title: "Off model", ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
     const unmodeled = await offAdd({});
     expect(unmodeled).toMatchObject({ ok: true });
@@ -2232,10 +2293,11 @@ describe("Objectives contract", () => {
     const unmodeledId = unmodeled.objectiveId as string;
     expect(store.find(unmodeledId)!.commander).not.toHaveProperty("model");
     const offPlan = async (args: Record<string, unknown>) => ((await commodore.execute({ action: "plan", objectiveId: unmodeledId, ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
-    expect(await offPlan({})).toMatchObject({ error: "commander_model_required", hint: "Pass commanderModel from fleet-ai-gateway candidates to this call." });
+    expect(await offPlan({})).toMatchObject({ error: "gateway_models_unavailable", hint: "AI Gateway routing could not assign a model." });
+    expect(JSON.parse(judged[0] ?? "{}")).toMatchObject({ judge, items: [expect.objectContaining({ key: unmodeledId })] });
     expect(await offPlan({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_in_gateway_models", model: "xai--grok-4.7" });
     expect(objectiveRecords.has(unmodeledId)).toBe(false);
-    expect(judged).toEqual([]);
+    expect(judged).toHaveLength(1);
     // 사람이 정한 사령관 설정은 사람의 명시 선택이다 — candidates 에 없어도 실행 카탈로그에서 고를 수 있으면 구상·개시가 그 모델을 쓴다.
     configured = { model: "opus[1m]", effort: "high", fast: true };
     const actor = { kind: "commodore", commodoreId: "c1" };
@@ -2246,7 +2308,7 @@ describe("Objectives contract", () => {
     expect(store.find(id)!.commander).not.toHaveProperty("model");
     expect(store.pending(id)).not.toHaveProperty("model");
     expect(created).not.toHaveProperty("notice");
-    candidates.candidates.push({ model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "ok" });
+    enabled.models.push({ model: "opus[1m]", fast: false, efforts: ["high"], summary: "Opus" });
     expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ addedBy: actor, requestSource });
     expect((await board({ action: "list", view: "all" })).objectives).toContainEqual(expect.objectContaining({ id, addedBy: actor, requestSource }));
     const reloadObjective = () => createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(id);
@@ -2412,9 +2474,9 @@ describe("Objectives contract", () => {
     expect(recoveredView.objective.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
     const recoveredState = (await route("state", { commodoreId: "c1" })).value as { objectives: readonly Objective[] };
     expect(recoveredState.objectives.find((o) => o.id === id)?.members.find((m) => m.id === workerId)?.outcome).toBeUndefined();
-    // 지휘관이 고른 구성원은 그 모델로 뜨고, 라우팅 배정은 부르지 않는다.
+    // 지휘관이 고른 구성원은 그 모델로 뜨고, 그 소집은 라우팅을 부르지 않는다. 앞서 거절된 지휘관 라우팅 한 건만 남아 있다.
     expect(objectiveRecords.get(workerId)!.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
-    expect(judged).toEqual([]);
+    expect(judged).toHaveLength(1);
     // 떠 있는 채팅의 자식이 모델 변경을 거절하면 — 사람의 모델 칩(member/patch)은 코드만 답하고, 자식이 던진 원 예외는 사령관의 failedSwitches 와
     // 사람의 행에 같은 사유로 남는다. 곧바로 거절된 전환도 턴 뒤 실패와 같은 자리다. 자동 재시도는 없다.
     const running = objectiveRecords.get(workerId)!.session as { model: string; effort?: string };
@@ -3136,7 +3198,7 @@ describe("Objectives contract", () => {
   it("wakes the commander once when an assigned ready mission stays unreported and never steers", async () => {
     const reportQuietMs = 25 * 60_000;
     const { store, launch, call, sent, activity, advanceClock, restart } = harness(() => "http://console.invalid", { reportQuietMs });
-    stubCandidates();
+    stubEnabledModels();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Quiet", groupId: null, missions: [{ text: "report back" }] });
     await launch.requestPlan(objective.id);
     const commander = objective.id;
@@ -3236,7 +3298,7 @@ describe("Objectives contract", () => {
 
   it("retries held messages once in order after restart, and does not keep retrying one that can no longer be delivered", async () => {
     const h = harness(() => "http://console.invalid");
-    stubCandidates();
+    stubEnabledModels();
     const { store, launch, call, ctx, sent, activity, surfaces, restart, hostFault } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Held once", groupId: null });
     const id = objective.id;

@@ -33,6 +33,8 @@ export interface ObjectivesFeatureDeps {
     readonly alwaysLoad?: boolean;
   }) => () => void;
   readonly commodoreCommander?: CommodoreFeature["host"]["commander"];
+  /** 그 사령관 세션이 지금 도는 모델·강도. 지휘관 라우팅의 판단 호출에만 쓴다. */
+  readonly commodoreSession?: CommodoreFeature["host"]["session"];
   /** 새 지휘관 생성 시에만 읽고 저장하는 사령관별 정책. */
   readonly commodoreAutoMemoryEnabled?: CommodoreFeature["commanderAutoMemoryEnabled"];
   readonly experiments?: ExperimentsHost;

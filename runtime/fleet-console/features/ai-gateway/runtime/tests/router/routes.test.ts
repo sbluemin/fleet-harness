@@ -1,3 +1,5 @@
+import { decideGatewayRoutingBatch, NoEnabledGatewayModelsError } from "../../src/fleet/routing-batch.js";
+import { GatewayRoutingDistribution } from "../../src/fleet/routing-distribution.js";
 import {
   AnthropicMessagesGateway,
   createClaudeCodexCompactionStore,
@@ -47,7 +49,7 @@ import {
 import {
   pickSeat,
 } from "../../src/fleet/routing-fallback.js";
-import { buildGatewayCandidates } from "../../src/fleet/model-loadout.js";
+import { buildGatewayCandidates, buildGatewayEnabledModels } from "../../src/fleet/model-loadout.js";
 import type { AiGatewayRouteDeps, GatewayAssignmentExposure } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
 
@@ -1723,3 +1725,56 @@ function ctx(options: {
     pathname: options.pathname ?? MESSAGES,
   } as unknown as GatewayHttpHandlerContext;
 }
+
+
+describe("upper-session routing batch", () => {
+  const items = [{ key: "member", prompt: "Implement the requested change" }];
+  const models = [requireGatewayModel("claude--opus-1m"), requireGatewayModel("codex--gpt-6.1-sol")];
+
+  it("commits judged choices and rule fallbacks, and rechecks exposure after the judgment", async () => {
+    const providerLoad = new Map<string, number>();
+    const distribution = new GatewayRoutingDistribution();
+    const exposure: GatewayAssignmentExposure = { delegationModels: models, providerLoad, distribution };
+    const choose = vi.fn(async () => ({ t0: { seat: "c1", difficulty: "xhigh" } }));
+    const [routed] = await decideGatewayRoutingBatch(items, exposure, { choose });
+    expect(routed).toMatchObject({ key: "member", model: "codex--gpt-6.1-sol", effort: "xhigh", via: "route" });
+    expect(choose.mock.calls).toHaveLength(1);
+    expect(providerLoad.get("codex")).toBe(1);
+    const [failed] = await decideGatewayRoutingBatch(items, exposure, { choose: async () => { throw new Error("judge failed"); } });
+    expect(failed).toMatchObject({ model: "opus[1m]", effort: "medium", via: "rule" });
+    expect(providerLoad.get("claude")).toBe(1);
+    expect(distribution.snapshot(exposure).providers).toMatchObject({ claude: { assignments: 1 }, codex: { assignments: 1 } });
+    const [stale] = await decideGatewayRoutingBatch(items, exposure, {
+      choose: async () => ({ t0: { seat: "c1" } }),
+      refreshExposure: (() => { let reads = 0; return () => ++reads === 1 ? exposure : { ...exposure, delegationModels: [models[0]!] }; })(),
+    });
+    expect(stale).toMatchObject({ model: "opus[1m]", via: "rule" });
+  });
+
+  it("keeps critical models in settings order but routes only to the least consumed when all are critical", async () => {
+    const now = Date.now();
+    const quota = (usedPercent: number) => ({ status: "ok", fetchedAt: now, windows: [{
+      id: "session", usedPercent, resetsAt: now + 4 * 3_600_000,
+      period: { durationMs: 5 * 3_600_000, durationBasis: "upstream" },
+    }] });
+    const exposure: GatewayAssignmentExposure = { delegationModels: models, quota: { claude: quota(100), codex: quota(40) } };
+    expect(buildGatewayCandidates(exposure).candidates).toEqual([]);
+    const enabled = buildGatewayEnabledModels(exposure);
+    expect(enabled.models.map(row => row.model)).toEqual(["opus[1m]", "codex--gpt-6.1-sol"]);
+    expect(Object.keys(enabled.models[0]!)).toEqual(["model", "fast", "efforts", "summary"]);
+    const choose = vi.fn(async () => ({}));
+    const [decision] = await decideGatewayRoutingBatch(items, exposure, { choose });
+    expect(decision).toMatchObject({ model: "codex--gpt-6.1-sol", effort: "medium", via: "least-used" });
+    expect(choose).not.toHaveBeenCalled();
+    await expect(decideGatewayRoutingBatch(items, { delegationModels: [] }, { choose })).rejects.toBeInstanceOf(NoEnabledGatewayModelsError);
+  });
+
+  it("does not commit an interrupted judgment", async () => {
+    const controller = new AbortController();
+    const providerLoad = new Map<string, number>();
+    await expect(decideGatewayRoutingBatch(items, { delegationModels: models, providerLoad }, {
+      signal: controller.signal, choose: async () => { controller.abort(new Error("caller closed")); throw controller.signal.reason; },
+    })).rejects.toThrow("caller closed");
+    expect(providerLoad.size).toBe(0);
+  });
+});

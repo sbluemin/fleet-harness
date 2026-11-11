@@ -234,7 +234,7 @@ export interface SettledTurn {
 }
 
 export interface ObjectiveMember extends Omit<StoredMember, "launch" | "launchBy" | "subagents" | "next" | "settledTurn" | "deliveredAt" | "dispatchedAt" | "receivedAt" | "unreportedNoticeFor"> {
-  /** 고른 모델·강도. null 은 아직 고르지 않음 — 그 구성원은 모델을 정하기 전까지 띄우지 않는다. */
+  /** 고른 모델·강도. null 은 라우팅 — 소집이 Gateway에 묻고, 고른 값은 launch에 남기지 않는다. */
   readonly launch: MemberLaunch | null;
   /** 저장된 허용. 키 없음은 false. */
   readonly subagents: boolean;

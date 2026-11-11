@@ -11,7 +11,7 @@ import { FOLLOWUPS_AT_REVIEW_HINT, criteriaSettleAdvice, followupsJudgeable, inb
 import { ATTACHMENT_TYPES, MAX_ATTACHMENTS, type BriefAttachmentInput } from "./attachments.js";
 import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
-import { COMMANDER_MODEL_REQUIRED_HINT, createLaunchService, MEMBER_MODEL_REQUIRED_HINT, PERSON_COMMANDER_NOTICE, type LaunchService } from "./launch.js";
+import { createLaunchService, PERSON_COMMANDER_NOTICE, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { CONSULT_ANSWER_DESCRIPTION, CONSULT_ANSWER_OMIT, CONSULT_ANSWER_SOURCE } from "../shared/consultations.js";
 import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, MAX_CONSULTATION_TEXT, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
@@ -47,8 +47,8 @@ const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON).optional();
 export const MAX_REMARK = 600;
 const remark = z.string().trim().min(1).max(MAX_REMARK).describe("What you judged and why.");
 const context = z.string().max(MAX_REMARK).optional().describe("What you judged and why.");
-const commanderModelInput = z.string().trim().min(1).max(128).optional().describe("From candidates. Ignored if a Commander session or person-set model exists; otherwise required for a Commodore caller.");
-const commanderEffortInput = z.string().trim().min(1).max(32).optional().describe("From commanderModel's efforts; omitted uses its default.");
+const commanderModelInput = z.string().trim().min(1).max(128).optional().describe("Omit by default; routing chooses. Else from fleet-ai-gateway models. Ignored if a session or person-set model exists.");
+const commanderEffortInput = z.string().trim().min(1).max(32).optional().describe("Only with commanderModel, from its efforts; omitted uses its default.");
 /** edit 가 세션 없는 목표의 모델·강도를 거절할 때만 붙인다. 전사 읽기의 not_started 와 공유하지 않는다. */
 const NO_COMMANDER_SESSION_HINT = "No Commander session yet; use plan or commence for initial model selection.";
 const answers = z.array(decisionAnswersSchema.shape.answers.element).min(1).max(MAX_DECISION_QUESTIONS);
@@ -85,11 +85,9 @@ const HINTS: Readonly<Record<string, string>> = {
   budget_exceeded: "Too many calls in 10 minutes; wait before calling again.",
   followup_changed: "That candidate was revised since you read it; read the board again and name it with its current rev.",
   held_for_person: "You handed this to the person. It is theirs until they answer it or return it to you; either wakes you.",
-  model_not_in_catalog: "Pick an available model id from candidates.",
-  model_not_enabled: "That model is off in the person's AI Gateway settings; see candidates for available choices.",
+  model_not_in_catalog: "The model is unavailable in the launch catalog; check fleet-ai-gateway models.",
+  model_not_enabled: "That model is off in the person's AI Gateway settings; see fleet-ai-gateway models for enabled choices.",
   invalid_effort: "Pick one of efforts for that model, or omit commanderEffort.",
-  commander_model_required: COMMANDER_MODEL_REQUIRED_HINT,
-  member_model_required: MEMBER_MODEL_REQUIRED_HINT,
 };
 
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
@@ -186,7 +184,7 @@ const sessionEditInput = z.object({
   brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
   dueDate: dueDate.optional(),
   attachmentIds: attachmentIds.optional().describe("This turn's image IDs only; requires brief. Preserve request images before plan/steer."),
-  commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates. Dormant or idle Commander session only."),
+  commanderModel: z.string().trim().min(1).max(128).optional().describe("From fleet-ai-gateway models. Dormant or idle Commander session only."),
   commanderEffort: z.string().trim().min(1).max(32).optional().describe("From the new or current model's efforts. Omitted keeps current; unsupported effort is refused."),
 }).strict();
 const { list: _retiredList, inbox: _retiredInbox, fleet: _retiredFleet, history: _retiredHistory, archived: _retiredArchived, ...sessionListBase } = listActions;

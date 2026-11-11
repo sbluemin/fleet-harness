@@ -5,23 +5,23 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 import { ObjectiveStoreError } from "./store.js";
 
 /**
- * 모델 선택 확인의 출처 — Gateway `candidates` 응답과 실행 카탈로그. 둘 다 루프백 HTTP로 읽는다.
- * 빈 후보 목록(`candidates: []`)과 조회 실패(`null` → `gateway_models_unavailable`)를 구분한다.
+ * 모델 선택 확인의 출처 — Gateway `enabled-models` 응답과 실행 카탈로그. 둘 다 루프백 HTTP로 읽는다.
+ * 빈 목록(`models: []`)과 조회 실패(`null` → `gateway_models_unavailable`)를 구분한다.
  */
 const CATALOG_PATH = "/api/v1/objectives/records/catalog";
-const CANDIDATES_PATH = "/api/v1/ai-gateway/candidates";
+const ENABLED_MODELS_PATH = "/api/v1/ai-gateway/enabled-models";
 const CATALOG_TIMEOUT_MS = 5_000;
-const CANDIDATES_MAX_BYTES = 131_072;
+const ENABLED_MODELS_MAX_BYTES = 131_072;
 
-export interface GatewayCandidateEntry {
+export interface EnabledModelEntry {
   readonly model: string;
+  readonly fast: boolean;
   readonly efforts: readonly string[];
   readonly summary: string;
-  readonly pressure: "ok" | "elevated" | "unknown";
 }
 
-export interface GatewayCandidates {
-  readonly candidates: readonly GatewayCandidateEntry[];
+export interface EnabledModels {
+  readonly models: readonly EnabledModelEntry[];
 }
 
 export interface CatalogModel {
@@ -37,7 +37,7 @@ export interface CatalogModel {
 
 export type ModelCatalog = ReturnType<typeof createModelCatalog>;
 
-function parseCandidateEntry(entry: unknown): GatewayCandidateEntry[] {
+function parseEnabledEntry(entry: unknown): EnabledModelEntry[] {
   if (!isRecord(entry)) return [];
   if (typeof entry.model !== "string" || entry.model === "") return [];
   const model = canonicalModelId(entry.model);
@@ -45,8 +45,7 @@ function parseCandidateEntry(entry: unknown): GatewayCandidateEntry[] {
     ? entry.efforts.filter((effort): effort is string => typeof effort === "string")
     : [];
   const summary = typeof entry.summary === "string" ? entry.summary : "";
-  const pressure = entry.pressure === "ok" || entry.pressure === "elevated" ? entry.pressure : "unknown";
-  return [{ model, efforts, summary, pressure }];
+  return [{ model, fast: entry.fast === true, efforts, summary }];
 }
 
 export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
@@ -90,42 +89,42 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
   }
 
   /**
-   * Gateway `candidates` 응답. 빈 배열(`candidates: []`)은 유효한 빈 후보 목록으로 돌려주고,
+   * Gateway `enabled-models` 응답. 빈 배열(`models: []`)은 유효한 빈 목록으로 돌려주고,
    * 조회 자체가 실패했거나 형식이 깨진 경우에만 `null`을 돌려준다.
    */
-  async function candidates(signal: AbortSignal | undefined): Promise<GatewayCandidates | null> {
-    const body = await loopback(CANDIDATES_PATH, CATALOG_TIMEOUT_MS, signal);
-    if (!isRecord(body) || !Array.isArray(body.candidates) || JSON.stringify(body).length > CANDIDATES_MAX_BYTES) return null;
-    return { candidates: body.candidates.flatMap(parseCandidateEntry) };
+  async function enabledModels(signal: AbortSignal | undefined): Promise<EnabledModels | null> {
+    const body = await loopback(ENABLED_MODELS_PATH, CATALOG_TIMEOUT_MS, signal);
+    if (!isRecord(body) || !Array.isArray(body.models) || JSON.stringify(body).length > ENABLED_MODELS_MAX_BYTES) return null;
+    return { models: body.models.flatMap(parseEnabledEntry) };
   }
 
-  /** 사령관·지휘관의 모델 선택을 candidates로 확인한다 — 후보의 모델과 허용 강도만 받고, 조회 실패는 추측으로 통과시키지 않는다. */
-  async function checkProposal(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined, loaded?: GatewayCandidates | null): Promise<{ readonly model: string; readonly effort?: string }> {
-    const loadout = loaded === undefined ? await candidates(signal) : loaded;
-    if (!loadout) throw new ObjectiveStoreError("gateway_models_unavailable", undefined, { hint: "fleet-ai-gateway candidates could not be read; retry." });
+  /** 넘긴 모델·강도를 enabled-models로 확인한다. 조회 실패는 추측으로 통과시키지 않는다. */
+  async function checkProposal(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined, loaded?: EnabledModels | null): Promise<{ readonly model: string; readonly effort?: string }> {
+    const loadout = loaded === undefined ? await enabledModels(signal) : loaded;
+    if (!loadout) throw new ObjectiveStoreError("gateway_models_unavailable", undefined, { hint: "fleet-ai-gateway models could not be read; retry." });
     const wanted = canonicalModelId(choice.model);
-    const row = loadout.candidates.find((entry) => canonicalModelId(entry.model) === wanted);
-    if (!row) throw new ObjectiveStoreError("model_not_in_gateway_models", undefined, { model: choice.model, candidates: loadout.candidates, hint: "Choose a model from fleet-ai-gateway candidates." });
+    const row = loadout.models.find((entry) => canonicalModelId(entry.model) === wanted);
+    if (!row) throw new ObjectiveStoreError("model_not_in_gateway_models", undefined, { model: choice.model, models: loadout.models, hint: "Choose one of the supplied models." });
     if (choice.effort !== undefined && !row.efforts.includes(choice.effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { model: row.model, efforts: row.efforts });
     return { model: row.model, ...(choice.effort !== undefined ? { effort: choice.effort } : {}) };
   }
 
   /**
-   * 사령관 쪽 지휘관 모델 선택(명시 지정·사령관 기본값·보드 기본)을 확인한다 — 실행 카탈로그에서 고를 수 있고 candidates에 있는 모델만 받는다.
+   * 사령관이 넘긴 지휘관 모델 — 실행 카탈로그에서 고를 수 있고 enabled-models에 있는 모델만 받는다.
    * 어느 목록이든 읽지 못하면 추측으로 통과시키지 않는다. 사람이 직접 고른 지휘관은 이 확인을 거치지 않는다.
    */
   async function checkCommander(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined): Promise<{ readonly model: string; readonly effort?: string }> {
-    const [catalog, loaded] = await Promise.all([loadCatalog(signal), candidates(signal)]);
+    const [catalog, loaded] = await Promise.all([loadCatalog(signal), enabledModels(signal)]);
     availableIn(catalog, choice.model);
     return checkProposal(choice, signal, loaded);
   }
 
-  /** 사람이 명시한 모델(사령관의 지휘관 설정)은 candidates 로 막지 않고 실행 카탈로그 가용성만 본다. */
+  /** 사람이 명시한 모델(사령관의 지휘관 설정)은 enabled-models 로 막지 않고 실행 카탈로그 가용성만 본다. */
   async function checkAvailable(choice: { readonly model: string }, signal: AbortSignal | undefined): Promise<void> {
     availableIn(await loadCatalog(signal), choice.model);
   }
 
-  return { candidates, checkProposal, checkCommander, checkAvailable };
+  return { enabledModels, checkProposal, checkCommander, checkAvailable };
 }
 
 function availableIn(catalog: readonly CatalogModel[] | null, model: string): void {
