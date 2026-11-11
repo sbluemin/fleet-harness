@@ -157,7 +157,11 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const manageable = !compact && consoleSectionManageable(entry) && !homeDown;
   const startable = !compact && entry.actions?.includes("start") === true;
   const switchable = compact && !consoleSwitchBlocked(entry);
-  const title = `${entry.label} · ${entry.address}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
+  // 주소가 이름과 같으면 툴팁에서 중복 표기를 뺀다 — 이름 옆 <small>을 생략하는 조건과 같다.
+  const showAddress = !entry.home && entry.address !== entry.label;
+  const title = `${entry.label}${showAddress ? ` · ${entry.address}` : ""}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
+  // 켜져 있다가 꺼진 콘솔도 마지막 성공 명부(count > 0)가 아래에 남을 수 있으므로, 접을 것이 있을 때만 화살표를 두고 접기를 허용한다.
+  const foldable = !startable || (count !== null && count > 0);
   // 접힌 뒤에는 상자가 머리글뿐이라 붙지 못한다. 붙어 있던 머리글은 접히기 전에 재 둔 제자리로 스크롤을 맞춰 목록 위에 남긴다.
   const pinScroll = useRef<{ readonly list: HTMLElement; readonly top: number } | null>(null);
   useLayoutEffect(() => {
@@ -168,8 +172,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   });
   const press = (event: { currentTarget: HTMLButtonElement }) => {
     if (compact) { if (switchable) sections.command({ switch: entry.id }); return; }
-    // 시작 단추가 있는 행은 하위 사령관이 없어 접고 펼칠 내용이 없다.
-    if (startable) return;
+    if (!foldable) return;
     const folding = !folded;
     pinScroll.current = null;
     if (folding) {
@@ -199,17 +202,17 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   }
   return <div className={`side-console-head${row ? " is-row" : ""}${entry.active && !row ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
     <div className="side-console-plate">
-    <button type="button" className="side-console-toggle" aria-expanded={compact || startable ? undefined : !folded} title={title} aria-label={title} onClick={press}>
+    <button type="button" className="side-console-toggle" aria-expanded={compact || !foldable ? undefined : !folded} title={title} onClick={press}>
       {glyph}
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
       {entry.path === "wsl" ? <span className="side-console-tag">{t("chrome.consoles.wslTag")}</span> : null}
       {entry.home ? <span className="side-console-home" title={t("chrome.consoles.thisComputer")} aria-label={t("chrome.consoles.thisComputer")} role="img"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg></span> : null}
       {entry.active && !row ? <span className="side-console-here">{t("chrome.consoles.here")}</span> : null}
-      {/* 시작 단추가 있는 행(꺼짐·실패 관리 대상)은 시작 단추가 상태를 대변하고, 긴 실패 글자가 이름을 가리므로 인라인 글자를 빼고 툴팁·접근성 이름·글리프 색으로 알린다. */}
-      {status && !startable ? <span className="side-console-status">{status}</span> : null}
+      {/* 시작 단추가 있는 행(꺼짐·실패 관리 대상)은 상태를 DOM에 남겨 접근성 이름을 보존하되 화면에서는 숨긴다(is-quiet). */}
+      {status ? <span className={`side-console-status${startable ? " is-quiet" : ""}`}>{status}</span> : null}
       {folded && count !== null && count > 0 ? <span className="side-console-count">{count}</span> : null}
-      {/* 시작 단추가 있는 행은 하위 사령관이 없어 접을 내용이 없고, 시작 단추가 자리하므로 화살표를 두지 않는다. */}
-      {!startable ? <ChevronGlyph direction="down" className="side-console-chevron" /> : null}
+      {/* 접을 내용이 있을 때만 화살표를 둔다 — 사령관 행이 없는 꺼진 행에서는 화살표를 뺀다. */}
+      {foldable ? <ChevronGlyph direction="down" className="side-console-chevron" /> : null}
     </button>
     {startable ? <button type="button" className="side-console-start" onClick={() => sections.command({ lifecycle: { id: entry.id, action: "start" } })}>{t("chrome.consoles.start")}</button> : null}
     {/* 시작 단추가 있는 머리글에서는 관리 단추를 그 옆에 늘 보이게 둔다 — 가리킬 때만 뜨는 자리는 시작 단추 위다. */}
