@@ -7,11 +7,22 @@
   bottom: 0;
   display: flex;
   flex-direction: column;
-  width: min(440px, calc(100vw - 32px));
+  width: min(440px, 42vw);
   background: var(--canvas-abyss);
   color: var(--text-primary);
   border-left: 1px solid var(--hairline);
   box-shadow: var(--popover-surface-shadow);
+}
+
+@media (min-width: 721px) {
+  :root[data-browser-viewer="true"] .console-shell {
+    padding-right: min(440px, 42vw);
+  }
+}
+
+html[data-desktop-shell="true"][data-desktop-platform="win32"] .browser-viewer-bar {
+  min-height: 52px;
+  padding-right: 146px;
 }
 
 .browser-viewer-bar,
@@ -140,6 +151,8 @@
   max-width: 36ch;
   text-align: center;
   color: var(--text-tertiary);
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 @media (max-width: 720px) {

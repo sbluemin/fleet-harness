@@ -124,12 +124,23 @@ export function BrowserViewer({ language }: { readonly language: ConsoleLocale |
     };
   }, [open, visible, followed, status, engine?.surfaceMode]);
 
-  if (!open || engine?.surfaceMode === "native") return null;
-  const place = host?.accessPath === "wsl"
-    ? (host.hostLabel ? `${t("terminal.browser.executionWsl")} · ${host.hostLabel}` : t("terminal.browser.executionWsl"))
-    : host?.hostLabel
-      ? t("terminal.browser.executionHost", { host: host.hostLabel })
-      : t("terminal.browser.executionDesktop");
+  const shown = open && engine?.surfaceMode !== "native";
+  React.useEffect(() => {
+    if (typeof document === "undefined" || !shown) return;
+    document.documentElement.setAttribute("data-browser-viewer", "true");
+    return () => { document.documentElement.removeAttribute("data-browser-viewer"); };
+  }, [shown]);
+
+  if (!shown) return null;
+  const place = status === "unmanaged"
+    ? t("terminal.browser.executionUnmanaged")
+    : status === "manager_disconnected"
+      ? (host?.hostLabel ? t("terminal.browser.executionDisconnectedHost", { host: host.hostLabel }) : t("terminal.browser.executionDisconnected"))
+      : host?.accessPath === "wsl"
+        ? (host.hostLabel ? `${t("terminal.browser.executionWsl")} · ${host.hostLabel}` : t("terminal.browser.executionWsl"))
+        : host?.hostLabel
+          ? t("terminal.browser.executionHost", { host: host.hostLabel })
+          : t("terminal.browser.executionDesktop");
   const empty = status === "unmanaged"
     ? t("terminal.browser.unmanaged")
     : status === "manager_disconnected"
@@ -147,24 +158,26 @@ export function BrowserViewer({ language }: { readonly language: ConsoleLocale |
         </div>
         <button type="button" className="browser-viewer-close" onClick={toggleBrowserViewer}>{t("terminal.browser.closeViewer")}</button>
       </div>
-      <div className="browser-viewer-tabs">
-        <div className="browser-viewer-choices" role="group" aria-label={t("terminal.browser.tabSelect")}>
-          {snapshot.spaces.map((space) => (
-            <button type="button" key={space.id} className="browser-viewer-choice" aria-pressed={space.id === (selected?.spaceId ?? spaceId)} onClick={() => { setSpaceId(space.id); setTabId(null); }}>
-              {space.label || (space.id === "default" ? t("terminal.browser.spaceDefault") : space.id)}
-            </button>
-          ))}
-          {tabsInSpace.map((tab) => (
-            <button type="button" key={tab.id} className="browser-viewer-choice" aria-pressed={tab.id === selected?.id} onClick={() => setTabId(tab.id)}>
-              {tab.title || tab.url || tab.id}
-            </button>
-          ))}
+      {status === "connected" ? (
+        <div className="browser-viewer-tabs">
+          <div className="browser-viewer-choices" role="group" aria-label={t("terminal.browser.tabSelect")}>
+            {snapshot.spaces.map((space) => (
+              <button type="button" key={space.id} className="browser-viewer-choice" aria-pressed={space.id === (selected?.spaceId ?? spaceId)} onClick={() => { setSpaceId(space.id); setTabId(null); }}>
+                {space.label || (space.id === "default" ? t("terminal.browser.spaceDefault") : space.id)}
+              </button>
+            ))}
+            {tabsInSpace.map((tab) => (
+              <button type="button" key={tab.id} className="browser-viewer-choice" aria-pressed={tab.id === selected?.id} onClick={() => setTabId(tab.id)}>
+                {tab.title || tab.url || tab.id}
+              </button>
+            ))}
+          </div>
+          <div className="browser-viewer-address">
+            <strong>{selected?.title || t("terminal.browser.noTabs")}</strong>
+            {selected?.url ? <span>{selected.url}</span> : null}
+          </div>
         </div>
-        <div className="browser-viewer-address">
-          <strong>{selected?.title || t("terminal.browser.noTabs")}</strong>
-          {selected?.url ? <span>{selected.url}</span> : null}
-        </div>
-      </div>
+      ) : null}
       <div className="browser-viewer-stage">
         {src && status === "connected" && selected ? <img src={src} alt={selected.title || t("terminal.browser.viewOnly")} /> : <p className="browser-viewer-empty">{empty}</p>}
       </div>
