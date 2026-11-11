@@ -10,6 +10,7 @@ import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
 import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
 import { consultationNotice } from "../shared/consultations.js";
 import { createModelCatalog } from "./catalog.js";
+import { commanderRoutingPrompt, memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { COMMANDER_TOOL_RENAMES, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER, MEMBER_TOOL_RENAMES } from "./objective-tools.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
@@ -106,7 +107,7 @@ export interface LaunchService {
   planApplied(objectiveId: string, plan: PlanInput): Objective;
   /**
    * 구성원 명단을 대기 기동하거나 휴면 세션째 재개한다. 호스트가 한 구성원의 기동·재개를 거절하면 그 구성원만 failed(코드와 함께)로
-   * 알리고 나머지는 이어 간다. 모델을 고르지 않은 구성원은 띄우지 않고 member_model_required 로 알린다.
+   * 알리고 나머지는 이어 간다. launch 가 없는 구성원은 한 번의 라우팅으로 모델을 받아 띄우고, 그 선택은 비워 둔다.
    */
   muster(objectiveId: string): Promise<readonly MusterMember[]>;
   /**
@@ -198,14 +199,14 @@ export interface LaunchOptions {
 }
 
 const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.language === "ko" ? "ko" : "en");
-/** 모델을 고르지 않은 구성원 — 판단기로 대신 고르지 않는다. */
-/** 첫 구상·개시에서 지휘관 모델이 없고, 호출자가 사령관이며, 사람이 정한 설정도 없다. 이 힌트는 그 거절에만 쓴다. */
-export const COMMANDER_MODEL_REQUIRED_HINT = "Pass commanderModel from fleet-ai-gateway candidates to this call.";
 /** 사람 설정이 호출이 넘긴 모델보다 앞선다. plan·commence 가 이 문장을 그대로 돌려준다. */
 export const PERSON_COMMANDER_NOTICE = "Supplied model/effort ignored; using person's Commander setting.";
 /** 세션이 있는 목표에 plan·commence 가 모델이나 강도를 넘겼다. */
 export const SESSION_COMMANDER_NOTICE = "Model/effort ignored: the Commander already has a session. Change them through edit.";
-export const MEMBER_MODEL_REQUIRED_HINT = "Set this member's model with member_set_launch, choosing from fleet-ai-gateway candidates.";
+/** 라우팅이 모델을 주지 못했다. 통신 실패와 409 가 같은 문장이다. */
+const ROUTING_UNAVAILABLE_HINT = "AI Gateway routing could not assign a model.";
+const ROUTING_ASSIGN_PATH = "/api/v1/ai-gateway/routing-assign";
+const ROUTING_TIMEOUT_MS = 45_000;
 /** 받는 세션의 답장 도구 — 받는 이가 지휘관이면 member_message, 구성원이면 message_commander. 광고명 단일 진실원천에서 찾고, 없으면 바로 실패한다. */
 export function recipientReplyTool(server: string): string {
   const renames = server === FLEET_COMMANDER_MCP_SERVER ? COMMANDER_TOOL_RENAMES : server === FLEET_MEMBER_MCP_SERVER ? MEMBER_TOOL_RENAMES : null;
@@ -213,7 +214,6 @@ export function recipientReplyTool(server: string): string {
   if (!name) throw new Error(`Objective reply tool missing: ${server}`);
   return name;
 }
-const memberModelRequired = () => new ObjectiveStoreError("member_model_required", undefined, { hint: MEMBER_MODEL_REQUIRED_HINT });
 /** 지휘관 기본값 — Opus · high. 카탈로그가 다르면 깨울 때 호스트가 거절한다. */
 /** 세션 이름 — 다른 세션이 이 세션을 부르는 주소. 담당 이름은 지휘관 이름의 머리를 잇는다. */
 const commanderSession = () => `objective-${randomUUID().slice(0, 6)}-cmdr`;
@@ -223,6 +223,8 @@ const memberSession = (objectiveId: string, commander: string | null, index: num
 export interface LaunchServiceOptions {
   /** 사람이 그 사령관에 정한 지휘관 모델·강도. 첫 구상·개시가 호출이 넘긴 모델보다 이 설정을 먼저 쓴다. 없으면 null. */
   readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null;
+  /** 그 사령관 세션의 모델·강도. 지휘관 라우팅의 judge 다. 세션이 없으면 null. */
+  readonly commodoreSession?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null;
   /** 지휘관 레코드 생성 시에만 읽는다. 지연 최초 기동·구성원 생성에는 저장값을 쓴다. */
   readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean;
   /** 무보고 깨움까지 기다리는 시간. 기본은 25분. 테스트가 짧은 값을 넣는다. */
@@ -237,6 +239,47 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     catch { /* 소유 폴더가 없어도 기동 정산이 기능 시작을 막지 않는다. */ }
   }
   const modelCatalog = createModelCatalog(ctx);
+  type RoutedSeat = { readonly model: string; readonly effort?: string };
+  /** routing-assign 한 번. 실패·409·모델 없는 항목은 맵에 없다. origin 이 없으면 null. 폴백 모델로 대신 채우지 않는다. */
+  const postRouting = async (origin: string, judge: { readonly model: string; readonly effort?: string }, items: readonly { readonly key: string; readonly prompt: string }[], signal?: AbortSignal): Promise<Map<string, RoutedSeat> | null> => {
+    const timeout = AbortSignal.timeout(ROUTING_TIMEOUT_MS);
+    try {
+      const response = await fetch(`${origin}${ROUTING_ASSIGN_PATH}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin, accept: "application/json" },
+        body: JSON.stringify({ judge: { model: judge.model, ...(judge.effort ? { effort: judge.effort } : {}) }, items }),
+        redirect: "error",
+        signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+      });
+      if (!response.ok) return null;
+      const body = await response.json() as { decisions?: unknown };
+      if (!Array.isArray(body?.decisions)) return null;
+      const known = new Set(items.map((item) => item.key));
+      const seats = new Map<string, RoutedSeat>();
+      for (const decision of body.decisions) {
+        if (!decision || typeof decision !== "object") continue;
+        const row = decision as { key?: unknown; model?: unknown; effort?: unknown };
+        if (typeof row.key !== "string" || !known.has(row.key) || seats.has(row.key)) continue;
+        if (typeof row.model !== "string" || row.model.length === 0) continue;
+        seats.set(row.key, { model: canonicalModelId(row.model), ...(typeof row.effort === "string" && row.effort ? { effort: row.effort } : {}) });
+      }
+      return seats;
+    } catch { return null; }
+  };
+  const assignRouting = async (judge: { readonly model: string; readonly effort?: string }, items: readonly { readonly key: string; readonly prompt: string }[], signal?: AbortSignal): Promise<Map<string, RoutedSeat> | null> => {
+    if (items.length === 0) return new Map();
+    const origin = ctx.server.origin();
+    if (!origin) return null;
+    const decisions = new Map<string, RoutedSeat>();
+    for (let start = 0; start < items.length; start += ROUTING_ASSIGN_MAX_ITEMS) {
+      const chunk = items.slice(start, start + ROUTING_ASSIGN_MAX_ITEMS);
+      const seats = await postRouting(origin, judge, chunk, signal);
+      if (!seats) continue;
+      for (const [key, seat] of seats) decisions.set(key, seat);
+    }
+    return decisions;
+  };
+  const routingUnavailable = () => new ObjectiveStoreError("gateway_models_unavailable", undefined, { hint: ROUTING_UNAVAILABLE_HINT });
   const control = () => {
     const capability = ctx.consoleControl;
     if (!capability) throw new ObjectiveStoreError("launch_unavailable");
@@ -467,9 +510,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     return { model: source.model, ...(source.effort ? { effort: source.effort } : {}) };
   };
   /**
-   * 구상·개시 직전에 지휘관 모델이 아직 후보인지 확인한다. 사람이 사령관 설정에 명시한 모델은 생성 때와 같이
-   * 실행 카탈로그 가용성만 본다. 그 밖의 모델은 candidates 에 없으면 거절하고, 최신 목록을 실어 고르게 한다.
-   * 목록을 읽지 못하면 추측으로 통과시키지 않는다.
+   * 구상·개시 직전에 이미 있는 지휘관 모델이 아직 켜져 있는지 확인한다. 사람이 사령관 설정에 명시한 모델은 생성 때와 같이
+   * 실행 카탈로그 가용성만 본다. 그 밖의 모델은 enabled-models 에 없으면 거절하고, 최신 목록을 실어 고르게 한다.
+   * critical 이라는 이유만으로 거절하지 않는다. 목록을 읽지 못하면 추측으로 통과시키지 않는다.
    */
   const assertCommanderCandidate = async (objectiveId: string): Promise<void> => {
     const choice = commanderPresetOf(objectiveId);
@@ -484,14 +527,14 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       await modelCatalog.checkProposal({ model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }, undefined);
     } catch (error) {
       if (error instanceof ObjectiveStoreError && error.code === "model_not_in_gateway_models") {
-        throw new ObjectiveStoreError(error.code, undefined, { ...error.details, hint: "Edit commanderModel from the supplied candidates and commanderEffort if needed; retry." });
+        throw new ObjectiveStoreError(error.code, undefined, { ...error.details, hint: "Edit commanderModel to one of the supplied models, and commanderEffort if needed; retry." });
       }
       throw error;
     }
   };
   /**
-   * 세션이 아직 없는 목표의 첫 구상·개시에서 모델을 고른다. 사람 설정, 호출이 넘긴 모델, 사령관이면 거절, 그 밖은 보드 기본.
-   * 거절은 세션을 만들기 전에 난다. 이 힌트는 이 길에서만 쓴다.
+   * 세션이 아직 없는 목표의 첫 구상·개시에서 모델을 고른다. 사람 설정, 호출이 넘긴 모델, 사령관이면 라우팅, 그 밖은 보드 기본.
+   * 강도만 넘기면 거절한다. 라우팅이 모델을 주지 못하면 세션을 만들지 않는다.
    */
   const resolveFirstCommander = async (objectiveId: string, options?: LaunchOptions): Promise<{ readonly choice: { readonly model: string; readonly effort?: string; readonly modelSpeed?: ObjectiveModelSpeed }; readonly notice?: string }> => {
     const current = objective(objectiveId);
@@ -514,8 +557,14 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const checked = await modelCatalog.checkCommander({ model: suppliedModel, ...(suppliedEffort !== undefined ? { effort: suppliedEffort } : {}) }, options?.signal);
       return { choice: { model: checked.model, ...(checked.effort ? { effort: checked.effort } : {}) } };
     }
-    if (suppliedEffort !== undefined || (typeof options?.actor === "object" && options.actor.kind === "commodore")) {
-      throw new ObjectiveStoreError("commander_model_required", undefined, { hint: COMMANDER_MODEL_REQUIRED_HINT });
+    if (suppliedEffort !== undefined) throw new ObjectiveStoreError("invalid_arguments");
+    if (typeof options?.actor === "object" && options.actor.kind === "commodore") {
+      const judge = serviceOptions.commodoreSession?.(current.commodoreId) ?? null;
+      if (!judge?.model) throw routingUnavailable();
+      const decided = await assignRouting(judge, [{ key: objectiveId, prompt: commanderRoutingPrompt(current) }], options.signal);
+      const seat = decided?.get(objectiveId);
+      if (!seat) throw routingUnavailable();
+      return { choice: seat };
     }
     return { choice: { model: COMMANDER_PRESET.model, effort: COMMANDER_PRESET.effort } };
   };
@@ -716,6 +765,24 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     await accessObjective(objectiveId);
     current = editableObjective(objectiveId);
     const only = scope?.(current);
+    const needsRoute = current.members.filter((member) => {
+      if (only && !only.has(member.id)) return false;
+      if (member.launch) return false;
+      return !referenceNode(member.id) && !ctx.objectiveRecords.get(member.id);
+    });
+    let routed = new Map<string, { readonly model: string; readonly effort?: string }>();
+    if (needsRoute.length > 0) {
+      const judge = commanderPresetOf(objectiveId);
+      const items: { key: string; prompt: string }[] = [];
+      if (judge.model) {
+        for (let start = 0; start < needsRoute.length; start += ROUTING_ASSIGN_MAX_ITEMS) {
+          const chunk = needsRoute.slice(start, start + ROUTING_ASSIGN_MAX_ITEMS);
+          const max = Math.floor(ROUTING_ASSIGN_MAX_PROMPT_SUM / chunk.length);
+          for (const member of chunk) items.push({ key: member.id, prompt: memberRoutingPrompt(current, member, max) });
+        }
+        routed = (await assignRouting({ model: judge.model, ...(judge.effort ? { effort: judge.effort } : {}) }, items)) ?? routed;
+      }
+    }
     const members: MusterMember[] = [];
     for (let index = 0; index < current.members.length; index += 1) {
       const member = current.members[index]!;
@@ -770,9 +837,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       let number = index + 1;
       let session = memberSession(current.id, current.commander.sessionName, number);
       while (used.has(session)) session = memberSession(current.id, current.commander.sessionName, ++number);
-      // 모델을 고르지 않은 구성원은 띄우지 않는다 — 판단기로 대신 고르지 않고, 그 구성원만 실패로 알린다.
-      if (!member.launch) { members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: "member_model_required" }); continue; }
-      const preset = presetOf(member.launch);
+      // launch 가 없으면 이번 소집의 라우팅 자리로 띄운다. 선택은 비워 두고, 자리가 없으면 그 구성원만 실패한다.
+      const seat = member.launch ? presetOf(member.launch) : routed.get(member.id);
+      if (!seat?.model) { members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: "gateway_models_unavailable" }); continue; }
+      const preset = presetOf(seat);
       // 앞선 기동을 기다리는 동안 바뀐 허용값도 이번 기동부터 반영한다.
       const allowed = objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true;
       // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다. 이미 있는 구성원의 뷰는 바꾸지 않는다.
@@ -1426,9 +1494,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           await ensureCommander(objectiveId);
           if (ctx.consoleControl?.observe(targetId)?.lifecycle === "dormant") await control().request({ kind: "resume", objectiveId: targetId });
         } else {
-          const mustered = await muster(objectiveId, () => new Set([memberId]));
-          // 모델을 고르지 않은 구성원에게는 전달하지 않는다 — 보낸 쪽이 그 구성원의 모델을 먼저 정해야 한다.
-          if (mustered.some((entry) => entry.id === memberId && entry.error === "member_model_required")) throw memberModelRequired();
+          await muster(objectiveId, () => new Set([memberId]));
         }
       } catch (error) {
         if (holdableDelivery(error)) return "held";

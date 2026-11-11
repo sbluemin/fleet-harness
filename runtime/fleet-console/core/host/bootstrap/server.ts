@@ -2797,6 +2797,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         server: consoleFeaturePorts.server, http: consoleFeaturePorts.http, security: consoleFeaturePorts.security,
         registerMcp: (name, tools, scope) => scope ? pluginMcp.registerReserved(name, tools, scope) : pluginMcp.register(name, tools),
         commodoreCommander: commodore.host.commander,
+        commodoreSession: commodore.host.session,
         commodoreAutoMemoryEnabled: commodore.commanderAutoMemoryEnabled,
       });
       consoleAgentOwners.add("objectives");
