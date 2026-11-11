@@ -92,7 +92,8 @@ async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
   const row = findRosterRow(roster, input.judge.model);
   if (!row) throw new Error("Routing judge model is unavailable");
   const id = rosterWireModelId(row.launch.model ?? row.id);
-  const rung = clampRosterEffort(rosterRowEfforts(row), input.judge.effort ?? "low");
+  // 판단은 윗선 세션의 모델·강도로 돈다. 윗선이 강도를 정하지 않았으면 여기서도 정하지 않고 그 모델의 기본을 쓴다.
+  const rung = input.judge.effort === undefined ? undefined : clampRosterEffort(rosterRowEfforts(row), input.judge.effort);
   const effort = isAgentEffort(rung) ? rung : undefined;
   await mkdir(input.directory, { recursive: true });
   const controller = new AbortController();

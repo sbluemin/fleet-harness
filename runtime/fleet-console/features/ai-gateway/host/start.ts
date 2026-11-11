@@ -222,7 +222,11 @@ export function startAiGateway(ctx: GatewayStartContext) {
     ctx.host.http.writeJson(res, 200, readCandidates());
     return true;
   }, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
-  const readEnabledModels = () => buildGatewayEnabledModels(currentExposure());
+  /** `enabled-models` 라우트와 `fleet-ai-gateway` models 도구가 같은 본문을 읽는다. 로그인 상태가 목록을 가르므로 갱신도 같이 건다. */
+  const readEnabledModels = () => {
+    void quota.getSummary().catch(() => undefined);
+    return buildGatewayEnabledModels(currentExposure());
+  };
   ctx.registerRouter("ai-gateway/enabled-models", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
