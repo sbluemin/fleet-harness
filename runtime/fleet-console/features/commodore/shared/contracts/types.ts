@@ -128,7 +128,7 @@ export const commodoreStateSchema = z.object({
   /** 사람이 사령관 모델 선택기에서 고른 속도(일반·Fast). Fast 지원 모델에만 둔다. 없으면 AI Gateway의 Fast 토글을 따른다. */
   fast: z.boolean().optional(),
   /**
-   * 사람이 정한, 사령관이 만드는 목표(직접 추가·후속 선택)의 지휘관 모델·강도. 없으면 사령관이 목표마다 지휘관 모델을 고른다. 강도는 모델 행의 사다리에서
+   * 사람이 정한, 사령관이 만드는 목표(직접 추가·후속 선택)의 지휘관 모델·강도. 없으면 라우팅이다(사령관이 넘긴 모델이 없으면 AI Gateway가 고른다). 강도는 모델 행의 사다리에서
    * 고르므로 낱말만 검사한다(보드의 지휘관 프리셋과 같은 경계).
    */
   commanderModel: z.string().trim().min(1).max(128).optional(),
