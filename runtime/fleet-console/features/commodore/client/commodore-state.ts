@@ -641,7 +641,7 @@ export function useCommodoreIntelEdits(theaterId: string, intel: readonly { read
 }
 export const setCommodoreCoordinates = (theaterId: string, coordinates: { readonly model: string; readonly effort: string; readonly fast?: boolean } | null) =>
   write(theaterId, "/commodore/coordinates", coordinates ? { model: coordinates.model, effort: coordinates.effort, ...(coordinates.fast !== undefined ? { fast: coordinates.fast } : {}) } : { model: null, effort: null });
-/** 사령관이 만드는 목표의 지휘관 — 모델·강도(·속도), 또는 null(「사령관 판단」: 사령관이 목표마다 고른다). */
+/** 사령관이 만드는 목표의 지휘관 — 모델·강도(·속도), 또는 null(「라우팅」). */
 export const setCommodoreCommander = (theaterId: string, commander: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null) =>
   write(theaterId, "/commodore/commander", commander ? { model: commander.model, effort: commander.effort ?? null, ...(commander.fast !== undefined ? { fast: commander.fast } : {}) } : { model: null });
 export const setCommodoreAutoMemory = (commodoreId: string, autoMemoryEnabled: boolean) => write(commodoreId, "/commodore/auto-memory", { autoMemoryEnabled });

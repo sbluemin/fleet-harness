@@ -739,7 +739,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
   const { state, defaults, run } = view;
   const act = (work: () => Promise<void>) => { onClear(); void work().catch(onFail); };
   // 좌표 두 칸은 데스크톱 서랍과 같은 공유 선택기 — 폰 설정 화면 안이라 호스트의 좌표 시트로 열린다. 사령관 좌표를 비우면 기본값,
-  // 지휘관 좌표를 비우면 「사령관 판단」이다.
+  // 지휘관 좌표를 비우면 「라우팅」이다. 저장값 null은 그대로다.
   const modelOverridden = state.model !== undefined;
 
   const usage = [t("commodore.drawer.session", { n: run.totals.session }), t("commodore.drawer.cost", { cost: run.totals.costUsd.toFixed(2) })].join(" · ");

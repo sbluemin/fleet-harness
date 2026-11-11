@@ -103,7 +103,7 @@
 :root .objectives-m .objectives-m-val .fc-select--mobile.is-locked { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: default; }
 .objectives-m-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 
-/* 지휘관·구성원 값 줄 — 공유 선택기의 모바일 값 줄(.fc-select--mobile) 안에 데스크톱 어댑터의 낱말(실행값·「지휘관이 지정」)이 선다.
+/* 지휘관·구성원 값 줄 — 공유 선택기의 모바일 값 줄(.fc-select--mobile) 안에 데스크톱 어댑터의 낱말(실행값·「라우팅」)이 선다.
    데스크톱의 낱말 색(text-primary·brass)은 여기서 쓰지 않고 값 줄의 한 색을 따른다. */
 .objectives-m .fc-select--mobile :is(.objectives-launch-model, .objectives-launch-dot, .objectives-launch-effort) { color: inherit; }
 .objectives-m .fc-select--mobile .objectives-launch-dot { margin: 0 .3em; }

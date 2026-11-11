@@ -1108,7 +1108,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 @media (prefers-reduced-motion: reduce) { .commodore-palette-bar, .commodore-palette-bar.is-detail .commodore-palette-title { transition: none; } }
 .commodore-market-card-failure { margin: 0; font-size: var(--t-sm); line-height: 1.5; }
 
-/* 「사령관 판단」 글리프 — 지휘관 모델 선택기의 행·트리거. 기다림·위임 신호의 --aurora 잉크이고 새 토큰은 두지 않는다. */
+/* 「라우팅」 글리프 — 지휘관 모델 선택기의 행·트리거. 기다림·위임 신호의 --aurora 잉크이고 새 토큰은 두지 않는다. */
 .objectives-commodore-judgment { display: inline-grid; place-items: center; width: 16px; height: 16px; flex: none; color: var(--aurora); }
 .objectives-commodore-judgment svg { width: 16px; height: 16px; }
 .fc-coord-trigger .objectives-commodore-judgment, .fc-coord-trigger .objectives-commodore-judgment svg { width: 14px; height: 14px; }

@@ -413,6 +413,7 @@ function MemberRoster({ objective, t, call, request, objectiveRecordState, rows,
             <MemberLaunchControl key={member.id} t={t} objective={objective} member={member} state={state} rows={rows} touchable={touchable}
               onPickLaunched={(launch) => pickLaunched(member, launch)}
               onPatchLaunch={(launch) => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch } })}
+              onClearLaunch={() => void call("/member/patch", { objectiveId: objective.id, memberId: member.id, patch: { launch: null } })}
               onToggleSubagents={() => toggleSubagents(member, MEMBER_LIVE.has(state))} />
             <span className={`objectives-member-status is-${state}${failed ? " is-failed" : ""}`} title={state === "ended" ? t("objectives.members.dormantHint") : undefined}>{status}{allowed ? <span className="objectives-member-subagents">{t("objectives.members.subagentsMark")}</span> : null}</span>
           </div>
