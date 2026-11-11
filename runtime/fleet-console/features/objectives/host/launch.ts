@@ -1494,7 +1494,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           await ensureCommander(objectiveId);
           if (ctx.consoleControl?.observe(targetId)?.lifecycle === "dormant") await control().request({ kind: "resume", objectiveId: targetId });
         } else {
-          await muster(objectiveId, () => new Set([memberId]));
+          const mustered = await muster(objectiveId, () => new Set([memberId]));
+          // 라우팅이 모델을 주지 못한 구성원에게는 전달하지 않는다 — 조용히 미뤄 두지 않고 보낸 쪽에 그 사유를 돌려준다.
+          if (mustered.some((entry) => entry.id === memberId && entry.error === "gateway_models_unavailable")) throw routingUnavailable();
         }
       } catch (error) {
         if (holdableDelivery(error)) return "held";

@@ -47,7 +47,7 @@ const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON).optional();
 export const MAX_REMARK = 600;
 const remark = z.string().trim().min(1).max(MAX_REMARK).describe("What you judged and why.");
 const context = z.string().max(MAX_REMARK).optional().describe("What you judged and why.");
-const commanderModelInput = z.string().trim().min(1).max(128).optional().describe("Omit by default for AI Gateway routing; specify a model from fleet-ai-gateway models only when this objective needs one.");
+const commanderModelInput = z.string().trim().min(1).max(128).optional().describe("Omit by default; routing chooses. Else from fleet-ai-gateway models. Ignored if a session or person-set model exists.");
 const commanderEffortInput = z.string().trim().min(1).max(32).optional().describe("Only with commanderModel, from its efforts; omitted uses its default.");
 /** edit 가 세션 없는 목표의 모델·강도를 거절할 때만 붙인다. 전사 읽기의 not_started 와 공유하지 않는다. */
 const NO_COMMANDER_SESSION_HINT = "No Commander session yet; use plan or commence for initial model selection.";
