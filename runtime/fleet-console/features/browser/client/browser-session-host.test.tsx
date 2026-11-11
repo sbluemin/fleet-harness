@@ -9,8 +9,7 @@ vi.mock("../../../core/client/src/integration/objective-records-sse.js", () => (
   subscribeConsoleChannel: (channel: string, listener: (payload: unknown) => void) => { channels.listeners.set(channel, listener); return () => { channels.listeners.delete(channel); }; },
 }));
 vi.mock("./browser-shortcuts-sync.js", () => ({ useBrowserShortcutsSync: () => undefined }));
-vi.mock("./browser-shared-fallback.js", () => ({ dismissSharedFallback: () => undefined, useSharedFallbackNotice: () => false }));
-vi.mock("./browser-engine.js", () => ({ publishBrowserEngine: () => undefined, useBrowserPluginAttach: () => null }));
+vi.mock("./browser-engine.js", () => ({ publishBrowserEngine: () => undefined, useBrowserPluginAttach: () => null, useBrowserEngine: () => null, readBrowserEngineBody: () => null }));
 
 import { setState } from "../../../core/client/src/integration/store.js";
 import { BrowserSessionHost } from "./browser-session-host.js";

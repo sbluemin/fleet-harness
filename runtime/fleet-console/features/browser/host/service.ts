@@ -6,20 +6,18 @@ import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./his
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserPointer } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserPointer } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
 /**
  * Fleet Browser — Console 전체의 단일 브라우저 컨텍스트(쿠키·스토리지 파티션)와 탭을 소유하는
  * 서비스. 사람(패널)과 에이전트(MCP)가 같은 탭을 보고, 에이전트의 쓰기 범위만 스페이스로 나뉜다.
  *
- * 정책 세 줄:
- * - 브라우저는 Fleet Desktop 앱의 기능이다. 탭은 창을 든 Desktop 안의 실제 Chromium 뷰로 그려지며, Console 은
- *   Chrome 을 찾거나 띄우지 않는다. 브라우저 탭·모바일로 연 Console 에서는 열리지 않는다.
- * - Desktop 이 아닌 클라이언트(브라우저 탭·모바일)가 이 Console 에 붙어 있는 동안은 멈춘다 — 붙는 순간 열린 탭을
- *   모두 닫는다. 그 화면에는 뷰가 없으므로 에이전트가 무엇을 하는지 사람이 볼 수 없기 때문이다.
- * - 뷰를 그리는 창은 제어를 쥔 쪽이다. 원격 Desktop 이 제어를 쥐면 그 창이, 아니면 이 기계의 창이 그린다.
- *   사람은 어디든 갈 수 있고 에이전트도 http(s) 어디든 간다.
+ * 정책:
+ * - 브라우저는 이 Console 을 관리하는 Fleet Desktop 하나의 네이티브 뷰로만 실행된다. Console 은 Chrome 을
+ *   찾거나 띄우지 않고, 관리 Desktop 이 없으면 원격 Desktop 으로 대신하지 않는다.
+ * - 원격 세션·브라우저 탭·모바일 화면이 붙어도 엔진 호스트를 바꾸거나 열린 탭을 닫지 않는다. 그 화면은 보기 전용이다.
+ * - 사람은 관리 창에서만 탭을 조작하고, 에이전트는 http(s) 어디든 간다.
  */
 
 export const BROWSER_DEFAULT_VIEWPORT = { width: 1280, height: 800 } as const;
@@ -39,13 +37,16 @@ const TEXT_LIMIT = 200_000;
 const DEVICE_CAPTURE_MAX_SCALE = 2;
 const DEVICE_CAPTURE_MAX_PIXELS = 3200 * 3200;
 
-/** 브라우저를 쓸 수 없는 까닭. 도구·패널·글리프가 같은 낱말로 안내한다. */
+/** 브라우저를 쓸 수 없는 까닭. `shared` 는 옛 일시 중지의 리터럴로만 남아 있고 더 이상 내지 않는다. */
 export type BrowserUnavailableReason = "desktop_required" | "shared";
+const UNMANAGED_EXECUTION_HOST: BrowserExecutionHost = { managed: false, connected: false, status: "unmanaged", hostLabel: null, platform: null, accessPath: null };
 export interface BrowserAvailability {
   readonly available: boolean;
   readonly reason: BrowserUnavailableReason | null;
-  /** 뷰를 그릴 셸 — `"local"` 은 이 기계의 창, 그 밖은 원격 세션의 공개 이름. 붙어 있지 않아도 정책상의 답이다. */
+  /** 뷰를 그릴 셸. 관리 Desktop 은 `"manager"`. 정책이 실행 호스트를 이미 실었으면 그 값을 따른다. */
   readonly host: string | null;
+  /** 없으면 `host`·`available` 로 추정한다 — 옛 테스트 픽스처가 이 필드를 싣지 않는다. */
+  readonly executionHost?: BrowserExecutionHost;
 }
 
 export type ViewportPreset = "responsive" | "mobile" | "tablet";
@@ -87,6 +88,7 @@ export interface BrowserObjectiveState {
   /** 지금 브라우저를 열 수 있는가. 아니면 `reason` 이 왜인지 말한다 — 패널은 그 문장을 보이고 탭은 이미 닫혀 있다. */
   readonly available: boolean;
   readonly reason: BrowserUnavailableReason | null;
+  readonly executionHost: BrowserExecutionHost;
 }
 
 export type BrowserState = BrowserObjectiveState;
@@ -305,12 +307,18 @@ export function resolveBrowserViewportSize(input: {
   return { width: input.current.width, height: input.current.height, followsPane: true };
 }
 
-/** 브라우저를 쓸 수 없을 때 도구·API 가 돌려주는 문장 — 까닭별로 사람이 무엇을 해야 하는지 말한다. */
-export function unavailableMessage(reason: BrowserUnavailableReason | null): string {
-  switch (reason) {
-    case "shared": return "The Fleet Browser is paused because this Console is also open in a regular browser or on a phone. It resumes once only Fleet Desktop windows remain.";
-    default: return "The Fleet Browser runs only inside the Fleet Desktop app, and no Desktop window is showing this Console.";
-  }
+function resolveExecutionHost(policy: BrowserAvailability): BrowserExecutionHost {
+  if (policy.executionHost) return policy.executionHost;
+  if (policy.available) return { managed: true, connected: true, status: "connected", hostLabel: null, platform: null, accessPath: null };
+  if (policy.host) return { managed: true, connected: false, status: "manager_disconnected", hostLabel: null, platform: null, accessPath: null };
+  return UNMANAGED_EXECUTION_HOST;
+}
+
+/** 브라우저를 쓸 수 없을 때 도구·API 가 돌려주는 문장. 관리 Desktop 없음과 연결 끊김을 가른다. */
+export function unavailableMessage(reason: BrowserUnavailableReason | null, executionHost?: BrowserExecutionHost): string {
+  if (executionHost?.status === "unmanaged") return "Fleet Browser requires a Console managed by Fleet Desktop.";
+  if (reason === "shared") return "This Console's managing Fleet Desktop is disconnected.";
+  return "This Console's managing Fleet Desktop is disconnected.";
 }
 
 export interface BrowserServiceDeps {
@@ -337,6 +345,7 @@ export interface BrowserServiceStatus {
   readonly engine: "idle" | "starting" | "ready" | "failed";
   readonly engineError: string | null;
   readonly objectiveRecords: readonly string[];
+  readonly executionHost: BrowserExecutionHost;
 }
 
 /** 페이지가 선언한 아이콘, 없으면 /favicon.ico. 페이지 안에서 평가되므로 상대 경로가 그 문서 기준으로 풀린다. */
@@ -423,40 +432,33 @@ export class BrowserService {
   }
 
   status(): BrowserServiceStatus {
-    const { available, reason } = this.availability();
-    return { enabled: this.deps.enabled(), available, reason, engine: this.engine, engineError: this.engineError, objectiveRecords: [...this.objectiveRecords.keys()] };
+    const { available, reason, executionHost } = this.availability();
+    return { enabled: this.deps.enabled(), available, reason, engine: this.engine, engineError: this.engineError, objectiveRecords: [...this.objectiveRecords.keys()], executionHost };
   }
 
-  /** 정책의 답에 엔진의 실제 연결을 겹친다 — 호스트가 정해졌어도 그 셸이 붙어 있지 않으면 Desktop 이 없는 것이다. */
-  availability(): BrowserAvailability {
-    if (!this.deps.enabled()) return { available: false, reason: "desktop_required", host: null };
+  /** 정책의 실행 호스트에 엔진의 실제 연결을 겹친다. 제어권이나 다른 화면이 붙었다고 호스트를 바꾸지 않는다. */
+  availability(): BrowserAvailability & { readonly executionHost: BrowserExecutionHost } {
+    if (!this.deps.enabled()) return { available: false, reason: "desktop_required", host: null, executionHost: UNMANAGED_EXECUTION_HOST };
     const policy = this.deps.availability();
-    if (!policy.available) return policy;
-    if (!this.deps.desktop.connected) return { available: false, reason: "desktop_required", host: policy.host };
-    return policy;
+    const executionHost = resolveExecutionHost(policy);
+    if (executionHost.status === "unmanaged") return { available: false, reason: "desktop_required", host: null, executionHost: UNMANAGED_EXECUTION_HOST };
+    if (executionHost.status !== "connected" || !policy.available || !this.deps.desktop.connected) {
+      return { available: false, reason: "desktop_required", host: policy.host, executionHost: { ...executionHost, managed: true, connected: false, status: "manager_disconnected" } };
+    }
+    return { available: true, reason: null, host: policy.host, executionHost: { ...executionHost, managed: true, connected: true, status: "connected" } };
   }
 
   available(): boolean { return this.availability().available; }
 
   /**
-   * 붙은 클라이언트·제어 보유자가 바뀌었다. 뷰를 그릴 셸을 엔진에 알리고, 브라우저를 쓸 수 없게 되었으면 열린 탭을
-   * 모두 닫는다 — 브라우저 탭이 이 Console 에 붙는 순간이 그 예다. 상태는 늘 다시 알린다(패널이 문장을 바꾼다).
+   * 붙은 클라이언트·제어 보유자가 바뀌었다. 엔진 호스트와 열린 탭은 그대로 두고 가용성만 다시 알린다.
+   * 관리 Desktop 이 끊기면 엔진의 `closed` 가 탭을 접는다.
    */
   reconcile(): void {
     if (this.disposed) return;
-    const policy = this.deps.availability();
-    this.deps.desktop.setHost(policy.host);
     this.syncHistoryHost();
-    const available = this.availability().available;
-    const closing = this.lastAvailable === true && !available;
-    this.lastAvailable = available;
+    this.lastAvailable = this.availability().available;
     this.emitAvailability();
-    if (closing) {
-      this.deps.log("browser paused: closing every tab");
-      for (const op of this.objectiveRecords.values()) { for (const call of op.agentCalls) call.abort(); op.agentCalls.clear(); op.callParticipants.clear(); op.currentTabs.clear(); this.endAgentSession(op.objectiveId, "revoke"); }
-      void this.stopEngine();
-      return;
-    }
     for (const op of this.objectiveRecords.values()) this.emitState(op);
   }
 
@@ -474,8 +476,8 @@ export class BrowserService {
   private async engineClient(): Promise<CdpClient> {
     if (this.disposed) throw new BrowserPolicyError("browser_engine_busy", "Browser engine is busy.");
     if (this.client) return this.client;
-    const { available, reason } = this.availability();
-    if (!available) throw new BrowserPolicyError("browser_unavailable", unavailableMessage(reason), { reason });
+    const { available, reason, executionHost } = this.availability();
+    if (!available) throw new BrowserPolicyError("browser_unavailable", unavailableMessage(reason, executionHost), { reason, executionHost });
     const desktop = this.deps.desktop;
     this.client = desktop;
     this.engine = "ready";
@@ -504,6 +506,7 @@ export class BrowserService {
       op.contextPending = null;
       this.emitState(op);
     }
+    this.emitAvailability();
   }
 
   private scheduleIdle(): void {
@@ -776,7 +779,7 @@ export class BrowserService {
 
   state(objectiveId: string): BrowserObjectiveState {
     const op = this.objectiveRecord(objectiveId);
-    const { available, reason } = this.availability();
+    const { available, reason, executionHost } = this.availability();
     const active = this.activeSpace(op);
     const agentTabs = new Set(op.currentTabs.values());
     // 디폴트가 맨 앞, 그 뒤로 지금 있는 사령관들. 목록에 없는데 탭이 남은 스페이스(지워지는 중인 사령관)는 끝에 붙는다.
@@ -796,6 +799,7 @@ export class BrowserService {
       defaultProfile: this.defaultProfile(),
       available,
       reason,
+      executionHost,
       tabs: [...op.tabs.values()].map((tab) => this.tabState(tab)),
       activeTabId: op.activeTabId,
       viewport: active?.viewport ?? { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null },
@@ -949,8 +953,8 @@ export class BrowserService {
   /** 에이전트 도구 호출 하나를 감싼다 — 조작 중 표시와 중단이 이 경계에서 결정된다. 사용 세션은 그 참가자의 스페이스에 선다. */
   async agentCall<T>(objectiveId: string, signal: AbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>, caller: BrowserCaller = { participantId: objectiveId, spaceId: DESKTOP_BROWSER_DEFAULT_SPACE_ID, ownerId: objectiveId }): Promise<T> {
     const participantId = caller.participantId;
-    const { available, reason } = this.availability();
-    if (!available) throw new BrowserPolicyError("browser_unavailable", unavailableMessage(reason), { reason });
+    const { available, reason, executionHost } = this.availability();
+    if (!available) throw new BrowserPolicyError("browser_unavailable", unavailableMessage(reason, executionHost), { reason, executionHost });
     const op = this.objectiveRecord(objectiveId);
     this.bindParticipant(op, caller);
     const call = new AbortController();

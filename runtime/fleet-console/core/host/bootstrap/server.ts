@@ -51,7 +51,7 @@ import { createConsoleControl } from "../../../features/execution/host/console-c
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type BrowserExecutionHost, type BrowserSurfaceModeKind, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { createApprovalCore } from "@fleet-console/approval";
 import { APPROVAL_CHANNEL, APPROVAL_NOTICE_CHANNEL } from "@fleet-console/approval/contract";
@@ -89,7 +89,7 @@ import { createDeferredDeletionCoordinator, type DeferredDeletionReceipt } from 
 import { deletionObjectiveRecords, STATE_VERSION, createConsoleDurableStateStore, type DurableConsoleState } from "../../../features/workspace/host/durable-state.js";
 import { TheaterFolderListError, canonicalizeTheaterPathSync, createFolderGrantStore, workspaceHash } from "../../../features/workspace/host/theaters/theater-domain.js";
 
-import { DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, createDesktopScreenPermissionRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
+import { DESKTOP_SHELL_UPDATE_COMMAND_EVENT, DESKTOP_SHELL_UPDATE_EVENT, DESKTOP_SHELL_EVENT, DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, browserSurfaceMode, createDesktopScreenPermissionRouter, createDesktopShellUpdateRouter, createDesktopShellRouter, createDesktopThemeRouter, createDesktopUpdateRouter, createDesktopWindowCommandRouter, desktopThemeSnapshot, emptyDesktopShell, emptyDesktopShellUpdate, emptyDesktopShellUpdateCommand, emptyDesktopUpdateRequest, type DesktopShellSnapshot, type DesktopUpdateRequestSnapshot } from "../shell/desktop-contract.js";
 import { readDesktopProtocolEnvironment } from "../shell/desktop-protocol.js";
 import { createConsoleServeLifecycle, type ConsoleServeLifecycle } from "./serve-lifecycle.js";
 import { createAgentProcessSpawner } from "./agent-process.js";
@@ -400,7 +400,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using the computer or the browser.", category: "Observer", gate: "loopback", transport: "http" },
-  { method: "GET", path: "/api/v1/browser", summary: "Read whether the Fleet Browser can open for the attached Fleet Desktop, and why not otherwise.", category: "Settings", gate: "origin-write", transport: "http" },
+  { method: "GET", path: "/api/v1/browser", summary: "Read whether the managing Desktop's Fleet Browser is connected, plus this viewer's surface mode and execution host.", category: "Settings", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/state", summary: "Read an Objective's browser tab state; later changes arrive on the Objective event stream.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/screenshot", summary: "Capture the active tab of an Objective's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/tabs", summary: "Create, close or select a tab in an Objective's browser.", category: "Console Execution", gate: "origin-strict", transport: "http" },
@@ -409,9 +409,12 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/inspect", summary: "Describe the page element under a viewport coordinate.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/browser/objectives/:objectiveId/favicon", summary: "Serve a tab's favicon through the Console (the page CSP allows no external images).", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/place", summary: "Tell the Desktop shell where an Objective's native browser view sits in the window.", category: "Console Execution", gate: "origin-strict", transport: "http" },
-  { method: "GET", path: DESKTOP_BROWSER_PATH, summary: "Read the native browser views and pending CDP commands the hosting Desktop shell must apply; other shells read an empty set.", category: "Desktop", gate: "origin-strict", transport: "http" },
-  { method: "GET", path: DESKTOP_BROWSER_EVENTS_PATH, summary: "Stream native browser view snapshots to the attached Desktop shells; only the hosting shell receives views.", category: "Desktop", gate: "origin-strict", transport: "sse" },
-  { method: "POST", path: DESKTOP_BROWSER_RELAY_PATH, summary: "Return CDP results, events, and view sizes from the hosting Desktop shell's native browser views.", category: "Desktop", gate: "origin-strict", transport: "http" },
+  { method: "GET", path: DESKTOP_BROWSER_PATH, summary: "Read native browser views for the single managing Desktop. Remote listeners and other shells are refused.", category: "Desktop", gate: "lock-token", transport: "http" },
+  { method: "GET", path: DESKTOP_BROWSER_EVENTS_PATH, summary: "Stream native browser view snapshots to the managing Desktop only.", category: "Desktop", gate: "lock-token", transport: "sse" },
+  { method: "POST", path: DESKTOP_BROWSER_RELAY_PATH, summary: "Return CDP results, events, and view sizes from the managing Desktop's native browser views.", category: "Desktop", gate: "lock-token", transport: "http" },
+  { method: "POST", path: DESKTOP_BROWSER_FRAME_PATH, summary: "Replace the single latest JPEG frame for one watched browser view. Only the managing Desktop may upload.", category: "Desktop", gate: "lock-token", transport: "http" },
+  { method: "GET", path: "/api/v1/browser/viewer/frame", summary: "Long-poll the latest JPEG of one open tab for a view-only Console session.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "POST", path: "/api/v1/browser/viewer/unwatch", summary: "Stop view-only capture for one tab immediately.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/paste", summary: "Put the panel's screenshot on this machine's clipboard and press paste in a terminal Objective's CLI.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/browser/import-sources", summary: "List the Google Chrome profiles on the attached Desktop whose cookies can be imported into an Objective's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/import", summary: "Import cookies from a Google Chrome profile on the attached Desktop into an Objective's browser session.", category: "Console Execution", gate: "origin-strict", transport: "http" },
@@ -615,8 +618,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const desktopShellUpdateCommandSseSubscribers = new Map<http.ServerResponse, string>();
   /** 창 조작 명령 구독 — 응답마다 그 셸의 주인. 명령은 걸어 두지 않으므로 지금 붙은 셸만 듣는다. */
   const desktopWindowCommandSseSubscribers = new Map<http.ServerResponse, string>();
-  /** 셸의 브라우저 스냅샷 구독 — 응답마다 그 셸의 주인(루프백은 "local", 원격은 세션 공개 이름). */
+  /** 셸의 브라우저 스냅샷 구독 — 관리 Desktop 만 `"manager"` 로 붙는다. */
   const desktopBrowserSseSubscribers = new Map<http.ServerResponse, string>();
+  /** 루프백 Desktop 셸이 관리 창으로 증명되었는가. 증명 없는 루프백 게시가 오면 풀린다. */
+  let managingShellProven = false;
   /**
    * Objective 브라우저의 엔진 — 창을 든 Fleet Desktop 안의 실제 Chromium 뷰. 어느 Desktop 이 이 콘솔을 보든(이 기계의
    * 창이든, 원격에서 건너온 창이든) 붙을 수 있고, 뷰는 그중 호스트 하나의 창에만 산다. 호스트가 아닌 셸은 빈 스냅샷을
@@ -905,20 +910,20 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   /**
    * 브라우저 상태는 Objective 스트림을 함께 탄다 — 패널이 자기 스트림을 따로 열면 그 연결이 화면의 연결 예산
    * (origin 당 여섯)을 먹고, 다 차는 순간 그 화면에서 나가는 모든 요청이 조용히 큐에 갇힌다.
-   * 뷰를 가진 Desktop 창에만 보낸다: 브라우저는 그 창에서만 열리고, 다른 화면에는 그릴 자리가 없다.
+   * 네이티브 뷰 페이지(objective-browser)만 빼고, Desktop·웹·모바일·원격 구독자에게 각자의 surfaceMode 를 실어 보낸다.
    */
   browserService.onState((state) => {
     // driving 이 바뀌면 objective-use 의 browser 배열이 바뀐다 — 스냅샷을 다시 흘린다(변한 게 없으면 스킵).
     scheduleObjectiveUseBroadcast();
-    if (objectiveRecordSseSubscribers.size === 0) return;
-    const data = encodeSseData(BROWSER_STATE_EVENT, state);
-    for (const subscriber of objectiveRecordSseSubscribers) if (subscriber.client === "desktop") writeObjectiveSse(subscriber, data);
+    broadcastBrowserState(state);
   });
   const BROWSER_AVAILABILITY_EVENT = "browser:availability";
   browserService.onAvailability((notice) => {
     if (objectiveRecordSseSubscribers.size === 0) return;
-    const data = encodeSseData(BROWSER_AVAILABILITY_EVENT, { available: notice.available, reason: notice.reason });
-    for (const subscriber of objectiveRecordSseSubscribers) if (subscriber.client === "desktop") writeObjectiveSse(subscriber, data);
+    for (const subscriber of objectiveRecordSseSubscribers) {
+      if (subscriber.client === "objective-browser") continue;
+      writeObjectiveSse(subscriber, encodeSseData(BROWSER_AVAILABILITY_EVENT, { available: notice.available, reason: notice.reason, executionHost: notice.executionHost, surfaceMode: surfaceModeOf(subscriber) }));
+    }
   });
   // 스크린샷은 Console 호스트에 놓인다 — 뷰를 그리는 Desktop 은 원격일 수 있어도 도구를 부르는 에이전트는
   // 언제나 이 기계에서 돌기 때문이다.
@@ -1351,7 +1356,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 네이티브 브라우저 뷰 — 창을 든 셸이 스냅샷을 구독하고 결과를 relay 로 되돌린다. 테마·업데이트 동기화와 같은 방향이다.
    * 스크린샷이 relay 에 실리므로 그 몸은 일반 JSON 한도보다 크게 받는다.
    */
-  const desktopBrowserRouter = createBrowserDesktopRouter({ desktopEngine, browserService, desktopBrowserSseSubscribers, isExactConsoleOrigin, shellOwnerOf, readJsonBody, writeJson, writeNoContent, withSecurityHeaders, encodeSseData });
+  const desktopBrowserRouter = createBrowserDesktopRouter({ desktopEngine, browserService, desktopBrowserSseSubscribers, isLoopbackListener, managerGate, readJsonBody, writeJson, writeNoContent, withSecurityHeaders, encodeSseData });
   const desktopShellUpdateRouter = createDesktopShellUpdateRouter({
     getUpdate: (req) => {
       const owner = shellOwnerOf(req);
@@ -1389,8 +1394,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const owner = shellOwnerOf(req);
       return (owner === null ? undefined : desktopShellsByOwner.get(owner)) ?? emptyDesktopShell();
     },
-    isAuthorized: isExactConsoleOrigin,
+    isAuthorized: (req) => isExactConsoleOrigin(req) || isManagingDesktopProcess(req),
     readJsonBody,
+    onPublished: (req) => {
+      if (!isLoopbackListener(req)) return;
+      const next = isManagingDesktopProcess(req);
+      if (next === managingShellProven) return;
+      managingShellProven = next;
+      browserService.reconcile();
+    },
     setShell: (req, snapshot) => {
       const owner = shellOwnerOf(req);
       if (owner === null) return;
@@ -1483,8 +1495,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // 자기 Console을 여는 네이티브 뷰도 일반 Chrome UA를 쓴다. 현재 호스트가 소유한 뷰만 별도로 세어
       // 그 페이지가 자기 엔진을 shared로 닫지 않게 한다. 표식만 있거나 다른 호스트의 요청이면 인정하지 않는다.
       const viewId = req.headers[DESKTOP_BROWSER_VIEW_HEADER];
-      const objectiveRecordView = typeof viewId === "string" && shellOwner !== null
-        && desktopEngine.currentHost === shellOwner && Boolean(desktopEngine.viewOwner(viewId));
+      const objectiveRecordView = typeof viewId === "string" && Boolean(desktopEngine.viewOwner(viewId));
       const subscriber: ObjectiveSseSubscriber = { res, audience, sessionHandle, client: objectiveRecordView ? "objective-browser" : clientKindOf(req) };
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
@@ -1510,7 +1521,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (audience === "local") {
         writeObjectiveSse(subscriber, encodeSseData(CONTROL_CHANGED_EVENT, controlChangedSnapshot(currentControlHolder())));
       }
-      // 브라우저·모바일 화면이 붙는 순간 Objective 브라우저는 멈춘다 — 떠나면 다시 열린다.
+      // 다른 화면이 붙어도 엔진 호스트와 탭은 그대로다. 가용성만 다시 알린다.
       if (!objectiveRecordSseSubscribers.has(subscriber)) return;
       browserService.reconcile();
       // 붙기 전에 일어난 브라우저 변화는 이벤트로 다시 오지 않는다. 스트림이 끊겼다 다시 붙는 길도 이 자리를 지나므로,
@@ -1518,8 +1529,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (subscriber.client === "desktop" && subscriber.audience === "local") {
         writeObjectiveSse(subscriber, encodeSseData(COMPUTER_CAPTURE_STATE_EVENT, computerCaptureSnapshot()));
       }
-      if (subscriber.client === "desktop") {
-        for (const browsing of browserService.status().objectiveRecords) writeObjectiveSse(subscriber, encodeSseData(BROWSER_STATE_EVENT, browserService.state(browsing)));
+      if (subscriber.client !== "objective-browser") {
+        for (const browsing of browserService.status().objectiveRecords) writeObjectiveSse(subscriber, encodeSseData(BROWSER_STATE_EVENT, { ...browserService.state(browsing), surfaceMode: surfaceModeOf(subscriber) }));
       }
     },
   });
@@ -1583,7 +1594,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * Desktop 이 원격에서 건너와 이 콘솔의 탭을 자기 창에 그리는 길이 바로 이 경로다. 쓰기는 Origin 을 요구한다.
    */
   routeRegistry.register("/api/v1/browser", createBrowserRouter({
-    browserService, browserMcp, objectiveRecords, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null,
+    browserService, desktopEngine, browserMcp, objectiveRecords, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null,
+    surfaceMode: (req) => surfaceModeOfRequest(req),
+    isNativeBrowserWrite: (req) => isNativeBrowserWrite(req),
+    isManagingDesktopProcess: (req) => isManagingDesktopProcess(req),
+    viewerFrameRead: (req) => viewerFrameRead(req),
     suggestionSettings: {
       read: () => {
         const settings = consoleSettingsStore.readSnapshot().browser;
@@ -2328,8 +2343,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    */
   function broadcastControlChanged(resend = false): void {
     if (access.hasSession("remote", "full") || access.hasSession("remote", "monitoring")) computerUse.stopDetached();
-    // 제어 보유자가 곧 브라우저 뷰를 그릴 창이다 — 바뀌면 옛 창의 탭은 닫히고 새 창이 이어받는다.
-    browserService.reconcile();
+    // 제어 보유자는 브라우저 엔진과 무관하다. 원격이 붙거나 떠나도 관리 Desktop 의 탭은 닫지 않는다.
     /**
      * 실제로 보유자가 바뀐 경우에만 알린다.
      *
@@ -2393,14 +2407,64 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * Objective 브라우저를 열 수 있는가. 브라우저 탭·모바일 화면이 하나라도 붙어 있으면 멈춘다 — 그 화면에는 뷰가 없어
-   * 에이전트의 조작을 사람이 볼 수 없다. 뷰를 그릴 셸은 제어를 쥔 쪽이다: 원격 full 세션이 있으면 그 창, 아니면 이 기계의 창.
+   * Objective 브라우저를 열 수 있는가. 엔진은 이 Console 을 관리하는 Desktop 하나에만 고정된다.
+   * 원격 세션이나 브라우저·모바일 화면이 붙어도 멈추거나 호스트를 바꾸지 않는다.
    */
+  function readExecutionHost(): BrowserExecutionHost {
+    if (desktop === null || desktop.owner.kind !== "desktop") return { managed: false, connected: false, status: "unmanaged", hostLabel: null, platform: null, accessPath: null };
+    const hello = desktopEngine.executionHello();
+    const connected = desktopEngine.connected && desktopEngine.currentHost === "manager";
+    const hostLabel = typeof hello?.hostLabel === "string" && hello.hostLabel.length > 0 && !/[\\/]/.test(hello.hostLabel) ? hello.hostLabel : null;
+    return { managed: true, connected, status: connected ? "connected" : "manager_disconnected", hostLabel, platform: hello?.platform ?? null, accessPath: hello?.accessPath ?? null };
+  }
+
   function browserAvailability(): BrowserAvailability {
-    const holder = currentControlHolder();
-    const host = holder ? holder.handle : "local";
-    for (const subscriber of objectiveRecordSseSubscribers) if (subscriber.client === "browser") return { available: false, reason: "shared", host };
-    return { available: true, reason: null, host };
+    const executionHost = readExecutionHost();
+    const available = executionHost.status === "connected";
+    return { available, reason: available ? null : "desktop_required", host: executionHost.managed ? "manager" : null, executionHost };
+  }
+
+  function surfaceModeOf(subscriber: ObjectiveSseSubscriber): BrowserSurfaceModeKind {
+    return browserSurfaceMode({ loopback: subscriber.audience === "local", desktopShell: subscriber.client === "desktop", managingShellProven });
+  }
+
+  function surfaceModeOfRequest(req: http.IncomingMessage): BrowserSurfaceModeKind {
+    return browserSurfaceMode({ loopback: isLoopbackListener(req), desktopShell: clientKindOf(req) === "desktop", managingShellProven });
+  }
+
+  function isManagingDesktopProcess(req: http.IncomingMessage): boolean {
+    return managerGate(req) === "ok";
+  }
+
+  function managerGate(req: http.IncomingMessage): "ok" | "missing" | "forbidden" {
+    if (desktop === null || desktop.owner.kind !== "desktop") return "forbidden";
+    if (!isLockAuthorized(req)) return "missing";
+    if (req.headers["sec-fetch-site"] !== undefined) return "forbidden";
+    const owner = req.headers[DESKTOP_BROWSER_OWNER_HEADER];
+    return owner === desktop.owner.id ? "ok" : "forbidden";
+  }
+
+  function isNativeBrowserWrite(req: http.IncomingMessage): boolean {
+    if (!isLoopbackListener(req)) return false;
+    if (isManagingDesktopProcess(req)) return true;
+    return managingShellProven && clientKindOf(req) === "desktop";
+  }
+
+  function viewerFrameRead(req: http.IncomingMessage): "ok" | "unauthorized" | "forbidden" {
+    const listener = listenerForRequest(req);
+    if (listener === null) return "forbidden";
+    if (listener.audience === "remote") {
+      return access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience) ? "ok" : "unauthorized";
+    }
+    return isSameOriginConsoleRead(req) ? "ok" : "forbidden";
+  }
+
+  function broadcastBrowserState(state: ReturnType<BrowserService["state"]>): void {
+    if (objectiveRecordSseSubscribers.size === 0) return;
+    for (const subscriber of objectiveRecordSseSubscribers) {
+      if (subscriber.client === "objective-browser") continue;
+      writeObjectiveSse(subscriber, encodeSseData(BROWSER_STATE_EVENT, { ...state, surfaceMode: surfaceModeOf(subscriber) }));
+    }
   }
 
   function broadcastDesktopThemeChanged(theme: ConsoleThemeId): void {

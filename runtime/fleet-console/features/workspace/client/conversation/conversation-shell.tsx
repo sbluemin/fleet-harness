@@ -39,6 +39,7 @@ import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/cha
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
 import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserSurface } from "../../../browser/client/browser-surface.js";
+import { toggleBrowserViewer, useBrowserViewerOpen } from "../../../browser/client/browser-viewer.js";
 import { publishBrowserPluginAttach } from "../../../browser/client/browser-engine.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
@@ -1507,7 +1508,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const actions = descriptor.actions?.(context) ?? null;
   const hasActions = actions !== null && actions !== false;
   // 플릿 브라우저는 Desktop 의 것이다 — 웹 브라우저 Console 에서는 지구본을 세우지 않는다(시안 v2 규칙 g).
-  const browser = sessionBrowser === null || !isDesktopShell() ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSurfaceOpen} />;
+  const browser = sessionBrowser === null ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSurfaceOpen} />;
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Objective 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
   const pill = useConversationPillHost(descriptor.pillOwner?.(context) ?? { kind: "surface", id: descriptor.id });
@@ -1658,7 +1659,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
     </FeatureErrorBoundary>
   );
   // 지구본(tools-lead)은 플릿 브라우저 문이다 — 웹 브라우저 Console 에서는 세우지 않는다(시안 v2 규칙 g).
-  const toolsLead = descriptor?.captionToolsLead === undefined || !isDesktopShell() ? null : (
+  const toolsLead = descriptor?.captionToolsLead === undefined ? null : (
     <FeatureErrorBoundary fallback={<></>}>
       <PluginObjectiveRenderer {...captionRender} render={descriptor.captionToolsLead} />
     </FeatureErrorBoundary>
@@ -1749,16 +1750,20 @@ function SurfaceBrowserButton({ session, language, splitOpen }: {
 }) {
   const t = getBrowserT(language);
   const engine = useBrowserEngine();
-  const engineMissing = engine !== null && !engine.available;
+  const viewer = engine?.surfaceMode === "viewer" || (engine === null && !isDesktopShell());
+  const viewerOpen = useBrowserViewerOpen();
+  const engineMissing = !viewer && engine !== null && !engine.available;
   const detached = useBrowserSurface()?.mode === "window";
   // 이 사령관의 세션이 브라우저를 쓰는 동안 — Objective 대화의 지구본과 같은 표식·같은 말이다.
   const agentUsing = useCommodoreBrowserUse(session.commodoreId);
-  const base = engineMissing
-    ? t(engine.reason === "shared" ? "terminal.browser.shared" : isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
+  const base = viewer
+    ? t(viewerOpen ? "terminal.browser.viewerExit" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
+    : engineMissing
+    ? t(isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : t(detached ? "terminal.browser.focus" : agentUsing ? "terminal.browser.agentUsing" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
   return (
     <span className="conversation-pill-browser">
-      <CaptionActionButton actionId="browser" label={base} pressed={splitOpen} disabled={engineMissing} agent={agentUsing} onClick={toggleBrowserPane}>
+      <CaptionActionButton actionId="browser" label={base} pressed={viewer ? viewerOpen : splitOpen} disabled={engineMissing} agent={agentUsing} onClick={viewer ? toggleBrowserViewer : toggleBrowserPane}>
         <CaptionBrowserUseGlyph />
       </CaptionActionButton>
     </span>

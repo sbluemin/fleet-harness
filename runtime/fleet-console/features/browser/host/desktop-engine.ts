@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserChrome, type DesktopBrowserPageDialog, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserSurface, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserChrome, type DesktopBrowserHello, type DesktopBrowserPageDialog, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserSurface, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
@@ -9,12 +9,16 @@ import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp
  * 이벤트는 relay(POST)로 올라온다. 브라우저 수준의 명령(`Target.*`, `Browser.*`)은 셸에 CDP 브라우저 세션이 없으므로
  * 여기서 뷰 목록으로 풀어 낸다 — 탭 하나가 뷰 하나, 세션 id 가 곧 뷰 id 다.
  *
- * 셸은 여럿 붙을 수 있다(이 기계의 Desktop, 원격에서 건너온 Desktop). 뷰는 그중 **호스트** 하나의 창에만 산다 —
- * 어느 셸이 호스트인지는 서버가 제어 보유자로 정해 `setHost` 로 알린다. 호스트가 아닌 셸은 빈 스냅샷만 받고 그 relay 는
- * 무시된다. 호스트가 바뀌면 옛 창의 뷰는 옮길 수 없으므로 모두 닫힌다.
+ * 뷰를 그리는 호스트는 이 Console 을 관리하는 Desktop 하나(`"manager"`)뿐이다. 원격 세션이나 다른 셸로 호스트를
+ * 바꾸지 않으며, 이미 정해진 호스트를 다른 이름으로 갈아 끼우면 뷰를 닫지 않고 거절한다. 호스트가 아닌 셸의 relay 는
+ * 무시된다.
  *
- * 호스트의 구독이 끊기면(창 종료·재시작) 유예 뒤 `closed` 가 풀리고 서비스는 탭을 정리한다.
+ * 호스트의 구독이 끊기면(창 종료·재시작) 유예 뒤 `closed` 가 풀리고 서비스는 탭을 정리한다. 그 사이 보기 전용 뷰어가
+ * 보고 있는 뷰만 최신 JPEG 한 장을 보관한다.
  */
+
+/** 뷰어 long-poll 이 끝난 뒤 다음 폴링이 이어질 때까지 캡처를 유지하는 시간. */
+export const VIEWER_WATCH_LEASE_MS = 2_500;
 
 const ATTACH_TIMEOUT_MS = 10_000;
 /** 셸의 구독이 끊긴 뒤 이만큼 안에 다시 붙으면 뷰와 탭을 그대로 잇는다 — 절전·루프백 순단은 창이 닫힌 것이 아니다. */
@@ -36,6 +40,31 @@ export class PageDialogOpenError extends CdpError {
   constructor(method: string, readonly dialog: BrowserPageDialog) { super(method, -32000, "page_dialog_open"); this.name = "PageDialogOpenError"; }
 }
 
+/** 보기 전용 뷰어가 받는 최신 JPEG 한 장. 이전 바이트는 슬롯을 덮을 때 버린다. */
+export interface BrowserViewerFrame {
+  readonly seq: number;
+  readonly bytes: Buffer;
+  readonly width: number;
+  readonly height: number;
+  readonly at: number;
+}
+
+export class ViewerFrameClosedError extends Error {
+  readonly code = "tab_not_found";
+  constructor() { super("tab_not_found"); this.name = "ViewerFrameClosedError"; }
+}
+export class ViewerFrameDisconnectedError extends Error {
+  readonly code = "browser_unavailable";
+  constructor() { super("browser_unavailable"); this.name = "ViewerFrameDisconnectedError"; }
+}
+export class ViewerFrameTimeoutError extends Error {
+  readonly code = "frame_timeout";
+  constructor() { super("frame_timeout"); this.name = "ViewerFrameTimeoutError"; }
+}
+
+interface FrameWaiter { readonly afterSeq: number; readonly resolve: (frame: BrowserViewerFrame) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
+interface WatchTicket { live: boolean }
+
 /** 답이 가리킨 대화상자가 지금 열린 것이 아니거나 이미 답이 가는 중이다 — 다음 대화상자에 잘못 적용하지 않고 아무것도 보내지 않는다. */
 function dialogAnswered(dialogId: string): string {
   return `The dialog ${JSON.stringify(dialogId)} is not the current open dialog or is already being answered, so nothing was sent. Check tabs_context for any open dialog and answer it only if you still mean to.`;
@@ -56,7 +85,12 @@ export class DesktopEngine implements CdpClient {
   private readonly attachWaiters = new Map<string, { resolve: () => void; reject: (error: Error) => void; timer: ReturnType<typeof setTimeout> }>();
   private readonly listeners = new Set<CdpListener>();
   private readonly subscribers = new Map<string, number>();
-  private readonly identities = new Map<string, { product: string; userAgent: string }>();
+  private readonly identities = new Map<string, DesktopBrowserHello>();
+  private readonly frames = new Map<string, BrowserViewerFrame>();
+  private readonly frameWaiters = new Map<string, Set<FrameWaiter>>();
+  private readonly watchTickets = new Map<string, Set<WatchTicket>>();
+  private readonly watchLeases = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly watched = new Set<string>();
   private shortcuts: readonly string[] | null = null;
   private surface: BrowserSurfaceState | null = null;
   private chrome: DesktopBrowserChrome | null = null;
@@ -120,8 +154,15 @@ export class DesktopEngine implements CdpClient {
   /** 호스트 셸이 스냅샷을 구독 중인가 — 그래야 뷰를 띄울 창이 있다. */
   get connected(): boolean { return this.host !== null && ((this.subscribers.get(this.host) ?? 0) > 0 || this.graceTimer !== null); }
 
-  /** 지금 뷰를 그리는 셸. `"local"` 은 이 기계의 창, 그 밖은 원격 세션의 공개 이름. */
+  /** 지금 뷰를 그리는 셸. 서버는 관리 Desktop 하나만 `"manager"` 로 넣는다. */
   get currentHost(): string | null { return this.host; }
+
+  /** 호스트가 알려 준 실행 위치. 끊긴 뒤에도 마지막 hello 를 남긴다. */
+  executionHello(): { readonly hostLabel?: string; readonly platform?: DesktopBrowserHello["platform"]; readonly accessPath?: DesktopBrowserHello["accessPath"] } | null {
+    const hello = this.host ? this.identities.get(this.host) : undefined;
+    if (!hello) return null;
+    return { hostLabel: hello.hostLabel, platform: hello.platform, accessPath: hello.accessPath };
+  }
 
   hasSubscriber(owner: string): boolean { return (this.subscribers.get(owner) ?? 0) > 0; }
 
@@ -131,6 +172,8 @@ export class DesktopEngine implements CdpClient {
    */
   setHost(next: string | null): boolean {
     if (next === this.host) return false;
+    // 제어권·원격 세션은 이미 붙은 호스트를 갈아 끼우지 못한다. 뷰는 그 창에 남는다.
+    if (this.host !== null && next !== null) return false;
     const previous = this.host;
     if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
     this.host = next;
@@ -171,6 +214,7 @@ export class DesktopEngine implements CdpClient {
       ...(this.shortcuts !== null ? { shortcuts: this.shortcuts } : {}),
       surface: this.surface,
       chrome: this.surface ? this.chrome : null,
+      watchedViewIds: [...this.watched],
     };
   }
 
@@ -325,6 +369,9 @@ export class DesktopEngine implements CdpClient {
   async close(): Promise<void> {
     if (this.surface) this.closeSurface(this.surface.id);
     if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
+    for (const viewId of [...this.frameWaiters.keys()]) this.failFrameWaiters(viewId, new ViewerFrameDisconnectedError());
+    this.frames.clear();
+    for (const viewId of [...this.watchTickets.keys()]) this.clearWatch(viewId);
     for (const view of [...this.views.keys()]) this.dropView(view);
     for (const entry of this.pending.values()) { clearTimeout(entry.timer); entry.reject(new CdpError("desktop", -32000, "desktop_browser_disconnected")); }
     this.pending.clear();
@@ -336,7 +383,125 @@ export class DesktopEngine implements CdpClient {
     resolve?.();
   }
 
+  // ---------- 보기 전용 프레임 ----------
+
+  /** 이 뷰를 보는 long-poll 하나. 돌려준 함수는 그 폴링이 끝날 때 한 번 부른다. */
+  acquireWatch(viewId: string): (lease: boolean) => void {
+    const ticket: WatchTicket = { live: true };
+    let tickets = this.watchTickets.get(viewId);
+    if (!tickets) { tickets = new Set(); this.watchTickets.set(viewId, tickets); }
+    tickets.add(ticket);
+    this.cancelLease(viewId);
+    this.syncWatched(viewId);
+    return (lease) => {
+      if (!ticket.live) return;
+      ticket.live = false;
+      tickets!.delete(ticket);
+      if ([...tickets!].some((entry) => entry.live)) return;
+      if (lease) this.startLease(viewId);
+      else this.clearWatch(viewId);
+    };
+  }
+
+  /** 그 뷰의 시청을 모두 즉시 끊고 쌓인 프레임을 비운다. */
+  clearWatch(viewId: string): void {
+    const tickets = this.watchTickets.get(viewId);
+    if (tickets) for (const ticket of tickets) ticket.live = false;
+    this.watchTickets.delete(viewId);
+    this.cancelLease(viewId);
+    this.frames.delete(viewId);
+    this.syncWatched(viewId);
+  }
+
+  /** 최신 한 장으로 덮고, 더 새 장을 기다리던 폴링을 깨운다. 없는 뷰면 null. */
+  ingestFrame(viewId: string, bytes: Buffer, width: number, height: number): BrowserViewerFrame | null {
+    if (!this.views.has(viewId)) return null;
+    const frame: BrowserViewerFrame = { seq: (this.frames.get(viewId)?.seq ?? 0) + 1, bytes, width, height, at: Date.now() };
+    this.frames.set(viewId, frame);
+    const waiters = this.frameWaiters.get(viewId);
+    if (waiters) {
+      for (const waiter of [...waiters]) {
+        if (frame.seq <= waiter.afterSeq) continue;
+        waiters.delete(waiter);
+        clearTimeout(waiter.timer);
+        waiter.resolve(frame);
+      }
+      if (waiters.size === 0) this.frameWaiters.delete(viewId);
+    }
+    return frame;
+  }
+
+  frameIfNewer(viewId: string, afterSeq: number): BrowserViewerFrame | null {
+    const frame = this.frames.get(viewId);
+    return frame && frame.seq > afterSeq ? frame : null;
+  }
+
+  waitForFrame(viewId: string, afterSeq: number, waitMs: number, signal?: AbortSignal): Promise<BrowserViewerFrame> {
+    if (!this.connected) return Promise.reject(new ViewerFrameDisconnectedError());
+    if (!this.views.has(viewId)) return Promise.reject(new ViewerFrameClosedError());
+    const ready = this.frameIfNewer(viewId, afterSeq);
+    if (ready) return Promise.resolve(ready);
+    if (signal?.aborted) return Promise.reject(new ViewerFrameTimeoutError());
+    return new Promise((resolve, reject) => {
+      const waiter: FrameWaiter = { afterSeq, resolve, reject, timer: setTimeout(() => {
+        this.forgetWaiter(viewId, waiter);
+        reject(new ViewerFrameTimeoutError());
+      }, Math.max(0, waitMs)) };
+      let waiters = this.frameWaiters.get(viewId);
+      if (!waiters) { waiters = new Set(); this.frameWaiters.set(viewId, waiters); }
+      waiters.add(waiter);
+      const onAbort = () => { this.forgetWaiter(viewId, waiter); reject(new ViewerFrameTimeoutError()); };
+      signal?.addEventListener("abort", onAbort, { once: true });
+    });
+  }
+
   // ---------- 내부 ----------
+
+  private syncWatched(viewId: string): void {
+    const tickets = this.watchTickets.get(viewId);
+    const active = (tickets?.size ?? 0) > 0 || this.watchLeases.has(viewId);
+    const had = this.watched.has(viewId);
+    if (active) this.watched.add(viewId);
+    else {
+      this.watched.delete(viewId);
+      if (!tickets?.size) this.frames.delete(viewId);
+    }
+    if (active !== had) this.publish();
+  }
+
+  private startLease(viewId: string): void {
+    this.cancelLease(viewId);
+    const timer = setTimeout(() => {
+      this.watchLeases.delete(viewId);
+      if ((this.watchTickets.get(viewId)?.size ?? 0) === 0) {
+        this.watchTickets.delete(viewId);
+        this.syncWatched(viewId);
+      }
+    }, VIEWER_WATCH_LEASE_MS);
+    this.watchLeases.set(viewId, timer);
+    this.syncWatched(viewId);
+  }
+
+  private cancelLease(viewId: string): void {
+    const timer = this.watchLeases.get(viewId);
+    if (!timer) return;
+    clearTimeout(timer);
+    this.watchLeases.delete(viewId);
+  }
+
+  private forgetWaiter(viewId: string, waiter: FrameWaiter): void {
+    clearTimeout(waiter.timer);
+    const waiters = this.frameWaiters.get(viewId);
+    waiters?.delete(waiter);
+    if (waiters?.size === 0) this.frameWaiters.delete(viewId);
+  }
+
+  private failFrameWaiters(viewId: string, error: Error): void {
+    const waiters = this.frameWaiters.get(viewId);
+    if (!waiters) return;
+    this.frameWaiters.delete(viewId);
+    for (const waiter of waiters) { clearTimeout(waiter.timer); waiter.reject(error); }
+  }
 
   private async createView(partition: string, url: string): Promise<string> {
     const id = `view-${crypto.randomUUID().slice(0, 8)}`;
@@ -361,6 +526,9 @@ export class DesktopEngine implements CdpClient {
 
   private dropView(id: string): void {
     if (!this.views.delete(id)) return;
+    this.failFrameWaiters(id, new ViewerFrameClosedError());
+    this.frames.delete(id);
+    this.clearWatch(id);
     // 부착을 기다리던 탭 생성도 여기서 끝난다 — 답 없이 남겨 두면 그 HTTP 요청이 영영 매달린다.
     const waiter = this.attachWaiters.get(id);
     if (waiter) { clearTimeout(waiter.timer); this.attachWaiters.delete(id); waiter.reject(new CdpError("Target.createTarget", -32000, "desktop_view_closed")); }

@@ -2,7 +2,7 @@ import { DEFAULT_FONTS, fontFamilyForAxis, type ConsoleFontSettings } from "../.
 import type { DesktopEntryFonts } from "@fleet-console/protocol/desktop";
 import type http from "node:http";
 
-import { DESKTOP_SCREEN_PERMISSION_PATH, DESKTOP_WINDOW_COMMAND_EVENTS_PATH, DESKTOP_WINDOW_COMMAND_PATH, isDesktopScreenPermissionSnapshot, isDesktopWindowCommandSnapshot, type DesktopScreenPermissionReason, type DesktopScreenPermissionSnapshot, type DesktopWindowCommand, type DesktopWindowCommandSnapshot } from "@fleet-console/protocol/desktop";
+import { DESKTOP_SCREEN_PERMISSION_PATH, DESKTOP_WINDOW_COMMAND_EVENTS_PATH, DESKTOP_WINDOW_COMMAND_PATH, isDesktopScreenPermissionSnapshot, isDesktopWindowCommandSnapshot, type BrowserSurfaceModeKind, type DesktopScreenPermissionReason, type DesktopScreenPermissionSnapshot, type DesktopWindowCommand, type DesktopWindowCommandSnapshot } from "@fleet-console/protocol/desktop";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { ConsoleThemeId } from "../../../features/settings/host/settings-domain.js";
 
@@ -152,6 +152,14 @@ export function createDesktopScreenPermissionRouter(deps: DesktopScreenPermissio
   };
 }
 
+/**
+ * 이 요청의 창이 관리 Desktop 의 네이티브 표면인지. 루프백 Desktop 셸이고, 그 셸이 관리 창으로 증명된 뒤에만 `native`.
+ * 원격 세션·웹·모바일·증명 없는 다른 Desktop 창은 `viewer`.
+ */
+export function browserSurfaceMode(input: { readonly loopback: boolean; readonly desktopShell: boolean; readonly managingShellProven: boolean }): BrowserSurfaceModeKind {
+  return input.loopback && input.desktopShell && input.managingShellProven ? "native" : "viewer";
+}
+
 export const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /**
  * 게시가 도착할 때마다 그 창의 Objective 스트림에 실리는 이벤트. 화면은 뜨자마자 한 번 묻지만,
@@ -211,6 +219,8 @@ interface DesktopShellRouteDeps {
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly setShell: (req: http.IncomingMessage, snapshot: DesktopShellSnapshot) => void;
+  /** 루프백 게시가 받아들여진 뒤. 관리 창 증명을 기록하는 쪽은 서버다. */
+  readonly onPublished?: (req: http.IncomingMessage) => void;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly writeNoContent: (res: http.ServerResponse) => void;
 }
@@ -255,6 +265,7 @@ export function createDesktopShellRouter(deps: DesktopShellRouteDeps): (context:
       return true;
     }
     deps.setShell(req, body);
+    deps.onPublished?.(req);
     deps.writeNoContent(res);
     return true;
   };

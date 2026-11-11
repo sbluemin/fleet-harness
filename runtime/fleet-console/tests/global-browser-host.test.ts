@@ -36,6 +36,7 @@ describe("session browser host contract", () => {
         write: (settings) => { stored = sanitizeConsoleSettingsData({ ...stored, browser: { ...stored.browser, suggestionsEnabled: settings.enabled, suggestionsPrompted: settings.prompted } }); },
       },
       logSuggestion: (event) => logs.push(event),
+      desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok",
       isWriteAdmitted: () => true, isExactConsoleOrigin: () => exactOrigin,
       readJsonBody: async <T>() => body as T,
       writeJson: (_res, code, data) => { status = code; result = data; },
@@ -99,6 +100,7 @@ describe("session browser host contract", () => {
     const router = createBrowserRouter({
       browserService: service, browserMcp: { pasteIntoTerminal: () => false }, objectiveRecords: { get: () => null },
       publishAttach: (attach) => { if (receiver) delivered.push(attach); return receiver; },
+      desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok",
       isWriteAdmitted: () => true, isExactConsoleOrigin: () => exactOrigin,
       readJsonBody: async <T>() => body as T,
       writeJson: (_res, code) => { status = code; },
@@ -164,6 +166,7 @@ describe("session browser host contract", () => {
       browserMcp: { pasteIntoTerminal: () => false, isSessionOwner: (id) => id === "commodore:c" || id === "plugin-browser:s" },
       objectiveRecords: { get: (id: string) => objectiveRecords.get(id) ?? null },
       browserOwnerOf: (id) => id === "child" ? "root" : id,
+      desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok",
       isWriteAdmitted: () => writeAdmitted,
       isExactConsoleOrigin: () => exactOrigin,
       writeJson: (res: ServerResponse, status: number, body: unknown) => {
@@ -192,7 +195,7 @@ describe("session browser host contract", () => {
       const state = {} as ServerResponse & { status: number; body: Record<string, unknown> };
       await router({ req: { method: "GET" } as IncomingMessage, res: state, pathname: `/api/v1/browser/objectives/${encodeURIComponent(id)}/state` });
       expect(state.status).toBe(200);
-      expect(state.body).toEqual(service.state(BROWSER_GLOBAL_ID));
+      expect(state.body).toEqual({ ...service.state(BROWSER_GLOBAL_ID), surfaceMode: "native" });
       expect(state.body.spaces).toMatchObject([{ id: DESKTOP_BROWSER_DEFAULT_SPACE_ID, kind: "default" }]);
     }
     writeAdmitted = false;
@@ -478,7 +481,7 @@ describe("session browser host contract", () => {
         browserTurn = async () => {
           const denied = await client!.callTool({ name: "tabs_create", arguments: {} });
           expect(denied.isError).toBe(true);
-          expect(JSON.stringify(denied.content)).toContain("shared");
+          expect(JSON.stringify(denied.content)).toContain("not managed by Fleet Desktop");
         };
         await session.send("browser paused");
         shared = false;
@@ -513,6 +516,7 @@ describe("session browser host contract", () => {
 
       const router = createBrowserRouter({
         browserService: service, browserMcp: browser, objectiveRecords: { get: () => null },
+        desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok",
         isWriteAdmitted: () => true, isExactConsoleOrigin: () => true,
         writeJson: (res, status, body) => { Object.assign(res, { status, body }); },
         readJsonBody: async <T>() => ({} as T),

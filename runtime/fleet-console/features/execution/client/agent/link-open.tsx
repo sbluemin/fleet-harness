@@ -3,7 +3,6 @@ import * as React from "react";
 
 import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
 import { openBrowserLink } from "../../../browser/client/browser-surface.js";
-import { notifySharedFallback } from "../../../browser/client/browser-shared-fallback.js";
 import {
   LinkOpenCard,
   type LinkOpenAt,
@@ -47,14 +46,15 @@ export function useLinkOpenChoice(target: LinkOpenChoiceTarget): LinkOpenChoice 
   // 다른 화면이 붙어 멈춘 동안은 링크가 예전처럼 곧장 열린다 — 답이 하나인 물음은 묻지 않는다.
   const engine = useBrowserEngine();
   // 아직 물어보지 못한 동안(null)은 닫힌 것으로 보지 않는다 — 캡션의 지구본과 같은 판정이다.
+  const viewer = engine?.surfaceMode === "viewer";
   const canOfferRef = React.useRef(true);
-  canOfferRef.current = engine === null || engine.available;
+  canOfferRef.current = viewer || engine === null || engine.available;
   const choose = React.useCallback((url: string, at: LinkOpenAt) => {
-    // 셸 문서가 아니면(웹 탭) 묻지 않는다 — 엔진 null을 가용으로 오독하지 않게 문서로 먼저 가른다.
-    if (!isDesktopShell() || !canOfferRef.current) return false;
+    // 보기 전용 화면은 카드를 세워 세션 브라우저를 막고 기본 브라우저만 남긴다.
+    if (!viewer && (!isDesktopShell() || !canOfferRef.current)) return false;
     setPending({ url, at });
     return true;
-  }, []);
+  }, [viewer]);
   const close = React.useCallback(() => setPending(null), []);
   const card = pending === null ? null : (
     <LinkOpenCard
@@ -63,8 +63,8 @@ export function useLinkOpenChoice(target: LinkOpenChoiceTarget): LinkOpenChoice 
       at={pending.at}
       onClose={close}
       companion={{
-        // 표면(칸·독립 창)은 Desktop 이 그린다 — 열고 주소를 보낸다.
-        open: () => { void openBrowserLink(pending.url); },
+        // 보기 전용 화면은 카드가 이 행을 막는다. 네이티브 관리 창만 탭을 연다.
+        open: () => { if (!viewer) void openBrowserLink(pending.url); },
       }}
     />
   );
@@ -84,12 +84,12 @@ export function useShellLinkChoice(_language: ObjectiveRenderContext["language"]
   return { choose, card: null };
 }
 
-/** 브라우저 가용성 스냅샷 — 카드를 건너뛰는 손짓이 직접 열 수 있는지, shared 폴백인지를 가른다. */
+/** 브라우저 가용성 스냅샷 — 카드를 건너뛰는 손짓이 세션 브라우저를 열 수 있는지를 가른다. */
 export interface LinkAvailability {
   /** Session 브라우저를 열 수 있는가. */
   readonly canOffer: boolean;
-  /** Desktop shared인가 — 이때는 내 브라우저로 열고 처음 한 번 안내한다. */
-  readonly isShared: boolean;
+  /** 보기 전용 화면인가. 세션 브라우저로 탭을 열지 않고 기본 브라우저만 남긴다. */
+  readonly viewOnly: boolean;
 }
 
 /**
@@ -102,13 +102,13 @@ export function openObjectiveLink(
   target: { readonly objectiveId: string; readonly openCompanion: () => void },
   availability: LinkAvailability,
 ): boolean {
-  if (!isDesktopShell()) return false;
-  if (!availability.canOffer) {
-    if (!availability.isShared) return false;
-    notifySharedFallback();
+  if (availability.viewOnly) {
+    if (gesture === "click") return false;
     openInDefaultOsBrowser(url);
     return true;
   }
+  if (!isDesktopShell()) return false;
+  if (!availability.canOffer) return false;
   if (gesture === "click") return false;
   if (gesture === "background" || gesture === "companion") {
     void openBrowserLink(url);
@@ -123,13 +123,13 @@ export function openObjectiveLink(
 
 /** Shell 의 직접 열기 — Session 이 없으므로 수정키도 내 브라우저로 연다. click 은 choose 가 맡는다. */
 export function openShellLink(url: string, gesture: OpenLinkGesture, availability: LinkAvailability): boolean {
-  if (!isDesktopShell()) return false;
-  if (!availability.canOffer) {
-    if (!availability.isShared) return false;
-    notifySharedFallback();
+  if (availability.viewOnly) {
+    if (gesture === "click") return false;
     openInDefaultOsBrowser(url);
     return true;
   }
+  if (!isDesktopShell()) return false;
+  if (!availability.canOffer) return false;
   if (gesture === "click") return false;
   openInDefaultOsBrowser(url);
   return true;
