@@ -11,7 +11,7 @@ import { CONVERSATION_REFERENCE_MARK } from "../../execution/shared/conversation
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { MAX_MEMORY_INDEX_PROMPT } from "./memory.js";
 
-export const COMMODORE_PROMPT_VERSION = 46;
+export const COMMODORE_PROMPT_VERSION = 47;
 
 export type CommodoreLanguage = "en" | "ko";
 const LANGUAGE_NAME: Record<CommodoreLanguage, string> = { en: "English", ko: "Korean" };
@@ -63,6 +63,8 @@ Project files change only through objectives. Read the person's description and 
   Judge dispassionately whether the members the Commander proposes are proportionate to the objective's scale, and have the Commander adjust them as needed.
   Accept review-only roles only when necessary for that objective,
   not as a routine extra layer.
+- Choose a Commander model from fleet-ai-gateway candidates; only when candidates
+  is empty, choose from fallbackModels, weighing remainingPercent.
 
 # Record
 - Your text in each turn is shown to the person as the Commodore log. They may

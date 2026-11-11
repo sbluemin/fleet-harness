@@ -181,6 +181,7 @@ export {
   buildGatewayCandidates,
   canonicalGatewayCandidateId,
   type GatewayCandidate,
+  type GatewayFallbackModel,
   type GatewayCandidatesResponse,
 } from "./fleet/model-loadout.js";
 export {

@@ -20,8 +20,16 @@ export interface GatewayCandidateEntry {
   readonly pressure: "ok" | "elevated" | "unknown";
 }
 
+/** `fallbackModels` 행 — `critical`과 남은 쿼터를 지우지 않는다. 구성원 배정은 이 목록을 보지 않는다. */
+export interface GatewayFallbackEntry extends Omit<GatewayCandidateEntry, "pressure"> {
+  readonly pressure: GatewayCandidateEntry["pressure"] | "critical";
+  readonly remainingPercent?: number;
+}
+
 export interface GatewayCandidates {
   readonly candidates: readonly GatewayCandidateEntry[];
+  /** `candidates`가 비었을 때만 응답에 있다. 없으면 지휘관 확인도 `candidates`만 본다. */
+  readonly fallbackModels?: readonly GatewayFallbackEntry[];
 }
 
 export interface CatalogModel {
@@ -47,6 +55,13 @@ function parseCandidateEntry(entry: unknown): GatewayCandidateEntry[] {
   const summary = typeof entry.summary === "string" ? entry.summary : "";
   const pressure = entry.pressure === "ok" || entry.pressure === "elevated" ? entry.pressure : "unknown";
   return [{ model, efforts, summary, pressure }];
+}
+
+function parseFallbackEntry(entry: unknown): GatewayFallbackEntry[] {
+  const [row] = parseCandidateEntry(entry);
+  if (!row || !isRecord(entry)) return [];
+  const remaining = typeof entry.remainingPercent === "number" && Number.isFinite(entry.remainingPercent) ? entry.remainingPercent : undefined;
+  return [{ ...row, pressure: entry.pressure === "critical" ? "critical" : row.pressure, ...(remaining === undefined ? {} : { remainingPercent: remaining }) }];
 }
 
 export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
@@ -96,16 +111,24 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
   async function candidates(signal: AbortSignal | undefined): Promise<GatewayCandidates | null> {
     const body = await loopback(CANDIDATES_PATH, CATALOG_TIMEOUT_MS, signal);
     if (!isRecord(body) || !Array.isArray(body.candidates) || JSON.stringify(body).length > CANDIDATES_MAX_BYTES) return null;
-    return { candidates: body.candidates.flatMap(parseCandidateEntry) };
+    // 없는 필드를 후보 목록으로 채우지 않는다 — 있을 때만 지휘관 확인이 읽는다.
+    const fallback = Array.isArray(body.fallbackModels) ? body.fallbackModels.flatMap(parseFallbackEntry) : [];
+    return { candidates: body.candidates.flatMap(parseCandidateEntry), ...(fallback.length > 0 ? { fallbackModels: fallback } : {}) };
   }
 
   /** 사령관·지휘관의 모델 선택을 candidates로 확인한다 — 후보의 모델과 허용 강도만 받고, 조회 실패는 추측으로 통과시키지 않는다. */
-  async function checkProposal(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined, loaded?: GatewayCandidates | null): Promise<{ readonly model: string; readonly effort?: string }> {
+  async function checkProposal(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined, loaded?: GatewayCandidates | null, forCommander = false): Promise<{ readonly model: string; readonly effort?: string }> {
     const loadout = loaded === undefined ? await candidates(signal) : loaded;
     if (!loadout) throw new ObjectiveStoreError("gateway_models_unavailable", undefined, { hint: "fleet-ai-gateway candidates could not be read; retry." });
     const wanted = canonicalModelId(choice.model);
-    const row = loadout.candidates.find((entry) => canonicalModelId(entry.model) === wanted);
-    if (!row) throw new ObjectiveStoreError("model_not_in_gateway_models", undefined, { model: choice.model, candidates: loadout.candidates, hint: "Choose a model from fleet-ai-gateway candidates." });
+    // 지휘관 시작은 `fallbackModels`가 있을 때만(= candidates가 빌 때) 그 목록의 `critical` 모델도 받는다. 구성원 배정은 candidates만 본다.
+    const fallback = forCommander ? loadout.fallbackModels : undefined;
+    const row = [...loadout.candidates, ...(fallback ?? [])].find((entry) => canonicalModelId(entry.model) === wanted);
+    if (!row) {
+      throw new ObjectiveStoreError("model_not_in_gateway_models", undefined, fallback
+        ? { model: choice.model, candidates: loadout.candidates, fallbackModels: fallback, hint: "candidates is empty; choose a model from fleet-ai-gateway fallbackModels, weighing remainingPercent." }
+        : { model: choice.model, candidates: loadout.candidates, hint: "Choose a model from fleet-ai-gateway candidates." });
+    }
     if (choice.effort !== undefined && !row.efforts.includes(choice.effort)) throw new ObjectiveStoreError("invalid_effort", undefined, { model: row.model, efforts: row.efforts });
     return { model: row.model, ...(choice.effort !== undefined ? { effort: choice.effort } : {}) };
   }
@@ -117,7 +140,7 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
   async function checkCommander(choice: { readonly model: string; readonly effort?: string | undefined }, signal: AbortSignal | undefined): Promise<{ readonly model: string; readonly effort?: string }> {
     const [catalog, loaded] = await Promise.all([loadCatalog(signal), candidates(signal)]);
     availableIn(catalog, choice.model);
-    return checkProposal(choice, signal, loaded);
+    return checkProposal(choice, signal, loaded, true);
   }
 
   /** 사람이 명시한 모델(사령관의 지휘관 설정)은 candidates 로 막지 않고 실행 카탈로그 가용성만 본다. */

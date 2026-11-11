@@ -47,7 +47,16 @@ const reason = z.string().trim().min(1).max(MAX_REMOVAL_REASON).optional();
 export const MAX_REMARK = 600;
 const remark = z.string().trim().min(1).max(MAX_REMARK).describe("What you judged and why.");
 const context = z.string().max(MAX_REMARK).optional().describe("What you judged and why.");
-const commanderModelInput = z.string().trim().min(1).max(128).optional().describe("From candidates. Ignored if a Commander session or person-set model exists; otherwise required for a Commodore caller.");
+const commanderModelInput = z.string().trim().min(1).max(128).optional().describe("From candidates (fallbackModels if empty). Ignored if a Commander session or person-set model exists; else required.");
+/** 사람 설정이 있으면 plan·commence 의 commanderModel 설명은 이 문장이다. 저장된 id를 적어 빈 candidates만 보고 호출 전에 포기하지 않게 한다. */
+const personCommanderModelDescription = (model: string) => `Person-set ${model}. Omit commanderModel; a supplied one is ignored. Do not read candidates.`;
+function withPersonCommanderModel(schema: Readonly<Record<string, unknown>>, model: string): Readonly<Record<string, unknown>> {
+  const properties = schema.properties;
+  if (!properties || typeof properties !== "object" || Array.isArray(properties)) return schema;
+  const field = (properties as Record<string, unknown>).commanderModel;
+  if (!field || typeof field !== "object" || Array.isArray(field)) return schema;
+  return { ...schema, properties: { ...(properties as Record<string, unknown>), commanderModel: { ...(field as Record<string, unknown>), description: personCommanderModelDescription(model) } } };
+}
 const commanderEffortInput = z.string().trim().min(1).max(32).optional().describe("From commanderModel's efforts; omitted uses its default.");
 /** edit 가 세션 없는 목표의 모델·강도를 거절할 때만 붙인다. 전사 읽기의 not_started 와 공유하지 않는다. */
 const NO_COMMANDER_SESSION_HINT = "No Commander session yet; use plan or commence for initial model selection.";
@@ -171,7 +180,7 @@ const detailTool = defineConsoleTool({
  * 사령관 세션의 목록·편집 — 화면 둘을 나누지 않고 view·edit 입력으로 받는다. `console_` 정의는 위의 둘을 그대로 둔다.
  * list의 view를 생략하면 기본 목록이고, archivedBefore는 archived 보드에서만 받는다. edit은 title·brief·dueDate·
  * commanderModel·commanderEffort 중 적어도 하나가 있어야 하고, attachmentIds는 brief와 함께만 받는다. dueDate null은 기한을 지운다.
- * 지휘관 모델은 세션이 있는 휴면·유휴일 때만 후보로 확인한 뒤 고친다. 세션이 없으면 plan·commence 가 고른다.
+ * 지휘관 모델은 세션이 있는 휴면·유휴일 때만 후보로 확인한 뒤 고친다. 사령관이 사람 설정이 있는 동안 넘긴 모델·강도는 무시하고 알린다. 세션이 없으면 plan·commence 가 고른다.
  */
 const sessionListInput = z.object({
   groupId: ids.optional(),
@@ -186,7 +195,7 @@ const sessionEditInput = z.object({
   brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
   dueDate: dueDate.optional(),
   attachmentIds: attachmentIds.optional().describe("This turn's image IDs only; requires brief. Preserve request images before plan/steer."),
-  commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates. Dormant or idle Commander session only."),
+  commanderModel: z.string().trim().min(1).max(128).optional().describe("From candidates (fallbackModels if empty). Dormant or idle Commander session only."),
   commanderEffort: z.string().trim().min(1).max(32).optional().describe("From the new or current model's efforts. Omitted keeps current; unsupported effort is refused."),
 }).strict();
 const { list: _retiredList, inbox: _retiredInbox, fleet: _retiredFleet, history: _retiredHistory, archived: _retiredArchived, ...sessionListBase } = listActions;
@@ -232,10 +241,12 @@ export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: Obj
       throw error;
     }
   } : undefined;
+  const personModel = ctx.commodoreCommander?.(commodoreId)?.model;
   return createBoardTools(ctx, store, launch, { kind: "commodore", commodoreId }, read).map((tool) => {
     const name = commodoreSessionToolName(tool.name);
     const description = tool.name === "console_objective" ? `${tool.description}\nconsult_answer: ${CONSULT_ANSWER_DESCRIPTION}` : tool.description;
-    return { ...tool, name, description };
+    const inputSchema = tool.name === "console_objective" && personModel ? withPersonCommanderModel(tool.inputSchema, personModel) : tool.inputSchema;
+    return { ...tool, name, description, inputSchema };
   });
 }
 type CommodoreCaller = { readonly kind: "commodore"; readonly commodoreId: string };
@@ -675,11 +686,10 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
       // 기한은 바쁠 때 patch가 거절한다 — 브리핑을 먼저 쓰고 뒤집지 않게 여기서 같은 거절로 막는다.
       if (dueDate !== undefined && launch.busy(current.id)) return refuse("objective_busy");
       const commodoreId = bound?.commodoreId ?? ownerOfCaller(caller);
-      // 사람이 사령관 설정에 지휘관 모델을 정했으면 세션이 있는 목표의 모델·effort도 무시하고 알린다.
+      // 사령관이 부른 edit만 사람 설정을 이유로 무시한다. 그 밖은 후보로 확인한다.
       const personChose = caller?.kind === "commodore" && !!(commodoreId && ctx.commodoreCommander?.(commodoreId));
       const overridden = personChose && (commanderModel !== undefined || commanderEffort !== undefined);
-      // 쓰기 전에 후보로 확인한다. 사람이 설정에 명시한 모델이 아니라, 이 목표에 새로 고른 모델이다.
-      const commanderPreset = !personChose && (commanderModel !== undefined || commanderEffort !== undefined)
+      const commanderPreset = !overridden && (commanderModel !== undefined || commanderEffort !== undefined)
         ? await checkedCommanderEdit(current.id, commanderModel, commanderEffort, context.signal)
         : undefined;
       const actions = createObjectiveActions(ctx, store, launch, actor);
@@ -716,7 +726,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
     }
   }
 
-  /** 편집이 고른 지휘관 — 지금 모델에 강도를 얹을 수 있고, 후보와 실행 카탈로그로 확인한다. */
+  /** 편집이 고른 지휘관 — 사람 설정이 없을 때만. 후보와 실행 카탈로그로 확인한다. */
   async function checkedCommanderEdit(objectiveId: string, model: string | undefined, effort: string | undefined, signal: AbortSignal | undefined) {
     const pendingCommander = store.pending(objectiveId);
     const commander = store.find(objectiveId)?.commander;

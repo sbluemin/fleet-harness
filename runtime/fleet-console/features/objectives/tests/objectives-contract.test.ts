@@ -2125,7 +2125,7 @@ describe("Objectives contract", () => {
     expect(reloaded.pending(id)).not.toHaveProperty("model");
     expect(reloaded.find(id)!.commander).not.toHaveProperty("model");
     const refused = await again({ action: "plan", objectiveId: id });
-    expect(refused.structuredContent).toMatchObject({ error: "commander_model_required", hint: "Pass commanderModel from fleet-ai-gateway candidates to this call." });
+    expect(refused.structuredContent).toMatchObject({ error: "commander_model_required", hint: "Pass commanderModel from fleet-ai-gateway candidates to this call; when candidates is empty, from fallbackModels." });
     expect(launches).toHaveLength(0);
     expect((await again({ action: "commence", objectiveId: id })).structuredContent.error).toBe("commander_model_required");
     expect((await again({ action: "plan", objectiveId: id, commanderModel: "sonnet[1m]", commanderEffort: "low" })).structuredContent).toMatchObject({
@@ -2174,9 +2174,19 @@ describe("Objectives contract", () => {
     expect(reloaded.find(personId)!.commander).not.toHaveProperty("model");
     expect((await again({ action: "plan", objectiveId: personId, commanderModel: "not-a-model", commanderEffort: "low" })).structuredContent).toMatchObject({ ok: true, notice: "Supplied model/effort ignored; using person's Commander setting." });
     expect(objectiveRecords.get(personId)!.session).toMatchObject({ model: "opus[1m]", effort: "high", modelSpeed: { model: "opus[1m]", fast: true } });
-    const editPerson = await again({ action: "edit", objectiveId: personId, commanderModel: "sonnet[1m]" });
-    expect(editPerson.structuredContent).toMatchObject({ ok: true, notice: expect.stringContaining("person's Commander setting") });
+    // 사람 설정이 있으면 edit의 모델은 적용하지 않고 알린다. candidates로 거절하지 않는다.
+    activity.set(personId, "idle");
+    const editPerson = await again({ action: "edit", objectiveId: personId, commanderModel: "xai--grok-4.7" });
+    expect(editPerson.structuredContent).toMatchObject({ ok: true, notice: "Supplied model/effort ignored; using person's Commander setting." });
     expect(objectiveRecords.get(personId)!.session).toMatchObject({ model: "opus[1m]" });
+    // 세션 모델(opus)이 설정(sonnet)과 달라도 구상은 candidates가 아니라 실행 카탈로그만 본다. opus는 위에서 후보에서 빠졌다.
+    configured = { model: "sonnet[1m]", effort: "low" };
+    activity.set(id, "idle");
+    expect((await again({ action: "plan", objectiveId: id })).structuredContent).toMatchObject({ ok: true });
+    expect(objectiveRecords.get(id)!.session).toMatchObject({ model: "opus[1m]" });
+    const noted = createCommodoreBoardTools(ctx, reloaded, relaunch, "c1")[0]!;
+    const commanderField = (noted.inputSchema as { properties?: { commanderModel?: { description?: string } } }).properties?.commanderModel?.description ?? "";
+    expect(commanderField).toBe("Person-set sonnet[1m]. Omit commanderModel; a supplied one is ignored. Do not read candidates.");
   });
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
@@ -2195,7 +2205,18 @@ describe("Objectives contract", () => {
       { id: "weekly", usedPercent: 20 },
     ] } } };
     // candidates — 지휘관이 고른 구성원 모델과 사령관 쪽 지휘관 모델은 이 목록으로 확인된 뒤 그대로 launch 설정값이 된다.
-    const candidates = { candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }] };
+    // fallbackModels — 후보가 있으면 응답에 없다. 속도만 critical인 opus[1m]는 후보가 빌 때의 이 목록에만 있다.
+    type Row = { model: string; efforts: string[]; summary: string; pressure: string };
+    const candidates: { candidates: Row[]; fallbackModels?: (Row & { remainingPercent: number })[] } = {
+      candidates: [{ model: "sonnet[1m]", efforts: ["low"], summary: "Sonnet", pressure: "ok" }],
+    };
+    const fallbackOpus = { model: "opus[1m]", efforts: ["high"], summary: "Opus", pressure: "critical", remainingPercent: 30 };
+    const withEmptyCandidates = async <T>(run: () => Promise<T>): Promise<T> => {
+      const kept = candidates.candidates;
+      candidates.candidates = [];
+      candidates.fallbackModels = [fallbackOpus];
+      try { return await run(); } finally { candidates.candidates = kept; delete candidates.fallbackModels; }
+    };
     const judged: string[] = [];
     vi.stubGlobal("fetch", async (url: string, init?: { body?: string }) => {
       if (url.endsWith("/api/v1/objectives/records/catalog")) return Response.json(catalog);
@@ -2232,8 +2253,15 @@ describe("Objectives contract", () => {
     const unmodeledId = unmodeled.objectiveId as string;
     expect(store.find(unmodeledId)!.commander).not.toHaveProperty("model");
     const offPlan = async (args: Record<string, unknown>) => ((await commodore.execute({ action: "plan", objectiveId: unmodeledId, ...args }, { cwd: workspace })) as { structuredContent: Record<string, unknown> }).structuredContent;
-    expect(await offPlan({})).toMatchObject({ error: "commander_model_required", hint: "Pass commanderModel from fleet-ai-gateway candidates to this call." });
+    expect(await offPlan({})).toMatchObject({ error: "commander_model_required", hint: "Pass commanderModel from fleet-ai-gateway candidates to this call; when candidates is empty, from fallbackModels." });
     expect(await offPlan({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_in_gateway_models", model: "xai--grok-4.7" });
+    // 후보가 있으면 fallbackModels가 없고, 후보 밖 모델(critical 포함)은 지휘관 시작도 거절된다.
+    expect(await offPlan({ commanderModel: "opus[1m]", commanderEffort: "high" })).toMatchObject({ error: "model_not_in_gateway_models", model: "opus[1m]", hint: "Choose a model from fleet-ai-gateway candidates." });
+    // 후보가 비면 fallbackModels의 critical 모델을 받는다 — 모델 확인을 넘고 강도 확인에서 멈춘다. 두 목록 밖 모델은 fallbackModels를 이름으로 안내하며 거절된다.
+    await withEmptyCandidates(async () => {
+      expect(await offPlan({ commanderModel: "opus[1m]", commanderEffort: "low" })).toMatchObject({ error: "invalid_effort", model: "opus[1m]", efforts: ["high"] });
+      expect(await offPlan({ commanderModel: "xai--grok-4.7" })).toMatchObject({ error: "model_not_in_gateway_models", model: "xai--grok-4.7", fallbackModels: [expect.objectContaining({ model: "opus[1m]", remainingPercent: 30 })], hint: expect.stringContaining("fallbackModels") });
+    });
     expect(objectiveRecords.has(unmodeledId)).toBe(false);
     expect(judged).toEqual([]);
     // 사람이 정한 사령관 설정은 사람의 명시 선택이다 — candidates 에 없어도 실행 카탈로그에서 고를 수 있으면 구상·개시가 그 모델을 쓴다.
@@ -2333,6 +2361,10 @@ describe("Objectives contract", () => {
     // 개시 전에도 기존 구성원은 도구로 바뀐다 — 사람의 편집 흔적을 만들거나 지우지 않는다.
     const beforeLaunchEdit = { edited: store.find(id)!.edited, actions: store.find(id)!.actions };
     expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "model", model: "unlisted" }, id)).structuredContent.error).toBe("model_not_in_gateway_models");
+    // 구성원 배정은 fallbackModels에만 있는 critical 모델을 받지 않는다 — 후보가 비어도 candidates만 본다(앞서 candidates에 더한 opus[1m]도 비운다).
+    await withEmptyCandidates(async () => {
+      expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "model", model: "opus[1m]" }, id)).structuredContent).toMatchObject({ error: "model_not_in_gateway_models", hint: "Choose a model from fleet-ai-gateway candidates." });
+    });
     expect((await call("set_member_launch", { objectiveId: id, member: "worker", mode: "model", model: "sonnet" }, "outsider")).structuredContent.error).toBe("not_participant");
     await command("set_member_launch", { member: store.find(id)!.members[0]!.id, mode: "model", model: "sonnet", effort: "low" }, id);
     expect(store.find(id)!.members[0]!.launch).toEqual({ mode: "model", model: "sonnet[1m]", effort: "low" });

@@ -171,6 +171,25 @@ export function compareModelAllowance(
   return 0;
 }
 
+/** 숨긴 공급자를 뺀 노출 모델의 허용량 평가. `critical`도 남기고 여유 순(`critical`은 맨 뒤)으로 정렬한다. */
+export function evaluateVisibleDelegationModels(
+  exposure: {
+    readonly delegationModels: readonly GatewayModel[];
+    readonly quota?: GatewayQuotaSnapshot;
+  },
+  now = Date.now(),
+): readonly { readonly model: GatewayModel; readonly constraints: GatewayModelConstraints; readonly allowance: GatewayModelAllowance }[] {
+  return exposure.delegationModels
+    .filter((model) => isProviderCatalogVisible(exposure.quota?.[model.provider]?.status, model.provider))
+    .map((model, index) => {
+      const constraints = buildGatewayModelConstraints(model);
+      const allowance = evaluateModelAllowance(exposure.quota?.[model.provider], constraints, now);
+      return { model, constraints, allowance, index };
+    })
+    .sort((left, right) => compareModelAllowance(left.allowance, right.allowance) || (left.index - right.index))
+    .map(({ model, constraints, allowance }) => ({ model, constraints, allowance }));
+}
+
 /**
  * 노출된 모델에서 숨긴 공급자와 `critical` 모델을 제외하고,
  * `ok`·`elevated`는 여유 순, `unknown`은 그 뒤 원래 순서(무순위)로 돌려준다.
@@ -183,19 +202,9 @@ export function evaluateGatewayCandidateModels(
   },
   now = Date.now(),
 ): readonly EvaluatedGatewayCandidateModel[] {
-  return exposure.delegationModels
-    .filter((model) => isProviderCatalogVisible(exposure.quota?.[model.provider]?.status, model.provider))
-    .map((model, index) => {
-      const constraints = buildGatewayModelConstraints(model);
-      const allowance = evaluateModelAllowance(exposure.quota?.[model.provider], constraints, now);
-      return { model, constraints, allowance, index };
-    })
-    .filter(
-      (entry): entry is typeof entry & { readonly allowance: GatewayModelAllowance & { readonly pressure: GatewayCandidatePressure } } =>
-        entry.allowance.pressure !== "critical",
-    )
-    .sort((left, right) => compareModelAllowance(left.allowance, right.allowance) || (left.index - right.index))
-    .map(({ model, constraints, allowance }) => ({ model, constraints, allowance }));
+  return evaluateVisibleDelegationModels(exposure, now).filter(
+    (entry): entry is EvaluatedGatewayCandidateModel => entry.allowance.pressure !== "critical",
+  );
 }
 
 export function modelPressure(

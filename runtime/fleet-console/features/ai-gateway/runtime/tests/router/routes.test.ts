@@ -737,7 +737,29 @@ describe("delegation assignment", () => {
       claude: { status: "ok", fetchedAt: now, windows: [window("session", 96, 5, 1)] },
     });
 
+    // 후보가 있으면 fallbackModels 키가 없다 — critical인 claude는 어느 목록에도 새지 않는다.
     expect(Object.keys(data)).toEqual(["candidates"]);
+    // 전부 critical이면 candidates는 비고(폴백 없음) fallbackModels가 나타난다 — 속도만 critical인 모델과 소진된 모델은 남은 쿼터로 구분된다.
+    const allCritical = buildGatewayCandidates({
+      delegationModels: [requireGatewayModel("claude--opus-1m"), requireGatewayModel("claude--sonnet-1m"), requireGatewayModel("codex--gpt-6.1-terra"), requireGatewayModel("xai--grok-composer-2.5-fast")],
+      quota: {
+        // 사용률 100% — 소진
+        claude: { status: "ok", fetchedAt: now, windows: [window("session", 100, 5, 1)] },
+        // 속도만 critical: 40% 사용, 시간은 10%만 지남 → pace 4.0, 남은 쿼터 60%
+        codex: { status: "ok", fetchedAt: now, windows: [window("session", 40, 5, 4.5)] },
+        // 숨긴 공급자
+        xai: { status: "signed_out" },
+      },
+    }, now);
+    expect(allCritical.candidates).toEqual([]);
+    expect(Object.keys(allCritical)).toEqual(["candidates", "fallbackModels"]);
+    expect(allCritical.fallbackModels!.map((row) => [row.model, row.pressure, row.remainingPercent])).toEqual([
+      ["codex--gpt-6.1-terra", "critical", 60],
+      ["opus[1m]", "critical", 0],
+      ["sonnet[1m]", "critical", 0],
+    ]);
+    // 보이는 공급자가 없으면 두 목록 모두 비고 빈 fallbackModels도 보내지 않는다.
+    expect(buildGatewayCandidates({ delegationModels: [requireGatewayModel("xai--grok-composer-2.5-fast")], quota: { xai: { status: "signed_out" } } }, now)).toEqual({ candidates: [] });
     expect(data.candidates.map((candidate) => candidate.model)).toEqual([
       "codex--gpt-6.1-terra",
       "xai--grok-composer-2.5-fast",

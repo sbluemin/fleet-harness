@@ -200,7 +200,7 @@ export interface LaunchOptions {
 const languageOf = (options?: LaunchOptions): PromptLanguage => (options?.language === "ko" ? "ko" : "en");
 /** 모델을 고르지 않은 구성원 — 판단기로 대신 고르지 않는다. */
 /** 첫 구상·개시에서 지휘관 모델이 없고, 호출자가 사령관이며, 사람이 정한 설정도 없다. 이 힌트는 그 거절에만 쓴다. */
-export const COMMANDER_MODEL_REQUIRED_HINT = "Pass commanderModel from fleet-ai-gateway candidates to this call.";
+export const COMMANDER_MODEL_REQUIRED_HINT = "Pass commanderModel from fleet-ai-gateway candidates to this call; when candidates is empty, from fallbackModels.";
 /** 사람 설정이 호출이 넘긴 모델보다 앞선다. plan·commence 가 이 문장을 그대로 돌려준다. */
 export const PERSON_COMMANDER_NOTICE = "Supplied model/effort ignored; using person's Commander setting.";
 /** 세션이 있는 목표에 plan·commence 가 모델이나 강도를 넘겼다. */
@@ -467,24 +467,25 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     return { model: source.model, ...(source.effort ? { effort: source.effort } : {}) };
   };
   /**
-   * 구상·개시 직전에 지휘관 모델이 아직 후보인지 확인한다. 사람이 사령관 설정에 명시한 모델은 생성 때와 같이
-   * 실행 카탈로그 가용성만 본다. 그 밖의 모델은 candidates 에 없으면 거절하고, 최신 목록을 실어 고르게 한다.
-   * 목록을 읽지 못하면 추측으로 통과시키지 않는다.
+   * 구상·개시 직전에 지휘관 모델이 아직 후보인지 확인한다. 사람이 사령관 설정에 모델을 정했으면 세션 모델이
+   * 그 설정과 달라도 candidates 로 막지 않고 실행 카탈로그 가용성만 본다. 설정이 없으면 candidates 에 없으면
+   * 거절하고, 최신 목록을 실어 고르게 한다. 목록을 읽지 못하면 추측으로 통과시키지 않는다.
    */
   const assertCommanderCandidate = async (objectiveId: string): Promise<void> => {
     const choice = commanderPresetOf(objectiveId);
     if (!choice.model) return;
     const current = store.find(objectiveId);
     const configured = current ? serviceOptions.commodoreCommander?.(current.commodoreId) ?? null : null;
-    if (configured && canonicalModelId(configured.model) === canonicalModelId(choice.model)) {
+    if (configured) {
       await modelCatalog.checkAvailable({ model: choice.model }, undefined);
       return;
     }
     try {
-      await modelCatalog.checkProposal({ model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }, undefined);
+      await modelCatalog.checkProposal({ model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }, undefined, undefined, true);
     } catch (error) {
       if (error instanceof ObjectiveStoreError && error.code === "model_not_in_gateway_models") {
-        throw new ObjectiveStoreError(error.code, undefined, { ...error.details, hint: "Edit commanderModel from the supplied candidates and commanderEffort if needed; retry." });
+        const fromFallback = error.details !== undefined && "fallbackModels" in error.details;
+        throw new ObjectiveStoreError(error.code, undefined, { ...error.details, hint: `Edit commanderModel from the supplied ${fromFallback ? "fallbackModels" : "candidates"} and commanderEffort if needed; retry.` });
       }
       throw error;
     }
