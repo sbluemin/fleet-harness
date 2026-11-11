@@ -719,7 +719,7 @@ describe("Objectives contract", () => {
     expect(resumed).toEqual([reviewer.id]);
     expect(store.find(objective.id)!.members.find((member) => member.id === late.id)!.sessionName).toBeNull();
     expect(objectiveRecords.has(unchosen.id)).toBe(false);
-    // 사람이 고른 모델을 다시 비우면 지휘관이 지정할 자리다 — 사람 보호로 남기지 않는다.
+    // 사람이 고른 모델을 다시 비우면 라우팅이고, 지휘관이 모델을 넘길 수 있는 자리다 — 사람 보호로 남기지 않는다.
     await route("member/patch", { objectiveId: objective.id, memberId: unchosen.id, patch: { launch: SONNET } });
     await route("member/patch", { objectiveId: objective.id, memberId: unchosen.id, patch: { launch: null } });
     expect(store.storedMember(objective.id, unchosen.id)).toMatchObject({ launch: undefined, launchBy: "commander" });

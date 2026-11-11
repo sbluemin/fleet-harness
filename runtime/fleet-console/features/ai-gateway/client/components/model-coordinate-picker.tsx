@@ -101,7 +101,7 @@ export interface ModelCoordinatePickerProps {
     /** `inline`: 글자 한 줄. `field`: 설정 행의 선택 상자. `glyph`: `node` 하나. */
     readonly variant?: "inline" | "field" | "glyph";
     readonly node?: React.ReactNode;
-    /** 모델 좌표가 아닌 표시 낱말(예: 「지휘관이 지정」). */
+    /** 모델 좌표가 아닌 표시 낱말(예: 「라우팅」). */
     readonly text?: React.ReactNode;
     readonly title?: string;
     /** 트리거 앞에 덧붙는 표시(예: 시작 뷰). */

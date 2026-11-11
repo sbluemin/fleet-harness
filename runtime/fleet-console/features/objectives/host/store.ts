@@ -1725,7 +1725,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return { ...stored, members: stored.members!.map((member) => member.id === memberId ? {
         ...member, ...(patch.role !== undefined ? { role: patch.role.trim() } : {}),
         ...(patch.brief !== undefined ? { brief: patch.brief || undefined } : {}),
-        // 선택을 비우면 지휘관이 지정할 자리다 — 사람의 보호 대상 선택으로 남기지 않는다.
+        // 선택을 비우면 라우팅이고, 지휘관이 모델을 넘길 수 있는 자리다 — 사람의 보호 대상 선택으로 남기지 않는다.
         ...(patch.launch !== undefined ? { launch: canonicalStoredLaunch(patch.launch ?? undefined), launchBy: patch.launch === null ? "commander" as const : by } : {}),
         ...(patch.subagents !== undefined ? { subagents: patch.subagents ? true as const : undefined } : {}),
       } : member) };
