@@ -192,3 +192,7 @@ export { GatewayRoutingDistribution } from "./fleet/routing-distribution.js";
 export { fallbackGatewayRoutingAssignment } from "./fleet/routing-fallback.js";
 export { createClaudeNativeModelSync } from "./fleet/claude-native-sync.js";
 export type { ClaudeNativeModelSync, ClaudeNativeModelSyncDeps } from "./fleet/claude-native-sync.js";
+
+export { decideGatewayRoutingBatch, NoEnabledGatewayModelsError, type GatewayRoutingBatchItem, type GatewayRoutingBatchDecision, type GatewayRoutingBatchOptions } from "./fleet/routing-batch.js";
+export { difficultyQuestionId, type RoutingChoice, type RoutingDifficultyQuestion } from "./fleet/routing-decision.js";
+export { buildGatewayLoadout, buildGatewayEnabledModels, type GatewayEnabledModelsResponse } from "./fleet/model-loadout.js";

@@ -8,7 +8,7 @@ import { canonicalModelId, findRosterRow } from "../shared/models.js";
 import { useModelRoster } from "./model-roster-store.js";
 
 /**
- * 사령관·지휘관이 받는 후보 — `GET /api/v1/ai-gateway/candidates` 응답을 받는 그대로 그린다.
+ * 기계적 규칙의 순서 — `GET /api/v1/ai-gateway/candidates` 응답을 받는 그대로 그린다.
  * 배열 순서가 곧 여유 순서이고 `unknown`은 끝에 순위 없이 온다. 이 화면은 순위 번호·쿼터 수치·임계값처럼
  * 응답에 없는 값을 만들어 넣지 않는다.
  */
