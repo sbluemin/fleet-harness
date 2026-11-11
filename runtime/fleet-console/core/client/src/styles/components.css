@@ -3273,6 +3273,20 @@
   padding: 0 var(--space-1);
 }
 
+/* 좁은 열은 아바타 행과 같은 가운데 정렬로 첫 행동만 남긴다. 셸마다 다른 열 폭을 그대로 따른다. */
+.objective-records-side-bar.is-compact .side-bar-starter {
+  display: flex;
+  justify-content: center;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.objective-records-side-bar.is-compact .side-bar-starter-primary {
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
 .side-bar-starter-eyebrow {
   color: var(--text-tertiary);
   font-size: var(--t-xs);
@@ -3299,7 +3313,7 @@
   word-break: keep-all;
 }
 
-.side-bar-starter-primary {
+.side-bar-starter-primary:not(.conversation-round) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3320,7 +3334,7 @@
     background var(--duration-fast) var(--ease-glide);
 }
 
-.side-bar-starter-primary:hover:not(:disabled) {
+.side-bar-starter-primary:not(.conversation-round):hover:not(:disabled) {
   border-color: color-mix(in oklab, var(--brass) 64%, var(--surface-rim));
   background: color-mix(in oklab, var(--brass) 16%, var(--surface-glass));
 }
@@ -3329,7 +3343,7 @@
   box-shadow: var(--focus-face);
 }
 
-.side-bar-starter-primary:disabled {
+.side-bar-starter-primary:not(.conversation-round):disabled {
   border-color: var(--surface-rim);
   background: transparent;
   color: var(--text-tertiary);
