@@ -157,9 +157,9 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const manageable = !compact && consoleSectionManageable(entry) && !homeDown;
   const startable = !compact && entry.actions?.includes("start") === true;
   const switchable = compact && !consoleSwitchBlocked(entry);
-  // 주소가 이름과 같으면 툴팁에서 중복 표기를 뺀다 — 이름 옆 <small>을 생략하는 조건과 같다.
-  const showAddress = !entry.home && entry.address !== entry.label;
-  const title = `${entry.label}${showAddress ? ` · ${entry.address}` : ""}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
+  // 주소가 이름과 같을 때만 툴팁에서 중복 표기를 뺀다.
+  const addressInTitle = entry.address !== entry.label;
+  const title = `${entry.label}${addressInTitle ? ` · ${entry.address}` : ""}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
   // 켜져 있다가 꺼진 콘솔도 마지막 성공 명부(count > 0)가 아래에 남을 수 있으므로, 접을 것이 있을 때만 화살표를 두고 접기를 허용한다.
   const foldable = !startable || (count !== null && count > 0);
   // 접힌 뒤에는 상자가 머리글뿐이라 붙지 못한다. 붙어 있던 머리글은 접히기 전에 재 둔 제자리로 스크롤을 맞춰 목록 위에 남긴다.
