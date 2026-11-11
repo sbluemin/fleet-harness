@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.298.0] - 2026-11-11
+
+### fleet-console
+
+#### Added
+- Watch the managing Fleet Desktop's live Fleet Browser tabs from remote and non-managing Console screens in a read-only viewer while agents continue browsing.
+
+### fleet-desktop
+
+#### Changed
+- Keep Fleet Browser running exclusively on the Fleet Desktop that manages each native or WSL Console so remote connections, Console switches, and control changes no longer move or close open tabs. Consoles running without a managing Fleet Desktop cannot open Fleet Browser.
+
 ## [1.297.0] - 2026-11-11
 
 ### fleet-console

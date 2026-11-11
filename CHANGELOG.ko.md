@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.298.0] - 2026-11-11
+
+### fleet-console
+
+#### Added
+- 에이전트가 브라우징을 이어 가는 동안 원격 및 비관리 Console 화면에서 관리 Fleet Desktop의 실시간 Fleet Browser 탭을 보기 전용 뷰어로 확인할 수 있습니다.
+
+### fleet-desktop
+
+#### Changed
+- 네이티브 및 WSL Console을 관리하는 Fleet Desktop에서만 Fleet Browser를 실행하여 원격 연결, Console 전환, 제어권 변경이 일어나도 열린 탭이 옮겨지거나 닫히지 않습니다. 관리 Fleet Desktop 없이 실행 중인 Console에서는 Fleet Browser를 열 수 없습니다.
+
 ## [1.297.0] - 2026-11-11
 
 ### fleet-console
