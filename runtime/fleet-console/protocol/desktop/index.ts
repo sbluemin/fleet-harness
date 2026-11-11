@@ -135,7 +135,7 @@ export const DESKTOP_BROWSER_EVENT = "desktop:browser";
 /** 네이티브 뷰가 현재 Console의 Objective 스트림을 열 때만 셸이 붙이는 뷰 id. 인증·Desktop 권한 표식이 아니다. */
 export const DESKTOP_BROWSER_VIEW_HEADER = "x-fleet-browser-view";
 /** 관리 Desktop 메인 프로세스가 락 토큰과 함께 보내는 소유자 식별 헤더(소문자로 읽는다). 원격·렌더러 요청에는 없다. */
-export const DESKTOP_BROWSER_OWNER_HEADER = "x-fleet-desktop-owner";
+export const DESKTOP_BROWSER_OWNER_HEADER = "x-fleet-browser-owner";
 /** 관리 Desktop 프레임 업로드와 보기 전용 뷰어 응답이 공유하는 프레임 메타 헤더. */
 export const DESKTOP_BROWSER_FRAME_WIDTH_HEADER = "x-fleet-frame-width";
 export const DESKTOP_BROWSER_FRAME_HEIGHT_HEADER = "x-fleet-frame-height";
