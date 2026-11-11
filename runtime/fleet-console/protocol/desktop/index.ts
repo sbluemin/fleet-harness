@@ -130,9 +130,49 @@ export function isDesktopResourceRootMarkerValid(content: string): boolean {
 export const DESKTOP_BROWSER_PATH = "/api/v1/desktop/browser";
 export const DESKTOP_BROWSER_EVENTS_PATH = "/api/v1/desktop/browser/events";
 export const DESKTOP_BROWSER_RELAY_PATH = "/api/v1/desktop/browser/relay";
+export const DESKTOP_BROWSER_FRAME_PATH = "/api/v1/desktop/browser/frame";
 export const DESKTOP_BROWSER_EVENT = "desktop:browser";
 /** 네이티브 뷰가 현재 Console의 Objective 스트림을 열 때만 셸이 붙이는 뷰 id. 인증·Desktop 권한 표식이 아니다. */
 export const DESKTOP_BROWSER_VIEW_HEADER = "x-fleet-browser-view";
+/** 관리 Desktop 메인 프로세스가 락 토큰과 함께 보내는 소유자 식별 헤더(소문자로 읽는다). 원격·렌더러 요청에는 없다. */
+export const DESKTOP_BROWSER_OWNER_HEADER = "x-fleet-desktop-owner";
+/** 관리 Desktop 프레임 업로드와 보기 전용 뷰어 응답이 공유하는 프레임 메타 헤더. */
+export const DESKTOP_BROWSER_FRAME_WIDTH_HEADER = "x-fleet-frame-width";
+export const DESKTOP_BROWSER_FRAME_HEIGHT_HEADER = "x-fleet-frame-height";
+export const DESKTOP_BROWSER_FRAME_SEQ_HEADER = "x-fleet-frame-seq";
+export const DESKTOP_BROWSER_FRAME_AT_HEADER = "x-fleet-frame-at";
+/** 보기 전용 JPEG 프레임 1장의 바이트 상한. */
+export const DESKTOP_BROWSER_FRAME_MAX_BYTES = 4 * 1024 * 1024;
+
+export type DesktopBrowserAccessPath = "loopback" | "wsl";
+export type DesktopBrowserPlatform = "darwin" | "win32" | "linux";
+export type BrowserExecutionStatus = "connected" | "manager_disconnected" | "unmanaged";
+export type BrowserSurfaceModeKind = "native" | "viewer";
+
+/**
+ * 콘솔의 플릿 브라우저가 실제로 어디서 실행되는지와 가용 상태. 원시 경로·토큰·소유자 UUID 없이 화면에 알린다.
+ * - `connected`: 관리 Desktop의 브라우저 엔진이 연결되어 실행 가능함
+ * - `manager_disconnected`: 관리 Desktop 소유 콘솔이지만 현재 관리 Desktop 엔진 연결이 끊김
+ * - `unmanaged`: 관리 Desktop 없이 실행된 콘솔(예: CLI 단독) — 원격 Desktop으로 대체하지 않음
+ */
+export interface BrowserExecutionHost {
+  readonly managed: boolean;
+  readonly connected: boolean;
+  readonly status: BrowserExecutionStatus;
+  readonly hostLabel: string | null;
+  readonly platform: DesktopBrowserPlatform | null;
+  readonly accessPath: DesktopBrowserAccessPath | null;
+}
+
+export interface DesktopBrowserHello {
+  readonly product: string;
+  readonly userAgent: string;
+  /** 관리 Desktop 머신의 정제된 표시 이름(호스트명 등, 경로·자격 미포함). */
+  readonly hostLabel?: string;
+  readonly platform?: DesktopBrowserPlatform;
+  /** 관리 Desktop이 이 콘솔에 닿는 경로 — 네이티브 홈 콘솔은 loopback, Windows WSL 매니지드 콘솔은 wsl. */
+  readonly accessPath?: DesktopBrowserAccessPath;
+}
 
 /**
  * 셸이 띄워야 하는 뷰 하나.
@@ -213,6 +253,8 @@ export interface DesktopBrowserSnapshot {
   readonly surface?: DesktopBrowserSurface | null;
   /** 셸이 크롬(주소줄·세로 탭 표시줄·추가 메뉴)에 그릴 브라우저 상태. 표면이 열려 있는 동안 상태가 바뀔 때마다 실린다. */
   readonly chrome?: DesktopBrowserChrome | null;
+  /** 원격·비관리 보기 전용 뷰어가 실제로 열람 중이라 최신 프레임 캡처가 필요한 뷰 id 목록. 비어 있으면 캡처하지 않는다. */
+  readonly watchedViewIds?: readonly string[];
 }
 
 /**
@@ -346,8 +388,8 @@ export interface DesktopBrowserChrome {
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
 export interface DesktopBrowserRelay {
   readonly surface?: DesktopBrowserSurfaceRelay;
-  /** 셸이 처음 붙을 때 한 번 — 이 셸의 Chromium 이 누구인지. */
-  readonly hello?: { readonly product: string; readonly userAgent: string };
+  /** 셸이 처음 붙을 때 한 번 — 이 셸의 Chromium 과 실행 호스트 메타데이터. */
+  readonly hello?: DesktopBrowserHello;
   readonly attached?: readonly string[];
   readonly detached?: readonly string[];
   /**
@@ -379,7 +421,8 @@ export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowse
     && (value.shortcuts === undefined || (Array.isArray(value.shortcuts) && value.shortcuts.every((item) => typeof item === "string")))
     && (value.epoch === undefined || typeof value.epoch === "string")
     && (value.surface === undefined || value.surface === null || isDesktopBrowserSurface(value.surface))
-    && (value.chrome === undefined || value.chrome === null || isDesktopBrowserChrome(value.chrome));
+    && (value.chrome === undefined || value.chrome === null || isDesktopBrowserChrome(value.chrome))
+    && (value.watchedViewIds === undefined || (Array.isArray(value.watchedViewIds) && value.watchedViewIds.length <= 64 && value.watchedViewIds.every(isSafeId)));
 }
 
 export function isDesktopBrowserSurface(value: unknown): value is DesktopBrowserSurface {
@@ -415,10 +458,17 @@ export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserC
     && typeof value.available === "boolean" && (value.reason === null || value.reason === "desktop_required" || value.reason === "shared");
 }
 
+export function isDesktopBrowserHello(value: unknown): value is DesktopBrowserHello {
+  return isRecord(value) && typeof value.product === "string" && typeof value.userAgent === "string"
+    && (value.hostLabel === undefined || isShortText(value.hostLabel, 256))
+    && (value.platform === undefined || value.platform === "darwin" || value.platform === "win32" || value.platform === "linux")
+    && (value.accessPath === undefined || value.accessPath === "loopback" || value.accessPath === "wsl");
+}
+
 export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRelay {
   if (!isRecord(value)) return false;
   if (value.surface !== undefined && !(isRecord(value.surface) && isSafeId(value.surface.id) && ["opened", "closed"].includes(String(value.surface.status)))) return false;
-  if (value.hello !== undefined && !(isRecord(value.hello) && typeof value.hello.product === "string" && typeof value.hello.userAgent === "string")) return false;
+  if (value.hello !== undefined && !isDesktopBrowserHello(value.hello)) return false;
   for (const key of ["attached", "detached"] as const) if (value[key] !== undefined && !(Array.isArray(value[key]) && (value[key] as unknown[]).every(isSafeId))) return false;
   if (value.sizes !== undefined && !(Array.isArray(value.sizes) && value.sizes.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isFiniteNumber(entry.width) && isFiniteNumber(entry.height) && isFiniteNumber(entry.scale)))) return false;
   if (value.results !== undefined && !(Array.isArray(value.results) && value.results.every((entry) => isRecord(entry) && isFiniteNumber(entry.id) && (entry.error === undefined || typeof entry.error === "string")))) return false;
