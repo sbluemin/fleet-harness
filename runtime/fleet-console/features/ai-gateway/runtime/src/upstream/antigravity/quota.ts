@@ -50,7 +50,10 @@ const SESSION_MS = 5 * HOUR_MS;
  * them must not silently move a reading onto the wrong pool.
  *
  * Gemini and third-party pools never share headroom; Argon has its own weekly
- * pool too. This table is also the reason `reported: false` exists. Fleet exposes
+ * pool too. Carbon does not: measured 2026-11-11, the quota summary had no
+ * Carbon bucket and Carbon's per-model quotaInfo matched the Gemini pools, so
+ * it is not a row here. This table is also the reason `reported: false` exists.
+ * Fleet exposes
  * Gemini models only, and a pool none of them can spend is not this provider's
  * headroom: a host reading an exhausted `3p` window would route away from an
  * Antigravity allowance that is in fact untouched. Exposing a Claude or GPT model

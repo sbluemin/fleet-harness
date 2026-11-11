@@ -42,8 +42,9 @@ function thinkingLevel(effort: ReasoningEffort): AntigravityThinkingLevel {
  *
  * - **Id-encoded** — the entry declares `effort.upstreamModelIds`, so the rung is
  *   part of the model id and no `thinkingConfig` is sent. Gemini 4 Argon uses
- *   `gemini-4-argon-{low,medium,high}` (live agy turns, 2026-10-18); Gemini
- *   3.8 Flash also declares three explicit upstream rung ids.
+ *   `gemini-4-argon-{low,medium,high}` (live agy turns, 2026-10-18) and Gemini 4
+ *   Carbon uses `gemini-4-carbon-{low,medium,high}` (Fleet CLI-identity turns,
+ *   2026-11-11); Gemini 3.8 Flash also declares three explicit upstream rung ids.
  * - **Request-field** — the entry declares levels with no id overrides, so one
  *   wire id carries every rung and `thinkingConfig.thinkingLevel` selects it.
  *   Gemini 3.7 Flash works this way, on the `-tiered` id: measured 2026-08-22 it
