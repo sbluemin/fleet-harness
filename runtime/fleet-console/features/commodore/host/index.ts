@@ -238,6 +238,10 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       const state = id ? store.read(id) : null;
       return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}), ...(typeof state.commanderFast === "boolean" ? { fast: state.commanderFast } : {}) } : null;
     },
+    session(id) {
+      const running = id ? supervisor.status(id)?.session : undefined;
+      return running?.model ? { model: running.model, ...(running.effort ? { effort: running.effort } : {}) } : null;
+    },
   };
   const context = { host: { experiments: deps.experiments, attachments: deps.attachments, http: deps.http, security: deps.security } };
   const summary = (commodoreId: string): ConsoleCommodoreSummary => {
