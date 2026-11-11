@@ -288,7 +288,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       if (!/^[A-Za-z0-9._:-]{1,128}$/u.test(tabId)) { writeJson(res, 400, { error: "invalid_request" }); return true; }
       if (req.method === "POST" && pathname === VIEWER_UNWATCH_PATH) {
         const viewId = browserService.viewIdOfTab(BROWSER_GLOBAL_ID, tabId);
-        if (viewId) desktopEngine.clearWatch(viewId);
+        if (viewId) desktopEngine.releaseWatchLease(viewId);
         res.writeHead(204, withSecurityHeaders({ "Cache-Control": "no-store" }));
         res.end();
         return true;

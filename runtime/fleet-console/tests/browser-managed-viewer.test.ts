@@ -50,6 +50,19 @@ describe("managed desktop browser engine", () => {
       expect(engine.frameIfNewer(viewId, 0)).toBeNull();
     } finally { vi.useRealTimers(); }
 
+    // Monotonic seq survives watch lease expiration, and one viewer's unwatch keeps another viewer's live ticket.
+    const releaseA = engine.acquireWatch(viewId);
+    const releaseB = engine.acquireWatch(viewId);
+    const resumed = engine.waitForFrame(viewId, third!.seq, 1000);
+    releaseA(false);
+    engine.releaseWatchLease(viewId);
+    expect(engine.snapshot().watchedViewIds).toEqual([viewId]);
+    const fourth = engine.ingestFrame(viewId, Buffer.from([0xff, 0xd8, 0x04]), 12, 9);
+    expect(fourth!.seq).toBe(4);
+    await expect(resumed).resolves.toMatchObject({ seq: 4 });
+    releaseB(false);
+    expect(engine.snapshot().watchedViewIds).toEqual([]);
+
     const closed = engine.waitForFrame(viewId, 0, 1000);
     engine.send("Target.closeTarget", { targetId: viewId });
     await expect(closed).rejects.toBeInstanceOf(ViewerFrameClosedError);

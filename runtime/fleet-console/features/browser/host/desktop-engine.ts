@@ -26,7 +26,7 @@ const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
-interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null; dialog?: BrowserPageDialog | null; answering?: string | null }
+interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null; frameSeq: number; dialog?: BrowserPageDialog | null; answering?: string | null }
 export type BrowserSurfaceState = DesktopBrowserSurface;
 /** 페이지가 띄운 alert·confirm. 답할 때까지 렌더러가 멈춰 있다. */
 export type BrowserPageDialog = DesktopBrowserPageDialog;
@@ -403,7 +403,7 @@ export class DesktopEngine implements CdpClient {
     };
   }
 
-  /** 그 뷰의 시청을 모두 즉시 끊고 쌓인 프레임을 비운다. */
+  /** 그 뷰의 시청을 모두 즉시 끊고 쌓인 프레임을 비운다(뷰·엔진 종료 및 마지막 티켓 중단용). */
   clearWatch(viewId: string): void {
     const tickets = this.watchTickets.get(viewId);
     if (tickets) for (const ticket of tickets) ticket.live = false;
@@ -413,10 +413,21 @@ export class DesktopEngine implements CdpClient {
     this.syncWatched(viewId);
   }
 
+  /** 떠나는 뷰어가 남긴 유예 리스만 거둔다. 다른 뷰어의 열린 long-poll 티켓은 건드리지 않는다. */
+  releaseWatchLease(viewId: string): void {
+    this.cancelLease(viewId);
+    if ((this.watchTickets.get(viewId)?.size ?? 0) === 0) {
+      this.watchTickets.delete(viewId);
+      this.frames.delete(viewId);
+    }
+    this.syncWatched(viewId);
+  }
+
   /** 최신 한 장으로 덮고, 더 새 장을 기다리던 폴링을 깨운다. 없는 뷰면 null. */
   ingestFrame(viewId: string, bytes: Buffer, width: number, height: number): BrowserViewerFrame | null {
-    if (!this.views.has(viewId)) return null;
-    const frame: BrowserViewerFrame = { seq: (this.frames.get(viewId)?.seq ?? 0) + 1, bytes, width, height, at: Date.now() };
+    const view = this.views.get(viewId);
+    if (!view) return null;
+    const frame: BrowserViewerFrame = { seq: ++view.frameSeq, bytes, width, height, at: Date.now() };
     this.frames.set(viewId, frame);
     const waiters = this.frameWaiters.get(viewId);
     if (waiters) {
@@ -505,7 +516,7 @@ export class DesktopEngine implements CdpClient {
 
   private async createView(partition: string, url: string): Promise<string> {
     const id = `view-${crypto.randomUUID().slice(0, 8)}`;
-    this.views.set(id, { id, objectiveId: "", partition, profile: this.contextProfiles.get(partition) ?? null, url, attached: false, active: false, size: null });
+    this.views.set(id, { id, objectiveId: "", partition, profile: this.contextProfiles.get(partition) ?? null, url, attached: false, active: false, size: null, frameSeq: 0 });
     // 서비스가 전역 브라우저 id 를 bindView 로 붙인다. 모든 스페이스는 같은 컨텍스트를 쓴다.
     const attached = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { this.attachWaiters.delete(id); reject(new CdpError("Target.createTarget", -32000, "desktop_view_attach_timeout")); this.dropView(id); this.publish(); }, ATTACH_TIMEOUT_MS);
