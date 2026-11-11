@@ -5,6 +5,16 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.297.0] - 2026-11-11
+
+### fleet-console
+
+#### Changed
+- AI Gateway routing chooses each Commander's and each member's model again, using the Commodore's or the Commander's own model and effort to decide; there is no separate routing model to set. A model you set yourself always wins, and a Commodore or Commander can still name one of the models you turned on.
+
+#### Fixed
+- A Commodore can start a Commander even when every model you turned on is close to its limit. If routing cannot decide, the model with the most quota headroom is used, and when all are near their limits, the one with the most quota left.
+
 ## [1.296.0] - 2026-11-11
 
 ### fleet-console
