@@ -642,22 +642,28 @@ export function ObjectiveRecordsSideBar({
           // 첫 행동(사령관 만들기)을 이 자리에서 바로 연다. 취역 가이드는 한 번 닫히면 사라지므로
           // 되돌아가는 길도 여기 둔다.
           <li className="side-bar-starter" data-testid="side-bar-starter">
-            <span className="side-bar-starter-eyebrow">{t("sidebar.starter.eyebrow")}</span>
-            <h2 className="side-bar-starter-title">{t("sidebar.starter.title")}</h2>
-            <p className="side-bar-starter-body">{t("sidebar.starter.body")}</p>
+            {!compact ? <>
+              <span className="side-bar-starter-eyebrow">{t("sidebar.starter.eyebrow")}</span>
+              <h2 className="side-bar-starter-title">{t("sidebar.starter.title")}</h2>
+              <p className="side-bar-starter-body">{t("sidebar.starter.body")}</p>
+            </> : null}
             <button
               type="button"
-              className="side-bar-starter-primary"
+              className={`side-bar-starter-primary${compact ? " conversation-round" : ""}`}
+              aria-label={compact ? t("sidebar.commodore.createTitle") : undefined}
+              title={compact ? t("sidebar.commodore.createTitle") : undefined}
               onClick={requestCommodoreCreate}
             >
-              {t("sidebar.commodore.createTitle")}
+              {compact ? <PlusIcon /> : t("sidebar.commodore.createTitle")}
             </button>
-            <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
-              {t("sidebar.starter.reopenGuide")}
-            </button>
-            <p className="side-bar-starter-hints">
-              <kbd>{searchShortcut}</kbd> {t("sidebar.starter.hintSearch")}
-            </p>
+            {!compact ? <>
+              <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
+                {t("sidebar.starter.reopenGuide")}
+              </button>
+              <p className="side-bar-starter-hints">
+                <kbd>{searchShortcut}</kbd> {t("sidebar.starter.hintSearch")}
+              </p>
+            </> : null}
           </li>
         ) : null}
         </>}
