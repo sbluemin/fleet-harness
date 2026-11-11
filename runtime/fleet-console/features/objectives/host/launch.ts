@@ -838,7 +838,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       let session = memberSession(current.id, current.commander.sessionName, number);
       while (used.has(session)) session = memberSession(current.id, current.commander.sessionName, ++number);
       // launch 가 없으면 이번 소집의 라우팅 자리로 띄운다. 선택은 비워 두고, 자리가 없으면 그 구성원만 실패한다.
-      const seat = member.launch ? presetOf(member.launch) : routed.get(member.id);
+      // 라우팅 판단을 기다리는 사이 사람이 고른 모델이 있으면 그 선택이 라우팅 자리보다 앞선다 — 소집 전 스냅샷이 아니라 지금 값을 읽는다.
+      const chosen = (objective(objectiveId).members.find((candidate) => candidate.id === member.id) ?? member).launch;
+      const seat = chosen ? presetOf(chosen) : routed.get(member.id);
       if (!seat?.model) { members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: "gateway_models_unavailable" }); continue; }
       const preset = presetOf(seat);
       // 앞선 기동을 기다리는 동안 바뀐 허용값도 이번 기동부터 반영한다.

@@ -752,6 +752,18 @@ describe("Objectives contract", () => {
     expect(objectiveRecords.get(objective.id)!.sessions?.find((child) => child.id === routedMember.id)?.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
     await launch.memberRemoved(objective.id, routedMember.id);
 
+    // 판단을 기다리는 사이 사람이 모델을 고르면 라우팅 자리가 아니라 그 선택으로 띄운다.
+    const racedMember = store.memberAdd(objective.id, { role: "raced" }, "human").members.at(-1)!;
+    assign(racedMember.id);
+    vi.stubGlobal("fetch", async (url: string) => {
+      if (!String(url).endsWith("/api/v1/ai-gateway/routing-assign")) return new Response("", { status: 404 });
+      store.memberPatch(objective.id, racedMember.id, { launch: { mode: "model", model: "opus[1m]", effort: "high" } }, "human");
+      return Response.json({ decisions: [{ key: racedMember.id, model: "sonnet[1m]", effort: "low", via: "route", because: "fit" }] });
+    });
+    expect((await launch.muster(objective.id)).find((member) => member.id === racedMember.id)).toMatchObject({ state: "launched" });
+    expect(objectiveRecords.get(objective.id)!.sessions?.find((child) => child.id === racedMember.id)?.session).toMatchObject({ model: "opus[1m]", effort: "high" });
+    await launch.memberRemoved(objective.id, racedMember.id);
+
     vi.useFakeTimers();
     try {
       // 떠 있는 유휴 터미널은 재웠다 새 좌표로 그 세션째 깨운다(재운 뒤 패널이 휴면을 볼 틈을 두고) — 행은 곧바로 새 모델이다.
