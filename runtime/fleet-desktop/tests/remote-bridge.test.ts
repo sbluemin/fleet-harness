@@ -1,6 +1,6 @@
 import { EventEmitter } from "node:events";
 import { runInNewContext } from "node:vm";
-import { CONSOLE_SECTION_EVENT, consoleSectionCommandUrl, type ConsoleSectionCommand, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_SECTION_EVENT, consoleSectionCommandUrl, type ConsoleManagedDetail, type ConsoleSectionCommand, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
 import { createConsoleSectionController } from "../src/console-section-controller.js";
 
 import { describe, expect, it, vi } from "vitest";
@@ -306,14 +306,15 @@ describe("host picker surface", () => {
     let agreed = false;
     const confirmStart = vi.fn(async () => agreed);
     // 집 밖의 관리 대상(WSL 배포판의 콘솔). 처음에는 없다.
-    let managed: Array<{ key: string; label: string; origin: string | null; version: string | null; path: "wsl"; state: { management: "this-desktop" | "cli"; lifecycle: "running" | "stopped" | null; identityProven: boolean }; detail: { takeover?: true } }> = [];
+    let managed: Array<{ key: string; label: string; origin: string | null; version: string | null; path: "wsl"; state: { management: "this-desktop" | "cli"; lifecycle: "running" | "stopped" | null; identityProven: boolean }; detail: ConsoleManagedDetail }> = [];
     const runManaged = vi.fn(async () => "http://127.0.0.1:3950");
     const takeOver = vi.fn(async () => "http://127.0.0.1:3950");
+    const update = vi.fn(async () => "http://127.0.0.1:3950");
     const remove = vi.fn(async () => true);
     const distros = vi.fn(async () => []);
     const confirmUnmanage = vi.fn(async () => false);
     const section = createConsoleSectionController({ home: () => LOCAL, fetch, open: vi.fn(async () => undefined), add: vi.fn(), manage, managedHome: { state: async () => state, run }, confirmStart, confirmForget: vi.fn(async () => false), report,
-      managedConsoles: { list: async () => managed, run: runManaged, takeOver, remove, wsl: { distros, inspect: vi.fn(), add: vi.fn() } }, confirmUnmanage });
+      managedConsoles: { list: async () => managed, run: runManaged, takeOver, update, remove, wsl: { distros, inspect: vi.fn(), add: vi.fn() } }, confirmUnmanage });
     section.attach(active as never);
     const send = (value: ConsoleSectionCommand) => active.emit("will-navigate", { preventDefault: vi.fn() }, consoleSectionCommandUrl(new URL(url).origin, value), undefined, true);
     // 명부 이벤트도 같은 문서로 오므로 목록 상태만 고른다.
@@ -389,6 +390,17 @@ describe("host picker surface", () => {
       await section.refresh();
       send({ takeover: wsl.id });
       await vi.waitFor(() => expect(takeOver).toHaveBeenCalledWith("wsl-1"));
+      // 업데이트 역시 불투명 id를 집 문서에서만 받는다. 실제 소유권은 포트 안의 관리자가 다시 증명한다.
+      managed = [{ ...managed[0]!, state: { management: "this-desktop", lifecycle: "running", identityProven: true }, detail: { update: { node: { installed: "22.0.0", target: "24.0.0" }, console: { installed: "1.2.3", target: "1.3.0" } } } }];
+      url = `${REMOTE}/console/`;
+      await section.refresh();
+      send({ update: wsl.id });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(update).not.toHaveBeenCalled();
+      url = `${LOCAL}/console/`;
+      await section.refresh();
+      send({ update: wsl.id });
+      await vi.waitFor(() => expect(update).toHaveBeenCalledWith("wsl-1"));
       // 꺼진 관리 대상은 집 문서에서 묻지 않고 시작한다.
       managed = [{ ...managed[0]!, origin: null, state: { management: "this-desktop", lifecycle: "stopped", identityProven: false }, detail: {} }];
       await section.refresh();

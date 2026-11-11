@@ -47,6 +47,13 @@ export interface ConsoleManagedDetail {
   readonly failure?: ConsoleManagedFailure;
   readonly takeover?: true;
   readonly removable?: true;
+  /** Installed and target runtime versions, only while this Desktop proves ownership. */
+  readonly update?: ConsoleRuntimeUpdate;
+  readonly updating?: true;
+}
+export interface ConsoleRuntimeUpdate {
+  readonly node: { readonly installed: string; readonly target: string };
+  readonly console: { readonly installed: string; readonly target: string };
 }
 export type ConsoleManagedFailure = "build-tools" | "download" | "install" | "start" | "other-owner" | "stop";
 export const CONSOLE_MANAGED_FAILURES: readonly ConsoleManagedFailure[] = ["build-tools", "download", "install", "start", "other-owner", "stop"];
@@ -70,6 +77,8 @@ export type ConsoleSectionCommand = { readonly request: "state" }
   | { readonly lifecycle: { readonly id: string; readonly action: ConsoleLifecycleAction } }
   /** Hands a Console the person started from a terminal to this Desktop. Honored only from a document of the home Console. */
   | { readonly takeover: string }
+  /** Explicit, confirmed runtime update. Like takeover, only the home Console's document may ask. */
+  | { readonly update: string }
   /** The WSL add flow, drawn by the home Console and honored only from its documents. `inspect` may start a stopped distribution. */
   | { readonly wsl: { readonly list: true } | { readonly inspect: string } | { readonly add: string } };
 
@@ -178,7 +187,7 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return null; }
   if (!object(value)) return null;
-  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle", "takeover", "wsl"].filter((key) => key in value);
+  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle", "takeover", "update", "wsl"].filter((key) => key in value);
   if (keys.length !== 1) return null;
   if (value.request === "state") return { request: "state" };
   if (clean(value.switch, 128)) {
@@ -193,6 +202,7 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
   if (clean(value.forget, 128)) return { forget: value.forget };
   if (clean(value.manage, 128)) return { manage: value.manage };
   if (clean(value.takeover, 128)) return { takeover: value.takeover };
+  if (clean(value.update, 128)) return { update: value.update };
   if (object(value.wsl)) {
     if (value.wsl.list === true) return { wsl: { list: true } };
     if (clean(value.wsl.inspect, 64)) return { wsl: { inspect: value.wsl.inspect } };
@@ -220,7 +230,8 @@ export function isConsoleSectionState(value: unknown): value is ConsoleSectionSt
     && (entry.path === undefined || oneOf(CONSOLE_ACCESS_PATHS, entry.path))
     && (entry.lifecycle === undefined || entry.lifecycle === null || oneOf(CONSOLE_MANAGED_LIFECYCLES, entry.lifecycle))
     && (entry.actions === undefined || (Array.isArray(entry.actions) && entry.actions.length <= CONSOLE_LIFECYCLE_ACTIONS.length && entry.actions.every(isConsoleLifecycleAction)))
-    && (entry.managed === undefined || (object(entry.managed) && flag(entry.managed.installing) && flag(entry.managed.takeover) && flag(entry.managed.removable)
+    && (entry.managed === undefined || (object(entry.managed) && flag(entry.managed.installing) && flag(entry.managed.takeover) && flag(entry.managed.removable) && flag(entry.managed.updating)
+      && (entry.managed.update === undefined || (object(entry.managed.update) && [entry.managed.update.node, entry.managed.update.console].every((part: unknown) => object(part) && clean(part.installed, 64) && clean(part.target, 64))))
       && (entry.managed.failure === undefined || oneOf(CONSOLE_MANAGED_FAILURES, entry.managed.failure)))));
 }
 export function isConsoleWslState(value: unknown): value is ConsoleWslState {
