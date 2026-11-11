@@ -6,7 +6,7 @@ import { Toast } from "../../../core/client/src/chrome/components/toast.js";
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
 import { getState, subscribe } from "../../../core/client/src/integration/store.js";
-import { publishBrowserEngine, readBrowserEngineBody, useBrowserPluginAttach, type BrowserExecutionHost } from "./browser-engine.js";
+import { publishBrowserEngine, readBrowserEngineBody, useBrowserPluginAttach, watchBrowserEngine, type BrowserExecutionHost } from "./browser-engine.js";
 import { useBrowserShortcutsSync } from "./browser-shortcuts-sync.js";
 import { BrowserViewer } from "./browser-viewer.js";
 import { getT } from "./i18n.js";
@@ -99,8 +99,9 @@ function publishAvailability(payload: unknown): void {
 
 function useBrowserAvailabilityWatch(): void {
   React.useEffect(() => {
+    const stopPoll = watchBrowserEngine();
     const unsubscribeState = subscribeConsoleChannel("browser:state", publishAvailability);
     const unsubscribeAvailability = subscribeConsoleChannel("browser:availability", publishAvailability);
-    return () => { unsubscribeState(); unsubscribeAvailability(); };
+    return () => { stopPoll(); unsubscribeState(); unsubscribeAvailability(); };
   }, []);
 }

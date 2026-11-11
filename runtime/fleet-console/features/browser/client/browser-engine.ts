@@ -107,9 +107,10 @@ function askEngine(): void {
   // 웹·모바일·원격도 서버의 surfaceMode 를 따른다. Desktop 이 아니라는 이유만으로 막지 않는다.
   if (engineInflight || typeof fetch !== "function") return;
   engineAskedAt = Date.now();
-  engineInflight = fetch("/api/v1/browser")
+  engineInflight = Promise.resolve()
+    .then(() => fetch("/api/v1/browser"))
     .then(async (response) => {
-      if (!response.ok) return;
+      if (!response?.ok) return;
       const next = readBrowserEngineBody(await response.json() as { available?: unknown; surfaceMode?: unknown; executionHost?: Partial<BrowserExecutionHost> | null });
       if (next) publishBrowserEngine(next);
     })
@@ -117,14 +118,19 @@ function askEngine(): void {
     .finally(() => { engineInflight = null; });
 }
 
-function subscribeEngine(listener: () => void): () => void {
-  engineListeners.add(listener);
-  if (engineListeners.size === 1) askEngine();
-  // 다른 화면이 붙었다 떠나는 일은 이 화면에 이벤트로 오지 않는다 — 보이는 동안 주기적으로, 탭이 눈에 들어올 때 다시 묻는다.
+/** 전역 호스트(`BrowserSessionHost`) 한 곳에서만 주기 조회를 돌린다 — 개별 소비 컴포넌트가 부수 요청을 내지 않게 한다. */
+export function watchBrowserEngine(): () => void {
+  askEngine();
+  if (typeof document === "undefined") return () => undefined;
   const onVisible = () => { if (document.visibilityState === "visible" && Date.now() - engineAskedAt > ENGINE_RECHECK_MS) askEngine(); };
   document.addEventListener("visibilitychange", onVisible);
   const timer = setInterval(onVisible, ENGINE_RECHECK_MS);
-  return () => { engineListeners.delete(listener); document.removeEventListener("visibilitychange", onVisible); clearInterval(timer); };
+  return () => { document.removeEventListener("visibilitychange", onVisible); clearInterval(timer); };
+}
+
+function subscribeEngine(listener: () => void): () => void {
+  engineListeners.add(listener);
+  return () => { engineListeners.delete(listener); };
 }
 
 /** 문서 수준 라우터가 쓰는 가용성 스냅샷 — 아직 묻지 못했으면 null(모르는 것을 못 쓰는 것으로 보지 않는다). */
