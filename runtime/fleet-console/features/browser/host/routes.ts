@@ -287,7 +287,8 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       const tabId = params.get("tabId") ?? "";
       if (!/^[A-Za-z0-9._:-]{1,128}$/u.test(tabId)) { writeJson(res, 400, { error: "invalid_request" }); return true; }
       if (req.method === "POST" && pathname === VIEWER_UNWATCH_PATH) {
-        desktopEngine.clearWatch(tabId);
+        const viewId = browserService.viewIdOfTab(BROWSER_GLOBAL_ID, tabId);
+        if (viewId) desktopEngine.clearWatch(viewId);
         res.writeHead(204, withSecurityHeaders({ "Cache-Control": "no-store" }));
         res.end();
         return true;
@@ -295,18 +296,19 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       if (req.method !== "GET" || pathname !== VIEWER_FRAME_PATH) { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
       const host = executionHost();
       if (host.status !== "connected") { writeJson(res, 409, { error: "browser_unavailable", executionHost: host }); return true; }
-      if (!browserService.state(BROWSER_GLOBAL_ID).tabs.some((tab) => tab.id === tabId)) { writeJson(res, 404, { error: "tab_not_found" }); return true; }
+      const viewId = browserService.viewIdOfTab(BROWSER_GLOBAL_ID, tabId);
+      if (!viewId) { writeJson(res, 404, { error: "tab_not_found" }); return true; }
       const afterSeq = Number(params.get("afterSeq") ?? "0");
       const requestedWait = params.has("waitMs") ? Number(params.get("waitMs")) : DEFAULT_FRAME_WAIT_MS;
       const waitMs = Number.isFinite(requestedWait) ? Math.min(MAX_FRAME_WAIT_MS, Math.max(0, requestedWait)) : DEFAULT_FRAME_WAIT_MS;
-      const release = desktopEngine.acquireWatch(tabId);
+      const release = desktopEngine.acquireWatch(viewId);
       const abort = new AbortController();
       let settled = false;
       const finish = (lease: boolean) => { if (settled) return; settled = true; release(lease); };
       const onClose = () => { if (!res.writableEnded) { abort.abort(); finish(false); } };
       res.on("close", onClose);
       try {
-        const frame = await desktopEngine.waitForFrame(tabId, Number.isFinite(afterSeq) ? afterSeq : 0, waitMs, abort.signal);
+        const frame = await desktopEngine.waitForFrame(viewId, Number.isFinite(afterSeq) ? afterSeq : 0, waitMs, abort.signal);
         if (res.writableEnded || res.destroyed) { finish(false); return true; }
         res.writeHead(200, withSecurityHeaders({
           "Content-Type": "image/jpeg",

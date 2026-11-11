@@ -659,6 +659,11 @@ export class BrowserService {
     return op ? this.currentTab(op, participantId) : null;
   }
 
+  /** 공개 탭 id 에 대응하는 엔진 뷰 id(`targetId`). 없거나 닫힌 탭이면 null. */
+  viewIdOfTab(objectiveId: string, tabId: string): string | null {
+    return this.objectiveRecords.get(objectiveId)?.tabs.get(tabId)?.targetId ?? null;
+  }
+
   /**
    * 에이전트가 보는 탭 목록 — 자기 스페이스에서 쓸 수 있는 탭, 또는 `all` 이면 모든 스페이스. 디폴트 스페이스의 호출자에게
    * `tabs` 는 자기 묶음이 연 탭뿐이고, 같은 스페이스의 나머지(사람·다른 세션의 탭)는 `all` 목록에 읽기 전용으로 보인다.

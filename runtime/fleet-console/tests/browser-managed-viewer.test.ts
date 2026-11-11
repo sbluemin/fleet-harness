@@ -60,9 +60,17 @@ describe("managed desktop browser engine", () => {
 describe("managed desktop browser routes", () => {
   it("admits only the managing desktop on loopback and rejects viewer writes", async () => {
     const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    let connected = false;
     const service = new BrowserService({
       enabled: () => true,
-      availability: () => ({ available: false, reason: "desktop_required", host: null, executionHost: { managed: false, connected: false, status: "unmanaged", hostLabel: null, platform: null, accessPath: null } }),
+      availability: () => ({
+        available: connected,
+        reason: connected ? null : "desktop_required",
+        host: connected ? "manager" : null,
+        executionHost: connected
+          ? { managed: true, connected: true, status: "connected", hostLabel: "studio", platform: "darwin", accessPath: "loopback" }
+          : { managed: false, connected: false, status: "unmanaged", hostLabel: null, platform: null, accessPath: null },
+      }),
       desktop: engine,
       log: () => {},
       defaultProfile: { read: () => null, write: () => {} },
@@ -128,6 +136,7 @@ describe("managed desktop browser routes", () => {
     expect(engine.frameIfNewer(viewId, 0)?.seq).toBe(2);
 
     let native = false;
+    let currentUrl = `http://127.0.0.1/api/v1/browser/viewer/frame?tabId=${viewId}&afterSeq=99&waitMs=0`;
     const browser = createBrowserRouter({
       browserService: service,
       desktopEngine: engine,
@@ -141,16 +150,59 @@ describe("managed desktop browser routes", () => {
       viewerFrameRead: () => "ok",
       writeJson: (_res, status, body) => { seen.status = status; seen.body = body; },
       readJsonBody: async <T,>() => ({ action: "create" }) as T,
-      readUrl: () => new URL(`http://127.0.0.1/api/v1/browser/viewer/frame?tabId=${viewId}&afterSeq=99&waitMs=0`),
+      readUrl: () => new URL(currentUrl),
       withSecurityHeaders: (headers) => headers,
     });
     await browser({ req: request("POST"), res: { setHeader() {} } as unknown as ServerResponse, pathname: "/api/v1/browser/objectives/global/tabs" });
     expect(seen).toMatchObject({ status: 403, body: { error: "browser_viewer_read_only" } });
     expect(engine.snapshot().views).toHaveLength(1);
     native = true;
+    connected = true;
     service.reconcile();
     expect(engine.snapshot().views).toHaveLength(1);
     expect(engine.currentHost).toBe("manager");
+
+    // Public tab.id differs from engine viewId; viewer frame & unwatch routes must translate tabId → viewId.
+    const autoRelay = setInterval(() => {
+      const snap = engine.snapshot();
+      for (const candidate of snap.views) engine.relay("manager", { attached: [candidate.id], sizes: [{ viewId: candidate.id, width: 800, height: 600, scale: 1 }] });
+      for (const cmd of snap.commands) engine.relay("manager", { results: [{ id: cmd.id, result: cmd.method === "Page.getNavigationHistory" ? { currentIndex: 0, entries: [{ url: "about:blank" }] } : {} }] });
+    }, 5);
+    let createdTabId = "";
+    try {
+      const createdTab = await service.createTab(BROWSER_GLOBAL_ID, "about:blank", "user");
+      createdTabId = createdTab.id;
+    } finally { clearInterval(autoRelay); }
+    const mappedViewId = service.viewIdOfTab(BROWSER_GLOBAL_ID, createdTabId)!;
+    expect(mappedViewId).toBeTruthy();
+    expect(createdTabId).not.toBe(mappedViewId);
+    engine.ingestFrame(mappedViewId, jpeg, 8, 4);
+    currentUrl = `http://127.0.0.1/api/v1/browser/viewer/frame?tabId=${createdTabId}&afterSeq=0&waitMs=50`;
+    let frameBytes: Buffer | null = null;
+    const frameRes = {
+      writableEnded: false,
+      destroyed: false,
+      on() { return frameRes; },
+      off() { return frameRes; },
+      writeHead(status: number) { seen.status = status; return frameRes; },
+      end(chunk?: Buffer) { if (chunk) frameBytes = chunk; frameRes.writableEnded = true; },
+    };
+    await browser({
+      req: request("GET"),
+      res: frameRes as unknown as ServerResponse,
+      pathname: "/api/v1/browser/viewer/frame",
+    });
+    expect(seen.status).toBe(200);
+    expect(frameBytes).toEqual(jpeg);
+    expect(engine.snapshot().watchedViewIds).toContain(mappedViewId);
+    currentUrl = `http://127.0.0.1/api/v1/browser/viewer/unwatch?tabId=${createdTabId}`;
+    await browser({
+      req: request("POST"),
+      res: { writeHead(status: number) { seen.status = status; return this; }, end() {} } as unknown as ServerResponse,
+      pathname: "/api/v1/browser/viewer/unwatch",
+    });
+    expect(seen.status).toBe(204);
+    expect(engine.snapshot().watchedViewIds).not.toContain(mappedViewId);
   });
 });
 
