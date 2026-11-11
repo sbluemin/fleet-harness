@@ -168,6 +168,8 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   });
   const press = (event: { currentTarget: HTMLButtonElement }) => {
     if (compact) { if (switchable) sections.command({ switch: entry.id }); return; }
+    // 시작 단추가 있는 행은 하위 사령관이 없어 접고 펼칠 내용이 없다.
+    if (startable) return;
     const folding = !folded;
     pinScroll.current = null;
     if (folding) {
@@ -197,15 +199,17 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   }
   return <div className={`side-console-head${row ? " is-row" : ""}${entry.active && !row ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
     <div className="side-console-plate">
-    <button type="button" className="side-console-toggle" aria-expanded={compact ? undefined : !folded} title={title} onClick={press}>
+    <button type="button" className="side-console-toggle" aria-expanded={compact || startable ? undefined : !folded} title={title} aria-label={title} onClick={press}>
       {glyph}
       <span className="side-console-name"><b>{entry.label}</b>{entry.home || entry.address === entry.label ? null : <small>{entry.address}</small>}</span>
       {entry.path === "wsl" ? <span className="side-console-tag">{t("chrome.consoles.wslTag")}</span> : null}
       {entry.home ? <span className="side-console-home" title={t("chrome.consoles.thisComputer")} aria-label={t("chrome.consoles.thisComputer")} role="img"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg></span> : null}
       {entry.active && !row ? <span className="side-console-here">{t("chrome.consoles.here")}</span> : null}
-      {status ? <span className="side-console-status">{status}</span> : null}
+      {/* 시작 단추가 있는 행(꺼짐·실패 관리 대상)은 시작 단추가 상태를 대변하고, 긴 실패 글자가 이름을 가리므로 인라인 글자를 빼고 툴팁·접근성 이름·글리프 색으로 알린다. */}
+      {status && !startable ? <span className="side-console-status">{status}</span> : null}
       {folded && count !== null && count > 0 ? <span className="side-console-count">{count}</span> : null}
-      <ChevronGlyph direction="down" className="side-console-chevron" />
+      {/* 시작 단추가 있는 행은 하위 사령관이 없어 접을 내용이 없고, 시작 단추가 자리하므로 화살표를 두지 않는다. */}
+      {!startable ? <ChevronGlyph direction="down" className="side-console-chevron" /> : null}
     </button>
     {startable ? <button type="button" className="side-console-start" onClick={() => sections.command({ lifecycle: { id: entry.id, action: "start" } })}>{t("chrome.consoles.start")}</button> : null}
     {/* 시작 단추가 있는 머리글에서는 관리 단추를 그 옆에 늘 보이게 둔다 — 가리킬 때만 뜨는 자리는 시작 단추 위다. */}
