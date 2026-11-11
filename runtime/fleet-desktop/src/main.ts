@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -643,6 +645,21 @@ async function boot(): Promise<void> {
    */
   const wslHost = createWslHost();
   const wslCache = path.join(app.getPath("userData"), "wsl-runtime-cache");
+  const wslConsoleTarget = async () => {
+    if (!isPackaged) {
+      const local = process.env.FLEET_DESKTOP_WSL_CONSOLE_TARBALL;
+      if (!local || !path.isAbsolute(local)) throw new Error("wsl_console_tarball_unset");
+      // Read metadata only on Windows; no package code runs and no distribution wakes for a version check.
+      const { stdout } = await promisify(execFile)(path.win32.join(process.env.SystemRoot ?? process.env.WINDIR ?? "C:\\Windows", "System32", "tar.exe"), ["-xOf", local, "package/package.json"], { windowsHide: true, timeout: 20_000, maxBuffer: 1024 * 1024 });
+      const metadata = JSON.parse(stdout) as { name?: unknown; version?: unknown };
+      if (metadata.name !== PACKAGE_NAME || typeof metadata.version !== "string" || !/^\d+\.\d+\.\d+(?:-exp\.\d+)?$/u.test(metadata.version)) throw new Error("wsl_console_tarball_invalid");
+      return { version: metadata.version, tarball: async () => local };
+    }
+    const found = await releases.check("");
+    const release = found.release;
+    if (!release) throw new Error("console_release_unavailable");
+    return { version: release.version, tarball: () => downloadVerifiedConsoleTarball(release, { directory: wslCache }) };
+  };
   const wslConsoles = wslHost === null ? null : new WslConsoleManager({
     host: wslHost,
     ownerId: environment.ownerId,
@@ -654,16 +671,8 @@ async function boot(): Promise<void> {
     development: !isPackaged,
     packageName: PACKAGE_NAME,
     nodeManifest: () => JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest,
-    consoleTarball: async () => {
-      if (!isPackaged) {
-        const local = process.env.FLEET_DESKTOP_WSL_CONSOLE_TARBALL;
-        if (!local || !path.isAbsolute(local)) throw new Error("wsl_console_tarball_unset");
-        return local;
-      }
-      const found = await releases.check("");
-      if (!found.release) throw new Error("console_release_unavailable");
-      return downloadVerifiedConsoleTarball(found.release, { directory: wslCache });
-    },
+    consoleTarget: wslConsoleTarget,
+    consoleTarball: async () => (await wslConsoleTarget()).tarball(),
     ...(isPackaged ? {} : { extraEnvironment: readDevelopmentWslEnvironment(process.env.FLEET_DESKTOP_WSL_CONSOLE_ENV) }),
     log: logger,
     onChange: () => { void consoleSection.refresh(); },
@@ -713,10 +722,11 @@ async function boot(): Promise<void> {
         list: async () => (await wslConsoles.list()).map((view) => ({
           key: view.key, label: view.distro, origin: view.origin, version: view.version, path: "wsl" as const,
           state: { management: view.management, lifecycle: view.lifecycle, identityProven: view.identityProven },
-          detail: { ...(view.installing ? { installing: true as const } : {}), ...(view.failure ? { failure: view.failure } : {}), ...(view.takeover ? { takeover: true as const } : {}) },
+          detail: { ...(view.installing ? { installing: true as const } : {}), ...(view.failure ? { failure: view.failure } : {}), ...(view.takeover ? { takeover: true as const } : {}), ...(view.update ? { update: view.update } : {}), ...(view.updating ? { updating: true as const } : {}) },
         })),
         run: (key, action) => action === "start" ? wslConsoles.start(key) : action === "restart" ? wslConsoles.restart(key) : wslConsoles.stop(key).then(() => null),
         takeOver: (key) => wslConsoles.takeOver(key),
+        update: (key) => wslConsoles.update(key),
         remove: (key) => wslConsoles.remove(key),
         wsl: {
           distros: () => wslConsoles.distros(),
