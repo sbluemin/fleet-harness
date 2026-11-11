@@ -112,7 +112,7 @@
 .objective-records-side-bar.is-compact .side-console-head.is-row .side-console-toggle:hover,
 .objective-records-side-bar.is-compact .side-console-head.is-row .side-console-toggle:focus-visible { background: transparent; color: var(--text-primary); }
 .objective-records-side-bar.is-compact .side-console-glyph { width: 15px; height: 15px; border-radius: 0; background: none; }
-.objective-records-side-bar.is-compact :is(.side-console-name, .side-console-home, .side-console-here, .side-console-status, .side-console-count, .side-console-chevron, .side-console-edit, .side-console-row-name, .side-console-row-run, .side-console-row-hint, .side-console-more, .side-console-note) { display: none; }
+.objective-records-side-bar.is-compact :is(.side-console-name, .side-console-tag, .side-console-home, .side-console-here, .side-console-status, .side-console-count, .side-console-chevron, .side-console-edit, .side-console-row-name, .side-console-row-run, .side-console-row-hint, .side-console-more, .side-console-note) { display: none; }
 .objective-records-side-bar.is-compact .side-console-roster { align-items: center; gap: calc(8px / var(--compact-layout-zoom, 1)); margin-left: 0; padding-left: 0; }
 .objective-records-side-bar.is-compact .side-console-roster::before { display: none; }
 .objective-records-side-bar.is-compact .side-console-roster .side-console-row { width: 36px; margin: 0; }
