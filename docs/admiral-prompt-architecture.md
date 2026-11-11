@@ -37,12 +37,22 @@ operations; they are not delegated.
 Fleet contributes no host-routing prompt. The `<fleet_gateway_routing>` system-prompt
 append, the `fleet://ai-gateway/*` resources, the `assets/ai-gateway/` prose, and the
 `gateway_models` tool are retired; subagent and Workflow assignment is the code rule
-in section 2.1. The `fleet-ai-gateway` MCP server serves one tool, `candidates`, only to
+in section 2.1. The `fleet-ai-gateway` MCP server serves one tool, `models` (the enabled
+models and their allowed efforts, without quota data or ranking), only to
 Commodore sessions (an in-process group) and Objective Commander sessions (a reserved HTTP
 server whose token is issued, and whose calls are re-checked, only for Commanders).
-A Commodore chooses each objective's Commander model from it when it first plans or commences
-that objective, unless the person set one for that Commodore. A Commander must give every member it plans or enlists a model from it, and
-changes a member through `set_member_launch`; a member without a model is not launched.
+An objective's Commander model, when a Commodore first plans or commences it, and each
+member's model, at muster, are decided in this order: the model the person set (for that
+Commodore's Commanders, or for that member); a model the Commodore passes as
+`commanderModel`, or the Commander passes for the member, which must be in `models`;
+otherwise AI Gateway routing, judged with the Commodore's own model and effort for a
+Commander and the Commander's for a member. A failed judgment takes the code rule's order,
+and when every enabled model is critical, the enabled model with the most quota left. The
+default is to pass no model. Only two texts say so, each once: the `commanderModel` input
+description a Commodore reads, and the `fleet-ai-gateway` server instructions a Commander
+reads; the Commodore system prompt carries no model-selection sentence, and neither text
+repeats the fallback order. A Commander changes a member through `set_member_launch`,
+which still requires a model.
 Existing sessions apply a model selection when idle or after their current turn. The
 Commander cannot overwrite a person's chosen model; legacy selections without recorded
 ownership are conservatively protected as person-chosen.
