@@ -116,7 +116,7 @@ export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base
  * 브라우저 표면 — 칸(메인 창 오른쪽)과 독립 창을 같은 구조로 소유한다: 상단 줄 뷰·세로 레일 뷰·페이지 뷰. 레이아웃·오버레이 크기·페이지 자리는
  * 전부 여기서 같은 main 틱에 정한다. Console 은 상태와 정책만 보내고(스냅샷), 이 표면은 사람의 동작을 REST 로 돌려보낸다.
  */
-export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; captionInset(kind: "pane" | "window"): number } {
+export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; conceal(): void; captionInset(kind: "pane" | "window"): number } {
   type Docs = { bar: ChromeDoc; rail: ChromeDoc; stage: ChromeDoc; guard: ChromeDoc };
   let surface: DesktopBrowserSurface | null = null;
   let chrome: DesktopBrowserChrome | null = null;
@@ -427,7 +427,10 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     update();
   };
 
-  /** 표면을 거둔다 — 뷰·창·타이머를 놓고 다음 `apply` 가 처음부터 다시 세울 수 있게 비운다. */
+  /**
+   * 표면을 거둔다 — 뷰·창·타이머를 놓고 다음 `apply` 가 처음부터 다시 세울 수 있게 비운다.
+   * 열린 표면 lease 를 closed 로 보고하지는 않는다. 창을 접는 요청만 그 보고를 한다.
+   */
   const closeSurface = (): void => {
     if (!surface && !docs) return;
     if (toastTimer !== null) { clearTimeout(toastTimer); toastTimer = null; }
@@ -481,6 +484,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     lastPage: () => (lastPageSize ? { ...lastPageSize } : null),
     focusPageDialog() { dialogFocusAt = Date.now(); if (takeDialogFocus()) update(); },
     dispose: closeSurface,
+    /** 창이 다른 콘솔을 보는 동안 네이티브 표면만 내린다. 서버의 표면 lease 는 그대로 둔다. */
+    conceal: closeSurface,
     relay: (value) => deps.relay(value),
     // Console 테마(라이트·다크·시스템)가 바뀌었다 — 새로고침 없이 크롬 문서와 손잡이가 같은 순간 새 색으로 다시 칠해진다.
     retheme() { if (docs) push(); },

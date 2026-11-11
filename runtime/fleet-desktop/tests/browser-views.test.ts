@@ -5,7 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { readChromeHistory } from "../src/chrome-history.js";
 import { createBrowserHistoryStorage } from "../src/browser-history-storage.js";
-import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, type DesktopBrowserRelay, type DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, type DesktopBrowserRelay, type DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 import type { WebContentsView } from "electron";
 import { createDesktopShellWindow, createDesktopViewStack, parkedNativeBounds } from "../src/shell-window.js";
 import { createBrowserSurface } from "../src/browser-surface.js";
@@ -54,12 +54,12 @@ function view(id: string): DesktopBrowserSnapshot["views"][number] {
 }
 
 /** 셸이 만든 네이티브 뷰 — 이 계약이 보는 것은 만들어졌는지, 닫혔는지, 어떤 CDP 명령을 받았는지뿐이다. */
-function fakeView(partition: string, created: Array<{ partition: string; closed: boolean; commands: string[] }>): WebContentsView {
-  const record = { partition, closed: false, commands: [] as string[] };
+function fakeView(partition: string, created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter }>): WebContentsView {
+  const record = { partition, closed: false, commands: [] as string[], contents: new EventEmitter() };
   created.push(record);
   // 페이지 이동은 뷰가 닫힐 때까지 끝나지 않다가 닫히면 거부된다 — 재기동 순간에 걸려 있던 명령.
   let rejectPending: (error: Error) => void = () => {};
-  const contents = Object.assign(new EventEmitter(), {
+  const contents = Object.assign(record.contents, {
     session: { webRequest: { onBeforeSendHeaders: () => {} } },
     debugger: Object.assign(new EventEmitter(), {
       attach: () => {},
@@ -73,6 +73,7 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
     setWindowOpenHandler: () => {},
     loadURL: async () => {},
     isFocused: () => false,
+    isDestroyed: () => record.closed,
     close: () => { record.closed = true; rejectPending(new Error("target closed")); },
   });
   return { webContents: contents, setBorderRadius: () => {}, setBounds: vi.fn(), setVisible: () => {} } as unknown as WebContentsView;
@@ -175,7 +176,7 @@ describe("desktop native browser views across a Console restart", () => {
       }
       return new Response(null, { status: 404 });
     });
-    const created: Array<{ partition: string; closed: boolean; commands: string[] }> = [];
+    const created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter }> = [];
     const mainHost = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 1200, height: 800 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 2, reclaimFocus: vi.fn() } satisfies PageHost;
     const childHost = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 1000, height: 760 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 2, reclaimFocus: vi.fn() } satisfies PageHost;
     let target: { host: PageHost; page: { x: number; y: number; width: number; height: number } } | null = null;
@@ -247,5 +248,125 @@ describe("desktop native browser views across a Console restart", () => {
     const clamped = parkedNativeBounds({ width: 5000, height: 5000 }, content);
     expect([clamped.width, clamped.height]).toEqual([1200, 800]);
     expect([clamped.x, clamped.y]).toEqual([1199, 799]);
+  });
+});
+
+describe("managed browser auth and on-demand frames", () => {
+  const ORIGIN = "http://127.0.0.1:4310";
+
+  it("sends the lock token and access path, captures only while watched, and keeps a single in-flight frame", async () => {
+    let lifetime: DesktopBrowserSnapshot = { generation: 1, epoch: "life", views: [view("view-1")], commands: [{ id: 1, viewId: "view-1", method: "Runtime.evaluate", params: {} }] };
+    const relays: DesktopBrowserRelay[] = [];
+    const frames: { body: Buffer; headers: Headers }[] = [];
+    const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
+    const headerOf = (init?: RequestInit): Headers => new Headers(init?.headers);
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input));
+      if (url.pathname === DESKTOP_BROWSER_RELAY_PATH) { relays.push(JSON.parse(String(init?.body))); return new Response(null, { status: 204 }); }
+      if (url.pathname === DESKTOP_BROWSER_FRAME_PATH) {
+        frames.push({ body: Buffer.from(init?.body as Uint8Array), headers: headerOf(init) });
+        return new Response(null, { status: 204 });
+      }
+      if (url.pathname === DESKTOP_BROWSER_PATH || url.pathname === DESKTOP_BROWSER_EVENTS_PATH) {
+        expect(headerOf(init).get("authorization")).toBe("Bearer lock-token");
+        expect(headerOf(init).get(DESKTOP_BROWSER_OWNER_HEADER)).toBe("owner-1");
+        if (url.pathname === DESKTOP_BROWSER_PATH) return Response.json(lifetime);
+        const frame = new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`);
+        return new Response(new ReadableStream<Uint8Array>({ start: (controller) => { streams.push(controller); controller.enqueue(frame); } }));
+      }
+      return new Response(null, { status: 404 });
+    });
+    const created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter }> = [];
+    const shell = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 800, height: 600 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 1, reclaimFocus: vi.fn() } satisfies PageHost;
+    let releaseCapture: (() => void) | null = null;
+    let captureResult: Buffer | null = Buffer.from("frame-1");
+    const captures: Buffer[] = [];
+    let clock = 5_000;
+    const pending: { ms: number; cancelled: boolean }[] = [];
+    const publish = (next: DesktopBrowserSnapshot): void => {
+      lifetime = next;
+      streams.at(-1)!.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`));
+    };
+    const views = createDesktopBrowserViews({
+      shell: () => shell,
+      consoleContents: () => null,
+      surface: { apply: vi.fn(), target: () => null, lastPage: () => null, inputLocked: () => false, refresh: vi.fn(), dispose: vi.fn() },
+      createView: (partition) => fakeView(partition, created),
+      product: () => "Chrome/150.0",
+      userAgent: () => "Mozilla/5.0 Chrome/150.0",
+      auth: () => ({ token: "lock-token", ownerId: "owner-1" }),
+      hostLabel: () => "desk",
+      platform: "darwin",
+      accessPath: "wsl",
+      captureViewerFrame: () => new Promise((resolve) => {
+        const jpeg = captureResult ?? Buffer.from("empty");
+        captures.push(jpeg);
+        releaseCapture = () => resolve(captureResult === null ? null : { jpeg, width: 320, height: 180 });
+      }),
+      now: () => clock,
+      schedule: (cb, ms) => {
+        const handle = { ms, cancelled: false };
+        pending.push(handle);
+        if (ms === 0) queueMicrotask(() => { if (!handle.cancelled) cb(); });
+        return handle;
+      },
+      cancel: (handle) => { (handle as { cancelled: boolean }).cancelled = true; },
+      fetch: fetch as typeof globalThis.fetch,
+    });
+
+    await views.start(ORIGIN);
+    await vi.waitFor(() => expect(relays.flatMap((relay) => relay.results ?? []).some((result) => result.id === 1)).toBe(true));
+    expect(captures).toHaveLength(0);
+    expect(frames).toHaveLength(0);
+    expect(relays.some((relay) => relay.hello?.accessPath === "wsl" && relay.hello.hostLabel === "desk" && relay.hello.platform === "darwin")).toBe(true);
+    expect(headerOf(fetch.mock.calls.find((call) => String(call[0]).includes(DESKTOP_BROWSER_RELAY_PATH))?.[1]).get("authorization")).toBe("Bearer lock-token");
+
+    publish({ ...lifetime, generation: 2, watchedViewIds: ["view-1"] });
+    await vi.waitFor(() => expect(captures).toHaveLength(1));
+    expect(frames).toHaveLength(0);
+    expect(pending.some((timer) => timer.ms >= 250)).toBe(true);
+    const page = created[0]!.contents;
+    page.emit("did-navigate");
+    page.emit("did-stop-loading");
+    page.emit("did-navigate-in-page");
+    page.emit("dom-ready");
+    await Promise.resolve();
+    expect(captures).toHaveLength(1);
+
+    clock += 300;
+    const finishFirst = releaseCapture!;
+    captureResult = Buffer.from("frame-2");
+    finishFirst();
+    await vi.waitFor(() => expect(frames).toHaveLength(1));
+    await vi.waitFor(() => expect(captures).toHaveLength(2));
+    expect(frames).toHaveLength(1);
+    expect(frames[0]!.body.equals(Buffer.from("frame-1"))).toBe(true);
+    expect(frames[0]!.headers.get(DESKTOP_BROWSER_VIEW_HEADER)).toBe("view-1");
+    expect(frames[0]!.headers.get("content-type")).toBe("image/jpeg");
+
+    const finishSecond = releaseCapture!;
+    captureResult = Buffer.from("frame-2");
+    finishSecond();
+    await vi.waitFor(() => expect(frames).toHaveLength(2));
+    expect(frames[1]!.body.equals(Buffer.from("frame-2"))).toBe(true);
+    expect(captures).toHaveLength(2);
+
+    clock += 300;
+    page.emit("did-navigate");
+    await vi.waitFor(() => expect(captures).toHaveLength(3));
+    releaseCapture!();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(frames).toHaveLength(2);
+
+    publish({ ...lifetime, generation: 3, watchedViewIds: [] });
+    const capturedAtStop = captures.length;
+    page.emit("did-navigate");
+    page.emit("dom-ready");
+    clock += 1_000;
+    await Promise.resolve();
+    expect(captures).toHaveLength(capturedAtStop);
+    expect(created[0]!.closed).toBe(false);
+    views.stop();
   });
 });
