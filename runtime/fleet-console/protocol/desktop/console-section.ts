@@ -65,9 +65,11 @@ export interface ConsoleSectionState {
 /**
  * `commodore` and `anchorY` ride only on `switch`: the commodore to open on arrival and the pressed row's top
  * inside the sidebar viewport (CSS px). A shell without `CONSOLE_ROSTER_CAPABILITY` ignores both and only switches.
+ * `commander` (an objective of that commodore, only with `commodore`) and `scrollTop` (the sidebar list's scroll
+ * offset, CSS px) ride on `switch` too; a shell without `CONSOLE_ROSTER_SEAMLESS_CAPABILITY` ignores both.
  */
 export type ConsoleSectionCommand = { readonly request: "state" }
-  | { readonly switch: string; readonly commodore?: string; readonly anchorY?: number }
+  | { readonly switch: string; readonly commodore?: string; readonly commander?: string; readonly anchorY?: number; readonly scrollTop?: number }
   | { readonly expanded: boolean } | { readonly add: true }
   | { readonly rename: { readonly id: string; readonly label: string } } | { readonly forget: string }
   | { readonly fold: { readonly id: string; readonly folded: boolean } } | { readonly arrived: true }
@@ -122,13 +124,35 @@ export interface ConsoleWslState {
  */
 export const CONSOLE_ROSTER_PATH = "/api/v1/console-roster";
 export const CONSOLE_ROSTER_MAX_COMMODORES = 40;
+/** In-progress commanders listed under one commodore; the rest are counted in `moreCommanders`. */
+export const CONSOLE_ROSTER_MAX_COMMANDERS = 8;
+/** UTF-16 units of `preview`, one line. */
+export const CONSOLE_ROSTER_PREVIEW_MAX = 160;
 export type ConsoleRosterRun = "working" | "waiting" | "quiet";
+/** One objective in progress under a commodore, as its sidebar row shows it: title, mission progress and one run word. */
+export interface ConsoleRosterCommander {
+  /** The objective's id on that Console. */
+  readonly id: string;
+  readonly title: string;
+  /** Missions done and in all; `done <= total`. */
+  readonly done: number;
+  readonly total: number;
+  readonly run: ConsoleRosterRun;
+}
 export interface ConsoleRosterCommodore {
   readonly id: string;
   readonly name: string;
   /** The avatar book entry of that Console (base index and identity tone); null when it has none yet. */
   readonly look: { readonly base: number; readonly tone: string | null } | null;
   readonly run: ConsoleRosterRun;
+  /**
+   * The three below are additive: a Console from before them sends none and its rows show the name alone.
+   * `preview` is the one-line last message the commodore's own sidebar row shows, control characters removed.
+   * `commanders` are the objectives in progress, in sidebar order. The route's reader rule is unchanged by them.
+   */
+  readonly preview?: string;
+  readonly commanders?: readonly ConsoleRosterCommander[];
+  readonly moreCommanders?: number;
 }
 export interface ConsoleRosterSummary {
   readonly v: 1;
@@ -140,8 +164,15 @@ export interface ConsoleRosterSummary {
 
 /** The shell relays rosters and accepts `switch.commodore`, `fold` and `arrived`. */
 export const CONSOLE_ROSTER_CAPABILITY = "console-roster";
+/**
+ * The shell keeps the sidebar where it was across a switch: it accepts `switch.commander` and `switch.scrollTop`
+ * and hands both to the arriving document in `arrival`. Every document then draws the sections in `entries` order,
+ * its own in place, so the order does not depend on which Console is active.
+ */
+export const CONSOLE_ROSTER_SEAMLESS_CAPABILITY = "console-roster-seamless";
 /** Renderer-only, like the section state: the shell dispatches it on the active document's window. */
 export const CONSOLE_ROSTER_EVENT = "fleet:console-roster-state";
+/** A page from before the additive fields rejects a larger frame, so the cap stays. To fit, the shell drops previews first, then commanders, then commodores. */
 export const CONSOLE_ROSTER_MAX_FRAME = 65_536;
 export interface ConsoleRosterEntry {
   /** A `ConsoleSectionEntry.id` of the same window. The active entry has no roster: its document draws its own. */
@@ -158,15 +189,26 @@ export interface ConsoleRosterState {
   readonly rosters: readonly ConsoleRosterEntry[];
   /** Entry ids the person folded in this window. */
   readonly folded: readonly string[];
-  /** Set for the document a `switch.commodore` landed on, until that document sends `arrived`. */
-  readonly arrival: { readonly commodore: string; readonly anchorY: number | null } | null;
+  /**
+   * Set for the document a `switch.commodore` landed on, until that document sends `arrived`.
+   * `commander` and `scrollTop` are additive (`CONSOLE_ROSTER_SEAMLESS_CAPABILITY`): the objective to open under that
+   * commodore, and the sidebar list offset to restore before the first paint. Absent or null means none.
+   */
+  readonly arrival: { readonly commodore: string; readonly anchorY: number | null; readonly commander?: string | null; readonly scrollTop?: number | null } | null;
 }
 const clean = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const anchor = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100_000;
+const rosterRun = (value: unknown): value is ConsoleRosterRun => value === "working" || value === "waiting" || value === "quiet";
+const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= 100_000;
+const rosterCommander = (value: unknown): value is ConsoleRosterCommander => object(value) && clean(value.id, 128) && clean(value.title, 120)
+  && count(value.done) && count(value.total) && value.done <= value.total && rosterRun(value.run);
 const rosterCommodore = (value: unknown): value is ConsoleRosterCommodore => object(value) && clean(value.id, 128) && clean(value.name, 120)
+  && (value.preview === undefined || clean(value.preview, CONSOLE_ROSTER_PREVIEW_MAX))
+  && (value.commanders === undefined || (Array.isArray(value.commanders) && value.commanders.length <= CONSOLE_ROSTER_MAX_COMMANDERS && value.commanders.every(rosterCommander)))
+  && (value.moreCommanders === undefined || count(value.moreCommanders))
   && (value.look === null || (object(value.look) && Number.isSafeInteger(value.look.base) && (value.look.base as number) >= 0 && (value.look.base as number) < 10_000 && (value.look.tone === null || clean(value.look.tone, 64))))
-  && (value.run === "working" || value.run === "waiting" || value.run === "quiet");
+  && rosterRun(value.run);
 const rosterList = (value: Record<string, unknown>): boolean => Array.isArray(value.commodores) && value.commodores.length <= CONSOLE_ROSTER_MAX_COMMODORES
   && value.commodores.every(rosterCommodore) && Number.isSafeInteger(value.more) && (value.more as number) >= 0;
 export function isConsoleRosterSummary(value: unknown): value is ConsoleRosterSummary {
@@ -176,7 +218,9 @@ export function isConsoleRosterState(value: unknown): value is ConsoleRosterStat
   if (!object(value) || value.v !== 1 || !Array.isArray(value.rosters) || value.rosters.length > 100 || !Array.isArray(value.folded) || value.folded.length > 100) return false;
   try { if (new TextEncoder().encode(JSON.stringify(value)).length > CONSOLE_ROSTER_MAX_FRAME) return false; } catch { return false; }
   if (!value.folded.every((id: unknown) => clean(id, 128))) return false;
-  if (value.arrival !== null && !(object(value.arrival) && clean(value.arrival.commodore, 128) && (value.arrival.anchorY === null || anchor(value.arrival.anchorY)))) return false;
+  if (value.arrival !== null && !(object(value.arrival) && clean(value.arrival.commodore, 128) && (value.arrival.anchorY === null || anchor(value.arrival.anchorY))
+    && (value.arrival.commander === undefined || value.arrival.commander === null || clean(value.arrival.commander, 128))
+    && (value.arrival.scrollTop === undefined || value.arrival.scrollTop === null || anchor(value.arrival.scrollTop)))) return false;
   return value.rosters.every((entry: unknown) => object(entry) && clean(entry.id, 128)
     && (entry.status === "ok" || entry.status === "unsupported" || entry.status === "unavailable")
     && (entry.at === null || (typeof entry.at === "number" && Number.isFinite(entry.at))) && rosterList(entry));
@@ -193,7 +237,13 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
   if (clean(value.switch, 128)) {
     if ("commodore" in value && !clean(value.commodore, 128)) return null;
     if ("anchorY" in value && !anchor(value.anchorY)) return null;
-    return { switch: value.switch, ...(clean(value.commodore, 128) ? { commodore: value.commodore } : {}), ...(anchor(value.anchorY) ? { anchorY: value.anchorY } : {}) };
+    // A commander belongs to a commodore: alone it names nothing to open.
+    if ("commander" in value && !(clean(value.commander, 128) && clean(value.commodore, 128))) return null;
+    if ("scrollTop" in value && !anchor(value.scrollTop)) return null;
+    return {
+      switch: value.switch, ...(clean(value.commodore, 128) ? { commodore: value.commodore } : {}), ...(clean(value.commander, 128) ? { commander: value.commander } : {}),
+      ...(anchor(value.anchorY) ? { anchorY: value.anchorY } : {}), ...(anchor(value.scrollTop) ? { scrollTop: value.scrollTop } : {}),
+    };
   }
   if (object(value.fold) && clean(value.fold.id, 128) && typeof value.fold.folded === "boolean") return { fold: { id: value.fold.id, folded: value.fold.folded } };
   if (value.arrived === true) return { arrived: true };
