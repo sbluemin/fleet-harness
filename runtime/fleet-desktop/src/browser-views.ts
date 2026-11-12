@@ -817,7 +817,18 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const armPage = async (entry: LiveView, viewId: string, url: string): Promise<void> => {
     const contents = entry.view.webContents;
     try {
-      await contents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: CONDITIONAL_MEDIATION_UNSUPPORTED });
+      // attach 와 같은 틱에는 명령이 답하지 않을 수 있어 한 틱 양보한다. 답이 없으면 매달리지 않고
+      // 걷어낸다 — 보호 없이 페이지를 띄우지 않는다(거절·시간초과 모두 같은 경로).
+      await new Promise((resolve) => setImmediate(resolve));
+      const injected = contents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: CONDITIONAL_MEDIATION_UNSUPPORTED });
+      const outcome = await Promise.race([
+        injected.then(
+          () => "ok" as const,
+          () => "failed" as const,
+        ),
+        new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 10_000)),
+      ]);
+      if (outcome !== "ok") throw new Error(`browser page guard script ${outcome}`);
     } catch (error) {
       log(`browser page guard script failed: ${error instanceof Error ? error.message : "unknown"}`);
       drop(viewId, true);
