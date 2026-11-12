@@ -151,6 +151,49 @@ const CAPTURE_TIMEOUT_MS = 60_000;
 /** 표면이 뷰포트보다 클 수 있는 몫 — 스크롤바(CSS px). 계산한 배율과 실제 표면이 이 이상 어긋나면 잘못 자르지 않고 멈춘다. */
 const CAPTURE_SCROLLBAR_ALLOWANCE_CSS = 32;
 
+/**
+ * 조건부 WebAuthn(패스키 자동 완성) 중재를 지원하지 않는다고 답하는 페이지 월드 스크립트.
+ * 조건부 요청은 표준상 모달 UI를 띄우지 않는 요청인데, Chromium의 Windows 구현은 플랫폼 인증기로
+ * Windows 보안 모달을 띄워 Desktop 창 전체를 잠가 버린다(Fleet Browser에는 자동 완성 UI가 없다).
+ * isConditionalMediationAvailable·getClientCapabilities의 조건부 항목은 false로 답하고,
+ * 사용자 동작 없는 조건부 get/create는 NotAllowedError로 거절한다 — get 쪽 거절이 최종 방어선이므로
+ * 능력 조회를 다른 API로 하는 페이지도 조건부 요청은 여기서 걸린다. 명시적(non-conditional) 요청은
+ * 네이티브에 그대로 넘긴다. 페이지 부팅 전에 들어가 모든 프레임·새 문서에 적용되며(단, 아래 프레임
+ * 범위 참조), DOM·캡처에 흔적을 남기지 않고 페이지 예외로 부팅을 막지 않는다.
+ *
+ * 프레임 범위: 뷰별 디버거 세션은 페이지 타깃에만 붙고 하위 타깃 자동 연결(Target.setAutoAttach)을
+ * 하지 않으므로, 프로세스 분리된 교차 출처 iframe에는 들어가지 않는다 — 미적용 범위로 남긴다.
+ * 최상위 문서의 요청(이번 MS 로그인 사례)은 잡힌다.
+ */
+const CONDITIONAL_MEDIATION_UNSUPPORTED = `(() => {
+  try {
+    const C = window.PublicKeyCredential;
+    if (C) {
+      if (typeof C.isConditionalMediationAvailable === "function") {
+        Object.defineProperty(C, "isConditionalMediationAvailable", { value: async () => false, configurable: true, writable: true });
+      }
+      if (typeof C.getClientCapabilities === "function") {
+        Object.defineProperty(C, "getClientCapabilities", { value: async () => ({ conditionalGet: false, conditionalCreate: false }), configurable: true, writable: true });
+      }
+    }
+    const creds = window.navigator && window.navigator.credentials;
+    if (creds) {
+      if (typeof creds.get === "function") {
+        const nativeGet = creds.get.bind(creds);
+        Object.defineProperty(creds, "get", { value: (options) => (options && options.mediation === "conditional"
+          ? Promise.reject(new DOMException("Conditional mediation is not supported in this browser.", "NotAllowedError"))
+          : nativeGet(options)), configurable: true, writable: true });
+      }
+      if (typeof creds.create === "function") {
+        const nativeCreate = creds.create.bind(creds);
+        Object.defineProperty(creds, "create", { value: (options) => (options && options.mediation === "conditional"
+          ? Promise.reject(new DOMException("Conditional mediation is not supported in this browser.", "NotAllowedError"))
+          : nativeCreate(options)), configurable: true, writable: true });
+      }
+    }
+  } catch { /* 페이지 부팅을 막지 않는다 */ }
+})()`;
+
 interface ViewportCapture { readonly clip: CaptureRect; readonly scale: number; readonly format: "png" | "jpeg"; readonly quality: number }
 
 /**
@@ -763,8 +806,31 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       drop(spec.id, true);
       return;
     }
-    void contents.loadURL(spec.url).catch(() => undefined);
-    place(entry);
+    void armPage(entry, spec.id, spec.url);
+  };
+
+  /**
+   * 조건부 WebAuthn 차단 스크립트를 먼저 걸고 항해를 시작한다. await 로 순서를 보장해 첫 문서에
+   * 적용되지 않는 경합이 없게 한다. 주입 실패는 보호 없이 두지 않고 걷어낸다 — 디버거 부착 실패와
+   * 같은 경로·같은 표시(뷰 드롭 후 detached 보고)다. 거는 사이 뷰가 사라졌으면 항해하지 않는다.
+   */
+  const armPage = async (entry: LiveView, viewId: string, url: string): Promise<void> => {
+    const contents = entry.view.webContents;
+    try {
+      await contents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: CONDITIONAL_MEDIATION_UNSUPPORTED });
+    } catch (error) {
+      log(`browser page guard script failed: ${error instanceof Error ? error.message : "unknown"}`);
+      drop(viewId, true);
+      return;
+    }
+    if (live.get(viewId) !== entry || contents.isDestroyed()) return;
+    void contents.loadURL(url).catch(() => undefined);
+    try {
+      place(entry);
+    } catch (error) {
+      log(`browser page place failed: ${error instanceof Error ? error.message : "unknown"}`);
+      drop(viewId, true);
+    }
   };
 
   const drop = (id: string, report: boolean): void => {
