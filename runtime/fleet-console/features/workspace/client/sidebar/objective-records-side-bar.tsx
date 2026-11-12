@@ -205,7 +205,7 @@ export function ObjectiveRecordsSideBar({
   const sidebarSections = useCommodoreSidebarSections();
   const consoles = useConsoleSections();
   const sidebarSectionsRef = useRef(sidebarSections);
-  const { objectiveRecordRuntime, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
+  const { objectiveRecordRuntime, objectiveRecordsHydrated, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
   const [drag, setDrag] = useState<TheaterDragState | null>(null);
   const dragRef = useRef<TheaterDragState | null>(null);
   const orderedTheaterIdsRef = useRef<string[]>([]);
@@ -249,9 +249,9 @@ export function ObjectiveRecordsSideBar({
   arrivalSections.current = commodoreSections;
   const arrivalRecords = useRef(objectiveRecords);
   arrivalRecords.current = objectiveRecords;
-  // scrollTop은 목록이 그 값까지 길어질 때까지 다시 맞춘다. arrived로 arrival이 지워지면 멈춘다.
-  // 사람이 휠·터치·키로 직접 스크롤하면 그 전에 멈춘다. anchorY의 scrollIntoView와는 같이 쓰지 않는다.
-  const scrollHold = useRef<{ readonly key: string; readonly top: number; cancel: boolean; locked: boolean } | null>(null);
+  // 스크롤 목표는 arrival이 지워진 뒤에도 유지한다. 사람 입력이나 3초, 또는 로드 후 300ms 정지가 끝낸다.
+  const scrollJob = useRef<{ key: string; top: number; deadline: number; stableSince: number | null; lastHeight: number; stop: boolean } | null>(null);
+  const [scrollHoldOn, setScrollHoldOn] = useState(false);
   const arrivalOpened = useRef<string | null>(null);
   const arrivalPanelApplied = useRef<string | null>(null);
   useEffect(() => {
@@ -262,7 +262,6 @@ export function ObjectiveRecordsSideBar({
     const deadline = performance.now() + 3_000;
     // open → 펼침 레이아웃이 반영될 프레임 → 그 다음에야 스크롤을 잠근다.
     let phase: "open" | "settle" | "done" = arrivalOpened.current === openKey ? "settle" : "open";
-    let seenHeight = -1;
     const place = () => {
       if (arrival.scrollTop !== null) return;
       const list = listRef.current;
@@ -272,12 +271,6 @@ export function ObjectiveRecordsSideBar({
       (row.querySelector<HTMLElement>(".side-bar-theater-header") ?? row).scrollIntoView({ block: "nearest" });
       const overflow = row.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
       if (overflow > 0 && overflow <= 8) list.scrollTop += overflow;
-    };
-    const scrollFits = () => {
-      if (arrival.scrollTop === null || scrollHold.current?.cancel) return true;
-      const list = listRef.current;
-      if (!list) return false;
-      return list.scrollHeight - list.clientHeight + 1 >= arrival.scrollTop;
     };
     const attempt = () => {
       const past = performance.now() > deadline;
@@ -320,27 +313,12 @@ export function ObjectiveRecordsSideBar({
         frame = requestAnimationFrame(attempt);
         return;
       }
-      // 선택된 사령관이 펼쳐지며 행이 늘어나면 높이가 한 프레임 더 변한다. 그 레이아웃에서 scrollTop을 다시 맞춘 뒤에 잠근다.
-      const listNow = listRef.current;
-      const heightNow = listNow?.scrollHeight ?? 0;
-      if (arrival.scrollTop !== null && listNow && !scrollHold.current?.cancel) {
-        const max = Math.max(0, heightNow - listNow.clientHeight);
-        const next = Math.min(arrival.scrollTop, max);
-        if (listNow.scrollTop !== next) listNow.scrollTop = next;
-      }
-      if ((phase === "settle" || (phase === "done" && heightNow !== seenHeight)) && !past) {
-        seenHeight = heightNow;
+      if (phase === "settle" && !past) {
         phase = "done";
         frame = requestAnimationFrame(attempt);
         return;
       }
-      if (!scrollFits() && !past && !scrollHold.current?.cancel) {
-        frame = requestAnimationFrame(attempt);
-        return;
-      }
-      const hold = scrollHold.current;
-      if (hold && !hold.cancel) hold.locked = true;
-      // 대화를 연 뒤의 자동 열림이 지난 다음에 한 번만 맞춘다. 값이 없으면 그 문서의 기존 동작을 둔다.
+      // 스크롤 복원은 아래 효과가 arrival이 지워진 뒤에도 이어 간다. 여기서는 대화와 우측 사이드바만 마무리한다.
       if (arrival.rightPanel && arrivalPanelApplied.current !== openKey) {
         arrivalPanelApplied.current = openKey;
         const current = getRailStoreSnapshot().activePanelId;
@@ -369,32 +347,60 @@ export function ObjectiveRecordsSideBar({
     const nested = roster?.commodores.reduce((sum, commodore) => sum + (commodore.commanders?.length ?? 0), 0) ?? 0;
     return `${entry.id}:${roster?.commodores.length ?? -1}:${nested}`;
   }).join("|");
-  useLayoutEffect(() => {
+  const rosterReady = !consoles.entries.some((entry) => !entry.active) || consoles.rosterFrame;
+  const applyHeldScroll = () => {
+    const job = scrollJob.current;
     const list = listRef.current;
-    if (!arrival || arrival.scrollTop === null || arrivalScrollKey === null) {
-      if (list) delete list.dataset.scrollHold;
-      return;
-    }
-    if (!list) return;
-    if (scrollHold.current?.key !== arrivalScrollKey) scrollHold.current = { key: arrivalScrollKey, top: arrival.scrollTop, cancel: false, locked: false };
-    const hold = scrollHold.current;
-    if (!hold || hold.cancel || hold.locked) {
-      delete list.dataset.scrollHold;
-      return;
-    }
-    // 펼침으로 행이 끼어들 때 브라우저 scroll anchoring이 scrollTop을 밀지 못하게 한다.
-    list.dataset.scrollHold = "1";
+    if (!job || job.stop || !list) return;
     const max = Math.max(0, list.scrollHeight - list.clientHeight);
-    const next = Math.min(hold.top, max);
+    const next = Math.min(job.top, max);
     if (list.scrollTop !== next) list.scrollTop = next;
-    // 잠금은 대화를 연 뒤의 재배치가 끝난 도착 효과가 한다. 여기서 잠그면 펼침이 scrollTop을 밀어 올린 뒤 되돌리지 못한다.
+  };
+  useLayoutEffect(() => {
+    if (arrivalScrollKey !== null && arrival?.scrollTop != null && scrollJob.current?.key !== arrivalScrollKey) {
+      scrollJob.current = { key: arrivalScrollKey, top: arrival.scrollTop, deadline: performance.now() + 3_000, stableSince: null, lastHeight: -1, stop: false };
+      setScrollHoldOn(true);
+    }
+    applyHeldScroll();
   }, [arrival, arrivalScrollKey, rosterStamp, commodoreSections, tfSummaries, expandedCommanders]);
   useEffect(() => {
+    if (!scrollHoldOn) return;
+    let frame = 0;
+    const tick = () => {
+      const job = scrollJob.current;
+      if (!job || job.stop) return;
+      const list = listRef.current;
+      const now = performance.now();
+      if (list) {
+        const height = list.scrollHeight;
+        const max = Math.max(0, height - list.clientHeight);
+        const next = Math.min(job.top, max);
+        if (list.scrollTop !== next) list.scrollTop = next;
+        const ready = commodoresLoaded && objectiveRecordsHydrated && rosterReady;
+        if (!ready) job.stableSince = null;
+        else if (job.stableSince === null || height !== job.lastHeight) {
+          job.lastHeight = height;
+          job.stableSince = now;
+        }
+        if (now > job.deadline || (ready && job.stableSince !== null && now - job.stableSince >= 300 && height === job.lastHeight)) {
+          job.stop = true;
+          setScrollHoldOn(false);
+          return;
+        }
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [scrollHoldOn, commodoresLoaded, objectiveRecordsHydrated, rosterReady]);
+  useEffect(() => {
     const list = listRef.current;
-    if (!list || arrivalScrollKey === null) return;
+    if (!list || !scrollHoldOn) return;
     const stop = () => {
-      const hold = scrollHold.current;
-      if (hold && hold.key === arrivalScrollKey) hold.cancel = true;
+      const job = scrollJob.current;
+      if (!job || job.stop) return;
+      job.stop = true;
+      setScrollHoldOn(false);
     };
     const onKey = (event: globalThis.KeyboardEvent) => {
       if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(event.key)) return;
@@ -409,7 +415,7 @@ export function ObjectiveRecordsSideBar({
       list.removeEventListener("touchmove", stop);
       window.removeEventListener("keydown", onKey);
     };
-  }, [arrivalScrollKey]);
+  }, [scrollHoldOn]);
   const faces = useMemo((): readonly SideBarFace[] => {
     const order = pendingOrder ?? sidebarOrder;
     const rank = (id: string) => { const index = order.indexOf(id); return index === -1 ? order.length : index; };
@@ -660,7 +666,7 @@ export function ObjectiveRecordsSideBar({
       {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
-      <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")} data-scroll-hold={arrival?.scrollTop != null ? "1" : undefined}>
+      <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")} data-scroll-hold={scrollHoldOn ? "1" : undefined}>
         {beforeConsoles}
         <ActiveConsoleSection entry={consoles.sectioned ? consoles.active : null} folded={ownConsoleFolded} count={faces.length} sections={consoles} compact={compact} headed={ownHeaded}>
         {ownConsoleFolded ? null : <>
