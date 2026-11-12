@@ -58,6 +58,7 @@ describe("secure window policy", () => {
     const baseCtor = vi.fn(function BaseWindow(this: Record<string, unknown>) {
       this.getContentBounds = () => ({ x: 0, y: 0, width: 1200, height: 800 });
       this.contentView = { addChildView: vi.fn(), removeChildView: vi.fn() };
+      this.hookWindowMessage = vi.fn();
     });
     const viewCtor = vi.fn(function WebContentsView(this: Record<string, unknown>) {
       this.setBackgroundColor = vi.fn();

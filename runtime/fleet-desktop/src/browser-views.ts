@@ -153,72 +153,7 @@ const CAPTURE_TIMEOUT_MS = 60_000;
 /** 표면이 뷰포트보다 클 수 있는 몫 — 스크롤바(CSS px). 계산한 배율과 실제 표면이 이 이상 어긋나면 잘못 자르지 않고 멈춘다. */
 const CAPTURE_SCROLLBAR_ALLOWANCE_CSS = 32;
 
-/**
- * 조건부 WebAuthn(패스키 자동 완성) 중재를 지원하지 않는다고 답하는 페이지 월드 스크립트.
- * 조건부 요청은 표준상 모달 UI를 띄우지 않는 요청인데, Chromium의 Windows 구현은 플랫폼 인증기로
- * Windows 보안 모달을 띄워 Desktop 창 전체를 잠가 버린다(Fleet Browser에는 자동 완성 UI가 없다).
- * isConditionalMediationAvailable·getClientCapabilities의 조건부 항목은 false로 답하고,
- * 사용자 동작 없는 조건부 get/create는 NotAllowedError로 거절한다 — get 쪽 거절이 최종 방어선이므로
- * 능력 조회를 다른 API로 하는 페이지도 조건부 요청은 여기서 걸린다. 명시적(non-conditional) 요청은
- * 네이티브에 그대로 넘긴다. 페이지 부팅 전에 들어가 모든 프레임·새 문서에 적용되며(단, 아래 프레임
- * 범위 참조), DOM·캡처에 흔적을 남기지 않고 페이지 예외로 부팅을 막지 않는다.
- *
- * 프레임 범위: 뷰별 디버거 세션은 페이지 타깃에만 붙고 하위 타깃 자동 연결(Target.setAutoAttach)을
- * 하지 않으므로, 프로세스 분리된 교차 출처 iframe에는 들어가지 않는다 — 미적용 범위로 남긴다.
- * 최상위 문서의 요청(이번 MS 로그인 사례)은 잡힌다.
- */
-const CONDITIONAL_MEDIATION_UNSUPPORTED = `(() => {
-  try {
-    const C = window.PublicKeyCredential;
-    if (C) {
-      if (typeof C.isConditionalMediationAvailable === "function") {
-        Object.defineProperty(C, "isConditionalMediationAvailable", { value: async () => false, configurable: true, writable: true });
-      }
-      if (typeof C.getClientCapabilities === "function") {
-        const nativeCaps = C.getClientCapabilities.bind(C);
-        Object.defineProperty(C, "getClientCapabilities", { value: async () => {
-          // 네이티브 실패는 그대로 전달하고, 성공한 결과의 조건부 두 항목만 끈다 — 명시적 로그인을
-          // 가리는 단추(플랫폼 인증기 유무 등)가 사라지지 않게 한다.
-          const base = await nativeCaps();
-          return { ...base, conditionalGet: false, conditionalCreate: false };
-        }, configurable: true, writable: true });
-      }
-    }
-    const creds = window.navigator && window.navigator.credentials;
-    if (creds) {
-      // 인스턴스가 아니라 프로토타입에 걸어 우회에 강하게 한다(같은 체인이므로 통상 조회는 그대로 걸린다).
-      const proto = Object.getPrototypeOf(creds);
-      const holder = proto && typeof proto.get === "function" ? proto : creds;
-      if (typeof holder.get === "function") {
-        const nativeGet = holder.get.bind(creds);
-        Object.defineProperty(holder, "get", { value: (options) => (options && options.mediation === "conditional"
-          ? Promise.reject(new DOMException("Conditional mediation is not supported in this browser.", "NotAllowedError"))
-          : nativeGet(options)), configurable: true, writable: true });
-      }
-      if (typeof holder.create === "function") {
-        const nativeCreate = holder.create.bind(creds);
-        Object.defineProperty(holder, "create", { value: (options) => (options && options.mediation === "conditional"
-          ? Promise.reject(new DOMException("Conditional mediation is not supported in this browser.", "NotAllowedError"))
-          : nativeCreate(options)), configurable: true, writable: true });
-      }
-    }
-  } catch { /* 페이지 부팅을 막지 않는다 */ }
-})()`;
-
 interface ViewportCapture { readonly clip: CaptureRect; readonly scale: number; readonly format: "png" | "jpeg"; readonly quality: number }
-
-/** CDP 왕복에 상한을 건다 — 성공·실패 어느 쪽으로 끝나도 타이머를 거둔다. */
-async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(label)), ms); }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
 
 /**
  * clip 이 붙은 캡처를 셸이 대신 풀 수 있는 모양인지. 전체 페이지(captureBeyondViewport)나 nativeImage 가 쓰지 못하는
@@ -345,8 +280,6 @@ interface LiveView {
    * 지나므로, 잠긴 동안에는 여기 적힌 것만 통과시킨다. 오래된 것은 버린다.
    */
   agentKeys: { type: "keyDown" | "keyUp"; code: string; at: number }[];
-  /** 등록이 끝나지 않은 뷰에 닿은 명령 — attached 보고 뒤에 순서대로 보낸다. */
-  queued: DesktopBrowserSnapshot["commands"][number][];
 }
 
 /**
@@ -783,7 +716,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const target = deps.surface.target();
     const known = target && target.page.width > 0 && target.page.height > 0 ? target.page : deps.surface.lastPage();
     const parkViewport = known ? { width: known.width, height: known.height } : defaultParkViewport(contentBounds);
-    const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null, agentKeys: [], queued: [] };
+    const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null, agentKeys: [] };
     live.set(spec.id, entry);
     const contents = view.webContents;
     markSession(contents.session);
@@ -824,51 +757,16 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       });
       // 디버거가 떨어지면 대화상자에 답할 길이 없다 — 취소로 풀어 렌더러가 멈춘 채 남지 않게 한다.
       contents.debugger.on("detach", (_event, reason) => { log(`browser view debugger detached: ${reason}`); releaseDialog(false); drop(spec.id, true); });
-      entry.attached = false;
+      entry.attached = true;
+      push({ attached: [spec.id] });
       reportSize(spec.id, initialBounds);
     } catch (error) {
       log(`browser view debugger attach failed: ${error instanceof Error ? error.message : "unknown"}`);
       drop(spec.id, true);
       return;
     }
-    // attached 보고는 등록이 끝난 뒤에 한다 — Console은 그 보고를 받고서야 이 뷰에 명령을 보내므로
-    // 등록 전에 도착한 탐색이 첫 문서를 만드는 경합이 없다. 자세한 순서는 armPage를 본다.
-    void armPage(entry, spec.id, spec.url);
-  };
-
-  /**
-   * 빈 문서로 렌더러를 먼저 세우고(about:blank 커밋), 채널이 살아 있음을 확인한 뒤 차단 스크립트를
-   * 걸고, 그 뒤에야 Console에 attached를 보고하고 실제 URL로 항해한다. 디버거 명령이 답하지 않는
-   * 빈 WebContents(afaik 렌더러 없음)에 addScript를 거는 교착을 피한다. 주입 실패는 보호 없이
-   * 두지 않고 걷어낸다 — 디버거 부착 실패와 같은 경로·같은 표시(뷰 드롭 후 detached 보고)다.
-   */
-  const armPage = async (entry: LiveView, viewId: string, url: string): Promise<void> => {
-    const contents = entry.view.webContents;
-    try {
-      await withTimeout(contents.loadURL("about:blank"), 10_000, "browser page blank load failed");
-      await withTimeout(contents.debugger.sendCommand("Runtime.getHeapUsage", {}), 10_000, "browser page channel not ready");
-      await withTimeout(contents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: CONDITIONAL_MEDIATION_UNSUPPORTED }), 10_000, "browser page guard script failed");
-    } catch (error) {
-      log(`${error instanceof Error ? error.message : "unknown"}`);
-      drop(viewId, true);
-      return;
-    }
-    if (live.get(viewId) !== entry || contents.isDestroyed()) return;
-    entry.attached = true;
-    push({ attached: [viewId] });
-    // 첫 항해를 먼저 시작하고, 그 뒤에 armPage 전에 도착한 명령을 순서대로 내린다 — attached 보고를
-    // 등록 뒤로 미룬 대가로 스냅샷에 실려 온 명령이 뷰보다 먼저 와도 잃지 않고, 그 안의 항해가
-    // 첫 항해에 덮이지 않는다(등록을 기다리지 않던 때와 같은 순서).
-    if (url !== "about:blank") void contents.loadURL(url).catch(() => undefined);
-    const queued = entry.queued;
-    entry.queued = [];
-    for (const pending of queued) dispatch(pending);
-    try {
-      place(entry);
-    } catch (error) {
-      log(`browser page place failed: ${error instanceof Error ? error.message : "unknown"}`);
-      drop(viewId, true);
-    }
+    void contents.loadURL(spec.url).catch(() => undefined);
+    place(entry);
   };
 
   const drop = (id: string, report: boolean): void => {
@@ -876,7 +774,6 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (!entry) return;
     live.delete(id);
     stopWatch(id);
-    if (entry.queued.length > 0) push({ results: entry.queued.map((command) => ({ id: command.id, error: "desktop_view_missing" })) });
     const shell = entry.parent;
     try { if (shell && !shell.isDestroyed()) shell.remove(entry.view); } catch { /* 창이 먼저 닫혔다. */ }
     try { if (entry.view.webContents.debugger.isAttached()) entry.view.webContents.debugger.detach(); } catch { /* 이미 떨어졌다. */ }
@@ -931,14 +828,6 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     executed.add(command.id);
     // 기억은 유한하다 — 오래된 id 는 잊는다(콘솔은 결과를 받은 명령을 스냅샷에서 뺀다).
     if (executed.size > 10_000) for (const id of [...executed].slice(0, 5_000)) executed.delete(id);
-    dispatch(command);
-  };
-
-  /**
-   * 명령 하나를 내린다. 등록이 끝나지 않은 뷰의 것은 버리지 않고 줄 세운다 — attached 보고 뒤에
-   * 순서대로 나가므로, 스냅샷에 실려 온 재시작 직후 명령이 뷰보다 먼저 도착해도 잃지 않는다.
-   */
-  const dispatch = (command: DesktopBrowserSnapshot["commands"][number]): void => {
     if (command.viewId === DESKTOP_BROWSER_SHELL_VIEW) {
       const handler = deps.shellCommand;
       if (!handler) { push({ results: [{ id: command.id, error: "desktop_shell_unsupported" }] }); return; }
@@ -951,8 +840,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       return;
     }
     const entry = live.get(command.viewId);
-    if (!entry) { push({ results: [{ id: command.id, error: "desktop_view_missing" }] }); return; }
-    if (!entry.attached) { entry.queued.push(command); return; }
+    if (!entry || !entry.attached) { push({ results: [{ id: command.id, error: "desktop_view_missing" }] }); return; }
     const capture = command.method === "Page.captureScreenshot" && deps.composeCapture ? viewportCapture(command.params) : null;
     if (capture && deps.composeCapture) { enqueueCapture(command.id, entry, capture, deps.composeCapture); return; }
     // 걸려 있는 사이 수명이 바뀌면(뷰가 닫혀 거부되는 것 포함) 이 답은 옛 프로세스의 것이다 — 명령 id 는 새 프로세스에서
