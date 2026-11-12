@@ -39,7 +39,7 @@ import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/cha
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
 import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserSurface } from "../../../browser/client/browser-surface.js";
-import { toggleBrowserViewer, useBrowserViewerOpen } from "../../../browser/client/browser-viewer.js";
+import { toggleBrowserViewerShell, useBrowserViewerShell } from "../../../browser/client/browser-viewer-shell.js";
 import { publishBrowserPluginAttach } from "../../../browser/client/browser-engine.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
@@ -1751,19 +1751,19 @@ function SurfaceBrowserButton({ session, language, splitOpen }: {
   const t = getBrowserT(language);
   const engine = useBrowserEngine();
   const viewer = engine?.surfaceMode === "viewer" || (engine === null && !isDesktopShell());
-  const viewerOpen = useBrowserViewerOpen();
+  const viewerShell = useBrowserViewerShell();
   const engineMissing = !viewer && engine !== null && !engine.available;
   const detached = useBrowserSurface()?.mode === "window";
   // 이 사령관의 세션이 브라우저를 쓰는 동안 — Objective 대화의 지구본과 같은 표식·같은 말이다.
   const agentUsing = useCommodoreBrowserUse(session.commodoreId);
   const base = viewer
-    ? t(viewerOpen ? "terminal.browser.viewerExit" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
+    ? t(!viewerShell ? "terminal.browser.desktopOnly" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
     : engineMissing
     ? t(isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : t(detached ? "terminal.browser.focus" : agentUsing ? "terminal.browser.agentUsing" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
   return (
     <span className="conversation-pill-browser">
-      <CaptionActionButton actionId="browser" label={base} pressed={viewer ? viewerOpen : splitOpen} disabled={engineMissing} agent={agentUsing} onClick={viewer ? toggleBrowserViewer : toggleBrowserPane}>
+      <CaptionActionButton actionId="browser" label={base} pressed={viewer ? false : splitOpen} disabled={engineMissing || (viewer && !viewerShell)} agent={agentUsing} onClick={viewer ? toggleBrowserViewerShell : toggleBrowserPane}>
         <CaptionBrowserUseGlyph />
       </CaptionActionButton>
     </span>

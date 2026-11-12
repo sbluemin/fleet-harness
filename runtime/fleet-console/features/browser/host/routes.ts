@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
-import { DESKTOP_BROWSER_FRAME_AT_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_SEQ_HEADER, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, type BrowserExecutionHost, type BrowserSurfaceModeKind } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_BROWSER_FRAME_AT_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_SEQ_HEADER, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, type BrowserExecutionHost, type BrowserSurfaceModeKind } from "@fleet-console/protocol/desktop";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
 import { ViewerFrameClosedError, ViewerFrameDisconnectedError, ViewerFrameTimeoutError, type DesktopEngine } from "./desktop-engine.js";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
@@ -38,6 +38,8 @@ interface BrowserRouteDeps {
   readonly isManagingDesktopProcess: (req: IncomingMessage) => boolean;
   /** 보기 전용 프레임을 읽을 수 있는 세션인가. 아니면 401/403. */
   readonly viewerFrameRead: (req: IncomingMessage) => "ok" | "unauthorized" | "forbidden";
+  /** 보기 전용 셸의 투영 스트림을 연다 — 첫 프레임으로 지금 투영을 쓰고, 뒤따르는 변화는 조립하는 쪽이 흘린다. */
+  readonly subscribeViewer?: (res: ServerResponse) => void;
   readonly writeJson: (res: ServerResponse, status: number, body: unknown) => void;
   readonly readJsonBody: <T>(req: IncomingMessage, maxBytes?: number) => Promise<T | null>;
   readonly readUrl: (req: IncomingMessage) => URL;
@@ -58,6 +60,16 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
   return async ({ req, res, pathname }) => {
     if (!isWriteAdmitted(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (pathname === VIEWER_FRAME_PATH || pathname === VIEWER_UNWATCH_PATH) return serveViewer(req, res, pathname);
+    if (pathname === DESKTOP_BROWSER_VIEWER_PATH || pathname === DESKTOP_BROWSER_VIEWER_EVENTS_PATH) {
+      // 보기 전용 셸(이 Console 을 관리하지 않는 Desktop)이 읽는 투영 — 프레임 읽기와 같은 입장 규칙이다.
+      const admission = viewerFrameRead(req);
+      if (admission !== "ok") { writeJson(res, admission === "unauthorized" ? 401 : 403, { error: admission === "unauthorized" ? "unauthorized" : "forbidden" }); return true; }
+      if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (pathname === DESKTOP_BROWSER_VIEWER_PATH) { res.setHeader("Cache-Control", "no-store"); writeJson(res, 200, browserService.viewerSnapshot(BROWSER_GLOBAL_ID)); return true; }
+      if (!deps.subscribeViewer) { writeJson(res, 404, { error: "not_found" }); return true; }
+      deps.subscribeViewer(res);
+      return true;
+    }
     if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, withSurface(req, browserService.status())); return true; }
     if (!pathname.startsWith("/api/v1/browser/objectives/") && !isNativeBrowserWrite(req)) { writeJson(res, 403, { error: "browser_viewer_read_only" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") {

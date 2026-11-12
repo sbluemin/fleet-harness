@@ -385,6 +385,23 @@ export interface DesktopBrowserChrome {
   readonly reason: "desktop_required" | "shared" | null;
 }
 
+/**
+ * 보기 전용 셸 — 이 Console 을 관리하지 않는 Desktop(원격으로 건너온 창, 비관리 창)이 플릿 브라우저 셸을 자기가 그리되 보기만 한다는 능력.
+ * 화면은 그 Desktop 의 것이고 Console 은 아래 투영과 최신 프레임만 중계한다. 이 능력이 없는 셸·웹·모바일에는 보기 화면이 없다.
+ */
+export const DESKTOP_BROWSER_VIEWER_CAPABILITY = "browser-viewer-shell";
+export const DESKTOP_BROWSER_VIEWER_PATH = "/api/v1/browser/viewer/chrome";
+export const DESKTOP_BROWSER_VIEWER_EVENTS_PATH = "/api/v1/browser/viewer/chrome/events";
+export const DESKTOP_BROWSER_VIEWER_EVENT = "browser:viewer";
+/**
+ * 보기 전용 셸이 그릴 것 — 크롬 투영에서 사람의 조작에만 쓰이는 값(페이지 대화상자, 스페이스의 제어권·부탁·포인터)을 뺀 것과 실행 호스트.
+ * 브라우저가 한 번도 열리지 않았으면 `chrome` 은 null 이다.
+ */
+export interface DesktopBrowserViewerSnapshot {
+  readonly chrome: DesktopBrowserChrome | null;
+  readonly executionHost: BrowserExecutionHost;
+}
+
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
 export interface DesktopBrowserRelay {
   readonly surface?: DesktopBrowserSurfaceRelay;
@@ -458,6 +475,16 @@ export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserC
     && typeof value.available === "boolean" && (value.reason === null || value.reason === "desktop_required" || value.reason === "shared");
 }
 
+export function isDesktopBrowserViewerSnapshot(value: unknown): value is DesktopBrowserViewerSnapshot {
+  if (!isRecord(value) || (value.chrome !== null && !isDesktopBrowserChrome(value.chrome))) return false;
+  const host = value.executionHost;
+  return isRecord(host) && typeof host.managed === "boolean" && typeof host.connected === "boolean"
+    && (host.status === "connected" || host.status === "manager_disconnected" || host.status === "unmanaged")
+    && (host.hostLabel === null || isShortText(host.hostLabel, 256))
+    && (host.platform === null || host.platform === "darwin" || host.platform === "win32" || host.platform === "linux")
+    && (host.accessPath === null || host.accessPath === "loopback" || host.accessPath === "wsl");
+}
+
 export function isDesktopBrowserHello(value: unknown): value is DesktopBrowserHello {
   return isRecord(value) && typeof value.product === "string" && typeof value.userAgent === "string"
     && (value.hostLabel === undefined || isShortText(value.hostLabel, 256))
@@ -517,8 +544,11 @@ export const DESKTOP_WINDOW_COMMAND_EVENT = "desktop:window-command";
  * `console-ready`는 명령이라기보다 알림이다 — 막 적재된 화면이 첫 데이터를 반영해 한 번 그렸다는 사실. 호스트를 갈아타는 셸은
  * 그때까지 옛 화면을 붙잡아 두었다가 걷는다. 걸어 두지 않는 채널이라 셸은 적재 *전에* 새 콘솔의 이 스트림을 연다.
  * 모르는 옛 셸은 프레임을 버리고, 이 명령을 모르는 옛 Console은 400으로 답하므로 셸은 상한 타이머로 걷는다.
+ *
+ * `toggle-browser-viewer`는 이 Console 을 관리하지 않는 Desktop 창에서 사람이 브라우저 단추를 누른 것이다. 그 셸이 자기 보기 전용
+ * 플릿 브라우저 셸을 열거나 닫는다 — 열림 상태는 셸만 안다. 관리 창의 셸과 모르는 옛 셸은 이 명령을 버린다.
  */
-export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings", "console-ready"] as const;
+export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings", "console-ready", "toggle-browser-viewer"] as const;
 export type DesktopWindowCommand = (typeof DESKTOP_WINDOW_COMMANDS)[number];
 export interface DesktopWindowCommandSnapshot { readonly command: DesktopWindowCommand | null }
 
