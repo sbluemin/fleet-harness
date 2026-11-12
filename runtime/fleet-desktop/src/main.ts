@@ -435,9 +435,10 @@ async function boot(): Promise<void> {
     zoom: consoleZoomFactor,
     stripPrefs: desktopState.browserStrip,
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
-    // 보기 전용 셸이 열려 있는 동안 표면의 동작은 그 셸로 간다 — Console 로 요청을 보내는 관리 표면의 처리기를 타지 않는다.
-    act: (control, role, action) => { if (browserViewer?.active()) browserViewer.act(control, role, action); else browserActions(control, role, action); },
-    relay: (surface) => { if (browserViewer?.active()) { if (surface.status === "closed") browserViewer.closed(); } else browserHost.relaySurface(surface); },
+    // 동작의 주인은 지금 서 있는 표면의 주인이다. 보기 전용 셸의 표면이면 그 셸로 가고(Console 로 쓰기 요청을 보내는 관리 표면의 처리기를 타지 않는다),
+    // 관리 세션의 표면이면 관리 처리기로 간다 — 보기 셸이 아직 닫히는 중이어도 관리 표면의 동작이 그쪽으로 새지 않는다.
+    act: (control, role, action) => { if (browserSurface.viewing()) browserViewer?.act(control, role, action); else browserActions(control, role, action); },
+    relay: (surface) => { if (browserSurface.viewing()) { if (surface.status === "closed") browserViewer?.closed(); } else browserHost.relaySurface(surface); },
     // 표면의 자리·모양이 바뀌면 캡션 띠의 높이도 다시 본다(Windows 만 — 다른 OS 에서는 리프레셔가 없다). 높이가 그대로면 아무 일도 하지 않는다.
     changed: () => { browserHost.places(); overlayRefresher?.refresh(); companionOverlayRefresher?.refresh(); },
     log: (message) => logger.info(message),
@@ -568,9 +569,12 @@ async function boot(): Promise<void> {
       logger.error(`managed browser lookup failed: ${describeError(error)}`);
     }
     if (!open()) return;
+    // 표면의 주인은 하나다. 창이 관리 Console(또는 아무 Console 도 아닌 곳)로 가면 보기 전용 셸을 먼저 닫고 나서 관리 세션이 표면을 세운다.
+    const unmanaged = shownOrigin !== null && !next.some((connection) => connection.origin === shownOrigin) ? shownOrigin : null;
+    if (unmanaged === null) browserViewer?.follow(null);
     await browserHost.sync(next, shownOrigin, open);
     // 창이 이 Desktop 이 관리하지 않는 Console 을 보고 있으면 그 Console 의 브라우저는 보기 전용 셸로만 열린다.
-    browserViewer?.follow(open() && shownOrigin !== null && browserHost.shownOrigin() === null && !next.some((connection) => connection.origin === shownOrigin) ? shownOrigin : null);
+    browserViewer?.follow(open() && browserHost.shownOrigin() === null ? unmanaged : null);
   };
   const managedConnectionFor = async (origin: string): Promise<ManagedBrowserConnection | null> => {
     if (isRemoteConsoleOrigin(origin)) return null;
