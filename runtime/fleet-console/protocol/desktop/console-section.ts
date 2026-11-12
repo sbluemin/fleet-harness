@@ -67,9 +67,10 @@ export interface ConsoleSectionState {
  * inside the sidebar viewport (CSS px). A shell without `CONSOLE_ROSTER_CAPABILITY` ignores both and only switches.
  * `commander` (an objective of that commodore, only with `commodore`) and `scrollTop` (the sidebar list's scroll
  * offset, CSS px) ride on `switch` too; a shell without `CONSOLE_ROSTER_SEAMLESS_CAPABILITY` ignores both.
+ * `rightPanel` (only with `commodore`) is the right sidebar's state at the press; the same shell hands it to the arriving document.
  */
 export type ConsoleSectionCommand = { readonly request: "state" }
-  | { readonly switch: string; readonly commodore?: string; readonly commander?: string; readonly anchorY?: number; readonly scrollTop?: number }
+  | { readonly switch: string; readonly commodore?: string; readonly commander?: string; readonly anchorY?: number; readonly scrollTop?: number; readonly rightPanel?: ConsoleRightPanel }
   | { readonly expanded: boolean } | { readonly add: true }
   | { readonly rename: { readonly id: string; readonly label: string } } | { readonly forget: string }
   | { readonly fold: { readonly id: string; readonly folded: boolean } } | { readonly arrived: true }
@@ -129,6 +130,8 @@ export const CONSOLE_ROSTER_MAX_COMMANDERS = 8;
 /** UTF-16 units of `preview`, one line. */
 export const CONSOLE_ROSTER_PREVIEW_MAX = 160;
 export type ConsoleRosterRun = "working" | "waiting" | "quiet";
+/** An avatar book entry: base index and identity tone. */
+export interface ConsoleRosterLook { readonly base: number; readonly tone: string | null }
 /** One objective in progress under a commodore, as its sidebar row shows it: title, mission progress and one run word. */
 export interface ConsoleRosterCommander {
   /** The objective's id on that Console. */
@@ -138,13 +141,24 @@ export interface ConsoleRosterCommander {
   readonly done: number;
   readonly total: number;
   readonly run: ConsoleRosterRun;
+  /** Additive: the objective's avatar book entry on that Console, so its row keeps the same face in every document. Absent or null: none yet. */
+  readonly look?: ConsoleRosterLook | null;
 }
+/** A section the person made in that Console's sidebar, in sidebar order. Its rows are hidden there while `collapsed`, so other documents hide them too. */
+export interface ConsoleRosterSection {
+  readonly id: string;
+  readonly name: string;
+  readonly collapsed?: true;
+}
+export const CONSOLE_ROSTER_MAX_SECTIONS = 100;
 export interface ConsoleRosterCommodore {
   readonly id: string;
   readonly name: string;
   /** The avatar book entry of that Console (base index and identity tone); null when it has none yet. */
-  readonly look: { readonly base: number; readonly tone: string | null } | null;
+  readonly look: ConsoleRosterLook | null;
   readonly run: ConsoleRosterRun;
+  /** Additive: the id of the `sections` entry this commodore sits in. Absent: it sits in no section. */
+  readonly section?: string;
   /**
    * The three below are additive: a Console from before them sends none and its rows show the name alone.
    * `preview` is the one-line last message the commodore's own sidebar row shows, control characters removed.
@@ -160,7 +174,15 @@ export interface ConsoleRosterSummary {
   readonly commodores: readonly ConsoleRosterCommodore[];
   /** How many were left out by the cap. */
   readonly more: number;
+  /**
+   * Additive: that sidebar's own sections, so another document draws the same headers in the same order.
+   * A Console without sections sends none. `unsectionedCollapsed` hides the commodores that sit in no section.
+   */
+  readonly sections?: readonly ConsoleRosterSection[];
+  readonly unsectionedCollapsed?: true;
 }
+/** What the right sidebar showed when the person pressed a row: open or not, and which tab. */
+export interface ConsoleRightPanel { readonly open: boolean; readonly tab?: string }
 
 /** The shell relays rosters and accepts `switch.commodore`, `fold` and `arrived`. */
 export const CONSOLE_ROSTER_CAPABILITY = "console-roster";
@@ -183,6 +205,9 @@ export interface ConsoleRosterEntry {
   readonly at: number | null;
   readonly commodores: readonly ConsoleRosterCommodore[];
   readonly more: number;
+  /** Additive, relayed from that Console's summary as they are. */
+  readonly sections?: readonly ConsoleRosterSection[];
+  readonly unsectionedCollapsed?: true;
 }
 export interface ConsoleRosterState {
   readonly v: 1;
@@ -193,24 +218,34 @@ export interface ConsoleRosterState {
    * Set for the document a `switch.commodore` landed on, until that document sends `arrived`.
    * `commander` and `scrollTop` are additive (`CONSOLE_ROSTER_SEAMLESS_CAPABILITY`): the objective to open under that
    * commodore, and the sidebar list offset to restore before the first paint. Absent or null means none.
+   * `rightPanel` is additive too: the right sidebar state to show on arrival; absent or null leaves the document's own.
    */
-  readonly arrival: { readonly commodore: string; readonly anchorY: number | null; readonly commander?: string | null; readonly scrollTop?: number | null } | null;
+  readonly arrival: { readonly commodore: string; readonly anchorY: number | null; readonly commander?: string | null; readonly scrollTop?: number | null; readonly rightPanel?: ConsoleRightPanel | null } | null;
 }
 const clean = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
 const object = (value: unknown): value is Record<string, unknown> => value !== null && typeof value === "object" && !Array.isArray(value);
 const anchor = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 100_000;
 const rosterRun = (value: unknown): value is ConsoleRosterRun => value === "working" || value === "waiting" || value === "quiet";
 const count = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0 && (value as number) <= 100_000;
+const rosterLook = (value: unknown): value is ConsoleRosterLook => object(value) && Number.isSafeInteger(value.base) && (value.base as number) >= 0 && (value.base as number) < 10_000
+  && (value.tone === null || clean(value.tone, 64));
 const rosterCommander = (value: unknown): value is ConsoleRosterCommander => object(value) && clean(value.id, 128) && clean(value.title, 120)
-  && count(value.done) && count(value.total) && value.done <= value.total && rosterRun(value.run);
+  && count(value.done) && count(value.total) && value.done <= value.total && rosterRun(value.run)
+  && (value.look === undefined || value.look === null || rosterLook(value.look));
+const rosterSection = (value: unknown): value is ConsoleRosterSection => object(value) && clean(value.id, 128) && clean(value.name, 80)
+  && (value.collapsed === undefined || value.collapsed === true);
+const rightPanel = (value: unknown): value is ConsoleRightPanel => object(value) && typeof value.open === "boolean" && (value.tab === undefined || clean(value.tab, 32));
 const rosterCommodore = (value: unknown): value is ConsoleRosterCommodore => object(value) && clean(value.id, 128) && clean(value.name, 120)
   && (value.preview === undefined || clean(value.preview, CONSOLE_ROSTER_PREVIEW_MAX))
   && (value.commanders === undefined || (Array.isArray(value.commanders) && value.commanders.length <= CONSOLE_ROSTER_MAX_COMMANDERS && value.commanders.every(rosterCommander)))
   && (value.moreCommanders === undefined || count(value.moreCommanders))
-  && (value.look === null || (object(value.look) && Number.isSafeInteger(value.look.base) && (value.look.base as number) >= 0 && (value.look.base as number) < 10_000 && (value.look.tone === null || clean(value.look.tone, 64))))
+  && (value.section === undefined || clean(value.section, 128))
+  && (value.look === null || rosterLook(value.look))
   && rosterRun(value.run);
 const rosterList = (value: Record<string, unknown>): boolean => Array.isArray(value.commodores) && value.commodores.length <= CONSOLE_ROSTER_MAX_COMMODORES
-  && value.commodores.every(rosterCommodore) && Number.isSafeInteger(value.more) && (value.more as number) >= 0;
+  && value.commodores.every(rosterCommodore) && Number.isSafeInteger(value.more) && (value.more as number) >= 0
+  && (value.sections === undefined || (Array.isArray(value.sections) && value.sections.length <= CONSOLE_ROSTER_MAX_SECTIONS && value.sections.every(rosterSection)))
+  && (value.unsectionedCollapsed === undefined || value.unsectionedCollapsed === true);
 export function isConsoleRosterSummary(value: unknown): value is ConsoleRosterSummary {
   return object(value) && value.v === 1 && rosterList(value);
 }
@@ -220,7 +255,8 @@ export function isConsoleRosterState(value: unknown): value is ConsoleRosterStat
   if (!value.folded.every((id: unknown) => clean(id, 128))) return false;
   if (value.arrival !== null && !(object(value.arrival) && clean(value.arrival.commodore, 128) && (value.arrival.anchorY === null || anchor(value.arrival.anchorY))
     && (value.arrival.commander === undefined || value.arrival.commander === null || clean(value.arrival.commander, 128))
-    && (value.arrival.scrollTop === undefined || value.arrival.scrollTop === null || anchor(value.arrival.scrollTop)))) return false;
+    && (value.arrival.scrollTop === undefined || value.arrival.scrollTop === null || anchor(value.arrival.scrollTop))
+    && (value.arrival.rightPanel === undefined || value.arrival.rightPanel === null || rightPanel(value.arrival.rightPanel)))) return false;
   return value.rosters.every((entry: unknown) => object(entry) && clean(entry.id, 128)
     && (entry.status === "ok" || entry.status === "unsupported" || entry.status === "unavailable")
     && (entry.at === null || (typeof entry.at === "number" && Number.isFinite(entry.at))) && rosterList(entry));
@@ -240,9 +276,12 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
     // A commander belongs to a commodore: alone it names nothing to open.
     if ("commander" in value && !(clean(value.commander, 128) && clean(value.commodore, 128))) return null;
     if ("scrollTop" in value && !anchor(value.scrollTop)) return null;
+    // Like a commander, the right sidebar state belongs to an arrival, and there is none without a commodore.
+    if ("rightPanel" in value && !(rightPanel(value.rightPanel) && clean(value.commodore, 128))) return null;
     return {
       switch: value.switch, ...(clean(value.commodore, 128) ? { commodore: value.commodore } : {}), ...(clean(value.commander, 128) ? { commander: value.commander } : {}),
       ...(anchor(value.anchorY) ? { anchorY: value.anchorY } : {}), ...(anchor(value.scrollTop) ? { scrollTop: value.scrollTop } : {}),
+      ...(rightPanel(value.rightPanel) ? { rightPanel: { open: value.rightPanel.open, ...(value.rightPanel.tab !== undefined ? { tab: value.rightPanel.tab } : {}) } } : {}),
     };
   }
   if (object(value.fold) && clean(value.fold.id, 128) && typeof value.fold.folded === "boolean") return { fold: { id: value.fold.id, folded: value.fold.folded } };
