@@ -2652,7 +2652,8 @@ describe("Objectives contract", () => {
       const picked = store.find(id)!.followups.find((entry) => entry.title === title)!;
       return route("followup/adopt", { objectiveId: id, batchId, followups: [{ id: picked.id, rev: picked.rev }] });
     };
-    expect((await adopt("Review pick", "3f1c8f3e-1111-4a8b-9c0d-0000000000a1")).status).toBe(200);
+    // 응답은 다른 목표 쓰기와 같은 `{ objective }` 봉투다 — 화면이 사건 없이도 응답으로 고친다.
+    expect(await adopt("Review pick", "3f1c8f3e-1111-4a8b-9c0d-0000000000a1")).toMatchObject({ status: 200, value: { objective: { id, awaitingReview: true, followupBatches: [{ items: [{ snapshot: { title: "Review pick" } }] }] } } });
     expect(store.find(id)).toMatchObject({ awaitingReview: true, followupBatches: [{ items: [{ snapshot: { title: "Review pick" } }] }] });
     expect(await refusal(commodore, { action: "complete", objectiveId: id })).toBe("held_for_person");
     expect((await route("person-hold/return", { objectiveId: id, target: "followup" })).status).toBe(200);
@@ -2682,7 +2683,8 @@ describe("Objectives contract", () => {
     expect(store.find(nextId)!.commenced).toBe(true);
     // 완료 뒤에 넘겨받은 남은 후보도 사람이 바로 채택한다 — 목표는 완료된 채이고, 열린 후보가 사라진 넘김은 「사람이 답함」으로 끝난다.
     await board({ action: "hand_to_person", objectiveId: id, target: "followup", reason: "Left for the person" });
-    expect((await adopt("Done pick", "3f1c8f3e-1111-4a8b-9c0d-0000000000a2")).status).toBe(200);
+    // 넘김을 끝낸 쓰기의 응답은 정산 뒤의 목표다.
+    expect(await adopt("Done pick", "3f1c8f3e-1111-4a8b-9c0d-0000000000a2")).toMatchObject({ status: 200, value: { objective: { id, personHolds: expect.arrayContaining([expect.objectContaining({ target: "followup", reason: "Left for the person", settled: expect.objectContaining({ outcome: "answered" }) })]) } } });
     expect(store.find(id)).toMatchObject({ done: { by: actor }, personHolds: expect.arrayContaining([expect.objectContaining({ target: "followup", reason: "Left for the person", settled: expect.objectContaining({ outcome: "answered" }) })]) });
     await vi.waitFor(() => expect(store.list("c1").map((entry) => entry.title)).toContain("Done pick"));
     // 목표가 많아져도 도구 결과 안에서 전량을 읽고, 긴 본문은 원본 그대로 이어 읽는다.

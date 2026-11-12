@@ -68,8 +68,10 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
       return run(body);
     }
     const result = await run(body);
-    if (settles && held.length) store.personHoldsAnswered(body.objectiveId, held, actor, ended?.(body));
-    return result;
+    if (!settles || !held.length) return result;
+    // 넘김을 「사람이 답함」으로 끝낸 뒤의 목표를 돌려준다 — 화면이 응답만으로 넘김이 끝난 것을 안다.
+    const settled = store.personHoldsAnswered(body.objectiveId, held, actor, ended?.(body));
+    return result && typeof result === "object" && "objective" in result ? { ...result, objective: settled } as R : result;
   };
   const missionKinds = (patch: MissionPatchInput): ObjectiveEditKind[] => [
     ...(patch.text !== undefined || patch.title !== undefined || patch.done !== undefined ? ["missions" as const] : []),
@@ -137,7 +139,7 @@ export function createObjectiveActions(ctx: ObjectivesFeatureDeps, store: Object
     followupDiscard: holding(() => ["followup"], ({ objectiveId, candidateId }: Ref & { candidateId: string }) => objective(store.followupDiscard(objectiveId, candidateId, actor))),
     // 채택만 하기 — 목표를 완료하지 않고 고른 후보만 후속 목표로 만든다. 열린 후보가 남으면 넘긴 후속 선택은 그대로 서 있다.
     followupAdopt: holding(() => ["followup"], (body: Ref & { batchId: string; followups: readonly { id: string; rev: number }[] }) =>
-      launch.adoptFollowups(body.objectiveId, { batchId: body.batchId, followups: body.followups }, options(body))),
+      launch.adoptFollowups(body.objectiveId, { batchId: body.batchId, followups: body.followups }, options(body)).then(objective)),
     followupRetry: ({ objectiveId, batchId, candidateId }: Ref & { batchId: string; candidateId: string }) => objective(launch.retryFollowup(objectiveId, batchId, candidateId)),
     followupAbandon: ({ objectiveId, batchId, candidateId }: Ref & { batchId: string; candidateId: string }) => objective(store.followupAbandon(objectiveId, batchId, candidateId)),
     memberAdd: steerable(() => true, ({ objectiveId, member }: Ref & { member: { role: string; brief?: string; launch?: MemberLaunch; subagents?: boolean } }) => edited(objectiveId, ["members"], () => store.memberAdd(objectiveId, member, actor))),
