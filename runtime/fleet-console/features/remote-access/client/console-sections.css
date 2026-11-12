@@ -82,6 +82,8 @@
 .side-console-head.is-row.is-seam .side-console-home { display: none; }
 /* 로컬 카드가 섹션 안에 서면 가지선·들여쓰기는 걷는다 — 모양은 로컬 목록과 같다. */
 .side-console-roster:has(.side-bar-theater-section) { margin-left: 0; padding-left: 0; }
+/* 집 문서의 첫 섹션 머리와 같은 시작점. 명부 목록의 위 2px 안쪽 여백이 머리글을 밀어 내리지 않게 한다. */
+.side-console.is-headless > .side-console-roster:has(> .workspace-commodore-section) { padding-top: 0; margin-top: 0; }
 .side-console-roster:has(.side-bar-theater-section)::before { display: none; }
 .side-console.is-dim .side-console-roster { opacity: 0.5; }
 .console-shell.is-objective-records-view .side-console .side-bar-theater-header.is-card.is-name-only { min-height: 40px; }

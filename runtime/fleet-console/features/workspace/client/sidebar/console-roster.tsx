@@ -69,7 +69,10 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
   const renderCommodore = (commodore: ConsoleRosterCommodore) => {
     const look = commodore.look ?? { base: fallbackMongleBase(commodoreAvatarKey(commodore.id)), tone: null };
     const tone = look.tone !== null && isIdentityTone(look.tone) ? look.tone : null;
-    const preview = commodore.preview && commodore.preview.length > 0 ? commodore.preview : null;
+    const previewText = commodore.preview && commodore.preview.length > 0 ? commodore.preview : null;
+    // 새 필드를 아는 명부에서 미리보기만 없으면 로컬과 같이 빈 대화 줄을 그려 높이를 맞춘다. 옛 명부는 이름만.
+    const modernRoster = (roster?.sections !== undefined) || rows.some((row) => row.preview !== undefined || row.commanders !== undefined);
+    const preview = previewText ?? (modernRoster ? t("sidebar.commodore.noConversation") : null);
     const commanders = commodore.commanders ?? [];
     const moreCommanders = commodore.moreCommanders ?? 0;
     return <li key={commodore.id} className="side-bar-theater-section" data-theater-id={commodore.id}>
@@ -181,7 +184,7 @@ export function SeamCommanderRows({ commodoreId, selected, showSettled, selected
     </ol>
     {more > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(more) })}</p> : null}
     {selected && settled.length > 0 ? <ol className="commander-tab-list side-bar-group-chips">
-      {settled.map((item) => <SideBarClusterRow key={item.layout.cluster.id} item={item} selected={selectedCommanderId !== null && commanderObjectiveId(item.layout.cluster) === selectedCommanderId} onFocus={open} />)}
+      {settled.map((item) => <SideBarClusterRow key={item.layout.cluster.id} item={item} settled selected={selectedCommanderId !== null && commanderObjectiveId(item.layout.cluster) === selectedCommanderId} onFocus={open} />)}
     </ol> : null}
   </div>;
 }

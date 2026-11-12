@@ -262,6 +262,7 @@ export function ObjectiveRecordsSideBar({
     const deadline = performance.now() + 3_000;
     // open → 펼침 레이아웃이 반영될 프레임 → 그 다음에야 스크롤을 잠근다.
     let phase: "open" | "settle" | "done" = arrivalOpened.current === openKey ? "settle" : "open";
+    let seenHeight = -1;
     const place = () => {
       if (arrival.scrollTop !== null) return;
       const list = listRef.current;
@@ -300,8 +301,16 @@ export function ObjectiveRecordsSideBar({
           return;
         }
       }
-      // 연 직후 한 프레임은 펼침이 목록 높이를 바꾼 뒤다. 그 레이아웃에서 scrollTop을 다시 맞춘 다음에 잠근다.
-      if (phase === "settle" && !past) {
+      // 선택된 사령관이 펼쳐지며 행이 늘어나면 높이가 한 프레임 더 변한다. 그 레이아웃에서 scrollTop을 다시 맞춘 뒤에 잠근다.
+      const listNow = listRef.current;
+      const heightNow = listNow?.scrollHeight ?? 0;
+      if (arrival.scrollTop !== null && listNow && !scrollHold.current?.cancel) {
+        const max = Math.max(0, heightNow - listNow.clientHeight);
+        const next = Math.min(arrival.scrollTop, max);
+        if (listNow.scrollTop !== next) listNow.scrollTop = next;
+      }
+      if ((phase === "settle" || (phase === "done" && heightNow !== seenHeight)) && !past) {
+        seenHeight = heightNow;
         phase = "done";
         frame = requestAnimationFrame(attempt);
         return;
@@ -632,7 +641,7 @@ export function ObjectiveRecordsSideBar({
       {aliasError ? <p className="side-bar-theater-error" role="alert">{aliasError}</p> : null}
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
-      <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")}>
+      <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")} data-scroll-hold={arrival?.scrollTop != null ? "1" : undefined}>
         {beforeConsoles}
         <ActiveConsoleSection entry={consoles.sectioned ? consoles.active : null} folded={ownConsoleFolded} count={faces.length} sections={consoles} compact={compact} headed={ownHeaded}>
         {ownConsoleFolded ? null : <>
