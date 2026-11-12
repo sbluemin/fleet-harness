@@ -1,17 +1,13 @@
 import type { ReactNode } from "react";
-import { CONSOLE_ROSTER_MAX_COMMANDERS, type ConsoleRosterCommander, type ConsoleRosterCommodore, type ConsoleRosterRun, type ConsoleSectionEntry } from "@fleet-console/protocol/desktop/console-section";
+import type { ConsoleRosterCommander, ConsoleRosterCommodore, ConsoleRosterRun, ConsoleSectionEntry } from "@fleet-console/protocol/desktop/console-section";
 import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { getRailStoreSnapshot } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { ConsoleSectionHead, consoleSwitchBlocked, type ConsoleSections } from "../../../remote-access/client/console-sections.js";
 import { commodoreAvatarKey, fallbackMongleBase, objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { isIdentityTone } from "../../shared/identity-tones.js";
-import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
-import { useCommanderRows } from "../commander-tab/commander-rows.js";
 import { MongleAvatar } from "../components/mongle-avatar.js";
-import { ObjectiveAvatar } from "../avatars.js";
-import { commanderObjectiveId } from "../objective-clusters.js";
-import { ClusterRowProgress, SideBarClusterRow, type SideBarRowItem } from "./side-bar-cluster-row.js";
+import { ClusterRowProgress } from "./side-bar-cluster-row.js";
 
 /** 지금 문서의 우측 사이드바. 탭 이름이 계약(32자)을 넘으면 열림만 넘긴다. */
 function currentRightPanel(): { readonly open: boolean; readonly tab?: string } {
@@ -88,7 +84,7 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
           </span>
         </button>
       </div>
-      {!compact && (commanders.length > 0 || moreCommanders > 0) ? <div className="side-bar-commander-list">
+      {!compact && (commanders.length > 0 || moreCommanders > 0) ? <div className="side-bar-commander-list" data-keep-objective-active="">
         <ol className="commander-tab-list side-bar-group-chips">
           {commanders.map((commander) => <CommanderRosterRow key={commander.id} commander={commander} blocked={blocked}
             onOpen={(row) => open(commodore, commander.id, row)} />)}
@@ -152,51 +148,16 @@ function CommanderRosterRow({ commander, blocked, onOpen, avatar }: {
     <span className="side-bar-cluster-row-glyph" aria-hidden="true">
       {avatar ?? <MongleAvatar base={base} tone={tone} role="commander" state={rosterMongleState(commander.run)} size={30} label={commander.title} decorative />}
     </span>
-    <button type="button" className="side-bar-cluster-row-main" data-roster-commander={commander.id} aria-disabled={blocked || undefined}
-      aria-label={[commander.title, progress ? `${progress.done}/${progress.total}` : "", run ?? ""].filter(Boolean).join(", ")}
-      title={commander.title} onClick={(event) => onOpen(event.currentTarget)}>
-      <span className="side-bar-cluster-row-head"><span className="side-bar-cluster-row-title">{commander.title}</span></span>
+    <div className="workspace-cluster-row-body">
+      <button type="button" className="side-bar-cluster-row-main" data-roster-commander={commander.id} aria-disabled={blocked || undefined}
+        aria-label={[commander.title, progress ? `${progress.done}/${progress.total}` : "", run ?? ""].filter(Boolean).join(", ")}
+        title={commander.title} onClick={(event) => onOpen(event.currentTarget)}>
+        <span className="side-bar-cluster-row-head"><span className="side-bar-cluster-row-title">{commander.title}</span></span>
+      </button>
       {progress !== null || run !== null ? <span className="side-bar-cluster-row-line" aria-hidden="true">
-        <ClusterRowProgress progress={progress} />
+        <span className="side-bar-cluster-row-progress" aria-hidden="true"><ClusterRowProgress progress={progress} /></span>
         {run !== null ? <span className="side-bar-cluster-row-preview side-console-run">{run}</span> : null}
       </span> : null}
-    </button>
+    </div>
   </li>;
-}
-
-/**
- * 심리스 다중 콘솔에서 자기 문서가 그리는 진행 중 지휘관. 명부와 같은 상한·같은 행이다.
- * 선택된 사령관만, "시작 전·완료 보이기"가 켜져 있을 때 그 밖의 행을 덧붙인다.
- */
-export function SeamCommanderRows({ commodoreId, selected, showSettled, selectedCommanderId }: {
-  readonly commodoreId: string; readonly selected: boolean; readonly showSettled: boolean; readonly selectedCommanderId: string | null;
-}) {
-  const t = useT();
-  const listed = useCommanderRows(commodoreId, selectedCommanderId);
-  const active = listed.listSections.filter((section) => section.settled !== true).flatMap((section) => section.rows);
-  const settled = showSettled ? listed.listSections.filter((section) => section.settled === true).flatMap((section) => section.rows) : [];
-  const shown = active.slice(0, CONSOLE_ROSTER_MAX_COMMANDERS);
-  const more = Math.max(0, active.length - shown.length);
-  const open = (id: string) => openCommanderConversation(commodoreId, id);
-  return <div className="side-bar-commander-list" data-keep-objective-active="">
-    <ol className="commander-tab-list side-bar-group-chips">
-      {shown.map((item) => <LocalRosterCommanderRow key={item.layout.cluster.id} item={item} onOpen={open} />)}
-    </ol>
-    {more > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(more) })}</p> : null}
-    {selected && settled.length > 0 ? <ol className="commander-tab-list side-bar-group-chips">
-      {settled.map((item) => <SideBarClusterRow key={item.layout.cluster.id} item={item} settled selected={selectedCommanderId !== null && commanderObjectiveId(item.layout.cluster) === selectedCommanderId} onFocus={open} />)}
-    </ol> : null}
-  </div>;
-}
-
-function LocalRosterCommanderRow({ item, onOpen }: { readonly item: SideBarRowItem; readonly onOpen: (id: string) => void }) {
-  const id = commanderObjectiveId(item.layout.cluster) ?? item.layout.cluster.id;
-  const activity = item.anchor?.status;
-  const run: ConsoleRosterRun = item.row.decisionRequestedAt !== undefined || activity === "awaiting" ? "waiting" : activity === "running" ? "working" : "quiet";
-  const record = item.anchor?.objectiveRecord;
-  const progress = item.row.progress && item.row.progress.total > 0 ? item.row.progress : null;
-  const commander: ConsoleRosterCommander = { id, title: item.layout.cluster.title, done: progress?.done ?? 0, total: progress?.total ?? 0, run };
-  return <CommanderRosterRow commander={commander} blocked={false} onOpen={() => onOpen(id)} avatar={record
-    ? <ObjectiveAvatar objectiveRecord={record} role="commander" state={rosterMongleState(run)} size={30} label={commander.title} decorative />
-    : undefined} />;
 }
