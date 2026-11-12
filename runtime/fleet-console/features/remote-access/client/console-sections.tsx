@@ -43,6 +43,8 @@ export interface ConsoleSections {
   readonly ownHead: boolean;
   /** 셸이 명부를 건네는가. 옛 셸이면 머리글만 선다. */
   readonly rosterCapable: boolean;
+  /** 셸이 명부 프레임을 한 번이라도 건넸는가. */
+  readonly rosterFrame: boolean;
   readonly roster: (id: string) => ConsoleRosterEntry | null;
   readonly folded: (id: string) => boolean;
   readonly fold: (id: string, folded: boolean) => void;
@@ -73,7 +75,8 @@ export function useConsoleSections(options?: { readonly refresh?: boolean }): Co
   const state = useSyncExternalStore(subscribeState, () => sectionState, () => null);
   const rosters = useSyncExternalStore(subscribeState, () => rosterState, () => null);
   const capable = desktop && (state !== null || shell.capabilities.includes(CONSOLE_DIRECTORY_CAPABILITY));
-  const rosterCapable = capable && (rosters !== null || shell.capabilities.includes(CONSOLE_ROSTER_CAPABILITY));
+  const rosterFrame = rosters !== null;
+  const rosterCapable = capable && (rosterFrame || shell.capabilities.includes(CONSOLE_ROSTER_CAPABILITY));
   const seamless = capable && (shell.capabilities.includes(CONSOLE_ROSTER_SEAMLESS_CAPABILITY)
     || rosters?.arrival?.scrollTop != null || (rosters?.arrival?.commander != null && rosters.arrival.commander.length > 0));
   const [localFolds, setLocalFolds] = useState<Readonly<Record<string, boolean>>>({});
@@ -119,7 +122,7 @@ export function useConsoleSections(options?: { readonly refresh?: boolean }): Co
   }, [rosterCapable, command]);
   const active = entries.find((entry) => entry.active) ?? null;
   return {
-    capable, rosterCapable, seamless, entries, command, arrived, fold, arrival,
+    capable, rosterCapable, rosterFrame, seamless, entries, command, arrived, fold, arrival,
     ownHead: active !== null && (entries.length === 1 || consoleLifecycleKey(active) !== null),
     // 콘솔이 하나뿐이어도 관리 대상이 꺼져 있거나 시작·종료 중이면 머리글을 세운다 — 그 사실과 시작 단추가 설 자리가 머리글뿐이다.
     sectioned: capable && (entries.length > 1 || entries.some((entry) => consoleLifecycleKey(entry) !== null)),
