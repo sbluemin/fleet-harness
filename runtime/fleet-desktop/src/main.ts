@@ -385,6 +385,8 @@ async function boot(): Promise<void> {
   let chromeProgram: string | null = null;
   const browserPlatform: DesktopBrowserPlatform | undefined = process.platform === "darwin" || process.platform === "win32" || process.platform === "linux" ? process.platform : undefined;
   const browserHostLabel = (): string => os.hostname().replace(/\.local$/iu, "");
+  // 분리 창의 캡션 띠와 표면의 주소줄이 같은 줌을 보게 한다 — 주소줄 띠는 이 줌에 비례한다.
+  const consoleZoomFactor = (): number => window && !window.isDestroyed() ? window.consoleContents.getZoomFactor() : 1;
   const browserSurface = createBrowserSurface({
     main: () => window,
     createChromeView: () => new WebContentsView({ webPreferences: { ...chromeViewPreferences, partition: "fleet-browser-chrome" } }),
@@ -396,7 +398,7 @@ async function boot(): Promise<void> {
         movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true,
         ...(entryPalette ? { backgroundColor: entryPalette.canvas } : {}),
       });
-      const refresher = process.platform === "win32" ? createTitleBarOverlayRefresher(base, { screen, initialOverlay: companionOverlay, getZoomFactor: () => 1, inset: () => browserSurface.captionInset("window") }) : null;
+      const refresher = process.platform === "win32" ? createTitleBarOverlayRefresher(base, { screen, initialOverlay: companionOverlay, getZoomFactor: consoleZoomFactor, inset: () => browserSurface.captionInset("window") }) : null;
       companionOverlayRefresher = refresher;
       const refreshChrome = () => {
         if (base.isDestroyed()) return;
@@ -415,7 +417,7 @@ async function boot(): Promise<void> {
     colors: () => entryPalette ? { scheme: entryPalette.scheme, tokens: { ...(entryPalette.browser ?? {}) }, ...(entryPalette.fonts ? { fonts: { ...entryPalette.fonts } } : {}) } : null,
     lang: entryLanguage,
     platform: process.platform,
-    zoom: () => window && !window.isDestroyed() ? window.consoleContents.getZoomFactor() : 1,
+    zoom: consoleZoomFactor,
     stripPrefs: desktopState.browserStrip,
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
     act: createBrowserActions({
