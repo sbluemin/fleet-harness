@@ -173,20 +173,29 @@ const CONDITIONAL_MEDIATION_UNSUPPORTED = `(() => {
         Object.defineProperty(C, "isConditionalMediationAvailable", { value: async () => false, configurable: true, writable: true });
       }
       if (typeof C.getClientCapabilities === "function") {
-        Object.defineProperty(C, "getClientCapabilities", { value: async () => ({ conditionalGet: false, conditionalCreate: false }), configurable: true, writable: true });
+        const nativeCaps = C.getClientCapabilities.bind(C);
+        Object.defineProperty(C, "getClientCapabilities", { value: async () => {
+          // 네이티브 실패는 그대로 전달하고, 성공한 결과의 조건부 두 항목만 끈다 — 명시적 로그인을
+          // 가리는 단추(플랫폼 인증기 유무 등)가 사라지지 않게 한다.
+          const base = await nativeCaps();
+          return { ...base, conditionalGet: false, conditionalCreate: false };
+        }, configurable: true, writable: true });
       }
     }
     const creds = window.navigator && window.navigator.credentials;
     if (creds) {
-      if (typeof creds.get === "function") {
-        const nativeGet = creds.get.bind(creds);
-        Object.defineProperty(creds, "get", { value: (options) => (options && options.mediation === "conditional"
+      // 인스턴스가 아니라 프로토타입에 걸어 우회에 강하게 한다(같은 체인이므로 통상 조회는 그대로 걸린다).
+      const proto = Object.getPrototypeOf(creds);
+      const holder = proto && typeof proto.get === "function" ? proto : creds;
+      if (typeof holder.get === "function") {
+        const nativeGet = holder.get.bind(creds);
+        Object.defineProperty(holder, "get", { value: (options) => (options && options.mediation === "conditional"
           ? Promise.reject(new DOMException("Conditional mediation is not supported in this browser.", "NotAllowedError"))
           : nativeGet(options)), configurable: true, writable: true });
       }
-      if (typeof creds.create === "function") {
-        const nativeCreate = creds.create.bind(creds);
-        Object.defineProperty(creds, "create", { value: (options) => (options && options.mediation === "conditional"
+      if (typeof holder.create === "function") {
+        const nativeCreate = holder.create.bind(creds);
+        Object.defineProperty(holder, "create", { value: (options) => (options && options.mediation === "conditional"
           ? Promise.reject(new DOMException("Conditional mediation is not supported in this browser.", "NotAllowedError"))
           : nativeCreate(options)), configurable: true, writable: true });
       }
@@ -195,6 +204,19 @@ const CONDITIONAL_MEDIATION_UNSUPPORTED = `(() => {
 })()`;
 
 interface ViewportCapture { readonly clip: CaptureRect; readonly scale: number; readonly format: "png" | "jpeg"; readonly quality: number }
+
+/** CDP 왕복에 상한을 건다 — 성공·실패 어느 쪽으로 끝나도 타이머를 거둔다. */
+async function withTimeout<T>(work: Promise<T>, ms: number, label: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      work,
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(label)), ms); }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 /**
  * clip 이 붙은 캡처를 셸이 대신 풀 수 있는 모양인지. 전체 페이지(captureBeyondViewport)나 nativeImage 가 쓰지 못하는
@@ -810,27 +832,19 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   };
 
   /**
-   * 조건부 WebAuthn 차단 스크립트를 먼저 걸고 항해를 시작한다. await 로 순서를 보장해 첫 문서에
-   * 적용되지 않는 경합이 없게 한다. 주입 실패는 보호 없이 두지 않고 걷어낸다 — 디버거 부착 실패와
-   * 같은 경로·같은 표시(뷰 드롭 후 detached 보고)다. 거는 사이 뷰가 사라졌으면 항해하지 않는다.
+   * 조건부 WebAuthn 차단 스크립트를 먼저 걸고 항해를 시작한다. 채널이 살아 있음을 먼저 확인하는
+   * 결정적 순서로 첫 문서에 적용되지 않는 경합이 없게 한다(벽시계 양보가 아니라 채널 응답에 의존).
+   * 주입 실패는 보호 없이 두지 않고 걷어낸다 — 디버거 부착 실패와 같은 경로·같은 표시(뷰 드롭 후
+   * detached 보고)다. 거는 사이 뷰가 사라졌으면 항해하지 않는다.
    */
   const armPage = async (entry: LiveView, viewId: string, url: string): Promise<void> => {
     const contents = entry.view.webContents;
     try {
-      // attach 와 같은 틱에는 명령이 답하지 않을 수 있어 한 틱 양보한다. 답이 없으면 매달리지 않고
-      // 걷어낸다 — 보호 없이 페이지를 띄우지 않는다(거절·시간초과 모두 같은 경로).
-      await new Promise((resolve) => setImmediate(resolve));
-      const injected = contents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: CONDITIONAL_MEDIATION_UNSUPPORTED });
-      const outcome = await Promise.race([
-        injected.then(
-          () => "ok" as const,
-          () => "failed" as const,
-        ),
-        new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 10_000)),
-      ]);
-      if (outcome !== "ok") throw new Error(`browser page guard script ${outcome}`);
+      // 채널 확인용 읽기 — 부작용 없이 세션이 답하는지 본다.
+      await withTimeout(contents.debugger.sendCommand("Runtime.getHeapUsage", {}), 10_000, "browser page channel not ready");
+      await withTimeout(contents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: CONDITIONAL_MEDIATION_UNSUPPORTED }), 10_000, "browser page guard script failed");
     } catch (error) {
-      log(`browser page guard script failed: ${error instanceof Error ? error.message : "unknown"}`);
+      log(`${error instanceof Error ? error.message : "unknown"}`);
       drop(viewId, true);
       return;
     }
