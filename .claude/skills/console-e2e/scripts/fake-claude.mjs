@@ -22,6 +22,11 @@
 // FAKE_CLAUDE_TOOLS (optional): JSON array of tool names advertised in init.tools (default []).
 // FAKE_CLAUDE_REPLIES (optional): directory of best-effort one-shot reply fixtures; <sessionId>.md, then
 //   <model-prefix>.md (model id up to "["). Unset (or no match) keeps the fixed reply.
+// FAKE_CLAUDE_STRUCTURED_OUTPUT (optional): JSON value (any type) returned as result.structured_output on the normal turn
+//   result, only for launches given --json-schema (or --json-schema=...). Repeats on every such turn (not consumed, unlike
+//   REPLIES); no schema validation. Unset, unparsable (log `structured-output-config-ignored`) or a launch without
+//   --json-schema leaves the field absent; this is not a fake failure. Synthetic output is not model judgment and not
+//   evidence of real CLI schema handling.
 //
 // Modes: `--version`; chat/SDK when `--input-format stream-json`; otherwise an interactive terminal
 // that prints a banner and echoes input until SIGTERM/SIGHUP.
@@ -56,6 +61,16 @@ const configuredTools = (() => {
   } catch (error) {
     log({ event: "tools-config-ignored", reason: String(error?.message ?? error) });
     return [];
+  }
+})();
+const structuredOutput = (() => {
+  const raw = process.env.FAKE_CLAUDE_STRUCTURED_OUTPUT;
+  if (raw === undefined || raw === "") return undefined;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    log({ event: "structured-output-config-ignored", reason: String(error?.message ?? error) });
+    return undefined;
   }
 })();
 // Best-effort one-shot reply fixtures under FAKE_CLAUDE_REPLIES; null (unset) keeps the fixed canned reply.
@@ -99,6 +114,7 @@ if (mcpArg !== undefined) {
   }
 }
 
+const withStructured = structuredOutput !== undefined && argAfter("--json-schema") !== undefined;
 const sdk = argAfter("--input-format") === "stream-json";
 let model = argAfter("--model") ?? "default";
 const sessionId = argAfter("--session-id") ?? argAfter("--resume") ?? randomUUID();
@@ -324,7 +340,7 @@ if (!sdk) {
     }
     const reply = interrupted ? "fake turn interrupted" : scripted ?? `fake reply from model=${turnModel}`;
     out({ type: "assistant", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [{ type: "text", text: reply }], stop_reason: "end_turn", stop_sequence: null, usage }, ...envelope() });
-    out({ type: "result", subtype: "success", is_error: false, duration_ms: 200, duration_api_ms: 100, num_turns: 1, result: reply, stop_reason: "end_turn", session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
+    out({ type: "result", subtype: "success", is_error: false, duration_ms: 200, duration_api_ms: 100, num_turns: 1, result: reply, ...(withStructured && !interrupted ? { structured_output: structuredOutput } : {}), stop_reason: "end_turn", session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
     log({ event: "turn-end", model: turnModel, contextTokens: tokens, ...(interrupted ? { interrupted: true } : {}) });
     turnOpen = false;
     const next = takeNext();
