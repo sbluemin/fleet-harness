@@ -49,9 +49,9 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   };
   const more = h("button", { class: "icon more-button", type: "button", attrs: { "aria-haspopup": "menu" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "menu" ? null : "menu" }) } }, moreGlyph());
   // 보기 전용 셸의 표식과 닫기 — 그 셸에서만 보인다. 표식은 주소 왼쪽에서 보기 전용임과 어디서 실행 중인지를 말한다.
-  const viewBadge = h("span", { class: "view-only-badge" });
-  const viewPlace = h("span", { class: "view-only-place" });
-  const viewMark = h("span", { class: "view-only", hidden: true as unknown as boolean }, viewBadge, viewPlace);
+  const viewBadge = h("span", { class: "view-mark-badge" });
+  const viewPlace = h("span", { class: "view-mark-place" });
+  const viewMark = h("span", { class: "view-mark", hidden: true as unknown as boolean }, viewBadge, viewPlace);
   const closeView = h("button", { class: "icon close-view", type: "button", hidden: true as unknown as boolean, on: { click: () => post("bar", "close-surface") } }, "×");
   const leading = h("span", { class: "pad" });
   const trailing = h("span", { class: "pad" });

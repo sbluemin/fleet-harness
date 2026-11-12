@@ -147,7 +147,7 @@ export function mountRail(): (state: ChromeUiState) => void {
     root.classList.toggle("horizontal", flat);
     root.classList.toggle("pinned", state.pinned && !flat);
     // 보기 전용 셸에서는 탭을 고르기만 한다 — 새 탭과 탭 닫기는 그리지 않는다.
-    root.classList.toggle("view-only", state.viewOnly !== null);
+    root.classList.toggle("viewing", state.viewOnly !== null);
     newButton.hidden = state.viewOnly !== null;
     tabsBox.setAttribute("aria-orientation", state.orientation);
     leading.style.width = `${flat ? state.leading : 0}px`; trailing.style.width = `${flat ? state.trailing : 0}px`;
