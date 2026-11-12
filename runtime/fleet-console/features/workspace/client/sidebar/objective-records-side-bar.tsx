@@ -281,25 +281,44 @@ export function ObjectiveRecordsSideBar({
     };
     const attempt = () => {
       const past = performance.now() > deadline;
+      // 효과 시작 시점의 known은 목록이 아직 비어 있으면 그대로 굳는다. 매 프레임 다시 읽는다.
+      const knownNow = arrivalSections.current.some((section) => section.commodoreId === arrival.commodore);
       const commanderId = arrival.commander;
       const commanderKnown = commanderId !== null && arrivalRecords.current.some((record) => record.id === commanderId && record.commodoreId === arrival.commodore);
       const commodoreOpen = isCommodoreConversationOpen(arrival.commodore);
       if (phase === "open") {
-        // 지휘관이 없으면 목록에 있는 사령관을 바로 연다. 3초는 목록에 끝내 없을 때의 탈출구다.
-        const waiting = !known || (commanderId !== null && !commanderKnown);
-        if (waiting && !past) {
+        // 지휘관이 없으면 그 사령관 대화가 실제로 열릴 때까지 다시 연다. 포트가 아직 없거나 마지막 선택 복원이 덮어써도 한 번에 포기하지 않는다.
+        // 3초는 목록에 끝내 없을 때의 탈출구다.
+        if (commanderId !== null) {
+          if (!(knownNow && commanderKnown) && !past) {
+            frame = requestAnimationFrame(attempt);
+            return;
+          }
+          place();
+          if (knownNow && commanderKnown && arrivalOpened.current !== openKey) openCommanderConversation(arrival.commodore, commanderId);
+          else if (past && knownNow && !commodoreOpen && arrivalOpened.current !== openKey) openCommodoreConversation(arrival.commodore);
+        } else if (!knownNow && !past) {
           frame = requestAnimationFrame(attempt);
           return;
+        } else if (knownNow && !commodoreOpen) {
+          const opened = openCommodoreConversation(arrival.commodore);
+          if (!opened && !past) {
+            frame = requestAnimationFrame(attempt);
+            return;
+          }
         }
-        place();
-        if (known && commanderId !== null && commanderKnown) openCommanderConversation(arrival.commodore, commanderId);
-        else if (known && !commodoreOpen) openCommodoreConversation(arrival.commodore);
         arrivalOpened.current = openKey;
         phase = "settle";
         if (!past) {
           frame = requestAnimationFrame(attempt);
           return;
         }
+      }
+      // 잠그기 전에 마지막 선택 복원이 사령관 행 도착을 덮어썼으면 다시 연다. 지휘관 도착은 이미 그 화면을 연 경로라 여기서 건드리지 않는다.
+      if (commanderId === null && knownNow && !isCommodoreConversationOpen(arrival.commodore) && !past) {
+        openCommodoreConversation(arrival.commodore);
+        frame = requestAnimationFrame(attempt);
+        return;
       }
       // 선택된 사령관이 펼쳐지며 행이 늘어나면 높이가 한 프레임 더 변한다. 그 레이아웃에서 scrollTop을 다시 맞춘 뒤에 잠근다.
       const listNow = listRef.current;
