@@ -854,12 +854,13 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (live.get(viewId) !== entry || contents.isDestroyed()) return;
     entry.attached = true;
     push({ attached: [viewId] });
-    // armPage 전에 도착한 명령을 순서대로 내린다 — attached 보고를 등록 뒤로 미룬 대가로 스냅샷에
-    // 실려 온 명령이 뷰보다 먼저 와도 잃지 않는다.
+    // 첫 항해를 먼저 시작하고, 그 뒤에 armPage 전에 도착한 명령을 순서대로 내린다 — attached 보고를
+    // 등록 뒤로 미룬 대가로 스냅샷에 실려 온 명령이 뷰보다 먼저 와도 잃지 않고, 그 안의 항해가
+    // 첫 항해에 덮이지 않는다(등록을 기다리지 않던 때와 같은 순서).
+    if (url !== "about:blank") void contents.loadURL(url).catch(() => undefined);
     const queued = entry.queued;
     entry.queued = [];
     for (const pending of queued) dispatch(pending);
-    if (url !== "about:blank") void contents.loadURL(url).catch(() => undefined);
     try {
       place(entry);
     } catch (error) {
