@@ -42,9 +42,11 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
     : roster.status === "ok" && roster.commodores.length === 0 ? t("chrome.consoles.rosterEmpty") : null;
   const rows = entry.status === "untrusted" ? [] : roster?.commodores ?? [];
   const dim = entry.status === "unreachable" && rows.length > 0;
-  return <li className={`side-console${blocked ? " is-blocked" : ""}${dim ? " is-dim" : ""}`} data-console-id={entry.id} data-status={entry.status ?? undefined}>
-    <ConsoleSectionHead entry={entry} folded={folded} count={rows.length + (roster?.more ?? 0)} sections={sections} compact={compact} appearance="row" />
-    {folded ? null : <ol className="side-console-roster" aria-label={entry.label}>
+  // 심리스에서는 집 섹션에 컴퓨터 이름 머리글을 두지 않는다 — 집 문서와 같은 높이·순서를 유지하기 위해서다. 옛 셸은 머리글을 그대로 둔다.
+  const headless = sections.seamless && entry.home;
+  return <li className={`side-console${blocked ? " is-blocked" : ""}${dim ? " is-dim" : ""}${headless ? " is-headless" : ""}`} data-console-id={entry.id} data-status={entry.status ?? undefined}>
+    {headless ? null : <ConsoleSectionHead entry={entry} folded={folded} count={rows.length + (roster?.more ?? 0)} sections={sections} compact={compact} appearance="row" />}
+    {folded && !headless ? null : <ol className="side-console-roster" aria-label={entry.label}>
       {rows.map((commodore) => {
         const look = commodore.look ?? { base: fallbackMongleBase(commodoreAvatarKey(commodore.id)), tone: null };
         const tone = look.tone !== null && isIdentityTone(look.tone) ? look.tone : null;

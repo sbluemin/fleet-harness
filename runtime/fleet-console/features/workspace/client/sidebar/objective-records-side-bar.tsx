@@ -248,11 +248,14 @@ export function ObjectiveRecordsSideBar({
   arrivalSections.current = commodoreSections;
   const arrivalRecords = useRef(objectiveRecords);
   arrivalRecords.current = objectiveRecords;
-  // scrollTop은 첫 화면 전에 한 번만 되돌린다. 목록이 아직 짧으면 내용이 찬 뒤의 레이아웃에서 다시 맞추고, 그 다음부터는 손을 대지 않는다.
-  const arrivalScrollApplied = useRef<string | null>(null);
+  // scrollTop은 목록이 그 값까지 길어질 때까지 다시 맞춘다. arrived로 arrival이 지워지면 멈춘다.
+  // 사람이 휠·터치·키로 직접 스크롤하면 그 전에 멈춘다. anchorY의 scrollIntoView와는 같이 쓰지 않는다.
+  const scrollHold = useRef<{ readonly key: string; readonly top: number; cancel: boolean; locked: boolean } | null>(null);
+  const arrivalOpened = useRef<string | null>(null);
   useEffect(() => {
     if (!arrival || !commodoresLoaded) return;
     const known = arrivalSections.current.some((section) => section.commodoreId === arrival.commodore);
+    const openKey = `${arrival.commodore}\0${arrival.commander ?? ""}`;
     let frame = 0;
     const deadline = performance.now() + 3_000;
     const place = () => {
@@ -265,22 +268,34 @@ export function ObjectiveRecordsSideBar({
       const overflow = row.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
       if (overflow > 0 && overflow <= 8) list.scrollTop += overflow;
     };
+    const scrollSettled = () => {
+      if (arrival.scrollTop === null) return true;
+      const hold = scrollHold.current;
+      if (hold?.cancel || hold?.locked) return true;
+      const list = listRef.current;
+      if (!list) return false;
+      return list.scrollHeight - list.clientHeight + 1 >= arrival.scrollTop;
+    };
     const attempt = () => {
+      const past = performance.now() > deadline;
       const commanderId = arrival.commander;
       const commanderKnown = commanderId !== null && arrivalRecords.current.some((record) => record.id === commanderId && record.commodoreId === arrival.commodore);
       const commodoreOpen = isCommodoreConversationOpen(arrival.commodore);
-      const ready = !known || performance.now() > deadline || (commanderId === null ? commodoreOpen : commanderKnown);
-      if (!ready) {
-        if (known && commanderId === null) openCommodoreConversation(arrival.commodore);
+      const conversationReady = !known || past || (commanderId === null ? commodoreOpen : commanderKnown);
+      if (arrivalOpened.current !== openKey && conversationReady) {
+        place();
+        if (commanderKnown && commanderId !== null) openCommanderConversation(arrival.commodore, commanderId);
+        else if (known && !commodoreOpen) openCommodoreConversation(arrival.commodore);
+        arrivalOpened.current = openKey;
+      }
+      // 목록이 짧을 때 arrived를 보내면 셸이 arrival을 지우고, 내용이 찬 뒤 복원이 멈춘다.
+      if (!conversationReady || (!scrollSettled() && !past)) {
         frame = requestAnimationFrame(attempt);
         return;
       }
-      place();
-      if (commanderKnown && commanderId !== null) openCommanderConversation(arrival.commodore, commanderId);
-      else if (known && !commodoreOpen) openCommodoreConversation(arrival.commodore);
       consoleArrived.current();
     };
-    frame = requestAnimationFrame(() => { place(); attempt(); });
+    frame = requestAnimationFrame(() => { attempt(); });
     return () => cancelAnimationFrame(frame);
   }, [arrival, commodoresLoaded]);
   const taskforceExperiment = useTaskforceExperiment();
@@ -294,17 +309,45 @@ export function ObjectiveRecordsSideBar({
       if (!snapshot.loaded && !snapshot.error && row.preview && (!row.preview.text.trim() || row.preview.speaker.kind === "system" && row.preview.speaker.code !== "created")) void loadTaskforce(row.id);
     }
   }, [tfSummaries]);
-  const arrivalScrollKey = arrival ? `${arrival.commodore}\0${arrival.commander ?? ""}\0${arrival.scrollTop ?? ""}` : null;
+  const arrivalScrollKey = arrival && arrival.scrollTop !== null ? `${arrival.commodore}\0${arrival.commander ?? ""}\0${arrival.scrollTop}` : null;
+  const rosterStamp = consoles.entries.map((entry) => {
+    const roster = consoles.roster(entry.id);
+    const nested = roster?.commodores.reduce((sum, commodore) => sum + (commodore.commanders?.length ?? 0), 0) ?? 0;
+    return `${entry.id}:${roster?.commodores.length ?? -1}:${nested}`;
+  }).join("|");
   useLayoutEffect(() => {
-    if (!arrival || arrival.scrollTop === null) return;
+    if (!arrival || arrival.scrollTop === null || arrivalScrollKey === null) return;
     const list = listRef.current;
-    if (!list || arrivalScrollApplied.current === arrivalScrollKey) return;
-    const top = arrival.scrollTop;
+    if (!list) return;
+    if (scrollHold.current?.key !== arrivalScrollKey) scrollHold.current = { key: arrivalScrollKey, top: arrival.scrollTop, cancel: false, locked: false };
+    const hold = scrollHold.current;
+    if (!hold || hold.cancel || hold.locked) return;
     const max = Math.max(0, list.scrollHeight - list.clientHeight);
-    list.scrollTop = Math.min(top, max);
-    // 아직 목록이 그 위치까지 짧으면 잠그지 않는다. 도착을 알리면 arrival이 비고 이 효과는 멈춘다.
-    if (max + 1 >= top) arrivalScrollApplied.current = arrivalScrollKey;
-  }, [arrival, arrivalScrollKey, commodoreSections, tfSummaries, consoles.entries]);
+    const next = Math.min(hold.top, max);
+    if (list.scrollTop !== next) list.scrollTop = next;
+    if (max + 1 >= hold.top) hold.locked = true;
+  }, [arrival, arrivalScrollKey, rosterStamp, commodoreSections, tfSummaries]);
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || arrivalScrollKey === null) return;
+    const stop = () => {
+      const hold = scrollHold.current;
+      if (hold && hold.key === arrivalScrollKey) hold.cancel = true;
+    };
+    const onKey = (event: globalThis.KeyboardEvent) => {
+      if (!["ArrowDown", "ArrowUp", "PageDown", "PageUp", "Home", "End", " "].includes(event.key)) return;
+      if (event.target instanceof Element && event.target.closest("input, textarea, [contenteditable='true']")) return;
+      stop();
+    };
+    list.addEventListener("wheel", stop, { passive: true });
+    list.addEventListener("touchmove", stop, { passive: true });
+    window.addEventListener("keydown", onKey);
+    return () => {
+      list.removeEventListener("wheel", stop);
+      list.removeEventListener("touchmove", stop);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [arrivalScrollKey]);
   const faces = useMemo((): readonly SideBarFace[] => {
     const order = pendingOrder ?? sidebarOrder;
     const rank = (id: string) => { const index = order.indexOf(id); return index === -1 ? order.length : index; };
