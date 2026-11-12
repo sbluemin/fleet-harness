@@ -19,6 +19,8 @@ export interface CommodoreBoardObjective {
   readonly decisionRequest: object | null;
   /** 사람에게 넘긴 위임 결정 — 원래 보드 응답 경로를 유지한 사령관 대화용 카드. */
   readonly handedDecision: ConversationDecision | null;
+  /** 사람에게 넘긴 후속 후보가 서 있다 — 완료한 목표에도 선다. 카드는 `renderHandedFollowup` 이 그린다. */
+  readonly followupHanded: boolean;
   readonly missions: readonly { readonly done: unknown }[];
   readonly running: boolean;
   readonly waiting: boolean;
@@ -56,4 +58,6 @@ export interface CommodoreBoardClient {
   openObjectiveOnPhone(objectiveId: string, theaterId?: string): void;
   revealObjective(input: { readonly objectiveId: string }): void;
   renderObjectiveAvatar(commodoreId: string, objectiveId: string, size: number): ReactNode;
+  /** 넘긴 후속 후보 카드 — 채택·폐기·돌려주기는 보드의 사람용 경로 그대로다. `open` 은 그 목표로 가는 길. */
+  renderHandedFollowup(objectiveId: string, options: { readonly language: "en" | "ko"; readonly phone: boolean; readonly open: () => void }): ReactNode;
 }

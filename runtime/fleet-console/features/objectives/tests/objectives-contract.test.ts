@@ -2633,10 +2633,11 @@ describe("Objectives contract", () => {
     expect(await refusal(commodore, { action: "message", objectiveId: id, text: "Re-read the board" })).toBe("permission_required");
     const misdirected = await commodore.execute({ action: "stop", objectiveId: id, context: "Re-read the board" }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
     expect(misdirected.structuredContent).toEqual({ error: "invalid_arguments", issues: [{ path: [], code: "unrecognized_keys", keys: ["context"], acceptedBy: { context: expect.arrayContaining(["steer"]) } }] });
+    for (const title of ["Review pick", "Done pick"]) await command("followup", { add: { title, summary: "Follow up", userImpact: "Improved output", fromMission: missionId, brief: "Continue improvement", evidence: [{ kind: "command", text: "verification" }] } }, id);
     const retrospective = { wentWell: [{ point: "Output preserved", because: "Evidence tool" }], fellShort: [{ point: "Review delayed", ifOnly: "Earlier decision" }] };
     await command("hand_off", { retrospective }, id);
     // 인계로 검토와 함께 모인 후보 전체가 선다 — 판단은 이때 한 번에 한다.
-    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["review", "followup"], followups: [expect.objectContaining({ title: "Next round" }), expect.objectContaining({ id: stray })] }));
+    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["review", "followup"], followups: [expect.objectContaining({ title: "Next round" }), expect.objectContaining({ id: stray }), expect.objectContaining({ title: "Review pick" }), expect.objectContaining({ title: "Done pick" })] }));
     expect(await refusal(commodore, { action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev + 1 }] })).toBe("followup_changed");
     await board({ action: "followup_discard", objectiveId: id, followups: [{ id: stray, rev: strayRev }] });
     expect(store.find(id)!.followups.find((entry) => entry.id === stray)?.state).toBe("discarded");
@@ -2646,6 +2647,14 @@ describe("Objectives contract", () => {
     // 사람에게 넘긴 후속 선택은 빈 선택 완료로도 지나가지 못한다 — 완료된 목표는 더 이상 후속을 고를 수 없다.
     await board({ action: "hand_to_person", objectiveId: id, target: "followup", reason: "Opening new objectives is the person's call" });
     expect(await refusal(commodore, { action: "complete", objectiveId: id })).toBe("held_for_person");
+    // 사람의 채택은 목표를 완료하지 않는다 — 고른 후보만 후속 목표가 되고, 열린 후보가 남은 넘김은 그대로 서 있다.
+    const adopt = (title: string, batchId: string) => {
+      const picked = store.find(id)!.followups.find((entry) => entry.title === title)!;
+      return route("followup/adopt", { objectiveId: id, batchId, followups: [{ id: picked.id, rev: picked.rev }] });
+    };
+    expect((await adopt("Review pick", "3f1c8f3e-1111-4a8b-9c0d-0000000000a1")).status).toBe(200);
+    expect(store.find(id)).toMatchObject({ awaitingReview: true, followupBatches: [{ items: [{ snapshot: { title: "Review pick" } }] }] });
+    expect(await refusal(commodore, { action: "complete", objectiveId: id })).toBe("held_for_person");
     expect((await route("person-hold/return", { objectiveId: id, target: "followup" })).status).toBe(200);
     // 사령관은 배치 UUID 없이 고른다. 같은 요청이 겹쳐도 후보 목표와 배치는 한 번만 생긴다.
     const completeSelection = { action: "complete", objectiveId: id, followups: [{ id: candidate.id, rev: candidate.rev }] };
@@ -2653,13 +2662,13 @@ describe("Objectives contract", () => {
     let nextId = "";
     await vi.waitFor(async () => {
       const completed = (await board({ action: "read", objectiveId: id })).objective as { followupBatches: readonly { items: readonly { objectiveId: string; state: string }[] }[] };
-      expect(completed.followupBatches[0]!.items[0]!.state).toBe("created");
-      nextId = completed.followupBatches[0]!.items[0]!.objectiveId;
+      expect(completed.followupBatches[1]!.items[0]!.state).toBe("created");
+      nextId = completed.followupBatches[1]!.items[0]!.objectiveId;
     });
     const restarted = restart();
     const replay = createCommodoreBoardTools(ctx, restarted.store, restarted.launch, "c1")[0]!;
     expect((await replay.execute(completeSelection, { cwd: workspace }) as { structuredContent: unknown }).structuredContent).toMatchObject({ ok: true });
-    expect(restarted.store.find(id)!.followupBatches).toHaveLength(1);
+    expect(restarted.store.find(id)!.followupBatches).toHaveLength(2);
     expect(restarted.store.list("c1").filter((entry) => entry.origin?.candidateId === candidate.id).map((entry) => entry.id)).toEqual([nextId]);
     expect((await board({ action: "list", view: "history" })).objectives).toContainEqual(expect.objectContaining({ id, completed: expect.objectContaining({ by: actor }), handoffs: [expect.objectContaining({ hasRetrospective: true })] }));
     expect(JSON.parse((await board({ action: "read", objectiveId: id, section: "handoffs" })).text as string)).toContainEqual(expect.objectContaining({ retrospective }));
@@ -2671,6 +2680,11 @@ describe("Objectives contract", () => {
     expect((await board({ action: "list", view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, commenced: true }));
     expect(store.find(id)!.done?.by).toEqual(actor);
     expect(store.find(nextId)!.commenced).toBe(true);
+    // 완료 뒤에 넘겨받은 남은 후보도 사람이 바로 채택한다 — 목표는 완료된 채이고, 열린 후보가 사라진 넘김은 「사람이 답함」으로 끝난다.
+    await board({ action: "hand_to_person", objectiveId: id, target: "followup", reason: "Left for the person" });
+    expect((await adopt("Done pick", "3f1c8f3e-1111-4a8b-9c0d-0000000000a2")).status).toBe(200);
+    expect(store.find(id)).toMatchObject({ done: { by: actor }, personHolds: expect.arrayContaining([expect.objectContaining({ target: "followup", reason: "Left for the person", settled: expect.objectContaining({ outcome: "answered" }) })]) });
+    await vi.waitFor(() => expect(store.list("c1").map((entry) => entry.title)).toContain("Done pick"));
     // 목표가 많아져도 도구 결과 안에서 전량을 읽고, 긴 본문은 원본 그대로 이어 읽는다.
     // 기존 outer-loop는 작은 보드만 읽어 크기 제한에서 보드를 잃는 실패를 잡지 못했다.
     const largeBrief = '한글🙂\\"\n'.repeat(1_500);

@@ -31,6 +31,7 @@ export const goToObjective = (id: string, theaterId: string, done?: boolean) => 
 export const openObjectiveFromCluster = (theaterId?: string, objectiveId?: string) => board?.openObjectiveFromCluster(theaterId, objectiveId);
 export const openObjectiveOnPhone = (objectiveId: string, theaterId?: string) => board?.openObjectiveOnPhone(objectiveId, theaterId);
 export const renderObjectiveAvatar = (commodoreId: string, objectiveId: string, size: number) => board?.renderObjectiveAvatar(commodoreId, objectiveId, size) ?? null;
+export const renderHandedFollowup = (objectiveId: string, options: Parameters<CommodoreBoardClient["renderHandedFollowup"]>[1]) => board?.renderHandedFollowup(objectiveId, options) ?? null;
 export const isRunningObjective = (objective: CommodoreBoardObjective) => objective.running;
 export const isCommodoreWaiting = (objective: CommodoreBoardObjective) => objective.waiting;
 

@@ -91,6 +91,8 @@ const MESSAGE_REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {
 };
 
 const codeOf = (error: unknown): string => (error instanceof Error ? error.message : "unknown");
+/** 거절 코드를 띠와 같은 사유 문구로 — 띠 밖의 표면(사령관 대화의 후속 후보 카드)도 같은 말을 쓴다. */
+export const bandReason = (t: T, error: unknown): string => reasonText(t, codeOf(error));
 const reasonText = (t: T, code: string): string => (REASONS[code] ? t(REASONS[code]!) : t("objectives.band.reason.other", { code }));
 
 /** 실패 코드를 사유 한 줄로 — 메시지의 거절은 받는 이의 사정이 먼저다. 입력창·모바일 ⋮·시작 화면이 같은 문구를 쓴다. */
@@ -183,11 +185,6 @@ function choicesOf(objective: Objective, live: BoardLive) {
   const memberAwaiting: MemberAwaiting | null = awaitingMember ? { objectiveId: awaitingMember.id, role: awaitingMember.role, mission: mission >= 0 ? mission + 1 : null } : null;
   const recipientCount = [live.commander, ...objective.members.filter((member) => member.sessionName !== null).map((member) => live.member(member.id))].filter((state) => state !== "closed").length;
   return { ...bandChoices({ objective, working, commanderAwaiting, memberAwaiting, commanderExists: live.commander !== "closed", recipientCount }), memberAwaiting, working };
-}
-
-/** 넘김 카드와 완료 칩이 같은 보드·실행 상태로 후보 고르기를 연다. */
-export function followupPickable(objective: Objective): boolean {
-  return choicesOf(objective, liveOf(objective)).followupAvailable;
 }
 
 // ── 계약 ──────────────────────────────────────────────────────────────────

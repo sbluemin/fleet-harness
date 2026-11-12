@@ -8,6 +8,7 @@ import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from ".
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { goToObjective } from "./fresh-conversation.js";
+import { HandedFollowupCard } from "./handed-followups.js";
 import { consultDelivery, objectiveDecision } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
 import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readBoard, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
@@ -29,6 +30,11 @@ export function decisionTurn(objective: Objective, commodoreActive: boolean): "p
 /** 현재 결정 요청을 명시적으로 넘긴 경우만 사령관 대화로 옮긴다. 자율 운영이 꺼져도 넘긴 요청은 남는다. */
 export function decisionInCommodoreConversation(objective: Objective): boolean {
   return !objective.removed && !objective.done && !!livePersonHold(objective, "decision");
+}
+
+/** 넘긴 후속 후보도 사령관 대화에서 답한다 — 후보에 답하는 표면이라 완료한 목표에도 선다. */
+export function followupInCommodoreConversation(objective: Objective): boolean {
+  return !objective.removed && !!livePersonHold(objective, "followup");
 }
 
 /** 사령관이 사람에게 넘겨 지금 사람이 답할 차례인 항목들 — 대상 순서(결정·기준·검토·후속)대로. */
@@ -136,7 +142,7 @@ function project(objective: Objective): CommodoreBoardObjective {
   const handedDecision = decisionInCommodoreConversation(objective) ? objectiveDecision(objective, undefined, objectiveConversationActions(objective)) : null;
   const consults = objective.consultations.map(({ id: consultId, question, at, reply, delivery }) => ({ id: consultId, question, at,
     ...(reply ? { reply: { text: reply.kind === "advice" ? reply.text : null, at: reply.at, ...(delivery ? { delivery: consultDelivery(delivery) } : {}) } } : {}) }));
-  const view = { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, handedDecision, missions, addedBy, actions, decisions, consults, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
+  const view = { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, handedDecision, followupHanded: followupInCommodoreConversation(objective), missions, addedBy, actions, decisions, consults, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
   projected.set(objective, view); return view;
 }
 const lists = new WeakMap<readonly Objective[], readonly CommodoreBoardObjective[]>();
@@ -167,4 +173,5 @@ export const commodoreBoard: CommodoreBoardClient = {
   openObjectiveOnPhone,
   revealObjective,
   renderObjectiveAvatar: (commodoreId, objectiveId, size) => <ObjectiveMark commodoreId={commodoreId} objectiveId={objectiveId} size={size} />,
+  renderHandedFollowup: (objectiveId, { language, phone, open }) => <HandedFollowupCard objectiveId={objectiveId} language={language} phone={phone} open={open} />,
 };

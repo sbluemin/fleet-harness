@@ -5,11 +5,9 @@ import type { Translate } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import { livePersonHold } from "../shared/board-state.js";
 import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
-import { answeringText, commodoreAliasOf, decisionInCommodoreConversation, decisionTurn, openCommodoreConversation } from "./board-commodore.js";
+import { answeringText, commodoreAliasOf, decisionInCommodoreConversation, decisionTurn, followupInCommodoreConversation, openCommodoreConversation } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { returnPersonHold } from "./objectives-state.js";
-import { followupPickable } from "./board-actions.js";
-import { followupHoldRoute, openFollowups, setFollowupOpen } from "./followups.js";
 import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberStatus, type LaunchShown } from "./launch-control.js";
 
 /** 명부 줄의 보드 사실을 셀 재료 — 구성원 Objective 의 화면 활동(백그라운드를 작업 중으로 접은 값, 없으면 "closed")과 기동 로스터. */
@@ -144,38 +142,32 @@ function boardAct(kind: string) {
   });
 }
 
-/** 대화에 세울 넘김 대상. 결정은 답을 복제하지 않고 사령관 대화로 가는 안내만 세운다. */
+/** 대화에 세울 넘김 대상. 결정과 후속 후보는 답을 복제하지 않고 사령관 대화로 가는 안내만 세운다. */
 const HOLD_TARGETS = ["decision", "criteria", "review", "followup"] as const;
 
 function conversationHolds(objective: Objective): readonly ConversationHold[] {
   return HOLD_TARGETS.flatMap((target): ConversationHold[] => {
     const hold = livePersonHold(objective, target);
     if (!hold) return [];
-    if (target === "decision") return decisionInCommodoreConversation(objective) ? [{
-      id: `hold:${objective.id}:decision:${hold.at}`,
+    if (target === "decision" || target === "followup") return (target === "decision" ? decisionInCommodoreConversation(objective) : followupInCommodoreConversation(objective)) ? [{
+      id: `hold:${objective.id}:${target}:${hold.at}`,
       notice: true,
-      title: localized((t) => t("objectives.decision.handedNotice")),
+      title: localized((t) => t(target === "decision" ? "objectives.decision.handedNotice" : "objectives.followup.handedNotice")),
       createdAt: hold.at,
       handed: { label: localized((t) => t("objectives.decision.handed")), reason: hold.reason },
       reveal: { label: localized((t) => t("objectives.decision.openCommodore")), run: (options) => { openCommodoreConversation(objective.commodoreId, options?.mobile ? { mobile: true, tab: "log" } : undefined); } },
     }] : [];
-    const pickable = target === "followup" && followupPickable(objective);
-    const routeKey: ObjectiveMessageKey = target === "criteria" ? "objectives.hold.route.criteria"
-      : target === "review" ? "objectives.hold.route.review"
-        : pickable && !objective.done ? "objectives.followup.sub"
-          : followupHoldRoute(objective);
-    const reveal = target === "criteria"
-      ? { label: localized((t) => t("objectives.composer.reveal")), run: () => openObjectivePopup(objective.id) }
-      : pickable ? { label: localized((t) => t("objectives.hold.pick")), run: () => setFollowupOpen(objective.id, true) } : undefined;
+    const routeKey: ObjectiveMessageKey = target === "criteria" ? "objectives.hold.route.criteria" : "objectives.hold.route.review";
+    const reveal = target === "criteria" ? { label: localized((t) => t("objectives.composer.reveal")), run: () => openObjectivePopup(objective.id) } : undefined;
     return [{
       id: `hold:${objective.id}:${target}:${hold.at}`,
-      title: localized((t) => t(target === "criteria" ? "objectives.criteria.title" : target === "review" ? "objectives.objectives.review" : "objectives.followup.title")),
+      title: localized((t) => t(target === "criteria" ? "objectives.criteria.title" : "objectives.objectives.review")),
       createdAt: hold.at,
       handed: {
         label: localized((t) => t("objectives.decision.handed")), reason: hold.reason,
         giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => returnPersonHold(objective.id, target) },
       },
-      route: localized((t) => t(routeKey, { n: openFollowups(objective).length })),
+      route: localized((t) => t(routeKey)),
       ...(reveal ? { reveal } : {}),
     }];
   }).sort((a, b) => a.createdAt - b.createdAt);

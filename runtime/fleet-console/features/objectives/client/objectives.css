@@ -530,6 +530,9 @@ del.objectives-proposal-text.is-old { color: var(--text-tertiary); }
 /* 줄 = 체크상자 | 제목(최대 2줄)+한 줄 요약 | 근거 수+펼침 화살표. 줄 본문 클릭은 펼침만 하고 선택하지 않는다. */
 .objectives-followup-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: start; padding: 7px 8px; }
 .objectives-followup-row.is-readonly { grid-template-columns: minmax(0, 1fr) auto; }
+.objectives-followup-side { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.objectives-handed-followup .objectives-followup-list { padding: 0; }
+.objectives-handed-followup .group-card-foot { flex-wrap: wrap; justify-content: flex-end; }
 /* 선택은 네모 체크상자 — 둥근 완료 체크와 모양을 구별한다. */
 .objectives-followup-sel { appearance: none; -webkit-appearance: none; margin: 2px 0 0; width: 15px; height: 15px; border-radius: 4px; border: 1.5px solid var(--text-tertiary); background: transparent; cursor: pointer; display: grid; place-items: center; flex: none; padding: 0; }
 .objectives-followup-sel:checked { background: var(--aurora); border-color: var(--aurora); }
