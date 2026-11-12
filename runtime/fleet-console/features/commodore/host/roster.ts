@@ -1,6 +1,8 @@
 import { CONSOLE_ROSTER_MAX_COMMANDERS, CONSOLE_ROSTER_PREVIEW_MAX, type ConsoleRosterCommander, type ConsoleRosterRun } from "../../../protocol/desktop/console-section.js";
 
 const CONTROL = /[\u0000-\u001f\u007f]/u;
+/** 치환용 — 한 줄에 제어 문자가 여럿이어도 모두 바꾼다. 하나라도 남으면 명부 검증기가 응답 전체를 거절한다. */
+const CONTROL_ALL = /[\u0000-\u001f\u007f]/gu;
 
 /**
  * 사령관 사이드바 행의 최근 응답 한 줄(`transcriptLast(..., "commodore")`)에서
@@ -8,13 +10,13 @@ const CONTROL = /[\u0000-\u001f\u007f]/u;
  */
 export function consoleRosterPreview(text: string | null | undefined): string | undefined {
   if (!text) return undefined;
-  const line = text.replace(CONTROL, "").trim().slice(0, CONSOLE_ROSTER_PREVIEW_MAX);
+  const line = text.replace(CONTROL_ALL, "").trim().slice(0, CONSOLE_ROSTER_PREVIEW_MAX);
   return line.length > 0 ? line : undefined;
 }
 
 /** 지휘관 제목 — 제어 문자를 공백으로 바꾸고 계약 길이(120)에 맞춘다. 비면 그 행은 내보내지 않는다. */
 export function consoleRosterTitle(text: string): string {
-  return text.replace(CONTROL, " ").trim().slice(0, 120);
+  return text.replace(CONTROL_ALL, " ").trim().slice(0, 120);
 }
 
 /**
