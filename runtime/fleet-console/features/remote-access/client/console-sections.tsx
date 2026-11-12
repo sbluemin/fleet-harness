@@ -51,7 +51,14 @@ export interface ConsoleSections {
    */
   readonly seamless: boolean;
   /** 도착한 문서에만 실린다. commander·scrollTop은 없을 수 있고, 매 프레임 반복되므로 한 번만 적용한다. */
-  readonly arrival: { readonly commodore: string; readonly anchorY: number | null; readonly commander: string | null; readonly scrollTop: number | null } | null;
+  readonly arrival: {
+    readonly commodore: string;
+    readonly anchorY: number | null;
+    readonly commander: string | null;
+    readonly scrollTop: number | null;
+    /** 없으면 도착 문서의 우측 사이드바를 건드리지 않는다. */
+    readonly rightPanel: { readonly open: boolean; readonly tab?: string } | null;
+  } | null;
   /** 도착한 사령관을 열었거나 열 수 없음을 알았다. */
   readonly arrived: () => void;
   readonly command: (value: ConsoleSectionCommand) => void;
@@ -92,11 +99,15 @@ export function useConsoleSections(options?: { readonly refresh?: boolean }): Co
   const arrivalAnchor = rosters?.arrival?.anchorY ?? null;
   const arrivalCommander = rosters?.arrival?.commander ?? null;
   const arrivalScroll = rosters?.arrival?.scrollTop ?? null;
+  const arrivalPanel = rosters?.arrival?.rightPanel;
+  const arrivalPanelOpen = arrivalPanel?.open ?? null;
+  const arrivalPanelTab = arrivalPanel?.tab ?? null;
   // 셸이 도착을 지우면 다음 전환(같은 사령관이어도)을 다시 연다.
   useEffect(() => { if (arrivalCommodore === null) setArrivalDone(null); }, [arrivalCommodore]);
   const arrival = useMemo(() => arrivalCommodore === null || arrivalCommodore === arrivalDone ? null : {
     commodore: arrivalCommodore, anchorY: arrivalAnchor, commander: arrivalCommander, scrollTop: arrivalScroll,
-  }, [arrivalCommodore, arrivalAnchor, arrivalCommander, arrivalScroll, arrivalDone]);
+    rightPanel: arrivalPanelOpen === null ? null : { open: arrivalPanelOpen, ...(arrivalPanelTab ? { tab: arrivalPanelTab } : {}) },
+  }, [arrivalCommodore, arrivalAnchor, arrivalCommander, arrivalScroll, arrivalPanelOpen, arrivalPanelTab, arrivalDone]);
   const arrived = useCallback(() => {
     // 셸이 도착을 지운 상태를 다시 줄 때까지 같은 도착을 두 번 열지 않는다.
     setArrivalDone(arrivalCommodore);
