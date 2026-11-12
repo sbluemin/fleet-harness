@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, Tray, WebContentsView, type Session } from "electron";
 
-import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, type DesktopBrowserPlatform } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, type DesktopBrowserPlatform } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 import { autoUpdater } from "electron-updater";
@@ -52,6 +52,7 @@ import { createBrowserSurface, createMainPageHost } from "./browser-surface.js";
 import { createBrowserActions } from "./browser-actions.js";
 import { createDesktopBrowserViews, type BrowserSurfaceHost } from "./browser-views.js";
 import { createManagedBrowserHost } from "./browser-host.js";
+import { createRemoteBrowserViewer } from "./browser-viewer.js";
 import { managedBrowserHeaders, shellPublishHeaders, type ManagedBrowserConnection } from "./browser-connection.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import { readChromeHistory } from "./chrome-history.js";
@@ -70,7 +71,7 @@ const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
-const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, ...(process.platform === "win32" ? [CONSOLE_WSL_CAPABILITY] : [])];
+const DESKTOP_SHELL_CAPABILITIES = ["local-fonts", CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, ...(process.platform === "win32" ? [CONSOLE_WSL_CAPABILITY] : [])];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -334,6 +335,7 @@ async function boot(): Promise<void> {
    * 콘솔에서 듣는다. 전체화면 진입·이탈은 OS가 이미 사용자에게 내준 조작이라 별도 확인을 두지 않는다.
    */
   let consoleFullscreen: FullscreenController | null = null;
+  let browserViewer: ReturnType<typeof createRemoteBrowserViewer> | null = null;
   const windowCommands = createDesktopWindowCommandSynchronizer({
     fetch: consoleFetch,
     perform: (command) => {
@@ -354,6 +356,8 @@ async function boot(): Promise<void> {
         if (windowCommandOrigin !== null) switchHold.ready(windowCommandOrigin);
         return;
       }
+      // 이 Desktop 이 관리하지 않는 Console 화면에서 사람이 브라우저 단추를 눌렀다 — 보기 전용 셸을 열거나 닫는다. 관리 Console 을 보는 동안에는 아무 일도 없다.
+      if (command === "toggle-browser-viewer") { browserViewer?.toggle(); return; }
       consoleFullscreen?.perform(command);
     },
   });
@@ -387,6 +391,17 @@ async function boot(): Promise<void> {
   const browserHostLabel = (): string => os.hostname().replace(/\.local$/iu, "");
   // 분리 창의 캡션 띠와 표면의 주소줄이 같은 줌을 보게 한다 — 주소줄 띠는 이 줌에 비례한다.
   const consoleZoomFactor = (): number => window && !window.isDestroyed() ? window.consoleContents.getZoomFactor() : 1;
+  const browserActions = createBrowserActions({
+    fetch: consoleFetch,
+    origin: () => browserHost.shownOrigin(),
+    headers: () => {
+      const shown = browserHost.shownConnection();
+      return shown ? managedBrowserHeaders(shown) : {};
+    },
+    lang: entryLanguage,
+    openExternal: (url) => { void shell.openExternal(url); },
+    log: (message) => logger.info(message),
+  });
   const browserSurface = createBrowserSurface({
     main: () => window,
     createChromeView: () => new WebContentsView({ webPreferences: { ...chromeViewPreferences, partition: "fleet-browser-chrome" } }),
@@ -420,23 +435,21 @@ async function boot(): Promise<void> {
     zoom: consoleZoomFactor,
     stripPrefs: desktopState.browserStrip,
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
-    act: createBrowserActions({
-      fetch: consoleFetch,
-      origin: () => browserHost.shownOrigin(),
-      headers: () => {
-        const shown = browserHost.shownConnection();
-        return shown ? managedBrowserHeaders(shown) : {};
-      },
-      lang: entryLanguage,
-      openExternal: (url) => { void shell.openExternal(url); },
-      log: (message) => logger.info(message),
-    }),
-    relay: (surface) => browserHost.relaySurface(surface),
+    // 보기 전용 셸이 열려 있는 동안 표면의 동작은 그 셸로 간다 — Console 로 요청을 보내는 관리 표면의 처리기를 타지 않는다.
+    act: (control, role, action) => { if (browserViewer?.active()) browserViewer.act(control, role, action); else browserActions(control, role, action); },
+    relay: (surface) => { if (browserViewer?.active()) { if (surface.status === "closed") browserViewer.closed(); } else browserHost.relaySurface(surface); },
     // 표면의 자리·모양이 바뀌면 캡션 띠의 높이도 다시 본다(Windows 만 — 다른 OS 에서는 리프레셔가 없다). 높이가 그대로면 아무 일도 하지 않는다.
     changed: () => { browserHost.places(); overlayRefresher?.refresh(); companionOverlayRefresher?.refresh(); },
     log: (message) => logger.info(message),
   });
   browserRetheme = () => browserSurface.retheme();
+  browserViewer = createRemoteBrowserViewer({
+    display: browserSurface,
+    fetch: consoleFetch,
+    lang: entryLanguage,
+    localAct: browserActions,
+    log: (message) => logger.info(message),
+  });
   const captureViewerFrame = async (view: WebContentsView): Promise<{ jpeg: Buffer; width: number; height: number } | null> => {
     const contents = view.webContents;
     if (contents.isDestroyed()) return null;
@@ -556,6 +569,8 @@ async function boot(): Promise<void> {
     }
     if (!open()) return;
     await browserHost.sync(next, shownOrigin, open);
+    // 창이 이 Desktop 이 관리하지 않는 Console 을 보고 있으면 그 Console 의 브라우저는 보기 전용 셸로만 열린다.
+    browserViewer?.follow(open() && shownOrigin !== null && browserHost.shownOrigin() === null && !next.some((connection) => connection.origin === shownOrigin) ? shownOrigin : null);
   };
   const managedConnectionFor = async (origin: string): Promise<ManagedBrowserConnection | null> => {
     if (isRemoteConsoleOrigin(origin)) return null;
@@ -884,6 +899,7 @@ async function boot(): Promise<void> {
         createdWindow.base.once("closed", () => {
           themeSynchronizer.stop();
           updateSynchronizer.stop();
+          browserViewer?.stop();
           browserHost.stopAll();
           consoleFullscreen?.stop();
           consoleFullscreen = null;
@@ -997,6 +1013,7 @@ async function boot(): Promise<void> {
   }, () => farewell.run(async () => {
     if (browserSyncTimer) clearInterval(browserSyncTimer);
     browserSyncTimer = null;
+    browserViewer?.stop();
     browserHost.stopAll();
     bridge.dispose();
     wslConsoles?.unwatch();

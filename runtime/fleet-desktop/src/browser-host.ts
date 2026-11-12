@@ -78,6 +78,8 @@ export function createManagedBrowserHost(deps: ManagedBrowserHostDeps): ManagedB
   const slots = new Map<string, Slot>();
   let chain: Promise<void> = Promise.resolve();
   let epoch = 0;
+  /** 표면이 지금 관리 세션의 것인가 — 그 세션이 화면에서 내려가는 순간에만 표면을 내린다. */
+  let displayed = false;
 
   const shownSlot = (): Slot | null => [...slots.values()].find((slot) => slot.shown) ?? null;
 
@@ -104,7 +106,10 @@ export function createManagedBrowserHost(deps: ManagedBrowserHostDeps): ManagedB
         slot.views.places();
       }
     }
-    if (shown === null) deps.display.conceal();
+    // 관리 세션이 화면에서 내려갈 때만 표면을 내린다. 관리하지 않는 Console 을 보는 동안의 표면은 보기 전용 셸의 것이라,
+    // 주기 동기화가 그것을 닫지 않는다.
+    if (shown === null && displayed) deps.display.conceal();
+    displayed = shown !== null;
   };
 
   const syncNow = async (ticket: number, connections: readonly ManagedBrowserConnection[], shownOrigin: string | null, alive: () => boolean): Promise<void> => {
@@ -152,7 +157,8 @@ export function createManagedBrowserHost(deps: ManagedBrowserHostDeps): ManagedB
       epoch += 1;
       for (const slot of [...slots.values()]) stopSlot(slot);
       slots.clear();
-      deps.display.conceal();
+      if (displayed) deps.display.conceal();
+      displayed = false;
     },
   };
 }
