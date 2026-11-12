@@ -20,7 +20,7 @@ import { isDesktopShell } from "../../../../core/client/src/integration/desktop-
 import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus } from "../../../../core/client/src/integration/store.js";
 import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
 import { toggleBrowserPane, useBrowserSurface } from "../../../browser/client/browser-surface.js";
-import { toggleBrowserViewer, useBrowserViewerOpen } from "../../../browser/client/browser-viewer.js";
+import { toggleBrowserViewerShell, useBrowserViewerShell } from "../../../browser/client/browser-viewer-shell.js";
 import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { disposeObjectiveViewState, installObjectiveViewState } from "../objective-view-state.js";
@@ -431,10 +431,11 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   // 브라우저 탭·모바일로 연 화면이거나 다른 화면이 붙어 멈춘 동안은 닫힌 채로 서서 말풍선이 그 까닭을 말한다(투어도 그때는 이 문을 짚지 않는다).
   const engine = useBrowserEngine();
   const viewer = engine?.surfaceMode === "viewer" || (engine === null && !isDesktopShell());
-  const viewerOpen = useBrowserViewerOpen();
+  // 보기 전용 화면은 이 창을 든 Desktop 의 셸이다 — 그 능력이 없는 화면(웹·모바일·옛 Desktop)에서는 문이 닫힌 채 까닭을 말한다. 열림 상태는 셸만 안다.
+  const viewerShell = useBrowserViewerShell();
   const engineMissing = !viewer && engine !== null && !engine.available;
   const browserLabel = viewer
-    ? t(viewerOpen ? "terminal.browser.viewerExit" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
+    ? t(!viewerShell ? "terminal.browser.desktopOnly" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
     : engineMissing
     ? t(isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : detachedBrowser?.mode === "window" ? t("terminal.browser.focus") : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
@@ -442,10 +443,10 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
     <CaptionActionButton
       actionId="browser"
       label={browserLabel}
-      pressed={viewer ? viewerOpen : browserOpen}
-      disabled={engineMissing}
+      pressed={viewer ? false : browserOpen}
+      disabled={engineMissing || (viewer && !viewerShell)}
       agent={using.browser}
-      onClick={viewer ? toggleBrowserViewer : toggleBrowserPane}
+      onClick={viewer ? toggleBrowserViewerShell : toggleBrowserPane}
     >
       <CaptionBrowserUseGlyph />
     </CaptionActionButton>

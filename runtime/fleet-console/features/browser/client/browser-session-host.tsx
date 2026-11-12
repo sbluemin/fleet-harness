@@ -8,7 +8,6 @@ import { subscribeConsoleChannel } from "../../../core/client/src/integration/ob
 import { getState, subscribe } from "../../../core/client/src/integration/store.js";
 import { publishBrowserEngine, readBrowserEngineBody, useBrowserPluginAttach, watchBrowserEngine, type BrowserExecutionHost } from "./browser-engine.js";
 import { useBrowserShortcutsSync } from "./browser-shortcuts-sync.js";
-import { BrowserViewer } from "./browser-viewer.js";
 import { getT } from "./i18n.js";
 
 export interface BrowserClientServices {
@@ -43,7 +42,6 @@ function pngFile(payload: AttachPayload): File {
  * - 네이티브 뷰가 포커스를 가져도 단축키가 따라가게 한다.
  * - 엔진 가용성을 지구본에 알린다.
  * - Desktop 이 넘긴 이미지를 지금 보는 대화의 입력창으로 올린다: 채팅이면 컴포저 칩, 터미널이면 서버가 CLI 기계의 클립보드에 올려 붙여넣는다.
- * - 웹·원격·비관리 창에서는 보기 전용 뷰어를 연다.
  */
 export function BrowserSessionHost({ language, services }: {
   readonly language: ConsoleLocale | undefined;
@@ -84,10 +82,7 @@ export function BrowserSessionHost({ language, services }: {
   }, []);
   React.useEffect(() => { if (!notice) return; const timer = setTimeout(() => setNotice(null), 4000); return () => clearTimeout(timer); }, [notice]);
   return (
-    <>
-      <BrowserViewer language={language} />
-      {notice && toastHost ? createPortal(<Toast open tone="info" title={notice} onDismiss={() => setNotice(null)} />, toastHost) : null}
-    </>
+    notice && toastHost ? createPortal(<Toast open tone="info" title={notice} onDismiss={() => setNotice(null)} />, toastHost) : null
   );
 }
 

@@ -6,7 +6,7 @@ import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./his
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserPointer } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
 /**
@@ -827,6 +827,23 @@ export class BrowserService {
       defaultProfile: state.defaultProfile,
       available: state.available,
       reason: state.reason,
+    };
+  }
+
+  /**
+   * 보기 전용 셸이 그릴 투영. 사람의 조작에만 쓰이는 값(페이지 대화상자, 스페이스의 제어권·부탁·포인터, 뒤로·앞으로)은 싣지 않는다 —
+   * 보는 쪽은 그 값으로 할 수 있는 일이 없다.
+   */
+  viewerSnapshot(objectiveId: string): DesktopBrowserViewerSnapshot {
+    const state = this.state(objectiveId);
+    const chrome = this.chromeOf(state);
+    return {
+      chrome: {
+        ...chrome,
+        spaces: chrome.spaces.map((space) => ({ id: space.id, kind: space.kind, label: space.label, driving: space.driving, agentTabIds: space.agentTabIds, viewportPreset: space.viewportPreset })),
+        tabs: chrome.tabs.map((tab) => ({ id: tab.id, spaceId: tab.spaceId, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: false, canGoForward: false })),
+      },
+      executionHost: state.executionHost,
     };
   }
 

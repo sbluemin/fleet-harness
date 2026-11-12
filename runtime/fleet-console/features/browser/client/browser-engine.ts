@@ -35,7 +35,7 @@ export function useBrowserPluginAttach(): ((files: readonly File[]) => void) | n
 
 /**
  * 못 여는 까닭. `desktop_required` 는 관리 Desktop 이 없거나 그 연결이 끊긴 것이다.
- * 어느 화면인지는 `surfaceMode` 가 말한다 — 웹·원격·비관리 창도 보기 전용으로 연다.
+ * 어느 화면인지는 `surfaceMode` 가 말한다 — `viewer` 인 창에서는 그 창을 든 Desktop 셸만 보기 전용 화면을 그린다(웹·모바일에는 없다).
  */
 export type BrowserUnavailableReason = "desktop_required";
 export type BrowserSurfaceMode = "native" | "viewer";
@@ -104,7 +104,7 @@ export function readBrowserEngineBody(body: { readonly available?: unknown; read
 export function refreshBrowserEngine(): void { void (engineInflight ?? Promise.resolve()).then(() => askEngine()); }
 
 function askEngine(): void {
-  // 웹·모바일·원격도 서버의 surfaceMode 를 따른다. Desktop 이 아니라는 이유만으로 막지 않는다.
+  // 웹·모바일·원격도 서버의 surfaceMode 를 따른다 — 링크 안내와 지구본의 까닭이 그 값을 읽는다.
   if (engineInflight || typeof fetch !== "function") return;
   engineAskedAt = Date.now();
   engineInflight = Promise.resolve()

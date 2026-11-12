@@ -81,6 +81,18 @@ export interface ChromeUiState {
   readonly control: ChromeControl | null;
   /** 오를 때마다 페이지 대화상자 카드의 기본 단추로 초점을 옮긴다. */
   readonly pageDialogFocus?: number;
+  /**
+   * 보기 전용 셸 — 이 Desktop 이 관리하지 않는 Console 의 브라우저를 보기만 한다. 페이지 뷰가 없고 스테이지 문서가 최신 프레임을 그린다.
+   * 문서는 탐색·탭 열기와 닫기·도구 메뉴를 그리지 않고, main 은 그런 동작이 와도 버린다. 관리 Console 의 표면이면 null 이다.
+   */
+  readonly viewOnly: ChromeViewOnly | null;
+}
+
+export interface ChromeViewOnly {
+  /** 어디서 실행 중인지 — main 이 실행 호스트에서 지은 한 줄. */
+  readonly place: string;
+  /** 실행 측이 붙어 있는가. `connected` 가 아니면 프레임이 오지 않고 스테이지가 그 까닭을 말한다. */
+  readonly status: "connected" | "manager_disconnected" | "unmanaged";
 }
 
 export type ChromeAction =
@@ -98,6 +110,8 @@ export type ChromeAction =
   | { readonly action: "orientation"; readonly orientation: ChromeTabsOrientation }
   | { readonly action: "auto-expand"; readonly enabled: boolean }
   | { readonly action: "toggle-mode" }
+  /** 보기 전용 셸의 닫기 단추 — 그 표면은 이 Desktop 의 것이라 여기서 닫는다. 관리 Console 의 표면은 Console 이 닫는다. */
+  | { readonly action: "close-surface" }
   | { readonly action: "open-external" }
   | { readonly action: "suggest"; readonly query: string }
   | { readonly action: "suggest-settings"; readonly enabled: boolean }
@@ -142,7 +156,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
   const make = (action: ChromeAction | null) => action ? { role, action } : null;
   switch (name) {
     case "navigate": return make(str(body.url, 4096) ? { action: "navigate", url: body.url } : null);
-    case "new-tab": case "toggle-mode": case "open-external": case "attach-screenshot": case "annotate": case "import-open": case "clear-open": case "clear-run": case "dialog-close": case "info-action": case "ready":
+    case "new-tab": case "toggle-mode": case "close-surface": case "open-external": case "attach-screenshot": case "annotate": case "import-open": case "clear-open": case "clear-run": case "dialog-close": case "info-action": case "ready":
       return make({ action: name });
     case "select-tab": case "close-tab": case "select-space": return make(safeId(body.id) ? { action: name, id: body.id } : null);
     case "page-dialog": return make(safeId(body.id) && safeId(body.dialogId) && typeof body.accept === "boolean" ? { action: "page-dialog", id: body.id, dialogId: body.dialogId, accept: body.accept } : null);

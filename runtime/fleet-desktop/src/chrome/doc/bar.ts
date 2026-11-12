@@ -48,9 +48,14 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     spacesGlyph.append(face);
   };
   const more = h("button", { class: "icon more-button", type: "button", attrs: { "aria-haspopup": "menu" }, on: { click: () => post("bar", "overlay", { kind: last?.overlay?.kind === "menu" ? null : "menu" }) } }, moreGlyph());
+  // 보기 전용 셸의 표식과 닫기 — 그 셸에서만 보인다. 표식은 주소 왼쪽에서 보기 전용임과 어디서 실행 중인지를 말한다.
+  const viewBadge = h("span", { class: "view-mark-badge" });
+  const viewPlace = h("span", { class: "view-mark-place" });
+  const viewMark = h("span", { class: "view-mark", hidden: true as unknown as boolean }, viewBadge, viewPlace);
+  const closeView = h("button", { class: "icon close-view", type: "button", hidden: true as unknown as boolean, on: { click: () => post("bar", "close-surface") } }, "×");
   const leading = h("span", { class: "pad" });
   const trailing = h("span", { class: "pad" });
-  strip.append(leading, back, forward, reload, form, detach, spacesButton, more, trailing);
+  strip.append(leading, back, forward, reload, viewMark, form, detach, spacesButton, more, closeView, trailing);
 
   let last: ChromeUiState | null = null;
   let editing = false;
@@ -85,15 +90,15 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   };
   const suggestionsOf = (): readonly ChromeSuggestion[] => (editing && !composing && last?.overlay?.kind === "suggestions" ? last.suggestions : []);
 
-  form.addEventListener("submit", (event) => { event.preventDefault(); if (!composing) submit(input.value); });
+  form.addEventListener("submit", (event) => { event.preventDefault(); if (!composing && !last?.viewOnly) submit(input.value); });
   form.addEventListener("focusout", (event) => {
     const next = (event as FocusEvent).relatedTarget as Node | null;
     if (next && (form.contains(next) || overlay.contains(next))) return;
     // 제안 목록의 항목은 mousedown 을 막아 초점을 뺏지 않는다 — 여기까지 온 것은 정말 주소줄을 떠난 것이다.
     editing = false; render(last!); closeSuggestions();
   });
-  input.addEventListener("focus", () => { editing = true; input.select(); render(last!); });
-  input.addEventListener("input", () => { editing = true; dirty = true; post("bar", "draft", { value: input.value }); askSuggest(input.value); render(last!); });
+  input.addEventListener("focus", () => { if (last?.viewOnly) { input.blur(); return; } editing = true; input.select(); render(last!); });
+  input.addEventListener("input", () => { if (last?.viewOnly) return; editing = true; dirty = true; post("bar", "draft", { value: input.value }); askSuggest(input.value); render(last!); });
   input.addEventListener("compositionstart", () => { composing = true; closeSuggestions(); });
   input.addEventListener("compositionend", () => { composing = false; askSuggest(input.value); });
   input.addEventListener("keydown", (event) => {
@@ -121,6 +126,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId) ?? null;
     const hasCapture = tab !== null && tab.url !== "about:blank";
     const menu = h("div", { class: "menu", role: "menu", attrs: { "aria-label": t("moreTools") } });
+    if (state.viewOnly) return menu;
     if (hasCapture) menu.append(item(t, G.camera, t("attachScreenshot"), () => post("bar", "attach-screenshot"), { disabled: !state.captureAvailable || state.busy }));
     menu.append(item(t, G.comment, t("annotate"), () => post("bar", "annotate"), { disabled: !state.captureAvailable || tab === null }));
     if (tab && /^https?:\/\//iu.test(tab.url)) menu.append(item(t, G.external, t("openExternal"), () => post("bar", "open-external")));
@@ -161,8 +167,10 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const ready = state.chrome !== null && state.chrome.available && !state.busy;
     const flat = state.orientation === "horizontal";
     const menu = h("div", { class: "menu tabs-menu", role: "menu", attrs: { "aria-label": t("tabsMenu") } });
-    menu.append(item(t, G.plus, t("newTab"), () => post("bar", "new-tab"), { disabled: !ready }));
-    menu.append(h("div", { class: "menu-sep", role: "separator" }));
+    if (!state.viewOnly) {
+      menu.append(item(t, G.plus, t("newTab"), () => post("bar", "new-tab"), { disabled: !ready }));
+      menu.append(h("div", { class: "menu-sep", role: "separator" }));
+    }
     menu.append(item(t, flat ? G.tabsVertical : G.tabsHorizontal, t(flat ? "tabsMenu.vertical" : "tabsMenu.horizontal"), () => post("bar", "orientation", { orientation: flat ? "vertical" : "horizontal" })));
     if (!flat) {
       menu.append(item(t, state.pinned ? G.tabsCollapse : G.pin, t(state.pinned ? "tabsMenu.collapse" : "tabsMenu.expand"), () => post("bar", "pin", { pinned: !state.pinned })));
@@ -219,7 +227,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       if (tabs.length > TILE_ICONS) icons.append(h("span", { class: "tile-more", text: `+${tabs.length - TILE_ICONS}` }));
       const foot = h("span", { class: "tile-foot" }, icons, h("span", { class: "tile-count", text: count }));
       const label = `${t("spaces.tile", { name, tabs: count })}${current ? ` · ${t("spaces.current")}` : ""}${needsYou ? ` · ${t("control.needsYou")}` : space.driving ? ` · ${t("space.driving")}` : ""}`;
-      const tile = h("button", { class: `space-tile${current ? " current" : ""}${tabs.length === 0 ? " no-tabs" : ""}`, type: "button", disabled: !chrome!.available, attrs: { "aria-label": label, "aria-current": current ? "true" : null, "data-kind": space.kind }, on: { click: () => post("bar", "select-space", { id: space.id }) } },
+      const tile = h("button", { class: `space-tile${current ? " current" : ""}${tabs.length === 0 ? " no-tabs" : ""}`, type: "button", disabled: !chrome!.available && !state.viewOnly, attrs: { "aria-label": label, "aria-current": current ? "true" : null, "data-kind": space.kind }, on: { click: () => post("bar", "select-space", { id: space.id }) } },
         top, foot);
       tile.style.setProperty("--space-hue", String(spaceHue(space.id)));
       if (current) top.append(h("span", { class: "tile-current", text: t("spaces.current") }));
@@ -350,7 +358,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const modal = current !== null && current.kind !== "menu" && current.kind !== "suggestions" && current.kind !== "spaces" && current.kind !== "tabs-menu";
     const showing = current !== null && state.overlayReady;
     // 다른 오버레이가 없을 때만 그린다 — 메뉴를 닫으면 다시 보인다.
-    const asked = showing ? null : pageDialogOf(state);
+    const asked = showing || state.viewOnly ? null : pageDialogOf(state);
     overlay.hidden = !showing && !asked && !state.info && !state.notice;
     // 표시줄 메뉴는 누른 자리에 뜬다 — 가로 표시줄에서는 그 자리가 주소줄 위라, 이 메뉴가 떠 있는 동안만 오버레이가 주소줄보다 앞에 선다.
     overlay.classList.toggle("over-strip", showing && current!.kind === "tabs-menu");
@@ -466,10 +474,23 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (!spacesOpen && elsewhereTip) spacesButton.title = `${spacesTip} · ${elsewhereTip}`;
     spacesButton.ariaLabel = elsewhereTip ? `${spacesTip} · ${elsewhereTip}` : spacesTip;
     spacesButton.disabled = chrome === null;
+    // 보기 전용 셸 — 탐색 단추와 도구 메뉴는 서지 않고, 주소는 읽기만 한다.
+    const viewing = state.viewOnly !== null;
+    document.documentElement.dataset.viewOnly = viewing ? "true" : "false";
+    back.hidden = forward.hidden = reload.hidden = more.hidden = viewing;
+    viewMark.hidden = closeView.hidden = !viewing;
+    if (state.viewOnly) {
+      viewBadge.textContent = t("viewOnly");
+      viewPlace.textContent = state.viewOnly.place;
+      viewMark.title = `${t("viewOnly")} · ${state.viewOnly.place}`;
+      closeView.title = closeView.ariaLabel = t("viewOnly.close");
+    }
     more.title = state.overlay?.kind === "menu" ? "" : t("moreTools"); more.ariaLabel = t("moreTools");
     more.setAttribute("aria-expanded", String(state.overlay?.kind === "menu"));
     more.classList.toggle("open", state.overlay?.kind === "menu");
     input.disabled = !available || locked;
+    input.readOnly = viewing;
+    if (viewing) { input.disabled = false; input.tabIndex = -1; editing = false; dirty = false; } else input.tabIndex = 0;
     input.placeholder = t("urlPlaceholder"); input.setAttribute("aria-label", t("pageUrl"));
     input.setAttribute("aria-expanded", String(suggestionsOf().length > 0));
     // 사람이 고치는 중이 아니면 입력은 활성 탭의 주소를 따른다. 고치던 글은 탭이 바뀌어도 남는다(draft).

@@ -5,7 +5,7 @@ import type { DesktopBrowserChrome, DesktopBrowserSurface, DesktopBrowserSurface
 
 import { createBrowserSpaceView, type BrowserSpaceRequest } from "./browser-spaces.js";
 import type { BrowserSurfaceHost, PageHost } from "./browser-views.js";
-import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeControl, type ChromeOverlay, type ChromeRole, type ChromeTabsOrientation, type ChromeUiState } from "./chrome/contract.js";
+import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeControl, type ChromeOverlay, type ChromeRole, type ChromeTabsOrientation, type ChromeUiState, type ChromeViewOnly } from "./chrome/contract.js";
 import type { BrowserStripPrefs } from "./desktop-state.js";
 import type { DesktopShellWindow } from "./shell-window.js";
 
@@ -116,11 +116,20 @@ export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base
  * 브라우저 표면 — 칸(메인 창 오른쪽)과 독립 창을 같은 구조로 소유한다: 상단 줄 뷰·세로 레일 뷰·페이지 뷰. 레이아웃·오버레이 크기·페이지 자리는
  * 전부 여기서 같은 main 틱에 정한다. Console 은 상태와 정책만 보내고(스냅샷), 이 표면은 사람의 동작을 REST 로 돌려보낸다.
  */
-export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; conceal(): void; captionInset(kind: "pane" | "window"): number } {
+export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; conceal(): void; captionInset(kind: "pane" | "window"): number; viewing(): boolean; frame(tabId: string, jpeg: Buffer): void } {
   type Docs = { bar: ChromeDoc; rail: ChromeDoc; stage: ChromeDoc; guard: ChromeDoc };
   let surface: DesktopBrowserSurface | null = null;
   let chrome: DesktopBrowserChrome | null = null;
   let chromeJson = "";
+  /** 보기 전용 셸인가 — 이 Desktop 이 관리하지 않는 Console 의 브라우저를 보기만 한다. 페이지 뷰도 가드도 서지 않는다. */
+  let viewOnly: ChromeViewOnly | null = null;
+  /** 보기 전용 셸이 마지막으로 받은 프레임 — 스테이지 문서가 아직 준비되지 않았거나 다시 적재되면 준비된 뒤에 다시 그린다(정적인 페이지는 다음 프레임이 오지 않는다). */
+  let viewFrame: { readonly tabId: string; readonly src: string } | null = null;
+  const paintFrame = (): void => {
+    const stage = docs?.stage;
+    if (!viewOnly || !viewFrame || !stage || !stage.ready || stage.view.webContents.isDestroyed()) return;
+    void stage.view.webContents.executeJavaScript(`window.__fleetChrome && window.__fleetChrome.frame && window.__fleetChrome.frame(${JSON.stringify(viewFrame.tabId)}, ${JSON.stringify(viewFrame.src)})`).catch(() => undefined);
+  };
   let docs: Docs | null = null;
   let divider: WebContentsView | null = null;
   let windowBase: BaseWindow | null = null;
@@ -190,7 +199,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
    * `agent` 는 보는 탭이 그 스페이스 에이전트의 작업 탭이고 에이전트가 쓰는 중일 때뿐이다. 사람이 연 다른 탭은 잠기지 않는다.
    */
   const controlState = (): ChromeControl | null => {
-    if (!chrome || !chrome.available) return null;
+    if (!chrome || !chrome.available || viewOnly) return null;
     const space = chrome.spaces.find((candidate) => candidate.id === spaces.current());
     // 제어권을 모르는 Console(이 필드가 없는 옛 투영)에서는 가드를 세우지 않는다 — 풀어 줄 길(제어 요청 경로)이 그쪽에 없어 잠그면 사람이 그 탭을 쓸 수 없게 된다.
     if (!space || space.control === undefined) return null;
@@ -265,6 +274,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       zoom: z, busy: ui.busy, notice: ui.notice, info: ui.info, overlay: ui.overlay, overlayReady: ui.overlay !== null, pageDialogFocus: dialogFocusToken,
       suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
       control: controlState(),
+      viewOnly,
     };
   };
 
@@ -330,7 +340,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       if (docs?.[role] !== doc || !isTrusted(doc, details)) return;
       const message = readChromeMessage(details.message);
       if (!message || message.role !== role) return;
-      if (message.action.action === "ready") { doc.ready = true; doc.lastJson = ""; push(); return; }
+      if (message.action.action === "ready") { doc.ready = true; doc.lastJson = ""; push(); if (role === "stage") paintFrame(); return; }
       deps.act(control, role, message.action);
     });
     // 문서를 적재하면 배율이 1로 돌아간다 — 적재 전에 건 배율은 남지 않으므로, 문서가 준비될 때마다 현재 배율을 다시 건다.
@@ -438,7 +448,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     detachFromHost();
     destroyWindow();
     const oldDivider = divider;
-    docs = null; divider = null; surface = null; chrome = null; chromeJson = ""; focusSeen = 0; drag = null; heldSeen = "";
+    docs = null; divider = null; surface = null; chrome = null; chromeJson = ""; viewOnly = null; viewFrame = null; focusSeen = 0; drag = null; heldSeen = "";
     spaces.observe(null);
     for (const view of [old?.bar.view, old?.rail.view, old?.stage.view, old?.guard.view, oldDivider]) { if (view && !view.webContents.isDestroyed()) { try { view.webContents.close(); } catch { /* 이미 닫혔다. */ } } }
     ui = { ...ui, expanded: false, overlay: null, busy: false, notice: null, info: null, suggestions: [], draft: null, guardPill: null };
@@ -447,10 +457,12 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   };
 
   return {
-    apply(next, nextChrome, _origin) {
+    apply(next, nextChrome, _origin, nextViewOnly = null) {
       if (!next) { closeSurface(); return; }
       const first = surface?.id !== next.id;
       if (first && docs) closeSurface();
+      const viewChanged = JSON.stringify(viewOnly) !== JSON.stringify(nextViewOnly);
+      viewOnly = nextViewOnly;
       surface = next;
       if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail"), stage: makeDoc("stage"), guard: makeDoc("guard") }; }
       const json = JSON.stringify(nextChrome);
@@ -473,12 +485,20 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       // 제어권이 바뀌었으면 가드의 자리를 같은 틱에 다시 정한 뒤 문서에 알린다. 포인터만 움직인 투영은 자리를 건드리지 않는다.
       const heldNow = heldKey();
       if (heldNow !== heldSeen || dialogChanged) { heldSeen = heldNow; update(); }
-      else if (chromeChanged || spaces.current() !== spaceBefore) push();
+      else if (chromeChanged || viewChanged || spaces.current() !== spaceBefore) push();
       else layout();
       if (request) deps.act(control, "bar", { action: "show-tab", id: request.kind === "select" ? request.tabId : null });
     },
     target() {
-      return host && !host.isDestroyed() && page.width > 0 ? { host, page: { ...page } } : null;
+      // 보기 전용 셸에는 페이지 뷰가 서지 않는다.
+      return host && !host.isDestroyed() && page.width > 0 && !viewOnly ? { host, page: { ...page } } : null;
+    },
+    viewing: () => docs !== null && viewOnly !== null,
+    /** 보기 전용 셸의 스테이지에 그 탭의 최신 프레임을 그린다. 스테이지 문서가 보는 탭의 것인지 한 번 더 가린다. */
+    frame(tabId, jpeg) {
+      if (!viewOnly || !docs) return;
+      viewFrame = { tabId, src: `data:image/jpeg;base64,${jpeg.toString("base64")}` };
+      paintFrame();
     },
     refresh() { if (docs) update(); },
     lastPage: () => (lastPageSize ? { ...lastPageSize } : null),

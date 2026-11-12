@@ -51,7 +51,7 @@ import { createConsoleControl } from "../../../features/execution/host/console-c
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type BrowserExecutionHost, type BrowserSurfaceModeKind, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_BROWSER_VIEWER_EVENT, DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type BrowserExecutionHost, type BrowserSurfaceModeKind, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { createApprovalCore } from "@fleet-console/approval";
 import { APPROVAL_CHANNEL, APPROVAL_NOTICE_CHANNEL } from "@fleet-console/approval/contract";
@@ -413,7 +413,9 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: DESKTOP_BROWSER_EVENTS_PATH, summary: "Stream native browser view snapshots to the managing Desktop only.", category: "Desktop", gate: "lock-token", transport: "sse" },
   { method: "POST", path: DESKTOP_BROWSER_RELAY_PATH, summary: "Return CDP results, events, and view sizes from the managing Desktop's native browser views.", category: "Desktop", gate: "lock-token", transport: "http" },
   { method: "POST", path: DESKTOP_BROWSER_FRAME_PATH, summary: "Replace the single latest JPEG frame for one watched browser view. Only the managing Desktop may upload.", category: "Desktop", gate: "lock-token", transport: "http" },
-  { method: "GET", path: "/api/v1/browser/viewer/frame", summary: "Long-poll the latest JPEG of one open tab for a view-only Console session.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "GET", path: DESKTOP_BROWSER_VIEWER_PATH, summary: "Read the view-only projection of the Fleet Browser (spaces, tabs, execution host) for a Desktop shell that does not manage this Console.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "GET", path: DESKTOP_BROWSER_VIEWER_EVENTS_PATH, summary: "Stream the view-only Fleet Browser projection to a Desktop shell that does not manage this Console.", category: "Console Execution", gate: "origin-write", transport: "sse" },
+  { method: "GET", path: "/api/v1/browser/viewer/frame", summary: "Long-poll the latest JPEG of one open tab for a view-only Desktop shell.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/viewer/unwatch", summary: "Stop view-only capture for one tab immediately.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/paste", summary: "Put the panel's screenshot on this machine's clipboard and press paste in a terminal Objective's CLI.", category: "Console Execution", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/browser/import-sources", summary: "List the Google Chrome profiles on the attached Desktop whose cookies can be imported into an Objective's browser.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -618,6 +620,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const desktopShellUpdateCommandSseSubscribers = new Map<http.ServerResponse, string>();
   /** 창 조작 명령 구독 — 응답마다 그 셸의 주인. 명령은 걸어 두지 않으므로 지금 붙은 셸만 듣는다. */
   const desktopWindowCommandSseSubscribers = new Map<http.ServerResponse, string>();
+  /** 보기 전용 셸의 투영 구독 — 응답마다 마지막으로 보낸 프레임. 같은 투영은 다시 쓰지 않는다. */
+  const browserViewerSseSubscribers = new Map<http.ServerResponse, string>();
   /** 셸의 브라우저 스냅샷 구독 — 관리 Desktop 만 `"manager"` 로 붙는다. */
   const desktopBrowserSseSubscribers = new Map<http.ServerResponse, string>();
   /** 루프백 Desktop 셸이 관리 창으로 증명되었는가. 증명 없는 루프백 게시가 오면 풀린다. */
@@ -916,9 +920,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // driving 이 바뀌면 objective-use 의 browser 배열이 바뀐다 — 스냅샷을 다시 흘린다(변한 게 없으면 스킵).
     scheduleObjectiveUseBroadcast();
     broadcastBrowserState(state);
+    broadcastBrowserViewer();
   });
   const BROWSER_AVAILABILITY_EVENT = "browser:availability";
   browserService.onAvailability((notice) => {
+    broadcastBrowserViewer();
     if (objectiveRecordSseSubscribers.size === 0) return;
     for (const subscriber of objectiveRecordSseSubscribers) {
       if (subscriber.client === "objective-browser") continue;
@@ -1599,6 +1605,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     isNativeBrowserWrite: (req) => isNativeBrowserWrite(req),
     isManagingDesktopProcess: (req) => isManagingDesktopProcess(req),
     viewerFrameRead: (req) => viewerFrameRead(req),
+    subscribeViewer: (res) => {
+      const data = encodeSseData(DESKTOP_BROWSER_VIEWER_EVENT, browserService.viewerSnapshot(GLOBAL_BROWSER_OWNER_ID));
+      res.writeHead(200, withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }));
+      res.write(":connected\n\n");
+      res.write(data);
+      browserViewerSseSubscribers.set(res, data);
+      const keepalive = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(":keepalive\n\n"); }, 25_000);
+      res.on("close", () => { clearInterval(keepalive); browserViewerSseSubscribers.delete(res); });
+    },
     suggestionSettings: {
       read: () => {
         const settings = consoleSettingsStore.readSnapshot().browser;
@@ -2458,6 +2473,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const admitted = req.method === "POST" ? isExactConsoleOrigin(req) : isSameOriginConsoleRead(req);
     return admitted ? "ok" : "forbidden";
+  }
+
+  /** 보기 전용 셸에 투영을 흘린다. 포인터처럼 투영에 없는 값만 바뀐 상태는 같은 프레임이라 쓰지 않는다. */
+  function broadcastBrowserViewer(): void {
+    if (browserViewerSseSubscribers.size === 0) return;
+    settleRemoteExpiry();
+    const data = encodeSseData(DESKTOP_BROWSER_VIEWER_EVENT, browserService.viewerSnapshot(GLOBAL_BROWSER_OWNER_ID));
+    for (const [res, last] of browserViewerSseSubscribers) {
+      if (res.destroyed || last === data) continue;
+      browserViewerSseSubscribers.set(res, data);
+      res.write(data);
+    }
   }
 
   function broadcastBrowserState(state: ReturnType<BrowserService["state"]>): void {

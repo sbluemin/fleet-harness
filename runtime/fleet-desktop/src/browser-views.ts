@@ -25,6 +25,7 @@ import {
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
 import { defaultParkViewport, parkedNativeBounds, type ParkViewport } from "./shell-window.js";
+import type { ChromeViewOnly } from "./chrome/contract.js";
 
 /**
  * Objective 브라우저를 창 안의 실제 Chromium 뷰로 그린다.
@@ -59,7 +60,8 @@ export interface PageHost {
 
 /** 브라우저 표면(칸·독립 창)과 그 크롬을 그리는 쪽. 페이지가 놓일 자리는 이 표면이 정한다 — 서버나 Console 이 아니다. */
 export interface BrowserSurfaceHost {
-  apply(surface: DesktopBrowserSurface | null, chrome: DesktopBrowserChrome | null, origin: string | null): void;
+  /** `viewOnly` 는 보기 전용 셸이 자기 표면을 세울 때만 싣는다 — 관리 세션은 싣지 않는다. */
+  apply(surface: DesktopBrowserSurface | null, chrome: DesktopBrowserChrome | null, origin: string | null, viewOnly?: ChromeViewOnly | null): void;
   /** 표시 탭의 페이지가 서야 할 창과 자리(그 창의 콘텐츠 좌표, DIP). 표면이 없으면 null. */
   target(): { readonly host: PageHost; readonly page: Rectangle } | null;
   /** 표면이 마지막으로 가졌던 페이지 크기 — 표면이 닫힌 동안 새로 만든 뷰도 한 브라우저의 한 크기를 따르게 한다. 한 번도 열리지 않았으면 null. */
