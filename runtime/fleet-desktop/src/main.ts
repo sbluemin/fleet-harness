@@ -60,6 +60,7 @@ import { createBrowserHistoryStorage } from "./browser-history-storage.js";
 import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
 import { type DesktopShellWindow } from "./shell-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, consoleWindowChrome, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
+import { keepWindowEnabled, withOwnModal } from "./native-modal-guard.js";
 import { createSwitchHold } from "./switch-hold.js";
 import { createThemeMemory } from "./theme-memory.js";
 import { createDesktopState, zoomFactorForLevel } from "./desktop-state.js";
@@ -413,6 +414,8 @@ async function boot(): Promise<void> {
         movable: true, resizable: true, minimizable: true, maximizable: true, fullscreenable: true,
         ...(entryPalette ? { backgroundColor: entryPalette.canvas } : {}),
       });
+      // 분리 창도 페이지 뷰를 담으므로 메인 셸과 같이 네이티브 모달이 창을 잠그지 못하게 한다.
+      keepWindowEnabled(base);
       const refresher = process.platform === "win32" ? createTitleBarOverlayRefresher(base, { screen, initialOverlay: companionOverlay, getZoomFactor: consoleZoomFactor, inset: () => browserSurface.captionInset("window") }) : null;
       companionOverlayRefresher = refresher;
       const refreshChrome = () => {
@@ -797,13 +800,14 @@ async function boot(): Promise<void> {
     confirmStart: async (label) => {
       if (!window || window.isDestroyed()) return false;
       const korean = entryLanguage === "ko";
-      return (await dialog.showMessageBox(window.base, {
+      const parent = window.base;
+      return (await withOwnModal(parent, () => dialog.showMessageBox(parent, {
         type: "question",
         title: korean ? "콘솔 시작" : "Start console",
         message: korean ? `“${label}” 콘솔을 시작할까요?` : `Start the “${label}” console?`,
         detail: korean ? "Fleet Desktop이 관리하는 콘솔이에요. 지금 보고 있는 콘솔은 그대로 열려 있어요." : "Fleet Desktop manages this console. The console you are viewing stays open.",
         buttons: korean ? ["취소", "시작"] : ["Cancel", "Start"], defaultId: 1, cancelId: 0, noLink: true,
-      })).response === 1;
+      }))).response === 1;
     },
     ...(wslConsoles === null ? {} : {
       managedConsoles: {
@@ -826,24 +830,26 @@ async function boot(): Promise<void> {
     confirmUnmanage: async (label) => {
       if (!window || window.isDestroyed()) return false;
       const korean = entryLanguage === "ko";
-      return (await dialog.showMessageBox(window.base, {
+      const parent = window.base;
+      return (await withOwnModal(parent, () => dialog.showMessageBox(parent, {
         type: "question",
         title: korean ? "관리 해제" : "Stop managing",
         message: korean ? `“${label}” 콘솔을 관리 대상에서 뺄까요?` : `Stop managing the “${label}” console?`,
         detail: korean ? "등록만 지워요. 콘솔 데이터, 설치한 런타임, 배포판은 그대로 남아요." : "Only the registration is removed. The console's data, the installed runtime, and the distribution stay.",
         buttons: korean ? ["취소", "관리 해제"] : ["Cancel", "Stop managing"], defaultId: 0, cancelId: 0, noLink: true,
-      })).response === 1;
+      }))).response === 1;
     },
     confirmForget: async (label) => {
       if (!window || window.isDestroyed()) return false;
       const korean = entryLanguage === "ko";
-      return (await dialog.showMessageBox(window.base, {
+      const parent = window.base;
+      return (await withOwnModal(parent, () => dialog.showMessageBox(parent, {
         type: "warning",
         title: korean ? "저장한 콘솔 빼기" : "Forget saved console",
         message: korean ? `“${label}” 콘솔을 목록에서 뺄까요?` : `Forget “${label}” from this computer?`,
         detail: korean ? "다시 연결하려면 새 액세스 링크가 있어야 해요." : "A new access link will be needed to connect again.",
         buttons: korean ? ["취소", "빼기"] : ["Cancel", "Forget"], defaultId: 0, cancelId: 0, noLink: true,
-      })).response === 1;
+      }))).response === 1;
     },
     report: (error) => bridge.report(error),
   });
@@ -928,7 +934,7 @@ async function boot(): Promise<void> {
         policy = applyWindowPolicy(createdWindow.consoleContents, async (external) => shell.openExternal(external), {
           onPermissionDenied: (permission, phase) => logger.info(`window permission ${phase} denied permission=${permission}`),
           confirmRemoteLocalFonts: async (origin) => !createdWindow.isDestroyed()
-            && (await dialog.showMessageBox(createdWindow.base, localFontsConsentDialog(origin))).response === 1,
+            && (await withOwnModal(createdWindow.base, () => dialog.showMessageBox(createdWindow.base, localFontsConsentDialog(origin)))).response === 1,
         });
         installComputerCapture(createdWindow.consoleContents, () => policy?.currentConsoleOrigin() === localConsoleOrigin ? localConsoleOrigin : null, (message) => logger.info(message));
         consoleSection.attach(createdWindow.consoleContents);

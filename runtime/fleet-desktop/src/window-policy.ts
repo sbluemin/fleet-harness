@@ -2,6 +2,7 @@ import { MACOS_TRAFFIC_LIGHTS } from "@fleet-console/protocol/desktop/chrome";
 import type { BaseWindow, BaseWindowConstructorOptions, WebContents, WebContentsView } from "electron";
 
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
+import { keepWindowEnabled } from "./native-modal-guard.js";
 import { createDesktopShellWindow, createDesktopViewStack, type DesktopShellWindow } from "./shell-window.js";
 import { DEFAULT_WINDOW_HEIGHT, DEFAULT_WINDOW_WIDTH, MIN_WINDOW_HEIGHT, MIN_WINDOW_WIDTH } from "./window-state.js";
 
@@ -145,6 +146,7 @@ export function createSecureShellWindow(
   options: SecureWindowOptions,
 ): DesktopShellWindow {
   const base = new BaseWindowCtor(secureShellWindowOptions(options));
+  keepWindowEnabled(base, options.platform);
   const consoleView = new WebContentsViewCtor({
     webPreferences: { ...SECURE_RENDERER_PREFERENCES, backgroundThrottling: false },
   });

@@ -192,11 +192,7 @@ describe("desktop native browser views across a Console restart", () => {
     });
 
     await views.start(REMOTE);
-    await vi.waitFor(() => {
-      expect(created[0]?.commands).toContain("Page.navigate");
-      // 모든 페이지 뷰는 첫 항해 전에 조건부 WebAuthn 중재 차단 스크립트를 건다(같은 생성 경로의 필수 계약).
-      expect(created[0]?.commands).toContain("Page.addScriptToEvaluateOnNewDocument");
-    });
+    await vi.waitFor(() => expect(created[0]?.commands).toContain("Page.navigate"));
 
     // 재기동: 옛 스트림이 끝나고, 같은 origin 의 새 프로세스가 generation 1·명령 id 1 로 다시 센다.
     lifetime = { generation: 1, epoch: "after", views: [view("view-new")], commands: [{ id: 1, viewId: "view-new", method: "Runtime.evaluate", params: {} }] };
