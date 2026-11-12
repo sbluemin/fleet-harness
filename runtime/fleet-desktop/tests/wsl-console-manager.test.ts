@@ -32,7 +32,7 @@ describe("WSL console manager", () => {
     }));
     const publish = (owner: unknown): void => fs.writeFileSync(lockFile, JSON.stringify({ pid: 4321, host: "127.0.0.1", port: 4310, endpoint: "http://127.0.0.1:4310/", startedAt: Date.now(), token: "secret", version: "1.2.3", owner }), { mode: 0o600 });
     const manager = new WslConsoleManager({
-      host, ownerId: "this-desktop", registryFile, cacheDirectory: root, fleetDirectory: ".fleet", isolatedData: true, desktopVersion: "1.0.0", development: false,
+      host, ownerId: "this-desktop", registryFile, cacheDirectory: root, fleetDirectory: ".fleet", isolatedData: true, desktopVersion: "1.0.0", development: false, systemCa: true,
       packageName: "@dotobokuri/fleet-console", nodeManifest: () => ({ version: "24.0.0", source: "", targets: {} }), consoleTarball: async () => "",
       log: { info: () => undefined, error: () => undefined }, stopTimeoutMs: 5_000,
     });
@@ -109,7 +109,7 @@ describe("WSL console manager", () => {
       return new Response(JSON.stringify({ pid: 4321 }), { status: 200 });
     }));
     const manager = new WslConsoleManager({ host, ownerId: "this-desktop", registryFile, cacheDirectory: root, fleetDirectory: ".fleet", isolatedData: true,
-      desktopVersion: "1.0.0", development: false, packageName: "@dotobokuri/fleet-console", nodeManifest: () => ({ version: "22.0.0", source: "", targets: {} }),
+      desktopVersion: "1.0.0", development: false, systemCa: true, packageName: "@dotobokuri/fleet-console", nodeManifest: () => ({ version: "22.0.0", source: "", targets: {} }),
       consoleTarget: target, consoleTarball: async () => "verified.tgz", log: { info: () => undefined, error: () => undefined }, stopTimeoutMs: 1000, startTimeoutMs: 20,
     });
     try {
@@ -157,6 +157,23 @@ describe("WSL console manager", () => {
       expect(await manager.list()).toMatchObject([{ failure: "start", lifecycle: "failed" }]);
       publish();
       expect(await manager.list()).toMatchObject([{ failure: null, lifecycle: "running" }]);
+
+      // Node trusts the system CA store in the Console and in the npm commands that install it; opting out drops it from both.
+      const scripts = () => vi.mocked(host.sh).mock.calls.map((call) => call[2]);
+      const trusted = scripts().length;
+      expect(scripts().filter((script) => script.includes("nohup setsid") || script.includes("npm install"))).toHaveLength(5);
+      expect(scripts().filter((script) => script.includes("nohup setsid") || script.includes("npm install")).every((script) => script.includes('NODE_USE_SYSTEM_CA="1"'))).toBe(true);
+      await manager.stop("one");
+      withholdLock = false; version = "1.2.3";
+      const optedOut = new WslConsoleManager({ host, ownerId: "this-desktop", registryFile, cacheDirectory: root, fleetDirectory: ".fleet", isolatedData: true,
+        desktopVersion: "1.0.0", development: false, systemCa: false, packageName: "@dotobokuri/fleet-console", nodeManifest: () => ({ version: "22.0.0", source: "", targets: {} }),
+        consoleTarget: target, consoleTarball: async () => "verified.tgz", log: { info: () => undefined, error: () => undefined }, stopTimeoutMs: 1000, startTimeoutMs: 20 });
+      await optedOut.start("one");
+      await vi.waitFor(async () => expect(await optedOut.list()).toMatchObject([{ update: { console: { target: "1.3.0" } } }]));
+      await optedOut.update("one");
+      const after = scripts().slice(trusted);
+      expect(after.filter((script) => script.includes("nohup setsid") || script.includes("npm install")).length).toBeGreaterThanOrEqual(3);
+      expect(after.some((script) => script.includes("NODE_USE_SYSTEM_CA"))).toBe(false);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 
@@ -185,7 +202,7 @@ describe("WSL console manager", () => {
       return new Response(JSON.stringify({ accepted: true, pid: 4321 }), { status: 202 });
     }));
     const manager = new WslConsoleManager({
-      host, ownerId: "this-desktop", registryFile, cacheDirectory: root, fleetDirectory: ".fleet", isolatedData: true, desktopVersion: "1.0.0", development: false,
+      host, ownerId: "this-desktop", registryFile, cacheDirectory: root, fleetDirectory: ".fleet", isolatedData: true, desktopVersion: "1.0.0", development: false, systemCa: true,
       packageName: "@dotobokuri/fleet-console", nodeManifest: () => ({ version: "24.0.0", source: "", targets: {} }), consoleTarball: async () => "",
       log: { info: () => undefined, error: () => undefined }, stopTimeoutMs: 5_000,
     });

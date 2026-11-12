@@ -734,6 +734,8 @@ async function boot(): Promise<void> {
     desktopVersion: app.getVersion(),
     development: !isPackaged,
     packageName: PACKAGE_NAME,
+    // Same opt-out as the Windows Console (FLEET_CONSOLE_NO_SYSTEM_CA=1), decided here and handed in.
+    systemCa: process.env.FLEET_CONSOLE_NO_SYSTEM_CA !== "1",
     nodeManifest: () => JSON.parse(fs.readFileSync(path.resolve(sourceDirectory, "build", "node-runtime.json"), "utf8")) as NodeRuntimeManifest,
     consoleTarget: wslConsoleTarget,
     consoleTarball: async () => (await wslConsoleTarget()).tarball(),
