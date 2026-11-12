@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
-import { CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, CONSOLE_WSL_EVENT, isConsoleRosterSummary, parseConsoleSectionCommand, type ConsoleManagedDetail, type ConsoleWslInspection, type ConsoleWslState, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, CONSOLE_WSL_EVENT, isConsoleRosterSummary, parseConsoleSectionCommand, type ConsoleManagedDetail, type ConsoleWslInspection, type ConsoleWslState, type ConsoleRightPanel, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
 import { consoleLifecycleActions, type ConsoleAccessPath, type ConsoleLifecycleAction, type ConsoleManagedLifecycle, type ConsoleManagementRelation } from "@fleet-console/protocol/lifecycle/management";
 
 type Contents = Pick<WebContents, "on" | "removeListener" | "getURL" | "isDestroyed" | "executeJavaScript">;
@@ -80,9 +80,12 @@ interface RosterMemory {
   readonly at: number | null;
   readonly commodores: readonly ConsoleRosterCommodore[];
   readonly more: number;
+  /** 그 Console의 사이드바 섹션. 요약에 실린 그대로이고, 실패 때는 마지막 성공 목록과 함께 남는다. */
+  readonly sections?: ConsoleRosterEntry["sections"];
+  readonly unsectionedCollapsed?: true;
   readonly attemptedAt: number;
 }
-interface Arrival { readonly origin: string; readonly commodore: string; readonly anchorY: number | null; readonly commander: string | null; readonly scrollTop: number | null }
+interface Arrival { readonly origin: string; readonly commodore: string; readonly anchorY: number | null; readonly commander: string | null; readonly scrollTop: number | null; readonly rightPanel: ConsoleRightPanel | null }
 /** 집의 원격 목록에 있는 신원. 핸드오프(토큰 소진)로는 받지 않고, 문서에도 보내지 않는다. */
 interface RemoteIdentity { readonly hostname: string; readonly port: number; readonly fingerprint: string }
 
@@ -195,11 +198,14 @@ export function createConsoleSectionController(deps: Dependencies) {
     const homeOrigin = home();
     if (overlay && homeOrigin) await send(overlay, homeOrigin);
   }
+  const kept = (memory: RosterMemory | undefined): Pick<RosterMemory, "sections" | "unsectionedCollapsed"> => ({
+    ...(memory?.sections ? { sections: memory.sections } : {}), ...(memory?.unsectionedCollapsed ? { unsectionedCollapsed: true as const } : {}),
+  });
   function rosterEntries(): ConsoleRosterEntry[] {
     const standing = at();
     return [...targets.values()].filter((target) => target.origin !== "" && target.origin !== standing).map((target) => {
       const memory = rosterMemory.get(target.origin);
-      return { id: target.entry.id, status: memory?.status ?? "unavailable", at: memory?.at ?? null, commodores: memory?.commodores ?? [], more: memory?.more ?? 0 };
+      return { id: target.entry.id, status: memory?.status ?? "unavailable", at: memory?.at ?? null, commodores: memory?.commodores ?? [], more: memory?.more ?? 0, ...kept(memory) };
     });
   }
   /**
@@ -254,6 +260,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     const arrivalField: ConsoleRosterState["arrival"] = arrival && origin === arrival.origin ? {
       commodore: arrival.commodore, anchorY: arrival.anchorY,
       ...(arrival.commander !== null ? { commander: arrival.commander } : {}), ...(arrival.scrollTop !== null ? { scrollTop: arrival.scrollTop } : {}),
+      ...(arrival.rightPanel !== null ? { rightPanel: arrival.rightPanel } : {}),
     } : null;
     const state: ConsoleRosterState = { v: 1, rosters: fitRosters(rosterEntries(), foldedList, arrivalField), folded: foldedList, arrival: arrivalField };
     const script = `if(location.origin===${JSON.stringify(origin)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_ROSTER_EVENT)},{detail:${JSON.stringify(state)}}))`;
@@ -261,7 +268,7 @@ export function createConsoleSectionController(deps: Dependencies) {
   }
   function rememberUnavailable(origin: string, previous: RosterMemory | undefined, attemptedAt: number): void {
     const keep = previous && previous.status !== "unsupported";
-    rosterMemory.set(origin, { status: "unavailable", at: keep ? previous.at : null, commodores: keep ? previous.commodores : [], more: keep ? previous.more : 0, attemptedAt });
+    rosterMemory.set(origin, { status: "unavailable", at: keep ? previous.at : null, commodores: keep ? previous.commodores : [], more: keep ? previous.more : 0, ...(keep ? kept(previous) : {}), attemptedAt });
   }
   async function drain(response: Response): Promise<void> {
     try { await response.body?.cancel(); } catch { /* 이미 읽었거나 비어 있다. */ }
@@ -273,14 +280,14 @@ export function createConsoleSectionController(deps: Dependencies) {
     try {
       const body: unknown = await response.json();
       if (!isConsoleRosterSummary(body)) return { status: "unsupported", at: null, commodores: [], more: 0, attemptedAt };
-      return { status: "ok", at: attemptedAt, commodores: [...body.commodores], more: body.more, attemptedAt };
+      return { status: "ok", at: attemptedAt, commodores: [...body.commodores], more: body.more, ...(body.sections ? { sections: [...body.sections] } : {}), ...(body.unsectionedCollapsed ? { unsectionedCollapsed: true as const } : {}), attemptedAt };
     } catch {
       return { status: "unsupported", at: null, commodores: [], more: 0, attemptedAt };
     }
   }
   function unavailableFrom(previous: RosterMemory | undefined, attemptedAt: number): RosterMemory {
     const keep = previous && previous.status !== "unsupported";
-    return { status: "unavailable", at: keep ? previous.at : null, commodores: keep ? previous.commodores : [], more: keep ? previous.more : 0, attemptedAt };
+    return { status: "unavailable", at: keep ? previous.at : null, commodores: keep ? previous.commodores : [], more: keep ? previous.more : 0, ...(keep ? kept(previous) : {}), attemptedAt };
   }
   function remoteIdentity(host: Record<string, unknown>): RemoteIdentity | null {
     const hostname = host.hostname;
@@ -620,10 +627,11 @@ export function createConsoleSectionController(deps: Dependencies) {
       // 사령관 없이 Console만 바꾸는 전환에는 도착 표시가 없다(계약상 arrival.commodore는 필수). 그때의 scrollTop은 쓰이지 않는다.
       const commander = value.commander ?? null;
       const scrollTop = value.scrollTop ?? null;
+      const rightPanel = value.rightPanel ?? null;
       // 새 문서는 적재되자마자 상태를 요청한다. open이 끝나기 전에 세워 두어야 그 요청에 실린다.
       // publishRoster는 도착한 origin에서만 arrival을 넣으므로 떠나는 문서에는 새지 않는다.
       if (commodore) {
-        arrival = { origin: target.origin, commodore, anchorY, commander, scrollTop };
+        arrival = { origin: target.origin, commodore, anchorY, commander, scrollTop, rightPanel };
         arrivalTimer = setTimeout(() => {
           if (switchSerial === serial && arrival?.origin === target.origin && arrival.commodore === commodore) { clearArrival(); void publishRoster(); }
         }, ARRIVAL_TTL_MS);
