@@ -82,6 +82,8 @@ export interface WslConsoleManagerOptions {
   readonly consoleTarball: () => Promise<string>;
   /** Same release as a fresh install. Resolving metadata downloads no runtime and starts no distribution. */
   readonly consoleTarget?: () => Promise<{ readonly version: string; readonly tarball: () => Promise<string> }>;
+  /** Whether Node in the distribution also trusts the system's certificate authorities (TLS-inspecting proxies). Decided by the host. */
+  readonly systemCa: boolean;
   /** Extra variables for the Console's environment (development isolation only). */
   readonly extraEnvironment?: Readonly<Record<string, string>>;
   readonly log: { info(message: string): void; error(message: string): void };
@@ -639,10 +641,16 @@ for tool in ${BUILD_TOOLS.join(" ")}; do command -v "$tool" >/dev/null 2>&1 || e
     return { node: /^\d+\.\d+\.\d+/u.test(nodeVersion), console: read.has("console"), nodeVersion, consoleVersion: read.get("console_version") ?? "", missingTools: result.stdout.split(/\r?\n/u).filter((line) => line.startsWith("tool=")).map((line) => line.slice(5).trim()) };
   }
 
+  /** Trust settings for every Node this manager runs: the Console itself and the npm commands that install it. */
+  private trustEnvironment(): Record<string, string> {
+    return this.options.systemCa ? { NODE_USE_SYSTEM_CA: "1" } : {};
+  }
+
   /** Procurement caches stay beside the managed runtime, not in the Linux user's real HOME. */
   private installerEnvironment(record: WslConsoleRecord): string {
     const root = `${this.layout(record).runtime}/.installer`;
-    return `HOME="${root}/home" XDG_CACHE_HOME="${root}/cache" TMPDIR="${root}/tmp" TMP="${root}/tmp" TEMP="${root}/tmp" npm_config_cache="${root}/npm-cache" npm_config_devdir="${root}/node-gyp"`;
+    const trust = Object.entries(this.trustEnvironment()).map(([name, value]) => ` ${name}="${value}"`).join("");
+    return `HOME="${root}/home" XDG_CACHE_HOME="${root}/cache" TMPDIR="${root}/tmp" TMP="${root}/tmp" TEMP="${root}/tmp" npm_config_cache="${root}/npm-cache" npm_config_devdir="${root}/node-gyp"${trust}`;
   }
 
   /** Installs what is missing of the managed runtime. Files are downloaded and verified on Windows, then handed in. */
@@ -694,6 +702,7 @@ cd "${home}" && mkdir -p "${runtime}/.installer/home" "${runtime}/.installer/tmp
       FLEET_CONSOLE_DESKTOP_VERSION: this.options.desktopVersion,
       ...(this.options.development ? { [DESKTOP_DEVELOPMENT_ENV]: "1" } : {}),
       ...(data ? { FLEET_DATA_DIR: fleet, FLEET_CONSOLE_DATA_DIR: data, FLEET_CONSOLE_DIR: data } : {}),
+      ...this.trustEnvironment(),
       ...this.options.extraEnvironment,
     };
     const assignments = Object.entries(environment).filter(([name, value]) => /^[A-Z][A-Z0-9_]*$/u.test(name) && /^[A-Za-z0-9 _./:@=+-]*$/u.test(value)).map(([name, value]) => `${name}="${value}"`).join(" ");
