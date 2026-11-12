@@ -258,6 +258,8 @@ export function ObjectiveRecordsSideBar({
     const openKey = `${arrival.commodore}\0${arrival.commander ?? ""}`;
     let frame = 0;
     const deadline = performance.now() + 3_000;
+    // open → 펼침 레이아웃이 반영될 프레임 → 그 다음에야 스크롤을 잠근다.
+    let phase: "open" | "settle" | "done" = arrivalOpened.current === openKey ? "settle" : "open";
     const place = () => {
       if (arrival.scrollTop !== null) return;
       const list = listRef.current;
@@ -268,10 +270,8 @@ export function ObjectiveRecordsSideBar({
       const overflow = row.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom;
       if (overflow > 0 && overflow <= 8) list.scrollTop += overflow;
     };
-    const scrollSettled = () => {
-      if (arrival.scrollTop === null) return true;
-      const hold = scrollHold.current;
-      if (hold?.cancel || hold?.locked) return true;
+    const scrollFits = () => {
+      if (arrival.scrollTop === null || scrollHold.current?.cancel) return true;
       const list = listRef.current;
       if (!list) return false;
       return list.scrollHeight - list.clientHeight + 1 >= arrival.scrollTop;
@@ -281,18 +281,35 @@ export function ObjectiveRecordsSideBar({
       const commanderId = arrival.commander;
       const commanderKnown = commanderId !== null && arrivalRecords.current.some((record) => record.id === commanderId && record.commodoreId === arrival.commodore);
       const commodoreOpen = isCommodoreConversationOpen(arrival.commodore);
-      const conversationReady = !known || past || (commanderId === null ? commodoreOpen : commanderKnown);
-      if (arrivalOpened.current !== openKey && conversationReady) {
+      if (phase === "open") {
+        // 지휘관이 없으면 목록에 있는 사령관을 바로 연다. 3초는 목록에 끝내 없을 때의 탈출구다.
+        const waiting = !known || (commanderId !== null && !commanderKnown);
+        if (waiting && !past) {
+          frame = requestAnimationFrame(attempt);
+          return;
+        }
         place();
-        if (commanderKnown && commanderId !== null) openCommanderConversation(arrival.commodore, commanderId);
+        if (known && commanderId !== null && commanderKnown) openCommanderConversation(arrival.commodore, commanderId);
         else if (known && !commodoreOpen) openCommodoreConversation(arrival.commodore);
         arrivalOpened.current = openKey;
+        phase = "settle";
+        if (!past) {
+          frame = requestAnimationFrame(attempt);
+          return;
+        }
       }
-      // 목록이 짧을 때 arrived를 보내면 셸이 arrival을 지우고, 내용이 찬 뒤 복원이 멈춘다.
-      if (!conversationReady || (!scrollSettled() && !past)) {
+      // 연 직후 한 프레임은 펼침이 목록 높이를 바꾼 뒤다. 그 레이아웃에서 scrollTop을 다시 맞춘 다음에 잠근다.
+      if (phase === "settle" && !past) {
+        phase = "done";
         frame = requestAnimationFrame(attempt);
         return;
       }
+      if (!scrollFits() && !past && !scrollHold.current?.cancel) {
+        frame = requestAnimationFrame(attempt);
+        return;
+      }
+      const hold = scrollHold.current;
+      if (hold && !hold.cancel) hold.locked = true;
       consoleArrived.current();
     };
     frame = requestAnimationFrame(() => { attempt(); });
@@ -316,17 +333,25 @@ export function ObjectiveRecordsSideBar({
     return `${entry.id}:${roster?.commodores.length ?? -1}:${nested}`;
   }).join("|");
   useLayoutEffect(() => {
-    if (!arrival || arrival.scrollTop === null || arrivalScrollKey === null) return;
     const list = listRef.current;
+    if (!arrival || arrival.scrollTop === null || arrivalScrollKey === null) {
+      if (list) delete list.dataset.scrollHold;
+      return;
+    }
     if (!list) return;
     if (scrollHold.current?.key !== arrivalScrollKey) scrollHold.current = { key: arrivalScrollKey, top: arrival.scrollTop, cancel: false, locked: false };
     const hold = scrollHold.current;
-    if (!hold || hold.cancel || hold.locked) return;
+    if (!hold || hold.cancel || hold.locked) {
+      delete list.dataset.scrollHold;
+      return;
+    }
+    // 펼침으로 행이 끼어들 때 브라우저 scroll anchoring이 scrollTop을 밀지 못하게 한다.
+    list.dataset.scrollHold = "1";
     const max = Math.max(0, list.scrollHeight - list.clientHeight);
     const next = Math.min(hold.top, max);
     if (list.scrollTop !== next) list.scrollTop = next;
-    if (max + 1 >= hold.top) hold.locked = true;
-  }, [arrival, arrivalScrollKey, rosterStamp, commodoreSections, tfSummaries]);
+    // 잠금은 대화를 연 뒤의 재배치가 끝난 도착 효과가 한다. 여기서 잠그면 펼침이 scrollTop을 밀어 올린 뒤 되돌리지 못한다.
+  }, [arrival, arrivalScrollKey, rosterStamp, commodoreSections, tfSummaries, expandedCommanders]);
   useEffect(() => {
     const list = listRef.current;
     if (!list || arrivalScrollKey === null) return;

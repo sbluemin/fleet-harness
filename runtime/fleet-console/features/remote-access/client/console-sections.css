@@ -2,6 +2,8 @@
    다른 콘솔의 사령관·지휘관은 로컬 카드·진행 행과 같은 클래스를 쓴다.
    닿지 않는 원격만 마지막으로 본 행을 흐리게 하고, 머리글에는 빈 점만 둔다. */
 .side-console { list-style: none; min-width: 0; }
+/* 도착 직후 펼침이 행을 끼워 넣는 동안만. 브라우저가 scrollTop을 밀지 않게 한다. */
+.objective-records-side-bar-chips[data-scroll-hold="1"] { overflow-anchor: none; }
 /* 다른 콘솔 묶음은 지금 콘솔 목록과 6px(목록 gap 2px + 여기 4px)을 둔다. 콘솔 행끼리는 목록 gap만 둔다. */
 .side-console-own + .side-console { margin-top: 4px; }
 /* 머리글(다른 콘솔의 행)은 자기 섹션 상자 안에서 스크롤 영역 위에 붙는다. 면은 사이드바 바탕이라 모서리로 행이 비치지 않는다.
