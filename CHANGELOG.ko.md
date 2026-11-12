@@ -5,6 +5,23 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.299.0] - 2026-11-12
+
+### fleet-console
+
+#### Removed
+- Console 안의 읽기 전용 플릿 브라우저 뷰어가 없어졌습니다. 다른 컴퓨터에서 Console의 플릿 브라우저를 보려면 Fleet Desktop이 필요하고, 웹과 모바일 화면에는 더 이상 표시되지 않습니다.
+
+### fleet-desktop
+
+#### Changed
+- 원격 Console의 플릿 브라우저를 로컬에서 쓰던 것과 같은 플릿 브라우저 칸이나 창에서 스페이스와 탭 그대로 보기 전용으로 볼 수 있습니다. 원격 Console의 지구본 버튼으로 엽니다.
+- 사이드바의 다른 Console이 내 Console처럼 보입니다. Console마다 섹션으로 나뉘어 사령관의 최근 답과 진행 중인 지휘관이 보이고, 행을 한 번 누르면 사이드바의 순서와 스크롤 위치는 그대로 둔 채 그 화면으로 넘어갑니다.
+
+#### Fixed
+- Windows에서 페이지가 띄운 패스키·Windows Hello 확인, 파일 선택, 다운로드 대화상자가 열려 있어도 Fleet Desktop과 플랫폼 브라우저를 계속 클릭할 수 있습니다. 패스키 요청을 시작하는 로그인 페이지에서 창이 잠기던 문제가 사라지고, 자동 완성을 확인하는 사이트의 패스키 요청도 더 이상 막지 않습니다.
+- 설치된 Fleet Desktop에서 WSL Console이 시작에 실패하던 문제를 고쳤습니다. 이전에 설치된 런타임은 다시 설치하지 않아도 다음 시작 때 복구됩니다.
+
 ## [1.298.2] - 2026-11-12
 
 ### fleet-desktop

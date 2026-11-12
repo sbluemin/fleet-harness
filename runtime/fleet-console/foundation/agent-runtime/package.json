@@ -1,6 +1,6 @@
 {
   "name": "@fleet-console/agent-runtime",
-  "version": "1.298.2",
+  "version": "1.299.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",

@@ -5,6 +5,23 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.299.0] - 2026-11-12
+
+### fleet-console
+
+#### Removed
+- The read-only Fleet Browser viewer inside Console is gone; watching a Console's Fleet Browser from another computer now needs Fleet Desktop, and web and mobile screens no longer show it.
+
+### fleet-desktop
+
+#### Changed
+- Watch a remote Console's Fleet Browser in the same Fleet Browser pane or window you use locally, view-only, with its spaces and tabs; the globe button on the remote Console opens it.
+- Other Consoles in the sidebar now look like your own: each has its own section showing its commodores with their latest reply and their commanders in progress, and one click on a row opens it there while the sidebar keeps its order and scroll position.
+
+#### Fixed
+- Keep Fleet Desktop and its Fleet Browser clickable while a page's passkey or Windows Hello prompt, file picker, or download dialog is open on Windows, so the window no longer locks up on sign-in pages that start a passkey request. Passkey requests are no longer blocked from sites that probe for autofill.
+- Start a WSL Console from the installed Fleet Desktop without it failing to launch; a runtime installed earlier is repaired on its next start, with no reinstall.
+
 ## [1.298.2] - 2026-11-12
 
 ### fleet-desktop

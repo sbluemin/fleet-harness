@@ -1,6 +1,6 @@
 {
   "name": "fleet-console-view",
-  "version": "1.298.2",
+  "version": "1.299.0",
   "private": true,
   "main": "src/index.ts",
   "expo": {
