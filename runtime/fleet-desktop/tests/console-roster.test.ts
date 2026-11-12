@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { CONSOLE_ROSTER_EVENT, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl, type ConsoleSectionCommand } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl, type ConsoleSectionCommand } from "@fleet-console/protocol/desktop/console-section";
 import { describe, expect, it, vi } from "vitest";
 import { createConsoleSectionController } from "../src/console-section-controller.js";
 
@@ -7,6 +7,7 @@ const HOME = "http://127.0.0.1:4310";
 const NEARBY = "http://127.0.0.1:4311";
 const TRUSTED = "https://100.84.12.7:6768";
 const UNTRUSTED = "https://100.84.12.8:6769";
+const TITLE = 110;
 const TOKEN = "grant-token-must-not-leak";
 
 interface Delivery {
@@ -14,7 +15,8 @@ interface Delivery {
   readonly type: string;
   readonly detail: {
     readonly entries?: readonly { readonly id: string; readonly address: string; readonly active: boolean }[];
-    readonly arrival?: { readonly commodore: string; readonly anchorY: number | null } | null;
+    readonly arrival?: { readonly commodore: string; readonly anchorY: number | null; readonly commander?: string | null; readonly scrollTop?: number | null } | null;
+    readonly rosters?: readonly { readonly id: string; readonly more: number; readonly commodores: readonly { readonly preview?: string; readonly commanders?: readonly unknown[]; readonly moreCommanders?: number }[] }[];
   };
 }
 
@@ -43,7 +45,8 @@ describe("console roster", () => {
       isDestroyed: () => false,
       executeJavaScript: async (script: string) => { scripts.push(script); },
     });
-    const roster = { v: 1, commodores: [{ id: "cmdr-9", name: "Nuri", look: { base: 2, tone: null }, run: "quiet" }], more: 0 };
+    const commander = { id: "obj-1", title: "Ship it", done: 1, total: 3, run: "working" };
+    const roster = { v: 1, commodores: [{ id: "cmdr-9", name: "Nuri", look: { base: 2, tone: null }, run: "quiet", preview: "last words", commanders: [commander], moreCommanders: 2 }], more: 0 };
     const fetch = vi.fn(async (input: string, init?: RequestInit) => {
       const parsed = new URL(input);
       calls.push({ url: input, init });
@@ -112,7 +115,7 @@ describe("console roster", () => {
       url = `${HOME}/console/`;
       const nearbyId = lastSection()?.detail.entries?.find((entry) => entry.address === "127.0.0.1:4311")?.id;
       expect(nearbyId).toBeTruthy();
-      send({ switch: nearbyId!, commodore: "cmdr-9", anchorY: 80 });
+      send({ switch: nearbyId!, commodore: "cmdr-9", commander: "obj-1", anchorY: 80, scrollTop: 240 });
       await vi.waitFor(() => {
         expect(deliveries().some((item) => item.type === CONSOLE_ROSTER_EVENT && item.origin === NEARBY && item.detail.arrival?.commodore === "cmdr-9")).toBe(true);
       });
@@ -120,11 +123,43 @@ describe("console roster", () => {
       expect(calls.some((call) => new URL(call.url).pathname === "/api/v1/desktop/handoff")).toBe(false);
       const rosters = deliveries().filter((item) => item.type === CONSOLE_ROSTER_EVENT);
       for (const item of rosters) if (item.origin !== NEARBY) expect(item.detail.arrival).toBeNull();
-      expect(rosters.filter((item) => item.origin === NEARBY).at(-1)?.detail.arrival).toEqual({ commodore: "cmdr-9", anchorY: 80 });
+      expect(rosters.filter((item) => item.origin === NEARBY).at(-1)?.detail.arrival).toEqual({ commodore: "cmdr-9", anchorY: 80, commander: "obj-1", scrollTop: 240 });
+      // 원격이 보낸 미리보기와 진행 중 사령관은 검증을 지나 문서까지 그대로 간다.
+      expect(rosters.filter((item) => item.origin === HOME).flatMap((item) => item.detail.rosters ?? []).find((entry) => entry.commodores.length > 0)?.commodores[0]).toMatchObject({ preview: "last words", commanders: [commander], moreCommanders: 2 });
       expect(scripts.join("\n")).not.toContain(TOKEN);
       expect(scripts.join("\n")).not.toContain("FINGERPRINT-TRUSTED");
       expect(trace.filter((line) => line.startsWith("open:"))).toEqual([`open:${NEARBY}`]);
       expect(lastSection()?.detail.entries?.map((entry) => entry.id)).toEqual(standingAtHome);
     } finally { releaseOpen(); section.close(); }
+  });
+
+  it("fits an oversized roster frame by dropping previews, then commanders, then commodores", async () => {
+    const big = (previewLength: number) => ({ v: 1, more: 0, commodores: Array.from({ length: 40 }, (_, index) => ({
+      id: `cmdr-${index}`, name: `Name ${index}`, look: null, run: "quiet", preview: "p".repeat(previewLength),
+      commanders: Array.from({ length: 8 }, (__, slot) => ({ id: `obj-${index}-${slot}`, title: "t".repeat(TITLE), done: 1, total: 2, run: "working" })), moreCommanders: 0,
+    })) });
+    const scripts: string[] = [];
+    const contents = Object.assign(new EventEmitter(), { getURL: () => `${HOME}/console/`, isDestroyed: () => false, executeJavaScript: async (script: string) => { scripts.push(script); } });
+    const fetch = vi.fn(async (input: string) => {
+      const parsed = new URL(input);
+      if (parsed.pathname === "/api/v1/remote-hosts") return Response.json({ hosts: [] });
+      if (parsed.pathname === "/api/v1/local-consoles") return Response.json({ consoles: [{ origin: HOME }, { origin: NEARBY }] });
+      if (parsed.pathname === "/api/v1/status") return Response.json({ name: "Home", version: "1.2.3" });
+      if (parsed.pathname === "/api/v1/console-roster") return Response.json(big(160));
+      return Response.json({});
+    });
+    const section = createConsoleSectionController({ home: () => HOME, fetch, rosterFetch: fetch, open: vi.fn(), add: vi.fn(), confirmForget: vi.fn(async () => false), report: vi.fn() });
+    try {
+      section.attach(contents as never);
+      await section.refresh();
+      const last = scripts.map(delivered).filter((item): item is Delivery => item?.type === CONSOLE_ROSTER_EVENT).at(-1);
+      const commodores = last?.detail.rosters?.[0]?.commodores ?? [];
+      expect(new TextEncoder().encode(JSON.stringify(last?.detail)).length).toBeLessThanOrEqual(CONSOLE_ROSTER_MAX_FRAME);
+      // 이 크기에서는 미리보기만 뒤쪽부터 빼면 상한 안이라, 앞쪽 미리보기와 모든 사령관·명부는 남는다.
+      expect(commodores).toHaveLength(40);
+      expect(commodores[0]?.preview).toBeDefined();
+      expect(commodores.at(-1)?.preview).toBeUndefined();
+      expect(commodores.every((item) => item.commanders?.length === 8 && item.moreCommanders === 0)).toBe(true);
+    } finally { section.close(); }
   });
 });

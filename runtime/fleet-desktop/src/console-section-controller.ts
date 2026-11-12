@@ -82,7 +82,7 @@ interface RosterMemory {
   readonly more: number;
   readonly attemptedAt: number;
 }
-interface Arrival { readonly origin: string; readonly commodore: string; readonly anchorY: number | null }
+interface Arrival { readonly origin: string; readonly commodore: string; readonly anchorY: number | null; readonly commander: string | null; readonly scrollTop: number | null }
 /** 집의 원격 목록에 있는 신원. 핸드오프(토큰 소진)로는 받지 않고, 문서에도 보내지 않는다. */
 interface RemoteIdentity { readonly hostname: string; readonly port: number; readonly fingerprint: string }
 
@@ -202,11 +202,38 @@ export function createConsoleSectionController(deps: Dependencies) {
       return { id: target.entry.id, status: memory?.status ?? "unavailable", at: memory?.at ?? null, commodores: memory?.commodores ?? [], more: memory?.more ?? 0 };
     });
   }
-  /** 뒤쪽 명부의 사령관부터 빼고, 뺀 수만큼 그 명부의 more를 올린다. 기억은 건드리지 않는다. */
+  /**
+   * 틀이 상한을 넘으면 뒤쪽부터 세 단계로 줄인다: 미리보기, 다음에 진행 중 사령관, 마지막에 사령관과 명부.
+   * 사령관을 빼면 그 사령관의 moreCommanders를, 사령관(commodore)을 빼면 그 명부의 more를 올린다. 기억은 건드리지 않는다.
+   */
   function fitRosters(entries: readonly ConsoleRosterEntry[], foldedList: readonly string[], arrivalField: ConsoleRosterState["arrival"]): ConsoleRosterEntry[] {
     const rosters = entries.map((entry) => ({ ...entry, commodores: [...entry.commodores] }));
     const bytes = (): number => new TextEncoder().encode(JSON.stringify({ v: 1, rosters, folded: foldedList, arrival: arrivalField })).length;
+    // 줄일 때마다 해당 사령관 객체를 새로 만든다. 같은 객체가 기억에도 있다.
+    const trimLast = (shrink: (commodore: ConsoleRosterCommodore) => ConsoleRosterCommodore | null): boolean => {
+      for (let cursor = rosters.length - 1; cursor >= 0; cursor -= 1) {
+        const roster = rosters[cursor];
+        if (!roster) continue;
+        for (let position = roster.commodores.length - 1; position >= 0; position -= 1) {
+          const commodore = roster.commodores[position];
+          const smaller = commodore ? shrink(commodore) : null;
+          if (smaller) { roster.commodores[position] = smaller; return true; }
+        }
+      }
+      return false;
+    };
+    const dropPreview = (commodore: ConsoleRosterCommodore): ConsoleRosterCommodore | null => {
+      if (commodore.preview === undefined) return null;
+      const { preview: _preview, ...rest } = commodore;
+      return rest;
+    };
+    const dropCommander = (commodore: ConsoleRosterCommodore): ConsoleRosterCommodore | null => {
+      const list = commodore.commanders;
+      if (!list || list.length === 0) return null;
+      return { ...commodore, commanders: list.slice(0, -1), moreCommanders: (commodore.moreCommanders ?? 0) + 1 };
+    };
     while (bytes() > CONSOLE_ROSTER_MAX_FRAME) {
+      if (trimLast(dropPreview) || trimLast(dropCommander)) continue;
       let index = -1;
       for (let cursor = rosters.length - 1; cursor >= 0; cursor -= 1) {
         if ((rosters[cursor]?.commodores.length ?? 0) > 0) { index = cursor; break; }
@@ -224,7 +251,10 @@ export function createConsoleSectionController(deps: Dependencies) {
     if (!receiver || receiver.isDestroyed() || !origin) return;
     const foldedList = foldedIds();
     // arrival은 전환이 도착한 그 origin의 문서에만 실린다. 다른 문서의 스크립트에는 null이다.
-    const arrivalField: ConsoleRosterState["arrival"] = arrival && origin === arrival.origin ? { commodore: arrival.commodore, anchorY: arrival.anchorY } : null;
+    const arrivalField: ConsoleRosterState["arrival"] = arrival && origin === arrival.origin ? {
+      commodore: arrival.commodore, anchorY: arrival.anchorY,
+      ...(arrival.commander !== null ? { commander: arrival.commander } : {}), ...(arrival.scrollTop !== null ? { scrollTop: arrival.scrollTop } : {}),
+    } : null;
     const state: ConsoleRosterState = { v: 1, rosters: fitRosters(rosterEntries(), foldedList, arrivalField), folded: foldedList, arrival: arrivalField };
     const script = `if(location.origin===${JSON.stringify(origin)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_ROSTER_EVENT)},{detail:${JSON.stringify(state)}}))`;
     await receiver.executeJavaScript(script).catch(() => undefined);
@@ -586,10 +616,13 @@ export function createConsoleSectionController(deps: Dependencies) {
       clearArrival();
       const commodore = value.commodore ?? null;
       const anchorY = value.anchorY ?? null;
+      // 사령관 없이 Console만 바꾸는 전환에는 도착 표시가 없다(계약상 arrival.commodore는 필수). 그때의 scrollTop은 쓰이지 않는다.
+      const commander = value.commander ?? null;
+      const scrollTop = value.scrollTop ?? null;
       // 새 문서는 적재되자마자 상태를 요청한다. open이 끝나기 전에 세워 두어야 그 요청에 실린다.
       // publishRoster는 도착한 origin에서만 arrival을 넣으므로 떠나는 문서에는 새지 않는다.
       if (commodore) {
-        arrival = { origin: target.origin, commodore, anchorY };
+        arrival = { origin: target.origin, commodore, anchorY, commander, scrollTop };
         arrivalTimer = setTimeout(() => {
           if (switchSerial === serial && arrival?.origin === target.origin && arrival.commodore === commodore) { clearArrival(); void publishRoster(); }
         }, ARRIVAL_TTL_MS);
