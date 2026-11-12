@@ -346,6 +346,8 @@ export interface ObjectiveStore {
   followupDiscard(objectiveId: string, candidateId: string, by?: ObjectiveActor): Objective;
   /** 고른 후보의 rev 를 검증하고 완료·배치·후보 잠금을 한 번에 쓴다. 같은 배치는 그대로 돌려준다. */
   completeWithFollowups(objectiveId: string, selection: FollowupSelection, by?: ObjectiveActor): { readonly objective: Objective; readonly fresh: boolean };
+  /** 완료와 무관하게 고른 후보만 배치로 만든다 — 검토 대기나 완료 뒤에만. 목표의 완료·검토 상태는 그대로다. 같은 배치는 그대로 돌려준다. */
+  followupAdopt(objectiveId: string, selection: FollowupSelection, by?: ObjectiveActor): { readonly objective: Objective; readonly fresh: boolean };
   /** 배치 항목의 생성 결과를 기록한다. 끝난 항목(created·deleted)은 후보 목록에서 빠지고 배치에만 남는다. */
   followupSettle(objectiveId: string, batchId: string, candidateId: string, next: { readonly state: FollowupItemState; readonly objectiveId?: string; readonly error?: string; readonly attempted?: boolean }): Objective;
   /** failed·confirming 항목을 다시 creating 으로 — 같은 스냅샷·같은 키로 다시 확인하거나 만든다. */
@@ -2105,27 +2107,25 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         }
         assertReviewable(stored);
         if (batches.some((batch) => batch.id === selection.batchId)) throw new ObjectiveStoreError("followup_changed");
-        const ids = selection.followups.map((entry) => entry.id);
-        if (new Set(ids).size !== ids.length) throw new ObjectiveStoreError("followup_changed");
-        const chosen = selection.followups.map((entry) => {
-          const candidate = (stored.followups ?? []).find((existing) => existing.id === entry.id);
-          if (!candidate || candidate.state !== "open" || candidate.rev !== entry.rev) throw new ObjectiveStoreError("followup_changed");
-          return candidate;
-        });
-        if (batches.filter((batch) => !batch.items.every((entry) => followupSettled(entry.state))).length >= MAX_FOLLOWUP_BATCHES) throw new ObjectiveStoreError("followup_backlog");
-        const items: StoredFollowupItem[] = chosen.map((candidate) => ({
-          candidateId: candidate.id, rev: candidate.rev,
-          snapshot: { title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, evidence: [...candidate.evidence] },
-          state: "creating", attempts: 0,
-        }));
-        const chosenIds = new Set(ids);
         fresh = true;
         return foldBatches({
           ...action(action(withoutDecisionRequest(stored), by, "complete"), by, "followup-selected", { targetId: selection.batchId }),
           done: { at: now(), by }, planning: undefined, criteriaOpen: undefined, extensionActive: undefined, lifecycleIntent: undefined,
-          followups: (stored.followups ?? []).map((candidate) => (chosenIds.has(candidate.id) ? { ...candidate, state: "selected" as const, batchId: selection.batchId } : candidate)),
-          followupBatches: [...batches, { id: selection.batchId, at: now(), by, launch: selection.launch, items }],
+          ...selectedBatch(stored, selection, by),
         });
+      });
+      return { objective, fresh };
+    },
+
+    followupAdopt(objectiveId, selection, by = "human") {
+      let fresh = false;
+      const objective = update(objectiveId, (stored) => {
+        if (stored.removed) throw new ObjectiveStoreError("objective_removed");
+        if ((stored.followupBatches ?? []).some((batch) => batch.id === selection.batchId)) return stored;
+        if (!followupsJudgeable(holdSubject(stored))) throw new ObjectiveStoreError("not_in_review", undefined, { hint: FOLLOWUPS_AT_REVIEW_HINT });
+        if (!selection.followups.length) throw new ObjectiveStoreError("invalid_request");
+        fresh = true;
+        return foldBatches({ ...action(stored, by, "followup-selected", { targetId: selection.batchId }), ...selectedBatch(stored, selection, by) });
       });
       return { objective, fresh };
     },
@@ -2364,6 +2364,28 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   /** 근거 가운데 하나 이상은 관찰할 수 있어야 한다 — 줄 번호가 있는 파일 또는 명령. */
   function assertObservable(evidence: readonly FollowupEvidence[]): void {
     if (!evidence.some(observableEvidence)) throw new ObjectiveStoreError("evidence_not_observable");
+  }
+  /** 고른 open 후보를 화면이 본 rev 로 검증해 배치로 묶고 그 후보를 잠근다 — 완료와 함께 고르기와 채택만 하기가 같은 규칙을 쓴다. */
+  function selectedBatch(stored: StoredObjective, selection: FollowupSelection, by: ObjectiveActor): Pick<StoredObjective, "followups" | "followupBatches"> {
+    const batches = stored.followupBatches ?? [];
+    const ids = selection.followups.map((entry) => entry.id);
+    if (new Set(ids).size !== ids.length) throw new ObjectiveStoreError("followup_changed");
+    const chosen = selection.followups.map((entry) => {
+      const candidate = (stored.followups ?? []).find((existing) => existing.id === entry.id);
+      if (!candidate || candidate.state !== "open" || candidate.rev !== entry.rev) throw new ObjectiveStoreError("followup_changed");
+      return candidate;
+    });
+    if (batches.filter((batch) => !batch.items.every((entry) => followupSettled(entry.state))).length >= MAX_FOLLOWUP_BATCHES) throw new ObjectiveStoreError("followup_backlog");
+    const items: StoredFollowupItem[] = chosen.map((candidate) => ({
+      candidateId: candidate.id, rev: candidate.rev,
+      snapshot: { title: candidate.title, summary: candidate.summary, userImpact: candidate.userImpact, fromMission: candidate.fromMission, brief: candidate.brief, evidence: [...candidate.evidence] },
+      state: "creating", attempts: 0,
+    }));
+    const chosenIds = new Set(ids);
+    return {
+      followups: (stored.followups ?? []).map((candidate) => (chosenIds.has(candidate.id) ? { ...candidate, state: "selected" as const, batchId: selection.batchId } : candidate)),
+      followupBatches: [...batches, { id: selection.batchId, at: now(), by, launch: selection.launch, items }],
+    };
   }
   function openFollowup(stored: StoredObjective, candidateId: string): StoredFollowup {
     const target = (stored.followups ?? []).find((candidate) => candidate.id === candidateId);

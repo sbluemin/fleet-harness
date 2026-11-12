@@ -51,6 +51,8 @@ export interface LaunchService {
    * 뒤에서 만든다. 같은 배치로 다시 부르면 그대로 돌려준다.
    */
   completeWithFollowups(objectiveId: string, selection: { readonly batchId: string; readonly followups: readonly { readonly id: string; readonly rev: number }[] }, options?: LaunchOptions): Promise<Objective>;
+  /** 고른 후속 후보만 후속 목표로 만든다 — 원본 목표를 완료하지 않으며 검토 대기와 완료 뒤 모두에서 쓴다. 같은 배치로 다시 부르면 그대로 돌려준다. */
+  adoptFollowups(objectiveId: string, selection: { readonly batchId: string; readonly followups: readonly { readonly id: string; readonly rev: number }[] }, options?: LaunchOptions): Promise<Objective>;
   /** failed·confirming 배치 항목을 같은 스냅샷·같은 키로 다시 확인하거나 만든다. */
   retryFollowup(objectiveId: string, batchId: string, candidateId: string): Objective;
   /** 끝나지 않은 후속 생성(creating)을 이어 간다 — 기동 때와 원본이 복원될 때. objectiveId 가 없으면 모든 목표. */
@@ -1685,6 +1687,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!current.done) assertIdle(objectiveId);
       // 완료는 지휘관 Objective 을 보관하지 않는다 — 보관은 사람이 따로 한다.
       store.completeWithFollowups(objectiveId, {
+        ...selection,
+        launch: { groupId: current.groupId, viewMode: "chat", language: languageOf(options) },
+      }, options?.actor);
+      service.resumeFollowups(objectiveId);
+      return objective(objectiveId);
+    }),
+
+    adoptFollowups: (objectiveId, selection, options) => orderedObjectiveRequest(objectiveId, async () => {
+      const current = objective(objectiveId);
+      store.followupAdopt(objectiveId, {
         ...selection,
         launch: { groupId: current.groupId, viewMode: "chat", language: languageOf(options) },
       }, options?.actor);

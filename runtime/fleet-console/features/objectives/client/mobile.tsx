@@ -573,7 +573,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
       ) : null}
       {/* 지금 할 일(결정 요청·넘김·개시)은 프로필과 구역 맨 위에 선다. 결정 내역은 목표 구역 맨 아래다. */}
       <DecisionSection objective={objective} objectiveRecords={objectiveRecords} t={t} language={language} api={api} say={say} />
-      <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} onShowLeftover={() => { pickTab("goal"); revealFollowupResults(); }} />
+      <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} />
       {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} /> : null}
     </>
   );
@@ -691,17 +691,15 @@ function followupNote(objective: Objective, finish: ObjectiveActions["finish"], 
  * 사령관이 넘긴 완료 검토·후속 후보 — 이유·돌려주기(`PersonHoldNote`) 카드에 그 항목에 직접 답하는 단추를 붙인다.
  * 「완료」는 데스크톱 띠와 같은 `/objective/complete` 이고, 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다.
  * 띠가 지금 완료를 세우지 못하면(작업 중·허용 대기·기준 제안·스티어링) 단추를 흐리게 두고 막힌 상태를 말한다.
- * 둘이 함께 서면 두 카드가 같은 시트를 연다 — 넘김은 따로 돌려줄 수 있어, 하나를 돌려준 뒤에도 남은 카드만으로 답이 된다.
- * 후속 카드는 고를 수 없는 동안에도 시트를 열어 후보를 읽고 폐기할 수 있다. 완료 뒤에는 고르기 시트가 없으므로 목표 구역의 남긴 후보로 잇는다.
+ * 넘긴 후속 후보의 답(채택·폐기)은 사령관 대화의 카드에 선다 — 후속 카드는 이유·돌려주기와 그 대화로 가는 길만 보인다. 완료 전후가 같다.
  */
-function HoldAnswers({ objective, finish, t, language, api, onPick, onShowLeftover }: {
+function HoldAnswers({ objective, finish, t, language, api, onPick }: {
   readonly objective: Objective;
   readonly finish: ObjectiveActions["finish"];
   readonly t: T;
   readonly language: ConsoleLocale;
   readonly api: PaneContext["api"];
   readonly onPick: () => void;
-  readonly onShowLeftover: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [fault, setFault] = useState<string | null>(null);
@@ -736,8 +734,8 @@ function HoldAnswers({ objective, finish, t, language, api, onPick, onShowLeftov
       ) : null}
       {followupHeld ? (
         <PersonHoldNote objective={objective} target="followup" t={t} phone label={t("objectives.followup.title")} locked={busy}
-          answer={<button type="button" data-press="r3" className="objectives-m-b2" disabled={busy} onClick={objective.done ? onShowLeftover : onPick}>{pickable ? t("objectives.mobile.followup.pick") : t("objectives.followup.openTip", { n: count })}</button>}>
-          <p className="objectives-m-prop-sub">{followupNote(objective, finish, t, count)}</p>
+          answer={<button type="button" data-press="r3" className="objectives-m-b2" disabled={busy} onClick={() => openCommodoreMobile("log", objective.commodoreId)}>{t("objectives.decision.openCommodore")}</button>}>
+          <p className="objectives-m-prop-sub">{t("objectives.hold.route.followupCommodore", { n: count })}</p>
         </PersonHoldNote>
       ) : null}
     </>
@@ -873,17 +871,6 @@ function CommenceCard({ objective, commence, t, language, api, say }: { readonly
   );
 }
 
-const FOLLOWUP_RESULTS_ID = "objectives-m-followup-results";
-/** 넘김 카드에서 목표 구역으로 건너온 뒤, 구역이 그려지면 후속 목표 묶음을 화면에 들인다. */
-function revealFollowupResults(): void {
-  const go = (left: number) => {
-    const node = document.getElementById(FOLLOWUP_RESULTS_ID);
-    if (node) { node.scrollIntoView({ block: "start" }); return; }
-    if (left > 0) requestAnimationFrame(() => go(left - 1));
-  };
-  requestAnimationFrame(() => go(4));
-}
-
 /**
  * 후속 목표 — 데스크톱 목표 탭의 「후속 목표」 묶음과 같은 내용이다. 진행 중에는 모인 후보를 읽기만 하고(고르기·폐기는
  * 검토 대기의 시트), 완료 뒤에는 고른 후보의 생성 결과(다시 시도)와 남긴 후보를 보인다. 폰은 접지 않고 펼쳐 둔다.
@@ -896,7 +883,7 @@ function FollowupResults({ objective, t, language, api, say }: { readonly object
   if (batches.length === 0 && !history && open.length === 0) return null;
   const collected = objective.done ? [] : open;
   return (
-    <section id={FOLLOWUP_RESULTS_ID} className="objectives-m-followup-results" aria-label={t("objectives.followup.results")}>
+    <section className="objectives-m-followup-results" aria-label={t("objectives.followup.results")}>
       <h2 className="objectives-m-glab">{t("objectives.followup.results")}</h2>
       {collected.length ? <>
         <p className="objectives-m-secnote">{t("objectives.followup.collected", { n: collected.length })}</p>

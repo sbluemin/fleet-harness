@@ -1,5 +1,5 @@
 import { useCommodoreName } from "./commodore-name.js";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 
 import type { ConversationDecision, ConversationSpeaker } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
@@ -8,7 +8,7 @@ import type { CommodoreAsk } from "../shared/contracts/types.js";
 import { MAX_DECISION_ANSWER_INPUT } from "../shared/contracts/questions.js";
 import { answerCommodoreAsk, askObjectiveTitle, commodoreDecisionCardRenderer, openAsks, useCommodore } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
-import { openObjectiveFromCluster, openObjectiveOnPhone, useObjectiveTheater } from "./board.js";
+import { finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, openObjectiveFromCluster, openObjectiveOnPhone, renderHandedFollowup, subscribeFinishedObjectivesStore, useObjectiveTheater } from "./board.js";
 
 type T = Translate<CommodoreMessageKey>;
 
@@ -25,6 +25,7 @@ export const ENDED_ASK_CODES: ReadonlySet<string> = new Set(["ask_withdrawn", "a
  * 질문이 끝나 카드가 내려가고, 기록에는 「사람에게 물음」·「사람이 답함」 줄이 남는다.
  *
  * 위임 목표의 넘긴 결정도 같은 칸에 서되 목표 이름을 머리에 싣고, 보드가 제공한 원래 결정 응답·돌려주기 경로를 그대로 쓴다.
+ * 넘긴 후속 후보도 같은 칸에 선다 — 완료해 보관된 목표의 후보까지 서도록 끝난 목표를 함께 읽는다.
  * `onEnded` — 사령관의 직접 질문이 이미 끝났다는 거절을 카드 밖에 남기는 기록 칸의 실패 경로.
  */
 export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, language, phone = false, leave, onEnded }: {
@@ -52,25 +53,31 @@ export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, languag
     const decision = objective.handedDecision;
     return decision && !answered.includes(decision.id) ? [{ objective, decision }] : [];
   });
-  if (!Card || (shown.length === 0 && handed.length === 0)) return null;
+  // 완료해 보관된 목표는 살아 있는 보드에 없다 — 그 목표에 넘긴 후속 후보가 새로고침 직후에도 서도록 끝난 목표를 읽어 둔다.
+  const finished = useSyncExternalStore(subscribeFinishedObjectivesStore, () => finishedObjectives(theaterId), () => finishedObjectives(theaterId));
+  useEffect(() => { if (theaterId && !finishedObjectivesLoaded(theaterId)) loadFinishedObjectives(theaterId); }, [theaterId]);
+  const followups = [...board.objectives, ...finished.filter((objective) => !board.objectives.some((row) => row.id === objective.id))].filter((objective) => objective.followupHanded);
+  if ((!Card || (shown.length === 0 && handed.length === 0)) && followups.length === 0) return null;
+  const openObjective = (objective: { readonly id: string; readonly theaterId: string }) => {
+    if (phone) { const open = () => openObjectiveOnPhone(objective.id, objective.theaterId); if (leave) leave(open); else open(); return; }
+    openObjectiveFromCluster(objective.theaterId, objective.id);
+  };
   const titleOf = (objectiveId: string) => askObjectiveTitle(board, view?.asks?.objectives, objectiveId);
   return (
     <div className={phone ? "objectives-cm-asks" : "objectives-asks"}>
-      {handed.map(({ objective, decision }) => (
+      {Card ? handed.map(({ objective, decision }) => (
         <Card
           key={`${objective.id}:${decision.id}`}
-          decision={{ ...decision, open: () => {
-            if (phone) { const open = () => openObjectiveOnPhone(objective.id, objective.theaterId); if (leave) leave(open); else open(); return; }
-            openObjectiveFromCluster(objective.theaterId, objective.id);
-          } }}
+          decision={{ ...decision, open: () => openObjective(objective) }}
           asker={{ kind: "commander", name: objective.title, objectiveId: objective.id }}
           language={language}
           commodoreId={theaterId}
           mobile={phone}
           onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
         />
-      ))}
-      {shown.map((ask) => (
+      )) : null}
+      {followups.map((objective) => <Fragment key={`followup:${objective.id}`}>{renderHandedFollowup(objective.id, { language, phone, open: () => openObjective(objective) })}</Fragment>)}
+      {Card ? shown.map((ask) => (
         <Card
           key={ask.id}
           decision={askDecision(ask, { theaterId, contextTheaterId: board.objectives.find((row) => row.id === ask.objectiveId)?.theaterId ?? contextTheaterId, t, phone, leave, onEnded, objectiveOnBoard: ask.objectiveId ? titleOf(ask.objectiveId) !== null : false })}
@@ -80,7 +87,7 @@ export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, languag
           mobile={phone}
           onAnswered={(id) => setAnswered((current) => (current.includes(id) ? current : [...current, id]))}
         />
-      ))}
+      )) : null}
     </div>
   );
 }

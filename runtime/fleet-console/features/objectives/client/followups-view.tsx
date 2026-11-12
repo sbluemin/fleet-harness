@@ -81,7 +81,7 @@ function DiscardButton({ candidateId, t, onDiscard }: { readonly candidateId: st
   );
 }
 
-function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPrefix, onToggleCheck, onToggleOpen, onDiscard }: {
+function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPrefix, onToggleCheck, onToggleOpen, onDiscard, rowDiscard = false }: {
   readonly candidate: FollowupCandidate;
   readonly selectable: boolean;
   readonly checked: boolean;
@@ -92,11 +92,15 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
   readonly onToggleOpen: (candidateId: string) => void;
   /** 없으면 폐기 단추를 그리지 않는다 — 진행 중 상세는 읽기만 한다. */
   readonly onDiscard?: (candidateId: string) => void;
+  /** 폐기 단추를 상세가 아니라 줄에 세운다 — 펼치지 않고도 버린다. */
+  readonly rowDiscard?: boolean;
 }) {
   const [briefAll, setBriefAll] = useState(false);
   useEffect(() => { setBriefAll(false); }, [candidate.id, candidate.rev]);
   const detailId = `${idPrefix}-det-${candidate.id}`;
   const summaryId = `${idPrefix}-sum-${candidate.id}`;
+  const meta = <button type="button" className="objectives-followup-meta" aria-label={`${candidate.title} — ${t("objectives.followup.evidence", { n: candidate.evidence.length })}`} aria-describedby={summaryId} aria-expanded={open} aria-controls={detailId} onClick={() => onToggleOpen(candidate.id)}>{t("objectives.followup.evidence", { n: candidate.evidence.length })}<FollowupChevGlyph /></button>;
+  const inRow = rowDiscard && !!onDiscard;
   return (
     <div className={`objectives-followup-item${open ? " is-open" : ""}`}>
       <div className={`objectives-followup-row${selectable ? "" : " is-readonly"}`}>
@@ -120,7 +124,7 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
           {candidate.userImpact ? <span className="objectives-followup-impact"><b>{t("objectives.followup.impact")}</b> <LinkText text={candidate.userImpact} /></span> : null}
         </div>
         {/* 펼침 단추는 링크와 떨어져 행 밖에 서므로, 어느 후보인지 이름으로 직접 밝힌다. */}
-        <button type="button" className="objectives-followup-meta" aria-label={`${candidate.title} — ${t("objectives.followup.evidence", { n: candidate.evidence.length })}`} aria-describedby={summaryId} aria-expanded={open} aria-controls={detailId} onClick={() => onToggleOpen(candidate.id)}>{t("objectives.followup.evidence", { n: candidate.evidence.length })}<FollowupChevGlyph /></button>
+        {inRow ? <div className="objectives-followup-side">{meta}<DiscardButton candidateId={candidate.id} t={t} onDiscard={onDiscard} /></div> : meta}
       </div>
       {open ? (
         <div className="objectives-followup-detail" id={detailId}>
@@ -137,7 +141,7 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
           ) : null}
           <div className="objectives-followup-foot">
             <span className="objectives-followup-hint">{t("objectives.followup.noEdit")}</span>
-            {onDiscard ? <DiscardButton candidateId={candidate.id} t={t} onDiscard={onDiscard} /> : null}
+            {onDiscard && !inRow ? <DiscardButton candidateId={candidate.id} t={t} onDiscard={onDiscard} /> : null}
           </div>
         </div>
       ) : null}
@@ -146,7 +150,7 @@ function FollowupCandidateItem({ candidate, selectable, checked, open, t, idPref
 }
 
 /** 후보 목록 — 한 번에 하나만 펼친다. 줄 본문 클릭은 펼침만 하고 선택하지 않는다. */
-export function FollowupCandidateList({ candidates, selectable, selection, t, idPrefix, openId, onOpenChange, onToggleCheck, onDiscard }: {
+export function FollowupCandidateList({ candidates, selectable, selection, t, idPrefix, openId, onOpenChange, onToggleCheck, onDiscard, rowDiscard }: {
   readonly candidates: readonly FollowupCandidate[];
   readonly selectable: boolean;
   readonly selection: ReadonlySet<string>;
@@ -156,6 +160,7 @@ export function FollowupCandidateList({ candidates, selectable, selection, t, id
   readonly onOpenChange: (candidateId: string | null) => void;
   readonly onToggleCheck: (candidateId: string, checked: boolean) => void;
   readonly onDiscard?: (candidateId: string) => void;
+  readonly rowDiscard?: boolean;
 }) {
   return (
     <div className="objectives-followup-list">
@@ -171,6 +176,7 @@ export function FollowupCandidateList({ candidates, selectable, selection, t, id
           onToggleCheck={onToggleCheck}
           onToggleOpen={(id) => onOpenChange(openId === id ? null : id)}
           onDiscard={onDiscard}
+          rowDiscard={rowDiscard}
         />
       ))}
     </div>
