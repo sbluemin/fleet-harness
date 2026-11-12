@@ -343,6 +343,8 @@ interface LiveView {
    * 지나므로, 잠긴 동안에는 여기 적힌 것만 통과시킨다. 오래된 것은 버린다.
    */
   agentKeys: { type: "keyDown" | "keyUp"; code: string; at: number }[];
+  /** 등록이 끝나지 않은 뷰에 닿은 명령 — attached 보고 뒤에 순서대로 보낸다. */
+  queued: DesktopBrowserSnapshot["commands"][number][];
 }
 
 /**
@@ -779,7 +781,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const target = deps.surface.target();
     const known = target && target.page.width > 0 && target.page.height > 0 ? target.page : deps.surface.lastPage();
     const parkViewport = known ? { width: known.width, height: known.height } : defaultParkViewport(contentBounds);
-    const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null, agentKeys: [] };
+    const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null, agentKeys: [], queued: [] };
     live.set(spec.id, entry);
     const contents = view.webContents;
     markSession(contents.session);
@@ -820,27 +822,28 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       });
       // 디버거가 떨어지면 대화상자에 답할 길이 없다 — 취소로 풀어 렌더러가 멈춘 채 남지 않게 한다.
       contents.debugger.on("detach", (_event, reason) => { log(`browser view debugger detached: ${reason}`); releaseDialog(false); drop(spec.id, true); });
-      entry.attached = true;
-      push({ attached: [spec.id] });
+      entry.attached = false;
       reportSize(spec.id, initialBounds);
     } catch (error) {
       log(`browser view debugger attach failed: ${error instanceof Error ? error.message : "unknown"}`);
       drop(spec.id, true);
       return;
     }
+    // attached 보고는 등록이 끝난 뒤에 한다 — Console은 그 보고를 받고서야 이 뷰에 명령을 보내므로
+    // 등록 전에 도착한 탐색이 첫 문서를 만드는 경합이 없다. 자세한 순서는 armPage를 본다.
     void armPage(entry, spec.id, spec.url);
   };
 
   /**
-   * 조건부 WebAuthn 차단 스크립트를 먼저 걸고 항해를 시작한다. 채널이 살아 있음을 먼저 확인하는
-   * 결정적 순서로 첫 문서에 적용되지 않는 경합이 없게 한다(벽시계 양보가 아니라 채널 응답에 의존).
-   * 주입 실패는 보호 없이 두지 않고 걷어낸다 — 디버거 부착 실패와 같은 경로·같은 표시(뷰 드롭 후
-   * detached 보고)다. 거는 사이 뷰가 사라졌으면 항해하지 않는다.
+   * 빈 문서로 렌더러를 먼저 세우고(about:blank 커밋), 채널이 살아 있음을 확인한 뒤 차단 스크립트를
+   * 걸고, 그 뒤에야 Console에 attached를 보고하고 실제 URL로 항해한다. 디버거 명령이 답하지 않는
+   * 빈 WebContents(afaik 렌더러 없음)에 addScript를 거는 교착을 피한다. 주입 실패는 보호 없이
+   * 두지 않고 걷어낸다 — 디버거 부착 실패와 같은 경로·같은 표시(뷰 드롭 후 detached 보고)다.
    */
   const armPage = async (entry: LiveView, viewId: string, url: string): Promise<void> => {
     const contents = entry.view.webContents;
     try {
-      // 채널 확인용 읽기 — 부작용 없이 세션이 답하는지 본다.
+      await withTimeout(contents.loadURL("about:blank"), 10_000, "browser page blank load failed");
       await withTimeout(contents.debugger.sendCommand("Runtime.getHeapUsage", {}), 10_000, "browser page channel not ready");
       await withTimeout(contents.debugger.sendCommand("Page.addScriptToEvaluateOnNewDocument", { source: CONDITIONAL_MEDIATION_UNSUPPORTED }), 10_000, "browser page guard script failed");
     } catch (error) {
@@ -849,7 +852,14 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       return;
     }
     if (live.get(viewId) !== entry || contents.isDestroyed()) return;
-    void contents.loadURL(url).catch(() => undefined);
+    entry.attached = true;
+    push({ attached: [viewId] });
+    // armPage 전에 도착한 명령을 순서대로 내린다 — attached 보고를 등록 뒤로 미룬 대가로 스냅샷에
+    // 실려 온 명령이 뷰보다 먼저 와도 잃지 않는다.
+    const queued = entry.queued;
+    entry.queued = [];
+    for (const pending of queued) dispatch(pending);
+    if (url !== "about:blank") void contents.loadURL(url).catch(() => undefined);
     try {
       place(entry);
     } catch (error) {
@@ -863,6 +873,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (!entry) return;
     live.delete(id);
     stopWatch(id);
+    if (entry.queued.length > 0) push({ results: entry.queued.map((command) => ({ id: command.id, error: "desktop_view_missing" })) });
     const shell = entry.parent;
     try { if (shell && !shell.isDestroyed()) shell.remove(entry.view); } catch { /* 창이 먼저 닫혔다. */ }
     try { if (entry.view.webContents.debugger.isAttached()) entry.view.webContents.debugger.detach(); } catch { /* 이미 떨어졌다. */ }
@@ -917,6 +928,14 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     executed.add(command.id);
     // 기억은 유한하다 — 오래된 id 는 잊는다(콘솔은 결과를 받은 명령을 스냅샷에서 뺀다).
     if (executed.size > 10_000) for (const id of [...executed].slice(0, 5_000)) executed.delete(id);
+    dispatch(command);
+  };
+
+  /**
+   * 명령 하나를 내린다. 등록이 끝나지 않은 뷰의 것은 버리지 않고 줄 세운다 — attached 보고 뒤에
+   * 순서대로 나가므로, 스냅샷에 실려 온 재시작 직후 명령이 뷰보다 먼저 도착해도 잃지 않는다.
+   */
+  const dispatch = (command: DesktopBrowserSnapshot["commands"][number]): void => {
     if (command.viewId === DESKTOP_BROWSER_SHELL_VIEW) {
       const handler = deps.shellCommand;
       if (!handler) { push({ results: [{ id: command.id, error: "desktop_shell_unsupported" }] }); return; }
@@ -929,7 +948,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       return;
     }
     const entry = live.get(command.viewId);
-    if (!entry || !entry.attached) { push({ results: [{ id: command.id, error: "desktop_view_missing" }] }); return; }
+    if (!entry) { push({ results: [{ id: command.id, error: "desktop_view_missing" }] }); return; }
+    if (!entry.attached) { entry.queued.push(command); return; }
     const capture = command.method === "Page.captureScreenshot" && deps.composeCapture ? viewportCapture(command.params) : null;
     if (capture && deps.composeCapture) { enqueueCapture(command.id, entry, capture, deps.composeCapture); return; }
     // 걸려 있는 사이 수명이 바뀌면(뷰가 닫혀 거부되는 것 포함) 이 답은 옛 프로세스의 것이다 — 명령 id 는 새 프로세스에서
