@@ -15,7 +15,7 @@ import { FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.
 import { discardedFollowups, newBatchId, openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { findAnyObjective, objectivesApi, post, returnPersonHold, subscribeObjectiveOrFinished, upsertObjectiveLocally } from "./objectives-state.js";
+import { applyObjectiveResponse, findAnyObjective, objectivesApi, post, returnPersonHold, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 export function HandedFollowupCard({ objectiveId, language, phone, open }: {
   readonly objectiveId: string;
@@ -40,7 +40,7 @@ export function HandedFollowupCard({ objectiveId, language, phone, open }: {
     const api = objectivesApi();
     if (!api) throw new Error("objectives_unavailable");
     const result = await post<{ objective?: Objective }>(api, path, { objectiveId, language, ...body });
-    if (result?.objective) upsertObjectiveLocally(result.objective);
+    if (result?.objective) applyObjectiveResponse(result.objective);
   };
   const guarded = (work: () => Promise<void>) => {
     if (busy) return;

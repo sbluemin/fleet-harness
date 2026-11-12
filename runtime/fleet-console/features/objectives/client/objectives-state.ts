@@ -467,7 +467,7 @@ export async function returnPersonHold(objectiveId: string, target: PersonHoldTa
   const api = objectivesApi();
   if (!api) throw new Error("objectives_unavailable");
   const result = await post<{ objective?: Objective }>(api, "/person-hold/return", { objectiveId, target });
-  if (result?.objective) upsertObjectiveLocally(result.objective);
+  if (result?.objective) applyObjectiveResponse(result.objective);
 }
 
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
@@ -683,6 +683,20 @@ export function loadObjective(objectiveId: string): Promise<Objective> {
   }).finally(() => { objectiveRequests.delete(objectiveId); });
   objectiveRequests.set(objectiveId, task);
   return task;
+}
+
+/**
+ * 쓰기 응답의 목표를 화면에 반영한다 — 살아 있는 목표는 보드에, 완료로 보관된 목표는 읽어 둔 끝난 목표 목록의 그 줄에.
+ * 끝난 목표를 아직 읽지 않은 Theater 는 건드리지 않는다(한 줄짜리 목록이 「읽음」으로 서지 않게).
+ */
+export function applyObjectiveResponse(objective: Objective): void {
+  if (removedOwners.has(objective.commodoreId)) return;
+  const finished = objective.archived ? finishedByOwner.get(objective.commodoreId) : undefined;
+  if (finished?.some((row) => row.id === objective.id)) {
+    finishedByOwner.set(objective.commodoreId, finished.map((row) => (row.id === objective.id ? objective : row)));
+    finishedRevision += 1; noteFinished();
+  }
+  upsertObjectiveLocally(objective);
 }
 
 /** 목표 상태나 끝난 목표가 바뀌면 깨운다. */
