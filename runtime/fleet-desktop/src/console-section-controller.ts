@@ -330,8 +330,9 @@ export function createConsoleSectionController(deps: Dependencies) {
   }
   async function collectRosters(epoch: number, next: Map<string, Target>): Promise<void> {
     if (epoch !== generation || targets !== next) return;
-    const standing = at();
-    await Promise.all([...next.values()].filter((target) => target.origin !== "" && target.origin !== standing).map((target) => fetchRoster(target)));
+    // 서 있는 콘솔의 명부도 읽어 기억해 둔다. 프레임에는 싣지 않지만(그 문서가 직접 그린다), 전환하면 떠나온 콘솔이
+    // 도착 문서의 첫 프레임부터 같은 자리에 같은 내용으로 그려져야 한다.
+    await Promise.all([...next.values()].filter((target) => target.origin !== "").map((target) => fetchRoster(target)));
     if (epoch !== generation || targets !== next) return;
     await publishRoster();
   }

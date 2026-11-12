@@ -94,6 +94,8 @@ describe("console roster", () => {
       section.attach(contents as never);
       await section.refresh();
       const standingAtHome = lastSection()?.detail.entries?.map((entry) => entry.id) ?? [];
+      // 서 있는 집의 명부도 미리 읽어 둔다: 원격으로 전환해도 집 섹션이 도착 문서의 첫 프레임부터 채워져 있다.
+      expect(calls.some((call) => call.url === `${HOME}/api/v1/console-roster`)).toBe(true);
       expect(lastSection()?.detail.entries?.map((entry) => entry.address)).toEqual(["127.0.0.1:4310", "127.0.0.1:4311", "100.84.12.7:6768", "100.84.12.8:6769"]);
       url = `${TRUSTED}/console/`;
       await section.refresh();
