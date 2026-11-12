@@ -1,7 +1,13 @@
-/* 사이드바의 콘솔. 지금 콘솔의 사령관은 머리글 없이 목록 맨 위에 선다(콘솔이 하나뿐일 때와 같다).
-   다른 콘솔은 목록의 한 행이고, 그 사령관은 들여쓰기와 왼쪽 가지선으로 아래에 붙는다.
-   흐림은 제품 글자 토큰(둘째·셋째 단)과 무채색 아바타로 내고, 행 전체를 투명하게 하지 않는다 — 글자 대비를 지키기 위해서다. */
+/* 사이드바의 콘솔. 심리스 셸에서는 등록 순서 그대로, 자기 섹션은 그 자리에 선다.
+   다른 콘솔의 사령관·지휘관은 로컬 카드·진행 행과 같은 클래스를 쓴다.
+   닿지 않는 원격만 마지막으로 본 행을 흐리게 하고, 머리글에는 빈 점만 둔다. */
 .side-console { list-style: none; min-width: 0; }
+/* 도착 직후 펼침이 행을 끼워 넣는 동안만. 브라우저가 scrollTop을 밀지 않게 한다. */
+/* 스크롤 컨테이너만이 아니라 그 안의 행도 앵커가 되지 않게 한다. 컨테이너에만 주면 자식 삽입이 scrollTop을 민다. */
+.objective-records-side-bar-chips[data-scroll-hold="1"],
+.objective-records-side-bar-chips[data-scroll-hold="1"] * { overflow-anchor: none; }
+.workspace-commodore-section-head.is-static { cursor: default; }
+.workspace-commodore-section-head.is-static:hover { background: transparent; color: var(--text-secondary); }
 /* 다른 콘솔 묶음은 지금 콘솔 목록과 6px(목록 gap 2px + 여기 4px)을 둔다. 콘솔 행끼리는 목록 gap만 둔다. */
 .side-console-own + .side-console { margin-top: 4px; }
 /* 머리글(다른 콘솔의 행)은 자기 섹션 상자 안에서 스크롤 영역 위에 붙는다. 면은 사이드바 바탕이라 모서리로 행이 비치지 않는다.
@@ -22,6 +28,8 @@
 .side-console-status { flex: none; font-size: var(--t-2xs); font-weight: var(--weight-medium); color: var(--warn-ink); }
 .side-console-head[data-status="unreachable"] .side-console-status { color: var(--coral-ink); }
 .side-console-count { flex: none; font-size: var(--t-2xs); font-variant-numeric: tabular-nums; color: var(--text-tertiary); }
+/* 닿지 않는 원격의 빈 점 — 글자 상태 대신 머리글에만 둔다. */
+.side-console-off { flex: none; width: 6px; height: 6px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--coral-ink); }
 .side-console-toggle .side-console-chevron { width: 12px; height: 12px; color: var(--text-tertiary); transition: transform var(--duration-base) var(--ease-glide); }
 .side-console-head.is-folded .side-console-chevron { transform: rotate(-90deg); }
 /* 연필은 머리글 위에 얹는다 — 자리를 따로 잡으면 원격 콘솔의 펼침 화살표만 다른 머리글과 어긋난다. */
@@ -65,6 +73,23 @@
 .side-console-head.is-row:hover .side-console-edit,
 .side-console-head.is-row:focus-within .side-console-edit { background: var(--wash-hover); }
 .side-console-head.is-row .side-console-edit:hover { background: var(--wash-hover); color: var(--text-primary); }
+/* 심리스 섹션 머리글 — 시안의 얇은 머리(이름·글리프·접기). 주소와 집 표지는 툴팁에만 남긴다. */
+.side-console-head.is-row.is-seam .side-console-toggle { height: 30px; gap: 6px; padding: 0 14px; color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-bold); }
+.side-console-head.is-row.is-seam .side-console-toggle:hover,
+.side-console-head.is-row.is-seam .side-console-toggle:focus-visible { background: transparent; color: var(--text-primary); }
+.side-console-head.is-row.is-seam .side-console-glyph { width: 13px; height: 13px; border-radius: 0; background: none; }
+.side-console-head.is-row.is-seam .side-console-name,
+.side-console-head.is-row.is-seam .side-console-name b { font-size: var(--t-xs); font-weight: var(--weight-bold); color: inherit; }
+.side-console-head.is-row.is-seam .side-console-name small,
+.side-console-head.is-row.is-seam .side-console-home { display: none; }
+/* 로컬 카드가 섹션 안에 서면 가지선·들여쓰기는 걷는다 — 모양은 로컬 목록과 같다. */
+.side-console-roster:has(.side-bar-theater-section) { margin-left: 0; padding-left: 0; }
+/* 집 문서의 첫 섹션 머리와 같은 시작점. 명부 목록의 위 2px 안쪽 여백이 머리글을 밀어 내리지 않게 한다. */
+.side-console.is-headless > .side-console-roster:has(> .workspace-commodore-section) { padding-top: 0; margin-top: 0; }
+.side-console-roster:has(.side-bar-theater-section)::before { display: none; }
+.side-console.is-dim .side-console-roster { opacity: 0.5; }
+.console-shell.is-objective-records-view .side-console .side-bar-theater-header.is-card.is-name-only { min-height: 40px; }
+.side-console-run { color: var(--aurora-ink); font-style: normal; }
 /* 가리키거나 포커스가 들어온 동안만, 얹힌 단추(right 26px · 너비 26px)가 차지하는 칸을 화살표 앞에 비운다.
    화살표는 끝 칸이라 밀리지 않고, 집·상태·숫자·WSL 표지는 왼쪽으로 가며 주소는 말줄임된다.
    단추 왼쪽 끝은 plate 오른쪽에서 52px. 화살표 왼쪽 끝은 padding 8 + 너비 12 = 20px이고 그 앞 flex gap(행 10 · 캡슐 8)이 이미 있다.
@@ -112,7 +137,7 @@
 .objective-records-side-bar.is-compact .side-console-head.is-row .side-console-toggle:hover,
 .objective-records-side-bar.is-compact .side-console-head.is-row .side-console-toggle:focus-visible { background: transparent; color: var(--text-primary); }
 .objective-records-side-bar.is-compact .side-console-glyph { width: 15px; height: 15px; border-radius: 0; background: none; }
-.objective-records-side-bar.is-compact :is(.side-console-name, .side-console-tag, .side-console-home, .side-console-here, .side-console-status, .side-console-count, .side-console-chevron, .side-console-edit, .side-console-row-name, .side-console-row-run, .side-console-row-hint, .side-console-more, .side-console-note) { display: none; }
+.objective-records-side-bar.is-compact :is(.side-console-name, .side-console-tag, .side-console-home, .side-console-here, .side-console-status, .side-console-off, .side-console-count, .side-console-chevron, .side-console-edit, .side-console-row-name, .side-console-row-run, .side-console-row-hint, .side-console-more, .side-console-note) { display: none; }
 .objective-records-side-bar.is-compact .side-console-roster { align-items: center; gap: calc(8px / var(--compact-layout-zoom, 1)); margin-left: 0; padding-left: 0; }
 .objective-records-side-bar.is-compact .side-console-roster::before { display: none; }
 .objective-records-side-bar.is-compact .side-console-roster .side-console-row { width: 36px; margin: 0; }

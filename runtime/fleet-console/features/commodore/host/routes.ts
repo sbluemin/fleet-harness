@@ -1,5 +1,6 @@
 import type { ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
-import { CONSOLE_ROSTER_MAX_COMMODORES, CONSOLE_ROSTER_PATH, type ConsoleRosterCommodore, type ConsoleRosterSummary } from "../../../protocol/desktop/console-section.js";
+import { CONSOLE_ROSTER_MAX_COMMANDERS, CONSOLE_ROSTER_MAX_COMMODORES, CONSOLE_ROSTER_PATH, type ConsoleRosterCommodore, type ConsoleRosterCommander, type ConsoleRosterSummary } from "../../../protocol/desktop/console-section.js";
+import { consoleRosterLook, consoleRosterPreview, consoleRosterSections, consoleRosterTitle } from "./roster.js";
 import { commodoreSidebarCommandSchema } from "../shared/contracts/sidebar-layout.js";
 import type { createCommodoreSidebar } from "./sidebar-layout.js";
 import type { HttpSecurityPort } from "@fleet-console/infra/http/host-ports";
@@ -88,6 +89,29 @@ export interface CommodoreRouteHooks {
 const ids = z.string().min(1).max(128);
 /** 모든 요청은 사람의 언어를 실을 수 있다 — 목표 라우트와 같은 출처(브라우저 로케일)이고, Theater 의 사령관 기록 언어가 된다. */
 const commodoreRef = z.object({ commodoreId: ids, language: z.enum(["en", "ko"]).optional() });
+
+const ROSTER_RUNS = new Set(["working", "waiting", "quiet"]);
+
+/** 응답 경계 — 훅이 넘긴 줄을 계약 길이로 맞춘다. 빈 추가 필드는 빼서 옛 응답 모양을 유지한다. */
+function publishRosterCommodore(row: ConsoleRosterCommodore, sectionIds: ReadonlySet<string>): ConsoleRosterCommodore {
+  const preview = consoleRosterPreview(row.preview);
+  const incoming = row.commanders ?? [];
+  const commanders: ConsoleRosterCommander[] = [];
+  for (const commander of incoming.slice(0, CONSOLE_ROSTER_MAX_COMMANDERS)) {
+    const title = consoleRosterTitle(commander.title);
+    if (!title || commander.id.length === 0 || commander.id.length > 128 || /[\u0000-\u001f\u007f]/u.test(commander.id)) continue;
+    if (!ROSTER_RUNS.has(commander.run)) continue;
+    const total = Number.isSafeInteger(commander.total) && commander.total >= 0 ? Math.min(commander.total, 100_000) : 0;
+    const done = Math.min(Number.isSafeInteger(commander.done) && commander.done >= 0 ? commander.done : 0, total);
+    const look = consoleRosterLook(commander.look);
+    commanders.push({ id: commander.id, title, done, total, run: commander.run, ...(look !== undefined ? { look } : {}) });
+  }
+  const moreCommanders = Math.min(100_000, (row.moreCommanders ?? 0) + Math.max(0, incoming.length - CONSOLE_ROSTER_MAX_COMMANDERS));
+  const section = row.section && sectionIds.has(row.section) ? row.section : undefined;
+  return { id: row.id, name: row.name, look: row.look === null ? null : { base: row.look.base, tone: row.look.tone }, run: row.run,
+    ...(section ? { section } : {}),
+    ...(preview ? { preview } : {}), ...(commanders.length > 0 ? { commanders } : {}), ...(moreCommanders > 0 ? { moreCommanders } : {}) };
+}
 
 export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: CommodoreStore, hooks: CommodoreRouteHooks = {}): readonly CommodoreRoute[] {
   const experiments = () => ctx.host.experiments?.read() ?? DEFAULT_EXPERIMENT_SETTINGS;
@@ -205,9 +229,13 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       if (req.method !== "GET" && req.method !== "HEAD") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
       if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
       const all = hooks.roster?.() ?? [];
-      // 개수와 UTF-8 바이트를 함께 제한한다. 다국어 이름이 길어도 명부는 16 KiB를 넘지 않는다.
-      const commodores = all.slice(0, CONSOLE_ROSTER_MAX_COMMODORES).map(({ id, name, look, run }) => ({ id, name, look: look === null ? null : { base: look.base, tone: look.tone }, run }));
-      const summary = (): ConsoleRosterSummary => ({ v: 1, commodores, more: all.length - commodores.length });
+      // 개수와 UTF-8 바이트를 함께 제한한다. 미리보기·지휘관·섹션이 붙어도 명부는 16 KiB를 넘지 않는다.
+      // 추가 필드는 이 경로의 읽기 권한 안에서만 나간다. 길이·제어 문자가 계약을 넘으면 잘라 검증을 통과시킨다.
+      // 섹션이 없으면 sections·unsectionedCollapsed·사령관 section 을 모두 빼 옛 응답 모양을 유지한다.
+      const placement = consoleRosterSections(hooks.sidebar?.read());
+      const sectionIds = new Set(placement.sections?.map((section) => section.id) ?? []);
+      const commodores = all.slice(0, CONSOLE_ROSTER_MAX_COMMODORES).map((row) => publishRosterCommodore(row, sectionIds));
+      const summary = (): ConsoleRosterSummary => ({ v: 1, commodores, more: all.length - commodores.length, ...placement });
       while (Buffer.byteLength(JSON.stringify(summary()), "utf8") > 16_384 && commodores.length > 0) commodores.pop();
       res.setHeader("Cache-Control", "no-store");
       ctx.host.http.writeJson(res, 200, summary());
