@@ -1,16 +1,15 @@
-import type { ConsoleRosterCommodore, ConsoleSectionEntry } from "@fleet-console/protocol/desktop/console-section";
+import type { ConsoleRosterCommander, ConsoleRosterCommodore, ConsoleSectionEntry } from "@fleet-console/protocol/desktop/console-section";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { ConsoleSectionHead, consoleSwitchBlocked, type ConsoleSections } from "../../../remote-access/client/console-sections.js";
-import { commodoreAvatarKey, fallbackMongleBase } from "../../shared/avatars.js";
+import { commodoreAvatarKey, fallbackMongleBase, objectiveRecordAvatarKey } from "../../shared/avatars.js";
 import { isIdentityTone } from "../../shared/identity-tones.js";
 import { MongleAvatar } from "../components/mongle-avatar.js";
+import { ClusterRowProgress } from "./side-bar-cluster-row.js";
 
 /**
- * 지금 떠 있지 않은 콘솔 하나 — 머리글과 그 콘솔의 사령관을 흐리게 나열한다.
- *
- * 여기 서는 것은 셸이 건넨 명부뿐이다(이름·모습·상태 한 낱말). 미리보기와 목표는 그 콘솔로 넘어간 뒤 그 콘솔이 그린다.
- * 사령관을 누르면 그 콘솔로 전환하면서 누른 행의 높이를 함께 보낸다. 도착한 목록은 맨 위에서 시작하므로,
- * 그 높이에 맞추지 못하고 고른 사령관이 열려 보이면 된다.
+ * 지금 떠 있지 않은 콘솔 하나. 머리글 아래에 그 콘솔의 사령관과 진행 중 지휘관을
+ * 로컬 목록과 같은 카드·진행 행으로 그린다. 미리보기·지휘관이 없는 옛 명부는 이름만 있는 카드다.
+ * 행을 누르면 그 콘솔로 넘어가며, 스크롤이 유지되도록 사령관과 목록의 scrollTop을 함께 보낸다.
  */
 export function ConsoleRosterSection({ entry, sections, list, compact }: {
   readonly entry: ConsoleSectionEntry; readonly sections: ConsoleSections; readonly list: () => HTMLElement | null; readonly compact: boolean;
@@ -19,45 +18,86 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
   const roster = sections.roster(entry.id);
   const folded = !compact && sections.folded(entry.id);
   const blocked = consoleSwitchBlocked(entry);
-  const open = (commodore: ConsoleRosterCommodore | null, row: HTMLElement) => {
+  const open = (commodore: ConsoleRosterCommodore, commanderId: string | null, row: HTMLElement) => {
     if (blocked) return;
-    const top = list()?.getBoundingClientRect().top ?? 0;
+    const box = list();
+    const top = box?.getBoundingClientRect().top ?? 0;
     const anchorY = Math.max(0, Math.round(row.getBoundingClientRect().top - top));
-    sections.command(commodore ? { switch: entry.id, commodore: commodore.id, anchorY } : { switch: entry.id });
+    const scrollTop = Math.max(0, Math.round(box?.scrollTop ?? 0));
+    sections.command({
+      switch: entry.id, commodore: commodore.id, anchorY, scrollTop,
+      ...(commanderId !== null ? { commander: commanderId } : {}),
+    });
   };
-  const enter = <button type="button" className="side-console-enter" aria-disabled={blocked} onClick={(event) => open(null, event.currentTarget)}>{t("chrome.consoles.switchHere")}</button>;
   // 인증서가 바뀐 콘솔은 지금의 추가 창만 연다. 단추만으로는 저장된 지문이 바뀌지 않는다.
   const reviewCertificate = entry.status === "untrusted"
     ? <button type="button" className="side-console-cert" onClick={() => sections.command({ add: true })}>{t("chrome.consoles.reviewCertificate")}</button>
     : null;
-  // 명부가 없는 까닭마다 한 줄로 말하고, 갈 수 있으면 콘솔만 전환하는 길을 남긴다.
-  const note = entry.status === "untrusted" ? t("chrome.consoles.rosterUntrusted")
+  // 명부가 없는 까닭은 한 줄로 남긴다. 닿지 않는 원격은 머리글의 빈 점과 흐린 행만 두고, 상태 문장은 더하지 않는다.
+  const note = entry.status === "unreachable" ? null
+    : entry.status === "untrusted" ? t("chrome.consoles.rosterUntrusted")
     : !sections.rosterCapable || roster === null ? null
     : roster.status === "unsupported" ? t("chrome.consoles.rosterUnsupported")
     : roster.status === "unavailable" && roster.commodores.length === 0 ? t("chrome.consoles.rosterUnavailable")
     : roster.status === "ok" && roster.commodores.length === 0 ? t("chrome.consoles.rosterEmpty") : null;
   const rows = entry.status === "untrusted" ? [] : roster?.commodores ?? [];
-  return <li className={`side-console${blocked ? " is-blocked" : ""}`} data-console-id={entry.id} data-status={entry.status ?? undefined}>
+  const dim = entry.status === "unreachable" && rows.length > 0;
+  return <li className={`side-console${blocked ? " is-blocked" : ""}${dim ? " is-dim" : ""}`} data-console-id={entry.id} data-status={entry.status ?? undefined}>
     <ConsoleSectionHead entry={entry} folded={folded} count={rows.length + (roster?.more ?? 0)} sections={sections} compact={compact} appearance="row" />
     {folded ? null : <ol className="side-console-roster" aria-label={entry.label}>
       {rows.map((commodore) => {
         const look = commodore.look ?? { base: fallbackMongleBase(commodoreAvatarKey(commodore.id)), tone: null };
-        const run = t(commodore.run === "working" ? "chrome.consoles.run.working" : commodore.run === "waiting" ? "chrome.consoles.run.waiting" : "chrome.consoles.run.quiet");
-        return <li key={commodore.id}>
-          <button type="button" className="side-console-row" data-roster-commodore={commodore.id} aria-disabled={blocked}
-            title={`${commodore.name} · ${run}`} onClick={(event) => open(commodore, event.currentTarget)}>
-            <MongleAvatar base={look.base} tone={look.tone !== null && isIdentityTone(look.tone) ? look.tone : null} role="commodore"
-              // 다른 콘솔의 사령관은 연기하지 않는다 — 지금 하는 일은 옆의 낱말이 말한다.
-              state="idle" size={24} label={commodore.name} decorative className="side-console-avatar" />
-            <span className="side-console-row-name">{commodore.name}</span>
-            <span className="side-console-row-run" data-run={commodore.run}>{run}</span>
-            {blocked ? null : <span className="side-console-row-hint" aria-hidden="true">{t("chrome.consoles.openHere")}</span>}
-          </button>
+        const tone = look.tone !== null && isIdentityTone(look.tone) ? look.tone : null;
+        const preview = commodore.preview && commodore.preview.length > 0 ? commodore.preview : null;
+        const commanders = commodore.commanders ?? [];
+        const moreCommanders = commodore.moreCommanders ?? 0;
+        return <li key={commodore.id} className="side-bar-theater-section" data-theater-id={commodore.id}>
+          <div className={`side-bar-theater-header is-card${preview === null ? " is-name-only" : ""}`}>
+            <button type="button" className="side-bar-theater-activate" data-roster-commodore={commodore.id} aria-disabled={blocked || undefined}
+              title={commodore.name} onClick={(event) => open(commodore, null, event.currentTarget)}>
+              <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
+                <MongleAvatar base={look.base} tone={tone} role="commodore" state="idle" size={32} label={commodore.name} decorative />
+              </span>
+              <span className="side-bar-theater-text">
+                <span className="side-bar-theater-name">{commodore.name}</span>
+                {preview !== null ? <span className="side-bar-theater-sub">{preview}</span> : null}
+              </span>
+            </button>
+          </div>
+          {!compact && (commanders.length > 0 || moreCommanders > 0) ? <div className="side-bar-commander-list">
+            <ol className="commander-tab-list side-bar-group-chips">
+              {commanders.map((commander) => <CommanderRosterRow key={commander.id} commander={commander} blocked={blocked}
+                onOpen={(row) => open(commodore, commander.id, row)} />)}
+            </ol>
+            {moreCommanders > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(moreCommanders) })}</p> : null}
+          </div> : null}
         </li>;
       })}
       {roster && roster.more > 0 && rows.length > 0 ? <li className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(roster.more) })}</li> : null}
-      {/* 말할 것도 갈 길도 없으면 빈 상자를 두지 않는다 — 꺼져 있는 콘솔은 머리글이 이미 말한다. */}
-      {note || (rows.length === 0 && !blocked) ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}{blocked ? null : enter}</li> : null}
+      {note || reviewCertificate ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}</li> : null}
     </ol>}
+  </li>;
+}
+
+/** 원격 콘솔의 진행 중 지휘관 — 로컬 진행 행과 같은 아바타·제목·게이지. 조용함은 적지 않는다. */
+function CommanderRosterRow({ commander, blocked, onOpen }: {
+  readonly commander: ConsoleRosterCommander; readonly blocked: boolean; readonly onOpen: (row: HTMLElement) => void;
+}) {
+  const t = useT();
+  const run = commander.run === "working" ? t("chrome.consoles.run.working") : commander.run === "waiting" ? t("chrome.consoles.run.waiting") : null;
+  const progress = commander.total > 0 ? { done: commander.done, total: commander.total } : null;
+  return <li className="side-bar-cluster-row side-bar-cluster-row--conversation">
+    <span className="side-bar-cluster-row-glyph" aria-hidden="true">
+      <MongleAvatar base={fallbackMongleBase(objectiveRecordAvatarKey(commander.id))} tone={null} role="commander" state="idle" size={30} label={commander.title} decorative />
+    </span>
+    <button type="button" className="side-bar-cluster-row-main" data-roster-commander={commander.id} aria-disabled={blocked || undefined}
+      aria-label={[commander.title, progress ? `${progress.done}/${progress.total}` : "", run ?? ""].filter(Boolean).join(", ")}
+      title={commander.title} onClick={(event) => onOpen(event.currentTarget)}>
+      <span className="side-bar-cluster-row-head"><span className="side-bar-cluster-row-title">{commander.title}</span></span>
+      {progress !== null || run !== null ? <span className="side-bar-cluster-row-line" aria-hidden="true">
+        <ClusterRowProgress progress={progress} />
+        {run !== null ? <span className="side-bar-cluster-row-preview side-console-run">{run}</span> : null}
+      </span> : null}
+    </button>
   </li>;
 }

@@ -1,7 +1,7 @@
 import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
-  CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_EVENT, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl,
+  CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_SEAMLESS_CAPABILITY, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl,
   isConsoleRosterState, isConsoleSectionState,
   type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState,
 } from "@fleet-console/protocol/desktop/console-section";
@@ -46,7 +46,12 @@ export interface ConsoleSections {
   readonly roster: (id: string) => ConsoleRosterEntry | null;
   readonly folded: (id: string) => boolean;
   readonly fold: (id: string, folded: boolean) => void;
-  readonly arrival: ConsoleRosterState["arrival"];
+  /**
+   * 셸이 섹션 순서와 스크롤을 콘솔 사이로 유지한다. 능력 게시가 늦으면, 도착 프레임의 commander·scrollTop도 그 증거로 본다.
+   */
+  readonly seamless: boolean;
+  /** 도착한 문서에만 실린다. commander·scrollTop은 없을 수 있고, 매 프레임 반복되므로 한 번만 적용한다. */
+  readonly arrival: { readonly commodore: string; readonly anchorY: number | null; readonly commander: string | null; readonly scrollTop: number | null } | null;
   /** 도착한 사령관을 열었거나 열 수 없음을 알았다. */
   readonly arrived: () => void;
   readonly command: (value: ConsoleSectionCommand) => void;
@@ -62,6 +67,8 @@ export function useConsoleSections(options?: { readonly refresh?: boolean }): Co
   const rosters = useSyncExternalStore(subscribeState, () => rosterState, () => null);
   const capable = desktop && (state !== null || shell.capabilities.includes(CONSOLE_DIRECTORY_CAPABILITY));
   const rosterCapable = capable && (rosters !== null || shell.capabilities.includes(CONSOLE_ROSTER_CAPABILITY));
+  const seamless = capable && (shell.capabilities.includes(CONSOLE_ROSTER_SEAMLESS_CAPABILITY)
+    || rosters?.arrival?.scrollTop != null || (rosters?.arrival?.commander != null && rosters.arrival.commander.length > 0));
   const [localFolds, setLocalFolds] = useState<Readonly<Record<string, boolean>>>({});
   const [arrivalDone, setArrivalDone] = useState<string | null>(null);
   const command = useCallback((value: ConsoleSectionCommand) => { location.assign(consoleSectionCommandUrl(location.origin, value)); }, []);
@@ -83,7 +90,13 @@ export function useConsoleSections(options?: { readonly refresh?: boolean }): Co
   // 명부 이벤트마다 새 객체가 오므로, 같은 도착은 같은 값으로 돌려준다 — 받는 쪽 효과가 한 번만 돈다.
   const arrivalCommodore = rosters?.arrival?.commodore ?? null;
   const arrivalAnchor = rosters?.arrival?.anchorY ?? null;
-  const arrival = useMemo(() => arrivalCommodore === null || arrivalCommodore === arrivalDone ? null : { commodore: arrivalCommodore, anchorY: arrivalAnchor }, [arrivalCommodore, arrivalAnchor, arrivalDone]);
+  const arrivalCommander = rosters?.arrival?.commander ?? null;
+  const arrivalScroll = rosters?.arrival?.scrollTop ?? null;
+  // 셸이 도착을 지우면 다음 전환(같은 사령관이어도)을 다시 연다.
+  useEffect(() => { if (arrivalCommodore === null) setArrivalDone(null); }, [arrivalCommodore]);
+  const arrival = useMemo(() => arrivalCommodore === null || arrivalCommodore === arrivalDone ? null : {
+    commodore: arrivalCommodore, anchorY: arrivalAnchor, commander: arrivalCommander, scrollTop: arrivalScroll,
+  }, [arrivalCommodore, arrivalAnchor, arrivalCommander, arrivalScroll, arrivalDone]);
   const arrived = useCallback(() => {
     // 셸이 도착을 지운 상태를 다시 줄 때까지 같은 도착을 두 번 열지 않는다.
     setArrivalDone(arrivalCommodore);
@@ -95,7 +108,7 @@ export function useConsoleSections(options?: { readonly refresh?: boolean }): Co
   }, [rosterCapable, command]);
   const active = entries.find((entry) => entry.active) ?? null;
   return {
-    capable, rosterCapable, entries, command, arrived, fold, arrival,
+    capable, rosterCapable, seamless, entries, command, arrived, fold, arrival,
     ownHead: active !== null && (entries.length === 1 || consoleLifecycleKey(active) !== null),
     // 콘솔이 하나뿐이어도 관리 대상이 꺼져 있거나 시작·종료 중이면 머리글을 세운다 — 그 사실과 시작 단추가 설 자리가 머리글뿐이다.
     sectioned: capable && (entries.length > 1 || entries.some((entry) => consoleLifecycleKey(entry) !== null)),
@@ -160,6 +173,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
   const row = appearance === "row";
   // 캡슐 머리글(plate)은 단일 콘솔의 지금 머리글이라 상태를 글자로 다 밝히고, 다른 콘솔 행(row)에서만 시작 단추와 인라인 관리를 위해 상태 글자를 시각적으로 숨긴다.
   const quiet = row && startable;
+  const unreachableRemote = entry.kind === "remote" && entry.status === "unreachable";
   // 주소가 이름과 같을 때만 툴팁에서 중복 표기를 뺀다.
   const addressInTitle = entry.address !== entry.label;
   const title = `${entry.label}${addressInTitle ? ` · ${entry.address}` : ""}${status ? ` · ${status}` : ""}${switchable ? ` · ${t("chrome.consoles.switchHere")}` : ""}`;
@@ -202,7 +216,7 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
       </div>
     </div>;
   }
-  return <div className={`side-console-head${row ? " is-row" : ""}${entry.active && !row ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
+  return <div className={`side-console-head${row ? " is-row" : ""}${row && sections.seamless ? " is-seam" : ""}${entry.active && !row ? " is-active" : ""}${folded ? " is-folded" : ""}`} data-status={entry.status ?? undefined} data-lifecycle={lifecycle ? entry.lifecycle ?? undefined : undefined}>
     <div className="side-console-plate">
     <button type="button" className="side-console-toggle" aria-expanded={compact || !foldable ? undefined : !folded} title={title} onClick={press}>
       {glyph}
@@ -211,7 +225,9 @@ export function ConsoleSectionHead({ entry, folded, count, sections, compact = f
       {entry.home ? <span className="side-console-home" title={t("chrome.consoles.thisComputer")} aria-label={t("chrome.consoles.thisComputer")} role="img"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg></span> : null}
       {entry.active && !row ? <span className="side-console-here">{t("chrome.consoles.here")}</span> : null}
       {/* 시작 단추가 있는 다른 콘솔 행(row)은 상태를 DOM에 남겨 접근성 이름을 보존하되 화면에서는 숨긴다(is-quiet). 캡슐 머리글은 그대로 표시한다. */}
-      {status ? <span className={`side-console-status${quiet ? " is-quiet" : ""}`}>{status}</span> : null}
+      {/* 닿지 않는 원격은 글자 대신 빈 점 하나만 둔다. 점은 기존 연결 불가 이름을 접근성으로만 남긴다. */}
+      {unreachableRemote ? <span className="side-console-off" role="img" aria-label={t("chrome.hosts.unreachable")} /> : null}
+      {status && !unreachableRemote ? <span className={`side-console-status${quiet ? " is-quiet" : ""}`}>{status}</span> : null}
       {folded && count !== null && count > 0 ? <span className="side-console-count">{count}</span> : null}
       {/* 접을 내용이 있을 때만 화살표를 둔다 — 사령관 행이 없는 꺼진 행에서는 화살표를 뺀다. */}
       {foldable ? <ChevronGlyph direction="down" className="side-console-chevron" /> : null}
