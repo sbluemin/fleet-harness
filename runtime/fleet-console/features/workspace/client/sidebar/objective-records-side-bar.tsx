@@ -44,7 +44,7 @@ import { resolveObjectiveActivity } from "../../../execution/client/objective-ac
 import { commodoreSectionDropFromPoint, type CommodoreSectionDrop, reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
 import { CommodoreSidebarSection, CommodoreSectionMoveMenu, useCommodoreSidebarSections, type SidebarSectionsController } from "./commodore-sidebar-sections.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../../../../core/client/src/chrome/rail/rail-store.js";
-import { ConsoleRosterSection, SeamCommanderRows } from "./console-roster.js";
+import { ConsoleRosterSection } from "./console-roster.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import { useAvatarClaims } from "../avatars.js";
 import { useLongPress } from "../long-press.js";
@@ -768,12 +768,10 @@ export function ObjectiveRecordsSideBar({
                 menuTarget={activeContextMenu?.theaterId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
-              {consoles.seamless && consoles.sectioned && !compact ? (
-                <SeamCommanderRows commodoreId={theater.id} selected={sectionExpanded} showSettled={showSettled && sectionExpanded} selectedCommanderId={selectedCommanderId} />
-              ) : sectionExpanded ? (
+              {(!compact && (sectionExpanded || (consoles.seamless && consoles.sectioned))) ? (
                 <div className="side-bar-commander-list" data-keep-objective-active="">
                   <SidebarCommanderList
-                    hideSettled={!showSettled}
+                    hideSettled={sectionExpanded ? !showSettled : true}
                     commodoreId={theater.id}
                     selectedId={selectedCommanderId}
                   />

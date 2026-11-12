@@ -1,5 +1,6 @@
 import { CommodoreCommanderList } from "./commander-list.js";
 import { useCommanderPopups } from "./commander-popups.js";
+import { useCommanderRows } from "./commander-rows.js";
 
 /**
  * 좌측 사이드바의 지휘관 목록 — 우측 작업 탭과 같은 행 조작을 쓴다. 아바타는 목표 팝업, 임무 게이지는 임무 팝업을 열고,
@@ -7,7 +8,10 @@ import { useCommanderPopups } from "./commander-popups.js";
  * 행 본문은 지휘관 대화를 연다.
  */
 export function SidebarCommanderList({ commodoreId, selectedId, hideSettled }: { readonly commodoreId: string; readonly selectedId: string | null; readonly hideSettled: boolean }) {
+  const listed = useCommanderRows(commodoreId, selectedId);
   const { rowPopups, openTab, dialogs } = useCommanderPopups(commodoreId);
+  const sections = hideSettled ? listed.listSections.filter((group) => group.settled !== true) : listed.listSections;
+  if (!sections.some((group) => group.rows.length > 0)) return null;
   return <>
     <CommodoreCommanderList
       sortNameOnly
