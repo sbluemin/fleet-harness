@@ -1,5 +1,6 @@
 import fs from "node:fs";
-import type { ConsoleRosterCommodore } from "../../../protocol/desktop/console-section.js";
+import type { ConsoleRosterCommodore, ConsoleRosterCommander } from "../../../protocol/desktop/console-section.js";
+import { consoleRosterPreview } from "./roster.js";
 import { createCommodoreSidebar, type CommodoreSidebarPersistence } from "./sidebar-layout.js";
 import { COMMODORE_SIDEBAR_CHANNEL } from "../shared/contracts/sidebar-layout.js";
 import os from "node:os";
@@ -79,6 +80,11 @@ export interface CommodoreFeatureDeps {
   readonly voiceOf?: (commodoreId: string) => import("./prompt.js").CommodoreVoice | null;
   /** 명부는 아바타 책의 표시용 모습만 받는다 — 처음 배정한 모습·저장 경로는 건네지 않는다. */
   readonly rosterLookOf?: (commodoreId: string) => ConsoleRosterCommodore["look"];
+  /**
+   * 그 사령관의 진행 중 지휘관 — 사이드바와 같은 순서·진행·한 낱말. 없으면 이름만 내보낸다.
+   * 목표 저장은 조립부가 읽고, 여기에는 이미 계약 모양으로 접은 목록만 온다.
+   */
+  readonly rosterCommandersOf?: (commodoreId: string) => { readonly commanders: readonly ConsoleRosterCommander[]; readonly moreCommanders: number };
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -316,8 +322,16 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       return ordered.map((id): ConsoleRosterCommodore => {
         const state = store.read(id);
         const name = state?.alias || ownership.theaterSummaries(id).find((theater) => theater.label)?.label || "Commodore";
+        // 사이드바 행과 같은 출처 — 사령관의 마지막 응답 한 줄. 사람 말·운영 줄은 그 함수가 이미 걸러 둔다.
+        const preview = consoleRosterPreview(store.transcriptLast(id, "commodore")?.text);
+        const listed = deps.rosterCommandersOf?.(id);
+        const commanders = listed?.commanders ?? [];
+        const moreCommanders = listed?.moreCommanders ?? 0;
         return { id, name: name.replace(/[\u0000-\u001f\u007f]/gu, " ").slice(0, 120), look: deps.rosterLookOf?.(id) ?? null,
-          run: supervisor.status(id)?.phase === "turn" ? "working" : state?.asks?.some((ask) => !ask.settled) ? "waiting" : "quiet" };
+          run: supervisor.status(id)?.phase === "turn" ? "working" : state?.asks?.some((ask) => !ask.settled) ? "waiting" : "quiet",
+          ...(preview ? { preview } : {}),
+          ...(commanders.length > 0 ? { commanders } : {}),
+          ...(moreCommanders > 0 ? { moreCommanders } : {}) };
       });
     },
     setOrder: (requested) => {
