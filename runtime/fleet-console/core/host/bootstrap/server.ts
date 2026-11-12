@@ -8,6 +8,9 @@ import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommod
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
 import { CONSOLE_ROSTER_PATH } from "../../../protocol/desktop/console-section.js";
+import { consoleRosterCommanders, consoleRosterRun, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterSort } from "../../../features/commodore/host/roster.js";
+import { livePersonHold, reasonAwaits } from "../../../features/objectives/shared/board-state.js";
+import { PERSON_HOLD_TARGETS, type Objective } from "../../../features/objectives/shared/types.js";
 import { COMMODORE_CHANNEL, type CommodoreEvent } from "../../../features/commodore/shared/contracts/types.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
 import { createWorkspaceActions } from "../../../features/workspace/host/actions.js";
@@ -444,6 +447,13 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
 export const REMOTE_HOSTS_PATH = "/api/v1/remote-hosts";
 export const LOCAL_CONSOLES_PATH = "/api/v1/local-consoles";
 const REMOTE_HOST_HANDOFF_PATH = "/api/v1/desktop/handoff";
+
+/** 사이드바 `personTurnAt` 과 같다 — 결정 요청이 사람의 차례이거나, 넘긴 항목이 아직 서 있다. */
+function rosterPersonWaiting(objective: Objective, commodoreOn: boolean): boolean {
+  if (objective.removed || objective.done) return false;
+  if (objective.decisionRequest && (!commodoreOn || reasonAwaits(objective, "decision") === "person")) return true;
+  return PERSON_HOLD_TARGETS.some((target) => livePersonHold(objective, target) !== null);
+}
 
 export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer {
   const host = deps.host ?? DEFAULT_HOST;
@@ -2748,6 +2758,35 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         // 사령관 호스트는 아바타 책을 직접 읽지 않는다 — 사령관 키의 모습에서 말투만 건넨다.
         voiceOf: (commodoreId) => { const look = avatarStore.load().avatars[commodoreAvatarKey(commodoreId)]; return look ? mongleVoiceOf(look.base) : null; },
         rosterLookOf: (commodoreId) => { const look = avatarStore.load().avatars[commodoreAvatarKey(commodoreId)]; return look ? { base: look.base, tone: look.tone } : null; },
+        // 진행 중 지휘관 — 목표 목록·세션 관측·사이드바 정렬은 조립만 읽고, 계약 모양은 명부 도우미가 접는다.
+        rosterCommandersOf: (commodoreId) => {
+          const boards = objectives?.listAll().filter((objective) => objective.commodoreId === commodoreId) ?? [];
+          const commodoreOn = consoleFeaturePorts.experiments?.read().commodore ?? true;
+          const storedSort = consoleSettingsStore.load().general?.commanderSort;
+          const sort: RosterSort = storedSort ?? ROSTER_SORT_DEFAULT;
+          const orderIn = new Map<string, number>();
+          const sources = [];
+          for (const objective of boards) {
+            if (objective.archived === true || objective.removed) continue;
+            const order = orderIn.get(objective.theaterId) ?? 0;
+            orderIn.set(objective.theaterId, order + 1);
+            const personWaiting = rosterPersonWaiting(objective, commodoreOn);
+            const fresh = !objective.done && !objective.awaitingReview && !objective.commander.started && objective.hasSession !== true;
+            if (!rosterCommanderIncluded({ removed: false, archived: false, done: objective.done !== null, fresh, personWaiting })) continue;
+            const times = [objective.boardUpdatedAt ?? objective.createdAt];
+            const stamp = (id: string) => { const updated = objectiveRecords.get(id)?.ts.updatedAt; if (updated !== undefined) times.push(updated); };
+            if (objective.hasSession) stamp(objective.id);
+            for (const member of objective.members) stamp(member.id);
+            const activities = [objective.id, ...objective.members.map((member) => member.id)].map((id) => consoleControl.observe(id)?.activity);
+            sources.push({
+              id: objective.id, title: objective.title, createdAt: objective.createdAt, activityAt: Math.max(...times),
+              dueDate: objective.dueDate, order, groupId: objective.groupId,
+              done: objective.missions.filter((mission) => mission.done).length, total: objective.missions.length,
+              run: consoleRosterRun(personWaiting, activities), waiting: personWaiting || activities.some((activity) => activity === "awaiting"),
+            });
+          }
+          return consoleRosterCommanders(sources, objectiveRecords.listAllGroups().filter((group) => group.commodoreId === commodoreId).map((group) => ({ id: group.id, order: group.order, createdAt: group.createdAt })), sort);
+        },
         gatewayTools: { name: FLEET_AI_GATEWAY_MCP_SERVER, tools: [gatewayModelsTool], alwaysLoad: true },
         ownership,
         folderGrants,

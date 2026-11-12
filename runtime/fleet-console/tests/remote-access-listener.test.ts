@@ -14,6 +14,7 @@ import { readConsoleLockFile } from "@fleet-console/lifecycle";
 import { PAIRED_DEVICE_LIMIT } from "../features/remote-access/host/paired-devices.js";
 import * as remoteAuth from "../features/remote-access/host/auth.js";
 import { CONSOLE_ROSTER_PATH, isConsoleRosterSummary } from "../protocol/desktop/console-section.js";
+import { consoleRosterCommanders, consoleRosterPreview, consoleRosterRun, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterCommanderSource } from "../features/commodore/host/roster.js";
 import { normalizeFingerprint } from "../features/remote-access/host/remote-identity.js";
 import { parseAccessLink } from "../features/remote-access/host/access-link.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
@@ -149,6 +150,29 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(await revoke(fixture, `paired-devices/${device.id}`)).toBe(204);
     expect((await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH, undefined, paired)).status).toBe(401);
     expect(snapshot()).toMatchObject({ full: false, monitoring: false });
+  });
+
+  it("serves the commodore's own last reply as the roster preview without opening the read", async () => {
+    const fixture = await startFixture({ remote: true });
+    const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+    const created = await fetch(`${origin}/api/v1/commodore/create`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ alias: "명부 사령관" }) });
+    expect(created.status).toBe(200);
+    const { commodoreId } = await created.json() as { commodoreId: string };
+    // 생성 응답이 빈 기록을 캐시하므로, 파일을 쓴 뒤 같은 데이터로 다시 띄워 사이드바와 같은 읽기를 탄다.
+    const reply = `알\u0000겠어\n${"나".repeat(180)}`;
+    fs.writeFileSync(path.join(fixture.dir, "fleet-home", "console", "commodore", commodoreId, "transcript.jsonl"), `${JSON.stringify({ seq: 1, at: 1, kind: "message", text: "사람은 미리보기가 아니다" })}\n${JSON.stringify({ seq: 2, at: 2, kind: "text", text: reply })}\n`);
+    const restarted = await restartFixture(fixture);
+    const next = restarted.loopbackEndpoint.replace(/\/$/u, "");
+    const response = await fetch(`${next}${CONSOLE_ROSTER_PATH}`, { headers: { Origin: next } });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { commodores: { preview?: string; commanders?: unknown }[] };
+    expect(isConsoleRosterSummary(body)).toBe(true);
+    expect(body.commodores[0]?.preview).toBe(`알겠어 ${"나".repeat(155)}`);
+    expect(body.commodores[0]?.preview).not.toContain("\u0000");
+    expect(JSON.stringify(body)).not.toContain("사람은 미리보기가 아니다");
+    expect(body.commodores[0]?.commanders).toBeUndefined();
+    expect((await fetch(`${next}${CONSOLE_ROSTER_PATH}`, { headers: { Origin: "http://other.invalid" } })).status).toBe(401);
+    expect((await remoteRequest(restarted, "GET", CONSOLE_ROSTER_PATH)).status).toBe(401);
   });
 
   it("admits the console only after the link grant is exchanged", async () => {
@@ -784,6 +808,44 @@ async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string
   const published = status.listener.origin === null ? null : Number(new URL(status.listener.origin).port);
   return { ...base, remotePort: published ?? lock.port };
 }
+
+describe("console roster commanders", () => {
+  const source = (patch: Partial<RosterCommanderSource> & Pick<RosterCommanderSource, "id">): RosterCommanderSource => ({
+    title: patch.title ?? patch.id, createdAt: 1, activityAt: 1, dueDate: null, order: 0, groupId: null, done: 1, total: 4, run: "quiet", waiting: false, ...patch,
+  });
+
+  it("keeps in-progress rows in sidebar order, within the contract", () => {
+    expect(rosterCommanderIncluded({ removed: false, archived: false, done: false, fresh: true, personWaiting: false })).toBe(false);
+    expect(rosterCommanderIncluded({ removed: false, archived: false, done: false, fresh: true, personWaiting: true })).toBe(true);
+    expect(rosterCommanderIncluded({ removed: false, archived: false, done: true, fresh: false, personWaiting: false })).toBe(false);
+    expect(rosterCommanderIncluded({ removed: false, archived: false, done: false, fresh: false, personWaiting: false })).toBe(true);
+    expect(consoleRosterRun(true, ["running"])).toBe("waiting");
+    expect(consoleRosterRun(false, ["idle", "awaiting"])).toBe("waiting");
+    expect(consoleRosterRun(false, ["background"])).toBe("working");
+    expect(consoleRosterRun(false, [null])).toBe("quiet");
+    expect(consoleRosterPreview("알\u0000겠어")).toBe("알겠어");
+    expect(consoleRosterPreview("\u0000")).toBeUndefined();
+
+    const waiting = source({ id: "old", activityAt: 10, waiting: true, run: "waiting", done: 2, total: 5 });
+    const recent = source({ id: "new", activityAt: 20, title: `줄\n${"가".repeat(200)}` });
+    const ordered = consoleRosterCommanders([recent, waiting], [], ROSTER_SORT_DEFAULT);
+    expect(ordered.commanders.map((row) => row.id)).toEqual(["old", "new"]);
+    expect(ordered.commanders[0]).toMatchObject({ done: 2, total: 5, run: "waiting" });
+    expect(ordered.commanders[1]?.title.length).toBeLessThanOrEqual(120);
+    expect(ordered.commanders[1]?.title).not.toMatch(/[\n\u0000]/u);
+
+    const many = consoleRosterCommanders(Array.from({ length: 9 }, (_, index) => source({ id: `c${index}`, activityAt: index })), [], ROSTER_SORT_DEFAULT);
+    expect(many.commanders.map((row) => row.id)).toEqual(["c8", "c7", "c6", "c5", "c4", "c3", "c2", "c1"]);
+    expect(many.moreCommanders).toBe(1);
+    const grouped = consoleRosterCommanders(
+      [source({ id: "a", groupId: "ga", activityAt: 50 }), source({ id: "b", groupId: "gb", activityAt: 10 })],
+      [{ id: "ga", order: 1, createdAt: 1 }, { id: "gb", order: 0, createdAt: 1 }],
+      { ...ROSTER_SORT_DEFAULT, grouped: true },
+    );
+    expect(grouped.commanders.map((row) => row.id)).toEqual(["b", "a"]);
+    expect(isConsoleRosterSummary({ v: 1, commodores: [{ id: "commodore-1", name: "보리", look: null, run: "quiet", commanders: many.commanders, moreCommanders: many.moreCommanders }], more: 0 })).toBe(true);
+  });
+});
 
 function createFakeConsoleRuntime(): unknown {
   const handlers = new Set<(event: unknown) => void>();
