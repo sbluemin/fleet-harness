@@ -3,7 +3,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 import { createConsoleHealthClient, observeConsoleLockFile, requestConsoleStop, type ConsoleLockFilePayload } from "@fleet-console/lifecycle";
-import { DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, DESKTOP_PROTOCOL_VERSION, DESKTOP_PROTOCOL_VERSION_ENV, DESKTOP_RESOURCE_ROOT_ENV, resolveCanonicalStableConsolePaths } from "@fleet-console/protocol/desktop";
+import { DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, DESKTOP_PROTOCOL_VERSION, DESKTOP_PROTOCOL_VERSION_ENV, DESKTOP_RESOURCE_ROOT_ENV, DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker, resolveCanonicalStableConsolePaths } from "@fleet-console/protocol/desktop";
 import { classifyConsoleManagement, type ConsoleManagedLifecycle, type ConsoleManagementRelation } from "@fleet-console/protocol/lifecycle/management";
 
 import type { ConsoleRuntimeUpdate } from "@fleet-console/protocol/desktop/console-section";
@@ -429,6 +429,7 @@ cd "$stage/console"
 env -i ${this.installerEnvironment(record)} PATH="${nodeRoot}/bin:/usr/local/bin:/usr/bin:/bin" npm_config_userconfig="$stage/.no-user-npmrc" npm_config_globalconfig="$stage/.no-global-npmrc" npm_config_update_notifier=false npm rebuild --no-audit --no-fund --loglevel=error </dev/null`}
 "${nodeRoot}/bin/node" -e 'const p=process.argv[1]; if(require(p+"/package.json").version!==process.argv[2])process.exit(1); const r=require("node:module").createRequire(p+"/package.json"); r("node-pty"); r("ws")' "$stage/console/node_modules/${this.options.packageName}" "${expectedConsole}"
 [ -f "$stage/console/node_modules/${this.options.packageName}/dist/cli.mjs" ]
+${this.markerCommands(`$stage/console/node_modules/${this.options.packageName}`).join("\n")}
 echo prepared
 `;
   }
@@ -653,10 +654,38 @@ for tool in ${BUILD_TOOLS.join(" ")}; do command -v "$tool" >/dev/null 2>&1 || e
     return `HOME="${root}/home" XDG_CACHE_HOME="${root}/cache" TMPDIR="${root}/tmp" TMP="${root}/tmp" TEMP="${root}/tmp" npm_config_cache="${root}/npm-cache" npm_config_devdir="${root}/node-gyp"${trust}`;
   }
 
+  /**
+   * Commands that leave the Console package root `dir` with the Desktop resource-root marker, written whole and read
+   * back. The Console refuses to start from a managed runtime without it, so it belongs to the package before the
+   * package is promoted to `latest`. The content is the protocol's own, never a format of this manager.
+   */
+  private markerCommands(dir: string): string[] {
+    const content = formatDesktopResourceRootMarker();
+    if (!/^[0-9]+\n$/u.test(content)) throw new Error("wsl_resource_marker_unsupported");
+    const file = `${dir}/${DESKTOP_RESOURCE_ROOT_MARKER}`;
+    return [`printf %s '${content}' > "${file}.tmp"`, `mv -f "${file}.tmp" "${file}"`, `[ "$(cat "${file}")" = "${content.trim()}" ]`];
+  }
+
+  /** Gives the installed package root the marker it lacks. Only this Desktop's own runtime package is written. */
+  private async restoreMarker(record: WslConsoleRecord): Promise<void> {
+    const { pkg, cli } = this.layout(record);
+    const file = `${pkg}/${DESKTOP_RESOURCE_ROOT_MARKER}`;
+    const restored = await this.options.host.sh(record.distro, record.user, `
+set -eu
+[ -f "${cli}" ]
+if [ "$(cat "${file}" 2>/dev/null || :)" != "${formatDesktopResourceRootMarker().trim()}" ]; then
+${this.markerCommands(pkg).join("\n")}
+fi
+`, 20_000);
+    if (restored.code !== 0) { this.options.log.error(`wsl console marker ${record.distro}: ${restored.stderr.slice(-400)}`); throw this.fail(record, "install"); }
+  }
+
   /** Installs what is missing of the managed runtime. Files are downloaded and verified on Windows, then handed in. */
   private async ensureRuntime(record: WslConsoleRecord): Promise<void> {
     await this.recover(record, { cleanup: true });
     const present = await this.runtime(record);
+    // A Console installed before the marker was written is repaired in place, with no reinstall.
+    if (present.console) await this.restoreMarker(record);
     if (present.node && present.console) return;
     // Desktop does not run sudo: the person installs the build tools, then starts again.
     if (!present.console && present.missingTools.length > 0) throw this.fail(record, "build-tools");
@@ -682,6 +711,7 @@ for tool in ${BUILD_TOOLS.join(" ")}; do command -v "$tool" >/dev/null 2>&1 || e
       const installed = handed.code !== 0 ? handed : await this.options.host.sh(record.distro, record.user, `
 cd "${home}" && mkdir -p "${runtime}/.installer/home" "${runtime}/.installer/tmp" && rm -rf .staging && env -i ${this.installerEnvironment(record)} PATH="${runtime}/node/bin:/usr/local/bin:/usr/bin:/bin" npm_config_userconfig="${home}/.no-user-npmrc" npm_config_globalconfig="${home}/.no-global-npmrc" npm_config_update_notifier=false \\
   npm install --prefix .staging --no-audit --no-fund --loglevel=error ./.incoming.tgz </dev/null \\
+  && ${this.markerCommands(`.staging/node_modules/${this.options.packageName}`).join(" && ")} \\
   && { [ ! -d latest ] || mv latest latest.old; } && { mv .staging latest || { [ ! -d latest.old ] || mv latest.old latest; exit 1; }; } && rm -rf latest.old .incoming.tgz && echo installed
 `, INSTALL_TIMEOUT_MS);
       if (installed.code !== 0 || !installed.stdout.includes("installed")) { this.options.log.error(`wsl console install ${record.distro}: ${installed.stderr.slice(-600)}`); throw this.fail(record, "install"); }

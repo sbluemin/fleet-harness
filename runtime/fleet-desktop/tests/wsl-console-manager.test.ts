@@ -1,7 +1,9 @@
+import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { WslConsoleManager } from "../src/wsl-console-manager.js";
@@ -220,6 +222,70 @@ describe("WSL console manager", () => {
       // An installed Node older than the fresh-install manifest is still used by start, never silently replaced.
       expect(host.pipe).not.toHaveBeenCalled();
     } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  /**
+   * The packaged Console refuses to start from a runtime root that lacks the Desktop marker. The other tests replace
+   * the shell, so this one runs the generated scripts for real, with only `npm` stubbed: a fresh install, a runtime
+   * installed before the marker existed, and a confirmed update must each leave the root the Console will validate.
+   */
+  it.skipIf(process.platform === "win32")("leaves every installed Console package root with the marker the packaged Console demands", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-wsl-marker-"));
+    const name = "@dotobokuri/fleet-console";
+    const runtime = `${root}/home/.fleet/desktop/runtime`;
+    const pkg = `${runtime}/console/latest/node_modules/${name}`;
+    const marker = `${pkg}/${DESKTOP_RESOURCE_ROOT_MARKER}`;
+    const lockFile = `${root}/console.lock`;
+    const write = (file: string, body: string, mode = 0o644) => { fs.mkdirSync(path.dirname(file), { recursive: true }); fs.writeFileSync(file, body, { mode }); };
+    for (const tool of ["python3", "make", "g++"]) write(`${root}/tools/${tool}`, "#!/bin/sh\n", 0o755);
+    write(`${runtime}/node/bin/node`, '#!/bin/sh\ncase "$1" in -v) echo v22.0.0;; -p) echo 1.0.0;; esac\n', 0o755);
+    write(`${runtime}/node/bin/npm`, `#!/bin/sh\n[ "$1" = install ] || exit 0\nmkdir -p "$3/node_modules/${name}/dist" && : > "$3/node_modules/${name}/dist/cli.mjs"\n`, 0o755);
+    const publish = () => write(lockFile, JSON.stringify({ pid: 4321, host: "127.0.0.1", port: 4310, endpoint: "http://127.0.0.1:4310/", startedAt: Date.now(), token: "secret", version: "1.0.0", owner: { kind: "desktop", id: "this-desktop", protocolVersion: 1 } }), 0o600);
+    const registryFile = `${root}/registry.json`;
+    write(registryFile, JSON.stringify({ consoles: [{ id: "one", distro: "Ubuntu", user: "me", uid: 1000, home: `${root}/home`, arch: "x64" }] }));
+    let launches = 0;
+    let updating = false;
+    const host: WslHost = {
+      distros: async () => [{ name: "Ubuntu", running: true, version: 2 }], windowsPath: () => lockFile,
+      pipe: vi.fn(async (_distro, _user, input) => { if ("file" in input) write(`${runtime}/console/.incoming.tgz`, ""); return { code: 0, stdout: "", stderr: "" }; }),
+      sh: vi.fn(async (_distro, _user, script) => {
+        if (script.includes("nohup setsid")) { launches++; if (updating) publish(); return { code: 0, stdout: "launched", stderr: "" }; }
+        const ran = spawnSync("/bin/sh", ["-c", script], { encoding: "utf8", env: { PATH: `${root}/tools:${process.env.PATH}` } });
+        return { code: ran.status ?? 1, stdout: ran.stdout, stderr: ran.stderr };
+      }),
+    };
+    vi.stubGlobal("fetch", vi.fn(async (_url, init?: RequestInit) => {
+      if (init?.method === "POST") { fs.rmSync(lockFile, { force: true }); return new Response(JSON.stringify({ accepted: true, pid: 4321 }), { status: 202 }); }
+      return new Response(JSON.stringify({ pid: 4321 }), { status: 200 });
+    }));
+    const manager = new WslConsoleManager({
+      host, ownerId: "this-desktop", registryFile, cacheDirectory: root, fleetDirectory: ".fleet", isolatedData: true, desktopVersion: "1.0.0", development: false, systemCa: false,
+      packageName: name, nodeManifest: () => ({ version: "22.0.0", source: "", targets: {} }), consoleTarball: async () => "x.tgz",
+      consoleTarget: async () => ({ version: "1.3.0", tarball: async () => "x.tgz" }), log: { info: () => undefined, error: () => undefined }, stopTimeoutMs: 1000, startTimeoutMs: 20,
+    });
+    const accepted = () => isDesktopResourceRootMarkerValid(fs.readFileSync(marker, "utf8"));
+    try {
+      // First install: the Console is never launched from a tree without the marker (the start itself times out, as no lock appears).
+      await expect(manager.start("one")).rejects.toThrow("wsl_console_start");
+      expect(launches).toBe(1);
+      expect(accepted()).toBe(true);
+      // An install made before the marker existed is repaired where it stands, with no reinstall.
+      write(`${pkg}/kept.txt`, "");
+      fs.rmSync(marker);
+      await expect(manager.start("one")).rejects.toThrow("wsl_console_start");
+      expect(accepted()).toBe(true);
+      expect(fs.existsSync(`${pkg}/kept.txt`)).toBe(true);
+      // A confirmed update replaces the tree, and the replacement carries the marker too.
+      publish();
+      updating = true;
+      await expect(manager.update("one")).resolves.toBeTypeOf("string");
+      expect(launches).toBe(3);
+      expect(fs.existsSync(`${pkg}/kept.txt`)).toBe(false);
+      expect(accepted()).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
