@@ -14,7 +14,7 @@ import { readConsoleLockFile } from "@fleet-console/lifecycle";
 import { PAIRED_DEVICE_LIMIT } from "../features/remote-access/host/paired-devices.js";
 import * as remoteAuth from "../features/remote-access/host/auth.js";
 import { CONSOLE_ROSTER_PATH, isConsoleRosterSummary } from "../protocol/desktop/console-section.js";
-import { consoleRosterCommanders, consoleRosterPreview, consoleRosterRun, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterCommanderSource } from "../features/commodore/host/roster.js";
+import { consoleRosterCommanders, consoleRosterLook, consoleRosterPreview, consoleRosterRun, consoleRosterSections, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterCommanderSource } from "../features/commodore/host/roster.js";
 import { normalizeFingerprint } from "../features/remote-access/host/remote-identity.js";
 import { parseAccessLink } from "../features/remote-access/host/access-link.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
@@ -173,6 +173,28 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(body.commodores[0]?.commanders).toBeUndefined();
     expect((await fetch(`${next}${CONSOLE_ROSTER_PATH}`, { headers: { Origin: "http://other.invalid" } })).status).toBe(401);
     expect((await remoteRequest(restarted, "GET", CONSOLE_ROSTER_PATH)).status).toBe(401);
+  });
+
+  it("ships the sidebar's own sections on the roster without widening who may read it", async () => {
+    const fixture = await startFixture({ remote: true });
+    const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+    const created = await fetch(`${origin}/api/v1/commodore/create`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ alias: "섹션 사령관" }) });
+    expect(created.status).toBe(200);
+    const { commodoreId } = await created.json() as { commodoreId: string };
+    const placed = await fetch(`${origin}/api/v1/commodore/sidebar`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ op: "create", name: "플릿", rowId: commodoreId }) });
+    expect(placed.status).toBe(200);
+    const { createdSectionId } = await placed.json() as { createdSectionId: string };
+    expect((await fetch(`${origin}/api/v1/commodore/sidebar`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ op: "collapse", sectionId: createdSectionId, collapsed: true }) })).status).toBe(200);
+    expect((await fetch(`${origin}/api/v1/commodore/sidebar`, { method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ op: "collapse", sectionId: null, collapsed: true }) })).status).toBe(200);
+    const response = await fetch(`${origin}${CONSOLE_ROSTER_PATH}`, { headers: { Origin: origin } });
+    expect(response.status).toBe(200);
+    const body = await response.json() as { sections?: { id: string; name: string; collapsed?: true }[]; unsectionedCollapsed?: true; commodores: { id: string; section?: string }[] };
+    expect(isConsoleRosterSummary(body)).toBe(true);
+    expect(body.sections).toEqual([{ id: createdSectionId, name: "플릿", collapsed: true }]);
+    expect(body.unsectionedCollapsed).toBe(true);
+    expect(body.commodores.find((row) => row.id === commodoreId)?.section).toBe(createdSectionId);
+    expect((await fetch(`${origin}${CONSOLE_ROSTER_PATH}`, { headers: { Origin: "http://other.invalid" } })).status).toBe(401);
+    expect((await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH)).status).toBe(401);
   });
 
   it("admits the console only after the link grant is exchanged", async () => {
@@ -843,7 +865,15 @@ describe("console roster commanders", () => {
       { ...ROSTER_SORT_DEFAULT, grouped: true },
     );
     expect(grouped.commanders.map((row) => row.id)).toEqual(["b", "a"]);
-    expect(isConsoleRosterSummary({ v: 1, commodores: [{ id: "commodore-1", name: "보리", look: null, run: "quiet", commanders: many.commanders, moreCommanders: many.moreCommanders }], more: 0 })).toBe(true);
+    expect(consoleRosterCommanders([source({ id: "face", look: { base: 4, tone: "teal" } })], [], ROSTER_SORT_DEFAULT).commanders[0]?.look).toEqual({ base: 4, tone: "teal" });
+    expect(consoleRosterLook(null)).toBeNull();
+    expect(consoleRosterLook({ base: -1, tone: null })).toBeNull();
+    expect(consoleRosterSections(undefined)).toEqual({});
+    expect(consoleRosterSections({ sections: [], unsectionedCollapsed: true })).toEqual({});
+    expect(consoleRosterSections({ sections: [{ id: "s", name: "플릿", collapsed: false }], unsectionedCollapsed: false })).toEqual({ sections: [{ id: "s", name: "플릿" }] });
+    const placed = consoleRosterSections({ sections: [{ id: "s", name: "플릿", collapsed: true }], unsectionedCollapsed: true });
+    expect(placed).toEqual({ sections: [{ id: "s", name: "플릿", collapsed: true }], unsectionedCollapsed: true });
+    expect(isConsoleRosterSummary({ v: 1, commodores: [{ id: "commodore-1", name: "보리", look: null, run: "quiet", section: "s", commanders: many.commanders, moreCommanders: many.moreCommanders }], more: 0, ...placed })).toBe(true);
   });
 });
 

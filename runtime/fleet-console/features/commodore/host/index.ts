@@ -327,8 +327,11 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
         const listed = deps.rosterCommandersOf?.(id);
         const commanders = listed?.commanders ?? [];
         const moreCommanders = listed?.moreCommanders ?? 0;
+        const memberOf = layout.sections.length > 0 ? layout.membership[id] : undefined;
+        const section = memberOf && layout.sections.some((item) => item.id === memberOf) ? memberOf : undefined;
         return { id, name: name.replace(/[\u0000-\u001f\u007f]/gu, " ").slice(0, 120), look: deps.rosterLookOf?.(id) ?? null,
           run: supervisor.status(id)?.phase === "turn" ? "working" : state?.asks?.some((ask) => !ask.settled) ? "waiting" : "quiet",
+          ...(section ? { section } : {}),
           ...(preview ? { preview } : {}),
           ...(commanders.length > 0 ? { commanders } : {}),
           ...(moreCommanders > 0 ? { moreCommanders } : {}) };

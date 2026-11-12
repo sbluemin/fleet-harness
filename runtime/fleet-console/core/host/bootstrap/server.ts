@@ -18,7 +18,7 @@ import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../
 import { createObjectiveArchiveCoordinator } from "../../../features/workspace/host/objective-archive.js";
 import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
-import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleVoiceOf } from "../../../features/workspace/shared/avatars.js";
+import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleVoiceOf, objectiveRecordAvatarKey } from "../../../features/workspace/shared/avatars.js";
 import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
 import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
 import crypto from "node:crypto";
@@ -2778,11 +2778,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             if (objective.hasSession) stamp(objective.id);
             for (const member of objective.members) stamp(member.id);
             const activities = [objective.id, ...objective.members.map((member) => member.id)].map((id) => consoleControl.observe(id)?.activity);
+            const face = avatarStore.load().avatars[objectiveRecordAvatarKey(objective.id)];
             sources.push({
               id: objective.id, title: objective.title, createdAt: objective.createdAt, activityAt: Math.max(...times),
               dueDate: objective.dueDate, order, groupId: objective.groupId,
               done: objective.missions.filter((mission) => mission.done).length, total: objective.missions.length,
               run: consoleRosterRun(personWaiting, activities), waiting: personWaiting || activities.some((activity) => activity === "awaiting"),
+              look: face ? { base: face.base, tone: face.tone } : null,
             });
           }
           return consoleRosterCommanders(sources, objectiveRecords.listAllGroups().filter((group) => group.commodoreId === commodoreId).map((group) => ({ id: group.id, order: group.order, createdAt: group.createdAt })), sort);

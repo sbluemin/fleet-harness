@@ -1,4 +1,4 @@
-import { CONSOLE_ROSTER_MAX_COMMANDERS, CONSOLE_ROSTER_PREVIEW_MAX, type ConsoleRosterCommander, type ConsoleRosterRun } from "../../../protocol/desktop/console-section.js";
+import { CONSOLE_ROSTER_MAX_COMMANDERS, CONSOLE_ROSTER_MAX_SECTIONS, CONSOLE_ROSTER_PREVIEW_MAX, type ConsoleRosterCommander, type ConsoleRosterLook, type ConsoleRosterRun, type ConsoleRosterSection, type ConsoleRosterSummary } from "../../../protocol/desktop/console-section.js";
 
 const CONTROL = /[\u0000-\u001f\u007f]/u;
 /** 치환용 — 한 줄에 제어 문자가 여럿이어도 모두 바꾼다. 하나라도 남으면 명부 검증기가 응답 전체를 거절한다. */
@@ -20,8 +20,8 @@ export function consoleRosterTitle(text: string): string {
 }
 
 /**
- * 지휘관 행의 한 낱말. 사람의 차례가 활동보다 먼저다(사이드바 마크의 awaiting 이 running 보다 급하다).
- * `awaiting` 은 답·허가를 기다리는 세션, `running`·`background` 는 일하는 세션이다.
+ * 지휘관 행의 한 낱말. 로컬 줄의 급한 마크와 같다(side-bar-cluster-row.ts rowGlyphState): 사람의 차례·awaiting 이 running 보다 먼저다.
+ * `running`·`background` 는 일하는 줄(working), 그 밖(idle·ended·unseen·검토 문구)은 quiet 다. 계약에 검토 낱말은 없다.
  */
 export function consoleRosterRun(personWaiting: boolean, activities: readonly (string | null | undefined)[]): ConsoleRosterRun {
   if (personWaiting) return "waiting";
@@ -63,6 +63,8 @@ export interface RosterCommanderSource {
   readonly run: ConsoleRosterRun;
   /** 사람의 답을 기다리는 줄 — 정렬의 answerFirst 가 이것을 맨 위에 둔다. */
   readonly waiting: boolean;
+  /** 아바타 책의 목표 얼굴. 없으면 null. 아직 안 읽었으면 생략. */
+  readonly look?: ConsoleRosterLook | null;
 }
 
 export interface RosterCommanderGroup {
@@ -86,6 +88,14 @@ function clampCount(value: number): number {
   return Math.min(value, 100_000);
 }
 
+/** 아바타 책 한 칸. 범위 밖 베이스는 없는 얼굴(null)로 떨어뜨리고, 깨진 톤은 베이스만 남긴다. */
+export function consoleRosterLook(look: ConsoleRosterLook | null | undefined): ConsoleRosterLook | null | undefined {
+  if (look === undefined) return undefined;
+  if (look === null || !Number.isSafeInteger(look.base) || look.base < 0 || look.base >= 10_000) return null;
+  const tone = typeof look.tone === "string" && look.tone.length > 0 && look.tone.length <= 64 && !CONTROL.test(look.tone) ? look.tone : null;
+  return { base: look.base, tone };
+}
+
 function publishable(source: RosterCommanderSource): ConsoleRosterCommander | null {
   if (source.id.length === 0 || source.id.length > 128 || CONTROL.test(source.id)) return null;
   const title = consoleRosterTitle(source.title);
@@ -93,7 +103,24 @@ function publishable(source: RosterCommanderSource): ConsoleRosterCommander | nu
   if (source.run !== "working" && source.run !== "waiting" && source.run !== "quiet") return null;
   const total = clampCount(source.total);
   const done = Math.min(clampCount(source.done), total);
-  return { id: source.id, title, done, total, run: source.run };
+  const look = consoleRosterLook(source.look);
+  return { id: source.id, title, done, total, run: source.run, ...(look !== undefined ? { look } : {}) };
+}
+
+/**
+ * 사이드바 섹션 배치. 섹션이 하나도 없으면 요약의 세 필드(sections·unsectionedCollapsed·사령관 section)를 모두 빼기 위해 빈 객체를 돌려준다.
+ * `collapsed: false` 와 `unsectionedCollapsed: false` 는 검증기가 거절하므로 싣지 않는다.
+ */
+export function consoleRosterSections(layout: { readonly sections: readonly { readonly id: string; readonly name: string; readonly collapsed: boolean }[]; readonly unsectionedCollapsed: boolean } | undefined): Pick<ConsoleRosterSummary, "sections" | "unsectionedCollapsed"> {
+  if (!layout || layout.sections.length === 0) return {};
+  const sections: ConsoleRosterSection[] = [];
+  for (const section of layout.sections.slice(0, CONSOLE_ROSTER_MAX_SECTIONS)) {
+    const name = section.name.replace(CONTROL_ALL, "").trim().slice(0, 80);
+    if (!name || section.id.length === 0 || section.id.length > 128 || CONTROL.test(section.id)) continue;
+    sections.push({ id: section.id, name, ...(section.collapsed ? { collapsed: true as const } : {}) });
+  }
+  if (sections.length === 0) return {};
+  return { sections, ...(layout.unsectionedCollapsed ? { unsectionedCollapsed: true as const } : {}) };
 }
 
 function sortValue(source: RosterCommanderSource, key: RosterSort["key"]): number | string | undefined {
