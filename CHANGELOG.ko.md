@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.298.2] - 2026-11-12
+
+### fleet-desktop
+
+#### Fixed
+- 플릿 브라우저의 페이지가 패스키 자동 완성 확인으로 Windows 보안 확인을 띄우지 않으므로, 이를 조회하는 로그인 페이지에서도 브라우저 창이 계속 반응합니다. 직접 시작하는 패스키·Windows Hello 로그인은 그대로 동작합니다.
+- WSL 콘솔의 설치와 실행이 Windows 콘솔처럼 시스템 인증서 저장소(배포판의 저장소)를 신뢰합니다. TLS 검사 프록시의 CA가 배포판에 설치되어 있으면 인증서 검증 오류가 나지 않으며, `FLEET_CONSOLE_NO_SYSTEM_CA=1`로 끌 수 있습니다.
+
 ## [1.298.1] - 2026-11-12
 
 Release v1.298.1

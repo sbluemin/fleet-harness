@@ -5,6 +5,14 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.298.2] - 2026-11-12
+
+### fleet-desktop
+
+#### Fixed
+- Fleet Browser pages no longer raise the Windows security prompt for passkey autofill checks, so the browser window stays responsive on sign-in pages that probe for it. Passkey or Windows Hello sign-ins you start yourself still work.
+- Install and run a WSL Console trusting the distribution's system certificate store, as the Windows Console does, so certificate verification errors behind a TLS-inspecting proxy go away when its CA is installed in the distribution. Set `FLEET_CONSOLE_NO_SYSTEM_CA=1` to turn this off.
+
 ## [1.298.1] - 2026-11-12
 
 Release v1.298.1
