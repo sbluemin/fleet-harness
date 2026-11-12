@@ -3,7 +3,9 @@
    닿지 않는 원격만 마지막으로 본 행을 흐리게 하고, 머리글에는 빈 점만 둔다. */
 .side-console { list-style: none; min-width: 0; }
 /* 도착 직후 펼침이 행을 끼워 넣는 동안만. 브라우저가 scrollTop을 밀지 않게 한다. */
-.objective-records-side-bar-chips[data-scroll-hold="1"] { overflow-anchor: none; }
+/* 스크롤 컨테이너만이 아니라 그 안의 행도 앵커가 되지 않게 한다. 컨테이너에만 주면 자식 삽입이 scrollTop을 민다. */
+.objective-records-side-bar-chips[data-scroll-hold="1"],
+.objective-records-side-bar-chips[data-scroll-hold="1"] * { overflow-anchor: none; }
 .workspace-commodore-section-head.is-static { cursor: default; }
 .workspace-commodore-section-head.is-static:hover { background: transparent; color: var(--text-secondary); }
 /* 다른 콘솔 묶음은 지금 콘솔 목록과 6px(목록 gap 2px + 여기 4px)을 둔다. 콘솔 행끼리는 목록 gap만 둔다. */
