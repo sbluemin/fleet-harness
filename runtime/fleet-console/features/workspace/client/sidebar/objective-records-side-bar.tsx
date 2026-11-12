@@ -43,7 +43,8 @@ import { openTheaterInbox } from "../theater-inbox/store.js";
 import { resolveObjectiveActivity } from "../../../execution/client/objective-activity.js";
 import { commodoreSectionDropFromPoint, type CommodoreSectionDrop, reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
 import { CommodoreSidebarSection, CommodoreSectionMoveMenu, useCommodoreSidebarSections, type SidebarSectionsController } from "./commodore-sidebar-sections.js";
-import { ConsoleRosterSection } from "./console-roster.js";
+import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../../../../core/client/src/chrome/rail/rail-store.js";
+import { ConsoleRosterSection, SeamCommanderRows } from "./console-roster.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import { useAvatarClaims } from "../avatars.js";
 import { useLongPress } from "../long-press.js";
@@ -252,6 +253,7 @@ export function ObjectiveRecordsSideBar({
   // 사람이 휠·터치·키로 직접 스크롤하면 그 전에 멈춘다. anchorY의 scrollIntoView와는 같이 쓰지 않는다.
   const scrollHold = useRef<{ readonly key: string; readonly top: number; cancel: boolean; locked: boolean } | null>(null);
   const arrivalOpened = useRef<string | null>(null);
+  const arrivalPanelApplied = useRef<string | null>(null);
   useEffect(() => {
     if (!arrival || !commodoresLoaded) return;
     const known = arrivalSections.current.some((section) => section.commodoreId === arrival.commodore);
@@ -310,6 +312,13 @@ export function ObjectiveRecordsSideBar({
       }
       const hold = scrollHold.current;
       if (hold && !hold.cancel) hold.locked = true;
+      // 대화를 연 뒤의 자동 열림이 지난 다음에 한 번만 맞춘다. 값이 없으면 그 문서의 기존 동작을 둔다.
+      if (arrival.rightPanel && arrivalPanelApplied.current !== openKey) {
+        arrivalPanelApplied.current = openKey;
+        const current = getRailStoreSnapshot().activePanelId;
+        if (!arrival.rightPanel.open) { if (current !== null) closeRailPanel(current); }
+        else if (arrival.rightPanel.tab) openRailPanel(arrival.rightPanel.tab);
+      }
       consoleArrived.current();
     };
     frame = requestAnimationFrame(() => { attempt(); });
@@ -600,6 +609,7 @@ export function ObjectiveRecordsSideBar({
   const ownConsoleFolded = consoles.active !== null && ownFoldable && consoles.folded(consoles.active.id);
   const rosterSection = (entry: (typeof consoles.entries)[number]) => <ConsoleRosterSection key={entry.id} entry={entry} sections={consoles} list={() => listRef.current} compact={compact} />;
   const otherConsoles = consoles.sectioned ? consoles.entries.filter((entry) => !entry.active).map(rosterSection) : null;
+  const flatOwnSections = seamOrder && consoles.active !== null && !consoles.active.home;
   const beforeConsoles = seamOrder ? consoles.entries.slice(0, Math.max(0, activeIndex)).map(rosterSection) : null;
   const afterConsoles = seamOrder ? consoles.entries.slice(activeIndex + 1).map(rosterSection) : otherConsoles;
 
@@ -724,7 +734,9 @@ export function ObjectiveRecordsSideBar({
                 menuTarget={activeContextMenu?.theaterId === theater.id}
                 onPointerDragStart={beginTheaterPointerDrag}
               />
-              {sectionExpanded ? (
+              {consoles.seamless && consoles.sectioned && !compact ? (
+                <SeamCommanderRows commodoreId={theater.id} selected={sectionExpanded} showSettled={showSettled && sectionExpanded} selectedCommanderId={selectedCommanderId} />
+              ) : sectionExpanded ? (
                 <div className="side-bar-commander-list" data-keep-objective-active="">
                   <SidebarCommanderList
                     hideSettled={!showSettled}
@@ -736,7 +748,8 @@ export function ObjectiveRecordsSideBar({
             </li>
           );
           });
-          return bucket.id === undefined ? rows : <CommodoreSidebarSection key={bucket.id ?? "none"} id={bucket.id} controller={sidebarSections} count={bucket.rows.length}
+          // 원격 콘솔이 자기 섹션을 직접 그릴 때는 사용자 섹션 머리글을 중첩하지 않는다. 집 문서는 지금처럼 묶는다.
+          return flatOwnSections || bucket.id === undefined ? rows : <CommodoreSidebarSection key={bucket.id ?? "none"} id={bucket.id} controller={sidebarSections} count={bucket.rows.length}
             dropTarget={!!drag?.dragging && !!drag.sectionDrop && !drag.sectionDrop.targetId && drag.sectionDrop.sectionId === bucket.id}>{rows}</CommodoreSidebarSection>;
         })}
         {faces.length === 0 && commodoresLoaded ? (
