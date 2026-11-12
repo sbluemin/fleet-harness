@@ -29,6 +29,9 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
       ...(commanderId !== null ? { commander: commanderId } : {}),
     });
   };
+  // 사령관 행이 없는 콘솔(빈 명부, 명부를 모르는 옛 콘솔, 첫 읽기 실패)은 누를 행이 없다. 콘솔만 전환하는 길을 남긴다.
+  const enter = <button type="button" className="side-console-enter" aria-disabled={blocked}
+    onClick={() => { if (!blocked) sections.command({ switch: entry.id }); }}>{t("chrome.consoles.switchHere")}</button>;
   // 인증서가 바뀐 콘솔은 지금의 추가 창만 연다. 단추만으로는 저장된 지문이 바뀌지 않는다.
   const reviewCertificate = entry.status === "untrusted"
     ? <button type="button" className="side-console-cert" onClick={() => sections.command({ add: true })}>{t("chrome.consoles.reviewCertificate")}</button>
@@ -76,7 +79,7 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
         </li>;
       })}
       {roster && roster.more > 0 && rows.length > 0 ? <li className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(roster.more) })}</li> : null}
-      {note || reviewCertificate ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}</li> : null}
+      {note || reviewCertificate || (rows.length === 0 && !blocked) ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}{rows.length === 0 && !blocked ? enter : null}</li> : null}
     </ol>}
   </li>;
 }
