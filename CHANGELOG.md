@@ -5,6 +5,20 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.300.0] - 2026-11-13
+
+### fleet-console
+
+#### Changed
+- Follow-up candidates the Commodore hands to you now appear as a card in the Commodore conversation, where you can adopt, discard, or return them right away, including after the objective is already complete.
+
+### fleet-desktop
+
+#### Fixed
+- A remote Console in the sidebar shows that Console's commodore sections, in that Console's order, both while you are on it and while you look at it from another Console.
+- When this computer's Console has no commodores, opening a remote Console no longer pins a "no commodores yet / switch to this console" card at the top of the sidebar. A quieter row still takes you back.
+- The conversation header no longer adds a console name tag while you are on a remote Console.
+
 ## [1.299.0] - 2026-11-12
 
 ### fleet-console
