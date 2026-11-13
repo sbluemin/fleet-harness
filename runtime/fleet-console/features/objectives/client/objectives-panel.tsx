@@ -243,8 +243,8 @@ export function ObjectivePopupHost({ language, mobile }: { readonly language?: C
 }
 
 const WORKING = new Set(["running"]);
-/** 호스트 요약의 원시 활동 → 이 패널이 그리는 활동. 백그라운드 작업만 남은 Objective 도 진행 중으로 선다. */
-const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
+/** 호스트 요약의 원시 활동 → 패널과 우측 레일이 그리는 활동. 백그라운드 작업만 남은 Objective 도 진행 중으로 선다. */
+export const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
 const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>;
 /** 요청이 선 차례 — 먼저 청한 것이 먼저 선다. 같은 때면 저장된 순서 그대로다. */
 

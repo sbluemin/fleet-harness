@@ -1,11 +1,22 @@
 /* 가운데·아래 레일 영역의 행 전용 스타일. 공용 objective-rail-* 클래스는
    골격 쪽 objective-rail.css가 정의하므로 여기서는 재정의하지 않는다. */
 
-.objective-rail-crew-member,
 .objective-rail-crew-mission {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.objective-rail-crew-mission-toggle {
   display: flex;
-  gap: 8px;
+  gap: var(--space-2);
   align-items: flex-start;
+  width: 100%;
+  cursor: pointer;
+}
+
+.objective-rail-crew-mission-toggle:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
 }
 
 .objective-rail-crew-mark {
@@ -38,7 +49,7 @@
   height: 18px;
   border-radius: 50%;
   border: 1px dashed currentColor;
-  font-size: 10.5px;
+  font-size: var(--t-2xs);
   display: grid;
   place-items: center;
   margin-top: 1px;
@@ -66,7 +77,7 @@
 .objective-rail-crew-rec {
   display: block;
   margin-top: 4px;
-  font-size: 11.5px;
+  font-size: var(--t-xs);
   opacity: 0.8;
 }
 
@@ -85,8 +96,8 @@
 }
 
 .objective-rail-results-open:focus-visible {
-  outline: 2px solid currentColor;
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--focus-face);
 }
 
 .objective-rail-results-kind {
@@ -97,8 +108,8 @@
   border-radius: 6px;
   display: grid;
   place-items: center;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
   opacity: 0.75;
 }
 

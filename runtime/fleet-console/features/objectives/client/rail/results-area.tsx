@@ -67,7 +67,7 @@ export function ResultsArea({ objective, language }: { objective: Objective; lan
   const evidence = objective.results.filter((result) => result.kind === "evidence");
   const followups = openFollowups(objective);
   const empty = prs.length === 0 && artifacts.length === 0 && evidence.length === 0 && entries.length === 0 && followups.length === 0 && !shared.failed;
-  if (empty) return <p className="objective-rail-empty">{t("objectives.rail.empty")}</p>;
+  if (empty) return <p className="objective-rail-empty">{t("objectives.rail.area.empty")}</p>;
 
   return (
     <>
@@ -100,7 +100,7 @@ export function ResultsArea({ objective, language }: { objective: Objective; lan
       ) : null}
       {artifacts.length > 0 ? (
         <div className="objective-rail-section">
-          <div className="objective-rail-section-head">{t("objectives.rail.artifacts")} <em>{artifacts.length}</em></div>
+          <div className="objective-rail-section-head">{t("objectives.rail.results.artifacts")} <em>{artifacts.length}</em></div>
           <ul className="objective-rail-list">
             {artifacts.map((result) => (
               <ResultRow
@@ -120,7 +120,7 @@ export function ResultsArea({ objective, language }: { objective: Objective; lan
       ) : null}
       {evidence.length > 0 ? (
         <div className="objective-rail-section">
-          <div className="objective-rail-section-head">{t("objectives.rail.evidence")} <em>{evidence.length}</em></div>
+          <div className="objective-rail-section-head">{t("objectives.rail.results.evidence")} <em>{evidence.length}</em></div>
           <ul className="objective-rail-list">
             {evidence.map((result) => {
               if (result.kind !== "evidence") return null;
@@ -165,7 +165,7 @@ export function ResultsArea({ objective, language }: { objective: Objective; lan
                   <span className="objective-rail-results-kind" aria-hidden="true">DIR</span>
                   <span className="objective-rail-results-main">
                     <span className="objective-rail-results-name">{t("objectives.shared.title")}</span>
-                    <small>{t("objectives.rail.files", { count: entries.length })}{shared.list?.truncated ? ` · ${t("objectives.shared.truncated")}` : ""}</small>
+                    <small>{t("objectives.rail.results.files", { count: entries.length })}{shared.list?.truncated ? ` · ${t("objectives.shared.truncated")}` : ""}</small>
                   </span>
                   <span className="objective-rail-tag">{t("objectives.results.open")}</span>
                 </button>

@@ -31,7 +31,7 @@ export function GoalArea({ objective, language }: { readonly objective: Objectiv
   const history = objective.decisions.length > 0;
   const retro = objective.done !== null && objective.handoff !== null;
   if (!showBrief && pending === null && objective.criteria.length === 0 && !history && !retro) {
-    return <p className="objective-rail-empty">{t("objectives.rail.goal.empty")}</p>;
+    return <p className="objective-rail-empty">{t("objectives.rail.area.empty")}</p>;
   }
   return (
     <>

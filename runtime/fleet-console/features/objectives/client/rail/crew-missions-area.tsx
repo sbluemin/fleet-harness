@@ -5,21 +5,20 @@ import { getT } from "../i18n/index.js";
 import { launchedWords, memberLaunched, memberStatus, useLaunchRows } from "../launch-control.js";
 import { graphMissionStates, type MissionState } from "../graph.js";
 import { useObjectiveSummaries } from "../objectives-state.js";
-import { CommanderMark, MemberMark, MissionRecords, quietMissionLabel } from "../objectives-panel.js";
+import { CommanderMark, MemberMark, MissionRecords, quietMissionLabel, shownActivity } from "../objectives-panel.js";
 import "./crew-results.css";
-
-/** 호스트 요약의 원시 활동 → 이 영역이 그리는 활동. objectives-panel의 shownActivity와 같은 기준이다. */
-const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
 
 /** 임무 상태 → 공용 태그 클래스. */
 const missionTagClass = (state: MissionState): string =>
   state === "done" ? "is-ok" : state === "running" || state === "ready" ? "is-run" : "is-wait";
 
-export function crewMissionsCount(objective: Objective, language: "en" | "ko" = "ko"): string {
+export function crewMissionsCount(objective: Objective, language: "en" | "ko"): string {
   const done = objective.missions.filter((mission) => mission.done).length;
-  return language === "ko"
-    ? `구성원 ${objective.members.length + 1} · 임무 ${done}/${objective.missions.length}`
-    : `Members ${objective.members.length + 1} · Missions ${done}/${objective.missions.length}`;
+  return getT(language)("objectives.rail.crew.count", {
+    members: objective.members.length + 1,
+    done,
+    total: objective.missions.length,
+  });
 }
 
 function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labels, launchWords: rows }: {
@@ -70,38 +69,40 @@ function MissionRow({ objective, mission, index, t, language, states, objectiveR
     .map((id) => objective.missions.findIndex((candidate) => candidate.id === id) + 1)
     .filter((n) => n > 0);
   const unseen = unseenRecords(mission);
-  const onKey = (event: ReactKeyboardEvent<HTMLLIElement>) => {
+  const onKey = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onToggle(); }
   };
   return (
-    <li
-      className="objective-rail-row objective-rail-crew-mission"
-      role="button"
-      tabIndex={0}
-      aria-expanded={open}
-      onClick={onToggle}
-      onKeyDown={onKey}
-    >
-      <span className={`objective-rail-crew-num is-${state}`} aria-hidden="true">{mission.done ? "✓" : index + 1}</span>
-      <span className="objective-rail-crew-main">
-        <span className="objective-rail-crew-name">{missionTitle(mission)}{unseen > 0 ? <i className="objective-rail-crew-unseen" title={t("objectives.tabs.unseenDot")} /> : null}</span>
-        <small>{ownerName}{prereqs.length > 0 ? ` · ${t("objectives.missions.prerequisites", { missions: prereqs.join("·") })}` : ""}{quiet ? ` · ${quiet}` : ""}</small>
-        {open ? (
-          mission.records.length > 0 ? (
-            <MissionRecords
-              id={`rail-records-${mission.id}`}
-              records={mission.records}
-              seenAtOpen={new Set(mission.records.map((record) => record.id))}
-              open
-              t={t}
-              language={language}
-            />
-          ) : (
-            <span className="objective-rail-crew-rec">{t("objectives.rail.noRecords")}</span>
-          )
-        ) : null}
-      </span>
-      <span className={`objective-rail-tag ${missionTagClass(state)}`}>{t(`objectives.graph.state.${state}`)}</span>
+    <li className="objective-rail-row objective-rail-crew-mission">
+      <div
+        className="objective-rail-crew-mission-toggle"
+        role="button"
+        tabIndex={0}
+        aria-expanded={open}
+        onClick={onToggle}
+        onKeyDown={onKey}
+      >
+        <span className={`objective-rail-crew-num is-${state}`} aria-hidden="true">{mission.done ? "✓" : index + 1}</span>
+        <span className="objective-rail-crew-main">
+          <span className="objective-rail-crew-name">{missionTitle(mission)}{unseen > 0 ? <i className="objective-rail-crew-unseen" title={t("objectives.tabs.unseenDot")} /> : null}</span>
+          <small>{ownerName}{prereqs.length > 0 ? ` · ${t("objectives.missions.prerequisites", { missions: prereqs.join("·") })}` : ""}{quiet ? ` · ${quiet}` : ""}</small>
+        </span>
+        <span className={`objective-rail-tag ${missionTagClass(state)}`}>{t(`objectives.graph.state.${state}`)}</span>
+      </div>
+      {open ? (
+        mission.records.length > 0 ? (
+          <MissionRecords
+            id={`rail-records-${mission.id}`}
+            records={mission.records}
+            seenAtOpen={new Set(mission.records.map((record) => record.id))}
+            open
+            t={t}
+            language={language}
+          />
+        ) : (
+          <span className="objective-rail-crew-rec">{t("objectives.rail.crew.noRecords")}</span>
+        )
+      ) : null}
     </li>
   );
 }

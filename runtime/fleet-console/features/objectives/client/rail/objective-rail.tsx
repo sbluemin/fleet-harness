@@ -1,33 +1,14 @@
 import type { Translate } from "@fleet-console/i18n";
-import type { ReactNode } from "react";
 
 import type { Objective } from "../../shared/types.js";
 import { getT, type ObjectiveMessageKey } from "../i18n/index.js";
 import { openObjectivePopup } from "../objectives-panel.js";
 import { openResultWindow } from "../result-window.js";
+import { CrewMissionsArea, crewMissionsCount } from "./crew-missions-area.js";
 import { GoalArea, goalAreaCount } from "./goal-area.js";
+import { ResultsArea, resultsCount } from "./results-area.js";
 
 type T = Translate<ObjectiveMessageKey>;
-
-/**
- * 구성원/임무·결과물 본문은 다른 브랜치가 `rail/crew-missions-area.tsx`·`rail/results-area.tsx`로 만든다.
- * 임무 7에서 이 지역 자리표시를 그 파일의 import로 바꾼다. 이름과 시그니처는 그 계약과 같다.
- */
-function CrewMissionsArea({ language }: { readonly objective: Objective; readonly language: "en" | "ko" }): ReactNode {
-  return <p className="objective-rail-empty">{getT(language)("objectives.rail.area.placeholder")}</p>;
-}
-
-function crewMissionsCount(_objective: Objective): string {
-  return "";
-}
-
-function ResultsArea({ language }: { readonly objective: Objective; readonly language: "en" | "ko" }): ReactNode {
-  return <p className="objective-rail-empty">{getT(language)("objectives.rail.area.placeholder")}</p>;
-}
-
-function resultsCount(_objective: Objective): string {
-  return "";
-}
 
 function statusOf(objective: Objective, t: T): string {
   if (objective.done) return t("objectives.graph.state.done");
@@ -48,7 +29,7 @@ export function ObjectiveRail({ objective, language }: { readonly objective: Obj
   const progress = total > 0 ? t("objectives.rail.goal.progress", { done, total }) : "";
   const status = statusOf(objective, t);
   const goalCount = goalAreaCount(objective, language);
-  const crewCount = crewMissionsCount(objective);
+  const crewCount = crewMissionsCount(objective, language);
   const resultCount = resultsCount(objective);
   return (
     <div className="objective-rail">
