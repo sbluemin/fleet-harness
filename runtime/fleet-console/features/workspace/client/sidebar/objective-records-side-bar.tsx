@@ -740,7 +740,7 @@ export function ObjectiveRecordsSideBar({
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")} data-scroll-hold={scrollHoldOn ? "1" : undefined}>
         {unifiedReady ? <>
-          <UnifiedSidebarList consoles={consoles} list={() => listRef.current} unified={unified}
+          <UnifiedSidebarList consoles={consoles} list={() => listRef.current} unified={unified} standingCommodores={commodoreSections}
             owningCommodoreId={owningCommodoreId} onOpenHomeCommodore={openUnifiedHomeCommodore} standingMenu={standingMenu} />
           {/* TF는 지금 문서의 것이라 통합 배치에 넣지 않고 섹션 목록 뒤에 평평하게 둔다. */}
           {faces.filter((face) => face.kind === "taskforce").map((face) => (
