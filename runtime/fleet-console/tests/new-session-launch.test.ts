@@ -211,66 +211,7 @@ it("opens a registry goal as a full conversation before and after its session ar
   }
 });
 
-describe("kept commander tabs", () => {
-  // 우측 펼침의 탭 유지 — 주인이 바뀌면 걷히고, 같은 주인이 돌아오면 두 겹으로 서지 않는다.
-  const tab = (id: string) => ({ id, title: () => id, icon: () => null, render: () => null });
-
-  it("releases the kept registration when the owner changes", async () => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    const tabs = await import("../core/client/src/chrome/rail/objective-tabs.js");
-    const node = document.createElement("div"); document.body.append(node);
-    const root = createRoot(node);
-    const seen: string[][] = [];
-    function Probe() {
-      seen.push(tabs.useRegisteredConversationObjectiveTabs().map((entry) => entry.id));
-      return null;
-    }
-    try {
-      await act(async () => root.render(h(Probe)));
-      const disposers = await act(async () => [tab("kt-1"), tab("kt-2")].map((entry) => tabs.registerConversationObjectiveTab(entry)));
-      await act(async () => root.render(h(Probe)));
-      tabs.keepConversationObjectiveTabs("c1", () => { for (const dispose of disposers) dispose(); });
-      // 다른 주인으로 바뀌면 걷힌다.
-      tabs.releaseKeptConversationObjectiveTabs("c2");
-      await act(async () => root.render(h(Probe)));
-      expect(seen.at(-1)).toEqual([]);
-    } finally {
-      tabs.releaseKeptConversationObjectiveTabs(null);
-      await act(async () => root.unmount());
-      node.remove(); vi.unstubAllGlobals();
-    }
-  });
-
-  it("does not double-register when the same owner returns", async () => {
-    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
-    const tabs = await import("../core/client/src/chrome/rail/objective-tabs.js");
-    const node = document.createElement("div"); document.body.append(node);
-    const root = createRoot(node);
-    const seen: string[][] = [];
-    function Probe() {
-      seen.push(tabs.useRegisteredConversationObjectiveTabs().map((entry) => entry.id));
-      return null;
-    }
-    try {
-      await act(async () => root.render(h(Probe)));
-      const first = await act(async () => [tab("kt-1"), tab("kt-2")].map((entry) => tabs.registerConversationObjectiveTab(entry)));
-      tabs.keepConversationObjectiveTabs("c1", () => { for (const dispose of first) dispose(); });
-      // 같은 사령관으로 돌아오면 보관만 버리고 새로 등록한다 — 같은 id가 두 겹으로 서지 않는다.
-      tabs.adoptKeptConversationObjectiveTabs("c1");
-      const second = await act(async () => [tab("kt-1"), tab("kt-2")].map((entry) => tabs.registerConversationObjectiveTab(entry)));
-      await act(async () => root.render(h(Probe)));
-      expect(seen.at(-1)).toEqual(["kt-1", "kt-2"]);
-      for (const dispose of second) dispose();
-      await act(async () => root.render(h(Probe)));
-      expect(seen.at(-1)).toEqual([]);
-    } finally {
-      tabs.releaseKeptConversationObjectiveTabs(null);
-      await act(async () => root.unmount());
-      node.remove(); vi.unstubAllGlobals();
-    }
-  });
-});
-describe("commander rail keep rule", () => {
+describe("commander rail ownership", () => {
   // 우측 펼침의 행 펼치기와 레일 유지가 함께 읽는 판정 — 진행 중·시작 전·완료 지휘관만 그 사령관의 것으로 본다.
   const cluster = (id: string, init: Partial<ObjectiveCluster>): ObjectiveCluster => ({
     id, theaterId: "th-a", title: id, members: [], ...init,
@@ -305,10 +246,9 @@ describe("commander rail keep rule", () => {
   });
 });
 
-describe("kept tabs across a fresh center", () => {
-  // 재현: 시작 전 행 펼침(유지) → 탭 없는 fresh 대화 마운트 → 사령관 탭이 살아 있다.
-  // 탭 없는 시작 화면 마운트가 보관 등록의 손잡이를 버리면 release가 빗나간다.
-  it("keeps tabs when a fresh commander mounts", async () => {
+describe("commodore tabs leave a fresh center", () => {
+  // 시작 전 지휘관으로 옮기면 사령관 탭을 유지하지 않는다. 그 목표의 3영역이 우측을 맡는다.
+  it("drops commodore tabs when a fresh commander mounts", async () => {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
     const range = vi.spyOn(document, "createRange").mockImplementation(() => Object.assign(new Range(), {
@@ -393,9 +333,8 @@ describe("kept tabs across a fresh center", () => {
         await act(async () => openConversationSurface("test-commodore-tabs", { commodoreId: owner }));
         expect(seen.at(-1)).toEqual(["commodore-routines", "commodore-info"]);
         await act(async () => openRailPanel("commodore-routines"));
-        // 시작 전 지휘관으로 — 탭 없는 fresh 대화가 마운트돼도 보관은 살아 있다.
-        await act(async () => openConversationSurface(freshConversationSurface.id, { objectiveId: commanderId }));
-        expect(seen.at(-1)).toEqual(["commodore-routines", "commodore-info"]);
+        await act(async () => openConversationSurface(freshConversationSurface.id, { objectiveId: commanderId, commodoreId: owner }));
+        expect(seen.at(-1)).toEqual([]);
       } finally {
         unmountHost();
       }

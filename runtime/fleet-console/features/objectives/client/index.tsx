@@ -12,7 +12,9 @@ import { getT } from "./i18n/index.js";
 import { objectiveMobileConversationTabs } from "./head-tabs.js";
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfObjective, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePopupHost, resetObjectivePopup } from "./objectives-panel.js";
+import { ObjectiveRailMount } from "./rail/objective-rail-mount.js";
 import { ResultWindowHost, resetResultWindow } from "./result-window.js";
+import "./rail/objective-rail.css";
 import { viewedCommodoreId, installObjectiveState, loadBoard, objectivesApi, subscribeObjective } from "./objectives-state.js";
 import "./objectives.css";
 
@@ -119,6 +121,7 @@ export function createObjectivesClient(commodore: CommodoreClientHost) {
     // 레일·목표·탭을 바꿔도 연 목표의 결과물 창은 남는다. 폰에서는 같은 내용을 전체 화면으로 그린다.
     persistentComponents: [
       { id: "objectives-popup", render: ({ language, layout }) => <ObjectivePopupHost language={language} mobile={layout === "mobile"} /> },
+      { id: "objectives-rail", render: ({ layout }) => <ObjectiveRailMount layout={layout} /> },
       { id: "objectives-result-window", render: ({ language, layout }) => <ResultWindowHost language={language} mobile={layout === "mobile"} /> },
     ],
     // 지휘관과 담당 Objective은 한 묶음이다 — 호스트는 이 서술자로 지휘관 패널의 구성원·임무 줄을 그린다.
