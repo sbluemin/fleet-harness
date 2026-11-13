@@ -16,7 +16,7 @@ import path from "node:path";
  */
 
 export interface ChromeProfile { readonly id: string; readonly name: string; readonly account: string | null }
-export interface ChromeImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | null; readonly profiles: readonly ChromeProfile[] }
+export interface ChromeImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | "access_denied" | "read_failed" | null; readonly profiles: readonly ChromeProfile[] }
 
 export interface ChromeCookie {
   readonly name: string; readonly value: string; readonly domain: string; readonly path: string; readonly expires: number;
@@ -60,22 +60,29 @@ export function chromeUserDataDir(input: Partial<Platform> = {}): string {
 
 export function listChromeProfiles(userDataDir: string = chromeUserDataDir()): ChromeProfile[] {
   let raw: string;
-  try { raw = fs.readFileSync(path.join(userDataDir, "Local State"), "utf8"); } catch { return []; }
-  try {
-    const parsed = JSON.parse(raw) as { profile?: { info_cache?: Record<string, { name?: string; user_name?: string; gaia_name?: string }> } };
-    const cache = parsed.profile?.info_cache ?? {};
-    return Object.entries(cache)
-      .filter(([dir]) => fs.existsSync(path.join(userDataDir, dir)))
-      .map(([dir, info]) => ({ id: dir, name: info.gaia_name || info.name || dir, account: info.user_name || null }))
-      .sort((a, b) => (a.id === "Default" ? -1 : b.id === "Default" ? 1 : a.name.localeCompare(b.name)));
-  } catch { return []; }
+  try { raw = fs.readFileSync(path.join(userDataDir, "Local State"), "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+  const parsed = JSON.parse(raw) as { profile?: { info_cache?: Record<string, { name?: string; user_name?: string; gaia_name?: string }> } };
+  const cache = parsed.profile?.info_cache ?? {};
+  return Object.entries(cache)
+    .filter(([dir]) => {
+      try { return fs.statSync(path.join(userDataDir, dir)).isDirectory(); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
+    })
+    .map(([dir, info]) => ({ id: dir, name: info.gaia_name || info.name || dir, account: info.user_name || null }))
+    .sort((a, b) => (a.id === "Default" ? -1 : b.id === "Default" ? 1 : a.name.localeCompare(b.name)));
 }
 
 /** 가져올 수 있는 원본 — 이 기계에 Google Chrome 이 있을 때만, 그 Chrome 의 프로필들. */
 export function chromeImportSources(input: Partial<Platform> = {}): ChromeImportSources {
   if (!locateGoogleChrome(input)) return { available: false, reason: "chrome_required", profiles: [] };
-  const profiles = listChromeProfiles(chromeUserDataDir(input));
-  return { available: profiles.length > 0, reason: profiles.length > 0 ? null : "no_profiles", profiles };
+  try {
+    const profiles = listChromeProfiles(chromeUserDataDir(input));
+    return { available: profiles.length > 0, reason: profiles.length > 0 ? null : "no_profiles", profiles };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return { available: false, reason: code === "EPERM" || code === "EACCES" ? "access_denied" : "read_failed", profiles: [] };
+  }
 }
 
 const COOKIE_FILES = ["Cookies", "Cookies-journal", path.join("Network", "Cookies"), path.join("Network", "Cookies-journal")];

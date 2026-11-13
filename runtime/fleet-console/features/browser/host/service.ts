@@ -103,7 +103,7 @@ export type BrowserStateListener = (state: BrowserState) => void;
 export interface ConsoleEntry { readonly at: number; readonly level: string; readonly text: string; readonly url?: string; readonly line?: number }
 export interface NetworkEntry { requestId: string; loaderId: string; at: number; method: string; url: string; type: string; status: number | null; mimeType: string | null; size: number; failed: string | null; finished: boolean }
 
-export interface ChromeImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | null; readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[] }
+export interface ChromeImportSources { readonly available: boolean; readonly reason: "chrome_required" | "no_profiles" | "access_denied" | "read_failed" | null; readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[] }
 
 /** Chrome 에서 가져오기가 실패한 까닭별 안내 문장. 여기 없는 까닭은 "사본을 열지 못했다"로 묶인다. */
 const CHROME_IMPORT_FAILURES: Record<string, string> = {

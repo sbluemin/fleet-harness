@@ -11,7 +11,7 @@ export const CHROME_CHANNEL = "fleet-chrome";
 export interface ChromeSuggestion { readonly value: string; readonly title: string; readonly favicon: string | null; readonly history: boolean }
 export interface ChromeImportSources {
   readonly available: boolean;
-  readonly reason: "chrome_required" | "no_profiles" | null;
+  readonly reason: "chrome_required" | "no_profiles" | "access_denied" | "read_failed" | null;
   readonly profiles: readonly { readonly id: string; readonly name: string; readonly account: string | null }[];
 }
 export type ChromeTabsOrientation = "vertical" | "horizontal";
