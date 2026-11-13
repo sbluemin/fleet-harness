@@ -155,18 +155,23 @@ app.on("second-instance", (_event, argv) => receiveAccessLink(findAccessLinkArgu
 
 async function boot(): Promise<void> {
   await app.whenReady();
-  // 세션이나 히스토리 저장이 대상 디렉터리를 만들기 전에 옮긴다.
-  const browserProfileMigration = migrateLegacyBrowserProfileRoot({
-    targetRoot: resolveBrowserProfileRoot(app.getPath("userData")),
-    legacyRoot: resolveLegacyBrowserProfileRoot(),
-    isPackaged,
-  });
   applyDesktopDockIcon(app, desktopResources.iconPath);
   const runtimePaths = resolveRuntimePaths(os.homedir());
   const environment = await createHydratedDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   bootLogger = logger;
-  if (browserProfileMigration === "moved") logger.info("moved legacy browser profiles under userData so cookie storage is inside the network sandbox");
+  // 세션이나 히스토리 저장이 대상 디렉터리를 만들기 전에 옮긴다. 실패해도 앱은 띄우고, 다음 실행이 다시 시도한다.
+  try {
+    const browserProfileMigration = migrateLegacyBrowserProfileRoot({
+      targetRoot: resolveBrowserProfileRoot(app.getPath("userData")),
+      legacyRoot: resolveLegacyBrowserProfileRoot(),
+      isPackaged,
+    });
+    if (browserProfileMigration === "moved") logger.info("moved legacy browser profiles under userData so cookie storage is inside the network sandbox");
+    else if (browserProfileMigration === "occupied") logger.info("left legacy browser profiles in place because the userData profile directory already has content");
+  } catch (error) {
+    logger.warn?.(`browser profile migration failed: ${describeError(error)}`);
+  }
   const releases = createReleaseChecker();
   let pushRuntimeProgress: RuntimeProgress | null = null;
   const initialServiceVersion = readInstalledVersion(isPackaged ? runtimePaths.latest : desktopResources.serviceRoot) ?? "";

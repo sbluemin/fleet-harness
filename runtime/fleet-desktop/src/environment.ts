@@ -90,18 +90,22 @@ export function resolveBrowserProfileRoot(userDataDir: string, env: NodeJS.Proce
   return path.join(userDataDir, "browser-profiles");
 }
 
-export type BrowserProfileRootMigration = "moved" | "skipped";
+export type BrowserProfileRootMigration = "moved" | "skipped" | "occupied";
 
 /**
  * 패키지된 macOS·Linux 앱의 기존 프로필 트리를 userData 밑으로 한 번 옮긴다.
  * 개발 실행과 `FLEET_DATA_DIR`·`FLEET_DESKTOP_DATA_DIR` 격리는 사람의 실제 프로필을 건드리지 않는다.
- * 대상에 이미 내용이 있거나 원본이 심볼릭 링크면 옮기지 않는다.
+ * 대상에 이미 내용이 있으면 `occupied`(원본은 그대로 둔다. 합치지 않는다). 원본이 심볼릭 링크면 건너뛴다.
+ * 다른 볼륨으로 옮길 때는 임시 디렉터리에 복사를 끝내고 이름을 올린 뒤에만 원본을 지운다.
+ * 복사가 실패하면 임시 디렉터리를 치워 다음 실행이 다시 시도한다. 원본은 그때도 남는다.
  */
 export function migrateLegacyBrowserProfileRoot(input: {
   readonly targetRoot: string;
   readonly legacyRoot: string;
   readonly isPackaged: boolean;
   readonly env?: NodeJS.ProcessEnv;
+  readonly renameDirectory?: (from: string, to: string) => void;
+  readonly copyDirectory?: (from: string, to: string) => void;
 }): BrowserProfileRootMigration {
   const env = input.env ?? process.env;
   if (!input.isPackaged) return "skipped";
@@ -112,19 +116,32 @@ export function migrateLegacyBrowserProfileRoot(input: {
   const legacyStat = fs.lstatSync(input.legacyRoot);
   if (!legacyStat.isDirectory() || legacyStat.isSymbolicLink()) return "skipped";
   if (fs.existsSync(input.targetRoot)) {
-    if (!fs.statSync(input.targetRoot).isDirectory() || fs.readdirSync(input.targetRoot).length > 0) return "skipped";
+    const targetStat = fs.lstatSync(input.targetRoot);
+    if (!targetStat.isDirectory() || targetStat.isSymbolicLink() || fs.readdirSync(input.targetRoot).length > 0) return "occupied";
     fs.rmdirSync(input.targetRoot);
   }
   fs.mkdirSync(path.dirname(input.targetRoot), { recursive: true, mode: 0o700 });
-  try {
-    fs.renameSync(input.legacyRoot, input.targetRoot);
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== "EXDEV") throw error;
-    fs.cpSync(input.legacyRoot, input.targetRoot, { recursive: true });
-    fs.rmSync(input.legacyRoot, { recursive: true, force: true });
-  }
+  moveBrowserProfileRoot(input.legacyRoot, input.targetRoot, input.renameDirectory ?? fs.renameSync, input.copyDirectory ?? ((from, to) => fs.cpSync(from, to, { recursive: true })));
   return "moved";
+}
+
+function moveBrowserProfileRoot(legacyRoot: string, targetRoot: string, renameDirectory: (from: string, to: string) => void, copyDirectory: (from: string, to: string) => void): void {
+  try {
+    renameDirectory(legacyRoot, targetRoot);
+    return;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "EXDEV") throw error;
+  }
+  const staging = path.join(path.dirname(targetRoot), `${path.basename(targetRoot)}.partial`);
+  fs.rmSync(staging, { recursive: true, force: true });
+  try {
+    copyDirectory(legacyRoot, staging);
+    renameDirectory(staging, targetRoot);
+  } catch (error) {
+    fs.rmSync(staging, { recursive: true, force: true });
+    throw error;
+  }
+  fs.rmSync(legacyRoot, { recursive: true, force: true });
 }
 
 export function createDesktopEnvironment(userDataDir: string, appVersion: string, resourceRoot: string, isPackaged: boolean, env: NodeJS.ProcessEnv = process.env, options: HydratedDesktopEnvironmentOptions & { readonly loginShellPath?: string } = {}): DesktopEnvironment {

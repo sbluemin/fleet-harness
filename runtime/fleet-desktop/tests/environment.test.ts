@@ -86,8 +86,29 @@ describe("desktop environment", () => {
     expect(fs.existsSync(legacy)).toBe(false);
     fs.mkdirSync(legacy, { recursive: true });
     fs.writeFileSync(path.join(legacy, "other.txt"), "nope");
-    expect(migrateLegacyBrowserProfileRoot({ targetRoot: target, legacyRoot: legacy, isPackaged: true, env: {} })).toBe("skipped");
+    expect(migrateLegacyBrowserProfileRoot({ targetRoot: target, legacyRoot: legacy, isPackaged: true, env: {} })).toBe("occupied");
     expect(fs.existsSync(path.join(target, "other.txt"))).toBe(false);
+
+    const legacyFail = path.join(root, "legacy-fail");
+    const targetFail = path.join(root, "user-data-fail", "browser-profiles");
+    fs.mkdirSync(path.join(legacyFail, "default"), { recursive: true });
+    fs.writeFileSync(path.join(legacyFail, "default", "marker.txt"), "keep");
+    const exdev = Object.assign(new Error("cross device"), { code: "EXDEV" });
+    expect(() => migrateLegacyBrowserProfileRoot({
+      targetRoot: targetFail,
+      legacyRoot: legacyFail,
+      isPackaged: true,
+      env: {},
+      renameDirectory: () => { throw exdev; },
+      copyDirectory: (_from, to) => {
+        fs.mkdirSync(to, { recursive: true });
+        fs.writeFileSync(path.join(to, "partial.txt"), "partial");
+        throw Object.assign(new Error("copy failed"), { code: "EIO" });
+      },
+    })).toThrow(/copy failed/);
+    expect(fs.readFileSync(path.join(legacyFail, "default", "marker.txt"), "utf8")).toBe("keep");
+    expect(fs.existsSync(targetFail)).toBe(false);
+    expect(fs.existsSync(`${path.dirname(targetFail)}/${path.basename(targetFail)}.partial`)).toBe(false);
   });
 
   it("sanitizes case-insensitive Electron, Node, and Desktop control keys", () => {
