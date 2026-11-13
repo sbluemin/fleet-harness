@@ -1,10 +1,11 @@
-import { useState, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
 
 import { missionReady, missionTitle, unseenRecords, type Objective, type ObjectiveMember, type ObjectiveMission } from "../../shared/types.js";
 import { getT } from "../i18n/index.js";
 import { launchedWords, memberLaunched, memberStatus, useLaunchRows } from "../launch-control.js";
 import { graphMissionStates, type MissionState } from "../graph.js";
-import { useObjectiveSummaries } from "../objectives-state.js";
+import { useOpenMissionRecords } from "../mission-record-open.js";
+import { objectivesApi, post, useObjectiveSummaries } from "../objectives-state.js";
 import { CommanderMark, MemberMark, MissionRecords, quietMissionLabel, shownActivity } from "../objectives-panel.js";
 import "./crew-results.css";
 
@@ -51,7 +52,7 @@ function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labe
   );
 }
 
-function MissionRow({ objective, mission, index, t, language, states, objectiveRecordState, open, onToggle }: {
+function MissionRow({ objective, mission, index, t, language, states, objectiveRecordState, open, seenAtOpen, onToggle }: {
   readonly objective: Objective;
   readonly mission: ObjectiveMission;
   readonly index: number;
@@ -60,6 +61,7 @@ function MissionRow({ objective, mission, index, t, language, states, objectiveR
   readonly states: ReadonlyMap<string, MissionState>;
   readonly objectiveRecordState: (objectiveId: string) => string;
   readonly open: boolean;
+  readonly seenAtOpen: ReadonlySet<string>;
   readonly onToggle: () => void;
 }) {
   const state = states.get(mission.id) ?? "ready";
@@ -96,7 +98,7 @@ function MissionRow({ objective, mission, index, t, language, states, objectiveR
           <MissionRecords
             id={`rail-records-${mission.id}`}
             records={mission.records}
-            seenAtOpen={new Set(mission.records.map((record) => record.id))}
+            seenAtOpen={seenAtOpen}
             open
             t={t}
             language={language}
@@ -114,7 +116,12 @@ export function CrewMissionsArea({ objective, language }: { objective: Objective
   const t = getT(language);
   const rows = useLaunchRows();
   const summaries = useObjectiveSummaries();
-  const [openId, setOpenId] = useState<string | null>(null);
+  const api = objectivesApi();
+  const markSeen = useCallback((path: string, body: Record<string, unknown>) => {
+    if (api === null) return Promise.resolve(null);
+    return post(api, path, { ...body, language }).catch(() => null);
+  }, [api, language]);
+  const { openRecords, toggleRecords } = useOpenMissionRecords(objective, markSeen);
   const recordOf = (id: string) => summaries.find((candidate) => candidate.id === id) ?? null;
   const objectiveRecordState = (id: string): string => shownActivity(recordOf(id)?.activity ?? "closed");
   const objectiveRecordOwnState = (id: string): string => {
@@ -179,8 +186,9 @@ export function CrewMissionsArea({ objective, language }: { objective: Objective
                 language={language}
                 states={states}
                 objectiveRecordState={objectiveRecordState}
-                open={openId === mission.id}
-                onToggle={() => setOpenId((current) => (current === mission.id ? null : mission.id))}
+                open={mission.id in openRecords}
+                seenAtOpen={openRecords[mission.id] ?? new Set()}
+                onToggle={() => toggleRecords(mission)}
               />
             ))}
           </ul>

@@ -61,6 +61,7 @@ export function ObjectiveRailMount({ layout }: { readonly layout?: "mobile" | "d
       icon: () => null,
       order: 5,
       desktopOnly: true,
+      opensWithoutTheater: true,
       render: () => <ObjectiveRailTab />,
     });
   }, [show]);

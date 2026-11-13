@@ -21,6 +21,7 @@ import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberStatus, memberSubagents, launchReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { canOpenLedger, toggleLedger, useLedgerObjective, focusObjective, loadBoard, post, useObjectiveSummaries, objectivesApi, findAnyObjective, subscribeObjectiveOrFinished, loadObjective, openObjectiveOnPhone } from "./objectives-state.js";
+import { useOpenMissionRecords } from "./mission-record-open.js";
 import { goToObjective } from "./fresh-conversation.js";
 import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
 import { commodoreAvatarKey } from "../../workspace/shared/avatars.js";
@@ -1074,24 +1075,8 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     setZoomOpen(false); setZoomWidth(null);
     if (!document.activeElement || document.activeElement === document.body) orientationRef.current?.focus();
   }, [verticalGraph, zoomOpen]);
-  // 펼친 임무 기록 — 임무 id → 펼친 순간 이미 읽은 기록 id(「새 기록」 표시의 기준). 다른 항목으로 가면 모두 접는다.
-  const [openRecords, setOpenRecords] = useState<Readonly<Record<string, ReadonlySet<string>>>>({});
-  useEffect(() => { setOpenRecords({}); }, [objective.id]);
-  // 펼친 동안 쌓이는 기록도 읽은 것이다 — 보이는 임무의 안 읽은 기록을 서버에 읽음으로 알린다.
-  const seenPending = useRef(new Set<string>());
-  useEffect(() => {
-    for (const mission of objective.missions) {
-      // 가장 최근 기록 id 로 거른다 — 기록 수는 상한(20)에 닿으면 더 늘지 않아, 그 뒤의 새 기록을 알리지 못한다.
-      const key = `${mission.id}:${mission.records.at(-1)?.id ?? ""}`;
-      if (!(mission.id in openRecords) || unseenRecords(mission) === 0 || seenPending.current.has(key)) continue;
-      seenPending.current.add(key);
-      void call("/mission/seen", { objectiveId: objective.id, missionId: mission.id });
-    }
-  }, [objective, openRecords, call]);
-  const toggleRecords = (mission: ObjectiveMission) => setOpenRecords((current) => {
-    if (mission.id in current) { const { [mission.id]: _closed, ...rest } = current; return rest; }
-    return { ...current, [mission.id]: new Set(mission.records.slice(0, Math.min(mission.seen, mission.records.length)).map((record) => record.id)) };
-  });
+  // 펼친 임무 기록 — 우측 레일과 같은 훅. 펼친 순간의 읽은 id를 보관하고, 안 읽은 기록은 /mission/seen 으로 알린다.
+  const { openRecords, setOpenRecords, toggleRecords } = useOpenMissionRecords(objective, call);
   // 그래프 팝업에서 편 기록 — 팝업이 다른 임무로 가거나 닫히면 이것만 접는다.
   const popupRecords = useRef(new Set<string>());
   const togglePopupRecords = (mission: ObjectiveMission) => {
