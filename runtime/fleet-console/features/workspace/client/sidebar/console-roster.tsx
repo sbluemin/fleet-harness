@@ -93,12 +93,13 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
       </div> : null}
     </li>;
   };
-  const groupedHome = headless && roster?.sections && roster.sections.length > 0 && !compact;
+  // 섹션을 실은 명부는 집·원격 모두 그 순서의 머리글로 묶는다. 섹션이 없는 콘솔과 옛 명부(sections 없음)는 평평하고, 좁은 열은 아바타만 둔다.
+  const grouped = !compact && (roster?.sections?.length ?? 0) > 0;
   return <li className={`side-console${blocked ? " is-blocked" : ""}${dim ? " is-dim" : ""}${headless ? " is-headless" : ""}`} data-console-id={entry.id} data-status={entry.status ?? undefined}>
     {headless ? null : <ConsoleSectionHead entry={entry} folded={folded} count={rows.length + (roster?.more ?? 0)} sections={sections} compact={compact} appearance="row" />}
     {folded && !headless ? null : <ol className="side-console-roster" aria-label={entry.label}>
-      {groupedHome && roster.sections
-        ? <HomeRosterSections sections={roster.sections} unsectionedCollapsed={roster.unsectionedCollapsed === true} rows={rows} render={renderCommodore} />
+      {grouped && roster?.sections
+        ? <RosterSections sections={roster.sections} unsectionedCollapsed={roster.unsectionedCollapsed === true} rows={rows} render={renderCommodore} />
         : rows.map(renderCommodore)}
       {roster && roster.more > 0 && rows.length > 0 ? <li className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(roster.more) })}</li> : null}
       {note || reviewCertificate || (rows.length === 0 && !blocked) ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}{rows.length === 0 && !blocked ? enter : null}</li> : null}
@@ -106,8 +107,8 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
   </li>;
 }
 
-/** 집 명부의 사용자 섹션. 로컬 머리글과 같은 클래스이고, 접기·이름 바꾸기는 하지 않는다. */
-function HomeRosterSections({ sections, unsectionedCollapsed, rows, render }: {
+/** 다른 콘솔 명부의 사용자 섹션. 로컬 머리글과 같은 클래스이고, 접기·이름 바꾸기는 하지 않는다. */
+function RosterSections({ sections, unsectionedCollapsed, rows, render }: {
   readonly sections: readonly { readonly id: string; readonly name: string; readonly collapsed?: true }[];
   readonly unsectionedCollapsed: boolean;
   readonly rows: readonly ConsoleRosterCommodore[];

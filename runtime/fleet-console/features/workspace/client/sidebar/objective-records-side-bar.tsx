@@ -643,7 +643,6 @@ export function ObjectiveRecordsSideBar({
   const ownConsoleFolded = consoles.active !== null && ownFoldable && consoles.folded(consoles.active.id);
   const rosterSection = (entry: (typeof consoles.entries)[number]) => <ConsoleRosterSection key={entry.id} entry={entry} sections={consoles} list={() => listRef.current} compact={compact} />;
   const otherConsoles = consoles.sectioned ? consoles.entries.filter((entry) => !entry.active).map(rosterSection) : null;
-  const flatOwnSections = seamOrder && consoles.active !== null && !consoles.active.home;
   const beforeConsoles = seamOrder ? consoles.entries.slice(0, Math.max(0, activeIndex)).map(rosterSection) : null;
   const afterConsoles = seamOrder ? consoles.entries.slice(activeIndex + 1).map(rosterSection) : otherConsoles;
 
@@ -780,8 +779,8 @@ export function ObjectiveRecordsSideBar({
             </li>
           );
           });
-          // 원격 콘솔이 자기 섹션을 직접 그릴 때는 사용자 섹션 머리글을 중첩하지 않는다. 집 문서는 지금처럼 묶는다.
-          return flatOwnSections || bucket.id === undefined ? rows : <CommodoreSidebarSection key={bucket.id ?? "none"} id={bucket.id} controller={sidebarSections} count={bucket.rows.length}
+          // 지금 콘솔이 집이든 원격이든 사용자 섹션 머리글을 그 자리에 둔다. 섹션이 없으면 평평한 행이다.
+          return bucket.id === undefined ? rows : <CommodoreSidebarSection key={bucket.id ?? "none"} id={bucket.id} controller={sidebarSections} count={bucket.rows.length}
             dropTarget={!!drag?.dragging && !!drag.sectionDrop && !drag.sectionDrop.targetId && drag.sectionDrop.sectionId === bucket.id}>{rows}</CommodoreSidebarSection>;
         })}
         {faces.length === 0 && commodoresLoaded ? (
