@@ -80,7 +80,7 @@ describe("console roster", () => {
       fetch,
       rosterFetch: fetch,
       confirmIdentity: async (hostname) => { trace.push(`confirm:${hostname}`); },
-      pinRemote: (hostname) => { trace.push(`pin:${hostname}`); },
+      pinRemote: (record) => { trace.push(`pin:${record.hostname}`); },
       open,
       add: vi.fn(),
       confirmForget: vi.fn(async () => false),

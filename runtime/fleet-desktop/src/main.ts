@@ -30,6 +30,7 @@ import { createWslHost } from "./wsl-host.js";
 import { CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_SEAMLESS_CAPABILITY, CONSOLE_WSL_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
 import { confirmRemoteIdentity, releaseFetchBody } from "./remote-access.js";
+import { installRequestGuard } from "./request-guard.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { createShellNetwork } from "./shell-network.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
@@ -191,10 +192,14 @@ async function boot(): Promise<void> {
   // 원격 콘솔은 자체서명 인증서 뒤에서 세션을 요구한다. Node의 fetch는 둘 다 갖지 못하므로 그 origin으로 가는
   // 메인 프로세스 요청은 인증서 핀과 세션 쿠키를 갖춘 세션을 타야 한다 — 다만 창의 것이어서는 안 된다(shell-network.ts).
   const consoleSession = session.defaultSession;
+  // 이름 앞에 `persist:`를 두지 않아 메모리에만 산다 — 베껴 온 자격이 디스크에 두 번째 사본으로 남지 않는다.
+  const shellSession = session.fromPartition("fleet-shell");
+  // 형제 포트 쿠키를 요청에서 뺀다. 브라우저 뷰가 나중에 표시를 얹어도 이 필터는 남는다.
+  installRequestGuard(consoleSession);
+  installRequestGuard(shellSession);
   const shellNetwork = createShellNetwork({
     windowSession: consoleSession,
-    // 이름 앞에 `persist:`를 두지 않아 메모리에만 산다 — 베껴 온 자격이 디스크에 두 번째 사본으로 남지 않는다.
-    shellSession: session.fromPartition("fleet-shell"),
+    shellSession,
     isRemote: isRemoteConsoleOrigin,
     log: (message) => logger.error(message),
   });
@@ -773,7 +778,8 @@ async function boot(): Promise<void> {
     // 원격 명부는 창 세션의 페어링 쿠키로 읽는다. 조인은 열 때만 하고, 여기서는 부르지 않는다.
     rosterFetch: (url, init) => consoleFetch(url, init),
     confirmIdentity: (hostname, port, fingerprint) => confirmRemoteIdentity(hostname, port, fingerprint, 5_000),
-    pinRemote: (hostname, fingerprint) => remotePins.pin(hostname, fingerprint),
+    pinRemote: (record) => remotePins.pin(record),
+    reconcileRemotes: (records) => remotePins.reconcile(records),
     open: (origin) => bridge.open(origin),
     add: (url) => picker.open(url).catch((error) => bridge.report(error)),
     manage: (url) => picker.open(url).catch((error) => bridge.report(error)),

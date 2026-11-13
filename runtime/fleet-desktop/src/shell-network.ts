@@ -1,4 +1,4 @@
-import { installRemoteCertificatePins, type PinnableSession, type RemoteCertificatePins } from "./remote-access.js";
+import { createPinLedger, installRemoteCertificatePins, type PinnableSession, type RemoteCertificatePins } from "./remote-access.js";
 
 /**
  * 셸이 콘솔과 주고받는 배관의 연결 예산.
@@ -13,8 +13,10 @@ import { installRemoteCertificatePins, type PinnableSession, type RemoteCertific
  * 옮겨 오면 원격에서도 같은 격리가 선다.
  *
  * 쿠키는 창의 항아리가 원본이다. 조인은 언제나 창의 세션에서 이루어지고 세션 쿠키를 발급하는 자리도 그곳뿐이라,
- * 여기서는 그 값을 원격 origin 단위로 베껴 올 뿐 새로 만들지 않는다. 셸과 창이 같은 세션으로 보여야 하는 것은
- * 콘솔의 요구다 — 뷰를 그릴 셸을 제어 보유자의 세션 이름으로 고르므로, 셸이 따로 조인하면 그 창의 주인이 아니게 된다.
+ * 여기서는 그 값을 원격 origin 단위로 베껴 올 뿐 새로 만들지 않는다. 쿠키는 포트로 갈리지 않으므로,
+ * 그 origin의 포트로 끝나는 이름만 베낀다. 형제 포트의 자격은 이 세션에 들어오지 않는다.
+ * 셸과 창이 같은 세션으로 보여야 하는 것은 콘솔의 요구다 — 뷰를 그릴 셸을 제어 보유자의 세션 이름으로
+ * 고르므로, 셸이 따로 조인하면 그 창의 주인이 아니게 된다.
  */
 
 export interface ShellCookie {
@@ -53,13 +55,15 @@ export interface ShellNetwork {
 }
 
 export function createShellNetwork(deps: ShellNetworkDeps): ShellNetwork {
-  const windowPins = installRemoteCertificatePins(deps.windowSession, deps.log);
-  const shellPins = installRemoteCertificatePins(deps.shellSession, deps.log);
-  /** origin 별로 마지막에 베껴 온 쿠키의 모양. 같은 값이면 다시 쓰지 않는다. */
+  // 창과 셸이 장부 하나를 본다. 갱신은 그 맵을 동기적으로 고치므로 두 세션이 서로 다른 집합을 잠깐 보지 않는다.
+  const ledger = createPinLedger();
+  installRemoteCertificatePins(deps.windowSession, ledger, deps.log);
+  installRemoteCertificatePins(deps.shellSession, ledger, deps.log);
+  /** origin 별로 마지막에 베껴 온 쿠키의 모양. 허용된 이름만 들어가므로 형제 쿠키는 이 서명에 남지 않는다. */
   const adopted = new Map<string, string>();
 
   const adopt = async (origin: string): Promise<void> => {
-    const cookies = await deps.windowSession.cookies.get({ url: origin }).catch(() => []);
+    const cookies = cookiesForOrigin(origin, await deps.windowSession.cookies.get({ url: origin }).catch(() => []));
     const signature = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("\n");
     if (adopted.get(origin) === signature) return;
     for (const cookie of cookies) {
@@ -85,10 +89,16 @@ export function createShellNetwork(deps: ShellNetworkDeps): ShellNetwork {
 
   return {
     fetch: consoleFetch,
-    pins: {
-      pin(hostname, fingerprint): void { windowPins.pin(hostname, fingerprint); shellPins.pin(hostname, fingerprint); },
-      unpin(hostname): void { windowPins.unpin(hostname); shellPins.unpin(hostname); },
-      clear(): void { windowPins.clear(); shellPins.clear(); adopted.clear(); },
-    },
+    pins: ledger,
   };
+}
+
+/** 쿠키는 포트로 갈리지 않는다. 이름 끝의 숫자가 이 origin의 포트인 것만 셸로 간다. */
+function cookiesForOrigin(origin: string, cookies: readonly ShellCookie[]): ShellCookie[] {
+  const url = new URL(origin);
+  const port = url.port === "" ? (url.protocol === "https:" ? "443" : "80") : url.port;
+  return cookies.filter((cookie) => {
+    const match = /_(\d+)$/u.exec(cookie.name);
+    return match !== null && match[1] === port;
+  });
 }

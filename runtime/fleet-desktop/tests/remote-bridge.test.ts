@@ -34,9 +34,9 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
     withdrawRemoteConsoleOrigin: (origin: string) => trace.push(`withdraw:${origin}`),
   };
   const pins = {
-    pin: (hostname: string) => trace.push(`pin:${hostname}`),
-    unpin: (hostname: string) => trace.push(`unpin:${hostname}`),
-    clear: () => trace.push("clear"),
+    pin: (record: { origin: string }) => trace.push(`pin:${record.origin}`),
+    unpin: (origin: string) => trace.push(`unpin:${origin}`),
+    reconcile: () => trace.push("reconcile"),
   };
   const sessionFetch = vi.fn(async (url: string) => {
     if (url.endsWith("/console/")) {
@@ -92,7 +92,7 @@ describe("remote bridge", () => {
     expect(harness.trace).toEqual([
       "ask:/api/v1/desktop/handoff",
       "confirm",
-      "pin:100.84.12.7",
+      `pin:${REMOTE}`,
       `admit:${REMOTE}`,
       `stage:${REMOTE}`,
       `join:${REMOTE}/api/v1/join`,
@@ -133,7 +133,7 @@ describe("remote bridge", () => {
 
     expect(harness.trace).toContain("cancel");
     expect(harness.trace).toContain(`withdraw:${REMOTE}`);
-    expect(harness.trace).toContain("unpin:100.84.12.7");
+    expect(harness.trace).toContain(`unpin:${REMOTE}`);
     expect(harness.trace).not.toContain("commit");
   });
 
@@ -145,7 +145,7 @@ describe("remote bridge", () => {
     // 창은 움직이지 않았고, 신뢰도 남지 않았다.
     expect(harness.trace).not.toContain(`load:${REMOTE}/console/`);
     expect(harness.trace).toContain(`withdraw:${REMOTE}`);
-    expect(harness.trace).toContain("unpin:100.84.12.7");
+    expect(harness.trace).toContain(`unpin:${REMOTE}`);
   });
 
   it("hands a link over without reading it, then opens what the console resolved", async () => {
