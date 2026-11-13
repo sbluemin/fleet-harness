@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.301.0] - 2026-11-13
+
+### fleet-console
+
+#### Added
+- Antigravity 모델에서 Gemini 4 Hydrogen을 low, medium, high, xhigh 노력 단계로 고를 수 있습니다.
+
+### fleet-desktop
+
+#### Fixed
+- 주소가 같고 포트만 다른 원격 콘솔 두 대를 함께 연결해 둘 수 있습니다.
+
 ## [1.300.0] - 2026-11-13
 
 ### fleet-console

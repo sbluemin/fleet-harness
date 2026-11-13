@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.301.0] - 2026-11-13
+
+### fleet-console
+
+#### Added
+- Choose Gemini 4 Hydrogen, with low, medium, high, and xhigh effort, from the Antigravity models.
+
+### fleet-desktop
+
+#### Fixed
+- Two remote consoles on the same address, with different ports, can both stay connected.
+
 ## [1.300.0] - 2026-11-13
 
 ### fleet-console
