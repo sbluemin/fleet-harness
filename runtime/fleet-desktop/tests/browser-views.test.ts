@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDesktopBrowserViews, type PageHost } from "../src/browser-views.js";
+import { webRequestUrlMatches } from "./web-request-match.js";
 
 describe("browser profile history storage boundary", () => {
   it("reads only a Chrome snapshot, contains durable writes, and clears history with its icons", () => {
@@ -53,6 +54,19 @@ function view(id: string): DesktopBrowserSnapshot["views"][number] {
   return { id, objectiveId: "op-1", partition: "fleet-browser-1", profile: null, visible: false, url: "about:blank" };
 }
 
+type ViewRequestListener = (details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number }, callback: (response: { requestHeaders?: Record<string, string>; cancel?: boolean }) => void) => void;
+
+function deliverViewRequest(
+  filter: { urls: readonly string[] } | null,
+  listener: ViewRequestListener | null,
+  details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number },
+): { called: boolean; requestHeaders?: Record<string, string>; cancel?: boolean } {
+  if (!filter || !listener || !filter.urls.some((pattern) => webRequestUrlMatches(details.url, pattern))) return { called: false };
+  let response: { requestHeaders?: Record<string, string>; cancel?: boolean } = {};
+  listener(details, (next) => { response = next; });
+  return { called: true, ...response };
+}
+
 /** 셸이 만든 네이티브 뷰 — 이 계약이 보는 것은 만들어졌는지, 닫혔는지, 어떤 CDP 명령을 받았는지뿐이다. */
 function fakeView(partition: string, created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter }>): WebContentsView {
   const record = {
@@ -68,7 +82,10 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
   let rejectPending: (error: Error) => void = () => {};
   const contents = Object.assign(record.contents, {
     id: 41,
-    session: { webRequest: { onBeforeSendHeaders: (filter: { urls: readonly string[] }, listener: typeof record.listener) => { record.filter = filter; record.listener = listener; } } },
+    session: { webRequest: {
+      onBeforeSendHeaders: (filter: { urls: readonly string[] }, listener: typeof record.listener) => { record.filter = filter; record.listener = listener; },
+      onHeadersReceived: () => {},
+    } },
     debugger: Object.assign(new EventEmitter(), {
       attach: () => {},
       detach: () => {},
@@ -327,9 +344,9 @@ describe("managed browser auth and on-demand frames", () => {
     // 집 콘솔은 http다. 가드 필터가 https만 보면 SSE에 뷰 출처가 붙지 않는다.
     const marked = created[0] as typeof created[0] & { filter: { urls: readonly string[] } | null; listener: ((details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number }, callback: (response: { requestHeaders?: Record<string, string> }) => void) => void) | null };
     const headers: Record<string, string> = { [DESKTOP_BROWSER_VIEW_HEADER]: "spoofed" };
-    let sent: Record<string, string> | undefined;
-    marked.listener?.({ url: `${ORIGIN}/api/v1/objectives/events`, requestHeaders: headers, webContentsId: 41 }, (response) => { sent = response.requestHeaders; });
-    expect(sent?.[DESKTOP_BROWSER_VIEW_HEADER]).toBe("view-1");
+    const delivered = deliverViewRequest(marked.filter, marked.listener, { url: `${ORIGIN}/api/v1/objectives/events`, requestHeaders: headers, webContentsId: 41 });
+    expect(delivered.called).toBe(true);
+    expect(delivered.requestHeaders?.[DESKTOP_BROWSER_VIEW_HEADER]).toBe("view-1");
     expect(captures).toHaveLength(0);
     expect(frames).toHaveLength(0);
     expect(relays.some((relay) => relay.hello?.accessPath === "wsl" && relay.hello.hostLabel === "desk" && relay.hello.platform === "darwin")).toBe(true);
@@ -381,6 +398,80 @@ describe("managed browser auth and on-demand frames", () => {
     await Promise.resolve();
     expect(captures).toHaveLength(capturedAtStop);
     expect(created[0]!.closed).toBe(false);
+    views.stop();
+  });
+});
+
+describe("http loopback view session guard", () => {
+  const ORIGIN = "http://127.0.0.1:4310";
+  const kept = "fleet_console_pairing_4310=own-pairing; fleet_console_session_4310=own-session; theme=light";
+
+  it("strips sibling cookies before the origin marker and still marks http loopback SSE", async () => {
+    const cookie = [
+      "fleet_console_pairing_4311=sibling-pairing",
+      "fleet_console_session_4311=sibling-session",
+      "fleet_console_pairing_4310=own-pairing",
+      "fleet_console_session_4310=own-session",
+      "theme=light",
+    ].join("; ");
+    const sse = `${ORIGIN}/api/v1/objectives/events`;
+    const record: { filter: { urls: readonly string[] } | null; listener: ViewRequestListener | null } = { filter: null, listener: null };
+    let atRegister: { cookie?: string; view?: string } | null = null;
+    const fetch = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+      const { pathname } = new URL(String(input));
+      if (pathname === DESKTOP_BROWSER_RELAY_PATH) return new Response(null, { status: 204 });
+      if (pathname === DESKTOP_BROWSER_PATH) return Response.json({ generation: 1, epoch: "life", views: [view("view-1")], commands: [] });
+      if (pathname === DESKTOP_BROWSER_EVENTS_PATH) return new Response(new ReadableStream<Uint8Array>({ start() {} }));
+      return new Response(null, { status: 404 });
+    });
+    const shell = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 800, height: 600 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 1, reclaimFocus: vi.fn() } satisfies PageHost;
+    const views = createDesktopBrowserViews({
+      shell: () => shell,
+      consoleContents: () => null,
+      surface: { apply: vi.fn(), target: () => null, lastPage: () => null, inputLocked: () => false, refresh: vi.fn(), dispose: vi.fn() },
+      createView: () => {
+        const contents = Object.assign(new EventEmitter(), {
+          id: 41,
+          session: {
+            webRequest: {
+              onBeforeSendHeaders(filter: { urls: readonly string[] }, listener: ViewRequestListener) {
+                record.filter = filter;
+                record.listener = listener;
+                // 등록 즉시 요청을 흘려 설치 순서를 본다. 표식이 먼저면 view가 여기서 view-1이 된다.
+                const delivered = deliverViewRequest(filter, listener, {
+                  url: sse,
+                  requestHeaders: { Cookie: cookie, [DESKTOP_BROWSER_VIEW_HEADER]: "spoofed" },
+                  webContentsId: 41,
+                });
+                atRegister = { cookie: delivered.requestHeaders?.Cookie, view: delivered.requestHeaders?.[DESKTOP_BROWSER_VIEW_HEADER] };
+              },
+              onHeadersReceived() {},
+            },
+          },
+          debugger: Object.assign(new EventEmitter(), { attach() {}, detach() {}, isAttached: () => true, sendCommand: () => Promise.resolve({}) }),
+          setWindowOpenHandler() {},
+          loadURL: async () => {},
+          isFocused: () => false,
+          isDestroyed: () => false,
+          close() {},
+        });
+        return { webContents: contents, setBorderRadius() {}, setBounds: vi.fn(), setVisible() {} } as unknown as WebContentsView;
+      },
+      product: () => "Chrome/150.0",
+      userAgent: () => "Mozilla/5.0 Chrome/150.0",
+      fetch: fetch as typeof globalThis.fetch,
+    });
+
+    await views.start(ORIGIN);
+    expect(atRegister).toEqual({ cookie: kept, view: "spoofed" });
+    const marked = deliverViewRequest(record.filter, record.listener, {
+      url: sse,
+      requestHeaders: { Cookie: cookie, [DESKTOP_BROWSER_VIEW_HEADER]: "spoofed" },
+      webContentsId: 41,
+    });
+    expect(marked.called).toBe(true);
+    expect(marked.requestHeaders?.[DESKTOP_BROWSER_VIEW_HEADER]).toBe("view-1");
+    expect(marked.requestHeaders?.Cookie).toBe(kept);
     views.stop();
   });
 });

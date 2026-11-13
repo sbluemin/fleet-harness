@@ -24,6 +24,13 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
       writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
+    // 쿠키는 포트로 갈리지 않으므로 같은 호스트의 다른 포트 페이지가 페어링 쿠키를 싣고 재합류를 일으킬 수 있다.
+    // Origin이 있으면 이 리스너의 것이어야 한다(없으면 네이티브·CLI). 예산을 쓰기 전에 끝내야 교차 출처 페이지가
+    // 피해 기기의 주소로 예산을 태워 정상 합류를 막지 못한다.
+    if (req.headers.origin !== undefined && req.headers.origin !== listener.origin) {
+      writeJson(res, 403, { error: "forbidden" });
+      return true;
+    }
     // 루프백은 이 기계 앞에 앉은 사람이라 예산을 두지 않는다. 인터넷을 향한 문만 계량한다.
     if (listener.audience !== "remote") return performAccessJoin(req, res, listener);
     const source = normalizeRemoteJoinSource(req.socket.remoteAddress);

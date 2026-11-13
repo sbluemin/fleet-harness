@@ -94,6 +94,7 @@ function browserProfileSession(profile: string): Session {
   const directory = path.join(resolveBrowserProfileRoot(), profile);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const created = session.fromPath(directory);
+  installRequestGuard(created);
   browserProfileSessions.set(profile, created);
   return created;
 }
@@ -102,7 +103,10 @@ function browserTargetSession(params: Record<string, unknown>): { readonly sessi
   const profile = typeof params.browserProfile === "string" ? params.browserProfile : null;
   if (profile !== null) return DESKTOP_BROWSER_PROFILE_ID.test(profile) ? { session: browserProfileSession(profile), label: `profile ${profile}` } : null;
   const partition = typeof params.partition === "string" && BROWSER_PARTITION.test(params.partition) ? params.partition : null;
-  return partition === null ? null : { session: session.fromPartition(partition), label: partition };
+  if (partition === null) return null;
+  const partitioned = session.fromPartition(partition);
+  installRequestGuard(partitioned);
+  return { session: partitioned, label: partition };
 }
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
 const isPackaged = app.isPackaged;
@@ -194,7 +198,7 @@ async function boot(): Promise<void> {
   const consoleSession = session.defaultSession;
   // 이름 앞에 `persist:`를 두지 않아 메모리에만 산다 — 베껴 온 자격이 디스크에 두 번째 사본으로 남지 않는다.
   const shellSession = session.fromPartition("fleet-shell");
-  // 형제 포트 쿠키를 요청에서 뺀다. 브라우저 뷰가 나중에 표시를 얹어도 이 필터는 남는다.
+  // 형제 포트 쿠키를 요청과 응답 양쪽에서 뺀다. 브라우저 뷰가 나중에 표시를 얹어도 이 필터는 남는다.
   installRequestGuard(consoleSession);
   installRequestGuard(shellSession);
   const shellNetwork = createShellNetwork({
@@ -410,6 +414,7 @@ async function boot(): Promise<void> {
   });
   const browserSurface = createBrowserSurface({
     main: () => window,
+    // 크롬은 로컬 파일, 칸막이는 data: 문서만 싣고 둘 다 항해를 막는다. 콘솔로 요청하지 않으므로 쿠키 가드를 달지 않는다.
     createChromeView: () => new WebContentsView({ webPreferences: { ...chromeViewPreferences, partition: "fleet-browser-chrome" } }),
     createDividerView: () => new WebContentsView({ webPreferences: { ...chromeViewPreferences, partition: "fleet-browser-divider" } }),
     createWindow: () => {
@@ -489,12 +494,17 @@ async function boot(): Promise<void> {
     // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
     // 사람이 뷰를 직접 클릭해 포커스를 옮기는 경로는 그대로 둔다.
     // 영속 프로필이면 그 프로필의 디스크 세션에, 아니면 Objective 의 메모리 파티션에 뷰를 연다.
-    createView: (partition, profile) => new WebContentsView({
-      webPreferences: {
-        ...(profile === null ? { partition } : { session: browserProfileSession(profile) }),
-        focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
-      },
-    }),
+    createView: (partition, profile) => {
+      const view = new WebContentsView({
+        webPreferences: {
+          ...(profile === null ? { partition } : { session: browserProfileSession(profile) }),
+          focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
+        },
+      });
+      // 뷰 출처 표식보다 먼저. 파티션 세션은 이 생성에서 처음 생긴다.
+      installRequestGuard(view.webContents.session);
+      return view;
+    },
     product: () => `Chrome/${process.versions.chrome}`,
     // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다.
     userAgent: () => (window?.consoleContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
