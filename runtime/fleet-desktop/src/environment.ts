@@ -97,7 +97,8 @@ export type BrowserProfileRootMigration = "moved" | "skipped" | "occupied";
  * 개발 실행과 `FLEET_DATA_DIR`·`FLEET_DESKTOP_DATA_DIR` 격리는 사람의 실제 프로필을 건드리지 않는다.
  * 대상에 이미 내용이 있으면 `occupied`(원본은 그대로 둔다. 합치지 않는다). 원본이 심볼릭 링크면 건너뛴다.
  * 다른 볼륨으로 옮길 때는 임시 디렉터리에 복사를 끝내고 이름을 올린 뒤에만 원본을 지운다.
- * 복사가 실패하면 임시 디렉터리를 치워 다음 실행이 다시 시도한다. 원본은 그때도 남는다.
+ * 복사가 실패하면 임시 디렉터리만 치운다. 그 실행에서 대상이 비어 있는 동안만 다음 실행이 다시 시도한다.
+ * 실패한 실행에서 프로필 세션이나 히스토리 저장이 대상에 파일을 만들면 다음은 `occupied`로 건너뛰고 원본은 그 자리에 남는다.
  */
 export function migrateLegacyBrowserProfileRoot(input: {
   readonly targetRoot: string;

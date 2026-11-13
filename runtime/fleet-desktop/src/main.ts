@@ -160,7 +160,8 @@ async function boot(): Promise<void> {
   const environment = await createHydratedDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   bootLogger = logger;
-  // 세션이나 히스토리 저장이 대상 디렉터리를 만들기 전에 옮긴다. 실패해도 앱은 띄우고, 다음 실행이 다시 시도한다.
+  // 세션이나 히스토리 저장이 대상 디렉터리를 만들기 전에 옮긴다. 실패해도 앱은 띄운다.
+  // 그 실행에서 대상이 비어 있는 동안만 다음 실행이 다시 시도한다. 대상에 파일이 생기면 occupied로 건너뛰고 원본은 남는다.
   try {
     const browserProfileMigration = migrateLegacyBrowserProfileRoot({
       targetRoot: resolveBrowserProfileRoot(app.getPath("userData")),
