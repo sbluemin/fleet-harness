@@ -365,7 +365,9 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
   const t = useT();
   const entry = unifiedEntryForRow(consoles.entries, row);
   const blocked = rowBlocked(entry, row.status);
-  const homeHere = row.home && (standingHome || entry?.active === true);
+  // 지금 문서가 서 있는 콘솔의 행(집이든 원격이든)은 문서 안에서 연다. 같은 콘솔 안에서까지 셸 전환을 타면 문서가 다시 뜨면서 상태가 깨진다.
+  const standingHere = entry?.active === true;
+  const homeHere = standingHere || (row.home && standingHome);
   // 같은 이름의 사령관이 여러 머신에 있을 때, 지금 서 있는 콘솔의 그 사령관만 현재로 밝힌다.
   const current = owningCommodoreId !== null && row.commodoreId === owningCommodoreId
     && (row.home ? standingHome : entry?.active === true);
@@ -386,7 +388,8 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
   };
 
   const open = (commanderId: string | null, rowEl: HTMLElement) => {
-    if (blocked) return;
+    // 서 있는 콘솔의 행은 전환 차단과 무관하게 문서 안에서 연다 — 차단 규칙은 다른 콘솔로 넘어갈 때만 본다.
+    if (!homeHere && blocked) return;
     setMenu(null);
     setChipCard(null);
     if (homeHere) {
@@ -415,7 +418,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
   if (compact) {
     return <li className={`side-bar-theater-section${current ? " side-bar-theater-section--active" : ""}${dim ? " is-unified-dim" : ""}`} data-theater-id={rowKey} data-commodore-id={row.commodoreId}>
       <button type="button" className="unified-compact-row" title={`${row.name}${row.home ? "" : ` · ${row.machineLabel}`}`}
-        aria-label={row.name} aria-disabled={blocked || undefined}
+        aria-label={row.name} aria-disabled={blocked && !homeHere || undefined}
         onClick={(event) => open(null, event.currentTarget)}
         onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); openMenu(new DOMRect(event.clientX, event.clientY, 0, 0), null); }}>
         <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
@@ -449,7 +452,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
       <button
         type="button"
         className="side-bar-theater-activate"
-        aria-disabled={blocked || undefined}
+        aria-disabled={blocked && !homeHere || undefined}
         title={row.home ? row.name : `${row.name} · ${row.machineLabel}`}
         onClick={(event) => open(null, event.currentTarget)}
         onKeyDown={(event) => {
@@ -478,7 +481,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
     {!compact && (commanders.length > 0 || moreCommanders > 0) ? <div className="side-bar-commander-list" data-keep-objective-active="">
       <div className="commander-tab">
         <ol className="commander-tab-list side-bar-group-chips">
-          {commanders.map((commander) => <CommanderRosterRow key={commander.id} commander={commander} blocked={blocked}
+          {commanders.map((commander) => <CommanderRosterRow key={commander.id} commander={commander} blocked={blocked && !homeHere}
             onOpen={(rowEl) => open(commander.id, rowEl)} />)}
         </ol>
         {moreCommanders > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(moreCommanders) })}</p> : null}
