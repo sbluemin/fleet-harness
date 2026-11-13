@@ -1969,15 +1969,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 닿지 못하므로, 원격에서 오는 티켓 요청의 주인은 지금 제어를 쥔 그 기기뿐이다.
    */
   /**
-   * 쓰기 허용 판정. 원격 리스너로 들어온 요청은 이미 세션을 통과했으므로 허용되고,
-   * 로컬 리스너는 루프백에서 온 것만 허용한다.
+   * 쓰기 허용 판정. 원격 리스너로 들어온 요청은 이미 세션을 통과했으므로 허용하되,
+   * Origin 헤더가 있으면 그 리스너의 origin과 같아야 한다 — 세션 쿠키는 포트로 갈리지 않아
+   * 같은 호스트의 다른 포트 페이지가 쿠키를 싣고 교차 출처 쓰기를 보낼 수 있기 때문이다.
+   * Origin이 없는 요청(CLI/도구)은 그대로 허용한다. 로컬 리스너는 루프백에서 온 것만 허용한다.
    */
   function isWriteAdmitted(req: http.IncomingMessage): boolean {
     const listener = listenerForRequest(req);
     if (listener === null) return false;
-    // Origin 판정도 여기서 끝낸다 — 허용 집합은 리스너마다 다르고, 플러그인이 그것을
-    // 다시 짜면 원격 리스너로 들어온 쓰기가 자기 주소를 실었는데도 거절된다.
-    if (listener.audience !== "local") return true;
+    if (listener.audience !== "local") return isAllowedTerminalOrigin(req, listener.origin);
     return isLoopbackRemoteAddress(req.socket.remoteAddress);
   }
 

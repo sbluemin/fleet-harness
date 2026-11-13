@@ -304,6 +304,20 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       .resolves.toMatchObject({ status: 401 });
   });
 
+  // 세션 쿠키는 포트로 갈리지 않는다 — 같은 호스트의 다른 포트 페이지가 쿠키를 싣고 보낸 쓰기는 Origin이 달라 거절된다.
+  it("refuses a remote write whose Origin is another page's and admits the listener's own or none", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookie = await joinAs(fixture, "full", "phone");
+    const own = `https://${BIND_HOST}:${fixture.remotePort}`;
+
+    await expect(remoteRequest(fixture, "GET", "/api/v1/browser", undefined, cookie, { origin: `https://${BIND_HOST}:${fixture.remotePort + 1}` }))
+      .resolves.toMatchObject({ status: 404 });
+    for (const headers of [{ origin: own }, {}] as Record<string, string>[]) {
+      const admitted = await remoteRequest(fixture, "GET", "/api/v1/browser", undefined, cookie, headers);
+      expect(admitted.status).not.toBe(404);
+    }
+  });
+
   /**
    * 붙어 있는 원격은 하나다. 둘이 동시에 붙으면 커튼이 "누가" 몰고 있는지 하나로 말하지 못하고
    * 회수 버튼의 대상도 갈라진다. 그래서 둘째를 거절하는 대신 첫째를 대신한다 — 페어링 목록은
