@@ -52,7 +52,8 @@ const SESSION_MS = 5 * HOUR_MS;
  * Gemini and third-party pools never share headroom; Argon has its own weekly
  * pool too. Carbon does not: measured 2026-11-11, the quota summary had no
  * Carbon bucket and Carbon's per-model quotaInfo matched the Gemini pools, so
- * it is not a row here. This table is also the reason `reported: false` exists.
+ * it is not a row here. Hydrogen measured the same way on 2026-11-13 and is
+ * not a row either. This table is also the reason `reported: false` exists.
  * Fleet exposes
  * Gemini models only, and a pool none of them can spend is not this provider's
  * headroom: a host reading an exhausted `3p` window would route away from an
