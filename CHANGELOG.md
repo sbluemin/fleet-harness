@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.302.0] - 2026-11-13
+
+### fleet-console
+
+#### Changed
+- Opening a commander or a member shows that objective in the right sidebar (goal, members and missions, and results) instead of the commodore's activity, info, and settings.
+
+### fleet-desktop
+
+#### Added
+- In Fleet Desktop, commodores from every paired machine share one set of sidebar sections. Another machine's name sits beside that commodore, you can move it into any section, and you can create it on a chosen machine without leaving the window. A browser, the phone, or that machine's own Desktop with nothing paired still shows only that console's sections.
+
+#### Fixed
+- Fleet Browser pages, the toolbar menu, and the expanded tab list stay clickable after visiting a site that marks its page as a window drag area, such as the Microsoft Teams sign-in flow.
+- Fleet Browser keeps your profile signed in after you quit Desktop and open it again. A temporary session still ends when Desktop quits.
+
 ## [1.301.0] - 2026-11-13
 
 ### fleet-console

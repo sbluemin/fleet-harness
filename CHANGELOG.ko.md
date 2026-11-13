@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.302.0] - 2026-11-13
+
+### fleet-console
+
+#### Changed
+- 지휘관이나 구성원을 열면 우측 사이드바에 그 목표의 목표·구성원과 임무·결과물이 보이고, 사령관의 활동·정보·설정으로 고정되지 않습니다.
+
+### fleet-desktop
+
+#### Added
+- Fleet Desktop에서는 페어링된 모든 머신의 사령관이 사이드바 섹션 하나를 함께 씁니다. 다른 머신의 이름은 사령관 옆에 붙고, 원하는 섹션으로 옮기거나 창을 옮기지 않고 고른 머신에 만들 수 있습니다. 브라우저, 휴대폰, 또는 페어링이 없는 그 머신 자신의 Desktop에서는 그 콘솔의 섹션만 그대로 보입니다.
+
+#### Fixed
+- Microsoft Teams 로그인 흐름처럼 페이지를 창 드래그 영역으로 선언하는 사이트를 거친 뒤에도 Fleet Browser의 페이지, 도구 메뉴, 펼친 탭 목록을 계속 클릭할 수 있습니다.
+- Desktop을 종료했다가 다시 열어도 Fleet Browser의 내 프로필 로그인이 유지됩니다. 임시 세션은 종료와 함께 끝납니다.
+
 ## [1.301.0] - 2026-11-13
 
 ### fleet-console
