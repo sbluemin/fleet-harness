@@ -6,6 +6,9 @@ import { setMongleLook } from "../../workspace/client/avatar-events.js";
 import { MongleBaseGrid, MonglePreviewStates, MongleToneDots, type MongleAvatarPreviewState } from "../../workspace/client/components/mongle-avatar-picker.js";
 import { MongleAvatar } from "../../workspace/client/components/mongle-avatar.js";
 import { useT, useConsoleLocale } from "../../../core/client/src/i18n/index.js";
+import { UNIFIED_SIDEBAR_HOME, type UnifiedCreateReason } from "@fleet-console/protocol/desktop/console-section";
+import { useConsoleSections } from "../../remote-access/client/console-sections.js";
+import { useUnifiedSidebar } from "../../workspace/client/sidebar/unified-sidebar.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
 import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
@@ -43,6 +46,39 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
+  const [createReason, setCreateReason] = useState<UnifiedCreateReason | null>(null);
+  const [targetId, setTargetId] = useState<string>(UNIFIED_SIDEBAR_HOME);
+  const unified = useUnifiedSidebar();
+  const consoles = useConsoleSections();
+  // 페어링된 다른 머신이 있을 때만 맨 위에 「만들 머신」이 선다. 없으면 아래 기존 흐름과 완전히 같다.
+  const otherMachines = unified.active ? unified.machines.filter((machine) => !machine.home) : [];
+  const blockedReason = (consoleId: string): UnifiedCreateReason | null => {
+    const machine = otherMachines.find((item) => item.consoleId === consoleId);
+    if (!machine || machine.creatable) return null;
+    return machine.createBlock ?? (machine.status === "unreachable" ? "unreachable"
+      : machine.status === "untrusted" ? "untrusted" : "unavailable");
+  };
+  const blockedNote = (machineLabel: string, reason: UnifiedCreateReason): string => {
+    switch (reason) {
+      case "unreachable": return t("sidebar.commodore.machineBlocked.unreachable", { machine: machineLabel });
+      case "untrusted": return t("sidebar.commodore.machineBlocked.untrusted", { machine: machineLabel });
+      case "access": return t("sidebar.commodore.machineBlocked.access", { machine: machineLabel });
+      case "unavailable": return t("sidebar.commodore.machineBlocked.unavailable", { machine: machineLabel });
+      case "invalid": return t("sidebar.commodore.machineBlocked.invalid", { machine: machineLabel });
+      case "unsupported": return t("sidebar.commodore.machineBlocked.unsupported", { machine: machineLabel });
+    }
+  };
+  const failedNote = (reason: UnifiedCreateReason): string => {
+    switch (reason) {
+      case "unreachable": return t("sidebar.commodore.createFailed.unreachable");
+      case "untrusted": return t("sidebar.commodore.createFailed.untrusted");
+      case "access": return t("sidebar.commodore.createFailed.access");
+      case "unavailable": return t("sidebar.commodore.createFailed.unavailable");
+      case "invalid": return t("sidebar.commodore.createFailed.invalid");
+      case "unsupported": return t("sidebar.commodore.createFailed.unsupported");
+    }
+  };
+  const targetMachine = otherMachines.find((machine) => machine.consoleId === targetId) ?? null;
   const alias = name.trim();
   // 폰에서는 화면 전체를 덮는 시트다 — 하드웨어·브라우저 뒤로가 시트를 먼저 닫도록 겹침 레지스트리와 history 항목을 함께 든다.
   const sheet = useViewMode().effective === "mobile";
@@ -64,6 +100,32 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
     if (!alias || busy) return;
     setBusy(true);
     setFailed(false);
+    setCreateReason(null);
+    // 다른 머신 — 창을 넘기지 않고 셸에 만든다. 고른 아바타도 함께 보낸다.
+    // 집을 골랐어도 지금 다른 머신 콘솔에 서 있으면 셸에 만든다. 집에 서 있을 때의 집 만들기는 아래 기존 흐름 그대로다.
+    if (otherMachines.length > 0 && (targetId !== UNIFIED_SIDEBAR_HOME || consoles.active?.home === false)) {
+      if (blockedReason(targetId) !== null) { setBusy(false); return; }
+      try {
+        const result = await unified.createCommodore({ consoleId: targetId, alias, look: { base, tone } });
+        if (!result.ok) {
+          if (result.consoleId === targetId) setCreateReason(result.reason);
+          else setFailed(true);
+          return;
+        }
+      } catch {
+        setFailed(true);
+        return;
+      } finally {
+        setBusy(false);
+      }
+      // 만든 사령관은 셸이 통합 배치에 얹는다 — 창은 넘어가지 않고 닫는다.
+      const id = historyRef.current;
+      historyRef.current = null;
+      runAfterOverlayRelease(id, () => {
+        onClose();
+      });
+      return;
+    }
     try {
       const commodoreId = createdId ?? (await createCommodore({ alias })).commodoreId;
       setCreatedId(commodoreId);
@@ -112,6 +174,28 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
           </button>
         </header>
         <div className="commodore-create-body">
+          {otherMachines.length > 0 ? <>
+            <label className="commodore-create-machine-label" id="commodore-create-machine-label">{t("sidebar.commodore.createMachine")}</label>
+            <div className="commodore-create-machine-seg" role="group" aria-labelledby="commodore-create-machine-label">
+              <button type="button" aria-pressed={targetId === UNIFIED_SIDEBAR_HOME}
+                onClick={() => { setTargetId(UNIFIED_SIDEBAR_HOME); setCreateReason(null); }}>{t("chrome.consoles.thisComputer")}</button>
+              {otherMachines.map((machine) => {
+                const reason = blockedReason(machine.consoleId);
+                return <button key={machine.consoleId} type="button" disabled={reason !== null}
+                  aria-pressed={targetId === machine.consoleId}
+                  title={reason !== null ? blockedNote(machine.label, reason) : machine.address}
+                  onClick={() => { setTargetId(machine.consoleId); setCreateReason(null); }}>{machine.label}</button>;
+              })}
+            </div>
+            <div className="commodore-create-machine-note" role="status">
+              {otherMachines.flatMap((machine) => {
+                const reason = blockedReason(machine.consoleId);
+                return reason !== null ? [blockedNote(machine.label, reason)] : [];
+              }).map((note) => <p key={note}>{note}</p>)}
+              {targetMachine && blockedReason(targetMachine.consoleId) === null
+                ? <p>{t("sidebar.commodore.createRemoteNote", { machine: targetMachine.label })}</p> : null}
+            </div>
+          </> : null}
           <div className="commodore-create-hero">
             <MongleAvatar base={base} tone={tone} role="commodore" state={preview} size={sheet ? 124 : 112} label={alias || t("sidebar.commodore.createTitle")} decorative />
           </div>
@@ -127,7 +211,8 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
           />
           <MongleBaseGrid role="commodore" base={base} tone={tone} locale={locale} label={t("avatar.editor.baseGroup")} promotedLabel={t("avatar.editor.promotedGroup")} size={sheet ? 46 : 44} onBase={(next) => { setBase(next); if (isPromotedBaseId(next)) setTone(null); }} />
           <MongleToneDots base={base} tone={tone} label={t("avatar.editor.toneGroup")} names={tones} lockedLabel={t("avatar.editor.toneLocked")} onTone={setTone} />
-          {failed ? <p className="commodore-create-failed" role="alert">{t("sidebar.commodore.failed")}</p> : null}
+          {createReason ? <p className="commodore-create-failed" role="alert">{failedNote(createReason)}</p>
+            : failed ? <p className="commodore-create-failed" role="alert">{t("sidebar.commodore.failed")}</p> : null}
         </div>
         <footer className="commodore-create-foot">
           {sheet ? null : <button type="button" className="fc-btn fc-btn--secondary commodore-create-button" onClick={onClose}>{t("sidebar.commodore.cancel")}</button>}

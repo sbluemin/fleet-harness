@@ -9,8 +9,8 @@ import { isIdentityTone } from "../../shared/identity-tones.js";
 import { MongleAvatar } from "../components/mongle-avatar.js";
 import { ClusterRowProgress } from "./side-bar-cluster-row.js";
 
-/** 지금 문서의 우측 사이드바. 탭 이름이 계약(32자)을 넘으면 열림만 넘긴다. */
-function currentRightPanel(): { readonly open: boolean; readonly tab?: string } {
+/** 지금 문서의 우측 사이드바. 탭 이름이 계약(32자)을 넘으면 열림만 넘긴다. 통합 사이드바의 전환 명령도 같은 값을 싣는다. */
+export function currentRightPanel(): { readonly open: boolean; readonly tab?: string } {
   const id = getRailStoreSnapshot().activePanelId;
   if (id === null) return { open: false };
   if (id.length > 0 && id.length <= 32 && !/[\u0000-\u001f\u007f]/u.test(id)) return { open: true, tab: id };
@@ -156,8 +156,8 @@ function RosterSections({ sections, unsectionedCollapsed, rows, render }: {
   </>;
 }
 
-/** 원격 콘솔의 진행 중 지휘관 — 로컬 진행 행과 같은 아바타·제목·게이지. 조용함 문구는 적지 않고 얼굴만 idle이다. */
-function CommanderRosterRow({ commander, blocked, onOpen, avatar }: {
+/** 원격 콘솔의 진행 중 지휘관 — 로컬 진행 행과 같은 아바타·제목·게이지. 조용함 문구는 적지 않고 얼굴만 idle이다. 통합 사이드바의 행에서도 그대로 쓴다. */
+export function CommanderRosterRow({ commander, blocked, onOpen, avatar }: {
   readonly commander: ConsoleRosterCommander; readonly blocked: boolean; readonly onOpen: (row: HTMLElement) => void; readonly avatar?: ReactNode;
 }) {
   const t = useT();
