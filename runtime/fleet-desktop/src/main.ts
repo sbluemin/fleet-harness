@@ -100,24 +100,10 @@ function browserProfileSession(profile: string): Session {
   return created;
 }
 
-/** 이번 실행에서 열린 영속 프로필과, 디스크에 있는 프로필 디렉터리의 세션. 임시 파티션은 여기 없다. */
+/** 이번 실행에서 이미 열린 영속 프로필만. 임시 파티션은 이 맵에 없다. */
 function openProfileCookieJars(): ProfileCookieJar[] {
-  const root = resolveBrowserProfileRoot(app.getPath("userData"));
-  let names: string[] = [];
-  try {
-    names = fs.readdirSync(root).filter((name) => DESKTOP_BROWSER_PROFILE_ID.test(name));
-  } catch {
-    names = [];
-  }
-  const sessions = new Set<Session>(browserProfileSessions.values());
-  for (const name of names) {
-    try {
-      sessions.add(browserProfileSession(name));
-    } catch {
-      // 디렉터리 이름이 프로필 id 형식이어도 세션을 열지 못하면 그 프로필만 건너뛴다.
-    }
-  }
-  return [...sessions].map((target) => ({
+  return [...browserProfileSessions.values()].map((target) => ({
+    // Electron 43.1.0의 Cookie와 cookies.get 문서에는 파티션 키(CHIPS) 필드가 없다. get이 파티션 쿠키를 돌려주는지는 확인하지 못함.
     get: async () => (await target.cookies.get({})).map((cookie): ProfileCookieRecord => ({
       name: cookie.name,
       value: cookie.value,
