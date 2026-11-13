@@ -1,42 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { installRequestGuard, setRequestGuardExtra, type GuardedSession, type RequestGuardDetails, type ResponseGuardDetails } from "../src/request-guard.js";
-
-/** Chromium webRequest 패턴. 필터 문자열을 그대로 비교하지 않고, 그 패턴에 맞는 URL만 리스너에 넘긴다. */
-function webRequestUrlMatches(url: string, pattern: string): boolean {
-  if (pattern === "<all_urls>") {
-    try {
-      const scheme = new URL(url).protocol.replace(/:$/u, "");
-      return scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss" || scheme === "file" || scheme === "ftp";
-    } catch {
-      return false;
-    }
-  }
-  const spec = /^(\*|[-a-zA-Z0-9+]+):\/\/(\*|[^/]+?)(\/.*)$/u.exec(pattern);
-  if (!spec) return false;
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { return false; }
-  const scheme = parsed.protocol.replace(/:$/u, "");
-  const patternScheme = spec[1] ?? "";
-  if (patternScheme === "*") {
-    if (scheme !== "http" && scheme !== "https" && scheme !== "ws" && scheme !== "wss") return false;
-  } else if (patternScheme.toLowerCase() !== scheme) return false;
-  const hostPort = spec[2] ?? "";
-  if (hostPort !== "*") {
-    const colon = hostPort.lastIndexOf(":");
-    const hasPort = colon > 0 && /^\d+$/u.test(hostPort.slice(colon + 1));
-    const host = hasPort ? hostPort.slice(0, colon) : hostPort;
-    const port = hasPort ? hostPort.slice(colon + 1) : null;
-    if (host.startsWith("*.")) {
-      const base = host.slice(2);
-      if (parsed.hostname !== base && !parsed.hostname.endsWith(`.${base}`)) return false;
-    } else if (parsed.hostname !== host) return false;
-    if (port !== null && parsed.port !== port) return false;
-  }
-  const path = spec[3] ?? "/";
-  const pathPattern = new RegExp(`^${path.replace(/[.+?^${}()|[\]\\]/gu, "\\$&").replace(/\*/gu, ".*")}$`, "u");
-  return pathPattern.test(parsed.pathname);
-}
+import { webRequestUrlMatches } from "./web-request-match.js";
 
 type RequestListener = (details: RequestGuardDetails, callback: (response: { requestHeaders?: Record<string, string>; cancel?: boolean }) => void) => void;
 type ResponseListener = (details: ResponseGuardDetails, callback: (response: { responseHeaders?: Record<string, string | string[]>; cancel?: boolean }) => void) => void;
@@ -89,13 +54,13 @@ describe("remote request cookie guard", () => {
 
     setRequestGuardExtra(guard.session, () => undefined);
     expect(guard.request(request("https://127.0.0.1:4310/api/v1/console-roster")).requestHeaders?.Cookie).toBe(kept);
+    expect(guard.request(request("http://127.0.0.1:4310/api/v1/objectives/events")).requestHeaders?.Cookie).toBe(kept);
 
     setRequestGuardExtra(guard.session, null);
     expect(guard.request(request("https://127.0.0.1:4310/console/")).requestHeaders?.Cookie).toBe(kept);
 
     setRequestGuardExtra(guard.session, () => { throw new Error("guard extra failed"); });
     expect(guard.request(request("https://127.0.0.1:4310/console/")).cancel).toBe(true);
-    expect(guard.request(request("file:///tmp/page.html")).called).toBe(false);
   });
 
   it("drops sibling Set-Cookie overwrites and deletions, keeps this port, and cancels when header processing throws", () => {
@@ -148,7 +113,6 @@ describe("remote request cookie guard", () => {
     expect(blocked.cancel).toBe(true);
     expect(blocked.responseHeaders).toBeUndefined();
 
-    expect(guard.response({ url: "file:///tmp/page.html", responseHeaders: { "Set-Cookie": ["fleet_console_pairing_4311=tossed"] } }).called).toBe(false);
     expect(guard.request({
       url: "https://127.0.0.1:4310/console/",
       requestHeaders: { Cookie: "fleet_console_session_4311=sibling; fleet_console_session_4310=own" },

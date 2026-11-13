@@ -66,12 +66,13 @@ export function setRequestGuardExtra(session: GuardedSession, extra: RequestGuar
     state.extra = extra;
     return;
   }
-  // 리스너를 걸기 전에 표시를 넣는다. 등록 직후 도착한 요청도 그 표시를 본다.
+  // 표시가 든 state를 리스너보다 먼저 만들어 넘긴다. 등록 직후 도착한 요청도 그 표시를 본다.
   attach(session, { extra });
 }
 
 function attach(session: GuardedSession, state: GuardState): void {
-  guards.set(session, state);
+  // state는 호출자가 먼저 만든다. 리스너가 그것을 닫아 잡으므로, 등록 직후 요청도 이미 넣은 표시를 본다.
+  // 두 등록이 모두 끝난 뒤에야 설치로 기록한다. 두 번째가 던지면 반쪽인 채 남기지 않고 다음 설치가 다시 단다.
   session.webRequest.onBeforeSendHeaders(FILTER, (details, callback) => {
     let response: { requestHeaders?: HeaderMap; cancel?: boolean };
     try {
@@ -100,6 +101,7 @@ function attach(session: GuardedSession, state: GuardState): void {
     }
     callback(response);
   });
+  guards.set(session, state);
 }
 
 function endpointPort(rawUrl: string): string {

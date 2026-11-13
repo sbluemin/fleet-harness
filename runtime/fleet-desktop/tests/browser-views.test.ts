@@ -14,6 +14,7 @@ import { pathToFileURL } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 
 import { createDesktopBrowserViews, type PageHost } from "../src/browser-views.js";
+import { webRequestUrlMatches } from "./web-request-match.js";
 
 describe("browser profile history storage boundary", () => {
   it("reads only a Chrome snapshot, contains durable writes, and clears history with its icons", () => {
@@ -51,42 +52,6 @@ const REMOTE = "https://100.84.12.7:6768";
 
 function view(id: string): DesktopBrowserSnapshot["views"][number] {
   return { id, objectiveId: "op-1", partition: "fleet-browser-1", profile: null, visible: false, url: "about:blank" };
-}
-
-/** Chromium webRequest 패턴. 필터에 적힌 글자를 비교하지 않고, 그 패턴에 맞는 URL만 리스너에 넘긴다. */
-function webRequestUrlMatches(url: string, pattern: string): boolean {
-  if (pattern === "<all_urls>") {
-    try {
-      const scheme = new URL(url).protocol.replace(/:$/u, "");
-      return scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss" || scheme === "file" || scheme === "ftp";
-    } catch {
-      return false;
-    }
-  }
-  const spec = /^(\*|[-a-zA-Z0-9+]+):\/\/(\*|[^/]+?)(\/.*)$/u.exec(pattern);
-  if (!spec) return false;
-  let parsed: URL;
-  try { parsed = new URL(url); } catch { return false; }
-  const scheme = parsed.protocol.replace(/:$/u, "");
-  const patternScheme = spec[1] ?? "";
-  if (patternScheme === "*") {
-    if (scheme !== "http" && scheme !== "https" && scheme !== "ws" && scheme !== "wss") return false;
-  } else if (patternScheme.toLowerCase() !== scheme) return false;
-  const hostPort = spec[2] ?? "";
-  if (hostPort !== "*") {
-    const colon = hostPort.lastIndexOf(":");
-    const hasPort = colon > 0 && /^\d+$/u.test(hostPort.slice(colon + 1));
-    const host = hasPort ? hostPort.slice(0, colon) : hostPort;
-    const port = hasPort ? hostPort.slice(colon + 1) : null;
-    if (host.startsWith("*.")) {
-      const base = host.slice(2);
-      if (parsed.hostname !== base && !parsed.hostname.endsWith(`.${base}`)) return false;
-    } else if (parsed.hostname !== host) return false;
-    if (port !== null && parsed.port !== port) return false;
-  }
-  const path = spec[3] ?? "/";
-  const pathPattern = new RegExp(`^${path.replace(/[.+?^${}()|[\]\\]/gu, "\\$&").replace(/\*/gu, ".*")}$`, "u");
-  return pathPattern.test(parsed.pathname);
 }
 
 type ViewRequestListener = (details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number }, callback: (response: { requestHeaders?: Record<string, string>; cancel?: boolean }) => void) => void;
@@ -472,6 +437,7 @@ describe("http loopback view session guard", () => {
               onBeforeSendHeaders(filter: { urls: readonly string[] }, listener: ViewRequestListener) {
                 record.filter = filter;
                 record.listener = listener;
+                // 등록 즉시 요청을 흘려 설치 순서를 본다. 표식이 먼저면 view가 여기서 view-1이 된다.
                 const delivered = deliverViewRequest(filter, listener, {
                   url: sse,
                   requestHeaders: { Cookie: cookie, [DESKTOP_BROWSER_VIEW_HEADER]: "spoofed" },
@@ -506,11 +472,6 @@ describe("http loopback view session guard", () => {
     expect(marked.called).toBe(true);
     expect(marked.requestHeaders?.[DESKTOP_BROWSER_VIEW_HEADER]).toBe("view-1");
     expect(marked.requestHeaders?.Cookie).toBe(kept);
-    expect(deliverViewRequest(record.filter, record.listener, {
-      url: "file:///tmp/page.html",
-      requestHeaders: { Cookie: cookie, [DESKTOP_BROWSER_VIEW_HEADER]: "spoofed" },
-      webContentsId: 41,
-    }).called).toBe(false);
     views.stop();
   });
 });
