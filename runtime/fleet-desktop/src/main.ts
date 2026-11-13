@@ -16,7 +16,7 @@ import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
 import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
-import { createHydratedDesktopEnvironment, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory } from "./environment.js";
+import { createHydratedDesktopEnvironment, migrateLegacyBrowserProfileRoot, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory, resolveLegacyBrowserProfileRoot } from "./environment.js";
 import { pushEntrySnapshot, type EntryPalette } from "./entry-page.js";
 import { createQuitFarewell, farewellSnapshot } from "./quit-farewell.js";
 import { measureBrandTarget } from "./brand-target.js";
@@ -83,15 +83,15 @@ const BROWSER_PARTITION = /^fleet-browser-[A-Za-z0-9._:-]{1,64}$/u;
  * 같은 로그인을 함께 쓴다. 임시 모드도 Console 이 보낸 단일 partition 을 공유한다.
  *
  * 콘솔은 **id 만** 보내고 경로는 여기서 만든다 — 임의 경로가 셸로 흘러들 길을 두지 않는다.
- * `fromPartition` 이 아니라 `fromPath` 인 것이 요점이다: 파티션은 앱의 `userData` 아래에 묶이는데,
- * 그 기본값이 Windows 에서 Roaming 이라 브라우저 캐시가 로그온마다 동기화된다.
+ * macOS·Linux 에서 이 경로는 userData 안이어야 한다. 네트워크 서비스 샌드박스가 그 밖에는
+ * 쿠키 저장소를 만들지 못한다. Windows 만 Roaming 을 피하려고 Fleet 루트를 쓴다.
  */
 const browserProfileSessions = new Map<string, Session>();
 function browserProfileSession(profile: string): Session {
   if (!DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
   const cached = browserProfileSessions.get(profile);
   if (cached) return cached;
-  const directory = path.join(resolveBrowserProfileRoot(), profile);
+  const directory = path.join(resolveBrowserProfileRoot(app.getPath("userData")), profile);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const created = session.fromPath(directory);
   installRequestGuard(created);
@@ -155,11 +155,18 @@ app.on("second-instance", (_event, argv) => receiveAccessLink(findAccessLinkArgu
 
 async function boot(): Promise<void> {
   await app.whenReady();
+  // 세션이나 히스토리 저장이 대상 디렉터리를 만들기 전에 옮긴다.
+  const browserProfileMigration = migrateLegacyBrowserProfileRoot({
+    targetRoot: resolveBrowserProfileRoot(app.getPath("userData")),
+    legacyRoot: resolveLegacyBrowserProfileRoot(),
+    isPackaged,
+  });
   applyDesktopDockIcon(app, desktopResources.iconPath);
   const runtimePaths = resolveRuntimePaths(os.homedir());
   const environment = await createHydratedDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   bootLogger = logger;
+  if (browserProfileMigration === "moved") logger.info("moved legacy browser profiles under userData so cookie storage is inside the network sandbox");
   const releases = createReleaseChecker();
   let pushRuntimeProgress: RuntimeProgress | null = null;
   const initialServiceVersion = readInstalledVersion(isPackaged ? runtimePaths.latest : desktopResources.serviceRoot) ?? "";
@@ -388,7 +395,7 @@ async function boot(): Promise<void> {
    * 그 콘솔의 에이전트가 이 기계의 Chromium 을 움직인다. 브라우저는 Desktop 앱의 기능이고 원격에서도 같은 경험이어야
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
-  const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot());
+  const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot(app.getPath("userData")));
   /**
    * 브라우저 표면(칸·독립 창)과 그 크롬. 크롬 문서는 셸의 정적 자산이고 Console 의 문서·렌더러를 거치지 않는다 — 사람의 동작은 Console 의 기존 REST 로 돌아가고,
    * 상태는 스냅샷으로 온다. 문서는 sandbox·Node 없음이고 사전 로드 스크립트도 없다 — 주입 프로그램만 main 이 넣는다.

@@ -66,16 +66,65 @@ export function resolveDesktopUserDataDirectory(userDataDir: string, resourceRoo
 }
 
 /**
- * 영속 브라우저 프로필이 사는 자리 — Fleet 루트 아래의 Desktop 슬롯.
- *
- * Electron 의 `userData` 를 쓰지 않는 것이 요점이다: 그 기본값은 Windows 에서 `%APPDATA%`(Roaming)이라
- * 브라우저 캐시와 쿠키가 로그온마다 동기화된다 — Chrome 자신이 프로필을 `%LOCALAPPDATA%` 에 두는 까닭이다.
- * Fleet 루트(`~/.fleet`)는 어느 플랫폼에서도 사용자 홈 아래이고 로밍되지 않으므로 분기가 필요 없다.
- * 개발 실행은 `FLEET_DESKTOP_DATA_DIR` 가 이미 격리 슬롯을 가리키므로 프로필도 함께 격리된다.
+ * 패키지된 앱이 쓰던 프로필 루트. macOS·Linux 는 더 이상 여기 두지 않고, 한 번만 옮긴다.
+ * Windows 는 계속 이 자리다.
  */
-export function resolveBrowserProfileRoot(env: NodeJS.ProcessEnv = process.env): string {
+export function resolveLegacyBrowserProfileRoot(env: NodeJS.ProcessEnv = process.env): string {
   const base = resolveDesktopDataDirectoryOverride(env) ?? path.join(resolveFleetDataDir(env), "desktop");
   return path.join(base, "browser-profiles");
+}
+
+/**
+ * 영속 브라우저 프로필이 사는 자리.
+ *
+ * macOS·Linux 네트워크 서비스 샌드박스는 기동 때 받은 `sessionData`(기본은 userData) 아래만
+ * 파일로 쓸 수 있다. 그 밖에 `session.fromPath` 를 두면 Cookies, Network Persistent State,
+ * TransportSecurity 가 생기지 않고 쿠키는 메모리에만 남는다. Local Storage 는 다른 서비스라 남는다.
+ * 그래서 이 플랫폼의 프로필은 userData 안으로 둔다. 개발 실행은 userData 가 이미 격리 슬롯이다.
+ *
+ * Windows 는 네트워크 데이터 이전 때 그 디렉터리 ACL 을 주므로 userData 밖도 쓸 수 있다.
+ * userData 기본값이 `%APPDATA%`(Roaming)이라 캐시와 쿠키가 로그온마다 동기화되므로, 로밍되지 않는 Fleet 루트를 유지한다.
+ */
+export function resolveBrowserProfileRoot(userDataDir: string, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+  if (platform === "win32") return resolveLegacyBrowserProfileRoot(env);
+  return path.join(userDataDir, "browser-profiles");
+}
+
+export type BrowserProfileRootMigration = "moved" | "skipped";
+
+/**
+ * 패키지된 macOS·Linux 앱의 기존 프로필 트리를 userData 밑으로 한 번 옮긴다.
+ * 개발 실행과 `FLEET_DATA_DIR`·`FLEET_DESKTOP_DATA_DIR` 격리는 사람의 실제 프로필을 건드리지 않는다.
+ * 대상에 이미 내용이 있거나 원본이 심볼릭 링크면 옮기지 않는다.
+ */
+export function migrateLegacyBrowserProfileRoot(input: {
+  readonly targetRoot: string;
+  readonly legacyRoot: string;
+  readonly isPackaged: boolean;
+  readonly env?: NodeJS.ProcessEnv;
+}): BrowserProfileRootMigration {
+  const env = input.env ?? process.env;
+  if (!input.isPackaged) return "skipped";
+  if (resolveDesktopDataDirectoryOverride(env) !== undefined) return "skipped";
+  if (readEnvironmentValue(env, FLEET_DATA_DIR_ENV) !== undefined) return "skipped";
+  if (path.resolve(input.targetRoot) === path.resolve(input.legacyRoot)) return "skipped";
+  if (!fs.existsSync(input.legacyRoot)) return "skipped";
+  const legacyStat = fs.lstatSync(input.legacyRoot);
+  if (!legacyStat.isDirectory() || legacyStat.isSymbolicLink()) return "skipped";
+  if (fs.existsSync(input.targetRoot)) {
+    if (!fs.statSync(input.targetRoot).isDirectory() || fs.readdirSync(input.targetRoot).length > 0) return "skipped";
+    fs.rmdirSync(input.targetRoot);
+  }
+  fs.mkdirSync(path.dirname(input.targetRoot), { recursive: true, mode: 0o700 });
+  try {
+    fs.renameSync(input.legacyRoot, input.targetRoot);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EXDEV") throw error;
+    fs.cpSync(input.legacyRoot, input.targetRoot, { recursive: true });
+    fs.rmSync(input.legacyRoot, { recursive: true, force: true });
+  }
+  return "moved";
 }
 
 export function createDesktopEnvironment(userDataDir: string, appVersion: string, resourceRoot: string, isPackaged: boolean, env: NodeJS.ProcessEnv = process.env, options: HydratedDesktopEnvironmentOptions & { readonly loginShellPath?: string } = {}): DesktopEnvironment {

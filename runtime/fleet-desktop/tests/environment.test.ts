@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { DESKTOP_CONSOLE_SOURCE_ENV, DESKTOP_DEVELOPMENT_ENV, DESKTOP_OWNER_ID_ENV, DESKTOP_OWNER_KIND_ENV, DESKTOP_PROTOCOL_VERSION_ENV, DESKTOP_RESOURCE_ROOT_ENV } from "@fleet-console/protocol/desktop";
 
-import { createDesktopEnvironment, createHydratedDesktopEnvironment, desktopExecutableSearchPaths, readInteractiveLoginShellPath, resolveDesktopUserDataDirectory, sanitizeEnvironment } from "../src/environment.js";
+import { createDesktopEnvironment, createHydratedDesktopEnvironment, desktopExecutableSearchPaths, migrateLegacyBrowserProfileRoot, readInteractiveLoginShellPath, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory, sanitizeEnvironment } from "../src/environment.js";
 
 const TEMP_DIRS: string[] = [];
 
@@ -57,6 +57,37 @@ describe("desktop environment", () => {
     TEMP_DIRS.push(userDataDir);
 
     expect(() => createDesktopEnvironment(userDataDir, "1.23.0", "/packaged/resources/sidecar/fleet-console", true, { fleet_console_dir: "relative-console" })).toThrow("desktop_console_dir_must_be_absolute");
+  });
+
+  it("keeps browser profiles inside userData except on Windows, where roaming userData is avoided", () => {
+    const userData = path.join(os.tmpdir(), "fleet-desktop-userdata");
+    const fleetRoot = path.join(os.tmpdir(), "fleet-desktop-fleet");
+    expect(resolveBrowserProfileRoot(userData, { FLEET_DATA_DIR: fleetRoot }, "darwin")).toBe(path.join(userData, "browser-profiles"));
+    expect(resolveBrowserProfileRoot(userData, { FLEET_DATA_DIR: fleetRoot }, "linux")).toBe(path.join(userData, "browser-profiles"));
+    expect(resolveBrowserProfileRoot(userData, { FLEET_DATA_DIR: fleetRoot }, "win32")).toBe(path.join(fleetRoot, "desktop", "browser-profiles"));
+  });
+
+  it("moves a packaged legacy profile root once and refuses isolated or unpackaged runs", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-profile-move-"));
+    TEMP_DIRS.push(root);
+    const legacy = path.join(root, "legacy");
+    const target = path.join(root, "user-data", "browser-profiles");
+    fs.mkdirSync(path.join(legacy, "default"), { recursive: true });
+    fs.writeFileSync(path.join(legacy, "default", "marker.txt"), "keep");
+
+    expect(migrateLegacyBrowserProfileRoot({ targetRoot: target, legacyRoot: legacy, isPackaged: false })).toBe("skipped");
+    expect(fs.existsSync(path.join(legacy, "default", "marker.txt"))).toBe(true);
+    expect(migrateLegacyBrowserProfileRoot({ targetRoot: target, legacyRoot: legacy, isPackaged: true, env: { FLEET_DATA_DIR: root } })).toBe("skipped");
+    expect(migrateLegacyBrowserProfileRoot({ targetRoot: target, legacyRoot: legacy, isPackaged: true, env: { FLEET_DESKTOP_DATA_DIR: root } })).toBe("skipped");
+    expect(fs.existsSync(path.join(legacy, "default", "marker.txt"))).toBe(true);
+
+    expect(migrateLegacyBrowserProfileRoot({ targetRoot: target, legacyRoot: legacy, isPackaged: true, env: {} })).toBe("moved");
+    expect(fs.readFileSync(path.join(target, "default", "marker.txt"), "utf8")).toBe("keep");
+    expect(fs.existsSync(legacy)).toBe(false);
+    fs.mkdirSync(legacy, { recursive: true });
+    fs.writeFileSync(path.join(legacy, "other.txt"), "nope");
+    expect(migrateLegacyBrowserProfileRoot({ targetRoot: target, legacyRoot: legacy, isPackaged: true, env: {} })).toBe("skipped");
+    expect(fs.existsSync(path.join(target, "other.txt"))).toBe(false);
   });
 
   it("sanitizes case-insensitive Electron, Node, and Desktop control keys", () => {
