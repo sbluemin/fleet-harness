@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { ConsoleRosterCommander, ConsoleRosterCommodore, ConsoleRosterRun, ConsoleSectionEntry } from "@fleet-console/protocol/desktop/console-section";
 import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -118,7 +118,10 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
   </li>;
 }
 
-/** 다른 콘솔 명부의 사용자 섹션. 로컬 머리글과 같은 클래스이고, 접기·이름 바꾸기는 하지 않는다. */
+/**
+ * 다른 콘솔 명부의 사용자 섹션. 로컬 머리글과 같은 클래스이고, 이름 바꾸기·옮기기는 하지 않는다.
+ * 접힘은 그 콘솔의 상태에서 시작하되, 머리글을 누르면 이 화면에서만 펼치고 접는다 — 접힌 섹션의 사령관으로도 넘어갈 수 있어야 한다.
+ */
 function RosterSections({ sections, unsectionedCollapsed, rows, render }: {
   readonly sections: readonly { readonly id: string; readonly name: string; readonly collapsed?: true }[];
   readonly unsectionedCollapsed: boolean;
@@ -126,20 +129,24 @@ function RosterSections({ sections, unsectionedCollapsed, rows, render }: {
   readonly render: (commodore: ConsoleRosterCommodore) => ReactNode;
 }) {
   const t = useT();
+  const [flipped, setFlipped] = useState<ReadonlySet<string>>(() => new Set());
   const known = new Set(sections.map((section) => section.id));
   const unsectioned = rows.filter((row) => row.section === undefined || !known.has(row.section));
-  const group = (id: string | null, name: string, collapsed: boolean, members: readonly ConsoleRosterCommodore[]) => (
-    <li key={id ?? "none"} className="workspace-commodore-section" data-sidebar-section={id ?? ""}>
-      <div className="workspace-commodore-section-head is-static" title={name}>
+  const group = (id: string | null, name: string, stored: boolean, members: readonly ConsoleRosterCommodore[]) => {
+    const key = id ?? "";
+    const collapsed = stored !== flipped.has(key);
+    const toggle = () => setFlipped((current) => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next; });
+    return <li key={id ?? "none"} className="workspace-commodore-section" data-sidebar-section={key}>
+      <button type="button" className="workspace-commodore-section-head" data-keep-objective-active="" aria-expanded={!collapsed} title={name} onClick={toggle}>
         <span className="workspace-commodore-section-label">{name}</span>
         {collapsed ? <span className="workspace-commodore-section-count">{members.length}</span> : null}
         <ChevronGlyph direction={collapsed ? "right" : "down"} className="workspace-commodore-section-chevron" />
-      </div>
+      </button>
       {collapsed ? null : <ol className="workspace-commodore-section-rows">
         {members.length > 0 ? members.map(render) : <li className="workspace-commodore-section-empty">{t("sidebar.commodoreSection.empty")}</li>}
       </ol>}
-    </li>
-  );
+    </li>;
+  };
   return <>
     {sections.map((section) => group(section.id, section.name, section.collapsed === true, rows.filter((row) => row.section === section.id)))}
     {group(null, t("sidebar.commodoreSection.none"), unsectionedCollapsed, unsectioned)}
