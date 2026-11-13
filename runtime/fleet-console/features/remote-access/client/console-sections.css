@@ -159,3 +159,36 @@
   .side-console-roster::before { background: CanvasText; }
   .side-console-here { background: Highlight; color: HighlightText; }
 }
+
+/* ── 통합 사이드바(심리스) — 머신 머리글 없이 한 벌의 섹션에 모든 머신 행을 둔다 ── */
+/* 이름 줄: 이름이 길면 이름이 먼저 줄고 칩은 남는다. */
+.unified-row-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.unified-row-line .side-bar-theater-name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unified-row-head { position: relative; }
+.unified-row-head .side-bar-theater-text { flex: 1; min-width: 0; }
+.unified-row-head .side-bar-theater-activate { padding-right: 30px; }
+/* 다른 머신 행의 이름 옆 칩 — 글자만 둔다. 톤은 머신마다 고정(테마를 아는 토큰만 쓴다). 닿지 않는 머신은 행이 흐려진다. */
+.unified-machine-chip { display: inline-flex; align-items: center; flex: none; max-width: 112px; padding: 3px 7px; border: 0; border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mc, var(--text-secondary)) 16%, transparent); color: color-mix(in oklch, var(--mc, var(--text-secondary)) 60%, var(--text-primary));
+  font-size: var(--t-xs); font-weight: var(--weight-bold); line-height: 1; cursor: pointer; }
+.unified-machine-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.unified-machine-chip:focus-visible { box-shadow: var(--focus-face); outline: none; }
+/* 행의 ⋯ — 머리 위에 겹쳐 뜨고, 가리키거나 초점이 오면 보인다. */
+.unified-row-menu-trigger { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px;
+  border: 0; border-radius: 6px; background: none; color: var(--text-tertiary); cursor: pointer; opacity: 0; }
+.unified-row-menu-trigger svg { width: 16px; height: 16px; }
+.unified-row-head:hover .unified-row-menu-trigger, .unified-row-head:focus-within .unified-row-menu-trigger { opacity: 1; }
+.unified-row-menu-trigger:focus-visible { box-shadow: var(--focus-face); outline: none; opacity: 1; }
+/* 닿지 않는 머신의 행은 마지막 목록을 흐리게 유지한다. */
+.side-bar-theater-section.is-unified-dim { opacity: 0.55; }
+/* 좁은 열의 통합 행 — 아바타만 둔다. */
+.unified-compact-row { display: flex; align-items: center; justify-content: center; width: 36px; height: 32px; padding: 0; border: 0; border-radius: 8px; background: none; cursor: pointer; }
+.unified-compact-row:hover { background: var(--wash-hover); }
+.unified-compact-row:focus-visible { box-shadow: var(--focus-face); outline: none; }
+/* 칩을 누르면 나오는 머신 카드 — 이름·주소·상태와 「이 콘솔 관리」 진입. SectionMenu 오버레이 안에 선다. */
+.unified-machine-card { display: flex; flex-direction: column; gap: 6px; min-width: 200px; max-width: 260px; padding: 2px; }
+.unified-machine-card b { color: var(--text-primary); font-size: var(--t-sm); }
+.unified-machine-card div { color: var(--text-secondary); font-size: var(--t-xs); }
+/* 행이 없는 머신의 맨 아래 알림 줄 — 기존 안내(.side-console-note) 모양에 단추 줄만 얹는다. */
+.unified-machine-notice-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.unified-machine-notice-actions .side-console-enter, .unified-machine-notice-actions .side-console-cert { align-self: auto; }

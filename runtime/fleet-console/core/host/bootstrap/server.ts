@@ -7,7 +7,7 @@ import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
-import { CONSOLE_ROSTER_PATH } from "../../../protocol/desktop/console-section.js";
+import { CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isUnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
 import { consoleRosterCommanders, consoleRosterRun, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterSort } from "../../../features/commodore/host/roster.js";
 import { livePersonHold, reasonAwaits } from "../../../features/objectives/shared/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective } from "../../../features/objectives/shared/types.js";
@@ -1702,6 +1702,26 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return String(req.headers.upgrade ?? "").toLowerCase() !== "websocket";
   }
 
+  /**
+   * 보는 컴퓨터의 통합 배치. 루프백에서만 답하고, `commodoreSidebar`·`commodoreOrder`는 건드리지 않는다.
+   * 원격 문서가 자기 origin으로 쓰면 그 머신의 배치가 되므로 원격 리스너에서는 없는 경로다.
+   */
+  async function handleUnifiedSidebar(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
+    if (!isTerminalAuthorized(req)) { writeJson(res, 401, { error: "unauthorized" }); return; }
+    if (req.method === "GET" || req.method === "HEAD") {
+      res.setHeader("Cache-Control", "no-store");
+      writeJson(res, 200, { v: 1, layout: consoleSettingsStore.load().unifiedSidebar ?? null });
+      return;
+    }
+    if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return; }
+    const body = await readJsonBody<unknown>(req);
+    const layout = body !== null && typeof body === "object" && !Array.isArray(body) ? (body as { layout?: unknown }).layout : undefined;
+    if (!isUnifiedSidebarLayout(layout)) { writeJson(res, 400, { error: "invalid_request" }); return; }
+    consoleSettingsStore.update((current) => ({ ...current, unifiedSidebar: layout }));
+    res.setHeader("Cache-Control", "no-store");
+    writeJson(res, 200, { v: 1, layout });
+  }
+
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
     const pathname = getPathname(req);
     /**
@@ -1737,6 +1757,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (archiveStorage.blocked() && (pathname.startsWith("/api/") || pathname.startsWith("/mcp/")) && pathname !== "/api/v1/health" && pathname !== CONSOLE_STOP_REQUEST_PATH) {
       writeJson(res, 503, { error: "archive_recovery_required" });
+      return;
+    }
+    if (pathname === UNIFIED_SIDEBAR_PATH) {
+      const current = listenerForRequest(req);
+      // 통합 배치는 이 콘솔을 집으로 보는 Desktop의 것이다. 원격 리스너에 열면 그 머신의 배치가 된다.
+      if (!current || current.audience !== "local") { writeJson(res, 404, { error: "not_found" }); return; }
+      void handleUnifiedSidebar(req, res);
       return;
     }
     if (pathname === "/" && (req.method === "GET" || req.method === "HEAD")) {

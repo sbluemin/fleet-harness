@@ -1,6 +1,7 @@
 import { readFontSettings, migrateFontSettings, migrateTerminalFont, type ConsoleFontSettings } from "../shared/fonts.js";
 import crypto from "node:crypto";
 import { sanitizeCommodoreSidebarLayout, type CommodoreSidebarLayout } from "../../commodore/shared/contracts/sidebar-layout.js";
+import { isUnifiedSidebarLayout, type UnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
 import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
@@ -221,6 +222,11 @@ export interface ConsoleSettingsData {
   /** 사령관 섹션의 표시 순서. 존재 여부는 사령관 feature가 조회·저장할 때 판단한다. */
   readonly commodoreOrder?: readonly string[];
   readonly commodoreSidebar?: CommodoreSidebarLayout;
+  /**
+   * 이 컴퓨터를 보는 Desktop의 통합 사이드바. `commodoreSidebar`와 별개이고, 다른 머신의 섹션 파일을 바꾸지 않는다.
+   * 문서가 직접 쓰지 않는다. 집 콘솔의 루프백에서 Desktop 메인 프로세스만 쓴다.
+   */
+  readonly unifiedSidebar?: UnifiedSidebarLayout;
   readonly browser?: ConsoleBrowserSettings;
   readonly execution?: Record<string, unknown>;
   /**
@@ -314,6 +320,7 @@ export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData
     ...(browser ? { browser } : {}),
     ...(commodoreOrder.length ? { commodoreOrder } : {}),
     ...(value.commodoreSidebar ? { commodoreSidebar: sanitizeCommodoreSidebarLayout(value.commodoreSidebar) } : {}),
+    ...(isUnifiedSidebarLayout(value.unifiedSidebar) ? { unifiedSidebar: value.unifiedSidebar } : {}),
   };
 }
 

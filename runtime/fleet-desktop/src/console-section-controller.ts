@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
-import { CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, CONSOLE_WSL_EVENT, isConsoleRosterSummary, parseConsoleSectionCommand, type ConsoleManagedDetail, type ConsoleWslInspection, type ConsoleWslState, type ConsoleRightPanel, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_COMMODORE_CREATE_EVENT, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, CONSOLE_UNIFIED_SIDEBAR_EVENT, CONSOLE_WSL_EVENT, UNIFIED_SIDEBAR_HOME, UNIFIED_SIDEBAR_PATH, applyUnifiedSidebarCommand, fitUnifiedSidebarState, isConsoleRosterSummary, isUnifiedSidebarLayout, isUnifiedSidebarState, parseConsoleSectionCommand, projectUnifiedSidebar, reconcileUnifiedSidebar, seedUnifiedFromSnapshots, withoutUnifiedConsole, type ConsoleCommodoreCreateResult, type ConsoleManagedDetail, type ConsoleWslInspection, type ConsoleWslState, type ConsoleRightPanel, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState, type UnifiedCreateReason, type UnifiedMachineSnapshot, type UnifiedSidebarLayout } from "@fleet-console/protocol/desktop/console-section";
 import { consoleLifecycleActions, type ConsoleAccessPath, type ConsoleLifecycleAction, type ConsoleManagedLifecycle, type ConsoleManagementRelation } from "@fleet-console/protocol/lifecycle/management";
 import type { RemotePinRecord } from "./remote-access.js";
 
@@ -133,6 +133,7 @@ export function createConsoleSectionController(deps: Dependencies) {
   let arrivalTimer: ReturnType<typeof setTimeout> | null = null;
   const folded = new Set<string>();
   const rosterMemory = new Map<string, RosterMemory>();
+  let unifiedLayout: UnifiedSidebarLayout | null = null;
   let remoteIdentities = new Map<string, RemoteIdentity>();
   const at = () => {
     try { const url = new URL(contents?.getURL() ?? ""); return url.pathname.startsWith("/console/") ? url.origin : null; } catch { return null; }
@@ -347,6 +348,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     await Promise.all([...next.values()].filter((target) => target.origin !== "").map((target) => fetchRoster(target)));
     if (epoch !== generation || targets !== next) return;
     await publishRoster();
+    await syncUnified(epoch);
   }
   async function load(): Promise<void> {
     const origin = home();
@@ -566,10 +568,139 @@ export function createConsoleSectionController(deps: Dependencies) {
     }
     await publishWsl();
   }
+  function consoleIdOf(target: Target): string | null {
+    if (target.entry.home) return UNIFIED_SIDEBAR_HOME;
+    if (target.recordId) return target.recordId;
+    if (target.managedKey) return target.managedKey;
+    return target.origin || null;
+  }
+  function machineSnapshots(): UnifiedMachineSnapshot[] {
+    return [...targets.values()].flatMap((target) => {
+      const consoleId = consoleIdOf(target);
+      if (!consoleId) return [];
+      const memory = target.origin ? rosterMemory.get(target.origin) : undefined;
+      const roster = memory ? {
+        status: memory.status, more: memory.more, sections: memory.sections ?? [], commodores: memory.commodores,
+        ...(memory.unsectionedCollapsed ? { unsectionedCollapsed: true as const } : {}),
+      } : null;
+      return [{
+        consoleId, label: target.entry.label || target.entry.address, address: target.entry.address || target.entry.label,
+        home: target.entry.home, kind: target.entry.kind, status: target.entry.status, entryId: target.entry.id, ...(target.entry.path ? { path: target.entry.path } : {}), roster,
+      }];
+    });
+  }
+  async function readUnified(): Promise<"absent" | "invalid" | UnifiedSidebarLayout> {
+    const origin = home();
+    if (!origin) return "invalid";
+    try {
+      const headers = new Headers();
+      headers.set("Origin", origin);
+      const response = await deps.fetch(new URL(UNIFIED_SIDEBAR_PATH, origin).toString(), { method: "GET", headers, redirect: "error", signal: AbortSignal.timeout(10_000) });
+      if (!response.ok) return "invalid";
+      const body: unknown = await response.json();
+      if (!body || typeof body !== "object" || Array.isArray(body) || (body as { v?: unknown }).v !== 1 || !("layout" in body)) return "invalid";
+      const layout = (body as { layout: unknown }).layout;
+      if (layout === null) return "absent";
+      return isUnifiedSidebarLayout(layout) ? layout : "invalid";
+    } catch { return "invalid"; }
+  }
+  async function writeUnified(layout: UnifiedSidebarLayout): Promise<void> {
+    const origin = home();
+    if (!origin) return;
+    const headers = new Headers();
+    headers.set("Origin", origin);
+    headers.set("Content-Type", "application/json");
+    const response = await deps.fetch(new URL(UNIFIED_SIDEBAR_PATH, origin).toString(), { method: "POST", headers, body: JSON.stringify({ layout }), redirect: "error", signal: AbortSignal.timeout(10_000) });
+    if (!response.ok) throw new Error("unified_sidebar_write_failed");
+  }
+  async function publishUnified(): Promise<void> {
+    const receiver = contents;
+    const origin = at();
+    if (!receiver || receiver.isDestroyed() || !origin || !unifiedLayout) return;
+    const state = fitUnifiedSidebarState(projectUnifiedSidebar(unifiedLayout, machineSnapshots()));
+    if (!isUnifiedSidebarState(state)) return;
+    const script = `if(location.origin===${JSON.stringify(origin)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_UNIFIED_SIDEBAR_EVENT)},{detail:${JSON.stringify(state)}}))`;
+    await receiver.executeJavaScript(script).catch(() => undefined);
+  }
+  function publishCreate(result: ConsoleCommodoreCreateResult): void {
+    const receiver = contents;
+    const origin = at();
+    if (!receiver || receiver.isDestroyed() || !origin) return;
+    const script = `if(location.origin===${JSON.stringify(origin)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_COMMODORE_CREATE_EVENT)},{detail:${JSON.stringify(result)}}))`;
+    void receiver.executeJavaScript(script).catch(() => undefined);
+  }
+  async function syncUnified(epoch: number): Promise<void> {
+    if (epoch !== generation) return;
+    const stored = await readUnified();
+    if (epoch !== generation || stored === "invalid") return;
+    const snapshots = machineSnapshots();
+    const seeded = stored === "absent" ? seedUnifiedFromSnapshots(snapshots, randomUUID) : stored;
+    if (!seeded) return;
+    const next = stored === "absent" ? seeded : reconcileUnifiedSidebar(seeded, snapshots, randomUUID);
+    if (stored === "absent" || JSON.stringify(next) !== JSON.stringify(stored)) {
+      try { await writeUnified(next); } catch (error) { deps.report(error); return; }
+      if (epoch !== generation) return;
+    }
+    unifiedLayout = next;
+    await publishUnified();
+  }
+  async function dropUnifiedConsole(consoleId: string): Promise<void> {
+    if (!unifiedLayout) return;
+    const next = withoutUnifiedConsole(unifiedLayout, consoleId);
+    if (JSON.stringify(next) === JSON.stringify(unifiedLayout)) return;
+    unifiedLayout = next;
+    try { await writeUnified(next); } catch (error) { deps.report(error); }
+    await publishUnified();
+  }
+  async function runUnified(command: Extract<ConsoleSectionCommand, { readonly unified: unknown }>["unified"]): Promise<void> {
+    if (!unifiedLayout) await syncUnified(generation);
+    if (command.op === "state" || !unifiedLayout) { await publishUnified(); return; }
+    const next = applyUnifiedSidebarCommand(unifiedLayout, command, randomUUID);
+    if (!next) return;
+    unifiedLayout = next;
+    try { await writeUnified(next); } catch (error) { deps.report(error); return; }
+    await publishUnified();
+  }
+  async function runCreateCommodore(command: Extract<ConsoleSectionCommand, { readonly createCommodore: unknown }>["createCommodore"]): Promise<void> {
+    const fail = (reason: UnifiedCreateReason) => {
+      publishCreate({ v: 1, request: command.request, consoleId: command.consoleId, ok: false, reason });
+    };
+    const target = [...targets.values()].find((item) => consoleIdOf(item) === command.consoleId);
+    const blocked = target?.entry.status ?? null;
+    const down: UnifiedCreateReason = blocked === "unreachable" ? "unreachable" : "unavailable";
+    if (!target || !target.origin) { fail(down); return; }
+    if (blocked === "untrusted") { fail("untrusted"); return; }
+    if (blocked === "unreachable") { fail("unreachable"); return; }
+    const http = target.entry.kind === "remote" ? deps.rosterFetch ?? deps.fetch : deps.fetch;
+    try {
+      const headers = new Headers();
+      headers.set("Origin", target.origin);
+      headers.set("Content-Type", "application/json");
+      const response = await http(new URL("/api/v1/commodore/create", target.origin).toString(), { method: "POST", headers, body: JSON.stringify({ alias: command.alias }), redirect: "error", signal: AbortSignal.timeout(10_000) });
+      if (response.status === 401 || response.status === 403) { fail("access"); return; }
+      if (response.status === 404) { fail("unsupported"); return; }
+      if (response.status === 400) { fail("invalid"); return; }
+      if (!response.ok) { fail("unavailable"); return; }
+      const body: unknown = await response.json();
+      const commodoreId = body && typeof body === "object" && !Array.isArray(body) ? (body as { commodoreId?: unknown }).commodoreId : undefined;
+      if (typeof commodoreId !== "string" || commodoreId.length === 0) { fail("unavailable"); return; }
+      if (command.look) {
+        // 옛 콘솔은 이 쓰기를 몰라도 생성은 유지한다. 키 모양은 콘솔의 commodoreAvatarKey와 같다.
+        const face = new Headers();
+        face.set("Origin", target.origin);
+        face.set("Content-Type", "application/json");
+        await http(new URL("/api/v1/avatars", target.origin).toString(), { method: "PUT", headers: face, body: JSON.stringify({ mode: "set", key: `theater:commodore:${commodoreId}`, base: command.look.base, tone: command.look.tone }), redirect: "error", signal: AbortSignal.timeout(10_000) }).catch(() => undefined);
+      }
+      publishCreate({ v: 1, request: command.request, consoleId: command.consoleId, ok: true, commodoreId });
+      const previous = rosterMemory.get(target.origin);
+      if (previous) rosterMemory.set(target.origin, { ...previous, attemptedAt: 0 });
+      await refresh();
+    } catch { fail(down); }
+  }
   async function command(value: ConsoleSectionCommand, fromHome: boolean): Promise<void> {
     // 막 적재된 문서는 도착할 사령관을 기다리며 「다 그렸다」를 미룬다. 집 목록과 명부를 다시 읽기 전에
     // 지금 아는 상태를 먼저 건네야 그 기다림이 조회 시간만큼 늘어나지 않는다.
-    if ("request" in value) { await publish(); await publishRoster(); await refresh(); return; }
+    if ("request" in value) { await publish(); await publishRoster(); await publishUnified(); await refresh(); return; }
     if ("expanded" in value) { expanded = value.expanded; await publish(); if (expanded) await refresh(); return; }
     if ("add" in value) {
       const origin = home();
@@ -605,6 +736,8 @@ export function createConsoleSectionController(deps: Dependencies) {
       } catch (error) { deps.report(error); } finally { await refresh(); }
       return;
     }
+    if ("unified" in value) { await runUnified(value.unified); return; }
+    if ("createCommodore" in value) { await runCreateCommodore(value.createCommodore); return; }
     if ("takeover" in value) {
       // The person hands a Console they started from a terminal to this Desktop, from the surface the home Console draws.
       const taken = targets.get(value.takeover);
@@ -658,7 +791,10 @@ export function createConsoleSectionController(deps: Dependencies) {
     if (target.managedKey !== undefined) {
       // Dropping a managed Console forgets its registration only, after the shell's own question.
       if (!("forget" in value) || !target.entry.managed?.removable || !deps.managedConsoles || !await deps.confirmUnmanage?.(target.entry.label)) return;
-      try { await deps.managedConsoles.remove(target.managedKey); } catch (error) { deps.report(error); } finally { await refresh(); }
+      try {
+        await deps.managedConsoles.remove(target.managedKey);
+        await dropUnifiedConsole(target.managedKey);
+      } catch (error) { deps.report(error); } finally { await refresh(); }
       return;
     }
     if (!target.recordId || mutating) return;
@@ -668,6 +804,7 @@ export function createConsoleSectionController(deps: Dependencies) {
       if ("forget" in value && !await deps.confirmForget(target.entry.label)) { await publish(); return; }
       if (epoch !== generation || targets.get(id)?.recordId !== target.recordId) return;
       await json(`/api/v1/remote-hosts/${encodeURIComponent(target.recordId)}`, "rename" in value ? { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ label: value.rename.label }) } : { method: "DELETE" });
+      if ("forget" in value) await dropUnifiedConsole(target.recordId);
       await refresh();
     } finally { mutating = false; }
   }
@@ -682,6 +819,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     clearArrival();
     folded.clear();
     rosterMemory.clear();
+    unifiedLayout = null;
     remoteIdentities = new Map();
   }
   return {

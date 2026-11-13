@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readConsoleLockFile } from "@fleet-console/lifecycle";
 import { PAIRED_DEVICE_LIMIT } from "../features/remote-access/host/paired-devices.js";
 import * as remoteAuth from "../features/remote-access/host/auth.js";
-import { CONSOLE_ROSTER_PATH, isConsoleRosterSummary } from "../protocol/desktop/console-section.js";
+import { CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isConsoleRosterSummary, isUnifiedSidebarLayout } from "../protocol/desktop/console-section.js";
 import { consoleRosterCommanders, consoleRosterLook, consoleRosterPreview, consoleRosterRun, consoleRosterSections, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterCommanderSource } from "../features/commodore/host/roster.js";
 import { normalizeFingerprint } from "../features/remote-access/host/remote-identity.js";
 import { parseAccessLink } from "../features/remote-access/host/access-link.js";
@@ -150,6 +150,34 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(await revoke(fixture, `paired-devices/${device.id}`)).toBe(204);
     expect((await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH, undefined, paired)).status).toBe(401);
     expect(snapshot()).toMatchObject({ full: false, monitoring: false });
+  });
+
+  it("stores unified placement on the loopback home only and leaves commodoreSidebar untouched", async () => {
+    const fixture = await startFixture({ remote: true });
+    const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
+    const layout = {
+      v: 1, seeded: true,
+      sections: [{ id: "section-1", name: "플릿", collapsed: false }],
+      membership: [{ consoleId: "machine-mac", commodoreId: "commodore-remote", sectionId: "section-1" }],
+      order: [{ consoleId: "machine-mac", commodoreId: "commodore-remote" }],
+      unsectionedCollapsed: false,
+    };
+    expect(isUnifiedSidebarLayout(layout)).toBe(true);
+    expect((await fetch(`${origin}${UNIFIED_SIDEBAR_PATH}`, { headers: { Origin: "http://other.invalid" } })).status).toBe(401);
+    const saved = await fetch(`${origin}${UNIFIED_SIDEBAR_PATH}`, {
+      method: "POST", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ layout }),
+    });
+    expect(saved.status).toBe(200);
+    expect(await saved.json()).toEqual({ v: 1, layout });
+    const read = await fetch(`${origin}${UNIFIED_SIDEBAR_PATH}`, { headers: { Origin: origin } });
+    expect(read.status).toBe(200);
+    expect(await read.json()).toEqual({ v: 1, layout });
+    const settings = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { commodoreSidebar?: unknown; unifiedSidebar?: unknown };
+    expect(settings.unifiedSidebar).toEqual(layout);
+    expect(settings.commodoreSidebar).toBeUndefined();
+    const full = await joinAs(fixture, "full", "unified-device");
+    expect((await remoteRequest(fixture, "GET", UNIFIED_SIDEBAR_PATH, undefined, full)).status).toBe(404);
+    expect((await remoteRequest(fixture, "POST", UNIFIED_SIDEBAR_PATH, JSON.stringify({ layout }), full)).status).toBe(404);
   });
 
   it("serves the commodore's own last reply as the roster preview without opening the read", async () => {

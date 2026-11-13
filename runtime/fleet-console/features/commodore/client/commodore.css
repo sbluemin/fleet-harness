@@ -680,6 +680,15 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-create-body .mongle-picker-tone { padding: 3px; border-width: 1.5px; }
 .commodore-create-body .mongle-picker-tone i { width: 28px; height: 28px; }
 .commodore-create-failed { margin: 0; color: var(--coral-ink); font-size: var(--t-sm); }
+/* 만들 머신 — 페어링된 다른 머신이 있을 때만 맨 위에 선다. 없으면 이 한 벌이 통째로 없다. */
+.commodore-create-machine-label { align-self: stretch; color: var(--text-secondary); font-size: var(--t-xs); font-weight: var(--weight-bold); }
+.commodore-create-machine-seg { display: flex; flex-wrap: wrap; gap: 6px; align-self: stretch; }
+.commodore-create-machine-seg button { padding: 7px 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: none; color: var(--text-primary); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-medium); cursor: pointer; }
+.commodore-create-machine-seg button[aria-pressed="true"] { border-color: var(--text-primary); background: color-mix(in oklch, var(--text-primary) 8%, transparent); }
+.commodore-create-machine-seg button:disabled { opacity: 0.45; cursor: not-allowed; }
+.commodore-create-machine-seg button:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.commodore-create-machine-note { align-self: stretch; display: flex; flex-direction: column; gap: 4px; }
+.commodore-create-machine-note p { margin: 0; color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.5; }
 .commodore-create-foot { flex: none; display: flex; justify-content: flex-end; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--hairline); }
 .commodore-create-button { min-width: 72px; padding: 8px 18px; border-radius: var(--radius-pill); }
 /*

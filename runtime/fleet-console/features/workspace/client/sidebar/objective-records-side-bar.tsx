@@ -43,6 +43,9 @@ import { openTheaterInbox } from "../theater-inbox/store.js";
 import { resolveObjectiveActivity } from "../../../execution/client/objective-activity.js";
 import { commodoreSectionDropFromPoint, type CommodoreSectionDrop, reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
 import { CommodoreSidebarSection, CommodoreSectionMoveMenu, useCommodoreSidebarSections, type SidebarSectionsController } from "./commodore-sidebar-sections.js";
+import { UnifiedSidebarList, unifiedRowKey, type UnifiedStandingMenu } from "./unified-sidebar-sections.js";
+import type { UnifiedSidebarRow } from "@fleet-console/protocol/desktop/console-section";
+import { useUnifiedSidebar } from "./unified-sidebar.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { ConsoleRosterSection } from "./console-roster.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
@@ -193,7 +196,6 @@ export function ObjectiveRecordsSideBar({
 }: ObjectiveRecordsSideBarProps) {
   const t = useT();
   const showSettled = useCommanderShowSettled();
-  const searchShortcut = useSearchShortcutLabel();
   const rootRef = useRef<HTMLElement | null>(null);
   const listRef = useRef<HTMLOListElement | null>(null);
   const sideBar = useSideBarState();
@@ -204,6 +206,9 @@ export function ObjectiveRecordsSideBar({
   const expandedCommanders = useCommanderExpanded();
   const sidebarSections = useCommodoreSidebarSections();
   const consoles = useConsoleSections();
+  const unified = useUnifiedSidebar();
+  // 셸이 통합 배치를 건네면 머신 머리글·머신별 섹션 반복 없이 한 벌로 그린다. 브라우저·모바일·옛 셸은 아래 옛 경로 그대로다.
+  const unifiedReady = unified.active && unified.layout !== null;
   const sidebarSectionsRef = useRef(sidebarSections);
   const { objectiveRecordRuntime, objectiveRecordsHydrated, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
   const [drag, setDrag] = useState<TheaterDragState | null>(null);
@@ -265,7 +270,8 @@ export function ObjectiveRecordsSideBar({
     const place = () => {
       if (arrival.scrollTop !== null) return;
       const list = listRef.current;
-      const row = known && list ? list.querySelector<HTMLElement>(`.side-bar-theater-section[data-theater-id="${CSS.escape(arrival.commodore)}"]`) : null;
+      // 통합 배치에서는 행 id가 「콘솔\사령관」 합성키라 사령관 id로는 data-commodore-id로 찾는다.
+      const row = known && list ? list.querySelector<HTMLElement>(`.side-bar-theater-section[data-theater-id="${CSS.escape(arrival.commodore)}"], .side-bar-theater-section[data-commodore-id="${CSS.escape(arrival.commodore)}"]`) : null;
       if (!list || !row) return;
       // 옛 셸은 scrollTop 없이 anchorY만 보낸다. 도착한 목록은 맨 위에서 시작하므로, 고른 행이 보이게만 한다.
       (row.querySelector<HTMLElement>(".side-bar-theater-header") ?? row).scrollIntoView({ block: "nearest" });
@@ -331,6 +337,7 @@ export function ObjectiveRecordsSideBar({
     return () => cancelAnimationFrame(frame);
   }, [arrival, commodoresLoaded]);
   const taskforceExperiment = useTaskforceExperiment();
+  const tfStanding = taskforceT(useConsoleLocale());
   const allTaskforces = useTaskforces();
   // 실험이 꺼져 있으면 TF 행을 그리지 않는다 — 순서·소속 저장은 그대로 두어 다시 켜면 돌아온다.
   const tfSummaries = taskforceExperiment.enabled ? allTaskforces : EMPTY_TASKFORCE_SUMMARIES;
@@ -607,6 +614,18 @@ export function ObjectiveRecordsSideBar({
     else openTheaterInbox({ theaterId: theater.id, sectionId: "commodore:commodore", pageId: "log", returnFocus });
   };
 
+  // 통합 배치에서 집 행을 지금 문서(집)에서 여는 일 — 로컬 사령관 머리 열기와 같다.
+  const openUnifiedHomeCommodore = (row: { readonly commodoreId: string; readonly name: string }) => {
+    openTheaterHeaderInbox({
+      id: row.commodoreId,
+      label: row.name,
+      createdAt: "",
+      lastOpenedAt: "",
+      activeAdmiralCount: 0,
+      commodore: { id: row.commodoreId },
+    }, null);
+  };
+
   // "Theater 추가" 요청 소비(팔레트) — 그 사령관의 폴더 브라우저를 연다.
   useEffect(() => {
     const commodoreId = pendingSideBarAddTheater;
@@ -633,6 +652,60 @@ export function ObjectiveRecordsSideBar({
     onStartAliasEdit: startAliasEdit,
     onFinishAliasEdit: finishAliasEdit,
   });
+
+  // 통합 행의 서 있는 콘솔 동작 — 항목과 조건은 비통합 분기의 TheaterActionsMenu와 같고, 로컬 섹션 옮기기만
+  // 통합 이동·새 섹션(행 ⋯ 메뉴 앞부분)으로 갈음한다. 다른 머신 행에는 주지 않는다.
+  const standingTheaterFor = (row: UnifiedSidebarRow): SideBarHead => {
+    const face = faces.find((item) => item.kind === "commodore" && item.section.commodoreId === row.commodoreId);
+    const section = face?.kind === "commodore" ? face.section : null;
+    return {
+      id: row.commodoreId,
+      label: section?.alias ?? section?.label ?? row.name,
+      createdAt: "",
+      lastOpenedAt: "",
+      activeAdmiralCount: 0,
+      commodore: { id: row.commodoreId, ...(section?.alias ? { alias: section.alias } : {}) },
+    };
+  };
+  const standingMenu: UnifiedStandingMenu = {
+    renderItems: (row, onClose, opener) => {
+      const theater = standingTheaterFor(row);
+      return <>
+        <div className="theater-menu-divider" aria-hidden="true" />
+        <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={() => { onClose(); startAliasEdit(row.commodoreId); }}>
+          <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.commodore.rename")}</span>
+        </button>
+        <div className="theater-menu-divider" aria-hidden="true" />
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); openCommodoreNewSession(row.commodoreId); }}>
+          <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.commodore.newSession")}</span>
+        </button>
+        {taskforceExperiment.enabled ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(row.commodoreId); }}>
+          <span className="theater-menu-check" aria-hidden="true"><TaskforceIcon /></span>
+          <span className="theater-menu-label">{tfStanding("taskforce.fromCommodore")}</span>
+        </button> : null}
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); openTheaterBrowser(row.commodoreId); }}>
+          <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.commodore.addTheater")}</span>
+        </button>
+        <TheaterContributionMenuItems theater={theater} onClose={onClose} />
+        <div className="theater-menu-divider" aria-hidden="true" />
+        <button type="button" role="menuitem" className="theater-menu-item theater-menu-forget" onClick={() => { onClose(); requestCommodoreDelete(row.commodoreId, opener); }}>
+          <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.commodore.delete")}</span>
+        </button>
+      </>;
+    },
+    renderAliasEditor: (row) => {
+      if (aliasEditingTheaterId !== row.commodoreId) return null;
+      const theater = standingTheaterFor(row);
+      return <TheaterAliasInput clampAlias={clampAlias} theater={theater} onDone={(alias, viaKey) => {
+        finishAliasEdit(row.commodoreId, alias);
+        if (viaKey) document.querySelector<HTMLElement>(`[data-theater-id="${CSS.escape(unifiedRowKey({ consoleId: row.consoleId, commodoreId: row.commodoreId }))}"] .side-bar-theater-activate`)?.focus({ preventScroll: true });
+      }} />;
+    },
+  };
 
   // 심리스 셸은 entries 순서 그대로 그리고, 지금 콘솔의 목록만 그 자리에 둔다. 옛 셸은 지금 콘솔을 맨 위에 둔다.
   // 집 콘솔의 머리글은 사령관 묶음이 대신한다. 집이 아닌 활성 콘솔만 자기 이름 머리글을 제자리에 세운다.
@@ -666,6 +739,28 @@ export function ObjectiveRecordsSideBar({
       {orderError ? <p className="side-bar-theater-error" role="alert">{orderError}</p> : null}
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")} data-scroll-hold={scrollHoldOn ? "1" : undefined}>
+        {unifiedReady ? <>
+          <UnifiedSidebarList consoles={consoles} list={() => listRef.current} unified={unified}
+            owningCommodoreId={owningCommodoreId} onOpenHomeCommodore={openUnifiedHomeCommodore} standingMenu={standingMenu} />
+          {/* TF는 지금 문서의 것이라 통합 배치에 넣지 않고 섹션 목록 뒤에 평평하게 둔다. */}
+          {faces.filter((face) => face.kind === "taskforce").map((face) => (
+            <TaskforceFaceRow
+              key={face.id}
+              face={face}
+              selected={face.id === selectedTaskforceId}
+              dragging={false}
+              dragOffsetY={0}
+              dropBefore={false}
+              dropAfter={false}
+              menuTarget={activeContextMenu?.theaterId === face.id}
+              clampAlias={clampAlias}
+              onOpen={() => openTaskforce(face.id)}
+              onMenu={(anchor, returnFocus, atCursor, focusFirst) => openTheaterMenu(face.id, anchor, returnFocus, atCursor, focusFirst)}
+              onPointerDragStart={() => {}}
+            />
+          ))}
+          {unified.rows.length === 0 && commodoresLoaded ? <SideBarStarter compact={compact} /> : null}
+        </> : <>
         {beforeConsoles}
         <ActiveConsoleSection entry={consoles.sectioned ? consoles.active : null} folded={ownConsoleFolded} count={faces.length} sections={consoles} compact={compact} headed={ownHeaded}>
         {ownConsoleFolded ? null : <>
@@ -676,48 +771,26 @@ export function ObjectiveRecordsSideBar({
           const theaterDragOffsetY = isTheaterDragging ? drag.currentY - drag.startY : 0;
           const theaterDropBefore = hasSections ? drag?.sectionDrop?.targetId === face.id && !drag.sectionDrop.after
             : drag !== null && drag.dragging && drag.sourceTheaterId !== face.id && drag.dropIndex === theaterIndex;
-          const theaterDropAfter = hasSections ? drag?.sectionDrop?.targetId === face.id && drag.sectionDrop.after
+          const theaterDropAfter = hasSections ? drag?.sectionDrop?.targetId === face.id && drag.sectionDrop.after === true
             : drag !== null && drag.dragging && drag.sourceTheaterId !== face.id && theaterIndex === faces.length - 1 && drag.dropIndex === faces.length;
           // TF 행은 사령관 행과 같은 카드·드래그·섹션 소속을 쓰고, 내용만 TF 것(멤버 묶음·이름·미리보기·판단 중)을 세운다.
           if (face.kind === "taskforce") {
             const selected = face.id === selectedTaskforceId;
             return (
-              <li
+              <TaskforceFaceRow
                 key={face.id}
-                className={[
-                  "side-bar-theater-section",
-                  selected ? "side-bar-theater-section--active" : "",
-                  theaterDropBefore ? "side-bar-theater-section--drop-before" : "",
-                  theaterDropAfter ? "side-bar-theater-section--drop-after" : "",
-                ].filter(Boolean).join(" ")}
-                data-theater-id={face.id}
-              >
-                <TheaterSectionHeader
-                  theater={{ id: face.id, label: face.row.name, createdAt: "", lastOpenedAt: "", activeAdmiralCount: 0 }}
-                  active={selected}
-                  lastResponse={face.row.preview?.text || face.row.topic}
-                  dock={false}
-                  editingAlias={false}
-                  clampAlias={clampAlias}
-                  onStartAliasEdit={() => {}}
-                  onFinishAliasEdit={() => {}}
-                  showStatusLiveTick={false}
-                  liveOverride={face.row.judging.length > 0}
-                  selectedOverride={selected}
-                  dragging={isTheaterDragging}
-                  dropTarget={theaterDropBefore}
-                  dragOffsetY={theaterDragOffsetY}
-                  onOpenInbox={() => openTaskforce(face.id)}
-                  onContextMenu={(anchor, returnFocus, atCursor, focusFirst) => openTheaterMenu(face.id, anchor, returnFocus, atCursor, focusFirst)}
-                  menuTarget={activeContextMenu?.theaterId === face.id}
-                  onPointerDragStart={beginTheaterPointerDrag}
-                  avatarOverride={
-                    <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
-                      <TaskforceStack members={face.row.members} judging={face.row.judging} />
-                    </span>
-                  }
-                />
-              </li>
+                face={face}
+                selected={selected}
+                dragging={isTheaterDragging}
+                dragOffsetY={theaterDragOffsetY}
+                dropBefore={theaterDropBefore}
+                dropAfter={theaterDropAfter}
+                menuTarget={activeContextMenu?.theaterId === face.id}
+                clampAlias={clampAlias}
+                onOpen={() => openTaskforce(face.id)}
+                onMenu={(anchor, returnFocus, atCursor, focusFirst) => openTheaterMenu(face.id, anchor, returnFocus, atCursor, focusFirst)}
+                onPointerDragStart={beginTheaterPointerDrag}
+              />
             );
           }
           const theater: SideBarHead = {
@@ -783,38 +856,11 @@ export function ObjectiveRecordsSideBar({
           return bucket.id === undefined ? rows : <CommodoreSidebarSection key={bucket.id ?? "none"} id={bucket.id} controller={sidebarSections} count={bucket.rows.length}
             dropTarget={!!drag?.dragging && !!drag.sectionDrop && !drag.sectionDrop.targetId && drag.sectionDrop.sectionId === bucket.id}>{rows}</CommodoreSidebarSection>;
         })}
-        {faces.length === 0 && commodoresLoaded ? (
-          // 사령관이 없는 사이드바는 목록이 아니라 시작 화면이다 — 유령 행 하나로 빈 높이를 남기지 않고,
-          // 첫 행동(사령관 만들기)을 이 자리에서 바로 연다. 취역 가이드는 한 번 닫히면 사라지므로
-          // 되돌아가는 길도 여기 둔다.
-          <li className="side-bar-starter" data-testid="side-bar-starter">
-            {!compact ? <>
-              <span className="side-bar-starter-eyebrow">{t("sidebar.starter.eyebrow")}</span>
-              <h2 className="side-bar-starter-title">{t("sidebar.starter.title")}</h2>
-              <p className="side-bar-starter-body">{t("sidebar.starter.body")}</p>
-            </> : null}
-            <button
-              type="button"
-              className={`side-bar-starter-primary${compact ? " conversation-round" : ""}`}
-              aria-label={compact ? t("sidebar.commodore.createTitle") : undefined}
-              title={compact ? t("sidebar.commodore.createTitle") : undefined}
-              onClick={requestCommodoreCreate}
-            >
-              {compact ? <PlusIcon /> : t("sidebar.commodore.createTitle")}
-            </button>
-            {!compact ? <>
-              <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
-                {t("sidebar.starter.reopenGuide")}
-              </button>
-              <p className="side-bar-starter-hints">
-                <kbd>{searchShortcut}</kbd> {t("sidebar.starter.hintSearch")}
-              </p>
-            </> : null}
-          </li>
-        ) : null}
+        {faces.length === 0 && commodoresLoaded ? <SideBarStarter compact={compact} /> : null}
         </>}
         </ActiveConsoleSection>
         {afterConsoles}
+        </>}
       </ol>
       </div>
 
@@ -870,6 +916,93 @@ function countAwaitingObjectiveRecords(
 ): number {
   return objectiveRecords.filter((objectiveRecord) =>
     resolveObjectiveActivity(objectiveRecord, objectiveRecordRuntime) === "awaiting").length;
+}
+
+/** TF 행 — 사령관 행과 같은 카드·드래그·섹션 소속을 쓰고, 내용만 TF 것(멤버 묶음·이름·미리보기·판단 중)을 세운다. 통합 배치에서도 지금 문서의 TF는 이 자리 그대로 둔다. */
+function TaskforceFaceRow({ face, selected, dragging, dragOffsetY, dropBefore, dropAfter, menuTarget, clampAlias, onOpen, onMenu, onPointerDragStart }: {
+  readonly face: Extract<SideBarFace, { kind: "taskforce" }>;
+  readonly selected: boolean;
+  readonly dragging: boolean;
+  readonly dragOffsetY: number;
+  readonly dropBefore: boolean;
+  readonly dropAfter: boolean;
+  readonly menuTarget: boolean;
+  readonly clampAlias: ObjectiveRecordsSideBarProps["clampAlias"];
+  readonly onOpen: () => void;
+  readonly onMenu: (anchor: DOMRect, returnFocus: HTMLElement | null, atCursor: boolean, focusFirst?: boolean) => void;
+  readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, theaterId: string) => void;
+}) {
+  return (
+    <li
+      key={face.id}
+      className={[
+        "side-bar-theater-section",
+        selected ? "side-bar-theater-section--active" : "",
+        dropBefore ? "side-bar-theater-section--drop-before" : "",
+        dropAfter ? "side-bar-theater-section--drop-after" : "",
+      ].filter(Boolean).join(" ")}
+      data-theater-id={face.id}
+    >
+      <TheaterSectionHeader
+        theater={{ id: face.id, label: face.row.name, createdAt: "", lastOpenedAt: "", activeAdmiralCount: 0 }}
+        active={selected}
+        lastResponse={face.row.preview?.text || face.row.topic}
+        dock={false}
+        editingAlias={false}
+        clampAlias={clampAlias}
+        onStartAliasEdit={() => {}}
+        onFinishAliasEdit={() => {}}
+        showStatusLiveTick={false}
+        liveOverride={face.row.judging.length > 0}
+        selectedOverride={selected}
+        dragging={dragging}
+        dropTarget={dropBefore}
+        dragOffsetY={dragOffsetY}
+        onOpenInbox={onOpen}
+        onContextMenu={onMenu}
+        menuTarget={menuTarget}
+        onPointerDragStart={onPointerDragStart}
+        avatarOverride={
+          <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
+            <TaskforceStack members={face.row.members} judging={face.row.judging} />
+          </span>
+        }
+      />
+    </li>
+  );
+}
+
+/** 사령관이 없는 사이드바는 목록이 아니라 시작 화면이다 — 유령 행 하나로 빈 높이를 남기지 않고,
+    첫 행동(사령관 만들기)을 이 자리에서 바로 연다. 취역 가이드는 한 번 닫히면 사라지므로 되돌아가는 길도 여기 둔다. */
+function SideBarStarter({ compact }: { readonly compact: boolean }) {
+  const t = useT();
+  const searchShortcut = useSearchShortcutLabel();
+  return (
+    <li className="side-bar-starter" data-testid="side-bar-starter">
+      {!compact ? <>
+        <span className="side-bar-starter-eyebrow">{t("sidebar.starter.eyebrow")}</span>
+        <h2 className="side-bar-starter-title">{t("sidebar.starter.title")}</h2>
+        <p className="side-bar-starter-body">{t("sidebar.starter.body")}</p>
+      </> : null}
+      <button
+        type="button"
+        className={`side-bar-starter-primary${compact ? " conversation-round" : ""}`}
+        aria-label={compact ? t("sidebar.commodore.createTitle") : undefined}
+        title={compact ? t("sidebar.commodore.createTitle") : undefined}
+        onClick={requestCommodoreCreate}
+      >
+        {compact ? <PlusIcon /> : t("sidebar.commodore.createTitle")}
+      </button>
+      {!compact ? <>
+        <button type="button" className="side-bar-starter-secondary" onClick={openOnboarding}>
+          {t("sidebar.starter.reopenGuide")}
+        </button>
+        <p className="side-bar-starter-hints">
+          <kbd>{searchShortcut}</kbd> {t("sidebar.starter.hintSearch")}
+        </p>
+      </> : null}
+    </li>
+  );
 }
 
 function TheaterSectionHeader({

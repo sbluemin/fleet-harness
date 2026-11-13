@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl, isConsoleRosterState, type ConsoleSectionCommand } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_COMMODORE_CREATE_EVENT, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_SECTION_EVENT, CONSOLE_UNIFIED_SIDEBAR_EVENT, UNIFIED_SIDEBAR_HOME, UNIFIED_SIDEBAR_PATH, consoleSectionCommandUrl, isConsoleRosterState, isUnifiedSidebarLayout, type ConsoleSectionCommand, type UnifiedSidebarLayout } from "@fleet-console/protocol/desktop/console-section";
 import { describe, expect, it, vi } from "vitest";
 import { createConsoleSectionController } from "../src/console-section-controller.js";
 
@@ -174,6 +174,67 @@ describe("console roster", () => {
       // 남은 사령관이 가리키는 섹션은 줄인 뒤에도 그대로 있다.
       expect(entry?.sections).toEqual(sections);
       expect(commodores.every((item) => entry?.sections?.some((one) => one.id === item.section))).toBe(true);
+    } finally { section.close(); }
+  });
+
+  it("seeds one home layout, rejects a write-denied create, and keeps the commodore when the avatar route is missing", async () => {
+    const scripts: string[] = [];
+    const contents = Object.assign(new EventEmitter(), { getURL: () => `${HOME}/console/`, isDestroyed: () => false, executeJavaScript: async (script: string) => { scripts.push(script); } });
+    const saved: { layout: UnifiedSidebarLayout | null } = { layout: null };
+    let created = false;
+    const fetch = vi.fn(async (input: string, init?: RequestInit) => {
+      const parsed = new URL(input);
+      if (parsed.pathname === "/api/v1/remote-hosts") return Response.json({ hosts: [{ id: "rec-trusted", origin: TRUSTED, label: "Studio", hostname: "100.84.12.7", port: 6768, fingerprint: "FINGERPRINT-TRUSTED" }] });
+      if (parsed.pathname === "/api/v1/local-consoles") return Response.json({ consoles: [{ origin: HOME }] });
+      if (parsed.pathname === "/api/v1/status") return Response.json({ name: "Home", version: "1.2.3" });
+      if (parsed.pathname.endsWith("/probes")) return Response.json({ reachable: true, trusted: true });
+      if (parsed.pathname === UNIFIED_SIDEBAR_PATH && init?.method === "POST") {
+        saved.layout = (JSON.parse(String(init.body)) as { layout: UnifiedSidebarLayout }).layout;
+        return Response.json({ v: 1, layout: saved.layout });
+      }
+      if (parsed.pathname === UNIFIED_SIDEBAR_PATH) return Response.json({ v: 1, layout: saved.layout });
+      if (parsed.pathname === "/api/v1/console-roster" && parsed.origin === HOME) {
+        return Response.json({ v: 1, more: 0, sections: [{ id: "sec-fleet", name: "플릿", collapsed: true }], unsectionedCollapsed: true, commodores: [
+          { id: "home-1", name: "Home", look: null, run: "quiet", section: "sec-fleet" },
+          ...(created ? [{ id: "new-1", name: "Nuri", look: { base: 4, tone: "amber" }, run: "quiet" }] : []),
+        ] });
+      }
+      if (parsed.pathname === "/api/v1/console-roster") return Response.json({ v: 1, more: 0, commodores: [{ id: "remote-1", name: "Remote", look: null, run: "quiet" }] });
+      if (parsed.pathname === "/api/v1/commodore/create" && parsed.origin === TRUSTED) return new Response(JSON.stringify({ error: "unauthorized" }), { status: 401 });
+      if (parsed.pathname === "/api/v1/commodore/create") { created = true; return Response.json({ commodoreId: "new-1" }); }
+      if (parsed.pathname === "/api/v1/avatars") return new Response(null, { status: 404 });
+      if (parsed.pathname === "/api/v1/join") return new Response(null, { status: 204 });
+      return Response.json({});
+    });
+    const section = createConsoleSectionController({
+      home: () => HOME, fetch, rosterFetch: fetch, confirmIdentity: async () => {}, pinRemote: () => {},
+      open: vi.fn(), add: vi.fn(), confirmForget: vi.fn(async () => false), report: vi.fn(),
+    });
+    const send = (command: ConsoleSectionCommand) => {
+      contents.emit("will-navigate", { preventDefault() {} }, consoleSectionCommandUrl(HOME, command), undefined, true);
+    };
+    try {
+      section.attach(contents as never);
+      await section.refresh();
+      expect(isUnifiedSidebarLayout(saved.layout)).toBe(true);
+      const layout = saved.layout;
+      if (!layout) throw new Error("layout missing");
+      expect(layout.sections.map((item) => item.name)).toEqual(["플릿"]);
+      expect(layout.order.map((item) => item.commodoreId)).toEqual(["home-1", "remote-1"]);
+      expect(layout.membership.find((item) => item.commodoreId === "remote-1")).toBeUndefined();
+      expect(layout.membership.find((item) => item.commodoreId === "home-1")?.sectionId).toBe(layout.sections[0]?.id);
+      expect(layout.unsectionedCollapsed).toBe(true);
+      send({ createCommodore: { consoleId: "rec-trusted", alias: "Nope", request: "req-deny" } });
+      await vi.waitFor(() => expect(scripts.some((script) => script.includes(CONSOLE_COMMODORE_CREATE_EVENT) && script.includes("req-deny"))).toBe(true));
+      const denied = scripts.map(delivered).filter((item) => item?.type === CONSOLE_COMMODORE_CREATE_EVENT).at(-1);
+      expect(denied?.detail).toMatchObject({ ok: false, reason: "access", request: "req-deny" });
+      expect(fetch.mock.calls.some((call) => String(call[0]).includes("/api/v1/join"))).toBe(false);
+      send({ createCommodore: { consoleId: UNIFIED_SIDEBAR_HOME, alias: "Nuri", request: "req-ok", look: { base: 4, tone: "amber" } } });
+      await vi.waitFor(() => expect(saved.layout?.order.some((item) => item.commodoreId === "new-1")).toBe(true));
+      expect(fetch.mock.calls.some((call) => String(call[0]).includes("/api/v1/avatars") && call[1]?.method === "PUT")).toBe(true);
+      expect(saved.layout?.membership.find((item) => item.commodoreId === "new-1")).toBeUndefined();
+      const published = scripts.map(delivered).filter((item) => item?.type === CONSOLE_UNIFIED_SIDEBAR_EVENT).at(-1);
+      expect(published?.origin).toBe(HOME);
     } finally { section.close(); }
   });
 });

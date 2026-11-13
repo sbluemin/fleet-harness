@@ -91,8 +91,8 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
   </li>;
 }
 
-function SectionNameInput({ name, onDone }: { readonly name: string; readonly onDone: (value: string | undefined, viaKey: boolean) => void }) {
-  const t = useT();
+/** 통합 사이드바의 섹션 머리에서도 같은 이름 입력을 쓴다. */
+export function SectionNameInput({ name, onDone }: { readonly name: string; readonly onDone: (value: string | undefined, viaKey: boolean) => void }) {  const t = useT();
   const [value, setValue] = useState(name);
   const input = useRef<HTMLInputElement>(null);
   const composing = useRef(false);
@@ -108,13 +108,15 @@ function SectionNameInput({ name, onDone }: { readonly name: string; readonly on
     }} />;
 }
 
-function MenuItem({ icon, children, onClick, disabled, danger }: { readonly icon: ReactNode; readonly children: ReactNode; readonly onClick: () => void; readonly disabled?: boolean; readonly danger?: boolean }) {
+/** 통합 사이드바의 섹션·행 메뉴 항목도 같은 모양으로 그린다. */
+export function MenuItem({ icon, children, onClick, disabled, danger }: { readonly icon: ReactNode; readonly children: ReactNode; readonly onClick: () => void; readonly disabled?: boolean; readonly danger?: boolean }) {
   return <button type="button" role="menuitem" className={`theater-menu-item${danger ? " theater-menu-forget" : ""}`} disabled={disabled} onClick={onClick}>
     <span className="theater-menu-check" aria-hidden="true">{icon}</span><span className="theater-menu-label">{children}</span>
   </button>;
 }
 
-function SectionMenu({ anchor, opener, focusFirst, label, children, onClose }: { readonly anchor: DOMRect; readonly focusFirst: boolean; readonly opener: HTMLElement | null; readonly label: string; readonly children: ReactNode; readonly onClose: () => void }) {
+/** 통합 사이드바의 섹션·행·칩 메뉴도 같은 오버레이 자리에 둔다. */
+export function SectionMenu({ anchor, opener, focusFirst, label, children, onClose }: { readonly anchor: DOMRect; readonly focusFirst: boolean; readonly opener: HTMLElement | null; readonly label: string; readonly children: ReactNode; readonly onClose: () => void }) {
   const menu = useRef<HTMLDivElement>(null);
   const returnFocusRef = useRef(opener);
   const id = useId();
