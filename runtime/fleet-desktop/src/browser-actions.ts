@@ -1,4 +1,4 @@
-import type { ChromeAction, ChromeRole, ChromeSuggestion } from "./chrome/contract.js";
+import type { ChromeAction, ChromeImportSources, ChromeRole, ChromeSuggestion } from "./chrome/contract.js";
 import { translator } from "./chrome/messages.js";
 import { BROWSER_STRIP_PX, type SurfaceControl } from "./browser-surface.js";
 
@@ -302,8 +302,11 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
           try {
             const response = await call("/api/v1/browser/import-sources");
             if (!response.ok) { control.notify(t("requestFailed"), "error"); return; }
-            const sources = await response.json() as { available: boolean; reason: "chrome_required" | "no_profiles" | null; profiles: { id: string; name: string; account: string | null }[] };
-            if (!sources.available) { control.notify(t(sources.reason === "no_profiles" ? "import.noProfiles" : "import.chromeRequired"), "error"); return; }
+            const sources = await response.json() as ChromeImportSources;
+            if (!sources.available) {
+              control.notify(t(sources.reason === "access_denied" ? "import.accessDenied" : sources.reason === "no_profiles" ? "import.noProfiles" : sources.reason === "chrome_required" ? "import.chromeRequired" : "requestFailed"), "error");
+              return;
+            }
             control.patch({ overlay: { kind: "import", sources } });
           } catch { control.notify(t("requestFailed"), "error"); }
         })();
