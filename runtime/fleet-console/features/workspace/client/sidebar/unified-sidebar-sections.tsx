@@ -488,15 +488,14 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
   </li>;
 }
 
-/** 다른 머신 행의 이름 옆 칩. 이름이 길면 이름이 먼저 줄고 칩은 남는다. 닿지 않는 머신은 점을 비운다. */
+/** 다른 머신 행의 이름 옆 칩. 이름이 길면 이름이 먼저 줄고 칩은 남는다. */
 function UnifiedMachineChip({ row, onOpenCard }: {
   readonly row: UnifiedSidebarRow;
   readonly onOpenCard: (anchor: DOMRect) => void;
 }) {
   const t = useT();
   const tone = unifiedMachineTone(row.consoleId);
-  const off = row.status === "unreachable";
-  return <button type="button" className={`unified-machine-chip${off ? " is-off" : ""}`}
+  return <button type="button" className="unified-machine-chip"
     style={{ "--mc": `var(--id-${tone})` } as CSSProperties}
     aria-label={t("sidebar.unified.machineInfo", { machine: row.machineLabel })}
     title={t("sidebar.unified.machineInfo", { machine: row.machineLabel })}
