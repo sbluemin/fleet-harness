@@ -26,6 +26,7 @@ import { MenuItem, SectionMenu, SectionNameInput } from "./commodore-sidebar-sec
 import { PlusIcon, SectionMoveIcon, TrashIcon, PencilIcon } from "./sidebar-menu-icons.js";
 import { commodoreSectionDropFromPoint, theaterDropIndexFromPoint, type CommodoreSectionDrop } from "./objective-records-side-bar-hit-test.js";
 import type { UnifiedSidebarController } from "./unified-sidebar.js";
+import type { SidebarCommodore } from "../../../commodore/client/commodore-list.js";
 import "./commodore-sidebar-sections.css";
 import "../../../remote-access/client/console-sections.css";
 
@@ -109,8 +110,9 @@ export interface UnifiedStandingMenu {
  * 통합 사이드바 — 머신 머리글과 머신별 섹션 반복 없이, 배치 한 벌에 모든 머신의 사령관을 그린다.
  * 셸 능력이 없을 때(브라우저·모바일·옛 셸)는 호출자가 옛 경로를 그대로 그린다.
  */
-export function UnifiedSidebarList({ consoles, list, unified, owningCommodoreId, onOpenHomeCommodore, standingMenu }: {
+export function UnifiedSidebarList({ consoles, list, unified, standingCommodores, owningCommodoreId, onOpenHomeCommodore, standingMenu }: {
   readonly consoles: ConsoleSections;
+  readonly standingCommodores: readonly SidebarCommodore[];
   readonly list: () => HTMLElement | null;
   readonly unified: UnifiedSidebarController;
   /** 지금 문서가 연 사령관 — 같은 이름이 여러 머신에 있어도 지금 콘솔의 것만 밝힌다. */
@@ -132,7 +134,14 @@ export function UnifiedSidebarList({ consoles, list, unified, owningCommodoreId,
   runLayoutSections.current = layout?.sections.length ?? 0;
 
   // 인증서가 바뀐 머신의 마지막 목록은 그리지 않는다 — 행이 없으면 맨 아래 알림 줄이 재검토로 이끈다. 배치는 layout.order에 남는다.
-  const rows = useMemo(() => unified.rows.filter((row) => row.status !== "untrusted"), [unified.rows]);
+  const rows = useMemo(() => {
+    const standingById = new Map(standingCommodores.map((commodore) => [commodore.commodoreId, commodore]));
+    return unified.rows.filter((row) => row.status !== "untrusted").map((row) => {
+      // 서 있는 콘솔의 이름은 비통합 행과 같은 목록이 소유한다 — 셸의 주기 명부는 다른 콘솔·첫 목록 수신 전의 표시만 맡는다.
+      const commodore = unifiedEntryForRow(consoles.entries, row)?.active ? standingById.get(row.commodoreId) : null;
+      return commodore ? { ...row, name: commodore.label } : row;
+    });
+  }, [unified.rows, consoles.entries, standingCommodores]);
   const byKey = useMemo(() => {
     const map = new Map<string, UnifiedSidebarRow>();
     for (const row of rows) map.set(unifiedRowKey(row), row);
