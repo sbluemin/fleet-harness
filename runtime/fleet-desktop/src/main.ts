@@ -13,10 +13,11 @@ import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 import { autoUpdater } from "electron-updater";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
+import { persistProfileSessionCookies, PROFILE_SESSION_COOKIE_MAX_AGE_SECONDS, PROFILE_SESSION_COOKIE_PERSIST_TIMEOUT_MS, type ProfileCookieJar, type ProfileCookieRecord } from "./browser-profile-cookies.js";
 import { isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
 import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
-import { createHydratedDesktopEnvironment, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory } from "./environment.js";
+import { createHydratedDesktopEnvironment, migrateLegacyBrowserProfileRoot, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory, resolveLegacyBrowserProfileRoot } from "./environment.js";
 import { pushEntrySnapshot, type EntryPalette } from "./entry-page.js";
 import { createQuitFarewell, farewellSnapshot } from "./quit-farewell.js";
 import { measureBrandTarget } from "./brand-target.js";
@@ -83,20 +84,40 @@ const BROWSER_PARTITION = /^fleet-browser-[A-Za-z0-9._:-]{1,64}$/u;
  * 같은 로그인을 함께 쓴다. 임시 모드도 Console 이 보낸 단일 partition 을 공유한다.
  *
  * 콘솔은 **id 만** 보내고 경로는 여기서 만든다 — 임의 경로가 셸로 흘러들 길을 두지 않는다.
- * `fromPartition` 이 아니라 `fromPath` 인 것이 요점이다: 파티션은 앱의 `userData` 아래에 묶이는데,
- * 그 기본값이 Windows 에서 Roaming 이라 브라우저 캐시가 로그온마다 동기화된다.
+ * macOS·Linux 에서 이 경로는 userData 안이어야 한다. 네트워크 서비스 샌드박스가 그 밖에는
+ * 쿠키 저장소를 만들지 못한다. Windows 만 Roaming 을 피하려고 Fleet 루트를 쓴다.
  */
 const browserProfileSessions = new Map<string, Session>();
 function browserProfileSession(profile: string): Session {
   if (!DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
   const cached = browserProfileSessions.get(profile);
   if (cached) return cached;
-  const directory = path.join(resolveBrowserProfileRoot(), profile);
+  const directory = path.join(resolveBrowserProfileRoot(app.getPath("userData"), app.isPackaged), profile);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const created = session.fromPath(directory);
   installRequestGuard(created);
   browserProfileSessions.set(profile, created);
   return created;
+}
+
+/** 이번 실행에서 이미 열린 영속 프로필만. 임시 파티션은 이 맵에 없다. */
+function openProfileCookieJars(): ProfileCookieJar[] {
+  return [...browserProfileSessions.values()].map((target) => ({
+    // Electron 43.1.0의 Cookie와 cookies.get 문서에는 파티션 키(CHIPS) 필드가 없다. get이 파티션 쿠키를 돌려주는지는 확인하지 못함.
+    get: async () => (await target.cookies.get({})).map((cookie): ProfileCookieRecord => ({
+      name: cookie.name,
+      value: cookie.value,
+      ...(cookie.domain !== undefined ? { domain: cookie.domain } : {}),
+      ...(cookie.hostOnly !== undefined ? { hostOnly: cookie.hostOnly } : {}),
+      ...(cookie.path !== undefined ? { path: cookie.path } : {}),
+      ...(cookie.secure !== undefined ? { secure: cookie.secure } : {}),
+      ...(cookie.httpOnly !== undefined ? { httpOnly: cookie.httpOnly } : {}),
+      ...(cookie.session !== undefined ? { session: cookie.session } : {}),
+      sameSite: cookie.sameSite,
+    })),
+    set: (details) => target.cookies.set(details),
+    flush: () => target.cookies.flushStore(),
+  }));
 }
 /** 쿠키가 들어갈 자리 — 전역 브라우저의 영속 프로필 또는 임시 파티션. Console 창의 쿠키 저장소는 받지 않는다. */
 function browserTargetSession(params: Record<string, unknown>): { readonly session: Session; readonly label: string } | null {
@@ -160,6 +181,19 @@ async function boot(): Promise<void> {
   const environment = await createHydratedDesktopEnvironment(app.getPath("userData"), app.getVersion(), desktopResources.serviceRoot, isPackaged);
   const logger = createDesktopLogger(path.join(app.getPath("userData"), "logs"));
   bootLogger = logger;
+  // 세션이나 히스토리 저장이 대상 디렉터리를 만들기 전에 옮긴다. 실패해도 앱은 띄운다.
+  // 그 실행에서 대상이 비어 있는 동안만 다음 실행이 다시 시도한다. 대상에 파일이 생기면 occupied로 건너뛰고 원본은 남는다.
+  try {
+    const browserProfileMigration = migrateLegacyBrowserProfileRoot({
+      targetRoot: resolveBrowserProfileRoot(app.getPath("userData"), app.isPackaged),
+      legacyRoot: resolveLegacyBrowserProfileRoot(),
+      isPackaged,
+    });
+    if (browserProfileMigration === "moved") logger.info("moved legacy browser profiles under userData so cookie storage is inside the network sandbox");
+    else if (browserProfileMigration === "occupied") logger.info("left legacy browser profiles in place because the userData profile directory already has content");
+  } catch (error) {
+    logger.warn?.(`browser profile migration failed: ${describeError(error)}`);
+  }
   const releases = createReleaseChecker();
   let pushRuntimeProgress: RuntimeProgress | null = null;
   const initialServiceVersion = readInstalledVersion(isPackaged ? runtimePaths.latest : desktopResources.serviceRoot) ?? "";
@@ -388,7 +422,7 @@ async function boot(): Promise<void> {
    * 그 콘솔의 에이전트가 이 기계의 Chromium 을 움직인다. 브라우저는 Desktop 앱의 기능이고 원격에서도 같은 경험이어야
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
-  const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot());
+  const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot(app.getPath("userData"), app.isPackaged));
   /**
    * 브라우저 표면(칸·독립 창)과 그 크롬. 크롬 문서는 셸의 정적 자산이고 Console 의 문서·렌더러를 거치지 않는다 — 사람의 동작은 Console 의 기존 REST 로 돌아가고,
    * 상태는 스냅샷으로 온다. 문서는 sandbox·Node 없음이고 사전 로드 스크립트도 없다 — 주입 프로그램만 main 이 넣는다.
@@ -542,6 +576,7 @@ async function boot(): Promise<void> {
         if (profile === null || !DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
         // 콘솔이 이 프로필의 뷰를 먼저 모두 닫고 부른다 — Windows 는 열려 있는 파일을 지우지 못한다.
         const target = browserProfileSession(profile);
+        // 종료 때 만료를 붙여 남긴 세션 쿠키도 이 저장소에 있으므로 함께 지워진다.
         await target.clearStorageData();
         // 저장소 비우기는 HTTP 디스크 캐시와 컴파일된 스크립트 캐시를 남긴다 — 방문한 페이지의 본문과 주소가 거기 남는다.
         await target.clearCache();
@@ -894,6 +929,22 @@ async function boot(): Promise<void> {
     pushEntry: pushEntrySnapshot,
     log: (message) => logger.error(message),
   });
+  // 세션 쿠키는 이 저장 단계 안에서만 만료가 붙는다. 상한을 넘기거나 실패해도 종료는 계속한다.
+  const persistOpenProfileSessionCookies = (): Promise<void> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const work = persistProfileSessionCookies(openProfileCookieJars(), Math.floor(Date.now() / 1000), PROFILE_SESSION_COOKIE_MAX_AGE_SECONDS).then((failed) => {
+      if (failed > 0) logger.warn?.(`browser profile session cookie persist failed for ${failed} operations`);
+    }).catch((error: unknown) => {
+      logger.warn?.(`browser profile session cookies were not fully persisted: ${describeError(error)}`);
+    });
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        logger.warn?.("browser profile session cookie persist timed out");
+        resolve();
+      }, PROFILE_SESSION_COOKIE_PERSIST_TIMEOUT_MS);
+    });
+    return Promise.race([work, timeout]).finally(() => { if (timer) clearTimeout(timer); });
+  };
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
@@ -1045,7 +1096,7 @@ async function boot(): Promise<void> {
     bridge.dispose();
     wslConsoles?.unwatch();
     // Quit ends the WSL Consoles this Desktop manages together with its own, each through its stop request.
-    await Promise.all([supervisor.stop(), wslConsoles?.stopAll()]);
+    await Promise.all([supervisor.stop(), wslConsoles?.stopAll(), persistOpenProfileSessionCookies()]);
   }));
   const consoleRelaunch = isPackaged
     ? createConsoleRelaunchController({
