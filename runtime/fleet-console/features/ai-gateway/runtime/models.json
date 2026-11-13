@@ -1,11 +1,11 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-11T00:00:00Z",
+  "updatedAt": "2026-11-13T00:00:00Z",
   "providers": {
     "antigravity": {
       "name": "Antigravity",
       "defaultModel": "gemini-3.8-flash",
-      "source": "Live POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels read with the credential the Antigravity CLI (agy 1.1.18) owns, 2026-09-03, reported defaultAgentModelId gemini-3.8-flash-high and a 1,048,576-token window for all three Gemini 3.8 Flash rungs; reconfirmed 2026-10-18. Gemini 4 Argon replaces the previous Pro lineup on 2026-10-18: live agy 1.4.1 --model gemini-4-argon-{low,medium,high} --effort {low,medium,high} --print turns each exited 0 with the requested echo response using the same subscription credential and daily endpoint. The agy log showed gemini-4-argon-low sent as the wire model id, display name Gemini 4 Argon (Low), and project default-cli-project. Argon uses the three id-encoded effort rungs, not thinkingConfig. The backend gates Argon on client identity: the same fetch read with Fleet's previous antigravity/ide/2.5.5 User-Agent omits Argon and its turns 404, while agy 1.4.1's antigravity/cli/1.4.1 identity (which Fleet now sends) lists all three Argon rungs with a 1,048,576-token window, thinkingLevel 1/2/3, and defaultAgentModelId gemini-4-argon-medium. providerModelId selects the medium rung following that upstream default; omitted request effort still follows the existing resolver default. Gemini 4 Carbon measured 2026-11-11 on that same Fleet antigravity/cli/1.4.1 identity, so the identity was not moved: fetchAvailableModels listed gemini-4-carbon-{low,medium,high} with display names Gemini 4 Carbon (Low/Medium/High), thinkingLevel 1/2/3, and defaultAgentModelId gemini-4-carbon-medium, and streamGenerateContent for each rung returned HTTP 200 with finish STOP. The list carried no context-window field, so this entry keeps the 1,048,576-token window already catalogued for the other Antigravity Gemini models. retrieveUserQuotaSummary returned only gemini-weekly, gemini-5h, 3p-weekly, and 3p-5h, and Carbon's per-model quotaInfo matched Gemini 3.8 Flash and Argon, so Carbon spends those existing Gemini pools and has no bucket of its own. Claude and GPT-OSS models are served by the same subscription but are deliberately not exposed here.",
+      "source": "Live POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels read with the credential the Antigravity CLI (agy 1.1.18) owns, 2026-09-03, reported defaultAgentModelId gemini-3.8-flash-high and a 1,048,576-token window for all three Gemini 3.8 Flash rungs; reconfirmed 2026-10-18. Gemini 4 Argon replaces the previous Pro lineup on 2026-10-18: live agy 1.4.1 --model gemini-4-argon-{low,medium,high} --effort {low,medium,high} --print turns each exited 0 with the requested echo response using the same subscription credential and daily endpoint. The agy log showed gemini-4-argon-low sent as the wire model id, display name Gemini 4 Argon (Low), and project default-cli-project. Argon uses the three id-encoded effort rungs, not thinkingConfig. The backend gates Argon on client identity: the same fetch read with Fleet's previous antigravity/ide/2.5.5 User-Agent omits Argon and its turns 404, while agy 1.4.1's antigravity/cli/1.4.1 identity (which Fleet now sends) lists all three Argon rungs with a 1,048,576-token window, thinkingLevel 1/2/3, and defaultAgentModelId gemini-4-argon-medium. providerModelId selects the medium rung following that upstream default; omitted request effort still follows the existing resolver default. Gemini 4 Carbon measured 2026-11-11 on that same Fleet antigravity/cli/1.4.1 identity, so the identity was not moved: fetchAvailableModels listed gemini-4-carbon-{low,medium,high} with display names Gemini 4 Carbon (Low/Medium/High), thinkingLevel 1/2/3, and defaultAgentModelId gemini-4-carbon-medium, and streamGenerateContent for each rung returned HTTP 200 with finish STOP. The list carried no context-window field, so this entry keeps the 1,048,576-token window already catalogued for the other Antigravity Gemini models. retrieveUserQuotaSummary returned only gemini-weekly, gemini-5h, 3p-weekly, and 3p-5h, and Carbon's per-model quotaInfo matched Gemini 3.8 Flash and Argon, so Carbon spends those existing Gemini pools and has no bucket of its own. Gemini 4 Hydrogen measured 2026-11-13, again on the unchanged antigravity/cli/1.4.1 identity: fetchAvailableModels listed gemini-4-hydrogen-{low,medium,high,xhigh} with display names Gemini 4 Hydrogen (Low/Medium/High/XHigh), thinkingLevel 1/2/3/100, and maxTokens 1,048,576, and streamGenerateContent for each of the four rungs returned HTTP 200 with finish STOP and modelVersion gemini-4-hydrogen. defaultAgentModelId stayed gemini-4-carbon-medium, so providerModelId takes the medium rung by the Argon and Carbon convention, not from an upstream default. retrieveUserQuotaSummary again returned only gemini-weekly, gemini-5h, 3p-weekly, and 3p-5h, and Hydrogen's per-model quotaInfo matched Gemini 3.8 Flash, Argon, and Carbon, so Hydrogen spends the existing Gemini pools and has no bucket of its own. Claude and GPT-OSS models are served by the same subscription but are deliberately not exposed here.",
       "models": [
         {
           "modelId": "gemini-3.8-flash",
@@ -64,6 +64,28 @@
               "low": "gemini-4-carbon-low",
               "medium": "gemini-4-carbon-medium",
               "high": "gemini-4-carbon-high"
+            }
+          }
+        },
+        {
+          "modelId": "gemini-4-hydrogen",
+          "name": "Gemini-4-Hydrogen",
+          "description": "General-purpose coding and reasoning model.",
+          "providerModelId": "gemini-4-hydrogen-medium",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "upstreamModelIds": {
+              "low": "gemini-4-hydrogen-low",
+              "medium": "gemini-4-hydrogen-medium",
+              "high": "gemini-4-hydrogen-high",
+              "xhigh": "gemini-4-hydrogen-xhigh"
             }
           }
         }
