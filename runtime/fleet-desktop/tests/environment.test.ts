@@ -62,9 +62,12 @@ describe("desktop environment", () => {
   it("keeps browser profiles inside userData except on Windows, where roaming userData is avoided", () => {
     const userData = path.join(os.tmpdir(), "fleet-desktop-userdata");
     const fleetRoot = path.join(os.tmpdir(), "fleet-desktop-fleet");
-    expect(resolveBrowserProfileRoot(userData, { FLEET_DATA_DIR: fleetRoot }, "darwin")).toBe(path.join(userData, "browser-profiles"));
-    expect(resolveBrowserProfileRoot(userData, { FLEET_DATA_DIR: fleetRoot }, "linux")).toBe(path.join(userData, "browser-profiles"));
-    expect(resolveBrowserProfileRoot(userData, { FLEET_DATA_DIR: fleetRoot }, "win32")).toBe(path.join(fleetRoot, "desktop", "browser-profiles"));
+    expect(resolveBrowserProfileRoot(userData, true, {}, "darwin")).toBe(path.join(userData, "browser-profiles"));
+    expect(resolveBrowserProfileRoot(userData, false, { FLEET_DATA_DIR: fleetRoot }, "linux")).toBe(path.join(userData, "browser-profiles"));
+    expect(resolveBrowserProfileRoot(userData, false, { FLEET_DATA_DIR: fleetRoot }, "win32")).toBe(path.join(fleetRoot, "desktop", "browser-profiles"));
+    // 패키지된 앱은 격리 지정에도 userData 를 옮기지 않으므로, 지정된 자리를 써야 사람의 실제 프로필과 섞이지 않는다.
+    expect(resolveBrowserProfileRoot(userData, true, { FLEET_DATA_DIR: fleetRoot }, "darwin")).toBe(path.join(fleetRoot, "desktop", "browser-profiles"));
+    expect(resolveBrowserProfileRoot(userData, true, { FLEET_DESKTOP_DATA_DIR: fleetRoot }, "linux")).toBe(path.join(fleetRoot, "browser-profiles"));
   });
 
   it("moves a packaged legacy profile root once and refuses isolated or unpackaged runs", () => {

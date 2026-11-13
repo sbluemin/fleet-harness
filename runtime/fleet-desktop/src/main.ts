@@ -92,7 +92,7 @@ function browserProfileSession(profile: string): Session {
   if (!DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
   const cached = browserProfileSessions.get(profile);
   if (cached) return cached;
-  const directory = path.join(resolveBrowserProfileRoot(app.getPath("userData")), profile);
+  const directory = path.join(resolveBrowserProfileRoot(app.getPath("userData"), app.isPackaged), profile);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
   const created = session.fromPath(directory);
   installRequestGuard(created);
@@ -185,7 +185,7 @@ async function boot(): Promise<void> {
   // 그 실행에서 대상이 비어 있는 동안만 다음 실행이 다시 시도한다. 대상에 파일이 생기면 occupied로 건너뛰고 원본은 남는다.
   try {
     const browserProfileMigration = migrateLegacyBrowserProfileRoot({
-      targetRoot: resolveBrowserProfileRoot(app.getPath("userData")),
+      targetRoot: resolveBrowserProfileRoot(app.getPath("userData"), app.isPackaged),
       legacyRoot: resolveLegacyBrowserProfileRoot(),
       isPackaged,
     });
@@ -422,7 +422,7 @@ async function boot(): Promise<void> {
    * 그 콘솔의 에이전트가 이 기계의 Chromium 을 움직인다. 브라우저는 Desktop 앱의 기능이고 원격에서도 같은 경험이어야
    * 한다는 제품 결정이다. 뷰는 세션 파티션에 격리되어 이 앱의 쿠키·로그인과 섞이지 않는다.
    */
-  const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot(app.getPath("userData")));
+  const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot(app.getPath("userData"), app.isPackaged));
   /**
    * 브라우저 표면(칸·독립 창)과 그 크롬. 크롬 문서는 셸의 정적 자산이고 Console 의 문서·렌더러를 거치지 않는다 — 사람의 동작은 Console 의 기존 REST 로 돌아가고,
    * 상태는 스냅샷으로 온다. 문서는 sandbox·Node 없음이고 사전 로드 스크립트도 없다 — 주입 프로그램만 main 이 넣는다.

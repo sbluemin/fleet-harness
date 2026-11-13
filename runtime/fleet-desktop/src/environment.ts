@@ -85,8 +85,11 @@ export function resolveLegacyBrowserProfileRoot(env: NodeJS.ProcessEnv = process
  * Windows 는 네트워크 데이터 이전 때 그 디렉터리 ACL 을 주므로 userData 밖도 쓸 수 있다.
  * userData 기본값이 `%APPDATA%`(Roaming)이라 캐시와 쿠키가 로그온마다 동기화되므로, 로밍되지 않는 Fleet 루트를 유지한다.
  */
-export function resolveBrowserProfileRoot(userDataDir: string, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
+export function resolveBrowserProfileRoot(userDataDir: string, isPackaged: boolean, env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string {
   if (platform === "win32") return resolveLegacyBrowserProfileRoot(env);
+  // 패키지된 앱은 격리 지정이 있어도 userData 를 옮기지 않는다. 그 실행이 사람의 실제 프로필을 열거나 비우지 않게
+  // 지정된 자리를 그대로 쓴다. 그 자리가 userData 밖이면 쿠키 파일은 생기지 않는다 — 격리가 먼저다.
+  if (isPackaged && (resolveDesktopDataDirectoryOverride(env) !== undefined || readEnvironmentValue(env, FLEET_DATA_DIR_ENV) !== undefined)) return resolveLegacyBrowserProfileRoot(env);
   return path.join(userDataDir, "browser-profiles");
 }
 
