@@ -120,7 +120,8 @@ export function UnifiedSidebarList({ consoles, list, unified, owningCommodoreId,
   const runLayoutSections = useRef(layout?.sections.length ?? 0);
   runLayoutSections.current = layout?.sections.length ?? 0;
 
-  const rows = unified.rows;
+  // 인증서가 바뀐 머신의 마지막 목록은 그리지 않는다 — 행이 없으면 맨 아래 알림 줄이 재검토로 이끈다. 배치는 layout.order에 남는다.
+  const rows = useMemo(() => unified.rows.filter((row) => row.status !== "untrusted"), [unified.rows]);
   const byKey = useMemo(() => {
     const map = new Map<string, UnifiedSidebarRow>();
     for (const row of rows) map.set(unifiedRowKey(row), row);
