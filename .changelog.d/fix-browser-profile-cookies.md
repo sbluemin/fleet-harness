@@ -4,5 +4,5 @@ branch: fix/browser-profile-cookies
 
 ### fleet-desktop
 #### Fixed
-- Fleet Browser keeps cookies that should outlive a restart, so a site you stayed signed in to is still signed in after you quit Desktop and open it again.
-  ko: 재시작 뒤에도 남아야 하는 Fleet Browser 쿠키가 유지되어, Desktop을 종료했다가 다시 열어도 로그인해 둔 사이트가 풀리지 않습니다.
+- Fleet Browser keeps your profile signed in after you quit Desktop and open it again. A temporary session still ends when Desktop quits.
+  ko: Desktop을 종료했다가 다시 열어도 Fleet Browser의 내 프로필 로그인이 유지됩니다. 임시 세션은 종료와 함께 끝납니다.

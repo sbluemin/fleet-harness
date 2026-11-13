@@ -13,6 +13,7 @@ import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 import { autoUpdater } from "electron-updater";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
+import { persistProfileSessionCookies, PROFILE_SESSION_COOKIE_MAX_AGE_SECONDS, PROFILE_SESSION_COOKIE_PERSIST_TIMEOUT_MS, type ProfileCookieJar, type ProfileCookieRecord } from "./browser-profile-cookies.js";
 import { isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
 import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
@@ -97,6 +98,40 @@ function browserProfileSession(profile: string): Session {
   installRequestGuard(created);
   browserProfileSessions.set(profile, created);
   return created;
+}
+
+/** 이번 실행에서 열린 영속 프로필과, 디스크에 있는 프로필 디렉터리의 세션. 임시 파티션은 여기 없다. */
+function openProfileCookieJars(): ProfileCookieJar[] {
+  const root = resolveBrowserProfileRoot(app.getPath("userData"));
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(root).filter((name) => DESKTOP_BROWSER_PROFILE_ID.test(name));
+  } catch {
+    names = [];
+  }
+  const sessions = new Set<Session>(browserProfileSessions.values());
+  for (const name of names) {
+    try {
+      sessions.add(browserProfileSession(name));
+    } catch {
+      // 디렉터리 이름이 프로필 id 형식이어도 세션을 열지 못하면 그 프로필만 건너뛴다.
+    }
+  }
+  return [...sessions].map((target) => ({
+    get: async () => (await target.cookies.get({})).map((cookie): ProfileCookieRecord => ({
+      name: cookie.name,
+      value: cookie.value,
+      ...(cookie.domain !== undefined ? { domain: cookie.domain } : {}),
+      ...(cookie.hostOnly !== undefined ? { hostOnly: cookie.hostOnly } : {}),
+      ...(cookie.path !== undefined ? { path: cookie.path } : {}),
+      ...(cookie.secure !== undefined ? { secure: cookie.secure } : {}),
+      ...(cookie.httpOnly !== undefined ? { httpOnly: cookie.httpOnly } : {}),
+      ...(cookie.session !== undefined ? { session: cookie.session } : {}),
+      sameSite: cookie.sameSite,
+    })),
+    set: (details) => target.cookies.set(details),
+    flush: () => target.cookies.flushStore(),
+  }));
 }
 /** 쿠키가 들어갈 자리 — 전역 브라우저의 영속 프로필 또는 임시 파티션. Console 창의 쿠키 저장소는 받지 않는다. */
 function browserTargetSession(params: Record<string, unknown>): { readonly session: Session; readonly label: string } | null {
@@ -555,6 +590,7 @@ async function boot(): Promise<void> {
         if (profile === null || !DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
         // 콘솔이 이 프로필의 뷰를 먼저 모두 닫고 부른다 — Windows 는 열려 있는 파일을 지우지 못한다.
         const target = browserProfileSession(profile);
+        // 종료 때 만료를 붙여 남긴 세션 쿠키도 이 저장소에 있으므로 함께 지워진다.
         await target.clearStorageData();
         // 저장소 비우기는 HTTP 디스크 캐시와 컴파일된 스크립트 캐시를 남긴다 — 방문한 페이지의 본문과 주소가 거기 남는다.
         await target.clearCache();
@@ -907,6 +943,22 @@ async function boot(): Promise<void> {
     pushEntry: pushEntrySnapshot,
     log: (message) => logger.error(message),
   });
+  // 세션 쿠키는 이 저장 단계 안에서만 만료가 붙는다. 상한을 넘기거나 실패해도 종료는 계속한다.
+  const persistOpenProfileSessionCookies = (): Promise<void> => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const work = persistProfileSessionCookies(openProfileCookieJars(), Math.floor(Date.now() / 1000), PROFILE_SESSION_COOKIE_MAX_AGE_SECONDS).then((failed) => {
+      if (failed > 0) logger.warn?.(`browser profile session cookie persist failed for ${failed} operations`);
+    }).catch((error: unknown) => {
+      logger.warn?.(`browser profile session cookies were not fully persisted: ${describeError(error)}`);
+    });
+    const timeout = new Promise<void>((resolve) => {
+      timer = setTimeout(() => {
+        logger.warn?.("browser profile session cookie persist timed out");
+        resolve();
+      }, PROFILE_SESSION_COOKIE_PERSIST_TIMEOUT_MS);
+    });
+    return Promise.race([work, timeout]).finally(() => { if (timer) clearTimeout(timer); });
+  };
   const lifecycle = createDesktopLifecycle(app, async () => {
     const launch = createLaunchController({
       createWindow: async () => {
@@ -1058,7 +1110,7 @@ async function boot(): Promise<void> {
     bridge.dispose();
     wslConsoles?.unwatch();
     // Quit ends the WSL Consoles this Desktop manages together with its own, each through its stop request.
-    await Promise.all([supervisor.stop(), wslConsoles?.stopAll()]);
+    await Promise.all([supervisor.stop(), wslConsoles?.stopAll(), persistOpenProfileSessionCookies()]);
   }));
   const consoleRelaunch = isPackaged
     ? createConsoleRelaunchController({
