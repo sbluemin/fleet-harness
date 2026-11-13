@@ -1522,7 +1522,6 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
               ? <KeyedAvatar avatarKey={avatar.key} role={avatar.role} state={avatar.state ?? "idle"} size={20} label={avatar.label} decorative className="conversation-pill-mark" />
               : descriptor.mark ? <span className="conversation-pill-surface-mark" aria-hidden="true">{descriptor.mark()}</span> : null}
             <span className="conversation-pill-title">{title}</span>
-            <RemoteConsoleChip />
             {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
         </ConversationPill>
         {tools(browser, <span ref={setRailSlot} className="conversation-rail-slot" />)}
@@ -1534,22 +1533,6 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       </ContextRailHost>
     </div>
   );
-}
-
-/**
- * 집이 아닌 콘솔의 머리 이름표. 시안의 콘솔 머리 칩과 같이 모니터와 표시 이름만 둔다.
- * 집, 셸이 없는 브라우저, 이름을 아직 모르면 아무것도 그리지 않는다.
- */
-function RemoteConsoleChip() {
-  const shell = useDesktopHomeOrigin();
-  const sections = useConsoleSections({ refresh: false });
-  if (!isDesktopShell() || shell.pending || shell.origin === null || location.origin === shell.origin) return null;
-  const active = sections.entries.find((entry) => entry.active);
-  if (active === undefined || active.home || active.label.length === 0) return null;
-  return <span className="conversation-console-chip" title={active.label}>
-    <ConsoleGlyph />
-    <span>{active.label}</span>
-  </span>;
 }
 
 function ConversationColumn({ state, objectiveRecord, language, objectiveRecordKinds, onToggleDetails, onClose, browserSurfaceOpen, tools }: {
@@ -1703,7 +1686,6 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
           lead={chipCommodoreId === null ? undefined : <ObjectiveChipCommodore commodoreId={chipCommodoreId} onPress={onToggleDetails} />}>
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
-            <RemoteConsoleChip />
             {bodyOwner !== objectiveRecord ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.objectiveId === bodyOwner.id)?.name ?? clusterRoot?.formation.byObjectiveId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
             {memberCount > 0 ? (
               <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import type { ConsoleRosterCommander, ConsoleRosterCommodore, ConsoleRosterRun, ConsoleSectionEntry } from "@fleet-console/protocol/desktop/console-section";
 import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
@@ -93,41 +93,60 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
       </div> : null}
     </li>;
   };
-  const groupedHome = headless && roster?.sections && roster.sections.length > 0 && !compact;
+  // 섹션을 실은 명부는 집·원격 모두 그 순서의 머리글로 묶는다. 섹션이 없는 콘솔과 옛 명부(sections 없음)는 평평하고, 좁은 열은 아바타만 둔다.
+  // 사령관이 하나도 없으면 빈 섹션 머리글을 늘어놓지 않는다 — 다른 콘솔의 명부에서는 끌어다 놓을 수도 없다.
+  const grouped = !compact && rows.length > 0 && (roster?.sections?.length ?? 0) > 0;
+  // 심리스에서 집은 머리글이 없다. 사령관이 없으면 안내 카드 대신, 그 자리의 짧은 행으로만 돌아간다.
+  // 빈 원격 콘솔의 안내와 신뢰·연결 안내는 그대로 둔다.
+  const quietHome = headless && !blocked && roster?.status === "ok" && rows.length === 0;
   return <li className={`side-console${blocked ? " is-blocked" : ""}${dim ? " is-dim" : ""}${headless ? " is-headless" : ""}`} data-console-id={entry.id} data-status={entry.status ?? undefined}>
     {headless ? null : <ConsoleSectionHead entry={entry} folded={folded} count={rows.length + (roster?.more ?? 0)} sections={sections} compact={compact} appearance="row" />}
     {folded && !headless ? null : <ol className="side-console-roster" aria-label={entry.label}>
-      {groupedHome && roster.sections
-        ? <HomeRosterSections sections={roster.sections} unsectionedCollapsed={roster.unsectionedCollapsed === true} rows={rows} render={renderCommodore} />
+      {quietHome ? <li className="side-console-home-return-item">
+        <button type="button" className="side-console-home-return" data-home-return="" title={t("chrome.consoles.home")}
+          aria-label={`${t("chrome.consoles.home")}: ${entry.label}`} onClick={() => sections.command({ switch: entry.id })}>
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.2" aria-hidden="true"><path d="m2 7 6-5 6 5M4 6v8h8V6" /></svg>
+          <span>{entry.label}</span>
+        </button>
+      </li> : null}
+      {grouped && roster?.sections
+        ? <RosterSections sections={roster.sections} unsectionedCollapsed={roster.unsectionedCollapsed === true} rows={rows} render={renderCommodore} />
         : rows.map(renderCommodore)}
       {roster && roster.more > 0 && rows.length > 0 ? <li className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(roster.more) })}</li> : null}
-      {note || reviewCertificate || (rows.length === 0 && !blocked) ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}{rows.length === 0 && !blocked ? enter : null}</li> : null}
+      {!quietHome && (note || reviewCertificate || (rows.length === 0 && !blocked)) ? <li className="side-console-note">{note ? <p>{note}</p> : null}{reviewCertificate}{rows.length === 0 && !blocked ? enter : null}</li> : null}
     </ol>}
   </li>;
 }
 
-/** 집 명부의 사용자 섹션. 로컬 머리글과 같은 클래스이고, 접기·이름 바꾸기는 하지 않는다. */
-function HomeRosterSections({ sections, unsectionedCollapsed, rows, render }: {
+/**
+ * 다른 콘솔 명부의 사용자 섹션. 로컬 머리글과 같은 클래스이고, 이름 바꾸기·옮기기는 하지 않는다.
+ * 접힘은 그 콘솔의 상태에서 시작하되, 머리글을 누르면 이 화면에서만 펼치고 접는다 — 접힌 섹션의 사령관으로도 넘어갈 수 있어야 한다.
+ */
+function RosterSections({ sections, unsectionedCollapsed, rows, render }: {
   readonly sections: readonly { readonly id: string; readonly name: string; readonly collapsed?: true }[];
   readonly unsectionedCollapsed: boolean;
   readonly rows: readonly ConsoleRosterCommodore[];
   readonly render: (commodore: ConsoleRosterCommodore) => ReactNode;
 }) {
   const t = useT();
+  const [flipped, setFlipped] = useState<ReadonlySet<string>>(() => new Set());
   const known = new Set(sections.map((section) => section.id));
   const unsectioned = rows.filter((row) => row.section === undefined || !known.has(row.section));
-  const group = (id: string | null, name: string, collapsed: boolean, members: readonly ConsoleRosterCommodore[]) => (
-    <li key={id ?? "none"} className="workspace-commodore-section" data-sidebar-section={id ?? ""}>
-      <div className="workspace-commodore-section-head is-static" title={name}>
+  const group = (id: string | null, name: string, stored: boolean, members: readonly ConsoleRosterCommodore[]) => {
+    const key = id ?? "";
+    const collapsed = stored !== flipped.has(key);
+    const toggle = () => setFlipped((current) => { const next = new Set(current); if (!next.delete(key)) next.add(key); return next; });
+    return <li key={id ?? "none"} className="workspace-commodore-section" data-sidebar-section={key}>
+      <button type="button" className="workspace-commodore-section-head" data-keep-objective-active="" aria-expanded={!collapsed} title={name} onClick={toggle}>
         <span className="workspace-commodore-section-label">{name}</span>
         {collapsed ? <span className="workspace-commodore-section-count">{members.length}</span> : null}
         <ChevronGlyph direction={collapsed ? "right" : "down"} className="workspace-commodore-section-chevron" />
-      </div>
+      </button>
       {collapsed ? null : <ol className="workspace-commodore-section-rows">
         {members.length > 0 ? members.map(render) : <li className="workspace-commodore-section-empty">{t("sidebar.commodoreSection.empty")}</li>}
       </ol>}
-    </li>
-  );
+    </li>;
+  };
   return <>
     {sections.map((section) => group(section.id, section.name, section.collapsed === true, rows.filter((row) => row.section === section.id)))}
     {group(null, t("sidebar.commodoreSection.none"), unsectionedCollapsed, unsectioned)}
