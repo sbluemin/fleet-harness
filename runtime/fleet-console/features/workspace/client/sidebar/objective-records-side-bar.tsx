@@ -715,7 +715,7 @@ export function ObjectiveRecordsSideBar({
           const theaterDragOffsetY = isTheaterDragging ? drag.currentY - drag.startY : 0;
           const theaterDropBefore = hasSections ? drag?.sectionDrop?.targetId === face.id && !drag.sectionDrop.after
             : drag !== null && drag.dragging && drag.sourceTheaterId !== face.id && drag.dropIndex === theaterIndex;
-          const theaterDropAfter = hasSections ? drag?.sectionDrop?.targetId === face.id && drag.sectionDrop.after
+          const theaterDropAfter = hasSections ? drag?.sectionDrop?.targetId === face.id && drag.sectionDrop.after === true
             : drag !== null && drag.dragging && drag.sourceTheaterId !== face.id && theaterIndex === faces.length - 1 && drag.dropIndex === faces.length;
           // TF 행은 사령관 행과 같은 카드·드래그·섹션 소속을 쓰고, 내용만 TF 것(멤버 묶음·이름·미리보기·판단 중)을 세운다.
           if (face.kind === "taskforce") {

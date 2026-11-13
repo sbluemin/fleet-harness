@@ -8,11 +8,13 @@ import {
   applyUnifiedSidebarCommand,
   isUnifiedSidebarLayout,
   parseConsoleSectionCommand,
+  projectUnifiedSidebar,
   reconcileUnifiedSidebar,
   seedUnifiedSidebar,
   withoutUnifiedConsole,
   type UnifiedMachineSnapshot,
 } from "../protocol/desktop/console-section.js";
+import { unifiedEntryForRow } from "../features/workspace/client/sidebar/unified-sidebar-sections.js";
 
 const ids = () => {
   let n = 0;
@@ -139,5 +141,26 @@ describe("unified sidebar contract", () => {
     expect(next.membership.find((row) => row.commodoreId === "commodore-new")?.sectionId).toBe(added);
     expect(next.membership.find((row) => row.commodoreId === "commodore-kept")?.sectionId).toBe(fleet);
     expect(next.membership.find((row) => row.commodoreId === "commodore-loose")).toBeUndefined();
+  });
+
+  it("ties two machines that share a name and address to different window entry ids", () => {
+    const layout = {
+      v: 1 as const, seeded: true, sections: [] as { id: string; name: string; collapsed: boolean }[], membership: [],
+      order: [{ consoleId: "machine-a", commodoreId: "commodore-a" }, { consoleId: "machine-b", commodoreId: "commodore-b" }],
+      unsectionedCollapsed: false,
+    };
+    const machine = (consoleId: string, entryId: string, commodoreId: string): UnifiedMachineSnapshot => ({
+      consoleId, label: "Same", address: "host:1", home: false, kind: "remote", status: "ready", entryId,
+      roster: { status: "ok", sections: [], commodores: [{ id: commodoreId, name: "Nuri" }] },
+    });
+    const state = projectUnifiedSidebar(layout, [machine("machine-a", "entry-a", "commodore-a"), machine("machine-b", "entry-b", "commodore-b")]);
+    expect(state.rows.map((row) => row.entryId)).toEqual(["entry-a", "entry-b"]);
+    expect(JSON.stringify(state.layout)).not.toContain("entry-");
+    const entries = [
+      { id: "entry-a", label: "Same", address: "host:1", home: false },
+      { id: "entry-b", label: "Same", address: "host:1", home: false },
+    ] as const;
+    expect(unifiedEntryForRow(entries, state.rows[0]!)?.id).toBe("entry-a");
+    expect(unifiedEntryForRow(entries, state.rows[1]!)?.id).toBe("entry-b");
   });
 });

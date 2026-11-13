@@ -585,7 +585,7 @@ export function createConsoleSectionController(deps: Dependencies) {
       } : null;
       return [{
         consoleId, label: target.entry.label || target.entry.address, address: target.entry.address || target.entry.label,
-        home: target.entry.home, kind: target.entry.kind, status: target.entry.status, ...(target.entry.path ? { path: target.entry.path } : {}), roster,
+        home: target.entry.home, kind: target.entry.kind, status: target.entry.status, entryId: target.entry.id, ...(target.entry.path ? { path: target.entry.path } : {}), roster,
       }];
     });
   }

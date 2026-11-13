@@ -4,8 +4,8 @@ import {
   consoleSectionManageable,
   consoleSwitchBlocked,
   type ConsoleSections,
-  type ConsoleSectionEntry,
 } from "../../../remote-access/client/console-sections.js";
+import type { ConsoleSectionEntry } from "@fleet-console/protocol/desktop/console-section";
 import type {
   UnifiedSidebarCommand,
   UnifiedSidebarMachine,
@@ -34,7 +34,7 @@ const AUTO_SCROLL_EDGE_PX = 34;
 const AUTO_SCROLL_STEP_PX = 18;
 
 /** 드래그 중에 목록 끝자리에 다가가면 목록을 밀어 준다 — 로컬 끌기와 같은 간격·폭이다. */
-function autoScrollUnifiedSideBar(clientY: number, chipsElement: HTMLOListElement | null): void {
+function autoScrollUnifiedSideBar(clientY: number, chipsElement: HTMLElement | null): void {
   if (!chipsElement) return;
   const rect = chipsElement.getBoundingClientRect();
   if (clientY < rect.top + AUTO_SCROLL_EDGE_PX) {
@@ -62,12 +62,22 @@ export function unifiedMachineTone(consoleId: string): string {
   return IDENTITY_TONES[Math.abs(hash) % IDENTITY_TONES.length]!;
 }
 
-/** 행이 가리키는 셸 진입점. home 행은 집 진입점, 다른 머신 행은 이름·주소가 같은 진입점이다. 셸이 두 상태를 같은 자료로 짓는다. */
-export function unifiedEntryForRow(entries: readonly ConsoleSectionEntry[], row: Pick<UnifiedSidebarRow, "home" | "machineLabel" | "machineAddress">): ConsoleSectionEntry | null {
-  if (row.home) return entries.find((entry) => entry.home) ?? null;
-  return entries.find((entry) => !entry.home && entry.label === row.machineLabel && entry.address === row.machineAddress)
-    ?? entries.find((entry) => !entry.home && entry.label === row.machineLabel)
+/**
+ * 셸 진입점. `entryId`는 이 창의 불투명 id라 이름·주소가 같은 머신도 갈리지 않는다.
+ * 옛 셸이 id를 안 실으면 이름·주소로 남긴다.
+ */
+export function unifiedEntryForMachine<T extends { readonly id: string; readonly home: boolean; readonly label: string; readonly address: string }>(entries: readonly T[], machine: { readonly entryId?: string; readonly home: boolean; readonly label: string; readonly address: string }): T | null {
+  if (machine.entryId) {
+    const match = entries.find((entry) => entry.id === machine.entryId);
+    if (match) return match;
+  }
+  if (machine.home) return entries.find((entry) => entry.home) ?? null;
+  return entries.find((entry) => !entry.home && entry.label === machine.label && entry.address === machine.address)
+    ?? entries.find((entry) => !entry.home && entry.label === machine.label)
     ?? null;
+}
+export function unifiedEntryForRow<T extends { readonly id: string; readonly home: boolean; readonly label: string; readonly address: string }>(entries: readonly T[], row: Pick<UnifiedSidebarRow, "home" | "machineLabel" | "machineAddress" | "entryId">): T | null {
+  return unifiedEntryForMachine(entries, { entryId: row.entryId, home: row.home, label: row.machineLabel, address: row.machineAddress });
 }
 
 function rowBlocked(entry: ConsoleSectionEntry | null, status: UnifiedSidebarRow["status"]): boolean {
@@ -155,7 +165,7 @@ export function UnifiedSidebarList({ consoles, list, unified, owningCommodoreId,
       if (current.dragging) event.preventDefault();
       const chips = list();
       autoScrollUnifiedSideBar(event.clientY, chips);
-      const dropIndex = theaterDropIndexFromPoint(event.clientY, orderedKeysRef.current, chips, current.sourceKey);
+      const dropIndex = theaterDropIndexFromPoint(event.clientY, orderedKeysRef.current, chips instanceof HTMLOListElement ? chips : null, current.sourceKey);
       const sectionDrop = commodoreSectionDropFromPoint(event.clientX, event.clientY, chips, current.sourceKey);
       updateDrag({ ...current, currentY: event.clientY, dragging: true, dropIndex, sectionDrop });
     };
@@ -613,9 +623,7 @@ function UnifiedMachineNotices({ consoles, machines, rows }: {
   if (visible.length === 0) return null;
   return <>
     {visible.map((machine) => {
-      const entry = consoles.entries.find((item) => !item.home && item.label === machine.label && item.address === machine.address)
-        ?? consoles.entries.find((item) => !item.home && item.label === machine.label)
-        ?? null;
+      const entry = unifiedEntryForMachine(consoles.entries, machine);
       const blocked = entry ? consoleSwitchBlocked(entry) : machine.status === "unreachable" || machine.status === "untrusted" || machine.status === "stopping";
       const roster = entry && consoles.rosterCapable ? consoles.roster(entry.id) : null;
       const untrusted = machine.status === "untrusted" || entry?.status === "untrusted";

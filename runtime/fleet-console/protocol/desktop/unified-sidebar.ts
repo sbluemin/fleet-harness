@@ -65,6 +65,12 @@ export interface UnifiedSidebarMachine {
   /** False when the create dialog must not offer this machine. Home is true while it answers. */
   readonly creatable: boolean;
   readonly createBlock?: UnifiedCreateReason;
+  /**
+   * The window's opaque `ConsoleSectionEntry.id`, so this document can switch or manage that machine.
+   * The shell fills it for this window only. It is not stored in the layout and never grants a permission.
+   * Absent when a shell from before this field built the state.
+   */
+  readonly entryId?: string;
 }
 
 /**
@@ -75,6 +81,8 @@ export interface UnifiedSidebarMachine {
 export interface UnifiedSidebarRow extends UnifiedSidebarRef {
   readonly name: string;
   readonly home: boolean;
+  /** Same window-opaque id as `UnifiedSidebarMachine.entryId`. Absent on an older shell. */
+  readonly entryId?: string;
   readonly machineLabel: string;
   readonly machineAddress: string;
   readonly status: UnifiedSidebarMachine["status"];
@@ -207,6 +215,8 @@ export interface UnifiedMachineSnapshot {
   readonly kind: "local" | "remote";
   readonly path?: UnifiedSidebarMachine["path"];
   readonly status: UnifiedSidebarMachine["status"];
+  /** Window-opaque section id. Not part of the stored layout. */
+  readonly entryId?: string;
   /** null before the first read. `unavailable` keeps the last commodore list and must not drop placement. */
   readonly roster: {
     readonly status: "ok" | "unsupported" | "unavailable";
@@ -344,6 +354,7 @@ export function projectUnifiedSidebar(layout: UnifiedSidebarLayout, snapshots: r
     return {
       consoleId: snapshot.consoleId, label: snapshot.label, address: snapshot.address, home: snapshot.home, kind: snapshot.kind, status: snapshot.status,
       ...(snapshot.path ? { path: snapshot.path } : {}), creatable: offer.creatable, ...(offer.createBlock ? { createBlock: offer.createBlock } : {}),
+      ...(snapshot.entryId && clean(snapshot.entryId, 128) ? { entryId: snapshot.entryId } : {}),
     };
   });
   const rows: UnifiedSidebarRow[] = [];
@@ -354,6 +365,7 @@ export function projectUnifiedSidebar(layout: UnifiedSidebarLayout, snapshots: r
     rows.push({
       consoleId: ref.consoleId, commodoreId: ref.commodoreId, name: commodore.name, home: snapshot.home,
       machineLabel: snapshot.label, machineAddress: snapshot.address, status: snapshot.status,
+      ...(snapshot.entryId && clean(snapshot.entryId, 128) ? { entryId: snapshot.entryId } : {}),
       ...(commodore.look !== undefined ? { look: commodore.look } : {}),
       ...(commodore.run !== undefined ? { run: commodore.run } : {}),
       ...(commodore.preview !== undefined ? { preview: commodore.preview } : {}),
@@ -437,10 +449,12 @@ export function isUnifiedSidebarState(value: unknown): value is UnifiedSidebarSt
   const machineOk = value.machines.every((machine) => record(machine) && consoleIdOk(machine.consoleId) && clean(machine.label, 120) && clean(machine.address, 255)
     && typeof machine.home === "boolean" && (machine.kind === "local" || machine.kind === "remote") && statusOk(machine.status) && typeof machine.creatable === "boolean"
     && (machine.path === undefined || machine.path === "loopback" || machine.path === "wsl" || machine.path === "remote")
-    && (machine.createBlock === undefined || reasonOk(machine.createBlock)));
+    && (machine.createBlock === undefined || reasonOk(machine.createBlock))
+    && (machine.entryId === undefined || clean(machine.entryId, 128)));
   if (!machineOk) return false;
   return value.rows.every((row: unknown) => {
     if (!record(row) || !asRef(row) || !clean(row.name, 120) || typeof row.home !== "boolean" || !clean(row.machineLabel, 120) || !clean(row.machineAddress, 255) || !statusOk(row.status)) return false;
+    if (row.entryId !== undefined && !clean(row.entryId, 128)) return false;
     if (row.run !== undefined && !runOk(row.run)) return false;
     if (row.preview !== undefined && !clean(row.preview, 160)) return false;
     const more = row.moreCommanders;
