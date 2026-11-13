@@ -58,6 +58,19 @@ export function assemble(api) {
     async objectives(commodoreId) {
       return (await api("POST", "/api/v1/objectives/state", { commodoreId, language: "en" })).objectives ?? [];
     },
+    /** Commodore sidebar preview: the last assistant line (`lastResponse`), not the person's message. Null until the fake turn records one. */
+    async commodoreRow(commodoreId) {
+      const { commodores } = await api("POST", "/api/v1/commodore/list", {});
+      return commodores?.find((item) => item.commodoreId === commodoreId) ?? null;
+    },
+    /** Commence through the public route. The owned Console's fake agent runs the turn; this does not call a provider. */
+    async commence(objectiveId) {
+      return await api("POST", "/api/v1/objectives/commander/start", { objectiveId });
+    },
+    /** One local sidebar section, with this commodore moved into it. Not a remote-host registration. */
+    async section(name, rowId) {
+      return await api("POST", "/api/v1/commodore/sidebar", { op: "create", name, rowId });
+    },
   };
 }
 

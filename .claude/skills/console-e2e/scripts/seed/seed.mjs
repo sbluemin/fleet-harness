@@ -2,7 +2,7 @@
 /**
  * Seed an owned, isolated Fleet Console with commodores, theaters and (optionally) objectives. Procedure: ../../references/seed.md
  *
- *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives
+ *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives|activity
  *        [--commodores N] [--theaters M] [--objectives K]
  *        [--root <dir for theater folders>]          default: <os tmpdir>/seed-theaters/<slot hash> (outside every repository)
  *        [--fake-claude-dir <FAKE_CLAUDE_DIR>]       required by objectives: the fake agent adds the objectives
@@ -13,7 +13,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { PROFILES } from "./fixtures.mjs";
+import { ACTIVITY_REPLY, ACTIVITY_SECTION, PROFILES } from "./fixtures.mjs";
 import { assemble, assertFreshSlot, openConsole, parseArgs, until, writeIds } from "./lib.mjs";
 
 const args = parseArgs(process.argv.slice(2));
@@ -28,6 +28,7 @@ const spec = { ...profile, commodores: count("commodores", profile.commodores), 
 for (const key of ["commodores", "theaters", "objectives"]) if (!Number.isInteger(spec[key]) || spec[key] < 0 || spec[key] > 20) fail(`${key} must be an integer 0..20`);
 const fakeDir = args.get("fake-claude-dir");
 if (spec.objectives > 0 && typeof fakeDir !== "string") fail("objectives needs --fake-claude-dir (the fake agent creates them through the Commodore tool)");
+if (spec.activity && spec.objectives < 1) fail("activity needs at least one objective (do not combine it with --objectives 0)");
 
 try {
   assertFreshSlot(dir); // before the first commodore exists, so a refused run leaves no half-seeded state
@@ -53,6 +54,35 @@ try {
       for (const member of spec.members ?? []) await make.member(found.id, member);
       for (const mission of spec.missions ?? []) await make.mission(found.id, mission);
       entry.objectives.push({ objectiveId: found.id, title });
+    }
+    if (spec.activity) {
+      // The create turns do not stream text. A one-shot reply.md is the fake agent's own control file; the next message streams it.
+      await until(async () => {
+        const row = await make.commodoreRow(commodoreId);
+        return row && row.run?.phase !== "turn" && row.run?.phase !== "retrying" ? row : null;
+      }, 60_000, "commodore idle before synthetic reply");
+      writeFileSync(path.join(fakeDir, "reply.md"), ACTIVITY_REPLY);
+      await api("POST", "/api/v1/commodore/message", { commodoreId, text: "Seed recent response" });
+      const reply = await until(async () => {
+        const row = await make.commodoreRow(commodoreId);
+        return row?.run?.phase !== "turn" && row?.lastResponse?.text === ACTIVITY_REPLY ? row.lastResponse : null;
+      }, 60_000, "commodore synthetic reply");
+      const target = entry.objectives[0];
+      const started = await make.commence(target.objectiveId);
+      if (started?.failed?.length) throw new Error(`commence refused members: ${started.failed.map((item) => `${item.role}:${item.error}`).join(", ")}`);
+      // In-progress list is everyone who is not fresh: a started commander session, still not done.
+      await until(async () => {
+        const found = (await make.objectives(commodoreId)).find((item) => item.id === target.objectiveId);
+        return found?.commenced === true && (found.commander?.started === true || found.hasSession === true) ? found : null;
+      }, 60_000, "in-progress commander");
+      const section = await make.section(ACTIVITY_SECTION, commodoreId);
+      if (typeof section?.createdSectionId !== "string") throw new Error("sidebar section was not created");
+      entry.activity = {
+        inProgressObjectiveId: target.objectiveId,
+        lastResponse: reply.text,
+        sectionId: section.createdSectionId,
+        sectionName: ACTIVITY_SECTION,
+      };
     }
     ids.commodores.push(entry);
     console.error(`seed: commodore ${c}/${spec.commodores} ready`);
