@@ -316,6 +316,14 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       const admitted = await remoteRequest(fixture, "GET", "/api/v1/browser", undefined, cookie, headers);
       expect(admitted.status).not.toBe(404);
     }
+
+    // 세션 없이 닿는 join도 같은 규칙이다 — 다른 Origin은 본문을 읽기 전에 403, 같은 Origin·없음은 기존 판정(자격 없음 401).
+    const join = JSON.stringify({ token: "not-a-grant" });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", join, undefined, { origin: `https://${BIND_HOST}:${fixture.remotePort + 1}` }))
+      .resolves.toMatchObject({ status: 403 });
+    for (const headers of [{ origin: own }, {}] as Record<string, string>[]) {
+      await expect(remoteRequest(fixture, "POST", "/api/v1/join", join, undefined, headers)).resolves.toMatchObject({ status: 401 });
+    }
   });
 
   /**
