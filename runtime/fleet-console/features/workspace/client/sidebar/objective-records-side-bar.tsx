@@ -43,7 +43,8 @@ import { openTheaterInbox } from "../theater-inbox/store.js";
 import { resolveObjectiveActivity } from "../../../execution/client/objective-activity.js";
 import { commodoreSectionDropFromPoint, type CommodoreSectionDrop, reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
 import { CommodoreSidebarSection, CommodoreSectionMoveMenu, useCommodoreSidebarSections, type SidebarSectionsController } from "./commodore-sidebar-sections.js";
-import { UnifiedSidebarList } from "./unified-sidebar-sections.js";
+import { UnifiedSidebarList, unifiedRowKey, type UnifiedStandingMenu } from "./unified-sidebar-sections.js";
+import type { UnifiedSidebarRow } from "@fleet-console/protocol/desktop/console-section";
 import { useUnifiedSidebar } from "./unified-sidebar.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../../../../core/client/src/chrome/rail/rail-store.js";
 import { ConsoleRosterSection } from "./console-roster.js";
@@ -336,6 +337,7 @@ export function ObjectiveRecordsSideBar({
     return () => cancelAnimationFrame(frame);
   }, [arrival, commodoresLoaded]);
   const taskforceExperiment = useTaskforceExperiment();
+  const tfStanding = taskforceT(useConsoleLocale());
   const allTaskforces = useTaskforces();
   // 실험이 꺼져 있으면 TF 행을 그리지 않는다 — 순서·소속 저장은 그대로 두어 다시 켜면 돌아온다.
   const tfSummaries = taskforceExperiment.enabled ? allTaskforces : EMPTY_TASKFORCE_SUMMARIES;
@@ -651,6 +653,60 @@ export function ObjectiveRecordsSideBar({
     onFinishAliasEdit: finishAliasEdit,
   });
 
+  // 통합 행의 서 있는 콘솔 동작 — 항목과 조건은 비통합 분기의 TheaterActionsMenu와 같고, 로컬 섹션 옮기기만
+  // 통합 이동·새 섹션(행 ⋯ 메뉴 앞부분)으로 갈음한다. 다른 머신 행에는 주지 않는다.
+  const standingTheaterFor = (row: UnifiedSidebarRow): SideBarHead => {
+    const face = faces.find((item) => item.kind === "commodore" && item.section.commodoreId === row.commodoreId);
+    const section = face?.kind === "commodore" ? face.section : null;
+    return {
+      id: row.commodoreId,
+      label: section?.alias ?? section?.label ?? row.name,
+      createdAt: "",
+      lastOpenedAt: "",
+      activeAdmiralCount: 0,
+      commodore: { id: row.commodoreId, ...(section?.alias ? { alias: section.alias } : {}) },
+    };
+  };
+  const standingMenu: UnifiedStandingMenu = {
+    renderItems: (row, onClose, opener) => {
+      const theater = standingTheaterFor(row);
+      return <>
+        <div className="theater-menu-divider" aria-hidden="true" />
+        <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={() => startAliasEdit(row.commodoreId)}>
+          <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.commodore.rename")}</span>
+        </button>
+        <div className="theater-menu-divider" aria-hidden="true" />
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); openCommodoreNewSession(row.commodoreId); }}>
+          <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.commodore.newSession")}</span>
+        </button>
+        {taskforceExperiment.enabled ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(row.commodoreId); }}>
+          <span className="theater-menu-check" aria-hidden="true"><TaskforceIcon /></span>
+          <span className="theater-menu-label">{tfStanding("taskforce.fromCommodore")}</span>
+        </button> : null}
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => openTheaterBrowser(row.commodoreId)}>
+          <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.commodore.addTheater")}</span>
+        </button>
+        <TheaterContributionMenuItems theater={theater} onClose={onClose} />
+        <div className="theater-menu-divider" aria-hidden="true" />
+        <button type="button" role="menuitem" className="theater-menu-item theater-menu-forget" onClick={() => { onClose(); requestCommodoreDelete(row.commodoreId, opener); }}>
+          <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span>
+          <span className="theater-menu-label">{t("sidebar.commodore.delete")}</span>
+        </button>
+      </>;
+    },
+    renderAliasEditor: (row) => {
+      if (aliasEditingTheaterId !== row.commodoreId) return null;
+      const theater = standingTheaterFor(row);
+      return <TheaterAliasInput clampAlias={clampAlias} theater={theater} onDone={(alias, viaKey) => {
+        finishAliasEdit(row.commodoreId, alias);
+        if (viaKey) document.querySelector<HTMLElement>(`[data-theater-id="${CSS.escape(unifiedRowKey({ consoleId: row.consoleId, commodoreId: row.commodoreId }))}"] .side-bar-theater-activate`)?.focus({ preventScroll: true });
+      }} />;
+    },
+  };
+
   // 심리스 셸은 entries 순서 그대로 그리고, 지금 콘솔의 목록만 그 자리에 둔다. 옛 셸은 지금 콘솔을 맨 위에 둔다.
   // 집 콘솔의 머리글은 사령관 묶음이 대신한다. 집이 아닌 활성 콘솔만 자기 이름 머리글을 제자리에 세운다.
   const seamOrder = consoles.seamless && consoles.sectioned && consoles.active !== null;
@@ -685,7 +741,7 @@ export function ObjectiveRecordsSideBar({
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")} data-scroll-hold={scrollHoldOn ? "1" : undefined}>
         {unifiedReady ? <>
           <UnifiedSidebarList consoles={consoles} list={() => listRef.current} unified={unified}
-            owningCommodoreId={owningCommodoreId} onOpenHomeCommodore={openUnifiedHomeCommodore} />
+            owningCommodoreId={owningCommodoreId} onOpenHomeCommodore={openUnifiedHomeCommodore} standingMenu={standingMenu} />
           {/* TF는 지금 문서의 것이라 통합 배치에 넣지 않고 섹션 목록 뒤에 평평하게 둔다. */}
           {faces.filter((face) => face.kind === "taskforce").map((face) => (
             <TaskforceFaceRow

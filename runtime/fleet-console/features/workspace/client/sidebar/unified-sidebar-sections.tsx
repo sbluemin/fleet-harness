@@ -97,10 +97,19 @@ interface UnifiedDragState {
 }
 
 /**
+ * 서 있는 콘솔 행에만 붙는 기존 사령관 동작. 항목과 조건은 비통합 분기의 TheaterActionsMenu와 같고,
+ * 자리만 통합 행의 ⋯ 메뉴(통합 이동·새 섹션 아래)와 행 머리(별칭 입력)다. 다른 머신 행에는 주지 않는다.
+ */
+export interface UnifiedStandingMenu {
+  readonly renderItems: (row: UnifiedSidebarRow, onClose: () => void, opener: HTMLElement | null) => ReactNode;
+  readonly renderAliasEditor: (row: UnifiedSidebarRow) => ReactNode;
+}
+
+/**
  * 통합 사이드바 — 머신 머리글과 머신별 섹션 반복 없이, 배치 한 벌에 모든 머신의 사령관을 그린다.
  * 셸 능력이 없을 때(브라우저·모바일·옛 셸)는 호출자가 옛 경로를 그대로 그린다.
  */
-export function UnifiedSidebarList({ consoles, list, unified, owningCommodoreId, onOpenHomeCommodore }: {
+export function UnifiedSidebarList({ consoles, list, unified, owningCommodoreId, onOpenHomeCommodore, standingMenu }: {
   readonly consoles: ConsoleSections;
   readonly list: () => HTMLElement | null;
   readonly unified: UnifiedSidebarController;
@@ -108,6 +117,8 @@ export function UnifiedSidebarList({ consoles, list, unified, owningCommodoreId,
   readonly owningCommodoreId: string | null;
   /** 집 행을 지금 문서(집)에서 여는 일 — 부모의 사령관 머리 열기와 같다. */
   readonly onOpenHomeCommodore: (row: UnifiedSidebarRow) => void;
+  /** 서 있는 콘솔 행의 기존 사령관 동작. 없으면 통합 이동·새 섹션만 둔다. */
+  readonly standingMenu?: UnifiedStandingMenu | null;
 }) {
   const t = useT();
   const compact = useSideBarState().compact;
@@ -244,7 +255,7 @@ export function UnifiedSidebarList({ consoles, list, unified, owningCommodoreId,
     const index = orderedKeys.indexOf(key);
     const target = drag?.sectionDrop?.targetId === key;
     return <UnifiedCommodoreRow key={key} rowKey={key} row={row} consoles={consoles} list={list}
-      compact={compact} standingHome={standingHome} unified={unified} owningCommodoreId={owningCommodoreId} onOpenHomeCommodore={onOpenHomeCommodore}
+      compact={compact} standingHome={standingHome} unified={unified} owningCommodoreId={owningCommodoreId} onOpenHomeCommodore={onOpenHomeCommodore} standingMenu={standingMenu}
       dragging={drag?.sourceKey === key && drag.dragging} dragOffsetY={drag?.sourceKey === key && drag.dragging ? drag.currentY - drag.startY : 0}
       dropBefore={drag !== null && drag.dragging && drag.sourceKey !== key
         && (flat ? !drag.sectionDrop && drag.dropIndex === index : target && drag.sectionDrop?.after !== true)}
@@ -346,7 +357,7 @@ function UnifiedSection({ sectionId, name, collapsed, count, dropTarget, unified
 }
 
 /** 통합 배치의 사령관 행 — 집 행에는 칩이 없고, 다른 머신 행에는 이름 바로 오른쪽에 머신 칩이 선다. */
-function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHome, unified, owningCommodoreId, onOpenHomeCommodore, dragging, dragOffsetY, dropBefore, dropAfter, onPointerDragStart }: {
+function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHome, unified, owningCommodoreId, onOpenHomeCommodore, standingMenu, dragging, dragOffsetY, dropBefore, dropAfter, onPointerDragStart }: {
   readonly rowKey: string;
   readonly row: UnifiedSidebarRow;
   readonly consoles: ConsoleSections;
@@ -356,6 +367,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
   readonly unified: UnifiedSidebarController;
   readonly owningCommodoreId: string | null;
   readonly onOpenHomeCommodore: (row: UnifiedSidebarRow) => void;
+  readonly standingMenu?: UnifiedStandingMenu | null;
   readonly dragging: boolean;
   readonly dragOffsetY: number;
   readonly dropBefore: boolean;
@@ -410,6 +422,9 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
 
   const look = row.look ?? { base: fallbackMongleBase(commodoreAvatarKey(row.commodoreId)), tone: null };
   const tone = look.tone !== null && isIdentityTone(look.tone) ? look.tone : null;
+  // 서 있는 콘솔의 행에만 기존 사령관 동작을 둔다 — 별칭 입력은 행 머리에, 나머지는 ⋯ 메뉴의 통합 이동 아래에.
+  const standingRow = standingHere && standingMenu ? row : null;
+  const aliasEditor = standingRow && standingMenu ? standingMenu.renderAliasEditor(standingRow) : null;
   const previewText = row.preview && row.preview.length > 0 ? row.preview : t("sidebar.commodore.noConversation");
   const commanders = row.commanders ?? [];
   const moreCommanders = row.moreCommanders ?? 0;
@@ -425,7 +440,8 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
           <MongleAvatar base={look.base} tone={tone} role="commodore" state="idle" size={32} label={row.name} decorative />
         </span>
       </button>
-      {menu ? <UnifiedRowMenu anchor={menu} focusFirst={menuFocusFirst} opener={null} label={row.name} unified={unified} rowKey={rowKey} onClose={closeMenu} /> : null}
+      {aliasEditor}
+      {menu ? <UnifiedRowMenu anchor={menu} focusFirst={menuFocusFirst} opener={null} label={row.name} unified={unified} rowKey={rowKey} onClose={closeMenu} standingRow={standingRow} standingMenu={standingMenu} /> : null}
     </li>;
   }
 
@@ -449,7 +465,8 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
       onPointerUp={() => { longPress.onPointerUp(); }}
       onPointerCancel={longPress.onPointerCancel}
     >
-      <button
+      {/* 별칭 편집 중에는 머리 글자 자리에 입력이 선다 — 비통합 분기와 같은 입력이다. */}
+      {aliasEditor ?? <button
         type="button"
         className="side-bar-theater-activate"
         aria-disabled={blocked && !homeHere || undefined}
@@ -471,7 +488,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
           </span>
           <span className="side-bar-theater-sub">{previewText}</span>
         </span>
-      </button>
+      </button>}
       <button type="button" className="unified-row-menu-trigger" aria-label={t("sidebar.commodoreSection.actions", { name: row.name })}
         title={t("sidebar.commodoreSection.actions", { name: row.name })}
         onClick={(event) => openMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget, event.detail === 0)}>
@@ -487,7 +504,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
         {moreCommanders > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(moreCommanders) })}</p> : null}
       </div>
     </div> : null}
-    {menu ? <UnifiedRowMenu anchor={menu} focusFirst={menuFocusFirst} opener={returnFocusRef.current} label={row.name} unified={unified} rowKey={rowKey} onClose={closeMenu} /> : null}
+    {menu ? <UnifiedRowMenu anchor={menu} focusFirst={menuFocusFirst} opener={returnFocusRef.current} label={row.name} unified={unified} rowKey={rowKey} onClose={closeMenu} standingRow={standingRow} standingMenu={standingMenu} /> : null}
     {chipCard && !row.home ? <UnifiedMachineCard anchor={chipCard} row={row} entry={entry} consoles={consoles} onClose={() => setChipCard(null)} /> : null}
   </li>;
 }
@@ -553,7 +570,7 @@ function UnifiedMachineCard({ anchor, row, entry, consoles, onClose }: {
 }
 
 /** 행의 ⋯·우클릭 메뉴 — 어느 머신 행이든 임의 섹션에 넣는다. 셸 명령으로만 기록한다. */
-function UnifiedRowMenu({ anchor, focusFirst, opener, label, unified, rowKey, onClose }: {
+function UnifiedRowMenu({ anchor, focusFirst, opener, label, unified, rowKey, onClose, standingRow, standingMenu }: {
   readonly anchor: DOMRect;
   readonly focusFirst: boolean;
   readonly opener: HTMLElement | null;
@@ -561,6 +578,9 @@ function UnifiedRowMenu({ anchor, focusFirst, opener, label, unified, rowKey, on
   readonly unified: UnifiedSidebarController;
   readonly rowKey: string;
   readonly onClose: () => void;
+  /** 서 있는 콘솔의 행에만 든다. 없으면 통합 이동·새 섹션만 보인다. */
+  readonly standingRow?: UnifiedSidebarRow | null;
+  readonly standingMenu?: UnifiedStandingMenu | null;
 }) {
   const t = useT();
   const layout = unified.layout;
@@ -614,6 +634,7 @@ function UnifiedRowMenu({ anchor, focusFirst, opener, label, unified, rowKey, on
         }}>{t("sidebar.commodoreSection.create")}</MenuItem>
       </div> : null}
     </div>
+    {standingRow && standingMenu ? standingMenu.renderItems(standingRow, onClose, opener) : null}
   </SectionMenu>;
 }
 
