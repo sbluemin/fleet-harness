@@ -17,11 +17,14 @@
 //   sdk-calls        one-shot in-process tool calls on the next turn: {"sessionId"?: string, "calls": [{"server", "tool", "args"?}]};
 //                    taken only by a launch holding every named server (log `sdk-calls-skipped` otherwise)
 //   sdk-calls-<sessionId>  same, scoped to this launch's --session-id/--resume
+//   reply.md            one-shot chat reply for the next turn in this directory, streamed then consumed
+//   reply-<sessionId>.md  same, scoped to this launch; tried before reply.md. Empty files are discarded.
+//                    FAKE_CLAUDE_REPLIES wins when it matches; otherwise reply.md, else the fixed canned reply.
 //   sdk-mcp/calls-<ts>-<pid>.json  each call's args, isError, error code and full JSON-RPC result (mode 0600)
 // FAKE_CLAUDE_VERSION (optional): the --version answer (default "2.1.999 (Claude Code)").
 // FAKE_CLAUDE_TOOLS (optional): JSON array of tool names advertised in init.tools (default []).
 // FAKE_CLAUDE_REPLIES (optional): directory of best-effort one-shot reply fixtures; <sessionId>.md, then
-//   <model-prefix>.md (model id up to "["). Unset (or no match) keeps the fixed reply.
+//   <model-prefix>.md (model id up to "["). Unset or no match falls through to reply.md, then the fixed reply.
 // FAKE_CLAUDE_STRUCTURED_OUTPUT (optional): JSON value (any type) returned as result.structured_output on the normal turn
 //   result, only for launches given --json-schema (or --json-schema=...). Repeats on every such turn (not consumed, unlike
 //   REPLIES); no schema validation. Unset, unparsable (log `structured-output-config-ignored`) or a launch without
@@ -83,6 +86,22 @@ const readScriptedReply = (sessionId, turnModel) => {
     try {
       const text = readFileSync(file, "utf8");
       try { unlinkSync(file); } catch {}
+      log({ event: "scripted-reply", sessionId, file: name });
+      return text;
+    } catch (error) {
+      if (error.code !== "ENOENT") log({ event: "reply-file-error", sessionId, file: name, error: String(error?.message ?? error) });
+    }
+  }
+  return null;
+};
+// One-shot reply in FAKE_CLAUDE_DIR. Same stream path as FAKE_CLAUDE_REPLIES, so the host records the text.
+const readDirReply = (sessionId) => {
+  for (const name of [`reply-${sessionId}.md`, "reply.md"]) {
+    const file = join(dir, name);
+    try {
+      const text = readFileSync(file, "utf8");
+      try { unlinkSync(file); } catch {}
+      if (!text.trim()) continue;
       log({ event: "scripted-reply", sessionId, file: name });
       return text;
     } catch (error) {
@@ -332,7 +351,7 @@ if (!sdk) {
     } else {
       await new Promise((r) => setTimeout(r, 150));
     }
-    const scripted = interrupted ? null : readScriptedReply(sessionId, turnModel);
+    const scripted = interrupted ? null : (readScriptedReply(sessionId, turnModel) ?? readDirReply(sessionId));
     if (scripted !== null) {
       out({ type: "stream_event", event: { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } }, ...envelope() });
       out({ type: "stream_event", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: scripted } }, ...envelope() });
