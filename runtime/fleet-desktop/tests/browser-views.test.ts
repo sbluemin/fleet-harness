@@ -97,6 +97,7 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
     }),
     setWindowOpenHandler: () => {},
     loadURL: async () => {},
+    insertCSS: async () => "",
     isFocused: () => false,
     isDestroyed: () => record.closed,
     close: () => { record.closed = true; rejectPending(new Error("target closed")); },
