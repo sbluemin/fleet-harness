@@ -220,6 +220,8 @@ export interface UnifiedMachineSnapshot {
   /** null before the first read. `unavailable` keeps the last commodore list and must not drop placement. */
   readonly roster: {
     readonly status: "ok" | "unsupported" | "unavailable";
+    /** Commodores the route left out. Above zero, the list is not a complete deletion set. */
+    readonly more: number;
     readonly sections: readonly { readonly id: string; readonly name: string; readonly collapsed?: true }[];
     readonly unsectionedCollapsed?: true;
     readonly commodores: readonly { readonly id: string; readonly name: string; readonly section?: string; readonly look?: UnifiedSidebarRow["look"]; readonly run?: UnifiedSidebarRow["run"]; readonly preview?: string; readonly commanders?: UnifiedSidebarRow["commanders"]; readonly moreCommanders?: number }[];
@@ -253,13 +255,13 @@ export function seedUnifiedFromSnapshots(snapshots: readonly UnifiedMachineSnaps
 }
 
 /**
- * Drops commodores a successful roster no longer lists, and places commodores that were not in the layout yet
- * by the same name rule as the first seed. An `unavailable` roster changes nothing: its last list stays put.
+ * Drops commodores a complete roster (`more === 0`) no longer lists, and places commodores that were not in the layout yet
+ * by the same name rule as the first seed. An incomplete roster keeps placements it omitted. An `unavailable` roster changes nothing.
  */
 export function reconcileUnifiedSidebar(layout: UnifiedSidebarLayout, snapshots: readonly UnifiedMachineSnapshot[], id: () => string): UnifiedSidebarLayout {
   let order = layout.order.filter((row) => {
     const snapshot = snapshots.find((item) => item.consoleId === row.consoleId);
-    if (!snapshot?.roster || snapshot.roster.status !== "ok") return true;
+    if (!snapshot?.roster || snapshot.roster.status !== "ok" || snapshot.roster.more > 0) return true;
     return snapshot.roster.commodores.some((commodore) => commodore.id === row.commodoreId);
   });
   let membership = layout.membership.filter((row) => order.some((item) => sameRow(item, row)));

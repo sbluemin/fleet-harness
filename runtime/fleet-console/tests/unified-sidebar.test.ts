@@ -119,22 +119,30 @@ describe("unified sidebar contract", () => {
     }, [], ids());
     const home: UnifiedMachineSnapshot = {
       consoleId: UNIFIED_SIDEBAR_HOME, label: "Home", address: "127.0.0.1:1", home: true, kind: "local", status: "ready",
-      roster: { status: "ok", sections: [{ id: "home-fleet", name: "플릿" }], commodores: [{ id: "commodore-home", name: "Home", section: "home-fleet" }] },
+      roster: { status: "ok", more: 0, sections: [{ id: "home-fleet", name: "플릿" }], commodores: [{ id: "commodore-home", name: "Home", section: "home-fleet" }] },
     };
     const offline: UnifiedMachineSnapshot = {
       consoleId: "machine-mac", label: "Mac", address: "mac:1", home: false, kind: "remote", status: "unreachable",
-      roster: { status: "unavailable", sections: [], commodores: [{ id: "commodore-kept", name: "Kept" }] },
+      roster: { status: "unavailable", more: 0, sections: [], commodores: [{ id: "commodore-kept", name: "Kept" }] },
     };
     const placed = applyUnifiedSidebarCommand(layout, { op: "move", row: { consoleId: "machine-mac", commodoreId: "commodore-kept" }, sectionId: layout.sections[0]!.id }, ids());
     expect(placed?.order.map((row) => row.commodoreId)).toEqual(["commodore-home", "commodore-kept"]);
     const kept = reconcileUnifiedSidebar(placed!, [home, offline], ids());
     expect(kept.order.map((row) => row.commodoreId)).toEqual(["commodore-home", "commodore-kept"]);
+    const truncated: UnifiedMachineSnapshot = {
+      ...offline, status: "ready",
+      roster: { status: "ok", more: 1, sections: [], commodores: [{ id: "commodore-partial", name: "Partial" }] },
+    };
+    const held = reconcileUnifiedSidebar(kept, [home, truncated], ids());
+    expect(held.order.map((row) => row.commodoreId)).toEqual(["commodore-home", "commodore-kept", "commodore-partial"]);
+    expect(held.membership.find((row) => row.commodoreId === "commodore-kept")?.sectionId).toBe(layout.sections[0]!.id);
+    expect(held.membership.find((row) => row.commodoreId === "commodore-partial")).toBeUndefined();
     const back: UnifiedMachineSnapshot = {
       ...offline, status: "ready",
-      roster: { status: "ok", sections: [{ id: "remote-fleet", name: "플릿" }, { id: "remote-new", name: "새 칸" }], commodores: [{ id: "commodore-kept", name: "Kept", section: "remote-fleet" }, { id: "commodore-new", name: "New", section: "remote-new" }, { id: "commodore-loose", name: "Loose" }] },
+      roster: { status: "ok", more: 0, sections: [{ id: "remote-fleet", name: "플릿" }, { id: "remote-new", name: "새 칸" }], commodores: [{ id: "commodore-kept", name: "Kept", section: "remote-fleet" }, { id: "commodore-new", name: "New", section: "remote-new" }, { id: "commodore-loose", name: "Loose" }] },
     };
     let extra = 100;
-    const next = reconcileUnifiedSidebar(kept, [home, back], () => `section-${extra++}`);
+    const next = reconcileUnifiedSidebar(held, [home, back], () => `section-${extra++}`);
     expect(next.order.map((row) => row.commodoreId)).toEqual(["commodore-home", "commodore-kept", "commodore-new", "commodore-loose"]);
     const fleet = next.sections.find((section) => section.name === "플릿")!.id;
     const added = next.sections.find((section) => section.name === "새 칸")!.id;
@@ -151,7 +159,7 @@ describe("unified sidebar contract", () => {
     };
     const machine = (consoleId: string, entryId: string, commodoreId: string): UnifiedMachineSnapshot => ({
       consoleId, label: "Same", address: "host:1", home: false, kind: "remote", status: "ready", entryId,
-      roster: { status: "ok", sections: [], commodores: [{ id: commodoreId, name: "Nuri" }] },
+      roster: { status: "ok", more: 0, sections: [], commodores: [{ id: commodoreId, name: "Nuri" }] },
     });
     const state = projectUnifiedSidebar(layout, [machine("machine-a", "entry-a", "commodore-a"), machine("machine-b", "entry-b", "commodore-b")]);
     expect(state.rows.map((row) => row.entryId)).toEqual(["entry-a", "entry-b"]);

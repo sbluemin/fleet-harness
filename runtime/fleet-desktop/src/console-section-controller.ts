@@ -580,7 +580,7 @@ export function createConsoleSectionController(deps: Dependencies) {
       if (!consoleId) return [];
       const memory = target.origin ? rosterMemory.get(target.origin) : undefined;
       const roster = memory ? {
-        status: memory.status, sections: memory.sections ?? [], commodores: memory.commodores,
+        status: memory.status, more: memory.more, sections: memory.sections ?? [], commodores: memory.commodores,
         ...(memory.unsectionedCollapsed ? { unsectionedCollapsed: true as const } : {}),
       } : null;
       return [{
