@@ -60,7 +60,7 @@ describe("managed browser host across console switches", () => {
       const record = { id: "", closed: false };
       created.push(record);
       const contents = Object.assign(new EventEmitter(), {
-        session: { webRequest: { onBeforeSendHeaders: () => {} } },
+        session: { webRequest: { onBeforeSendHeaders: () => {}, onHeadersReceived: () => {} } },
         debugger: Object.assign(new EventEmitter(), { attach: () => {}, detach: () => {}, isAttached: () => true, sendCommand: () => Promise.resolve({}) }),
         setWindowOpenHandler: () => {}, loadURL: async () => {}, isFocused: () => false, isDestroyed: () => record.closed,
         close: () => { record.closed = true; },

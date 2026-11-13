@@ -1,13 +1,82 @@
 import { describe, expect, it } from "vitest";
 
-import { setRequestGuardExtra, type GuardedSession, type RequestGuardDetails } from "../src/request-guard.js";
+import { installRequestGuard, setRequestGuardExtra, type GuardedSession, type RequestGuardDetails, type ResponseGuardDetails } from "../src/request-guard.js";
+
+/** Chromium webRequest 패턴. 필터 문자열을 그대로 비교하지 않고, 그 패턴에 맞는 URL만 리스너에 넘긴다. */
+function webRequestUrlMatches(url: string, pattern: string): boolean {
+  if (pattern === "<all_urls>") {
+    try {
+      const scheme = new URL(url).protocol.replace(/:$/u, "");
+      return scheme === "http" || scheme === "https" || scheme === "ws" || scheme === "wss" || scheme === "file" || scheme === "ftp";
+    } catch {
+      return false;
+    }
+  }
+  const spec = /^(\*|[-a-zA-Z0-9+]+):\/\/(\*|[^/]+?)(\/.*)$/u.exec(pattern);
+  if (!spec) return false;
+  let parsed: URL;
+  try { parsed = new URL(url); } catch { return false; }
+  const scheme = parsed.protocol.replace(/:$/u, "");
+  const patternScheme = spec[1] ?? "";
+  if (patternScheme === "*") {
+    if (scheme !== "http" && scheme !== "https" && scheme !== "ws" && scheme !== "wss") return false;
+  } else if (patternScheme.toLowerCase() !== scheme) return false;
+  const hostPort = spec[2] ?? "";
+  if (hostPort !== "*") {
+    const colon = hostPort.lastIndexOf(":");
+    const hasPort = colon > 0 && /^\d+$/u.test(hostPort.slice(colon + 1));
+    const host = hasPort ? hostPort.slice(0, colon) : hostPort;
+    const port = hasPort ? hostPort.slice(colon + 1) : null;
+    if (host.startsWith("*.")) {
+      const base = host.slice(2);
+      if (parsed.hostname !== base && !parsed.hostname.endsWith(`.${base}`)) return false;
+    } else if (parsed.hostname !== host) return false;
+    if (port !== null && parsed.port !== port) return false;
+  }
+  const path = spec[3] ?? "/";
+  const pathPattern = new RegExp(`^${path.replace(/[.+?^${}()|[\]\\]/gu, "\\$&").replace(/\*/gu, ".*")}$`, "u");
+  return pathPattern.test(parsed.pathname);
+}
+
+type RequestListener = (details: RequestGuardDetails, callback: (response: { requestHeaders?: Record<string, string>; cancel?: boolean }) => void) => void;
+type ResponseListener = (details: ResponseGuardDetails, callback: (response: { responseHeaders?: Record<string, string | string[]>; cancel?: boolean }) => void) => void;
+
+function guardedSession(): {
+  session: GuardedSession;
+  request: (details: RequestGuardDetails) => { called: boolean; requestHeaders?: Record<string, string>; cancel?: boolean };
+  response: (details: ResponseGuardDetails) => { called: boolean; responseHeaders?: Record<string, string | string[]>; cancel?: boolean };
+} {
+  let requestFilter: { urls: readonly string[] } | null = null;
+  let requestListener: RequestListener | null = null;
+  let responseFilter: { urls: readonly string[] } | null = null;
+  let responseListener: ResponseListener | null = null;
+  const session: GuardedSession = {
+    webRequest: {
+      onBeforeSendHeaders(filter, listener) { requestFilter = filter; requestListener = listener; },
+      onHeadersReceived(filter, listener) { responseFilter = filter; responseListener = listener; },
+    },
+  };
+  const matches = (filter: { urls: readonly string[] } | null, url: string): boolean => filter?.urls.some((pattern) => webRequestUrlMatches(url, pattern)) === true;
+  return {
+    session,
+    request(details) {
+      if (!requestListener || !matches(requestFilter, details.url)) return { called: false };
+      let response: { requestHeaders?: Record<string, string>; cancel?: boolean } = {};
+      requestListener(details, (next) => { response = next; });
+      return { called: true, ...response };
+    },
+    response(details) {
+      if (!responseListener || !matches(responseFilter, details.url)) return { called: false };
+      let response: { responseHeaders?: Record<string, string | string[]>; cancel?: boolean } = {};
+      responseListener(details, (next) => { response = next; });
+      return { called: true, ...response };
+    },
+  };
+}
 
 describe("remote request cookie guard", () => {
   it("strips sibling console cookies, keeps stripping after the extra is cleared, and cancels when the extra throws", () => {
-    let listener: ((details: RequestGuardDetails, callback: (response: { requestHeaders?: Record<string, string>; cancel?: boolean }) => void) => void) | null = null;
-    const session: GuardedSession = {
-      webRequest: { onBeforeSendHeaders: (_filter, next) => { listener = next; } },
-    };
+    const guard = guardedSession();
     const cookie = [
       "fleet_console_pairing_4311=sibling-pairing",
       "fleet_console_session_4311=sibling-session",
@@ -16,23 +85,73 @@ describe("remote request cookie guard", () => {
       "theme=light",
     ].join("; ");
     const request = (url: string): RequestGuardDetails => ({ url, requestHeaders: { Cookie: cookie } });
-    const sent = (details: RequestGuardDetails): { requestHeaders?: Record<string, string>; cancel?: boolean } => {
-      let response: { requestHeaders?: Record<string, string>; cancel?: boolean } = {};
-      listener?.(details, (next) => { response = next; });
-      return response;
-    };
+    const kept = "fleet_console_pairing_4310=own-pairing; fleet_console_session_4310=own-session; theme=light";
 
-    setRequestGuardExtra(session, () => undefined);
-    expect(sent(request("https://127.0.0.1:4310/api/v1/console-roster")).requestHeaders?.Cookie).toBe(
-      "fleet_console_pairing_4310=own-pairing; fleet_console_session_4310=own-session; theme=light",
-    );
+    setRequestGuardExtra(guard.session, () => undefined);
+    expect(guard.request(request("https://127.0.0.1:4310/api/v1/console-roster")).requestHeaders?.Cookie).toBe(kept);
 
-    setRequestGuardExtra(session, null);
-    expect(sent(request("https://127.0.0.1:4310/console/")).requestHeaders?.Cookie).toBe(
-      "fleet_console_pairing_4310=own-pairing; fleet_console_session_4310=own-session; theme=light",
-    );
+    setRequestGuardExtra(guard.session, null);
+    expect(guard.request(request("https://127.0.0.1:4310/console/")).requestHeaders?.Cookie).toBe(kept);
 
-    setRequestGuardExtra(session, () => { throw new Error("guard extra failed"); });
-    expect(sent(request("https://127.0.0.1:4310/console/")).cancel).toBe(true);
+    setRequestGuardExtra(guard.session, () => { throw new Error("guard extra failed"); });
+    expect(guard.request(request("https://127.0.0.1:4310/console/")).cancel).toBe(true);
+    expect(guard.request(request("file:///tmp/page.html")).called).toBe(false);
+  });
+
+  it("drops sibling Set-Cookie overwrites and deletions, keeps this port, and cancels when header processing throws", () => {
+    const guard = guardedSession();
+    installRequestGuard(guard.session);
+    const received = guard.response({
+      url: "https://127.0.0.1:4310/console/",
+      responseHeaders: {
+        "Set-Cookie": [
+          "fleet_console_pairing_4311=tossed",
+          "fleet_console_session_4311=; Max-Age=0",
+          "fleet_console_pairing_4310=domain-tossed; Domain=example.com",
+          "fleet_console_session_4310=spaced; domain = .example.com",
+          "fleet_console_pairing_4310=kept-pairing; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000; Secure",
+          "fleet_console_session_4310=kept-session; HttpOnly; SameSite=Strict; Path=/",
+          "fleet_console_session_4310=kept-expiry; Expires=Wed, 21 Oct 2026 07:28:00 GMT",
+          "theme=light",
+        ],
+        "SET-COOKIE": "fleet_console_session_9=other-case",
+        "Content-Type": ["text/html"],
+        "X-Request-Id": "abc",
+      },
+    });
+    expect(received.called).toBe(true);
+    expect(received.cancel).toBeUndefined();
+    expect(received.responseHeaders).toEqual({
+      "Set-Cookie": [
+        "fleet_console_pairing_4310=kept-pairing; HttpOnly; SameSite=Strict; Path=/; Max-Age=2592000; Secure",
+        "fleet_console_session_4310=kept-session; HttpOnly; SameSite=Strict; Path=/",
+        "fleet_console_session_4310=kept-expiry; Expires=Wed, 21 Oct 2026 07:28:00 GMT",
+        "theme=light",
+      ],
+      "Content-Type": ["text/html"],
+      "X-Request-Id": "abc",
+    });
+    const untouched = guard.response({
+      url: "https://127.0.0.1:4310/console/",
+      responseHeaders: {
+        "Set-Cookie": ["fleet_console_session_4310=kept-session; HttpOnly; SameSite=Strict; Path=/"],
+        "Content-Type": ["text/html"],
+      },
+    });
+    expect(untouched.called).toBe(true);
+    expect(untouched.cancel).toBeUndefined();
+    expect(untouched.responseHeaders).toBeUndefined();
+
+    const broken: ResponseGuardDetails["responseHeaders"] = {};
+    Object.defineProperty(broken, "Set-Cookie", { enumerable: true, get() { throw new Error("header read failed"); } });
+    const blocked = guard.response({ url: "https://127.0.0.1:4310/console/", responseHeaders: broken });
+    expect(blocked.cancel).toBe(true);
+    expect(blocked.responseHeaders).toBeUndefined();
+
+    expect(guard.response({ url: "file:///tmp/page.html", responseHeaders: { "Set-Cookie": ["fleet_console_pairing_4311=tossed"] } }).called).toBe(false);
+    expect(guard.request({
+      url: "https://127.0.0.1:4310/console/",
+      requestHeaders: { Cookie: "fleet_console_session_4311=sibling; fleet_console_session_4310=own" },
+    }).requestHeaders?.Cookie).toBe("fleet_console_session_4310=own");
   });
 });

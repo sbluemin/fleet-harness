@@ -24,7 +24,7 @@ import {
 
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
-import { setRequestGuardExtra } from "./request-guard.js";
+import { installRequestGuard, setRequestGuardExtra } from "./request-guard.js";
 import { defaultParkViewport, parkedNativeBounds, type ParkViewport } from "./shell-window.js";
 import type { ChromeViewOnly } from "./chrome/contract.js";
 
@@ -667,7 +667,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const markSession = (browserSession: Session): void => {
     if (!origin || markedSessions.has(browserSession)) return;
     markedSessions.add(browserSession);
-    // 쿠키 필터와 한 리스너를 쓴다. 따로 등록하면 필터가 교체되어 형제 쿠키가 다시 나간다.
+    // 쿠키 필터는 세션을 받을 때 이미 달렸다. 여기서는 그 리스너 위에 출처 표시만 올린다.
     setRequestGuardExtra(browserSession, (details, headers) => {
       // 페이지가 직접 넣은 값은 신뢰하지 않는다 — 영속 프로필을 공유해도 실제 요청을 낸 뷰를 찾는다.
       for (const name of Object.keys(headers)) if (name.toLowerCase() === DESKTOP_BROWSER_VIEW_HEADER) delete headers[name];
@@ -706,6 +706,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const shell = deps.shell();
     if (!shell || shell.isDestroyed()) return;
     const view = deps.createView(spec.partition, spec.profile ?? null);
+    // 출처 표식보다 먼저 단다. origin이 없어 표식을 건너뛰어도 형제 쿠키는 나가지 않는다.
+    installRequestGuard(view.webContents.session);
     // 에이전트가 정한 크기(setDeviceMetricsOverride)는 Chromium 이 페이지 위젯(RWHV) 자체를 그 크기로 키워 만든다 —
     // 표면 캡처와 먼 좌표 입력이 이 확대에 기댄다. 그런데 macOS 의 WebContentsViewCocoa 는 자식을 잘라내지 않아, 커진
     // 위젯이 이 뷰의 bounds(페이지 자리) 밖 Console 위까지 그려진다. 라운드 모서리가 뷰 레이어에 마스크를 걸어 보이는
