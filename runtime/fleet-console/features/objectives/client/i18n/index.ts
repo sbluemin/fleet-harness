@@ -597,6 +597,11 @@ export const objectivesEn = {
   "objectives.rail.goal.stopped": "Stopped",
   "objectives.rail.goal.criterionMet": "Met",
   "objectives.rail.goal.criterionOpen": "Not met",
+  "objectives.rail.artifacts": "Artifacts",
+  "objectives.rail.evidence": "Evidence files",
+  "objectives.rail.empty": "Nothing here yet.",
+  "objectives.rail.noRecords": "No records yet.",
+  "objectives.rail.files": "{count} files",
 };
 
 export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
@@ -1195,6 +1200,11 @@ export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.rail.goal.stopped": "멈춤",
   "objectives.rail.goal.criterionMet": "충족",
   "objectives.rail.goal.criterionOpen": "미충족",
+  "objectives.rail.artifacts": "아티팩트",
+  "objectives.rail.evidence": "증거 파일",
+  "objectives.rail.empty": "아직 내용이 없어요.",
+  "objectives.rail.noRecords": "아직 기록이 없어요.",
+  "objectives.rail.files": "파일 {count}개",
 };
 
 const OBJECTIVE_MESSAGES = { en: objectivesEn, ko: objectivesKo } as const;

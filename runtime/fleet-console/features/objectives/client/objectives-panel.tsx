@@ -62,7 +62,7 @@ const EMPTY_IDS: ReadonlySet<string> = new Set();
  * 임무 기록 — 구상 입력 줄과 같은 문법이다: 상자·배경 없이 임무 글자와 같은 선에서 펼쳐지고, 한 건은 흐린 모노 한 줄(시각·종류)
  * 아래 결론과 나머지 줄. 오래된 것부터 읽는다. 「새 기록」은 펼친 순간 이미 읽은 기록의 id 로 가른다(펼치면 읽음이 되어도 표시는 남는다; 상한에서 밀려나도 위치가 아니라 id 라 어긋나지 않는다).
  */
-function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly MissionRecord[]; seenAtOpen: ReadonlySet<string>; open: boolean; t: Translate<ObjectiveMessageKey>; language: "en" | "ko" }) {
+export function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly MissionRecord[]; seenAtOpen: ReadonlySet<string>; open: boolean; t: Translate<ObjectiveMessageKey>; language: "en" | "ko" }) {
   return (
     <div id={id} className={`objectives-records${open ? " is-open" : ""}`} hidden={!open}>
       <div className="objectives-records-inner">
@@ -249,7 +249,7 @@ const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentC
 /** 요청이 선 차례 — 먼저 청한 것이 먼저 선다. 같은 때면 저장된 순서 그대로다. */
 
 
-function MemberMark({ objective, member, objectiveRecordState, still, size }: { objective: Objective; member: ObjectiveMember; objectiveRecordState: (objectiveId: string) => string; still?: boolean; size?: number }) {
+export function MemberMark({ objective, member, objectiveRecordState, still, size }: { objective: Objective; member: ObjectiveMember; objectiveRecordState: (objectiveId: string) => string; still?: boolean; size?: number }) {
   return <ObjectiveAvatar objectiveId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? objectiveRecordState(member.id) : "closed")} still={still} {...(size ? { size } : {})} />;
 }
 
@@ -257,7 +257,7 @@ function MemberMark({ objective, member, objectiveRecordState, still, size }: { 
  * 지휘관 표식 — 목표 Objective 의 몽글 아바타. 구성원과는 머리 위 안테나(역할 특징)로 갈린다. 상태는 사이드바·레일과 같은
  * 기준이라 구성원 활동을 끌어올린 값(`objectiveRecordState`)을 읽는다 — 자기 활동(ownActivity)은 결정 대기 같은 글자에만 쓴다.
  */
-function CommanderMark({ objective, objectiveRecordState, size }: { objective: Objective; objectiveRecordState: (objectiveId: string) => string; size?: number }) {
+export function CommanderMark({ objective, objectiveRecordState, size }: { objective: Objective; objectiveRecordState: (objectiveId: string) => string; size?: number }) {
   return <ObjectiveAvatar objectiveId={objective.id} role="commander" state={commanderMongleState(objective, objectiveRecordState(objective.id))} {...(size ? { size } : {})} />;
 }
 
@@ -1020,7 +1020,7 @@ function BriefSection({ objective, t, language, touchable, readOnly = false, cal
   </>);
 }
 
-function quietMissionLabel(objective: Objective, mission: ObjectiveMission, ready: boolean, now: number, language: "en" | "ko"): string | null {
+export function quietMissionLabel(objective: Objective, mission: ObjectiveMission, ready: boolean, now: number, language: "en" | "ko"): string | null {
   if (mission.done) return null;
   const elapsed = quietElapsed({
     ready, assigned: mission.member !== null, assignmentTs: mission.assignmentTs ?? null,
