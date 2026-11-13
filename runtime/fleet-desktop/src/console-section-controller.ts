@@ -605,6 +605,9 @@ export function createConsoleSectionController(deps: Dependencies) {
       } catch (error) { deps.report(error); } finally { await refresh(); }
       return;
     }
+    // 통합 배치와 원격 생성은 집 콘솔에만 저장한다. 본 구현(시드·반영·원격 POST)은 아직 없다.
+    // 명령은 여기서 삼켜 창이 그 항해로 다시 읽히지 않게 한다. 능력은 구현 전에 게시하지 않는다.
+    if ("unified" in value || "createCommodore" in value) return;
     if ("takeover" in value) {
       // The person hands a Console they started from a terminal to this Desktop, from the surface the home Console draws.
       const taken = targets.get(value.takeover);

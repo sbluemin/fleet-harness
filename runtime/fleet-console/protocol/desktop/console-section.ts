@@ -9,6 +9,7 @@ import {
   type ConsoleManagedLifecycle,
   type ConsoleManagementRelation,
 } from "../lifecycle/management.js";
+import { parseCreateCommodoreCommand, parseUnifiedSidebarCommand, type UnifiedSidebarCommand } from "./unified-sidebar.js";
 
 /** Renderer-only, minimized sidebar contract. Never publish its state through a Console server. */
 export const CONSOLE_DIRECTORY_CAPABILITY = "console-directory";
@@ -83,7 +84,17 @@ export type ConsoleSectionCommand = { readonly request: "state" }
   /** Explicit, confirmed runtime update. Like takeover, only the home Console's document may ask. */
   | { readonly update: string }
   /** The WSL add flow, drawn by the home Console and honored only from its documents. `inspect` may start a stopped distribution. */
-  | { readonly wsl: { readonly list: true } | { readonly inspect: string } | { readonly add: string } };
+  | { readonly wsl: { readonly list: true } | { readonly inspect: string } | { readonly add: string } }
+  /**
+   * Unified placement. A shell without `CONSOLE_UNIFIED_SIDEBAR_CAPABILITY` ignores it. The page sends it
+   * only when that capability is posted, so an old shell never has to understand it.
+   */
+  | { readonly unified: UnifiedSidebarCommand }
+  /**
+   * Create a commodore on a machine without switching the window to it. `request` pairs the result event.
+   * The shell performs the write; a monitoring session is `access` and does not create.
+   */
+  | { readonly createCommodore: { readonly consoleId: string; readonly alias: string; readonly request: string } };
 
 /**
  * What the shell tells the home Console's add surface about WSL on this computer. Renderer-only and never sent to a
@@ -267,7 +278,7 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return null; }
   if (!object(value)) return null;
-  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle", "takeover", "update", "wsl"].filter((key) => key in value);
+  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle", "takeover", "update", "wsl", "unified", "createCommodore"].filter((key) => key in value);
   if (keys.length !== 1) return null;
   if (value.request === "state") return { request: "state" };
   if (clean(value.switch, 128)) {
@@ -292,6 +303,14 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
   if (clean(value.manage, 128)) return { manage: value.manage };
   if (clean(value.takeover, 128)) return { takeover: value.takeover };
   if (clean(value.update, 128)) return { update: value.update };
+  if ("unified" in value) {
+    const unified = parseUnifiedSidebarCommand(value);
+    return unified ? { unified } : null;
+  }
+  if ("createCommodore" in value) {
+    const createCommodore = parseCreateCommodoreCommand(value);
+    return createCommodore ? { createCommodore } : null;
+  }
   if (object(value.wsl)) {
     if (value.wsl.list === true) return { wsl: { list: true } };
     if (clean(value.wsl.inspect, 64)) return { wsl: { inspect: value.wsl.inspect } };
@@ -323,6 +342,38 @@ export function isConsoleSectionState(value: unknown): value is ConsoleSectionSt
       && (entry.managed.update === undefined || (object(entry.managed.update) && [entry.managed.update.node, entry.managed.update.console].every((part: unknown) => object(part) && clean(part.installed, 64) && clean(part.target, 64))))
       && (entry.managed.failure === undefined || oneOf(CONSOLE_MANAGED_FAILURES, entry.managed.failure)))));
 }
+export {
+  CONSOLE_COMMODORE_CREATE_EVENT,
+  CONSOLE_UNIFIED_SIDEBAR_CAPABILITY,
+  CONSOLE_UNIFIED_SIDEBAR_EVENT,
+  UNIFIED_CREATE_ALIAS_MAX,
+  UNIFIED_CREATE_REASONS,
+  UNIFIED_SIDEBAR_HOME,
+  UNIFIED_SIDEBAR_MAX_FRAME,
+  UNIFIED_SIDEBAR_MAX_ROWS,
+  UNIFIED_SIDEBAR_MAX_SECTIONS,
+  UNIFIED_SIDEBAR_PATH,
+  isConsoleCommodoreCreateResult,
+  isUnifiedSidebarLayout,
+  isUnifiedSidebarState,
+  seedUnifiedSidebar,
+  withoutUnifiedConsole,
+} from "./unified-sidebar.js";
+export type {
+  ConsoleCommodoreCreateResult,
+  UnifiedCreateReason,
+  UnifiedSeedHome,
+  UnifiedSeedMachine,
+  UnifiedSidebarCommand,
+  UnifiedSidebarLayout,
+  UnifiedSidebarMachine,
+  UnifiedSidebarMembership,
+  UnifiedSidebarRef,
+  UnifiedSidebarRow,
+  UnifiedSidebarSection,
+  UnifiedSidebarState,
+} from "./unified-sidebar.js";
+
 export function isConsoleWslState(value: unknown): value is ConsoleWslState {
   if (!object(value) || value.v !== 1 || !Array.isArray(value.distros) || value.distros.length > 64) return false;
   if (!value.distros.every((distro: unknown) => object(distro) && clean(distro.name, 64) && typeof distro.running === "boolean" && [1, 2, null].includes(distro.version as null) && typeof distro.managed === "boolean")) return false;
