@@ -85,11 +85,14 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
         </button>
       </div>
       {!compact && (commanders.length > 0 || moreCommanders > 0) ? <div className="side-bar-commander-list" data-keep-objective-active="">
-        <ol className="commander-tab-list side-bar-group-chips">
-          {commanders.map((commander) => <CommanderRosterRow key={commander.id} commander={commander} blocked={blocked}
-            onOpen={(row) => open(commodore, commander.id, row)} />)}
-        </ol>
-        {moreCommanders > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(moreCommanders) })}</p> : null}
+        {/* 로컬 목록(CommodoreCommanderList)과 같은 .commander-tab 래퍼 — 지휘관 행의 좌우 여백이 여기서 나온다. */}
+        <div className="commander-tab">
+          <ol className="commander-tab-list side-bar-group-chips">
+            {commanders.map((commander) => <CommanderRosterRow key={commander.id} commander={commander} blocked={blocked}
+              onOpen={(row) => open(commodore, commander.id, row)} />)}
+          </ol>
+          {moreCommanders > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(moreCommanders) })}</p> : null}
+        </div>
       </div> : null}
     </li>;
   };
