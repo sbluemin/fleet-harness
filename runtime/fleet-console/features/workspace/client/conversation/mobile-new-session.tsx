@@ -14,7 +14,7 @@ import { closeMobileNewSession, consumeNewSessionRejection, consumeNewSessionSee
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { discardLaunchAttachment, uploadLaunchAttachment } from "../../../execution/client/agent/api.js";
 import { resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
-import { findVariantLaunchKind, LAUNCH_DEFAULT_MODEL, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, launchErrorValues, resolveSelection } from "../../../execution/client/launch-selection.js";
+import { findVariantLaunchKind, isRetiredLaunchModel, LAUNCH_DEFAULT_MODEL, LAUNCH_PROMPT_MAX_CHARS, launchErrorMessageKey, launchErrorValues, resolveSelection } from "../../../execution/client/launch-selection.js";
 import { MobileNewSessionSheet } from "./mobile-new-session-sheet.js";
 import { resolveNewSessionCommodoreId, resolveNewSessionTheaterId } from "./new-session-entry.js";
 import { isMentionSelectable, mentionErrorMessageKey, readMentionToken, resolveMentionEntry, stripMentionToken, type MentionTarget, type MentionToken } from "./new-session-mention.js";
@@ -178,9 +178,16 @@ export function MobileNewSession() {
     setSubmitting(false);
   }, [attachmentStore, open, state.newSessionRejection]);
 
-  // 카탈로그가 도착하면 기억해 둔 조합을 실제 목록에 맞춘다.
+  // 카탈로그가 도착하면 기억해 둔 조합을 실제 목록에 맞춘다. 기억한 모델이
+  // 로스터에서 사라졌으면 자동 전환 없이 비워 두고 사용자가 다시 고른다 —
+  // 비움을 기본값으로 되돌리면 은퇴 기억이 Opus로 조용히 바뀌므로 여기서 막는다.
   useEffect(() => {
     if (!open || groups.length === 0) return;
+    if (isRetiredLaunchModel(groups, readNewSessionSelection().model)) {
+      if (model !== null) setModel(null);
+      if (effort !== null) setEffort(null);
+      return;
+    }
     const resolved = resolveSelection(groups, { model, effort });
     if (resolved.model !== model) setModel(resolved.model);
     if (resolved.effort !== effort) setEffort(resolved.effort);
