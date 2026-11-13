@@ -3,6 +3,7 @@ import type { WebContents } from "electron";
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import { CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, CONSOLE_WSL_EVENT, isConsoleRosterSummary, parseConsoleSectionCommand, type ConsoleManagedDetail, type ConsoleWslInspection, type ConsoleWslState, type ConsoleRightPanel, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState } from "@fleet-console/protocol/desktop/console-section";
 import { consoleLifecycleActions, type ConsoleAccessPath, type ConsoleLifecycleAction, type ConsoleManagedLifecycle, type ConsoleManagementRelation } from "@fleet-console/protocol/lifecycle/management";
+import type { RemotePinRecord } from "./remote-access.js";
 
 type Contents = Pick<WebContents, "on" | "removeListener" | "getURL" | "isDestroyed" | "executeJavaScript">;
 type Overlay = Pick<WebContents, "on" | "once" | "getURL" | "isDestroyed" | "executeJavaScript">;
@@ -61,7 +62,11 @@ interface Dependencies {
   /** 평문 소켓으로 지문을 대조한다. 실패하면 그 원격에는 세션 fetch를 보내지 않는다. */
   readonly confirmIdentity?: (hostname: string, port: number, fingerprint: string) => Promise<void>;
   /** 대조가 끝난 뒤에만 핀한다. 핀은 세션 fetch가 인증서를 받아들이게 할 뿐 조인을 대신하지 않는다. */
-  readonly pinRemote?: (hostname: string, fingerprint: string) => void;
+  readonly pinRemote?: (record: RemotePinRecord) => void;
+  /** known-hosts 읽기를 시작하기 전의 장부 차례. 그 뒤에 넣은 항목을 옛 목록이 지우지 않게 한다. */
+  readonly pinMark?: () => number;
+  /** 성공적으로 읽은 known-hosts 전체로, 그 표식 이전 항목만 걷어 낸다. 새 항목은 넣지 않는다. */
+  readonly reconcileRemotes?: (records: readonly RemotePinRecord[], mark: number) => void;
   readonly open: (origin: string) => Promise<void>;
   readonly add: (url: string) => void;
   /** Opens the management surface the home Console draws. Absent in a shell that offers none. */
@@ -307,7 +312,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     const identity = remoteIdentities.get(origin);
     if (!identity) return false;
     try { await deps.confirmIdentity(identity.hostname, identity.port, identity.fingerprint); } catch { return false; }
-    deps.pinRemote(identity.hostname, identity.fingerprint);
+    deps.pinRemote({ origin, hostname: identity.hostname, port: identity.port, fingerprint: identity.fingerprint });
     return true;
   }
   async function fetchRoster(target: Target): Promise<void> {
@@ -408,6 +413,8 @@ export function createConsoleSectionController(deps: Dependencies) {
     // A managed home Console that is stopped is not a failure to report.
     if (!reachable) { await homeOnly(); return; }
     let lists: readonly [Record<string, unknown>, Record<string, unknown>, Record<string, unknown>];
+    // 읽기가 나가기 전의 차례. 응답을 기다리는 동안 열린 원격은 이 목록에 없어도 장부에 남는다.
+    const pinMark = deps.pinMark?.() ?? Number.POSITIVE_INFINITY;
     try {
       lists = await Promise.all([json("/api/v1/remote-hosts"), json("/api/v1/local-consoles"), json("/api/v1/status")]);
     } catch (error) {
@@ -427,6 +434,8 @@ export function createConsoleSectionController(deps: Dependencies) {
       const identity = remoteIdentity(host);
       if (identity) identities.set(host.origin, identity);
     }
+    // 화면에서 잘린 뒤가 아니라, 읽어 온 목록 전체다. 배열이 아니면 읽기 실패로 보고 장부를 비우지 않는다.
+    if (Array.isArray(saved.hosts)) deps.reconcileRemotes?.([...identities].map(([origin, identity]) => ({ origin, ...identity })), pinMark);
     const locals = Array.isArray(nearby.consoles) ? nearby.consoles.map(record) : [];
     for (const local of locals) append(local.origin, "local", local.origin === origin ? status.name : undefined, local.version, local.state === "stopping" ? "stopping" : local.state === "unresponsive" ? "slow" : "ready",
       relate(managementOfLocal(local.owner), typeof local.distro === "string" && local.distro ? "wsl" : "loopback"));

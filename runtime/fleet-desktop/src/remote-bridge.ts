@@ -161,7 +161,7 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
 
     const policy = deps.policy();
     if (!policy) throw new Error("remote_bridge_no_window");
-    deps.pins.pin(handoff.hostname, handoff.fingerprint);
+    deps.pins.pin({ origin: handoff.origin, hostname: handoff.hostname, port: handoff.port, fingerprint: handoff.fingerprint });
     policy.admitRemoteConsoleOrigin(handoff.origin);
     // 대조와 핀이 끝난 뒤에만 Chromium이 이 호스트를 본다. 조인과 동시에 예열하면 그 소켓을 조인이 쓴다.
     deps.preconnect?.(handoff.origin);
@@ -179,9 +179,10 @@ export function createRemoteBridge(deps: RemoteBridgeDeps): RemoteBridge {
       if (attempt === opening) policy.commitConsoleOrigin();
     } catch (error) {
       if (attempt === opening) policy.cancelPendingConsoleOrigin();
-      // 열지 못한 원격은 최신 시도가 아니어도 허용 목록에서 빼야 한다 — 지문 대조를 통과한 적이 없다.
+      // 열지 못한 원격은 최신 시도가 아니어도 허용 목록에서 빼야 한다. 핀은 이 origin만 내린다.
+      // 호스트 전체를 지우면 같은 주소의 다른 콘솔까지 거부가 캐시에 남는다.
       policy.withdrawRemoteConsoleOrigin(handoff.origin);
-      deps.pins.unpin(handoff.hostname);
+      deps.pins.unpin(handoff.origin);
       throw error;
     }
   }

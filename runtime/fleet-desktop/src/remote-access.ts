@@ -29,42 +29,129 @@ export interface PinnableSession {
 /** `session.fetch`와 형태를 맞춘 최소 계약. 조인과 이후 요청이 같은 쿠키 항아리를 써야 한다. */
 export type SessionFetch = (input: string, init?: RequestInit) => Promise<Response>;
 
-export interface RemoteCertificatePins {
-  pin(hostname: string, fingerprint: string): void;
-  unpin(hostname: string): void;
-  clear(): void;
+/** 장부의 한 칸. origin이 원본이고, 호스트 지문 집합은 여기서 파생한다. */
+export interface RemotePinRecord {
+  readonly origin: string;
+  readonly hostname: string;
+  readonly port: number;
+  readonly fingerprint: string;
+}
+
+interface PinIdentity {
+  readonly hostname: string;
+  readonly port: number;
+  readonly fingerprint: string;
+}
+
+interface PinEntry extends PinIdentity {
+  /** pin이 난 차례. reconcile은 읽기를 시작하기 전에 받은 표식보다 나중 항목을 지우지 않는다. */
+  readonly revision: number;
 }
 
 /**
- * Console이 실어 보낸 지문을 그 호스트의 유일한 신뢰 근거로 고정한다. 이 훅은 신뢰를 넓히지
- * 않는다 — 핀이 걸리지 않은 호스트는 Chromium 판정을 그대로 되돌려 주고, 핀이 걸린 호스트만
- * 지문이 일치할 때 수락한다. 자체서명 인증서는 이 경로 밖에서는 계속 거부된다.
- *
- * 검증기는 세션당 하나뿐이라 호스트별 판정을 이 레지스트리 한 곳에서 분배한다. Electron이
- * 넘기는 요청에는 포트가 없으므로 핀의 단위도 호스트다.
+ * origin 하나의 핀. 호스트 전체를 지우는 동작은 없다 — 그 호출이 형제의 지문까지 걷어
+ * 정상 인증서의 거부를 캐시에 남긴다.
  */
-export function installRemoteCertificatePins(session: PinnableSession, log?: (message: string) => void): RemoteCertificatePins {
-  const pins = new Map<string, string>();
+export interface RemoteCertificatePins {
+  /** 그 origin의 항목을 넣거나, 이미 있으면 지문을 바꾼다. 다른 origin은 건드리지 않는다. */
+  pin(record: RemotePinRecord): void;
+  /** 그 origin 항목만 지운다. 같은 지문을 다른 origin이 쓰면 집합에 남는다. */
+  unpin(origin: string): void;
+  /** 지금 장부의 차례. known-hosts 읽기를 시작하기 전에 받아 둔다. */
+  mark(): number;
+  /**
+   * 성공적으로 읽은 known-hosts와 맞춘다. `mark` 이전에 들어온 항목만 빠진다.
+   * 그 뒤에 pin된 origin은 옛 목록에 없어도 남는다. 새 항목은 넣지 않는다.
+   */
+  reconcile(records: readonly RemotePinRecord[], mark: number): void;
+}
+
+/**
+ * 검증 요청에는 포트가 없다. 그래서 허용 집합은 호스트 이름으로 찾되, 그 집합은 origin
+ * 항목들에서 매 판정 때 파생한다. 항목이 하나도 없는 호스트는 Chromium 판정(-3)이고,
+ * 항목이 있는데 제시된 지문이 그 안에 없으면 거부(-2)다. 이 훅은 다른 호스트로 신뢰를
+ * 넓히지 않는다.
+ */
+export function createPinLedger(): RemoteCertificatePins & { fingerprintsFor(hostname: string): ReadonlySet<string> | null } {
+  const entries = new Map<string, PinEntry>();
+  let revision = 0;
+  return {
+    pin(record): void {
+      const parsed = readPinRecord(record);
+      if (parsed === null) return;
+      revision += 1;
+      entries.set(parsed.origin, { ...parsed.entry, revision });
+    },
+    unpin(origin): void {
+      const key = canonicalPinOrigin(origin);
+      if (key !== null) entries.delete(key);
+    },
+    mark(): number { return revision; },
+    reconcile(records, mark): void {
+      const wanted = new Map<string, PinIdentity>();
+      for (const record of records) {
+        const parsed = readPinRecord(record);
+        if (parsed !== null) wanted.set(parsed.origin, parsed.entry);
+      }
+      for (const origin of [...entries.keys()]) {
+        const current = entries.get(origin);
+        if (current === undefined || current.revision > mark) continue;
+        const next = wanted.get(origin);
+        if (next === undefined || next.fingerprint !== current.fingerprint || next.hostname !== current.hostname || next.port !== current.port) {
+          entries.delete(origin);
+        }
+      }
+    },
+    fingerprintsFor(hostname): ReadonlySet<string> | null {
+      const key = pinHostname(hostname);
+      const accepted = new Set<string>();
+      for (const entry of entries.values()) {
+        if (entry.hostname === key) accepted.add(entry.fingerprint);
+      }
+      return accepted.size === 0 ? null : accepted;
+    },
+  };
+}
+
+export function installRemoteCertificatePins(session: PinnableSession, ledger: ReturnType<typeof createPinLedger>, log?: (message: string) => void): void {
   session.setCertificateVerifyProc((request, callback) => {
     const hostname = request.hostname?.toLowerCase() ?? "";
-    const expected = pins.get(hostname);
-    if (expected === undefined) {
+    const accepted = ledger.fingerprintsFor(hostname);
+    if (accepted === null) {
       callback(CERTIFICATE_DEFAULT);
       return;
     }
     const presented = certificateFingerprint(request.certificate?.data ?? "");
-    if (presented !== null && presented === expected) {
+    if (presented !== null && accepted.has(presented)) {
       callback(CERTIFICATE_ACCEPTED);
       return;
     }
     log?.(`remote certificate pin mismatch host=${redactHost(hostname)}`);
     callback(CERTIFICATE_REJECTED);
   });
-  return {
-    pin(hostname, fingerprint): void { pins.set(pinHostname(hostname), normalizeFingerprint(fingerprint)); },
-    unpin(hostname): void { pins.delete(pinHostname(hostname)); },
-    clear(): void { pins.clear(); },
-  };
+}
+
+function canonicalPinOrigin(origin: string): string | null {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== "https:") return null;
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+/** origin의 호스트·포트와 기록의 호스트·포트가 어긋나면 넣지 않는다. 틀린 호스트를 믿지 않기 위해서다. */
+function readPinRecord(record: RemotePinRecord): { readonly origin: string; readonly entry: PinIdentity } | null {
+  const origin = canonicalPinOrigin(record.origin);
+  if (origin === null) return null;
+  const url = new URL(origin);
+  const hostname = pinHostname(url.hostname);
+  const port = url.port === "" ? 443 : Number(url.port);
+  const fingerprint = normalizeFingerprint(record.fingerprint);
+  if (hostname !== pinHostname(record.hostname) || port !== record.port) return null;
+  if (!/^[0-9A-F]{64}$/u.test(fingerprint)) return null;
+  return { origin, entry: { hostname, port, fingerprint } };
 }
 
 /**

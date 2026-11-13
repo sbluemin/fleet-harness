@@ -24,6 +24,7 @@ import {
 
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
+import { setRequestGuardExtra } from "./request-guard.js";
 import { defaultParkViewport, parkedNativeBounds, type ParkViewport } from "./shell-window.js";
 import type { ChromeViewOnly } from "./chrome/contract.js";
 
@@ -666,14 +667,13 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const markSession = (browserSession: Session): void => {
     if (!origin || markedSessions.has(browserSession)) return;
     markedSessions.add(browserSession);
-    browserSession.webRequest.onBeforeSendHeaders({ urls: [`${origin}/api/v1/objectives/events*`] }, (details, callback) => {
-      const headers = { ...details.requestHeaders };
+    // 쿠키 필터와 한 리스너를 쓴다. 따로 등록하면 필터가 교체되어 형제 쿠키가 다시 나간다.
+    setRequestGuardExtra(browserSession, (details, headers) => {
       // 페이지가 직접 넣은 값은 신뢰하지 않는다 — 영속 프로필을 공유해도 실제 요청을 낸 뷰를 찾는다.
       for (const name of Object.keys(headers)) if (name.toLowerCase() === DESKTOP_BROWSER_VIEW_HEADER) delete headers[name];
       const entry = [...live.values()].find((candidate) => candidate.view.webContents.id === details.webContentsId);
       const url = new URL(details.url);
       if (entry && url.origin === origin && url.pathname === "/api/v1/objectives/events") headers[DESKTOP_BROWSER_VIEW_HEADER] = entry.spec.id;
-      callback({ requestHeaders: headers });
     });
   };
 
@@ -915,7 +915,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   function stop(): void {
     stream.stop();
     resetLifetime();
-    for (const browserSession of markedSessions) browserSession.webRequest.onBeforeSendHeaders(null);
+    // null로 지우면 같은 세션의 쿠키 필터까지 사라진다. 뷰 출처 표시만 내린다.
+    for (const browserSession of markedSessions) setRequestGuardExtra(browserSession, null);
     markedSessions.clear();
     registeredShortcuts.clear();
     origin = null;
