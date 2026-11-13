@@ -99,7 +99,7 @@ const SIGNATURE = "EsMCCsAC".padEnd(120, "AbC+/9=");
 describe("antigravity image tool results", () => {
   it("keeps image bytes next to the named function response across a tool-result batch", () => {
     const canonical = translateAnthropicRequest({
-      model: "claude-gateway--antigravity--gemini-3.8-flash",
+      model: "claude-gateway--antigravity--gemini-4-hydrogen",
       max_tokens: 128,
       messages: [
         { role: "user", content: "Inspect both captures." },
@@ -118,7 +118,7 @@ describe("antigravity image tool results", () => {
         ] },
       ],
     });
-    const envelope = envelopeFor({ ...canonical, model: "gemini-3.8-flash" });
+    const envelope = envelopeFor({ ...canonical, model: "gemini-4-hydrogen" });
     expect(envelope.request.contents.at(-1)).toEqual({ role: "user", parts: [
       { functionResponse: { name: "Read", id: "read_1", response: { result: "first capture" } } },
       { inline_data: { mime_type: "image/png", data: "YWJj" } },
