@@ -168,8 +168,8 @@
 .unified-row-head .side-bar-theater-text { flex: 1; min-width: 0; }
 .unified-row-head .side-bar-theater-activate { padding-right: 30px; }
 /* 다른 머신 행의 이름 옆 칩 — 글자만 둔다. 톤은 머신마다 고정(테마를 아는 토큰만 쓴다). 닿지 않는 머신은 행이 흐려진다. */
-.unified-machine-chip { display: inline-flex; align-items: center; flex: none; max-width: 112px; padding: 3px 7px; border: 0; border-radius: 999px;
-  background: color-mix(in oklch, var(--mc) 16%, transparent); color: color-mix(in oklch, var(--mc) 60%, var(--text-primary));
+.unified-machine-chip { display: inline-flex; align-items: center; flex: none; max-width: 112px; padding: 3px 7px; border: 0; border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mc, var(--text-secondary)) 16%, transparent); color: color-mix(in oklch, var(--mc, var(--text-secondary)) 60%, var(--text-primary));
   font-size: var(--t-xs); font-weight: var(--weight-bold); line-height: 1; cursor: pointer; }
 .unified-machine-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .unified-machine-chip:focus-visible { box-shadow: var(--focus-face); outline: none; }
