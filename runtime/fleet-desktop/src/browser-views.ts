@@ -154,6 +154,17 @@ const CAPTURE_TIMEOUT_MS = 60_000;
 /** 표면이 뷰포트보다 클 수 있는 몫 — 스크롤바(CSS px). 계산한 배율과 실제 표면이 이 이상 어긋나면 잘못 자르지 않고 멈춘다. */
 const CAPTURE_SCROLLBAR_ALLOWANCE_CSS = 32;
 
+/**
+ * 페이지가 선언한 창 드래그 영역(`-webkit-app-region: drag`)을 끄는 사용자 원본 스타일.
+ *
+ * 드래그 영역은 뷰가 아니라 창 수준에서 마우스 버튼을 가로챈다. 그래서 페이지 뷰 위에 주소 표시줄의 메뉴나
+ * 펼친 탭 목록이 그려져 있어도 그 자리의 OS 클릭이 사라지고, 영역은 문서가 바뀌어도 뷰에 남아 탭을 닫아야 풀린다.
+ * teams.microsoft.com 의 로딩 화면은 전체 높이를 drag 로 선언한다 — 자체 데스크톱 앱용 선언이 웹에도 실려 온다.
+ * 사용자 사이트는 이 창의 타이틀바가 아니므로 페이지 뷰의 선언은 모두 무효로 한다. 사용자 원본의 !important 는
+ * 작성자 스타일(인라인 포함)을 이긴다. Fleet 의 chrome 문서와 Console 창의 드래그 영역은 다른 webContents 라 닿지 않는다.
+ */
+const PAGE_NO_DRAG_CSS = "*, *::before, *::after { -webkit-app-region: no-drag !important; app-region: no-drag !important; }";
+
 interface ViewportCapture { readonly clip: CaptureRect; readonly scale: number; readonly format: "png" | "jpeg"; readonly quality: number }
 
 /**
@@ -729,6 +740,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     shell.park(view);
     // 페이지가 새 창을 열려 하면 같은 뷰에서 연다 — 이 뷰 밖으로 나가는 창은 없다.
     contents.setWindowOpenHandler(({ url }) => { void contents.loadURL(url).catch(() => undefined); return { action: "deny" }; });
+    // 새 문서가 자리잡을 때마다 다시 넣는다 — 삽입한 스타일은 그 문서에만 산다.
+    contents.on("did-navigate", () => { void contents.insertCSS(PAGE_NO_DRAG_CSS, { cssOrigin: "user" }).catch(() => undefined); });
     attachShortcutSource(contents, spec.id);
     // 잠긴 페이지가 초점을 얻으면(뷰 사이 Tab 이동 등) 사람의 키가 에이전트가 모는 페이지로 향한다 — 곧바로 거둔다.
     contents.on("focus", () => {
