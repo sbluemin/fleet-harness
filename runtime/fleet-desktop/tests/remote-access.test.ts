@@ -101,6 +101,14 @@ describe("remote certificate pins", () => {
 
     pins.unpin(ORIGIN_A);
     expect(verify({ hostname: HOST, certificate: { data: CERT_B } })).toBe(CERTIFICATE_DEFAULT);
+
+    // 목록을 읽기 시작한 뒤에 pin된 origin은, 그 읽기의 옛 목록에 없어도 남는다. 다음 표식의 reconcile은 해지를 반영한다.
+    const read = pins.mark();
+    pins.pin({ origin: ORIGIN_A, hostname: HOST, port: 4310, fingerprint: FINGERPRINT });
+    pins.reconcile([], read);
+    expect(verify({ hostname: HOST, certificate: { data: TEST_CERTIFICATE } })).toBe(CERTIFICATE_ACCEPTED);
+    pins.reconcile([], pins.mark());
+    expect(verify({ hostname: HOST, certificate: { data: TEST_CERTIFICATE } })).toBe(CERTIFICATE_DEFAULT);
   });
 });
 

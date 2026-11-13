@@ -37,10 +37,15 @@ export interface RemotePinRecord {
   readonly fingerprint: string;
 }
 
-interface PinEntry {
+interface PinIdentity {
   readonly hostname: string;
   readonly port: number;
   readonly fingerprint: string;
+}
+
+interface PinEntry extends PinIdentity {
+  /** pin이 난 차례. reconcile은 읽기를 시작하기 전에 받은 표식보다 나중 항목을 지우지 않는다. */
+  readonly revision: number;
 }
 
 /**
@@ -52,11 +57,13 @@ export interface RemoteCertificatePins {
   pin(record: RemotePinRecord): void;
   /** 그 origin 항목만 지운다. 같은 지문을 다른 origin이 쓰면 집합에 남는다. */
   unpin(origin: string): void;
+  /** 지금 장부의 차례. known-hosts 읽기를 시작하기 전에 받아 둔다. */
+  mark(): number;
   /**
-   * 성공적으로 읽은 known-hosts와 맞춘다. 목록에 없거나 지문·호스트·포트가 바뀐 항목만
-   * 빠지고, 새 항목은 들어오지 않는다. 읽기 실패 때는 부르지 않는다.
+   * 성공적으로 읽은 known-hosts와 맞춘다. `mark` 이전에 들어온 항목만 빠진다.
+   * 그 뒤에 pin된 origin은 옛 목록에 없어도 남는다. 새 항목은 넣지 않는다.
    */
-  reconcile(records: readonly RemotePinRecord[]): void;
+  reconcile(records: readonly RemotePinRecord[], mark: number): void;
 }
 
 /**
@@ -67,26 +74,30 @@ export interface RemoteCertificatePins {
  */
 export function createPinLedger(): RemoteCertificatePins & { fingerprintsFor(hostname: string): ReadonlySet<string> | null } {
   const entries = new Map<string, PinEntry>();
+  let revision = 0;
   return {
     pin(record): void {
       const parsed = readPinRecord(record);
       if (parsed === null) return;
-      entries.set(parsed.origin, parsed.entry);
+      revision += 1;
+      entries.set(parsed.origin, { ...parsed.entry, revision });
     },
     unpin(origin): void {
       const key = canonicalPinOrigin(origin);
       if (key !== null) entries.delete(key);
     },
-    reconcile(records): void {
-      const wanted = new Map<string, PinEntry>();
+    mark(): number { return revision; },
+    reconcile(records, mark): void {
+      const wanted = new Map<string, PinIdentity>();
       for (const record of records) {
         const parsed = readPinRecord(record);
         if (parsed !== null) wanted.set(parsed.origin, parsed.entry);
       }
       for (const origin of [...entries.keys()]) {
         const current = entries.get(origin);
+        if (current === undefined || current.revision > mark) continue;
         const next = wanted.get(origin);
-        if (current === undefined || next === undefined || next.fingerprint !== current.fingerprint || next.hostname !== current.hostname || next.port !== current.port) {
+        if (next === undefined || next.fingerprint !== current.fingerprint || next.hostname !== current.hostname || next.port !== current.port) {
           entries.delete(origin);
         }
       }
@@ -131,7 +142,7 @@ function canonicalPinOrigin(origin: string): string | null {
 }
 
 /** origin의 호스트·포트와 기록의 호스트·포트가 어긋나면 넣지 않는다. 틀린 호스트를 믿지 않기 위해서다. */
-function readPinRecord(record: RemotePinRecord): { readonly origin: string; readonly entry: PinEntry } | null {
+function readPinRecord(record: RemotePinRecord): { readonly origin: string; readonly entry: PinIdentity } | null {
   const origin = canonicalPinOrigin(record.origin);
   if (origin === null) return null;
   const url = new URL(origin);

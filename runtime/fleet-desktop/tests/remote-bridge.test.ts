@@ -36,6 +36,7 @@ function createHarness(options: { readonly responses?: (path: string) => Respons
   const pins = {
     pin: (record: { origin: string }) => trace.push(`pin:${record.origin}`),
     unpin: (origin: string) => trace.push(`unpin:${origin}`),
+    mark: () => 0,
     reconcile: () => trace.push("reconcile"),
   };
   const sessionFetch = vi.fn(async (url: string) => {

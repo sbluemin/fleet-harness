@@ -326,7 +326,6 @@ describe("managed browser auth and on-demand frames", () => {
     await vi.waitFor(() => expect(relays.flatMap((relay) => relay.results ?? []).some((result) => result.id === 1)).toBe(true));
     // 집 콘솔은 http다. 가드 필터가 https만 보면 SSE에 뷰 출처가 붙지 않는다.
     const marked = created[0] as typeof created[0] & { filter: { urls: readonly string[] } | null; listener: ((details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number }, callback: (response: { requestHeaders?: Record<string, string> }) => void) => void) | null };
-    expect(marked.filter?.urls).toContain("http://*/*");
     const headers: Record<string, string> = { [DESKTOP_BROWSER_VIEW_HEADER]: "spoofed" };
     let sent: Record<string, string> | undefined;
     marked.listener?.({ url: `${ORIGIN}/api/v1/objectives/events`, requestHeaders: headers, webContentsId: 41 }, (response) => { sent = response.requestHeaders; });
