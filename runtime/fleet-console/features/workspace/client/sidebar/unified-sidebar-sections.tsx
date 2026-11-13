@@ -509,7 +509,7 @@ function UnifiedMachineChip({ row, onOpenCard }: {
   </button>;
 }
 
-/** 칩을 누르면 나오는 머신 카드 — 이름·주소·상태와 「이 콘솔 관리」 진입. */
+/** 칩을 누르면 나오는 머신 카드 — 이름·주소·상태와 「이 콘솔 관리」 진입. 저장된 원격 머신은 이름 바꾸기·잊기도 옛 머리글 폼과 같은 규칙으로 여기서 든다. */
 function UnifiedMachineCard({ anchor, row, entry, consoles, onClose }: {
   readonly anchor: DOMRect;
   readonly row: UnifiedSidebarRow;
@@ -525,12 +525,26 @@ function UnifiedMachineCard({ anchor, row, entry, consoles, onClose }: {
     : row.status === "ready" ? t("sidebar.unified.connected")
     : null;
   const manageable = entry !== null && consoleSectionManageable(entry);
+  // 이웃 로컬 콘솔에는 「이 콘솔 관리」만 두고, 저장된 원격 호스트에만 이름 바꾸기·잊기를 둔다.
+  const remote = entry !== null && entry.kind === "remote";
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(entry?.label ?? row.machineLabel);
   return <SectionMenu anchor={anchor} focusFirst={false} opener={null} label={row.machineLabel} onClose={onClose}>
     <div className="unified-machine-card" role="presentation">
       <b>{row.machineLabel}</b>
       <div>{row.machineAddress}{status ? ` · ${status}` : ""}</div>
       {manageable && entry ? <button type="button" className="side-console-cert"
         onClick={() => { onClose(); consoles.command({ manage: entry.id }); }}>{t("chrome.consoles.manageThis")}</button> : null}
+      {remote && entry && !editing ? <button type="button" className="side-console-cert unified-machine-rename"
+        aria-label={`${entry.label}: ${t("settings.remote.hosts.rename")}`} title={t("settings.remote.hosts.rename")}
+        onClick={() => { setName(entry.label); setEditing(true); }}>{t("settings.remote.hosts.rename")}</button> : null}
+      {remote && entry && editing ? <form className="side-console-form unified-machine-rename-form" onSubmit={(event) => { event.preventDefault(); const next = name.trim(); if (!next) return; consoles.command({ rename: { id: entry.id, label: next } }); setEditing(false); }}>
+        <input autoFocus aria-label={t("settings.remote.hosts.rename")} value={name} maxLength={120} onChange={(event) => setName(event.target.value)}
+          onKeyDown={(event) => { if (event.key === "Escape" && !event.nativeEvent.isComposing) { event.preventDefault(); event.stopPropagation(); setEditing(false); } }} />
+        <div><button type="submit" disabled={!name.trim()}>{t("chrome.consoles.save")}</button><button type="button" onClick={() => setEditing(false)}>{t("common.cancel")}</button>
+          {/* 빼기 전의 확인은 셸이 자기 대화상자로 묻는다 — 여기서 한 번 더 묻지 않는다. */}
+          {!entry.active ? <button type="button" className="is-danger unified-machine-forget" aria-label={`${entry.label}: ${t("settings.remote.hosts.forget")}`} title={t("settings.remote.hosts.forget")} onClick={() => { onClose(); consoles.command({ forget: entry.id }); setEditing(false); }}>{t("settings.remote.hosts.forget")}</button> : null}</div>
+      </form> : null}
     </div>
   </SectionMenu>;
 }
@@ -633,12 +647,19 @@ function UnifiedMachineNotices({ consoles, machines, rows }: {
         : roster.status === "unavailable" ? t("chrome.consoles.rosterUnavailable")
         : t("chrome.consoles.rosterEmpty");
       const manageable = entry !== null && consoleSectionManageable(entry) && !consoles.entries.some((item) => item.home && item.status === "unreachable");
+      // 행이 없어도 저장된 원격 머신은 잊을 수 있게 둔다 — 인증서가 바뀐 머신은 이 줄이 유일한 출구다.
+      // 항목이 없을 때는 셸이 실어 준 창 불투명 id로 뺀다. 창이 지금 서 있는 머신은 잊지 않는다.
+      const forgetId = entry ? entry.id : machine.entryId;
+      const forgettable = machine.kind === "remote" && forgetId !== undefined && entry?.active !== true;
       return <li key={machine.consoleId} className="side-console-note unified-machine-notice" data-console-id={machine.consoleId} data-status={machine.status ?? undefined}>
         <p><b>{machine.label}</b>{" · "}{note}</p>
         <div className="unified-machine-notice-actions">
           {!blocked && entry ? <button type="button" className="side-console-enter" onClick={() => consoles.command({ switch: entry.id })}>{t("chrome.consoles.switchHere")}</button> : null}
           {manageable && entry ? <button type="button" className="side-console-cert" onClick={() => consoles.command({ manage: entry.id })}>{t("chrome.consoles.manage")}</button> : null}
           {untrusted ? <button type="button" className="side-console-cert" onClick={() => consoles.command({ add: true })}>{t("chrome.consoles.reviewCertificate")}</button> : null}
+          {forgettable ? <button type="button" className="side-console-cert unified-machine-forget"
+            aria-label={`${machine.label}: ${t("settings.remote.hosts.forget")}`} title={t("settings.remote.hosts.forget")}
+            onClick={() => consoles.command({ forget: forgetId })}>{t("settings.remote.hosts.forget")}</button> : null}
         </div>
       </li>;
     })}
