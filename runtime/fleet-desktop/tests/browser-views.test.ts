@@ -55,12 +55,20 @@ function view(id: string): DesktopBrowserSnapshot["views"][number] {
 
 /** 셸이 만든 네이티브 뷰 — 이 계약이 보는 것은 만들어졌는지, 닫혔는지, 어떤 CDP 명령을 받았는지뿐이다. */
 function fakeView(partition: string, created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter }>): WebContentsView {
-  const record = { partition, closed: false, commands: [] as string[], contents: new EventEmitter() };
+  const record = {
+    partition,
+    closed: false,
+    commands: [] as string[],
+    contents: new EventEmitter(),
+    filter: null as { urls: readonly string[] } | null,
+    listener: null as ((details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number }, callback: (response: { requestHeaders?: Record<string, string> }) => void) => void) | null,
+  };
   created.push(record);
   // 페이지 이동은 뷰가 닫힐 때까지 끝나지 않다가 닫히면 거부된다 — 재기동 순간에 걸려 있던 명령.
   let rejectPending: (error: Error) => void = () => {};
   const contents = Object.assign(record.contents, {
-    session: { webRequest: { onBeforeSendHeaders: () => {} } },
+    id: 41,
+    session: { webRequest: { onBeforeSendHeaders: (filter: { urls: readonly string[] }, listener: typeof record.listener) => { record.filter = filter; record.listener = listener; } } },
     debugger: Object.assign(new EventEmitter(), {
       attach: () => {},
       detach: () => {},
@@ -316,6 +324,13 @@ describe("managed browser auth and on-demand frames", () => {
 
     await views.start(ORIGIN);
     await vi.waitFor(() => expect(relays.flatMap((relay) => relay.results ?? []).some((result) => result.id === 1)).toBe(true));
+    // 집 콘솔은 http다. 가드 필터가 https만 보면 SSE에 뷰 출처가 붙지 않는다.
+    const marked = created[0] as typeof created[0] & { filter: { urls: readonly string[] } | null; listener: ((details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number }, callback: (response: { requestHeaders?: Record<string, string> }) => void) => void) | null };
+    expect(marked.filter?.urls).toContain("http://*/*");
+    const headers: Record<string, string> = { [DESKTOP_BROWSER_VIEW_HEADER]: "spoofed" };
+    let sent: Record<string, string> | undefined;
+    marked.listener?.({ url: `${ORIGIN}/api/v1/objectives/events`, requestHeaders: headers, webContentsId: 41 }, (response) => { sent = response.requestHeaders; });
+    expect(sent?.[DESKTOP_BROWSER_VIEW_HEADER]).toBe("view-1");
     expect(captures).toHaveLength(0);
     expect(frames).toHaveLength(0);
     expect(relays.some((relay) => relay.hello?.accessPath === "wsl" && relay.hello.hostLabel === "desk" && relay.hello.platform === "darwin")).toBe(true);

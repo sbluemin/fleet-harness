@@ -8,7 +8,8 @@
  * 헤더를 고치다 실패하면 요청을 보내지 않는다.
  */
 
-const FILTER = { urls: ["https://*/*", "wss://*/*"] };
+/** 뷰 출처 표식은 집 콘솔(http 루프백)의 SSE에도 붙어야 하므로 http·ws를 빼지 않는다. */
+const FILTER = { urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] };
 
 type HeaderMap = Record<string, string>;
 
@@ -69,7 +70,8 @@ function stripSiblingFleetCookies(headers: HeaderMap, rawUrl: string): void {
   const kept = keys.flatMap((key) => headers[key]?.split(";") ?? []).map((part) => part.trim()).filter(Boolean).filter((part) => {
     const separator = part.indexOf("=");
     const name = (separator === -1 ? part : part.slice(0, separator)).trim();
-    const match = /^fleet_.+_(\d+)$/u.exec(name);
+    // 서버가 심는 이름은 이 둘뿐이다(auth.ts). 다른 사이트의 fleet_* 쿠키는 건드리지 않는다.
+    const match = /^fleet_console_(?:session|pairing)_(\d+)$/u.exec(name);
     return match === null || match[1] === port;
   });
   for (const key of keys) if (key !== primary) delete headers[key];
