@@ -199,6 +199,204 @@ export function seedUnifiedSidebar(home: UnifiedSeedHome, machines: readonly Uni
   return { v: 1, seeded: true, sections, membership, order, unsectionedCollapsed: home.unsectionedCollapsed === true };
 }
 
+export interface UnifiedMachineSnapshot {
+  readonly consoleId: string;
+  readonly label: string;
+  readonly address: string;
+  readonly home: boolean;
+  readonly kind: "local" | "remote";
+  readonly path?: UnifiedSidebarMachine["path"];
+  readonly status: UnifiedSidebarMachine["status"];
+  /** null before the first read. `unavailable` keeps the last commodore list and must not drop placement. */
+  readonly roster: {
+    readonly status: "ok" | "unsupported" | "unavailable";
+    readonly sections: readonly { readonly id: string; readonly name: string; readonly collapsed?: true }[];
+    readonly unsectionedCollapsed?: true;
+    readonly commodores: readonly { readonly id: string; readonly name: string; readonly section?: string; readonly look?: UnifiedSidebarRow["look"]; readonly run?: UnifiedSidebarRow["run"]; readonly preview?: string; readonly commanders?: UnifiedSidebarRow["commanders"]; readonly moreCommanders?: number }[];
+  } | null;
+}
+
+const sameRow = (left: UnifiedSidebarRef, right: UnifiedSidebarRef): boolean => left.consoleId === right.consoleId && left.commodoreId === right.commodoreId;
+const sectionOf = (layout: UnifiedSidebarLayout, row: UnifiedSidebarRef): string | null => layout.membership.find((item) => sameRow(item, row))?.sectionId ?? null;
+
+function createOffer(snapshot: UnifiedMachineSnapshot): { readonly creatable: boolean; readonly createBlock?: UnifiedCreateReason } {
+  if (snapshot.status === "untrusted") return { creatable: false, createBlock: "untrusted" };
+  if (snapshot.status === "unreachable") return { creatable: false, createBlock: "unreachable" };
+  if (snapshot.status === "stopping" || snapshot.roster === null || snapshot.roster.status === "unavailable") return { creatable: false, createBlock: "unavailable" };
+  return { creatable: true };
+}
+
+/** First layout, once the home roster has been read. Machines that are not `ok` yet are left for a later admit. */
+export function seedUnifiedFromSnapshots(snapshots: readonly UnifiedMachineSnapshot[], id: () => string): UnifiedSidebarLayout | null {
+  const home = snapshots.find((snapshot) => snapshot.home && snapshot.consoleId === UNIFIED_SIDEBAR_HOME);
+  if (!home?.roster || home.roster.status !== "ok") return null;
+  const membership: Record<string, string> = {};
+  for (const commodore of home.roster.commodores) if (commodore.section) membership[commodore.id] = commodore.section;
+  return seedUnifiedSidebar({
+    sections: home.roster.sections.map((section) => ({ id: section.id, name: section.name, collapsed: section.collapsed === true })),
+    membership, order: home.roster.commodores.map((commodore) => commodore.id), unsectionedCollapsed: home.roster.unsectionedCollapsed === true,
+  }, snapshots.filter((snapshot) => !snapshot.home && snapshot.roster?.status === "ok").map((snapshot) => ({
+    consoleId: snapshot.consoleId,
+    sections: snapshot.roster?.sections ?? [],
+    commodores: (snapshot.roster?.commodores ?? []).map((commodore) => ({ id: commodore.id, ...(commodore.section ? { section: commodore.section } : {}) })),
+  })), id);
+}
+
+/**
+ * Drops commodores a successful roster no longer lists, and places commodores that were not in the layout yet
+ * by the same name rule as the first seed. An `unavailable` roster changes nothing: its last list stays put.
+ */
+export function reconcileUnifiedSidebar(layout: UnifiedSidebarLayout, snapshots: readonly UnifiedMachineSnapshot[], id: () => string): UnifiedSidebarLayout {
+  let order = layout.order.filter((row) => {
+    const snapshot = snapshots.find((item) => item.consoleId === row.consoleId);
+    if (!snapshot?.roster || snapshot.roster.status !== "ok") return true;
+    return snapshot.roster.commodores.some((commodore) => commodore.id === row.commodoreId);
+  });
+  let membership = layout.membership.filter((row) => order.some((item) => sameRow(item, row)));
+  const sections = layout.sections.map((section) => ({ ...section }));
+  const byName = new Map<string, string>();
+  for (const section of sections) if (!byName.has(section.name)) byName.set(section.name, section.id);
+  const seen = new Set(order.map((row) => `${row.consoleId}\n${row.commodoreId}`));
+  for (const snapshot of snapshots) {
+    if (snapshot.roster?.status !== "ok") continue;
+    const names = new Map(snapshot.roster.sections.map((section) => [section.id, section.name.trim()]));
+    for (const commodore of snapshot.roster.commodores) {
+      const key = `${snapshot.consoleId}\n${commodore.id}`;
+      if (seen.has(key) || order.length >= UNIFIED_SIDEBAR_MAX_ROWS || !clean(commodore.id, 128)) continue;
+      seen.add(key);
+      const remoteName = commodore.section ? names.get(commodore.section) : undefined;
+      let sectionId = remoteName ? byName.get(remoteName) ?? null : null;
+      if (remoteName && !sectionId && sectionName(remoteName) && sections.length < UNIFIED_SIDEBAR_MAX_SECTIONS) {
+        const created = id();
+        if (clean(created, 128) && !sections.some((section) => section.id === created)) {
+          const source = snapshot.roster.sections.find((section) => section.id === commodore.section);
+          sections.push({ id: created, name: remoteName, collapsed: source?.collapsed === true });
+          byName.set(remoteName, created);
+          sectionId = created;
+        }
+      }
+      order.push({ consoleId: snapshot.consoleId, commodoreId: commodore.id });
+      if (sectionId) membership.push({ consoleId: snapshot.consoleId, commodoreId: commodore.id, sectionId });
+    }
+  }
+  const next = { v: 1 as const, seeded: true, sections, membership, order, unsectionedCollapsed: layout.unsectionedCollapsed };
+  return isUnifiedSidebarLayout(next) ? next : layout;
+}
+
+export function applyUnifiedSidebarCommand(layout: UnifiedSidebarLayout, command: UnifiedSidebarCommand, id: () => string): UnifiedSidebarLayout | null {
+  if (command.op === "state") return layout;
+  const sections = layout.sections.map((section) => ({ ...section }));
+  let membership = layout.membership.map((row) => ({ ...row }));
+  let order = layout.order.map((row) => ({ ...row }));
+  let unsectionedCollapsed = layout.unsectionedCollapsed;
+  const indexOf = (sectionId: string) => sections.findIndex((section) => section.id === sectionId);
+  if (command.op === "create") {
+    if (sections.length >= UNIFIED_SIDEBAR_MAX_SECTIONS) return null;
+    const after = command.afterId ? indexOf(command.afterId) : -1;
+    if (command.afterId && after < 0) return null;
+    const created = id();
+    if (!clean(created, 128) || sections.some((section) => section.id === created)) return null;
+    sections.splice(command.afterId ? after + 1 : 0, 0, { id: created, name: command.name, collapsed: false });
+    if (command.row && !order.some((row) => sameRow(row, command.row!))) order.push({ consoleId: command.row.consoleId, commodoreId: command.row.commodoreId });
+    if (command.row) {
+      membership = membership.filter((row) => !sameRow(row, command.row!));
+      membership.push({ consoleId: command.row.consoleId, commodoreId: command.row.commodoreId, sectionId: created });
+    }
+  } else if (command.op === "collapse" && command.sectionId === null) unsectionedCollapsed = command.collapsed;
+  else if (command.op === "move") {
+    if (command.sectionId !== null && indexOf(command.sectionId) < 0) return null;
+    if (command.target) {
+      const targetSection = sectionOf({ ...layout, membership }, command.target);
+      if (targetSection !== command.sectionId) return null;
+    }
+    if (!order.some((row) => sameRow(row, command.row))) order.push({ consoleId: command.row.consoleId, commodoreId: command.row.commodoreId });
+    membership = membership.filter((row) => !sameRow(row, command.row));
+    if (command.sectionId) membership.push({ consoleId: command.row.consoleId, commodoreId: command.row.commodoreId, sectionId: command.sectionId });
+    order = order.filter((row) => !sameRow(row, command.row));
+    const draft = { ...layout, membership };
+    const last = [...order].reverse().find((row) => sectionOf(draft, row) === command.sectionId);
+    const anchor = command.target ?? last;
+    const at = anchor ? order.findIndex((row) => sameRow(row, anchor)) : -1;
+    const index = at < 0 ? order.length : at + (command.target ? Number(command.after === true) : 1);
+    order.splice(index, 0, { consoleId: command.row.consoleId, commodoreId: command.row.commodoreId });
+  } else {
+    const sectionId = command.op === "collapse" ? command.sectionId : command.sectionId;
+    if (!sectionId) return null;
+    const index = indexOf(sectionId);
+    if (index < 0) return null;
+    if (command.op === "rename") sections[index] = { ...sections[index]!, name: command.name };
+    else if (command.op === "collapse") sections[index] = { ...sections[index]!, collapsed: command.collapsed };
+    else if (command.op === "reorder") {
+      const next = index + (command.direction === "up" ? -1 : 1);
+      if (next >= 0 && next < sections.length) [sections[index], sections[next]] = [sections[next]!, sections[index]!];
+    } else if (command.op === "delete") {
+      sections.splice(index, 1);
+      membership = membership.filter((row) => row.sectionId !== sectionId);
+    }
+  }
+  const next = { v: 1 as const, seeded: true, sections, membership, order, unsectionedCollapsed };
+  return isUnifiedSidebarLayout(next) ? next : null;
+}
+
+export function projectUnifiedSidebar(layout: UnifiedSidebarLayout, snapshots: readonly UnifiedMachineSnapshot[]): UnifiedSidebarState {
+  const machines = snapshots.map((snapshot) => {
+    const offer = createOffer(snapshot);
+    return {
+      consoleId: snapshot.consoleId, label: snapshot.label, address: snapshot.address, home: snapshot.home, kind: snapshot.kind, status: snapshot.status,
+      ...(snapshot.path ? { path: snapshot.path } : {}), creatable: offer.creatable, ...(offer.createBlock ? { createBlock: offer.createBlock } : {}),
+    };
+  });
+  const rows: UnifiedSidebarRow[] = [];
+  for (const ref of layout.order) {
+    const snapshot = snapshots.find((item) => item.consoleId === ref.consoleId);
+    const commodore = snapshot?.roster?.commodores.find((item) => item.id === ref.commodoreId);
+    if (!snapshot || !commodore || !clean(commodore.name, 120)) continue;
+    rows.push({
+      consoleId: ref.consoleId, commodoreId: ref.commodoreId, name: commodore.name, home: snapshot.home,
+      machineLabel: snapshot.label, machineAddress: snapshot.address, status: snapshot.status,
+      ...(commodore.look !== undefined ? { look: commodore.look } : {}),
+      ...(commodore.run !== undefined ? { run: commodore.run } : {}),
+      ...(commodore.preview !== undefined ? { preview: commodore.preview } : {}),
+      ...(commodore.commanders !== undefined ? { commanders: commodore.commanders } : {}),
+      ...(commodore.moreCommanders !== undefined ? { moreCommanders: commodore.moreCommanders } : {}),
+    });
+  }
+  return { v: 1, layout, machines, rows };
+}
+
+/** Published frame only. The stored layout is never trimmed. */
+export function fitUnifiedSidebarState(state: UnifiedSidebarState): UnifiedSidebarState {
+  let rows = [...state.rows];
+  const bytes = () => new TextEncoder().encode(JSON.stringify({ ...state, rows })).length;
+  const trim = (apply: (row: UnifiedSidebarRow) => UnifiedSidebarRow | null): boolean => {
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      const row = rows[index];
+      const next = row ? apply(row) : null;
+      if (!next) continue;
+      rows = rows.map((item, cursor) => cursor === index ? next : item);
+      return true;
+    }
+    return false;
+  };
+  while (bytes() > UNIFIED_SIDEBAR_MAX_FRAME) {
+    const droppedPreview = trim((row) => {
+      if (row.preview === undefined) return null;
+      const { preview: _preview, ...rest } = row;
+      return rest;
+    });
+    if (droppedPreview) continue;
+    const droppedCommander = trim((row) => {
+      const list = row.commanders;
+      if (!list || list.length === 0) return null;
+      return { ...row, commanders: list.slice(0, -1), moreCommanders: (row.moreCommanders ?? 0) + 1 };
+    });
+    if (droppedCommander) continue;
+    if (rows.length === 0) break;
+    rows = rows.slice(0, -1);
+  }
+  return { ...state, rows };
+}
+
 export function isUnifiedSidebarLayout(value: unknown): value is UnifiedSidebarLayout {
   if (!record(value) || value.v !== 1 || typeof value.seeded !== "boolean" || typeof value.unsectionedCollapsed !== "boolean") return false;
   if (!Array.isArray(value.sections) || value.sections.length > UNIFIED_SIDEBAR_MAX_SECTIONS) return false;

@@ -354,8 +354,13 @@ export {
   UNIFIED_SIDEBAR_MAX_SECTIONS,
   UNIFIED_SIDEBAR_PATH,
   isConsoleCommodoreCreateResult,
+  applyUnifiedSidebarCommand,
+  fitUnifiedSidebarState,
   isUnifiedSidebarLayout,
   isUnifiedSidebarState,
+  projectUnifiedSidebar,
+  reconcileUnifiedSidebar,
+  seedUnifiedFromSnapshots,
   seedUnifiedSidebar,
   withoutUnifiedConsole,
 } from "./unified-sidebar.js";
@@ -372,6 +377,7 @@ export type {
   UnifiedSidebarRow,
   UnifiedSidebarSection,
   UnifiedCommodoreLook,
+  UnifiedMachineSnapshot,
   UnifiedSidebarState,
 } from "./unified-sidebar.js";
 

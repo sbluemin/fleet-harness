@@ -5,10 +5,13 @@ import { sanitizeConsoleSettingsData } from "../features/settings/host/settings-
 import {
   UNIFIED_CREATE_ALIAS_MAX,
   UNIFIED_SIDEBAR_HOME,
+  applyUnifiedSidebarCommand,
   isUnifiedSidebarLayout,
   parseConsoleSectionCommand,
+  reconcileUnifiedSidebar,
   seedUnifiedSidebar,
   withoutUnifiedConsole,
+  type UnifiedMachineSnapshot,
 } from "../protocol/desktop/console-section.js";
 
 const ids = () => {
@@ -103,5 +106,38 @@ describe("unified sidebar contract", () => {
     const dropped = sanitizeConsoleSettingsData({ version: 1, commodoreSidebar, unifiedSidebar: { v: 1, seeded: false } });
     expect(dropped.unifiedSidebar).toBeUndefined();
     expect(dropped.commodoreSidebar).toEqual(commodoreSidebar);
+  });
+
+  it("keeps an unavailable machine's rows and admits a newly seen commodore by section name", () => {
+    const layout = seedUnifiedSidebar({
+      sections: [{ id: "home-fleet", name: "플릿", collapsed: false }],
+      membership: { "commodore-home": "home-fleet" },
+      order: ["commodore-home"],
+      unsectionedCollapsed: false,
+    }, [], ids());
+    const home: UnifiedMachineSnapshot = {
+      consoleId: UNIFIED_SIDEBAR_HOME, label: "Home", address: "127.0.0.1:1", home: true, kind: "local", status: "ready",
+      roster: { status: "ok", sections: [{ id: "home-fleet", name: "플릿" }], commodores: [{ id: "commodore-home", name: "Home", section: "home-fleet" }] },
+    };
+    const offline: UnifiedMachineSnapshot = {
+      consoleId: "machine-mac", label: "Mac", address: "mac:1", home: false, kind: "remote", status: "unreachable",
+      roster: { status: "unavailable", sections: [], commodores: [{ id: "commodore-kept", name: "Kept" }] },
+    };
+    const placed = applyUnifiedSidebarCommand(layout, { op: "move", row: { consoleId: "machine-mac", commodoreId: "commodore-kept" }, sectionId: layout.sections[0]!.id }, ids());
+    expect(placed?.order.map((row) => row.commodoreId)).toEqual(["commodore-home", "commodore-kept"]);
+    const kept = reconcileUnifiedSidebar(placed!, [home, offline], ids());
+    expect(kept.order.map((row) => row.commodoreId)).toEqual(["commodore-home", "commodore-kept"]);
+    const back: UnifiedMachineSnapshot = {
+      ...offline, status: "ready",
+      roster: { status: "ok", sections: [{ id: "remote-fleet", name: "플릿" }, { id: "remote-new", name: "새 칸" }], commodores: [{ id: "commodore-kept", name: "Kept", section: "remote-fleet" }, { id: "commodore-new", name: "New", section: "remote-new" }, { id: "commodore-loose", name: "Loose" }] },
+    };
+    let extra = 100;
+    const next = reconcileUnifiedSidebar(kept, [home, back], () => `section-${extra++}`);
+    expect(next.order.map((row) => row.commodoreId)).toEqual(["commodore-home", "commodore-kept", "commodore-new", "commodore-loose"]);
+    const fleet = next.sections.find((section) => section.name === "플릿")!.id;
+    const added = next.sections.find((section) => section.name === "새 칸")!.id;
+    expect(next.membership.find((row) => row.commodoreId === "commodore-new")?.sectionId).toBe(added);
+    expect(next.membership.find((row) => row.commodoreId === "commodore-kept")?.sectionId).toBe(fleet);
+    expect(next.membership.find((row) => row.commodoreId === "commodore-loose")).toBeUndefined();
   });
 });
