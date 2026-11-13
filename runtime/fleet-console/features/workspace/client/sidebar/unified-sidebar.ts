@@ -7,6 +7,7 @@ import {
   isConsoleCommodoreCreateResult,
   isUnifiedSidebarState,
   type ConsoleCommodoreCreateResult,
+  type UnifiedCommodoreLook,
   type UnifiedSidebarCommand,
   type UnifiedSidebarLayout,
   type UnifiedSidebarMachine,
@@ -45,7 +46,8 @@ export interface UnifiedSidebarController {
   readonly machines: readonly UnifiedSidebarMachine[];
   readonly rows: readonly UnifiedSidebarRow[];
   readonly run: (command: UnifiedSidebarCommand) => void;
-  readonly createCommodore: (input: { readonly consoleId: string; readonly alias: string }) => Promise<ConsoleCommodoreCreateResult>;
+  /** `look` 는 선택이다. 없으면 그 머신의 기본 얼굴이 남고, 옛 콘솔은 생성을 유지한 채 얼굴을 무시한다. */
+  readonly createCommodore: (input: { readonly consoleId: string; readonly alias: string; readonly look?: UnifiedCommodoreLook }) => Promise<ConsoleCommodoreCreateResult>;
 }
 
 function unsupported(consoleId: string): ConsoleCommodoreCreateResult {
@@ -60,7 +62,7 @@ export function useUnifiedSidebar(): UnifiedSidebarController {
     if (!active) return;
     location.assign(consoleSectionCommandUrl(location.origin, { unified: command }));
   }, [active]);
-  const createCommodore = useCallback((input: { readonly consoleId: string; readonly alias: string }) => {
+  const createCommodore = useCallback((input: { readonly consoleId: string; readonly alias: string; readonly look?: UnifiedCommodoreLook }) => {
     if (!active) return Promise.resolve(unsupported(input.consoleId));
     const request = crypto.randomUUID();
     return new Promise<ConsoleCommodoreCreateResult>((resolve) => {
@@ -75,7 +77,7 @@ export function useUnifiedSidebar(): UnifiedSidebarController {
         resolve({ v: 1, request, consoleId: input.consoleId, ok: false, reason: "unavailable" });
       }, CREATE_TIMEOUT_MS);
       createListeners.add(finish);
-      location.assign(consoleSectionCommandUrl(location.origin, { createCommodore: { consoleId: input.consoleId, alias: input.alias, request } }));
+      location.assign(consoleSectionCommandUrl(location.origin, { createCommodore: { consoleId: input.consoleId, alias: input.alias, request, ...(input.look ? { look: { base: input.look.base, tone: input.look.tone } } : {}) } }));
     });
   }, [active]);
   return {

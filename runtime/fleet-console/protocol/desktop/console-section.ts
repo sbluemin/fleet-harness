@@ -94,7 +94,7 @@ export type ConsoleSectionCommand = { readonly request: "state" }
    * Create a commodore on a machine without switching the window to it. `request` pairs the result event.
    * The shell performs the write; a monitoring session is `access` and does not create.
    */
-  | { readonly createCommodore: { readonly consoleId: string; readonly alias: string; readonly request: string } };
+  | { readonly createCommodore: { readonly consoleId: string; readonly alias: string; readonly request: string; readonly look?: { readonly base: number; readonly tone: string | null } } };
 
 /**
  * What the shell tells the home Console's add surface about WSL on this computer. Renderer-only and never sent to a
@@ -371,6 +371,7 @@ export type {
   UnifiedSidebarRef,
   UnifiedSidebarRow,
   UnifiedSidebarSection,
+  UnifiedCommodoreLook,
   UnifiedSidebarState,
 } from "./unified-sidebar.js";
 

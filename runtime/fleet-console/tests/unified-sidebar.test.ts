@@ -77,7 +77,11 @@ describe("unified sidebar contract", () => {
     expect(parseConsoleSectionCommand(JSON.stringify({
       createCommodore: { consoleId: UNIFIED_SIDEBAR_HOME, alias: "새 사령관", request: "req-1" },
     }))).toEqual({ createCommodore: { consoleId: UNIFIED_SIDEBAR_HOME, alias: "새 사령관", request: "req-1" } });
+    expect(parseConsoleSectionCommand(JSON.stringify({
+      createCommodore: { consoleId: UNIFIED_SIDEBAR_HOME, alias: "새 사령관", request: "req-2", look: { base: 4, tone: "amber" } },
+    }))).toEqual({ createCommodore: { consoleId: UNIFIED_SIDEBAR_HOME, alias: "새 사령관", request: "req-2", look: { base: 4, tone: "amber" } } });
     expect(parseConsoleSectionCommand(JSON.stringify({ createCommodore: { consoleId: "machine-mac", alias: "x".repeat(41), request: "req-1" } }))).toBeNull();
+    expect(parseConsoleSectionCommand(JSON.stringify({ createCommodore: { consoleId: "machine-mac", alias: "Nuri", request: "req-1", look: { base: -1, tone: null } } }))).toBeNull();
     expect(parseConsoleSectionCommand(JSON.stringify({ unified: { op: "state" }, request: "state" }))).toBeNull();
     expect(UNIFIED_CREATE_ALIAS_MAX).toBe(COMMODORE_ALIAS_MAX_LENGTH);
   });

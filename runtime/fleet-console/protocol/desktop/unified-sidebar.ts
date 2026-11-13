@@ -101,6 +101,9 @@ export type UnifiedSidebarCommand =
   | { readonly op: "collapse"; readonly sectionId: string | null; readonly collapsed: boolean }
   | { readonly op: "delete"; readonly sectionId: string; readonly confirm: true };
 
+/** Optional face chosen in the create dialog. Absent: the machine keeps its own default. An old shell ignores it. */
+export interface UnifiedCommodoreLook { readonly base: number; readonly tone: string | null }
+
 export type ConsoleCommodoreCreateResult =
   | { readonly v: 1; readonly request: string; readonly consoleId: string; readonly ok: true; readonly commodoreId: string }
   | { readonly v: 1; readonly request: string; readonly consoleId: string; readonly ok: false; readonly reason: UnifiedCreateReason };
@@ -286,8 +289,18 @@ export function parseUnifiedSidebarCommand(value: Record<string, unknown>): Unif
   return null;
 }
 
-export function parseCreateCommodoreCommand(value: Record<string, unknown>): { readonly consoleId: string; readonly alias: string; readonly request: string } | null {
+const lookOk = (value: unknown): value is UnifiedCommodoreLook => record(value) && Number.isSafeInteger(value.base) && (value.base as number) >= 0 && (value.base as number) < 10_000 && (value.tone === null || clean(value.tone, 64));
+
+/**
+ * `look` is additive. A command without it still parses, and a shell from before it stores the alias only.
+ * The target Console applies the face with its existing avatar write; if that Console has no such write, creation still stands.
+ */
+export function parseCreateCommodoreCommand(value: Record<string, unknown>): { readonly consoleId: string; readonly alias: string; readonly request: string; readonly look?: UnifiedCommodoreLook } | null {
   const command = value.createCommodore;
-  if (!record(command) || Object.keys(command).length !== 3 || !consoleIdOk(command.consoleId) || !clean(command.request, 128) || !aliasOk(command.alias)) return null;
-  return { consoleId: command.consoleId, alias: command.alias.trim(), request: command.request };
+  if (!record(command) || !consoleIdOk(command.consoleId) || !clean(command.request, 128) || !aliasOk(command.alias)) return null;
+  const keys = Object.keys(command);
+  if (!keys.every((key) => key === "consoleId" || key === "alias" || key === "request" || key === "look")) return null;
+  if (command.look !== undefined && !lookOk(command.look)) return null;
+  const look = lookOk(command.look) ? { base: command.look.base, tone: command.look.tone } : undefined;
+  return { consoleId: command.consoleId, alias: command.alias.trim(), request: command.request, ...(look ? { look } : {}) };
 }
