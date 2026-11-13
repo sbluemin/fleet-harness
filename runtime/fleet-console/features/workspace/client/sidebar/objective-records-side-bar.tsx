@@ -672,7 +672,7 @@ export function ObjectiveRecordsSideBar({
       const theater = standingTheaterFor(row);
       return <>
         <div className="theater-menu-divider" aria-hidden="true" />
-        <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={() => startAliasEdit(row.commodoreId)}>
+        <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={() => { onClose(); startAliasEdit(row.commodoreId); }}>
           <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
           <span className="theater-menu-label">{t("sidebar.commodore.rename")}</span>
         </button>
@@ -685,7 +685,7 @@ export function ObjectiveRecordsSideBar({
           <span className="theater-menu-check" aria-hidden="true"><TaskforceIcon /></span>
           <span className="theater-menu-label">{tfStanding("taskforce.fromCommodore")}</span>
         </button> : null}
-        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => openTheaterBrowser(row.commodoreId)}>
+        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); openTheaterBrowser(row.commodoreId); }}>
           <span className="theater-menu-check" aria-hidden="true"><FolderIcon /></span>
           <span className="theater-menu-label">{t("sidebar.commodore.addTheater")}</span>
         </button>
