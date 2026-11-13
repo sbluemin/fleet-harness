@@ -21,6 +21,7 @@ import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
 import { hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberLaunched, memberNotes, memberStatus, memberSubagents, launchReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
 import { canOpenLedger, toggleLedger, useLedgerObjective, focusObjective, loadBoard, post, useObjectiveSummaries, objectivesApi, findAnyObjective, subscribeObjectiveOrFinished, loadObjective, openObjectiveOnPhone } from "./objectives-state.js";
+import { useOpenMissionRecords } from "./mission-record-open.js";
 import { goToObjective } from "./fresh-conversation.js";
 import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
 import { commodoreAvatarKey } from "../../workspace/shared/avatars.js";
@@ -62,7 +63,7 @@ const EMPTY_IDS: ReadonlySet<string> = new Set();
  * 임무 기록 — 구상 입력 줄과 같은 문법이다: 상자·배경 없이 임무 글자와 같은 선에서 펼쳐지고, 한 건은 흐린 모노 한 줄(시각·종류)
  * 아래 결론과 나머지 줄. 오래된 것부터 읽는다. 「새 기록」은 펼친 순간 이미 읽은 기록의 id 로 가른다(펼치면 읽음이 되어도 표시는 남는다; 상한에서 밀려나도 위치가 아니라 id 라 어긋나지 않는다).
  */
-function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly MissionRecord[]; seenAtOpen: ReadonlySet<string>; open: boolean; t: Translate<ObjectiveMessageKey>; language: "en" | "ko" }) {
+export function MissionRecords({ id, records, seenAtOpen, open, t, language }: { id: string; records: readonly MissionRecord[]; seenAtOpen: ReadonlySet<string>; open: boolean; t: Translate<ObjectiveMessageKey>; language: "en" | "ko" }) {
   return (
     <div id={id} className={`objectives-records${open ? " is-open" : ""}`} hidden={!open}>
       <div className="objectives-records-inner">
@@ -243,13 +244,13 @@ export function ObjectivePopupHost({ language, mobile }: { readonly language?: C
 }
 
 const WORKING = new Set(["running"]);
-/** 호스트 요약의 원시 활동 → 이 패널이 그리는 활동. 백그라운드 작업만 남은 Objective 도 진행 중으로 선다. */
-const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
+/** 호스트 요약의 원시 활동 → 패널과 우측 레일이 그리는 활동. 백그라운드 작업만 남은 Objective 도 진행 중으로 선다. */
+export const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
 const ChevronGlyph = () => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg>;
 /** 요청이 선 차례 — 먼저 청한 것이 먼저 선다. 같은 때면 저장된 순서 그대로다. */
 
 
-function MemberMark({ objective, member, objectiveRecordState, still, size }: { objective: Objective; member: ObjectiveMember; objectiveRecordState: (objectiveId: string) => string; still?: boolean; size?: number }) {
+export function MemberMark({ objective, member, objectiveRecordState, still, size }: { objective: Objective; member: ObjectiveMember; objectiveRecordState: (objectiveId: string) => string; still?: boolean; size?: number }) {
   return <ObjectiveAvatar objectiveId={member.id} role="member" state={memberMongleState(objective, member.id, member.sessionName !== null ? objectiveRecordState(member.id) : "closed")} still={still} {...(size ? { size } : {})} />;
 }
 
@@ -257,7 +258,7 @@ function MemberMark({ objective, member, objectiveRecordState, still, size }: { 
  * 지휘관 표식 — 목표 Objective 의 몽글 아바타. 구성원과는 머리 위 안테나(역할 특징)로 갈린다. 상태는 사이드바·레일과 같은
  * 기준이라 구성원 활동을 끌어올린 값(`objectiveRecordState`)을 읽는다 — 자기 활동(ownActivity)은 결정 대기 같은 글자에만 쓴다.
  */
-function CommanderMark({ objective, objectiveRecordState, size }: { objective: Objective; objectiveRecordState: (objectiveId: string) => string; size?: number }) {
+export function CommanderMark({ objective, objectiveRecordState, size }: { objective: Objective; objectiveRecordState: (objectiveId: string) => string; size?: number }) {
   return <ObjectiveAvatar objectiveId={objective.id} role="commander" state={commanderMongleState(objective, objectiveRecordState(objective.id))} {...(size ? { size } : {})} />;
 }
 
@@ -1020,7 +1021,7 @@ function BriefSection({ objective, t, language, touchable, readOnly = false, cal
   </>);
 }
 
-function quietMissionLabel(objective: Objective, mission: ObjectiveMission, ready: boolean, now: number, language: "en" | "ko"): string | null {
+export function quietMissionLabel(objective: Objective, mission: ObjectiveMission, ready: boolean, now: number, language: "en" | "ko"): string | null {
   if (mission.done) return null;
   const elapsed = quietElapsed({
     ready, assigned: mission.member !== null, assignmentTs: mission.assignmentTs ?? null,
@@ -1074,24 +1075,8 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     setZoomOpen(false); setZoomWidth(null);
     if (!document.activeElement || document.activeElement === document.body) orientationRef.current?.focus();
   }, [verticalGraph, zoomOpen]);
-  // 펼친 임무 기록 — 임무 id → 펼친 순간 이미 읽은 기록 id(「새 기록」 표시의 기준). 다른 항목으로 가면 모두 접는다.
-  const [openRecords, setOpenRecords] = useState<Readonly<Record<string, ReadonlySet<string>>>>({});
-  useEffect(() => { setOpenRecords({}); }, [objective.id]);
-  // 펼친 동안 쌓이는 기록도 읽은 것이다 — 보이는 임무의 안 읽은 기록을 서버에 읽음으로 알린다.
-  const seenPending = useRef(new Set<string>());
-  useEffect(() => {
-    for (const mission of objective.missions) {
-      // 가장 최근 기록 id 로 거른다 — 기록 수는 상한(20)에 닿으면 더 늘지 않아, 그 뒤의 새 기록을 알리지 못한다.
-      const key = `${mission.id}:${mission.records.at(-1)?.id ?? ""}`;
-      if (!(mission.id in openRecords) || unseenRecords(mission) === 0 || seenPending.current.has(key)) continue;
-      seenPending.current.add(key);
-      void call("/mission/seen", { objectiveId: objective.id, missionId: mission.id });
-    }
-  }, [objective, openRecords, call]);
-  const toggleRecords = (mission: ObjectiveMission) => setOpenRecords((current) => {
-    if (mission.id in current) { const { [mission.id]: _closed, ...rest } = current; return rest; }
-    return { ...current, [mission.id]: new Set(mission.records.slice(0, Math.min(mission.seen, mission.records.length)).map((record) => record.id)) };
-  });
+  // 펼친 임무 기록 — 우측 레일과 같은 훅. 펼친 순간의 읽은 id를 보관하고, 안 읽은 기록은 /mission/seen 으로 알린다.
+  const { openRecords, setOpenRecords, toggleRecords } = useOpenMissionRecords(objective, call);
   // 그래프 팝업에서 편 기록 — 팝업이 다른 임무로 가거나 닫히면 이것만 접는다.
   const popupRecords = useRef(new Set<string>());
   const togglePopupRecords = (mission: ObjectiveMission) => {

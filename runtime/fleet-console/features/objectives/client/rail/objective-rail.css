@@ -1,0 +1,291 @@
+/* 지휘관·구성원·시작 전 목표의 우측 사이드바 — 목표 / 구성원·임무 / 결과물을 세로로 균등 3등분한다.
+   다른 영역 구현은 여기 클래스 이름으로만 마크업한다. 색은 기존 토큰만 쓴다. */
+
+.rail-pane-body:has(.objective-rail) {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.right-rail-panel-body:has(.objective-rail)::before,
+.right-rail-panel-body:has(.objective-rail)::after {
+  content: none;
+}
+
+.objective-rail {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--conversation-surface, var(--ink-deep));
+  color: var(--text-primary);
+}
+
+.objective-rail-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--hairline);
+}
+
+.objective-rail-head strong {
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.objective-rail-head span {
+  margin-left: auto;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.objective-rail-areas {
+  display: grid;
+  flex: 1 1 auto;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  min-width: 0;
+  min-height: 0;
+}
+
+.objective-rail-area {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.objective-rail-area + .objective-rail-area {
+  border-top: 1px solid var(--hairline-strong);
+}
+
+.objective-rail-area-head {
+  display: flex;
+  flex: none;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 9px 12px 6px;
+}
+
+.objective-rail-area-head h2 {
+  margin: 0;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+}
+
+.objective-rail-area-head span {
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.objective-rail-area-head button {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.objective-rail-area-head button:hover {
+  color: var(--text-primary);
+}
+
+.objective-rail-area-head button:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.objective-rail-area-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0 12px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--hairline-strong) transparent;
+}
+
+.objective-rail-section {
+  margin: 0;
+}
+
+.objective-rail-section-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 -12px;
+  padding: 8px 12px 4px;
+  background: var(--ink-deep);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium, 500);
+}
+
+.objective-rail-section + .objective-rail-section > .objective-rail-section-head {
+  padding-top: 14px;
+}
+
+.objective-rail-section-head::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.objective-rail-section-head em {
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+}
+
+.objective-rail-list {
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.objective-rail-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  padding: 6px 0;
+  border-bottom: 1px solid color-mix(in oklch, var(--hairline) 60%, transparent);
+  font-size: var(--t-sm);
+  line-height: 1.45;
+}
+
+.objective-rail-row:last-child {
+  border-bottom: 0;
+}
+
+.objective-rail-row small {
+  display: block;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+.objective-rail-tag {
+  flex: none;
+  margin-top: 1px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+.objective-rail-tag.is-ok {
+  background: color-mix(in oklch, var(--positive) 14%, transparent);
+  color: var(--positive);
+}
+
+.objective-rail-tag.is-run {
+  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  color: var(--brass-ink);
+}
+
+.objective-rail-tag.is-wait {
+  background: color-mix(in oklch, var(--warn) 14%, transparent);
+  color: var(--warn);
+}
+
+.objective-rail-tag.is-bad {
+  background: color-mix(in oklch, var(--coral) 14%, transparent);
+  color: var(--coral);
+}
+
+.objective-rail-empty {
+  margin: 8px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+}
+
+.objective-rail-brief {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.objective-rail-progress {
+  height: 3px;
+  margin: 6px 0 2px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--surface-panel);
+}
+
+.objective-rail-progress i {
+  display: block;
+  height: 100%;
+  background: var(--brass);
+}
+
+.objective-rail-decision {
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in oklch, var(--warn) 45%, var(--hairline));
+  border-radius: 10px;
+  font-size: var(--t-sm);
+}
+
+.objective-rail-decision b {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.objective-rail-decision span {
+  color: var(--text-secondary);
+}
+
+.objective-rail-num {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: 50%;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.objective-rail-num.is-met {
+  border: 0;
+  background: color-mix(in oklch, var(--positive) 28%, transparent);
+  color: var(--positive);
+}
+
+.objective-rail-grow {
+  flex: 1 1 auto;
+  min-width: 0;
+}
