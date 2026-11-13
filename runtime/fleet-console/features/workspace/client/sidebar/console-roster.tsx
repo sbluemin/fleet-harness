@@ -94,7 +94,8 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
     </li>;
   };
   // 섹션을 실은 명부는 집·원격 모두 그 순서의 머리글로 묶는다. 섹션이 없는 콘솔과 옛 명부(sections 없음)는 평평하고, 좁은 열은 아바타만 둔다.
-  const grouped = !compact && (roster?.sections?.length ?? 0) > 0;
+  // 사령관이 하나도 없으면 빈 섹션 머리글을 늘어놓지 않는다 — 다른 콘솔의 명부에서는 끌어다 놓을 수도 없다.
+  const grouped = !compact && rows.length > 0 && (roster?.sections?.length ?? 0) > 0;
   // 심리스에서 집은 머리글이 없다. 사령관이 없으면 안내 카드 대신, 그 자리의 짧은 행으로만 돌아간다.
   // 빈 원격 콘솔의 안내와 신뢰·연결 안내는 그대로 둔다.
   const quietHome = headless && !blocked && roster?.status === "ok" && rows.length === 0;
