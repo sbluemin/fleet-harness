@@ -125,11 +125,7 @@
 }
 
 .objective-rail-section {
-  margin-top: 10px;
-}
-
-.objective-rail-section:first-child {
-  margin-top: 2px;
+  margin: 0;
 }
 
 .objective-rail-section-head {
@@ -139,13 +135,17 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  margin: 0;
-  padding: 4px 0;
-  background: var(--conversation-surface, var(--ink-deep));
+  margin: 0 -12px;
+  padding: 8px 12px 4px;
+  background: var(--ink-deep);
   color: var(--text-secondary);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium, 500);
+}
+
+.objective-rail-section + .objective-rail-section > .objective-rail-section-head {
+  padding-top: 14px;
 }
 
 .objective-rail-section-head::after {

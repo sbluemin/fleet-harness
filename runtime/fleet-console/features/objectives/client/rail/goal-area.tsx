@@ -25,7 +25,7 @@ export function GoalArea({ objective, language }: { readonly objective: Objectiv
   const done = objective.missions.filter((mission) => mission.done).length;
   const total = objective.missions.length;
   const brief = objective.note.trim();
-  const showBrief = brief.length > 0 || total > 0;
+  const showBrief = brief.length > 0;
   const pending = hasDecisionRequest(objective) ? objective.decisionRequest : null;
   const met = objective.criteria.filter((criterion) => !!criterion.met).length;
   const history = objective.decisions.length > 0;

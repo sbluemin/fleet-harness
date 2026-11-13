@@ -44,7 +44,9 @@ function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labe
         <span className="objective-rail-crew-name">{member.role}</span>
         <small>{modelLine} · {t("objectives.members.missions", { count })}</small>
       </span>
-      <span className={`objective-rail-tag${failed ? " is-bad" : state === "running" ? " is-run" : state === "awaiting" ? " is-wait" : ""}`}>{status}</span>
+      {state !== "closed" && status !== "" ? (
+        <span className={`objective-rail-tag${failed ? " is-bad" : state === "running" ? " is-run" : state === "awaiting" ? " is-wait" : ""}`}>{status}</span>
+      ) : null}
     </li>
   );
 }

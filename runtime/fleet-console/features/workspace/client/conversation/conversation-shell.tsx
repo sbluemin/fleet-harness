@@ -1332,7 +1332,8 @@ function CommodoreRailTabs({ descriptor, commodoreId, language, theme }: {
     if (before === null || before === SETTINGS_RAIL_ENTRY_ID) return;
     const active = getRailStoreSnapshot().activePanelId;
     if (active !== null && tabIdsRef.current.includes(active)) return;
-    if (active !== null) {
+    // 목표 3영역은 conversationTab이 아닌 투영 패널이라, 그대로 두면 등록이 걷힌 뒤 폭만 사라지고 열림 id는 남는다.
+    if (active !== null && active !== OBJECTIVE_RAIL_TAB_ID) {
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
       if (binding !== undefined && !isConversationTab(binding.entry)) return;
     }
@@ -1413,11 +1414,16 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       return;
     }
     const active = getRailStoreSnapshot().activePanelId;
+    if (active === OBJECTIVE_RAIL_TAB_ID) {
+      const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
+      if (fallback !== undefined) openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
+      return;
+    }
     if (active !== null && !tabIdsRef.current.includes(active)) {
       // 등록 목록에 없는 id 는 레일이 그리지 않는다(보이지 않게 닫힌 패널).
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
       if (binding !== undefined && !isConversationTab(binding.entry)) return;
-    } else if (active !== null || !mayAutoOpenConversationRail(descriptor.id) || (descriptor.id === COMMODORE_SURFACE_ID && readLastPanel() === "objectives")) return;
+    } else if (active !== null || !mayAutoOpenConversationRail(descriptor.id) || (descriptor.id === COMMODORE_SURFACE_ID && (readLastPanel() === "objectives" || readLastPanel() === OBJECTIVE_RAIL_TAB_ID))) return;
     const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
     if (fallback === undefined) return;
     openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
