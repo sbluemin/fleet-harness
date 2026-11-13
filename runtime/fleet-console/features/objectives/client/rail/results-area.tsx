@@ -127,14 +127,17 @@ export function ResultsArea({ objective, language }: { objective: Objective; lan
               const kind = result.mediaType === "text/plain" ? "TXT" : "IMG";
               const mission = result.sourceMissionId ? objective.missions.find((entry) => entry.id === result.sourceMissionId) : undefined;
               const missionName = mission ? missionTitle(mission) : null;
-              const sub = `${missionName ?? missionTag(objective, result, t)} · ${bytesLabel(result.bytes)}`;
+              // 뷰어 제목과 같다(result-window: label ?? name). 라벨이 제목이면 캡션처럼 아래 줄에 파일명을 남긴다.
+              const title = result.label ?? result.name;
+              const file = result.label && result.label !== result.name ? `${result.name} · ` : "";
+              const sub = `${missionName ?? missionTag(objective, result, t)} · ${file}${bytesLabel(result.bytes)}`;
               return (
                 <ResultRow
                   key={result.id}
                   objective={objective}
                   result={result}
                   t={t}
-                  title={result.name}
+                  title={title}
                   sub={sub}
                   kind={kind}
                   tagClass=""
