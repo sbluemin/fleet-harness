@@ -403,7 +403,11 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
   };
 }
 
-/** The catalog and routing loadout share the model's allowance-pool identity. */
+/**
+ * Baseline allowance-pool identity exposed on the catalog; the routing loadout
+ * narrows `quotaPool` to `${provider}:${quotaScope}` when live quota reports a
+ * matching scoped window.
+ */
 export function buildGatewayModelQuota(model: GatewayModel) {
   const { quotaScope } = buildGatewayModelConstraints(model);
   return {
