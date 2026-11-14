@@ -1,7 +1,7 @@
 import type { CoreMessageKey } from "../../../../core/client/src/i18n/messages/index.js";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { loadBoard, objectivesApi, useObjectiveBoard } from "../../../objectives/client/objectives-state.js";
-import { useEffect, useRef, useState, type ReactElement } from "react";
+import { useEffect, useRef, useState, type ReactElement, type Ref } from "react";
 import { objectiveTabHasContent } from "../../../objectives/client/detail-content.js";
 import { useSharedFileCount } from "../../../objectives/client/shared-folder-count.js";
 
@@ -39,7 +39,6 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
   readonly title: string;
   readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
 }) {
-  const t = useT();
   // 행의 점은 팝업 안 탭 점과 같은 원천(보드)이다 — 결정 요청이 행과 팝업에서 어긋나지 않는다.
   const board = useObjectiveBoard(commodoreId);
   const objective = board.loaded ? board.objectives.find((candidate) => candidate.id === objectiveId) ?? null : null;
@@ -56,6 +55,20 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
     return () => { row.removeEventListener("pointerenter", on); row.removeEventListener("pointerleave", off); row.removeEventListener("focusin", on); row.removeEventListener("focusout", off); };
   }, []);
   const sharedFiles = useSharedFileCount(objective, near);
+  return <CommanderRowGlyphButtons groupRef={groupRef} title={title} decision={decision}
+    empty={(tab) => objective !== null && !(tab === "goal" && !objective.done) && !objectiveTabHasContent(objective, tab, sharedFiles)}
+    onGlyph={(tab, opener) => onGlyphTab(objectiveId, tab, opener)} />;
+}
+
+/** 원격 명부는 지역 보드·공유 폴더를 읽지 않는다. 데이터 없는 글리프 표현만 함께 쓴다. */
+export function CommanderRowGlyphButtons({ title, decision = false, empty, groupRef, onGlyph }: {
+  readonly title: string;
+  readonly decision?: boolean;
+  readonly empty?: (tab: CommanderRowGlyphTab) => boolean;
+  readonly groupRef?: Ref<HTMLSpanElement>;
+  readonly onGlyph: (tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
+}) {
+  const t = useT();
   return <>
     <span ref={groupRef} className="commander-row-glyphs" role="group" aria-label={t("commanderTab.rowGlyphs.label")}>
       {GLYPH_TABS.map((tab) => {
@@ -63,17 +76,16 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
         const dotLabel = decision && tab === "goal" ? t("commanderTab.rowGlyph.decision") : null;
         const Glyph = TAB_GLYPH[tab];
         // 보여 줄 것이 하나도 없는 탭은 흐리고 열리지 않는다 — 안내 문구는 두지 않는다. 보드를 읽기 전에는 비었다고 단정하지 않는다.
-        const empty = objective !== null && !(tab === "goal" && !objective.done) && !objectiveTabHasContent(objective, tab, sharedFiles);
         return (
           <button
             key={tab}
             type="button"
             className="commander-row-glyph"
             aria-haspopup="dialog"
-            disabled={empty}
+            disabled={empty?.(tab) ?? false}
             aria-label={`${t("commanderTab.rowGlyph.open", { tab: tabLabel, title })}${dotLabel ? ` · ${dotLabel}` : ""}`}
             title={tabLabel}
-            onClick={(event) => onGlyphTab(objectiveId, tab, event.currentTarget)}
+            onClick={(event) => onGlyph(tab, event.currentTarget)}
           >
             <Glyph />
             {decision && tab === "goal" ? <span className="commander-row-glyph-dot is-attention" aria-hidden="true" /> : null}

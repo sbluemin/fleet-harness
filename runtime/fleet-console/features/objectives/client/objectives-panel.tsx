@@ -523,7 +523,7 @@ const CloseGlyph = () => <svg viewBox="0 0 16 16" width="14" height="14" fill="n
 
 /** 편성 확대본 — body 포털의 고정 오버레이. Esc·바깥 누름·닫기 글리프로 닫히고, 열릴 때 카드가 포커스를 받는다.
  * 완료·상태 셈은 제목 줄(닫기 앞)에 선다 — 카드 안에 「임무」 머리를 한 번 더 세우지 않아 그 높이만큼 그래프가 넓어진다. */
-function LineupZoom({ t, title, category, width, tools, onClose, children }: { readonly t: Translate<ObjectiveMessageKey>; readonly title: string; /** 머리 제목 — 없으면 「임무」. 목표 팝업이 「목표」로 바꾼다. */ readonly category?: string; readonly width?: number | null; readonly tools?: ReactNode; readonly onClose: () => void; readonly children: ReactNode }) {
+export function LineupZoom({ t, title, category, width, tools, onClose, children }: { readonly t: Translate<ObjectiveMessageKey>; readonly title: string; /** 머리 제목 — 없으면 「임무」. 목표 팝업이 「목표」로 바꾼다. */ readonly category?: string; readonly width?: number | null; readonly tools?: ReactNode; readonly onClose: () => void; readonly children: ReactNode }) {
   const cardRef = useRef<HTMLDivElement | null>(null);
   // 최초 한 번만 카드로 초점을 옮긴다 — 부모가 다시 그려도(항목 사건 갱신) 사용자가 옮겨 둔 초점을 되돌리지 않는다.
   useEffect(() => { cardRef.current?.focus(); }, []);
@@ -559,7 +559,7 @@ function LineupZoom({ t, title, category, width, tools, onClose, children }: { r
         return;
       }
       const card = cardRef.current;
-      const stops = [...card.querySelectorAll<HTMLElement | SVGElement>("button, input, textarea, [tabindex]:not([tabindex='-1'])")].filter((el) => !(el as HTMLButtonElement).disabled);
+      const stops = [...card.querySelectorAll<HTMLElement | SVGElement>("button, a[href], input, textarea, [tabindex]:not([tabindex='-1'])")].filter((el) => !(el as HTMLButtonElement).disabled);
       const active = document.activeElement;
       const inside = active instanceof Node && card.contains(active);
       const first = stops[0];

@@ -94,7 +94,13 @@ export type ConsoleSectionCommand = { readonly request: "state" }
    * Create a commodore on a machine without switching the window to it. `request` pairs the result event.
    * The shell performs the write; a monitoring session is `access` and does not create.
    */
-  | { readonly createCommodore: { readonly consoleId: string; readonly alias: string; readonly request: string; readonly look?: { readonly base: number; readonly tone: string | null } } };
+  | { readonly createCommodore: { readonly consoleId: string; readonly alias: string; readonly request: string; readonly look?: { readonly base: number; readonly tone: string | null } } }
+  /**
+   * Read one in-progress objective of another Console through the shell. The shell resolves the opaque
+   * window-owned console id, relays the read over the roster plumbing, and answers on
+   * `CONSOLE_OBJECTIVE_PEEK_EVENT`. Honored only from a document the home Console serves.
+   */
+  | { readonly peek: { readonly console: string; readonly objective: string; readonly nonce: string } };
 
 /**
  * What the shell tells the home Console's add surface about WSL on this computer. Renderer-only and never sent to a
@@ -186,6 +192,11 @@ export interface ConsoleRosterSummary {
   /** How many were left out by the cap. */
   readonly more: number;
   /**
+   * Additive: this Console serves `CONSOLE_OBJECTIVE_PEEK_PATH`. A Console without it sends
+   * nothing, and its rows show no peek glyphs.
+   */
+  readonly objectivePeek?: true;
+  /**
    * Additive: that sidebar's own sections, so another document draws the same headers in the same order.
    * A Console without sections sends none. `unsectionedCollapsed` hides the commodores that sit in no section.
    */
@@ -216,6 +227,8 @@ export interface ConsoleRosterEntry {
   readonly at: number | null;
   readonly commodores: readonly ConsoleRosterCommodore[];
   readonly more: number;
+  /** Additive: that Console serves the objective peek path; the shell relays it as it arrived. */
+  readonly objectivePeek?: true;
   /** Additive, relayed from that Console's summary as they are. */
   readonly sections?: readonly ConsoleRosterSection[];
   readonly unsectionedCollapsed?: true;
@@ -255,6 +268,7 @@ const rosterCommodore = (value: unknown): value is ConsoleRosterCommodore => obj
   && rosterRun(value.run);
 const rosterList = (value: Record<string, unknown>): boolean => Array.isArray(value.commodores) && value.commodores.length <= CONSOLE_ROSTER_MAX_COMMODORES
   && value.commodores.every(rosterCommodore) && Number.isSafeInteger(value.more) && (value.more as number) >= 0
+  && (value.objectivePeek === undefined || value.objectivePeek === true)
   && (value.sections === undefined || (Array.isArray(value.sections) && value.sections.length <= CONSOLE_ROSTER_MAX_SECTIONS && value.sections.every(rosterSection)))
   && (value.unsectionedCollapsed === undefined || value.unsectionedCollapsed === true);
 export function isConsoleRosterSummary(value: unknown): value is ConsoleRosterSummary {
@@ -272,13 +286,121 @@ export function isConsoleRosterState(value: unknown): value is ConsoleRosterStat
     && (entry.status === "ok" || entry.status === "unsupported" || entry.status === "unavailable")
     && (entry.at === null || (typeof entry.at === "number" && Number.isFinite(entry.at))) && rosterList(entry));
 }
+/**
+ * One in-progress objective of another Console, display only. Scope S: prose and the result list.
+ * Never carries conversations, session names, paths, decisions, consultations, followups, actions,
+ * tokens, attachments, or the shared folder.
+ */
+export const CONSOLE_OBJECTIVE_PEEK_PATH = "/api/v1/console-roster/objective";
+export const CONSOLE_OBJECTIVE_PEEK_CAPABILITY = "console-objective-peek";
+export const CONSOLE_OBJECTIVE_PEEK_EVENT = "fleet:console-objective-peek";
+/** UTF-8 bytes of the snapshot JSON. The host trims long prose first and marks `truncated`. */
+export const CONSOLE_OBJECTIVE_PEEK_MAX_BYTES = 65_536;
+export const CONSOLE_OBJECTIVE_PEEK_MAX_MISSIONS = 40;
+export const CONSOLE_OBJECTIVE_PEEK_MAX_CRITERIA = 20;
+export const CONSOLE_OBJECTIVE_PEEK_MAX_MEMBERS = 40;
+export const CONSOLE_OBJECTIVE_PEEK_MAX_RESULTS = 40;
+/** planning: arranging; active: launched and in progress; review: handoff or review pending; done: all missions and criteria met. */
+export type ConsoleObjectivePeekPhase = "planning" | "active" | "review" | "done";
+export interface ConsoleObjectivePeekCriterion { readonly text: string; readonly met: boolean }
+export interface ConsoleObjectivePeekMission {
+  /** Display name; the host resolves `missionTitle` so an absent name arrives resolved. */
+  readonly title: string;
+  readonly text: string;
+  readonly done: boolean;
+  /** The assignee's role; null when the commander runs it directly. Never a member id. */
+  readonly assignee: string | null;
+  /** Prerequisite missions as 1-based lineup numbers. */
+  readonly premises: readonly number[];
+  /** Record lines, oldest first, flattened. */
+  readonly records: readonly string[];
+}
+export interface ConsoleObjectivePeekMember {
+  readonly role: string;
+  readonly brief: string | null;
+  /** Model display name; null while routing. Never a session identity. */
+  readonly model: string | null;
+  readonly run: ConsoleRosterRun;
+}
+export type ConsoleObjectivePeekResult =
+  | { readonly kind: "pr"; readonly label?: string; readonly note?: string; readonly url: string }
+  | { readonly kind: "evidence"; readonly label?: string; readonly note?: string; readonly name: string; readonly mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "text/plain"; readonly bytes: number }
+  | { readonly kind: "artifact"; readonly label?: string; readonly note?: string; readonly url: string };
+export interface ConsoleObjectivePeek {
+  readonly v: 1;
+  /** The objective's id on that Console. */
+  readonly id: string;
+  readonly title: string;
+  readonly note: string | null;
+  readonly phase: ConsoleObjectivePeekPhase;
+  readonly criteria: readonly ConsoleObjectivePeekCriterion[];
+  readonly missions: readonly ConsoleObjectivePeekMission[];
+  readonly members: readonly ConsoleObjectivePeekMember[];
+  readonly results: readonly ConsoleObjectivePeekResult[];
+  readonly truncated?: true;
+}
+export type ConsoleObjectivePeekStatus = "ok" | "unauthorized" | "unsupported" | "unavailable" | "not_found";
+export interface ConsoleObjectivePeekReply {
+  readonly nonce: string;
+  /** The opaque window-owned console id from the requesting command. */
+  readonly console: string;
+  readonly objective: string;
+  readonly status: ConsoleObjectivePeekStatus;
+  readonly snapshot?: ConsoleObjectivePeek;
+}
+const peekPhase = (value: unknown): value is ConsoleObjectivePeekPhase => value === "planning" || value === "active" || value === "review" || value === "done";
+/**
+ * Absolute `https:` URL only. A remote Console's `javascript:` or relative URL must never
+ * become a link in the home document; the host drops offending results before serving.
+ */
+const peekUrl = (value: unknown): value is string => {
+  if (typeof value !== "string" || value.length === 0 || value.length > 2048 || /[\u0000-\u001f\u007f]/u.test(value)) return false;
+  try { return new URL(value).protocol === "https:"; } catch { return false; }
+};
+const peekLine = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
+/** 여러 문단 글 — `\n`만 허용하고 `\t`·DEL을 포함한 나머지 제어 문자는 거부한다. 호스트가 탭을 공백으로, `\r\n`을 `\n`으로 정규화해 낸다. */
+const peekProse = (value: unknown, max: number): value is string => typeof value === "string" && value.length <= max && !/[\u0000-\u0009\u000b-\u001f\u007f]/u.test(value);
+const peekCriterion = (value: unknown): boolean => object(value) && peekProse(value.text, 300) && typeof value.met === "boolean";
+const peekMission = (value: unknown): boolean => object(value) && peekLine(value.title, 64) && peekProse(value.text, 200)
+  && typeof value.done === "boolean" && (value.assignee === null || peekLine(value.assignee, 40))
+  && Array.isArray(value.premises) && value.premises.length <= CONSOLE_OBJECTIVE_PEEK_MAX_MISSIONS
+  && value.premises.every((n: unknown) => Number.isSafeInteger(n) && (n as number) >= 1 && (n as number) <= CONSOLE_OBJECTIVE_PEEK_MAX_MISSIONS)
+  && Array.isArray(value.records) && value.records.length <= 60 && value.records.every((line: unknown) => peekProse(line, 160));
+const peekMember = (value: unknown): boolean => object(value) && peekLine(value.role, 40)
+  && (value.brief === null || peekProse(value.brief, 300)) && (value.model === null || peekLine(value.model, 120)) && rosterRun(value.run);
+const peekResultLabel = (value: Record<string, unknown>): boolean =>
+  (value.label === undefined || peekLine(value.label, 120)) && (value.note === undefined || peekLine(value.note, 300));
+const peekResult = (value: unknown): boolean => object(value) && peekResultLabel(value)
+  && ((value.kind === "pr" || value.kind === "artifact") && peekUrl(value.url)
+    || value.kind === "evidence" && peekLine(value.name, 120)
+    && (value.mediaType === "image/png" || value.mediaType === "image/jpeg" || value.mediaType === "image/webp" || value.mediaType === "image/gif" || value.mediaType === "text/plain")
+    && Number.isSafeInteger(value.bytes) && (value.bytes as number) > 0 && (value.bytes as number) <= 10 * 1024 * 1024);
+export function isConsoleObjectivePeek(value: unknown): value is ConsoleObjectivePeek {
+  if (!object(value) || value.v !== 1 || !clean(value.id, 128) || !peekLine(value.title, 120)) return false;
+  if (value.note !== null && !peekProse(value.note, 20_000)) return false;
+  if (!peekPhase(value.phase)) return false;
+  if (!Array.isArray(value.criteria) || value.criteria.length > CONSOLE_OBJECTIVE_PEEK_MAX_CRITERIA || !value.criteria.every(peekCriterion)) return false;
+  if (!Array.isArray(value.missions) || value.missions.length > CONSOLE_OBJECTIVE_PEEK_MAX_MISSIONS || !value.missions.every(peekMission)) return false;
+  if (!Array.isArray(value.members) || value.members.length > CONSOLE_OBJECTIVE_PEEK_MAX_MEMBERS || !value.members.every(peekMember)) return false;
+  if (!Array.isArray(value.results) || value.results.length > CONSOLE_OBJECTIVE_PEEK_MAX_RESULTS || !value.results.every(peekResult)) return false;
+  if (!(value.truncated === undefined || value.truncated === true)) return false;
+  try { if (new TextEncoder().encode(JSON.stringify(value)).length > CONSOLE_OBJECTIVE_PEEK_MAX_BYTES) return false; } catch { return false; }
+  return true;
+}
+const peekStatus = (value: unknown): value is ConsoleObjectivePeekStatus =>
+  value === "ok" || value === "unauthorized" || value === "unsupported" || value === "unavailable" || value === "not_found";
+export function isConsoleObjectivePeekReply(value: unknown): value is ConsoleObjectivePeekReply {
+  if (!object(value) || !clean(value.nonce, 128) || !clean(value.console, 128) || !clean(value.objective, 128) || !peekStatus(value.status)) return false;
+  if (value.status === "ok") return isConsoleObjectivePeek(value.snapshot);
+  return value.snapshot === undefined;
+}
 /** Unknown fields cannot be forwarded by a caller: only the recognized command is returned. */
 export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand | null {
   if (new TextEncoder().encode(raw).length > 4096) return null;
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return null; }
   if (!object(value)) return null;
-  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle", "takeover", "update", "wsl", "unified", "createCommodore"].filter((key) => key in value);
+  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle", "takeover", "update", "wsl", "unified", "createCommodore", "peek"].filter((key) => key in value);
   if (keys.length !== 1) return null;
   if (value.request === "state") return { request: "state" };
   if (clean(value.switch, 128)) {
@@ -310,6 +432,9 @@ export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand |
   if ("createCommodore" in value) {
     const createCommodore = parseCreateCommodoreCommand(value);
     return createCommodore ? { createCommodore } : null;
+  }
+  if (object(value.peek) && clean(value.peek.console, 128) && clean(value.peek.objective, 128) && clean(value.peek.nonce, 128)) {
+    return { peek: { console: value.peek.console, objective: value.peek.objective, nonce: value.peek.nonce } };
   }
   if (object(value.wsl)) {
     if (value.wsl.list === true) return { wsl: { list: true } };

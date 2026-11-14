@@ -1,0 +1,27 @@
+/* 원격 팝업은 기존 목표 창의 프레임을 쓰고, 읽기 전용 글과 목록만 담는다. */
+.objectives-remote-peek { font-size: var(--t-sm); color: var(--text-primary); }
+.objectives-remote-peek-source { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; font-size: var(--t-xs); color: var(--text-secondary); }
+.objectives-remote-peek-source b { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: var(--radius-xs); background: var(--wash-hover); font-weight: var(--weight-medium); }
+.objectives-remote-peek-tabs { display: flex; flex-wrap: wrap; gap: var(--space-3); padding-block: var(--space-2); border-bottom: 1px solid var(--hairline); }
+.objectives-remote-peek-tabs .objectives-popup-text-button[aria-pressed="true"] { color: var(--text-primary); }
+.objectives-remote-peek .objectives-popup-text-button { border-radius: var(--radius-xs); }
+.objectives-remote-peek .objectives-popup-text-button:hover,
+.objectives-remote-peek .objectives-popup-text-button:focus-visible { outline: none; background: var(--wash-hover); }
+.objectives-remote-peek-content { overflow-wrap: anywhere; }
+.objectives-remote-peek-content section { padding-block: var(--space-2); }
+.objectives-remote-peek-content h3 { margin: var(--space-2) 0; font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.objectives-remote-peek-content p { margin: var(--space-2) 0; line-height: 1.5; }
+.objectives-remote-peek-state,
+.objectives-remote-peek-evidence { color: var(--text-secondary); font-size: var(--t-xs); }
+.objectives-remote-peek-prose { white-space: pre-wrap; }
+.objectives-remote-peek-list { margin: 0; padding-left: 24px; }
+.objectives-remote-peek-list > li { padding-block: var(--space-2); }
+.objectives-remote-peek-list > li + li { border-top: 1px solid var(--hairline); }
+.objectives-remote-peek-line { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); }
+.objectives-remote-peek-line > span { color: var(--text-secondary); font-size: var(--t-xs); }
+.objectives-remote-peek-records { margin: var(--space-2) 0; padding-left: 20px; color: var(--text-secondary); }
+.objectives-remote-peek-records > li { padding-block: var(--space-1); white-space: pre-wrap; }
+.objectives-remote-peek-footer { display: flex; justify-content: flex-end; padding-top: var(--space-3); border-top: 1px solid var(--hairline); }
+@media (forced-colors: active) {
+  .objectives-remote-peek .objectives-popup-text-button:focus-visible { outline: 1px solid; }
+}

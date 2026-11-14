@@ -7,8 +7,9 @@ import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
-import { CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isUnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
+import { CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isUnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
 import { consoleRosterCommanders, consoleRosterRun, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterSort } from "../../../features/commodore/host/roster.js";
+import { buildObjectivePeek } from "../../../features/commodore/host/objective-peek.js";
 import { livePersonHold, reasonAwaits } from "../../../features/objectives/shared/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective } from "../../../features/objectives/shared/types.js";
 import { COMMODORE_CHANNEL, type CommodoreEvent } from "../../../features/commodore/shared/contracts/types.js";
@@ -1682,6 +1683,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       // peek만 써서 lastSeenAt과 제어권, 끝난 세션의 사유까지 그대로 둔다.
       if (pairedDeviceStore.peek(readPairingCookie(req.headers, listener.port), listener.audience) !== null) return { admitted: true, sessionHandle: null };
     }
+    if (pathname === CONSOLE_OBJECTIVE_PEEK_PATH) {
+      if (!isReadOnlyRequest(req)) return { admitted: false };
+      // 명부와 같은 자격. 세션이 없어도 페어링 peek만으로 지나가고, 살아 있는 세션도 아래에서 그대로 받는다.
+      if (pairedDeviceStore.peek(readPairingCookie(req.headers, listener.port), listener.audience) !== null) return { admitted: true, sessionHandle: null };
+    }
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
     if (session !== null) {
       // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
@@ -2815,6 +2821,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             });
           }
           return consoleRosterCommanders(sources, objectiveRecords.listAllGroups().filter((group) => group.commodoreId === commodoreId).map((group) => ({ id: group.id, order: group.order, createdAt: group.createdAt })), sort);
+        },
+        // 진행 중 목표 하나의 표시 전용 스냅샷 — 명부에 실릴 자격이 있는 목표만 답한다.
+        // 상한에 잘려 목록에 없어도 되며, 판정은 rosterCommandersOf와 같은 포함 규칙을 쓴다.
+        // peek 경로의 입장 판정을 통과한 읽기만 여기까지 오므로, 여기서 세션·페어링을 다시 보지 않는다.
+        objectivePeekOf: (objectiveId) => {
+          const objective = objectives?.listAll().find((entry) => entry.id === objectiveId) ?? null;
+          if (!objective || objective.archived === true || objective.removed) return null;
+          const commodoreOn = consoleFeaturePorts.experiments?.read().commodore ?? true;
+          const personWaiting = rosterPersonWaiting(objective, commodoreOn);
+          const fresh = !objective.done && !objective.awaitingReview && !objective.commander.started && objective.hasSession !== true;
+          if (!rosterCommanderIncluded({ removed: false, archived: false, done: objective.done !== null, fresh, personWaiting })) return null;
+          return buildObjectivePeek(objective, (memberId) => consoleRosterRun(false, [consoleControl.observe(memberId)?.activity]));
         },
         gatewayTools: { name: FLEET_AI_GATEWAY_MCP_SERVER, tools: [gatewayModelsTool], alwaysLoad: true },
         ownership,

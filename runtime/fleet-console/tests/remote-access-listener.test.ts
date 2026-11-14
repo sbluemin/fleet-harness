@@ -13,11 +13,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { readConsoleLockFile } from "@fleet-console/lifecycle";
 import { PAIRED_DEVICE_LIMIT } from "../features/remote-access/host/paired-devices.js";
 import * as remoteAuth from "../features/remote-access/host/auth.js";
-import { CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isConsoleRosterSummary, isUnifiedSidebarLayout } from "../protocol/desktop/console-section.js";
+import { CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isConsoleRosterSummary, isUnifiedSidebarLayout } from "../protocol/desktop/console-section.js";
 import { consoleRosterCommanders, consoleRosterLook, consoleRosterPreview, consoleRosterRun, consoleRosterSections, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterCommanderSource } from "../features/commodore/host/roster.js";
 import { normalizeFingerprint } from "../features/remote-access/host/remote-identity.js";
 import { parseAccessLink } from "../features/remote-access/host/access-link.js";
 import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/bootstrap/server.js";
+import { buildObjectivePeek } from "../features/commodore/host/objective-peek.js";
+import { isConsoleObjectivePeek } from "../protocol/desktop/console-section.js";
+import type { Objective } from "../features/objectives/shared/types.js";
 import type { ConsoleRemoteAccessSettings } from "../features/settings/host/settings-domain.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
@@ -99,7 +102,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const { commodoreId } = await created.json() as { commodoreId: string };
     const painted = await fetch(`${origin}/api/v1/avatars`, { method: "PUT", headers: { Origin: origin, "Content-Type": "application/json" }, body: JSON.stringify({ mode: "set", key: `theater:commodore:${commodoreId}`, base: 2, tone: "teal" }) });
     expect(painted.status).toBe(200);
-    const expected = { v: 1, commodores: [{ id: commodoreId, name: "명부 사령관", look: { base: 2, tone: "teal" }, run: "quiet" }], more: 0 };
+    const expected = { v: 1, commodores: [{ id: commodoreId, name: "명부 사령관", look: { base: 2, tone: "teal" }, run: "quiet" }], more: 0, objectivePeek: true };
     for (const headers of [{} as Record<string, string>, { Origin: origin }]) {
       const response = await fetch(`${origin}${CONSOLE_ROSTER_PATH}`, { headers });
       expect(response.status).toBe(200);
@@ -146,6 +149,22 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(head.body).toBe("");
     for (const method of ["POST", "PUT", "DELETE"]) expect((await remoteRequest(fixture, method, CONSOLE_ROSTER_PATH, "{}", paired)).status).toBe(401);
     expect((await remoteRequest(fixture, "GET", "/api/v1/objectives/records", undefined, paired)).status).toBe(401);
+    // 엿보기 경로 — 명부와 같은 입장 판정. 페어링 없이 401, 페어링+쓰기는 401, 페어링+읽기는
+    // 경로까지 닿아(401이 아니라) 대상 판정으로 답하고, 세션을 열거나 바꾸지 않는다.
+    expect((await remoteRequest(fixture, "GET", `${CONSOLE_OBJECTIVE_PEEK_PATH}?id=missing`)).status).toBe(401);
+    const peekBefore = snapshot();
+    const peekDevices = (await readRemoteStatus(fixture)).devices;
+    const peeked = await remoteRequest(fixture, "GET", `${CONSOLE_OBJECTIVE_PEEK_PATH}?id=missing`, undefined, paired);
+    expect(peeked.status).toBe(404);
+    expect(peeked.headers["cache-control"]).toBe("no-store");
+    expect(peeked.headers["set-cookie"]).toBeUndefined();
+    expect(snapshot()).toEqual(peekBefore);
+    expect((await readRemoteStatus(fixture)).devices).toEqual(peekDevices);
+    for (const method of ["POST", "PUT", "DELETE"]) {
+      expect((await remoteRequest(fixture, method, `${CONSOLE_OBJECTIVE_PEEK_PATH}?id=missing`, "{}", paired)).status).toBe(401);
+    }
+    expect((await remoteRequest(fixture, "HEAD", `${CONSOLE_OBJECTIVE_PEEK_PATH}?id=missing`, undefined, paired)).status).toBe(404);
+    expect(snapshot()).toEqual(peekBefore);
     const device = (await readRemoteStatus(fixture)).devices.find((entry) => entry.device === "roster-device")!;
     expect(await revoke(fixture, `paired-devices/${device.id}`)).toBe(204);
     expect((await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH, undefined, paired)).status).toBe(401);
@@ -924,6 +943,138 @@ describe("console roster commanders", () => {
     const placed = consoleRosterSections({ sections: [{ id: "s", name: "플릿", collapsed: true }], unsectionedCollapsed: true });
     expect(placed).toEqual({ sections: [{ id: "s", name: "플릿", collapsed: true }], unsectionedCollapsed: true });
     expect(isConsoleRosterSummary({ v: 1, commodores: [{ id: "commodore-1", name: "보리", look: null, run: "quiet", section: "s", commanders: many.commanders, moreCommanders: many.moreCommanders }], more: 0, ...placed })).toBe(true);
+  });
+});
+
+describe("objective peek snapshot", () => {
+  const peekableObjective = (patch: Record<string, unknown> = {}) => ({
+    id: "obj-1", commodoreId: "cmdr-1", theaterId: "t1", groupId: null, title: "먼 곳의 목표",
+    createdAt: 1, commander: { sessionName: null, started: false }, note: "첫 문단\r\n\r\n둘째\t문단",
+    attachments: [],
+    results: [
+      { id: "r1", kind: "pr", label: "고침", url: "https://github.com/o/r/pull/1", host: "github.com", owner: "o", repo: "r", number: 1, createdAt: 1, updatedAt: 1, observation: { state: "open", checkedAt: 1, stale: false } },
+      { id: "r2", kind: "evidence", name: "shot.png", mediaType: "image/png", bytes: 10, sha256: "a".repeat(64), capturedAt: 1, ownerObjectiveId: "obj-1", createdAt: 1, updatedAt: 1 },
+      { id: "r3", kind: "artifact", url: "https://claude.ai/artifact/abc", createdAt: 1, updatedAt: 1 },
+      { id: "r4", kind: "pr", url: "javascript:alert(1)", host: "github.com", owner: "o", repo: "r", number: 2, createdAt: 1, updatedAt: 1, observation: { state: "open", checkedAt: 1, stale: false } },
+    ],
+    planning: false, criteriaOpen: false, done: null, awaitingHandoff: false, awaitingReview: false, handoff: null,
+    extensions: [], extensionActive: false,
+    criteria: [
+      { id: "c1", text: "된다", by: { kind: "commander" }, met: "근거 한 줄" },
+      { id: "c2", text: "판정 전", by: { kind: "commander" } },
+    ],
+    criteriaProposals: [],
+    members: [
+      { id: "m1", role: "일꾼", brief: "맡는다", by: { kind: "commander" } },
+      { id: "m2", role: "둘째", brief: null, by: { kind: "commander" }, launch: { mode: "model", model: "model-x" } },
+    ],
+    missions: [
+      { id: "t1", title: "먼저", text: "한다", done: true, prerequisites: [], member: "m1", records: [{ id: "rec1", at: 1, lines: ["끝", "남은 일"] }] },
+      { id: "t2", text: "나중에", done: false, prerequisites: ["t1", "nope"], member: null, records: [] },
+    ],
+    followups: [], followupBatches: [], followupHistory: null, origin: null,
+    decisionRequest: null, decisionRequestRevision: 0, consultations: [], decisionDelivery: null, decisions: [],
+    stoppedAt: null, dueDate: null, today: false, addedBy: null, requestSource: null,
+    ...patch,
+  } as unknown as Objective);
+  const runOf = (id: string) => (id === "m1" ? "working" as const : "quiet" as const);
+
+  it("maps the display fields, drops forbidden and unsafe values, and stays within the contract", () => {
+    const snapshot = buildObjectivePeek(peekableObjective(), runOf);
+    expect(snapshot).not.toBeNull();
+    expect(isConsoleObjectivePeek(snapshot)).toBe(true);
+    expect(snapshot).toMatchObject({ v: 1, id: "obj-1", title: "먼 곳의 목표", phase: "active" });
+    expect(snapshot?.note).toBe("첫 문단\n\n둘째 문단");
+    expect(snapshot?.criteria).toEqual([{ text: "된다", met: true }, { text: "판정 전", met: false }]);
+    expect(snapshot?.missions.map((mission) => [mission.title, mission.done, mission.assignee, mission.premises])).toEqual([
+      ["먼저", true, "일꾼", []], ["나중에", false, null, [1]],
+    ]);
+    expect(snapshot?.missions[0]?.records).toEqual(["끝", "남은 일"]);
+    expect(snapshot?.members).toEqual([
+      { role: "일꾼", brief: "맡는다", model: null, run: "working" },
+      { role: "둘째", brief: null, model: "model-x", run: "quiet" },
+    ]);
+    // javascript: 결과는 빠지고 목록만 남는다. 세션·경로·결정 낱말도 실리지 않는다.
+    expect(snapshot?.results.map((result) => result.kind)).toEqual(["pr", "evidence", "artifact"]);
+    expect(JSON.stringify(snapshot)).not.toMatch(/javascript:|sessionName|decisionRequest|cwd|token/i);
+    expect(Buffer.byteLength(JSON.stringify(snapshot), "utf8")).toBeLessThanOrEqual(65_536);
+
+    expect(buildObjectivePeek(peekableObjective({ planning: true }), runOf)?.phase).toBe("planning");
+    expect(buildObjectivePeek(peekableObjective({ awaitingReview: true }), runOf)?.phase).toBe("review");
+    expect(buildObjectivePeek(peekableObjective({ awaitingHandoff: true }), runOf)?.phase).toBe("review");
+    expect(buildObjectivePeek(peekableObjective({ done: { at: 1 } }), runOf)?.phase).toBe("done");
+    // 모르는 담당·없는 선행은 조용히 null·제외.
+    const stray = buildObjectivePeek(peekableObjective({ missions: [
+      { id: "t9", text: "홀로", done: false, prerequisites: ["ghost"], member: "ghost", records: [] },
+    ] }), runOf);
+    expect(stray?.missions).toEqual([{ title: "홀로", text: "홀로", done: false, assignee: null, premises: [], records: [] }]);
+  });
+
+  it("trims long prose first and marks the cut", () => {
+    const heavy = Array.from({ length: 10 }, (_, index) => ({
+      id: `t${index}`, text: "한다", done: false, prerequisites: [], member: null,
+      records: [{ id: `rec${index}`, at: 1, lines: Array.from({ length: 60 }, () => "가".repeat(160)) }],
+    }));
+    const snapshot = buildObjectivePeek(peekableObjective({ missions: heavy }), runOf);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.truncated).toBe(true);
+    expect(isConsoleObjectivePeek(snapshot)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(snapshot), "utf8")).toBeLessThanOrEqual(65_536);
+    const short = buildObjectivePeek(peekableObjective(), runOf);
+    expect(short?.truncated).toBeUndefined();
+  });
+
+  // 지휘관 재현 입력(shared/glyph-integrated-trim-repro.log) — note 1자, 결과물 없이 다국어 글만으로 상한 초과.
+  // 옛 접기(ceil)는 여기서 끝나지 않았다. 유한 시간에 끝나고 상한 이내(또는 null)여야 한다.
+  it("ends on multibyte prose alone over the cap", () => {
+    const snapshot = buildObjectivePeek(peekableObjective({
+      note: "x",
+      members: Array.from({ length: 40 }, (_, index) => ({ id: `m${index}`, role: "역".repeat(40), brief: "글".repeat(300), by: { kind: "commander" } })),
+      criteria: Array.from({ length: 20 }, (_, index) => ({ id: `c${index}`, text: "기".repeat(300), by: { kind: "commander" } })),
+      missions: Array.from({ length: 40 }, (_, index) => ({ id: `t${index}`, title: "임".repeat(64), text: "무".repeat(200), done: false, prerequisites: [], member: null, records: [] })),
+      results: [],
+    }), runOf);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.truncated).toBe(true);
+    expect(isConsoleObjectivePeek(snapshot)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(snapshot), "utf8")).toBeLessThanOrEqual(65_536);
+  });
+
+  // 깃발 17바이트도 상한 안에 — 잘라낸 뒤 65,532바이트에서 멈추면 깃발을 붙인 65,549바이트가 넘는다.
+  // 옛 코드는 여기서 null(404)을 돌려주고, 고친 코드는 깃발을 포함한 크기로 몇 줄 더 빼고 낸다.
+  it("counts the truncated flag inside the cap", () => {
+    const snapshot = buildObjectivePeek(peekableObjective({
+      note: "",
+      criteria: Array.from({ length: 20 }, (_, index) => ({ id: `c${index}`, text: "기".repeat(300), by: { kind: "commander" } })),
+      members: Array.from({ length: 40 }, (_, index) => ({ id: `m${index}`, role: `w${index}`, brief: "글".repeat(300), by: { kind: "commander" } })),
+      missions: Array.from({ length: 40 }, (_, index) => ({
+        id: `t${index}`, title: `m${index}`, text: "무".repeat(43), done: false, prerequisites: [], member: null,
+        records: index === 0 ? [{ id: "rec0", at: 1, lines: Array.from({ length: 60 }, () => "xxxx") }] : [],
+      })),
+      results: [],
+    }), runOf);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.truncated).toBe(true);
+    expect(isConsoleObjectivePeek(snapshot)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(snapshot), "utf8")).toBeLessThanOrEqual(65_536);
+  });
+
+  // 브리핑 1자 + 결과물만으로 상한 초과 — 길이 1 다음은 비워야 끝나고, 결과물을 뒤에서 뺀다.
+  it("ends on a one-character note with results alone over the cap", () => {
+    const results = Array.from({ length: 40 }, (_, index) => ({
+      id: `r${index}`, kind: "pr", url: `https://github.com/o/r/pull/${index + 1}${"x".repeat(2000)}`,
+      host: "github.com", owner: "o", repo: "r", number: index + 1, createdAt: 1, updatedAt: 1,
+      observation: { state: "open", checkedAt: 1, stale: false },
+    }));
+    const snapshot = buildObjectivePeek(peekableObjective({
+      note: "가",
+      missions: [{ id: "t1", text: "한다", done: false, prerequisites: [], member: null, records: [] }],
+      results,
+    }), runOf);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.truncated).toBe(true);
+    expect(isConsoleObjectivePeek(snapshot)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(snapshot), "utf8")).toBeLessThanOrEqual(65_536);
   });
 });
 
