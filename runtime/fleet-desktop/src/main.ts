@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import fs from "node:fs";
 import os from "node:os";
@@ -435,20 +436,40 @@ async function boot(): Promise<void> {
    * 임시 세션에서도 같은 금고를 읽고 쓴다. 디스크에는 암호문과 메타데이터만 남는다.
    */
   const execFileAsync = promisify(execFile);
+  interface MacLocalAuthAddon {
+    canAuthenticate(): boolean;
+    authenticate(reason: string): Promise<void>;
+  }
+  const macLocalAuth: MacLocalAuthAddon | null = (() => {
+    if (process.platform !== "darwin") return null;
+    const req = createRequire(import.meta.url);
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    for (const candidate of [
+      path.join(here, "mac-local-auth.node"),
+      path.join(here.replace(/app\.asar([\\/])/u, "app.asar.unpacked$1"), "mac-local-auth.node"),
+    ]) {
+      try {
+        if (fs.existsSync(candidate)) return req(candidate) as MacLocalAuthAddon;
+      } catch {
+        /* 다음 경로 확인 */
+      }
+    }
+    return null;
+  })();
   const browserPasswordVault = createBrowserPasswordVault({
     root: app.getPath("userData"),
     safeStorage,
     systemPreferences,
     clipboard,
     osAuth: {
-      canPrompt: () => process.platform === "darwin" || process.platform === "win32",
+      canPrompt: () => {
+        if (process.platform === "darwin") return macLocalAuth?.canAuthenticate() === true;
+        return process.platform === "win32";
+      },
       prompt: async (reason) => {
         if (process.platform === "darwin") {
-          await execFileAsync(
-            "/usr/bin/osascript",
-            ["-e", "on run argv", "-e", 'do shell script "/usr/bin/true" with prompt (item 1 of argv) with administrator privileges', "-e", "end run", "--", reason],
-            { timeout: 120_000 },
-          );
+          if (!macLocalAuth) throw new Error("os_auth_unavailable");
+          await macLocalAuth.authenticate(reason);
           return;
         }
         if (process.platform === "win32") {
