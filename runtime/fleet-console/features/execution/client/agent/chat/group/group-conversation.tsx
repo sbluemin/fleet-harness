@@ -817,21 +817,15 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   const ledgerOf = React.useContext(LedgerTargetContext);
   // 이 대화의 주인 사령관 — 사령관 자기 대화에서는 그 사령관의 말을 왼쪽 자기 말풍선으로 세운다.
   const ownerCommodore = React.useContext(ConversationCommodoreContext);
-  // 자문 말풍선 — 지휘관이 사령관에게 구한 자문과 그 답. 본문이 길 수 있어 구성원 말과 같은 높이 상한을 둔다.
-  const consult = entry.via === "consult" || entry.via === "consult-reply";
-  // 높이 상한은 구성원 말풍선과 자문 말풍선만. 그 밖의 지휘관·보드 없는 루트·사령관 말은 접기를 켜도 상한 없이 선다.
-  const clip = useBubbleClip((capped && entry.speaker.kind === "member") || consult);
+  // 높이 상한은 구성원 말풍선만. 그 밖의 지휘관·보드 없는 루트·사령관 말은 접기를 켜도 상한 없이 선다.
+  const clip = useBubbleClip(capped && entry.speaker.kind === "member");
   const [reportOpen, setReportOpen] = React.useState(false);
   const reportId = React.useId();
   // 문면이 없는 말(표시 문면 없이 보낸 플러그인 지시 등)은 빈 말풍선으로 세우지 않는다. 흐르는 중이면 「쓰는 중」이 선다.
-  // 「추가 의견 없음」 자문 답은 문면이 없다 — 화면 언어의 낱말로 선다.
-  const text = entry.text.trim().length === 0 && entry.consult?.noAdvice ? t("group.consult.noAdvice") : entry.text;
+  const text = entry.text;
   if (!entry.streaming && text.trim().length === 0 && !entry.attachments?.length) return null;
   // 보드 행위에 덧붙인 말이면 받는 이 뒤에 그 행위를 단다 — 그냥 대화가 아니라 개시·구상·방향 수정과 함께 간 말이다.
   const via = entry.via ? <><span className="group-chat-line-sep" aria-hidden="true">·</span><span className="group-chat-via">{t(`group.via.${entry.via}`)}</span></> : null;
-  // 자문 답이 지휘관에게 닿은 상태 — 지휘관이 일하는 동안에는 답이 기다린다는 것을 말풍선 아래에 남긴다.
-  const consultDelivery = entry.consult?.delivery;
-  const consultNote = consultDelivery ? <span className={`group-chat-consult-note is-${consultDelivery}`}>{t(`group.consult.${consultDelivery}`)}</span> : null;
   if (entry.speaker.kind === "human") {
     // 받는 이는 말풍선 위 머리가 아니라 말풍선 안 앞머리 멘션으로 둔다 — 같은 멘션 문법(16px 아바타 + 톤 이름)이고,
     // 받는 이가 여럿이면 차례로 선다. 묶음은 받는 이를 이름으로 읽어 스크린리더에도 그 자리가 남는다.
@@ -914,7 +908,6 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
           </div>
         </div>
         {clip.clipped ? <button type="button" className="group-chat-link group-chat-more" onClick={clip.expand}>{t("group.bubble.more")}</button> : null}
-        {consultNote}
       </div>
     );
   }
@@ -937,7 +930,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
             {via}
           </span>
         ) : report ? <span className="group-chat-agent-head">{name}{reportTag}</span> : name}
-        <div className={`group-chat-bubble is-agent is-markdown${entry.via === "consult" ? " is-consult" : ""}${clip.className}`}>
+        <div className={`group-chat-bubble is-agent is-markdown${clip.className}`}>
           {/* 본문 칸 — 높이 상한에 걸리면 이 칸이 그 자리에서 스크롤되고 흐림은 말풍선(바깥 틀)에 고정된다. 상한이 없으면 꾸밈 없는 블록이다. */}
           <div ref={clip.ref} className="group-chat-bubble-body">
             {/* 첨부는 사람 말풍선과 같은 자리(본문 앞)에 선다 — 문면 없이 첨부만 실은 말도 빈 말풍선이 아니다. */}
@@ -949,7 +942,6 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
           </div>
         </div>
         {clip.clipped ? <button type="button" className="group-chat-link group-chat-more" onClick={clip.expand}>{t("group.bubble.more")}</button> : null}
-        {consultNote}
         {report && continued ? <span className="group-chat-agent-head is-after">{reportTag}</span> : null}
         {report && reportOpen ? (
           <div className="group-chat-line-detail group-chat-report-detail" id={reportId}>

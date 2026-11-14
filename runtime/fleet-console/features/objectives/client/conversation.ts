@@ -75,16 +75,35 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
 }
 
 /**
- * 지휘관 자문 — 질문은 지휘관이 사령관에게 한 말, 답은 사령관이 지휘관에게 한 말로 각자의 시각에 선다. 답 아래에는 지휘관에게
- * 닿은 상태가 선다(지휘관이 일하는 동안 답은 기다린다). 사령관 대화도 같은 기록을 같은 낱말로 세운다.
+ * 지휘관 자문 — 질문·답은 전언 줄(`자문 요청`/`자문 답변`)로 각자의 시각에 서고, 본문은 슬라이드 대화 창에서 읽는다. 사령관 대화도 같은 문법이다.
  */
 export function consultationEvents(objective: Objective, commodore: ConversationSpeaker): GroupTimelineEntry[] {
   const commander: ConversationSpeaker = { kind: "commander", name: "commander", objectiveId: objective.id };
   return objective.consultations.flatMap((consult): GroupTimelineEntry[] => {
-    const ask: GroupTimelineEntry = { kind: "message", id: `consult:${objective.id}:${consult.id}:ask`, at: consult.at, objectiveId: objective.id, speaker: commander, recipient: commodore, text: consult.question, streaming: false, via: "consult" };
+    const ask: GroupTimelineEntry = {
+      kind: "delegation",
+      id: `consult:${objective.id}:${consult.id}:ask`,
+      at: consult.at,
+      sender: commander,
+      recipients: [commodore],
+      text: consult.question,
+      result: "",
+      received: false,
+      via: "consult",
+    };
     if (!consult.reply) return [ask];
-    const facts: ConversationConsultReply = { ...(consult.delivery ? { delivery: consultDelivery(consult.delivery) } : {}), ...(consult.reply.kind === "no-additional-advice" ? { noAdvice: true as const } : {}) };
-    return [ask, { kind: "message", id: `consult:${objective.id}:${consult.id}:reply`, at: consult.reply.at, objectiveId: objective.id, speaker: commodore, recipient: commander, text: consult.reply.kind === "advice" ? consult.reply.text : "", streaming: false, via: "consult-reply", consult: facts }];
+    return [ask, {
+      kind: "delegation",
+      id: `consult:${objective.id}:${consult.id}:reply`,
+      at: consult.reply.at,
+      sender: commodore,
+      recipients: [commander],
+      text: consult.reply.kind === "advice" ? consult.reply.text : "",
+      result: "",
+      received: true,
+      via: "consult-reply",
+      ...(consult.reply.kind === "no-additional-advice" ? { noAdvice: true as const } : {}),
+    }];
   });
 }
 
