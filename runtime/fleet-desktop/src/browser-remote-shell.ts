@@ -32,7 +32,7 @@ import type { PasswordPrompt } from "./browser-password-page.js";
 const PERMISSION_WAIT_MS = 120_000;
 
 export interface RemoteShellPasswordAgent {
-  chromeAction(action: "password-pick" | "password-save" | "password-dismiss" | "password-never", username?: string): Promise<void>;
+  chromeAction(action: "password-pick" | "password-save" | "password-dismiss" | "password-never", username?: string, origin?: string): Promise<void>;
 }
 
 export interface BrowserRemoteRelayExtras {
@@ -75,7 +75,7 @@ export function remotePasswordPrompt(prompt: PasswordPrompt | null): RemoteBrows
   if (!prompt) return null;
   const id = `password-${prompt.viewId}`;
   if (prompt.kind === "pick") {
-    return { kind: "pick", id, tabId: prompt.viewId, origin: prompt.origin, usernames: [...prompt.usernames] };
+    return { kind: "pick", id, tabId: prompt.viewId, origin: prompt.origin, usernames: [...prompt.usernames], origins: [...prompt.origins] };
   }
   return { kind: "save-prompt", id, tabId: prompt.viewId, origin: prompt.origin, username: prompt.username, mode: prompt.mode };
 }
@@ -192,7 +192,7 @@ export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof se
         if (!isRemoteBrowserPasswordAction(params)) throw new Error("password_action_invalid");
         if (!password || password.id !== params.promptId || password.tabId !== params.tabId) throw new Error("password_prompt_missing");
         const action = params.action === "pick" ? "password-pick" : params.action === "save" ? "password-save" : params.action === "dismiss" ? "password-dismiss" : "password-never";
-        await passwords.chromeAction(action, params.username);
+        await passwords.chromeAction(action, params.username, params.origin);
         return { handled: true };
       }
       if (method === DESKTOP_BROWSER_SELECT_POPUP) {

@@ -135,6 +135,7 @@ export type RemoteBrowserPasswordPrompt =
     readonly tabId: string;
     readonly origin: string;
     readonly usernames: readonly string[];
+    readonly origins?: readonly string[];
   }
   | {
     readonly kind: "save-prompt";
@@ -150,6 +151,7 @@ export interface RemoteBrowserPasswordAction {
   readonly tabId: string;
   readonly action: "pick" | "save" | "dismiss" | "never";
   readonly username?: string;
+  readonly origin?: string;
 }
 
 export interface RemoteBrowserFileChooserPrompt {
@@ -269,7 +271,8 @@ export function isRemoteBrowserPermissionAction(value: unknown): value is Remote
 export function isRemoteBrowserPasswordPrompt(value: unknown): value is RemoteBrowserPasswordPrompt {
   if (!isRecord(value) || !isSafeId(value.id) || !isSafeId(value.tabId) || !isShortText(value.origin, 512)) return false;
   if (value.kind === "pick") {
-    return Array.isArray(value.usernames) && value.usernames.length > 0 && value.usernames.length <= 100 && value.usernames.every((name) => isShortText(name, 512));
+    if (!Array.isArray(value.usernames) || value.usernames.length === 0 || value.usernames.length > 100 || !value.usernames.every((name) => isShortText(name, 512))) return false;
+    return value.origins === undefined || (Array.isArray(value.origins) && value.origins.length === value.usernames.length && value.origins.every((origin) => isShortText(origin, 512)));
   }
   if (value.kind === "save-prompt") {
     return isShortText(value.username, 512) && (value.mode === "save" || value.mode === "update");
@@ -282,7 +285,8 @@ export function isRemoteBrowserPasswordAction(value: unknown): value is RemoteBr
     && isSafeId(value.promptId)
     && isSafeId(value.tabId)
     && (value.action === "pick" || value.action === "save" || value.action === "dismiss" || value.action === "never")
-    && (value.username === undefined || isShortText(value.username, 512));
+    && (value.username === undefined || isShortText(value.username, 512))
+    && (value.origin === undefined || isShortText(value.origin, 512));
 }
 
 export function isRemoteBrowserFileChooserPrompt(value: unknown): value is RemoteBrowserFileChooserPrompt {

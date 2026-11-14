@@ -342,7 +342,7 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
         // 로컬 금고 동작은 main 이 먼저 가져간다. 여기 도달한 것은 원격 카드고, 평문은 실리지 않는다.
         if (!action.promptId || !action.tabId) return;
         const verb = action.action === "password-pick" ? "pick" : action.action === "password-save" ? "save" : action.action === "password-dismiss" ? "dismiss" : "never";
-        void run("password-action", { promptId: action.promptId, tabId: action.tabId, action: verb, ...(action.action === "password-pick" ? { username: action.username } : {}) });
+        void run("password-action", { promptId: action.promptId, tabId: action.tabId, action: verb, ...(action.action === "password-pick" ? { username: action.username, ...(action.origin !== undefined ? { origin: action.origin } : {}) } : {}) });
         return;
       }
     }

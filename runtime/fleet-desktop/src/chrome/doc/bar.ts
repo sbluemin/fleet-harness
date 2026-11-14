@@ -422,12 +422,17 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   const buildRemotePasswordPicker = (t: T, prompt: Extract<ChromeViewOnly["passwordPrompt"], { kind: "pick" }>): HTMLElement | null => {
     if (!prompt || prompt.usernames.length === 0) return null;
     const box = h("div", { class: "suggestions", role: "listbox", attrs: { "aria-label": t("password.pickTitle") } });
-    for (const username of prompt.usernames) {
+    for (let index = 0; index < prompt.usernames.length; index += 1) {
+      const username = prompt.usernames[index]!;
+      const site = prompt.origins?.[index];
+      const label = h("span", { class: "suggestion-label", text: username });
+      if (site && site !== prompt.origin) label.append(h("small", { text: site }));
       const button = h("button", { class: "suggestion result", type: "button", role: "option" },
         h("span", { class: "tab-icon" }, glyph(G.profile)),
-        h("span", { class: "suggestion-label", text: username }));
+        label);
+      const pickOrigin = site && site !== prompt.origin ? site : undefined;
       button.addEventListener("mousedown", (event) => event.preventDefault());
-      button.addEventListener("click", () => post("bar", "password-pick", { username, promptId: prompt.id, tabId: prompt.tabId }));
+      button.addEventListener("click", () => post("bar", "password-pick", pickOrigin === undefined ? { username, promptId: prompt.id, tabId: prompt.tabId } : { username, origin: pickOrigin, promptId: prompt.id, tabId: prompt.tabId }));
       box.append(button);
     }
     return box;

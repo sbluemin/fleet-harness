@@ -394,7 +394,13 @@ function remoteSelectParams(body: RemoteBrowserSelectPopupAction): Record<string
 }
 
 function remotePasswordParams(body: RemoteBrowserPasswordAction): Record<string, unknown> {
-  return { promptId: body.promptId, tabId: body.tabId, action: body.action, ...(body.username !== undefined ? { username: body.username } : {}) };
+  return {
+    promptId: body.promptId,
+    tabId: body.tabId,
+    action: body.action,
+    ...(body.username !== undefined ? { username: body.username } : {}),
+    ...(body.origin !== undefined ? { origin: body.origin } : {}),
+  };
 }
 
 const SEARCH_URL = "https://www.google.com/search?q=";
