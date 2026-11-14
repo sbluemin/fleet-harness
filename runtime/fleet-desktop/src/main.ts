@@ -481,7 +481,7 @@ async function boot(): Promise<void> {
               "-Command",
               "$null = [Windows.Security.Credentials.UI.UserConsentVerifier, Windows.Security.Credentials.UI, ContentType=WindowsRuntime]; $avail = [Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync().GetAwaiter().GetResult(); if ($avail -ne 'Available') { Write-Output 'unavailable'; exit 2 }; $res = [Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync($env:FLEET_OS_AUTH_REASON).GetAwaiter().GetResult(); Write-Output $res; if ($res -eq 'Verified') { exit 0 } elseif ($res -eq 'Canceled') { exit 3 } else { exit 4 }",
             ],
-            { timeout: 120_000, env: { ...process.env, FLEET_OS_AUTH_REASON: reason } },
+            { timeout: 120_000, windowsHide: true, env: { ...process.env, FLEET_OS_AUTH_REASON: reason } },
           );
           if (!String(stdout).includes("Verified")) throw new Error(String(stdout).trim() || "os_auth_failed");
         }
