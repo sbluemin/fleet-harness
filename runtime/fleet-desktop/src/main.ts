@@ -31,7 +31,7 @@ import { createWslHost } from "./wsl-host.js";
 import { CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_SEAMLESS_CAPABILITY, CONSOLE_UNIFIED_SIDEBAR_CAPABILITY, CONSOLE_WSL_CAPABILITY } from "@fleet-console/protocol/desktop/console-section";
 import { findAccessLinkArgument, FLEET_PROTOCOL, isConsoleOrigin, isFleetProtocolLink, isRemoteConsoleOrigin } from "./console-links.js";
 import { confirmRemoteIdentity, releaseFetchBody } from "./remote-access.js";
-import { installRequestGuard } from "./request-guard.js";
+import { browserDocumentUserAgent, installRequestGuard, setRequestGuardStripShellUserAgent } from "./request-guard.js";
 import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-bridge.js";
 import { createShellNetwork } from "./shell-network.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
@@ -88,14 +88,19 @@ const BROWSER_PARTITION = /^fleet-browser-[A-Za-z0-9._:-]{1,64}$/u;
  * 쿠키 저장소를 만들지 못한다. Windows 만 Roaming 을 피하려고 Fleet 루트를 쓴다.
  */
 const browserProfileSessions = new Map<string, Session>();
+function useBrowserSession(target: Session): Session {
+  installRequestGuard(target);
+  // 워커 fetch는 session.setUserAgent를 따르지 않는다. 요청에 실린 UA에서 셸 표기만 뺀다.
+  setRequestGuardStripShellUserAgent(target, true);
+  return target;
+}
 function browserProfileSession(profile: string): Session {
   if (!DESKTOP_BROWSER_PROFILE_ID.test(profile)) throw new Error("browser_profile_invalid");
   const cached = browserProfileSessions.get(profile);
   if (cached) return cached;
   const directory = path.join(resolveBrowserProfileRoot(app.getPath("userData"), app.isPackaged), profile);
   fs.mkdirSync(directory, { recursive: true, mode: 0o700 });
-  const created = session.fromPath(directory);
-  installRequestGuard(created);
+  const created = useBrowserSession(session.fromPath(directory));
   browserProfileSessions.set(profile, created);
   return created;
 }
@@ -125,8 +130,7 @@ function browserTargetSession(params: Record<string, unknown>): { readonly sessi
   if (profile !== null) return DESKTOP_BROWSER_PROFILE_ID.test(profile) ? { session: browserProfileSession(profile), label: `profile ${profile}` } : null;
   const partition = typeof params.partition === "string" && BROWSER_PARTITION.test(params.partition) ? params.partition : null;
   if (partition === null) return null;
-  const partitioned = session.fromPartition(partition);
-  installRequestGuard(partitioned);
+  const partitioned = useBrowserSession(session.fromPartition(partition));
   return { session: partitioned, label: partition };
 }
 const sourceDirectory = path.dirname(fileURLToPath(import.meta.url));
@@ -535,13 +539,13 @@ async function boot(): Promise<void> {
           focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,
         },
       });
-      // 뷰 출처 표식보다 먼저. 파티션 세션은 이 생성에서 처음 생긴다.
-      installRequestGuard(view.webContents.session);
+      // 뷰 출처 표식보다 먼저. 파티션 세션은 이 생성에서 처음 생긴다. 프로필 세션도 여기서 같은 UA 로 다시 맞춘다.
+      useBrowserSession(view.webContents.session);
       return view;
     },
     product: () => `Chrome/${process.versions.chrome}`,
-    // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다.
-    userAgent: () => (window?.consoleContents.getUserAgent() ?? "").replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, ""),
+    // 셸의 표기를 뺀 일반 Chrome UA — 페이지가 Electron 앱 안에 있다고 알 이유가 없다. 요청 헤더도 같은 함수로 표기만 뺀다.
+    userAgent: () => browserDocumentUserAgent(window && !window.isDestroyed() && !window.consoleContents.isDestroyed() ? window.consoleContents.getUserAgent() : app.userAgentFallback),
     auth: () => ({ token: connection.token, ownerId: connection.ownerId }),
     hostLabel: browserHostLabel,
     ...(browserPlatform ? { platform: browserPlatform } : {}),

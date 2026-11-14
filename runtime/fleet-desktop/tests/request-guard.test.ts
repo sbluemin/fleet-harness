@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { installRequestGuard, setRequestGuardExtra, type GuardedSession, type RequestGuardDetails, type ResponseGuardDetails } from "../src/request-guard.js";
+import { installRequestGuard, setRequestGuardExtra, setRequestGuardStripShellUserAgent, type GuardedSession, type RequestGuardDetails, type ResponseGuardDetails } from "../src/request-guard.js";
 import { webRequestUrlMatches } from "./web-request-match.js";
 
 type RequestListener = (details: RequestGuardDetails, callback: (response: { requestHeaders?: Record<string, string>; cancel?: boolean }) => void) => void;
@@ -61,6 +61,36 @@ describe("remote request cookie guard", () => {
 
     setRequestGuardExtra(guard.session, () => { throw new Error("guard extra failed"); });
     expect(guard.request(request("https://127.0.0.1:4310/console/")).cancel).toBe(true);
+  });
+
+  it("strips shell tokens from browser-session user agents and leaves other sessions unchanged", () => {
+    const browser = guardedSession();
+    installRequestGuard(browser.session);
+    setRequestGuardStripShellUserAgent(browser.session, true);
+    const sent = browser.request({
+      url: "https://teams.microsoft.com/v2/",
+      requestHeaders: { "user-agent": "X-Test/1 Electron/1 FleetConsoleDev/0.1 fleet-console/9 Chrome/1" },
+    }).requestHeaders?.["user-agent"] ?? "";
+    expect(sent).toContain("X-Test/1");
+    expect(sent).toContain("Chrome/1");
+    expect(sent).not.toMatch(/Electron\//u);
+    expect(sent).not.toMatch(/FleetConsole/u);
+    expect(sent).not.toMatch(/fleet-console\//u);
+    const plain = browser.request({
+      url: "https://example.com/",
+      requestHeaders: { "User-Agent": "X-Test/1 Chrome/1" },
+    }).requestHeaders?.["User-Agent"] ?? "";
+    expect(plain).toContain("X-Test/1");
+    expect(plain).toContain("Chrome/1");
+
+    const untouched = guardedSession();
+    installRequestGuard(untouched.session);
+    const kept = untouched.request({
+      url: "https://teams.microsoft.com/v2/",
+      requestHeaders: { "user-agent": "X-Test/1 Electron/1" },
+    }).requestHeaders?.["user-agent"] ?? "";
+    expect(kept).toContain("Electron/1");
+    expect(kept).toContain("X-Test/1");
   });
 
   it("drops sibling Set-Cookie overwrites and deletions, keeps this port, and cancels when header processing throws", () => {
