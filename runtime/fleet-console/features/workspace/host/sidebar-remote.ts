@@ -61,9 +61,12 @@ export function sidebarRemotePage(input: {
       faces[id] = { ...face, state, look: input.avatars[objectiveRecordAvatarKey(id)] ?? null };
     }
     const root = faces[objective.id]!;
-    faces[objective.id] = { ...root, state: mongleStateOf({ session: objective.hasSession === true || objective.done !== null || objective.awaitingReview || input.personWaiting(objective), awaitingReview: objective.awaitingReview,
+    const memberWorking = objective.members.some((member) => faces[member.id]?.state === "running");
+    const memberWaiting = objective.members.some((member) => faces[member.id]?.state === "awaiting");
+    const rootActivity = root.activity ?? (root.state === "idle" && memberWorking ? "background" : null);
+    faces[objective.id] = { ...root, activity: rootActivity, state: mongleStateOf({ session: objective.hasSession === true || objective.done !== null || objective.awaitingReview || input.personWaiting(objective), awaitingReview: objective.awaitingReview,
       decisionRequest: input.personWaiting(objective), workDone: objective.done !== null,
-      activity: root.state === "running" ? "running" : root.state === "awaiting" ? "awaiting" : root.state === "ended" ? "ended" : "idle" }) };
+      activity: root.state === "running" || (root.state === "idle" && memberWorking) ? "running" : root.state === "awaiting" || (root.state === "idle" && memberWaiting) ? "awaiting" : root.state === "ended" ? "ended" : "idle" }) };
     // 이미 사람 HTTP가 쓰는 보드 DTO에서 세션 좌표까지 빼고 내린다. 원격에서 렌더링할 때 다시 채우지 않는다.
     const safe = sidebarSafeObjective(objective);
     return { objective: safe, faces, tool: input.toolOf(ids), ownWorking: input.ownWorkingOf(objective.id), computerUseEnabled: input.computerUseEnabledOf(objective.id) };

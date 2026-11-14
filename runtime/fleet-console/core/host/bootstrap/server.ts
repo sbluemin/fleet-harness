@@ -1719,7 +1719,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const ownWorking = readSidebarOwnWorking();
     const faceOf = (id: string): Omit<SidebarRemoteFace, "look"> => {
       const activity = consoleControl.observe(id)?.activity;
-      return { state: mongleStateOf({ activity: activity === "unknown" ? null : activity }), activity: steps.get(id) ?? null };
+      return { state: mongleStateOf({ activity: activity === "unknown" ? null : activity }), activity: activity === "background" ? "background" : (steps.get(id) ?? null) };
     };
     const commodores: SidebarRemoteCommodore[] = (commodore?.sidebarFacts() ?? []).map((fact) => {
       const decisions = fact.asks + boards.filter((objective) => objective.commodoreId === fact.id && rosterPersonWaiting(objective, enabled)).length;
@@ -2882,7 +2882,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       executionCleanupCallbacks.add(execution.subscribeSessionChanged((id) => {
         const activity = consoleControl.observe(id)?.activity;
         sidebarMotions.append({ kind: "objective", id, state: mongleStateOf({ activity: activity === "unknown" ? null : activity }),
-          activity: readSidebarSteps().get(id) ?? null, live: activity === "running" || activity === "background" });
+          activity: activity === "background" ? "background" : (readSidebarSteps().get(id) ?? null), live: activity === "running" || activity === "background" });
       }));
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;

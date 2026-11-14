@@ -101,7 +101,7 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
       tone={root?.look?.tone} state={state} activity={root?.activity} size={full} label={source.objective.title} decorative />;
     return working.length ? <span className="side-bar-cluster-avatars" style={{ width: 30, height: 30 }}>{avatar}<span className="side-bar-cluster-avatars-minis" aria-hidden="true">
       {working.map((member) => { const shown = source.faces[member.id]!; return <span key={member.id} className="side-bar-cluster-avatars-mini">
-        <MongleAvatar role="member" base={shown.look?.base ?? fallbackMongleBase(objectiveRecordAvatarKey(member.id))} tone={shown.look?.tone} state={shown.state} size={14} label="" decorative />
+        <MongleAvatar role="member" base={shown.look?.base ?? fallbackMongleBase(objectiveRecordAvatarKey(member.id))} tone={shown.look?.tone} state={shown.state} activity={shown.activity} size={14} label="" decorative />
       </span>; })}</span></span> : avatar;
   };
   const render = ({ item, source }: (typeof items)[number], settled: boolean) => {
@@ -109,9 +109,11 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
     const glyph = item.row.glyph;
     const state = glyph === "fresh" || glyph === "review" ? glyph : source.faces[id]?.state ?? (glyph === "done" ? "done" : "idle");
     const shownState = state === "decision" ? "awaiting" : state === "error" ? "idle" : state;
+    const activities = [id, ...source.objective.members.map((member) => member.id)].map((entryId) => source.faces[entryId]?.activity ?? null);
+    const rowActivity = activities.find((activity) => activity !== null && activity !== "background") ?? activities.find((activity) => activity !== null) ?? null;
     const openPopup = (tab: CommanderRowGlyphTab, opener: HTMLElement) => setPopup({ id, tab, opener });
     return <SideBarClusterRow key={id} item={item} selected={false} settled={settled}
-      presentation={{ state: shownState, avatar: face(source, state), activity: source.faces[id]?.activity ?? null, toolUse: source.tool }}
+      presentation={{ state: shownState, avatar: face(source, state), activity: rowActivity, toolUse: source.tool }}
       onRenameBegin={cancelOpen} onFocus={(_id, element) => { if (element) openFromClick(id, element); }}
       popups={{ onAvatar: (opener) => openPopup("goal", opener), onProgress: (opener) => openPopup("crew", opener), avatarLabel: source.objective.title,
         progressLabel: (done, total) => `${source.objective.title} ${done}/${total}` }}
