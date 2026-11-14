@@ -87,7 +87,7 @@ export interface CommodoreFeatureDeps {
   readonly rosterCommandersOf?: (commodoreId: string) => { readonly commanders: readonly ConsoleRosterCommander[]; readonly moreCommanders: number };
   /**
    * 진행 중 목표 하나의 표시 전용 스냅샷. 목표 저장은 조립부가 읽고, 계약 모양으로 접은 것만 온다.
-   * 명부에 없는 목표(완료·보관·없음)는 null — 경로는 구분 없이 404로 답한다.
+   * 명부에 실릴 자격이 있는 목표만 답한다 — 상한에 잘려 목록에 없어도 된다(완료·보관·없음은 null).
    */
   readonly objectivePeekOf?: (objectiveId: string) => import("../../../protocol/desktop/console-section.js").ConsoleObjectivePeek | null;
 }

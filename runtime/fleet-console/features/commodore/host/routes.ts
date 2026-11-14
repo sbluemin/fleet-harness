@@ -67,7 +67,8 @@ export interface CommodoreRouteHooks {
   readonly roster?: () => readonly ConsoleRosterCommodore[];
   /**
    * 진행 중 목표 하나의 표시 전용 스냅샷. 조립부가 목표 저장에서 읽어 계약 모양으로 접는다.
-   * 명부에 없는 id(완료·보관·없는 목표)는 null — 경로는 구분 없이 404로 답한다.
+   * 명부에 실릴 자격이 있는 목표만 답한다 — 상한에 잘려 목록에 없어도 된다.
+   * 그 밖(완료·보관·없는 목표)은 null — 경로는 구분 없이 404로 답한다.
    */
   readonly objectivePeekOf?: (objectiveId: string) => ConsoleObjectivePeek | null;
   readonly sidebar?: ReturnType<typeof createCommodoreSidebar>;
@@ -252,7 +253,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     { name: CONSOLE_OBJECTIVE_PEEK_PATH.slice("/api/v1/".length), method: "GET", summary: "Read one in-progress objective as a display-only snapshot without opening a remote session.", handler: ({ req, res }) => {
       if (req.method !== "GET" && req.method !== "HEAD") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
       if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
-      // 명부에 없는 id·깨진 쿼리는 구분 없이 404 — 목록 밖의 목표를 id 추측으로 읽을 수 없다.
+      // 실릴 자격 없는 id·깨진 쿼리는 구분 없이 404 — 목록 밖의 목표를 id 추측으로 읽을 수 없다.
       const parsed = peekQuerySchema.safeParse(Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams));
       const snapshot = parsed.success ? hooks.objectivePeekOf?.(parsed.data.id) ?? null : null;
       if (!snapshot) { ctx.host.http.writeJson(res, 404, { error: "not_found" }); return true; }

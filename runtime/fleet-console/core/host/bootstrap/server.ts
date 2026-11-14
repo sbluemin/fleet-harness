@@ -2822,8 +2822,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           }
           return consoleRosterCommanders(sources, objectiveRecords.listAllGroups().filter((group) => group.commodoreId === commodoreId).map((group) => ({ id: group.id, order: group.order, createdAt: group.createdAt })), sort);
         },
-        // 진행 중 목표 하나의 표시 전용 스냅샷 — 명부에 실리는 목표만 답한다. 포함 판정은
-        // rosterCommandersOf와 같은 규칙을 쓰고, 상한으로 잘린 뒤가 아니라 포함 자체를 본다.
+        // 진행 중 목표 하나의 표시 전용 스냅샷 — 명부에 실릴 자격이 있는 목표만 답한다.
+        // 상한에 잘려 목록에 없어도 되며, 판정은 rosterCommandersOf와 같은 포함 규칙을 쓴다.
         // peek 경로의 입장 판정을 통과한 읽기만 여기까지 오므로, 여기서 세션·페어링을 다시 보지 않는다.
         objectivePeekOf: (objectiveId) => {
           const objective = objectives?.listAll().find((entry) => entry.id === objectiveId) ?? null;
