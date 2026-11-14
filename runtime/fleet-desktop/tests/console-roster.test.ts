@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { CONSOLE_COMMODORE_CREATE_EVENT, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_SECTION_EVENT, CONSOLE_UNIFIED_SIDEBAR_EVENT, UNIFIED_SIDEBAR_HOME, UNIFIED_SIDEBAR_PATH, consoleSectionCommandUrl, isConsoleRosterState, isUnifiedSidebarLayout, type ConsoleSectionCommand, type UnifiedSidebarLayout } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_COMMODORE_CREATE_EVENT, CONSOLE_OBJECTIVE_PEEK_EVENT, CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_SECTION_EVENT, CONSOLE_UNIFIED_SIDEBAR_EVENT, UNIFIED_SIDEBAR_HOME, UNIFIED_SIDEBAR_PATH, consoleSectionCommandUrl, isConsoleObjectivePeek, isConsoleRosterState, isUnifiedSidebarLayout, type ConsoleSectionCommand, type UnifiedSidebarLayout } from "@fleet-console/protocol/desktop/console-section";
 import { describe, expect, it, vi } from "vitest";
 import { createConsoleSectionController } from "../src/console-section-controller.js";
 
@@ -14,6 +14,11 @@ interface Delivery {
   readonly origin: string;
   readonly type: string;
   readonly detail: {
+    readonly nonce?: string;
+    readonly console?: string;
+    readonly objective?: string;
+    readonly status?: string;
+    readonly snapshot?: unknown;
     readonly entries?: readonly { readonly id: string; readonly address: string; readonly active: boolean }[];
     readonly arrival?: { readonly commodore: string; readonly anchorY: number | null; readonly commander?: string | null; readonly scrollTop?: number | null; readonly rightPanel?: { readonly open: boolean; readonly tab?: string } | null } | null;
     readonly rosters?: readonly { readonly id: string; readonly more: number; readonly sections?: readonly { readonly id: string }[]; readonly unsectionedCollapsed?: true; readonly commodores: readonly { readonly section?: string; readonly preview?: string; readonly commanders?: readonly unknown[]; readonly moreCommanders?: number }[] }[];
@@ -138,6 +143,98 @@ describe("console roster", () => {
       expect(trace.filter((line) => line.startsWith("open:"))).toEqual([`open:${NEARBY}`]);
       expect(lastSection()?.detail.entries?.map((entry) => entry.id)).toEqual(standingAtHome);
     } finally { releaseOpen(); section.close(); }
+  });
+
+  it("relays one objective peek only to a home document and maps failures without joining", async () => {
+    const scripts: string[] = [];
+    let url = `${HOME}/console/`;
+    const contents = Object.assign(new EventEmitter(), {
+      getURL: () => url,
+      isDestroyed: () => false,
+      executeJavaScript: async (script: string) => { scripts.push(script); },
+    });
+    const snapshot = { v: 1, id: "obj-1", title: "원격 목표", note: null, phase: "active", criteria: [], missions: [], members: [], results: [] };
+    const peekAnswers = new Map<string, { status: number; body: unknown }>([
+      ["obj-1", { status: 200, body: snapshot }],
+      ["obj-bad", { status: 200, body: { v: 1, nope: true } }],
+      ["obj-gone", { status: 404, body: { error: "not_found" } }],
+      ["obj-denied", { status: 401, body: { error: "unauthorized" } }],
+      ["obj-down", { status: 500, body: { error: "boom" } }],
+    ]);
+    const fetch = vi.fn(async (input: string, init?: RequestInit) => {
+      const parsed = new URL(input);
+      if (parsed.pathname === "/api/v1/remote-hosts") return Response.json({ hosts: [
+        { id: "rec-trusted", origin: TRUSTED, label: "Studio", hostname: "100.84.12.7", port: 6768, fingerprint: "FINGERPRINT-TRUSTED" },
+      ] });
+      if (parsed.pathname === "/api/v1/local-consoles") return Response.json({ consoles: [{ origin: HOME, version: "1.2.3" }] });
+      if (parsed.pathname === "/api/v1/status") return Response.json({ name: "Home", version: "1.2.3" });
+      if (parsed.pathname.endsWith("/probes")) return Response.json({ reachable: true, trusted: true });
+      if (parsed.pathname === "/api/v1/console-roster") {
+        if (parsed.origin === HOME) return Response.json({ v: 1, more: 0, commodores: [] });
+        return Response.json({ v: 1, more: 0, commodores: [{ id: "cmdr-9", name: "Nuri", look: null, run: "quiet" }], objectivePeek: true });
+      }
+      if (parsed.pathname === CONSOLE_OBJECTIVE_PEEK_PATH) {
+        const found = peekAnswers.get(parsed.searchParams.get("id") ?? "");
+        if (!found) return new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
+        if (found.status === 200) return Response.json(found.body);
+        return new Response(JSON.stringify(found.body), { status: found.status });
+      }
+      if (parsed.pathname === "/api/v1/join") return new Response(null, { status: 204 });
+      return Response.json({});
+    });
+    const section = createConsoleSectionController({
+      home: () => HOME, fetch, rosterFetch: fetch,
+      confirmIdentity: async () => {}, pinRemote: () => {},
+      open: vi.fn(), add: vi.fn(), confirmForget: vi.fn(async () => false), report: vi.fn(),
+    });
+    const send = (command: ConsoleSectionCommand) => {
+      contents.emit("will-navigate", { preventDefault() {} }, consoleSectionCommandUrl(new URL(url).origin, command), undefined, true);
+    };
+    const replies = () => scripts.map(delivered).filter((item): item is Delivery => item?.type === CONSOLE_OBJECTIVE_PEEK_EVENT);
+    try {
+      section.attach(contents as never);
+      await section.refresh();
+      const trustedId = scripts.map(delivered).filter((item) => item?.type === CONSOLE_SECTION_EVENT).at(-1)?.detail.entries?.find((entry) => entry.address === "100.84.12.7:6768")?.id;
+      expect(trustedId).toBeTruthy();
+      // 명부의 엿보기 깃발이 문서까지 실린다.
+      await vi.waitFor(() => {
+        expect(scripts.map(delivered).filter((item) => item?.type === CONSOLE_ROSTER_EVENT).flatMap((item) => item?.detail.rosters ?? []).some((entry) => entry.commodores.length > 0 && (entry as { objectivePeek?: true }).objectivePeek === true)).toBe(true);
+      });
+      const ask = async (console: string, objective: string, nonce: string) => {
+        send({ peek: { console, objective, nonce } });
+        await vi.waitFor(() => {
+          expect(replies().some((item) => item.origin === new URL(url).origin && item.detail.nonce === nonce)).toBe(true);
+        });
+        return replies().find((item) => item.detail.nonce === nonce)!.detail;
+      };
+      // 집 문서의 요청 — 같은 배관으로 읽어 검증된 스냅샷을 그 문서에만 건넨다.
+      const ok = await ask(trustedId!, "obj-1", "n-ok");
+      expect(ok).toMatchObject({ console: trustedId, objective: "obj-1", status: "ok" });
+      expect(isConsoleObjectivePeek(ok.snapshot)).toBe(true);
+      const peekCall = fetch.mock.calls.find((call) => new URL(String(call[0])).pathname === CONSOLE_OBJECTIVE_PEEK_PATH);
+      expect(peekCall).toBeTruthy();
+      expect(new URL(String(peekCall![0]))).toMatchObject({ origin: TRUSTED });
+      expect(new URL(String(peekCall![0])).searchParams.get("id")).toBe("obj-1");
+      expect(new Headers(peekCall![1]?.headers).get("Origin")).toBe(TRUSTED);
+      // 목록 밖의 불투명 id·깨진 응답·없는 목표·권한 없음·도달 불가는 보내지 않거나 구분해서 넘긴다.
+      expect((await ask("no-such-console", "obj-1", "n-id")).status).toBe("not_found");
+      expect((await ask(trustedId!, "obj-bad", "n-bad")).status).toBe("unsupported");
+      expect((await ask(trustedId!, "obj-gone", "n-gone")).status).toBe("not_found");
+      expect((await ask(trustedId!, "obj-denied", "n-denied")).status).toBe("unauthorized");
+      expect((await ask(trustedId!, "obj-down", "n-down")).status).toBe("unavailable");
+      expect(fetch.mock.calls.some((call) => new URL(String(call[0])).pathname === "/api/v1/join")).toBe(false);
+      // 다른 Console이 내준 문서의 요청은 거부하고, 그 문서에는 권한 없음만 남는다.
+      url = `${TRUSTED}/console/`;
+      const before = fetch.mock.calls.length;
+      send({ peek: { console: trustedId!, objective: "obj-1", nonce: "n-remote" } });
+      await vi.waitFor(() => {
+        expect(replies().some((item) => item.origin === TRUSTED && item.detail.nonce === "n-remote")).toBe(true);
+      });
+      expect(replies().find((item) => item.detail.nonce === "n-remote")?.detail.status).toBe("unauthorized");
+      expect(fetch.mock.calls.length).toBe(before);
+      url = `${HOME}/console/`;
+      expect(scripts.join("\n")).not.toContain("FINGERPRINT-TRUSTED");
+    } finally { section.close(); }
   });
 
   it("fits an oversized roster frame by dropping previews, then commanders, then commodores", async () => {
