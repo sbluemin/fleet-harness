@@ -382,9 +382,21 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
   // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
   const taskforceSpec = defineConsoleTool({
     name: "console_taskforce",
-    description: "Speak only when useful in a TaskForce you belong to; otherwise make no call. Refer to speakers and gist, not hidden sequence IDs.",
+    description: "Post only when useful in a TaskForce you belong to. In text, refer to speakers and gist, not ledger seqs.",
     actions: {
-      post: { kind: "write", callers: ["commodore"], input: z.object({ taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce").describe("Exact TaskForce id from context or tools; never guess."), text: z.string().trim().min(1).max(MAX_TASKFORCE_TEXT).describe("Conclusion only; over 2000 refused. Goes to the shared ledger, never the 1:1 log."), mentions: z.array(z.string().regex(TASKFORCE_ID, "invalid_request")).max(MAX_TASKFORCE_MEMBERS).optional().describe("Fellow member ids this is for.") }) },
+      post: {
+        kind: "write",
+        callers: ["commodore"],
+        input: z.object({
+          taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce").describe("Exact TaskForce id from context or tools; never guess."),
+          text: z.string().trim().min(1).max(MAX_TASKFORCE_TEXT).describe("Conclusion only; over 2000 refused. Goes to the shared ledger, never the 1:1 log."),
+          to: z.union([
+            z.literal("none"),
+            z.array(z.string().regex(TASKFORCE_ID, "invalid_request")).min(1).max(MAX_TASKFORCE_MEMBERS),
+          ]).describe('Exact fellow member ids whose attention is needed, or "none" to post without waking anyone.'),
+          replyTo: z.number().int().positive().optional().describe("Ledger seq being answered; woken recipients receive that entry in full as context."),
+        }),
+      },
     },
   });
   const taskforce: ConsoleMcpTool = rename(taskforceSpec.plugin({
@@ -392,17 +404,37 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       const parsed = taskforceSpec.parse(raw, caller);
       if (!parsed.ok) return parseFail(parsed);
       const call = parsed.call;
+      const toHint = 'Use "none" or an array of exact fellow member ids from the TaskForce context or tools.';
       try {
         const ledger = options.taskforce;
         if (!ledger) throw new Error("taskforce_unavailable");
         if (call.text.length > MAX_TASKFORCE_POST_TEXT) throw new TaskforceStoreError("taskforce_post_too_long", undefined, { limit: MAX_TASKFORCE_POST_TEXT, length: call.text.length, hint: `Shorten to the conclusion and what the others must judge (about ${RECOMMENDED_TASKFORCE_POST_TEXT} characters); move long reasoning to the objective brief or a document and link it.` });
+        const rawTo = call.to === "none" ? [] : [...new Set(call.to)];
+        if (typeof ledger.read === "function") {
+          const state = ledger.read(call.taskforceId);
+          if (!state) throw new TaskforceStoreError("unknown_taskforce", undefined, { hint: "Check the exact TaskForce id against the TaskForce context or tools; never guess or shorten it." });
+          if (rawTo.some((id) => !state.members.includes(id))) {
+            throw new TaskforceStoreError("invalid_request", undefined, { hint: toHint });
+          }
+        }
+        if (rawTo.length > 0 && rawTo.every((id) => id === options.commodoreId)) {
+          throw new TaskforceStoreError("invalid_request", undefined, { hint: toHint });
+        }
+        const mentions = rawTo.filter((id) => id !== options.commodoreId);
         try {
-          const { entry } = ledger.append(call.taskforceId, { speaker: { kind: "commodore", commodoreId: options.commodoreId }, text: call.text, ...(call.mentions ? { mentions: call.mentions } : {}) });
+          const { entry } = ledger.append(call.taskforceId, {
+            speaker: { kind: "commodore", commodoreId: options.commodoreId },
+            text: call.text,
+            mentions,
+            ...(call.replyTo !== undefined ? { replyTo: call.replyTo } : {}),
+          });
           return text({ taskforceId: call.taskforceId, seq: entry.seq });
         } catch (error) {
           // 원래 TF 깨움이 아닌 목표 후속 턴도 같은 도구를 쓴다 — 좌표를 확인하되 현재 권한 검사를 우회하지 않는다.
           if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Check the exact TaskForce id against the TaskForce context or tools; never guess or shorten it." });
-          if (error instanceof TaskforceStoreError && error.code === "invalid_request") throw new TaskforceStoreError(error.code, undefined, { hint: "mentions must be exact member ids from the TaskForce context or tools." });
+          if (error instanceof TaskforceStoreError && error.code === "invalid_request" && call.replyTo === undefined) {
+            throw new TaskforceStoreError(error.code, undefined, { hint: toHint });
+          }
           throw error;
         }
       } catch (error) { return fail(error); }

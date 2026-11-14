@@ -275,6 +275,12 @@ function TaskforceActions({ actions, commodoreId, language }: { readonly actions
   return <div className="taskforce-action-list">{actions.map((action, index) => <div key={`${action.objectiveId}:${index}`} className="taskforce-action"><span className="taskforce-action-kind">{actionWord(getCommodoreT(language === "ko" ? "ko" : "en"), action.kind)}</span><button type="button" className="taskforce-link" onClick={() => { if (commodoreId) openReferencedObjective(commodoreId, action.objectiveId); }} disabled={!commodoreId}>{targetOf(commodoreId, action).label ?? action.objectiveId}</button></div>)}</div>;
 }
 
+/** 사령관 발언의 수신자 — 목표 구분과 같은 하단 hairline이되 별도 영역이다. `none`(빈 mentions)은 그리지 않는다. */
+function TaskforceRecipients({ mentions, language }: { readonly mentions: readonly string[]; readonly language: string }) {
+  const t = taskforceT(language === "ko" ? "ko" : "en");
+  return <div className="taskforce-recipient-list" role="group" aria-label={t("taskforce.recipients")}>{mentions.map((id) => <span key={id} className="taskforce-recipient"><CommodoreAvatar commodoreId={id} state="idle" size={16} label="" decorative /><span className="taskforce-recipient-name">{memberName(id, language)}</span></span>)}</div>;
+}
+
 /**
  * 본문 속 지목 — 사령관 1:1 말풍선의 참조 토큰과 같은 표시(공용 MentionChip)다. 중립 면이라
  * 사람 말풍선(분홍)에서도 본문색을 이어받고, 문장 흐름 안에 인라인으로 선다. 짝 없는
@@ -355,8 +361,11 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
     const entry = bySeq.get(Number(message.id)); if (!entry) return;
     const actions = [...(entry.actions ?? []), ...(actionsByReply.get(entry.seq) ?? [])];
     const owner = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
-    // 지목 칩은 사람 말풍선(일반 글)에만 덧그린다. 사령관 말은 지목이 있어도 마크다운·OpenUI 본문을 그대로 쓴다 — 지목은 도구 인자라 원문에 `@이름`이 없다.
-    return { ...(entry.speaker.kind === "person" && entry.mentions.length ? { body: <MentionText entry={entry} language={language} speaker={speaker} /> } : {}), ...(actions.length ? { footer: <TaskforceActions actions={actions} {...(owner ? { commodoreId: owner } : {})} language={language} /> } : {}) };
+    // 지목 칩은 사람 말풍선(일반 글)에만 덧그린다. 사령관 말은 지목이 있어도 마크다운·OpenUI 본문을 그대로 쓴다 — 수신자는 하단 별도 구분에 아바타·이름으로 선다.
+    const recipients = entry.speaker.kind === "commodore" && entry.mentions.length ? <TaskforceRecipients mentions={entry.mentions} language={language} /> : null;
+    const actionFooter = actions.length ? <TaskforceActions actions={actions} {...(owner ? { commodoreId: owner } : {})} language={language} /> : null;
+    const footer = recipients || actionFooter ? <>{recipients}{actionFooter}</> : null;
+    return { ...(entry.speaker.kind === "person" && entry.mentions.length ? { body: <MentionText entry={entry} language={language} speaker={speaker} /> } : {}), ...(footer ? { footer } : {}) };
   };
   const cards = <>{state && state.chain.paused ? <div className="taskforce-paused"><span aria-hidden="true">Ⅱ</span><div><strong>{t("taskforce.paused", { n: state.chain.count })}</strong><small>{t("taskforce.pausedHint")}</small></div><span><button type="button" className="fc-btn fc-btn--primary" disabled={busy} onClick={() => void run("continue")}>{t("taskforce.continue")}</button></span></div> : null}</>;
   // 판단 중 표시는 사령관 1:1 채팅과 같은 자리·형태(대화 독의 working 줄)로 낸다. 별도 cards 줄을 세우지 않는다.

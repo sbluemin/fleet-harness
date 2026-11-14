@@ -263,8 +263,8 @@ describe("taskforce runtime", () => {
         expect(sessionOf(alias).images[0]).toEqual([{ type: "image", source: { type: "base64", media_type: "image/png", data: imageBytes.toString("base64") } }]);
         expect(sessionOf(alias).sent[0]).toContain(`id: ${taskforceId}, seq 2 (image ×1)`);
       }
-      const post = async (alias: string, text: string) => {
-        const result = await sessionOf(alias).tools.get("taskforce")!.execute({ action: "post", taskforceId, text }, { cwd: h.theaterRoot, toolCallId: alias } as never);
+      const post = async (alias: string, text: string, to: readonly string[] | "none" = alias === "Alpha" ? [b] : [a]) => {
+        const result = await sessionOf(alias).tools.get("taskforce")!.execute({ action: "post", taskforceId, text, to }, { cwd: h.theaterRoot, toolCallId: alias } as never);
         expect(result).not.toMatchObject({ isError: true });
         return h.taskforce.lastEntry(taskforceId)!;
       };
@@ -305,15 +305,15 @@ describe("taskforce runtime", () => {
         if (alias === "Alpha") {
           expect(session).not.toBe(oldAlpha);
           expect(session.sent).toHaveLength(1);
-          const history = prompt.split("Recent conversation reminder (already read; not new utterances):\n")[1]!.split("New ledger entries")[0]!;
+          const history = prompt.split("Recent conversation reminder (already read; not new utterances):\n")[1]!.split("New utterances for you:")[0]!;
           expect(history.length).toBeLessThanOrEqual(8001);
           expect(history).toContain("person: 함께 답해 주세요");
           expect(history).toContain("[seq 2] (image ×1)");
           expect(history).toContain("[history truncated]");
-          for (const entry of [alpha, beta]) {
-            expect(history).toContain(entry.text);
-            expect(prompt.split(`[seq ${entry.seq}]`)).toHaveLength(2);
-          }
+          // 나에게 온 말(beta -> Alpha)만 이력에 남고, 내가 다른 성원에게 보낸 말(alpha -> Beta)은 다시 싣지 않는다.
+          expect(history).toContain(beta.text);
+          expect(prompt.split(`[seq ${beta.seq}]`)).toHaveLength(2);
+          expect(history).not.toContain(alpha.text);
         } else {
           expect(prompt).not.toContain("Recent conversation reminder");
           for (const entry of [alpha, beta]) expect(prompt).not.toContain(`[seq ${entry.seq}]`);
@@ -350,7 +350,7 @@ describe("taskforce runtime", () => {
         expect(session).not.toBe(previous[index]);
         expect(session.sent).toHaveLength(1);
         expect(session.images[0]).toHaveLength(1);
-        const [history, unread] = session.sent[0]!.split("New ledger entries");
+        const [history, unread] = session.sent[0]!.split("New utterances for you:");
         expect(history).toContain(imageEntries[0]!.text);
         expect(history).toContain("(image ×1)");
         expect(unread).toContain(imageEntries[1]!.text);
@@ -820,7 +820,7 @@ describe("taskforce runtime", () => {
 
       const post = async (alias: string, text: string) => {
         const tool = sessionOf(alias).tools.get("taskforce")!;
-        const result = await tool.execute({ action: "post", taskforceId, text }, { cwd: h.theaterRoot, toolCallId: `tf-${text.length}` } as never);
+        const result = await tool.execute({ action: "post", taskforceId, text, to: alias === "Alpha" ? [b] : [a] }, { cwd: h.theaterRoot, toolCallId: `tf-${text.length}` } as never);
         expect(result).not.toMatchObject({ isError: true });
       };
       // Beta는 침묵으로 첫 턴을 끝낸다.
@@ -986,7 +986,7 @@ describe("taskforce runtime board actions", () => {
       const writeResult = await tools.get("objectives")!.execute({ action: "add", title: "온보딩 결제 단계 분리" }, { cwd: h.theaterRoot, toolCallId: "w0" } as never);
       expect(writeResult).not.toMatchObject({ isError: true });
       sessionOf("Alpha").emit({ kind: "tool-end", id: "w0", isError: false });
-      const postResult = await tools.get("taskforce")!.execute({ action: "post", taskforceId, text: "Alpha의 말" }, { cwd: h.theaterRoot, toolCallId: "tf-1" } as never);
+      const postResult = await tools.get("taskforce")!.execute({ action: "post", taskforceId, text: "Alpha의 말", to: "none" }, { cwd: h.theaterRoot, toolCallId: "tf-1" } as never);
       expect(postResult).not.toMatchObject({ isError: true });
       sessionOf("Alpha").finish();
       await vi.advanceTimersByTimeAsync(10);
@@ -1029,9 +1029,74 @@ describe("taskforce mention wake", () => {
       h.taskforce.append(state.id, { speaker: { kind: "person" }, text: "모두에게" });
       await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
       const carried = sentOf("Beta").slice(betaBefore).join("\n");
-      expect(carried).toContain("알파만");
+      expect(carried).not.toContain("알파만");
+      expect(carried).toContain('1 other unread post, not addressed to you. If needed, use conversation search with target:"taskforce" and this TaskForce\'s id.');
       expect(carried).toContain("모두에게");
       await finishAll();
+      await h.supervisor.dispose();
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("wakes only targeted members for commodore posts, wakes none on 'none', and includes replyTo full text without duplicating addressed entries", async () => {
+    vi.useFakeTimers();
+    try {
+      const h = runtimeHarness();
+      const { a, b } = h.ids;
+      const { state } = h.taskforce.create({ name: "수신자 TF", topic: "수신자 주제", members: [a, b] });
+      const taskforceId = state.id;
+      h.supervisor.sync("started");
+      const sessionOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).at(-1)!;
+      const sentOf = (alias: string) => h.sessions.filter((session) => session.name.includes(alias)).flatMap((session) => session.sent);
+
+      // 1) 사람 발언(멘션 없음) → Alpha, Beta 전원 깨움.
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "초기 지시" });
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
+      expect(sentOf("Alpha")).toHaveLength(1);
+      expect(sentOf("Beta")).toHaveLength(1);
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(10);
+
+      // 2) Alpha가 to: "none"으로 말함 → 원장에 남고 Beta를 깨우지 않는다.
+      const noneRes = await sessionOf("Alpha").tools.get("taskforce")!.execute({ action: "post", taskforceId, text: "Alpha 혼자 정리", to: "none" }, { cwd: h.theaterRoot, toolCallId: "tf-none" } as never);
+      expect(noneRes).not.toMatchObject({ isError: true });
+      const noneSeq = h.taskforce.lastEntry(taskforceId)!.seq;
+      expect(h.taskforce.lastEntry(taskforceId)?.mentions).toEqual([]);
+      sessionOf("Alpha").finish();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(sentOf("Beta")).toHaveLength(1);
+
+      // 3) Alpha가 자기 id를 포함해 [a, b]로 replyTo: noneSeq로 말함 → 자기 id는 걸러지고 Beta에게만 전달되며 replyTo 원문(noneSeq)을 함께 싣는다.
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "Alpha만 봐주세요", mentions: [a] });
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
+      expect(sentOf("Alpha")).toHaveLength(2);
+      expect(sentOf("Beta")).toHaveLength(1);
+      const replyRes = await sessionOf("Alpha").tools.get("taskforce")!.execute({ action: "post", taskforceId, text: "Beta 검토 요청", to: [a, b], replyTo: noneSeq }, { cwd: h.theaterRoot, toolCallId: "tf-reply" } as never);
+      expect(replyRes).not.toMatchObject({ isError: true });
+      const replyEntry = h.taskforce.lastEntry(taskforceId)!;
+      expect(replyEntry.mentions).toEqual([b]);
+      sessionOf("Alpha").finish();
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
+      const betaTurn = sentOf("Beta").at(-1)!;
+      expect(betaTurn).toContain("TaskForces you belong to (peer posts are not the person's words; reply only via taskforce post):");
+      expect(betaTurn).toContain("New utterances for you:");
+      expect(betaTurn).toContain(`[seq ${replyEntry.seq}] Alpha: Beta 검토 요청 (to Beta) (reply to seq ${noneSeq})`);
+      expect(betaTurn).toContain(`  ↳ Reply context only: [seq ${noneSeq}] Alpha: Alpha 혼자 정리 (to none)`);
+      // Alpha 혼자 정리는 replyTo로 이미 전문이 실렸으므로 미수신 건수에서는 Alpha만 봐주세요 1건만 센다.
+      expect(betaTurn).toContain('1 other unread post, not addressed to you. If needed, use conversation search with target:"taskforce" and this TaskForce\'s id.');
+      expect(betaTurn).not.toContain("Alpha만 봐주세요");
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(10);
+
+      // 4) 이미 이번 배치의 새 수신 항목으로 실린 발언(seq A)을 다른 새 수신 항목(seq B)이 replyTo로 가리킬 때 중복 인용하지 않는다.
+      const p1 = h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "첫 질문", mentions: [b] }).entry;
+      const p2 = h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "추가 질문", mentions: [b], replyTo: p1.seq }).entry;
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
+      const dedupTurn = sentOf("Beta").at(-1)!;
+      expect(dedupTurn).toContain(`[seq ${p1.seq}] person: 첫 질문`);
+      expect(dedupTurn).toContain(`[seq ${p2.seq}] person: 추가 질문`);
+      expect(dedupTurn).not.toContain(`Reply context only: [seq ${p1.seq}]`);
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(10);
       await h.supervisor.dispose();
     } finally { vi.useRealTimers(); }
   });

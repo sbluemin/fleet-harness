@@ -169,7 +169,7 @@ function wakeSentence(code: WakeCode, reason: PendingReason): string {
     case "intel-removed": return `the person removed ${plural("intel item")}${tail}`;
     case "message": return "the person sent you a message (quoted below)";
     case "mail": return "another Commodore sent you a message (their words, not the person's; quoted below)";
-    case "taskforce": return "a TaskForce you belong to has new utterances (their words, not the person's; quoted below)";
+    case "taskforce": return "a TaskForce you belong to has new utterances for you";
     case "status": {
       const shown = reason.details.slice(-STATUS_DETAILS);
       const more = reason.details.length - shown.length;
@@ -698,7 +698,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const speaker = entry.speaker.kind === "person" ? "person"
       : entry.speaker.kind === "system" ? `system(${entry.speaker.code})` : aliasOf(entry.speaker.commodoreId);
     const parts = [`[seq ${entry.seq}] ${entry.images?.length ? `(image ×${entry.images.length}) ` : ""}${speaker}: ${entry.text}`];
-    if (entry.mentions.length) parts.push(`(to ${entry.mentions.map(aliasOf).join(", ")})`);
+    if (entry.speaker.kind === "commodore") parts.push(entry.mentions.length ? `(to ${entry.mentions.map(aliasOf).join(", ")})` : "(to none)");
+    else if (entry.mentions.length) parts.push(`(to ${entry.mentions.map(aliasOf).join(", ")})`);
     if (entry.replyTo !== undefined) parts.push(`(reply to seq ${entry.replyTo})`);
     for (const action of entry.actions ?? []) parts.push(`(action ${action.kind} ${action.objectiveId} ${JSON.stringify(action.title)})`);
     return parts.join(" ");
@@ -726,15 +727,19 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   };
 
   /**
-   * 자기 발언·렌더용 보드 묶음만으로는 깨우지 않는다. 다른 성원만 지목한 말도 나를 깨우지 않는다 — 다음 깨움에 함께 실린다
-   * (구독부의 지목 규칙과 같다: 발언자 자신만 지목한 말은 지목 없음으로 본다). 읽음 커서는 성공한 턴만 전진시킨다.
+   * 자기 발언·렌더용 보드 묶음만으로는 깨우지 않는다.
+   * 사람 발언은 지목이 없으면 전원, 있으면 지목된 성원만 깨운다.
+   * 사령관 발언은 지목(to)된 성원만 깨운다 — 빈 지목(to: "none")은 아무도 깨우지 않는다.
+   * 시스템 항목은 `created`만 모든 성원의 판단 대상이다. 읽음 커서는 성공한 턴만 전진시킨다.
    */
   const tfNeedsJudgment = (entry: TaskforceLedgerEntry, commodoreId: string): boolean => {
-    const speakerId = entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined;
-    if (speakerId === commodoreId) return false;
+    if (entry.speaker.kind === "system") return entry.speaker.code === "created";
     if (entry.actions?.length && !entry.text) return false;
+    if (entry.speaker.kind === "person") return !entry.mentions.length || entry.mentions.includes(commodoreId);
+    const speakerId = entry.speaker.commodoreId;
+    if (speakerId === commodoreId) return false;
     const mentioned = entry.mentions.filter((id) => id !== speakerId);
-    return !mentioned.length || mentioned.includes(commodoreId);
+    return mentioned.includes(commodoreId);
   };
 
   /** 재기동 재실음 — 읽지 않은 TF 원장이 있으면 판단으로 깨운다. 기록 위치(readSeq)가 남아 판단은 겹치지 않는다. */
@@ -768,16 +773,17 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   /** TF 입력을 세션 교체 전에 준비한다 — 이미지도 1:1 메시지와 같은 턴·세션 예산에 센다. */
   const prepareTaskforceTurn = (commodoreId: string, mailChars: number, messageImageBytes: number) => {
-    // 새 말은 mail과 같은 글자 예산으로 순서대로 싣고 초과분은 다음 턴에 남긴다.
+    // 나에게 온 발언과 그 발언이 답한 원문(replyTo)만 전문으로 싣고, 나머지 새 발언은 건수와 원장 검색 안내 한 줄로 싣는다.
     // 이미지 예산으로 세션 교체가 정해진 뒤, 새 세션 첫 턴에만 읽은 이력을 덧붙인다.
     // 새 말은 자르지 않고, 읽은 이력의 이미지는 다시 보내지 않는다.
     let tfChars = mailChars;
     let tfImageBytes = 0;
     let tfImageBase64Bytes = 0;
-    const blocks: { readonly id: string; readonly head: string; readonly watermark: number; readonly lines: readonly string[] }[] = [];
+    const blocks: { readonly id: string; readonly head: string; readonly watermark: number; readonly lines: readonly string[]; readonly omittedCount: number }[] = [];
     const tfImages: NonNullable<CommodoreTurnInput["taskforceImages"]>[number][] = [];
     const tfWatermark = new Map<string, number>();
     const tfTakeSeqs = new Map<string, number[]>();
+    const tfJudgedSeqs = new Map<string, number[]>();
     const tfContextSeqs = new Map<string, number[]>();
     const taskforce = tfEnabled() ? deps.taskforce : undefined;
     if (taskforce) {
@@ -787,76 +793,146 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (!state) continue;
         const watermark = state.readSeq[commodoreId] ?? 0;
         tfWatermark.set(tf.id, watermark);
-        const take: { readonly seq: number; readonly line: string }[] = [];
+        const lines: string[] = [];
+        const consumedSeqs: number[] = [];
+        const judgedSeqs: number[] = [];
+        const includedFullSeqs = new Set<number>();
+        const loadedImageSeqs = new Set<number>();
+        const omittedCandidates: TaskforceLedgerEntry[] = [];
         // 멈춤 TF는 읽은 이력만 보여 준다 — 사람의 말·continue가 열 때까지 새 판단은 하지 않는다.
         if (!state.chain.paused) {
           let pendingEntries: readonly TaskforceLedgerEntry[] = [];
           try { pendingEntries = taskforce.pending(tf.id, commodoreId); } catch { continue; }
-          for (const entry of pendingEntries) {
-            let line = tfEntryLine(entry);
-            if (tfChars + line.length > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
+          const pendingBySeq = new Map(pendingEntries.map((entry) => [entry.seq, entry]));
+          const lookupEntry = (seq: number): TaskforceLedgerEntry | null => {
+            const inPending = pendingBySeq.get(seq);
+            if (inPending) return inPending;
+            try {
+              const page = taskforce.readLedger(tf.id, { limit: 1, before: seq + 1 });
+              return page.entries.find((candidate) => candidate.seq === seq) ?? null;
+            } catch { return null; }
+          };
+          const loadEntryImages = (entry: TaskforceLedgerEntry, throwOnMissing: boolean): { readonly images: Extract<AgentInputBlock, { type: "image" }>[]; readonly bytes: number; readonly overBudget: boolean; readonly tooLarge: boolean } => {
             let entryBytes = (entry.images ?? []).reduce((bytes, image) => bytes + image.size, 0);
-            let images: Extract<AgentInputBlock, { type: "image" }>[] = [];
-            // 과거의 발언 하나가 턴 상한보다 크면 텍스트만 싣고 생략을 밝힌다(무한 재깨움 방어).
-            if (entryBytes <= MAX_COMMODORE_MESSAGE_IMAGE_BYTES) {
-              if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) break;
-              const loaded = (entry.images ?? []).map((image) => {
-                const found = taskforce.readImage(tf.id, entry.seq, image.id);
-                if (!found) throw new Error("attachment_not_found");
-                return found;
-              });
-              entryBytes = loaded.reduce((bytes, image) => bytes + image.bytes.byteLength, 0);
-              if (entryBytes <= MAX_COMMODORE_MESSAGE_IMAGE_BYTES) {
-                if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) break;
-                images = loaded.map((image) => ({ type: "image", source: { type: "base64", media_type: image.mime, data: image.bytes.toString("base64") } }));
+            if (!entry.images?.length) return { images: [], bytes: 0, overBudget: false, tooLarge: false };
+            if (entryBytes > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) return { images: [], bytes: 0, overBudget: false, tooLarge: true };
+            if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) return { images: [], bytes: 0, overBudget: true, tooLarge: false };
+            const loaded = entry.images.flatMap((image) => {
+              const found = taskforce.readImage(tf.id, entry.seq, image.id);
+              if (!found) {
+                if (throwOnMissing) throw new Error("attachment_not_found");
+                return [];
               }
+              return [found];
+            });
+            entryBytes = loaded.reduce((bytes, image) => bytes + image.bytes.byteLength, 0);
+            if (entryBytes > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) return { images: [], bytes: 0, overBudget: false, tooLarge: true };
+            if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) return { images: [], bytes: 0, overBudget: true, tooLarge: false };
+            const images = loaded.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: image.bytes.toString("base64") } }));
+            return { images, bytes: entryBytes, overBudget: false, tooLarge: false };
+          };
+          for (const entry of pendingEntries) {
+            if (!tfNeedsJudgment(entry, commodoreId)) {
+              if ((entry.speaker.kind === "person" || (entry.speaker.kind === "commodore" && entry.speaker.commodoreId !== commodoreId)) && entry.text.trim()) {
+                omittedCandidates.push(entry);
+              }
+              consumedSeqs.push(entry.seq);
+              continue;
             }
-            if (entryBytes > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) {
-              line += " (images omitted: exceeds 8 MiB message limit)";
-              entryBytes = 0;
-            }
+            let line = tfEntryLine(entry);
+            const refEntry = entry.replyTo !== undefined && !includedFullSeqs.has(entry.replyTo) ? lookupEntry(entry.replyTo) : null;
+            let refLine = refEntry && (refEntry.text.trim() || refEntry.actions?.length) ? `  ↳ Reply context only: ${tfEntryLine(refEntry)}` : null;
+            const neededChars = line.length + (refLine ? refLine.length + 1 : 0);
+            if (tfChars + neededChars > MAX_COMMODORE_TURN_MESSAGE_CHARS) break;
+            const mainImg = loadEntryImages(entry, true);
+            if (mainImg.overBudget) break;
+            if (mainImg.tooLarge) line += " (images omitted: exceeds 8 MiB message limit)";
             tfChars += line.length;
-            tfImageBytes += entryBytes;
-            tfImageBase64Bytes += images.reduce((bytes, image) => bytes + image.source.data.length, 0);
-            take.push({ seq: entry.seq, line });
-            if (images.length) tfImages.push({ taskforceId: tf.id, seq: entry.seq, images });
+            tfImageBytes += mainImg.bytes;
+            tfImageBase64Bytes += mainImg.images.reduce((bytes, image) => bytes + image.source.data.length, 0);
+            if (mainImg.images.length) {
+              loadedImageSeqs.add(entry.seq);
+              tfImages.push({ taskforceId: tf.id, seq: entry.seq, images: mainImg.images });
+            }
+            if (refEntry && refLine) {
+              if (refEntry.images?.length && !loadedImageSeqs.has(refEntry.seq)) {
+                const refImg = loadEntryImages(refEntry, false);
+                if (refImg.tooLarge || refImg.overBudget) refLine += " (images omitted)";
+                else if (refImg.images.length) {
+                  loadedImageSeqs.add(refEntry.seq);
+                  tfImageBytes += refImg.bytes;
+                  tfImageBase64Bytes += refImg.images.reduce((bytes, image) => bytes + image.source.data.length, 0);
+                  tfImages.push({ taskforceId: tf.id, seq: refEntry.seq, images: refImg.images });
+                }
+              }
+              tfChars += refLine.length + 1;
+            }
+            lines.push(line);
+            if (refLine) lines.push(refLine);
+            includedFullSeqs.add(entry.seq);
+            if (refEntry) includedFullSeqs.add(refEntry.seq);
+            consumedSeqs.push(entry.seq);
+            judgedSeqs.push(entry.seq);
           }
         }
-        blocks.push({ id: tf.id, head: tfHeadLine(tf, state.chain.paused ? "chain paused; reminder only, do not speak" : undefined), watermark, lines: take.map((entry) => entry.line) });
-        tfTakeSeqs.set(tf.id, take.map((entry) => entry.seq));
+        const omittedCount = omittedCandidates.filter((entry) => !includedFullSeqs.has(entry.seq)).length;
+        blocks.push({ id: tf.id, head: tfHeadLine(tf, state.chain.paused ? "chain paused; reminder only, do not speak" : undefined), watermark, lines, omittedCount });
+        tfTakeSeqs.set(tf.id, consumedSeqs);
+        tfJudgedSeqs.set(tf.id, judgedSeqs);
       }
     }
     const formatPrompt = (freshSession: boolean): string[] => {
       let historyChars = 0;
-      return blocks.flatMap(({ id, head, watermark, lines }) => {
+      return blocks.flatMap(({ id, head, watermark, lines, omittedCount }) => {
         const history: string[] = [];
         const historySeqs: number[] = [];
-        // 새 세션만 TF별 최근 20항목, 턴 전체 8,000자. 오래된 쪽부터 버리고 경계 항목을 자른다.
+        // 새 세션만 TF별 최근 20항목 중 나에게 온 말과 그 replyTo만 턴 전체 8,000자 안에 싣는다. 오래된 쪽부터 버리고 경계 항목을 자른다.
         // 블록이 있을 때만 돈다 — 실험이 꺼져 있으면 블록이 비어 여기는 닿지 않는다.
         if (freshSession && deps.taskforce) try {
           const page = deps.taskforce.readLedger(id, { limit: 20, before: watermark + 1 });
-          for (const entry of [...page.entries].reverse()) {
+          const bySeq = new Map(page.entries.map((entry) => [entry.seq, entry]));
+          const reminderIncluded = new Set<number>();
+          const units: { readonly seq: number; readonly text: string }[] = [];
+          for (const entry of page.entries) {
+            if (!tfNeedsJudgment(entry, commodoreId)) continue;
+            const entryLine = tfEntryLine(entry);
+            let unitText = entryLine;
+            if (entry.replyTo !== undefined && !reminderIncluded.has(entry.replyTo)) {
+              const refEntry = bySeq.get(entry.replyTo)
+                ?? deps.taskforce.readLedger(id, { limit: 1, before: entry.replyTo + 1 }).entries.find((candidate) => candidate.seq === entry.replyTo);
+              if (refEntry && (refEntry.text.trim() || refEntry.actions?.length)) {
+                unitText = `${entryLine}\n  ↳ Reply context only: ${tfEntryLine(refEntry)}`;
+                reminderIncluded.add(refEntry.seq);
+              }
+            }
+            reminderIncluded.add(entry.seq);
+            units.push({ seq: entry.seq, text: unitText });
+          }
+          for (const unit of units.reverse()) {
             const remaining = 8000 - historyChars;
             const marker = " …[history truncated]";
             if (remaining <= marker.length + 1) break;
-            const line = tfEntryLine(entry);
-            const clipped = line.length + 1 > remaining;
-            const shown = clipped ? line.slice(0, remaining - marker.length - 1) + marker : line;
+            const clipped = unit.text.length + 1 > remaining;
+            const shown = clipped ? unit.text.slice(0, remaining - marker.length - 1) + marker : unit.text;
             history.unshift(shown);
-            historySeqs.unshift(entry.seq);
+            historySeqs.unshift(unit.seq);
             historyChars += shown.length + 1;
             if (clipped) break;
           }
         } catch { /* 읽은 이력이 없어도 새 말은 싣는다. */ }
         tfContextSeqs.set(id, historySeqs);
-        return history.length || lines.length ? [[
+        const omittedLine = omittedCount > 0
+          ? `${omittedCount} other unread post${omittedCount === 1 ? "" : "s"}, not addressed to you. If needed, use conversation search with target:"taskforce" and this TaskForce's id.`
+          : null;
+        return history.length || lines.length || omittedLine ? [[
           head,
           ...(history.length ? ["Recent conversation reminder (already read; not new utterances):", ...history] : []),
-          ...(lines.length ? ["New ledger entries (judge once; your own entries are context only):", ...lines] : []),
+          ...(lines.length ? ["New utterances for you:", ...lines] : []),
+          ...(omittedLine ? [omittedLine] : []),
         ].join("\n")] : [];
       });
     };
-    return { formatPrompt, tfImages, tfWatermark, tfTakeSeqs, tfContextSeqs, tfImageBytes, tfImageBase64Bytes };
+    return { formatPrompt, tfImages, tfWatermark, tfTakeSeqs, tfJudgedSeqs, tfContextSeqs, tfImageBytes, tfImageBase64Bytes };
   };
 
   const runTurn = async (runner: Runner): Promise<void> => {
@@ -964,7 +1040,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       }
       // 여는 동안 꺼졌다 — 막 연 세션은 stop() 이 거둔다. 턴도 상태 방송도 하지 않는다.
       if (runner.stopping) return;
-      const { tfImages, tfWatermark, tfTakeSeqs, tfContextSeqs } = taskforceInput;
+      const { tfImages, tfWatermark, tfTakeSeqs, tfJudgedSeqs, tfContextSeqs } = taskforceInput;
       const tfPrompt = taskforceInput.formatPrompt(runner.sessionFirstTurn);
       // 이유는 세션이 열린 뒤에 거둔다 — 열지 못하면 그대로 남아 재시도 턴에 실린다. 보드 대기 상태의 수는 지금 보드에서 다시 센다
       // (모인 동안 사령관 자신이 완료한 목표는 빠진다); 그새 사라진 대기 상태는 이유에서 내린다.
@@ -1063,7 +1139,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
               try { deps.taskforce.advanceReadSeq(tfId, runner.commodoreId, through); }
               catch (error) { console.warn(`[objectives] taskforce read advance failed: ${error instanceof Error ? error.message : String(error)}`); }
             }
-            if (!posted.has(tfId) && ((tfTakeSeqs.get(tfId)?.length ?? 0) + (tfContextSeqs.get(tfId)?.length ?? 0) > 0)) recordTfOutcome(tfId, runner.commodoreId, "silent");
+            if (!posted.has(tfId) && ((tfJudgedSeqs.get(tfId)?.length ?? 0) + (tfContextSeqs.get(tfId)?.length ?? 0) > 0)) recordTfOutcome(tfId, runner.commodoreId, "silent");
           }
           // 같은 턴에 말하고 보드도 쓴 성원의 묶음 — 그 말 아래에 덧붙인다.
           const writes = collectTurnBoardWrites(runner.commodoreId, turnStartSeq);
@@ -1086,7 +1162,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         const posted = new Set(runner.tfPosts.map((post) => post.taskforceId));
         for (const tfId of tfWatermark.keys()) {
           if (posted.has(tfId)) continue;
-          if ((tfTakeSeqs.get(tfId)?.length ?? 0) + (tfContextSeqs.get(tfId)?.length ?? 0) === 0) continue;
+          if ((tfJudgedSeqs.get(tfId)?.length ?? 0) + (tfContextSeqs.get(tfId)?.length ?? 0) === 0) continue;
           recordTfFailed(tfId, runner.commodoreId);
         }
       };
@@ -1414,12 +1490,16 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     }
     const paused = state.chain.paused;
     const targets = new Set<string>();
-    // 지목이 있으면 지목된 성원만 깨운다 — 나머지는 읽지 않은 채 남아 다음 깨움에 함께 실린다.
+    // 사람 발언: 지목이 있으면 지목된 성원만, 없으면 전원.
+    // 사령관 발언: 지목(to)된 성원만 깨운다 — 빈 지목(to: "none")은 아무도 깨우지 않는다.
     const mentioned = new Set(entry.mentions.filter((id) => state!.members.includes(id) && id !== speaker));
-    const addTargets = (all: boolean) => { for (const member of state!.members) if (member !== speaker && (all || !mentioned.size || mentioned.has(member))) targets.add(member); };
-    if (entry.speaker.kind === "person") { addTargets(false); }
-    else if (entry.speaker.kind === "commodore") { if (!paused) addTargets(false); }
-    else if (entry.speaker.code === "created") { addTargets(true); }
+    if (entry.speaker.kind === "person") {
+      for (const member of state.members) if (!mentioned.size || mentioned.has(member)) targets.add(member);
+    } else if (entry.speaker.kind === "commodore") {
+      if (!paused) for (const member of mentioned) targets.add(member);
+    } else if (entry.speaker.code === "created") {
+      for (const member of state.members) targets.add(member);
+    }
     // 그 외 system 항목은 깨우지 않는다 — 다음 판단에 함께 실린다.
     // 사령관 발언 묶음이 기다릴 성원 — 이 사건 전에 이미 판단 중이던 성원이다(같은 사건으로 같이 깬 성원끼리는 기다리지 않는다).
     const judgingBefore = new Set(tfJudging.get(event.taskforceId) ?? []);
