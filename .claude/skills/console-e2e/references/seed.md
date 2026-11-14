@@ -15,11 +15,12 @@ node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" -
 | `multi` | 3 commodores, 2 theaters each |
 | `objectives` | 1 commodore, 1 theater, 2 objectives, each with a roster entry and 2 missions (board data only: no member session is launched or resumed) |
 | `activity` | `objectives` board data, with each commodore's first objective commenced (in-progress commander), a synthetic last reply, and that commodore in a local sidebar section |
+| `details` | `activity` (1 objective by default), with brief, criteria, mission records, sealed results and shared files on its commenced objective; excludes actor-rewritten mission-resume records. |
 
 Counts override with the flags. Theater folders are created under `--root` (default `<os tmpdir>/seed-theaters/<slot hash>`), outside every repository as [setup.md](setup.md) requires; remove them with the run.
 
 - `objectives` needs the owned fake agent (`CLAUDE_BIN` = [`fake-claude.mjs`](../scripts/fake-claude.mjs), `--fake-claude-dir` = its `FAKE_CLAUDE_DIR`): the Commodore's `objective` tool is the only creator, so the seed queues one `sdk-calls` entry per objective and wakes the commodore. `add` does not pass a Commander model; that model is chosen when the objective is planned or commenced.
-- `activity` uses the same owned fake-agent setup (no provider). Keep the Console running: stopping ends the live fake sessions; restored display/history after restart does not prove a live fake session. Read `commodores[].activity` in the seed output for `inProgressObjectiveId`, `lastResponse`, `sectionId`, and `sectionName`.
+- `activity` and `details` use the same owned fake-agent setup (no provider). Keep the Console running: stopping ends the live fake sessions; restored display/history after restart does not prove a live fake session. Read `commodores[].activity` in the seed output for `inProgressObjectiveId`, `lastResponse`, `sectionId`, and `sectionName`.
 - Marking first-run layers as seen is a separate step: [`seed-onboarding.mts`](../scripts/seed-onboarding.mts).
 - Composition lives in [`scripts/seed/lib.mjs`](../scripts/seed/lib.mjs) (API calls, ownership order) and [`fixtures.mjs`](../scripts/seed/fixtures.mjs) (profiles). Use a shared profile as the baseline; keep scenario-specific additions in the objective’s fixture, reusing the helpers.
 
