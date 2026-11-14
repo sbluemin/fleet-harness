@@ -1,6 +1,6 @@
 import type { ChromeUiState } from "../contract.js";
 import { clear, G, glyph, h } from "./dom.js";
-import { paintColors, shownSpace, spaceName, tr } from "./shared.js";
+import { paintColors, shownSpace, spaceName, syncShellMotion, tr } from "./shared.js";
 
 /**
  * 스테이지 문서 — 표시 탭의 페이지가 없는 동안 페이지 자리를 채운다. 페이지 뷰가 서면 그 아래에 가려진다.
@@ -35,6 +35,7 @@ export function mountStage(): { render(state: ChromeUiState): void; frame(tabId:
     render(state) {
       last = state;
       paintColors(state.colors);
+      syncShellMotion(state.shellClosing);
       document.documentElement.lang = state.lang;
       if (state.viewOnly) { renderViewer(state); return; }
       delete document.documentElement.dataset.viewOnly;

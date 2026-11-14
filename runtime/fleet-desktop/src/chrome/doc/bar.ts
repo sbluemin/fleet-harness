@@ -1,7 +1,7 @@
 import type { ChromeImportSources, ChromeOverlay, ChromeSuggestion, ChromeUiState } from "../contract.js";
 import { mountAnnotate, type Annotator } from "./annotate.js";
 import { agentGlyph, clear, G, glyph, h, hostOf, moreGlyph } from "./dom.js";
-import { paintColors, post, shownSpace, spaceHue, spaceName, tabCount, tr, type T } from "./shared.js";
+import { paintColors, post, shownSpace, spaceHue, spaceName, syncShellMotion, tabCount, tr, type T } from "./shared.js";
 
 const SUGGEST_DELAY_MS = 200;
 const PERSISTENT = "default";
@@ -437,6 +437,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const previous = last;
     last = state;
     paintColors(state.colors);
+    syncShellMotion(state.shellClosing);
     document.documentElement.lang = state.lang;
     document.documentElement.dataset.platform = state.platform;
     document.documentElement.dataset.mode = state.mode;

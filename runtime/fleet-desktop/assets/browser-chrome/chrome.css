@@ -507,3 +507,41 @@ html[data-view-only="true"] .url { pointer-events: none; }
 html[data-view-only="true"] .url:hover { background: var(--ink-veil); }
 .rail.viewing .tab-close { display: none; }
 html[data-role="stage"] .frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: top center; user-select: none; -webkit-user-drag: none; }
+
+/* ---- 셸 열림·닫힘 모션 (시안 ① 결: 열기 520ms/460ms spring + 10px 위로 페이드인, 비대칭 닫기 320ms glide) ---- */
+@keyframes shell-content-enter {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes shell-content-leave {
+  from { opacity: 1; transform: none; }
+  to { opacity: 0; transform: translateY(6px); }
+}
+html[data-shell-enter="true"] .strip > :not(.pad),
+html[data-shell-enter="true"] .rail > :not(.pad),
+html[data-role="stage"][data-shell-enter="true"] .empty,
+html[data-role="stage"][data-shell-enter="true"] .frame,
+html[data-role="guard"][data-shell-enter="true"] .guard-pill {
+  animation: shell-content-enter 520ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+html[data-shell-closing="true"] .strip > :not(.pad),
+html[data-shell-closing="true"] .rail > :not(.pad),
+html[data-role="stage"][data-shell-closing="true"] .empty,
+html[data-role="stage"][data-shell-closing="true"] .frame,
+html[data-role="guard"][data-shell-closing="true"] .guard-pill {
+  animation: shell-content-leave 320ms cubic-bezier(0.4, 0.14, 0.2, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-shell-enter="true"] .strip > :not(.pad),
+  html[data-shell-enter="true"] .rail > :not(.pad),
+  html[data-role="stage"][data-shell-enter="true"] .empty,
+  html[data-role="stage"][data-shell-enter="true"] .frame,
+  html[data-role="guard"][data-shell-enter="true"] .guard-pill,
+  html[data-shell-closing="true"] .strip > :not(.pad),
+  html[data-shell-closing="true"] .rail > :not(.pad),
+  html[data-role="stage"][data-shell-closing="true"] .empty,
+  html[data-role="stage"][data-shell-closing="true"] .frame,
+  html[data-role="guard"][data-shell-closing="true"] .guard-pill {
+    animation: none;
+  }
+}

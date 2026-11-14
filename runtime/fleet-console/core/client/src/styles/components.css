@@ -3030,6 +3030,10 @@
   transition: none;
 }
 
+html[data-viewport-resizing="true"] .objective-records-side-bar {
+  transition: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .objective-records-side-bar {
     transition-duration: 0.01ms;

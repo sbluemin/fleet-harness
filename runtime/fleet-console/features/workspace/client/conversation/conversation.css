@@ -1751,6 +1751,11 @@ html[data-desktop-shell="true"][data-view-mode="desktop"] {
   :is(.conversation-band, .conversation-nav-band) { transition: none; }
 }
 
+html[data-viewport-resizing="true"] .conversation-stage,
+html[data-viewport-resizing="true"] :is(.conversation-band, .conversation-nav-band) {
+  transition: none;
+}
+
 .side-bar-cluster-row-line .side-bar-cluster-row-preview { flex: 0 1 auto; line-height: 1.4; font-weight: var(--weight-regular); }
 /* 라이트에서 고른·가리킨 줄의 면(#eaeaea) 위는 흐린 글자가 4.5:1에 못 미쳐, 쉬는 줄의 상태 문구도 보조 글자색을 쓴다. */
 :root[data-theme="light"] .side-bar-cluster-row-preview.is-idle { color: var(--text-secondary); }

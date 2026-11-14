@@ -170,13 +170,16 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     syncWatch();
   }
 
-  const close = (): void => {
+  const close = (animate = false): void => {
     if (!open) return;
     open = false;
     stream.stop();
     stopWatch();
     snapshot = null; viewed = null; remoteActive = undefined;
-    if (deps.display.viewing()) deps.display.conceal();
+    if (deps.display.viewing()) {
+      if (animate) deps.display.apply(null, null, null);
+      else deps.display.conceal();
+    }
   };
 
   const show = (tabId: string | null): void => {
@@ -194,7 +197,7 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     },
     toggle() {
       if (origin === null) return;
-      if (open) { close(); return; }
+      if (open) { close(true); return; }
       open = true;
       serial += 1;
       surfaceId = `viewer-${serial}`;
@@ -216,7 +219,7 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
           return;
         }
         case "toggle-mode": mode = mode === "pane" ? "window" : "pane"; render(); return;
-        case "close-surface": close(); return;
+        case "close-surface": close(true); return;
         case "overlay": if (action.kind === null || action.kind === "spaces") deps.localAct(control, role, action); return;
         case "pin": case "expand": case "tabs-menu": case "orientation": case "auto-expand": case "dialog-close": case "ready":
           deps.localAct(control, role, action); return;
