@@ -659,17 +659,20 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* 새 사령관 — 머리·본문·발이 머리카락 선으로 나뉘는 창. 본문은 가운데 정렬 한 열이다. */
 .commodore-create { display: flex; flex-direction: column; width: min(480px, 100%); max-height: min(760px, 100%); overflow: hidden; color: var(--text-primary); background: var(--dialog-face); border: 0; border-radius: var(--dialog-radius); box-shadow: var(--dialog-surface-shadow); }
 .commodore-create-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 18px 16px 18px 24px; border-bottom: 1px solid var(--hairline); }
-.commodore-create-head h2 { margin: 0; font-size: var(--t-lg); font-weight: var(--weight-bold); }
+.commodore-create-head-start { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1; }
+.commodore-create-head h2 { flex: none; margin: 0; font-size: var(--t-lg); font-weight: var(--weight-bold); white-space: nowrap; }
 .commodore-create-close { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; color: var(--text-secondary); background: none; border: 0; border-radius: var(--radius-pill); cursor: pointer; }
 .commodore-create-close svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 .commodore-create-close:hover { color: var(--text-primary); background: color-mix(in oklch, var(--brass) 8%, transparent); }
 .commodore-create-close:focus-visible { box-shadow: var(--focus-face); }
 .commodore-create-body { flex: 1 1 auto; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 20px; padding: 24px 24px 28px; }
+/* 본문이 스크롤될 때도 이름 칸·아바타 격자가 눌려 얇아지지 않도록 각 자식 높이를 고정한다. */
+.commodore-create-body > * { flex-shrink: 0; }
 .commodore-create-hero { display: grid; place-items: center; height: 120px; }
 .commodore-create-body .mongle-picker-preview { margin-top: -12px; }
-.commodore-create-name { box-sizing: border-box; width: 100%; height: 46px; padding: 0 16px; color: var(--text-primary); text-align: center; font: inherit; font-size: var(--t-md); background: transparent; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); }
+.commodore-create-name { box-sizing: border-box; width: 100%; height: 48px; padding: 0 18px; color: var(--text-primary); text-align: center; font: inherit; font-size: var(--t-base); background: var(--control-field); border: 1px solid var(--hairline); border-radius: var(--radius-md); }
 .commodore-create-name::placeholder { color: var(--text-tertiary); }
-.commodore-create-name:focus { outline: none; border-color: color-mix(in oklch, var(--text-secondary) 60%, var(--hairline-strong)); }
+.commodore-create-name:focus { outline: none; border-color: var(--hairline-strong); box-shadow: var(--field-focus-edge); }
 /* 모양 격자는 상자 없이 얼굴만 늘어서고, 고른 얼굴은 둥근 옅은 면과 고리로만 말한다. 색은 네 개씩 두 줄이다. */
 .commodore-create-body .mongle-picker-bases { gap: 12px 22px; width: auto; }
 .commodore-create-body .mongle-picker-base { padding: 6px; border-color: transparent; border-radius: var(--radius-pill); }
@@ -679,15 +682,20 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-create-body .mongle-picker-tone { padding: 3px; border-width: 1.5px; }
 .commodore-create-body .mongle-picker-tone i { width: 28px; height: 28px; }
 .commodore-create-failed { margin: 0; color: var(--coral-ink); font-size: var(--t-sm); }
-/* 만들 머신 — 페어링된 다른 머신이 있을 때만 맨 위에 선다. 없으면 이 한 벌이 통째로 없다. */
-.commodore-create-machine-label { align-self: stretch; color: var(--text-secondary); font-size: var(--t-xs); font-weight: var(--weight-bold); }
-.commodore-create-machine-seg { display: flex; flex-wrap: wrap; gap: 6px; align-self: stretch; }
-.commodore-create-machine-seg button { padding: 7px 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: none; color: var(--text-primary); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-medium); cursor: pointer; }
-.commodore-create-machine-seg button[aria-pressed="true"] { border-color: var(--text-primary); background: color-mix(in oklch, var(--text-primary) 8%, transparent); }
-.commodore-create-machine-seg button:disabled { opacity: 0.45; cursor: not-allowed; }
-.commodore-create-machine-seg button:focus-visible { box-shadow: var(--focus-face); outline: none; }
-.commodore-create-machine-note { align-self: stretch; display: flex; flex-direction: column; gap: 4px; }
-.commodore-create-machine-note p { margin: 0; color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.5; }
+/* 만들 머신 — 페어링된 다른 머신이 있을 때만 헤더 제목 오른쪽에 한 줄 선택기로 선다. 열기 전에는 고른 머신만 은은하게 보인다. */
+.commodore-create-machine { flex: 0 1 auto; min-width: 0; max-width: 100%; }
+.commodore-create-machine .fc-select__trigger { width: auto; max-width: 100%; min-height: 28px; padding: 0 8px 0 10px; gap: 5px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--control-rest); box-shadow: none; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); line-height: 1; }
+.commodore-create-machine .fc-select__value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-create-machine .fc-select__caret { width: 11px; height: 11px; color: var(--text-tertiary); }
+.commodore-create-machine .fc-select__trigger:hover:not(:disabled):not([aria-expanded="true"]) { color: var(--text-primary); border-color: var(--control-hover-rim); background: var(--control-rest-hover); }
+.commodore-create-machine .fc-select__trigger[aria-expanded="true"] { color: var(--text-primary); border-color: var(--control-open-rim); background: var(--control-tint-fill); }
+/* 포털 팝업은 모달 스크림(z 40)·모바일 시트(z 52) 위에 서야 한다. 옵션 폭 하한을 두면 fit-content 팝업이 트리거 폭에 갇히지 않고 긴 머신 이름까지 펼쳐진다. */
+.commodore-create-machine-popup { z-index: var(--z-overlay); max-width: min(320px, calc(100vw - 24px)); }
+.commodore-create-machine-popup > .fc-select__option { min-width: calc(min(180px, calc(100vw - 24px)) - 2 * var(--popover-pad)); padding: 6px var(--popover-row-inline); }
+.commodore-create-machine-option { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.commodore-create-machine-option-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-create-machine-option-note { color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.35; white-space: normal; }
+.commodore-create-machine-note { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; text-align: center; }
 .commodore-create-foot { flex: none; display: flex; justify-content: flex-end; gap: 8px; padding: 14px 16px; border-top: 1px solid var(--hairline); }
 .commodore-create-button { min-width: 72px; padding: 8px 18px; border-radius: var(--radius-pill); }
 /*
@@ -698,6 +706,8 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .is-sheet .commodore-create { width: 100%; height: 100%; max-height: none; color: var(--m-text); background: var(--m-bg); border: 0; border-radius: 0; box-shadow: none; animation: mobile-sheet-in 300ms cubic-bezier(0.05, 0.7, 0.1, 1); }
 .is-sheet .commodore-create-head { justify-content: flex-start; gap: 14px; padding: calc(12px + var(--m-safe-top, 0px)) 16px 4px; border-bottom: 0; }
 .is-sheet .commodore-create-head h2 { font-size: var(--m-fs-title); font-weight: var(--weight-medium); }
+.is-sheet .commodore-create-machine .fc-select__trigger { min-height: 30px; background: var(--m-surface); border-color: var(--m-hairline); color: var(--m-text-muted); }
+.is-sheet .commodore-create-machine .fc-select__trigger[aria-expanded="true"] { color: var(--m-text); border-color: var(--m-hairline-strong); }
 .is-sheet .commodore-create-close { order: -1; width: 44px; height: 44px; color: var(--m-text); background: var(--m-surface); box-shadow: 0 2px 10px rgb(0 0 0 / 0.08); }
 .is-sheet .commodore-create-close svg { width: 18px; height: 18px; stroke-width: 1.7; }
 .is-sheet .commodore-create-close:hover { background: var(--m-surface); }
@@ -781,7 +791,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-delete-failed button { flex: none; padding: 4px 10px; color: var(--text-primary); font: inherit; font-size: var(--t-sm); background: none; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); cursor: pointer; }
 .commodore-delete-prompt { margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.5; }
 .commodore-delete-prompt strong { color: var(--text-primary); user-select: all; }
-.commodore-delete .commodore-create-name.commodore-delete-input { text-align: left; }
+.commodore-delete .commodore-create-name.commodore-delete-input { text-align: left; height: 44px; }
 .commodore-delete-input[aria-invalid="true"] { border-color: color-mix(in oklch, var(--coral) 60%, var(--hairline-strong)); }
 .fc-btn.commodore-delete-confirm { color: var(--coral-ink); border-color: color-mix(in oklch, var(--coral) 45%, transparent); }
 .fc-btn.commodore-delete-confirm:hover:not(:disabled) { background: var(--coral-glow); border-color: var(--coral); }
