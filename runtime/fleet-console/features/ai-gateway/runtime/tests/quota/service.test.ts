@@ -410,11 +410,24 @@ describe("quota service", () => {
               { id: "cycle", scope: "auto", label: "Auto", usedPercent: 10, resetsAt },
             ],
           },
+          claude: {
+            status: "ok",
+            fetchedAt: now,
+            windows: [
+              { id: "weekly", usedPercent: 66, resetsAt },
+              { id: "model", scope: "fable", label: "Fable", usedPercent: 95, resetsAt },
+            ],
+          },
         },
       }));
       // 은퇴한 풀의 창이 scope 없이 살아남으면 Auto 모델의 공유 제한으로 읽혀 배정을 그르친다.
-      expect(createQuotaLastGoodStore({ filePath }).read().xai?.windows).toEqual([
+      const read = createQuotaLastGoodStore({ filePath }).read();
+      expect(read.xai?.windows).toEqual([
         { id: "cycle", scope: "auto", label: "Auto", usedPercent: 10, resetsAt },
+      ]);
+      expect(read.claude?.windows).toEqual([
+        { id: "weekly", usedPercent: 66, resetsAt },
+        { id: "model", scope: "fable", label: "Fable", usedPercent: 95, resetsAt },
       ]);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });

@@ -62,9 +62,7 @@ export function evaluateModelAllowance(
   const scope = constraints?.quotaScope;
   const binding = bindingQuotaWindows(quota, scope);
   if (binding.length === 0) return { pressure: "unknown" };
-  if (scope !== undefined && !binding.some((window) => window.scope === scope)) {
-    return { pressure: "unknown" };
-  }
+  const hasAggregate = (quota.windows ?? []).some((window) => window.isAggregate === true);
   const at = typeof fetchedAt === "number" && Number.isFinite(fetchedAt) ? fetchedAt : now;
 
   let worst: QuotaWindowPressure | undefined;
@@ -111,6 +109,9 @@ export function evaluateModelAllowance(
   }
 
   if (unreadable) return { pressure: worst === "critical" ? "critical" : "unknown" };
+  if (hasAggregate && scope !== undefined && !binding.some((window) => window.scope === scope)) {
+    return { pressure: worst === "critical" ? "critical" : "unknown" };
+  }
   if (worst === undefined) return { pressure: "unknown" };
   const remaining = Math.min(...facts.map((fact) => fact.remaining));
   const remainingPercent = round(remaining * 100);

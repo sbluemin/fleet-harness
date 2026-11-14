@@ -1,6 +1,7 @@
 import { defaultCredentialDeps } from "../../transport/credentials.js";
 import type {
   ProviderResult,
+  QuotaScope,
   QuotaWindow,
   ResetCredits,
 } from "../../quota/types.js";
@@ -86,11 +87,18 @@ function firstClaudePercent(row: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
+function claudeModelScope(label: string, model: Record<string, unknown> | null): QuotaScope | undefined {
+  if (/^fable\b/i.test(label)) return "fable";
+  if (typeof model?.id === "string" && /\bfable\b/i.test(model.id)) return "fable";
+  return undefined;
+}
+
 function claudeWindow(
   id: QuotaWindow["id"],
   source: unknown,
   durationMs: number,
   label?: string,
+  scope?: QuotaScope,
 ): QuotaWindow | null {
   const row = object(source);
   if (!row) return null;
@@ -100,6 +108,7 @@ function claudeWindow(
   const period = windowPeriod(durationMs, "catalog", resetsAt);
   return {
     id,
+    ...(scope ? { scope } : {}),
     ...(label ? { label } : {}),
     usedPercent,
     ...(resetsAt !== undefined ? { resetsAt } : {}),
@@ -133,13 +142,14 @@ export function parseClaudeUsage(payload: unknown): { readonly windows: readonly
     }
     if (limit.kind === "weekly_scoped" && modelWindows.length < MAX_WINDOWS) {
       const model = object(object(limit.scope)?.model);
-      const row = claudeWindow("model", limit, WEEK_MS, modelLabel(model?.display_name));
+      const label = modelLabel(model?.display_name);
+      const row = claudeWindow("model", limit, WEEK_MS, label, claudeModelScope(label, model));
       if (row) modelWindows.push(row);
     }
   }
   if (modelWindows.length === 0) {
     for (const alias of [root.fable_weekly, root.fable_seven_day, root.seven_day_fable]) {
-      const row = claudeWindow("model", alias, WEEK_MS, "Fable");
+      const row = claudeWindow("model", alias, WEEK_MS, "Fable", "fable");
       if (row) {
         modelWindows.push(row);
         break;

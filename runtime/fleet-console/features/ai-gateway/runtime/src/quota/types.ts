@@ -9,7 +9,7 @@ export type WindowId = "session" | "weekly" | "model" | "cycle";
  * more than one pool. A model-scoped window must not be confused with the
  * provider's combined usage, which can be healthy while one pool is exhausted.
  */
-export type QuotaScope = "auto";
+export type QuotaScope = "auto" | "fable";
 
 /**
  * Where a window's time boundary came from. `upstream` is a value the provider

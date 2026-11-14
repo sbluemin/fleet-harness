@@ -42,6 +42,7 @@ import {
   applyClaudeNativeModels,
   findGatewayModel,
   GATEWAY_MODELS,
+  parseClaudeUsage,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
   FLEET_MODEL_SPEED_HEADER,
@@ -49,7 +50,7 @@ import {
 import {
   pickSeat,
 } from "../../src/fleet/routing-fallback.js";
-import { buildGatewayCandidates, buildGatewayEnabledModels } from "../../src/fleet/model-loadout.js";
+import { buildGatewayCandidates, buildGatewayEnabledModels, buildGatewayLoadout } from "../../src/fleet/model-loadout.js";
 import type { AiGatewayRouteDeps, GatewayAssignmentExposure } from "../../src/index.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
 
@@ -828,6 +829,77 @@ describe("delegation assignment", () => {
     expect(evaluateGatewayCandidateModels(allHiddenExposure)).toEqual([]);
     const unassignedHidden = decideGatewayRoutingAssignment({ surface: "agent" }, allHiddenExposure);
     expect(unassignedHidden.model).toBeUndefined();
+  });
+
+  it("scopes Fable-only weekly limits to Fable so Sonnet, Haiku, and Opus remain candidates", () => {
+    const now = Date.parse("2026-11-15T04:00:00Z");
+    // 7일 창 중 약 71% 경과(2일 남음) 상태에서 주간 66%는 paceRatio ~0.92(ok), Fable 95%는 critical이다.
+    const weekReset = new Date(now + 2 * 24 * 3_600_000).toISOString();
+    const claudeModels = [
+      requireGatewayModel("claude--haiku-1m"),
+      requireGatewayModel("claude--sonnet-1m"),
+      requireGatewayModel("claude--opus-1m"),
+      requireGatewayModel("claude--fable-1m"),
+    ];
+
+    // 실제 Anthropic /api/oauth/usage 응답 형태: 공통 주간 한도는 66%, Fable 전용 weekly_scoped 한도만 95%(critical).
+    const scopedUsage = parseClaudeUsage({
+      five_hour: { used_percentage: 20, resets_at: new Date(now + 3 * 3_600_000).toISOString() },
+      seven_day: { used_percentage: 66, resets_at: weekReset },
+      limits: [
+        {
+          kind: "weekly_scoped",
+          scope: { model: { display_name: "Fable" } },
+          used_percentage: 95,
+          resets_at: weekReset,
+        },
+      ],
+    });
+    const scopedExposure: GatewayAssignmentExposure = {
+      delegationModels: claudeModels,
+      quota: {
+        claude: { status: "ok", fetchedAt: now, windows: scopedUsage.windows },
+      },
+    };
+    const scopedCandidates = buildGatewayCandidates(scopedExposure, now).candidates;
+    expect(scopedCandidates.map((candidate) => candidate.model)).toEqual(["haiku[1m]", "sonnet[1m]", "opus[1m]"]);
+    expect(scopedCandidates.every((candidate) => candidate.pressure === "ok")).toBe(true);
+    expect(buildGatewayLoadout(scopedExposure, now).quotaPools["claude:shared"]?.remainingPercent).toBe(34);
+
+    // 대체 경로(fable_weekly / seven_day_fable)로 Fable 한도가 와도 Fable만 제외된다.
+    const aliasUsage = parseClaudeUsage({
+      seven_day: { used_percentage: 66, resets_at: weekReset },
+      seven_day_fable: { used_percentage: 95, resets_at: weekReset },
+    });
+    const aliasCandidates = buildGatewayCandidates({
+      delegationModels: claudeModels,
+      quota: { claude: { status: "ok", fetchedAt: now, windows: aliasUsage.windows } },
+    }, now).candidates;
+    expect(aliasCandidates.map((candidate) => candidate.model)).toEqual(["haiku[1m]", "sonnet[1m]", "opus[1m]"]);
+
+    // Fable 전용 창이 없는 응답에서는 공통 한도로만 판정한다(여유가 있으면 Fable도 남고, 공통 한도가 critical이면 모두 빠진다).
+    const sharedHealthy = parseClaudeUsage({
+      five_hour: { used_percentage: 20, resets_at: new Date(now + 3 * 3_600_000).toISOString() },
+      seven_day: { used_percentage: 66, resets_at: weekReset },
+    });
+    expect(buildGatewayCandidates({
+      delegationModels: claudeModels,
+      quota: { claude: { status: "ok", fetchedAt: now, windows: sharedHealthy.windows } },
+    }, now).candidates.map((candidate) => [candidate.model, candidate.pressure])).toEqual([
+      ["haiku[1m]", "ok"],
+      ["sonnet[1m]", "ok"],
+      ["opus[1m]", "ok"],
+      ["fable[1m]", "ok"],
+    ]);
+
+    const sharedCritical = parseClaudeUsage({
+      five_hour: { used_percentage: 98, resets_at: new Date(now + 3 * 3_600_000).toISOString() },
+      seven_day: { used_percentage: 66, resets_at: weekReset },
+    });
+    expect(buildGatewayCandidates({
+      delegationModels: claudeModels,
+      quota: { claude: { status: "ok", fetchedAt: now, windows: sharedCritical.windows } },
+    }, now).candidates).toEqual([]);
   });
 });
 
