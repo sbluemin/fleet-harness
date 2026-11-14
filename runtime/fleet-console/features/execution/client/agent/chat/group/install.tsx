@@ -29,7 +29,7 @@ import { useObjectiveLinks } from "../../objective-links.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
 import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
-import { DecisionCard, HoldCard, UseRequestGroupCard } from "./group-cards.js";
+import { DecisionCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
@@ -232,7 +232,6 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
         />
       ) : null}
       {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} />)}
-      {snapshot.holds.filter((hold) => !phone || hold.notice).map((hold) => <HoldCard key={hold.id} hold={hold} language={language} phone={phone} />)}
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );
@@ -277,7 +276,6 @@ function StandInComposer({ rootId, language }: { readonly rootId: string; readon
   const actions = useGroupConversationActions(rootId);
   const recordedObjective = useGroupClusters().some((cluster) => cluster.conversation?.objectiveId === rootId && cluster.conversation.recordedObjective === true);
   return <div ref={dockRef} className="group-standin-dock">
-    {snapshot.holds.length > 0 ? <div className="group-standin-holds">{snapshot.holds.map((hold) => <HoldCard key={hold.id} hold={hold} language={language} />)}</div> : null}
     <GroupComposer rootObjectiveId={rootId} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} onStopOne={stopOne} />
   </div>;
 }

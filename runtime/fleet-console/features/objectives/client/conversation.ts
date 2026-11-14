@@ -1,13 +1,10 @@
-import { openObjectivePopup } from "./objectives-panel.js";
 import { objectiveOpenUIPort } from "./openui-ports.js";
-import type { ConversationConsultReply, ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
+import type { ConversationConsultReply, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
-import { livePersonHold } from "../shared/board-state.js";
 import { MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
-import { commodoreAliasOf, followupInCommodoreConversation, openCommodoreConversation } from "./board-commodore.js";
+import { commodoreAliasOf } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
-import { returnPersonHold } from "./objectives-state.js";
 import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberStatus, type LaunchShown } from "./launch-control.js";
 
 /** 명부 줄의 보드 사실을 셀 재료 — 구성원 Objective 의 화면 활동(백그라운드를 작업 중으로 접은 값, 없으면 "closed")과 기동 로스터. */
@@ -74,7 +71,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
     if (entry && entry.at !== null) openRecord(entry.at);
   } : undefined;
-  return { objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, commodoreAlias: alias, holds: conversationHolds(objective), members, decision: null, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}) };
+  return { objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, commodoreAlias: alias, holds: [], members, decision: null, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}) };
 }
 
 /**
@@ -118,37 +115,6 @@ function boardAct(kind: string) {
     const key = `objectives.prov.act.${kind}`;
     return key in objectivesEn ? t(key as ObjectiveMessageKey) : kind;
   });
-}
-
-/** 대화에 세울 넘김 대상. 후속 후보는 답을 복제하지 않고 사령관 대화로 가는 안내만 세운다. */
-const HOLD_TARGETS = ["criteria", "review", "followup"] as const;
-
-function conversationHolds(objective: Objective): readonly ConversationHold[] {
-  return HOLD_TARGETS.flatMap((target): ConversationHold[] => {
-    const hold = livePersonHold(objective, target);
-    if (!hold) return [];
-    if (target === "followup") return followupInCommodoreConversation(objective) ? [{
-      id: `hold:${objective.id}:${target}:${hold.at}`,
-      notice: true,
-      title: localized((t) => t("objectives.followup.handedNotice")),
-      createdAt: hold.at,
-      handed: { label: localized((t) => t("objectives.decision.handed")), reason: hold.reason },
-      reveal: { label: localized((t) => t("objectives.decision.openCommodore")), run: (options) => { openCommodoreConversation(objective.commodoreId, options?.mobile ? { mobile: true, tab: "log" } : undefined); } },
-    }] : [];
-    const routeKey: ObjectiveMessageKey = target === "criteria" ? "objectives.hold.route.criteria" : "objectives.hold.route.review";
-    const reveal = target === "criteria" ? { label: localized((t) => t("objectives.composer.reveal")), run: () => openObjectivePopup(objective.id) } : undefined;
-    return [{
-      id: `hold:${objective.id}:${target}:${hold.at}`,
-      title: localized((t) => t(target === "criteria" ? "objectives.criteria.title" : "objectives.objectives.review")),
-      createdAt: hold.at,
-      handed: {
-        label: localized((t) => t("objectives.decision.handed")), reason: hold.reason,
-        giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => returnPersonHold(objective.id, target) },
-      },
-      route: localized((t) => t(routeKey)),
-      ...(reveal ? { reveal } : {}),
-    }];
-  }).sort((a, b) => a.createdAt - b.createdAt);
 }
 
 /** 보드 구성원 행이 보이는 것 — 역할 곁 제안 표식, 브리프, 모델·강도(꺼짐 포함), 상태 낱말, 진단 줄. 로케일과 무관한 칸은 한 번만 센다. */

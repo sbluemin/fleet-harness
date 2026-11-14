@@ -1358,9 +1358,8 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   .group-chat-notes-chip.is-live .group-chat-notes-count::before { animation: none; }
 }
 
-/* 보관된 지휘관 자리에서도 넘김은 입력창 바로 위에 선다. */
+/* 아직 서지 않은 지휘관 자리의 입력창. */
 .group-standin-dock { flex: none; display: flex; flex-direction: column; min-width: 0; }
-.group-standin-holds { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 var(--space-3) var(--space-2); }
 
 /* ── 공유 컨텍스트 — 지휘관과 구성원이 함께 쓰는 컴퓨터의 화면은 이 대화 칸에 선다 ── */
 /* 떠 있는 화면공유 미리보기의 배치 부모. 처음 자리는 진행 줄·입력창 위다(끌어서 옮길 수 있다). */

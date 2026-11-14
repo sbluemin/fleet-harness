@@ -14,7 +14,7 @@ import { objectiveConversation } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
 import { openCommodoreConversation } from "./board-commodore.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
-import { commodoreAliasOf, commodoreBoardOf, commodoreRevision, personTurnAt, subscribeCommodore } from "./board-commodore.js";
+import { commodoreAliasOf, commodoreBoardOf, commodoreRevision, livePersonHolds, personTurnAt, subscribeCommodore } from "./board-commodore.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
@@ -151,10 +151,11 @@ function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean)
 /**
  * 사람 차례 구역 — 사령관이 넘긴 기준·검토·후속은 폰·전환 목록·레일과 같은 시각 판정으로 세운다.
  */
-function personZoneOf(objective: Objective): Pick<ObjectiveClusterRow, "personTurnAt" | "personNote"> {
+function personZoneOf(objective: Objective): Pick<ObjectiveClusterRow, "personTurnAt" | "personItems" | "personNote"> {
+  const holds = livePersonHolds(objective);
   const at = personTurnAt(objective);
-  // 사령관이 넘긴 항목은 자율 운영과 상관없이 사람의 차례다 — 줄이 「내 결정」에 선 까닭을 함께 단다.
-  return at !== null ? { personTurnAt: at, personNote: HANDED_NOTE } : {};
+  // 사령관이 넘긴 항목은 자율 운영과 상관없이 사람의 차례다 — 줄이 사람 차례에 선 까닭과 건수를 함께 단다.
+  return at !== null ? { personTurnAt: at, personItems: holds.length, personNote: HANDED_NOTE } : {};
 }
 
 /**
@@ -326,7 +327,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
   return out;
 }
 
-const rowSignature = (row: ObjectiveClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.personTurnAt ?? 0, row.personNote ? resolveText(row.personNote) : "", row.commodore === true, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
+const rowSignature = (row: ObjectiveClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.personTurnAt ?? 0, row.personItems ?? 0, row.personNote ? resolveText(row.personNote) : "", row.commodore === true, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
   row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
 /** 화면 활동 — 보드와 같게 턴 뒤 백그라운드 작업은 작업 중으로 접는다. */

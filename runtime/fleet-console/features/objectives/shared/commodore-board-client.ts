@@ -1,5 +1,13 @@
 import type { ReactNode } from "react";
 import type { ConversationConsultReply } from "../../execution/shared/conversation/types.js";
+
+/** 사람에게 넘긴 대기 항목 — 목록 한 줄에 필요한 것만. 처리 UI는 `renderInboxDetail`이 그린다. */
+export type CommodoreInboxKind = "criteria" | "review" | "followup";
+export interface CommodoreInboxHold {
+  readonly kind: CommodoreInboxKind;
+  readonly at: number;
+  readonly reason: string;
+}
 export type CommodoreBoardActor = "human" | "commander"
   | { readonly kind: "commodore"; readonly commodoreId: string; readonly why?: string }
   | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string | null };
@@ -16,8 +24,8 @@ export interface CommodoreBoardObjective {
   readonly commenced: boolean;
   readonly awaitingReview: boolean;
   readonly awaitingHandoff: boolean;
-  /** 사람에게 넘긴 후속 후보가 서 있다 — 완료한 목표에도 선다. 카드는 `renderHandedFollowup` 이 그린다. */
-  readonly followupHanded: boolean;
+  /** 사람에게 넘겨 지금 사람이 답할 항목. 완료한 목표의 후속도 포함한다. 오래 기다린 순은 화면이 `at`으로 정한다. */
+  readonly inboxHolds: readonly CommodoreInboxHold[];
   readonly missions: readonly { readonly done: unknown }[];
   readonly running: boolean;
   readonly waiting: boolean;
@@ -57,4 +65,6 @@ export interface CommodoreBoardClient {
   renderObjectiveAvatar(commodoreId: string, objectiveId: string, size: number): ReactNode;
   /** 넘긴 후속 후보 카드 — 채택·폐기·돌려주기는 보드의 사람용 경로 그대로다. `open` 은 그 목표로 가는 길. */
   renderHandedFollowup(objectiveId: string, options: { readonly language: "en" | "ko"; readonly phone: boolean; readonly open: () => void }): ReactNode;
+  /** 넘긴 기준·검토를 그 자리에서 처리한다. 후속은 `renderHandedFollowup`. */
+  renderInboxDetail(objectiveId: string, kind: Exclude<CommodoreInboxKind, "followup">, options: { readonly language: "en" | "ko"; readonly phone: boolean }): ReactNode;
 }

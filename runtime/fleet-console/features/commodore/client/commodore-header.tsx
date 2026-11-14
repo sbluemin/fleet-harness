@@ -1,5 +1,5 @@
 import { useCommodoreName } from "./commodore-name.js";
-import { useEffect } from "react";
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { mongleStateOf, type MongleState } from "../../workspace/shared/avatars.js";
 import type { TheaterContribution, TheaterContributionContext } from "../../workspace/shared/surface-contracts.js";
@@ -21,7 +21,7 @@ import { subscribe as subscribeConsole } from "../../../core/client/src/integrat
 import { subscribeConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
 import { subscribeConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { getT } from "./i18n/index.js";
-import { isRunningObjective, isCommodoreWaiting, subscribeObjective, useObjectiveTheater } from "./board.js";
+import { finishedObjectives, finishedObjectivesLoaded, isRunningObjective, isCommodoreWaiting, loadFinishedObjectives, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveTheater } from "./board.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
 
 export const clockTime = (at: number): string => new Date(at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", hour12: false });
@@ -65,6 +65,8 @@ function CommodoreHeaderMark({ theater, language, theaterInbox, boardPersonDecis
   const commodoreId = theater.id;
   const { view } = useCommodore(commodoreId);
   const board = useObjectiveTheater(commodoreId);
+  const finished = useSyncExternalStore(subscribeFinishedObjectivesStore, () => finishedObjectives(commodoreId), () => finishedObjectives(commodoreId));
+  useEffect(() => { if (commodoreId && !finishedObjectivesLoaded(commodoreId)) loadFinishedObjectives(commodoreId); }, [commodoreId]);
   noteCommodoreLanguage(language);
   const loaded = view !== null && view !== undefined;
   useEffect(() => { if (commodoreId && !loaded) void loadCommodore(commodoreId); }, [commodoreId, loaded]);
@@ -79,14 +81,17 @@ function CommodoreHeaderMark({ theater, language, theaterInbox, boardPersonDecis
   // 넘긴다. 채팅을 열어 보고 답 없이 떠나도 머리의 아바타 상태·숫자가 유지된다. 사령관이 직접 묻는
   // 질문(`asks`)도 같은 사람 차례라 얼굴은 함께, 숫자는 합산한다.
   const asks = openAsks(commodoreId).length;
-  const personDecision = asks > 0 || boardPersonDecisionCount > 0;
+  const holdCount = useMemo(() => {
+    if (!board.loaded) return boardPersonDecisionCount;
+    const seen = new Set(board.objectives.map((objective) => objective.id));
+    return [...board.objectives, ...finished.filter((objective) => !seen.has(objective.id))].reduce((count, objective) => count + objective.inboxHolds.length, 0);
+  }, [board, finished, boardPersonDecisionCount]);
+  const total = asks + holdCount;
+  const personDecision = total > 0;
   const state = commodoreMongleState(view, board.objectives, personDecision);
   const glyph = <CommodoreAvatar commodoreId={commodoreId} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" figure />;
-  // 숫자 배지 — 사령관 질문과 넘긴 항목을 합산한다. 답·철회로 걷히면 같은 판정이 함께 0이 되어 사라진다.
-  const total = asks + boardPersonDecisionCount;
-  const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;
-  const boardWord = boardPersonDecisionCount > 0 ? t("commodore.personHolds", { n: boardPersonDecisionCount }) : null;
-  const decisionWords = [asksWord, boardWord].filter((part) => part !== null).join(", ");
+  // 숫자 배지와 말풍선은 대기함과 같은 합계다 — 질문 수와 살아있는 넘김 건수.
+  const decisionWords = total > 0 ? t("commodore.inbox.waiting", { n: total }) : null;
   return (
     <button
       type="button"
