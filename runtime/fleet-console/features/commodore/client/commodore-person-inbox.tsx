@@ -125,8 +125,12 @@ export function CommodorePersonInbox({ theaterId, contextTheaterId = "", languag
           onClick={() => setSheet((open) => !open)}
         >
           <span className="commodore-person-inbox-count">{t("commodore.inbox.waiting", { n: items.length })}</span>
-          <span className="commodore-person-inbox-oldest">{`${oldest.title} · ${t(KIND_KEY[oldest.kind])} · ${oldest.reason}`}</span>
-          <span className="commodore-person-inbox-age">{waitLabel(t, oldest.at)}</span>
+          {!sheet ? (
+            <>
+              <span className="commodore-person-inbox-oldest">{`${oldest.title} · ${t(KIND_KEY[oldest.kind])} · ${oldest.reason}`}</span>
+              <span className="commodore-person-inbox-age">{waitLabel(t, oldest.at)}</span>
+            </>
+          ) : null}
         </button>
         {sheet ? (
           <>
@@ -151,7 +155,7 @@ export function CommodorePersonInbox({ theaterId, contextTheaterId = "", languag
                           <span className="commodore-person-inbox-reason">{item.reason}</span>
                         </span>
                       </button>
-                      {item.objectiveId ? <button type="button" className="group-chat-link commodore-person-inbox-open" onClick={() => openObjective(item)}>{t(phone ? "commodore.inbox.openPhone" : "commodore.inbox.open")}</button> : null}
+                      {item.objectiveId ? <button type="button" className="group-chat-link commodore-person-inbox-open" onClick={() => openObjective(item)}>{t("commodore.inbox.open")}</button> : null}
                     </div>
                     {open ? <InboxBody item={item} theaterId={theaterId} contextTheaterId={contextTheaterId} language={language} phone={phone} leave={leave} onEnded={onEnded} onAnswered={(id) => setAnswered((current) => current.includes(id) ? current : [...current, id])} openObjective={() => openObjective(item)} /> : null}
                   </Fragment>
