@@ -192,6 +192,11 @@ export interface ConsoleRosterSummary {
   /** How many were left out by the cap. */
   readonly more: number;
   /**
+   * Additive: this Console serves `CONSOLE_OBJECTIVE_PEEK_PATH`. A Console without it sends
+   * nothing, and its rows show no peek glyphs.
+   */
+  readonly objectivePeek?: true;
+  /**
    * Additive: that sidebar's own sections, so another document draws the same headers in the same order.
    * A Console without sections sends none. `unsectionedCollapsed` hides the commodores that sit in no section.
    */
@@ -222,6 +227,8 @@ export interface ConsoleRosterEntry {
   readonly at: number | null;
   readonly commodores: readonly ConsoleRosterCommodore[];
   readonly more: number;
+  /** Additive: that Console serves the objective peek path; the shell relays it as it arrived. */
+  readonly objectivePeek?: true;
   /** Additive, relayed from that Console's summary as they are. */
   readonly sections?: readonly ConsoleRosterSection[];
   readonly unsectionedCollapsed?: true;
@@ -342,7 +349,14 @@ export interface ConsoleObjectivePeekReply {
   readonly snapshot?: ConsoleObjectivePeek;
 }
 const peekPhase = (value: unknown): value is ConsoleObjectivePeekPhase => value === "planning" || value === "active" || value === "review" || value === "done";
-const peekUrl = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 2048 && !/[\u0000-\u001f\u007f]/u.test(value);
+/**
+ * Absolute `https:` URL only. A remote Console's `javascript:` or relative URL must never
+ * become a link in the home document; the host drops offending results before serving.
+ */
+const peekUrl = (value: unknown): value is string => {
+  if (typeof value !== "string" || value.length === 0 || value.length > 2048 || /[\u0000-\u001f\u007f]/u.test(value)) return false;
+  try { return new URL(value).protocol === "https:"; } catch { return false; }
+};
 const peekLine = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
 const peekText = (value: unknown, max: number): value is string => typeof value === "string" && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
 const peekCriterion = (value: unknown): boolean => object(value) && peekLine(value.text, 300) && typeof value.met === "boolean";
