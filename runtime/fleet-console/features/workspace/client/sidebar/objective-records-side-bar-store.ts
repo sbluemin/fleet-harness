@@ -55,6 +55,9 @@ let sideBarState: SideBarState = {
   manualCompact: initialManualCompact,
 };
 if (typeof window !== "undefined") {
+  let lastResizeWidth = window.innerWidth;
+  let resizeFrameA = 0;
+  let resizeFrameB = 0;
   subscribeDesktopZoomFactor(() => {
     const compactWidth = readCompactWidth();
     if (sideBarState.compactWidth === compactWidth) return;
@@ -62,6 +65,18 @@ if (typeof window !== "undefined") {
     notifyListeners();
   });
   window.addEventListener("resize", () => {
+    const nextWidth = window.innerWidth;
+    if (nextWidth !== lastResizeWidth) {
+      lastResizeWidth = nextWidth;
+      document.documentElement.dataset.viewportResizing = "true";
+      cancelAnimationFrame(resizeFrameA);
+      cancelAnimationFrame(resizeFrameB);
+      resizeFrameA = requestAnimationFrame(() => {
+        resizeFrameB = requestAnimationFrame(() => {
+          delete document.documentElement.dataset.viewportResizing;
+        });
+      });
+    }
     const viewportCompact = readCompact();
     if (sideBarState.viewportCompact === viewportCompact) return;
     sideBarState = { ...sideBarState, viewportCompact, compact: viewportCompact || conversationCompact || sideBarState.manualCompact };
