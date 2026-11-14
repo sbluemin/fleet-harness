@@ -1,10 +1,9 @@
 /* The frame holds the top bar, the route content and the bottom sheets together, above the routes,
    so a destination that leaves /objectiveRecords still has a bar to come back with.
    The bar floats over the route content (see .mobile-frame-head): every screen fills the frame from its top
-   edge, and its scroll area keeps --m-chrome-top (the measured head height) free at the top. The fades are
-   the shared edge of every floating chrome row — the outer end is --m-bg, the colour the native shell paints
-   the system bars with, so the seam to the status bar stays invisible. A bottom dock carries its own notes
-   (hints, queued lines) under the input, so its fade stays solid through the lower part. */
+   edge, and its scroll area keeps --m-chrome-top (the measured head height) free at the top so the first
+   line rests clear of the bar. Body content draws through the status bar and the home indicator; the edge
+   fades are a short veil at the screen edge only, not a solid band. Floating controls keep their own faces. */
 .mobile-frame {
   --m-chrome-top: 0px;
   position: relative;
@@ -49,14 +48,14 @@
   --m-toast-bottom: calc(150px + var(--m-safe-bottom, 0px));
 }
 
-/* 떠 있는 줄의 가장자리 페이드 하나 — m-edge (상단·하단용). 기존 --m-fade-up·--m-fade-down
-   모바일 토큰과 라이트·다크 표면색을 그대로 쓴다. :root에 두어 document.body 포털 화면에서도
-   같은 값이 된다. 안의 var(--m-bg)는 쓰는 요소에서 계산되므로 라이트·다크가 그대로 갈린다.
-   화면은 새로 만들지 말고 이 둘을 쓴다. */
+/* 떠 있는 줄의 가장자리 페이드 — 화면 끝의 짧은 베일이다. 상태바·홈 막대 높이만큼 단색으로
+   칠하지 않는다. 본문은 그 뒤로 비치고, 알약·입력창은 자기 면으로 떠 있다. :root에 두어
+   document.body 포털 화면에서도 같은 값이다. 안의 var(--m-bg)는 쓰는 요소에서 계산되므로
+   라이트·다크가 그대로 갈린다. 화면은 새로 만들지 말고 이 토큰을 쓴다. */
 :root[data-view-mode="mobile"] {
-  --m-fade-down: linear-gradient(to bottom, var(--m-bg), color-mix(in srgb, var(--m-bg) 86%, transparent) 50%, color-mix(in srgb, var(--m-bg) 0%, transparent));
-  --m-fade-up: linear-gradient(to top, var(--m-bg) 40%, color-mix(in srgb, var(--m-bg) 86%, transparent) 70%, color-mix(in srgb, var(--m-bg) 0%, transparent));
-  --m-fade-top: linear-gradient(to bottom, var(--m-bg) 0, var(--m-bg) var(--m-safe-top, 0px), color-mix(in srgb, var(--m-bg) 86%, transparent) calc(var(--m-safe-top, 0px) + 40px), color-mix(in srgb, var(--m-bg) 0%, transparent) calc(var(--m-safe-top, 0px) + 80px));
+  --m-fade-down: linear-gradient(to bottom, color-mix(in srgb, var(--m-bg) 42%, transparent), transparent 32px);
+  --m-fade-up: linear-gradient(to top, color-mix(in srgb, var(--m-bg) 48%, transparent), color-mix(in srgb, var(--m-bg) 16%, transparent) 20px, transparent 40px);
+  --m-fade-top: linear-gradient(to bottom, color-mix(in srgb, var(--m-bg) 46%, transparent), color-mix(in srgb, var(--m-bg) 14%, transparent) 18px, transparent 36px);
 }
 .m-edge-top { background: var(--m-fade-down, var(--m-bg)); }
 .m-edge-bottom { background: var(--m-fade-up, var(--m-bg)); }
@@ -1076,9 +1075,9 @@
 @keyframes mobile-sheet-in { from { transform: translateY(100%); } }
 @keyframes mobile-sheet-out { to { transform: translateY(100%); } }
 
-/* 상단 막대와 연결·상태 띠가 한 덩어리로 화면 위에 떠 있다 — 띠나 경계선 없이, 바탕색에서 투명으로 옅어지는 페이드 하나가 그 자리를 말한다
-   (데스크톱 대화 화면의 투명 맨 위 줄과 같은 문법). 본문은 그 뒤로 흐르고, 화면의 스크롤 영역이 이 묶음의 높이(--m-chrome-top)만큼 위를 비워
-   맨 위 항목이 막대에 가리지 않는다. 막대를 숨긴 화면(홈·검색)에서 이 묶음은 띠가 없으면 높이 0이다. */
+/* 상단 막대와 연결·상태 띠가 한 덩어리로 화면 위에 떠 있다. 배경은 화면 맨 위의 짧은 베일(--m-fade-top)이라
+   상태바 뒤와 알약 아래 줄이 단색으로 잘리지 않는다. 본문은 그 뒤로 흐르고, 스크롤 영역이 이 묶음의 높이(--m-chrome-top)만큼
+   위를 비워 맨 위 항목이 막대에 가리지 않은 채 쉰다. 막대를 숨긴 화면(홈·검색)에서 이 묶음은 띠가 없으면 안전 영역 패딩만큼이다. */
 .mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; padding-top: var(--m-safe-top, 0px); pointer-events: none; background: var(--m-fade-top); }
 .mobile-frame-head .console-shell-bars { display: flex; flex-direction: column; pointer-events: auto; }
 /* 시트·선택 팝업은 화면이 아니라 겹침이다 — 그 안에 서는 화면 부품(프로필 시트의 설정 목록·도구 시트의 플러그인 본문)은 막대 몫을 비우지 않는다. */

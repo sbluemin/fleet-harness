@@ -182,7 +182,14 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       x: left, y: top,
       width: max(0, bounds.width - left - right),
       height: max(0, bounds.height - top - bottom))
-    for sub in subviews where sub is WKWebView { sub.frame = frame }
+    for sub in subviews where sub is WKWebView {
+      sub.frame = frame
+      // opt-in 뒤에는 UIKit이 넣어 둔 인셋이 남아 페이지가 상태바 아래에서 시작하면 안 된다.
+      if edgeToEdge, let web = sub as? WKWebView {
+        web.scrollView.contentInset = .zero
+        web.scrollView.scrollIndicatorInsets = .zero
+      }
+    }
   }
 
   // MARK: - JS-facing methods
@@ -409,6 +416,9 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     webView.uiDelegate = self
     webView.isOpaque = true
     webView.scrollView.bounces = false
+    // 프레임을 시스템 바 아래로 늘려도 스크롤 뷰가 안전 영역만큼 내용을 밀면 그 자리는 빈 띠가 된다.
+    webView.insetsLayoutMarginsFromSafeArea = false
+    webView.scrollView.insetsLayoutMarginsFromSafeArea = false
     webView.scrollView.contentInsetAdjustmentBehavior = .never
     webView.scrollView.pinchGestureRecognizer?.isEnabled = false // 터미널은 핀치를 리사이즈로 읽는다
     webView.allowsBackForwardNavigationGestures = false
