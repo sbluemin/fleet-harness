@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { WebContents } from "electron";
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
-import { CONSOLE_COMMODORE_CREATE_EVENT, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, CONSOLE_UNIFIED_SIDEBAR_EVENT, CONSOLE_WSL_EVENT, UNIFIED_SIDEBAR_HOME, UNIFIED_SIDEBAR_PATH, applyUnifiedSidebarCommand, fitUnifiedSidebarState, isConsoleRosterSummary, isUnifiedSidebarLayout, isUnifiedSidebarState, parseConsoleSectionCommand, projectUnifiedSidebar, reconcileUnifiedSidebar, seedUnifiedFromSnapshots, withoutUnifiedConsole, type ConsoleCommodoreCreateResult, type ConsoleManagedDetail, type ConsoleWslInspection, type ConsoleWslState, type ConsoleRightPanel, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState, type UnifiedCreateReason, type UnifiedMachineSnapshot, type UnifiedSidebarLayout } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_COMMODORE_CREATE_EVENT, CONSOLE_OBJECTIVE_PEEK_EVENT, CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, CONSOLE_UNIFIED_SIDEBAR_EVENT, CONSOLE_WSL_EVENT, UNIFIED_SIDEBAR_HOME, UNIFIED_SIDEBAR_PATH, applyUnifiedSidebarCommand, fitUnifiedSidebarState, isConsoleObjectivePeek, isConsoleRosterSummary, isUnifiedSidebarLayout, isUnifiedSidebarState, parseConsoleSectionCommand, projectUnifiedSidebar, reconcileUnifiedSidebar, seedUnifiedFromSnapshots, withoutUnifiedConsole, type ConsoleCommodoreCreateResult, type ConsoleManagedDetail, type ConsoleWslInspection, type ConsoleWslState, type ConsoleRightPanel, type ConsoleObjectivePeekReply, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState, type UnifiedCreateReason, type UnifiedMachineSnapshot, type UnifiedSidebarLayout } from "@fleet-console/protocol/desktop/console-section";
 import { consoleLifecycleActions, type ConsoleAccessPath, type ConsoleLifecycleAction, type ConsoleManagedLifecycle, type ConsoleManagementRelation } from "@fleet-console/protocol/lifecycle/management";
 import type { RemotePinRecord } from "./remote-access.js";
 
@@ -87,6 +87,8 @@ interface RosterMemory {
   readonly more: number;
   /** 그 Console의 사이드바 섹션. 요약에 실린 그대로이고, 실패 때는 마지막 성공 목록과 함께 남는다. */
   readonly sections?: ConsoleRosterEntry["sections"];
+  /** 엿보기 경로를 가진 Console. 요약에 실린 그대로이고, 실패 때는 마지막 성공 목록과 함께 남는다. */
+  readonly objectivePeek?: true;
   readonly unsectionedCollapsed?: true;
   readonly attemptedAt: number;
 }
@@ -96,6 +98,12 @@ interface RemoteIdentity { readonly hostname: string; readonly port: number; rea
 
 const ROSTER_INTERVAL_MS = 15_000;
 const ROSTER_TIMEOUT_MS = 5_000;
+/** 엿보기 읽기의 타임아웃. 명부 읽기와 같다. */
+const PEEK_TIMEOUT_MS = 5_000;
+/** 같은 목표의 재요청 최소 간격. 그 안의 반복은 새로 읽지 않고 직전 답을 다시 건넨다. */
+const PEEK_MIN_INTERVAL_MS = 2_000;
+/** 같은 목표의 직전 답을 기억하는 상한. 창당 동시 1건과 함께 폭주를 막는다. */
+const PEEK_CACHE_SIZE = 20;
 const ARRIVAL_TTL_MS = 30_000;
 
 const text = (value: unknown, fallback: string, max = 120): string => (typeof value === "string" ? value.replace(/[\u0000-\u001f\u007f]/gu, "").trim().slice(0, max) : "") || fallback;
@@ -133,6 +141,10 @@ export function createConsoleSectionController(deps: Dependencies) {
   let arrivalTimer: ReturnType<typeof setTimeout> | null = null;
   const folded = new Set<string>();
   const rosterMemory = new Map<string, RosterMemory>();
+  /** 진행 중인 엿보기 읽기. 창당 동시 1건 — 다음 요청은 이것이 끝난 뒤에 간다. */
+  let peekFlight: Promise<void> | null = null;
+  /** 목표 키(`${consoleId}\n${objectiveId}`)별 직전 답. 2초 안의 반복에 다시 건넨다. */
+  const peekReplies = new Map<string, { readonly at: number; readonly status: ConsoleObjectivePeekReply["status"]; readonly snapshot?: ConsoleObjectivePeekReply["snapshot"] }>();
   let unifiedLayout: UnifiedSidebarLayout | null = null;
   let remoteIdentities = new Map<string, RemoteIdentity>();
   const at = () => {
@@ -204,8 +216,9 @@ export function createConsoleSectionController(deps: Dependencies) {
     const homeOrigin = home();
     if (overlay && homeOrigin) await send(overlay, homeOrigin);
   }
-  const kept = (memory: RosterMemory | undefined): Pick<RosterMemory, "sections" | "unsectionedCollapsed"> => ({
+  const kept = (memory: RosterMemory | undefined): Pick<RosterMemory, "sections" | "unsectionedCollapsed" | "objectivePeek"> => ({
     ...(memory?.sections ? { sections: memory.sections } : {}), ...(memory?.unsectionedCollapsed ? { unsectionedCollapsed: true as const } : {}),
+    ...(memory?.objectivePeek ? { objectivePeek: true as const } : {}),
   });
   function rosterEntries(): ConsoleRosterEntry[] {
     const standing = at();
@@ -286,7 +299,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     try {
       const body: unknown = await response.json();
       if (!isConsoleRosterSummary(body)) return { status: "unsupported", at: null, commodores: [], more: 0, attemptedAt };
-      return { status: "ok", at: attemptedAt, commodores: [...body.commodores], more: body.more, ...(body.sections ? { sections: [...body.sections] } : {}), ...(body.unsectionedCollapsed ? { unsectionedCollapsed: true as const } : {}), attemptedAt };
+      return { status: "ok", at: attemptedAt, commodores: [...body.commodores], more: body.more, ...(body.sections ? { sections: [...body.sections] } : {}), ...(body.unsectionedCollapsed ? { unsectionedCollapsed: true as const } : {}), ...(body.objectivePeek ? { objectivePeek: true as const } : {}), attemptedAt };
     } catch {
       return { status: "unsupported", at: null, commodores: [], more: 0, attemptedAt };
     }
@@ -340,6 +353,83 @@ export function createConsoleSectionController(deps: Dependencies) {
       const response = await http(new URL(CONSOLE_ROSTER_PATH, origin).toString(), { method: "GET", headers, redirect: "error", signal: AbortSignal.timeout(ROSTER_TIMEOUT_MS) });
       rosterMemory.set(origin, await classify(response, previous, attemptedAt));
     } catch { rememberUnavailable(origin, previous, attemptedAt); }
+  }
+  /** 엿보기 답을 요청한 origin의 문서에만 건넨다. 창이 그새 다른 Console로 가면 버린다. */
+  async function dispatchPeek(origin: string | null, reply: ConsoleObjectivePeekReply): Promise<void> {
+    const receiver = contents;
+    if (!receiver || receiver.isDestroyed() || !origin || at() !== origin) return;
+    const script = `if(location.origin===${JSON.stringify(origin)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_OBJECTIVE_PEEK_EVENT)},{detail:${JSON.stringify(reply)}}))`;
+    await receiver.executeJavaScript(script).catch(() => undefined);
+  }
+  function rememberPeek(key: string, status: ConsoleObjectivePeekReply["status"], snapshot?: ConsoleObjectivePeekReply["snapshot"]): void {
+    peekReplies.set(key, { at: Date.now(), status, ...(snapshot ? { snapshot } : {}) });
+    while (peekReplies.size > PEEK_CACHE_SIZE) {
+      const oldest = peekReplies.keys().next();
+      if (oldest.done) break;
+      peekReplies.delete(oldest.value);
+    }
+  }
+  /**
+   * 다른 Console의 진행 중 목표 하나를 명부와 같은 배관으로 읽는다. 세션을 열거나 join하지 않는다.
+   * 불투명 id가 창 목록에 없으면 요청을 보내지 않고, 실패는 네 가지로만 구분해 넘긴다.
+   */
+  async function fetchPeek(consoleId: string, objectiveId: string, key: string): Promise<{ readonly status: ConsoleObjectivePeekReply["status"]; readonly snapshot?: ConsoleObjectivePeekReply["snapshot"] }> {
+    const target = targets.get(consoleId);
+    if (!target || target.origin === "") return { status: "not_found" };
+    const origin = target.origin;
+    // 믿을 수 없거나 닿지 않는 원격에는 보내지 않는다.
+    if (target.entry.kind === "remote" && (target.entry.status === "untrusted" || target.entry.status === "unreachable")) return { status: "unavailable" };
+    const memory = rosterMemory.get(origin);
+    // 명부 경로가 없거나 옛 응답인 Console에는 엿보기 경로도 없다.
+    if (memory && (memory.status === "unsupported" || (memory.status === "ok" && !memory.objectivePeek))) return { status: "unsupported" };
+    if (target.entry.kind === "remote" && !await admitRemote(origin)) return { status: "unavailable" };
+    const http = target.entry.kind === "remote" ? deps.rosterFetch : (deps.rosterFetch ?? deps.fetch);
+    if (!http) return { status: "unavailable" };
+    try {
+      const headers = new Headers();
+      // 루프백 API는 다른 Origin을 401로 거절한다. 대상 자신을 싣는다.
+      headers.set("Origin", origin);
+      const url = new URL(CONSOLE_OBJECTIVE_PEEK_PATH, origin);
+      url.searchParams.set("id", objectiveId);
+      const response = await http(url.toString(), { method: "GET", headers, redirect: "error", signal: AbortSignal.timeout(PEEK_TIMEOUT_MS) });
+      if (response.status === 404) return { status: "not_found" };
+      if (response.status === 401) { await drain(response); return { status: "unauthorized" }; }
+      if (!response.ok) { await drain(response); return { status: "unavailable" }; }
+      let body: unknown;
+      try { body = await response.json(); } catch { return { status: "unsupported" }; }
+      if (!isConsoleObjectivePeek(body)) return { status: "unsupported" };
+      rememberPeek(key, "ok", body);
+      return { status: "ok", snapshot: body };
+    } catch { return { status: "unavailable" }; }
+  }
+  async function runPeek(peek: { readonly console: string; readonly objective: string; readonly nonce: string }, fromHome: boolean): Promise<void> {
+    const origin = at();
+    const answer = (status: ConsoleObjectivePeekReply["status"], snapshot?: ConsoleObjectivePeekReply["snapshot"]): Promise<void> =>
+      dispatchPeek(origin, { nonce: peek.nonce, console: peek.console, objective: peek.objective, status, ...(snapshot ? { snapshot } : {}) });
+    // 집 문서의 요청만 받는다 — 수명주기 명령과 같은 판정. 다른 Console의 페이지가 셸을 대리인 삼아 읽는 길을 막는다.
+    if (!fromHome) { await answer("unauthorized"); return; }
+    const key = `${peek.console}\n${peek.objective}`;
+    const cached = peekReplies.get(key);
+    if (cached && Date.now() - cached.at < PEEK_MIN_INTERVAL_MS) {
+      await answer(cached.status, cached.snapshot);
+      return;
+    }
+    // 창당 동시 1건 — 진행 중인 읽기가 있으면 그 뒤에 잇는다.
+    while (peekFlight) { try { await peekFlight; } catch { /* 앞선 읽기의 실패는 그 요청이 이미 받았다. */ } }
+    const fresh = peekReplies.get(key);
+    if (fresh && Date.now() - fresh.at < PEEK_MIN_INTERVAL_MS) {
+      await answer(fresh.status, fresh.snapshot);
+      return;
+    }
+    let release = () => {};
+    peekFlight = new Promise<void>((resolve) => { release = resolve; });
+    try {
+      const result = await fetchPeek(peek.console, peek.objective, key);
+      await answer(result.status, result.snapshot);
+    } finally {
+      peekFlight = null;
+      release();
+    }
   }
   async function collectRosters(epoch: number, next: Map<string, Target>): Promise<void> {
     if (epoch !== generation || targets !== next) return;
@@ -717,6 +807,7 @@ export function createConsoleSectionController(deps: Dependencies) {
       if (arrival && at() === arrival.origin) { clearArrival(); await publishRoster(); }
       return;
     }
+    if ("peek" in value) { await runPeek(value.peek, fromHome); return; }
     // Lifecycle is the manager's alone. A document the home Console serves may ask: the stale home page of a stopped
     // Console, or the management surface. A page of another Console shows the section too, and a stopped Console has
     // no surface of its own to be asked from, so from there only `start` is taken up, and only after the shell's own
@@ -819,6 +910,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     clearArrival();
     folded.clear();
     rosterMemory.clear();
+    peekReplies.clear();
     unifiedLayout = null;
     remoteIdentities = new Map();
   }
