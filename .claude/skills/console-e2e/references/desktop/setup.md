@@ -30,6 +30,8 @@ Development Desktop derives its userData and Console directory from the source c
 
 On macOS that target hands the bundle to `open`, which passes the calling shell's entire environment to the app; the target's `--env` values only overlay it. Desktop forwards that environment, minus Electron and its own control keys, to the Console child. A launch from an agent session therefore gives the child the real `HOME`, any `claude` on `PATH`, and the session's markers and access tokens. Launch under a clean allowlist, and only through the launch gate. `--console-dir` is the same directory as `FLEET_CONSOLE_DATA_DIR`. The command after `--` is the allowlisted launch; do not start that command yourself when the gate refuses.
 
+When this Desktop run needs a `pnpm` or `tsx` helper, claim the owned run before the launch below and reuse the existing seed after boot. Run `isolated-env.mjs --run-dir <owned-run> -- true` first: that no-op records this caller as owner under the [ownership check](../setup.md#isolate-the-console); `--check` runs the same checks and prints the plan but records nothing. After the app has booted, follow [First-load commissioning state](../setup.md#first-load-commissioning-state) with that same owned run and its Console directory. That seed already reaches the running Console over HTTP, so this only orders claim, then boot, then the existing seed — not a second seed, a new script, or an HTTP-versus-wrapper choice. It applies only to a Desktop run that needs such a helper, not to every launch, and it is not evidence that a past launch was refused or that this run succeeded. HOME isolation and the ownership check stay as written.
+
 ```bash
 cd <worktree>
 node <worktree>/.claude/skills/console-e2e/scripts/launch-owned-desktop.mjs <worktree> \
