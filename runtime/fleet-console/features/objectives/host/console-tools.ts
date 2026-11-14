@@ -33,7 +33,7 @@ import { searchInputShape, searchObjectives } from "./search.js";
 
 
 const ids = z.string().min(1).max(128);
-const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("Person's retained messages to you or this turn's mail image IDs; no paths. Preserve images before plan/steer.");
+const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("Image IDs the person sent you or this turn's mail; no paths. Save request images in the brief before plan/steer.");
 const MAX_ADD_PER_TURN = 10;
 /** 일하는 세션이 있어도 전사를 읽을 수 있는 대기 사유 — 바깥의 판단을 기다리거나 막힌 목표다. */
 const TRANSCRIPT_REASONS: ReadonlySet<string> = new Set(["decision", "stalled", "member-failed", "review"]);
@@ -183,7 +183,7 @@ const sessionEditInput = z.object({
   title: z.string().trim().min(1).max(MAX_TITLE).optional().describe("Provide title, brief, dueDate, commanderModel or commanderEffort."),
   brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
   dueDate: dueDate.optional(),
-  attachmentIds: attachmentIds.optional().describe("Person's retained messages to you or this turn's mail image IDs; requires brief. Preserve before plan/steer."),
+  attachmentIds: attachmentIds.optional().describe("Image IDs the person sent you or this turn's mail; requires brief. Save request images in the brief before plan/steer."),
   commanderModel: z.string().trim().min(1).max(128).optional().describe("From fleet-ai-gateway models. Dormant or idle Commander session only."),
   commanderEffort: z.string().trim().min(1).max(32).optional().describe("From the new or current model's efforts. Omitted keeps current; unsupported effort is refused."),
 }).strict();
