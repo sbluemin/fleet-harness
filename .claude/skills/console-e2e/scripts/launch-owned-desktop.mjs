@@ -2,7 +2,9 @@
 /**
  * Launch gate for an owned dev Desktop. Re-runs desktop-preflight.mjs and does not
  * start the command after `--` when that preflight exits 20. The preflight's own
- * flags, exit codes, and output are unchanged; this script only adds the gate.
+ * flags, exit codes, and output are unchanged. The command must use env -i with
+ * FLEET_CONSOLE_DATA_DIR matching --console-dir. TMPDIR is forced to its sibling
+ * tmp directory so local discovery cannot scan the user's stable Console slot.
  *
  *   node launch-owned-desktop.mjs <worktree> \
  *     --console-dir <dir> --cdp-port <n> --inspector-port <n> [--json] \
@@ -18,6 +20,8 @@
  */
 
 import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, realpathSync } from 'node:fs';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const preflight = fileURLToPath(new URL('./desktop-preflight.mjs', import.meta.url));
@@ -60,6 +64,33 @@ function preflightArgs(opts) {
   ];
 }
 
+function isolatedLaunch(opts) {
+  const [envCommand, clear, ...args] = opts.command;
+  if (!['env', '/usr/bin/env'].includes(envCommand) || clear !== '-i') {
+    throw new Error('the launch command must start with env -i (references/desktop/setup.md)');
+  }
+  const consoleDir = path.resolve(opts['--console-dir']);
+  const runDir = path.dirname(consoleDir);
+  const tmpDir = path.join(runDir, 'tmp');
+  const assignments = [];
+  while (args.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(args[0])) assignments.push(args.shift());
+  if (!args.length) throw new Error('env -i needs a launch executable');
+  const values = (name) => assignments.filter((entry) => entry.startsWith(`${name}=`)).map((entry) => entry.slice(name.length + 1));
+  if (values('FLEET_CONSOLE_DATA_DIR').length !== 1 || values('FLEET_CONSOLE_DATA_DIR')[0] !== consoleDir) {
+    throw new Error('FLEET_CONSOLE_DATA_DIR must equal --console-dir');
+  }
+  if (values('TMPDIR').some((value) => value !== tmpDir)) throw new Error('TMPDIR must be <owned-run>/tmp');
+  const check = spawnSync(process.execPath, [
+    fileURLToPath(new URL('./isolated-env.mjs', import.meta.url)), '--run-dir', runDir, '--check',
+  ], { encoding: 'utf8' });
+  if (check.status !== 0) throw new Error('owned run directory check failed; run isolated-env.mjs --check for details');
+  if (existsSync(tmpDir) && realpathSync(tmpDir) !== path.join(realpathSync(runDir), 'tmp')) {
+    throw new Error('TMPDIR must not resolve outside the owned run');
+  }
+  mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
+  return [envCommand, '-i', ...assignments.filter((entry) => !entry.startsWith('TMPDIR=')), `TMPDIR=${tmpDir}`, ...args];
+}
+
 function main() {
   const opts = parse(process.argv.slice(2));
   const checked = spawnSync(process.execPath, preflightArgs(opts), { stdio: 'inherit' });
@@ -75,8 +106,9 @@ function main() {
     process.exitCode = code;
     return;
   }
-  console.error(`launch: preflight exit ${code}; starting the command after --`);
-  const child = spawnSync(opts.command[0], opts.command.slice(1), { stdio: 'inherit' });
+  const command = isolatedLaunch(opts);
+  console.error(`launch: preflight exit ${code}; starting the command after -- with owned TMPDIR`);
+  const child = spawnSync(command[0], command.slice(1), { stdio: 'inherit' });
   if (child.error) throw child.error;
   process.exitCode = child.status === null ? 1 : child.status;
 }
