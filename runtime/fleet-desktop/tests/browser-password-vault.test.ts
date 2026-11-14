@@ -231,8 +231,23 @@ describe("browser password vault", () => {
 
     osFailure = new Error("User canceled. (-128)");
     expect(await errorCodeOf(vault.command({ action: "copy", id: saved.entry.id }))).toBe("os_auth_cancelled");
+    osFailure = new Error("os_auth_cancelled");
+    expect(await errorCodeOf(vault.command({ action: "reveal", id: saved.entry.id }))).toBe("os_auth_cancelled");
+    osFailure = new Error("os_auth_unavailable");
+    expect(await errorCodeOf(vault.command({ action: "reveal", id: saved.entry.id }))).toBe("os_auth_unavailable");
     osFailure = new Error("wrong password");
     expect(await errorCodeOf(vault.command({ action: "reveal", id: saved.entry.id }))).toBe("os_auth_failed");
+
+    const failClosedVault = createBrowserPasswordVault({
+      root: dir,
+      safeStorage: fakes.safeStorage,
+      systemPreferences: auth.systemPreferences,
+      clipboard: clip.clipboard,
+      platform: "darwin",
+      osAuth: { canPrompt: () => false, prompt: async () => {} },
+    });
+    expect(await errorCodeOf(failClosedVault.command({ action: "reveal", id: saved.entry.id }))).toBe("os_auth_unavailable");
+    expect(await errorCodeOf(failClosedVault.command({ action: "copy", id: saved.entry.id }))).toBe("os_auth_unavailable");
   });
 
   it("allows reveal/copy directly on Linux without a separate OS biometric dialog (Chrome parity)", async () => {
