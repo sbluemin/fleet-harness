@@ -16,6 +16,11 @@
 /** 뷰 출처 표식은 집 콘솔(http 루프백)의 SSE에도 붙어야 하므로 http·ws를 빼지 않는다. */
 const FILTER = { urls: ["http://*/*", "https://*/*", "ws://*/*", "wss://*/*"] };
 
+/** 페이지에 보여주는 식별과 같은 규칙. Electron·셸 표기만 빼고, 나머지 User-Agent는 그대로 둔다. */
+export function browserDocumentUserAgent(raw: string): string {
+  return raw.replace(/ (?:Electron|FleetConsole\w*|fleet-console\w*)\/\S+/gu, "");
+}
+
 const FLEET_CONSOLE_COOKIE = /^fleet_console_(?:session|pairing)_(\d+)$/u;
 
 type HeaderMap = Record<string, string>;
@@ -49,6 +54,8 @@ export interface GuardedSession {
 
 interface GuardState {
   extra: RequestGuardExtra | null;
+  /** 브라우저 세션만. 요청에 이미 있는 User-Agent에서 셸 표기를 뺀다. */
+  stripShellUserAgent: boolean;
 }
 
 const guards = new WeakMap<object, GuardState>();
@@ -56,7 +63,7 @@ const guards = new WeakMap<object, GuardState>();
 /** 세션에 요청·응답 쿠키 필터를 한 번만 단다. 이미 있으면 그대로 둔다. */
 export function installRequestGuard(session: GuardedSession): void {
   if (guards.has(session)) return;
-  attach(session, { extra: null });
+  attach(session, { extra: null, stripShellUserAgent: false });
 }
 
 /** 같은 요청 리스너 위에 표시를 올리거나 내린다. 쿠키 필터는 내리지 않는다. */
@@ -67,7 +74,21 @@ export function setRequestGuardExtra(session: GuardedSession, extra: RequestGuar
     return;
   }
   // 표시가 든 state를 리스너보다 먼저 만들어 넘긴다. 등록 직후 도착한 요청도 그 표시를 본다.
-  attach(session, { extra });
+  attach(session, { extra, stripShellUserAgent: false });
+}
+
+/**
+ * 브라우저 세션에서만 켠다. 그 요청의 User-Agent에 있는 Electron·셸 표기를 뺀다.
+ * 표기가 없으면 값은 그대로다. 콘솔 세션은 부르지 않는다.
+ * Electron 43의 session.setUserAgent는 서비스 워커 fetch의 User-Agent를 바꾸지 못한다.
+ */
+export function setRequestGuardStripShellUserAgent(session: GuardedSession, enabled: boolean): void {
+  const state = guards.get(session);
+  if (state) {
+    state.stripShellUserAgent = enabled;
+    return;
+  }
+  attach(session, { extra: null, stripShellUserAgent: enabled });
 }
 
 function attach(session: GuardedSession, state: GuardState): void {
@@ -79,6 +100,7 @@ function attach(session: GuardedSession, state: GuardState): void {
       const headers: HeaderMap = { ...details.requestHeaders };
       stripSiblingFleetCookies(headers, details.url);
       state.extra?.(details, headers);
+      if (state.stripShellUserAgent) stripShellUserAgent(headers);
       response = { requestHeaders: headers };
     } catch {
       response = { cancel: true };
@@ -102,6 +124,15 @@ function attach(session: GuardedSession, state: GuardState): void {
     callback(response);
   });
   guards.set(session, state);
+}
+
+function stripShellUserAgent(headers: HeaderMap): void {
+  for (const name of Object.keys(headers)) {
+    if (name.toLowerCase() !== "user-agent") continue;
+    const value = headers[name];
+    if (value === undefined) continue;
+    headers[name] = browserDocumentUserAgent(value);
+  }
 }
 
 function endpointPort(rawUrl: string): string {
