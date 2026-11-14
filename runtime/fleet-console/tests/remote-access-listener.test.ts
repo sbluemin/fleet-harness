@@ -1040,6 +1040,25 @@ describe("objective peek snapshot", () => {
     expect(Buffer.byteLength(JSON.stringify(snapshot), "utf8")).toBeLessThanOrEqual(65_536);
   });
 
+  // 깃발 17바이트도 상한 안에 — 잘라낸 뒤 65,532바이트에서 멈추면 깃발을 붙인 65,549바이트가 넘는다.
+  // 옛 코드는 여기서 null(404)을 돌려주고, 고친 코드는 깃발을 포함한 크기로 몇 줄 더 빼고 낸다.
+  it("counts the truncated flag inside the cap", () => {
+    const snapshot = buildObjectivePeek(peekableObjective({
+      note: "",
+      criteria: Array.from({ length: 20 }, (_, index) => ({ id: `c${index}`, text: "기".repeat(300), by: { kind: "commander" } })),
+      members: Array.from({ length: 40 }, (_, index) => ({ id: `m${index}`, role: `w${index}`, brief: "글".repeat(300), by: { kind: "commander" } })),
+      missions: Array.from({ length: 40 }, (_, index) => ({
+        id: `t${index}`, title: `m${index}`, text: "무".repeat(43), done: false, prerequisites: [], member: null,
+        records: index === 0 ? [{ id: "rec0", at: 1, lines: Array.from({ length: 60 }, () => "xxxx") }] : [],
+      })),
+      results: [],
+    }), runOf);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.truncated).toBe(true);
+    expect(isConsoleObjectivePeek(snapshot)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(snapshot), "utf8")).toBeLessThanOrEqual(65_536);
+  });
+
   // 브리핑 1자 + 결과물만으로 상한 초과 — 길이 1 다음은 비워야 끝나고, 결과물을 뒤에서 뺀다.
   it("ends on a one-character note with results alone over the cap", () => {
     const results = Array.from({ length: 40 }, (_, index) => ({

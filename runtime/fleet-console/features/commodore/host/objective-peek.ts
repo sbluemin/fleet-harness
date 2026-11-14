@@ -167,7 +167,8 @@ export function buildObjectivePeek(objective: Objective, memberRunOf: ObjectiveP
     v: 1, id: objective.id, title: title.length > 0 ? title : "Objective",
     note: note.length > 0 ? note : null, phase: phaseOf(objective), criteria, missions, members, results,
   };
-  if (trimToFit(snapshot)) snapshot.truncated = true;
+  // 자르기 전에 깃발부터 붙인다 — 뒤에 붙이면 17바이트가 늘어 상한을 넘을 수 있다.
+  trimToFit(snapshot);
   // 남은 글까지 다 접었는데도 넘으면 내지 않는다. 404로 닫는 편이 깨진 계약을 내보내는 것보다 낫다.
   if (!fits(snapshot)) return null;
   return isConsoleObjectivePeek(snapshot) ? snapshot : null;
@@ -191,36 +192,37 @@ function halve(value: string): string {
  * 어떤 입력에도 유한 단계로 끝난다.
  */
 function trimToFit(snapshot: MutableSnapshot): boolean {
-  let cut = false;
+  // 자른 뒤에 깃발을 붙이면 17바이트가 늘어난다. fits() 재기는 처음부터 깃발을 포함한 크기로 한다.
+  if (fits(snapshot)) return false;
+  snapshot.truncated = true;
   // 임무 기록 — 뒤 임무·뒷줄부터 뺀다.
   while (!fits(snapshot)) {
     let dropped = false;
     for (let index = snapshot.missions.length - 1; index >= 0; index -= 1) {
       const mission = snapshot.missions[index];
-      if (mission && mission.records.length > 0) { mission.records.pop(); dropped = true; cut = true; break; }
+      if (mission && mission.records.length > 0) { mission.records.pop(); dropped = true; break; }
     }
     if (!dropped) break;
   }
   // 브리핑 — 반씩 접는다.
   while (!fits(snapshot) && snapshot.note) {
     snapshot.note = halve(snapshot.note) || null;
-    cut = true;
   }
   // 결과물 — 뒤에서 뺀다. 목록 자체가 범위 S라 남는 것만 낸다.
-  while (!fits(snapshot) && snapshot.results.length > 0) { snapshot.results.pop(); cut = true; }
+  while (!fits(snapshot) && snapshot.results.length > 0) { snapshot.results.pop(); }
   // 남은 글 — 임무 본문·구성원 brief·기준 글. 한 바퀴마다 남은 것을 전부 반씩 접는다.
   while (!fits(snapshot)) {
     let shrunk = false;
     for (const mission of snapshot.missions) {
-      if (mission.text.length > 0) { mission.text = halve(mission.text); shrunk = true; cut = true; }
+      if (mission.text.length > 0) { mission.text = halve(mission.text); shrunk = true; }
     }
     for (const member of snapshot.members) {
-      if (member.brief && member.brief.length > 0) { member.brief = halve(member.brief); shrunk = true; cut = true; }
+      if (member.brief && member.brief.length > 0) { member.brief = halve(member.brief); shrunk = true; }
     }
     for (const criterion of snapshot.criteria) {
-      if (criterion.text.length > 0) { criterion.text = halve(criterion.text); shrunk = true; cut = true; }
+      if (criterion.text.length > 0) { criterion.text = halve(criterion.text); shrunk = true; }
     }
     if (!shrunk) break;
   }
-  return cut;
+  return true;
 }
