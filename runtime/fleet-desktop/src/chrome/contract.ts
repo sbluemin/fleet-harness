@@ -4,6 +4,14 @@
  * `console-message` 한 줄 JSON, 문서가 받는 길은 main 이 `executeJavaScript` 로 호출하는 `__fleetChrome` 뿐이다.
  */
 import type { DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
+import {
+  isRemoteBrowserInputBatch,
+  type RemoteBrowserFileChooserPrompt,
+  type RemoteBrowserInputEvent,
+  type RemoteBrowserPasswordPrompt,
+  type RemoteBrowserPermissionPrompt,
+  type RemoteBrowserSelectPopup,
+} from "@fleet-console/protocol/desktop/browser-remote";
 
 export type ChromeRole = "bar" | "rail" | "stage" | "guard";
 export const CHROME_CHANNEL = "fleet-chrome";
@@ -89,8 +97,9 @@ export interface ChromeUiState {
   /** 오를 때마다 페이지 대화상자 카드의 기본 단추로 초점을 옮긴다. */
   readonly pageDialogFocus?: number;
   /**
-   * 보기 전용 셸 — 이 Desktop 이 관리하지 않는 Console 의 브라우저를 보기만 한다. 페이지 뷰가 없고 스테이지 문서가 최신 프레임을 그린다.
-   * 문서는 탐색·탭 열기와 닫기·도구 메뉴를 그리지 않고, main 은 그런 동작이 와도 버린다. 관리 Console 의 표면이면 null 이다.
+   * 이 Desktop 이 관리하지 않는 Console 의 브라우저. 페이지 뷰가 없고 스테이지 문서가 최신 프레임을 그린다.
+   * `control` 이 아니면 탐색·탭 열기와 닫기·도구 메뉴를 그리지 않는다. 원격 조작이면 그 단추는 로컬과 같고 실행 호스트 표식만 남는다.
+   * 관리 Console 의 표면이면 null 이다.
    */
   readonly viewOnly: ChromeViewOnly | null;
   /** 셸이 닫히는 중이다 — 크롬 문서가 비대칭 퇴장 모션을 돌린 뒤 main 이 뷰를 거둔다. */
@@ -98,10 +107,32 @@ export interface ChromeUiState {
 }
 
 export interface ChromeViewOnly {
-  /** 어디서 실행 중인지 — main 이 실행 호스트에서 지은 한 줄. */
+  /** 어디서 실행 중인지 — main 이 실행 호스트에서 지은 한 줄. 원격 조작이어도 이 표식은 남는다. */
   readonly place: string;
   /** 실행 측이 붙어 있는가. `connected` 가 아니면 프레임이 오지 않고 스테이지가 그 까닭을 말한다. */
   readonly status: "connected" | "manager_disconnected" | "unmanaged";
+  /**
+   * 원격 조작 모드. 참이면 주소줄·탭·메뉴·대화상자·가드가 로컬과 같고, 동작은 그 Console 의 REST 로 간다.
+   * 없거나 거짓이면 보기 전용(미관리·연결 끊김·옛 Console)이다.
+   */
+  readonly control?: boolean;
+  /**
+   * Console 이 등록한 전역 단축키 문장(`Mod+KeyP` 꼴). 스테이지는 이 문장과 같은 키를
+   * 실행 측으로 보내지 않고 그 자리에서 Console 이 받게 둔다. 없으면 비워 둔다.
+   */
+  readonly shortcuts?: readonly string[];
+  readonly selectPopup?: RemoteBrowserSelectPopup | null;
+  readonly permissionPrompts?: readonly RemoteBrowserPermissionPrompt[];
+  readonly passwordPrompt?: RemoteBrowserPasswordPrompt | null;
+  readonly fileChooser?: RemoteBrowserFileChooserPrompt | null;
+  /** 레거시/스테이지 호환 별칭 — selectPopup / permissionPrompts 와 함께 쓴다. */
+  readonly select?: RemoteBrowserSelectPopup | null;
+  readonly permission?: RemoteBrowserPermissionPrompt | null;
+}
+
+/** 보기 전용이라 탐색·탭 조작을 잠그는가. 원격 조작(`control`)은 잠그지 않는다. */
+export function chromeViewLocked(viewOnly: ChromeViewOnly | null | undefined): boolean {
+  return viewOnly != null && viewOnly.control !== true;
 }
 
 export type ChromeAction =
@@ -147,19 +178,52 @@ export type ChromeAction =
   | { readonly action: "control"; readonly control: "take" | "return" | "stop" }
   /** 가드 문서가 잰 알약의 크기(CSS px) — 사람이 제어 중일 때 가드 뷰는 이 자리만 차지한다. */
   | { readonly action: "guard-size"; readonly width: number; readonly height: number }
-  /** 복수 계정 목록에서 고른 아이디로 그 뷰의 로그인 폼을 채운다. */
-  | { readonly action: "password-pick"; readonly username: string; readonly origin?: string }
-  /** 저장·업데이트 카드를 확정한다(모두 main 의 금고로만 간다). */
-  | { readonly action: "password-save" }
+  /**
+   * 원격 스테이지 입력 배치 — 원격 조작 셸이 실행 측 뷰포트로 보내는 포인터·키·IME 묶음.
+   * main 은 Console REST 로 그대로 옮기고, 검증은 Console(`isRemoteBrowserInputBatch`)이 한 번 더 한다.
+   */
+  | { readonly action: "remote-input"; readonly tabId: string; readonly seq: number; readonly events: readonly RemoteBrowserInputEvent[] }
+  /** 원격 `<select>` 팝업 답 — 고른 인덱스(단일·다중) 또는 닫기. */
+  | { readonly action: "remote-select"; readonly popupId: string; readonly tabId: string; readonly choice: "choose" | "cancel"; readonly indices?: readonly number[] }
+  /** 원격 권한 창 답 — 허용 또는 거부. */
+  | { readonly action: "remote-permission"; readonly promptId: string; readonly tabId: string; readonly allow: boolean }
+  /** 복수 계정 목록에서 고른 아이디로 그 뷰의 로그인 폼을 채운다. 원격 카드는 promptId·tabId 로 실행 측 프롬프트를 가리킨다. */
+  | { readonly action: "password-pick"; readonly username: string; readonly origin?: string; readonly promptId?: string; readonly tabId?: string }
+  /** 저장·업데이트 카드를 확정한다. 로컬은 금고로, 원격은 password-action 으로 간다. 평문은 실리지 않는다. */
+  | { readonly action: "password-save"; readonly promptId?: string; readonly tabId?: string }
   /** 이번에는 저장하지 않는다. */
-  | { readonly action: "password-dismiss" }
+  | { readonly action: "password-dismiss"; readonly promptId?: string; readonly tabId?: string }
   /** 이 사이트에서는 다시 묻지 않는다. */
-  | { readonly action: "password-never" }
+  | { readonly action: "password-never"; readonly promptId?: string; readonly tabId?: string }
+  /** 원격 <select> 팝업에서 고르거나 취소한다. */
+  | { readonly action: "select-popup"; readonly popupId: string; readonly tabId: string; readonly choice: "choose" | "cancel"; readonly indices?: readonly number[] }
+  /** 원격 웹 권한 카드의 허용·거절. */
+  | { readonly action: "permission-answer"; readonly promptId: string; readonly tabId: string; readonly allow: boolean }
+  /** 원격 파일 선택 — 보는 기기의 파일 선택기를 열어 올리거나 취소한다. */
+  | { readonly action: "file-chooser-open"; readonly chooserId: string; readonly tabId: string; readonly multiple: boolean }
+  | { readonly action: "file-chooser-cancel"; readonly chooserId: string; readonly tabId: string }
   | { readonly action: "ready" };
 
 const PROFILES = new Set<unknown>([null, "default"]);
 const str = (value: unknown, max: number): value is string => typeof value === "string" && value.length <= max;
 const safeId = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9._:-]{1,120}$/u.test(value);
+
+function passwordRelay(action: "password-pick", body: Record<string, unknown>, username: string): ChromeAction | null;
+function passwordRelay(action: "password-save" | "password-dismiss" | "password-never", body: Record<string, unknown>): ChromeAction | null;
+function passwordRelay(action: "password-pick" | "password-save" | "password-dismiss" | "password-never", body: Record<string, unknown>, username?: string): ChromeAction | null {
+  const promptId = body.promptId === undefined ? undefined : (safeId(body.promptId) ? body.promptId : null);
+  const tabId = body.tabId === undefined ? undefined : (safeId(body.tabId) ? body.tabId : null);
+  if (promptId === null || tabId === null) return null;
+  if (action === "password-pick") {
+    let origin: string | undefined;
+    if (body.origin !== undefined) {
+      if (!str(body.origin, 512) || body.origin.length === 0) return null;
+      origin = body.origin;
+    }
+    return { action, username: username ?? "", ...(origin !== undefined ? { origin } : {}), ...(promptId ? { promptId } : {}), ...(tabId ? { tabId } : {}) };
+  }
+  return { action, ...(promptId ? { promptId } : {}), ...(tabId ? { tabId } : {}) };
+}
 
 /** 저장 제안 카드의 보기 토글 — 마스킹 기본, 문서 안에서만 바뀌고 main 으로는 가지 않는다. */
 export function passwordRevealText(password: string, shown: boolean): { readonly mask: string; readonly toggleKey: "password.show" | "password.hide" } {
@@ -185,17 +249,12 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "navigate": return make(str(body.url, 4096) ? { action: "navigate", url: body.url } : null);
     case "new-tab": case "toggle-mode": case "close-surface": case "open-external": case "attach-screenshot": case "annotate": case "import-open": case "clear-open": case "clear-run": case "dialog-close": case "info-action": case "ready":
       return make({ action: name });
-    case "password-save": case "password-dismiss": case "password-never": return make({ action: name });
-    case "password-pick": {
-      if (!str(body.username, 512) || body.username.length === 0) return make(null);
-      const picked: { action: "password-pick"; username: string; origin?: string } = { action: "password-pick", username: body.username };
-      // PSL 목록에서 고른 서브도메인 출처 — 없으면 카드의 origin 으로 채운다.
-      if (body.origin !== undefined) {
-        if (!str(body.origin, 512) || body.origin.length === 0) return make(null);
-        picked.origin = body.origin;
-      }
-      return make(picked);
-    }
+    case "password-save": case "password-dismiss": case "password-never": return make(passwordRelay(name, body));
+    case "password-pick": return make(str(body.username, 512) && body.username.length > 0 ? passwordRelay("password-pick", body, body.username) : null);
+    case "select-popup": return make(safeId(body.popupId) && safeId(body.tabId) && (body.choice === "choose" || body.choice === "cancel") && (body.indices === undefined || (Array.isArray(body.indices) && body.indices.length <= 1000 && body.indices.every((index) => Number.isSafeInteger(index) && Number(index) >= 0))) ? { action: "select-popup", popupId: body.popupId, tabId: body.tabId, choice: body.choice, ...(Array.isArray(body.indices) ? { indices: body.indices as number[] } : {}) } : null);
+    case "permission-answer": return make(safeId(body.promptId) && safeId(body.tabId) && typeof body.allow === "boolean" ? { action: "permission-answer", promptId: body.promptId, tabId: body.tabId, allow: body.allow } : null);
+    case "file-chooser-open": return make(safeId(body.chooserId) && safeId(body.tabId) && typeof body.multiple === "boolean" ? { action: "file-chooser-open", chooserId: body.chooserId, tabId: body.tabId, multiple: body.multiple } : null);
+    case "file-chooser-cancel": return make(safeId(body.chooserId) && safeId(body.tabId) ? { action: "file-chooser-cancel", chooserId: body.chooserId, tabId: body.tabId } : null);
     case "select-tab": case "close-tab": case "select-space": return make(safeId(body.id) ? { action: name, id: body.id } : null);
     case "page-dialog": return make(safeId(body.id) && safeId(body.dialogId) && typeof body.accept === "boolean" ? { action: "page-dialog", id: body.id, dialogId: body.dialogId, accept: body.accept } : null);
     case "pin": return make(typeof body.pinned === "boolean" ? { action: "pin", pinned: body.pinned } : null);
@@ -215,6 +274,17 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "control": return make(body.control === "take" || body.control === "return" || body.control === "stop" ? { action: "control", control: body.control } : null);
     case "guard-size": return make(typeof body.width === "number" && typeof body.height === "number" && body.width >= 0 && body.width <= 4096 && body.height >= 0 && body.height <= 4096 ? { action: "guard-size", width: body.width, height: body.height } : null);
     case "draft": return make(body.value === null || str(body.value, 4096) ? { action: "draft", value: body.value as string | null } : null);
+    case "remote-input": {
+      if (typeof body.seq !== "number" || !Array.isArray(body.events)) return null;
+      const candidate = { tabId: body.tabId, seq: body.seq, events: body.events };
+      return make(isRemoteBrowserInputBatch(candidate) ? { action: "remote-input", tabId: candidate.tabId as string, seq: candidate.seq as number, events: candidate.events as readonly RemoteBrowserInputEvent[] } : null);
+    }
+    case "remote-select": {
+      if (!safeId(body.popupId) || !safeId(body.tabId) || (body.choice !== "choose" && body.choice !== "cancel")) return null;
+      if (body.indices !== undefined && (!Array.isArray(body.indices) || body.indices.length > 1000 || !body.indices.every((index: unknown) => Number.isSafeInteger(index) && (index as number) >= 0))) return null;
+      return make({ action: "remote-select", popupId: body.popupId, tabId: body.tabId, choice: body.choice, ...(body.indices === undefined ? {} : { indices: body.indices }) });
+    }
+    case "remote-permission": return make(safeId(body.promptId) && safeId(body.tabId) && typeof body.allow === "boolean" ? { action: "remote-permission", promptId: body.promptId, tabId: body.tabId, allow: body.allow } : null);
     default: return null;
   }
 }

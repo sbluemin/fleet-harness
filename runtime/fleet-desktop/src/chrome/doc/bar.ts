@@ -1,10 +1,16 @@
-import type { ChromeImportSources, ChromeOverlay, ChromeSuggestion, ChromeUiState } from "../contract.js";
+import type { ChromeImportSources, ChromeSuggestion, ChromeUiState, ChromeViewOnly } from "../contract.js";
+import { chromeViewLocked, passwordPromptIdentity, passwordRevealText, type ChromeOverlay } from "../contract.js";
 import { mountAnnotate, type Annotator } from "./annotate.js";
 import { agentGlyph, clear, G, glyph, h, hostOf, moreGlyph } from "./dom.js";
 import { paintColors, post, shownSpace, spaceHue, spaceName, syncShellMotion, tabCount, tr, type T } from "./shared.js";
-import { passwordPromptIdentity, passwordRevealText, type ChromeOverlay } from "../contract.js";
 
 const SUGGEST_DELAY_MS = 200;
+
+type RemoteCard =
+  | { readonly kind: "select"; readonly popup: NonNullable<ChromeViewOnly["selectPopup"]> }
+  | { readonly kind: "permission"; readonly prompt: NonNullable<ChromeViewOnly["permissionPrompts"]>[number] }
+  | { readonly kind: "fileChooser"; readonly prompt: NonNullable<ChromeViewOnly["fileChooser"]> }
+  | { readonly kind: "password"; readonly prompt: NonNullable<ChromeViewOnly["passwordPrompt"]> };
 const PERSISTENT = "default";
 /** 스페이스 칸 하나가 미리 보여 주는 탭 아이콘 수 — 넘치면 「+n」으로 줄인다. */
 const TILE_ICONS = 4;
@@ -91,15 +97,15 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   };
   const suggestionsOf = (): readonly ChromeSuggestion[] => (editing && !composing && last?.overlay?.kind === "suggestions" ? last.suggestions : []);
 
-  form.addEventListener("submit", (event) => { event.preventDefault(); if (!composing && !last?.viewOnly) submit(input.value); });
+  form.addEventListener("submit", (event) => { event.preventDefault(); if (!composing && !chromeViewLocked(last?.viewOnly)) submit(input.value); });
   form.addEventListener("focusout", (event) => {
     const next = (event as FocusEvent).relatedTarget as Node | null;
     if (next && (form.contains(next) || overlay.contains(next))) return;
     // 제안 목록의 항목은 mousedown 을 막아 초점을 뺏지 않는다 — 여기까지 온 것은 정말 주소줄을 떠난 것이다.
     editing = false; render(last!); closeSuggestions();
   });
-  input.addEventListener("focus", () => { if (last?.viewOnly) { input.blur(); return; } editing = true; input.select(); render(last!); });
-  input.addEventListener("input", () => { if (last?.viewOnly) return; editing = true; dirty = true; post("bar", "draft", { value: input.value }); askSuggest(input.value); render(last!); });
+  input.addEventListener("focus", () => { if (chromeViewLocked(last?.viewOnly)) { input.blur(); return; } editing = true; input.select(); render(last!); });
+  input.addEventListener("input", () => { if (chromeViewLocked(last?.viewOnly)) return; editing = true; dirty = true; post("bar", "draft", { value: input.value }); askSuggest(input.value); render(last!); });
   input.addEventListener("compositionstart", () => { composing = true; closeSuggestions(); });
   input.addEventListener("compositionend", () => { composing = false; askSuggest(input.value); });
   input.addEventListener("keydown", (event) => {
@@ -127,7 +133,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId) ?? null;
     const hasCapture = tab !== null && tab.url !== "about:blank";
     const menu = h("div", { class: "menu", role: "menu", attrs: { "aria-label": t("moreTools") } });
-    if (state.viewOnly) return menu;
+    if (chromeViewLocked(state.viewOnly)) return menu;
     if (hasCapture) menu.append(item(t, G.camera, t("attachScreenshot"), () => post("bar", "attach-screenshot"), { disabled: !state.captureAvailable || state.busy }));
     menu.append(item(t, G.comment, t("annotate"), () => post("bar", "annotate"), { disabled: !state.captureAvailable || tab === null }));
     if (tab && /^https?:\/\//iu.test(tab.url)) menu.append(item(t, G.external, t("openExternal"), () => post("bar", "open-external")));
@@ -149,7 +155,9 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
         h("span", { class: "menu-body" }, h("strong", { text: t(value ? "profile.persistent" : "profile.ephemeral") }), h("span", { class: "help", text: t(value ? "profile.persistentHelp" : "profile.ephemeralHelp") })), tail);
       menu.append(row);
     }
-    menu.append(item(t, G.import, t("import.title"), () => post("bar", "import-open"), { disabled: state.importUnavailable || !ready, title: state.importUnavailable ? t("import.windowsPending") : undefined }));
+    if (!state.viewOnly) {
+      menu.append(item(t, G.import, t("import.title"), () => post("bar", "import-open"), { disabled: state.importUnavailable || !ready, title: state.importUnavailable ? t("import.windowsPending") : undefined }));
+    }
     menu.append(item(t, G.erase, t("profile.clearItem"), () => post("bar", "clear-open"), { disabled: !ready, help: t("profile.clearScope") }));
     menu.append(h("div", { class: "menu-sep", role: "separator" }), h("div", { class: "menu-label", text: t("viewport") }));
     for (const preset of ["responsive", "mobile", "tablet"] as const) {
@@ -168,7 +176,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const ready = state.chrome !== null && state.chrome.available && !state.busy;
     const flat = state.orientation === "horizontal";
     const menu = h("div", { class: "menu tabs-menu", role: "menu", attrs: { "aria-label": t("tabsMenu") } });
-    if (!state.viewOnly) {
+    if (!chromeViewLocked(state.viewOnly)) {
       menu.append(item(t, G.plus, t("newTab"), () => post("bar", "new-tab"), { disabled: !ready }));
       menu.append(h("div", { class: "menu-sep", role: "separator" }));
     }
@@ -400,6 +408,82 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     return box;
   };
 
+  /** 원격 조작에서 페이지 위에 얹는 카드. 페이지 대화상자보다 뒤다. 비밀번호 평문은 없다. */
+  const remoteSurfaceCard = (state: ChromeUiState): RemoteCard | null => {
+    const view = state.viewOnly;
+    if (view?.control !== true) return null;
+    if (view.selectPopup) return { kind: "select", popup: view.selectPopup };
+    if (view.fileChooser) return { kind: "fileChooser", prompt: view.fileChooser };
+    const permission = view.permissionPrompts?.[0];
+    if (permission) return { kind: "permission", prompt: permission };
+    if (view.passwordPrompt) return { kind: "password", prompt: view.passwordPrompt };
+    return null;
+  };
+  const buildRemotePasswordPicker = (t: T, prompt: Extract<ChromeViewOnly["passwordPrompt"], { kind: "pick" }>): HTMLElement | null => {
+    if (!prompt || prompt.usernames.length === 0) return null;
+    const box = h("div", { class: "suggestions", role: "listbox", attrs: { "aria-label": t("password.pickTitle") } });
+    for (let index = 0; index < prompt.usernames.length; index += 1) {
+      const username = prompt.usernames[index]!;
+      const site = prompt.origins?.[index];
+      const label = h("span", { class: "suggestion-label", text: username });
+      if (site && site !== prompt.origin) label.append(h("small", { text: site }));
+      const button = h("button", { class: "suggestion result", type: "button", role: "option" },
+        h("span", { class: "tab-icon" }, glyph(G.profile)),
+        label);
+      const pickOrigin = site && site !== prompt.origin ? site : undefined;
+      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.addEventListener("click", () => post("bar", "password-pick", pickOrigin === undefined ? { username, promptId: prompt.id, tabId: prompt.tabId } : { username, origin: pickOrigin, promptId: prompt.id, tabId: prompt.tabId }));
+      box.append(button);
+    }
+    return box;
+  };
+  const buildRemoteCard = (t: T, card: RemoteCard): HTMLElement => {
+    if (card.kind === "password" && card.prompt.kind === "pick") return h("div");
+    if (card.kind === "select") {
+      const popup = card.popup;
+      if (popup.multiple) {
+        const picked = new Set<number>(popup.options.filter((option) => option.selected).map((option) => option.index));
+        const rows = popup.options.map((option) => {
+          const row = h("button", { class: "menu-item", type: "button", role: "menuitemcheckbox", disabled: option.disabled, attrs: { "aria-checked": String(picked.has(option.index)) } },
+            h("span", { class: "menu-body" }, h("strong", { text: option.group ? `${option.group} — ${option.label || option.value}` : (option.label || option.value) })));
+          row.addEventListener("click", () => {
+            if (picked.has(option.index)) picked.delete(option.index);
+            else picked.add(option.index);
+            row.setAttribute("aria-checked", String(picked.has(option.index)));
+          });
+          return row;
+        });
+        const apply = h("button", { class: "button primary", type: "button", text: t("remote.apply"), on: { click: () => post("bar", "select-popup", { popupId: popup.id, tabId: popup.tabId, choice: "choose", indices: [...picked].sort((a, b) => a - b) }) } });
+        const cancel = h("button", { class: "button", type: "button", text: t("select.cancel"), on: { click: () => post("bar", "select-popup", { popupId: popup.id, tabId: popup.tabId, choice: "cancel" }) } });
+        return dialog(t, t("select.title"), null, rows, [cancel, apply], `select:${popup.id}`);
+      }
+      const rows = popup.options.map((option) => h("button", { class: "menu-item", type: "button", disabled: option.disabled, on: { click: () => post("bar", "select-popup", { popupId: popup.id, tabId: popup.tabId, choice: "choose", indices: [option.index] }) } },
+        h("span", { class: "menu-body" }, h("strong", { text: option.group ? `${option.group} — ${option.label || option.value}` : (option.label || option.value) }))));
+      const cancel = h("button", { class: "button", type: "button", text: t("select.cancel"), on: { click: () => post("bar", "select-popup", { popupId: popup.id, tabId: popup.tabId, choice: "cancel" }) } });
+      return dialog(t, t("select.title"), null, rows, [cancel], `select:${popup.id}`);
+    }
+    if (card.kind === "fileChooser") {
+      const prompt = card.prompt;
+      const pick = h("button", { class: "button primary", type: "button", text: t("fileChooser.pick"), on: { click: () => post("bar", "file-chooser-open", { chooserId: prompt.id, tabId: prompt.tabId, multiple: prompt.multiple }) } });
+      const cancel = h("button", { class: "button", type: "button", text: t("select.cancel"), on: { click: () => post("bar", "file-chooser-cancel", { chooserId: prompt.id, tabId: prompt.tabId }) } });
+      return dialog(t, t("fileChooser.title"), t("fileChooser.body"), [], [cancel, pick], `file-chooser:${prompt.id}`);
+    }
+    if (card.kind === "permission") {
+      const prompt = card.prompt;
+      const allow = h("button", { class: "button primary", type: "button", text: t("permission.allow"), on: { click: () => post("bar", "permission-answer", { promptId: prompt.id, tabId: prompt.tabId, allow: true }) } });
+      const deny = h("button", { class: "button", type: "button", text: t("permission.deny"), on: { click: () => post("bar", "permission-answer", { promptId: prompt.id, tabId: prompt.tabId, allow: false }) } });
+      return dialog(t, t("permission.title"), t("permission.body", { permission: prompt.permission }), [dialogItem(G.globe, prompt.origin || t("permission.title"), prompt.permission)], [deny, allow], `permission:${prompt.id}`);
+    }
+    const prompt = card.prompt;
+    const save = h("button", { class: "button primary", type: "button", text: t(prompt.mode === "update" ? "password.update" : "password.save"), on: { click: () => post("bar", "password-save", { promptId: prompt.id, tabId: prompt.tabId }) } });
+    const dismiss = h("button", { class: "button", type: "button", text: t("password.dismiss"), on: { click: () => post("bar", "password-dismiss", { promptId: prompt.id, tabId: prompt.tabId }) } });
+    const never = h("button", { class: "button", type: "button", text: t("password.never"), on: { click: () => post("bar", "password-never", { promptId: prompt.id, tabId: prompt.tabId }) } });
+    const secret = h("div", { class: "dialog-item" }, h("span", { class: "dialog-glyph" }, glyph(G.key)), h("span", { class: "password-body" }, h("strong", { text: t("password.password") }), h("span", { class: "password-mask", text: "••••••••" })));
+    return dialog(t, t(prompt.mode === "update" ? "password.updateTitle" : "password.saveTitle"), null,
+      [dialogItem(G.globe, prompt.origin, t("password.site")), dialogItem(G.profile, prompt.username, t("password.account")), secret],
+      [dismiss, never, save], `remote-password:${prompt.id}`);
+  };
+
   const placePage = (element: HTMLElement, state: ChromeUiState): void => {
     const page = state.page;
     element.style.left = `${page.x}px`; element.style.top = `${page.y}px`; element.style.width = `${page.width}px`; element.style.height = `${page.height}px`;
@@ -412,14 +496,15 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const modal = current !== null && current.kind !== "menu" && current.kind !== "suggestions" && current.kind !== "spaces" && current.kind !== "tabs-menu" && current.kind !== "password-picker";
     const showing = current !== null && state.overlayReady;
     // 다른 오버레이가 없을 때만 그린다 — 메뉴를 닫으면 다시 보인다.
-    const asked = showing || state.viewOnly ? null : pageDialogOf(state);
-    overlay.hidden = !showing && !asked && !state.info && !state.notice;
+    const asked = showing || chromeViewLocked(state.viewOnly) ? null : pageDialogOf(state);
+    const remote = asked || showing ? null : remoteSurfaceCard(state);
+    overlay.hidden = !showing && !asked && !remote && !state.info && !state.notice;
     // 표시줄 메뉴는 누른 자리에 뜬다 — 가로 표시줄에서는 그 자리가 주소줄 위라, 이 메뉴가 떠 있는 동안만 오버레이가 주소줄보다 앞에 선다.
     overlay.classList.toggle("over-strip", showing && current!.kind === "tabs-menu");
     if (current?.kind !== "annotate" && annotator) { annotator.dispose(); annotator = null; }
     // 스페이스 선택 화면이 닫히면 초점을 그 단추로 돌려준다 — 키보드로 연 사람이 화면 밖에서 길을 잃지 않게.
     const leavingSpaces = overlayKey.startsWith("spaces:") && !(showing && current!.kind === "spaces") && overlay.contains(document.activeElement);
-    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : current!.kind === "password-prompt" || current!.kind === "password-picker" ? JSON.stringify(current) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : "none";
+    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : current!.kind === "password-prompt" || current!.kind === "password-picker" ? JSON.stringify(current) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : remote ? `remote:${JSON.stringify(remote)}` : "none";
     const toastKey = `${state.notice ?? ""}|${state.info?.text ?? ""}|${state.info?.action ?? ""}`;
     if (current?.kind === "annotate" && showing) {
       if (!annotator) { clear(overlay); annotator = mountAnnotate(overlay, state, t); overlayKey = "annotate"; }
@@ -468,6 +553,16 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
         placePage(backdrop, state);
         backdrop.append(buildPageDialog(state, t, asked));
         overlay.append(backdrop);
+      } else if (remote) {
+        if (remote.kind === "password" && remote.prompt.kind === "pick") {
+          const box = buildRemotePasswordPicker(t, remote.prompt);
+          if (box) { const rect = form.getBoundingClientRect(); box.style.left = `${rect.left}px`; box.style.width = `${rect.width}px`; box.style.top = `${rect.bottom + 4}px`; const backdrop = h("div", { class: "backdrop" }); backdrop.append(box); overlay.append(backdrop); }
+        } else {
+          const backdrop = h("div", { class: "backdrop modal scrim" });
+          placePage(backdrop, state);
+          backdrop.append(buildRemoteCard(t, remote));
+          overlay.append(backdrop);
+        }
       }
     }
     placeToast(state, t, toastKey);
@@ -479,7 +574,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (infoTimer !== null && key !== infoKey) { clearTimeout(infoTimer); infoTimer = null; }
     infoKey = key;
     const text = state.notice ?? state.info?.text ?? null;
-    if (!text) { overlay.hidden = (state.overlay === null || !state.overlayReady) && !pageDialogOf(state); return; }
+    if (!text) { overlay.hidden = (state.overlay === null || !state.overlayReady) && !pageDialogOf(state) && remoteSurfaceCard(state) === null; return; }
     overlay.hidden = false;
     const toast = h("div", { class: `toast${state.notice ? " is-error" : ""}${state.info?.action ? " has-action" : ""}`, role: state.notice ? "alert" : "status", text });
     if (!state.notice && state.info?.action) {
@@ -533,23 +628,25 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (!spacesOpen && elsewhereTip) spacesButton.title = `${spacesTip} · ${elsewhereTip}`;
     spacesButton.ariaLabel = elsewhereTip ? `${spacesTip} · ${elsewhereTip}` : spacesTip;
     spacesButton.disabled = chrome === null;
-    // 보기 전용 셸 — 탐색 단추와 도구 메뉴는 서지 않고, 주소는 읽기만 한다.
+    // 보기 전용은 탐색 단추와 도구 메뉴를 숨기고 주소는 읽기만 한다. 원격 조작은 그 단추를 로컬과 같이 두고 실행 호스트 표식만 남긴다.
     const viewing = state.viewOnly !== null;
+    const viewLocked = chromeViewLocked(state.viewOnly);
     document.documentElement.dataset.viewOnly = viewing ? "true" : "false";
-    back.hidden = forward.hidden = reload.hidden = more.hidden = viewing;
+    document.documentElement.dataset.remoteControl = state.viewOnly?.control === true ? "true" : "false";
+    back.hidden = forward.hidden = reload.hidden = more.hidden = viewLocked;
     viewMark.hidden = closeView.hidden = !viewing;
     if (state.viewOnly) {
-      viewBadge.textContent = t("viewOnly");
+      viewBadge.textContent = state.viewOnly.control ? t("remote.badge") : t("viewOnly");
       viewPlace.textContent = state.viewOnly.place;
-      viewMark.title = `${t("viewOnly")} · ${state.viewOnly.place}`;
-      closeView.title = closeView.ariaLabel = t("viewOnly.close");
+      viewMark.title = `${state.viewOnly.control ? t("remote.badge") : t("viewOnly")} · ${state.viewOnly.place}`;
+      closeView.title = closeView.ariaLabel = t(state.viewOnly.control ? "remote.close" : "viewOnly.close");
     }
     more.title = state.overlay?.kind === "menu" ? "" : t("moreTools"); more.ariaLabel = t("moreTools");
     more.setAttribute("aria-expanded", String(state.overlay?.kind === "menu"));
     more.classList.toggle("open", state.overlay?.kind === "menu");
     input.disabled = !available || locked;
-    input.readOnly = viewing;
-    if (viewing) { input.disabled = false; input.tabIndex = -1; editing = false; dirty = false; } else input.tabIndex = 0;
+    input.readOnly = viewLocked;
+    if (viewLocked) { input.disabled = false; input.tabIndex = -1; editing = false; dirty = false; } else input.tabIndex = 0;
     input.placeholder = t("urlPlaceholder"); input.setAttribute("aria-label", t("pageUrl"));
     input.setAttribute("aria-expanded", String(suggestionsOf().length > 0));
     // 사람이 고치는 중이 아니면 입력은 활성 탭의 주소를 따른다. 고치던 글은 탭이 바뀌어도 남는다(draft).

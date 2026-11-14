@@ -1,4 +1,15 @@
 import path from "node:path";
+import {
+  isRemoteBrowserFileChooserPrompt,
+  isRemoteBrowserPasswordPrompt,
+  isRemoteBrowserPermissionPrompt,
+  isRemoteBrowserSelectPopup,
+  type RemoteBrowserFileChooserPrompt,
+  type RemoteBrowserPasswordPrompt,
+  type RemoteBrowserPermissionPrompt,
+  type RemoteBrowserSelectPopup,
+} from "./browser-remote.js";
+export * from "./browser-remote.js";
 
 export const DESKTOP_COMPUTER_CAPTURE_PATH = "/api/v1/desktop/computer-capture";
 export interface DesktopComputerCaptureTarget {
@@ -147,7 +158,7 @@ export const DESKTOP_BROWSER_FRAME_MAX_BYTES = 4 * 1024 * 1024;
 export type DesktopBrowserAccessPath = "loopback" | "wsl";
 export type DesktopBrowserPlatform = "darwin" | "win32" | "linux";
 export type BrowserExecutionStatus = "connected" | "manager_disconnected" | "unmanaged";
-export type BrowserSurfaceModeKind = "native" | "viewer";
+export type BrowserSurfaceModeKind = "native" | "remote" | "viewer";
 
 /**
  * 콘솔의 플릿 브라우저가 실제로 어디서 실행되는지와 가용 상태. 원시 경로·토큰·소유자 UUID 없이 화면에 알린다.
@@ -402,6 +413,13 @@ export const DESKTOP_BROWSER_VIEWER_EVENT = "browser:viewer";
 export interface DesktopBrowserViewerSnapshot {
   readonly chrome: DesktopBrowserChrome | null;
   readonly executionHost: BrowserExecutionHost;
+  /** 원격 조작 capability 를 갖춘 Desktop 이면 true. 옛 콘솔에서는 생략되며 보기 전용으로 떨어진다. */
+  readonly remoteControl?: boolean;
+  readonly shortcuts?: readonly string[];
+  readonly selectPopup?: RemoteBrowserSelectPopup | null;
+  readonly permissionPrompts?: readonly RemoteBrowserPermissionPrompt[];
+  readonly passwordPrompt?: RemoteBrowserPasswordPrompt | null;
+  readonly fileChooser?: RemoteBrowserFileChooserPrompt | null;
 }
 
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
@@ -418,6 +436,9 @@ export interface DesktopBrowserRelay {
   readonly sizes?: readonly { readonly viewId: string; readonly width: number; readonly height: number; readonly scale: number }[];
   readonly results?: readonly { readonly id: number; readonly result?: unknown; readonly error?: string }[];
   readonly events?: readonly { readonly viewId: string; readonly method: string; readonly params: Record<string, unknown> }[];
+  readonly selectPopup?: RemoteBrowserSelectPopup | null;
+  readonly permissionPrompts?: readonly RemoteBrowserPermissionPrompt[];
+  readonly passwordPrompt?: RemoteBrowserPasswordPrompt | null;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -480,6 +501,12 @@ export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserC
 
 export function isDesktopBrowserViewerSnapshot(value: unknown): value is DesktopBrowserViewerSnapshot {
   if (!isRecord(value) || (value.chrome !== null && !isDesktopBrowserChrome(value.chrome))) return false;
+  if (value.remoteControl !== undefined && typeof value.remoteControl !== "boolean") return false;
+  if (value.shortcuts !== undefined && !(Array.isArray(value.shortcuts) && value.shortcuts.every((item) => typeof item === "string"))) return false;
+  if (value.selectPopup !== undefined && value.selectPopup !== null && !isRemoteBrowserSelectPopup(value.selectPopup)) return false;
+  if (value.permissionPrompts !== undefined && !(Array.isArray(value.permissionPrompts) && value.permissionPrompts.length <= 32 && value.permissionPrompts.every(isRemoteBrowserPermissionPrompt))) return false;
+  if (value.passwordPrompt !== undefined && value.passwordPrompt !== null && !isRemoteBrowserPasswordPrompt(value.passwordPrompt)) return false;
+  if (value.fileChooser !== undefined && value.fileChooser !== null && !isRemoteBrowserFileChooserPrompt(value.fileChooser)) return false;
   const host = value.executionHost;
   return isRecord(host) && typeof host.managed === "boolean" && typeof host.connected === "boolean"
     && (host.status === "connected" || host.status === "manager_disconnected" || host.status === "unmanaged")
@@ -503,6 +530,9 @@ export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRe
   if (value.sizes !== undefined && !(Array.isArray(value.sizes) && value.sizes.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isFiniteNumber(entry.width) && isFiniteNumber(entry.height) && isFiniteNumber(entry.scale)))) return false;
   if (value.results !== undefined && !(Array.isArray(value.results) && value.results.every((entry) => isRecord(entry) && isFiniteNumber(entry.id) && (entry.error === undefined || typeof entry.error === "string")))) return false;
   if (value.events !== undefined && !(Array.isArray(value.events) && value.events.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && typeof entry.method === "string" && isRecord(entry.params)))) return false;
+  if (value.selectPopup !== undefined && value.selectPopup !== null && !isRemoteBrowserSelectPopup(value.selectPopup)) return false;
+  if (value.permissionPrompts !== undefined && !(Array.isArray(value.permissionPrompts) && value.permissionPrompts.length <= 32 && value.permissionPrompts.every(isRemoteBrowserPermissionPrompt))) return false;
+  if (value.passwordPrompt !== undefined && value.passwordPrompt !== null && !isRemoteBrowserPasswordPrompt(value.passwordPrompt)) return false;
   return true;
 }
 

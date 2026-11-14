@@ -153,11 +153,15 @@ export function createDesktopScreenPermissionRouter(deps: DesktopScreenPermissio
 }
 
 /**
- * 이 요청의 창이 관리 Desktop 의 네이티브 표면인지. 루프백 Desktop 셸이고, 그 셸이 관리 창으로 증명된 뒤에만 `native`.
- * 원격 세션·웹·모바일·증명 없는 다른 Desktop 창은 `viewer`.
+ * 이 요청의 창이 어느 브라우저 표면인지.
+ * - `native`: 루프백 Desktop 셸이고, 그 셸이 관리 창으로 증명된 뒤.
+ * - `remote`: 루프백이 아닌 Desktop 셸이고, 호출부가 원격 조작 자격(유효한 full 원격 세션·Electron UA·console origin·`browser-remote-control`)을 넘긴 때.
+ * - `viewer`: 그 밖. 웹·모바일·자격 없는 원격·증명 없는 Desktop.
  */
-export function browserSurfaceMode(input: { readonly loopback: boolean; readonly desktopShell: boolean; readonly managingShellProven: boolean }): BrowserSurfaceModeKind {
-  return input.loopback && input.desktopShell && input.managingShellProven ? "native" : "viewer";
+export function browserSurfaceMode(input: { readonly loopback: boolean; readonly desktopShell: boolean; readonly managingShellProven: boolean; readonly remoteControl?: boolean }): BrowserSurfaceModeKind {
+  if (input.loopback && input.desktopShell && input.managingShellProven) return "native";
+  if (!input.loopback && input.desktopShell && input.remoteControl === true) return "remote";
+  return "viewer";
 }
 
 export const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";

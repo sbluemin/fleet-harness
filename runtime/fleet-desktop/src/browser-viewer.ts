@@ -1,6 +1,4 @@
 import {
-  DESKTOP_BROWSER_FRAME_MAX_BYTES,
-  DESKTOP_BROWSER_FRAME_SEQ_HEADER,
   DESKTOP_BROWSER_VIEWER_EVENT,
   DESKTOP_BROWSER_VIEWER_EVENTS_PATH,
   DESKTOP_BROWSER_VIEWER_PATH,
@@ -8,26 +6,26 @@ import {
   type DesktopBrowserChrome,
   type DesktopBrowserSurface,
   type DesktopBrowserViewerSnapshot,
+  type RemoteBrowserUploadFile,
 } from "@fleet-console/protocol/desktop";
 
+import { createBrowserActions } from "./browser-actions.js";
 import type { SurfaceControl } from "./browser-surface.js";
+import { createRemoteBrowserViewerStream } from "./browser-viewer-stream.js";
 import type { ChromeAction, ChromeRole, ChromeViewOnly } from "./chrome/contract.js";
 import { translator } from "./chrome/messages.js";
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import { createDesktopEventStream } from "./desktop-event-stream.js";
 
 /**
- * 보기 전용 플릿 브라우저 셸 — 창이 이 Desktop 이 관리하지 않는 Console(원격으로 건너온 곳, 비관리 Console)을 보는 동안의 브라우저 화면.
+ * 원격 플릿 브라우저 셸 — 창이 이 Desktop 이 관리하지 않는 Console(원격으로 건너온 곳, 비관리 Console)을 보는 동안의 브라우저 화면.
  *
- * 화면은 이 Desktop 의 것이다: 관리 Console 에서 쓰는 것과 같은 표면(칸·독립 창, 주소줄·탭 표시줄·스페이스)을 세우되 페이지 뷰가 없고,
- * 스테이지가 실행 측이 찍어 올린 최신 프레임 한 장을 그린다. Console 은 투영과 프레임을 중계할 뿐 화면을 그리지 않는다.
- * 여기서 보내는 요청은 읽기와 「그만 본다」 둘뿐이다 — 어느 탭·스페이스를 보는지는 이 셸만의 보기 상태라 실행 측의 표시 탭을 바꾸지 않는다.
+ * 화면은 이 Desktop 의 것이다. 페이지 뷰는 없고 스테이지가 실행 측 프레임을 그린다.
+ * 스냅샷이 `remoteControl` 이고 실행 호스트가 붙어 있으면 원격 조작이다. 주소줄·탭·스페이스·대화상자·뷰포트·캡처·제어권은
+ * 그 Console 의 REST 로 가고(창 쿠키, 락 토큰 없음), 스페이스를 옮기면 실행 측 activeTabId 도 맞춘다.
+ * 미관리·연결 끊김·`remoteControl` 이 없는 옛 Console 은 보기 전용으로 남는다. 그때의 탭·스페이스는 이 셸의 보기 상태이고 쓰는 요청은 보내지 않는다.
  */
 
-const VIEWER_FRAME_PATH = "/api/v1/browser/viewer/frame";
-const VIEWER_UNWATCH_PATH = "/api/v1/browser/viewer/unwatch";
-const FRAME_WAIT_MS = 12_000;
-const FRAME_RETRY_MS = 1_000;
 const MAX_VIEWER_SSE_BUFFER_CHARS = 16 * 1024 * 1024;
 const VIEWER_BROWSER_ID = "global";
 
@@ -37,7 +35,7 @@ export interface BrowserViewerDisplay {
   conceal(): void;
   /** 지금 서 있는 표면이 보기 전용 셸인가. */
   viewing(): boolean;
-  frame(tabId: string, jpeg: Buffer): void;
+  frame(tabId: string, jpeg: Buffer, meta?: { readonly cssWidth: number; readonly cssHeight: number } | null): void;
 }
 
 export interface RemoteBrowserViewerDeps {
@@ -46,6 +44,10 @@ export interface RemoteBrowserViewerDeps {
   readonly lang: "ko" | "en";
   /** 표면의 모양만 바꾸는 동작(표시줄 방향·고정·펼침·스페이스 화면 열기)은 관리 표면과 같은 처리기가 맡는다. Console 에 요청을 보내지 않는 동작만 넘긴다. */
   readonly localAct: (control: SurfaceControl, role: ChromeRole, action: ChromeAction) => void;
+  /** 「브라우저에서 열기」는 이 창을 든 기계의 브라우저로 연다. 실행 측 기기의 브라우저가 아니다. */
+  readonly openExternal?: (url: string) => void;
+  /** 원격 파일 선택기 — 지금 보는 기기에서 고른 파일 바이트를 돌려준다. */
+  readonly pickFiles?: (options: { readonly multiple: boolean }) => Promise<{ readonly cancelled: boolean; readonly files?: readonly RemoteBrowserUploadFile[]; readonly error?: string }>;
   readonly log?: (message: string) => void;
   readonly setTimeout?: (callback: () => void, delay: number) => unknown;
   readonly clearTimeout?: (timer: unknown) => void;
@@ -67,9 +69,15 @@ export interface RemoteBrowserViewer {
 export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): RemoteBrowserViewer {
   const t = translator(deps.lang);
   const log = deps.log ?? (() => {});
-  const schedule = deps.setTimeout ?? ((callback: () => void, delay: number) => setTimeout(callback, delay));
-  const cancel = deps.clearTimeout ?? ((timer: unknown) => { clearTimeout(timer as ReturnType<typeof setTimeout>); });
   let origin: string | null = null;
+  const remoteActions = createBrowserActions({
+    fetch: deps.fetch,
+    origin: () => origin,
+    cookieSession: true,
+    lang: deps.lang,
+    openExternal: (url) => deps.openExternal?.(url),
+    log,
+  });
   let open = false;
   /** 칸으로 열지 창으로 열지 — 앱이 켜져 있는 동안 기억한다. */
   let mode: "pane" | "window" = "pane";
@@ -80,7 +88,18 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
   let viewed: string | null = null;
   /** 마지막으로 본 실행 측 표시 탭 — 「바뀌었다」를 가린다. 아직 투영을 받지 못했으면 undefined. */
   let remoteActive: string | null | undefined;
-  let watch: { readonly tabId: string; readonly origin: string; readonly controller: AbortController } | null = null;
+  /** 원격 입력 배치는 앞선 서버 처리가 끝난 뒤에 다음 배치를 보내 click/drag 순서를 지킨다. */
+  let remoteInputQueue: Promise<void> = Promise.resolve();
+  const frameStream = createRemoteBrowserViewerStream({
+    fetch: deps.fetch,
+    onFrame: (tabId, frame) => {
+      if (!open) return;
+      deps.display.frame(tabId, frame.jpeg, { cssWidth: frame.cssWidth, cssHeight: frame.cssHeight });
+    },
+    log,
+    setTimeout: deps.setTimeout,
+    clearTimeout: deps.clearTimeout,
+  });
 
   const stream = createDesktopEventStream<DesktopBrowserViewerSnapshot>({
     snapshotPath: DESKTOP_BROWSER_VIEWER_PATH,
@@ -93,6 +112,9 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     fetch: deps.fetch,
   });
 
+  /** 실행 호스트가 붙어 있고 스냅샷이 원격 조작을 말할 때만. 옛 Console 은 필드가 없어 보기 전용이다. */
+  const controllable = (): boolean => open && snapshot?.remoteControl === true && snapshot.executionHost.status === "connected";
+
   const place = (): ChromeViewOnly => {
     const host = snapshot?.executionHost ?? null;
     if (!host) return { place: "", status: "connected" };
@@ -100,13 +122,25 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
       : host.status === "manager_disconnected" ? (host.hostLabel ? t("viewOnly.disconnectedHost", { host: host.hostLabel }) : t("viewOnly.disconnectedPlace"))
         : host.accessPath === "wsl" ? (host.hostLabel ? `${t("viewOnly.wsl")} · ${host.hostLabel}` : t("viewOnly.wsl"))
           : host.hostLabel ? t("viewOnly.host", { host: host.hostLabel }) : t("viewOnly.desktop");
-    return { place: text, status: host.status };
+    const base: ChromeViewOnly = { place: text, status: host.status };
+    if (!controllable()) return base;
+    return {
+      ...base,
+      control: true,
+      ...(snapshot?.shortcuts ? { shortcuts: snapshot.shortcuts } : {}),
+      selectPopup: snapshot?.selectPopup ?? null,
+      permissionPrompts: snapshot?.permissionPrompts ?? [],
+      passwordPrompt: snapshot?.passwordPrompt ?? null,
+      fileChooser: snapshot?.fileChooser ?? null,
+    };
   };
 
   /** 문서에 줄 투영 — 실행 측 표시 탭 자리에 이 셸이 보는 탭을 넣는다. 실행 측 표시 탭이 바뀌면 따라가고, 보던 탭이 닫히면 놓는다. */
   const derive = (): DesktopBrowserChrome | null => {
     const remote = snapshot?.chrome ?? null;
     if (!remote) return null;
+    // 원격 조작은 실행 측 표시 탭을 그대로 따른다. 스페이스를 옮기면 REST 가 activeTabId 를 맞춘다.
+    if (controllable()) { remoteActive = remote.activeTabId; viewed = remote.activeTabId; return remote; }
     if (remote.activeTabId !== remoteActive) {
       remoteActive = remote.activeTabId;
       if (remote.activeTabId !== null) viewed = remote.activeTabId;
@@ -115,51 +149,11 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     return { ...remote, activeTabId: viewed };
   };
 
-  const stopWatch = (): void => {
-    const current = watch;
-    if (!current) return;
-    watch = null;
-    current.controller.abort();
-    // 보던 탭을 그만 본다고 알린다 — 실행 측이 그 뷰의 캡처·업로드를 곧바로 멈춘다.
-    void deps.fetch(`${current.origin}${VIEWER_UNWATCH_PATH}?tabId=${encodeURIComponent(current.tabId)}`, { method: "POST", headers: { Origin: current.origin } }).catch(() => undefined);
-  };
-
-  const startWatch = (tabId: string, at: string): void => {
-    const controller = new AbortController();
-    const mine = { tabId, origin: at, controller };
-    watch = mine;
-    const alive = (): boolean => watch === mine && !controller.signal.aborted;
-    const pause = (): Promise<void> => new Promise((resolve) => {
-      const timer = schedule(resolve, FRAME_RETRY_MS);
-      controller.signal.addEventListener("abort", () => { cancel(timer); resolve(); }, { once: true });
-    });
-    void (async () => {
-      let after = 0;
-      while (alive()) {
-        try {
-          const response = await deps.fetch(`${at}${VIEWER_FRAME_PATH}?tabId=${encodeURIComponent(tabId)}&afterSeq=${after}&waitMs=${FRAME_WAIT_MS}`, { headers: { Origin: at }, signal: controller.signal, cache: "no-store" });
-          if (!alive()) return;
-          if (response.status === 204) continue;
-          if (!response.ok) { await response.arrayBuffer().catch(() => undefined); await pause(); continue; }
-          const seq = Number(response.headers.get(DESKTOP_BROWSER_FRAME_SEQ_HEADER) ?? "0");
-          const bytes = Buffer.from(await response.arrayBuffer());
-          if (!alive()) return;
-          if (Number.isFinite(seq) && seq > after) after = seq;
-          if (bytes.length >= 2 && bytes.length <= DESKTOP_BROWSER_FRAME_MAX_BYTES && bytes[0] === 0xff && bytes[1] === 0xd8) deps.display.frame(tabId, bytes);
-        } catch {
-          if (!alive()) return;
-          await pause();
-        }
-      }
-    })();
-  };
-
   /** 보는 탭이 있고 실행 측이 붙어 있는 동안만 프레임을 기다린다. */
   const syncWatch = (): void => {
     const want = open && origin !== null && snapshot?.executionHost.status === "connected" ? viewed : null;
-    if (watch && watch.tabId === want && watch.origin === origin) return;
-    stopWatch();
-    if (want !== null && origin !== null) startWatch(want, origin);
+    if (want !== null && origin !== null) frameStream.watch(want, origin);
+    else frameStream.unwatch();
   };
 
   function render(): void {
@@ -174,7 +168,7 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     if (!open) return;
     open = false;
     stream.stop();
-    stopWatch();
+    frameStream.unwatch();
     snapshot = null; viewed = null; remoteActive = undefined;
     if (deps.display.viewing()) {
       if (animate) deps.display.apply(null, null, null);
@@ -208,6 +202,109 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     active: () => open,
     act(control, role, action) {
       if (!open) return;
+      if (controllable()) {
+        switch (action.action) {
+          case "close-surface": close(true); return;
+          case "toggle-mode": mode = mode === "pane" ? "window" : "pane"; render(); return;
+          // 이 창을 든 기계의 브라우저. 실행 기기에서 열지 않는다 — 어느 쪽인지는 지휘관 결정으로 남긴다.
+          case "open-external": {
+            const chrome = control.chrome();
+            const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId);
+            if (tab && /^https?:\/\//iu.test(tab.url)) deps.openExternal?.(tab.url);
+            return;
+          }
+          case "import-open": case "import-run":
+            // 원격에서는 로컬 Chrome 가져오기를 제공하지 않는다.
+            return;
+          case "file-chooser-open": {
+            if (!origin || !deps.pickFiles) return;
+            const at = origin;
+            const browserId = control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
+            void (async () => {
+              control.patch({ busy: true });
+              try {
+                const picked = await deps.pickFiles!({ multiple: action.multiple });
+                if (picked.error) {
+                  control.notify(t(picked.error), "error");
+                  await deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/file-chooser`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", Origin: at },
+                    body: JSON.stringify({ chooserId: action.chooserId, tabId: action.tabId, action: "cancel" }),
+                  }).catch(() => undefined);
+                  return;
+                }
+                const payload = picked.cancelled || !picked.files || picked.files.length === 0
+                  ? { chooserId: action.chooserId, tabId: action.tabId, action: "cancel" }
+                  : { chooserId: action.chooserId, tabId: action.tabId, action: "choose", files: picked.files };
+                const response = await deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/file-chooser`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Origin: at },
+                  body: JSON.stringify(payload),
+                });
+                if (!response.ok) control.notify(t("requestFailed"), "error");
+              } catch {
+                control.notify(t("requestFailed"), "error");
+              } finally {
+                control.patch({ busy: false });
+              }
+            })();
+            return;
+          }
+          case "file-chooser-cancel": {
+            if (!origin) return;
+            const browserId = control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
+            void deps.fetch(`${origin}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/file-chooser`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", Origin: origin },
+              body: JSON.stringify({ chooserId: action.chooserId, tabId: action.tabId, action: "cancel" }),
+            }).catch(() => undefined);
+            return;
+          }
+          case "dialog-close": {
+            if (control.ui().overlay) { deps.localAct(control, role, action); return; }
+            const view = place();
+            if (view.passwordPrompt) { remoteActions(control, role, { action: "password-dismiss", promptId: view.passwordPrompt.id, tabId: view.passwordPrompt.tabId }); return; }
+            if (view.fileChooser) {
+              const browserId = control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
+              if (origin) void deps.fetch(`${origin}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/file-chooser`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify({ chooserId: view.fileChooser.id, tabId: view.fileChooser.tabId, action: "cancel" }) }).catch(() => undefined);
+              return;
+            }
+            if (view.selectPopup) { remoteActions(control, role, { action: "select-popup", popupId: view.selectPopup.id, tabId: view.selectPopup.tabId, choice: "cancel" }); return; }
+            const permission = view.permissionPrompts?.[0];
+            if (permission) { remoteActions(control, role, { action: "permission-answer", promptId: permission.id, tabId: permission.tabId, allow: false }); return; }
+            deps.localAct(control, role, action);
+            return;
+          }
+          case "remote-input": {
+            if (!origin || control.control()?.holder === "agent") return;
+            const targetOrigin = origin;
+            const browserId = control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
+            const payload = JSON.stringify({ tabId: action.tabId, seq: action.seq, events: action.events });
+            remoteInputQueue = remoteInputQueue
+              .then(async () => {
+                if (!open || origin !== targetOrigin || control.control()?.holder === "agent") return;
+                await deps.fetch(`${targetOrigin}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/input`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Origin: targetOrigin },
+                  body: payload,
+                });
+              })
+              .catch(() => undefined);
+            return;
+          }
+          case "remote-select":
+            remoteActions(control, role, { action: "select-popup", popupId: action.popupId, tabId: action.tabId, choice: action.choice, ...(action.indices ? { indices: action.indices } : {}) });
+            return;
+          case "remote-permission":
+            remoteActions(control, role, { action: "permission-answer", promptId: action.promptId, tabId: action.tabId, allow: action.allow });
+            return;
+          case "pin": case "expand": case "tabs-menu": case "orientation": case "auto-expand":
+          case "overlay": case "draft": case "guard-size": case "ready":
+            deps.localAct(control, role, action); return;
+          default:
+            remoteActions(control, role, action); return;
+        }
+      }
       switch (action.action) {
         case "select-tab": show(action.id); return;
         // 표면이 스페이스를 맞추려고 내는 요청 — 관리 표면에서는 Console 로 가지만 여기서는 이 셸의 보기 상태만 바꾼다.
@@ -228,6 +325,6 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
       }
     },
     closed() { close(); },
-    stop() { close(); origin = null; },
+    stop() { close(); frameStream.stop(); origin = null; },
   };
 }

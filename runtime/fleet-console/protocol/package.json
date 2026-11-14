@@ -24,6 +24,11 @@
       "import": "./desktop/browser-passwords.ts",
       "default": "./desktop/browser-passwords.ts"
     },
+    "./desktop/browser-remote": {
+      "types": "./desktop/browser-remote.ts",
+      "import": "./desktop/browser-remote.ts",
+      "default": "./desktop/browser-remote.ts"
+    },
     "./desktop/brand": {
       "types": "./desktop/brand.ts",
       "import": "./desktop/brand.ts",

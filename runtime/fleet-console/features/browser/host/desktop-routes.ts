@@ -1,5 +1,5 @@
 import type * as http from "node:http";
-import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, isDesktopBrowserRelay } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, isDesktopBrowserRelay } from "@fleet-console/protocol/desktop";
 import type { DesktopEngine } from "./desktop-engine.js";
 import type { BrowserService } from "./service.js";
 
@@ -62,9 +62,13 @@ export function createBrowserDesktopRouter(deps: BrowserDesktopRouteDeps) {
     const width = headerInt(req, DESKTOP_BROWSER_FRAME_WIDTH_HEADER);
     const height = headerInt(req, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER);
     if (typeof viewId !== "string" || !viewId || width === null || height === null) { writeJson(res, 400, { error: "invalid_frame" }); return true; }
+    // CSS 크기는 선택 — 없으면 픽셀 크기와 같다(구형 셸 호환). 있으면 1~10000 검증한다.
+    const cssWidth = optionalHeaderInt(req, DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER);
+    const cssHeight = optionalHeaderInt(req, DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER);
+    if (cssWidth === null || cssHeight === null) { writeJson(res, 400, { error: "invalid_frame" }); return true; }
     const bytes = await readRawBody(req, DESKTOP_BROWSER_FRAME_MAX_BYTES);
     if (!bytes || bytes.length < 2 || bytes[0] !== 0xff || bytes[1] !== 0xd8) { writeJson(res, 400, { error: "invalid_frame" }); return true; }
-    if (!desktopEngine.ingestFrame(viewId, bytes, width, height)) { writeJson(res, 404, { error: "tab_not_found" }); return true; }
+    if (!desktopEngine.ingestFrame(viewId, bytes, width, height, cssWidth ?? undefined, cssHeight ?? undefined)) { writeJson(res, 404, { error: "tab_not_found" }); return true; }
     writeNoContent(res);
     return true;
   }
@@ -72,6 +76,14 @@ export function createBrowserDesktopRouter(deps: BrowserDesktopRouteDeps) {
 
 function headerInt(req: http.IncomingMessage, name: string): number | null {
   const value = req.headers[name];
+  if (typeof value !== "string" || !/^[0-9]{1,5}$/u.test(value)) return null;
+  const parsed = Number(value);
+  return parsed >= 1 && parsed <= 10000 ? parsed : null;
+}
+
+function optionalHeaderInt(req: http.IncomingMessage, name: string): number | undefined | null {
+  const value = req.headers[name];
+  if (value === undefined) return undefined;
   if (typeof value !== "string" || !/^[0-9]{1,5}$/u.test(value)) return null;
   const parsed = Number(value);
   return parsed >= 1 && parsed <= 10000 ? parsed : null;

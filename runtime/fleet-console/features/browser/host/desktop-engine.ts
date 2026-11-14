@@ -46,6 +46,9 @@ export interface BrowserViewerFrame {
   readonly bytes: Buffer;
   readonly width: number;
   readonly height: number;
+  /** CSS px 크기 — 원격 스트림·입력 좌표가 공유한다. 없으면 픽셀 크기와 같다. */
+  readonly cssWidth: number;
+  readonly cssHeight: number;
   readonly at: number;
 }
 
@@ -88,6 +91,7 @@ export class DesktopEngine implements CdpClient {
   private readonly identities = new Map<string, DesktopBrowserHello>();
   private readonly frames = new Map<string, BrowserViewerFrame>();
   private readonly frameWaiters = new Map<string, Set<FrameWaiter>>();
+  private readonly streamListeners = new Map<string, Set<{ readonly onFrame: (frame: BrowserViewerFrame) => void; readonly onClosed?: () => void }>>();
   private readonly watchTickets = new Map<string, Set<WatchTicket>>();
   private readonly watchLeases = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly watched = new Set<string>();
@@ -370,6 +374,7 @@ export class DesktopEngine implements CdpClient {
     if (this.surface) this.closeSurface(this.surface.id);
     if (this.graceTimer) { clearTimeout(this.graceTimer); this.graceTimer = null; }
     for (const viewId of [...this.frameWaiters.keys()]) this.failFrameWaiters(viewId, new ViewerFrameDisconnectedError());
+    for (const viewId of [...this.streamListeners.keys()]) this.closeStream(viewId);
     this.frames.clear();
     for (const viewId of [...this.watchTickets.keys()]) this.clearWatch(viewId);
     for (const view of [...this.views.keys()]) this.dropView(view);
@@ -423,11 +428,24 @@ export class DesktopEngine implements CdpClient {
     this.syncWatched(viewId);
   }
 
-  /** 최신 한 장으로 덮고, 더 새 장을 기다리던 폴링을 깨운다. 없는 뷰면 null. */
-  ingestFrame(viewId: string, bytes: Buffer, width: number, height: number): BrowserViewerFrame | null {
+  /** 최신 한 장으로 덮고, 더 새 장을 기다리던 폴링·스트림 구독자를 깨운다. 없는 뷰면 null. */
+  ingestFrame(viewId: string, bytes: Buffer, width: number, height: number, cssWidth?: number, cssHeight?: number): BrowserViewerFrame | null {
     const view = this.views.get(viewId);
     if (!view) return null;
-    const frame: BrowserViewerFrame = { seq: ++view.frameSeq, bytes, width, height, at: Date.now() };
+    const safeInt = (value: number | undefined, fallback: number): number => {
+      if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+      const rounded = Math.round(value);
+      return rounded >= 1 && rounded <= 10000 ? rounded : fallback;
+    };
+    const frame: BrowserViewerFrame = {
+      seq: ++view.frameSeq,
+      bytes,
+      width,
+      height,
+      cssWidth: safeInt(cssWidth, width),
+      cssHeight: safeInt(cssHeight, height),
+      at: Date.now(),
+    };
     this.frames.set(viewId, frame);
     const waiters = this.frameWaiters.get(viewId);
     if (waiters) {
@@ -438,6 +456,12 @@ export class DesktopEngine implements CdpClient {
         waiter.resolve(frame);
       }
       if (waiters.size === 0) this.frameWaiters.delete(viewId);
+    }
+    const streams = this.streamListeners.get(viewId);
+    if (streams) {
+      for (const entry of [...streams]) {
+        try { entry.onFrame(frame); } catch { /* 구독자 오류는 엔진에 번지지 않는다 */ }
+      }
     }
     return frame;
   }
@@ -464,6 +488,31 @@ export class DesktopEngine implements CdpClient {
       const onAbort = () => { this.forgetWaiter(viewId, waiter); reject(new ViewerFrameTimeoutError()); };
       signal?.addEventListener("abort", onAbort, { once: true });
     });
+  }
+
+  /**
+   * 저지연 바이너리 스트림 구독 — 새 프레임마다 `onFrame` 을 끊김 없이 부른다.
+   * watch ticket 유지는 호출자가 `acquireWatch` 로 맡는다. 뷰가 닫히면 `onClosed` 를 한 번 부른다.
+   */
+  subscribeStream(viewId: string, onFrame: (frame: BrowserViewerFrame) => void, onClosed?: () => void): () => void {
+    let set = this.streamListeners.get(viewId);
+    if (!set) { set = new Set(); this.streamListeners.set(viewId, set); }
+    const entry = { onFrame, onClosed };
+    set.add(entry);
+    return () => {
+      const current = this.streamListeners.get(viewId);
+      current?.delete(entry);
+      if (current && current.size === 0) this.streamListeners.delete(viewId);
+    };
+  }
+
+  private closeStream(viewId: string): void {
+    const set = this.streamListeners.get(viewId);
+    if (!set) return;
+    this.streamListeners.delete(viewId);
+    for (const entry of set) {
+      try { entry.onClosed?.(); } catch { /* 구독자 오류는 엔진에 번지지 않는다 */ }
+    }
   }
 
   // ---------- 내부 ----------
@@ -539,6 +588,7 @@ export class DesktopEngine implements CdpClient {
   private dropView(id: string): void {
     if (!this.views.delete(id)) return;
     this.failFrameWaiters(id, new ViewerFrameClosedError());
+    this.closeStream(id);
     this.frames.delete(id);
     this.clearWatch(id);
     // 부착을 기다리던 탭 생성도 여기서 끝난다 — 답 없이 남겨 두면 그 HTTP 요청이 영영 매달린다.

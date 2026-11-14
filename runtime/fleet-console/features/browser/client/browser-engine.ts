@@ -35,10 +35,11 @@ export function useBrowserPluginAttach(): ((files: readonly File[]) => void) | n
 
 /**
  * 못 여는 까닭. `desktop_required` 는 관리 Desktop 이 없거나 그 연결이 끊긴 것이다.
- * 어느 화면인지는 `surfaceMode` 가 말한다 — `viewer` 인 창에서는 그 창을 든 Desktop 셸만 보기 전용 화면을 그린다(웹·모바일에는 없다).
+ * 어느 화면인지는 `surfaceMode` 가 말한다. `native` 는 관리 Desktop, `remote` 는 원격 조작 자격이 있는 Desktop,
+ * `viewer` 는 보기 전용이다. 웹·모바일에는 브라우저 뷰가 없다.
  */
 export type BrowserUnavailableReason = "desktop_required";
-export type BrowserSurfaceMode = "native" | "viewer";
+export type BrowserSurfaceMode = "native" | "remote" | "viewer";
 export interface BrowserExecutionHost {
   readonly managed: boolean;
   readonly connected: boolean;
@@ -95,7 +96,7 @@ export function readBrowserEngineBody(body: { readonly available?: unknown; read
       accessPath: reported.accessPath === "loopback" || reported.accessPath === "wsl" ? reported.accessPath : null,
     }
     : body.available ? { ...UNMANAGED_HOST, managed: true, connected: true, status: "connected" } : UNMANAGED_HOST;
-  const surfaceMode: BrowserSurfaceMode = body.surfaceMode === "native" || body.surfaceMode === "viewer"
+  const surfaceMode: BrowserSurfaceMode = body.surfaceMode === "native" || body.surfaceMode === "remote" || body.surfaceMode === "viewer"
     ? body.surfaceMode
     : isDesktopShellDocument() ? "native" : "viewer";
   return body.available ? { available: true, surfaceMode, executionHost } : { available: false, reason: "desktop_required", surfaceMode, executionHost };

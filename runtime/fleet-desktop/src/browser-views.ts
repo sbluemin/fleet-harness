@@ -3,6 +3,8 @@ import type { Rectangle, Session, WebContents, WebContentsView } from "electron"
 import {
   DESKTOP_BROWSER_EVENT,
   DESKTOP_BROWSER_EVENTS_PATH,
+  DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER,
+  DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER,
   DESKTOP_BROWSER_FRAME_HEIGHT_HEADER,
   DESKTOP_BROWSER_FRAME_MAX_BYTES,
   DESKTOP_BROWSER_FRAME_PATH,
@@ -115,6 +117,19 @@ export interface DesktopBrowserViewsDeps {
    */
   readonly passwords?: BrowserPasswordPageHooks;
   /**
+   * 뷰가 생긴 직후. 권한 요청을 탭 id 에 묶는 훅을 main 이 단다. 캡처 경로와 무관하고, 없으면 아무 일도 하지 않는다.
+   */
+  readonly onView?: (view: WebContentsView, viewId: string) => void;
+  /** 원격 시청(watch) 시작·종료를 main 에 알린다 — 시청 중일 때만 권한 요청을 원격으로 돌린다. */
+  readonly onWatch?: (viewId: string, watching: boolean) => void;
+  /**
+   * 다음 relay 에 실을 select·권한·비밀번호 프롬프트. 비밀번호 평문은 넣지 않는다.
+   * 값이 바뀐 뒤에만 나간다. 없는 필드로 이벤트·부착을 지우지 않는다.
+   */
+  readonly relayExtras?: () => Pick<DesktopBrowserRelay, "selectPopup" | "permissionPrompts" | "passwordPrompt">;
+  /** 프롬프트가 바뀌면 main 이 빈 배치도 흘리게 flush 를 받는다. */
+  readonly bindRelay?: (flush: () => void) => void;
+  /**
    * 뷰 표면 PNG 에서 `crop`(원본 픽셀)을 잘라 `place` 크기로 맞추고, `size` 캔버스의 `place` 자리에 놓아 요청 형식의
    * base64 로 돌려준다. 캔버스의 나머지(표면 밖)는 비어 있다. 있으면 clip 이 붙은 `Page.captureScreenshot` 을
    * Chromium 의 캡처 에뮬레이션 없이 수행한다 — 없으면 명령을 그대로 보낸다.
@@ -135,8 +150,14 @@ export interface CapturePlan {
 
 /** CDP 가 jpeg quality 를 받지 않았을 때 Chromium 이 쓰는 값. */
 const DEFAULT_JPEG_QUALITY = 80;
-/** 시청 중 프레임 캡처의 최소 간격. 그 사이에 쌓인 변화는 한 장으로 합친다. */
-const VIEWER_FRAME_INTERVAL_MS = 250;
+/**
+ * 시청 중 프레임 캡처 간격 — 활성 원격 조작 중 반응형 고빈도 캡처용.
+ * 기존 250ms(4fps) 상한을 대체한다. 그 사이에 쌓인 변화는 한 장으로 합친다.
+ */
+const VIEWER_FRAME_ACTIVE_INTERVAL_MS = 33;
+const VIEWER_FRAME_IDLE_INTERVAL_MS = 50;
+/** 기존 이름 호환용 — 유휴 간격과 같다. */
+const VIEWER_FRAME_INTERVAL_MS = VIEWER_FRAME_IDLE_INTERVAL_MS;
 
 export interface ViewerFrame {
   readonly jpeg: Buffer;
@@ -434,7 +455,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   let captureChain: Promise<void> = Promise.resolve();
   let capturesWaiting = 0;
   const captureTasks = new Set<{ expire: () => void }>();
-  const viewerPollMs = Math.max(VIEWER_FRAME_INTERVAL_MS, deps.viewerPollMs ?? VIEWER_FRAME_INTERVAL_MS);
+  const viewerPollMs = Math.max(VIEWER_FRAME_IDLE_INTERVAL_MS, deps.viewerPollMs ?? VIEWER_FRAME_IDLE_INTERVAL_MS);
   const now = deps.now ?? (() => Date.now());
   const schedule = deps.schedule ?? ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
   const cancel = deps.cancel ?? ((handle: unknown) => { clearTimeout(handle as ReturnType<typeof setTimeout>); });
@@ -485,14 +506,25 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     cancel(watch[key]);
     watch[key] = null;
   };
+  const setFileChooserIntercept = (id: string, enabled: boolean): void => {
+    const entry = live.get(id);
+    if (!entry || !entry.attached || entry.view.webContents.isDestroyed()) return;
+    if (typeof entry.view.webContents.debugger?.sendCommand !== "function") return;
+    void entry.view.webContents.debugger.sendCommand("Page.setInterceptFileChooserDialog", { enabled }).catch(() => undefined);
+  };
   const stopWatch = (id: string): void => {
     const watch = watches.get(id);
     if (!watch) return;
+    const wasWatching = watch.watching;
     watch.watching = false;
     watch.dirty = false;
     watch.immediate = false;
     clearHandle(watch, "timer");
     clearHandle(watch, "poll");
+    if (wasWatching) {
+      setFileChooserIntercept(id, false);
+      deps.onWatch?.(id, false);
+    }
   };
   function armPoll(id: string): void {
     const watch = watches.get(id);
@@ -512,7 +544,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (!watch || !watch.watching || watch.inflight || watch.timer !== null) return;
     if (!watch.dirty && !watch.immediate) return;
     const elapsed = now() - watch.lastStarted;
-    const wait = watch.immediate || watch.lastStarted === 0 ? 0 : Math.max(0, VIEWER_FRAME_INTERVAL_MS - elapsed);
+    // 입력·항해 직후(immediate)는 대기 없이 쏘고, 유휴 폴링은 활성 최소 간격으로 묶는다.
+    const wait = watch.immediate || watch.lastStarted === 0 ? 0 : Math.max(0, VIEWER_FRAME_ACTIVE_INTERVAL_MS - elapsed);
     watch.immediate = false;
     watch.timer = schedule(() => {
       const current = watches.get(id);
@@ -523,7 +556,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   function markDirty(id: string): void {
     const watch = watches.get(id);
     if (!watch?.watching) return;
+    // CDP 입력·네비게이션·스크롤 직후 즉시 트리거 — inflight 1건 제한과 dirty 합치기로 묶는다.
     watch.dirty = true;
+    watch.immediate = true;
     kick(id);
   }
   async function captureFrame(id: string): Promise<void> {
@@ -540,7 +575,11 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     try {
       const frame = await capture(entry.view);
       if (session !== token || !watch.watching || !target || !frame || frame.jpeg.length === 0 || frame.jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return;
+      // 동일 JPEG 중복 전송 억제 — 바뀐 장만 올린다.
       if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return;
+      // CSS 크기는 이 뷰의 DIP 자리 — 픽셀 크기와 함께 스트림·long-poll이 공유한다.
+      const cssWidth = Math.max(1, Math.round(entry.lastBounds?.width ?? frame.width));
+      const cssHeight = Math.max(1, Math.round(entry.lastBounds?.height ?? frame.height));
       const response = await fetchFor(`${target}${DESKTOP_BROWSER_FRAME_PATH}`, {
         method: "POST",
         headers: {
@@ -548,6 +587,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
           [DESKTOP_BROWSER_VIEW_HEADER]: id,
           [DESKTOP_BROWSER_FRAME_WIDTH_HEADER]: String(frame.width),
           [DESKTOP_BROWSER_FRAME_HEIGHT_HEADER]: String(frame.height),
+          [DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER]: String(cssWidth),
+          [DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER]: String(cssHeight),
           "Content-Type": "image/jpeg",
           Origin: target,
         },
@@ -576,12 +617,23 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       watch.dirty = true;
       watch.sent = false;
       watch.lastJpeg = null;
+      setFileChooserIntercept(id, true);
+      deps.onWatch?.(id, true);
       kick(id);
       armPoll(id);
     }
   }
 
   function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[] }; }
+  let relayExtrasJson = "";
+  const changedRelayExtras = (): Pick<DesktopBrowserRelay, "selectPopup" | "permissionPrompts" | "passwordPrompt"> | null => {
+    if (!deps.relayExtras) return null;
+    const extras = deps.relayExtras();
+    const json = JSON.stringify(extras);
+    if (json === relayExtrasJson) return null;
+    relayExtrasJson = json;
+    return extras;
+  };
 
   const scheduleFlush = (): void => {
     if (flushTimer !== null) return;
@@ -592,7 +644,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const target = origin;
     const token = session;
     if (!target) { outbox = emptyOutbox(); return; }
-    if (!outbox.surface && outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0) return;
+    const extras = changedRelayExtras();
+    if (!outbox.surface && outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0 && extras === null) return;
     const batch = outbox;
     outbox = emptyOutbox();
     const body: DesktopBrowserRelay = {
@@ -602,6 +655,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       ...(batch.sizes.length ? { sizes: batch.sizes } : {}),
       ...(batch.results.length ? { results: batch.results } : {}),
       ...(batch.events.length ? { events: batch.events } : {}),
+      ...(extras ?? {}),
     };
     // 순서가 곧 의미다(이벤트·응답) — 한 번에 하나씩, 앞 것이 닿은 뒤에 보낸다. 닿지 않으면 같은 자리에서 잠시 뒤 다시
     // 보낸다: 뒤에 줄 선 배치는 이 배치가 닿을 때까지 기다린다. 부착 통지나 명령 응답 하나가 사라지거나 순서가 뒤집히면
@@ -730,6 +784,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const shell = deps.shell();
     if (!shell || shell.isDestroyed()) return;
     const view = deps.createView(spec.partition, spec.profile ?? null);
+    deps.onView?.(view, spec.id);
     // 출처 표식보다 먼저 단다. origin이 없어 표식을 건너뛰어도 형제 쿠키는 나가지 않는다.
     installRequestGuard(view.webContents.session);
     // 에이전트가 정한 크기(setDeviceMetricsOverride)는 Chromium 이 페이지 위젯(RWHV) 자체를 그 크기로 키워 만든다 —
@@ -815,6 +870,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       contents.on("did-stop-loading", dirty);
       contents.on("did-navigate", dirty);
       contents.on("did-navigate-in-page", dirty);
+      contents.on("did-frame-navigate", dirty);
       contents.on("dom-ready", dirty);
     }
     try {
@@ -972,11 +1028,14 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
   });
 
+  deps.bindRelay?.(() => scheduleFlush());
+
   return {
     async start(target: string): Promise<void> {
       stop();
       session += 1;
       origin = normalizeAnyConsoleOrigin(target, "desktop_browser_origin_invalid");
+      scheduleFlush();
       // 누구인지 먼저 알린다 — 콘솔이 UA 와 실행 위치를 이 셸의 것으로 맞춘다.
       await send(origin, helloRelay());
       await stream.start(origin);

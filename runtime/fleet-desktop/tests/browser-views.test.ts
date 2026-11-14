@@ -434,7 +434,8 @@ describe("managed browser auth and on-demand frames", () => {
     publish({ ...lifetime, generation: 2, watchedViewIds: ["view-1"] });
     await vi.waitFor(() => expect(captures).toHaveLength(1));
     expect(frames).toHaveLength(0);
-    expect(pending.some((timer) => timer.ms >= 250)).toBe(true);
+    // 유휴 폴링 50ms(활성 최소 33ms) — 기존 250ms 상한을 대체한다.
+    expect(pending.some((timer) => timer.ms >= 50)).toBe(true);
     const page = created[0]!.contents;
     page.emit("did-navigate");
     page.emit("did-stop-loading");
