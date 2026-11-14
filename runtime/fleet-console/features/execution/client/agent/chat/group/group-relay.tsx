@@ -113,8 +113,8 @@ function PartyMark({ party, size }: { readonly party: Party; readonly size: "md"
 }
 
 /**
- * 전언 줄 — 가운데 단추 하나: 「보낸 사람」(또는 사령관 송신의 「메시지 보냄」+받는 사령관, 자문의 「자문 요청」·「자문 답변」) 보조 글자와
- * 표식·이름만 담은 은은한 알약 칩. 발췌·펼침 화살표·자문 전달 상태 문구는 없다. 전달 실패만 칩 뒤에 신호 잉크로 짧게 남는다. 누르면 대화 화면이 열린다.
+ * 전언 줄 — 가운데 단추 하나: 「보낸 사람」(또는 사령관 송신의 「메시지 보냄」, 자문의 「자문 요청」·「자문 답변」) 보조 글자와
+ * 알약 칩(대화 주인이 보낸 자문·메시지는 받는 쪽, 받은 것은 보낸 쪽). 발췌·펼침 화살표·자문 전달 상태 문구는 없다. 전달 실패만 칩 뒤에 신호 잉크로 짧게 남는다. 누르면 대화 화면이 열린다.
  */
 export function RelayLine({ entry, language, onOpen }: {
   readonly entry: RelayEntry;
@@ -125,7 +125,8 @@ export function RelayLine({ entry, language, onOpen }: {
   if (entry.kind === "plugin-notice" && entry.text.trim().length === 0) return null;
   const sender = senderOf(entry, language);
   const via = entry.kind === "delegation" ? entry.via : undefined;
-  const chipParty = via === "sent" ? (recipientsOf(entry)[0] ?? sender) : sender;
+  const showRecipient = entry.kind === "delegation" && (via === "sent" || ((via === "consult" || via === "consult-reply") && !entry.received));
+  const chipParty = showRecipient ? (recipientsOf(entry)[0] ?? sender) : sender;
   const name = partyName(chipParty);
   const failed = entry.kind === "delegation" && deliveryFailure(entry) !== null;
   const fromKey = via === "sent"
