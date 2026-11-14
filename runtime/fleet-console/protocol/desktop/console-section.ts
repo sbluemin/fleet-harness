@@ -293,8 +293,8 @@ export const CONSOLE_OBJECTIVE_PEEK_MAX_MISSIONS = 40;
 export const CONSOLE_OBJECTIVE_PEEK_MAX_CRITERIA = 20;
 export const CONSOLE_OBJECTIVE_PEEK_MAX_MEMBERS = 40;
 export const CONSOLE_OBJECTIVE_PEEK_MAX_RESULTS = 40;
-/** planning: arranging; review: handoff or review pending; done: all missions and criteria met. */
-export type ConsoleObjectivePeekPhase = "planning" | "review" | "done";
+/** planning: arranging; active: launched and in progress; review: handoff or review pending; done: all missions and criteria met. */
+export type ConsoleObjectivePeekPhase = "planning" | "active" | "review" | "done";
 export interface ConsoleObjectivePeekCriterion { readonly text: string; readonly met: boolean }
 export interface ConsoleObjectivePeekMission {
   /** Display name; the host resolves `missionTitle` so an absent name arrives resolved. */
@@ -341,7 +341,7 @@ export interface ConsoleObjectivePeekReply {
   readonly status: ConsoleObjectivePeekStatus;
   readonly snapshot?: ConsoleObjectivePeek;
 }
-const peekPhase = (value: unknown): value is ConsoleObjectivePeekPhase => value === "planning" || value === "review" || value === "done";
+const peekPhase = (value: unknown): value is ConsoleObjectivePeekPhase => value === "planning" || value === "active" || value === "review" || value === "done";
 const peekUrl = (value: unknown): value is string => typeof value === "string" && value.length > 0 && value.length <= 2048 && !/[\u0000-\u001f\u007f]/u.test(value);
 const peekLine = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
 const peekText = (value: unknown, max: number): value is string => typeof value === "string" && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
