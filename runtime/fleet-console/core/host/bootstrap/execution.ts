@@ -139,6 +139,7 @@ export async function startConsoleExecution(
     reclaimAttachmentLeftovers: agent.reclaimAttachmentLeftovers,
     actions: agent.actions,
     listSessions: agent.listSessions,
+    subscribeSessionChanged: agent.subscribeSessionChanged,
     stopForArchive: async (objectiveRecord: import("../../../features/objectives/shared/records/types.js").ObjectiveRecord, preserveState = true) => {
       runtime.invalidateTicketsForSession(objectiveRecord.id);
       {

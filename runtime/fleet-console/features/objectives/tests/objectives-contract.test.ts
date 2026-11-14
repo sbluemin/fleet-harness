@@ -3432,6 +3432,16 @@ describe("Objectives contract", () => {
         } finally { h.ctx.http.writeJson = writeJson; }
         return { ...output, status: output.status || captured.status, json: captured.value as { error?: string } | null };
       };
+      const chunkOf = async (filePath: string, offset: number, version?: string) => {
+        let captured = { status: 0, value: {} as { data?: string; size?: number; next?: number | null; version?: string; error?: string } };
+        const writeJson = h.ctx.http.writeJson;
+        h.ctx.http.writeJson = ((_res: unknown, status: number, value: unknown) => { captured = { status, value: value as typeof captured.value }; }) as typeof writeJson;
+        try {
+          await routes().find((entry) => entry.name === "shared/chunk")!.handler({ req: { method: "GET", url: `/?objectiveId=shared-reader&path=${encodeURIComponent(filePath)}&offset=${offset}${version ? `&version=${version}` : ""}` } as never,
+            res: { setHeader: () => undefined } as never, pathname: "shared/chunk" });
+        } finally { h.ctx.http.writeJson = writeJson; }
+        return captured;
+      };
       // 목록은 링크를 빼고 시각 내림차순이다.
       const listed = await listOf("shared-reader");
       expect(listed.status).toBe(200);
@@ -3478,6 +3488,18 @@ describe("Objectives contract", () => {
         expect(JSON.stringify(response)).not.toContain("outside secret");
       }
       expect(await fileOf("no-such", "note.txt")).toMatchObject({ status: 404, json: { error: "unknown_objective" } });
+      // 총 파일 크기는 중계의 응답 상한보다 커도 된다. 각 조각은 한정되고 같은 파일 세대만 이어 읽는다.
+      const largeBytes = 17 * 1024 * 1024 + 1;
+      fs.writeFileSync(path.join(realRoot, "large.bin"), Buffer.alloc(largeBytes, 0x5a));
+      const first = await chunkOf("large.bin", 0);
+      expect(first.status).toBe(200);
+      expect(first.value.size).toBe(largeBytes);
+      expect(Buffer.from(first.value.data!, "base64")).toEqual(Buffer.alloc(first.value.next!, 0x5a));
+      const last = await chunkOf("large.bin", largeBytes - 1, first.value.version);
+      expect(last).toMatchObject({ status: 200, value: { next: null, size: largeBytes, data: "Wg==" } });
+      fs.appendFileSync(path.join(realRoot, "large.bin"), "changed");
+      expect(await chunkOf("large.bin", first.value.next!, first.value.version)).toMatchObject({ status: 409, value: { error: "shared_file_changed" } });
+      expect(await chunkOf("leakdir/secret.txt", 0)).toMatchObject({ status: 404, value: { error: "unknown_shared_file" } });
     } finally {
       fs.rmSync(outside, { recursive: true, force: true });
     }

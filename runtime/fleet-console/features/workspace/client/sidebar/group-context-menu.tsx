@@ -344,11 +344,8 @@ function PluginObjectiveMenuSection({ objectiveRecord, onClose }: { objectiveRec
 function ObjectiveDueMenuSection({ objectiveRecord, onClose }: { objectiveRecord: ObjectiveRecord; onClose: () => void }) {
   const language = useConsoleLocale();
   const lang = language === "ko" ? "ko" : "en";
-  const t = getObjectivesT(lang);
   const board = useObjectiveBoard(objectiveRecord.commodoreId);
   const summaries = useObjectiveSummaries();
-  const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
-  const dueButton = useRef<HTMLButtonElement | null>(null);
   const objective = board.loaded ? board.objectives.find((candidate) => candidate.id === objectiveRecord.id) ?? null : null;
   if (!objective || objective.done) return null;
   // 지휘관 자신의 활동만 본다 — 구성원이 일하는 것은 서버도 거절하지 않는다(끌어올리기 전 값 ownActivity).
@@ -359,6 +356,20 @@ function ObjectiveDueMenuSection({ objectiveRecord, onClose }: { objectiveRecord
     const api = objectivesApi();
     if (api) void post(api, "/objective/patch", { objectiveId: objective.id, patch: next, language: lang }).catch(() => undefined);
   };
+  return <ObjectiveScheduleMenu objective={objective} locked={locked} language={lang} patch={patch} onClose={onClose} />;
+}
+
+/** 기한 입력의 표현만 공유한다. 조회와 쓰기 권한·대상은 호출자가 소유한다. */
+export function ObjectiveScheduleMenu({ objective, locked, language: lang, patch, onClose }: {
+  readonly objective: { readonly today: boolean; readonly dueDate?: string | null };
+  readonly locked: boolean;
+  readonly language: "en" | "ko";
+  readonly patch: (next: Record<string, unknown>) => void;
+  readonly onClose: () => void;
+}) {
+  const t = getObjectivesT(lang);
+  const [dateAnchor, setDateAnchor] = useState<DOMRect | null>(null);
+  const dueButton = useRef<HTMLButtonElement | null>(null);
   return (
     <>
       <div className="group-context-menu-section-label">{t("objectives.schedule.title")}</div>

@@ -3,7 +3,7 @@ import type { Translate } from "@fleet-console/i18n";
 import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot } from "../shared/commodore-board-client.js";
 import type { CommodoreClientHost } from "../../commodore/shared/contracts/client.js";
 export { askObjectiveTitle } from "../../commodore/shared/contracts/client-helpers.js";
-import { followupsJudgeable, livePersonHold, reasonAwaits } from "../shared/board-state.js";
+import { livePersonHold, reasonAwaits } from "../shared/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../shared/types.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
@@ -81,17 +81,8 @@ export function personTurnAt(objective: Objective, commodoreActive: boolean): nu
  * 사령관이 맡아 기다리는 목표 — 사람에게 넘기지 않은 대기 항목(출범 전·기준 제안·결정 요청·검토·후속)이 남았다.
  * 사람에게 넘긴 항목만 남은 목표는 사령관을 기다리지 않는다.
  */
-export function isCommodoreWaiting(objective: Objective): boolean {
-  if (objective.removed || objective.done) return false;
-  const kept = (target: (typeof PERSON_HOLD_TARGETS)[number]) => !livePersonHold(objective, target);
-  // 출범 전 기준 제안을 사람에게 넘겼으면 개시는 사람의 답을 기다린다(criteria_pending) — 사령관의 일이 아니다.
-  return (!objective.commenced && !(objective.criteriaProposals.length > 0 && !kept("criteria")))
-    || (objective.criteriaProposals.length > 0 && kept("criteria"))
-    || (objective.decisionRequest !== null && kept("decision"))
-    || (objective.awaitingReview && kept("review"))
-    // 진행 중의 후속 후보는 모이기만 한다 — 검토 대기에 검토와 함께 사령관을 기다린다.
-    || (followupsJudgeable(objective) && objective.followups.some((followup) => followup.state === "open") && kept("followup"));
-}
+export { isCommodoreWaiting } from "../shared/board-state.js";
+import { isCommodoreWaiting } from "../shared/board-state.js";
 
 
 let host: CommodoreClientHost | undefined;

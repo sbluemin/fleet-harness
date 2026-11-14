@@ -1,10 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { CommodoreAvatar } from "../commodore-avatar.js";
 
 export interface MemberPickerCandidate {
   readonly id: string;
   readonly name: string;
+  readonly avatar?: ReactNode;
 }
 
 /**
@@ -153,7 +154,7 @@ export function MemberPicker({ anchor, candidates, searchPlaceholder, emptyText,
             onMouseEnter={() => setActive(index)}
             onClick={() => choose(row.id)}
           >
-            <CommodoreAvatar commodoreId={row.id} state="idle" size={28} label="" decorative />
+            {row.avatar ?? <CommodoreAvatar commodoreId={row.id} state="idle" size={28} label="" decorative />}
             <span>{row.name}</span>
           </button>
         )) : <p className="taskforce-picker-empty">{emptyText}</p>}

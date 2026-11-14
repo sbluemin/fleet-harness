@@ -184,7 +184,7 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent new session image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
-  return { launchKinds: api.launchKinds, actions: api.actions, listSessions: api.listSessions, stopForArchive: api.stopForArchive, purgeObjective: api.purgeObjective, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin, releaseChatOwnership: api.releaseChatOwnership };
+  return { launchKinds: api.launchKinds, actions: api.actions, listSessions: api.listSessions, subscribeSessionChanged: api.subscribeSessionChanged, stopForArchive: api.stopForArchive, purgeObjective: api.purgeObjective, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin, releaseChatOwnership: api.releaseChatOwnership };
 }
 
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
@@ -2869,7 +2869,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
 
 
-  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, listSessions: () => observability.listTerminalSessions(), stopForArchive, purgeObjective, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin, releaseChatOwnership: (sessionId: string) => { observability.setTerminalSessionChatActive(sessionId, false); observability.updateTerminalSessionStatus(sessionId, "terminal-only"); } };
+  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, listSessions: () => observability.listTerminalSessions(), subscribeSessionChanged: (notify: (id: string) => void) => observability.subscribeAll((event) => { if ((event.type === "session:updated" || event.type === "session:attention") && "session" in event) notify(event.session.sessionId); }), stopForArchive, purgeObjective, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin, releaseChatOwnership: (sessionId: string) => { observability.setTerminalSessionChatActive(sessionId, false); observability.updateTerminalSessionStatus(sessionId, "terminal-only"); } };
 
   function methodNotAllowed(res: Parameters<typeof handle>[0]["res"]): true {
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { createSidebarMotionJournal } from "../features/workspace/host/sidebar-motion.js";
 
 import { COMMODORE_ALIAS_MAX_LENGTH } from "../features/commodore/shared/alias.js";
 import { sanitizeConsoleSettingsData } from "../features/settings/host/settings-domain.js";
@@ -22,6 +23,22 @@ const ids = () => {
 };
 
 describe("unified sidebar contract", () => {
+  it("replays short turns between reads and releases stream subscribers", () => {
+    const journal = createSidebarMotionJournal();
+    let wakes = 0;
+    const unsubscribe = journal.subscribe(() => { wakes++; });
+    journal.append({ kind: "commodore", id: "owner", live: true, state: "running", activity: "think" });
+    journal.append({ kind: "commodore", id: "owner", live: false, state: "idle", activity: null });
+    journal.append({ kind: "commodore", id: "owner", live: false, state: "idle", activity: null });
+    const replay = journal.read(0);
+    expect(replay.motions.map((motion) => [motion.revision, motion.live, motion.state])).toEqual([[1, true, "running"], [2, false, "idle"]]);
+    expect(journal.read(replay.next).motions).toEqual([]);
+    expect(wakes).toBe(2);
+    unsubscribe();
+    journal.append({ kind: "commodore", id: "owner", live: true, state: "running", activity: "read" });
+    expect(wakes).toBe(2);
+    expect(journal.read(999).reset).toBe(true);
+  });
   it("seeds by section name without rewriting a machine's own section ids", () => {
     const layout = seedUnifiedSidebar({
       sections: [
@@ -88,6 +105,10 @@ describe("unified sidebar contract", () => {
     expect(parseConsoleSectionCommand(JSON.stringify({ createCommodore: { consoleId: "machine-mac", alias: "x".repeat(41), request: "req-1" } }))).toBeNull();
     expect(parseConsoleSectionCommand(JSON.stringify({ createCommodore: { consoleId: "machine-mac", alias: "Nuri", request: "req-1", look: { base: -1, tone: null } } }))).toBeNull();
     expect(parseConsoleSectionCommand(JSON.stringify({ unified: { op: "state" }, request: "state" }))).toBeNull();
+    const sidebar = { console: "machine-mac", nonce: "read-1", operation: "runtime" };
+    expect(parseConsoleSectionCommand(JSON.stringify({ sidebar }))).toEqual({ sidebar });
+    expect(parseConsoleSectionCommand(JSON.stringify({ sidebar, request: "state" }))).toBeNull();
+    expect(parseConsoleSectionCommand(JSON.stringify({ sidebar: { ...sidebar, operation: "join" } }))).toBeNull();
     expect(UNIFIED_CREATE_ALIAS_MAX).toBe(COMMODORE_ALIAS_MAX_LENGTH);
   });
 

@@ -1,5 +1,5 @@
 import { EventEmitter } from "node:events";
-import { CONSOLE_COMMODORE_CREATE_EVENT, CONSOLE_OBJECTIVE_PEEK_EVENT, CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_SECTION_EVENT, CONSOLE_UNIFIED_SIDEBAR_EVENT, UNIFIED_SIDEBAR_HOME, UNIFIED_SIDEBAR_PATH, consoleSectionCommandUrl, isConsoleObjectivePeek, isConsoleRosterState, isUnifiedSidebarLayout, type ConsoleSectionCommand, type UnifiedSidebarLayout } from "@fleet-console/protocol/desktop/console-section";
+import { CONSOLE_SIDEBAR_EVENT, CONSOLE_SIDEBAR_PATH, CONSOLE_COMMODORE_CREATE_EVENT, CONSOLE_OBJECTIVE_PEEK_EVENT, CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_SECTION_EVENT, CONSOLE_UNIFIED_SIDEBAR_EVENT, UNIFIED_SIDEBAR_HOME, UNIFIED_SIDEBAR_PATH, consoleSectionCommandUrl, isConsoleObjectivePeek, isConsoleRosterState, isUnifiedSidebarLayout, type ConsoleSectionCommand, type UnifiedSidebarLayout } from "@fleet-console/protocol/desktop/console-section";
 import { describe, expect, it, vi } from "vitest";
 import { createConsoleSectionController } from "../src/console-section-controller.js";
 
@@ -17,7 +17,10 @@ interface Delivery {
     readonly nonce?: string;
     readonly console?: string;
     readonly objective?: string;
-    readonly status?: string;
+    readonly status?: string | number;
+    readonly data?: string;
+    readonly done?: boolean;
+    readonly index?: number;
     readonly snapshot?: unknown;
     readonly entries?: readonly { readonly id: string; readonly address: string; readonly active: boolean }[];
     readonly arrival?: { readonly commodore: string; readonly anchorY: number | null; readonly commander?: string | null; readonly scrollTop?: number | null; readonly rightPanel?: { readonly open: boolean; readonly tab?: string } | null } | null;
@@ -173,6 +176,7 @@ describe("console roster", () => {
         if (parsed.origin === HOME) return Response.json({ v: 1, more: 0, commodores: [] });
         return Response.json({ v: 1, more: 0, commodores: [{ id: "cmdr-9", name: "Nuri", look: null, run: "quiet" }], objectivePeek: true });
       }
+      if (parsed.pathname === `${CONSOLE_SIDEBAR_PATH}runtime`) return Response.json({ v: 1, preview: "x".repeat(100_000), sessionName: "PRIVATE-SESSION", nested: { cwd: "/PRIVATE-PATH", token: TOKEN } });
       if (parsed.pathname === CONSOLE_OBJECTIVE_PEEK_PATH) {
         const found = peekAnswers.get(parsed.searchParams.get("id") ?? "");
         if (!found) return new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
@@ -232,6 +236,20 @@ describe("console roster", () => {
       });
       expect(replies().find((item) => item.detail.nonce === "n-remote")?.detail.status).toBe("unauthorized");
       expect(fetch.mock.calls.length).toBe(before);
+      // 확장 사이드바는 비집 문서에서도 창 소유 id만 받는다. 큰 결과는 chunk로,
+      // private 좌표는 제거해 돌려주며 기존 peek/화면 접속 권한을 넓히지 않는다.
+      send({ sidebar: { console: trustedId!, operation: "runtime", nonce: "sidebar-remote" } });
+      const sidebarReplies = () => scripts.map(delivered).filter((item) => item?.type === CONSOLE_SIDEBAR_EVENT && item.detail.nonce === "sidebar-remote");
+      await vi.waitFor(() => expect(sidebarReplies().some((reply) => reply?.detail.done)).toBe(true));
+      const fragments = sidebarReplies();
+      expect(fragments.length).toBeGreaterThan(1);
+      expect(fragments.every((reply, index) => reply?.origin === TRUSTED && reply.detail.status === 200 && reply.detail.index === index && (reply.detail.data?.length ?? Infinity) <= 48_000)).toBe(true);
+      const result = JSON.parse(Buffer.from(fragments.map((reply) => reply!.detail.data).join(""), "base64").toString("utf8"));
+      expect(result).toEqual({ v: 1, preview: "x".repeat(100_000), sessionName: null, nested: { cwd: null, token: null } });
+      const sidebarCall = fetch.mock.calls.find((call) => new URL(String(call[0])).pathname === `${CONSOLE_SIDEBAR_PATH}runtime`);
+      expect(new URL(String(sidebarCall?.[0])).origin).toBe(TRUSTED);
+      expect(new Headers(sidebarCall?.[1]?.headers).get("Origin")).toBe(TRUSTED);
+      expect(fetch.mock.calls.some((call) => new URL(String(call[0])).pathname === "/api/v1/join")).toBe(false);
       url = `${HOME}/console/`;
       expect(scripts.join("\n")).not.toContain("FINGERPRINT-TRUSTED");
     } finally { section.close(); }

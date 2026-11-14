@@ -7,10 +7,10 @@ import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
-import { CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isUnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
+import { CONSOLE_SIDEBAR_PATH, sidebarTarget, CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isUnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
 import { consoleRosterCommanders, consoleRosterRun, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterSort } from "../../../features/commodore/host/roster.js";
 import { buildObjectivePeek } from "../../../features/commodore/host/objective-peek.js";
-import { livePersonHold, reasonAwaits } from "../../../features/objectives/shared/board-state.js";
+import { isCommodoreWaiting, livePersonHold, reasonAwaits } from "../../../features/objectives/shared/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective } from "../../../features/objectives/shared/types.js";
 import { COMMODORE_CHANNEL, type CommodoreEvent } from "../../../features/commodore/shared/contracts/types.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
@@ -19,7 +19,10 @@ import { archiveEvent, archiveSessionNodes, ObjectiveArchiveError } from "../../
 import { createObjectiveArchiveCoordinator } from "../../../features/workspace/host/objective-archive.js";
 import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
-import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleVoiceOf, objectiveRecordAvatarKey } from "../../../features/workspace/shared/avatars.js";
+import { createSidebarMotionJournal } from "../../../features/workspace/host/sidebar-motion.js";
+import { sidebarRemotePage, sidebarSafeObjective, parseSidebarPreferences } from "../../../features/workspace/host/sidebar-remote.js";
+import type { SidebarRemoteCommodore, SidebarRemoteFace } from "../../../features/workspace/shared/sidebar-remote.js";
+import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleStateOf, mongleVoiceOf, objectiveRecordAvatarKey } from "../../../features/workspace/shared/avatars.js";
 import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
 import type { WorkspacePaths } from "../../../features/workspace/host/path-port.js";
 import crypto from "node:crypto";
@@ -666,8 +669,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let commodore: CommodoreFeature | null = null;
   let objectives: ObjectivesFeature | null = null;
   let releaseObjectivesBoard: (() => void) | null = null;
+  const sidebarMotions = createSidebarMotionJournal();
 
   function publishPluginEvent(channel: string, payload: unknown, isolateListeners = false): void {
+    if (channel === COMMODORE_CHANNEL && payload && typeof payload === "object" && "op" in payload && payload.op === "run") {
+      const event = payload as Extract<CommodoreEvent, { op: "run" }>;
+      const phase = event.run.phase;
+      sidebarMotions.append({ kind: "commodore", id: event.commodoreId, live: phase === "turn",
+        state: phase === "error" || phase === "retrying" ? "error" : phase === "turn" ? "running" : "idle", activity: event.run.step ?? null });
+    }
     for (const listener of pluginEventListeners.get(channel) ?? []) {
       if (!isolateListeners) listener(payload);
       else try { listener(payload); } catch (error) { recordFailure("objectiveRecord_lifecycle_listener_failed", error); }
@@ -1652,6 +1662,91 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return desktopThemeRouter(context);
   });
 
+  let readSidebarSteps = (): ReadonlyMap<string, SidebarRemoteFace["activity"]> => new Map();
+  let readSidebarOwnWorking = (): ReadonlySet<string> => new Set();
+  routeRegistry.register("/api/v1/console-roster/changes", ({ req, res }) => {
+    const after = Number(readUrl(req).searchParams.get("after") ?? "0");
+    if (req.method !== "GET" || !isTerminalAuthorized(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+    if (!Number.isSafeInteger(after) || after < 0) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+    let done = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let unsubscribe = () => {};
+    const finish = () => {
+      if (done) return;
+      done = true; clearTimeout(timer); unsubscribe();
+      const listener = listenerForRequest(req);
+      if (!listener || (listener.audience !== "local" && !pairedDeviceStore.peek(readPairingCookie(req.headers, listener.port), listener.audience))) { writeJson(res, 401, { error: "unauthorized" }); return; }
+      res.setHeader("Cache-Control", "no-store"); writeJson(res, 200, sidebarMotions.read(after));
+    };
+    const pending = sidebarMotions.read(after);
+    if (pending.reset || pending.motions.length > 0) finish();
+    else {
+      unsubscribe = sidebarMotions.subscribe(finish);
+      timer = setTimeout(finish, 10_000); timer.unref();
+      res.once("close", () => { done = true; clearTimeout(timer); unsubscribe(); });
+      // 구독 전후 사이의 전환도 잃지 않는다.
+      if (sidebarMotions.read(after).motions.length > 0) finish();
+    }
+    return true;
+  });
+  routeRegistry.register("/api/v1/console-roster/objective-full", ({ req, res }) => {
+    if (req.method !== "GET" || !isTerminalAuthorized(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+    const id = readUrl(req).searchParams.get("objectiveId");
+    const objective = objectives?.listAll().find((entry) => entry.id === id && !entry.removed);
+    if (!objective) { writeJson(res, 404, { error: "not_found" }); return true; }
+    res.setHeader("Cache-Control", "no-store"); writeJson(res, 200, { objective: sidebarSafeObjective(objective) }); return true;
+  });
+  routeRegistry.register("/api/v1/console-roster/preferences", async ({ req, res }) => {
+    if (req.method !== "POST" || !isTerminalAuthorized(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+    const patch = parseSidebarPreferences(await readJsonBody(req));
+    if (!patch) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+    consoleSettingsStore.update((settings) => ({ ...settings, general: { ...settings.general, ...patch } }));
+    writeJson(res, 200, { ok: true }); return true;
+  });
+  routeRegistry.register("/api/v1/console-roster/runtime", ({ req, res }) => {
+    if (req.method !== "GET" || !isTerminalAuthorized(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+    const params = readUrl(req).searchParams;
+    const offset = Number(params.get("offset") ?? "0");
+    if (!Number.isSafeInteger(offset) || offset < 0) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+    const listener = listenerForRequest(req);
+    const paired = listener && listener.audience !== "local" ? pairedDeviceStore.peek(readPairingCookie(req.headers, listener.port), listener.audience) : null;
+    const boards = objectives?.listAll() ?? [];
+    const settings = consoleSettingsStore.load();
+    const enabled = readExperimentSettings(consoleSettingsStore).commodore;
+    const avatars = avatarStore.load().avatars;
+    const using = listObjectiveUse();
+    const steps = readSidebarSteps();
+    const ownWorking = readSidebarOwnWorking();
+    const faceOf = (id: string): Omit<SidebarRemoteFace, "look"> => {
+      const activity = consoleControl.observe(id)?.activity;
+      return { state: mongleStateOf({ activity: activity === "unknown" ? null : activity }), activity: steps.get(id) ?? null };
+    };
+    const commodores: SidebarRemoteCommodore[] = (commodore?.sidebarFacts() ?? []).map((fact) => {
+      const decisions = fact.asks + boards.filter((objective) => objective.commodoreId === fact.id && rosterPersonWaiting(objective, enabled)).length;
+      const state: SidebarRemoteFace["state"] = fact.phase === "error" || fact.phase === "retrying" ? "error"
+        : mongleStateOf({ activity: fact.phase === "turn" ? "running" : enabled && boards.some((objective) => objective.commodoreId === fact.id && isCommodoreWaiting(objective)) ? "awaiting" : "idle", decisionRequest: decisions > 0 });
+      return { id: fact.id, name: fact.name, preview: fact.preview, live: fact.phase === "turn", state, activity: fact.step,
+        decisions, browsing: using.browserCommodores.includes(fact.id), look: avatars[commodoreAvatarKey(fact.id)] ?? null };
+    });
+    const taskforceEnabled = readExperimentSettings(consoleSettingsStore).taskforce === true;
+    if (taskforceEnabled) for (const taskforce of commodore?.taskforce.list() ?? []) commodores.push({
+      id: `taskforce:${taskforce.id}`, name: taskforce.name, preview: taskforce.preview?.text || taskforce.topic, taskforce,
+      live: taskforce.judging.length > 0, state: taskforce.judging.length > 0 ? "running" : "idle", activity: null, decisions: 0, browsing: false, look: null,
+    });
+    const page = sidebarRemotePage({ at: Date.now(), offset, autonomous: enabled, taskforceEnabled, writable: listener?.audience === "local" || paired?.access === "full",
+      commodoreId: params.get("commodoreId"), commodores, objectives: boards, avatars, faceOf,
+      computerUseAvailable: readExperimentSettings(consoleSettingsStore).computerUse === true,
+      ownWorkingOf: (id) => ownWorking.has(id),
+      computerUseEnabledOf: (id) => { const value = objectiveRecords.get(id)?.computerUse; return !!value && typeof value === "object" && "enabled" in value && value.enabled === true; },
+      groups: objectiveRecords.listAllGroups(), preferences: { sort: settings.general?.commanderSort ?? ROSTER_SORT_DEFAULT,
+        folds: settings.general?.commanderFolds ?? { fresh: false, done: false, settled: false },
+        keepExpanded: settings.general?.commanderKeepExpanded === true, showSettled: settings.general?.commanderShowSettled !== false },
+      personWaiting: (objective) => rosterPersonWaiting(objective, enabled),
+      toolOf: (ids) => using.computer && ids.includes(using.computer) ? { tool: "computer", actor: using.computerActor }
+        : using.browser.find((id) => ids.includes(id)) ? { tool: "browser", actor: using.browser.find((id) => ids.includes(id))! } : null });
+    res.setHeader("Cache-Control", "no-store"); writeJson(res, 200, page); return true;
+  });
+
   // 요청과 업그레이드가 같은 Host 경계를 쓰도록 판정을 한 곳에 둔다.
   function isRequestHostAllowed(req: http.IncomingMessage): boolean {
     const listener = listenerForRequest(req);
@@ -1677,6 +1772,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 그 세션을 닫는 종료 신호가 재합류 응답 자체를 파기한다. 페어링된 기기가 조용히 돌아오는 길이
     // 이 한 줄에 걸려 있다.
     if (pathname === "/api/v1/join") return { admitted: true, sessionHandle: null };
+    if (pathname.startsWith(CONSOLE_SIDEBAR_PATH)) {
+      const target = sidebarTarget(pathname);
+      if (!target || req.method !== target.method) return { admitted: false };
+      const paired = pairedDeviceStore.peek(readPairingCookie(req.headers, listener.port), listener.audience);
+      // 사이드바는 화면 접속이 아니다. full 페어링만 쓰며 monitoring은 읽기만 하고,
+      // resolveSession/join/lastSeenAt/제어 보유자를 전혀 건드리지 않는다.
+      return paired && (target.read || paired.access === "full") ? { admitted: true, sessionHandle: null } : { admitted: false };
+    }
     if (pathname === CONSOLE_ROSTER_PATH) {
       if (!isReadOnlyRequest(req)) return { admitted: false };
       // 페어링 명부는 접속이 아니다. 세션 쿠키가 함께 와도 세션을 해석·연장·묶지 않고,
@@ -1729,7 +1832,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function handleRequest(req: http.IncomingMessage, res: http.ServerResponse): void {
-    const pathname = getPathname(req);
+    let pathname = getPathname(req);
     /**
      * 원격 판정은 어떤 분기보다 먼저 끝난다. 기능 라우트의 조기 반환이 이 판정 위에 있으면
      * 세션 없는 요청이 개별 Host 검사만으로 통과할 수 있다. 분기가 늘어도 입장 경계는 하나다.
@@ -1764,6 +1867,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     if (archiveStorage.blocked() && (pathname.startsWith("/api/") || pathname.startsWith("/mcp/")) && pathname !== "/api/v1/health" && pathname !== CONSOLE_STOP_REQUEST_PATH) {
       writeJson(res, 503, { error: "archive_recovery_required" });
       return;
+    }
+    if (pathname.startsWith(CONSOLE_SIDEBAR_PATH)) {
+      const target = sidebarTarget(pathname);
+      if (!target || req.method !== target.method || !isTerminalAuthorized(req)) { writeJson(res, 403, { error: "sidebar_operation_denied" }); return; }
+      const query = readUrl(req).search;
+      // 고정 allowlist의 기존 기능 라우트만 재사용한다. 입력 스키마·파괴 동작 확인·파일 containment는 원래 소유자가 판정한다.
+      pathname = `/api/v1/${target.path}`;
+      if (target.operation === "computerUse") {
+        const id = readUrl(req).searchParams.get("objectiveId");
+        if (!id || !/^[A-Za-z0-9._:-]{1,128}$/.test(id)) { writeJson(res, 400, { error: "invalid_request" }); return; }
+        pathname = `/api/v1/experiments/sessions/${encodeURIComponent(id)}/computer-use`;
+      }
+      req.url = `${pathname}${query}`;
     }
     if (pathname === UNIFIED_SIDEBAR_PATH) {
       const current = listenerForRequest(req);
@@ -2761,6 +2877,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         commodorePluginEnv: (commodoreId) => commodore?.pluginEnv(commodoreId) ?? {},
         commodoreAutoMemoryEnabled: (commodoreId) => commodore?.commanderAutoMemoryEnabled(commodoreId) ?? true,
       });
+      readSidebarSteps = () => new Map(execution.listSessions().map((session) => [session.sessionId, session.step ?? null]));
+      readSidebarOwnWorking = () => new Set(execution.listSessions().filter((session) => !session.attentionPending && (session.modelActivity === "working" || session.backgroundPending)).map((session) => session.sessionId));
+      executionCleanupCallbacks.add(execution.subscribeSessionChanged((id) => {
+        const activity = consoleControl.observe(id)?.activity;
+        sidebarMotions.append({ kind: "objective", id, state: mongleStateOf({ activity: activity === "unknown" ? null : activity }),
+          activity: readSidebarSteps().get(id) ?? null, live: activity === "running" || activity === "background" });
+      }));
       coreLaunchKinds = execution.launchKinds;
       attachmentsForPlugin = execution.attachmentsForPlugin;
       ensureClaudeNativeModels = execution.ensureClaudeNativeModels;

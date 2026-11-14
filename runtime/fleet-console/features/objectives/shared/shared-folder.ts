@@ -21,4 +21,14 @@ export interface SharedFolderList {
   readonly truncated: boolean;
 }
 
+/** 미전환 파일 읽기 — 열린 파일의 같은 세대만 이어 붙이며, 한 응답의 크기는 고정한다. */
+export interface SharedFileChunk {
+  readonly offset: number;
+  readonly next: number | null;
+  readonly size: number;
+  readonly version: string;
+  readonly type: string;
+  readonly data: string;
+}
+
 export const SHARED_FOLDER_LIMITS = { entries: 500, depth: 8, textBytes: 1024 * 1024 } as const;

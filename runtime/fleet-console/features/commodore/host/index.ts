@@ -399,6 +399,13 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   const routes = [...commodoreRoutes, ...taskforce.routes];
   return {
     host,
+    /** 미전환 사이드바의 표시 facts. 세션 좌표·설정·기록은 내보내지 않는다. */
+    sidebarFacts: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map((id) => ({
+      id, name: store.read(id)?.alias || ownership.theaterSummaries(id).find((theater) => theater.label)?.label || "Commodore",
+      phase: supervisor.status(id)?.phase ?? "idle", step: supervisor.status(id)?.step ?? null,
+      asks: store.read(id)?.asks?.filter((ask) => !ask.settled).length ?? 0,
+      preview: consoleRosterPreview(store.transcriptLast(id, "commodore")?.text) ?? "",
+    })),
     /** 사이드바 순서대로의 사령관 id — 전역 브라우저가 사령관 스페이스를 같은 순서로 늘어놓는다. TaskForce 는 빠진다. */
     commodoreIds: (): readonly string[] => { const commodores = new Set(entities.ids()); return orderedIds().filter((id) => commodores.has(id)); },
     /** 전역 브라우저 등 공유 화면이 사령관 스페이스를 구별할 표시 이름. */

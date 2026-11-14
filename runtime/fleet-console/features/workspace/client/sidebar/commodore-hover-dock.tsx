@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { SortMenu } from "../commander-tab/commander-list.js";
-import { useSortPreference } from "../commander-tab/commander-sort.js";
+import { useSortPreference, type SortPreference } from "../commander-tab/commander-sort.js";
 import { setCommanderKeepExpanded, setCommanderShowSettled, useCommanderKeepExpanded, useCommanderShowSettled } from "./commander-expansion.js";
 import "./commodore-hover-dock.css";
 
@@ -11,11 +11,23 @@ import "./commodore-hover-dock.css";
  * 가로 리스트박스가 왼쪽으로 펼쳐져 정렬 · 펼침 유지 · 시작 전·완료 보이기를 고른다. 글리프에 호버만 해서는 열리지 않는다.
  * 여기 설정은 모두 모든 사령관에 적용되는 글로벌 설정이다.
  */
-export function CommodoreHoverDock({ name }: { readonly name: string }) {
+export interface CommodoreDockAdapter {
+  readonly disabled?: boolean;
+  readonly keepExpanded: boolean;
+  readonly showSettled: boolean;
+  readonly sort: SortPreference;
+  readonly onKeep: (value: boolean) => void;
+  readonly onSettled: (value: boolean) => void;
+  readonly onSort: (value: SortPreference) => void;
+}
+export function CommodoreHoverDock({ name, adapter }: { readonly name: string; readonly adapter?: CommodoreDockAdapter }) {
   const t = useT();
-  const keepExpanded = useCommanderKeepExpanded();
-  const showSettled = useCommanderShowSettled();
-  const sort = useSortPreference();
+  const localKeep = useCommanderKeepExpanded();
+  const localSettled = useCommanderShowSettled();
+  const localSort = useSortPreference();
+  const keepExpanded = adapter?.keepExpanded ?? localKeep;
+  const showSettled = adapter?.showSettled ?? localSettled;
+  const sort = adapter?.sort ?? localSort;
   const [open, setOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const dockRef = useRef<HTMLSpanElement | null>(null);
@@ -93,6 +105,7 @@ export function CommodoreHoverDock({ name }: { readonly name: string }) {
       {/* ⋯가 도구보다 DOM에서 앞선다 — Tab이 ⋯ → 도구 → 다음 요소로 가고 Shift+Tab이 도구에서 ⋯로 돌아온다. 화면에서는 CSS가 ⋯를 오른쪽 끝에 둔다. */}
       <button
         ref={triggerRef}
+        disabled={adapter?.disabled}
         type="button"
         className="commodore-dock-trigger"
         aria-expanded={shown}
@@ -111,11 +124,11 @@ export function CommodoreHoverDock({ name }: { readonly name: string }) {
         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1" fill="currentColor" /><circle cx="8" cy="8" r="1" fill="currentColor" /><circle cx="12.5" cy="8" r="1" fill="currentColor" /></svg>
       </button>
       <span id={toolbarId} className="commodore-dock-strip" role="toolbar" aria-orientation="horizontal" aria-label={t("sidebar.commodoreDock.group", { theater: name })} inert={!shown}>
-        <SortMenu glyph preference={sort} onOpenChange={setSortOpen} />
-        <button type="button" className="commodore-dock-button" aria-pressed={keepExpanded} aria-label={t("sidebar.commodoreDock.keepExpanded")} title={`${t("sidebar.commodoreDock.keepExpanded")} · ${keepHint}`} onClick={() => setCommanderKeepExpanded(!keepExpanded)}>
+        <SortMenu glyph preference={sort} onOpenChange={setSortOpen} onChange={adapter?.onSort} />
+        <button type="button" className="commodore-dock-button" aria-pressed={keepExpanded} aria-label={t("sidebar.commodoreDock.keepExpanded")} title={`${t("sidebar.commodoreDock.keepExpanded")} · ${keepHint}`} onClick={() => adapter ? adapter.onKeep(!keepExpanded) : setCommanderKeepExpanded(!keepExpanded)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><path d="M11.5 10.5 13 12l2-2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
-        <button type="button" className="commodore-dock-button" aria-pressed={showSettled} aria-label={t("sidebar.commodoreDock.showSettled")} title={`${t("sidebar.commodoreDock.showSettled")} · ${settledHint}`} onClick={() => setCommanderShowSettled(!showSettled)}>
+        <button type="button" className="commodore-dock-button" aria-pressed={showSettled} aria-label={t("sidebar.commodoreDock.showSettled")} title={`${t("sidebar.commodoreDock.showSettled")} · ${settledHint}`} onClick={() => adapter ? adapter.onSettled(!showSettled) : setCommanderShowSettled(!showSettled)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="5" cy="8" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.3" strokeDasharray="1.6 1.4" /><circle cx="11.2" cy="8" r="2.6" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="m10 8 .9.9 1.6-1.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </button>
       </span>

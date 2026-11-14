@@ -261,6 +261,8 @@ export function seedUnifiedFromSnapshots(snapshots: readonly UnifiedMachineSnaps
 export function reconcileUnifiedSidebar(layout: UnifiedSidebarLayout, snapshots: readonly UnifiedMachineSnapshot[], id: () => string): UnifiedSidebarLayout {
   let order = layout.order.filter((row) => {
     const snapshot = snapshots.find((item) => item.consoleId === row.consoleId);
+    // 확장 페이지가 소유하는 TF 행은 옛 commodore 명부의 부재로 삭제하지 않는다.
+    if (row.commodoreId.startsWith("taskforce:")) return true;
     if (!snapshot?.roster || snapshot.roster.status !== "ok" || snapshot.roster.more > 0) return true;
     return snapshot.roster.commodores.some((commodore) => commodore.id === row.commodoreId);
   });

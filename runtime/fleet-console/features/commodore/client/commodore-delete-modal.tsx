@@ -18,9 +18,9 @@ export function CommodoreDeleteModal() {
     if (restore) requestAnimationFrame(() => { if (current.opener?.isConnected) current.opener.focus({ preventScroll: true }); });
   };
   return <CommodoreDeleteFlow key={current.id} commodoreId={current.id} language={language} onClose={() => close(true)}
-    onComplete={(notice) => { close(false); announceCommodoreDeletion(notice); }} renderFrame={(frame) => <DeleteDialog frame={frame} />} />;
+    onComplete={(notice) => { close(false); announceCommodoreDeletion(notice); }} renderFrame={(frame) => <CommodoreDeleteDialog frame={frame} />} />;
 }
-function DeleteDialog({ frame }: { readonly frame: CommodoreDeleteFrame }) {
+export function CommodoreDeleteDialog({ frame }: { readonly frame: CommodoreDeleteFrame }) {
   const panel = useRef<HTMLDivElement>(null);
   const titleId = useId();
   useEffect(() => {

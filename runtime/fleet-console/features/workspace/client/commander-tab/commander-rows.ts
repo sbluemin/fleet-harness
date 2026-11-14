@@ -55,7 +55,7 @@ export function commanderOwnerOf(clusters: readonly ObjectiveCluster[], objectiv
  * 시작 전·완료 통합 목록의 순서 — 지난 기한 → 가까운 기한 → 기한 없음 → 완료(최근 완료가 위). 기한 없는 것을 앞에 두면 기한 걸린
  * 목표가 묻힌다. 같은 자리끼리는 정렬 메뉴의 순서를 지킨다(안정 정렬).
  */
-function settledOrder(fresh: readonly SideBarRowItem[], done: readonly SideBarRowItem[]): SideBarRowItem[] {
+export function settledOrder(fresh: readonly SideBarRowItem[], done: readonly SideBarRowItem[]): SideBarRowItem[] {
   const dated = fresh.filter((item) => item.row.due).sort((a, b) => a.row.due!.date.localeCompare(b.row.due!.date));
   const undated = fresh.filter((item) => !item.row.due);
   const finished = [...done].sort((a, b) => (b.row.doneAt ?? 0) - (a.row.doneAt ?? 0));
