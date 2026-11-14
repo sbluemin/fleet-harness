@@ -26,7 +26,7 @@ export type ChromeOverlay =
   | { readonly kind: "switch"; readonly profile: string | null }
   | { readonly kind: "clear" }
   /** 저장된 비밀번호가 여럿인 로그인 칸에 포커스가 들어왔을 때 고르게 하는 목록. */
-  | { readonly kind: "password-picker"; readonly origin: string; readonly usernames: readonly string[] }
+  | { readonly kind: "password-picker"; readonly origin: string; readonly usernames: readonly string[]; readonly origins?: readonly string[] }
   /**
    * 로그인 제출 뒤 저장·업데이트를 묻는 카드. 비밀번호는 같은 기계의 크롬 문서에만 내려간다 —
    * Console·REST·스냅샷으로는 절대 흐르지 않고, 마스킹이 기본이며 보기 토글은 문서 안에서만 바뀐다.
@@ -148,7 +148,7 @@ export type ChromeAction =
   /** 가드 문서가 잰 알약의 크기(CSS px) — 사람이 제어 중일 때 가드 뷰는 이 자리만 차지한다. */
   | { readonly action: "guard-size"; readonly width: number; readonly height: number }
   /** 복수 계정 목록에서 고른 아이디로 그 뷰의 로그인 폼을 채운다. */
-  | { readonly action: "password-pick"; readonly username: string }
+  | { readonly action: "password-pick"; readonly username: string; readonly origin?: string }
   /** 저장·업데이트 카드를 확정한다(모두 main 의 금고로만 간다). */
   | { readonly action: "password-save" }
   /** 이번에는 저장하지 않는다. */
@@ -186,7 +186,16 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "new-tab": case "toggle-mode": case "close-surface": case "open-external": case "attach-screenshot": case "annotate": case "import-open": case "clear-open": case "clear-run": case "dialog-close": case "info-action": case "ready":
       return make({ action: name });
     case "password-save": case "password-dismiss": case "password-never": return make({ action: name });
-    case "password-pick": return make(str(body.username, 512) && body.username.length > 0 ? { action: "password-pick", username: body.username } : null);
+    case "password-pick": {
+      if (!str(body.username, 512) || body.username.length === 0) return make(null);
+      const picked: { action: "password-pick"; username: string; origin?: string } = { action: "password-pick", username: body.username };
+      // PSL 목록에서 고른 서브도메인 출처 — 없으면 카드의 origin 으로 채운다.
+      if (body.origin !== undefined) {
+        if (!str(body.origin, 512) || body.origin.length === 0) return make(null);
+        picked.origin = body.origin;
+      }
+      return make(picked);
+    }
     case "select-tab": case "close-tab": case "select-space": return make(safeId(body.id) ? { action: name, id: body.id } : null);
     case "page-dialog": return make(safeId(body.id) && safeId(body.dialogId) && typeof body.accept === "boolean" ? { action: "page-dialog", id: body.id, dialogId: body.dialogId, accept: body.accept } : null);
     case "pin": return make(typeof body.pinned === "boolean" ? { action: "pin", pinned: body.pinned } : null);

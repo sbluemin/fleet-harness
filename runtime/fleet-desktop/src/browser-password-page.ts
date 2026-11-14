@@ -2,7 +2,7 @@ import {
   BROWSER_PASSWORD_SECRET_MAX_LENGTH,
   BROWSER_PASSWORD_USERNAME_MAX_LENGTH,
 } from "@fleet-console/protocol/desktop/browser-passwords";
-import type { BrowserPasswordOriginCredentials } from "./browser-password-vault.js";
+import type { BrowserPasswordOriginCredentials, PasswordMatchType } from "./browser-password-vault.js";
 
 /**
  * 로그인 폼 감지·자동완성·제출 포착. 페이지와 같은 DOM 을 보지만 실행은
@@ -332,10 +332,31 @@ export function fleetPasswordSession(
     if (username.length === 0 || password.length === 0) return null;
     return { username, password };
   };
+  // 입력 중 임시 보관 — JS 가 submit 직전 칸을 비워도 main 의 provisional 을 잃지 않는다.
+  // 같은 값을 반복 보고하지 않고, 제출 보고와 같은 쌍이면 건너뛴다.
+  let lastPosted = "";
+  const reportTyping = (): void => {
+    let snap: FleetPasswordPageScan;
+    try {
+      snap = helpers.scan(doc, true);
+    } catch {
+      return;
+    }
+    const form = snap.forms.find((candidate) => !candidate.newPassword) ?? null;
+    if (!form || !form.usernameVisible) return;
+    const username = form.usernameValue;
+    const password = form.passwordValue ?? "";
+    if (username.length === 0 || password.length === 0) return;
+    const key = `${username}\n${password}`;
+    if (key === lastPosted) return;
+    lastPosted = key;
+    tell({ kind: "user-input", username, password });
+  };
   doc.addEventListener("submit", (event) => {
     const scope = formOf((event as FleetPasswordDomEvent).target) ?? doc;
     const read = readSubmit(scope);
     if (!read) return;
+    lastPosted = `${read.username}\n${read.password}`;
     tell({ kind: "submitted", username: read.username, password: read.password });
   }, true);
   doc.addEventListener("click", (event) => {
@@ -367,6 +388,7 @@ export function fleetPasswordSession(
     if (!hit) return;
     const read = readSubmit(scope);
     if (!read) return;
+    lastPosted = `${read.username}\n${read.password}`;
     tell({ kind: "submitted", username: read.username, password: read.password });
   }, true);
   doc.addEventListener("keydown", (event) => {
@@ -374,25 +396,40 @@ export function fleetPasswordSession(
     if (typed.key !== "Enter") return;
     const target = typed.target as { tagName?: unknown } | null;
     if (!target || target.tagName !== "INPUT") return;
-    if (formOf(target)) return;
-    const read = readSubmit(doc);
+    // 폼 안 Enter 도 신호로 잡는다 — main 에서 DOM submit 과 중복 제거한다.
+    // React식 폼처럼 submit 이벤트 없이 JS 로만 제출하는 경우 이 신호가 유일한 단서가 된다.
+    const scope = formOf(target) ?? doc;
+    const read = readSubmit(scope);
     if (!read) return;
+    lastPosted = `${read.username}\n${read.password}`;
     tell({ kind: "submitted", username: read.username, password: read.password });
   }, true);
   doc.addEventListener("focusin", (event) => {
     const target = (event as FleetPasswordDomEvent).target as { tagName?: unknown; getAttribute?: (name: string) => string | null } | null;
     if (!target || target.tagName !== "INPUT" || typeof target.getAttribute !== "function") return;
     let type = "";
-    let auto = "";
     try {
       type = (target.getAttribute("type") ?? "").toLowerCase();
-      auto = (target.getAttribute("autocomplete") ?? "").toLowerCase();
     } catch {
       return;
     }
-    if (type === "password" || auto.indexOf("username") !== -1 || auto.indexOf("current-password") !== -1 || auto === "email" || type === "email") {
-      tell({ kind: "field-focused" });
+    // autocomplete 유무와 무관하게 로그인 폼의 편집 칸이면 알린다 —
+    // 비밀번호 칸이 보이는 폼/문서의 text·email·tel·무타입·password 칸이 대상이다.
+    if (type !== "" && type !== "text" && type !== "email" && type !== "tel" && type !== "password") return;
+    let snap: FleetPasswordPageScan;
+    try {
+      snap = helpers.scan(doc);
+    } catch {
+      return;
     }
+    if (!snap.forms.some((candidate) => !candidate.newPassword)) return;
+    tell({ kind: "field-focused" });
+  }, true);
+  doc.addEventListener("input", () => {
+    reportTyping();
+  }, true);
+  doc.addEventListener("change", () => {
+    reportTyping();
   }, true);
   const Observer = (globalThis as unknown as { MutationObserver?: new (callback: () => void) => { observe(node: unknown, init: unknown): void } }).MutationObserver;
   if (typeof Observer === "function") {
@@ -427,20 +464,24 @@ export interface StoredLoginCredential {
   readonly id: string;
   readonly username: string;
   readonly updatedAt: number;
+  readonly matchType: PasswordMatchType;
 }
 
 /**
- * 자동완성 규칙 — 에이전트 탭은 가장 최근 계정을 즉시, 사용자 탭은 하나면 즉시,
- * 둘이면 고르게 한다("pick"). 없으면 null.
+ * 자동완성 규칙 — 정확히 같은 origin 이 하나뿐일 때만 즉시 채운다.
+ * 에이전트 탭은 exact 중 가장 최근, 사용자 탭은 exact 1개·전체 1개일 때만 즉시 채우고
+ * 그 밖(복수 exact·PSL 섞임·PSL만)은 고르게 한다("pick"). 없으면 null.
  */
 export function chooseAutofillCredential(
   credentials: readonly StoredLoginCredential[],
   isAgentTab: boolean,
 ): StoredLoginCredential | "pick" | null {
   if (credentials.length === 0) return null;
-  const latest = credentials.slice().sort((a, b) => b.updatedAt - a.updatedAt)[0]!;
-  if (isAgentTab) return latest;
-  if (credentials.length === 1) return latest;
+  const exacts = credentials
+    .filter((entry) => entry.matchType === "exact")
+    .sort((a, b) => b.updatedAt - a.updatedAt);
+  if (isAgentTab) return exacts[0] ?? null;
+  if (exacts.length === 1 && credentials.length === 1) return exacts[0]!;
   return "pick";
 }
 
@@ -500,6 +541,8 @@ export interface PasswordPickPrompt {
   readonly viewId: string;
   readonly origin: string;
   readonly usernames: readonly string[];
+  /** usernames 와 같은 순서의 각 자격 원본 — 생략되면 overlay origin 과 같다. */
+  readonly origins: readonly string[];
 }
 
 export type PasswordPrompt = PasswordSavePrompt | PasswordPickPrompt;
@@ -509,6 +552,8 @@ export interface BrowserPasswordPageAgentDeps {
   readonly worldId?: number;
   readonly now?: () => number;
   readonly scanDebounceMs?: number;
+  /** SPA·XHR 정산 대기 — 기본 800ms. */
+  readonly settleDebounceMs?: number;
   readonly onPrompt?: (prompt: PasswordPrompt | null) => void;
   readonly log?: (message: string) => void;
 }
@@ -519,6 +564,11 @@ export interface BrowserPasswordPageHooks {
   pageReady(viewId: string): void;
   binding(viewId: string, payload: unknown): void;
   detachView(viewId: string): void;
+  /** 항해·로드 신호 — 제출 판정의 내비게이션 축이다. */
+  navigationStarted(viewId: string): void;
+  navigationCommitted(viewId: string, info: { readonly url: string | null; readonly httpStatus: number | null }): void;
+  navigationFailed(viewId: string): void;
+  sameDocumentNavigated(viewId: string): void;
 }
 
 interface PageTrack {
@@ -531,8 +581,25 @@ interface PageTrack {
   scanning: boolean;
   queued: boolean;
   rescanTimer: ReturnType<typeof setTimeout> | null;
+  settleTimer: ReturnType<typeof setTimeout> | null;
   lastSubmit: { username: string; password: string; at: number } | null;
+  /** 입력 중 임시 보관 — JS 가 submit 직전 칸을 비워도 잃지 않는다. */
+  provisional: { origin: string; username: string; password: string; at: number } | null;
 }
+
+interface PendingSubmission {
+  readonly viewId: string;
+  /** 제출을 본 로그인 origin — 성공 판정과 저장은 이 기준이다. */
+  readonly origin: string;
+  readonly username: string;
+  readonly password: string;
+  readonly at: number;
+}
+
+/** 제출 대기 한도 — 그 안에 성공 판정이 없으면 버린다. */
+const PENDING_SUBMISSION_TIMEOUT_MS = 120_000;
+/** 임시 보관 유효 한도 — 오래된 입력으로 항해를 제출로 오인하지 않는다. */
+const PROVISIONAL_MAX_AGE_MS = 120_000;
 
 function pageOriginOf(url: string | null): string | null {
   if (!url) return null;
@@ -573,7 +640,7 @@ function validateScan(value: unknown): FleetPasswordPageScan | null {
 }
 
 interface BindingMessage {
-  readonly kind: "submitted" | "field-focused" | "forms-changed";
+  readonly kind: "submitted" | "field-focused" | "forms-changed" | "user-input";
   readonly username?: string;
   readonly password?: string;
 }
@@ -588,19 +655,21 @@ function validateBinding(payload: unknown): BindingMessage | null {
   }
   if (!isRecord(parsed)) return null;
   if (parsed.kind === "forms-changed" || parsed.kind === "field-focused") return { kind: parsed.kind };
-  if (parsed.kind !== "submitted") return null;
+  if (parsed.kind !== "submitted" && parsed.kind !== "user-input") return null;
   if (typeof parsed.username !== "string" || typeof parsed.password !== "string") return null;
   if (parsed.username.length === 0 || parsed.username.length > BROWSER_PASSWORD_USERNAME_MAX_LENGTH) return null;
   if (parsed.password.length === 0 || parsed.password.length > BROWSER_PASSWORD_SECRET_MAX_LENGTH) return null;
-  return { kind: "submitted", username: parsed.username, password: parsed.password };
+  return { kind: parsed.kind, username: parsed.username, password: parsed.password };
 }
 
 export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDeps) {
   const worldId = deps.worldId ?? PASSWORD_PAGE_WORLD_ID;
   const now = deps.now ?? Date.now;
   const debounceMs = deps.scanDebounceMs ?? 150;
+  const settleMs = deps.settleDebounceMs ?? 800;
   const log = deps.log ?? (() => {});
   const tracks = new Map<string, PageTrack>();
+  const pendings = new Map<string, PendingSubmission>();
   let prompt: PasswordPrompt | null = null;
 
   const SCAN_SOURCE = fleetPasswordScan.toString();
@@ -723,7 +792,23 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
     track.installedKey = pageKey;
   };
 
-  const handleSubmitted = async (viewId: string, username: string, password: string): Promise<void> => {
+  const clearTrackTimers = (track: PageTrack): void => {
+    if (track.rescanTimer !== null) { clearTimeout(track.rescanTimer); track.rescanTimer = null; }
+    if (track.settleTimer !== null) { clearTimeout(track.settleTimer); track.settleTimer = null; }
+  };
+
+  const sweepStalePendings = (): void => {
+    const at = now();
+    for (const [viewId, pending] of pendings) {
+      if (at - pending.at > PENDING_SUBMISSION_TIMEOUT_MS) pendings.delete(viewId);
+    }
+  };
+
+  /**
+   * 제출 신호 → 즉시 카드가 아니라 대기. 로그인 성공 판정이 나야 저장 제안을 띄운다.
+   * 실패 제출(틀린 비밀번호)에는 카드를 띄우지 않는 것이 핵심이다.
+   */
+  const noteSubmission = (viewId: string, username: string, password: string): void => {
     const track = tracks.get(viewId);
     if (!track) return;
     const origin = pageOriginOf(track.handle.url());
@@ -731,19 +816,68 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
     const at = now();
     if (track.lastSubmit && track.lastSubmit.username === username && track.lastSubmit.password === password && at - track.lastSubmit.at < 5_000) return;
     track.lastSubmit = { username, password, at };
-    const creds = readCredentials(origin);
+    sweepStalePendings();
+    pendings.set(viewId, { viewId, origin, username, password, at });
+    settleSoon(viewId);
+  };
+
+  const handleUserInput = (viewId: string, username: string, password: string): void => {
+    const track = tracks.get(viewId);
+    if (!track) return;
+    const origin = pageOriginOf(track.handle.url());
+    if (!origin) return;
+    track.provisional = { origin, username, password, at: now() };
+  };
+
+  /**
+   * 로그인 성공 판정. 새 문서에 동등한 로그인 폼이 다시 나타나면 실패(버림),
+   * 폼이 사라졌으면 성공으로 보고 저장 제안을 띄운다. SPA 정산에서는 폼이 남아 있으면
+   * 다음 신호까지 기다린다(타임아웃에 만료).
+   */
+  const evaluatePending = async (viewId: string, decisive: boolean): Promise<void> => {
+    const pending = pendings.get(viewId);
+    if (!pending) return;
+    if (now() - pending.at > PENDING_SUBMISSION_TIMEOUT_MS) {
+      pendings.delete(viewId);
+      return;
+    }
+    const track = tracks.get(viewId);
+    if (!track) {
+      pendings.delete(viewId);
+      return;
+    }
+    const raw = await execute(track, `(${SCAN_SOURCE})(document)`);
+    const scan = validateScan(raw);
+    // 스캔이 안 되면 다음 신호까지 둔다 — 성공도 실패도 확정하지 않는다.
+    if (!scan) return;
+    if (chooseLoginForm(scan.forms)) {
+      if (decisive) pendings.delete(viewId);
+      return;
+    }
+    const creds = readCredentials(pending.origin);
+    pendings.delete(viewId);
     if (!creds) return;
-    const decision = decideSavePrompt({ username, password }, creds.credentials, { offerToSave: creds.offerToSave, neverSaved: creds.neverSaved });
+    const decision = decideSavePrompt({ username: pending.username, password: pending.password }, creds.credentials, { offerToSave: creds.offerToSave, neverSaved: creds.neverSaved });
     if (decision.kind === "none") return;
     emit({
       kind: "save-prompt",
       viewId,
-      origin,
-      username,
-      password,
+      origin: pending.origin,
+      username: pending.username,
+      password: pending.password,
       mode: decision.kind,
       ...(decision.kind === "update" ? { entryId: decision.entryId } : {}),
     });
+  };
+
+  const settleSoon = (viewId: string): void => {
+    const track = tracks.get(viewId);
+    if (!track) return;
+    if (track.settleTimer !== null) clearTimeout(track.settleTimer);
+    track.settleTimer = setTimeout(() => {
+      track.settleTimer = null;
+      void evaluatePending(viewId, false);
+    }, settleMs);
   };
 
   const handleFocused = async (viewId: string): Promise<void> => {
@@ -752,20 +886,29 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
     const origin = pageOriginOf(track.handle.url());
     if (!origin) return;
     const creds = readCredentials(origin);
-    if (!creds || creds.credentials.length < 2) return;
+    if (!creds || creds.credentials.length === 0) return;
+    // exact 1개·전체 1개는 이미 즉시 채웠으므로 선택 목록이 필요 없다.
+    const exacts = creds.credentials.filter((entry) => entry.matchType === "exact");
+    if (exacts.length === 1 && creds.credentials.length === 1) return;
     const raw = await execute(track, `(${SCAN_SOURCE})(document)`);
     const scan = validateScan(raw);
     if (!scan) return;
     const form = chooseLoginForm(scan.forms);
     if (!form) return;
     if (track.filled.has(loginFormKey(origin, form))) return;
-    emit({ kind: "pick", viewId, origin, usernames: creds.credentials.map((entry) => entry.username) });
+    emit({
+      kind: "pick",
+      viewId,
+      origin,
+      usernames: creds.credentials.map((entry) => entry.username),
+      origins: creds.credentials.map((entry) => entry.origin),
+    });
   };
 
   const hooks: BrowserPasswordPageHooks = {
     attachView(viewId, handle) {
       const existing = tracks.get(viewId);
-      if (existing?.rescanTimer !== null && existing) clearTimeout(existing.rescanTimer);
+      if (existing) clearTrackTimers(existing);
       tracks.set(viewId, {
         handle,
         visible: existing?.visible ?? false,
@@ -776,7 +919,9 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
         scanning: false,
         queued: false,
         rescanTimer: null,
+        settleTimer: null,
         lastSubmit: null,
+        provisional: null,
       });
     },
     setVisible(viewId, visible, agent) {
@@ -800,27 +945,74 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
       if (origin && track.installedKey !== track.pageKey) {
         track.filled.clear();
         track.lastSubmit = null;
+        track.provisional = null;
       }
-      void install(track).then(() => scanView(viewId), () => scanView(viewId));
+      // 새 문서 적재 뒤 성공 판정을 단정적으로 내린다 — 로그인 폼이 다시 보이면 실패다.
+      void install(track).then(
+        () => scanView(viewId).then(() => evaluatePending(viewId, true)),
+        () => scanView(viewId).then(() => evaluatePending(viewId, true)),
+      );
     },
     binding(viewId, payload) {
       const message = validateBinding(payload);
       if (!message) return;
       if (message.kind === "forms-changed") {
         scanSoon(viewId);
+        // XHR·DOM 변이 뒤 폼이 사라졌으면 SPA 로그인 성공이다 — 정산 뒤 판정한다.
+        settleSoon(viewId);
         return;
       }
       if (message.kind === "field-focused") {
         void handleFocused(viewId);
         return;
       }
-      void handleSubmitted(viewId, message.username ?? "", message.password ?? "");
+      if (message.kind === "user-input") {
+        void handleUserInput(viewId, message.username ?? "", message.password ?? "");
+        return;
+      }
+      noteSubmission(viewId, message.username ?? "", message.password ?? "");
     },
     detachView(viewId) {
       const track = tracks.get(viewId);
-      if (track?.rescanTimer !== null && track) clearTimeout(track.rescanTimer);
+      if (track) clearTrackTimers(track);
       tracks.delete(viewId);
+      pendings.delete(viewId);
       clearPromptFor(viewId);
+    },
+    navigationStarted(viewId) {
+      const track = tracks.get(viewId);
+      if (!track) return;
+      sweepStalePendings();
+      if (pendings.has(viewId)) return;
+      // JS submit·타이머·커스텀 핸들러로 떠나는 항해도 놓치지 않는다 —
+      // 입력 중 임시 보관을 제출 대기로 승격한다.
+      const provisional = track.provisional;
+      if (!provisional) return;
+      if (now() - provisional.at > PROVISIONAL_MAX_AGE_MS) {
+        track.provisional = null;
+        return;
+      }
+      pendings.set(viewId, { viewId, origin: provisional.origin, username: provisional.username, password: provisional.password, at: now() });
+    },
+    navigationCommitted(viewId, info) {
+      const track = tracks.get(viewId);
+      if (!track) return;
+      // HTTP 4xx/5xx 이면 로그인 실패로 보고 대기를 버린다. -1(비HTTP)은 판정하지 않는다.
+      if (typeof info.httpStatus === "number" && info.httpStatus >= 400) {
+        track.provisional = null;
+        pendings.delete(viewId);
+        return;
+      }
+      if (pendings.has(viewId)) settleSoon(viewId);
+    },
+    navigationFailed(viewId) {
+      const track = tracks.get(viewId);
+      if (!track) return;
+      track.provisional = null;
+      pendings.delete(viewId);
+    },
+    sameDocumentNavigated(viewId) {
+      if (pendings.has(viewId)) settleSoon(viewId);
     },
   };
 
@@ -833,8 +1025,9 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
   return {
     ...hooks,
     /** 크롬 카드·선택 목록의 동작. 성공하면 카드를 거둔다. */
-    async chromeAction(action: "password-pick" | "password-save" | "password-dismiss" | "password-never", username?: string): Promise<void> {
+    async chromeAction(action: "password-pick" | "password-save" | "password-dismiss" | "password-never", username?: string, origin?: string): Promise<void> {
       if (action === "password-dismiss") {
+        if (prompt) pendings.delete(prompt.viewId);
         clearPrompt();
         return;
       }
@@ -844,6 +1037,7 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
       try {
         if (action === "password-never" && current.kind === "save-prompt") {
           await deps.vault.command({ action: "add-never-save", origin: current.origin });
+          pendings.delete(current.viewId);
           clearPrompt();
           return;
         }
@@ -853,21 +1047,24 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
           } else {
             await deps.vault.command({ action: "save", origin: current.origin, username: current.username, password: current.password });
           }
+          const settled = tracks.get(current.viewId);
+          if (settled) settled.provisional = null;
+          pendings.delete(current.viewId);
           clearPrompt();
           return;
         }
         if (action === "password-pick" && current.kind === "pick" && typeof username === "string" && track) {
-          const origin = pageOriginOf(track.handle.url());
-          const creds = origin ? readCredentials(origin) : null;
-          const credential = creds?.credentials.find((entry) => entry.username === username) ?? null;
+          const pageOrigin = pageOriginOf(track.handle.url());
+          const creds = pageOrigin ? readCredentials(pageOrigin) : null;
+          const credential = creds?.credentials.find((entry) => entry.username === username && (origin === undefined || entry.origin === origin)) ?? null;
           if (!credential) return;
           const raw = await execute(track, `(${SCAN_SOURCE})(document)`);
           const scan = validateScan(raw);
           const form = scan ? chooseLoginForm(scan.forms) : null;
-          if (!form || !origin || (typeof scan?.origin === "string" && scan.origin !== "" && scan.origin !== origin)) return;
-          const filled = await fillNow(track, origin, form, credential, true);
+          if (!form || !pageOrigin || (typeof scan?.origin === "string" && scan.origin !== "" && scan.origin !== pageOrigin)) return;
+          const filled = await fillNow(track, pageOrigin, form, credential, true);
           if (filled) {
-            track.filled.add(loginFormKey(origin ?? current.origin, form));
+            track.filled.add(loginFormKey(pageOrigin ?? current.origin, form));
             clearPrompt();
           }
           return;

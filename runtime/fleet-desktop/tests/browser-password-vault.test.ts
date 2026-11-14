@@ -373,7 +373,7 @@ describe("browser password vault", () => {
     await vault.command({ action: "save", origin: "https://a.example/", username: "ada", password: "pw-one" });
     const first = vault.forOrigin("https://a.example/");
     expect(first.neverSaved).toBe(false);
-    expect(first.credentials).toEqual([{ id: first.credentials[0]!.id, username: "ada", password: "pw-one", updatedAt: first.credentials[0]!.updatedAt }]);
+    expect(first.credentials).toEqual([{ id: first.credentials[0]!.id, username: "ada", password: "pw-one", updatedAt: first.credentials[0]!.updatedAt, matchType: "exact", origin: "https://a.example" }]);
     await vault.command({ action: "save", origin: "https://a.example/other", username: "ada", password: "pw-two" });
     expect(vault.forOrigin("https://a.example/").credentials).toHaveLength(1);
     await vault.command({ action: "set-offer-to-save", enabled: false });
@@ -381,5 +381,43 @@ describe("browser password vault", () => {
     expect(() => vault.forOrigin("not a url")).toThrow("invalid_password_entry");
     fakes.control.available = false;
     expect(() => vault.forOrigin("https://a.example/")).toThrow("encryption_unavailable");
+  });
+
+  it("matches same registrable domains as psl while keeping exact first", async () => {
+    const vault = createVault();
+    await vault.command({ action: "save", origin: "https://login.example.com/", username: "ada", password: "one" });
+    await vault.command({ action: "save", origin: "https://app.example.com/", username: "ada", password: "two" });
+    const both = vault.forOrigin("https://login.example.com/");
+    expect(both.credentials.map((entry) => [entry.origin, entry.matchType, entry.password])).toEqual([
+      ["https://login.example.com", "exact", "one"],
+      ["https://app.example.com", "psl", "two"],
+    ]);
+
+    await vault.command({ action: "save", origin: "https://a.b.co.kr/", username: "u", password: "kr-one" });
+    await vault.command({ action: "save", origin: "https://c.b.co.kr/", username: "u", password: "kr-two" });
+    const kr = vault.forOrigin("https://a.b.co.kr/");
+    expect(kr.credentials.map((entry) => [entry.origin, entry.matchType])).toEqual([
+      ["https://a.b.co.kr", "exact"],
+      ["https://c.b.co.kr", "psl"],
+    ]);
+  });
+
+  it("refuses psl matches across schemes, ports, suffixes, and local hosts", async () => {
+    const vault = createVault();
+    await vault.command({ action: "save", origin: "https://a.example/", username: "u", password: "p" });
+    expect(vault.forOrigin("http://a.example/").credentials).toHaveLength(0);
+    expect(vault.forOrigin("https://a.example:8443/").credentials).toHaveLength(0);
+
+    await vault.command({ action: "save", origin: "https://a.co.kr/", username: "u", password: "p" });
+    expect(vault.forOrigin("https://a.co.uk/").credentials).toHaveLength(0);
+
+    await vault.command({ action: "save", origin: "http://127.0.0.1/", username: "u", password: "p" });
+    expect(vault.forOrigin("http://127.0.0.1/").credentials.map((entry) => entry.matchType)).toEqual(["exact"]);
+    await vault.command({ action: "save", origin: "http://127.0.0.2/", username: "u", password: "p2" });
+    expect(vault.forOrigin("http://127.0.0.1/").credentials).toHaveLength(1);
+
+    await vault.command({ action: "save", origin: "http://localhost:3000/", username: "u", password: "p" });
+    await vault.command({ action: "save", origin: "http://localhost:4000/", username: "u", password: "p2" });
+    expect(vault.forOrigin("http://localhost:3000/").credentials).toHaveLength(1);
   });
 });

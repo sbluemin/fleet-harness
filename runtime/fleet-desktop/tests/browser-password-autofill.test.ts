@@ -27,7 +27,9 @@ import {
   type FleetPasswordNode,
   type FleetPasswordPageScan,
   type PasswordPrompt,
+  type StoredLoginCredential,
 } from "../src/browser-password-page.js";
+import type { PasswordMatchType } from "../src/browser-password-vault.js";
 import { createDesktopBrowserViews, type PageHost } from "../src/browser-views.js";
 
 class FakeInput implements FleetPasswordInput {
@@ -250,16 +252,57 @@ describe("isolated submit and focus reporters", () => {
     expect(posted).toHaveLength(2);
   });
 
-  it("reports focus only on login fields", () => {
+  it("reports Enter inside a form as a submit signal", () => {
+    const { doc, password, user } = loginDoc();
+    const posted = session(doc);
+    user.value = "ada";
+    password.value = "pw";
+    doc.fire("keydown", inputEvent(password, { type: "keydown", key: "Enter" }));
+    expect(posted.map((text) => JSON.parse(text))).toEqual([{ kind: "submitted", username: "ada", password: "pw" }]);
+  });
+
+  it("banks typed credentials as user-input and never reports empties", () => {
+    const { doc, user, password } = loginDoc();
+    const posted = session(doc);
+    user.value = "ada";
+    doc.fire("input", inputEvent(user, { type: "input" }));
+    expect(posted).toHaveLength(0);
+    password.value = "pw";
+    doc.fire("input", inputEvent(password, { type: "input" }));
+    doc.fire("change", inputEvent(password, { type: "change" }));
+    expect(posted.map((text) => JSON.parse(text))).toEqual([{ kind: "user-input", username: "ada", password: "pw" }]);
+    // JS 가 비우듯 password 만 지워도 빈 쌍은 보고하지 않는다.
+    password.value = "";
+    doc.fire("input", inputEvent(password, { type: "input" }));
+    expect(posted).toHaveLength(1);
+  });
+
+  it("reports focus on plain text inputs of a login form without autocomplete", () => {
+    const form = new FakeForm("/login");
+    const user = new FakeInput({ type: "text", name: "id", form });
+    const password = new FakeInput({ type: "password", name: "pw", form });
+    form.children.push(user, password);
+    const doc = new FakeDoc([user, password]);
+    const posted = session(doc);
+    doc.fire("focusin", inputEvent(user));
+    doc.fire("focusin", inputEvent(password));
+    expect(posted.map((text) => JSON.parse(text))).toEqual([{ kind: "field-focused" }, { kind: "field-focused" }]);
+  });
+
+  it("reports focus on text inputs near a login form, and silence without one", () => {
     const { doc, user, password } = loginDoc();
     const other = new FakeInput({ type: "text", name: "search" });
     doc.children.push(other);
     const posted = session(doc);
     doc.fire("focusin", inputEvent(other));
-    expect(posted).toHaveLength(0);
     doc.fire("focusin", inputEvent(user));
     doc.fire("focusin", inputEvent(password));
-    expect(posted.map((text) => JSON.parse(text))).toEqual([{ kind: "field-focused" }, { kind: "field-focused" }]);
+    expect(posted.map((text) => JSON.parse(text))).toEqual([{ kind: "field-focused" }, { kind: "field-focused" }, { kind: "field-focused" }]);
+
+    const plain = new FakeDoc([new FakeInput({ type: "text", name: "q" })]);
+    const silent = session(plain);
+    plain.fire("focusin", inputEvent(plain.children[0]!));
+    expect(silent).toHaveLength(0);
   });
 
   it("reports dynamic DOM changes through the observer", async () => {
@@ -284,9 +327,9 @@ describe("isolated submit and focus reporters", () => {
 });
 
 describe("autofill and save decisions", () => {
-  const creds = [
-    { id: "old", username: "ada", updatedAt: 100 },
-    { id: "new", username: "grace", updatedAt: 300 },
+  const creds: StoredLoginCredential[] = [
+    { id: "old", username: "ada", updatedAt: 100, matchType: "exact" },
+    { id: "new", username: "grace", updatedAt: 300, matchType: "exact" },
   ];
 
   it("fills the latest account on agent tabs, one account on user tabs, and asks otherwise", () => {
@@ -294,6 +337,21 @@ describe("autofill and save decisions", () => {
     expect(chooseAutofillCredential([creds[0]!], false)).toEqual(creds[0]);
     expect(chooseAutofillCredential(creds, true)).toEqual(creds[1]);
     expect(chooseAutofillCredential(creds, false)).toBe("pick");
+  });
+
+  it("waits for a pick on psl-only or mixed matches, and fills single exact", () => {
+    const single: StoredLoginCredential[] = [{ id: "a", username: "ada", updatedAt: 1, matchType: "exact" }];
+    expect(chooseAutofillCredential(single, false)).toEqual(single[0]);
+    expect(chooseAutofillCredential(single, true)).toEqual(single[0]);
+    const pslOnly: StoredLoginCredential[] = [{ id: "b", username: "ada", updatedAt: 2, matchType: "psl" }];
+    expect(chooseAutofillCredential(pslOnly, false)).toBe("pick");
+    expect(chooseAutofillCredential(pslOnly, true)).toBeNull();
+    const mixed: StoredLoginCredential[] = [
+      { id: "a", username: "ada", updatedAt: 1, matchType: "exact" },
+      { id: "b", username: "ada", updatedAt: 2, matchType: "psl" },
+    ];
+    expect(chooseAutofillCredential(mixed, false)).toBe("pick");
+    expect(chooseAutofillCredential(mixed, true)).toEqual(mixed[0]);
   });
 
   it("offers save, update, or silence", () => {
@@ -323,10 +381,11 @@ const cannedScan = (overrides: Partial<FleetPasswordPageScan["forms"][number]> =
   forms: [{ index: 0, action: "/login", passwordName: "pw", usernameName: "un", usernameVisible: true, usernameValue: "", usernameHasValue: false, passwordHasValue: false, passwordCount: 1, newPassword: false, ...overrides }],
 });
 
-function stubVault(credentials: { id: string; username: string; password: string; updatedAt: number }[], policy: { offerToSave: boolean; neverSaved: boolean } = { offerToSave: true, neverSaved: false }) {
+function stubVault(credentials: { id: string; username: string; password: string; updatedAt: number; matchType?: PasswordMatchType; origin?: string }[], policy: { offerToSave: boolean; neverSaved: boolean } = { offerToSave: true, neverSaved: false }) {
+  const full = credentials.map((entry) => ({ matchType: "exact" as const, origin: "https://a.example", ...entry }));
   const commands: Record<string, unknown>[] = [];
   const vault: BrowserPasswordPageAgentDeps["vault"] = {
-    forOrigin: () => ({ offerToSave: policy.offerToSave, neverSaved: policy.neverSaved, credentials }),
+    forOrigin: () => ({ offerToSave: policy.offerToSave, neverSaved: policy.neverSaved, credentials: full }),
     command: async (params) => { commands.push(params); return {}; },
   };
   return { vault, commands };
@@ -412,7 +471,7 @@ describe("page agent orchestration", () => {
     expect(stub.codes.filter((code) => code.includes("focusPassword"))).toHaveLength(0);
     agent.binding("v1", JSON.stringify({ kind: "field-focused" }));
     await tick();
-    expect(prompts.at(-1)).toEqual({ kind: "pick", viewId: "v1", origin: "https://a.example", usernames: ["ada", "grace"] });
+    expect(prompts.at(-1)).toEqual({ kind: "pick", viewId: "v1", origin: "https://a.example", usernames: ["ada", "grace"], origins: ["https://a.example", "https://a.example"] });
     await agent.chromeAction("password-pick", "grace");
     const fills = stub.codes.filter((code) => code.includes("focusPassword"));
     expect(fills).toHaveLength(1);
@@ -425,7 +484,7 @@ describe("page agent orchestration", () => {
     const { vault, commands } = stubVault(stored);
     const prompts: (PasswordPrompt | null)[] = [];
     const stub = stubHandle("https://a.example/", { forms: [] });
-    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5, onPrompt: (prompt) => prompts.push(prompt) });
+    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5, settleDebounceMs: 5, onPrompt: (prompt) => prompts.push(prompt) });
     agent.attachView("v1", stub.handle);
 
     agent.binding("v1", JSON.stringify({ kind: "submitted", username: "ada", password: "one" }));
@@ -486,6 +545,7 @@ describe("chrome contract password actions", () => {
     expect(readChromeMessage(message("password-dismiss"))).toEqual({ role: "bar", action: { action: "password-dismiss" } });
     expect(readChromeMessage(message("password-never"))).toEqual({ role: "bar", action: { action: "password-never" } });
     expect(readChromeMessage(message("password-pick", { username: "ada@example.com" }))).toEqual({ role: "bar", action: { action: "password-pick", username: "ada@example.com" } });
+    expect(readChromeMessage(message("password-pick", { username: "ada", origin: "https://b.example" }))).toEqual({ role: "bar", action: { action: "password-pick", username: "ada", origin: "https://b.example" } });
   });
 
   it("rejects malformed password actions", () => {
@@ -493,6 +553,8 @@ describe("chrome contract password actions", () => {
     expect(readChromeMessage(message("password-pick", { username: "" }))).toBeNull();
     expect(readChromeMessage(message("password-pick", { username: "x".repeat(513) }))).toBeNull();
     expect(readChromeMessage(message("password-pick", { username: 7 }))).toBeNull();
+    expect(readChromeMessage(message("password-pick", { username: "ada", origin: "" }))).toBeNull();
+    expect(readChromeMessage(message("password-pick", { username: "ada", origin: 7 }))).toBeNull();
   });
 });
 
@@ -627,6 +689,37 @@ describe("browser views password hooks", () => {
     expect(calls).toContain("attach:view-1");
     expect(calls).toContain("visible:view-1,true,true");
   });
+
+  it("routes navigation signals to the password hooks", async () => {
+    const calls: string[] = [];
+    const contents = await drive({
+      attachView: (...args: never[]) => calls.push(`attach:${String((args as unknown[])[0])}`),
+      setVisible: (...args: never[]) => calls.push(`visible:${(args as unknown[]).join(",")}`),
+      pageReady: () => undefined,
+      binding: () => undefined,
+      detachView: () => undefined,
+      navigationStarted: () => calls.push("nav-start"),
+      navigationCommitted: (...args: never[]) => calls.push(`nav-commit:${JSON.stringify((args as unknown[])[1])}`),
+      navigationFailed: () => calls.push("nav-fail"),
+      sameDocumentNavigated: () => calls.push("nav-same"),
+    }, { inputLocked: () => false });
+    contents.emit("will-navigate", { url: "https://a.example/", isMainFrame: true, isSameDocument: false });
+    contents.emit("did-start-navigation", { url: "https://a.example/", isMainFrame: true, isSameDocument: false });
+    contents.emit("did-navigate", {}, "https://a.example/", 200);
+    contents.emit("did-navigate-in-page", {}, "https://a.example/#x", true);
+    contents.emit("did-fail-load", {}, -3, "ERR_ABORTED", "https://a.example/", true);
+    // 동일 문서 항해·서브프레임 신호는 제출 대기로 잇지 않는다.
+    contents.emit("will-navigate", { url: "https://a.example/#frag", isMainFrame: true, isSameDocument: true });
+    contents.emit("did-navigate-in-page", {}, "https://a.example/#y", false);
+    contents.emit("did-fail-load", {}, -3, "ERR_ABORTED", "https://a.example/", false);
+    expect(calls.filter((call) => call.startsWith("nav-"))).toEqual([
+      "nav-start",
+      "nav-start",
+      'nav-commit:{"url":"https://a.example/","httpStatus":200}',
+      "nav-same",
+      "nav-fail",
+    ]);
+  });
 });
 
 describe("password prompt reveal helpers", () => {
@@ -658,7 +751,7 @@ describe("password agent background and retention rules", () => {
     const { vault } = stubVault([]);
     const prompts: (PasswordPrompt | null)[] = [];
     const stub = stubHandle("https://a.example/", { forms: [] });
-    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5, onPrompt: (prompt) => prompts.push(prompt) });
+    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5, settleDebounceMs: 5, onPrompt: (prompt) => prompts.push(prompt) });
     agent.attachView("v1", stub.handle);
     agent.setVisible("v1", true, false);
     agent.binding("v1", JSON.stringify({ kind: "submitted", username: "new", password: "pw" }));
@@ -743,5 +836,122 @@ describe("password agent background and retention rules", () => {
     agent.pageReady("v1");
     await tick();
     expect(fillCount).toBe(2);
+  });
+});
+
+describe("provisional credentials and login verdicts", () => {
+  const loginScan = (): FleetPasswordPageScan => ({ origin: "https://login.example", ...cannedScan() });
+
+  function verdictHarness(urls: { login: string; landing: string }) {
+    let currentUrl = urls.login;
+    let landed = false;
+    const codes: string[] = [];
+    const prompts: (PasswordPrompt | null)[] = [];
+    const { vault, commands } = stubVault([]);
+    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5, settleDebounceMs: 5, onPrompt: (prompt) => prompts.push(prompt) });
+    agent.attachView("v1", {
+      url: () => currentUrl,
+      executeIsolated: async (code: string) => {
+        codes.push(code);
+        if (code.includes("fleetPasswordSession")) return true;
+        if (code.includes("fleetPasswordScan")) return landed ? { forms: [] } : loginScan();
+        if (code.includes("focusPassword")) return true;
+        return null;
+      },
+    });
+    agent.setVisible("v1", true, false);
+    return { agent, prompts, commands, codes, go: (landing: boolean) => { landed = landing; if (landing) currentUrl = urls.landing; } };
+  }
+
+  it("prompts after JS-cleared submit followed by a successful navigation", async () => {
+    const h = verdictHarness({ login: "https://login.example/", landing: "https://app.example/home" });
+    h.agent.pageReady("v1");
+    await tick();
+    // JS 가 submit 직전 칸을 비워 DOM submit 값이 비어도 입력 중 보관이 살아 있다.
+    h.agent.binding("v1", JSON.stringify({ kind: "user-input", username: "ada", password: "pw" }));
+    h.agent.navigationStarted("v1");
+    h.go(true);
+    h.agent.navigationCommitted("v1", { url: "https://app.example/home", httpStatus: 200 });
+    await tick(40);
+    expect(h.prompts.at(-1)).toMatchObject({ kind: "save-prompt", mode: "save", origin: "https://login.example", username: "ada" });
+    await h.agent.chromeAction("password-save");
+    expect(h.commands.at(-1)).toMatchObject({ action: "save", origin: "https://login.example", username: "ada", password: "pw" });
+    expect(h.prompts.at(-1)).toBeNull();
+  });
+
+  it("stays silent when the login form reappears or the load fails", async () => {
+    const h = verdictHarness({ login: "https://login.example/", landing: "https://login.example/?error=1" });
+    h.agent.pageReady("v1");
+    await tick();
+    h.agent.binding("v1", JSON.stringify({ kind: "submitted", username: "ada", password: "wrong" }));
+    h.go(false);
+    h.agent.pageReady("v1");
+    await tick(40);
+    expect(h.agent.prompt()).toBeNull();
+    expect(h.prompts).toHaveLength(0);
+
+    h.agent.binding("v1", JSON.stringify({ kind: "submitted", username: "ada", password: "pw" }));
+    h.agent.navigationCommitted("v1", { url: "https://login.example/", httpStatus: 401 });
+    await tick(40);
+    expect(h.agent.prompt()).toBeNull();
+    expect(h.prompts).toHaveLength(0);
+  });
+
+  it("prompts when an SPA login removes the form without navigating", async () => {
+    const h = verdictHarness({ login: "https://app.example/login", landing: "https://app.example/login" });
+    h.agent.pageReady("v1");
+    await tick();
+    h.agent.binding("v1", JSON.stringify({ kind: "submitted", username: "new", password: "pw" }));
+    await tick(40);
+    // 폼이 그대로 있으면 아직 성공이 아니다.
+    expect(h.agent.prompt()).toBeNull();
+    h.go(true);
+    h.agent.sameDocumentNavigated("v1");
+    await tick(40);
+    expect(h.prompts.at(-1)).toMatchObject({ kind: "save-prompt", mode: "save", origin: "https://app.example" });
+  });
+});
+
+describe("psl matching and picker origins", () => {
+  it("fills single exact immediately but waits on psl mixes", async () => {
+    const { vault } = stubVault([
+      { id: "e", username: "ada", password: "pw", updatedAt: 2, matchType: "exact", origin: "https://a.example" },
+      { id: "p", username: "ada", password: "pw2", updatedAt: 1, matchType: "psl", origin: "https://b.example" },
+    ]);
+    const prompts: (PasswordPrompt | null)[] = [];
+    const stub = stubHandle("https://a.example/", cannedScan());
+    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5, settleDebounceMs: 5, onPrompt: (prompt) => prompts.push(prompt) });
+    agent.attachView("v1", stub.handle);
+    // 사용자 탭: exact 1개·전체 2개라 즉시 채우지 않는다.
+    agent.setVisible("v1", true, false);
+    agent.pageReady("v1");
+    await tick();
+    expect(stub.codes.filter((code) => code.includes("focusPassword"))).toHaveLength(0);
+
+    agent.binding("v1", JSON.stringify({ kind: "field-focused" }));
+    await tick();
+    expect(prompts.at(-1)).toEqual({
+      kind: "pick",
+      viewId: "v1",
+      origin: "https://a.example",
+      usernames: ["ada", "ada"],
+      origins: ["https://a.example", "https://b.example"],
+    });
+    await agent.chromeAction("password-pick", "ada", "https://b.example");
+    const fills = stub.codes.filter((code) => code.includes("focusPassword"));
+    expect(fills).toHaveLength(1);
+    expect(fills[0]).toContain("pw2");
+    expect(prompts.at(-1)).toBeNull();
+
+    // 에이전트 탭: exact 만 즉시 채운다.
+    const stub2 = stubHandle("https://a.example/", cannedScan());
+    const agent2 = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5, settleDebounceMs: 5 });
+    agent2.attachView("v2", stub2.handle);
+    agent2.setVisible("v2", false, true);
+    agent2.pageReady("v2");
+    await tick();
+    const agentFills = stub2.codes.filter((code) => code.includes("focusPassword"));
+    expect(agentFills).toHaveLength(1);
+    expect(agentFills[0]).toContain('"password":"pw"');
   });
 });

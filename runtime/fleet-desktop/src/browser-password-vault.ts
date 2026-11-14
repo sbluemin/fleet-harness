@@ -60,11 +60,16 @@ export interface BrowserPasswordClipboard {
  * 메인 내부 전용 조회 결과 — 자동완성·저장 판정이 쓴다. 평문이 들었으므로
  * `command` 로는 절대 내보내지 않고 격리 월드 채움에만 쓴다.
  */
+export type PasswordMatchType = "exact" | "psl";
+
 export interface BrowserPasswordPageCredential {
   readonly id: string;
   readonly username: string;
   readonly password: string;
   readonly updatedAt: number;
+  readonly matchType: PasswordMatchType;
+  /** 자격을 저장한 origin — PSL 매치의 출처 표시·선택 채움에 쓴다. */
+  readonly origin: string;
 }
 
 export interface BrowserPasswordOriginCredentials {
@@ -107,6 +112,50 @@ interface StoredVaultFile {
 
 const err = (code: BrowserPasswordErrorCode | "desktop_shell_unsupported"): BrowserPasswordVaultError =>
   new BrowserPasswordVaultError(code);
+
+/**
+ * 2단계 공개 접미사의 보수적 부분집합 — Chromium `password_manager` 의
+ * `GetMatchType` 처럼 같은 등록 가능 도메인(eTLD+1)을 가리는 데만 쓴다.
+ * 특정 사이트 분기가 아니라 접미사 규칙이므로 여기에 둔다.
+ */
+const TWO_LEVEL_PUBLIC_SUFFIXES = new Set([
+  "ac.in", "ac.jp", "ac.uk", "asn.au", "co.au", "co.in", "co.jp", "co.kr", "co.nz", "co.uk", "co.za",
+  "com.au", "com.br", "com.cn", "com.hk", "com.tw", "edu.au", "github.io", "go.jp", "go.kr", "gov.au",
+  "gov.cn", "gov.uk", "gr.jp", "herokuapp.com", "id.au", "ltd.uk", "me.uk", "ne.jp", "ne.kr", "net.au",
+  "net.br", "net.cn", "net.nz", "net.uk", "or.jp", "or.kr", "org.au", "org.br", "org.cn", "org.nz",
+  "org.uk", "plc.uk", "re.kr", "pe.kr", "sch.uk",
+]);
+
+function registrableDomain(host: string): string | null {
+  const normalized = host.toLowerCase().replace(/\.+$/u, "");
+  // IP 리터럴·단일 레이블(localhost 등)은 PSL 매칭에서 뺀다 — exact 로만 가린다.
+  if (normalized.length === 0 || /^[0-9.]+$/u.test(normalized) || normalized.indexOf(":") !== -1 || normalized.indexOf(".") === -1) return null;
+  const labels = normalized.split(".");
+  if (labels.some((label) => label.length === 0)) return null;
+  const suffix2 = labels.slice(-2).join(".");
+  if (TWO_LEVEL_PUBLIC_SUFFIXES.has(suffix2)) return labels.length >= 3 ? labels.slice(-3).join(".") : normalized;
+  return suffix2;
+}
+
+function effectivePasswordPort(protocol: string, port: string): string {
+  if (port !== "") return port;
+  return protocol === "https:" ? "443" : "80";
+}
+
+/** 같은 등록 가능 도메인의 다른 origin — scheme·유효 포트까지 같아야 한다. */
+function isPasswordPslMatch(page: URL, entryOrigin: string): boolean {
+  let entry: URL;
+  try {
+    entry = new URL(entryOrigin);
+  } catch {
+    return false;
+  }
+  if (entry.protocol !== page.protocol || effectivePasswordPort(entry.protocol, entry.port) !== effectivePasswordPort(page.protocol, page.port)) return false;
+  if (entry.hostname.toLowerCase() === page.hostname.toLowerCase()) return false;
+  const entryDomain = registrableDomain(entry.hostname);
+  const pageDomain = registrableDomain(page.hostname);
+  return entryDomain !== null && entryDomain === pageDomain;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -464,13 +513,28 @@ export function createBrowserPasswordVault(deps: BrowserPasswordVaultDeps) {
     const normalized = normalizeBrowserPasswordOrigin(origin);
     if (normalized === null) throw err("invalid_password_entry");
     const vault = load() ?? { offerToSave: true, neverSaveOrigins: [], entries: [] };
-    const matched = vault.entries.filter((entry) => entry.origin === normalized);
-    if (matched.length > 0) ensureEncryption();
+    const exact = vault.entries.filter((entry) => entry.origin === normalized);
+    const page = new URL(normalized);
+    const psl = registrableDomain(page.hostname) !== null
+      ? vault.entries.filter((entry) => entry.origin !== normalized && isPasswordPslMatch(page, entry.origin))
+      : [];
+    if (exact.length + psl.length > 0) ensureEncryption();
+    const decryptEntry = (entry: (typeof exact)[number], matchType: PasswordMatchType): BrowserPasswordPageCredential => ({
+      id: entry.id,
+      username: entry.username,
+      password: decrypt(entry.ciphertext),
+      updatedAt: entry.updatedAt,
+      matchType,
+      origin: entry.origin,
+    });
+    const credentials = [
+      ...exact.map((entry) => decryptEntry(entry, "exact")),
+      ...psl.map((entry) => decryptEntry(entry, "psl")),
+    ].sort((a, b) => (a.matchType === b.matchType ? b.updatedAt - a.updatedAt : a.matchType === "exact" ? -1 : 1));
     return {
       offerToSave: vault.offerToSave,
       neverSaved: vault.neverSaveOrigins.includes(normalized),
-      credentials: matched
-        .map((entry) => ({ id: entry.id, username: entry.username, password: decrypt(entry.ciphertext), updatedAt: entry.updatedAt })),
+      credentials,
     };
   };
 

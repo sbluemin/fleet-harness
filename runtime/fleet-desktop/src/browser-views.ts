@@ -769,6 +769,26 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       contents.on("dom-ready", passwordReady);
       contents.on("did-navigate", passwordReady);
       contents.on("did-navigate-in-page", passwordReady);
+      contents.on("did-finish-load", passwordReady);
+      // 제출 판정의 내비게이션 축 — form.submit()·타이머·커스텀 핸들러 항해도 놓치지 않는다.
+      contents.on("will-navigate", (details: { url?: unknown; isMainFrame?: unknown; isSameDocument?: unknown }) => {
+        if (details?.isMainFrame === true && details?.isSameDocument !== true) passwords.navigationStarted(spec.id);
+      });
+      contents.on("did-start-navigation", (details: { url?: unknown; isMainFrame?: unknown; isSameDocument?: unknown }) => {
+        if (details?.isMainFrame === true && details?.isSameDocument !== true) passwords.navigationStarted(spec.id);
+      });
+      contents.on("did-navigate", (_event: unknown, url: unknown, httpResponseCode: unknown) => {
+        passwords.navigationCommitted(spec.id, {
+          url: typeof url === "string" ? url : null,
+          httpStatus: typeof httpResponseCode === "number" ? httpResponseCode : null,
+        });
+      });
+      contents.on("did-navigate-in-page", (_event: unknown, _url: unknown, isMainFrame: unknown) => {
+        if (isMainFrame === true) passwords.sameDocumentNavigated(spec.id);
+      });
+      contents.on("did-fail-load", (_event: unknown, _code: unknown, _description: unknown, _url: unknown, isMainFrame: unknown) => {
+        if (isMainFrame === true) passwords.navigationFailed(spec.id);
+      });
       contents.on("console-message", (details: { message?: unknown; frame?: unknown }) => {
         if (typeof details?.message !== "string" || !details.message.startsWith(channelPrefix)) return;
         if (details.frame !== contents.mainFrame) return;
