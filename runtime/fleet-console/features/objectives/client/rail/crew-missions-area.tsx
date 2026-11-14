@@ -1,4 +1,4 @@
-import { useCallback, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, type JSX, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import { missionReady, missionTitle, unseenRecords, type Objective, type ObjectiveMember, type ObjectiveMission } from "../../shared/types.js";
 import { getT } from "../i18n/index.js";
@@ -22,7 +22,12 @@ export function crewMissionsCount(objective: Objective, language: "en" | "ko"): 
   });
 }
 
-function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labels, launchWords: rows }: {
+function CrewRow({ children, onPick, label }: { readonly children: ReactNode; readonly onPick?: (() => void) | undefined; readonly label: string }) {
+  return <li className="objective-rail-row objective-rail-crew-member">{onPick ? <button type="button" className="objectives-crew-mention" aria-label={label} onClick={(event) => { event.stopPropagation(); onPick(); }}>{children}</button> : children}</li>;
+}
+
+function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labels, launchWords: rows, onMention }: {
+  readonly onMention?: (() => void) | undefined;
   readonly objective: Objective;
   readonly member: ObjectiveMember;
   readonly count: number;
@@ -39,7 +44,7 @@ function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labe
     ? launchedWords(rows, launched ? member.model : picked?.model, launched ? member.effort : picked?.effort, labels).title
     : t("objectives.members.assigned");
   return (
-    <li className="objective-rail-row objective-rail-crew-member">
+    <CrewRow onPick={onMention} label={t("objectives.rail.strip.mention", { name: member.role })}>
       <span className="objective-rail-crew-mark"><MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} still size={20} /></span>
       <span className="objective-rail-crew-main">
         <span className="objective-rail-crew-name">{member.role}</span>
@@ -48,11 +53,12 @@ function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labe
       {state !== "closed" && status !== "" ? (
         <span className={`objective-rail-tag${failed ? " is-bad" : state === "running" ? " is-run" : state === "awaiting" ? " is-wait" : ""}`}>{status}</span>
       ) : null}
-    </li>
+    </CrewRow>
   );
 }
 
-function MissionRow({ objective, mission, index, t, language, states, objectiveRecordState, open, seenAtOpen, onToggle }: {
+function MissionRow({ objective, mission, index, t, language, states, objectiveRecordState, open, seenAtOpen, onToggle, focused }: {
+  readonly focused: boolean;
   readonly objective: Objective;
   readonly mission: ObjectiveMission;
   readonly index: number;
@@ -77,7 +83,7 @@ function MissionRow({ objective, mission, index, t, language, states, objectiveR
     if (event.key === "Enter" || event.key === " ") { event.preventDefault(); onToggle(); }
   };
   return (
-    <li className="objective-rail-row objective-rail-crew-mission">
+    <li className="objective-rail-row objective-rail-crew-mission" data-mission-id={mission.id} data-member-focus={focused || undefined}>
       <div
         className="objective-rail-crew-mission-toggle"
         role="button"
@@ -112,7 +118,16 @@ function MissionRow({ objective, mission, index, t, language, states, objectiveR
 }
 
 /** 가운데 영역 본문 — 구성원(지휘관 포함) → 임무 순. 머리·스크롤은 골격이 감싼다. */
-export function CrewMissionsArea({ objective, language }: { objective: Objective; language: "en" | "ko" }): JSX.Element {
+export function CrewMissionsArea({ objective, language, memberId = null, reveal = null, mentionIds, onMention }: {
+  mentionIds?: readonly string[] | undefined;
+  onMention?: ((objectiveId: string) => void) | undefined;
+  objective: Objective;
+  language: "en" | "ko";
+  memberId?: string | null;
+  reveal?: { readonly missionId: string; readonly revision: number } | null;
+}): JSX.Element {
+  const root = useRef<HTMLDivElement>(null);
+  const handledReveal = useRef<typeof reveal>(null);
   const t = getT(language);
   const rows = useLaunchRows();
   const summaries = useObjectiveSummaries();
@@ -121,7 +136,23 @@ export function CrewMissionsArea({ objective, language }: { objective: Objective
     if (api === null) return Promise.resolve(null);
     return post(api, path, { ...body, language }).catch(() => null);
   }, [api, language]);
-  const { openRecords, toggleRecords } = useOpenMissionRecords(objective, markSeen);
+  const { openRecords, toggleRecords, openMissionRecords } = useOpenMissionRecords(objective, markSeen);
+  useEffect(() => {
+    if (!reveal || handledReveal.current === reveal) return;
+    const mission = objective.missions.find((candidate) => candidate.id === reveal.missionId);
+    if (!mission) return;
+    handledReveal.current = reveal;
+    openMissionRecords(mission);
+  }, [reveal, objective.missions, openMissionRecords]);
+  const revealedOpen = reveal !== null && reveal.missionId in openRecords;
+  useEffect(() => {
+    if (!reveal || !revealedOpen) return;
+    const row = [...root.current?.querySelectorAll<HTMLElement>("[data-mission-id]") ?? []].find((element) => element.dataset.missionId === reveal.missionId);
+    row?.scrollIntoView({ block: "nearest" });
+    row?.querySelector<HTMLElement>("[role=button]")?.focus({ preventScroll: true });
+  }, [reveal, revealedOpen]);
+  const orderedMissions = objective.missions.map((mission, index) => ({ mission, index }));
+  if (memberId) orderedMissions.sort((a, b) => Number(b.mission.member === memberId) - Number(a.mission.member === memberId));
   const recordOf = (id: string) => summaries.find((candidate) => candidate.id === id) ?? null;
   const objectiveRecordState = (id: string): string => shownActivity(recordOf(id)?.activity ?? "closed");
   const objectiveRecordOwnState = (id: string): string => {
@@ -144,11 +175,11 @@ export function CrewMissionsArea({ objective, language }: { objective: Objective
     : t("objectives.members.idle");
 
   return (
-    <>
+    <div ref={root}>
       <div className="objective-rail-section">
         <div className="objective-rail-section-head">{t("objectives.members.title")} <em>{objective.members.length + 1}</em></div>
         <ul className="objective-rail-list">
-          <li className="objective-rail-row objective-rail-crew-member">
+          <CrewRow onPick={onMention && mentionIds?.includes(objective.id) ? () => onMention(objective.id) : undefined} label={t("objectives.rail.strip.toCommander")}>
             <span className="objective-rail-crew-mark"><CommanderMark objective={objective} objectiveRecordState={objectiveRecordState} size={20} /></span>
             <span className="objective-rail-crew-main">
               <span className="objective-rail-crew-name">{t("objectives.commander.title")}</span>
@@ -157,7 +188,7 @@ export function CrewMissionsArea({ objective, language }: { objective: Objective
             {commanderState !== "closed" ? (
               <span className={`objective-rail-tag${commanderFailed ? " is-bad" : commanderState === "running" ? " is-run" : commanderState === "awaiting" ? " is-wait" : ""}`}>{commanderStatus}</span>
             ) : null}
-          </li>
+          </CrewRow>
           {objective.members.map((member) => (
             <CrewMemberRow
               key={member.id}
@@ -168,6 +199,7 @@ export function CrewMissionsArea({ objective, language }: { objective: Objective
               objectiveRecordState={objectiveRecordState}
               labels={labels}
               launchWords={rows}
+              onMention={onMention && mentionIds?.includes(member.id) ? () => onMention(member.id) : undefined}
             />
           ))}
         </ul>
@@ -176,8 +208,9 @@ export function CrewMissionsArea({ objective, language }: { objective: Objective
         <div className="objective-rail-section">
           <div className="objective-rail-section-head">{t("objectives.missions.title")} <em>{objective.missions.filter((mission) => mission.done).length}/{objective.missions.length}</em></div>
           <ul className="objective-rail-list">
-            {objective.missions.map((mission, index) => (
+            {orderedMissions.map(({ mission, index }) => (
               <MissionRow
+                focused={memberId !== null && mission.member === memberId}
                 key={mission.id}
                 objective={objective}
                 mission={mission}
@@ -194,6 +227,6 @@ export function CrewMissionsArea({ objective, language }: { objective: Objective
           </ul>
         </div>
       ) : null}
-    </>
+    </div>
   );
 }
