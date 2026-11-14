@@ -51,6 +51,10 @@ const NAMED: Record<string, KeyDescriptor> = {
   bracketright: { key: "]", code: "BracketRight", keyCode: 221, text: "]" },
   backslash: { key: "\\", code: "Backslash", keyCode: 220, text: "\\" },
   grave: { key: "`", code: "Backquote", keyCode: 192, text: "`" },
+  // 한글·한자 전환 키 — DOM `key` 기준(`code` 는 Lang1/Lang2). 원격 한글 입력의 조합이 끝난 뒤
+  // IME 가 토글 키 자체를 페이지에 키 이벤트로 닿게 할 때 CDP 로 그대로 옮긴다.
+  hangulmode: { key: "HangulMode", code: "Lang1", keyCode: 21 },
+  hanjamode: { key: "HanjaMode", code: "Lang2", keyCode: 25 },
 };
 
 export interface Modifiers { readonly alt: boolean; readonly ctrl: boolean; readonly meta: boolean; readonly shift: boolean }
@@ -91,6 +95,50 @@ export function parseKeyChord(chord: string): { readonly descriptor: KeyDescript
   // 수식키가 있으면 문자는 입력되지 않는다 — Ctrl+A 가 "a"를 타이핑하면 안 된다.
   const text = mods.ctrl || mods.meta || mods.alt ? undefined : descriptor.text;
   return { descriptor: { ...descriptor, ...(text === undefined ? { text: undefined } : { text }) }, modifiers: mods };
+}
+
+/**
+ * IME 조합 키 판정 — 원격 스테이지의 `keyCode === 229`·`isComposing` 키와 DOM `Process` 키.
+ * 참이면 키 경로(`dispatchKeyEvent`)가 아니라 IME 경로(`imeSetComposition`·`insertText`)로만 보낸다.
+ */
+export function isImeKeyEvent(input: { readonly keyCode?: number; readonly isComposing?: boolean; readonly key?: string }): boolean {
+  return input.isComposing === true || input.keyCode === 229 || input.key === "Process";
+}
+
+/** macOS 편집 단축키(cmd 단독 조합) → Chromium 편집 명령. service.ts 의 `editCommand` 와 같은 표다. */
+export function macEditCommand(key: string, mods: Modifiers): string | undefined {
+  if (!mods.meta || mods.ctrl || mods.alt) return undefined;
+  return { a: "selectAll", c: "copy", v: "paste", x: "cut", z: mods.shift ? "redo" : "undo" }[key.toLowerCase()];
+}
+
+export interface CdpKeyParams {
+  readonly key: string;
+  readonly code: string;
+  readonly windowsVirtualKeyCode: number;
+  readonly nativeVirtualKeyCode: number;
+  readonly modifiers: number;
+  readonly text?: string;
+  readonly unmodifiedText?: string;
+  readonly commands?: readonly string[];
+}
+
+/** `KeyDescriptor`·수식키를 CDP `Input.dispatchKeyEvent` 인자로 펼친다. */
+export function toCdpKeyParams(descriptor: KeyDescriptor, mods: Modifiers): CdpKeyParams {
+  const modifiers = modifierBits(mods);
+  const params: { -readonly [K in keyof CdpKeyParams]: CdpKeyParams[K] } = {
+    key: descriptor.key,
+    code: descriptor.code,
+    windowsVirtualKeyCode: descriptor.keyCode,
+    nativeVirtualKeyCode: descriptor.keyCode,
+    modifiers,
+  };
+  if (descriptor.text !== undefined) {
+    params.text = descriptor.text;
+    params.unmodifiedText = descriptor.text;
+  }
+  const command = macEditCommand(descriptor.key, mods);
+  if (command) params.commands = [command];
+  return params;
 }
 
 /** DOM KeyboardEvent(key, code)를 CDP 인자로 — 브라우저 패널이 보내는 사용자 키 입력용. */

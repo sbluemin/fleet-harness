@@ -3,7 +3,13 @@
  * 번들되며, main 은 아래 검증기로 문서가 보낸 문장을 한 번 더 걸러 받는다. 문서는 Node 도 raw IPC 도 모르고, main 에게 말하는 길은
  * `console-message` 한 줄 JSON, 문서가 받는 길은 main 이 `executeJavaScript` 로 호출하는 `__fleetChrome` 뿐이다.
  */
-import type { DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
+import {
+  isRemoteBrowserInputBatch,
+  type DesktopBrowserChrome,
+  type RemoteBrowserInputEvent,
+  type RemoteBrowserPermissionPrompt,
+  type RemoteBrowserSelectPopup,
+} from "@fleet-console/protocol/desktop";
 
 export type ChromeRole = "bar" | "rail" | "stage" | "guard";
 export const CHROME_CHANNEL = "fleet-chrome";
@@ -102,6 +108,15 @@ export interface ChromeViewOnly {
   readonly place: string;
   /** 실행 측이 붙어 있는가. `connected` 가 아니면 프레임이 오지 않고 스테이지가 그 까닭을 말한다. */
   readonly status: "connected" | "manager_disconnected" | "unmanaged";
+  /**
+   * Console 이 등록한 전역 단축키 문장(`Mod+KeyP` 꼴). 스테이지는 이 문장과 같은 키를
+   * 실행 측으로 보내지 않고 그 자리에서 Console 이 받게 둔다. 없으면 비워 둔다.
+   */
+  readonly shortcuts?: readonly string[];
+  /** 실행 측이 보낸 원격 `<select>` 팝업 — 있으면 스테이지가 목록 오버레이를 그린다. */
+  readonly select?: RemoteBrowserSelectPopup | null;
+  /** 실행 측이 보낸 원격 권한 창 — 있으면 스테이지가 허용·거부 카드를 그린다. */
+  readonly permission?: RemoteBrowserPermissionPrompt | null;
 }
 
 export type ChromeAction =
@@ -149,6 +164,15 @@ export type ChromeAction =
   | { readonly action: "guard-size"; readonly width: number; readonly height: number }
   /** 복수 계정 목록에서 고른 아이디로 그 뷰의 로그인 폼을 채운다. */
   | { readonly action: "password-pick"; readonly username: string; readonly origin?: string }
+  /**
+   * 원격 스테이지 입력 배치 — 보기 전용 셸이 실행 측 뷰포트로 보내는 포인터·키·IME 묶음.
+   * main 은 Console REST 로 그대로 옮기고, 검증은 Console(`isRemoteBrowserInputBatch`)이 한 번 더 한다.
+   */
+  | { readonly action: "remote-input"; readonly tabId: string; readonly seq: number; readonly events: readonly RemoteBrowserInputEvent[] }
+  /** 원격 `<select>` 팝업 답 — 고른 인덱스(단일·다중) 또는 닫기. */
+  | { readonly action: "remote-select"; readonly popupId: string; readonly tabId: string; readonly choice: "choose" | "cancel"; readonly indices?: readonly number[] }
+  /** 원격 권한 창 답 — 허용 또는 거부. */
+  | { readonly action: "remote-permission"; readonly promptId: string; readonly tabId: string; readonly allow: boolean }
   /** 저장·업데이트 카드를 확정한다(모두 main 의 금고로만 간다). */
   | { readonly action: "password-save" }
   /** 이번에는 저장하지 않는다. */
@@ -215,6 +239,17 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "control": return make(body.control === "take" || body.control === "return" || body.control === "stop" ? { action: "control", control: body.control } : null);
     case "guard-size": return make(typeof body.width === "number" && typeof body.height === "number" && body.width >= 0 && body.width <= 4096 && body.height >= 0 && body.height <= 4096 ? { action: "guard-size", width: body.width, height: body.height } : null);
     case "draft": return make(body.value === null || str(body.value, 4096) ? { action: "draft", value: body.value as string | null } : null);
+    case "remote-input": {
+      if (typeof body.seq !== "number" || !Array.isArray(body.events)) return null;
+      const candidate = { tabId: body.tabId, seq: body.seq, events: body.events };
+      return make(isRemoteBrowserInputBatch(candidate) ? { action: "remote-input", tabId: candidate.tabId as string, seq: candidate.seq as number, events: candidate.events as readonly RemoteBrowserInputEvent[] } : null);
+    }
+    case "remote-select": {
+      if (!safeId(body.popupId) || !safeId(body.tabId) || (body.choice !== "choose" && body.choice !== "cancel")) return null;
+      if (body.indices !== undefined && (!Array.isArray(body.indices) || body.indices.length > 1000 || !body.indices.every((index: unknown) => Number.isSafeInteger(index) && (index as number) >= 0))) return null;
+      return make({ action: "remote-select", popupId: body.popupId, tabId: body.tabId, choice: body.choice, ...(body.indices === undefined ? {} : { indices: body.indices }) });
+    }
+    case "remote-permission": return make(safeId(body.promptId) && safeId(body.tabId) && typeof body.allow === "boolean" ? { action: "remote-permission", promptId: body.promptId, tabId: body.tabId, allow: body.allow } : null);
     default: return null;
   }
 }

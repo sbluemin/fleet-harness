@@ -158,6 +158,14 @@ const en: Record<string, string> = {
   "password.dismiss": "Not now",
   "password.never": "Never for this site",
   "password.pickTitle": "Choose an account to fill",
+  "remote.selectTitle": "Choose an option",
+  "remote.selectHint": "A select menu on the remote page. Your choice applies right away.",
+  "remote.selectEmpty": "No options",
+  "remote.permissionTitle": "{permission} permission",
+  "remote.permissionBody": "{origin} is requesting {permission}.",
+  "remote.allow": "Allow",
+  "remote.deny": "Deny",
+  "remote.apply": "Apply",
 };
 const ko: Record<string, string> = {
   "hover.component": "컴포넌트",
@@ -317,6 +325,14 @@ const ko: Record<string, string> = {
   "password.dismiss": "이번에는 안 함",
   "password.never": "이 사이트에서는 저장 안 함",
   "password.pickTitle": "채울 계정 선택",
+  "remote.selectTitle": "옵션 선택",
+  "remote.selectHint": "원격 페이지의 선택 목록이에요. 고르면 바로 적용돼요.",
+  "remote.selectEmpty": "옵션 없음",
+  "remote.permissionTitle": "{permission} 권한",
+  "remote.permissionBody": "{origin}에서 {permission}을(를) 요청해요.",
+  "remote.allow": "허용",
+  "remote.deny": "거부",
+  "remote.apply": "적용",
 };
 export function translator(lang: ChromeLang): (key: string, values?: Record<string, string>) => string {
   const table = lang === "ko" ? ko : en;
