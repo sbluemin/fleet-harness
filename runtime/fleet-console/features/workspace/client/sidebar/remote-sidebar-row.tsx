@@ -45,7 +45,6 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
   const language = useConsoleLocale();
   const tf = taskforceT(language);
   const et = getExecutionT(language === "ko" ? "ko" : "en");
-  const [expanded, setExpanded] = useState(true);
   const [editing, setEditing] = useState(false);
   const [readOnlyFolds, setReadOnlyFolds] = useState<SidebarRemotePage["preferences"]["folds"] | null>(null);
   const [menuSnapshot, setMenu] = useState<Menu | null>(null);
@@ -63,7 +62,7 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
     cancelOpen();
     pendingOpen.current = setTimeout(() => { pendingOpen.current = null; if (element.isConnected) onOpen(id, element); }, 500);
   };
-  const { page, error: readError } = useRemoteSidebar(expanded && !compact && !summary.taskforce ? console : null, row.commodoreId);
+  const { page, error: readError } = useRemoteSidebar(!compact && !summary.taskforce ? console : null, row.commodoreId);
   const menu = menuSnapshot?.kind === "objective" ? { ...menuSnapshot, source: page?.objectives.find((entry) => entry.objective.id === menuSnapshot.source.objective.id) ?? menuSnapshot.source } : menuSnapshot;
   const preferences = page?.preferences ?? directory.preferences;
   const writable = directory.writable && (page?.writable ?? true);
@@ -113,7 +112,7 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
     const openPopup = (tab: CommanderRowGlyphTab, opener: HTMLElement) => setPopup({ id, tab, opener });
     return <SideBarClusterRow key={id} item={item} selected={false} settled={settled}
       presentation={{ state: shownState, avatar: face(source, state), activity: source.faces[id]?.activity ?? null, toolUse: source.tool }}
-      onFocus={() => { const element = document.querySelector<HTMLElement>(`[data-cluster-row-id="${CSS.escape(item.layout.cluster.id)}"]`); if (element) openFromClick(id, element); }}
+      onRenameBegin={cancelOpen} onFocus={(_id, element) => { if (element) openFromClick(id, element); }}
       popups={{ onAvatar: (opener) => openPopup("goal", opener), onProgress: (opener) => openPopup("crew", opener), avatarLabel: source.objective.title,
         progressLabel: (done, total) => `${source.objective.title} ${done}/${total}` }}
       rowGlyphs={<RemoteRowGlyphs console={console} source={source} onGlyph={openPopup} />}
@@ -136,11 +135,10 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
     {summary.taskforce.members.slice(0, 4).map((id) => { const member = directory.commodores.find((row) => row.id === id); return <MongleAvatar key={id} role="commodore" base={member?.look?.base ?? fallbackMongleBase(commodoreAvatarKey(id))} tone={member?.look?.tone} state="idle" size={18} label="" decorative />; })}
   </span></span> : undefined;
   const activate = () => {
-    setExpanded((value) => !value);
     if (header.current) openFromClick(null, header.current);
   };
   return <>
-    <div ref={header} onDoubleClickCapture={cancelOpen} onKeyDownCapture={cancelOpen}>
+    <div ref={header} onKeyDownCapture={cancelOpen}>
       <TheaterSectionHeader theater={{ id: `${console}:${row.commodoreId}`, label: summary.name, createdAt: "", lastOpenedAt: "", activeAdmiralCount: 0, commodore: { id: row.commodoreId, alias: summary.name } }}
         accessory={frame.accessory} avatarOverride={taskforceAvatar} active={false} selectedOverride={false} lastResponse={summary.preview || undefined} dock={!compact && !summary.taskforce}
         presentation={{ live: summary.live, browsing: summary.browsing,
@@ -152,15 +150,15 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
           dock: <CommodoreHoverDock name={summary.name} adapter={{ ...preferences, disabled: !writable || busy,
             onSort: (value) => { void mutate("saveSettings", { commanderSort: value }).catch(() => undefined); },
             onKeep: (value) => { void mutate("saveSettings", { commanderKeepExpanded: value }).catch(() => undefined); },
-            onSettled: (value) => { setExpanded(true); void mutate("saveSettings", { commanderShowSettled: value }).catch(() => undefined); } }} /> }}
+            onSettled: (value) => { void mutate("saveSettings", { commanderShowSettled: value }).catch(() => undefined); } }} /> }}
         clampAlias={(value) => [...value].slice(0, 40).join("")} editingAlias={editing}
-        onStartAliasEdit={() => { if (writable && !summary.taskforce) setEditing(true); }} onFinishAliasEdit={(_id, alias) => { setEditing(false); if (alias !== undefined) void mutate("alias", { commodoreId: row.commodoreId, alias }).catch(() => undefined); }}
+        onStartAliasEdit={() => { cancelOpen(); if (writable && !summary.taskforce) setEditing(true); }} onFinishAliasEdit={(_id, alias) => { setEditing(false); if (alias !== undefined) void mutate("alias", { commodoreId: row.commodoreId, alias }).catch(() => undefined); }}
         showStatusLiveTick={summary.state === "awaiting" || summary.state === "decision"}
         dragging={frame.dragging} dropTarget={frame.dropTarget} dragOffsetY={frame.dragOffsetY} onOpenInbox={activate}
         onContextMenu={(anchor, opener, atCursor, focus = false) => { cancelOpen(); frame.onMenu(anchor, opener, atCursor, focus); setMenu({ kind: "owner", anchor, opener, focus }); }}
         menuTarget={menu?.kind === "owner"} onPointerDragStart={frame.onPointerDragStart} />
     </div>
-    {expanded && !compact && !summary.taskforce ? <div className="side-bar-commander-list" data-keep-objective-active="" onDoubleClickCapture={cancelOpen} onKeyDownCapture={cancelOpen}><div className="commander-tab">
+    {!compact && !summary.taskforce ? <div className="side-bar-commander-list" data-keep-objective-active="" onKeyDownCapture={cancelOpen}><div className="commander-tab">
       {readError ? <p role="alert">{readError}</p> : null}
       <CommanderSidebarSections sections={sections} folds={!writable && readOnlyFolds ? readOnlyFolds : preferences.folds}
         onToggle={(id) => {

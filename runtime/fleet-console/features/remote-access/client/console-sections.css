@@ -167,6 +167,8 @@
 .unified-row-head { position: relative; }
 .unified-row-head .side-bar-theater-text { flex: 1; min-width: 0; }
 .unified-row-head .side-bar-theater-activate { padding-right: 30px; }
+/* 비중첩 activation 표면에서도 칩은 이름 줄에 남고, 옛 명부 행의 우측 메뉴 자리는 비운다. */
+.unified-row-head.side-bar-theater-header--split > .side-bar-theater-text { padding-right: 30px; }
 /* 다른 머신 행의 이름 옆 칩 — 글자만 둔다. 톤은 머신마다 고정(테마를 아는 토큰만 쓴다). 닿지 않는 머신은 행이 흐려진다. */
 .unified-machine-chip { display: inline-flex; align-items: center; flex: none; max-width: 112px; padding: 3px 7px; border: 0; border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--mc, var(--text-secondary)) 16%, transparent); color: color-mix(in oklch, var(--mc, var(--text-secondary)) 60%, var(--text-primary));

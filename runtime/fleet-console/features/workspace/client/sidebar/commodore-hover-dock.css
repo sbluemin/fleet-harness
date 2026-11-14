@@ -103,7 +103,13 @@
 @media (hover: none) {
   .side-bar-theater-header:has(.commodore-dock) .side-bar-theater-activate { padding-right: 34px; }
 }
+.side-bar-theater-header--split:has(.commodore-dock):hover > .side-bar-theater-text,
+.side-bar-theater-header--split:has(.commodore-dock):focus-within > .side-bar-theater-text { padding-right: 34px; }
+@media (hover: none) {
+  .side-bar-theater-header--split:has(.commodore-dock) > .side-bar-theater-text { padding-right: 34px; }
+}
 .side-bar-theater-header .side-bar-theater-text { transition: opacity var(--duration-fast) var(--ease-spring); }
+.side-bar-theater-header:has(.commodore-dock[data-open="true"]) .unified-machine-chip { visibility: hidden; }
 .side-bar-theater-header:has(.commodore-dock[data-open="true"]) .side-bar-theater-text { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
   .side-bar-theater-header .side-bar-theater-text { transition: none; }

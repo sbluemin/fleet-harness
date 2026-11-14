@@ -515,7 +515,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
   return <li className={`side-bar-theater-section${current ? " side-bar-theater-section--active" : ""}${dropBefore ? " side-bar-theater-section--drop-before" : ""}${dropAfter ? " side-bar-theater-section--drop-after" : ""}${dim ? " is-unified-dim" : ""}`}
     data-theater-id={rowKey} data-commodore-id={row.commodoreId}>
     <div
-      className={`side-bar-theater-header is-card unified-row-head${dragging ? " side-bar-theater-header--dragging" : ""}`}
+      className={`side-bar-theater-header side-bar-theater-header--split is-card unified-row-head${dragging ? " side-bar-theater-header--dragging" : ""}`}
       style={dragging ? ({ "--drag-dy": `${Math.round(dragOffsetY)}px` } as CSSProperties) : undefined}
       onContextMenu={(event) => {
         if (event.target instanceof Element && event.target.closest(".unified-machine-chip, .unified-row-menu-trigger, .commander-row-glyph")) return;
@@ -536,6 +536,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
       <button
         type="button"
         className="side-bar-theater-activate"
+        aria-label={row.name}
         aria-disabled={blocked && !homeHere || undefined}
         title={row.home ? row.name : `${row.name} · ${row.machineLabel}`}
         onClick={(event) => open(null, event.currentTarget)}
@@ -544,18 +545,17 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
           event.preventDefault();
           openMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget, true);
         }}
-      >
-        <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
-          <MongleAvatar base={look.base} tone={tone} role="commodore" state="idle" size={32} label={row.name} decorative />
+      />
+      <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
+        <MongleAvatar base={look.base} tone={tone} role="commodore" state="idle" size={32} label={row.name} decorative />
+      </span>
+      <span className="side-bar-theater-text">
+        <span className="unified-row-line">
+          <span className="side-bar-theater-name" onClick={(event) => open(null, event.currentTarget.closest<HTMLElement>(".side-bar-theater-header") ?? event.currentTarget)}>{row.name}</span>
+          {!row.home ? <UnifiedMachineChip row={row} onOpenCard={setChipCard} /> : null}
         </span>
-        <span className="side-bar-theater-text">
-          <span className="unified-row-line">
-            <span className="side-bar-theater-name">{row.name}</span>
-          </span>
-          <span className="side-bar-theater-sub">{previewText}</span>
-        </span>
-      </button>
-      {!row.home ? <UnifiedMachineChip row={row} onOpenCard={setChipCard} /> : null}
+        <span className="side-bar-theater-sub">{previewText}</span>
+      </span>
       <button type="button" className="unified-row-menu-trigger" aria-label={t("sidebar.commodoreSection.actions", { name: row.name })}
         title={t("sidebar.commodoreSection.actions", { name: row.name })}
         onClick={(event) => openMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget, event.detail === 0)}>

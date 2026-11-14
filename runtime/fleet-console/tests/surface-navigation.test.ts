@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from "vitest";
+import { act, createElement as h } from "react";
+import { createRoot } from "react-dom/client";
+import type { SidebarRemotePage } from "../features/workspace/shared/sidebar-remote.js";
+import type { Objective } from "../features/objectives/shared/types.js";
 import { Terminal, type ILink } from "@xterm/xterm";
 import { createFileLinkProvider } from "../features/execution/client/terminal/shared/terminal-file-links.js";
 import type { PaneDescriptor } from "../features/workspace/shared/pane.js";
@@ -21,6 +25,81 @@ import { replaceCommodoreList, setZoneCommodore } from "../features/commodore/cl
 import { EMPTY_RUN_TOTALS } from "../features/commodore/shared/contracts/types.js";
 import { __setViewportNarrowForTests } from "../core/client/src/integration/view-mode-store.js";
 import { getMobileDestination, registerMobileDestinationEntries, setMobileDestination } from "../core/client/src/chrome/mobile/mobile-store.js";
+
+// 원격 이름 편집은 화면 전환과 경쟁한다. API 권한 검사만으로는 두 번째 클릭 뒤 draft/초점을 잃고 다른 문서를 여는 결함을 잡지 못한다.
+it("keeps remote title and alias edits in the requesting document across fresh snapshots", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.useFakeTimers();
+  const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
+  // 글꼴 배치는 실앱에서 검증한다. 이 경계는 글자 안 클릭의 실제 React event/편집/전환 흐름만 측정한다.
+  const box = new DOMRect(62, 692, 200, 20);
+  const rect = vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue(box);
+  const range = vi.spyOn(document, "createRange").mockImplementation(() => Object.assign(new Range(), { getClientRects: () => [new DOMRect(62, 704, 128, 16)], getBoundingClientRect: () => box }));
+  const fetch = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ general: {} }));
+  const store = await import("../features/workspace/client/sidebar/remote-sidebar-store.js");
+  const transport = await import("../features/remote-access/client/sidebar-transport.js");
+  const { RemoteSidebarRow } = await import("../features/workspace/client/sidebar/remote-sidebar-row.js");
+  const source = { id: "objective", commodoreId: "owner", theaterId: "theater", groupId: null, title: "Remote goal", note: "brief", createdAt: 1,
+    commander: { sessionName: null, started: true }, hasSession: true, planning: false, commenced: true, criteriaOpen: false,
+    done: null, removed: null, awaitingHandoff: false, awaitingReview: false, handoff: null, stoppedAt: null, dueDate: null, today: false,
+    members: [], missions: [], criteria: [], criteriaProposals: [], attachments: [], results: [], extensions: [], extensionActive: false,
+    followups: [], followupBatches: [], followupHistory: null, origin: null, decisionRequest: null, decisionRequestRevision: 0,
+    consultations: [], decisionDelivery: null, decisions: [], personHolds: [], addedBy: null, requestSource: null, merged: [] } as Objective;
+  const face = { state: "idle" as const, activity: null, look: null };
+  let page: SidebarRemotePage = { v: 1, at: 1, writable: true, autonomous: false, taskforceEnabled: false, computerUseAvailable: false, next: null, commodores: [], groups: [],
+    preferences: { sort: { key: "name", direction: "asc", answerFirst: true, grouped: false }, folds: { fresh: false, done: false, settled: false }, keepExpanded: false, showSettled: true },
+    objectives: [{ objective: source, computerUseEnabled: false, ownWorking: false, faces: { objective: face }, tool: null }] };
+  const read = vi.spyOn(store, "useRemoteSidebar").mockImplementation(() => ({ page, error: null }));
+  const refresh = vi.spyOn(store, "refreshRemoteSidebar").mockImplementation(() => {});
+  const write = vi.spyOn(transport, "sidebarJson").mockResolvedValue({ ok: true });
+  const onOpen = vi.fn();
+  const node = document.createElement("div"); document.body.append(node);
+  const root = createRoot(node);
+  const summary = { ...face, id: "owner", name: "Remote owner", preview: "reply", live: false, decisions: 0, browsing: false };
+  const render = () => root.render(h(RemoteSidebarRow, { console: "entry", row: { consoleId: "remote", commodoreId: "owner", name: "Remote owner", home: false, machineLabel: "Other", machineAddress: "other", status: "ready" }, summary, directory: page, compact: false,
+    frame: { dragging: false, dropTarget: false, dragOffsetY: 0, menuTarget: false, onMenu: () => {}, onPointerDragStart: () => {} }, onOpen, placement: () => null }));
+  const doubleClick = async (element: HTMLElement, clientX = 74) => {
+    const click = (detail: number) => { for (const type of ["mousedown", "mouseup", "click"]) element.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, detail, clientX, clientY: 702 })); };
+    await act(async () => click(1));
+    await act(async () => { vi.advanceTimersByTime(50); click(2); element.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, detail: 2, clientX, clientY: 702 })); });
+  };
+  try {
+    await act(async () => render());
+    await doubleClick(node.querySelector<HTMLElement>(".side-bar-cluster-row-title")!, 250);
+    await act(async () => { vi.advanceTimersByTime(700); });
+    expect(node.querySelector(".side-bar-cluster-row-rename-input")).toBeNull();
+    expect(onOpen).toHaveBeenCalledOnce();
+    onOpen.mockClear();
+    await doubleClick(node.querySelector<HTMLElement>(".side-bar-cluster-row-title")!);
+    const title = node.querySelector<HTMLInputElement>(".side-bar-cluster-row-rename-input")!;
+    expect(title).not.toBeNull();
+    await act(async () => { const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!; setter.call(title, "Edited goal"); title.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => { page = { ...page, at: 2, objectives: page.objectives.map((entry) => ({ ...entry, objective: { ...entry.objective, title: "Updated remotely" } })) }; render(); vi.advanceTimersByTime(700); });
+    expect(document.activeElement).toBe(title);
+    expect(title.value).toBe("Edited goal");
+    expect(title.closest("button")).toBeNull();
+    expect(onOpen).not.toHaveBeenCalled();
+    await act(async () => { title.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })); });
+    expect(write).toHaveBeenCalledWith("entry", "patch", { objectiveId: "objective", patch: { title: "Edited goal" } }, undefined);
+    await doubleClick(node.querySelector<HTMLElement>(".side-bar-theater-name")!);
+    expect(node.querySelector(".side-bar-theater-alias-input")).not.toBeNull();
+    await act(async () => { page = { ...page, at: 3 }; render(); vi.advanceTimersByTime(700); });
+    expect(document.activeElement).toBe(node.querySelector(".side-bar-theater-alias-input"));
+    expect(onOpen).not.toHaveBeenCalled();
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    const trigger = node.querySelector<HTMLButtonElement>(".commodore-dock-trigger")!;
+    await act(async () => { trigger.focus(); trigger.dispatchEvent(new MouseEvent("click", { bubbles: true, detail: 0 })); });
+    const tools = [...node.querySelectorAll<HTMLButtonElement>(".commodore-dock-strip button")];
+    expect(document.activeElement).toBe(tools[0]);
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })); });
+    expect(document.activeElement).toBe(tools.at(-1));
+    await act(async () => { document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(document.activeElement).toBe(trigger);
+    expect(onOpen).not.toHaveBeenCalled();
+  } finally {
+    await act(async () => root.unmount()); node.remove(); read.mockRestore(); refresh.mockRestore(); write.mockRestore(); fetch.mockRestore(); range.mockRestore(); rect.mockRestore(); canvas.mockRestore(); vi.useRealTimers(); vi.unstubAllGlobals();
+  }
+});
 
 // 기존 팔레트·컴포저 검사는 외부 처리기의 Theater 착지와 재요청을 실행하지 않는다.
 // 이 대표 경로는 SDK 요청과 팔레트가 같은 저장소 경계에서 주소를 보존하는지 확인한다.

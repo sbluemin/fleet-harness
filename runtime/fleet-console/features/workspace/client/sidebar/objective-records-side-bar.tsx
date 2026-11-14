@@ -1054,6 +1054,7 @@ export function TheaterSectionHeader({
   const browsing = presentation?.browsing ?? localBrowsing;
   const headerClassName = [
     "side-bar-theater-header",
+    "side-bar-theater-header--split",
     active ? "is-active" : "",
     selected ? "is-current" : "",
     "is-card",
@@ -1096,7 +1097,7 @@ export function TheaterSectionHeader({
     // 표식 안의 단추(자율 운영 끄기)와 별칭 입력·호버 독에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
     // 행의 본문이므로 배제하지 않는다 — 배제하면 행을 잡아 옮길 수 없다.
     // 길게 누르기도 같은 자리만 받는다 — 단추 위 길게 누르기는 그 단추의 것이다.
-    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input") || event.target.closest(".commodore-dock"))) return;
+    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input") || event.target.closest(".commodore-dock") || event.target.closest(".unified-machine-chip"))) return;
     longPress.onPointerDown(event);
     onPointerDragStart(event, theater.id);
   };
@@ -1117,6 +1118,7 @@ export function TheaterSectionHeader({
       suppressClickRef.current = false;
       return;
     }
+    activateRef.current?.focus({ preventScroll: true });
     onOpenInbox(theater, activateRef.current);
   };
   const avatarAnchor = (tick: boolean) => (
@@ -1163,27 +1165,32 @@ export function TheaterSectionHeader({
           </span>
         </>
       ) : (
-        <button
-          ref={activateRef}
-          type="button"
-          className="side-bar-theater-activate"
-          aria-haspopup="dialog"
-          onClick={select}
-          onKeyDown={handleKeyDown}
-          aria-current={selected ? "true" : undefined}
-          title={`${active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })} · ${t("sidebar.theater.actionsHint")}`}
-        >
+        <>
+          {/* 전체 hit 단추와 이름·칩은 형제다. 이름 바로 옆의 머신 단추를 중첩 button으로 만들지 않는다. */}
+          <button
+            ref={activateRef}
+            type="button"
+            className="side-bar-theater-activate"
+            aria-label={displayName}
+            aria-haspopup="dialog"
+            onClick={select}
+            onKeyDown={handleKeyDown}
+            aria-current={selected ? "true" : undefined}
+            title={`${active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })} · ${t("sidebar.theater.actionsHint")}`}
+          />
           {mark === null ? avatarOverride ?? avatarAnchor(true) : null}
           <span className="side-bar-theater-text">
-            <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onDoubleClick={() => onStartAliasEdit(theater.id)}>{displayName}</span>
+            <span className="unified-row-line">
+              <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onClick={select} onDoubleClick={(event) => { event.stopPropagation(); onStartAliasEdit(theater.id); }}>{displayName}</span>
+              {accessory}
+            </span>
             <span className={`side-bar-theater-swap${browsing ? " is-tool-using" : ""}`}>
               <span className="side-bar-theater-sub">{summaryText}</span>
               <RowToolUse tool={browsing ? "browser" : null} label={browsing ? t("sidebar.row.use.browser") : null} />
             </span>
           </span>
-        </button>
+        </>
       )}
-      {accessory}
       {/* 호버 독 — 머리에 호버하거나 초점이 오면 ⋯ 글리프가 나오고, 거기서 정렬·목록 위치·펼침 유지가 펼쳐진다. 머리를 누르는 활성화와는 따로 논다. */}
       {dock ? presentation?.dock ?? <CommodoreHoverDock name={displayName} /> : null}
     </div>

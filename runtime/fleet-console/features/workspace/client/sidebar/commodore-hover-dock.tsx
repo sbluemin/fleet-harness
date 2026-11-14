@@ -42,7 +42,7 @@ export function CommodoreHoverDock({ name, adapter }: { readonly name: string; r
   const [focusFirst, setFocusFirst] = useState(0);
   useEffect(() => {
     if (focusFirst === 0) return;
-    dockRef.current?.querySelector<HTMLElement>(".commodore-dock-strip button")?.focus({ preventScroll: true });
+    dockRef.current?.querySelector<HTMLElement>(".commodore-dock-strip button:not(:disabled)")?.focus({ preventScroll: true });
   }, [focusFirst]);
 
   // 바깥을 누르면 닫는다. 정렬 메뉴는 독 안에 그려지므로 같은 안쪽으로 본다.
@@ -87,7 +87,7 @@ export function CommodoreHoverDock({ name, adapter }: { readonly name: string; r
       return;
     }
     if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    const items = Array.from(dockRef.current?.querySelectorAll<HTMLElement>(".commodore-dock-strip button") ?? []);
+    const items = Array.from(dockRef.current?.querySelectorAll<HTMLElement>(".commodore-dock-strip button:not(:disabled)") ?? []);
     const index = items.indexOf(document.activeElement as HTMLElement);
     if (index < 0 || sortOpen) return;
     event.preventDefault();

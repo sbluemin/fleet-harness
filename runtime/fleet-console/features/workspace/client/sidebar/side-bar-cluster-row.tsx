@@ -238,7 +238,9 @@ interface SideBarClusterRowProps {
   readonly presentation?: ClusterRowPresentation;
   readonly item: SideBarRowItem;
   /** 뿌리가 선 줄을 누르면 그 지휘관으로 간다 — 사령관의 지휘관 목록은 그룹 대화로 전환한다. */
-  readonly onFocus: (objectiveId: string) => void;
+  readonly onFocus: (objectiveId: string, opener?: HTMLElement) => void;
+  /** 미전환 문서의 지연된 화면 열기를 편집 시작 순간 거둔다. */
+  readonly onRenameBegin?: () => void;
   readonly selected: boolean;
   /**
    * 우클릭·ContextMenu·Shift+F10·길게 누르기. 데스크톱 목록만 넘긴다.
@@ -307,7 +309,7 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
 
-export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, settled = false, popups, rowGlyphs, presentation }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, onFocus, onRenameBegin, selected, onContextMenu, settled = false, popups, rowGlyphs, presentation }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
@@ -322,7 +324,7 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
   const active = selected;
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
   const renameRow = row.rename;
-  const rename = useInlineRename({ currentTitle: layout.cluster.title, onCommit: (next) => renameRow?.(next) });
+  const rename = useInlineRename({ currentTitle: layout.cluster.title, onBegin: onRenameBegin, onCommit: (next) => renameRow?.(next) });
   // 메뉴의 「이름 바꾸기」가 여는 통로 — 뿌리가 선 줄은 그 Objective id, 뿌리 없는 줄(시작 전 목표)은 줄 id 로 듣는다.
   const actionId = anchor?.objectiveRecord?.id ?? layout.cluster.id;
   useEffect(() => {
@@ -400,7 +402,8 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
   const open = () => {
     const objectiveId = commanderObjectiveId(layout.cluster);
     if (objectiveId === null) { layout.cluster.open?.(); return; }
-    onFocus(objectiveId);
+    returnFocus()?.focus({ preventScroll: true });
+    onFocus(objectiveId, rowRef.current ?? undefined);
   };
   // 제목 글자 위 더블클릭은 이름 변경이다 — 제목 칸은 줄 폭으로 늘어나 있으므로 글자 자리로 판정한다. 이름 변경이면 dblclick 이
   // 버튼까지 번지지 않게 여기서 멈춘다. 터치의 더블 탭은 이름 변경으로 읽지 않는다.
@@ -411,7 +414,7 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
       rename.begin();
     }
     : undefined;
-  const titleNode = <span className="side-bar-cluster-row-title" onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
+  const titleNode = <span className="side-bar-cluster-row-title" onMouseDown={(event) => { if (event.button === 0 && pointerTypeRef.current !== "touch") event.preventDefault(); }} onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
   const hasProgressButton = !!popups && !!progress && !settled;
   const statusLine = settled ? null : (
     <span className="side-bar-cluster-row-line" aria-hidden={hasProgressButton ? undefined : true}>
@@ -432,7 +435,15 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
       </span>
     </span>
   );
-  const mainButton = (
+  const mainContent = <>
+    <span className="side-bar-cluster-row-head">
+      {rename.renaming ? renameInput : titleNode}
+      {headMeta.map((part) => <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>)}
+    </span>
+    {hasProgressButton ? null : statusLine}
+  </>;
+  // 편집 입력은 버튼의 자식이 아니다. 두 번째 클릭의 기본 포커스 동작이 막 연 입력을 blur/확정하지 않게 한다.
+  const mainButton = rename.renaming ? <div className="side-bar-cluster-row-main">{mainContent}</div> : (
     <button
       type="button"
       className="side-bar-cluster-row-main"
@@ -449,13 +460,7 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
         }
       }}
     >
-      <span className="side-bar-cluster-row-head">
-        {rename.renaming ? renameInput : titleNode}
-        {headMeta.map((part) => (
-          <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
-        ))}
-      </span>
-      {hasProgressButton ? null : statusLine}
+      {mainContent}
     </button>
   );
   return (
