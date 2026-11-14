@@ -376,7 +376,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
         dialogItem(G.profile, overlay.username, t("password.account")),
         secret],
       [dismiss, never, save],
-      key);
+      idKey);
   };
 
   /** 복수 계정 선택 목록 — 주소 제안과 같은 자리에 같은 모양으로 뜬다. */

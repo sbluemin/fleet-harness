@@ -91,7 +91,17 @@ describe("browser password vault", () => {
   });
 
   it("reports an empty available state and ignores the temporary-session profile marker", async () => {
-    const vault = createVault();
+    let availabilityCalls = 0;
+    const vault = createBrowserPasswordVault({
+      root: dir,
+      safeStorage: {
+        ...fakes.safeStorage,
+        isEncryptionAvailable: () => { availabilityCalls += 1; return fakes.safeStorage.isEncryptionAvailable(); },
+      },
+      systemPreferences: auth.systemPreferences,
+      clipboard: clip.clipboard,
+      platform: "darwin",
+    });
     expect(await vault.command({ action: "state", browserProfile: null })).toEqual({
       available: true,
       reason: null,
@@ -100,6 +110,8 @@ describe("browser password vault", () => {
       entries: [],
       neverSaveOrigins: [],
     });
+    expect(vault.forOrigin("https://empty.example/")).toEqual({ offerToSave: true, neverSaved: false, credentials: [] });
+    expect(availabilityCalls).toBe(0);
   });
 
   it("saves and reveals through real encryption without ever writing plaintext to disk", async () => {

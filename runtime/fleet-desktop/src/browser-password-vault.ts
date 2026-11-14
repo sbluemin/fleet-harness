@@ -294,26 +294,22 @@ export function createBrowserPasswordVault(deps: BrowserPasswordVaultDeps) {
   });
 
   const state = (): BrowserPasswordVaultState => {
-    let encryption = false;
-    try {
-      encryption = deps.safeStorage.isEncryptionAvailable();
-    } catch {
-      encryption = false;
-    }
-    if (!encryption) {
-      let vault: StoredVaultFile | null = null;
-      try {
-        vault = load();
-      } catch {
-        vault = null;
-      }
-      return blankState("encryption_unavailable", vault);
-    }
     let vault: StoredVaultFile;
     try {
       vault = load() ?? { offerToSave: true, neverSaveOrigins: [], entries: [] };
     } catch {
       return blankState("vault_corrupted", null);
+    }
+    // 저장된 항목이 없을 때는 macOS 키체인(safeStorage.isEncryptionAvailable)을 건드리지 않는다 —
+    // 설정 화면만 열거나 빈 금고로 웹을 탐색할 때 키체인 허용 창이 뜨지 않게 실제로 쓸 때까지 미룬다.
+    if (vault.entries.length > 0) {
+      let encryption = false;
+      try {
+        encryption = deps.safeStorage.isEncryptionAvailable();
+      } catch {
+        encryption = false;
+      }
+      if (!encryption) return blankState("encryption_unavailable", vault);
     }
     return {
       available: true,
@@ -435,15 +431,15 @@ export function createBrowserPasswordVault(deps: BrowserPasswordVaultDeps) {
    * 셸 명령·REST·렌더러로는 절대 내보내지 않는다. 평문이 돌아간다.
    */
   const forOrigin = (origin: string): BrowserPasswordOriginCredentials => {
-    ensureEncryption();
     const normalized = normalizeBrowserPasswordOrigin(origin);
     if (normalized === null) throw err("invalid_password_entry");
     const vault = load() ?? { offerToSave: true, neverSaveOrigins: [], entries: [] };
+    const matched = vault.entries.filter((entry) => entry.origin === normalized);
+    if (matched.length > 0) ensureEncryption();
     return {
       offerToSave: vault.offerToSave,
       neverSaved: vault.neverSaveOrigins.includes(normalized),
-      credentials: vault.entries
-        .filter((entry) => entry.origin === normalized)
+      credentials: matched
         .map((entry) => ({ id: entry.id, username: entry.username, password: decrypt(entry.ciphertext), updatedAt: entry.updatedAt })),
     };
   };
