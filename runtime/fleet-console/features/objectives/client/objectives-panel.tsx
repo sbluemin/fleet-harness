@@ -1036,7 +1036,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   const [quietNow, setQuietNow] = useState(() => Date.now());
   // 문장은 경과 분이다. 임계에 닿은 뒤에도 1분마다 다시 읽어, 뱃지가 처음 분수에 멈물지 않게 한다.
   useEffect(() => {
-    if (!objectiveUnderway(objective) || objective.decisionRequest || objective.awaitingReview) return;
+    if (!objectiveUnderway(objective) || objective.awaitingReview) return;
     let next: number | null = null;
     let showing = false;
     for (const mission of objective.missions) {
@@ -1347,7 +1347,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} {...(embedded ? { zoom: true, onFitWidth: onGraphFitWidth } : {})} suspended={zoomOpen && !verticalGraph} /> : null}</div>
     {zoomOpen && !verticalGraph && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} width={zoomWidth} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} onClose={() => { setZoomOpen(false); setZoomWidth(null); zoomTriggerRef.current?.focus(); }}>{missionAttention}<CoordinationGraph {...graphProps} zoom onFitWidth={setZoomWidth} /></LineupZoom>, document.body) : null}
   </div>;
-  // 결정 섹션 — 목표 탭 맨 아래, 결정 내역만. 지금 답할 결정 요청은 가운데 대화의 결정 카드가 받고, 목표 탭에는 점만 선다.
+  // 결정 섹션 — 목표 탭 맨 아래, 사령관의 결정과 기존 답을 보존한다.
   // 답이 없으면 서지 않는다(목표 탭 맨 아래의 빈 문구는 소음이다).
   const sDecisions = objective.decisions.length > 0 ? (
       <div className="objectives-group">

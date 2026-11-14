@@ -1,11 +1,11 @@
 import { openObjectivePopup } from "./objectives-panel.js";
 import { objectiveOpenUIPort } from "./openui-ports.js";
-import type { ConversationConsultReply, ConversationDecision, ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
+import type { ConversationConsultReply, ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import { livePersonHold } from "../shared/board-state.js";
-import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
-import { answeringText, commodoreAliasOf, decisionInCommodoreConversation, decisionTurn, followupInCommodoreConversation, openCommodoreConversation } from "./board-commodore.js";
+import { MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
+import { commodoreAliasOf, followupInCommodoreConversation, openCommodoreConversation } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { returnPersonHold } from "./objectives-state.js";
 import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberStatus, type LaunchShown } from "./launch-control.js";
@@ -18,9 +18,8 @@ export interface ConversationCrew {
 
 /**
  * Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. 보드 사실의 글은 보드 행과 같은 함수가 같은 값으로 짓는다.
- * `commodoreActive` — 이 Theater 의 자율 운영이 실제로 도는가. 결정 카드의 차례(사령관이 답하는 중·넘긴 이유)를 정한다.
  */
-export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew, commodoreActive = false): ObjectiveClusterConversation {
+export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew): ObjectiveClusterConversation {
   const alias = commodoreAliasOf(objective.commodoreId);
   const members: ConversationMember[] = objective.members.map((member, index) => ({ kind: "member", objectiveId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) }, ...(crew ? { profile: memberProfile(objective, member, crew) } : {}) }));
   const events: GroupTimelineEntry[] = (objective.memberHistory ?? []).map((entry) => ({
@@ -75,12 +74,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
     if (entry && entry.at !== null) openRecord(entry.at);
   } : undefined;
-  return { objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, commodoreAlias: alias, holds: conversationHolds(objective), members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: null };
-}
-
-/** 목표 대화는 결정 요청 카드를 싣지 않는다. 사령관 질문 카드는 이 계약 밖의 ask_person 이다. */
-export function objectiveDecision(_objective: Objective, _open?: () => void, _actions?: GroupConversationActions, _commodoreActive = false): ConversationDecision | null {
-  return null;
+  return { objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, commodoreAlias: alias, holds: conversationHolds(objective), members, decision: null, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}) };
 }
 
 /**
@@ -126,7 +120,7 @@ function boardAct(kind: string) {
   });
 }
 
-/** 대화에 세울 넘김 대상. 결정과 후속 후보는 답을 복제하지 않고 사령관 대화로 가는 안내만 세운다. */
+/** 대화에 세울 넘김 대상. 후속 후보는 답을 복제하지 않고 사령관 대화로 가는 안내만 세운다. */
 const HOLD_TARGETS = ["criteria", "review", "followup"] as const;
 
 function conversationHolds(objective: Objective): readonly ConversationHold[] {

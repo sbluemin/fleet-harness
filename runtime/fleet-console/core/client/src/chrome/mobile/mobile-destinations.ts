@@ -9,7 +9,6 @@ import { SETTINGS_RAIL_ENTRY_ID } from "../../../../../features/settings/client/
 import { resolveObjectiveActivity } from "../../../../../features/execution/client/objective-activity.js";
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { approvalItems, approvalTick, subscribeApprovals } from "../../../../../features/execution/client/approval/store.js";
-import { decisionConversationOwner, readAllTheaters } from "../../../../../features/objectives/client/objectives-state.js";
 import { objectiveRecordClusterId } from "../../integration/feature-registry.js";
 import type { ObjectiveRecord, ConsoleState } from "../../integration/types.js";
 import { useRailEntries, type RailEntryBinding } from "../pane/pane-registry.js";
@@ -122,7 +121,6 @@ export type MobileAttentionRow =
   | { readonly kind: "objectiveRecord"; readonly key: string; readonly objectiveRecord: ObjectiveRecord; readonly request?: ObjectiveUseRequest }
   | { readonly kind: "plugin"; readonly key: string; readonly entryId: string; readonly item: RailEntryAttentionItem; readonly clusterId?: string }
   | { readonly kind: "approval"; readonly key: string; readonly title: string; readonly detail: string; readonly expiresAt?: number }
-  | { readonly kind: "decision"; readonly key: string; readonly title: string; readonly detail: string; readonly objectiveId: string };
 
 /**
  * 「확인 필요」의 행: 범위 안에서 사람을 기다리는 Objective(허용 요청·질문·권한은 모두 활동 `awaiting`으로 모인다)과
@@ -178,7 +176,7 @@ export function useMobileAttention(state: ConsoleState, commodoreId?: string): {
   }, [approvalVersion, bindings, commodoreId, locale, pluginCommodoreId, state.objectiveRecordRuntime, state.objectiveRecords, t, theaterId, tick, useRequests]);
 }
 
-function approvalAttentionRows(t: (key: "approval.computerTitle" | "approval.descTitle" | "approval.intelTitle" | "approval.until" | "approval.decisionLink" | "approval.decisionCommodoreLink") => string, state: ConsoleState, commodoreId: string | undefined): MobileAttentionRow[] {
+function approvalAttentionRows(t: (key: "approval.computerTitle" | "approval.descTitle" | "approval.intelTitle" | "approval.until") => string, state: ConsoleState, commodoreId: string | undefined): MobileAttentionRow[] {
   const rows: MobileAttentionRow[] = [];
   for (const item of approvalItems()) {
     if (item.type === "computer.use") {
@@ -190,13 +188,6 @@ function approvalAttentionRows(t: (key: "approval.computerTitle" | "approval.des
       const targetId = typeof item.payload.targetId === "string" ? item.payload.targetId : "";
       if (commodoreId !== undefined && targetId !== commodoreId) continue;
       rows.push({ kind: "approval", key: `approval:${item.id}`, title: t(item.type === "commodore.intel" ? "approval.intelTitle" : "approval.descTitle"), detail: t("approval.until") });
-    }
-  }
-  for (const board of readAllTheaters()) {
-    for (const objective of board.objectives) {
-      if (!objective.decisionRequest || objective.done || objective.removed) continue;
-      if (commodoreId !== undefined && objective.commodoreId !== commodoreId) continue;
-      rows.push({ kind: "decision", key: `decision:${objective.id}`, title: objective.title, detail: t(decisionConversationOwner(objective) ? "approval.decisionCommodoreLink" : "approval.decisionLink"), objectiveId: objective.id });
     }
   }
   return rows;

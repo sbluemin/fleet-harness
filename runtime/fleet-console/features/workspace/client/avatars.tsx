@@ -29,12 +29,12 @@ export function objectiveRecordAvatarRole(objectiveRecord: Pick<ObjectiveRecord,
   return objectiveRecord.parentObjectiveId ? "member" : "commander";
 }
 
-/** 묶음에서 읽는 얼굴 사실 — 뿌리면 검토 대기·결정 요청, 구성원이면 맡은 임무가 모두 끝났는지. */
-export type ClusterFaceFacts = Pick<MongleFacts, "awaitingReview" | "decisionRequest" | "workDone">;
+/** 묶음에서 읽는 얼굴 사실 — 뿌리면 검토 대기·사람 차례, 구성원이면 맡은 임무가 모두 끝났는지. */
+export type ClusterFaceFacts = Pick<MongleFacts, "awaitingReview" | "personTurn" | "workDone">;
 
 export function clusterFaceFacts(clusters: readonly ObjectiveCluster[], objectiveId: string): ClusterFaceFacts {
   for (const cluster of clusters) {
-    if (cluster.root === objectiveId) return { awaitingReview: cluster.row?.glyph === "review", decisionRequest: cluster.row?.personTurnAt !== undefined };
+    if (cluster.root === objectiveId) return { awaitingReview: cluster.row?.glyph === "review", personTurn: cluster.row?.personTurnAt !== undefined };
     const own = cluster.members.filter((member) => !member.pending && member.objectiveId === objectiveId);
     // 구성원의 진행은 대표 임무의 것이다 — 끝나지 않은 임무가 남아 있으면 그것이 대표라 done 은 「모두 끝남」이다.
     if (own.length > 0) return { workDone: own.every((member) => member.progress === "done") };
@@ -44,7 +44,7 @@ export function clusterFaceFacts(clusters: readonly ObjectiveCluster[], objectiv
 
 /**
  * 사이드바 표식 축(상태 마크) → 아바타 상태. 표식의 unseen 은 활동이 쉼이고 안 본 답이 도착한 것이다 — 통일 기준의 예외로
- * 사이드바만 표식째 넘긴다. 결정 요청·검토 대기·임무 완료는 활동 축과 별개의 사실이라 따로 받는다.
+ * 사이드바만 표식째 넘긴다. 사람 차례·검토 대기·임무 완료는 활동 축과 별개의 사실이라 따로 받는다.
  */
 export function mongleStateOfMark(mark: ObjectiveMarkVisual | undefined, facts: Omit<MongleFacts, "activity" | "unseen"> = {}): MongleState {
   return mongleStateOf({ ...facts, activity: mark === "unseen" ? "idle" : mark ?? null, unseen: mark === "unseen" });

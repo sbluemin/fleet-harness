@@ -265,7 +265,7 @@ function tokenBesideCaret(root: HTMLElement, forward: boolean): HTMLElement | nu
 
 /* ── 목록 ─────────────────────────────────────────────────────────── */
 
-type RowStatus = "running" | "decision" | "review" | "pending" | "missionsDone" | "done" | "commodore";
+type RowStatus = "running" | "review" | "pending" | "missionsDone" | "done" | "commodore";
 interface Candidate {
   readonly objective: CommodoreReference;
   readonly missions?: Objective["missions"];
@@ -705,7 +705,7 @@ export const CommodoreReferenceInput = forwardRef<CommodoreReferenceInputHandle,
                       aux={bare ? null : (
                         <span className="objectives-commodore-ref-sub">
                           {isTaken ? <span><MenuCheckGlyph /> {t("commodore.reference.taken")}</span> : <>
-                            {candidate.status === "commodore" ? <span>{candidate.description}</span> : group === "pending" ? null : <span className={candidate.status === "decision" ? "is-decision" : candidate.status === "review" ? "is-review" : undefined}>{t(`commodore.reference.status.${candidate.status}`)}</span>}
+                            {candidate.status === "commodore" ? <span>{candidate.description}</span> : group === "pending" ? null : <span className={candidate.status === "review" ? "is-review" : undefined}>{t(`commodore.reference.status.${candidate.status}`)}</span>}
                             {missions ? <span>{t("commodore.reference.missions", { done: doneMissions, total: missions })}</span> : null}
                           </>}
                         </span>

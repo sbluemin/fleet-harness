@@ -14,7 +14,7 @@ import { objectiveConversation } from "./conversation.js";
 import { objectiveConversationActions } from "./conversation-actions.js";
 import { openCommodoreConversation } from "./board-commodore.js";
 import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConversation } from "./fresh-conversation.js";
-import { answeringText, commodoreAliasOf, commodoreBoardOf, commodoreRevision, decisionTurn, livePersonHolds, personTurnAt, subscribeCommodore } from "./board-commodore.js";
+import { commodoreAliasOf, commodoreBoardOf, commodoreRevision, personTurnAt, subscribeCommodore } from "./board-commodore.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
 import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
@@ -68,14 +68,10 @@ export function originTitleOf(objective: Objective, byId: ReadonlyMap<string, Ob
   return byId.get(objective.origin.objectiveId)?.title ?? null;
 }
 
-/**
- * 줄 메모 — 자율 운영 중이면 사람의 손을 기다리던 자리를 사령관이 맡고 있다는 사실, 그리고 정체. 모듈 상수라
- * 줄 서명이 메모의 종류로 비교된다(글은 로케일마다 호스트가 푼다). 사령관이 결정 요청에 답하는 중이라는 사실은 메모가 아니라
- * 줄의 상태 문구(`delegated.status`)가 말한다.
- */
+/** 줄 메모 — 자율 운영 중의 검토와 정체를 말한다. 줄 서명은 메모의 종류로 비교한다. */
 const NOTE_REVIEWING: ObjectiveClusterRowNote = { text: (locale) => getT(locale)("objectives.autonomy.note.reviewing"), tone: "accent" };
 const NOTE_STALLED: ObjectiveClusterRowNote = { text: (locale) => getT(locale)("objectives.autonomy.note.stalled"), tone: "warn" };
-/** 사령관이 사람에게 넘긴 항목이 선 줄 — 「내 결정」에 선 까닭(`decisionNote`). 대화 중심 화면에서도 줄의 상태 문구로 보인다. */
+/** 사령관이 사람에게 넘긴 항목이 선 줄 — 「내 결정」에 선 까닭(`personNote`). 대화 중심 화면에서도 줄의 상태 문구로 보인다. */
 const HANDED_NOTE = (locale: "en" | "ko") => getT(locale)("objectives.autonomy.note.handed");
 /** 구성원 실패 — 확인하지 않은 실패가 남은 동안만. 자율 운영과 상관없이 사람의 줄에 선다. 사유가 하나로 모이면 그 사유로 말한다. */
 const NOTE_MEMBER_FAILED: ObjectiveClusterRowNote = { text: (locale) => getT(locale)("objectives.note.memberFailed"), tone: "warn" };
@@ -97,9 +93,6 @@ export const memberFailureNote = (objective: Objective): MemberFailureNoteKey | 
   const [only] = reasons;
   return reasons.size === 1 && only ? FAILURE_NOTE_TEXT[only] : "objectives.note.memberFailed";
 };
-/** 사령관이 결정 요청에 답하는 동안 둘째 줄의 상태 문구 자리에 서는 말 — 별칭이 있으면 「{별칭}{이|가} 답하는 중」이다. */
-const answeringStatus = (objective: Objective, alias?: string | null) => (locale: "en" | "ko") => answeringText(alias === undefined ? commodoreAliasOf(objective.commodoreId) : alias, getT(locale));
-
 /**
  * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다),
  * 사령관 표식은 루틴과 무관하게 활성이고, `peek` 는 사람이 Theater 머리의 사령관 글리프에 머무는 중(표식이 함께 밝아진다).
@@ -148,7 +141,7 @@ function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean)
   const failureNote = memberFailureNote(objective);
   const failed = failureNote === null ? [] : [failureNote === "objectives.note.memberLimited" ? NOTE_MEMBER_LIMITED : failureNote === "objectives.note.memberRateLimited" ? NOTE_MEMBER_RATE_LIMITED : NOTE_MEMBER_FAILED];
   if (!board.active) return stalled || failed.length ? { notes: [...failed, ...(stalled ? [NOTE_STALLED] : [])] } : {};
-  // 답하는 중·검토하는 중은 사람에게 넘기지 않은 항목에만 선다.
+  // 검토하는 중은 사람에게 넘기지 않은 항목에만 선다.
   const notes: ObjectiveClusterRowNote[] = [...failed];
   if (objective.awaitingReview && !livePersonHold(objective, "review")) notes.push(NOTE_REVIEWING);
   if (board.stalled.includes(objective.id)) notes.push(NOTE_STALLED);
@@ -156,14 +149,12 @@ function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean)
 }
 
 /**
- * 결정 구역 — 사람이 답할 차례면 「내 결정」(사람에게 넘긴 기준·검토·후속도 같은 구역). 자율 운영 중 사령관이 맡은 결정 요청은
- * 구역으로 올라가지 않고 제자리에서 상태 문구 「사령관이 답하는 중」으로 말한다. 판정은 `decisionTurn`·`personTurnAt` 하나를
- * 폰·전환 목록·레일과 함께 쓴다.
+ * 사람 차례 구역 — 사령관이 넘긴 기준·검토·후속은 폰·전환 목록·레일과 같은 시각 판정으로 세운다.
  */
-function personTurnOf(objective: Objective): Pick<ObjectiveClusterRow, "personTurnAt" | "personNote"> {
-  const holds = livePersonHolds(objective);
-  if (!holds.length) return {};
-  return { personTurnAt: Math.min(...holds.map((hold) => hold.at)), personNote: HANDED_NOTE };
+function personZoneOf(objective: Objective): Pick<ObjectiveClusterRow, "personTurnAt" | "personNote"> {
+  const at = personTurnAt(objective);
+  // 사령관이 넘긴 항목은 자율 운영과 상관없이 사람의 차례다 — 줄이 「내 결정」에 선 까닭을 함께 단다.
+  return at !== null ? { personTurnAt: at, personNote: HANDED_NOTE } : {};
 }
 
 /**
@@ -186,7 +177,7 @@ export function objectiveSidebarRow(objective: Objective, order: number, fold: r
     // 완료한 목표는 「오늘」 구역에 올리지 않는다 — 완료 전 Today·기한 표시는 보관 전까지 줄을 긴급 구역으로 승격시켜 끝난 일을 오늘 일로 보인다.
     ...(done ? {} : { ...(objective.today || overdue ? { today: true } : {}), ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}) }),
     ...(objective.done ? { doneAt: objective.done.at } : {}),
-    ...personTurnOf(objective),
+    ...personZoneOf(objective),
     ...(objective.missions.length ? { progress: { done: doneMissions, total: objective.missions.length } } : {}),
     createdAt: objective.createdAt,
     activityAt: objective.boardUpdatedAt ?? objective.createdAt,
@@ -257,14 +248,14 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const liveMembers = objective.members.flatMap((member) => { const objectiveId = live(member.id); return objectiveId ? [{ member, objectiveId }] : []; });
     const fold = [...new Set([...(activity.has(commander) ? [commander] : []), ...liveMembers.map((entry) => entry.objectiveId), ...objective.missions.flatMap((mission) => { const objectiveId = live(mission.objectiveId); return objectiveId ? [objectiveId] : []; })])];
     const row = objectiveSidebarRow(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.commodoreId), stalled.has(objective.id), now);
-    // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Objective 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
+    // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Objective 이 살아 있으면 묶음이 선다.
     const openDetail = () => {
       openObjectiveFromCluster(objective.theaterId, objective.id);
       // 대화 중심 화면 — 시작 전 목표는 가운데 칸에 시작 화면으로 선다(활성 Objective 이 비고 세 영역이 이 목표를 가리킨다).
       if (row?.glyph === "fresh") openFreshConversation(objective.id);
     };
-    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, () => openObjectivePopup(objective.id), (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
-      { state: (objectiveId) => shownActivity(activity.get(objectiveId) ?? "closed"), roster }, boardOf(objective.commodoreId).active);
+    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
+      { state: (objectiveId) => shownActivity(activity.get(objectiveId) ?? "closed"), roster });
     const structured = (objective.missions.length > 0 || liveMembers.length > 0) && activity.has(commander);
     if (!structured) {
       // 완료한 목표도 줄이 있다 — 보관하기 전까지 줄에서 대화(지휘관과의 메시지·범위 넓히기)를 다시 연다. 보관된 완료 목표는 아래 doneStandInCluster 가 맡는다.
@@ -374,10 +365,9 @@ let cachedInputs: readonly unknown[] = [];
  * 보관된 완료 목표의 대화 서술자 — 줄·뿌리 없이 대화(명부·보드 동작)만 싣는다. 지휘관 Objective 이 보관돼 활동이 없으므로 명부는 모두 닫힌
  * 것으로 센다. 가운데 칸의 완료 화면 입력창이 이 서술자의 보드 동작(지휘관에게만 가는 메시지·범위 넓히기 칩)을 읽는다.
  */
-function doneStandInCluster(objective: Objective, roster: ModelRoster | null, boardOf: (theaterId: string) => CommodoreBoard): ObjectiveCluster {
-  const open = () => openObjectivePopup(objective.id);
-  const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, open, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
-    { state: () => "closed", roster }, boardOf(objective.commodoreId).active);
+function doneStandInCluster(objective: Objective, roster: ModelRoster | null): ObjectiveCluster {
+  const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
+    { state: () => "closed", roster });
   return { id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, avatarObjectiveId: objective.id, members: [], conversation };
 }
 
@@ -416,7 +406,7 @@ export const objectivesClusterSource: ObjectiveClusterSource = {
     const archivedShown = showing && !live.some((objective) => objective.id === showing) ? findFinishedObjective(showing) : null;
     const next = [
       ...clustersOf(live, activity, (objective) => objective.commodoreId === commodoreId && selected === objective.id, commodoreBoardOf, runtimeReady ? (objectiveId) => observations.get(objectiveId) ?? null : () => null, now, roster),
-      ...(archivedShown?.done ? [doneStandInCluster(archivedShown, roster, commodoreBoardOf)] : []),
+      ...(archivedShown?.done ? [doneStandInCluster(archivedShown, roster)] : []),
     ];
     const nextSignature = signature(next);
     cachedInputs = inputs;

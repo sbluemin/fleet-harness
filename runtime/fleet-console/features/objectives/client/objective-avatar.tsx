@@ -47,9 +47,9 @@ export function memberMongleState(objective: Pick<Objective, "missions">, member
 }
 
 /**
- * 지휘관의 얼굴 — 다른 표면과 같은 기준이다(검토 대기 › 결정 요청 › 활동). 활동은 구성원 활동을 끌어올린 값(`activity`)이라,
+ * 지휘관의 얼굴 — 다른 표면과 같은 기준이다(검토 대기 › 활동). 활동은 구성원 활동을 끌어올린 값(`activity`)이라,
  * 구성원이 일하거나 기다리면 지휘관도 그렇게 보인다.
  */
 export function commanderMongleState(objective: Objective, activity: string): MongleState {
-  return mongleStateOf({ ...activityFacts(activity), awaitingReview: objective.awaitingReview, decisionRequest: !!objective.decisionRequest && !objective.done });
+  return mongleStateOf({ ...activityFacts(activity), awaitingReview: objective.awaitingReview });
 }

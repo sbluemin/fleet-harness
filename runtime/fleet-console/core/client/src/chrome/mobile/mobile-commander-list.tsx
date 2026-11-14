@@ -62,7 +62,7 @@ function CommanderRow({ item, selected, onSelect, leave }: { readonly item: Side
   const longPress = useLongPress<HTMLButtonElement>(() => openActions(item));
   const { layout, row } = item;
   const workActivity = useClusterRowActivity(item);
-  const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, language, t, workActivity);
+  const { state, label, personNote, conversationLine } = clusterRowSummary(item, language, t, workActivity);
   const activity = activityOf(item);
   const open = () => leave(() => {
     // 뿌리 없는 목표는 시작 화면으로 — 가짜 세션 id로 focus하지 않는다.
@@ -72,7 +72,7 @@ function CommanderRow({ item, selected, onSelect, leave }: { readonly item: Side
   });
   return <li className={`mobile-commander-item${selected ? " is-selected" : ""}`} data-cluster-row-id={layout.cluster.id}>
     <MobileMarkedRow mark={row.mark}>
-      <button type="button" data-press="r1" className="mobile-conv-row" aria-expanded={selected} aria-controls={selected ? detailId : undefined} aria-description={decisionNote || undefined} onClick={onSelect}
+      <button type="button" data-press="r1" className="mobile-conv-row" aria-expanded={selected} aria-controls={selected ? detailId : undefined} aria-description={personNote || undefined} onClick={onSelect}
         onPointerDown={longPress.onPointerDown} onPointerMove={longPress.onPointerMove} onPointerUp={longPress.onPointerUp} onPointerCancel={longPress.onPointerCancel}
         onContextMenu={(event) => { event.preventDefault(); if (!longPress.claimContextMenu(event)) openActions(item); }}>
         <span className="mobile-conv-row-av"><ClusterRowAvatar item={item} rowState={state} label={label} size={40} decorative /></span>
@@ -80,7 +80,7 @@ function CommanderRow({ item, selected, onSelect, leave }: { readonly item: Side
           <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{layout.cluster.title}</span>{activity !== undefined ? <time className="mobile-conv-row-aside" dateTime={new Date(activity).toISOString()}>{time(activity)}</time> : null}</span>
           <span className="mobile-commander-line">
             <ClusterRowProgress progress={row.progress} />
-            <span className={`mobile-conv-state is-${row.personTurnAt !== undefined ? "awaiting" : state}${handlingStatus ? " is-handling" : ""}`}>{conversationLine}</span>
+            <span className={`mobile-conv-state is-${row.personTurnAt !== undefined ? "awaiting" : state}`}>{conversationLine}</span>
           </span>
         </span>
       </button>

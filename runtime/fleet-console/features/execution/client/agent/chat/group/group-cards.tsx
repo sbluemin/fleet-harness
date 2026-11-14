@@ -11,7 +11,7 @@ import { getGroupT } from "./group-chat-i18n.js";
 import { SpeakerMark } from "./speaker-mark.js";
 
 /**
- * 대화 안 카드 — 지휘관의 결정 요청과 컴퓨터 사용 허용 요청.
+ * 대화 안 카드 — 사령관의 질문과 컴퓨터 사용 허용 요청.
  *
  * 어느 카드도 초점을 가져가지 않는다: 사람이 입력창에 치던 Enter 가 답이나 허용을 누르면 안 된다. 단추는 클릭이나 Tab 으로만
  * 닿고, 누르고 있는 Enter·Space 의 반복으로는 확정되지 않는다.
@@ -22,11 +22,10 @@ import { SpeakerMark } from "./speaker-mark.js";
  */
 
 /**
- * 결정 요청 카드 — 질문마다 선택지와 직접 답하기. 모든 질문에 답해야 보낸다. 보내는 길은 하나다: 계약의 `decision.answer`
- * 가 있으면 그것만, 없으면 `actions.answerDecision` 만 부른다. 실패하면 고른 것과 쓴 답을 지키고 사유 한 줄을 보인다.
- * `decision.decline` 이 있으면 보내기 곁에 「결정 안 함」 조용한 단추 하나로 서고, 누르면 선택·입력 없이 요청 전체를 닫는다.
+ * 사령관 질문 카드 — 질문마다 선택지와 직접 답하기. 모든 질문에 답해야 계약의 `decision.answer`로 보낸다.
+ * 실패하면 고른 것과 쓴 답을 지키고 사유 한 줄을 보인다.
  */
-export function DecisionCard({ decision, actions, asker, language, phone = false, onAnswered }: {
+export function DecisionCard({ decision, asker, language, phone = false, onAnswered }: {
   readonly decision: ConversationDecision;
   readonly actions: GroupConversationActions | null;
   readonly asker: ConversationSpeaker | null;
@@ -59,7 +58,7 @@ export function DecisionCard({ decision, actions, asker, language, phone = false
   };
   const answered = (questionId: string) => (picks[questionId]?.length ?? 0) > 0 || (texts[questionId] ?? "").trim().length > 0;
   const ready = decision.questions.every((question) => answered(question.id));
-  const submitPath = decision.answer ?? null;
+  const submitPath = decision.answer;
 
   const toggle = (questionId: string, optionId: string, multi: boolean) => setPicks((current) => {
     const now = current[questionId] ?? [];

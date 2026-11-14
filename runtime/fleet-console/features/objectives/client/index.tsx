@@ -65,7 +65,7 @@ export const objectivesEntry: RailEntryDescriptor = {
     },
     count: (theaterId) => (isCommodoreConversationActive() ? 0 : personTurnCount(theaterId)),
     label: (count, locale) => getT(locale)("objectives.requests.badge", { count }),
-    // 모바일 「확인 필요」 — 결정 요청마다 한 행, 누르면 그 목표의 대화 「목표」 탭(지휘관 Objective 이 없으면 목표 화면).
+    // 모바일 「확인 필요」 — 사람에게 넘긴 항목과 사령관 질문마다 한 행, 누르면 그 목표의 대화 「목표」 탭(지휘관 Objective 이 없으면 목표 화면).
     items: decisionAttentionItems,
   },
   // 폰에는 목표 보드(목록)를 따로 두지 않는다 — 홈 칩 없이(`chip: false`) 목적지 화면만 남아 착지한 목표 하나를 세우고(시작 전 목표 등),

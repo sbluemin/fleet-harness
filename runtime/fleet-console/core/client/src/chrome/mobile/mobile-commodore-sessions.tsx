@@ -9,7 +9,6 @@ import { MobileArchivedFinished } from "./mobile-archived-finished.js";
 import { MobileCommanderList } from "./mobile-commander-list.js";
 import { attentionMovesFirst, entryIconOf, useMobileAttention } from "./mobile-destinations.js";
 import { openApprovalList } from "../../../../../features/execution/client/approval/store.js";
-import { focusDecision } from "../../../../../features/objectives/client/objectives-state.js";
 import { MobileIcon } from "./mobile-icons.js";
 import { MobileMarkedRow } from "./mobile-row-mark.js";
 import { openMobilePluginDestination } from "./mobile-store.js";
@@ -30,7 +29,7 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
   const clusterIndex = useClusterIndex();
   const { rows } = useMobileAttention(state, commodoreId);
   const commanderRows = useCommanderRows(commodoreId, null);
-  // 폰은 두 입구를 나눈다 — 사령관의 직접 질문은 띠에만, 지휘관의 결정 요청은 뿌리 유무와 관계없이 목록에만 선다.
+  // 폰은 두 입구를 나눈다 — 사령관의 직접 질문은 띠에만, 사람에게 넘긴 보드 항목은 뿌리 유무와 관계없이 목록에만 선다.
   // 요청도 플러그인 행으로 오므로 kind만으로 가르지 않고 실제 명단의 묶음 id를 쓴다. 데스크톱 명단은 바꾸지 않는다.
   const sorted = commanderRows.sorted.filter((item) => !item.row.commodore);
   const commanderClusterIds = new Set(sorted.map((item) => item.layout.cluster.id));
@@ -38,7 +37,7 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
     .map((section) => ({ ...section, rows: section.rows.filter((item) => commanderClusterIds.has(item.layout.cluster.id)) }))
     .filter((section) => section.rows.length > 0);
   const attention = rows.filter((row) => row.kind !== "objectiveRecord")
-    .filter((row) => row.kind === "approval" || row.kind === "decision" || !row.clusterId || !commanderClusterIds.has(row.clusterId));
+    .filter((row) => row.kind === "approval" || !row.clusterId || !commanderClusterIds.has(row.clusterId));
   // 지휘관 얼굴은 몽글 아바타다 — 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
   useAvatarClaims();
   return (
@@ -49,13 +48,6 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
           {attention.map((row) => <MobileMarkedRow key={row.key} mark={row.kind === "plugin" && row.clusterId ? clusterIndex.layouts.get(row.clusterId)?.cluster.row?.mark : undefined}>
             {row.kind === "approval" ? (
               <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => leave(() => openApprovalList())}>
-                <span className="mobile-conv-row-copy">
-                  <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.title}</span></span>
-                  <span className="mobile-conv-row-sub"><span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span></span>
-                </span>
-              </button>
-            ) : row.kind === "decision" ? (
-              <button type="button" data-press="r1" className="mobile-conv-row" onClick={() => leave(() => focusDecision(row.objectiveId))}>
                 <span className="mobile-conv-row-copy">
                   <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{row.title}</span></span>
                   <span className="mobile-conv-row-sub"><span className="mobile-conv-state is-awaiting"><AttentionReason row={row} /></span></span>

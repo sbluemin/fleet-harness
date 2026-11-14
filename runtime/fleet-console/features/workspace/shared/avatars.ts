@@ -90,7 +90,7 @@ export function isPromotedBaseId(value: unknown): value is number {
 /** 역할 — 사령관(Theater 운영자), 지휘관(목표의 뿌리와 일반 Objective), 구성원(목표 안의 Objective). */
 export type MongleRole = "commodore" | "commander" | "member";
 
-/** 얼굴·몸짓이 말하는 상태. Console 표시 어휘(running·awaiting·unseen·idle·ended)와 목표 줄 글리프에 결정 요청·오류를 더했다. */
+/** 얼굴·몸짓이 말하는 상태. Console 표시 어휘(running·awaiting·unseen·idle·ended)와 목표 줄 글리프에 사람 차례·오류를 더했다. */
 export type MongleState = "fresh" | "running" | "awaiting" | "decision" | "unseen" | "idle" | "ended" | "review" | "done" | "error";
 
 /**
@@ -112,8 +112,8 @@ export interface MongleFacts {
   readonly activity?: "idle" | "running" | "background" | "awaiting" | "ended" | null;
   /** 지휘관 — 목표가 사람의 검토를 기다린다. */
   readonly awaitingReview?: boolean;
-  /** 지휘관 — 끝나지 않은 목표에 사람에게 청한 결정 요청이 섰다. */
-  readonly decisionRequest?: boolean;
+  /** 사령관의 직접 질문이나 사람이 답할 기준·검토·후속 넘김이 남았다. */
+  readonly personTurn?: boolean;
   /**
    * 안 본 답이 도착했다. 통일 기준의 예외 — 도착 표시를 아는 사이드바만 넘긴다. 다른 표면(레일·대화 머리·목표 팝업)은
    * 이 사실을 읽지 않으므로 같은 순간에 사이드바만 unseen 얼굴일 수 있다.
@@ -125,12 +125,12 @@ export interface MongleFacts {
 
 /**
  * 한 사람의 얼굴 상태 — 사이드바·지휘관 탭 레일·대화 머리·목표 팝업가 모두 이 기준 하나를 지난다.
- * 우선순위: 시작 전 › 검토 대기 › 결정 요청 › 사람 대기 › 작업 중 › 안 본 답 › 임무 완료 › 휴면 › 쉼.
+ * 우선순위: 시작 전 › 검토 대기 › 사람 차례 › 사람 대기 › 작업 중 › 안 본 답 › 임무 완료 › 휴면 › 쉼.
  */
 export function mongleStateOf(facts: MongleFacts): MongleState {
   if (facts.session === false) return "fresh";
   if (facts.awaitingReview) return "review";
-  if (facts.decisionRequest) return "decision";
+  if (facts.personTurn) return "decision";
   const activity = facts.activity;
   if (activity === "awaiting") return "awaiting";
   if (activity === "running" || activity === "background") return "running";

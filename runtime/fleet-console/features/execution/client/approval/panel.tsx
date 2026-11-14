@@ -3,7 +3,6 @@ import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, typ
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { loadCommodore, useCommodore } from "../../../commodore/client/commodore-state.js";
 import { readCommodoreList, subscribeCommodoreList } from "../../../commodore/client/commodore-list.js";
-import { decisionConversationOwner, focusDecision, readAllTheaters, subscribeObjective } from "../../../objectives/client/objectives-state.js";
 
 import { NATIVE_VIEW_COVER_ATTRIBUTE } from "@fleet-console/ui/native-view";
 
@@ -16,8 +15,7 @@ export function ApprovalCapsule() {
   const t = useT();
   const open = useSyncExternalStore(subscribeApprovals, approvalOpen, approvalOpen);
   const items = useSyncExternalStore(subscribeApprovals, approvalItems, approvalItems);
-  const decisions = useSyncExternalStore(subscribeObjective, decisionRows, decisionRows);
-  const pending = items.length + decisions.length;
+  const pending = items.length;
   const clock = useClock(items.some((item) => item.expiresAt !== undefined));
   const urgent = items.filter((item) => item.expiresAt !== undefined).sort((a, b) => a.expiresAt! - b.expiresAt!)[0];
   const left = urgent ? approvalSecondsLeft(urgent.expiresAt, clock) : undefined;
@@ -71,7 +69,6 @@ function ApprovalList() {
   const t = useT();
   const items = useSyncExternalStore(subscribeApprovals, approvalItems, approvalItems);
   const now = useClock(items.some((item) => item.expiresAt !== undefined));
-  const decisions = useSyncExternalStore(subscribeObjective, decisionRows, decisionRows);
   const urgent = items.filter((item) => item.type === "computer.use" && item.expiresAt !== undefined).sort((a, b) => a.expiresAt! - b.expiresAt!);
   const waiting = items.filter((item) => item.type !== "computer.use").sort((a, b) => a.createdAt - b.createdAt);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -82,11 +79,11 @@ function ApprovalList() {
       <span ref={nibRef} className="approval-nib" aria-hidden="true" />
       <header className="approval-surface-head">
         <h2 id="approval-surface-title">{t("approval.title")}</h2>
-        {items.length + decisions.length > 0 ? <p className="approval-surface-sub">{t("approval.headCount", { count: String(items.length + decisions.length) })}</p> : null}
+        {items.length > 0 ? <p className="approval-surface-sub">{t("approval.headCount", { count: String(items.length) })}</p> : null}
         <button type="button" className="approval-close" aria-label={t("approval.close")} onClick={() => closeApprovalList()}>✕</button>
       </header>
       <div className="approval-surface-scroll">
-        {urgent.length === 0 && waiting.length === 0 && decisions.length === 0 ? <div className="approval-empty"><strong>{t("approval.empty")}</strong><p>{t("approval.emptyMore")}</p></div> : null}
+        {urgent.length === 0 && waiting.length === 0 ? <div className="approval-empty"><strong>{t("approval.empty")}</strong><p>{t("approval.emptyMore")}</p></div> : null}
         {urgent.length > 0 ? (
           <section>
             <h3 className="approval-group">{t("approval.now")}<span>{t("approval.nowNote")}</span></h3>
@@ -97,19 +94,6 @@ function ApprovalList() {
           <section>
             <h3 className="approval-group">{t("approval.waiting")}<span>{t("approval.waitingNote")}</span></h3>
             <div className="approval-stack">{waiting.map((item) => item.type === "commodore.intel" ? <IntelRow key={item.id} item={item} /> : <DescriptionRow key={item.id} item={item} />)}</div>
-          </section>
-        ) : null}
-        {decisions.length > 0 ? (
-          <section>
-            <h3 className="approval-group">{t("approval.decisions")}<span>{t(decisions.every((row) => row.commodoreId) ? "approval.decisionsCommodoreNote" : decisions.some((row) => row.commodoreId) ? "approval.decisionsMixedNote" : "approval.decisionsNote")}</span></h3>
-            <div className="approval-stack">
-              {decisions.map((row) => (
-                <div className="approval-link" key={row.id}>
-                  <span>{row.title}</span>
-                  <button type="button" onClick={() => { closeApprovalList(); focusDecision(row.id); }}>{t(row.commodoreId ? "approval.decisionCommodoreLink" : "approval.decisionLink")}</button>
-                </div>
-              ))}
-            </div>
           </section>
         ) : null}
       </div>
@@ -188,31 +172,6 @@ function IntelRow({ item }: { readonly item: ApprovalItem }) {
       />
     </ApprovalCardFrame>
   );
-}
-
-const NO_DECISIONS: readonly { readonly id: string; readonly title: string; readonly commodoreId: string | null }[] = [];
-let decisionSnapshot: readonly { readonly id: string; readonly title: string; readonly commodoreId: string | null }[] = NO_DECISIONS;
-let decisionKey = "";
-
-/**
- * `useSyncExternalStore` 의 스냅숏은 내용이 같으면 같은 참조여야 한다.
- * 부를 때마다 새 배열을 돌려주면 렌더가 끝나지 않는다.
- */
-function decisionRows(): readonly { readonly id: string; readonly title: string; readonly commodoreId: string | null }[] {
-  const rows: { id: string; title: string; commodoreId: string | null }[] = [];
-  let key = "";
-  for (const board of readAllTheaters()) {
-    for (const objective of board.objectives) {
-      if (!objective.decisionRequest || objective.done || objective.removed) continue;
-      const commodoreId = decisionConversationOwner(objective);
-      rows.push({ id: objective.id, title: objective.title, commodoreId });
-      key += `${objective.id}\0${objective.title}\0${commodoreId ?? ""}\n`;
-    }
-  }
-  if (key === decisionKey) return decisionSnapshot;
-  decisionKey = key;
-  decisionSnapshot = rows.length === 0 ? NO_DECISIONS : rows;
-  return decisionSnapshot;
 }
 
 function commodoreName(rows: readonly { readonly commodoreId: string; readonly alias?: string; readonly label: string }[], id: string): string {

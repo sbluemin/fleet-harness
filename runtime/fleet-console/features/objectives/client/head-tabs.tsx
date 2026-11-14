@@ -14,7 +14,6 @@ const TAB_TITLES: Record<DetailTab, LocalizedText> = {
   goal: T("objectives.tabs.goal"),
   crew: T("objectives.tabs.crew"),
 };
-const DECISION_DOT = { tone: "attention", label: T("objectives.tabs.decisionDot") } as const;
 const UNSEEN_DOT = { tone: "unseen", label: T("objectives.tabs.unseenDot") } as const;
 
 function subscribeHead(listener: () => void): () => void {
@@ -25,9 +24,8 @@ function subscribeHead(listener: () => void): () => void {
 // 같은 상태에는 같은 객체를 돌려준다 — 호스트가 useSyncExternalStore 로 읽는다.
 const tabsCache = new Map<string, { readonly key: string; readonly state: RailEntryConversationTabsState }>();
 function readTabs(slot: string | undefined, objective: Objective | null, selected: DetailTab): RailEntryConversationTabsState {
-  const decision = !!objective?.decisionRequest && !objective.done;
   const unseen = !!objective?.missions.some((mission) => unseenRecords(mission) > 0);
-  const key = `${selected}|${decision}|${unseen}`;
+  const key = `${selected}|${unseen}`;
   const cacheSlot = slot ?? `mobile:${key}`;
   const cached = tabsCache.get(cacheSlot);
   if (cached?.key === key) return cached.state;
@@ -36,7 +34,7 @@ function readTabs(slot: string | undefined, objective: Objective | null, selecte
       id,
       title: TAB_TITLES[id],
       // 결정 내역은 목표 탭 맨 아래, 임무 그래프는 구성원 탭 맨 아래에 산다 — 점도 그 탭에 선다.
-      ...(id === "goal" && decision ? { dot: DECISION_DOT } : id === "crew" && unseen ? { dot: UNSEEN_DOT } : {}),
+      ...(id === "crew" && unseen ? { dot: UNSEEN_DOT } : {}),
       ...(id === "crew" ? { replacesMembers: true } : {}),
     })),
     // 증거는 상세 탭이 아니다 — 누르면 뷰어만 연다.

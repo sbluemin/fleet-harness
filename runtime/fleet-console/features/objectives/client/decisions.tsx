@@ -10,8 +10,7 @@ import { LinkText } from "./link-text.js";
 import { returnPersonHold } from "./objectives-state.js";
 
 /**
- * 결정 — 사람이 결정 요청에 보낸 답은 「결정」에 질문마다 남는다. 요청에 답하는 칸은 가운데 대화의 결정 카드다(폰은 목표 탭의 결정 카드).
- * 읽기·세션 열기는 답이 아니다 — 요청은 보내기·지휘관의 철회·사람의 보드 편집으로만 정리되고, 그 정리는 서버가 한다.
+ * 결정 — 사령관이 남긴 결정과 기존 요청의 답을 같은 기록으로 보여 준다. 결정 기록을 지우거나 고치는 길은 없다.
  */
 
 type T = Translate<ObjectiveMessageKey>;
@@ -21,7 +20,7 @@ type T = Translate<ObjectiveMessageKey>;
 const stamp = (at: number, language: "en" | "ko") => new Date(at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /**
- * 결정 요청 밖의 넘김 — 사령관이 사람에게 넘긴 기준 제안·완료 검토·후속 후보에 결정 카드와 같은 「사령관이 넘긴 이유」 한 줄과
+ * 사람에게 넘김 — 사령관이 사람에게 넘긴 기준 제안·완료 검토·후속 후보에 결정 카드와 같은 「사령관이 넘긴 이유」 한 줄과
  * 「사령관에게 돌려주기」를 단다. 그 대상의 넘김(`livePersonHold`)이 서 있을 때만 그린다. 돌려주기가 실패하면 한 줄로 말한다.
  * `label` 은 어느 항목의 넘김인지 밝힌다 — 폰(`phone`)에서는 제 카드로 선다(그 대상의 표면이 폰에 따로 없을 때). 데스크톱 넘김은 호스트 대화 카드가 그린다.
  * 폰 카드는 그 항목에 직접 답하는 단추(`answer`)를 돌려주기 옆에, 그 단추의 설명·사유(`children`)를 이유 아래에 받는다.
@@ -29,7 +28,7 @@ const stamp = (at: number, language: "en" | "ko") => new Date(at).toLocaleString
  */
 export function PersonHoldNote({ objective, target, t, phone = false, label, answer, locked = false, children }: {
   readonly objective: Objective;
-  readonly target: Exclude<PersonHoldTarget, "decision">;
+  readonly target: PersonHoldTarget;
   readonly t: T;
   readonly phone?: boolean;
   readonly label?: string;
@@ -78,7 +77,7 @@ const answerText = (decision: Decision, declinedText: string): string => {
 };
 
 /**
- * 「결정」 — 사람이 보낸 답이 질문마다 한 건씩 쌓인다(최신이 위). 최근 셋만 보이고 나머지는 접힌다. 임무 줄의 결정 표식이
+ * 「결정」 — 사령관의 결정과 기존 답이 한 건씩 쌓인다(최신이 위). 최근 셋만 보이고 나머지는 접힌다. 임무 줄의 결정 표식이
  * 가리키면 그 결정을 펼쳐 비춘다. 지우거나 고치는 길은 없다.
  */
 export function DecisionList({ objective, t, language, flash, memberMark }: {

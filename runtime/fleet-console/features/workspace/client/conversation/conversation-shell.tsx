@@ -741,7 +741,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
     setActiveObjective(subject.id, { fromStage: true });
   }, [activeObjectiveId, subject, surfaceDescriptor]);
   useEffect(() => () => { publishConversationSubject(null); publishConversationStandIn(null); }, []);
-  // 구성원 탭의 아바타가 같은 묶음 사실(검토 대기·결정 요청·임무 완료)로 얼굴을 고르게 묶음을 내건다.
+  // 구성원 탭의 아바타가 같은 묶음 사실(검토 대기·사람 차례·임무 완료)로 얼굴을 고르게 묶음을 내건다.
   const objectiveRecordClusters = useObjectiveClusters();
   useEffect(() => { publishConversationClusters(objectiveRecordClusters); }, [objectiveRecordClusters]);
   const stageInbox = useTheaterInboxState();

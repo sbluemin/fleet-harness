@@ -1,4 +1,4 @@
-import { commodoreIds, decisionInCommodoreConversation, openCommodoreConversation, subscribeCommodore } from "./board-commodore.js";
+import { commodoreIds, subscribeCommodore } from "./board-commodore.js";
 import type { ObjectivesClientDeps } from "./deps.js";
 import { useSyncExternalStore } from "react";
 
@@ -452,8 +452,6 @@ export function removeObjectiveLocally(objectiveId: string): void {
   }
 }
 
-/** 결정 요청이 섰고 끝나지 않은 목표 — 누구의 차례인지는 `decisionTurn`(commodore-state)이 가른다. */
-export const hasDecisionRequest = (objective: Objective): boolean => !!objective.decisionRequest && !objective.done;
 
 export function objectivesApi(): ClientApiCapability | null {
   return installed?.api ?? null;
@@ -809,19 +807,6 @@ export function useOwnerView(commodoreId: string | null): ObjectiveViewState {
 }
 
 const ACCESS_ARRIVAL_TIMEOUT_MS = 5_000;
-
-/** 결정에 답할 대화의 사령관 UUID. 넘기지 않은 결정은 목표 대화에 남는다. */
-export function decisionConversationOwner(objective: Objective): string | null {
-  return decisionInCommodoreConversation(objective) ? objective.commodoreId : null;
-}
-
-/** 현재 요청의 표시 위치를 따라간다 — 목록을 연 뒤 넘김이 바뀌어도 최신 보드로 이동한다. */
-export function focusDecision(objectiveId: string): void {
-  const objective = findAnyObjective(objectiveId);
-  const owner = objective ? decisionConversationOwner(objective) : null;
-  if (owner) openCommodoreConversation(owner);
-  else focusObjective(objectiveId);
-}
 
 export function focusObjective(objectiveId: string): void {
   // 착지는 Snap 전체다 — 스냅할 수 없는 모드·화면에서는 호스트가 같은 일반 이동으로 폴백한다.

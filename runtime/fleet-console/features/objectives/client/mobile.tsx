@@ -1,5 +1,5 @@
 import { MenuCheckGlyph } from "@fleet-console/ui/react";
-import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
@@ -10,9 +10,9 @@ import { SettingsCard, SettingsRow, SettingsToggle } from "../../settings/client
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 
 import { livePersonHold } from "../shared/board-state.js";
-import { MAX_DECISION_ANSWER_INPUT, unseenRecords, type Decision, type DecisionQuestion, type Objective, type ObjectiveMember } from "../shared/types.js";
+import { unseenRecords, type Decision, type Objective, type ObjectiveMember } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
-import { answeringText, commodoreAliasOf, commodoreBoardOf, decisionTurn, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore, useCommodoreBoard } from "./board-commodore.js";
+import { commodoreBoardOf, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore } from "./board-commodore.js";
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, launchReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
@@ -25,14 +25,14 @@ import { clearSelection, discardedFollowups, followupHoldRoute, isFollowupSelect
 import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { Retrospective } from "./retrospective.js";
 import { detailTabOf, type DetailTab } from "./objectives-panel.js";
-import { viewedCommodoreId, loadObjective, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, hasDecisionRequest, loadFinishedObjectives, objectiveRecordSummaries, openObjectiveOnPhone, patchOwnerView, post, returnPersonHold, readAllTheaters, readBoard, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useOwnerView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
+import { viewedCommodoreId, loadObjective, ensureFinishedObjectives, findAnyObjective, finishedObjectives, focusObjective, loadFinishedObjectives, objectiveRecordSummaries, openObjectiveOnPhone, patchOwnerView, post, readAllTheaters, readBoard, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveOrFinished, takeReveal, upsertObjectiveLocally, useOwnerView, useObjectiveSummaries, useReveal } from "./objectives-state.js";
 import "./mobile.css";
 
 /**
- * 폰의 목표 — 상세(브리핑·달성 기준·결정 요청·지휘관·구성원·임무) 하나를 두 자리에 세운다. 증거는 증거 뷰어가 연다. 폰에는 목표 목록(보드)이 없다.
+ * 폰의 목표 — 상세(브리핑·달성 기준·결정 기록·지휘관·구성원·임무) 하나를 두 자리에 세운다. 증거는 증거 뷰어가 연다. 폰에는 목표 목록(보드)이 없다.
  * 대화 정보 화면의 「목표」 탭(호스트가 `mobile.conversationPane` 으로 대화 주인 Objective 을 싣는다, 막대 없음 — 동작은 본문 맨 위 줄)과,
  * 지휘관 Objective 이 없는 목표가 착지하는 목표 화면(칩 없는 목적지, 호스트가 `mobileBar` 를 싣는다 — 제목·⋮ 항목만 선언한다)이다.
- * 데스크톱 목표 팝업·대화와 같은 스토어·같은 API를 쓴다 — 결정 답·메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
+ * 데스크톱 목표 팝업·대화와 같은 스토어·같은 API를 쓴다 — 메시지·완료·인계·중단·개시 모두 보드와 같은 경로이고, ⋮ 와 개시 카드의
  * 노출 판정도 구성원 채팅 입력창의 보드 동작과 같은 판정(`bandChoices`)을 쓴다. 지휘관·구성원의 모델·강도는 데스크톱 명단과 같은 어댑터(`LaunchControl`)이고,
  * 호스트의 모바일 설정 문법 안에서 공유 선택기가 좌표 시트로 선다.
  */
@@ -75,7 +75,7 @@ const activityOf = (objectiveRecords: ObjectiveIndex, id: string): string => obj
 const ownActivityOf = (objectiveRecords: ObjectiveIndex, id: string): string => { const objectiveRecord = objectiveRecords.get(id); return objectiveRecord ? objectiveRecord.ownActivity ?? objectiveRecord.activity : "closed"; };
 
 /**
- * 지휘관 표식 — 목표 Objective 의 몽글 아바타. 데스크톱 팝업·사이드바와 같은 기준(검토 대기 › 결정 요청 › 구성원 활동을 끌어올린 활동)이다.
+ * 지휘관 표식 — 목표 Objective 의 몽글 아바타. 데스크톱 팝업·사이드바와 같은 기준(검토 대기 › 구성원 활동을 끌어올린 활동)이다.
  * 표식은 장식이다 — 이름은 곁의 글자가 말한다.
  */
 const CommanderMark = ({ objective, objectiveRecords }: { readonly objective: Objective; readonly objectiveRecords: ObjectiveIndex }) =>
@@ -96,7 +96,7 @@ export type ObjectiveMobileRowValues = {
 };
 
 /**
- * 상세 첫 화면 행의 오른쪽 값. 결정 요청·안 읽은 임무 기록은 둥근 점 대신 글과 톤으로 말한다.
+ * 상세 첫 화면 행의 오른쪽 값. 안 읽은 임무 기록은 둥근 점 대신 글과 톤으로 말한다.
  * 구성원 활동(작업 중·허용 대기)도 같은 칸의 글이다. 같은 목표·같은 요약이면 같은 객체를 돌려준다.
  */
 let rowValueCache: { readonly objective: Objective | null; readonly records: readonly ConsoleObjectiveSummary[]; readonly locale: ConsoleLocale; readonly id: string; readonly value: ObjectiveMobileRowValues } | null = null;
@@ -122,9 +122,7 @@ function readObjectiveMobileRowValues(objectiveId: string, locale: ConsoleLocale
     else if (activity === "awaiting") awaiting += 1;
   }
   const value: ObjectiveMobileRowValues = {
-    goal: objective.decisionRequest && !objective.done
-      ? { text: t("objectives.tabs.decisionDot"), tone: "awaiting" }
-      : objective.criteria.length > 0 ? { text: t("objectives.mobile.criteria", { met: criteriaMet(objective), total: objective.criteria.length }) } : null,
+    goal: objective.criteria.length > 0 ? { text: t("objectives.mobile.criteria", { met: criteriaMet(objective), total: objective.criteria.length }) } : null,
     crew: unseen > 0 ? { text: t("objectives.tabs.unseenDot"), tone: "awaiting" }
       : awaiting > 0 ? { text: t("objectives.awaiting.word"), tone: "awaiting" }
       : running > 0 ? { text: t("objectives.mobile.crewWorking", { count: running }) }
@@ -142,8 +140,6 @@ function readObjectiveMobileRowValues(objectiveId: string, locale: ConsoleLocale
 export function useObjectiveMobileRowValues(objectiveId: string, locale: ConsoleLocale): ObjectiveMobileRowValues {
   return useSyncExternalStore(subscribeObjectiveOrFinished, () => readObjectiveMobileRowValues(objectiveId, locale), () => readObjectiveMobileRowValues(objectiveId, locale));
 }
-/** 결정은 요청 단위로 센다 — 목표마다 요청은 하나이고, 질문이 여럿이어도 「결정 요청 1건」이다. */
-const requestCount = (objective: Objective) => (hasDecisionRequest(objective) ? 1 : 0);
 /**
  * 목록에 서는 목표 — 기록이 없는 항목(`recorded === false`, 따로 만든 에이전트 Objective 이 「목표 밖」에 선 것)은 목표가 아니다.
  * 모바일 목표 화면은 목표가 없는 일반 세션을 목록에 싣지 않는다.
@@ -175,12 +171,11 @@ export function subscribeDecisionAttention(listener: () => void): () => void {
  * `commodoreId`는 호스트가 건넨 지금 화면의 사령관이다.
  */
 export function personTurnCount(commodoreId: string | null): number {
-  const active = commodoreId !== null && commodoreBoardOf(commodoreId).active;
-  return readBoard(commodoreId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective, active) !== null).length + openAsks(commodoreId).length;
+  return readBoard(commodoreId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective) !== null).length + openAsks(commodoreId).length;
 }
 
 /**
- * 사람의 차례마다 한 행 — 사령관의 질문(누르면 사령관 화면의 질문 카드), 사람이 답할 결정 요청과 사령관이 사람에게 넘긴 항목. 자율 운영 중 사령관이 맡은 요청은 세지 않는다
+ * 사람의 차례마다 한 행 — 사령관의 질문(누르면 사령관 화면의 질문 카드)과 사령관이 사람에게 넘긴 항목
  * (데스크톱 「내 결정」 구역과 같은 판정 `personTurnAt`). 스냅샷이므로 같은 목록 상태·같은 언어면 같은 배열을 돌려준다.
  */
 export function decisionAttentionItems(commodoreId: string | null, locale: ConsoleLocale): readonly RailEntryAttentionItem[] {
@@ -191,14 +186,14 @@ export function decisionAttentionItems(commodoreId: string | null, locale: Conso
   const hit = attentionMemo.get(key);
   if (hit && hit.source === source && hit.asks === asks && hit.locale === locale && hit.answering === answering) return hit.items;
   const t = getT(locale, true);
-  const pending = source.filter((objective) => isListedObjective(objective) && personTurnAt(objective, answering) !== null);
+  const pending = source.filter((objective) => isListedObjective(objective) && personTurnAt(objective) !== null);
   const items = pending.length === 0 && asks.length === 0 ? NO_ITEMS : [
     ...asks.map((ask) => ({ id: `ask:${ask.id}`, title: ask.questions[0]?.text ?? "", reason: t("objectives.ask.title"), open: () => openCommodoreMobile("log", commodoreId) })),
     ...pending.map((objective) => ({
       id: objective.id,
       clusterId: objective.id,
       title: objective.title,
-      reason: decisionTurn(objective, answering) === "person" ? t("objectives.mobile.attention", { count: requestCount(objective) }) : t("objectives.autonomy.note.handed"),
+      reason: t("objectives.autonomy.note.handed"),
       open: () => openObjectiveOnPhone(objective.id, objective.theaterId),
     })),
   ];
@@ -571,8 +566,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
           ))}
         </div>
       ) : null}
-      {/* 지금 할 일(결정 요청·넘김·개시)은 프로필과 구역 맨 위에 선다. 결정 내역은 목표 구역 맨 아래다. */}
-      <DecisionSection objective={objective} objectiveRecords={objectiveRecords} t={t} language={language} api={api} say={say} />
+      {/* 지금 할 일(넘김·개시)은 프로필과 구역 맨 위에 선다. 결정 내역은 목표 구역 맨 아래다. */}
       <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} />
       {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} /> : null}
     </>
@@ -1171,25 +1165,6 @@ function ProposalsCard({ objective, t, language, api, say }: { readonly objectiv
   );
 }
 
-// ── 결정 요청 ──
-
-interface Draft { readonly picked: readonly string[]; readonly text: string; readonly own: boolean }
-const EMPTY_DRAFT: Draft = { picked: [], text: "", own: false };
-/** 답이 된다 — 고른 것이 있거나, 선택지 없는 질문에 글을 썼거나, 「내 의견」을 고르고 글을 썼다(빈 내 의견은 답이 아니다). */
-const answered = (question: DecisionQuestion, draft: Draft) =>
-  (!draft.own && draft.picked.length > 0) || ((question.options.length === 0 || draft.own) && draft.text.trim().length > 0);
-
-/** 초안 — 다른 화면을 보고 와도 남는다(목표별, 이 탭 메모리). 요청이 바뀌면 버린다. */
-const drafts = new Map<string, { readonly requestId: string; readonly drafts: Readonly<Record<string, Draft>> }>();
-const storedDrafts = (objectiveId: string, requestId: string | undefined) => {
-  const stored = drafts.get(objectiveId);
-  if (stored && stored.requestId === requestId) return stored.drafts;
-  drafts.delete(objectiveId);
-  return {};
-};
-/** 이 탭에서 방금 보낸 요청 — 요청이 걷힌 뒤 「답을 보냈습니다」 카드가 그 답을 보인다. */
-const sentRequests = new Map<string, string>();
-
 /** 보낸 답 — 고른 것은 「 · 」로 잇고, 직접 쓴 말은 다음 줄에 그대로. 「결정 안 함」으로 닫힌 건은 그 문구 하나로 선다. */
 const answerText = (decision: Decision, declinedText: string): string => {
   if (decision.declined === true) return declinedText;
@@ -1197,7 +1172,7 @@ const answerText = (decision: Decision, declinedText: string): string => {
   return [picked.join(" · "), decision.answer.text.trim()].filter((part) => part.length > 0).join("\n");
 };
 
-/** 목표 탭 맨 아래의 결정 내역 — 사람이 보낸 답이 질문마다, 최근 것이 위. 보낸 답 카드와 같은 문법(질문 → 답)이다. 답이 없으면 서지 않는다. */
+/** 목표 탭 맨 아래의 결정 내역 — 사령관의 결정과 기존 답이, 최근 것이 위. 보낸 답 카드와 같은 문법(질문 → 답)이다. 답이 없으면 서지 않는다. */
 function DecisionHistory({ objective, t }: { readonly objective: Objective; readonly t: T }) {
   if (objective.decisions.length === 0) return null;
   return (
@@ -1208,185 +1183,6 @@ function DecisionHistory({ objective, t }: { readonly objective: Objective; read
           <p key={decision.id} className="objectives-m-ucard-p"><LinkText text={decision.question.text} /><br /><span className="objectives-m-answer">→ {answerText(decision, t("objectives.decisions.declined"))}</span></p>
         ))}
       </section>
-    </>
-  );
-}
-
-function DecisionSection({ objective, objectiveRecords, t, language, api, say }: { readonly objective: Objective; readonly objectiveRecords: ObjectiveIndex; readonly t: T; readonly language: ConsoleLocale; readonly api: PaneContext["api"]; readonly say: (text: string) => void }) {
-  const request = objective.done ? null : objective.decisionRequest;
-  const [draftMap, setDraftMap] = useState(() => storedDrafts(objective.id, request?.id));
-  const [sending, setSending] = useState(false);
-  const [declining, setDeclining] = useState(false);
-  const [fault, setFault] = useState<string | null>(null);
-  const [, setSentTick] = useState(0);
-  // 자율 운영이 실제로 돌면 사령관이 이 요청에 답한다 — 데스크톱 결정 카드 머리 메모와 같은 판정(`decisionTurn`). 폰에는 툴팁이 없어 설명을 줄로 보인다.
-  // 사람이 운영하는 목표의 요청과 사령관이 사람에게 넘긴 요청으로는 사령관이 답하지 않는다.
-  const commodore = useCommodoreBoard(objective.commodoreId);
-  const answering = decisionTurn(objective, commodore.active) === "commodore";
-  const handed = null;
-  const [givingBack, setGivingBack] = useState(false);
-  const idBase = useId();
-  useEffect(() => { setDraftMap(storedDrafts(objective.id, request?.id)); setFault(null); }, [objective.id, request?.id]);
-
-  if (!request) {
-    const sentId = sentRequests.get(objective.id);
-    const sent = sentId ? objective.decisions.filter((decision) => decision.requestId === sentId) : [];
-    if (sent.length === 0) return null;
-    return (
-      <>
-        <h2 className="objectives-m-glab">{t("objectives.decision.request")}</h2>
-        <section className="objectives-m-ucard">
-          <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} objectiveRecords={objectiveRecords} />{t("objectives.mobile.decision.sent")}</div>
-          {sent.map((decision) => (
-            <p key={decision.id} className="objectives-m-ucard-p"><LinkText text={decision.question.text} /><br /><span className="objectives-m-answer">→ {answerText(decision, t("objectives.decisions.declined"))}</span></p>
-          ))}
-        </section>
-      </>
-    );
-  }
-
-  const total = request.questions.length;
-  const many = total > 1;
-  const draftOf = (question: DecisionQuestion) => draftMap[question.id] ?? EMPTY_DRAFT;
-  const doneCount = request.questions.filter((question) => answered(question, draftOf(question))).length;
-  const edit = (question: DecisionQuestion, next: Draft) => {
-    const nextMap = { ...draftMap, [question.id]: next };
-    drafts.set(objective.id, { requestId: request.id, drafts: nextMap });
-    setDraftMap(nextMap);
-  };
-  const pick = (question: DecisionQuestion, optionId: string) => {
-    const draft = draftOf(question);
-    const base = draft.own ? [] : draft.picked;
-    const on = base.includes(optionId);
-    const picked = question.multiSelect ? (on ? base.filter((id) => id !== optionId) : [...base, optionId]) : [optionId];
-    edit(question, { ...draft, picked, own: false });
-  };
-  // 내 의견 — 여러 개 고르는 질문에서도 홀로 선다. 고른 것을 비운다.
-  const pickOwn = (question: DecisionQuestion) => edit(question, { ...draftOf(question), picked: [], own: true });
-  const unconfirmed = !sending && objective.decisionDelivery?.requestId === request.id;
-  // 사령관에게 돌려주기 — 성공하면 넘김이 걷혀 「사령관이 답하는 중」으로 돌아간다. 실패는 카드 끝 한 줄로.
-  const giveBack = async () => {
-    if (sending || declining || givingBack) return;
-    setGivingBack(true);
-    setFault(null);
-    try { say(t("objectives.decision.givenBack")); }
-    catch { setFault(t("objectives.decision.giveBackFailed")); }
-    finally { setGivingBack(false); }
-  };
-  const submit = async () => {
-    if (sending || declining || doneCount !== total) return;
-    setSending(true);
-    setFault(null);
-    // 선택지 답에는 글을 싣지 않는다 — 모바일에는 덧붙이는 칸이 없고, 내 의견이면 고른 것 없이 글만 간다(보드의 내 의견과 같은 모양).
-    const answers = request.questions.map((question) => {
-      const draft = draftOf(question);
-      const free = question.options.length === 0 || draft.own;
-      return { questionId: question.id, selectedOptionIds: free ? [] : draft.picked, text: free ? draft.text.trim() : "" };
-    });
-    try {
-      await post(api, "/decision/answer", { objectiveId: objective.id, requestId: request.id, answers, language });
-      drafts.delete(objective.id);
-      sentRequests.set(objective.id, request.id);
-      setSentTick((tick) => tick + 1);
-      say(t("objectives.mobile.toast.decision"));
-    } catch (error) {
-      const code = error instanceof Error ? error.message : "";
-      setFault(code === "decision_request_changed" ? t("objectives.decision.changed") : code === "decision_delivering" ? t("objectives.decision.delivering") : t("objectives.decision.failed"));
-    } finally { setSending(false); }
-  };
-
-  // 「결정 안 함」 닫기 — 선택·입력 없이 요청 전체를 닫는다. 답과 같은 전달·잠금·중복 규칙을 함께 쓴다.
-  const decline = async () => {
-    if (sending || declining || givingBack) return;
-    setDeclining(true);
-    setFault(null);
-    try {
-      await post(api, "/decision/decline", { objectiveId: objective.id, requestId: request.id, language });
-      drafts.delete(objective.id);
-      sentRequests.set(objective.id, request.id);
-      setSentTick((tick) => tick + 1);
-      say(t("objectives.mobile.toast.decline"));
-    } catch (error) {
-      const code = error instanceof Error ? error.message : "";
-      setFault(code === "decision_request_changed" ? t("objectives.decision.changed") : code === "decision_delivering" ? t("objectives.decision.delivering") : t("objectives.decision.declineFailed"));
-    } finally { setDeclining(false); }
-  };
-
-  return (
-    <>
-      <h2 className="objectives-m-glab">{t("objectives.decision.request")}</h2>
-      <div className="objectives-m-stack">
-        {request.questions.map((question, index) => {
-          const draft = draftOf(question);
-          const last = index === total - 1;
-          const hasOptions = question.options.length > 0;
-          const head = !many ? t("objectives.mobile.decision.asks") : index === 0 ? t("objectives.mobile.decision.firstOf", { n: 1, total }) : t("objectives.mobile.decision.of", { n: index + 1, total });
-          const indicator = `objectives-m-ind${question.multiSelect ? " is-check" : ""}`;
-          return (
-            <section key={question.id} className="objectives-m-ucard" aria-label={head}>
-              <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} objectiveRecords={objectiveRecords} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{answeringText(commodoreAliasOf(objective.commodoreId), t)}</span> : null}</div>
-              {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.autonomy.decisionHint")}</p> : null}
-              {null}
-              {question.header ? <span className="objectives-m-qchip">{question.header}</span> : null}
-              <p className="objectives-m-ucard-p is-question"><LinkText text={question.text} /></p>
-              {hasOptions && question.multiSelect ? <p className="objectives-m-hint">{t("objectives.decision.multiHint")}</p> : null}
-              {hasOptions ? (
-                <div role={question.multiSelect ? "group" : "radiogroup"} aria-label={t("objectives.decision.optionsAria", { n: index + 1 })}>
-                  {question.options.map((option) => {
-                    const on = !draft.own && draft.picked.includes(option.id);
-                    const subId = `${idBase}-${question.id}-${option.id}`;
-                    // 설명은 단추 밖에 선다 — 그 안의 링크가 단추 속 앵커가 되지 않는다. 고르는 자리와 누름 면은 줄 전체다: 단추(이름)의
-                    // 탭·Enter·Space 도 줄로 올라와 한 번 고르고, 설명의 링크 탭은 고르지 않고 링크만 연다.
-                    const onRow = (event: ReactMouseEvent<HTMLDivElement>) => {
-                      if (sending || (event.target as Element).closest("a")) return;
-                      pick(question, option.id);
-                    };
-                    return (
-                      <div key={option.id} className="objectives-m-opt-row" data-press={sending ? undefined : "r1"} onClick={onRow}>
-                        <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={on} aria-describedby={option.description ? subId : undefined} disabled={sending} className="objectives-m-opt">
-                          <span className={`${indicator}${on ? " is-on" : ""}`} aria-hidden="true">{question.multiSelect && on ? <CheckIcon size={14} /> : null}</span>
-                          <span className="objectives-m-opt-tx">{option.label}</span>
-                        </button>
-                        {option.description ? <small id={subId} className="objectives-m-opt-sub"><LinkText text={option.description} /></small> : null}
-                      </div>
-                    );
-                  })}
-                  <button type="button" role={question.multiSelect ? "checkbox" : "radio"} aria-checked={draft.own} disabled={sending} data-press="r1" className="objectives-m-opt" onClick={() => pickOwn(question)}>
-                    <span className={`${indicator}${draft.own ? " is-on" : ""}`} aria-hidden="true">{question.multiSelect && draft.own ? <CheckIcon size={14} /> : null}</span>
-                    <span className="objectives-m-opt-tx">{t("objectives.decision.own")}</span>
-                  </button>
-                </div>
-              ) : null}
-              {!hasOptions || draft.own ? (
-                <textarea
-                  className={`objectives-m-field${hasOptions ? " is-unfold" : ""}`}
-                  maxLength={MAX_DECISION_ANSWER_INPUT}
-                  disabled={sending}
-                  value={draft.text}
-                  aria-label={t("objectives.decision.writeAria", { n: index + 1 })}
-                  placeholder={t(hasOptions ? "objectives.decision.writeOwn" : "objectives.decision.write")}
-                  onChange={(event) => edit(question, { ...draft, text: event.target.value })}
-                />
-              ) : null}
-              {last && (fault || unconfirmed) ? <p className="objectives-m-fault" role="status">{fault ?? t("objectives.decision.unknown")}</p> : null}
-              {last ? (
-                <div className="objectives-m-ucard-ft">
-                  {many ? <span className="objectives-m-progress">{t("objectives.decision.progress", { done: doneCount, total })}</span> : null}
-                  <span className="objectives-m-fine objectives-m-route">{t(handed ? "objectives.decision.routeHanded" : "objectives.decision.route")}</span>
-                  <span className="objectives-m-sp" />
-                  {handed ? <button type="button" data-press="r3" className="objectives-m-b2 is-quiet" disabled={sending || declining || givingBack} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button> : null}
-                  <button type="button" data-press="r3" className="objectives-m-b2 is-quiet" disabled={sending || declining || givingBack} onClick={() => void decline()}>
-                    {t("objectives.decision.decline")}
-                  </button>
-                  <button type="button" data-press="r3" className="objectives-m-b2" disabled={sending || declining || givingBack || doneCount !== total} onClick={() => void submit()}>
-                    {t(sending ? "objectives.decision.sending" : "objectives.mobile.decision.send")}
-                  </button>
-                </div>
-              ) : null}
-            </section>
-          );
-        })}
-      </div>
     </>
   );
 }
