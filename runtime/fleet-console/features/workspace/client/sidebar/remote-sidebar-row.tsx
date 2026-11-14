@@ -6,7 +6,6 @@ import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/compon
 import type { TheaterFolderListResponse } from "../../../../core/client/src/integration/api.js";
 import { ConfirmDialog } from "@fleet-console/ui/react";
 import { useT, useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
-import { getT as getExecutionT } from "../../../execution/client/agent/i18n/index.js";
 import { TaskforceCreateDialog } from "../../../commodore/client/taskforce/taskforce.js";
 import { taskforceT } from "../../../commodore/client/taskforce/i18n.js";
 import { ObjectiveScheduleMenu } from "./group-context-menu.js";
@@ -44,7 +43,6 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
   const t = useT();
   const language = useConsoleLocale();
   const tf = taskforceT(language);
-  const et = getExecutionT(language === "ko" ? "ko" : "en");
   const [editing, setEditing] = useState(false);
   const [readOnlyFolds, setReadOnlyFolds] = useState<SidebarRemotePage["preferences"]["folds"] | null>(null);
   const [menuSnapshot, setMenu] = useState<Menu | null>(null);
@@ -186,9 +184,6 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
           {!menu.source.objective.done ? <ObjectiveScheduleMenu objective={menu.source.objective} language={language === "ko" ? "ko" : "en"}
             locked={busy || menu.source.ownWorking}
             patch={(value) => patch(menu.source.objective.id, value)} onClose={close} /> : null}
-          {page?.computerUseAvailable && menu.source.objective.hasSession ? <MenuItem icon={null} checked={menu.source.computerUseEnabled} disabled={busy} onClick={() => { void mutate("computerUse", { enabled: !menu.source.computerUseEnabled, language: language === "ko" ? "ko" : "en" }, { objectiveId: menu.source.objective.id }).catch(() => undefined); }}>
-            {et("terminal.experiments.menuComputerUse")} · {et(menu.source.computerUseEnabled ? "terminal.experiments.menuComputerUseOn" : "terminal.experiments.menuComputerUseOff")}
-          </MenuItem> : null}
           {(page?.groups ?? []).filter((group) => group.commodoreId === row.commodoreId).map((group) => <MenuItem icon={null} key={group.id} checked={menu.source.objective.groupId === group.id} onClick={() => { patch(menu.source.objective.id, { groupId: menu.source.objective.groupId === group.id ? null : group.id }); close(); }}>{group.name}</MenuItem>)}
           <MenuItem icon={null} onClick={() => { patch(menu.source.objective.id, { groupId: null }); close(); }}>{t("commanderTab.ungrouped")}</MenuItem>
           <MenuItem icon={null} onClick={() => { setDraft(""); setDialog("group"); }}>{t("sidebar.groupMenu.newGroup")}</MenuItem>

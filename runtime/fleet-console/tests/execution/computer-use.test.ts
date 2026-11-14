@@ -276,7 +276,7 @@ describe("Computer Use authorization and lifecycle", () => {
       const parse = (result: { content: { text: string }[] }) => JSON.parse(result.content[0]!.text);
       const denied = await call("computer_state", { app: "com.apple.TextEdit" });
       expect(denied.isError).toBe(true);
-      expect(parse(denied)).toMatchObject({ error: "computer_use_not_authorized", reason: "objectiveRecord_not_authorized", retryable: true, remedy: { surface: "objectiveRecord_panel", objectiveId: "op-a" } });
+      expect(parse(denied)).toMatchObject({ error: "computer_use_not_authorized", reason: "objectiveRecord_not_authorized", retryable: false, retryAfter: "never", remedy: { actor: "none", surface: "none", path: [], objectiveId: "op-a" } });
       expect(parse(denied).message).toContain("컴퓨터 사용");
       expect(f.call).not.toHaveBeenCalled();
       expect(parse(await call("computer_status"))).toMatchObject({ reason: "objectiveRecord_not_authorized" });

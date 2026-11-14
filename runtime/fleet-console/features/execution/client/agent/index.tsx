@@ -13,7 +13,7 @@ import { defineNotificationKind } from "../notifications.js";
 import type { ClientFeatureDescriptor } from "../../../workspace/shared/feature-surfaces.js";
 import type { ObjectiveMenuContext, ObjectiveRenderContext } from "../../shared/client-contract.js";
 import * as React from "react";
-import { MenuCheckGlyph, SegmentedThumb } from "@fleet-console/ui/react";
+import { SegmentedThumb } from "@fleet-console/ui/react";
 import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
 import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
@@ -87,9 +87,6 @@ export const agentObjectiveKind: ObjectiveKindDescriptor = ({
   captionActions: (context) => <AgentCaptionActions context={context} part="shelf" />,
   captionViewSwitch: (context) => <AgentCaptionActions context={context} part="view-switch" />,
   captionToolsLead: (context) => <AgentCaptionActions context={context} part="tools-lead" />,
-  // 이 Objective에 **대한** 실험 스위치(관찰·컴퓨터 사용)는 캡션이 아니라 ··· 메뉴가 진다 —
-  // 사이드바 우클릭도 같은 메뉴를 열므로 어디서 열든 같은 스위치를 본다.
-  objectiveRecordMenu: (context) => <AgentObjectiveMenu context={context} />,
   // 켜진 스위치는 사이드바 칩에도 마크로 선다 — 목록에서 "이 세션은 콘솔을 잡고 있다"가 읽히게.
   objectiveRecordMarks: (context) => <AgentObjectiveMarks context={context} />,
   // 에이전트 CLI TUI는 화면 바닥에 입력 컴포저와 상태줄(cwd·모델·권한 모드)을 고정으로 그린다 —
@@ -443,7 +440,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   return (
     <>
       <span className="agent-objective-marks">
-        <ObjectiveUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
+        <ObjectiveUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.computerUse")} />
       </span>
       {bubble}
     </>
@@ -646,61 +643,16 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
   );
 }
 
-/**
- * Objective 메뉴의 실험 섹션 — 컴퓨터 사용 스위치만 선다.
- * 켜져 있는지는 Objective payload가 말한다(서버가 쓴다). 켜고 끄는 것은 재연결 없이 다음 도구 호출부터 듣는다.
- */
-function AgentObjectiveMenu({ context }: { readonly context: ObjectiveMenuContext }) {
-  const t = getT(context.language);
-  const experiments = useExperimentsSnapshot();
-  const payload = context.objectiveRecord;
-  const [pending, setPending] = React.useState(false);
-  // 자식 세션(목표 구성원)에는 사용 스위치가 없다 — 허용은 루트(지휘관)의 것이고 호스트도 자식 스위치를 거부한다.
-  if (!experiments || experiments.computerUse !== true || !installedApi || context.objectiveRecord.parentObjectiveId) return null;
-  const api = installedApi;
-  const language = context.language;
-  const computerUseEnabled = readComputerUseEnabled(payload);
-  const toggle = () => {
-    setPending(true);
-    void setComputerUse(api, context.objectiveRecord.id, !computerUseEnabled, language).then(() => api.resync()).catch(() => undefined).finally(() => setPending(false));
-  };
-  return (
-    <>
-      <div className="group-context-menu-section-label">{t("terminal.experiments.menuSection")}</div>
-      <button
-        type="button"
-        className={`group-context-menu-item group-context-menu-item--switch${computerUseEnabled ? " is-selected" : ""}`}
-        role="menuitemcheckbox"
-        aria-checked={computerUseEnabled}
-        aria-busy={pending}
-        aria-label={`${t("terminal.experiments.menuComputerUse")} · ${t(computerUseEnabled ? "terminal.experiments.menuComputerUseOn" : "terminal.experiments.menuComputerUseOff")}`}
-        title={t(computerUseEnabled ? "terminal.experiments.menuComputerUseOn" : "terminal.experiments.menuComputerUseOff")}
-        disabled={pending}
-        data-objective-menu-item="computer-use"
-        onClick={toggle}
-      >
-        <span className="group-context-menu-item__glyph" aria-hidden="true"><CaptionComputerUseGlyph /></span>
-        <span className="group-context-menu-item__name">{t("terminal.experiments.menuComputerUse")}</span>
-        <SwitchCheckMark />
-      </button>
-    </>
-  );
-}
-
 /** 사용 배지는 캡션과 같은 수명을 공유한다. */
 function AgentObjectiveMarks({ context }: { readonly context: ObjectiveMenuContext }) {
   const t = getT(context.language);
   const using = useObjectiveUse(context.objectiveRecord.id);
   return (
     <span className="agent-objective-marks">
-      <ObjectiveUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.menuComputerUse")} />
+      <ObjectiveUseBadge active={using.computer} kind="computer" label={t("terminal.experiments.computerUse")} />
       <ObjectiveUseBadge active={using.browser} kind="browser" label={t("terminal.browser.agentUsing")} />
     </span>
   );
-}
-
-function SwitchCheckMark() {
-  return <MenuCheckGlyph className="group-context-menu-item__check" />;
 }
 
 function GeneralSection() {
