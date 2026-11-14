@@ -19,7 +19,7 @@
  * 막대는 둥근 ‹ · ⋮ 만 서고(호스트 is-round) 화면은 그 뒤로 흐른다 — 스크롤 영역이 막대 몫(--m-chrome-top)을 위에 비운다.
  * 카드 안 행은 하나의 면을 나누는 헤어라인으로 갈린다. 선은 아이콘 칸을 지나 이름 줄에서 시작한다(왼쪽 18 + 아이콘 22 + 간격 14).
  */
-.objectives-cm-profile { flex: 1; min-height: 0; padding: 0 16px 24px; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.objectives-cm-profile { flex: 1; min-height: 0; padding: 0 16px calc(24px + var(--m-safe-bottom, 0px)); overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
 .objectives-cm-profile::-webkit-scrollbar { display: none; }
 .objectives-cm[data-mobile-chrome="flow"] .objectives-cm-profile { padding-top: var(--m-chrome-top, 0px); }
 .objectives-cm-hero { display: flex; flex-direction: column; align-items: center; padding: 8px 0 24px; text-align: center; }
@@ -56,7 +56,7 @@
 .objectives-cm-chat { display: flex; flex: 1; flex-direction: column; gap: 16px; min-height: 0; padding: 8px 24px 16px; overflow-y: auto; scrollbar-width: none; }
 .objectives-cm-chat::-webkit-scrollbar { display: none; }
 /* 「지휘관 세션」 — 세션 행은 홈 행 문법 그대로 가장자리까지 선다(행이 자기 안쪽 여백을 가진다). */
-.objectives-cm-sessions { overflow-y: auto; overscroll-behavior: contain; }
+.objectives-cm-sessions { overflow-y: auto; overscroll-behavior: contain; padding-bottom: calc(24px + var(--m-safe-bottom, 0px)); }
 .objectives-cm-chat.is-center { padding-top: 0; padding-bottom: 0; }
 .objectives-cm-head { display: flex; align-items: baseline; gap: 8px; margin: 0; color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .objectives-cm-head b { color: var(--m-text-nav); font-weight: var(--weight-bold); }
@@ -75,6 +75,8 @@
  * 대기는 「사람을 기다림」 신호 하나로 말한다.
  */
 .objectives-cm-dock { flex: none; display: flex; flex-direction: column; gap: 8px; padding: 8px 16px calc(12px + var(--m-safe-bottom, 0px)); }
+/* 대화에서는 바깥 그룹 독이 홈 막대 몫을 한 번만 맡는다. */
+.objectives-cm-conversation .group-chat-dock .objectives-cm-dock { padding-bottom: 12px; }
 /* 기록 탭의 독도 기록 위에 떠 있다 — 대화 화면의 독(호스트 대화 화면이 진다)과 같은 페이드이고, 기록이 독 높이(--m-dock-h, 기록 탭이 잰다)만큼
    독 뒤로 늘어나 같은 몫을 아래 여백으로 되돌린다. */
 .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-dock { position: relative; z-index: 1; background: var(--m-fade-up, var(--m-bg)); }
@@ -113,6 +115,7 @@
 .objectives-cm-content { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .objectives-cm-content::-webkit-scrollbar { display: none; }
 .objectives-cm-pad { display: flex; flex-direction: column; gap: 14px; padding: 4px 14px 24px; }
+.objectives-cm-content { padding-bottom: var(--m-safe-bottom, 0px); }
 /* 정보 화면 머리(설명·정보) — 감싼 묶음 안에서도 같은 14px 간격으로 선다. 기억 항목을 읽는 동안에는 숨는다. */
 .objectives-cm-pad-head { display: flex; flex-direction: column; gap: 0; }
 .objectives-cm-memory:not(.is-entry) > .objectives-cm-pad { gap: 0; }

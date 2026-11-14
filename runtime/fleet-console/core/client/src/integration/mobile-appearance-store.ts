@@ -269,6 +269,10 @@ export function installMobileAppearance(): void {
   window.addEventListener(NATIVE_EVENT, () => {
     const native = readNativeAppearance();
     if (native) setSnapshot(fromNative(native));
+    // 셸은 문서를 커밋한 뒤(그리고 패딩으로 되돌린 뒤) 겉모습을 다시 심으며 이 이벤트를 낸다.
+    // 그 전 스테이징 뷰에서 보낸 opt-in은 커밋된 뷰가 아니라서 버려지고, lastEdge가 남으면
+    // 이후에는 다시 보내지 않아 화면이 시스템 바 아래에 펼쳐지지 않는다.
+    resyncMobileEdge();
   });
   window.addEventListener("storage", (event) => {
     if (snapshot.nativeOwned || (event.key !== COLOR_MODE_KEY && event.key !== FONT_SCALE_KEY)) return;
@@ -346,7 +350,8 @@ let lastEdge = "";
  * 엣지투엣지 opt-in(계약 §2) — 광고에 `chrome.edge === true`가 있을 때만
  * `{ v: 1, type: "edge", on: true }`를 기존 fleetAppearance 채널로 보낸다(키 집합 정확히 v,type,on).
  * 광고가 없으면 보내지 않는다. 셸은 이 메시지를 받은 뒤에만 WebView를 시스템 바 아래까지 펼친다.
- * 문서마다 한 번이 원칙이다(새 문서를 셸이 패딩 모드로 시작하므로 첫 보고가 그 문서의 opt-in이다).
+ * 새 문서는 셸이 패딩 모드로 시작하므로 그 문서의 opt-in이 필요하다.
+ * 준비 확인보다 먼저 보낸 보고는 스테이징 뷰라 버려지므로, 셸이 겉모습을 다시 심으면 resyncMobileEdge가 한 번 더 보낸다.
  * 재연결·페이지 복귀 뒤에는 forgetReportedMobileEdge + 이 함수로 다시 보낸다.
  */
 export function reportMobileEdge(): void {
@@ -354,6 +359,13 @@ export function reportMobileEdge(): void {
   if (lastEdge !== "") return;
   lastEdge = "on";
   postToNative({ v: 1, type: "edge", on: true });
+}
+
+/** 셸이 겉모습을 다시 심은 직후 — 스테이징 중에 버린 opt-in을 커밋된 뷰로 다시 보낸다. */
+function resyncMobileEdge(): void {
+  if (!snapshot.nativeOwned || !snapshot.edge) return;
+  forgetReportedMobileEdge();
+  reportMobileEdge();
 }
 
 /** 연결이 다시 선 뒤·페이지가 다시 보일 때 — 같은 문서라도 셸이 패딩 모드로 돌아갔을 수 있어 opt-in을 다시 보낸다. */

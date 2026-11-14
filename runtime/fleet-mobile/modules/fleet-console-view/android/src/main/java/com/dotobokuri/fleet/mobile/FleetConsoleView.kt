@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.view.View
+import android.view.WindowManager
 import android.webkit.ConsoleMessage
 import android.webkit.CookieManager
 import android.webkit.PermissionRequest
@@ -147,6 +148,16 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
     WindowCompat.setDecorFitsSystemWindows(window, false)
     window.statusBarColor = Color.TRANSPARENT
     window.navigationBarColor = Color.TRANSPARENT
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+      // Default cutout mode letterboxes a punch-hole window, so the page never reaches the status-bar edge.
+      val params = window.attributes
+      params.layoutInDisplayCutoutMode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+      } else {
+        WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+      }
+      window.attributes = params
+    }
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
       window.isStatusBarContrastEnforced = false
       window.isNavigationBarContrastEnforced = false
@@ -188,6 +199,7 @@ internal class FleetConsoleView(context: Context, appContext: AppContext) : Expo
   private fun enterEdgeToEdge() {
     if (edgeToEdge) return
     edgeToEdge = true
+    clearSystemBarScrim()
     applyEdgePadding()
     emitPayload(mapOf("type" to "edge", "on" to true))
   }

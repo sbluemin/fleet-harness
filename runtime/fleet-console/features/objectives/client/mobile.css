@@ -14,7 +14,8 @@
  * 화면이 호스트 상단 막대 뒤로 흐를 때 스크롤 영역이 막대 몫(--m-chrome-top)을 위에 비운다.
  * 행의 주의는 글과 톤뿐이다 — 둥근 점은 쓰지 않는다.
  */
-.objectives-m[data-mobile-chrome="flow"] { padding-top: var(--m-chrome-top, 0px); }
+/* 스크롤 상자는 화면 끝까지 두고 첫 콘텐츠만 떠 있는 머리 아래에 놓는다. */
+.objectives-m[data-mobile-chrome="flow"] > :is(.objectives-m-profile, .objectives-m-pad) { padding-top: calc(8px + var(--m-chrome-top, 0px)); padding-bottom: calc(24px + var(--m-safe-bottom, 0px)); }
 .objectives-m-profile { padding: 0 16px 24px; }
 .objectives-m-hero { display: flex; flex-direction: column; align-items: center; padding: 8px 0 18px; text-align: center; }
 .objectives-m-hero-name { margin: 14px 0 0; max-width: 100%; color: var(--m-text); font-size: var(--m-fs-heading); font-weight: var(--weight-bold); line-height: 1.3; overflow-wrap: anywhere; }

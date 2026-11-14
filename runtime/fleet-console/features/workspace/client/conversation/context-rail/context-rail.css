@@ -367,9 +367,11 @@ svg.context-rail-chev { display: block; width: 10px; height: 10px; }
   .context-rail-bubble { transition: none; }
 }
 
-/* 모바일: 대화 머리의 칩과 단추는 터치 과녁 크기를 지키고, 시트 안의 카드는 세로로 쌓는다. */
-.context-rail-hchip.is-mobile { min-height: 32px; padding: 4px 10px; }
-.context-rail-toggle.is-mobile { width: 36px; height: 36px; }
+/* 모바일: 대화 머리의 칩과 단추는 본문 위로 떠 있으므로 불투명 표면(--m-surface)과 터치 과녁 크기를 지킨다. */
+.context-rail-hchip.is-mobile { min-height: 36px; padding: 4px 10px; border-color: var(--m-hairline-strong); background: var(--m-surface); color: var(--m-text); }
+.context-rail-hchip.is-mobile[aria-expanded="true"] { border-color: var(--m-hairline-strong); background: var(--m-selected); }
+.context-rail-toggle.is-mobile { width: 40px; height: 40px; border: 1px solid var(--m-hairline-strong); border-radius: 50%; background: var(--m-surface); color: var(--m-text); }
+.context-rail-toggle.is-mobile:hover { background: var(--m-selected); }
 .context-rail-sheet { display: grid; gap: var(--space-3); padding-bottom: var(--space-3); }
 .context-rail-sheet .context-rail-card { font-size: var(--t-sm); }
 

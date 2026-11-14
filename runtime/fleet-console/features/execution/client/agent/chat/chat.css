@@ -3892,6 +3892,10 @@
 [data-mobile-surface] .agent-chat-composer-meta {
   max-width: none;
   margin: 0 0 8px;
+  padding: 4px 8px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--m-bg) 88%, transparent);
+  color: var(--m-text-muted);
   font-family: var(--m-sans);
 }
 
