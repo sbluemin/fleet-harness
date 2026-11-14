@@ -711,6 +711,46 @@
   height: 16px;
 }
 
+/* 캡슐 안(보내기 버튼 왼쪽) 배치 — 원형 단추와 같은 28px 알약이고, 캡슐이 420px 이하로 좁으면 막대 글리프로 접힌다. */
+.quota-toolbar-summary--capsule {
+  height: var(--fc-composer-circle, 28px);
+  padding: 0 7px;
+  border-radius: var(--radius-pill);
+}
+
+.quota-toolbar-summary--capsule.quota-toolbar-summary--glyph {
+  width: var(--fc-composer-circle, 28px);
+  padding: 0;
+}
+
+.quota-toolbar-summary__compact-glyph {
+  display: none;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+}
+
+.quota-toolbar-summary__compact-glyph svg {
+  width: 16px;
+  height: 16px;
+}
+
+@container fc-composer (max-width: 420px) {
+  .quota-toolbar-summary--capsule {
+    justify-content: center;
+    width: var(--fc-composer-circle, 28px);
+    padding: 0;
+  }
+
+  .quota-toolbar-summary--capsule .quota-toolbar-summary__cell {
+    display: none;
+  }
+
+  .quota-toolbar-summary--capsule .quota-toolbar-summary__compact-glyph {
+    display: grid;
+  }
+}
+
 .quota-toolbar-summary__cell {
   display: inline-flex;
   flex: none;
