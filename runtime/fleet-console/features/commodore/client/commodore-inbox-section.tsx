@@ -800,6 +800,8 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
   // /clear 는 데스크톱 입력창의 길이다 — 폰에서는 두 번 눌러 확정하는 안내를 둘 자리가 없어 보통 말로 보낸다(지금과 같다).
   const isClear = !phone && text.trim() === "/clear";
   const armed = (usable || isClear) && (!!text.trim() || (!isClear && quotes.length > 0)) && !sending && !clear.busy && !uploading;
+  // 그룹 채팅 입력창(`group-composer.tsx`)처럼 턴 진행 중이고 보낼 내용(글·첨부·인용)이 없을 때만 한 자리 버튼을 정지로 바꾼다.
+  const stopMode = running && !text.trim() && attachments.length === 0 && quotes.length === 0 && !sending && !clear.busy;
   const send = () => {
     const typed = text.trim();
     const sentQuotes = draft.quotes.read();
@@ -881,19 +883,22 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
         onKeyUp={clearKey.up}
         onBlur={() => { clearKey.up(); clear.disarm(); }}
       />
-      {running ? <ComposerSendButton aria-label={t("commodore.composer.stop")} title={t("commodore.composer.stop")} disabled={stopping || clear.busy || (phone ? !phone.online : false)} onClick={stop}>
-        <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor" /></svg>
-      </ComposerSendButton> : null}
-      {/* 폰의 빈 원은 흐리지만 눌린다 — 누르면 입력칸으로 초점만 간다(FD-19). 올리는 중·보내는 중에는 잠긴다. */}
-      <ComposerSendButton
-        className={armed ? undefined : "is-idle"}
-        aria-label={t("commodore.composer.send")}
-        title={t("commodore.composer.send")}
-        disabled={phone ? !usable || sending || uploading || clear.busy : !armed}
-        onKeyDown={(event) => { if (isClear) clearKey.down(event); }}
-        onKeyUp={clearKey.up}
-        onClick={send}
-      />
+      {stopMode ? (
+        <ComposerSendButton className="is-stop" aria-label={t("commodore.composer.stop")} title={t("commodore.composer.stop")} disabled={stopping || clear.busy || (phone ? !phone.online : false)} onClick={stop}>
+          <svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5" fill="currentColor" /></svg>
+        </ComposerSendButton>
+      ) : (
+        /* 폰의 빈 원은 흐리지만 눌린다 — 누르면 입력칸으로 초점만 간다(FD-19). 올리는 중·보내는 중에는 잠긴다. */
+        <ComposerSendButton
+          className={armed ? undefined : "is-idle"}
+          aria-label={t("commodore.composer.send")}
+          title={t("commodore.composer.send")}
+          disabled={phone ? !usable || sending || uploading || clear.busy : !armed}
+          onKeyDown={(event) => { if (isClear) clearKey.down(event); }}
+          onKeyUp={clearKey.up}
+          onClick={send}
+        />
+      )}
     </div>
     {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("commodore.clear.enterConfirm")}</p> : null}
     {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("commodore.composer.idle")}</p>}
