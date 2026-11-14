@@ -859,11 +859,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
     });
   };
   const failure = phone?.failure ?? null;
-  return (
-    <>
-    {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
-      : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
-    {topEntries}
+  const capsule = (
     <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}${tools ? " has-tools" : ""}`} style={accent} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
       <ComposerQuoteTray store={draft.quotes} t={ct} disabled={sending || clear.busy} onDone={() => inputRef.current?.focus()} />
       <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={sending || clear.busy} />
@@ -916,10 +912,40 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
         />
       )}
     </div>
+  );
+  return (
+    <>
+    {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
+      : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
+    {topEntries}
+    {tools ? <CommodoreComposerSlot>{capsule}</CommodoreComposerSlot> : capsule}
     {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("commodore.clear.enterConfirm")}</p> : null}
     {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("commodore.composer.idle")}</p>}
     </>
   );
+}
+
+/**
+ * 입력창 설정이 서는 캡슐의 자리 — 닫힌 캡슐 높이(`--composer-closed-h`)를 적어 둔다. 설정 칸이 캡슐 안에서 열리면 캡슐은 이 자리 바닥에
+ * 붙은 채 위로 자라고(CSS), 자리는 닫힌 높이를 지켜 독 높이와 대화 스크롤이 그대로다.
+ */
+function CommodoreComposerSlot({ children }: { readonly children: ReactNode }) {
+  const slotRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const slot = slotRef.current;
+    const capsule = slot?.firstElementChild as HTMLElement | null;
+    if (!slot || !capsule) return;
+    const record = () => {
+      if (capsule.querySelector(".commodore-composer-panel")) return;
+      slot.style.setProperty("--composer-closed-h", `${capsule.offsetHeight}px`);
+    };
+    record();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(record);
+    observer.observe(capsule);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={slotRef} className="commodore-composer-slot">{children}</div>;
 }
 
 /* ── 설명 ─────────────────────────────────────────────────────────────── */

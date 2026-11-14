@@ -20,8 +20,8 @@ import type { CommodoreMessageKey } from "./i18n/index.js";
 
 /**
  * 데스크톱 사령관 대화의 입력창 설정 — 옛 오른쪽 「설정」 탭의 전부(사령관 모델 · 지휘관 모델 · 작전 구역 · 고급 옵션)가 입력 캡슐 안에 선다.
- * 칩 줄은 캡슐의 정상 흐름(「+」 옆)이라 독 높이 측정이 그 자연 높이를 잰다. 칩을 누르면 열리는 칸은 흐름 밖 오버레이라 열고 닫아도
- * 대화 스크롤·메시지 자리가 밀리지 않는다. 폰 사령관 화면과 TaskForce·Theater Inbox 입력창은 이 부품을 싣지 않는다.
+ * 칩 줄은 캡슐의 정상 흐름(「+」 옆)이라 독 높이 측정이 그 자연 높이를 잰다. 칩을 누르면 같은 캡슐의 맨 위에 칸이 서고(한 테두리·한 면),
+ * 캡슐은 닫힌 높이를 지키는 자리(`CommodoreComposerSlot`) 바닥에 붙은 채 위로 자란다 — 열고 닫아도 대화 스크롤·메시지 자리가 밀리지 않는다. 폰 사령관 화면과 TaskForce·Theater Inbox 입력창은 이 부품을 싣지 않는다.
  */
 
 type T = Translate<CommodoreMessageKey>;
@@ -84,7 +84,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   const labels = launchLabels(t);
 
   // 칸 높이의 흐름 — 높이 애니메이션 하나를 쥐고, 마지막 자연 높이(auto)를 기억한다. 열림은 0에서, 칸 전환·내용 바뀜은 앞 높이에서
-  // 새 자연 높이로 흐르고, 끝나면 애니메이션을 걷어 height:auto 로 돌아간다. 칸은 흐름 밖 오버레이라 이 높이가 대화를 밀지 않는다.
+  // 새 자연 높이로 흐르고, 끝나면 애니메이션을 걷어 height:auto 로 돌아간다. 캡슐은 닫힌 높이를 지키는 자리 바닥에 붙어 위로 자라므로 이 높이가 대화를 밀지 않는다.
   const motion = useRef<{ anim: Animation | null; natural: number; section: CommodoreComposerSettingsSection | null }>({ anim: null, natural: 0, section: null });
   const closingRef = useRef(false);
   const flowHeight = useCallback((change: HeightChange) => {
@@ -155,9 +155,21 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   useEffect(() => {
     const body = panelRef.current?.querySelector(".commodore-composer-panel-body > *");
     if (!body || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => flowHeight("content"));
+    // 높이가 바뀔 때만, 다음 프레임에 흐른다 — 높이 애니메이션이 스크롤 막대를 세웠다 거두며 생기는 폭 변화나 같은 프레임 안의 재측정이
+    // 관찰 고리를 만들지 않게 한다.
+    let lastHeight = -1;
+    let frame = 0;
+    const observer = new ResizeObserver((entries) => {
+      const height = entries[0]?.contentRect.height ?? 0;
+      if (Math.abs(height - lastHeight) < 0.5) return;
+      const first = lastHeight < 0;
+      lastHeight = height;
+      if (first) return;
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => flowHeight("content"));
+    });
     observer.observe(body);
-    return () => observer.disconnect();
+    return () => { cancelAnimationFrame(frame); observer.disconnect(); };
   }, [open, flowHeight]);
 
   // 바깥에서 온 열기 요청(빈 상태 「작전 구역 추가」 등).
@@ -174,7 +186,8 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     if (open === null || closing) return;
     const onDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
-      if (!target || rootRef.current?.contains(target)) return;
+      // 칸은 캡슐의 일부다 — 캡슐 안(입력·「+」 포함)을 누르면 열어 둔다.
+      if (!target || (rootRef.current?.closest(".fc-composer-capsule") ?? rootRef.current)?.contains(target)) return;
       if (target.closest?.("[aria-modal='true'], .fc-coord-menu, [role='menu'], [role='dialog']")) return;
       close(false);
     };
@@ -235,6 +248,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
           aria-label={t("commodore.composerSettings.region", { name })}
           onKeyDown={onPanelKeyDown}
         >
+          <div className="commodore-composer-panel-in">
           <div className="commodore-composer-panel-head">
             <span className="commodore-composer-panel-scope"><b>{name}</b>{t("commodore.composerSettings.scope")}</span>
             <SectionTabs sections={SECTIONS} active={open} label={(section) => tabLabel(section)} onSelect={(section) => { if (!closingRef.current) setOpen(section); }} />
@@ -273,8 +287,11 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
             {open === "theaters" ? <div className="commodore-composer-panel-theaters"><CommodoreTheaters commodoreId={commodoreId} /></div> : null}
             {open === "advanced" ? <div className="commodore-composer-panel-advanced"><CommodoreSessionSettings key={commodoreId} t={t} commodoreId={commodoreId} state={state} inline /></div> : null}
           </div></div>
+          </div>
+          <div className="commodore-composer-panel-rule" aria-hidden="true" />
         </div>
       ) : null}
+      <div className="commodore-composer-chips">
       {chip("commodore", `${t("commodore.settings.model")}: ${coordinateTitle(commodoreDisplay)}`, <CoordinateWords display={commodoreDisplay} />)}
       {chip("commander", `${t("commodore.settings.commander")}: ${judgment ? commanderWord : coordinateTitle(commanderDisplay)}`, (
         <>
@@ -294,6 +311,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
       {chip("advanced", t("commodore.settings.advanced"), (
         <svg className="commodore-composer-chip-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5h6M12 5h1M3 11h1M7 11h6" /><circle cx="10.5" cy="5" r="1.5" /><circle cx="5.5" cy="11" r="1.5" /></svg>
       ), " is-icon")}
+      </div>
     </div>
   );
 }
