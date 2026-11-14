@@ -309,4 +309,21 @@ describe("browser password vault", () => {
     }
     expect(await errorCodeOf(vault.command({ action: "add-never-save", origin: "https://overflow.example/" }))).toBe("vault_limit_reached");
   });
+
+  it("exposes decrypted origin credentials to main only and clears never-save on save", async () => {
+    const vault = createVault();
+    await vault.command({ action: "add-never-save", origin: "https://a.example/" });
+    expect(vault.forOrigin("https://a.example/login")).toEqual({ offerToSave: true, neverSaved: true, credentials: [] });
+    await vault.command({ action: "save", origin: "https://a.example/", username: "ada", password: "pw-one" });
+    const first = vault.forOrigin("https://a.example/");
+    expect(first.neverSaved).toBe(false);
+    expect(first.credentials).toEqual([{ id: first.credentials[0]!.id, username: "ada", password: "pw-one", updatedAt: first.credentials[0]!.updatedAt }]);
+    await vault.command({ action: "save", origin: "https://a.example/other", username: "ada", password: "pw-two" });
+    expect(vault.forOrigin("https://a.example/").credentials).toHaveLength(1);
+    await vault.command({ action: "set-offer-to-save", enabled: false });
+    expect(vault.forOrigin("https://a.example/").offerToSave).toBe(false);
+    expect(() => vault.forOrigin("not a url")).toThrow("invalid_password_entry");
+    fakes.control.available = false;
+    expect(() => vault.forOrigin("https://a.example/")).toThrow("encryption_unavailable");
+  });
 });

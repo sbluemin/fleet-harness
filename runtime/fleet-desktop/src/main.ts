@@ -50,7 +50,8 @@ import { createConsoleRelaunchController, createDisabledNativeUpdateActions, cre
 import { createShellUpdateCommandSynchronizer, createShellUpdatePublisher, createShellUpdater, type ShellUpdater } from "./shell-update.js";
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher, type DesktopTitleBarOverlay } from "./title-bar-overlay-refresh.js";
 import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission } from "./computer-capture.js";
-import { createBrowserSurface, createMainPageHost } from "./browser-surface.js";
+import { createBrowserSurface, createMainPageHost, type SurfaceControl } from "./browser-surface.js";
+import { createBrowserPasswordPageAgent } from "./browser-password-page.js";
 import { createBrowserActions } from "./browser-actions.js";
 import { createDesktopBrowserViews, type BrowserSurfaceHost } from "./browser-views.js";
 import { createManagedBrowserHost } from "./browser-host.js";
@@ -439,6 +440,27 @@ async function boot(): Promise<void> {
     systemPreferences,
     clipboard,
   });
+  // 비밀번호 자동완성·저장 제안 — 크롬 카드 동작을 받으면 금고로만 잇고 Console 으로는 보내지 않는다.
+  // 카드 표시는 act 가 돌려주는 최신 SurfaceControl 로 붙인다(스냅샷 경로가 아니라 동작 경로에서만 손에 닿는다).
+  let surfaceControl: SurfaceControl | null = null;
+  const browserPasswordAgent = createBrowserPasswordPageAgent({
+    vault: browserPasswordVault,
+    onPrompt: (prompt) => {
+      const control = surfaceControl;
+      if (!control) return;
+      if (prompt === null) {
+        const overlay = control.ui().overlay;
+        if (overlay && (overlay.kind === "password-prompt" || overlay.kind === "password-picker")) control.patch({ overlay: null, suggestions: [] });
+        return;
+      }
+      if (prompt.kind === "save-prompt") {
+        control.patch({ overlay: { kind: "password-prompt", origin: prompt.origin, username: prompt.username, password: prompt.password, mode: prompt.mode }, suggestions: [] });
+      } else {
+        control.patch({ overlay: { kind: "password-picker", origin: prompt.origin, usernames: [...prompt.usernames] }, suggestions: [] });
+      }
+    },
+    log: (message) => logger.info(message),
+  });
   /**
    * 브라우저 표면(칸·독립 창)과 그 크롬. 크롬 문서는 셸의 정적 자산이고 Console 의 문서·렌더러를 거치지 않는다 — 사람의 동작은 Console 의 기존 REST 로 돌아가고,
    * 상태는 스냅샷으로 온다. 문서는 sandbox·Node 없음이고 사전 로드 스크립트도 없다 — 주입 프로그램만 main 이 넣는다.
@@ -500,7 +522,18 @@ async function boot(): Promise<void> {
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
     // 동작의 주인은 지금 서 있는 표면의 주인이다. 보기 전용 셸의 표면이면 그 셸로 가고(Console 로 쓰기 요청을 보내는 관리 표면의 처리기를 타지 않는다),
     // 관리 세션의 표면이면 관리 처리기로 간다 — 보기 셸이 아직 닫히는 중이어도 관리 표면의 동작이 그쪽으로 새지 않는다.
-    act: (control, role, action) => { if (browserSurface.viewing()) browserViewer?.act(control, role, action); else browserActions(control, role, action); },
+    // 비밀번호 카드 동작은 Console 이 아니라 이 기계의 금고·채움기로만 간다(보기 전용 셸에는 페이지 뷰가 없어 버린다).
+    act: (control, role, action) => {
+      surfaceControl = control;
+      if (action.action === "password-pick" || action.action === "password-save" || action.action === "password-dismiss" || action.action === "password-never") {
+        if (!browserSurface.viewing()) void browserPasswordAgent.chromeAction(action.action, action.action === "password-pick" ? action.username : undefined);
+        return;
+      }
+      if (!browserSurface.viewing() && !control.ui().busy && (action.action === "dialog-close" || (action.action === "overlay" && action.kind === null))) {
+        if (browserPasswordAgent.cancelPrompt()) return;
+      }
+      if (browserSurface.viewing()) browserViewer?.act(control, role, action); else browserActions(control, role, action);
+    },
     relay: (surface) => { if (browserSurface.viewing()) { if (surface.status === "closed") browserViewer?.closed(); } else browserHost.relaySurface(surface); },
     // 표면의 자리·모양이 바뀌면 캡션 띠의 높이도 다시 본다(Windows 만 — 다른 OS 에서는 리프레셔가 없다). 높이가 그대로면 아무 일도 하지 않는다.
     changed: () => { browserHost.places(); overlayRefresher?.refresh(); companionOverlayRefresher?.refresh(); },
@@ -566,6 +599,8 @@ async function boot(): Promise<void> {
     captureViewerFrame,
     fetch: consoleFetch,
     log: (message) => logger.info(message),
+    // 영속·임시 세션을 가리지 않고 모든 뷰에 붙는다 — 스페이스 공유 금고 하나로 자동완성·저장 판정을 한다.
+    passwords: browserPasswordAgent,
     /**
      * 창을 든 기계에서만 답할 수 있는 명령 — 이 기계의 Google Chrome 프로필과 그 쿠키. 뷰는 파티션에 격리되어
      * 있으므로 쿠키는 그 파티션의 세션에만 들어가고 창의 쿠키 저장소는 건드리지 않는다.

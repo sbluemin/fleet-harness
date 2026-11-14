@@ -27,6 +27,7 @@ import { createDesktopEventStream, type DesktopEventStream } from "./desktop-eve
 import { installRequestGuard, setRequestGuardExtra } from "./request-guard.js";
 import { defaultParkViewport, parkedNativeBounds, type ParkViewport } from "./shell-window.js";
 import type { ChromeViewOnly } from "./chrome/contract.js";
+import { PASSWORD_CONSOLE_PREFIX, PASSWORD_PAGE_WORLD_ID, type BrowserPasswordPageHooks } from "./browser-password-page.js";
 
 /**
  * Objective 브라우저를 창 안의 실제 Chromium 뷰로 그린다.
@@ -107,6 +108,11 @@ export interface DesktopBrowserViewsDeps {
    * 창을 든 기계에서만 답할 수 있는 것. 없으면 그런 명령은 `desktop_shell_unsupported` 로 거절된다.
    */
   readonly shellCommand?: (method: string, params: Record<string, unknown>) => Promise<unknown>;
+  /**
+   * 비밀번호 자동완성·저장 판정 — 영속·임시 세션을 가리지 않고 모든 뷰에 붙는다.
+   * 뷰의 URL 과 격리 월드 실행만 받아 main 의 금고와 크롬 카드로 잇는다.
+   */
+  readonly passwords?: BrowserPasswordPageHooks;
   /**
    * 뷰 표면 PNG 에서 `crop`(원본 픽셀)을 잘라 `place` 크기로 맞추고, `size` 캔버스의 `place` 자리에 놓아 요청 형식의
    * base64 로 돌려준다. 캔버스의 나머지(표면 밖)는 비어 있다. 있으면 clip 이 붙은 `Page.captureScreenshot` 을
@@ -733,6 +739,32 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     live.set(spec.id, entry);
     const contents = view.webContents;
     markSession(contents.session);
+    // 비밀번호 격리 월드 — 페이지 JS 와 같은 DOM 을 보되 실행·리스너는 분리된다.
+    // 제출·포커스 보고는 콘솔 접두 줄로 오고, 값 판정·채움은 격리 월드 호출로만 한다.
+    // 접두는 페이지도 찍을 수 있어 값마다 main 이 다시 검증한다.
+    if (deps.passwords) {
+      const passwords = deps.passwords;
+      passwords.attachView(spec.id, {
+        url: () => {
+          try {
+            return contents.isDestroyed() ? null : contents.getURL();
+          } catch {
+            return null;
+          }
+        },
+        executeIsolated: (code) => contents.executeJavaScriptInIsolatedWorld(PASSWORD_PAGE_WORLD_ID, [{ code }]),
+      });
+      passwords.setVisible(spec.id, spec.visible, spec.visible && deps.surface.inputLocked());
+      const passwordReady = (): void => passwords.pageReady(spec.id);
+      contents.on("dom-ready", passwordReady);
+      contents.on("did-navigate", passwordReady);
+      contents.on("did-navigate-in-page", passwordReady);
+      contents.on("console-message", (details: { message?: unknown; frame?: unknown }) => {
+        if (typeof details?.message !== "string" || !details.message.startsWith(PASSWORD_CONSOLE_PREFIX)) return;
+        if (details.frame !== contents.mainFrame) return;
+        passwords.binding(spec.id, details.message.slice(PASSWORD_CONSOLE_PREFIX.length));
+      });
+    }
     const initialBounds = parkedNativeBounds(parkViewport, contentBounds);
     view.setBounds(initialBounds);
     entry.lastBounds = initialBounds;
@@ -789,6 +821,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (!entry) return;
     live.delete(id);
     stopWatch(id);
+    deps.passwords?.detachView(id);
     const shell = entry.parent;
     try { if (shell && !shell.isDestroyed()) shell.remove(entry.view); } catch { /* 창이 먼저 닫혔다. */ }
     try { if (entry.view.webContents.debugger.isAttached()) entry.view.webContents.debugger.detach(); } catch { /* 이미 떨어졌다. */ }
@@ -894,6 +927,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       if (!entry) { create(spec); continue; }
       (entry as { spec: DesktopBrowserView }).spec = spec;
       place(entry);
+      deps.passwords?.setVisible(spec.id, spec.visible, spec.visible && deps.surface.inputLocked());
     }
     for (const command of snapshot.commands) run(command);
     reconcileWatched(new Set(snapshot.watchedViewIds ?? []));

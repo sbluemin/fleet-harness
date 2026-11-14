@@ -56,6 +56,23 @@ export interface BrowserPasswordClipboard {
   writeText(text: string): void;
 }
 
+/**
+ * 메인 내부 전용 조회 결과 — 자동완성·저장 판정이 쓴다. 평문이 들었으므로
+ * `command` 로는 절대 내보내지 않고 격리 월드 채움에만 쓴다.
+ */
+export interface BrowserPasswordPageCredential {
+  readonly id: string;
+  readonly username: string;
+  readonly password: string;
+  readonly updatedAt: number;
+}
+
+export interface BrowserPasswordOriginCredentials {
+  readonly offerToSave: boolean;
+  readonly neverSaved: boolean;
+  readonly credentials: readonly BrowserPasswordPageCredential[];
+}
+
 export interface BrowserPasswordVaultDeps {
   /** Desktop 소유 데이터 루트(실제 앱에서는 app.getPath("userData")). */
   readonly root: string;
@@ -336,15 +353,17 @@ export function createBrowserPasswordVault(deps: BrowserPasswordVaultDeps) {
     const password = validatedPassword(params.password);
     const vault = load() ?? { offerToSave: true, neverSaveOrigins: [], entries: [] };
     const timestamp = now();
+    // 크롬과 같이 저장하면 그 사이트의 저장 안 함을 함께 푼다 — 다시 물을 필요 없이 그 계정을 쓴다는 뜻이다.
+    const keepNever = vault.neverSaveOrigins.filter((candidate) => candidate !== origin);
     const existing = vault.entries.find((candidate) => candidate.origin === origin && candidate.username === username);
     if (existing) {
       const next: StoredPasswordEntry = { ...existing, ciphertext: encrypt(password), updatedAt: timestamp };
-      store({ ...vault, entries: vault.entries.map((candidate) => (candidate.id === existing.id ? next : candidate)) });
+      store({ ...vault, neverSaveOrigins: keepNever, entries: vault.entries.map((candidate) => (candidate.id === existing.id ? next : candidate)) });
       return { entry: summarize(next), created: false };
     }
     if (vault.entries.length >= BROWSER_PASSWORD_MAX_ENTRIES) throw err("vault_limit_reached");
     const next: StoredPasswordEntry = { id: randomId(), origin, username, ciphertext: encrypt(password), createdAt: timestamp, updatedAt: timestamp };
-    store({ ...vault, entries: [...vault.entries, next] });
+    store({ ...vault, neverSaveOrigins: keepNever, entries: [...vault.entries, next] });
     return { entry: summarize(next), created: true };
   };
 
@@ -411,6 +430,24 @@ export function createBrowserPasswordVault(deps: BrowserPasswordVaultDeps) {
     return { neverSaveOrigins: next };
   };
 
+  /**
+   * 메인 내부 전용 조회 — 자동완성·저장 판정이 쓴다. OS 인증을 묻지 않으므로
+   * 셸 명령·REST·렌더러로는 절대 내보내지 않는다. 평문이 돌아간다.
+   */
+  const forOrigin = (origin: string): BrowserPasswordOriginCredentials => {
+    ensureEncryption();
+    const normalized = normalizeBrowserPasswordOrigin(origin);
+    if (normalized === null) throw err("invalid_password_entry");
+    const vault = load() ?? { offerToSave: true, neverSaveOrigins: [], entries: [] };
+    return {
+      offerToSave: vault.offerToSave,
+      neverSaved: vault.neverSaveOrigins.includes(normalized),
+      credentials: vault.entries
+        .filter((entry) => entry.origin === normalized)
+        .map((entry) => ({ id: entry.id, username: entry.username, password: decrypt(entry.ciphertext), updatedAt: entry.updatedAt })),
+    };
+  };
+
   const command = async (params: Record<string, unknown>): Promise<unknown> => {
     const action = readString(params, "action");
     switch (action as BrowserPasswordShellCommand["action"]) {
@@ -427,7 +464,7 @@ export function createBrowserPasswordVault(deps: BrowserPasswordVaultDeps) {
     }
   };
 
-  return { command, state };
+  return { command, state, forOrigin };
 }
 
 export type BrowserPasswordVault = ReturnType<typeof createBrowserPasswordVault>;
