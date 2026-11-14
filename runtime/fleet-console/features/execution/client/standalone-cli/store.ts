@@ -116,17 +116,6 @@ export async function toggleStandaloneCli(viewed: { readonly commodoreId: string
   }
 }
 
-/** 열린 패널의 터미널이 키보드 포커스를 다시 잡게 한다(pill 누름). */
-export function focusStandaloneCli(): void {
-  if (!state.open || state.placement === null) return;
-  write({ ...state, focusRequest: state.focusRequest + 1 });
-}
-
-export function closeStandaloneCli(): void {
-  if (!state.open) return;
-  write({ ...state, open: false, needsTheater: false });
-}
-
 /** 이 세대의 CLI를 띄우지 못했다. 실패 화면은 그대로 두고, 다음 열기가 새 세대로 다시 띄우게 표시만 한다. */
 export function failStandaloneCli(generation: number): void {
   if (state.generation !== generation || state.placement === null || state.failed) return;
