@@ -15,7 +15,8 @@ import { commodoreChatEntries, commodoreConversationEntries, commodoreConversati
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodorePersonInbox } from "./commodore-person-inbox.js";
 import { CommodoreTasks } from "./commodore-tasks.js";
-import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo, CommodoreSettings } from "./commodore-inbox-section.js";
+import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo } from "./commodore-inbox-section.js";
+import { CommodoreComposerSettings, requestCommodoreComposerSettings, type CommodoreComposerSettingsSection } from "./commodore-composer-settings.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreMongleActivity } from "./commodore-avatar.js";
@@ -43,7 +44,8 @@ type T = Translate<CommodoreMessageKey>;
  */
 
 export const COMMODORE_SURFACE_ID = "commodore";
-const TAB_IDS = { routines: "commodore-routines", info: "commodore-info", settings: "commodore-settings" } as const;
+// 설정은 오른쪽 탭이 아니라 가운데 입력창 안에 선다(`CommodoreComposerSettings`) — 오른쪽에는 활동·정보만 남는다.
+const TAB_IDS = { routines: "commodore-routines", info: "commodore-info" } as const;
 type ConversationTab = keyof typeof TAB_IDS;
 /** 우측 배치에서 지휘관 가운데를 두는 동안 레일이 머무는 작업 탭 id. */
 export const COMMODORE_ROUTINES_TAB_ID = TAB_IDS.routines;
@@ -117,12 +119,12 @@ export function useCommodoreConversationActive(): boolean {
 }
 
 /**
- * 빈 상태의 「Theater 추가」가 간다 — 사령관 대화를 세우고 오른쪽 패널을 설정 탭 Theater 구역으로 연다.
+ * 빈 상태의 「Theater 추가」·만들기 창 착지·옛 설정 주소가 간다 — 사령관 대화를 세우고 그 입력창의 설정 칸을 연다(기본은 작전 구역 칸).
  * 대화 배치 밖(모바일 등)에서는 대화가 서지 않아 false를 돌려준다.
  */
-export function openCommodoreTheaterSettings(commodoreId: string): boolean {
+export function openCommodoreTheaterSettings(commodoreId: string, section: CommodoreComposerSettingsSection = "theaters"): boolean {
   if (!isCommodoreConversationOpen(commodoreId) && !openCommodoreConversation(commodoreId)) return false;
-  openRailPanel(TAB_IDS.settings);
+  requestCommodoreComposerSettings(commodoreId, section);
   return true;
 }
 
@@ -400,7 +402,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} onFail={fail} onClear={() => setFailure(null)} />}
+        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} tools={view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} /> : null} onFail={fail} onClear={() => setFailure(null)} />}
     </footer>
   );
   return (
@@ -504,19 +506,17 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
         />
       ) : null}
       {tab === "routines" ? <CommodoreTasks commodoreId={commodoreId} language={language} selectedId={selectedId} /> : null}
-      {tab === "settings" ? <CommodoreSettings t={t} language={language} theaterId={commodoreId} view={view} onFail={fail} onClear={clear} /> : null}
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
     </div>
   );
 }
 
 /** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청이 대화 중심 화면에서 이 탭을 연다. */
-const TAB_INBOX_PAGES = { routines: "routines", info: "info", settings: "settings" } as const;
+const TAB_INBOX_PAGES = { routines: "routines", info: "info" } as const;
 
 const TAB_TITLES: Record<ConversationTab, CommodoreMessageKey> = {
   routines: "commodore.tabs.routines",
   info: "commodore.tabs.info",
-  settings: "commodore.tabs.settings",
 };
 
 /** Console 이 가운데 칸·오른쪽 패널에 세우는 사령관 대화. */
