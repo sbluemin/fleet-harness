@@ -798,7 +798,7 @@ function RoutingPoolExplainer({ t, entries }: {
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(() => !reducedMotion());
   const stageRef = useRef<HTMLDivElement | null>(null);
-  const [stageSize, setStageSize] = useState({ width: 460, height: 230 });
+  const [stageSize, setStageSize] = useState({ width: 460, height: 276 });
 
   useLayoutEffect(() => {
     const stage = stageRef.current;
@@ -841,7 +841,7 @@ function RoutingPoolExplainer({ t, entries }: {
   const cell = narrow ? Math.max(62, Math.floor(availPoolW / cols)) : Math.min(72, Math.max(64, Math.floor(availPoolW / cols)));
   const maxGridBottom = h - 62;
   const rowsNeeded = Math.max(1, Math.ceil(items.length / cols));
-  const rowStep = Math.min(60, Math.max(56, Math.floor((maxGridBottom - 32) / rowsNeeded)));
+  const rowStep = Math.min(60, Math.floor((maxGridBottom - 32) / rowsNeeded));
 
   const positions = new Map<string, { readonly x: number; readonly y: number; readonly tray: boolean }>();
   const trayQueue: SampleExplainerItem[] = [];
