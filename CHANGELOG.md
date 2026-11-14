@@ -5,6 +5,37 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.305.0] - 2026-11-14
+
+### fleet-console
+
+#### Added
+- Add a Browser section in Settings for managing saved Fleet Browser passwords and site save exceptions when running in Fleet Desktop.
+
+#### Changed
+- Move the address and search suggestions setting from Advanced into the new Browser section.
+- Keep desktop chat composers compact by placing quota usage inside the input capsule across Commodore, objective group, and TaskForce chats, and moving Commodore settings chips to the top-right row with an anchored popover menu and single-line routing option.
+- Consultation requests and replies in Commodore and Objective chats now appear as compact single-line chips that open the full thread in the slide-over view, without delivery status labels.
+- Outgoing messages sent by a Commodore to another Commodore now show as sent messages labeled with the receiving Commodore instead of the sender.
+- Stream live Fleet Browser views and accept remote control and handoff actions from paired Fleet Desktop sessions while keeping web and mobile clients blocked.
+- Move AI Gateway model routing selection into a shared **Routing Pool** chip next to Commander in Commodore chat (and Commodore settings on mobile) with stacked provider glyphs, an inline pool editor, and a five-step motion guide, keeping your existing enabled models intact while simplifying Settings > AI Gateway to provider sign-ins and special endpoints.
+- The Objective goal popup now hides the consultations section and always shows all recorded decisions expanded in full with a labeled header.
+
+#### Fixed
+- Fix the error that prevented loading or saving address and search suggestion settings.
+- Stop the Console window from briefly flashing on Windows by no longer running the Antigravity CLI to renew credentials there. When an Antigravity token lapses on Windows, run agy yourself to sign in again.
+
+#### Removed
+- Removed the Computer Use toggle from the objective context and caption menus; agents now request permission in the panel when Computer Use is needed.
+
+### fleet-desktop
+
+#### Added
+- Encrypt saved Fleet Browser passwords with OS safeStorage, offer save or update prompts on login, autofill credentials in both user and agent tabs, and require OS authentication when viewing or copying passwords.
+
+#### Changed
+- Upgrade remote Fleet Browser from view-only to live-streamed remote control with full navigation, tabs, spaces, page pointer/keyboard/IME input, control handoff, select and permission prompts, masked password prompts, and file uploads from the viewing device.
+
 ## [1.304.0] - 2026-11-14
 
 ### fleet-console
