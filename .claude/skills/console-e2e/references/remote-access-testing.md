@@ -60,7 +60,7 @@ Use `access=monitoring` for a read-only guest. Never print the lock token or the
 
 ## Register the link on a second owned Console
 
-The shape above is pairing: one Console, Node as the guest. Registration is two owned Consoles.
+Pairing uses one Console and a Node guest; registration uses two owned Consoles.
 
 After `issue-access-link.mjs` writes `<remote-e2e-dir>/link.txt`:
 
@@ -70,7 +70,7 @@ node <worktree>/.claude/skills/console-e2e/scripts/add-remote-host.mjs <remote-e
 
 The second argument is that owned home's loopback origin, from its lock port only. Stdout `{status,id,label,origin,error}` is the helper. A 2xx is not the on-screen host and not a certificate result — read those on the Settings > Remote access card (browser) or the sidebar console section (Desktop). The helper does not join; for an authenticated Desktop roster check, switch to the owned remote once to join if not already paired, then return home, and do not join again when that remote is already paired or a received link already switched to it. Do not print `link.txt`. No `rejectUnauthorized`: the product checks the certificate when it stores the link. The helper refuses a non-absolute path, anything under the user `~/.fleet`, and a home origin that is not loopback `http` or that is the user Console.
 
-`prepare-owned-pair.mjs prepare|stop --worktree <worktree> --home <repo-root>/.fleet/e2e-<id>-h --remote <repo-root>/.fleet/e2e-<id>-r` serves both through `isolated-env`, then runs `issue-access-link.mjs` and the command above. `stop` deletes only those two directories when `pair-created` and `owner` match this caller and neither lock is live. It does not join or launch Desktop. Stdout `register.status` 2xx is that helper, not an on-screen host, a certificate result, or `/api/v1/local-consoles` discovery.
+`prepare-owned-pair.mjs prepare|stop --worktree <worktree> --home <repo-root>/.fleet/e2e-<id>-h --remote <repo-root>/.fleet/e2e-<id>-r` starts two owned `serve` Consoles and registers the remote link; it neither joins nor launches Desktop. `stop` stops and removes only this caller's pair after neither lock is live. `register.status` has the same evidence limits as `add-remote-host` above and does not prove local discovery.
 
 A link stored on a `serve` process keeps its one-time credential in that process. Replacing the process (Desktop then serving the same data dir) drops it (`remote_host_not_paired`). Issue and register again against the origin that is actually up. A toggle is not that case.
 
@@ -205,7 +205,7 @@ Delete the cookie file with the run directory. It holds the session secret.
 
 ### Desktop shell
 
-Use [Desktop's authorization and owned environment](desktop/setup.md#preflight-and-ownership) for a shell claim, not to repeat the browser check. On macOS/Linux, the gate's owned `TMPDIR` and dedicated worktree isolate the two discovery candidates (`canonicalLockFiles` in `runtime/fleet-console/core/host/bootstrap/local-consoles.ts`). With no prepared neighbor or saved host, confirm `/api/v1/local-consoles` returns `{ consoles: [] }`, capture zero other machines in the shell, and open the new-Commodore dialog without a machine selector. Never select, probe, or stop an unrecorded Console.
+Use [Desktop's authorization and owned environment](desktop/setup.md#preflight-and-ownership) for a shell claim, not to repeat the browser check. The gate's owned `TMPDIR` and a dedicated worktree isolate local discovery. For discovery-isolation claims, with no prepared neighbor or saved host, confirm `/api/v1/local-consoles` returns `{ consoles: [] }`, capture zero other machines in the shell, and open the new-Commodore dialog without a machine selector. Never select, probe, or stop an unrecorded Console.
 
 Desktop owns home; do not `serve` its slot. Start a separate remote-role Console through [isolated setup](setup.md#isolate-the-console), seed onboarding, then [issue](../scripts/issue-access-link.mjs) and [register](#register-the-link-on-a-second-owned-console) its link against the **running Desktop home's** lock-derived loopback origin. The two-`serve` helper does not launch Desktop. Seed one identifiable home Commodore for the return row.
 
