@@ -1642,13 +1642,14 @@ describe("Objectives contract", () => {
     const updated = await board.execute({ action: "decision_update", objectiveId: commander, decisionId, question: "How far should publishing go?", answer: "Open the PR only" }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
     expect(updated.structuredContent).toMatchObject({ ok: true, decisionId });
     const recorded = store.find(commander)!;
-    expect(recorded.decisionRequest).toBeNull();
     expect(recorded.decisions[0]).toMatchObject({ id: decisionId, question: { header: "Publishing", text: "How far should publishing go?", multiSelect: false }, answer: { text: "Open the PR only" }, missionId, memberId: member });
     expect(recorded.decisions[0]?.requestId).toBeUndefined();
     expect(recorded.actions?.some((action) => action.kind === "decision" && action.targetId === decisionId)).toBe(true);
     expect(recorded.edited?.kinds).toContain("decision");
     const read = await call("read", {}, commander);
     expect(read.structuredContent).toMatchObject({ objective: { decisions: [expect.objectContaining({ id: decisionId, question: "How far should publishing go?", text: "Open the PR only" })] } });
+    expect(read.structuredContent).not.toHaveProperty("objective.decisionRequest");
+    expect(read.structuredContent).not.toHaveProperty("objective.decisionRequestRevision");
     const file = path.join(objectivesDir, commander, "objective.json");
     const legacy = JSON.parse(fs.readFileSync(file, "utf8"));
     legacy.decisionRequest = { id: "legacy-request", createdAt: 1, questions: [{ id: "q1", text: "q".repeat(1000), options: [{ id: "o1", label: "l".repeat(120), description: "d".repeat(300) }], multiSelect: false }] };
@@ -1658,8 +1659,6 @@ describe("Objectives contract", () => {
     fs.writeFileSync(file, JSON.stringify(legacy));
     const legacyStore = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => {} });
     const legacyReload = legacyStore.find(commander)!;
-    expect(legacyReload.decisionRequest).toBeNull();
-    expect(legacyReload.decisionDelivery).toBeNull();
     expect(legacyReload.decisions).toEqual([expect.objectContaining({ id: "legacy-decision", requestId: "legacy-request", questionId: "q1", answer: { selectedOptionIds: [], text: "a".repeat(2000) } })]);
   });
 
@@ -3389,7 +3388,6 @@ describe("Objectives contract", () => {
     expect(asked.isError).toBe(false);
     const consultId = asked.structuredContent.consultId as string;
     expect(store.find(objective.id)).toMatchObject({
-      decisionRequestRevision: before.decisionRequestRevision,
       consultations: [{ id: consultId, question: "What did the person already require?", missionId, by: "commander" }],
     });
     expect(store.find(objective.id)!.decisions.map((decision) => decision.id)).toEqual(before.decisions.map((decision) => decision.id));
@@ -3414,7 +3412,6 @@ describe("Objectives contract", () => {
     store.briefEdit(objective.id, "edited brief", [], "human");
     store.missionRemove(objective.id, missionId);
     const survived = store.find(objective.id)!;
-    expect(survived.decisionRequest).toBeNull();
     expect(survived.consultations.map((entry) => entry.id)).toEqual([consultId, quiet.structuredContent.consultId]);
     expect(survived.consultations[0]).toMatchObject({ missionId, reply: { kind: "advice", text: answer } });
     expect(survived.consultations[1]?.reply?.kind).toBe("no-additional-advice");

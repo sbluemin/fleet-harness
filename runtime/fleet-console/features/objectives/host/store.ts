@@ -369,7 +369,7 @@ export interface ObjectiveStore {
   decisionUpdate(objectiveId: string, input: {
     readonly decisionId?: string;
     readonly header?: string;
-    readonly question: string;
+    readonly question?: string;
     readonly answer: string;
     readonly why?: string;
     readonly consultId?: string;
@@ -875,15 +875,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       })),
       followupHistory: stored.followupHistory ?? null,
       origin: stored.origin ? { objectiveId: stored.origin.objectiveId, title: sessionRecord(stored.origin.objectiveId)?.title ?? load(node?.commodoreId ?? pending!.commodoreId).get(stored.origin.objectiveId)?.title ?? null, candidateId: stored.origin.candidateId, userImpact: stored.origin.userImpact, evidence: stored.origin.evidence.map(evidenceView) } : null,
-      decisionRequest: stored.decisionRequest ?? null,
-      decisionRequestRevision: stored.decisionRequestRevision ?? 0,
       consultations: (stored.consultations ?? []).map((entry) => ({
         id: entry.id, question: entry.question, at: entry.at, by: entry.by,
         ...(entry.missionId ? { missionId: entry.missionId } : {}),
         ...(entry.reply ? { reply: entry.reply } : {}),
         ...(entry.delivery ? { delivery: entry.delivery.state } : {}),
       })),
-      decisionDelivery: stored.decisionDelivery ? { requestId: stored.decisionDelivery.requestId, at: stored.decisionDelivery.at, by: stored.decisionDelivery.by ?? "human" } : null,
       decisions: (stored.decisions ?? []).map((decision) => ({ ...decision, by: decision.by ?? "human" })),
       personHolds: (stored.personHolds ?? []).map((hold) => ({ target: hold.target, requestId: hold.requestId ?? null, reason: hold.reason, at: hold.at, by: hold.by, settled: hold.settled ?? null })),
       recorded,
@@ -2141,10 +2138,10 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
 
     decisionUpdate(objectiveId, input) {
-      const question = input.question.trim();
+      const rawQuestion = input.question?.trim();
       const answer = input.answer.trim();
       const header = input.header?.trim();
-      if (!question || question.length > MAX_DECISION_QUESTION || !answer || answer.length > MAX_DECISION_ANSWER || (input.why !== undefined && input.why.trim().length > MAX_COMMODORE_WHY) || (header !== undefined && !storedDecisionHeader.safeParse(header).success)) throw new ObjectiveStoreError("invalid_decision");
+      if ((rawQuestion !== undefined && (!rawQuestion || rawQuestion.length > MAX_DECISION_QUESTION)) || (!input.decisionId && !rawQuestion) || !answer || answer.length > MAX_DECISION_ANSWER || (input.why !== undefined && input.why.trim().length > MAX_COMMODORE_WHY) || (header !== undefined && !storedDecisionHeader.safeParse(header).success)) throw new ObjectiveStoreError("invalid_decision");
       let decision!: Decision;
       const objective = update(objectiveId, (stored) => {
         if (stored.removed) throw new ObjectiveStoreError("objective_removed");
@@ -2157,6 +2154,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         if (input.decisionId) {
           const current = decisions.find((entry) => entry.id === input.decisionId);
           if (!current) throw new ObjectiveStoreError("unknown_decision");
+          const question = rawQuestion ?? current.question.text;
           decision = {
             ...current, by, updatedAt: at,
             question: { ...(header ? { header } : current.question.header ? { header: current.question.header } : {}), text: question, options: current.question.options, multiSelect: current.question.multiSelect },
@@ -2169,7 +2167,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
         }
         decision = {
           id: randomUUID(), by, at, updatedAt: at,
-          question: { ...(header ? { header } : {}), text: question, options: [], multiSelect: false },
+          question: { ...(header ? { header } : {}), text: rawQuestion!, options: [], multiSelect: false },
           answer: { selectedOptionIds: [], text: answer },
           ...(input.consultId ? { consultId: input.consultId } : {}),
           ...(input.missionId ? { missionId: input.missionId } : {}),

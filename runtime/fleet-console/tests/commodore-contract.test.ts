@@ -2842,7 +2842,7 @@ describe("commodore supervisor", () => {
       await supervisor.dispose();
 
       // 재기동 당시 진행·구상·인계 대기만 남은 목표는 스스로 잇는다. 시간이 지나거나 live 로 복원된 것만으로는 깨우지 않는다.
-      const running = { id: "o1", theaterId: "t1", title: "Resuming", createdAt: Date.now(), done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective;
+      const running = { id: "o1", theaterId: "t1", title: "Resuming", createdAt: Date.now(), done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective;
       objectives.push(running, { ...running, id: "o2", commenced: false, planning: true, missions: [] }, { ...running, id: "o3", awaitingHandoff: true, missions: [{ ...running.missions[0]!, done: true }] });
       const settleWait = SETTLE_MS + SETTLE_CHECK_MS + COALESCE_MS + 10;
       const beforeRestart = sessions.length;
@@ -3217,11 +3217,11 @@ describe("commodore supervisor", () => {
       const turnsBeforeBoard = sessions[0]!.sent.length;
       commanderActivity.set("o1", "running");
       const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
-      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", requestSource, createdAt: Date.now(), done: null, removed: null, commenced: false, planning: true, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [{ id: "c1" }], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", requestSource, createdAt: Date.now(), done: null, removed: null, commenced: false, planning: true, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [{ id: "c1" }], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard);
-      Object.assign(objectives[0]!, { decisionRequest: { id: "q1" }, decisionRequestRevision: 1, boardUpdatedAt: Date.now() });
+      Object.assign(objectives[0]!, { boardUpdatedAt: Date.now() });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard);
@@ -3254,14 +3254,14 @@ describe("commodore supervisor", () => {
       expect(tokens().at(-1)).toEqual(["settled:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain("waits on you: criteria proposal, failed member turn");
       // 사령관 자신의 쓰기(개시)는 깨우지 않는다.
-      Object.assign(objectives[0]!, { planning: false, criteriaProposals: [], decisionRequest: null, members: [], boardUpdatedAt: Date.now() });
+      Object.assign(objectives[0]!, { planning: false, criteriaProposals: [], members: [], boardUpdatedAt: Date.now() });
       await board.execute({ action: "commence", objectiveId: "o1" }, { cwd: theaterRoot });
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 4);
 
       // 다른 목표의 단계 이동은 깨우지 않고 다음 턴 요약에 실린다. 사람에게 넘긴 항목만 기다리며 멈춘 그룹도 깨우지 않는다.
       commanderActivity.set("o2", "running");
-      objectives.push({ id: "o2", theaterId: "t1", title: "Lineup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      objectives.push({ id: "o2", theaterId: "t1", title: "Lineup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o2" });
       (objectives[1] as unknown as { commenced: boolean }).commenced = true;
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o2" });
@@ -3284,7 +3284,7 @@ describe("commodore supervisor", () => {
       // 사람이 만든 목표는 live로 나타나면 한 번 깨운다 — 일하는 이가 없어 settles로 이어질 수 없기 때문이다.
       // 단계 이동은 다음 턴 요약에 실리고, 개시 대기는 그룹이 대기 중이 되면 깨운다.
       // 범위 줄에는 목표 id·코드만 남는다.
-      const human = { id: "o3", theaterId: "t1", title: "Person's own", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [] as { id: string; text: string; done: boolean }[] } as unknown as Objective & { planning: boolean; missions: { id: string; text: string; done: boolean }[] };
+      const human = { id: "o3", theaterId: "t1", title: "Person's own", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [] as { id: string; text: string; done: boolean }[] } as unknown as Objective & { planning: boolean; missions: { id: string; text: string; done: boolean }[] };
       objectives.push(human);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
@@ -3310,9 +3310,9 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
       // 사령관이 만든 목표와 사령관이 고른 후속은 제가 한 일이라 나타나도 깨우지 않고, 선 대기는 같이 깨운다.
       // 끝난 채로 나타난 목표도 moves에만 싣는다.
-      const made = { id: "o4", theaterId: "t1", title: "Made by Commodore", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], addedBy: { kind: "commodore", commodoreId: "t1" } } as unknown as Objective;
-      const origin = { id: "o6", theaterId: "t1", title: "Followup origin", createdAt: Date.now(), done: { at: Date.now(), by: "human" }, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [{ by: { kind: "commodore", commodoreId: "t1" }, items: [{ candidateId: "c1" }] }], personHolds: [], missions: [{ id: "m1", text: "x", done: true }] } as unknown as Objective;
-      const chosen = { id: "o5", theaterId: "t1", title: "Chosen followup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], origin: { objectiveId: "o6", candidateId: "c1" } } as unknown as Objective;
+      const made = { id: "o4", theaterId: "t1", title: "Made by Commodore", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], addedBy: { kind: "commodore", commodoreId: "t1" } } as unknown as Objective;
+      const origin = { id: "o6", theaterId: "t1", title: "Followup origin", createdAt: Date.now(), done: { at: Date.now(), by: "human" }, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [{ by: { kind: "commodore", commodoreId: "t1" }, items: [{ candidateId: "c1" }] }], personHolds: [], missions: [{ id: "m1", text: "x", done: true }] } as unknown as Objective;
+      const chosen = { id: "o5", theaterId: "t1", title: "Chosen followup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], origin: { objectiveId: "o6", candidateId: "c1" } } as unknown as Objective;
       objectives.push(made, chosen, origin);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o4" });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o5" });

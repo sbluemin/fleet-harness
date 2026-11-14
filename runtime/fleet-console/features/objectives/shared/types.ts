@@ -876,12 +876,8 @@ export interface Objective {
   readonly followupHistory: FollowupHistory | null;
   /** 이 목표가 후속으로 태어났다면 원본과 후보. 원본이 사라졌으면 title 은 null. */
   readonly origin: { readonly objectiveId: string; readonly title: string | null; readonly candidateId: string; readonly userImpact: string; readonly evidence: readonly ObjectiveFollowupEvidenceView[] } | null;
-  readonly decisionRequest: DecisionRequest | null;
-  readonly decisionRequestRevision: number;
   /** 자문 — 없으면 빈 목록. 답과 전달 상태를 함께 읽되 승인 절차는 아니다. 내부 noticeId는 없다. */
   readonly consultations: readonly ObjectiveConsultation[];
-  /** 답을 보내는 중이거나, 보낸 결과를 확인하지 못한 채 남은 시각. */
-  readonly decisionDelivery: { readonly requestId: string; readonly at: number; readonly by?: ObjectiveActor } | null;
   readonly decisions: readonly Decision[];
   /**
    * 사람에게 넘긴 항목 — 대상마다 하나. `settled` 가 null 이고 항목이 아직 서 있으면 사람이 답할 차례다(`livePersonHold`).

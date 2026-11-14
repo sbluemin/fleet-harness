@@ -602,7 +602,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
   /** 재시작 때 이어 갈 목표 — 개시됐고 사람이 멈추지 않았으며, 남은 임무가 있거나 인계만 남았고, 사람·기준을 기다리지 않는다. */
   const resumable = (current: Objective): boolean => !!current.commenced && !current.done && !current.removed && !current.archived && !current.planning
-    && current.stoppedAt === null && !current.awaitingReview && !current.decisionRequest && !current.criteriaProposals.length
+    && current.stoppedAt === null && !current.awaitingReview && !current.criteriaProposals.length
     && (current.missions.some((mission) => !mission.done) || current.awaitingHandoff);
   /** 개시가 세울 구성원 — 임무를 하나라도 맡은 구성원만. 맡은 일이 없는 구성원은 지휘관이 muster 로 부를 때 선다. */
   const assignedMembers = (current: Objective): ReadonlySet<string> => new Set(current.missions.flatMap((mission) => mission.member ? [mission.member] : []));

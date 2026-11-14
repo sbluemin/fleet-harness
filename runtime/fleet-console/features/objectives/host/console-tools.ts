@@ -479,11 +479,12 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
             case "decision_update": {
               if (caller?.kind !== "commodore") throw new ObjectiveStoreError("permission_required");
               const question = call.question ?? call.topic;
-              if (!question) throw new ObjectiveStoreError("invalid_decision");
+              if (!question && !call.decisionId) throw new ObjectiveStoreError("invalid_decision");
               const updated = store.decisionUpdate(current.id, {
                 ...(call.decisionId ? { decisionId: call.decisionId } : {}),
                 ...(call.header ? { header: call.header } : {}),
-                question, answer: call.answer,
+                ...(question ? { question } : {}),
+                answer: call.answer,
                 ...(call.why ? { why: call.why } : {}),
                 ...(call.consultId ? { consultId: call.consultId } : {}),
                 ...(call.missionId ? { missionId: call.missionId } : {}),
@@ -610,7 +611,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
         // awaits — 이유마다 누가 답할 차례인가. 사람에게 넘긴 항목은 personHolds 에 사유와 함께 선다.
         const holds = objective.personHolds.filter((hold) => livePersonHold(objective, hold.target) === hold);
         return reasons.length ? [{ ...rowView(objective), reasons, awaits: inboxAwaits(objective, reasons), ...(holds.length ? { personHolds: holds } : {}), boardUpdatedAt: objective.boardUpdatedAt, sessions: sessions(objective),
-          criteriaProposals: objective.criteriaProposals, decisionRequest: objective.decisionRequest, decisionDelivery: objective.decisionDelivery,
+          criteriaProposals: objective.criteriaProposals,
           handoff: objective.handoff, followups: objective.followups.filter((candidate) => candidate.state === "open"),
           followupBatches: objective.followupBatches.filter((batch) => batch.items.some((item) => item.state === "failed" || item.state === "confirming")),
         }] : [];

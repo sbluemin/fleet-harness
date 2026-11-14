@@ -1009,7 +1009,7 @@ describe("objective peek snapshot", () => {
       { id: "t2", text: "나중에", done: false, prerequisites: ["t1", "nope"], member: null, records: [] },
     ],
     followups: [], followupBatches: [], followupHistory: null, origin: null,
-    decisionRequest: null, decisionRequestRevision: 0, consultations: [], decisionDelivery: null, decisions: [],
+    consultations: [], decisions: [],
     stoppedAt: null, dueDate: null, today: false, addedBy: null, requestSource: null,
     ...patch,
   } as unknown as Objective);

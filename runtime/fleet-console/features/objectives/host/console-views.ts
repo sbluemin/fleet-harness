@@ -65,7 +65,7 @@ export function createConsoleBoardViews(ctx: ObjectivesFeatureDeps, store: Objec
       const complete = { objective: { ...full, ...counts(objective) }, sections: OBJECTIVE_READ_SECTIONS };
       if (fits(complete)) return complete;
       const summary = { objective: { ...compactRow(rowView(objective)), commodoreId: objective.commodoreId, theaterId: objective.theaterId, boardUpdatedAt: objective.boardUpdatedAt,
-        graph: { commander: full.graph.commander }, decisionRequestRevision: objective.decisionRequestRevision,
+        graph: { commander: full.graph.commander },
         criteriaProposalsCount: objective.criteriaProposals.length, followupCount: objective.followups.length, detailTruncated: true }, sections: OBJECTIVE_READ_SECTIONS };
       if (!fits(summary)) throw new ObjectiveStoreError("response_budget_exceeded");
       return summary;
