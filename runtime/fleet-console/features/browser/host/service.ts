@@ -1261,7 +1261,7 @@ export class BrowserService {
       client.send("Emulation.setFocusEmulationEnabled", { enabled: true }, tab.sessionId),
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
     ]);
-    this.deps.desktop.bindView(tab.targetId, op.objectiveId);
+    this.deps.desktop.bindView(tab.targetId, op.objectiveId, actor === "agent");
     await this.applyViewport(client, tab, op);
     if (caller) { op.currentTabs.set(caller.participantId, tab.id); this.bindParticipant(op, caller); }
     // 에이전트의 탭은 사람 화면을 빼앗지 않는다. 사람이 그 스페이스의 빈 화면을 보고 있었다면 셸이 이 탭을 띄워 달라고 요청한다.

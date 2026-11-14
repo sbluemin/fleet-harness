@@ -442,7 +442,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
    * 잠금은 에이전트가 모는 찰나에만 참이므로 백그라운드 에이전트 탭은 표식으로만 잡힌다.
    */
   const viewIsAgentTab = (spec: DesktopBrowserView): boolean =>
-    (spec as { agent?: unknown }).agent === true || (spec.visible && deps.surface.inputLocked());
+    spec.agent === true || (spec.visible && deps.surface.inputLocked());
 
   const authHeaders = (): Record<string, string> => {
     const auth = deps.auth?.() ?? null;
