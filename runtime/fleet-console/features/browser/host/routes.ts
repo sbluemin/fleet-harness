@@ -318,6 +318,19 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       const route = browserPasswordRoute(pathname);
       if (!route) { writeJson(res, 404, { error: "not_found" }); return true; }
       try {
+        if (route === "favicon") {
+          if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+          const origin = browserPasswordOrigin(readUrl(req).searchParams.get("origin"));
+          if (!origin) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          const vault = await browserService.browserPasswords({ action: "state" });
+          const known = vault.kind === "state" && vault.body.entries.some((entry) => entry.origin === origin);
+          if (!known) { writeJson(res, 404, { error: "not_found" }); return true; }
+          const icon = await browserService.originFavicon(BROWSER_GLOBAL_ID, origin, true).catch(() => null);
+          if (!icon) { writeJson(res, 404, { error: "not_found" }); return true; }
+          res.writeHead(200, { ...withSecurityHeaders({ "Content-Type": icon.type, "Cache-Control": "no-store", "Content-Length": String(icon.body.byteLength) }), "Content-Security-Policy": "default-src 'none'; sandbox" });
+          res.end(icon.body);
+          return true;
+        }
         if (route === "list" || (route === "settings" && req.method === "GET") || (route === "never-save" && req.method === "GET")) {
           if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
           const result = await browserService.browserPasswords({ action: "state" });
@@ -424,12 +437,12 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
   };
 }
 
-function browserPasswordRoute(pathname: string): "list" | "reveal" | "copy" | "save" | "update" | "delete" | "settings" | "never-save" | null {
+function browserPasswordRoute(pathname: string): "list" | "favicon" | "reveal" | "copy" | "save" | "update" | "delete" | "settings" | "never-save" | null {
   const root = "/api/v1/browser/passwords";
   if (pathname === root) return "list";
   if (!pathname.startsWith(`${root}/`)) return null;
   const rest = pathname.slice(root.length + 1);
-  if (rest === "reveal" || rest === "copy" || rest === "save" || rest === "update" || rest === "delete" || rest === "settings" || rest === "never-save") return rest;
+  if (rest === "favicon" || rest === "reveal" || rest === "copy" || rest === "save" || rest === "update" || rest === "delete" || rest === "settings" || rest === "never-save") return rest;
   return null;
 }
 

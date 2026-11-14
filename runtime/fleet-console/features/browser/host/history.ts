@@ -148,6 +148,19 @@ export class BrowserHistory {
     });
     return found ? this.loadIcon(scope, found.url, found.cached ?? null, id) : null;
   }
+  async faviconForOrigin(scope: HistoryScope, origin: string, allowOriginFallback = false): Promise<{ body: Buffer; type: string } | null> {
+    const found = await this.access(scope, false, (data) => {
+      const entry = data.entries.find((item) => {
+        try { return new URL(item.url).origin === origin; } catch { return false; }
+      });
+      if (!entry) return null;
+      const url = entry.iconUrl ?? `${origin}/favicon.ico`;
+      return { url, cached: data.icons[idOf(url)], pageId: idOf(entry.url) };
+    });
+    if (found) return this.loadIcon(scope, found.url, found.cached ?? null, found.pageId);
+    if (!allowOriginFallback) return null;
+    return this.loadIcon(scope, `${origin}/favicon.ico`, null, idOf(origin), false);
+  }
   private async loadIcon(scope: HistoryScope, url: string, cached: Icon | null, pageId: string, persist = true): Promise<{ body: Buffer; type: string } | null> {
     if (!scope.current()) return null;
     const memory = this.icons.get(scope.owner)?.entries.get(url);

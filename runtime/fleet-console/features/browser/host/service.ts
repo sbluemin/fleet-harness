@@ -1533,6 +1533,20 @@ export class BrowserService {
     return this.browsingHistory.faviconForUrl(this.historyScope(op), tab.url, tab.favicon);
   }
 
+  async originFavicon(objectiveId: string, origin: string, allowFallback = false): Promise<{ body: Buffer; type: string } | null> {
+    const op = this.objectiveRecord(objectiveId);
+    const scope = this.historyScope(op);
+    for (const tab of op.tabs.values()) {
+      if (!tab.favicon) continue;
+      try {
+        if (new URL(tab.url).origin !== origin) continue;
+      } catch { continue; }
+      const hit = await this.browsingHistory.faviconForUrl(scope, tab.url, tab.favicon);
+      if (hit) return hit;
+    }
+    return this.browsingHistory.faviconForOrigin(scope, origin, allowFallback);
+  }
+
 
   // ---------- 이벤트 ----------
 

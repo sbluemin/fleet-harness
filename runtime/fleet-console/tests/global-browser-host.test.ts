@@ -860,5 +860,55 @@ describe("session browser host contract", () => {
     await offlineRouter({ req: { method: "GET" } as IncomingMessage, res: { setHeader: () => {} } as unknown as ServerResponse, pathname: "/api/v1/browser/passwords" });
     expect(status).toBe(409);
     expect(body).toMatchObject({ error: "desktop_required" });
+
+    failure = null;
+    let queryOrigin = "javascript:alert(1)";
+    let writtenHead: { status: number; headers: Record<string, string> } | null = null;
+    let writtenBody: Buffer | null = null;
+    const iconBytes = new Uint8Array([137, 80, 78, 71]);
+    const iconFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input) === "https://example.com/favicon.ico") {
+        return new Response(iconBytes, { headers: { "Content-Type": "image/png" } });
+      }
+      return new Response(null, { status: 404 });
+    });
+    try {
+      const iconRouter = createBrowserRouter({
+        browserService: service,
+        browserMcp: { pasteIntoTerminal: () => false },
+        objectiveRecords: { get: () => null },
+        desktopEngine: engine,
+        surfaceMode: () => "native",
+        isNativeBrowserWrite: () => true,
+        isManagingDesktopProcess: () => false,
+        viewerFrameRead: () => "ok",
+        isLoopbackListener: () => true,
+        isSameOriginConsoleRead: () => true,
+        isWriteAdmitted: () => true,
+        isExactConsoleOrigin: () => true,
+        readJsonBody: async <T>() => ({} as T),
+        writeJson: (_res, code, data) => { status = code; body = data; },
+        readUrl: () => new URL(`http://127.0.0.1/api/v1/browser/passwords/favicon?origin=${encodeURIComponent(queryOrigin)}`),
+        withSecurityHeaders: (headers) => headers,
+      });
+      const iconRes = {
+        setHeader: () => {},
+        writeHead: (code: number, headers: Record<string, string>) => { writtenHead = { status: code, headers }; },
+        end: (chunk: Buffer) => { writtenBody = chunk; },
+      } as unknown as ServerResponse;
+      await iconRouter({ req: { method: "GET" } as IncomingMessage, res: iconRes, pathname: "/api/v1/browser/passwords/favicon" });
+      expect(status).toBe(400);
+      queryOrigin = "https://unknown.example";
+      await iconRouter({ req: { method: "GET" } as IncomingMessage, res: iconRes, pathname: "/api/v1/browser/passwords/favicon" });
+      expect(status).toBe(404);
+      expect(iconFetch).not.toHaveBeenCalled();
+      queryOrigin = "https://example.com";
+      await iconRouter({ req: { method: "GET" } as IncomingMessage, res: iconRes, pathname: "/api/v1/browser/passwords/favicon" });
+      expect(writtenHead).toMatchObject({
+        status: 200,
+        headers: { "Content-Type": "image/png", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; sandbox" },
+      });
+      expect(writtenBody).toEqual(Buffer.from(iconBytes));
+    } finally { iconFetch.mockRestore(); }
   });
 });
