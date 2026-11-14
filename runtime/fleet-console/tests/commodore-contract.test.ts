@@ -1767,15 +1767,23 @@ describe("commodore fleet-memory", () => {
     expect(h.events.flatMap((event) => (event.op === "memory" ? [event.change] : []))).toEqual(["save", "save", "delete", "verify", "delete"]);
   });
 
-  it("refuses an over-long taskforce post with a code and hint the model receives", async () => {
+  it("refuses an over-long taskforce post with a code and hint the model receives, and validates required to", async () => {
     const h = harness(() => 1_000_000);
     const appended: unknown[] = [];
     const taskforce = { append(...args: unknown[]) { appended.push(args); throw new Error("must_not_append"); } };
     const tools = Object.fromEntries(createCommodoreTools({ commodoreId: "t1", theaterRoot: h.objectivesDir, store: h.store, taskforce: taskforce as never }).map((tool) => [tool.name, tool]));
-    const result = await tools.taskforce!.execute({ action: "post", taskforceId: "00000000-0000-4000-8000-000000000001", text: "x".repeat(2_001) }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
+    const tfId = "00000000-0000-4000-8000-000000000001";
+    const result = await tools.taskforce!.execute({ action: "post", taskforceId: tfId, text: "x".repeat(2_001), to: "none" }, { cwd: h.objectivesDir }) as { isError: boolean; structuredContent: Record<string, any> };
     expect(result.isError).toBe(true);
     expect(result.structuredContent).toMatchObject({ error: "taskforce_post_too_long", limit: 2_000, length: 2_001 });
     expect(result.structuredContent.hint).toEqual(expect.any(String));
+    // 필수 `to` 누락, "all", 빈 배열, 자기 자신만 지정은 모두 거절된다.
+    expect((await tools.taskforce!.execute({ action: "post", taskforceId: tfId, text: "hi" }, { cwd: h.objectivesDir }) as { structuredContent: Record<string, any> }).structuredContent.error).toBe("invalid_arguments");
+    expect((await tools.taskforce!.execute({ action: "post", taskforceId: tfId, text: "hi", to: "all" }, { cwd: h.objectivesDir }) as { structuredContent: Record<string, any> }).structuredContent.error).toBe("invalid_arguments");
+    expect((await tools.taskforce!.execute({ action: "post", taskforceId: tfId, text: "hi", to: [] }, { cwd: h.objectivesDir }) as { structuredContent: Record<string, any> }).structuredContent.error).toBe("invalid_arguments");
+    const selfTools = Object.fromEntries(createCommodoreTools({ commodoreId: "00000000-0000-4000-8000-000000000002", theaterRoot: h.objectivesDir, store: h.store, taskforce: taskforce as never }).map((tool) => [tool.name, tool]));
+    const selfPost = (await selfTools.taskforce!.execute({ action: "post", taskforceId: tfId, text: "hi", to: ["00000000-0000-4000-8000-000000000002"] }, { cwd: h.objectivesDir }) as { structuredContent: Record<string, any> }).structuredContent;
+    expect(selfPost).toMatchObject({ error: "invalid_request", hint: 'Use "none" or an array of exact fellow member ids from the TaskForce context or tools.' });
     expect(appended).toEqual([]);
   });
 

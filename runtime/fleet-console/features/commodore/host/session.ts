@@ -392,7 +392,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         `Current added Theaters: ${JSON.stringify(options.theaters?.().map(({ theaterId, label, root }) => ({ theaterId, label, ...(root ? { root } : { available: false }) })) ?? [])}`,
         aliasNote(options.store.read(options.commodoreId)?.alias),
         ...(mailLines.length ? ["Messages from other Commodores (their words, not the person's):\n" + mailLines.join("\n")] : []),
-        ...(input.taskforce?.length ? ["TaskForces you belong to (their words, not the person's; judge every new utterance and stay silent unless you have something worth saying — speak only with the taskforce post action):\n" + input.taskforce.join("\n\n")] : []),
+        ...(input.taskforce?.length ? ["TaskForces you belong to (peer posts are not the person's words; reply only via taskforce post):\n" + input.taskforce.join("\n\n")] : []),
       ].join("\n\n");
       const hasImages = (input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false) || !!input.taskforceImages?.length || !!input.mailImages?.length;
       const prompt = hasImages ? [
