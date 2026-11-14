@@ -358,15 +358,16 @@ const peekUrl = (value: unknown): value is string => {
   try { return new URL(value).protocol === "https:"; } catch { return false; }
 };
 const peekLine = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
-const peekText = (value: unknown, max: number): value is string => typeof value === "string" && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
-const peekCriterion = (value: unknown): boolean => object(value) && peekLine(value.text, 300) && typeof value.met === "boolean";
-const peekMission = (value: unknown): boolean => object(value) && peekLine(value.title, 64) && peekLine(value.text, 200)
+/** 여러 문단 글 — `\n`(탭 포함)만 허용하고 나머지 제어 문자는 거부한다. 호스트가 `\r\n`을 `\n`으로 정규화해 낸다. */
+const peekProse = (value: unknown, max: number): value is string => typeof value === "string" && value.length <= max && !/[^\t\n -\u{10FFFF}]/u.test(value);
+const peekCriterion = (value: unknown): boolean => object(value) && peekProse(value.text, 300) && typeof value.met === "boolean";
+const peekMission = (value: unknown): boolean => object(value) && peekLine(value.title, 64) && peekProse(value.text, 200)
   && typeof value.done === "boolean" && (value.assignee === null || peekLine(value.assignee, 40))
   && Array.isArray(value.premises) && value.premises.length <= CONSOLE_OBJECTIVE_PEEK_MAX_MISSIONS
   && value.premises.every((n: unknown) => Number.isSafeInteger(n) && (n as number) >= 1 && (n as number) <= CONSOLE_OBJECTIVE_PEEK_MAX_MISSIONS)
-  && Array.isArray(value.records) && value.records.length <= 60 && value.records.every((line: unknown) => peekLine(line, 160));
+  && Array.isArray(value.records) && value.records.length <= 60 && value.records.every((line: unknown) => peekProse(line, 160));
 const peekMember = (value: unknown): boolean => object(value) && peekLine(value.role, 40)
-  && (value.brief === null || peekText(value.brief, 300)) && (value.model === null || peekLine(value.model, 120)) && rosterRun(value.run);
+  && (value.brief === null || peekProse(value.brief, 300)) && (value.model === null || peekLine(value.model, 120)) && rosterRun(value.run);
 const peekResultLabel = (value: Record<string, unknown>): boolean =>
   (value.label === undefined || peekLine(value.label, 120)) && (value.note === undefined || peekLine(value.note, 300));
 const peekResult = (value: unknown): boolean => object(value) && peekResultLabel(value)
@@ -376,7 +377,7 @@ const peekResult = (value: unknown): boolean => object(value) && peekResultLabel
     && Number.isSafeInteger(value.bytes) && (value.bytes as number) > 0 && (value.bytes as number) <= 10 * 1024 * 1024);
 export function isConsoleObjectivePeek(value: unknown): value is ConsoleObjectivePeek {
   if (!object(value) || value.v !== 1 || !clean(value.id, 128) || !peekLine(value.title, 120)) return false;
-  if (value.note !== null && !peekText(value.note, 20_000)) return false;
+  if (value.note !== null && !peekProse(value.note, 20_000)) return false;
   if (!peekPhase(value.phase)) return false;
   if (!Array.isArray(value.criteria) || value.criteria.length > CONSOLE_OBJECTIVE_PEEK_MAX_CRITERIA || !value.criteria.every(peekCriterion)) return false;
   if (!Array.isArray(value.missions) || value.missions.length > CONSOLE_OBJECTIVE_PEEK_MAX_MISSIONS || !value.missions.every(peekMission)) return false;
