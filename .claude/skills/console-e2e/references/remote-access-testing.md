@@ -60,7 +60,7 @@ Use `access=monitoring` for a read-only guest. Never print the lock token or the
 
 ## Register the link on a second owned Console
 
-The shape above is pairing: one Console, Node as the guest. Registration is two owned Consoles. The Desktop canonical slot (`--canonical-console-dir`) only lists a local neighbor; it is not how a remote host is stored.
+Pairing uses one Console and a Node guest; registration uses two owned Consoles.
 
 After `issue-access-link.mjs` writes `<remote-e2e-dir>/link.txt`:
 
@@ -69,6 +69,8 @@ node <worktree>/.claude/skills/console-e2e/scripts/add-remote-host.mjs <remote-e
 ```
 
 The second argument is that owned home's loopback origin, from its lock port only. Stdout `{status,id,label,origin,error}` is the helper. A 2xx is not the on-screen host and not a certificate result — read those on the Settings > Remote access card (browser) or the sidebar console section (Desktop). The helper does not join; for an authenticated Desktop roster check, switch to the owned remote once to join if not already paired, then return home, and do not join again when that remote is already paired or a received link already switched to it. Do not print `link.txt`. No `rejectUnauthorized`: the product checks the certificate when it stores the link. The helper refuses a non-absolute path, anything under the user `~/.fleet`, and a home origin that is not loopback `http` or that is the user Console.
+
+`prepare-owned-pair.mjs prepare|stop --worktree <worktree> --home <repo-root>/.fleet/e2e-<id>-h --remote <repo-root>/.fleet/e2e-<id>-r` starts two owned `serve` Consoles and registers the remote link; it neither joins nor launches Desktop. `stop` stops and removes only this caller's pair after neither lock is live. `register.status` has the same evidence limits as `add-remote-host` above and does not prove local discovery.
 
 A link stored on a `serve` process keeps its one-time credential in that process. Replacing the process (Desktop then serving the same data dir) drops it (`remote_host_not_paired`). Issue and register again against the origin that is actually up. A toggle is not that case.
 
@@ -203,75 +205,23 @@ Delete the cookie file with the run directory. It holds the session secret.
 
 ### Desktop shell
 
-The browser result above does not need Desktop. Launching Desktop takes OS focus; do not launch it for the browser check. A raw navigation to the neighbor does not switch the window: `will-navigate` in `runtime/fleet-desktop/src/window-policy.ts` blocks a URL outside the active Console and the pending one. The shell's host switch (`runtime/fleet-desktop/src/remote-bridge.ts`) is what changes the window origin. The sidebar console section below is that switch.
+Use [Desktop's authorization and owned environment](desktop/setup.md#preflight-and-ownership) for a shell claim, not to repeat the browser check. The gate's owned `TMPDIR` and a dedicated worktree isolate local discovery. For discovery-isolation claims, with no prepared neighbor or saved host, confirm `/api/v1/local-consoles` returns `{ consoles: [] }`, capture zero other machines in the shell, and open the new-Commodore dialog without a machine selector. Never select, probe, or stop an unrecorded Console.
 
-`listLocalConsoles` (`runtime/fleet-console/core/host/bootstrap/local-consoles.ts`, `canonicalLockFiles`) lists two locks only: the stable slot and `<packageRoot>/../../.fleet/console`, where `packageRoot` is the running checkout's `runtime/fleet-console`. A Console whose `FLEET_CONSOLE_DATA_DIR` is an e2e run directory is absent from that list on purpose. The neighbor has to be the local slot of **this** worktree, or the sidebar has no section for it.
+Desktop owns home; do not `serve` its slot. Start a separate remote-role Console through [isolated setup](setup.md#isolate-the-console), seed onboarding, then [issue](../scripts/issue-access-link.mjs) and [register](#register-the-link-on-a-second-owned-console) its link against the **running Desktop home's** lock-derived loopback origin. The two-`serve` helper does not launch Desktop. Seed one identifiable home Commodore for the return row.
 
-That slot is one directory per checkout. It is not `~/.fleet` and it is not another worktree's `.fleet/console`, so this worktree's slot does not collide with the user's Console or with a neighbor in a different checkout. It does collide with another session that already serves this same worktree's local slot. Before starting, the wrapper's `--check` must pass. If it reports a live pid this run did not start, choose nothing: do not stop that Console and do not delete the directory.
-
-The wrapper's `--canonical-console-dir` sets only `FLEET_CONSOLE_DATA_DIR` to that slot. `HOME` and the other Fleet paths stay under the neighbor's own run directory. `--set` cannot name `FLEET_CONSOLE_DATA_DIR`. Hand-rolling `env -i` is not the route.
-
-```bash
-SLOT="<worktree>/.fleet/console"          # this worktree only
-NB_DIR="<repo-root>/.fleet/e2e-<role>-nb" # a second run directory, not the home Console's
-node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs \
-  --run-dir "$NB_DIR" --canonical-console-dir "$SLOT" --check
-node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs \
-  --run-dir "$NB_DIR" --canonical-console-dir "$SLOT" \
-  -- node <worktree>/runtime/fleet-console/dist/cli.mjs serve
-```
-
-Record the neighbor pid from the [fixed lock read](setup.md#read-the-lock-without-the-token) of `$SLOT/console.lock`. Seed that Console before anything opens it, or its page is the commissioning card. Pass the slot as `--console-dir` and the same `--canonical-console-dir`:
-
-```bash
-node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs \
-  --run-dir "$NB_DIR" --canonical-console-dir "$SLOT" --bin pnpm \
-  -- pnpm --dir <worktree>/runtime/fleet-console exec tsx \
-  <worktree>/.claude/skills/console-e2e/scripts/seed-onboarding.mts --console-dir "$SLOT"
-```
-
-The home Console is a normal isolated `serve` ([Isolate the Console](setup.md#isolate-the-console)), also seeded. Confirm from the **home** origin, printing ports only:
-
-```js
-const { consoles } = await (await fetch(`${homeOrigin}/api/v1/local-consoles`)).json();
-consoles.map((entry) => new URL(entry.origin).port);
-```
-
-The neighbor's port is in that list. The home run's own port is not, because its data dir is not a canonical lock. The user's own Console is often in the list too, commonly `127.0.0.1:50000`, with status "discovered" / "발견됨". Do not select, probe, or stop any row whose port this run did not record.
-
-After that check, stop the home `serve` with `cli.mjs stop` through the same wrapper and `--run-dir`, and without `--canonical-console-dir`. The seeded settings stay in the directory; Desktop then uses it. A gate dry-run that exits 20 with `Console lock: live` means this stop was skipped. Do not launch until that lock is not live.
-
-Launch Desktop once, under its own authorization, as in [Desktop setup](desktop/setup.md#preflight-and-ownership). `FLEET_CONSOLE_DATA_DIR` for that launch is the **home** run's `console` directory, not `$SLOT`. The shell's `homeOrigin` is that home.
-
-In the window, the sidebar lists the current console's commodores at the top with no header, then one row per other console (`.side-console`, name in `.side-console-name b`). Find the row whose name reads `127.0.0.1:<neighbor port>` and press one of its commodore rows (`.side-console-row`), or its "Switch to this console" / "이 콘솔로 전환" button when it lists none. Matching the port is the check. A row for any other port, including the user's Console, is not the neighbor.
-
-Do not assign `location` to the neighbor. The section press is the navigation the bridge takes. When the window has switched, read:
+Reload the home renderer after command-line registration. Match the saved-host origin to the shell's remote entry; the helper's 2xx alone proves neither display nor join. Local discovery should remain empty. Use that remote's Commodore row or **Switch to this console / 이 콘솔로 전환** button: `remote-bridge.ts` checks the certificate and joins, whereas raw `location` navigation does not establish the shell switch. Read:
 
 ```js
 ({
   origin: location.origin,
   home: (await (await fetch("/api/v1/desktop/shell")).json()).homeOrigin,
   dot: document.querySelector(".conversation-dock-status")?.getAttribute("data-connection") ?? null,
-  activeHead: document.querySelector(".side-console-head.is-active .side-console-name b")?.textContent ?? null,
-  homeRow: document.querySelector(".side-console-home") !== null,
 })
 ```
 
-Away on Desktop is `origin` equal to `http://127.0.0.1:<neighbor port>` while `home` is the home origin. `dot` is `"live"`. The console you are on has no header, so `activeHead` is null, and `homeRow` is true because the home console is one of the rows below, marked `.side-console-home`.
+Away is `origin` equal to that remote `https://<LAN>:<remotePort>`, `home` equal to the Desktop home's loopback origin, and `dot === "live"`. Return through the identifiable home Commodore row and confirm `origin === home` and `dot === null`. A roster-unavailable notice is not proof of a received roster; report that result separately from the successful switch/join.
 
-Return through that home row, using a commodore row or "Switch to this console" when no rows are listed. Confirm `origin === home` and `dot === null`. `activeHead` stays null when more than one console is listed, and a `.side-console-name b` then reads the neighbor address.
-
-Stop the neighbor with the same wrapper flags. That `stop` runs only when `$SLOT/console.lock`'s pid equals `<run-dir>/canonical-console.pid`, which the wrapper writes when this run's `serve` starts. No record, a different pid, or the main checkout (`mainCheckoutOf`, the same test as [the Desktop preflight](desktop/setup.md#read-only-preflight)) is refused before the command starts. Then:
-
-```bash
-node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs \
-  --run-dir "$NB_DIR" --canonical-console-dir "$SLOT" \
-  -- node <worktree>/runtime/fleet-console/dist/cli.mjs stop
-```
-
-Remove `$SLOT` only when this run created it and the lock is gone. If the directory existed before the run, delete only what this run added and say what you left. Leaving another session's slot, or a live lock, in place is the stop condition. The home Console stops through its own run directory, with no `--canonical-console-dir`.
-
-The browser half of this section was run against an isolated listener. The menu values above (neighbor `is-away`, `data-tip` the host name, home `Local` with no dot) are the Desktop measurement's. `--canonical-console-dir` listing and its own `stop` were checked on a worktree slot. The main-checkout refusal and a `stop` with no pid record were checked with `--check` and did not start a Console. Desktop was not launched for those checks.
+Stop Desktop with [its owned stop helper](desktop/setup.md#stopping-the-owned-desktop), never the Console CLI. Stop the remote-role `serve` through `isolated-env.mjs` with its own original `--run-dir`; delete its link file with the owned run directory. Leave every other process and directory untouched.
 
 ## Administration stays on loopback
 
