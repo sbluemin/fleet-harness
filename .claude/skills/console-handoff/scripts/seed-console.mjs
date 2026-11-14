@@ -151,7 +151,7 @@ if (typeof prompt !== "string") {
 const denied = await fetch(new URL("/api/v1/agent/sessions", base), { method: "POST", headers: { origin: new URL(base).origin, "content-type": "application/json" }, body: JSON.stringify({ commodoreId, theaterId, cliId: "claude", prompt }) });
 if (denied.status !== 405) throw new Error(`POST /api/v1/agent/sessions expected 405, got ${denied.status}`);
 const beforeTranscript = await api("POST", "/api/v1/commodore/transcript", { commodoreId, limit: 20 });
-const beforeResults = (beforeTranscript?.entries ?? []).filter((entry) => entry?.kind === "result").length;
+const beforeSeq = (beforeTranscript?.entries ?? []).reduce((max, entry) => Math.max(max, Number(entry?.seq ?? 0)), 0);
 await api("POST", "/api/v1/commodore/message", { commodoreId, text: prompt });
 console.error(`seed-console: commodore message sent (${commodoreId})`);
 
@@ -165,7 +165,7 @@ if (until === "turn") {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const transcript = await api("POST", "/api/v1/commodore/transcript", { commodoreId, limit: 20 });
-    if ((transcript?.entries ?? []).filter((entry) => entry?.kind === "result").length > beforeResults) { ended = true; break; }
+    if ((transcript?.entries ?? []).some((entry) => entry?.kind === "result" && Number(entry?.seq ?? 0) > beforeSeq)) { ended = true; break; }
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
 }
