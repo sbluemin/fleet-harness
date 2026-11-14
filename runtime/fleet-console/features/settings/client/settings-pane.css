@@ -161,3 +161,18 @@
 @media (prefers-reduced-motion: reduce) {
   .settings-pane .global-settings-row.is-taskforce-target::after { animation: none; }
 }
+.settings-password-list { list-style: none; margin: 0; padding: 0; display: grid; }
+.settings-password-row { display: grid; gap: 8px; min-width: 0; padding: 11px 14px; }
+.settings-password-row + .settings-password-row { border-top: 1px solid var(--hairline); }
+.settings-password-meta { min-width: 0; display: grid; gap: 2px; }
+.settings-password-origin { color: var(--text-primary); overflow-wrap: anywhere; }
+.settings-password-user,
+.settings-password-secret { color: var(--text-secondary); font-size: var(--t-sm); overflow-wrap: anywhere; }
+.settings-password-secret { font-family: var(--font-code); letter-spacing: 0.04em; }
+.settings-password-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.settings-password-form { display: grid; gap: 8px; min-width: 0; padding: 4px 0 0; }
+.settings-password-form label { display: grid; gap: 4px; color: var(--text-secondary); font: var(--t-sm)/1.45 var(--font-ui); }
+.settings-password-form input,
+.settings-password-search input { width: 100%; color: var(--text-primary); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-xs); padding: 6px 8px; font: var(--t-md)/1.45 var(--font-ui); }
+.settings-password-search { display: block; padding: 11px 14px 0; }
+.settings-password-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

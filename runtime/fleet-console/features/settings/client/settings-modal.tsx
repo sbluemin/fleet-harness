@@ -5,9 +5,12 @@ import { SettingsHelp } from "../../../core/client/src/chrome/components/setting
 import { getPaneStoreSnapshot } from "../../../core/client/src/chrome/pane/pane-store.js";
 import { closeRailPanel, openRailPanel, useRailActivePanelId } from "../../../core/client/src/chrome/rail/rail-store.js";
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
+import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
+import { useBrowserEngine } from "../../browser/client/browser-engine.js";
 import { loadGlobalSettings, useGlobalSettingsStore } from "./global-settings-store.js";
 import {
+  browserSettingsSectionVisible,
   buildCoreSettingsSections,
   collectPluginSettingsSections,
   renderSettingsSection,
@@ -98,7 +101,8 @@ function SettingsModal({ section }: { readonly section: string | null }) {
     };
   }, []);
 
-  const coreSections = buildCoreSettingsSections(t, state);
+  const engine = useBrowserEngine();
+  const coreSections = buildCoreSettingsSections(t, state, browserSettingsSectionVisible({ desktopShell: isDesktopShell(), state, engine }));
   const pluginSections = collectPluginSettingsSections(registry.providers, locale, t);
   const chips = useMemo(() => buildChips(coreSections, pluginSections), [coreSections, pluginSections]);
   const available = useMemo(() => new Set<string>(chips.map((chip) => chip.id)), [chips]);
@@ -244,6 +248,9 @@ const GLYPHS: Readonly<Record<string, ReactNode>> = {
   ),
   advanced: (
     <svg viewBox="0 0 16 16"><path d="M5.6 3C4 3 4 4 4 5.2v.9c0 .9-.6 1.6-1.6 1.9.9.3 1.6 1 1.6 1.9v.9C4 12 4 13 5.6 13M10.4 3C12 3 12 4 12 5.2v.9c0 .9.6 1.6 1.6 1.9-.9.3-1.6 1-1.6 1.9v.9c0 1.2 0 2.2-1.6 2.2" {...stroke} /></svg>
+  ),
+  browser: (
+    <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.6" {...stroke} /><path d="M2.6 8h10.8M8 2.4c1.6 1.7 2.4 3.6 2.4 5.6s-.8 3.9-2.4 5.6c-1.6-1.7-2.4-3.6-2.4-5.6s.8-3.9 2.4-5.6" {...stroke} /></svg>
   ),
   experiments: (
     <svg viewBox="0 0 16 16"><path d="M6.2 2.2h3.6M6.8 2.2v4L3.2 12.4c-.5.8.1 1.6 1 1.6h7.6c.9 0 1.5-.8 1-1.6L9.2 6.2v-4M4.8 9.8h6.4" {...stroke} /></svg>

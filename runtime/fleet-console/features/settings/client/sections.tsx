@@ -22,6 +22,8 @@ import { SettingsHelp } from "../../../core/client/src/chrome/components/setting
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import { renderMessage, useT, useConsoleLocale, type CoreMessageKey } from "../../../core/client/src/i18n/index.js";
 import { getT as getBrowserT } from "../../browser/client/i18n.js";
+import type { BrowserEngineState } from "../../browser/client/browser-engine.js";
+import { PasswordManagerCard } from "../../browser/client/password-manager.js";
 import { saveSuggestionSettings, useSuggestionSettings } from "../../browser/client/suggestion-settings.js";
 import { setActiveTheme } from "../../../core/client/src/integration/store.js";
 import { type GlobalSettingsState, type ThemeId } from "../../../core/client/src/integration/types.js";
@@ -49,7 +51,7 @@ interface PortModeOption {
   readonly label: string;
 }
 
-export type CoreSettingsSectionId = "appearance" | "language" | "shortcuts" | "connectivity" | "advanced" | "experiments";
+export type CoreSettingsSectionId = "appearance" | "language" | "shortcuts" | "connectivity" | "browser" | "advanced" | "experiments";
 type PluginSettingsSectionId = `${string}:${string}`;
 export type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
 
@@ -148,7 +150,23 @@ function buildLanguages(t: T): readonly LanguageOption[] {
  * 비활성 항목으로 남겨 두면 손님이 열어 보고 빈 카드를 만나고, 그 카드가 다루는 값은
  * 애초에 이 자리에서 볼 것이 아니다. 원격이 없으면 Connectivity는 콘솔 포트만 담는다.
  */
-export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | null): readonly SettingsSectionNavItem[] {
+/**
+ * 설정 '브라우저'를 목록·검색에 올릴지.
+ * 엔진을 아직 모르면 셸과 원격 접속 유무만 본다 — 관리 Desktop 이 엔진 답을 기다리다 항목이 깜빡이지 않게.
+ * 웹·원격·비관리 창은 숨긴다.
+ */
+export function browserSettingsSectionVisible(input: {
+  readonly desktopShell: boolean;
+  readonly state: GlobalSettingsState | null;
+  readonly engine: BrowserEngineState;
+}): boolean {
+  if (!input.desktopShell) return false;
+  if (input.engine === null) return input.state?.remoteAccess !== undefined;
+  if (input.state !== null && input.state.remoteAccess === undefined) return false;
+  return input.engine.surfaceMode === "native" && input.engine.executionHost.status !== "unmanaged";
+}
+
+export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | null, browserVisible = false): readonly SettingsSectionNavItem[] {
   const remoteAvailable = state === null || state.remoteAccess !== undefined;
   return [
     {
@@ -186,11 +204,17 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
         t("settings.core.connectivity.keywords"),
       ],
     },
+    ...(browserVisible ? [{
+      id: "browser" as const,
+      group: "machine" as const,
+      label: t("settings.core.browser.label"),
+      entries: [t("settings.core.browser.keywords"), "비밀번호", "자동완성", "검색어 제안", "Google", "Fleet Browser", "password", "autofill"],
+    }] : []),
     {
       id: "advanced",
       group: "machine",
       label: t("settings.core.advanced.label"),
-      entries: ["Fleet Browser", "Google", t("settings.core.backendApi.label"), t("settings.core.advanced.keywords")],
+      entries: [t("settings.core.backendApi.label"), t("settings.core.advanced.keywords")],
     },
     {
       id: "experiments",
@@ -261,8 +285,10 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
       );
     case "shortcuts":
       return <ShortcutsCard state={state} saving={saving.has("shortcuts")} />;
+    case "browser":
+      return <><BrowserSuggestionsCard /><PasswordManagerCard /></>;
     case "advanced":
-      return <><BrowserSuggestionsCard /><BackendApiSection /></>;
+      return <BackendApiSection />;
     case "experiments":
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
       return (

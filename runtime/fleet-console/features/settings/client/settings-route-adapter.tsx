@@ -2,8 +2,11 @@ import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import { useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
+import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
-import { buildCoreSettingsSections, collectPluginSettingsSections, resolveSettingsSectionId } from "./sections.js";
+import { getBrowserEngineSnapshot } from "../../browser/client/browser-engine.js";
+import { getGlobalSettingsStoreState } from "./global-settings-store.js";
+import { browserSettingsSectionVisible, buildCoreSettingsSections, collectPluginSettingsSections, resolveSettingsSectionId } from "./sections.js";
 import { openSettingsSurface } from "./settings-door.js";
 
 /**
@@ -28,7 +31,7 @@ export function SettingsRouteAdapter() {
   useEffect(() => {
     const requested = new URLSearchParams(location.search).get("section");
     const available = new Set<string>([
-      ...buildCoreSettingsSections(t, null).map((section) => section.id),
+      ...buildCoreSettingsSections(t, getGlobalSettingsStoreState().state, browserSettingsSectionVisible({ desktopShell: isDesktopShell(), state: getGlobalSettingsStoreState().state, engine: getBrowserEngineSnapshot() })).map((section) => section.id),
       ...collectPluginSettingsSections(registry.providers, locale, t).map((section) => section.id),
     ]);
     const section = resolveSettingsSectionId(requested, available) ?? "appearance";

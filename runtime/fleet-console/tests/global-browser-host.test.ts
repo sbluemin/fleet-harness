@@ -634,7 +634,7 @@ describe("session browser host contract", () => {
     engine.subscriberOpened("manager");
     engine.setHost("manager");
     const service = new BrowserService({ enabled: () => true, availability: () => ({ available: true, reason: null, host: "manager" }), desktop: engine, log: () => {}, defaultProfile: { read: () => null, write: () => {} } });
-    const gate = { native: false, loopback: true, exact: true, managing: false };
+    const gate = { native: false, loopback: true, exact: true, sameOrigin: true, managing: false };
     let status = 0;
     let body: unknown = null;
     let cache = "";
@@ -648,7 +648,7 @@ describe("session browser host contract", () => {
       isManagingDesktopProcess: () => gate.managing,
       viewerFrameRead: () => "ok",
       isLoopbackListener: () => gate.loopback,
-      isSameOriginConsoleRead: () => true,
+      isSameOriginConsoleRead: () => gate.sameOrigin,
       isWriteAdmitted: () => true,
       isExactConsoleOrigin: () => gate.exact,
       readJsonBody: async <T>() => ({ id: "entry-1" }) as T,
@@ -656,8 +656,8 @@ describe("session browser host contract", () => {
       readUrl: () => new URL("http://127.0.0.1"),
       withSecurityHeaders: (headers) => headers,
     });
-    const request = (pathname: string) => router({
-      req: { method: "GET" } as IncomingMessage,
+    const request = (pathname: string, method = "GET") => router({
+      req: { method } as IncomingMessage,
       res: { setHeader: (name: string, value: string) => { if (name === "Cache-Control") cache = value; } } as unknown as ServerResponse,
       pathname,
     });
@@ -672,14 +672,21 @@ describe("session browser host contract", () => {
     expect(body).toEqual({ error: "browser_viewer_read_only" });
     gate.loopback = true;
     gate.exact = false;
-    await request("/api/v1/browser/passwords");
-    expect(status).toBe(403);
-    expect(body).toEqual({ error: "unauthorized" });
-    gate.exact = false;
-    gate.managing = true;
+    gate.sameOrigin = true;
     await request("/api/v1/browser/passwords");
     expect(status).toBe(200);
     expect(commands).toEqual([DESKTOP_BROWSER_PASSWORDS]);
+    await request("/api/v1/browser/passwords/delete", "POST");
+    expect(status).toBe(403);
+    expect(body).toEqual({ error: "unauthorized" });
+    gate.sameOrigin = false;
+    await request("/api/v1/browser/passwords");
+    expect(status).toBe(403);
+    expect(body).toEqual({ error: "unauthorized" });
+    gate.managing = true;
+    await request("/api/v1/browser/passwords");
+    expect(status).toBe(200);
+    expect(commands.at(-1)).toBe(DESKTOP_BROWSER_PASSWORDS);
     expect(engine.snapshot().views).toEqual([]);
     await request("/api/v1/browser/passwords/unknown");
     expect(status).toBe(404);

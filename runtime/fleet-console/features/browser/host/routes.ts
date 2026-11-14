@@ -307,9 +307,11 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
 
     async function servePasswords(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
       res.setHeader("Cache-Control", "no-store");
-      // 비밀번호는 루프백의 관리 Desktop 만 다룬다. 원격·웹·비관리 셸과 출처가 어긋난 요청은 금고에 닿기 전에 거절한다.
-      const admitted = isLoopbackListener(req) && isNativeBrowserWrite(req) && (isExactConsoleOrigin(req) || isManagingDesktopProcess(req));
-      if (!admitted) {
+      // 비밀번호는 루프백의 관리 Desktop 만 다룬다. Chromium 은 같은 출처 GET 에 Origin 을 싣지 않으므로
+      // 읽기는 Sec-Fetch-Site 로 보고, 쓰기만 Origin 또는 관리 프로세스 증명을 요구한다.
+      const read = req.method === "GET" || req.method === "HEAD";
+      const trusted = read ? isSameOriginConsoleRead(req) || isManagingDesktopProcess(req) : isExactConsoleOrigin(req) || isManagingDesktopProcess(req);
+      if (!isLoopbackListener(req) || !isNativeBrowserWrite(req) || !trusted) {
         writeJson(res, 403, { error: !isLoopbackListener(req) || !isNativeBrowserWrite(req) ? "browser_viewer_read_only" : "unauthorized" });
         return true;
       }
