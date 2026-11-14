@@ -575,7 +575,7 @@
 .quota-footer {
   flex: none;
   border-top: 1px solid var(--popover-divider);
-  padding: 7px 10px 7px 16px;
+  padding: 7px 12px;
 }
 
 .quota-footer__row {
@@ -599,23 +599,16 @@
   cursor: pointer;
 }
 
-/* 「도구모음에 표시」 — 팝업 바닥 한 줄. 공급자마다 글리프 하나가 켬/끔을 진다. */
+/* 팝업 바닥 글리프 토글 줄 — 문구 없이 중앙 정렬한다. 공급자마다 글리프 하나가 켬/끔을 진다. */
 .quota-footer__toolbar {
+  justify-content: center;
   font-family: var(--font-ui);
-}
-
-.quota-footer__toolbar-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .quota-toolbar-picks {
   display: flex;
   flex: none;
   gap: 2px;
-  margin-left: auto;
 }
 
 /* 꺼진 글리프는 무채색으로 물러나고, 켜진 글리프는 제 색과 고른 행의 중립 워시를 얻는다. */
@@ -747,6 +740,23 @@
   }
 
   .quota-toolbar-summary--capsule .quota-toolbar-summary__compact-glyph {
+    display: grid;
+  }
+}
+
+/* 지목·동작 칩이 함께 서는 그룹 캡슐은 입력 최소 폭을 지키려고 조금 더 일찍(500px 이하) 막대 글리프로 접는다. */
+@container fc-composer (max-width: 500px) {
+  .fc-composer-capsule:has(> :is(.fc-mention-chip, .group-composer-chip)) .quota-toolbar-summary--capsule {
+    justify-content: center;
+    width: var(--fc-composer-circle, 28px);
+    padding: 0;
+  }
+
+  .fc-composer-capsule:has(> :is(.fc-mention-chip, .group-composer-chip)) .quota-toolbar-summary--capsule .quota-toolbar-summary__cell {
+    display: none;
+  }
+
+  .fc-composer-capsule:has(> :is(.fc-mention-chip, .group-composer-chip)) .quota-toolbar-summary--capsule .quota-toolbar-summary__compact-glyph {
     display: grid;
   }
 }

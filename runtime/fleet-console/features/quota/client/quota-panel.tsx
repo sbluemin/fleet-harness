@@ -844,14 +844,13 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
 }
 
 /**
- * 팝업 바닥의 「사이드바에 표시」 줄 — 공급자마다 글리프 하나로 도구모음 요약에 세울지를 고른다.
+ * 팝업 바닥의 도구모음 표시 글리프 줄 — 공급자마다 글리프 하나로 요약에 세울지를 고른다.
  * 순서는 고정 순서다. 모두 끄면 도구모음에는 막대 글리프 하나만 남아 이 팝업을 다시 연다.
  */
 function ToolbarProviderPicker({ t, mobile }: { readonly t: T; readonly mobile: boolean }) {
   const { toolbarProviders } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   return (
     <div className="quota-footer__row quota-footer__toolbar" role="group" aria-label={t("quota.toolbar.toggle")}>
-      <span className="quota-footer__toolbar-label" aria-hidden="true">{t("quota.toolbar.toggle")}</span>
       <span className="quota-toolbar-picks">
         {PROVIDER_ORDER_DEFAULT.map((id) => {
           const shown = toolbarProviders.includes(id);

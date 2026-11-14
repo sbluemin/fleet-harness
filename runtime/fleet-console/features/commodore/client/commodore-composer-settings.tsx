@@ -585,7 +585,10 @@ function CoordinateList({ t, hint, roster, value, fallback, labels, ariaLabel, j
       {judgment ? (
         <button type="button" role="radio" aria-checked={judgmentActive} className={`commodore-composer-row is-extra${judgmentActive ? " is-active" : ""}`} onClick={() => { if (!judgmentActive) judgment.onPick(); }}>
           <CommodoreJudgmentMark />
-          <span className="commodore-composer-row-label">{t("commodore.settings.commanderJudgment")}<small>{t("commodore.settings.commanderJudgmentHint")}</small></span>
+          <span className="commodore-composer-row-label is-inline">
+            <span className="commodore-composer-row-title">{t("commodore.settings.commanderJudgment")}</span>
+            <small>{t("commodore.settings.commanderJudgmentHint")}</small>
+          </span>
           <Check on={judgmentActive} />
         </button>
       ) : null}

@@ -1252,10 +1252,10 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 /* ── 데스크톱 사령관 입력창 · 위 줄 설정 칩 · 칩 앵커 팝오버 ─────────────────
    입력 캡슐은 다시 한 줄(「+」 · 입력 · 쿼터 요약 · 보내기)로 컴팩트하게 두고, 네 설정 칩은 위 줄(.conversation-composer-top.has-end)
    오른쪽 끝에 세운다. 오른쪽 여백을 8px(캡슐 7px 안쪽 여백 + 1px 테두리) 더 두어 「고급」 칩 중심이 보내기 원 중심과 같은 세로선에 선다.
-   칩을 누르면 body 포털 팝오버가 칩 가운데 꼬리를 물고 위 줄 위로 뜬다. 폰·TaskForce·Theater Inbox 입력창은 칩·trailing 을 싣지 않는다. */
-.objectives-commodore-conversation .objectives-commodore-composer.has-trailing > .objectives-commodore-composer-input { min-width: 96px; }
-.objectives-commodore-conversation .objectives-commodore-composer.has-trailing > .objectives-commodore-ref-input.is-empty { position: relative; overflow: hidden; }
-.objectives-commodore-conversation .objectives-commodore-composer.has-trailing > .objectives-commodore-ref-input.is-empty::before {
+   칩을 누르면 body 포털 팝오버가 칩 가운데 꼬리를 물고 위 줄 위로 뜬다. 폰·Theater Inbox 입력창은 칩·trailing 을 싣지 않고, TaskForce 입력창은 trailing(쿼터)만 싣는다. */
+.objectives-commodore-composer.has-trailing > .objectives-commodore-composer-input { min-width: 96px; }
+.objectives-commodore-composer.has-trailing > .objectives-commodore-ref-input.is-empty { position: relative; overflow: hidden; }
+.objectives-commodore-composer.has-trailing > .objectives-commodore-ref-input.is-empty::before {
   position: absolute; left: 0; right: 0; top: var(--fc-composer-line-pad, 4px); float: none; height: auto;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
@@ -1374,11 +1374,14 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-row:focus-visible { outline: none; background: var(--wash-hover); }
 .commodore-composer-row.is-active { font-weight: var(--weight-medium); cursor: default; }
 .commodore-composer-row.is-extra.is-active { background: var(--wash-selected); }
-.commodore-composer-row.is-extra, .commodore-composer-row.is-reset { padding-block: 6px; }
+.commodore-composer-row.is-reset { padding-block: 6px; }
 .commodore-composer-row.is-extra .objectives-commodore-judgment,
 .commodore-composer-row.is-extra .objectives-commodore-judgment svg { width: 16px; height: 16px; }
 .commodore-composer-row-label { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commodore-composer-row-label small { color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-regular); }
+.commodore-composer-row-label.is-inline { flex-direction: row; align-items: baseline; gap: 6px; }
+.commodore-composer-row-title { flex: none; white-space: nowrap; }
+.commodore-composer-row-label.is-inline small { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commodore-composer-row.is-off .commodore-composer-row-label { color: var(--text-tertiary); text-decoration: line-through; }
 .commodore-composer-row.is-reset { margin-top: 4px; border-top: 1px solid var(--popover-divider); border-radius: 0; color: var(--text-secondary); }
 .commodore-composer-fast {
