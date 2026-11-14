@@ -710,9 +710,6 @@ button.objectives-result-open:focus-visible { color: var(--brass-ink); box-shado
 .objectives-decision-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-family: var(--font-ui); font-size: var(--t-2xs); color: var(--text-tertiary); }
 .objectives-decision-meta span { display: inline-flex; align-items: center; gap: 4px; }
 .objectives-decision-meta .objectives-avatar { width: 14px; height: 14px; }
-.objectives-decisions-fold { align-self: flex-start; padding: 4px 0 0; border: 0; background: none; color: var(--text-tertiary); font: inherit; font-size: var(--t-xs); cursor: pointer; }
-.objectives-decisions-fold:hover { color: var(--text-primary); }
-.objectives-decisions-fold:focus-visible { box-shadow: var(--focus-face); }
 
 /* 합쳐 온 목표의 출처 — 받은 목표의 브리핑 아래 읽기 전용 줄. 상세의 다른 줄과 같은 안쪽 선(22px, 한 열에서는 14px)에 선다. */
 .objectives-merged-trail { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; padding-left: 22px; padding-right: 20px; }

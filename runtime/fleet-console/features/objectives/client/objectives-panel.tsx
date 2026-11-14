@@ -154,7 +154,6 @@ export function CommanderRowPanel({ commodoreId, objectiveId, language, onOpenOb
       compact
       sectionOpen={(key) => key in collapsed ? !collapsed[key] : false}
       onToggleSection={(key) => setCollapsed((current) => ({ ...current, [key]: key in current ? !current[key] : false }))}
-      onOpenGroup={(key) => setCollapsed((current) => ({ ...current, [key]: false }))}
       highlightMission={missionId ?? null}
       detailRef={detailRef}
       onToggleEdge={(from, to, linked) => toggleEdge(objective, from, to, linked)}
@@ -475,7 +474,7 @@ function NewMemberAssign({ t, onCreate }: { t: T; onCreate: (role: string) => Pr
   }} /><span>{t("objectives.members.newHint")}</span></div>;
 }
 
-export type DetailSection = "detail:decisions" | "detail:consultations" | "detail:retro" | "detail:followupResults" | "detail:extensions";
+export type DetailSection = "detail:retro" | "detail:followupResults" | "detail:extensions";
 
 interface DetailProps {
   readonly objective: Objective;
@@ -497,7 +496,6 @@ interface DetailProps {
   /** 목표 탭 아래 묶음 접힘 — Theater별 메모리 보기 상태에 보존하며 기본은 접힘. */
   readonly sectionOpen: (key: DetailSection) => boolean;
   readonly onToggleSection: (key: DetailSection) => void;
-  readonly onOpenGroup: (key: string) => void;
   readonly highlightMission: string | null;
   readonly detailRef: RefObject<HTMLElement | null>;
   readonly onToggleEdge: (from: string, to: string, linked?: boolean) => Promise<void>;
@@ -1031,7 +1029,7 @@ function quietMissionLabel(objective: Objective, mission: ObjectiveMission, read
   return describeQuietMission(elapsed / 60_000, language);
 }
 
-export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, objectiveRecordTitle, objectiveRecordState, objectiveRecordOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, onOpenGroup, highlightMission, detailRef, onToggleEdge, onOpenObjective, embedded = false, readOnly = false, compact = false, onGraphFitWidth }: DetailProps) {
+export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel, stateLabel, objectiveRecordTitle, objectiveRecordState, objectiveRecordOwnState, busy, request, tab, onTab, sectionOpen, onToggleSection, highlightMission, detailRef, onToggleEdge, onOpenObjective, embedded = false, readOnly = false, compact = false, onGraphFitWidth }: DetailProps) {
   const launchRows = useLaunchRows();
   const [quietNow, setQuietNow] = useState(() => Date.now());
   // 문장은 경과 분이다. 임계에 닿은 뒤에도 1분마다 다시 읽어, 뱃지가 처음 분수에 멈물지 않게 한다.
@@ -1121,8 +1119,8 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     const timer = setTimeout(() => setDecisionFlash(null), 1600);
     return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
   }, [decisionFlash, detailRef]);
-  // 결정·임무로 가는 길 — 그 섹션이 사는 탭으로 바꾼다. 결정은 목표 탭 맨 아래의 접히는 섹션이라 함께 편다. 증거는 그 임무를 고른 뷰어를 연다.
-  const showDecision = (decisionId: string) => { onTab("goal"); onOpenGroup("detail:decisions"); setDecisionFlash(decisionId); };
+  // 결정·임무로 가는 길 — 그 섹션이 사는 탭으로 바꾼다. 결정은 목표 탭에 늘 펼쳐져 있어 탭만 바꾸고 해당 결정을 비춘다. 증거는 그 임무를 고른 뷰어를 연다.
+  const showDecision = (decisionId: string) => { onTab("goal"); setDecisionFlash(decisionId); };
   const showMission = (missionId: string) => {
     onTab("crew");
     setMissionReveal({ id: missionId, at: Date.now() });
@@ -1347,34 +1345,18 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
     <div id="objectives-sec-missions">{objective.missions.length ? <CoordinationGraph {...graphProps} {...(embedded ? { zoom: true, onFitWidth: onGraphFitWidth } : {})} suspended={zoomOpen && !verticalGraph} /> : null}</div>
     {zoomOpen && !verticalGraph && objective.missions.length > 0 ? createPortal(<LineupZoom t={t} title={objective.title} width={zoomWidth} tools={<><span className="objectives-criteria-count">{t("objectives.missions.count", { done: doneMissions, total: objective.missions.length })}</span>{renderCounts(true)}</>} onClose={() => { setZoomOpen(false); setZoomWidth(null); zoomTriggerRef.current?.focus(); }}>{missionAttention}<CoordinationGraph {...graphProps} zoom onFitWidth={setZoomWidth} /></LineupZoom>, document.body) : null}
   </div>;
-  // 결정 섹션 — 목표 탭 맨 아래, 사령관의 결정과 기존 답을 보존한다.
-  // 답이 없으면 서지 않는다(목표 탭 맨 아래의 빈 문구는 소음이다).
+  // 결정 섹션 — 목표 탭에서 사령관의 결정과 기존 답을 보존한다. 달성 기준처럼 머리줄 이름과 함께 전부를 늘 펼쳐 보인다.
+  // 답이 없으면 서지 않는다(빈 문구는 소음이다).
+  const decisionsHeading = `${t("objectives.decisions.title")} ${objective.decisions.length}`;
   const sDecisions = objective.decisions.length > 0 ? (
       <div className="objectives-group">
         <SectionHead
-          label={`${t("objectives.decisions.title")} ${objective.decisions.length}`}
-          controls="objectives-sec-decisions"
-          fold={readOnly}
-          expanded={sectionOpen("detail:decisions")}
-          onToggle={() => onToggleSection("detail:decisions")}
+          line={line}
+          label={decisionsHeading}
+          tools={<span className="objectives-criteria-count" aria-hidden="true">{decisionsHeading}</span>}
         />
-        <div id="objectives-sec-decisions" hidden={!sectionOpen("detail:decisions")}>
+        <div id="objectives-sec-decisions">
           <DecisionList objective={objective} t={t} language={language} flash={decisionFlash} memberMark={memberMarkOf} />
-        </div>
-      </div>
-  ) : null;
-  const consultationRows = objective.consultations ?? [];
-  const sConsultations = consultationRows.length > 0 ? (
-      <div className="objectives-group">
-        <SectionHead
-          label={`${t("objectives.consultations.title")} ${consultationRows.length}`}
-          controls="objectives-sec-consultations"
-          fold={readOnly}
-          expanded={sectionOpen("detail:consultations")}
-          onToggle={() => onToggleSection("detail:consultations")}
-        />
-        <div id="objectives-sec-consultations" hidden={!sectionOpen("detail:consultations")}>
-          {consultationRows.map((entry) => <p className="objectives-consultation" key={entry.id}><b>{entry.reply ? (entry.reply.kind === "advice" ? t("objectives.consultations.advice") : t("objectives.consultations.none")) : t("objectives.consultations.unanswered")}</b>{entry.delivery ? ` · ${t(`objectives.consultations.delivery.${entry.delivery}`)}` : ""} {entry.question}{entry.reply?.kind === "advice" ? ` — ${entry.reply.text}` : ""}</p>)}
         </div>
       </div>
   ) : null;
@@ -1436,7 +1418,7 @@ export function ObjectiveDetail({ objective, t, language, call, toast, modeLabel
   ) : null;
   // 상세 aside > 탭 칸(스크롤). 넘긴 이유와 돌려주기는 구성원 채팅 카드에서 보인다.
   // 탭 칸(.objectives-detail-scroll)이 상세의 스크롤 컨테이너다 — 그래프의 드래그 자동 스크롤·팝업 앵커가 이 칸을 기준으로 삼는다.
-  const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}{sConsultations}{sRetro}{sFollowups}{sExtensions}</>
+  const panel = tab === "goal" ? <>{sBrief}{sCriteria}{sDecisions}{sRetro}{sFollowups}{sExtensions}</>
     : <>{sCrew}{sMissions}</>;
   return (
     <aside ref={detailRef} className={`objectives-detail${busy ? " is-busy" : ""}`} aria-label={objective.title}>
