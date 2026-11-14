@@ -76,10 +76,12 @@ describe("remote mouse dispatch", () => {
 });
 
 describe("remote key and IME dispatch", () => {
-  it("sends keyDown with text and always closes with keyUp", async () => {
+  it("sends keyDown for keyDown and keyUp for keyUp without duplicating keystrokes", async () => {
     const { client, calls } = fakeClient();
-    const outcome = await dispatchRemoteKey(client, "sess", { kind: "key", type: "keyDown", key: "a", code: "KeyA", keyCode: 65, modifiers: { alt: false, ctrl: false, meta: false, shift: false } });
-    expect(outcome).toBe("dispatched");
+    const downOutcome = await dispatchRemoteKey(client, "sess", { kind: "key", type: "keyDown", key: "a", code: "KeyA", keyCode: 65, modifiers: { alt: false, ctrl: false, meta: false, shift: false } });
+    const upOutcome = await dispatchRemoteKey(client, "sess", { kind: "key", type: "keyUp", key: "a", code: "KeyA", keyCode: 65, modifiers: { alt: false, ctrl: false, meta: false, shift: false } });
+    expect(downOutcome).toBe("dispatched");
+    expect(upOutcome).toBe("dispatched");
     expect(calls.map((call) => `${call.method}:${(call.params as { type: string }).type}`)).toEqual([
       "Input.dispatchKeyEvent:keyDown",
       "Input.dispatchKeyEvent:keyUp",
@@ -142,11 +144,8 @@ describe("remote batch application", () => {
     expect(pointer).toBeNull();
     expect(result.select?.id).toBe("sel-t-1");
     // down 은 팝업으로 바뀌어 보내지 않고, 나머지는 순서대로 닿는다.
-    // 키 한 건은 keyDown+keyUp 두 번의 CDP 로 번진다.
     expect(calls.map((call) => `${call.method}:${(call.params as { type?: string }).type ?? ""}`)).toEqual([
       "Input.dispatchMouseEvent:mouseMoved",
-      "Input.dispatchKeyEvent:keyDown",
-      "Input.dispatchKeyEvent:keyUp",
       "Input.dispatchKeyEvent:keyDown",
       "Input.dispatchKeyEvent:keyUp",
       "Input.insertText:",

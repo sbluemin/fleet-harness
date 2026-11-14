@@ -103,14 +103,21 @@ export async function dispatchRemoteKey(
   if (isImeKeyEvent({ keyCode: event.keyCode, key: event.key })) return "ime-deferred";
   const mods = toModifiers(event);
   const params = toCdpKeyParams(describeDomKey(event.key, event.code, mods), mods);
-  await client.send("Input.dispatchKeyEvent", { ...params, type: params.text !== undefined ? "keyDown" : "rawKeyDown" }, sessionId);
+  if (event.type === "keyUp") {
+    await client.send("Input.dispatchKeyEvent", {
+      key: params.key,
+      code: params.code,
+      windowsVirtualKeyCode: params.windowsVirtualKeyCode,
+      nativeVirtualKeyCode: params.nativeVirtualKeyCode,
+      modifiers: params.modifiers,
+      type: "keyUp",
+    }, sessionId);
+    return "dispatched";
+  }
   await client.send("Input.dispatchKeyEvent", {
-    key: params.key,
-    code: params.code,
-    windowsVirtualKeyCode: params.windowsVirtualKeyCode,
-    nativeVirtualKeyCode: params.nativeVirtualKeyCode,
-    modifiers: params.modifiers,
-    type: "keyUp",
+    ...params,
+    type: params.text !== undefined ? "keyDown" : "rawKeyDown",
+    ...(event.repeat ? { autoRepeat: true } : {}),
   }, sessionId);
   return "dispatched";
 }
