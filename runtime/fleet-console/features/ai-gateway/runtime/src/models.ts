@@ -2,6 +2,8 @@ import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
+import type { QuotaScope } from "./quota/types.js";
+import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
 export const GATEWAY_PROVIDERS = ["codex", "xai", "antigravity", "muse-code", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
@@ -54,7 +56,7 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   }).strict(),
 ]);
 
-export type GatewayQuotaScope = "auto" | "fable";
+export type GatewayQuotaScope = QuotaScope;
 
 const GatewayModelEntrySchema = z.object({
   modelId: z.string().min(1),
@@ -64,6 +66,7 @@ const GatewayModelEntrySchema = z.object({
   fastSupported: z.boolean().optional(),
   fastUpstreamId: z.string().min(1).optional(),
   fast: z.boolean().optional(),
+  quotaScope: z.string().refine(isQuotaScope, { message: "invalid quotaScope" }).optional(),
   wire: z.enum(GATEWAY_MODEL_WIRES).optional(),
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
@@ -116,6 +119,8 @@ export interface GatewayModel {
   readonly fastUpstreamId?: string;
   /** Selected service tier; never a separate model identity. */
   readonly fast?: boolean;
+  /** Optional explicit sub-pool override; defaults to `model:<id>` derived from the catalog entry. */
+  readonly quotaScope?: GatewayQuotaScope;
   /** 공급자가 선언한 업스트림 와이어 프로토콜. 생략하면 `anthropic`이다. */
   readonly wire?: GatewayModelWire;
   readonly description?: string;
@@ -373,12 +378,22 @@ export interface GatewayModelConstraints {
   readonly quotaScope?: GatewayQuotaScope;
 }
 
+export function resolveModelQuotaScope(model: Pick<GatewayModel, "id" | "provider" | "claudeAlias" | "quotaScope">): GatewayQuotaScope | undefined {
+  if (model.quotaScope !== undefined) return model.quotaScope;
+  if (model.provider === "claude" && model.claudeAlias) {
+    return modelQuotaScope(model.claudeAlias);
+  }
+  const bareId = model.id.startsWith(`${model.provider}--`)
+    ? model.id.slice(model.provider.length + 2)
+    : model.id;
+  return modelQuotaScope(bareId);
+}
+
 export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelConstraints {
   const ladder = model.effort.supported
     ? model.effort.levels.filter((level) => ANTHROPIC_EFFORT_RUNGS.has(level))
     : [];
-  const quotaScope: GatewayQuotaScope | undefined =
-    model.provider === "claude" && model.claudeAlias === "fable" ? "fable" : undefined;
+  const quotaScope = resolveModelQuotaScope(model);
   return {
     provider: model.provider,
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
@@ -392,7 +407,7 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
 export function buildGatewayModelQuota(model: GatewayModel) {
   const { quotaScope } = buildGatewayModelConstraints(model);
   return {
-    quotaPool: `${model.provider}:${quotaScope ?? "shared"}`,
+    quotaPool: model.quotaScope ? `${model.provider}:${model.quotaScope}` : `${model.provider}:shared`,
     ...(quotaScope === undefined ? {} : { quotaScope }),
   };
 }
@@ -500,6 +515,7 @@ function toGatewayModel(
     ...(entry.fastSupported ? { fastSupported: true } : {}),
     ...(entry.fastUpstreamId ? { fastUpstreamId: entry.fastUpstreamId } : {}),
     ...(entry.fast ? { fast: true } : {}),
+    ...(entry.quotaScope ? { quotaScope: entry.quotaScope as GatewayQuotaScope } : {}),
     ...(entry.wire ? { wire: entry.wire } : {}),
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),

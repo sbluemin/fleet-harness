@@ -55,8 +55,13 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
     .map(model => {
       const constraints = buildGatewayModelConstraints(model);
       const efforts = exposedEffortLadder(model.id, constraints.effortLadder, exposure.effortExposure);
-      const { quotaPool: pool } = buildGatewayModelQuota(model);
-      quotaPools[pool] ??= normalizeRoutingQuota(exposure.quota?.[model.provider], constraints.quotaScope, now);
+      const providerQuota = exposure.quota?.[model.provider];
+      const hasScopedWindow = constraints.quotaScope !== undefined
+        && (providerQuota?.windows ?? []).some((window) => window.scope === constraints.quotaScope);
+      const pool = hasScopedWindow
+        ? `${model.provider}:${constraints.quotaScope}`
+        : buildGatewayModelQuota(model).quotaPool;
+      quotaPools[pool] ??= normalizeRoutingQuota(providerQuota, constraints.quotaScope, now);
       const rank = preference.indexOf(model.provider);
       // 카탈로그 창을 그대로 싣는다 — Claude 가족 항목은 모두 1M이다.
       const contextWindow = gatewayModelContextWindow(model);

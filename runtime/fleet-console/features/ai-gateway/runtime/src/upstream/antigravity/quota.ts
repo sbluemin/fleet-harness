@@ -6,12 +6,13 @@ import {
   optionalTrimmedString,
   type CredentialResolverDeps,
 } from "../../transport/credentials.js";
-import type { ProviderResult, QuotaWindow, WindowId } from "../../quota/types.js";
+import type { ProviderResult, QuotaScope, QuotaWindow, WindowId } from "../../quota/types.js";
 import {
   HOUR_MS,
   WEEK_MS,
   array,
   expired,
+  modelQuotaScope,
   object,
   postJson,
   safeTimestamp,
@@ -66,10 +67,17 @@ const BUCKETS: Readonly<Record<string, {
   readonly label: string;
   readonly durationMs: number;
   readonly reported: boolean;
+  readonly scope?: QuotaScope;
 }>> = Object.freeze({
   "gemini-5h": { id: "session", label: "Gemini", durationMs: SESSION_MS, reported: true },
   "gemini-weekly": { id: "weekly", label: "Gemini", durationMs: WEEK_MS, reported: true },
-  "gemini-argon-wtu-weekly": { id: "weekly", label: "Gemini 4 Argon", durationMs: WEEK_MS, reported: true },
+  "gemini-argon-wtu-weekly": {
+    id: "weekly",
+    label: "Gemini 4 Argon",
+    durationMs: WEEK_MS,
+    reported: true,
+    scope: modelQuotaScope("gemini-4-argon"),
+  },
   "3p-5h": { id: "session", label: "Claude & GPT", durationMs: SESSION_MS, reported: false },
   "3p-weekly": { id: "weekly", label: "Claude & GPT", durationMs: WEEK_MS, reported: false },
 });
@@ -113,6 +121,7 @@ export function parseAntigravityQuotaSummary(payload: unknown): readonly QuotaWi
       const period = windowPeriod(known.durationMs, "catalog", resetsAt);
       byBucket.set(bucketId, {
         id: known.id,
+        ...(known.scope ? { scope: known.scope } : {}),
         label: known.label,
         usedPercent,
         ...(resetsAt === undefined ? {} : { resetsAt }),

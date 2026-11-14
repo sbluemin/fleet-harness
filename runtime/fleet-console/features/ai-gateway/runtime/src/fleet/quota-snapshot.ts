@@ -9,6 +9,7 @@
  */
 
 import type { QuotaWindowPressure } from "../quota/pressure.js";
+import { isQuotaScope } from "../quota/windows.js";
 
 function record(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -125,11 +126,12 @@ export function parseGatewayQuotaSnapshot(value: unknown): GatewayQuotaSnapshot 
       ? provider.windows.flatMap((entry) => {
           const window = record(entry);
           if (!window || typeof window.id !== "string" || typeof window.usedPercent !== "number") return [];
+          if (window.scope !== undefined && !isQuotaScope(window.scope)) return [];
           const period = toWindowPeriod(window.period);
           const amounts = toWindowAmounts(window.amounts);
           return [{
             id: window.id,
-            ...(typeof window.scope === "string" ? { scope: window.scope } : {}),
+            ...(window.scope !== undefined ? { scope: window.scope } : {}),
             ...(typeof window.label === "string" ? { label: window.label } : {}),
             usedPercent: window.usedPercent,
             ...(typeof window.resetsAt === "number" ? { resetsAt: window.resetsAt } : {}),

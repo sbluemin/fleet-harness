@@ -415,7 +415,15 @@ describe("quota service", () => {
             fetchedAt: now,
             windows: [
               { id: "weekly", usedPercent: 66, resetsAt },
-              { id: "model", scope: "fable", label: "Fable", usedPercent: 95, resetsAt },
+              { id: "model", scope: "model:fable", label: "Fable", usedPercent: 95, resetsAt },
+              { id: "model", scope: "model:future-model", label: "Future", usedPercent: 10, resetsAt },
+            ],
+          },
+          antigravity: {
+            status: "ok",
+            fetchedAt: now,
+            windows: [
+              { id: "weekly", scope: "model:gemini-4-argon", label: "Gemini 4 Argon", usedPercent: 12, resetsAt },
             ],
           },
         },
@@ -427,7 +435,11 @@ describe("quota service", () => {
       ]);
       expect(read.claude?.windows).toEqual([
         { id: "weekly", usedPercent: 66, resetsAt },
-        { id: "model", scope: "fable", label: "Fable", usedPercent: 95, resetsAt },
+        { id: "model", scope: "model:fable", label: "Fable", usedPercent: 95, resetsAt },
+        { id: "model", scope: "model:future-model", label: "Future", usedPercent: 10, resetsAt },
+      ]);
+      expect(read.antigravity?.windows).toEqual([
+        { id: "weekly", scope: "model:gemini-4-argon", label: "Gemini 4 Argon", usedPercent: 12, resetsAt },
       ]);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
