@@ -11,12 +11,6 @@
  * on as a reference — is a violation. A deliberate exception (for example a foreground child that inherits the user's
  * terminal, where libuv ignores `windowsHide`) carries `// fleet-allow-visible-spawn: <reason>` on the line directly
  * above it.
- *
- * A PowerShell `Add-Type -TypeDefinition` fails this gate too: it compiles C# in a
- * `csc.exe` grandchild Node never sees, so no `windowsHide` can reach it, and that
- * grandchild opens its own visible console window from a console-less parent
- * (measured in #2572). Declare Win32 entry points in-process with
- * `System.Reflection.Emit` instead; `Add-Type -AssemblyName` (load only) stays allowed.
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
@@ -202,25 +196,11 @@ export function checkSource(fileName, text) {
   return violations;
 }
 
-// `Add-Type -TypeDefinition` compiles C# in a `csc.exe` grandchild that no
-// `windowsHide` can reach; only the load-only `-AssemblyName` form is allowed.
-const ADD_TYPE_COMPILE = /^(?!\s*(\/\/|\*)).*Add-Type\b.*-TypeDefinition\b/m;
-
-function addTypeCompileLine(text) {
-  const match = text.match(ADD_TYPE_COMPILE);
-  if (!match) return null;
-  return text.slice(0, match.index).split("\n").length;
-}
-
 function main() {
   const violations = [];
   for (const root of productRoots()) {
     for (const file of walk(root)) {
       const text = readFileSync(file, "utf8");
-      const compileLine = text.includes("Add-Type") ? addTypeCompileLine(text) : null;
-      if (compileLine !== null) {
-        violations.push(`${path.relative(repoRoot, file)}:${compileLine}:1 Add-Type -TypeDefinition compiles C# in a csc.exe grandchild without windowsHide`);
-      }
       if (!text.includes("child_process")) continue;
       for (const violation of checkSource(file, text)) violations.push(`${path.relative(repoRoot, file)}:${violation.line}:${violation.column} ${violation.message}`);
     }

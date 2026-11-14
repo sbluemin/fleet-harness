@@ -99,11 +99,9 @@ export const ANTIGRAVITY_REFRESH_BUFFER_MS = 60_000;
 const VENDOR_REFRESH_TIMEOUT_MS = 20_000;
 const KEYCHAIN_TIMEOUT_MS = 5_000;
 /**
- * Windows pays for a PowerShell start the other stores do not.
+ * Windows pays for a PowerShell start and a C# compile the other stores do not.
  * Measured near 450ms on this path (2026-08-22); bounded well above it because a
- * cold .NET load makes that figure a floor, not a ceiling. The reader itself no
- * longer compiles C# in-process (see `WINDOWS_CREDENTIAL_READER`), so no
- * compiler child can outlive the lookup.
+ * cold .NET load makes that figure a floor, not a ceiling.
  */
 const WINDOWS_CREDENTIAL_TIMEOUT_MS = 15_000;
 
@@ -223,58 +221,42 @@ const WINDOWS_CREDENTIAL_TARGET = `${ANTIGRAVITY_KEYCHAIN_SERVICE}:${ANTIGRAVITY
 /**
  * Read one Credential Manager item and print its blob as base64.
  *
- * Windows ships no shell tool that prints a generic credential's value, so this
- * declares `CredReadW` and calls it. The declaration is emitted in-process with
- * `System.Reflection.Emit`, never compiled with `Add-Type -TypeDefinition`:
- * that compile step spawns `csc.exe` (and `cvtres.exe`) as grandchildren of the
- * hidden lookup, and a console-subsystem grandchild with no hidden console to
- * inherit opens its own visible console window — the periodic flicker in #2572.
- * Emitting the P/Invoke in-process spawns no child at all, so there is nothing
- * left that could flash. Two PowerShell load-bearing details: `PtrToStructure`
- * is resolved to its `(IntPtr, Type)` overload explicitly because the 5.1 binder
- * otherwise takes `(IntPtr, object)`, and the struct needs no explicit
- * `StructLayoutAttribute` (the `SequentialLayout` type flag already applies).
- *
- * Two choices here are deliberate: the blob is emitted base64 because the console code
+ * Windows ships no shell tool that prints a generic credential's value, which is
+ * why this declares `CredReadW` and calls it rather than shelling out to one. Two
+ * choices here are deliberate: the blob is emitted base64 because the console code
  * page would otherwise decide how `go-keyring`'s UTF-8 bytes come out, and base64
  * is ASCII under every page; and an absent item prints nothing and exits 0, since
  * "not signed in" is a fact to report, not a failure to raise.
  */
 const WINDOWS_CREDENTIAL_READER = `$ErrorActionPreference = 'Stop'
-$__asm = [AppDomain]::CurrentDomain.DefineDynamicAssembly((New-Object System.Reflection.AssemblyName('FleetCredRead')), 'Run')
-$__mod = $__asm.DefineDynamicModule('FleetCredReadModule')
-$__apiB = $__mod.DefineType('FleetAdvapi', 'Public, Class, AutoClass, AnsiClass, BeforeFieldInit')
-$__readM = $__apiB.DefinePInvokeMethod('CredReadW', 'advapi32.dll', 'Public, Static', 'Standard', [int], [type[]]@([string], [uint32], [uint32], [IntPtr].MakeByRefType()), 'Winapi', 'Unicode')
-$__readM.SetImplementationFlags('PreserveSig')
-$__freeM = $__apiB.DefinePInvokeMethod('CredFree', 'advapi32.dll', 'Public, Static', 'Standard', [void], [type[]]@([IntPtr]), 'Winapi', 'Auto')
-$__freeM.SetImplementationFlags('PreserveSig')
-$__credB = $__mod.DefineType('FleetCredential', 'Public, Sealed, SequentialLayout, BeforeFieldInit', [ValueType])
-[void]$__credB.DefineField('Flags', [uint32], 'Public')
-[void]$__credB.DefineField('Type', [uint32], 'Public')
-[void]$__credB.DefineField('TargetName', [IntPtr], 'Public')
-[void]$__credB.DefineField('Comment', [IntPtr], 'Public')
-[void]$__credB.DefineField('LastWritten', [int64], 'Public')
-[void]$__credB.DefineField('CredentialBlobSize', [uint32], 'Public')
-[void]$__credB.DefineField('CredentialBlob', [IntPtr], 'Public')
-[void]$__credB.DefineField('Persist', [uint32], 'Public')
-[void]$__credB.DefineField('AttributeCount', [uint32], 'Public')
-[void]$__credB.DefineField('Attributes', [IntPtr], 'Public')
-[void]$__credB.DefineField('TargetAlias', [IntPtr], 'Public')
-[void]$__credB.DefineField('UserName', [IntPtr], 'Public')
-$__credT = $__credB.CreateType()
-$__advapi = $__apiB.CreateType()
-$__ptrToStruct = [Runtime.InteropServices.Marshal].GetMethod('PtrToStructure', [type[]]@([IntPtr], [type]))
-$__handle = [IntPtr]::Zero
-$__found = $__advapi::CredReadW('${WINDOWS_CREDENTIAL_TARGET}', 1, 0, [ref]$__handle)
-if ($__found -ne 0) {
-  try {
-    $__cred = $__ptrToStruct.Invoke($null, @($__handle, $__credT))
-    $__size = $__cred.CredentialBlobSize
-    $__blob = New-Object byte[] $__size
-    [Runtime.InteropServices.Marshal]::Copy($__cred.CredentialBlob, $__blob, 0, $__size)
-    [Console]::Out.Write([Convert]::ToBase64String($__blob))
-  } finally { $__advapi::CredFree($__handle) }
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class FleetAntigravityCredential {
+  [DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode, EntryPoint="CredReadW")]
+  private static extern bool CredRead(string target, uint type, uint flags, out IntPtr credential);
+  [DllImport("advapi32.dll")]
+  private static extern void CredFree(IntPtr credential);
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+  private struct CREDENTIAL {
+    public uint Flags; public uint Type; public IntPtr TargetName; public IntPtr Comment;
+    public long LastWritten; public uint CredentialBlobSize; public IntPtr CredentialBlob;
+    public uint Persist; public uint AttributeCount; public IntPtr Attributes;
+    public IntPtr TargetAlias; public IntPtr UserName;
+  }
+  public static string Read(string target) {
+    IntPtr handle;
+    if (!CredRead(target, 1, 0, out handle)) return "";
+    try {
+      CREDENTIAL cred = (CREDENTIAL)Marshal.PtrToStructure(handle, typeof(CREDENTIAL));
+      byte[] blob = new byte[cred.CredentialBlobSize];
+      Marshal.Copy(cred.CredentialBlob, blob, 0, (int)cred.CredentialBlobSize);
+      return Convert.ToBase64String(blob);
+    } finally { CredFree(handle); }
+  }
 }
+'@
+[Console]::Out.Write([FleetAntigravityCredential]::Read('${WINDOWS_CREDENTIAL_TARGET}'))
 `;
 
 /**
