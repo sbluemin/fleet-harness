@@ -7,7 +7,8 @@
  *
  * Listens on 127.0.0.1 only. /set sends two fixed cookies and nothing else:
  * fleet_session (no Max-Age) and fleet_persist (Max-Age 2592000).
- * /read returns the Cookie header this request carried, as JSON, and sets nothing.
+ * /read returns only those two cookies from the Cookie header this request carried, as JSON,
+ * drops every other cookie the browser sent, and sets nothing.
  * The caller chooses the browser session or profile and records what /read showed.
  * This server does not.
  */
@@ -15,7 +16,16 @@
 import http from 'node:http';
 
 const SESSION = 'fleet_session=session-value; Path=/';
+const NAMES = new Set(['fleet_session', 'fleet_persist']);
 const PERSIST = 'fleet_persist=persist-value; Path=/; Max-Age=2592000';
+
+function onlyFixtureCookies(header) {
+  return (header ?? '')
+    .split(';')
+    .map((part) => part.trim())
+    .filter((part) => NAMES.has(part.split('=')[0]))
+    .join('; ');
+}
 
 function fail(message) {
   process.stderr.write(`cookie-fixture-server: ${message}\n`);
@@ -52,7 +62,7 @@ function main() {
     }
     if (pathname === '/read') {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ at: new Date().toISOString(), cookie: req.headers.cookie ?? '' }));
+      res.end(JSON.stringify({ at: new Date().toISOString(), cookie: onlyFixtureCookies(req.headers.cookie) }));
       return;
     }
     res.statusCode = 404;
