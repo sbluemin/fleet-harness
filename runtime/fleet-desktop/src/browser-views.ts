@@ -504,14 +504,22 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     cancel(watch[key]);
     watch[key] = null;
   };
+  const setFileChooserIntercept = (id: string, enabled: boolean): void => {
+    const entry = live.get(id);
+    if (!entry || !entry.attached || entry.view.webContents.isDestroyed()) return;
+    if (typeof entry.view.webContents.debugger?.sendCommand !== "function") return;
+    void entry.view.webContents.debugger.sendCommand("Page.setInterceptFileChooserDialog", { enabled }).catch(() => undefined);
+  };
   const stopWatch = (id: string): void => {
     const watch = watches.get(id);
     if (!watch) return;
+    const wasWatching = watch.watching;
     watch.watching = false;
     watch.dirty = false;
     watch.immediate = false;
     clearHandle(watch, "timer");
     clearHandle(watch, "poll");
+    if (wasWatching) setFileChooserIntercept(id, false);
   };
   function armPoll(id: string): void {
     const watch = watches.get(id);
@@ -604,6 +612,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       watch.dirty = true;
       watch.sent = false;
       watch.lastJpeg = null;
+      setFileChooserIntercept(id, true);
       kick(id);
       armPoll(id);
     }

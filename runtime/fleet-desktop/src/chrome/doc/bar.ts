@@ -9,6 +9,7 @@ const SUGGEST_DELAY_MS = 200;
 type RemoteCard =
   | { readonly kind: "select"; readonly popup: NonNullable<ChromeViewOnly["selectPopup"]> }
   | { readonly kind: "permission"; readonly prompt: NonNullable<ChromeViewOnly["permissionPrompts"]>[number] }
+  | { readonly kind: "fileChooser"; readonly prompt: NonNullable<ChromeViewOnly["fileChooser"]> }
   | { readonly kind: "password"; readonly prompt: NonNullable<ChromeViewOnly["passwordPrompt"]> };
 const PERSISTENT = "default";
 /** 스페이스 칸 하나가 미리 보여 주는 탭 아이콘 수 — 넘치면 「+n」으로 줄인다. */
@@ -154,7 +155,9 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
         h("span", { class: "menu-body" }, h("strong", { text: t(value ? "profile.persistent" : "profile.ephemeral") }), h("span", { class: "help", text: t(value ? "profile.persistentHelp" : "profile.ephemeralHelp") })), tail);
       menu.append(row);
     }
-    menu.append(item(t, G.import, t("import.title"), () => post("bar", "import-open"), { disabled: state.importUnavailable || !ready, title: state.importUnavailable ? t("import.windowsPending") : undefined }));
+    if (!state.viewOnly) {
+      menu.append(item(t, G.import, t("import.title"), () => post("bar", "import-open"), { disabled: state.importUnavailable || !ready, title: state.importUnavailable ? t("import.windowsPending") : undefined }));
+    }
     menu.append(item(t, G.erase, t("profile.clearItem"), () => post("bar", "clear-open"), { disabled: !ready, help: t("profile.clearScope") }));
     menu.append(h("div", { class: "menu-sep", role: "separator" }), h("div", { class: "menu-label", text: t("viewport") }));
     for (const preset of ["responsive", "mobile", "tablet"] as const) {
@@ -410,6 +413,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const view = state.viewOnly;
     if (view?.control !== true) return null;
     if (view.selectPopup) return { kind: "select", popup: view.selectPopup };
+    if (view.fileChooser) return { kind: "fileChooser", prompt: view.fileChooser };
     const permission = view.permissionPrompts?.[0];
     if (permission) return { kind: "permission", prompt: permission };
     if (view.passwordPrompt) return { kind: "password", prompt: view.passwordPrompt };
@@ -432,10 +436,32 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (card.kind === "password" && card.prompt.kind === "pick") return h("div");
     if (card.kind === "select") {
       const popup = card.popup;
+      if (popup.multiple) {
+        const picked = new Set<number>(popup.options.filter((option) => option.selected).map((option) => option.index));
+        const rows = popup.options.map((option) => {
+          const row = h("button", { class: "menu-item", type: "button", role: "menuitemcheckbox", disabled: option.disabled, attrs: { "aria-checked": String(picked.has(option.index)) } },
+            h("span", { class: "menu-body" }, h("strong", { text: option.group ? `${option.group} — ${option.label || option.value}` : (option.label || option.value) })));
+          row.addEventListener("click", () => {
+            if (picked.has(option.index)) picked.delete(option.index);
+            else picked.add(option.index);
+            row.setAttribute("aria-checked", String(picked.has(option.index)));
+          });
+          return row;
+        });
+        const apply = h("button", { class: "button primary", type: "button", text: t("remote.apply"), on: { click: () => post("bar", "select-popup", { popupId: popup.id, tabId: popup.tabId, choice: "choose", indices: [...picked].sort((a, b) => a - b) }) } });
+        const cancel = h("button", { class: "button", type: "button", text: t("select.cancel"), on: { click: () => post("bar", "select-popup", { popupId: popup.id, tabId: popup.tabId, choice: "cancel" }) } });
+        return dialog(t, t("select.title"), null, rows, [cancel, apply], `select:${popup.id}`);
+      }
       const rows = popup.options.map((option) => h("button", { class: "menu-item", type: "button", disabled: option.disabled, on: { click: () => post("bar", "select-popup", { popupId: popup.id, tabId: popup.tabId, choice: "choose", indices: [option.index] }) } },
-        h("span", { class: "menu-body" }, h("strong", { text: option.label }))));
+        h("span", { class: "menu-body" }, h("strong", { text: option.group ? `${option.group} — ${option.label || option.value}` : (option.label || option.value) }))));
       const cancel = h("button", { class: "button", type: "button", text: t("select.cancel"), on: { click: () => post("bar", "select-popup", { popupId: popup.id, tabId: popup.tabId, choice: "cancel" }) } });
       return dialog(t, t("select.title"), null, rows, [cancel], `select:${popup.id}`);
+    }
+    if (card.kind === "fileChooser") {
+      const prompt = card.prompt;
+      const pick = h("button", { class: "button primary", type: "button", text: t("fileChooser.pick"), on: { click: () => post("bar", "file-chooser-open", { chooserId: prompt.id, tabId: prompt.tabId, multiple: prompt.multiple }) } });
+      const cancel = h("button", { class: "button", type: "button", text: t("select.cancel"), on: { click: () => post("bar", "file-chooser-cancel", { chooserId: prompt.id, tabId: prompt.tabId }) } });
+      return dialog(t, t("fileChooser.title"), t("fileChooser.body"), [], [cancel, pick], `file-chooser:${prompt.id}`);
     }
     if (card.kind === "permission") {
       const prompt = card.prompt;

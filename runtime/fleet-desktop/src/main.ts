@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { app, BaseWindow, clipboard, dialog, Menu, nativeImage, Notification, safeStorage, screen, session, shell, systemPreferences, Tray, WebContentsView, type Session } from "electron";
 
-import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, type DesktopBrowserPlatform } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, REMOTE_FILE_CHOOSER_MAX_FILE_BYTES, REMOTE_FILE_CHOOSER_MAX_FILES, REMOTE_FILE_CHOOSER_MAX_TOTAL_BYTES, type DesktopBrowserPlatform, type RemoteBrowserUploadFile } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 import { autoUpdater } from "electron-updater";
@@ -627,6 +627,26 @@ async function boot(): Promise<void> {
     lang: entryLanguage,
     localAct: browserActions,
     openExternal: (url) => { void shell.openExternal(url); },
+    pickFiles: async ({ multiple }) => {
+      const properties: ("openFile" | "multiSelections")[] = multiple ? ["openFile", "multiSelections"] : ["openFile"];
+      const parent = window && !window.isDestroyed() ? window.base : null;
+      const chosen = parent
+        ? await withOwnModal(parent, () => dialog.showOpenDialog(parent, { properties }))
+        : await dialog.showOpenDialog({ properties });
+      if (chosen.canceled || chosen.filePaths.length === 0) return { cancelled: true };
+      if (chosen.filePaths.length > REMOTE_FILE_CHOOSER_MAX_FILES) return { cancelled: true, error: "fileChooser.tooLarge" };
+      const files: RemoteBrowserUploadFile[] = [];
+      let total = 0;
+      for (const filePath of chosen.filePaths) {
+        const stat = await fs.promises.stat(filePath);
+        if (!stat.isFile() || stat.size > REMOTE_FILE_CHOOSER_MAX_FILE_BYTES) return { cancelled: true, error: "fileChooser.tooLarge" };
+        total += stat.size;
+        if (total > REMOTE_FILE_CHOOSER_MAX_TOTAL_BYTES) return { cancelled: true, error: "fileChooser.tooLarge" };
+        const bytes = await fs.promises.readFile(filePath);
+        files.push({ name: path.basename(filePath), contentBase64: bytes.toString("base64") });
+      }
+      return { cancelled: false, files };
+    },
     log: (message) => logger.info(message),
   });
   const captureViewerFrame = async (view: WebContentsView): Promise<{ jpeg: Buffer; width: number; height: number } | null> => {
@@ -695,7 +715,8 @@ async function boot(): Promise<void> {
      * 있으므로 쿠키는 그 파티션의 세션에만 들어가고 창의 쿠키 저장소는 건드리지 않는다.
      */
     shellCommand: async (method, params) => {
-      if (await remoteShell.command(method, params, browserPasswordAgent)) return {};
+      const handled = await remoteShell.command(method, params, browserPasswordAgent);
+      if (handled.handled) return handled.result ?? {};
       if (method === DESKTOP_BROWSER_PASSWORDS) return browserPasswordVault.command(params);
       if (method === DESKTOP_BROWSER_CHROME_PROFILES) return chromeImportSources();
       if (method === DESKTOP_BROWSER_HISTORY) return browserHistoryStorage.command(params);
@@ -1236,6 +1257,7 @@ async function boot(): Promise<void> {
     browserSyncTimer = null;
     browserViewer?.stop();
     browserHost.stopAll();
+    remoteShell.cleanupAll();
     bridge.dispose();
     wslConsoles?.unwatch();
     // Quit ends the WSL Consoles this Desktop manages together with its own, each through its stop request.

@@ -1,7 +1,15 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import {
   DESKTOP_BROWSER_ANSWER_PERMISSION,
+  DESKTOP_BROWSER_CLEANUP_FILES,
   DESKTOP_BROWSER_PASSWORD_ACTION,
   DESKTOP_BROWSER_SELECT_POPUP,
+  DESKTOP_BROWSER_STAGE_FILES,
+  REMOTE_FILE_CHOOSER_MAX_FILE_BYTES,
+  REMOTE_FILE_CHOOSER_MAX_FILES,
+  REMOTE_FILE_CHOOSER_MAX_TOTAL_BYTES,
   isRemoteBrowserPasswordAction,
   isRemoteBrowserPermissionAction,
   isRemoteBrowserSelectPopupAction,
@@ -47,7 +55,20 @@ export interface BrowserRemoteShell {
   noteSelect(popup: RemoteBrowserSelectPopup | null, answer?: (action: RemoteBrowserSelectPopupAction) => void): void;
   relayExtras(): BrowserRemoteRelayExtras;
   setFlush(flush: () => void): void;
-  command(method: string, params: Record<string, unknown>, passwords: RemoteShellPasswordAgent): Promise<boolean>;
+  command(method: string, params: Record<string, unknown>, passwords: RemoteShellPasswordAgent): Promise<{ readonly handled: boolean; readonly result?: unknown }>;
+  cleanupAll(): void;
+}
+
+function sanitizeUploadFilename(raw: string, index: number, used: Set<string>): string {
+  const base = path.basename(raw.replace(/[\\/]/g, "/")).replace(/[\u0000-\u001f\u007f<>:"|?*]/g, "_").trim();
+  const clean = !base || base === "." || base === ".." ? `file-${index + 1}` : base.slice(0, 180);
+  if (!used.has(clean)) { used.add(clean); return clean; }
+  const ext = path.extname(clean);
+  const stem = ext ? clean.slice(0, -ext.length) : clean;
+  for (let suffix = 1; ; suffix += 1) {
+    const candidate = `${stem}-${suffix}${ext}`;
+    if (!used.has(candidate)) { used.add(candidate); return candidate; }
+  }
 }
 
 export function remotePasswordPrompt(prompt: PasswordPrompt | null): RemoteBrowserPasswordPrompt | null {
@@ -67,8 +88,16 @@ export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof se
   let password: RemoteBrowserPasswordPrompt | null = null;
   let selectPopup: RemoteBrowserSelectPopup | null = null;
   let selectAnswer: ((action: RemoteBrowserSelectPopupAction) => void) | null = null;
+  const stagedDirs = new Map<string, string>();
   let flush: (() => void) | null = null;
   let serial = 0;
+
+  const removeStagedDir = (stagingId: string): void => {
+    const dir = stagedDirs.get(stagingId);
+    if (!dir) return;
+    stagedDirs.delete(stagingId);
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 이미 정리됨 */ }
+  };
 
   const publish = (): void => { flush?.(); };
 
@@ -118,19 +147,53 @@ export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof se
     },
     relayExtras: () => ({ selectPopup, permissionPrompts: [...permissions.values()].map((entry) => entry.prompt), passwordPrompt: password }),
     setFlush(next) { flush = next; next(); },
+    cleanupAll() { for (const stagingId of [...stagedDirs.keys()]) removeStagedDir(stagingId); },
     async command(method, params, passwords) {
+      if (method === DESKTOP_BROWSER_STAGE_FILES) {
+        const rawFiles = Array.isArray(params.files) ? params.files : null;
+        if (!rawFiles || rawFiles.length === 0 || rawFiles.length > REMOTE_FILE_CHOOSER_MAX_FILES) throw new Error("stage_files_invalid");
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-remote-upload-"));
+        try { fs.chmodSync(dir, 0o700); } catch { /* 플랫폼 허용 범위 */ }
+        const stagingId = `stage-${++serial}`;
+        stagedDirs.set(stagingId, dir);
+        const used = new Set<string>();
+        const paths: string[] = [];
+        let total = 0;
+        try {
+          for (let index = 0; index < rawFiles.length; index += 1) {
+            const entry = rawFiles[index] as { name?: unknown; contentBase64?: unknown } | null;
+            if (!entry || typeof entry.name !== "string" || typeof entry.contentBase64 !== "string") throw new Error("stage_files_invalid");
+            const data = Buffer.from(entry.contentBase64, "base64");
+            if (data.byteLength > REMOTE_FILE_CHOOSER_MAX_FILE_BYTES) throw new Error("stage_file_too_large");
+            total += data.byteLength;
+            if (total > REMOTE_FILE_CHOOSER_MAX_TOTAL_BYTES) throw new Error("stage_files_too_large");
+            const fileName = sanitizeUploadFilename(entry.name, index, used);
+            const target = path.join(dir, fileName);
+            fs.writeFileSync(target, data, { mode: 0o600 });
+            paths.push(target);
+          }
+          return { handled: true, result: { stagingId, paths } };
+        } catch (error) {
+          removeStagedDir(stagingId);
+          throw error;
+        }
+      }
+      if (method === DESKTOP_BROWSER_CLEANUP_FILES) {
+        if (typeof params.stagingId === "string") removeStagedDir(params.stagingId);
+        return { handled: true, result: { cleaned: true } };
+      }
       if (method === DESKTOP_BROWSER_ANSWER_PERMISSION) {
         if (!isRemoteBrowserPermissionAction(params)) throw new Error("permission_action_invalid");
         if (!permissions.has(params.promptId)) throw new Error("permission_prompt_missing");
         finishPermission(params.promptId, params.allow);
-        return true;
+        return { handled: true };
       }
       if (method === DESKTOP_BROWSER_PASSWORD_ACTION) {
         if (!isRemoteBrowserPasswordAction(params)) throw new Error("password_action_invalid");
         if (!password || password.id !== params.promptId || password.tabId !== params.tabId) throw new Error("password_prompt_missing");
         const action = params.action === "pick" ? "password-pick" : params.action === "save" ? "password-save" : params.action === "dismiss" ? "password-dismiss" : "password-never";
         await passwords.chromeAction(action, params.username);
-        return true;
+        return { handled: true };
       }
       if (method === DESKTOP_BROWSER_SELECT_POPUP) {
         if (!isRemoteBrowserSelectPopupAction(params)) throw new Error("select_popup_invalid");
@@ -140,9 +203,9 @@ export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof se
         selectAnswer = null;
         publish();
         answer(params);
-        return true;
+        return { handled: true };
       }
-      return false;
+      return { handled: false };
     },
   };
 }

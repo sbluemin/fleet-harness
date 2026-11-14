@@ -1,6 +1,7 @@
+import fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
-import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_PASSWORD_ACTION, type DesktopBrowserChrome, type DesktopBrowserViewerSnapshot } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_STAGE_FILES, type DesktopBrowserChrome, type DesktopBrowserViewerSnapshot } from "@fleet-console/protocol/desktop";
 import { createBrowserActions } from "../src/browser-actions.js";
 import { createBrowserRemoteShell, remotePasswordPrompt } from "../src/browser-remote-shell.js";
 import { chromeControlFor, type SurfaceControl } from "../src/browser-surface.js";
@@ -58,6 +59,9 @@ async function openViewer(body: DesktopBrowserViewerSnapshot, posts: { url: stri
   const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const href = String(url);
     posts.push({ url: href, init });
+    if (href.includes("/viewer/stream")) {
+      return new Response("not found", { status: 404 });
+    }
     if (href.includes("/viewer/chrome") && !href.includes("/events") && !href.includes("/frame")) {
       return new Response(JSON.stringify(body), { status: 200 });
     }
@@ -167,5 +171,15 @@ describe("remote browser shell", () => {
     expect(allowed).toBe(true);
     expect(shell.relayExtras().permissionPrompts).toEqual([]);
     expect(flushed.length).toBeGreaterThan(0);
+
+    const staged = await shell.command(DESKTOP_BROWSER_STAGE_FILES, {
+      files: [{ name: "../../evil.txt", contentBase64: Buffer.from("hello-upload").toString("base64") }],
+    }, { async chromeAction() {} });
+    expect(staged.handled).toBe(true);
+    const { stagingId, paths } = staged.result as { stagingId: string; paths: string[] };
+    expect(paths).toHaveLength(1);
+    expect(fs.readFileSync(paths[0]!, "utf8")).toBe("hello-upload");
+    await shell.command(DESKTOP_BROWSER_CLEANUP_FILES, { stagingId }, { async chromeAction() {} });
+    expect(fs.existsSync(paths[0]!)).toBe(false);
   });
 });

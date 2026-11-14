@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
-import { DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_BROWSER_FRAME_AT_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_SEQ_HEADER, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, type BrowserExecutionHost, type BrowserSurfaceModeKind } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_BROWSER_VIEWER_STREAM_PATH, DESKTOP_BROWSER_FRAME_AT_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_SEQ_HEADER, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, type BrowserExecutionHost, type BrowserSurfaceModeKind } from "@fleet-console/protocol/desktop";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
 import { ViewerFrameClosedError, ViewerFrameDisconnectedError, ViewerFrameTimeoutError, type DesktopEngine } from "./desktop-engine.js";
+import { serveViewerStream } from "./viewer-stream.js";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 import { writeImageToClipboard } from "./clipboard.js";
 import { DEFAULT_BROWSER_SUGGESTION_SETTINGS, suggestionSkipReason, type BrowserSuggestionSettings } from "../shared/suggestions.js";
@@ -58,6 +59,7 @@ interface BrowserRouteDeps {
 }
 
 const BROWSER_PASTE_MAX_BYTES = 48 * 1024 * 1024;
+const BROWSER_FILE_UPLOAD_MAX_BYTES = 72 * 1024 * 1024;
 
 const VIEWER_FRAME_PATH = "/api/v1/browser/viewer/frame";
 const VIEWER_UNWATCH_PATH = "/api/v1/browser/viewer/unwatch";
@@ -72,6 +74,9 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
   return async ({ req, res, pathname }) => {
     if (!isWriteAdmitted(req)) { writeJson(res, 404, { error: "not_found" }); return true; }
     if (pathname === VIEWER_FRAME_PATH || pathname === VIEWER_UNWATCH_PATH) return serveViewer(req, res, pathname);
+    if (pathname === DESKTOP_BROWSER_VIEWER_STREAM_PATH) {
+      return serveViewerStream(req, res, { desktopEngine, browserService, viewerFrameRead, executionHost, withSecurityHeaders, writeJson, readUrl });
+    }
     if (pathname === DESKTOP_BROWSER_VIEWER_PATH || pathname === DESKTOP_BROWSER_VIEWER_EVENTS_PATH) {
       // 보기 전용 셸(이 Console 을 관리하지 않는 Desktop)이 읽는 투영 — 프레임 읽기와 같은 입장 규칙이다.
       const admission = viewerFrameRead(req);
@@ -85,7 +90,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, withSurface(req, browserService.status())); return true; }
     if (pathname === "/api/v1/browser/suggestion-settings") return serveSuggestionSettings(req, res);
     if (pathname === "/api/v1/browser/passwords" || pathname.startsWith("/api/v1/browser/passwords/")) return servePasswords(req, res, pathname);
-    if (!pathname.startsWith("/api/v1/browser/objectives/") && !isNativeBrowserWrite(req)) { writeJson(res, 403, { error: "browser_viewer_read_only" }); return true; }
+    if (!pathname.startsWith("/api/v1/browser/objectives/") && !isNativeBrowserWrite(req) && !(isRemoteBrowserControl(req) && REMOTE_GLOBAL_BROWSER_PATHS.has(pathname))) { writeJson(res, 403, { error: "browser_viewer_read_only" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") {
       if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
       try { writeJson(res, 200, await browserService.importSources()); }
@@ -162,7 +167,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|import|profile|clear-profile|surface|control|input|select-popup|permission|password-action)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|import|profile|clear-profile|surface|control|input|select-popup|permission|password-action|file-chooser)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -216,7 +221,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     }
     if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
-    const body = await readJsonBody<Record<string, unknown>>(req, action === "paste" ? BROWSER_PASTE_MAX_BYTES : undefined);
+    const body = await readJsonBody<Record<string, unknown>>(req, action === "paste" ? BROWSER_PASTE_MAX_BYTES : action === "file-chooser" ? BROWSER_FILE_UPLOAD_MAX_BYTES : undefined);
     if (!body) { writeJson(res, 400, { error: "invalid_request" }); return true; }
     try {
       if (action === "history") {
@@ -269,10 +274,11 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         if (!space || (body.action !== "take" && body.action !== "return" && body.action !== "stop")) { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, { spaceId: space, control: browserService.setControl(objectiveId, space, body.action) }); return true;
       }
-      if (action === "input") { await browserService.dispatchRemoteInput(objectiveId, body); writeJson(res, 200, { accepted: true }); return true; }
+      if (action === "input") { writeJson(res, 200, { accepted: true, ...await browserService.dispatchRemoteInput(objectiveId, body) }); return true; }
       if (action === "select-popup") { await browserService.selectPopup(objectiveId, body); writeJson(res, 200, { accepted: true }); return true; }
       if (action === "permission") { await browserService.answerPermission(objectiveId, body); writeJson(res, 200, { accepted: true }); return true; }
       if (action === "password-action") { await browserService.passwordAction(objectiveId, body); writeJson(res, 200, { accepted: true }); return true; }
+      if (action === "file-chooser") { writeJson(res, 200, await browserService.answerFileChooser(objectiveId, body)); return true; }
       if (action === "inspect") {
         if (typeof body.x !== "number" || typeof body.y !== "number") { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, { element: await browserService.inspectAt(objectiveId, body.x, body.y, typeof body.tabId === "string" ? body.tabId : null) }); return true;
@@ -486,8 +492,9 @@ function passwordCommand(route: "reveal" | "copy" | "save" | "update" | "delete"
   return command;
 }
 
-/** 원격 조작이 열 수 있는 objective 동작. 제안 설정·비밀번호 금고·가져오기·OS 클립보드 붙여넣기는 여기 없다. */
-const REMOTE_BROWSER_CONTROL_ACTIONS = new Set(["navigate", "tabs", "control", "viewport", "inspect", "screenshot", "input", "select-popup", "permission", "password-action"]);
+/** 원격 조작이 열 수 있는 전역·objective 동작. 제안 설정·비밀번호 금고·가져오기·OS 클립보드 붙여넣기는 여기 없다. */
+const REMOTE_GLOBAL_BROWSER_PATHS = new Set(["/api/v1/browser/suggest", "/api/v1/browser/default-profile", "/api/v1/browser/attach", "/api/v1/browser/shortcuts"]);
+const REMOTE_BROWSER_CONTROL_ACTIONS = new Set(["navigate", "tabs", "control", "viewport", "inspect", "screenshot", "history", "profile", "clear-profile", "input", "select-popup", "permission", "password-action", "file-chooser"]);
 
 function admitsBrowserWrite(native: boolean, remote: boolean, action: string | null): boolean {
   if (native) return true;
@@ -495,7 +502,7 @@ function admitsBrowserWrite(native: boolean, remote: boolean, action: string | n
 }
 
 function isHumanRead(method: string, pathname: string, action: string | null): boolean {
-  if (method === "GET" && (pathname === "/api/v1/browser" || pathname === VIEWER_FRAME_PATH)) return true;
+  if (method === "GET" && (pathname === "/api/v1/browser" || pathname === VIEWER_FRAME_PATH || pathname === DESKTOP_BROWSER_VIEWER_STREAM_PATH)) return true;
   if (method === "POST" && pathname === VIEWER_UNWATCH_PATH) return true;
   return method === "GET" && (action === "state" || action === "favicon");
 }

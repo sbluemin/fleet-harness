@@ -161,7 +161,7 @@ export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base
  * 브라우저 표면 — 칸(메인 창 오른쪽)과 독립 창을 같은 구조로 소유한다: 상단 줄 뷰·세로 레일 뷰·페이지 뷰. 레이아웃·오버레이 크기·페이지 자리는
  * 전부 여기서 같은 main 틱에 정한다. Console 은 상태와 정책만 보내고(스냅샷), 이 표면은 사람의 동작을 REST 로 돌려보낸다.
  */
-export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; conceal(): void; captionInset(kind: "pane" | "window"): number; viewing(): boolean; frame(tabId: string, jpeg: Buffer): void } {
+export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; conceal(): void; captionInset(kind: "pane" | "window"): number; viewing(): boolean; frame(tabId: string, jpeg: Buffer, meta?: { readonly cssWidth: number; readonly cssHeight: number } | null): void } {
   type Docs = { bar: ChromeDoc; rail: ChromeDoc; stage: ChromeDoc; guard: ChromeDoc };
   let surface: DesktopBrowserSurface | null = null;
   let chrome: DesktopBrowserChrome | null = null;
@@ -169,11 +169,11 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   /** 이 Desktop 이 관리하지 않는 Console. 페이지 뷰는 없고, 원격 조작이 아니면 가드도 서지 않는다. */
   let viewOnly: ChromeViewOnly | null = null;
   /** 보기 전용 셸이 마지막으로 받은 프레임 — 스테이지 문서가 아직 준비되지 않았거나 다시 적재되면 준비된 뒤에 다시 그린다(정적인 페이지는 다음 프레임이 오지 않는다). */
-  let viewFrame: { readonly tabId: string; readonly src: string } | null = null;
+  let viewFrame: { readonly tabId: string; readonly src: string; readonly meta: { readonly cssWidth: number; readonly cssHeight: number } | null } | null = null;
   const paintFrame = (): void => {
     const stage = docs?.stage;
     if (!viewOnly || !viewFrame || !stage || !stage.ready || stage.view.webContents.isDestroyed()) return;
-    void stage.view.webContents.executeJavaScript(`window.__fleetChrome && window.__fleetChrome.frame && window.__fleetChrome.frame(${JSON.stringify(viewFrame.tabId)}, ${JSON.stringify(viewFrame.src)})`).catch(() => undefined);
+    void stage.view.webContents.executeJavaScript(`window.__fleetChrome && window.__fleetChrome.frame && window.__fleetChrome.frame(${JSON.stringify(viewFrame.tabId)}, ${JSON.stringify(viewFrame.src)}, ${JSON.stringify(viewFrame.meta)})`).catch(() => undefined);
   };
   let docs: Docs | null = null;
   let divider: WebContentsView | null = null;
@@ -255,8 +255,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   const railWidth = (): number => dip(ui.pinned || ui.expanded ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX);
   /** 페이지 왼쪽을 차지하는 레일 폭 — 호버 펼침은 페이지 위에 겹칠 뿐 자리를 밀지 않고, 가로 표시줄이면 0. */
   const layoutRailWidth = (): number => (horizontal() ? 0 : dip(ui.pinned ? BROWSER_RAIL_EXPANDED_PX : BROWSER_RAIL_COLLAPSED_PX));
-  // 표시 탭의 alert·confirm 은 페이지 자리를 덮어 그린다 — 페이지는 크롬 문서 아래의 네이티브 뷰라, 문서 뷰를 키워야 그 위에 보인다.
+  // 표시 탭의 alert·confirm 과 원격 select·권한·비밀번호 카드는 페이지 자리를 덮어 그린다 — 문서 뷰를 키워야 그 위에 보인다.
   const pageDialog = (): boolean => chrome?.tabs.some((tab) => tab.id === chrome?.activeTabId && tab.dialog !== undefined) === true;
+  const remoteCard = (): boolean => viewOnly?.control === true && (viewOnly.selectPopup != null || viewOnly.fileChooser != null || (viewOnly.permissionPrompts?.length ?? 0) > 0 || viewOnly.passwordPrompt != null);
   // 페이지에 초점이 있던 사람의 대화상자는 카드가 서는 순간 크롬으로 초점을 옮긴다. 늦게 오는 다른 대화상자가 이 요청을 쓰지 않게 잠깐만 유효하다.
   let dialogFocusAt = 0;
   let dialogFocusToken = 0;
@@ -268,7 +269,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     return true;
   };
   /** 주소줄 뷰의 높이 — 그 뷰는 `top`(가로 탭 표시줄) 아래에서 시작한다. */
-  const barHeight = (rect: Rectangle, top: number): number => { const room = Math.max(1, rect.height - top); return ui.overlay !== null || pageDialog() ? room : ui.notice || ui.info ? Math.min(room, stripPx() + dip(TOAST_BAND_PX)) : Math.min(room, stripPx()); };
+  const barHeight = (rect: Rectangle, top: number): number => { const room = Math.max(1, rect.height - top); return ui.overlay !== null || pageDialog() || remoteCard() ? room : ui.notice || ui.info ? Math.min(room, stripPx() + dip(TOAST_BAND_PX)) : Math.min(room, stripPx()); };
 
   const allDocs = (set: Docs): ChromeDoc[] => [set.bar, set.rail, set.stage, set.guard];
 
@@ -313,9 +314,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     const held = page.width > 0 && page.height > 0 ? controlState() : null;
     if (held) docs.guard.view.setBounds(guardBounds(held));
     docs.guard.view.setVisible(held !== null);
-    // 대화상자 카드는 주소줄 문서가 페이지 자리를 덮어 그린다 — 그동안은 가드를 그 위로 올려 제어 알약이 보이고 눌리게 한다.
+    // 대화상자·원격 프롬프트 카드는 주소줄 문서가 페이지 자리를 덮어 그린다 — 그동안은 가드를 그 위로 올려 제어 알약이 보이고 눌리게 한다.
     // 에이전트가 모는 중이면 가드가 카드도 덮어, 사람의 포인터가 잠긴 페이지의 대화상자에 닿지 않는다.
-    const guardOnTop = held !== null && ui.overlay === null && pageDialog();
+    const guardOnTop = held !== null && ui.overlay === null && (pageDialog() || remoteCard());
     if (hostKind === "window") windowStack?.raiseGuard(guardOnTop);
     if (hostKind === "pane") {
       const main = deps.main();
@@ -621,7 +622,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
         if (first && docs) finalizeClose();
       }
       const viewChanged = JSON.stringify(viewOnly) !== JSON.stringify(nextViewOnly);
+      const remoteCardBefore = remoteCard();
       viewOnly = nextViewOnly;
+      const remoteCardChanged = remoteCard() !== remoteCardBefore;
       surface = next;
       if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail"), stage: makeDoc("stage"), guard: makeDoc("guard") }; }
       const json = JSON.stringify(nextChrome);
@@ -643,7 +646,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       if (dialogChanged) takeDialogFocus();
       // 제어권이 바뀌었으면 가드의 자리를 같은 틱에 다시 정한 뒤 문서에 알린다. 포인터만 움직인 투영은 자리를 건드리지 않는다.
       const heldNow = heldKey();
-      if (heldNow !== heldSeen || dialogChanged) {
+      if (heldNow !== heldSeen || dialogChanged || remoteCardChanged) {
         heldSeen = heldNow;
         update();
         // 원격 조작에서 에이전트가 쥐면 가드가 스테이지 프레임을 덮는다. 키보드도 그 문서로 모아 페이지 그림에 남지 않게 한다.
@@ -660,9 +663,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     },
     viewing: () => docs !== null && viewOnly !== null,
     /** 보기 전용 셸의 스테이지에 그 탭의 최신 프레임을 그린다. 스테이지 문서가 보는 탭의 것인지 한 번 더 가린다. */
-    frame(tabId, jpeg) {
+    frame(tabId, jpeg, meta = null) {
       if (!viewOnly || !docs) return;
-      viewFrame = { tabId, src: `data:image/jpeg;base64,${jpeg.toString("base64")}` };
+      viewFrame = { tabId, src: `data:image/jpeg;base64,${jpeg.toString("base64")}`, meta };
       paintFrame();
     },
     refresh() { if (docs) update(); },

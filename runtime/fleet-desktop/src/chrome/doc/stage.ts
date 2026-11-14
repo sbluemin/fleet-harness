@@ -43,8 +43,7 @@ export function mountStage(): {
     class: "remote-ime",
     attrs: { "aria-hidden": "true", tabindex: "-1", autocomplete: "off", autocorrect: "off", autocapitalize: "off", spellcheck: "false" },
   });
-  const overlay = h("div", { class: "remote-overlay", hidden: true as unknown as boolean });
-  document.body.append(image, overlay, imeTarget, root);
+  document.body.append(image, imeTarget, root);
   let last: ChromeUiState | null = null;
   /** 지금 그림이 어느 탭의 것인가 — 보는 탭이 바뀌면 옛 탭의 그림을 남기지 않는다. */
   let shownTab: string | null = null;
@@ -53,11 +52,9 @@ export function mountStage(): {
   /** 이 탭으로 보내는 배치 송신기 — 탭이 바뀌면 seq 충돌을 피하려고 새로 만든다. */
   let sender: RemoteInputSender | null = null;
   let senderTab: string | null = null;
-  /** 오버레이가 떠서 페이지 입력이 막힌 동안의 선택 상태(다중 선택 토글). */
-  let pendingIndices = new Set<number>();
 
   const inputActive = (): boolean =>
-    last?.viewOnly?.status === "connected" && !image.hidden && shownTab !== null;
+    last?.viewOnly?.control === true && last?.viewOnly?.status === "connected" && !image.hidden && shownTab !== null;
 
   /** 에이전트가 표시 탭을 모는 동안은 로컬과 똑같이 사람 입력을 막는다. */
   const inputAllowed = (): boolean => inputActive() && last?.control?.holder !== "agent";
@@ -132,93 +129,11 @@ export function mountStage(): {
     image.alt = tab ? tab.title || t("viewOnly") : "";
     clear(root);
     root.hidden = !image.hidden;
-    if (!image.hidden) {
-      renderRemoteOverlay(state);
-      return;
-    }
-    hideRemoteOverlay();
+    if (!image.hidden) return;
     const space = shownSpace(state);
     const title = view.status === "unmanaged" ? t("viewOnly.unmanaged") : view.status === "manager_disconnected" ? t("viewOnly.disconnected")
       : tab ? t("viewOnly.waiting") : space?.kind === "commodore" ? t("spaces.emptyTitle", { name: spaceName(t, space) }) : t("viewOnly.noTabs");
     root.append(h("span", { class: "empty-glyph" }, glyph(G.globe, 28)), h("p", { class: "empty-title", text: title }));
-  };
-
-  const hideRemoteOverlay = (): void => {
-    overlay.hidden = true;
-    clear(overlay);
-    pendingIndices = new Set();
-  };
-
-  /** 실행 측 `<select>`·권한 창 오버레이. 뜨는 동안 페이지 입력은 보내지 않는다. */
-  const renderRemoteOverlay = (state: ChromeUiState): void => {
-    const t = tr(state);
-    const view = state.viewOnly;
-    const select = view?.select ?? null;
-    const permission = view?.permission ?? null;
-    if ((!select || select.tabId !== shownTab) && (!permission || permission.tabId !== shownTab)) {
-      hideRemoteOverlay();
-      return;
-    }
-    clear(overlay);
-    overlay.hidden = false;
-    if (select && select.tabId === shownTab) {
-      pendingIndices = new Set(select.options.filter((option) => option.selected).map((option) => option.index));
-      const list = h("div", { class: "remote-list", attrs: { role: "listbox", "aria-multiselectable": select.multiple ? "true" : "false" } });
-      if (select.options.length === 0) list.append(h("p", { class: "remote-empty", text: t("remote.selectEmpty") }));
-      for (const option of select.options) {
-        const item = h("button", {
-          class: `remote-option${option.selected || pendingIndices.has(option.index) ? " selected" : ""}${option.disabled ? " disabled" : ""}`,
-          attrs: { role: "option", "aria-selected": String(select.multiple ? pendingIndices.has(option.index) : option.selected) },
-          disabled: option.disabled || undefined,
-          text: `${option.group ? `${option.group} — ` : ""}${option.label || option.value}`,
-        });
-        item.addEventListener("click", () => {
-          if (select.multiple) {
-            if (pendingIndices.has(option.index)) pendingIndices.delete(option.index);
-            else pendingIndices.add(option.index);
-            renderRemoteOverlay(last ?? state);
-            return;
-          }
-          post("stage", "remote-select", { popupId: select.id, tabId: select.tabId, choice: "choose", indices: [option.index] });
-        });
-        list.append(item);
-      }
-      const actions = h("div", { class: "remote-actions" });
-      if (select.multiple) {
-        const apply = h("button", { class: "remote-primary", text: t("remote.apply") });
-        apply.addEventListener("click", () => {
-          post("stage", "remote-select", { popupId: select.id, tabId: select.tabId, choice: "choose", indices: [...pendingIndices].sort((a, b) => a - b) });
-        });
-        actions.append(apply);
-      }
-      const cancel = h("button", { class: "remote-ghost", text: t("close") });
-      cancel.addEventListener("click", () => {
-        post("stage", "remote-select", { popupId: select.id, tabId: select.tabId, choice: "cancel" });
-      });
-      actions.append(cancel);
-      overlay.append(
-        h("p", { class: "remote-title", text: t("remote.selectTitle") }),
-        h("p", { class: "remote-hint", text: t("remote.selectHint") }),
-        list,
-        actions,
-      );
-      return;
-    }
-    if (permission && permission.tabId === shownTab) {
-      const allow = h("button", { class: "remote-primary", text: t("remote.allow") });
-      allow.addEventListener("click", () => {
-        post("stage", "remote-permission", { promptId: permission.id, tabId: permission.tabId, allow: true });
-      });
-      const deny = h("button", { class: "remote-ghost", text: t("remote.deny") });
-      deny.addEventListener("click", () => {
-        post("stage", "remote-permission", { promptId: permission.id, tabId: permission.tabId, allow: false });
-      });
-      overlay.append(
-        h("p", { class: "remote-title", text: t("remote.permissionTitle", { permission: permission.permission }) }),
-        h("p", { class: "remote-hint", text: t("remote.permissionBody", { origin: permission.origin, permission: permission.permission }) }),
-        h("div", { class: "remote-actions" }, allow, deny),
-      );
-    }
   };
 
   // ---------- 원격 입력 캡처 ----------
@@ -277,15 +192,6 @@ export function mountStage(): {
     if (isComposingKey({ keyCode: event.keyCode, isComposing: event.isComposing, key: event.key })) return;
     // 등록된 Console 전역 단축키와 같은 문장이면 실행 측으로 보내지 않는다 — 그 자리에서 Console 이 받는다.
     if (type === "keyDown" && matchesConsoleShortcut({ meta: event.metaKey, ctrl: event.ctrlKey, alt: event.altKey, shift: event.shiftKey, code: event.code }, shortcutSet(), last?.platform ?? "")) return;
-    // 오버레이가 떠 있으면 Esc 로 닫는다 — 페이지에는 보내지 않는다.
-    if (type === "keyDown" && !overlay.hidden && (event.key === "Escape" || event.key === "Esc")) {
-      event.preventDefault();
-      event.stopPropagation();
-      const view = last?.viewOnly;
-      if (view?.select && view.select.tabId === shownTab) post("stage", "remote-select", { popupId: view.select.id, tabId: view.select.tabId, choice: "cancel" });
-      else if (view?.permission && view.permission.tabId === shownTab) post("stage", "remote-permission", { promptId: view.permission.id, tabId: view.permission.tabId, allow: false });
-      return;
-    }
     event.preventDefault();
     ensureSender()?.pushKey(toRemoteKeyEvent({
       key: event.key, code: event.code, keyCode: event.keyCode, isComposing: event.isComposing, repeat: event.repeat,
@@ -333,7 +239,6 @@ export function mountStage(): {
       delete document.documentElement.dataset.viewOnly;
       shownTab = null; cssSize = null; sender = null; senderTab = null;
       image.hidden = true; image.removeAttribute("src"); root.hidden = false;
-      hideRemoteOverlay();
       const t = tr(state);
       clear(root);
       const chrome = state.chrome;

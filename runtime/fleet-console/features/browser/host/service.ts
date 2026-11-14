@@ -7,8 +7,9 @@ import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet
 import { DESKTOP_BROWSER_PASSWORDS, type BrowserPasswordShellCommand } from "@fleet-console/protocol/desktop/browser-passwords";
 import { acceptBrowserPasswordResult, browserPasswordDispatchError, BrowserPasswordRequestError, type BrowserPasswordDispatchResult } from "./passwords.js";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
+import { applyRemoteInputBatch, applySelectChoice, createRemoteSelectRegistry, probeSelectTarget, RemoteInputError, type RemoteBatchResult, type RemotePointerState } from "./remote-input.js";
 import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_PASSWORD_ACTION, DESKTOP_BROWSER_SELECT_POPUP, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, isRemoteBrowserInputBatch, isRemoteBrowserPasswordAction, isRemoteBrowserPermissionAction, isRemoteBrowserSelectPopupAction, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer, type RemoteBrowserInputBatch, type RemoteBrowserPasswordAction, type RemoteBrowserPasswordPrompt, type RemoteBrowserPermissionAction, type RemoteBrowserPermissionPrompt, type RemoteBrowserSelectPopup, type RemoteBrowserSelectPopupAction } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_PASSWORD_ACTION, DESKTOP_BROWSER_SELECT_POPUP, DESKTOP_BROWSER_STAGE_FILES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, isRemoteBrowserFileChooserAction, isRemoteBrowserInputBatch, isRemoteBrowserPasswordAction, isRemoteBrowserPermissionAction, isRemoteBrowserSelectPopupAction, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer, type RemoteBrowserFileChooserPrompt, type RemoteBrowserInputBatch, type RemoteBrowserPasswordAction, type RemoteBrowserPasswordPrompt, type RemoteBrowserPermissionAction, type RemoteBrowserPermissionPrompt, type RemoteBrowserSelectPopup, type RemoteBrowserSelectPopupAction } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
 /**
@@ -381,6 +382,7 @@ interface RemotePromptProjection {
   readonly selectPopup: RemoteBrowserSelectPopup | null;
   readonly permissionPrompts: readonly RemoteBrowserPermissionPrompt[];
   readonly passwordPrompt: RemoteBrowserPasswordPrompt | null;
+  readonly fileChooser: RemoteBrowserFileChooserPrompt | null;
 }
 
 function sameProjection(left: unknown, right: unknown): boolean {
@@ -445,9 +447,14 @@ export class BrowserService {
   private disposed = false;
   /** 포인터 투영의 일련번호 — 같은 자리의 연속 동작도 셸이 가려 그린다. */
   private pointerSeq = 0;
-  /** 관리 Desktop 이 올린 select·권한·비밀번호 프롬프트. 원격 셸 투영에 실린다. */
-  private remotePrompts: RemotePromptProjection = { selectPopup: null, permissionPrompts: [], passwordPrompt: null };
-  /** 원격 사람 입력을 페이지에 넣는 훅. 비어 있으면 라우트는 연결 없음을 알린다. */
+  /** 관리 Desktop 이 올린 select·권한·비밀번호·파일 선택 프롬프트. 원격 셸 투영에 실린다. */
+  private remotePrompts: RemotePromptProjection = { selectPopup: null, permissionPrompts: [], passwordPrompt: null, fileChooser: null };
+  private readonly remoteSelectRegistry = createRemoteSelectRegistry();
+  private readonly remotePointers = new Map<string, RemotePointerState>();
+  private pendingFileChooser: { readonly id: string; readonly tabId: string; readonly backendNodeId: number } | null = null;
+  private fileChooserSerial = 0;
+  private shortcuts: readonly string[] = [];
+  /** 원격 입력을 페이지에 넣는 훅. 비어 있으면 기본 CDP 입력 중계를 쓴다. */
   private remoteInputRelay: RemoteInputRelay | null = null;
   private engine: BrowserServiceStatus["engine"] = "idle";
   private engineError: string | null = null;
@@ -877,29 +884,44 @@ export class BrowserService {
       chrome: this.chromeOf(state),
       executionHost: state.executionHost,
       ...(options?.remoteControl ? { remoteControl: true } : {}),
+      ...(this.shortcuts.length > 0 ? { shortcuts: this.shortcuts } : {}),
       selectPopup: this.remotePrompts.selectPopup,
       permissionPrompts: this.remotePrompts.permissionPrompts,
       passwordPrompt: this.remotePrompts.passwordPrompt,
+      fileChooser: this.remotePrompts.fileChooser,
     };
+  }
+
+  private publicTabIdOfView(viewOrTabId: string): string {
+    for (const op of this.objectiveRecords.values()) {
+      if (op.tabs.has(viewOrTabId)) return viewOrTabId;
+      for (const tab of op.tabs.values()) if (tab.targetId === viewOrTabId) return tab.id;
+    }
+    return viewOrTabId;
   }
 
   /**
    * 관리 Desktop relay 가 올린 프롬프트. 키가 있는 항목만 바꾸고, 값이 같으면 상태를 다시 흘리지 않는다.
-   * desktop-engine 은 이 필드를 아직 보관하지 않으므로 서버가 relay 본문을 여기로 넘긴다.
+   * 실행 측 Desktop 은 viewId 를 실어 올리므로 원격 크롬과 맞도록 공개 tabId 로 옮긴다.
    */
   noteRemotePrompts(body: { readonly selectPopup?: RemoteBrowserSelectPopup | null; readonly permissionPrompts?: readonly RemoteBrowserPermissionPrompt[]; readonly passwordPrompt?: RemoteBrowserPasswordPrompt | null }): void {
-    const next: { selectPopup: RemoteBrowserSelectPopup | null; permissionPrompts: readonly RemoteBrowserPermissionPrompt[]; passwordPrompt: RemoteBrowserPasswordPrompt | null } = { ...this.remotePrompts };
+    const next: { selectPopup: RemoteBrowserSelectPopup | null; permissionPrompts: readonly RemoteBrowserPermissionPrompt[]; passwordPrompt: RemoteBrowserPasswordPrompt | null; fileChooser: RemoteBrowserFileChooserPrompt | null } = { ...this.remotePrompts };
     let changed = false;
     if ("selectPopup" in body) {
-      const selectPopup = body.selectPopup ?? null;
-      if (!sameProjection(next.selectPopup, selectPopup)) { next.selectPopup = selectPopup; changed = true; }
+      const raw = body.selectPopup ?? null;
+      const selectPopup = raw ? { ...raw, tabId: this.publicTabIdOfView(raw.tabId) } : null;
+      // selectPopup 이 null 로 왔더라도 서버의 CDP 선택 레지스트리가 연 활성 팝업이 있으면 지우지 않는다.
+      if (selectPopup !== null || !this.remotePrompts.selectPopup?.id.startsWith("sel-")) {
+        if (!sameProjection(next.selectPopup, selectPopup)) { next.selectPopup = selectPopup; changed = true; }
+      }
     }
     if ("permissionPrompts" in body) {
-      const permissionPrompts = body.permissionPrompts ?? [];
+      const permissionPrompts = (body.permissionPrompts ?? []).map((entry) => ({ ...entry, tabId: this.publicTabIdOfView(entry.tabId) }));
       if (!sameProjection(next.permissionPrompts, permissionPrompts)) { next.permissionPrompts = permissionPrompts; changed = true; }
     }
     if ("passwordPrompt" in body) {
-      const passwordPrompt = body.passwordPrompt ?? null;
+      const raw = body.passwordPrompt ?? null;
+      const passwordPrompt = raw ? { ...raw, tabId: this.publicTabIdOfView(raw.tabId) } : null;
       if (!sameProjection(next.passwordPrompt, passwordPrompt)) { next.passwordPrompt = passwordPrompt; changed = true; }
     }
     if (!changed) return;
@@ -932,7 +954,9 @@ export class BrowserService {
   }
 
   setShortcuts(shortcuts: readonly string[]): void {
+    this.shortcuts = [...shortcuts];
     this.deps.desktop.setShortcuts(shortcuts);
+    for (const op of this.objectiveRecords.values()) this.emitState(op);
   }
 
   /** 전역 브라우저 회수 — 진행 중 호출을 끊고 모든 탭과 컨텍스트를 닫는다. Objective 종료는 closeSpace 를 쓴다. */
@@ -961,6 +985,9 @@ export class BrowserService {
     await this.disposeContext(op);
     for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
     op.tabs.clear();
+    this.remotePointers.clear();
+    this.pendingFileChooser = null;
+    this.remotePrompts = { selectPopup: null, permissionPrompts: [], passwordPrompt: null, fileChooser: null };
     // 진행 중 생성은 리셋 뒤에도 자기 finally에서 예약을 해제한다. 먼저 0으로 덮으면 음수가 된다.
     op.activeTabId = null;
     op.currentTabs.clear();
@@ -1204,42 +1231,76 @@ export class BrowserService {
     if (op.spaces.get(tab.spaceId)?.control === "user") throw new BrowserPolicyError("browser_user_in_control", USER_IN_CONTROL_MESSAGE, { spaceId: tab.spaceId });
   }
 
-  /** 사람 입력의 문 — 에이전트가 그 탭을 작업 탭으로 모는 동안(제어권이 agent)에는 페이지로 보내지 않는다. */
+  /** 사람 입력의 문 — 에이전트가 지금 그 스페이스를 사용 중이고 그 탭이 에이전트의 작업 탭일 때만 막는다(로컬 가드와 동일). */
   private assertHumanMayOperate(op: ObjectiveBrowser, tab: Tab): void {
-    const control = op.spaces.get(tab.spaceId)?.control ?? "agent";
-    if (control === "agent" && [...op.currentTabs.values()].includes(tab.id)) {
+    const space = op.spaces.get(tab.spaceId);
+    const control = space?.control ?? "agent";
+    if (control === "agent" && space?.agentSession != null && [...op.currentTabs.values()].includes(tab.id)) {
       throw new BrowserPolicyError("browser_agent_in_control", AGENT_IN_CONTROL_MESSAGE, { spaceId: tab.spaceId, tabId: tab.id });
     }
   }
 
-  private remoteHumanTab(objectiveId: string, tabId: string): void {
+  private remoteHumanTab(objectiveId: string, tabId: string): { readonly op: ObjectiveBrowser; readonly tab: Tab } {
     const op = this.objectiveRecord(objectiveId);
     const tab = op.tabs.get(tabId);
     if (!tab) throw new BrowserPolicyError("browser_tab_not_found", `Tab ${tabId} is not open. Check tabs_context.`, { tabId });
     this.assertHumanMayOperate(op, tab);
+    return { op, tab };
   }
 
-  /** input-relay 가 원격 입력을 페이지에 넣는 구현을 건다. `null` 이면 다시 내린다. */
+  /** 테스트·사용자 정의 위임 훅. 비어 있으면 기본 CDP 입력 중계(`remote-input.ts`)를 쓴다. */
   setRemoteInputRelay(relay: RemoteInputRelay | null): void {
     this.remoteInputRelay = relay;
   }
 
   /**
-   * 원격 Desktop 의 사람 입력. 배치 모양과 제어권을 본 뒤에만 위임 훅을 부른다.
-   * 훅이 없으면 페이지에는 아무것도 가지 않는다.
+   * 원격 Desktop 의 사람 입력. 배치 모양과 제어권을 본 뒤 CDP 입력으로 실행 측 탭에 보낸다.
    */
-  async dispatchRemoteInput(objectiveId: string, body: unknown): Promise<void> {
+  async dispatchRemoteInput(objectiveId: string, body: unknown): Promise<RemoteBatchResult> {
     if (!isRemoteBrowserInputBatch(body)) throw new BrowserPolicyError("invalid_request", "The remote input batch is not valid.");
-    this.remoteHumanTab(objectiveId, body.tabId);
-    const relay = this.remoteInputRelay;
-    if (!relay) throw new BrowserPolicyError("browser_remote_input_unavailable", "Remote input is not connected on this Console.");
-    await relay(body);
+    const { op, tab } = this.remoteHumanTab(objectiveId, body.tabId);
+    if (this.remoteInputRelay) {
+      await this.remoteInputRelay(body);
+      return { dispatched: body.events.length, imeDeferred: 0, select: null };
+    }
+    const client = await this.engineClient();
+    const pointer = this.remotePointers.get(tab.id) ?? null;
+    try {
+      const outcome = await applyRemoteInputBatch(client, tab.sessionId, body, pointer, {
+        assertControl: () => this.assertHumanMayOperate(op, tab),
+        notePointer: () => undefined,
+        interceptSelect: async (x, y) => {
+          const hit = await probeSelectTarget(client, tab.sessionId, x, y);
+          if (!hit || hit.disabled) return null;
+          const popup = this.remoteSelectRegistry.open(tab.id, tab.sessionId, hit);
+          this.remotePrompts = { ...this.remotePrompts, selectPopup: popup };
+          this.emitState(op);
+          return popup;
+        },
+      });
+      if (outcome.pointer) this.remotePointers.set(tab.id, outcome.pointer);
+      else this.remotePointers.delete(tab.id);
+      return outcome.result;
+    } catch (error) {
+      if (error instanceof RemoteInputError) throw new BrowserPolicyError(error.code, error.message, error.details);
+      throw error;
+    }
   }
 
-  /** 원격 `<select>` 팝업의 선택·취소. 관리 Desktop 셸의 `Fleet.selectPopup` 으로 보낸다. */
+  /** 원격 `<select>` 팝업의 선택·취소. CDP 선택 레지스트리가 연 팝업이면 페이지에 바로 반영하고, 아니면 셸 명령으로 보낸다. */
   async selectPopup(objectiveId: string, body: unknown): Promise<void> {
     if (!isRemoteBrowserSelectPopupAction(body)) throw new BrowserPolicyError("invalid_request", "The select popup action is not valid.");
-    await this.sendRemoteShellCommand(objectiveId, body.tabId, DESKTOP_BROWSER_SELECT_POPUP, remoteSelectParams(body));
+    const { op, tab } = this.remoteHumanTab(objectiveId, body.tabId);
+    if (this.remotePrompts.selectPopup?.id === body.popupId) {
+      this.remotePrompts = { ...this.remotePrompts, selectPopup: null };
+      this.emitState(op);
+    }
+    const client = await this.engineClient();
+    const applied = await applySelectChoice(client, this.remoteSelectRegistry, body.popupId, body.tabId, body.indices, body.action === "cancel");
+    if (applied.applied) return;
+    if (applied.reason === "select_expired") {
+      await client.send(DESKTOP_BROWSER_SELECT_POPUP, remoteSelectParams({ ...body, tabId: tab.targetId })).catch(() => undefined);
+    }
   }
 
   /** 원격 권한 창의 허용·거절. 관리 Desktop 셸의 `Fleet.answerPermission` 으로 보낸다. */
@@ -1254,10 +1315,45 @@ export class BrowserService {
     await this.sendRemoteShellCommand(objectiveId, body.tabId, DESKTOP_BROWSER_PASSWORD_ACTION, remotePasswordParams(body));
   }
 
-  private async sendRemoteShellCommand(objectiveId: string, tabId: string, method: string, params: Record<string, unknown>): Promise<void> {
-    this.remoteHumanTab(objectiveId, tabId);
+  /** 원격 파일 선택 — 보는 기기에서 고른 파일을 실행 기기 임시 디렉터리에 잠깐 내려 CDP `DOM.setFileInputFiles` 후 지운다. */
+  async answerFileChooser(objectiveId: string, body: unknown): Promise<{ readonly accepted: true; readonly uploaded: number }> {
+    if (!isRemoteBrowserFileChooserAction(body)) throw new BrowserPolicyError("invalid_request", "The file chooser action is not valid.");
+    const { op, tab } = this.remoteHumanTab(objectiveId, body.tabId);
+    const pending = this.pendingFileChooser;
+    if (pending && pending.id === body.chooserId && pending.tabId === body.tabId) this.pendingFileChooser = null;
+    if (this.remotePrompts.fileChooser?.id === body.chooserId) {
+      this.remotePrompts = { ...this.remotePrompts, fileChooser: null };
+      this.emitState(op);
+    }
+    if (body.action === "cancel" || !pending || pending.id !== body.chooserId || pending.tabId !== body.tabId) {
+      return { accepted: true, uploaded: 0 };
+    }
     const client = await this.engineClient();
-    await client.send(method, params);
+    const staged = await client.send<{ stagingId?: unknown; paths?: unknown }>(DESKTOP_BROWSER_STAGE_FILES, {
+      viewId: tab.targetId,
+      files: body.files ?? [],
+    });
+    const stagingId = typeof staged?.stagingId === "string" ? staged.stagingId : null;
+    const paths = Array.isArray(staged?.paths) ? staged.paths.filter((item): item is string => typeof item === "string") : [];
+    if (paths.length === 0) {
+      if (stagingId) void client.send(DESKTOP_BROWSER_CLEANUP_FILES, { stagingId }).catch(() => undefined);
+      throw new BrowserPolicyError("browser_file_stage_failed", "The selected files could not be staged on the execution host.");
+    }
+    try {
+      await client.send("DOM.setFileInputFiles", { backendNodeId: pending.backendNodeId, files: paths }, tab.sessionId);
+      return { accepted: true, uploaded: paths.length };
+    } finally {
+      if (stagingId) {
+        const timer = setTimeout(() => { void client.send(DESKTOP_BROWSER_CLEANUP_FILES, { stagingId }).catch(() => undefined); }, 2_000);
+        timer.unref?.();
+      }
+    }
+  }
+
+  private async sendRemoteShellCommand(objectiveId: string, tabId: string, method: string, params: Record<string, unknown>): Promise<void> {
+    const { tab } = this.remoteHumanTab(objectiveId, tabId);
+    const client = await this.engineClient();
+    await client.send(method, { ...params, tabId: tab.targetId });
   }
 
   // ---------- 탭 ----------
@@ -1413,6 +1509,16 @@ export class BrowserService {
     for (const [participant, id] of [...op.currentTabs]) if (id === tab.id) op.currentTabs.delete(participant);
     const space = op.spaces.get(tab.spaceId);
     if (space?.pointer?.tabId === tab.id) space.pointer = null;
+    this.remotePointers.delete(tab.id);
+    if (this.pendingFileChooser?.tabId === tab.id) this.pendingFileChooser = null;
+    if (this.remotePrompts.selectPopup?.tabId === tab.id || this.remotePrompts.passwordPrompt?.tabId === tab.id || this.remotePrompts.fileChooser?.tabId === tab.id || this.remotePrompts.permissionPrompts.some((item) => item.tabId === tab.id)) {
+      this.remotePrompts = {
+        selectPopup: this.remotePrompts.selectPopup?.tabId === tab.id ? null : this.remotePrompts.selectPopup,
+        passwordPrompt: this.remotePrompts.passwordPrompt?.tabId === tab.id ? null : this.remotePrompts.passwordPrompt,
+        fileChooser: this.remotePrompts.fileChooser?.tabId === tab.id ? null : this.remotePrompts.fileChooser,
+        permissionPrompts: this.remotePrompts.permissionPrompts.filter((item) => item.tabId !== tab.id),
+      };
+    }
   }
 
   /** 사람 화면에 탭을 띄운다(표시 탭). 사람의 선택과 `tabs_select(show)` 만 부른다. */
@@ -1701,8 +1807,26 @@ export class BrowserService {
         this.emitState(op);
         return;
       }
+      case "Page.fileChooserOpened": {
+        const backendNodeId = typeof p.backendNodeId === "number" && Number.isSafeInteger(p.backendNodeId) && p.backendNodeId > 0 ? p.backendNodeId : null;
+        if (!backendNodeId) return;
+        const id = `fc-${++this.fileChooserSerial}`;
+        const multiple = p.mode === "selectMultiple";
+        this.pendingFileChooser = { id, tabId: tab.id, backendNodeId };
+        this.remotePrompts = { ...this.remotePrompts, fileChooser: { id, tabId: tab.id, multiple } };
+        this.emitState(op);
+        return;
+      }
       case "Page.frameNavigated": {
         if (p.frame?.parentId) return;
+        if (this.pendingFileChooser?.tabId === tab.id) this.pendingFileChooser = null;
+        if (this.remotePrompts.selectPopup?.tabId === tab.id || this.remotePrompts.fileChooser?.tabId === tab.id) {
+          this.remotePrompts = {
+            ...this.remotePrompts,
+            selectPopup: this.remotePrompts.selectPopup?.tabId === tab.id ? null : this.remotePrompts.selectPopup,
+            fileChooser: this.remotePrompts.fileChooser?.tabId === tab.id ? null : this.remotePrompts.fileChooser,
+          };
+        }
         tab.frameId = typeof p.frame?.id === "string" ? p.frame.id : tab.frameId;
         tab.url = p.frame?.url ?? tab.url;
         tab.title = "";

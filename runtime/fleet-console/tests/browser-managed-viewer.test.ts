@@ -312,8 +312,9 @@ describe("remote desktop browser control", () => {
       for (const cmd of snap.commands) engine.relay("manager", { results: [{ id: cmd.id, result: cmd.method === "Page.getNavigationHistory" ? { currentIndex: 0, entries: [{ url: "about:blank" }] } : {} }] });
     }, 5);
     let tabId = "";
+    const caller = { participantId: "agent-1", spaceId: "default", ownerId: "agent-1" };
     try {
-      tabId = (await service.createTab(BROWSER_GLOBAL_ID, "about:blank", "agent", { caller: { participantId: "agent-1", spaceId: "default", ownerId: "agent-1" } })).id;
+      tabId = (await service.agentCall(BROWSER_GLOBAL_ID, undefined, () => service.createTab(BROWSER_GLOBAL_ID, "about:blank", "agent", { caller }), caller)).id;
     } finally { clearInterval(autoRelay); }
     const batch = { tabId, events: [{ kind: "focus" as const, focused: true }] };
     await expect(service.dispatchRemoteInput(BROWSER_GLOBAL_ID, batch)).rejects.toBeInstanceOf(BrowserPolicyError);

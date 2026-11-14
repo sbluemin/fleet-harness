@@ -6,6 +6,7 @@
 import {
   isRemoteBrowserInputBatch,
   type DesktopBrowserChrome,
+  type RemoteBrowserFileChooserPrompt,
   type RemoteBrowserInputEvent,
   type RemoteBrowserPasswordPrompt,
   type RemoteBrowserPermissionPrompt,
@@ -123,6 +124,7 @@ export interface ChromeViewOnly {
   readonly selectPopup?: RemoteBrowserSelectPopup | null;
   readonly permissionPrompts?: readonly RemoteBrowserPermissionPrompt[];
   readonly passwordPrompt?: RemoteBrowserPasswordPrompt | null;
+  readonly fileChooser?: RemoteBrowserFileChooserPrompt | null;
   /** 레거시/스테이지 호환 별칭 — selectPopup / permissionPrompts 와 함께 쓴다. */
   readonly select?: RemoteBrowserSelectPopup | null;
   readonly permission?: RemoteBrowserPermissionPrompt | null;
@@ -197,6 +199,9 @@ export type ChromeAction =
   | { readonly action: "select-popup"; readonly popupId: string; readonly tabId: string; readonly choice: "choose" | "cancel"; readonly indices?: readonly number[] }
   /** 원격 웹 권한 카드의 허용·거절. */
   | { readonly action: "permission-answer"; readonly promptId: string; readonly tabId: string; readonly allow: boolean }
+  /** 원격 파일 선택 — 보는 기기의 파일 선택기를 열어 올리거나 취소한다. */
+  | { readonly action: "file-chooser-open"; readonly chooserId: string; readonly tabId: string; readonly multiple: boolean }
+  | { readonly action: "file-chooser-cancel"; readonly chooserId: string; readonly tabId: string }
   | { readonly action: "ready" };
 
 const PROFILES = new Set<unknown>([null, "default"]);
@@ -248,6 +253,8 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "password-pick": return make(str(body.username, 512) && body.username.length > 0 ? passwordRelay("password-pick", body, body.username) : null);
     case "select-popup": return make(safeId(body.popupId) && safeId(body.tabId) && (body.choice === "choose" || body.choice === "cancel") && (body.indices === undefined || (Array.isArray(body.indices) && body.indices.length <= 1000 && body.indices.every((index) => Number.isSafeInteger(index) && Number(index) >= 0))) ? { action: "select-popup", popupId: body.popupId, tabId: body.tabId, choice: body.choice, ...(Array.isArray(body.indices) ? { indices: body.indices as number[] } : {}) } : null);
     case "permission-answer": return make(safeId(body.promptId) && safeId(body.tabId) && typeof body.allow === "boolean" ? { action: "permission-answer", promptId: body.promptId, tabId: body.tabId, allow: body.allow } : null);
+    case "file-chooser-open": return make(safeId(body.chooserId) && safeId(body.tabId) && typeof body.multiple === "boolean" ? { action: "file-chooser-open", chooserId: body.chooserId, tabId: body.tabId, multiple: body.multiple } : null);
+    case "file-chooser-cancel": return make(safeId(body.chooserId) && safeId(body.tabId) ? { action: "file-chooser-cancel", chooserId: body.chooserId, tabId: body.tabId } : null);
     case "select-tab": case "close-tab": case "select-space": return make(safeId(body.id) ? { action: name, id: body.id } : null);
     case "page-dialog": return make(safeId(body.id) && safeId(body.dialogId) && typeof body.accept === "boolean" ? { action: "page-dialog", id: body.id, dialogId: body.dialogId, accept: body.accept } : null);
     case "pin": return make(typeof body.pinned === "boolean" ? { action: "pin", pinned: body.pinned } : null);

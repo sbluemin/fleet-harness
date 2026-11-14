@@ -1,8 +1,10 @@
 import path from "node:path";
 import {
+  isRemoteBrowserFileChooserPrompt,
   isRemoteBrowserPasswordPrompt,
   isRemoteBrowserPermissionPrompt,
   isRemoteBrowserSelectPopup,
+  type RemoteBrowserFileChooserPrompt,
   type RemoteBrowserPasswordPrompt,
   type RemoteBrowserPermissionPrompt,
   type RemoteBrowserSelectPopup,
@@ -413,9 +415,11 @@ export interface DesktopBrowserViewerSnapshot {
   readonly executionHost: BrowserExecutionHost;
   /** 원격 조작 capability 를 갖춘 Desktop 이면 true. 옛 콘솔에서는 생략되며 보기 전용으로 떨어진다. */
   readonly remoteControl?: boolean;
+  readonly shortcuts?: readonly string[];
   readonly selectPopup?: RemoteBrowserSelectPopup | null;
   readonly permissionPrompts?: readonly RemoteBrowserPermissionPrompt[];
   readonly passwordPrompt?: RemoteBrowserPasswordPrompt | null;
+  readonly fileChooser?: RemoteBrowserFileChooserPrompt | null;
 }
 
 /** 셸 → 콘솔. 어느 필드든 비어 있을 수 있다. */
@@ -498,9 +502,11 @@ export function isDesktopBrowserChrome(value: unknown): value is DesktopBrowserC
 export function isDesktopBrowserViewerSnapshot(value: unknown): value is DesktopBrowserViewerSnapshot {
   if (!isRecord(value) || (value.chrome !== null && !isDesktopBrowserChrome(value.chrome))) return false;
   if (value.remoteControl !== undefined && typeof value.remoteControl !== "boolean") return false;
+  if (value.shortcuts !== undefined && !(Array.isArray(value.shortcuts) && value.shortcuts.every((item) => typeof item === "string"))) return false;
   if (value.selectPopup !== undefined && value.selectPopup !== null && !isRemoteBrowserSelectPopup(value.selectPopup)) return false;
   if (value.permissionPrompts !== undefined && !(Array.isArray(value.permissionPrompts) && value.permissionPrompts.length <= 32 && value.permissionPrompts.every(isRemoteBrowserPermissionPrompt))) return false;
   if (value.passwordPrompt !== undefined && value.passwordPrompt !== null && !isRemoteBrowserPasswordPrompt(value.passwordPrompt)) return false;
+  if (value.fileChooser !== undefined && value.fileChooser !== null && !isRemoteBrowserFileChooserPrompt(value.fileChooser)) return false;
   const host = value.executionHost;
   return isRecord(host) && typeof host.managed === "boolean" && typeof host.connected === "boolean"
     && (host.status === "connected" || host.status === "manager_disconnected" || host.status === "unmanaged")

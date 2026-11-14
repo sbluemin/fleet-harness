@@ -507,8 +507,8 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .view-mark { flex: none; display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 46%; padding-inline: var(--space-1); font-size: var(--t-xs); white-space: nowrap; }
 .view-mark-badge { flex: none; padding: 2px var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-pill); color: var(--text-secondary); font-weight: var(--weight-medium); }
 .view-mark-place { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-tertiary); }
-html[data-view-only="true"] .url { pointer-events: none; }
-html[data-view-only="true"] .url:hover { background: var(--ink-veil); }
+html[data-view-only="true"]:not([data-remote-control="true"]) .url { pointer-events: none; }
+html[data-view-only="true"]:not([data-remote-control="true"]) .url:hover { background: var(--ink-veil); }
 .rail.viewing .tab-close { display: none; }
 html[data-role="stage"] .frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: top center; user-select: none; -webkit-user-drag: none; }
 
@@ -550,18 +550,5 @@ html[data-role="guard"][data-shell-closing="true"] .guard-pill {
   }
 }
 
-/* 원격 입력 스테이지 — 실행 측 <select>·권한 창 오버레이와 IME 포커스 수용 요소. */
+/* 원격 입력 스테이지 — 한글 IME 포커스 수용 요소. */
 html[data-role="stage"] .remote-ime { position: absolute; left: 0; top: 0; width: 4px; height: 4px; padding: 0; border: 0; opacity: 0; pointer-events: none; resize: none; overflow: hidden; }
-html[data-role="stage"] .remote-overlay { position: absolute; left: 50%; bottom: var(--space-4); transform: translateX(-50%); z-index: 5; display: flex; flex-direction: column; gap: var(--space-2); max-width: min(420px, calc(100% - 32px)); max-height: 60%; padding: var(--space-3); border-radius: 12px; background: var(--bg-elevated); border: 1px solid var(--border); box-shadow: 0 8px 32px rgb(0 0 0 / 0.25); }
-html[data-role="stage"] .remote-overlay[hidden] { display: none; }
-html[data-role="stage"] .remote-title { margin: 0; font-size: var(--t-base); font-weight: var(--weight-medium); color: var(--text-primary); }
-html[data-role="stage"] .remote-hint { margin: 0; font-size: var(--t-sm); color: var(--text-secondary); }
-html[data-role="stage"] .remote-list { display: flex; flex-direction: column; gap: 2px; overflow-y: auto; max-height: 220px; }
-html[data-role="stage"] .remote-option { text-align: left; padding: 6px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--text-primary); font-size: var(--t-sm); cursor: pointer; }
-html[data-role="stage"] .remote-option:hover { background: var(--bg-hover); }
-html[data-role="stage"] .remote-option.selected { background: var(--bg-selected); }
-html[data-role="stage"] .remote-option.disabled { opacity: 0.45; cursor: default; }
-html[data-role="stage"] .remote-empty { margin: 0; font-size: var(--t-sm); color: var(--text-tertiary); }
-html[data-role="stage"] .remote-actions { display: flex; gap: var(--space-2); justify-content: flex-end; }
-html[data-role="stage"] .remote-primary { padding: 6px 14px; border: 0; border-radius: 8px; background: var(--accent); color: var(--on-accent); font-size: var(--t-sm); cursor: pointer; }
-html[data-role="stage"] .remote-ghost { padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px; background: transparent; color: var(--text-primary); font-size: var(--t-sm); cursor: pointer; }

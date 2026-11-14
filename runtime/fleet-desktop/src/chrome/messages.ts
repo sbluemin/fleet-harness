@@ -174,6 +174,10 @@ const en: Record<string, string> = {
   "remote.allow": "Allow",
   "remote.deny": "Deny",
   "remote.apply": "Apply",
+  "fileChooser.title": "Upload file from this computer",
+  "fileChooser.body": "Choose a file on this computer to send to the remote page.",
+  "fileChooser.pick": "Choose file…",
+  "fileChooser.tooLarge": "Selected files exceed the upload limit (max 10 files, 25 MiB each, 50 MiB total).",
 };
 const ko: Record<string, string> = {
   "hover.component": "컴포넌트",
@@ -349,6 +353,10 @@ const ko: Record<string, string> = {
   "remote.allow": "허용",
   "remote.deny": "거부",
   "remote.apply": "적용",
+  "fileChooser.title": "이 기기에서 파일 선택",
+  "fileChooser.body": "지금 보는 기기에서 파일을 골라 원격 페이지에 올립니다.",
+  "fileChooser.pick": "파일 선택…",
+  "fileChooser.tooLarge": "파일 크기나 개수 한도를 넘겼어요(최대 10개, 파일당 25 MiB, 합계 50 MiB).",
 };
 export function translator(lang: ChromeLang): (key: string, values?: Record<string, string>) => string {
   const table = lang === "ko" ? ko : en;

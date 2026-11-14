@@ -334,7 +334,7 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
       case "dialog-close": if (!control.ui().busy) closeOverlay(); return;
       case "ready": return;
       case "select-popup": void run("select-popup", { popupId: action.popupId, tabId: action.tabId, action: action.choice, ...(action.indices ? { indices: [...action.indices] } : {}) }); return;
-      case "permission-answer": void run("permission-action", { promptId: action.promptId, tabId: action.tabId, allow: action.allow }); return;
+      case "permission-answer": void run("permission", { promptId: action.promptId, tabId: action.tabId, allow: action.allow }); return;
       case "password-pick":
       case "password-save":
       case "password-dismiss":

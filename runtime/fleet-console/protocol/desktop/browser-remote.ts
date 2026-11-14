@@ -12,6 +12,12 @@ export const DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER = "x-fleet-frame-css-height
 export const DESKTOP_BROWSER_ANSWER_PERMISSION = "Fleet.answerPermission";
 export const DESKTOP_BROWSER_PASSWORD_ACTION = "Fleet.passwordAction";
 export const DESKTOP_BROWSER_SELECT_POPUP = "Fleet.selectPopup";
+export const DESKTOP_BROWSER_STAGE_FILES = "Fleet.stageRemoteFiles";
+export const DESKTOP_BROWSER_CLEANUP_FILES = "Fleet.cleanupRemoteFiles";
+
+export const REMOTE_FILE_CHOOSER_MAX_FILES = 10;
+export const REMOTE_FILE_CHOOSER_MAX_FILE_BYTES = 25 * 1024 * 1024;
+export const REMOTE_FILE_CHOOSER_MAX_TOTAL_BYTES = 50 * 1024 * 1024;
 
 export const REMOTE_FRAME_STREAM_CONTENT_TYPE = "application/x-fleet-browser-stream";
 export const REMOTE_FRAME_HEADER_BYTES = 32;
@@ -146,6 +152,24 @@ export interface RemoteBrowserPasswordAction {
   readonly username?: string;
 }
 
+export interface RemoteBrowserFileChooserPrompt {
+  readonly id: string;
+  readonly tabId: string;
+  readonly multiple: boolean;
+}
+
+export interface RemoteBrowserUploadFile {
+  readonly name: string;
+  readonly contentBase64: string;
+}
+
+export interface RemoteBrowserFileChooserAction {
+  readonly chooserId: string;
+  readonly tabId: string;
+  readonly action: "choose" | "cancel";
+  readonly files?: readonly RemoteBrowserUploadFile[];
+}
+
 export interface RemoteBrowserStreamFrameMeta {
   readonly seq: number;
   readonly at: number;
@@ -259,6 +283,29 @@ export function isRemoteBrowserPasswordAction(value: unknown): value is RemoteBr
     && isSafeId(value.tabId)
     && (value.action === "pick" || value.action === "save" || value.action === "dismiss" || value.action === "never")
     && (value.username === undefined || isShortText(value.username, 512));
+}
+
+export function isRemoteBrowserFileChooserPrompt(value: unknown): value is RemoteBrowserFileChooserPrompt {
+  return isRecord(value)
+    && isSafeId(value.id)
+    && isSafeId(value.tabId)
+    && typeof value.multiple === "boolean";
+}
+
+export function isRemoteBrowserFileChooserAction(value: unknown): value is RemoteBrowserFileChooserAction {
+  if (!isRecord(value) || !isSafeId(value.chooserId) || !isSafeId(value.tabId)) return false;
+  if (value.action === "cancel") return value.files === undefined;
+  if (value.action !== "choose") return false;
+  if (!Array.isArray(value.files) || value.files.length === 0 || value.files.length > REMOTE_FILE_CHOOSER_MAX_FILES) return false;
+  let totalBase64 = 0;
+  const maxTotalBase64 = Math.ceil((REMOTE_FILE_CHOOSER_MAX_TOTAL_BYTES * 4) / 3) + 64;
+  const maxSingleBase64 = Math.ceil((REMOTE_FILE_CHOOSER_MAX_FILE_BYTES * 4) / 3) + 16;
+  return value.files.every((file) => {
+    if (!isRecord(file) || !isShortText(file.name, 256) || file.name.length === 0 || typeof file.contentBase64 !== "string") return false;
+    if (file.contentBase64.length > maxSingleBase64) return false;
+    totalBase64 += file.contentBase64.length;
+    return totalBase64 <= maxTotalBase64 && (file.contentBase64.length === 0 || /^[A-Za-z0-9+/]+={0,2}$/u.test(file.contentBase64));
+  });
 }
 
 export function encodeRemoteBrowserFrame(meta: RemoteBrowserStreamFrameMeta, jpeg: Uint8Array): Uint8Array {
