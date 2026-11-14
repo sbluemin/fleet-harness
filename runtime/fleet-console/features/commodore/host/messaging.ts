@@ -43,7 +43,7 @@ export function createCommodoreMessenger(deps: {
       deps.store.transcriptAppend(from, { kind: "sent", messageId, text: input.text, ...(input.replyTo ? { replyTo: input.replyTo } : {}), ...(requestedAttachments ? { attachments: requestedAttachments } : {}), to, ok: false, error: code });
       throw new Error(code);
     };
-    // 목표 이미지·이번 턴 첨부만 보낼 수 있다. 남의 턴 첨부·남의 목표·임의 경로는 거부한다.
+    // 자기 목표 이미지·이번 턴 첨부·이 사령관이 사람에게 받은 이전 턴 첨부만 보낼 수 있다. 남의 사령관 첨부·TaskForce·남의 목표·임의 경로는 거부한다.
     let images: readonly SendableImage[] = [];
     if (attachmentIds.length) {
       if (!turn) fail("attachment_not_available");

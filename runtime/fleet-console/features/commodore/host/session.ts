@@ -381,7 +381,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         const base = JSON.stringify({ messageId: entry.messageId, from: entry.from, text: entry.text, ...(entry.replyTo ? { replyTo: entry.replyTo } : {}) });
         const ids = entry.attachments?.map((attachment) => attachment.id) ?? [];
         if (!ids.length) return base;
-        return `${base}\nAttached images for this turn (copy with attachmentIds in objective add or edit before the turn ends; do not reconstruct them as text):\n${ids.map((id, index) => `${index + 1}. ${id}`).join("\n")}`;
+        return `${base}\nAttached mail images (copy with attachmentIds before the turn ends; do not reconstruct them as text):\n${ids.map((id, index) => `${index + 1}. ${id}`).join("\n")}`;
       });
       const note = [
         ...(input.replacementSummary ? [replacementNote(input.replacementSummary)] : []),
@@ -402,7 +402,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
           ...images,
         ]),
         ...(input.mailImages ?? []).flatMap(({ messageId, images }): AgentInputBlock[] => [
-          { type: "text", text: `Attached Commodore images for message ${messageId} (copy with attachmentIds in objective add or edit before the turn ends):` },
+          { type: "text", text: `Attached Commodore images for message ${messageId}:` },
           ...images,
         ]),
         ...(input.messages ?? []).flatMap((message): AgentInputBlock[] => typeof message === "string"

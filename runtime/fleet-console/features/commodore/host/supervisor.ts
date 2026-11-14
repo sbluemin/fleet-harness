@@ -279,24 +279,56 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const releaseMessages = (runner: Runner, messages: readonly QueuedMessage[]) => {
     for (const message of messages) if (message.messageId) deps.attachments?.release(runner.commodoreId, message.messageId);
   };
+  const inTurn = (runner: Runner) => !disposed && !runner.stopping && !runner.turnStopRequested && runner.phase === "turn";
+  const findRetainedHumanMessages = (commodoreId: string, needed: ReadonlySet<string>): ReadonlyMap<string, string> => {
+    const found = new Map<string, string>();
+    if (!needed.size) return found;
+    let before: number | undefined;
+    for (;;) {
+      let page;
+      try { page = deps.store.transcriptRead(commodoreId, { limit: MAX_TRANSCRIPT_PAGE, ...(before === undefined ? {} : { before }) }); }
+      catch { break; }
+      for (let index = page.entries.length - 1; index >= 0; index -= 1) {
+        const entry = page.entries[index]!;
+        if (entry.kind !== "message" || !entry.messageId || !entry.attachments?.length) continue;
+        for (const attachment of entry.attachments) {
+          if (needed.has(attachment.id) && !found.has(attachment.id)) found.set(attachment.id, entry.messageId);
+        }
+      }
+      if (found.size >= needed.size || !page.hasMore || !page.entries.length) break;
+      before = page.entries[0]!.seq;
+    }
+    return found;
+  };
   const turnAttachments = (runner: Runner): CommodoreAttachmentReader => (ids) => {
-    const unavailable = () => new CommodoreStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it." });
-    if (runner.stopping || disposed || (!runner.turnMessages.length && !runner.turnMail.length)) throw unavailable();
-    const selected = ids.map((id) => {
+    const unavailable = () => new CommodoreStoreError("attachment_not_available", undefined, { hint: "Use image IDs allowed by this tool. If an image is unavailable, ask the person to resend it." });
+    if (!inTurn(runner)) throw unavailable();
+    const missing = new Set<string>();
+    const preliminary = ids.map((id) => {
       const human = runner.turnMessages.find((entry) => entry.messageId && entry.attachments?.some((image) => image.id === id));
       if (human?.messageId) return { id, messageId: human.messageId, kind: "human" as const };
       const peer = runner.turnMail.find((entry) => entry.messageId && entry.attachments?.some((image) => image.id === id));
       if (peer?.messageId) return { id, messageId: peer.messageId, kind: "mail" as const };
-      throw unavailable();
+      missing.add(id);
+      return { id, messageId: "", kind: "retained" as const };
+    });
+    const retainedMessages = findRetainedHumanMessages(runner.commodoreId, missing);
+    const selected = preliminary.map((item) => {
+      if (item.kind !== "retained") return item;
+      const messageId = retainedMessages.get(item.id);
+      if (!messageId) throw unavailable();
+      return { id: item.id, messageId, kind: "retained" as const };
     });
     const humanMessages = new Map<string, ReturnType<AttachmentHost["read"]>>();
     const mailImages = new Map<string, { id: string; mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; bytes: Uint8Array }>();
-    for (const { messageId, kind } of selected) {
+    const retainedImages = new Map<string, { id: string; mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; bytes: Uint8Array }>();
+    for (const { id, messageId, kind } of selected) {
       if (kind === "human") {
         if (!deps.attachments || humanMessages.has(messageId)) continue;
         try { humanMessages.set(messageId, deps.attachments.read(runner.commodoreId, messageId)); }
         catch { throw unavailable(); }
-      } else if (!mailImages.has(messageId)) {
+      } else if (kind === "mail") {
+        if (mailImages.has(messageId)) continue;
         try {
           const entry = runner.turnMail.find((mail) => mail.messageId === messageId);
           const images = (entry?.attachments ?? []).map((attachment) => {
@@ -309,6 +341,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           if (error instanceof CommodoreStoreError) throw error;
           throw unavailable();
         }
+      } else {
+        const key = `${messageId}:${id}`;
+        if (retainedImages.has(key)) continue;
+        const image = deps.store.images.read(runner.commodoreId, messageId, id);
+        if (!image) throw unavailable();
+        retainedImages.set(key, image);
       }
     }
     return selected.map(({ id, messageId, kind }) => {
@@ -317,12 +355,16 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (!image) throw unavailable();
         return image;
       }
-      const image = mailImages.get(`${messageId}:${id}`);
+      if (kind === "mail") {
+        const image = mailImages.get(`${messageId}:${id}`);
+        if (!image) throw unavailable();
+        return image;
+      }
+      const image = retainedImages.get(`${messageId}:${id}`);
       if (!image) throw unavailable();
       return image;
     });
   };
-  const inTurn = (runner: Runner) => !disposed && !runner.stopping && !runner.turnStopRequested && runner.phase === "turn";
   const hasPersonMessage = (runner: Runner) => () => inTurn(runner) && runner.turnMessages.length > 0;
   const boardTools = (runner: Runner): readonly ConsoleMcpTool[] => {
     const turn: CommodoreTurnBindings = {
@@ -330,7 +372,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       readBriefImages: (ids) => {
         const board = deps.board();
         const reader = board?.briefImages?.(runner.commodoreId);
-        if (!reader) throw new CommodoreStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it." });
+        if (!reader) throw new CommodoreStoreError("attachment_not_available", undefined, { hint: "Use image IDs allowed by this tool. If an image is unavailable, ask the person to resend it." });
         return reader(ids);
       },
       hasPersonMessage: hasPersonMessage(runner),
@@ -874,7 +916,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           if (!deps.attachments || !message.messageId) throw new Error("attachment_not_found");
           const images = deps.attachments.read(runner.commodoreId, message.messageId);
           if (images.length !== message.attachments.length || images.some((image, index) => image.id !== message.attachments![index]!.id)) throw new Error("attachment_not_found");
-          return { text: `${message.text}\n\nAttached images for this turn (copy with attachmentIds in objective add or edit before the turn ends; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
+          return { text: `${message.text}\n\nAttached images from the person (copy with attachmentIds; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
         batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
         // 사령관 연락의 이미지 — 사람 메시지와 같은 턴·세션 예산에 센다. 사본은 수신 때 저장소에서 받았다.

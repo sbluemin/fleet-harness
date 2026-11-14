@@ -24,7 +24,7 @@ const commodores = defineConsoleTool({
       to: z.string().uuid().describe("Recipient id from list."),
       text: z.string().trim().min(1).max(MAX_TRANSCRIPT_TEXT),
       replyTo: z.string().min(1).max(128).optional().describe("Message id replied to."),
-      attachmentIds: z.array(z.string().uuid()).min(1).max(MAX_COMMODORE_MESSAGE_IMAGES).optional().describe("This turn's or your objective's image IDs to forward."),
+      attachmentIds: z.array(z.string().uuid()).min(1).max(MAX_COMMODORE_MESSAGE_IMAGES).optional().describe("Image IDs from the person's retained messages to you, your objectives, or this turn's mail."),
     }) },
     create: { kind: "write", callers: ["commodore"], input: z.object({
       alias: z.string().trim().refine((value) => !!value && normalizeCommodoreAlias(value) === value),
