@@ -1,5 +1,6 @@
 import { FolderIcon, PencilIcon, PlusIcon, TaskforceIcon, TrashIcon } from "./sidebar-menu-icons.js";
 import { ConsoleSectionHead, useConsoleSections, type ConsoleSections } from "../../../remote-access/client/console-sections.js";
+import { RemoteObjectivePopupHost } from "../../../objectives/client/remote-objective-popup.js";
 
 /**
  * 사이드바 머리 한 줄 — 사령관 section 이 `TheaterInfo` 모양으로 선다. `id` 와 `commodore.id` 는 그 사령관 UUID 이고,
@@ -904,6 +905,7 @@ export function ObjectiveRecordsSideBar({
           onClose={closeActiveContextMenu}
         />
       ) : null}
+      <RemoteObjectivePopupHost sections={consoles} />
       <DirectoryBrowserModal open={browserOpen} onCancel={cancelTheaterBrowser} onConfirm={confirmTheaterBrowser} />
     </aside>
   );

@@ -1,7 +1,7 @@
 import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
-  CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_SEAMLESS_CAPABILITY, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl,
+  CONSOLE_OBJECTIVE_PEEK_CAPABILITY, CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_SEAMLESS_CAPABILITY, CONSOLE_SECTION_EVENT, consoleSectionCommandUrl,
   isConsoleRosterState, isConsoleSectionState,
   type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState,
 } from "@fleet-console/protocol/desktop/console-section";
@@ -45,6 +45,8 @@ export interface ConsoleSections {
   readonly rosterCapable: boolean;
   /** 셸이 명부 프레임을 한 번이라도 건넸는가. */
   readonly rosterFrame: boolean;
+  /** 집 Console 문서에서만 원격 목표 읽기를 요청한다. 옛 셸은 이 능력이 없다. */
+  readonly objectivePeekCapable: boolean;
   readonly roster: (id: string) => ConsoleRosterEntry | null;
   readonly folded: (id: string) => boolean;
   readonly fold: (id: string, folded: boolean) => void;
@@ -123,6 +125,8 @@ export function useConsoleSections(options?: { readonly refresh?: boolean }): Co
   const active = entries.find((entry) => entry.active) ?? null;
   return {
     capable, rosterCapable, rosterFrame, seamless, entries, command, arrived, fold, arrival,
+    objectivePeekCapable: capable && active?.home === true && shell.origin === location.origin
+      && shell.capabilities.includes(CONSOLE_OBJECTIVE_PEEK_CAPABILITY),
     ownHead: active !== null && (entries.length === 1 || consoleLifecycleKey(active) !== null),
     // 콘솔이 하나뿐이어도 관리 대상이 꺼져 있거나 시작·종료 중이면 머리글을 세운다 — 그 사실과 시작 단추가 설 자리가 머리글뿐이다.
     sectioned: capable && (entries.length > 1 || entries.some((entry) => consoleLifecycleKey(entry) !== null)),
@@ -154,6 +158,13 @@ function stuckHeadScrollTop(head: HTMLElement, list: HTMLElement): number | null
 /** 전환을 막는 상태 — 지금의 전환 메뉴와 같은 규칙이다. */
 export function consoleSwitchBlocked(entry: ConsoleSectionEntry): boolean {
   return entry.active || entry.status === "unreachable" || entry.status === "untrusted" || entry.status === "stopping";
+}
+
+/** 명부가 엿보기를 지원하고, 집 문서에서 그 Console로 갈 수 있을 때만 글리프를 세운다. */
+export function consoleObjectivePeekAllowed(sections: ConsoleSections, id: string): boolean {
+  const entry = sections.entries.find((candidate) => candidate.id === id);
+  return sections.objectivePeekCapable && entry !== undefined && !consoleSwitchBlocked(entry)
+    && sections.roster(id)?.objectivePeek === true;
 }
 
 /** 관리 카드가 열리는 콘솔. 원격 경로와 닿지 않는 콘솔은 빠진다 — 이 Desktop이 따로 관리하는 콘솔은 꺼져 있어도 남는다. 좁은 열인지는 부르는 쪽이 본다. */

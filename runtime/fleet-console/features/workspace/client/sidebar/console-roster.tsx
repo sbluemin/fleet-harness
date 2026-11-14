@@ -3,12 +3,13 @@ import type { ConsoleRosterCommander, ConsoleRosterCommodore, ConsoleRosterRun, 
 import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { getRailStoreSnapshot } from "../../../../core/client/src/chrome/rail/rail-store.js";
-import { ConsoleSectionHead, consoleSwitchBlocked, type ConsoleSections } from "../../../remote-access/client/console-sections.js";
+import { ConsoleSectionHead, consoleObjectivePeekAllowed, consoleSwitchBlocked, type ConsoleSections } from "../../../remote-access/client/console-sections.js";
+import { openObjectivePeek } from "../../../remote-access/client/objective-peek.js";
 import { commodoreAvatarKey, fallbackMongleBase, objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { isIdentityTone } from "../../shared/identity-tones.js";
 import { MongleAvatar } from "../components/mongle-avatar.js";
 import { ClusterRowProgress } from "./side-bar-cluster-row.js";
-import { CommanderRowGlyphs, type CommanderRowGlyphTab } from "../commander-tab/commander-row-glyphs.js";
+import { CommanderRowGlyphButtons, CommanderRowGlyphs, type CommanderRowGlyphTab } from "../commander-tab/commander-row-glyphs.js";
 
 /** 지금 문서의 우측 사이드바. 탭 이름이 계약(32자)을 넘으면 열림만 넘긴다. 통합 사이드바의 전환 명령도 같은 값을 싣는다. */
 export function currentRightPanel(): { readonly open: boolean; readonly tab?: string } {
@@ -16,6 +17,16 @@ export function currentRightPanel(): { readonly open: boolean; readonly tab?: st
   if (id === null) return { open: false };
   if (id.length > 0 && id.length <= 32 && !/[\u0000-\u001f\u007f]/u.test(id)) return { open: true, tab: id };
   return { open: true };
+}
+
+/** 두 명부 경로가 같은 셸 명령과 지역 스토어 밖의 읽기 전용 창을 쓴다. */
+export function openRosterObjectivePeek(sections: ConsoleSections, entry: ConsoleSectionEntry, commander: ConsoleRosterCommander,
+  tab: CommanderRowGlyphTab, opener: HTMLElement, openConsole: () => void): void {
+  if (!consoleObjectivePeekAllowed(sections, entry.id)) return;
+  openObjectivePeek({
+    console: entry.id, objective: commander.id, machine: entry.label, title: commander.title, opener, openConsole,
+    request: (nonce) => sections.command({ peek: { console: entry.id, objective: commander.id, nonce } }),
+  }, tab);
 }
 
 function rosterMongleState(run: ConsoleRosterRun): MongleState {
@@ -90,7 +101,9 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
         <div className="commander-tab">
           <ol className="commander-tab-list side-bar-group-chips">
             {commanders.map((commander) => <CommanderRosterRow key={commander.id} commodoreId={commodore.id} commander={commander} blocked={blocked}
-              onOpen={(row) => open(commodore, commander.id, row)} />)}
+              onOpen={(row) => open(commodore, commander.id, row)}
+              onGlyph={consoleObjectivePeekAllowed(sections, entry.id) ? (tab, opener) =>
+                openRosterObjectivePeek(sections, entry, commander, tab, opener, () => open(commodore, commander.id, opener.closest<HTMLElement>(".side-bar-cluster-row") ?? opener)) : undefined} />)}
           </ol>
           {moreCommanders > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(moreCommanders) })}</p> : null}
         </div>
@@ -158,10 +171,12 @@ function RosterSections({ sections, unsectionedCollapsed, rows, render }: {
 }
 
 /** 원격 콘솔의 진행 중 지휘관 — 로컬 진행 행과 같은 아바타·제목·게이지. 조용함 문구는 적지 않고 얼굴만 idle이다. 통합 사이드바의 행에서도 그대로 쓴다. */
-export function CommanderRosterRow({ commodoreId, commander, blocked, onOpen, avatar, onGlyph }: {
+export function CommanderRosterRow({ commodoreId, commander, blocked, onOpen, avatar, onGlyph, localGlyphs = false }: {
   readonly commodoreId: string;
   readonly commander: ConsoleRosterCommander; readonly blocked: boolean; readonly onOpen: (row: HTMLElement) => void; readonly avatar?: ReactNode;
   readonly onGlyph?: (tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
+  /** 지금 문서의 목표만 지역 보드·공유 폴더 표시를 읽는다. 원격 행은 표현만 쓴다. */
+  readonly localGlyphs?: boolean;
 }) {
   const t = useT();
   const run = commander.run === "working" ? t("chrome.consoles.run.working") : commander.run === "waiting" ? t("chrome.consoles.run.waiting") : null;
@@ -184,9 +199,10 @@ export function CommanderRosterRow({ commodoreId, commander, blocked, onOpen, av
         {run !== null ? <span className="side-bar-cluster-row-preview side-console-run">{run}</span> : null}
       </span> : null}
     </div>
-    {onGlyph ? <span className="side-bar-cluster-row-aside">
-      <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={commander.id} title={commander.title}
-        onGlyphTab={(_id, tab, opener) => { if (!blocked) onGlyph(tab, opener); }} />
+    {onGlyph && !blocked ? <span className="side-bar-cluster-row-aside">
+      {localGlyphs ? <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={commander.id} title={commander.title}
+        onGlyphTab={(_id, tab, opener) => onGlyph(tab, opener)} />
+        : <CommanderRowGlyphButtons title={commander.title} onGlyph={onGlyph} />}
     </span> : null}
   </li>;
 }
