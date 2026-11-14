@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
+import { ChevronGlyph, MenuCheckGlyph, useSelect } from "@fleet-console/ui/react";
 
 import type { IdentityTone } from "../../workspace/shared/identity-tones.js";
 import { commodoreAvatarKey, isPromotedBaseId, pickMongleBase } from "../../workspace/shared/avatars.js";
@@ -6,7 +8,7 @@ import { setMongleLook } from "../../workspace/client/avatar-events.js";
 import { MongleBaseGrid, MonglePreviewStates, MongleToneDots, type MongleAvatarPreviewState } from "../../workspace/client/components/mongle-avatar-picker.js";
 import { MongleAvatar } from "../../workspace/client/components/mongle-avatar.js";
 import { useT, useConsoleLocale } from "../../../core/client/src/i18n/index.js";
-import { UNIFIED_SIDEBAR_HOME, type UnifiedCreateReason } from "@fleet-console/protocol/desktop/console-section";
+import { UNIFIED_SIDEBAR_HOME, type UnifiedCreateReason, type UnifiedSidebarMachine } from "@fleet-console/protocol/desktop/console-section";
 import { useConsoleSections } from "../../remote-access/client/console-sections.js";
 import { useUnifiedSidebar } from "../../workspace/client/sidebar/unified-sidebar.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
@@ -155,8 +157,8 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
   const tones = { cerulean: t("avatar.tone.cerulean"), teal: t("avatar.tone.teal"), amber: t("avatar.tone.amber"), plum: t("avatar.tone.plum"), rose: t("avatar.tone.rose"), moss: t("avatar.tone.moss"), indigo: t("avatar.tone.indigo"), crimson: t("avatar.tone.crimson") };
   const states = { running: t("avatar.state.running"), awaiting: t("avatar.state.awaiting"), unseen: t("avatar.state.unseen"), idle: t("avatar.state.idle"), ended: t("avatar.state.ended") };
 
-  // 머리(제목·닫기) · 본문(큰 미리보기와 상태 줄 · 이름 · 모양 · 색) · 발(취소·만들기)이 구분선으로 나뉜다. 큰 아바타가 고른 상태를 연기한다.
-  // 폰 시트는 왼쪽 위 둥근 닫기와 제목, 폭 전체 「만들기」 하나다 — 닫기가 취소를 겸한다.
+  // 머리(제목·머신 선택·닫기) · 본문(큰 미리보기와 상태 줄 · 이름 · 모양 · 색) · 발(취소·만들기)이 구분선으로 나뉜다. 큰 아바타가 고른 상태를 연기한다.
+  // 폰 시트는 왼쪽 위 둥근 닫기와 제목(·머신 선택), 폭 전체 「만들기」 하나다 — 닫기가 취소를 겸한다.
   return (
     <div className={sheet ? "commodore-create-scrim is-sheet" : "commodore-create-scrim"} role="presentation" onPointerDown={sheet ? undefined : onClose}>
       <div
@@ -168,34 +170,23 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
         onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); onClose(); } }}
       >
         <header className="commodore-create-head">
-          <h2 id="commodore-create-title">{t("sidebar.commodore.createTitle")}</h2>
+          <div className="commodore-create-head-start">
+            <h2 id="commodore-create-title">{t("sidebar.commodore.createTitle")}</h2>
+            {otherMachines.length > 0 ? <CommodoreCreateMachineSelect
+              value={targetId}
+              homeLabel={t("chrome.consoles.thisComputer")}
+              machines={otherMachines}
+              label={t("sidebar.commodore.createMachine")}
+              blockedReason={blockedReason}
+              blockedNote={blockedNote}
+              onChange={(nextId) => { setTargetId(nextId); setCreateReason(null); }}
+            /> : null}
+          </div>
           <button type="button" className="commodore-create-close" aria-label={t("common.close")} title={t("common.close")} onClick={onClose}>
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9" /></svg>
           </button>
         </header>
         <div className="commodore-create-body">
-          {otherMachines.length > 0 ? <>
-            <label className="commodore-create-machine-label" id="commodore-create-machine-label">{t("sidebar.commodore.createMachine")}</label>
-            <div className="commodore-create-machine-seg" role="group" aria-labelledby="commodore-create-machine-label">
-              <button type="button" aria-pressed={targetId === UNIFIED_SIDEBAR_HOME}
-                onClick={() => { setTargetId(UNIFIED_SIDEBAR_HOME); setCreateReason(null); }}>{t("chrome.consoles.thisComputer")}</button>
-              {otherMachines.map((machine) => {
-                const reason = blockedReason(machine.consoleId);
-                return <button key={machine.consoleId} type="button" disabled={reason !== null}
-                  aria-pressed={targetId === machine.consoleId}
-                  title={reason !== null ? blockedNote(machine.label, reason) : machine.address}
-                  onClick={() => { setTargetId(machine.consoleId); setCreateReason(null); }}>{machine.label}</button>;
-              })}
-            </div>
-            <div className="commodore-create-machine-note" role="status">
-              {otherMachines.flatMap((machine) => {
-                const reason = blockedReason(machine.consoleId);
-                return reason !== null ? [blockedNote(machine.label, reason)] : [];
-              }).map((note) => <p key={note}>{note}</p>)}
-              {targetMachine && blockedReason(targetMachine.consoleId) === null
-                ? <p>{t("sidebar.commodore.createRemoteNote", { machine: targetMachine.label })}</p> : null}
-            </div>
-          </> : null}
           <div className="commodore-create-hero">
             <MongleAvatar base={base} tone={tone} role="commodore" state={preview} size={sheet ? 124 : 112} label={alias || t("sidebar.commodore.createTitle")} decorative />
           </div>
@@ -211,6 +202,8 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
           />
           <MongleBaseGrid role="commodore" base={base} tone={tone} locale={locale} label={t("avatar.editor.baseGroup")} promotedLabel={t("avatar.editor.promotedGroup")} size={sheet ? 46 : 44} onBase={(next) => { setBase(next); if (isPromotedBaseId(next)) setTone(null); }} />
           <MongleToneDots base={base} tone={tone} label={t("avatar.editor.toneGroup")} names={tones} lockedLabel={t("avatar.editor.toneLocked")} onTone={setTone} />
+          {targetMachine && blockedReason(targetMachine.consoleId) === null
+            ? <p className="commodore-create-machine-note" role="status">{t("sidebar.commodore.createRemoteNote", { machine: targetMachine.label })}</p> : null}
           {createReason ? <p className="commodore-create-failed" role="alert">{failedNote(createReason)}</p>
             : failed ? <p className="commodore-create-failed" role="alert">{t("sidebar.commodore.failed")}</p> : null}
         </div>
@@ -219,6 +212,56 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
           <button type="button" className="fc-btn fc-btn--primary commodore-create-button" disabled={!alias || busy} onClick={() => { void submit(); }}>{t("sidebar.commodore.create")}</button>
         </footer>
       </div>
+    </div>
+  );
+}
+
+/** 헤더 제목 오른쪽에 서는 은은한 머신 선택기. 열기 전에는 고른 머신 이름 한 줄만 보이고, 눌러야 목록이 열린다. */
+function CommodoreCreateMachineSelect({ value, homeLabel, machines, label, blockedReason, blockedNote, onChange }: {
+  readonly value: string;
+  readonly homeLabel: string;
+  readonly machines: readonly UnifiedSidebarMachine[];
+  readonly label: string;
+  readonly blockedReason: (consoleId: string) => UnifiedCreateReason | null;
+  readonly blockedNote: (machineLabel: string, reason: UnifiedCreateReason) => string;
+  readonly onChange: (nextId: string) => void;
+}) {
+  const options = useMemo(() => [
+    { value: UNIFIED_SIDEBAR_HOME, label: homeLabel, note: null as string | null, address: null as string | null, disabled: false },
+    ...machines.map((machine) => {
+      const reason = blockedReason(machine.consoleId);
+      return {
+        value: machine.consoleId,
+        label: machine.label,
+        note: reason !== null ? blockedNote(machine.label, reason) : null,
+        address: machine.address,
+        disabled: reason !== null,
+      };
+    }),
+  ], [blockedNote, blockedReason, homeLabel, machines]);
+  const select = useSelect({ value, options, onChange });
+  const current = options.find((option) => option.value === value) ?? options[0];
+
+  return (
+    <div {...select.rootProps} className={`${select.rootProps.className} commodore-create-machine`}>
+      <button {...select.triggerProps} aria-label={label} title={current?.address ?? label}>
+        <span className="fc-select__value">{current?.label ?? homeLabel}</span>
+        <ChevronGlyph direction="down" className="fc-select__caret" />
+      </button>
+      {select.isOpen ? createPortal(
+        <ul {...select.listboxProps} className={`${select.listboxProps.className} commodore-create-machine-popup`} aria-label={label}>
+          {options.map((option, index) => (
+            <li key={option.value} {...select.getOptionProps(index)} title={option.note ?? option.address ?? undefined}>
+              <span className="commodore-create-machine-option">
+                <span className="commodore-create-machine-option-label">{option.label}</span>
+                {option.note ? <span className="commodore-create-machine-option-note">{option.note}</span> : null}
+              </span>
+              <MenuCheckGlyph className="fc-select__check" size={14} />
+            </li>
+          ))}
+        </ul>,
+        document.body,
+      ) : null}
     </div>
   );
 }
