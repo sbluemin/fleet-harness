@@ -73,12 +73,18 @@ export interface BrowserPasswordOriginCredentials {
   readonly credentials: readonly BrowserPasswordPageCredential[];
 }
 
+export interface BrowserPasswordOsAuth {
+  canPrompt(): boolean;
+  prompt(reason: string): Promise<void>;
+}
+
 export interface BrowserPasswordVaultDeps {
   /** Desktop 소유 데이터 루트(실제 앱에서는 app.getPath("userData")). */
   readonly root: string;
   readonly safeStorage: BrowserPasswordSafeStorage;
   readonly systemPreferences: BrowserPasswordSystemPreferences;
   readonly clipboard: BrowserPasswordClipboard;
+  readonly osAuth?: BrowserPasswordOsAuth;
   readonly platform?: NodeJS.Platform;
   readonly now?: () => number;
   readonly randomId?: () => string;
@@ -178,7 +184,7 @@ export function createBrowserPasswordVault(deps: BrowserPasswordVaultDeps) {
     if (!available) throw err("encryption_unavailable");
   };
 
-  const osAuthSupported = (): boolean => {
+  const touchIdSupported = (): boolean => {
     if (platform !== "darwin") return false;
     try {
       return deps.systemPreferences.canPromptTouchID();
@@ -187,14 +193,38 @@ export function createBrowserPasswordVault(deps: BrowserPasswordVaultDeps) {
     }
   };
 
-  /** reveal·copy 전용 OS 인증 게이트. 존재 여부와 무관하게 먼저 묻는다(열람 없는 판별 금지). */
-  const requireOsAuth = async (): Promise<void> => {
-    if (!osAuthSupported()) throw err("os_auth_unavailable");
+  const fallbackOsAuthSupported = (): boolean => {
+    if (platform !== "darwin" && platform !== "win32") return false;
     try {
-      await deps.systemPreferences.promptTouchID(OS_AUTH_REASON);
+      return deps.osAuth?.canPrompt() === true;
+    } catch {
+      return false;
+    }
+  };
+
+  const osAuthSupported = (): boolean => touchIdSupported() || fallbackOsAuthSupported();
+
+  /**
+   * reveal·copy 전용 OS 인증 게이트(크롬 OS별 정책 준수).
+   * - macOS: Touch ID 지원 시 promptTouchID, 미지원(Mac mini 등) 시 Mac 암호 창(osAuth)
+   * - Windows: Windows Hello / OS 인증(osAuth)
+   * - Linux: 크롬과 같이 추가 OS 암호 창 없이 금고 복호화 허용
+   * 존재 여부와 무관하게 먼저 묻는다(열람 없는 판별 금지).
+   */
+  const requireOsAuth = async (): Promise<void> => {
+    if (platform === "linux") return;
+    const useTouchId = touchIdSupported();
+    const useFallback = !useTouchId && fallbackOsAuthSupported();
+    if (!useTouchId && !useFallback) throw err("os_auth_unavailable");
+    try {
+      if (useTouchId) await deps.systemPreferences.promptTouchID(OS_AUTH_REASON);
+      else await deps.osAuth!.prompt(OS_AUTH_REASON);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (/cancel/i.test(message)) throw err("os_auth_cancelled");
+      if (error instanceof BrowserPasswordVaultError) throw error;
+      const errObj = error as { message?: unknown; stderr?: unknown; code?: unknown };
+      const message = `${errObj?.message instanceof Error ? errObj.message.message : String(errObj?.message ?? error)} ${typeof errObj?.stderr === "string" ? errObj.stderr : ""}`;
+      if (/cancel|-128/i.test(message)) throw err("os_auth_cancelled");
+      if (/unavailable|not_present/i.test(message)) throw err("os_auth_unavailable");
       throw err("os_auth_failed");
     }
   };

@@ -434,11 +434,38 @@ async function boot(): Promise<void> {
    * 비밀번호 금고는 프로필이 아니라 Desktop 하나가 통째로 소유한다 — 모든 스페이스가 공유하고
    * 임시 세션에서도 같은 금고를 읽고 쓴다. 디스크에는 암호문과 메타데이터만 남는다.
    */
+  const execFileAsync = promisify(execFile);
   const browserPasswordVault = createBrowserPasswordVault({
     root: app.getPath("userData"),
     safeStorage,
     systemPreferences,
     clipboard,
+    osAuth: {
+      canPrompt: () => process.platform === "darwin" || process.platform === "win32",
+      prompt: async (reason) => {
+        if (process.platform === "darwin") {
+          await execFileAsync(
+            "/usr/bin/osascript",
+            ["-e", "on run argv", "-e", 'do shell script "/usr/bin/true" with prompt (item 1 of argv) with administrator privileges', "-e", "end run", "--", reason],
+            { timeout: 120_000 },
+          );
+          return;
+        }
+        if (process.platform === "win32") {
+          const { stdout } = await execFileAsync(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              "$null = [Windows.Security.Credentials.UI.UserConsentVerifier, Windows.Security.Credentials.UI, ContentType=WindowsRuntime]; $avail = [Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync().GetAwaiter().GetResult(); if ($avail -ne 'Available') { Write-Output 'unavailable'; exit 2 }; $res = [Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync($env:FLEET_OS_AUTH_REASON).GetAwaiter().GetResult(); Write-Output $res; if ($res -eq 'Verified') { exit 0 } elseif ($res -eq 'Canceled') { exit 3 } else { exit 4 }",
+            ],
+            { timeout: 120_000, env: { ...process.env, FLEET_OS_AUTH_REASON: reason } },
+          );
+          if (!String(stdout).includes("Verified")) throw new Error(String(stdout).trim() || "os_auth_failed");
+        }
+      },
+    },
   });
   // 비밀번호 자동완성·저장 제안 — 크롬 카드 동작을 받으면 금고로만 잇고 Console 으로는 보내지 않는다.
   // 카드 표시는 act 가 돌려주는 최신 SurfaceControl 로 붙인다(스냅샷 경로가 아니라 동작 경로에서만 손에 닿는다).

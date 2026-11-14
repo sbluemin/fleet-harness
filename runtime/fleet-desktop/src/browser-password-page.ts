@@ -70,6 +70,7 @@ export interface FleetPasswordFieldScan {
 }
 
 export interface FleetPasswordPageScan {
+  readonly origin?: string;
   readonly forms: readonly FleetPasswordFieldScan[];
 }
 
@@ -78,6 +79,7 @@ export interface FleetPasswordFillTarget {
   readonly usernameName: string;
   readonly username: string;
   readonly password: string;
+  readonly expectedOrigin?: string;
   readonly focusPassword?: boolean;
 }
 
@@ -169,7 +171,9 @@ export function fleetPasswordScan(scope: FleetPasswordScope, withValues?: boolea
     };
     forms.push(withValues === true ? { ...entry, passwordValue: password.value ?? "" } : entry);
   });
-  return { forms };
+  const locObj = typeof globalThis === "object" && globalThis ? (globalThis as unknown as { location?: { origin?: unknown } }).location : undefined;
+  const scanOrigin = locObj && typeof locObj.origin === "string" ? locObj.origin : "";
+  return { ...(scanOrigin ? { origin: scanOrigin } : {}), forms };
 }
 
 /**
@@ -177,6 +181,10 @@ export function fleetPasswordScan(scope: FleetPasswordScope, withValues?: boolea
  * 격리 월드 직렬화를 위해 모듈 범위를 참조하지 않는다.
  */
 export function fleetPasswordFill(doc: FleetPasswordDocument, target: FleetPasswordFillTarget): boolean {
+  if (typeof target.expectedOrigin === "string" && target.expectedOrigin !== "" && typeof globalThis === "object" && globalThis) {
+    const loc = (globalThis as { location?: { origin?: unknown } }).location;
+    if (loc && typeof loc.origin === "string" && loc.origin !== target.expectedOrigin) return false;
+  }
   const PASSWORD_SELECTOR = 'input[type="password"]';
   const USERNAME_SELECTOR = 'input:not([type]), input[type="text"], input[type="email"], input[type="tel"]';
   const setNative = (element: FleetPasswordInput, value: string): void => {
@@ -545,7 +553,7 @@ function validateScan(value: unknown): FleetPasswordPageScan | null {
       newPassword: raw.newPassword,
     });
   }
-  return { forms };
+  return { ...(typeof value.origin === "string" ? { origin: value.origin } : {}), forms };
 }
 
 interface BindingMessage {
@@ -615,8 +623,9 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
     }
   };
 
-  const fillNow = async (track: PageTrack, form: FleetPasswordFieldScan, credential: { username: string; password: string }, focusPassword: boolean): Promise<boolean> => {
-    const target = JSON.stringify({ form: form.index, usernameName: form.usernameName, username: credential.username, password: credential.password, focusPassword });
+  const fillNow = async (track: PageTrack, origin: string, form: FleetPasswordFieldScan, credential: { username: string; password: string }, focusPassword: boolean): Promise<boolean> => {
+    if (pageOriginOf(track.handle.url()) !== origin) return false;
+    const target = JSON.stringify({ form: form.index, usernameName: form.usernameName, username: credential.username, password: credential.password, expectedOrigin: origin, focusPassword });
     const result = await execute(track, `(${FILL_SOURCE})(document, ${target})`);
     return result === true;
   };
@@ -643,6 +652,9 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
         const raw = await execute(track, `(${SCAN_SOURCE})(document)`);
         const scan = validateScan(raw);
         if (!scan) return;
+        // 스캔 동안 다른 출처로 항해했으면 옛 출처의 자격으로 새 페이지를 채우지 않는다.
+        if (typeof scan.origin === "string" && scan.origin !== "" && scan.origin !== origin) return;
+        if (pageOriginOf(track.handle.url()) !== origin) return;
         const creds = readCredentials(origin);
         if (!creds) return;
         const form = chooseLoginForm(scan.forms);
@@ -662,7 +674,7 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
           return;
         }
         if (form.usernameHasValue && form.usernameValue !== credential.username) return;
-        const filled = await fillNow(track, form, credential, false);
+        const filled = await fillNow(track, origin, form, credential, false);
         if (filled) track.filled.add(key);
         return;
       }
@@ -832,8 +844,8 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
           const raw = await execute(track, `(${SCAN_SOURCE})(document)`);
           const scan = validateScan(raw);
           const form = scan ? chooseLoginForm(scan.forms) : null;
-          if (!form) return;
-          const filled = await fillNow(track, form, credential, true);
+          if (!form || !origin || (typeof scan?.origin === "string" && scan.origin !== "" && scan.origin !== origin)) return;
+          const filled = await fillNow(track, origin, form, credential, true);
           if (filled) {
             track.filled.add(loginFormKey(origin ?? current.origin, form));
             clearPrompt();

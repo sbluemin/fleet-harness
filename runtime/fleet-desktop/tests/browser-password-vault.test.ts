@@ -206,12 +206,41 @@ describe("browser password vault", () => {
     expect(clip.texts).toHaveLength(0);
   });
 
-  it("treats non-macOS platforms as OS-auth unavailable even when the port claims support", async () => {
+  it("falls back to OS password prompt on macOS when Touch ID is unavailable", async () => {
+    const osPrompts: string[] = [];
+    let osFailure: Error | null = null;
+    auth.control.supported = false;
+    const vault = createBrowserPasswordVault({
+      root: dir,
+      safeStorage: fakes.safeStorage,
+      systemPreferences: auth.systemPreferences,
+      clipboard: clip.clipboard,
+      platform: "darwin",
+      osAuth: {
+        canPrompt: () => true,
+        prompt: async (reason) => {
+          osPrompts.push(reason);
+          if (osFailure) throw osFailure;
+        },
+      },
+    });
+    const saved = await vault.command({ action: "save", origin: "https://example.com/", username: "ada", password: "mac-mini-pw" }) as { entry: { id: string } };
+    expect(await vault.command({ action: "state" })).toMatchObject({ osAuthSupported: true });
+    expect(await vault.command({ action: "reveal", id: saved.entry.id })).toEqual({ password: "mac-mini-pw" });
+    expect(osPrompts).toHaveLength(1);
+
+    osFailure = new Error("User canceled. (-128)");
+    expect(await errorCodeOf(vault.command({ action: "copy", id: saved.entry.id }))).toBe("os_auth_cancelled");
+    osFailure = new Error("wrong password");
+    expect(await errorCodeOf(vault.command({ action: "reveal", id: saved.entry.id }))).toBe("os_auth_failed");
+  });
+
+  it("allows reveal/copy directly on Linux without a separate OS biometric dialog (Chrome parity)", async () => {
     const vault = createVault({ platform: "linux" });
-    await vault.command({ action: "save", origin: "https://example.com/", username: "ada", password: "pw" });
+    const saved = await vault.command({ action: "save", origin: "https://example.com/", username: "ada", password: "pw" }) as { entry: { id: string } };
     const state = await vault.command({ action: "state" }) as { osAuthSupported: boolean };
     expect(state.osAuthSupported).toBe(false);
-    expect(await errorCodeOf(vault.command({ action: "reveal", id: "whatever" }))).toBe("os_auth_unavailable");
+    expect(await vault.command({ action: "reveal", id: saved.entry.id })).toEqual({ password: "pw" });
     expect(auth.control.calls).toHaveLength(0);
   });
 

@@ -651,4 +651,27 @@ describe("password agent background and retention rules", () => {
     expect(agent2.prompt()).toBeNull();
     expect(prompts.at(-1)).toBeNull();
   });
+
+  it("refuses to fill if the tab navigated to another origin while scanning", async () => {
+    const { vault } = stubVault([{ id: "a", username: "single@a", password: "secret-a", updatedAt: 1 }]);
+    let currentUrl = "https://a.example/login";
+    const codes: string[] = [];
+    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5 });
+    agent.attachView("v1", {
+      url: () => currentUrl,
+      executeIsolated: async (code) => {
+        codes.push(code);
+        if (code.includes("fleetPasswordScan")) {
+          // Simulate navigation to b.example completing during the scan await.
+          currentUrl = "https://b.example/login";
+          return { origin: "https://a.example", ...cannedScan() };
+        }
+        return true;
+      },
+    });
+    agent.setVisible("v1", true, false);
+    agent.pageReady("v1");
+    await tick();
+    expect(codes.some((code) => code.includes("focusPassword"))).toBe(false);
+  });
 });
