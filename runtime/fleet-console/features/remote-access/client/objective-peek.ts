@@ -37,6 +37,9 @@ export function subscribeObjectivePeek(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
+// 셸의 앞선 읽기 한 건(신원 8초 + HTTP 5초)과 이번 읽기, 전달 여유 4초를 기다린다.
+const PEEK_REPLY_TIMEOUT_MS = 30_000;
+
 function requestSnapshot(): void {
   if (!selection || nonce !== null) return;
   const current = crypto.randomUUID();
@@ -46,7 +49,7 @@ function requestSnapshot(): void {
     nonce = null;
     selection = { ...selection, status: "unavailable", snapshot: null };
     emit();
-  }, 6_000);
+  }, PEEK_REPLY_TIMEOUT_MS);
   try { selection.target.request(current); }
   catch {
     if (!selection || nonce !== current) return;
