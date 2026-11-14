@@ -284,6 +284,12 @@ export function composeGroupTimeline(input: {
       entries.set(item.id, resolvedEntry(item, recipient ? [speaker, recipient] : [speaker], () => ({ ...item, speaker, ...(recipient ? { recipient } : {}) })));
       continue;
     }
+    if (item.kind === "delegation") {
+      const sender = resolve(item.sender);
+      const recipients = item.recipients.map(resolve);
+      entries.set(item.id, resolvedEntry(item, [sender, ...recipients], () => ({ ...item, sender, recipients })));
+      continue;
+    }
     entries.set(item.id, item);
   }
   // 시각을 모르는 대기 말은 대화 맨 아래에 선다. 지난 말 사이로 올라가면 "이미 처리된 말"로 읽힌다.

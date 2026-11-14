@@ -113,8 +113,8 @@ function PartyMark({ party, size }: { readonly party: Party; readonly size: "md"
 }
 
 /**
- * 전언 줄 — 가운데 단추 하나: 「보낸 사람」 보조 글자와 보낸 이의 표식·이름만 담은 은은한 알약 칩. 발췌·받는 이·펼침 화살표는 없다.
- * 전달 실패만 칩 뒤에 신호 잉크로 짧게 남는다. 누르면 대화 화면이 열린다(여는 쪽이 없으면 눌리는 척하지 않는다).
+ * 전언 줄 — 가운데 단추 하나: 「보낸 사람」(또는 사령관 송신의 「메시지 보냄」+받는 사령관, 자문의 「자문 요청」·「자문 답변」) 보조 글자와
+ * 표식·이름만 담은 은은한 알약 칩. 발췌·펼침 화살표·자문 전달 상태 문구는 없다. 전달 실패만 칩 뒤에 신호 잉크로 짧게 남는다. 누르면 대화 화면이 열린다.
  */
 export function RelayLine({ entry, language, onOpen }: {
   readonly entry: RelayEntry;
@@ -124,13 +124,31 @@ export function RelayLine({ entry, language, onOpen }: {
   const t = getGroupT(language);
   if (entry.kind === "plugin-notice" && entry.text.trim().length === 0) return null;
   const sender = senderOf(entry, language);
-  const name = partyName(sender);
+  const via = entry.kind === "delegation" ? entry.via : undefined;
+  const chipParty = via === "sent" ? (recipientsOf(entry)[0] ?? sender) : sender;
+  const name = partyName(chipParty);
   const failed = entry.kind === "delegation" && deliveryFailure(entry) !== null;
+  const fromKey = via === "sent"
+    ? "group.relay.sent"
+    : via === "consult"
+      ? "group.relay.consultAsk"
+      : via === "consult-reply"
+        ? "group.relay.consultReply"
+        : "group.relay.from";
+  const openKey = failed
+    ? (via === "sent" ? "group.relay.openSentFailed" : "group.relay.openFailed")
+    : via === "sent"
+      ? "group.relay.openSent"
+      : via === "consult"
+        ? "group.relay.openConsultAsk"
+        : via === "consult-reply"
+          ? "group.relay.openConsultReply"
+          : "group.relay.open";
   const body = (
     <>
-      <span className="group-relay-from">{t("group.relay.from")}</span>
+      <span className="group-relay-from">{t(fromKey)}</span>
       <span className="group-relay-chip">
-        <PartyMark party={sender} size="md" />
+        <PartyMark party={chipParty} size="md" />
         <span className="group-relay-chip-name">{name}</span>
       </span>
       {failed ? <span className="group-relay-failed">{t("group.delegation.failed")}</span> : null}
@@ -143,7 +161,7 @@ export function RelayLine({ entry, language, onOpen }: {
           type="button"
           className="group-relay-row"
           aria-haspopup="dialog"
-          aria-label={t(failed ? "group.relay.openFailed" : "group.relay.open", { name })}
+          aria-label={t(openKey, { name })}
           onClick={(event) => onOpen(entry.id, event.currentTarget)}
         >
           {body}
@@ -431,6 +449,7 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
         {thread.map((message) => {
           const from = senderOf(message, language);
           const failure = message.kind === "delegation" ? deliveryFailure(message) : null;
+          const noAdvice = message.kind === "delegation" && message.noAdvice === true && message.text.trim().length === 0;
           return (
             <div key={message.id} className="group-relay-message" data-relay-current={message.id === entry.id || undefined}>
               {message.at !== null ? <div className="group-relay-time">{timeLabel(message.at)}</div> : null}
@@ -441,7 +460,9 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
                   <div className="group-chat-bubble is-agent is-markdown group-relay-bubble">
                     {/* 첨부는 말풍선 본문 앞 — 사람·사령관 말풍선과 같은 문법이다. 사본 없는 자리는 숨긴다(전언에만). */}
                     {"attachments" in message && message.attachments?.length ? <ChatDispatchAttachments attachments={message.attachments} language={language ?? "en"} hideLapsed /> : null}
-                    <StreamedMarkdown text={message.text} streaming={false} className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />
+                    {noAdvice
+                      ? <span className="group-relay-no-advice">{t("group.consult.noAdvice")}</span>
+                      : <StreamedMarkdown text={message.text} streaming={false} className="agent-chat-answer-body markdown-body group-chat-md" language={language} siteLinks />}
                   </div>
                   {failure !== null ? <span className="group-relay-failure">{failure ? `${t("group.delegation.failed")} · ${failure}` : t("group.delegation.failed")}</span> : null}
                 </div>

@@ -214,7 +214,9 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         const attachments = delegationImages(owner, entry);
         out.push({ kind: "delegation", id: `c${entry.seq}`, at: entry.at, sender: entry.kind === "sent" ? commodore : other,
           recipients: [entry.kind === "sent" ? other : commodore], text: entry.text, result: entry.kind === "sent" && entry.error ? errorWord(t, entry.error) : "",
-          ok: entry.kind === "received" || entry.ok, received: entry.kind === "received", ...(attachments ? { attachments } : {}) });
+          ok: entry.kind === "received" || entry.ok, received: entry.kind === "received",
+          ...(entry.kind === "sent" ? { via: "sent" as const } : {}),
+          ...(attachments ? { attachments } : {}) });
         break;
       }
       case "text":
@@ -274,8 +276,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
 }
 
 /**
- * 지휘관이 이 사령관에게 구한 자문 — 질문은 그 목표 지휘관의 말, 답은 사령관 자신의 말로 각자의 시각 자리에 끼운다.
- * 기록 줄이 아니라 보드의 자문 기록이 원천이다(깨움 줄은 대화에 서지 않는다). 지휘관 대화와 같은 말풍선 문법이다.
+ * 지휘관이 이 사령관에게 구한 자문 — 질문·답은 전언 줄(`자문 요청`/`자문 답변`)로 각자의 시각 자리에 끼우고, 본문은 슬라이드 창에서 읽는다.
+ * 기록 줄이 아니라 보드의 자문 기록이 원천이다(깨움 줄은 대화에 서지 않는다).
  */
 function withConsultations(t: T, out: readonly AgentConversationEntry[], commodore: ConversationSpeaker, live: readonly Objective[], finished: readonly Objective[] | null): readonly AgentConversationEntry[] {
   const seen = new Set<string>();
@@ -285,15 +287,35 @@ function withConsultations(t: T, out: readonly AgentConversationEntry[], commodo
     seen.add(objective.id);
     const commander: ConversationSpeaker = { kind: "commander", name: t("commodore.consult.commander", { title: objective.title }), objectiveId: objective.id };
     for (const consult of objective.consults ?? []) {
-      consults.push({ kind: "message", id: `consult:${objective.id}:${consult.id}:ask`, at: consult.at, objectiveId: objective.id, speaker: commander, recipient: commodore, text: consult.question, streaming: false, via: "consult" });
+      consults.push({
+        kind: "delegation",
+        id: `consult:${objective.id}:${consult.id}:ask`,
+        at: consult.at,
+        sender: commander,
+        recipients: [commodore],
+        text: consult.question,
+        result: "",
+        received: true,
+        via: "consult",
+      });
       if (!consult.reply) continue;
-      const { text, at, delivery } = consult.reply;
-      consults.push({ kind: "message", id: `consult:${objective.id}:${consult.id}:reply`, at, objectiveId: objective.id, speaker: commodore, recipient: commander, text: text ?? "", streaming: false, via: "consult-reply",
-        consult: { ...(delivery ? { delivery } : {}), ...(text === null ? { noAdvice: true as const } : {}) } });
+      const { text, at } = consult.reply;
+      consults.push({
+        kind: "delegation",
+        id: `consult:${objective.id}:${consult.id}:reply`,
+        at,
+        sender: commodore,
+        recipients: [commander],
+        text: text ?? "",
+        result: "",
+        received: false,
+        via: "consult-reply",
+        ...(text === null ? { noAdvice: true as const } : {}),
+      });
     }
   }
   if (consults.length === 0) return out;
-  // 기록 순서는 그대로 두고, 자문 말풍선만 시각이 처음으로 그보다 늦은 줄 앞에 끼운다.
+  // 기록 순서는 그대로 두고, 자문 줄만 시각이 처음으로 그보다 늦은 줄 앞에 끼운다.
   consults.sort((a, b) => (a.at ?? 0) - (b.at ?? 0));
   const merged: AgentConversationEntry[] = [];
   let next = 0;

@@ -169,11 +169,17 @@ type LocalizableSnapshot = Omit<GroupTimelineSnapshot, "entries"> & { readonly e
 export function useLocalizedSnapshot<S extends LocalizableSnapshot>(snapshot: S, language: ConsoleLocale | undefined): S {
   return React.useMemo(() => {
     const t = getGroupT(language);
-    const names = { commodore: t("group.commodore"), human: t("group.you") };
-    const localized = (speaker: ConversationSpeaker): boolean => speaker.kind === "commodore" || speaker.kind === "human";
+    const names = { commodore: t("group.commodore"), commander: t("group.commander"), human: t("group.you") };
+    const localized = (speaker: ConversationSpeaker): boolean =>
+      speaker.kind === "commodore" || speaker.kind === "human" || (speaker.kind === "commander" && speaker.name.trim().toLowerCase() === "commander");
     const fix = (speaker: ConversationSpeaker): ConversationSpeaker => {
       if (speaker.kind === "human") {
         const name = names.human;
+        return speaker.name === name ? speaker : { ...speaker, name };
+      }
+      if (speaker.kind === "commander") {
+        if (speaker.name.trim().toLowerCase() !== "commander") return speaker;
+        const name = names.commander;
         return speaker.name === name ? speaker : { ...speaker, name };
       }
       if (speaker.kind !== "commodore") return speaker;
