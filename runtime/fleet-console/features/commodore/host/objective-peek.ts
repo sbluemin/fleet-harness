@@ -53,11 +53,21 @@ function phaseOf(objective: Objective): ConsoleObjectivePeekPhase {
 /** 자르는 동안만 바뀌는 일꾼 모양 — 밖에는 읽기 전용 계약으로 나간다. */
 interface MutableMission {
   readonly title: string;
-  readonly text: string;
+  text: string;
   readonly done: boolean;
   readonly assignee: string | null;
   readonly premises: readonly number[];
   readonly records: string[];
+}
+interface MutableMember {
+  readonly role: string;
+  brief: string | null;
+  readonly model: string | null;
+  readonly run: ConsoleRosterRun;
+}
+interface MutableCriterion {
+  text: string;
+  readonly met: boolean;
 }
 interface MutableSnapshot {
   readonly v: 1;
@@ -65,22 +75,23 @@ interface MutableSnapshot {
   readonly title: string;
   note: string | null;
   readonly phase: ConsoleObjectivePeekPhase;
-  readonly criteria: readonly { readonly text: string; readonly met: boolean }[];
+  readonly criteria: readonly MutableCriterion[];
   readonly missions: readonly MutableMission[];
-  readonly members: readonly ConsoleObjectivePeekMember[];
+  readonly members: readonly MutableMember[];
   readonly results: ConsoleObjectivePeekResult[];
   truncated?: true;
 }
 
 /**
  * 진행 중 목표 하나의 표시 전용 스냅샷. 대화·세션·경로·결정·자문·후속·행동·토큰·첨부·공유 폴더는
- * 읽지 않는다 — 받는 구조에 그 칸이 없다. 64 KiB를 넘으면 긴 글(브리핑·임무 기록)부터 자르고,
- * 그래도 넘으면 결과물을 뒤에서 뺀다. 무엇을 잘랐든 `truncated: true`를 싣는다.
- * 계약 검증기를 스스로 통과하지 못하면 null — 경로는 구분 없이 404로 답한다.
+ * 읽지 않는다 — 받는 구조에 그 칸이 없다. 64 KiB를 넘으면 임무 기록 → 브리핑 → 결과물 →
+ * 남은 글(임무 본문·구성원 brief·기준 글) 순으로 접고, 무엇을 잘랐든 `truncated: true`를 싣는다.
+ * 다 접어도 넘으면 null — 경로는 구분 없이 404로 답한다(이론상 도달 불가, 다국어 바이트 대비).
+ * 계약 검증기를 스스로 통과하지 못하면 null이다.
  */
 export function buildObjectivePeek(objective: Objective, memberRunOf: ObjectivePeekRunOf): ConsoleObjectivePeek | null {
   const roles = new Map<string, string>();
-  const members: ConsoleObjectivePeekMember[] = [];
+  const members: MutableMember[] = [];
   for (const member of objective.members.slice(0, CONSOLE_OBJECTIVE_PEEK_MAX_MEMBERS)) {
     const role = line(member.role, 40);
     if (!role) continue;
@@ -129,7 +140,7 @@ export function buildObjectivePeek(objective: Objective, memberRunOf: ObjectiveP
     });
   }
 
-  const criteria = objective.criteria.slice(0, CONSOLE_OBJECTIVE_PEEK_MAX_CRITERIA).flatMap((criterion) => {
+  const criteria: MutableCriterion[] = objective.criteria.slice(0, CONSOLE_OBJECTIVE_PEEK_MAX_CRITERIA).flatMap((criterion) => {
     const text = prose(criterion.text, 300);
     return text.length > 0 ? [{ text, met: criterion.met != null }] : [];
   });
@@ -157,21 +168,32 @@ export function buildObjectivePeek(objective: Objective, memberRunOf: ObjectiveP
     note: note.length > 0 ? note : null, phase: phaseOf(objective), criteria, missions, members, results,
   };
   if (trimToFit(snapshot)) snapshot.truncated = true;
+  // 남은 글까지 다 접었는데도 넘으면 내지 않는다. 404로 닫는 편이 깨진 계약을 내보내는 것보다 낫다.
+  if (!fits(snapshot)) return null;
   return isConsoleObjectivePeek(snapshot) ? snapshot : null;
 }
 
-/** 64 KiB 안에 들 때까지 자른다. 잘랐으면 true. */
+function fits(snapshot: MutableSnapshot): boolean {
+  try {
+    return Buffer.byteLength(JSON.stringify(snapshot), "utf8") <= CONSOLE_OBJECTIVE_PEEK_MAX_BYTES;
+  } catch {
+    return false;
+  }
+}
+
+/** 반씩 접는다. 길이 1은 비운다 — 한 번 부를 때마다 반드시 줄어든다. */
+function halve(value: string): string {
+  return value.slice(0, Math.floor(value.length / 2));
+}
+
+/**
+ * 64 KiB 안에 들 때까지 자른다. 잘랐으면 true. 매 바퀴마다 바이트가 줄거나 끝나므로,
+ * 어떤 입력에도 유한 단계로 끝난다.
+ */
 function trimToFit(snapshot: MutableSnapshot): boolean {
   let cut = false;
-  const over = (): boolean => {
-    try {
-      return Buffer.byteLength(JSON.stringify(snapshot), "utf8") > CONSOLE_OBJECTIVE_PEEK_MAX_BYTES;
-    } catch {
-      return true;
-    }
-  };
   // 임무 기록 — 뒤 임무·뒷줄부터 뺀다.
-  while (over()) {
+  while (!fits(snapshot)) {
     let dropped = false;
     for (let index = snapshot.missions.length - 1; index >= 0; index -= 1) {
       const mission = snapshot.missions[index];
@@ -180,13 +202,25 @@ function trimToFit(snapshot: MutableSnapshot): boolean {
     if (!dropped) break;
   }
   // 브리핑 — 반씩 접는다.
-  while (over() && snapshot.note) {
-    const kept = snapshot.note.slice(0, Math.ceil(snapshot.note.length / 2));
-    snapshot.note = kept.length > 0 ? kept : null;
+  while (!fits(snapshot) && snapshot.note) {
+    snapshot.note = halve(snapshot.note) || null;
     cut = true;
-    if (kept.length === 0) break;
   }
   // 결과물 — 뒤에서 뺀다. 목록 자체가 범위 S라 남는 것만 낸다.
-  while (over() && snapshot.results.length > 0) { snapshot.results.pop(); cut = true; }
+  while (!fits(snapshot) && snapshot.results.length > 0) { snapshot.results.pop(); cut = true; }
+  // 남은 글 — 임무 본문·구성원 brief·기준 글. 한 바퀴마다 남은 것을 전부 반씩 접는다.
+  while (!fits(snapshot)) {
+    let shrunk = false;
+    for (const mission of snapshot.missions) {
+      if (mission.text.length > 0) { mission.text = halve(mission.text); shrunk = true; cut = true; }
+    }
+    for (const member of snapshot.members) {
+      if (member.brief && member.brief.length > 0) { member.brief = halve(member.brief); shrunk = true; cut = true; }
+    }
+    for (const criterion of snapshot.criteria) {
+      if (criterion.text.length > 0) { criterion.text = halve(criterion.text); shrunk = true; cut = true; }
+    }
+    if (!shrunk) break;
+  }
   return cut;
 }

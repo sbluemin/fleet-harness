@@ -1023,6 +1023,40 @@ describe("objective peek snapshot", () => {
     const short = buildObjectivePeek(peekableObjective(), runOf);
     expect(short?.truncated).toBeUndefined();
   });
+
+  // 지휘관 재현 입력(shared/glyph-integrated-trim-repro.log) — note 1자, 결과물 없이 다국어 글만으로 상한 초과.
+  // 옛 접기(ceil)는 여기서 끝나지 않았다. 유한 시간에 끝나고 상한 이내(또는 null)여야 한다.
+  it("ends on multibyte prose alone over the cap", () => {
+    const snapshot = buildObjectivePeek(peekableObjective({
+      note: "x",
+      members: Array.from({ length: 40 }, (_, index) => ({ id: `m${index}`, role: "역".repeat(40), brief: "글".repeat(300), by: { kind: "commander" } })),
+      criteria: Array.from({ length: 20 }, (_, index) => ({ id: `c${index}`, text: "기".repeat(300), by: { kind: "commander" } })),
+      missions: Array.from({ length: 40 }, (_, index) => ({ id: `t${index}`, title: "임".repeat(64), text: "무".repeat(200), done: false, prerequisites: [], member: null, records: [] })),
+      results: [],
+    }), runOf);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.truncated).toBe(true);
+    expect(isConsoleObjectivePeek(snapshot)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(snapshot), "utf8")).toBeLessThanOrEqual(65_536);
+  });
+
+  // 브리핑 1자 + 결과물만으로 상한 초과 — 길이 1 다음은 비워야 끝나고, 결과물을 뒤에서 뺀다.
+  it("ends on a one-character note with results alone over the cap", () => {
+    const results = Array.from({ length: 40 }, (_, index) => ({
+      id: `r${index}`, kind: "pr", url: `https://github.com/o/r/pull/${index + 1}${"x".repeat(2000)}`,
+      host: "github.com", owner: "o", repo: "r", number: index + 1, createdAt: 1, updatedAt: 1,
+      observation: { state: "open", checkedAt: 1, stale: false },
+    }));
+    const snapshot = buildObjectivePeek(peekableObjective({
+      note: "가",
+      missions: [{ id: "t1", text: "한다", done: false, prerequisites: [], member: null, records: [] }],
+      results,
+    }), runOf);
+    expect(snapshot).not.toBeNull();
+    expect(snapshot?.truncated).toBe(true);
+    expect(isConsoleObjectivePeek(snapshot)).toBe(true);
+    expect(Buffer.byteLength(JSON.stringify(snapshot), "utf8")).toBeLessThanOrEqual(65_536);
+  });
 });
 
 function createFakeConsoleRuntime(): unknown {
