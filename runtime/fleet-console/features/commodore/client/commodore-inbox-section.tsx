@@ -38,7 +38,7 @@ import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime, nextRoutineWord } from "./commodore-header.js";
-import { openCommodoreConversation } from "./commodore-conversation.js";
+import { openCommodoreConversation, openCommodoreTheaterSettings } from "./commodore-conversation.js";
 import { CommodoreRoutines } from "./commodore-routines.js";
 import {
   addCommodoreIntel,
@@ -149,10 +149,12 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
   },
   // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
   // 사령관 머리 착지는 이 칸을 연다. 주소가 사령관 UUID 가 아니면(Theater 해시) 대화를 세우지 않는다.
+  // 「설정」 칸 요청은 대화 입력창의 설정 칸(작전 구역)이 받는다 — 대화 중심 화면의 오른쪽 탭에는 설정이 없다.
   openConversation: ({ theater, pageId }) => {
-    if (pageId !== "log") return false;
+    if (pageId !== "log" && pageId !== "settings") return false;
     const commodoreId = inboxCommodore(theater.id);
-    return commodoreId ? openCommodoreConversation(commodoreId) : false;
+    if (!commodoreId) return false;
+    return pageId === "settings" ? openCommodoreTheaterSettings(commodoreId) : openCommodoreConversation(commodoreId);
   },
 };
 
@@ -332,7 +334,8 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
   );
 }
 
-export function CommodoreSessionSettings({ t, commodoreId, state, phone = false }: { readonly t: T; readonly commodoreId: string; readonly state: CommodoreState; readonly phone?: boolean }) {
+/** 고급 옵션 세 줄. `inline`이면 접힘 머리 없이 펼친 채로 선다 — 데스크톱 입력창 설정 칸의 「고급 옵션」이 쓴다. */
+export function CommodoreSessionSettings({ t, commodoreId, state, phone = false, inline = false }: { readonly t: T; readonly commodoreId: string; readonly state: CommodoreState; readonly phone?: boolean; readonly inline?: boolean }) {
   const [memorySaving, setMemorySaving] = useState(false);
   const [memoryFailed, setMemoryFailed] = useState(false);
   const autoMemoryEnabled = state.autoMemoryEnabled !== false;
@@ -355,6 +358,19 @@ export function CommodoreSessionSettings({ t, commodoreId, state, phone = false 
     memory: promptT(autoMemoryEnabled ? "sidebar.commodore.basePrompt.on" : "sidebar.commodore.basePrompt.off"),
   });
   if (!commodoreId) return null;
+  const options = (
+    <>
+      <CommodoreBasePromptSection controller={basePrompt} mobile={phone} />
+      <div className="commodore-session-setting">
+        <SettingsRow label={t("commodore.settings.autoMemory")} hint={t(autoMemoryEnabled ? "commodore.settings.autoMemoryOnHint" : "commodore.settings.autoMemoryOffHint")}>
+          <SettingsToggle checked={autoMemoryEnabled} busy={memorySaving} ariaLabel={t("commodore.settings.autoMemoryAria")} onChange={changeMemory} />
+        </SettingsRow>
+        {memoryFailed ? <p className="commodore-session-setting-status is-error" role="alert">{promptT("sidebar.commodore.setting.saveFailed")}</p> : null}
+      </div>
+      <CommanderSubagentsSection controller={subagents} mobile={phone} />
+    </>
+  );
+  if (inline) return <div className="objectives-commodore-advanced is-inline">{options}</div>;
   return (
     <div className="objectives-commodore-advanced">
       <button type="button" className="objectives-commodore-advanced-toggle" aria-expanded={expanded} aria-controls={bodyId} onClick={() => setExpanded(!expanded)}>
@@ -364,16 +380,7 @@ export function CommodoreSessionSettings({ t, commodoreId, state, phone = false 
         </span>
         <ChevronGlyph direction="right" className={`objectives-commodore-advanced-chevron${expanded ? " is-open" : ""}`} />
       </button>
-      <div id={bodyId} className="objectives-commodore-commander-options" hidden={!expanded}>
-        <CommodoreBasePromptSection controller={basePrompt} mobile={phone} />
-        <div className="commodore-session-setting">
-          <SettingsRow label={t("commodore.settings.autoMemory")} hint={t(autoMemoryEnabled ? "commodore.settings.autoMemoryOnHint" : "commodore.settings.autoMemoryOffHint")}>
-            <SettingsToggle checked={autoMemoryEnabled} busy={memorySaving} ariaLabel={t("commodore.settings.autoMemoryAria")} onChange={changeMemory} />
-          </SettingsRow>
-          {memoryFailed ? <p className="commodore-session-setting-status is-error" role="alert">{promptT("sidebar.commodore.setting.saveFailed")}</p> : null}
-        </div>
-        <CommanderSubagentsSection controller={subagents} mobile={phone} />
-      </div>
+      <div id={bodyId} className="objectives-commodore-commander-options" hidden={!expanded}>{options}</div>
       {!expanded && (memoryFailed || basePrompt.state === "saveFailed" || subagents.state === "saveFailed") ? <p className="objectives-commodore-hint is-error" role="alert">{promptT("sidebar.commodore.setting.saveFailed")}</p> : null}
     </div>
   );
@@ -687,6 +694,11 @@ interface CommodoreComposerProps {
   readonly allowedCommodoreIds?: readonly string[];
   readonly attachmentPort?: ComposerAttachmentPort;
   readonly attachmentLimits?: ComposerAttachmentLimits;
+  /**
+   * 캡슐 안 「+」 옆에 서는 도구 줄 — 데스크톱 사령관 대화만 사령관 설정 칩(`CommodoreComposerSettings`)을 넘긴다. 넘기면 캡슐은
+   * 입력 한 줄 + 도구 줄(「+」·도구·보내기) 두 줄이 된다. 폰·TaskForce·Theater Inbox 입력창은 넘기지 않아 지금 그대로다.
+   */
+  readonly tools?: ReactNode;
   /** 입력란의 접근성 이름 — 없으면 사령관에게 보내는 말로 읽힌다(TaskForce처럼 다른 대상에 쓸 때 넘긴다). */
   readonly ariaLabel?: string;
   readonly sender?: (input: { readonly text: string; readonly attachmentIds: readonly string[]; readonly references: readonly (string | { readonly kind: "commodore"; readonly id: string })[] }) => Promise<void>;
@@ -705,7 +717,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`Execution composer primitives`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, running = false, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, running = false, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel, tools }: CommodoreComposerProps) {
   const accent = useAvatarAccent(commodoreAvatarKey(theaterId));
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId, attachmentPort, attachmentLimits);
@@ -847,12 +859,8 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
     });
   };
   const failure = phone?.failure ?? null;
-  return (
-    <>
-    {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
-      : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
-    {topEntries}
-    <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}`} style={accent} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+  const capsule = (
+    <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}${tools ? " has-tools" : ""}`} style={accent} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
       <ComposerQuoteTray store={draft.quotes} t={ct} disabled={sending || clear.busy} onDone={() => inputRef.current?.focus()} />
       <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={sending || clear.busy} />
       <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">
@@ -863,6 +871,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
         <ComposerPlusButton ref={plusRef} aria-label={ct("composer.more")} title={ct("composer.more")} aria-expanded={menuOpen} aria-controls={menuOpen ? menuId : undefined} disabled={!usable || sending || clear.busy} onClick={() => setMenuOpen((open) => !open)} onKeyDown={(event) => { if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setMenuOpen(true); } }} />
         <input ref={fileRef} type="file" accept="image/*" multiple hidden onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; if (!phone) inputRef.current?.focus(); }} />
       </div>
+      {tools}
       {/* 본문 속 지휘관 참조('@')를 품는 입력 — 높이는 CSS 가 내용만큼 자라게 하고(max-height 에서 멈춤), 맞춤법 밑줄은 채팅·새 세션
           입력처럼 끈다. 한글 조합 중 Enter 는 보내지 않는다(조합 상태는 이 컴포저도 따로 센다). */}
       <CommodoreReferenceInput
@@ -903,10 +912,40 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
         />
       )}
     </div>
+  );
+  return (
+    <>
+    {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
+      : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
+    {topEntries}
+    {tools ? <CommodoreComposerSlot>{capsule}</CommodoreComposerSlot> : capsule}
     {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("commodore.clear.enterConfirm")}</p> : null}
     {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("commodore.composer.idle")}</p>}
     </>
   );
+}
+
+/**
+ * 입력창 설정이 서는 캡슐의 자리 — 닫힌 캡슐 높이(`--composer-closed-h`)를 적어 둔다. 설정 칸이 캡슐 안에서 열리면 캡슐은 이 자리 바닥에
+ * 붙은 채 위로 자라고(CSS), 자리는 닫힌 높이를 지켜 독 높이와 대화 스크롤이 그대로다.
+ */
+function CommodoreComposerSlot({ children }: { readonly children: ReactNode }) {
+  const slotRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const slot = slotRef.current;
+    const capsule = slot?.firstElementChild as HTMLElement | null;
+    if (!slot || !capsule) return;
+    const record = () => {
+      if (capsule.querySelector(".commodore-composer-panel")) return;
+      slot.style.setProperty("--composer-closed-h", `${capsule.offsetHeight}px`);
+    };
+    record();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(record);
+    observer.observe(capsule);
+    return () => observer.disconnect();
+  }, []);
+  return <div ref={slotRef} className="commodore-composer-slot">{children}</div>;
 }
 
 /* ── 설명 ─────────────────────────────────────────────────────────────── */

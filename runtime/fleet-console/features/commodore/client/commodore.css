@@ -1238,3 +1238,145 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-person-inbox.is-phone .commodore-person-inbox-age { margin-left: auto; }
 .commodore-person-inbox.is-phone .commodore-person-inbox-reason { flex: 1 1 auto; }
 .commodore-person-inbox.is-phone .commodore-person-inbox-open { grid-column: 2; grid-row: 1; align-self: center; }
+
+/* ── 데스크톱 사령관 입력창 설정 ─────────────────────────────────────────
+   옛 오른쪽 「설정」 탭이 입력 캡슐 안으로 들어왔다. 한 캡슐(한 테두리·한 면) 안에 위에서부터 칸(머리·본문·구분선) → 첨부·인용 줄 →
+   입력 한 줄 → 「+」·칩·보내기 줄이 선다. 닫힌 캡슐은 자리(.commodore-composer-slot)의 정상 흐름이라 독 높이 측정이 그 자연 높이를 잰다.
+   칸이 열리면 자리는 닫힌 높이(--composer-closed-h)를 지키고, 캡슐은 그 바닥에 붙은 채 윗변이 위로 자라 대기함 독을 덮는다 — 대화는
+   밀리지 않는다. 폰·TaskForce·Theater Inbox 입력창은 칩을 싣지 않아(`has-tools` 없음) 이 규칙이 닿지 않는다. */
+.objectives-commodore-composer.has-tools { flex-wrap: wrap; row-gap: 2px; }
+.objectives-commodore-composer.has-tools > :is(.fc-composer-quotes, .fc-composer-attachments) { order: 1; }
+.objectives-commodore-composer.has-tools > .objectives-commodore-composer-input { order: 2; flex-basis: 100%; padding-inline: 6px; }
+.objectives-commodore-composer.has-tools > .objectives-commodore-composer-plus-root { order: 3; }
+.objectives-commodore-composer.has-tools .commodore-composer-chips { order: 4; }
+.objectives-commodore-composer.has-tools > .fc-composer-send { order: 5; }
+.commodore-composer-tools { display: contents; }
+.commodore-composer-chips { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 2px; }
+.commodore-composer-slot { position: relative; }
+.commodore-composer-slot:has(.commodore-composer-panel) { min-height: var(--composer-closed-h, 0px); }
+.commodore-composer-slot:has(.commodore-composer-panel) > .objectives-commodore-composer { position: absolute; left: 0; right: 0; bottom: 0; z-index: 4; box-shadow: var(--shadow-floating); }
+.commodore-composer-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; height: var(--fc-composer-circle, 28px); padding: 0 10px;
+  border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary);
+  font-family: var(--font-ui); font-size: var(--t-sm); line-height: 1; white-space: nowrap; cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+.commodore-composer-chip:hover:not(:disabled) { background: var(--wash-hover); color: var(--text-primary); }
+.commodore-composer-chip[aria-expanded="true"] { background: var(--wash-selected); color: var(--text-primary); }
+.commodore-composer-chip:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.commodore-composer-chip:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.commodore-composer-chip.is-icon { flex: none; width: var(--fc-composer-circle, 28px); padding: 0; justify-content: center; }
+.commodore-composer-chip > * { flex: none; }
+.commodore-composer-chip-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.commodore-composer-chip .objectives-commodore-judgment,
+.commodore-composer-chip .objectives-commodore-judgment svg { width: 14px; height: 14px; }
+.commodore-composer-chip-label { color: var(--text-tertiary); }
+.commodore-composer-chip .commodore-composer-chip-value { flex: 0 1 auto; min-width: 0; max-width: 180px; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); }
+.commodore-composer-chip-value.is-off { color: var(--text-tertiary); text-decoration: line-through; }
+.commodore-composer-chip-count {
+  display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
+  border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums;
+}
+
+/* 칸은 캡슐 맨 위의 한 줄(폭 100%)이다 — 따로 면·테두리를 갖지 않고 캡슐의 면과 테두리를 그대로 쓴다. 높이가 0에서 자라도
+   여백·구분선이 남지 않게 여백은 안쪽 상자가, 구분선은 맨 아래 줄이 진다. */
+.commodore-composer-panel {
+  order: 0; flex: 0 0 100%; width: 100%; min-width: 0; box-sizing: border-box;
+  display: flex; flex-direction: column; max-height: min(480px, 62vh); overflow: hidden; color: var(--text-primary); cursor: default;
+}
+.commodore-composer-panel-in { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 3px 1px 6px; }
+.commodore-composer-panel-rule { flex: none; height: 1px; margin: 0 2px 4px; background: var(--surface-capsule-rim); }
+/* 열림·칸 전환·닫힘의 높이와 내용 모션은 JS(Web Animations)가 진다 — 열림 460ms·내용 520ms·전환 420/360ms spring, 닫힘 320ms glide. */
+.commodore-composer-panel.is-closing { pointer-events: none; }
+.commodore-composer-panel.is-flowing .commodore-composer-panel-body { overflow-y: hidden; }
+.commodore-composer-panel-head { flex: none; display: flex; align-items: center; gap: var(--space-3); padding: 2px 2px 8px 8px; border-bottom: 1px solid var(--popover-divider); }
+.commodore-composer-panel-scope { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; }
+.commodore-composer-panel-scope b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); font-size: var(--t-sm); font-weight: var(--weight-bold); }
+.commodore-composer-tabs { position: relative; display: inline-flex; flex: none; margin-left: auto; padding: 3px; border-radius: var(--radius-md); background: var(--control-wash); }
+.commodore-composer-tabs button {
+  position: relative; z-index: 1; height: 26px; padding: 0 12px; border: 0; border-radius: var(--radius-xs); background: none;
+  color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-sm); white-space: nowrap; cursor: pointer; transition: color var(--duration-fast) var(--ease-glide);
+}
+.commodore-composer-tabs button:hover { color: var(--text-primary); }
+.commodore-composer-tabs button[aria-selected="true"] { color: var(--text-primary); }
+.commodore-composer-tabs button:focus-visible { outline: none; box-shadow: var(--focus-face); }
+/* 칸 이름 줄과 강도 알약이 같은 미끄럼 면을 쓴다 — 고른 단추의 left·width 로 380ms spring 미끄러진다(첫 자리는 바로 선다). */
+.commodore-composer-indicator {
+  position: absolute; z-index: 0; top: 3px; bottom: 3px; border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised); box-shadow: inset 0 0 0 1px var(--surface-rim);
+}
+.commodore-composer-indicator.is-placed { transition: left 380ms var(--ease-spring), width 380ms var(--ease-spring); }
+.commodore-composer-effort { position: relative; display: inline-flex; flex: none; padding: 3px; border-radius: var(--radius-md); background: var(--control-wash); }
+.commodore-composer-effort button {
+  position: relative; z-index: 1; height: 22px; padding: 0 9px; border: 0; border-radius: var(--radius-xs); background: none;
+  color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); white-space: nowrap; cursor: pointer; transition: color var(--duration-fast) var(--ease-glide);
+}
+.commodore-composer-effort button:hover { color: var(--text-primary); }
+.commodore-composer-effort button[aria-checked="true"] { color: var(--text-primary); }
+.commodore-composer-effort button:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.commodore-composer-panel-close { flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0; border: 0; border-radius: var(--radius-pill); background: none; color: var(--text-tertiary); cursor: pointer; }
+.commodore-composer-panel-close:hover { background: var(--wash-hover); color: var(--text-primary); }
+.commodore-composer-panel-close:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.commodore-composer-panel-close svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
+.commodore-composer-panel-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; padding: 6px 0 2px; }
+.commodore-composer-panel-hint { margin: 2px 8px 6px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
+.commodore-composer-panel-note { margin: 4px 8px; color: var(--text-tertiary); font-size: var(--t-xs); }
+.commodore-composer-coord { display: flex; flex-direction: column; gap: var(--popover-list-gap); }
+.commodore-composer-coord .roster-fallback-note { padding-inline: 8px; }
+.commodore-composer-group { display: flex; flex-direction: column; gap: var(--popover-list-gap); }
+.commodore-composer-group + .commodore-composer-group { margin-top: 2px; }
+.commodore-composer-group-caption { margin: 0; padding: 6px 8px 2px; color: var(--text-tertiary); font-size: var(--t-xs); }
+.commodore-composer-group-caption.is-off { color: var(--warn-ink); }
+/* 한 줄 — 왼쪽 모델 이름, 지금 모델이면 같은 줄 오른쪽에 강도 트랙과 Fast. */
+.commodore-composer-row-line { display: flex; align-items: center; gap: var(--space-2); min-height: var(--popover-row); padding-right: 6px; border-radius: var(--popover-row-radius); transition: background var(--duration-fast) var(--ease-glide); }
+.commodore-composer-row-line.is-active { background: var(--wash-selected); }
+.commodore-composer-row {
+  display: flex; align-items: center; gap: var(--popover-row-gap); flex: 1 1 auto; min-width: 0; min-height: var(--popover-row);
+  padding: 0 var(--popover-row-inline); border: 0; border-radius: var(--popover-row-radius); background: transparent;
+  color: var(--text-primary); font-family: var(--font-ui); font-size: var(--popover-font-size); line-height: var(--popover-line-height); text-align: left; cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide);
+}
+.commodore-composer-row-line:not(.is-active) > .commodore-composer-row:hover,
+.commodore-composer-coord > .commodore-composer-row:hover { background: var(--wash-hover); }
+.commodore-composer-row:focus-visible { outline: none; background: var(--wash-hover); }
+.commodore-composer-row.is-active { font-weight: var(--weight-medium); cursor: default; }
+.commodore-composer-row.is-extra.is-active { background: var(--wash-selected); }
+.commodore-composer-row.is-extra, .commodore-composer-row.is-reset { padding-block: 6px; }
+.commodore-composer-row.is-extra .objectives-commodore-judgment,
+.commodore-composer-row.is-extra .objectives-commodore-judgment svg { width: 16px; height: 16px; }
+.commodore-composer-row-label { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-composer-row-label small { color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-regular); }
+.commodore-composer-row.is-off .commodore-composer-row-label { color: var(--text-tertiary); text-decoration: line-through; }
+.commodore-composer-row.is-reset { margin-top: 4px; border-top: 1px solid var(--popover-divider); border-radius: 0; color: var(--text-secondary); }
+.commodore-composer-fast {
+  flex: none; height: 24px; padding: 0 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent;
+  color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+.commodore-composer-fast:hover { color: var(--text-primary); }
+.commodore-composer-fast[aria-pressed="true"] { border-color: var(--text-tertiary); background: var(--control-wash); color: var(--text-primary); }
+.commodore-composer-fast:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.commodore-composer-check { flex: none; width: 14px; height: 14px; margin-left: auto; fill: none; stroke: var(--text-primary); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transform: scale(0.6); transition: opacity var(--duration-fast), transform var(--duration-base) var(--ease-spring); }
+.commodore-composer-check.is-on { opacity: 1; transform: none; }
+.commodore-composer-panel-theaters { padding: 0 8px 4px; }
+.commodore-composer-panel-theaters .objectives-commodore-section-title { display: none; }
+.commodore-composer-panel-advanced { padding: 0 8px 2px; }
+.objectives-commodore-advanced.is-inline { display: grid; gap: 2px; }
+/* 칸 안의 고급 옵션은 칸 행 크기로 줄인다 — 이름은 행 글자(--t-sm), 설명은 작은 글자, 줄 사이 구분선 없이 숨구멍만. */
+.commodore-composer-panel-advanced .commodore-session-setting { gap: 0; }
+.commodore-composer-panel-advanced .fc-settings-row { padding-block: 10px; border: 0; }
+.commodore-composer-panel-advanced .fc-settings-row__label { margin: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.commodore-composer-panel-advanced .fc-settings-row__hint { color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
+.commodore-composer-panel-advanced .fc-settings-row__copy { max-width: 60ch; }
+/* 칸이 열린 동안 — 독이 대기함 위로 올라서고, 대기함·사용량 줄은 칸 뒤로 비켜 선다(대화는 그대로다). */
+.objectives-commodore-conversation .group-chat-dock:has(.commodore-composer-panel) { z-index: 3; }
+.objectives-commodore-conversation .commodore-person-inbox { transition: opacity var(--duration-base) var(--ease-glide), transform var(--duration-slow) var(--ease-spring); }
+.objectives-commodore-conversation:has(.commodore-composer-panel:not(.is-closing)) .commodore-person-inbox { opacity: 0; transform: translateY(8px); }
+.objectives-commodore-conversation:has(.commodore-composer-panel:not(.is-closing)) .commodore-person-inbox-panel { pointer-events: none; }
+.objectives-commodore-conversation .group-chat-dock :is(.group-composer-top, .conversation-composer-top) { transition: opacity var(--duration-base) var(--ease-glide); }
+.objectives-commodore-conversation .group-chat-dock:has(.commodore-composer-panel:not(.is-closing)) :is(.group-composer-top, .conversation-composer-top) { opacity: 0; }
+@media (prefers-reduced-motion: reduce) {
+  .commodore-composer-indicator.is-placed, .commodore-composer-check, .commodore-composer-row-line,
+  .objectives-commodore-conversation .commodore-person-inbox,
+  .objectives-commodore-conversation .group-chat-dock :is(.group-composer-top, .conversation-composer-top) { transition: none; }
+}
