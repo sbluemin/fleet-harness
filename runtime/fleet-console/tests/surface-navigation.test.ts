@@ -43,8 +43,8 @@ it("keeps remote title and alias edits in the requesting document across fresh s
     commander: { sessionName: null, started: true }, hasSession: true, planning: false, commenced: true, criteriaOpen: false,
     done: null, removed: null, awaitingHandoff: false, awaitingReview: false, handoff: null, stoppedAt: null, dueDate: null, today: false,
     members: [], missions: [], criteria: [], criteriaProposals: [], attachments: [], results: [], extensions: [], extensionActive: false,
-    followups: [], followupBatches: [], followupHistory: null, origin: null, decisionRequest: null, decisionRequestRevision: 0,
-    consultations: [], decisionDelivery: null, decisions: [], personHolds: [], addedBy: null, requestSource: null, merged: [] } as Objective;
+    followups: [], followupBatches: [], followupHistory: null, origin: null,
+    consultations: [], decisions: [], personHolds: [], addedBy: null, requestSource: null, merged: [] } as Objective;
   const face = { state: "idle" as const, activity: null, look: null };
   let page: SidebarRemotePage = { v: 1, at: 1, writable: true, autonomous: false, taskforceEnabled: false, computerUseAvailable: false, next: null, commodores: [], groups: [],
     preferences: { sort: { key: "name", direction: "asc", answerFirst: true, grouped: false }, folds: { fresh: false, done: false, settled: false }, keepExpanded: false, showSettled: true },

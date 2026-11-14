@@ -1758,7 +1758,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const commodores: SidebarRemoteCommodore[] = (commodore?.sidebarFacts() ?? []).map((fact) => {
       const decisions = fact.asks + boards.filter((objective) => objective.commodoreId === fact.id && rosterPersonWaiting(objective, enabled)).length;
       const state: SidebarRemoteFace["state"] = fact.phase === "error" || fact.phase === "retrying" ? "error"
-        : mongleStateOf({ activity: fact.phase === "turn" ? "running" : enabled && boards.some((objective) => objective.commodoreId === fact.id && isCommodoreWaiting(objective)) ? "awaiting" : "idle", decisionRequest: decisions > 0 });
+        : mongleStateOf({ activity: fact.phase === "turn" ? "running" : enabled && boards.some((objective) => objective.commodoreId === fact.id && isCommodoreWaiting(objective)) ? "awaiting" : "idle", personTurn: decisions > 0 });
       return { id: fact.id, name: fact.name, preview: fact.preview, live: fact.phase === "turn", state, activity: fact.step,
         decisions, browsing: using.browserCommodores.includes(fact.id), look: avatars[commodoreAvatarKey(fact.id)] ?? null };
     });

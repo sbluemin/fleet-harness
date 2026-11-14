@@ -1636,7 +1636,9 @@ describe("Objectives contract", () => {
     const missionId = store.find(commander)!.missions[0]!.id;
     expect(createObjectiveMcpTools(ctx, store, launch).some((tool) => tool.name === "request_decision" || tool.name === "withdraw_decision_request")).toBe(false);
     const board = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
-    const added = await board.execute({ action: "decision_update", objectiveId: commander, header: "Publishing", topic: "How far should publishing go?", answer: "Open the PR", why: "The brief stops at a PR", missionId, memberId: member }, { cwd: workspace }) as { isError?: boolean; structuredContent: Record<string, unknown> };
+    const rejectedTopic = await board.execute({ action: "decision_update", objectiveId: commander, topic: "Alias removed", answer: "No" }, { cwd: workspace }) as { isError?: boolean; structuredContent: Record<string, unknown> };
+    expect(rejectedTopic.isError).toBe(true);
+    const added = await board.execute({ action: "decision_update", objectiveId: commander, header: "Publishing", question: "How far should publishing go?", answer: "Open the PR", why: "The brief stops at a PR", missionId, memberId: member }, { cwd: workspace }) as { isError?: boolean; structuredContent: Record<string, unknown> };
     expect(added.structuredContent).toMatchObject({ ok: true, decisionId: expect.any(String) });
     const decisionId = added.structuredContent.decisionId as string;
     const updated = await board.execute({ action: "decision_update", objectiveId: commander, decisionId, question: "How far should publishing go?", answer: "Open the PR only" }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };

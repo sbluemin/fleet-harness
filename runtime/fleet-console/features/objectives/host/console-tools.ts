@@ -165,10 +165,9 @@ const detailActions = {
       answer: z.string().min(1).max(MAX_CONSULTATION_TEXT).optional().describe(CONSULT_ANSWER_OMIT),
     }) },
     decision_update: { kind: "write", callers: ["commodore"], input: z.object({ ...target,
-      decisionId: ids.optional().describe("Omit to add a decision; pass it to update that decision."),
+      decisionId: ids.optional(),
       header: z.string().trim().min(1).max(MAX_DECISION_LABEL).optional(),
-      question: z.string().trim().min(1).max(MAX_DECISION_QUESTION).optional().describe("Settled question. topic is the same text when question is omitted."),
-      topic: z.string().trim().min(1).max(MAX_DECISION_QUESTION).optional(),
+      question: z.string().trim().min(1).max(MAX_DECISION_QUESTION).optional(),
       answer: z.string().trim().min(1).max(MAX_DECISION_ANSWER),
       why: z.string().trim().min(1).max(MAX_COMMODORE_WHY).optional(),
       consultId: ids.optional(),
@@ -478,7 +477,7 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
             }
             case "decision_update": {
               if (caller?.kind !== "commodore") throw new ObjectiveStoreError("permission_required");
-              const question = call.question ?? call.topic;
+              const question = call.question;
               if (!question && !call.decisionId) throw new ObjectiveStoreError("invalid_decision");
               const updated = store.decisionUpdate(current.id, {
                 ...(call.decisionId ? { decisionId: call.decisionId } : {}),

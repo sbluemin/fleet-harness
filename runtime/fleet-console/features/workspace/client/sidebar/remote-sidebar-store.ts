@@ -61,7 +61,7 @@ async function watchMotions(console: string, signal: AbortSignal): Promise<void>
             if (motion.kind !== "objective" || !row.faces[motion.id]) return row;
             const state = row.objective.id === motion.id ? mongleStateOf({
               session: true, awaitingReview: row.objective.awaitingReview, workDone: row.objective.done !== null,
-              decisionRequest: isCommodoreWaiting(row.objective),
+              personTurn: isCommodoreWaiting(row.objective),
               activity: motion.state === "running" ? "running" : motion.state === "awaiting" ? "awaiting" : motion.state === "ended" ? "ended" : "idle",
             }) : motion.state;
             return { ...row, faces: { ...row.faces, [motion.id]: { ...row.faces[motion.id]!, state, activity: motion.activity } } };

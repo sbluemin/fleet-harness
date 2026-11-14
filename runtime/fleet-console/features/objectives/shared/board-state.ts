@@ -8,7 +8,6 @@ export function isCommodoreWaiting(objective: Objective): boolean {
   const kept = (target: PersonHoldTarget) => !livePersonHold(objective, target);
   return (!objective.commenced && !(objective.criteriaProposals.length > 0 && !kept("criteria")))
     || (objective.criteriaProposals.length > 0 && kept("criteria"))
-    || (objective.decisionRequest !== null && kept("decision"))
     || (objective.awaitingReview && kept("review"))
     || (followupsJudgeable(objective) && objective.followups.some((followup) => followup.state === "open") && kept("followup"));
 }

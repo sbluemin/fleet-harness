@@ -19,7 +19,7 @@ export function consultationNotice(kind: "advice" | "no-additional-advice", cons
 
 /** 자문 회신 없이 기록한 보드 결정 — 지휘관이 objective_read 로 읽게 한다. */
 export function decisionUpdateNotice(): string {
-  return "Board decisions updated. Read updated decisions in objective_read.";
+  return "Read updated decisions in objective_read.";
 }
 
 /** 이 자문 이후, 또는 이 자문에 묶여 보드 결정이 바뀌었는가. */
