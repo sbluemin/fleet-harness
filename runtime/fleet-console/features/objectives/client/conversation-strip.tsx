@@ -110,6 +110,8 @@ function LoadedStrip({ objective, memberId, language, takeover, controls, reques
     if (!next) return;
     event.preventDefault();
     setLastArea(next);
+    // 띠에서 방향키로 옮긴 칸이 닫을 때 포커스가 돌아갈 자리다.
+    if (!panel) opener.current = next;
     if (panel || area !== null) setArea(next);
     (panel ? tabs : triggers).current[next]?.focus();
   };
