@@ -10,8 +10,8 @@ import { buildTheaterEntries, sideBarRowItems, type SideBarRowItem } from "../si
 import type { CommanderFold } from "./commander-folds.js";
 
 /** 시작 전 행 — fresh 글리프이고 결정 요청이 아직 없는 목표. 사이드바 분류가 쓴다. */
-export function isNotStartedRow(row: { readonly glyph?: string; readonly decisionRequestedAt?: number } | undefined): boolean {
-  return row?.glyph === "fresh" && row.decisionRequestedAt === undefined;
+export function isNotStartedRow(row: { readonly glyph?: string; readonly personTurnAt?: number } | undefined): boolean {
+  return row?.glyph === "fresh" && row.personTurnAt === undefined;
 }
 import { sortCommanderRows, useSortPreference } from "./commander-sort.js";
 

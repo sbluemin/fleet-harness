@@ -1024,7 +1024,7 @@ function quietMissionLabel(objective: Objective, mission: ObjectiveMission, read
   if (mission.done) return null;
   const elapsed = quietElapsed({
     ready, assigned: mission.member !== null, assignmentTs: mission.assignmentTs ?? null,
-    boardUpdatedAt: objective.boardUpdatedAt ?? null, decisionPending: objective.decisionRequest !== null, reviewPending: objective.awaitingReview,
+    boardUpdatedAt: objective.boardUpdatedAt ?? null, reviewPending: objective.awaitingReview,
     underway: objectiveUnderway(objective),
   }, now);
   if (elapsed == null || elapsed < DISPLAY_QUIET_MS) return null;

@@ -78,10 +78,10 @@ import {
   type StoredOrigin,
   type Retrospective,
   type Decision,
-  type DecisionAnswer,
-  type DecisionAnswersInput,
-  type DecisionQuestionInput,
-  type DecisionRequest,
+  MAX_COMMODORE_WHY,
+  MAX_DECISION_ANSWER,
+  MAX_DECISION_QUESTION,
+  storedDecisionHeader,
   storedDecisionFieldsSchema,
   storedConsultationsSchema,
   MAX_CONSULTATION_TEXT,
@@ -287,7 +287,6 @@ export interface ObjectiveStore {
   memberLaunchState(objectiveId: string, memberId: string, patch: { readonly next?: MemberNext | null; readonly launch?: MemberLaunch | null; readonly launchBy?: "human" | "commander" }): Objective;
   /** 저장된 구성원 그대로 — 예약의 실행값·이전 선택처럼 화면 모양에 싣지 않는 값을 기동 경로가 읽는다. 없으면 null. */
   storedMember(objectiveId: string, memberId: string): StoredMember | null;
-  storedAnswers(objectiveId: string, requestId: string): readonly { readonly questionId: string; readonly selectedOptionIds: readonly string[]; readonly text: string }[] | null;
   memberRemove(objectiveId: string, memberId: string): { readonly objective: Objective; readonly removed: StoredMember; readonly missionIds: readonly string[] };
   /** 간선 토글 — `from` 이 `to` 의 선행. 있으면 끊고 없으면 잇는다. */
   edgeToggle(objectiveId: string, from: string, to: string, why?: string, desired?: boolean): { readonly objective: Objective; readonly linked: boolean; readonly changed: boolean };
@@ -364,15 +363,22 @@ export interface ObjectiveStore {
    */
   releaseGroups(scope?: { readonly commodoreId: string; readonly groupId: string }): number;
   /**
-   * 지휘관의 결정 요청 — 답이 없는 현재 요청이 있으면 다른 질문은 decision_pending 으로 거절한다. revision 이 다르거나
-   * 답을 보내는 중이면 거절한다. 아직 답이 없는 현재 요청과 질문이 저장될 모양 그대로 같으면(순서·문장·선택지 이름과 설명·여러 개
-   * 고르기·임무·구성원) 그 요청을 돌려준다(reused) — id·revision 이 그대로라 사람이 쓰던 답과 그 id 로 낸 답이 살아 있다.
+   * 사령관의 보드 결정. decisionId 가 없으면 새로 남기고, 있으면 그 항목의 질문·답을 고친다.
+   * 자문·기준·권한은 바꾸지 않는다. 지휘관은 편집 표식과 행위 기록으로 다시 읽는다.
    */
-  decisionRequest(objectiveId: string, input: { readonly expectedRevision: number; readonly questions: readonly DecisionQuestionInput[] }): { readonly objective: Objective; readonly request: DecisionRequest; readonly reused: boolean };
-  /** 지휘관의 철회 — 그 요청이 지금 요청일 때만. 요청이 없으면 변화 없이 withdrawn false. */
-  decisionWithdraw(objectiveId: string, requestId: string): { readonly objective: Objective; readonly withdrawn: boolean };
+  decisionUpdate(objectiveId: string, input: {
+    readonly decisionId?: string;
+    readonly header?: string;
+    readonly question: string;
+    readonly answer: string;
+    readonly why?: string;
+    readonly consultId?: string;
+    readonly missionId?: string;
+    readonly memberId?: string;
+    readonly by: Extract<ObjectiveActor, { kind: "commodore" }>;
+  }): { readonly objective: Objective; readonly decision: Decision };
   /**
-   * 지휘관의 자문. 질문 본문을 그대로 두고 작성자·시각은 호스트가 적는다. 결정 요청·사람 위임은 건드리지 않는다.
+   * 지휘관의 자문. 질문 본문을 그대로 두고 작성자·시각은 호스트가 적는다. 보드 결정·사람 위임은 건드리지 않는다.
    */
   consultAsk(objectiveId: string, input: { readonly question: string; readonly missionId?: string }): { readonly objective: Objective; readonly consultation: StoredConsultation };
   /** 소유 사령관의 답. 생략은 추가 의견 없음으로 한 번 닫고, 같은 자문의 재답은 거절한다. */
@@ -390,17 +396,6 @@ export interface ObjectiveStore {
   failConsultationSend(objectiveId: string, consultId: string): void;
   /** 프로세스 기동 정산 — sending만 uncertain. 그 사이 끝난 시도는 자동 재전송하지 않는다. */
   settleConsultationSends(objectiveId: string): void;
-  /**
-   * 사람의 답을 검증해 전달 중으로 둔다. 그 요청의 답이 이미 결정으로 남았으면 같은 답은 recorded, 다른 답은 거절한다.
-   */
-  decisionAccept(objectiveId: string, input: DecisionAnswersInput, by?: ObjectiveActor): { readonly recorded: true; readonly objective: Objective } | { readonly recorded: false; readonly objective: Objective; readonly request: DecisionRequest; readonly answers: readonly DecisionAnswer[] };
-  /**
-   * 사람의 「결정 안 함」 닫기 — 요청 전체를 질문 없이 닫는다. 답과 같은 전달·잠금·중복 규칙을 쓰고, 결정에는 질문마다
-   * `declined` 표시가 남는다. 이미 답으로 남은 요청은 닫지 않고 거절한다.
-   */
-  decisionDecline(objectiveId: string, input: { readonly requestId: string }, by?: ObjectiveActor): { readonly recorded: true; readonly objective: Objective } | { readonly recorded: false; readonly objective: Objective; readonly request: DecisionRequest };
-  /** 전달 결과 — 닿았으면 질문마다 결정을 쌓고 요청을 정리한다. 못 닿았으면 전달 중 표시만 거두고 요청은 남는다. */
-  decisionSettle(objectiveId: string, requestId: string, delivered: boolean): Objective;
 }
 
 const MAX_SEGMENT = 200;
@@ -549,13 +544,13 @@ function readObjective(dir: string, segment: string, commodoreId: string, suppli
       const manifest = evidence.map((entry) => entry.data!);
       if (new Set(manifest.map((entry) => entry.evidenceId)).size !== manifest.length || manifest.reduce((sum, entry) => sum + entry.bytes, 0) > RESULT_LIMITS.totalEvidenceBytes) throw new ObjectiveStoreError("invalid_stored_evidence");
       if (results.data.some((entry) => entry.kind === "evidence" && !manifest.some((file) => file.evidenceId === entry.evidenceId && file.sha256 === entry.sha256 && file.bytes === entry.bytes && file.mediaType === entry.mediaType))) throw new ObjectiveStoreError("invalid_stored_evidence");
-      if (!storedDecisionFieldsSchema.safeParse({ decisionRequest: parsed.decisionRequest, decisionRequestRevision: parsed.decisionRequestRevision, decisionDelivery: parsed.decisionDelivery, decisions: parsed.decisions }).success) throw new ObjectiveStoreError("invalid_stored_decisions");
+      if (!storedDecisionFieldsSchema.safeParse({ decisions: parsed.decisions ?? [] }).success) throw new ObjectiveStoreError("invalid_stored_decisions");
       if (parsed.consultations !== undefined && !storedConsultationsSchema.safeParse(parsed.consultations).success) throw new ObjectiveStoreError("invalid_stored_consultations");
       // 후속 본문은 strict 로 검사하지 않는다. 옛 criteria 는 후보를 지우지 않고 키만 버린다. 목표 자신의 criteria 는 남긴다.
       dropLegacyFollowupCriteria(parsed);
       // 넘김은 어긋난 항목만 버린다 — 대상마다 마지막 하나.
       const holds = Array.isArray(parsed.personHolds) ? [...new Map(parsed.personHolds.filter((hold) => storedPersonHoldSchema.safeParse(hold).success).map((hold) => [hold.target, hold] as const)).values()] : [];
-      return { ...parsed, personHolds: holds, id: parsed.id, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [], results: results.data, evidence: manifest };
+      return { ...parsed, decisionRequest: undefined, decisionRequestRevision: undefined, decisionDelivery: undefined, personHolds: holds, id: parsed.id, rank: Number.isFinite(parsed.rank) ? parsed.rank! : 0, note: typeof parsed.note === "string" ? parsed.note : "", missions: Array.isArray(parsed.missions) ? parsed.missions : [], results: results.data, evidence: manifest };
     }
   } catch (error) {
     if (error instanceof Error && (error.message === "objective_location_unavailable" || error.message === "objective_actor_owner_mismatch")) throw error;
@@ -688,30 +683,12 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     ? options.objectiveRecords.describe(id)?.objectiveRecord ?? null
     : options.objectiveRecords.get(id);
   const now = options.now ?? (() => Date.now());
-  /**
-   * 지금 이 프로세스가 지휘관에게 보내고 있는 답의 요청 id. 저장된 decisionDelivery 는 기동이 끊기면 결과를 모르는 채 남으므로,
-   * 대체·철회·정리를 막는 것은 실제로 보내는 동안뿐이다. 남은 표시는 사람의 재전송이나 요청의 정리와 함께 거둔다.
-   */
-  const delivering = new Set<string>();
-  /**
-   * 결정 요청의 전제가 바뀌었다 — 요청을 정리하고 revision 을 올린다. 아직 읽지 않은 사람 편집이 남아 있으면 지휘관 도구의
-   * board_changed 가 새 요청을 거절한다. 답을 보내는 중인 요청은 사람의 제출이 먼저 받아들여졌으므로 그대로 둔다. 정리된 요청은 결정이 되지 않는다.
-   */
-  const withoutDecisionRequest = (stored: StoredObjective): StoredObjective => {
-    if (!stored.decisionRequest || delivering.has(stored.decisionRequest.id)) return stored;
-    return { ...stored, decisionRequest: undefined, decisionDelivery: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
-  };
-  /** 질문이 가리키던 임무·구성원이 보드에서 사라졌다 — 그 요청은 더는 같은 질문이 아니다. */
-  const withLiveDecisionReferences = (stored: StoredObjective): StoredObjective => {
-    const request = stored.decisionRequest;
-    if (!request) return stored;
-    const missions = new Set(stored.missions.map((mission) => mission.id));
-    const members = new Set((stored.members ?? []).map((member) => member.id));
-    const dangling = request.questions.some((question) => (question.missionId && !missions.has(question.missionId)) || (question.memberId && !members.has(question.memberId)));
-    return dangling ? withoutDecisionRequest(stored) : stored;
-  };
+  /** 디스크에 남은 결정 요청은 다음 쓰기에서 지운다. 이미 남은 결정은 그대로 둔다. */
+  const withoutDecisionRequest = (stored: StoredObjective): StoredObjective => (
+    !stored.decisionRequest && !stored.decisionDelivery && !stored.decisionRequestRevision ? stored : { ...stored, decisionRequest: undefined, decisionDelivery: undefined, decisionRequestRevision: undefined }
+  );
   /** 넘긴 항목이 서 있는지 보는 사실 — 저장 레코드에서. */
-  const holdSubject = (stored: StoredObjective): HoldSubject => ({ decisionRequest: stored.decisionRequest ?? null, criteriaProposals: stored.criteriaProposals ?? [], awaitingReview: awaitingReview(stored), done: stored.done, followups: stored.followups ?? [] });
+  const holdSubject = (stored: StoredObjective): HoldSubject => ({ criteriaProposals: stored.criteriaProposals ?? [], awaitingReview: awaitingReview(stored), done: stored.done, followups: stored.followups ?? [] });
   /** 사람의 처리 없이 항목이 사라진 넘김을 거둔다 — 그 항목을 사라지게 한 쓰기와 같은 쓰기에서. 끝난 넘김은 남는다. */
   const withLiveHolds = (stored: StoredObjective): StoredObjective => {
     const holds = stored.personHolds;
@@ -1118,7 +1095,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const update = (objectiveId: string, mutate: (stored: StoredObjective) => StoredObjective, touch = true, source?: "pr-observation"): Objective => {
     const { commodoreId, recorded, stored, node } = locate(objectiveId);
     // 인계 기록은 할 일이 끝난 동안에만 산다 — 기준 표시를 거두는 변경이 곧 인계를 거두고 목표를 진행 중으로 돌린다.
-    const mutated = withLiveHolds(withLiveDecisionReferences(withValidHandoff(mutate(stored))));
+    const mutated = withLiveHolds(withoutDecisionRequest(withValidHandoff(mutate(stored))));
     if (mutated === stored) return project(stored, node);
     if (mutated.missions.length > MAX_MISSIONS) throw new ObjectiveStoreError("too_many_missions");
     if (hasCycle(graphOf(mutated.missions))) throw new ObjectiveStoreError("dependency_cycle");
@@ -1742,14 +1719,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       if (JSON.stringify(changed) === JSON.stringify(target)) return stored;
       return { ...stored, members: stored.members!.map((member) => (member.id === memberId ? changed : member)) };
     }),
-    storedAnswers(objectiveId, requestId) {
-      try {
-        const { stored } = locate(objectiveId);
-        if (stored.decisionDelivery?.requestId === requestId) return stored.decisionDelivery.answers;
-        const decided = (stored.decisions ?? []).filter((decision) => decision.requestId === requestId);
-        return decided.length ? decided.map((decision) => ({ questionId: decision.questionId, ...decision.answer })) : null;
-      } catch { return null; }
-    },
     storedMember(objectiveId, memberId) {
       try {
         const member = (locate(objectiveId).stored.members ?? []).find((candidate) => candidate.id === memberId);
@@ -1845,10 +1814,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     personHold(objectiveId, { target, reason, by }) {
       return update(objectiveId, (stored) => {
         if (stored.removed) throw new ObjectiveStoreError("objective_removed");
-        const request = stored.decisionRequest;
-        // 답이 이미 가는 중인 결정은 넘길 것이 아니다 — 그 답이 결정이 된다.
-        if (target === "decision" && request && (delivering.has(request.id) || stored.decisionDelivery?.requestId === request.id)) throw new ObjectiveStoreError("decision_delivering");
-        const hold: StoredPersonHold = { target, ...(target === "decision" && request ? { requestId: request.id } : {}), reason: reason.trim(), at: now(), by: { kind: "commodore", commodoreId: by.commodoreId } };
+        const hold: StoredPersonHold = { target, reason: reason.trim(), at: now(), by: { kind: "commodore", commodoreId: by.commodoreId } };
         if (!hold.reason || hold.reason.length > MAX_PERSON_HOLD_REASON) throw new ObjectiveStoreError("invalid_reason");
         // 진행 중의 후속 후보는 모이기만 한다 — 넘길 판단은 검토 대기에 선다.
         if (target === "followup" && !followupsJudgeable(holdSubject(stored))) throw new ObjectiveStoreError("not_in_review", undefined, { hint: FOLLOWUPS_AT_REVIEW_HINT });
@@ -2174,51 +2140,44 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       return !!node && hasBoardRecord(load(node.commodoreId).get(objectiveId)) || commodoreIds().some((id) => !!load(id).get(objectiveId)?.pending);
     },
 
-    decisionRequest(objectiveId, input) {
-      let request!: DecisionRequest;
-      let reused = false;
+    decisionUpdate(objectiveId, input) {
+      const question = input.question.trim();
+      const answer = input.answer.trim();
+      const header = input.header?.trim();
+      if (!question || question.length > MAX_DECISION_QUESTION || !answer || answer.length > MAX_DECISION_ANSWER || (input.why !== undefined && input.why.trim().length > MAX_COMMODORE_WHY) || (header !== undefined && !storedDecisionHeader.safeParse(header).success)) throw new ObjectiveStoreError("invalid_decision");
+      let decision!: Decision;
       const objective = update(objectiveId, (stored) => {
-        if (stored.done) throw new ObjectiveStoreError("objective_done");
-        // 사람의 답이 지휘관에게 가는 중이다 — 그 요청을 덮으면 답이 어느 질문의 것인지 흐려진다.
-        if (stored.decisionRequest && delivering.has(stored.decisionRequest.id)) throw new ObjectiveStoreError("decision_delivering");
-        if ((stored.decisionRequestRevision ?? 0) !== input.expectedRevision) throw new ObjectiveStoreError("decision_request_changed", undefined, { decisionRequestRevision: stored.decisionRequestRevision ?? 0 });
-        for (const question of input.questions) {
-          if (question.missionId && !stored.missions.some((mission) => mission.id === question.missionId)) throw new ObjectiveStoreError("unknown_mission");
-          if (question.memberId && !(stored.members ?? []).some((member) => member.id === question.memberId)) throw new ObjectiveStoreError("unknown_member");
+        if (stored.removed) throw new ObjectiveStoreError("objective_removed");
+        if (input.missionId && !stored.missions.some((mission) => mission.id === input.missionId)) throw new ObjectiveStoreError("unknown_mission");
+        if (input.memberId && !(stored.members ?? []).some((member) => member.id === input.memberId)) throw new ObjectiveStoreError("unknown_member");
+        if (input.consultId && !(stored.consultations ?? []).some((entry) => entry.id === input.consultId)) throw new ObjectiveStoreError("unknown_consultation");
+        const by = { kind: "commodore" as const, commodoreId: input.by.commodoreId, ...(input.why?.trim() ? { why: input.why.trim() } : {}) };
+        const decisions = stored.decisions ?? [];
+        const at = now();
+        if (input.decisionId) {
+          const current = decisions.find((entry) => entry.id === input.decisionId);
+          if (!current) throw new ObjectiveStoreError("unknown_decision");
+          decision = {
+            ...current, by, updatedAt: at,
+            question: { ...(header ? { header } : current.question.header ? { header: current.question.header } : {}), text: question, options: current.question.options, multiSelect: current.question.multiSelect },
+            answer: { selectedOptionIds: current.answer.selectedOptionIds, text: answer },
+            ...(input.consultId ? { consultId: input.consultId } : {}),
+            ...(input.missionId ? { missionId: input.missionId } : {}),
+            ...(input.memberId ? { memberId: input.memberId } : {}),
+          };
+          return editedStored(action({ ...stored, decisions: decisions.map((entry) => entry.id === decision.id ? decision : entry) }, by, "decision", { targetId: decision.id }), ["decision"], by);
         }
-        // 저장될 모양 그대로 — 정규화하지 않는다. 같은 질문을 다시 물은 것이면 지금 요청을 그대로 둔다.
-        const questions = input.questions.map((question) => ({
-          header: question.header,
-          text: question.text,
-          options: question.options.map((option) => ({ label: option.label, ...(option.description ? { description: option.description } : {}) })),
-          multiSelect: question.options.length > 0 && question.multiSelect === true,
-          ...(question.missionId ? { missionId: question.missionId } : {}),
-          ...(question.memberId ? { memberId: question.memberId } : {}),
-        }));
-        const current = stored.decisionRequest;
-        const asked = current?.questions.map(({ id: _question, options, ...question }) => ({ ...question, options: options.map(({ id: _option, ...option }) => option) }));
-        if (current && isDeepStrictEqual(asked, questions)) { request = current; reused = true; return stored; }
-        if (current) throw new ObjectiveStoreError("decision_pending", undefined, { requestId: current.id, hint: "Withdraw the current request with decision_withdraw first." });
-        request = {
-          id: randomUUID(), createdAt: now(),
-          questions: questions.map((question) => ({ id: randomUUID(), ...question, options: question.options.map((option) => ({ id: randomUUID(), ...option })) })),
+        decision = {
+          id: randomUUID(), by, at, updatedAt: at,
+          question: { ...(header ? { header } : {}), text: question, options: [], multiSelect: false },
+          answer: { selectedOptionIds: [], text: answer },
+          ...(input.consultId ? { consultId: input.consultId } : {}),
+          ...(input.missionId ? { missionId: input.missionId } : {}),
+          ...(input.memberId ? { memberId: input.memberId } : {}),
         };
-        return { ...stored, decisionRequest: request, decisionDelivery: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
+        return editedStored(action({ ...stored, decisions: [...decisions, decision] }, by, "decision", { targetId: decision.id }), ["decision"], by);
       });
-      return { objective, request, reused };
-    },
-
-    decisionWithdraw(objectiveId, requestId) {
-      let withdrawn = false;
-      const objective = update(objectiveId, (stored) => {
-        const current = stored.decisionRequest;
-        if (!current) return stored;
-        if (current.id !== requestId) throw new ObjectiveStoreError("decision_request_changed", undefined, { requestId: current.id });
-        if (delivering.has(current.id)) throw new ObjectiveStoreError("decision_delivering");
-        withdrawn = true;
-        return { ...stored, decisionRequest: undefined, decisionDelivery: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1 };
-      });
-      return { objective, withdrawn };
+      return { objective, decision };
     },
 
     consultAsk(objectiveId, input) {
@@ -2268,83 +2227,6 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
     },
     settleConsultationSends(objectiveId) {
       transitionConsultation(objectiveId, "*", "sending", "uncertain");
-    },
-
-    decisionAccept(objectiveId, input, by = "human") {
-      const { stored, node } = locate(objectiveId);
-      // 이미 결정으로 남은 요청 — 같은 답의 재전송은 그 결과를, 다른 답은 덮지 않고 거절한다.
-      const recorded = (stored.decisions ?? []).filter((decision) => decision.requestId === input.requestId);
-      if (recorded.length > 0) {
-        const same = input.answers.length === recorded.length && input.answers.every((answer) => {
-          const decision = recorded.find((entry) => entry.questionId === answer.questionId);
-          return !!decision && decision.answer.text === answer.text && decision.answer.selectedOptionIds.length === answer.selectedOptionIds.length && answer.selectedOptionIds.every((id) => decision.answer.selectedOptionIds.includes(id));
-        });
-        if (!same) throw new ObjectiveStoreError("decision_already_submitted");
-        return { recorded: true, objective: project(stored, node) };
-      }
-      if (stored.done) throw new ObjectiveStoreError("objective_done");
-      const request = stored.decisionRequest;
-      if (!request || request.id !== input.requestId) throw new ObjectiveStoreError("decision_request_changed");
-      // 모든 질문에 정확히 한 번 — 고른 것은 그 질문의 선택지여야 하고, 하나 고르기는 하나까지, 빈 답은 받지 않는다.
-      const byQuestion = new Map(input.answers.map((answer) => [answer.questionId, answer]));
-      if (byQuestion.size !== input.answers.length || input.answers.length !== request.questions.length) throw new ObjectiveStoreError("invalid_answers");
-      const answers: DecisionAnswer[] = request.questions.map((question) => {
-        const answer = byQuestion.get(question.id);
-        if (!answer) throw new ObjectiveStoreError("invalid_answers");
-        const picked = new Set(answer.selectedOptionIds);
-        if (picked.size !== answer.selectedOptionIds.length || [...picked].some((id) => !question.options.some((option) => option.id === id)) || (!question.multiSelect && picked.size > 1)) throw new ObjectiveStoreError("invalid_answers");
-        if (picked.size === 0 && !answer.text.trim()) throw new ObjectiveStoreError("invalid_answers");
-        return { questionId: question.id, selectedOptionIds: question.options.filter((option) => picked.has(option.id)).map((option) => option.id), text: answer.text };
-      });
-      if (delivering.has(request.id)) throw new ObjectiveStoreError("decision_delivering");
-      const objective = update(objectiveId, (current) => ({ ...current, decisionDelivery: { requestId: request.id, answers, at: now(), by } }));
-      delivering.add(request.id);
-      return { recorded: false, objective, request, answers };
-    },
-
-    decisionDecline(objectiveId, input, by = "human") {
-      const { stored, node } = locate(objectiveId);
-      // 이미 결정으로 남은 요청 — 「결정 안 함」으로 닫힌 요청의 닫기 재전송은 그 결과를, 답이 남은 요청의 닫기는 거절한다.
-      const recorded = (stored.decisions ?? []).filter((decision) => decision.requestId === input.requestId);
-      if (recorded.length > 0) {
-        if (!recorded.every((decision) => decision.declined === true)) throw new ObjectiveStoreError("decision_already_submitted");
-        return { recorded: true, objective: project(stored, node) };
-      }
-      if (stored.done) throw new ObjectiveStoreError("objective_done");
-      const request = stored.decisionRequest;
-      if (!request || request.id !== input.requestId) throw new ObjectiveStoreError("decision_request_changed");
-      if (delivering.has(request.id)) throw new ObjectiveStoreError("decision_delivering");
-      // 답 검증을 거치지 않는다 — 빈 답을 질문마다 실어 보내고, 「결정 안 함」 표식으로 닫힌 것임을 남긴다.
-      const answers: DecisionAnswer[] = request.questions.map((question) => ({ questionId: question.id, selectedOptionIds: [], text: "" }));
-      const objective = update(objectiveId, (current) => ({ ...current, decisionDelivery: { requestId: request.id, answers, declined: true, at: now(), by } }));
-      delivering.add(request.id);
-      return { recorded: false, objective, request };
-    },
-
-    decisionSettle: (objectiveId, requestId, delivered) => {
-      // 보내기는 끝났다 — 기록이 실패해도 이 요청을 더는 「보내는 중」으로 붙들지 않는다.
-      delivering.delete(requestId);
-      return update(objectiveId, (stored) => {
-      const delivery = stored.decisionDelivery;
-      if (!delivery || delivery.requestId !== requestId) return stored;
-      const request = stored.decisionRequest?.id === requestId ? stored.decisionRequest : null;
-      if (!delivered || !request) return { ...stored, decisionDelivery: undefined };
-      // 지휘관에게 닿았다 — 질문마다 답한 순간의 사본으로 결정 한 건. 요청은 정리된다. 「결정 안 함」으로 닫힌 요청은
-      // 질문마다 `declined` 표시가 남고, 답(고른 것·쓴 말)은 비어 있다.
-      const decisions: Decision[] = request.questions.map((question) => {
-        const answer = delivery.answers.find((entry) => entry.questionId === question.id)!;
-        return {
-          id: randomUUID(), requestId, questionId: question.id,
-          question: { ...(question.header ? { header: question.header } : {}), text: question.text, options: question.options.map((option) => ({ ...option })), multiSelect: question.multiSelect },
-          answer: { selectedOptionIds: [...answer.selectedOptionIds], text: answer.text },
-          ...(delivery.declined === true ? { declined: true as const } : {}),
-          at: delivery.at, by: delivery.by ?? "human",
-          ...(question.missionId ? { missionId: question.missionId } : {}),
-          ...(question.memberId ? { memberId: question.memberId } : {}),
-        };
-      });
-      return { ...stored, decisionDelivery: undefined, decisionRequest: undefined, decisionRequestRevision: (stored.decisionRequestRevision ?? 0) + 1, decisions: [...(stored.decisions ?? []), ...decisions] };
-      });
     },
   };
 

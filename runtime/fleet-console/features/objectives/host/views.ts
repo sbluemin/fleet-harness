@@ -180,7 +180,7 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
         : { kind: entry.reply.kind, at: new Date(entry.reply.at).toISOString(), by: entry.reply.by }) : null,
       ...(entry.delivery ? { delivery: entry.delivery } : {}),
     })),
-    ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ question: decision.question.text, by: decision.by ?? "human",
+    ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ id: decision.id, question: decision.question.text, by: decision.by ?? "human",
       ...withoutEmpty({
         header: decision.question.header,
         selected: decision.answer.selectedOptionIds.flatMap((id) => decision.question.options.filter((option) => option.id === id).map((option) => option.label)),

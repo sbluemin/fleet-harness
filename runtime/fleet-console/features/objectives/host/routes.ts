@@ -18,7 +18,7 @@ import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { SHARED_FOLDER_LIMITS, type SharedFolderEntry, type SharedFolderKind, type SharedFolderList, type SharedFileChunk } from "../shared/shared-folder.js";
 import { ObjectiveArchiveError } from "../../workspace/host/objective-archive-storage.js";
-import { decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchObjectiveSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "../shared/types.js";
+import { followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchObjectiveSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "../shared/types.js";
 
 /**
  * 브라우저가 부르는 라우트. 전부 POST + JSON, 같은 origin 의 Console 만 지난다(`isTerminalAuthorized`).
@@ -392,7 +392,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     { name: "objective/patch", method: "POST", summary: "Edit an objective (its title and group are its Commander Objective's).", handler: json(objectiveRef.extend({ patch: patchObjectiveSchema }), actions.patch) },
     // 목표를 지우면 지휘관 Objective 이 닫힌다(삭제 유예 동안 복원할 수 있고, 담당도 함께 닫힌다).
     // 사령관에게 돌려주기 — 사령관이 사람에게 넘긴 항목을 사람이 되돌린다. 넘김은 「돌려줌」으로 남고 사령관이 깨어나 그 항목을 다시 맡는다.
-    { name: "person-hold/return", method: "POST", summary: "Return an item the Commodore handed to the person (decision, criteria, review or followup) to the Commodore; it can answer it again and is woken.", handler: json(objectiveRef.extend({ target: z.enum(PERSON_HOLD_TARGETS) }), actions.returnToCommodore) },
+    { name: "person-hold/return", method: "POST", summary: "Return an item the Commodore handed to the person (criteria, review or followup) to the Commodore; it can answer it again and is woken.", handler: json(objectiveRef.extend({ target: z.enum(PERSON_HOLD_TARGETS) }), actions.returnToCommodore) },
     // 옛 페이지의 restorable 필드는 받아 두되, 값과 기동 여부에 관계없이 복원 가능한 보관만 한다.
     { name: "objective/archive", method: "POST", summary: "Archive the Commander conversation restorably, including never-launched objectives. Permanent deletion is available only through archived-objective purge with its undo grace period.", handler: json(objectiveRef.extend({ restorable: z.boolean().optional() }), ({ objectiveId }) => launch.archive(objectiveId)) },
     // 후속 후보를 고른 완료는 새 경계다 — 검토 대기·스티어링 우선·제안 대기를 서버가 원자적으로 다시 따진다. 고른 것이 없으면 지금 완료 그대로.
@@ -419,10 +419,6 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     { name: "commander/compact", method: "POST", summary: "Send /compact to the Commander and every member Objective of an objective through the normal delivery path; returns per-target outcomes.", handler: json(objectiveRef, actions.compact) },
     { name: "commander/stop", method: "POST", summary: "Interrupt the Commander and every member Objective of an objective (roster stays).", handler: json(objectiveRef, actions.stop) },
     { name: "commander/start", method: "POST", summary: "Commence: launch or resume every member before sending the Commander's first turn. Optional context from the person is quoted under it once. Members the host refused or that have no model are listed in failed.", handler: json(objectiveRef.extend({ context }), actions.commence) },
-    // 결정 요청에 대한 사람의 답 — 보드 편집이 아니다(edited 를 쌓지 않는다). 지휘관이 일하는 중에도 받고, 기준 제안이 남아도 보낸다.
-    { name: "decision/answer", method: "POST", summary: "Answer the Commander's current decision request: every question at once. The answers reach the same Commander conversation (starting an SDK child only when needed); once delivered they stay as decisions and the request clears.", handler: json(decisionAnswersSchema.extend({ objectiveId: ids, language }), actions.answer) },
-    // 「결정 안 함」 닫기 — 요청 전체를 선택·입력 없이 닫는다. 답과 같은 전달·잠금·중복 규칙을 쓰고, 결정에는 질문마다 「결정 안 함」 표시가 남는다.
-    { name: "decision/decline", method: "POST", summary: "Close the Commander's current decision request without deciding: no option chosen, nothing handed to the Commander, nothing deferred. Recorded per question as declined and the request clears.", handler: json(objectiveRef.extend({ requestId: ids }), actions.decline) },
     { name: "commander/message", method: "POST", summary: "Send the person's words verbatim to the Commander or one member session, with the images the person attached (attachmentIds from the Console attachment upload) riding only that one session; text may be empty only when attachmentIds are present; a member message is also quoted to the Commander in one line.", handler: json(objectiveRef.extend({ memberId: ids.nullable().optional(), text: z.string().trim().max(MAX_CONTEXT), attachmentIds: z.array(z.string().min(1).max(128)).min(1).max(MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH).optional() })
       // 문면이 비어도 첨부가 있으면 보낼 말이다 — 둘 다 없으면 문면 길이 위반으로 거절한다.
       .superRefine((body, issue) => {

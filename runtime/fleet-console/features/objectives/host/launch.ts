@@ -7,14 +7,14 @@ import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
 import { openUIFeedbackNote } from "@fleet-console/markdown/openui-feedback";
-import { commanderFreshTurnNotice, commanderRestTurn, decisionTurn, declinedDecisionTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
-import { consultationNotice } from "../shared/consultations.js";
+import { commanderFreshTurnNotice, commanderRestTurn, humanWords, interruptedMemberMissionsNotice, memberFreshTurnNotice, memberMessageTurn, memberFailureTurn, memberUnreportedTurn, planTurn, restartTurn, startTurn, steerTurn, type PromptLanguage } from "./prompts.js";
+import { consultationNotice, decisionUpdateNotice, decisionsChangedForConsult } from "../shared/consultations.js";
 import { createModelCatalog } from "./catalog.js";
 import { commanderRoutingPrompt, memberRoutingPrompt, ROUTING_ASSIGN_MAX_ITEMS, ROUTING_ASSIGN_MAX_PROMPT_SUM } from "./routing-prompt.js";
 import { COMMANDER_TOOL_RENAMES, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_SERVER, MEMBER_TOOL_RENAMES } from "./objective-tools.js";
 import { checkedCriteria, lacksReportTool, ObjectiveStoreError, type ObjectiveInit, type ObjectiveStore } from "./store.js";
 import { describeQuietMission, expectsReport, objectiveUnderway, quietElapsed, quietSince, REPORT_QUIET_MS } from "../shared/signals.js";
-import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, type DecisionAnswer, type DecisionAnswersInput, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type ObjectiveModelSpeed, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
+import { COMMANDER_PRESET, heldNextOutcome, missionReady, notAppliedFailure, type MemberLaunch, type MemberNext, type MemberPatchInput, type MemberPreset, type ObjectiveModelSpeed, type ObjectiveActor, type Objective, type ObjectiveMember, type ObjectiveMessageDelivery, type ObjectiveMessageParty, type ObjectiveMemberUnreported, type PlanInput, type MissionAddInput, type MissionPatchInput } from "../shared/types.js";
 import { deriveFailedOutcome } from "./views.js";
 
 /**
@@ -35,12 +35,6 @@ export interface CompactTarget {
   readonly woken: boolean;
   readonly reason?: string;
 }
-
-/**
- * 기다리던 결정 요청에 사람이 낸 결론 — 보통 답이면 `{ answers }`, 요청 전체를 「결정 안 함」으로 닫았으면
- * `{ declined: true }`. 닫기는 어떤 선택지도 고르지 않았고, 지휘관 판단에 맡긴 것도, 나중으로 미룬 것도 아니다.
- */
-export type DecisionOutcome = { readonly answers: readonly DecisionAnswer[] } | { readonly declined: true };
 
 export interface LaunchService {
   describe(): { readonly available: boolean };
@@ -121,22 +115,8 @@ export interface LaunchService {
   memberRemoved(objectiveId: string, memberId: string): Promise<{ readonly objective: Objective; readonly missionIds: readonly string[] }>;
   /** 지휘관 Objective 이 지금 일하고 있는가(running·background) — 그동안 사람의 편집은 허용된 것만 받는다. */
   busy(objectiveId: string): boolean;
-  /**
-   * 사람의 결정 답 — 지휘관에게 질문과 답을 보내고(휴면이면 깨워서), 닿았을 때만 결정으로 남기고 요청을 정리한다. 스티어링과 달리
-   * 기준 제안이 남아도 보내며, 충족 판단·구상 상태를 건드리지 않고 구성원을 기동하지 않는다.
-   */
-  answerDecision(objectiveId: string, input: DecisionAnswersInput, options?: LaunchOptions): Promise<Objective>;
-  /**
-   * 사람의 「결정 안 함」 닫기 — 요청 전체를 질문 없이 닫는다. 답과 같은 전달·잠금·중복 규칙을 쓰고, 지휘관에게는 닫힌
-   * 사실을 「결정 안 함」 전달문으로 알린다(기다리던 `awaitDecision` 에는 `{ declined: true }` 로 건넨다).
-   */
-  declineDecision(objectiveId: string, input: { readonly requestId: string }, options?: LaunchOptions): Promise<Objective>;
-  /**
-   * 지휘관이 방금 올린 요청의 답을 기다린다 — 그 안에 사람이 답하면 답을 돌려주고(프롬프트는 보내지 않고 결정으로 남긴다),
-   * 「결정 안 함」으로 닫히면 `{ declined: true }` 를 돌려주고, 요청이 그새 정리됐으면 "cleared", 시한이 지나거나 호출이
-   * 끊기면 null 이다. null 뒤의 답·닫기는 지금처럼 프롬프트로 간다.
-   */
-  awaitDecision(objectiveId: string, requestId: string, waitMs: number, signal?: AbortSignal): Promise<DecisionOutcome | "cleared" | null>;
+  /** 자문 회신 없이 남은 보드 결정을 지휘관에게 알린다. 세션이 없으면 false이고, 편집 표식은 다음 읽기가 말한다. */
+  notifyDecisions(objectiveId: string): Promise<boolean>;
   /** 스티어링 — 지휘관에게 「바뀌었으니 보드를 다시 읽으라」는 한 줄을 보내고 쌓인 편집과 충족 판단을 비운다. */
   steer(objectiveId: string, options?: LaunchOptions): Promise<Objective>;
   /**
@@ -456,7 +436,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   };
 
   // 답을 기다리는 지휘관 도구 호출 — 목표·요청마다 하나. 답이 오면 프롬프트 대신 이 호출이 답을 받는다.
-  const decisionWaiters = new Map<string, (outcome: DecisionOutcome | "cleared" | null) => void>();
 
   // 같은 목표에 기동 요청이 겹치면 Objective 이 둘 뜬다 — 기동이 끝날 때까지 자리를 잡아 둔다.
   const pending = new Set<string>();
@@ -1455,7 +1434,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!row?.reply || row.delivery !== "pending") continue;
       if (!store.claimConsultationSend(objectiveId, row.id)) continue;
       try {
-        const text = consultationNotice(row.reply.kind, row.id);
+        const text = consultationNotice(row.reply.kind, row.id, decisionsChangedForConsult(fresh.decisions, row));
         await control().request({ kind: "send", objectiveId, text, display: text });
         store.submitConsultationSend(objectiveId, row.id);
       } catch (error) {
@@ -1623,7 +1602,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (mission.done || mission.member === null || mission.assignmentTs == null) continue;
         const elapsed = quietElapsed({
           ready: missionReady(current.missions, mission), assigned: true, assignmentTs: mission.assignmentTs,
-          boardUpdatedAt, decisionPending: current.decisionRequest !== null, reviewPending: current.awaitingReview,
+          boardUpdatedAt, reviewPending: current.awaitingReview,
           underway: objectiveUnderway(current),
         }, now);
         if (elapsed == null || elapsed < reportQuietMs) continue;
@@ -1988,7 +1967,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 카탈로그를 기다리는 동안 사람이 고를 수도 있다 — 같은 직렬화 경계에서 출처를 다시 확인하고, 거절할 세션은 깨우지 않는다.
       const before = store.storedMember(objectiveId, memberId)!;
       if (by === "commander" && patch.launch !== undefined && before.launchBy !== "commander") {
-        throw new ObjectiveStoreError("member_launch_person_chosen", undefined, { reason: "The person's launch selection and legacy members without ownership are protected. Newly added members without a launch selection can be changed. Do not enlist a replacement to bypass this protection; use request_decision to ask the person to change this member's model chip on the board." });
+        throw new ObjectiveStoreError("member_launch_person_chosen", undefined, { reason: "The person's launch selection and legacy members without ownership are protected. Newly added members without a launch selection can be changed. Do not enlist a replacement to bypass this protection; use consult_ask if a change is needed." });
       }
       // 같은 실행값·예약을 확정한 사람은 세션을 깨우거나 예약을 다시 걸지 않는다. 미기동 구성원은 저장 선택만 비교한다.
       const reaffirmed = by === "human" && patch.launch !== undefined && matchingSelection(current, memberId, patch.launch, before);
@@ -2035,93 +2014,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
 
     busy: (objectiveId) => working(objective(objectiveId).id),
 
-    async answerDecision(objectiveId, input, options) {
-      // 같은 요청의 답이 이미 가는 중이다 — 두 번 보내면 지휘관이 같은 답을 두 번 받는다.
-      const key = `${objectiveId}:decision`;
-      if (pending.has(key)) throw new ObjectiveStoreError("decision_delivering");
-      pending.add(key);
-      try {
-        const accepted = store.decisionAccept(objectiveId, input, options?.actor);
-        if (accepted.recorded) return accepted.objective;
-        // 지휘관이 이 요청의 답을 기다리는 중이다 — 도구 응답으로 건네고 결정으로 남긴다. 프롬프트는 보내지 않는다.
-        const waiter = decisionWaiters.get(`${objectiveId}:${accepted.request.id}`);
-        if (waiter) {
-          decisionWaiters.delete(`${objectiveId}:${accepted.request.id}`);
-          const settled = store.decisionSettle(objectiveId, accepted.request.id, true);
-          store.setStopped(objectiveId, false);
-          waiter({ answers: accepted.answers });
-          return settled;
-        }
-        try {
-          await accessObjective(objectiveId);
-          await control().request({ kind: "send", objectiveId: objectiveId, text: withOpenUIFeedback(objectiveId, decisionTurn(accepted.objective, accepted.request, accepted.answers, languageOf(options), options?.actor)), display: "", displayFormat: "markdown" });
-          store.setStopped(objectiveId, false);
-          touchLive(objectiveId);
-        } catch (error) {
-          // 닿지 않았다 — 요청과 답은 화면에 그대로 남고 결정은 쌓이지 않는다. 호스트의 거절 사유는 함께 돌려준다.
-          store.decisionSettle(objectiveId, accepted.request.id, false);
-          const reason = error instanceof Error && /^[a-z_]{1,64}$/.test(error.message) ? error.message : undefined;
-          throw new ObjectiveStoreError("decision_delivery_failed", undefined, reason ? { reason } : {});
-        }
-        return store.decisionSettle(objectiveId, accepted.request.id, true);
-      } finally { pending.delete(key); }
-    },
-
-    async declineDecision(objectiveId, input, options) {
-      // 같은 요청의 닫기가 이미 가는 중이다 — 두 번 닫으면 지휘관이 같은 닫힘을 두 번 받는다.
-      const key = `${objectiveId}:decision`;
-      if (pending.has(key)) throw new ObjectiveStoreError("decision_delivering");
-      pending.add(key);
-      try {
-        const declined = store.decisionDecline(objectiveId, input, options?.actor);
-        if (declined.recorded) return declined.objective;
-        // 지휘관이 이 요청의 답을 기다리는 중이다 — 닫힘을 도구 응답으로 건네고 결정으로 남긴다. 프롬프트는 보내지 않는다.
-        const waiter = decisionWaiters.get(`${objectiveId}:${declined.request.id}`);
-        if (waiter) {
-          decisionWaiters.delete(`${objectiveId}:${declined.request.id}`);
-          const settled = store.decisionSettle(objectiveId, declined.request.id, true);
-          store.setStopped(objectiveId, false);
-          waiter({ declined: true });
-          return settled;
-        }
-        try {
-          await accessObjective(objectiveId);
-          await control().request({ kind: "send", objectiveId: objectiveId, text: withOpenUIFeedback(objectiveId, declinedDecisionTurn(declined.objective, declined.request, languageOf(options), options?.actor)), display: "", displayFormat: "markdown" });
-          store.setStopped(objectiveId, false);
-          touchLive(objectiveId);
-        } catch (error) {
-          // 닿지 않았다 — 요청과 닫힘은 화면에 그대로 남고 결정은 쌓이지 않는다. 호스트의 거절 사유는 함께 돌려준다.
-          store.decisionSettle(objectiveId, declined.request.id, false);
-          const reason = error instanceof Error && /^[a-z_]{1,64}$/.test(error.message) ? error.message : undefined;
-          throw new ObjectiveStoreError("decision_delivery_failed", undefined, reason ? { reason } : {});
-        }
-        return store.decisionSettle(objectiveId, declined.request.id, true);
-      } finally { pending.delete(key); }
-    },
-
-    awaitDecision(objectiveId, requestId, waitMs, signal) {
-      if (waitMs <= 0 || signal?.aborted) return Promise.resolve(null);
-      const key = `${objectiveId}:${requestId}`;
-      return new Promise((resolve) => {
-        let finished = false;
-        const finish = (value: DecisionOutcome | "cleared" | null) => {
-          if (finished) return;
-          finished = true;
-          clearTimeout(timer);
-          clearInterval(poll);
-          signal?.removeEventListener("abort", onAbort);
-          if (decisionWaiters.get(key) === finish) decisionWaiters.delete(key);
-          resolve(value);
-        };
-        const onAbort = () => finish(null);
-        decisionWaiters.set(key, finish);
-        const timer = setTimeout(() => finish(null), waitMs);
-        // 사람의 보드 편집 등으로 요청이 사라졌다 — 답은 오지 않는다.
-        const poll = setInterval(() => {
-          if (decisionWaiters.get(key) === finish && store.find(objectiveId)?.decisionRequest?.id !== requestId) finish("cleared");
-        }, 1_000);
-        signal?.addEventListener("abort", onAbort, { once: true });
-      });
+    notifyDecisions: (objectiveId) => {
+      const notice = decisionUpdateNotice();
+      return send(objectiveId, notice, notice);
     },
 
     async steer(objectiveId, options) {
@@ -2392,7 +2287,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 구성원 실패·무보고·정산 좌표는 보드 사실이다 — 플러그인이 내려가도 지우지 않는다(다음 기동이 그대로 이어 읽는다).
       if (quietTimer) clearTimeout(quietTimer);
       quietTimer = null;
-      for (const waiter of [...decisionWaiters.values()]) waiter(null);
     },
   };
   return service;

@@ -13,8 +13,8 @@ import { createModelCatalog } from "./catalog.js";
 import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, PERSON_COMMANDER_NOTICE, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { CONSULT_ANSWER_DESCRIPTION, CONSULT_ANSWER_OMIT, CONSULT_ANSWER_SOURCE } from "../shared/consultations.js";
-import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_DECISION_QUESTIONS, MAX_CONSULTATION_TEXT, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
+import { CONSULT_ANSWER_DESCRIPTION, CONSULT_ANSWER_OMIT, CONSULT_ANSWER_SOURCE, decisionsChangedForConsult } from "../shared/consultations.js";
+import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_COMMODORE_WHY, MAX_DECISION_ANSWER, MAX_DECISION_LABEL, MAX_DECISION_QUESTION, MAX_CONSULTATION_TEXT, PERSON_HOLD_TARGETS, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS } from "./console-views.js";
 import { searchInputShape, searchObjectives } from "./search.js";
@@ -36,7 +36,7 @@ const ids = z.string().min(1).max(128);
 const attachmentIds = z.array(z.string().uuid()).min(1).max(MAX_ATTACHMENTS).optional().describe("Image IDs the person sent you or this turn's mail; no paths. Save request images in the brief before plan/steer.");
 const MAX_ADD_PER_TURN = 10;
 /** 일하는 세션이 있어도 전사를 읽을 수 있는 대기 사유 — 바깥의 판단을 기다리거나 막힌 목표다. */
-const TRANSCRIPT_REASONS: ReadonlySet<string> = new Set(["decision", "stalled", "member-failed", "review"]);
+const TRANSCRIPT_REASONS: ReadonlySet<string> = new Set(["stalled", "member-failed", "review"]);
 /** 세션 전사 한 번에 읽는 줄 수의 기본값 — 꼬리 읽기의 크기이기도 하다. */
 const TRANSCRIPT_DEFAULT_LIMIT = 30;
 /** 정리(지우기·합치기·되돌리기) 한 번에 받는 목표 수, 그리고 호출자마다 10분에 받는 정리 호출 수. */
@@ -51,7 +51,6 @@ const commanderModelInput = z.string().trim().min(1).max(128).optional().describ
 const commanderEffortInput = z.string().trim().min(1).max(32).optional().describe("Only with commanderModel, from its efforts; omitted uses its default.");
 /** edit 가 세션 없는 목표의 모델·강도를 거절할 때만 붙인다. 전사 읽기의 not_started 와 공유하지 않는다. */
 const NO_COMMANDER_SESSION_HINT = "No Commander session yet; use plan or commence for initial model selection.";
-const answers = z.array(decisionAnswersSchema.shape.answers.element).min(1).max(MAX_DECISION_QUESTIONS);
 const offsetPages = "Follow nextOffset with the same view until null; slices restart at 0 if the revision changes.";
 /** 조각 읽기의 위치 — 목표 구역(UTF-16 문자, 8000바이트 예산)과 증거(16000자) 모두 nextOffset 을 따라간다. */
 const sliceOffset = z.number().int().min(0).optional().describe(offsetPages);
@@ -66,7 +65,6 @@ const criteriaSettleHint = (advice: ReturnType<typeof criteriaSettleAdvice>, act
     case "rejected-plan": return "The rejection did not approve the remaining lineup. Call plan to ask for another plan, or commence if you judge it ready.";
     case "proposals": return "Criteria proposals remain. Review them before resuming execution.";
     case "held": return "A board item is held for the person; it stays theirs until they answer it or return it to you.";
-    case "decision": return "A decision request is open. Handle it before resuming the commander.";
     case "review": return "The objective awaits review. steer would clear its met marks, so judge the review first.";
     case "handoff": return "The objective awaits hand-off from the commander; this criteria decision suggests no resume call.";
     case "stopped": return "The objective is stopped. Resume it as its own decision, not as part of this criteria decision.";
@@ -142,7 +140,6 @@ const detailActions = {
     edit_due: write({ dueDate }),
     criteria_approve: write({ proposalId: ids.describe("\"all\" approves every proposal.") }),
     criteria_reject: write({ proposalId: ids }),
-    answer: write({ requestId: ids, answers }),
     complete: write({ batchId: followupSelectionSchema.shape.batchId.optional().describe("Optional retry key; omitted, the host derives one."), followups: followupSelectionSchema.shape.followups.optional() }),
     reopen: write({}),
     followup_retry: write(followupTarget),
@@ -167,6 +164,17 @@ const detailActions = {
       consultId: ids.describe(CONSULT_ANSWER_SOURCE),
       answer: z.string().min(1).max(MAX_CONSULTATION_TEXT).optional().describe(CONSULT_ANSWER_OMIT),
     }) },
+    decision_update: { kind: "write", callers: ["commodore"], input: z.object({ ...target,
+      decisionId: ids.optional().describe("Omit to add a decision; pass it to update that decision."),
+      header: z.string().trim().min(1).max(MAX_DECISION_LABEL).optional(),
+      question: z.string().trim().min(1).max(MAX_DECISION_QUESTION).optional().describe("Settled question. topic is the same text when question is omitted."),
+      topic: z.string().trim().min(1).max(MAX_DECISION_QUESTION).optional(),
+      answer: z.string().trim().min(1).max(MAX_DECISION_ANSWER),
+      why: z.string().trim().min(1).max(MAX_COMMODORE_WHY).optional(),
+      consultId: ids.optional(),
+      missionId: ids.optional(),
+      memberId: ids.optional(),
+    }).strict() },
 } as const;
 const detailTool = defineConsoleTool({
   name: "console_objectives_detail",
@@ -215,7 +223,7 @@ const objectiveTool = defineConsoleTool({
 /** `console_` 표식의 행위 낱말 — 내부 action 이름을 보이지 않는다. 쓰기 action 이 늘면 타입이 여기 낱말을 요구한다. */
 type DetailWriteAction = { [K in keyof typeof detailTool.actions]: (typeof detailTool.actions)[K]["kind"] extends "write" ? K : never }[keyof typeof detailTool.actions];
 const DETAIL_WRITE_WORDS: Record<Exclude<DetailWriteAction, "edit_due">, string> = {
-  edit_title: "제목 변경", edit_brief: "브리핑 편집", criteria_approve: "기준 승인", criteria_reject: "기준 거절", answer: "결정 응답",
+  edit_title: "제목 변경", edit_brief: "브리핑 편집", criteria_approve: "기준 승인", criteria_reject: "기준 거절", decision_update: "결정 기록",
   complete: "완료", reopen: "완료 되돌림", followup_retry: "후속 재시도", followup_abandon: "후속 포기", followup_discard: "후속 버림",
   plan: "구상 요청", commence: "출범", steer: "스티어링", message: "메시지", stop: "중단", compact: "문맥 정리", hand_off: "검토로 인계",
   extend: "확장", hand_to_person: "사람에게 넘김", consult_answer: "자문 답변",
@@ -240,7 +248,7 @@ export function createCommodoreBoardTools(ctx: ObjectivesFeatureDeps, store: Obj
   } : undefined;
   return createBoardTools(ctx, store, launch, { kind: "commodore", commodoreId }, read).map((tool) => {
     const name = commodoreSessionToolName(tool.name);
-    const description = tool.name === "console_objective" ? `${tool.description}\nconsult_answer: ${CONSULT_ANSWER_DESCRIPTION}` : tool.description;
+    const description = tool.name === "console_objective" ? `${tool.description}\nconsult_answer: ${CONSULT_ANSWER_DESCRIPTION}\ndecision_update: Record a settled board decision anytime; omit decisionId to add, pass it to update.` : tool.description;
     return { ...tool, name, description };
   });
 }
@@ -431,7 +439,6 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
             case "commence": return actions.commence({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}), ...commanderCall(call, context.signal) });
             case "criteria_approve": return call.proposalId === "all" ? actions.approveAll(ref) : actions.approve({ ...ref, proposalId: call.proposalId });
             case "criteria_reject": return actions.reject({ ...ref, proposalId: call.proposalId });
-            case "answer": return actions.answer({ ...ref, requestId: call.requestId, answers: call.answers });
             case "complete": return actions.complete({ ...ref, ...(call.followups ? { batchId: call.batchId, followups: call.followups } : {}) });
             case "reopen": return actions.complete({ ...ref, undone: true });
             case "steer": return actions.steer({ ...ref, ...(call.context !== undefined ? { context: call.context } : {}) });
@@ -469,6 +476,25 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
               const shown = store.find(current.id) ?? answered.objective;
               return { objective: shown, consultId: answered.consultation.id, reply: shown.consultations.find((entry) => entry.id === answered.consultation.id)?.reply?.kind ?? "unanswered" };
             }
+            case "decision_update": {
+              if (caller?.kind !== "commodore") throw new ObjectiveStoreError("permission_required");
+              const question = call.question ?? call.topic;
+              if (!question) throw new ObjectiveStoreError("invalid_decision");
+              const updated = store.decisionUpdate(current.id, {
+                ...(call.decisionId ? { decisionId: call.decisionId } : {}),
+                ...(call.header ? { header: call.header } : {}),
+                question, answer: call.answer,
+                ...(call.why ? { why: call.why } : {}),
+                ...(call.consultId ? { consultId: call.consultId } : {}),
+                ...(call.missionId ? { missionId: call.missionId } : {}),
+                ...(call.memberId ? { memberId: call.memberId } : {}),
+                by: caller,
+              });
+              const shown = store.find(current.id) ?? updated.objective;
+              const covered = shown.consultations.some((entry) => entry.reply && entry.delivery === "pending" && (entry.reply.kind === "advice" || decisionsChangedForConsult(shown.decisions, entry)));
+              if (!covered) await launch.notifyDecisions(current.id);
+              return { objective: shown, decisionId: updated.decision.id };
+            }
           }
         })();
         const { objective: updated, ...details } = result;
@@ -478,9 +504,8 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
           : call.action === "edit_brief" ? { brief: storedText(kept.note), ...(call.attachmentIds ? { attachments: kept.attachments } : {}) }
           : call.action === "edit_due" ? { dueDate: kept.dueDate }
           : undefined;
-        const answered = call.action === "answer" ? store.storedAnswers(current.id, call.requestId) : null;
         const settle = kept && (call.action === "criteria_approve" || call.action === "criteria_reject") ? { action: call.action, advice: criteriaSettleAdvice(kept, (id) => launch.observeBoard(id), call.action === "criteria_reject") } : null;
-        const echo = answered ? { answers: answered.map(({ questionId, selectedOptionIds, text: answer }) => ({ questionId, ...(selectedOptionIds.length ? { selectedOptionIds } : {}), ...(answer ? { text: storedText(answer) } : {}) })) } : stored;
+        const echo = stored;
         return text({ ok: true, objectiveId: updated.id, ...details, ...(echo ? { stored: echo } : {}), ...(settle ? { group: settle.advice.group, next: settle.advice.next, hint: criteriaSettleHint(settle.advice, settle.action) } : {}) });
       } catch (error) {
         if (error instanceof ObjectiveStoreError) return refuse(error.code, { ...(HINTS[error.code] ? { hint: HINTS[error.code] } : {}), ...error.details });

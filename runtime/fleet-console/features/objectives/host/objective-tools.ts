@@ -13,7 +13,7 @@ import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { searchInputShape, searchObjectives } from "./search.js";
 import { CONSULT_ASK_DESCRIPTION } from "../shared/consultations.js";
-import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_MISSION_TITLE, missionTitleSchema, MAX_SHORT_INPUT, decisionQuestionSchema, followupBodySchema, MAX_DECISION_QUESTIONS, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, MAX_OBJECTIVE_MESSAGE_TEXT, MAX_CONSULTATION_TEXT, recordLines, missionReady, ownAnswer, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
+import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_MISSION_TITLE, missionTitleSchema, MAX_SHORT_INPUT, followupBodySchema, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, MAX_OBJECTIVE_MESSAGE_TEXT, MAX_CONSULTATION_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
@@ -45,27 +45,17 @@ const launchModelInput = z.string().trim().min(1).max(128);
 const BOARD_REFERENCES = "Text already on the board is referred to by missionId, criterion n or id, and decision id, not typed again.";
 const PLANNING_ONLY = "The objective is in planning: its lineup can change, but missions are not carried out and members are not launched until the person commences.";
 const BOARD_CHANGED = "The person edited the objective after your last read.";
-/** read·mine 설명의 한 줄 — 결정 요청과 결정이 보드에 있다는 사실. */
-const DECISIONS_ON_BOARD = "Console sessions cannot ask the person directly; decisions for the person go through the board. The board holds the request, its revision, and the recorded answers. A request closed without deciding chose nothing — do not re-ask it as was. Only board submissions count, and they survive reruns.";
-const DECISION_DELIVERING = "The person's answers have been accepted, but delivery and recording are not yet finalized. The current request cannot be replaced or withdrawn.";
+/** read·mine 설명의 한 줄 — 보드 결정은 사령관만 남긴다. */
+const DECISIONS_ON_BOARD = "Only the Commodore records board decisions. They survive reruns but grant no tool permissions and do not mark criteria met.";
 /** 진행 중 세션이 옛 objectiveId 입력을 넣었을 때 — 그 키는 더 받지 않으며, 빼고 다시 부른다. */
 const OBJECTIVE_ID_DROPPED = "objectiveId is no longer accepted. Call again without it.";
 const RETROSPECTIVE_FORMAT = `A retrospective is wentWell: 1–${MAX_RETRO_PAIRS} {point, because} and fellShort: 1–${MAX_RETRO_PAIRS} {point, ifOnly}, each field one line of at most ${MAX_RETRO_TEXT} characters.`;
-
-/** decision_request 의 질문 — 공유 계약에서 예시·권고를 뺀 필드 설명만 덮는다(사령관 ask_person 은 공유 계약 그대로). */
-const objectiveQuestion = decisionQuestionSchema.extend({
-  header: decisionQuestionSchema.shape.header.describe("Chip label above the question."),
-  text: decisionQuestionSchema.shape.text,
-});
-
-/** decision_request 가 사람의 답을 기다리는 최대 시간. 그 뒤의 답은 프롬프트로 간다. */
-export const DECISION_WAIT_MS = 4 * 60_000;
 
 /**
  * `objective_mine` 설명 — 공통 문장에 역할 서버별 기본 역할을 덧붙여 싣는다. '프롬프트 자문'을 거친 문구다.
  */
 const MINE_COMMON = "An objective organizes a brief, success criteria and missions on one board. Returns your role and the board as that role sees it. planning: true means the person requested a lineup, not execution. Notices quote words the person added during work.";
-const MINE_COMMANDER_ROLE = "Plan and lead the objective through hand-off. Only the Commander changes the board through fleet-commander. Size the member lineup to the objective's scale; prioritize parallel missions wherever dependencies allow. Own verification of the work; the Commodore evaluates the outcome. Enlist review-only members only when necessary for this objective, not as a routine extra layer. Route decisions for the person through the board; objective_read states the rules.";
+const MINE_COMMANDER_ROLE = "Plan and lead the objective through hand-off. Only the Commander changes the board through fleet-commander. Size the member lineup to the objective's scale; prioritize parallel missions wherever dependencies allow. Own verification of the work; the Commodore evaluates the outcome. Enlist review-only members only when necessary for this objective, not as a routine extra layer. Never ask the person directly; use consult_ask for decisions beyond your authority.";
 const MINE_MEMBER_ROLE = "Carry out your assigned missions and report to the Commander with message_commander. The board is read-only to you; you may seal evidence. Never ask the person directly; take needed decisions and directives that seem reversed or unreadable to the Commander first.";
 /** 역할 서버가 싣는 `mine` 설명에 그 역할의 기본 역할을 덧붙인다. */
 const withMineRole = (tools: readonly ConsoleMcpTool[], role: string): readonly ConsoleMcpTool[] =>
@@ -91,8 +81,6 @@ export const COMMANDER_TOOL_RENAMES: Readonly<Record<string, string>> = {
   plan: "plan_propose",
   add_mission: "mission_add",
   place_mission: "mission_place",
-  request_decision: "decision_request",
-  withdraw_decision_request: "decision_withdraw",
   consult_ask: "consult_ask",
   enlist: "member_enlist",
   set_member_launch: "member_set_launch",
@@ -122,27 +110,26 @@ const renamedTools = (tools: readonly ConsoleMcpTool[], renames: Readonly<Record
 
 /**
  * `fleet-commander` 확정 목록 — 브리프의 `objective_transcript` 는 지휘관 MCP에 구현이 없고,
- * `consult_ask` 를 포함한 22개를 싣는다. 옛 이름은 `COMMANDER_TOOL_RENAMES` 에 둔다.
+ * `consult_ask` 를 포함한 20개를 싣는다. 옛 이름은 `COMMANDER_TOOL_RENAMES` 에 둔다.
  * 구성원 서버에는 `consult_ask` 를 싣지 않는다.
  */
 export const FLEET_COMMANDER_TOOL_NAMES = [
   "objective_mine", "objective_read", "objective_search", "evidence_dir", "result_seal",
   "result_update", "result_detach", "plan_propose", "mission_add", "mission_place",
-  "decision_request", "decision_withdraw", "consult_ask", "member_enlist", "member_set_launch",
+  "consult_ask", "member_enlist", "member_set_launch",
   "member_message", "member_muster", "member_discharge", "mission_complete", "followup", "hand_off", "criterion_mark",
 ] as const;
 
 /**
  * `fleet-member` 확정 목록 — 브리프의 구성원 6개와 일치한다. 옛 이름은 `MEMBER_TOOL_RENAMES` 에 둔다.
  * 실행 권한은 그대로다: 사람 결정(같은 사령관 기록 읽기라 위험이 낮다)으로 `objective_search` 는
- * 구성원도 같은 범위로 읽는다. 지휘관 전용 15개는 서버에 아예 실리지 않아 수신거절이 생기지 않는다.
+ * 구성원도 같은 범위로 읽는다. 지휘관 전용 14개는 서버에 아예 실리지 않아 수신거절이 생기지 않는다.
  */
 export const FLEET_MEMBER_TOOL_NAMES = [
   "objective_mine", "objective_read", "objective_search", "evidence_dir", "result_seal", "message_commander",
 ] as const;
 
-export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
-  const decisionWaitMs = options?.decisionWaitMs ?? DECISION_WAIT_MS;
+export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService): readonly ConsoleMcpTool[] {
   const { objectiveView: boardView } = createBoardViews(ctx, store);
   const objectiveView = (objective: Objective) => { prStatus?.refresh(objective.id); return boardView(store.find(objective.id) ?? objective); };
   /** 쓰기 응답은 확인과 새로 생긴 가리킴만 — 보드 전체는 read·mine 이 준다. 결과물이 바뀌면 PR 관측만 앞당긴다. */
@@ -241,7 +228,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
           const reason = error.reason ?? (error.code === "evidence_outside_dir" ? "Paths outside this objective's evidence directory, including Theater paths, are not read." : undefined);
           return refuse(error.code, reason ? { reason } : {});
         }
-        return error instanceof ObjectiveStoreError ? refuse(error.code, error.code === "decision_delivering" ? { hint: DECISION_DELIVERING } : error.code === "unknown_objective" ? { hint: "This session's objective is not on the board." } : error.details) : refuse("objectives_failed");
+        return error instanceof ObjectiveStoreError ? refuse(error.code, error.code === "unknown_objective" ? { hint: "This session's objective is not on the board." } : error.details) : refuse("objectives_failed");
       }
     },
   });
@@ -370,36 +357,6 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         launch.missionPatched(objective.id, target.id, { prerequisites: prerequisites.ids.filter((id) => id !== target.id), ...(Object.keys(prerequisites.why).length ? { why: prerequisites.why } : {}), ...assignment });
         return text({ ok: true, missionId: target.id });
       }),
-    commanderTool("request_decision", `Place a decision request the person answers on the Objectives surfaces. A question without options asks for a written answer; options are concise labels with what each choice means or costs, and multiSelect allows several. Do not add an "Other" option — the board already adds "Answer in my own words". The person answers everything at once, or closes the whole request without deciding (answered: true with declined: true and no answers): that chose nothing and handed nothing over — act on none of it and do not re-ask the same questions. One current request per objective; a different one while it is unanswered is refused as decision_pending, and repeating the same questions waits on it again (reused: true). expectedRevision is the board's decisionRequestRevision; a request cleared by board edits, or by a referenced mission or member leaving, becomes no decision. A request and its answers are not tool permission and do not mark criteria met. The call waits up to ${DECISION_WAIT_MS / 60_000} minutes (answered: true with answers, cleared: true, or answered: false with later answers arriving as input). While it waits, member messages arrive only after it returns. ${BOARD_REFERENCES}`,
-      z.object({ expectedRevision: z.number().int().min(0), questions: z.array(objectiveQuestion).min(1).max(MAX_DECISION_QUESTIONS) }).strict(),
-      async ({ expectedRevision, questions }, objective, _caller, context) => {
-        if (objective.edited) return refuse("board_changed", { hint: BOARD_CHANGED });
-        const placed = store.decisionRequest(objective.id, { expectedRevision, questions });
-        const kept = store.find(objective.id)?.decisionRequest;
-        const head = { ok: true, requestId: placed.request.id, ...(placed.reused ? { reused: true } : {}),
-          ...(kept?.id === placed.request.id ? { stored: { questions: kept.questions.map((question) => ({ id: question.id, text: storedText(question.text), ...(question.options.length ? { options: question.options.map((option) => storedText(option.label)) } : {}) })) } } : {}) };
-        const outcome = await launch.awaitDecision(objective.id, placed.request.id, decisionWaitMs, context.signal);
-        const revision = store.find(objective.id)?.decisionRequestRevision ?? placed.objective.decisionRequestRevision;
-        if (outcome === null) return text({ ...head, decisionRequestRevision: revision, answered: false });
-        if (outcome === "cleared") return text({ ...head, decisionRequestRevision: revision, answered: false, cleared: true });
-        // 사람이 요청 전체를 「결정 안 함」으로 닫았다 — 답이 아니라 닫힘이므로 답 상세가 없고, 같은 질문을 다시 올리지 않는다.
-        if ("declined" in outcome) return text({ ...head, decisionRequestRevision: revision, answered: true, declined: true, answers: [] });
-        // 사람이 보드에서 고른 것 — 질문 문장과 고른 선택지 이름, 직접 쓴 말. 선택지를 모두 버린 답은 own 으로 가른다.
-        const decisions = store.find(objective.id)?.decisions ?? [];
-        const answers = outcome.answers.map((answer) => {
-          const by = decisions.find((decision) => decision.requestId === placed.request.id && decision.questionId === answer.questionId)?.by ?? "human";
-          const question = placed.request.questions.find((candidate) => candidate.id === answer.questionId);
-          const selected = answer.selectedOptionIds.flatMap((id) => question?.options.filter((option) => option.id === id).map((option) => option.label) ?? []);
-          return { ...(question?.header ? { header: question.header } : {}), question: question?.text ?? "", by, ...(selected.length ? { selected } : {}), ...(answer.text ? { text: answer.text } : {}), ...(question && ownAnswer(question, answer) ? { own: true } : {}) };
-        });
-        return text({ ...head, decisionRequestRevision: revision, answered: true, answers });
-      }),
-    commanderTool("withdraw_decision_request", "Withdraw the current decision request named by requestId. A withdrawal is not the person's answer: it leaves no decision, and missions and criteria stay as they are.",
-      z.object({ requestId: ids }).strict(),
-      ({ requestId }, objective) => {
-        const withdrawn = store.decisionWithdraw(objective.id, requestId);
-        return text({ ok: true, withdrawn: withdrawn.withdrawn, decisionRequestRevision: withdrawn.objective.decisionRequestRevision });
-      }),
     tool("consult_ask", CONSULT_ASK_DESCRIPTION,
       z.object({ question: z.string().min(1).max(MAX_CONSULTATION_TEXT), missionId: ids.optional() }).strict(),
       (args, caller) => {
@@ -412,7 +369,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
         const placed = store.consultAsk(objective.id, { question: args.question, ...(args.missionId ? { missionId: args.missionId } : {}) });
         return text({ ok: true, consultId: placed.consultation.id });
       }),
-    commanderTool("enlist", `Add members to the roster, each a role and an optional brief. A new member has no session until mustered. The person's launch selections are protected; do not enlist a replacement to bypass them — ask via decision_request instead.`,
+    commanderTool("enlist", `Add members to the roster, each a role and an optional brief. A new member has no session until mustered. The person's launch selections are protected; do not enlist a replacement to bypass them — use consult_ask instead.`,
       z.object({ members: z.array(rosterMember).min(1).max(MAX_MISSIONS) }).strict(),
       async ({ members }, before, _caller, context) => {
         // 모델 제안을 모두 확인한 뒤에 더한다 — 한 명이라도 거절되면 아무도 더하지 않는다.
@@ -521,20 +478,20 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
 }
 
 /**
- * `fleet-commander` 서버용 — 같은 보드 코드 한 곳을 공유한다. 지휘관은 22개 전부를 받는다.
+ * `fleet-commander` 서버용 — 같은 보드 코드 한 곳을 공유한다. 지휘관은 20개 전부를 받는다.
  * 구성원 전용 필터는 구성원 서버 임무에서 같은 원천으로 가른다.
  */
-export function createCommanderMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
-  return renamedTools(withMineRole(createObjectiveMcpTools(ctx, store, launch, prStatus, options), MINE_COMMANDER_ROLE), COMMANDER_TOOL_RENAMES);
+export function createCommanderMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService): readonly ConsoleMcpTool[] {
+  return renamedTools(withMineRole(createObjectiveMcpTools(ctx, store, launch, prStatus), MINE_COMMANDER_ROLE), COMMANDER_TOOL_RENAMES);
 }
 
 /**
  * `fleet-member` 서버용 — 같은 보드 코드 한 곳을 공유한다. 구성원 6개만 싣고,
- * 지휘관 전용 15개는 서버에 두지 않는다(실행 거절이 아니라 수신 자체가 없다). 권한 검사는 그대로다.
+ * 지휘관 전용 14개는 서버에 두지 않는다(실행 거절이 아니라 수신 자체가 없다). 권한 검사는 그대로다.
  */
-export function createMemberMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService, options?: { readonly decisionWaitMs?: number }): readonly ConsoleMcpTool[] {
+export function createMemberMcpTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, launch: LaunchService, prStatus?: PrStatusService): readonly ConsoleMcpTool[] {
   const allowed = new Set<string>(Object.keys(MEMBER_TOOL_RENAMES));
-  return renamedTools(withMineRole(createObjectiveMcpTools(ctx, store, launch, prStatus, options).filter((tool) => allowed.has(tool.name)), MINE_MEMBER_ROLE), MEMBER_TOOL_RENAMES);
+  return renamedTools(withMineRole(createObjectiveMcpTools(ctx, store, launch, prStatus).filter((tool) => allowed.has(tool.name)), MINE_MEMBER_ROLE), MEMBER_TOOL_RENAMES);
 }
 
 /** 인계 대기가 아닌 이유 — 남은 임무·미충족 기준 번호, 이미 넘겼거나 완료된 목표. */

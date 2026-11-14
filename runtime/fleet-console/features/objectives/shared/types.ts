@@ -105,7 +105,7 @@ export type ObjectiveActor = "human" | "commander"
   | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string | null };
 export type ObjectiveReviewer = Exclude<ObjectiveActor, "commander">;
 export const MAX_OBJECTIVE_ACTIONS = 200;
-export type ObjectiveActionKind = "edit" | "criteria-approved" | "criteria-rejected" | "hand-off" | "complete" | "reopen" | "followup-selected" | "followup-discarded" | "extend" | "steer" | "mission-reopened" | "plan" | "commence";
+export type ObjectiveActionKind = "edit" | "criteria-approved" | "criteria-rejected" | "hand-off" | "complete" | "reopen" | "followup-selected" | "followup-discarded" | "extend" | "steer" | "mission-reopened" | "plan" | "commence" | "decision";
 /** 사라지는 제안·완료 표시도 행위 기록에는 남는다. 오래된 본문은 접고 누계는 보존한다. */
 export interface ObjectiveAction {
   readonly id: string;
@@ -296,7 +296,7 @@ export interface ObjectiveAttachment {
 }
 
 /** 지휘관에게 알릴 만한 사람의 편집 — 일정·모델 같은 지휘관의 일과 무관한 값은 넣지 않는다. */
-export type ObjectiveEditKind = "title" | "note" | "missions" | "lineup" | "members" | "member" | "criteria";
+export type ObjectiveEditKind = "title" | "note" | "missions" | "lineup" | "members" | "member" | "criteria" | "decision";
 
 // ═══ 저장 모양 (목표마다 objective.json) ═════════════════════════════════════
 
@@ -507,15 +507,20 @@ export interface DecisionAnswer {
 }
 
 /**
- * 결정 — 사람이 보드에서 보낸 답 하나(질문마다 한 건). 질문과 선택지는 답한 순간의 사본이라 요청이 사라져도 읽힌다.
- * 사람의 제출만 만들고, 지우거나 고치는 길은 없다. `declined` — 사람이 그 요청 전체를 「결정 안 함」으로 닫은 표시.
- * 어떤 선택지도 고르지 않았고, 지휘관 판단에 맡긴 것도, 나중으로 미룬 것도 아니다.
+ * 결정 — 보드에 남은 답 하나. 옛 기록은 사람이 결정 요청에 보낸 답이고, 요청이 없어도 사령관이 기록·갱신한다.
+ * 질문과 선택지는 남긴 순간의 사본이라 요청이 사라져도 읽힌다. `declined` — 사람이 그 요청 전체를 「결정 안 함」으로 닫은 옛 표시.
  */
 export interface Decision {
   readonly by?: ObjectiveActor;
   readonly id: string;
-  readonly requestId: string;
-  readonly questionId: string;
+  /** 옛 결정 요청에 묶인 기록. 요청 없이 남긴 결정에는 없다. */
+  readonly requestId?: string;
+  /** 옛 결정 요청의 질문. 요청 없이 남긴 결정에는 없다. */
+  readonly questionId?: string;
+  /** 이 결정을 남기거나 고친 자문. 자문과 무관하면 없다. */
+  readonly consultId?: string;
+  /** 사령관이 기존 결정을 고친 시각. 처음 남긴 시각은 `at` 이다. */
+  readonly updatedAt?: number;
   readonly question: { readonly header?: string; readonly text: string; readonly options: readonly DecisionOption[]; readonly multiSelect: boolean };
   readonly answer: { readonly selectedOptionIds: readonly string[]; readonly text: string };
   readonly declined?: true;
@@ -572,7 +577,7 @@ export interface DecisionDelivery {
  * 항목이 사람의 처리 없이 사라지면(철회·대체·보드 편집) 넘김도 함께 사라지고, 사람이 처리하거나 돌려주면 `settled` 로 남아
  * 사령관을 한 번 깨운다. 같은 대상의 새 넘김이 끝난 넘김을 갈아 끼운다.
  */
-export const PERSON_HOLD_TARGETS = ["decision", "criteria", "review", "followup"] as const;
+export const PERSON_HOLD_TARGETS = ["criteria", "review", "followup"] as const;
 export type PersonHoldTarget = (typeof PERSON_HOLD_TARGETS)[number];
 export const MAX_PERSON_HOLD_REASON = 300;
 export interface StoredPersonHold {
@@ -1137,8 +1142,8 @@ export const objectiveMemberHistorySchema = z.array(z.object({
 }).strict()).max(MAX_OBJECTIVE_ACTIONS);
 export const objectiveActionSchema = z.object({
   id: ids, at: z.number().finite(), by: objectiveActorSchema,
-  kind: z.enum(["edit", "criteria-approved", "criteria-rejected", "hand-off", "complete", "reopen", "followup-selected", "followup-discarded", "extend", "steer", "mission-reopened", "plan", "commence"]),
-  kinds: z.array(z.enum(["title", "note", "missions", "lineup", "members", "member", "criteria"])).optional(),
+  kind: z.enum(["edit", "criteria-approved", "criteria-rejected", "hand-off", "complete", "reopen", "followup-selected", "followup-discarded", "extend", "steer", "mission-reopened", "plan", "commence", "decision"]),
+  kinds: z.array(z.enum(["title", "note", "missions", "lineup", "members", "member", "criteria", "decision"])).optional(),
   targetId: ids.optional(),
   handoff: z.lazy(() => storedHandoffSchema).optional(),
   proposal: z.object({ id: ids, kind: z.enum(["add", "revise", "retire", "recheck"]), target: ids.optional(), text: z.string().optional(), reason: z.string().optional(), annotation: z.string().optional(), annotationBy: objectiveActorSchema.optional() }).strict().optional(),
@@ -1271,7 +1276,7 @@ export const storedDecisionFieldsSchema = z.object({
   decisionRequest: z.object({ id: ids, createdAt: z.number(), questions: z.array(z.object({ id: ids, header: storedDecisionHeader.optional(), text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean(), missionId: ids.optional(), memberId: ids.optional() }).strict()).min(1).max(MAX_DECISION_QUESTIONS) }).strict().optional(),
   decisionRequestRevision: z.number().int().min(0).optional(),
   decisionDelivery: z.object({ by: objectiveActorSchema.optional(), requestId: ids, at: z.number(), answers: z.array(storedDecisionAnswer).min(1).max(MAX_DECISION_QUESTIONS), declined: z.literal(true).optional() }).strict().optional(),
-  decisions: z.array(z.object({ by: objectiveActorSchema.optional(), id: ids, requestId: ids, questionId: ids, at: z.number(), missionId: ids.optional(), memberId: ids.optional(), declined: z.literal(true).optional(),
+  decisions: z.array(z.object({ by: objectiveActorSchema.optional(), id: ids, requestId: ids.optional(), questionId: ids.optional(), consultId: ids.optional(), updatedAt: z.number().optional(), at: z.number(), missionId: ids.optional(), memberId: ids.optional(), declined: z.literal(true).optional(),
     question: z.object({ header: storedDecisionHeader.optional(), text: z.string().min(1).max(MAX_DECISION_QUESTION), options: z.array(storedDecisionOption).max(MAX_DECISION_OPTIONS), multiSelect: z.boolean() }).strict(),
     answer: storedDecisionAnswer.omit({ questionId: true }) }).strict()).optional(),
 });

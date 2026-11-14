@@ -49,10 +49,7 @@ export function CommodoreAskCards({ theaterId, contextTheaterId = "", t, languag
   const asker = useMemo<ConversationSpeaker>(() => ({ kind: "commodore", name }), [name]);
   const Card = commodoreDecisionCardRenderer();
   const shown = asks.filter((ask) => !answered.includes(ask.id));
-  const handed = board.objectives.flatMap((objective) => {
-    const decision = objective.handedDecision;
-    return decision && !answered.includes(decision.id) ? [{ objective, decision }] : [];
-  });
+  const handed: readonly { objective: { id: string; theaterId: string; title: string }; decision: ConversationDecision }[] = [];
   // 완료해 보관된 목표는 살아 있는 보드에 없다 — 그 목표에 넘긴 후속 후보가 새로고침 직후에도 서도록 끝난 목표를 읽어 둔다.
   const finished = useSyncExternalStore(subscribeFinishedObjectivesStore, () => finishedObjectives(theaterId), () => finishedObjectives(theaterId));
   useEffect(() => { if (theaterId && !finishedObjectivesLoaded(theaterId)) loadFinishedObjectives(theaterId); }, [theaterId]);

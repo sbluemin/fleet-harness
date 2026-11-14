@@ -48,7 +48,7 @@ export function describeQuietMission(minutes: number, language: "en" | "ko"): st
  * 보고를 기대하는가 — 기대가 없으면 경보(무보고 깨움·무보고 정지 통지)도 없다. stop 은 그 뒤로 보고가 오지 않는 것이 정상인 조건을 만들므로,
  * 마지막 stop 이 이 침묵의 시작(배정·보드 변경) 이후면 새 경보를 보내지 않는다. 표시(뱃지)와 이미 남은 기록은 그대로 둔다.
  * 기대를 다시 만드는 것은 그 목표에 지시를 보내는 행위다 — 누가 하든(사람·사령관·지휘관) 같다. launch.ts 에서 stop 기록을 거두는 자리:
- * 개시(start), 구상 요청(requestPlan — 확장도 이 길), 스티어(steer), 메시지(message, 지휘관·구성원 모두), 결정 답 전달(decisionAnswer).
+ * 개시(start), 구상 요청(requestPlan — 확장도 이 길), 스티어(steer), 메시지(message, 지휘관·구성원 모두).
  * stop 뒤의 새 배정이나 보드 변경은 침묵의 시작을 stop 뒤로 옮기므로 그 임무의 기대도 되살아난다.
  */
 export function expectsReport(stoppedAt: number | null, since: number): boolean {
@@ -65,12 +65,11 @@ export function quietElapsed(input: {
   readonly assigned: boolean;
   readonly assignmentTs: number | null;
   readonly boardUpdatedAt: number | null;
-  readonly decisionPending: boolean;
   readonly reviewPending: boolean;
   /** 개시됐고 구상 중이 아니며 완료·정리되지 않았다. 정지(stop)는 개시 전 구상을 끄므로 commenced 가 아니다. */
   readonly underway: boolean;
 }, now: number): number | null {
-  if (!input.underway || !input.ready || !input.assigned || input.assignmentTs == null || input.decisionPending || input.reviewPending) return null;
+  if (!input.underway || !input.ready || !input.assigned || input.assignmentTs == null || input.reviewPending) return null;
   const elapsed = now - quietSince(input.assignmentTs, input.boardUpdatedAt ?? input.assignmentTs);
   return elapsed < 0 ? 0 : elapsed;
 }

@@ -160,16 +160,10 @@ function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean)
  * 구역으로 올라가지 않고 제자리에서 상태 문구 「사령관이 답하는 중」으로 말한다. 판정은 `decisionTurn`·`personTurnAt` 하나를
  * 폰·전환 목록·레일과 함께 쓴다.
  */
-function decisionZoneOf(objective: Objective, board: CommodoreBoard, alias?: string | null): Pick<ObjectiveClusterRow, "decisionRequestedAt" | "decisionQuestions" | "decisionNote" | "delegated"> {
-  const request = objective.decisionRequest;
-  const turn = decisionTurn(objective, board.active);
-  const at = personTurnAt(objective, board.active);
-  // 사령관이 넘긴 항목은 자율 운영과 상관없이 사람의 차례다 — 줄이 「내 결정」에 선 까닭을 함께 단다.
-  const handed = livePersonHolds(objective).length > 0;
-  return {
-    ...(at !== null ? { decisionRequestedAt: at, ...(turn === "person" && request ? { decisionQuestions: request.questions.length } : {}), ...(handed ? { decisionNote: HANDED_NOTE } : {}) } : {}),
-    ...(turn === "commodore" && request ? { delegated: { questions: request.questions.length, status: answeringStatus(objective, alias) } } : {}),
-  };
+function personTurnOf(objective: Objective): Pick<ObjectiveClusterRow, "personTurnAt" | "personNote"> {
+  const holds = livePersonHolds(objective);
+  if (!holds.length) return {};
+  return { personTurnAt: Math.min(...holds.map((hold) => hold.at)), personNote: HANDED_NOTE };
 }
 
 /**
@@ -192,7 +186,7 @@ export function objectiveSidebarRow(objective: Objective, order: number, fold: r
     // 완료한 목표는 「오늘」 구역에 올리지 않는다 — 완료 전 Today·기한 표시는 보관 전까지 줄을 긴급 구역으로 승격시켜 끝난 일을 오늘 일로 보인다.
     ...(done ? {} : { ...(objective.today || overdue ? { today: true } : {}), ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}) }),
     ...(objective.done ? { doneAt: objective.done.at } : {}),
-    ...decisionZoneOf(objective, board, alias),
+    ...personTurnOf(objective),
     ...(objective.missions.length ? { progress: { done: doneMissions, total: objective.missions.length } } : {}),
     createdAt: objective.createdAt,
     activityAt: objective.boardUpdatedAt ?? objective.createdAt,
@@ -264,9 +258,6 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const fold = [...new Set([...(activity.has(commander) ? [commander] : []), ...liveMembers.map((entry) => entry.objectiveId), ...objective.missions.flatMap((mission) => { const objectiveId = live(mission.objectiveId); return objectiveId ? [objectiveId] : []; })])];
     const row = objectiveSidebarRow(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.commodoreId), stalled.has(objective.id), now);
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Objective 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
-    const decisionRequest = !!objective.decisionRequest && !objective.done;
-    // 목록 밖 표면의 결정 표식(얼굴 「!」·칩·궤도·폰 대화 행)은 사람의 차례인 요청에만 — 사령관이 맡은 요청은 사람을 기다리지 않는다.
-    const personDecision = decisionTurn(objective, boardOf(objective.commodoreId).active) === "person";
     const openDetail = () => {
       openObjectiveFromCluster(objective.theaterId, objective.id);
       // 대화 중심 화면 — 시작 전 목표는 가운데 칸에 시작 화면으로 선다(활성 Objective 이 비고 세 영역이 이 목표를 가리킨다).
@@ -274,7 +265,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     };
     const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, () => openObjectivePopup(objective.id), (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
       { state: (objectiveId) => shownActivity(activity.get(objectiveId) ?? "closed"), roster }, boardOf(objective.commodoreId).active);
-    const structured = (objective.missions.length > 0 || liveMembers.length > 0 || decisionRequest) && activity.has(commander);
+    const structured = (objective.missions.length > 0 || liveMembers.length > 0) && activity.has(commander);
     if (!structured) {
       // 완료한 목표도 줄이 있다 — 보관하기 전까지 줄에서 대화(지휘관과의 메시지·범위 넓히기)를 다시 연다. 보관된 완료 목표는 아래 doneStandInCluster 가 맡는다.
       if (row) out.push({ id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, ...(activity.has(commander) ? { root: commander } : { avatarObjectiveId: commander }), members: [], conversation, open: openDetail, row });
@@ -339,12 +330,12 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       if (missionId) openObjectivePopup(objective.id, "crew", missionId);
       else openObjectiveFromCluster(objective.theaterId, objective.id);
     };
-    out.push({ id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, root: commander, members, conversation, open, ...(personDecision ? { decisionRequest: true } : {}), ...(row ? { row } : {}) });
+    out.push({ id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, root: commander, members, conversation, open, ...(row ? { row } : {}) });
   }
   return out;
 }
 
-const rowSignature = (row: ObjectiveClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.decisionRequestedAt ?? 0, row.decisionQuestions ?? 0, row.decisionNote ? resolveText(row.decisionNote) : "", row.commodore === true, row.delegated ? [row.delegated.questions, resolveText(row.delegated.status)] : null, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
+const rowSignature = (row: ObjectiveClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.personTurnAt ?? 0, row.personNote ? resolveText(row.personNote) : "", row.commodore === true, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
   row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
 /** 화면 활동 — 보드와 같게 턴 뒤 백그라운드 작업은 작업 중으로 접는다. */
@@ -361,7 +352,7 @@ const boardSignature = (board: GroupBoardActions | undefined) => (board ? [
   board.note ? [resolveText(board.note.text), board.note.reveal ? resolveText(board.note.reveal.label) : ""] : null, board.hint ? resolveText(board.hint) : "",
   board.commanderOnly === true, board.actionsOnly === true,
 ] : null);
-const signature = (clusters: readonly ObjectiveCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.commodoreId ?? null, cluster.root ?? null, cluster.title, cluster.decisionRequest === true, cluster.conversation ?? null, boardSignature(cluster.conversation?.actions?.board), cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.objectiveId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
+const signature = (clusters: readonly ObjectiveCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.commodoreId ?? null, cluster.root ?? null, cluster.title, cluster.conversation ?? null, boardSignature(cluster.conversation?.actions?.board), cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.objectiveId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 /**
  * 보드 줄의 관측 — 호스트 런타임 맵에서 온 요약 활동. 휴면(ended)은 수명주기 dormant 로 넘기고, 목록에 없는 Objective 은

@@ -3,14 +3,13 @@ import type { Translate } from "@fleet-console/i18n";
 import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot } from "../shared/commodore-board-client.js";
 import type { CommodoreClientHost } from "../../commodore/shared/contracts/client.js";
 export { askObjectiveTitle } from "../../commodore/shared/contracts/client-helpers.js";
-import { livePersonHold, reasonAwaits } from "../shared/board-state.js";
+import { livePersonHold } from "../shared/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from "../shared/types.js";
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { goToObjective } from "./fresh-conversation.js";
 import { HandedFollowupCard } from "./handed-followups.js";
-import { consultDelivery, objectiveDecision } from "./conversation.js";
-import { objectiveConversationActions } from "./conversation-actions.js";
+import { consultDelivery } from "./conversation.js";
 import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readBoard, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
 
 /** 지휘관이 돌고 있는 목표 — 개시했고, 끝나지 않았고, 사람의 검토·인계를 기다리지 않는다. */
@@ -22,14 +21,14 @@ export function isRunningObjective(objective: Objective): boolean {
  * 결정 요청이 누구의 차례인가 — 보드의 차례 축(`reasonAwaits`) 위에 자율 운영을 얹는다. 자율 운영이 실제로 돌지 않으면 사령관
  * 몫도 사람에게 돌아오므로 사람이다. 요청이 없거나 끝난 목표는 null. 사이드바·전환 목록·폰·레일·결정 칸이 이 하나를 읽는다.
  */
-export function decisionTurn(objective: Objective, commodoreActive: boolean): "person" | "commodore" | null {
+export function decisionTurn(objective: Objective, _commodoreActive: boolean): "person" | "commodore" | null {
   if (objective.removed || objective.done || !objective.decisionRequest) return null;
-  return !commodoreActive || reasonAwaits(objective, "decision") === "person" ? "person" : "commodore";
+  return null;
 }
 
-/** 현재 결정 요청을 명시적으로 넘긴 경우만 사령관 대화로 옮긴다. 자율 운영이 꺼져도 넘긴 요청은 남는다. */
-export function decisionInCommodoreConversation(objective: Objective): boolean {
-  return !objective.removed && !objective.done && !!livePersonHold(objective, "decision");
+/** 결정 요청은 더 이상 사람에게 넘기지 않는다. */
+export function decisionInCommodoreConversation(_objective: Objective): boolean {
+  return false;
 }
 
 /** 넘긴 후속 후보도 사령관 대화에서 답한다 — 후보에 답하는 표면이라 완료한 목표에도 선다. */
@@ -129,11 +128,10 @@ export function useCommodoreBoard(commodoreId: string) {
 const projected = new WeakMap<Objective, CommodoreBoardObjective>();
 function project(objective: Objective): CommodoreBoardObjective {
   const hit = projected.get(objective); if (hit) return hit;
-  const { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, missions, addedBy, actions, decisions } = objective;
-  const handedDecision = decisionInCommodoreConversation(objective) ? objectiveDecision(objective, undefined, objectiveConversationActions(objective)) : null;
+  const { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, missions, addedBy, actions, decisions } = objective;
   const consults = objective.consultations.map(({ id: consultId, question, at, reply, delivery }) => ({ id: consultId, question, at,
     ...(reply ? { reply: { text: reply.kind === "advice" ? reply.text : null, at: reply.at, ...(delivery ? { delivery: consultDelivery(delivery) } : {}) } } : {}) }));
-  const view = { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, decisionRequest, handedDecision, followupHanded: followupInCommodoreConversation(objective), missions, addedBy, actions, decisions, consults, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
+  const view = { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, followupHanded: followupInCommodoreConversation(objective), missions, addedBy, actions, decisions, consults, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
   projected.set(objective, view); return view;
 }
 const lists = new WeakMap<readonly Objective[], readonly CommodoreBoardObjective[]>();

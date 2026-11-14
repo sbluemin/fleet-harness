@@ -137,7 +137,7 @@ interface PendingReason {
 }
 
 /** 보드 대기 상태의 코드 — 수는 턴 직전의 보드에서 다시 센다. */
-const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
+const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
 /** 끌 때 듣지 못하면 다음 기동이 다시 볼 보드 깨움 — 사람의 말·연락·답은 따로 남아 다시 실린다. */
 const UNHEARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>([...BOARD_CODES, "settled", "status", "stalled", "empty", "returned", "resume-failed"]);
 /** TF 판단 턴의 조용함을 깨지 않는 이유 — 세션 수명주기(교대·재시작·재시도)는 깨움 문장만 보탤 뿐 말할 이유가 아니다. */

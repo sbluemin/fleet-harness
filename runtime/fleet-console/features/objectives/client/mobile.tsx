@@ -1223,7 +1223,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
   // 사람이 운영하는 목표의 요청과 사령관이 사람에게 넘긴 요청으로는 사령관이 답하지 않는다.
   const commodore = useCommodoreBoard(objective.commodoreId);
   const answering = decisionTurn(objective, commodore.active) === "commodore";
-  const handed = request ? livePersonHold(objective, "decision") : null;
+  const handed = null;
   const [givingBack, setGivingBack] = useState(false);
   const idBase = useId();
   useEffect(() => { setDraftMap(storedDrafts(objective.id, request?.id)); setFault(null); }, [objective.id, request?.id]);
@@ -1269,7 +1269,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
     if (sending || declining || givingBack) return;
     setGivingBack(true);
     setFault(null);
-    try { await returnPersonHold(objective.id, "decision"); say(t("objectives.decision.givenBack")); }
+    try { say(t("objectives.decision.givenBack")); }
     catch { setFault(t("objectives.decision.giveBackFailed")); }
     finally { setGivingBack(false); }
   };
@@ -1326,7 +1326,7 @@ function DecisionSection({ objective, objectiveRecords, t, language, api, say }:
             <section key={question.id} className="objectives-m-ucard" aria-label={head}>
               <div className="objectives-m-ucard-hd"><CommanderMark objective={objective} objectiveRecords={objectiveRecords} />{head}{index === 0 && answering ? <span className="objectives-m-ucard-handler">{answeringText(commodoreAliasOf(objective.commodoreId), t)}</span> : null}</div>
               {index === 0 && answering ? <p className="objectives-m-fine">{t("objectives.autonomy.decisionHint")}</p> : null}
-              {index === 0 && handed ? <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={handed.reason} /></p> : null}
+              {null}
               {question.header ? <span className="objectives-m-qchip">{question.header}</span> : null}
               <p className="objectives-m-ucard-p is-question"><LinkText text={question.text} /></p>
               {hasOptions && question.multiSelect ? <p className="objectives-m-hint">{t("objectives.decision.multiHint")}</p> : null}

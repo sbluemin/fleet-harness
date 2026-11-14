@@ -34,7 +34,7 @@ export type ClusterFaceFacts = Pick<MongleFacts, "awaitingReview" | "decisionReq
 
 export function clusterFaceFacts(clusters: readonly ObjectiveCluster[], objectiveId: string): ClusterFaceFacts {
   for (const cluster of clusters) {
-    if (cluster.root === objectiveId) return { awaitingReview: cluster.row?.glyph === "review", decisionRequest: cluster.decisionRequest === true };
+    if (cluster.root === objectiveId) return { awaitingReview: cluster.row?.glyph === "review", decisionRequest: cluster.row?.personTurnAt !== undefined };
     const own = cluster.members.filter((member) => !member.pending && member.objectiveId === objectiveId);
     // 구성원의 진행은 대표 임무의 것이다 — 끝나지 않은 임무가 남아 있으면 그것이 대표라 done 은 「모두 끝남」이다.
     if (own.length > 0) return { workDone: own.every((member) => member.progress === "done") };

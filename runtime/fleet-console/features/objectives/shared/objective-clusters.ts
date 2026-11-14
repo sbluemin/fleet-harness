@@ -58,12 +58,6 @@ export interface ObjectiveCluster {
   readonly members: readonly ObjectiveClusterMember[];
   /** 띠·위치 표시를 누르면 — 플러그인의 표면으로 간다. 구성원 id 가 오면 그 구성원을 집는다. */
   readonly open?: (objectiveId?: string) => void;
-  /**
-   * 뿌리가 사람에게 답을 청한 결정 요청이 있고 사람이 답할 차례다(플러그인이 정한 맡은 이가 다루는 요청은 아니다) — 호스트는 뿌리
-   * 행·칩·얼굴에 전용 표식을 세운다. 도구 허용 대기(활동
-   * `awaiting`)와 별개의 사실이라 활동 축을 바꾸지 않는다. 답은 플러그인 표면(`open`)에서 한다.
-   */
-  readonly decisionRequest?: boolean;
   /** 그룹 대화에서 읽는 명부·결정·보드 사건. 플러그인 구현을 호스트가 import하지 않는다. */
   readonly conversation?: import("../../execution/shared/conversation/types.js").ObjectiveClusterConversation;
   /**
@@ -77,7 +71,7 @@ export interface ObjectiveCluster {
 
 /**
  * 묶음 줄의 원형 글리프를 플러그인이 정할 때 — 없으면 호스트가 뿌리·`fold` 가운데 가장 급한 활동으로 그린다.
- * `fresh`(시작 전) 줄은 「오늘」·「결정 요청」 구역에 올라가거나 맡은 이가 처리 중(`delegated`)이지 않는 한 그룹 맨 아래 「시작 전 N」 접기 안에 선다.
+ * `fresh`(시작 전) 줄은 「오늘」 구역에 올라가지 않는 한 그룹 맨 아래 「시작 전 N」 접기 안에 선다.
  */
 export type ObjectiveClusterRowGlyph = "fresh" | "review" | "done";
 
@@ -97,28 +91,18 @@ export interface ObjectiveClusterRow {
   /** 완료한 시각(ms) — `glyph` 가 `done` 인 줄만 싣는다. 호스트는 기한 자리에 완료일로 적고 최근 완료부터 세운다. */
   readonly doneAt?: number;
   /**
-   * 사람의 결정을 기다리기 시작한 시각(ms). 있으면 「내 결정」 구역에 그 시각순으로 선다. 사람이 답할 차례인 줄만 낸다 —
-   * 플러그인이 정한 맡은 이가 다루는 요청은 `delegated` 로 낸다.
+   * 사람에게 넘긴 기준·검토·후속을 기다리기 시작한 시각(ms). 있으면 그 시각순으로 사람의 차례에 선다.
    */
-  readonly decisionRequestedAt?: number;
-  /** 기다리는 것이 결정 요청이면 그 질문 수. 없으면 둘째 줄에 결정 수를 적지 않는다(넘겨받은 검토·후보처럼 요청이 아닌 것). */
-  readonly decisionQuestions?: number;
+  readonly personTurnAt?: number;
   /**
-   * 「내 결정」 줄이 사람의 차례가 된 까닭 한마디(예: 「사령관이 넘김」). 둘째 줄의 결정 수 뒤에 서고, 대화 중심 화면에서는 줄의
-   * 상태 문구(「내 결정을 기다립니다」) 대신 선다. `decisionRequestedAt` 이 없으면 무시한다.
+   * 사람의 차례가 된 까닭 한마디(예: 「사령관이 넘김」). `personTurnAt` 이 없으면 무시한다.
    */
-  readonly decisionNote?: LocalizedText;
+  readonly personNote?: LocalizedText;
   /**
    * 이 줄은 목표 묶음이 아니라 Theater 의 사령관(자율 운영자)이 사람에게 직접 묻는 일이다 — 호스트는 지휘관 대신 그 Theater 사령관의
    * 아바타로 그린다. 뿌리(`root`)가 없는 줄에만 뜻이 있다.
    */
   readonly commodore?: true;
-  /**
-   * 사람 대신 플러그인이 정한 맡은 이(예: Theater 의 자율 운영자)가 다루는 결정 요청 — 줄은 구역으로 올라가지 않고 그룹 안 제자리에
-   * 선다. 처리 중인 동안 호스트는 둘째 줄의 상태 문구(대화 미리보기 포함) 자리에 `status`(예: 「사령관이 답하는 중」)를 무채색 명도
-   * 물결로 적는다. 뿌리 없는 시작 전 줄이라도 「시작 전」 접기에 묻지 않는다. `decisionRequestedAt` 이 함께 있으면 그 줄은 「내 결정」에 선다.
-   */
-  readonly delegated?: { readonly questions: number; readonly status: LocalizedText };
   readonly progress?: { readonly done: number; readonly total: number };
   /** 목표를 만든 시각(ms)과 보드가 마지막으로 움직인 시각(ms) — 사령관 「지휘관」 탭이 만든 날·최근 활동으로 줄을 정렬한다. */
   readonly createdAt?: number;
@@ -209,13 +193,11 @@ export interface ObjectiveClusterSource {
 }
 
 /**
- * 사람이 답할 차례인 결정 요청이 이 묶음에 있는가 — 사이드바 사령관 머리가 접힌 채로도 그 사실을 아바타에
- * 남기는 판정이다. `decisionRequest`(사람 차례로 판정된 묶음)와 `decisionRequestedAt`(사람이 답할 차례인
- * 줄만 싣는다 — 맡은 이가 다루는 `delegated` 요청은 여기에 들지 않는다)이 모두 사람 차례의 신호라 둘을 함께 읽는다.
- * 순수 판정이라 어느 표면에서도 같은 결과를 낸다.
+ * 사람에게 넘긴 기준·검토·후속이 이 묶음에 있는가 — 사이드바 사령관 머리가 접힌 채로도 그 사실을 아바타에
+ * 남기는 판정이다. `personTurnAt` 이 있는 줄만 사람의 차례다.
  */
 export function clusterHasPersonDecision(cluster: ObjectiveCluster): boolean {
-  return cluster.decisionRequest === true || cluster.row?.decisionRequestedAt !== undefined;
+  return cluster.row?.personTurnAt !== undefined;
 }
 
 /**

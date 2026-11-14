@@ -80,7 +80,7 @@ function CommanderRow({ item, selected, onSelect, leave }: { readonly item: Side
           <span className="mobile-conv-row-top"><span className="mobile-conv-row-title">{layout.cluster.title}</span>{activity !== undefined ? <time className="mobile-conv-row-aside" dateTime={new Date(activity).toISOString()}>{time(activity)}</time> : null}</span>
           <span className="mobile-commander-line">
             <ClusterRowProgress progress={row.progress} />
-            <span className={`mobile-conv-state is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}${handlingStatus ? " is-handling" : ""}`}>{conversationLine}</span>
+            <span className={`mobile-conv-state is-${row.personTurnAt !== undefined ? "awaiting" : state}${handlingStatus ? " is-handling" : ""}`}>{conversationLine}</span>
           </span>
         </span>
       </button>

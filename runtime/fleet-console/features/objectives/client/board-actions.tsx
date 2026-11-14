@@ -58,6 +58,7 @@ const EDIT_KEYS: Readonly<Record<ObjectiveEditKind, ObjectiveMessageKey>> = {
   members: "objectives.edit.members",
   member: "objectives.edit.member",
   criteria: "objectives.edit.criteria",
+  decision: "objectives.decisions.title",
 };
 
 const REASONS: Readonly<Record<string, ObjectiveMessageKey>> = {

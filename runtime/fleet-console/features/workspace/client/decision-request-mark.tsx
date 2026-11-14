@@ -16,4 +16,4 @@ export function DecisionRequestMark({ decorative = false }: { readonly decorativ
 }
 
 /** 이 Objective 이 뿌리인 묶음에 결정 요청이 섰는가. */
-export const hasDecisionRequest = (index: ClusterIndex, objectiveId: string): boolean => index.rootOf.get(objectiveId)?.cluster.decisionRequest === true;
+export const hasDecisionRequest = (index: ClusterIndex, objectiveId: string): boolean => index.rootOf.get(objectiveId)?.cluster.row?.personTurnAt !== undefined;

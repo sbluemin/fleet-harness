@@ -8,7 +8,7 @@ import { createBoardViews } from "./views.js";
 
 /** 토큰 수의 환산값이 아니라 파일 fallback을 피하기 위한 Console 도구의 직렬화 예산이다. */
 const RESPONSE_BYTES = 8_000;
-export const OBJECTIVE_READ_SECTIONS = ["objective", "brief", "criteria", "missions", "members", "decisionRequest", "decisions", "consultations", "handoffs", "extensions", "actions", "followups", "criteriaProposals", "followupBatches", "sessions"] as const;
+export const OBJECTIVE_READ_SECTIONS = ["objective", "brief", "criteria", "missions", "members", "decisions", "consultations", "handoffs", "extensions", "actions", "followups", "criteriaProposals", "followupBatches", "sessions"] as const;
 export type ObjectiveReadSection = typeof OBJECTIVE_READ_SECTIONS[number];
 type Row = Record<string, unknown> & { readonly id: string; readonly title: string };
 const fits = (value: unknown) => Buffer.byteLength(JSON.stringify(value), "utf8") <= RESPONSE_BYTES;
@@ -19,7 +19,7 @@ const preview = (value: string, limit: number) => value.slice(0, splitsPair(valu
 
 /** 큰 행 하나도 읽을 수 있다. 생략 표시와 상세 입구를 남겨 다음 행으로의 진행을 막지 않는다. */
 function compactRow(row: Row): Row {
-  const keys = ["id", "commodoreId", "title", "requestSource", "objectiveRecord", "done", "awaitingHandoff", "awaitingReview", "dueDate", "today", "missions", "mode", "removed", "mergedInto", "criteriaCount", "criteriaMet", "decisionRequested", "failedMembers", "reasons", "awaits", "self"];
+  const keys = ["id", "commodoreId", "title", "requestSource", "objectiveRecord", "done", "awaitingHandoff", "awaitingReview", "dueDate", "today", "missions", "mode", "removed", "mergedInto", "criteriaCount", "criteriaMet", "failedMembers", "reasons", "awaits", "self"];
   return { ...Object.fromEntries(keys.filter((key) => key in row).map((key) => [key, row[key]])), id: row.id, title: row.title, rowTruncated: true, detailSection: "objective" };
 }
 
@@ -44,7 +44,7 @@ export function consoleObjectivePage(rows: readonly Row[], options: { readonly c
 export function createConsoleBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveStore) {
   const views = createBoardViews(ctx, store);
   const counts = (objective: Objective) => ({ criteriaCount: objective.criteria.length, criteriaMet: objective.criteria.filter((criterion) => !!criterion.met).length,
-    decisionRequested: !!objective.decisionRequest, failedMembers: objective.members.filter((member) => member.outcome === "failed" || !!member.failure).length });
+    failedMembers: objective.members.filter((member) => member.outcome === "failed" || !!member.failure).length });
   const rowView = (objective: Objective): Row => {
     const { criteria: _criteria, brief: _brief, briefTruncated: _truncated, ...row } = views.rowView(objective);
     return { ...row, ...counts(objective), ...(objective.note ? { brief: preview(objective.note, 120), briefTruncated: objective.note.length > 120 } : {}) };
@@ -59,7 +59,7 @@ export function createConsoleBoardViews(ctx: ObjectivesFeatureDeps, store: Objec
   const detailRead = (objective: Objective, section?: ObjectiveReadSection, givenOffset = 0) => {
     // 사람에게 넘긴 항목 — 서 있는 것만. 사령관은 이 항목에 답하지 못한다.
     const personHolds = objective.personHolds.filter((hold) => livePersonHold(objective, hold.target) === hold);
-    const full = { ...views.objectiveView(objective), decisionRequest: objective.decisionRequest, ...(personHolds.length ? { personHolds } : {}) };
+    const full = { ...views.objectiveView(objective), ...(personHolds.length ? { personHolds } : {}) };
     if (!section) {
       if (givenOffset) throw new ObjectiveStoreError("section_required");
       const complete = { objective: { ...full, ...counts(objective) }, sections: OBJECTIVE_READ_SECTIONS };
@@ -75,7 +75,6 @@ export function createConsoleBoardViews(ctx: ObjectivesFeatureDeps, store: Objec
       case "objective": value = full; break;
       case "brief": value = objective.note; break;
       case "missions": value = full.graph.missions; break;
-      case "decisionRequest": value = objective.decisionRequest; break;
       case "handoffs": value = views.historyView(objective).handoffs; break;
       case "sessions": value = views.sessions(objective); break;
       default: value = full[section as keyof typeof full] ?? []; break;

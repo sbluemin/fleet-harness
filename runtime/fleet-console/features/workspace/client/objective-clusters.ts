@@ -129,7 +129,7 @@ export function indexClusters(clusters: readonly ObjectiveCluster[]): ClusterInd
     const layout = layoutCluster(cluster);
     layouts.set(cluster.id, layout);
     const root = cluster.root;
-    const structured = cluster.members.length > 0 || cluster.decisionRequest === true;
+    const structured = cluster.members.length > 0 || cluster.row?.personTurnAt !== undefined;
     // 한 Objective 은 한 묶음에만 선다 — 먼저 선언된 묶음이 이긴다.
     if (root !== undefined && structured && !rootOf.has(root) && !memberOf.has(root)) rootOf.set(root, layout);
     if (structured) for (const laid of layout.formation.members) if (!rootOf.has(laid.member.objectiveId)) memberOf.add(laid.member.objectiveId);

@@ -42,7 +42,7 @@ export function restClock<T extends Pick<ConsoleObjectiveObservation, "activity"
     return { ...observation, restingSince: since };
   };
 }
-export type InboxReason = "decision" | "criteria" | "review" | "followup" | "followup-failed" | "pending" | "planned" | "stalled" | "member-failed";
+export type InboxReason = "criteria" | "review" | "followup" | "followup-failed" | "pending" | "planned" | "stalled" | "member-failed";
 
 /**
  * 목표의 상태 — 목록의 구역보다 잘게, 사람이 「목표가 어디까지 왔나」로 읽는 단계. 대기 이유(inbox)와 달리 지금 서 있는 한 자리다.
@@ -63,7 +63,7 @@ export function objectiveStatus(objective: Objective): ObjectiveStatus {
  * 관측할 수 없는 세션을 유휴라고 추측하지 않는다.
  */
 export function stallGate(objective: Objective): boolean {
-  return !!objective.commenced && !objective.done && !objective.removed && !objective.planning && !objective.awaitingReview && !objective.awaitingHandoff && !objective.decisionRequest && !objective.criteriaProposals.length && objective.missions.some((mission) => !mission.done);
+  return !!objective.commenced && !objective.done && !objective.removed && !objective.planning && !objective.awaitingReview && !objective.awaitingHandoff && !objective.criteriaProposals.length && objective.missions.some((mission) => !mission.done);
 }
 
 /**
@@ -142,10 +142,9 @@ export function inboxReasons(objective: Objective, options: { readonly observe?:
       if (!objective.missions.length) { if (!objective.planning) reasons.push("pending"); }
       else if (!objective.criteriaProposals.length && commanderRests()) reasons.push("planned");
     // 이미 개시한 목표의 다시 구상한 회차(확장이든 일반 재계획이든)도 같은 길이다 — 구상이 기준 제안 없이 내려앉으면 개시 대기로 선다.
-    } else if (objective.planning && !objective.criteriaProposals.length && !objective.decisionRequest
+    } else if (objective.planning && !objective.criteriaProposals.length
       && objective.missions.some((mission) => !mission.done) && commanderRests()) reasons.push("planned");
     if (objective.criteriaProposals.length) reasons.push("criteria");
-    if (objective.decisionRequest) reasons.push("decision");
     if (objective.awaitingReview) reasons.push("review");
     if (objective.members.some((member) => member.failure && !member.failure.acknowledged)) reasons.push("member-failed");
     if (options.observe && stalledObjectives([objective], options.observe, options.now).length) reasons.push("stalled");
@@ -175,7 +174,7 @@ export function groupState(objective: Pick<Objective, "id" | "members">, observe
 }
 
 /** 기준 처리 뒤 재개 호출을 권하지 않는 이유 — 응답의 hint 가 이 이유를 한 줄로 말한다. */
-export type CriteriaSettleState = "resume" | "rejected-plan" | "proposals" | "held" | "decision" | "review" | "handoff" | "stopped" | "awaiting" | "unknown" | "working" | "planning" | "done" | "removed";
+export type CriteriaSettleState = "resume" | "rejected-plan" | "proposals" | "held" | "review" | "handoff" | "stopped" | "awaiting" | "unknown" | "working" | "planning" | "done" | "removed";
 /**
  * 기준 승인·거절 직후, 처리 뒤의 보드와 그룹 활동으로 사령관이 이어서 부를 재개 action 하나(steer·commence)나 null. 상태 판정만 맡고 문장은 호출자가 쓴다.
  * 쉬는 지휘관을 깨우는 것은 사령관의 개시나 스티어링뿐이다. 개시는 최초 착수 여부가 아니라 현재 회차가 개시를 기다리는지(`planned`)로 가른다 — 확장 회차도 같다.
@@ -188,7 +187,6 @@ export function criteriaSettleAdvice(objective: Objective, observe: BoardObserve
   if (objective.done) return none("done");
   if (objective.criteriaProposals.length) return none("proposals");
   if ((objective.personHolds ?? []).some((hold) => livePersonHold(objective, hold.target))) return none("held");
-  if (objective.decisionRequest) return none("decision");
   if (objective.awaitingReview) return none("review");
   if (objective.stoppedAt) return none("stopped");
   if (group === "unknown" || group === "awaiting" || group === "working") return none(group);
@@ -209,12 +207,11 @@ export const FOLLOWUPS_AT_REVIEW_HINT = "Follow-up candidates only collect while
  */
 export type InboxAwaits = "person" | "commodore";
 /** 사람에게 넘길 수 있는 대기 이유와 그 대상 — 다른 이유(개시·정체·구성원 실패·후속 생성 실패)는 넘기지 않는다. */
-const HOLD_TARGET_OF: Readonly<Partial<Record<InboxReason, PersonHoldTarget>>> = { decision: "decision", criteria: "criteria", review: "review", followup: "followup" };
+const HOLD_TARGET_OF: Readonly<Partial<Record<InboxReason, PersonHoldTarget>>> = { criteria: "criteria", review: "review", followup: "followup" };
 export const holdTargetOf = (reason: InboxReason): PersonHoldTarget | null => HOLD_TARGET_OF[reason] ?? null;
 
 /** 넘긴 항목이 서 있는지 보는 데 필요한 사실 — 저장 레코드와 목표 보기가 같은 모양으로 넘긴다. */
 export interface HoldSubject {
-  readonly decisionRequest?: { readonly id: string } | null;
   readonly criteriaProposals?: readonly unknown[] | null;
   readonly awaitingReview: boolean;
   readonly done?: unknown;
@@ -223,7 +220,6 @@ export interface HoldSubject {
 /** 넘긴 항목이 아직 서 있는가 — 결정 요청은 넘긴 그 요청이어야 한다. 사람의 처리 없이 사라진 항목의 넘김은 효력이 없다. */
 export function heldItemStands(subject: HoldSubject, hold: Pick<StoredPersonHold, "target" | "requestId">): boolean {
   switch (hold.target) {
-    case "decision": return !!subject.decisionRequest && subject.decisionRequest.id === hold.requestId;
     case "criteria": return !!subject.criteriaProposals?.length;
     case "review": return subject.awaitingReview && !subject.done;
     case "followup": return followupsJudgeable(subject) && !!subject.followups?.some((candidate) => candidate.state === "open");

@@ -1,6 +1,6 @@
 import { OPENUI_GUIDE } from "@fleet-console/markdown/openui-guide";
 import { memberFailureReason } from "../shared/signals.js";
-import { MAX_CONTEXT, missionTitle, ownAnswer, type DecisionAnswer, type DecisionRequest, type ObjectiveActor, type ObjectiveEditKind, type Objective, type ObjectiveMember, type ObjectiveMemberFailure, type ObjectiveMemberUnreported } from "../shared/types.js";
+import { MAX_CONTEXT, missionTitle, type ObjectiveActor, type ObjectiveEditKind, type Objective, type ObjectiveMember, type ObjectiveMemberFailure, type ObjectiveMemberUnreported } from "../shared/types.js";
 
 /**
  * 프롬프트 — 지휘관에게 가는 사람의 말 한 줄뿐이다. 시스템 지침은 없다: 지휘관은 `fleet-commander` 도구 설명과 보드를 읽고
@@ -62,8 +62,8 @@ export function planTurn(objective: Objective, language: PromptLanguage, by: Obj
 }
 
 const EDIT_WORDS: Record<PromptLanguage, Record<ObjectiveEditKind, string>> = {
-  ko: { title: "제목", note: "브리핑", missions: "임무", lineup: "선행 관계", members: "구성원", member: "배정", criteria: "달성 기준" },
-  en: { title: "title", note: "brief", missions: "missions", lineup: "dependencies", members: "members", member: "assignment", criteria: "success criteria" },
+  ko: { title: "제목", note: "브리핑", missions: "임무", lineup: "선행 관계", members: "구성원", member: "배정", criteria: "달성 기준", decision: "결정" },
+  en: { title: "title", note: "brief", missions: "missions", lineup: "dependencies", members: "members", member: "assignment", criteria: "success criteria", decision: "decisions" },
 };
 
 const editedWords = (objective: Objective, language: PromptLanguage): string => (objective.edited?.kinds ?? []).map((kind) => EDIT_WORDS[language][kind]).join(language === "ko" ? "·" : ", ");
@@ -207,46 +207,4 @@ export function startTurn(objective: Objective, language: PromptLanguage, contex
     ? `\n\n마지막으로 읽은 뒤 ${editActors(objective, language)}이 목표를 바꿨습니다(${what}). 진행하기 전에 \`fleet-commander\` 로 이 목표를 다시 읽으세요.`
     : `\n\n${editActors(objective, language)} changed this objective since you last read it (${what}). Read it again with \`fleet-commander\` before you proceed.`;
   return `${word}${requestedBy(by, language)}${changed}${visualBlocks}${quoted(context)}`;
-}
-
-/**
- * 결정 답 — 사람이 보드에서 결정 요청에 답했다. 요청 id 와 질문·고른 선택지(설명 포함)·직접 쓴 말을 원문 그대로 싣는다(자르지
- * 않는다). 결정 기록은 이 메시지가 닿은 뒤에 확정되므로 기록이 남았다고 말하지 않는다. 답의 뜻과 다음 일은 지휘관이 읽는다.
- */
-export function decisionTurn(objective: Objective, request: DecisionRequest, answers: readonly DecisionAnswer[], language: PromptLanguage, by: ObjectiveActor = "human"): string {
-  const ko = language === "ko";
-  const quote = (value: string) => `> ${value.split("\n").join("\n> ")}`;
-  const blocks = request.questions.map((question, index) => {
-    const answer = answers.find((entry) => entry.questionId === question.id);
-    const picked = question.options.filter((option) => answer?.selectedOptionIds.includes(option.id)).map((option) => quote(option.description ? `${option.label} — ${option.description}` : option.label));
-    // 머리말이 있으면 번호 줄에 세우고 질문 인용은 다음 줄로 — 머리말이 생기기 전의 요청은 번호와 질문만.
-    const lines = [`${index + 1}. ${question.header ? `${question.header}\n` : ""}${quote(question.text)}`];
-    if (picked.length) lines.push(`${ko ? "고른 것" : "Chosen"}:\n${picked.join("\n")}`);
-    // 고른 것에 붙인 말, 선택지를 모두 버린 내 의견, 선택지가 없는 질문의 답을 이름으로 가른다.
-    const label = picked.length ? (ko ? "덧붙인 말" : "Added") : answer && ownAnswer(question, answer) ? (ko ? "선택지 대신 내 의견" : "Own answer instead of the options") : (ko ? "직접 쓴 말" : "Written");
-    if (answer?.text.trim()) lines.push(`${label}:\n${quote(answer.text)}`);
-    return lines.join("\n");
-  });
-  const head = ko
-    ? `${actorName(by, language)}이 목표 \`${objective.id}\` 의 결정 요청 \`${request.id}\` 에 답했습니다. 아래는 해당 질문과 제출한 답입니다.`
-    : `${actorName(by, language)} answered decision request \`${request.id}\` on objective \`${objective.id}\`. The questions and submitted answers follow.`;
-  return `${head}\n\n${blocks.join("\n\n")}`;
-}
-
-/**
- * 「결정 안 함」 닫기 — 사람이 보드에서 결정 요청 전체를 선택·입력 없이 닫았다. 어떤 선택지도 고르지 않았고, 지휘관 판단에
- * 맡긴 것도, 나중으로 미룬 것도 아니다. 아래는 닫힌 요청의 질문이다(닫힌 뒤에는 같은 질문을 그대로 다시 올리지 않는다).
- * 결정 기록은 이 메시지가 닿은 뒤에 확정되므로 기록이 남았다고 말하지 않는다.
- */
-export function declinedDecisionTurn(objective: Objective, request: DecisionRequest, language: PromptLanguage, by: ObjectiveActor = "human"): string {
-  const ko = language === "ko";
-  const quote = (value: string) => `> ${value.split("\n").join("\n> ")}`;
-  const blocks = request.questions.map((question, index) => {
-    const lines = [`${index + 1}. ${question.header ? `${question.header}\n` : ""}${quote(question.text)}`];
-    return lines.join("\n");
-  });
-  const head = ko
-    ? `${actorName(by, language)}이 목표 \`${objective.id}\` 의 결정 요청 \`${request.id}\` 을 '결정 안 함'으로 닫았습니다. 어떤 선택지도 고르지 않았고, 지휘관 판단에 맡긴 것도, 나중으로 미룬 것도 아닙니다. 아래는 닫힌 요청의 질문입니다.`
-    : `${actorName(by, language)} closed decision request \`${request.id}\` on objective \`${objective.id}\` without deciding. They chose none of the options, did not hand the judgment to the Commander, and did not defer it. The closed request's questions follow.`;
-  return `${head}\n\n${blocks.join("\n\n")}`;
 }

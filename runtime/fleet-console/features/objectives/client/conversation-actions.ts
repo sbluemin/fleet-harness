@@ -34,12 +34,6 @@ export function objectiveConversationActions(objective: Objective): GroupConvers
       const result = await request<{ targets: readonly { objectiveId: string; outcome: "interrupted" | "skipped" | "failed"; reason?: string }[] }>("/commander/stop", { objectiveId: objective.id });
       return { targets: result.targets.map((target) => ({ targetId: target.objectiveId, outcome: target.outcome === "interrupted" ? "stopped" as const : target.outcome, ...(target.reason ? { reason: target.reason } : {}) })) };
     },
-    async answerDecision(requestId, answers) {
-      await request("/decision/answer", { objectiveId: objective.id, requestId, answers });
-    },
-    async declineDecision(requestId) {
-      await request("/decision/decline", { objectiveId: objective.id, requestId });
-    },
     board: objectiveBoardActions(objective),
   };
 }

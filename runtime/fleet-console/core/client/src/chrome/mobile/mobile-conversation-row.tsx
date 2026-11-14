@@ -62,7 +62,7 @@ export function useMobileConversationOf(state: Pick<ConsoleState, "objectiveReco
 export function isFinishedConversation(index: ClusterIndex, objectiveId: string): boolean {
   const layout = index.rowOf.get(objectiveId);
   const row = layout?.cluster.row;
-  return layout?.cluster.root === objectiveId && row?.glyph === "done" && row.decisionRequestedAt === undefined;
+  return layout?.cluster.root === objectiveId && row?.glyph === "done" && row.personTurnAt === undefined;
 }
 
 /** 모든 Theater의 최상위 Objective을 대화로 읽는다 — 호출부가 Theater로 거른다. */

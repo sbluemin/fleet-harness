@@ -10,7 +10,7 @@ import { withoutSidebarCommodore } from "../../../features/commodore/shared/cont
 import { CONSOLE_SIDEBAR_PATH, sidebarTarget, CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isUnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
 import { consoleRosterCommanders, consoleRosterRun, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterSort } from "../../../features/commodore/host/roster.js";
 import { buildObjectivePeek } from "../../../features/commodore/host/objective-peek.js";
-import { isCommodoreWaiting, livePersonHold, reasonAwaits } from "../../../features/objectives/shared/board-state.js";
+import { isCommodoreWaiting, livePersonHold } from "../../../features/objectives/shared/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective } from "../../../features/objectives/shared/types.js";
 import { COMMODORE_CHANNEL, type CommodoreEvent } from "../../../features/commodore/shared/contracts/types.js";
 import { createRemoteHostsRoutes } from "../../../features/remote-access/host/host-routes.js";
@@ -484,10 +484,9 @@ export const REMOTE_HOSTS_PATH = "/api/v1/remote-hosts";
 export const LOCAL_CONSOLES_PATH = "/api/v1/local-consoles";
 const REMOTE_HOST_HANDOFF_PATH = "/api/v1/desktop/handoff";
 
-/** 사이드바 `personTurnAt` 과 같다 — 결정 요청이 사람의 차례이거나, 넘긴 항목이 아직 서 있다. */
-function rosterPersonWaiting(objective: Objective, commodoreOn: boolean): boolean {
+/** 사이드바 `personTurnAt` 과 같다 — 사람에게 넘긴 기준·검토·후속이 아직 서 있다. */
+function rosterPersonWaiting(objective: Objective, _commodoreOn: boolean): boolean {
   if (objective.removed || objective.done) return false;
-  if (objective.decisionRequest && (!commodoreOn || reasonAwaits(objective, "decision") === "person")) return true;
   return PERSON_HOLD_TARGETS.some((target) => livePersonHold(objective, target) !== null);
 }
 

@@ -275,7 +275,6 @@ interface Candidate {
 
 function rowStatus(objective: Objective): RowStatus {
   if (objective.done) return "done";
-  if (objective.decisionRequest) return "decision";
   if (objective.awaitingReview) return "review";
   if (!objective.commenced) return "pending";
   if (objective.awaitingHandoff) return "missionsDone";
