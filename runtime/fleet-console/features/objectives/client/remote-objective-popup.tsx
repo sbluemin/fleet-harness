@@ -51,7 +51,7 @@ export function RemoteObjectivePopupHost({ sections }: { readonly sections: Cons
               </section>
               <section><h3>{t("objectives.missions.title")}</h3>
                 {data.missions.length ? <ol className="objectives-remote-peek-list">{data.missions.map((mission, index) => <li key={index}>
-                  <div className="objectives-remote-peek-line"><b>{mission.title}</b><span>{t(mission.done ? "objectives.graph.state.done" : "objectives.peek.status.active")}</span>{mission.assignee ? <span>{mission.assignee}</span> : null}</div>
+                  <div className="objectives-remote-peek-line"><b>{mission.title}</b><span>{t(mission.done ? "objectives.graph.state.done" : "objectives.peek.mission.notDone")}</span>{mission.assignee ? <span>{mission.assignee}</span> : null}</div>
                   <p className="objectives-remote-peek-prose">{mission.text}</p>
                   {mission.premises.length ? <p>{t("objectives.peek.prerequisites", { numbers: mission.premises.join(", ") })}</p> : null}
                   {mission.records.length ? <ul className="objectives-remote-peek-records">{mission.records.map((line, lineIndex) => <li key={lineIndex}>{line}</li>)}</ul> : null}
