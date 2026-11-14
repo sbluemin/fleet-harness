@@ -52,6 +52,11 @@ const GO_KEYRING_BASE64_PREFIX = "go-keyring-base64:";
  * token) and persists it, so the renewal benefits every reader on the machine
  * rather than living in this process. That also keeps Google's public-client id
  * and secret out of this repository entirely.
+ *
+ * Windows never triggers this renewal: `agy`'s auto-updater spawns a detached
+ * grandchild Fleet's `windowsHide` cannot reach, and that grandchild opens a
+ * visible Windows Terminal window (measured in #2572). A user-run `agy` or IDE
+ * refresh still shows up on the next read.
  */
 export const ANTIGRAVITY_CLI_BINARY = "agy";
 export const ANTIGRAVITY_CLI_REFRESH_ARGS: readonly string[] = ["models"];
@@ -442,6 +447,11 @@ async function readStoredCredential(deps: CredentialResolverDeps): Promise<Store
  * token, and takes no part in a read-modify-write race over the stored
  * credential. The CLI persists what it renews, so the next reader on the
  * machine, Fleet or otherwise, sees the fresh value too.
+ *
+ * Windows is the exception: the renewal spawn is skipped there because `agy`'s
+ * auto-updater opens a visible terminal window from a detached grandchild
+ * (#2572). A stored Windows token is judged as-is — usable while fresh,
+ * `expired` once lapsed — until the user renews it by running `agy` or the IDE.
  */
 export async function resolveAntigravityAuth(
   deps: CredentialResolverDeps,
@@ -478,15 +488,21 @@ export async function resolveAntigravityAuth(
     return usable(stored) ?? { status: stored.token.accessToken ? "expired" : "signed_out" };
   }
 
-  await runVendorRefresh(deps, options.refreshVendorCredential ?? spawnVendorRefresh);
-  // The CLI inherits this process's environment and may renew the other store
-  // than the one just read, so both are read again.
-  const renewed = await readStoredCredential(deps);
-  const ready = renewed ? usable(renewed) : null;
-  if (ready) return ready;
-  // The CLI ran and the stored token is still lapsed: the session itself is
-  // dead, and only a fresh sign-in can revive it.
-  return { status: "expired" };
+  if (deps.platform !== "win32") {
+    await runVendorRefresh(deps, options.refreshVendorCredential ?? spawnVendorRefresh);
+    // The CLI inherits this process's environment and may renew the other store
+    // than the one just read, so both are read again.
+    const renewed = await readStoredCredential(deps);
+    const ready = renewed ? usable(renewed) : null;
+    if (ready) return ready;
+    // The CLI ran and the stored token is still lapsed: the session itself is
+    // dead, and only a fresh sign-in can revive it.
+    return { status: "expired" };
+  }
+  // Windows never spawns the vendor CLI here: its auto-updater flashes a
+  // terminal window from a detached grandchild (#2572). Judge the stored value
+  // as-is; a user-run `agy` or IDE renewal shows up on the next read.
+  return usable(stored) ?? { status: stored.token.accessToken ? "expired" : "signed_out" };
 }
 
 export async function resolveAntigravityCredentials(

@@ -268,6 +268,34 @@ describe("antigravity credentials", () => {
     expect(overlapped).toBe(false);
     expect(refreshVendorCredential).toHaveBeenCalledTimes(1);
   });
+
+  it("never runs the vendor CLI on Windows, judging the stored token as-is", async () => {
+    // The win32 reader emits the blob base64-encoded; the mock must too, or the
+    // value decodes into a bare token with no expiry.
+    const keychain = (expiry: string): CredentialResolverDeps["execFile"] =>
+      (async () => Buffer.from(
+        keychainValue({ access_token: ACCESS, refresh_token: REFRESH, expiry }),
+        "utf8",
+      ).toString("base64")) as CredentialResolverDeps["execFile"];
+    const refreshVendorCredential = vi.fn(async () => {});
+    const fresh = await resolveAntigravityAuth(
+      credentialDeps({
+        platform: "win32",
+        execFile: keychain(new Date(Date.now() + 3_600_000).toISOString()),
+      }),
+      { forceRefresh: true, refreshVendorCredential },
+    );
+    expect(fresh.status).toBe("ok");
+    const stale = await resolveAntigravityAuth(
+      credentialDeps({
+        platform: "win32",
+        execFile: keychain(new Date(Date.now() - 60_000).toISOString()),
+      }),
+      { forceRefresh: true, refreshVendorCredential },
+    );
+    expect(stale).toEqual({ status: "expired" });
+    expect(refreshVendorCredential).not.toHaveBeenCalled();
+  });
 });
 
 describe("antigravity request wire", () => {

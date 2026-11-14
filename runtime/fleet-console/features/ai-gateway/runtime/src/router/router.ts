@@ -112,7 +112,8 @@ export interface CodexSubscriptionAuth {
  * lapsed token is renewed by running the vendor CLI so it renews its own
  * credential, then reading the store again; `forceRenew` asks for that even
  * while the local clock still calls the token healthy, which is what a turn
- * refused upstream with 401/403 needs.
+ * refused upstream with 401/403 needs. Windows skips the renewal spawn (the
+ * vendor auto-updater flashes a terminal window there) and only re-reads.
  */
 export async function readAntigravitySubscriptionToken(
   options: { readonly forceRenew?: boolean } = {},
@@ -163,7 +164,8 @@ export interface AiGatewayRouteDeps {
   readonly readAntigravityToken?: () => string | null | Promise<string | null>;
   /**
    * Re-read the Antigravity credential after the upstream refused it, renewing
-   * it first. Absent means a refused token ends the turn, which is what happens
+   * it first except on Windows (no renewal spawn there). Absent means a refused
+   * token ends the turn, which is what happens
    * for every provider that cannot renew on demand.
    */
   readonly renewAntigravityToken?: () => string | null | Promise<string | null>;
