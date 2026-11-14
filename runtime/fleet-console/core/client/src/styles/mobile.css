@@ -1226,7 +1226,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-group-row-icon .mobile-update-dot { right: -3px; top: -3px; width: 10px; height: 10px; }
 
 /* 보관함 · 검색 */
-.mobile-archive-screen, .mobile-search-screen { height: 100%; padding-top: var(--m-chrome-top); overflow-y: auto; background: var(--m-bg); }
+.mobile-archive-screen, .mobile-search-screen { height: 100%; padding-top: var(--m-chrome-top); padding-bottom: calc(24px + var(--m-safe-bottom, 0px)); overflow-y: auto; background: var(--m-bg); }
 .mobile-archive-screen .mobile-group-row .mobile-pill-secondary { flex: none; }
 .mobile-search-field { padding: 0 16px 8px; }
 .mobile-search-row { width: calc(100% - 24px); }

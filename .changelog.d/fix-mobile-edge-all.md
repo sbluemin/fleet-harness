@@ -1,5 +1,5 @@
 ---
-branch: fix/mobile-edge-fill
+branch: fix/mobile-edge-all
 ---
 
 ### fleet-mobile
