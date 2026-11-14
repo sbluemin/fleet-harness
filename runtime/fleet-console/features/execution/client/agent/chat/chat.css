@@ -3877,6 +3877,17 @@
   z-index: 1;
   border-top: 0;
   padding-bottom: var(--m-safe-bottom, 0px);
+  background: transparent;
+}
+[data-mobile-surface] .agent-chat-member-foot::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  height: calc(var(--m-safe-bottom, 0px) + 92px);
+  pointer-events: none;
   background: var(--m-fade-up, var(--m-bg));
 }
 
@@ -3886,6 +3897,17 @@
   position: relative;
   z-index: 1;
   padding: 8px 16px calc(12px + var(--m-safe-bottom, 0px));
+  background: transparent;
+}
+[data-mobile-surface] .agent-chat-composer::before {
+  content: "";
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: -1;
+  height: calc(var(--m-safe-bottom, 0px) + 92px);
+  pointer-events: none;
   background: var(--m-fade-up, var(--m-bg));
 }
 

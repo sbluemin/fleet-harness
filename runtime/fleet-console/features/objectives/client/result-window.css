@@ -66,7 +66,8 @@
 /* 폰은 기존 전체 화면 읽기를 유지하고 임무 칩을 더한다. 데스크톱의 기하 기억은 건드리지 않는다. */
 .objectives-result-window.is-mobile { inset: 0; z-index: 70; border: 0; border-radius: 0; background: var(--m-bg); color: var(--m-text); font-family: var(--m-sans); }
 .objectives-result-window.is-mobile { --rw-head-h: calc(56px + var(--m-safe-top, 0px)); --rw-top-pad: var(--rw-top-h, var(--rw-head-h)); }
-.objectives-result-window.is-mobile .objectives-rw-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; box-sizing: border-box; height: var(--rw-head-h); padding: var(--m-safe-top, 0px) 12px 0 16px; background: var(--m-fade-top, var(--m-fade-down, var(--m-bg))); border: 0; cursor: default; touch-action: auto; }
+.objectives-result-window.is-mobile .objectives-rw-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; box-sizing: border-box; height: var(--rw-head-h); padding: var(--m-safe-top, 0px) 12px 0 16px; background: transparent; border: 0; cursor: default; touch-action: auto; }
+.objectives-result-window.is-mobile .objectives-rw-head::before { content: ""; position: absolute; top: 0; right: 0; left: 0; z-index: -1; height: calc(var(--m-safe-top, 0px) + 84px); pointer-events: none; background: var(--m-fade-top, var(--m-fade-down, var(--m-bg))); }
 .objectives-result-window.is-mobile .objectives-rw-close { width: 40px; height: 40px; border: 1px solid var(--m-hairline-strong); border-radius: 50%; background: var(--m-surface); color: var(--m-text); box-shadow: var(--m-shadow); }
 .objectives-result-window.is-mobile .objectives-rw-body { display: flex; flex-direction: column; border-radius: 0; }
 .objectives-result-window.is-mobile .objectives-rw-missions { position: relative; z-index: 1; display: flex; flex: none; gap: 6px; padding: calc(var(--rw-head-h) + 4px) 12px 10px; background: transparent; overflow-x: auto; border: 0; }
@@ -76,7 +77,8 @@
 .objectives-result-window.is-mobile .objectives-rw-main { flex: 1; margin-top: calc(-1 * var(--rw-top-h, 0px)); }
 /* 머리·임무 칩·캡션은 자기 면으로 읽힌다. 독은 짧은 베일만 남겨 본문이 홈 막대 뒤까지 비치고 캡션 면은 좌우·아래 가장자리를 막지 않는다. */
 .objectives-result-window.is-mobile .objectives-rw-titles { display: flex; align-items: center; gap: 8px; min-width: 0; height: 40px; margin-right: auto; padding: 0 16px; border: 1px solid var(--m-hairline-strong); border-radius: var(--radius-pill); background: var(--m-surface); box-shadow: var(--m-shadow); }
-.objectives-result-window.is-mobile .objectives-rw-foot { position: relative; z-index: 1; display: flex; flex: none; flex-direction: column; background: var(--m-fade-up, var(--m-bg)); }
+.objectives-result-window.is-mobile .objectives-rw-foot { position: relative; z-index: 1; display: flex; flex: none; flex-direction: column; background: transparent; }
+.objectives-result-window.is-mobile .objectives-rw-foot::before { content: ""; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: calc(var(--m-safe-bottom, 0px) + 92px); pointer-events: none; background: var(--m-fade-up, var(--m-bg)); }
 .objectives-result-window.is-mobile .objectives-rw-caption { margin: 0 12px; padding: 8px 12px; border-radius: 14px; background: color-mix(in srgb, var(--m-bg) 88%, transparent); }
 .objectives-result-window.is-mobile .objectives-rw-mission-head { display: none; }
 .objectives-result-window.is-mobile .objectives-rw-strip { padding-bottom: calc(var(--m-safe-bottom, 0px) + 16px); }

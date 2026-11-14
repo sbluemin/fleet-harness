@@ -48,14 +48,13 @@
   --m-toast-bottom: calc(150px + var(--m-safe-bottom, 0px));
 }
 
-/* 떠 있는 줄의 가장자리 페이드 — 화면 끝의 짧은 베일이다. 상태바·홈 막대 높이만큼 단색으로
-   칠하지 않는다. 본문은 그 뒤로 비치고, 알약·입력창은 자기 면으로 떠 있다. :root에 두어
-   document.body 포털 화면에서도 같은 값이다. 안의 var(--m-bg)는 쓰는 요소에서 계산되므로
-   라이트·다크가 그대로 갈린다. 화면은 새로 만들지 말고 이 토큰을 쓴다. */
+/* 떠 있는 줄의 가장자리 페이드 — 상태바~헤더 알약, 입력창~홈 막대까지 점진적으로 옅어지는 그라데이션이다.
+   두꺼운 단색 띠(100%)를 치지 않으면서도 진한 말풍선 위 상태바 시계·아이콘이 읽히고, 본문은 그 뒤로 흐른다.
+   :root에 두어 document.body 포털 화면에서도 같은 값이다. */
 :root[data-view-mode="mobile"] {
-  --m-fade-down: linear-gradient(to bottom, color-mix(in srgb, var(--m-bg) 42%, transparent), transparent 32px);
-  --m-fade-up: linear-gradient(to top, color-mix(in srgb, var(--m-bg) 48%, transparent), color-mix(in srgb, var(--m-bg) 16%, transparent) 20px, transparent 40px);
-  --m-fade-top: linear-gradient(to bottom, color-mix(in srgb, var(--m-bg) 46%, transparent), color-mix(in srgb, var(--m-bg) 14%, transparent) 18px, transparent 36px);
+  --m-fade-down: linear-gradient(to bottom, color-mix(in srgb, var(--m-bg) 80%, transparent) 0, color-mix(in srgb, var(--m-bg) 52%, transparent) 30px, color-mix(in srgb, var(--m-bg) 20%, transparent) 58px, transparent 84px);
+  --m-fade-up: linear-gradient(to top, color-mix(in srgb, var(--m-bg) 88%, transparent) 0, color-mix(in srgb, var(--m-bg) 76%, transparent) var(--m-safe-bottom, 0px), color-mix(in srgb, var(--m-bg) 44%, transparent) calc(var(--m-safe-bottom, 0px) + 34px), color-mix(in srgb, var(--m-bg) 14%, transparent) calc(var(--m-safe-bottom, 0px) + 64px), transparent calc(var(--m-safe-bottom, 0px) + 92px));
+  --m-fade-top: linear-gradient(to bottom, color-mix(in srgb, var(--m-bg) 90%, transparent) 0, color-mix(in srgb, var(--m-bg) 80%, transparent) var(--m-safe-top, 0px), color-mix(in srgb, var(--m-bg) 52%, transparent) calc(var(--m-safe-top, 0px) + 30px), color-mix(in srgb, var(--m-bg) 20%, transparent) calc(var(--m-safe-top, 0px) + 58px), transparent calc(var(--m-safe-top, 0px) + 84px));
 }
 .m-edge-top { background: var(--m-fade-down, var(--m-bg)); }
 .m-edge-bottom { background: var(--m-fade-up, var(--m-bg)); }
@@ -1075,10 +1074,11 @@
 @keyframes mobile-sheet-in { from { transform: translateY(100%); } }
 @keyframes mobile-sheet-out { to { transform: translateY(100%); } }
 
-/* 상단 막대와 연결·상태 띠가 한 덩어리로 화면 위에 떠 있다. 배경은 화면 맨 위의 짧은 베일(--m-fade-top)이라
-   상태바 뒤와 알약 아래 줄이 단색으로 잘리지 않는다. 본문은 그 뒤로 흐르고, 스크롤 영역이 이 묶음의 높이(--m-chrome-top)만큼
-   위를 비워 맨 위 항목이 막대에 가리지 않은 채 쉰다. 막대를 숨긴 화면(홈·검색)에서 이 묶음은 띠가 없으면 안전 영역 패딩만큼이다. */
-.mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; padding-top: var(--m-safe-top, 0px); pointer-events: none; background: var(--m-fade-top); }
+/* 상단 막대와 연결·상태 띠가 한 덩어리로 화면 위에 떠 있다. ::before가 상태바~헤더 알약 아래까지
+   부드럽게 투명해져 상자 끝 가로 잘림이나 단색 띠 없이 본문이 뒤로 비친다. */
+.mobile-frame-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; flex-direction: column; min-width: 0; padding-top: var(--m-safe-top, 0px); pointer-events: none; background: transparent; }
+.mobile-frame-head::before { content: ""; position: absolute; top: 0; right: 0; left: 0; z-index: -1; height: calc(var(--m-safe-top, 0px) + 84px); pointer-events: none; background: var(--m-fade-top); }
+.mobile-frame-head:not(:has(> .mobile-top-bar))::before { height: auto; bottom: 0; background: linear-gradient(to bottom, color-mix(in srgb, var(--m-bg) 90%, transparent) 0, color-mix(in srgb, var(--m-bg) 80%, transparent) 100%); }
 .mobile-frame-head .console-shell-bars { display: flex; flex-direction: column; pointer-events: auto; }
 /* 시트·선택 팝업은 화면이 아니라 겹침이다 — 그 안에 서는 화면 부품(프로필 시트의 설정 목록·도구 시트의 플러그인 본문)은 막대 몫을 비우지 않는다. */
 .mobile-sheet, .mobile-choice-scrim { --m-chrome-top: 0px; }
@@ -1390,7 +1390,8 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-conv-list, .mobile-search-screen.is-conversations { position: relative; display: flex; flex-direction: column; height: 100%; min-height: 0; padding-top: 0; overflow: hidden; background: var(--m-bg); }
 /* 홈·검색은 상단 막대 대신 자기 머리를 그린다 — 막대와 같은 문법으로 목록 위에 떠 있고(경계선·면 없이 페이드 하나), 목록이 그 뒤로 흐른다.
    머리의 높이(--m-screen-head)는 화면이 재서 적는다. 머리 빈 자리의 누름은 뒤의 목록으로 지나간다. */
-.mobile-screen-head { position: absolute; top: var(--m-chrome-top); right: 0; left: 0; z-index: 1; pointer-events: none; background: var(--m-fade-down); }
+.mobile-screen-head { position: absolute; top: var(--m-chrome-top); right: 0; left: 0; z-index: 1; pointer-events: none; background: transparent; }
+.mobile-screen-head::before { content: ""; position: absolute; top: 0; right: 0; left: 0; z-index: -1; height: 84px; pointer-events: none; background: var(--m-fade-down); }
 .mobile-screen-head > :not(.mobile-conv-gap) { pointer-events: auto; }
 /* 폰의 입력 원은 기존 엄지 크기와 글리프를 유지한다. */
 :root[data-view-mode="mobile"] .fc-composer-capsule { --fc-composer-circle: 34px; }
@@ -1501,7 +1502,8 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-home-section-error { margin: 0; padding: 12px 18px; color: var(--m-danger); font-size: var(--m-fs-meta); }
 /* 홈 아래 떠 있는 줄 — 왼쪽 바로가기 단추와 검색 입력(누르면 검색 화면). 목록은 그 높이만큼 아래를 비운다. */
 .mobile-home .mobile-conv-scroll { padding-bottom: calc(88px + var(--m-safe-bottom, 0px)); }
-.mobile-home-dock { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 18px 14px calc(14px + var(--m-safe-bottom, 0px)); pointer-events: none; background: var(--m-fade-up); }
+.mobile-home-dock { position: absolute; right: 0; bottom: 0; left: 0; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 18px 14px calc(14px + var(--m-safe-bottom, 0px)); pointer-events: none; background: transparent; }
+.mobile-home-dock::before { content: ""; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: calc(var(--m-safe-bottom, 0px) + 92px); pointer-events: none; background: var(--m-fade-up); }
 .mobile-home-dock > * { pointer-events: auto; }
 .mobile-home-search { position: relative; font: inherit; text-align: left; --pr-r: var(--radius-pill); }
 .mobile-home-search span { flex: 1; min-width: 0; color: var(--m-text-faint); font-size: var(--m-fs-list); }

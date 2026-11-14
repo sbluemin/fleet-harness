@@ -507,12 +507,12 @@ export default function App(): React.JSX.Element {
               </View>
             )}
           </ScrollView>
-          <EdgeWash color={palette.bg} edge="top" height={36} />
+          <EdgeWash color={palette.bg} edge="top" height={insets.top + 64} />
           <View pointerEvents="none" style={[styles.landingHead, { paddingTop: insets.top + 20 }]}>
             <Text accessibilityRole="header" style={styles.wordmark}>{strings.wordmark}</Text>
             <Text style={styles.landingSub}>{strings.landingSub}</Text>
           </View>
-          <EdgeWash color={palette.bg} edge="bottom" height={40} />
+          <EdgeWash color={palette.bg} edge="bottom" height={insets.bottom + 72} />
           <Pill
             palette={palette}
             label={strings.addConsole}
@@ -532,7 +532,7 @@ export default function App(): React.JSX.Element {
               onBarcodeScanned={onBarcodeScanned}
             />
           ) : null}
-          <EdgeWash color={SCANNER.bg} edge="top" height={36} />
+          <EdgeWash color={SCANNER.bg} edge="top" height={insets.top + 56} />
           {/* Without camera access the viewfinder keeps its place but draws nothing (impl-spec S-24). */}
           <View style={[styles.viewfinder, { marginTop: insets.top + 190 }]}>
             {permission?.granted === true ? (
@@ -550,7 +550,7 @@ export default function App(): React.JSX.Element {
               : permission?.canAskAgain === false ? strings.cameraOff(Platform.OS === "ios") : strings.cameraAsk}
           </Text>
           {scanError ? <Text style={styles.scanError}>{scanError}</Text> : null}
-          <EdgeWash color={SCANNER.bg} edge="bottom" height={48} />
+          <EdgeWash color={SCANNER.bg} edge="bottom" height={insets.bottom + 72} />
           <View style={[styles.scanBar, { bottom: 28 + insets.bottom }]}>
             {permission?.granted === true ? (
               <>
@@ -814,14 +814,15 @@ function ConsoleRow({ target, first, last, connectedNow, pairingLost, armed, pal
   );
 }
 
-/** A short veil at the screen edge. Not a solid band: body content stays visible behind the system bars. */
+/** Soft edge veil spanning the system bar and floating controls. Never a solid band. */
 function EdgeWash({ color, edge, height }: {
   readonly color: string;
   readonly edge: "top" | "bottom";
   readonly height: number;
 }): React.JSX.Element {
   const clear = color.length === 7 ? `${color}00` : "transparent";
-  const veil = color.length === 7 ? `${color}73` : color;
+  const veil = color.length === 7 ? `${color}E0` : color;
+  const mid = color.length === 7 ? `${color}8C` : clear;
   return (
     <View
       pointerEvents="none"
@@ -837,6 +838,7 @@ function EdgeWash({ color, edge, height }: {
             direction: edge === "top" ? "to bottom" : "to top",
             colorStops: [
               { color: veil, positions: ["0%"] },
+              { color: mid, positions: ["55%"] },
               { color: clear, positions: ["100%"] },
             ],
           },
