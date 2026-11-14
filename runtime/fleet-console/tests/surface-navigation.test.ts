@@ -46,9 +46,9 @@ it("keeps remote title and alias edits in the requesting document across fresh s
     followups: [], followupBatches: [], followupHistory: null, origin: null,
     consultations: [], decisions: [], personHolds: [], addedBy: null, requestSource: null, merged: [] } as Objective;
   const face = { state: "idle" as const, activity: null, look: null };
-  let page: SidebarRemotePage = { v: 1, at: 1, writable: true, autonomous: false, taskforceEnabled: false, computerUseAvailable: false, next: null, commodores: [], groups: [],
+  let page: SidebarRemotePage = { v: 1, at: 1, writable: true, autonomous: false, taskforceEnabled: false, next: null, commodores: [], groups: [],
     preferences: { sort: { key: "name", direction: "asc", answerFirst: true, grouped: false }, folds: { fresh: false, done: false, settled: false }, keepExpanded: false, showSettled: true },
-    objectives: [{ objective: source, computerUseEnabled: false, ownWorking: false, faces: { objective: face }, tool: null }] };
+    objectives: [{ objective: source, ownWorking: false, faces: { objective: face }, tool: null }] };
   const read = vi.spyOn(store, "useRemoteSidebar").mockImplementation(() => ({ page, error: null }));
   const refresh = vi.spyOn(store, "refreshRemoteSidebar").mockImplementation(() => {});
   const write = vi.spyOn(transport, "sidebarJson").mockResolvedValue({ ok: true });

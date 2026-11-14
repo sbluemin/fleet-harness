@@ -1769,9 +1769,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     });
     const page = sidebarRemotePage({ at: Date.now(), offset, autonomous: enabled, taskforceEnabled, writable: listener?.audience === "local" || paired?.access === "full",
       commodoreId: params.get("commodoreId"), commodores, objectives: boards, avatars, faceOf,
-      computerUseAvailable: readExperimentSettings(consoleSettingsStore).computerUse === true,
       ownWorkingOf: (id) => ownWorking.has(id),
-      computerUseEnabledOf: (id) => { const value = objectiveRecords.get(id)?.computerUse; return !!value && typeof value === "object" && "enabled" in value && value.enabled === true; },
       groups: objectiveRecords.listAllGroups(), preferences: { sort: settings.general?.commanderSort ?? ROSTER_SORT_DEFAULT,
         folds: settings.general?.commanderFolds ?? { fresh: false, done: false, settled: false },
         keepExpanded: settings.general?.commanderKeepExpanded === true, showSettled: settings.general?.commanderShowSettled !== false },
@@ -1908,11 +1906,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       const query = readUrl(req).search;
       // 고정 allowlist의 기존 기능 라우트만 재사용한다. 입력 스키마·파괴 동작 확인·파일 containment는 원래 소유자가 판정한다.
       pathname = `/api/v1/${target.path}`;
-      if (target.operation === "computerUse") {
-        const id = readUrl(req).searchParams.get("objectiveId");
-        if (!id || !/^[A-Za-z0-9._:-]{1,128}$/.test(id)) { writeJson(res, 400, { error: "invalid_request" }); return; }
-        pathname = `/api/v1/experiments/sessions/${encodeURIComponent(id)}/computer-use`;
-      }
       req.url = `${pathname}${query}`;
     }
     if (pathname === UNIFIED_SIDEBAR_PATH) {

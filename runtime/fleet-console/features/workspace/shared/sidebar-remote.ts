@@ -41,7 +41,6 @@ export interface SidebarRemoteCommodore extends SidebarRemoteFace {
 }
 export interface SidebarRemoteObjective {
   readonly ownWorking: boolean;
-  readonly computerUseEnabled: boolean;
   readonly objective: Objective;
   readonly faces: Readonly<Record<string, SidebarRemoteFace>>;
   readonly tool: { readonly tool: "browser" | "computer"; readonly actor: string | null } | null;
@@ -52,7 +51,6 @@ export interface SidebarRemotePage {
   readonly writable: boolean;
   readonly autonomous: boolean;
   readonly taskforceEnabled: boolean;
-  readonly computerUseAvailable: boolean;
   readonly next: number | null;
   readonly commodores: readonly SidebarRemoteCommodore[];
   readonly objectives: readonly SidebarRemoteObjective[];

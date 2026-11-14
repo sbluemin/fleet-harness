@@ -10,7 +10,6 @@ export const SIDEBAR_OPERATIONS = {
   folders: { method: "POST", path: "theaters/folder-listings", read: true },
   folderGrant: { method: "POST", path: "theaters/folder-grants", read: false },
   addTheater: { method: "POST", path: "commodore/theaters/add", read: false },
-  computerUse: { method: "POST", path: "console-roster/computer-use", read: false },
   objective: { method: "GET", path: "console-roster/objective-full", read: true },
   runtime: { method: "GET", path: "console-roster/runtime", read: true },
   changes: { method: "GET", path: "console-roster/changes", read: true },
