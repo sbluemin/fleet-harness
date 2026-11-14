@@ -47,7 +47,7 @@ function scopeOf(deps: ComputerUseMcpDeps, objectiveId: string): ComputerUseScop
 }
 
 /** Objective 호출자에게만 붙는 설명 — 플러그인 호출자는 카드를 띄우지 않는다. */
-const OBJECTIVE_REQUEST_NOTE = "Permission: needs this Objective's Computer Use toggle. Otherwise the call waits up to four minutes for the person's answer on the request card. Keep allowing turns the toggle on. If declined or unanswered, do not request Computer Use again this turn.";
+const OBJECTIVE_REQUEST_NOTE = "Permission requests appear in the Objective panel; this call waits up to four minutes for an answer. Keep allowing authorizes Computer Use for this Objective.";
 
 /** 요청 브로커 중 컴퓨터 사용이 쓰는 몫. */
 export interface ComputerUseRequestPort {
@@ -80,7 +80,7 @@ type ComputerUseRefusal = "experiment_disabled" | "objectiveRecord_not_authorize
 
 const REFUSAL_REMEDY = {
   experiment_disabled: { actor: "user", surface: "settings", path: ["Settings", "Experiments", "Computer Use"] },
-  objectiveRecord_not_authorized: { actor: "user", surface: "objectiveRecord_panel", path: ["Objective menu", "Computer Use"] },
+  objectiveRecord_not_authorized: { actor: "none", surface: "none", path: [] },
   plugin_not_authorized: { actor: "user", surface: "caller_menu", path: ["Caller menu", "Computer Use"] },
   caller_unresolved: { actor: "none", surface: "none", path: [] },
   declined_by_user: { actor: "user", surface: "objectiveRecord_panel", path: ["Objective panel", "Computer Use request"] },
@@ -89,7 +89,7 @@ const REFUSAL_REMEDY = {
 
 const REFUSAL_INSTRUCTION: Record<ComputerUseRefusal, string> = {
   experiment_disabled: "Computer Use is turned off for this Console, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Settings > Experiments > Computer Use, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
-  objectiveRecord_not_authorized: "This 목표 has not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use (컴퓨터 사용 in the Korean interface) in this 목표's own menu (the ··· button in its caption, or right-click in the sidebar), then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
+  objectiveRecord_not_authorized: "Do not retry or use another route to the person's computer. Report the missing authorization and stop.",
   plugin_not_authorized: "You have not been authorized to use the computer, so the host refused this call. This is not a transient failure. Do not retry and do not look for another route to the user's computer. Ask the user to turn on Computer Use in your own ··· menu, then stop and wait for them. Once they do, repeat this exact call: it succeeds with no restart and no reconnection.",
   caller_unresolved: "This session is not bound to a Console Objective, so Computer Use can never answer it. Do not retry and do not ask the user to change a setting — nothing they can turn on fixes this. Continue without the computer.",
   declined_by_user: "The person declined this Computer Use request in the Objective panel. Do not request Computer Use again in this turn and do not look for another route to the user's computer. Continue the task without the computer, and tell the person what you could not do.",
@@ -102,8 +102,8 @@ const REFUSAL_MESSAGE: Record<ComputerUseRefusal, Record<"en" | "ko", string>> =
     ko: "컴퓨터 사용이 꺼져 있습니다. 설정 > 실험 기능 > 컴퓨터 사용을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
   },
   objectiveRecord_not_authorized: {
-    en: "This Objective is not allowed to use the computer. Turn on Computer Use in this Objective's ··· menu — it applies immediately, with no restart.",
-    ko: "이 목표에 컴퓨터 사용이 허용되지 않았습니다. 이 목표의 ··· 메뉴에서 「컴퓨터 사용」을 켜 주세요. 켜면 다시 연결하지 않아도 곧바로 이어집니다.",
+    en: "Computer Use is not authorized for this Objective.",
+    ko: "이 목표에 컴퓨터 사용이 허용되지 않았습니다.",
   },
   plugin_not_authorized: {
     en: "Computer Use is not allowed here. Turn on Computer Use in the ··· menu of the one you are talking to — it applies immediately, with no restart.",
@@ -124,8 +124,8 @@ const REFUSAL_MESSAGE: Record<ComputerUseRefusal, Record<"en" | "ko", string>> =
 };
 
 function refuse(reason: ComputerUseRefusal, objectiveId: string | null, language: "en" | "ko") {
-  // 거절·무응답은 이번 턴에서 다시 두드릴 길이 아니다.
-  const actionable = reason === "experiment_disabled" || reason === "objectiveRecord_not_authorized" || reason === "plugin_not_authorized";
+  // 거절·무응답과 메뉴가 없는 목표 미허용 fallback은 이번 턴에서 다시 두드릴 길이 아니다.
+  const actionable = reason === "experiment_disabled" || reason === "plugin_not_authorized";
   return { content: [{ type: "text" as const, text: JSON.stringify({
     error: "computer_use_not_authorized", reason,
     retryable: actionable, retryAfter: actionable ? "user_action" : "never",
