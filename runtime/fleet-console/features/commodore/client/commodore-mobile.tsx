@@ -18,6 +18,10 @@ import type { RailEntryDestinationTrailing, RailEntryDestinationTrailingValue } 
 import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { registerCommodoreDeparture } from "./commodore-delete-events.js";
 import { SettingsCard, SettingsRow } from "../../settings/client/preferences-context.js";
+import { MobileSheet } from "../../../core/client/src/chrome/mobile/mobile-sheet.js";
+import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
+import { pushOverlayHistory, releaseOverlayHistory, runAfterOverlayRelease } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
+import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 
 import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreMobileSessions } from "./deps.js";
@@ -33,6 +37,7 @@ import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodo
 import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
 import { useCommodoreSpeakerSection } from "./sidebar-sections.js";
+import { RoutingPoolGlyphStack, RoutingPoolHelpButton, RoutingPoolPanel, useRoutingPoolData } from "./commodore-routing-pool.js";
 import { CommodoreComposer, CommodoreDescription, CommodoreSessionSettings, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
   commodoreComposerTopEntriesRenderer,
@@ -55,6 +60,7 @@ import {
   useCommodore,
   useCommodoreEnabled,
   useCommodoreExperimentKnown,
+  useCommodoreRoster,
   INTEL_EDIT_ATTRIBUTE,
   useCommodoreIntelEdits,
   useCommodoreMemory,
@@ -89,6 +95,7 @@ const SparkIcon = () => <Icon><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.
 const ClockIcon = () => <Icon><circle cx="12" cy="13" r="7.5" /><path d="M12 9.5V13l2.6 1.7M9.5 2.8h5" /></Icon>;
 const TargetIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></Icon>;
 const ChartIcon = () => <Icon><path d="M4 4v16h16" /><path d="M8 15l3-4 3 2 5-6" /></Icon>;
+const PoolIcon = () => <Icon><path d="M4.5 10h15M6.5 10l1.2 8.5h8.6L17.5 10M8.5 10 12 4.5 15.5 10" /></Icon>;
 /* 세부 구역 행 · ⋮ 메뉴 — 같은 문법. 연필·톱니·더하기·Theater 는 호스트 폰 아이콘과 같은 경로, 책갈피는 기억 탭의 빈 화면 아이콘이다. */
 const LogIcon = () => <Icon><path d="M5 6h14M5 10h14M5 14h10M5 18h7" /></Icon>;
 const InfoIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.5M12 7.8v.01" /></Icon>;
@@ -739,8 +746,30 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
   // 좌표 두 칸은 데스크톱 서랍과 같은 공유 선택기 — 폰 설정 화면 안이라 호스트의 좌표 시트로 열린다. 사령관 좌표를 비우면 기본값,
   // 지휘관 좌표를 비우면 「라우팅」이다. 저장값 null은 그대로다.
   const modelOverridden = state.model !== undefined;
+  const launchRoster = useCommodoreRoster("launch");
+  const pool = useRoutingPoolData(launchRoster, t);
+  const [poolSheetOpen, setPoolSheetOpen] = useState(false);
+  const [poolHelp, setPoolHelp] = useState(false);
+  const poolHistoryRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!poolSheetOpen) {
+      setPoolHelp(false);
+      return;
+    }
+    const id = pushOverlayHistory(() => { poolHistoryRef.current = null; setPoolSheetOpen(false); });
+    poolHistoryRef.current = id;
+    const releaseLayer = pushBackLayer(() => setPoolSheetOpen(false));
+    return () => {
+      releaseLayer();
+      const pending = poolHistoryRef.current;
+      poolHistoryRef.current = null;
+      if (pending !== null) releaseOverlayHistory(pending);
+    };
+  }, [poolSheetOpen]);
 
   const usage = [t("commodore.drawer.session", { n: run.totals.session }), t("commodore.drawer.cost", { cost: run.totals.costUsd.toFixed(2) })].join(" · ");
+  const poolCountLabel = pool.entries.length === 0 ? t("commodore.pool.mobileEmpty") : t("commodore.pool.mobileCount", { n: pool.entries.length });
 
   return (
     <div className="objectives-cm-content">
@@ -774,6 +803,19 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
             />
           </SettingsRow>
+          <SettingsRow label={t("commodore.pool.title")} hint={t("commodore.pool.mobileScope")} icon={<PoolIcon />} disabled={!online}>
+            <button
+              type="button"
+              className="fc-select__trigger fc-select--mobile objectives-cm-pool-trigger"
+              disabled={!online}
+              aria-label={pool.chipAria(t)}
+              onClick={() => setPoolSheetOpen(true)}
+            >
+              <RoutingPoolGlyphStack providers={pool.poolProviders} />
+              {pool.poolProviders.length > 0 ? <span className="objectives-cm-pool-sep" aria-hidden="true">·</span> : null}
+              <span className="fc-select__value">{poolCountLabel}</span>
+            </button>
+          </SettingsRow>
           <CommodoreSessionSettings key={theaterId} t={t} commodoreId={theaterId} state={state} phone />
         </SettingsCard>
         <SettingsCard>
@@ -783,6 +825,36 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
           </SettingsRow>
         </SettingsCard>
       </div>
+      {poolSheetOpen ? (
+        <MobileSheet title={t("commodore.pool.title")} onClose={() => setPoolSheetOpen(false)} focusInputOnTouch={false}>
+          <div className="objectives-cm-pool-sheet-head">
+            <span className="commodore-settings-popover-scope is-global">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" /><path d="M2.5 8h11M8 2.5c2 2 2 9 0 11M8 2.5c-2 2-2 9 0 11" /></svg>
+              {t("commodore.composerSettings.scopeGlobal")}
+            </span>
+            <RoutingPoolHelpButton
+              pressed={poolHelp}
+              label={t("commodore.pool.helpOpenAria")}
+              title={t("commodore.pool.helpTitle")}
+              onClick={() => setPoolHelp((current) => !current)}
+            />
+          </div>
+          <RoutingPoolPanel
+            t={t}
+            pool={pool}
+            commanderByJudgment={commanderByJudgment(state)}
+            showHelp={poolHelp}
+            onCloseHelp={() => setPoolHelp(false)}
+            onOpenQuota={() => {
+              const id = poolHistoryRef.current;
+              poolHistoryRef.current = null;
+              setPoolSheetOpen(false);
+              runAfterOverlayRelease(id, () => requestQuotaPanelOpen());
+            }}
+            mobile
+          />
+        </MobileSheet>
+      ) : null}
     </div>
   );
 }

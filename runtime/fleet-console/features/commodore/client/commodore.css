@@ -1301,6 +1301,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 @container commodore-conv (max-width: 660px) {
   .objectives-commodore-conversation .conversation-composer-top.has-end { column-gap: 6px; }
   .commodore-composer-chip[data-section="theaters"] { padding: 0 8px; gap: 4px; }
+  .commodore-composer-chip[data-section="pool"] { padding: 0 8px; }
   .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) { flex: none; width: var(--fc-composer-circle, 28px); padding: 0; justify-content: center; }
   .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) :is(.commodore-composer-chip-label, .commodore-composer-chip-value, .fc-coord-trigger-dot, .fc-coord-trigger-effort, .fc-coord-trigger-badge, .fc-coord-provider-name) { display: none; }
 }
@@ -1325,6 +1326,257 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-settings-popover-title strong { font-family: var(--font-ui); font-size: var(--t-md); font-weight: var(--weight-bold); color: var(--text-primary); }
 .commodore-settings-popover-scope { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-tertiary); font-size: var(--t-xs); }
 .commodore-settings-popover-scope b { color: var(--text-secondary); font-weight: var(--weight-bold); }
+.commodore-settings-popover-scope.is-global { display: inline-flex; align-items: center; gap: 5px; color: var(--brass-ink); font-weight: var(--weight-medium); }
+.commodore-settings-popover-scope.is-global svg { flex: none; width: 11px; height: 11px; stroke: currentColor; fill: none; stroke-width: 1.5; }
+
+/* ── 라우팅 풀 칩 글리프 겹침(박스 없는 ProviderMark 순수 마크) · 팝오버 · '?' 모션 ── */
+.commodore-pool-stack { --halo: var(--surface-panel); display: inline-flex; align-items: center; }
+.commodore-pool-st {
+  position: relative; display: inline-grid; place-items: center; width: 14px; height: 14px; color: var(--tone);
+  filter: drop-shadow(1.2px 0 0 var(--halo)) drop-shadow(-1.2px 0 0 var(--halo)) drop-shadow(0 1.2px 0 var(--halo)) drop-shadow(0 -1.2px 0 var(--halo));
+  transition: margin 220ms var(--ease-spring), transform 220ms var(--ease-spring), opacity 200ms;
+}
+.commodore-pool-st svg { width: 14px; height: 14px; }
+.commodore-pool-st + .commodore-pool-st { margin-left: -5px; }
+.commodore-pool-st.is-claude, .commodore-pool-ex-tile.is-claude { --tone: var(--provider-claude); }
+.commodore-pool-st.is-codex, .commodore-pool-ex-tile.is-codex { --tone: var(--provider-codex); }
+.commodore-pool-st.is-xai, .commodore-pool-ex-tile.is-xai { --tone: var(--provider-xai); }
+.commodore-pool-st.is-antigravity, .commodore-pool-ex-tile.is-antigravity { --tone: var(--provider-antigravity); }
+.commodore-pool-st.is-muse-code, .commodore-pool-ex-tile.is-muse-code { --tone: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary)); }
+.commodore-pool-st.is-more { width: auto; margin-left: 2px; filter: none; color: var(--text-secondary); font-size: var(--t-2xs); font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; }
+.commodore-pool-st.is-waiting { opacity: 0.42; }
+.commodore-pool-st.is-pop { animation: commodore-pool-pop 520ms var(--ease-spring); }
+@keyframes commodore-pool-pop { from { transform: scale(0.3); opacity: 0; } }
+.commodore-composer-chip:is(:hover, [aria-expanded="true"]) .commodore-pool-st + .commodore-pool-st { margin-left: -1px; }
+.commodore-composer-chip:is(:hover, [aria-expanded="true"]) .commodore-pool-st.is-more { margin-left: 3px; }
+.commodore-composer-chip:is(:hover, [aria-expanded="true"]) .commodore-pool-st:first-child { transform: rotate(-8deg); }
+.commodore-pool-plus { color: var(--text-secondary); font-size: var(--t-sm); line-height: 1; }
+.commodore-pool-chip-warn { position: absolute; top: 3px; right: 4px; width: 6px; height: 6px; border-radius: 50%; background: var(--warn); box-shadow: 0 0 0 1.5px var(--surface-panel); }
+
+.commodore-pool-help-btn {
+  position: relative; flex: none; display: grid; place-items: center; width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 50%; background: var(--control-wash); color: var(--text-primary);
+  font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-bold); cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+.commodore-pool-help-btn::after {
+  content: ""; position: absolute; inset: -3px; border-radius: 50%;
+  box-shadow: 0 0 0 1.5px var(--brass); opacity: 0;
+  animation: commodore-pool-help-ring 2.4s var(--ease-glide) 1s 2;
+}
+@keyframes commodore-pool-help-ring { 0% { opacity: 0.9; transform: scale(0.85); } 70%, 100% { opacity: 0; transform: scale(1.35); } }
+.commodore-pool-help-btn:hover { background: var(--wash-hover); }
+.commodore-pool-help-btn[aria-pressed="true"] { background: var(--text-primary); color: var(--popover-face); }
+.commodore-pool-help-btn:focus-visible { outline: none; box-shadow: var(--focus-face); }
+
+.commodore-pool-view { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; max-width: 100%; padding: 0 4px; }
+.commodore-pool-view > * { min-width: 0; }
+.commodore-pool-view.is-mobile .commodore-pool-mrow { padding-left: 16px; }
+.commodore-pool-view.is-mobile .commodore-pool-signin-note { margin-left: 16px; }
+.commodore-pool-view.is-mobile .commodore-pool-ex-stage { height: 264px; }
+.commodore-pool-view.is-mobile .commodore-pool-ex-tile { width: 48px; }
+.commodore-pool-view.is-mobile .commodore-pool-ex-tile .lbl { max-width: 48px; }
+.commodore-pool-sum { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 4px; }
+.commodore-pool-sum b { font-size: var(--t-sm); font-weight: var(--weight-bold); color: var(--text-primary); }
+.commodore-pool-sum span { font-size: var(--t-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.commodore-pool-strip {
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 6px; min-height: 46px; padding: 8px;
+  border-radius: var(--radius-md); background: var(--control-wash);
+}
+.commodore-pool-empty { display: grid; gap: 2px; width: 100%; padding: 4px 6px; color: var(--text-tertiary); font-size: var(--t-sm); }
+.commodore-pool-empty b { color: var(--text-secondary); font-weight: var(--weight-medium); }
+.commodore-pool-pchip {
+  position: relative; display: inline-flex; align-items: center; height: 28px; min-width: 0; max-width: 100%;
+  border-radius: var(--radius-xs); background: var(--popover-face); box-shadow: 0 0 0 1px var(--hairline); color: var(--text-primary);
+}
+.commodore-pool-pchip:hover { box-shadow: 0 0 0 1px var(--hairline-strong); }
+.commodore-pool-pchip.is-expanded { box-shadow: 0 0 0 1.5px var(--text-secondary); }
+.commodore-pool-pchip-main {
+  display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto; height: 100%; min-width: 0; padding: 0 6px 0 7px;
+  border: 0; border-radius: var(--radius-xs); background: transparent; color: inherit; font-family: var(--font-ui); font-size: var(--t-sm); cursor: pointer;
+}
+.commodore-pool-pchip-main:focus-visible, .commodore-pool-pchip-x:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.commodore-pool-pchip-nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-pool-pchip-st { font-size: var(--t-xs); color: var(--text-tertiary); white-space: nowrap; }
+.commodore-pool-pchip.is-waiting .commodore-pool-pchip-nm,
+.commodore-pool-pchip.is-resting .commodore-pool-pchip-nm { color: var(--text-tertiary); }
+.commodore-pool-pchip.is-waiting .fc-coord-trigger-provider { opacity: 0.45; filter: grayscale(1); }
+.commodore-pool-sdot { flex: none; width: 6px; height: 6px; border-radius: 50%; }
+.commodore-pool-sdot.is-ok { background: var(--aurora); }
+.commodore-pool-sdot.is-wait { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
+.commodore-pool-sdot.is-rest { background: var(--warn); }
+.commodore-pool-pchip-x {
+  flex: none; display: grid; place-items: center; width: 18px; height: 18px; margin-right: 4px; padding: 0;
+  border: 0; border-radius: 5px; background: transparent; color: var(--text-tertiary); cursor: pointer;
+}
+.commodore-pool-pchip-x:hover:not(:disabled) { background: var(--wash-selected); color: var(--text-primary); }
+.commodore-pool-pchip-x svg { width: 10px; height: 10px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+
+.commodore-pool-detail { display: grid; gap: 8px; padding: 10px; border-radius: var(--radius-md); box-shadow: inset 0 0 0 1px var(--hairline); }
+.commodore-pool-state-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: var(--t-sm); color: var(--text-secondary); }
+.commodore-pool-detail-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; font-size: var(--t-sm); }
+.commodore-pool-detail-row > span:first-child { min-width: 64px; color: var(--text-tertiary); }
+.commodore-pool-detail-muted { color: var(--text-tertiary); font-size: var(--t-xs); }
+.commodore-pool-detail-hint { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
+.commodore-pool-opt {
+  height: 24px; padding: 0 8px; border: 0; border-radius: var(--radius-xs); background: var(--control-wash);
+  color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-2xs); font-weight: var(--weight-medium); letter-spacing: 0.03em; cursor: pointer;
+}
+.commodore-pool-opt:hover:not(:disabled):not(.is-fixed) { background: var(--wash-hover); color: var(--text-primary); }
+.commodore-pool-opt[aria-pressed="true"] { background: var(--text-primary); color: var(--popover-face); }
+.commodore-pool-opt.is-fixed { cursor: default; background: transparent; box-shadow: inset 0 0 0 1px var(--hairline); color: var(--text-tertiary); }
+.commodore-pool-link-btn {
+  border: 0; background: none; padding: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-xs);
+  text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--hairline-strong); cursor: pointer;
+}
+.commodore-pool-link-btn.is-muted { color: var(--text-secondary); }
+
+.commodore-pool-add-head { display: flex; align-items: center; gap: 8px; margin: 2px 4px 0; }
+.commodore-pool-add-head b { flex: none; font-size: var(--t-sm); font-weight: var(--weight-bold); }
+.commodore-pool-find {
+  flex: 1; min-width: 0; height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-xs);
+  background: var(--control-wash); color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm);
+}
+.commodore-pool-find::placeholder { color: var(--text-tertiary); }
+.commodore-pool-find:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.commodore-pool-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+.commodore-pool-pgroup { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; min-width: 0; }
+.commodore-pool-pgroup-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 30px; padding: 0 6px; }
+.commodore-pool-pgroup-nm { font-size: var(--t-sm); font-weight: var(--weight-bold); color: var(--text-primary); }
+.commodore-pool-login { font-size: var(--t-xs); color: var(--text-tertiary); }
+.commodore-pool-login.is-out { color: var(--warn-ink); font-weight: var(--weight-medium); }
+.commodore-pool-pin {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px;
+  border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-size: var(--t-xs); cursor: pointer;
+}
+.commodore-pool-pin:hover:not(:disabled) { background: var(--wash-hover); color: var(--text-primary); }
+.commodore-pool-pin[aria-pressed="true"] { background: var(--control-wash); color: var(--text-primary); font-weight: var(--weight-bold); }
+.commodore-pool-pin-n { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: var(--text-primary); color: var(--popover-face); font-size: calc(var(--t-2xs) * 0.9); }
+.commodore-pool-signin-note { margin: 0 6px 4px 28px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
+.commodore-pool-mrow { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 32px; padding: 0 6px 0 28px; border-radius: var(--radius-xs); }
+.commodore-pool-mrow:hover { background: var(--wash-hover); }
+.commodore-pool-mrow-nm { flex: 1; min-width: 0; font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.commodore-pool-mrow-nm small { margin-left: 6px; color: var(--text-tertiary); font-size: var(--t-xs); }
+.commodore-pool-add-btn {
+  flex: none; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px;
+  border: 0; border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-primary);
+  font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium); cursor: pointer;
+}
+.commodore-pool-add-btn:hover:not(:disabled) { background: var(--wash-selected); }
+.commodore-pool-add-btn.is-in { background: transparent; color: var(--text-tertiary); }
+.commodore-pool-add-btn.is-in:hover:not(:disabled) { color: var(--coral-ink); background: var(--coral-glow); }
+
+.commodore-pool-foot { display: flex; align-items: center; gap: 8px; margin: 2px 4px 0; padding-top: 8px; border-top: 1px solid var(--popover-divider); color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
+.commodore-pool-foot svg { flex: none; width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+.commodore-pool-toast {
+  position: sticky; bottom: 6px; justify-self: center; z-index: 3;
+  display: inline-flex; align-items: center; gap: 10px; padding: 7px 8px 7px 12px; border-radius: var(--radius-md);
+  background: var(--text-primary); color: var(--popover-face); font-size: var(--t-sm); white-space: nowrap;
+  box-shadow: var(--popover-surface-shadow); animation: commodore-pool-toast-in 300ms var(--ease-spring);
+}
+@keyframes commodore-pool-toast-in { from { opacity: 0; transform: translateY(8px); } }
+.commodore-pool-toast button {
+  height: 22px; padding: 0 8px; border: 0; border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--popover-face) 18%, transparent); color: var(--popover-face);
+  font-size: var(--t-xs); font-weight: var(--weight-bold); cursor: pointer;
+}
+
+/* ── '?' 5단계 모션 설명 ── */
+.commodore-pool-ex-back {
+  display: inline-flex; align-items: center; gap: 6px; justify-self: start; height: 24px; padding: 0 8px 0 4px;
+  border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-size: var(--t-xs); cursor: pointer;
+}
+.commodore-pool-ex-back:hover { background: var(--wash-hover); color: var(--text-primary); }
+.commodore-pool-ex-back svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+.commodore-pool-ex { display: grid; gap: 10px; }
+.commodore-pool-ex-stage { position: relative; height: 230px; border-radius: var(--radius-md); background: var(--control-wash); overflow: hidden; }
+.commodore-pool-ex-zone { position: absolute; top: 9px; font-size: var(--t-2xs); font-weight: var(--weight-bold); letter-spacing: 0.08em; color: var(--text-tertiary); }
+.commodore-pool-ex-sample { position: absolute; right: 10px; top: 8px; font-size: var(--t-2xs); color: var(--text-tertiary); }
+.commodore-pool-ex-tray { position: absolute; left: 10px; right: 10px; bottom: 8px; height: 44px; border-radius: var(--radius-xs); box-shadow: inset 0 0 0 1px var(--hairline); }
+.commodore-pool-ex-tray > span { position: absolute; left: 8px; top: -7px; padding: 0 5px; border-radius: 4px; background: var(--popover-face); font-size: var(--t-2xs); font-weight: var(--weight-bold); color: var(--text-tertiary); }
+.commodore-pool-ex-gate {
+  position: absolute; display: grid; place-items: center; gap: 2px; width: 46px; padding: 6px 0 5px;
+  border-radius: var(--radius-xs); background: var(--popover-face); box-shadow: 0 0 0 1px var(--hairline);
+  color: var(--text-tertiary); font-size: var(--t-2xs); font-weight: var(--weight-bold);
+  transition: box-shadow 300ms, color 300ms, transform 400ms var(--ease-spring);
+}
+.commodore-pool-ex-gate svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+.commodore-pool-ex-gate.is-on { color: var(--text-primary); box-shadow: 0 0 0 1.5px var(--text-primary); transform: scale(1.06); }
+.commodore-pool-ex-judge {
+  position: absolute; display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px;
+  border-radius: var(--radius-pill); background: var(--popover-face); box-shadow: 0 0 0 1px var(--hairline);
+  font-size: var(--t-2xs); font-weight: var(--weight-bold); color: var(--text-secondary); white-space: nowrap;
+  opacity: 0; transform: translateY(-4px) scale(0.96);
+  transition: opacity 300ms, transform 400ms var(--ease-spring), color 300ms;
+}
+.commodore-pool-ex-judge.is-on { opacity: 1; transform: none; }
+.commodore-pool-ex-judge.is-fail { color: var(--coral-ink); text-decoration: line-through; text-decoration-thickness: 1.5px; }
+.commodore-pool-ex-judge .spark { width: 12px; height: 12px; }
+.commodore-pool-ex-card {
+  position: absolute; display: grid; gap: 3px; padding: 8px 10px; border-radius: var(--radius-md);
+  background: var(--popover-face); box-shadow: 0 0 0 1px var(--hairline);
+  opacity: 0; transform: translateX(14px);
+  transition: opacity 320ms, transform 500ms var(--ease-spring), box-shadow 300ms;
+}
+.commodore-pool-ex-card.is-on { opacity: 1; transform: none; }
+.commodore-pool-ex-card.is-done { box-shadow: 0 0 0 1.5px var(--aurora); }
+.commodore-pool-ex-card .who { font-size: var(--t-2xs); font-weight: var(--weight-bold); letter-spacing: 0.06em; color: var(--text-tertiary); }
+.commodore-pool-ex-card .task { font-size: var(--t-xs); color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.commodore-pool-ex-card .seat { display: flex; align-items: center; gap: 5px; height: 18px; font-size: var(--t-xs); color: var(--text-tertiary); white-space: nowrap; overflow: hidden; }
+.commodore-pool-ex-card .seat b { color: var(--text-primary); font-weight: var(--weight-bold); }
+.commodore-pool-ex-card .eff { font-size: var(--t-2xs); font-weight: var(--weight-bold); padding: 1px 5px; border-radius: 4px; background: var(--control-wash); color: var(--text-primary); }
+.commodore-pool-ex-tile {
+  position: absolute; left: 0; top: 0; width: 56px; display: grid; justify-items: center; gap: 3px;
+  transition: transform 700ms var(--ease-spring), opacity 400ms; will-change: transform;
+}
+.commodore-pool-ex-tile .face {
+  position: relative; width: 30px; height: 30px; display: grid; place-items: center; color: var(--tone);
+  transition: filter 300ms, opacity 300ms, transform 300ms var(--ease-spring);
+}
+.commodore-pool-ex-tile .face > svg { width: 20px; height: 20px; }
+.commodore-pool-ex-tile .face::after {
+  content: ""; position: absolute; left: 50%; bottom: -3px; width: 0; height: 2px; border-radius: 1px;
+  background: var(--aurora); transform: translateX(-50%); transition: width 300ms var(--ease-spring);
+}
+.commodore-pool-ex-tile .lbl { max-width: 56px; font-size: var(--t-2xs); color: var(--text-secondary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transition: opacity 200ms; }
+.commodore-pool-ex-tile.is-tray .lbl { opacity: 0; }
+.commodore-pool-ex-tile.is-wait .face { filter: grayscale(1); opacity: 0.5; }
+.commodore-pool-ex-tile.is-rest .face { opacity: 0.6; }
+.commodore-pool-ex-tile .badge {
+  position: absolute; right: -5px; top: -5px; width: 14px; height: 14px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--popover-face); box-shadow: 0 0 0 1px var(--hairline); color: var(--text-secondary);
+  opacity: 0; transform: scale(0.4); transition: opacity 250ms, transform 400ms var(--ease-spring);
+}
+.commodore-pool-ex-tile .badge svg { width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.commodore-pool-ex-tile.is-wait .badge, .commodore-pool-ex-tile.is-rest .badge { opacity: 1; transform: none; }
+.commodore-pool-ex-tile.is-rest .badge { color: var(--warn-ink); }
+.commodore-pool-ex-tile.is-pick .face { transform: scale(1.18); }
+.commodore-pool-ex-tile.is-pick .face::after { width: 18px; }
+.commodore-pool-ex-tile.is-pick .lbl { color: var(--aurora-ink); font-weight: var(--weight-bold); }
+.commodore-pool-ex-lines { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.commodore-pool-ex-lines path { fill: none; stroke: var(--aurora); stroke-width: 1.5; stroke-dasharray: 4 4; opacity: 0; transition: opacity 300ms; }
+.commodore-pool-ex-lines path.is-on { opacity: 1; animation: commodore-pool-dash 900ms linear infinite; }
+@keyframes commodore-pool-dash { to { stroke-dashoffset: -16; } }
+.commodore-pool-ex-caption { min-height: 54px; display: grid; gap: 2px; padding: 0 4px; animation: commodore-pool-cap-in 380ms var(--ease-spring); }
+@keyframes commodore-pool-cap-in { from { opacity: 0; transform: translateY(4px); } }
+.commodore-pool-ex-caption b { font-size: var(--t-sm); font-weight: var(--weight-bold); color: var(--text-primary); }
+.commodore-pool-ex-caption p { margin: 0; color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.5; }
+.commodore-pool-ex-nav { display: flex; align-items: center; gap: 6px; }
+.commodore-pool-ex-steps { display: flex; flex: 1; min-width: 0; gap: 4px; }
+.commodore-pool-ex-steps button {
+  position: relative; flex: 1; min-width: 0; height: 26px; padding: 0 4px; border: 0; border-radius: var(--radius-xs);
+  background: var(--control-wash); color: var(--text-tertiary); font-size: var(--t-2xs); font-weight: var(--weight-bold);
+  cursor: pointer; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.commodore-pool-ex-steps button[aria-current="step"] { background: var(--text-primary); color: var(--popover-face); }
+.commodore-pool-ex-steps button .bar { position: absolute; left: 0; bottom: 0; width: 0; height: 2px; background: var(--brass); }
+.commodore-pool-ex-steps button[aria-current="step"] .bar.run { animation: commodore-pool-bar var(--dur, 3000ms) linear forwards; }
+@keyframes commodore-pool-bar { to { width: 100%; } }
+.commodore-pool-ex-play {
+  flex: none; display: grid; place-items: center; width: 26px; height: 26px; padding: 0;
+  border: 0; border-radius: var(--radius-xs); background: var(--control-wash); color: var(--text-primary); cursor: pointer;
+}
+.commodore-pool-ex-play svg { width: 12px; height: 12px; fill: currentColor; }
 .commodore-settings-popover-kbd { flex: none; font-size: var(--t-2xs); color: var(--text-tertiary); padding: 1px 5px; border-radius: var(--radius-xs); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
 @container commodore-settings-pop (max-width: 440px) { .commodore-settings-popover-kbd { display: none; } }
 .commodore-settings-popover-nub {
@@ -1416,5 +1668,9 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   .commodore-settings-popover.is-placed, .commodore-settings-popover.is-placed .commodore-settings-popover-nub,
   .commodore-settings-popover-title-in,
   .commodore-composer-indicator.is-placed, .commodore-composer-check, .commodore-composer-row-line,
+  .commodore-pool-st, .commodore-pool-st.is-pop, .commodore-pool-help-btn::after, .commodore-pool-toast,
+  .commodore-pool-ex-gate, .commodore-pool-ex-judge, .commodore-pool-ex-card, .commodore-pool-ex-tile,
+  .commodore-pool-ex-tile .face, .commodore-pool-ex-tile .face::after, .commodore-pool-ex-lines path.is-on,
+  .commodore-pool-ex-caption, .commodore-pool-ex-steps button .bar.run,
   .objectives-commodore-conversation .commodore-person-inbox { transition: none; animation: none; }
 }
