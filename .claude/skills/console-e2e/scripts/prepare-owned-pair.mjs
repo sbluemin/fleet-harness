@@ -1,15 +1,16 @@
 #!/usr/bin/env node
 /**
- * Prepare or remove one owned home Console and one owned remote-role Console.
+ * Prepare or remove one owned home Console and one or two owned remote-role Consoles.
  * Composes isolated-env.mjs, issue-access-link.mjs, and add-remote-host.mjs.
  * Does not join, launch Desktop, or pass --canonical-console-dir.
  *
- *   node prepare-owned-pair.mjs prepare --worktree <abs> --home <abs> --remote <abs>
- *   node prepare-owned-pair.mjs stop --worktree <abs> --home <abs> --remote <abs>
+ *   node prepare-owned-pair.mjs prepare --worktree <abs> --home <abs> --remote <abs> [--remote <abs>]
+ *   node prepare-owned-pair.mjs stop --worktree <abs> --home <abs> --remote <abs> [--remote <abs>]
  *
  * prepare stdout is one JSON line
- * {homePort,remotePort,listenerOrigin,register,evidence}.
- * evidence "remote-host-register" is add-remote-host's helper result, not an
+ * {homePort,remotes:[{port,listenerOrigin,register}],evidence}.
+ * One --remote also keeps remotePort, listenerOrigin, and register.
+ * evidence "remote-host-register" is each add-remote-host helper result, not an
  * on-screen host, a certificate result, or /api/v1/local-consoles discovery.
  * Never prints link.txt or a lock token.
  *
@@ -141,24 +142,28 @@ function assertWorktree(dir) {
 function parseArgs(argv) {
   const mode = argv[0];
   if (mode !== 'prepare' && mode !== 'stop') {
-    fail('usage: node prepare-owned-pair.mjs prepare|stop --worktree <abs> --home <abs> --remote <abs>');
+    fail('usage: node prepare-owned-pair.mjs prepare|stop --worktree <abs> --home <abs> --remote <abs> [--remote <abs>]');
   }
-  const opts = {};
+  const opts = { remotes: [] };
   for (let i = 1; i < argv.length; i += 2) {
     const flag = argv[i];
     const value = argv[i + 1];
     if (!value) fail(`${flag} needs a value`);
     if (flag === '--worktree') opts.worktree = value;
-    else if (flag === '--home') opts.home = value;
-    else if (flag === '--remote') opts.remote = value;
+    else if (flag === '--home') {
+      if (opts.home) fail('--home is one directory');
+      opts.home = value;
+    } else if (flag === '--remote') opts.remotes.push(value);
     else fail(`unknown flag ${JSON.stringify(flag)}`);
   }
-  if (!opts.worktree || !opts.home || !opts.remote) fail('prepare and stop need --worktree, --home, and --remote');
+  if (!opts.worktree || !opts.home || opts.remotes.length < 1 || opts.remotes.length > 2) {
+    fail('prepare and stop need --worktree, one --home, and one or two --remote directories');
+  }
   const scripts = assertWorktree(opts.worktree);
   const home = assertE2eDir(opts.home);
-  const remote = assertE2eDir(opts.remote);
-  if (home === remote) fail('home and remote must be different directories');
-  return { mode, scripts, home, remote };
+  const remotes = opts.remotes.map((dir) => assertE2eDir(dir));
+  if (new Set([home, ...remotes]).size !== remotes.length + 1) fail('home and remote directories must be different');
+  return { mode, scripts, home, remotes };
 }
 
 function redact(text) {
@@ -304,41 +309,51 @@ function createRun(runDir) {
   }
 }
 
-async function prepare(scripts, home, remote) {
+async function registerRemote(scripts, bind, remote, homePort) {
+  const lock = await waitLock(remote);
+  const issued = runNode(scripts, [scripts.issue, remote, 'full'], { BIND: bind }, 60_000);
+  if (issued.status !== 0) fail(redact(issued.stderr || 'issue-access-link refused'));
+  const listenerOrigin = issued.stdout.match(/\(listener (https:\/\/[^)\s]+)\)/)?.[1] ?? null;
+  if (!listenerOrigin) fail('listener origin missing');
+  const registered = runNode(scripts, [scripts.add, remote, `http://127.0.0.1:${homePort}`], {}, 60_000);
+  let register;
+  try {
+    register = JSON.parse(registered.stdout);
+  } catch {
+    fail(redact(registered.stderr || 'add-remote-host returned no JSON'));
+  }
+  if (registered.status !== 0 || typeof register.status !== 'number' || register.status < 200 || register.status >= 300) {
+    fail(`add-remote-host status ${register.status ?? registered.status}`);
+  }
+  return { port: lock.port, listenerOrigin, register };
+}
+
+async function prepare(scripts, home, remotes) {
   checkPlan(scripts, home);
-  checkPlan(scripts, remote);
+  for (const remote of remotes) checkPlan(scripts, remote);
   const bind = lanAddress();
   const created = [];
   try {
     createRun(home);
     created.push(home);
-    createRun(remote);
-    created.push(remote);
+    for (const remote of remotes) {
+      createRun(remote);
+      created.push(remote);
+    }
     startServe(scripts, home);
-    startServe(scripts, remote);
+    for (const remote of remotes) startServe(scripts, remote);
     const homeLock = await waitLock(home);
-    const remoteLock = await waitLock(remote);
-    const issued = runNode(scripts, [scripts.issue, remote, 'full'], { BIND: bind }, 60_000);
-    if (issued.status !== 0) fail(redact(issued.stderr || 'issue-access-link refused'));
-    const listenerOrigin = issued.stdout.match(/\(listener (https:\/\/[^)\s]+)\)/)?.[1] ?? null;
-    if (!listenerOrigin) fail('listener origin missing');
-    const registered = runNode(scripts, [scripts.add, remote, `http://127.0.0.1:${homeLock.port}`], {}, 60_000);
-    let register;
-    try {
-      register = JSON.parse(registered.stdout);
-    } catch {
-      fail(redact(registered.stderr || 'add-remote-host returned no JSON'));
+    const registered = [];
+    for (const remote of remotes) registered.push(await registerRemote(scripts, bind, remote, homeLock.port));
+    const ports = [homeLock.port, ...registered.map((remote) => remote.port)];
+    if (new Set(ports).size !== ports.length) fail('console ports are not distinct');
+    const body = { homePort: homeLock.port, remotes: registered, evidence: 'remote-host-register' };
+    if (registered.length === 1) {
+      body.remotePort = registered[0].port;
+      body.listenerOrigin = registered[0].listenerOrigin;
+      body.register = registered[0].register;
     }
-    if (registered.status !== 0 || typeof register.status !== 'number' || register.status < 200 || register.status >= 300) {
-      fail(`add-remote-host status ${register.status ?? registered.status}`);
-    }
-    process.stdout.write(`${JSON.stringify({
-      homePort: homeLock.port,
-      remotePort: remoteLock.port,
-      listenerOrigin,
-      register,
-      evidence: 'remote-host-register',
-    })}\n`);
+    process.stdout.write(`${JSON.stringify(body)}\n`);
   } catch (error) {
     for (const dir of created) {
       try { stopOne(scripts, dir); } catch (stopError) {
@@ -350,13 +365,15 @@ async function prepare(scripts, home, remote) {
 }
 
 try {
-  const { mode, scripts, home, remote } = parseArgs(process.argv.slice(2));
+  const { mode, scripts, home, remotes } = parseArgs(process.argv.slice(2));
   if (mode === 'stop') {
     const homeResult = stopOne(scripts, home);
-    const remoteResult = stopOne(scripts, remote);
-    process.stdout.write(`${JSON.stringify({ home: homeResult, remote: remoteResult })}\n`);
+    const remoteResults = remotes.map((remote) => stopOne(scripts, remote));
+    const body = { home: homeResult, remotes: remoteResults };
+    if (remoteResults.length === 1) body.remote = remoteResults[0];
+    process.stdout.write(`${JSON.stringify(body)}\n`);
   } else {
-    await prepare(scripts, home, remote);
+    await prepare(scripts, home, remotes);
   }
 } catch (error) {
   const text = error?.pairFailure ? error.message : (error?.stack || String(error));
