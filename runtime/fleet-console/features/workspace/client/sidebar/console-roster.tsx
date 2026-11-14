@@ -8,6 +8,7 @@ import { commodoreAvatarKey, fallbackMongleBase, objectiveRecordAvatarKey, type 
 import { isIdentityTone } from "../../shared/identity-tones.js";
 import { MongleAvatar } from "../components/mongle-avatar.js";
 import { ClusterRowProgress } from "./side-bar-cluster-row.js";
+import { CommanderRowGlyphs, type CommanderRowGlyphTab } from "../commander-tab/commander-row-glyphs.js";
 
 /** 지금 문서의 우측 사이드바. 탭 이름이 계약(32자)을 넘으면 열림만 넘긴다. 통합 사이드바의 전환 명령도 같은 값을 싣는다. */
 export function currentRightPanel(): { readonly open: boolean; readonly tab?: string } {
@@ -88,7 +89,7 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
         {/* 로컬 목록(CommodoreCommanderList)과 같은 .commander-tab 래퍼 — 지휘관 행의 좌우 여백이 여기서 나온다. */}
         <div className="commander-tab">
           <ol className="commander-tab-list side-bar-group-chips">
-            {commanders.map((commander) => <CommanderRosterRow key={commander.id} commander={commander} blocked={blocked}
+            {commanders.map((commander) => <CommanderRosterRow key={commander.id} commodoreId={commodore.id} commander={commander} blocked={blocked}
               onOpen={(row) => open(commodore, commander.id, row)} />)}
           </ol>
           {moreCommanders > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(moreCommanders) })}</p> : null}
@@ -157,8 +158,10 @@ function RosterSections({ sections, unsectionedCollapsed, rows, render }: {
 }
 
 /** 원격 콘솔의 진행 중 지휘관 — 로컬 진행 행과 같은 아바타·제목·게이지. 조용함 문구는 적지 않고 얼굴만 idle이다. 통합 사이드바의 행에서도 그대로 쓴다. */
-export function CommanderRosterRow({ commander, blocked, onOpen, avatar }: {
+export function CommanderRosterRow({ commodoreId, commander, blocked, onOpen, avatar, onGlyph }: {
+  readonly commodoreId: string;
   readonly commander: ConsoleRosterCommander; readonly blocked: boolean; readonly onOpen: (row: HTMLElement) => void; readonly avatar?: ReactNode;
+  readonly onGlyph?: (tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
 }) {
   const t = useT();
   const run = commander.run === "working" ? t("chrome.consoles.run.working") : commander.run === "waiting" ? t("chrome.consoles.run.waiting") : null;
@@ -173,7 +176,7 @@ export function CommanderRosterRow({ commander, blocked, onOpen, avatar }: {
     <div className="workspace-cluster-row-body">
       <button type="button" className="side-bar-cluster-row-main" data-roster-commander={commander.id} aria-disabled={blocked || undefined}
         aria-label={[commander.title, progress ? `${progress.done}/${progress.total}` : "", run ?? ""].filter(Boolean).join(", ")}
-        title={commander.title} onClick={(event) => onOpen(event.currentTarget)}>
+        title={commander.title} onClick={(event) => { if (!blocked) onOpen(event.currentTarget); }}>
         <span className="side-bar-cluster-row-head"><span className="side-bar-cluster-row-title">{commander.title}</span></span>
       </button>
       {progress !== null || run !== null ? <span className="side-bar-cluster-row-line" aria-hidden="true">
@@ -181,5 +184,9 @@ export function CommanderRosterRow({ commander, blocked, onOpen, avatar }: {
         {run !== null ? <span className="side-bar-cluster-row-preview side-console-run">{run}</span> : null}
       </span> : null}
     </div>
+    {onGlyph ? <span className="side-bar-cluster-row-aside">
+      <CommanderRowGlyphs commodoreId={commodoreId} objectiveId={commander.id} title={commander.title}
+        onGlyphTab={(_id, tab, opener) => { if (!blocked) onGlyph(tab, opener); }} />
+    </span> : null}
   </li>;
 }
