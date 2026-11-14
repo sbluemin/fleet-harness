@@ -1,5 +1,5 @@
 import type { ConsoleCommodoreSummary } from "../shared/contracts/theaters.js";
-import { CONSOLE_ROSTER_MAX_COMMANDERS, CONSOLE_ROSTER_MAX_COMMODORES, CONSOLE_ROSTER_PATH, type ConsoleRosterCommodore, type ConsoleRosterCommander, type ConsoleRosterSummary } from "../../../protocol/desktop/console-section.js";
+import { CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_MAX_COMMANDERS, CONSOLE_ROSTER_MAX_COMMODORES, CONSOLE_ROSTER_PATH, type ConsoleObjectivePeek, type ConsoleRosterCommodore, type ConsoleRosterCommander, type ConsoleRosterSummary } from "../../../protocol/desktop/console-section.js";
 import { consoleRosterLook, consoleRosterPreview, consoleRosterSections, consoleRosterTitle } from "./roster.js";
 import { commodoreSidebarCommandSchema } from "../shared/contracts/sidebar-layout.js";
 import type { createCommodoreSidebar } from "./sidebar-layout.js";
@@ -65,6 +65,11 @@ export interface CommodoreRouteHooks {
   readonly create?: (alias: string) => string;
   readonly list?: () => readonly ConsoleCommodoreSummary[];
   readonly roster?: () => readonly ConsoleRosterCommodore[];
+  /**
+   * 진행 중 목표 하나의 표시 전용 스냅샷. 조립부가 목표 저장에서 읽어 계약 모양으로 접는다.
+   * 명부에 없는 id(완료·보관·없는 목표)는 null — 경로는 구분 없이 404로 답한다.
+   */
+  readonly objectivePeekOf?: (objectiveId: string) => ConsoleObjectivePeek | null;
   readonly sidebar?: ReturnType<typeof createCommodoreSidebar>;
   readonly setOrder?: (commodoreIds: readonly string[]) => void;
   /** 좌측 목록 한 줄의 전체 순서(사령관 + TF). 목록·순서·섹션 응답이 함께 내린다. */
@@ -87,6 +92,8 @@ export interface CommodoreRouteHooks {
 }
 
 const ids = z.string().min(1).max(128);
+/** 엿보기 쿼리 — id 하나. 깨진 쿼리도 구분 없이 404로 답한다. */
+const peekQuerySchema = z.object({ id: ids }).strict();
 /** 모든 요청은 사람의 언어를 실을 수 있다 — 목표 라우트와 같은 출처(브라우저 로케일)이고, Theater 의 사령관 기록 언어가 된다. */
 const commodoreRef = z.object({ commodoreId: ids, language: z.enum(["en", "ko"]).optional() });
 
@@ -235,10 +242,22 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       const placement = consoleRosterSections(hooks.sidebar?.read());
       const sectionIds = new Set(placement.sections?.map((section) => section.id) ?? []);
       const commodores = all.slice(0, CONSOLE_ROSTER_MAX_COMMODORES).map((row) => publishRosterCommodore(row, sectionIds));
-      const summary = (): ConsoleRosterSummary => ({ v: 1, commodores, more: all.length - commodores.length, ...placement });
+      // 엿보기 경로가 있으면 알린다. 없으면 옛 응답 모양을 유지한다.
+      const summary = (): ConsoleRosterSummary => ({ v: 1, commodores, more: all.length - commodores.length, ...placement, ...(hooks.objectivePeekOf ? { objectivePeek: true as const } : {}) });
       while (Buffer.byteLength(JSON.stringify(summary()), "utf8") > 16_384 && commodores.length > 0) commodores.pop();
       res.setHeader("Cache-Control", "no-store");
       ctx.host.http.writeJson(res, 200, summary());
+      return true;
+    } },
+    { name: CONSOLE_OBJECTIVE_PEEK_PATH.slice("/api/v1/".length), method: "GET", summary: "Read one in-progress objective as a display-only snapshot without opening a remote session.", handler: ({ req, res }) => {
+      if (req.method !== "GET" && req.method !== "HEAD") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+      // 명부에 없는 id·깨진 쿼리는 구분 없이 404 — 목록 밖의 목표를 id 추측으로 읽을 수 없다.
+      const parsed = peekQuerySchema.safeParse(Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams));
+      const snapshot = parsed.success ? hooks.objectivePeekOf?.(parsed.data.id) ?? null : null;
+      if (!snapshot) { ctx.host.http.writeJson(res, 404, { error: "not_found" }); return true; }
+      res.setHeader("Cache-Control", "no-store");
+      ctx.host.http.writeJson(res, 200, snapshot);
       return true;
     } },
     { name: "commodore/list", method: "POST", summary: "List Commodores independently of registered Theaters.", handler: json(z.object({}).strict(), () => ({ commodores: hooks.list?.() ?? [], order: hooks.order?.() ?? [], sidebarLayout: hooks.sidebar?.read() })) },

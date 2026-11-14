@@ -85,6 +85,11 @@ export interface CommodoreFeatureDeps {
    * 목표 저장은 조립부가 읽고, 여기에는 이미 계약 모양으로 접은 목록만 온다.
    */
   readonly rosterCommandersOf?: (commodoreId: string) => { readonly commanders: readonly ConsoleRosterCommander[]; readonly moreCommanders: number };
+  /**
+   * 진행 중 목표 하나의 표시 전용 스냅샷. 목표 저장은 조립부가 읽고, 계약 모양으로 접은 것만 온다.
+   * 명부에 없는 목표(완료·보관·없음)는 null — 경로는 구분 없이 404로 답한다.
+   */
+  readonly objectivePeekOf?: (objectiveId: string) => import("../../../protocol/desktop/console-section.js").ConsoleObjectivePeek | null;
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -314,6 +319,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, globalPluginReachChanged, deletion, assertWritable: ownership.assertWritable,
     theaterIds, summary, list: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map(summary),
     order: orderedIds,
+    objectivePeekOf: deps.objectivePeekOf,
     roster: () => {
       const layout = sidebar.read();
       const ids = orderedIds().filter((id) => entities.dirOf(id) !== null);
