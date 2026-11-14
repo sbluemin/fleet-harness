@@ -358,8 +358,8 @@ const peekUrl = (value: unknown): value is string => {
   try { return new URL(value).protocol === "https:"; } catch { return false; }
 };
 const peekLine = (value: unknown, max: number): value is string => typeof value === "string" && value.length > 0 && value.length <= max && !/[\u0000-\u001f\u007f]/u.test(value);
-/** 여러 문단 글 — `\n`(탭 포함)만 허용하고 나머지 제어 문자는 거부한다. 호스트가 `\r\n`을 `\n`으로 정규화해 낸다. */
-const peekProse = (value: unknown, max: number): value is string => typeof value === "string" && value.length <= max && !/[^\t\n -\u{10FFFF}]/u.test(value);
+/** 여러 문단 글 — `\n`만 허용하고 `\t`·DEL을 포함한 나머지 제어 문자는 거부한다. 호스트가 탭을 공백으로, `\r\n`을 `\n`으로 정규화해 낸다. */
+const peekProse = (value: unknown, max: number): value is string => typeof value === "string" && value.length <= max && !/[\u0000-\u0009\u000b-\u001f\u007f]/u.test(value);
 const peekCriterion = (value: unknown): boolean => object(value) && peekProse(value.text, 300) && typeof value.met === "boolean";
 const peekMission = (value: unknown): boolean => object(value) && peekLine(value.title, 64) && peekProse(value.text, 200)
   && typeof value.done === "boolean" && (value.assignee === null || peekLine(value.assignee, 40))
