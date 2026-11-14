@@ -226,10 +226,21 @@ function formatDueShort(date: string): string {
   return Number.isNaN(parsed.getTime()) ? date : `${parsed.getMonth() + 1}/${parsed.getDate()}`;
 }
 
+export interface ClusterRowPresentation {
+  readonly state: ObjectiveClusterRowGlyph | ObjectiveMarkVisual;
+  readonly avatar: ReactNode;
+  readonly activity: MongleActivity | null;
+  readonly toolUse: { readonly tool: ObjectiveUseTool; readonly actor: string | null } | null;
+}
+
 interface SideBarClusterRowProps {
+  /** 다른 Console의 facts. 지역 런타임·아바타 상점을 조회하지 않는다. */
+  readonly presentation?: ClusterRowPresentation;
   readonly item: SideBarRowItem;
   /** 뿌리가 선 줄을 누르면 그 지휘관으로 간다 — 사령관의 지휘관 목록은 그룹 대화로 전환한다. */
-  readonly onFocus: (objectiveId: string) => void;
+  readonly onFocus: (objectiveId: string, opener?: HTMLElement) => void;
+  /** 미전환 문서의 지연된 화면 열기를 편집 시작 순간 거둔다. */
+  readonly onRenameBegin?: () => void;
   readonly selected: boolean;
   /**
    * 우클릭·ContextMenu·Shift+F10·길게 누르기. 데스크톱 목록만 넘긴다.
@@ -264,17 +275,17 @@ export interface RowPopups {
  * 누군가 실제로 하는 일이 있으면 그것을 먼저 말하고 남은 작업만 돌 때에만 `background` 다. 아무도 계열을 싣지 않으면
  * (터미널 세션) null 이다.
  */
-export function useClusterRowActivity(item: SideBarRowItem): MongleActivity | null {
+export function useClusterRowActivity(item: SideBarRowItem, disabled = false): MongleActivity | null {
   const commanderId = item.anchor?.objectiveRecord?.id ?? item.layout.cluster.root;
   const memberIds = item.layout.cluster.members.filter((member) => !member.pending && member.objectiveId !== commanderId).map((member) => member.objectiveId);
-  const activities = useObjectiveMongleActivities([commanderId, ...memberIds]);
+  const activities = useObjectiveMongleActivities(disabled ? [] : [commanderId, ...memberIds]);
   return activities.find((activity) => activity !== null && activity !== "background") ?? activities.find((activity) => activity !== null) ?? null;
 }
 
 /** 데스크톱과 폰 지휘관 행이 같은 상태 문구를 읽는다. 일하는 줄은 `activity`(지금 하는 일의 계열)를 낱말로 말한다. */
-export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t: ReturnType<typeof useT>, activity: MongleActivity | null = null) {
+export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t: ReturnType<typeof useT>, activity: MongleActivity | null = null, override?: ObjectiveClusterRowGlyph | ObjectiveMarkVisual) {
   const { row, anchor } = item;
-  const state = rowGlyphState(item);
+  const state = override ?? rowGlyphState(item);
   // 사령관이 직접 묻는 줄(`commodore`)은 접힌 Objective 도 글리프도 없어 활동 축이 「종료」로 떨어진다 — 그 축 대신 사람의 답을 기다린다고 읽는다.
   const label = row.commodore && !anchor && item.fold.length === 0
     ? t("conversation.row.decision")
@@ -298,20 +309,22 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
   return { state, label, decisionNote, handlingStatus, conversationLine };
 }
 
-export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, settled = false, popups, rowGlyphs }: SideBarClusterRowProps) {
+export function SideBarClusterRow({ item, onFocus, onRenameBegin, selected, onContextMenu, settled = false, popups, rowGlyphs, presentation }: SideBarClusterRowProps) {
   const t = useT();
   const locale = useConsoleLocale();
   const registry = useFeatureRegistry();
   const { layout, row, anchor } = item;
   // 지휘관이나 구성원이 브라우저·컴퓨터를 쓰는 동안 상태 줄이 그 도구를 말한다.
-  const toolUse = useObjectivesToolUse(rowUseIds(item));
+  const localToolUse = useObjectivesToolUse(presentation ? [] : rowUseIds(item));
+  const toolUse = presentation ? presentation.toolUse : localToolUse;
   const toolUseLabel = toolUse ? rowToolUseLabel(item, toolUse, t) : null;
-  const activity = useClusterRowActivity(item);
-  const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, locale, t, activity);
+  const localActivity = useClusterRowActivity(item, presentation !== undefined);
+  const activity = presentation ? presentation.activity : localActivity;
+  const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, locale, t, activity, presentation?.state);
   const active = selected;
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
   const renameRow = row.rename;
-  const rename = useInlineRename({ currentTitle: layout.cluster.title, onCommit: (next) => renameRow?.(next) });
+  const rename = useInlineRename({ currentTitle: layout.cluster.title, onBegin: onRenameBegin, onCommit: (next) => renameRow?.(next) });
   // 메뉴의 「이름 바꾸기」가 여는 통로 — 뿌리가 선 줄은 그 Objective id, 뿌리 없는 줄(시작 전 목표)은 줄 id 로 듣는다.
   const actionId = anchor?.objectiveRecord?.id ?? layout.cluster.id;
   useEffect(() => {
@@ -389,7 +402,8 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
   const open = () => {
     const objectiveId = commanderObjectiveId(layout.cluster);
     if (objectiveId === null) { layout.cluster.open?.(); return; }
-    onFocus(objectiveId);
+    returnFocus()?.focus({ preventScroll: true });
+    onFocus(objectiveId, rowRef.current ?? undefined);
   };
   // 제목 글자 위 더블클릭은 이름 변경이다 — 제목 칸은 줄 폭으로 늘어나 있으므로 글자 자리로 판정한다. 이름 변경이면 dblclick 이
   // 버튼까지 번지지 않게 여기서 멈춘다. 터치의 더블 탭은 이름 변경으로 읽지 않는다.
@@ -400,7 +414,7 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
       rename.begin();
     }
     : undefined;
-  const titleNode = <span className="side-bar-cluster-row-title" onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
+  const titleNode = <span className="side-bar-cluster-row-title" onMouseDown={(event) => { if (event.button === 0 && pointerTypeRef.current !== "touch") event.preventDefault(); }} onDoubleClick={renameOnTitleDoubleClick}>{layout.cluster.title}</span>;
   const hasProgressButton = !!popups && !!progress && !settled;
   const statusLine = settled ? null : (
     <span className="side-bar-cluster-row-line" aria-hidden={hasProgressButton ? undefined : true}>
@@ -421,7 +435,15 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
       </span>
     </span>
   );
-  const mainButton = (
+  const mainContent = <>
+    <span className="side-bar-cluster-row-head">
+      {rename.renaming ? renameInput : titleNode}
+      {headMeta.map((part) => <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>)}
+    </span>
+    {hasProgressButton ? null : statusLine}
+  </>;
+  // 편집 입력은 버튼의 자식이 아니다. 두 번째 클릭의 기본 포커스 동작이 막 연 입력을 blur/확정하지 않게 한다.
+  const mainButton = rename.renaming ? <div className="side-bar-cluster-row-main">{mainContent}</div> : (
     <button
       type="button"
       className="side-bar-cluster-row-main"
@@ -438,13 +460,7 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
         }
       }}
     >
-      <span className="side-bar-cluster-row-head">
-        {rename.renaming ? renameInput : titleNode}
-        {headMeta.map((part) => (
-          <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>
-        ))}
-      </span>
-      {hasProgressButton ? null : statusLine}
+      {mainContent}
     </button>
   );
   return (
@@ -480,7 +496,7 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
           aria-label={popups.avatarLabel}
           onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); popups.onAvatar(event.currentTarget); }}
         >
-          <ClusterRowAvatar item={item} rowState={state} label={label} decorative />
+          {presentation?.avatar ?? <ClusterRowAvatar item={item} rowState={state} label={label} decorative />}
         </button>
       ) : state === "review" && row.review ? (
         <button
@@ -490,11 +506,11 @@ export function SideBarClusterRow({ item, onFocus, selected, onContextMenu, sett
           title={label}
           onClick={(event: MouseEvent<HTMLButtonElement>) => { event.stopPropagation(); row.review!(locale); }}
         >
-          <ClusterRowAvatar item={item} rowState={state} label={label} decorative />
+          {presentation?.avatar ?? <ClusterRowAvatar item={item} rowState={state} label={label} decorative />}
         </button>
       ) : (
         <span className="side-bar-cluster-row-glyph">
-          <ClusterRowAvatar item={item} rowState={state} label={label} />
+          {presentation?.avatar ?? <ClusterRowAvatar item={item} rowState={state} label={label} />}
         </span>
       )}
       {/* 본문과 상태 줄은 같은 두 행을 공유한다. 임무 단추는 본문 밖에서 상태 문구 바로 뒤에 선다. */}

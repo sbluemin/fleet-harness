@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
-import { ChevronGlyph, ConfirmDialog, MenuCheckGlyph } from "@fleet-console/ui/react";
+import { ChevronGlyph, ConfirmDialog } from "@fleet-console/ui/react";
 import {
   consoleSectionManageable,
   consoleObjectivePeekAllowed,
@@ -19,13 +19,14 @@ import { commodoreAvatarKey, fallbackMongleBase } from "../../shared/avatars.js"
 import { MongleAvatar } from "../components/mongle-avatar.js";
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
 import { openCommanderRowGlyphTab } from "../commander-tab/commander-popups.js";
+import { useRemoteSidebarDirectory } from "./remote-sidebar-store.js";
+import { RemoteSidebarRow } from "./remote-sidebar-row.js";
+import type { SidebarRemotePage } from "../../shared/sidebar-remote.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { useLongPress } from "../long-press.js";
-import { anchorElementAt, scrollMovesAnchor } from "../anchored-scroll-dismissal.js";
-import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import { CommanderRosterRow, currentRightPanel, openRosterObjectivePeek } from "./console-roster.js";
-import { MenuItem, SectionMenu, SectionNameInput } from "./commodore-sidebar-sections.js";
-import { PlusIcon, SectionMoveIcon, TrashIcon, PencilIcon } from "./sidebar-menu-icons.js";
+import { CommodoreSectionMoveMenu, MenuItem, SectionMenu, SectionNameInput } from "./commodore-sidebar-sections.js";
+import { PlusIcon, TrashIcon, PencilIcon } from "./sidebar-menu-icons.js";
 import { commodoreSectionDropFromPoint, theaterDropIndexFromPoint, type CommodoreSectionDrop } from "./objective-records-side-bar-hit-test.js";
 import type { UnifiedSidebarController } from "./unified-sidebar.js";
 import type { SidebarCommodore } from "../../../commodore/client/commodore-list.js";
@@ -105,7 +106,19 @@ interface UnifiedDragState {
  */
 export interface UnifiedStandingMenu {
   readonly renderItems: (row: UnifiedSidebarRow, onClose: () => void, opener: HTMLElement | null) => ReactNode;
-  readonly renderAliasEditor: (row: UnifiedSidebarRow) => ReactNode;
+  /** 배치는 셸이, 현재 Console의 얼굴·목록·상호작용은 원래 라이브 렌더러가 소유한다. */
+  readonly renderHeader: (row: UnifiedSidebarRow, frame: UnifiedStandingFrame) => ReactNode;
+  readonly renderCommanders: (row: UnifiedSidebarRow) => ReactNode;
+}
+
+export interface UnifiedStandingFrame {
+  readonly accessory?: ReactNode;
+  readonly dragging: boolean;
+  readonly dropTarget: boolean;
+  readonly dragOffsetY: number;
+  readonly menuTarget: boolean;
+  readonly onMenu: (anchor: DOMRect, opener: HTMLElement | null, atCursor: boolean, focusFirst?: boolean) => void;
+  readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, id: string) => void;
 }
 
 /**
@@ -127,6 +140,7 @@ export function UnifiedSidebarList({ consoles, list, unified, standingCommodores
   const t = useT();
   const compact = useSideBarState().compact;
   const layout = unified.layout;
+  const remoteDirectory = useRemoteSidebarDirectory(consoles);
   const [drag, setDrag] = useState<UnifiedDragState | null>(null);
   const dragRef = useRef<UnifiedDragState | null>(null);
   const orderedKeysRef = useRef<readonly string[]>([]);
@@ -138,12 +152,32 @@ export function UnifiedSidebarList({ consoles, list, unified, standingCommodores
   // 인증서가 바뀐 머신의 마지막 목록은 그리지 않는다 — 행이 없으면 맨 아래 알림 줄이 재검토로 이끈다. 배치는 layout.order에 남는다.
   const rows = useMemo(() => {
     const standingById = new Map(standingCommodores.map((commodore) => [commodore.commodoreId, commodore]));
-    return unified.rows.filter((row) => row.status !== "untrusted").map((row) => {
-      // 서 있는 콘솔의 이름은 비통합 행과 같은 목록이 소유한다 — 셸의 주기 명부는 다른 콘솔·첫 목록 수신 전의 표시만 맡는다.
+    const currentMachine = unified.machines.find((machine) => unifiedEntryForMachine(consoles.entries, machine)?.active);
+    const rows = unified.rows.filter((row) => row.status !== "untrusted" && (!unifiedEntryForRow(consoles.entries, row)?.active || standingById.has(row.commodoreId))).map((row) => {
       const commodore = unifiedEntryForRow(consoles.entries, row)?.active ? standingById.get(row.commodoreId) : null;
-      return commodore ? { ...row, name: commodore.label } : row;
+      return commodore ? { ...row, name: commodore.alias ?? commodore.label } : row;
     });
-  }, [unified.rows, consoles.entries, standingCommodores]);
+    // 현재 Console은 명부의 개수·바이트 상한이나 첫 폴링을 기다리지 않는다.
+    if (currentMachine) for (const commodore of standingCommodores) {
+      if (rows.some((row) => row.consoleId === currentMachine.consoleId && row.commodoreId === commodore.commodoreId)) continue;
+      rows.push({ consoleId: currentMachine.consoleId, commodoreId: commodore.commodoreId, name: commodore.alias ?? commodore.label,
+        home: currentMachine.home, entryId: currentMachine.entryId, machineLabel: currentMachine.label, machineAddress: currentMachine.address, status: currentMachine.status });
+    }
+    for (const machine of unified.machines) {
+      const entry = unifiedEntryForMachine(consoles.entries, machine);
+      const page = entry && remoteDirectory.get(entry.id);
+      if (!page) continue;
+      for (const commodore of page.commodores) {
+        const existing = rows.findIndex((row) => row.consoleId === machine.consoleId && row.commodoreId === commodore.id);
+        const row = { consoleId: machine.consoleId, commodoreId: commodore.id, name: commodore.name, home: machine.home,
+          entryId: machine.entryId, machineLabel: machine.label, machineAddress: machine.address, status: machine.status };
+        if (existing >= 0) rows[existing] = { ...rows[existing]!, ...row }; else rows.push(row);
+      }
+      // 완전한 페이지 목록이 온 뒤에만 삭제를 반영한다. 예전 명부의 40명 cap을 삭제로 해석하지 않는다.
+      for (let index = rows.length - 1; index >= 0; index--) if (rows[index]!.consoleId === machine.consoleId && !page.commodores.some((item) => item.id === rows[index]!.commodoreId)) rows.splice(index, 1);
+    }
+    return rows;
+  }, [unified.rows, unified.machines, consoles.entries, standingCommodores, remoteDirectory]);
   const byKey = useMemo(() => {
     const map = new Map<string, UnifiedSidebarRow>();
     for (const row of rows) map.set(unifiedRowKey(row), row);
@@ -266,13 +300,14 @@ export function UnifiedSidebarList({ consoles, list, unified, standingCommodores
     const index = orderedKeys.indexOf(key);
     const target = drag?.sectionDrop?.targetId === key;
     return <UnifiedCommodoreRow key={key} rowKey={key} row={row} consoles={consoles} list={list}
+      remotePage={remoteDirectory.get(unifiedEntryForRow(consoles.entries, row)?.id ?? "") ?? null}
       compact={compact} standingHome={standingHome} unified={unified} owningCommodoreId={owningCommodoreId} onOpenHomeCommodore={onOpenHomeCommodore} standingMenu={standingMenu}
       dragging={drag?.sourceKey === key && drag.dragging} dragOffsetY={drag?.sourceKey === key && drag.dragging ? drag.currentY - drag.startY : 0}
       dropBefore={drag !== null && drag.dragging && drag.sourceKey !== key
         && (flat ? !drag.sectionDrop && drag.dropIndex === index : target && drag.sectionDrop?.after !== true)}
       dropAfter={drag !== null && drag.dragging && drag.sourceKey !== key
         && (flat ? !drag.sectionDrop && index === orderedKeys.length - 1 && drag.dropIndex === orderedKeys.length : target && drag.sectionDrop?.after === true)}
-      onPointerDragStart={beginRowPointerDrag} />;
+      onCancelPendingDrag={() => updateDrag(null)} onPointerDragStart={beginRowPointerDrag} />;
   };
 
   return <>
@@ -368,9 +403,10 @@ function UnifiedSection({ sectionId, name, collapsed, count, dropTarget, unified
 }
 
 /** 통합 배치의 사령관 행 — 집 행에는 칩이 없고, 다른 머신 행에는 이름 바로 오른쪽에 머신 칩이 선다. */
-function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHome, unified, owningCommodoreId, onOpenHomeCommodore, standingMenu, dragging, dragOffsetY, dropBefore, dropAfter, onPointerDragStart }: {
+function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact, standingHome, unified, owningCommodoreId, onOpenHomeCommodore, standingMenu, dragging, dragOffsetY, dropBefore, dropAfter, onCancelPendingDrag, onPointerDragStart }: {
   readonly rowKey: string;
   readonly row: UnifiedSidebarRow;
+  readonly remotePage: SidebarRemotePage | null;
   readonly consoles: ConsoleSections;
   readonly list: () => HTMLElement | null;
   readonly compact: boolean;
@@ -383,6 +419,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
   readonly dragOffsetY: number;
   readonly dropBefore: boolean;
   readonly dropAfter: boolean;
+  readonly onCancelPendingDrag: () => void;
   readonly onPointerDragStart: (event: ReactPointerEvent<HTMLDivElement>, key: string) => void;
 }) {
   const t = useT();
@@ -400,6 +437,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const longPress = useLongPress<HTMLDivElement>((element) => openMenu(element.getBoundingClientRect(), returnFocusRef.current));
   const openMenu = (anchor: DOMRect, returnFocus: HTMLElement | null, focusFirst = false) => {
+    onCancelPendingDrag();
     returnFocusRef.current = returnFocus;
     setMenuFocusFirst(focusFirst);
     setMenu(anchor);
@@ -435,11 +473,30 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
   const tone = look.tone !== null && isIdentityTone(look.tone) ? look.tone : null;
   // 서 있는 콘솔의 행에만 기존 사령관 동작을 둔다 — 별칭 입력은 행 머리에, 나머지는 ⋯ 메뉴의 통합 이동 아래에.
   const standingRow = standingHere && standingMenu ? row : null;
-  const aliasEditor = standingRow && standingMenu ? standingMenu.renderAliasEditor(standingRow) : null;
   const previewText = row.preview && row.preview.length > 0 ? row.preview : t("sidebar.commodore.noConversation");
   const commanders = row.commanders ?? [];
   const moreCommanders = row.moreCommanders ?? 0;
   const dim = row.status === "unreachable";
+
+  if (standingRow && standingMenu) return <li className={`side-bar-theater-section${current ? " side-bar-theater-section--active" : ""}${dropBefore ? " side-bar-theater-section--drop-before" : ""}${dropAfter ? " side-bar-theater-section--drop-after" : ""}`}
+    data-theater-id={rowKey} data-commodore-id={row.commodoreId}>
+    {standingMenu.renderHeader(row, { accessory: !row.home && !compact ? <UnifiedMachineChip row={row} onOpenCard={setChipCard} /> : null, dragging, dropTarget: dropBefore, dragOffsetY, menuTarget: menu !== null,
+      onMenu: (anchor, opener, _atCursor, focusFirst) => openMenu(anchor, opener, focusFirst),
+      onPointerDragStart: (event) => onPointerDragStart(event, rowKey) })}
+    {!compact ? standingMenu.renderCommanders(row) : null}
+    {menu ? <UnifiedRowMenu anchor={menu} focusFirst={menuFocusFirst} opener={returnFocusRef.current} label={row.name} unified={unified} rowKey={rowKey} onClose={closeMenu} standingRow={standingRow} standingMenu={standingMenu} /> : null}
+    {chipCard && !row.home ? <UnifiedMachineCard anchor={chipCard} row={row} entry={entry} consoles={consoles} onClose={() => setChipCard(null)} /> : null}
+  </li>;
+
+  const remoteSummary = remotePage?.commodores.find((item) => item.id === row.commodoreId);
+  if (!homeHere && entry && remotePage && remoteSummary) return <li
+    className={`side-bar-theater-section${dropBefore ? " side-bar-theater-section--drop-before" : ""}${dropAfter ? " side-bar-theater-section--drop-after" : ""}${dim ? " is-unified-dim" : ""}`}
+    data-theater-id={rowKey} data-commodore-id={row.commodoreId}>
+    <RemoteSidebarRow row={row} console={entry.id} summary={remoteSummary} directory={remotePage} compact={compact}
+      frame={{ accessory: !row.home && !compact ? <UnifiedMachineChip row={row} onOpenCard={setChipCard} /> : null, dragging, dropTarget: dropBefore, dragOffsetY, menuTarget: false, onMenu: onCancelPendingDrag, onPointerDragStart: (event) => onPointerDragStart(event, rowKey) }}
+      onOpen={open} placement={(close) => <UnifiedPlacementMenu unified={unified} rowKey={rowKey} onClose={close} />} />
+    {chipCard && !row.home ? <UnifiedMachineCard anchor={chipCard} row={row} entry={entry} consoles={consoles} onClose={() => setChipCard(null)} /> : null}
+  </li>;
 
   if (compact) {
     return <li className={`side-bar-theater-section${current ? " side-bar-theater-section--active" : ""}${dim ? " is-unified-dim" : ""}`} data-theater-id={rowKey} data-commodore-id={row.commodoreId}>
@@ -451,7 +508,6 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
           <MongleAvatar base={look.base} tone={tone} role="commodore" state="idle" size={32} label={row.name} decorative />
         </span>
       </button>
-      {aliasEditor}
       {menu ? <UnifiedRowMenu anchor={menu} focusFirst={menuFocusFirst} opener={null} label={row.name} unified={unified} rowKey={rowKey} onClose={closeMenu} standingRow={standingRow} standingMenu={standingMenu} /> : null}
     </li>;
   }
@@ -459,11 +515,12 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
   return <li className={`side-bar-theater-section${current ? " side-bar-theater-section--active" : ""}${dropBefore ? " side-bar-theater-section--drop-before" : ""}${dropAfter ? " side-bar-theater-section--drop-after" : ""}${dim ? " is-unified-dim" : ""}`}
     data-theater-id={rowKey} data-commodore-id={row.commodoreId}>
     <div
-      className={`side-bar-theater-header is-card unified-row-head${dragging ? " side-bar-theater-header--dragging" : ""}`}
+      className={`side-bar-theater-header side-bar-theater-header--split is-card unified-row-head${dragging ? " side-bar-theater-header--dragging" : ""}`}
       style={dragging ? ({ "--drag-dy": `${Math.round(dragOffsetY)}px` } as CSSProperties) : undefined}
       onContextMenu={(event) => {
         if (event.target instanceof Element && event.target.closest(".unified-machine-chip, .unified-row-menu-trigger, .commander-row-glyph")) return;
         event.preventDefault();
+        event.stopPropagation();
         if (longPress.claimContextMenu(event)) return;
         openMenu(new DOMRect(event.clientX, event.clientY, 0, 0), null);
       }}
@@ -476,10 +533,10 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
       onPointerUp={() => { longPress.onPointerUp(); }}
       onPointerCancel={longPress.onPointerCancel}
     >
-      {/* 별칭 편집 중에는 머리 글자 자리에 입력이 선다 — 비통합 분기와 같은 입력이다. */}
-      {aliasEditor ?? <button
+      <button
         type="button"
         className="side-bar-theater-activate"
+        aria-label={row.name}
         aria-disabled={blocked && !homeHere || undefined}
         title={row.home ? row.name : `${row.name} · ${row.machineLabel}`}
         onClick={(event) => open(null, event.currentTarget)}
@@ -488,18 +545,17 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, compact, standingHom
           event.preventDefault();
           openMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget, true);
         }}
-      >
-        <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
-          <MongleAvatar base={look.base} tone={tone} role="commodore" state="idle" size={32} label={row.name} decorative />
+      />
+      <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
+        <MongleAvatar base={look.base} tone={tone} role="commodore" state="idle" size={32} label={row.name} decorative />
+      </span>
+      <span className="side-bar-theater-text">
+        <span className="unified-row-line">
+          <span className="side-bar-theater-name" onClick={(event) => open(null, event.currentTarget.closest<HTMLElement>(".side-bar-theater-header") ?? event.currentTarget)}>{row.name}</span>
+          {!row.home ? <UnifiedMachineChip row={row} onOpenCard={setChipCard} /> : null}
         </span>
-        <span className="side-bar-theater-text">
-          <span className="unified-row-line">
-            <span className="side-bar-theater-name">{row.name}</span>
-            {row.home ? null : <UnifiedMachineChip row={row} onOpenCard={(anchor) => setChipCard(anchor)} />}
-          </span>
-          <span className="side-bar-theater-sub">{previewText}</span>
-        </span>
-      </button>}
+        <span className="side-bar-theater-sub">{previewText}</span>
+      </span>
       <button type="button" className="unified-row-menu-trigger" aria-label={t("sidebar.commodoreSection.actions", { name: row.name })}
         title={t("sidebar.commodoreSection.actions", { name: row.name })}
         onClick={(event) => openMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget, event.detail === 0)}>
@@ -597,59 +653,23 @@ function UnifiedRowMenu({ anchor, focusFirst, opener, label, unified, rowKey, on
   readonly standingMenu?: UnifiedStandingMenu | null;
 }) {
   const t = useT();
-  const layout = unified.layout;
-  const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ left: 0, top: 0 });
-  const submenu = useRef<HTMLDivElement>(null);
-  const id = useRef(`unified-move-${Math.random().toString(36).slice(2)}`).current;
-  useContextMenuKeyboard({ open, menuSelector: `[data-unified-submenu="${id}"]`, returnFocusRef: { current: opener }, focusFirst, onEscape: () => { setOpen(false); opener?.focus(); } });
-  useLayoutEffect(() => {
-    if (!open || !submenu.current) return;
-    const rect = submenu.current.getBoundingClientRect();
-    setPosition({ left: Math.max(8, anchor.left + 180 > window.innerWidth ? anchor.left - rect.width : anchor.right), top: Math.max(8, Math.min(anchor.top, window.innerHeight - rect.height - 8)) });
-  }, [open, anchor]);
-  useEffect(() => {
-    if (!open) return;
-    const element = anchorElementAt(anchor, null);
-    const onScroll = (event: Event) => { if (scrollMovesAnchor(event, anchor, element)) { setOpen(false); onClose(); } };
-    window.addEventListener("scroll", onScroll, true);
-    return () => window.removeEventListener("scroll", onScroll, true);
-  }, [open, anchor, onClose]);
-
-  const row = parseUnifiedRowKey(rowKey);
-  const sections: readonly { readonly id: string | null; readonly name: string }[] = layout
-    ? [...layout.sections.map((section) => ({ id: section.id as string | null, name: section.name })), { id: null, name: t("sidebar.commodoreSection.none") }]
-    : [{ id: null, name: t("sidebar.commodoreSection.none") }];
-  const current = layout?.membership.find((item) => unifiedRowKey(item) === rowKey)?.sectionId ?? null;
-  const move = (sectionId: string | null) => {
-    onClose();
-    if (row) unified.run({ op: "move", row, sectionId });
-  };
-  return <SectionMenu anchor={anchor} focusFirst={focusFirst} opener={opener} label={t("sidebar.commodoreSection.actions", { name: label })} onClose={() => { setOpen(false); onClose(); }}>
-    <div className="workspace-commodore-section-move" onPointerEnter={() => { setOpen(true); }} onPointerLeave={() => setOpen(false)}>
-      <button type="button" role="menuitem" className="theater-menu-item" aria-haspopup="menu" aria-expanded={open}
-        onClick={() => setOpen(true)}
-        onKeyDown={(event) => { if (event.key === "ArrowRight") { event.preventDefault(); event.stopPropagation(); setOpen(true); } }}>
-        <span className="theater-menu-check" aria-hidden="true"><SectionMoveIcon /></span>
-        <span className="theater-menu-label">{t("sidebar.commodoreSection.move")}</span><ChevronGlyph direction="right" />
-      </button>
-      {open ? <div ref={submenu} data-unified-submenu={id} className="theater-menu workspace-commodore-section-submenu" role="menu"
-        aria-label={t("sidebar.commodoreSection.move")} style={{ position: "fixed", ...position }}
-        onKeyDown={(event) => { if (event.key === "ArrowLeft") { event.preventDefault(); event.stopPropagation(); setOpen(false); } }}>
-        {sections.map((section) => <button type="button" role="menuitemradio" aria-checked={current === section.id} key={section.id ?? "none"}
-          className="theater-menu-item" onClick={() => move(section.id)}>
-          <span className="theater-menu-check" aria-hidden="true">{current === section.id ? <MenuCheckGlyph /> : null}</span>
-          <span className="theater-menu-label">{section.name}</span>
-        </button>)}
-        <div className="theater-menu-divider" role="separator" />
-        <MenuItem icon={<PlusIcon />} onClick={() => {
-          onClose();
-          if (row) unified.run({ op: "create", name: t("sidebar.commodoreSection.defaultName"), row });
-        }}>{t("sidebar.commodoreSection.create")}</MenuItem>
-      </div> : null}
-    </div>
+  return <SectionMenu anchor={anchor} focusFirst={focusFirst} opener={opener} label={t("sidebar.commodoreSection.actions", { name: label })} onClose={onClose}>
+    <UnifiedPlacementMenu unified={unified} rowKey={rowKey} onClose={onClose} />
     {standingRow && standingMenu ? standingMenu.renderItems(standingRow, onClose, opener) : null}
   </SectionMenu>;
+}
+
+/** 입력·초점은 기존 섹션 이동 메뉴, 배치만 창의 통합 저장소로 보낸다. */
+function UnifiedPlacementMenu({ unified, rowKey, onClose }: { readonly unified: UnifiedSidebarController; readonly rowKey: string; readonly onClose: () => void }) {
+  const t = useT();
+  const row = parseUnifiedRowKey(rowKey);
+  const layout = unified.layout;
+  if (!row || !layout) return null;
+  return <CommodoreSectionMoveMenu rowId={rowKey} onClose={onClose} controller={{
+    layout: { sections: layout.sections, membership: Object.fromEntries(layout.membership.map((item) => [unifiedRowKey(item), item.sectionId])) }, busy: false,
+    run: ({ sectionId }) => unified.run({ op: "move", row, sectionId }),
+    create: () => unified.run({ op: "create", name: t("sidebar.commodoreSection.defaultName"), row }),
+  }} />;
 }
 
 /**

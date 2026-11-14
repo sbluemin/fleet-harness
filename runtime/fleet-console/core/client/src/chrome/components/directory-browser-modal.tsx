@@ -12,6 +12,8 @@ interface DirectoryBrowserModalProps {
   readonly open: boolean;
   readonly onCancel: () => void;
   readonly onConfirm: (path: string) => void;
+  /** 폴더의 소유 Console이 읽는다. 호출자는 인증된 원격 목록 포트를 주입할 수 있다. */
+  readonly listFolders?: typeof listTheaterFolders;
 }
 
 // 경로 한 마디 = breadcrumb 항로 위의 한 구역. path는 그 마디까지 누적된 절대 경로다.
@@ -22,7 +24,7 @@ interface BreadcrumbSegment {
 
 const LIST_ID = "directory-browser-sectors";
 
-export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBrowserModalProps) {
+export function DirectoryBrowserModal({ open, onCancel, onConfirm, listFolders = listTheaterFolders }: DirectoryBrowserModalProps) {
   const t = useT();
   const [listing, setListing] = useState<TheaterFolderListResponse | null>(null);
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
@@ -42,7 +44,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
     setQuery("");
     setHighlight(0);
     try {
-      const next = await listTheaterFolders(path, signal);
+      const next = await listFolders(path, signal);
       setListing(next);
     } catch (loadError) {
       if (loadError instanceof DOMException && loadError.name === "AbortError") return;

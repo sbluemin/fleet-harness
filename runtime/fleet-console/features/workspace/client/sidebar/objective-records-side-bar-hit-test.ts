@@ -61,12 +61,15 @@ export function reorderTheaterIds(
  */
 export function pointOnText(element: Element, clientX: number, clientY: number): boolean {
   const box = element.getBoundingClientRect();
+  if (clientY < box.top || clientY > box.bottom) return false;
   const range = element.ownerDocument.createRange();
   range.selectNodeContents(element);
   for (const rect of Array.from(range.getClientRects())) {
     const left = Math.max(rect.left, box.left);
     const right = Math.min(rect.right, box.right);
-    if (clientX >= left && clientX <= right && clientY >= Math.max(rect.top, box.top) && clientY <= Math.min(rect.bottom, box.bottom)) return true;
+    // 세로 hit는 제목의 line box다. 폰트의 leading/기준선 차이로 글자 범위가 치우쳐도 제목 중앙 클릭을 버리지 않는다.
+    // 가로는 실제 글자 폭만 받으므로 flex로 늘어난 빈 제목 칸이나 잘린 글자 바깥은 여전히 편집하지 않는다.
+    if (right > left && rect.bottom >= box.top && rect.top <= box.bottom && clientX >= left && clientX <= right) return true;
   }
   return false;
 }

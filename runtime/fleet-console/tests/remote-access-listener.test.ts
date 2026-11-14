@@ -165,9 +165,45 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     }
     expect((await remoteRequest(fixture, "HEAD", `${CONSOLE_OBJECTIVE_PEEK_PATH}?id=missing`, undefined, paired)).status).toBe(404);
     expect(snapshot()).toEqual(peekBefore);
+    // 확장 사이드바도 화면 세션이 아니다. full은 미전환 쓰기, monitoring은 표시만 허용한다.
+    const sidebar = "/api/v1/console-sidebar/";
+    const unchanged = snapshot();
+    const devicesBeforeSidebar = (await readRemoteStatus(fixture)).devices;
+    const directory = await remoteRequest(fixture, "GET", `${sidebar}runtime`, undefined, paired);
+    expect(directory.status).toBe(200);
+    expect(JSON.parse(directory.body)).toMatchObject({ v: 1, writable: true, commodores: [{ id: commodoreId, name: "명부 사령관" }] });
+    const monitorDirectory = await remoteRequest(fixture, "GET", `${sidebar}runtime`, undefined, monitoring);
+    expect(monitorDirectory.status).toBe(200);
+    expect(JSON.parse(monitorDirectory.body).writable).toBe(false);
+    const edit = JSON.stringify({ commodoreId, alias: "미전환 편집" });
+    expect((await remoteRequest(fixture, "POST", `${sidebar}alias`, edit, monitoring)).status).toBe(401);
+    expect((await remoteRequest(fixture, "POST", `${sidebar}alias`, edit, paired, { Origin: "https://foreign.invalid" })).status).toBe(403);
+    expect((await remoteRequest(fixture, "POST", `${sidebar}alias`, edit, paired)).status).toBe(200);
+    expect(JSON.parse((await remoteRequest(fixture, "GET", `${sidebar}runtime`, undefined, paired)).body).commodores[0].name).toBe("미전환 편집");
+    expect((await remoteRequest(fixture, "GET", `${sidebar}runtime`)).status).toBe(401);
+    expect((await remoteRequest(fixture, "POST", `${sidebar}saveSettings`, JSON.stringify({ remoteAccess: { enabled: false } }), paired)).status).toBe(400);
+    // 전체 목록은 예전 40명 cap과 한 페이지 20명을 넘겨도 끝까지 읽힌다. 목표 생성은 허용 경로가 아니다.
+    expect((await remoteRequest(fixture, "POST", `${sidebar}create`, JSON.stringify({ commodoreId, title: "금지된 새 목표" }), paired)).status).toBe(401);
+    const ownerIds = [commodoreId];
+    for (let index = 0; index < 40; index++) {
+      const created = await remoteRequest(fixture, "POST", `${sidebar}createCommodore`, JSON.stringify({ alias: `목록 ${index}` }), paired);
+      expect(created.status).toBe(200);
+      ownerIds.push(JSON.parse(created.body).commodoreId);
+    }
+    const listed: string[] = [];
+    let offset: number | null = 0;
+    while (offset !== null) {
+      const page = JSON.parse((await remoteRequest(fixture, "GET", `${sidebar}runtime?offset=${offset}`, undefined, paired)).body);
+      listed.push(...page.commodores.map((owner: { id: string }) => owner.id));
+      offset = page.next;
+    }
+    expect(listed.sort()).toEqual([...ownerIds].sort());
+    expect(snapshot()).toEqual(unchanged);
+    expect((await readRemoteStatus(fixture)).devices).toEqual(devicesBeforeSidebar);
     const device = (await readRemoteStatus(fixture)).devices.find((entry) => entry.device === "roster-device")!;
     expect(await revoke(fixture, `paired-devices/${device.id}`)).toBe(204);
     expect((await remoteRequest(fixture, "GET", CONSOLE_ROSTER_PATH, undefined, paired)).status).toBe(401);
+    expect((await remoteRequest(fixture, "GET", `${sidebar}runtime`, undefined, paired)).status).toBe(401);
     expect(snapshot()).toMatchObject({ full: false, monitoring: false });
   });
 

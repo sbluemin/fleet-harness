@@ -1,5 +1,6 @@
 import { inputIssues } from "../../execution/shared/tools.js";
 import fs from "node:fs";
+import { createHash } from "node:crypto";
 import type http from "node:http";
 import path from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -15,7 +16,7 @@ import { MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH } from "../../execution/host/agent/la
 import { createLaunchService, type LaunchService } from "./launch.js";
 import type { PrStatusService } from "./pr-status.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
-import { SHARED_FOLDER_LIMITS, type SharedFolderEntry, type SharedFolderKind, type SharedFolderList } from "../shared/shared-folder.js";
+import { SHARED_FOLDER_LIMITS, type SharedFolderEntry, type SharedFolderKind, type SharedFolderList, type SharedFileChunk } from "../shared/shared-folder.js";
 import { ObjectiveArchiveError } from "../../workspace/host/objective-archive-storage.js";
 import { decisionAnswersSchema, followupSelectionSchema, criterionAddSchema, criterionPatchSchema, MAX_CONTEXT, memberAddSchema, memberPatchSchema, patchObjectiveSchema, missionAddSchema, missionPatchSchema, PERSON_HOLD_TARGETS, type Objective } from "../shared/types.js";
 
@@ -183,7 +184,7 @@ const openSharedFile = async (root: string, raw: string) => {
     const after = await handle.stat({ bigint: true });
     const named = await inspectShared(root, segments);
     if (!sameSharedFile(opened, after) || !sameSharedFile(after, named.stat)) throw new UnknownSharedFile();
-    return { handle, size, head, whole, name: segments[segments.length - 1]! };
+    return { handle, size, head, whole, stat: opened, name: segments[segments.length - 1]! };
   } catch (error) {
     await handle.close();
     throw error;
@@ -291,6 +292,41 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
       const root = store.sharedPath(found.commodoreId, found.id);
       ctx.http.writeJson(res, 200, root ? await listSharedFolder(root) : { entries: [], truncated: false } satisfies SharedFolderList);
     } catch (error) { fail(res, error); }
+    return true;
+  };
+
+  // 큰 공유 파일도 같은 containment를 지난 bounded 조각으로 읽는다. 세대가 바뀌면 이어 붙이지 않는다.
+  const sharedChunk: RouteHandler = async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.security.isTerminalAuthorized(req)) { ctx.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const params = query(req);
+    const raw = params.get("path") ?? "";
+    const offset = Number(params.get("offset") ?? "0");
+    if (isUnsafeSharedPath(raw) || !Number.isSafeInteger(offset) || offset < 0) { ctx.http.writeJson(res, 400, { error: "unsafe_path" }); return true; }
+    try {
+      const found = store.find(params.get("objectiveId") ?? "");
+      const root = found ? store.sharedPath(found.commodoreId, found.id) : null;
+      if (!root) { ctx.http.writeJson(res, 404, { error: "unknown_shared_file" }); return true; }
+      const file = await openSharedFile(root, raw);
+      try {
+        const version = createHash("sha256").update([file.stat.dev, file.stat.ino, file.stat.size, file.stat.mtimeNs, file.stat.ctimeNs].join(":")).digest("hex");
+        if ((offset > 0 && params.get("version") !== version) || (params.has("version") && params.get("version") !== version)) { ctx.http.writeJson(res, 409, { error: "shared_file_changed" }); return true; }
+        if (offset > file.size) { ctx.http.writeJson(res, 416, { error: "invalid_offset" }); return true; }
+        const data = Buffer.alloc(Math.min(768 * 1024, file.size - offset));
+        let read = 0;
+        while (read < data.length) {
+          const next = await file.handle.read(data, read, data.length - read, offset + read);
+          if (next.bytesRead === 0) throw new UnknownSharedFile();
+          read += next.bytesRead;
+        }
+        const after = await file.handle.stat({ bigint: true });
+        const named = await inspectShared(root, raw.split("/"));
+        if (!sameSharedFile(file.stat, after) || !sameSharedFile(after, named.stat)) throw new UnknownSharedFile();
+        const type = imageInfo(file.head)?.type ?? (file.whole && isSharedText(file.head) ? "text/plain" : "application/octet-stream");
+        res.setHeader("Cache-Control", "private, no-store");
+        ctx.http.writeJson(res, 200, { offset, next: offset + read < file.size ? offset + read : null, size: file.size, version, type, data: data.toString("base64") } satisfies SharedFileChunk);
+      } finally { await file.handle.close(); }
+    } catch (error) { if (error instanceof UnknownSharedFile) ctx.http.writeJson(res, 404, { error: "unknown_shared_file" }); else fail(res, error); }
     return true;
   };
 
@@ -416,6 +452,7 @@ export function createObjectiveRoutes(ctx: ObjectivesFeatureDeps, store: Objecti
     { name: "attachment/add", method: "POST", summary: "Attach an image to an objective's brief (raw PNG/JPEG/WebP/GIF body, up to 10 MB, 20 per objective).", handler: attachmentAdd },
     { name: "attachment/file", method: "GET", summary: "Read an attached image by id.", handler: attachmentFile },
     { name: "shared/list", method: "GET", summary: "Read an objective's shared folder file list (read-only).", handler: sharedList },
+    { name: "shared/chunk", method: "GET", summary: "Read a bounded generation-checked chunk of a shared file.", handler: sharedChunk },
     { name: "shared/file", method: "GET", summary: "Read one file from an objective's shared folder by relative path (read-only).", handler: sharedFile },
     { name: "attachment/remove", method: "POST", summary: "Remove an image from an objective's brief.", handler: json(objectiveRef.extend({ attachmentId: ids }), steerable(() => true, ({ objectiveId, attachmentId }) => edited(objectiveId, ["note"], () => store.attachmentRemove(objectiveId, attachmentId)))) },
   ];

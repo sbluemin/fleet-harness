@@ -18,7 +18,7 @@ import { useObjectiveTheater } from "../../../commodore/client/board.js";
 import { isNotStartedRow } from "./commander-rows.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
 import { toggleFold, useCommanderFolds, type CommanderFold } from "./commander-folds.js";
-import { useCommanderRows } from "./commander-rows.js";
+import { useCommanderRows, type CommanderSection } from "./commander-rows.js";
 import { CommanderRowGlyphs, type CommanderRowGlyphTab } from "./commander-row-glyphs.js";
 import "./commander-list.css";
 
@@ -143,31 +143,37 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
           })}
         </>
       ) : (
-        <div className="commander-tab-groups">
-          {listSections.map((group) => {
-            // 시작 전·완료 통합 목록은 구분 머리(접기 단추) 아래에 선다. 진행 중 행이 없어도 머리는 선다.
-            const foldId = group.settled === true ? group.fold : null;
-            const collapsed = foldId !== null && folds[foldId];
-            const listId = `${groupsId}-${group.id}`;
-            return <section key={group.id}>
-            {group.settled === true
-              ? <button type="button" className="commander-tab-settled-head" aria-expanded={!collapsed} aria-controls={listId}
-                  aria-label={settledToggleLabel(t, collapsed, group.freshCount ?? 0, group.doneCount ?? 0)}
-                  onClick={() => { if (foldId !== null) toggleFold(foldId); }}>
-                  <span className="commander-tab-settled-rule" aria-hidden="true" />
-                  {collapsed ? <SettledCounts fresh={group.freshCount ?? 0} done={group.doneCount ?? 0} /> : null}
-                  <ChevronGlyph direction={collapsed ? "right" : "down"} />
-                </button>
-              : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
-            <ol id={group.settled === true ? listId : undefined} className="commander-tab-list side-bar-group-chips" hidden={collapsed}>
-              {renderItems(group.rows, group.settled === true)}
-            </ol>
-          </section>;
-          })}
-        </div>
+        <CommanderSidebarSections sections={listSections} folds={folds} onToggle={toggleFold} renderItems={renderItems} />
       )}
     </section>
   );
+}
+
+/** 같은 Console과 미전환 Console이 같은 그룹·접힘·개수 머리를 쓴다. 데이터와 쓰기는 명시적 입력이다. */
+export function CommanderSidebarSections({ sections, folds, onToggle, renderItems }: {
+  readonly sections: readonly CommanderSection[];
+  readonly folds: Readonly<Record<CommanderFold, boolean>>;
+  readonly onToggle: (id: CommanderFold) => void;
+  readonly renderItems: (rows: readonly SideBarRowItem[], settled: boolean) => ReactNode;
+}) {
+  const t = useT();
+  const groupsId = useId();
+  return <div className="commander-tab-groups">{sections.map((group) => {
+    const foldId = group.settled === true ? group.fold : null;
+    const collapsed = foldId !== null && folds[foldId];
+    const listId = `${groupsId}-${group.id}`;
+    return <section key={group.id}>
+      {group.settled === true
+        ? <button type="button" className="commander-tab-settled-head" aria-expanded={!collapsed} aria-controls={listId}
+            aria-label={settledToggleLabel(t, collapsed, group.freshCount ?? 0, group.doneCount ?? 0)} onClick={() => { if (foldId !== null) onToggle(foldId); }}>
+            <span className="commander-tab-settled-rule" aria-hidden="true" />
+            {collapsed ? <SettledCounts fresh={group.freshCount ?? 0} done={group.doneCount ?? 0} /> : null}
+            <ChevronGlyph direction={collapsed ? "right" : "down"} />
+          </button>
+        : group.title !== null ? <h3 className="commander-tab-group-title">{group.title}<span>{group.rows.length}</span></h3> : null}
+      <ol id={group.settled === true ? listId : undefined} className="commander-tab-list side-bar-group-chips" hidden={collapsed}>{renderItems(group.rows, group.settled === true)}</ol>
+    </section>;
+  })}</div>;
 }
 
 export function useCommanderOwner(commodoreId: string) {
@@ -195,7 +201,7 @@ export function CommanderListOwner({ commodoreId, selected, onSelect }: { readon
  * `glyph` 메뉴는 호버로 열리고 접히는 독·스크롤하는 사이드바 목록 밖, 문서 최상위에 독의 오른쪽 아래를 닻으로 고정해 그린다 —
  * 독의 :hover·:focus-within·넘침·전환이 항목을 누르는 중에 판을 움직이지 못하게 한다.
  */
-export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenChange }: { readonly preference: SortPreference; readonly nameOnly?: boolean; readonly glyph?: boolean; readonly onOpenChange?: (open: boolean) => void }) {
+export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenChange, onChange = setSort }: { readonly preference: SortPreference; readonly nameOnly?: boolean; readonly glyph?: boolean; readonly onOpenChange?: (open: boolean) => void; readonly onChange?: (preference: SortPreference) => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const menuId = useId();
@@ -258,7 +264,7 @@ export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenCh
     const fallback = items[index + step] ?? items[step > 0 ? 0 : items.length - 1];
     fallback?.focus({ preventScroll: true });
   };
-  const pick = (key: SortPreference["key"], direction: SortDirection) => { setSort({ ...preference, key, direction }); close(); };
+  const pick = (key: SortPreference["key"], direction: SortDirection) => { onChange({ ...preference, key, direction }); close(); };
   const place = (node: ReactNode) => (glyph ? createPortal(node, document.body) : node);
   return (
     <span className="commander-tab-sort">
@@ -287,10 +293,10 @@ export function SortMenu({ preference, nameOnly = false, glyph = false, onOpenCh
           </div>;
         })}
         <span className="commander-tab-menu-rule" role="separator" />
-        <button type="button" role="menuitemcheckbox" aria-checked={preference.answerFirst} className="commander-tab-menu-item" onClick={() => setSort({ ...preference, answerFirst: !preference.answerFirst })}>
+        <button type="button" role="menuitemcheckbox" aria-checked={preference.answerFirst} className="commander-tab-menu-item" onClick={() => onChange({ ...preference, answerFirst: !preference.answerFirst })}>
           <span className="commander-tab-menu-check" aria-hidden="true">{preference.answerFirst ? <MenuCheckGlyph size={14} /> : null}</span>{t("commanderTab.sort.answerFirst")}
         </button>
-        <button type="button" role="menuitemcheckbox" aria-checked={preference.grouped} className="commander-tab-menu-item" onClick={() => setSort({ ...preference, grouped: !preference.grouped })}>
+        <button type="button" role="menuitemcheckbox" aria-checked={preference.grouped} className="commander-tab-menu-item" onClick={() => onChange({ ...preference, grouped: !preference.grouped })}>
           <span className="commander-tab-menu-check" aria-hidden="true">{preference.grouped ? <MenuCheckGlyph size={14} /> : null}</span>{t("commanderTab.sort.grouped")}
         </button>
       </div>) : null}

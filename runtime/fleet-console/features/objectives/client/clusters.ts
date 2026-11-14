@@ -98,7 +98,7 @@ export const memberFailureNote = (objective: Objective): MemberFailureNoteKey | 
   return reasons.size === 1 && only ? FAILURE_NOTE_TEXT[only] : "objectives.note.memberFailed";
 };
 /** 사령관이 결정 요청에 답하는 동안 둘째 줄의 상태 문구 자리에 서는 말 — 별칭이 있으면 「{별칭}{이|가} 답하는 중」이다. */
-const answeringStatus = (objective: Objective) => (locale: "en" | "ko") => answeringText(commodoreAliasOf(objective.commodoreId), getT(locale));
+const answeringStatus = (objective: Objective, alias?: string | null) => (locale: "en" | "ko") => answeringText(alias === undefined ? commodoreAliasOf(objective.commodoreId) : alias, getT(locale));
 
 /**
  * 줄이 읽는 사령관 — `active` 는 자율 운영이 실제로 도는가(메모의 근거), `enabled` 는 실험 기능(꺼지면 사령관 표식이 서지 않는다),
@@ -120,10 +120,10 @@ function ageOf(at: number, now: number): { readonly unit: "now" } | { readonly u
  * 줄 둘째 줄의 출처 — 사람이 아닌 손이 더한 목표면 그 손(사람은 기본 주인이라 적지 않고, 후속은 `followup` 이 원천을 말한다),
  * 그리고 마지막으로 손댄 이와 그 행위·때. 사령관의 손은 brass 글자로만 선다.
  */
-function provenanceOf(objective: Objective, now: number): ObjectiveClusterRowProvenance[] {
+function provenanceOf(objective: Objective, now: number, aliasOverride?: string | null): ObjectiveClusterRowProvenance[] {
   const out: ObjectiveClusterRowProvenance[] = [];
   // 출처 줄의 사령관 이름 — 별칭이 있으면 별칭을, 없으면 지금처럼 역할 이름(「사령관」)을 쓴다.
-  const alias = commodoreAliasOf(objective.commodoreId);
+  const alias = aliasOverride === undefined ? commodoreAliasOf(objective.commodoreId) : aliasOverride;
   const added = objective.addedBy;
   if (added && !objective.origin) {
     if (!("kind" in added)) out.push({ text: (locale) => { const t = getT(locale); return t("objectives.prov.addedBy", { who: added.title ?? t("objectives.actor.agent") }); } });
@@ -160,7 +160,7 @@ function rowNotes(objective: Objective, board: CommodoreBoard, stalled: boolean)
  * 구역으로 올라가지 않고 제자리에서 상태 문구 「사령관이 답하는 중」으로 말한다. 판정은 `decisionTurn`·`personTurnAt` 하나를
  * 폰·전환 목록·레일과 함께 쓴다.
  */
-function decisionZoneOf(objective: Objective, board: CommodoreBoard): Pick<ObjectiveClusterRow, "decisionRequestedAt" | "decisionQuestions" | "decisionNote" | "delegated"> {
+function decisionZoneOf(objective: Objective, board: CommodoreBoard, alias?: string | null): Pick<ObjectiveClusterRow, "decisionRequestedAt" | "decisionQuestions" | "decisionNote" | "delegated"> {
   const request = objective.decisionRequest;
   const turn = decisionTurn(objective, board.active);
   const at = personTurnAt(objective, board.active);
@@ -168,7 +168,7 @@ function decisionZoneOf(objective: Objective, board: CommodoreBoard): Pick<Objec
   const handed = livePersonHolds(objective).length > 0;
   return {
     ...(at !== null ? { decisionRequestedAt: at, ...(turn === "person" && request ? { decisionQuestions: request.questions.length } : {}), ...(handed ? { decisionNote: HANDED_NOTE } : {}) } : {}),
-    ...(turn === "commodore" && request ? { delegated: { questions: request.questions.length, status: answeringStatus(objective) } } : {}),
+    ...(turn === "commodore" && request ? { delegated: { questions: request.questions.length, status: answeringStatus(objective, alias) } } : {}),
   };
 }
 
@@ -176,10 +176,10 @@ function decisionZoneOf(objective: Objective, board: CommodoreBoard): Pick<Objec
  * 사이드바 줄 — 정리한(removed) 목표만 빼고 선다. 완료는 보관하지 않으므로 완료한 목표도 사람이 보관하기 전까지 「완료」 글리프 줄로
  * 제자리에 남는다(서버가 완료 목표의 이름·그룹 편집을 거절하므로 그 둘은 싣지 않는다). 보관은 아래 archive 규칙 그대로다.
  */
-function rowOf(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined, board: CommodoreBoard = NO_COMMODORE, stalled = false, now = Date.now()): ObjectiveClusterRow | null {
+export function objectiveSidebarRow(objective: Objective, order: number, fold: readonly string[], hasSession: boolean, selected: boolean, originTitle: string | null | undefined, board: CommodoreBoard = NO_COMMODORE, stalled = false, now = Date.now(), alias?: string | null): ObjectiveClusterRow | null {
   if (objective.removed) return null;
   const done = !!objective.done;
-  const provenance = provenanceOf(objective, now);
+  const provenance = provenanceOf(objective, now, alias);
   const overdue = !!objective.dueDate && objective.dueDate < todayIso();
   const doneMissions = objective.missions.filter((mission) => mission.done).length;
   const review = objective.awaitingReview;
@@ -192,7 +192,7 @@ function rowOf(objective: Objective, order: number, fold: readonly string[], has
     // 완료한 목표는 「오늘」 구역에 올리지 않는다 — 완료 전 Today·기한 표시는 보관 전까지 줄을 긴급 구역으로 승격시켜 끝난 일을 오늘 일로 보인다.
     ...(done ? {} : { ...(objective.today || overdue ? { today: true } : {}), ...(objective.dueDate ? { due: { date: objective.dueDate, overdue } } : {}) }),
     ...(objective.done ? { doneAt: objective.done.at } : {}),
-    ...decisionZoneOf(objective, board),
+    ...decisionZoneOf(objective, board, alias),
     ...(objective.missions.length ? { progress: { done: doneMissions, total: objective.missions.length } } : {}),
     createdAt: objective.createdAt,
     activityAt: objective.boardUpdatedAt ?? objective.createdAt,
@@ -262,7 +262,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
     const live = (objectiveId: string | null | undefined): string | null => (objectiveId && objectiveId !== commander && activity.has(objectiveId) ? objectiveId : null);
     const liveMembers = objective.members.flatMap((member) => { const objectiveId = live(member.id); return objectiveId ? [{ member, objectiveId }] : []; });
     const fold = [...new Set([...(activity.has(commander) ? [commander] : []), ...liveMembers.map((entry) => entry.objectiveId), ...objective.missions.flatMap((mission) => { const objectiveId = live(mission.objectiveId); return objectiveId ? [objectiveId] : []; })])];
-    const row = rowOf(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.commodoreId), stalled.has(objective.id), now);
+    const row = objectiveSidebarRow(objective, order, fold, activity.has(commander), selectedOf(objective), originTitleOf(objective, byId), boardOf(objective.commodoreId), stalled.has(objective.id), now);
     // 임무나 떠 있는 구성원이 있는 목표의 지휘관 Objective 이 살아 있으면 묶음이 선다. 결정 요청이 선 목표도 — 목록 밖 표면의 표식이 이 서술자를 탄다.
     const decisionRequest = !!objective.decisionRequest && !objective.done;
     // 목록 밖 표면의 결정 표식(얼굴 「!」·칩·궤도·폰 대화 행)은 사람의 차례인 요청에만 — 사령관이 맡은 요청은 사람을 기다리지 않는다.

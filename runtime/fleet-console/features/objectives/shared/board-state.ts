@@ -2,6 +2,17 @@ import type { ConsoleObjectiveObservation } from "../../execution/shared/control
 import type { Objective, ObjectivePersonHold, PersonHoldTarget, StoredPersonHold } from "./types.js";
 import { liftNestedActivity } from "./records/activity.js";
 
+/** 사령관이 맡아 기다리는 목표. 호스트 명부와 모든 사람 화면이 같은 판정을 쓴다. */
+export function isCommodoreWaiting(objective: Objective): boolean {
+  if (objective.removed || objective.done) return false;
+  const kept = (target: PersonHoldTarget) => !livePersonHold(objective, target);
+  return (!objective.commenced && !(objective.criteriaProposals.length > 0 && !kept("criteria")))
+    || (objective.criteriaProposals.length > 0 && kept("criteria"))
+    || (objective.decisionRequest !== null && kept("decision"))
+    || (objective.awaitingReview && kept("review"))
+    || (followupsJudgeable(objective) && objective.followups.some((followup) => followup.state === "open") && kept("followup"));
+}
+
 export const STALL_MS = 30 * 60_000;
 /** 구성원이 일하는 동안 지휘관이 이만큼 쉬면 정체다. */
 export const COMMANDER_REST_MS = 15 * 60_000;

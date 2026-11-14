@@ -21,7 +21,13 @@ export interface CommodoreDeleteFrame {
 }
 
 /** 같은 확인 상태를 데스크톱 대화상자와 폰 시트에 싣는다. 프레임·history는 호스트가 가진다. */
-export function CommodoreDeleteFlow({ commodoreId, language, mobile = false, onClose, onComplete, renderFrame, onBackHandler }: {
+export interface CommodoreDeleteAdapter {
+  readonly preview: typeof previewCommodoreDeletion;
+  readonly remove: typeof deleteCommodore;
+  readonly avatar: ReactNode;
+}
+export function CommodoreDeleteFlow({ commodoreId, language, mobile = false, onClose, onComplete, renderFrame, onBackHandler, adapter }: {
+  readonly adapter?: CommodoreDeleteAdapter;
   readonly commodoreId: string;
   readonly language: "en" | "ko";
   readonly mobile?: boolean;
@@ -33,7 +39,7 @@ export function CommodoreDeleteFlow({ commodoreId, language, mobile = false, onC
   const t = getT(language);
   const questionId = useId(), promptId = useId();
   const [initial] = useState(() => {
-    const rows = readCommodoreList(), index = rows.findIndex((row) => row.commodoreId === commodoreId);
+    const rows = adapter ? [] : readCommodoreList(), index = rows.findIndex((row) => row.commodoreId === commodoreId);
     return { row: rows[index], focusId: rows[index + 1]?.commodoreId ?? rows[index - 1]?.commodoreId ?? null };
   });
   const [preview, setPreview] = useState<{ data: CommodoreDeletePreview; language: "en" | "ko" } | null>(null);
@@ -56,19 +62,18 @@ export function CommodoreDeleteFlow({ commodoreId, language, mobile = false, onC
   const finish = useCallback((alreadyGone: boolean, warnings: readonly string[] = []) => {
     if (finished.current || !mounted.current) return;
     finished.current = true;
-    forgetCommodoreClient(commodoreId);
-    void refreshCommodoreList();
+    if (!adapter) { forgetCommodoreClient(commodoreId); void refreshCommodoreList(); }
     completeRef.current({ commodoreId, focusId: initial.focusId,
       message: alreadyGone ? t("commodore.delete.alreadyGone") : t("commodore.delete.done", { name: nameRef.current }),
       ...(warnings.length ? { warning: t("commodore.delete.partial") } : {}),
     });
-  }, [commodoreId, initial.focusId, t]);
+  }, [commodoreId, initial.focusId, t, adapter]);
   const fetchPreview = useCallback(async () => {
     request.current?.abort();
     const controller = new AbortController(); request.current = controller;
     setLoading(true); setLoadFailed(false);
     try {
-      const data = await previewCommodoreDeletion({ commodoreId, language }, controller.signal);
+      const data = await (adapter?.preview ?? previewCommodoreDeletion)({ commodoreId, language }, controller.signal);
       if (controller.signal.aborted || !mounted.current) return;
       setPreview({ data, language }); setBlocked(false);
     } catch (failure) {
@@ -78,18 +83,18 @@ export function CommodoreDeleteFlow({ commodoreId, language, mobile = false, onC
       if (code === "commodore_deleting") { setBlocked(true); setError("inProgress"); }
       setLoadFailed(true);
     } finally { if (!controller.signal.aborted && mounted.current) setLoading(false); }
-  }, [commodoreId, language, finish]);
+  }, [commodoreId, language, finish, adapter]);
   useEffect(() => {
     mounted.current = true;
-    const release = holdCommodoreDeletion(commodoreId);
+    const release = adapter ? () => {} : holdCommodoreDeletion(commodoreId);
     return () => { mounted.current = false; request.current?.abort(); release(); };
-  }, [commodoreId]);
+  }, [commodoreId, adapter]);
   useEffect(() => { void fetchPreview(); }, [fetchPreview]);
-  useEffect(() => subscribeCommodoreLifecycle((event) => {
+  useEffect(() => adapter ? undefined : subscribeCommodoreLifecycle((event) => {
     if (event.commodoreId !== commodoreId) return;
     if (event.op === "removed") { gone.current = true; if (!busyRef.current) finish(true); }
     else if (event.op === "state" && event.change === "alias" && !busyRef.current) void fetchPreview();
-  }), [commodoreId, finish, fetchPreview]);
+  }), [commodoreId, finish, fetchPreview, adapter]);
   useLayoutEffect(() => {
     if (step === 2) input.current?.focus({ preventScroll: true });
     else if (!mobile) cancel.current?.focus({ preventScroll: true });
@@ -107,7 +112,7 @@ export function CommodoreDeleteFlow({ commodoreId, language, mobile = false, onC
     if (!matched || busyRef.current || blocked || !preview) return;
     busyRef.current = true; setBusy(true); setError(null);
     try {
-      const result = await deleteCommodore({ commodoreId, language: preview.language, confirm: true, alias: preview.data.confirmationAlias });
+      const result = await (adapter?.remove ?? deleteCommodore)({ commodoreId, language: preview.language, confirm: true, alias: preview.data.confirmationAlias });
       finish(false, result.warnings);
     } catch (failure) {
       if (!mounted.current) return;
@@ -131,7 +136,7 @@ export function CommodoreDeleteFlow({ commodoreId, language, mobile = false, onC
   const [promptBefore, promptAfter = ""] = t("commodore.delete.prompt", { name: "\u0000" }).split("\u0000");
   const body = <>
     <div className="commodore-delete-who">
-      <CommodoreAvatar commodoreId={commodoreId} state="idle" size={mobile ? 44 : 40} label="" decorative />
+      {adapter?.avatar ?? <CommodoreAvatar commodoreId={commodoreId} state="idle" size={mobile ? 44 : 40} label="" decorative />}
       <div><p className="commodore-delete-question" id={questionId}>{t("commodore.delete.question", { name })}</p>
         {step === 1 ? <p className="commodore-delete-lead">{t("commodore.delete.lead")}</p> : null}
         <p className="commodore-delete-lead commodore-delete-irreversible">{t("commodore.delete.irreversible")}</p>

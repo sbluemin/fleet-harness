@@ -3126,6 +3126,16 @@
   cursor: pointer;
 }
 
+/* 이름 줄의 머신 단추와 활성화 단추를 형제로 둔다. 문구는 같은 hit 영역 위에, 실제 단추만 독립적으로 누른다. */
+.side-bar-theater-header--split { isolation: isolate; }
+.side-bar-theater-header--split > .side-bar-theater-activate { position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%; }
+.side-bar-theater-header--split > :is(.side-bar-theater-anchor, .side-bar-theater-text) { position: relative; z-index: 1; pointer-events: none; }
+.side-bar-theater-header--split .side-bar-theater-name,
+.side-bar-theater-header--split .unified-machine-chip,
+.side-bar-theater-header--split .side-bar-theater-alias-input,
+.side-bar-theater-header--split > .side-bar-theater-mark { pointer-events: auto; }
+.side-bar-theater-header--split > .side-bar-theater-text { box-sizing: border-box; }
+
 .side-bar-theater-activate:focus-visible {
   box-shadow: var(--focus-face);
 }

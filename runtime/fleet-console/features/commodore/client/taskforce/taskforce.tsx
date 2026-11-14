@@ -35,7 +35,7 @@ import { pushOverlayHistory, releaseOverlayHistory } from "../../../../core/clie
 import { useViewMode } from "../../../../core/client/src/integration/view-mode-store.js";
 import { MobileContextRail } from "../../../workspace/client/conversation/context-rail/mobile.js";
 import { taskforceT } from "./i18n.js";
-import { MemberPicker } from "./member-picker.js";
+import { MemberPicker, type MemberPickerCandidate } from "./member-picker.js";
 import { TaskforceChainLimitRow } from "./chain-limit.js";
 import { loadTaskforce, loadTaskforceActions, mutateTaskforce, readTaskforce, readTaskforceExperiment, readTaskforces, subscribeTaskforces, useTaskforce, useTaskforceExperiment, useTaskforces, wasTaskforceRemoved } from "./state.js";
 import { useCommodoreSpeakerSection } from "../sidebar-sections.js";
@@ -171,30 +171,37 @@ function Dialog({ title, onClose, children }: { readonly title: string; readonly
   </div></div>, document.body);
 }
 
-function CreateDialog({ preselected, onClose }: { readonly preselected?: string; readonly onClose: () => void }) {
+export function TaskforceCreateDialog({ preselected, onClose, adapter }: { readonly preselected?: string; readonly onClose: () => void; readonly adapter?: {
+  readonly candidates: readonly MemberPickerCandidate[];
+  readonly create: (input: { readonly topic: string; readonly name: string; readonly members: readonly string[] }) => Promise<unknown>;
+} }) {
   const language = useConsoleLocale(); const t = taskforceT(language);
-  const commodores = useCommodoreList();
+  const localCommodores = useCommodoreList();
+  const commodores: readonly MemberPickerCandidate[] = adapter?.candidates ?? localCommodores.map((row) => ({ id: row.commodoreId, name: memberName(row.commodoreId, language) }));
+  const person = (id: string) => commodores.find((row) => row.id === id);
+  const avatar = (id: string) => person(id)?.avatar ?? <CommodoreAvatar commodoreId={id} state="idle" size={28} label="" decorative />;
   const [topic, setTopic] = useState(""); const [name, setName] = useState(""); const [editedName, setEditedName] = useState(false);
   const [members, setMembers] = useState<readonly string[]>(preselected ? [preselected] : []);
   const [picking, setPicking] = useState(false);
   const addRef = useRef<HTMLButtonElement | null>(null);
   const [busy, setBusy] = useState(false); const [failed, setFailed] = useState(false);
-  const currentMembers = members.filter((id) => commodores.some((row) => row.commodoreId === id));
-  const candidates = useMemo(() => commodores.filter((row) => !currentMembers.includes(row.commodoreId)).map((row) => ({ id: row.commodoreId, name: memberName(row.commodoreId, language) })), [commodores, currentMembers, language]);
+  const currentMembers = members.filter((id) => commodores.some((row) => row.id === id));
+  const candidates = commodores.filter((row) => !currentMembers.includes(row.id));
   const reason = !topic.trim() ? t("taskforce.topicRequired") : !name.trim() ? t("taskforce.nameRequired") : currentMembers.length < 2 ? t("taskforce.minimum") : null;
   const submit = async () => {
     if (busy || !topic.trim() || !name.trim() || currentMembers.length < 2) return;
     setBusy(true); setFailed(false);
     try {
-      const state = await mutateTaskforce("create", { topic: topic.trim(), name: name.trim(), members: currentMembers });
-      if (state) { onClose(); openTaskforce(state.id); }
+      const input = { topic: topic.trim(), name: name.trim(), members: currentMembers };
+      if (adapter) { await adapter.create(input); onClose(); }
+      else { const state = await mutateTaskforce("create", input); if (state) { onClose(); openTaskforce(state.id); } }
     } catch { setFailed(true); } finally { setBusy(false); }
   };
   return <Dialog title={t("taskforce.createTitle")} onClose={() => { if (!busy) onClose(); }}><form onSubmit={(event) => { event.preventDefault(); void submit(); }}>
     <div className="taskforce-dialog-body">
       <label>{t("taskforce.topic")}<textarea required maxLength={MAX_TASKFORCE_TOPIC} rows={3} value={topic} placeholder={t("taskforce.topicPlaceholder")} onChange={(event) => { const value = event.target.value; setTopic(value); if (!editedName) setName(value.trim().split("\n")[0]!.slice(0, MAX_TASKFORCE_NAME)); }} /></label>
       <fieldset><legend>{t("taskforce.members")}</legend>
-        {currentMembers.length ? <div className="taskforce-picked">{currentMembers.map((id) => <div className="taskforce-member" key={id}><span className="taskforce-member-picked"><CommodoreAvatar commodoreId={id} state="idle" size={28} label="" decorative /><strong>{memberName(id, language)}</strong></span><button type="button" className="taskforce-text-button taskforce-member-remove" disabled={busy} onClick={() => setMembers(currentMembers.filter((member) => member !== id))}>{t("taskforce.remove")}</button></div>)}</div> : null}
+        {currentMembers.length ? <div className="taskforce-picked">{currentMembers.map((id) => <div className="taskforce-member" key={id}><span className="taskforce-member-picked">{avatar(id)}<strong>{person(id)?.name}</strong></span><button type="button" className="taskforce-text-button taskforce-member-remove" disabled={busy} onClick={() => setMembers(currentMembers.filter((member) => member !== id))}>{t("taskforce.remove")}</button></div>)}</div> : null}
         <button ref={addRef} type="button" className="commodore-theaters-add" disabled={busy || currentMembers.length >= MAX_TASKFORCE_MEMBERS} aria-expanded={picking} onClick={() => setPicking(!picking)}><span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span><span>{t("taskforce.add")}</span></button>
         {picking ? <MemberPicker anchor={addRef.current} candidates={candidates} searchPlaceholder={t("taskforce.searchCommodores")} emptyText={t("taskforce.noMatchingCommodores")} listLabel={t("taskforce.members")} onPick={(id) => { if (currentMembers.length < MAX_TASKFORCE_MEMBERS) setMembers([...currentMembers, id]); }} onClose={() => setPicking(false)} /> : null}
       </fieldset>
@@ -233,7 +240,7 @@ export function TaskforceHost() {
     emit();
   }, [experiment.known, experiment.enabled, selection]);
   if (!experiment.enabled && experiment.known) return null;
-  return <>{request ? <CreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{deleting ? <DeleteDialog key={deleting} id={deleting} language={language} onClose={() => { deleteRequest = null; emit(); }} /> : null}{mobile ? <TaskforceMobileScreen id={mobile} language={language} onClose={() => { mobileId = null; emit(); }} /> : null}</>;
+  return <>{request ? <TaskforceCreateDialog {...request} onClose={() => { createRequest = null; emit(); }} /> : null}{deleting ? <DeleteDialog key={deleting} id={deleting} language={language} onClose={() => { deleteRequest = null; emit(); }} /> : null}{mobile ? <TaskforceMobileScreen id={mobile} language={language} onClose={() => { mobileId = null; emit(); }} /> : null}</>;
 }
 
 /**

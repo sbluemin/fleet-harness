@@ -10,6 +10,8 @@ import {
   type ConsoleManagementRelation,
 } from "../lifecycle/management.js";
 import { parseCreateCommodoreCommand, parseUnifiedSidebarCommand, type UnifiedSidebarCommand } from "./unified-sidebar.js";
+import { parseSidebarRequest, type ConsoleSidebarRequest } from "./sidebar.js";
+export * from "./sidebar.js";
 
 /** Renderer-only, minimized sidebar contract. Never publish its state through a Console server. */
 export const CONSOLE_DIRECTORY_CAPABILITY = "console-directory";
@@ -70,7 +72,7 @@ export interface ConsoleSectionState {
  * offset, CSS px) ride on `switch` too; a shell without `CONSOLE_ROSTER_SEAMLESS_CAPABILITY` ignores both.
  * `rightPanel` (only with `commodore`) is the right sidebar's state at the press; the same shell hands it to the arriving document.
  */
-export type ConsoleSectionCommand = { readonly request: "state" }
+export type ConsoleSectionCommand = { readonly sidebar: ConsoleSidebarRequest } | { readonly request: "state" }
   | { readonly switch: string; readonly commodore?: string; readonly commander?: string; readonly anchorY?: number; readonly scrollTop?: number; readonly rightPanel?: ConsoleRightPanel }
   | { readonly expanded: boolean } | { readonly add: true }
   | { readonly rename: { readonly id: string; readonly label: string } } | { readonly forget: string }
@@ -396,11 +398,17 @@ export function isConsoleObjectivePeekReply(value: unknown): value is ConsoleObj
 }
 /** Unknown fields cannot be forwarded by a caller: only the recognized command is returned. */
 export function parseConsoleSectionCommand(raw: string): ConsoleSectionCommand | null {
-  if (new TextEncoder().encode(raw).length > 4096) return null;
+  const length = new TextEncoder().encode(raw).length;
+  if (length > 16_384) return null;
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return null; }
   if (!object(value)) return null;
-  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle", "takeover", "update", "wsl", "unified", "createCommodore", "peek"].filter((key) => key in value);
+  if (Object.keys(value).length === 1 && "sidebar" in value) {
+    const sidebar = parseSidebarRequest(value.sidebar);
+    return sidebar ? { sidebar } : null;
+  }
+  if (length > 4096) return null;
+  const keys = ["request", "switch", "expanded", "add", "rename", "forget", "fold", "arrived", "manage", "lifecycle", "takeover", "update", "wsl", "unified", "createCommodore", "peek", "sidebar"].filter((key) => key in value);
   if (keys.length !== 1) return null;
   if (value.request === "state") return { request: "state" };
   if (clean(value.switch, 128)) {

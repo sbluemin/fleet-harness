@@ -19,7 +19,7 @@ import { createPortal } from "react-dom";
 import type { ObjectiveRuntimeState } from "../../../execution/shared/client-contract.js";
 
 import { useT, useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
-import { requestTaskforceCreate, TASKFORCE_SURFACE_ID, TaskforceRowMenu, TaskforceStack, openTaskforce } from "../../../commodore/client/taskforce/taskforce.js";
+import { requestTaskforceCreate, requestTaskforceDelete, TASKFORCE_SURFACE_ID, TaskforceRowMenu, TaskforceStack, openTaskforce } from "../../../commodore/client/taskforce/taskforce.js";
 import { loadTaskforce, readTaskforce, useTaskforceExperiment, useTaskforces } from "../../../commodore/client/taskforce/state.js";
 import type { TaskforceSummary } from "../../../commodore/shared/contracts/taskforce.js";
 import { taskforceT } from "../../../commodore/client/taskforce/i18n.js";
@@ -43,7 +43,7 @@ import { openTheaterInbox } from "../theater-inbox/store.js";
 import { resolveObjectiveActivity } from "../../../execution/client/objective-activity.js";
 import { commodoreSectionDropFromPoint, type CommodoreSectionDrop, reorderTheaterIds, theaterDropIndexFromPoint } from "./objective-records-side-bar-hit-test.js";
 import { CommodoreSidebarSection, CommodoreSectionMoveMenu, useCommodoreSidebarSections, type SidebarSectionsController } from "./commodore-sidebar-sections.js";
-import { UnifiedSidebarList, unifiedRowKey, type UnifiedStandingMenu } from "./unified-sidebar-sections.js";
+import { UnifiedSidebarList, type UnifiedStandingMenu } from "./unified-sidebar-sections.js";
 import type { UnifiedSidebarRow } from "@fleet-console/protocol/desktop/console-section";
 import { useUnifiedSidebar } from "./unified-sidebar.js";
 import { closeRailPanel, getRailStoreSnapshot, openRailPanel } from "../../../../core/client/src/chrome/rail/rail-store.js";
@@ -113,6 +113,9 @@ interface TheaterAliasEditing {
 }
 
 interface TheaterSectionHeaderProps extends TheaterAliasEditing {
+  readonly accessory?: ReactNode;
+  /** 원격 사실은 지역 기여/도구 스토어를 사용하지 않는다. 행 문법과 입력 처리는 공유한다. */
+  readonly presentation?: { readonly live: boolean; readonly mark: ReactNode; readonly browsing: boolean; readonly dock: ReactNode };
   readonly theater: SideBarHead;
   readonly active: boolean;
   readonly lastResponse: string | undefined;
@@ -279,6 +282,10 @@ export function ObjectiveRecordsSideBar({
     const attempt = () => {
       const past = performance.now() > deadline;
       // 효과 시작 시점의 known은 목록이 아직 비어 있으면 그대로 굳는다. 매 프레임 다시 읽는다.
+      if (arrival.commodore.startsWith("taskforce:")) {
+        openTaskforce(arrival.commodore.slice("taskforce:".length));
+        place(); consoleArrived.current(); return;
+      }
       const knownNow = arrivalSections.current.some((section) => section.commodoreId === arrival.commodore);
       const commanderId = arrival.commander;
       const commanderKnown = commanderId !== null && arrivalRecords.current.some((record) => record.id === commanderId && record.commodoreId === arrival.commodore);
@@ -657,7 +664,37 @@ export function ObjectiveRecordsSideBar({
     };
   };
   const standingMenu: UnifiedStandingMenu = {
+    renderHeader: (row, frame) => {
+      const taskforce = row.commodoreId.startsWith("taskforce:") ? tfSummaries.find((item) => `taskforce:${item.id}` === row.commodoreId) : null;
+      if (taskforce) return <TheaterSectionHeader theater={{ id: taskforce.id, label: taskforce.name, createdAt: "", lastOpenedAt: "", activeAdmiralCount: 0 }}
+        active={taskforce.id === selectedTaskforceId} lastResponse={taskforce.preview?.text || taskforce.topic} dock={false}
+        editingAlias={false} clampAlias={clampAlias} onStartAliasEdit={() => {}} onFinishAliasEdit={() => {}}
+        showStatusLiveTick={false} liveOverride={taskforce.judging.length > 0} selectedOverride={taskforce.id === selectedTaskforceId}
+        dragging={frame.dragging} dropTarget={frame.dropTarget} dragOffsetY={frame.dragOffsetY}
+        accessory={frame.accessory} onOpenInbox={() => openTaskforce(taskforce.id)} onContextMenu={frame.onMenu} menuTarget={frame.menuTarget} onPointerDragStart={frame.onPointerDragStart}
+        avatarOverride={<span className="side-bar-theater-anchor is-avatar" aria-hidden="true"><TaskforceStack members={taskforce.members} judging={taskforce.judging} /></span>} />;
+      const theater = standingTheaterFor(row);
+      return <TheaterSectionHeader theater={theater} active={theater.id === owningCommodoreId} selectedOverride={theater.id === owningCommodoreId}
+        lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
+        dock={!compact} onReselect={() => reselectActiveCommodore(theater.id)} {...aliasEditingFor(theater.id)}
+        showStatusLiveTick={countAwaitingObjectiveRecords(objectiveRecords.filter((record) => record.commodoreId === theater.id), objectiveRecordRuntime) > 0}
+        hasPersonDecision={personDecisionOwners.has(theater.id)} dragging={frame.dragging} dropTarget={frame.dropTarget}
+        accessory={frame.accessory} dragOffsetY={frame.dragOffsetY} onOpenInbox={openTheaterHeaderInbox} onContextMenu={frame.onMenu}
+        menuTarget={frame.menuTarget} onPointerDragStart={frame.onPointerDragStart} />;
+    },
+    renderCommanders: (row) => {
+      if (row.commodoreId.startsWith("taskforce:")) return null;
+      const expanded = expandedCommanders.has(row.commodoreId);
+      const selected = typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === row.commodoreId
+        ? surface.params.objectiveId : objectiveOwner === row.commodoreId ? activeObjectiveId : null;
+      return expanded ? <div className="side-bar-commander-list" data-keep-objective-active="">
+        <SidebarCommanderList commodoreId={row.commodoreId} selectedId={selected} hideSettled={!showSettled} />
+      </div> : null;
+    },
     renderItems: (row, onClose, opener) => {
+      if (row.commodoreId.startsWith("taskforce:")) return <button type="button" role="menuitem" className="theater-menu-item theater-menu-forget" onClick={() => { onClose(); requestTaskforceDelete(row.commodoreId.slice("taskforce:".length)); }}>
+        <span className="theater-menu-check" aria-hidden="true"><TrashIcon /></span><span className="theater-menu-label">{tfStanding("taskforce.delete")}</span>
+      </button>;
       const theater = standingTheaterFor(row);
       return <>
         <div className="theater-menu-divider" aria-hidden="true" />
@@ -681,14 +718,6 @@ export function ObjectiveRecordsSideBar({
           <span className="theater-menu-label">{t("sidebar.commodore.delete")}</span>
         </button>
       </>;
-    },
-    renderAliasEditor: (row) => {
-      if (aliasEditingTheaterId !== row.commodoreId) return null;
-      const theater = standingTheaterFor(row);
-      return <TheaterAliasInput clampAlias={clampAlias} theater={theater} onDone={(alias, viaKey) => {
-        finishAliasEdit(row.commodoreId, alias);
-        if (viaKey) document.querySelector<HTMLElement>(`[data-theater-id="${CSS.escape(unifiedRowKey({ consoleId: row.consoleId, commodoreId: row.commodoreId }))}"] .side-bar-theater-activate`)?.focus({ preventScroll: true });
-      }} />;
     },
   };
 
@@ -724,25 +753,9 @@ export function ObjectiveRecordsSideBar({
       {sidebarSections.error ? <p className="side-bar-theater-error" role="alert">{t("sidebar.commodoreSection.error")}</p> : null}
       <ol className="objective-records-side-bar-chips" ref={listRef} aria-label={t("sidebar.list.aria")} data-scroll-hold={scrollHoldOn ? "1" : undefined}>
         {unifiedReady ? <>
-          <UnifiedSidebarList consoles={consoles} list={() => listRef.current} unified={unified} standingCommodores={commodoreSections}
-            owningCommodoreId={owningCommodoreId} onOpenHomeCommodore={openUnifiedHomeCommodore} standingMenu={standingMenu} />
-          {/* TF는 지금 문서의 것이라 통합 배치에 넣지 않고 섹션 목록 뒤에 평평하게 둔다. */}
-          {faces.filter((face) => face.kind === "taskforce").map((face) => (
-            <TaskforceFaceRow
-              key={face.id}
-              face={face}
-              selected={face.id === selectedTaskforceId}
-              dragging={false}
-              dragOffsetY={0}
-              dropBefore={false}
-              dropAfter={false}
-              menuTarget={activeContextMenu?.theaterId === face.id}
-              clampAlias={clampAlias}
-              onOpen={() => openTaskforce(face.id)}
-              onMenu={(anchor, returnFocus, atCursor, focusFirst) => openTheaterMenu(face.id, anchor, returnFocus, atCursor, focusFirst)}
-              onPointerDragStart={() => {}}
-            />
-          ))}
+          <UnifiedSidebarList consoles={consoles} list={() => listRef.current} unified={unified}
+            standingCommodores={faces.map((face): SidebarCommodore => face.kind === "commodore" ? face.section : { commodoreId: `taskforce:${face.id}`, label: face.row.name, theaters: [] })}
+            owningCommodoreId={selectedTaskforceId ? `taskforce:${selectedTaskforceId}` : owningCommodoreId} onOpenHomeCommodore={openUnifiedHomeCommodore} standingMenu={standingMenu} />
           {unified.rows.length === 0 && commodoresLoaded ? <SideBarStarter compact={compact} /> : null}
         </> : <>
         {beforeConsoles}
@@ -986,7 +999,9 @@ function SideBarStarter({ compact }: { readonly compact: boolean }) {
   );
 }
 
-function TheaterSectionHeader({
+export function TheaterSectionHeader({
+  accessory,
+  presentation,
   theater,
   active,
   lastResponse,
@@ -1014,13 +1029,14 @@ function TheaterSectionHeader({
   const suppressClickRef = useRef(false);
   const activateRef = useRef<HTMLButtonElement | null>(null);
   // 플러그인 표식(자율 운영의 사령관 글리프)이 있으면 이니셜 칩 자리에 선다. 운영자가 일하는 동안 이름에 라이브 물결이 흐른다.
-  const contributionSummary = useMemo(() => ({ id: theater.id, label: theater.label }), [theater.id, theater.label]);
+  const contributionId = presentation ? `remote:${theater.id}` : theater.id;
+  const contributionSummary = useMemo(() => ({ id: contributionId, label: theater.label }), [contributionId, theater.label]);
   const contributedMark = useTheaterContributionMark(contributionSummary);
   // 자기 아바타를 가진 행(TaskForce)은 사령관 표식을 받지 않는다 — 표식이 TF id를 사령관으로 그리지 않게 한다.
-  const mark = avatarOverride ? null : contributedMark;
-  const contributedLive = useTheaterHeaderLive(theater.id);
-  const live = liveOverride ?? contributedLive;
-  const contributedSelected = useTheaterHeaderSelected(theater.id);
+  const mark = presentation ? presentation.mark : avatarOverride ? null : contributedMark;
+  const contributedLive = useTheaterHeaderLive(contributionId);
+  const live = presentation?.live ?? liveOverride ?? contributedLive;
+  const contributedSelected = useTheaterHeaderSelected(contributionId);
   const selected = selectedOverride ?? contributedSelected;
   // 별칭 편집을 키(Enter·Esc)로 마치면 포커스가 머리로 돌아온다. 다른 곳을 눌러 끝냈으면(blur) 그 자리의 포커스를 빼앗지 않는다.
   const wasEditingRef = useRef(editingAlias);
@@ -1034,9 +1050,11 @@ function TheaterSectionHeader({
   const summaryText = lastResponse ?? t("sidebar.commodore.noConversation");
   // 사령관이 자기 세션으로 플릿 브라우저를 쓰는 동안 둘째 줄이 그 도구를 말한다 — 목표 줄이 지휘관의 사용을 말하는 것과 같은 문구·물결이다.
   // 그 사령관의 목표가 쓰는 것은 목표 줄의 몫이고, 자기 아바타를 가진 행(TaskForce)은 사령관이 아니다.
-  const browsing = useCommodoreBrowserUse(avatarOverride ? null : theater.commodore?.id ?? null);
+  const localBrowsing = useCommodoreBrowserUse(avatarOverride || presentation ? null : theater.commodore?.id ?? null);
+  const browsing = presentation?.browsing ?? localBrowsing;
   const headerClassName = [
     "side-bar-theater-header",
+    "side-bar-theater-header--split",
     active ? "is-active" : "",
     selected ? "is-current" : "",
     "is-card",
@@ -1079,7 +1097,7 @@ function TheaterSectionHeader({
     // 표식 안의 단추(자율 운영 끄기)와 별칭 입력·호버 독에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
     // 행의 본문이므로 배제하지 않는다 — 배제하면 행을 잡아 옮길 수 없다.
     // 길게 누르기도 같은 자리만 받는다 — 단추 위 길게 누르기는 그 단추의 것이다.
-    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input") || event.target.closest(".commodore-dock"))) return;
+    if (event.target instanceof Element && (event.target.closest(".side-bar-theater-mark button") || event.target.closest(".side-bar-theater-alias-input") || event.target.closest(".commodore-dock") || event.target.closest(".unified-machine-chip"))) return;
     longPress.onPointerDown(event);
     onPointerDragStart(event, theater.id);
   };
@@ -1100,6 +1118,7 @@ function TheaterSectionHeader({
       suppressClickRef.current = false;
       return;
     }
+    activateRef.current?.focus({ preventScroll: true });
     onOpenInbox(theater, activateRef.current);
   };
   const avatarAnchor = (tick: boolean) => (
@@ -1146,28 +1165,34 @@ function TheaterSectionHeader({
           </span>
         </>
       ) : (
-        <button
-          ref={activateRef}
-          type="button"
-          className="side-bar-theater-activate"
-          aria-haspopup="dialog"
-          onClick={select}
-          onKeyDown={handleKeyDown}
-          aria-current={selected ? "true" : undefined}
-          title={`${active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })} · ${t("sidebar.theater.actionsHint")}`}
-        >
+        <>
+          {/* 전체 hit 단추와 이름·칩은 형제다. 이름 바로 옆의 머신 단추를 중첩 button으로 만들지 않는다. */}
+          <button
+            ref={activateRef}
+            type="button"
+            className="side-bar-theater-activate"
+            aria-label={displayName}
+            aria-haspopup="dialog"
+            onClick={select}
+            onKeyDown={handleKeyDown}
+            aria-current={selected ? "true" : undefined}
+            title={`${active ? t("sidebar.theater.openInbox", { theater: displayName }) : t("sidebar.theater.switchTo", { theater: displayName })} · ${t("sidebar.theater.actionsHint")}`}
+          />
           {mark === null ? avatarOverride ?? avatarAnchor(true) : null}
           <span className="side-bar-theater-text">
-            <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onDoubleClick={() => onStartAliasEdit(theater.id)}>{displayName}</span>
+            <span className="unified-row-line">
+              <span className={`side-bar-theater-name${live ? " is-live" : ""}`} onClick={select} onDoubleClick={(event) => { event.stopPropagation(); onStartAliasEdit(theater.id); }}>{displayName}</span>
+              {accessory}
+            </span>
             <span className={`side-bar-theater-swap${browsing ? " is-tool-using" : ""}`}>
               <span className="side-bar-theater-sub">{summaryText}</span>
               <RowToolUse tool={browsing ? "browser" : null} label={browsing ? t("sidebar.row.use.browser") : null} />
             </span>
           </span>
-        </button>
+        </>
       )}
       {/* 호버 독 — 머리에 호버하거나 초점이 오면 ⋯ 글리프가 나오고, 거기서 정렬·목록 위치·펼침 유지가 펼쳐진다. 머리를 누르는 활성화와는 따로 논다. */}
-      {dock ? <CommodoreHoverDock name={displayName} /> : null}
+      {dock ? presentation?.dock ?? <CommodoreHoverDock name={displayName} /> : null}
     </div>
   );
 }

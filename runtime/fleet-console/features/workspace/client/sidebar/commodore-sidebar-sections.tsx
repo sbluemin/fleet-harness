@@ -109,9 +109,9 @@ export function SectionNameInput({ name, onDone }: { readonly name: string; read
 }
 
 /** 통합 사이드바의 섹션·행 메뉴 항목도 같은 모양으로 그린다. */
-export function MenuItem({ icon, children, onClick, disabled, danger }: { readonly icon: ReactNode; readonly children: ReactNode; readonly onClick: () => void; readonly disabled?: boolean; readonly danger?: boolean }) {
-  return <button type="button" role="menuitem" className={`theater-menu-item${danger ? " theater-menu-forget" : ""}`} disabled={disabled} onClick={onClick}>
-    <span className="theater-menu-check" aria-hidden="true">{icon}</span><span className="theater-menu-label">{children}</span>
+export function MenuItem({ icon, children, onClick, disabled, danger, checked, title }: { readonly icon: ReactNode; readonly children: ReactNode; readonly onClick?: () => void; readonly disabled?: boolean; readonly danger?: boolean; readonly checked?: boolean; readonly title?: string }) {
+  return <button type="button" title={title} role={checked === undefined ? "menuitem" : "menuitemcheckbox"} aria-checked={checked} className={`theater-menu-item${danger ? " theater-menu-forget" : ""}`} disabled={disabled} onClick={onClick}>
+    <span className="theater-menu-check" aria-hidden="true">{checked ? <MenuCheckGlyph /> : icon}</span><span className="theater-menu-label">{children}</span>
   </button>;
 }
 
@@ -137,7 +137,12 @@ export function SectionMenu({ anchor, opener, focusFirst, label, children, onClo
   </div>, document.body);
 }
 
-export function CommodoreSectionMoveMenu({ rowId, controller, onClose }: { readonly rowId: string; readonly controller: SidebarSectionsController; readonly onClose: () => void }) {
+export function CommodoreSectionMoveMenu({ rowId, controller, onClose }: { readonly rowId: string; readonly controller: {
+  readonly layout: { readonly sections: readonly { readonly id: string; readonly name: string }[]; readonly membership: Readonly<Record<string, string>> };
+  readonly busy: boolean;
+  readonly run: (command: { readonly op: "move"; readonly rowId: string; readonly sectionId: string | null }) => unknown;
+  readonly create: (input: { readonly rowId: string }) => unknown;
+}; readonly onClose: () => void }) {
   const t = useT();
   const [open, setOpen] = useState(false);
   const [focusFirst, setFocusFirst] = useState(false);

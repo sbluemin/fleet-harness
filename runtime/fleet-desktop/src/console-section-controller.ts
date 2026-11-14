@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { CONSOLE_SIDEBAR_EVENT, CONSOLE_SIDEBAR_PATH, SIDEBAR_OPERATIONS, SIDEBAR_CHUNK_CHARS, SIDEBAR_MAX_BYTES, sidebarDisplayJson, type ConsoleSidebarRequest, type ConsoleSidebarReply } from "@fleet-console/protocol/desktop/console-section";
 import type { WebContents } from "electron";
 import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import { CONSOLE_COMMODORE_CREATE_EVENT, CONSOLE_OBJECTIVE_PEEK_EVENT, CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_EVENT, CONSOLE_ROSTER_MAX_FRAME, CONSOLE_ROSTER_PATH, CONSOLE_SECTION_COMMAND, CONSOLE_SECTION_EVENT, CONSOLE_SECTION_MAX_FRAME, CONSOLE_UNIFIED_SIDEBAR_EVENT, CONSOLE_WSL_EVENT, UNIFIED_SIDEBAR_HOME, UNIFIED_SIDEBAR_PATH, applyUnifiedSidebarCommand, fitUnifiedSidebarState, isConsoleObjectivePeek, isConsoleRosterSummary, isUnifiedSidebarLayout, isUnifiedSidebarState, parseConsoleSectionCommand, projectUnifiedSidebar, reconcileUnifiedSidebar, seedUnifiedFromSnapshots, withoutUnifiedConsole, type ConsoleCommodoreCreateResult, type ConsoleManagedDetail, type ConsoleWslInspection, type ConsoleWslState, type ConsoleRightPanel, type ConsoleObjectivePeekReply, type ConsoleRosterCommodore, type ConsoleRosterEntry, type ConsoleRosterState, type ConsoleSectionCommand, type ConsoleSectionEntry, type ConsoleSectionState, type UnifiedCreateReason, type UnifiedMachineSnapshot, type UnifiedSidebarLayout } from "@fleet-console/protocol/desktop/console-section";
@@ -787,7 +788,63 @@ export function createConsoleSectionController(deps: Dependencies) {
       await refresh();
     } catch { fail(down); }
   }
+  let sidebarFlights = 0;
+  const sidebarWatches = new Set<string>();
+  const sidebarAborts = new Set<AbortController>();
+  async function runSidebar(request: ConsoleSidebarRequest): Promise<void> {
+    const receiver = contents;
+    const origin = at();
+    const epoch = generation;
+    const send = async (reply: Omit<ConsoleSidebarReply, "console" | "nonce">) => {
+      if (!origin || at() !== origin || epoch !== generation || !receiver || receiver.isDestroyed()) return;
+      const detail: ConsoleSidebarReply = { console: request.console, nonce: request.nonce, ...reply };
+      await receiver.executeJavaScript(`if(location.origin===${JSON.stringify(origin)}&&location.pathname.startsWith('/console/'))window.dispatchEvent(new CustomEvent(${JSON.stringify(CONSOLE_SIDEBAR_EVENT)},{detail:${JSON.stringify(detail)}}))`).catch(() => undefined);
+    };
+    const fail = (status: number) => send({ status, type: "application/json", data: "", index: 0, done: true });
+    const target = targets.get(request.console);
+    if (!target?.origin || target.entry.status === "untrusted" || target.entry.status === "unreachable" || target.entry.status === "stopping") { await fail(503); return; }
+    const watchKey = `${epoch}\n${origin}\n${request.console}`;
+    const watching = request.operation === "changes";
+    if (watching ? sidebarWatches.has(watchKey) || sidebarWatches.size >= 100 : sidebarFlights >= 6) { await fail(429); return; }
+    if (watching) sidebarWatches.add(watchKey); else sidebarFlights++;
+    const abort = new AbortController(); sidebarAborts.add(abort);
+    try {
+      if (target.entry.kind === "remote" && !await admitRemote(target.origin)) { await fail(401); return; }
+      const http = target.entry.kind === "remote" ? deps.rosterFetch : deps.rosterFetch ?? deps.fetch;
+      if (!http) { await fail(503); return; }
+      const operation = SIDEBAR_OPERATIONS[request.operation];
+      const url = new URL(`${CONSOLE_SIDEBAR_PATH}${request.operation}`, target.origin);
+      for (const [key, value] of Object.entries(request.query ?? {})) url.searchParams.set(key, value);
+      const response = await http(url.toString(), { method: operation.method, headers: { Origin: target.origin, "Content-Type": "application/json" },
+        ...(operation.method !== "GET" && request.body !== undefined ? { body: JSON.stringify(request.body) } : {}), redirect: "error", signal: AbortSignal.any([abort.signal, AbortSignal.timeout(15_000)]) });
+      const chunks: Uint8Array[] = [];
+      let bytes = 0;
+      if (response.body) {
+        const reader = response.body.getReader();
+        try {
+          for (;;) {
+            const next = await reader.read();
+            if (next.done) break;
+            bytes += next.value.length;
+            if (bytes > SIDEBAR_MAX_BYTES) { await reader.cancel(); await fail(413); return; }
+            chunks.push(next.value);
+          }
+        } finally { reader.releaseLock(); }
+      }
+      const raw = Buffer.concat(chunks);
+      // 원격 HTML/SVG는 문서나 실행 코드로 중계하지 않는다. 파일은 명시적 byte blob이다.
+      const incoming = response.headers.get("Content-Type")?.split(";")[0]?.trim().toLowerCase() ?? "application/octet-stream";
+      const json = !["evidence", "sharedFile"].includes(request.operation) || incoming === "application/json";
+      const type = json ? "application/json" : /^(?:text\/plain|image\/(?:png|jpeg|webp|gif))$/.test(incoming) ? incoming : "application/octet-stream";
+      const safe = json && raw.length > 0 ? Buffer.from(sidebarDisplayJson(raw.toString("utf8"))) : raw;
+      const data = safe.toString("base64");
+      const count = Math.max(1, Math.ceil(data.length / SIDEBAR_CHUNK_CHARS));
+      for (let index = 0; index < count; index++) await send({ status: response.status, type, data: data.slice(index * SIDEBAR_CHUNK_CHARS, (index + 1) * SIDEBAR_CHUNK_CHARS), index, done: index === count - 1 });
+      // 쓰기 결과는 다음 읽기에서 원천을 확인한다. 세션을 열거나 화면을 옮기지 않는다.
+    } catch { await fail(503); } finally { sidebarAborts.delete(abort); if (watching) sidebarWatches.delete(watchKey); else sidebarFlights--; }
+  }
   async function command(value: ConsoleSectionCommand, fromHome: boolean): Promise<void> {
+    if ("sidebar" in value) { await runSidebar(value.sidebar); return; }
     // 막 적재된 문서는 도착할 사령관을 기다리며 「다 그렸다」를 미룬다. 집 목록과 명부를 다시 읽기 전에
     // 지금 아는 상태를 먼저 건네야 그 기다림이 조회 시간만큼 늘어나지 않는다.
     if ("request" in value) { await publish(); await publishRoster(); await publishUnified(); await refresh(); return; }
@@ -900,6 +957,7 @@ export function createConsoleSectionController(deps: Dependencies) {
     } finally { mutating = false; }
   }
   function close(): void {
+    for (const abort of sidebarAborts) abort.abort();
     generation++;
     detach(); detach = () => {};
     contents = null;
@@ -958,7 +1016,7 @@ export function createConsoleSectionController(deps: Dependencies) {
         const value = parseConsoleSectionCommand(url.searchParams.get("command") ?? "");
         if (value) void command(value, at() === home()).catch((error) => { deps.report(error); void publish(); void publishRoster(); });
       };
-      const arrived = () => { generation++; void publish().then(publishRoster).finally(() => { void refresh(); }); };
+      const arrived = () => { for (const abort of sidebarAborts) abort.abort(); generation++; void publish().then(publishRoster).finally(() => { void refresh(); }); };
       receiver.on("will-navigate", navigate as never);
       receiver.on("did-navigate", arrived);
       receiver.on("did-finish-load", arrived);
