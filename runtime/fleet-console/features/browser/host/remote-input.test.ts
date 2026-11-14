@@ -159,7 +159,7 @@ describe("remote select", () => {
   it("finds the select under the point without scrolled-page drift", async () => {
     const { client, calls } = fakeClient({
       "Runtime.evaluate": () => ({ result: { objectId: "obj-1" } }),
-      "DOM.requestNode": () => ({ node: { backendNodeId: 42 } }),
+      "DOM.describeNode": () => ({ node: { backendNodeId: 42 } }),
       "Runtime.callFunctionOn": () => ({
         result: {
           value: {
@@ -175,7 +175,7 @@ describe("remote select", () => {
     const hit = await probeSelectTarget(client, "sess", 10.7, 20.2);
     expect(hit).toMatchObject({ backendNodeId: 42, multiple: true });
     expect((calls[0]!.params as { expression: string }).expression).toContain("elementFromPoint(11, 20)");
-    expect(calls.map((call) => call.method)).toEqual(["Runtime.evaluate", "DOM.requestNode", "Runtime.callFunctionOn", "Runtime.releaseObject"]);
+    expect(calls.map((call) => call.method)).toEqual(["Runtime.evaluate", "DOM.describeNode", "Runtime.callFunctionOn", "Runtime.releaseObject"]);
   });
 
   it("applies the choice once and expires the popup", async () => {
