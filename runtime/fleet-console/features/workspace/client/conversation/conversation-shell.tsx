@@ -51,6 +51,7 @@ import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../obj
 import { commanderOwnerOf, isCommanderObjective } from "../commander-tab/commander-rows.js";
 import { ObjectiveConversationStrip, useObjectiveMissionReveal } from "../../../objectives/client/conversation-strip.js";
 import { MissionRevealContext } from "../../../execution/client/agent/chat/group/mission-reveal-context.js";
+import { GroupComposerMentionContext, useGroupComposerMentionHost } from "../../../execution/client/agent/chat/group/composer-mention-context.js";
 import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
 import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
@@ -1681,11 +1682,13 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const stripObjectiveId = objectiveRecord.parentObjectiveId ?? objectiveRecord.id;
   const showObjectiveStrip = commanderOwnerOf(clusterIndex.clusters, stripObjectiveId) !== null;
   const missionReveal = useObjectiveMissionReveal(stripObjectiveId, bodyOwner.id, language);
+  const composerMention = useGroupComposerMentionHost(stripObjectiveId, bodyOwner.id);
+  const canMention = showObjectiveStrip && bodyOwner.id === stripObjectiveId;
 
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        {showObjectiveStrip ? <ObjectiveConversationStrip objectiveId={stripObjectiveId} memberId={bodyOwner.id === stripObjectiveId ? null : bodyOwner.id} title={objectiveRecord.title} language={language} takeover={pill.takeover} controls={viewSwitch} requested={missionReveal.requested} /> :
+        {showObjectiveStrip ? <ObjectiveConversationStrip objectiveId={stripObjectiveId} memberId={bodyOwner.id === stripObjectiveId ? null : bodyOwner.id} title={objectiveRecord.title} language={language} takeover={pill.takeover} controls={viewSwitch} requested={missionReveal.requested} mention={canMention ? composerMention.port : null} /> :
         <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}>
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
@@ -1702,7 +1705,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
           노드 줄을 따로 세우지 않는다. */}
       <ContextRailHost scope={railScope} slot={railSlot}>
         <div className="conversation-body" ref={bodyRef} onPointerDownCapture={activate}>
-          <ConversationPillContext.Provider value={pill.port}><MissionRevealContext.Provider value={showObjectiveStrip ? missionReveal.port : null}>{custom ?? defaultBody}</MissionRevealContext.Provider></ConversationPillContext.Provider>
+          <ConversationPillContext.Provider value={pill.port}><MissionRevealContext.Provider value={showObjectiveStrip ? missionReveal.port : null}><GroupComposerMentionContext.Provider value={canMention ? composerMention.publish : null}>{custom ?? defaultBody}</GroupComposerMentionContext.Provider></MissionRevealContext.Provider></ConversationPillContext.Provider>
         </div>
       </ContextRailHost>
     </div>

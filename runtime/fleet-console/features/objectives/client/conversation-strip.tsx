@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 
+import type { GroupComposerMentionPort } from "../../execution/client/agent/chat/group/composer-mention-context.js";
 import type { MissionRevealPort } from "../../execution/client/agent/chat/group/mission-reveal-context.js";
 import type { ConversationPillTakeover } from "../../workspace/shared/conversation-pill.js";
 import type { Objective } from "../shared/types.js";
@@ -25,7 +26,7 @@ export function useObjectiveMissionReveal(objectiveId: string, bodyId: string, l
   return { requested, port };
 }
 
-export function ObjectiveConversationStrip({ objectiveId, memberId, language, title, takeover, controls, requested }: {
+export function ObjectiveConversationStrip({ objectiveId, memberId, language, title, takeover, controls, requested, mention }: {
   readonly objectiveId: string;
   readonly memberId: string | null;
   readonly language: "en" | "ko";
@@ -33,22 +34,24 @@ export function ObjectiveConversationStrip({ objectiveId, memberId, language, ti
   readonly takeover: ConversationPillTakeover | null;
   readonly controls?: ReactNode;
   readonly requested: MissionRevealRequest | null;
+  readonly mention: GroupComposerMentionPort | null;
 }) {
   const objective = useSyncExternalStore(subscribeObjectiveOrFinished, () => findAnyObjective(objectiveId), () => null);
   useEffect(() => {
     if (objective === null) void loadObjective(objectiveId).catch(() => undefined);
   }, [objectiveId, objective]);
   if (!objective) return <div className="objectives-conversation-strip objectives-conversation-strip-loading" role="status">{title} · {getT(language)("objectives.rail.area.loading")}</div>;
-  return <LoadedStrip key={`${objectiveId}:${memberId ?? ""}`} objective={objective} memberId={memberId} language={language} takeover={takeover} controls={controls} requested={requested} />;
+  return <LoadedStrip key={`${objectiveId}:${memberId ?? ""}`} objective={objective} memberId={memberId} language={language} takeover={takeover} controls={controls} requested={requested} mention={mention} />;
 }
 
-function LoadedStrip({ objective, memberId, language, takeover, controls, requested }: {
+function LoadedStrip({ objective, memberId, language, takeover, controls, requested, mention }: {
   readonly objective: Objective;
   readonly memberId: string | null;
   readonly language: "en" | "ko";
   readonly takeover: ConversationPillTakeover | null;
   readonly controls?: ReactNode;
   readonly requested: MissionRevealRequest | null;
+  readonly mention: GroupComposerMentionPort | null;
 }) {
   const t = getT(language);
   const id = useId();
@@ -149,7 +152,7 @@ function LoadedStrip({ objective, memberId, language, takeover, controls, reques
         <button type="button" aria-label={t("objectives.detail.close")} onClick={close}>×</button>
       </div>
       {AREAS.map((key) => <div key={key} className="objectives-conversation-strip-body" role="tabpanel" id={`${id}-panel-${key}`} aria-labelledby={`${id}-tab-${key}`} hidden={area !== key} tabIndex={0}>
-        {key === "goal" ? <GoalArea objective={objective} language={language} /> : key === "crew" ? <CrewMissionsArea objective={objective} language={language} memberId={memberId} reveal={missionRequest} /> : <ResultsArea objective={objective} language={language} />}
+        {key === "goal" ? <GoalArea objective={objective} language={language} /> : key === "crew" ? <CrewMissionsArea objective={objective} language={language} memberId={memberId} reveal={missionRequest} mentionIds={mention?.rootObjectiveId === objective.id ? [...mention.memberIds, ...(mention.commanderId ? [mention.commanderId] : [])] : undefined} onMention={(objectiveId) => { if (mention?.pick(objectiveId)) setArea(null); }} /> : <ResultsArea objective={objective} language={language} />}
       </div>)}
     </section> : null}
   </div>;

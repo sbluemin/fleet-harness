@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, type JSX, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, type JSX, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 
 import { missionReady, missionTitle, unseenRecords, type Objective, type ObjectiveMember, type ObjectiveMission } from "../../shared/types.js";
 import { getT } from "../i18n/index.js";
@@ -22,7 +22,12 @@ export function crewMissionsCount(objective: Objective, language: "en" | "ko"): 
   });
 }
 
-function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labels, launchWords: rows }: {
+function CrewRow({ children, onPick, label }: { readonly children: ReactNode; readonly onPick?: (() => void) | undefined; readonly label: string }) {
+  return <li className="objective-rail-row objective-rail-crew-member">{onPick ? <button type="button" className="objectives-crew-mention" aria-label={label} onClick={(event) => { event.stopPropagation(); onPick(); }}>{children}</button> : children}</li>;
+}
+
+function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labels, launchWords: rows, onMention }: {
+  readonly onMention?: (() => void) | undefined;
   readonly objective: Objective;
   readonly member: ObjectiveMember;
   readonly count: number;
@@ -39,7 +44,7 @@ function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labe
     ? launchedWords(rows, launched ? member.model : picked?.model, launched ? member.effort : picked?.effort, labels).title
     : t("objectives.members.assigned");
   return (
-    <li className="objective-rail-row objective-rail-crew-member">
+    <CrewRow onPick={onMention} label={t("objectives.rail.strip.mention", { name: member.role })}>
       <span className="objective-rail-crew-mark"><MemberMark objective={objective} member={member} objectiveRecordState={objectiveRecordState} still size={20} /></span>
       <span className="objective-rail-crew-main">
         <span className="objective-rail-crew-name">{member.role}</span>
@@ -48,7 +53,7 @@ function CrewMemberRow({ objective, member, count, t, objectiveRecordState, labe
       {state !== "closed" && status !== "" ? (
         <span className={`objective-rail-tag${failed ? " is-bad" : state === "running" ? " is-run" : state === "awaiting" ? " is-wait" : ""}`}>{status}</span>
       ) : null}
-    </li>
+    </CrewRow>
   );
 }
 
@@ -113,7 +118,9 @@ function MissionRow({ objective, mission, index, t, language, states, objectiveR
 }
 
 /** 가운데 영역 본문 — 구성원(지휘관 포함) → 임무 순. 머리·스크롤은 골격이 감싼다. */
-export function CrewMissionsArea({ objective, language, memberId = null, reveal = null }: {
+export function CrewMissionsArea({ objective, language, memberId = null, reveal = null, mentionIds, onMention }: {
+  mentionIds?: readonly string[] | undefined;
+  onMention?: ((objectiveId: string) => void) | undefined;
   objective: Objective;
   language: "en" | "ko";
   memberId?: string | null;
@@ -172,7 +179,7 @@ export function CrewMissionsArea({ objective, language, memberId = null, reveal 
       <div className="objective-rail-section">
         <div className="objective-rail-section-head">{t("objectives.members.title")} <em>{objective.members.length + 1}</em></div>
         <ul className="objective-rail-list">
-          <li className="objective-rail-row objective-rail-crew-member">
+          <CrewRow onPick={onMention && mentionIds?.includes(objective.id) ? () => onMention(objective.id) : undefined} label={t("objectives.rail.strip.toCommander")}>
             <span className="objective-rail-crew-mark"><CommanderMark objective={objective} objectiveRecordState={objectiveRecordState} size={20} /></span>
             <span className="objective-rail-crew-main">
               <span className="objective-rail-crew-name">{t("objectives.commander.title")}</span>
@@ -181,7 +188,7 @@ export function CrewMissionsArea({ objective, language, memberId = null, reveal 
             {commanderState !== "closed" ? (
               <span className={`objective-rail-tag${commanderFailed ? " is-bad" : commanderState === "running" ? " is-run" : commanderState === "awaiting" ? " is-wait" : ""}`}>{commanderStatus}</span>
             ) : null}
-          </li>
+          </CrewRow>
           {objective.members.map((member) => (
             <CrewMemberRow
               key={member.id}
@@ -192,6 +199,7 @@ export function CrewMissionsArea({ objective, language, memberId = null, reveal 
               objectiveRecordState={objectiveRecordState}
               labels={labels}
               launchWords={rows}
+              onMention={onMention && mentionIds?.includes(member.id) ? () => onMention(member.id) : undefined}
             />
           ))}
         </ul>

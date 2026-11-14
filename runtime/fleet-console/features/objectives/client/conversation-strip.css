@@ -70,6 +70,7 @@
 .objectives-conversation-strip-body[hidden], .objectives-conversation-strip-segment[hidden] { display: none; }
 .objectives-conversation-strip .objective-rail-section-head { background: var(--popover-face); }
 .objectives-conversation-strip .objective-rail-crew-mission[data-member-focus] { background: var(--control-wash); border-radius: var(--popover-row-radius); }
+.objectives-conversation-strip .objectives-crew-mention { display: flex; align-items: flex-start; gap: var(--space-2); width: 100%; min-width: 0; padding: 0; border-radius: var(--popover-row-radius); text-align: start; }
 .objectives-conversation-strip-loading { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); }
 @container (max-width: 540px) {
   .objectives-conversation-strip-progress, .objectives-conversation-strip-panel-count { display: none; }
