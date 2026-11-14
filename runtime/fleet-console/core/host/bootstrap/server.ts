@@ -402,6 +402,38 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
     transport: "http",
   },
+  {
+    method: "GET",
+    path: "/api/v1/console-roster/runtime",
+    summary: "Read one paginated extended Desktop sidebar runtime slice (commodores, faces, objectives, and preferences).",
+    category: "Desktop",
+    gate: "origin-write",
+    transport: "http",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/console-roster/changes",
+    summary: "Long-poll extended Desktop sidebar turn and state transition motions after a journal cursor.",
+    category: "Desktop",
+    gate: "origin-write",
+    transport: "http",
+  },
+  {
+    method: "GET",
+    path: "/api/v1/console-roster/objective-full",
+    summary: "Read one unredacted sidebar objective record for the extended Desktop sidebar without joining a session.",
+    category: "Desktop",
+    gate: "origin-write",
+    transport: "http",
+  },
+  {
+    method: "POST",
+    path: "/api/v1/console-roster/preferences",
+    summary: "Persist extended Desktop sidebar sort, fold, keep-expanded, or settled display preferences.",
+    category: "Desktop",
+    gate: "origin-write",
+    transport: "http",
+  },
   { method: "GET", path: "/api/v1/computer-use", summary: "Read local Computer Use status.", category: "Settings", gate: "loopback", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/install", summary: "Install a Fleet-managed Cua Driver after local request.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
@@ -671,13 +703,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let releaseObjectivesBoard: (() => void) | null = null;
   const sidebarMotions = createSidebarMotionJournal();
 
+  function recordSidebarCommodoreMotion(channel: string, payload: unknown): void {
+    if (channel !== COMMODORE_CHANNEL || !payload || typeof payload !== "object" || !("op" in payload) || payload.op !== "run") return;
+    const event = payload as Extract<CommodoreEvent, { op: "run" }>;
+    const phase = event.run.phase;
+    sidebarMotions.append({ kind: "commodore", id: event.commodoreId, live: phase === "turn",
+      state: phase === "error" || phase === "retrying" ? "error" : phase === "turn" ? "running" : "idle", activity: event.run.step ?? null });
+  }
+
   function publishPluginEvent(channel: string, payload: unknown, isolateListeners = false): void {
-    if (channel === COMMODORE_CHANNEL && payload && typeof payload === "object" && "op" in payload && payload.op === "run") {
-      const event = payload as Extract<CommodoreEvent, { op: "run" }>;
-      const phase = event.run.phase;
-      sidebarMotions.append({ kind: "commodore", id: event.commodoreId, live: phase === "turn",
-        state: phase === "error" || phase === "retrying" ? "error" : phase === "turn" ? "running" : "idle", activity: event.run.step ?? null });
-    }
+    recordSidebarCommodoreMotion(channel, payload);
     for (const listener of pluginEventListeners.get(channel) ?? []) {
       if (!isolateListeners) listener(payload);
       else try { listener(payload); } catch (error) { recordFailure("objectiveRecord_lifecycle_listener_failed", error); }
