@@ -161,9 +161,11 @@ export interface AgentConversationProps {
   readonly overlay?: ReactNode;
   /** Optional domain-owned inline content and footer; omitted parts keep the standard message renderer. */
   readonly messageContent?: (entry: Extract<GroupTimelineEntry, { kind: "message" }>) => { readonly body?: ReactNode; readonly footer?: ReactNode } | undefined;
-  /** Below the working line — the plugin's own composer or a way back. */
-  readonly composer?: ReactNode;
-  /** Opt this conversation into the host's plugin summaries above the composer. Omitted on read-only records. */
+  /** Below the working line — the plugin's own composer, a slot renderer receiving trailing entries, or a way back. */
+  readonly composer?: ReactNode | ((slots: { readonly trailing: ReactNode }) => ReactNode);
+  /** Optional host-surface controls placed at the right end of the unified working/top bar (for example Commodore settings chips). */
+  readonly composerTopEnd?: ReactNode;
+  /** Opt this conversation into the host's plugin summaries above the composer (or in the composer trailing slot). Omitted on read-only records. */
   readonly composerTopEntries?: boolean;
   /** How the person's inline references (a message's `references`) open and look. */
   readonly references?: AgentChatReferenceHost;

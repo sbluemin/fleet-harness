@@ -2,7 +2,7 @@ import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-led
 import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { messageCommodore, renameCommodore } from "./commodore-state.js";
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { commodoreAvatarKey } from "../../workspace/shared/avatars.js";
 import type { AgentConversationProps } from "../../execution/shared/chat-renderer.js";
@@ -394,19 +394,22 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
     return lastSession?.kind === "session" && lastSession.model ? { model: lastSession.model, effort: lastSession.effort ?? null } : null;
   }, [run?.session, lastSession]);
 
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  useEffect(() => { setSettingsOpen(false); }, [commodoreId]);
   // 답 단추는 기존 사령관 메시지 API로 보낸다. 초안은 건드리지 않으며 읽기 전용이면 전송 포트를 주지 않는다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
   // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
-  const composer = (
+  const renderComposer = (trailing?: ReactNode) => (
     <footer ref={dockRef} className="objectives-commodore-foot">
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} tools={view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} /> : null} onFail={fail} onClear={() => setFailure(null)} />}
+        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} trailing={trailing} onFail={fail} onClear={() => setFailure(null)} />}
     </footer>
   );
+  const topSettings = !readOnly && view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} onOpenChange={setSettingsOpen} /> : null;
   return (
-    <div className="objectives-commodore-conversation">
+    <div className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
       {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
           밑으로 흘러 올라간다. */}
       {(run?.phase === "retrying" || run?.phase === "error") ? (
@@ -451,11 +454,12 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
             openLedger={openLedger}
             references={references} openUIOpen={openUIOpen}
             overlay={readOnly ? null : <CommodorePersonInbox theaterId={commodoreId} language={language} onEnded={fail} />}
-            composer={composer}
+            composer={readOnly ? renderComposer(null) : ({ trailing }) => renderComposer(trailing)}
+            composerTopEnd={topSettings}
             composerTopEntries={!readOnly}
             {...(readOnly ? {} : { onOpenUISend: sendOpenUI })}
           />
-        ) : composer}
+        ) : renderComposer(null)}
       </div>
       )}
     </div>

@@ -920,6 +920,20 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
    큰 shrink 비율로 다음 단계가 1px 줄기 전에 앞 단계가 접힌다. 칩과 몽글 스택은 줄이거나 스크롤하지 않는다. */
 .conversation-composer-top.is-unified,
 .group-composer-top.is-unified { min-height: 36px; flex-wrap: nowrap; align-items: center; gap: var(--space-2); }
+/* 위 줄 끝(설정 칩 등)이 함께 서면 왼쪽 진행 줄(1fr)과 오른쪽 끝(max-content) 두 칸으로 가른다. */
+.conversation-composer-top.is-unified.has-end {
+  display: grid;
+  grid-template-columns: minmax(40px, 1fr) minmax(0, max-content);
+  column-gap: var(--space-2);
+  align-items: center;
+}
+.conversation-composer-top.is-unified.has-end > .group-chat-working { grid-column: 1; justify-self: start; max-width: 100%; }
+.conversation-composer-top-end { grid-column: 2; justify-self: end; display: flex; align-items: center; min-width: 0; max-width: 100%; }
+/* 입력 캡슐 안 오른쪽 슬롯(보내기 버튼 왼쪽) — 28px 원과 같은 높이, 왼쪽 머리카락 선으로 입력과 나뉜다. */
+.fc-composer-capsule:has(> .conversation-composer-trailing) { container: fc-composer / inline-size; align-items: flex-end; }
+.conversation-composer-trailing { flex: none; display: inline-flex; align-items: center; gap: 4px; height: var(--fc-composer-circle, 28px); }
+.conversation-composer-trailing::before { content: ""; width: 1px; height: 16px; background: var(--hairline); }
+.conversation-composer-trailing:empty { display: none; }
 .group-composer-top.is-unified > .group-composer-suggest { display: contents; }
 .group-composer-top.is-unified .group-composer-action { flex: none; white-space: nowrap; }
 .group-composer-top.is-unified .group-composer-suggest-hint { flex: 1 1000000000 auto; }

@@ -8,7 +8,7 @@ import { commodoreAvatarKey, objectiveRecordAvatarKey, type MongleActivity } fro
 import { getT as getCoreT } from "../../../../../../core/client/src/i18n/index.js";
 import { conversationActivityPhrase, useObjectiveMongleActivities } from "../../../avatar-activity.js";
 
-import { ComposerTopEntries } from "../composer-top-entries.js";
+import { ComposerTopEntries, ComposerTrailingEntries } from "../composer-top-entries.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
 import { ChatReferenceContext, ChatReferenceText } from "../chat-reference.js";
@@ -62,8 +62,10 @@ export interface GroupConversationProps {
   readonly onOpenCommodoreRecord?: (request: BoardActionRecordRequest) => void;
   /** 대화 끝에 서는 카드(결정 요청·허용 요청과 답한 결정 줄). 원장 흐름 맨 아래, 진행 줄 위다. */
   readonly cards?: React.ReactNode;
-  /** 진행 줄 아래의 입력창. */
-  readonly composer?: React.ReactNode;
+  /** 진행 줄 아래의 입력창 — 슬롯 함수면 trailing 기여를 캡슐 안으로 넘기고 위 줄에서는 뺀다. */
+  readonly composer?: React.ReactNode | ((slots: { readonly trailing: React.ReactNode }) => React.ReactNode);
+  /** 위 한 줄의 오른쪽 끝에 서는 표면별 컨트롤(사령관 설정 칩 등). */
+  readonly composerTopEnd?: React.ReactNode;
   /** 쓰기 가능한 사령관·그룹 대화에서만 호스트 요약을 세운다. */
   readonly composerTopEntries?: boolean;
   /** 기록된 목표는 같은 진행 노드를 입력창의 제안·요약 줄 안에 세운다. 주지 않으면 기존 독 흐름이다. */
@@ -109,7 +111,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, commodoreActivity = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEnd, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, commodoreActivity = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -282,7 +284,11 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
   const unavailableNames = snapshot.unavailableObjectiveIds
     .map((id) => findSpeaker(snapshot, id)?.name)
     .filter((name): name is string => typeof name === "string");
-  const inlineWorking = Boolean(renderComposerWithWorking || (composerTopEntries && composer));
+  const composerUsesTrailingSlot = typeof composer === "function";
+  const renderedComposer = typeof composer === "function"
+    ? composer({ trailing: composerTopEntries ? <ComposerTrailingEntries /> : null })
+    : composer;
+  const inlineWorking = Boolean(renderComposerWithWorking || ((composerTopEntries || composerTopEnd) && renderedComposer));
   const workingLine = <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} inline={inlineWorking} commodoreActivity={commodoreActivity} />;
 
   return (
@@ -382,9 +388,9 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
       </div>
       <div ref={dockRef} className="group-chat-dock">
         {renderComposerWithWorking ? renderComposerWithWorking(workingLine) : <>
-          {inlineWorking ? <ComposerTopEntries leading={workingLine} /> : workingLine}
+          {inlineWorking ? <ComposerTopEntries leading={workingLine} end={composerTopEnd} omitEntries={composerUsesTrailingSlot} /> : workingLine}
           {/* 플러그인이 준 입력 자리(입력창 또는 단추 하나)는 상자 없는 슬롯에 담는다 — 독 빈 자리의 포인터 통과 규칙이 그 루트를 가리지 않게(group-chat.css). */}
-          {composer ? <div className="group-chat-dock-composer" {...(accessibleNames?.composer ? { role: "group", "aria-label": accessibleNames.composer } : {})}>{composer}</div> : null}
+          {renderedComposer ? <div className="group-chat-dock-composer" {...(accessibleNames?.composer ? { role: "group", "aria-label": accessibleNames.composer } : {})}>{renderedComposer}</div> : null}
         </>}
       </div>
       <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} />

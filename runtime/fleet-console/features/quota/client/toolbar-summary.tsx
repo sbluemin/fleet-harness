@@ -90,8 +90,9 @@ export function requestQuotaPanelOpen(): void {
   }, 0);
 }
 
-export function QuotaToolbarSummary({ popoverAnchorRef, layout }: ComposerTopEntryContext) {
+export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top" }: ComposerTopEntryContext) {
   const mobile = layout === "mobile";
+  const inCapsule = placement === "capsule";
   const { toolbarProviders: shown, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
@@ -119,7 +120,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout }: ComposerTopEnt
       <button
         ref={buttonRef}
         type="button"
-        className={glyphOnly ? "quota-toolbar-summary quota-toolbar-summary--glyph" : "quota-toolbar-summary"}
+        className={`quota-toolbar-summary${glyphOnly ? " quota-toolbar-summary--glyph" : ""}${inCapsule ? " quota-toolbar-summary--capsule" : ""}`}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? popoverId : undefined}
@@ -129,28 +130,34 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout }: ComposerTopEnt
         title={open ? undefined : label}
         onClick={() => setOpen((value) => !value)}
       >
-        {glyphOnly ? <QuotaBarsGlyph /> : readings.map((reading) => (
-          <span key={reading.id} className="quota-toolbar-summary__cell" aria-hidden="true">
-            <span className={snapshot.data === null ? "quota-toolbar-summary__mark" : `quota-toolbar-summary__mark quota-provider__mark quota-provider__mark--${reading.id}`}>
-              {snapshot.data === null ? <QuotaBarsGlyph /> : providerGlyph(reading.id)}
-            </span>
-            <span className="quota-toolbar-summary__lines">
-              {reading.lines.length === 0
-                ? <span className="quota-toolbar-summary__pct">–</span>
-                : reading.lines.map((window, index) => (
-                  <span key={`${window.id}-${window.label ?? index}`} className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${meterSeverity(window)}`}>
-                    {Math.round(window.usedPercent)}%
-                  </span>
-                ))}
-            </span>
-          </span>
-        ))}
+        {glyphOnly ? <QuotaBarsGlyph /> : (
+          <>
+            {readings.map((reading) => (
+              <span key={reading.id} className="quota-toolbar-summary__cell" aria-hidden="true">
+                <span className={snapshot.data === null ? "quota-toolbar-summary__mark" : `quota-toolbar-summary__mark quota-provider__mark quota-provider__mark--${reading.id}`}>
+                  {snapshot.data === null ? <QuotaBarsGlyph /> : providerGlyph(reading.id)}
+                </span>
+                <span className="quota-toolbar-summary__lines">
+                  {reading.lines.length === 0
+                    ? <span className="quota-toolbar-summary__pct">–</span>
+                    : reading.lines.map((window, index) => (
+                      <span key={`${window.id}-${window.label ?? index}`} className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${meterSeverity(window)}`}>
+                        {Math.round(window.usedPercent)}%
+                      </span>
+                    ))}
+                </span>
+              </span>
+            ))}
+            {inCapsule ? <span className="quota-toolbar-summary__compact-glyph" aria-hidden="true"><QuotaBarsGlyph /></span> : null}
+          </>
+        )}
       </button>
       {open ? (
         <QuotaPopover
           id={popoverId}
           anchorRef={buttonRef}
           placementAnchorRef={popoverAnchorRef}
+          inCapsule={inCapsule}
           locale={locale}
           mobile={mobile}
           onClose={(restoreFocus) => {
@@ -184,14 +191,26 @@ interface PopoverPlacement {
 }
 
 /**
- * 컴포저 요약 줄의 왼쪽 끝에 맞춰 위로 연다. 폭과 높이를 뷰포트 안으로 제한하고,
+ * 컴포저 요약 줄(또는 캡슐 안 쿼터 알약)에서 위로 연다. 폭과 높이를 뷰포트 안으로 제한하고,
  * 높이가 낮으면 팝업 안에서 스크롤한다.
  */
-export function placePopover(anchor: { readonly left: number; readonly width: number; readonly top: number; readonly bottom: number }, viewport: { readonly width: number; readonly height: number }): PopoverPlacement {
+export function placePopover(
+  anchor: { readonly left: number; readonly width: number; readonly top: number; readonly bottom: number },
+  viewport: { readonly width: number; readonly height: number },
+  align: "start" | "end" = "start",
+): PopoverPlacement {
   const width = Math.max(0, Math.min(POPOVER_WIDTH, viewport.width - VIEWPORT_MARGIN * 2));
-  const left = Math.max(VIEWPORT_MARGIN, Math.min(anchor.left, viewport.width - width - VIEWPORT_MARGIN));
+  const preferredLeft = align === "end" ? anchor.left + anchor.width - width : anchor.left;
+  const left = Math.max(VIEWPORT_MARGIN, Math.min(preferredLeft, viewport.width - width - VIEWPORT_MARGIN));
   const edge = Math.max(VIEWPORT_MARGIN, Math.min(anchor.top - POPOVER_GAP, viewport.height - VIEWPORT_MARGIN));
   return { left, width, maxHeight: Math.max(0, Math.min(POPOVER_MAX_HEIGHT, edge - VIEWPORT_MARGIN)), bottom: viewport.height - edge };
+}
+
+function measurePopoverAnchor(anchor: HTMLElement, inCapsule: boolean): { readonly left: number; readonly width: number; readonly height: number; readonly top: number; readonly bottom: number } {
+  const rect = anchor.getBoundingClientRect();
+  if (!inCapsule) return rect;
+  const capsule = anchor.closest(".fc-composer-capsule")?.getBoundingClientRect();
+  return capsule ? { left: rect.left, width: rect.width, height: capsule.height, top: capsule.top, bottom: capsule.bottom } : rect;
 }
 
 /**
@@ -199,10 +218,11 @@ export function placePopover(anchor: { readonly left: number; readonly width: nu
  * 자리는 호스트가 준 요약 줄의 화면 좌표로 잡고, 창 크기나 닻 상자가 바뀌면 다시 잡는다.
  * Console 어디든(팝업과 버튼 자신은 빼고) 누르면 닫히고, Esc로 닫으면 포커스가 버튼으로 돌아간다.
  */
-function QuotaPopover({ id, anchorRef, placementAnchorRef, locale, mobile, onClose }: {
+function QuotaPopover({ id, anchorRef, placementAnchorRef, inCapsule, locale, mobile, onClose }: {
   readonly id: string;
   readonly anchorRef: RefObject<HTMLButtonElement | null>;
   readonly placementAnchorRef: RefObject<HTMLElement | null>;
+  readonly inCapsule: boolean;
   readonly locale: ConsoleLocale;
   readonly mobile: boolean;
   readonly onClose: (restoreFocus: boolean) => void;
@@ -212,7 +232,7 @@ function QuotaPopover({ id, anchorRef, placementAnchorRef, locale, mobile, onClo
   // 첫 렌더부터 자리를 갖고 선다 — 숨은 채로 한 번 그리면 열자마자 주는 포커스가 그 상자에 앉지 못한다.
   const [placement, setPlacement] = useState<PopoverPlacement | null>(() => {
     const anchor = placementAnchorRef.current ?? anchorRef.current;
-    return anchor === null ? null : placePopover(anchor.getBoundingClientRect(), { width: window.innerWidth, height: window.innerHeight });
+    return anchor === null ? null : placePopover(measurePopoverAnchor(anchor, inCapsule), { width: window.innerWidth, height: window.innerHeight }, inCapsule ? "end" : "start");
   });
   const labelId = `${id}-title`;
   const closeRef = useRef(onClose);
@@ -227,17 +247,17 @@ function QuotaPopover({ id, anchorRef, placementAnchorRef, locale, mobile, onClo
     let last = "";
     let frame = 0;
     const track = () => {
-      const rect = anchor.getBoundingClientRect();
+      const rect = measurePopoverAnchor(anchor, inCapsule);
       const key = `${rect.left},${rect.top},${rect.width},${rect.height},${window.innerWidth},${window.innerHeight}`;
       if (key !== last) {
         last = key;
-        setPlacement(placePopover(rect, { width: window.innerWidth, height: window.innerHeight }));
+        setPlacement(placePopover(rect, { width: window.innerWidth, height: window.innerHeight }, inCapsule ? "end" : "start"));
       }
       frame = window.requestAnimationFrame(track);
     };
     track();
     return () => window.cancelAnimationFrame(frame);
-  }, [anchorRef, placementAnchorRef]);
+  }, [anchorRef, placementAnchorRef, inCapsule]);
 
   const placed = placement !== null;
   useEffect(() => {

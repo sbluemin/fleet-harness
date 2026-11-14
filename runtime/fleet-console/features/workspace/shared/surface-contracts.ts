@@ -34,11 +34,13 @@ export interface SidebarFooterEntryDescriptor {
 }
 
 
-/** 컴포저 오른쪽 위의 부속 항목. 호스트가 명시적으로 켠 대화 표면에만 서며 플러그인끼리 의존하지 않는다. */
+/** 컴포저 부속 항목. 호스트가 명시적으로 켠 대화 표면에만 서며 플러그인끼리 의존하지 않는다. */
 export interface ComposerTopEntryContext {
   /** 생략하면 데스크톱으로 다룬다. */
   readonly layout?: "mobile" | "desktop";
-  /** 상세 팝업을 여는 요약 줄. 버튼 포커스는 항목이 소유한다. */
+  /** 서는 자리 — `"top"` 은 컴포저 위 한 줄(기본), `"capsule"` 은 입력 캡슐 안 오른쪽이다. */
+  readonly placement?: "top" | "capsule";
+  /** 상세 팝업을 여는 닻 요소. 버튼 포커스는 항목이 소유한다. */
   readonly popoverAnchorRef: RefObject<HTMLElement | null>;
 }
 
