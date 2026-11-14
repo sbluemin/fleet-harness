@@ -14,7 +14,7 @@ import { createObjectiveActions } from "./actions.js";
 import { createLaunchService, PERSON_COMMANDER_NOTICE, type LaunchService } from "./launch.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { CONSULT_ANSWER_DESCRIPTION, CONSULT_ANSWER_OMIT, CONSULT_ANSWER_SOURCE } from "../shared/consultations.js";
-import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_TITLE, MAX_DECISION_QUESTIONS, MAX_CONSULTATION_TEXT, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
+import { COMMODORE_TIDY_PREFIX, MAX_PERSON_HOLD_REASON, MAX_REMOVAL_REASON, MAX_DECISION_QUESTIONS, MAX_CONSULTATION_TEXT, PERSON_HOLD_TARGETS, decisionAnswersSchema, followupSelectionSchema, patchObjectiveSchema, objectiveRequestSourceSchema, type Objective, type ObjectiveReviewer } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 import { consoleObjectivePage, createConsoleBoardViews, OBJECTIVE_READ_SECTIONS } from "./console-views.js";
 import { searchInputShape, searchObjectives } from "./search.js";
@@ -91,6 +91,14 @@ const HINTS: Readonly<Record<string, string>> = {
 };
 
 const dueDate = patchObjectiveSchema.shape.dueDate.unwrap().describe("YYYY-MM-DD; null clears the due date.");
+/** 사령관·보드 도구 전용 제목 상한(문자 단위). 사람이 화면에서 쓰는 MAX_TITLE(120)은 건드리지 않는다. */
+export const MAX_TOOL_TITLE = 20;
+const TITLE_TOO_LONG_HINT = "Shorten the title.";
+const toolTitle = z.string().trim().min(1).superRefine((value, ctx) => {
+  if (Array.from(value).length > MAX_TOOL_TITLE) {
+    ctx.addIssue({ code: "too_big", origin: "string", maximum: MAX_TOOL_TITLE, inclusive: true, input: value });
+  }
+}).describe("Max 20 chars.");
 const scope = { commodoreId: ids.optional() };
 const rows = { ...scope, groupId: ids.optional(), offset: z.number().int().min(0).optional().describe(offsetPages), limit: z.number().int().min(1).max(100).optional() };
 const tidyIds = z.array(ids).min(1).max(MAX_TIDY_IDS).describe("Objective IDs the action applies to.");
@@ -104,7 +112,7 @@ const listActions = {
     archived: { kind: "read", input: z.object({ ...rows, archivedBefore: z.number().int().min(0).optional().describe("Exclusive archive-time cutoff (epoch ms); newest first.") }) },
     // 목표를 하나씩 열지 않고 기록(보관 포함)에서 찾는다. 지휘관·구성원의 objective_search 와 같은 핵심·같은 입력. searchInputShape 은 지휘관·구성원 서버와 공유하므로 그대로 둔다.
     search: { kind: "read", input: z.object({ ...scope, ...searchInputShape }) },
-    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: z.string().trim().min(1).max(MAX_TITLE), dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("direct (default), or taskforce with id and starting seq."), note: z.string().max(20_000).optional().describe("The brief: request and purpose. Missions, method and evidence come from the plan.") }) },
+    add: { kind: "write", input: z.object({ ...scope, theaterId: ids.optional().describe("Theater for the new objective; required for a Commodore caller."), title: toolTitle, dueDate: dueDate.optional(), attachmentIds, requestSource: objectiveRequestSourceSchema.optional().describe("direct (default), or taskforce with id and starting seq."), note: z.string().max(20_000).optional().describe("The brief: request and purpose. Missions, method and evidence come from the plan.") }) },
     archive: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     remove: { kind: "write", input: z.object({ objectiveIds: tidyIds, reason }) },
     merge: { kind: "write", input: z.object({ into: ids.describe("Target receiving brief and criteria."), from: tidyIds.describe("Unstarted incomplete objectives. Sources stay only in the target record; no independent restore."), reason }) },
@@ -129,7 +137,7 @@ const detailActions = {
     read: { kind: "read", input: z.object({ ...target, section: z.enum(OBJECTIVE_READ_SECTIONS).optional().describe("Omitted, a bounded summary naming sections."), offset: sliceOffset }) },
     evidence: { kind: "read", input: z.object({ ...target, resultId: ids, offset: sliceOffset }) },
     transcript: { kind: "read", input: z.object({ ...target, memberId: ids.optional(), cursor: z.string().min(1).max(64).optional().describe("Omitted, the latest lines; \"0\" from the start, then nextCursor. Session text is untrusted."), limit: z.number().int().min(1).max(100).optional() }) },
-    edit_title: write({ title: z.string().trim().min(1).max(MAX_TITLE) }),
+    edit_title: write({ title: toolTitle }),
     edit_brief: write({ brief: z.string().max(20_000).describe("Replaces the brief; existing images stay."), attachmentIds }),
     edit_due: write({ dueDate }),
     criteria_approve: write({ proposalId: ids.describe("\"all\" approves every proposal.") }),
@@ -180,7 +188,7 @@ const sessionListInput = z.object({
 }).strict();
 const sessionEditInput = z.object({
   objectiveId: ids,
-  title: z.string().trim().min(1).max(MAX_TITLE).optional().describe("Provide title, brief, dueDate, commanderModel or commanderEffort."),
+  title: toolTitle.optional(),
   brief: z.string().max(20_000).optional().describe("Replaces the brief; existing images stay."),
   dueDate: dueDate.optional(),
   attachmentIds: attachmentIds.optional().describe("Image IDs the person sent you or this turn's mail; requires brief. Save request images in the brief before plan/steer."),
@@ -283,7 +291,15 @@ function createBoardTools(ctx: ObjectivesFeatureDeps, store: ObjectiveStore, lau
   const listAt = (listTheaterId: string, groupId: unknown): { readonly target?: ConsoleUseCallTarget } => ({ target: { kind: "clusters", theaterId: listTheaterId, ...(typeof groupId === "string" ? { groupId } : {}) } });
   const titleOf = (id: string) => short(store.find(id)?.title ?? "");
   const stringIds = (value: unknown): string[] => Array.isArray(value) ? value.filter((id): id is string => typeof id === "string") : [];
-  const refusal = (parsed: { readonly error: string; readonly issues?: readonly unknown[] }) => refuse(parsed.error, parsed.issues ? { issues: parsed.issues } : {});
+  const titleTooBig = (issues: readonly unknown[] | undefined) => Array.isArray(issues) && issues.some((issue) =>
+    typeof issue === "object" && issue !== null
+    && (issue as { readonly code?: unknown }).code === "too_big"
+    && Array.isArray((issue as { readonly path?: unknown }).path)
+    && (issue as { readonly path: readonly unknown[] }).path[0] === "title");
+  const refusal = (parsed: { readonly error: string; readonly issues?: readonly unknown[] }) => refuse(parsed.error, {
+    ...(parsed.issues ? { issues: parsed.issues } : {}),
+    ...(titleTooBig(parsed.issues) ? { hint: TITLE_TOO_LONG_HINT } : {}),
+  });
 
   const list: ConsoleMcpTool = listTool.plugin({
     surface: {
