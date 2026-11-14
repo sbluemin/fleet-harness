@@ -8,7 +8,7 @@ import { useStoreSnapshot } from "@fleet-console/ui/store";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { launchProviderCaption, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { prettyModelId } from "../../ai-gateway/client/components/model-coordinate-picker.js";
-import { findRosterRow, type ModelRoster } from "../../ai-gateway/shared/models.js";
+import { canonicalModelId, findRosterRow, type ModelRoster } from "../../ai-gateway/shared/models.js";
 import { formatResetInstant, meterSeverity } from "../../quota/client/quota-panel.js";
 import { getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaSummary } from "../../quota/client/summary-store.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
@@ -29,6 +29,32 @@ type T = Translate<CommodoreMessageKey>;
 
 const LAUNCH_PROVIDER_ORDER: readonly AiGatewayProviderId[] = ["claude", "codex", "xai", "antigravity", "muse-code"];
 const BASE_EFFORTS = new Set(["low", "medium"]);
+
+const MODEL_SUBTITLE_KEYS: Readonly<Record<string, CommodoreMessageKey>> = {
+  fable: "commodore.pool.sub.fable",
+  opus: "commodore.pool.sub.opus",
+  sonnet: "commodore.pool.sub.sonnet",
+  haiku: "commodore.pool.sub.haiku",
+  "gpt-6-astra": "commodore.pool.sub.gpt-6-astra",
+  "gpt-6.1-sol": "commodore.pool.sub.gpt-6.1-sol",
+  "gpt-6-luna": "commodore.pool.sub.gpt-6-luna",
+  "gpt-6.1-terra": "commodore.pool.sub.gpt-6.1-terra",
+  "grok-4.7": "commodore.pool.sub.grok-4.7",
+  "grok-composer-2.5-fast": "commodore.pool.sub.grok-composer-2.5-fast",
+  "gemini-4-argon": "commodore.pool.sub.gemini-4-argon",
+  "gemini-4-carbon": "commodore.pool.sub.gemini-4-carbon",
+  "gemini-4-hydrogen": "commodore.pool.sub.gemini-4-hydrogen",
+  "muse-spark-1.3": "commodore.pool.sub.muse-spark-1.3",
+  "muse-spark-1.3-contributor": "commodore.pool.sub.muse-spark-1.3-contributor",
+};
+
+function shortModelSubtitle(modelId: string, t: T, fallback: string | null): string | null {
+  const canonical = canonicalModelId(modelId);
+  const sep = canonical.indexOf("--");
+  const slug = (sep >= 0 ? canonical.slice(sep + 2) : canonical).toLowerCase().replace(/(?:\[1m\]|-1m)$/u, "");
+  const key = MODEL_SUBTITLE_KEYS[slug];
+  return key ? t(key) : fallback;
+}
 
 export type PoolModelStatusKind = "ok" | "wait" | "rest";
 
@@ -466,7 +492,7 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
 
   if (showHelp) {
     return (
-      <div className="commodore-pool-view">
+      <div className={`commodore-pool-view${mobile ? " is-mobile" : ""}`}>
         <button type="button" className="commodore-pool-ex-back" onClick={onCloseHelp}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5L5.5 8l4.5 4.5" /></svg>
           {t("commodore.pool.helpBack")}
@@ -478,7 +504,7 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
 
   if (pool.loading) {
     return (
-      <div className="commodore-pool-view">
+      <div className={`commodore-pool-view${mobile ? " is-mobile" : ""}`}>
         <p className="commodore-composer-panel-note">{t("commodore.pool.loading")}</p>
       </div>
     );
@@ -486,7 +512,7 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
 
   if (pool.unavailable) {
     return (
-      <div className="commodore-pool-view">
+      <div className={`commodore-pool-view${mobile ? " is-mobile" : ""}`}>
         <p className="commodore-composer-panel-note">{t("commodore.pool.unavailable")}</p>
       </div>
     );
@@ -626,11 +652,12 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
               {loginKind === "out" ? <p className="commodore-pool-signin-note">{t("commodore.pool.signInNote")}</p> : null}
               {rows.map((model) => {
                 const isIn = enabledSet.has(model.id);
+                const subtitle = shortModelSubtitle(model.id, t, model.description);
                 return (
                   <div key={model.id} className="commodore-pool-mrow">
                     <span className="commodore-pool-mrow-nm">
                       {model.name}
-                      {model.description ? <small>{model.description}</small> : null}
+                      {subtitle ? <small>{subtitle}</small> : null}
                     </span>
                     <button
                       type="button"
@@ -805,16 +832,16 @@ function RoutingPoolExplainer({ t, entries }: {
   const { width: w, height: h } = stageSize;
   const pad = 10;
   const narrow = w < 380;
-  const cardW = narrow ? Math.min(134, Math.round(w * 0.37)) : Math.min(184, Math.max(132, Math.round(w * 0.37)));
+  const cardW = narrow ? Math.min(126, Math.round(w * 0.36)) : Math.min(184, Math.max(132, Math.round(w * 0.37)));
   const cardX = w - cardW - pad;
   const gateW = 46;
   const gx = Math.round(cardX - gateW - (narrow ? 12 : 24));
-  const availPoolW = Math.max(96, gx - pad - 8);
-  const cols = availPoolW >= 220 && items.length > 4 ? 3 : 2;
-  const cell = Math.min(narrow ? 48 : 60, Math.floor(availPoolW / cols));
-  const maxGridBottom = h - 68;
+  const availPoolW = Math.max(120, gx - pad - 8);
+  const cols = !narrow && availPoolW >= 220 && items.length > 4 ? 3 : 2;
+  const cell = narrow ? Math.max(62, Math.floor(availPoolW / cols)) : Math.min(72, Math.max(64, Math.floor(availPoolW / cols)));
+  const maxGridBottom = h - 62;
   const rowsNeeded = Math.max(1, Math.ceil(items.length / cols));
-  const rowStep = Math.min(narrow ? 46 : 54, Math.max(38, Math.floor((maxGridBottom - 32) / rowsNeeded)));
+  const rowStep = Math.min(60, Math.max(56, Math.floor((maxGridBottom - 32) / rowsNeeded)));
 
   const positions = new Map<string, { readonly x: number; readonly y: number; readonly tray: boolean }>();
   const trayQueue: SampleExplainerItem[] = [];
@@ -828,8 +855,8 @@ function RoutingPoolExplainer({ t, entries }: {
     const col = rowIndex % cols;
     const row = Math.floor(rowIndex / cols);
     rowIndex += 1;
-    const x = Math.round(pad + 4 + col * cell);
-    const y = Math.round((step === 0 ? 32 : 34) + row * rowStep);
+    const x = Math.round(pad + col * cell);
+    const y = Math.round(32 + row * rowStep);
     positions.set(item.id, { x, y, tray: false });
   }
   trayQueue.forEach((item, index) => {
