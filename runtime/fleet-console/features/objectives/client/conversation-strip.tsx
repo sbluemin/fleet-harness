@@ -91,7 +91,8 @@ function LoadedStrip({ objective, memberId, language, takeover, controls, reques
   useEffect(() => {
     if (!area) return;
     const pointer = (event: MouseEvent) => {
-      if (event.target instanceof Node && !root.current?.contains(event.target)) close();
+      // 바깥을 누른 닫힘은 포커스를 되돌리지 않는다 — 누른 자리(입력창 등)가 이미 포커스를 가졌다.
+      if (event.target instanceof Node && !root.current?.contains(event.target)) setArea(null);
     };
     const key = (event: globalThis.KeyboardEvent) => {
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }
@@ -152,7 +153,8 @@ function LoadedStrip({ objective, memberId, language, takeover, controls, reques
         <button type="button" aria-label={t("objectives.detail.close")} onClick={close}>×</button>
       </div>
       {AREAS.map((key) => <div key={key} className="objectives-conversation-strip-body" role="tabpanel" id={`${id}-panel-${key}`} aria-labelledby={`${id}-tab-${key}`} hidden={area !== key} tabIndex={0}>
-        {key === "goal" ? <GoalArea objective={objective} language={language} /> : key === "crew" ? <CrewMissionsArea objective={objective} language={language} memberId={memberId} reveal={missionRequest} mentionIds={mention?.rootObjectiveId === objective.id ? [...mention.memberIds, ...(mention.commanderId ? [mention.commanderId] : [])] : undefined} onMention={(objectiveId) => { if (mention?.pick(objectiveId)) setArea(null); }} /> : <ResultsArea objective={objective} language={language} />}
+        {/* 보이는 영역만 세운다 — 숨은 임무 목록이 새 기록을 읽음으로 알리지 않게 한다. */}
+        {area !== key ? null : key === "goal" ? <GoalArea objective={objective} language={language} /> : key === "crew" ? <CrewMissionsArea objective={objective} language={language} memberId={memberId} reveal={missionRequest} mentionIds={mention?.rootObjectiveId === objective.id ? [...mention.memberIds, ...(mention.commanderId ? [mention.commanderId] : [])] : undefined} onMention={(objectiveId) => { if (mention?.pick(objectiveId)) setArea(null); }} /> : <ResultsArea objective={objective} language={language} />}
       </div>)}
     </section> : null}
   </div>;
