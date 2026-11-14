@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import type { Translate } from "@fleet-console/i18n";
 import { useT as useConsoleT } from "../../../core/client/src/i18n/index.js";
 import { modelCoordinateDisplay, prettyModelId, type ModelCoordinateValue } from "../../ai-gateway/client/components/model-coordinate-picker.js";
-import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
+import { launchProviderFromGroupId, launchProviderFromModelId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { findRosterRow, type ModelRoster } from "../../ai-gateway/shared/models.js";
 import { resolveRowEffort } from "../../execution/client/composer-primitives/effort-track.js";
 import type { ObjectiveLaunchVariantRow } from "../../objectives/shared/records/types.js";
@@ -13,14 +13,16 @@ import { COMMANDER_PRESET } from "../../objectives/shared/types.js";
 import { commanderByJudgment, commanderCoordinates, commanderValue, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { CommodoreJudgmentMark } from "./commodore-judgment-glyph.js";
 import { CommodoreSessionSettings } from "./commodore-inbox-section.js";
+import { ProviderMark, RoutingPoolGlyphStack, RoutingPoolHelpButton, RoutingPoolPanel, useRoutingPoolData } from "./commodore-routing-pool.js";
 import { setCommodoreCommander, setCommodoreCoordinates, useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { useCommodoreList } from "./commodore-list.js";
 import { useCommodoreName } from "./commodore-name.js";
+import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 
 /**
- * 데스크톱 사령관 대화의 설정 칩과 팝오버 — 사령관 모델 · 지휘관 모델 · 작전 구역 · 고급 옵션 4개 칩이 대화 위 한 줄
+ * 데스크톱 사령관 대화의 설정 칩과 팝오버 — 사령관 모델 · 지휘관 모델 · 라우팅 풀 · 작전 구역 · 고급 옵션 5개 칩이 대화 위 한 줄
  * 오른쪽 끝에 서고(진행 줄 왼쪽, 쿼터는 입력 캡슐 안 오른쪽), 칩을 누르면 칩에 매달린 팝오버가 위 줄 위로 뜬다.
  * 열린 동안 칩 줄 자체가 탭 줄이 되어 ←/→ 로 칸을 옮기고, 폰·TaskForce·Theater Inbox 입력창은 이 부품을 싣지 않는다.
  */
@@ -29,8 +31,8 @@ type T = Translate<CommodoreMessageKey>;
 type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
 type Coordinates = { readonly model?: string; readonly effort?: string; readonly fast?: boolean };
 
-export type CommodoreComposerSettingsSection = "commodore" | "commander" | "theaters" | "advanced";
-const SECTIONS: readonly CommodoreComposerSettingsSection[] = ["commodore", "commander", "theaters", "advanced"];
+export type CommodoreComposerSettingsSection = "commodore" | "commander" | "pool" | "theaters" | "advanced";
+const SECTIONS: readonly CommodoreComposerSettingsSection[] = ["commodore", "commander", "pool", "theaters", "advanced"];
 
 /* ── 바깥에서 여는 요청 — 빈 상태의 「작전 구역 추가」·만들기 창 착지가 이 사령관 대화의 팝오버를 연다 ── */
 
@@ -110,6 +112,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   const ct = useConsoleT();
   const { state, defaults } = view;
   const [open, setOpen] = useState<CommodoreComposerSettingsSection | null>(null);
+  const [poolHelp, setPoolHelp] = useState(false);
   const [closing, setClosing] = useState(false);
   const [placement, setPlacement] = useState<SettingsPopoverPlacement | null>(null);
   const [popoverSlide, setPopoverSlide] = useState(false);
@@ -122,9 +125,10 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   const theaterCount = useCommodoreList().find((row) => row.commodoreId === commodoreId)?.theaters.length ?? 0;
   const agentRoster = useCommodoreRoster("agent");
   const launchRoster = useCommodoreRoster("launch");
+  const pool = useRoutingPoolData(launchRoster, t);
   const labels = launchLabels(t);
 
-  const chipIndicator = useSlidingIndicator(chipsRef, open !== null && !closing ? `[data-section="${open}"]` : null, `${open ?? ""}:${commodoreDisplayKey(state)}:${theaterCount}`);
+  const chipIndicator = useSlidingIndicator(chipsRef, open !== null && !closing ? `[data-section="${open}"]` : null, `${open ?? ""}:${commodoreDisplayKey(state)}:${theaterCount}:${pool.signature}`);
 
   useEffect(() => {
     onOpenChange?.(open !== null && !closing);
@@ -195,6 +199,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
       motion.current.anim = null;
       panel?.classList.remove("is-flowing");
       setPopoverSlide(false);
+      setPoolHelp(false);
       setOpen(null);
       return;
     }
@@ -213,6 +218,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
       closingRef.current = false;
       setClosing(false);
       setPopoverSlide(false);
+      setPoolHelp(false);
       setOpen(null);
     };
   }, [open]);
@@ -226,6 +232,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
       setClosing(false);
       setPopoverSlide(open !== null && open !== section);
     }
+    if (section !== "pool") setPoolHelp(false);
     setOpen(section);
   };
 
@@ -233,6 +240,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     if (closingRef.current) { reopen(section); return; }
     if (open === section) { close(false); return; }
     setPopoverSlide(open !== null);
+    if (section !== "pool") setPoolHelp(false);
     setOpen(section);
   };
 
@@ -332,6 +340,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     closingRef.current = false;
     setClosing(false);
     setPopoverSlide(false);
+    setPoolHelp(false);
     setOpen(null);
   };
   useEffect(dismiss, [commodoreId]);
@@ -351,6 +360,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? SECTIONS.length - 1 : (at + (event.key === "ArrowRight" ? 1 : SECTIONS.length - 1)) % SECTIONS.length;
     const next = SECTIONS[nextIndex]!;
     setPopoverSlide(next !== open);
+    if (next !== "pool") setPoolHelp(false);
     setOpen(next);
     chipRefs.current.get(next)?.focus({ preventScroll: true });
   };
@@ -362,7 +372,8 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   const commanderWord = judgment ? t("commodore.settings.commanderJudgment") : commanderDisplay.words.model;
   const tabLabel = (section: CommodoreComposerSettingsSection) => section === "commodore" ? t("commodore.settings.model")
     : section === "commander" ? t("commodore.settings.commander")
-      : section === "theaters" ? ct("theaterInbox.theaters.page") : t("commodore.settings.advanced");
+      : section === "pool" ? t("commodore.pool.title")
+        : section === "theaters" ? ct("theaterInbox.theaters.page") : t("commodore.settings.advanced");
   const chip = (section: CommodoreComposerSettingsSection, aria: string, body: ReactNode, extra = "") => (
     <button
       ref={(element) => { if (element) chipRefs.current.set(section, element); else chipRefs.current.delete(section); }}
@@ -378,6 +389,19 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     >{body}</button>
   );
   const coordinateTitle = (display: ReturnType<typeof modelCoordinateDisplay>) => display.title;
+  const togglePoolHelp = (next: boolean) => {
+    setPoolHelp(next);
+    if (!reducedMotion()) {
+      panelRef.current?.querySelector(".commodore-composer-panel-body > *")?.animate?.(
+        [{ opacity: 0, transform: `translateX(${next ? 18 : -18}px)` }, { opacity: 1, transform: "none" }],
+        { duration: MOTION_MS.sectionContent, easing: OPEN_EASE },
+      );
+    }
+  };
+  const openQuotaFromPool = () => {
+    close(false);
+    requestQuotaPanelOpen();
+  };
 
   return (
     <>
@@ -396,6 +420,13 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
           </>
         ) : (
           <CoordinateWords display={commanderDisplay} prefix={<span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>} />
+        ))}
+        {chip("pool", pool.chipAria(t), (
+          <>
+            <span className="commodore-composer-chip-label">{t("commodore.pool.title")}</span>
+            <RoutingPoolGlyphStack providers={pool.poolProviders} />
+            {pool.entries.length > 0 && pool.usableCount === 0 ? <span className="commodore-pool-chip-warn" aria-hidden="true" /> : null}
+          </>
         ))}
         {chip("theaters", `${ct("theaterInbox.theaters.page")} ${theaterCount}`, (
           <>
@@ -429,9 +460,24 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
               <div className="commodore-settings-popover-title">
                 <span key={open} className="commodore-settings-popover-title-in">
                   <strong id={titleId}>{tabLabel(open)}</strong>
-                  <span className="commodore-settings-popover-scope"><b>{name}</b> · {t("commodore.composerSettings.scope")}</span>
+                  {open === "pool" ? (
+                    <span className="commodore-settings-popover-scope is-global">
+                      <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5" /><path d="M2.5 8h11M8 2.5c2 2 2 9 0 11M8 2.5c-2 2-2 9 0 11" /></svg>
+                      {t("commodore.composerSettings.scopeGlobal")}
+                    </span>
+                  ) : (
+                    <span className="commodore-settings-popover-scope"><b>{name}</b> · {t("commodore.composerSettings.scope")}</span>
+                  )}
                 </span>
               </div>
+              {open === "pool" ? (
+                <RoutingPoolHelpButton
+                  pressed={poolHelp}
+                  label={t("commodore.pool.helpOpenAria")}
+                  title={t("commodore.pool.helpTitle")}
+                  onClick={() => togglePoolHelp(!poolHelp)}
+                />
+              ) : null}
               <span className="commodore-settings-popover-kbd" aria-hidden="true">ESC</span>
               <button type="button" className="commodore-composer-panel-close" aria-label={t("commodore.composerSettings.close")} title={t("commodore.composerSettings.close")} onClick={() => close(true)}>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
@@ -465,6 +511,16 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
                   onPick={(next) => act(() => setCommodoreCommander(commodoreId, commanderCoordinates(state, next)))}
                 />
               ) : null}
+              {open === "pool" ? (
+                <RoutingPoolPanel
+                  t={t}
+                  pool={pool}
+                  commanderByJudgment={judgment}
+                  showHelp={poolHelp}
+                  onCloseHelp={() => togglePoolHelp(false)}
+                  onOpenQuota={openQuotaFromPool}
+                />
+              ) : null}
               {open === "theaters" ? <div className="commodore-composer-panel-theaters"><CommodoreTheaters commodoreId={commodoreId} /></div> : null}
               {open === "advanced" ? <div className="commodore-composer-panel-advanced"><CommodoreSessionSettings key={commodoreId} t={t} commodoreId={commodoreId} state={state} inline /></div> : null}
             </div></div>
@@ -495,11 +551,6 @@ function launchLabels(t: T) {
 }
 
 const wordsOf = (display: ReturnType<typeof modelCoordinateDisplay>) => [display.words.model, display.words.effort].filter(Boolean).join(" · ");
-
-function ProviderMark({ provider }: { readonly provider: LaunchProviderGlyphId | null }) {
-  if (!provider) return null;
-  return <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${provider}`} aria-hidden="true">{launchProviderGlyph(provider)}</span>;
-}
 
 /** 칩의 좌표 낱말 — 공유 선택기 트리거와 같은 「[글리프] [앞표시] 모델 · 강도 [꺼짐·폴백]」 문법이다. */
 function CoordinateWords({ display, prefix }: { readonly display: ReturnType<typeof modelCoordinateDisplay>; readonly prefix?: ReactNode }) {

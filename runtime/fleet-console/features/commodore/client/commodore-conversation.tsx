@@ -183,6 +183,16 @@ export function CommodoreZoneHost(): null {
   useEffect(() => {
     if (commodoreId && COMMODORE_UUID.test(commodoreId)) setZoneCommodore(commodoreId);
   }, [commodoreId]);
+  useEffect(() => {
+    const onOpenPool = () => {
+      const target = (commodoreId && COMMODORE_UUID.test(commodoreId) ? commodoreId : null)
+        ?? readCommodoreList().find((row) => COMMODORE_UUID.test(row.commodoreId))?.commodoreId;
+      if (!target) return;
+      openCommodoreTheaterSettings(target, "pool");
+    };
+    window.addEventListener("fleet:open-routing-pool", onOpenPool);
+    return () => window.removeEventListener("fleet:open-routing-pool", onOpenPool);
+  }, [commodoreId]);
   return null;
 }
 
