@@ -8,6 +8,7 @@ import type { ConsoleMcpTool } from "../../execution/shared/tools.js";
 import type { ObjectiveGroupedEvent, ObjectiveRecord } from "../shared/records/types.js";
 import type { ObjectivesFeatureDeps } from "../host/deps.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { z } from "zod";
 
 import { createDurableJsonStore } from "@fleet-console/infra";
 import { sanitizeDurableConsoleState } from "../../workspace/host/durable-state.js";
@@ -16,12 +17,12 @@ import { createObjectivesFeature, FLEET_COMMANDER_MCP_SERVER, FLEET_MEMBER_MCP_S
 import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../host/attachments.js";
 import { criteriaSettleAdvice, inboxReasons } from "../shared/board-state.js";
-import { createCommodoreBoardTools, createObjectiveConsoleTools, MAX_REMARK } from "../host/console-tools.js";
+import { createCommodoreBoardTools, createObjectiveConsoleTools, MAX_REMARK, MAX_TOOL_TITLE } from "../host/console-tools.js";
 import { createLaunchService, recipientReplyTool } from "../host/launch.js";
 import { createCommanderMcpTools, createMemberMcpTools, createObjectiveMcpTools, COMMANDER_TOOL_RENAMES, MEMBER_TOOL_RENAMES, FLEET_COMMANDER_TOOL_NAMES, FLEET_MEMBER_TOOL_NAMES } from "../host/objective-tools.js";
 import { createObjectiveRoutes } from "../host/routes.js";
 import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "../host/store.js";
-import { extensionOf, MAX_FOLLOWUPS, type Objective, type ObjectiveEvent } from "../shared/types.js";
+import { extensionOf, MAX_FOLLOWUPS, MAX_TITLE, type Objective, type ObjectiveEvent } from "../shared/types.js";
 import { RESULT_LIMITS, type ObjectiveResult } from "../shared/results.js";
 import { createGhPrLookup, createPrStatusService } from "../host/pr-status.js";
 
@@ -2184,7 +2185,7 @@ describe("Objectives contract", () => {
       hint: "Choose one of the supplied models.",
     });
     expect((await again({ action: "edit", objectiveId: id, commanderModel: "xai--grok-4.7" })).structuredContent).toMatchObject({ error: "not_started", hint: "No Commander session yet; use plan or commence for initial model selection." });
-    expect((await again({ action: "edit", objectiveId: id, title: "Renamed while pending" })).structuredContent).toMatchObject({ ok: true, stored: { title: "Renamed while pending" } });
+    expect((await again({ action: "edit", objectiveId: id, title: "Renamed pending" })).structuredContent).toMatchObject({ ok: true, stored: { title: "Renamed pending" } });
     expect(reloaded.pending(id)).not.toHaveProperty("model");
     expect(objectiveRecords.has(id)).toBe(false);
     expect((await again({ action: "plan", objectiveId: id, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true });
@@ -2554,8 +2555,8 @@ describe("Objectives contract", () => {
     const memberId = executing.members[0]!.id;
     const missionId = executing.graph.missions[0]!.missionId;
     activity.set(id, "running");
-    expect(await board({ action: "edit", objectiveId: id, title: "Renamed while running" })).toMatchObject({ ok: true, stored: { title: "Renamed while running" } });
-    expect(store.find(id)!.title).toBe("Renamed while running");
+    expect(await board({ action: "edit", objectiveId: id, title: "Renamed running" })).toMatchObject({ ok: true, stored: { title: "Renamed running" } });
+    expect(store.find(id)!.title).toBe("Renamed running");
     // 바쁠 때 기한이 든 편집은 브리핑을 먼저 쓰지 않고 통째로 거절한다.
     const noteBefore = store.find(id)!.note;
     const busyEdit = await commodore.execute({ action: "edit", objectiveId: id, brief: "Changed while running", dueDate: "2026-12-01" }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
@@ -2572,7 +2573,7 @@ describe("Objectives contract", () => {
         expect(result.structuredContent.error).toBe("own_objective");
       }
     }
-    expect(store.find(id)!.title).toBe("Renamed while running");
+    expect(store.find(id)!.title).toBe("Renamed running");
     // 진행 중인 일은 보드의 결과로 판단한다 — 목표가 아무것도 기다리지 않는 동안 일하는 세션의 전사는 닫혀 있다.
     expect(await refusal(commodore, { action: "transcript", objectiveId: id })).toBe("objective_working");
     activity.set(id, "idle");
@@ -3733,5 +3734,51 @@ describe("Objectives contract", () => {
     } finally {
       feature.dispose();
     }
+  });
+
+  it("caps objective tool titles at 20 code points with a short hint while keeping human patch limit at 120", async () => {
+    const { ctx, store, launch, add, route, workspace, consoleTool, consoleDetail } = harness();
+    const caller = add("title-caller", { title: "Title caller" });
+    const [commodore] = createCommodoreBoardTools(ctx, store, launch, "c1") as [ConsoleMcpTool];
+    // 광고 스키마를 통과한 20자(서로게이트 쌍 포함)는 허용되고, 21자는 실행 거절에서 안내 힌트와 함께 막힌다.
+    const advertised = z.fromJSONSchema(commodore.inputSchema as Parameters<typeof z.fromJSONSchema>[0]);
+    const exact20 = "console-e2e 이웃 탐지 격리";
+    const emoji20 = "😀".repeat(MAX_TOOL_TITLE);
+    const over21 = `${exact20}!`;
+    expect(Array.from(exact20)).toHaveLength(MAX_TOOL_TITLE);
+    expect(advertised.safeParse({ action: "add", theaterId: "t1", title: emoji20 }).success).toBe(true);
+    expect(advertised.safeParse({ action: "add", theaterId: "t1", title: over21 }).success).toBe(true);
+
+    const callCommodore = async (args: Record<string, unknown>) =>
+      (await commodore.execute(args, { cwd: workspace })) as { isError: boolean; structuredContent: Record<string, unknown> };
+    const callConsole = async (tool: ConsoleMcpTool, args: Record<string, unknown>) =>
+      (await tool.execute(args, { cwd: workspace, caller: { kind: "objectiveRecord", objectiveId: caller.id } })) as { isError: boolean; structuredContent: Record<string, unknown> };
+
+    const created = await callCommodore({ action: "add", theaterId: "t1", title: `  ${exact20}  ` });
+    expect(created.isError).toBe(false);
+    const id = created.structuredContent.objectiveId as string;
+    expect(store.find(id)!.title).toBe(exact20);
+
+    expect((await callCommodore({ action: "edit", objectiveId: id, title: emoji20 })).isError).toBe(false);
+    expect(store.find(id)!.title).toBe(emoji20);
+
+    const tooLong = { error: "invalid_arguments", issues: [{ path: ["title"], code: "too_big", maximum: MAX_TOOL_TITLE }], hint: expect.any(String) };
+    for (const bad of [
+      await callCommodore({ action: "add", theaterId: "t1", title: over21 }),
+      await callCommodore({ action: "edit", objectiveId: id, title: over21 }),
+      await callConsole(consoleTool, { action: "add", theaterId: "t1", title: over21 }),
+      await callConsole(consoleDetail, { action: "edit_title", objectiveId: id, title: over21 }),
+    ]) {
+      expect(bad.isError).toBe(true);
+      expect(bad.structuredContent).toMatchObject(tooLong);
+      expect(String(bad.structuredContent.hint).length).toBeGreaterThan(0);
+    }
+    expect(store.find(id)!.title).toBe(emoji20);
+
+    // 사람이 화면에서 쓰는 objective/patch 경로는 MAX_TITLE(120)을 유지한다.
+    const humanTitle = "가".repeat(MAX_TITLE);
+    expect((await route("objective/patch", { objectiveId: id, patch: { title: humanTitle } })).status).toBe(200);
+    expect(store.find(id)!.title).toBe(humanTitle);
+    expect((await route("objective/patch", { objectiveId: id, patch: { title: `${humanTitle}!` } })).status).toBe(400);
   });
 });
