@@ -188,7 +188,7 @@ describe("remote select", () => {
       options: [],
     });
     const { client, calls } = fakeClient({
-      "DOM.resolveNode": () => ({ objectId: "obj-9" }),
+      "DOM.resolveNode": () => ({ object: { objectId: "obj-9" } }),
       "Runtime.callFunctionOn": (params) => {
         expect((params as { arguments: Array<{ value: unknown }> }).arguments[0]!.value).toEqual([1]);
         return { result: { value: { ok: true, selected: [1] } } };

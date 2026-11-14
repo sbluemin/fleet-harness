@@ -344,8 +344,8 @@ export async function applySelectChoice(
   const entry = registry.take(popupId, tabId);
   if (!entry) return { applied: false, reason: "select_expired" };
   if (cancel) return { applied: true };
-  const resolved = await client.send<{ objectId?: string }>("DOM.resolveNode", { backendNodeId: entry.backendNodeId }, entry.sessionId).catch(() => null);
-  const objectId = resolved?.objectId;
+  const resolved = await client.send<{ object?: { objectId?: string } }>("DOM.resolveNode", { backendNodeId: entry.backendNodeId }, entry.sessionId).catch(() => null);
+  const objectId = resolved?.object?.objectId;
   if (!objectId) return { applied: false, reason: "select_gone" };
   try {
     const applied = await client.send<{ result: { value?: { ok: boolean; reason?: string; selected?: number[] } } }>("Runtime.callFunctionOn", {
