@@ -251,6 +251,7 @@ export async function probeSelectTarget(client: CdpClient, sessionId: string, x:
   const objectId = found?.result.objectId;
   if (!objectId) return null;
   try {
+    await client.send("DOM.getDocument", { depth: 0 }, sessionId).catch(() => undefined);
     const node = await client.send<{ node: { backendNodeId: number } }>("DOM.requestNode", { objectId }, sessionId);
     const extracted = await client.send<{ result: { value?: { rect: SelectProbeHit["rect"]; multiple: boolean; disabled: boolean; options: SelectProbeHit["options"] } | null } }>(
       "Runtime.callFunctionOn",
@@ -337,6 +338,7 @@ export async function applySelectChoice(
   const entry = registry.take(popupId, tabId);
   if (!entry) return { applied: false, reason: "select_expired" };
   if (cancel) return { applied: true };
+  await client.send("DOM.getDocument", { depth: 0 }, entry.sessionId).catch(() => undefined);
   const resolved = await client.send<{ objectId?: string }>("DOM.resolveNode", { backendNodeId: entry.backendNodeId }, entry.sessionId).catch(() => null);
   const objectId = resolved?.objectId;
   if (!objectId) return { applied: false, reason: "select_gone" };
