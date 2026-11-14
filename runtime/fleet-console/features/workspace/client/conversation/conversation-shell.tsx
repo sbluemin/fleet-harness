@@ -44,7 +44,7 @@ import { publishBrowserPluginAttach } from "../../../browser/client/browser-engi
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
 import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
 import { useCommodoreBrowserUse } from "../../../computer-use/client/computer-screen-share.js";
-import { desktopPickerUrl, isDesktopShell, PICKER_SURFACE_OPEN, useDesktopHomeOrigin } from "../../../../core/client/src/integration/desktop-shell.js";
+import { desktopPickerAnchor, desktopPickerUrl, isDesktopShell, PICKER_SURFACE_OPEN, useDesktopHomeOrigin } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../objective-clusters.js";
@@ -272,10 +272,10 @@ export function ConversationSideBarActions() {
   const active = consoles.capable && consoles.entries.length > 1 ? consoles.active : null;
   const canManage = active !== null && consoleSectionManageable(active);
   const canRename = active !== null && active.kind === "remote";
-  const openRename = () => {
+  const openRename = (trigger: HTMLElement | null) => {
     if (!home.origin) return;
     // 집의 관리 목록(intent=manage, 대상 없음)은 원격 콘솔의 연필을 연다. 셸이 이 항해를 이미 가로챈다.
-    const url = new URL(desktopPickerUrl(home.origin, PICKER_SURFACE_OPEN, location.origin));
+    const url = new URL(desktopPickerUrl(home.origin, PICKER_SURFACE_OPEN, location.origin, desktopPickerAnchor(trigger)));
     url.searchParams.set("intent", "manage");
     location.assign(url.toString());
   };
@@ -285,12 +285,12 @@ export function ConversationSideBarActions() {
       <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
-      {menu ? <TaskforceCreateMenu taskforce={enabled} extraCount={trailing} extra={consoles.capable ? (close) => <>
+      {menu ? <TaskforceCreateMenu taskforce={enabled} extraCount={trailing} extra={consoles.capable ? (close, trigger) => <>
         <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); consoles.command({ add: true }); }}>
           <span className="theater-menu-check" aria-hidden="true"><ConsoleGlyph remote /></span>
           <span className="theater-menu-label">{t("chrome.hosts.add")}</span>
         </button>
-        {canManage || canRename ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); if (canManage && active) consoles.command({ manage: active.id }); else openRename(); }}>
+        {canManage || canRename ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { const anchor = trigger(); close(); if (canManage && active) consoles.command({ manage: active.id }); else openRename(anchor); }}>
           <span className="theater-menu-check" aria-hidden="true"><ConsoleManageIcon /></span>
           <span className="theater-menu-label">{t("chrome.consoles.manageThis")}</span>
         </button> : null}

@@ -11,8 +11,8 @@ export function TaskforceCreateMenu({ children, taskforce = true, extra, extraCo
   readonly children: ReactNode;
   /** 태스크포스 실험이 켜져 있을 때만 '새 태스크포스'를 둔다. */
   readonly taskforce?: boolean;
-  /** 기존 항목 아래 구분선 다음에 붙는 항목. 메뉴를 닫는 함수를 받는다. */
-  readonly extra?: (close: () => void) => ReactNode;
+  /** 기존 항목 아래 구분선 다음에 붙는 항목. 메뉴를 닫는 함수와 '+' 트리거 조회 함수를 받는다. */
+  readonly extra?: (close: () => void, trigger: () => HTMLElement | null) => ReactNode;
   /** extra 안의 menuitem 수. 높이 예약이 항목 수와 맞는다. 키보드 이동은 그린 단추를 센다. */
   readonly extraCount?: number;
 }) {
@@ -40,6 +40,6 @@ export function TaskforceCreateMenu({ children, taskforce = true, extra, extraCo
     }}>
       <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); requestCommodoreCreate(); }}><span className="theater-menu-check" aria-hidden="true"><CommodoreIcon /></span><span className="theater-menu-label">{t("taskforce.newCommodore")}</span></button>
       {taskforce ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { close(); requestTaskforceCreate(); }}><span className="theater-menu-check" aria-hidden="true"><TaskforceIcon /></span><span className="theater-menu-label">{t("taskforce.new")}</span>{shortcut ? <kbd className="taskforce-menu-shortcut">{shortcut}</kbd> : null}</button> : null}
-      {extra ? <><div className="theater-menu-divider" role="separator" />{extra(close)}</> : null}
+      {extra ? <><div className="theater-menu-divider" role="separator" />{extra(close, () => button.current)}</> : null}
     </div></div>, document.body) : null}</>;
 }
