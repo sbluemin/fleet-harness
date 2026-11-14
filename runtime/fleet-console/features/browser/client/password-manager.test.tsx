@@ -15,7 +15,8 @@ const vault = {
   osAuthSupported: true,
   entries: [
     { id: "a", origin: "https://example.com", username: "ada", createdAt: 1, updatedAt: 2, password: secret },
-    { id: "b", origin: "https://other.test", username: "grace", createdAt: 1, updatedAt: 2 },
+    { id: "b", origin: "https://example.com", username: "grace", createdAt: 1, updatedAt: 2 },
+    { id: "c", origin: "https://other.test", username: "bea", createdAt: 1, updatedAt: 2 },
   ],
   neverSaveOrigins: ["https://never.example"],
 };
@@ -28,6 +29,7 @@ afterEach(() => {
   container?.remove();
   root = null;
   container = null;
+  document.body.querySelector(".settings-password-scrim")?.remove();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -45,107 +47,143 @@ function mount(fetchMock: ReturnType<typeof vi.fn>) {
 }
 
 async function flush() {
-  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); await Promise.resolve(); });
+}
+
+function buttonByLabel(label: string): HTMLButtonElement {
+  const found = [...document.body.querySelectorAll("button")].find((item) => item.getAttribute("aria-label") === label || item.textContent === label);
+  if (!found) throw new Error(`missing button ${label}`);
+  return found as HTMLButtonElement;
+}
+
+function setInput(input: HTMLInputElement, value: string) {
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
+  setter.call(input, value);
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  input.dispatchEvent(new Event("change", { bubbles: true }));
 }
 
 describe("password manager settings", () => {
-  it("lists and searches metadata, and never keeps a revealed secret after the section closes", async () => {
+  it("opens one row per site and keeps the secret inside the detail dialog", async () => {
     const calls: { method: string; url: string; body: unknown }[] = [];
+    let entries = vault.entries.map((entry) => ({ ...entry }));
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      const body = typeof init?.body === "string" ? JSON.parse(init.body) as unknown : null;
+      const body = typeof init?.body === "string" ? JSON.parse(init.body) as Record<string, unknown> : null;
       calls.push({ method: init?.method ?? "GET", url, body });
-      if (url.endsWith("/reveal")) return json({ password: secret });
+      if (url.includes("/favicon")) return json({ error: "not_found" }, 404);
+      if (url.endsWith("/reveal")) return body?.id === "missing" ? json({ error: "os_auth_cancelled" }, 403) : json({ password: secret });
       if (url.endsWith("/copy")) return json({ copied: true, password: secret });
-      if (url.endsWith("/settings") && init?.method === "POST") return json({ offerToSave: false });
-      if (url.endsWith("/save")) return json({ entry: { id: "c", origin: "https://fresh.example", username: "ada", createdAt: 3, updatedAt: 3 }, created: true });
-      if (url.endsWith("/update")) return json({ entry: { id: "a", origin: "https://example.com", username: "ada-2", createdAt: 1, updatedAt: 4 } });
-      if (url.endsWith("/delete") && !url.endsWith("/never-save")) return json({ deleted: true });
+      if (url.endsWith("/settings") && init?.method === "POST") return json({ offerToSave: body?.enabled === true });
+      if (url.endsWith("/save")) return json({ entry: { id: "d", origin: "https://fresh.example", username: "ada", createdAt: 3, updatedAt: 3 }, created: true });
+      if (url.endsWith("/update")) {
+        entries = entries.map((entry) => entry.id === body?.id ? { ...entry, username: String(body?.username ?? entry.username) } : entry);
+        return json({ entry: entries.find((entry) => entry.id === body?.id) });
+      }
+      if (url.endsWith("/delete") && !url.endsWith("/never-save")) {
+        entries = entries.filter((entry) => entry.id !== body?.id);
+        return json({ deleted: true });
+      }
       if (url.endsWith("/never-save")) return json({ neverSaveOrigins: [] });
-      return json(vault);
+      return json({ ...vault, entries });
     });
     mount(fetchMock);
     await flush();
-    expect(container!.textContent).toContain("https://example.com");
-    expect(container!.textContent).toContain("ada");
+
+    expect(container!.textContent).toContain("example.com");
+    expect(container!.textContent).toContain("other.test");
+    expect(container!.textContent).not.toContain("ada");
     expect(container!.textContent).not.toContain(secret);
+    expect(container!.textContent).toContain("2");
+    const icon = container!.querySelector("img");
+    expect(icon?.getAttribute("src")).toBe(`/api/v1/browser/passwords/favicon?origin=${encodeURIComponent("https://example.com")}`);
+    act(() => { icon!.dispatchEvent(new Event("error")); });
+    await flush();
+    expect(container!.querySelector("img[src*='example.com']")).toBeNull();
+    expect(container!.textContent).toContain("E");
 
     const search = container!.querySelector("input[type=search]") as HTMLInputElement;
-    const setValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!;
-    act(() => { setValue.call(search, "grace"); search.dispatchEvent(new Event("input", { bubbles: true })); search.dispatchEvent(new Event("change", { bubbles: true })); });
+    act(() => { setInput(search, "grace"); });
     await flush();
-    expect(container!.textContent).toContain("https://other.test");
-    expect(container!.textContent).not.toContain("https://example.com");
+    expect(container!.textContent).toContain("example.com");
+    expect(container!.textContent).not.toContain("other.test");
+    act(() => { setInput(search, ""); });
+    await flush();
 
-    act(() => { setValue.call(search, ""); search.dispatchEvent(new Event("input", { bubbles: true })); search.dispatchEvent(new Event("change", { bubbles: true })); });
+    act(() => { buttonByLabel("example.com, 2").click(); });
     await flush();
-    const show = [...container!.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "Show https://example.com");
-    act(() => { show!.click(); });
+    const dialog = document.body.querySelector("[role=dialog]");
+    expect(dialog?.textContent).toContain("ada");
+    expect(dialog?.textContent).toContain("grace");
+    expect(dialog?.textContent).toContain("https://example.com");
+    expect(dialog?.textContent).not.toContain(secret);
+
+    act(() => { buttonByLabel("Show ada https://example.com").click(); });
     await flush();
-    expect(container!.textContent).toContain(secret);
-    act(() => root?.unmount());
-    root = null;
+    expect(document.body.textContent).toContain(secret);
+    let leaked = false;
+    const bubble = (event: Event) => { if ((event as KeyboardEvent).key === "Escape") leaked = true; };
+    window.addEventListener("keydown", bubble);
+    act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })); });
+    window.removeEventListener("keydown", bubble);
+    await flush();
+    expect(leaked).toBe(false);
+    expect(document.body.querySelector("[role=dialog]")).toBeNull();
     expect(document.body.textContent).not.toContain(secret);
 
-    mount(fetchMock);
+    act(() => { buttonByLabel("other.test").click(); });
     await flush();
-    const copy = [...container!.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "Copy https://example.com");
-    act(() => { copy!.click(); });
+    act(() => { buttonByLabel("Copy bea https://other.test").click(); });
     await flush();
-    expect(container!.textContent).toContain("Copied");
-    expect(container!.textContent).not.toContain(secret);
-    expect(calls.some((call) => call.url.endsWith("/copy") && call.method === "POST")).toBe(true);
+    expect(document.body.textContent).toContain("Copied");
+    expect(document.body.textContent).not.toContain(secret);
 
-    const remove = [...container!.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "Remove https://never.example");
-    act(() => { remove!.click(); });
+    act(() => { buttonByLabel("Edit").click(); });
     await flush();
-    expect(calls.some((call) => call.url.endsWith("/never-save") && call.method === "DELETE")).toBe(true);
-    expect(container!.textContent).not.toContain("https://never.example");
-
-    const add = [...container!.querySelectorAll("button")].find((button) => button.textContent === "Add password");
-    act(() => { add!.click(); });
-    await flush();
-    const fields = [...container!.querySelectorAll("input")].filter((input) => input.type !== "search" && input.type !== "checkbox");
+    const name = document.body.querySelector("form input") as HTMLInputElement;
     act(() => {
-      setValue.call(fields[0], "https://fresh.example/login");
-      fields[0]!.dispatchEvent(new Event("input", { bubbles: true }));
-      setValue.call(fields[1], "ada");
-      fields[1]!.dispatchEvent(new Event("input", { bubbles: true }));
-      setValue.call(fields[2], secret);
-      fields[2]!.dispatchEvent(new Event("input", { bubbles: true }));
-      container!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      setInput(name, "bea-2");
+      document.body.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
     });
     await flush();
-    const saved = calls.find((call) => call.url.endsWith("/save"));
-    expect(saved?.body).toMatchObject({ origin: "https://fresh.example", username: "ada", password: secret });
-    expect(container!.querySelector("input[type=password]")?.getAttribute("value") ?? "").not.toContain(secret);
+    expect(calls.some((call) => call.url.endsWith("/update") && call.body && (call.body as { username?: string }).username === "bea-2")).toBe(true);
 
-    const edit = [...container!.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "Edit https://example.com");
-    act(() => { edit!.click(); });
+    act(() => { buttonByLabel("Delete bea-2 https://other.test").click(); });
     await flush();
-    const editFields = [...container!.querySelectorAll("form input")];
-    act(() => {
-      setValue.call(editFields[0], "ada-2");
-      editFields[0]!.dispatchEvent(new Event("input", { bubbles: true }));
-      container!.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
-    });
-    await flush();
-    expect(calls.some((call) => call.url.endsWith("/update") && (call.body as { username?: string }).username === "ada-2")).toBe(true);
-
-    const del = [...container!.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "Delete https://example.com");
-    act(() => { del!.click(); });
-    await flush();
+    expect(document.body.querySelector("[role=dialog]")).toBeNull();
     expect(calls.some((call) => call.url.endsWith("/delete") && call.method === "POST")).toBe(true);
+
+    act(() => { buttonByLabel("Add").click(); });
+    await flush();
+    const fields = [...document.body.querySelectorAll("form input")] as HTMLInputElement[];
+    act(() => {
+      setInput(fields[0]!, "https://fresh.example/login");
+      setInput(fields[1]!, "ada");
+      setInput(fields[2]!, secret);
+      document.body.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    await flush();
+    expect(calls.find((call) => call.url.endsWith("/save"))?.body).toMatchObject({ origin: "https://fresh.example", username: "ada", password: secret });
+    expect(document.body.querySelector("[role=dialog]")).toBeNull();
+    expect(document.body.textContent).not.toContain(secret);
 
     const offer = container!.querySelector("input[type=checkbox]") as HTMLInputElement;
     act(() => { offer.click(); });
     await flush();
     expect(calls.some((call) => call.url.endsWith("/settings") && call.method === "POST" && (call.body as { enabled?: boolean }).enabled === false)).toBe(true);
-
-    fetchMock.mockImplementation(async (url: string) => url.endsWith("/reveal") ? json({ error: "os_auth_cancelled" }, 403) : json(vault));
-    const showAgain = [...container!.querySelectorAll("button")].find((button) => button.getAttribute("aria-label") === "Show https://example.com");
-    act(() => { showAgain!.click(); });
+    act(() => { buttonByLabel("Remove https://never.example").click(); });
     await flush();
-    expect(container!.textContent).toContain("OS authentication was cancelled");
-    expect(container!.textContent).not.toContain(secret);
+    expect(calls.some((call) => call.url.endsWith("/never-save") && call.method === "DELETE")).toBe(true);
+    expect(container!.textContent).not.toContain("never.example");
+
+    act(() => { buttonByLabel("example.com, 2").click(); });
+    await flush();
+    fetchMock.mockImplementation(async (url: string) => url.endsWith("/reveal") ? json({ error: "os_auth_cancelled" }, 403) : json({ ...vault, entries }));
+    act(() => { buttonByLabel("Show ada https://example.com").click(); });
+    await flush();
+    expect(document.body.textContent).toContain("OS authentication was cancelled");
+    expect(document.body.textContent).not.toContain(secret);
+    act(() => { buttonByLabel("Done").click(); });
+    await flush();
+    expect(document.body.textContent).not.toContain(secret);
   });
 });

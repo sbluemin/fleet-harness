@@ -68,6 +68,16 @@ export async function removeNeverSaveOrigin(origin: string): Promise<readonly st
   return Array.isArray(origins) ? origins.filter((item): item is string => typeof item === "string") : [];
 }
 
+/** `https://naver.com` 은 `naver.com`, 포트가 있으면 `127.0.0.1:56458`. */
+export function passwordSiteLabel(origin: string): string {
+  try {
+    const url = new URL(origin);
+    return url.port ? `${url.hostname}:${url.port}` : url.hostname;
+  } catch {
+    return origin;
+  }
+}
+
 export function filterSavedPasswords(entries: readonly SavedPassword[], query: string): readonly SavedPassword[] {
   const needle = query.trim().toLowerCase();
   if (!needle) return entries;
