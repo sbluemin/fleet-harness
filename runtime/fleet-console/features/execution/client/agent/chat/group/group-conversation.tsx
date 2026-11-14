@@ -17,7 +17,6 @@ import { getT } from "../../i18n/index.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import type { AgentConversationEntry, AgentConversationProps } from "../../../../shared/chat-renderer.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { MissionRevealContext } from "./mission-reveal-context.js";
 import { RelayConversation, RelayLine, deliveryFailure, useRelayConversation, type RelayOpener } from "./group-relay.js";
 import { MentionChip } from "../../../composer-primitives/mention-chip.js";
 import { ConversationCommodoreContext, ConversationSpeakerSection, LedgerTargetContext, LiveSpeakerMark, SpeakerMark, SpeakerName, commodoreDisplayName, speakerKey, speakerNameStyle, speakerTone, useCommodoreSpeakerKey } from "./speaker-mark.js";
@@ -1054,15 +1053,6 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
 }) {
   const t = getGroupT(language);
   const references = React.useContext(ChatReferenceContext);
-  const missionPort = React.useContext(MissionRevealContext);
-  const missionId = entry.missionId;
-  const revealMission = missionId && missionPort?.objectiveId === entry.objectiveId ? (
-    <button type="button" className="group-chat-link" onClick={(event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      missionPort.reveal(missionId);
-    }}>{missionPort.label}</button>
-  ) : null;
   const time = timeOf(entry.at, language);
   const action = resolveLocalizedText(entry.action, language ?? "en");
   if (entry.target) return <BoardActionTargetLine entry={entry} target={entry.target} language={language} time={time} action={action} onOpenRecord={onOpenRecord} label={label} mark={entry.target.id && references?.mark ? references.mark(entry.target.id) : null} />;
@@ -1083,7 +1073,6 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
   );
   const open = onOpenRecord ? () => onOpenRecord({ objectiveId: entry.objectiveId, entryId: entry.id, at: entry.at }) : null;
   // 펼칠 내용이 없으면 접지 않는다 — 링크만 든 빈 말풍선을 펼치지 않고, 열 기록이 있으면 줄 전체가 그 기록을 여는 단추다.
-  if (!gist && revealMission) return <div className="group-chat-line group-chat-board" data-entry-id={entry.id}>{summary}{revealMission}{open ? <button type="button" className="group-chat-link" onClick={open}>{label ?? t("group.board.openRecord")}</button> : null}</div>;
   if (!gist) {
     if (!open) return <div className="group-chat-line group-chat-board" data-entry-id={entry.id}>{summary}</div>;
     return (
@@ -1097,7 +1086,6 @@ function BoardActionLine({ entry, language, onOpenRecord, label }: {
     <details className="group-chat-line group-chat-board" data-entry-id={entry.id}>
       <summary className="group-chat-line-summary">
         {summary}
-        {revealMission}
         <ChevronGlyph direction="down" className="group-chat-line-chev" />
       </summary>
       <div className="group-chat-line-detail">

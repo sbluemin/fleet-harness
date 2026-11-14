@@ -49,9 +49,7 @@ import { setChatReadingWidthDefault } from "../../../execution/client/terminal/s
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
 import { useClusterIndex, useObjectiveClusters, type ClusterIndex } from "../objective-clusters.js";
 import { commanderOwnerOf, isCommanderObjective } from "../commander-tab/commander-rows.js";
-import { ObjectiveConversationStrip, useObjectiveMissionReveal } from "../../../objectives/client/conversation-strip.js";
-import { MissionRevealContext } from "../../../execution/client/agent/chat/group/mission-reveal-context.js";
-import { GroupComposerMentionContext, useGroupComposerMentionHost } from "../../../execution/client/agent/chat/group/composer-mention-context.js";
+import { ObjectiveChipCommodore } from "./objective-chip-commodore.js";
 import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
 import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
@@ -1678,25 +1676,21 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const memberIds = new Set([...roster.flatMap((member) => (member.objectiveId ? [member.objectiveId] : [])), ...nested.map((candidate) => candidate.id)]);
   memberIds.delete(objectiveRecord.id);
   const memberCount = memberIds.size;
-  // 사령관 묶음 목표의 데스크톱 대화만 상황 띠를 쓴다. 일반 세션·TaskForce 의 머리는 그대로다.
-  const stripObjectiveId = objectiveRecord.parentObjectiveId ?? objectiveRecord.id;
-  const showObjectiveStrip = commanderOwnerOf(clusterIndex.clusters, stripObjectiveId) !== null;
-  const missionReveal = useObjectiveMissionReveal(stripObjectiveId, bodyOwner.id, language);
-  const composerMention = useGroupComposerMentionHost(stripObjectiveId, bodyOwner.id);
-  const canMention = showObjectiveStrip && bodyOwner.id === stripObjectiveId;
+  // 사령관 묶음의 지휘관이면 칩이 「사령관 ⇄ 목표」로 선다 — 두 쪽 모두 누르면 우측 사이드바를 여닫는다.
+  const chipCommodoreId = commanderOwnerOf(clusterIndex.clusters, objectiveRecord.id);
 
   return (
     <div className="conversation-column">
       <div className="conversation-pill-row">
-        {showObjectiveStrip ? <ObjectiveConversationStrip objectiveId={stripObjectiveId} memberId={bodyOwner.id === stripObjectiveId ? null : bodyOwner.id} title={objectiveRecord.title} language={language} takeover={pill.takeover} controls={viewSwitch} requested={missionReveal.requested} mention={canMention ? composerMention.port : null} /> :
-        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}>
+        <ConversationPill takeover={pill.takeover} onPress={onToggleDetails} label={chipCommodoreId !== null ? t("conversation.pill.commodorePanelAria") : t("conversation.pill.detailsAria", { title: objectiveRecord.title })} controls={viewSwitch}
+          lead={chipCommodoreId === null ? undefined : <ObjectiveChipCommodore commodoreId={chipCommodoreId} onPress={onToggleDetails} />}>
             <ObjectiveAvatar objectiveRecord={objectiveRecord} state={objectiveRecordMongleState(objectiveRecord.id, state, clusterIndex.clusters)} size={20} label={objectiveRecord.title} decorative className="conversation-pill-mark" />
             <span className="conversation-pill-title">{objectiveRecord.title}</span>
             {bodyOwner !== objectiveRecord ? <span className="conversation-pill-sub">› {clusterRoot?.cluster.conversation?.members.find((member) => member.objectiveId === bodyOwner.id)?.name ?? clusterRoot?.formation.byObjectiveId.get(bodyOwner.id)?.member.name ?? bodyOwner.title}</span> : null}
             {memberCount > 0 ? (
               <span className="conversation-pill-sub">· {t(memberCount === 1 ? "conversation.pill.members_one" : "conversation.pill.members_other", { count: memberCount })}</span>
             ) : null}
-        </ConversationPill>}
+        </ConversationPill>
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
         {tools(toolsLead, <span ref={setRailSlot} className="conversation-rail-slot" />)}
@@ -1705,7 +1699,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
           노드 줄을 따로 세우지 않는다. */}
       <ContextRailHost scope={railScope} slot={railSlot}>
         <div className="conversation-body" ref={bodyRef} onPointerDownCapture={activate}>
-          <ConversationPillContext.Provider value={pill.port}><MissionRevealContext.Provider value={showObjectiveStrip ? missionReveal.port : null}><GroupComposerMentionContext.Provider value={canMention ? composerMention.publish : null}>{custom ?? defaultBody}</GroupComposerMentionContext.Provider></MissionRevealContext.Provider></ConversationPillContext.Provider>
+          <ConversationPillContext.Provider value={pill.port}>{custom ?? defaultBody}</ConversationPillContext.Provider>
         </div>
       </ContextRailHost>
     </div>

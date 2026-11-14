@@ -13,7 +13,6 @@ import { objectiveMobileConversationTabs } from "./head-tabs.js";
 import { decisionAttentionItems, finishedObjectiveItems, subscribeFinishedObjectives, MobileConversationObjective, MobileObjectiveScreen, objectiveOfObjective, OBJECTIVE_MOBILE_DETAIL_PANE, personTurnCount, subscribeDecisionAttention } from "./mobile.js";
 import { ObjectivePopupHost, resetObjectivePopup } from "./objectives-panel.js";
 import { ResultWindowHost, resetResultWindow } from "./result-window.js";
-import "./rail/objective-rail.css";
 import { viewedCommodoreId, installObjectiveState, loadBoard, objectivesApi, subscribeObjective } from "./objectives-state.js";
 import "./objectives.css";
 
