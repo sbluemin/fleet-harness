@@ -5,6 +5,27 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.303.0] - 2026-11-14
+
+### fleet-console
+
+#### Changed
+- Opening a commander or a member shows the commodore's activity, info, and settings in the right sidebar again. The sidebar view of that objective's goal, members and missions, and results is gone.
+- Antigravity's default model is now Gemini 4 Hydrogen, and saved Gemini 3.8 Flash selections ask you to pick a model again instead of switching automatically.
+
+#### Fixed
+- Restore sidebar shortcuts for a commander's goal, crew, and results. Desktop's home Console can also read another Console's goal and crew details and result list without switching; evidence contents remain available in the source Console.
+
+### fleet-desktop
+
+#### Fixed
+- Fleet Browser opens Microsoft Teams again instead of a blank page.
+
+### fleet-mobile
+
+#### Changed
+- When a remembered model is retired, the mobile new-session sheet keeps the model picker open so you can reselect before starting.
+
 ## [1.302.0] - 2026-11-13
 
 ### fleet-console

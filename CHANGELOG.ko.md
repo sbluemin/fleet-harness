@@ -5,6 +5,27 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.303.0] - 2026-11-14
+
+### fleet-console
+
+#### Changed
+- 지휘관이나 구성원을 열면 우측 사이드바가 다시 사령관의 활동·정보·설정을 보여 줍니다. 그 목표의 목표·구성원과 임무·결과물을 보여 주던 사이드바 화면은 없어졌습니다.
+- Antigravity 기본 모델이 Gemini 4 Hydrogen으로 바뀌었고, 저장된 Gemini 3.8 Flash 선택은 자동으로 전환되지 않고 모델을 다시 선택해야 합니다.
+
+#### Fixed
+- 사이드바에서 지휘관의 목표·구성원·결과물을 여는 바로가기를 복구했습니다. Desktop의 집 Console에서는 전환 없이 다른 Console의 목표·구성원 상세와 결과물 목록도 읽을 수 있으며, 증거 본문은 원래 Console에서 열 수 있습니다.
+
+### fleet-desktop
+
+#### Fixed
+- Fleet Browser에서 Microsoft Teams가 빈 화면 대신 다시 열립니다.
+
+### fleet-mobile
+
+#### Changed
+- 기억된 모델이 은퇴한 경우 모바일 새 세션 시트에서 모델 선택지를 계속 열어 시작 전에 다시 선택할 수 있습니다.
+
 ## [1.302.0] - 2026-11-13
 
 ### fleet-console
