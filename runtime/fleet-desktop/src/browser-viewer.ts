@@ -88,6 +88,8 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
   let viewed: string | null = null;
   /** 마지막으로 본 실행 측 표시 탭 — 「바뀌었다」를 가린다. 아직 투영을 받지 못했으면 undefined. */
   let remoteActive: string | null | undefined;
+  /** 원격 입력 배치는 앞선 서버 처리가 끝난 뒤에 다음 배치를 보내 click/drag 순서를 지킨다. */
+  let remoteInputQueue: Promise<void> = Promise.resolve();
   const frameStream = createRemoteBrowserViewerStream({
     fetch: deps.fetch,
     onFrame: (tabId, frame) => {
@@ -275,12 +277,19 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
           }
           case "remote-input": {
             if (!origin || control.control()?.holder === "agent") return;
+            const targetOrigin = origin;
             const browserId = control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
-            void deps.fetch(`${origin}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/input`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Origin: origin },
-              body: JSON.stringify({ tabId: action.tabId, seq: action.seq, events: action.events }),
-            }).catch(() => undefined);
+            const payload = JSON.stringify({ tabId: action.tabId, seq: action.seq, events: action.events });
+            remoteInputQueue = remoteInputQueue
+              .then(async () => {
+                if (!open || origin !== targetOrigin || control.control()?.holder === "agent") return;
+                await deps.fetch(`${targetOrigin}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/input`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", Origin: targetOrigin },
+                  body: payload,
+                });
+              })
+              .catch(() => undefined);
             return;
           }
           case "remote-select":

@@ -1,13 +1,15 @@
+import { EventEmitter } from "node:events";
 import { Readable } from "node:stream";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
-import { DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_VIEW_HEADER } from "@fleet-console/protocol/desktop";
+import { createRemoteBrowserFrameDecoder, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_BROWSER_VIEWER_STREAM_PATH } from "@fleet-console/protocol/desktop";
 import { browserSurfaceMode } from "../core/host/shell/desktop-contract.js";
 import { DesktopEngine, VIEWER_WATCH_LEASE_MS, ViewerFrameClosedError } from "../features/browser/host/desktop-engine.js";
 import { createBrowserDesktopRouter } from "../features/browser/host/desktop-routes.js";
 import { BrowserPolicyError, BrowserService } from "../features/browser/host/service.js";
 import { createBrowserRouter } from "../features/browser/host/routes.js";
+import { createViewerStreamHandler } from "../features/browser/host/viewer-stream.js";
 import { BROWSER_GLOBAL_ID } from "../features/browser/shared/browser-id.js";
 
 describe("managed desktop browser engine", () => {
@@ -399,6 +401,113 @@ describe("remote desktop browser control", () => {
       expect(cleanups).toEqual(["stage-1", "stage-2", "stage-3"]);
       service.setControl(BROWSER_GLOBAL_ID, "default", "return");
       await vi.waitFor(() => { expect(cleanups).toEqual(["stage-1", "stage-2", "stage-3", "stage-4"]); });
+    } finally {
+      clearInterval(autoRelay);
+    }
+  });
+
+  it("serializes per-tab remote input across async select probes and coalesces stalled stream frames", async () => {
+    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    engine.subscriberOpened("manager");
+    engine.setHost("manager");
+    const service = new BrowserService({
+      enabled: () => true,
+      availability: () => ({
+        available: true,
+        reason: null,
+        host: "manager",
+        executionHost: { managed: true, connected: true, status: "connected", hostLabel: "studio", platform: "darwin", accessPath: "loopback" },
+      }),
+      desktop: engine,
+      log: () => {},
+      defaultProfile: { read: () => null, write: () => {} },
+    });
+    const dispatchedEvents: string[] = [];
+    let holdProbe = false;
+    const heldIds = new Set<number>();
+    let releaseProbe!: () => void;
+    const probePending = new Promise<void>((resolve) => { releaseProbe = resolve; });
+    let currentViewId = "";
+    const autoRelay = setInterval(() => {
+      const snap = engine.snapshot();
+      for (const candidate of snap.views) {
+        currentViewId = candidate.id;
+        engine.relay("manager", { attached: [candidate.id], sizes: [{ viewId: candidate.id, width: 800, height: 600, scale: 1 }] });
+      }
+      for (const cmd of snap.commands) {
+        if (holdProbe && cmd.method === "Runtime.evaluate") {
+          if (!heldIds.has(cmd.id)) {
+            heldIds.add(cmd.id);
+            void probePending.then(() => engine.relay("manager", { results: [{ id: cmd.id, result: { result: {} } }] }));
+          }
+        } else if (cmd.method === "Input.dispatchMouseEvent") {
+          dispatchedEvents.push(String(cmd.params.type));
+          engine.relay("manager", { results: [{ id: cmd.id, result: {} }] });
+        } else {
+          engine.relay("manager", { results: [{ id: cmd.id, result: cmd.method === "Page.getNavigationHistory" ? { currentIndex: 0, entries: [{ url: "https://example.com" }] } : {} }] });
+        }
+      }
+    }, 5);
+    try {
+      const tab = await service.createTab(BROWSER_GLOBAL_ID, "https://example.com", "user");
+      holdProbe = true;
+      const downCall = service.dispatchRemoteInput(BROWSER_GLOBAL_ID, {
+        tabId: tab.id,
+        seq: 1,
+        events: [{ kind: "mouse", type: "down", x: 10, y: 10, button: "left", modifiers: { alt: false, ctrl: false, meta: false, shift: false } }],
+      });
+      await vi.waitFor(() => { if (!engine.snapshot().commands.some((c) => c.method === "Runtime.evaluate")) throw new Error("waiting"); });
+      const upCall = service.dispatchRemoteInput(BROWSER_GLOBAL_ID, {
+        tabId: tab.id,
+        seq: 2,
+        events: [{ kind: "mouse", type: "up", x: 10, y: 10, button: "left", modifiers: { alt: false, ctrl: false, meta: false, shift: false } }],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 25));
+      // down 의 select 프로브가 끝나기 전에는 up 이 먼저 닿지 않는다.
+      expect(dispatchedEvents).toEqual([]);
+      releaseProbe();
+      await Promise.all([downCall, upCall]);
+      expect(dispatchedEvents).toEqual(["mousePressed", "mouseReleased"]);
+
+      // 스트림 배압(drain 대기) 중 쌓인 중간 프레임은 버리고 최신 프레임만 보낸다.
+      const handler = createViewerStreamHandler({
+        desktopEngine: engine,
+        browserService: service,
+        viewerFrameRead: () => "ok",
+        executionHost: () => ({ managed: true, connected: true, status: "connected", hostLabel: "studio", platform: "darwin", accessPath: "loopback" }),
+        withSecurityHeaders: (headers) => headers,
+        writeJson: () => {},
+        readUrl: (req) => new URL(`http://127.0.0.1${req.url}`),
+      });
+      const chunks: Buffer[] = [];
+      let blockDrain = true;
+      const emitter = new EventEmitter();
+      const res = Object.assign(emitter, {
+        writableEnded: false,
+        destroyed: false,
+        writeHead() { return this; },
+        write(chunk: Buffer) {
+          chunks.push(Buffer.from(chunk));
+          return !blockDrain;
+        },
+        end() { this.writableEnded = true; },
+      }) as unknown as ServerResponse;
+      const jpeg = (marker: number) => Buffer.from([0xff, 0xd8, 0xff, 0xd9, marker]);
+      engine.ingestFrame(currentViewId, jpeg(1), 100, 100, 100, 100);
+      await handler(Object.assign(Readable.from([]), { method: "GET", url: `${DESKTOP_BROWSER_VIEWER_STREAM_PATH}?tabId=${tab.id}&afterSeq=0` }) as IncomingMessage, res);
+      // 첫 프레임이 drain 대기에 걸린 상태에서 2, 3, 4번 프레임이 연속 도착한다.
+      engine.ingestFrame(currentViewId, jpeg(2), 100, 100, 100, 100);
+      engine.ingestFrame(currentViewId, jpeg(3), 100, 100, 100, 100);
+      engine.ingestFrame(currentViewId, jpeg(4), 100, 100, 100, 100);
+      blockDrain = false;
+      emitter.emit("drain");
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      const seqs: number[] = [];
+      const decode = createRemoteBrowserFrameDecoder((frame) => seqs.push(frame.seq), 1024 * 1024);
+      for (const c of chunks) decode(c);
+      // 1번 직후 대기 중이던 2·3번은 덮어써지고 4번만 전송된다.
+      expect(seqs).toEqual([1, 4]);
+      emitter.emit("close");
     } finally {
       clearInterval(autoRelay);
     }

@@ -115,6 +115,52 @@ describe("remote browser shell", () => {
     expect(headers.get("origin")).toBe(ORIGIN);
     expect(JSON.parse(String(password?.init?.body))).toEqual({ promptId: "password-tab-1", tabId: "tab-1", action: "save" });
     expect(String(password?.init?.body)).not.toContain("s3cr3t");
+
+    // 원격 입력 배치 직렬화: 앞선 /input 요청이 끝나기 전에는 다음 /input 요청을 보내지 않는다.
+    let releaseFirstInput!: () => void;
+    let secondInputSent = false;
+    let serialApplied = false;
+    const serializedFetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.includes("/viewer/stream")) return new Response("not found", { status: 404 });
+      if (href.includes("/viewer/chrome") && !href.includes("/events") && !href.includes("/frame")) return new Response(JSON.stringify(snapshot(true)), { status: 200 });
+      if (href.includes("/frame") || href.includes("/events")) return new Promise<Response>((_r, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true }));
+      if (href.includes("/input")) {
+        const parsed = JSON.parse(String(init?.body)) as { seq: number };
+        if (parsed.seq === 1) await new Promise<void>((resolve) => { releaseFirstInput = resolve; });
+        else secondInputSent = true;
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const serialViewer = createRemoteBrowserViewer({
+      display: {
+        apply(...args) {
+          const view = args[3] as { control?: boolean } | undefined;
+          if (view?.control === true) serialApplied = true;
+        },
+        conceal() {},
+        viewing: () => true,
+        frame() {},
+      },
+      fetch: serializedFetch as typeof fetch,
+      lang: "en",
+      localAct() {},
+    });
+    serialViewer.follow(ORIGIN);
+    serialViewer.toggle();
+    await vi.waitFor(() => {
+      if (!serialApplied) throw new Error("waiting");
+    });
+    serialViewer.act(handle, "stage", { action: "remote-input", tabId: "tab-1", seq: 1, events: [{ kind: "mouse", type: "down", x: 1, y: 1, button: "left", modifiers: { alt: false, ctrl: false, meta: false, shift: false } }] });
+    serialViewer.act(handle, "stage", { action: "remote-input", tabId: "tab-1", seq: 2, events: [{ kind: "mouse", type: "up", x: 1, y: 1, button: "left", modifiers: { alt: false, ctrl: false, meta: false, shift: false } }] });
+    await vi.waitFor(() => {
+      if (!releaseFirstInput) throw new Error("waiting first input");
+    });
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    expect(secondInputSent).toBe(false);
+    releaseFirstInput();
+    await vi.waitFor(() => { expect(secondInputSent).toBe(true); });
+    serialViewer.stop();
     viewer.stop();
   });
 
@@ -164,6 +210,9 @@ describe("remote browser shell", () => {
     expect(remotePasswordPrompt(prompt)).toEqual({ kind: "save-prompt", id: "password-tab-1", tabId: "tab-1", origin: "https://example.com", username: "ada", mode: "save" });
     expect(JSON.stringify(shell.relayExtras())).not.toContain("s3cr3t");
     let allowed: boolean | null = null;
+    expect(shell.isWatched(7)).toBe(false);
+    shell.setWatched("tab-1", true);
+    expect(shell.isWatched(7)).toBe(true);
     shell.requestPermission({ webContentsId: 7, permission: "geolocation", origin: "https://example.com", callback: (value) => { allowed = value; } });
     const pending = shell.relayExtras().permissionPrompts[0];
     expect(pending?.permission).toBe("geolocation");
@@ -171,6 +220,15 @@ describe("remote browser shell", () => {
     expect(allowed).toBe(true);
     expect(shell.relayExtras().permissionPrompts).toEqual([]);
     expect(flushed.length).toBeGreaterThan(0);
+
+    // 원격 시청이 끊기면(setWatched false) 대기 중 권한 요청은 120초를 끌지 않고 즉시 거부된다.
+    let unwatchAllowed: boolean | null = null;
+    shell.requestPermission({ webContentsId: 7, permission: "notifications", origin: "https://example.com", callback: (value) => { unwatchAllowed = value; } });
+    expect(shell.relayExtras().permissionPrompts).toHaveLength(1);
+    shell.setWatched("tab-1", false);
+    expect(shell.isWatched(7)).toBe(false);
+    expect(unwatchAllowed).toBe(false);
+    expect(shell.relayExtras().permissionPrompts).toEqual([]);
 
     const staged = await shell.command(DESKTOP_BROWSER_STAGE_FILES, {
       viewId: "tab-1",

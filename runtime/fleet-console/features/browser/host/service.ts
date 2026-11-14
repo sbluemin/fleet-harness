@@ -460,6 +460,7 @@ export class BrowserService {
   private remotePrompts: RemotePromptProjection = { selectPopup: null, permissionPrompts: [], passwordPrompt: null, fileChooser: null };
   private readonly remoteSelectRegistry = createRemoteSelectRegistry();
   private readonly remotePointers = new Map<string, RemotePointerState>();
+  private readonly remoteInputQueues = new Map<string, Promise<unknown>>();
   private pendingFileChooser: { readonly id: string; readonly tabId: string; readonly backendNodeId: number } | null = null;
   private fileChooserSerial = 0;
   private readonly stagedFiles = new Map<string, { readonly stagingId: string; readonly objectiveId: string; readonly tabId: string; readonly spaceId: string; readonly backendNodeId: number; readonly timer: ReturnType<typeof setTimeout> }>();
@@ -1270,35 +1271,47 @@ export class BrowserService {
 
   /**
    * 원격 Desktop 의 사람 입력. 배치 모양과 제어권을 본 뒤 CDP 입력으로 실행 측 탭에 보낸다.
+   * 같은 탭의 연속 배치는 비동기 `<select>` 프로브 중에도 순서가 뒤바뀌지 않게 직렬 실행한다.
    */
   async dispatchRemoteInput(objectiveId: string, body: unknown): Promise<RemoteBatchResult> {
     if (!isRemoteBrowserInputBatch(body)) throw new BrowserPolicyError("invalid_request", "The remote input batch is not valid.");
-    const { op, tab } = this.remoteHumanTab(objectiveId, body.tabId);
-    if (this.remoteInputRelay) {
-      await this.remoteInputRelay(body);
-      return { dispatched: body.events.length, imeDeferred: 0, select: null };
-    }
-    const client = await this.engineClient();
-    const pointer = this.remotePointers.get(tab.id) ?? null;
+    this.remoteHumanTab(objectiveId, body.tabId);
+    const execute = async (): Promise<RemoteBatchResult> => {
+      const { op, tab } = this.remoteHumanTab(objectiveId, body.tabId);
+      if (this.remoteInputRelay) {
+        await this.remoteInputRelay(body);
+        return { dispatched: body.events.length, imeDeferred: 0, select: null };
+      }
+      const client = await this.engineClient();
+      const pointer = this.remotePointers.get(tab.id) ?? null;
+      try {
+        const outcome = await applyRemoteInputBatch(client, tab.sessionId, body, pointer, {
+          assertControl: () => this.assertHumanMayOperate(op, tab),
+          notePointer: () => undefined,
+          interceptSelect: async (x, y) => {
+            const hit = await probeSelectTarget(client, tab.sessionId, x, y);
+            if (!hit || hit.disabled) return null;
+            const popup = this.remoteSelectRegistry.open(tab.id, tab.sessionId, hit);
+            this.remotePrompts = { ...this.remotePrompts, selectPopup: popup };
+            this.emitState(op);
+            return popup;
+          },
+        });
+        if (outcome.pointer) this.remotePointers.set(tab.id, outcome.pointer);
+        else this.remotePointers.delete(tab.id);
+        return outcome.result;
+      } catch (error) {
+        if (error instanceof RemoteInputError) throw new BrowserPolicyError(error.code, error.message, error.details);
+        throw error;
+      }
+    };
+    const previous = this.remoteInputQueues.get(body.tabId) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(execute);
+    this.remoteInputQueues.set(body.tabId, next);
     try {
-      const outcome = await applyRemoteInputBatch(client, tab.sessionId, body, pointer, {
-        assertControl: () => this.assertHumanMayOperate(op, tab),
-        notePointer: () => undefined,
-        interceptSelect: async (x, y) => {
-          const hit = await probeSelectTarget(client, tab.sessionId, x, y);
-          if (!hit || hit.disabled) return null;
-          const popup = this.remoteSelectRegistry.open(tab.id, tab.sessionId, hit);
-          this.remotePrompts = { ...this.remotePrompts, selectPopup: popup };
-          this.emitState(op);
-          return popup;
-        },
-      });
-      if (outcome.pointer) this.remotePointers.set(tab.id, outcome.pointer);
-      else this.remotePointers.delete(tab.id);
-      return outcome.result;
-    } catch (error) {
-      if (error instanceof RemoteInputError) throw new BrowserPolicyError(error.code, error.message, error.details);
-      throw error;
+      return await next;
+    } finally {
+      if (this.remoteInputQueues.get(body.tabId) === next) this.remoteInputQueues.delete(body.tabId);
     }
   }
 

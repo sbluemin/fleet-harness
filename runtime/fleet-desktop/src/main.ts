@@ -519,6 +519,11 @@ async function boot(): Promise<void> {
     if (watchedPermissionSessions.has(target)) return;
     watchedPermissionSessions.add(target);
     target.setPermissionRequestHandler((webContents, permission, callback, details) => {
+      // 원격 시청자가 없을 때는 로컬 Fleet Browser 기본 권한 동작을 유지해 120초 대기·거절을 막는다.
+      if (!remoteShell.isWatched(webContents.id)) {
+        callback(true);
+        return;
+      }
       const rawMedia = (details as { mediaTypes?: unknown }).mediaTypes;
       const mediaTypes = Array.isArray(rawMedia) ? rawMedia.filter((item): item is "video" | "audio" => item === "video" || item === "audio") : undefined;
       let requestOrigin = "";
@@ -708,6 +713,7 @@ async function boot(): Promise<void> {
       remoteShell.bindView(contentsId, viewId);
       view.webContents.once("destroyed", () => remoteShell.unbindView(contentsId));
     },
+    onWatch: (viewId, watching) => remoteShell.setWatched(viewId, watching),
     relayExtras: () => remoteShell.relayExtras(),
     bindRelay: (flush) => remoteShell.setFlush(flush),
     /**

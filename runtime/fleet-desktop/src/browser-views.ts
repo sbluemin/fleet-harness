@@ -120,6 +120,8 @@ export interface DesktopBrowserViewsDeps {
    * 뷰가 생긴 직후. 권한 요청을 탭 id 에 묶는 훅을 main 이 단다. 캡처 경로와 무관하고, 없으면 아무 일도 하지 않는다.
    */
   readonly onView?: (view: WebContentsView, viewId: string) => void;
+  /** 원격 시청(watch) 시작·종료를 main 에 알린다 — 시청 중일 때만 권한 요청을 원격으로 돌린다. */
+  readonly onWatch?: (viewId: string, watching: boolean) => void;
   /**
    * 다음 relay 에 실을 select·권한·비밀번호 프롬프트. 비밀번호 평문은 넣지 않는다.
    * 값이 바뀐 뒤에만 나간다. 없는 필드로 이벤트·부착을 지우지 않는다.
@@ -519,7 +521,10 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     watch.immediate = false;
     clearHandle(watch, "timer");
     clearHandle(watch, "poll");
-    if (wasWatching) setFileChooserIntercept(id, false);
+    if (wasWatching) {
+      setFileChooserIntercept(id, false);
+      deps.onWatch?.(id, false);
+    }
   };
   function armPoll(id: string): void {
     const watch = watches.get(id);
@@ -613,6 +618,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       watch.sent = false;
       watch.lastJpeg = null;
       setFileChooserIntercept(id, true);
+      deps.onWatch?.(id, true);
       kick(id);
       armPoll(id);
     }

@@ -46,6 +46,8 @@ export interface BrowserRemoteRelayExtras {
 export interface BrowserRemoteShell {
   bindView(webContentsId: number, tabId: string): void;
   unbindView(webContentsId: number): void;
+  setWatched(tabId: string, watching: boolean): void;
+  isWatched(webContentsId: number): boolean;
   requestPermission(input: {
     readonly webContentsId: number;
     readonly permission: string;
@@ -87,6 +89,7 @@ export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof se
   const cancel = deps.clearTimeout ?? clearTimeout;
   const stagingTtlMs = deps.stagingTtlMs ?? DEFAULT_STAGING_TTL_MS;
   const tabs = new Map<number, string>();
+  const watchedTabs = new Set<string>();
   const permissions = new Map<string, { readonly prompt: RemoteBrowserPermissionPrompt; readonly callback: (allow: boolean) => void; readonly timer: ReturnType<typeof setTimeout> }>();
   let password: RemoteBrowserPasswordPrompt | null = null;
   let selectPopup: RemoteBrowserSelectPopup | null = null;
@@ -120,10 +123,23 @@ export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof se
       const tabId = tabs.get(webContentsId);
       tabs.delete(webContentsId);
       if (!tabId) return;
+      watchedTabs.delete(tabId);
       for (const [id, pending] of permissions) if (pending.prompt.tabId === tabId) finishPermission(id, false);
       if (selectPopup?.tabId === tabId) { selectPopup = null; selectAnswer = null; publish(); }
       if (password?.tabId === tabId) { password = null; publish(); }
       for (const [stagingId, entry] of [...stagedDirs]) if (entry.viewId === tabId) removeStagedDir(stagingId);
+    },
+    setWatched(tabId, watching) {
+      if (watching) {
+        watchedTabs.add(tabId);
+        return;
+      }
+      watchedTabs.delete(tabId);
+      for (const [id, pending] of permissions) if (pending.prompt.tabId === tabId) finishPermission(id, false);
+    },
+    isWatched(webContentsId) {
+      const tabId = tabs.get(webContentsId);
+      return tabId !== undefined && watchedTabs.has(tabId);
     },
     requestPermission(input) {
       const tabId = tabs.get(input.webContentsId);

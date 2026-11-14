@@ -86,18 +86,46 @@ export function createViewerStreamHandler(deps: ViewerStreamDeps): (req: http.In
       if (!ok) await new Promise<void>((resolve) => res.once("drain", () => resolve()));
     };
 
-    let chain: Promise<void> = Promise.resolve();
-    const push = (frame: { seq: number; at: number; width: number; height: number; cssWidth: number; cssHeight: number; bytes: Buffer }): void => {
+    type StreamFrame = { seq: number; at: number; width: number; height: number; cssWidth: number; cssHeight: number; bytes: Buffer };
+    let writing = false;
+    let pendingFrame: StreamFrame | null = null;
+    let closedAfterWrite = false;
+    let drainPromise: Promise<void> = Promise.resolve();
+    const pump = async (): Promise<void> => {
+      writing = true;
+      try {
+        while (pendingFrame !== null && !res.writableEnded && !res.destroyed) {
+          const next = pendingFrame;
+          pendingFrame = null;
+          await writeFrame(next.seq, next.at, next.width, next.height, next.cssWidth, next.cssHeight, next.bytes);
+        }
+      } catch {
+        /* 스트림 종료 */
+      } finally {
+        writing = false;
+        if (closedAfterWrite) {
+          if (!res.writableEnded && !res.destroyed) res.end();
+          finish(false);
+        }
+      }
+    };
+    const push = (frame: StreamFrame): void => {
       if (frame.seq <= after) return;
       after = frame.seq;
-      chain = chain.then(() => writeFrame(frame.seq, frame.at, frame.width, frame.height, frame.cssWidth, frame.cssHeight, frame.bytes)).catch(() => undefined);
+      // 배압(drain 대기) 중 새 프레임이 오면 대기 중인 이전 프레임은 덮어써 메모리 적체와 지연을 막는다.
+      pendingFrame = frame;
+      if (!writing) drainPromise = pump();
     };
 
     unsubscribe = desktopEngine.subscribeStream(
       viewId,
       (frame) => push(frame),
       () => {
-        chain.then(() => {
+        if (writing) {
+          closedAfterWrite = true;
+          return;
+        }
+        void drainPromise.then(() => {
           if (!res.writableEnded && !res.destroyed) res.end();
           finish(false);
         }).catch(() => undefined);
