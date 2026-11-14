@@ -1143,12 +1143,15 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   display: flex;
   flex-direction: column;
   gap: 6px;
+  min-width: 0;
   min-height: 0;
   max-height: 100%;
   padding: 8px;
+  overflow-x: hidden;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-panel) 94%, transparent);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-floating);
 }
 .commodore-person-inbox-bar,
 .commodore-person-inbox-row-main {
@@ -1174,7 +1177,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-person-inbox-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commodore-person-inbox-oldest,
 .commodore-person-inbox-reason { flex: 1 1 auto; color: var(--text-secondary); font-size: var(--t-xs); }
-.commodore-person-inbox-age { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.commodore-person-inbox-age { flex: none; order: 5; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
 .commodore-person-inbox-filters { display: flex; flex-wrap: wrap; gap: 4px; }
 .commodore-person-inbox-chip {
   padding: 2px 8px;
@@ -1187,13 +1190,18 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   cursor: pointer;
 }
 .commodore-person-inbox-chip.is-on { border-color: var(--brass); color: var(--text-primary); background: var(--control-wash); }
-.commodore-person-inbox-list { display: flex; flex-direction: column; gap: 4px; min-height: 0; overflow: auto; }
+.commodore-person-inbox-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; }
 .commodore-person-inbox-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .commodore-person-inbox-row-main { flex: 1 1 auto; }
-.commodore-person-inbox-avatar { flex: none; display: inline-flex; }
-.commodore-person-inbox-title { flex: 0 1 auto; font-weight: var(--weight-bold); color: var(--text-primary); font-size: var(--t-sm); }
+.commodore-person-inbox-lead,
+.commodore-person-inbox-meta { display: contents; }
+.commodore-person-inbox-open { flex: none; white-space: nowrap; }
+.commodore-person-inbox-avatar { flex: none; order: 1; display: inline-flex; }
+.commodore-person-inbox-title { flex: 0 1 auto; order: 2; font-weight: var(--weight-bold); color: var(--text-primary); font-size: var(--t-sm); }
+.commodore-person-inbox-reason { order: 4; }
 .commodore-person-inbox-kind {
   flex: none;
+  order: 3;
   padding: 0 6px;
   border-radius: var(--radius-xs);
   background: var(--control-wash);
@@ -1203,6 +1211,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 }
 .commodore-person-inbox-detail { display: flex; flex-direction: column; gap: 8px; padding: 4px 2px 2px; }
 .commodore-person-inbox-proposal { display: flex; flex-direction: column; gap: 4px; }
+.commodore-person-inbox-proposal + .commodore-person-inbox-proposal { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--hairline); }
 .commodore-person-inbox-kindline,
 .commodore-person-inbox-sub { margin: 0; color: var(--text-secondary); font-size: var(--t-xs); }
 .commodore-person-inbox-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
@@ -1220,4 +1229,12 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-person-inbox .group-card-head,
 .commodore-person-inbox .group-card-handed { display: none; }
 .commodore-person-inbox .objectives-handed-followup,
-.commodore-person-inbox .group-card.is-decision { border: 0; background: none; padding: 0; box-shadow: none; }
+.commodore-person-inbox .group-card.is-decision { margin-left: 0; width: 100%; max-width: 100%; border: 0; background: none; padding: 0; box-shadow: none; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 8px; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-row-main { display: flex; flex-direction: column; align-items: stretch; gap: 2px; grid-column: 1; grid-row: 1; min-width: 0; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-lead,
+.commodore-person-inbox.is-phone .commodore-person-inbox-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-title { flex: 1 1 auto; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-age { margin-left: auto; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-reason { flex: 1 1 auto; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-open { grid-column: 2; grid-row: 1; align-self: center; }

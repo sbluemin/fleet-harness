@@ -141,13 +141,17 @@ export function CommodorePersonInbox({ theaterId, contextTheaterId = "", languag
                   <Fragment key={item.id}>
                     <div className={`commodore-person-inbox-row${open ? " is-open" : ""}`}>
                       <button type="button" className="commodore-person-inbox-row-main" aria-expanded={open} onClick={() => setOpenId(open ? null : item.id)}>
-                        {item.objectiveId ? <span className="commodore-person-inbox-avatar">{renderObjectiveAvatar(theaterId, item.objectiveId, 18)}</span> : null}
-                        <span className="commodore-person-inbox-title">{item.title}</span>
-                        <span className={`commodore-person-inbox-kind is-${item.kind}`}>{t(KIND_KEY[item.kind])}</span>
-                        <span className="commodore-person-inbox-reason">{item.reason}</span>
-                        <span className="commodore-person-inbox-age">{waitLabel(t, item.at)}</span>
+                        <span className="commodore-person-inbox-lead">
+                          {item.objectiveId ? <span className="commodore-person-inbox-avatar">{renderObjectiveAvatar(theaterId, item.objectiveId, 18)}</span> : null}
+                          <span className="commodore-person-inbox-title">{item.title}</span>
+                          <span className="commodore-person-inbox-age">{waitLabel(t, item.at)}</span>
+                        </span>
+                        <span className="commodore-person-inbox-meta">
+                          <span className={`commodore-person-inbox-kind is-${item.kind}`}>{t(KIND_KEY[item.kind])}</span>
+                          <span className="commodore-person-inbox-reason">{item.reason}</span>
+                        </span>
                       </button>
-                      {item.objectiveId ? <button type="button" className="group-chat-link" onClick={() => openObjective(item)}>{t(phone ? "commodore.inbox.openPhone" : "commodore.inbox.open")}</button> : null}
+                      {item.objectiveId ? <button type="button" className="group-chat-link commodore-person-inbox-open" onClick={() => openObjective(item)}>{t(phone ? "commodore.inbox.openPhone" : "commodore.inbox.open")}</button> : null}
                     </div>
                     {open ? <InboxBody item={item} theaterId={theaterId} contextTheaterId={contextTheaterId} language={language} phone={phone} leave={leave} onEnded={onEnded} onAnswered={(id) => setAnswered((current) => current.includes(id) ? current : [...current, id])} openObjective={() => openObjective(item)} /> : null}
                   </Fragment>
