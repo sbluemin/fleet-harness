@@ -136,6 +136,7 @@ export function PasswordManagerCard() {
               <p>{detailOrigin}</p>
             </div>
           </header>
+          {actionError ? <p className="settings-password-error" role="alert">{actionError}</p> : null}
           <div className="settings-password-dialog-body">
             {accounts.map((account) => (
               <AccountCard
@@ -144,7 +145,7 @@ export function PasswordManagerCard() {
                 secret={revealed.get(account.id) ?? null}
                 copied={copiedId === account.id}
                 busy={busy}
-                solo={accounts.length === 1}
+                done={accounts.length === 1 ? <button type="button" className="settings-password-done" onClick={closeDetail}>{t("terminal.browser.passwords.done")}</button> : null}
                 onShow={() => { void run(async () => { const password = await revealSavedPassword(account.id); setRevealed((current) => new Map(current).set(account.id, password)); }); }}
                 onHide={() => setRevealed((current) => { const next = new Map(current); next.delete(account.id); return next; })}
                 onCopy={() => { void run(async () => { await copySavedPassword(account.id); setCopiedId(account.id); }); }}
@@ -159,29 +160,31 @@ export function PasswordManagerCard() {
               />
             ))}
           </div>
-          <footer className="settings-password-dialog-foot">
-            <span />
-            <button type="button" className="settings-password-add" onClick={closeDetail}>{t("terminal.browser.passwords.done")}</button>
-          </footer>
+          {accounts.length > 1 ? (
+            <footer className="settings-password-dialog-foot">
+              <span />
+              <button type="button" className="settings-password-done" onClick={closeDetail}>{t("terminal.browser.passwords.done")}</button>
+            </footer>
+          ) : null}
         </PasswordDialog>
       ) : null}
       {adding ? (
-        <PasswordDialog title={t("terminal.browser.passwords.addTitle")} onClose={() => setAdding(false)}>
+        <PasswordDialog title={t("terminal.browser.passwords.addTitle")} onClose={() => { setActionError(null); setAdding(false); }}>
           <h2>{t("terminal.browser.passwords.addTitle")}</h2>
-          {actionError ? <p role="alert">{actionError}</p> : null}
-          <AddForm busy={busy} onCancel={() => setAdding(false)} onSubmit={(origin, username, password) => { void run(async () => { await saveSavedPassword({ origin, username, password }); setAdding(false); await reload(); }); }} />
+          {actionError ? <p className="settings-password-error" role="alert">{actionError}</p> : null}
+          <AddForm busy={busy} onCancel={() => { setActionError(null); setAdding(false); }} onSubmit={(origin, username, password) => { void run(async () => { await saveSavedPassword({ origin, username, password }); setAdding(false); await reload(); }); }} />
         </PasswordDialog>
       ) : null}
     </>
   );
 }
 
-function AccountCard({ account, secret, copied, busy, solo, onShow, onHide, onCopy, onSave, onDelete }: {
+function AccountCard({ account, secret, copied, busy, done, onShow, onHide, onCopy, onSave, onDelete }: {
   readonly account: SavedPassword;
   readonly secret: string | null;
   readonly copied: boolean;
   readonly busy: boolean;
-  readonly solo: boolean;
+  readonly done: ReactNode;
   readonly onShow: () => void;
   readonly onHide: () => void;
   readonly onCopy: () => void;
@@ -205,10 +208,10 @@ function AccountCard({ account, secret, copied, busy, solo, onShow, onHide, onCo
       )}
       <div className="settings-password-dialog-foot">
         <div className="settings-password-actions">
-          {editing ? null : <button type="button" className="settings-device-fonts-button" disabled={busy} onClick={() => setEditing(true)}>{t("terminal.browser.passwords.edit")}</button>}
+          {editing ? null : <button type="button" className="settings-password-edit" disabled={busy} onClick={() => setEditing(true)}>{t("terminal.browser.passwords.edit")}</button>}
           <button type="button" className="settings-password-delete" disabled={busy} aria-label={`${t("terminal.browser.passwords.delete")} ${account.username} ${account.origin}`} onClick={onDelete}>{t("terminal.browser.passwords.delete")}</button>
         </div>
-        {solo ? null : <span />}
+        {done}
       </div>
     </section>
   );

@@ -196,8 +196,13 @@
 .settings-password-icon-button { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 2px; border: 0; background: none; color: var(--text-secondary); cursor: pointer; font: var(--t-sm)/1 var(--font-ui); }
 .settings-password-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .settings-password-dialog-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-.settings-password-delete { padding: 6px 12px; border: 1px solid var(--coral); border-radius: var(--radius-pill); background: transparent; color: var(--coral); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-password-edit { padding: 6px 14px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent; color: var(--text-primary); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-password-delete { padding: 6px 14px; border: 1px solid var(--coral); border-radius: var(--radius-pill); background: transparent; color: var(--coral); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-password-done { padding: 6px 20px; border: 0; border-radius: var(--radius-pill); background: var(--text-primary); color: var(--surface-panel); font: var(--weight-medium) var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-password-error { margin: 0; color: var(--coral); font-size: var(--t-sm); }
+.settings-password-edit:disabled,
 .settings-password-delete:disabled,
+.settings-password-done:disabled,
 .settings-password-icon-button:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
 .settings-password-form { display: grid; gap: 12px; }
 .settings-password-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
