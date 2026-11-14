@@ -1,24 +1,4 @@
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
-import type { ClientExperimentsCapability } from "../../../settings/shared/client-ports.js";
-import type { ConsoleExperimentSettings } from "../../../settings/shared/experiments.js";
-
-/**
- * install에서 받은 실험 설정 능력 — 렌더 밖(store)에서도 읽고 구독해야 하므로 모듈 스코프에 둔다.
- * 코어 번들 안의 상태라 호스트/플러그인 경계를 넘지 않는다.
- */
-let installedExperiments: ClientExperimentsCapability | null = null;
-
-export function setInstalledExperiments(capability: ClientExperimentsCapability | null): void {
-  installedExperiments = capability;
-}
-
-export function readInstalledExperiments(): ConsoleExperimentSettings | null {
-  return installedExperiments?.read() ?? null;
-}
-
-export function subscribeInstalledExperiments(listener: () => void): () => void {
-  return installedExperiments?.subscribe(listener) ?? (() => undefined);
-}
 
 /** 서버 `server.ts`의 채널 이름과 같은 값 — 사용자 화면에 보내는 사건. */
 export const OBJECTIVE_REVEAL_EVENT_CHANNEL = "objective:reveal";
@@ -50,19 +30,6 @@ export function getObjectiveReveal(objectiveId: string): ObjectiveReveal | null 
 export function subscribeObjectiveReveals(listener: () => void): () => void {
   revealListeners.add(listener);
   return () => { revealListeners.delete(listener); };
-}
-
-export function readComputerUseEnabled(payload: Record<string, unknown> | undefined): boolean {
-  const value = payload?.computerUse;
-  return !!value && typeof value === "object" && (value as { enabled?: unknown }).enabled === true;
-}
-
-export async function setComputerUse(api: ClientApiCapability, objectiveId: string, enabled: boolean, language: "en" | "ko"): Promise<void> {
-  await api.fetch(`experiments/sessions/${encodeURIComponent(objectiveId)}/computer-use`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ enabled, language }),
-  });
 }
 
 /** 패널 안 허용 요청에 답한다. 실패(이미 풀린 요청·실험 꺼짐)는 던진다 — 카드가 다시 누르게 한다. */

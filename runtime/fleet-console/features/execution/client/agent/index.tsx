@@ -30,9 +30,9 @@ import "./agent-cli.css";
 import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
 import { useObjectiveLinks } from "./objective-links.js";
 import { UseRequestCards } from "./use-request-card.js";
-import { MobileGlyph, MobileSurfaceProvider, mobileObjectiveOf, useMobileMenuItems, useMobileSurface, type MobileMenuItemLike, type MobileObjectiveLike } from "./mobile-surface.js";
+import { MobileSurfaceProvider, mobileObjectiveOf, useMobileSurface } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
-import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, readComputerUseEnabled, readInstalledExperiments, recordObjectiveReveal, setComputerUse, setInstalledExperiments, subscribeInstalledExperiments, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
+import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, recordObjectiveReveal, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
 import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
 
 
@@ -220,11 +220,8 @@ export const objectiveRecordKinds = [agentObjectiveKind] as const;
 // (같은 프로세스 내 plugin 인스턴스는 하나라 core의 단일 install 계약과 충돌하지 않는다.)
 let installedNotifications: ExecutionClientDeps["notifications"] | null = null;
 
-let installedApi: ExecutionClientDeps["api"] | null = null;
 export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
   installedNotifications = ctx.notifications;
-  installedApi = ctx.api;
-  setInstalledExperiments(ctx.experiments);
   const disposeViewState = installObjectiveViewState(ctx.consoleState);
   const disposeGroupTimeline = installGroupTimeline(ctx);
   const disposeGroupConversation = installGroupConversationSurface();
@@ -259,8 +256,6 @@ export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
   });
   return () => {
     installedNotifications = null;
-    installedApi = null;
-    setInstalledExperiments(null);
     disposeReveal();
     disposeConnection();
     disposeGroupConversation();
@@ -268,11 +263,6 @@ export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
     disposeArchive();
     disposeViewState();
   };
-}
-
-/** 실험 설정 구독 — 설정에서 껐다 켜는 즉시 캡션 버튼이 따라간다. */
-function useExperimentsSnapshot() {
-  return React.useSyncExternalStore(subscribeInstalledExperiments, readInstalledExperiments, () => null);
 }
 
 // core를 import하지 않고 pin-to-bottom 패턴을 플러그인 로컬로 복제한다.
@@ -378,7 +368,7 @@ function offersCompanion(context: ObjectiveRenderContext, companionId: string): 
 }
 
 /**
- * 모바일 Objective 화면에서는 셸이 막대를 그리고 보기 전환은 ⋮ 항목이 진다(AgentMobileMenu) — 캡션 선반을
+ * 모바일 Objective 화면에서는 셸이 막대를 그리고 보기 전환 등 본문 크롬은 셸 계약에 따른다 — 캡션 선반을
  * 비워 막대 빈칸에 칩이 끼지 않게 한다. 창구의 유무는 한 마운트 동안 바뀌지 않지만, 훅 순서를 판정에
  * 걸지 않으려고 안쪽 컴포넌트로 가른다.
  */
@@ -516,47 +506,11 @@ function AgentObjectiveView({ context }: { readonly context: ObjectiveRenderCont
   if (!mobile) return <AgentObjectiveBody context={context} />;
   return (
     <MobileSurfaceProvider mobile>
-      <AgentMobileMenu context={context} mobile={mobile} />
       <div className="agent-mobile-surface" data-mobile-surface="">
         <AgentObjectiveBody context={context} />
       </div>
     </MobileSurfaceProvider>
   );
-}
-
-/**
- * 모바일 ⋮의 에이전트 항목. 「컴퓨터 사용 계속 허용」은 이 Objective의 계속 허용 스위치이며, 설정에서 컴퓨터 사용
- * 실험이 꺼져 있으면 서지 않는다. 캡션의 같은 동작과 같은 경로를 탄다.
- */
-function AgentMobileMenu({ context, mobile }: { readonly context: ObjectiveRenderContext; readonly mobile: MobileObjectiveLike }) {
-  const t = getT(context.language ?? "en");
-  const experiments = useExperimentsSnapshot();
-  const computerUseEnabled = readComputerUseEnabled(context.objectiveRecord);
-  const [usePending, setUsePending] = React.useState(false);
-
-  const toggleComputerUse = () => {
-    if (usePending || !installedApi) return;
-    setUsePending(true);
-    const api = installedApi;
-    void setComputerUse(api, context.objectiveId, !computerUseEnabled, context.language ?? "en")
-      .then(() => api.resync())
-      .catch(() => undefined)
-      .finally(() => setUsePending(false));
-  };
-
-  const items: MobileMenuItemLike[] = [];
-  if (experiments?.computerUse === true) {
-    items.push({
-      id: "agent-computer-use",
-      label: t("terminal.mobile.keepComputerUse"),
-      icon: <MobileGlyph name="check" />,
-      checked: computerUseEnabled,
-      disabled: usePending,
-      run: toggleComputerUse,
-    });
-  }
-  useMobileMenuItems(mobile, items, `${experiments?.computerUse === true}|${computerUseEnabled}|${usePending}|${context.language}`);
-  return null;
 }
 
 function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderContext }) {

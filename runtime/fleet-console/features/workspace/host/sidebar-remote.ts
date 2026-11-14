@@ -36,8 +36,6 @@ export function sidebarRemotePage(input: {
   readonly writable: boolean;
   readonly autonomous: boolean;
   readonly taskforceEnabled: boolean;
-  readonly computerUseAvailable: boolean;
-  readonly computerUseEnabledOf: (id: string) => boolean;
   readonly ownWorkingOf: (id: string) => boolean;
   readonly commodoreId: string | null;
   readonly commodores: readonly SidebarRemoteCommodore[];
@@ -69,8 +67,8 @@ export function sidebarRemotePage(input: {
       activity: root.state === "running" || (root.state === "idle" && memberWorking) ? "running" : root.state === "awaiting" || (root.state === "idle" && memberWaiting) ? "awaiting" : root.state === "ended" ? "ended" : "idle" }) };
     // 이미 사람 HTTP가 쓰는 보드 DTO에서 세션 좌표까지 빼고 내린다. 원격에서 렌더링할 때 다시 채우지 않는다.
     const safe = sidebarSafeObjective(objective);
-    return { objective: safe, faces, tool: input.toolOf(ids), ownWorking: input.ownWorkingOf(objective.id), computerUseEnabled: input.computerUseEnabledOf(objective.id) };
+    return { objective: safe, faces, tool: input.toolOf(ids), ownWorking: input.ownWorkingOf(objective.id) };
   }) : [];
-  return { v: 1, at: input.at, writable: input.writable, autonomous: input.autonomous, taskforceEnabled: input.taskforceEnabled, computerUseAvailable: input.computerUseAvailable, next: input.offset + page.length < source.length ? input.offset + page.length : null,
+  return { v: 1, at: input.at, writable: input.writable, autonomous: input.autonomous, taskforceEnabled: input.taskforceEnabled, next: input.offset + page.length < source.length ? input.offset + page.length : null,
     commodores: input.commodoreId ? [] : page as readonly SidebarRemoteCommodore[], objectives, groups: input.groups, preferences: input.preferences };
 }

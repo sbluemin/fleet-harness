@@ -22,16 +22,6 @@ function getAgentObjective(ctx: ConsoleRuntimeContext, objectiveId: string): Obj
   return "agent" === AGENT_OBJECTIVE_TYPE ? objectiveRecord : null;
 }
 
-/**
- * 자식 세션에는 사용 스위치가 없다 — 허용은 루트의 것이다(`use-context.ts`). 루트로 돌려 쓰지 않고 거부한다: 구성원 자리의 스위치가
- * 묶음 전체(지휘관·다른 구성원)의 허용을 조용히 넓히거나 걷으면, 사람이 본 범위와 실제로 바뀐 범위가 달라진다. 거부 답이 루트를 알려 준다.
- */
-function refuseChildSwitch(ctx: ConsoleRuntimeContext, res: http.ServerResponse, objectiveRecord: ObjectiveRecord): boolean {
-  if (!objectiveRecord.parentObjectiveId) return false;
-  ctx.host.http.writeJson(res, 409, { error: "use_context_shared", contextObjectiveId: objectiveRecord.parentObjectiveId });
-  return true;
-}
-
 export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
   registerRouter(ctx, "experiments", async ({ req, res, pathname }) => {
     if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) {
@@ -39,41 +29,17 @@ export function registerExperimentRoutes(ctx: ConsoleRuntimeContext): void {
       return true;
     }
     const path = pathname.slice(`${ctx.basePath}/experiments`.length) || "/";
-    const computerUseMatch = /^\/sessions\/([^/]+)\/computer-use$/u.exec(path);
-    if (computerUseMatch) return handleComputerUse(req, res, decodeURIComponent(computerUseMatch[1] ?? ""));
     const useRequestMatch = /^\/sessions\/([^/]+)\/use-requests\/([^/]+)$/u.exec(path);
     if (useRequestMatch) return handleUseRequest(req, res, decodeURIComponent(useRequestMatch[1] ?? ""), decodeURIComponent(useRequestMatch[2] ?? ""));
     ctx.host.http.writeJson(res, 404, { error: "not_found" });
     return true;
   }, [
-    { method: "POST", path: "/sessions/:sessionId/computer-use", summary: "Allow or revoke Computer Use for an Agent Objective (experiment).", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/use-requests/:requestId", summary: "Answer an Agent Objective's pending Computer Use request from its panel: decline or keep allowing.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
 
   /**
-   * Objective 하나에 컴퓨터 사용을 허용하거나 거둔다. 기록은 payload에
-   * 남고 판정은 도구 호출마다 다시 읽힌다. 거둘 때는 그 Objective이 잡고 있던 기기도 곧바로 놓는다.
-   */
-  async function handleComputerUse(req: http.IncomingMessage, res: http.ServerResponse, objectiveId: string): Promise<boolean> {
-    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    if (!readExperiments(ctx).computerUse) { ctx.host.http.writeJson(res, 404, { error: "experiment_disabled" }); return true; }
-    const body = await ctx.host.http.readJsonBody<{ readonly enabled?: unknown; readonly language?: unknown }>(req);
-    if (!body || typeof body.enabled !== "boolean") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
-    const language = body.language === "ko" ? "ko" : "en";
-    const objectiveRecord = getAgentObjective(ctx, objectiveId);
-    if (!objectiveRecord) { ctx.host.http.writeJson(res, 404, { error: "objectiveRecord_not_found" }); return true; }
-    if (refuseChildSwitch(ctx, res, objectiveRecord)) return true;
-    const payload = { ...(objectiveRecord ?? {}) };
-    if (body.enabled) payload.computerUse = { enabled: true, language };
-    else { delete payload.computerUse; ctx.host.useRequests?.revoke(objectiveRecord.id, "computer"); ctx.host.computerUseMcp?.revokeObjective(objectiveRecord.id); }
-    ctx.host.objectiveRecords.patch(objectiveRecord.id, { ...payload });
-    ctx.host.http.writeJson(res, 200, { computerUse: body.enabled });
-    return true;
-  }
-
-  /**
-   * 패널 안 허용 요청에 답한다. `always` 는 ··· 메뉴 스위치를 켜는 것과 같은 기록을 남긴 뒤 요청을 푼다 — 붙잡힌 호출은
-   * 풀리자마자 판정을 다시 해 스위치를 읽는다. `deny` 는 거절로 끝낸다. `turn`(이번 작업만)은 받지 않는다.
+   * 패널 안 허용 요청에 답한다. `always` 는 이 Objective의 컴퓨터 사용을 계속 허용하는 기록을 남긴 뒤 요청을 푼다 — 붙잡힌 호출은
+   * 풀리자마자 판정을 다시 해 허용을 읽는다. `deny` 는 거절로 끝낸다. `turn`(이번 작업만)은 받지 않는다.
    * 컴퓨터 사용 실험이 꺼져 있으면 허용은 거절된다(카드는 설정으로 안내한다).
    */
   async function handleUseRequest(req: http.IncomingMessage, res: http.ServerResponse, objectiveId: string, requestId: string): Promise<boolean> {
