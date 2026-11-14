@@ -23,7 +23,7 @@ export const QUOTA_LAST_GOOD_PROVIDERS = [
 export type QuotaLastGoodProviderId = (typeof QUOTA_LAST_GOOD_PROVIDERS)[number];
 
 const WINDOW_IDS: readonly WindowId[] = ["session", "weekly", "model", "cycle"];
-const SCOPES: readonly QuotaScope[] = ["auto"];
+const SCOPES: readonly QuotaScope[] = ["auto", "fable"];
 
 function finite(value: unknown): number | undefined {
   return typeof value === "number" && Number.isFinite(value) ? value : undefined;

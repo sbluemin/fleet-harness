@@ -17,7 +17,7 @@ export interface RoutingQuota {
 /** 집계 풀은 빼되, 모델별 풀과 동시에 적용되는 공급자 공통 제한은 함께 보존한다. */
 export function bindingQuotaWindows(quota: GatewayProviderQuota | undefined, scope?: string): readonly GatewayQuotaWindow[] {
   return (quota?.windows ?? []).filter(window => window.isAggregate !== true
-    && (scope === undefined || window.scope === undefined || window.scope === scope));
+    && (window.scope === undefined || window.scope === scope));
 }
 
 /** 원자료는 그대로 두고 판단 모델에만 병목을 보존한 무차원 여유를 제공한다. */
@@ -28,8 +28,9 @@ export function normalizeRoutingQuota(quota: GatewayProviderQuota | undefined, s
   const stale = quota?.status === "stale" || now - at > MAX_OBSERVATION_AGE_MS;
   const windows = bindingQuotaWindows(quota, scope);
   if ((quota?.status !== "ok" && quota?.status !== "stale") || windows.length === 0) return { observation: "unknown", ageSeconds };
-  // 다른 풀이나 공통 제한만으로 해당 모델 풀의 잔여량을 추정하지 않는다.
-  const missingScope = scope !== undefined && !windows.some(window => window.scope === scope);
+  // 집계 풀만 보고 모델 전용 풀의 잔여량을 추정하지 않는다. 공통 제한만 있는 계정은 그 공통 창으로 판정한다.
+  const hasAggregate = (quota?.windows ?? []).some(window => window.isAggregate === true);
+  const missingScope = hasAggregate && scope !== undefined && !windows.some(window => window.scope === scope);
   const facts = windows.map(window => {
     const validUsage = Number.isFinite(window.usedPercent) && window.usedPercent >= 0;
     const remaining = validUsage ? Math.max(0, 1 - window.usedPercent / 100) : undefined;

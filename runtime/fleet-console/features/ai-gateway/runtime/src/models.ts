@@ -54,7 +54,7 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   }).strict(),
 ]);
 
-export type GatewayQuotaScope = "auto";
+export type GatewayQuotaScope = "auto" | "fable";
 
 const GatewayModelEntrySchema = z.object({
   modelId: z.string().min(1),
@@ -377,17 +377,24 @@ export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelC
   const ladder = model.effort.supported
     ? model.effort.levels.filter((level) => ANTHROPIC_EFFORT_RUNGS.has(level))
     : [];
+  const quotaScope: GatewayQuotaScope | undefined =
+    model.provider === "claude" && model.claudeAlias === "fable" ? "fable" : undefined;
   return {
     provider: model.provider,
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
     effortLadder: Object.freeze([...ladder]),
     effortSupported: ladder.length > 0,
+    ...(quotaScope === undefined ? {} : { quotaScope }),
   };
 }
 
 /** The catalog and routing loadout share the model's allowance-pool identity. */
 export function buildGatewayModelQuota(model: GatewayModel) {
-  return { quotaPool: `${model.provider}:shared` };
+  const { quotaScope } = buildGatewayModelConstraints(model);
+  return {
+    quotaPool: `${model.provider}:${quotaScope ?? "shared"}`,
+    ...(quotaScope === undefined ? {} : { quotaScope }),
+  };
 }
 
 /**
