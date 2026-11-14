@@ -150,19 +150,24 @@ if (typeof prompt !== "string") {
 
 const denied = await fetch(new URL("/api/v1/agent/sessions", base), { method: "POST", headers: { origin: new URL(base).origin, "content-type": "application/json" }, body: JSON.stringify({ commodoreId, theaterId, cliId: "claude", prompt }) });
 if (denied.status !== 405) throw new Error(`POST /api/v1/agent/sessions expected 405, got ${denied.status}`);
+const beforeTranscript = await api("POST", "/api/v1/commodore/transcript", { commodoreId, limit: 20 });
+const beforeResults = (beforeTranscript?.entries ?? []).filter((entry) => entry?.kind === "result").length;
 await api("POST", "/api/v1/commodore/message", { commodoreId, text: prompt });
-const sessionId = commodoreId;
 console.error(`seed-console: commodore message sent (${commodoreId})`);
 
 const until = args.get("await");
-let asked = null;
+const asked = null;
 let ended = false;
-if (until === "ask" || until === "turn") {
-  await readChat(sessionId, (event) => {
-    if (event.kind === "ask") { asked = event; return until === "ask"; }
-    if (event.kind === "turn-end") { ended = true; return true; }
-    return false;
-  }, timeoutMs);
+if (until === "ask") {
+  fail("--await ask requires an objective session; POST /api/v1/agent/sessions was removed (405)");
+}
+if (until === "turn") {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const transcript = await api("POST", "/api/v1/commodore/transcript", { commodoreId, limit: 20 });
+    if ((transcript?.entries ?? []).filter((entry) => entry?.kind === "result").length > beforeResults) { ended = true; break; }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
 }
 
 console.log(JSON.stringify({
@@ -170,7 +175,7 @@ console.log(JSON.stringify({
   port: lock.port,
   theaterId,
   commodoreId,
-  sessionId,
+  sessionId: null,
   url: `${base}/console/`,
   asked: asked
     ? {
