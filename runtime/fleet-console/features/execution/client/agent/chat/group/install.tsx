@@ -31,7 +31,7 @@ import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useG
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
-import { ComposerTopEntries } from "../composer-top-entries.js";
+import { ComposerTopEntries, ComposerTrailingEntries } from "../composer-top-entries.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
@@ -239,7 +239,19 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const sendOpenUI = React.useCallback((text: string, speaker: ConversationSpeaker) => {
     void actions?.send({ kind: speaker.kind === "commodore" ? "commodore" : "commander" }, text).catch(() => {});
   }, [actions]);
-  const composer = (workingLine?: React.ReactNode) => <GroupComposer key={root.id} rootObjectiveId={root.id} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} workingLine={workingLine} onStopOne={stopOne} />;
+  const composer = (workingLine?: React.ReactNode) => (
+    <GroupComposer
+      key={root.id}
+      rootObjectiveId={root.id}
+      snapshot={snapshot}
+      actions={actions}
+      language={language}
+      topEntries={phone && recordedObjective ? <ComposerTopEntries /> : null}
+      trailing={!phone && recordedObjective ? <ComposerTrailingEntries /> : null}
+      workingLine={workingLine}
+      onStopOne={stopOne}
+    />
+  );
   return (
     <OpenUINavigationContext.Provider value={openUIOpen ?? null}><GroupConversation
       snapshot={snapshot}
@@ -276,7 +288,7 @@ function StandInComposer({ rootId, language }: { readonly rootId: string; readon
   const actions = useGroupConversationActions(rootId);
   const recordedObjective = useGroupClusters().some((cluster) => cluster.conversation?.objectiveId === rootId && cluster.conversation.recordedObjective === true);
   return <div ref={dockRef} className="group-standin-dock">
-    <GroupComposer rootObjectiveId={rootId} snapshot={snapshot} actions={actions} language={language} topEntries={recordedObjective ? <ComposerTopEntries /> : null} onStopOne={stopOne} />
+    <GroupComposer rootObjectiveId={rootId} snapshot={snapshot} actions={actions} language={language} trailing={recordedObjective ? <ComposerTrailingEntries /> : null} onStopOne={stopOne} />
   </div>;
 }
 

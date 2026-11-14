@@ -60,8 +60,10 @@ export interface GroupComposerProps {
   readonly snapshot: GroupTimelineSnapshot;
   readonly actions: GroupConversationActions | null;
   readonly language: ConsoleLocale | undefined;
-  /** 기록된 목표의 요약 — 제안 칩과 같은 줄의 오른쪽 끝에 선다. */
+  /** 기록된 목표의 요약 — 제안 칩과 같은 줄의 오른쪽 끝에 선다(폰 배치). */
   readonly topEntries?: React.ReactNode;
+  /** 데스크톱 입력 캡슐 안 오른쪽(보내기 버튼 왼쪽)에 서는 요약 슬롯. */
+  readonly trailing?: React.ReactNode;
   /** 통합 줄에서만 받는 기존 진행 표시. 쉼이면 내용 없이 같은 요약 줄을 유지한다. */
   readonly workingLine?: React.ReactNode;
   /** 한 명만 멈춘다 — 기존 실행 중 중지 경로. */
@@ -128,7 +130,7 @@ function groupDraft(rootObjectiveId: string) {
   return draft;
 }
 
-export function GroupComposer({ rootObjectiveId, snapshot, actions, language, topEntries, workingLine, onStopOne }: GroupComposerProps) {
+export function GroupComposer({ rootObjectiveId, snapshot, actions, language, topEntries, trailing, workingLine, onStopOne }: GroupComposerProps) {
   const phone = useViewMode().effective === "mobile";
   const accent = useAvatarAccent(objectiveRecordAvatarKey(rootObjectiveId));
   const t = getGroupT(language);
@@ -670,28 +672,31 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
             onRemove={() => { setTarget(null); inputRef.current?.focus(); }}
           />
         ) : null}
-        <SyncedTextarea
-          ref={inputRef}
-          className="fc-composer-input group-composer-input"
-          rows={1}
-          value={text}
-          disabled={!actions}
-          maxLength={seated?.context?.maxLength}
-          placeholder={placeholder}
-          aria-label={t("group.composer.aria")}
-          aria-autocomplete="list"
-          aria-controls={popOpen ? deckId : undefined}
-          aria-expanded={popOpen}
-          aria-activedescendant={popOpen ? `${deckId}-${index}` : undefined}
-          onChange={(event) => edit(event.target.value)}
-          onPaste={attachmentInput.onPaste}
-          onKeyDown={onKeyDown}
-          onCompositionEnd={() => {
-            const pick = pendingPick.current;
-            pendingPick.current = null;
-            if (pick) window.setTimeout(() => choose(pick), 0);
-          }}
-        />
+        <span className="group-composer-input-wrap" data-placeholder={placeholder}>
+          <SyncedTextarea
+            ref={inputRef}
+            className="fc-composer-input group-composer-input"
+            rows={1}
+            value={text}
+            disabled={!actions}
+            maxLength={seated?.context?.maxLength}
+            placeholder={placeholder}
+            aria-label={t("group.composer.aria")}
+            aria-autocomplete="list"
+            aria-controls={popOpen ? deckId : undefined}
+            aria-expanded={popOpen}
+            aria-activedescendant={popOpen ? `${deckId}-${index}` : undefined}
+            onChange={(event) => edit(event.target.value)}
+            onPaste={attachmentInput.onPaste}
+            onKeyDown={onKeyDown}
+            onCompositionEnd={() => {
+              const pick = pendingPick.current;
+              pendingPick.current = null;
+              if (pick) window.setTimeout(() => choose(pick), 0);
+            }}
+          />
+        </span>
+        {trailing}
         {stopMode ? (
           <ComposerSendButton className="is-stop" aria-label={t("group.composer.stop")} title={t("group.composer.stop")} aria-haspopup="menu" aria-expanded={stopOpen} onClick={() => setStopOpen((open) => !open)}>
             <span className="group-composer-stop-mark" aria-hidden="true" />

@@ -931,6 +931,26 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .conversation-composer-top-end { grid-column: 2; justify-self: end; display: flex; align-items: center; min-width: 0; max-width: 100%; }
 /* 입력 캡슐 안 오른쪽 슬롯(보내기 버튼 왼쪽) — 28px 원과 같은 높이, 왼쪽 머리카락 선으로 입력과 나뉜다. */
 .fc-composer-capsule:has(> .conversation-composer-trailing) { container: fc-composer / inline-size; align-items: flex-end; }
+.group-composer-input-wrap { position: relative; display: flex; flex: 1 1 0; min-width: 0; }
+.group-composer-input-wrap > .group-composer-input { flex: 1 1 auto; width: 100%; min-width: 0; }
+.fc-composer-capsule.group-composer:has(> .conversation-composer-trailing) .group-composer-input-wrap { min-width: 96px; }
+.fc-composer-capsule.group-composer:has(> .conversation-composer-trailing) .group-composer-input:placeholder-shown { field-sizing: fixed; height: var(--fc-composer-circle, 28px); overflow: hidden; }
+.fc-composer-capsule.group-composer:has(> .conversation-composer-trailing) .group-composer-input:placeholder-shown::placeholder { color: transparent; }
+.fc-composer-capsule.group-composer:has(> .conversation-composer-trailing) .group-composer-input-wrap:has(> .group-composer-input:placeholder-shown)::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--fc-composer-line-pad, 4px);
+  color: var(--text-tertiary);
+  font: inherit;
+  font-size: var(--font-body-size);
+  line-height: calc(var(--font-body-size) + 6px);
+  pointer-events: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .conversation-composer-trailing { flex: none; display: inline-flex; align-items: center; gap: 4px; height: var(--fc-composer-circle, 28px); }
 .conversation-composer-trailing::before { content: ""; width: 1px; height: 16px; background: var(--hairline); }
 .conversation-composer-trailing:empty { display: none; }
