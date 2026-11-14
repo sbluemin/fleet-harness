@@ -11,7 +11,7 @@ import { createDesktopEventStream, type DesktopEventStream } from "./desktop-eve
  * 그래서 종료할 때 몰래 설치하는 동작도 끈다: 받아 둔 것이 없으면 설치할 것도 없고, 켜 두면
  * 사용자가 누른 적 없는 교체가 앱을 끄는 순간에 일어난다.
  *
- * 재시작은 설치본에게 맡긴다. Windows 설치본은 `--force-run`으로, macOS는 시스템 갱신기가
+ * 재시작은 설치본에게 맡긴다. Windows는 마법사 없이(`/S`) `--force-run`으로, macOS는 시스템 갱신기가
  * 직접 앱을 다시 띄운다. 여기에 Console 갱신이 쓰는 "종료 예약 후 스스로 다시 켜기"를 겹치면
  * 재실행이 두 번 일어나므로, 이 경로는 그 예약을 쓰지 않는다.
  */
@@ -129,7 +129,10 @@ export function createShellUpdater(deps: CreateShellUpdaterDeps): ShellUpdater {
   const restart = (): void => {
     if (state.stage !== "ready") return;
     // 설치본이 앱을 다시 띄운다. 여기서 재시작을 따로 예약하면 두 번 뜬다.
-    updater.quitAndInstall();
+    // Windows(NSIS, oneClick 아님)는 인자 없이 부르면 설치 마법사가 뜬다. 조용한 설치에서만
+    // `--force-run`이 붙으므로 둘 다 켠다. macOS 갱신기는 이 인자를 받지 않아 그 호출은 그대로다.
+    if (process.platform === "win32") updater.quitAndInstall(true, true);
+    else updater.quitAndInstall();
   };
 
   return { check, download, restart, snapshot: () => state };
