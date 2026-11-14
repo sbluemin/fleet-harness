@@ -220,6 +220,7 @@
 /* 모바일 라우팅 풀 행·시트 머리 */
 .objectives-cm-pool-trigger { display: inline-flex; align-items: center; gap: 6px; }
 .objectives-cm-pool-trigger .commodore-pool-stack { --halo: var(--m-surface); }
+.objectives-cm-pool-sep { color: var(--m-text-faint); }
 .objectives-cm-pool-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 4px 10px; }
 
 /* 정보 화면의 「목표 기록」 — 데스크톱 섹션을 폰 글자 크기·터치 높이로 편다. */

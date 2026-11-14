@@ -1369,7 +1369,13 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-help-btn[aria-pressed="true"] { background: var(--text-primary); color: var(--popover-face); }
 .commodore-pool-help-btn:focus-visible { outline: none; box-shadow: var(--focus-face); }
 
-.commodore-pool-view { position: relative; display: grid; gap: 10px; padding: 0 4px; }
+.commodore-pool-view { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; max-width: 100%; padding: 0 4px; }
+.commodore-pool-view > * { min-width: 0; }
+.commodore-pool-view.is-mobile .commodore-pool-mrow { padding-left: 16px; }
+.commodore-pool-view.is-mobile .commodore-pool-signin-note { margin-left: 16px; }
+.commodore-pool-view.is-mobile .commodore-pool-ex-stage { height: 264px; }
+.commodore-pool-view.is-mobile .commodore-pool-ex-tile { width: 48px; }
+.commodore-pool-view.is-mobile .commodore-pool-ex-tile .lbl { max-width: 48px; }
 .commodore-pool-sum { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 4px; }
 .commodore-pool-sum b { font-size: var(--t-sm); font-weight: var(--weight-bold); color: var(--text-primary); }
 .commodore-pool-sum span { font-size: var(--t-xs); color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
@@ -1380,13 +1386,13 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-empty { display: grid; gap: 2px; width: 100%; padding: 4px 6px; color: var(--text-tertiary); font-size: var(--t-sm); }
 .commodore-pool-empty b { color: var(--text-secondary); font-weight: var(--weight-medium); }
 .commodore-pool-pchip {
-  position: relative; display: inline-flex; align-items: center; height: 28px; max-width: 100%;
+  position: relative; display: inline-flex; align-items: center; height: 28px; min-width: 0; max-width: 100%;
   border-radius: var(--radius-xs); background: var(--popover-face); box-shadow: 0 0 0 1px var(--hairline); color: var(--text-primary);
 }
 .commodore-pool-pchip:hover { box-shadow: 0 0 0 1px var(--hairline-strong); }
 .commodore-pool-pchip.is-expanded { box-shadow: 0 0 0 1.5px var(--text-secondary); }
 .commodore-pool-pchip-main {
-  display: inline-flex; align-items: center; gap: 6px; height: 100%; min-width: 0; padding: 0 6px 0 7px;
+  display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto; height: 100%; min-width: 0; padding: 0 6px 0 7px;
   border: 0; border-radius: var(--radius-xs); background: transparent; color: inherit; font-family: var(--font-ui); font-size: var(--t-sm); cursor: pointer;
 }
 .commodore-pool-pchip-main:focus-visible, .commodore-pool-pchip-x:focus-visible { outline: none; box-shadow: var(--focus-face); }
@@ -1433,9 +1439,9 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 }
 .commodore-pool-find::placeholder { color: var(--text-tertiary); }
 .commodore-pool-find:focus-visible { outline: none; box-shadow: var(--focus-face); }
-.commodore-pool-groups { display: grid; gap: 8px; }
-.commodore-pool-pgroup { display: grid; gap: 2px; }
-.commodore-pool-pgroup-head { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 6px; }
+.commodore-pool-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
+.commodore-pool-pgroup { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; min-width: 0; }
+.commodore-pool-pgroup-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 30px; padding: 0 6px; }
 .commodore-pool-pgroup-nm { font-size: var(--t-sm); font-weight: var(--weight-bold); color: var(--text-primary); }
 .commodore-pool-login { font-size: var(--t-xs); color: var(--text-tertiary); }
 .commodore-pool-login.is-out { color: var(--warn-ink); font-weight: var(--weight-medium); }
@@ -1447,7 +1453,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-pin[aria-pressed="true"] { background: var(--control-wash); color: var(--text-primary); font-weight: var(--weight-bold); }
 .commodore-pool-pin-n { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: var(--text-primary); color: var(--popover-face); font-size: calc(var(--t-2xs) * 0.9); }
 .commodore-pool-signin-note { margin: 0 6px 4px 28px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
-.commodore-pool-mrow { display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 6px 0 28px; border-radius: var(--radius-xs); }
+.commodore-pool-mrow { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 32px; padding: 0 6px 0 28px; border-radius: var(--radius-xs); }
 .commodore-pool-mrow:hover { background: var(--wash-hover); }
 .commodore-pool-mrow-nm { flex: 1; min-width: 0; font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .commodore-pool-mrow-nm small { margin-left: 6px; color: var(--text-tertiary); font-size: var(--t-xs); }

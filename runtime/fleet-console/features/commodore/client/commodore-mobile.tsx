@@ -812,6 +812,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               onClick={() => setPoolSheetOpen(true)}
             >
               <RoutingPoolGlyphStack providers={pool.poolProviders} />
+              {pool.poolProviders.length > 0 ? <span className="objectives-cm-pool-sep" aria-hidden="true">·</span> : null}
               <span className="fc-select__value">{poolCountLabel}</span>
             </button>
           </SettingsRow>

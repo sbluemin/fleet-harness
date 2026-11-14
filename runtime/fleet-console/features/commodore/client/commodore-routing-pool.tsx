@@ -803,14 +803,18 @@ function RoutingPoolExplainer({ t, entries }: {
   const pickFallback = fallbackList.find((item) => item.id !== pickJudge?.id) ?? fallbackList[0] ?? null;
 
   const { width: w, height: h } = stageSize;
-  const pad = 12;
-  const cardW = Math.min(184, Math.max(132, Math.round(w * 0.37)));
+  const pad = 10;
+  const narrow = w < 380;
+  const cardW = narrow ? Math.min(134, Math.round(w * 0.37)) : Math.min(184, Math.max(132, Math.round(w * 0.37)));
   const cardX = w - cardW - pad;
-  const poolW = Math.max(140, cardX - pad - 18);
-  const cols = poolW >= 230 && items.length > 4 ? 3 : 2;
-  const cell = Math.min(60, Math.floor(poolW / cols));
-  const gx = Math.round(pad + poolW * 0.56);
-  const rowH = Math.round((h - 86) / Math.max(1, Math.ceil(items.length / cols)));
+  const gateW = 46;
+  const gx = Math.round(cardX - gateW - (narrow ? 12 : 24));
+  const availPoolW = Math.max(96, gx - pad - 8);
+  const cols = availPoolW >= 220 && items.length > 4 ? 3 : 2;
+  const cell = Math.min(narrow ? 48 : 60, Math.floor(availPoolW / cols));
+  const maxGridBottom = h - 68;
+  const rowsNeeded = Math.max(1, Math.ceil(items.length / cols));
+  const rowStep = Math.min(narrow ? 46 : 54, Math.max(38, Math.floor((maxGridBottom - 32) / rowsNeeded)));
 
   const positions = new Map<string, { readonly x: number; readonly y: number; readonly tray: boolean }>();
   const trayQueue: SampleExplainerItem[] = [];
@@ -824,8 +828,8 @@ function RoutingPoolExplainer({ t, entries }: {
     const col = rowIndex % cols;
     const row = Math.floor(rowIndex / cols);
     rowIndex += 1;
-    const x = Math.round(pad + 6 + col * cell);
-    const y = Math.round((step === 0 ? 32 : 34) + row * Math.min(54, rowH));
+    const x = Math.round(pad + 4 + col * cell);
+    const y = Math.round((step === 0 ? 32 : 34) + row * rowStep);
     positions.set(item.id, { x, y, tray: false });
   }
   trayQueue.forEach((item, index) => {
@@ -840,7 +844,7 @@ function RoutingPoolExplainer({ t, entries }: {
     if (!item) return null;
     const pos = positions.get(item.id);
     if (!pos) return null;
-    const sx = pos.x + 28 + 16;
+    const sx = pos.x + (narrow ? 24 : 28) + 14;
     const sy = pos.y + 15;
     const ex = cardX - 2;
     const ey = cardTop + cardH / 2;
