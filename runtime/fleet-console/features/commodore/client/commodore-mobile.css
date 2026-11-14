@@ -79,7 +79,8 @@
 .objectives-cm-conversation .group-chat-dock .objectives-cm-dock { padding-bottom: 12px; }
 /* 기록 탭의 독도 기록 위에 떠 있다 — 대화 화면의 독(호스트 대화 화면이 진다)과 같은 페이드이고, 기록이 독 높이(--m-dock-h, 기록 탭이 잰다)만큼
    독 뒤로 늘어나 같은 몫을 아래 여백으로 되돌린다. */
-.objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-dock { position: relative; z-index: 1; background: var(--m-fade-up, var(--m-bg)); }
+.objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-dock { position: relative; z-index: 1; background: transparent; }
+.objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-dock::before { content: ""; position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: calc(var(--m-safe-bottom, 0px) + 92px); pointer-events: none; background: var(--m-fade-up, var(--m-bg)); }
 .objectives-cm-fill:not(.objectives-cm-conversation) > .objectives-cm-chat { margin-bottom: calc(-1 * var(--m-dock-h, 0px)); padding-bottom: calc(16px + var(--m-dock-h, 0px)); }
 .objectives-cm-dock .fc-composer-notice { padding-bottom: 0; }
 .objectives-cm-dock .conversation-composer-top { padding: 0; min-width: 0; }

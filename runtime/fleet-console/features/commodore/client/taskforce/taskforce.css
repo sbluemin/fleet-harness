@@ -106,8 +106,9 @@
 .taskforce-muted { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
 /* 폰 화면 — 대화가 화면 전체를 쓰고(위로 머리 뒤, 아래로 입력 독 뒤까지) 머리는 위에 떠 있다. 로그·독은 그룹 대화의 폰 규칙(--m-chrome-top, --m-dock-h, --m-safe-bottom)이 그대로 맡는다. */
 .taskforce-mobile-screen { --m-chrome-top: calc(60px + var(--m-safe-top, 0px)); position: fixed; inset: 0; z-index: var(--z-overlay); display: flex; flex-direction: column; overflow: hidden; background: var(--m-bg, var(--surface-panel)); }
-/* 머리는 알약 줄 높이만 차지한다. 화면 위 36px 베일은 그 안에서 투명해지고 단추·알약만 눌린다. */
-.taskforce-mobile-screen > header { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; align-items: flex-start; gap: 8px; box-sizing: border-box; height: var(--m-chrome-top); padding: calc(var(--m-safe-top, 0px) + 7px) 14px 0; background: var(--m-fade-top, var(--m-fade-down, var(--m-bg))); pointer-events: none; }
+/* 머리는 알약 줄 높이만 차지하고, ::before가 상태바~알약 아래까지 부드럽게 페이드된다. 단추·알약만 눌린다. */
+.taskforce-mobile-screen > header { position: absolute; top: 0; right: 0; left: 0; z-index: 2; display: flex; align-items: flex-start; gap: 8px; box-sizing: border-box; height: var(--m-chrome-top); padding: calc(var(--m-safe-top, 0px) + 7px) 14px 0; background: transparent; pointer-events: none; }
+.taskforce-mobile-screen > header::before { content: ""; position: absolute; top: 0; right: 0; left: 0; z-index: -1; height: calc(var(--m-safe-top, 0px) + 84px); pointer-events: none; background: var(--m-fade-top, var(--m-fade-down, var(--m-bg))); }
 .taskforce-mobile-screen > header > * { pointer-events: auto; }
 .taskforce-mobile-screen > header .mobile-bar-button { background: var(--m-surface); border: 1px solid var(--m-hairline-strong); border-radius: 50%; color: var(--m-text); }
 .taskforce-mobile-screen > header .mobile-conv-pill { padding-left: 16px; }
