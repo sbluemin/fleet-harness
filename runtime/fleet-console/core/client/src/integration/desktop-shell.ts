@@ -48,6 +48,21 @@ export function desktopPickerUrl(homeOrigin: string, surface: string = PICKER_SU
   return url.toString();
 }
 
+/** 앵커 요소의 자리를 `desktopPickerUrl`의 `anchor` 쿼리 형식으로 인코딩한다. */
+export function desktopPickerAnchor(trigger: HTMLElement | null): string | undefined {
+  if (trigger === null) return undefined;
+  const width = Math.round(window.innerWidth);
+  const height = Math.round(window.innerHeight);
+  if (width <= 0 || height <= 0) return undefined;
+  const rect = trigger.getBoundingClientRect();
+  const clamp = (value: number, max: number) => Math.min(max, Math.max(0, Math.round(value)));
+  const left = clamp(rect.left, width);
+  const top = clamp(rect.top, height);
+  const right = Math.max(left, clamp(rect.right, width));
+  const bottom = Math.max(top, clamp(rect.bottom, height));
+  return [left, top, right, bottom, width, height].join(",");
+}
+
 /**
  * 창을 들고 있는 셸이 알려 준 "돌아갈 곳". 원격 콘솔이 서빙한 화면은 자기가 아닌 origin을
  * 스스로 알 수 없으므로, 이 값이 없으면 호스트 스위처에는 돌아가는 줄이 서지 않는다.
