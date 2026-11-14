@@ -161,6 +161,16 @@ const PROFILES = new Set<unknown>([null, "default"]);
 const str = (value: unknown, max: number): value is string => typeof value === "string" && value.length <= max;
 const safeId = (value: unknown): value is string => typeof value === "string" && /^[A-Za-z0-9._:-]{1,120}$/u.test(value);
 
+/** 저장 제안 카드의 보기 토글 — 마스킹 기본, 문서 안에서만 바뀌고 main 으로는 가지 않는다. */
+export function passwordRevealText(password: string, shown: boolean): { readonly mask: string; readonly toggleKey: "password.show" | "password.hide" } {
+  return shown ? { mask: password, toggleKey: "password.hide" } : { mask: "••••••••", toggleKey: "password.show" };
+}
+
+/** 저장 제안 카드의 동일성 — 같은 제출이면 보기 상태가 뒤집혀도 초기화하지 않는다. */
+export function passwordPromptIdentity(overlay: { readonly mode: string; readonly origin: string; readonly username: string; readonly password: string }): string {
+  return `password-prompt:${overlay.mode}:${overlay.origin}:${overlay.username}:${overlay.password}`;
+}
+
 /** 문서가 보낸 `[채널, 역할, 동작, 본문]` 문장 하나를 동작 하나로. 모양이 어긋나면 null — 무시된다. */
 export function readChromeMessage(text: string): { readonly role: ChromeRole; readonly action: ChromeAction } | null {
   if (text.length > 4_000_000) return null;

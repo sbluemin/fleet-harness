@@ -51,7 +51,7 @@ import { createShellUpdateCommandSynchronizer, createShellUpdatePublisher, creat
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher, type DesktopTitleBarOverlay } from "./title-bar-overlay-refresh.js";
 import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission } from "./computer-capture.js";
 import { createBrowserSurface, createMainPageHost, type SurfaceControl } from "./browser-surface.js";
-import { createBrowserPasswordPageAgent } from "./browser-password-page.js";
+import { createBrowserPasswordPageAgent, type PasswordPrompt } from "./browser-password-page.js";
 import { createBrowserActions } from "./browser-actions.js";
 import { createDesktopBrowserViews, type BrowserSurfaceHost } from "./browser-views.js";
 import { createManagedBrowserHost } from "./browser-host.js";
@@ -442,22 +442,34 @@ async function boot(): Promise<void> {
   });
   // 비밀번호 자동완성·저장 제안 — 크롬 카드 동작을 받으면 금고로만 잇고 Console 으로는 보내지 않는다.
   // 카드 표시는 act 가 돌려주는 최신 SurfaceControl 로 붙인다(스냅샷 경로가 아니라 동작 경로에서만 손에 닿는다).
+  // act 가 돌려주는 최신 SurfaceControl 로 카드 표시를 붙인다. onPrompt 가 act 보다 먼저 오면
+  // 다음 act 에서 붙인다 — surfaceControl 이 null 인 동안 카드를 버리지 않는다.
+  const applyPasswordPrompt = (control: SurfaceControl, prompt: PasswordPrompt | null): void => {
+    if (prompt === null) {
+      const overlay = control.ui().overlay;
+      if (overlay && (overlay.kind === "password-prompt" || overlay.kind === "password-picker")) control.patch({ overlay: null, suggestions: [] });
+      return;
+    }
+    if (prompt.kind === "save-prompt") {
+      control.patch({ overlay: { kind: "password-prompt", origin: prompt.origin, username: prompt.username, password: prompt.password, mode: prompt.mode }, suggestions: [] });
+    } else {
+      control.patch({ overlay: { kind: "password-picker", origin: prompt.origin, usernames: [...prompt.usernames] }, suggestions: [] });
+    }
+  };
+  const showPendingPasswordPrompt = (control: SurfaceControl): void => {
+    const pending = browserPasswordAgent.prompt();
+    if (!pending) return;
+    const overlay = control.ui().overlay;
+    if (overlay && (overlay.kind === "password-prompt" || overlay.kind === "password-picker")) return;
+    applyPasswordPrompt(control, pending);
+  };
   let surfaceControl: SurfaceControl | null = null;
   const browserPasswordAgent = createBrowserPasswordPageAgent({
     vault: browserPasswordVault,
     onPrompt: (prompt) => {
       const control = surfaceControl;
-      if (!control) return;
-      if (prompt === null) {
-        const overlay = control.ui().overlay;
-        if (overlay && (overlay.kind === "password-prompt" || overlay.kind === "password-picker")) control.patch({ overlay: null, suggestions: [] });
-        return;
-      }
-      if (prompt.kind === "save-prompt") {
-        control.patch({ overlay: { kind: "password-prompt", origin: prompt.origin, username: prompt.username, password: prompt.password, mode: prompt.mode }, suggestions: [] });
-      } else {
-        control.patch({ overlay: { kind: "password-picker", origin: prompt.origin, usernames: [...prompt.usernames] }, suggestions: [] });
-      }
+      if (!control || browserSurface.viewing()) return;
+      applyPasswordPrompt(control, prompt);
     },
     log: (message) => logger.info(message),
   });
@@ -532,6 +544,8 @@ async function boot(): Promise<void> {
       if (!browserSurface.viewing() && !control.ui().busy && (action.action === "dialog-close" || (action.action === "overlay" && action.kind === null))) {
         if (browserPasswordAgent.cancelPrompt()) return;
       }
+      // control 이 늦게 생겨 못 보여 준 카드가 있으면 붙인다.
+      if (!browserSurface.viewing()) showPendingPasswordPrompt(control);
       if (browserSurface.viewing()) browserViewer?.act(control, role, action); else browserActions(control, role, action);
     },
     relay: (surface) => { if (browserSurface.viewing()) { if (surface.status === "closed") browserViewer?.closed(); } else browserHost.relaySurface(surface); },

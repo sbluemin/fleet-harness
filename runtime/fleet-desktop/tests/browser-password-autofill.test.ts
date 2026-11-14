@@ -9,7 +9,7 @@ import {
   DESKTOP_BROWSER_RELAY_PATH,
   type DesktopBrowserSnapshot,
 } from "@fleet-console/protocol/desktop";
-import { readChromeMessage } from "../src/chrome/contract.js";
+import { passwordPromptIdentity, passwordRevealText, readChromeMessage } from "../src/chrome/contract.js";
 import {
   chooseAutofillCredential,
   chooseLoginForm,
@@ -42,7 +42,8 @@ class FakeInput implements FleetPasswordInput {
   set value(next: string) { this.#value = next; }
   get disabled(): boolean { return this.attrs.has("disabled"); }
   offsetParent: unknown = {};
-  constructor(init: { type?: string; name?: string; id?: string; autocomplete?: string; value?: string; form?: FakeForm | null; button?: boolean } = {}) {
+  constructor(init: { type?: string; name?: string; id?: string; autocomplete?: string; value?: string; form?: FakeForm | null; button?: boolean; tag?: string } = {}) {
+    if (init.tag !== undefined) this.tagName = init.tag;
     if (init.type !== undefined) this.attrs.set("type", init.type);
     if (init.name !== undefined) this.attrs.set("name", init.name);
     if (init.id !== undefined) this.attrs.set("id", init.id);
@@ -55,7 +56,7 @@ class FakeInput implements FleetPasswordInput {
   getClientRects(): ArrayLike<unknown> { return this.visible ? [{ width: 10, height: 10 }] : []; }
   closest(selector: string): unknown {
     if (selector === "form") return this.form;
-    if (this.attrs.get("data-button") === "1") return this;
+    if (this.tagName === "BUTTON" || this.attrs.get("data-button") === "1") return this;
     return null;
   }
   focus(): void { this.focused = true; }
@@ -229,6 +230,23 @@ describe("isolated submit and focus reporters", () => {
     doc.fire("click", inputEvent(button));
     expect(posted).toHaveLength(1);
     doc.fire("keydown", inputEvent(password, { type: "keydown", key: "Enter" }));
+    expect(posted).toHaveLength(2);
+  });
+
+  it("reports an in-form React-style button while native submits stay single", () => {
+    const form = new FakeForm("/login");
+    const user = new FakeInput({ type: "text", name: "u", value: "ada", form });
+    const password = new FakeInput({ type: "password", name: "p", value: "pw", form });
+    const jsButton = new FakeInput({ tag: "BUTTON", type: "button", form });
+    const nativeButton = new FakeInput({ tag: "BUTTON", type: "submit", form });
+    form.children.push(user, password, jsButton, nativeButton);
+    const doc = new FakeDoc([user, password, jsButton, nativeButton]);
+    const posted = session(doc);
+    doc.fire("click", inputEvent(jsButton));
+    expect(posted.map((text) => JSON.parse(text))).toEqual([{ kind: "submitted", username: "ada", password: "pw" }]);
+    doc.fire("click", inputEvent(nativeButton));
+    expect(posted).toHaveLength(1);
+    doc.fire("submit", inputEvent(form));
     expect(posted).toHaveLength(2);
   });
 
@@ -509,10 +527,10 @@ describe("browser views password hooks", () => {
     return { webContents: contents, setBorderRadius: () => undefined, setBounds: () => undefined, setVisible: () => undefined };
   };
 
-  const drive = async (hooks: { attachView: (...args: never[]) => void } & Record<string, (...args: never[]) => void>, surface: { inputLocked: () => boolean }) => {
+  const drive = async (hooks: { attachView: (...args: never[]) => void } & Record<string, (...args: never[]) => void>, surface: { inputLocked: () => boolean }, extraView: { agent?: boolean } = {}) => {
     const lifetime: DesktopBrowserSnapshot = {
       generation: 1,
-      views: [{ id: "view-1", objectiveId: "op-1", partition: "p1", profile: null, visible: true, url: "https://a.example/login" }],
+      views: [{ id: "view-1", objectiveId: "op-1", partition: "p1", profile: null, visible: true, url: "https://a.example/login", ...extraView }],
       commands: [],
     };
     const fetch = vi.fn(async (input: string | URL | Request): Promise<Response> => {
@@ -563,5 +581,74 @@ describe("browser views password hooks", () => {
     contents.emit("console-message", { frame: { url: "https://other.invalid/" }, message: line });
     expect(calls.filter((call) => call.startsWith("binding:")).length).toBe(1);
     expect(calls).toContain("detach:view-1");
+  });
+
+  it("reads the agent mark from the snapshot even when the lock is off", async () => {
+    const calls: string[] = [];
+    await drive({
+      attachView: (...args: never[]) => calls.push(`attach:${String((args as unknown[])[0])}`),
+      setVisible: (...args: never[]) => calls.push(`visible:${(args as unknown[]).join(",")}`),
+      pageReady: () => undefined,
+      binding: () => undefined,
+      detachView: () => undefined,
+    }, { inputLocked: () => false }, { agent: true });
+    expect(calls).toContain("attach:view-1");
+    expect(calls).toContain("visible:view-1,true,true");
+  });
+});
+
+describe("password prompt reveal helpers", () => {
+  it("masks by default and flips both texts together", () => {
+    expect(passwordRevealText("s3cr3t", false)).toEqual({ mask: "••••••••", toggleKey: "password.show" });
+    expect(passwordRevealText("s3cr3t", true)).toEqual({ mask: "s3cr3t", toggleKey: "password.hide" });
+    const identity = { mode: "save", origin: "https://a.example", username: "ada", password: "pw" };
+    expect(passwordPromptIdentity(identity)).toBe(passwordPromptIdentity({ ...identity }));
+    expect(passwordPromptIdentity(identity)).not.toBe(passwordPromptIdentity({ ...identity, password: "other" }));
+    expect(passwordPromptIdentity(identity)).not.toBe(passwordPromptIdentity({ ...identity, mode: "update" }));
+  });
+});
+
+describe("password agent background and retention rules", () => {
+  it("fills a hidden agent tab without waiting for display", async () => {
+    const { vault } = stubVault([{ id: "a", username: "ada", password: "pw", updatedAt: 1 }]);
+    const stub = stubHandle("https://a.example/", cannedScan());
+    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5 });
+    agent.attachView("v1", stub.handle);
+    agent.setVisible("v1", false, true);
+    agent.pageReady("v1");
+    await tick();
+    const fills = stub.codes.filter((code) => code.includes("focusPassword"));
+    expect(fills).toHaveLength(1);
+    expect(fills[0]).toContain("ada");
+  });
+
+  it("keeps a save prompt across hide but drops the picker", async () => {
+    const { vault } = stubVault([]);
+    const prompts: (PasswordPrompt | null)[] = [];
+    const stub = stubHandle("https://a.example/", { forms: [] });
+    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5, onPrompt: (prompt) => prompts.push(prompt) });
+    agent.attachView("v1", stub.handle);
+    agent.setVisible("v1", true, false);
+    agent.binding("v1", JSON.stringify({ kind: "submitted", username: "new", password: "pw" }));
+    await tick();
+    expect(prompts.at(-1)).toMatchObject({ kind: "save-prompt" });
+    agent.setVisible("v1", false, false);
+    await tick();
+    expect(agent.prompt()).toMatchObject({ kind: "save-prompt" });
+
+    const multi = stubVault([
+      { id: "a", username: "ada", password: "one", updatedAt: 1 },
+      { id: "g", username: "grace", password: "two", updatedAt: 2 },
+    ]);
+    const stub2 = stubHandle("https://b.example/", cannedScan());
+    const agent2 = createBrowserPasswordPageAgent({ vault: multi.vault, scanDebounceMs: 5, onPrompt: (prompt) => prompts.push(prompt) });
+    agent2.attachView("v2", stub2.handle);
+    agent2.setVisible("v2", true, false);
+    agent2.binding("v2", JSON.stringify({ kind: "field-focused" }));
+    await tick();
+    expect(prompts.at(-1)).toMatchObject({ kind: "pick" });
+    agent2.setVisible("v2", false, false);
+    expect(agent2.prompt()).toBeNull();
+    expect(prompts.at(-1)).toBeNull();
   });
 });

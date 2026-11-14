@@ -2,6 +2,7 @@ import type { ChromeImportSources, ChromeOverlay, ChromeSuggestion, ChromeUiStat
 import { mountAnnotate, type Annotator } from "./annotate.js";
 import { agentGlyph, clear, G, glyph, h, hostOf, moreGlyph } from "./dom.js";
 import { paintColors, post, shownSpace, spaceHue, spaceName, syncShellMotion, tabCount, tr, type T } from "./shared.js";
+import { passwordPromptIdentity, passwordRevealText, type ChromeOverlay } from "../contract.js";
 
 const SUGGEST_DELAY_MS = 200;
 const PERSISTENT = "default";
@@ -350,13 +351,20 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
 
   /** 저장·업데이트 제안 카드 — 주소줄 아래 페이지 자리를 덮는 시트다. 비밀번호는 마스킹이 기본이다. */
   const buildPasswordPrompt = (t: T, overlay: Extract<ChromeOverlay, { kind: "password-prompt" }>): HTMLElement => {
-    const key = `password-prompt:${overlay.mode}:${overlay.origin}:${overlay.username}:${overlay.password}`;
-    if (key !== passwordShownKey) { passwordShownKey = key; passwordShown = false; }
+    // overlayKey 와 무관하게 토글이 바로 반영되게 텍스트를 직접 갱신한다 — 같은 카드가 다시 그려지지 않아도 전환된다.
+    const idKey = passwordPromptIdentity(overlay);
+    if (idKey !== passwordShownKey) { passwordShownKey = idKey; passwordShown = false; }
+    const showing = passwordRevealText(overlay.password, passwordShown);
     const save = h("button", { class: "button primary", type: "button", text: t(overlay.mode === "update" ? "password.update" : "password.save"), on: { click: () => post("bar", "password-save") } });
     const dismiss = h("button", { class: "button", type: "button", text: t("password.dismiss"), on: { click: () => post("bar", "password-dismiss") } });
     const never = h("button", { class: "button", type: "button", text: t("password.never"), on: { click: () => post("bar", "password-never") } });
-    const mask = h("span", { class: "password-mask", text: passwordShown ? overlay.password : "••••••••" });
-    const toggle = h("button", { class: "button", type: "button", text: t(passwordShown ? "password.hide" : "password.show"), on: { click: () => { passwordShown = !passwordShown; if (last) renderOverlay(last); } } });
+    const mask = h("span", { class: "password-mask", text: showing.mask });
+    const toggle = h("button", { class: "button", type: "button", text: t(showing.toggleKey), on: { click: () => {
+      passwordShown = !passwordShown;
+      const next = passwordRevealText(overlay.password, passwordShown);
+      mask.textContent = next.mask;
+      toggle.textContent = t(next.toggleKey);
+    } } });
     const secret = h("div", { class: "dialog-item" },
       h("span", { class: "dialog-glyph" }, glyph(G.key)),
       h("span", { class: "password-body" }, h("strong", { text: t("password.password") }), mask),

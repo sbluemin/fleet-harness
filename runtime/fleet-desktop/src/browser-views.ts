@@ -437,6 +437,12 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const now = deps.now ?? (() => Date.now());
   const schedule = deps.schedule ?? ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
   const cancel = deps.cancel ?? ((handle: unknown) => { clearTimeout(handle as ReturnType<typeof setTimeout>); });
+  /**
+   * 그 뷰가 에이전트 탭인가 — 통합 스냅샷의 `agent` 표식이 먼저고, 없으면 표시 탭 잠금으로 본다.
+   * 잠금은 에이전트가 모는 찰나에만 참이므로 백그라운드 에이전트 탭은 표식으로만 잡힌다.
+   */
+  const viewIsAgentTab = (spec: DesktopBrowserView): boolean =>
+    (spec as { agent?: unknown }).agent === true || (spec.visible && deps.surface.inputLocked());
 
   const authHeaders = (): Record<string, string> => {
     const auth = deps.auth?.() ?? null;
@@ -754,7 +760,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
         },
         executeIsolated: (code) => contents.executeJavaScriptInIsolatedWorld(PASSWORD_PAGE_WORLD_ID, [{ code }]),
       });
-      passwords.setVisible(spec.id, spec.visible, spec.visible && deps.surface.inputLocked());
+      passwords.setVisible(spec.id, spec.visible, viewIsAgentTab(spec));
       const passwordReady = (): void => passwords.pageReady(spec.id);
       contents.on("dom-ready", passwordReady);
       contents.on("did-navigate", passwordReady);
@@ -927,7 +933,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       if (!entry) { create(spec); continue; }
       (entry as { spec: DesktopBrowserView }).spec = spec;
       place(entry);
-      deps.passwords?.setVisible(spec.id, spec.visible, spec.visible && deps.surface.inputLocked());
+      deps.passwords?.setVisible(spec.id, spec.visible, viewIsAgentTab(spec));
     }
     for (const command of snapshot.commands) run(command);
     reconcileWatched(new Set(snapshot.watchedViewIds ?? []));

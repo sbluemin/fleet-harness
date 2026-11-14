@@ -318,7 +318,21 @@ export function fleetPasswordSession(
   }, true);
   doc.addEventListener("click", (event) => {
     const target = (event as FleetPasswordDomEvent).target;
-    if (formOf(target)) return;
+    const scope = formOf(target) ?? doc;
+    const node = target as { tagName?: unknown; getAttribute?: (name: string) => string | null } | null;
+    let nativeSubmit = false;
+    if (node && typeof node === "object") {
+      try {
+        const type = typeof node.getAttribute === "function" ? (node.getAttribute("type") ?? "").toLowerCase() : "";
+        // <button>의 기본 type은 submit이다 — 이런 단추는 뒤따르는 submit 이벤트가 보고한다.
+        if (node.tagName === "INPUT") nativeSubmit = type === "submit" || type === "image";
+        else if (node.tagName === "BUTTON") nativeSubmit = type === "submit" || type === "";
+      } catch {
+        nativeSubmit = false;
+      }
+    }
+    // 폼 안 네이티브 제출 단추만 submit 이벤트에 맡기고, type="button"·role="button" React식 단추는 여기서 직접 읽는다.
+    if (scope !== doc && nativeSubmit) return;
     const holder = target as { closest?: unknown } | null;
     const closest = holder && typeof holder === "object" ? holder.closest : null;
     if (typeof closest !== "function") return;
@@ -329,7 +343,7 @@ export function fleetPasswordSession(
       return;
     }
     if (!hit) return;
-    const read = readSubmit(doc);
+    const read = readSubmit(scope);
     if (!read) return;
     tell({ kind: "submitted", username: read.username, password: read.password });
   }, true);
@@ -632,7 +646,9 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
         const creds = readCredentials(origin);
         if (!creds) return;
         const form = chooseLoginForm(scan.forms);
-        if (!form || !track.visible) return;
+        // 백그라운드 에이전트 탭도 채운다 — 표시 여부와 무관하게 에이전트 로그인 흐름이 멈추지 않게.
+        // 사람 탭은 보이는 페이지에서만 건드린다.
+        if (!form || (!track.visible && !track.isAgentTab)) return;
         const key = loginFormKey(origin, form);
         if (track.filled.has(key)) return;
         if (creds.credentials.length === 0) return;
@@ -736,8 +752,13 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
       if (!track) return;
       track.visible = visible;
       track.isAgentTab = agent;
-      if (!visible) clearPromptFor(viewId);
-      else void scanView(viewId);
+      if (!visible) {
+        // 선택 목록은 표시 탭의 것이므로 거두지만, 저장 제안(특히 에이전트 탭의 제출)은
+        // 탭 전환·비표시로 잃지 않고 유지한다. 뷰가 닫히면 detachView 가 거둔다.
+        if (prompt?.kind === "pick" && prompt.viewId === viewId) emit(null);
+        return;
+      }
+      void scanView(viewId);
     },
     pageReady(viewId) {
       const track = tracks.get(viewId);
