@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, systemPreferences, Tray, WebContentsView, type Session } from "electron";
+import { app, BaseWindow, clipboard, dialog, Menu, nativeImage, Notification, safeStorage, screen, session, shell, systemPreferences, Tray, WebContentsView, type Session } from "electron";
 
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, type DesktopBrowserPlatform } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
@@ -59,7 +59,9 @@ import { managedBrowserHeaders, shellPublishHeaders, type ManagedBrowserConnecti
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import { readChromeHistory } from "./chrome-history.js";
 import { createBrowserHistoryStorage } from "./browser-history-storage.js";
+import { createBrowserPasswordVault } from "./browser-password-vault.js";
 import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
+import { DESKTOP_BROWSER_PASSWORDS } from "@fleet-console/protocol/desktop/browser-passwords";
 import { type DesktopShellWindow } from "./shell-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, consoleWindowChrome, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { keepWindowEnabled, withOwnModal } from "./native-modal-guard.js";
@@ -428,6 +430,16 @@ async function boot(): Promise<void> {
    */
   const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot(app.getPath("userData"), app.isPackaged));
   /**
+   * 비밀번호 금고는 프로필이 아니라 Desktop 하나가 통째로 소유한다 — 모든 스페이스가 공유하고
+   * 임시 세션에서도 같은 금고를 읽고 쓴다. 디스크에는 암호문과 메타데이터만 남는다.
+   */
+  const browserPasswordVault = createBrowserPasswordVault({
+    root: app.getPath("userData"),
+    safeStorage,
+    systemPreferences,
+    clipboard,
+  });
+  /**
    * 브라우저 표면(칸·독립 창)과 그 크롬. 크롬 문서는 셸의 정적 자산이고 Console 의 문서·렌더러를 거치지 않는다 — 사람의 동작은 Console 의 기존 REST 로 돌아가고,
    * 상태는 스냅샷으로 온다. 문서는 sandbox·Node 없음이고 사전 로드 스크립트도 없다 — 주입 프로그램만 main 이 넣는다.
    */
@@ -559,6 +571,7 @@ async function boot(): Promise<void> {
      * 있으므로 쿠키는 그 파티션의 세션에만 들어가고 창의 쿠키 저장소는 건드리지 않는다.
      */
     shellCommand: async (method, params) => {
+      if (method === DESKTOP_BROWSER_PASSWORDS) return browserPasswordVault.command(params);
       if (method === DESKTOP_BROWSER_CHROME_PROFILES) return chromeImportSources();
       if (method === DESKTOP_BROWSER_HISTORY) return browserHistoryStorage.command(params);
       if (method === DESKTOP_BROWSER_CHROME_HISTORY) {
