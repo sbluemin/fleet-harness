@@ -1402,7 +1402,9 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-ledger-share > span { min-width: 0; }
 :root[data-view-mode="mobile"] .group-ledger-share > .group-chat-link { flex: none; white-space: nowrap; }
 :root[data-view-mode="mobile"] .group-ledger:has(> .group-ledger-share) > .group-ledger-body { position: relative; --m-chrome-top: 0px; }
-:root[data-view-mode="mobile"] .group-chat-working:not(.is-empty) { background: linear-gradient(to top, var(--m-bg) 65%, color-mix(in srgb, var(--m-bg) 0%, transparent)); }
+:root[data-view-mode="mobile"] .group-chat-working:not(.is-empty) { background: transparent; }
+/* 진행 안내만 얇은 면으로 받친다 — 독 전체나 홈 막대 뒤를 단색으로 덮지 않는다. */
+:root[data-view-mode="mobile"] .group-chat-working:not(.is-empty) > * { border-radius: 14px; background: color-mix(in srgb, var(--m-bg) 88%, transparent); }
 :root[data-view-mode="mobile"] .group-chat-log::-webkit-scrollbar { display: none; }
 :root[data-view-mode="mobile"] .group-chat-agent { grid-template-columns: 28px minmax(0, 1fr); max-width: none; }
 :root[data-view-mode="mobile"] .group-chat-agent.is-solo { grid-template-columns: minmax(0, 1fr); }
@@ -1452,13 +1454,14 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-chat[data-relay="open"] > :not(.group-relay) { transform: translateX(-22%); }
 /* 폰 배치의 상단 막대는 화면 위에 떠 있다(--m-chrome-top). 대화 화면은 그 뒤까지 차지만, 목록의 첫 줄과 대체 칩은 막대 몫만큼 내려 서서
    막대·제목 pill 에 가리지 않는다 — 그룹 대화 기록(.group-chat-log)과 같은 규칙이다. 대체 칩이 서면 막대 몫은 칩이 진다. */
-:root[data-view-mode="mobile"] .group-relay-head { padding: calc(22px + var(--m-chrome-top, 0px)) 16px 6px; }
+:root[data-view-mode="mobile"] .group-relay-head { position: absolute; top: 0; right: 0; left: 0; z-index: 2; padding: calc(12px + var(--m-chrome-top, 0px)) 16px 6px; pointer-events: none; }
+:root[data-view-mode="mobile"] .group-relay-head > * { pointer-events: auto; }
 :root[data-view-mode="mobile"] .group-relay-pair { gap: 10px; padding: 5px 16px 5px 5px; border-color: var(--m-hairline); background: var(--m-surface); }
 :root[data-view-mode="mobile"] .group-relay-party { min-height: 36px; gap: 7px; font-size: var(--m-fs-secondary); color: var(--m-text); }
 :root[data-view-mode="mobile"] .group-relay-party .group-chat-mark.is-lg,
 :root[data-view-mode="mobile"] .group-relay-mark .group-chat-mark.is-lg { width: 28px; height: 28px; }
 :root[data-view-mode="mobile"] .group-relay-log { margin-bottom: calc(-1 * var(--m-dock-h, 0px)); padding: calc(12px + var(--m-chrome-top, 0px)) 16px calc(12px + var(--m-dock-h, 0px)); scroll-padding-top: var(--m-chrome-top, 0px); scroll-padding-bottom: var(--m-dock-h, 0px); scrollbar-width: none; }
-:root[data-view-mode="mobile"] .group-relay:has(> .group-relay-head) .group-relay-log { padding-top: 12px; scroll-padding-top: 0; }
+:root[data-view-mode="mobile"] .group-relay:has(> .group-relay-head) .group-relay-log { padding-top: calc(12px + var(--group-relay-head-h, var(--m-chrome-top, 0px))); scroll-padding-top: var(--group-relay-head-h, var(--m-chrome-top, 0px)); }
 :root[data-view-mode="mobile"] .group-relay-log::-webkit-scrollbar { display: none; }
 :root[data-view-mode="mobile"] .group-relay-time { margin: 18px 0 12px; font-size: var(--m-fs-caption); color: var(--m-text-muted); }
 :root[data-view-mode="mobile"] .group-relay-message:first-child .group-relay-time { margin-top: 0; }
@@ -1466,7 +1469,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-relay-row-body { grid-template-columns: 28px minmax(0, 1fr); gap: 8px; }
 :root[data-view-mode="mobile"] .group-relay-box { padding-right: 20px; }
 :root[data-view-mode="mobile"] .group-relay-bubble.group-chat-bubble { max-width: 100%; padding: 12px 16px; }
-:root[data-view-mode="mobile"] .group-relay-foot { position: relative; z-index: 1; padding: 28px 16px calc(24px + var(--m-safe-bottom, 0px)); background: var(--m-fade-up, var(--m-bg)); }
+:root[data-view-mode="mobile"] .group-relay-foot { position: relative; z-index: 1; padding: 12px 16px calc(12px + var(--m-safe-bottom, 0px)); background: var(--m-fade-up, var(--m-bg)); }
 :root[data-view-mode="mobile"] .group-relay-close { height: 48px; padding: 0 24px; border: 1px solid var(--m-hairline-strong); background-color: var(--m-surface); box-shadow: var(--m-shadow); color: var(--m-text); font-size: var(--m-fs-list); }
 :root[data-view-mode="mobile"] .group-relay-close:is(:hover, :active) { background-image: linear-gradient(var(--m-selected), var(--m-selected)); }
 :root[data-view-mode="mobile"] .group-relay-pill { gap: 8px; max-width: 100%; }

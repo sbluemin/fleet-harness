@@ -218,6 +218,8 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
   // 닫기 줄은 기록 위에 떠 있는 독이다 — 높이(--m-dock-h)를 재서 기록이 그 뒤까지 흐르게 한다(폰 배치 CSS가 읽는다).
   const footRef = React.useRef<HTMLDivElement | null>(null);
   useChromeHeightProperty(footRef, rootRef, "--m-dock-h");
+  const headRef = React.useRef<HTMLDivElement | null>(null);
+  useChromeHeightProperty(headRef, rootRef, "--group-relay-head-h");
   const logRef = React.useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = React.useState(reducedMotion);
   const closing = React.useRef(false);
@@ -421,7 +423,7 @@ function RelayLayer({ entry, origin, onDismiss, entries, participants, language,
     >
       <h2 id={titleId} className="agent-chat-sr-only">{t("group.relay.title", { names })}</h2>
       {hosted ? null : (
-        <div className="group-relay-head">
+        <div ref={headRef} className="group-relay-head">
           <div className="group-relay-pair">{pairBody("head")}</div>
         </div>
       )}
