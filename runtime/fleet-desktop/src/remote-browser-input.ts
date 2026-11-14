@@ -12,7 +12,7 @@ import {
   type RemoteBrowserInputEvent,
   type RemoteBrowserKeyEvent,
   type RemoteBrowserMouseEvent,
-} from "@fleet-console/protocol/desktop";
+} from "@fleet-console/protocol/desktop/browser-remote";
 
 export interface ViewportBox {
   readonly x: number;

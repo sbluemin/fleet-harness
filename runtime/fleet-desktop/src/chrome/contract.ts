@@ -3,15 +3,15 @@
  * 번들되며, main 은 아래 검증기로 문서가 보낸 문장을 한 번 더 걸러 받는다. 문서는 Node 도 raw IPC 도 모르고, main 에게 말하는 길은
  * `console-message` 한 줄 JSON, 문서가 받는 길은 main 이 `executeJavaScript` 로 호출하는 `__fleetChrome` 뿐이다.
  */
+import type { DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
 import {
   isRemoteBrowserInputBatch,
-  type DesktopBrowserChrome,
   type RemoteBrowserFileChooserPrompt,
   type RemoteBrowserInputEvent,
   type RemoteBrowserPasswordPrompt,
   type RemoteBrowserPermissionPrompt,
   type RemoteBrowserSelectPopup,
-} from "@fleet-console/protocol/desktop";
+} from "@fleet-console/protocol/desktop/browser-remote";
 
 export type ChromeRole = "bar" | "rail" | "stage" | "guard";
 export const CHROME_CHANNEL = "fleet-chrome";
