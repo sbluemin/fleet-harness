@@ -18,4 +18,6 @@ export const PROFILES = {
   objectives,
   // Same board as `objectives`, then a live no-provider commander, the commodore's synthetic reply, and one sidebar section.
   activity: { ...objectives, activity: true },
+  // One in-progress objective with briefing, criteria, completion records, sealed results and shared files.
+  details: { ...objectives, objectives: 1, activity: true, details: true },
 };
