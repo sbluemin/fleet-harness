@@ -43,7 +43,6 @@ export function CommodoreDeletionHost() {
 export function prepareCommodoreRemovalStage(id: string): void {
   if (getViewModeSnapshot().effective !== "desktop") return;
   const state = getState();
-  if (state.newSession !== null) return;
   const surface = getConversationSurface();
   const objectiveId = surface ? surface.params.objectiveId : state.activeObjectiveId;
   const subject = state.objectiveRecords.find((row) => row.id === objectiveId) ?? (surface === null ? getConversationSubject() : null);

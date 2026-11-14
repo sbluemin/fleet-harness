@@ -7,8 +7,12 @@ import { getIdleArrivalIds, subscribeIdleArrival } from "../../../execution/clie
 import { commanderObjectiveId, indexClusters, useClusterIndex } from "../objective-clusters.js";
 import type { ObjectiveCluster } from "../../../objectives/shared/objective-clusters.js";
 import { buildTheaterEntries, sideBarRowItems, type SideBarRowItem } from "../sidebar/side-bar-cluster-row.js";
-import { isNotStartedRow } from "../conversation/new-session-mention.js";
 import type { CommanderFold } from "./commander-folds.js";
+
+/** 시작 전 행 — fresh 글리프이고 결정 요청이 아직 없는 목표. 사이드바 분류가 쓴다. */
+export function isNotStartedRow(row: { readonly glyph?: string; readonly decisionRequestedAt?: number } | undefined): boolean {
+  return row?.glyph === "fresh" && row.decisionRequestedAt === undefined;
+}
 import { sortCommanderRows, useSortPreference } from "./commander-sort.js";
 
 export interface CommanderSection {

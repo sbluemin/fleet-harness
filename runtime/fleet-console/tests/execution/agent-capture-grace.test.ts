@@ -10,6 +10,7 @@ import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";
+import { createConsoleControl } from "../../features/execution/host/console-control.js";
 import type { TerminalRuntime } from "../../features/execution/host/terminal/index.js";
 
 const cleanups: Array<() => void | Promise<void>> = [];
@@ -122,7 +123,9 @@ async function createHarness(body: Record<string, unknown>) {
     stop: async () => {},
   };
   const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };
+  const control = createConsoleControl({ directory: path.join(fleetDataDir, "console-control"), objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: () => true });
   const ctx = {
+    consoleControl: control,
     dataDir: fleetDataDir,
     agentOptions: agentOptionsStub,
     agentCliPlugin: { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} },
@@ -279,13 +282,8 @@ ts: { createdAt, updatedAt: createdAt }};
       return body?.sessions ?? [];
     },
     postSessions: async () => {
-      if (!route) throw new Error("Agent route was not registered");
-      await route({
-        req: { method: "POST", url: "/api/v1/agent/sessions" } as http.IncomingMessage,
-        res: {} as http.ServerResponse,
-        pathname: "/api/v1/agent/sessions",
-      });
-      const created = objectiveRecords[0];
+      const sessionId = (await control.request({ kind: "plugin", pluginId: "fixture" }, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true })).objectiveId;
+      const created = objectiveRecords.find((row) => row.id === sessionId);
       if (created) {
         delete created.chatMode;
         delete created.chatBorn;

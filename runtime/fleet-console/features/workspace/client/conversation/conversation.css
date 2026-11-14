@@ -259,8 +259,6 @@
 .conversation-pill-row[data-clip] { clip-path: inset(-100vh calc(var(--conv-a) - var(--conv-shift)) -100vh -100vw); }
 
 .conversation-pill-row > * { pointer-events: auto; }
-/* 새 세션 화면(new-session.css)의 카드 칸은 투명한 맨 위 줄 밑에서 시작한다 — 줄 높이가 이 시트의 토큰이라 여기서 비운다. */
-.new-session-body { padding: calc(var(--conversation-top-row) + var(--space-4)) var(--space-4) var(--space-4); }
 
 /* 창 맨 위 아주 얇은 구간만 내용이 살짝 어두워진다 — 가리는 띠가 아니다. */
 .conversation-column::before {

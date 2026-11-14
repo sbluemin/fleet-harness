@@ -3,7 +3,6 @@ import { closeConversationSurface } from "../../../../../features/workspace/clie
 import { openTheaterInbox } from "../../../../../features/workspace/client/theater-inbox/store.js";
 import { resolveTheaterInboxLanding } from "../../../../../features/workspace/client/theater-contributions.js";
 import { useFeatureRegistry } from "../../integration/feature-registry.js";
-import { openDefaultNewSession } from "../../../../../features/workspace/client/conversation/new-session-entry.js";
 import { getViewedTheaterId, useViewedCommodoreId } from "../../integration/viewed-theater.js";
 import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
 import { openTaskforce, requestTaskforceCreate, TaskforceStack } from "../../../../../features/commodore/client/taskforce/taskforce.js";
@@ -443,13 +442,6 @@ export function ObjectiveSearch({
         // 보는 사령관이 있으면 그 목록에 더하고, 없으면 새 사령관 만들기 흐름으로 이어진다.
         if (viewedCommodoreId) requestSideBarAddTheater(viewedCommodoreId);
         else requestCommodoreCreate();
-        break;
-      }
-      case "new-objectiveRecord": {
-        previousFocusRef.current = null;
-        if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
-        // 사이드바 맨 위 「+」와 같은 길 — 새 세션 화면을 본문에 연다(Theater 기본 규칙은 new-session-entry).
-        openDefaultNewSession();
         break;
       }
       case "resume-objectiveRecord": {

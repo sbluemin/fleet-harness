@@ -37,7 +37,7 @@ import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale,
 
 
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
-import { AgentApiError, confirmAgentSessionLinks, createAgentSession, discardLaunchAttachment, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
+import { AgentApiError, confirmAgentSessionLinks, discardLaunchAttachment, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { HistoryFoldButton } from "./chat/composer.js";
 import { installGroupTimeline, useGroupClusters, useHasGroupConversation } from "./chat/group-timeline-store.js";
@@ -204,30 +204,6 @@ export const agentExecution: ClientFeatureDescriptor = {
   // 새 세션 이미지 첨부. 실패 표현은 컴포저가 거절 코드로 소유한다(messageObjective과 같은 계약).
   uploadLaunchAttachment: async (file) => uploadLaunchAttachment(file),
   discardLaunchAttachment: async (id) => discardLaunchAttachment(id),
-  launch: async ({ theaterId, kind, variant, geometry, commodoreId }) => {
-    // 첨부 id는 variant 문자열 계약(Record<string,string>)에 CSV로 실려 온다 — id는 서버가 만든
-    // UUID라 쉼표를 품지 않는다.
-    const attachmentIds = variant?.attachments?.split(",").filter((id) => id.length > 0);
-    const session = await createAgentSession(theaterId, kind.id, {
-      ...(commodoreId ? { commodoreId } : {}),
-      model: variant?.model,
-      effort: variant?.effort,
-      prompt: variant?.prompt,
-      geometry,
-      ...(attachmentIds?.length ? { attachmentIds } : {}),
-      // 모르는 값은 실어 보내지 않는다 — 서버가 최종 판정자지만, 오타가 400으로 왕복하며
-      // 초안을 잃게 하는 것보다 여기서 터미널로 접는 편이 낫다(기본이 곧 계약이다).
-      ...(variant?.viewMode === "chat" ? { viewMode: "chat" as const } : {}),
-      // commodoreId 필드의 선언은 호스트의 createAgentSession 이 가진다. 이 호출은 그 필드를 넘긴다.
-    } as NonNullable<Parameters<typeof createAgentSession>[2]>);
-    applySessionUpdate(session);
-    selectSession(session.sessionId);
-    return { id: session.sessionId };
-  },
-  renderLaunchIcon: (kind) => {
-    if (kind.id === "claude") return launchProviderGlyph("claude");
-    return <AgentGlyph />;
-  },
 };
 
 /** 플러그인 소유 에이전트 기록의 채팅 렌더러 — 코어가 플러그인 install 컨텍스트의 `chat.Transcript` 로 넘긴다. */

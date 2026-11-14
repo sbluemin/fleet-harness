@@ -39,8 +39,6 @@ import { SettingsRouteAdapter } from "../../../../features/settings/client/setti
 import { syncSettingsSearchPlugins } from "../../../../features/settings/client/settings-pane.js";
 import { commodoreAliasEditor } from "../integration/commodore-identity.js";
 import { ObjectiveRecords } from "../../../../features/workspace/client/objective-records.js";
-import { MobileNewSession } from "../../../../features/workspace/client/conversation/mobile-new-session.js";
-import { openDefaultNewSession } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 import { ArchiveSheetHost } from "../integration/archive-sheet-host.js";
 import { CommodoreDeletionHost } from "../integration/commodore-deletion.js";
 import { CommodoreDeleteModal } from "../../../../features/commodore/client/commodore-delete-modal.js";
@@ -419,13 +417,6 @@ function ConnectedApp() {
       openObjectiveSearch,
       closeObjectiveSearch,
       getObjectiveSearchMode: () => getState().objectiveRecordSearchMode,
-      // 새 세션 화면은 데스크톱 대화 배치의 본문이다 — 모바일 셸에는 그릴 자리가 없으므로 키를 두고 간다.
-      openNewSession: () => {
-        if (getViewModeSnapshot().effective === "mobile") return false;
-        if (!objectiveRecordsViewVisibleRef.current) navigate("/objectives");
-        openDefaultNewSession();
-        return true;
-      },
       openTaskforce: () => {
         if (getGlobalSettingsStoreState().state?.experiments.taskforce !== true) return false;
         if (!objectiveRecordsViewVisibleRef.current) navigate("/objectives");
@@ -580,7 +571,6 @@ function ConnectedApp() {
           lastUndoKind={lastUndoKind}
           onUndoLastClose={undoLastClose}
         />
-        <MobileNewSession />
         {state.keyboardShortcutsOpen ? <KeyboardShortcutsDialog onClose={closeKeyboardShortcuts} /> : null}
         <ArchiveSheetHost />
         <CommodoreCreateModal />

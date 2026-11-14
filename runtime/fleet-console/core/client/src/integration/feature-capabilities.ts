@@ -33,7 +33,6 @@ import { getArenaInsets, subscribeArenaInsets } from "../../../../features/works
 import { theaterInboxCapability } from "../../../../features/workspace/client/theater-inbox/store.js";
 import { closeConversationSurface, getConversationSurface, openConversationSurface, subscribeConversationSurface, type ConversationSurfaceSelection } from "../../../../features/workspace/client/conversation/conversation-surface-store.js";
 import { getConversationSubject, subscribeConversationSubject } from "../../../../features/workspace/client/conversation/conversation-slots.js";
-import { openNewSessionComposer } from "../../../../features/workspace/client/conversation/new-session-entry.js";
 import { clearObjectiveRuntime, dismissNotificationsForObjective, focusObjective, getState, ownObjectiveRuntime,
   raiseObjectiveNotification, setObjectiveRuntime, setObjectiveRuntimeHydration, subscribe } from "./store.js";
 
@@ -373,9 +372,7 @@ export function createHostCapabilities(
       openLedger: (rootObjectiveId, objectiveId) => openLedger(rootObjectiveId, objectiveId),
       subscribeLedger: (listener) => subscribeLedger(listener),
     },
-    composer: {
-      open: (options) => openNewSessionComposer(options),
-    },
+    composer: {},
   };
   return capabilities;
 }

@@ -26,10 +26,6 @@ export interface ShortcutCommand {
 export const CORE_SHORTCUT_COMMANDS: readonly ShortcutCommand[] = [
   { id: "console.search-objectiveRecords", group: "console", descriptionKey: "shortcuts.console.searchOps", defaults: ["Mod+KeyK"] },
   { id: "console.command-palette", group: "console", descriptionKey: "shortcuts.console.commandPalette", defaults: ["Mod+KeyP"] },
-  // 새 세션 화면(사이드바 맨 위 「+」). ⌘N 이 아니다: 웹 브라우저는 ⌘N·Ctrl+N(새 창)을 예약해 페이지에 넘기지 않고, Windows 에서는
-  // Ctrl+N 이 터미널의 다음 기록 키와 겹친다. ⌘J·Ctrl+Space 는 터미널을 보다가 떠오른 지시를 그 자리에서 쓰는 손버릇이고,
-  // ⇧⌘O 는 기본 목록에 없던 빈 자리이며 브라우저가 페이지에 넘기는 조합이다.
-  { id: "console.new-session", group: "console", descriptionKey: "shortcuts.console.newSession", defaults: ["Mod+KeyJ", "Ctrl+Space", "Mod+Shift+KeyO"] },
   { id: "console.new-taskforce", group: "console", descriptionKey: "shortcuts.console.newTaskforce", defaults: ["Mod+Shift+KeyN"] },
   // 사령관·지휘관과 무관한 독립 Claude Code CLI. Ctrl+₩ 는 한국어 자판의 Backquote 자리다 — 물리 코드로 받으므로 자판이 달라도
   // 같은 자리다. macOS 에서도 ⌘ 가 아니라 ⌃ 이다(⌘` 는 OS 의 창 전환이라 페이지에 닿지 않는다).

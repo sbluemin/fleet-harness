@@ -11,6 +11,7 @@ import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";
+import { createConsoleControl } from "../../features/execution/host/console-control.js";
 import type { TerminalRuntime } from "../../features/execution/host/terminal/index.js";
 import { createPluginTerminalTicketRegistry } from "../../features/execution/host/terminal/tickets.js";
 
@@ -188,8 +189,10 @@ async function createHarness(options: { readonly resumeAttachError?: Error; read
     stop: async () => {},
   };
   const agentOptionsStub: AgentOptionsService = { load: () => ({}), update: (mutate) => mutate({}) };
+  const control = createConsoleControl({ directory: path.join(fleetDataDir, "console-control"), objectiveRecords: () => objectiveRecords, theaters: () => [{ id: "theater-1", name: "Project" }], pluginAvailable: () => true });
   const ctx = {
     dataDir: fleetDataDir,
+    consoleControl: control,
     agentOptions: agentOptionsStub,
     agentCliPlugin: { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} },
     spawnAgentProcess: () => { throw new Error("unexpected agent CLI spawn"); },
@@ -293,14 +296,9 @@ ts: { createdAt, updatedAt: createdAt }};
   });
 
   async function createSession(): Promise<string> {
-    if (!route) throw new Error("Agent route was not registered");
-    await route({
-      req: { method: "POST", url: "/api/v1/agent/sessions" } as http.IncomingMessage,
-      res: {} as http.ServerResponse,
-      pathname: "/api/v1/agent/sessions",
-    });
-    const objectiveRecord = objectiveRecords[0];
-    if (!objectiveRecord) throw new Error(`Session create failed: ${JSON.stringify(responses.at(-1))}`);
+    const sessionId = (await control.request({ kind: "plugin", pluginId: "fixture" }, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true })).objectiveId;
+    const objectiveRecord = objectiveRecords.find((row) => row.id === sessionId);
+    if (!objectiveRecord) throw new Error(`Session create failed: ${sessionId}`);
     delete objectiveRecord.chatMode;
     delete objectiveRecord.chatBorn;
     api.releaseChatOwnership(objectiveRecord.id);

@@ -56,8 +56,6 @@ const SDK_RAIL_TYPES_PATH = new URL("../features/workspace/shared/rail.ts", impo
 const SDK_CAPTION_ACTIONS_PATH = new URL("../features/workspace/client/components/caption-actions.tsx", import.meta.url);
 const OWNED_SOURCES = [
   "app/app.tsx",
-  "../../../features/workspace/client/conversation/new-session.tsx",
-  "../../../features/workspace/client/conversation/new-session.css",
   "../../../features/workspace/client/objective-records.tsx",
   "chrome/components/command-band-system-cluster.tsx",
   "../../../features/workspace/client/sidebar/objective-records-side-bar.tsx",
@@ -961,21 +959,16 @@ describe("Console core design contract", () => {
     // 하고 있는지다. 마지막 공용 소비자였던 팔레트가 떠나면서 .objective-provider-mark 대조표는
     // 퇴역했다 — 실행 좌표의 톤은 --launch-provider-tone 축이 맡는다(아래 테스트가 그 축을 고정한다).
     const css = source("styles/components.css");
-    const mentionSheet = source("../../../features/workspace/client/conversation/mobile-new-session-sheet.tsx");
     // 행 시작의 셀렉터만 잡는다 — 퇴역 사실을 기록한 독트린 주석이 클래스 이름을 언급해도 무방하다.
     expect(css).not.toMatch(/(^|\n)\.objective-provider-mark/);
     // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
     expect(source("../../../features/workspace/client/sidebar/side-bar-cluster-row.tsx")).not.toContain("objective-provider-mark");
     expect(source("chrome/components/objective-search.tsx")).not.toContain("objective-provider-mark");
-    expect(mentionSheet).not.toContain("launchProviderGlyph(entry.launchProvider)");
-    // 팔레트와 새 세션 '@' 멘션 행은 사이드바 칩과 같은 마크 하나로 상태를 말한다 — 별도 활동
+    // 팔레트 행은 사이드바 칩과 같은 마크 하나로 상태를 말한다 — 별도 활동
     // 뱃지를 되살리면 같은 사실이 한 행에서 두 번 발화된다.
     expect(source("chrome/components/objective-search.tsx")).toContain("<ObjectiveNameMark");
     expect(source("chrome/components/objective-search.tsx")).toContain("resolveObjectiveMarkVisual");
     expect(source("chrome/components/objective-search.tsx")).not.toContain("objective-search-status--");
-    expect(mentionSheet).toContain("<ObjectiveNameMark");
-    expect(mentionSheet).toContain("resolveObjectiveMarkVisual");
-    expect(mentionSheet).not.toContain("objective-search-status--");
   });
 
   it("pins the provider tone table as one axis — every gateway provider named on both surfaces", () => {
@@ -2749,12 +2742,10 @@ describe("Effort track interaction grammar", () => {
 
   it("pins the shared effort track's pointer preview motion", () => {
     const components = source("styles/components.css");
-    const launchSlot = source("../../../features/workspace/client/conversation/new-session-launch-slot.tsx");
     const preview = components.match(/\.effort-track-stop\[data-previewed="true"\] \{[^}]*\}/)?.[0] ?? "";
     const knobHover = components.match(/\.effort-track:hover \.effort-track-knob \{[^}]*\}/)?.[0] ?? "";
 
-    // 한 공유 계기가 새 세션 트랙의 hover 문법을 소유한다.
-    expect(launchSlot).toContain("<LaunchModelEffort");
+    // 한 공유 계기가 추론 강도 트랙의 hover 문법을 소유한다.
     expect(source("../../../features/execution/client/components/launch-model-effort.tsx")).toContain("<EffortTrack");
     expect(preview).toContain("background: var(--brass)");
     expect(preview).toContain("transform: scale(3)");

@@ -53,10 +53,8 @@ export interface FloatingWidgetKeepOutCapability {
   subscribe(listener: () => void): () => void;
 }
 
-/** 호스트 컴포저를 초안과 함께 연다 — 플러그인의 답을 Objective 지시로 넘기는 손잡이. */
-export interface FloatingWidgetComposerCapability {
-  open(options?: { readonly draft?: string }): void;
-}
+/** 새 세션 컴포저 입구는 없다. 부유 위젯은 이 능력으로 화면을 열지 않는다. */
+export interface FloatingWidgetComposerCapability {}
 
 /** 부유 위젯이 호스트에 요청할 수 있는 Objective 동작. 상태 읽기는 허용하지 않는다. */
 export interface FloatingWidgetObjectiveRecordsCapability {

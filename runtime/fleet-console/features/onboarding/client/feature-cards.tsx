@@ -247,7 +247,6 @@ export function FeatureCardsHost(): React.JSX.Element | null {
     || state.fleetAtAGlanceOpen
     || state.objectiveRecordSearchOpen
     || (state.controlHolder !== null && !state.controlCurtainDismissed)
-    || state.mobileNewSessionOpen
     || state.keyboardShortcutsOpen;
   if (suppressed) return null;
   // 다시보기는 본 기록을 읽지도 쓰지도 않는다 — 첫 실행 노출 판단과 무관하게 목록 전체를 보여 준다.

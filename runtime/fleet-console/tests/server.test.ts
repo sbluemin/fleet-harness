@@ -985,8 +985,8 @@ describe("console static and terminal ticket boundary", () => {
     const ownerless = await fetch(`${origin}/api/v1/agent/sessions`, {
       method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ theaterId, cliId: "claude" }),
     });
-    expect(ownerless.status).toBe(400);
-    expect(await ownerless.json()).toEqual({ error: "commodore_required" });
+    expect(ownerless.status).toBe(405);
+    expect(await ownerless.json()).toEqual({ error: "Method not allowed" });
     expect(await getJson(`${origin}/api/v1/agent/sessions`)).toEqual(sessionsBefore);
 
     // 사령관 생성·그룹·다중 작업 범위는 같은 서버 writer를 지나며 기존 목표 위치와 파일을 건드리지 않는다.
@@ -1310,16 +1310,6 @@ async function createTerminalSession(fixture: ServerFixture, headers: Record<str
     method: "POST",
     headers,
     body: JSON.stringify({ folderGrantId: grant.folderGrantId, cliId: "claude" }),
-  });
-  expect(created.status).toBe(200);
-  return created.json() as Promise<{ readonly sessionId: string }>;
-}
-
-async function createAgentTerminalSession(fixture: ServerFixture, theaterId: string, headers: Record<string, string>): Promise<{ readonly sessionId: string }> {
-  const created = await fetch(`${fixture.endpoint}api/v1/agent/sessions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ theaterId, cliId: "claude" }),
   });
   expect(created.status).toBe(200);
   return created.json() as Promise<{ readonly sessionId: string }>;

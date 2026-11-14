@@ -148,16 +148,11 @@ if (typeof prompt !== "string") {
   process.exit(0);
 }
 
-const session = await api("POST", "/api/v1/agent/sessions", {
-  commodoreId,
-  theaterId,
-  cliId: "claude-gateway",
-  viewMode: "chat",
-  prompt,
-  ...(typeof args.get("model") === "string" ? { model: args.get("model") } : {}),
-});
-const sessionId = session.sessionId ?? session.id;
-console.error(`seed-console: session=${sessionId}`);
+const denied = await fetch(new URL("/api/v1/agent/sessions", base), { method: "POST", headers: { origin: new URL(base).origin, "content-type": "application/json" }, body: JSON.stringify({ commodoreId, theaterId, cliId: "claude", prompt }) });
+if (denied.status !== 405) throw new Error(`POST /api/v1/agent/sessions expected 405, got ${denied.status}`);
+await api("POST", "/api/v1/commodore/message", { commodoreId, text: prompt });
+const sessionId = commodoreId;
+console.error(`seed-console: commodore message sent (${commodoreId})`);
 
 const until = args.get("await");
 let asked = null;

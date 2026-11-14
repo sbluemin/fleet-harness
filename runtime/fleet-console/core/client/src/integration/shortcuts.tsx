@@ -37,7 +37,6 @@ export function buildShortcutGroups(t: T): readonly ShortcutGroup[] {
       entries: [
         { combos: bound("console.search-objectiveRecords"), description: t("shortcuts.console.searchOps") },
         { combos: bound("console.command-palette"), description: t("shortcuts.console.commandPalette") },
-        { combos: bound("console.new-session"), description: t("shortcuts.console.newSession") },
         { combos: bound("console.new-taskforce"), description: t("shortcuts.console.newTaskforce") },
       ],
     },
@@ -122,11 +121,6 @@ export function takeCommissioningReturnFocus(): HTMLElement | null {
 export function useSearchShortcutLabel(): string {
   useShortcutOverrides();
   return shortcutCommandLabel("console.search-objectiveRecords");
-}
-
-export function useNewSessionShortcutLabel(): string {
-  useShortcutOverrides();
-  return shortcutCommandLabel("console.new-session");
 }
 
 export function useStandaloneCliShortcutLabel(): string {

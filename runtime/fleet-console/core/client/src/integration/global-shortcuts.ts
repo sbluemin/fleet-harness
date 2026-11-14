@@ -21,8 +21,6 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly closeObjectiveSearch: () => void;
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
   readonly getObjectiveSearchMode: () => "objectiveRecords" | "commands" | null;
-  /** 새 세션 화면을 열고 컴포저에 포커스한다. 그릴 셸이 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
-  readonly openNewSession?: () => boolean;
   readonly openTaskforce?: () => boolean;
   /** 독립 Claude Code CLI 패널을 여닫는다. 그릴 자리가 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
   readonly toggleStandaloneCli?: () => boolean;
@@ -59,17 +57,6 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       return;
     }
     if (isBlockingDialogOpen(windowFor.document)) return;
-    // 새 세션: 입력·터미널 포커스 가드를 두지 않는다 — Mod+K/Mod+P와 같은 정책으로, 터미널을 보고 있다가
-    // 떠오른 지시를 그 자리에서 쓰는 것이 이 단축키의 목적이다. 조합은 등록부가 정한다(기본 Mod+J·Ctrl+Space·⇧⌘O).
-    // 수식키는 정확히 맞아야 하므로 Ctrl+Shift+Space나 IME/Spotlight 코드를 삼키지 않는다.
-    if (matches("console.new-session")) {
-      // 길게 눌러도 한 번만 연다. 반복 이벤트는 터미널 입력으로 새지 않게 소비한다.
-      if (event.repeat || dependencies.openNewSession?.()) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-      }
-      return;
-    }
     if (matches("console.new-taskforce")) {
       if (event.repeat || dependencies.openTaskforce?.()) {
         event.preventDefault();

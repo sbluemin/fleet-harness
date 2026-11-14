@@ -159,7 +159,6 @@ export async function registerAgentRoutes(
     { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http" },
     { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Console Execution", gate: "loopback", transport: "sse" },
     { method: "GET", path: "/sessions", summary: "List Agent sessions.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/sessions", summary: "Create an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId", summary: "Delete an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/resume", summary: "Resume an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/message", summary: "Deliver a prompt to an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -1041,108 +1040,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.http.writeJson(res, 200, { sessions: observability.listTerminalSessions() });
       return true;
     }
-    if (req.method !== "POST") return methodNotAllowed(res);
-    const body = await ctx.host.http.readJsonBody<SessionCreateBody>(req);
-    const cliId = readOptionalAgentCliId(body?.cliId, res);
-    if (cliId === false) return true;
-    if (!cliId) {
-      ctx.host.http.writeJson(res, 400, { error: "agent_cli_required" });
-      return true;
-    }
-    const query = new URL(req.url ?? "/", "http://127.0.0.1").searchParams;
-    const theaterId = typeof body?.theaterId === "string" ? body.theaterId : query.get("theaterId");
-    const objectiveId = typeof body?.objectiveId === "string" ? body.objectiveId : query.get("objectiveId");
-    if (theaterId && objectiveId) {
-      ctx.host.http.writeJson(res, 400, { error: "ambiguous_selector" });
-      return true;
-    }
-    if (!theaterId && !objectiveId) {
-      ctx.host.http.writeJson(res, 400, { error: "theater_required" });
-      return true;
-    }
-    const launchOptions = readLaunchOptions(body, cliId, (status, value) => ctx.host.http.writeJson(res, status, value));
-    if (launchOptions === false) return true;
-    const geometry = readOptionalGeometry(body?.geometry, res);
-    if (geometry === false) return true;
-    if (body?.prompt !== undefined && typeof body.prompt !== "string") {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_prompt" });
-      return true;
-    }
-    if (typeof body?.prompt === "string" && body.prompt.length > MAX_LAUNCH_PROMPT_CHARS) {
-      ctx.host.http.writeJson(res, 400, { error: "prompt_too_long" });
-      return true;
-    }
-    // spawn-only: sanitizeLaunchPrompt 결과는 Objective payload·브라우저 DTO에 넣지 않는다
-    // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
-    const prompt = typeof body?.prompt === "string" ? spawnPrompt(body.prompt) : undefined;
-    const attachmentIds = readAttachmentIds(body?.attachmentIds, res);
-    if (attachmentIds === false) return true;
-    // 목표 세션은 채팅으로만 태어난다. viewMode "terminal"은 옛 입구라 무시하고, 모르는 값만 거절한다.
-    if (body?.viewMode !== undefined && body.viewMode !== "terminal" && body.viewMode !== "chat") {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_view_mode" });
-      return true;
-    }
-    const chatBorn = cliId === CLAUDE_HARNESS_ID || body?.viewMode === "chat";
-    if (chatBorn && cliId !== CLAUDE_HARNESS_ID) {
-      ctx.host.http.writeJson(res, 409, { error: "chat_unsupported" });
-      return true;
-    }
-    const objectiveNode = objectiveId ? ctx.host.objectiveRecords.get(objectiveId) : undefined;
-    const objectiveContext = objectiveId ? ctx.host.objectiveRecords.context?.(objectiveId) ?? objectiveNode : null;
-    if (objectiveContext && body?.commodoreId !== undefined && body.commodoreId !== objectiveContext.commodoreId) {
-      ctx.host.http.writeJson(res, 409, { error: "objective_owner_mismatch" }); return true;
-    }
-    const commodoreId = objectiveContext?.commodoreId ?? body?.commodoreId;
-    if (typeof commodoreId !== "string" || !commodoreId.trim()) {
-      ctx.host.http.writeJson(res, 400, { error: "commodore_required" });
-      return true;
-    }
-    const recordTheaterId = theaterId ?? objectiveContext?.theaterId ?? null;
-    const cwd = objectiveId
-      ? confirmedObjectiveCwd(objectiveId, objectiveNode)
-      : (theaterId ? ctx.host.paths.resolveCommodoreTheaterPath(commodoreId, theaterId) : null);
-    if (!cwd) {
-      ctx.host.http.writeJson(res, 404, { error: objectiveId ? "unavailable" : "theater_not_found" });
-      return true;
-    }
-    if (!recordTheaterId) {
-      ctx.host.http.writeJson(res, 400, { error: "theater_required" });
-      return true;
-    }
-    let composedPrompt: string | undefined;
-    try {
-      // 모르는 id·상한 초과는 스폰 전에 거절한다 — 세션을 만들고 나서 거절하면 빈 Objective이 남는다.
-      // 해석은 스폰이 끝날 때까지 id를 예약하므로 마지막 거절 관문 뒤에 서고, 스폰 실패는
-      // createSession이 unreserve로 되돌린다. 경로 지시는 여기서 합성되어 이후의 런치 프롬프트
-      // 가드(cmd-shim·명령줄 예산)를 그대로 지난다.
-      composedPrompt = composeLaunchPromptWithAttachments(prompt, launchAttachments.resolve(attachmentIds));
-    } catch (error) {
-      if (error instanceof LaunchAttachmentError) {
-        ctx.host.http.writeJson(res, 400, { error: error.code });
-        return true;
-      }
-      throw error;
-    }
-    try {
-      await createSession(cwd, recordTheaterId, cliId, (status, value) => ctx.host.http.writeJson(res, status, value), {
-        commodoreId,
-        ...(objectiveId ? { sourceObjectiveId: objectiveId } : {}),
-        ...launchOptions,
-        ...(composedPrompt ? { prompt: composedPrompt } : {}),
-        // 첨부가 붙으면 자식에게 갈 프롬프트와 원장에 설 문면이 갈린다 — 후자는 사용자가 실제로
-        // 친 문장이며, 첨부는 좌표로만 따라간다. 문면 없이 첨부만 왔으면 표시 문면은 ""다 — 비워 두면
-        // 원장이 합성 프롬프트로 대체되어 호스트 절대 경로가 말풍선과 브라우저 DTO에 선다.
-        ...(prompt ? { displayPrompt: prompt } : attachmentIds.length > 0 ? { displayPrompt: "" } : {}),
-        ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-        ...(chatBorn ? { chatBorn: true as const } : {}),
-        ...(geometry ? { geometry } : {}),
-      });
-    } catch (error) {
-      // createSession이 스스로 처리하지 못한 throw까지 예약을 되돌린다 — bind 후에는 no-op이라 안전.
-      if (attachmentIds.length > 0) launchAttachments.unreserve(attachmentIds);
-      throw error;
-    }
-    return true;
+    return methodNotAllowed(res);
   }
 
   function readAttachmentIds(value: unknown, res: Parameters<typeof handle>[0]["res"]): readonly string[] | false {

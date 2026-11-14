@@ -112,8 +112,6 @@
 
 .mobile-header-icon-button:focus-visible,
 
-.mobile-new-objectiveRecord:focus-visible,
-
 .mobile-objective-empty {
   margin: 0;
   padding: var(--space-8) var(--space-4);
