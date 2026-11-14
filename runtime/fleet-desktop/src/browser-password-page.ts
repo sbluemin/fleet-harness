@@ -863,7 +863,10 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
     const creds = readCredentials(pending.origin);
     pendings.delete(viewId);
     if (!creds) return;
-    const decision = decideSavePrompt({ username: pending.username, password: pending.password }, creds.credentials, { offerToSave: creds.offerToSave, neverSaved: creds.neverSaved });
+    // 업데이트·중복 판정은 제출한 origin 과 정확히 같은 항목만 대상으로 삼는다 —
+    // 같은 도메인의 다른 서브도메인(PSL) 계정을 덮어쓰지 않는다.
+    const exactCredentials = creds.credentials.filter((entry) => entry.matchType === "exact");
+    const decision = decideSavePrompt({ username: pending.username, password: pending.password }, exactCredentials, { offerToSave: creds.offerToSave, neverSaved: creds.neverSaved });
     if (decision.kind === "none") return;
     emit({
       kind: "save-prompt",
@@ -1024,6 +1027,16 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
       if (!pendings.has(viewId) && track.provisional && now() - track.provisional.at <= PROVISIONAL_MAX_AGE_MS) {
         pendings.set(viewId, { viewId, origin: track.provisional.origin, username: track.provisional.username, password: track.provisional.password, at: now() });
       }
+      const origin = pageOriginOf(track.handle.url());
+      const nextPageKey = origin ? `${origin}\n${track.handle.url() ?? ""}` : null;
+      if (origin && track.pageKey !== nextPageKey) {
+        track.pageKey = nextPageKey;
+        track.installedKey = nextPageKey;
+        track.filled.clear();
+        track.lastSubmit = null;
+        track.provisional = null;
+      }
+      void scanView(viewId);
       if (pendings.has(viewId)) settleSoon(viewId);
     },
   };

@@ -720,6 +720,23 @@ describe("browser views password hooks", () => {
       "nav-fail",
     ]);
   });
+
+  it("keeps did-navigate-in-page solely on sameDocumentNavigated so pushState preserves provisional input", async () => {
+    const calls: string[] = [];
+    const contents = await drive({
+      attachView: () => undefined,
+      setVisible: () => undefined,
+      pageReady: () => calls.push("pageReady"),
+      binding: () => undefined,
+      detachView: () => undefined,
+      navigationStarted: () => undefined,
+      navigationCommitted: () => undefined,
+      navigationFailed: () => undefined,
+      sameDocumentNavigated: () => calls.push("sameDocumentNavigated"),
+    }, { inputLocked: () => false });
+    contents.emit("did-navigate-in-page", {}, "https://a.example/dashboard", true);
+    expect(calls).toEqual(["sameDocumentNavigated"]);
+  });
 });
 
 describe("password prompt reveal helpers", () => {
@@ -963,5 +980,33 @@ describe("psl matching and picker origins", () => {
     const agentFills = stub2.codes.filter((code) => code.includes("focusPassword"));
     expect(agentFills).toHaveLength(1);
     expect(agentFills[0]).toContain('"password":"pw"');
+  });
+
+  it("saves a separate exact entry instead of updating a psl sibling with the same username", async () => {
+    const { vault, commands } = stubVault([
+      { id: "psl-a", username: "ada", password: "old-a-password", updatedAt: 1, matchType: "psl", origin: "https://a.example.com" },
+    ]);
+    let landed = false;
+    const prompts: (PasswordPrompt | null)[] = [];
+    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5, settleDebounceMs: 5, onPrompt: (prompt) => prompts.push(prompt) });
+    agent.attachView("v1", {
+      url: () => (landed ? "https://b.example.com/home" : "https://b.example.com/login"),
+      executeIsolated: async (code) => {
+        if (code.includes("fleetPasswordSession")) return true;
+        if (code.includes("fleetPasswordScan")) return landed ? { forms: [] } : { origin: "https://b.example.com", ...cannedScan() };
+        return true;
+      },
+    });
+    agent.setVisible("v1", true, false);
+    agent.pageReady("v1");
+    await tick();
+    agent.binding("v1", JSON.stringify({ kind: "user-input", username: "ada", password: "new-b-password" }));
+    agent.navigationStarted("v1");
+    landed = true;
+    agent.pageReady("v1");
+    await tick(40);
+    expect(prompts.at(-1)).toMatchObject({ kind: "save-prompt", mode: "save", origin: "https://b.example.com", username: "ada" });
+    await agent.chromeAction("password-save");
+    expect(commands.at(-1)).toEqual({ action: "save", origin: "https://b.example.com", username: "ada", password: "new-b-password" });
   });
 });

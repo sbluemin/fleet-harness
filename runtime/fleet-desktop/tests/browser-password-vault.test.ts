@@ -400,9 +400,13 @@ describe("browser password vault", () => {
       ["https://a.b.co.kr", "exact"],
       ["https://c.b.co.kr", "psl"],
     ]);
+    await vault.command({ action: "save", origin: "https://nid.naver.com/", username: "n", password: "npw" });
+    expect(vault.forOrigin("https://www.naver.com/").credentials.map((entry) => [entry.origin, entry.matchType])).toEqual([
+      ["https://nid.naver.com", "psl"],
+    ]);
   });
 
-  it("refuses psl matches across schemes, ports, suffixes, and local hosts", async () => {
+  it("refuses psl matches across schemes, ports, public/private suffixes, and local hosts", async () => {
     const vault = createVault();
     await vault.command({ action: "save", origin: "https://a.example/", username: "u", password: "p" });
     expect(vault.forOrigin("http://a.example/").credentials).toHaveLength(0);
@@ -410,6 +414,18 @@ describe("browser password vault", () => {
 
     await vault.command({ action: "save", origin: "https://a.co.kr/", username: "u", password: "p" });
     expect(vault.forOrigin("https://a.co.uk/").credentials).toHaveLength(0);
+
+    await vault.command({ action: "save", origin: "https://victim.co.il/", username: "u", password: "p" });
+    expect(vault.forOrigin("https://attacker.co.il/").credentials).toHaveLength(0);
+
+    await vault.command({ action: "save", origin: "https://a.github.io/", username: "u", password: "p" });
+    expect(vault.forOrigin("https://b.github.io/").credentials).toHaveLength(0);
+
+    await vault.command({ action: "save", origin: "https://a.myshopify.com/", username: "u", password: "p" });
+    expect(vault.forOrigin("https://b.myshopify.com/").credentials).toHaveLength(0);
+
+    await vault.command({ action: "save", origin: "https://a.blogspot.com/", username: "u", password: "p" });
+    expect(vault.forOrigin("https://b.blogspot.com/").credentials).toHaveLength(0);
 
     await vault.command({ action: "save", origin: "http://127.0.0.1/", username: "u", password: "p" });
     expect(vault.forOrigin("http://127.0.0.1/").credentials.map((entry) => entry.matchType)).toEqual(["exact"]);

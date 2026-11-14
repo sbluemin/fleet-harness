@@ -767,7 +767,6 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       passwords.setVisible(spec.id, spec.visible, viewIsAgentTab(spec));
       const passwordReady = (): void => passwords.pageReady(spec.id);
       contents.on("dom-ready", passwordReady);
-      contents.on("did-navigate-in-page", passwordReady);
       contents.on("did-finish-load", passwordReady);
       // will-navigate 는 렌더러(페이지 JS·form.submit())가 시작한 항해에서만 뜬다 — 주소줄·뒤로가기(loadURL)는 제외된다.
       contents.on("will-navigate", (details: { url?: unknown; isMainFrame?: unknown; isSameDocument?: unknown }) => {
@@ -780,6 +779,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
         });
       });
       contents.on("did-navigate-in-page", (_event: unknown, _url: unknown, isMainFrame: unknown) => {
+        // pageReady 를 먼저 부르면 URL 변경 시 provisional 이 지워지므로 sameDocumentNavigated 단독 경로로 처리한다.
         if (isMainFrame === true) passwords.sameDocumentNavigated(spec.id);
       });
       contents.on("did-fail-load", (_event: unknown, _code: unknown, _description: unknown, _url: unknown, isMainFrame: unknown) => {

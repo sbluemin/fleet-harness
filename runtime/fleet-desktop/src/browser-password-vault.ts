@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
+import { getDomain } from "tldts";
 
 import {
   BROWSER_PASSWORD_MAX_ENTRIES,
@@ -114,30 +115,13 @@ const err = (code: BrowserPasswordErrorCode | "desktop_shell_unsupported"): Brow
   new BrowserPasswordVaultError(code);
 
 /**
- * 2단계 공개 접미사의 보수적 부분집합 — Chromium `password_manager` 의
- * `GetMatchType` 처럼 같은 등록 가능 도메인(eTLD+1)을 가리는 데만 쓴다.
- * 특정 사이트 분기가 아니라 접미사 규칙이므로 여기에 둔다.
+ * 전체 PSL(사설 레지스트리 포함) 기준 등록 가능 도메인(eTLD+1).
+ * IP·localhost 계열은 null 을 돌려 exact 매치로만 가린다.
  */
-const TWO_LEVEL_PUBLIC_SUFFIXES = new Set([
-  "ac.id", "ac.in", "ac.jp", "ac.kr", "ac.uk", "ad.jp", "appspot.com", "asn.au", "cloudfront.net",
-  "co.au", "co.id", "co.in", "co.jp", "co.kr", "co.nz", "co.uk", "co.za", "com.au", "com.br",
-  "com.cn", "com.hk", "com.mx", "com.sg", "com.tr", "com.tw", "ed.jp", "edu.au", "edu.cn", "es.kr",
-  "firebaseapp.com", "github.io", "go.jp", "go.kr", "gov.au", "gov.cn", "gov.uk", "gr.jp",
-  "herokuapp.com", "hs.kr", "id.au", "kg.kr", "lg.jp", "ltd.uk", "me.uk", "ms.kr", "ne.jp", "ne.kr",
-  "net.au", "net.br", "net.cn", "net.in", "net.nz", "net.tw", "net.uk", "netlify.app", "or.id",
-  "or.jp", "or.kr", "org.au", "org.br", "org.cn", "org.in", "org.nz", "org.tw", "org.uk",
-  "pages.dev", "pe.kr", "plc.uk", "re.kr", "sc.kr", "sch.uk", "vercel.app", "web.app",
-]);
-
 function registrableDomain(host: string): string | null {
   const normalized = host.toLowerCase().replace(/\.+$/u, "");
-  // IP 리터럴·단일 레이블(localhost 등)은 PSL 매칭에서 뺀다 — exact 로만 가린다.
-  if (normalized.length === 0 || /^[0-9.]+$/u.test(normalized) || normalized.indexOf(":") !== -1 || normalized.indexOf(".") === -1) return null;
-  const labels = normalized.split(".");
-  if (labels.some((label) => label.length === 0)) return null;
-  const suffix2 = labels.slice(-2).join(".");
-  if (TWO_LEVEL_PUBLIC_SUFFIXES.has(suffix2)) return labels.length >= 3 ? labels.slice(-3).join(".") : normalized;
-  return suffix2;
+  if (normalized.length === 0 || normalized === "localhost" || normalized.endsWith(".localhost")) return null;
+  return getDomain(normalized, { allowPrivateDomains: true });
 }
 
 function effectivePasswordPort(protocol: string, port: string): string {

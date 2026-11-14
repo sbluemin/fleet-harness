@@ -87,6 +87,7 @@ test('keeps every external the published console install must resolve', () => {
       '@modelcontextprotocol/sdk': '1.30.0',
       tar: '7.5.22',
       fflate: '0.8.2',
+      tldts: '7.0.30',
       react: '^19.0.0',
     },
   });
@@ -102,5 +103,6 @@ test('keeps every external the published console install must resolve', () => {
     '@modelcontextprotocol/sdk': '1.30.0',
     tar: '7.5.22',
     fflate: '0.8.2',
+    tldts: '7.0.30',
   });
 });
