@@ -1012,6 +1012,12 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
       pendings.delete(viewId);
     },
     sameDocumentNavigated(viewId) {
+      const track = tracks.get(viewId);
+      if (!track) return;
+      sweepStalePendings();
+      if (!pendings.has(viewId) && track.provisional && now() - track.provisional.at <= PROVISIONAL_MAX_AGE_MS) {
+        pendings.set(viewId, { viewId, origin: track.provisional.origin, username: track.provisional.username, password: track.provisional.password, at: now() });
+      }
       if (pendings.has(viewId)) settleSoon(viewId);
     },
   };

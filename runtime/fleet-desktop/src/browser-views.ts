@@ -767,14 +767,10 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       passwords.setVisible(spec.id, spec.visible, viewIsAgentTab(spec));
       const passwordReady = (): void => passwords.pageReady(spec.id);
       contents.on("dom-ready", passwordReady);
-      contents.on("did-navigate", passwordReady);
       contents.on("did-navigate-in-page", passwordReady);
       contents.on("did-finish-load", passwordReady);
-      // 제출 판정의 내비게이션 축 — form.submit()·타이머·커스텀 핸들러 항해도 놓치지 않는다.
+      // will-navigate 는 렌더러(페이지 JS·form.submit())가 시작한 항해에서만 뜬다 — 주소줄·뒤로가기(loadURL)는 제외된다.
       contents.on("will-navigate", (details: { url?: unknown; isMainFrame?: unknown; isSameDocument?: unknown }) => {
-        if (details?.isMainFrame === true && details?.isSameDocument !== true) passwords.navigationStarted(spec.id);
-      });
-      contents.on("did-start-navigation", (details: { url?: unknown; isMainFrame?: unknown; isSameDocument?: unknown }) => {
         if (details?.isMainFrame === true && details?.isSameDocument !== true) passwords.navigationStarted(spec.id);
       });
       contents.on("did-navigate", (_event: unknown, url: unknown, httpResponseCode: unknown) => {

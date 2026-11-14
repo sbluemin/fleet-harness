@@ -119,11 +119,14 @@ const err = (code: BrowserPasswordErrorCode | "desktop_shell_unsupported"): Brow
  * 특정 사이트 분기가 아니라 접미사 규칙이므로 여기에 둔다.
  */
 const TWO_LEVEL_PUBLIC_SUFFIXES = new Set([
-  "ac.in", "ac.jp", "ac.uk", "asn.au", "co.au", "co.in", "co.jp", "co.kr", "co.nz", "co.uk", "co.za",
-  "com.au", "com.br", "com.cn", "com.hk", "com.tw", "edu.au", "github.io", "go.jp", "go.kr", "gov.au",
-  "gov.cn", "gov.uk", "gr.jp", "herokuapp.com", "id.au", "ltd.uk", "me.uk", "ne.jp", "ne.kr", "net.au",
-  "net.br", "net.cn", "net.nz", "net.uk", "or.jp", "or.kr", "org.au", "org.br", "org.cn", "org.nz",
-  "org.uk", "plc.uk", "re.kr", "pe.kr", "sch.uk",
+  "ac.id", "ac.in", "ac.jp", "ac.kr", "ac.uk", "ad.jp", "appspot.com", "asn.au", "cloudfront.net",
+  "co.au", "co.id", "co.in", "co.jp", "co.kr", "co.nz", "co.uk", "co.za", "com.au", "com.br",
+  "com.cn", "com.hk", "com.mx", "com.sg", "com.tr", "com.tw", "ed.jp", "edu.au", "edu.cn", "es.kr",
+  "firebaseapp.com", "github.io", "go.jp", "go.kr", "gov.au", "gov.cn", "gov.uk", "gr.jp",
+  "herokuapp.com", "hs.kr", "id.au", "kg.kr", "lg.jp", "ltd.uk", "me.uk", "ms.kr", "ne.jp", "ne.kr",
+  "net.au", "net.br", "net.cn", "net.in", "net.nz", "net.tw", "net.uk", "netlify.app", "or.id",
+  "or.jp", "or.kr", "org.au", "org.br", "org.cn", "org.in", "org.nz", "org.tw", "org.uk",
+  "pages.dev", "pe.kr", "plc.uk", "re.kr", "sc.kr", "sch.uk", "vercel.app", "web.app",
 ]);
 
 function registrableDomain(host: string): string | null {

@@ -704,16 +704,15 @@ describe("browser views password hooks", () => {
       sameDocumentNavigated: () => calls.push("nav-same"),
     }, { inputLocked: () => false });
     contents.emit("will-navigate", { url: "https://a.example/", isMainFrame: true, isSameDocument: false });
-    contents.emit("did-start-navigation", { url: "https://a.example/", isMainFrame: true, isSameDocument: false });
     contents.emit("did-navigate", {}, "https://a.example/", 200);
     contents.emit("did-navigate-in-page", {}, "https://a.example/#x", true);
     contents.emit("did-fail-load", {}, -3, "ERR_ABORTED", "https://a.example/", true);
-    // 동일 문서 항해·서브프레임 신호는 제출 대기로 잇지 않는다.
+    // 주소줄 등 브라우저가 여는 항해(will-navigate 없음)·동일 문서·서브프레임 신호는 제출 대기로 잇지 않는다.
+    contents.emit("did-start-navigation", { url: "https://other.example/", isMainFrame: true, isSameDocument: false });
     contents.emit("will-navigate", { url: "https://a.example/#frag", isMainFrame: true, isSameDocument: true });
     contents.emit("did-navigate-in-page", {}, "https://a.example/#y", false);
     contents.emit("did-fail-load", {}, -3, "ERR_ABORTED", "https://a.example/", false);
     expect(calls.filter((call) => call.startsWith("nav-"))).toEqual([
-      "nav-start",
       "nav-start",
       'nav-commit:{"url":"https://a.example/","httpStatus":200}',
       "nav-same",
@@ -909,6 +908,16 @@ describe("provisional credentials and login verdicts", () => {
     h.agent.sameDocumentNavigated("v1");
     await tick(40);
     expect(h.prompts.at(-1)).toMatchObject({ kind: "save-prompt", mode: "save", origin: "https://app.example" });
+
+    // user-input 후 별도 submitted 없이 pushState(sameDocumentNavigated)로 폼이 사라져도 제안한다.
+    const h2 = verdictHarness({ login: "https://app.example/login", landing: "https://app.example/dashboard" });
+    h2.agent.pageReady("v1");
+    await tick();
+    h2.agent.binding("v1", JSON.stringify({ kind: "user-input", username: "spa", password: "pw" }));
+    h2.go(true);
+    h2.agent.sameDocumentNavigated("v1");
+    await tick(40);
+    expect(h2.prompts.at(-1)).toMatchObject({ kind: "save-prompt", mode: "save", origin: "https://app.example", username: "spa" });
   });
 });
 
