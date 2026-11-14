@@ -2,10 +2,10 @@
 /**
  * Seed an owned, isolated Fleet Console with commodores, theaters and (optionally) objectives. Procedure: ../../references/seed.md
  *
- *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives|activity|details
+ *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives|activity|details|inbox
  *        [--commodores N] [--theaters M] [--objectives K]
  *        [--root <dir for theater folders>]          default: <os tmpdir>/seed-theaters/<slot hash> (outside every repository)
- *        [--fake-claude-dir <FAKE_CLAUDE_DIR>]       required by objectives: the fake agent adds the objectives
+ *        [--fake-claude-dir <FAKE_CLAUDE_DIR>]       required by objectives and inbox: the fake agent adds them
  *
  * Prints one JSON object (the ids) on stdout and writes it to <dir>/seed-ids.json; progress goes to stderr.
  */
@@ -15,6 +15,7 @@ import os from "node:os";
 import path from "node:path";
 import { ACTIVITY_REPLY, ACTIVITY_SECTION, PROFILES } from "./fixtures.mjs";
 import { seedDetails } from "./details.mjs";
+import { seedInbox } from "./inbox.mjs";
 import { assemble, assertFreshSlot, openConsole, parseArgs, until, writeIds } from "./lib.mjs";
 
 const args = parseArgs(process.argv.slice(2));
@@ -28,8 +29,10 @@ const count = (flag, fallback) => (typeof args.get(flag) === "string" ? Number(a
 const spec = { ...profile, commodores: count("commodores", profile.commodores), theaters: count("theaters", profile.theaters), objectives: count("objectives", profile.objectives) };
 for (const key of ["commodores", "theaters", "objectives"]) if (!Number.isInteger(spec[key]) || spec[key] < 0 || spec[key] > 20) fail(`${key} must be an integer 0..20`);
 const fakeDir = args.get("fake-claude-dir");
-if (spec.objectives > 0 && typeof fakeDir !== "string") fail("objectives needs --fake-claude-dir (the fake agent creates them through the Commodore tool)");
+if ((spec.objectives > 0 || spec.inbox) && typeof fakeDir !== "string") fail("objectives and inbox need --fake-claude-dir (the fake agent creates them through the Commodore tool)");
 if (spec.activity && spec.objectives < 1) fail("activity needs at least one objective (do not combine it with --objectives 0)");
+if (spec.inbox && spec.objectives !== 0) fail("inbox does not take --objectives");
+if (spec.inbox && (spec.theaters < 1 || spec.commodores < 1)) fail("inbox needs a commodore and a theater");
 
 try {
   assertFreshSlot(dir); // before the first commodore exists, so a refused run leaves no half-seeded state
@@ -45,6 +48,7 @@ try {
       mkdirSync(folder, { recursive: true });
       entry.theaters.push({ theaterId: await make.theater(commodoreId, folder), path: folder });
     }
+    if (spec.inbox) entry.inbox = await seedInbox({ api, make, commodoreId, theaterId: entry.theaters[0].theaterId, fakeDir });
     for (let o = 1; o <= spec.objectives; o += 1) {
       const title = `Seed objective ${c}.${o}`;
       // The Commodore's `objective` tool is the only creator: queue one in-process call for the fake agent's next turn, then wake it.

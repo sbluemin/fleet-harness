@@ -1,5 +1,5 @@
 // Declarative seed profiles. Counts are overridable with --commodores / --theaters / --objectives.
-// Objectives are created without a Commander model; it is chosen at plan or commence. Members use the default launch. No agent model is required for empty/basic/multi; `objectives` and `activity` need the owned fake agent (see ../../references/seed.md).
+// Objectives are created without a Commander model; it is chosen at plan or commence. Members use the default launch. No agent model is required for empty/basic/multi; `objectives`, `activity` and `inbox` need the owned fake agent (see ../../references/seed.md).
 const objectives = {
   commodores: 1, theaters: 1, objectives: 2,
   members: [{ role: "worker" }],
@@ -20,4 +20,6 @@ export const PROFILES = {
   activity: { ...objectives, activity: true },
   // One in-progress objective with briefing, criteria, completion records, sealed results and shared files.
   details: { ...objectives, objectives: 1, activity: true, details: true },
+  // Person inbox: one criteria proposal, one review, one open follow-up, one ask. No section, no transcript.
+  inbox: { commodores: 1, theaters: 1, objectives: 0, inbox: true },
 };
