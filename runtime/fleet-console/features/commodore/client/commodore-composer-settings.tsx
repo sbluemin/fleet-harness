@@ -97,26 +97,35 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     state.anim = null;
     const to = panel.getBoundingClientRect().height;
     state.natural = to;
-    if (reducedMotion() || typeof panel.animate !== "function" || Math.abs(from - to) < 1) return;
+    if (reducedMotion() || typeof panel.animate !== "function" || Math.abs(from - to) < 1) {
+      panel.classList.remove("is-flowing");
+      return;
+    }
+    // 높이 보간 중 본문이 넘쳐 잠깐 세로 스크롤바가 서지 않게 애니메이션이 끝날 때까지만 overflow를 숨긴다.
+    panel.classList.add("is-flowing");
     const anim = panel.animate([{ height: `${from}px` }, { height: `${to}px` }], { duration: MOTION_MS[change], easing: OPEN_EASE });
     state.anim = anim;
-    anim.onfinish = () => { if (state.anim === anim) state.anim = null; };
+    const settle = () => { if (state.anim === anim) { state.anim = null; panel.classList.remove("is-flowing"); } };
+    anim.onfinish = settle;
+    anim.oncancel = settle;
   }, []);
   const close = useCallback((refocus: boolean) => {
     if (open === null || closingRef.current) return;
     if (refocus) chipRefs.current.get(open)?.focus({ preventScroll: true });
     const panel = panelRef.current;
-    if (!panel || reducedMotion() || typeof panel.animate !== "function") { motion.current.anim?.cancel(); motion.current.anim = null; setOpen(null); return; }
+    if (!panel || reducedMotion() || typeof panel.animate !== "function") { motion.current.anim?.cancel(); motion.current.anim = null; panel?.classList.remove("is-flowing"); setOpen(null); return; }
     const state = motion.current;
     const height = panel.getBoundingClientRect().height;
     state.anim?.cancel();
     closingRef.current = true;
     setClosing(true);
+    panel.classList.add("is-flowing");
     const anim = panel.animate([{ height: `${height}px`, opacity: 1 }, { height: "0px", opacity: 0 }], { duration: MOTION_MS.close, easing: CLOSE_EASE, fill: "forwards" });
     state.anim = anim;
     anim.onfinish = () => {
       if (state.anim !== anim) return;
       state.anim = null;
+      panel.classList.remove("is-flowing");
       closingRef.current = false;
       setClosing(false);
       setOpen(null);
@@ -196,7 +205,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   }, [open, closing, close]);
 
   // 사령관이 바뀌거나 입력이 잠기면 칸을 닫는다.
-  const dismiss = () => { motion.current.anim?.cancel(); motion.current.anim = null; closingRef.current = false; setClosing(false); setOpen(null); };
+  const dismiss = () => { motion.current.anim?.cancel(); motion.current.anim = null; panelRef.current?.classList.remove("is-flowing"); closingRef.current = false; setClosing(false); setOpen(null); };
   useEffect(dismiss, [commodoreId]);
   useEffect(() => { if (disabled) dismiss(); }, [disabled]);
 

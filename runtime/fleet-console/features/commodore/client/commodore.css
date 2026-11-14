@@ -1288,6 +1288,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-panel-rule { flex: none; height: 1px; margin: 0 2px 4px; background: var(--surface-capsule-rim); }
 /* 열림·칸 전환·닫힘의 높이와 내용 모션은 JS(Web Animations)가 진다 — 열림 460ms·내용 520ms·전환 420/360ms spring, 닫힘 320ms glide. */
 .commodore-composer-panel.is-closing { pointer-events: none; }
+.commodore-composer-panel.is-flowing .commodore-composer-panel-body { overflow-y: hidden; }
 .commodore-composer-panel-head { flex: none; display: flex; align-items: center; gap: var(--space-3); padding: 2px 2px 8px 8px; border-bottom: 1px solid var(--popover-divider); }
 .commodore-composer-panel-scope { display: inline-flex; align-items: baseline; gap: 6px; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; }
 .commodore-composer-panel-scope b { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); font-size: var(--t-sm); font-weight: var(--weight-bold); }
