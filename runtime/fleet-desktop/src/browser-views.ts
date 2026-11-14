@@ -117,6 +117,17 @@ export interface DesktopBrowserViewsDeps {
    */
   readonly passwords?: BrowserPasswordPageHooks;
   /**
+   * 뷰가 생긴 직후. 권한 요청을 탭 id 에 묶는 훅을 main 이 단다. 캡처 경로와 무관하고, 없으면 아무 일도 하지 않는다.
+   */
+  readonly onView?: (view: WebContentsView, viewId: string) => void;
+  /**
+   * 다음 relay 에 실을 select·권한·비밀번호 프롬프트. 비밀번호 평문은 넣지 않는다.
+   * 값이 바뀐 뒤에만 나간다. 없는 필드로 이벤트·부착을 지우지 않는다.
+   */
+  readonly relayExtras?: () => Pick<DesktopBrowserRelay, "selectPopup" | "permissionPrompts" | "passwordPrompt">;
+  /** 프롬프트가 바뀌면 main 이 빈 배치도 흘리게 flush 를 받는다. */
+  readonly bindRelay?: (flush: () => void) => void;
+  /**
    * 뷰 표면 PNG 에서 `crop`(원본 픽셀)을 잘라 `place` 크기로 맞추고, `size` 캔버스의 `place` 자리에 놓아 요청 형식의
    * base64 로 돌려준다. 캔버스의 나머지(표면 밖)는 비어 있다. 있으면 clip 이 붙은 `Page.captureScreenshot` 을
    * Chromium 의 캡처 에뮬레이션 없이 수행한다 — 없으면 명령을 그대로 보낸다.
@@ -599,6 +610,15 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   }
 
   function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[] }; }
+  let relayExtrasJson = "";
+  const changedRelayExtras = (): Pick<DesktopBrowserRelay, "selectPopup" | "permissionPrompts" | "passwordPrompt"> | null => {
+    if (!deps.relayExtras) return null;
+    const extras = deps.relayExtras();
+    const json = JSON.stringify(extras);
+    if (json === relayExtrasJson) return null;
+    relayExtrasJson = json;
+    return extras;
+  };
 
   const scheduleFlush = (): void => {
     if (flushTimer !== null) return;
@@ -609,7 +629,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const target = origin;
     const token = session;
     if (!target) { outbox = emptyOutbox(); return; }
-    if (!outbox.surface && outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0) return;
+    const extras = changedRelayExtras();
+    if (!outbox.surface && outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0 && extras === null) return;
     const batch = outbox;
     outbox = emptyOutbox();
     const body: DesktopBrowserRelay = {
@@ -619,6 +640,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       ...(batch.sizes.length ? { sizes: batch.sizes } : {}),
       ...(batch.results.length ? { results: batch.results } : {}),
       ...(batch.events.length ? { events: batch.events } : {}),
+      ...(extras ?? {}),
     };
     // 순서가 곧 의미다(이벤트·응답) — 한 번에 하나씩, 앞 것이 닿은 뒤에 보낸다. 닿지 않으면 같은 자리에서 잠시 뒤 다시
     // 보낸다: 뒤에 줄 선 배치는 이 배치가 닿을 때까지 기다린다. 부착 통지나 명령 응답 하나가 사라지거나 순서가 뒤집히면
@@ -747,6 +769,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const shell = deps.shell();
     if (!shell || shell.isDestroyed()) return;
     const view = deps.createView(spec.partition, spec.profile ?? null);
+    deps.onView?.(view, spec.id);
     // 출처 표식보다 먼저 단다. origin이 없어 표식을 건너뛰어도 형제 쿠키는 나가지 않는다.
     installRequestGuard(view.webContents.session);
     // 에이전트가 정한 크기(setDeviceMetricsOverride)는 Chromium 이 페이지 위젯(RWHV) 자체를 그 크기로 키워 만든다 —
@@ -990,11 +1013,14 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     ...(deps.fetch ? { fetch: deps.fetch } : {}),
   });
 
+  deps.bindRelay?.(() => scheduleFlush());
+
   return {
     async start(target: string): Promise<void> {
       stop();
       session += 1;
       origin = normalizeAnyConsoleOrigin(target, "desktop_browser_origin_invalid");
+      scheduleFlush();
       // 누구인지 먼저 알린다 — 콘솔이 UA 와 실행 위치를 이 셸의 것으로 맞춘다.
       await send(origin, helloRelay());
       await stream.start(origin);

@@ -10,6 +10,7 @@ import {
   type DesktopBrowserViewerSnapshot,
 } from "@fleet-console/protocol/desktop";
 
+import { createBrowserActions } from "./browser-actions.js";
 import type { SurfaceControl } from "./browser-surface.js";
 import type { ChromeAction, ChromeRole, ChromeViewOnly } from "./chrome/contract.js";
 import { translator } from "./chrome/messages.js";
@@ -17,11 +18,12 @@ import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-l
 import { createDesktopEventStream } from "./desktop-event-stream.js";
 
 /**
- * 보기 전용 플릿 브라우저 셸 — 창이 이 Desktop 이 관리하지 않는 Console(원격으로 건너온 곳, 비관리 Console)을 보는 동안의 브라우저 화면.
+ * 원격 플릿 브라우저 셸 — 창이 이 Desktop 이 관리하지 않는 Console(원격으로 건너온 곳, 비관리 Console)을 보는 동안의 브라우저 화면.
  *
- * 화면은 이 Desktop 의 것이다: 관리 Console 에서 쓰는 것과 같은 표면(칸·독립 창, 주소줄·탭 표시줄·스페이스)을 세우되 페이지 뷰가 없고,
- * 스테이지가 실행 측이 찍어 올린 최신 프레임 한 장을 그린다. Console 은 투영과 프레임을 중계할 뿐 화면을 그리지 않는다.
- * 여기서 보내는 요청은 읽기와 「그만 본다」 둘뿐이다 — 어느 탭·스페이스를 보는지는 이 셸만의 보기 상태라 실행 측의 표시 탭을 바꾸지 않는다.
+ * 화면은 이 Desktop 의 것이다. 페이지 뷰는 없고 스테이지가 실행 측 프레임을 그린다.
+ * 스냅샷이 `remoteControl` 이고 실행 호스트가 붙어 있으면 원격 조작이다. 주소줄·탭·스페이스·대화상자·뷰포트·캡처·제어권은
+ * 그 Console 의 REST 로 가고(창 쿠키, 락 토큰 없음), 스페이스를 옮기면 실행 측 activeTabId 도 맞춘다.
+ * 미관리·연결 끊김·`remoteControl` 이 없는 옛 Console 은 보기 전용으로 남는다. 그때의 탭·스페이스는 이 셸의 보기 상태이고 쓰는 요청은 보내지 않는다.
  */
 
 const VIEWER_FRAME_PATH = "/api/v1/browser/viewer/frame";
@@ -46,6 +48,8 @@ export interface RemoteBrowserViewerDeps {
   readonly lang: "ko" | "en";
   /** 표면의 모양만 바꾸는 동작(표시줄 방향·고정·펼침·스페이스 화면 열기)은 관리 표면과 같은 처리기가 맡는다. Console 에 요청을 보내지 않는 동작만 넘긴다. */
   readonly localAct: (control: SurfaceControl, role: ChromeRole, action: ChromeAction) => void;
+  /** 「브라우저에서 열기」는 이 창을 든 기계의 브라우저로 연다. 실행 측 기기의 브라우저가 아니다. */
+  readonly openExternal?: (url: string) => void;
   readonly log?: (message: string) => void;
   readonly setTimeout?: (callback: () => void, delay: number) => unknown;
   readonly clearTimeout?: (timer: unknown) => void;
@@ -70,6 +74,14 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
   const schedule = deps.setTimeout ?? ((callback: () => void, delay: number) => setTimeout(callback, delay));
   const cancel = deps.clearTimeout ?? ((timer: unknown) => { clearTimeout(timer as ReturnType<typeof setTimeout>); });
   let origin: string | null = null;
+  const remoteActions = createBrowserActions({
+    fetch: deps.fetch,
+    origin: () => origin,
+    cookieSession: true,
+    lang: deps.lang,
+    openExternal: (url) => deps.openExternal?.(url),
+    log,
+  });
   let open = false;
   /** 칸으로 열지 창으로 열지 — 앱이 켜져 있는 동안 기억한다. */
   let mode: "pane" | "window" = "pane";
@@ -93,6 +105,9 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     fetch: deps.fetch,
   });
 
+  /** 실행 호스트가 붙어 있고 스냅샷이 원격 조작을 말할 때만. 옛 Console 은 필드가 없어 보기 전용이다. */
+  const controllable = (): boolean => open && snapshot?.remoteControl === true && snapshot.executionHost.status === "connected";
+
   const place = (): ChromeViewOnly => {
     const host = snapshot?.executionHost ?? null;
     if (!host) return { place: "", status: "connected" };
@@ -100,13 +115,23 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
       : host.status === "manager_disconnected" ? (host.hostLabel ? t("viewOnly.disconnectedHost", { host: host.hostLabel }) : t("viewOnly.disconnectedPlace"))
         : host.accessPath === "wsl" ? (host.hostLabel ? `${t("viewOnly.wsl")} · ${host.hostLabel}` : t("viewOnly.wsl"))
           : host.hostLabel ? t("viewOnly.host", { host: host.hostLabel }) : t("viewOnly.desktop");
-    return { place: text, status: host.status };
+    const base: ChromeViewOnly = { place: text, status: host.status };
+    if (!controllable()) return base;
+    return {
+      ...base,
+      control: true,
+      selectPopup: snapshot?.selectPopup ?? null,
+      permissionPrompts: snapshot?.permissionPrompts ?? [],
+      passwordPrompt: snapshot?.passwordPrompt ?? null,
+    };
   };
 
   /** 문서에 줄 투영 — 실행 측 표시 탭 자리에 이 셸이 보는 탭을 넣는다. 실행 측 표시 탭이 바뀌면 따라가고, 보던 탭이 닫히면 놓는다. */
   const derive = (): DesktopBrowserChrome | null => {
     const remote = snapshot?.chrome ?? null;
     if (!remote) return null;
+    // 원격 조작은 실행 측 표시 탭을 그대로 따른다. 스페이스를 옮기면 REST 가 activeTabId 를 맞춘다.
+    if (controllable()) { remoteActive = remote.activeTabId; viewed = remote.activeTabId; return remote; }
     if (remote.activeTabId !== remoteActive) {
       remoteActive = remote.activeTabId;
       if (remote.activeTabId !== null) viewed = remote.activeTabId;
@@ -146,6 +171,7 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
           if (!alive()) return;
           if (Number.isFinite(seq) && seq > after) after = seq;
           if (bytes.length >= 2 && bytes.length <= DESKTOP_BROWSER_FRAME_MAX_BYTES && bytes[0] === 0xff && bytes[1] === 0xd8) deps.display.frame(tabId, bytes);
+          else await pause();
         } catch {
           if (!alive()) return;
           await pause();
@@ -208,6 +234,34 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     active: () => open,
     act(control, role, action) {
       if (!open) return;
+      if (controllable()) {
+        switch (action.action) {
+          case "close-surface": close(true); return;
+          case "toggle-mode": mode = mode === "pane" ? "window" : "pane"; render(); return;
+          // 이 창을 든 기계의 브라우저. 실행 기기에서 열지 않는다 — 어느 쪽인지는 지휘관 결정으로 남긴다.
+          case "open-external": {
+            const chrome = control.chrome();
+            const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId);
+            if (tab && /^https?:\/\//iu.test(tab.url)) deps.openExternal?.(tab.url);
+            return;
+          }
+          case "dialog-close": {
+            if (control.ui().overlay) { deps.localAct(control, role, action); return; }
+            const view = place();
+            if (view.passwordPrompt) { remoteActions(control, role, { action: "password-dismiss", promptId: view.passwordPrompt.id, tabId: view.passwordPrompt.tabId }); return; }
+            if (view.selectPopup) { remoteActions(control, role, { action: "select-popup", popupId: view.selectPopup.id, tabId: view.selectPopup.tabId, choice: "cancel" }); return; }
+            const permission = view.permissionPrompts?.[0];
+            if (permission) { remoteActions(control, role, { action: "permission-answer", promptId: permission.id, tabId: permission.tabId, allow: false }); return; }
+            deps.localAct(control, role, action);
+            return;
+          }
+          case "pin": case "expand": case "tabs-menu": case "orientation": case "auto-expand":
+          case "overlay": case "draft": case "guard-size": case "ready":
+            deps.localAct(control, role, action); return;
+          default:
+            remoteActions(control, role, action); return;
+        }
+      }
       switch (action.action) {
         case "select-tab": show(action.id); return;
         // 표면이 스페이스를 맞추려고 내는 요청 — 관리 표면에서는 Console 로 가지만 여기서는 이 셸의 보기 상태만 바꾼다.

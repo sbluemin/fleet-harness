@@ -11,6 +11,11 @@ export interface BrowserActionDeps {
   readonly origin: () => string | null;
   /** 지금 보는 콘솔이 이 Desktop 의 매니지드 콘솔일 때만 락 토큰과 소유자 헤더. 그 밖에는 빈 객체. */
   readonly headers?: () => Record<string, string>;
+  /**
+   * 원격 쿠키 세션. 참이면 `headers()` 의 락 토큰을 싣지 않고, `fetch` 가 붙인 창 쿠키로만 그 Console 에 요청한다.
+   * 주소줄·탭·스페이스·대화상자·뷰포트·캡처·제어권·select·권한·비밀번호 동작이 같은 디스패처를 쓴다.
+   */
+  readonly cookieSession?: boolean;
   readonly lang: "ko" | "en";
   readonly openExternal: (url: string) => void;
   readonly log: (message: string) => void;
@@ -39,7 +44,7 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
     if (!origin) throw new Error("console_unavailable");
     return deps.fetch(`${origin}${path}`, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-      headers: { "Content-Type": "application/json", Origin: origin, ...(deps.headers?.() ?? {}) },
+      headers: { "Content-Type": "application/json", Origin: origin, ...(deps.cookieSession ? {} : (deps.headers?.() ?? {})) },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
       ...(init.signal ? { signal: init.signal } : {}),
     });
@@ -328,6 +333,18 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
       }
       case "dialog-close": if (!control.ui().busy) closeOverlay(); return;
       case "ready": return;
+      case "select-popup": void run("select-popup", { popupId: action.popupId, tabId: action.tabId, action: action.choice, ...(action.indices ? { indices: [...action.indices] } : {}) }); return;
+      case "permission-answer": void run("permission-action", { promptId: action.promptId, tabId: action.tabId, allow: action.allow }); return;
+      case "password-pick":
+      case "password-save":
+      case "password-dismiss":
+      case "password-never": {
+        // 로컬 금고 동작은 main 이 먼저 가져간다. 여기 도달한 것은 원격 카드고, 평문은 실리지 않는다.
+        if (!action.promptId || !action.tabId) return;
+        const verb = action.action === "password-pick" ? "pick" : action.action === "password-save" ? "save" : action.action === "password-dismiss" ? "dismiss" : "never";
+        void run("password-action", { promptId: action.promptId, tabId: action.tabId, action: verb, ...(action.action === "password-pick" ? { username: action.username } : {}) });
+        return;
+      }
     }
   };
 }

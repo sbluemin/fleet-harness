@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { app, BaseWindow, clipboard, dialog, Menu, nativeImage, Notification, safeStorage, screen, session, shell, systemPreferences, Tray, WebContentsView, type Session } from "electron";
 
-import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, type DesktopBrowserPlatform } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, type DesktopBrowserPlatform } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 import { autoUpdater } from "electron-updater";
@@ -56,6 +56,7 @@ import { createBrowserPasswordPageAgent, type PasswordPrompt } from "./browser-p
 import { createBrowserActions } from "./browser-actions.js";
 import { createDesktopBrowserViews, type BrowserSurfaceHost } from "./browser-views.js";
 import { createManagedBrowserHost } from "./browser-host.js";
+import { createBrowserRemoteShell } from "./browser-remote-shell.js";
 import { createRemoteBrowserViewer } from "./browser-viewer.js";
 import { managedBrowserHeaders, shellPublishHeaders, type ManagedBrowserConnection } from "./browser-connection.js";
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
@@ -78,7 +79,7 @@ const PACKAGE_NAME = "@dotobokuri/fleet-console";
 // Console 계약의 경로 리터럴 — 다른 동기화기와 같은 방식으로 여기서 선언한다(Console 내부를 import하지 않는다).
 const DESKTOP_SHELL_PATH = "/api/v1/desktop/shell";
 /** 이 셸이 해석하는 Console 신호(window-policy의 local-fonts 항해). Console 계약의 리터럴을 여기서 선언한다. */
-const DESKTOP_SHELL_CAPABILITIES = [CONSOLE_SIDEBAR_CAPABILITY, "local-fonts", CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_SEAMLESS_CAPABILITY, CONSOLE_OBJECTIVE_PEEK_CAPABILITY, CONSOLE_UNIFIED_SIDEBAR_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, ...(process.platform === "win32" ? [CONSOLE_WSL_CAPABILITY] : [])];
+const DESKTOP_SHELL_CAPABILITIES = [CONSOLE_SIDEBAR_CAPABILITY, "local-fonts", CONSOLE_DIRECTORY_CAPABILITY, CONSOLE_ROSTER_CAPABILITY, CONSOLE_ROSTER_SEAMLESS_CAPABILITY, CONSOLE_OBJECTIVE_PEEK_CAPABILITY, CONSOLE_UNIFIED_SIDEBAR_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, ...(process.platform === "win32" ? [CONSOLE_WSL_CAPABILITY] : [])];
 const DESKTOP_BROWSER_CHROME_PROFILES = "Fleet.chromeProfiles";
 const DESKTOP_BROWSER_IMPORT_COOKIES = "Fleet.importChromeCookies";
 /** 세션 파티션 이름은 콘솔이 짓는다 — 뷰와 같은 모양만 받아 임의 세션에 쿠키가 들어가지 않게 한다. */
@@ -512,9 +513,25 @@ async function boot(): Promise<void> {
     applyPasswordPrompt(control, pending);
   };
   let surfaceControl: SurfaceControl | null = null;
+  const remoteShell = createBrowserRemoteShell();
+  const watchedPermissionSessions = new WeakSet<Session>();
+  const watchPermissions = (target: Session): void => {
+    if (watchedPermissionSessions.has(target)) return;
+    watchedPermissionSessions.add(target);
+    target.setPermissionRequestHandler((webContents, permission, callback, details) => {
+      const rawMedia = (details as { mediaTypes?: unknown }).mediaTypes;
+      const mediaTypes = Array.isArray(rawMedia) ? rawMedia.filter((item): item is "video" | "audio" => item === "video" || item === "audio") : undefined;
+      let requestOrigin = "";
+      const requestingUrl = (details as { requestingUrl?: unknown }).requestingUrl;
+      if (typeof requestingUrl === "string") { try { requestOrigin = new URL(requestingUrl).origin; } catch { requestOrigin = ""; } }
+      remoteShell.requestPermission({ webContentsId: webContents.id, permission, origin: requestOrigin, ...(mediaTypes && mediaTypes.length > 0 ? { mediaTypes } : {}), callback });
+    });
+  };
   const browserPasswordAgent = createBrowserPasswordPageAgent({
     vault: browserPasswordVault,
     onPrompt: (prompt) => {
+      // 평문 없이 원격 시청자에게도 릴레이한다. 이 기계의 카드는 관리 표면에서만 띄운다.
+      remoteShell.notePassword(prompt);
       const control = surfaceControl;
       if (!control || browserSurface.viewing()) return;
       applyPasswordPrompt(control, prompt);
@@ -586,7 +603,8 @@ async function boot(): Promise<void> {
     act: (control, role, action) => {
       surfaceControl = control;
       if (action.action === "password-pick" || action.action === "password-save" || action.action === "password-dismiss" || action.action === "password-never") {
-        if (!browserSurface.viewing()) void browserPasswordAgent.chromeAction(action.action, action.action === "password-pick" ? action.username : undefined, action.action === "password-pick" ? action.origin : undefined);
+        if (browserSurface.viewing()) browserViewer?.act(control, role, action);
+        else void browserPasswordAgent.chromeAction(action.action, action.action === "password-pick" ? action.username : undefined, action.action === "password-pick" ? action.origin : undefined);
         return;
       }
       if (!browserSurface.viewing() && !control.ui().busy && (action.action === "dialog-close" || (action.action === "overlay" && action.kind === null))) {
@@ -608,6 +626,7 @@ async function boot(): Promise<void> {
     fetch: consoleFetch,
     lang: entryLanguage,
     localAct: browserActions,
+    openExternal: (url) => { void shell.openExternal(url); },
     log: (message) => logger.info(message),
   });
   const captureViewerFrame = async (view: WebContentsView): Promise<{ jpeg: Buffer; width: number; height: number } | null> => {
@@ -649,6 +668,7 @@ async function boot(): Promise<void> {
       });
       // 뷰 출처 표식보다 먼저. 파티션 세션은 이 생성에서 처음 생긴다. 프로필 세션도 여기서 같은 UA 로 다시 맞춘다.
       useBrowserSession(view.webContents.session);
+      watchPermissions(view.webContents.session);
       return view;
     },
     product: () => `Chrome/${process.versions.chrome}`,
@@ -663,11 +683,19 @@ async function boot(): Promise<void> {
     log: (message) => logger.info(message),
     // 영속·임시 세션을 가리지 않고 모든 뷰에 붙는다 — 스페이스 공유 금고 하나로 자동완성·저장 판정을 한다.
     passwords: browserPasswordAgent,
+    onView: (view, viewId) => {
+      const contentsId = view.webContents.id;
+      remoteShell.bindView(contentsId, viewId);
+      view.webContents.once("destroyed", () => remoteShell.unbindView(contentsId));
+    },
+    relayExtras: () => remoteShell.relayExtras(),
+    bindRelay: (flush) => remoteShell.setFlush(flush),
     /**
      * 창을 든 기계에서만 답할 수 있는 명령 — 이 기계의 Google Chrome 프로필과 그 쿠키. 뷰는 파티션에 격리되어
      * 있으므로 쿠키는 그 파티션의 세션에만 들어가고 창의 쿠키 저장소는 건드리지 않는다.
      */
     shellCommand: async (method, params) => {
+      if (await remoteShell.command(method, params, browserPasswordAgent)) return {};
       if (method === DESKTOP_BROWSER_PASSWORDS) return browserPasswordVault.command(params);
       if (method === DESKTOP_BROWSER_CHROME_PROFILES) return chromeImportSources();
       if (method === DESKTOP_BROWSER_HISTORY) return browserHistoryStorage.command(params);

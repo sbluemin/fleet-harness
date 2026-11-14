@@ -1,5 +1,5 @@
 import type { DesktopBrowserChromeTab } from "@fleet-console/protocol/desktop";
-import type { ChromeUiState } from "../contract.js";
+import { chromeViewLocked, type ChromeUiState } from "../contract.js";
 import { agentGlyph, clear, G, glyph, h, hostOf, keyed } from "./dom.js";
 import { paintColors, post, shownSpace, spaceName, syncShellMotion, tr, type T } from "./shared.js";
 
@@ -100,10 +100,10 @@ export function mountRail(): (state: ChromeUiState) => void {
     const agent = h("span", { class: "tab-agent", attrs: { role: "img" } }, agentGlyph());
     const close = h("button", { class: "tab-close", type: "button", text: "×" });
     const tab = h("div", { class: "tab", role: "tab", tabindex: 0 }, icon, title, agent, close);
-    tab.addEventListener("mousedown", (event) => { if (event.button === 1 && !last?.viewOnly) { event.preventDefault(); post("rail", "close-tab", { id: tab.dataset.id }); } });
+    tab.addEventListener("mousedown", (event) => { if (event.button === 1 && !chromeViewLocked(last?.viewOnly)) { event.preventDefault(); post("rail", "close-tab", { id: tab.dataset.id }); } });
     tab.addEventListener("click", () => { if (tab.getAttribute("aria-selected") !== "true") post("rail", "select-tab", { id: tab.dataset.id }); });
     tab.addEventListener("keydown", (event) => { if (event.target === tab && (event.key === "Enter" || event.key === " ")) { event.preventDefault(); tab.click(); } });
-    close.addEventListener("click", (event) => { event.stopPropagation(); if (!last?.viewOnly) post("rail", "close-tab", { id: tab.dataset.id }); });
+    close.addEventListener("click", (event) => { event.stopPropagation(); if (!chromeViewLocked(last?.viewOnly)) post("rail", "close-tab", { id: tab.dataset.id }); });
     return tab;
   };
   const updateTab = (t: T, active: string | null, agentIds: ReadonlySet<string>) => (element: HTMLElement, tab: DesktopBrowserChromeTab): void => {
@@ -147,9 +147,10 @@ export function mountRail(): (state: ChromeUiState) => void {
     document.documentElement.dataset.orientation = state.orientation;
     root.classList.toggle("horizontal", flat);
     root.classList.toggle("pinned", state.pinned && !flat);
-    // 보기 전용 셸에서는 탭을 고르기만 한다 — 새 탭과 탭 닫기는 그리지 않는다.
-    root.classList.toggle("viewing", state.viewOnly !== null);
-    newButton.hidden = state.viewOnly !== null;
+    // 보기 전용에서는 탭을 고르기만 한다. 원격 조작은 새 탭과 닫기를 로컬과 같이 둔다.
+    const viewLocked = chromeViewLocked(state.viewOnly);
+    root.classList.toggle("viewing", viewLocked);
+    newButton.hidden = viewLocked;
     tabsBox.setAttribute("aria-orientation", state.orientation);
     leading.style.width = `${flat ? state.leading : 0}px`; trailing.style.width = `${flat ? state.trailing : 0}px`;
     if (flat && (hovered || keyboard)) { hovered = false; keyboard = false; }

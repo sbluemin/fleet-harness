@@ -166,7 +166,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   let surface: DesktopBrowserSurface | null = null;
   let chrome: DesktopBrowserChrome | null = null;
   let chromeJson = "";
-  /** 보기 전용 셸인가 — 이 Desktop 이 관리하지 않는 Console 의 브라우저를 보기만 한다. 페이지 뷰도 가드도 서지 않는다. */
+  /** 이 Desktop 이 관리하지 않는 Console. 페이지 뷰는 없고, 원격 조작이 아니면 가드도 서지 않는다. */
   let viewOnly: ChromeViewOnly | null = null;
   /** 보기 전용 셸이 마지막으로 받은 프레임 — 스테이지 문서가 아직 준비되지 않았거나 다시 적재되면 준비된 뒤에 다시 그린다(정적인 페이지는 다음 프레임이 오지 않는다). */
   let viewFrame: { readonly tabId: string; readonly src: string } | null = null;
@@ -276,18 +276,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
    * 지금 화면의 제어권. 사람이 쥔 스페이스를 보고 있으면 어느 탭에서든 `user` 다 — 돌려줄 단추가 늘 손에 닿아야 한다.
    * `agent` 는 보는 탭이 그 스페이스 에이전트의 작업 탭이고 에이전트가 쓰는 중일 때뿐이다. 사람이 연 다른 탭은 잠기지 않는다.
    */
-  const controlState = (): ChromeControl | null => {
-    if (!chrome || !chrome.available || viewOnly) return null;
-    const space = chrome.spaces.find((candidate) => candidate.id === spaces.current());
-    // 제어권을 모르는 Console(이 필드가 없는 옛 투영)에서는 가드를 세우지 않는다 — 풀어 줄 길(제어 요청 경로)이 그쪽에 없어 잠그면 사람이 그 탭을 쓸 수 없게 된다.
-    if (!space || space.control === undefined) return null;
-    if (space.control === "user") return { holder: "user", spaceId: space.id, reason: space.attention?.reason ?? null, pointer: null };
-    const tabId = chrome.activeTabId;
-    if (!space.driving || tabId === null || !space.agentTabIds.includes(tabId)) return null;
-    const z = zoom();
-    const pointer = space.pointer && space.pointer.tabId === tabId ? { x: space.pointer.x / z, y: space.pointer.y / z, kind: space.pointer.kind, seq: space.pointer.seq, actor: space.pointer.actor ?? "" } : null;
-    return { holder: "agent", spaceId: space.id, reason: null, pointer };
-  };
+  const controlState = (): ChromeControl | null => chromeControlFor(chrome, spaces.current(), viewOnly, zoom());
 
   const heldKey = (): string => { const held = controlState(); return held ? `${held.holder}:${held.spaceId}` : ""; };
   let heldSeen = "";
@@ -654,7 +643,13 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       if (dialogChanged) takeDialogFocus();
       // 제어권이 바뀌었으면 가드의 자리를 같은 틱에 다시 정한 뒤 문서에 알린다. 포인터만 움직인 투영은 자리를 건드리지 않는다.
       const heldNow = heldKey();
-      if (heldNow !== heldSeen || dialogChanged) { heldSeen = heldNow; update(); }
+      if (heldNow !== heldSeen || dialogChanged) {
+        heldSeen = heldNow;
+        update();
+        // 원격 조작에서 에이전트가 쥐면 가드가 스테이지 프레임을 덮는다. 키보드도 그 문서로 모아 페이지 그림에 남지 않게 한다.
+        const held = controlState();
+        if (viewOnly?.control === true && held?.holder === "agent" && !docs.guard.view.webContents.isDestroyed()) docs.guard.view.webContents.focus();
+      }
       else if (chromeChanged || viewChanged || spaces.current() !== spaceBefore) push();
       else layout();
       if (request) deps.act(control, "bar", { action: "show-tab", id: request.kind === "select" ? request.tabId : null });
@@ -684,6 +679,25 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     inputLocked: () => controlState()?.holder === "agent",
     captionInset: (kind) => (docs && hostKind === kind && !horizontal() ? Math.max(1, Math.round(zoom())) : 0),
   };
+}
+
+/**
+ * 지금 화면의 제어권. 사람이 쥔 스페이스를 보고 있으면 어느 탭에서든 `user` 다.
+ * `agent` 는 보는 탭이 그 스페이스 에이전트의 작업 탭이고 에이전트가 쓰는 중일 때뿐이다.
+ * 보기 전용은 null. 원격 조작(`viewOnly.control` 이고 실행 측이 붙음)은 로컬과 같은 가드·알약·커서를 세운다.
+ */
+export function chromeControlFor(chrome: DesktopBrowserChrome | null, spaceId: string, viewOnly: ChromeViewOnly | null, zoomFactor: number): ChromeControl | null {
+  const interactiveRemote = viewOnly?.control === true && viewOnly.status === "connected";
+  if (!chrome || !chrome.available || (viewOnly !== null && !interactiveRemote)) return null;
+  const space = chrome.spaces.find((candidate) => candidate.id === spaceId);
+  // 제어권을 모르는 Console(이 필드가 없는 옛 투영)에서는 가드를 세우지 않는다 — 풀어 줄 길이 그쪽에 없어 잠그면 사람이 그 탭을 쓸 수 없게 된다.
+  if (!space || space.control === undefined) return null;
+  if (space.control === "user") return { holder: "user", spaceId: space.id, reason: space.attention?.reason ?? null, pointer: null };
+  const tabId = chrome.activeTabId;
+  if (!space.driving || tabId === null || !space.agentTabIds.includes(tabId)) return null;
+  const z = Number.isFinite(zoomFactor) && zoomFactor > 0 ? zoomFactor : 1;
+  const pointer = space.pointer && space.pointer.tabId === tabId ? { x: space.pointer.x / z, y: space.pointer.y / z, kind: space.pointer.kind, seq: space.pointer.seq, actor: space.pointer.actor ?? "" } : null;
+  return { holder: "agent", spaceId: space.id, reason: null, pointer };
 }
 
 /** 독립 창의 뷰 쌓기 — 표시 중인 페이지 뷰 < 가드 < 레일 < 주소줄. 이 창에는 Console 도 주차된 뷰도 없다. */
