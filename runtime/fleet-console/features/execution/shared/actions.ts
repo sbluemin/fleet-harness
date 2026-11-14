@@ -21,7 +21,7 @@ import { inputIssues, type ConsoleMcpTool } from "./tools.js";
 /** 도구 설명 본문(시그니처 줄 제외)의 상한. */
 export const MAX_TOOL_DESCRIPTION = 200;
 /** 필드 describe 한 개의 상한. */
-export const MAX_FIELD_DESCRIPTION = 120;
+export const MAX_FIELD_DESCRIPTION = 150;
 
 /** read 는 화면을 보기만 하고, write 는 사람의 화면이나 제품 상태를 바꾼다. 읽기 전용 연결에는 read 만 실린다. */
 export type ConsoleToolActionKind = "read" | "write";
