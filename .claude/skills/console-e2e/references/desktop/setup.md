@@ -159,3 +159,10 @@ node <worktree>/.claude/skills/console-e2e/scripts/stop-owned-desktop.mjs <workt
 ```
 
 Add `--dry-run` to see the selection without signalling, and `--force` to escalate to `SIGKILL` after the timeout. The helper checks the lock's PID, not the file: a stale `console.lock` left in the owned Console directory after a successful stop is not a standing process. A non-zero exit means something is still standing; report what the helper names rather than widening the kill by hand. Never target the main checkout, an unknown PID, or a process you did not launch.
+
+A lifetime or clean-quit claim uses `quit-owned-desktop.mjs`, not this helper's `--force`; it only calls `app.quit()`. Only exit 0 confirms the quit (main PID, inspector, and CDP gone), and a completed `app.quit()` call is not that confirmation. It does not replace the Console-child cleanup checks above. Exit 4 is a timeout: the quit stays unverified, and forced cleanup is not clean-quit evidence. For non-secret test cookies, run the loopback cookie fixture as a managed process, open `/set` (changes state: sets the two test cookies) in the browser session or profile under test, and open `/read` (read-only, returns only those two cookies it received) there for the baseline. Quit, relaunch through the [launch gate](#launch-gate) with the same owned run, then open `/read` again without calling `/set`. Test cookies do not prove real-site session persistence or OS/Chrome permissions.
+
+```bash
+node <worktree>/.claude/skills/console-e2e/scripts/cookie-fixture-server.mjs --port <n>
+node <worktree>/.claude/skills/console-e2e/scripts/quit-owned-desktop.mjs <inspector-port> <owned-pid> <worktree> --cdp-port <cdp-port>
+```
