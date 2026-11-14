@@ -173,6 +173,7 @@ describe("remote browser shell", () => {
     expect(flushed.length).toBeGreaterThan(0);
 
     const staged = await shell.command(DESKTOP_BROWSER_STAGE_FILES, {
+      viewId: "tab-1",
       files: [{ name: "../../evil.txt", contentBase64: Buffer.from("hello-upload").toString("base64") }],
     }, { async chromeAction() {} });
     expect(staged.handled).toBe(true);
@@ -181,5 +182,25 @@ describe("remote browser shell", () => {
     expect(fs.readFileSync(paths[0]!, "utf8")).toBe("hello-upload");
     await shell.command(DESKTOP_BROWSER_CLEANUP_FILES, { stagingId }, { async chromeAction() {} });
     expect(fs.existsSync(paths[0]!)).toBe(false);
+
+    // 탭이 닫히거나(unbindView) 안전 TTL 이 지나도 임시 파일이 정리된다.
+    const onTab = await shell.command(DESKTOP_BROWSER_STAGE_FILES, {
+      viewId: "tab-1",
+      files: [{ name: "later.txt", contentBase64: Buffer.from("later").toString("base64") }],
+    }, { async chromeAction() {} });
+    const tabPaths = (onTab.result as { paths: string[] }).paths;
+    expect(fs.existsSync(tabPaths[0]!)).toBe(true);
+    shell.unbindView(7);
+    expect(fs.existsSync(tabPaths[0]!)).toBe(false);
+
+    const ttlShell = createBrowserRemoteShell({ stagingTtlMs: 15 });
+    const ttlStaged = await ttlShell.command(DESKTOP_BROWSER_STAGE_FILES, {
+      viewId: "tab-ttl",
+      files: [{ name: "ttl.txt", contentBase64: Buffer.from("ttl").toString("base64") }],
+    }, { async chromeAction() {} });
+    const ttlPaths = (ttlStaged.result as { paths: string[] }).paths;
+    expect(fs.existsSync(ttlPaths[0]!)).toBe(true);
+    await vi.waitFor(() => { expect(fs.existsSync(ttlPaths[0]!)).toBe(false); });
+    ttlShell.cleanupAll();
   });
 });

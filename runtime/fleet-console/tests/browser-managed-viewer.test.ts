@@ -328,6 +328,81 @@ describe("remote desktop browser control", () => {
     await expect(service.dispatchRemoteInput(BROWSER_GLOBAL_ID, batch)).rejects.toMatchObject({ code: "browser_agent_in_control" });
     expect(delivered).toEqual([tabId]);
   });
+
+  it("keeps remote uploaded files staged until navigation, re-pick, control return, or tab close", async () => {
+    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    engine.subscriberOpened("manager");
+    engine.setHost("manager");
+    const service = new BrowserService({
+      enabled: () => true,
+      availability: () => ({
+        available: true,
+        reason: null,
+        host: "manager",
+        executionHost: { managed: true, connected: true, status: "connected", hostLabel: "studio", platform: "darwin", accessPath: "loopback" },
+      }),
+      desktop: engine,
+      log: () => {},
+      defaultProfile: { read: () => null, write: () => {} },
+    });
+    const cleanups: string[] = [];
+    let stageSeq = 0;
+    let currentViewId = "";
+    const autoRelay = setInterval(() => {
+      const snap = engine.snapshot();
+      for (const candidate of snap.views) {
+        currentViewId = candidate.id;
+        engine.relay("manager", { attached: [candidate.id], sizes: [{ viewId: candidate.id, width: 800, height: 600, scale: 1 }] });
+      }
+      for (const cmd of snap.commands) {
+        if (cmd.method === "Fleet.stageRemoteFiles") {
+          const stagingId = `stage-${++stageSeq}`;
+          engine.relay("manager", { results: [{ id: cmd.id, result: { stagingId, paths: [`/tmp/${stagingId}/a.txt`] } }] });
+        } else if (cmd.method === "Fleet.cleanupRemoteFiles") {
+          cleanups.push(String(cmd.params.stagingId));
+          engine.relay("manager", { results: [{ id: cmd.id, result: { cleaned: true } }] });
+        } else {
+          engine.relay("manager", { results: [{ id: cmd.id, result: cmd.method === "Page.getNavigationHistory" ? { currentIndex: 0, entries: [{ url: "https://example.com" }] } : {} }] });
+        }
+      }
+    }, 5);
+    try {
+      const tab = await service.createTab(BROWSER_GLOBAL_ID, "https://example.com", "user");
+      const openChooser = (backendNodeId: number): string => {
+        engine.relay("manager", { events: [{ viewId: currentViewId, method: "Page.fileChooserOpened", params: { backendNodeId, mode: "selectSingle" } }] });
+        const fc = service.viewerSnapshot(BROWSER_GLOBAL_ID, { remoteControl: true }).fileChooser;
+        if (!fc) throw new Error("missing fileChooser");
+        return fc.id;
+      };
+      const file = { name: "a.txt", contentBase64: Buffer.from("hello").toString("base64") };
+
+      // 1) 선택 직후에는 지워지지 않고, 문서 이동 커밋(Page.frameNavigated) 뒤에 정리된다.
+      await service.answerFileChooser(BROWSER_GLOBAL_ID, { chooserId: openChooser(10), tabId: tab.id, action: "choose", files: [file] });
+      expect(cleanups).toEqual([]);
+      engine.relay("manager", { events: [{ viewId: currentViewId, method: "Page.frameNavigated", params: { frame: { id: "main", url: "https://example.com/done", loaderId: "l2" } } }] });
+      await vi.waitFor(() => { expect(cleanups).toEqual(["stage-1"]); });
+
+      // 2) 같은 입력에 다시 고르면 이전 스테이징(stage-2)만 정리된다.
+      await service.answerFileChooser(BROWSER_GLOBAL_ID, { chooserId: openChooser(11), tabId: tab.id, action: "choose", files: [file] });
+      await service.answerFileChooser(BROWSER_GLOBAL_ID, { chooserId: openChooser(11), tabId: tab.id, action: "choose", files: [file] });
+      await vi.waitFor(() => { expect(cleanups).toEqual(["stage-1", "stage-2"]); });
+
+      // 3) 탭을 닫으면 남은 스테이징(stage-3)이 정리된다.
+      await service.closeTab(BROWSER_GLOBAL_ID, tab.id);
+      await vi.waitFor(() => { expect(cleanups).toEqual(["stage-1", "stage-2", "stage-3"]); });
+
+      // 4) 에이전트 탭 제어권 반환(return) 시 정리된다.
+      const caller = { participantId: "agent-1", spaceId: "default", ownerId: "agent-1" };
+      const agentTab = await service.agentCall(BROWSER_GLOBAL_ID, undefined, () => service.createTab(BROWSER_GLOBAL_ID, "https://example.com", "agent", { caller }), caller);
+      service.setControl(BROWSER_GLOBAL_ID, "default", "take");
+      await service.answerFileChooser(BROWSER_GLOBAL_ID, { chooserId: openChooser(12), tabId: agentTab.id, action: "choose", files: [file] });
+      expect(cleanups).toEqual(["stage-1", "stage-2", "stage-3"]);
+      service.setControl(BROWSER_GLOBAL_ID, "default", "return");
+      await vi.waitFor(() => { expect(cleanups).toEqual(["stage-1", "stage-2", "stage-3", "stage-4"]); });
+    } finally {
+      clearInterval(autoRelay);
+    }
+  });
 });
 
 function request(method: string, headers: Record<string, string | undefined> = {}, body?: Buffer): IncomingMessage {

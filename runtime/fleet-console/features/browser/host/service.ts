@@ -403,6 +403,9 @@ function remotePasswordParams(body: RemoteBrowserPasswordAction): Record<string,
   };
 }
 
+/** 안전장치 TTL — 문서 이동·탭 닫기·제어 반환 신호가 닿지 않아도 실행 기기에 임시 파일이 남지 않게 한다. */
+const REMOTE_STAGED_FILES_TTL_MS = 30 * 60_000;
+
 const SEARCH_URL = "https://www.google.com/search?q=";
 /** 스킴 없는 입력이 호스트처럼 보이는가 — 점이 있는 이름, localhost, IP, 포트. 아니면 검색어로 본다. */
 const HOST_LIKE = /^(localhost|[a-z0-9-]+\.localhost|127(\.\d{1,3}){3}|\[::1\]|(\d{1,3}\.){3}\d{1,3}|[a-z0-9-]+(\.[a-z0-9-]+)+)(:\d{1,5})?([/?#].*)?$/i;
@@ -459,6 +462,7 @@ export class BrowserService {
   private readonly remotePointers = new Map<string, RemotePointerState>();
   private pendingFileChooser: { readonly id: string; readonly tabId: string; readonly backendNodeId: number } | null = null;
   private fileChooserSerial = 0;
+  private readonly stagedFiles = new Map<string, { readonly stagingId: string; readonly objectiveId: string; readonly tabId: string; readonly spaceId: string; readonly backendNodeId: number; readonly timer: ReturnType<typeof setTimeout> }>();
   private shortcuts: readonly string[] = [];
   /** 원격 입력을 페이지에 넣는 훅. 비어 있으면 기본 CDP 입력 중계를 쓴다. */
   private remoteInputRelay: RemoteInputRelay | null = null;
@@ -554,6 +558,8 @@ export class BrowserService {
       op.contextPending = null;
       this.emitState(op);
     }
+    for (const entry of this.stagedFiles.values()) clearTimeout(entry.timer);
+    this.stagedFiles.clear();
     this.emitAvailability();
   }
 
@@ -582,6 +588,7 @@ export class BrowserService {
     }
     this.stateListeners.clear();
     this.availabilityListeners.clear();
+    this.cleanupStagedWhere(() => true);
     await this.stopEngine();
     this.objectiveRecords.clear();
   }
@@ -993,6 +1000,7 @@ export class BrowserService {
     op.tabs.clear();
     this.remotePointers.clear();
     this.pendingFileChooser = null;
+    this.cleanupStagedWhere((entry) => entry.objectiveId === op.objectiveId);
     this.remotePrompts = { selectPopup: null, permissionPrompts: [], passwordPrompt: null, fileChooser: null };
     // 진행 중 생성은 리셋 뒤에도 자기 finally에서 예약을 해제한다. 먼저 0으로 덮으면 음수가 된다.
     op.activeTabId = null;
@@ -1167,6 +1175,7 @@ export class BrowserService {
       for (const [call, participant] of [...op.callParticipants]) if (participants.has(participant)) { call.abort(); op.agentCalls.delete(call); op.callParticipants.delete(call); }
     }
     this.releaseControl(space);
+    this.cleanupStagedWhere((entry) => entry.objectiveId === op.objectiveId && entry.spaceId === spaceId);
     this.deps.log(`control ${action === "stop" ? "stopped" : "returned to the agent"} in ${op.objectiveId} space ${spaceId}`);
     if (action === "stop" && space.agentSession) this.closeSpaceSession(op, space, "interrupt");
     else this.emitState(op);
@@ -1347,12 +1356,31 @@ export class BrowserService {
     }
     try {
       await client.send("DOM.setFileInputFiles", { backendNodeId: pending.backendNodeId, files: paths }, tab.sessionId);
-      return { accepted: true, uploaded: paths.length };
-    } finally {
+      // 같은 입력에 다시 고른 이전 스테이징은 곧바로 거두고, 새 스테이징은 문서 이동·탭 닫기·제어권 반환·종료·안전 TTL 때까지 유지한다.
+      this.cleanupStagedWhere((entry) => entry.tabId === tab.id && entry.backendNodeId === pending.backendNodeId);
       if (stagingId) {
-        const timer = setTimeout(() => { void client.send(DESKTOP_BROWSER_CLEANUP_FILES, { stagingId }).catch(() => undefined); }, 2_000);
+        const timer = setTimeout(() => { this.cleanupStagedEntry(stagingId); }, REMOTE_STAGED_FILES_TTL_MS);
         timer.unref?.();
+        this.stagedFiles.set(stagingId, { stagingId, objectiveId: op.objectiveId, tabId: tab.id, spaceId: tab.spaceId, backendNodeId: pending.backendNodeId, timer });
       }
+      return { accepted: true, uploaded: paths.length };
+    } catch (error) {
+      if (stagingId) void client.send(DESKTOP_BROWSER_CLEANUP_FILES, { stagingId }).catch(() => undefined);
+      throw error;
+    }
+  }
+
+  private cleanupStagedEntry(stagingId: string): void {
+    const entry = this.stagedFiles.get(stagingId);
+    if (!entry) return;
+    this.stagedFiles.delete(stagingId);
+    clearTimeout(entry.timer);
+    void this.client?.send(DESKTOP_BROWSER_CLEANUP_FILES, { stagingId }).catch(() => undefined);
+  }
+
+  private cleanupStagedWhere(predicate: (entry: { readonly stagingId: string; readonly objectiveId: string; readonly tabId: string; readonly spaceId: string; readonly backendNodeId: number }) => boolean): void {
+    for (const entry of [...this.stagedFiles.values()]) {
+      if (predicate(entry)) this.cleanupStagedEntry(entry.stagingId);
     }
   }
 
@@ -1517,6 +1545,7 @@ export class BrowserService {
     if (space?.pointer?.tabId === tab.id) space.pointer = null;
     this.remotePointers.delete(tab.id);
     if (this.pendingFileChooser?.tabId === tab.id) this.pendingFileChooser = null;
+    this.cleanupStagedWhere((entry) => entry.tabId === tab.id);
     if (this.remotePrompts.selectPopup?.tabId === tab.id || this.remotePrompts.passwordPrompt?.tabId === tab.id || this.remotePrompts.fileChooser?.tabId === tab.id || this.remotePrompts.permissionPrompts.some((item) => item.tabId === tab.id)) {
       this.remotePrompts = {
         selectPopup: this.remotePrompts.selectPopup?.tabId === tab.id ? null : this.remotePrompts.selectPopup,
@@ -1826,6 +1855,7 @@ export class BrowserService {
       case "Page.frameNavigated": {
         if (p.frame?.parentId) return;
         if (this.pendingFileChooser?.tabId === tab.id) this.pendingFileChooser = null;
+        this.cleanupStagedWhere((entry) => entry.tabId === tab.id);
         if (this.remotePrompts.selectPopup?.tabId === tab.id || this.remotePrompts.fileChooser?.tabId === tab.id) {
           this.remotePrompts = {
             ...this.remotePrompts,

@@ -30,6 +30,8 @@ import type { PasswordPrompt } from "./browser-password-page.js";
  */
 
 const PERMISSION_WAIT_MS = 120_000;
+/** 안전장치 — Console 이 정리 신호를 보내기 전에 끊겨도 임시 업로드 파일이 남지 않게 한다. */
+const DEFAULT_STAGING_TTL_MS = 30 * 60_000;
 
 export interface RemoteShellPasswordAgent {
   chromeAction(action: "password-pick" | "password-save" | "password-dismiss" | "password-never", username?: string, origin?: string): Promise<void>;
@@ -80,23 +82,25 @@ export function remotePasswordPrompt(prompt: PasswordPrompt | null): RemoteBrows
   return { kind: "save-prompt", id, tabId: prompt.viewId, origin: prompt.origin, username: prompt.username, mode: prompt.mode };
 }
 
-export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof setTimeout; readonly clearTimeout?: typeof clearTimeout } = {}): BrowserRemoteShell {
+export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof setTimeout; readonly clearTimeout?: typeof clearTimeout; readonly stagingTtlMs?: number } = {}): BrowserRemoteShell {
   const schedule = deps.setTimeout ?? setTimeout;
   const cancel = deps.clearTimeout ?? clearTimeout;
+  const stagingTtlMs = deps.stagingTtlMs ?? DEFAULT_STAGING_TTL_MS;
   const tabs = new Map<number, string>();
   const permissions = new Map<string, { readonly prompt: RemoteBrowserPermissionPrompt; readonly callback: (allow: boolean) => void; readonly timer: ReturnType<typeof setTimeout> }>();
   let password: RemoteBrowserPasswordPrompt | null = null;
   let selectPopup: RemoteBrowserSelectPopup | null = null;
   let selectAnswer: ((action: RemoteBrowserSelectPopupAction) => void) | null = null;
-  const stagedDirs = new Map<string, string>();
+  const stagedDirs = new Map<string, { readonly dir: string; readonly viewId: string | null; readonly timer: ReturnType<typeof setTimeout> }>();
   let flush: (() => void) | null = null;
   let serial = 0;
 
   const removeStagedDir = (stagingId: string): void => {
-    const dir = stagedDirs.get(stagingId);
-    if (!dir) return;
+    const entry = stagedDirs.get(stagingId);
+    if (!entry) return;
     stagedDirs.delete(stagingId);
-    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 이미 정리됨 */ }
+    cancel(entry.timer);
+    try { fs.rmSync(entry.dir, { recursive: true, force: true }); } catch { /* 이미 정리됨 */ }
   };
 
   const publish = (): void => { flush?.(); };
@@ -119,6 +123,7 @@ export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof se
       for (const [id, pending] of permissions) if (pending.prompt.tabId === tabId) finishPermission(id, false);
       if (selectPopup?.tabId === tabId) { selectPopup = null; selectAnswer = null; publish(); }
       if (password?.tabId === tabId) { password = null; publish(); }
+      for (const [stagingId, entry] of [...stagedDirs]) if (entry.viewId === tabId) removeStagedDir(stagingId);
     },
     requestPermission(input) {
       const tabId = tabs.get(input.webContentsId);
@@ -155,7 +160,10 @@ export function createBrowserRemoteShell(deps: { readonly setTimeout?: typeof se
         const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-remote-upload-"));
         try { fs.chmodSync(dir, 0o700); } catch { /* 플랫폼 허용 범위 */ }
         const stagingId = `stage-${++serial}`;
-        stagedDirs.set(stagingId, dir);
+        const viewId = typeof params.viewId === "string" && params.viewId.length > 0 ? params.viewId : null;
+        const timer = schedule(() => removeStagedDir(stagingId), stagingTtlMs);
+        (timer as { unref?: () => void }).unref?.();
+        stagedDirs.set(stagingId, { dir, viewId, timer });
         const used = new Set<string>();
         const paths: string[] = [];
         let total = 0;
