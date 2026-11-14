@@ -52,7 +52,7 @@
 .objectives-cm-conversation > .group-chat { flex: 1; min-height: 0; }
 
 /* 기록 탭 — 채팅 문법(S-26·S-27). */
-.objectives-cm-fill { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.objectives-cm-fill { position: relative; display: flex; flex: 1; flex-direction: column; min-height: 0; }
 .objectives-cm-chat { display: flex; flex: 1; flex-direction: column; gap: 16px; min-height: 0; padding: 8px 24px 16px; overflow-y: auto; scrollbar-width: none; }
 .objectives-cm-chat::-webkit-scrollbar { display: none; }
 /* 「지휘관 세션」 — 세션 행은 홈 행 문법 그대로 가장자리까지 선다(행이 자기 안쪽 여백을 가진다). */

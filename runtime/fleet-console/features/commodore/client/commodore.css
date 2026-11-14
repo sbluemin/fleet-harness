@@ -141,7 +141,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 
 /* Theater Inbox 「사령관」 섹션 — 시트 틀·목록·머리는 호스트가 그린다. 여기는 섹션 본문(띠·기록·루틴·정보·설정)만.
    시트에서 연 메뉴는 호스트 스크림(z-index 90) 위에 선다. */
-.objectives-commodore-inbox { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.objectives-commodore-inbox { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .objectives-commodore-inbox-glyph { width: 14px; height: 14px; color: var(--text-secondary); }
 /* 기록 칸 머리의 작은 띠 — 누적(세션·비용)과 기록 비우기. 옛 시트의 목록 바닥·머리에 있던 것이다. */
 .objectives-commodore-toolbar { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 16px 0 28px; }
@@ -1122,3 +1122,119 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .fc-coord-trigger .objectives-commodore-judgment, .fc-coord-trigger .objectives-commodore-judgment svg { width: 14px; height: 14px; }
 .fc-coord-trigger.is-mobile .objectives-commodore-judgment { vertical-align: -2px; margin-right: 6px; }
 .mobile-choice-icon .objectives-commodore-judgment, .mobile-choice-icon .objectives-commodore-judgment svg { width: 22px; height: 22px; }
+
+/* 사람 대기함 — 입력 독 위에 겹친다. 흐름 밖이라 대화 스크롤을 밀지 않는다. */
+.commodore-person-inbox {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  right: 0;
+  bottom: var(--m-dock-h, 0px);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  max-height: min(70%, calc(100% - var(--m-dock-h, 0px) - 48px));
+  padding: 0 clamp(16px, 4cqi, 48px) 8px;
+  pointer-events: none;
+}
+.commodore-person-inbox.is-anchored { bottom: var(--commodore-foot-h, 0px); max-height: min(70%, calc(100% - var(--commodore-foot-h, 0px) - 48px)); }
+.commodore-person-inbox-panel {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  min-height: 0;
+  max-height: 100%;
+  padding: 8px;
+  overflow-x: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+  box-shadow: var(--shadow-floating);
+}
+.commodore-person-inbox-bar,
+.commodore-person-inbox-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  padding: 4px 2px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.commodore-person-inbox-bar:focus-visible,
+.commodore-person-inbox-row-main:focus-visible,
+.commodore-person-inbox-chip:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.commodore-person-inbox-count { flex: none; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--text-primary); }
+.commodore-person-inbox-oldest,
+.commodore-person-inbox-reason,
+.commodore-person-inbox-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-person-inbox-oldest,
+.commodore-person-inbox-reason { flex: 1 1 auto; color: var(--text-secondary); font-size: var(--t-xs); }
+.commodore-person-inbox-age { flex: none; order: 5; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.commodore-person-inbox-filters { display: flex; flex-wrap: wrap; gap: 4px; }
+.commodore-person-inbox-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--t-2xs);
+  cursor: pointer;
+}
+.commodore-person-inbox-chip.is-on { border-color: var(--brass); color: var(--text-primary); background: var(--control-wash); }
+.commodore-person-inbox-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+.commodore-person-inbox-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.commodore-person-inbox-row-main { flex: 1 1 auto; }
+.commodore-person-inbox-lead,
+.commodore-person-inbox-meta { display: contents; }
+.commodore-person-inbox-open { flex: none; white-space: nowrap; }
+.commodore-person-inbox-avatar { flex: none; order: 1; display: inline-flex; }
+.commodore-person-inbox-title { flex: 0 1 auto; order: 2; font-weight: var(--weight-bold); color: var(--text-primary); font-size: var(--t-sm); }
+.commodore-person-inbox-reason { order: 4; }
+.commodore-person-inbox-kind {
+  flex: none;
+  order: 3;
+  padding: 0 6px;
+  border-radius: var(--radius-xs);
+  background: var(--control-wash);
+  color: var(--text-secondary);
+  font-size: var(--t-2xs);
+  line-height: 18px;
+}
+.commodore-person-inbox-detail { display: flex; flex-direction: column; gap: 8px; padding: 4px 2px 2px; }
+.commodore-person-inbox-proposal { display: flex; flex-direction: column; gap: 4px; }
+.commodore-person-inbox-proposal + .commodore-person-inbox-proposal { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--hairline); }
+.commodore-person-inbox-kindline,
+.commodore-person-inbox-sub { margin: 0; color: var(--text-secondary); font-size: var(--t-xs); }
+.commodore-person-inbox-acts { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.commodore-person-inbox-note {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-sm);
+}
+.commodore-person-inbox .group-card-head,
+.commodore-person-inbox .group-card-handed { display: none; }
+.commodore-person-inbox .objectives-handed-followup,
+.commodore-person-inbox .group-card.is-decision { margin-left: 0; width: 100%; max-width: 100%; border: 0; background: none; padding: 0; box-shadow: none; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 8px; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-row-main { display: flex; flex-direction: column; align-items: stretch; gap: 2px; grid-column: 1; grid-row: 1; min-width: 0; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-lead,
+.commodore-person-inbox.is-phone .commodore-person-inbox-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-title { flex: 1 1 auto; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-age { margin-left: auto; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-reason { flex: 1 1 auto; }
+.commodore-person-inbox.is-phone .commodore-person-inbox-open { grid-column: 2; grid-row: 1; align-self: center; }

@@ -1,3 +1,4 @@
+import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
 import { ContextRailInlineChip } from "../../workspace/client/conversation/context-rail/inline.js";
 import { COMMODORE_SURFACE_ID } from "./commodore-conversation.js";
@@ -29,7 +30,8 @@ import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInb
 import type { CommodoreLiveEvent, CommodoreState, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
-import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
+import { ENDED_ASK_CODES } from "./commodore-ask.js";
+import { CommodorePersonInbox } from "./commodore-person-inbox.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
 import { CommodoreMemory } from "./commodore-memory.js";
@@ -165,6 +167,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLElement | null>(null);
   useConversationDockHeight(dockRef);
+  useChromeHeightProperty(dockRef, rootRef, "--commodore-foot-h");
   const [failure, setFailure] = useState<string | null>(null);
   // 곁 칸에서 고른 시각 — 기록 칸이 그 시각의 턴을 드러낸다. 같은 줄을 다시 눌러도 다시 드러나게 nonce 가 오른다.
   const [reveal, setReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
@@ -248,7 +251,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
       <div ref={bodyRef} className={`objectives-commodore-body is-${tab}`}>
         {tab === "log" ? (
           <>
-            <CommodoreLog t={t} language={language} theaterId={commodoreId ?? ""} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} cards={<CommodoreAskCards theaterId={commodoreId ?? ""} contextTheaterId={theaterId} t={t} language={language} onEnded={fail} />} />
+            <CommodoreLog t={t} language={language} theaterId={commodoreId ?? ""} entries={entries} live={live} hasMore={hasMore} loaded={transcriptLoaded} reveal={reveal} />
             {compact ? null : (
               <CommodoreTrailSeam
                 label={t("commodore.trail.resize")}
@@ -267,8 +270,9 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
-      {failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}
-      {tab === "log" ? <footer ref={dockRef} className="objectives-commodore-foot">{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+      {tab === "log" && commodoreId ? <CommodorePersonInbox theaterId={commodoreId} contextTheaterId={theaterId} language={language} anchor onEnded={fail} /> : null}
+      {tab !== "log" && (failure || transcriptError) ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}
+      {tab === "log" ? <footer ref={dockRef} className="objectives-commodore-foot">{failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
   );
 }
@@ -384,7 +388,7 @@ const FOLLOW_SLACK_PX = 48;
  * 사령관 기록 — Objective 채팅과 같은 턴 렌더러로 그린다. 진행 중인 턴과 마지막으로 끝난 턴만 펼치고,
  * 그 전 턴은 「출처 · 답 첫 줄 · 걸린 시간 · 시각」 한 줄로 접는다. 줄 자체가 버튼이고, 곁 칸에서 시각을 누르면 그 턴이 펼쳐진다.
  */
-export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal, cards }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null; readonly cards?: React.ReactNode }) {
+export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, loaded, reveal }: { readonly t: T; readonly language: "en" | "ko"; readonly theaterId: string; readonly entries: readonly CommodoreTranscriptEntry[]; readonly live: readonly CommodoreLiveEvent[]; readonly hasMore: boolean; readonly loaded: boolean; readonly reveal: { readonly at: number; readonly nonce: number } | null }) {
   const Transcript = commodoreTranscriptRenderer();
   // 답 단추는 같은 Theater의 사령관 메시지 API로 보낸다. 입력창 초안·첨부는 건드리지 않는다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(theaterId, text).catch(() => {}); }, [theaterId]);
@@ -475,7 +479,6 @@ export function CommodoreLog({ t, language, theaterId, entries, live, hasMore, l
           </div>
         );
       }) : null}
-      {cards}
     </div>
   );
 }

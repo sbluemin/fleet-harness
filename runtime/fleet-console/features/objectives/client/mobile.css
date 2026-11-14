@@ -153,8 +153,6 @@
 .objectives-m-ucard-hd > .objectives-avatar { width: 22px; height: 22px; }
 .objectives-m-fine { margin: 0; color: var(--m-text-faint); font-size: var(--m-fs-small); line-height: 18px; }
 /* 사령관이 넘긴 이유 — 질문 위 옅은 면 한 단락. 머리말만 굵다. 사람의 차례는 카드 테두리가 아니라 목록 구역이 말한다. */
-.objectives-m-handed { margin: 0; padding: 8px 10px; border-radius: 12px; background: color-mix(in oklch, var(--m-text) 9%, transparent); color: var(--m-text-nav); font-size: var(--m-fs-small); line-height: 18px; overflow-wrap: anywhere; }
-.objectives-m-handed b { margin-right: 6px; color: var(--m-text); }
 .objectives-m-ucard-p { margin: 0; font-size: var(--m-fs-secondary); line-height: 21px; color: var(--m-text-muted); overflow-wrap: anywhere; }
 .objectives-m-answer { color: var(--m-text); }
 .objectives-m-field { display: block; width: 100%; box-sizing: border-box; height: 104px; padding: 12px 14px; border: 1px solid var(--m-hairline-strong); border-radius: 14px; background: var(--m-bg); color: var(--m-text); font: inherit; font-size: var(--m-fs-list); line-height: 22px; resize: none; }

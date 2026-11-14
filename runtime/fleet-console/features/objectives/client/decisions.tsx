@@ -1,13 +1,11 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
 
-import { ownAnswer, type Decision, type Objective, type PersonHoldTarget } from "../shared/types.js";
+import { ownAnswer, type Decision, type Objective } from "../shared/types.js";
 import { actorDid } from "./actors.js";
-import { livePersonHold } from "../shared/board-state.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { LinkText } from "./link-text.js";
-import { returnPersonHold } from "./objectives-state.js";
 
 /**
  * 결정 — 사령관이 남긴 결정과 기존 요청의 답을 같은 기록으로 보여 준다. 결정 기록을 지우거나 고치는 길은 없다.
@@ -18,54 +16,6 @@ type T = Translate<ObjectiveMessageKey>;
 
 
 const stamp = (at: number, language: "en" | "ko") => new Date(at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-
-/**
- * 사람에게 넘김 — 사령관이 사람에게 넘긴 기준 제안·완료 검토·후속 후보에 결정 카드와 같은 「사령관이 넘긴 이유」 한 줄과
- * 「사령관에게 돌려주기」를 단다. 그 대상의 넘김(`livePersonHold`)이 서 있을 때만 그린다. 돌려주기가 실패하면 한 줄로 말한다.
- * `label` 은 어느 항목의 넘김인지 밝힌다 — 폰(`phone`)에서는 제 카드로 선다(그 대상의 표면이 폰에 따로 없을 때). 데스크톱 넘김은 호스트 대화 카드가 그린다.
- * 폰 카드는 그 항목에 직접 답하는 단추(`answer`)를 돌려주기 옆에, 그 단추의 설명·사유(`children`)를 이유 아래에 받는다.
- * 답을 보내는 동안(`locked`)은 돌려주기를 잠근다 — 결정 카드가 보내는 중 돌려주기를 잠그는 것과 같다.
- */
-export function PersonHoldNote({ objective, target, t, phone = false, label, answer, locked = false, children }: {
-  readonly objective: Objective;
-  readonly target: PersonHoldTarget;
-  readonly t: T;
-  readonly phone?: boolean;
-  readonly label?: string;
-  readonly answer?: ReactNode;
-  readonly locked?: boolean;
-  readonly children?: ReactNode;
-}) {
-  const hold = livePersonHold(objective, target);
-  const [busy, setBusy] = useState(false);
-  const [failed, setFailed] = useState(false);
-  useEffect(() => { setFailed(false); }, [objective.id, hold?.at]);
-  if (!hold) return null;
-  const giveBack = async () => {
-    if (busy) return;
-    setBusy(true);
-    setFailed(false);
-    try { await returnPersonHold(objective.id, target); }
-    catch { setFailed(true); }
-    finally { setBusy(false); }
-  };
-  if (phone) {
-    const body = (
-      <>
-        <p className="objectives-m-handed"><b>{t("objectives.decision.handed")}</b><LinkText text={hold.reason} /></p>
-        {children}
-        {failed ? <p className="objectives-m-fault" role="status">{t("objectives.decision.giveBackFailed")}</p> : null}
-        <div className="objectives-m-ucard-ft">
-          <span className="objectives-m-sp" />
-          <button type="button" data-press="r3" className="objectives-m-b2 is-quiet" disabled={busy || locked} onClick={() => void giveBack()}>{t("objectives.decision.giveBack")}</button>
-          {answer}
-        </div>
-      </>
-    );
-    return label ? <section className="objectives-m-card" aria-label={label}><h3 className="objectives-m-card-label">{label}</h3>{body}</section> : body;
-  }
-  return null;
-}
 
 const SHOWN = 3;
 

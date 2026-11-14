@@ -1,4 +1,4 @@
-import type { ConversationDecision, ConversationHold, ConversationSpeaker, GroupConversationActions, GroupDecisionAnswer } from "../../../../shared/conversation/types.js";
+import type { ConversationDecision, ConversationSpeaker, GroupConversationActions, GroupDecisionAnswer } from "../../../../shared/conversation/types.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import * as React from "react";
@@ -157,46 +157,6 @@ export function DecisionCard({ decision, asker, language, phone = false, onAnswe
         <button type="button" className="group-card-send" disabled={!submitPath || !ready || busy} onClick={() => { void submit(); }}>
           {sending ? t("group.decision.sending") : t("group.decision.send")}
         </button>
-      </div>
-    </section>
-  );
-}
-
-/** 넘김 카드·안내 — 결정의 이동 안내에는 질문이나 답·돌려주기 동작을 복제하지 않는다. */
-export function HoldCard({ hold, language, phone = false }: { readonly hold: ConversationHold; readonly language: ConsoleLocale | undefined; readonly phone?: boolean }) {
-  const t = getGroupT(language);
-  const locale = language ?? "en";
-  const text = (value: Parameters<typeof resolveLocalizedText>[0]) => resolveLocalizedText(value, locale);
-  const [givingBack, setGivingBack] = React.useState(false);
-  const [giveBackFailed, setGiveBackFailed] = React.useState(false);
-  React.useEffect(() => { setGiveBackFailed(false); }, [hold.id]);
-  const giveBack = hold.handed.giveBack;
-  const returnToHandler = async () => {
-    if (!giveBack || givingBack) return;
-    setGivingBack(true);
-    setGiveBackFailed(false);
-    try { await giveBack.run(); } catch { setGiveBackFailed(true); } finally { setGivingBack(false); }
-  };
-  if (hold.notice) return (
-    <section className="group-card is-hold" aria-label={text(hold.title)} onKeyDown={ignoreRepeat}>
-      <div className="group-card-head">
-        <span className="group-card-who">{text(hold.title)}</span>
-        {hold.reveal ? <button type="button" className="group-chat-link" onClick={() => hold.reveal?.run({ mobile: phone })}>{text(hold.reveal.label)}</button> : null}
-      </div>
-    </section>
-  );
-  return (
-    <section className="group-card is-hold" aria-label={text(hold.title)} onKeyDown={ignoreRepeat}>
-      <div className="group-card-head">
-        <SpeakerMark speaker={{ kind: "commodore", name: t("group.commodore") }} size="sm" />
-        <span className="group-card-who">{`${t("group.commodore")} · ${text(hold.title)}`}</span>
-        {hold.reveal ? <button type="button" className="group-chat-link" onClick={() => hold.reveal?.run({ mobile: phone })}>{text(hold.reveal.label)}</button> : null}
-      </div>
-      <div className="group-card-handed"><span className="group-card-handed-label">{text(hold.handed.label)}</span><CardMarkdown text={hold.handed.reason} language={locale} lead /></div>
-      <div className="group-card-foot">
-        {giveBackFailed ? <span className="group-card-error" role="alert">{t("group.hold.giveBackFailed")}</span>
-          : hold.route ? <span className="group-card-route">{text(hold.route)}</span> : <span />}
-        {giveBack ? <button type="button" className="group-card-send is-quiet" disabled={givingBack} onClick={() => { void returnToHandler(); }}>{text(giveBack.label)}</button> : null}
       </div>
     </section>
   );

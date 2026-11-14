@@ -9,10 +9,9 @@ import type { RailEntryAttentionItem, RailEntryFinishedItem } from "../../worksp
 import { SettingsCard, SettingsRow, SettingsToggle } from "../../settings/client/preferences-context.js";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 
-import { livePersonHold } from "../shared/board-state.js";
 import { unseenRecords, type Decision, type Objective, type ObjectiveMember } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
-import { commodoreBoardOf, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore } from "./board-commodore.js";
+import { commodoreBoardOf, livePersonHolds, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore } from "./board-commodore.js";
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
 import { getT, type ObjectiveMessageKey } from "./i18n/index.js";
 import { hasLaunchReason, LaunchControl, launchedWords, MEMBER_LIVE, MemberLaunchControl, memberActivityWord, memberLaunched, memberStatus, memberSubagents, launchReason, useLaunchRows, type MemberLaunchChoice } from "./launch-control.js";
@@ -20,7 +19,6 @@ import { openResultWindow } from "./result-window.js";
 import { commanderMongleState, memberMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { LinkText } from "./link-text.js";
 import { NoteAttachments } from "./attachments.js";
-import { PersonHoldNote } from "./decisions.js";
 import { clearSelection, discardedFollowups, followupHoldRoute, isFollowupSelectable, newBatchId, openFollowups, pruneSelection, readBatches, readHistory, readSelectionRevs, steeredEdits, toggleFollowupSelection, useFollowupSelection } from "./followups.js";
 import { FollowupBatchResults, FollowupCandidateList, FollowupDiscardedTrace } from "./followups-view.js";
 import { Retrospective } from "./retrospective.js";
@@ -171,7 +169,8 @@ export function subscribeDecisionAttention(listener: () => void): () => void {
  * `commodoreId`는 호스트가 건넨 지금 화면의 사령관이다.
  */
 export function personTurnCount(commodoreId: string | null): number {
-  return readBoard(commodoreId).objectives.filter((objective) => isListedObjective(objective) && personTurnAt(objective) !== null).length + openAsks(commodoreId).length;
+  const holds = readBoard(commodoreId).objectives.reduce((count, objective) => count + (isListedObjective(objective) ? livePersonHolds(objective).length : 0), 0);
+  return holds + openAsks(commodoreId).length;
 }
 
 /**
@@ -567,7 +566,6 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
         </div>
       ) : null}
       {/* 지금 할 일(넘김·개시)은 프로필과 구역 맨 위에 선다. 결정 내역은 목표 구역 맨 아래다. */}
-      <HoldAnswers objective={objective} finish={actions.finish} t={t} language={language} api={api} onPick={() => setFollowupSheet(true)} />
       {actions.commence ? <CommenceCard objective={objective} commence={actions.commence} t={t} language={language} api={api} say={say} /> : null}
     </>
   );
@@ -679,61 +677,6 @@ function followupNote(objective: Objective, finish: ObjectiveActions["finish"], 
   if (finish?.followups) return t("objectives.followup.listTip", { n: count });
   if (isFollowupSelectable(objective)) return finishBlockText(t, objective, finish?.blocked ?? "notInReview");
   return t(followupHoldRoute(objective), { n: count });
-}
-
-/**
- * 사령관이 넘긴 완료 검토·후속 후보 — 이유·돌려주기(`PersonHoldNote`) 카드에 그 항목에 직접 답하는 단추를 붙인다.
- * 「완료」는 데스크톱 띠와 같은 `/objective/complete` 이고, 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다.
- * 띠가 지금 완료를 세우지 못하면(작업 중·허용 대기·기준 제안·스티어링) 단추를 흐리게 두고 막힌 상태를 말한다.
- * 넘긴 후속 후보의 답(채택·폐기)은 사령관 대화의 카드에 선다 — 후속 카드는 이유·돌려주기와 그 대화로 가는 길만 보인다. 완료 전후가 같다.
- */
-function HoldAnswers({ objective, finish, t, language, api, onPick }: {
-  readonly objective: Objective;
-  readonly finish: ObjectiveActions["finish"];
-  readonly t: T;
-  readonly language: ConsoleLocale;
-  readonly api: PaneContext["api"];
-  readonly onPick: () => void;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [fault, setFault] = useState<string | null>(null);
-  useEffect(() => { setFault(null); }, [objective.id, finish?.blocked, finish?.followups]);
-  const reviewHeld = livePersonHold(objective, "review") !== null;
-  const followupHeld = livePersonHold(objective, "followup") !== null;
-  if (!reviewHeld && !followupHeld) return null;
-  const count = openFollowups(objective).length;
-  const blocked = finish?.blocked ?? "notInReview";
-  const completable = !!finish && finish.blocked === null;
-  const pickable = !!finish?.followups;
-  const complete = () => {
-    if (busy || !completable) return;
-    if (pickable) { onPick(); return; }
-    setBusy(true);
-    setFault(null);
-    void post(api, "/objective/complete", { objectiveId: objective.id, language })
-      .catch((error: unknown) => setFault(bandFailure(t, error, { message: false, talk: false })))
-      .finally(() => setBusy(false));
-  };
-  const reviewDesc = !completable ? finishBlockText(t, objective, blocked)
-    : pickable ? t("objectives.followup.sub", { n: count })
-      : t(objective.criteria.length > 0 ? "objectives.review.subCriteria" : "objectives.review.sub");
-  return (
-    <>
-      {reviewHeld ? (
-        <PersonHoldNote objective={objective} target="review" t={t} phone label={t("objectives.objectives.review")} locked={busy}
-          answer={<button type="button" data-press="r3" className="objectives-m-b2" disabled={busy || !completable} aria-busy={busy || undefined} onClick={complete}>{t(busy ? "objectives.band.sending" : "objectives.review.complete")}</button>}>
-          <p className="objectives-m-prop-sub">{reviewDesc}</p>
-          {fault ? <p className="objectives-m-fault" role="status">{fault}</p> : null}
-        </PersonHoldNote>
-      ) : null}
-      {followupHeld ? (
-        <PersonHoldNote objective={objective} target="followup" t={t} phone label={t("objectives.followup.title")} locked={busy}
-          answer={<button type="button" data-press="r3" className="objectives-m-b2" disabled={busy} onClick={() => openCommodoreMobile("log", objective.commodoreId)}>{t("objectives.decision.openCommodore")}</button>}>
-          <p className="objectives-m-prop-sub">{t("objectives.hold.route.followupCommodore", { n: count })}</p>
-        </PersonHoldNote>
-      ) : null}
-    </>
-  );
 }
 
 /**
@@ -1134,7 +1077,6 @@ function ProposalsCard({ objective, t, language, api, say }: { readonly objectiv
   return (
     <section className="objectives-m-card objectives-m-props" aria-label={t("objectives.criteria.title")}>
       <h3 className="objectives-m-card-label">{t("objectives.criteria.pending", { count: proposals.length })}</h3>
-      <PersonHoldNote objective={objective} target="criteria" t={t} phone />
       {proposals.map((proposal) => {
         const index = proposal.target ? objective.criteria.findIndex((criterion) => criterion.id === proposal.target) : -1;
         const target = index >= 0 ? objective.criteria[index]! : null;

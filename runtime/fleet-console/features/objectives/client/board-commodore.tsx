@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
-import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot } from "../shared/commodore-board-client.js";
+import type { CommodoreBoardClient, CommodoreBoardObjective, CommodoreBoardSnapshot, CommodoreInboxHold } from "../shared/commodore-board-client.js";
 import type { CommodoreClientHost } from "../../commodore/shared/contracts/client.js";
 export { askObjectiveTitle } from "../../commodore/shared/contracts/client-helpers.js";
 import { livePersonHold } from "../shared/board-state.js";
@@ -7,6 +7,7 @@ import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from ".
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { goToObjective } from "./fresh-conversation.js";
 import { HandedFollowupCard } from "./handed-followups.js";
+import { HandedInboxDetail } from "./handed-inbox.js";
 import { consultDelivery } from "./conversation.js";
 import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readBoard, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
 
@@ -15,9 +16,15 @@ export function isRunningObjective(objective: Objective): boolean {
   return !objective.removed && !objective.done && objective.commander.started && !objective.awaitingReview && !objective.awaitingHandoff;
 }
 
-/** 넘긴 후속 후보도 사령관 대화에서 답한다 — 후보에 답하는 표면이라 완료한 목표에도 선다. */
-export function followupInCommodoreConversation(objective: Objective): boolean {
-  return !objective.removed && !!livePersonHold(objective, "followup");
+const INBOX_KINDS = ["criteria", "review", "followup"] as const;
+
+/** 사령관 대기함 한 줄에 싣는 넘김 — 지금 사람이 답할 것만, 대상 순서대로. */
+export function inboxHoldsOf(objective: Objective): readonly CommodoreInboxHold[] {
+  if (objective.removed) return [];
+  return INBOX_KINDS.flatMap((kind) => {
+    const hold = livePersonHold(objective, kind);
+    return hold ? [{ kind, at: hold.at, reason: hold.reason }] : [];
+  });
 }
 
 /** 사령관이 사람에게 넘겨 지금 사람이 답할 차례인 항목들 — 대상 순서(기준·검토·후속)대로. */
@@ -97,7 +104,7 @@ function project(objective: Objective): CommodoreBoardObjective {
   const { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, missions, addedBy, actions, decisions } = objective;
   const consults = objective.consultations.map(({ id: consultId, question, at, reply, delivery }) => ({ id: consultId, question, at,
     ...(reply ? { reply: { text: reply.kind === "advice" ? reply.text : null, at: reply.at, ...(delivery ? { delivery: consultDelivery(delivery) } : {}) } } : {}) }));
-  const view = { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, followupHanded: followupInCommodoreConversation(objective), missions, addedBy, actions, decisions, consults, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
+  const view = { id, commodoreId, theaterId, title, createdAt, done, removed, commenced, awaitingReview, awaitingHandoff, inboxHolds: inboxHoldsOf(objective), missions, addedBy, actions, decisions, consults, running: isRunningObjective(objective), waiting: isCommodoreWaiting(objective) };
   projected.set(objective, view); return view;
 }
 const lists = new WeakMap<readonly Objective[], readonly CommodoreBoardObjective[]>();
@@ -129,4 +136,5 @@ export const commodoreBoard: CommodoreBoardClient = {
   revealObjective,
   renderObjectiveAvatar: (commodoreId, objectiveId, size) => <ObjectiveMark commodoreId={commodoreId} objectiveId={objectiveId} size={size} />,
   renderHandedFollowup: (objectiveId, { language, phone, open }) => <HandedFollowupCard objectiveId={objectiveId} language={language} phone={phone} open={open} />,
+  renderInboxDetail: (objectiveId, kind, { language, phone }) => <HandedInboxDetail objectiveId={objectiveId} kind={kind} language={language} phone={phone} />,
 };

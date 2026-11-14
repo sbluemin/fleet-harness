@@ -12,7 +12,8 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 import type { ClientTheaterInboxCapability } from "../../workspace/shared/theater-inbox.js";
 
 import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
-import { CommodoreAskCards, ENDED_ASK_CODES } from "./commodore-ask.js";
+import { ENDED_ASK_CODES } from "./commodore-ask.js";
+import { CommodorePersonInbox } from "./commodore-person-inbox.js";
 import { CommodoreTasks } from "./commodore-tasks.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo, CommodoreSettings } from "./commodore-inbox-section.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
@@ -447,7 +448,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
             openBoardAction={openBoardAction}
             openLedger={openLedger}
             references={references} openUIOpen={openUIOpen}
-            cards={readOnly ? null : <CommodoreAskCards theaterId={commodoreId} t={t} language={language} onEnded={fail} />}
+            overlay={readOnly ? null : <CommodorePersonInbox theaterId={commodoreId} language={language} onEnded={fail} />}
             composer={composer}
             composerTopEntries={!readOnly}
             {...(readOnly ? {} : { onOpenUISend: sendOpenUI })}

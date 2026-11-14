@@ -94,6 +94,8 @@ export interface ObjectiveClusterRow {
    * 사람에게 넘긴 기준·검토·후속을 기다리기 시작한 시각(ms). 있으면 그 시각순으로 사람의 차례에 선다.
    */
   readonly personTurnAt?: number;
+  /** 이 줄에서 사람이 답할 넘김 건수. 없으면 사람 차례 줄은 1건으로 센다. */
+  readonly personItems?: number;
   /**
    * 사람의 차례가 된 까닭 한마디(예: 「사령관이 넘김」). `personTurnAt` 이 없으면 무시한다.
    */
@@ -208,7 +210,9 @@ export function countBoardPersonDecisions(clusters: readonly ObjectiveCluster[],
   let count = 0;
   for (const cluster of clusters) {
     if (cluster.commodoreId !== commodoreId || cluster.row?.commodore === true) continue;
-    if (clusterHasPersonDecision(cluster)) count += 1;
+    const items = cluster.row?.personItems;
+    if (typeof items === "number") count += items;
+    else if (clusterHasPersonDecision(cluster)) count += 1;
   }
   return count;
 }
