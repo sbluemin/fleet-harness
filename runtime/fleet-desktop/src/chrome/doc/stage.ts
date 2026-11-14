@@ -8,6 +8,7 @@ import {
   toRemoteMouseEvent,
   toViewportPoint,
   type ContentAlign,
+  type CssSize,
   type RemoteInputSender,
 } from "../../remote-browser-input.js";
 import { clear, G, glyph, h } from "./dom.js";
@@ -48,7 +49,7 @@ export function mountStage(): {
   /** 지금 그림이 어느 탭의 것인가 — 보는 탭이 바뀌면 옛 탭의 그림을 남기지 않는다. */
   let shownTab: string | null = null;
   /** 실행 측 뷰포트 CSS 크기 — frame() 이 준 최신 값. 없으면 레터박스 보정 없이 요소 전체를 쓴다. */
-  let cssSize: RemoteFrameMeta | null = null;
+  let cssSize: CssSize | null = null;
   /** 이 탭으로 보내는 배치 송신기 — 탭이 바뀌면 seq 충돌을 피하려고 새로 만든다. */
   let sender: RemoteInputSender | null = null;
   let senderTab: string | null = null;
@@ -258,7 +259,7 @@ export function mountStage(): {
     frame(tabId, src, meta = null) {
       if (!last?.viewOnly || tabId === null || src === null || !src.startsWith("data:image/jpeg;base64,") || last.chrome?.activeTabId !== tabId) return;
       shownTab = tabId;
-      if (meta && meta.cssWidth > 0 && meta.cssHeight > 0) cssSize = { cssWidth: meta.cssWidth, cssHeight: meta.cssHeight };
+      if (meta && meta.cssWidth > 0 && meta.cssHeight > 0) cssSize = { width: meta.cssWidth, height: meta.cssHeight };
       image.src = src;
       image.hidden = false;
       renderViewer(last);
