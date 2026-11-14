@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
 
@@ -13,11 +13,7 @@ import { LinkText } from "./link-text.js";
 
 type T = Translate<ObjectiveMessageKey>;
 
-
-
 const stamp = (at: number, language: "en" | "ko") => new Date(at).toLocaleString(language === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
-
-const SHOWN = 3;
 
 /** 결정 한 건의 답 — 고른 선택지(답한 순간의 사본 이름)를 「 · 」로 잇고, 직접 쓴 말은 다음 줄에 그대로. 내 의견은 칩이 앞에 선다. 「결정 안 함」으로 닫힌 건은 그 문구 하나로 선다. */
 const answerText = (decision: Decision, declinedText: string): string => {
@@ -27,26 +23,21 @@ const answerText = (decision: Decision, declinedText: string): string => {
 };
 
 /**
- * 「결정」 — 사령관의 결정과 기존 답이 한 건씩 쌓인다(최신이 위). 최근 셋만 보이고 나머지는 접힌다. 임무 줄의 결정 표식이
- * 가리키면 그 결정을 펼쳐 비춘다. 지우거나 고치는 길은 없다.
+ * 「결정」 — 사령관의 결정과 기존 답이 한 건씩 쌓인다(최신이 위). 달성 기준처럼 전부를 늘 펼쳐 보여 주며,
+ * 임무 줄의 결정 표식이 가리키면 그 결정을 잠시 비춘다. 지우거나 고치는 길은 없다.
  */
 export function DecisionList({ objective, t, language, flash, memberMark }: {
   readonly objective: Objective;
   readonly t: T;
   readonly language: "en" | "ko";
-  /** 비출 결정 id — 접힌 곳에 있으면 펼친다. */
+  /** 잠시 비출 결정 id. */
   readonly flash: string | null;
   readonly memberMark: (memberId: string) => { readonly mark: ReactNode; readonly role: string } | null;
 }) {
-  const [unfolded, setUnfolded] = useState(false);
   const list = [...objective.decisions].reverse();
-  const flashAt = flash ? list.findIndex((decision) => decision.id === flash) : -1;
-  const open = unfolded || flashAt >= SHOWN;
-  const shown = open ? list : list.slice(0, SHOWN);
-  const hidden = list.length - shown.length;
   return (
     <div className="objectives-decisions">
-      {shown.map((decision) => {
+      {list.map((decision) => {
         const missionN = decision.missionId ? objective.missions.findIndex((mission) => mission.id === decision.missionId) + 1 : 0;
         const member = decision.memberId ? memberMark(decision.memberId) : null;
         return (
@@ -62,8 +53,6 @@ export function DecisionList({ objective, t, language, flash, memberMark }: {
           </div>
         );
       })}
-      {hidden > 0 ? <button type="button" className="objectives-decisions-fold" onClick={() => setUnfolded(true)}>{t("objectives.decisions.more", { count: hidden })}</button>
-        : open && list.length > SHOWN ? <button type="button" className="objectives-decisions-fold" onClick={() => setUnfolded(false)}>{t("objectives.decisions.less", { count: SHOWN })}</button> : null}
     </div>
   );
 }
