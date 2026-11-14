@@ -12,7 +12,28 @@
 
 import { findCauseCode } from "../transport/upstream-sse.js";
 import type { CredentialResolverDeps } from "../transport/credentials.js";
-import type { ProviderDto, QuotaWindowPeriod, WindowDurationBasis } from "./types.js";
+import type { ProviderDto, QuotaScope, QuotaWindowPeriod, WindowDurationBasis } from "./types.js";
+
+const MODEL_SCOPE_PREFIX = "model:";
+const MODEL_SCOPE_SLUG_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+export function modelQuotaScope(raw: string): `model:${string}` | undefined {
+  const slug = raw
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 64)
+    .replace(/-+$/, "");
+  return MODEL_SCOPE_SLUG_PATTERN.test(slug) ? `${MODEL_SCOPE_PREFIX}${slug}` : undefined;
+}
+
+export function isQuotaScope(value: unknown): value is QuotaScope {
+  if (typeof value !== "string") return false;
+  if (value === "auto") return true;
+  return value.startsWith(MODEL_SCOPE_PREFIX)
+    && MODEL_SCOPE_SLUG_PATTERN.test(value.slice(MODEL_SCOPE_PREFIX.length));
+}
 
 export const REQUEST_TIMEOUT_MS = 10_000;
 const MAX_RESPONSE_BYTES = 262_144;

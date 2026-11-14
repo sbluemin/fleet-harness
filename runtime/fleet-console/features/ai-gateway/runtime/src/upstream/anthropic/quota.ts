@@ -14,6 +14,7 @@ import {
   expired,
   getJson,
   modelLabel,
+  modelQuotaScope,
   object,
   percent,
   safeTimestamp,
@@ -87,10 +88,35 @@ function firstClaudePercent(row: Record<string, unknown>): number | undefined {
   return undefined;
 }
 
-function claudeModelScope(label: string, model: Record<string, unknown> | null): QuotaScope | undefined {
-  if (/^fable\b/i.test(label)) return "fable";
-  if (typeof model?.id === "string" && /\bfable\b/i.test(model.id)) return "fable";
-  return undefined;
+const NON_MODEL_TOP_LEVEL_SCOPES = new Set(["all", "shared", "oauth_apps"]);
+const FALLBACK_MODEL_SCOPE: QuotaScope = "model:unclassified";
+
+function claudeScopeFromName(raw: string): QuotaScope | undefined {
+  const normalized = raw
+    .trim()
+    .replace(/^claude[\s-]+/i, "")
+    .replace(/(?:-\d+(?:-\d+)*|\s+\d+(?:\.\d+)*)$/, "")
+    .trim();
+  return modelQuotaScope(normalized);
+}
+
+function claudeModelScope(label: string, model: Record<string, unknown> | null): QuotaScope {
+  if (typeof model?.id === "string") {
+    const fromId = claudeScopeFromName(model.id);
+    if (fromId) return fromId;
+  }
+  if (typeof model?.display_name === "string") {
+    const fromDisplay = claudeScopeFromName(label);
+    if (fromDisplay) return fromDisplay;
+  }
+  return FALLBACK_MODEL_SCOPE;
+}
+
+function topLevelModelAlias(key: string): string | undefined {
+  const suffixed = /^([a-z][a-z0-9_-]{0,31})_(?:weekly|seven_day)$/i.exec(key);
+  if (suffixed?.[1]) return suffixed[1];
+  const prefixed = /^seven_day_([a-z][a-z0-9_-]{0,31})$/i.exec(key);
+  return prefixed?.[1];
 }
 
 function claudeWindow(
@@ -148,11 +174,17 @@ export function parseClaudeUsage(payload: unknown): { readonly windows: readonly
     }
   }
   if (modelWindows.length === 0) {
-    for (const alias of [root.fable_weekly, root.fable_seven_day, root.seven_day_fable]) {
-      const row = claudeWindow("model", alias, WEEK_MS, "Fable", "fable");
+    const seenScopes = new Set<QuotaScope>();
+    for (const [key, value] of Object.entries(root)) {
+      if (modelWindows.length >= MAX_WINDOWS) break;
+      const alias = topLevelModelAlias(key);
+      if (!alias || NON_MODEL_TOP_LEVEL_SCOPES.has(alias.toLowerCase())) continue;
+      const scope = claudeScopeFromName(alias);
+      if (!scope || seenScopes.has(scope)) continue;
+      const row = claudeWindow("model", value, WEEK_MS, titleCase(alias) ?? modelLabel(alias), scope);
       if (row) {
+        seenScopes.add(scope);
         modelWindows.push(row);
-        break;
       }
     }
   }

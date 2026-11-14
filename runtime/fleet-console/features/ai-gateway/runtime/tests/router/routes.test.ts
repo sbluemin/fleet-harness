@@ -42,6 +42,7 @@ import {
   applyClaudeNativeModels,
   findGatewayModel,
   GATEWAY_MODELS,
+  parseAntigravityQuotaSummary,
   parseClaudeUsage,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
@@ -899,6 +900,118 @@ describe("delegation assignment", () => {
     expect(buildGatewayCandidates({
       delegationModels: claudeModels,
       quota: { claude: { status: "ok", fetchedAt: now, windows: sharedCritical.windows } },
+    }, now).candidates).toEqual([]);
+  });
+
+  it("isolates every model-scoped limit (Claude weekly_scoped, future models, Antigravity Argon) while applying common limits to all", () => {
+    const now = Date.parse("2026-11-15T04:00:00Z");
+    const sessionReset = new Date(now + 3 * 3_600_000).toISOString();
+    const weekReset = new Date(now + 5 * 24 * 3_600_000).toISOString();
+    const claudeModels = [
+      requireGatewayModel("claude--haiku-1m"),
+      requireGatewayModel("claude--sonnet-1m"),
+      requireGatewayModel("claude--opus-1m"),
+      requireGatewayModel("claude--fable-1m"),
+    ];
+
+    // 1) Claude의 다른 모델(Opus 5.5) weekly_scoped가 98%여도 Opus만 빠지고 Haiku·Sonnet·Fable은 남는다.
+    const opusScoped = parseClaudeUsage({
+      five_hour: { used_percentage: 20, resets_at: sessionReset },
+      seven_day: { used_percentage: 30, resets_at: weekReset },
+      limits: [
+        {
+          kind: "weekly_scoped",
+          scope: { model: { display_name: "Opus 5.5" } },
+          used_percentage: 98,
+          resets_at: weekReset,
+        },
+      ],
+    });
+    const opusExposure: GatewayAssignmentExposure = {
+      delegationModels: claudeModels,
+      quota: { claude: { status: "ok", fetchedAt: now, windows: opusScoped.windows } },
+    };
+    expect(buildGatewayCandidates(opusExposure, now).candidates.map((candidate) => candidate.model)).toEqual([
+      "haiku[1m]",
+      "sonnet[1m]",
+      "fable[1m]",
+    ]);
+    const opusLoadout = buildGatewayLoadout(opusExposure, now);
+    expect(opusLoadout.quotaPools["claude:shared"]?.remainingPercent).toBe(70);
+
+    // 2) 카탈로그에 없는 미래 모델의 weekly_scoped 창(예: Cedar 99%)도 scope가 붙어 기존 모델에 번지지 않는다.
+    const futureModelScoped = parseClaudeUsage({
+      five_hour: { used_percentage: 20, resets_at: sessionReset },
+      seven_day: { used_percentage: 30, resets_at: weekReset },
+      limits: [
+        {
+          kind: "weekly_scoped",
+          scope: { model: { display_name: "Cedar" } },
+          used_percentage: 99,
+          resets_at: weekReset,
+        },
+      ],
+    });
+    expect(buildGatewayCandidates({
+      delegationModels: claudeModels,
+      quota: { claude: { status: "ok", fetchedAt: now, windows: futureModelScoped.windows } },
+    }, now).candidates.map((candidate) => candidate.model)).toEqual([
+      "haiku[1m]",
+      "sonnet[1m]",
+      "opus[1m]",
+      "fable[1m]",
+    ]);
+
+    // 3) Antigravity의 gemini-argon-wtu-weekly(98%)는 Argon만 빼고 Carbon·Hydrogen은 후보로 남긴다.
+    const antigravityModels = [
+      requireGatewayModel("antigravity--gemini-4-argon"),
+      requireGatewayModel("antigravity--gemini-4-carbon"),
+      requireGatewayModel("antigravity--gemini-4-hydrogen"),
+    ];
+    const argonCriticalWindows = parseAntigravityQuotaSummary({
+      groups: [
+        {
+          displayName: "Gemini 4 Argon",
+          buckets: [{ bucketId: "gemini-argon-wtu-weekly", remainingFraction: 0.02, resetTime: weekReset }],
+        },
+        {
+          displayName: "Gemini Models",
+          buckets: [
+            { bucketId: "gemini-5h", remainingFraction: 0.8, resetTime: sessionReset },
+            { bucketId: "gemini-weekly", remainingFraction: 0.7, resetTime: weekReset },
+          ],
+        },
+      ],
+    }) ?? [];
+    const argonExposure: GatewayAssignmentExposure = {
+      delegationModels: antigravityModels,
+      quota: { antigravity: { status: "ok", fetchedAt: now, windows: argonCriticalWindows } },
+    };
+    const antigravityCandidates = buildGatewayCandidates(argonExposure, now).candidates;
+    expect(antigravityCandidates.map((candidate) => [candidate.model, candidate.pressure])).toEqual([
+      ["antigravity--gemini-4-carbon", "ok"],
+      ["antigravity--gemini-4-hydrogen", "ok"],
+    ]);
+
+    // 4) 공통 창(gemini-weekly 98%)이 critical이면 Antigravity 전 모델이 빠진다.
+    const geminiSharedCritical = parseAntigravityQuotaSummary({
+      groups: [
+        {
+          displayName: "Gemini 4 Argon",
+          buckets: [{ bucketId: "gemini-argon-wtu-weekly", remainingFraction: 0.9, resetTime: weekReset }],
+        },
+        {
+          displayName: "Gemini Models",
+          buckets: [
+            { bucketId: "gemini-5h", remainingFraction: 0.8, resetTime: sessionReset },
+            { bucketId: "gemini-weekly", remainingFraction: 0.02, resetTime: weekReset },
+          ],
+        },
+      ],
+    }) ?? [];
+    expect(buildGatewayCandidates({
+      delegationModels: antigravityModels,
+      quota: { antigravity: { status: "ok", fetchedAt: now, windows: geminiSharedCritical } },
     }, now).candidates).toEqual([]);
   });
 });

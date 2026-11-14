@@ -186,6 +186,7 @@ describe("antigravity quota", () => {
         { id: "weekly", label: "Gemini", usedPercent: 50 },
         {
           id: "weekly",
+          scope: "model:gemini-4-argon",
           label: "Gemini 4 Argon",
           usedPercent: 1,
           resetsAt: Date.parse("2026-10-24T22:20:43Z"),

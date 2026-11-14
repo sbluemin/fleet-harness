@@ -8,8 +8,11 @@ export type WindowId = "session" | "weekly" | "model" | "cycle";
  * Sub-budget a window measures, when a provider bills one subscription through
  * more than one pool. A model-scoped window must not be confused with the
  * provider's combined usage, which can be healthy while one pool is exhausted.
+ *
+ * `"auto"` is a legacy named sub-pool; model-specific limits use `"model:<slug>"`
+ * (e.g. `"model:fable"`, `"model:gemini-4-argon"`).
  */
-export type QuotaScope = "auto" | "fable";
+export type QuotaScope = "auto" | `model:${string}`;
 
 /**
  * Where a window's time boundary came from. `upstream` is a value the provider
