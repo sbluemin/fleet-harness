@@ -4,6 +4,8 @@ import type { BrowserTarget, BrowserElementState } from "./semantic.js";
 import { CdpError, type CdpClient, type CdpEvent } from "./cdp.js";
 import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./history.js";
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
+import { DESKTOP_BROWSER_PASSWORDS, type BrowserPasswordShellCommand } from "@fleet-console/protocol/desktop/browser-passwords";
+import { acceptBrowserPasswordResult, browserPasswordDispatchError, BrowserPasswordRequestError, type BrowserPasswordDispatchResult } from "./passwords.js";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer } from "@fleet-console/protocol/desktop";
@@ -1409,6 +1411,21 @@ export class BrowserService {
   async importSources(): Promise<ChromeImportSources> {
     const client = await this.engineClient();
     return client.send<ChromeImportSources>(DESKTOP_BROWSER_CHROME_PROFILES, {});
+  }
+
+  /**
+   * 비밀번호 금고는 탭이 없어도 창을 든 Desktop 에 묻는다. 평문은 이 메서드가 돌려준 결과 밖에 남기지 않는다.
+   * 연결이 없으면 명령을 보내지 않는다.
+   */
+  async browserPasswords(command: BrowserPasswordShellCommand): Promise<BrowserPasswordDispatchResult> {
+    const desktop = this.deps.desktop;
+    if (!desktop.connected) throw new BrowserPasswordRequestError("desktop_required");
+    try {
+      const raw = await desktop.send(DESKTOP_BROWSER_PASSWORDS, command as unknown as Record<string, unknown>);
+      return acceptBrowserPasswordResult(command, raw);
+    } catch (error) {
+      throw browserPasswordDispatchError(error);
+    }
   }
 
   /**

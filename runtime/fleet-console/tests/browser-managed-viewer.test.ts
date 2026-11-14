@@ -161,6 +161,8 @@ describe("managed desktop browser routes", () => {
       isNativeBrowserWrite: () => native,
       isManagingDesktopProcess: () => false,
       viewerFrameRead: () => "ok",
+      isLoopbackListener: () => true,
+      isSameOriginConsoleRead: () => true,
       writeJson: (_res, status, body) => { seen.status = status; seen.body = body; },
       readJsonBody: async <T,>() => ({ action: "create" }) as T,
       readUrl: () => new URL(currentUrl),
