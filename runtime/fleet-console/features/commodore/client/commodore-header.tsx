@@ -75,17 +75,17 @@ function CommodoreHeaderMark({ theater, language, theaterInbox, boardPersonDecis
   const warn = (view?.run.phase === "error" || view?.run.phase === "retrying");
   const name = useCommodoreName(commodoreId, t);
   const status = [`${name} · ${meta.map((part) => part.text).join(" · ")}`, routine, errorReason].filter(Boolean).join("\n");
-  // 사람이 답할 차례인 결정 요청 — 펼친 목록의 줄과 같은 묶음 판정을 호스트가 `boardPersonDecisionCount` 로
+  // 사람에게 넘긴 기준·검토·후속 — 펼친 목록의 줄과 같은 묶음 판정을 호스트가 `boardPersonDecisionCount` 로
   // 넘긴다. 채팅을 열어 보고 답 없이 떠나도 머리의 아바타 상태·숫자가 유지된다. 사령관이 직접 묻는
   // 질문(`asks`)도 같은 사람 차례라 얼굴은 함께, 숫자는 합산한다.
   const asks = openAsks(commodoreId).length;
   const personDecision = asks > 0 || boardPersonDecisionCount > 0;
   const state = commodoreMongleState(view, board.objectives, personDecision);
   const glyph = <CommodoreAvatar commodoreId={commodoreId} state={state} size={18} label={name} decorative className="objectives-commodore-mark-glyph" figure />;
-  // 숫자 배지 — 사령관 질문과 보드 결정을 합산한다. 답·철회로 걷히면 같은 판정이 함께 0이 되어 사라진다.
+  // 숫자 배지 — 사령관 질문과 넘긴 항목을 합산한다. 답·철회로 걷히면 같은 판정이 함께 0이 되어 사라진다.
   const total = asks + boardPersonDecisionCount;
   const asksWord = asks > 0 ? t("commodore.board.ask.badge", { count: asks }) : null;
-  const boardWord = boardPersonDecisionCount > 0 ? t("commodore.reason.decision", { n: boardPersonDecisionCount }) : null;
+  const boardWord = boardPersonDecisionCount > 0 ? t("commodore.personHolds", { n: boardPersonDecisionCount }) : null;
   const decisionWords = [asksWord, boardWord].filter((part) => part !== null).join(", ");
   return (
     <button
@@ -110,14 +110,14 @@ type CommodoreView = ReturnType<typeof useCommodore>["view"];
 /**
  * 사령관의 지금 얼굴 — 사이드바 머리 표식과 대화 중심 화면(머리 pill·오른쪽 패널 머리)이 같은 사실로 고른다. 루틴과 무관하게
  * 메시지 턴도 작업 중이며, 실패·재시도는 오류 얼굴(얼굴 기준 `mongleStateOf` 에 없는 사령관 몫)이다. 그 밖에는 턴을 도는 동안 작업 중, 사람이 답할
- * 차례인 결정 요청이 남아 있으면 결정, 사령관이 운영하는 목표가 사람을 기다리면 대기, 아니면 쉼이다. 결정은 열람으로
+ * 차례인 질문·넘긴 항목이 남아 있으면 결정, 사령관이 운영하는 목표가 사람을 기다리면 대기, 아니면 쉼이다. 결정은 열람으로
  * 지워지지 않고 답·철회로만 걷힌다.
  */
 export function commodoreMongleState(view: CommodoreView, objectives: readonly Objective[], personDecision = false): MongleState {
   if (!view) return "idle";
   if (view.run.phase === "error" || view.run.phase === "retrying") return "error";
   const waiting = view.active && objectives.some((objective) => isCommodoreWaiting(objective));
-  return mongleStateOf({ activity: view.run.phase === "turn" ? "running" : waiting ? "awaiting" : "idle", decisionRequest: personDecision });
+  return mongleStateOf({ activity: view.run.phase === "turn" ? "running" : waiting ? "awaiting" : "idle", personTurn: personDecision });
 }
 export type CommodoreMetaPart = { readonly key: string; readonly text: string; readonly tone?: "on" | "warn" };
 

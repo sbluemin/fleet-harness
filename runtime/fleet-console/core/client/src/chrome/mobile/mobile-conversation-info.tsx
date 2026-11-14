@@ -40,7 +40,7 @@ type InfoTab =
  * 「정보」는 모델·강도·하네스·Theater·이름 변경·보관(본문이 ⋮에 끼운 항목)이고, 대화 탭 등록부(구성원 등)는 그 본문을 그대로 그리며,
  * `conversationTab` 엔트리(목표)는 `mobile.conversationPane`이 말한 페인을 대화 주인 Objective으로 세운다(막대 창구 없이).
  * 구성원 구역에서 구성원을 고르면 그 대화로 돌아간다. 고른 구역은 목적지(`?dest=info:<탭>`)가 들어 새로고침·착지 요청이 그 구역을 세운다.
- * 주의(결정 요청·안 읽은 기록·구성원 활동)는 행의 요약 글이다 — 둥근 점을 두지 않는다.
+ * 주의(안 읽은 기록·구성원 활동)는 행의 요약 글이다 — 둥근 점을 두지 않는다.
  */
 export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }: {
   readonly objectiveRecord: ObjectiveRecord;

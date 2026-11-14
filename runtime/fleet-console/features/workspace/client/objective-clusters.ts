@@ -99,7 +99,7 @@ export interface ClusterIndex {
   readonly clusters: readonly ObjectiveCluster[];
   readonly layouts: ReadonlyMap<string, ClusterLayout>;
   /**
-   * objectiveId → 그 Objective 이 뿌리인 묶음. 구조(구성원·결정 요청)가 있는 묶음만 든다 — 지휘관 칩·대화 머리가 읽는다.
+   * objectiveId → 그 Objective 이 뿌리인 묶음. 구조(구성원)가 있는 묶음만 든다 — 지휘관 칩·대화 머리가 읽는다.
    * 줄(`row`)만 있는 묶음은 여기 없고 `rows` 로만 선다.
    */
   readonly rootOf: ReadonlyMap<string, ClusterLayout>;
@@ -129,7 +129,7 @@ export function indexClusters(clusters: readonly ObjectiveCluster[]): ClusterInd
     const layout = layoutCluster(cluster);
     layouts.set(cluster.id, layout);
     const root = cluster.root;
-    const structured = cluster.members.length > 0 || cluster.decisionRequest === true;
+    const structured = cluster.members.length > 0;
     // 한 Objective 은 한 묶음에만 선다 — 먼저 선언된 묶음이 이긴다.
     if (root !== undefined && structured && !rootOf.has(root) && !memberOf.has(root)) rootOf.set(root, layout);
     if (structured) for (const laid of layout.formation.members) if (!rootOf.has(laid.member.objectiveId)) memberOf.add(laid.member.objectiveId);

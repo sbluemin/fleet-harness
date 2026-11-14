@@ -859,34 +859,8 @@
   color: var(--warn-ink);
 }
 
-/* 맡은 이(사령관)가 결정 요청을 처리하는 동안 — 상태 문구 위로 무채색 명도 물결이 지나간다(2.2초 지나감 + 1.8초 쉼). 명도 채널이라
-   신호·위치 색을 빌리지 않고, 물결의 두 끝은 Theater 이름 물결과 같은 --live-sweep-* 잉크다. 양 끝이 휴지 잉크라 쉼과 되풀이에
-   이음매가 없다. 동작 줄이기에서는 물결을 거두고 둘째 줄 기본 잉크로 문구만 남는다. */
-.side-bar-cluster-row-preview.is-handling {
-  background-image: linear-gradient(90deg, var(--live-sweep-trough) 0 38%, color-mix(in oklch, var(--live-sweep-crest) 72%, var(--live-sweep-trough)) 50%, var(--live-sweep-trough) 62% 100%);
-  background-size: 300% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: side-bar-row-handling-sweep 4s ease-in-out infinite;
-  animation-name: var(--state-motion, side-bar-row-handling-sweep);
-}
-
-@keyframes side-bar-row-handling-sweep {
-  0% { background-position: 100% 0; }
-  55%, 100% { background-position: 0% 0; }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .side-bar-cluster-row-preview.is-handling {
-    background-image: none;
-    color: var(--text-tertiary);
-    animation: none;
-  }
-}
-
-/* 지휘관이나 구성원이 브라우저·콘솔·컴퓨터를 쓰는 동안 — 상태 줄 자리에 도구 글리프와 문구가 서고, 문구 위로 결정 처리 물결과 같은
-   박자(4초)·잉크의 명도 물결이 지나간다. 배경을 칠하지 않는다: 밝은 사본을 비추는 창(가장자리는 고정 마스크)이 transform 으로만
+/* 지휘관이나 구성원이 브라우저·콘솔·컴퓨터를 쓰는 동안 — 상태 줄 자리에 도구 글리프와 문구가 서고, 문구 위로
+   4초 박자·공유 잉크의 명도 물결이 지나간다. 배경을 칠하지 않는다: 밝은 사본을 비추는 창(가장자리는 고정 마스크)이 transform 으로만
    지나가고 안의 사본은 반대로 움직여 제자리에 서므로, 쓰는 줄마다 합성만 하고 다시 칠하지 않는다. 비활성 창·숨긴 표면·동작 줄이기에서는
    --state-motion 이 반복을 끄고 창은 글자 밖에 머물러 글리프와 문구만 남는다. 색은 채널 잉크(글리프)뿐이고 점·고리는 두지 않는다. */
 .side-bar-cluster-row-swap {
@@ -1779,11 +1753,11 @@ html[data-desktop-shell="true"][data-view-mode="desktop"] {
 
 .side-bar-cluster-row-line .side-bar-cluster-row-preview { flex: 0 1 auto; line-height: 1.4; font-weight: var(--weight-regular); }
 /* 라이트에서 고른·가리킨 줄의 면(#eaeaea) 위는 흐린 글자가 4.5:1에 못 미쳐, 쉬는 줄의 상태 문구도 보조 글자색을 쓴다. */
-:root[data-theme="light"] .side-bar-cluster-row-preview.is-idle:not(.is-handling) { color: var(--text-secondary); }
-.side-bar-cluster-row-preview.is-running:not(.is-handling) { color: var(--aurora); }
-.side-bar-cluster-row-preview:is(.is-awaiting, .is-unseen):not(.is-handling) { color: var(--brass-ink); }
-.side-bar-cluster-row-preview.is-review:not(.is-handling) { color: var(--apex); }
-.side-bar-cluster-row-preview.is-done:not(.is-handling) { color: var(--positive); }
+:root[data-theme="light"] .side-bar-cluster-row-preview.is-idle { color: var(--text-secondary); }
+.side-bar-cluster-row-preview.is-running { color: var(--aurora); }
+.side-bar-cluster-row-preview:is(.is-awaiting, .is-unseen) { color: var(--brass-ink); }
+.side-bar-cluster-row-preview.is-review { color: var(--apex); }
+.side-bar-cluster-row-preview.is-done { color: var(--positive); }
 .side-bar-cluster-row-gauge { flex: none; width: 56px; height: 3px; border-radius: 2px; background: var(--hairline); overflow: hidden; }
 .side-bar-cluster-row-gauge > span { display: block; height: 100%; border-radius: inherit; background: var(--text-tertiary); }
 .side-bar-cluster-row-gauge.is-complete > span { background: var(--positive); }

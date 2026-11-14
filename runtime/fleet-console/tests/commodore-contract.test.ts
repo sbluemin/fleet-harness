@@ -2842,7 +2842,7 @@ describe("commodore supervisor", () => {
       await supervisor.dispose();
 
       // 재기동 당시 진행·구상·인계 대기만 남은 목표는 스스로 잇는다. 시간이 지나거나 live 로 복원된 것만으로는 깨우지 않는다.
-      const running = { id: "o1", theaterId: "t1", title: "Resuming", createdAt: Date.now(), done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective;
+      const running = { id: "o1", theaterId: "t1", title: "Resuming", createdAt: Date.now(), done: null, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective;
       objectives.push(running, { ...running, id: "o2", commenced: false, planning: true, missions: [] }, { ...running, id: "o3", awaitingHandoff: true, missions: [{ ...running.missions[0]!, done: true }] });
       const settleWait = SETTLE_MS + SETTLE_CHECK_MS + COALESCE_MS + 10;
       const beforeRestart = sessions.length;
@@ -3212,38 +3212,34 @@ describe("commodore supervisor", () => {
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens()).toHaveLength(wakesBeforeCancel);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeCancel);
-      // 보드 — 기준 제안과 단계 이동은 그룹이 일하는 동안 깨우지 않지만, 결정 요청은 지휘관 턴이 끝나기 전에 바로 싣는다.
-      // 결정으로 깨운 뒤 지휘관 턴이 끝나 그룹이 대기 중이 되면 서명이 같아도 새 사건으로 다시 깨운다.
+      // 보드 — 기준 제안과 단계 이동은 그룹이 일하는 동안 깨우지 않는다. 결정 요청은 더 이상 대기 이유가 아니다.
       const settleWait = SETTLE_MS + SETTLE_CHECK_MS + COALESCE_MS + 10;
       const turnsBeforeBoard = sessions[0]!.sent.length;
       commanderActivity.set("o1", "running");
       const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
-      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", requestSource, createdAt: Date.now(), done: null, removed: null, commenced: false, planning: true, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [{ id: "c1" }], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      objectives.push({ id: "o1", theaterId: "t1", title: "Remote pairing", requestSource, createdAt: Date.now(), done: null, removed: null, commenced: false, planning: true, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [{ id: "c1" }], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard);
-      Object.assign(objectives[0]!, { decisionRequest: { id: "q1" }, decisionRequestRevision: 1, boardUpdatedAt: Date.now() });
+      Object.assign(objectives[0]!, { boardUpdatedAt: Date.now() });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(tokens().at(-1)).toEqual(["decision:1"]);
-      expect(sessions[0]!.sent.at(-1)).toContain("inbox: 1 decision request");
-      expect(sessions[0]!.sent.at(-1)).toContain(`Board at wake:\n- o1 "Remote pairing"\n  requestSource: ${JSON.stringify(requestSource)}\n  status: planning · missions 0/1 done\n  waits on you: criteria proposal, decision request\n  group: commander running · no members\n  since your last turn: new → planning`);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 1);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard);
       commanderActivity.delete("o1");
       await vi.advanceTimersByTimeAsync(settleWait * 2);
       expect(tokens().at(-1)).toEqual(["settled:1"]);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 2);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 1);
       // 결정 이후 보드가 앞으로 가면 새 대기 항목은 여전히 그룹이 쉴 때 싣는다.
       commanderActivity.set("o1", "running");
       Object.assign(objectives[0]!, { criteriaProposals: [{ id: "c2" }], boardUpdatedAt: Date.now() });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(settleWait);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 2);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 1);
       commanderActivity.delete("o1");
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(tokens().at(-1)).toEqual(["settled:1"]);
-      expect(sessions[0]!.sent.at(-1)).toContain(`1 objective group went idle: "Remote pairing".\n\nBoard at wake:\n- o1 "Remote pairing"\n  requestSource: ${JSON.stringify(requestSource)}\n  status: planning · missions 0/1 done\n  waits on you: criteria proposal, decision request\n  group: idle 0 min · commander idle · no members`);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 3);
+      expect(sessions[0]!.sent.at(-1)).toContain(`1 objective group went idle: "Remote pairing".\n\nBoard at wake:\n- o1 "Remote pairing"\n  requestSource: ${JSON.stringify(requestSource)}\n  status: planning · missions 0/1 done\n  waits on you: criteria proposal\n  group: idle 0 min · commander idle · no members`);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 2);
       // 지휘관이 다시 일하는 동안의 개시는 objective_busy 로 거절된다 — 그 일이 끝나 대기 중이 되면 보드가 그대로여도 다시 깨운다.
       const board = sessions[0]!.options.tools!.custom!.find((group) => group.tools.some((tool) => tool.name === "console_objectives_detail"))!.tools.find((tool) => tool.name === "console_objectives_detail")!;
       commanderActivity.set("o1", "running");
@@ -3251,21 +3247,21 @@ describe("commodore supervisor", () => {
       commanderActivity.delete("o1");
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(tokens().at(-1)).toEqual(["settled:1"]);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 4);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 3);
       // 구성원 실패는 보드 시계를 옮기지 않아도 새 실패로 다시 깨운다.
       Object.assign(objectives[0]!, { members: [{ id: "w0", role: "implementer", sessionName: null, failure: { error: "rate_limit", consecutiveFailures: 1 } }] });
       await vi.advanceTimersByTimeAsync(SETTLE_CHECK_MS + COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["settled:1"]);
-      expect(sessions[0]!.sent.at(-1)).toContain("waits on you: criteria proposal, decision request, failed member turn");
+      expect(sessions[0]!.sent.at(-1)).toContain("waits on you: criteria proposal, failed member turn");
       // 사령관 자신의 쓰기(개시)는 깨우지 않는다.
-      Object.assign(objectives[0]!, { planning: false, criteriaProposals: [], decisionRequest: null, members: [], boardUpdatedAt: Date.now() });
+      Object.assign(objectives[0]!, { planning: false, criteriaProposals: [], members: [], boardUpdatedAt: Date.now() });
       await board.execute({ action: "commence", objectiveId: "o1" }, { cwd: theaterRoot });
       await vi.advanceTimersByTimeAsync(settleWait);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 5);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 4);
 
       // 다른 목표의 단계 이동은 깨우지 않고 다음 턴 요약에 실린다. 사람에게 넘긴 항목만 기다리며 멈춘 그룹도 깨우지 않는다.
       commanderActivity.set("o2", "running");
-      objectives.push({ id: "o2", theaterId: "t1", title: "Lineup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
+      objectives.push({ id: "o2", theaterId: "t1", title: "Lineup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }] } as unknown as Objective);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o2" });
       (objectives[1] as unknown as { commenced: boolean }).commenced = true;
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o2" });
@@ -3273,7 +3269,7 @@ describe("commodore supervisor", () => {
       Object.assign(objectives[0]!, { awaitingReview: true, personHolds: [hold], boardUpdatedAt: Date.now() });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
       await vi.advanceTimersByTimeAsync(settleWait);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 5);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 4);
       // 사람이 돌려주면 바로 깨우고, 그 목표의 요약과 깨우지 않은 이동이 함께 간다. 이후 같은 대기가 계속되면 또 깨우지 않는다.
       hold.settled = { at: Date.now(), by: { kind: "person" }, outcome: "returned" };
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o1" });
@@ -3283,49 +3279,49 @@ describe("commodore supervisor", () => {
       expect(returned).toContain(`- o1 "Remote pairing"\n  requestSource: ${JSON.stringify(requestSource)}\n  status: awaiting review · missions 0/1 done\n  waits on you: awaiting review\n  group: idle 0 min · commander idle · no members\n  since your last turn: in progress → awaiting review`);
       expect(returned).toContain('Other objectives moved since your last turn:\n- o2 "Lineup": new → lineup ready; lineup ready → in progress\n  requestSource: null');
       await vi.advanceTimersByTimeAsync(settleWait);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 6);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 5);
 
       // 사람이 만든 목표는 live로 나타나면 한 번 깨운다 — 일하는 이가 없어 settles로 이어질 수 없기 때문이다.
       // 단계 이동은 다음 턴 요약에 실리고, 개시 대기는 그룹이 대기 중이 되면 깨운다.
       // 범위 줄에는 목표 id·코드만 남는다.
-      const human = { id: "o3", theaterId: "t1", title: "Person's own", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [] as { id: string; text: string; done: boolean }[] } as unknown as Objective & { planning: boolean; missions: { id: string; text: string; done: boolean }[] };
+      const human = { id: "o3", theaterId: "t1", title: "Person's own", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [] as { id: string; text: string; done: boolean }[] } as unknown as Objective & { planning: boolean; missions: { id: string; text: string; done: boolean }[] };
       objectives.push(human);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
       expect(tokens().at(-1)).toEqual(["status:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain('"Person\'s own" new → not started');
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 6);
       human.planning = true;
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 6);
       human.planning = false;
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       human.missions.push({ id: "m1", text: "x", done: false });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o3" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 6);
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(tokens().at(-1)).toEqual(["settled:1"]);
       expect(sessions[0]!.sent.at(-1)).toContain('"Person\'s own"');
       const entries = h.store.transcriptRead("t1").entries;
       expect(entries.at(-1)).toMatchObject({ kind: "result" });
       expect(entries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["settled:1"] }, { kind: "wake-scope", woke: [{ id: "o3", codes: ["settled"] }] }]);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
       // 사령관이 만든 목표와 사령관이 고른 후속은 제가 한 일이라 나타나도 깨우지 않고, 선 대기는 같이 깨운다.
       // 끝난 채로 나타난 목표도 moves에만 싣는다.
-      const made = { id: "o4", theaterId: "t1", title: "Made by Commodore", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], addedBy: { kind: "commodore", commodoreId: "t1" } } as unknown as Objective;
-      const origin = { id: "o6", theaterId: "t1", title: "Followup origin", createdAt: Date.now(), done: { at: Date.now(), by: "human" }, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [{ by: { kind: "commodore", commodoreId: "t1" }, items: [{ candidateId: "c1" }] }], personHolds: [], missions: [{ id: "m1", text: "x", done: true }] } as unknown as Objective;
-      const chosen = { id: "o5", theaterId: "t1", title: "Chosen followup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, decisionRequest: null, decisionRequestRevision: 0, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], origin: { objectiveId: "o6", candidateId: "c1" } } as unknown as Objective;
+      const made = { id: "o4", theaterId: "t1", title: "Made by Commodore", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], addedBy: { kind: "commodore", commodoreId: "t1" } } as unknown as Objective;
+      const origin = { id: "o6", theaterId: "t1", title: "Followup origin", createdAt: Date.now(), done: { at: Date.now(), by: "human" }, removed: null, commenced: true, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [{ by: { kind: "commodore", commodoreId: "t1" }, items: [{ candidateId: "c1" }] }], personHolds: [], missions: [{ id: "m1", text: "x", done: true }] } as unknown as Objective;
+      const chosen = { id: "o5", theaterId: "t1", title: "Chosen followup", createdAt: Date.now(), done: null, removed: null, commenced: false, planning: false, members: [], awaitingReview: false, awaitingHandoff: false, criteriaProposals: [], followups: [], followupBatches: [], personHolds: [], missions: [{ id: "m1", text: "x", done: false }], origin: { objectiveId: "o6", candidateId: "c1" } } as unknown as Objective;
       objectives.push(made, chosen, origin);
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o4" });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o5" });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o6" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 7);
       await vi.advanceTimersByTimeAsync(settleWait);
       expect(tokens().at(-1)).toEqual(["settled:2"]);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 9);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
       const secondEntries = h.store.transcriptRead("t1").entries;
       expect(secondEntries.slice(-4, -2)).toMatchObject([{ kind: "wake", reasons: ["settled:2"] }, { kind: "wake-scope", woke: [{ id: "o4", codes: ["settled"] }, { id: "o5", codes: ["settled"] }] }]);
       Object.assign(made, { done: { at: Date.now(), by: "human" } });
@@ -3333,7 +3329,7 @@ describe("commodore supervisor", () => {
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o4" });
       for (const listener of boardListeners) listener({ op: "upsert", commodoreId: "t1", objectiveId: "o5" });
       await vi.advanceTimersByTimeAsync(COALESCE_MS + 10);
-      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 9);
+      expect(sessions[0]!.sent).toHaveLength(turnsBeforeBoard + 8);
       Object.assign(objectives[0]!, { awaitingReview: false, personHolds: [] });
       (objectives[1] as unknown as { missions: { done: boolean }[] }).missions[0]!.done = true;
       commanderActivity.delete("o2");

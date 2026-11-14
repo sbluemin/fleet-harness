@@ -297,16 +297,14 @@ export function clusterRowSummary(item: SideBarRowItem, locale: ConsoleLocale, t
         ? t("sidebar.row.glyph.done")
         : objectiveRecordMarkLabel(state);
   // 제목 아래에는 진척 게이지·분모·상태 문구를 한 줄로 둔다.
-  // 사람의 차례가 된 까닭은 접근 이름에 남기고, 보이는 줄은 결정 상태와 질문 수를 말한다.
-  const decisionNote = row.decisionRequestedAt !== undefined && row.decisionNote ? resolveLocalizedText(row.decisionNote, locale) : "";
-  // 맡은 이가 처리 중인 동안(`delegated`)은 그 상태 문구가 미리보기 자리를 차지하고 명도 물결로 흐른다 — 미리보기가 가려지는 것은 알고 고른 비용이다.
-  const handlingStatus = row.decisionRequestedAt === undefined && row.delegated ? resolveLocalizedText(row.delegated.status, locale) : "";
-  const conversationLine = handlingStatus || (row.decisionRequestedAt !== undefined
-    ? `${t("commanderTab.status.awaiting")}${row.decisionQuestions ? ` ${row.decisionQuestions}` : ""}`
+  // 사람의 차례가 된 까닭은 접근 이름에 남기고, 보이는 줄은 사람의 차례를 말한다.
+  const personNote = row.personTurnAt !== undefined && row.personNote ? resolveLocalizedText(row.personNote, locale) : "";
+  const conversationLine = (row.personTurnAt !== undefined
+    ? t("commanderTab.status.awaiting")
     : state === "review" ? t("commanderTab.status.review")
       : state === "running" ? conversationActivityPhrase(t, activity)
       : state in CONVERSATION_ROW_PHRASE ? t(CONVERSATION_ROW_PHRASE[state as keyof typeof CONVERSATION_ROW_PHRASE]) : label);
-  return { state, label, decisionNote, handlingStatus, conversationLine };
+  return { state, label, personNote, conversationLine };
 }
 
 export function SideBarClusterRow({ item, onFocus, onRenameBegin, selected, onContextMenu, settled = false, popups, rowGlyphs, presentation }: SideBarClusterRowProps) {
@@ -320,7 +318,7 @@ export function SideBarClusterRow({ item, onFocus, onRenameBegin, selected, onCo
   const toolUseLabel = toolUse ? rowToolUseLabel(item, toolUse, t) : null;
   const localActivity = useClusterRowActivity(item, presentation !== undefined);
   const activity = presentation ? presentation.activity : localActivity;
-  const { state, label, decisionNote, handlingStatus, conversationLine } = clusterRowSummary(item, locale, t, activity, presentation?.state);
+  const { state, label, personNote, conversationLine } = clusterRowSummary(item, locale, t, activity, presentation?.state);
   const active = selected;
   // 이름 변경 — 칩과 같은 인라인 편집이다(F2·메뉴·제목 더블클릭). 제목은 플러그인의 것이라 확정은 `row.rename` 이 지고, 선언하지 않은 줄은 편집을 열지 않는다.
   const renameRow = row.rename;
@@ -352,10 +350,7 @@ export function SideBarClusterRow({ item, onFocus, onRenameBegin, selected, onCo
     />
   );
   const meta: { readonly key: string; readonly text: string; readonly tone?: "req" | "late" | "from" | "accent" | "warn"; readonly prov?: true }[] = [];
-  // 결정 수 — 사람이 답할 요청만 대기 신호로 칠한다. 맡은 이가 다루는 요청은 같은 자리에 무채색으로 선다.
-  if (row.decisionRequestedAt !== undefined && row.decisionQuestions !== undefined) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.decisionQuestions }), tone: "req" });
-  else if (row.decisionRequestedAt === undefined && row.delegated) meta.push({ key: "req", text: t("sidebar.row.decisions", { n: row.delegated.questions }) }, { key: "handling", text: handlingStatus });
-  if (decisionNote) meta.push({ key: "req-note", text: decisionNote });
+  if (personNote) meta.push({ key: "req-note", text: personNote });
   if (row.progress && row.progress.total > 0) meta.push({ key: "progress", text: `${row.progress.done}/${row.progress.total}` });
   if (row.due) meta.push({ key: "due", text: formatDue(row.due.date, locale), ...(row.due.overdue ? { tone: "late" as const } : {}) });
   const doneLabel = clusterRowDoneLabel(row, locale);
@@ -430,7 +425,7 @@ export function SideBarClusterRow({ item, onFocus, onRenameBegin, selected, onCo
         </button>
       ) : popups ? null : <ClusterRowProgress progress={progress} />}
       <span className="side-bar-cluster-row-swap" aria-hidden="true">
-        <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.decisionRequestedAt !== undefined ? "awaiting" : state}`, handlingStatus ? "is-handling" : ""].filter(Boolean).join(" ")}>{conversationLine}</span>
+        <span className={["side-bar-chip-preview side-bar-cluster-row-preview", `is-${row.personTurnAt !== undefined ? "awaiting" : state}`].filter(Boolean).join(" ")}>{conversationLine}</span>
         <RowToolUse tool={toolUse?.tool ?? null} label={toolUseLabel} />
       </span>
     </span>
@@ -582,7 +577,7 @@ export function ClusterRowProgress({ progress }: { readonly progress: ObjectiveC
 
 /**
  * 줄 앞 표식 — 지휘관 아바타와, 지금 일하는(진행·부름·안 본 답) 구성원 미니 아바타 최대 셋. 지휘관의 얼굴은 자기 상태를 말하고
- * (플러그인 글리프·결정 요청이 있으면 그것), 미니가 누가 함께 일하는지 말한다. 접근성 이름은 줄의 가장 급한 상태 하나다.
+ * (플러그인 글리프·사람 차례이 있으면 그것), 미니가 누가 함께 일하는지 말한다. 접근성 이름은 줄의 가장 급한 상태 하나다.
  */
 export function ClusterRowAvatar({ item, rowState, label, decorative = false, size: full = 30 }: {
   readonly item: SideBarRowItem;
@@ -597,7 +592,7 @@ export function ClusterRowAvatar({ item, rowState, label, decorative = false, si
   const commanderState: MongleState = mongleStateOfMark(anchor ? anchor.mark ?? anchor.status : row.glyph ? undefined : rowState as ObjectiveMarkVisual, {
     session: row.glyph !== "fresh",
     awaitingReview: row.glyph === "review",
-    decisionRequest: row.decisionRequestedAt !== undefined,
+    personTurn: row.personTurnAt !== undefined,
     workDone: row.glyph === "done",
   });
   // 미니는 그 줄 지휘관의 실제 구성원만 — `fold` 에는 뿌리(지휘관) 자신이 함께 들 수 있고 구성원은 사이드바 목록에 없을 수 있으므로,

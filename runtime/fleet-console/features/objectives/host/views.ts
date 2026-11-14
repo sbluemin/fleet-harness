@@ -164,13 +164,8 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
       followupBatches: objective.followupBatches.map((batch) => ({ id: batch.id, by: batch.by ?? "human", at: new Date(batch.at).toISOString(), items: batch.items.map((entry) => ({ candidateId: entry.candidateId, title: entry.snapshot.title, state: entry.state, ...withoutEmpty({ objectiveId: entry.objectiveId, error: entry.error }) })) })),
       // 이 목표가 후속으로 태어났다면 — 원본과 발견 당시의 근거.
       origin: objective.origin,
-      // 지금의 결정 요청 — 철회에 쓰는 id 와 지휘관이 낸 질문. 선택지 id 는 사람의 화면이 쓰는 값이다.
-      decisionRequest: objective.decisionRequest ? { id: objective.decisionRequest.id, questions: objective.decisionRequest.questions.map((question) => ({ text: question.text,
-        ...withoutEmpty({ header: question.header, options: question.options.map((option) => option.label), multiSelect: question.multiSelect, missionId: question.missionId, memberId: question.memberId }) })) } : null,
     }),
-    decisionRequestRevision: objective.decisionRequestRevision,
-    ...(objective.decisionDelivery ? { decisionDelivering: true } : {}),
-    // 결정 — 사람이 보낸 답. 질문과 고른 선택지의 이름, 직접 쓴 말, 선택지를 모두 버린 내 의견 표시만 싣는다.
+    // 결정 — 사령관이 기록한 결정과 과거 사람 결정. 질문과 고른 선택지의 이름, 직접 쓴 말, 선택지를 모두 버린 내 의견 표시만 싣는다.
     // 「결정 안 함」으로 닫힌 요청의 결정은 declined 로 싣는다(고른 것·쓴 말 없이).
     consultations: objective.consultations.map((entry) => ({
       id: entry.id, question: entry.question, at: new Date(entry.at).toISOString(), by: entry.by,
@@ -180,7 +175,7 @@ export function createBoardViews(ctx: ObjectivesFeatureDeps, store: ObjectiveSto
         : { kind: entry.reply.kind, at: new Date(entry.reply.at).toISOString(), by: entry.reply.by }) : null,
       ...(entry.delivery ? { delivery: entry.delivery } : {}),
     })),
-    ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ question: decision.question.text, by: decision.by ?? "human",
+    ...withoutEmpty({ decisions: objective.decisions.map((decision) => ({ id: decision.id, question: decision.question.text, by: decision.by ?? "human",
       ...withoutEmpty({
         header: decision.question.header,
         selected: decision.answer.selectedOptionIds.flatMap((id) => decision.question.options.filter((option) => option.id === id).map((option) => option.label)),

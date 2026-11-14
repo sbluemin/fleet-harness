@@ -1,11 +1,11 @@
 import { openObjectivePopup } from "./objectives-panel.js";
 import { objectiveOpenUIPort } from "./openui-ports.js";
-import type { ConversationConsultReply, ConversationDecision, ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
+import type { ConversationConsultReply, ConversationHold, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
 import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import { livePersonHold } from "../shared/board-state.js";
-import { MAX_DECISION_ANSWER_INPUT, MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
-import { answeringText, commodoreAliasOf, decisionInCommodoreConversation, decisionTurn, followupInCommodoreConversation, openCommodoreConversation } from "./board-commodore.js";
+import { MAX_OBJECTIVE_ACTIONS, type ConsultationDeliveryState, type Objective, type ObjectiveAction, type ObjectiveActionKind, type ObjectiveMember } from "../shared/types.js";
+import { commodoreAliasOf, followupInCommodoreConversation, openCommodoreConversation } from "./board-commodore.js";
 import { getT, objectivesEn, type ObjectiveMessageKey } from "./i18n/index.js";
 import { returnPersonHold } from "./objectives-state.js";
 import { commanderLaunchShown, localized, memberLaunched, memberLaunchShown, memberNotes, memberStatus, type LaunchShown } from "./launch-control.js";
@@ -18,9 +18,8 @@ export interface ConversationCrew {
 
 /**
  * Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. 보드 사실의 글은 보드 행과 같은 함수가 같은 값으로 짓는다.
- * `commodoreActive` — 이 Theater 의 자율 운영이 실제로 도는가. 결정 카드의 차례(사령관이 답하는 중·넘긴 이유)를 정한다.
  */
-export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, open: () => void, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew, commodoreActive = false): ObjectiveClusterConversation {
+export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew): ObjectiveClusterConversation {
   const alias = commodoreAliasOf(objective.commodoreId);
   const members: ConversationMember[] = objective.members.map((member, index) => ({ kind: "member", objectiveId: member.id, name: member.role, mark: { number: index + 1, tone: toneAt(index) }, ...(crew ? { profile: memberProfile(objective, member, crew) } : {}) }));
   const events: GroupTimelineEntry[] = (objective.memberHistory ?? []).map((entry) => ({
@@ -63,8 +62,9 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
       continue;
     }
     const answer = { ...(decision.question.header ? { header: decision.question.header } : {}), question: decision.question.text, answer: [...labels, ...(decision.answer.text ? [decision.answer.text] : [])].join(", "), ...(decision.declined === true ? { declined: true as const } : {}) };
-    const entry = answered.get(decision.requestId);
-    answered.set(decision.requestId, entry ? { ...entry, answers: [...entry.answers, answer] } : { kind: "decision-answer", id: `decision:${objective.id}:${decision.requestId}`, at: decision.at, answers: [answer] });
+    const key = decision.requestId ?? decision.id;
+    const entry = answered.get(key);
+    answered.set(key, entry ? { ...entry, answers: [...entry.answers, answer] } : { kind: "decision-answer", id: `decision:${objective.id}:${key}`, at: decision.updatedAt ?? decision.at, answers: [answer] });
   }
   events.push(...answered.values());
   events.push(...consultationEvents(objective, speaker));
@@ -74,29 +74,7 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
     if (entry && entry.at !== null) openRecord(entry.at);
   } : undefined;
-  return { objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, commodoreAlias: alias, holds: conversationHolds(objective), members, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}), decision: decisionInCommodoreConversation(objective) ? null : objectiveDecision(objective, open, actions, commodoreActive) };
-}
-
-/** 두 대화 표면이 같은 요청·응답 경로를 쓴다. 표시 위치만 바꾸며 질문이나 결정을 복제하지 않는다. */
-export function objectiveDecision(objective: Objective, open?: () => void, actions?: GroupConversationActions, commodoreActive = false): ConversationDecision | null {
-  const request = !objective.done && !objective.removed ? objective.decisionRequest : null;
-  const handedHold = request ? livePersonHold(objective, "decision") : null;
-  const handler = request && decisionTurn(objective, commodoreActive) === "commodore";
-  const alias = commodoreAliasOf(objective.commodoreId);
-  return request ? {
-    id: request.id, title: request.questions[0]?.text ?? objective.title, createdAt: request.createdAt,
-    questions: request.questions.map((question) => ({ id: question.id, ...(question.header ? { header: question.header } : {}), text: question.text, multiSelect: question.multiSelect, options: question.options })),
-    answerMaxLength: MAX_DECISION_ANSWER_INPUT, open,
-    ...(actions ? { answer: (answers) => actions.answerDecision(request.id, answers) } : {}),
-    // 「결정 안 함」 닫기는 보드 결정 요청에만 단다 — 사령관 질문 카드(같은 DecisionCard를 쓰는 다른 표면)에는 서지 않는다.
-    ...(actions ? { decline: { label: localized((t) => t("objectives.decision.decline")), run: () => actions.declineDecision(request.id) } } : {}),
-    ...(handler ? { handler: localized((t) => answeringText(alias, t)) } : {}),
-    ...(handedHold ? { handed: {
-      label: localized((t) => t("objectives.decision.handed")), reason: handedHold.reason,
-      giveBack: { label: localized((t) => t("objectives.decision.giveBack")), run: () => returnPersonHold(objective.id, "decision") },
-    } } : {}),
-    route: localized((t) => t(handedHold ? "objectives.decision.routeHanded" : "objectives.decision.route")),
-  } : null;
+  return { objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, commodoreAlias: alias, holds: conversationHolds(objective), members, decision: null, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}) };
 }
 
 /**
@@ -142,17 +120,17 @@ function boardAct(kind: string) {
   });
 }
 
-/** 대화에 세울 넘김 대상. 결정과 후속 후보는 답을 복제하지 않고 사령관 대화로 가는 안내만 세운다. */
-const HOLD_TARGETS = ["decision", "criteria", "review", "followup"] as const;
+/** 대화에 세울 넘김 대상. 후속 후보는 답을 복제하지 않고 사령관 대화로 가는 안내만 세운다. */
+const HOLD_TARGETS = ["criteria", "review", "followup"] as const;
 
 function conversationHolds(objective: Objective): readonly ConversationHold[] {
   return HOLD_TARGETS.flatMap((target): ConversationHold[] => {
     const hold = livePersonHold(objective, target);
     if (!hold) return [];
-    if (target === "decision" || target === "followup") return (target === "decision" ? decisionInCommodoreConversation(objective) : followupInCommodoreConversation(objective)) ? [{
+    if (target === "followup") return followupInCommodoreConversation(objective) ? [{
       id: `hold:${objective.id}:${target}:${hold.at}`,
       notice: true,
-      title: localized((t) => t(target === "decision" ? "objectives.decision.handedNotice" : "objectives.followup.handedNotice")),
+      title: localized((t) => t("objectives.followup.handedNotice")),
       createdAt: hold.at,
       handed: { label: localized((t) => t("objectives.decision.handed")), reason: hold.reason },
       reveal: { label: localized((t) => t("objectives.decision.openCommodore")), run: (options) => { openCommodoreConversation(objective.commodoreId, options?.mobile ? { mobile: true, tab: "log" } : undefined); } },

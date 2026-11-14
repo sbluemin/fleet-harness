@@ -338,8 +338,7 @@ title: input.title});
     return { store: reloaded, launch: relaunched };
   };
   grouped.push((event) => launch.objectiveRecordGrouped(event));
-  // 결정 요청은 기본으로 기다리지 않는다 — 기다림은 그 계약을 다루는 테스트가 따로 켠다.
-  const tools = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 0 });
+  const tools = createObjectiveMcpTools(ctx, store, launch);
   // fleet-objectives 는 objectiveId 입력을 받지 않는다. 호출자가 목표를 고르므로, 옛 인자로 남은 키는 도구에 넘기지 않는다.
   const call = async (name: string, args: Record<string, unknown>, objectiveId?: string) => await tools.find((tool) => tool.name === name)!.execute(Object.fromEntries(Object.entries(args).filter(([key]) => key !== "objectiveId")), { cwd: dir, ...(objectiveId ? { caller: { kind: "objectiveRecord" as const, objectiveId } } : {}) }) as { isError: boolean; structuredContent: Record<string, unknown> };
   const [consoleTool, consoleDetail] = createObjectiveConsoleTools(ctx, store, launch) as [ConsoleMcpTool, ConsoleMcpTool];
@@ -1625,8 +1624,8 @@ describe("Objectives contract", () => {
     expect(await commodoreSearch("c2")).toEqual({ query: "pelican", total: 0, hits: [], nextCursor: null });
   });
 
-  it("keeps the person's answers to a decision request as decisions only once delivered, and clears a request the board no longer supports without recording one", async () => {
-    const { ctx, store, call, launch, route, sent, activity, hostFault, objectiveRecordsHost, objectivesDir } = harness(() => "http://console.invalid");
+  it("records and updates board decisions without a decision request, and keeps legacy decision files readable", async () => {
+    const { ctx, store, call, launch, objectiveRecordsHost, objectivesDir, workspace } = harness(() => "http://console.invalid");
     stubEnabledModels();
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Ask", groupId: null, missions: [{ text: "ship" }] });
     await launch.requestPlan(objective.id);
@@ -1635,135 +1634,44 @@ describe("Objectives contract", () => {
     store.setPlanning(commander, false);
     const member = store.find(commander)!.members[0]!.id;
     const missionId = store.find(commander)!.missions[0]!.id;
-    const questions = [
-      { header: "Publishing", text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }], missionId, memberId: member },
-      { header: "Notes", text: "Anything else?", options: [] },
-    ];
-    // 요청은 지휘관만 올린다. 늦은 revision 은 새 보드를 덮지 못한다.
-    const first = await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, commander);
-    expect(first.isError).toBe(false);
-    expect((await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, commander)).structuredContent.error).toBe("decision_request_changed");
-    // 같은 모델을 다시 고르는 것은 보드 편집이 아니다 — 요청과 편집 기록을 그대로 둔다.
-    const beforeReselect = store.find(commander)!;
-    expect((await route("member/patch", { objectiveId: commander, memberId: member, patch: { launch: SONNET } })).status).toBe(200);
-    expect(store.find(commander)!.decisionRequest).toEqual(beforeReselect.decisionRequest);
-    expect(store.find(commander)!.actionCounts?.edit).toBe(beforeReselect.actionCounts?.edit);
-    // 실제 역할 설명 변경은 옛 보드에 대한 요청을 정리하고, 결정은 남기지 않는다.
-    expect((await route("member/patch", { objectiveId: commander, memberId: member, patch: { brief: "build and document" } })).status).toBe(200);
-    expect(store.find(commander)).toMatchObject({ decisionRequest: null, decisions: [] });
-    await call("muster", { objectiveId: commander }, commander);
-    expect((await call("request_decision", { objectiveId: commander, expectedRevision: 0, questions }, member)).structuredContent.error).toBe("not_commander");
-    // 지휘관은 다시 읽기 전까지 새 요청을 올리지 못한다.
-    await route("mission/add", { objectiveId: commander, mission: { text: "docs" } });
-    expect(store.find(commander)).toMatchObject({ decisionRequest: null, decisions: [] });
-    const docsId = store.find(commander)!.missions.find(mission => mission.text === "docs")!.id;
-    const link = { objectiveId: commander, from: missionId, to: docsId, linked: true };
-    await route("edge/toggle", link);
-    const revision = store.find(commander)!.decisionRequestRevision;
-    expect((await call("request_decision", { objectiveId: commander, expectedRevision: revision, questions }, commander)).structuredContent.error).toBe("board_changed");
-    await call("read", { objectiveId: commander }, commander);
-    const requested = (await call("request_decision", { objectiveId: commander, expectedRevision: revision, questions }, commander)).structuredContent;
-    // 쓰기 응답은 새 요청 id만 — 질문·선택지 id는 사람이 보는 보드에서 읽는다.
-    expect(requested).not.toHaveProperty("objective");
-    const placed = store.find(commander)!.decisionRequest!;
-    expect(placed.id).toBe(requested.requestId);
-    // 연결 뒤 새 질문이 선 동안 늦게 도착한 중복 잇기는 보드 편집이 아니다. 새 요청을 지우지 않는다.
-    expect((await route("edge/toggle", link)).value.linked).toBe(true);
-    expect(store.find(commander)!.decisionRequest).toEqual(placed);
-    // 사람이 직접 쓰는 답은 150자까지 — 넘는 답은 요청 형식 오류로 받지 않는다.
-    const written = "n".repeat(150);
-    const answers = [{ questionId: placed.questions[0]!.id, selectedOptionIds: [placed.questions[0]!.options[0]!.id], text: "then stop" }, { questionId: placed.questions[1]!.id, selectedOptionIds: [], text: written }];
-    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [answers[0], { ...answers[1]!, text: `${written}n` }] })).status).toBe(400);
-    // 빈 답·빠진 질문은 받지 않는다. 전달이 실패하면 요청이 남고 결정은 쌓이지 않는다.
-    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [answers[0]] })).value.error).toBe("invalid_answers");
-    hostFault.sendError = "capability_unavailable";
-    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers })).value.error).toBe("decision_delivery_failed");
-    expect(store.find(commander)).toMatchObject({ decisionRequest: { id: placed.id }, decisionDelivery: null, decisions: [] });
-    // 기준 제안이 남아도(스티어링·개시는 거절되는 상태) 답은 휴면 지휘관을 깨워 닿고, 제안은 사람의 판단으로 남는다.
-    store.setCriteriaOpen(commander, true);
-    await call("read", { objectiveId: commander }, commander);
-    // 완료된 임무는 계획이 남긴다 — 질문이 가리키는 임무가 보드에 있는 동안 요청은 그대로다.
-    await call("complete_mission", { objectiveId: commander, missionId, summary: ["committed"] }, commander);
-    await call("plan", { objectiveId: commander, missions: [{ title: "later", text: "later" }], criteria: [{ text: "documented" }] }, commander);
-    expect(store.find(commander)).toMatchObject({ decisionRequest: { id: placed.id }, criteriaProposals: [{ text: "documented" }] });
-    activity.set(commander, "dormant");
-    const delivered = await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers });
-    expect(delivered.value).toMatchObject({ objective: { id: commander } });
-    expect(sent.at(-1)).toMatchObject({ objectiveId: commander, text: expect.stringContaining("then stop") });
-    expect(activity.get(commander)).toBe("idle");
-    const answered = store.find(commander)!;
-    expect(answered.decisionRequest).toBeNull();
-    expect(answered.criteriaProposals).toHaveLength(1);
-    expect(answered.decisions).toMatchObject([
-      { requestId: placed.id, question: { header: "Publishing", text: "How far should publishing go?", options: [{ label: "Open the PR" }, { label: "Merge" }] }, answer: { text: "then stop" }, missionId, memberId: member },
-      { requestId: placed.id, answer: { selectedOptionIds: [], text: written } },
-    ]);
-    // 같은 답의 재전송은 다시 보내지도 쌓지도 않는다. 다른 답은 남은 결정을 덮지 않는다.
-    const sends = sent.length;
-    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers })).status).toBe(200);
-    expect((await route("decision/answer", { objectiveId: commander, requestId: placed.id, answers: [{ ...answers[0]!, text: "merge" }, answers[1]] })).value.error).toBe("decision_already_submitted");
-    expect(sent.length).toBe(sends);
-    // 구성원은 사람의 답을 보드에서 읽고, 결정은 다시 읽어 들인 저장에도 그대로다.
-    expect((await call("read", { objectiveId: commander }, member)).structuredContent.objective).toMatchObject({ decisions: [{ header: "Publishing", question: "How far should publishing go?", text: "then stop", missionId, memberId: member }, { text: written }] });
-    const reloaded = createObjectiveStore({ documentContext, dirOf: (commodoreId) => (commodoreId === "c1" ? objectivesDir : null), objectiveRecords: objectiveRecordsHost, emit: () => {} });
-    expect(reloaded.find(commander)!.decisions).toHaveLength(2);
-    // 기다리는 요청 — 그 안에 온 답은 도구 응답으로 돌아가고 결정으로 남는다. 프롬프트는 보내지 않는다.
-    const waiting = createObjectiveMcpTools(ctx, store, launch, undefined, { decisionWaitMs: 60_000 }).find((tool) => tool.name === "request_decision")!;
-    const ask = (revision: number) => waiting.execute({ expectedRevision: revision, questions: [{ header: "Publish", text: "Publish?", options: [{ label: "Yes" }, { label: "No" }] }] }, { cwd: "/", caller: { kind: "objectiveRecord", objectiveId: commander } }) as Promise<{ structuredContent: Record<string, unknown> }>;
-    const pendingAsk = ask(store.find(commander)!.decisionRequestRevision);
-    await vi.waitFor(() => { expect(store.find(commander)!.decisionRequest).not.toBeNull(); });
-    const live = store.find(commander)!.decisionRequest!;
-    const beforeAnswer = sent.length;
-    const actor = { kind: "commodore", commodoreId: "c1" } as const;
-    await launch.answerDecision(commander, { requestId: live.id, answers: [{ questionId: live.questions[0]!.id, selectedOptionIds: [live.questions[0]!.options[0]!.id], text: "" }] }, { actor });
-    expect((await pendingAsk).structuredContent).toMatchObject({ answered: true, answers: [{ question: "Publish?", selected: ["Yes"], by: actor }] });
-    const afterAnswer = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => {} });
-    expect(afterAnswer.find(commander)!.decisions.at(-1)).toMatchObject({ by: actor });
-    expect(sent.length).toBe(beforeAnswer);
-    expect(store.find(commander)).toMatchObject({ decisionRequest: null });
-    expect(store.find(commander)!.decisions.at(-1)).toMatchObject({ requestId: live.id });
-    // 「결정 안 함」 닫기 — 기다리던 지휘관에게는 도구 응답으로 닫힘이 돌아가고, 결정에는 질문마다 declined 표시가 남는다.
-    const askDecline = ask(store.find(commander)!.decisionRequestRevision);
-    await vi.waitFor(() => { expect(store.find(commander)!.decisionRequest).not.toBeNull(); });
-    const closing = store.find(commander)!.decisionRequest!;
-    await launch.declineDecision(commander, { requestId: closing.id }, { actor });
-    expect((await askDecline).structuredContent).toMatchObject({ answered: true, declined: true, answers: [] });
-    expect(store.find(commander)).toMatchObject({ decisionRequest: null });
-    expect(store.find(commander)!.decisions.filter((decision) => decision.requestId === closing.id)).toMatchObject(
-      closing.questions.map((question) => ({ declined: true, answer: { selectedOptionIds: [], text: "" } })),
-    );
-    // 닫힌 요청의 닫기 재전송은 그 결과를, 닫힌 요청에 답을 덧씌우거나 답으로 남은 요청을 닫지는 못한다.
-    const sendsAfterDecline = sent.length;
-    expect((await route("decision/decline", { objectiveId: commander, requestId: closing.id })).status).toBe(200);
-    expect(sent.length).toBe(sendsAfterDecline);
-    const declineQuestions = closing.questions.map((question) => ({ questionId: question.id, selectedOptionIds: question.options.slice(0, 1).map((option) => option.id), text: "" }));
-    expect((await route("decision/answer", { objectiveId: commander, requestId: closing.id, answers: declineQuestions })).value.error).toBe("decision_already_submitted");
-    expect((await route("decision/decline", { objectiveId: commander, requestId: placed.id })).value.error).toBe("decision_already_submitted");
-    // 사람이 직접 닫은 요청은 지휘관에게 「결정 안 함」 전달문으로 간다.
-    const reopened = await call("request_decision", { objectiveId: commander, expectedRevision: store.find(commander)!.decisionRequestRevision, questions }, commander);
-    expect(reopened.isError).toBe(false);
-    const reopenedRequest = store.find(commander)!.decisionRequest!;
-    expect((await route("decision/decline", { objectiveId: commander, requestId: reopenedRequest.id, language: "ko" })).status).toBe(200);
-    expect(sent.at(-1)).toMatchObject({ text: expect.stringContaining("결정 안 함") });
-    expect(store.find(commander)).toMatchObject({ decisionRequest: null, decisions: expect.arrayContaining([expect.objectContaining({ requestId: reopenedRequest.id, declined: true })]) });
-    // 보드 읽기는 닫힌 결정을 declined 로 보인다.
-    expect((await call("read", { objectiveId: commander }, member)).structuredContent.objective).toMatchObject({ decisions: expect.arrayContaining([expect.objectContaining({ declined: true })]) });
-    // 입력 한도를 줄여도 이전 버전이 저장한 긴 요청·답·사령관 이유, 머리말이 없던 때의 질문 때문에 목표 전체가 사라지지 않는다.
+    expect(createObjectiveMcpTools(ctx, store, launch).some((tool) => tool.name === "request_decision" || tool.name === "withdraw_decision_request")).toBe(false);
+    const board = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
+    const rejectedTopic = await board.execute({ action: "decision_update", objectiveId: commander, topic: "Alias removed", answer: "No" }, { cwd: workspace }) as { isError?: boolean; structuredContent: Record<string, unknown> };
+    expect(rejectedTopic.isError).toBe(true);
+    const added = await board.execute({ action: "decision_update", objectiveId: commander, header: "Publishing", question: "How far should publishing go?", answer: "Open the PR", why: "The brief stops at a PR", missionId, memberId: member }, { cwd: workspace }) as { isError?: boolean; structuredContent: Record<string, unknown> };
+    expect(added.structuredContent).toMatchObject({ ok: true, decisionId: expect.any(String) });
+    const decisionId = added.structuredContent.decisionId as string;
+    const updated = await board.execute({ action: "decision_update", objectiveId: commander, decisionId, question: "How far should publishing go?", answer: "Open the PR only" }, { cwd: workspace }) as { structuredContent: Record<string, unknown> };
+    expect(updated.structuredContent).toMatchObject({ ok: true, decisionId });
+    const recorded = store.find(commander)!;
+    expect(recorded.decisions[0]).toMatchObject({ id: decisionId, question: { header: "Publishing", text: "How far should publishing go?", multiSelect: false }, answer: { text: "Open the PR only" }, missionId, memberId: member });
+    expect(recorded.decisions[0]?.requestId).toBeUndefined();
+    expect(recorded.actions?.some((action) => action.kind === "decision" && action.targetId === decisionId)).toBe(true);
+    expect(recorded.edited?.kinds).toContain("decision");
+    const read = await call("read", {}, commander);
+    expect(read.structuredContent).toMatchObject({ objective: { decisions: [expect.objectContaining({ id: decisionId, question: "How far should publishing go?", text: "Open the PR only" })] } });
+    expect(read.structuredContent).not.toHaveProperty("objective.decisionRequest");
+    expect(read.structuredContent).not.toHaveProperty("objective.decisionRequestRevision");
     const file = path.join(objectivesDir, commander, "objective.json");
     const legacy = JSON.parse(fs.readFileSync(file, "utf8"));
-    const { header: _header, ...headless } = placed.questions[0]!;
-    const legacyQuestion = { ...headless, text: "q".repeat(1000), options: placed.questions[0]!.options.map((option) => ({ ...option, label: "l".repeat(120), description: "d".repeat(300) })) };
-    legacy.decisionRequest = { ...placed, questions: [legacyQuestion] };
-    legacy.decisionDelivery = { requestId: placed.id, at: 1, answers: [{ questionId: legacyQuestion.id, selectedOptionIds: [], text: "a".repeat(2000) }], by: { ...actor, why: "w".repeat(100) } };
-    legacy.decisions[0].question = { text: legacyQuestion.text, options: legacyQuestion.options, multiSelect: legacyQuestion.multiSelect };
-    legacy.decisions[0].answer.text = "a".repeat(2000);
+    legacy.decisionRequest = { id: "legacy-request", createdAt: 1, questions: [{ id: "q1", text: "q".repeat(1000), options: [{ id: "o1", label: "l".repeat(120), description: "d".repeat(300) }], multiSelect: false }] };
+    legacy.decisionRequestRevision = 4;
+    legacy.decisionDelivery = { requestId: "legacy-request", at: 1, answers: [{ questionId: "q1", selectedOptionIds: [], text: "a".repeat(2000) }] };
+    legacy.decisions = [
+      { id: "legacy-decision", requestId: "legacy-request", questionId: "q1", at: 2, question: { text: "Keep the old answer", options: [], multiSelect: false }, answer: { selectedOptionIds: [], text: "a".repeat(2000) } },
+      { id: "legacy-declined", requestId: "legacy-request", questionId: "q2", at: 3, declined: true, question: { text: "Declined earlier", options: [], multiSelect: false }, answer: { selectedOptionIds: [], text: "" } },
+    ];
     fs.writeFileSync(file, JSON.stringify(legacy));
     const legacyStore = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => {} });
     const legacyReload = legacyStore.find(commander)!;
-    expect(legacyReload.decisionRequest).toEqual(legacy.decisionRequest);
-    expect(legacyReload.decisionDelivery).toEqual({ requestId: placed.id, at: 1, by: legacy.decisionDelivery.by });
-    expect(legacyStore.storedAnswers(commander, placed.id)).toEqual(legacy.decisionDelivery.answers);
-    expect(legacyReload.decisions).toEqual(legacy.decisions.map((row: { by: unknown }) => ({ ...row, by: typeof row.by === "object" ? { ...row.by, commodoreId: "c1" } : row.by })));
+    expect(legacyReload.decisions).toEqual([
+      expect.objectContaining({ id: "legacy-decision", requestId: "legacy-request", questionId: "q1", answer: { selectedOptionIds: [], text: "a".repeat(2000) } }),
+      expect.objectContaining({ id: "legacy-declined", requestId: "legacy-request", questionId: "q2", declined: true, answer: { selectedOptionIds: [], text: "" } }),
+    ]);
+    legacyStore.decisionUpdate(commander, { decisionId: "legacy-declined", answer: "Resolved after review", by: { kind: "commodore", commodoreId: "c1" } });
+    const updatedLegacy = legacyStore.find(commander)!.decisions[1]!;
+    expect(updatedLegacy.declined).toBeUndefined();
+    expect(updatedLegacy.answer.text).toBe("Resolved after review");
   });
 
   it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
@@ -2582,38 +2490,14 @@ describe("Objectives contract", () => {
     expect(await board({ action: "transcript", objectiveId: id, memberId, cursor: "0" })).toMatchObject({ session: { kind: "member", memberId }, latest: false, nextCursor: "7", entries: [{ text: `from ${memberId}` }] });
     const outsider = await consoleDetail.execute({ action: "transcript", objectiveId: id }, { cwd: workspace, caller: { kind: "objectiveRecord", objectiveId: "outsider" } }) as { structuredContent: Record<string, unknown> };
     expect(outsider.structuredContent).toMatchObject({ session: { kind: "commander" } });
-    const mine = await command("read", {}, id);
-    const revision = (mine.objective as { decisionRequestRevision: number }).decisionRequestRevision;
-    const continueQuestion = [{ header: "Backlog", text: "Continue?", options: [{ label: "Continue" }, { label: "Pause" }] }];
-    const asked = await command("request_decision", { expectedRevision: revision, questions: continueQuestion }, id);
-    // 답이 오지 않아 같은 질문을 다시 묻는다 — 요청은 지워지지도 새 id 로 바뀌지도 않고(reused), 그 id 로 낸 사람의 답이 그대로 받아들여진다.
-    expect(await command("request_decision", { expectedRevision: asked.decisionRequestRevision, questions: continueQuestion }, id)).toMatchObject({ requestId: asked.requestId, reused: true, decisionRequestRevision: asked.decisionRequestRevision });
-    // 답이 없는 요청이 있는 동안 다른 질문은 거절된다 — 먼저 거두고 다시 묻는다.
-    const otherQuestion = [{ header: "Backlog", text: "Pause now?", options: [{ label: "Pause" }, { label: "Later" }] }];
-    const pending = await call("request_decision", { objectiveId: id, expectedRevision: asked.decisionRequestRevision, questions: otherQuestion }, id);
-    expect(pending.isError).toBe(true);
-    expect(pending.structuredContent).toMatchObject({ error: "decision_pending", requestId: asked.requestId, hint: expect.stringContaining("decision_withdraw") });
-    expect(store.find(id)!.decisionRequest?.id).toBe(asked.requestId);
-    // 결정 요청이 사령관을 기다리면 지휘관이 일하는 중이어도 그 맥락을 읽는다.
     activity.set(id, "running");
-    expect(await board({ action: "transcript", objectiveId: id })).toMatchObject({ session: { kind: "commander" } });
+    expect(await refusal(commodore, { action: "transcript", objectiveId: id })).toBe("objective_working");
     activity.set(id, "idle");
-    const inbox = await board({ action: "list", view: "inbox" });
-    expect((inbox.objectives as readonly { id: string; decisionRequested: boolean }[]).find((row) => row.id === id)?.decisionRequested).toBe(true);
-    const request = JSON.parse((await board({ action: "read", objectiveId: id, section: "decisionRequest" })).text as string) as { id: string; questions: readonly { id: string; options: readonly { id: string }[] }[] };
-    expect(request.id).toBe(asked.requestId);
-    const answerOf = (extra: Record<string, unknown>) => ({ action: "answer", objectiveId: id, requestId: request.id, answers: [{ questionId: request.questions[0]!.id, selectedOptionIds: [request.questions[0]!.options[0]!.id], text: "Preserve the output", ...extra }] });
-    // 사람에게 넘긴 결정은 사령관이 답하지 못하고 요청도 그대로다 — inbox 는 그 이유를 사람 차례로 말한다. 넘기기는 사령관만 하고,
-    // 사람이 「사령관에게 돌려주기」로 되돌리면 사령관이 다시 답한다.
-    await board({ action: "hand_to_person", objectiveId: id, target: "decision", reason: "Product direction is the person's call" });
-    expect(await refusal(commodore, answerOf({}))).toBe("held_for_person");
-    expect(store.find(id)!.decisionRequest?.id).toBe(request.id);
-    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "person" }), personHolds: [expect.objectContaining({ target: "decision", requestId: request.id })] }));
-    expect(await refusal(consoleDetail, { action: "hand_to_person", objectiveId: id, target: "decision", reason: "x" }, "outsider")).toBe("permission_required");
-    expect((await route("person-hold/return", { objectiveId: id, target: "decision" })).status).toBe(200);
-    expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, awaits: expect.objectContaining({ decision: "commodore" }) }));
-    expect(await board(answerOf({}))).toMatchObject({ stored: { answers: [{ text: "Preserve the output" }] } });
-    expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ decisionRequest: null, decisions: [{ by: actor, text: "Preserve the output" }] });
+    const recorded = await board({ action: "decision_update", objectiveId: id, header: "Backlog", question: "Continue?", answer: "Preserve the output" });
+    expect(recorded).toMatchObject({ decisionId: expect.any(String) });
+    expect((await board({ action: "read", objectiveId: id })).objective).toMatchObject({ decisions: [expect.objectContaining({ id: recorded.decisionId, question: "Continue?", text: "Preserve the output", by: actor })] });
+    expect(await refusal(commodore, { action: "hand_to_person", objectiveId: id, target: "decision", reason: "Product direction is the person's call" })).toBe("invalid_arguments");
+    await command("read", {}, id);
     const evidenceRoot = (await command("evidence_dir", {}, id)).root as string;
     fs.writeFileSync(path.join(evidenceRoot, "proof.txt"), "Verified output\n");
     const sealed = await command("seal_evidence_from_path", { path: "proof.txt" }, id);
@@ -2703,8 +2587,6 @@ describe("Objectives contract", () => {
       for (const criterion of objective.criteria) store.criterionMet(objective.id, criterion.id, "Verified");
       store.handOff(objective.id, { by: "commander", retrospective });
       store.missionPatch(objective.id, objective.missions[0]!.id, { done: false });
-      store.decisionRequest(objective.id, { expectedRevision: store.find(objective.id)!.decisionRequestRevision,
-        questions: [{ header: "Backlog", text: "Continue the backlog?", options: [{ label: "Continue" }, { label: "Pause" }] }] });
     }
     type Page = { total: number; offset: number; nextOffset: number | null; objectives: { id: string; criteriaCount: number }[] };
     for (const args of [...[undefined, "all", "today", "due"].map((view) => ({ action: "list", ...(view ? { view } : {}) })),
@@ -2718,7 +2600,7 @@ describe("Objectives contract", () => {
         expect(Buffer.byteLength(result.content[0]!.text, "utf8")).toBeLessThanOrEqual(8_000);
         const page = result.structuredContent;
         expect(page.offset).toBe(offset);
-        expect(page.total).toBeGreaterThanOrEqual(123);
+        if (args.view !== "inbox") expect(page.total).toBeGreaterThanOrEqual(123);
         total = page.total;
         seen.push(...page.objectives.map((row) => row.id));
         if (page.nextOffset === null) break;
@@ -2731,7 +2613,7 @@ describe("Objectives contract", () => {
     }
     const summary = await board({ action: "read", objectiveId: largeId });
     expect(Buffer.byteLength(JSON.stringify(summary), "utf8")).toBeLessThanOrEqual(8_000);
-    expect(summary.objective).toMatchObject({ id: largeId, criteriaCount: 20, criteriaMet: 0, decisionRequested: true, failedMembers: 0 });
+    expect(summary.objective).toMatchObject({ id: largeId, criteriaCount: 20, criteriaMet: 0, failedMembers: 0 });
     const readSection = async (section: string) => {
       let joined = "";
       let offset = 0;
@@ -2757,8 +2639,8 @@ describe("Objectives contract", () => {
     expect(await readSection("brief")).toBe(largeBrief);
     expect(JSON.parse(await readSection("criteria"))).toMatchObject(store.find(largeId)!.criteria.map((criterion) => ({ id: criterion.id, text: criterion.text })));
     const original = (await command("read", {}, largeId)).objective as Record<string, unknown>;
-    expect(await readSection("objective")).toBe(JSON.stringify({ ...original, decisionRequest: store.find(largeId)!.decisionRequest }));
-    expect(JSON.parse(await readSection("decisionRequest"))).toEqual(store.find(largeId)!.decisionRequest);
+    expect(await readSection("objective")).toBe(JSON.stringify(original));
+    expect(await readSection("decisions")).toBe(JSON.stringify(store.find(largeId)!.decisions));
     const personLarge = (await route("objective/get", { objectiveId: largeId })).value as { objective: Objective };
     expect(personLarge.objective.note).toBe(largeBrief);
     expect(personLarge.objective.criteria).toEqual(store.find(largeId)!.criteria);
@@ -3511,16 +3393,16 @@ describe("Objectives contract", () => {
     const { store, launch, call, ctx, sent, savedObjective } = h;
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Consult", groupId: null, note: "brief", missions: [{ text: "keep the brief" }] });
     const missionId = store.find(objective.id)!.missions[0]!.id;
-    store.decisionRequest(objective.id, { expectedRevision: 0, questions: [{ header: "Keep", text: "Keep the brief?", options: [{ label: "Yes" }] }] });
+    const boardForDecision = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
+    await boardForDecision.execute({ action: "decision_update", objectiveId: objective.id, question: "Keep the brief?", answer: "Yes" }, { cwd: h.workspace });
     const before = store.find(objective.id)!;
     const asked = await call("consult_ask", { question: "What did the person already require?", missionId }, objective.id);
     expect(asked.isError).toBe(false);
     const consultId = asked.structuredContent.consultId as string;
     expect(store.find(objective.id)).toMatchObject({
-      decisionRequestRevision: before.decisionRequestRevision,
       consultations: [{ id: consultId, question: "What did the person already require?", missionId, by: "commander" }],
     });
-    expect(store.find(objective.id)!.decisionRequest?.id).toBe(before.decisionRequest!.id);
+    expect(store.find(objective.id)!.decisions.map((decision) => decision.id)).toEqual(before.decisions.map((decision) => decision.id));
     const member = store.memberAdd(objective.id, { role: "reader", launch: SONNET }, "human").members.at(-1)!;
     expect((await call("consult_ask", { question: "again" }, member.id)).structuredContent.error).toBe("not_participant");
     expect(createMemberMcpTools(ctx, store, launch).some((tool) => tool.name === "consult_ask")).toBe(false);
@@ -3536,13 +3418,12 @@ describe("Objectives contract", () => {
     const quiet = await call("consult_ask", { question: "Anything else?" }, objective.id);
     expect((await asRecord(board, { action: "consult_answer", objectiveId: objective.id, consultId: quiet.structuredContent.consultId })).structuredContent).toMatchObject({ reply: "no-additional-advice" });
     const kept = store.find(objective.id)!;
-    expect(kept.decisionRequest?.id).toBe(before.decisionRequest!.id);
+    expect(kept.decisions.map((decision) => decision.id)).toEqual(before.decisions.map((decision) => decision.id));
     expect(kept.personHolds).toEqual(before.personHolds);
     expect(JSON.stringify(kept.consultations)).not.toContain("noticeId");
     store.briefEdit(objective.id, "edited brief", [], "human");
     store.missionRemove(objective.id, missionId);
     const survived = store.find(objective.id)!;
-    expect(survived.decisionRequest).toBeNull();
     expect(survived.consultations.map((entry) => entry.id)).toEqual([consultId, quiet.structuredContent.consultId]);
     expect(survived.consultations[0]).toMatchObject({ missionId, reply: { kind: "advice", text: answer } });
     expect(survived.consultations[1]?.reply?.kind).toBe("no-additional-advice");
@@ -3553,7 +3434,7 @@ describe("Objectives contract", () => {
     expect(restarted.store.find(objective.id)!.consultations.map((entry) => entry.question)).toEqual(["What did the person already require?", "Anything else?"]);
     const read = await call("read", {}, objective.id);
     expect(JSON.stringify(read.structuredContent)).toContain(consultId);
-    expect(inboxReasons(restarted.store.find(objective.id)!).includes("decision")).toBe(false);
+    expect(JSON.stringify(inboxReasons(restarted.store.find(objective.id)!))).not.toContain("\"decision\"");
   });
 
   it("sends a consultation notice at most once and does not retry an uncertain attempt", async () => {
@@ -3572,7 +3453,7 @@ describe("Objectives contract", () => {
     activity.set(objective.id, "idle");
     await launch.deliverConsultations(objective.id);
     expect(sent.length).toBe(before + 1);
-    expect(sent.at(-1)?.text).toBe(`Your Commodore replied to consultation ${consultId}. Read the question, reply, and cited sources in objective_read. Decision requests and holds are unchanged.`);
+    expect(sent.at(-1)?.text).toBe(`Consultation ${consultId}: Read the reply, sources, and any updated decisions in objective_read.`);
     expect(store.find(objective.id)!.consultations[0]?.delivery).toBe("submitted");
     await launch.deliverConsultations(objective.id);
     expect(sent.length).toBe(before + 1);
@@ -3695,8 +3576,8 @@ describe("Objectives contract", () => {
     // 역할 서버 이름 — 별칭 `fleet-objectives` 는 배선에서 제거됐다.
     expect(FLEET_COMMANDER_MCP_SERVER).toBe("fleet-commander");
     expect(FLEET_MEMBER_MCP_SERVER).toBe("fleet-member");
-    // 지휘관은 22개 전부, 구성원은 6개만 받는다. 목록은 원천 상수와 같은 순서로 같다.
-    expect(FLEET_COMMANDER_TOOL_NAMES).toHaveLength(22);
+    // 지휘관은 20개 전부, 구성원은 6개만 받는다. 목록은 원천 상수와 같은 순서로 같다.
+    expect(FLEET_COMMANDER_TOOL_NAMES).toHaveLength(20);
     expect(FLEET_MEMBER_TOOL_NAMES).toHaveLength(6);
     expect(commander.map((tool) => tool.name)).toEqual([...FLEET_COMMANDER_TOOL_NAMES]);
     expect(member.map((tool) => tool.name)).toEqual([...FLEET_MEMBER_TOOL_NAMES]);
@@ -3712,7 +3593,7 @@ describe("Objectives contract", () => {
     }
     // 지휘관과 구성원은 서로 다른 기본 역할을 받는다.
     expect(commander.find((tool) => tool.name === "objective_mine")!.description).not.toBe(member.find((tool) => tool.name === "objective_mine")!.description);
-    // 지휘관 전용 16개는 구성원 서버에 실리지 않는다 — 수신 자체가 없어 거절이 생기지 않는다. message 는 역할마다 이름이 다르다.
+    // 지휘관 전용 14개는 구성원 서버에 실리지 않는다 — 수신 자체가 없어 거절이 생기지 않는다. message 는 역할마다 이름이 다르다.
     for (const tool of commander) {
       if (tool.name === "member_message" || ([...FLEET_MEMBER_TOOL_NAMES] as readonly string[]).includes(tool.name)) continue;
       expect(member.some((entry) => entry.name === tool.name)).toBe(false);

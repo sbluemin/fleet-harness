@@ -72,7 +72,6 @@ export function RemoteSidebarPopup({ console, objectiveId, machine, tab: initial
       {!objective ? <p role="status">{t("objectives.peek.loading")}</p> : tab === "goal" ? <>
         <section><h3>{t("objectives.objective.memo")}</h3><p className="objectives-remote-peek-prose">{objective.note}</p></section>
         <section><h3>{t("objectives.criteria.title")}</h3><ol>{objective.criteria.map((criterion) => <li key={criterion.id}>{criterion.met ? "✓" : "○"} {criterion.text}{criterion.met ? <p className="objectives-remote-peek-prose">{criterion.met}</p> : null}</li>)}</ol></section>
-        {objective.decisionRequest ? <section><h3>{t("objectives.ask.title")}</h3><ol>{objective.decisionRequest.questions.map((question) => <li key={question.id}><p className="objectives-remote-peek-prose">{question.text}</p><ul>{question.options.map((option) => <li key={option.id}><b>{option.label}</b>{option.description ? <p className="objectives-remote-peek-prose">{option.description}</p> : null}</li>)}</ul></li>)}</ol></section> : null}
         {objective.decisions.length ? <section><h3>{t("objectives.decisions.title")}</h3><ol>{objective.decisions.map((decision) => <li key={decision.id}>
           <p className="objectives-remote-peek-prose">{decision.question.text}</p>
           <ul>{decision.question.options.filter((option) => decision.answer.selectedOptionIds.includes(option.id)).map((option) => <li key={option.id}>{option.label}</li>)}</ul>

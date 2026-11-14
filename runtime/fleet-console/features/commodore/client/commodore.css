@@ -589,7 +589,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* '@' 멘션 덱만 패널 폭에 상한을 둔다 — 입력 왼쪽에 맞춰 내용 480px, 좁은 화면에서는 100%. */
 .fc-composer-deck.objectives-commodore-ref-list { left: 0; right: auto; width: var(--fc-mention-deck-width, 100%); z-index: 5; }
 .objectives-commodore-ref-sub { display: inline-flex; gap: 6px; color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.objectives-commodore-ref-sub .is-decision { color: var(--warn-ink); }
 .objectives-commodore-ref-sub .is-review { color: var(--aurora-ink); }
 /*
  * 보조가 없는 행(임무 없는 시작 전)은 이름이 보조 열까지 쓴다. 이름 열 폭은 보조가 있는 행이 정하므로 그 행들의 보조 자리는 그대로다.

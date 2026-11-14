@@ -29,14 +29,14 @@ const SETTLED_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["answered", "ret
 
 /** 보드 요약이 대기 이유를 부르는 말. */
 const REASON_WORDS: Record<InboxReason, string> = {
-  decision: "decision request", criteria: "criteria proposal", review: "awaiting review", followup: "open follow-up candidates",
+  criteria: "criteria proposal", review: "awaiting review", followup: "open follow-up candidates",
   "followup-failed": "failed follow-up creation", pending: "not commenced", planned: "lineup ready to commence", stalled: "stalled", "member-failed": "failed member turn",
 };
 /** 보드 요약에 싣는 목표 수의 상한 — 넘으면 수만 적는다. */
 const BRIEF_OBJECTIVES = 8;
 
 /** 보드 대기 상태의 코드 — 수는 턴 직전의 보드에서 다시 센다. */
-const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
+const BOARD_CODES: ReadonlySet<WakeCode> = new Set<WakeCode>(["criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"]);
 /** 구성원이 일해도 사령관이 풀어야 나아가는 항목 — 열린 목표의 후속 후보는 검토와 함께 선다. 구성원 실패는 지휘관이 먼저 받는다. */
 const BLOCKING_REASONS: ReadonlySet<InboxReason> = new Set<InboxReason>(["criteria", "planned", "review", "followup"]);
 
@@ -125,12 +125,7 @@ export function createCommodoreBoardWatch(deps: CommodoreBoardWatchDeps, commodo
       const [head, ...rest] = key.split(":");
       if (head === PERSON_KEY) continue;
       else if (SETTLED_CODES.has(head as WakeCode)) settled.push({ code: head as WakeCode, id: rest[0]!, detail: `"${objectives.find((objective) => objective.id === rest[0])?.title ?? rest[0]}" ${rest[1]}` });
-      else if (head === "decision") {
-        // 미뤄 둔 대기 항목도 결정 턴의 보드 요약에 실은 뒤 같은 보드의 대기 중 깨움을 막는다.
-        const id = rest[0]!;
-        wake(runner, "decision", { objectiveId: id, detail: `"${objectives.find((objective) => objective.id === id)?.title ?? id}"` });
-        heard(runner, objectives, id);
-      } else if (head === "consultation") {
+      else if (head === "consultation") {
         const id = rest[0]!;
         wake(runner, "consultation", { objectiveId: id, detail: rest[1] ?? id });
         heard(runner, objectives, id);
@@ -474,7 +469,7 @@ function waitingKeys(objectives: readonly Objective[], observe?: BoardObserver):
   for (const objective of objectives) {
     for (const reason of waitingReasons(objective, observe)) {
       const head = heldForPerson(objective, reason) ? `${PERSON_KEY}:` : "";
-      keys.add(head + (reason === "decision" ? `${reason}:${objective.id}:${objective.decisionRequestRevision}` : `${reason}:${objective.id}`));
+      keys.add(head + `${reason}:${objective.id}`);
     }
     // 넘김이 끝난 사건 — 끝난 시각까지 키에 실어 같은 대상의 다음 넘김이 끝나도 새 항목이 된다.
     for (const hold of objective.personHolds ?? []) if (hold.settled) keys.add(`${hold.settled.outcome}:${objective.id}:${hold.target}:${hold.settled.at}`);
@@ -494,7 +489,7 @@ function inboxDigest(objectives: readonly Objective[], observe?: BoardObserver):
   // 보드가 아는 이유 코드는 깨움 코드와 이름이 같다 — 보드가 새 이유를 더하면 여기 순서에 넣는다.
   const counts = new Map<string, number>();
   for (const objective of objectives) for (const reason of waitingReasons(objective, observe)) if (!heldForPerson(objective, reason)) counts.set(reason, (counts.get(reason) ?? 0) + 1);
-  return (["decision", "criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
+  return (["criteria", "review", "followup", "followup-failed", "member-failed", "pending", "planned"] as const).flatMap((code) => (counts.get(code) ? [[code, counts.get(code)!] as [WakeCode, number]] : []));
 }
 
 /**

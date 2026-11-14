@@ -3513,8 +3513,6 @@
 
 /* 결정 요청 표식 — 묶음 뿌리에 사람의 답을 청한 결정 요청이 섰다. 이름 옆(생략 부호 밖)에 서고, 비콘·상태 칸은 활동 그대로다.
    사이드바 행이 이 부품을 쓴다. */
-.objective-decision-mark { flex: none; display: inline-grid; place-items: center; width: 13px; height: 13px; color: var(--brass-ink); }
-.objective-decision-mark svg { width: 13px; height: 13px; }
 
 .side-bar-chip-rename-input {
   flex: none;

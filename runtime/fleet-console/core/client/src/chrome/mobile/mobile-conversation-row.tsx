@@ -56,13 +56,13 @@ export function useMobileConversationOf(state: Pick<ConsoleState, "objectiveReco
 }
 
 /**
- * 대화 얼굴에 완료 사실을 더할지 — 그 Objective이 뿌리인 묶음 줄이 「완료」이고 사람 차례의 결정 요청이 없을 때.
+ * 대화 얼굴에 완료 사실을 더할지 — 그 Objective이 뿌리인 묶음 줄이 「완료」이고 사람에게 넘긴 항목이 없을 때.
  * 남의 줄에 fold로 든 Objective은 거른다.
  */
 export function isFinishedConversation(index: ClusterIndex, objectiveId: string): boolean {
   const layout = index.rowOf.get(objectiveId);
   const row = layout?.cluster.row;
-  return layout?.cluster.root === objectiveId && row?.glyph === "done" && row.decisionRequestedAt === undefined;
+  return layout?.cluster.root === objectiveId && row?.glyph === "done" && row.personTurnAt === undefined;
 }
 
 /** 모든 Theater의 최상위 Objective을 대화로 읽는다 — 호출부가 Theater로 거른다. */

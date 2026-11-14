@@ -106,7 +106,7 @@ function createdOf(item: SideBarRowItem): number | undefined {
 }
 
 function waitsForPerson(item: SideBarRowItem): boolean {
-  return item.row.decisionRequestedAt !== undefined || entriesOf(item).some((entry) => (entry.mark ?? entry.status) === "awaiting");
+  return item.row.personTurnAt !== undefined || entriesOf(item).some((entry) => (entry.mark ?? entry.status) === "awaiting");
 }
 
 /** 정렬 값 — 값이 없는 줄(기한 없음·미션 없음)은 방향과 상관없이 값이 있는 줄 뒤에 선다. */

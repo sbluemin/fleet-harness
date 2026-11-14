@@ -30,8 +30,7 @@ const TAB_GLYPH: Record<CommanderRowGlyphTab, () => ReactElement> = {
  * 위임(★) 왼쪽의 목표·구성원·증거 글리프 — 우측 작업 탭 카드와 좌측 사이드바의 지휘관 행에 선다(팝오버·폰은 두지 않는다).
  * 목표·구성원은 그 팝업을, 증거는 증거 뷰어를 연다.
  * 쉬는 행에서는 숨고(자리도 차지하지 않는다) 가리키기·행 안 초점·펼친 행에서만 셋이 함께 나타난다 — 그 가림은
- * 카드·사이드바 CSS가 맡는다. 결정 요청(목표 쪽)은 쉬는 행에서 ★ 옆의 작은 점으로 보이고,
- * 글리프가 나타나면 해당 글리프 위의 점으로 옮겨 간다.
+ * 카드·사이드바 CSS가 맡는다.
  */
 export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab }: {
   readonly commodoreId: string;
@@ -39,10 +38,9 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
   readonly title: string;
   readonly onGlyphTab: (objectiveId: string, tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
 }) {
-  // 행의 점은 팝업 안 탭 점과 같은 원천(보드)이다 — 결정 요청이 행과 팝업에서 어긋나지 않는다.
+  // 팝업과 같은 보드에서 탭의 내용 유무를 읽는다.
   const board = useObjectiveBoard(commodoreId);
   const objective = board.loaded ? board.objectives.find((candidate) => candidate.id === objectiveId) ?? null : null;
-  const decision = objective !== null && !!objective.decisionRequest && !objective.done;
   // 공유 폴더 파일 수는 이 행을 가리키거나 초점을 둘 때 읽는다 — 쉬는 행마다 읽지 않는다.
   const groupRef = useRef<HTMLSpanElement | null>(null);
   const [near, setNear] = useState(false);
@@ -55,15 +53,14 @@ export function CommanderRowGlyphs({ commodoreId, objectiveId, title, onGlyphTab
     return () => { row.removeEventListener("pointerenter", on); row.removeEventListener("pointerleave", off); row.removeEventListener("focusin", on); row.removeEventListener("focusout", off); };
   }, []);
   const sharedFiles = useSharedFileCount(objective, near);
-  return <CommanderRowGlyphButtons groupRef={groupRef} title={title} decision={decision}
+  return <CommanderRowGlyphButtons groupRef={groupRef} title={title}
     empty={(tab) => objective !== null && !(tab === "goal" && !objective.done) && !objectiveTabHasContent(objective, tab, sharedFiles)}
     onGlyph={(tab, opener) => onGlyphTab(objectiveId, tab, opener)} />;
 }
 
 /** 원격 명부는 지역 보드·공유 폴더를 읽지 않는다. 데이터 없는 글리프 표현만 함께 쓴다. */
-export function CommanderRowGlyphButtons({ title, decision = false, empty, groupRef, onGlyph }: {
+export function CommanderRowGlyphButtons({ title, empty, groupRef, onGlyph }: {
   readonly title: string;
-  readonly decision?: boolean;
   readonly empty?: (tab: CommanderRowGlyphTab) => boolean;
   readonly groupRef?: Ref<HTMLSpanElement>;
   readonly onGlyph: (tab: CommanderRowGlyphTab, opener: HTMLElement) => void;
@@ -73,7 +70,6 @@ export function CommanderRowGlyphButtons({ title, decision = false, empty, group
     <span ref={groupRef} className="commander-row-glyphs" role="group" aria-label={t("commanderTab.rowGlyphs.label")}>
       {GLYPH_TABS.map((tab) => {
         const tabLabel = t(TAB_LABEL_KEY[tab]);
-        const dotLabel = decision && tab === "goal" ? t("commanderTab.rowGlyph.decision") : null;
         const Glyph = TAB_GLYPH[tab];
         // 보여 줄 것이 하나도 없는 탭은 흐리고 열리지 않는다 — 안내 문구는 두지 않는다. 보드를 읽기 전에는 비었다고 단정하지 않는다.
         return (
@@ -83,25 +79,20 @@ export function CommanderRowGlyphButtons({ title, decision = false, empty, group
             className="commander-row-glyph"
             aria-haspopup="dialog"
             disabled={empty?.(tab) ?? false}
-            aria-label={`${t("commanderTab.rowGlyph.open", { tab: tabLabel, title })}${dotLabel ? ` · ${dotLabel}` : ""}`}
+            aria-label={t("commanderTab.rowGlyph.open", { tab: tabLabel, title })}
             title={tabLabel}
             onClick={(event) => onGlyph(tab, event.currentTarget)}
           >
             <Glyph />
-            {decision && tab === "goal" ? <span className="commander-row-glyph-dot is-attention" aria-hidden="true" /> : null}
           </button>
         );
       })}
     </span>
-    {/* 쉬는 행의 점 — 결정 요청만 둔다. */}
-    {decision ? (
-      <span className="commander-row-pips" aria-hidden="true"><i className="is-attention" /></span>
-    ) : null}
   </>;
 }
 
 /**
- * 행 글리프의 점이 읽는 보드 — 펼침 패널이 이미 올리지만, 한 번도 펼치지 않은 행의 점도 보여야 하므로
+ * 행 글리프가 읽는 보드 — 한 번도 펼치지 않은 행에서도 탭의 내용 유무를 읽도록
  * 작업 탭 목록이 마운트될 때 함께 올린다(행마다 올리지 않는다).
  */
 export function useCommanderRowGlyphBoard(commodoreId: string): void {

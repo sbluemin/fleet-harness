@@ -55,7 +55,7 @@
 /* 누름 문법(data-press)이 붙은 조작부의 포커스 고리는 코어 누름 층이 모양대로 그린다(S-52 PR-1). */
 .objectives-m :focus-visible:not([data-press]) { border-radius: 8px; box-shadow: var(--focus-face); }
 
-/* 묶음 머리(임무·결과물·결정 요청). */
+/* 묶음 머리(임무·결과물·결정 기록). */
 .objectives-m-glab { margin: 0; padding: 6px 4px 0; font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.4; color: var(--m-text-muted); }
 
 /* 묶음 카드 — 행 사이 2 틈, 바깥 모서리 22 / 안쪽 4. */
@@ -147,50 +147,21 @@
 .objectives-m .objectives-m-pbtn:disabled { opacity: .4; cursor: default; }
 .objectives-m .objectives-m-approve-all { width: 100%; margin-top: 6px; }
 
-/* 질문 카드를 쌓는 칸 — 카드 사이 10. */
-.objectives-m-stack { display: flex; flex-direction: column; gap: 10px; }
-
-/* 결정 요청 카드 — 허용 요청 카드와 같은 틀(모서리 24, 테두리 hairline-strong). */
+/* 결정 기록·넘김 카드 — 허용 요청 카드와 같은 틀. */
 .objectives-m-ucard { display: flex; flex-direction: column; gap: 6px; padding: 14px 14px 12px; border: 1px solid var(--m-hairline-strong); border-radius: 24px; background: var(--m-surface); }
 .objectives-m-ucard-hd { display: flex; align-items: center; gap: 10px; font-size: var(--m-fs-list); font-weight: var(--weight-bold); }
 .objectives-m-ucard-hd > .objectives-avatar { width: 22px; height: 22px; }
-/* 자율 운영 중 — 머리 오른쪽(남은 시간 칸 자리)의 「사령관이 답하는 중」과 그 아래 설명 줄(S-53 CM-1d). */
-.objectives-m-ucard-handler { margin-left: auto; color: var(--m-text-faint); font-size: var(--m-fs-caption); font-weight: var(--weight-regular); white-space: nowrap; }
 .objectives-m-fine { margin: 0; color: var(--m-text-faint); font-size: var(--m-fs-small); line-height: 18px; }
 /* 사령관이 넘긴 이유 — 질문 위 옅은 면 한 단락. 머리말만 굵다. 사람의 차례는 카드 테두리가 아니라 목록 구역이 말한다. */
 .objectives-m-handed { margin: 0; padding: 8px 10px; border-radius: 12px; background: color-mix(in oklch, var(--m-text) 9%, transparent); color: var(--m-text-nav); font-size: var(--m-fs-small); line-height: 18px; overflow-wrap: anywhere; }
 .objectives-m-handed b { margin-right: 6px; color: var(--m-text); }
-.objectives-m-route { flex-basis: 100%; }
 .objectives-m-ucard-p { margin: 0; font-size: var(--m-fs-secondary); line-height: 21px; color: var(--m-text-muted); overflow-wrap: anywhere; }
-.objectives-m-ucard-p.is-question, .objectives-m-answer { color: var(--m-text); }
-/* 질문 머리말 — 지휘관이 붙인 짧은 이름표. 분류일 뿐이라 칩 면 위 옅은 잉크. */
-.objectives-m-qchip { align-self: flex-start; max-width: 100%; padding: 2px 10px; border-radius: 12px; background: var(--m-chip); color: var(--m-text-muted); font-size: var(--m-fs-caption); font-weight: var(--weight-medium); line-height: 18px; overflow-wrap: anywhere; }
-.objectives-m .objectives-m-opt { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 48px; font-size: var(--m-fs-secondary); }
-.objectives-m .objectives-m-opt:disabled { cursor: default; }
-/* 선택지 줄 — 이름 단추와 단추 밖 설명을 한 누름 면(R1)으로 묶는다. 단추의 키보드 포커스 고리는 줄 면 모양으로 그리고,
-   설명 속 링크를 누르는 동안에는 줄 면을 띄우지 않는다(링크만 연다). */
-.objectives-m .objectives-m-opt:focus-visible { outline: none; }
-:root[data-view-mode="mobile"] .objectives-m .objectives-m-opt-row[data-press]:has(> .objectives-m-opt:focus-visible)::before { background: transparent; box-shadow: var(--focus-face); opacity: 1; transition: none; }
-:root[data-view-mode="mobile"] .objectives-m .objectives-m-opt-row[data-press]:has(a:active)::before { opacity: 0; }
-.objectives-m-opt-tx { min-width: 0; overflow-wrap: anywhere; }
-/* 선택지 설명 — 단추 밖, 표시(20)와 틈(12)만큼 들여 이름 아래에 선다. 링크가 설 수 있어 단추 안에 두지 않는다. */
-.objectives-m-opt-sub { display: block; margin: -6px 0 6px; padding-left: 32px; font-size: var(--m-fs-caption); line-height: 18px; color: var(--m-text-muted); overflow-wrap: anywhere; }
-.objectives-m-ind { position: relative; flex: none; width: 20px; height: 20px; box-sizing: border-box; border: 2px solid var(--m-text-muted); border-radius: 50%; }
-.objectives-m-ind.is-on { border-color: var(--m-text); }
-.objectives-m-ind.is-on::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--m-text); }
-/* 여러 개 고르는 질문 — 같은 크기의 모서리 6 네모, 켜지면 면이 차고 안쪽에 체크(선 2). */
-.objectives-m-ind.is-check { display: grid; place-items: center; border-radius: 6px; }
-.objectives-m-ind.is-check.is-on { background: var(--m-text); color: var(--m-bg); }
-.objectives-m-ind.is-check.is-on::after { content: none; }
-.objectives-m-ind.is-check svg { stroke-width: 2.4; }
-.objectives-m-hint { margin: 0; font-size: var(--m-fs-caption); color: var(--m-text-faint); }
+.objectives-m-answer { color: var(--m-text); }
 .objectives-m-field { display: block; width: 100%; box-sizing: border-box; height: 104px; padding: 12px 14px; border: 1px solid var(--m-hairline-strong); border-radius: 14px; background: var(--m-bg); color: var(--m-text); font: inherit; font-size: var(--m-fs-list); line-height: 22px; resize: none; }
-.objectives-m-field.is-unfold { height: 88px; margin-top: 4px; animation: objectives-m-unfold .2s ease-out; }
 .objectives-m-field::placeholder { color: var(--m-text-muted); }
 .objectives-m-field:focus-visible { box-shadow: var(--focus-face); }
 .objectives-m-ucard-ft { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 6px; }
 .objectives-m-sp { flex: 1; }
-.objectives-m-progress { font-size: var(--m-fs-caption); color: var(--m-text-muted); font-variant-numeric: tabular-nums; }
 .objectives-m .objectives-m-b2 { height: 40px; padding: 0 16px; border-radius: 20px; background: var(--m-inverse); color: var(--m-on-inverse); font-size: var(--m-fs-meta); font-weight: var(--weight-bold); }
 .objectives-m .objectives-m-b2:disabled { opacity: .4; cursor: default; }
 .objectives-m .objectives-m-b2.is-quiet { background: transparent; color: var(--m-text-muted); box-shadow: inset 0 0 0 1px var(--m-hairline-strong); }
@@ -304,7 +275,6 @@ html[data-mobile-scheme="light"] .objectives-m-toast { border: 1px solid var(--m
 
 @keyframes objectives-m-fade { from { opacity: 0; } }
 @keyframes objectives-m-sheet-in { from { transform: translateY(100%); } }
-@keyframes objectives-m-unfold { from { height: 0; opacity: 0; } }
 @media (prefers-reduced-motion: reduce) {
   .objectives-m-sheet, .objectives-m-scrim, .objectives-m-toast, .objectives-m-field.is-unfold { animation: none; transition: none; }
 }

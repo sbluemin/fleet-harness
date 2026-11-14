@@ -65,7 +65,7 @@ export function sidebarRemotePage(input: {
     const memberWaiting = objective.members.some((member) => faces[member.id]?.state === "awaiting");
     const rootActivity = root.activity ?? (root.state === "idle" && memberWorking ? "background" : null);
     faces[objective.id] = { ...root, activity: rootActivity, state: mongleStateOf({ session: objective.hasSession === true || objective.done !== null || objective.awaitingReview || input.personWaiting(objective), awaitingReview: objective.awaitingReview,
-      decisionRequest: input.personWaiting(objective), workDone: objective.done !== null,
+      personTurn: input.personWaiting(objective), workDone: objective.done !== null,
       activity: root.state === "running" || (root.state === "idle" && memberWorking) ? "running" : root.state === "awaiting" || (root.state === "idle" && memberWaiting) ? "awaiting" : root.state === "ended" ? "ended" : "idle" }) };
     // 이미 사람 HTTP가 쓰는 보드 DTO에서 세션 좌표까지 빼고 내린다. 원격에서 렌더링할 때 다시 채우지 않는다.
     const safe = sidebarSafeObjective(objective);

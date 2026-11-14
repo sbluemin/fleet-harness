@@ -125,7 +125,7 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly onReselect?: () => void;
   readonly showStatusLiveTick: boolean;
   /**
-   * 사람이 답할 차례인 결정 요청이 이 사령관에 있다 — 접힌 머리라도 아바타에 결정 상태를 남긴다.
+   * 사람에게 넘긴 기준·검토·후속이 이 사령관에 있다 — 접힌 머리라도 아바타에 결정 상태를 남긴다.
    * 펼친 목록의 줄과 같은 묶음 판정이라, 답하기 전까지 열람으로 지워지지 않는다. TF 행에는 쓰지 않는다.
    */
   readonly hasPersonDecision?: boolean;
@@ -438,7 +438,7 @@ export function ObjectiveRecordsSideBar({
   }, [commodoreSections, tfSummaries, pendingOrder, sidebarOrder]);
   const hasSections = sidebarSections.layout.sections.length > 0;
   const sidebarBuckets = commodoreSidebarBuckets(sidebarSections.layout, faces, (face) => face.id);
-  // 접힌 머리에도 남는 결정 대기 — 사람이 답할 차례인 결정 요청이 있는 사령관 UUID. 펼친 목록의 줄과 같은
+  // 접힌 머리에도 남는 결정 대기 — 사람에게 넘긴 기준·검토·후속이 있는 사령관 UUID. 펼친 목록의 줄과 같은
   // 묶음 판정(`clusterHasPersonDecision`)이라, 채팅을 열어 보고 답 없이 떠나도 머리의 아바타 상태가 유지된다.
   const clusterIndex = useClusterIndex();
   const personDecisionOwners = useMemo(() => {
@@ -1123,7 +1123,7 @@ export function TheaterSectionHeader({
   };
   const avatarAnchor = (tick: boolean) => (
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
-      {/* 표식이 없을 때의 사령관 머리 — 결정 요청이 남아 있으면 답하기 전까지 결정 얼굴로 선다(열람으로 지워지지 않는다). */}
+      {/* 표식이 없을 때의 사령관 머리 — 사람에게 넘긴 항목이 남아 있으면 답하기 전까지 결정 얼굴로 선다(열람으로 지워지지 않는다). */}
       <KeyedAvatar avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"} size={32} label="" decorative />
       {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
           얹으면 어느 Theater인지가 지워진다. */}

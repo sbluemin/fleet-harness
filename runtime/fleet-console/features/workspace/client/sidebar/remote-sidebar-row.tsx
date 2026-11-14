@@ -250,7 +250,7 @@ function RemoteRowGlyphs({ console, source, onGlyph }: { readonly console: strin
       .then((list) => { if (!abort.signal.aborted) setShared(list.entries.length); }).catch(() => undefined);
     return () => abort.abort();
   }, [console, id, near]);
-  return <CommanderRowGlyphButtons groupRef={group} title={source.objective.title} decision={!!source.objective.decisionRequest && !source.objective.done}
+  return <CommanderRowGlyphButtons groupRef={group} title={source.objective.title}
     empty={(tab) => !(tab === "goal" && !source.objective.done) && !objectiveTabHasContent(source.objective, tab, shared)} onGlyph={onGlyph} />;
 }
 

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { ConversationConsultReply, ConversationDecision } from "../../execution/shared/conversation/types.js";
+import type { ConversationConsultReply } from "../../execution/shared/conversation/types.js";
 export type CommodoreBoardActor = "human" | "commander"
   | { readonly kind: "commodore"; readonly commodoreId: string; readonly why?: string }
   | { readonly kind: "objectiveRecord"; readonly objectiveId: string; readonly title: string | null };
@@ -16,9 +16,6 @@ export interface CommodoreBoardObjective {
   readonly commenced: boolean;
   readonly awaitingReview: boolean;
   readonly awaitingHandoff: boolean;
-  readonly decisionRequest: object | null;
-  /** 사람에게 넘긴 위임 결정 — 원래 보드 응답 경로를 유지한 사령관 대화용 카드. */
-  readonly handedDecision: ConversationDecision | null;
   /** 사람에게 넘긴 후속 후보가 서 있다 — 완료한 목표에도 선다. 카드는 `renderHandedFollowup` 이 그린다. */
   readonly followupHanded: boolean;
   readonly missions: readonly { readonly done: unknown }[];
