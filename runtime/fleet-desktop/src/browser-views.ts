@@ -3,6 +3,8 @@ import type { Rectangle, Session, WebContents, WebContentsView } from "electron"
 import {
   DESKTOP_BROWSER_EVENT,
   DESKTOP_BROWSER_EVENTS_PATH,
+  DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER,
+  DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER,
   DESKTOP_BROWSER_FRAME_HEIGHT_HEADER,
   DESKTOP_BROWSER_FRAME_MAX_BYTES,
   DESKTOP_BROWSER_FRAME_PATH,
@@ -135,8 +137,14 @@ export interface CapturePlan {
 
 /** CDP 가 jpeg quality 를 받지 않았을 때 Chromium 이 쓰는 값. */
 const DEFAULT_JPEG_QUALITY = 80;
-/** 시청 중 프레임 캡처의 최소 간격. 그 사이에 쌓인 변화는 한 장으로 합친다. */
-const VIEWER_FRAME_INTERVAL_MS = 250;
+/**
+ * 시청 중 프레임 캡처 간격 — 활성 원격 조작 중 반응형 고빈도 캡처용.
+ * 기존 250ms(4fps) 상한을 대체한다. 그 사이에 쌓인 변화는 한 장으로 합친다.
+ */
+const VIEWER_FRAME_ACTIVE_INTERVAL_MS = 33;
+const VIEWER_FRAME_IDLE_INTERVAL_MS = 50;
+/** 기존 이름 호환용 — 유휴 간격과 같다. */
+const VIEWER_FRAME_INTERVAL_MS = VIEWER_FRAME_IDLE_INTERVAL_MS;
 
 export interface ViewerFrame {
   readonly jpeg: Buffer;
@@ -434,7 +442,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   let captureChain: Promise<void> = Promise.resolve();
   let capturesWaiting = 0;
   const captureTasks = new Set<{ expire: () => void }>();
-  const viewerPollMs = Math.max(VIEWER_FRAME_INTERVAL_MS, deps.viewerPollMs ?? VIEWER_FRAME_INTERVAL_MS);
+  const viewerPollMs = Math.max(VIEWER_FRAME_IDLE_INTERVAL_MS, deps.viewerPollMs ?? VIEWER_FRAME_IDLE_INTERVAL_MS);
   const now = deps.now ?? (() => Date.now());
   const schedule = deps.schedule ?? ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
   const cancel = deps.cancel ?? ((handle: unknown) => { clearTimeout(handle as ReturnType<typeof setTimeout>); });
@@ -512,7 +520,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (!watch || !watch.watching || watch.inflight || watch.timer !== null) return;
     if (!watch.dirty && !watch.immediate) return;
     const elapsed = now() - watch.lastStarted;
-    const wait = watch.immediate || watch.lastStarted === 0 ? 0 : Math.max(0, VIEWER_FRAME_INTERVAL_MS - elapsed);
+    // 입력·항해 직후(immediate)는 대기 없이 쏘고, 유휴 폴링은 활성 최소 간격으로 묶는다.
+    const wait = watch.immediate || watch.lastStarted === 0 ? 0 : Math.max(0, VIEWER_FRAME_ACTIVE_INTERVAL_MS - elapsed);
     watch.immediate = false;
     watch.timer = schedule(() => {
       const current = watches.get(id);
@@ -523,7 +532,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   function markDirty(id: string): void {
     const watch = watches.get(id);
     if (!watch?.watching) return;
+    // CDP 입력·네비게이션·스크롤 직후 즉시 트리거 — inflight 1건 제한과 dirty 합치기로 묶는다.
     watch.dirty = true;
+    watch.immediate = true;
     kick(id);
   }
   async function captureFrame(id: string): Promise<void> {
@@ -540,7 +551,11 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     try {
       const frame = await capture(entry.view);
       if (session !== token || !watch.watching || !target || !frame || frame.jpeg.length === 0 || frame.jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return;
+      // 동일 JPEG 중복 전송 억제 — 바뀐 장만 올린다.
       if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return;
+      // CSS 크기는 이 뷰의 DIP 자리 — 픽셀 크기와 함께 스트림·long-poll이 공유한다.
+      const cssWidth = Math.max(1, Math.round(entry.lastBounds?.width ?? frame.width));
+      const cssHeight = Math.max(1, Math.round(entry.lastBounds?.height ?? frame.height));
       const response = await fetchFor(`${target}${DESKTOP_BROWSER_FRAME_PATH}`, {
         method: "POST",
         headers: {
@@ -548,6 +563,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
           [DESKTOP_BROWSER_VIEW_HEADER]: id,
           [DESKTOP_BROWSER_FRAME_WIDTH_HEADER]: String(frame.width),
           [DESKTOP_BROWSER_FRAME_HEIGHT_HEADER]: String(frame.height),
+          [DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER]: String(cssWidth),
+          [DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER]: String(cssHeight),
           "Content-Type": "image/jpeg",
           Origin: target,
         },
@@ -815,6 +832,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       contents.on("did-stop-loading", dirty);
       contents.on("did-navigate", dirty);
       contents.on("did-navigate-in-page", dirty);
+      contents.on("did-frame-navigate", dirty);
       contents.on("dom-ready", dirty);
     }
     try {
