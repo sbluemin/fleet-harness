@@ -1258,7 +1258,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-chip {
   display: inline-flex; align-items: center; gap: 6px; flex: 0 1 auto; min-width: 0; height: var(--fc-composer-circle, 28px); padding: 0 10px;
   border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-secondary);
-  font-family: var(--font-ui); font-size: var(--t-sm); line-height: 1; white-space: nowrap; cursor: pointer;
+  font-family: var(--font-ui); font-size: var(--t-sm); line-height: 1.4; white-space: nowrap; cursor: pointer;
   transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
 .commodore-composer-chip:hover:not(:disabled) { background: var(--wash-hover); color: var(--text-primary); }

@@ -302,13 +302,14 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
       ) : null}
       <div className="commodore-composer-chips">
       {chip("commodore", `${t("commodore.settings.model")}: ${coordinateTitle(commodoreDisplay)}`, <CoordinateWords display={commodoreDisplay} />)}
-      {chip("commander", `${t("commodore.settings.commander")}: ${judgment ? commanderWord : coordinateTitle(commanderDisplay)}`, (
+      {chip("commander", `${t("commodore.settings.commander")}: ${judgment ? commanderWord : coordinateTitle(commanderDisplay)}`, judgment ? (
         <>
-          {judgment ? <CommodoreJudgmentMark /> : <ProviderMark provider={commanderDisplay.provider} />}
+          <CommodoreJudgmentMark />
           <span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>
-          <span className={`commodore-composer-chip-value${!judgment && commanderDisplay.struck ? " is-off" : ""}`}>{commanderWord}</span>
-          {!judgment && commanderDisplay.badge ? <span className="fc-coord-trigger-badge">{commanderDisplay.badge}</span> : null}
+          <span className="commodore-composer-chip-value">{commanderWord}</span>
         </>
+      ) : (
+        <CoordinateWords display={commanderDisplay} prefix={<span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>} />
       ))}
       {chip("theaters", `${ct("theaterInbox.theaters.page")} ${theaterCount}`, (
         <>
@@ -341,11 +342,12 @@ function ProviderMark({ provider }: { readonly provider: LaunchProviderGlyphId |
   return <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${provider}`} aria-hidden="true">{launchProviderGlyph(provider)}</span>;
 }
 
-/** 칩의 좌표 낱말 — 공유 선택기 트리거와 같은 「[글리프] 모델 · 강도 [꺼짐·폴백]」 문법이다. */
-function CoordinateWords({ display }: { readonly display: ReturnType<typeof modelCoordinateDisplay> }) {
+/** 칩의 좌표 낱말 — 공유 선택기 트리거와 같은 「[글리프] [앞표시] 모델 · 강도 [꺼짐·폴백]」 문법이다. */
+function CoordinateWords({ display, prefix }: { readonly display: ReturnType<typeof modelCoordinateDisplay>; readonly prefix?: ReactNode }) {
   return (
     <>
       {display.struck && display.removedProvider ? <span className="fc-coord-provider-name">{display.removedProvider}</span> : <ProviderMark provider={display.provider} />}
+      {prefix}
       <span className={`commodore-composer-chip-value fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
       {display.words.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{display.words.effort}</span></> : null}
       {display.badge ? <span className="fc-coord-trigger-badge">{display.badge}</span> : null}
