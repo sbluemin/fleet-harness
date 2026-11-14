@@ -26,7 +26,7 @@ const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
-interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; size: { width: number; height: number; scale: number } | null; frameSeq: number; dialog?: BrowserPageDialog | null; answering?: string | null }
+interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; agent: boolean; size: { width: number; height: number; scale: number } | null; frameSeq: number; dialog?: BrowserPageDialog | null; answering?: string | null }
 export type BrowserSurfaceState = DesktopBrowserSurface;
 /** 페이지가 띄운 alert·confirm. 답할 때까지 렌더러가 멈춰 있다. */
 export type BrowserPageDialog = DesktopBrowserPageDialog;
@@ -204,7 +204,7 @@ export class DesktopEngine implements CdpClient {
     const views: DesktopBrowserView[] = [...this.views.values()].map((view) => {
       // `visible` 은 표면 presentation — 표시 탭이고 그 브라우저의 표면이 열려 있을 때. 자리와 크기는 셸이 정한다.
       const visible = view.active && this.surface?.browserId === view.objectiveId;
-      return { id: view.id, objectiveId: view.objectiveId, partition: view.partition, profile: view.profile, visible, url: view.url, pageDialogs: true };
+      return { id: view.id, objectiveId: view.objectiveId, partition: view.partition, profile: view.profile, visible, url: view.url, pageDialogs: true, ...(view.agent ? { agent: true } : {}) };
     });
     return {
       generation: this.generation,
@@ -516,7 +516,7 @@ export class DesktopEngine implements CdpClient {
 
   private async createView(partition: string, url: string): Promise<string> {
     const id = `view-${crypto.randomUUID().slice(0, 8)}`;
-    this.views.set(id, { id, objectiveId: "", partition, profile: this.contextProfiles.get(partition) ?? null, url, attached: false, active: false, size: null, frameSeq: 0 });
+    this.views.set(id, { id, objectiveId: "", partition, profile: this.contextProfiles.get(partition) ?? null, url, attached: false, active: false, agent: false, size: null, frameSeq: 0 });
     // 서비스가 전역 브라우저 id 를 bindView 로 붙인다. 모든 스페이스는 같은 컨텍스트를 쓴다.
     const attached = new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { this.attachWaiters.delete(id); reject(new CdpError("Target.createTarget", -32000, "desktop_view_attach_timeout")); this.dropView(id); this.publish(); }, ATTACH_TIMEOUT_MS);
@@ -528,10 +528,11 @@ export class DesktopEngine implements CdpClient {
   }
 
   /** 서비스가 뷰를 어느 Objective 에 묶는지 알려 준다 — 자리(placement)는 Objective 단위로 오기 때문이다. */
-  bindView(viewId: string, objectiveId: string): void {
+  bindView(viewId: string, objectiveId: string, agent = false): void {
     const view = this.views.get(viewId);
     if (!view) return;
     view.objectiveId = objectiveId;
+    view.agent = agent;
     this.publish();
   }
 

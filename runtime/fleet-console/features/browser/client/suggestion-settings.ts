@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { useDesktopShellHome } from "../../../core/client/src/integration/desktop-shell.js";
 import type { BrowserSuggestionSettings } from "../shared/suggestions.js";
 
 const endpoint = "/api/v1/browser/suggestion-settings";
@@ -41,11 +42,14 @@ export async function saveSuggestionSettings(enabled: boolean): Promise<void> {
 
 export function useSuggestionSettings() {
   const state = useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  const home = useDesktopShellHome();
+  // 섹션에 들어오는 마운트, 창 포커스, 셸 게시(desktop:shell)가 도착하는 순간마다 다시 읽는다.
+  // 셸이 집을 게시하기 전의 실패는 아직 답이 없는 경주라 화면에 남기지 않는다.
   useEffect(() => {
     void loadSuggestionSettings();
     const refresh = () => { void loadSuggestionSettings(); };
     window.addEventListener("focus", refresh);
     return () => window.removeEventListener("focus", refresh);
-  }, []);
-  return state;
+  }, [home.origin, home.pending]);
+  return home.pending ? { ...state, failed: false } : state;
 }

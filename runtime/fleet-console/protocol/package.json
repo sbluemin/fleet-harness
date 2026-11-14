@@ -19,6 +19,11 @@
       "import": "./desktop/browser-history.ts",
       "default": "./desktop/browser-history.ts"
     },
+    "./desktop/browser-passwords": {
+      "types": "./desktop/browser-passwords.ts",
+      "import": "./desktop/browser-passwords.ts",
+      "default": "./desktop/browser-passwords.ts"
+    },
     "./desktop/brand": {
       "types": "./desktop/brand.ts",
       "import": "./desktop/brand.ts",

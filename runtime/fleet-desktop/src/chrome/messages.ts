@@ -146,6 +146,18 @@ const en: Record<string, string> = {
   "unavailable.desktop_required": "No Fleet Desktop window is showing this Console, so the browser can't open.",
   "unavailable.shared": "Browser paused: this Console is also open in a browser tab or on a phone.",
   "unavailable.sharedBody": "Open tabs were closed when the other screen connected. Close it and the browser opens again.",
+  "password.saveTitle": "Save password?",
+  "password.updateTitle": "Update saved password?",
+  "password.site": "Site",
+  "password.account": "Account",
+  "password.password": "Password",
+  "password.show": "Show",
+  "password.hide": "Hide",
+  "password.save": "Save",
+  "password.update": "Update",
+  "password.dismiss": "Not now",
+  "password.never": "Never for this site",
+  "password.pickTitle": "Choose an account to fill",
 };
 const ko: Record<string, string> = {
   "hover.component": "컴포넌트",
@@ -293,6 +305,18 @@ const ko: Record<string, string> = {
   "unavailable.desktop_required": "이 Console을 보고 있는 Fleet Desktop 창이 없어서 브라우저를 열 수 없어요.",
   "unavailable.shared": "브라우저가 일시 중지됐어요. 이 Console이 브라우저 탭이나 휴대폰에서도 열려 있어요.",
   "unavailable.sharedBody": "다른 화면이 연결되면서 열려 있던 탭이 닫혔어요. 그 화면을 닫으면 브라우저가 다시 열려요.",
+  "password.saveTitle": "비밀번호를 저장할까요?",
+  "password.updateTitle": "저장된 비밀번호를 업데이트할까요?",
+  "password.site": "사이트",
+  "password.account": "계정",
+  "password.password": "비밀번호",
+  "password.show": "보기",
+  "password.hide": "숨기기",
+  "password.save": "저장",
+  "password.update": "업데이트",
+  "password.dismiss": "이번에는 안 함",
+  "password.never": "이 사이트에서는 저장 안 함",
+  "password.pickTitle": "채울 계정 선택",
 };
 export function translator(lang: ChromeLang): (key: string, values?: Record<string, string>) => string {
   const table = lang === "ko" ? ko : en;

@@ -205,6 +205,8 @@ export interface DesktopBrowserView {
    * 옛 콘솔은 이 필드를 싣지 않으므로, 답할 길이 없는 그 콘솔에서는 OS 상자가 그대로 뜬다.
    */
   readonly pageDialogs?: boolean;
+  /** 에이전트(사령관·지휘관·구성원)가 연 작업 탭인가. 선택 필드이므로 옛 콘솔은 싣지 않는다. */
+  readonly agent?: boolean;
 }
 
 /**
@@ -425,7 +427,8 @@ const isSafeId = (value: unknown): value is string => typeof value === "string" 
 export function isDesktopBrowserView(value: unknown): value is DesktopBrowserView {
   return isRecord(value) && isSafeId(value.id) && typeof value.objectiveId === "string" && isSafeId(value.partition)
     && (value.profile === undefined || value.profile === null || (typeof value.profile === "string" && DESKTOP_BROWSER_PROFILE_ID.test(value.profile)))
-    && typeof value.visible === "boolean" && typeof value.url === "string" && (value.pageDialogs === undefined || typeof value.pageDialogs === "boolean");
+    && typeof value.visible === "boolean" && typeof value.url === "string" && (value.pageDialogs === undefined || typeof value.pageDialogs === "boolean")
+    && (value.agent === undefined || typeof value.agent === "boolean");
 }
 
 export function isDesktopBrowserCommand(value: unknown): value is DesktopBrowserCommand {

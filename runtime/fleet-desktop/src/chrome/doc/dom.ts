@@ -94,6 +94,8 @@ export const G = {
   spaces: '<rect x="2" y="2" width="5" height="5" rx="1.4"/><rect x="9" y="2" width="5" height="5" rx="1.4"/><rect x="2" y="9" width="5" height="5" rx="1.4"/><rect x="9" y="9" width="5" height="5" rx="1.4"/>',
   /** 디폴트 스페이스 — 사람 자신의 자리. */
   home: '<path d="M2 7.6 8 2.4l6 5.2"/><path d="M3.6 6.4v6.1a1 1 0 0 0 1 1h6.8a1 1 0 0 0 1-1V6.4"/><path d="M6.6 13.5V9.6h2.8v3.9"/>',
+  /** 자물쇠 — 저장된 비밀번호 카드의 비밀번호 줄. */
+  key: '<rect x="4" y="7" width="8" height="6.5" rx="1.5"/><path d="M5.5 7V5.5a2.5 2.5 0 0 1 5 0V7"/>',
 } as const;
 
 export const agentGlyph = (): SVGSVGElement => {

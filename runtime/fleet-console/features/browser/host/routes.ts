@@ -6,6 +6,8 @@ import { ViewerFrameClosedError, ViewerFrameDisconnectedError, ViewerFrameTimeou
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 import { writeImageToClipboard } from "./clipboard.js";
 import { DEFAULT_BROWSER_SUGGESTION_SETTINGS, suggestionSkipReason, type BrowserSuggestionSettings } from "../shared/suggestions.js";
+import type { BrowserPasswordShellCommand } from "@fleet-console/protocol/desktop/browser-passwords";
+import { browserPasswordHttpError, browserPasswordId, browserPasswordOrigin, browserPasswordSecret, browserPasswordUsername } from "./passwords.js";
 
 export interface BrowserSetShortcutsInput {
   readonly shortcuts: readonly string[];
@@ -30,6 +32,10 @@ interface BrowserRouteDeps {
   readonly publishAttach?: (attach: { readonly kind: "screenshot" | "annotation"; readonly mime: "image/png"; readonly data: string }) => boolean;
   readonly isWriteAdmitted: (req: IncomingMessage) => boolean;
   readonly isExactConsoleOrigin: (req: IncomingMessage) => boolean;
+  /** 루프백 리스너로 들어왔는가. 원격 리스너의 같은 출처는 여기 해당하지 않는다. */
+  readonly isLoopbackListener: (req: IncomingMessage) => boolean;
+  /** 같은 출처 GET. Origin 이 없는 Chromium 읽기는 Sec-Fetch-Site 가 same-origin 일 때만 통과한다. */
+  readonly isSameOriginConsoleRead: (req: IncomingMessage) => boolean;
   /** 이 요청의 창 표면. 원격·웹·비관리 Desktop 은 viewer. */
   readonly surfaceMode: (req: IncomingMessage) => BrowserSurfaceModeKind;
   /** 관리 창 또는 락 토큰을 가진 관리 Desktop 메인 프로세스만 사람 조작을 쓴다. */
@@ -54,7 +60,7 @@ const DEFAULT_FRAME_WAIT_MS = 12_000;
 const MAX_FRAME_WAIT_MS = 15_000;
 
 export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
-  const { browserService, desktopEngine, browserMcp, objectiveRecords, isWriteAdmitted, isExactConsoleOrigin, surfaceMode, isNativeBrowserWrite, isManagingDesktopProcess, viewerFrameRead, writeJson, readJsonBody, readUrl, withSecurityHeaders } = deps;
+  const { browserService, desktopEngine, browserMcp, objectiveRecords, isWriteAdmitted, isExactConsoleOrigin, isLoopbackListener, isSameOriginConsoleRead, surfaceMode, isNativeBrowserWrite, isManagingDesktopProcess, viewerFrameRead, writeJson, readJsonBody, readUrl, withSecurityHeaders } = deps;
   const withSurface = <T extends object>(req: IncomingMessage, body: T) => ({ ...body, surfaceMode: surfaceMode(req) });
   const executionHost = (): BrowserExecutionHost => browserService.availability().executionHost;
   return async ({ req, res, pathname }) => {
@@ -71,28 +77,13 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       return true;
     }
     if (req.method === "GET" && pathname === "/api/v1/browser") { writeJson(res, 200, withSurface(req, browserService.status())); return true; }
+    if (pathname === "/api/v1/browser/suggestion-settings") return serveSuggestionSettings(req, res);
+    if (pathname === "/api/v1/browser/passwords" || pathname.startsWith("/api/v1/browser/passwords/")) return servePasswords(req, res, pathname);
     if (!pathname.startsWith("/api/v1/browser/objectives/") && !isNativeBrowserWrite(req)) { writeJson(res, 403, { error: "browser_viewer_read_only" }); return true; }
     if (req.method === "GET" && pathname === "/api/v1/browser/import-sources") {
       if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
       try { writeJson(res, 200, await browserService.importSources()); }
       catch (error) { writeJson(res, 500, { error: "browser_request_failed", message: error instanceof Error ? error.message : "browser_request_failed" }); }
-      return true;
-    }
-    if (pathname === "/api/v1/browser/suggestion-settings") {
-      res.setHeader("Cache-Control", "no-store");
-      if (req.method === "GET") {
-        writeJson(res, 200, deps.suggestionSettings?.read() ?? DEFAULT_BROWSER_SUGGESTION_SETTINGS);
-        return true;
-      }
-      if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-      if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
-      const body = await readJsonBody<Record<string, unknown>>(req, 4096);
-      if (!body || typeof body.enabled !== "boolean") { writeJson(res, 400, { error: "invalid_request" }); return true; }
-      if (!deps.suggestionSettings) { writeJson(res, 503, { error: "settings_unavailable" }); return true; }
-      // 켜기·끄기·안내 닫기 모두 사람의 명시적 선택이다. 프로필 등 다른 설정은 저장 포트가 보존한다.
-      const settings = { enabled: body.enabled, prompted: true };
-      deps.suggestionSettings.write(settings);
-      writeJson(res, 200, settings);
       return true;
     }
     if (pathname === "/api/v1/browser/suggest") {
@@ -292,6 +283,98 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     } catch (error) { fail(error); }
     return true;
 
+    async function serveSuggestionSettings(req: IncomingMessage, res: ServerResponse): Promise<boolean> {
+      res.setHeader("Cache-Control", "no-store");
+      // 원격 리스너는 설정 '브라우저'를 숨긴다. 루프백은 publishShellHome 이 managingShellProven 을
+      // 세우기 전(isNativeBrowserWrite 가 아직 거짓)에도 같은 출처면 제안 설정을 읽고 쓴다.
+      if (!isLoopbackListener(req)) { writeJson(res, 403, { error: "browser_viewer_read_only" }); return true; }
+      if (req.method === "GET") {
+        if (!isSameOriginConsoleRead(req) && !isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+        writeJson(res, 200, deps.suggestionSettings?.read() ?? DEFAULT_BROWSER_SUGGESTION_SETTINGS);
+        return true;
+      }
+      if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
+      const body = await readJsonBody<Record<string, unknown>>(req, 4096);
+      if (!body || typeof body.enabled !== "boolean") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+      if (!deps.suggestionSettings) { writeJson(res, 503, { error: "settings_unavailable" }); return true; }
+      // 켜기·끄기·안내 닫기 모두 사람의 명시적 선택이다. 프로필 등 다른 설정은 저장 포트가 보존한다.
+      const settings = { enabled: body.enabled, prompted: true };
+      deps.suggestionSettings.write(settings);
+      writeJson(res, 200, settings);
+      return true;
+    }
+
+    async function servePasswords(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
+      res.setHeader("Cache-Control", "no-store");
+      // 비밀번호는 루프백의 관리 Desktop 만 다룬다. Chromium 은 같은 출처 GET 에 Origin 을 싣지 않으므로
+      // 읽기는 Sec-Fetch-Site 로 보고, 쓰기만 Origin 또는 관리 프로세스 증명을 요구한다.
+      const read = req.method === "GET" || req.method === "HEAD";
+      const trusted = read ? isSameOriginConsoleRead(req) || isManagingDesktopProcess(req) : isExactConsoleOrigin(req) || isManagingDesktopProcess(req);
+      if (!isLoopbackListener(req) || !isNativeBrowserWrite(req) || !trusted) {
+        writeJson(res, 403, { error: !isLoopbackListener(req) || !isNativeBrowserWrite(req) ? "browser_viewer_read_only" : "unauthorized" });
+        return true;
+      }
+      const route = browserPasswordRoute(pathname);
+      if (!route) { writeJson(res, 404, { error: "not_found" }); return true; }
+      try {
+        if (route === "favicon") {
+          if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+          const origin = browserPasswordOrigin(readUrl(req).searchParams.get("origin"));
+          if (!origin) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          const vault = await browserService.browserPasswords({ action: "state" });
+          const known = vault.kind === "state" && vault.body.entries.some((entry) => entry.origin === origin);
+          if (!known) { writeJson(res, 404, { error: "not_found" }); return true; }
+          const icon = await browserService.originFavicon(BROWSER_GLOBAL_ID, origin, true).catch(() => null);
+          if (!icon) { writeJson(res, 404, { error: "not_found" }); return true; }
+          res.writeHead(200, { ...withSecurityHeaders({ "Content-Type": icon.type, "Cache-Control": "no-store", "Content-Length": String(icon.body.byteLength) }), "Content-Security-Policy": "default-src 'none'; sandbox" });
+          res.end(icon.body);
+          return true;
+        }
+        if (route === "list" || (route === "settings" && req.method === "GET") || (route === "never-save" && req.method === "GET")) {
+          if (req.method !== "GET") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+          const result = await browserService.browserPasswords({ action: "state" });
+          if (result.kind !== "state") { writeJson(res, 500, { error: "browser_request_failed", message: "The password vault request failed." }); return true; }
+          if (route === "settings") writeJson(res, 200, { available: result.body.available, reason: result.body.reason, offerToSave: result.body.offerToSave, osAuthSupported: result.body.osAuthSupported });
+          else if (route === "never-save") writeJson(res, 200, { neverSaveOrigins: result.body.neverSaveOrigins });
+          else writeJson(res, 200, result.body);
+          return true;
+        }
+        if (route === "settings") {
+          if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+          const body = await readJsonBody<Record<string, unknown>>(req, 4096);
+          if (!body || typeof body.enabled !== "boolean") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          const result = await browserService.browserPasswords({ action: "set-offer-to-save", enabled: body.enabled });
+          if (result.kind !== "offer") { writeJson(res, 500, { error: "browser_request_failed", message: "The password vault request failed." }); return true; }
+          writeJson(res, 200, result.body);
+          return true;
+        }
+        if (route === "never-save") {
+          if (req.method !== "POST" && req.method !== "DELETE") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+          const body = await readJsonBody<Record<string, unknown>>(req, 4096);
+          const origin = browserPasswordOrigin(body?.origin);
+          if (!origin) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+          const result = await browserService.browserPasswords({ action: req.method === "POST" ? "add-never-save" : "remove-never-save", origin });
+          if (result.kind !== "never") { writeJson(res, 500, { error: "browser_request_failed", message: "The password vault request failed." }); return true; }
+          writeJson(res, 200, result.body);
+          return true;
+        }
+        if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+        const body = await readJsonBody<Record<string, unknown>>(req, 16 * 1024);
+        if (!body) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        const command = passwordCommand(route, body);
+        if (!command) { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        const result = await browserService.browserPasswords(command);
+        if (result.kind === "state" || result.kind === "offer" || result.kind === "never") { writeJson(res, 500, { error: "browser_request_failed", message: "The password vault request failed." }); return true; }
+        writeJson(res, 200, result.body);
+        return true;
+      } catch (error) {
+        const mapped = browserPasswordHttpError(error);
+        writeJson(res, mapped.status, mapped.body);
+        return true;
+      }
+    }
+
     async function serveViewer(req: IncomingMessage, res: ServerResponse, pathname: string): Promise<boolean> {
       const admission = viewerFrameRead(req);
       if (admission !== "ok") { writeJson(res, admission === "unauthorized" ? 401 : 403, { error: admission === "unauthorized" ? "unauthorized" : "forbidden" }); return true; }
@@ -352,6 +435,44 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       return true;
     }
   };
+}
+
+function browserPasswordRoute(pathname: string): "list" | "favicon" | "reveal" | "copy" | "save" | "update" | "delete" | "settings" | "never-save" | null {
+  const root = "/api/v1/browser/passwords";
+  if (pathname === root) return "list";
+  if (!pathname.startsWith(`${root}/`)) return null;
+  const rest = pathname.slice(root.length + 1);
+  if (rest === "favicon" || rest === "reveal" || rest === "copy" || rest === "save" || rest === "update" || rest === "delete" || rest === "settings" || rest === "never-save") return rest;
+  return null;
+}
+
+function passwordCommand(route: "reveal" | "copy" | "save" | "update" | "delete", body: Record<string, unknown>): BrowserPasswordShellCommand | null {
+  if (route === "reveal" || route === "copy" || route === "delete") {
+    const id = browserPasswordId(body.id);
+    return id ? { action: route, id } : null;
+  }
+  if (route === "save") {
+    const origin = browserPasswordOrigin(body.origin);
+    const username = browserPasswordUsername(body.username);
+    const password = browserPasswordSecret(body.password);
+    if (!origin || username === null || password === null) return null;
+    return { action: "save", origin, username, password };
+  }
+  const id = browserPasswordId(body.id);
+  const username = browserPasswordUsername(body.username);
+  if (!id || username === null) return null;
+  const command: { action: "update"; id: string; username: string; origin?: string; password?: string } = { action: "update", id, username };
+  if (body.origin !== undefined) {
+    const origin = browserPasswordOrigin(body.origin);
+    if (!origin) return null;
+    command.origin = origin;
+  }
+  if (body.password !== undefined) {
+    const password = browserPasswordSecret(body.password);
+    if (!password) return null;
+    command.password = password;
+  }
+  return command;
 }
 
 function isHumanRead(method: string, pathname: string, action: string | null): boolean {

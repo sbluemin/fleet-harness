@@ -4,6 +4,8 @@ import type { BrowserTarget, BrowserElementState } from "./semantic.js";
 import { CdpError, type CdpClient, type CdpEvent } from "./cdp.js";
 import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./history.js";
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
+import { DESKTOP_BROWSER_PASSWORDS, type BrowserPasswordShellCommand } from "@fleet-console/protocol/desktop/browser-passwords";
+import { acceptBrowserPasswordResult, browserPasswordDispatchError, BrowserPasswordRequestError, type BrowserPasswordDispatchResult } from "./passwords.js";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer } from "@fleet-console/protocol/desktop";
@@ -1259,7 +1261,7 @@ export class BrowserService {
       client.send("Emulation.setFocusEmulationEnabled", { enabled: true }, tab.sessionId),
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
     ]);
-    this.deps.desktop.bindView(tab.targetId, op.objectiveId);
+    this.deps.desktop.bindView(tab.targetId, op.objectiveId, actor === "agent");
     await this.applyViewport(client, tab, op);
     if (caller) { op.currentTabs.set(caller.participantId, tab.id); this.bindParticipant(op, caller); }
     // 에이전트의 탭은 사람 화면을 빼앗지 않는다. 사람이 그 스페이스의 빈 화면을 보고 있었다면 셸이 이 탭을 띄워 달라고 요청한다.
@@ -1412,6 +1414,21 @@ export class BrowserService {
   }
 
   /**
+   * 비밀번호 금고는 탭이 없어도 창을 든 Desktop 에 묻는다. 평문은 이 메서드가 돌려준 결과 밖에 남기지 않는다.
+   * 연결이 없으면 명령을 보내지 않는다.
+   */
+  async browserPasswords(command: BrowserPasswordShellCommand): Promise<BrowserPasswordDispatchResult> {
+    const desktop = this.deps.desktop;
+    if (!desktop.connected) throw new BrowserPasswordRequestError("desktop_required");
+    try {
+      const raw = await desktop.send(DESKTOP_BROWSER_PASSWORDS, command as unknown as Record<string, unknown>);
+      return acceptBrowserPasswordResult(command, raw);
+    } catch (error) {
+      throw browserPasswordDispatchError(error);
+    }
+  }
+
+  /**
    * Chrome 프로필의 쿠키를 이 Objective 이 지금 쓰는 세션에 넣는다. 셸이 읽고 셸이 넣는다 — 쿠키가 콘솔을 거치지 않는다.
    * 영속 프로필을 쓰고 있으면 그 프로필로 들어가 다음에 열 때도 남고, 임시 세션이면 그 세션과 함께 사라진다.
    */
@@ -1514,6 +1531,20 @@ export class BrowserService {
     const tab = op.tabs.get(tabId);
     if (!tab?.favicon) return null;
     return this.browsingHistory.faviconForUrl(this.historyScope(op), tab.url, tab.favicon);
+  }
+
+  async originFavicon(objectiveId: string, origin: string, allowFallback = false): Promise<{ body: Buffer; type: string } | null> {
+    const op = this.objectiveRecord(objectiveId);
+    const scope = this.historyScope(op);
+    for (const tab of op.tabs.values()) {
+      if (!tab.favicon) continue;
+      try {
+        if (new URL(tab.url).origin !== origin) continue;
+      } catch { continue; }
+      const hit = await this.browsingHistory.faviconForUrl(scope, tab.url, tab.favicon);
+      if (hit) return hit;
+    }
+    return this.browsingHistory.faviconForOrigin(scope, origin, allowFallback);
   }
 
 

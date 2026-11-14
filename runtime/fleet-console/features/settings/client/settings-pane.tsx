@@ -5,11 +5,14 @@ import type { PaneContext, PaneDescriptor, PaneSearchProvider } from "../../work
 import type { RailEntryDescriptor } from "../../workspace/shared/rail.js";
 import type { SettingsSectionDescriptor, SettingsSectionGroup } from "../shared/types.js";
 
-import { loadGlobalSettings, useGlobalSettingsStore } from "./global-settings-store.js";
+import { getGlobalSettingsStoreState, loadGlobalSettings, useGlobalSettingsStore } from "./global-settings-store.js";
 import { getT, useConsoleLocale, useT } from "../../../core/client/src/i18n/index.js";
+import { getBrowserEngineSnapshot, useBrowserEngine } from "../../browser/client/browser-engine.js";
+import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { useFeatureRegistry } from "../../../core/client/src/integration/feature-registry.js";
 import { closeRailPanel } from "../../../core/client/src/chrome/rail/rail-store.js";
 import {
+  browserSettingsSectionVisible,
   buildCoreSettingsSections,
   collectPluginSettingsSections,
   renderSettingsSection,
@@ -100,7 +103,7 @@ const settingsSearchProvider: PaneSearchProvider = (request) => {
   const query = request.query.trim().toLowerCase();
   if (query === "") return Promise.resolve([]);
   const chips = buildChips(
-    buildCoreSettingsSections(t, null),
+    buildCoreSettingsSections(t, getGlobalSettingsStoreState().state, browserSettingsSectionVisible({ desktopShell: isDesktopShell(), state: getGlobalSettingsStoreState().state, engine: getBrowserEngineSnapshot() })),
     collectPluginSettingsSections(searchPluginsSnapshot, locale, t),
   );
   return Promise.resolve(chips
@@ -169,7 +172,8 @@ function SettingsPaneBody({ ctx }: { readonly ctx: PaneContext }) {
     void loadGlobalSettings(ctx.signal);
   }, [ctx.signal]);
 
-  const coreSections = buildCoreSettingsSections(t, state);
+  const engine = useBrowserEngine();
+  const coreSections = buildCoreSettingsSections(t, state, browserSettingsSectionVisible({ desktopShell: isDesktopShell(), state, engine }));
   const pluginSections = collectPluginSettingsSections(registry.providers, locale, t);
   const chips = useMemo(() => buildChips(coreSections, pluginSections), [coreSections, pluginSections]);
   const available = useMemo(() => new Set<string>(chips.map((chip) => chip.id)), [chips]);

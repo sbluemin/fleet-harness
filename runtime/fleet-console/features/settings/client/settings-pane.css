@@ -161,3 +161,48 @@
 @media (prefers-reduced-motion: reduce) {
   .settings-pane .global-settings-row.is-taskforce-target::after { animation: none; }
 }
+.settings-password-toolbar { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 4px 14px 0; }
+.settings-password-search { flex: 1 1 auto; min-width: 0; }
+.settings-password-search input,
+.settings-password-form input,
+.settings-password-field input { width: 100%; min-width: 0; color: var(--text-primary); background: transparent; border: 1px solid var(--hairline); border-radius: var(--radius-md); padding: 8px 10px; font: var(--t-md)/1.45 var(--font-ui); }
+.settings-password-add { flex: none; padding: 6px 12px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: var(--surface-panel); color: var(--text-primary); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-password-add:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.settings-password-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; }
+.settings-password-site,
+.settings-password-never { display: flex; align-items: center; gap: 10px; width: 100%; min-width: 0; padding: 10px 14px; border: 0; border-top: 1px solid var(--hairline); background: transparent; color: var(--text-primary); font: var(--t-md)/1.45 var(--font-ui); text-align: left; cursor: pointer; }
+.settings-password-host { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.settings-password-count { flex: none; color: var(--text-secondary); font-size: var(--t-sm); }
+.settings-password-chevron { flex: none; color: var(--text-secondary); }
+.settings-password-empty { margin: 0; padding: 12px 14px; color: var(--text-secondary); font-size: var(--t-sm); }
+.settings-password-icon { display: inline-grid; place-items: center; flex: none; }
+.settings-password-icon img { width: 100%; height: 100%; object-fit: contain; border-radius: var(--radius-xs); }
+.settings-password-badge { display: grid; place-items: center; width: 100%; height: 100%; border-radius: var(--radius-pill); background: color-mix(in oklab, var(--text-primary) 8%, var(--surface-panel)); color: var(--text-secondary); font: var(--weight-medium) var(--t-sm)/1 var(--font-ui); }
+.settings-password-scrim { position: fixed; inset: 0; z-index: var(--z-overlay, 200); display: grid; place-items: center; padding: 24px; background: var(--dialog-scrim); }
+.settings-password-dialog { width: min(440px, 100%); max-height: min(640px, 100%); overflow: auto; display: grid; gap: 16px; padding: 20px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel); color: var(--text-primary); }
+.settings-password-dialog-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.settings-password-dialog-head h2,
+.settings-password-dialog > h2 { margin: 0; font: var(--weight-medium) var(--t-lg, var(--t-md))/1.3 var(--font-ui); overflow-wrap: anywhere; }
+.settings-password-dialog-head p { margin: 2px 0 0; color: var(--text-secondary); font-size: var(--t-sm); overflow-wrap: anywhere; }
+.settings-password-dialog-body { display: grid; gap: 16px; }
+.settings-password-account { display: grid; gap: 12px; }
+.settings-password-account + .settings-password-account { padding-top: 16px; border-top: 1px solid var(--hairline); }
+.settings-password-field-label,
+.settings-password-form label { display: grid; gap: 6px; color: var(--text-secondary); font: var(--t-sm)/1.45 var(--font-ui); }
+.settings-password-field { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 8px 10px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: transparent; }
+.settings-password-field input { border: 0; padding: 0; }
+.settings-password-value { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; color: var(--text-primary); font: var(--t-md)/1.45 var(--font-ui); }
+.settings-password-field.is-secret .settings-password-value { font-family: var(--font-code); letter-spacing: 0.04em; }
+.settings-password-icon-button { display: inline-flex; align-items: center; justify-content: center; flex: none; padding: 2px; border: 0; background: none; color: var(--text-secondary); cursor: pointer; font: var(--t-sm)/1 var(--font-ui); }
+.settings-password-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.settings-password-dialog-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.settings-password-edit { padding: 6px 14px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent; color: var(--text-primary); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-password-delete { padding: 6px 14px; border: 1px solid var(--coral); border-radius: var(--radius-pill); background: transparent; color: var(--coral); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-password-done { padding: 6px 20px; border: 0; border-radius: var(--radius-pill); background: var(--text-primary); color: var(--surface-panel); font: var(--weight-medium) var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-password-error { margin: 0; color: var(--coral); font-size: var(--t-sm); }
+.settings-password-edit:disabled,
+.settings-password-delete:disabled,
+.settings-password-done:disabled,
+.settings-password-icon-button:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
+.settings-password-form { display: grid; gap: 12px; }
+.settings-password-hidden { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }

@@ -13,7 +13,8 @@ import { DesktopEngine } from "../features/browser/host/desktop-engine.js";
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID } from "../features/browser/host/service.js";
 import { createBrowserRouter } from "../features/browser/host/routes.js";
 import { BROWSER_GLOBAL_ID } from "../features/browser/shared/browser-id.js";
-import { DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_TAB_LIMITS, commodoreBrowserSpaceId } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_SHELL_VIEW, DESKTOP_BROWSER_TAB_LIMITS, commodoreBrowserSpaceId } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_PASSWORDS } from "@fleet-console/protocol/desktop/browser-passwords";
 
 describe("session browser host contract", () => {
   it("sends suggestions only after consent, never sends addresses, and degrades without leaking input", async () => {
@@ -36,7 +37,7 @@ describe("session browser host contract", () => {
         write: (settings) => { stored = sanitizeConsoleSettingsData({ ...stored, browser: { ...stored.browser, suggestionsEnabled: settings.enabled, suggestionsPrompted: settings.prompted } }); },
       },
       logSuggestion: (event) => logs.push(event),
-      desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok",
+      desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok", isLoopbackListener: () => true, isSameOriginConsoleRead: () => true,
       isWriteAdmitted: () => true, isExactConsoleOrigin: () => exactOrigin,
       readJsonBody: async <T>() => body as T,
       writeJson: (_res, code, data) => { status = code; result = data; },
@@ -100,7 +101,7 @@ describe("session browser host contract", () => {
     const router = createBrowserRouter({
       browserService: service, browserMcp: { pasteIntoTerminal: () => false }, objectiveRecords: { get: () => null },
       publishAttach: (attach) => { if (receiver) delivered.push(attach); return receiver; },
-      desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok",
+      desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok", isLoopbackListener: () => true, isSameOriginConsoleRead: () => true,
       isWriteAdmitted: () => true, isExactConsoleOrigin: () => exactOrigin,
       readJsonBody: async <T>() => body as T,
       writeJson: (_res, code) => { status = code; },
@@ -166,7 +167,7 @@ describe("session browser host contract", () => {
       browserMcp: { pasteIntoTerminal: () => false, isSessionOwner: (id) => id === "commodore:c" || id === "plugin-browser:s" },
       objectiveRecords: { get: (id: string) => objectiveRecords.get(id) ?? null },
       browserOwnerOf: (id) => id === "child" ? "root" : id,
-      desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok",
+      desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok", isLoopbackListener: () => true, isSameOriginConsoleRead: () => true,
       isWriteAdmitted: () => writeAdmitted,
       isExactConsoleOrigin: () => exactOrigin,
       writeJson: (res: ServerResponse, status: number, body: unknown) => {
@@ -516,7 +517,7 @@ describe("session browser host contract", () => {
 
       const router = createBrowserRouter({
         browserService: service, browserMcp: browser, objectiveRecords: { get: () => null },
-        desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok",
+        desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok", isLoopbackListener: () => true, isSameOriginConsoleRead: () => true,
         isWriteAdmitted: () => true, isExactConsoleOrigin: () => true,
         writeJson: (res, status, body) => { Object.assign(res, { status, body }); },
         readJsonBody: async <T>() => ({} as T),
@@ -536,5 +537,378 @@ describe("session browser host contract", () => {
     } finally {
       await browser.dispose();
     }
+  });
+
+  it("reads and writes suggestion settings on loopback before the managing shell is proven, and blocks a remote listener", async () => {
+    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    const service = new BrowserService({ enabled: () => true, availability: () => ({ available: true, reason: null, host: "local" }), desktop: engine, log: () => {}, defaultProfile: { read: () => null, write: () => {} } });
+    let stored = sanitizeConsoleSettingsData({ version: 1 });
+    const gate = { native: false, loopback: true, exact: false, sameOrigin: true, managing: false };
+    let status = 0;
+    let body: unknown = null;
+    const headers: string[] = [];
+    const router = createBrowserRouter({
+      browserService: service,
+      browserMcp: { pasteIntoTerminal: () => false },
+      objectiveRecords: { get: () => null },
+      suggestionSettings: {
+        read: () => ({ enabled: stored.browser?.suggestionsEnabled === true, prompted: stored.browser?.suggestionsPrompted === true }),
+        write: (settings) => { stored = sanitizeConsoleSettingsData({ ...stored, browser: { ...stored.browser, suggestionsEnabled: settings.enabled, suggestionsPrompted: settings.prompted } }); },
+      },
+      desktopEngine: engine,
+      surfaceMode: () => "native",
+      isNativeBrowserWrite: () => gate.native,
+      isManagingDesktopProcess: () => gate.managing,
+      viewerFrameRead: () => "ok",
+      isLoopbackListener: () => gate.loopback,
+      isSameOriginConsoleRead: () => gate.sameOrigin,
+      isWriteAdmitted: () => true,
+      isExactConsoleOrigin: () => gate.exact,
+      readJsonBody: async <T>() => ({ enabled: true }) as T,
+      writeJson: (_res, code, data) => { status = code; body = data; },
+      readUrl: () => new URL("http://127.0.0.1"),
+      withSecurityHeaders: (headers) => headers,
+    });
+    const request = (method: string) => router({
+      req: { method } as IncomingMessage,
+      res: { setHeader: (name: string, value: string) => { headers.push(`${name}:${value}`); } } as unknown as ServerResponse,
+      pathname: "/api/v1/browser/suggestion-settings",
+    });
+    await request("GET");
+    expect(status).toBe(200);
+    expect(body).toEqual({ enabled: false, prompted: false });
+    expect(headers).toContain("Cache-Control:no-store");
+    gate.native = true;
+    headers.length = 0;
+    await request("GET");
+    expect(status).toBe(200);
+    gate.native = false;
+    gate.exact = true;
+    await request("POST");
+    expect(status).toBe(200);
+    expect(stored.browser).toEqual({ suggestionsEnabled: true, suggestionsPrompted: true });
+    gate.loopback = false;
+    gate.exact = true;
+    gate.sameOrigin = true;
+    await request("GET");
+    expect(status).toBe(403);
+    expect(body).toEqual({ error: "browser_viewer_read_only" });
+    await request("POST");
+    expect(status).toBe(403);
+    expect(stored.browser?.suggestionsEnabled).toBe(true);
+    gate.loopback = true;
+    gate.native = true;
+    gate.exact = false;
+    gate.sameOrigin = false;
+    gate.managing = false;
+    await request("POST");
+    expect(status).toBe(403);
+    expect(body).toEqual({ error: "unauthorized" });
+    gate.managing = true;
+    await request("POST");
+    expect(status).toBe(200);
+    gate.native = false;
+    gate.managing = false;
+    gate.exact = false;
+    gate.sameOrigin = false;
+    await request("GET");
+    expect(status).toBe(403);
+    expect(body).toEqual({ error: "unauthorized" });
+  });
+
+  it("refuses password routes unless the request is a loopback managing desktop with a trusted origin", async () => {
+    const commands: string[] = [];
+    const answered = new Set<number>();
+    const engine = new DesktopEngine({
+      publish: (snapshot) => queueMicrotask(() => {
+        const fresh = snapshot.commands.filter((command) => !answered.has(command.id));
+        const results = fresh.map((command) => {
+          answered.add(command.id);
+          commands.push(command.method);
+          return { id: command.id, result: { available: true, reason: null, offerToSave: false, osAuthSupported: false, entries: [], neverSaveOrigins: [] } };
+        });
+        if (results.length) engine.relay("manager", { results });
+      }),
+      log: () => {},
+    });
+    engine.subscriberOpened("manager");
+    engine.setHost("manager");
+    const service = new BrowserService({ enabled: () => true, availability: () => ({ available: true, reason: null, host: "manager" }), desktop: engine, log: () => {}, defaultProfile: { read: () => null, write: () => {} } });
+    const gate = { native: false, loopback: true, exact: true, sameOrigin: true, managing: false };
+    let status = 0;
+    let body: unknown = null;
+    let cache = "";
+    const router = createBrowserRouter({
+      browserService: service,
+      browserMcp: { pasteIntoTerminal: () => false },
+      objectiveRecords: { get: () => null },
+      desktopEngine: engine,
+      surfaceMode: () => gate.native ? "native" : "viewer",
+      isNativeBrowserWrite: () => gate.native,
+      isManagingDesktopProcess: () => gate.managing,
+      viewerFrameRead: () => "ok",
+      isLoopbackListener: () => gate.loopback,
+      isSameOriginConsoleRead: () => gate.sameOrigin,
+      isWriteAdmitted: () => true,
+      isExactConsoleOrigin: () => gate.exact,
+      readJsonBody: async <T>() => ({ id: "entry-1" }) as T,
+      writeJson: (_res, code, data) => { status = code; body = data; },
+      readUrl: () => new URL("http://127.0.0.1"),
+      withSecurityHeaders: (headers) => headers,
+    });
+    const request = (pathname: string, method = "GET") => router({
+      req: { method } as IncomingMessage,
+      res: { setHeader: (name: string, value: string) => { if (name === "Cache-Control") cache = value; } } as unknown as ServerResponse,
+      pathname,
+    });
+    await request("/api/v1/browser/passwords");
+    expect(status).toBe(403);
+    expect(body).toEqual({ error: "browser_viewer_read_only" });
+    expect(cache).toBe("no-store");
+    gate.native = true;
+    gate.loopback = false;
+    await request("/api/v1/browser/passwords/reveal");
+    expect(status).toBe(403);
+    expect(body).toEqual({ error: "browser_viewer_read_only" });
+    gate.loopback = true;
+    gate.exact = false;
+    gate.sameOrigin = true;
+    await request("/api/v1/browser/passwords");
+    expect(status).toBe(200);
+    expect(commands).toEqual([DESKTOP_BROWSER_PASSWORDS]);
+    await request("/api/v1/browser/passwords/delete", "POST");
+    expect(status).toBe(403);
+    expect(body).toEqual({ error: "unauthorized" });
+    gate.sameOrigin = false;
+    await request("/api/v1/browser/passwords");
+    expect(status).toBe(403);
+    expect(body).toEqual({ error: "unauthorized" });
+    gate.managing = true;
+    await request("/api/v1/browser/passwords");
+    expect(status).toBe(200);
+    expect(commands.at(-1)).toBe(DESKTOP_BROWSER_PASSWORDS);
+    expect(engine.snapshot().views).toEqual([]);
+    await request("/api/v1/browser/passwords/unknown");
+    expect(status).toBe(404);
+  });
+
+  it("delegates password vault commands to the managing desktop without an open tab and never echoes the secret", async () => {
+    const secret = "s3cret-value";
+    const summary = { id: "entry-1", origin: "https://example.com", username: "ada", createdAt: 1, updatedAt: 2, password: secret };
+    const commands: { method: string; viewId: string; params: Record<string, unknown> }[] = [];
+    const answered = new Set<number>();
+    let failure: string | null = null;
+    const engine = new DesktopEngine({
+      publish: (snapshot) => queueMicrotask(() => {
+        const fresh = snapshot.commands.filter((command) => !answered.has(command.id));
+        const results = fresh.map((command) => {
+          answered.add(command.id);
+          commands.push({ method: command.method, viewId: command.viewId, params: { ...command.params } });
+          if (failure) return { id: command.id, error: failure };
+          const action = command.params.action;
+          if (action === "state") return { id: command.id, result: { available: true, reason: null, offerToSave: true, osAuthSupported: true, entries: [summary], neverSaveOrigins: ["https://never.example/path"], password: secret } };
+          if (action === "reveal") return { id: command.id, result: { password: secret, id: summary.id } };
+          if (action === "copy") return { id: command.id, result: { copied: true, password: secret } };
+          if (action === "save") return { id: command.id, result: { entry: summary, created: true, password: secret } };
+          if (action === "update") return { id: command.id, result: { entry: { ...summary, username: "grace" }, password: secret } };
+          if (action === "delete") return { id: command.id, result: { deleted: true, password: secret } };
+          if (action === "set-offer-to-save") return { id: command.id, result: { offerToSave: command.params.enabled === true, password: secret } };
+          if (action === "add-never-save" || action === "remove-never-save") return { id: command.id, result: { neverSaveOrigins: ["https://never.example/path"], password: secret } };
+          return { id: command.id, error: "invalid_password_entry" };
+        });
+        if (results.length) engine.relay("manager", { results });
+      }),
+      log: () => {},
+    });
+    engine.subscriberOpened("manager");
+    engine.setHost("manager");
+    const service = new BrowserService({ enabled: () => true, availability: () => ({ available: true, reason: null, host: "manager" }), desktop: engine, log: () => {}, defaultProfile: { read: () => null, write: () => {} } });
+    let status = 0;
+    let body: unknown = null;
+    let payload: Record<string, unknown> = {};
+    const router = createBrowserRouter({
+      browserService: service,
+      browserMcp: { pasteIntoTerminal: () => false },
+      objectiveRecords: { get: () => null },
+      desktopEngine: engine,
+      surfaceMode: () => "native",
+      isNativeBrowserWrite: () => true,
+      isManagingDesktopProcess: () => false,
+      viewerFrameRead: () => "ok",
+      isLoopbackListener: () => true,
+      isSameOriginConsoleRead: () => true,
+      isWriteAdmitted: () => true,
+      isExactConsoleOrigin: () => true,
+      readJsonBody: async <T>() => payload as T,
+      writeJson: (_res, code, data) => { status = code; body = data; },
+      readUrl: () => new URL("http://127.0.0.1"),
+      withSecurityHeaders: (headers) => headers,
+    });
+    const request = (method: string, pathname: string) => router({
+      req: { method } as IncomingMessage,
+      res: { setHeader: () => {} } as unknown as ServerResponse,
+      pathname,
+    });
+    const quiet = () => { expect(JSON.stringify(body)).not.toContain(secret); expect(engine.snapshot().views).toEqual([]); };
+
+    await request("GET", "/api/v1/browser/passwords");
+    expect(status).toBe(200);
+    expect(body).toEqual({ available: true, reason: null, offerToSave: true, osAuthSupported: true, entries: [{ id: "entry-1", origin: "https://example.com", username: "ada", createdAt: 1, updatedAt: 2 }], neverSaveOrigins: ["https://never.example"] });
+    expect(commands.at(-1)).toMatchObject({ method: DESKTOP_BROWSER_PASSWORDS, viewId: DESKTOP_BROWSER_SHELL_VIEW, params: { action: "state" } });
+    quiet();
+
+    payload = { id: "entry-1" };
+    await request("POST", "/api/v1/browser/passwords/reveal");
+    expect(status).toBe(200);
+    expect(body).toEqual({ password: secret });
+    expect(commands.at(-1)?.params).toEqual({ action: "reveal", id: "entry-1" });
+
+    await request("POST", "/api/v1/browser/passwords/copy");
+    expect(status).toBe(200);
+    expect(body).toEqual({ copied: true });
+    quiet();
+
+    payload = { origin: "https://example.com/login", username: "ada", password: secret };
+    await request("POST", "/api/v1/browser/passwords/save");
+    expect(status).toBe(200);
+    expect(body).toEqual({ entry: { id: "entry-1", origin: "https://example.com", username: "ada", createdAt: 1, updatedAt: 2 }, created: true });
+    expect(commands.at(-1)?.params).toEqual({ action: "save", origin: "https://example.com", username: "ada", password: secret });
+    quiet();
+
+    payload = { id: "entry-1", username: "grace", password: "next-secret" };
+    await request("POST", "/api/v1/browser/passwords/update");
+    expect(status).toBe(200);
+    expect(body).toEqual({ entry: { id: "entry-1", origin: "https://example.com", username: "grace", createdAt: 1, updatedAt: 2 } });
+    expect(commands.at(-1)?.params).toMatchObject({ action: "update", id: "entry-1", username: "grace", password: "next-secret" });
+    quiet();
+
+    payload = { id: "entry-1" };
+    await request("POST", "/api/v1/browser/passwords/delete");
+    expect(status).toBe(200);
+    expect(body).toEqual({ deleted: true });
+    quiet();
+
+    await request("GET", "/api/v1/browser/passwords/settings");
+    expect(status).toBe(200);
+    expect(body).toEqual({ available: true, reason: null, offerToSave: true, osAuthSupported: true });
+    quiet();
+    payload = { enabled: false };
+    await request("POST", "/api/v1/browser/passwords/settings");
+    expect(status).toBe(200);
+    expect(body).toEqual({ offerToSave: false });
+    expect(commands.at(-1)?.params).toEqual({ action: "set-offer-to-save", enabled: false });
+    quiet();
+
+    await request("GET", "/api/v1/browser/passwords/never-save");
+    expect(body).toEqual({ neverSaveOrigins: ["https://never.example"] });
+    quiet();
+    payload = { origin: "https://never.example/path" };
+    await request("POST", "/api/v1/browser/passwords/never-save");
+    expect(status).toBe(200);
+    expect(commands.at(-1)?.params).toEqual({ action: "add-never-save", origin: "https://never.example" });
+    quiet();
+    await request("DELETE", "/api/v1/browser/passwords/never-save");
+    expect(commands.at(-1)?.params).toEqual({ action: "remove-never-save", origin: "https://never.example" });
+    quiet();
+
+    payload = { origin: "javascript:alert(1)", username: "ada", password: secret };
+    const sent = commands.length;
+    await request("POST", "/api/v1/browser/passwords/save");
+    expect(status).toBe(400);
+    expect(body).toEqual({ error: "invalid_request" });
+    expect(commands).toHaveLength(sent);
+
+    payload = { id: "entry-1" };
+    failure = "os_auth_cancelled";
+    await request("POST", "/api/v1/browser/passwords/reveal");
+    expect(status).toBe(403);
+    expect(body).toMatchObject({ error: "os_auth_cancelled" });
+    failure = "os_auth_unavailable";
+    await request("POST", "/api/v1/browser/passwords/copy");
+    expect(status).toBe(503);
+    expect(body).toMatchObject({ error: "os_auth_unavailable" });
+    failure = "os_auth_failed";
+    await request("POST", "/api/v1/browser/passwords/reveal");
+    expect(status).toBe(403);
+    expect(body).toMatchObject({ error: "os_auth_failed" });
+    failure = "encryption_unavailable";
+    await request("GET", "/api/v1/browser/passwords");
+    expect(status).toBe(503);
+    expect(body).toMatchObject({ error: "encryption_unavailable", message: expect.any(String) });
+    expect(JSON.stringify(body)).not.toContain(secret);
+
+    const offline = new DesktopEngine({ publish: () => {}, log: () => {} });
+    const offlineService = new BrowserService({ enabled: () => true, availability: () => ({ available: false, reason: "desktop_required", host: null }), desktop: offline, log: () => {}, defaultProfile: { read: () => null, write: () => {} } });
+    const offlineRouter = createBrowserRouter({
+      browserService: offlineService,
+      browserMcp: { pasteIntoTerminal: () => false },
+      objectiveRecords: { get: () => null },
+      desktopEngine: offline,
+      surfaceMode: () => "native",
+      isNativeBrowserWrite: () => true,
+      isManagingDesktopProcess: () => true,
+      viewerFrameRead: () => "ok",
+      isLoopbackListener: () => true,
+      isSameOriginConsoleRead: () => true,
+      isWriteAdmitted: () => true,
+      isExactConsoleOrigin: () => true,
+      readJsonBody: async <T>() => ({} as T),
+      writeJson: (_res, code, data) => { status = code; body = data; },
+      readUrl: () => new URL("http://127.0.0.1"),
+      withSecurityHeaders: (headers) => headers,
+    });
+    await offlineRouter({ req: { method: "GET" } as IncomingMessage, res: { setHeader: () => {} } as unknown as ServerResponse, pathname: "/api/v1/browser/passwords" });
+    expect(status).toBe(409);
+    expect(body).toMatchObject({ error: "desktop_required" });
+
+    failure = null;
+    let queryOrigin = "javascript:alert(1)";
+    let writtenHead: { status: number; headers: Record<string, string> } | null = null;
+    let writtenBody: Buffer | null = null;
+    const iconBytes = new Uint8Array([137, 80, 78, 71]);
+    const iconFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      if (String(input) === "https://example.com/favicon.ico") {
+        return new Response(iconBytes, { headers: { "Content-Type": "image/png" } });
+      }
+      return new Response(null, { status: 404 });
+    });
+    try {
+      const iconRouter = createBrowserRouter({
+        browserService: service,
+        browserMcp: { pasteIntoTerminal: () => false },
+        objectiveRecords: { get: () => null },
+        desktopEngine: engine,
+        surfaceMode: () => "native",
+        isNativeBrowserWrite: () => true,
+        isManagingDesktopProcess: () => false,
+        viewerFrameRead: () => "ok",
+        isLoopbackListener: () => true,
+        isSameOriginConsoleRead: () => true,
+        isWriteAdmitted: () => true,
+        isExactConsoleOrigin: () => true,
+        readJsonBody: async <T>() => ({} as T),
+        writeJson: (_res, code, data) => { status = code; body = data; },
+        readUrl: () => new URL(`http://127.0.0.1/api/v1/browser/passwords/favicon?origin=${encodeURIComponent(queryOrigin)}`),
+        withSecurityHeaders: (headers) => headers,
+      });
+      const iconRes = {
+        setHeader: () => {},
+        writeHead: (code: number, headers: Record<string, string>) => { writtenHead = { status: code, headers }; },
+        end: (chunk: Buffer) => { writtenBody = chunk; },
+      } as unknown as ServerResponse;
+      await iconRouter({ req: { method: "GET" } as IncomingMessage, res: iconRes, pathname: "/api/v1/browser/passwords/favicon" });
+      expect(status).toBe(400);
+      queryOrigin = "https://unknown.example";
+      await iconRouter({ req: { method: "GET" } as IncomingMessage, res: iconRes, pathname: "/api/v1/browser/passwords/favicon" });
+      expect(status).toBe(404);
+      expect(iconFetch).not.toHaveBeenCalled();
+      queryOrigin = "https://example.com";
+      await iconRouter({ req: { method: "GET" } as IncomingMessage, res: iconRes, pathname: "/api/v1/browser/passwords/favicon" });
+      expect(writtenHead).toMatchObject({
+        status: 200,
+        headers: { "Content-Type": "image/png", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; sandbox" },
+      });
+      expect(writtenBody).toEqual(Buffer.from(iconBytes));
+    } finally { iconFetch.mockRestore(); }
   });
 });

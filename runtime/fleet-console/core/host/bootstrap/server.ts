@@ -1659,6 +1659,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     surfaceMode: (req) => surfaceModeOfRequest(req),
     isNativeBrowserWrite: (req) => isNativeBrowserWrite(req),
     isManagingDesktopProcess: (req) => isManagingDesktopProcess(req),
+    isLoopbackListener: (req) => isLoopbackListener(req),
+    isSameOriginConsoleRead: (req) => isSameOriginConsoleRead(req),
     viewerFrameRead: (req) => viewerFrameRead(req),
     subscribeViewer: (res) => {
       const data = encodeSseData(DESKTOP_BROWSER_VIEWER_EVENT, browserService.viewerSnapshot(GLOBAL_BROWSER_OWNER_ID));
@@ -2648,6 +2650,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   function isNativeBrowserWrite(req: http.IncomingMessage): boolean {
     if (!isLoopbackListener(req)) return false;
     if (isManagingDesktopProcess(req)) return true;
+    // 관리 셸의 렌더러는 publishShellHome 이 managingShellProven 을 세운 뒤에야 여기 든다.
+    // 그 전 제안 설정 읽기·쓰기는 라우트가 루프백·같은 출처로 따로 받는다. 비밀번호 라우트는 이 판정을 그대로 요구한다.
     return managingShellProven && clientKindOf(req) === "desktop";
   }
 

@@ -1,11 +1,12 @@
 import { execFile } from "node:child_process";
+import { createRequire } from "node:module";
 import { promisify } from "node:util";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BaseWindow, dialog, Menu, nativeImage, Notification, screen, session, shell, systemPreferences, Tray, WebContentsView, type Session } from "electron";
+import { app, BaseWindow, clipboard, dialog, Menu, nativeImage, Notification, safeStorage, screen, session, shell, systemPreferences, Tray, WebContentsView, type Session } from "electron";
 
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, type DesktopBrowserPlatform } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
@@ -50,7 +51,8 @@ import { createConsoleRelaunchController, createDisabledNativeUpdateActions, cre
 import { createShellUpdateCommandSynchronizer, createShellUpdatePublisher, createShellUpdater, type ShellUpdater } from "./shell-update.js";
 import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher, type DesktopTitleBarOverlay } from "./title-bar-overlay-refresh.js";
 import { installComputerCapture, openScreenRecordingSettings, requestAccessibilityPermission } from "./computer-capture.js";
-import { createBrowserSurface, createMainPageHost } from "./browser-surface.js";
+import { createBrowserSurface, createMainPageHost, type SurfaceControl } from "./browser-surface.js";
+import { createBrowserPasswordPageAgent, type PasswordPrompt } from "./browser-password-page.js";
 import { createBrowserActions } from "./browser-actions.js";
 import { createDesktopBrowserViews, type BrowserSurfaceHost } from "./browser-views.js";
 import { createManagedBrowserHost } from "./browser-host.js";
@@ -59,7 +61,9 @@ import { managedBrowserHeaders, shellPublishHeaders, type ManagedBrowserConnecti
 import { chromeImportSources, readChromeCookies, toElectronCookie } from "./chrome-cookies.js";
 import { readChromeHistory } from "./chrome-history.js";
 import { createBrowserHistoryStorage } from "./browser-history-storage.js";
+import { createBrowserPasswordVault } from "./browser-password-vault.js";
 import { DESKTOP_BROWSER_HISTORY, DESKTOP_BROWSER_CHROME_HISTORY } from "@fleet-console/protocol/desktop/browser-history";
+import { DESKTOP_BROWSER_PASSWORDS } from "@fleet-console/protocol/desktop/browser-passwords";
 import { type DesktopShellWindow } from "./shell-window.js";
 import { applyWindowPolicy, CANVAS_FAR_BACKGROUND_COLOR, localFontsConsentDialog, confinePickerNavigation, consoleWindowChrome, createSecureShellWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY, CONVERSATION_TOP_ROW, trafficLightPosition } from "./window-policy.js";
 import { keepWindowEnabled, withOwnModal } from "./native-modal-guard.js";
@@ -428,6 +432,96 @@ async function boot(): Promise<void> {
    */
   const browserHistoryStorage = createBrowserHistoryStorage(resolveBrowserProfileRoot(app.getPath("userData"), app.isPackaged));
   /**
+   * 비밀번호 금고는 프로필이 아니라 Desktop 하나가 통째로 소유한다 — 모든 스페이스가 공유하고
+   * 임시 세션에서도 같은 금고를 읽고 쓴다. 디스크에는 암호문과 메타데이터만 남는다.
+   */
+  const execFileAsync = promisify(execFile);
+  interface MacLocalAuthAddon {
+    canAuthenticate(): boolean;
+    authenticate(reason: string): Promise<void>;
+  }
+  const macLocalAuth: MacLocalAuthAddon | null = (() => {
+    if (process.platform !== "darwin") return null;
+    const req = createRequire(import.meta.url);
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    for (const candidate of [
+      path.join(here, "mac-local-auth.node"),
+      path.join(here.replace(/app\.asar([\\/])/u, "app.asar.unpacked$1"), "mac-local-auth.node"),
+    ]) {
+      try {
+        if (fs.existsSync(candidate)) return req(candidate) as MacLocalAuthAddon;
+      } catch {
+        /* 다음 경로 확인 */
+      }
+    }
+    return null;
+  })();
+  const browserPasswordVault = createBrowserPasswordVault({
+    root: app.getPath("userData"),
+    safeStorage,
+    systemPreferences,
+    clipboard,
+    osAuth: {
+      canPrompt: () => {
+        if (process.platform === "darwin") return macLocalAuth?.canAuthenticate() === true;
+        return process.platform === "win32";
+      },
+      prompt: async (reason) => {
+        if (process.platform === "darwin") {
+          if (!macLocalAuth) throw new Error("os_auth_unavailable");
+          await macLocalAuth.authenticate(reason);
+          return;
+        }
+        if (process.platform === "win32") {
+          const { stdout } = await execFileAsync(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-NonInteractive",
+              "-Command",
+              "$null = [Windows.Security.Credentials.UI.UserConsentVerifier, Windows.Security.Credentials.UI, ContentType=WindowsRuntime]; $avail = [Windows.Security.Credentials.UI.UserConsentVerifier]::CheckAvailabilityAsync().GetAwaiter().GetResult(); if ($avail -ne 'Available') { Write-Output 'unavailable'; exit 2 }; $res = [Windows.Security.Credentials.UI.UserConsentVerifier]::RequestVerificationAsync($env:FLEET_OS_AUTH_REASON).GetAwaiter().GetResult(); Write-Output $res; if ($res -eq 'Verified') { exit 0 } elseif ($res -eq 'Canceled') { exit 3 } else { exit 4 }",
+            ],
+            { timeout: 120_000, windowsHide: true, env: { ...process.env, FLEET_OS_AUTH_REASON: reason } },
+          );
+          if (!String(stdout).includes("Verified")) throw new Error(String(stdout).trim() || "os_auth_failed");
+        }
+      },
+    },
+  });
+  // 비밀번호 자동완성·저장 제안 — 크롬 카드 동작을 받으면 금고로만 잇고 Console 으로는 보내지 않는다.
+  // 카드 표시는 act 가 돌려주는 최신 SurfaceControl 로 붙인다(스냅샷 경로가 아니라 동작 경로에서만 손에 닿는다).
+  // act 가 돌려주는 최신 SurfaceControl 로 카드 표시를 붙인다. onPrompt 가 act 보다 먼저 오면
+  // 다음 act 에서 붙인다 — surfaceControl 이 null 인 동안 카드를 버리지 않는다.
+  const applyPasswordPrompt = (control: SurfaceControl, prompt: PasswordPrompt | null): void => {
+    if (prompt === null) {
+      const overlay = control.ui().overlay;
+      if (overlay && (overlay.kind === "password-prompt" || overlay.kind === "password-picker")) control.patch({ overlay: null, suggestions: [] });
+      return;
+    }
+    if (prompt.kind === "save-prompt") {
+      control.patch({ overlay: { kind: "password-prompt", origin: prompt.origin, username: prompt.username, password: prompt.password, mode: prompt.mode }, suggestions: [] });
+    } else {
+      control.patch({ overlay: { kind: "password-picker", origin: prompt.origin, usernames: [...prompt.usernames] }, suggestions: [] });
+    }
+  };
+  const showPendingPasswordPrompt = (control: SurfaceControl): void => {
+    const pending = browserPasswordAgent.prompt();
+    if (!pending) return;
+    const overlay = control.ui().overlay;
+    if (overlay && (overlay.kind === "password-prompt" || overlay.kind === "password-picker")) return;
+    applyPasswordPrompt(control, pending);
+  };
+  let surfaceControl: SurfaceControl | null = null;
+  const browserPasswordAgent = createBrowserPasswordPageAgent({
+    vault: browserPasswordVault,
+    onPrompt: (prompt) => {
+      const control = surfaceControl;
+      if (!control || browserSurface.viewing()) return;
+      applyPasswordPrompt(control, prompt);
+    },
+    log: (message) => logger.info(message),
+  });
+  /**
    * 브라우저 표면(칸·독립 창)과 그 크롬. 크롬 문서는 셸의 정적 자산이고 Console 의 문서·렌더러를 거치지 않는다 — 사람의 동작은 Console 의 기존 REST 로 돌아가고,
    * 상태는 스냅샷으로 온다. 문서는 sandbox·Node 없음이고 사전 로드 스크립트도 없다 — 주입 프로그램만 main 이 넣는다.
    */
@@ -488,7 +582,20 @@ async function boot(): Promise<void> {
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
     // 동작의 주인은 지금 서 있는 표면의 주인이다. 보기 전용 셸의 표면이면 그 셸로 가고(Console 로 쓰기 요청을 보내는 관리 표면의 처리기를 타지 않는다),
     // 관리 세션의 표면이면 관리 처리기로 간다 — 보기 셸이 아직 닫히는 중이어도 관리 표면의 동작이 그쪽으로 새지 않는다.
-    act: (control, role, action) => { if (browserSurface.viewing()) browserViewer?.act(control, role, action); else browserActions(control, role, action); },
+    // 비밀번호 카드 동작은 Console 이 아니라 이 기계의 금고·채움기로만 간다(보기 전용 셸에는 페이지 뷰가 없어 버린다).
+    act: (control, role, action) => {
+      surfaceControl = control;
+      if (action.action === "password-pick" || action.action === "password-save" || action.action === "password-dismiss" || action.action === "password-never") {
+        if (!browserSurface.viewing()) void browserPasswordAgent.chromeAction(action.action, action.action === "password-pick" ? action.username : undefined);
+        return;
+      }
+      if (!browserSurface.viewing() && !control.ui().busy && (action.action === "dialog-close" || (action.action === "overlay" && action.kind === null))) {
+        if (browserPasswordAgent.cancelPrompt()) return;
+      }
+      // control 이 늦게 생겨 못 보여 준 카드가 있으면 붙인다.
+      if (!browserSurface.viewing()) showPendingPasswordPrompt(control);
+      if (browserSurface.viewing()) browserViewer?.act(control, role, action); else browserActions(control, role, action);
+    },
     relay: (surface) => { if (browserSurface.viewing()) { if (surface.status === "closed") browserViewer?.closed(); } else browserHost.relaySurface(surface); },
     // 표면의 자리·모양이 바뀌면 캡션 띠의 높이도 다시 본다(Windows 만 — 다른 OS 에서는 리프레셔가 없다). 높이가 그대로면 아무 일도 하지 않는다.
     changed: () => { browserHost.places(); overlayRefresher?.refresh(); companionOverlayRefresher?.refresh(); },
@@ -554,11 +661,14 @@ async function boot(): Promise<void> {
     captureViewerFrame,
     fetch: consoleFetch,
     log: (message) => logger.info(message),
+    // 영속·임시 세션을 가리지 않고 모든 뷰에 붙는다 — 스페이스 공유 금고 하나로 자동완성·저장 판정을 한다.
+    passwords: browserPasswordAgent,
     /**
      * 창을 든 기계에서만 답할 수 있는 명령 — 이 기계의 Google Chrome 프로필과 그 쿠키. 뷰는 파티션에 격리되어
      * 있으므로 쿠키는 그 파티션의 세션에만 들어가고 창의 쿠키 저장소는 건드리지 않는다.
      */
     shellCommand: async (method, params) => {
+      if (method === DESKTOP_BROWSER_PASSWORDS) return browserPasswordVault.command(params);
       if (method === DESKTOP_BROWSER_CHROME_PROFILES) return chromeImportSources();
       if (method === DESKTOP_BROWSER_HISTORY) return browserHistoryStorage.command(params);
       if (method === DESKTOP_BROWSER_CHROME_HISTORY) {

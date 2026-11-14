@@ -2,6 +2,7 @@ import type { ChromeImportSources, ChromeOverlay, ChromeSuggestion, ChromeUiStat
 import { mountAnnotate, type Annotator } from "./annotate.js";
 import { agentGlyph, clear, G, glyph, h, hostOf, moreGlyph } from "./dom.js";
 import { paintColors, post, shownSpace, spaceHue, spaceName, syncShellMotion, tabCount, tr, type T } from "./shared.js";
+import { passwordPromptIdentity, passwordRevealText, type ChromeOverlay } from "../contract.js";
 
 const SUGGEST_DELAY_MS = 200;
 const PERSISTENT = "default";
@@ -315,6 +316,8 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   };
 
   let importProfile = "";
+  let passwordShownKey = "";
+  let passwordShown = false;
   const buildDialog = (state: ChromeUiState, t: T, overlayState: Extract<ChromeOverlay, { kind: "import" | "switch" | "clear" }>): HTMLElement => {
     const busy = state.busy;
     const cancel = h("button", { class: "button", type: "button", text: t("import.cancel"), disabled: busy, on: { click: () => post("bar", "dialog-close") } });
@@ -346,6 +349,51 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     return card;
   };
 
+  /** 저장·업데이트 제안 카드 — 주소줄 아래 페이지 자리를 덮는 시트다. 비밀번호는 마스킹이 기본이다. */
+  const buildPasswordPrompt = (t: T, overlay: Extract<ChromeOverlay, { kind: "password-prompt" }>): HTMLElement => {
+    // overlayKey 와 무관하게 토글이 바로 반영되게 텍스트를 직접 갱신한다 — 같은 카드가 다시 그려지지 않아도 전환된다.
+    const idKey = passwordPromptIdentity(overlay);
+    if (idKey !== passwordShownKey) { passwordShownKey = idKey; passwordShown = false; }
+    const showing = passwordRevealText(overlay.password, passwordShown);
+    const save = h("button", { class: "button primary", type: "button", text: t(overlay.mode === "update" ? "password.update" : "password.save"), on: { click: () => post("bar", "password-save") } });
+    const dismiss = h("button", { class: "button", type: "button", text: t("password.dismiss"), on: { click: () => post("bar", "password-dismiss") } });
+    const never = h("button", { class: "button", type: "button", text: t("password.never"), on: { click: () => post("bar", "password-never") } });
+    const mask = h("span", { class: "password-mask", text: showing.mask });
+    const toggle = h("button", { class: "button", type: "button", text: t(showing.toggleKey), on: { click: () => {
+      passwordShown = !passwordShown;
+      const next = passwordRevealText(overlay.password, passwordShown);
+      mask.textContent = next.mask;
+      toggle.textContent = t(next.toggleKey);
+    } } });
+    const secret = h("div", { class: "dialog-item" },
+      h("span", { class: "dialog-glyph" }, glyph(G.key)),
+      h("span", { class: "password-body" }, h("strong", { text: t("password.password") }), mask),
+      toggle);
+    return dialog(t,
+      t(overlay.mode === "update" ? "password.updateTitle" : "password.saveTitle"),
+      null,
+      [dialogItem(G.globe, overlay.origin, t("password.site")),
+        dialogItem(G.profile, overlay.username, t("password.account")),
+        secret],
+      [dismiss, never, save],
+      idKey);
+  };
+
+  /** 복수 계정 선택 목록 — 주소 제안과 같은 자리에 같은 모양으로 뜬다. */
+  const buildPasswordPicker = (t: T, overlay: Extract<ChromeOverlay, { kind: "password-picker" }>): HTMLElement | null => {
+    if (overlay.usernames.length === 0) return null;
+    const box = h("div", { class: "suggestions", role: "listbox", attrs: { "aria-label": t("password.pickTitle") } });
+    for (const username of overlay.usernames) {
+      const button = h("button", { class: "suggestion result", type: "button", role: "option" },
+        h("span", { class: "tab-icon" }, glyph(G.profile)),
+        h("span", { class: "suggestion-label", text: username }));
+      button.addEventListener("mousedown", (event) => event.preventDefault());
+      button.addEventListener("click", () => post("bar", "password-pick", { username }));
+      box.append(button);
+    }
+    return box;
+  };
+
   const placePage = (element: HTMLElement, state: ChromeUiState): void => {
     const page = state.page;
     element.style.left = `${page.x}px`; element.style.top = `${page.y}px`; element.style.width = `${page.width}px`; element.style.height = `${page.height}px`;
@@ -355,7 +403,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   function renderOverlay(state: ChromeUiState): void {
     const t = tr(state);
     const current = state.overlay;
-    const modal = current !== null && current.kind !== "menu" && current.kind !== "suggestions" && current.kind !== "spaces" && current.kind !== "tabs-menu";
+    const modal = current !== null && current.kind !== "menu" && current.kind !== "suggestions" && current.kind !== "spaces" && current.kind !== "tabs-menu" && current.kind !== "password-picker";
     const showing = current !== null && state.overlayReady;
     // 다른 오버레이가 없을 때만 그린다 — 메뉴를 닫으면 다시 보인다.
     const asked = showing || state.viewOnly ? null : pageDialogOf(state);
@@ -365,7 +413,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (current?.kind !== "annotate" && annotator) { annotator.dispose(); annotator = null; }
     // 스페이스 선택 화면이 닫히면 초점을 그 단추로 돌려준다 — 키보드로 연 사람이 화면 밖에서 길을 잃지 않게.
     const leavingSpaces = overlayKey.startsWith("spaces:") && !(showing && current!.kind === "spaces") && overlay.contains(document.activeElement);
-    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : "none";
+    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : current!.kind === "password-prompt" || current!.kind === "password-picker" ? JSON.stringify(current) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : "none";
     const toastKey = `${state.notice ?? ""}|${state.info?.text ?? ""}|${state.info?.action ?? ""}`;
     if (current?.kind === "annotate" && showing) {
       if (!annotator) { clear(overlay); annotator = mountAnnotate(overlay, state, t); overlayKey = "annotate"; }
@@ -399,10 +447,14 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
         } else if (current!.kind === "suggestions") {
           const box = buildSuggestions(state, t);
           if (box) { const rect = form.getBoundingClientRect(); box.style.left = `${rect.left}px`; box.style.width = `${rect.width}px`; box.style.top = `${rect.bottom + 4}px`; backdrop.append(box); }
+        } else if (current!.kind === "password-picker") {
+          const box = buildPasswordPicker(t, current as Extract<ChromeOverlay, { kind: "password-picker" }>);
+          if (box) { const rect = form.getBoundingClientRect(); box.style.left = `${rect.left}px`; box.style.width = `${rect.width}px`; box.style.top = `${rect.bottom + 4}px`; backdrop.append(box); }
         } else {
           placePage(backdrop, state);
           backdrop.classList.add("scrim");
-          backdrop.append(buildDialog(state, t, current as Extract<ChromeOverlay, { kind: "import" | "switch" | "clear" }>));
+          if (current!.kind === "password-prompt") backdrop.append(buildPasswordPrompt(t, current as Extract<ChromeOverlay, { kind: "password-prompt" }>));
+          else backdrop.append(buildDialog(state, t, current as Extract<ChromeOverlay, { kind: "import" | "switch" | "clear" }>));
         }
         overlay.append(backdrop);
       } else if (asked) {
