@@ -286,7 +286,8 @@ describe("isolated submit and focus reporters", () => {
     const posted = session(doc);
     doc.fire("focusin", inputEvent(user));
     doc.fire("focusin", inputEvent(password));
-    expect(posted.map((text) => JSON.parse(text))).toEqual([{ kind: "field-focused" }, { kind: "field-focused" }]);
+    doc.fire("click", inputEvent(user));
+    expect(posted.map((text) => JSON.parse(text))).toEqual([{ kind: "field-focused" }, { kind: "field-focused" }, { kind: "field-focused" }]);
   });
 
   it("reports focus on text inputs near a login form, and silence without one", () => {

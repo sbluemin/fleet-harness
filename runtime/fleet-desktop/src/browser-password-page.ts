@@ -404,8 +404,8 @@ export function fleetPasswordSession(
     lastPosted = `${read.username}\n${read.password}`;
     tell({ kind: "submitted", username: read.username, password: read.password });
   }, true);
-  doc.addEventListener("focusin", (event) => {
-    const target = (event as FleetPasswordDomEvent).target as { tagName?: unknown; getAttribute?: (name: string) => string | null } | null;
+  const reportFieldFocused = (rawTarget: unknown): void => {
+    const target = rawTarget as { tagName?: unknown; getAttribute?: (name: string) => string | null } | null;
     if (!target || target.tagName !== "INPUT" || typeof target.getAttribute !== "function") return;
     let type = "";
     try {
@@ -424,6 +424,12 @@ export function fleetPasswordSession(
     }
     if (!snap.forms.some((candidate) => !candidate.newPassword)) return;
     tell({ kind: "field-focused" });
+  };
+  doc.addEventListener("focusin", (event) => {
+    reportFieldFocused((event as FleetPasswordDomEvent).target);
+  }, true);
+  doc.addEventListener("click", (event) => {
+    reportFieldFocused((event as FleetPasswordDomEvent).target);
   }, true);
   doc.addEventListener("input", () => {
     reportTyping();
