@@ -60,7 +60,7 @@ Use `access=monitoring` for a read-only guest. Never print the lock token or the
 
 ## Register the link on a second owned Console
 
-The shape above is pairing: one Console, Node as the guest. Registration is two owned Consoles. The Desktop canonical slot (`--canonical-console-dir`) only lists a local neighbor; it is not how a remote host is stored.
+The shape above is pairing: one Console, Node as the guest. Registration is two owned Consoles.
 
 After `issue-access-link.mjs` writes `<remote-e2e-dir>/link.txt`:
 
