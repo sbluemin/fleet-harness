@@ -5,6 +5,40 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.304.0] - 2026-11-14
+
+### fleet-console
+
+#### Changed
+- On desktop, a Commodore's settings now live inside its chat input: the Commodore and Commander models, operation areas, and advanced options sit beside the `+` button and open in place, replacing the Settings tab in the right panel.
+- Commodores can now attach retained images from your earlier messages when creating or editing objectives or messaging other Commodores, without asking you to resend them.
+- Handed criteria proposals, review completions, follow-up candidates, and Commodore questions now gather in a single overlay inbox on the Commodore screen for one-by-one review or returning to the Commodore, instead of appearing in Commander chat.
+- Have Commodores choose which TaskForce members to wake on each post, or post quietly without waking anyone, and display recipients below their TaskForce bubbles.
+- Removed Commander decision requests so Commanders use `consult_ask` for advice or out-of-authority decisions while the Commodore records and updates board decisions anytime, keeping existing decisions visible.
+
+#### Fixed
+- Keep live sidebar activity, member avatars, context menus, highlights, and editing controls available across connected consoles without switching away. Update both Desktop and the target Console; monitoring connections remain read-only.
+
+#### Removed
+- You no longer start a new objective from the sidebar, command palette, shortcut, or phone. Ask the commodore to open the work instead.
+- Remove the floating top header chip and close button from the standalone Claude Code CLI overlay; press Ctrl+` or exit the CLI to close it.
+
+### fleet-desktop
+
+#### Changed
+- Animate opening and closing the Fleet Browser shell with an asymmetric fade-and-glide transition, finishing immediately when reduced motion is enabled.
+
+#### Fixed
+- On Windows, restarting to install a Fleet Desktop update no longer opens the installer wizard. The app closes, installs quietly, and starts again on its own.
+
+### fleet-mobile
+
+#### Fixed
+- Mobile screens draw behind the status bar and the home indicator, with only a short fade at the edges, instead of sitting inside a solid band.
+
+#### Removed
+- The phone no longer has a button that starts a new objective on its own.
+
 ## [1.303.0] - 2026-11-14
 
 ### fleet-console
