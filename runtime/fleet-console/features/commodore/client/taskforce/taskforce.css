@@ -101,6 +101,9 @@
 .taskforce-link { padding: 0; border: 0; border-radius: 3px; background: transparent; color: inherit; text-decoration: underline; text-underline-offset: 2px; font: inherit; font-size: var(--t-sm); cursor: pointer; text-align: left; }
 .taskforce-text-button { padding: 4px; border: 0; border-radius: 4px; background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); cursor: pointer; }
 .taskforce-action-list { display: grid; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: .5px solid var(--hairline); }
+.taskforce-recipient-list { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; margin-top: 8px; padding-top: 8px; border-top: .5px solid var(--hairline); }
+.taskforce-recipient { display: inline-flex; gap: 6px; align-items: center; min-width: 0; max-width: 100%; }
+.taskforce-recipient-name { color: var(--text-secondary); font-size: var(--t-xs); overflow-wrap: anywhere; }
 .taskforce-action { display: flex; gap: 8px; align-items: center; overflow-wrap: anywhere; }
 .taskforce-action-kind { flex-shrink: 0; color: var(--text-secondary); font-size: var(--t-xs); }
 .taskforce-muted { margin: 0; color: var(--text-tertiary); font-size: var(--t-sm); }
