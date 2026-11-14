@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { getDomain } from "tldts";
 import { BROWSER_HISTORY_MAX_BYTES, BROWSER_HISTORY_MAX_ENTRIES, DESKTOP_BROWSER_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import type { CdpClient } from "./cdp.js";
 
@@ -148,18 +149,24 @@ export class BrowserHistory {
     });
     return found ? this.loadIcon(scope, found.url, found.cached ?? null, id) : null;
   }
+  /**
+   * 금고에 있는 origin의 아이콘. 그 origin의 이력·선언 아이콘을 먼저 보고,
+   * 없으면 같은 등록 도메인(eTLD+1)의 이미 캐시된 이력 아이콘만 쓴다.
+   * 다른 origin으로 네트워크 요청은 보내지 않는다. 마지막 후보는 저장된 origin의 `/favicon.ico`다.
+   */
   async faviconForOrigin(scope: HistoryScope, origin: string, allowOriginFallback = false): Promise<{ body: Buffer; type: string } | null> {
-    const found = await this.access(scope, false, (data) => {
-      const entry = data.entries.find((item) => {
-        try { return new URL(item.url).origin === origin; } catch { return false; }
-      });
-      if (!entry) return null;
-      const url = entry.iconUrl ?? `${origin}/favicon.ico`;
-      return { url, cached: data.icons[idOf(url)], pageId: idOf(entry.url) };
-    });
-    if (found) return this.loadIcon(scope, found.url, found.cached ?? null, found.pageId);
+    const exactCached = await this.access(scope, false, (data) => cachedOriginIcon(data, origin));
+    if (exactCached) return this.loadIcon(scope, exactCached.url, exactCached.cached, exactCached.pageId);
+    const declared = await this.access(scope, false, (data) => declaredOriginIcon(data, origin));
+    const fallbackUrl = `${origin}/favicon.ico`;
+    if (declared && declared.url !== fallbackUrl) {
+      const loaded = await this.loadIcon(scope, declared.url, null, declared.pageId);
+      if (loaded) return loaded;
+    }
+    const sibling = await this.access(scope, false, (data) => cachedRegistrableIcon(data, origin));
+    if (sibling) return this.loadIcon(scope, sibling.url, sibling.cached, sibling.pageId);
     if (!allowOriginFallback) return null;
-    return this.loadIcon(scope, `${origin}/favicon.ico`, null, idOf(origin), false);
+    return this.loadIcon(scope, fallbackUrl, null, idOf(origin), false);
   }
   private async loadIcon(scope: HistoryScope, url: string, cached: Icon | null, pageId: string, persist = true): Promise<{ body: Buffer; type: string } | null> {
     if (!scope.current()) return null;
@@ -177,6 +184,51 @@ export class BrowserHistory {
     }).catch(() => undefined); // 이력 파일 오류가 이미 받은 탭 아이콘까지 없애지는 않는다.
     return scope.current() ? { body, type: icon.type } : null;
   }
+}
+
+interface OriginIcon { readonly url: string; readonly cached: Icon; readonly pageId: string }
+
+function pageOrigin(url: string): string | null {
+  try { return new URL(url).origin; } catch { return null; }
+}
+
+/** IP·localhost 는 등록 도메인이 없다. 사설 접미사(github.io 등)도 서로 다른 사이트로 가른다. */
+function registrableSite(origin: string): string | null {
+  const hostname = pageOrigin(origin) === null ? null : new URL(origin).hostname;
+  if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost")) return null;
+  return getDomain(hostname, { allowPrivateDomains: true });
+}
+
+function cachedOriginIcon(data: Snapshot, origin: string): OriginIcon | null {
+  for (const entry of data.entries) {
+    if (pageOrigin(entry.url) !== origin) continue;
+    const url = entry.iconUrl ?? `${origin}/favicon.ico`;
+    const cached = data.icons[idOf(url)];
+    if (cached) return { url, cached, pageId: idOf(entry.url) };
+  }
+  return null;
+}
+
+function declaredOriginIcon(data: Snapshot, origin: string): { readonly url: string; readonly pageId: string } | null {
+  for (const entry of data.entries) {
+    if (pageOrigin(entry.url) !== origin || !entry.iconUrl) continue;
+    return { url: entry.iconUrl, pageId: idOf(entry.url) };
+  }
+  return null;
+}
+
+function cachedRegistrableIcon(data: Snapshot, origin: string): OriginIcon | null {
+  const site = registrableSite(origin);
+  if (!site) return null;
+  const siblings = data.entries.filter((entry) => {
+    const page = pageOrigin(entry.url);
+    return page !== null && page !== origin && registrableSite(page) === site && Boolean(entry.iconUrl && data.icons[idOf(entry.iconUrl)]);
+  }).sort((left, right) => right.lastVisited - left.lastVisited);
+  const entry = siblings[0];
+  if (!entry?.iconUrl) return null;
+  const cached = data.icons[idOf(entry.iconUrl)];
+  if (!cached) return null;
+  return { url: entry.iconUrl, cached, pageId: idOf(entry.url) };
 }
 
 /** 렌더러에는 같은 origin의 바이트만 준다. 응답을 다 읽기 전에 기존 탭 상한을 검사한다. */

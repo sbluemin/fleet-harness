@@ -9,6 +9,7 @@ import { createPluginAgentHost } from "../features/execution/host/agent/plugin-a
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { DesktopBrowserRelay, DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 
+import { BrowserHistory } from "../features/browser/host/history.js";
 import { DesktopEngine } from "../features/browser/host/desktop-engine.js";
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID } from "../features/browser/host/service.js";
 import { createBrowserRouter } from "../features/browser/host/routes.js";
@@ -909,6 +910,36 @@ describe("session browser host contract", () => {
         headers: { "Content-Type": "image/png", "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; sandbox" },
       });
       expect(writtenBody).toEqual(Buffer.from(iconBytes));
+    } finally { iconFetch.mockRestore(); }
+  });
+
+  it("reuses a cached favicon from the same registrable domain and does not fetch a different origin", async () => {
+    const history = new BrowserHistory(async () => { throw new Error("desktop_unused"); });
+    const scope = { owner: "global", profile: null, current: () => true };
+    const bytes = new Uint8Array([137, 80, 78, 71]);
+    const sibling = "https://www.example.com/favicon.ico";
+    const unrelated = "https://www.other.test/favicon.ico";
+    const fetched: string[] = [];
+    const iconFetch = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      fetched.push(url);
+      if (url === sibling || url === unrelated) return new Response(bytes, { headers: { "Content-Type": "image/png" } });
+      return new Response(null, { status: 404 });
+    });
+    try {
+      await history.record(scope, [{ url: "https://www.example.com/home", title: "Home", visits: 2, lastVisited: 20 }], { iconUrl: sibling });
+      await history.record(scope, [{ url: "https://www.other.test/home", title: "Other", visits: 1, lastVisited: 10 }], { iconUrl: unrelated });
+      await history.record(scope, [{ url: "https://login.example.co.uk/start", title: "Shop", visits: 1, lastVisited: 30 }], { iconUrl: "https://login.example.co.uk/icon.png" });
+      expect(await history.faviconForUrl(scope, "https://www.example.com/home", sibling)).toMatchObject({ type: "image/png" });
+      expect(await history.faviconForUrl(scope, "https://www.other.test/home", unrelated)).toMatchObject({ type: "image/png" });
+      fetched.length = 0;
+      const shared = await history.faviconForOrigin(scope, "https://login.example.com", true);
+      expect(shared?.body).toEqual(Buffer.from(bytes));
+      expect(fetched).toEqual([]);
+      const foreign = await history.faviconForOrigin(scope, "https://login.example.co.uk", true);
+      expect(foreign).toBeNull();
+      expect(fetched).toEqual(["https://login.example.co.uk/icon.png", "https://login.example.co.uk/favicon.ico"]);
+      expect(fetched).not.toContain("https://www.example.co.uk/favicon.ico");
     } finally { iconFetch.mockRestore(); }
   });
 });

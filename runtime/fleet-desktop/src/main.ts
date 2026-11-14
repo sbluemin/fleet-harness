@@ -501,7 +501,7 @@ async function boot(): Promise<void> {
     if (prompt.kind === "save-prompt") {
       control.patch({ overlay: { kind: "password-prompt", origin: prompt.origin, username: prompt.username, password: prompt.password, mode: prompt.mode }, suggestions: [] });
     } else {
-      control.patch({ overlay: { kind: "password-picker", origin: prompt.origin, usernames: [...prompt.usernames] }, suggestions: [] });
+      control.patch({ overlay: { kind: "password-picker", origin: prompt.origin, usernames: [...prompt.usernames], origins: [...prompt.origins] }, suggestions: [] });
     }
   };
   const showPendingPasswordPrompt = (control: SurfaceControl): void => {
@@ -586,7 +586,7 @@ async function boot(): Promise<void> {
     act: (control, role, action) => {
       surfaceControl = control;
       if (action.action === "password-pick" || action.action === "password-save" || action.action === "password-dismiss" || action.action === "password-never") {
-        if (!browserSurface.viewing()) void browserPasswordAgent.chromeAction(action.action, action.action === "password-pick" ? action.username : undefined);
+        if (!browserSurface.viewing()) void browserPasswordAgent.chromeAction(action.action, action.action === "password-pick" ? action.username : undefined, action.action === "password-pick" ? action.origin : undefined);
         return;
       }
       if (!browserSurface.viewing() && !control.ui().busy && (action.action === "dialog-close" || (action.action === "overlay" && action.kind === null))) {

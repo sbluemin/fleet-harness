@@ -383,12 +383,18 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   const buildPasswordPicker = (t: T, overlay: Extract<ChromeOverlay, { kind: "password-picker" }>): HTMLElement | null => {
     if (overlay.usernames.length === 0) return null;
     const box = h("div", { class: "suggestions", role: "listbox", attrs: { "aria-label": t("password.pickTitle") } });
-    for (const username of overlay.usernames) {
+    for (let index = 0; index < overlay.usernames.length; index += 1) {
+      const username = overlay.usernames[index]!;
+      const site = overlay.origins?.[index];
+      const label = h("span", { class: "suggestion-label", text: username });
+      // PSL 매치처럼 카드 origin 과 다른 출처면 알아볼 수 있게 덧붙인다.
+      if (site && site !== overlay.origin) label.append(h("small", { text: site }));
       const button = h("button", { class: "suggestion result", type: "button", role: "option" },
         h("span", { class: "tab-icon" }, glyph(G.profile)),
-        h("span", { class: "suggestion-label", text: username }));
+        label);
+      const pickOrigin = site && site !== overlay.origin ? site : undefined;
       button.addEventListener("mousedown", (event) => event.preventDefault());
-      button.addEventListener("click", () => post("bar", "password-pick", { username }));
+      button.addEventListener("click", () => post("bar", "password-pick", pickOrigin === undefined ? { username } : { username, origin: pickOrigin }));
       box.append(button);
     }
     return box;
