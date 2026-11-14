@@ -322,14 +322,14 @@ describe("ai-gateway settings store", () => {
         { id: "codex--gpt-6.1-sol-1m-fast", hostOnly: true, efforts: ["max"] },
         { id: "xai--grok-4.7", hostOnly: true },
         { id: "claude--opus-1m", efforts: ["xhigh", "max"] },
-        { id: "antigravity--gemini-3.8-flash", efforts: ["high"] },
+        { id: "antigravity--gemini-4-hydrogen", efforts: ["high"] },
       ],
     });
     expect(migrated.seedModels(seed)).toBe(true);
     expect(migrated.read()?.models).toEqual([
       { id: "codex--gpt-6.1-sol", efforts: ["low", "medium", "high"] },
       { id: "claude--opus-1m" },
-      { id: "antigravity--gemini-3.8-flash" },
+      { id: "antigravity--gemini-4-hydrogen", efforts: ["low", "medium", "high"] },
     ]);
     expect(migrated.seedModels(seed)).toBe(false);
   });

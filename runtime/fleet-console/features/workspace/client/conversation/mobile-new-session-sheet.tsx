@@ -348,7 +348,7 @@ export function MobileNewSessionSheet(props: MobileNewSessionSheetProps) {
       {props.mentionTarget === null ? (
         <div className="mls-chips">
           <button type="button" className="mls-circ" data-press="r3" aria-label={t("chrome.launch.mobile.attach")} onClick={() => setSub("attach")}><MobileIcon name="plus" size={20} /></button>
-          <button type="button" className="mobile-pill-secondary mls-model-chip" onClick={() => setSub("model")} disabled={!selectedRow}>
+          <button type="button" className="mobile-pill-secondary mls-model-chip" onClick={() => setSub("model")} disabled={groups.length === 0}>
             <span className="mls-chip-name">{selectedRow ? (groups.some((group) => isRosterFallbackGroup(group.id) && group.rows.includes(selectedRow)) ? `${selectedRow.label} · ${fallbackBadge}` : selectedRow.label) : t("chrome.launch.modelUnset")}</span>{selectedRow && (selectedRow.chips?.length ?? 0) > 0 ? <span className="mls-chip-effort">{effortLabel}</span> : null}
           </button>
         </div>

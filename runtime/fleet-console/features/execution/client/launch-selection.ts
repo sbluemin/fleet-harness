@@ -49,10 +49,12 @@ export function findVariantLaunchKind(catalog: readonly ObjectiveCatalogPlugin[]
 }
 
 /**
- * 기억해 둔 조합을 현재 카탈로그에 비추어 되살린다. 처음 열었거나 기억이 낡았으면 native Opus를
+ * 기억해 둔 조합을 현재 카탈로그에 비추어 되살린다. 처음 열었거나 기억이 없으면 native Opus를
  * 기본으로 삼고, 그 행조차 없을 때만 ★행과 첫 행 순서로 물러난다 — 사용자가 Gateway 기본 모델을
  * 바꿔도 새 세션의 첫 모델이 함께 흔들리지 않으며, 낡은 조합을 보내 생기는 409도 막는다.
  * 기억한 native 좌표는 가족당 `[1m]` 한 행으로 찾는다.
+ * 기억한 모델이 로스터에 없는 은퇴 id이면 기본값으로 물러나지 않고 비워 돌려준다 —
+ * 다음 실행은 자동 전환 없이 모델을 다시 고른다.
  */
 export function resolveSelection(
   groups: readonly ObjectiveLaunchVariantGroup[],
@@ -63,6 +65,9 @@ export function resolveSelection(
   const rememberedRow = rememberedModel === null
     ? undefined
     : rows.find((row) => row.launch.model === rememberedModel);
+  if (rememberedModel !== null && rememberedRow === undefined) {
+    return { model: null, effort: null, modelLabel: null, effortLabel: null };
+  }
   const row = rememberedRow
     ?? rows.find((candidate) => candidate.launch.model === LAUNCH_DEFAULT_MODEL)
     ?? rows.find((candidate) => candidate.starred)
@@ -92,6 +97,20 @@ export function canonicalLaunchModel(model: string | null): string | null {
   if (canonical === "sonnet") return "sonnet[1m]";
   if (canonical === "haiku") return "haiku[1m]";
   return canonical;
+}
+
+/**
+ * 기억한 모델이 현재 로스터에 없는 은퇴 id인가. 기억 없음(null)은 은퇴가 아니다 —
+ * 첫 실행의 기본값 물러남과 은퇴 id의 재선택 요구를 가르는 판정으로,
+ * 모바일 새 대화 시트가 카탈로그 도착 효과를 다시 돌릴 때 재기본값화를 막는 데 쓴다.
+ */
+export function isRetiredLaunchModel(
+  groups: readonly ObjectiveLaunchVariantGroup[],
+  model: string | null,
+): boolean {
+  const canonical = canonicalLaunchModel(model);
+  if (canonical === null) return false;
+  return !groups.flatMap((group) => group.rows).some((row) => row.launch.model === canonical);
 }
 
 export interface EffortDeckOption {
