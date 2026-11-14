@@ -1,18 +1,11 @@
-import { AiGatewayModelsCard as GatewayModelsCard, AiGatewayModelsEntry as GatewayModelsEntry } from "./gateway-models-card.js";
-import { AiGatewayCandidatesCard } from "./gateway-candidates-card.js";
-import { launchProviderGlyph, serviceGlyph } from "./components/launch-provider-glyphs.js";
+import { AiGatewayCompactCard as GatewayCompactCard } from "./gateway-models-card.js";
 import * as React from "react";
-import { SegmentedThumb } from "@fleet-console/ui/react";
-import { Select } from "../../settings/client/mobile-host.js";
-import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsInputRow, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../settings/client/preferences-context.js";
+import { SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../settings/client/preferences-context.js";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 import { getT, useTerminalLocale } from "../../execution/client/agent/i18n/index.js";
-import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type AiGatewayCatalogModel, type AiGatewayCatalogProvider, type AiGatewayProviderId, type AiGatewaySettings, type CompactCeiling } from "../../settings/client/execution-settings.js";
+import { getSystemPromptSettingsStoreState, loadSystemPromptSettings, setSystemPromptSettingsField, subscribe as subscribeSystemPromptSettings, useSystemPromptSettingsStore, type CompactCeiling } from "../../settings/client/execution-settings.js";
 import { ModelCoordinatePicker, type ModelCoordinatePickerLabels } from "./components/model-coordinate-picker.js";
 import { findRosterRow, rosterRows } from "../shared/models.js";
-import { pushBackLayer } from "../../../core/client/src/chrome/mobile/mobile-back.js";
-import { reportSheetChrome, reportShellChrome } from "../../../core/client/src/chrome/mobile/mobile-chrome.js";
-import { pushOverlayHistory, releaseOverlayHistory } from "../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { useModelRoster } from "./model-roster-store.js";
 
 /** 이 화면의 모델 선택기 문구 — 접근 이름은 그 행의 제목이다. */
@@ -37,21 +30,25 @@ export const aiGatewaySettingsSection = defineSettingsSection({
   group: "work",
   keywords: [
     (locale) => [
-      getT(locale)("terminal.settings.aiGatewayModels"),
+      getT(locale)("terminal.settings.aiGatewayProviders"),
+      getT(locale)("terminal.settings.aiGatewayRoutingPool"),
       getT(locale)("terminal.settings.compactTiming"),
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex xai delegation subagent workflow diagnostics wire log compact",
-    "게이트웨이 공급자 모델 키 배정 위임 서브에이전트 워크플로 진단 와이어 로그 압축",
+    "gateway provider model api key codex xai delegation routing pool subagent workflow diagnostics wire log compact",
+    "게이트웨이 공급자 모델 키 배정 위임 라우팅 풀 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
-  // 폰의 설정 목록 보조 줄 — 켠 모델이 하나라도 있으면 켜짐(데스크톱은 이 필드를 읽지 않는다).
+  // 폰의 설정 목록 보조 줄 — 풀에 담긴 모델 수를 말한다(데스크톱은 이 필드를 읽지 않는다).
   mobile: {
     summary: (locale) => {
       const state = getSystemPromptSettingsStoreState().state;
       if (state === null) return null;
-      return getT(locale)((state.aiGateway?.models?.length ?? 0) > 0 ? "terminal.settings.mobileGatewayOn" : "terminal.settings.mobileGatewayOff");
+      const count = state.aiGateway?.models?.length ?? 0;
+      return count > 0
+        ? getT(locale)("terminal.settings.mobileGatewayModels", { count })
+        : getT(locale)("terminal.settings.mobileGatewayOff");
     },
     subscribe: (listener) => {
       void loadSystemPromptSettings();
@@ -62,26 +59,8 @@ export const aiGatewaySettingsSection = defineSettingsSection({
 
 function AiGatewaySection() {
   useLoadSystemPromptSettings();
-  const mobile = useMobileSettingsHost() !== null;
-  // 폰: 모델 카드는 길어서 「모델 목록」 행 하나로 접고, 그 하위 화면에서 연다(키트 어댑터가 적용된 같은 카드).
-  return <>{mobile ? <GatewayModelsEntry /> : <GatewayModelsCard />}<AiGatewayCandidatesCard /><AiGatewayCompactTimingCard /><AiGatewayDiagnosticsCard /></>;
-}
-const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
-  antigravity: "terminal.settings.aiGatewayProviderAntigravity",
-  claude: "terminal.settings.aiGatewayProviderClaude",
-  codex: "terminal.settings.aiGatewayProviderCodex",
-  xai: "terminal.settings.aiGatewayProviderXai",
-  "muse-code": "terminal.settings.aiGatewayProviderMuseCode",
-} as const;
-
-/**
- * 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서.
- * 표시 순서는 소진 우선순위를 바꾸지 않는다.
- */
-export function orderAiGatewayProviders<T extends { readonly id: string }>(providers: readonly T[]): T[] {
-  const claude = providers.filter((provider) => provider.id === "claude");
-  const subscription = providers.filter((provider) => provider.id !== "claude");
-  return [...claude, ...subscription];
+  // 모바일도 데스크톱과 같은 컴팩트 구성(공급자 로그인 + 라우팅 풀 안내 + 압축 시점 + 진단)을 그린다.
+  return <><GatewayCompactCard /><AiGatewayCompactTimingCard /><AiGatewayDiagnosticsCard /></>;
 }
 
 function formatAiGatewayContextWindow(contextWindow: number | null): string | null {
