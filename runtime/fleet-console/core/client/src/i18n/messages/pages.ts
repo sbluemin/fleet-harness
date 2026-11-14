@@ -638,7 +638,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "settings.models.empty": "켜진 모델이 없어요. AI Gateway에서 모델을 켜 주세요. 그동안은 Sonnet으로 실행해요.",
   "settings.models.fallback": "폴백",
   "settings.models.openGateway": "AI Gateway 열기",
-  "settings.core.appearance.label": "겉모습",
+  "settings.core.appearance.label": "모양",
   "settings.core.appearance.keywords": "테마 다크 라이트 색 색상 배색 글꼴 서체 폰트 크기",
   "settings.core.language.keywords": "언어 로케일 영어 한국어 번역 지역 표시",
   "settings.core.connectivity.keywords": "포트 동적 고정 루프백 주소 네트워크 콘솔 접속",
