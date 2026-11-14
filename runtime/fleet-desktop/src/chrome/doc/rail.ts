@@ -1,7 +1,7 @@
 import type { DesktopBrowserChromeTab } from "@fleet-console/protocol/desktop";
 import type { ChromeUiState } from "../contract.js";
 import { agentGlyph, clear, G, glyph, h, hostOf, keyed } from "./dom.js";
-import { paintColors, post, shownSpace, spaceName, tr, type T } from "./shared.js";
+import { paintColors, post, shownSpace, spaceName, syncShellMotion, tr, type T } from "./shared.js";
 
 const LEAVE_MS = 160;
 /** 접힘 전환이 끝났다고 보는 여유 — 전환 시간 뒤 이만큼 더 기다렸다가 main 에 뷰 폭을 줄여 달라고 한다. */
@@ -138,6 +138,7 @@ export function mountRail(): (state: ChromeUiState) => void {
     const previous = last;
     last = state;
     paintColors(state.colors);
+    syncShellMotion(state.shellClosing);
     document.documentElement.lang = state.lang;
     document.documentElement.dataset.platform = state.platform;
     const t = tr(state);

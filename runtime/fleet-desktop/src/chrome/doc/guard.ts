@@ -1,6 +1,6 @@
 import type { ChromeControl, ChromeUiState } from "../contract.js";
 import { agentGlyph, clear, G, glyph, h } from "./dom.js";
-import { paintColors, post, shownSpace, spaceName, tr } from "./shared.js";
+import { paintColors, post, shownSpace, spaceName, syncShellMotion, tr } from "./shared.js";
 
 /** 커서 글리프(16 단위)의 끝점 — 18px 로 그린 그림에서 이만큼 안쪽이 실제로 가리키는 자리다. */
 const TIP = { x: 3.2 * 18 / 16, y: 2.6 * 18 / 16 };
@@ -58,6 +58,7 @@ export function mountGuard(): (state: ChromeUiState) => void {
   let seq = -1;
   return (state) => {
     paintColors(state.colors);
+    syncShellMotion(state.shellClosing);
     document.documentElement.lang = state.lang;
     const t = tr(state);
     held = state.control;

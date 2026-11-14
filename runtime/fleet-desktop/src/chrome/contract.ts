@@ -86,6 +86,8 @@ export interface ChromeUiState {
    * 문서는 탐색·탭 열기와 닫기·도구 메뉴를 그리지 않고, main 은 그런 동작이 와도 버린다. 관리 Console 의 표면이면 null 이다.
    */
   readonly viewOnly: ChromeViewOnly | null;
+  /** 셸이 닫히는 중이다 — 크롬 문서가 비대칭 퇴장 모션을 돌린 뒤 main 이 뷰를 거둔다. */
+  readonly shellClosing?: boolean;
 }
 
 export interface ChromeViewOnly {

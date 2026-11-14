@@ -141,7 +141,7 @@ describe("desktop native browser views across a Console restart", () => {
         if (action.action === "expand") control.patch({ expanded: action.expanded });
         if (action.action === "pin") control.patch({ pinned: action.pinned });
       },
-      relay: vi.fn(), changed, log: vi.fn(),
+      relay: vi.fn(), changed, reducedMotion: () => true, log: vi.fn(),
     });
     surface.apply({ id: "surface-1", browserId: "global", mode: "pane" }, null, "http://127.0.0.1:1");
     const [bar, rail, , , divider] = views as [ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>];
@@ -184,6 +184,82 @@ describe("desktop native browser views across a Console restart", () => {
     expect(divider.webContents.close).toHaveBeenCalledOnce();
     expect(surface.target()).toBeNull();
     expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1100, height: 700 });
+  });
+
+  it("glides pane open (460ms spring) and asymmetric close (320ms glide) without resizing page width, and skips under reduced motion", () => {
+    vi.useFakeTimers();
+    try {
+      let nowMs = 1_000;
+      let reduce = false;
+      const content = { x: 0, y: 0, width: 1400, height: 900 };
+      const base = Object.assign(new EventEmitter(), { getContentBounds: () => content, isDestroyed: () => false,
+        contentView: { addChildView: vi.fn(), removeChildView: vi.fn() } });
+      const makeView = () => {
+        const mainFrame = { url: "" };
+        const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false, close: vi.fn(), focus: vi.fn(), reload: vi.fn(), setZoomFactor: vi.fn(),
+          setWindowOpenHandler: vi.fn(), loadURL: vi.fn(async (url: string) => { mainFrame.url = url; }),
+          loadFile: vi.fn(async (file: string) => { mainFrame.url = pathToFileURL(file).href; }), executeJavaScript: vi.fn(async () => undefined) });
+        return { webContents, setBounds: vi.fn(), setVisible: vi.fn(), setBackgroundColor: vi.fn() };
+      };
+      const consoleView = makeView();
+      const stack = createDesktopViewStack(base as never, consoleView as never);
+      const shell = createDesktopShellWindow(base as never, consoleView as never, stack);
+      const views: ReturnType<typeof makeView>[] = [];
+      const surface = createBrowserSurface({
+        main: () => shell,
+        createChromeView: () => { const created = makeView(); views.push(created); return created as never; },
+        createDividerView: () => { const created = makeView(); views.push(created); return created as never; },
+        createWindow: () => { throw new Error("window mode is not part of this contract"); },
+        chromeDir: "/assets/browser-chrome", program: () => "", colors: () => null, lang: "en", platform: "darwin", scaleFactor: () => 1, zoom: () => 1,
+        act: vi.fn(), relay: vi.fn(), changed: vi.fn(), reducedMotion: () => reduce, now: () => nowMs, log: vi.fn(),
+      });
+
+      surface.apply({ id: "surface-motion", browserId: "global", mode: "pane" }, null, "http://127.0.0.1:1");
+      const [bar, , , , divider] = views as [ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>];
+      // Ready bar so closing state pushes shellClosing: true
+      bar.webContents.emit("console-message", { frame: bar.webContents.mainFrame, message: JSON.stringify(["fleet-chrome", "bar", "ready", {}]) });
+      // Frame 0 starts at right edge with full width (no container transform)
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1400, height: 900 });
+      expect(surface.target()?.page.width).toBe(506);
+
+      nowMs += 160;
+      vi.advanceTimersByTime(160);
+      const midOpenX = surface.target()!.page.x;
+      expect(midOpenX).toBeGreaterThan(894);
+      expect(midOpenX).toBeLessThan(1462);
+      expect(surface.target()?.page.width).toBe(506);
+
+      nowMs += 320;
+      vi.advanceTimersByTime(320);
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
+      expect(surface.target()?.page).toEqual({ x: 894, y: 52, width: 506, height: 848 });
+
+      // Asymmetric close (320ms) keeps views/target alive while sliding out and marks shellClosing
+      surface.apply(null, null, null);
+      expect(divider.webContents.close).not.toHaveBeenCalled();
+      expect(bar.webContents.executeJavaScript).toHaveBeenLastCalledWith(expect.stringContaining('"shellClosing":true'));
+      nowMs += 160;
+      vi.advanceTimersByTime(160);
+      expect(divider.webContents.close).not.toHaveBeenCalled();
+      expect(surface.target()!.page.x).toBeGreaterThan(894);
+      expect(surface.target()?.page.width).toBe(506);
+
+      nowMs += 180;
+      vi.advanceTimersByTime(180);
+      expect(divider.webContents.close).toHaveBeenCalledOnce();
+      expect(surface.target()).toBeNull();
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1400, height: 900 });
+
+      // Reduced motion completes open and close immediately
+      reduce = true;
+      surface.apply({ id: "surface-rm", browserId: "global", mode: "pane" }, null, "http://127.0.0.1:1");
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
+      surface.apply(null, null, null);
+      expect(surface.target()).toBeNull();
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1400, height: 900 });
+    } finally {
+      vi.useRealTimers();
+    }
   });
   it("rebuilds views and runs commands from a restarted Console on the same origin", async () => {
     let lifetime: DesktopBrowserSnapshot = {

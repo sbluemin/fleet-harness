@@ -33,6 +33,49 @@ const GUARD_PILL_DEFAULT = { width: 420, height: 48 };
 const GUARD_PILL_MARGIN_X = 24;
 const GUARD_PILL_MARGIN_TOP = 24;
 const GUARD_PILL_BOTTOM = 18;
+const SHELL_OPEN_MS = 460;
+const SHELL_CLOSE_MS = 320;
+const SHELL_FRAME_MS = 16;
+const SHELL_WINDOW_OPEN_OFFSET_PX = 10;
+const SHELL_WINDOW_CLOSE_OFFSET_PX = 6;
+
+function cubicBezier(x1: number, y1: number, x2: number, y2: number): (t: number) => number {
+  const cx = 3 * x1;
+  const bx = 3 * (x2 - x1) - cx;
+  const ax = 1 - cx - bx;
+  const cy = 3 * y1;
+  const by = 3 * (y2 - y1) - cy;
+  const ay = 1 - cy - by;
+  const sampleX = (t: number) => ((ax * t + bx) * t + cx) * t;
+  const sampleY = (t: number) => ((ay * t + by) * t + cy) * t;
+  const sampleDX = (t: number) => (3 * ax * t + 2 * bx) * t + cx;
+  return (x: number): number => {
+    if (x <= 0) return 0;
+    if (x >= 1) return 1;
+    let t = x;
+    for (let i = 0; i < 6; i += 1) {
+      const err = sampleX(t) - x;
+      if (Math.abs(err) < 1e-5) return sampleY(t);
+      const dx = sampleDX(t);
+      if (Math.abs(dx) < 1e-5) break;
+      t -= err / dx;
+    }
+    let lo = 0;
+    let hi = 1;
+    t = x;
+    while (lo < hi) {
+      const mid = (lo + hi) * 0.5;
+      const err = sampleX(mid) - x;
+      if (Math.abs(err) < 1e-5) return sampleY(mid);
+      if (err < 0) lo = mid; else hi = mid;
+      if (hi - lo < 1e-6) { t = mid; break; }
+    }
+    return sampleY(t);
+  };
+}
+
+const easeSpring = cubicBezier(0.16, 1, 0.3, 1);
+const easeGlide = cubicBezier(0.4, 0.14, 0.2, 1);
 
 /** 문서가 동작을 요청하는 경로의 반대쪽 — 동작 처리기가 표면을 고칠 때 쓰는 손잡이. */
 export interface SurfaceControl {
@@ -92,6 +135,8 @@ export interface BrowserSurfaceDeps {
   readonly relay: (surface: DesktopBrowserSurfaceRelay) => void;
   /** 페이지 자리가 바뀌었다 — browser-views 가 뷰를 같은 틱에 다시 놓는다. */
   readonly changed: () => void;
+  readonly reducedMotion?: () => boolean;
+  readonly now?: () => number;
   readonly log: (message: string) => void;
 }
 
@@ -145,6 +190,37 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   let closing: ReturnType<typeof setTimeout> | null = null;
   let drag: { screenX: number; width: number } | null = null;
   let appliedZoom = 1;
+  let motionProgress = 1;
+  let closingSurface = false;
+  let motionTimer: ReturnType<typeof setInterval> | null = null;
+  let windowBoundsOrigin: { x: number; y: number } | null = null;
+  const isReducedMotion = (): boolean => deps.reducedMotion?.() ?? false;
+  const currentNow = (): number => deps.now?.() ?? Date.now();
+  const stopMotion = (): void => { if (motionTimer !== null) { clearInterval(motionTimer); motionTimer = null; } };
+  const startMotion = (from: number, to: number, durationMs: number, easing: (t: number) => number, onTick: (p: number) => void, onDone: () => void): void => {
+    stopMotion();
+    if (isReducedMotion() || durationMs <= 0) {
+      motionProgress = to;
+      onTick(to);
+      onDone();
+      return;
+    }
+    const startAt = currentNow();
+    motionProgress = from;
+    onTick(from);
+    motionTimer = setInterval(() => {
+      const elapsed = currentNow() - startAt;
+      const raw = Math.min(1, Math.max(0, elapsed / durationMs));
+      const next = from + (to - from) * easing(raw);
+      motionProgress = next;
+      onTick(next);
+      if (raw >= 1) {
+        stopMotion();
+        motionProgress = to;
+        onDone();
+      }
+    }, SHELL_FRAME_MS);
+  };
   /** 표면이 닫혀도 남는다 — 닫힌 동안 만들어지는 뷰가 마지막 페이지 크기를 따르게. */
   let lastPageSize: { width: number; height: number } | null = null;
   /** 어느 스페이스를 보여 주는가 — 표면이 닫혀도 남는다. 다시 열면 보던 스페이스에서 이어진다. */
@@ -157,7 +233,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       const content = main.getContentBounds();
       // Console 은 600 DIP 를 먼저 지킨다. 창이 좁아질 때 선호 폭을 덮어쓰지 않고 칸부터 줄인다.
       const width = Math.min(Math.max(MIN_PANE_PX, paneWidth), Math.max(1, content.width - MIN_CONSOLE_PX - DIVIDER_PX));
-      const left = Math.max(1, content.width - width - DIVIDER_PX);
+      const settledLeft = Math.max(1, content.width - width - DIVIDER_PX);
+      const totalTravel = Math.max(0, content.width - settledLeft);
+      const left = settledLeft + Math.round(totalTravel * (1 - motionProgress));
       return { x: left + DIVIDER_PX, y: 0, width, height: Math.max(1, content.height) };
     }
     if (hostKind === "window" && windowBase && !windowBase.isDestroyed()) {
@@ -275,6 +353,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
       control: controlState(),
       viewOnly,
+      shellClosing: closingSurface,
     };
   };
 
@@ -371,7 +450,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       const current = surfaceRect();
       if (!current) return;
       const limit = (width: number): number => Math.max(MIN_PANE_PX, Math.min(main.getContentBounds().width - MIN_CONSOLE_PX - DIVIDER_PX, width));
-      if (action === "start") drag = { screenX: x, width: current.width };
+      if (action === "start") { if (motionTimer !== null) { stopMotion(); motionProgress = 1; layout(); } drag = { screenX: x, width: current.width }; }
       else if (action === "move" && drag) { paneWidth = limit(drag.width + drag.screenX - x); update(); }
       else if (action === "end") drag = null;
       else if (action === "key") { paneWidth = limit(current.width + x); update(); }
@@ -416,9 +495,11 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   };
 
   /** 표면의 모드(칸/창)에 맞는 집에 크롬 뷰를 세운다. 같은 두 뷰를 옮길 뿐 문서를 다시 만들지 않는다. */
-  const ensureHost = (next: DesktopBrowserSurface): void => {
+  const ensureHost = (next: DesktopBrowserSurface, initialProgress = 0): void => {
     if (!docs) return;
     if (hostKind === next.mode) return;
+    stopMotion();
+    closingSurface = false;
     detachFromHost();
     if (next.mode === "pane") {
       const main = deps.main();
@@ -427,21 +508,65 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       hostKind = "pane";
       host = createMainPageHost(main, deps.scaleFactor);
       destroyWindow();
+      windowBoundsOrigin = null;
+      const startProgress = isReducedMotion() ? 1 : Math.min(1, Math.max(0, initialProgress));
+      motionProgress = startProgress;
+      update();
+      if (!isReducedMotion() && startProgress < 1) {
+        const duration = Math.max(1, Math.round(SHELL_OPEN_MS * (1 - startProgress)));
+        startMotion(startProgress, 1, duration, easeSpring, () => layout(), () => layout());
+      }
     } else {
       if (!windowBase || windowBase.isDestroyed()) makeWindow();
       hostKind = "window";
       windowStack!.set(docs.stage.view, docs.guard.view, docs.rail.view, docs.bar.view);
       host = windowStack!.host(() => deps.scaleFactor(windowBase!), () => { if (docs && !docs.bar.view.webContents.isDestroyed()) docs.bar.view.webContents.focus(); });
-      if (windowBase && !windowBase.isDestroyed()) { windowBase.show(); }
+      if (windowBase && !windowBase.isDestroyed()) {
+        if (!isReducedMotion()) {
+          const target = windowBase.getBounds();
+          windowBoundsOrigin = { x: target.x, y: target.y };
+          motionProgress = 0;
+          windowBase.setOpacity?.(0);
+          windowBase.setBounds?.({ ...target, y: target.y + SHELL_WINDOW_OPEN_OFFSET_PX });
+          windowBase.show();
+          update();
+          startMotion(0, 1, SHELL_OPEN_MS, easeSpring, (p) => {
+            if (!windowBase || windowBase.isDestroyed()) return;
+            windowBase.setOpacity?.(p);
+            if (windowBoundsOrigin) {
+              const b = windowBase.getBounds();
+              windowBase.setBounds?.({ ...b, y: Math.round(windowBoundsOrigin.y + SHELL_WINDOW_OPEN_OFFSET_PX * (1 - p)) });
+            }
+          }, () => {
+            if (!windowBase || windowBase.isDestroyed()) return;
+            windowBase.setOpacity?.(1);
+            if (windowBoundsOrigin) {
+              const b = windowBase.getBounds();
+              windowBase.setBounds?.({ ...b, y: windowBoundsOrigin.y });
+            }
+          });
+        } else {
+          motionProgress = 1;
+          windowBoundsOrigin = null;
+          windowBase.setOpacity?.(1);
+          windowBase.show();
+          update();
+        }
+      } else {
+        update();
+      }
     }
-    update();
   };
 
   /**
    * 표면을 거둔다 — 뷰·창·타이머를 놓고 다음 `apply` 가 처음부터 다시 세울 수 있게 비운다.
    * 열린 표면 lease 를 closed 로 보고하지는 않는다. 창을 접는 요청만 그 보고를 한다.
    */
-  const closeSurface = (): void => {
+  const finalizeClose = (): void => {
+    stopMotion();
+    closingSurface = false;
+    windowBoundsOrigin = null;
+    motionProgress = 1;
     if (!surface && !docs) return;
     if (toastTimer !== null) { clearTimeout(toastTimer); toastTimer = null; }
     const old = docs;
@@ -456,11 +581,52 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     deps.changed();
   };
 
+  const closeSurface = (immediate = false): void => {
+    if (!surface && !docs) return;
+    if (immediate || isReducedMotion() || hostKind === null || !docs) { finalizeClose(); return; }
+    if (closingSurface) return;
+    closingSurface = true;
+    push();
+    if (hostKind === "pane") {
+      const from = motionProgress;
+      const duration = Math.max(1, Math.round(SHELL_CLOSE_MS * from));
+      startMotion(from, 0, duration, easeGlide, () => layout(), () => finalizeClose());
+      return;
+    }
+    if (!windowBase || windowBase.isDestroyed()) { finalizeClose(); return; }
+    const startY = windowBase.getBounds().y;
+    const from = motionProgress;
+    const duration = Math.max(1, Math.round(SHELL_CLOSE_MS * from));
+    startMotion(from, 0, duration, easeGlide, (p) => {
+      if (!windowBase || windowBase.isDestroyed()) return;
+      windowBase.setOpacity?.(p);
+      const b = windowBase.getBounds();
+      windowBase.setBounds?.({ ...b, y: Math.round(startY + SHELL_WINDOW_CLOSE_OFFSET_PX * (1 - p)) });
+    }, () => finalizeClose());
+  };
+
   return {
     apply(next, nextChrome, _origin, nextViewOnly = null) {
-      if (!next) { closeSurface(); return; }
-      const first = surface?.id !== next.id;
-      if (first && docs) closeSurface();
+      if (!next) { closeSurface(false); return; }
+      let initialProgress = 0;
+      if (closingSurface) {
+        if (surface?.id === next.id && hostKind === next.mode) {
+          closingSurface = false;
+          push();
+          if (isReducedMotion()) { motionProgress = 1; layout(); }
+          else {
+            const from = motionProgress;
+            const duration = Math.max(1, Math.round(SHELL_OPEN_MS * (1 - from)));
+            startMotion(from, 1, duration, easeSpring, () => layout(), () => layout());
+          }
+        } else {
+          if (hostKind === "pane" && next.mode === "pane" && !isReducedMotion()) initialProgress = motionProgress;
+          finalizeClose();
+        }
+      } else {
+        const first = surface?.id !== next.id;
+        if (first && docs) finalizeClose();
+      }
       const viewChanged = JSON.stringify(viewOnly) !== JSON.stringify(nextViewOnly);
       viewOnly = nextViewOnly;
       surface = next;
@@ -472,7 +638,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       // 표시 스페이스는 여기서 정한다 — 표시 탭이 다른 스페이스로 옮겨 갔으면 따라가고, 화면이 어긋나 있으면 맞춰 달라고 요청한다.
       const spaceBefore = spaces.current();
       const request = chromeChanged ? spaces.observe(nextChrome) : null;
-      ensureHost(next);
+      ensureHost(next, initialProgress);
       if (hostKind === null) return;
       if (next.mode === "window" && (next.focusRequest ?? 0) > focusSeen && windowBase && !windowBase.isDestroyed()) {
         focusSeen = next.focusRequest ?? 0;
@@ -503,9 +669,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     refresh() { if (docs) update(); },
     lastPage: () => (lastPageSize ? { ...lastPageSize } : null),
     focusPageDialog() { dialogFocusAt = Date.now(); if (takeDialogFocus()) update(); },
-    dispose: closeSurface,
+    dispose: () => closeSurface(true),
     /** 창이 다른 콘솔을 보는 동안 네이티브 표면만 내린다. 서버의 표면 lease 는 그대로 둔다. */
-    conceal: closeSurface,
+    conceal: () => closeSurface(true),
     relay: (value) => deps.relay(value),
     // Console 테마(라이트·다크·시스템)가 바뀌었다 — 새로고침 없이 크롬 문서와 손잡이가 같은 순간 새 색으로 다시 칠해진다.
     retheme() { if (docs) push(); },

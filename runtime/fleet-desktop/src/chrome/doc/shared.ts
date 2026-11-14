@@ -41,3 +41,40 @@ export function spaceHue(id: string): number {
   for (const ch of id) hash = (hash * 31 + ch.codePointAt(0)!) % 360;
   return hash;
 }
+
+const SHELL_ENTER_MS = 540;
+let enterTimer: ReturnType<typeof setTimeout> | null = null;
+let lastClosing = false;
+let enteredOnce = false;
+
+/**
+ * 셸 열기·닫기 모션 상태 — 처음 열릴 때만 10px 위로 520ms 페이드인하고, 닫힐 때는 320ms 페이드아웃으로 전환한다.
+ * 닫는 중 다시 열리면 퇴장 표식을 거두고 진입 모션을 다시 켠다.
+ */
+export function syncShellMotion(closing = false): void {
+  const root = document.documentElement;
+  const triggerEnter = () => {
+    if (enterTimer !== null) { clearTimeout(enterTimer); enterTimer = null; }
+    root.dataset.shellEnter = "true";
+    if (typeof matchMedia === "function" && matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      root.dataset.shellEnter = "false";
+      return;
+    }
+    enterTimer = setTimeout(() => {
+      enterTimer = null;
+      root.dataset.shellEnter = "false";
+    }, SHELL_ENTER_MS);
+  };
+  if (!enteredOnce) {
+    enteredOnce = true;
+    if (!closing) triggerEnter();
+  } else if (lastClosing && !closing) {
+    triggerEnter();
+  }
+  lastClosing = closing;
+  root.dataset.shellClosing = closing ? "true" : "false";
+  if (closing) {
+    if (enterTimer !== null) { clearTimeout(enterTimer); enterTimer = null; }
+    root.dataset.shellEnter = "false";
+  }
+}
