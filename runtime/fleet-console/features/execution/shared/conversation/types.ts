@@ -159,7 +159,7 @@ export type GroupTimelineEntry = EntryCoordinate & (
    * `status` — 행위 낱말·이름 뒤에 따로 서는 결말(답을 기다림·실패 사유). `failed` 면 신호 잉크다.
    * `voicedAs` — 이 행위에 덧붙인 말이 있으면 그 말이 이 `via` 의 말풍선으로 따로 선다. 그 말풍선이 있으면 이 줄은 비켜선다(같은 행위를 두 번 세우지 않는다).
    */
-  | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly missionId?: string; readonly action: LocalizedText; readonly text: string; readonly target?: { readonly id?: string; readonly label?: LocalizedText }; readonly status?: { readonly text: LocalizedText; readonly failed?: true }; readonly voicedAs?: ConversationMessageVia }
+  | { readonly kind: "board-action"; readonly speaker: ConversationSpeaker; readonly objectiveId: string; readonly action: LocalizedText; readonly text: string; readonly target?: { readonly id?: string; readonly label?: LocalizedText }; readonly status?: { readonly text: LocalizedText; readonly failed?: true }; readonly voicedAs?: ConversationMessageVia }
   /**
    * 사람이 결정 요청에 보낸 답 — 요청 하나에 한 줄, 답한 시각(`at`)의 자리에 선다. 질문마다 머리말(있으면)·질문·답(고른 선택지와 쓴 말).
    * 「결정 안 함」으로 닫힌 요청의 줄은 질문마다 `declined` 가 서고 답은 빈 글이다.

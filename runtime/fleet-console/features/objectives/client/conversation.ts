@@ -46,7 +46,6 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const voicedAs = VOICED_ACTS[first.kind];
     events.push({
       kind: "board-action", id: `board:${objective.id}:${first.id}`, at: first.at, objectiveId: objective.id, speaker,
-      ...(first.targetId && objective.missions.some((mission) => mission.id === first.targetId) ? { missionId: first.targetId } : {}),
       action: run.length > 1 ? localized((t) => t(`objectives.prov.act.${first.kind as "criteria-approved" | "criteria-rejected"}.count`, { count: run.length })) : boardAct(first.kind),
       text: run.length > 1 ? words.map((text) => `- ${text}`).join("\n") : words[0] ?? "",
       ...(voicedAs ? { voicedAs } : {}),

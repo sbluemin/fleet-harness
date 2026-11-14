@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { unseenRecords, type Objective, type ObjectiveMission } from "../shared/types.js";
 
@@ -17,7 +17,6 @@ export function useOpenMissionRecords(
   readonly openRecords: Readonly<Record<string, ReadonlySet<string>>>;
   readonly setOpenRecords: (update: (current: Readonly<Record<string, ReadonlySet<string>>>) => Readonly<Record<string, ReadonlySet<string>>>) => void;
   readonly toggleRecords: (mission: ObjectiveMission) => void;
-  readonly openMissionRecords: (mission: ObjectiveMission) => void;
 } {
   const [openRecords, setOpenRecords] = useState<Readonly<Record<string, ReadonlySet<string>>>>({});
   useEffect(() => { setOpenRecords({}); }, [objective.id]);
@@ -38,7 +37,5 @@ export function useOpenMissionRecords(
     }
     return { ...current, [mission.id]: seenAtOpen(mission) };
   });
-  const openMissionRecords = useCallback((mission: ObjectiveMission) => setOpenRecords((current) =>
-    mission.id in current ? current : { ...current, [mission.id]: seenAtOpen(mission) }), []);
-  return { openRecords, setOpenRecords, toggleRecords, openMissionRecords };
+  return { openRecords, setOpenRecords, toggleRecords };
 }

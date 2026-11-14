@@ -22,7 +22,6 @@ import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
 import { getComposerDraft } from "../../../objective-view-state.js";
 import { claimComposerInbox } from "../composer-inbox.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { GroupComposerMentionContext, type GroupComposerMentionPort } from "./composer-mention-context.js";
 import { SpeakerMark, speakerKey, speakerTone } from "./speaker-mark.js";
 import { useAvatarAccent } from "../../../../../workspace/client/avatar-accent.js";
 import { objectiveRecordAvatarKey } from "../../../../../workspace/shared/avatars.js";
@@ -230,18 +229,17 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
 
   const members = snapshot.participants.filter((participant) => participant.speaker.kind === "member").map((participant) => participant.speaker);
   const commander = snapshot.participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null;
-  const mentionableMembers = commanderOnly ? [] : members;
   const query = MENTION_QUERY.exec(text)?.[1] ?? null;
   const candidates = React.useMemo<readonly Candidate[]>(() => {
     if (query === null) return [];
     const q = query.toLocaleLowerCase();
     const hit = (...labels: string[]) => q.length === 0 || labels.some((label) => label.toLocaleLowerCase().includes(q));
     return [
-      ...mentionableMembers.filter((speaker) => hit(speaker.name)).map((speaker): Candidate => ({ kind: "member", speaker })),
+      ...(commanderOnly ? [] : members.filter((speaker) => hit(speaker.name)).map((speaker): Candidate => ({ kind: "member", speaker }))),
       ...(!commanderOnly && hit(t("group.mention.everyone"), "all", "everyone") ? [{ kind: "all" } as const] : []),
       ...(hit(t("group.commodore"), "commodore") ? [{ kind: "commodore" } as const] : []),
     ];
-  }, [query, mentionableMembers, t, commanderOnly]);
+  }, [query, members, t, commanderOnly]);
   // 동작 칩이 앉아 있는 동안(그리고 동작만 받는 입력창에서는) 받는 이는 지휘관이다 — @ 목록을 열지 않는다.
   const popOpen = !popDismissed && candidates.length > 0 && seated === null && !board?.actionsOnly;
   const index = Math.min(popIndex, Math.max(0, candidates.length - 1));
@@ -261,43 +259,12 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
     if (notice) setNotice(null);
   };
 
-  const choose = (candidate: Candidate | null, consumeQuery = true) => {
+  const choose = (candidate: Candidate) => {
     setTarget(candidate);
-    if (consumeQuery) setText(draft.read().text.replace(MENTION_QUERY, (match) => (match.startsWith("@") ? "" : match.slice(0, 1))));
-    else setPopDismissed(true);
+    setText(draft.read().text.replace(MENTION_QUERY, (match) => (match.startsWith("@") ? "" : match.slice(0, 1))));
     setPopIndex(0);
     inputRef.current?.focus();
-    if (!consumeQuery) inputRef.current?.setSelectionRange(draft.read().text.length, draft.read().text.length);
   };
-
-  // 머리의 구성원 줄도 같은 후보와 choose 경로를 쓴다. 입력창이 없거나 @가 막힌 동안은 게시하지 않는다.
-  const publishMention = React.useContext(GroupComposerMentionContext);
-  const mentionEnabled = !!actions && seated === null && !board?.actionsOnly;
-  const mentionMemberKey = mentionableMembers.flatMap((speaker) => speaker.objectiveId ? [speaker.objectiveId] : []).join("\u0000");
-  const mentionCommanderId = commander?.objectiveId ?? null;
-  const mentionPick = React.useRef<(objectiveId: string) => boolean>(() => false);
-  mentionPick.current = (objectiveId) => {
-    const input = inputRef.current;
-    if (!mentionEnabled || !input || input.disabled || !input.isConnected) return false;
-    if (objectiveId === mentionCommanderId) choose(null, false);
-    else {
-      const speaker = mentionableMembers.find((candidate) => candidate.objectiveId === objectiveId);
-      if (!speaker) return false;
-      choose({ kind: "member", speaker }, false);
-    }
-    return true;
-  };
-  // 후보의 이름이나 초안 변화는 포트의 수명을 바꾸지 않는다. 실행 시점의 후보는 위 ref가 다시 확인한다.
-  const mentionPort = React.useMemo<GroupComposerMentionPort | null>(() => mentionEnabled ? {
-    rootObjectiveId,
-    memberIds: mentionMemberKey ? mentionMemberKey.split("\u0000") : [],
-    commanderId: mentionCommanderId,
-    pick: (objectiveId) => mentionPick.current(objectiveId),
-  } : null, [rootObjectiveId, mentionEnabled, mentionMemberKey, mentionCommanderId]);
-  React.useEffect(() => {
-    if (publishMention && mentionPort) return publishMention(mentionPort);
-    return undefined;
-  }, [publishMention, mentionPort]);
 
   const targetName = (candidate: Candidate): string =>
     candidate.kind === "member" ? candidate.speaker.name : candidate.kind === "all" ? t("group.mention.everyone") : t("group.commodore");

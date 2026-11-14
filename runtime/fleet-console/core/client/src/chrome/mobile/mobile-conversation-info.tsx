@@ -84,7 +84,7 @@ export function MobileConversationInfo({ objectiveRecord, bodyOwner, onArchive }
     // 「구성원」 탭은 데스크톱에서는 1:1 대화에도 「참여자 1」로 서지만, 폰의 정보 화면은 구성원이 있는 묶음에서만 세운다.
     const hasMembers = conversation.memberCount > 0 || state.nestedObjectiveRecords.some((nested) => nested.parentObjectiveId === objectiveRecord.id);
     for (const tab of registered) {
-      if (tab.section !== undefined || (tab.id === CONVERSATION_MEMBERS_TAB_ID && !hasMembers)) continue;
+      if (tab.section !== undefined || tab.desktopOnly === true || (tab.id === CONVERSATION_MEMBERS_TAB_ID && !hasMembers)) continue;
       list.push({ kind: "panel", id: tab.id, title: resolveLocalizedText(tab.title, locale), render: tab.render });
     }
     for (const binding of bindings) {
