@@ -2155,8 +2155,9 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
           const current = decisions.find((entry) => entry.id === input.decisionId);
           if (!current) throw new ObjectiveStoreError("unknown_decision");
           const question = rawQuestion ?? current.question.text;
+          const { declined: _declined, ...rest } = current;
           decision = {
-            ...current, by, updatedAt: at,
+            ...rest, by, updatedAt: at,
             question: { ...(header ? { header } : current.question.header ? { header: current.question.header } : {}), text: question, options: current.question.options, multiSelect: current.question.multiSelect },
             answer: { selectedOptionIds: current.answer.selectedOptionIds, text: answer },
             ...(input.consultId ? { consultId: input.consultId } : {}),

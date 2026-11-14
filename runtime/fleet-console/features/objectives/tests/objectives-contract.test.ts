@@ -1657,11 +1657,21 @@ describe("Objectives contract", () => {
     legacy.decisionRequest = { id: "legacy-request", createdAt: 1, questions: [{ id: "q1", text: "q".repeat(1000), options: [{ id: "o1", label: "l".repeat(120), description: "d".repeat(300) }], multiSelect: false }] };
     legacy.decisionRequestRevision = 4;
     legacy.decisionDelivery = { requestId: "legacy-request", at: 1, answers: [{ questionId: "q1", selectedOptionIds: [], text: "a".repeat(2000) }] };
-    legacy.decisions = [{ id: "legacy-decision", requestId: "legacy-request", questionId: "q1", at: 2, question: { text: "Keep the old answer", options: [], multiSelect: false }, answer: { selectedOptionIds: [], text: "a".repeat(2000) } }];
+    legacy.decisions = [
+      { id: "legacy-decision", requestId: "legacy-request", questionId: "q1", at: 2, question: { text: "Keep the old answer", options: [], multiSelect: false }, answer: { selectedOptionIds: [], text: "a".repeat(2000) } },
+      { id: "legacy-declined", requestId: "legacy-request", questionId: "q2", at: 3, declined: true, question: { text: "Declined earlier", options: [], multiSelect: false }, answer: { selectedOptionIds: [], text: "" } },
+    ];
     fs.writeFileSync(file, JSON.stringify(legacy));
     const legacyStore = createObjectiveStore({ documentContext, dirOf: () => objectivesDir, objectiveRecords: objectiveRecordsHost, emit: () => {} });
     const legacyReload = legacyStore.find(commander)!;
-    expect(legacyReload.decisions).toEqual([expect.objectContaining({ id: "legacy-decision", requestId: "legacy-request", questionId: "q1", answer: { selectedOptionIds: [], text: "a".repeat(2000) } })]);
+    expect(legacyReload.decisions).toEqual([
+      expect.objectContaining({ id: "legacy-decision", requestId: "legacy-request", questionId: "q1", answer: { selectedOptionIds: [], text: "a".repeat(2000) } }),
+      expect.objectContaining({ id: "legacy-declined", requestId: "legacy-request", questionId: "q2", declined: true, answer: { selectedOptionIds: [], text: "" } }),
+    ]);
+    legacyStore.decisionUpdate(commander, { decisionId: "legacy-declined", answer: "Resolved after review", by: { kind: "commodore", commodoreId: "c1" } });
+    const updatedLegacy = legacyStore.find(commander)!.decisions[1]!;
+    expect(updatedLegacy.declined).toBeUndefined();
+    expect(updatedLegacy.answer.text).toBe("Resolved after review");
   });
 
   it("delivers the person's message verbatim to the chosen session, tells the Commander of a member message in one quoted line, and reports a refused delivery instead of success", async () => {
