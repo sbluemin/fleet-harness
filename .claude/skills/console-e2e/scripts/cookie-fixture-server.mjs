@@ -8,7 +8,8 @@
  * Listens on 127.0.0.1 only. /set sends two fixed cookies and nothing else:
  * fleet_session (no Max-Age) and fleet_persist (Max-Age 2592000).
  * /read returns only those two cookies from the Cookie header this request carried, as JSON,
- * drops every other cookie the browser sent, and sets nothing.
+ * drops every other cookie the browser sent, and sets nothing. Each /read also prints one
+ * `read {json}` line on stdout, so a native view that cannot be read back still leaves a record.
  * The caller chooses the browser session or profile and records what /read showed.
  * This server does not.
  */
@@ -62,7 +63,9 @@ function main() {
     }
     if (pathname === '/read') {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ at: new Date().toISOString(), cookie: onlyFixtureCookies(req.headers.cookie) }));
+      const body = { at: new Date().toISOString(), cookie: onlyFixtureCookies(req.headers.cookie) };
+      process.stdout.write(`read ${JSON.stringify(body)}\n`);
+      res.end(JSON.stringify(body));
       return;
     }
     res.statusCode = 404;
