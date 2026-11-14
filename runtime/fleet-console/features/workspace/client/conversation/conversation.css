@@ -365,12 +365,7 @@
 /* 「사령관 ⇄ 목표」 — 사령관 쪽은 칩 안의 형제 단추이고, 전언 상대가 pill 을 넓히는 동안에는 접힌다(hidden). 화살표는 전언 pill 과 같은 글리프다. */
 .conversation-pill-lead { display: inline-flex; flex: 0 1 auto; align-items: center; min-width: 0; }
 .conversation-pill-lead[hidden] { display: none; }
-.conversation-pill-commodore { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; margin-right: var(--space-2); }
-.conversation-pill-commodore-part { display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 180px; min-height: 36px; overflow: hidden; padding: 0; border: 0; border-radius: var(--radius-pill); background: none; color: inherit; font: inherit; cursor: pointer; }
-.conversation-pill-commodore-part:focus-visible { box-shadow: var(--focus-face); }
-.conversation-pill:has(.conversation-pill-commodore-part:hover) { border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim-strong)); }
 .conversation-pill-swap { flex: none; color: var(--text-tertiary); }
-.conversation-pill[data-compact="true"] .conversation-pill-commodore-part { flex: none; }
 .conversation-pill:not(:has(.conversation-pill-controls button)) { padding-right: var(--space-4); }
 
 /* 이름을 걷어도 pill 안의 동작은 남는다. 표식과 동작의 폭만큼만 쓰는 마지막 축약 단계다. */
