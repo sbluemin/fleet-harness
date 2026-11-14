@@ -234,8 +234,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       // Console 은 600 DIP 를 먼저 지킨다. 창이 좁아질 때 선호 폭을 덮어쓰지 않고 칸부터 줄인다.
       const width = Math.min(Math.max(MIN_PANE_PX, paneWidth), Math.max(1, content.width - MIN_CONSOLE_PX - DIVIDER_PX));
       const settledLeft = Math.max(1, content.width - width - DIVIDER_PX);
-      const totalTravel = Math.max(0, content.width - settledLeft);
-      const left = settledLeft + Math.round(totalTravel * (1 - motionProgress));
+      const closeTravel = closingSurface ? Math.max(0, content.width - settledLeft) : 0;
+      const left = settledLeft + Math.round(closeTravel * (1 - motionProgress));
       return { x: left + DIVIDER_PX, y: 0, width, height: Math.max(1, content.height) };
     }
     if (hostKind === "window" && windowBase && !windowBase.isDestroyed()) {
@@ -311,14 +311,15 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     const top = Math.min(tabsPx(), rect.height);
     const strip = Math.min(stripPx(), Math.max(0, rect.height - top));
     const side = layoutRailWidth();
-    page = { x: rect.x + Math.min(side, rect.width), y: rect.y + top + strip, width: Math.max(0, rect.width - side), height: Math.max(0, rect.height - top - strip) };
+    const enterOffsetY = hostKind === "pane" && !closingSurface && motionProgress < 1 ? Math.round(SHELL_WINDOW_OPEN_OFFSET_PX * (1 - motionProgress)) : 0;
+    page = { x: rect.x + Math.min(side, rect.width), y: rect.y + top + strip + enterOffsetY, width: Math.max(0, rect.width - side), height: Math.max(0, rect.height - top - strip) };
     if (page.width > 0 && page.height > 0) lastPageSize = { width: page.width, height: page.height };
     docs.bar.view.setBounds({ x: rect.x, y: rect.y + top, width: rect.width, height: barHeight(rect, top) });
     // 탭 표시줄 뷰 — 세로면 주소줄 아래 왼쪽의 레일, 가로면 주소줄 위의 한 줄이다. 같은 문서가 두 모양을 그린다.
     docs.rail.view.setBounds(horizontal()
       ? { x: rect.x, y: rect.y, width: rect.width, height: Math.max(1, top) }
       : { x: rect.x, y: rect.y + strip, width: Math.min(railWidth(), rect.width), height: Math.max(1, rect.height - strip) });
-    docs.stage.view.setBounds({ x: page.x, y: page.y, width: Math.max(1, page.width), height: Math.max(1, page.height) });
+    docs.stage.view.setBounds({ x: rect.x + Math.min(side, rect.width), y: rect.y + top + strip, width: Math.max(1, page.width), height: Math.max(1, page.height) });
     // 가드는 제어권이 걸린 동안만 선다 — 그 밖에는 숨겨서 페이지가 포인터를 그대로 받는다.
     const held = page.width > 0 && page.height > 0 ? controlState() : null;
     if (held) docs.guard.view.setBounds(guardBounds(held));
@@ -331,7 +332,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       const main = deps.main();
       if (main && !main.isDestroyed() && divider) {
         const left = rect.x - DIVIDER_PX;
-        main.stack.setBrowserPane({ stage: docs.stage.view, guard: docs.guard.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth: left, guardOnTop });
+        // Console 뷰는 열림·닫힘 시작 시 한 번만 목표 폭으로 바꾸어 60fps 리플로우 번짐을 막는다.
+        const consoleWidth = closingSurface ? Math.max(1, main.getContentBounds().width) : left;
+        main.stack.setBrowserPane({ stage: docs.stage.view, guard: docs.guard.view, rail: docs.rail.view, bar: docs.bar.view, divider, consoleWidth, guardOnTop });
         divider.setBounds({ x: left, y: 0, width: DIVIDER_PX, height: rect.height });
       }
     }
@@ -590,6 +593,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     if (hostKind === "pane") {
       const from = motionProgress;
       const duration = Math.max(1, Math.round(SHELL_CLOSE_MS * from));
+      layout();
       startMotion(from, 0, duration, easeGlide, () => layout(), () => finalizeClose());
       return;
     }

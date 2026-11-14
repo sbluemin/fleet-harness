@@ -218,15 +218,16 @@ describe("desktop native browser views across a Console restart", () => {
       const [bar, , , , divider] = views as [ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>, ReturnType<typeof makeView>];
       // Ready bar so closing state pushes shellClosing: true
       bar.webContents.emit("console-message", { frame: bar.webContents.mainFrame, message: JSON.stringify(["fleet-chrome", "bar", "ready", {}]) });
-      // Frame 0 starts at right edge with full width (no container transform)
-      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1400, height: 900 });
+      // Frame 0 claims settled Console width once without 60fps reflow and starts page 10px down (no width resize)
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
       expect(surface.target()?.page.width).toBe(506);
+      expect(surface.target()?.page.y).toBe(62);
 
       nowMs += 160;
       vi.advanceTimersByTime(160);
-      const midOpenX = surface.target()!.page.x;
-      expect(midOpenX).toBeGreaterThan(894);
-      expect(midOpenX).toBeLessThan(1462);
+      const midOpenY = surface.target()!.page.y;
+      expect(midOpenY).toBeGreaterThanOrEqual(52);
+      expect(midOpenY).toBeLessThan(62);
       expect(surface.target()?.page.width).toBe(506);
 
       nowMs += 320;
@@ -234,9 +235,10 @@ describe("desktop native browser views across a Console restart", () => {
       expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 832, height: 900 });
       expect(surface.target()?.page).toEqual({ x: 894, y: 52, width: 506, height: 848 });
 
-      // Asymmetric close (320ms) keeps views/target alive while sliding out and marks shellClosing
+      // Asymmetric close (320ms) restores Console width once underneath while gliding the pane out
       surface.apply(null, null, null);
       expect(divider.webContents.close).not.toHaveBeenCalled();
+      expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1400, height: 900 });
       expect(bar.webContents.executeJavaScript).toHaveBeenLastCalledWith(expect.stringContaining('"shellClosing":true'));
       nowMs += 160;
       vi.advanceTimersByTime(160);
