@@ -27,18 +27,14 @@ afterEach(async () => {
 });
 
 describe("agent dormant ticket guards", () => {
-  it("launches an enabled host-only model by its advertised gateway id", async () => {
-    const harness = await createHarness({ body: { theaterId: "theater-1", cliId: "claude", model: "claude-gateway--codex--gpt-6-luna", effort: "low" }, aiGatewaySettings: { version: 1, models: [{ id: "codex--gpt-6-luna", hostOnly: true }] as unknown as Array<{ id: string }> } });
-    const createRecord = vi.spyOn(harness.records, "create").mockImplementationOnce(() => { throw new Error("objective_owner_unavailable"); });
-    await expect(harness.postSessions()).rejects.toThrow("objective_owner_unavailable");
-    expect(await harness.getSessions()).toEqual([]);
+  it("refuses collection POST and still launches through console control", async () => {
+    const harness = await createHarness({ aiGatewaySettings: { version: 1, models: [{ id: "codex--gpt-6-luna", hostOnly: true }] as unknown as Array<{ id: string }> } });
+    await harness.postSessions();
+    expect(harness.responses.at(-1)?.status).toBe(405);
     expect(harness.objectiveRecords).toEqual([]);
+    const id = (await harness.control.request({ kind: "plugin", pluginId: "objectives" }, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, model: "claude-gateway--codex--gpt-6-luna", effort: "low" })).objectiveId;
     expect(harness.attach).not.toHaveBeenCalled();
-    createRecord.mockRestore();
-    await harness.createLiveSession();
-    expect(harness.attach).not.toHaveBeenCalled();
-    expect(harness.responses.at(-1)?.status).toBe(200);
-    expect(JSON.stringify(harness.objectiveRecords[0]?.session)).toContain("gpt-6-luna");
+    expect(JSON.stringify(harness.objectiveRecords.find((row) => row.id === id)?.session)).toContain("gpt-6-luna");
   });
 
   it("creates a dormant terminal launch without a process and starts fresh on first send with its saved settings", async () => {
@@ -307,13 +303,7 @@ ts: { createdAt, updatedAt: createdAt }};
   });
 
   async function createLiveSession(): Promise<string> {
-    if (!route) throw new Error("Agent route was not registered");
-    await route({
-      req: { method: "POST", url: "/api/v1/agent/sessions" } as http.IncomingMessage,
-      res: {} as http.ServerResponse,
-      pathname: "/api/v1/agent/sessions",
-    });
-    const sessionId = objectiveRecords[0]!.id;
+    const sessionId = (await control.request({ kind: "plugin", pluginId: "objectives" }, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true })).objectiveId;
     const objectiveRecord = objectiveRecords[0]!;
     objectiveRecord.session = {
       ...(objectiveRecord.session as Record<string, unknown> | undefined),

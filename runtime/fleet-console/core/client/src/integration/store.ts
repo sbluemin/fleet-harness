@@ -26,10 +26,6 @@ import type {
   ObjectiveNotification,
   ObjectiveRecord,
   ObserverStatus,
-  NewSessionTarget,
-  LaunchRequest,
-  NewSessionRejection,
-  NewSessionSeed,
   ReleaseNotesLocale,
   ReleaseNotesResponse,
   ThemeId,
@@ -103,10 +99,6 @@ let state: ConsoleState = {
   objectiveRecordSearchSeed: null,
   objectiveRecordSearchSeedNonce: 0,
   objectiveRecordSearchMode: null,
-  mobileNewSessionOpen: false,
-  mobileNewSessionCommodoreId: null,
-  newSessionSeed: null,
-  pendingLaunch: null,
   whatsNewOpen: false,
   releaseNotes: [],
   releaseNotesLocale: null,
@@ -121,9 +113,6 @@ let state: ConsoleState = {
   pendingObjectiveFocus: null,
   keyboardFocusRequest: null,
   pendingSideBarAddTheater: null,
-  newSession: null,
-  newSessionFocusRequest: 0,
-  newSessionRejection: null,
   keyboardShortcutsOpen: false,
   fleetAtAGlanceOpen: false,
   featureCardsReplayOpen: false,
@@ -625,10 +614,8 @@ export function setActiveObjective(
   const body = nested ? withNestedBody(nested.parentObjectiveId!, nested.id) : {};
   // 여는 것은 고르는 것을 덮는다 — 어느 경로로든 Objective 이 활성이 되면 사이드바의 선택은 끝난다.
   const selection = objectiveId !== null && state.selectedObjectiveId !== null ? { selectedObjectiveId: null } : {};
-  // Objective 을 여는 것은 아직 보내지 않은 새 세션 화면을 걷는다 — 입력 전에는 만든 것이 없으니 남는 것도 없다.
-  const leaveNewSession = objectiveId !== null && state.newSession !== null ? { newSession: null } : {};
-  if (state.activeObjectiveId === objectiveId && state.activeObjectiveAcknowledged === acknowledged && !("nestedBodySelection" in body) && !("selectedObjectiveId" in selection) && !("newSession" in leaveNewSession)) return;
-  setState({ activeObjectiveId: objectiveId, activeObjectiveAcknowledged: acknowledged, ...body, ...selection, ...leaveNewSession });
+  if (state.activeObjectiveId === objectiveId && state.activeObjectiveAcknowledged === acknowledged && !("nestedBodySelection" in body) && !("selectedObjectiveId" in selection)) return;
+  setState({ activeObjectiveId: objectiveId, activeObjectiveAcknowledged: acknowledged, ...body, ...selection });
 }
 
 /**
@@ -769,8 +756,6 @@ export function focusObjective(requestedObjectiveId: string, options?: { readonl
     pendingObjectiveFocus: objectiveId,
     objectiveRecordNotifications: removeNotificationForObjective(state.objectiveRecordNotifications, objectiveId),
     selectedObjectiveId: null,
-    // 새 세션 화면에서 보낸 첫 메시지가 Objective 을 세우면 그 포커스가 화면을 걷는다(다른 길로 연 Objective 도 같다).
-    newSession: null,
     ...body,
   });
 }
@@ -800,26 +785,6 @@ export function requestObjectiveKeyboardFocus(objectiveId: string): void {
       requestId: (state.keyboardFocusRequest?.requestId ?? 0) + 1,
     },
   });
-}
-
-/**
- * 본문에 「새 세션 화면」을 연다 — 사이드바 맨 위 「+」, 팔레트 「New Objective」, 새 세션 단축키. 여는 것만으로는 아무것도
- * 만들지 않고, 첫 메시지가 실행 의도(requestLaunch)로 나간다. 보던 대화는 칸에서 물러난다.
- */
-export function openNewSession(target: NewSessionTarget): void {
-  if (state.newSession?.theaterId === target.theaterId && state.newSession.commodoreId === target.commodoreId) return;
-  setState({ newSession: target });
-}
-
-/** 열린 새 세션 화면의 컴포저로 포커스를 돌려 달라는 요청. 화면이 닫혀 있으면 아무 일도 없다. */
-export function requestNewSessionFocus(): void {
-  if (state.newSession === null) return;
-  setState({ newSessionFocusRequest: state.newSessionFocusRequest + 1 });
-}
-
-export function closeNewSession(): void {
-  if (state.newSession === null) return;
-  setState({ newSession: null });
 }
 
 // 소비자(ObjectiveRecordsSideBar)가 없는 동안 쌓인 사이드바 요청을 부수 효과 없이 폐기한다 —
@@ -964,66 +929,6 @@ export function setObjectiveSearchMode(mode: ConsoleState["objectiveRecordSearch
   setState({ objectiveRecordSearchMode: mode });
 }
 
-/**
- * 모바일 「새 대화」 시트를 연다 — 모바일 홈의 새 대화 입구와 폰에서 부른 `composer.open`이 쓴다. 데스크톱의
- * 새 세션 화면과 같은 실행 의도(requestLaunch)로 나가고, 쓰던 문장은 시트를 닫아도 시트 쪽이 지킨다.
- */
-/** `commodoreId`를 주면 그 사령관이 새 세션의 주인이다 — 주지 않으면 시트가 지금 문맥에서 고른다. */
-export function openMobileNewSession(commodoreId: string | null = null): void {
-  if (state.mobileNewSessionOpen) return;
-  setState({ mobileNewSessionOpen: true, mobileNewSessionCommodoreId: commodoreId });
-}
-
-export function closeMobileNewSession(): void {
-  if (!state.mobileNewSessionOpen) return;
-  setState({ mobileNewSessionOpen: false, mobileNewSessionCommodoreId: null });
-}
-
-/**
- * 새 세션 컴포저에 실을 시드 — 플러그인·부유 위젯이 `composer.open`으로 건넨 초안과 행선지다. 화면(데스크톱)이나
- * 시트(모바일)가 열리며 한 번 읽고 비운다. 남기면 다음 열림이 지난 문장을 되쓴다.
- */
-export function seedNewSession(seed: NewSessionSeed): void {
-  setState({ newSessionSeed: seed });
-}
-
-export function consumeNewSessionSeed(): NewSessionSeed | null {
-  const seed = state.newSessionSeed;
-  if (seed !== null) setState({ newSessionSeed: null });
-  return seed;
-}
-
-/**
- * 새 세션 실행의 거절. 데스크톱은 새 세션 화면, 모바일은 새 대화 시트가 이 칸을 읽어 문면·칩·사유를 되살린다.
- * 그 표면이 이미 닫혔으면 초안이 있는 거절만 표면을 그 초안과 함께 다시 연다 — 빈 직접 실행은 되돌릴 문면이 없다.
- */
-export function rejectNewSession(rejection: NewSessionRejection & { readonly theaterId: string; readonly mobile: boolean }): void {
-  const { theaterId, mobile, ...slot } = rejection;
-  const open = mobile ? state.mobileNewSessionOpen : state.newSession !== null;
-  if (!open && slot.draft === null) return;
-  setState({
-    newSessionRejection: slot,
-    ...(open ? {} : mobile ? { mobileNewSessionOpen: true } : { newSession: { theaterId } }),
-  });
-}
-
-/** 새 세션 화면·시트가 거절을 문면·칩에 반영한 뒤 한 번 비운다. */
-export function consumeNewSessionRejection(): void {
-  if (state.newSessionRejection === null) return;
-  setState({ newSessionRejection: null });
-}
-
-// pendingObjectiveFocus/consumeObjectiveFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,
-// 실행 좌표·포커스 승계는 ObjectiveRecords 화면이 자기 규율로 처리한다.
-export function requestLaunch(request: LaunchRequest): void {
-  setState({ pendingLaunch: request });
-}
-
-export function consumeLaunch(): void {
-  if (state.pendingLaunch === null) return;
-  setState({ pendingLaunch: null });
-}
-
 export function openWhatsNew(): void {
   if (state.releaseNotes.length === 0 || state.whatsNewOpen) return;
   setState({ whatsNewOpen: true, selectedReleaseNoteKey: state.selectedReleaseNoteKey ?? firstReleaseNoteKey(state.releaseNotes) });
@@ -1089,11 +994,7 @@ export function pruneRemovedCommodoreTheater(commodoreId: string, theaterId: str
   const removedObjectiveIds = new Set(allObjectiveRecords().filter((objectiveRecord) => objectiveRecord.commodoreId === commodoreId && objectiveRecord.theaterId === theaterId).map((objectiveRecord) => objectiveRecord.id));
   const activeObjectiveId = state.activeObjectiveId && removedObjectiveIds.has(state.activeObjectiveId) ? null : state.activeObjectiveId;
   const activeObjectiveAcknowledged = activeObjectiveId === null ? true : state.activeObjectiveAcknowledged;
-  // 사라진 Theater를 겨눈 실행 요청도 함께 버린다.
-  const pendingLaunch = state.pendingLaunch?.theaterId === theaterId ? null : state.pendingLaunch;
-  // 뺀 Theater 를 고른 채 서 있던 새 세션 화면은 Theater 를 비운다 — 화면이 기본 규칙으로 다시 고른다.
-  const newSession = state.newSession?.theaterId === theaterId ? { theaterId: null } : state.newSession;
-  setState({ activeObjectiveId, activeObjectiveAcknowledged, objectiveRecordNotifications, pendingLaunch, newSession });
+  setState({ activeObjectiveId, activeObjectiveAcknowledged, objectiveRecordNotifications });
 }
 
 export function dismissNotificationsForObjective(objectiveId: string): void {

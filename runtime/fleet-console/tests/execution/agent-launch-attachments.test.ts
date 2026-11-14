@@ -116,33 +116,16 @@ describe("launch attachment store", () => {
 
 describe("agent attachment routes", () => {
 
-  it("rejects a launch carrying an unknown attachment id before creating a session", async () => {
-    const harness = await createHarness();
-    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: ["missing"] });
-
-    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "attachment_not_found" } });
-    expect(harness.objectiveRecords).toHaveLength(0);
-  });
-
-  it("composes the path instruction into the spawn prompt and binds the attachment", async () => {
+  it("refuses collection POST before it can create a session or bind an attachment", async () => {
     const harness = await createHarness();
     await harness.postAttachment(PNG_BYTES);
     const id = (harness.responses.at(-1)?.body as { id: string }).id;
-
+    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: ["missing"] });
+    expect(harness.responses.at(-1)).toEqual({ status: 405, body: { error: "Method not allowed" } });
     await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
-
-    expect(harness.responses.at(-1)?.status).toBe(200);
-    // 채팅 발사는 200을 먼저 돌려주고, 합성 프롬프트는 그 뒤 자식에게 간다. 부하가 있는 전체 스위트에서도 놓치지 않게 기다린다.
-    await vi.waitFor(() => {
-      const prompt = harness.prompts.at(-1) ?? "";
-      expect(prompt).toContain("fix it");
-      expect(prompt).toContain(LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX);
-      expect(prompt).toMatch(/fleet-attachments-.*image\.png/);
-    }, { timeout: 10_000 });
-
-    // 발사된 첨부는 세션에 묶인다 — 두 번째 실행이 같은 id를 실으면 스폰 전에 거절된다.
-    await harness.postSessions({ commodoreId: "owner-1", theaterId: "theater-1", cliId: "claude", prompt: "again", attachmentIds: [id] });
-    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "attachment_not_found" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 405, body: { error: "Method not allowed" } });
+    expect(harness.objectiveRecords).toHaveLength(0);
+    expect(harness.prompts).toEqual([]);
   });
 
 });

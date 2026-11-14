@@ -4,70 +4,11 @@ import type { ConsoleLifecycleWait } from "@fleet-console/protocol/lifecycle/wai
 import type { ConsoleFontSettings } from "../../../../features/settings/shared/fonts.js";
 import type { ConsoleExperimentSettings } from "../../../../features/settings/shared/experiments.js";
 import type { ShortcutBindings } from "../../../../features/settings/shared/shortcuts.js";
-import type { ObjectiveLaunchKind } from "../../../../features/objectives/shared/records/types.js";
 import type { ApiCatalogEntry as SdkApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { ConsoleTheme } from "../../../../features/settings/shared/theme.js";
 import type { ObjectiveRuntimeHydration, ObjectiveRuntimeState } from "../../../../features/execution/shared/client-contract.js";
 
 export type ThemeId = "dark" | "light";
-
-/**
- * 새 세션 컴포저(데스크톱 화면·모바일 시트)가 확정한 실행 의도.
- *
- * `variant`는 사이드바 실행 메뉴가 쓰는 것과 같은 flat wire 레코드다 — 여기에 `prompt`가 함께 실려
- * 터미널 플러그인의 세션 생성 body로 나간다. 프롬프트는 spawn 전용 값이라 응답이나 Objective
- * payload로 되돌아오지 않는다.
- */
-export interface LaunchRequest {
-  readonly theaterId: string;
-  /** 사이드바 섹션이 지정한 사령관. 같은 Theater 를 여러 사령관이 가져도 이 섹션으로 만든다. */
-  readonly commodoreId?: string;
-  readonly pluginId: string | null;
-  readonly kind: ObjectiveLaunchKind;
-  readonly variant: Readonly<Record<string, string>>;
-  /**
-   * 첨부 이미지의 컴포저측 자취. id는 variant의 `attachments` CSV로도 실려 서버에 닿고,
-   * 이름·미리보기(object URL)는 실행이 거절됐을 때 칩을 되살리기 위한 브라우저 전용 값이다 —
-   * 저장 경로는 어디에도 없다.
-   */
-  readonly attachments?: readonly LaunchDraftAttachment[];
-}
-
-/** 본문 「새 세션 화면」의 대상. 첫 메시지를 보내기 전에는 아무것도 만들지 않는다. */
-export interface NewSessionTarget {
-  /** 처음 고른 Theater. 등록된 Theater 가 없으면 null — 화면이 「Theater 추가…」를 먼저 세운다. */
-  readonly theaterId: string | null;
-  /** 이 새 세션의 사령관 — 열 때 정해 고정한다. 섹션 「+」는 그 섹션의 사령관, 팔레트·단축키는 지금 보는 사령관, 없으면 목록 첫 사령관을 싣는다. */
-  readonly commodoreId?: string;
-}
-
-/**
- * 새 세션 컴포저(데스크톱 화면·모바일 시트)에서 시작한 실행의 거절.
- * `draft`가 null이면 문면을 덮지 않는다(프롬프트 없는 직접 실행). `attachments`가 null이면 칩을 건드리지 않는다.
- */
-export interface NewSessionRejection {
-  readonly draft: string | null;
-  readonly attachments: readonly LaunchDraftAttachment[] | null;
-  readonly errorCode: string | null;
-  readonly shortenByChars: number | null;
-}
-
-/**
- * `composer.open`이 새 세션 컴포저에 건네는 시드. `draft`는 문면을 갈아치우고(보내지 않는다), 행선지는 '@'로 고른 것과 같다.
- * 컴포저가 자기 규칙(메시지를 받는 타입인가, 입력 대기 중인가)으로 다시 판정한다.
- */
-export interface NewSessionSeed {
-  readonly draft: string | null;
-  readonly mentionObjectiveId: string | null;
-  readonly mentionTarget: import("../../../../features/execution/shared/composer-ports.js").MentionTargetAddress | null;
-}
-
-/** 컴포저 밖(거절 칸·실행 의도)을 오가는 첨부 자취. previewUrl은 브라우저 object URL이다. */
-export interface LaunchDraftAttachment {
-  readonly id: string;
-  readonly name: string;
-  readonly previewUrl: string;
-}
 
 export type ReleaseNotesLocale = "en" | "ko";
 
@@ -351,15 +292,6 @@ export interface ConsoleState {
   readonly objectiveRecordSearchSeedNonce: number;
   /** 팔레트가 지금 서 있는 모드. 전역 단축키가 ⌘K를 「닫기」로 볼지 「검색으로 복귀」로 볼지 가른다. */
   readonly objectiveRecordSearchMode: "objectiveRecords" | "commands" | null;
-  /** 모바일 「새 대화」 시트가 떠 있는가. 데스크톱 새 세션 화면(`newSession`)과 같은 실행 경로를 쓴다. */
-  readonly mobileNewSessionOpen: boolean;
-  /** 시트를 연 자리가 정한 주인 사령관(사령관 화면 「지휘관 세션」 탭). null이면 시트가 지금 문맥에서 고른다. */
-  readonly mobileNewSessionCommodoreId: string | null;
-  /** `composer.open`이 남긴 초안·행선지. 새 세션 화면·시트가 열리며 한 번 소비한다. */
-  readonly newSessionSeed: NewSessionSeed | null;
-  // 컴포저가 넘긴 실행 의도. ObjectiveRecords 화면이 자기 지오메트리·포커스 규율로 소비한다
-  // (pendingObjectiveFocus와 같은 request/consume 계약).
-  readonly pendingLaunch: LaunchRequest | null;
   readonly whatsNewOpen: boolean;
   readonly releaseNotes: readonly ReleaseNotes[];
   /** 적용된 릴리스 노트의 요청 로케일. 개별 노트는 번역 누락 시 영어로 fallback할 수 있다. */
@@ -375,12 +307,6 @@ export interface ConsoleState {
   readonly pendingObjectiveFocus: string | null;
   readonly keyboardFocusRequest: { readonly objectiveId: string; readonly requestId: number } | null;
   readonly pendingSideBarAddTheater: string | null;
-  /** 본문 「새 세션 화면」 — 사이드바 맨 위 「+」·팔레트 「New Objective」·새 세션 단축키가 연다. 첫 메시지 전에는 세션을 만들지 않는다. */
-  readonly newSession: NewSessionTarget | null;
-  /** 이미 열린 새 세션 화면에 「컴포저로 돌아오라」는 요청 번호. 단축키를 다시 누르면 오른다 — 화면이 이 값이 바뀔 때 포커스한다. */
-  readonly newSessionFocusRequest: number;
-  /** 새 세션 화면·모바일 시트가 소비하는 거절. */
-  readonly newSessionRejection: NewSessionRejection | null;
   readonly keyboardShortcutsOpen: boolean;
   /** 도움말 › 플릿 한눈에 보기 모션 팝업이 열려 있는가. */
   readonly fleetAtAGlanceOpen: boolean;

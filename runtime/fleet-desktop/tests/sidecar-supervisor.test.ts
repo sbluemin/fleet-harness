@@ -426,7 +426,9 @@ afterEach(async () => {
     const grant = await api<{ folderGrantId?: string; id?: string; grant?: { id: string } }>("/api/v1/theaters/folder-grants", { path: theater });
     const { commodoreId } = await api<{ commodoreId: string }>("/api/v1/commodore/create", { alias: "Lifecycle fixture" });
     const { theaterId } = await api<{ theaterId: string }>("/api/v1/commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
-    await api("/api/v1/agent/sessions", { commodoreId, theaterId, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" });
+    const denied = await fetch(new URL("/api/v1/agent/sessions", endpoint), { method: "POST", headers: { origin, "content-type": "application/json" }, body: JSON.stringify({ commodoreId, theaterId, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" }) });
+    expect(denied.status).toBe(405);
+    await api("/api/v1/commodore/message", { commodoreId, text: "lifecycle suite open turn" });
     await waitUntil(() => agentProcs().some((entry) => entry.role === "turn-open"), 20_000, "the chat turn did not open");
     const started = descendantsOf(consolePid);
 

@@ -3,7 +3,6 @@ import { useAvatarClaims } from "../../../../../features/workspace/client/avatar
 import { useCommanderRows } from "../../../../../features/workspace/client/commander-tab/commander-rows.js";
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT } from "../../i18n/index.js";
-import { openMobileNewSession } from "../../integration/store.js";
 import { useRailEntries } from "../pane/pane-registry.js";
 import { AttentionReason } from "./mobile-attention-reason.js";
 import { MobileArchivedFinished } from "./mobile-archived-finished.js";
@@ -42,8 +41,6 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
     .filter((row) => row.kind === "approval" || row.kind === "decision" || !row.clusterId || !commanderClusterIds.has(row.clusterId));
   // 지휘관 얼굴은 몽글 아바타다 — 아직 모습이 없는 키를 한 번 묶음째 뽑아 저장한다.
   useAvatarClaims();
-  // 새 세션의 주인은 이 사령관이다. 세부를 먼저 접고 홈 자리에 연다.
-  const startSession = () => leave(() => openMobileNewSession(commodoreId));
   return (
     <div className="mobile-commodore-sessions">
       {attention.length > 0 ? <>
@@ -78,9 +75,6 @@ export function MobileCommodoreSessions({ commodoreId, leave }: { readonly commo
       </> : null}
       <MobileCommanderList key={commodoreId} rows={{ ...commanderRows, sorted, sections }} leave={leave} hasAttention={attention.length > 0} />
       <MobileArchivedFinished commodoreId={commodoreId} leave={leave} />
-      <div className="mobile-commodore-sessions-foot">
-        <button type="button" data-press="r3" className="mobile-pill" onClick={startSession}><MobileIcon name="plus" size={18} />{t("mobile.commodore.sessions.new")}</button>
-      </div>
     </div>
   );
 }

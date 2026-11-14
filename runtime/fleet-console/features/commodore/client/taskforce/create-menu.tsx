@@ -32,7 +32,7 @@ export function TaskforceCreateMenu({ children, taskforce = true, extra, extraCo
   const trailing = extra ? Math.max(1, extraCount) : 0;
   const rows = 1 + (taskforce ? 1 : 0) + trailing;
   const reserve = 48 + rows * 36 + (trailing > 0 ? 12 : 0);
-  return <><button ref={button} type="button" className="conversation-round" aria-label={t("taskforce.createMenu")} title={t("taskforce.createMenu")} aria-haspopup="menu" aria-expanded={anchor !== null} data-new-session-entry="sidebar" onClick={() => setAnchor(anchor ? null : button.current?.getBoundingClientRect() ?? null)}>{children}</button>
+  return <><button ref={button} type="button" className="conversation-round" aria-label={t("taskforce.createMenu")} title={t("taskforce.createMenu")} aria-haspopup="menu" aria-expanded={anchor !== null} data-create-menu="sidebar" onClick={() => setAnchor(anchor ? null : button.current?.getBoundingClientRect() ?? null)}>{children}</button>
     {anchor ? createPortal(<div className="group-context-menu-overlay" data-native-browser-transparent role="presentation" onPointerDown={() => setAnchor(null)}><div ref={menu} className="theater-menu taskforce-create-menu" role="menu" aria-label={t("taskforce.createMenu")} style={{ position: "fixed", left: Math.max(8, Math.min(anchor.right - 220, window.innerWidth - 228)), top: Math.min(anchor.bottom + 6, window.innerHeight - reserve), minWidth: 220 }} onPointerDown={(event) => event.stopPropagation()} onKeyDown={(event) => {
       const items = [...(menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? [])]; const index = items.indexOf(document.activeElement as HTMLButtonElement);
       if (event.key === "Escape" || event.key === "Tab") { if (event.key === "Escape") event.preventDefault(); close(); }

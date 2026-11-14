@@ -27,7 +27,6 @@ import type { ObjectiveRecord, TheaterInfo } from "../../../../core/client/src/i
 import { useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { openCommodoreNewSession, openDefaultNewSession } from "../conversation/new-session-entry.js";
 import { isCommodoreConversationActive, isCommodoreConversationOpen, openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { requestCommodoreDelete } from "../../../commodore/client/commodore-delete-modal.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
@@ -69,7 +68,7 @@ import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 /*
  * 왼쪽 사이드바 — 사령관 목록이다. 사령관마다 머리(아바타·이름·마지막 응답) 하나가 선다.
  * 왼쪽 배치일 때만 펼친 사령관 밑에 지휘관 목록이 선다. 펼침은 사령관을 옮길 때 정해지고(commander-expansion.ts),
- * 새 목표·정렬·목록 위치는 머리의 호버 독이 맡는다. 오른쪽 배치이면 머리만 남고 목록은 오른쪽 사이드바(작업 탭)가 맡는다.
+ * 정렬·목록 위치는 머리의 호버 독이 맡는다. 오른쪽 배치이면 머리만 남고 목록은 오른쪽 사이드바(작업 탭)가 맡는다.
  */
 
 interface ObjectiveRecordsSideBarProps {
@@ -117,7 +116,7 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly theater: SideBarHead;
   readonly active: boolean;
   readonly lastResponse: string | undefined;
-  /** 사령관 머리에 호버 독(⋯ → 새 목표·정렬·목록 위치·펼침 유지)이 선다. TaskForce 행에는 서지 않는다. */
+  /** 사령관 머리에 호버 독(⋯ → 정렬·목록 위치·펼침 유지)이 선다. TaskForce 행에는 서지 않는다. */
   readonly dock: boolean;
   /** 표식(아바타) 단추가 직접 대화를 열 때도 「활성 사령관을 다시 골랐다」를 알린다 — 이름 쪽 활성화는 `onOpenInbox` 가 알린다. */
   readonly onReselect?: () => void;
@@ -153,7 +152,6 @@ interface TheaterActionsMenuProps {
   readonly focusFirst?: boolean;
   readonly onDeleteCommodore?: (() => void) | undefined;
   readonly onAddTheater: () => void;
-  readonly onNewSession: () => void;
   readonly onEditAlias: () => void;
   readonly onClose: () => void;
 }
@@ -211,7 +209,7 @@ export function ObjectiveRecordsSideBar({
   // 셸이 통합 배치를 건네면 머신 머리글·머신별 섹션 반복 없이 한 벌로 그린다. 브라우저·모바일·옛 셸은 아래 옛 경로 그대로다.
   const unifiedReady = unified.active && unified.layout !== null;
   const sidebarSectionsRef = useRef(sidebarSections);
-  const { objectiveRecordRuntime, objectiveRecordsHydrated, pendingSideBarAddTheater, groups, activeObjectiveId, newSession } = useConsoleState();
+  const { objectiveRecordRuntime, objectiveRecordsHydrated, pendingSideBarAddTheater, groups, activeObjectiveId } = useConsoleState();
   const [drag, setDrag] = useState<TheaterDragState | null>(null);
   const dragRef = useRef<TheaterDragState | null>(null);
   const orderedTheaterIdsRef = useRef<string[]>([]);
@@ -230,8 +228,7 @@ export function ObjectiveRecordsSideBar({
   const subjectOwner = useConversationSubject()?.commodoreId ?? null;
   const objectiveOwner = objectiveRecords.find((record) => record.id === activeObjectiveId)?.commodoreId ?? null;
   // 활성 Objective 만으로 목록을 매달면, 목록을 누르는 pointerdown 이 그 활성을 푸는 순간 목록이 사라졌다가 되살아난다.
-  const owningCommodoreId = newSession !== null ? newSession.commodoreId ?? null
-    : surface ? surfaceOwner ?? subjectOwner : subjectOwner ?? objectiveOwner;
+  const owningCommodoreId = surface ? surfaceOwner ?? subjectOwner : subjectOwner ?? objectiveOwner;
   // 사령관을 옮길 때마다(활성 소유자가 바뀔 때마다) 펼침 묶음이 정해진다 — 헤더를 누른 이동뿐 아니라 팔레트·링크 이동도 같다.
   // 그리기 전에 반영해 옮긴 사령관의 목록이 접힌 채 한 프레임 비치지 않게 한다.
   useLayoutEffect(() => {
@@ -566,15 +563,6 @@ export function ObjectiveRecordsSideBar({
     });
   };
 
-  // 사이드바 빈 영역 우클릭 = 맨 위 「+」와 같은 새 세션 화면. 사령관 머리는 자체 우클릭 핸들러가 preventDefault()를
-  // 호출하므로(버블로 도달 시 defaultPrevented=true) 그쪽 메뉴를 지키고 여기서는 무시한다.
-  const openNewSessionAtCursor = (event: MouseEvent<HTMLElement>) => {
-    if (event.defaultPrevented) return;
-    event.preventDefault();
-    setActiveContextMenu(null);
-    openDefaultNewSession();
-  };
-
   const closeActiveContextMenu = useCallback(() => {
     const returnFocus = activeContextMenu?.returnFocus ?? null;
     setActiveContextMenu(null);
@@ -678,10 +666,6 @@ export function ObjectiveRecordsSideBar({
           <span className="theater-menu-label">{t("sidebar.commodore.rename")}</span>
         </button>
         <div className="theater-menu-divider" aria-hidden="true" />
-        <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); openCommodoreNewSession(row.commodoreId); }}>
-          <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
-          <span className="theater-menu-label">{t("sidebar.commodore.newSession")}</span>
-        </button>
         {taskforceExperiment.enabled ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(row.commodoreId); }}>
           <span className="theater-menu-check" aria-hidden="true"><TaskforceIcon /></span>
           <span className="theater-menu-label">{tfStanding("taskforce.fromCommodore")}</span>
@@ -727,7 +711,6 @@ export function ObjectiveRecordsSideBar({
       data-resizing={resizing ? "true" : undefined}
       data-snapping={snapping ? "true" : undefined}
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
-      onContextMenu={openNewSessionAtCursor}
     >
       <div className="side-bar-top-strip is-compact">
         <span className="side-bar-top-strip-spacer" aria-hidden="true" />
@@ -888,10 +871,6 @@ export function ObjectiveRecordsSideBar({
             requestCommodoreDelete(id, opener);
           }}
           onAddTheater={() => openTheaterBrowser(contextMenuFace.section.commodoreId)}
-          onNewSession={() => {
-            openCommodoreNewSession(contextMenuFace.section.commodoreId);
-            closeActiveContextMenu();
-          }}
           onEditAlias={() => startAliasEdit(contextMenuFace.section.commodoreId)}
           onClose={closeActiveContextMenu}
         />
@@ -1068,7 +1047,7 @@ function TheaterSectionHeader({
   const headerStyle = dragging ? ({ "--drag-dy": `${Math.round(dragOffsetY)}px` } as CSSProperties) : undefined;
 
   // Theater 동작(별칭·시스템 프롬프트·플러그인 항목·새 그룹·Theater 잊기)은 머리에서 연다 — 우클릭은 커서 자리에, 키(ContextMenu·
-  // Shift+F10)와 터치·펜 길게 누르기는 머리 아래에. 두 배치(기존·대화 중심) 모두 같다. 머리 오른쪽 끝의 ⋯ 호버 독은 이 메뉴가 아니라 새 목표·정렬·목록 위치·펼침 유지만 연다.
+  // Shift+F10)와 터치·펜 길게 누르기는 머리 아래에. 두 배치(기존·대화 중심) 모두 같다. 머리 오른쪽 끝의 ⋯ 호버 독은 이 메뉴가 아니라 정렬·목록 위치·펼침 유지만 연다.
   const longPress = useLongPress<HTMLDivElement>((header) => {
     onContextMenu(header.getBoundingClientRect(), activateRef.current, false);
   });
@@ -1187,8 +1166,8 @@ function TheaterSectionHeader({
           </span>
         </button>
       )}
-      {/* 호버 독 — 머리에 호버하거나 초점이 오면 ⋯ 글리프가 나오고, 거기서 새 목표·정렬·목록 위치·펼침 유지가 펼쳐진다. 머리를 누르는 활성화와는 따로 논다. */}
-      {dock ? <CommodoreHoverDock commodoreId={theater.id} name={displayName} /> : null}
+      {/* 호버 독 — 머리에 호버하거나 초점이 오면 ⋯ 글리프가 나오고, 거기서 정렬·목록 위치·펼침 유지가 펼쳐진다. 머리를 누르는 활성화와는 따로 논다. */}
+      {dock ? <CommodoreHoverDock name={displayName} /> : null}
     </div>
   );
 }
@@ -1243,7 +1222,7 @@ function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlia
   );
 }
 
-function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDeleteCommodore, onAddTheater, onNewSession, onEditAlias, onClose }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDeleteCommodore, onAddTheater, onEditAlias, onClose }: TheaterActionsMenuProps) {
   const t = useT();
   const tf = taskforceT(useConsoleLocale());
   const { enabled: taskforceEnabled } = useTaskforceExperiment();
@@ -1311,10 +1290,6 @@ function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDel
           <span className="theater-menu-label">{t("sidebar.commodore.rename")}</span>
         </button>
         <div className="theater-menu-divider" aria-hidden="true" />
-        <button type="button" role="menuitem" className="theater-menu-item" onClick={onNewSession}>
-          <span className="theater-menu-check" aria-hidden="true"><PlusIcon /></span>
-          <span className="theater-menu-label">{t("sidebar.commodore.newSession")}</span>
-        </button>
         {taskforceEnabled ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(theater.id); }}>
           <span className="theater-menu-check" aria-hidden="true"><TaskforceIcon /></span>
           <span className="theater-menu-label">{tf("taskforce.fromCommodore")}</span>

@@ -39,19 +39,5 @@ export interface MentionTargetDescriptor {
 }
 
 
-export interface ClientComposerCapability {
-  /**
-   * Brings up the host's new session composer and puts the caret in it. Whether that is the desktop
-   * new session screen or the phone's new conversation sheet is the host's business, not the plugin's.
-   *
-   * `mentionObjectiveId` addresses the composer at that Objective, exactly as typing an `@` mention
-   * does. The host still applies its own addressing rules — an Objective that cannot be messaged,
-   * or is waiting on its own prompt, is left unaddressed. A mention seed starts a fresh address:
-   * leftover unsent draft from a previous close is discarded, not preserved across this open.
-   *
-   * `draft` seeds the prompt text instead — used to hand a plugin's text (a
-   * snippet) to the composer. It replaces any unsent draft; it never submits.
-   */
-  // 플러그인 행선지(`mentionTarget`)는 draft를 명시하지 않으면 쓰던 초안을 보존한다.
-  open(options?: { readonly mentionObjectiveId?: string; readonly mentionTarget?: MentionTargetAddress; readonly draft?: string }): void;
-}
+/** 새 세션 컴포저 입구는 없다. 플러그인은 이 능력으로 화면을 열지 않는다. */
+export interface ClientComposerCapability {}

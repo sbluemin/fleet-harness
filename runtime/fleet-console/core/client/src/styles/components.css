@@ -8832,8 +8832,7 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-composer-notice__dismiss:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
 
 /* 끌어다 놓는 동안 — brass는 위치 채널이라 "여기 놓으라"에 맞다. */
-.fc-composer-capsule.is-dragover,
-.new-session-composer.is-dragover { border-color: var(--brass); }
+.fc-composer-capsule.is-dragover { border-color: var(--brass); }
 
 /* 크게 보기 — 스크림 모달. 부유 오버레이(z-index 90)보다 위에 선다. */
 .fc-composer-viewer {
@@ -9311,13 +9310,11 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
   min-height: 28px;
   border-radius: 8px;
 }
-.new-session-deck .fc-composer-deck-row,
 .agent-chat-deck .fc-composer-deck-row {
   min-height: 28px;
   border-radius: 8px;
 }
 .fc-composer-deck:has(.fc-composer-deck-row.is-mention) .fc-composer-deck-list,
-.new-session-deck .fc-composer-deck-list,
 .agent-chat-deck .fc-composer-deck-list {
   row-gap: var(--popover-list-gap);
 }
@@ -11169,9 +11166,7 @@ kbd { font-variant-numeric: tabular-nums; }
    쓰고, 동작 줄이기에서는 변형 없이 배경만 바뀐다(theme.css 의 전역 reduced-motion 이 길이를 0 으로 접는다). */
 :root:not([data-view-mode="mobile"]) :is(
   .conversation-round, .fc-composer-circle,
-  .new-session-send,
-  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
-  .new-session-row, .new-session-menu-item, .new-session-chip
+  .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip
 ) {
   transition:
     background-color var(--motion-tap) var(--ease-soft),
@@ -11180,15 +11175,13 @@ kbd { font-variant-numeric: tabular-nums; }
     transform var(--duration-fast) var(--ease-spring);
 }
 :root:not([data-view-mode="mobile"]) :is(
-  .conversation-round, .fc-composer-circle,
-  .new-session-send):active:not(:disabled) {
+  .conversation-round, .fc-composer-circle):active:not(:disabled) {
   transform: scale(0.94);
   transition-duration: var(--motion-tap);
   transition-timing-function: var(--ease-soft);
 }
 :root:not([data-view-mode="mobile"]) :is(
   .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
-  .new-session-row, .new-session-menu-item, .new-session-chip,
   /* 사령관·TF 머리도 지휘관 행과 같은 눌림을 쓴다 — 머리 고유의 box-shadow 전이를 지키려고
      위 transition 목록이 아니라 눌림·동작 줄이기 규칙에만 든다. 드래그 중에는 눌림이
      translateY+scale(1.015) 을 덮지 않게 빠진다. */
@@ -11201,9 +11194,7 @@ kbd { font-variant-numeric: tabular-nums; }
 @media (prefers-reduced-motion: reduce) {
   :root:not([data-view-mode="mobile"]) :is(
     .conversation-round, .fc-composer-circle,
-    .new-session-send,
     .side-bar-cluster-row, .theater-menu-item, .group-context-menu-item, .launch-chip,
-    .new-session-row, .new-session-menu-item, .new-session-chip,
     .side-bar-theater-header:not(.side-bar-theater-header--dragging)
   ):active:not(:disabled) {
     /* 눌림 규칙과 같은 명시도여야 이긴다 — :not(:disabled) 가 빠지면 동작 줄이기에서도 축소가 남는다. */

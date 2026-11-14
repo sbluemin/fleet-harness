@@ -93,7 +93,6 @@ const LogIcon = () => <Icon><path d="M5 6h14M5 10h14M5 14h10M5 18h7" /></Icon>;
 const InfoIcon = () => <Icon><circle cx="12" cy="12" r="8.5" /><path d="M12 11v5.5M12 7.8v.01" /></Icon>;
 const GearIcon = () => <Icon><circle cx="12" cy="12" r="3.2" /><path d="M12 2.8v2.6M12 18.6v2.6M2.8 12h2.6M18.6 12h2.6M5.5 5.5l1.8 1.8M16.7 16.7l1.8 1.8M5.5 18.5l1.8-1.8M16.7 7.3l1.8-1.8" /></Icon>;
 const TrashIcon = () => <Icon><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13" /></Icon>;
-const PlusIcon = () => <Icon><path d="M12 5v14M5 12h14" /></Icon>;
 const TheaterIcon = () => <Icon><path d="M5 5h14M4 9h16v10H4z" /></Icon>;
 /** 지휘관 목록 시트 — 호스트 `MobileIcon` `commanders`와 같은 경로. */
 const CommandersIcon = () => <Icon><circle cx="9" cy="8" r="2.2" /><path d="M4.2 18.2v-.6a3.4 3.4 0 0 1 3.4-3.4h2.8a3.4 3.4 0 0 1 3.4 3.4v.6" /><circle cx="16.2" cy="9" r="1.8" /><path d="M15.2 14.2a3.2 3.2 0 0 1 3.1 2.4" /></Icon>;
@@ -238,7 +237,6 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
     bar.leave(() => { setSection(null); setMemoryTrail([]); setPanel(false); }, run);
   }, [bar]);
   useEffect(() => commodoreId ? registerCommodoreDeparture(commodoreId, leave) : undefined, [commodoreId, leave]);
-  const newSession = useMemo(() => (actions && commodoreId ? () => leave(() => actions.newSession(commodoreId)) : null), [actions, commodoreId, leave]);
   useEffect(() => {
     if (!bar) return;
     if (!panel) {
@@ -246,14 +244,14 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         title,
         ...(pillStatus ? { subtitle: pillStatus } : {}),
         depth: 0,
-        // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(새 목표·Theater·삭제)는 깊이 1에 그대로 둔다.
+        // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(Theater·삭제)는 깊이 1에 그대로 둔다.
         pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
         ...(actions && commodoreId ? { actions: [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] } : {}),
       });
       return;
     }
     if (section === null) {
-      // 세부의 막대는 둥근 ‹ · ⋮ 뿐이다 — 이름은 본문의 큰 머리가 말한다. ⋮ 는 데스크톱 사이드바 사령관 메뉴의 새 목표 · Theater 추가 를 옮긴 것이다.
+      // 세부의 막대는 둥근 ‹ · ⋮ 뿐이다 — 이름은 본문의 큰 머리가 말한다. ⋮ 는 데스크톱 사이드바 사령관 메뉴의 Theater 추가를 옮긴 것이다.
       bar.set({
         title: "",
         round: true,
@@ -263,7 +261,6 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           label: t("commodore.mobile.more"),
           caption: title,
           items: [
-            ...(newSession ? [{ id: "new-session", label: t("commodore.mobile.newSession"), icon: <PlusIcon />, disabled: !online, run: newSession }] : []),
             { id: "theaters", label: t("commodore.mobile.theaters"), icon: <TheaterIcon />, run: () => setSection("settings") },
             ...(actions && commodoreId ? [{ id: "delete", label: t("commodore.mobile.delete"), icon: <TrashIcon />, destructive: true, disabled: !online, run: () => actions.delete(commodoreId) }] : []),
           ],
@@ -278,7 +275,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       depth: 2 + (section === "info" ? memoryTrail.length : 0),
       onBack: () => { if (section === "info" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
     });
-  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, newSession, online, t, actions, pill.takeover]);
+  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, online, t, actions, pill.takeover]);
 
   useEffect(() => {
     if (!enabled) return;

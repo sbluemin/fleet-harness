@@ -2950,6 +2950,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           baseUrl: () => { const origin = consoleFeaturePorts.server.origin(); return origin ? `${origin}/api/v1/ai-gateway` : null; },
           computerUseMcp,
           browserMcp: { connectPlugin: (options) => browserMcp.connectPlugin({ ...options, pluginId: "commodore" }) },
+          spawnProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
           resolveExecutablePath: async () => {
             const executable = await resolveClaudeExecutable?.();
             if (!executable) throw new Error("agent_cli_unavailable");

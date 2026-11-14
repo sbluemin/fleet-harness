@@ -51,7 +51,7 @@ export const PALETTE_COMMAND_GROUPS: readonly PaletteCommandGroup[] = ["current-
  * 패널 행은 레일 엔트리의 등록 아이콘(`rail-entry`)을 쓰므로 여기서는 종류만 가린다.
  */
 export type PaletteGlyphId =
-  | "theater" | "theater-add" | "objective-new" | "taskforce-new"
+  | "theater" | "theater-add" | "taskforce-new"
   | "objective-open" | "objective-resume" | "objective-archive" | "objective-rename" | "objective-group"
   | "view-status-axis"
   | "rail-entry" | "console-rail" | "console-band" | "console-theme" | "console-settings" | "console-shortcuts" | "console-whats-new" | "console-commissioning" | "console-undo";
@@ -63,7 +63,6 @@ export type PaletteCommandAction =
   | { readonly kind: "open-theater-section"; readonly theaterId: string; readonly sectionId: string; readonly pageId: string }
   | { readonly kind: "new-theater" }
   | { readonly kind: "new-taskforce" }
-  | { readonly kind: "new-objectiveRecord" }
   | { readonly kind: "resume-objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "archive-objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "open-archive" }
@@ -218,7 +217,6 @@ export function buildPaletteCommands(
   }
   push({ commandId: "new-theater", label: t("palette.newTheater"), aliasLabel: alias("palette.newTheater"), action: { kind: "new-theater" }, group: "theater", glyph: "theater-add" });
   if (activeTheater) {
-    push({ commandId: "new-objectiveRecord", label: t("palette.newObjective", { label: activeTheater.label }), aliasLabel: alias("palette.newObjective", { label: activeTheater.label }), action: { kind: "new-objectiveRecord" }, group: "theater", glyph: "objective-new", shortcut: "console.new-session" });
     const theaterObjectiveRecords = current.objectiveRecords.filter((objectiveRecord) => objectiveRecord.theaterId === activeTheater.id);
     if (theaterObjectiveRecords.length > 0) {
     }

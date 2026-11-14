@@ -24,15 +24,13 @@ export interface CommodoreMobileSessions {
   readonly List: ComponentType<CommodoreMobileSessionsProps>;
   readonly useAttentionCount: (commodoreId: string) => number;
 }
-/** 폰 사령관 세부의 동작 중 호스트 폰 셸이 가진 것 — 시트와 새 세션 화면은 호스트 소유라 호스트가 열어 준다. */
+/** 폰 사령관 세부의 동작 중 호스트 폰 셸이 가진 것. */
 export interface CommodoreMobileActions {
   /** 머리 제목에서 사령관·지휘관 전환 시트를 연다. */
   readonly commanders: (commodoreId: string) => void;
   readonly delete: (commodoreId: string) => void;
   /** 「이름·모양 바꾸기」 시트를 연다(홈 행 길게 누르기와 같은 시트). `label`은 지금 보이는 이름, `alias`는 저장된 별칭(없으면 빈 문자열). */
   readonly editLook: (input: { readonly commodoreId: string; readonly label: string; readonly alias: string }) => void;
-  /** 이 사령관이 주인인 새 세션을 연다. 새 세션은 홈 자리에 서므로 부르는 쪽이 세부를 먼저 접는다. */
-  readonly newSession: (commodoreId: string) => void;
 }
 export interface CommodoreClientDeps {
   readonly chat: ClientAgentChatCapability;

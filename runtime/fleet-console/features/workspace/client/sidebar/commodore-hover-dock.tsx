@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState, type FocusEvent, type KeyboardEvent } from "react";
 
 import { useT } from "../../../../core/client/src/i18n/index.js";
-import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
 import { SortMenu } from "../commander-tab/commander-list.js";
 import { useSortPreference } from "../commander-tab/commander-sort.js";
 import { setCommanderKeepExpanded, setCommanderShowSettled, useCommanderKeepExpanded, useCommanderShowSettled } from "./commander-expansion.js";
@@ -9,10 +8,10 @@ import "./commodore-hover-dock.css";
 
 /**
  * 사령관 머리의 호버 독 — 머리에 호버하거나 초점이 오면 오른쪽 끝에 ⋯ 글리프가 나오고, 글리프를 눌러야
- * 가로 리스트박스가 왼쪽으로 펼쳐져 새 목표 · 정렬 · 펼침 유지 · 시작 전·완료 보이기를 고른다. 글리프에 호버만 해서는 열리지 않는다.
- * 새 목표만 이 사령관의 것이고, 나머지는 모든 사령관에 적용되는 글로벌 설정이다.
+ * 가로 리스트박스가 왼쪽으로 펼쳐져 정렬 · 펼침 유지 · 시작 전·완료 보이기를 고른다. 글리프에 호버만 해서는 열리지 않는다.
+ * 여기 설정은 모두 모든 사령관에 적용되는 글로벌 설정이다.
  */
-export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId: string; readonly name: string }) {
+export function CommodoreHoverDock({ name }: { readonly name: string }) {
   const t = useT();
   const keepExpanded = useCommanderKeepExpanded();
   const showSettled = useCommanderShowSettled();
@@ -83,7 +82,6 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
     items[(index + (event.key === "ArrowRight" ? 1 : -1) + items.length) % items.length]?.focus({ preventScroll: true });
   };
 
-  const newObjective = () => { close(false); openCommodoreNewSession(commodoreId); };
   const keepHint = t("sidebar.commodoreDock.keepExpandedHint");
   const settledHint = t("sidebar.commodoreDock.showSettledHint");
   // 정렬 메뉴가 열려 있는 동안은 독도 열린 채다 — 닫히면 메뉴가 든 줄이 inert가 되어 항목이 눌리지 않는다.
@@ -113,10 +111,6 @@ export function CommodoreHoverDock({ commodoreId, name }: { readonly commodoreId
         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="3.5" cy="8" r="1" fill="currentColor" /><circle cx="8" cy="8" r="1" fill="currentColor" /><circle cx="12.5" cy="8" r="1" fill="currentColor" /></svg>
       </button>
       <span id={toolbarId} className="commodore-dock-strip" role="toolbar" aria-orientation="horizontal" aria-label={t("sidebar.commodoreDock.group", { theater: name })} inert={!shown}>
-        <button type="button" className="commodore-dock-button" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={newObjective}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-        </button>
-        <span className="commodore-dock-rule" role="separator" aria-orientation="vertical" />
         <SortMenu glyph preference={sort} onOpenChange={setSortOpen} />
         <button type="button" className="commodore-dock-button" aria-pressed={keepExpanded} aria-label={t("sidebar.commodoreDock.keepExpanded")} title={`${t("sidebar.commodoreDock.keepExpanded")} · ${keepHint}`} onClick={() => setCommanderKeepExpanded(!keepExpanded)}>
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4h10M3 8h10M3 12h6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><path d="M11.5 10.5 13 12l2-2.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>

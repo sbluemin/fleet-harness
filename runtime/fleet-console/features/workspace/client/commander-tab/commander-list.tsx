@@ -15,8 +15,7 @@ import { commodoreSectionLabel, useCommodoreList } from "../../../commodore/clie
 import { useCommodore } from "../../../commodore/client/commodore-state.js";
 import { commodoreMongleState } from "../../../commodore/client/commodore-header.js";
 import { useObjectiveTheater } from "../../../commodore/client/board.js";
-import { isNotStartedRow } from "../conversation/new-session-mention.js";
-import { openCommodoreNewSession } from "../conversation/new-session-entry.js";
+import { isNotStartedRow } from "./commander-rows.js";
 import { SORTS, setSort, type SortDirection, type SortPreference } from "./commander-sort.js";
 import { toggleFold, useCommanderFolds, type CommanderFold } from "./commander-folds.js";
 import { useCommanderRows } from "./commander-rows.js";
@@ -61,17 +60,16 @@ function SettledCounts({ fresh, done }: { readonly fresh: number; readonly done:
   );
 }
 
-export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onNewSession, onRowMenu, sortNameOnly = false, card = false, showBar = true, hideSettled = false, heading, popups, onGlyphTab }: {
+export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelect, onRowMenu, sortNameOnly = false, card = false, showBar = true, hideSettled = false, heading, popups, onGlyphTab }: {
   readonly commodoreId: string;
   readonly selectedId?: string | null;
   readonly onSelect?: (item: SideBarRowItem) => void;
-  readonly onNewSession?: () => void;
   readonly onRowMenu?: (item: SideBarRowItem) => void;
   /** 사이드바·좁은 팝오버처럼 좁을 때만 정렬 칩에 현재 이름만 보인다. 폰은 접두어를 유지한다. */
   readonly sortNameOnly?: boolean;
   /** 루틴 목록과 같은 테두리 카드 안에 행이 선다(작업 탭 목표 섹션). */
   readonly card?: boolean;
-  /** 정렬·새 목표 막대를 그린다. 사이드바는 사령관 머리의 호버 독이 같은 일을 하므로 끈다. */
+  /** 정렬 막대를 그린다. 사이드바는 사령관 머리의 호버 독이 같은 일을 하므로 끈다. */
   readonly showBar?: boolean;
   /** 시작 전·완료 구역을 그리지 않는다 — 좌측 사이드바의 「시작 전·완료 보이기」를 끈 경우다. */
   readonly hideSettled?: boolean;
@@ -114,9 +112,6 @@ export function CommodoreCommanderList({ commodoreId, selectedId = null, onSelec
       {showBar ? <div className="commander-tab-bar">
         {heading ? <span className="commander-tab-heading">{heading}</span> : null}
         <SortMenu preference={preference} nameOnly={sortNameOnly} />
-        <button type="button" className="commander-tab-direction" aria-label={t("sidebar.commodore.newSession")} title={t("sidebar.commodore.newSession")} onClick={onNewSession ?? (() => openCommodoreNewSession(commodoreId))}>
-          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3.5v9M3.5 8h9" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-        </button>
       </div> : null}
       {sorted.length === 0 ? null : card ? (
         <>

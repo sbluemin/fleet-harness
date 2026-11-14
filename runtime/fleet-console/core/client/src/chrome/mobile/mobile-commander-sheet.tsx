@@ -1,6 +1,6 @@
 import { useT } from "../../i18n/index.js";
 import { useConsoleState } from "../../hooks/use-store.js";
-import { focusObjective, openMobileNewSession } from "../../integration/store.js";
+import { focusObjective } from "../../integration/store.js";
 import { CommanderListOwner, CommodoreCommanderList } from "../../../../../features/workspace/client/commander-tab/commander-list.js";
 import { openCommodoreMobile } from "../../../../../features/commodore/client/commodore-state.js";
 import { openLedger } from "../../../../../features/execution/client/agent/chat/group/index.js";
@@ -24,7 +24,6 @@ function MobileCommanderSheet({ commodoreId, onClose }: { readonly commodoreId: 
     <CommanderListOwner commodoreId={commodoreId} selected={selectedId === null} onSelect={() => runAfterSheetRelease(() => openCommodoreMobile("log", commodoreId))} />
     <div className="commander-list-rule" role="separator" />
     <CommodoreCommanderList commodoreId={commodoreId} selectedId={selectedId} onRowMenu={openActions}
-      onNewSession={() => runAfterSheetRelease(() => openMobileNewSession(commodoreId))}
       onSelect={(item) => runAfterSheetRelease(() => {
         const root = item.layout.cluster.root;
         if (!root) { item.layout.cluster.open?.(); return; }

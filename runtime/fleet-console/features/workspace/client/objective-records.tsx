@@ -29,7 +29,7 @@ import { useRailSettledPx } from "../../../core/client/src/chrome/rail/rail-stor
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { shouldHandleObjectiveRecordsKeyboardShortcut } from "../../../core/client/src/chrome/components/keyboard-shortcuts-dialog.js";
 import { isShortcutRecording, matchesShortcutCommand } from "../../../core/client/src/integration/shortcut-bindings.js";
-import { consumeObjectiveFocus, consumeLaunch, rejectNewSession, focusCycleObjectiveIds, focusObjective, getState, hydrateGroups, hydrateObjectiveRecords, nextObjectiveId, objectiveRecordOrderFromNodes, requestObjectiveKeyboardFocus, revealObjectiveStage, setActiveObjective } from "../../../core/client/src/integration/store.js";
+import { consumeObjectiveFocus, focusCycleObjectiveIds, focusObjective, getState, hydrateGroups, hydrateObjectiveRecords, nextObjectiveId, objectiveRecordOrderFromNodes, requestObjectiveKeyboardFocus, revealObjectiveStage, setActiveObjective } from "../../../core/client/src/integration/store.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../core/client/src/integration/types.js";
 import { MobileShell } from "../../../core/client/src/chrome/mobile/mobile-shell.js";
 import { setMobileDestination, takeMobileConversationDestination } from "../../../core/client/src/chrome/mobile/mobile-store.js";
@@ -213,44 +213,7 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
 
   const theaterObjectiveRecords = state.objectiveRecords;
   const pooledObjectiveRecords = useMemo(() => [...state.objectiveRecords, ...state.nestedObjectiveRecords], [state.objectiveRecords, state.nestedObjectiveRecords]);
-  const handleSideBarLaunchKind = useCallback((
-    pluginId: string | null,
-    kind: ObjectiveLaunchKind,
-    variant?: Readonly<Record<string, string>>,
-    groupId?: string | null,
-    launchTheaterId: string | null = getViewedTheaterId(),
-  ) => {
-    if (!launchTheaterId) return;
-    void launchViaPlugin(pluginId, kind, defaultLaunchGeometry(), launchTheaterId, registry.providers, variant, groupId);
-  }, [registry.providers]);
-
-  const handleRailLaunchObjective = useCallback((pluginId: string | null, kind: ObjectiveLaunchKind) => {
-    handleSideBarLaunchKind(pluginId, kind);
-  }, [handleSideBarLaunchKind]);
-  const toolsContext = useRailPanelContext(viewedTheaterId, STABLE_RAIL_API, handleRailLaunchObjective);
-
-  // 새 세션 컴포저가 명시한 등록 Theater로 바로 실행한다. 보기 문맥을 전환하지 않는다.
-  useEffect(() => {
-    const request = state.pendingLaunch;
-    if (!request || !readCommodoreList().some((owner) => owner.theaters.some((theater) => theater.status === "available" && theater.theaterId === request.theaterId))) return;
-    consumeLaunch();
-    void launchViaPlugin(request.pluginId, request.kind, defaultLaunchGeometry(), request.theaterId, registry.providers, request.variant, undefined, request.commodoreId)
-      .then(() => {
-        for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
-      })
-      .catch((error: unknown) => {
-        const draft = request.variant.prompt ?? "";
-        // 거절은 보낸 표면으로 돌아간다 — 폰은 새 대화 시트, 데스크톱은 새 세션 화면이다.
-        rejectNewSession({
-          theaterId: request.theaterId,
-          mobile: getViewModeSnapshot().effective === "mobile",
-          draft: draft.length > 0 ? draft : null,
-          attachments: request.attachments ?? null,
-          errorCode: error instanceof Error ? error.message : null,
-          shortenByChars: readShortenByChars(error),
-        });
-      });
-  }, [registry.providers, state.pendingLaunch, state.newSession]);
+  const toolsContext = useRailPanelContext(viewedTheaterId, STABLE_RAIL_API);
 
   const handleFocus = useCallback((objectiveId: string) => {
     const objectiveRecord = stateRef.current.objectiveRecords.find((candidate) => candidate.id === objectiveId);
@@ -416,7 +379,7 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
         toolContext={toolsContext}
       />
       {toastRegion}
-      <ConversationRightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} onLaunchObjective={handleRailLaunchObjective} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
+      <ConversationRightRail theaterId={viewedTheaterId} api={STABLE_RAIL_API} header={<ConversationPanelHeader context={toolsContext} />} reservedArenaWidth={CONVERSATION_RESERVED_ARENA_WIDTH} />
       {objectiveRecordMenuLayer}
       <CommanderRowMenuLayer
         onSetGroupId={handleSetGroupId}
@@ -460,64 +423,6 @@ function focusConversationObjective(objectiveRecord: ObjectiveRecord): void {
   requestObjectiveKeyboardFocus(objectiveRecord.id);
 }
 
-function readShortenByChars(error: unknown): number | null {
-  if (!(error instanceof Error) || !("shortenByChars" in error)) return null;
-  const value = (error as { readonly shortenByChars?: unknown }).shortenByChars;
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
 function ensurePluginGeometry(objectiveRecord: ObjectiveRecord): ObjectiveGeometry {
   return  { x: 0, y: 0, width: DEFAULT_SHELL_WIDTH, height: DEFAULT_SHELL_HEIGHT, zIndex: 0 };
-}
-
-function defaultLaunchGeometry(): ObjectiveGeometry {
-  return { x: 0, y: 0, width: DEFAULT_SHELL_WIDTH, height: DEFAULT_SHELL_HEIGHT, zIndex: 0 };
-}
-
-async function launchViaPlugin(
-  pluginId: string | null,
-  kind: ObjectiveLaunchKind,
-  geometry: ObjectiveGeometry,
-  theaterId: string,
-  plugins: readonly ClientFeatureDescriptor[],
-  variant?: Readonly<Record<string, string>>,
-  groupId?: string | null,
-  commodoreId?: string,
-): Promise<void> {
-  await createLaunchedObjective(pluginId, kind, geometry, theaterId, plugins, variant, groupId, commodoreId);
-}
-
-async function createLaunchedObjective(
-  pluginId: string | null,
-  kind: ObjectiveLaunchKind,
-  geometry: ObjectiveGeometry,
-  theaterId: string,
-  plugins: readonly ClientFeatureDescriptor[],
-  variant?: Readonly<Record<string, string>>,
-  groupId?: string | null,
-  commodoreId?: string,
-): Promise<void> {
-  const plugin = plugins.find((p) => p.id === pluginId);
-  const resync = () => { void fetchObjectiveRecords(null).then(hydrateObjectiveRecords).catch(() => {}); };
-  const capabilities = createHostCapabilities(resync);
-  let newObjectiveId: string | null = null;
-  if (plugin?.launch) {
-    const result = await plugin.launch({ theaterId, kind, geometry, objectiveRecords: capabilities.objectiveRecords, variant, ...(commodoreId ? { commodoreId } : {}) });
-    newObjectiveId = result.id;
-  } else {
-    const objectiveRecord = await capabilities.objectiveRecords.create({
-      ...(commodoreId ? { commodoreId } : {}),
-      theaterId,
-      type: kind.type,
-      pluginId,
-      title: kind.title,
-      geometry,
-    });
-    newObjectiveId = objectiveRecord.id;
-  }
-  if (newObjectiveId && groupId) await patchObjective(newObjectiveId, { groupId }).catch(() => {});
-  await fetchObjectiveRecords(null).then(hydrateObjectiveRecords).catch(() => {});
-  if (!newObjectiveId) return;
-  const objectiveRecordHydrated = getState().objectiveRecords.some((objectiveRecord) => objectiveRecord.id === newObjectiveId);
-  if (objectiveRecordHydrated) focusObjective(newObjectiveId);
 }

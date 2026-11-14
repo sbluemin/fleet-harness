@@ -106,9 +106,7 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       closeSurface: () => undefined,
       isOpen: () => false,
     },
-    composer: {
-      open: () => undefined,
-    },
+    composer: {},
     objectiveRecords: {
       create: async (input) => {
         // 부르는 쪽이 자기 문맥의 사령관을 싣는다 — Theater 에서 주인을 찾지 않는다.

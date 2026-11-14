@@ -1218,7 +1218,9 @@ async function openWorkload(run: LifecycleRun, endpoint: string): Promise<void> 
   const { theaterId } = await consoleApi<{ theaterId: string }>(endpoint, "/api/v1/commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId ?? grant.grant?.id ?? grant.id });
   const count = (role: string) => agentProcs(run).filter((entry) => entry.role === role).length;
   const turns = count("turn-open");
-  await consoleApi(endpoint, "/api/v1/agent/sessions", { commodoreId, theaterId, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" });
+  const denied = await fetch(new URL("/api/v1/agent/sessions", endpoint), { method: "POST", headers: { origin: new URL(endpoint).origin, "content-type": "application/json" }, body: JSON.stringify({ commodoreId, theaterId, cliId: "claude", viewMode: "chat", prompt: "lifecycle suite open turn" }) });
+  if (denied.status !== 405) throw new Error(`POST /api/v1/agent/sessions: ${denied.status}`);
+  await consoleApi(endpoint, "/api/v1/commodore/message", { commodoreId, text: "lifecycle suite open turn" });
   const turnDeadline = Date.now() + 20_000;
   while (count("turn-open") <= turns && Date.now() < turnDeadline) await delay(25);
   if (count("turn-open") <= turns) {

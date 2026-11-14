@@ -2,7 +2,7 @@ import { contextBreakdownOf } from "./context-breakdown.js";
 import { SDK_CLAUDE_SKILL_OVERRIDES } from "@fleet-console/agent-runtime/fleet";
 import { CLAUDE_AUTO_COMPACT_RESERVE, claudeAutoCompactTarget, claudeAutoCompactWindowTokens, claudeGatewayModelPolicy, claudeModelAutoCompactWindows, compactThresholdTokens, findGatewayModel, GATEWAY_MODELS, type CompactCeiling } from "@fleet-console/ai-gateway";
 import path from "node:path";
-import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
+import { createClaudeExecutionLoop, createClaudeGatewaySdk, createClaudeResidentLoop, createEmbeddedMcpServer, defineTool, type ClaudeExecutionTurn, type ClaudeGatewayExternalMcpServer, type ClaudeGatewayLocalPlugin, type ClaudeGatewayMcpServer, type ClaudeProcessSpawner, type ClaudeResidentLoop } from "@fleet-console/agent-runtime/claude";
 import type { AgentEvent, AgentInput, AgentSession, AgentSessionOptions } from "../../shared/agent.js";
 import { z } from "zod";
 import { stripConsoleInternalEnv } from "../terminal/launch-env.js";
@@ -17,6 +17,7 @@ export interface AgentSessionHostDeps {
   readonly computerUseMcp?: { connectPlugin(options: ComputerUsePluginOptions): ComputerUsePluginConnection | null };
   readonly browserMcp?: { connectPlugin(options: Omit<BrowserPluginOptions, "pluginId">): BrowserPluginConnection };
   readonly createSdk?: typeof createClaudeGatewaySdk;
+  readonly spawnProcess?: ClaudeProcessSpawner;
   /** 설치된 Claude Code 실행 파일. 없으면 SDK 동봉본이 떠서 새 모델을 모르는 옛 버전이 될 수 있다. */
   readonly resolveExecutablePath?: () => Promise<string>;
   /**
@@ -142,6 +143,7 @@ export function createAgentSessionHost(deps: AgentSessionHostDeps, prepare: (opt
       const modelAutoCompactWindows = sessionModelAutoCompactWindows(options.model, options.compactAt, deps.compactCeiling?.() ?? null);
       return (deps.createSdk ?? createClaudeGatewaySdk)({
         baseUrl, models: [options.model], env, modelPolicy: claudeGatewayModelPolicy,
+        ...(deps.spawnProcess === undefined ? {} : { spawnProcess: deps.spawnProcess }),
         ...(resources.resident ? { disableBundledSkills: true as const, skillOverrides: SDK_CLAUDE_SKILL_OVERRIDES } : {}),
         ...(options.autoMemoryEnabled === undefined ? {} : { autoMemoryEnabled: options.autoMemoryEnabled }),
         // 상주 대화의 홈은 scratch 안에서만 살아 있고, 세션 폐기가 scratch 전체를 회수한다.

@@ -966,14 +966,9 @@ ts: { createdAt, updatedAt: createdAt }};
     emitTitle: (sessionId: string, title: string) => titleListener?.(sessionId, title),
     objectiveRecord: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id),
     createSession: async (): Promise<string> => {
-      if (!route) throw new Error("Agent route was not registered");
-      await route({
-        req: { method: "POST", url: "/api/v1/agent/sessions" } as http.IncomingMessage,
-        res: {} as http.ServerResponse,
-        pathname: "/api/v1/agent/sessions",
-      });
-      const objectiveRecord = objectiveRecords[0];
-      if (!objectiveRecord) throw new Error(`Session create failed: ${JSON.stringify(responses.at(-1))}`);
+      const sessionId = (await consoleControl.request({ kind: "plugin", pluginId: "fleet-todo" }, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1" })).objectiveId;
+      const objectiveRecord = objectiveRecords.find((row) => row.id === sessionId);
+      if (!objectiveRecord) throw new Error(`Session create failed: ${sessionId}`);
       return objectiveRecord.id;
     },
     sessions: async (): Promise<readonly Record<string, unknown>[]> => {

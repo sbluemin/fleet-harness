@@ -13,7 +13,6 @@ const PATHS = {
   x: <path d="M6 6l12 12M18 6L6 18" />,
   down: <path d="M6 9l6 6 6-6" />,
   right: <path d="M9 6l6 6-6 6" />,
-  newop: <><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /><path d="M12 7.5v6M9 10.5h6" /></>,
   theater: <path d="M5 5h14M4 9h16v10H4z" />,
   target: <><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="4.5" /><circle cx="12" cy="12" r=".8" fill="currentColor" /></>,
   file: <><path d="M7 3h7l5 5v13H7z" /><path d="M14 3v5h5" /></>,

@@ -124,7 +124,7 @@ it("keeps a deleted conversation's stage empty until an explicit conversation is
   const before = getState();
   __setViewportNarrowForTests(false);
   try {
-    setState({ newSession: null });
+    setState({});
     openConversationSurface("commodore", { commodoreId: "deleted-owner" });
     prepareCommodoreRemovalStage("deleted-owner");
     expect(getConversationSurface()).toBeNull();

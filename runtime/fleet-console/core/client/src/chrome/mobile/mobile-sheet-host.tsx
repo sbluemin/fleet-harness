@@ -1,5 +1,4 @@
 import { commodoreAliasEditor } from "../../integration/commodore-identity.js";
-import { getViewedTheaterId } from "../../integration/viewed-theater.js";
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { MobileConfirmSpec } from "../../../../../features/workspace/shared/mobile.js";
@@ -21,7 +20,6 @@ import { setMongleLook, useMongleLook } from "../../../../../features/workspace/
 import { MongleAvatarPicker, type MongleAvatarPreviewState } from "../../../../../features/workspace/client/components/mongle-avatar-picker.js";
 import { MongleAvatar } from "../../../../../features/workspace/client/components/mongle-avatar.js";
 import { useMobileAppearance } from "../../integration/mobile-appearance-store.js";
-import { getState, openMobileNewSession } from "../../integration/store.js";
 import { useHostCapabilities } from "../../integration/use-host-capabilities.js";
 import { mobileHomeCommodoreId } from "./mobile-destinations.js";
 import type { ConsoleState } from "../../integration/types.js";
@@ -363,9 +361,8 @@ function TaskforceCreateSheetRow() {
   </button>;
 }
 
-function CreateSheet({ state }: { readonly state: ConsoleState }) {
+function CreateSheet(_props: { readonly state: ConsoleState }) {
   const t = useT();
-  const hasTheater = getViewedTheaterId() !== null;
   return (
     <MobileSheet title={t("mobile.create.title")} onClose={popMobileSheet}>
       <button type="button" className="mobile-sheet-row" onClick={() => runAfterSheetRelease(requestCommodoreCreate)}>
@@ -373,10 +370,6 @@ function CreateSheet({ state }: { readonly state: ConsoleState }) {
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.create.commodore")}</strong></span>
       </button>
       <TaskforceCreateSheetRow />
-      <button type="button" className="mobile-sheet-row" disabled={!hasTheater} onClick={() => runAfterSheetRelease(() => openMobileNewSession())}>
-        <span className="mobile-sheet-row-glyph"><MobileIcon name="newop" /></span>
-        <span className="mobile-sheet-row-copy"><strong>{t("mobile.list.newConversation")}</strong><small>{t("mobile.create.conversationSub")}</small></span>
-      </button>
       <button type="button" className="mobile-sheet-row" onClick={() => pushMobileSheet({ kind: "folder" })}>
         <span className="mobile-sheet-row-glyph"><MobileIcon name="folder" /></span>
         <span className="mobile-sheet-row-copy"><strong>{t("mobile.sheet.theater.add")}</strong></span>

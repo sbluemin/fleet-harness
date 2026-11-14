@@ -48,11 +48,6 @@ export function getViewedTheaterId(): string | null {
     if (commodoreId) return theaterOfCommodore(commodoreId, requested?.theaterId ?? null);
     return null;
   }
-  // 새 세션은 보던 대화를 걷어도 자체 컨텍스트를 유지한다. Theater 가 없으면 이전 대화로 되돌리지 않는다.
-  const newSession = state.newSession;
-  if (newSession !== null) {
-    return newSession.commodoreId ? theaterOfCommodore(newSession.commodoreId, newSession.theaterId) : null;
-  }
   const surface = getConversationSurface();
   if (surface !== null) {
     const theaterId = typeof surface.params.theaterId === "string" ? surface.params.theaterId : null;
@@ -76,7 +71,7 @@ const commodoreUuid = (id: unknown): string | null => (typeof id === "string" &&
  * 지금 화면이 명시한 사령관 UUID — 사령관 하나에 걸린 표면(사령관 Inbox·목표·배지·도구)이 읽는 문맥이다.
  * Theater 에서 주인을 거꾸로 찾지 않고, Theater 공유 목록이나 사령관 목록에서 임의로 고르지도 않는다: 같은 폴더를 여러 사령관이
  * 함께 쓸 수 있으므로 Theater 는 사령관을 정하지 않는다.
- * 폰은 화면의 Objective, 목적지 주소, 칩에서 고른 사령관 순이다. 데스크톱은 새 세션의 사령관, 가운데 표면의 사령관, Theater Inbox 를 연
+ * 폰은 화면의 Objective, 목적지 주소, 칩에서 고른 사령관 순이다. 데스크톱은 가운데 표면의 사령관, Theater Inbox 를 연
  * 동안의 작전 구역 사령관, 대화 대상 또는 활성 Objective 의 사령관 순이다. 모두 비면 null 이고, 부르는 쪽은 「사령관 없음」으로 다룬다 —
  * 첫 사령관 같은 대체가 꼭 필요한 소비자만 스스로 명시한다.
  */
@@ -91,7 +86,6 @@ export function getViewedCommodoreId(): string | null {
     if (addressed) return addressed;
     return commodoreUuid(readMobileCommodoreId());
   }
-  if (state.newSession !== null) return commodoreUuid(state.newSession.commodoreId);
   const surface = getConversationSurface();
   if (surface !== null) return commodoreUuid(surface.params.commodoreId);
   if (readTheaterInboxState() !== null) return commodoreUuid(readZoneCommodore());

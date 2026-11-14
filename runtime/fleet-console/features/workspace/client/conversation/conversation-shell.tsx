@@ -13,8 +13,8 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
-import { closeNewSession, getState, selectNestedBody, setActiveObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
-import { useNewSessionShortcutLabel, useStandaloneCliShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
+import { getState, selectNestedBody, setActiveObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
+import { useStandaloneCliShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { StandaloneCliLayer } from "../../../execution/client/standalone-cli/layer.js";
 import { conversationSurfaceInboxSectionId, useFeatureRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/feature-registry.js";
 import { useHostCapabilities } from "../../../../core/client/src/integration/use-host-capabilities.js";
@@ -58,8 +58,6 @@ import { ConversationPill, ConversationPillContext, PILL_MORPHING_CLASS, useConv
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, getConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
-import { NewSessionColumn } from "./new-session.js";
-import { openDefaultNewSession, resolveNewSessionCommodoreId } from "./new-session-entry.js";
 import { TaskforceCreateMenu } from "../../../commodore/client/taskforce/create-menu.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { ConsoleGlyph } from "../../../remote-access/client/console-section.js";
@@ -174,12 +172,12 @@ function shouldKeepCommodoreTabs(clusterIndex: ClusterIndex, commodoreId: string
 }
 
 /**
- * 떠나는 화면의 사령관 탭이 연 패널을 그대로 둘까 — 다음 화면도 사령관 탭을 싣는다면(어느 사령관의 지휘관·사령관 대화·새 목표 화면) 같은 탭
+ * 떠나는 화면의 사령관 탭이 연 패널을 그대로 둘까 — 다음 화면도 사령관 탭을 싣는다면(어느 사령관의 지휘관·사령관 대화) 같은 탭
  * id 가 이어 서므로 닫지 않는다. 목표는 우측 사이드바의 맥락을 바꾸지 않는다 — 열린 사이드바는 열린 채, 닫힌 사이드바는 닫힌 채다.
  */
 function nextScreenKeepsCommodoreTabs(clusterIndex: ClusterIndex): boolean {
   const surface = getConversationSurface();
-  if (surface?.surfaceId === COMMODORE_SURFACE_ID || getState().newSession !== null) return true;
+  if (surface?.surfaceId === COMMODORE_SURFACE_ID) return true;
   const params = surface?.params as { readonly objectiveId?: unknown } | undefined;
   const freshId = surface?.surfaceId === FRESH_SURFACE_ID && typeof params?.objectiveId === "string" ? params.objectiveId : null;
   const centerId = freshId ?? (surface === null ? getState().activeObjectiveId : null);
@@ -314,9 +312,7 @@ export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
   const descriptor = surface === null ? null : conversationSurfaces.find((entry) => entry.id === surface.surfaceId) ?? null;
   useConversationSurfaceHead(descriptor);
   const context = surface && descriptor ? { params: surface.params, language, theme: state.activeTheme, close: () => closeConversationSurface(descriptor.id) } as const : null;
-  const newSessionCommodoreId = useNewSessionCommodoreId();
-  const avatarKey = keepOwner !== null ? commodoreAvatarKey(keepOwner) : subject ? objectiveRecordAvatarKey(subject.id) : standIn ? objectiveRecordAvatarKey(standIn) : context ? descriptor?.avatar?.(context)?.key ?? null
-    : newSessionCommodoreId !== null ? commodoreAvatarKey(newSessionCommodoreId) : null;
+  const avatarKey = keepOwner !== null ? commodoreAvatarKey(keepOwner) : subject ? objectiveRecordAvatarKey(subject.id) : standIn ? objectiveRecordAvatarKey(standIn) : context ? descriptor?.avatar?.(context)?.key ?? null : null;
   const accent = useAvatarAccent(avatarKey);
   const activeId = useRailActivePanelId();
   const entries = useDesktopRailEntries();
@@ -529,10 +525,8 @@ function ConversationPanelIdentity() {
   const renameObjective = useConversationObjectiveRename();
   useConversationSurfaceHead(centerSurface);
   // 우측 펼침의 유지 상태에서는 가운데 지휘관이 아니라 사령관 머리를 민다 — 펼친 행 패널이 지휘관을 보인다.
-  // 새 목표 화면도 실린 사령관의 머리다 — 패널이 그 사령관의 탭을 싣는다.
   const keepOwner = useKeptCommodoreOwner();
-  const newSessionCommodoreId = useNewSessionCommodoreId();
-  const commodoreOwner = keepOwner ?? newSessionCommodoreId;
+  const commodoreOwner = keepOwner;
   if (commodoreOwner !== null) {
     const keepDescriptor = conversationSurfaces.find((candidate) => candidate.id === COMMODORE_SURFACE_ID) ?? null;
     if (keepDescriptor !== null) {
@@ -687,19 +681,14 @@ function useStageSubject(state: ConsoleState): ObjectiveRecord | null {
 
 export function ConversationStage({ state, insets, language, objectiveRecordKinds, onClose, toolContext }: ConversationStageProps) {
   const t = useT();
-  const newSessionShortcut = useNewSessionShortcutLabel();
   const standaloneCliShortcut = useStandaloneCliShortcutLabel();
   const subject = useStageSubject(state);
   // 플러그인 대화(사령관 등)가 가운데 칸을 가지면 Objective 대신 선다.
   const surface = useConversationSurface();
   const { conversationSurfaces } = useFeatureRegistry();
   const surfaceDescriptor = surface === null ? null : conversationSurfaces.find((descriptor) => descriptor.id === surface.surfaceId) ?? null;
-  const newSession = state.newSession;
-  // 새 목표 화면에도 실린 사령관이 있다 — 그 동안 오른쪽 사이드바는 그 사령관 대화의 탭을 싣는다.
-  const newSessionCommodoreId = useNewSessionCommodoreId();
-  const newSessionRailDescriptor = conversationSurfaces.find((descriptor) => descriptor.id === COMMODORE_SURFACE_ID) ?? null;
-  // 오른쪽 패널·분할 칸이 읽는 대상 — 새 세션 화면 동안은 보던 대화를 대상으로 삼지 않는다.
-  const stageSubject = newSession ? null : subject;
+  const objectiveRailDescriptor = conversationSurfaces.find((descriptor) => descriptor.id === COMMODORE_SURFACE_ID) ?? null;
+  const stageSubject = subject;
   useEffect(() => { publishConversationSubject(surfaceDescriptor ? null : stageSubject); }, [stageSubject, surfaceDescriptor]);
   // 플러그인 대화가 아직 서지 않은 Objective 을 대신하면(시작 전 목표) 가운데 목표 대화를 세운다 — 우측 패널은 같은 사령관을 유지한다.
   let standInId: string | null = null;
@@ -742,29 +731,15 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   // 가운데 칸에 선 대화가 곧 활성 Objective 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
   const activeObjectiveId = state.activeObjectiveId;
-  const seenNewSessionRef = useRef(newSession);
-  const seenSurfaceRef = useRef(surface);
-  useEffect(() => {
-    const openedNewSession = newSession !== null && seenNewSessionRef.current !== newSession;
-    const openedSurface = surface !== null && seenSurfaceRef.current !== surface;
-    seenNewSessionRef.current = newSession;
-    seenSurfaceRef.current = surface;
-    if (openedNewSession && surface !== null) closeConversationSurface(surface.surfaceId);
-    else if (openedSurface && newSession !== null) closeNewSession();
-  }, [newSession, surface]);
   useEffect(() => {
     // 플러그인 대화가 선 동안에는 어느 Objective 도 칸에 없다 — 사이드바의 Objective 줄 선택을 걷는다(대화를 걷으면 되돌아온다).
-    if (newSession !== null) {
-      if (activeObjectiveId !== null) setActiveObjective(null);
-      return;
-    }
     if (surfaceDescriptor !== null) {
       if (activeObjectiveId !== null) setActiveObjective(null);
       return;
     }
     if (subject === null || activeObjectiveId === subject.id) return;
     setActiveObjective(subject.id, { fromStage: true });
-  }, [activeObjectiveId, newSession, subject, surfaceDescriptor]);
+  }, [activeObjectiveId, subject, surfaceDescriptor]);
   useEffect(() => () => { publishConversationSubject(null); publishConversationStandIn(null); }, []);
   // 구성원 탭의 아바타가 같은 묶음 사실(검토 대기·결정 요청·임무 완료)로 얼굴을 고르게 묶음을 내건다.
   const objectiveRecordClusters = useObjectiveClusters();
@@ -798,8 +773,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       surfaceTheaterId = null;
     }
   }
-  const conversationKey = newSession ? null
-    : toolCommodoreId !== null ? `session:commodore:commodore:${toolCommodoreId}`
+  const conversationKey = toolCommodoreId !== null ? `session:commodore:commodore:${toolCommodoreId}`
       : surfaceDescriptor && surface && standInId === null
         ? sessionSubjectKey !== null ? `session:${sessionSubjectKey}`
           : surfaceTheaterId !== null ? `surface:${surface.surfaceId}:theater:${surfaceTheaterId}`
@@ -890,17 +864,10 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
       aria-label={t("conversation.stage.aria")}
     >
       <ConversationDockHost.Provider value={stageElement}>
-      {!newSession && objectiveCommodoreId !== null && newSessionRailDescriptor !== null
-        ? <CommodoreRailTabs descriptor={newSessionRailDescriptor} commodoreId={objectiveCommodoreId} language={language} theme={state.activeTheme} />
+      {objectiveCommodoreId !== null && objectiveRailDescriptor !== null
+        ? <CommodoreRailTabs descriptor={objectiveRailDescriptor} commodoreId={objectiveCommodoreId} language={language} theme={state.activeTheme} />
         : null}
-      {newSession ? (
-        <>
-          {newSessionCommodoreId !== null && newSessionRailDescriptor !== null
-            ? <CommodoreRailTabs descriptor={newSessionRailDescriptor} commodoreId={newSessionCommodoreId} language={language} theme={state.activeTheme} />
-            : null}
-          <NewSessionColumn state={state} target={newSession} tools={tools(null)} />
-        </>
-      ) : surfaceDescriptor && surface ? (
+      {surfaceDescriptor && surface ? (
         <ConversationSurfaceColumn
           descriptor={surfaceDescriptor}
           selection={surface}
@@ -929,7 +896,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           <div className="conversation-pill-row">{tools(null)}</div>
           <div className="conversation-empty">
             <strong>{t("conversation.empty.title")}</strong>
-            <span>{t("conversation.empty.body", { shortcut: newSessionShortcut })}</span>
+            <span>{t("conversation.empty.body")}</span>
           </div>
         </div>
       )}
@@ -1327,14 +1294,8 @@ function registerSurfaceTabs(descriptor: ResolvedConversationSurface, context: C
   }));
 }
 
-/** 「새 목표」 화면에 실린 사령관 — 그 화면 동안 오른쪽 사이드바가 이 사령관의 탭을 싣는다. 새 목표 화면이 아니면 null. */
-function useNewSessionCommodoreId(): string | null {
-  const newSession = useConsoleState().newSession;
-  return newSession === null ? null : newSession.commodoreId ?? resolveNewSessionCommodoreId();
-}
-
 /**
- * 「새 목표」 화면과 목표 대화(지휘관·구성원·시작 전 목표)의 오른쪽 사이드바 — 그 사령관의 탭(작업·정보·설정)을 사령관 대화와 같은 자리에 세운다.
+ * 목표 대화(지휘관·구성원·시작 전 목표)의 오른쪽 사이드바 — 그 사령관의 탭(작업·정보·설정)을 사령관 대화와 같은 자리에 세운다.
  * 앞 화면에서 사이드바가 열려 있었으면 이어서 연다: 보던 사령관 탭이면 그 탭, 아니면 사령관 대화의 마지막 탭(없으면 기본 탭)이다.
  * 닫혀 있었으면 닫힌 채 둔다. 여닫음은 사령관 대화의 기억에 함께 남는다 — 여기서 닫고 사령관으로 돌아가도 닫힌 채다.
  * 앞 화면이 남긴 도구·설정 패널은 그대로 둔다.
@@ -1367,7 +1328,7 @@ function CommodoreRailTabs({ descriptor, commodoreId, language, theme }: {
     };
   }, [commodoreId, context, descriptor, section]);
   // 화면을 떠나면 이 탭이 연 패널도 걷힌다 — 다음 화면이 자기 규칙(사령관 대화의 기억, Objective 대화의 이어 열기)으로 다시 연다.
-  // 다음 화면도 사령관 탭을 싣는다면(다른 목표 대화·사령관 대화·새 목표) 같은 탭 id 가 이어 서므로 열린 채 둔다.
+  // 다음 화면도 사령관 탭을 싣는다면(다른 목표 대화·사령관 대화) 같은 탭 id 가 이어 서므로 열린 채 둔다.
   useEffect(() => () => {
     if (shouldKeepCommodoreTabs(clustersRef.current, commodoreId) || nextScreenKeepsCommodoreTabs(clustersRef.current)) return;
     const active = getRailStoreSnapshot().activePanelId;

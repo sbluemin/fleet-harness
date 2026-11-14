@@ -1352,7 +1352,6 @@ export function FleetAtAGlanceHost(): React.JSX.Element | null {
     state.onboardingOpen ||
     state.objectiveRecordSearchOpen ||
     (state.controlHolder !== null && !state.controlCurtainDismissed) ||
-    state.mobileNewSessionOpen ||
     state.keyboardShortcutsOpen;
   if (suppressed) return null;
   return <FleetAtAGlanceDialog onClose={closeFleetAtAGlance} />;
