@@ -34,7 +34,10 @@ import { workspaceHash } from "../features/workspace/host/theaters/theater-domai
 import { createCommodoreSession } from "../features/commodore/host/session.js";
 import { commodoreSystemPrompt } from "../features/commodore/host/prompt.js";
 import { createCommodoreTools } from "../features/commodore/host/tools.js";
+import { createTaskforceStore } from "../features/commodore/host/taskforce/store.js";
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
+import { createObjectiveStore } from "../features/objectives/host/store.js";
+import { createCommodoreBoardTools } from "../features/objectives/host/console-tools.js";
 import { COALESCE_MS, COMMODORE_IDLE_ROTATE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
 import { commodoreCompactAt, MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
@@ -518,6 +521,195 @@ it("delivers later mail when an earlier mail image expired", async () => {
     expect(reads.flatMap((entry) => (entry as { seqs: readonly number[] }).seqs)).toHaveLength(2);
     await supervisor.dispose();
   } finally { await supervisor.dispose(); vi.useRealTimers(); }
+});
+
+it("attaches retained prior-turn person images via objective add and commodores message while rejecting foreign, prior-turn mail, taskforce and evicted images", async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(new Date("2026-11-14T12:00:00Z"));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-prior-turn-images-")); dirs.push(dir);
+  const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+  const { entities } = ownership;
+  const from = ownership.create(); const to = ownership.create();
+  const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+  const taskforce = createTaskforceStore({ root: path.join(dir, "taskforce"), emit: () => {} });
+  const files = createLaunchAttachmentStore({ dataDir: dir, now: Date.now });
+  const attachments = files.forPlugin("objectives");
+  const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+  const foreignId = "12121212-1212-4121-8121-121212121212";
+  const mailId = "34343434-3434-4343-8343-343434343434";
+  const objectiveStore = createObjectiveStore({
+    dirOf: (commodoreId) => path.join(entities.dirOf(commodoreId) ?? dir, "objectives"),
+    commodoreIds: entities.ids,
+    objectiveRecords: { get: () => null, list: () => [] },
+    emit: () => {},
+  });
+  const objectiveLaunch = {
+    create: async (input: Parameters<typeof objectiveStore.adopt>[1] & { commodoreId: string; theaterId: string; title: string; groupId: string | null }) =>
+      objectiveStore.adopt(randomUUID(), input, { commodoreId: input.commodoreId, theaterId: input.theaterId || "t1", title: input.title, groupId: input.groupId ?? null, cwd: dir, createdAt: Date.now(), sessionName: input.title, viewMode: "chat" }),
+    observeBoard: () => null,
+    busy: () => false,
+  } as never;
+  const boardCtx = {
+    resolveCreation: (commodoreId: string) => ({ commodoreId, cwd: dir }),
+    ownedTheaterIds: () => ["t1"],
+    objectiveRecords: { get: () => null, list: () => [] },
+  } as never;
+
+  const prompts: unknown[] = [];
+  let toolsForTurn: Record<string, ConsoleMcpTool> = {};
+  let capturedTurn: CommodoreTurnBindings | undefined;
+  let onTurn: (() => Promise<void>) | undefined;
+  let finish = () => {};
+  const agent: AgentHost = { createSession: async (options) => ({
+    send: async (input) => {
+      prompts.push(input);
+      if (onTurn) await onTurn();
+      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
+    },
+    steer: () => false, cancel: () => finish(), dispose: async () => {},
+  }) };
+  let supervisor: ReturnType<typeof createHostSupervisor>;
+  const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
+  supervisor = createHostSupervisor({
+    store, agent, attachments, taskforce, theaterIds: () => ["t1"], cwd: entities.dirOf, theater: () => ({ label: "test", root: dir }),
+    experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true, taskforce: true }),
+    board: () => ({
+      tools: (commodoreId, turn) => {
+        capturedTurn = turn;
+        const boardTools = createCommodoreBoardTools(boardCtx, objectiveStore, objectiveLaunch, commodoreId, turn.readAttachments);
+        const coreTools = createCommodoreTools({ commodoreId, theaterRoot: dir, store, taskforce });
+        const mgmtTools = createCommodoreManagementTools({
+          hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping, list: entities.ids,
+          create: () => { throw new Error("unexpected_create"); },
+          message: (input) => send(commodoreId, input, turn),
+        });
+        toolsForTurn = Object.fromEntries([...boardTools, ...coreTools, ...mgmtTools].map((tool) => [tool.name, tool]));
+        return boardTools;
+      },
+      watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }),
+      objective: () => null,
+    }),
+    emit: () => {},
+  });
+
+  const routeCtx = {
+    pluginId: "objectives",
+    host: {
+      attachments,
+      security: { isTerminalAuthorized: () => true },
+      http: { readJsonBody: async () => routeBody, writeJson: (_res: unknown, status: number, value: unknown) => { routeResult = { status, value }; } },
+      experiments: { read: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }) },
+    },
+  } as unknown as CommodoreRouteContext;
+  let routeBody: unknown = {};
+  let routeResult: { status: number; value: any } = { status: 0, value: null };
+  const postHumanMessage = async (commodoreId: string, text: string, bytes?: Buffer) => {
+    const attachmentIds = bytes ? [files.save(bytes).id] : undefined;
+    routeBody = { commodoreId, text, ...(attachmentIds ? { attachmentIds } : {}) };
+    const target = createCommodoreRoutes(routeCtx, store, { acceptsMessage: (id) => supervisor.acceptsMessage(id), assertWritable: ownership.assertWritable }).find((r) => r.name === "commodore/message")!;
+    await target.handler({ req: { method: "POST", url: "/commodore/message" } as never, res: {} as never, pathname: "commodore/message" });
+    expect(routeResult.status).toBe(200);
+    return { id: attachmentIds?.[0], entry: routeResult.value.entry as { seq: number; messageId: string } };
+  };
+
+  try {
+    supervisor.sync("restart");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+
+    // 1턴: 사람 이미지(유지 1건 + 회수될 1건), 타 사령관 사람 이미지, 타 사령관 mail 이미지, TaskForce 이미지를 심는다.
+    const kept = await postHumanMessage(to, "사람 사진 1", png);
+    const evicted = await postHumanMessage(to, "지워질 사진", png);
+    const foreignMsgId = randomUUID();
+    store.transcriptAppend(from, { kind: "message", messageId: foreignMsgId, text: "타 사령관 사람 사진", attachments: [{ id: foreignId }], imageBytes: png.byteLength });
+    expect(store.images.save(from, foreignMsgId, [{ id: foreignId, mime: "image/png", bytes: png }])).toBe(true);
+    const mailSent = send(from, { to, text: "동료 메일 사진", attachmentIds: [mailId] }, {
+      readAttachments: () => [{ id: mailId, mime: "image/png", bytes: png }],
+      readBriefImages: () => { throw new Error("attachment_not_available"); },
+    });
+    const tf = taskforce.create({ name: "tf", topic: "images", members: [from, to] });
+    const draftSeq = tf.state.lastSeq + 1;
+    const savedTf = taskforce.saveImages(tf.state.id, draftSeq, [{ name: "tf.png", mime: "image/png", bytes: png }]);
+    const tfEntry = taskforce.append(tf.state.id, { speaker: { kind: "person" }, text: "TF 사진", images: savedTf });
+    taskforce.moveImages(tf.state.id, draftSeq, tfEntry.entry.seq);
+    const tfImageId = tfEntry.entry.images![0]!.id;
+    expect(taskforce.readImage(tf.state.id, tfEntry.entry.seq, tfImageId)).not.toBeNull();
+
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    expect(prompts).toHaveLength(1);
+    const turn1Text = (Array.isArray(prompts[0]) ? prompts[0] as { type: string; text?: string }[] : [])
+      .filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n");
+    expect(turn1Text).toContain("Attached images from the person (copy with attachmentIds; do not reconstruct them as text):");
+    expect(turn1Text).toContain("Attached mail images (copy with attachmentIds before the turn ends; do not reconstruct them as text):");
+    expect(turn1Text).toContain(`Attached Commodore images for message ${mailSent.messageId}:`);
+
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(attachments.read(to, kept.entry.messageId)).toEqual([]);
+    expect(() => capturedTurn?.readAttachments([kept.id!])).toThrow("attachment_not_available");
+    store.images.remove(to, evicted.entry.messageId);
+
+    // 2턴(텍스트만 깨움): conversation 노출, 이전 턴 사람 이미지 첨부, 타 사령관·이전 턴 mail·TF·회수 이미지 거절을 검증한다.
+    let turn2Checks: Record<string, any> = {};
+    onTurn = async () => {
+      const searchRes = await toolsForTurn.conversation!.execute({ action: "search", target: "own", query: "사람 사진 1" }, { cwd: dir }) as any;
+      const aroundRes = await toolsForTurn.conversation!.execute({ action: "around", anchor: { source: "own", seq: kept.entry.seq }, before: 0, after: 0 }, { cwd: dir }) as any;
+      const mailSearch = await toolsForTurn.conversation!.execute({ action: "search", target: "own", speaker: "other" }, { cwd: dir }) as any;
+      const tfSearch = await toolsForTurn.conversation!.execute({ action: "search", target: "taskforce", taskforceId: tf.state.id }, { cwd: dir }) as any;
+      const objAdd = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "이전 사진 목표", note: "비교", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
+      const objEdit = await toolsForTurn.objective!.execute({ action: "edit", objectiveId: objAdd.structuredContent?.objectiveId, brief: "수정 브리핑", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
+      const msgOk = await toolsForTurn.commodores!.execute({ action: "message", to: from, text: "이전 사람 사진 전달", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
+      const foreignObj = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "타 사령관", attachmentIds: [foreignId] }, { cwd: dir }) as any;
+      const foreignMsg = await toolsForTurn.commodores!.execute({ action: "message", to: from, text: "타 사령관", attachmentIds: [foreignId] }, { cwd: dir }) as any;
+      const staleMailObj = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "지난 메일", attachmentIds: [mailId] }, { cwd: dir }) as any;
+      const staleMailMsg = await toolsForTurn.commodores!.execute({ action: "message", to: from, text: "지난 메일", attachmentIds: [mailId] }, { cwd: dir }) as any;
+      const tfObj = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "TF", attachmentIds: [tfImageId] }, { cwd: dir }) as any;
+      const evictedObj = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "회수", attachmentIds: [evicted.id!] }, { cwd: dir }) as any;
+      turn2Checks = { searchRes, aroundRes, mailSearch, tfSearch, objAdd, objEdit, msgOk, foreignObj, foreignMsg, staleMailObj, staleMailMsg, tfObj, evictedObj };
+    };
+    await postHumanMessage(to, "이전 턴 사진으로 목표 만들고 전달해줘");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+
+    expect(turn2Checks.searchRes.structuredContent.results[0]).toMatchObject({ hasImages: true, attachmentIds: [kept.id] });
+    expect(turn2Checks.aroundRes.structuredContent.items[0]).toMatchObject({ hasImages: true, attachmentIds: [kept.id] });
+    expect(turn2Checks.mailSearch.structuredContent.results[0]).toMatchObject({ hasImages: true });
+    expect(turn2Checks.mailSearch.structuredContent.results[0]).not.toHaveProperty("attachmentIds");
+    expect(turn2Checks.tfSearch.structuredContent.results[0]).toMatchObject({ hasImages: true });
+    expect(turn2Checks.tfSearch.structuredContent.results[0]).not.toHaveProperty("attachmentIds");
+
+    expect(turn2Checks.objAdd).toMatchObject({ isError: false, structuredContent: { ok: true } });
+    expect(turn2Checks.objEdit).toMatchObject({ isError: false, structuredContent: { ok: true } });
+    const createdObj = objectiveStore.find(turn2Checks.objAdd.structuredContent.objectiveId as string)!;
+    expect(createdObj.attachments).toHaveLength(2);
+    for (const attachment of createdObj.attachments) {
+      expect(fs.readFileSync(objectiveStore.attachmentPath(createdObj, attachment))).toEqual(png);
+    }
+
+    expect(turn2Checks.msgOk).toMatchObject({ isError: false, structuredContent: { delivered: true } });
+    expect(store.images.read(from, turn2Checks.msgOk.structuredContent.messageId as string, kept.id!)?.bytes).toEqual(png);
+
+    expect(turn2Checks.foreignObj).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
+    expect(turn2Checks.foreignMsg).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
+    expect(store.images.read(to, mailSent.messageId, mailId)?.bytes).toEqual(png);
+    expect(turn2Checks.staleMailObj).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
+    expect(turn2Checks.staleMailMsg).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
+    expect(turn2Checks.tfObj).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
+    expect(turn2Checks.evictedObj).toMatchObject({
+      isError: true,
+      structuredContent: { error: "attachment_not_available", hint: "Use image IDs allowed by this tool. If an image is unavailable, ask the person to resend it." },
+    });
+
+    // clear(transcriptClearedThrough) 이후에는 conversation 과 첨부 모두 차단된다.
+    await supervisor.clear(to);
+    let afterClearObj: any;
+    onTurn = async () => {
+      afterClearObj = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "clear 뒤", attachmentIds: [kept.id!] }, { cwd: dir });
+    };
+    await postHumanMessage(to, "clear 뒤 확인");
+    await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+    finish(); await vi.advanceTimersByTimeAsync(1);
+    expect(afterClearObj).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
+    await supervisor.dispose();
+  } finally { await supervisor.dispose(); files.cleanup(); vi.useRealTimers(); }
 });
 
 it("rejects mail when pending images would exceed the retained budget and trims after delivery", async () => {

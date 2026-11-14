@@ -181,7 +181,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
   const anchorSchema = z.object({ source: z.string().min(1).max(128), seq: z.number().int().nonnegative() }).strict();
   const conversationSpec = defineConsoleTool({
     name: "console_conversation",
-    description: "Reread retained conversation: your own record and joined TaskForces. Reads stored records only.",
+    description: "Reread retained conversation: your own record and joined TaskForces. Reads stored records only. Includes attachmentIds for the person's images sent to you.",
     actions: {
       search: { kind: "read", callers: ["commodore"], input: z.object({ target: searchShape.target.describe("Default all."), taskforceId: searchShape.taskforceId.describe("Narrow to one TaskForce."), query: searchShape.query.describe("Literal case-insensitive substring. Omit for recent entries; in around results it only marks matches."), since: searchShape.since.describe("Entries at or after this epoch-ms time."), until: searchShape.until.describe("Entries at or before this epoch-ms time."), speaker: searchShape.speaker, limit: searchShape.limit.describe("Default 20; follow nextCursor."), cursor: searchShape.cursor.describe("Next page token. Never combine with a scan token."), scan: searchShape.scan.describe("nextScan token for older ledgers. Never combine with cursor.") }) },
       around: { kind: "read", callers: ["commodore"], input: z.object({ anchor: anchorSchema.describe("A search result's source and seq."), before: searchShape.before.describe("Default 5."), after: searchShape.after.describe("Default 5."), query: searchShape.query.describe("Literal case-insensitive substring. Omit for recent entries; in around results it only marks matches.") }) },

@@ -169,7 +169,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       },
       // 보내는 사령관의 자기 목표 이미지 — 남의 목표·임의 경로는 읽지 않는다.
       briefImages: (commodoreId) => (ids) => {
-        const unavailable = (detail?: string) => new ObjectiveStoreError("attachment_not_available", undefined, { hint: "Only attached image IDs delivered in this turn can be copied. For an earlier image not preserved on the objective, ask the person to resend it.", ...(detail ? { detail } : {}) });
+        const unavailable = (detail?: string) => new ObjectiveStoreError("attachment_not_available", undefined, { hint: "Use image IDs allowed by this tool. If an image is unavailable, ask the person to resend it.", ...(detail ? { detail } : {}) });
         if (!ids.length || new Set(ids).size !== ids.length) throw unavailable();
         const own = new Map(store.list(commodoreId).flatMap((objective) => (objective.attachments ?? []).map((attachment) => [attachment.id, { objective, attachment }] as const)));
         return ids.map((id) => {
