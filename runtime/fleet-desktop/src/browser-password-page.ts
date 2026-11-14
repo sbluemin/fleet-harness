@@ -20,6 +20,20 @@ export const PASSWORD_CONSOLE_PREFIX = "[fleet-passwords]";
 /** 페이지 격리 월드 id. 0(메인 월드)이 아닌 Desktop 전용 번호다. */
 export const PASSWORD_PAGE_WORLD_ID = 7;
 
+export function isPasswordConsoleDebuggerParams(params: unknown, channelPrefix?: string): boolean {
+  if (typeof params !== "object" || params === null) return false;
+  const args = (params as { args?: unknown }).args;
+  if (!Array.isArray(args)) return false;
+  for (const item of args) {
+    if (typeof item !== "object" || item === null) continue;
+    const value = (item as { value?: unknown }).value;
+    if (typeof value !== "string") continue;
+    if (value.startsWith(PASSWORD_CONSOLE_PREFIX)) return true;
+    if (channelPrefix && value.startsWith(channelPrefix)) return true;
+  }
+  return false;
+}
+
 export interface FleetPasswordNode {
   readonly tagName: string;
   getAttribute(name: string): string | null;
@@ -281,9 +295,9 @@ export function fleetPasswordSession(
   post: (text: string) => void,
   helpers: FleetPasswordSessionHelpers,
   mutateDelayMs?: number,
-): void {
+): boolean {
   const flag = doc as unknown as Record<string, unknown>;
-  if (flag.__fleetPasswordsInstalled === true) return;
+  if (flag.__fleetPasswordsInstalled === true) return false;
   flag.__fleetPasswordsInstalled = true;
   const tell = (payload: Record<string, unknown>): void => {
     try {
@@ -396,6 +410,7 @@ export function fleetPasswordSession(
       /* 정적 문서 */
     }
   }
+  return true;
 }
 
 /** 스캔에서 채울 폼 하나를 고른다 — 신규 폼은 제외, 아이디 후보가 있는 쪽이 먼저다. */
@@ -460,6 +475,7 @@ export function loginFormKey(origin: string, form: FleetPasswordFieldScan): stri
 }
 
 export interface PasswordPageHandle {
+  readonly consolePrefix?: string;
   url(): string | null;
   executeIsolated(code: string): Promise<unknown>;
 }
@@ -696,10 +712,14 @@ export function createBrowserPasswordPageAgent(deps: BrowserPasswordPageAgentDep
 
   const install = async (track: PageTrack): Promise<void> => {
     const pageKey = track.pageKey;
-    if (track.installedKey !== null && track.installedKey === pageKey) return;
-    const post = `(text) => { try { console.log(${JSON.stringify(PASSWORD_CONSOLE_PREFIX)} + text); } catch (e) { /* 보고 통로 없음 */ } }`;
+    const prefix = track.handle.consolePrefix ?? PASSWORD_CONSOLE_PREFIX;
+    const post = `(text) => { try { console.log(${JSON.stringify(prefix)} + text); } catch (e) { /* 보고 통로 없음 */ } }`;
     const code = `(${SESSION_SOURCE})(document, ${post}, ${sessionHelpers})`;
-    await execute(track, code);
+    const installed = await execute(track, code);
+    if (installed === true) {
+      track.filled.clear();
+      track.lastSubmit = null;
+    }
     track.installedKey = pageKey;
   };
 

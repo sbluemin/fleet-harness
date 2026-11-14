@@ -527,15 +527,24 @@ describe("browser views password hooks", () => {
     return { webContents: contents, setBorderRadius: () => undefined, setBounds: () => undefined, setVisible: () => undefined };
   };
 
-  const drive = async (hooks: { attachView: (...args: never[]) => void } & Record<string, (...args: never[]) => void>, surface: { inputLocked: () => boolean }, extraView: { agent?: boolean } = {}) => {
+  const drive = async (
+    hooks: { attachView: (...args: never[]) => void } & Record<string, (...args: never[]) => void>,
+    surface: { inputLocked: () => boolean },
+    extraView: { agent?: boolean } = {},
+    whileLive?: (contents: EventEmitter & { debugger: EventEmitter }, relays: unknown[]) => Promise<void> | void,
+  ) => {
     const lifetime: DesktopBrowserSnapshot = {
       generation: 1,
       views: [{ id: "view-1", objectiveId: "op-1", partition: "p1", profile: null, visible: true, url: "https://a.example/login", ...extraView }],
       commands: [],
     };
-    const fetch = vi.fn(async (input: string | URL | Request): Promise<Response> => {
+    const relays: unknown[] = [];
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const { pathname } = new URL(String(input));
-      if (pathname === DESKTOP_BROWSER_RELAY_PATH) return new Response(null, { status: 204 });
+      if (pathname === DESKTOP_BROWSER_RELAY_PATH) {
+        if (typeof init?.body === "string") relays.push(JSON.parse(init.body) as unknown);
+        return new Response(null, { status: 204 });
+      }
       if (pathname === DESKTOP_BROWSER_PATH) return Response.json(lifetime);
       if (pathname === DESKTOP_BROWSER_EVENTS_PATH) {
         const frame = new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`);
@@ -543,7 +552,7 @@ describe("browser views password hooks", () => {
       }
       return new Response(null, { status: 404 });
     });
-    const created: { contents: EventEmitter }[] = [];
+    const created: { contents: EventEmitter & { debugger: EventEmitter } }[] = [];
     const shell = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 800, height: 600 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 1, reclaimFocus: vi.fn() } satisfies PageHost;
     const views = createDesktopBrowserViews({
       shell: () => shell,
@@ -557,26 +566,49 @@ describe("browser views password hooks", () => {
     });
     await views.start(ORIGIN);
     await vi.waitFor(() => expect(created.length).toBe(1));
+    if (whileLive) await whileLive(created[0]!.contents, relays);
     views.stop();
     return created[0]!.contents;
   };
 
-  it("attaches views, reports readiness, and routes isolated console lines", async () => {
+  it("attaches views, reports readiness, routes isolated console lines, and suppresses them from the debugger relay", async () => {
     const calls: string[] = [];
+    let channelPrefix = "";
     const contents = await drive({
-      attachView: (...args: never[]) => calls.push(`attach:${String((args as unknown[])[0])}`),
+      attachView: (...args: never[]) => {
+        calls.push(`attach:${String((args as unknown[])[0])}`);
+        channelPrefix = ((args as unknown[])[1] as { consolePrefix?: string }).consolePrefix ?? "";
+      },
       setVisible: (...args: never[]) => calls.push(`visible:${(args as unknown[]).join(",")}`),
       pageReady: (...args: never[]) => calls.push(`ready:${String((args as unknown[])[0])}`),
       binding: (...args: never[]) => calls.push(`binding:${String((args as unknown[])[0])}:${String((args as unknown[])[1])}`),
       detachView: (...args: never[]) => calls.push(`detach:${String((args as unknown[])[0])}`),
-    }, { inputLocked: () => true });
+    }, { inputLocked: () => true }, {}, async (liveContents, relays) => {
+      expect(channelPrefix.startsWith(PASSWORD_CONSOLE_PREFIX)).toBe(true);
+      expect(channelPrefix.length).toBeGreaterThan(PASSWORD_CONSOLE_PREFIX.length);
+      const secretPayload = `${channelPrefix}${JSON.stringify({ kind: "submitted", username: "ada", password: "s3cret-password" })}`;
+      liveContents.debugger.emit("message", {}, "Runtime.consoleAPICalled", {
+        type: "log",
+        args: [{ type: "string", value: secretPayload }],
+      });
+      liveContents.debugger.emit("message", {}, "Runtime.consoleAPICalled", {
+        type: "log",
+        args: [{ type: "string", value: "normal page log" }],
+      });
+      await tick();
+      const serialized = JSON.stringify(relays);
+      expect(serialized).toContain("normal page log");
+      expect(serialized).not.toContain("s3cret-password");
+      expect(serialized).not.toContain(PASSWORD_CONSOLE_PREFIX);
+    });
     expect(calls).toContain("attach:view-1");
     expect(calls).toContain("visible:view-1,true,true");
     contents.emit("dom-ready");
     expect(calls).toContain("ready:view-1");
-    const line = `${PASSWORD_CONSOLE_PREFIX}${JSON.stringify({ kind: "field-focused" })}`;
+    const line = `${channelPrefix}${JSON.stringify({ kind: "field-focused" })}`;
     contents.emit("console-message", { frame: (contents as unknown as { mainFrame: unknown }).mainFrame, message: line });
     expect(calls).toContain(`binding:view-1:${JSON.stringify({ kind: "field-focused" })}`);
+    contents.emit("console-message", { frame: (contents as unknown as { mainFrame: unknown }).mainFrame, message: `${PASSWORD_CONSOLE_PREFIX}${JSON.stringify({ kind: "field-focused" })}` });
     contents.emit("console-message", { frame: (contents as unknown as { mainFrame: unknown }).mainFrame, message: "[fleet-chrome, bar]" });
     contents.emit("console-message", { frame: { url: "https://other.invalid/" }, message: line });
     expect(calls.filter((call) => call.startsWith("binding:")).length).toBe(1);
@@ -673,5 +705,43 @@ describe("password agent background and retention rules", () => {
     agent.pageReady("v1");
     await tick();
     expect(codes.some((code) => code.includes("focusPassword"))).toBe(false);
+  });
+
+  it("re-installs listeners and refills on same-URL document reload while deduplicating same-document readiness", async () => {
+    const { vault } = stubVault([{ id: "a", username: "ada", password: "pw", updatedAt: 1 }]);
+    let docInstalled = false;
+    let fillCount = 0;
+    const agent = createBrowserPasswordPageAgent({ vault, scanDebounceMs: 5 });
+    agent.attachView("v1", {
+      url: () => "https://a.example/login",
+      executeIsolated: async (code) => {
+        if (code.includes("fleetPasswordSession")) {
+          if (docInstalled) return false;
+          docInstalled = true;
+          return true;
+        }
+        if (code.includes("fleetPasswordScan")) return { origin: "https://a.example", ...cannedScan() };
+        if (code.includes("focusPassword")) {
+          fillCount += 1;
+          return true;
+        }
+        return null;
+      },
+    });
+    agent.setVisible("v1", true, false);
+    agent.pageReady("v1");
+    await tick();
+    expect(fillCount).toBe(1);
+
+    // Second readiness on the same document (e.g. dom-ready after did-navigate) deduplicates.
+    agent.pageReady("v1");
+    await tick();
+    expect(fillCount).toBe(1);
+
+    // Same-URL reload creates a fresh document where session install returns true again.
+    docInstalled = false;
+    agent.pageReady("v1");
+    await tick();
+    expect(fillCount).toBe(2);
   });
 });

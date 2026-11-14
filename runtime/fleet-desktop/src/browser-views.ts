@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { Rectangle, Session, WebContents, WebContentsView } from "electron";
 import {
   DESKTOP_BROWSER_EVENT,
@@ -27,7 +28,7 @@ import { createDesktopEventStream, type DesktopEventStream } from "./desktop-eve
 import { installRequestGuard, setRequestGuardExtra } from "./request-guard.js";
 import { defaultParkViewport, parkedNativeBounds, type ParkViewport } from "./shell-window.js";
 import type { ChromeViewOnly } from "./chrome/contract.js";
-import { PASSWORD_CONSOLE_PREFIX, PASSWORD_PAGE_WORLD_ID, type BrowserPasswordPageHooks } from "./browser-password-page.js";
+import { isPasswordConsoleDebuggerParams, PASSWORD_CONSOLE_PREFIX, PASSWORD_PAGE_WORLD_ID, type BrowserPasswordPageHooks } from "./browser-password-page.js";
 
 /**
  * Objective 브라우저를 창 안의 실제 Chromium 뷰로 그린다.
@@ -746,11 +747,14 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const contents = view.webContents;
     markSession(contents.session);
     // 비밀번호 격리 월드 — 페이지 JS 와 같은 DOM 을 보되 실행·리스너는 분리된다.
-    // 제출·포커스 보고는 콘솔 접두 줄로 오고, 값 판정·채움은 격리 월드 호출로만 한다.
-    // 접두는 페이지도 찍을 수 있어 값마다 main 이 다시 검증한다.
+    // 제출·포커스 보고는 뷰별 비공개 접두 콘솔 줄로 오고, 디버거 릴레이는 이를 걸러 Console 에 넘기지 않는다.
+    let passwordPrefix: string | undefined;
     if (deps.passwords) {
       const passwords = deps.passwords;
+      const channelPrefix = `${PASSWORD_CONSOLE_PREFIX}${randomUUID()}:`;
+      passwordPrefix = channelPrefix;
       passwords.attachView(spec.id, {
+        consolePrefix: channelPrefix,
         url: () => {
           try {
             return contents.isDestroyed() ? null : contents.getURL();
@@ -766,9 +770,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       contents.on("did-navigate", passwordReady);
       contents.on("did-navigate-in-page", passwordReady);
       contents.on("console-message", (details: { message?: unknown; frame?: unknown }) => {
-        if (typeof details?.message !== "string" || !details.message.startsWith(PASSWORD_CONSOLE_PREFIX)) return;
+        if (typeof details?.message !== "string" || !details.message.startsWith(channelPrefix)) return;
         if (details.frame !== contents.mainFrame) return;
-        passwords.binding(spec.id, details.message.slice(PASSWORD_CONSOLE_PREFIX.length));
+        passwords.binding(spec.id, details.message.slice(channelPrefix.length));
       });
     }
     const initialBounds = parkedNativeBounds(parkViewport, contentBounds);
@@ -802,6 +806,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       contents.debugger.on("message", (_event, method, params, sessionId) => {
         // 하위 타깃(iframe·워커)의 세션 이벤트는 콘솔이 다루지 않는다 — 페이지 세션의 것만 올린다.
         if (sessionId) return;
+        if (method === "Runtime.consoleAPICalled" && isPasswordConsoleDebuggerParams(params, passwordPrefix)) return;
         // CDP 가 대화상자에 답했다 — 쥐고 있던 콜백은 이미 쓰인 것이라 버린다.
         if (method === "Page.javascriptDialogClosed") releaseDialog(null);
         // OS 창이 하던 대로 키보드를 대화상자로 옮긴다 — 사람이 이 페이지에 초점을 두고 있었을 때만. Console 입력은 빼앗지 않는다.
