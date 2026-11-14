@@ -32,7 +32,7 @@ export function LinkOpenCard({ language, url, at, onClose, companion }: {
   const t = getLinkOpenT(language);
   const engine = useBrowserEngine();
   // 아직 물어보지 못한 동안(null)은 문을 닫지 않는다 — 캡션의 지구본과 같은 판정이다.
-  // 보기 전용 화면은 연결되어 있어도 사람이 탭을 열 수 없다.
+  // 막을 것은 `viewer` 뿐이다. `remote` 는 원격 Desktop 이 플릿 브라우저 탭을 연다.
   const viewOnly = engine?.surfaceMode === "viewer";
   const engineMissing = viewOnly || (engine !== null && !engine.available);
   const hasCompanion = companion !== undefined;

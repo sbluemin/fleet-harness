@@ -1712,19 +1712,22 @@ function SurfaceBrowserButton({ session, language, splitOpen }: {
   const t = getBrowserT(language);
   const engine = useBrowserEngine();
   const viewer = engine?.surfaceMode === "viewer" || (engine === null && !isDesktopShell());
+  // 원격 조작 Desktop 도 네이티브 칸이 아니라 이 창의 셸을 연다.
+  const streamedShell = viewer || engine?.surfaceMode === "remote";
   const viewerShell = useBrowserViewerShell();
-  const engineMissing = !viewer && engine !== null && !engine.available;
+  const engineMissing = !streamedShell && engine !== null && !engine.available;
   const detached = useBrowserSurface()?.mode === "window";
   // 이 사령관의 세션이 브라우저를 쓰는 동안 — Objective 대화의 지구본과 같은 표식·같은 말이다.
   const agentUsing = useCommodoreBrowserUse(session.commodoreId);
-  const base = viewer
+  const remoteOffline = engine?.surfaceMode === "remote" && !engine.available;
+  const base = viewer || remoteOffline
     ? t(!viewerShell ? "terminal.browser.desktopOnly" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
     : engineMissing
     ? t(isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
     : t(detached ? "terminal.browser.focus" : agentUsing ? "terminal.browser.agentUsing" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
   return (
     <span className="conversation-pill-browser">
-      <CaptionActionButton actionId="browser" label={base} pressed={viewer ? false : splitOpen} disabled={engineMissing || (viewer && !viewerShell)} agent={agentUsing} onClick={viewer ? toggleBrowserViewerShell : toggleBrowserPane}>
+      <CaptionActionButton actionId="browser" label={base} pressed={streamedShell ? false : splitOpen} disabled={engineMissing || (streamedShell && !viewerShell)} agent={agentUsing} onClick={streamedShell ? toggleBrowserViewerShell : toggleBrowserPane}>
         <CaptionBrowserUseGlyph />
       </CaptionActionButton>
     </span>

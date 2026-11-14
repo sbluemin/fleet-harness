@@ -58,7 +58,7 @@ import { createConsoleControl } from "../../../features/execution/host/console-c
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_BROWSER_VIEWER_EVENT, DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type BrowserExecutionHost, type BrowserSurfaceModeKind, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_BROWSER_VIEWER_EVENT, DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type BrowserExecutionHost, type BrowserSurfaceModeKind, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { createApprovalCore } from "@fleet-console/approval";
 import { APPROVAL_CHANNEL, APPROVAL_NOTICE_CHANNEL } from "@fleet-console/approval/contract";
@@ -183,6 +183,11 @@ interface ObjectiveSseSubscriber {
   readonly sessionHandle: string | null;
   /** 네이티브 Objective 뷰는 Desktop 창 안의 페이지지만 Desktop 셸 권한을 갖지 않는다. */
   readonly client: "desktop" | "browser" | "objective-browser";
+  /**
+   * 접속 당시 full 원격 세션의 Electron 창이고, 출처가 이 콘솔과 같다.
+   * 능력(`browser-remote-control`)은 셸 게시가 늦을 수 있어 매 프레임에 다시 본다.
+   */
+  readonly remoteDesktop: boolean;
 }
 
 /** 화면을 든 클라이언트의 종류 — Desktop 창은 Electron 표기를 단 UA 로 온다(클라이언트의 셸 표식과 같은 판정). */
@@ -452,8 +457,8 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
   { method: "GET", path: DESKTOP_BROWSER_EVENTS_PATH, summary: "Stream native browser view snapshots to the managing Desktop only.", category: "Desktop", gate: "lock-token", transport: "sse" },
   { method: "POST", path: DESKTOP_BROWSER_RELAY_PATH, summary: "Return CDP results, events, and view sizes from the managing Desktop's native browser views.", category: "Desktop", gate: "lock-token", transport: "http" },
   { method: "POST", path: DESKTOP_BROWSER_FRAME_PATH, summary: "Replace the single latest JPEG frame for one watched browser view. Only the managing Desktop may upload.", category: "Desktop", gate: "lock-token", transport: "http" },
-  { method: "GET", path: DESKTOP_BROWSER_VIEWER_PATH, summary: "Read the view-only projection of the Fleet Browser (spaces, tabs, execution host) for a Desktop shell that does not manage this Console.", category: "Console Execution", gate: "origin-write", transport: "http" },
-  { method: "GET", path: DESKTOP_BROWSER_VIEWER_EVENTS_PATH, summary: "Stream the view-only Fleet Browser projection to a Desktop shell that does not manage this Console.", category: "Console Execution", gate: "origin-write", transport: "sse" },
+  { method: "GET", path: DESKTOP_BROWSER_VIEWER_PATH, summary: "Read the Fleet Browser projection (spaces, tabs, control, prompts, execution host) for a Desktop shell that does not manage this Console. Remote control is marked only for a qualified remote Desktop.", category: "Console Execution", gate: "origin-write", transport: "http" },
+  { method: "GET", path: DESKTOP_BROWSER_VIEWER_EVENTS_PATH, summary: "Stream the Fleet Browser projection, including control, pointer, dialog, and prompt changes, to a Desktop shell that does not manage this Console.", category: "Console Execution", gate: "origin-write", transport: "sse" },
   { method: "GET", path: "/api/v1/browser/viewer/frame", summary: "Long-poll the latest JPEG of one open tab for a view-only Desktop shell.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/viewer/unwatch", summary: "Stop view-only capture for one tab immediately.", category: "Console Execution", gate: "origin-write", transport: "http" },
   { method: "POST", path: "/api/v1/browser/objectives/:objectiveId/paste", summary: "Put the panel's screenshot on this machine's clipboard and press paste in a terminal Objective's CLI.", category: "Console Execution", gate: "origin-strict", transport: "http" },
@@ -665,8 +670,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const desktopShellUpdateCommandSseSubscribers = new Map<http.ServerResponse, string>();
   /** 창 조작 명령 구독 — 응답마다 그 셸의 주인. 명령은 걸어 두지 않으므로 지금 붙은 셸만 듣는다. */
   const desktopWindowCommandSseSubscribers = new Map<http.ServerResponse, string>();
-  /** 보기 전용 셸의 투영 구독 — 응답마다 마지막으로 보낸 프레임. 같은 투영은 다시 쓰지 않는다. */
-  const browserViewerSseSubscribers = new Map<http.ServerResponse, string>();
+  /**
+   * 관리하지 않는 Desktop 의 브라우저 투영 구독.
+   * `fullDesktop` 은 접속 당시의 원격 Electron full 세션이고, 조작 자격은 셸 능력을 매 프레임에 다시 본다.
+   */
+  const browserViewerSseSubscribers = new Map<http.ServerResponse, { readonly fullDesktop: boolean; readonly owner: string | null; last: string }>();
   /** 셸의 브라우저 스냅샷 구독 — 관리 Desktop 만 `"manager"` 로 붙는다. */
   const desktopBrowserSseSubscribers = new Map<http.ServerResponse, string>();
   /** 루프백 Desktop 셸이 관리 창으로 증명되었는가. 증명 없는 루프백 게시가 오면 풀린다. */
@@ -966,6 +974,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       try { return (commodore?.commodoreIds() ?? ownership?.entities.ids() ?? []).filter((id) => !ownership?.isDeleting(id)); } catch { return []; }
     },
   });
+  // 관리 Desktop 의 relay 본문에 실린 select·권한·비밀번호 프롬프트를 투영에 반영한다.
+  // desktop-engine 은 그 필드를 보관하지 않으므로, 호스트가 올린 본문만 서비스로 넘긴다.
+  {
+    const relayToEngine = desktopEngine.relay.bind(desktopEngine);
+    desktopEngine.relay = (owner, body) => {
+      relayToEngine(owner, body);
+      if (owner === desktopEngine.currentHost) browserService.noteRemotePrompts(body);
+    };
+  }
   /**
    * 브라우저 상태는 Objective 스트림을 함께 탄다 — 패널이 자기 스트림을 따로 열면 그 연결이 화면의 연결 예산
    * (origin 당 여섯)을 먹고, 다 차는 순간 그 화면에서 나가는 모든 요청이 조용히 큐에 갇힌다.
@@ -1472,6 +1489,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       else desktopShellsByOwner.set(owner, snapshot);
       // 이 게시는 화면이 이미 물어본 뒤에 도착했을 수 있다(재기동·새로고침). 그 창에만 실어 보낸다.
       broadcastDesktopShellChanged(owner, snapshot);
+      // 원격 조작 능력이 이 게시에 실리거나 빠지면, 이미 열린 투영의 remoteControl 도 다시 보낸다.
+      broadcastBrowserViewer();
     },
     writeJson,
     writeNoContent: (res) => { res.writeHead(204, withSecurityHeaders({})); res.end(); },
@@ -1548,16 +1567,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     subscribeObjectiveSse: (req, res) => {
       const listener = listenerForRequest(req);
       const audience: AccessAudience = listener?.audience ?? "local";
-      const sessionHandle = listener === null || listener.audience === "local"
+      const remoteSession = listener === null || listener.audience === "local"
         ? null
-        : access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience)?.handle ?? null;
+        : access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
+      const sessionHandle = remoteSession?.handle ?? null;
       if (audience === "remote" && sessionHandle === null) { writeJson(res, 401, { error: "unauthorized" }); return; }
       const shellOwner = audience === "local" ? "local" : sessionHandle;
       // 자기 Console을 여는 네이티브 뷰도 일반 Chrome UA를 쓴다. 현재 호스트가 소유한 뷰만 별도로 세어
       // 그 페이지가 자기 엔진을 shared로 닫지 않게 한다. 표식만 있거나 다른 호스트의 요청이면 인정하지 않는다.
       const viewId = req.headers[DESKTOP_BROWSER_VIEW_HEADER];
       const objectiveRecordView = typeof viewId === "string" && Boolean(desktopEngine.viewOwner(viewId));
-      const subscriber: ObjectiveSseSubscriber = { res, audience, sessionHandle, client: objectiveRecordView ? "objective-browser" : clientKindOf(req) };
+      const client = objectiveRecordView ? "objective-browser" : clientKindOf(req);
+      const remoteDesktop = remoteSession?.access === "full" && client === "desktop" && (isExactConsoleOrigin(req) || isSameOriginConsoleRead(req));
+      const subscriber: ObjectiveSseSubscriber = { res, audience, sessionHandle, client, remoteDesktop };
       res.writeHead(200, withSecurityHeaders({
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
@@ -1658,16 +1680,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     browserService, desktopEngine, browserMcp, objectiveRecords, browserOwnerOf: (id) => useContext.resolve(id)?.contextId ?? null,
     surfaceMode: (req) => surfaceModeOfRequest(req),
     isNativeBrowserWrite: (req) => isNativeBrowserWrite(req),
+    isRemoteBrowserControl: (req) => isRemoteBrowserControl(req),
     isManagingDesktopProcess: (req) => isManagingDesktopProcess(req),
     isLoopbackListener: (req) => isLoopbackListener(req),
     isSameOriginConsoleRead: (req) => isSameOriginConsoleRead(req),
     viewerFrameRead: (req) => viewerFrameRead(req),
-    subscribeViewer: (res) => {
-      const data = encodeSseData(DESKTOP_BROWSER_VIEWER_EVENT, browserService.viewerSnapshot(GLOBAL_BROWSER_OWNER_ID));
+    subscribeViewer: (req, res) => {
+      const subscription = viewerSubscriptionOf(req);
+      const data = encodeSseData(DESKTOP_BROWSER_VIEWER_EVENT, browserService.viewerSnapshot(GLOBAL_BROWSER_OWNER_ID, { remoteControl: subscriptionRemoteControl(subscription) }));
       res.writeHead(200, withSecurityHeaders({ "Content-Type": "text/event-stream", "Cache-Control": "no-cache" }));
       res.write(":connected\n\n");
       res.write(data);
-      browserViewerSseSubscribers.set(res, data);
+      browserViewerSseSubscribers.set(res, { ...subscription, last: data });
       const keepalive = setInterval(() => { if (!res.writableEnded && !res.destroyed) res.write(":keepalive\n\n"); }, 25_000);
       res.on("close", () => { clearInterval(keepalive); browserViewerSseSubscribers.delete(res); });
     },
@@ -2628,11 +2652,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function surfaceModeOf(subscriber: ObjectiveSseSubscriber): BrowserSurfaceModeKind {
-    return browserSurfaceMode({ loopback: subscriber.audience === "local", desktopShell: subscriber.client === "desktop", managingShellProven });
+    return browserSurfaceMode({
+      loopback: subscriber.audience === "local",
+      desktopShell: subscriber.client === "desktop",
+      managingShellProven,
+      remoteControl: subscriber.remoteDesktop && shellHasRemoteControl(subscriber.sessionHandle),
+    });
   }
 
   function surfaceModeOfRequest(req: http.IncomingMessage): BrowserSurfaceModeKind {
-    return browserSurfaceMode({ loopback: isLoopbackListener(req), desktopShell: clientKindOf(req) === "desktop", managingShellProven });
+    return browserSurfaceMode({
+      loopback: isLoopbackListener(req),
+      desktopShell: clientKindOf(req) === "desktop",
+      managingShellProven,
+      remoteControl: isRemoteDesktopSurface(req),
+    });
   }
 
   function isManagingDesktopProcess(req: http.IncomingMessage): boolean {
@@ -2655,6 +2689,53 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return managingShellProven && clientKindOf(req) === "desktop";
   }
 
+  /** 그 셸 게시가 `browser-remote-control` 을 가지고 있는가. homeOrigin 이 없어 게시가 지워지면 자격도 없다. */
+  function shellHasRemoteControl(owner: string | null): boolean {
+    if (owner === null) return false;
+    return desktopShellsByOwner.get(owner)?.capabilities?.includes(DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY) === true;
+  }
+
+  /**
+   * 원격 조작을 쓸 수 있는 요청. 루프백이 아니고, Electron UA 이며, Origin 이 이 리스너와 같고,
+   * full 원격 세션이며, 그 세션의 셸이 원격 조작 능력을 게시했다.
+   * 웹·모바일·monitoring·미인증은 여기서 떨어진다. 제안 설정·비밀번호 금고는 이 판정을 쓰지 않는다.
+   */
+  function isRemoteBrowserControl(req: http.IncomingMessage): boolean {
+    if (!isExactConsoleOrigin(req)) return false;
+    const session = remoteDesktopSession(req);
+    return session !== null && shellHasRemoteControl(session.handle);
+  }
+
+  /**
+   * 창 표면을 `remote` 로 볼 자격. 쓰기는 exact Origin 을 요구하지만, Chromium 은 같은 출처 GET 에 Origin 을
+   * 싣지 않으므로 표면 판정은 Sec-Fetch-Site same-origin 도 받는다. 세션 유휴는 이 판정이 요청 안에서만 갱신한다.
+   */
+  function isRemoteDesktopSurface(req: http.IncomingMessage): boolean {
+    if (!isExactConsoleOrigin(req) && !isSameOriginConsoleRead(req)) return false;
+    const session = remoteDesktopSession(req);
+    return session !== null && shellHasRemoteControl(session.handle);
+  }
+
+  /** full 원격 세션의 Electron 창. 루프백·웹·모바일·monitoring 은 null. resolveSession 이 유휴를 늘리므로 방송 루프에서는 부르지 않는다. */
+  function remoteDesktopSession(req: http.IncomingMessage): { readonly handle: string } | null {
+    if (isLoopbackListener(req) || clientKindOf(req) !== "desktop") return null;
+    const listener = listenerForRequest(req);
+    if (listener === null || listener.audience === "local") return null;
+    const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
+    if (session === null || session.access !== "full") return null;
+    return { handle: session.handle };
+  }
+
+  function viewerSubscriptionOf(req: http.IncomingMessage): { readonly fullDesktop: boolean; readonly owner: string | null } {
+    const session = remoteDesktopSession(req);
+    const sameConsole = isExactConsoleOrigin(req) || isSameOriginConsoleRead(req);
+    return { fullDesktop: session !== null && sameConsole, owner: session?.handle ?? null };
+  }
+
+  function subscriptionRemoteControl(subscription: { readonly fullDesktop: boolean; readonly owner: string | null }): boolean {
+    return subscription.fullDesktop && shellHasRemoteControl(subscription.owner);
+  }
+
   function viewerFrameRead(req: http.IncomingMessage): "ok" | "unauthorized" | "forbidden" {
     const listener = listenerForRequest(req);
     if (listener === null) return "forbidden";
@@ -2665,14 +2746,17 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return admitted ? "ok" : "forbidden";
   }
 
-  /** 보기 전용 셸에 투영을 흘린다. 포인터처럼 투영에 없는 값만 바뀐 상태는 같은 프레임이라 쓰지 않는다. */
+  /**
+   * 관리하지 않는 Desktop 에 투영을 흘린다. 제어권·포인터·대화상자·프롬프트는 투영에 있으므로
+   * 그 값만 바뀌어도 프레임이 달라져 다시 쓴다. 조작 자격은 구독자마다 달라 프레임도 구독자마다 만든다.
+   */
   function broadcastBrowserViewer(): void {
     if (browserViewerSseSubscribers.size === 0) return;
     settleRemoteExpiry();
-    const data = encodeSseData(DESKTOP_BROWSER_VIEWER_EVENT, browserService.viewerSnapshot(GLOBAL_BROWSER_OWNER_ID));
-    for (const [res, last] of browserViewerSseSubscribers) {
-      if (res.destroyed || last === data) continue;
-      browserViewerSseSubscribers.set(res, data);
+    for (const [res, subscription] of browserViewerSseSubscribers) {
+      const data = encodeSseData(DESKTOP_BROWSER_VIEWER_EVENT, browserService.viewerSnapshot(GLOBAL_BROWSER_OWNER_ID, { remoteControl: subscriptionRemoteControl(subscription) }));
+      if (res.destroyed || subscription.last === data) continue;
+      browserViewerSseSubscribers.set(res, { ...subscription, last: data });
       res.write(data);
     }
   }

@@ -6,6 +6,7 @@ import {
 
 import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { getBrowserEngineSnapshot } from "./browser-engine.js";
+import { openBrowserLink } from "./browser-surface.js";
 
 /**
  * Session 이 없는 표면(목표·Wiki·파일·도움말·Settings 등)의 링크 열기.
@@ -22,8 +23,9 @@ export interface OtherLinkAvailability {
 
 export function readOtherLinkAvailability(): OtherLinkAvailability {
   const engine = getBrowserEngineSnapshot();
+  const remote = engine?.surfaceMode === "remote";
   return {
-    canOffer: engine === null || engine.available,
+    canOffer: remote ? engine.available : engine === null || engine.available,
     viewOnly: engine?.surfaceMode === "viewer",
   };
 }
@@ -33,6 +35,11 @@ export function openOtherSurfaceLink(url: string, _gesture: OpenLinkGesture): bo
   if (!isRoutableLink(url, typeof window !== "undefined" ? window.location.origin : undefined)) return false;
   const availability = readOtherLinkAvailability();
   if (availability.viewOnly || !availability.canOffer) return false;
+  // 원격 Desktop 은 플릿 브라우저로 연다. 웹·모바일은 위에서 떨어지고, viewer 는 viewOnly 로 막힌다.
+  if (getBrowserEngineSnapshot()?.surfaceMode === "remote") {
+    void openBrowserLink(url);
+    return true;
+  }
   openInDefaultOsBrowser(url);
   return true;
 }

@@ -46,6 +46,7 @@ export function useLinkOpenChoice(target: LinkOpenChoiceTarget): LinkOpenChoice 
   // 다른 화면이 붙어 멈춘 동안은 링크가 예전처럼 곧장 열린다 — 답이 하나인 물음은 묻지 않는다.
   const engine = useBrowserEngine();
   // 아직 물어보지 못한 동안(null)은 닫힌 것으로 보지 않는다 — 캡션의 지구본과 같은 판정이다.
+  // `remote` 는 보기 전용이 아니다. 카드의 플릿 브라우저 행을 연다. 웹·모바일·`viewer` 는 기존처럼 막는다.
   const viewer = engine?.surfaceMode === "viewer";
   const canOfferRef = React.useRef(true);
   canOfferRef.current = viewer || engine === null || engine.available;

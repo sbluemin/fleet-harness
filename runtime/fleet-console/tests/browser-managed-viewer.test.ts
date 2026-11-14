@@ -3,9 +3,10 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { describe, expect, it, vi } from "vitest";
 
 import { DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_VIEW_HEADER } from "@fleet-console/protocol/desktop";
+import { browserSurfaceMode } from "../core/host/shell/desktop-contract.js";
 import { DesktopEngine, VIEWER_WATCH_LEASE_MS, ViewerFrameClosedError } from "../features/browser/host/desktop-engine.js";
 import { createBrowserDesktopRouter } from "../features/browser/host/desktop-routes.js";
-import { BrowserService } from "../features/browser/host/service.js";
+import { BrowserPolicyError, BrowserService } from "../features/browser/host/service.js";
 import { createBrowserRouter } from "../features/browser/host/routes.js";
 import { BROWSER_GLOBAL_ID } from "../features/browser/shared/browser-id.js";
 
@@ -218,6 +219,113 @@ describe("managed desktop browser routes", () => {
     });
     expect(seen.status).toBe(204);
     expect(engine.snapshot().watchedViewIds).not.toContain(mappedViewId);
+  });
+});
+
+describe("remote desktop browser control", () => {
+  it("classifies only a non-loopback desktop with the remote-control flag as remote", () => {
+    expect(browserSurfaceMode({ loopback: true, desktopShell: true, managingShellProven: true, remoteControl: true })).toBe("native");
+    expect(browserSurfaceMode({ loopback: false, desktopShell: true, managingShellProven: false, remoteControl: true })).toBe("remote");
+    expect(browserSurfaceMode({ loopback: false, desktopShell: true, managingShellProven: false })).toBe("viewer");
+    expect(browserSurfaceMode({ loopback: false, desktopShell: false, managingShellProven: false, remoteControl: true })).toBe("viewer");
+  });
+
+  it("opens objective control writes for a remote desktop and keeps vault and import routes closed", async () => {
+    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    const service = new BrowserService({
+      enabled: () => true,
+      availability: () => ({ available: false, reason: "desktop_required", host: null, executionHost: { managed: false, connected: false, status: "unmanaged", hostLabel: null, platform: null, accessPath: null } }),
+      desktop: engine,
+      log: () => {},
+      defaultProfile: { read: () => null, write: () => {} },
+    });
+    let remote = false;
+    const seen: { status?: number; body?: unknown } = {};
+    const browser = createBrowserRouter({
+      browserService: service,
+      desktopEngine: engine,
+      browserMcp: { pasteIntoTerminal: () => false },
+      objectiveRecords: { get: () => null },
+      isWriteAdmitted: () => true,
+      isExactConsoleOrigin: () => true,
+      surfaceMode: () => remote ? "remote" : "viewer",
+      isNativeBrowserWrite: () => false,
+      isRemoteBrowserControl: () => remote,
+      isManagingDesktopProcess: () => false,
+      viewerFrameRead: () => "ok",
+      isLoopbackListener: () => false,
+      isSameOriginConsoleRead: () => true,
+      writeJson: (_res, status, body) => { seen.status = status; seen.body = body; },
+      readJsonBody: async <T,>() => ({ url: "https://example.com", action: "take", spaceId: "default" }) as T,
+      readUrl: () => new URL("http://127.0.0.1/api/v1/browser/passwords"),
+      withSecurityHeaders: (headers) => headers,
+    });
+    const call = (pathname: string, method = "POST") => browser({
+      req: request(method),
+      res: { setHeader() {}, writeHead() { return this; }, end() {} } as unknown as ServerResponse,
+      pathname,
+    });
+
+    await call("/api/v1/browser/objectives/global/navigate");
+    expect(seen).toMatchObject({ status: 403, body: { error: "browser_viewer_read_only" } });
+    remote = true;
+    await call("/api/v1/browser/objectives/global/navigate");
+    expect(seen.status).toBe(409);
+    expect(seen.body).toMatchObject({ error: "browser_unavailable" });
+    await call("/api/v1/browser/objectives/global/paste");
+    expect(seen).toMatchObject({ status: 403, body: { error: "browser_viewer_read_only" } });
+    await call("/api/v1/browser/import-sources", "GET");
+    expect(seen).toMatchObject({ status: 403, body: { error: "browser_viewer_read_only" } });
+    await call("/api/v1/browser/suggestion-settings", "POST");
+    expect(seen).toMatchObject({ status: 403, body: { error: "browser_viewer_read_only" } });
+    await call("/api/v1/browser/passwords", "POST");
+    expect(seen).toMatchObject({ status: 403, body: { error: "browser_viewer_read_only" } });
+
+    const popup = { id: "popup-1", tabId: "tab-1", multiple: false, rect: { x: 1, y: 2, width: 3, height: 4 }, options: [{ index: 0, label: "A", value: "a", disabled: false, selected: true }] };
+    service.noteRemotePrompts({ selectPopup: popup });
+    const snapshot = service.viewerSnapshot(BROWSER_GLOBAL_ID, { remoteControl: true });
+    expect(snapshot.remoteControl).toBe(true);
+    expect(snapshot.selectPopup).toEqual(popup);
+    expect(snapshot.chrome?.spaces.some((space) => space.control === "agent")).toBe(true);
+    expect(service.viewerSnapshot(BROWSER_GLOBAL_ID).remoteControl).toBeUndefined();
+  });
+
+  it("blocks human input while an agent drives the tab and allows it after take", async () => {
+    const engine = new DesktopEngine({ publish: () => {}, log: () => {} });
+    engine.subscriberOpened("manager");
+    engine.setHost("manager");
+    const service = new BrowserService({
+      enabled: () => true,
+      availability: () => ({
+        available: true,
+        reason: null,
+        host: "manager",
+        executionHost: { managed: true, connected: true, status: "connected", hostLabel: "studio", platform: "darwin", accessPath: "loopback" },
+      }),
+      desktop: engine,
+      log: () => {},
+      defaultProfile: { read: () => null, write: () => {} },
+    });
+    const autoRelay = setInterval(() => {
+      const snap = engine.snapshot();
+      for (const candidate of snap.views) engine.relay("manager", { attached: [candidate.id], sizes: [{ viewId: candidate.id, width: 800, height: 600, scale: 1 }] });
+      for (const cmd of snap.commands) engine.relay("manager", { results: [{ id: cmd.id, result: cmd.method === "Page.getNavigationHistory" ? { currentIndex: 0, entries: [{ url: "about:blank" }] } : {} }] });
+    }, 5);
+    let tabId = "";
+    try {
+      tabId = (await service.createTab(BROWSER_GLOBAL_ID, "about:blank", "agent", { caller: { participantId: "agent-1", spaceId: "default", ownerId: "agent-1" } })).id;
+    } finally { clearInterval(autoRelay); }
+    const batch = { tabId, events: [{ kind: "focus" as const, focused: true }] };
+    await expect(service.dispatchRemoteInput(BROWSER_GLOBAL_ID, batch)).rejects.toBeInstanceOf(BrowserPolicyError);
+    await expect(service.dispatchRemoteInput(BROWSER_GLOBAL_ID, batch)).rejects.toMatchObject({ code: "browser_agent_in_control" });
+    const delivered: string[] = [];
+    service.setRemoteInputRelay(async (input) => { delivered.push(input.tabId); });
+    expect(service.setControl(BROWSER_GLOBAL_ID, "default", "take")).toBe("user");
+    await service.dispatchRemoteInput(BROWSER_GLOBAL_ID, batch);
+    expect(delivered).toEqual([tabId]);
+    expect(service.setControl(BROWSER_GLOBAL_ID, "default", "return")).toBe("agent");
+    await expect(service.dispatchRemoteInput(BROWSER_GLOBAL_ID, batch)).rejects.toMatchObject({ code: "browser_agent_in_control" });
+    expect(delivered).toEqual([tabId]);
   });
 });
 

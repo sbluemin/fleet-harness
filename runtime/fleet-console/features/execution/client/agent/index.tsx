@@ -394,10 +394,12 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   // 브라우저 탭·모바일로 연 화면이거나 다른 화면이 붙어 멈춘 동안은 닫힌 채로 서서 말풍선이 그 까닭을 말한다(투어도 그때는 이 문을 짚지 않는다).
   const engine = useBrowserEngine();
   const viewer = engine?.surfaceMode === "viewer" || (engine === null && !isDesktopShell());
-  // 보기 전용 화면은 이 창을 든 Desktop 의 셸이다 — 그 능력이 없는 화면(웹·모바일·옛 Desktop)에서는 문이 닫힌 채 까닭을 말한다. 열림 상태는 셸만 안다.
+  // 원격 조작 Desktop 도 네이티브 칸이 아니라 자기 셸을 연다. 웹·모바일·옛 Desktop 은 문이 닫힌 채다.
+  const streamedShell = viewer || engine?.surfaceMode === "remote";
   const viewerShell = useBrowserViewerShell();
-  const engineMissing = !viewer && engine !== null && !engine.available;
-  const browserLabel = viewer
+  const engineMissing = !streamedShell && engine !== null && !engine.available;
+  const remoteOffline = engine?.surfaceMode === "remote" && !engine.available;
+  const browserLabel = viewer || remoteOffline
     ? t(!viewerShell ? "terminal.browser.desktopOnly" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
     : engineMissing
     ? t(isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
@@ -406,10 +408,10 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
     <CaptionActionButton
       actionId="browser"
       label={browserLabel}
-      pressed={viewer ? false : browserOpen}
-      disabled={engineMissing || (viewer && !viewerShell)}
+      pressed={streamedShell ? false : browserOpen}
+      disabled={engineMissing || (streamedShell && !viewerShell)}
       agent={using.browser}
-      onClick={viewer ? toggleBrowserViewerShell : toggleBrowserPane}
+      onClick={streamedShell ? toggleBrowserViewerShell : toggleBrowserPane}
     >
       <CaptionBrowserUseGlyph />
     </CaptionActionButton>

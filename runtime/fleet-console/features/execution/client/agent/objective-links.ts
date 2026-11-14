@@ -43,6 +43,7 @@ export function useObjectiveLinks(target: ObjectiveLinkTarget): ObjectiveLinks {
   const linkOpen = useLinkOpenChoice(target);
   const engine = useBrowserEngine();
   const availability = React.useMemo(() => ({
+    // `remote` 는 viewOnly 가 아니다. 엔진을 쓸 수 있으면 플릿 브라우저로 연다. 웹·모바일·`viewer` 는 막힌 채다.
     canOffer: engine?.surfaceMode === "viewer" || engine === null || engine.available,
     viewOnly: engine?.surfaceMode === "viewer",
   }), [engine]);
