@@ -39,7 +39,7 @@ function counter() {
 // Wraps the real session port so a test can await what the bridge did to its agy sessions:
 // `closed` counts sessions whose close() finished (their agy child has exited by then), `turnsOver` counts agy prompts whose event stream ended.
 // `sessions` gives the raw sessions, through which a test sends what a real agy would react to over time (session/cancel).
-function watch(port: AcpSessionPort) {
+function watch(port: AcpSessionPort, steerGate?: Promise<void>) {
   const closed = counter();
   const turnsOver = counter();
   const sessions: AcpSession[] = [];
@@ -57,7 +57,7 @@ function watch(port: AcpSessionPort) {
             try { yield* events; } finally { turnsOver.bump(); }
           })();
         },
-        steer: (blocks) => session.steer(blocks),
+        steer: async (blocks) => { await session.steer(blocks); await steerGate; },
         cancel: () => session.cancel(),
         async close() {
           await session.close();
@@ -69,7 +69,7 @@ function watch(port: AcpSessionPort) {
   return { port: watched, closed, turnsOver, sessions };
 }
 
-async function setup(bridgeOptions: { replayBudgetChars?: number } = {}) {
+async function setup(bridgeOptions: { replayBudgetChars?: number } = {}, steerGate?: Promise<void>) {
   const root = await mkdtemp(path.join(os.tmpdir(), "fleet-bridge-test-"));
   roots.push(root);
   const logPath = path.join(root, "fake.log");
@@ -78,7 +78,7 @@ async function setup(bridgeOptions: { replayBudgetChars?: number } = {}) {
     command: process.execPath,
     commandArgs: [fakeAgy],
     env: { ...process.env, FAKE_LOG: logPath, FAKE_BRIDGE: "1" },
-  }));
+  }), steerGate);
   const bridge = createAgyAcpBridge({ port, coalesceMs: 10, silenceMs: 5_000, ...bridgeOptions });
   bridges.push(bridge);
   const log = async () => (await readFile(logPath, "utf8").catch(() => "")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
@@ -242,6 +242,121 @@ describe("agy ACP bridge", () => {
     } finally {
       wire.cleanup();
     }
+  });
+
+  it("steers an image from a tool result instead of returning it in the MCP result, alone or beside user text", async () => {
+    const { bridge, log } = await setup();
+    const png = "data:image/png;base64,iVBORw0KGgo=";
+    const image = (id: string, output = "a.txt"): CanonicalInputItem => ({
+      type: "function_call_output", call_id: id,
+      output: [{ type: "input_text", text: output }, { type: "input_image", image_url: png }] as never,
+    });
+    const first = await turn(bridge, [user('TOOL:Bash:{"command":"ls"}')]);
+    const use = toolUse(first.message);
+    const second = await turn(bridge, [user('TOOL:Bash:{"command":"ls"}'), call(use.id, { command: "ls" }), image(use.id), user("see")]);
+    expect(second.message.stop_reason).toBe("end_turn");
+    const entries = await log();
+    expect(count(entries, "session/new")).toBe(1);
+    expect(entries.find((entry) => entry.resultBlocks)).toMatchObject({ resultBlocks: ["text"] });
+    expect(entries.find((entry) => entry.steering)).toMatchObject({ steerImages: 1 });
+  });
+
+  it("registers only non-deferred tools when ToolSearch is present, and reopens the session once a deferred tool loads", async () => {
+    const { bridge, log } = await setup();
+    const plain = { type: "object", properties: {} };
+    const tools = (deferred: boolean | undefined) => [
+      { type: "function" as const, name: "ToolSearch", parameters: plain },
+      { type: "function" as const, name: "Bash", parameters: plain },
+      { type: "function" as const, name: "Later", parameters: plain, ...(deferred ? { defer_loading: true } : {}) },
+    ];
+    const ask = async (input: CanonicalInputItem[], toolList: ReturnType<typeof tools>, toolChoice?: CanonicalResponseRequest["tool_choice"]) => {
+      const response = await bridge.stream({ model: MODEL, input, instructions: "be brief", tools: toolList, ...(toolChoice ? { tool_choice: toolChoice } : {}), stream: true }, { apiKey: "" });
+      if (!response.ok) throw new Error(`bridge refused with ${response.status}`);
+      const events: CanonicalResponseEvent[] = [];
+      for await (const event of response.events) events.push(event);
+      const collected = await collectAnthropicMessage((async function* () { yield* events; })(), MODEL, { model: MODEL });
+      return textOf(collected as unknown as { content: { type: string; text?: string }[] });
+    };
+    const listed = async () => (await log()).filter((entry) => entry.mcpTools).map((entry) => entry.mcpTools);
+    const a1 = await ask([user("one")], tools(true));
+    expect((await listed()).at(-1)).toEqual(["ToolSearch", "Bash"]);
+    const a2 = await ask([user("one"), assistant(a1), user("two")], tools(true));
+    expect(count(await log(), "session/new")).toBe(1);
+    // The deferred tool loads: the catalog changes, so the held session is replaced and the new tool is visible.
+    await ask([user("one"), assistant(a1), user("two"), assistant(a2), user("three")], tools(false));
+    expect((await listed()).at(-1)).toEqual(["ToolSearch", "Bash", "Later"]);
+    expect(count(await log(), "session/new")).toBe(2);
+    // A tool the request names stays, and without ToolSearch nothing is filtered.
+    await ask([user("x")], tools(true), { type: "tool", name: "Later" } as never);
+    expect((await listed()).at(-1)).toEqual(["ToolSearch", "Bash", "Later"]);
+    await ask([user("y")], tools(true).filter((tool) => tool.name !== "ToolSearch"));
+    expect((await listed()).at(-1)).toEqual(["Bash", "Later"]);
+  });
+
+  it("slims tool schemas for agy without touching the request and without changing meaning", async () => {
+    const { bridge, log } = await setup();
+    const parameters = {
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      additionalProperties: false,
+      required: ["format", "requestSource"],
+      properties: {
+        format: { type: "string", format: "uri", minLength: 1, maxLength: 9, description: "a field named format" },
+        example: { type: "number", minimum: 0, maximum: 5, default: 2 },
+        maybe: { anyOf: [{ type: "string", description: "inner" }, { type: "null" }] },
+        merged: { allOf: [{ type: "object", properties: { a: { type: "string" } }, required: ["a"] }, { properties: { b: { type: "boolean" } } }] },
+        requestSource: {
+          description: "source",
+          oneOf: [
+            { type: "object", properties: { kind: { const: "user" }, id: { type: "string" } }, required: ["kind", "id"] },
+            { type: "object", properties: { kind: { const: "agent" } }, required: ["kind"] },
+          ],
+        },
+        record: { type: "object", additionalProperties: { type: "number", format: "float" } },
+        mode: { oneOf: [{ const: "fast" }, { const: "slow" }] },
+        evidence: { oneOf: [{ type: "object", properties: { note: { type: "string" } } }, { type: "string" }] },
+      },
+    };
+    const snapshot = JSON.stringify(parameters);
+    const response = await bridge.stream({ model: MODEL, input: [user("hi")], instructions: "i", tools: [{ type: "function", name: "Slim", parameters }], stream: true }, { apiKey: "" });
+    if (!response.ok) throw new Error("refused");
+    for await (const _ of response.events) void _;
+    expect(JSON.stringify(parameters)).toBe(snapshot);
+    const schema = (await log()).find((entry) => entry.mcpSchemas)!.mcpSchemas as Record<string, unknown>[];
+    expect(schema[0]).toEqual({
+      type: "object",
+      required: ["format", "requestSource"],
+      properties: {
+        format: { type: "string", description: "a field named format" },
+        example: { type: "number", default: 2 },
+        maybe: { type: "string", description: "inner" },
+        merged: { type: "object", properties: { a: { type: "string" }, b: { type: "boolean" } }, required: ["a"] },
+        requestSource: {
+          description: "source",
+          type: "object",
+          properties: { kind: { type: "string", enum: ["user", "agent"] }, id: { type: "string" } },
+          required: ["kind"],
+        },
+        record: { type: "object", additionalProperties: { type: "number" } },
+        mode: { type: "string", enum: ["fast", "slow"] },
+        evidence: { oneOf: [{ type: "object", properties: { note: { type: "string" } } }, { type: "string" }] },
+      },
+    });
+  });
+
+  it("does not release the held tool call until the steering has been handed over", async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    const { bridge, log } = await setup({}, gate);
+    const first = await turn(bridge, [user('TOOL:Bash:{"command":"ls"}')]);
+    const use = toolUse(first.message);
+    const pending = turn(bridge, [user('TOOL:Bash:{"command":"ls"}'), call(use.id, { command: "ls" }), result(use.id, "a.txt"), user("note")]);
+    // The steering reached agy; the bridge is still waiting on the session, so the MCP result must not have gone out.
+    for (let tries = 0; tries < 200 && !(await log()).some((entry) => entry.steering); tries += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect((await log()).some((entry) => entry.resultBlocks)).toBe(false);
+    open();
+    expect(textOf((await pending).message)).toBe("got:a.txt steered:note");
   });
 
   it("keeps call/result pairs, roles and the latest user instruction when the replayed history exceeds its budget", async () => {

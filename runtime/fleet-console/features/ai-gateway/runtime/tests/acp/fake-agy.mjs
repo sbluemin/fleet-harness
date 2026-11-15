@@ -100,6 +100,7 @@ async function runPrompt(id, blocks) {
     running = { id };
     const result = await callTool(`Run mcp_fleet_${match[1]}`, match[1], JSON.parse(match[2]));
     update({ sessionUpdate: "usage_update", used: 1500, size: 1048576 });
+    log({ resultBlocks: result?.content?.map((block) => block.type) });
     say(`got:${result?.content?.map((block) => block.text).join("") ?? "none"}`);
     const steer = running;
     running = undefined;
@@ -167,7 +168,7 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
   else if (message.method === "session/prompt" && running) {
     running.steerText = promptText(message.params.prompt);
     running.steerId = message.id;
-    log({ steering: running.steerText });
+    log({ steering: running.steerText, steerImages: message.params.prompt.filter((block) => block.type === "image").length });
     send({ id: running.id, result: { stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 1, thoughtTokens: 0, cachedReadTokens: 0, totalTokens: 11 } } });
   } else if (message.method === "session/prompt") {
     if (await runPrompt(message.id, message.params.prompt)) return;
