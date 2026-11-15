@@ -29,6 +29,7 @@ const BASE: GlobalSettingsState = {
   commanderFolds: null,
   commanderKeepExpanded: null,
   commanderShowSettled: null,
+  conversationView: null,
   lowerUnfocusedFrameRate: true,
   taskforceBubbleColor: false,
   shortcuts: {},

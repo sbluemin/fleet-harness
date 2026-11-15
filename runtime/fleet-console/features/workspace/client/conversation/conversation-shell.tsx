@@ -53,7 +53,7 @@ import { ObjectiveChipCommodore } from "./objective-chip-commodore.js";
 import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
 import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
-import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
+import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject, useConversationToolbarTail } from "./conversation-slots.js";
 import { ConversationPill, ConversationPillContext, PILL_MORPHING_CLASS, useConversationPillHost } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
 import { closeConversationSurface, getConversationSurface, useConversationSurface, useConversationStageEmpty, type ConversationSurfaceSelection } from "./conversation-surface-store.js";
@@ -850,7 +850,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
   const hasCommodores = useCommodoreList().length > 0;
   useConversationSidebarCompact(stageElement, viewport, insets.right);
-  const tools = (lead: ReactNode = null, trail: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} trail={trail} band={band} />;
+  const tools = (lead: ReactNode = null, trail: ReactNode = null, tail: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} trail={trail} tail={tail} band={band} />;
 
   return (
     <>
@@ -1003,7 +1003,7 @@ function sameHiddenTools(a: readonly HiddenTool[], b: readonly HiddenTool[]): bo
  * 줄은 한 줄이다: 자리가 모자라면 칩 옆 묶음의 도구를 오른쪽 끝부터 걷어 「⋯」 메뉴에 모은다. 이름 pill 은 도구가 모두 걷힌 다음에야
  * 말줄임이 시작되고, 컨텍스트·승인 종·지구본은 걷히지 않는다(승인 종이 가장 나중까지 남는다).
  */
-function ConversationToolbar({ context, lead = null, trail = null, band }: { readonly context: RailToolContext; readonly lead?: ReactNode; readonly trail?: ReactNode; readonly band: HTMLDivElement | null }) {
+function ConversationToolbar({ context, lead = null, trail = null, tail = null, band }: { readonly context: RailToolContext; readonly lead?: ReactNode; readonly trail?: ReactNode; readonly tail?: ReactNode; readonly band: HTMLDivElement | null }) {
   const t = useT();
   const toolsRef = useRef<HTMLSpanElement | null>(null);
   // 오른쪽 끝 묶음(지구본 + 브라우저 칸 자리)과 그 안의 지구본 자리 — 줄의 오른쪽 예약을 이 폭으로 센다.
@@ -1254,6 +1254,7 @@ function ConversationToolbar({ context, lead = null, trail = null, band }: { rea
       </span>
       {trail !== null && trail !== false ? <span className="conversation-pill-tools-trail">{trail}</span> : null}
       <ApprovalCapsule />
+      {tail !== null && tail !== false ? tail : null}
       <ToolbarTipLayer rootRef={toolsRef} />
     </span>
     </span>
@@ -1513,12 +1514,13 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   /** 오른쪽 분할 칸에 브라우저(Fleet·Objective 어느 쪽이든)가 서 있는가 — pill 의 지구본이 켜짐으로 말한다. */
   readonly browserSurfaceOpen: boolean;
   /** 머리 줄 도구모음. 지구본(lead)을 넘기면 맨 위 줄 오른쪽 끝에 서고, trail 은 칩 옆 묶음의 「⋯」 뒤에 선다. */
-  readonly tools: (lead?: ReactNode, trail?: ReactNode) => ReactNode;
+  readonly tools: (lead?: ReactNode, trail?: ReactNode, tail?: ReactNode) => ReactNode;
 }) {
   const t = useT();
   const capabilities = useHostCapabilities();
   const clusterIndex = useClusterIndex();
   const bodyRenderer = useConversationBodyRenderer();
+  const toolbarTailRenderer = useConversationToolbarTail();
   const pill = useConversationPillHost({ kind: "objective", id: objectiveRecord.id });
   const [railSlot, setRailSlot] = useState<HTMLElement | null>(null);
   const clusterRoot = clusterIndex.rootOf.get(objectiveRecord.id) ?? null;
@@ -1602,6 +1604,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
     navigate: capabilities.navigate,
     ...(offersBrowser ? { openObjectiveBrowser } : {}),
   }) ?? null;
+  const toolbarTail = toolbarTailRenderer?.({ objectiveRecord, nestedObjectiveRecords: nested, language }) ?? null;
   const captionRender = {
     active: config.active,
     capabilities,
@@ -1661,7 +1664,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
         </ConversationPill>
         {/* 사용 표식·시선 말풍선은 pill 바로 뒤의 면 없는 선반에 남긴다. Objective 메뉴는 사이드바 우클릭이 맡는다. */}
         <span className="conversation-caption-shelf"><ObjectiveCaptionContributions objectiveRecord={bodyOwner} language={language} surface="caption" />{shelf}</span>
-        {tools(toolsLead, <span ref={setRailSlot} className="conversation-rail-slot" />)}
+        {tools(toolsLead, <span ref={setRailSlot} className="conversation-rail-slot" />, toolbarTail)}
       </div>
       {/* 구성원은 pill 의 「구성원 n」과 오른쪽 「구성원」 탭이 말한다 — 구성원 원장도 그 탭에서 고른다. 본문(그룹 대화든 터미널이든) 위에
           노드 줄을 따로 세우지 않는다. */}

@@ -1507,3 +1507,13 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-relay-pill-party { flex: 0 1 auto; gap: 10px; min-height: 36px; overflow: hidden; color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.2; }
 :root[data-view-mode="mobile"] .group-relay-pill-party .group-chat-mark { flex: none; width: 36px; height: 36px; }
 :root[data-view-mode="mobile"] .group-relay-pill-party-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 머리 줄 도구 묶음의 알림 종 오른쪽 — 세로 구분선과 그룹채팅/원장 전환 단추(conversation-view.tsx). 단추 모양은 이 줄의
+   도구(.conversation-pill-tools .right-rail-ico)를 그대로 따른다. */
+.conversation-pill-tools .group-view-divider {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--space-1);
+  background: var(--hairline-strong);
+}

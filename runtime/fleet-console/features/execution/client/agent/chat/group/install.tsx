@@ -13,11 +13,13 @@ import {
   registerConversationObjectiveTab,
   setConversationBodyRenderer,
   setConversationStandInComposer,
+  setConversationToolbarTail,
   subscribeConversationStandIn,
   subscribeConversationSubject,
   useConversationStandIn,
   useConversationSubject,
   type ConversationBodyContext,
+  type ConversationToolbarTailContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
 import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
@@ -37,6 +39,7 @@ import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
 import { SpeakerMark, useLocalizedSnapshot } from "./speaker-mark.js";
 import { registerObjectiveContextRail } from "./context-rail.js";
+import { ConversationViewToggle, setGroupConversationView } from "./conversation-view.js";
 
 /**
  * 그룹 대화를 대화 중심 화면에 끼운다 — 가운데 칸 본문 렌더러와 오른쪽 「구성원」 탭.
@@ -47,7 +50,9 @@ import { registerObjectiveContextRail } from "./context-rail.js";
  * 가운데 칸 규칙:
  * - 목표 대화의 뿌리(지휘관)이거나 구성원을 가진 채팅 루트를 보고 있으면 그룹 대화가 선다 — 구성원이 아직 없는 지휘관도
  *   같은 화면이다. 루트의 기존 본문은 칸에 붙지 않으므로 본문 풀에서 주차되고(bodyLive=false) 자기 소켓을 열지 않는다.
- * - 오른쪽 「구성원」 탭의 줄이나 대화 말풍선 머리의 표식·이름을 누르면 그 참여자의 기존 본문을 읽기 전용 틀에 넣어 세운다.
+ * - 데스크톱 그룹채팅의 말풍선 머리 표식·이름(네임플레이트)은 참여자와 무관하게 화면 전환 설정을 원장으로 바꾼다(`conversation-view`).
+ *   알림 종 오른쪽의 전환 단추도 같은 설정을 고친다.
+ * - 오른쪽 「구성원」 탭의 줄(폰은 네임플레이트도)을 누르면 그 참여자의 기존 본문을 읽기 전용 틀에 넣어 세운다.
  *   구성원은 셸의 구성원 본문 선택이, 지휘관은 `commander-ledger` 가 고른다(셸의 선택은 루트 자신을 고를 수 없다). 원장에는
  *   사람 입력 틀이 없고, 틀 머리의 「대화로 돌아가기」가 대화로 데려온다.
  * - 목표가 아닌 1:1 채팅이거나 루트가 터미널(CLI)로 열려 있으면 기본 본문을 그대로 둔다.
@@ -57,7 +62,19 @@ export function installGroupConversationSurface(): () => void {
   const disposeBody = setConversationBodyRenderer(renderConversationBody);
   const disposeComposer = setConversationStandInComposer((objectiveId, language) => <StandInComposer key={objectiveId} rootId={objectiveId} language={language} />);
   const disposeRail = registerObjectiveContextRail();
-  return () => { disposeRail(); disposeComposer(); disposeBody(); };
+  const disposeTail = setConversationToolbarTail(renderToolbarTail);
+  return () => { disposeTail(); disposeRail(); disposeComposer(); disposeBody(); };
+}
+
+/** 머리 줄 알림 종 오른쪽의 그룹채팅/원장 전환 — 가운데 칸이 그룹 대화일 때만 선다(본문 렌더러와 같은 판정). */
+function renderToolbarTail(context: ConversationToolbarTailContext): React.ReactNode | null {
+  if (!isGroupConversationObjective(context.objectiveRecord, context.nestedObjectiveRecords.length > 0)) return null;
+  return <ConversationViewToggle root={context.objectiveRecord} language={context.language} onLeaveLedger={leaveLedger} />;
+}
+
+/** 개별 원장(「구성원」 탭에서 고른 참여자)을 내린다 — 화면 전환 단추가 고른 화면이 바로 서게. */
+function leaveLedger(rootId: string): void {
+  if (ledgerObjectiveId(rootId) !== null) openLedger(rootId, null);
 }
 
 /**
@@ -199,7 +216,12 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
   const actions = useGroupConversationActions(root.id);
   const useRequests = useGroupUseRequests(root.id);
-  const openMemberLedger = React.useCallback((objectiveId: string) => openLedger(root.id, objectiveId), [root.id]);
+  // 데스크톱 그룹채팅의 네임플레이트·원장 링크는 누른 참여자와 무관하게 원장 분할 화면으로 바꾼다(모든 지휘관 공통 설정). 폰은 예전처럼
+  // 그 참여자의 개별 원장을 연다.
+  const openMemberLedger = React.useCallback((objectiveId: string) => {
+    if (phone) openLedger(root.id, objectiveId);
+    else setGroupConversationView("ledger");
+  }, [root.id, phone]);
   const clusters = useGroupClusters();
   const openUIOpen = clusters.find((cluster) => cluster.conversation?.objectiveId === root.id)?.conversation?.openUIOpen;
   // 보드 동작이 있는 일반 Objective도 있다. 목표 플러그인이 명시한 기록 여부만 요약 슬롯의 근거다.

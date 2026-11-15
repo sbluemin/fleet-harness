@@ -54,6 +54,9 @@ export interface CommanderFolds {
   readonly settled: boolean;
 }
 
+/** 그룹 대화의 가운데 칸 화면 — 그룹채팅이나 원장 분할. */
+export type ConversationViewMode = "chat" | "ledger";
+
 export const REMOTE_AUTO_PORT_MIN = 49152;
 export const REMOTE_AUTO_PORT_MAX = 65535;
 export const REMOTE_AUTO_PORT_ATTEMPTS = 12;
@@ -126,6 +129,11 @@ export interface ConsoleGeneralSettings {
   readonly commanderKeepExpanded?: boolean;
   /** 좌측 사이드바에 시작 전·완료 목표를 보일지. 부재는 기본 켜짐이다. */
   readonly commanderShowSettled?: boolean;
+  /**
+   * 그룹 대화(지휘관·구성원)의 가운데 칸 화면 — 그룹채팅(`chat`)이냐 원장 분할(`ledger`)이냐. 모든 지휘관에 공통이다.
+   * 부재는 한 번도 저장된 적 없음(그룹채팅)이다. Console 포트가 재시작마다 바뀔 수 있어 localStorage 캐시를 두지 않는다.
+   */
+  readonly conversationView?: ConversationViewMode;
   /** 창이 비포커스일 때만 같은 저프레임 모드를 쓴다. 부재는 기본 켜짐이다. */
   readonly lowerUnfocusedFrameRate?: boolean;
   /** TaskForce 사령관 말풍선 테두리를 이름 색으로 그릴지. 부재는 기본 꺼짐(중립 테두리)이다. */
@@ -393,6 +401,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const commanderFolds = readCommanderFolds(value.commanderFolds);
   const commanderKeepExpanded = typeof value.commanderKeepExpanded === "boolean" ? value.commanderKeepExpanded : undefined;
   const commanderShowSettled = typeof value.commanderShowSettled === "boolean" ? value.commanderShowSettled : undefined;
+  const conversationView = readConversationViewMode(value.conversationView);
   const lowerUnfocusedFrameRate = typeof value.lowerUnfocusedFrameRate === "boolean" ? value.lowerUnfocusedFrameRate : undefined;
   const taskforceBubbleColor = typeof value.taskforceBubbleColor === "boolean" ? value.taskforceBubbleColor : undefined;
   const experiments = value.experiments !== undefined ? resolveExperimentSettings(value.experiments) : undefined;
@@ -414,6 +423,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(commanderFolds !== undefined ? { commanderFolds } : {}),
     ...(commanderKeepExpanded !== undefined ? { commanderKeepExpanded } : {}),
     ...(commanderShowSettled !== undefined ? { commanderShowSettled } : {}),
+    ...(conversationView !== undefined ? { conversationView } : {}),
     ...(lowerUnfocusedFrameRate !== undefined ? { lowerUnfocusedFrameRate } : {}),
     ...(taskforceBubbleColor !== undefined ? { taskforceBubbleColor } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
@@ -433,6 +443,10 @@ function readCommanderSortPreference(value: unknown): CommanderSortPreference | 
   if (value.direction !== "asc" && value.direction !== "desc") return undefined;
   if (typeof value.answerFirst !== "boolean" || typeof value.grouped !== "boolean") return undefined;
   return { key: value.key as CommanderSortKey, direction: value.direction, answerFirst: value.answerFirst, grouped: value.grouped };
+}
+
+function readConversationViewMode(value: unknown): ConversationViewMode | undefined {
+  return value === "chat" || value === "ledger" ? value : undefined;
 }
 
 function readCommanderFolds(value: unknown): CommanderFolds | undefined {
@@ -571,6 +585,7 @@ interface GlobalSettingsBody {
   readonly commanderFolds?: unknown;
   readonly commanderKeepExpanded?: unknown;
   readonly commanderShowSettled?: unknown;
+  readonly conversationView?: unknown;
   readonly lowerUnfocusedFrameRate?: unknown;
   readonly taskforceBubbleColor?: unknown;
   readonly uiFont?: unknown;
@@ -726,6 +741,11 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_commander_show_settled" });
     return;
   }
+  const conversationView = body.conversationView === undefined ? undefined : readConversationViewMode(body.conversationView);
+  if (body.conversationView !== undefined && conversationView === undefined) {
+    deps.writeJson(res, 400, { error: "invalid_conversation_view" });
+    return;
+  }
   if (body.lowerUnfocusedFrameRate !== undefined && typeof body.lowerUnfocusedFrameRate !== "boolean") {
     deps.writeJson(res, 400, { error: "invalid_lower_unfocused_frame_rate" });
     return;
@@ -792,6 +812,7 @@ async function mutateGlobalSettings(
       ...(commanderFolds !== undefined ? { commanderFolds } : {}),
       ...(typeof body.commanderKeepExpanded === "boolean" ? { commanderKeepExpanded: body.commanderKeepExpanded } : {}),
       ...(typeof body.commanderShowSettled === "boolean" ? { commanderShowSettled: body.commanderShowSettled } : {}),
+      ...(conversationView !== undefined ? { conversationView } : {}),
       ...(typeof body.lowerUnfocusedFrameRate === "boolean" ? { lowerUnfocusedFrameRate: body.lowerUnfocusedFrameRate } : {}),
       ...(typeof body.taskforceBubbleColor === "boolean" ? { taskforceBubbleColor: body.taskforceBubbleColor } : {}),
       // uiFont는 한 릴리스 읽기 전용으로 남긴다. 새 쓰기는 세 축만 바꾼다.
@@ -873,6 +894,8 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     commanderKeepExpanded: typeof general.commanderKeepExpanded === "boolean" ? general.commanderKeepExpanded : null,
     // 키 없음·손상 값은 null이다 — 화면은 켜짐으로 읽는다.
     commanderShowSettled: typeof general.commanderShowSettled === "boolean" ? general.commanderShowSettled : null,
+    // 키 없음·손상 값은 null이다 — 화면은 그룹채팅으로 읽는다.
+    conversationView: readConversationViewMode(general.conversationView) ?? null,
     lowerUnfocusedFrameRate: general.lowerUnfocusedFrameRate ?? true,
     taskforceBubbleColor: general.taskforceBubbleColor ?? false,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
