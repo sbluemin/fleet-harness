@@ -114,6 +114,27 @@ function toolCatalog(request: CanonicalResponseRequest): { tools: BridgeToolDef[
   return { tools, names };
 }
 
+/**
+ * Counts only (never content or length) of what rides next to the tool results at the end of a request: how often user text
+ * accompanies them is what decides how the `[user note]` path should work. The tail is the user-side run after the last
+ * assistant item, the same run `outcomesFor` reads. Text parts of one message are already one canonical item, so a
+ * count is per message item, not per Anthropic content block; both user and system-role messages count, as in `outcomesFor`.
+ */
+function tailCounts(items: readonly CanonicalInputItem[]): { tailToolResults: number; tailUserTexts: number; tailReminderTexts: number } {
+  let start = items.length;
+  while (start > 0 && isUserSide(items[start - 1]!)) start -= 1;
+  const tail = items.slice(start);
+  const tailToolResults = tail.filter((item) => item.type === "function_call_output").length;
+  const texts = tailToolResults === 0
+    ? []
+    : tail.flatMap((item) => (item.type === "message" ? [canonicalMessageText(item.content)] : [])).filter((text) => text.length > 0);
+  return {
+    tailToolResults,
+    tailUserTexts: texts.length,
+    tailReminderTexts: texts.filter((text) => text.trimStart().startsWith("<system-reminder>")).length,
+  };
+}
+
 function failedResponse(status: number, type: string, message: string): AdapterResponse {
   return {
     ok: false,
@@ -206,6 +227,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       ...("session" in plan ? { session: plan.session.key } : {}),
       items: request.input.length,
       tools: catalog.tools.length,
+      ...tailCounts(request.input),
     });
 
     let session: BridgeSession;

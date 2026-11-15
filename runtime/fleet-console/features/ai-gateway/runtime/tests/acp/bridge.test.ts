@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createAgyAcpBridge, createAgyAcpSessionPort, type AgyAcpBridge } from "../../src/acp/index.js";
 import type { CanonicalInputItem, CanonicalResponseEvent, CanonicalResponseRequest } from "../../src/canonical/index.js";
 import { collectAnthropicMessage } from "../../src/downstream/wire/anthropic-messages/protocol.js";
+import { wireLogFixture } from "../helpers/wire-log.js";
 
 const fakeAgy = path.join(path.dirname(fileURLToPath(import.meta.url)), "fake-agy.mjs");
 const MODEL = "antigravity--gemini-4-argon";
@@ -104,19 +105,32 @@ describe("agy ACP bridge", () => {
     expect(entries.find((entry) => entry.mcpTools)).toMatchObject({ mcpTools: ["Bash"], eager: ["Bash"], timeoutSeconds: 3600 });
   });
 
-  it("opens a new session and replays the history when the history no longer matches the session", async () => {
-    const { bridge, log } = await setup();
-    const first = await turn(bridge, [user('TOOL:Bash:{"command":"ls"}')]);
-    const use = toolUse(first.message);
-    // Claude Code rewrote an earlier message (compaction, rewind): the chain no longer matches the held session.
-    const second = await turn(bridge, [user("compacted summary"), call(use.id, { command: "ls" }), result(use.id, "a.txt")]);
-    expect(second.message.stop_reason).toBe("end_turn");
-    expect(textOf(second.message)).toContain("history:yes");
-    const entries = await log();
-    expect(count(entries, "session/new")).toBe(2);
-    const replay = entries.filter((entry) => typeof entry.prompt === "string").at(-1)!.prompt as string;
-    expect(replay).toContain('<turn role="user">compacted summary</turn>');
-    expect(replay).toContain('<tool_result tool_use_id="' + use.id + '">a.txt</tool_result>');
+  it("opens a new session and replays the history when the history no longer matches the session, and logs only counts of the tail", async () => {
+    const wire = wireLogFixture("fleet-bridge-wire-");
+    try {
+      const { bridge, log } = await setup();
+      const first = await turn(bridge, [user('TOOL:Bash:{"command":"ls"}')]);
+      const use = toolUse(first.message);
+      // Claude Code rewrote an earlier message (compaction, rewind): the chain no longer matches the held session.
+      const second = await turn(bridge, [
+        user("compacted summary"), call(use.id, { command: "ls" }), result(use.id, "a.txt"),
+        user("<system-reminder>SECRET-REMINDER</system-reminder>"),
+      ]);
+      expect(second.message.stop_reason).toBe("end_turn");
+      expect(textOf(second.message)).toContain("history:yes");
+      const entries = await log();
+      expect(count(entries, "session/new")).toBe(2);
+      const replay = entries.filter((entry) => typeof entry.prompt === "string").at(-1)!.prompt as string;
+      expect(replay).toContain('<turn role="user">compacted summary</turn>');
+      expect(replay).toContain('<tool_result tool_use_id="' + use.id + '">a.txt</tool_result>');
+      // The wire log counts what rides next to the tool results; it never records their content.
+      const requests = wire.read().filter((entry) => entry.event === "bridge.request").map((entry) => entry.payload);
+      expect(requests[0]).toMatchObject({ route: "fresh", tailToolResults: 0, tailUserTexts: 0, tailReminderTexts: 0 });
+      expect(requests[1]).toMatchObject({ route: "rebuild", tailToolResults: 1, tailUserTexts: 1, tailReminderTexts: 1 });
+      expect(JSON.stringify(requests)).not.toContain("SECRET-REMINDER");
+    } finally {
+      wire.cleanup();
+    }
   });
 
   it("keeps call/result pairs, roles and the latest user instruction when the replayed history exceeds its budget", async () => {
