@@ -451,8 +451,6 @@ export const chromeEn = {
   "archive.retention.apply": "Apply",
   "archive.retention.applyOff": "Turn off auto-delete",
   "archive.retention.cancel": "Cancel",
-  "chrome.toast.themeLight": "Console switched to a light theme. Apps running inside terminals may need their own theme changed or a restart.",
-  "chrome.toast.themeDark": "Console switched to a dark theme. Apps running inside terminals may need their own theme changed or a restart.",
 
   // backend-api
   "chrome.backendApi.sectionAria": "Backend API catalog",
@@ -1106,8 +1104,6 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "archive.retention.apply": "적용",
   "archive.retention.applyOff": "자동 정리 끄기",
   "archive.retention.cancel": "취소",
-  "chrome.toast.themeLight": "라이트 테마로 바꿨어요. 터미널 안에서 실행 중인 앱은 자체 테마를 바꾸거나 다시 시작해야 할 수 있어요.",
-  "chrome.toast.themeDark": "다크 테마로 바꿨어요. 터미널 안에서 실행 중인 앱은 자체 테마를 바꾸거나 다시 시작해야 할 수 있어요.",
 
   "chrome.backendApi.sectionAria": "Backend API 카탈로그",
   "chrome.backendApi.title": "Backend API",

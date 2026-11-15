@@ -47,7 +47,7 @@ import { requestTaskforceCreate } from "../../../../features/commodore/client/ta
 import { SettingsModalHost } from "../../../../features/settings/client/settings-modal.js";
 import { TheaterInboxHost } from "../integration/theater-inbox.js";
 import { refreshObserverStatus } from "../integration/objective-records-sse.js";
-import { closeKeyboardShortcuts, closeObjectiveSearch, getState, hydrateGroups, hydrateInitialObjectiveRecords, hydrateObjectiveRecords, openObjectiveSearch, resolveOnboardingOnBootstrap, setObjectiveRecordsViewActive, themePolarity } from "../integration/store.js";
+import { closeKeyboardShortcuts, closeObjectiveSearch, getState, hydrateGroups, hydrateInitialObjectiveRecords, hydrateObjectiveRecords, openObjectiveSearch, resolveOnboardingOnBootstrap, setObjectiveRecordsViewActive } from "../integration/store.js";
 import { commodoreListLoaded, refreshCommodoreList, subscribeCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
 import { theaterLabelOf } from "../../../../features/commodore/client/theater-owner.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "../../../../features/updates/client/whatsnew.js";
@@ -67,7 +67,7 @@ import { observeStateMotion } from "../integration/state-motion.js";
 // 빠르면 GNB 배지가 누락될 수 있다. 짧은 지연 후 status를 1회만 재조회해 cold-start를 보정한다(폴링 아님).
 const UPDATE_STATUS_RECHECK_DELAY_MS = 6_000;
 const UNDO_WINDOW_MS = 8_000;
-const THEME_NOTICE_AUTO_DISMISS_MS = 8_000;
+const UNDO_NOTICE_AUTO_DISMISS_MS = 8_000;
 
 
 export function App() {
@@ -120,34 +120,6 @@ function ConnectedApp() {
   useEffect(() => {
     document.documentElement.lang = consoleLocale;
   }, [consoleLocale]);
-
-  // 테마 극성(다크↔라이트) 전환 1회성 전역 안내 — 이전에는 터미널 패널마다 힌트가 떠서 전환 한 번에
-  // 패널 수만큼 닫아야 했다. 실행 중 CLI의 내부 테마는 콘솔이 강제할 수 없으므로 안내는 유지하되,
-  // 콘솔 chrome이 단 하나의 토스트로 발화한다. 기준선은 마운트 첫 실행에 심는다 — main.tsx가 주입/저장
-  // 테마와 서버 settings 적용을 모두 render 전 top-level await로 끝내므로, 마운트 이후의 테마 변경은
-  // 사용자 동작뿐이다. theaters bootstrap 같은 무관한 축에 게이트하면 그 응답이 늦거나 실패하는 동안의
-  // 전환이 통째로 소실된다(Settings는 그 전에도 조작 가능하다).
-  const [themeNotice, setThemeNotice] = useState<"light" | "dark" | null>(null);
-  const themePolarityBaselineRef = useRef<"light" | "dark" | null>(null);
-  const activeThemePolarity = themePolarity(state.activeTheme);
-  useEffect(() => {
-    if (themePolarityBaselineRef.current === null) {
-      themePolarityBaselineRef.current = activeThemePolarity;
-      return;
-    }
-    if (themePolarityBaselineRef.current !== activeThemePolarity) {
-      themePolarityBaselineRef.current = activeThemePolarity;
-      setThemeNotice(activeThemePolarity);
-    }
-  }, [activeThemePolarity]);
-
-  // 안내는 잠시 띄우고 자동으로 거둔다 — 수동 닫기만 두면 "패널마다 닫기"가 "토스트 닫기 1회"로
-  // 바뀌는 데 그치므로, 읽을 시간 뒤에는 스스로 사라진다. 재전환 시 새 극성으로 타이머가 리셋된다.
-  useEffect(() => {
-    if (themeNotice === null) return;
-    const timer = setTimeout(() => setThemeNotice(null), THEME_NOTICE_AUTO_DISMISS_MS);
-    return () => clearTimeout(timer);
-  }, [themeNotice]);
 
   const pathname = location.pathname;
   const objectiveRecordsViewVisible = pathname.startsWith("/objectives");
@@ -334,7 +306,7 @@ function ConnectedApp() {
 
   useEffect(() => {
     if (!undoNotice) return;
-    const timer = window.setTimeout(() => setUndoNotice(null), THEME_NOTICE_AUTO_DISMISS_MS);
+    const timer = window.setTimeout(() => setUndoNotice(null), UNDO_NOTICE_AUTO_DISMISS_MS);
     return () => window.clearTimeout(timer);
   }, [undoNotice]);
 
@@ -585,12 +557,6 @@ function ConnectedApp() {
         <ControlCurtain />
         <ToastHost>
           <CommodoreDeletionHost />
-          <Toast
-            open={themeNotice !== null}
-            tone="info"
-            title={themeNotice === "light" ? t("chrome.toast.themeLight") : t("chrome.toast.themeDark")}
-            onDismiss={() => setThemeNotice(null)}
-          />
           {mobileLayout ? deletionToast : null}
         </ToastHost>
       </div>

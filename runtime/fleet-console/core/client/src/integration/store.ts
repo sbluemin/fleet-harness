@@ -342,12 +342,6 @@ export function readStoredThemeHint(): ThemeId | null {
   }
 }
 
-// 테마 극성(라이트/다크) 판별은 이 한 곳이 소유한다 — App의 극성 전환 안내 토스트와 브라우저 표면이
-// 같은 규칙을 봐야 한쪽만 다른 판정을 내리는 일이 없다.
-export function themePolarity(theme: ThemeId): "light" | "dark" {
-  return theme;
-}
-
 export function readServerInjectedTheme(): ThemeId | null {
   if (typeof document === "undefined") return null;
   if (document.documentElement.getAttribute("data-theme-source") !== "server") return null;
