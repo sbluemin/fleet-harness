@@ -162,22 +162,105 @@ function withArrayItems(node: Record<string, unknown>): Record<string, unknown> 
   return { ...node, items: {} };
 }
 
-const SCHEMA_VALUE_KEYWORDS: ReadonlySet<string> = new Set(["default", "const", "enum", "examples", "example"]);
+const SCHEMA_VALUE_KEYWORDS: ReadonlySet<string> = new Set(["default", "enum"]);
+
+/**
+ * agy drops the largest tools once the raw MCP declarations exceed its budget (measured ~55-60KB) and collapses `oneOf`+`const`
+ * to a bare string. Keywords that only validate (the real server and Claude Code still do) are dropped so the budget buys tools.
+ */
+const SCHEMA_DROPPED_KEYWORDS: ReadonlySet<string> = new Set([
+  "$schema", "$id", "$comment", "additionalProperties", "format", "minLength", "maxLength", "minimum", "maximum",
+  "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minItems", "maxItems", "uniqueItems", "minProperties", "maxProperties",
+  "propertyNames", "examples", "example",
+]);
+
+/** Maps whose keys are names, not keywords: only their values are schemas. */
+const SCHEMA_NAME_MAPS: ReadonlySet<string> = new Set(["properties", "$defs", "definitions"]);
+
+type SchemaObject = Record<string, unknown>;
+
+const isSchemaObject = (value: unknown): value is SchemaObject => typeof value === "object" && value !== null && !Array.isArray(value);
+
+function constType(value: unknown): "string" | "number" | "boolean" | undefined {
+  return typeof value === "string" ? "string" : typeof value === "number" ? "number" : typeof value === "boolean" ? "boolean" : undefined;
+}
+
+function requiredOf(node: SchemaObject): string[] {
+  return Array.isArray(node.required) ? node.required.filter((name): name is string => typeof name === "string") : [];
+}
+
+function mergeAllOf(out: SchemaObject, branches: readonly unknown[]): SchemaObject {
+  const merged: SchemaObject = { ...out };
+  const properties: SchemaObject = isSchemaObject(out.properties) ? { ...out.properties } : {};
+  const required = new Set(requiredOf(out));
+  for (const branch of branches) {
+    if (!isSchemaObject(branch)) continue;
+    if (isSchemaObject(branch.properties)) Object.assign(properties, { ...branch.properties, ...properties });
+    for (const name of requiredOf(branch)) required.add(name);
+    for (const [key, value] of Object.entries(branch)) {
+      if (key === "properties" || key === "required") continue;
+      if (!(key in merged)) merged[key] = value;
+    }
+  }
+  if (Object.keys(properties).length > 0) {
+    merged.properties = properties;
+    if (merged.type === undefined) merged.type = "object";
+  }
+  if (required.size > 0) merged.required = [...required];
+  return merged;
+}
+
+/** `oneOf`/`anyOf`: flattened only where the shape stays equivalent for the model; otherwise each branch is just normalized. */
+function flattenUnion(kind: "oneOf" | "anyOf", rawBranches: readonly unknown[], parent: SchemaObject): SchemaObject {
+  const normalized = rawBranches.map(normalizeSchema);
+  const keep = rawBranches.map((branch) => !(isSchemaObject(branch) && branch.type === "null"));
+  const raws = rawBranches.filter((_, index) => keep[index]);
+  const kept = normalized.filter((_, index) => keep[index]).filter(isSchemaObject);
+  if (kept.length === 0) return { ...parent, type: "string" };
+  if (kept.length === 1 && rawBranches.length > raws.length) return { ...parent, ...kept[0]!, ...(kept[0]!.description === undefined && parent.description !== undefined ? { description: parent.description } : {}) };
+  const rawObjects = raws.filter(isSchemaObject);
+  const isObject = (node: SchemaObject) => node.type === "object" || isSchemaObject(node.properties);
+  if (rawObjects.length === raws.length && rawObjects.every((node) => "const" in node && typeof node.const === "string")) {
+    return { ...parent, type: "string", enum: [...new Set(rawObjects.map((node) => node.const as string))] };
+  }
+  if (rawObjects.length === raws.length && rawObjects.every(isObject)
+    && rawObjects.some((node) => isSchemaObject(node.properties) && Object.values(node.properties).some((prop) => isSchemaObject(prop) && "const" in prop))) {
+    const properties: SchemaObject = {};
+    for (const branch of kept) {
+      for (const [name, prop] of Object.entries(isSchemaObject(branch.properties) ? branch.properties : {})) {
+        const existing = properties[name];
+        if (isSchemaObject(existing) && isSchemaObject(prop) && Array.isArray(existing.enum) && Array.isArray(prop.enum) && existing.type === "string" && prop.type === "string") {
+          properties[name] = { ...existing, enum: [...new Set([...existing.enum, ...prop.enum])] };
+        } else if (existing === undefined) {
+          properties[name] = prop;
+        }
+      }
+    }
+    const required = requiredOf(kept[0]!).filter((name) => kept.every((branch) => requiredOf(branch).includes(name)));
+    return { ...parent, type: "object", properties, ...(required.length > 0 ? { required } : {}) };
+  }
+  return { ...parent, [kind]: normalized };
+}
 
 function normalizeSchema(node: unknown): unknown {
   if (Array.isArray(node)) return node.map(normalizeSchema);
-  if (typeof node !== "object" || node === null) return node;
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+  if (!isSchemaObject(node)) return node;
+  let out: SchemaObject = {};
+  for (const [key, value] of Object.entries(node)) {
+    if (SCHEMA_DROPPED_KEYWORDS.has(key) || key === "const" || key === "allOf" || key === "oneOf" || key === "anyOf") continue;
     if (SCHEMA_VALUE_KEYWORDS.has(key)) { out[key] = value; continue; }
+    if (SCHEMA_NAME_MAPS.has(key) && isSchemaObject(value)) {
+      out[key] = Object.fromEntries(Object.entries(value).map(([name, schema]) => [name, normalizeSchema(schema)]));
+      continue;
+    }
     if (key === "pattern" && typeof value === "string") {
       const converted = re2Pattern(value);
       if (converted !== undefined) out[key] = converted;
       continue;
     }
-    if (key === "patternProperties" && typeof value === "object" && value !== null && !Array.isArray(value)) {
-      const kept: Record<string, unknown> = {};
-      for (const [regex, schema] of Object.entries(value as Record<string, unknown>)) {
+    if (key === "patternProperties" && isSchemaObject(value)) {
+      const kept: SchemaObject = {};
+      for (const [regex, schema] of Object.entries(value)) {
         const converted = re2Pattern(regex);
         if (converted !== undefined) kept[converted] = normalizeSchema(schema);
       }
@@ -186,13 +269,27 @@ function normalizeSchema(node: unknown): unknown {
     }
     out[key] = normalizeSchema(value);
   }
+  if (Array.isArray(node.allOf)) out = mergeAllOf(out, node.allOf.map(normalizeSchema));
+  const type = "const" in node ? constType(node.const) : undefined;
+  if (type !== undefined) out = { ...out, type, enum: [node.const] };
+  for (const kind of ["oneOf", "anyOf"] as const) {
+    const branches = node[kind];
+    if (Array.isArray(branches)) out = flattenUnion(kind, branches, out);
+  }
   return withArrayItems(out);
 }
 
 function toolCatalog(request: CanonicalResponseRequest): { tools: BridgeToolDef[]; names: Map<string, string> } {
   const names = new Map<string, string>();
   const tools: BridgeToolDef[] = [];
-  for (const tool of request.tools ?? []) {
+  const allTools = request.tools ?? [];
+  // ToolSearch가 있으면 defer_loading 도구는 agy에 등록하지 않는다(전체 선언이 agy 예산을 넘으면 큰 도구부터 사라진다).
+  const toolSearchActive = allTools.some((tool) => isToolSearchName(tool.name));
+  const selectedName = request.tool_choice && typeof request.tool_choice === "object" ? request.tool_choice.name : undefined;
+  const referenced = new Set(request.input.flatMap((item) => (item.type === "function_call_output" ? item.tool_references ?? [] : [])));
+  for (const tool of allTools) {
+    if (toolSearchActive && tool.defer_loading === true && !isToolSearchName(tool.name)
+      && !(selectedName !== undefined && toolLeafName(tool.name) === toolLeafName(selectedName)) && !referenced.has(tool.name)) continue;
     const exposed = exposedName(tool.name, names);
     names.set(exposed, tool.name);
     // 이름이 바뀐 도구에만, 원래 이름을 설명 끝에 코드로 덧붙인다(전체 매핑표는 프롬프트에 넣지 않는다).
@@ -204,6 +301,15 @@ function toolCatalog(request: CanonicalResponseRequest): { tools: BridgeToolDef[
     });
   }
   return { tools, names };
+}
+
+function toolLeafName(name: string): string {
+  const separator = name.lastIndexOf("__");
+  return separator === -1 ? name : name.slice(separator + 2);
+}
+
+function isToolSearchName(name: string): boolean {
+  return toolLeafName(name).replace(/[_-]/g, "").toLowerCase() === "toolsearch";
 }
 
 /**
@@ -239,10 +345,7 @@ function failedResponse(status: number, type: string, message: string): AdapterR
 function resultContent(output: CanonicalFunctionCallOutput["output"]): McpResultContent[] {
   const text = canonicalMessageText(output);
   const content: McpResultContent[] = text.length > 0 ? [{ type: "text", text }] : [];
-  for (const image of canonicalMessageImages(output)) {
-    const match = /^data:([^;,]+);base64,(.*)$/s.exec(image.image_url);
-    content.push(match ? { type: "image", mimeType: match[1]!, data: match[2]! } : { type: "text", text: `[image: ${image.image_url}]` });
-  }
+  // 이미지는 MCP 결과에 싣지 않는다(agy가 파일 경로로 오프로드한다). 같은 세션의 steering으로 보낸다(`classify`).
   return content.length > 0 ? content : [{ type: "text", text: "(no output)" }];
 }
 
@@ -458,8 +561,9 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         // user 메시지로 보게 한다. steering이 실패하면 rebuild로 물러난다(`stream()`).
         const userMessages = tail.filter((item) => item.type === "message");
         const hasUserContent = userMessages.some((item) => item.type === "message"
-          && (canonicalMessageText(item.content).length > 0 || canonicalMessageImages(item.content).length > 0));
-        return hasUserContent ? { route: "continue", session, outcomes, steer: userTurnBlocks(userMessages) } : { route: "continue", session, outcomes };
+          && (canonicalMessageText(item.content).length > 0 || canonicalMessageImages(item.content).length > 0))
+          || outputs.some((output) => canonicalMessageImages(output.output).length > 0);
+        return hasUserContent ? { route: "continue", session, outcomes, steer: userTurnBlocks(tail) } : { route: "continue", session, outcomes };
       }
       return { route: "rebuild", reason: `matched session is ${session.state}`, stale: session };
     }
