@@ -95,7 +95,7 @@ export function assemble(api) {
     },
     /**
      * Turn on only the taskforce experiment of this owned slot, then create one taskforce from the commodores just made.
-     * GET experiments are sent back with `taskforce: true` so computerUse and its backend stay as stored. No provider call.
+     * GET experiments are sent back with `taskforce: true` so computerUse and its backend stay as stored. This makes no provider call itself, but creating the taskforce wakes its members: the caller must run the Console on the owned fake agent.
      */
     async taskforce({ name, topic, members }) {
       const current = await api("GET", "/api/v1/settings/global");

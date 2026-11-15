@@ -18,13 +18,13 @@ node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" -
 | `details` | `activity` (1 objective by default), with brief, criteria, mission records, sealed results and shared files on its commenced objective; excludes actor-rewritten mission-resume records. |
 | `advanced` | 3 commodores, no theater: auto memory, base system prompt and subagents requested on/off/unset (no saved override; product defaults apply). Running Console: on/off only (`--commodores 2`). `commodores[].advanced` separates requested, stored and effective values at seed time. |
 | `inbox` | 1 commodore, 1 theater, three objectives handed to the person (one criteria proposal, one review, one open follow-up) and one open commodore question. No sidebar section and no transcript turns. |
-| `taskforce` | Fixed counts: 2 commodores, 1 taskforce, no theaters or objectives. Enables `taskforce` in the owned slot; other experiments unchanged. |
+| `taskforce` | Fixed counts: 2 commodores, 1 taskforce, no theaters or objectives. Enables `taskforce` in the owned slot; other experiments unchanged. Needs the owned fake agent. |
 
 Counts override with the flags. Theater folders are created under `--root` (default `<os tmpdir>/seed-theaters/<slot hash>`), outside every repository as [setup.md](setup.md) requires; remove them with the run.
 
 - `objectives` and `inbox` need the owned fake agent (`CLAUDE_BIN` = [`fake-claude.mjs`](../scripts/fake-claude.mjs), `--fake-claude-dir` = its `FAKE_CLAUDE_DIR`): the Commodore's `objective` tool is the only creator, so the seed queues `sdk-calls` and wakes the commodore. `inbox` then drives the fake Commander's tools the way `details` does, and hands each waiting item to the person. `add` does not pass a Commander model; that model is chosen when the objective is planned or commenced. `--objectives` does not apply to `inbox`.
 - `activity` and `details` use the same owned fake-agent setup (no provider). Keep the Console running: stopping ends the live fake sessions; restored display/history after restart does not prove a live fake session. Read `commodores[].activity` in the seed output for `inProgressObjectiveId`, `lastResponse`, `sectionId`, and `sectionName`.
-- For `taskforce`, use only this run's seed-output IDs: `commodores[].commodoreId` and `taskforce.taskforceId`.
+- For `taskforce`, start the Console with the same owned fake-agent setup as `objectives`/`inbox`; `--fake-claude-dir` neither sets nor checks the running Console's `CLAUDE_BIN`. Use only this run's seed-output IDs: `commodores[].commodoreId` and `taskforce.taskforceId`.
 - Marking first-run layers as seen is a separate step: [`seed-onboarding.mts`](../scripts/seed-onboarding.mts).
 - Composition lives in [`scripts/seed/lib.mjs`](../scripts/seed/lib.mjs) (API calls, ownership order) and [`fixtures.mjs`](../scripts/seed/fixtures.mjs) (profiles). Use a shared profile as the baseline; keep scenario-specific additions in the objective’s fixture, reusing the helpers.
 
