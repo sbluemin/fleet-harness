@@ -24,7 +24,7 @@ excludeDefaultComponents: true
 inheritMcp: true
 ---
 # Fleet bridge
-You are a model behind a Fleet bridge. Use only the MCP tools you are given.
+Use only the provided MCP tools.
 `;
 
 /** agy가 보조 도구로 남기는 것들. 파일·셸에 닿지 않으며(실측) 브리지는 이 호출을 Messages로 내보내지 않는다. */

@@ -10,7 +10,7 @@
         {
           "modelId": "gemini-3.8-flash",
           "name": "Gemini-3.8-Flash",
-          "description": "multimodal coding and scan model.",
+          "description": "Multimodal coding and scanning model.",
           "providerModelId": "gemini-3.8-flash-high",
           "contextWindow": 1048576,
           "effort": {

@@ -82,10 +82,7 @@ const DEFAULTS = {
 const MCP_TOOL_NAME = /^[A-Za-z_][A-Za-z0-9_.-]{0,47}$/;
 
 function bridgeNote(): string {
-  return [
-    "Your tools are provided through MCP and appear with the prefix `mcp_fleet_`: the tool the instructions above call `Bash` is named `mcp_fleet_Bash`, and so on.",
-    "Call tools by those prefixed names. Tools mentioned in the instructions that you do not have are not available; do not try to work around that with other means.",
-  ].join(" ");
+  return "Call tools by their listed `mcp_fleet_` names (`Bash` → `mcp_fleet_Bash`). Do not work around unavailable tools.";
 }
 
 /** MCP로 노출할 이름: agy·Gemini가 받는 형식이면 그대로, 아니면 되돌릴 수 있는 별칭. */
@@ -102,7 +99,13 @@ function toolCatalog(request: CanonicalResponseRequest): { tools: BridgeToolDef[
   for (const tool of request.tools ?? []) {
     const exposed = exposedName(tool.name, names);
     names.set(exposed, tool.name);
-    tools.push({ name: exposed, description: tool.description ?? "", inputSchema: tool.parameters });
+    // 이름이 바뀐 도구에만, 원래 이름을 설명 끝에 코드로 덧붙인다(전체 매핑표는 프롬프트에 넣지 않는다).
+    const description = tool.description ?? "";
+    tools.push({
+      name: exposed,
+      description: exposed === tool.name ? description : `${description}${description.length > 0 ? " " : ""}Original tool name: ${tool.name}.`,
+      inputSchema: tool.parameters,
+    });
   }
   return { tools, names };
 }

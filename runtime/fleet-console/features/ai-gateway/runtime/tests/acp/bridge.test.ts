@@ -19,7 +19,7 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
-async function setup() {
+async function setup(bridgeOptions: { replayBudgetChars?: number } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "fleet-bridge-test-"));
   roots.push(root);
   const logPath = path.join(root, "fake.log");
@@ -29,7 +29,7 @@ async function setup() {
     commandArgs: [fakeAgy],
     env: { ...process.env, FAKE_LOG: logPath, FAKE_BRIDGE: "1" },
   });
-  const bridge = createAgyAcpBridge({ port, coalesceMs: 10, silenceMs: 5_000 });
+  const bridge = createAgyAcpBridge({ port, coalesceMs: 10, silenceMs: 5_000, ...bridgeOptions });
   bridges.push(bridge);
   const log = async () => (await readFile(logPath, "utf8").catch(() => "")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
   return { bridge, log };
@@ -105,6 +105,30 @@ describe("agy ACP bridge", () => {
     const replay = entries.filter((entry) => typeof entry.prompt === "string").at(-1)!.prompt as string;
     expect(replay).toContain('<turn role="user">compacted summary</turn>');
     expect(replay).toContain('<tool_result tool_use_id="' + use.id + '">a.txt</tool_result>');
+  });
+
+  it("keeps call/result pairs, roles and the latest user instruction when the replayed history exceeds its budget", async () => {
+    const { bridge, log } = await setup({ replayBudgetChars: 600 });
+    const long = "x".repeat(3_000);
+    // A tool loop is in progress: the newest user instruction is inside the history, followed by one call/result pair.
+    await turn(bridge, [
+      user("first goal"),
+      call("c1", { command: "old" }), result("c1", long), assistant("ok1"),
+      user("LATEST: finish the migration"),
+      call("c2", { command: "new" }), result("c2", long),
+    ]);
+    const replay = (await log()).filter((entry) => typeof entry.prompt === "string").at(-1)!.prompt as string;
+    // The oldest exchange left as a pair (call and result together), and the omission is marked outside any turn.
+    expect(replay).toContain("[2 earlier turns omitted]");
+    expect(replay).not.toContain('id="c1"');
+    expect(replay).not.toContain('tool_use_id="c1"');
+    // The in-progress pair stays together with its (clipped, marked) result, and nothing is spoken as another role.
+    expect(replay).toContain('<tool_use id="c2" name="Bash">');
+    expect(replay).toMatch(/<tool_result tool_use_id="c2" truncated="true">/);
+    expect(replay).toContain('<turn role="user">LATEST: finish the migration</turn>');
+    expect(replay.match(/<turn role="user">/g)).toHaveLength(3);
+    expect(replay.match(/<turn role="assistant">/g)).toHaveLength(2);
+    expect(replay.trimEnd().endsWith("Continue from the latest turn above.")).toBe(true);
   });
 
   it("recovers by replay after agy gives up on a held tool call, and never lets the abandoned session's output out", async () => {
