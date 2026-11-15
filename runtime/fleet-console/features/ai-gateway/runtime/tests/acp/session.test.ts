@@ -36,9 +36,8 @@ async function harness(models?: string) {
 
 const open = (port: ReturnType<typeof createAgyAcpSessionPort>, model: string) => port.open({
   model,
-  cwd: os.tmpdir(),
   systemPrompt: "be brief",
-  mcpServers: [{ name: "fleet", url: "http://127.0.0.1:1/mcp", headers: { Authorization: "Bearer t" } }],
+  toolOnly: { serverName: "fleet", url: "http://127.0.0.1:1/mcp", headers: { Authorization: "Bearer t" }, toolNames: ["ping"], callTimeoutSeconds: 3600 },
 });
 
 describe("agy ACP session port", () => {
@@ -62,11 +61,13 @@ describe("agy ACP session port", () => {
       const argv = log[0]?.argv as string[];
       // The session is pinned to Fleet's own gemini-dir, never the person's default, and never resumes.
       expect(argv.slice(0, 5)).toEqual(["acp", "--gemini-dir", expect.stringContaining(sessionsDir), "--app-data-dir", "fleet-agy"]);
+      // No built-in tools: a custom agent, never the skip-permissions mode.
+      expect(argv).toContain("--agent");
+      expect(argv).not.toContain("--dangerously-skip-permissions");
       expect(log.some((entry) => entry.method === "session/load" || entry.method === "session/resume")).toBe(false);
       const created = log.find((entry) => entry.method === "session/new")?.params as Record<string, unknown>;
-      expect(created.mcpServers).toEqual([
-        { type: "http", name: "fleet", url: "http://127.0.0.1:1/mcp", headers: [{ name: "Authorization", value: "Bearer t" }] },
-      ]);
+      // The MCP server is attached through the gemini-dir config file, not through ACP.
+      expect(created.mcpServers).toEqual([]);
       expect(created._meta).toEqual({ antigravity: { systemPrompt: { append: "be brief" } } });
       const configured = log.filter((entry) => entry.method === "session/set_config_option").map((entry) => entry.params);
       expect(configured).toEqual([

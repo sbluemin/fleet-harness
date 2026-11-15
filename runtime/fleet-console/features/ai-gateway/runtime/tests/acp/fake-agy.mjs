@@ -43,7 +43,8 @@ async function connectMcp() {
   let config;
   try { config = JSON.parse(readFileSync(`${geminiDir}/config/mcp_config.json`, "utf8")).mcpServers.fleet; } catch { return; }
   mcp = { url: config.url, headers: config.headers };
-  await mcpRpc("initialize", { protocolVersion: "2025-11-25", capabilities: {} });
+  // The session-port tests point at an address nothing listens on: a failed connect is logged, not fatal.
+  try { await mcpRpc("initialize", { protocolVersion: "2025-11-25", capabilities: {} }); } catch (error) { log({ mcpUnreachable: String(error) }); return; }
   const listed = await mcpRpc("tools/list", {});
   log({ mcpTools: listed.tools.map((tool) => tool.name), mcpSchemas: listed.tools.map((tool) => tool.inputSchema), eager: Object.keys(config.tools ?? {}), timeoutSeconds: config.timeoutSeconds });
 }

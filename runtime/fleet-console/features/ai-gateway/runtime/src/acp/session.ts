@@ -5,7 +5,6 @@ import { mkdir, rm } from "node:fs/promises";
 import {
   AcpAuthRequiredError,
   AcpModelUnavailableError,
-  type AcpMcpServer,
   type AcpPromptBlock,
   type AcpSession,
   type AcpSessionEvent,
@@ -78,15 +77,6 @@ function configOptions(result: NewSessionResult): ConfigOption[] {
     });
     return [{ id: entry.id, values }];
   });
-}
-
-function toWireMcpServer(server: AcpMcpServer): Record<string, unknown> {
-  return {
-    type: "http",
-    name: server.name,
-    url: server.url,
-    headers: Object.entries(server.headers ?? {}).map(([name, value]) => ({ name, value })),
-  };
 }
 
 function toWirePrompt(blocks: readonly AcpPromptBlock[]): unknown[] {
@@ -209,8 +199,7 @@ function terminate(child: ChildProcessWithoutNullStreams): Promise<void> {
  * `agy acp`를 세션마다 하나씩 띄우는 포트 구현.
  *
  * resume·loadSession은 쓰지 않는다 — Fleet이 다시 떠도 언제나 `session/new`다.
- * 권한 요청은 `--dangerously-skip-permissions`로 아예 오지 않게 하고, 와도 허용으로 답한다. 내장 도구 없는 모드
- * (`toolOnly`)는 반대로 플래그를 빼고 그 서버의 도구 호출만 허용한다.
+ * 내장 도구는 없다(`toolOnly`): 권한 요청은 그 서버의 도구 호출만 허용하고 나머지는 모두 거절한다.
  */
 export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionPort {
   const env = options.env ?? process.env;
@@ -221,17 +210,10 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
       const selection = resolveAcpModelSelection(open.model, open.thoughtLevel);
       const paths = resolveAgySessionPaths(options.sessionsDir, open.sessionKey ?? randomUUID());
       const removeSessionDir = (): Promise<void> => rm(paths.geminiDir, { recursive: true, force: true });
-      let cwd = open.cwd;
-      let modeArgs: readonly string[];
+      let layout: Awaited<ReturnType<typeof writeToolOnlyLayout>>;
       try {
         await mkdir(paths.geminiDir, { recursive: true });
-        if (open.toolOnly) {
-          const layout = await writeToolOnlyLayout(paths.geminiDir, open.toolOnly);
-          cwd = layout.cwd;
-          modeArgs = layout.args;
-        } else {
-          modeArgs = ["--dangerously-skip-permissions", ...(open.addDirs ?? []).flatMap((dir) => ["--add-dir", dir])];
-        }
+        layout = await writeToolOnlyLayout(paths.geminiDir, open.toolOnly);
       } catch (error) {
         await removeSessionDir();
         throw error;
@@ -240,9 +222,9 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
         ...(options.commandArgs ?? []),
         "acp",
         ...agyAcpStateArgs(paths),
-        ...modeArgs,
+        ...layout.args,
       ];
-      const child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
+      const child = spawn(command, args, { cwd: layout.cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
       let stderrTail = "";
       child.stderr.on("data", (chunk: Buffer) => {
         stderrTail = (stderrTail + chunk.toString("utf8")).slice(-STDERR_TAIL_BYTES);
@@ -259,7 +241,7 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
         },
         onRequest: (method, params) => {
           if (method === "session/request_permission") {
-            return open.toolOnly ? toolOnlyOutcome(params, toolOnlyTitlePrefix(open.toolOnly.serverName)) : allowOutcome(params);
+            return toolOnlyOutcome(params, toolOnlyTitlePrefix(open.toolOnly.serverName));
           }
           throw new JsonRpcError(-32601, `Method not supported: ${method}`);
         },
@@ -287,8 +269,9 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
           clientInfo: { name: "fleet", version: "1" },
         }, { timeoutMs: STARTUP_TIMEOUT_MS });
         const created = await rpc.request<NewSessionResult>("session/new", {
-          cwd,
-          mcpServers: open.mcpServers.map(toWireMcpServer),
+          cwd: layout.cwd,
+          // 서버는 ACP가 아니라 gemini-dir의 설정 파일로 붙는다(tool-only.ts).
+          mcpServers: [],
           _meta: { antigravity: { systemPrompt: { append: open.systemPrompt } } },
         }, { timeoutMs: STARTUP_TIMEOUT_MS });
         const id = typeof created.sessionId === "string" ? created.sessionId : undefined;
@@ -329,15 +312,5 @@ function toolOnlyOutcome(params: unknown, titlePrefix: string): unknown {
   const choice = options.find((row) => row.kind === wanted);
   return typeof choice?.optionId === "string"
     ? { outcome: { outcome: "selected", optionId: choice.optionId } }
-    : { outcome: { outcome: "cancelled" } };
-}
-
-/** `session/request_permission`에는 허용 선택지를 고른다. `allow_always`가 있으면 그것을, 없으면 첫 허용을 쓴다. */
-function allowOutcome(params: unknown): unknown {
-  const options = record(params)?.options;
-  const rows = Array.isArray(options) ? options.flatMap((option) => (record(option) ? [record(option)!] : [])) : [];
-  const allow = rows.find((row) => row.kind === "allow_always") ?? rows.find((row) => row.kind === "allow_once");
-  return typeof allow?.optionId === "string"
-    ? { outcome: { outcome: "selected", optionId: allow.optionId } }
     : { outcome: { outcome: "cancelled" } };
 }

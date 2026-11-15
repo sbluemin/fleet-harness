@@ -8,13 +8,6 @@
  * - 고른 모델이 계정의 `availableModels`에 없으면 `open`이 즉시 `AcpModelUnavailableError`로 실패한다.
  */
 
-/** 호스트가 agy 세션에 붙이는 HTTP MCP 서버 하나 — Fleet MCP가 Bearer 헤더로 연결된다. */
-export interface AcpMcpServer {
-  readonly name: string;
-  readonly url: string;
-  readonly headers?: Readonly<Record<string, string>>;
-}
-
 export type AcpThoughtLevel = "low" | "medium" | "high";
 
 /**
@@ -23,7 +16,7 @@ export type AcpThoughtLevel = "low" | "medium" | "high";
  * agy 1.5.9 실측으로 통과한 조합이다: 세션 전용 gemini-dir에 내장 컴포넌트를 뺀 커스텀 에이전트(`--agent`)와
  * `config/mcp_config.json`을 써 두고 띄운다. MCP 서버는 ACP `session/new`가 아니라 이 설정 파일로 붙고(그래서
  * 도구 목록은 세션을 열 때 정해진다), 도구는 `eager`로 직접 노출한다. 권한 요청은 이 서버의 도구만 허용한다.
- * 세션 cwd는 gemini-dir 아래의 빈 디렉터리다(`AcpSessionOpenOptions.cwd`는 이 모드에서 쓰지 않는다).
+ * 세션 cwd는 gemini-dir 아래의 빈 디렉터리다.
  */
 export interface AcpToolOnlyConfig {
   /** MCP 서버 이름. agy가 도구를 `mcp_<serverName>_<tool>`로 노출한다. */
@@ -40,14 +33,10 @@ export interface AcpSessionOpenOptions {
   /** 카탈로그의 Gemini 모델 id(예: `gemini-4-argon`). agy 쪽 와이어 id 해석은 포트 구현이 맡는다. */
   readonly model: string;
   readonly thoughtLevel?: AcpThoughtLevel;
-  readonly cwd: string;
-  /** 쓰기를 허용할 추가 디렉터리 — `agy acp --add-dir`로 옮긴다. */
-  readonly addDirs?: readonly string[];
   /** 세션 시스템 프롬프트 — `_meta.antigravity.systemPrompt.append`로 붙는다. */
   readonly systemPrompt: string;
-  readonly mcpServers: readonly AcpMcpServer[];
-  /** 주면 내장 도구 없는 모드로 연다. 이때 `mcpServers`는 비워 둔다(서버는 설정 파일로 붙는다). */
-  readonly toolOnly?: AcpToolOnlyConfig;
+  /** agy는 이 MCP 서버의 도구만 쓴다. 이 포트에는 다른 모드가 없다. */
+  readonly toolOnly: AcpToolOnlyConfig;
   /** 세션 전용 gemini-dir의 이름으로 쓸 키(`[A-Za-z0-9._-]+`). 생략하면 새 uuid. 세션을 닫으면 그 디렉터리를 지운다. */
   readonly sessionKey?: string;
   /** 세션을 닫으면 자식 프로세스까지 끝낸다. */

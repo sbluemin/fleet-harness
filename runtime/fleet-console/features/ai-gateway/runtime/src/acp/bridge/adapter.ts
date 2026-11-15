@@ -1,5 +1,4 @@
 import { createHash, randomUUID } from "node:crypto";
-import os from "node:os";
 
 import {
   canonicalMessageImages,
@@ -487,9 +486,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       const acp = await this.options.port.open({
         model: request.model,
         thoughtLevel: selection.thoughtLevel,
-        cwd: os.tmpdir(),
         systemPrompt: [sessionInstructions(request), bridgeNote(), ...(replayed ? [REPLAY_SYSTEM_NOTE] : [])].filter((part) => part.length > 0).join("\n\n"),
-        mcpServers: [],
         toolOnly: {
           serverName: MCP_SERVER_NAME,
           url: registration.url,
