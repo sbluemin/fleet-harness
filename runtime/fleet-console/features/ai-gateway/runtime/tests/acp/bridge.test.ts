@@ -36,7 +36,18 @@ async function setup(bridgeOptions: { replayBudgetChars?: number } = {}) {
   return { bridge, log };
 }
 
-const BASH = { type: "function" as const, name: "Bash", parameters: { type: "object", properties: { command: { type: "string" } } } };
+// The command schema carries what Claude Code / Fleet tools carry in real life: an ECMAScript `\uXXXX` pattern nested in oneOf/items, and a lookahead.
+const BASH = {
+  type: "function" as const,
+  name: "Bash",
+  parameters: {
+    type: "object",
+    properties: {
+      command: { type: "string", pattern: String.raw`^(?!rm )\S.*$` },
+      add: { type: "object", properties: { evidence: { type: "array", items: { oneOf: [{ type: "object", properties: { note: { type: "string", pattern: String.raw`^[^\u0000-\u001f\u007f]+$` } } }] } } } },
+    },
+  },
+};
 const user = (text: string): CanonicalInputItem => ({ type: "message", role: "user", content: text });
 const assistant = (text: string): CanonicalInputItem => ({ type: "message", role: "assistant", content: text });
 const call = (id: string, args: object): CanonicalInputItem => ({ type: "function_call", call_id: id, name: "Bash", arguments: JSON.stringify(args) });
@@ -102,6 +113,12 @@ describe("agy ACP bridge", () => {
     const argv = entries[0]!.argv as string[];
     expect(argv).toContain("--agent");
     expect(argv).not.toContain("--dangerously-skip-permissions");
+    // agy's toolbox (Go RE2) refuses `\uXXXX` and lookahead patterns and would fail the whole session: the former is respelled, the latter dropped.
+    const schema = (entries.find((entry) => entry.mcpSchemas)!.mcpSchemas as {
+      properties: { command: unknown; add: { properties: { evidence: { items: { oneOf: { properties: { note: { pattern: string } } }[] } } } } };
+    }[])[0]!;
+    expect(schema.properties.command).toEqual({ type: "string" });
+    expect(schema.properties.add.properties.evidence.items.oneOf[0]!.properties.note.pattern).toBe(String.raw`^[^\x{0000}-\x{001f}\x{007f}]+$`);
     expect(entries.find((entry) => entry.mcpTools)).toMatchObject({ mcpTools: ["Bash"], eager: ["Bash"], timeoutSeconds: 3600 });
   });
 

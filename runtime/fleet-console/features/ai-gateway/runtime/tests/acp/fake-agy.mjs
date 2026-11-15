@@ -45,7 +45,7 @@ async function connectMcp() {
   mcp = { url: config.url, headers: config.headers };
   await mcpRpc("initialize", { protocolVersion: "2025-11-25", capabilities: {} });
   const listed = await mcpRpc("tools/list", {});
-  log({ mcpTools: listed.tools.map((tool) => tool.name), eager: Object.keys(config.tools ?? {}), timeoutSeconds: config.timeoutSeconds });
+  log({ mcpTools: listed.tools.map((tool) => tool.name), mcpSchemas: listed.tools.map((tool) => tool.inputSchema), eager: Object.keys(config.tools ?? {}), timeoutSeconds: config.timeoutSeconds });
 }
 
 function request(method, params) {

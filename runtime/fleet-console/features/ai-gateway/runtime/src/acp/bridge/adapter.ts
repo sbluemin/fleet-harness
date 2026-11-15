@@ -102,6 +102,67 @@ function exposedName(name: string, taken: ReadonlyMap<string, string>): string {
   return taken.has(base) && taken.get(base) !== name ? `${base.slice(0, 38)}_${randomUUID().slice(0, 8)}` : base;
 }
 
+/**
+ * agy builds its toolbox with Go's RE2 and refuses the whole session when one tool's schema has a `pattern` RE2 cannot parse
+ * (measured: `'^[^\\u0000-\\u001f\\u007f]+$' is not valid regex: … invalid escape sequence: \\u`; the user sees only a generic "network
+ * issue" turn). JSON Schema patterns are ECMAScript, so two things differ:
+ * - `\uXXXX` (and `\u{X…}`) is spelled `\x{XXXX}` in RE2 — converted, same meaning.
+ * - lookahead/lookbehind (`(?=` `(?!` `(?<=` `(?<!`) and backreferences (`\1`…`\9`) do not exist in RE2 — that one `pattern` is dropped.
+ * Dropping is safe: the schema agy sees only steers the model; the input is still validated by Claude Code and by the MCP
+ * server that really runs the tool. Only `pattern` / `patternProperties` keys are touched; nothing else is guessed at.
+ */
+function re2Pattern(pattern: string): string | undefined {
+  let out = "";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index]!;
+    if (char === "\\") {
+      const next = pattern[index + 1];
+      if (next === undefined) return undefined;
+      if (next === "u") {
+        const braced = /^\{([0-9a-fA-F]{1,6})\}/.exec(pattern.slice(index + 2));
+        const plain = /^[0-9a-fA-F]{4}/.exec(pattern.slice(index + 2));
+        if (braced) { out += `\\x{${braced[1]}}`; index += 1 + braced[0].length; continue; }
+        if (plain) { out += `\\x{${plain[0]}}`; index += 5; continue; }
+        return undefined;
+      }
+      if (/[1-9]/.test(next) || next === "k") return undefined;
+      out += char + next;
+      index += 1;
+      continue;
+    }
+    if (char === "(" && /^\(\?(?:=|!|<=|<!)/.test(pattern.slice(index))) return undefined;
+    out += char;
+  }
+  return out;
+}
+
+const SCHEMA_VALUE_KEYWORDS: ReadonlySet<string> = new Set(["default", "const", "enum", "examples", "example"]);
+
+function normalizeSchema(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(normalizeSchema);
+  if (typeof node !== "object" || node === null) return node;
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+    if (SCHEMA_VALUE_KEYWORDS.has(key)) { out[key] = value; continue; }
+    if (key === "pattern" && typeof value === "string") {
+      const converted = re2Pattern(value);
+      if (converted !== undefined) out[key] = converted;
+      continue;
+    }
+    if (key === "patternProperties" && typeof value === "object" && value !== null && !Array.isArray(value)) {
+      const kept: Record<string, unknown> = {};
+      for (const [regex, schema] of Object.entries(value as Record<string, unknown>)) {
+        const converted = re2Pattern(regex);
+        if (converted !== undefined) kept[converted] = normalizeSchema(schema);
+      }
+      out[key] = kept;
+      continue;
+    }
+    out[key] = normalizeSchema(value);
+  }
+  return out;
+}
+
 function toolCatalog(request: CanonicalResponseRequest): { tools: BridgeToolDef[]; names: Map<string, string> } {
   const names = new Map<string, string>();
   const tools: BridgeToolDef[] = [];
@@ -113,7 +174,7 @@ function toolCatalog(request: CanonicalResponseRequest): { tools: BridgeToolDef[
     tools.push({
       name: exposed,
       description: exposed === tool.name ? description : `${description}${description.length > 0 ? " " : ""}Original tool name: ${tool.name}.`,
-      inputSchema: tool.parameters,
+      inputSchema: normalizeSchema(tool.parameters) as Record<string, unknown>,
     });
   }
   return { tools, names };
