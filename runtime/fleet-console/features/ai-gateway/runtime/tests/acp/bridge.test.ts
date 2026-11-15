@@ -41,8 +41,8 @@ const assistant = (text: string): CanonicalInputItem => ({ type: "message", role
 const call = (id: string, args: object): CanonicalInputItem => ({ type: "function_call", call_id: id, name: "Bash", arguments: JSON.stringify(args) });
 const result = (id: string, output: string): CanonicalInputItem => ({ type: "function_call_output", call_id: id, output });
 
-async function turn(bridge: AgyAcpBridge, input: CanonicalInputItem[]) {
-  const request: CanonicalResponseRequest = { model: MODEL, input, instructions: "be brief", tools: [BASH], stream: true };
+async function turn(bridge: AgyAcpBridge, input: CanonicalInputItem[], instructions = "be brief") {
+  const request: CanonicalResponseRequest = { model: MODEL, input, instructions, tools: [BASH], stream: true };
   const response = await bridge.stream(request, { apiKey: "" });
   if (!response.ok) throw new Error(`bridge refused with ${response.status}`);
   const events: CanonicalResponseEvent[] = [];
@@ -65,6 +65,18 @@ async function until(check: () => Promise<boolean>): Promise<void> {
 }
 
 describe("agy ACP bridge", () => {
+  it("drops the header and identity Claude Code puts first in system and keeps the Fleet instruction", async () => {
+    const { bridge, log } = await setup();
+    const header = "x-anthropic-billing-header: cc_version=2.1.325.ff3; cc_entrypoint=sdk-cli;";
+    const identity = "You are a Claude agent, built on Anthropic's Claude Agent SDK.";
+    await turn(bridge, [user("hi")], [header, identity, "FLEET: you are a member"].join("\n\n"));
+    const opened = (await log()).find((entry) => entry.method === "session/new") as { params: { _meta: { antigravity: { systemPrompt: { append: string } } } } };
+    const append = opened.params._meta.antigravity.systemPrompt.append;
+    expect(append).toContain("FLEET: you are a member");
+    expect(append).not.toContain("x-anthropic-billing-header");
+    expect(append).not.toContain("You are a Claude agent");
+  });
+
   it("ends a response with tool_use, resumes the same agy prompt on the tool_result, then takes a new turn on the same session", async () => {
     const { bridge, log } = await setup();
     const first = await turn(bridge, [user('TOOL:Bash:{"command":"ls"}')]);

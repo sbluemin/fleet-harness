@@ -25,6 +25,7 @@ import {
   replayBlocks,
   userTurnBlocks,
 } from "./history.js";
+import { stripClaudeCodeIdentity } from "./claude-code-system.js";
 import { BridgeMcpServer, type BridgeToolDef, type McpResultContent, type McpToolOutcome } from "./mcp-server.js";
 import {
   BridgeSession,
@@ -326,7 +327,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         model: request.model,
         thoughtLevel: selection.thoughtLevel,
         cwd: os.tmpdir(),
-        systemPrompt: [request.instructions ?? "", bridgeNote(), ...(replayed ? [REPLAY_SYSTEM_NOTE] : [])].filter((part) => part.length > 0).join("\n\n"),
+        systemPrompt: [stripClaudeCodeIdentity(request.instructions ?? ""), bridgeNote(), ...(replayed ? [REPLAY_SYSTEM_NOTE] : [])].filter((part) => part.length > 0).join("\n\n"),
         mcpServers: [],
         toolOnly: {
           serverName: MCP_SERVER_NAME,
