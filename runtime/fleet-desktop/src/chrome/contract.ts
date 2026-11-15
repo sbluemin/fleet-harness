@@ -161,7 +161,7 @@ export type ChromeAction =
   | { readonly action: "annotate-inspect"; readonly x: number; readonly y: number; readonly seq: number }
   | { readonly action: "annotate-capture"; readonly seq: number }
   | { readonly action: "annotate-done"; readonly png: string | null }
-  | { readonly action: "viewport"; readonly preset: "responsive" | "mobile" | "tablet" }
+  | { readonly action: "viewport"; readonly preset: "responsive" | "mobile" | "tablet"; readonly width?: number; readonly height?: number }
   | { readonly action: "profile"; readonly profile: string | null }
   | { readonly action: "profile-confirm"; readonly profile: string | null }
   | { readonly action: "default-profile"; readonly profile: string | null }
@@ -268,7 +268,15 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "annotate-inspect": return make(typeof body.x === "number" && typeof body.y === "number" && Number.isFinite(body.x) && Number.isFinite(body.y) && typeof body.seq === "number" ? { action: "annotate-inspect", x: body.x, y: body.y, seq: body.seq } : null);
     case "annotate-capture": return make(typeof body.seq === "number" ? { action: "annotate-capture", seq: body.seq } : null);
     case "annotate-done": return make(body.png === null || (typeof body.png === "string" && body.png.length <= 3_500_000) ? { action: "annotate-done", png: body.png as string | null } : null);
-    case "viewport": return make(body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? { action: "viewport", preset: body.preset } : null);
+    case "viewport": {
+      if (body.preset !== "responsive" && body.preset !== "mobile" && body.preset !== "tablet") return null;
+      const sized = body.width !== undefined || body.height !== undefined;
+      if (!sized) return make({ action: "viewport", preset: body.preset });
+      const width = body.width;
+      const height = body.height;
+      if (typeof width !== "number" || typeof height !== "number" || !Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height > 2400 || height < 1 || width > 3840) return null;
+      return make({ action: "viewport", preset: body.preset, width, height });
+    }
     case "profile": case "profile-confirm": case "default-profile": return make(PROFILES.has(body.profile) ? { action: name, profile: body.profile as string | null } : null);
     case "import-run": return make(str(body.profileId, 200) && body.profileId.length > 0 ? { action: "import-run", profileId: body.profileId } : null);
     case "control": return make(body.control === "take" || body.control === "return" || body.control === "stop" ? { action: "control", control: body.control } : null);

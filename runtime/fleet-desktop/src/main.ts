@@ -374,7 +374,7 @@ async function boot(): Promise<void> {
     perform: (command) => {
       if (command === "check") void shellUpdater?.check();
       else if (command === "download") void shellUpdater?.download();
-      else shellUpdater?.restart();
+      else void shellUpdater?.restart();
     },
   });
   const subscribeShellUpdates = async (origin: string): Promise<void> => {
@@ -658,7 +658,8 @@ async function boot(): Promise<void> {
     const contents = view.webContents;
     if (contents.isDestroyed()) return null;
     let image;
-    try { image = await contents.capturePage(); } catch { return null; }
+    // 빈 rect 는 뷰 전체다. stayHidden false · stayAwake true 는 탭 캡처와 같이, 이 복사 동안 렌더러를 보이는 상태로 두고 슬립을 막는다.
+    try { image = await contents.capturePage({ x: 0, y: 0, width: 0, height: 0 }, { stayHidden: false, stayAwake: true }); } catch { return null; }
     if (image.isEmpty()) {
       try {
         const shot = await contents.debugger.sendCommand("Page.captureScreenshot", { format: "jpeg", quality: 72 }) as { data?: unknown };
@@ -1290,6 +1291,7 @@ async function boot(): Promise<void> {
       currentVersion: () => app.getVersion(),
       publish: (snapshot) => { publishShellUpdate(snapshot); refreshNativeUpdateActions?.(); },
       log: (message) => logger.error(message),
+      prepareToQuit: () => lifecycle.prepareToQuit(),
       ...(developmentConfigPath ? { developmentConfigPath } : {}),
     })
     : null;
@@ -1301,7 +1303,7 @@ async function boot(): Promise<void> {
       version: () => shellUpdater?.snapshot().version ?? null,
       check: () => { void shellUpdater?.check(); },
       download: () => { void shellUpdater?.download(); },
-      restart: () => shellUpdater?.restart(),
+      restart: () => { void shellUpdater?.restart(); },
     };
   const actions = {
     show: () => { void lifecycle.show(); },

@@ -60,18 +60,26 @@ describe("desktop lifecycle", () => {
     }
   });
 
-  it("keeps macOS close unguarded so the application lifecycle remains active", () => {
+  it("hides a macOS window on close and lets it close once quit preparation has started", async () => {
     const originalPlatform = process.platform;
     Object.defineProperty(process, "platform", { value: "darwin", configurable: true });
     try {
       let close: ((event: { preventDefault(): void }) => void) | undefined;
+      let finishStop: (() => void) | undefined;
       const window = { base: { on: vi.fn((_event: string, listener: typeof close) => { close = listener; }) }, isDestroyed: () => false, show: vi.fn(), focus: vi.fn(), hide: vi.fn() };
-      const lifecycle = createDesktopLifecycle({ on: vi.fn(), quit: vi.fn() } as never, async () => window as never, async () => undefined);
+      const lifecycle = createDesktopLifecycle({ on: vi.fn(), quit: vi.fn() } as never, async () => window as never, () => new Promise<void>((resolve) => { finishStop = resolve; }));
       lifecycle.attachWindow(window as never);
-      const event = { preventDefault: vi.fn() };
-      close?.(event);
-      expect(event.preventDefault).not.toHaveBeenCalled();
-      expect(window.hide).not.toHaveBeenCalled();
+      const hidden = { preventDefault: vi.fn() };
+      close?.(hidden);
+      expect(hidden.preventDefault).toHaveBeenCalledOnce();
+      expect(window.hide).toHaveBeenCalledOnce();
+      const preparation = lifecycle.prepareToQuit();
+      const quitting = { preventDefault: vi.fn() };
+      close?.(quitting);
+      expect(quitting.preventDefault).not.toHaveBeenCalled();
+      expect(window.hide).toHaveBeenCalledOnce();
+      finishStop?.();
+      await preparation;
     } finally {
       Object.defineProperty(process, "platform", { value: originalPlatform, configurable: true });
     }

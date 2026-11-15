@@ -260,7 +260,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       if (action === "viewport") {
         const preset = body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? body.preset : undefined;
         const colorScheme = body.colorScheme === "light" || body.colorScheme === "dark" ? body.colorScheme : body.colorScheme === null ? null : undefined;
-        writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user", spaceId(body)) }); return true;
+        writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user", spaceId(body), { remoteFit: isRemoteBrowserControl(req) }) }); return true;
       }
       if (action === "surface") {
         if ((body.action !== "open" && body.action !== "close" && body.action !== "focus" && body.action !== "mode")

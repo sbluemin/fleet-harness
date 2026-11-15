@@ -14,8 +14,9 @@ export function createDesktopLifecycle(app: App, createWindow: () => Promise<Des
     window = created;
     if (closeGuardAttached.has(created)) return;
     closeGuardAttached.add(created);
+    // macOS의 빨간 단추도 프로세스를 끝내지 않는다. 종료 준비가 아니면 창만 숨겨 호스트가 남게 하고, Cmd+Q가 준비를 시작한 뒤에만 닫힌다.
     created.base.on("close", (event) => {
-      if (!quitPreparation && process.platform !== "darwin") {
+      if (!quitPreparation) {
         event.preventDefault();
         created.hide();
       }

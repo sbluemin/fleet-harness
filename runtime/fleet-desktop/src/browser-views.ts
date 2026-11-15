@@ -320,6 +320,8 @@ interface LiveView {
    * 지나므로, 잠긴 동안에는 여기 적힌 것만 통과시킨다. 오래된 것은 버린다.
    */
   agentKeys: { type: "keyDown" | "keyUp"; code: string; at: number }[];
+  /** 열람 세션의 `beginFrameSubscription`. 최소화·가림과 무관하게 프레임 싱크를 붙들고, 열람이 끝나면 놓는다. */
+  frameSubscribed: boolean;
 }
 
 /**
@@ -432,6 +434,24 @@ function beforeInputModifiers(input: {
   return mods;
 }
 
+/**
+ * 원격 조작이 정한 논리 크기를 가용 자리 안에 넣는다. 비율은 유지하고, 자리가 더 크면 줄이지 않는다(1:1).
+ * 가로·세로를 따로 clamp 하면 호스트 창이 더 작을 때 비율이 깨지고 페이지 하단이 잘린다.
+ */
+function containedSize(requested: { readonly width: number; readonly height: number }, avail: { readonly width: number; readonly height: number }): { width: number; height: number } | null {
+  if (!(requested.width >= 1 && requested.height >= 1 && avail.width >= 1 && avail.height >= 1)) return null;
+  const scale = Math.min(1, avail.width / requested.width, avail.height / requested.height);
+  return { width: Math.max(1, Math.round(requested.width * scale)), height: Math.max(1, Math.round(requested.height * scale)) };
+}
+
+/** 사람이 명시한 responsive 크기만 뷰 bounds 를 바꾼다. 에이전트 에뮬레이션과 mobile/tablet 은 칸 크기를 유지한다. */
+function remoteFitOf(chrome: DesktopBrowserChrome | null | undefined): { width: number; height: number } | null {
+  const viewport = chrome?.viewport;
+  if (!viewport || viewport.preset !== "responsive" || viewport.setBy !== "user") return null;
+  if (!(viewport.width >= 1 && viewport.height >= 1)) return null;
+  return { width: viewport.width, height: viewport.height };
+}
+
 export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): DesktopBrowserViews {
   const fetchFor = deps.fetch ?? globalThis.fetch;
   const log = deps.log ?? (() => {});
@@ -512,6 +532,25 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (typeof entry.view.webContents.debugger?.sendCommand !== "function") return;
     void entry.view.webContents.debugger.sendCommand("Page.setInterceptFileChooserDialog", { enabled }).catch(() => undefined);
   };
+  const armFrameSubscription = (id: string): void => {
+    const entry = live.get(id);
+    if (!entry || entry.frameSubscribed) return;
+    const contents = entry.view.webContents as WebContents & { beginFrameSubscription?: (callback: () => void) => void };
+    if (typeof contents.isDestroyed === "function" && contents.isDestroyed()) return;
+    if (typeof contents.beginFrameSubscription !== "function") return;
+    try {
+      contents.beginFrameSubscription(() => markDirty(id));
+      entry.frameSubscribed = true;
+    } catch { /* 구독이 없어도 폴링 캡처는 계속한다. */ }
+  };
+  const disarmFrameSubscription = (entry: LiveView): void => {
+    if (!entry.frameSubscribed) return;
+    entry.frameSubscribed = false;
+    const contents = entry.view.webContents as WebContents & { endFrameSubscription?: () => void };
+    if (typeof contents.isDestroyed === "function" && contents.isDestroyed()) return;
+    if (typeof contents.endFrameSubscription !== "function") return;
+    try { contents.endFrameSubscription(); } catch { /* 뷰가 먼저 끊겼다. */ }
+  };
   const stopWatch = (id: string): void => {
     const watch = watches.get(id);
     if (!watch) return;
@@ -522,6 +561,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     clearHandle(watch, "timer");
     clearHandle(watch, "poll");
     if (wasWatching) {
+      const entry = live.get(id);
+      if (entry) disarmFrameSubscription(entry);
       setFileChooserIntercept(id, false);
       deps.onWatch?.(id, false);
     }
@@ -617,6 +658,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       watch.dirty = true;
       watch.sent = false;
       watch.lastJpeg = null;
+      armFrameSubscription(id);
       setFileChooserIntercept(id, true);
       deps.onWatch?.(id, true);
       kick(id);
@@ -698,6 +740,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     push({ sizes: [{ viewId, width: bounds.width, height: bounds.height, scale }] });
   };
 
+  /** 스냅샷의 크롬 뷰포트. 사람이 정한 responsive 크기일 때만 뷰를 그 비율로 놓는다. */
+  let remoteFit: { width: number; height: number } | null = null;
   const place = (entry: LiveView): void => {
     const target = deps.surface.target();
     // `visible` 은 사용자에게 보여 줄지(presentation)이지, 네이티브 setVisible 이 아니다. 자리가 있는 표면이 열려 있고 그 표시 탭일 때만 선다.
@@ -710,10 +754,16 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       entry.parent = host;
     }
     const contentBounds = host.contentBounds();
-    // 띄우지 않은 뷰도 표면의 페이지 자리 크기로 parking 한다 — 한 브라우저의 뷰 자리는 하나다. 자리가 없을 때 만들어져 기본 크기(800×600)로
-    // 놓인 뒤 한 번도 띄워지지 않은 에이전트 탭이, 사람 화면이 보고하는 크기와 따로 노는 것을 막는다.
-    if (pageSize) entry.parkViewport = { width: target!.page.width, height: target!.page.height };
-    const nextBounds = presented ? target!.page : parkedNativeBounds(entry.parkViewport, contentBounds);
+    const avail = presented ? target!.page : contentBounds;
+    const fit = remoteFit ? containedSize(remoteFit, avail) : null;
+    // 띄우지 않은 뷰도 같은 비율로 parking 한다. 맞춤이 없으면 표면의 페이지 자리 크기다 — 한 브라우저의 뷰 자리는 하나다.
+    if (fit) entry.parkViewport = fit;
+    else if (pageSize) entry.parkViewport = { width: target!.page.width, height: target!.page.height };
+    const nextBounds = fit
+      ? presented
+        ? { x: target!.page.x + Math.round((target!.page.width - fit.width) / 2), y: target!.page.y, width: fit.width, height: fit.height }
+        : parkedNativeBounds(fit, contentBounds)
+      : presented ? target!.page : parkedNativeBounds(entry.parkViewport, contentBounds);
     const boundsChanged = entry.lastBounds === null
       || entry.lastBounds.x !== nextBounds.x
       || entry.lastBounds.y !== nextBounds.y
@@ -797,7 +847,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const target = deps.surface.target();
     const known = target && target.page.width > 0 && target.page.height > 0 ? target.page : deps.surface.lastPage();
     const parkViewport = known ? { width: known.width, height: known.height } : defaultParkViewport(contentBounds);
-    const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null, agentKeys: [] };
+    const entry: LiveView = { view, spec, attached: false, parent: shell, lastScale: null, parkViewport, lastBounds: null, agentKeys: [], frameSubscribed: false };
     live.set(spec.id, entry);
     const contents = view.webContents;
     markSession(contents.session);
@@ -902,6 +952,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const drop = (id: string, report: boolean): void => {
     const entry = live.get(id);
     if (!entry) return;
+    disarmFrameSubscription(entry);
     live.delete(id);
     stopWatch(id);
     deps.passwords?.detachView(id);
@@ -999,6 +1050,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     else if (snapshot.generation < generation) return;
     epoch = next;
     generation = snapshot.generation;
+    remoteFit = remoteFitOf(snapshot.chrome);
     if (snapshot.shortcuts !== undefined) {
       registeredShortcuts = new Set(snapshot.shortcuts);
     }
@@ -1066,6 +1118,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     executed.clear();
     generation = -1;
     epoch = null;
+    remoteFit = null;
     outbox = emptyOutbox();
     if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null; }
   }

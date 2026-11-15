@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
-import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_STAGE_FILES, type DesktopBrowserChrome, type DesktopBrowserViewerSnapshot } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_STAGE_FILES, DESKTOP_BROWSER_VIEWER_EVENT, type DesktopBrowserChrome, type DesktopBrowserViewerSnapshot } from "@fleet-console/protocol/desktop";
 import { createBrowserActions } from "../src/browser-actions.js";
 import { createBrowserRemoteShell, remotePasswordPrompt } from "../src/browser-remote-shell.js";
 import { chromeControlFor, type SurfaceControl } from "../src/browser-surface.js";
@@ -173,8 +173,152 @@ describe("remote browser shell", () => {
       viewer.act(control(), "bar", { action: "navigate", url: "https://example.com/nope" });
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(posts.some((call) => call.url.includes("/navigate"))).toBe(false);
+      viewer.act(control(), "stage", { action: "viewport", preset: "responsive", width: 500, height: 850 });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(posts.some((call) => call.url.includes("/viewport"))).toBe(false);
       viewer.stop();
     }
+  });
+
+  it("sends a remote stage size only while controlling and restores the pane once when control ends", async () => {
+    const posts: { url: string; init: RequestInit | undefined }[] = [];
+    let push: ((body: DesktopBrowserViewerSnapshot) => void) | null = null;
+    const { viewer } = await openViewer(snapshot(true), posts);
+    const handle = control();
+    viewer.act(handle, "stage", { action: "viewport", preset: "responsive", width: 500, height: 850 });
+    await vi.waitFor(() => { if (!posts.some((call) => call.url.includes("/viewport"))) throw new Error("waiting"); });
+    const fit = posts.find((call) => call.url.includes("/viewport"));
+    expect(fit?.url.startsWith(`${ORIGIN}/api/v1/browser/objectives/global/viewport`)).toBe(true);
+    expect(JSON.parse(String(fit?.init?.body))).toEqual({ preset: "responsive", width: 500, height: 850, spaceId: "default" });
+    viewer.stop();
+
+    const streamed: { url: string; init: RequestInit | undefined }[] = [];
+    const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      streamed.push({ url: href, init });
+      if (href.includes("/viewer/stream")) return new Response("not found", { status: 404 });
+      if (href.includes("/frame")) {
+        return new Promise<Response>((_resolve, reject) => {
+          const abort = () => reject(new DOMException("aborted", "AbortError"));
+          if (init?.signal?.aborted) abort();
+          else init?.signal?.addEventListener("abort", abort, { once: true });
+        });
+      }
+      if (href.includes("/viewer/chrome") && !href.includes("/events")) return new Response(JSON.stringify(snapshot(true)), { status: 200 });
+      if (href.includes("/events")) {
+        return new Response(new ReadableStream<Uint8Array>({ start(controller) { push = (body) => controller.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_VIEWER_EVENT}\ndata: ${JSON.stringify(body)}\n\n`)); } }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const live = createRemoteBrowserViewer({
+      display: { apply() {}, conceal() {}, viewing: () => true, frame() {} },
+      fetch: fetchImpl as typeof fetch,
+      lang: "en",
+      localAct() {},
+    });
+    live.follow(ORIGIN);
+    live.toggle();
+    await vi.waitFor(() => { if (!push) throw new Error("waiting"); });
+    expect(streamed.some((call) => call.url.includes("/viewport"))).toBe(false);
+    push!(snapshot(false, "manager_disconnected"));
+    await vi.waitFor(() => { if (!streamed.some((call) => call.url.includes("/viewport"))) throw new Error("waiting"); });
+    const restored = streamed.filter((call) => call.url.includes("/viewport"));
+    expect(restored).toHaveLength(1);
+    expect(JSON.parse(String(restored[0]!.init?.body))).toEqual({ preset: "responsive", spaceId: "default" });
+    expect(restored[0]!.init?.credentials).toBe("include");
+    push!(snapshot(false, "manager_disconnected"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(streamed.filter((call) => call.url.includes("/viewport"))).toHaveLength(1);
+    live.stop();
+  });
+
+  it("restores every fitted space when remote control ends after switching spaces", async () => {
+    const posts: { url: string; init: RequestInit | undefined }[] = [];
+    const { viewer } = await openViewer(snapshot(true), posts);
+    const spaceControl = (spaceId: string): SurfaceControl => ({
+      ...control(),
+      space: () => spaceId,
+    });
+    viewer.act(spaceControl("commodore-a"), "stage", { action: "viewport", preset: "responsive", width: 500, height: 850 });
+    viewer.act(spaceControl("commodore-b"), "stage", { action: "viewport", preset: "responsive", width: 520, height: 900 });
+    await vi.waitFor(() => {
+      if (posts.filter((call) => call.url.includes("/viewport")).length < 2) throw new Error("waiting");
+    });
+
+    const beforeClose = posts.length;
+    viewer.act(spaceControl("commodore-b"), "bar", { action: "close-surface" });
+    await vi.waitFor(() => {
+      const restoreBodies = posts.slice(beforeClose)
+        .filter((call) => call.url.includes("/viewport"))
+        .map((call) => JSON.parse(String(call.init?.body)) as { preset: string; spaceId?: string });
+      expect(restoreBodies).toEqual(expect.arrayContaining([
+        { preset: "responsive", spaceId: "commodore-a" },
+        { preset: "responsive", spaceId: "commodore-b" },
+      ]));
+    });
+    viewer.stop();
+  });
+
+  it("retains pending viewport restores across host disconnect until a subsequent connected attempt succeeds", async () => {
+    const restoreCalls: { url: string; body: string }[] = [];
+    let push: ((body: DesktopBrowserViewerSnapshot) => void) | null = null;
+    let hostConnected = true;
+    const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      if (href.includes("/viewer/stream")) return new Response("not found", { status: 404 });
+      if (href.includes("/frame")) {
+        return new Promise<Response>((_resolve, reject) => {
+          const abort = () => reject(new DOMException("aborted", "AbortError"));
+          if (init?.signal?.aborted) abort();
+          else init?.signal?.addEventListener("abort", abort, { once: true });
+        });
+      }
+      if (href.includes("/viewer/chrome") && !href.includes("/events")) return new Response(JSON.stringify(snapshot(true)), { status: 200 });
+      if (href.includes("/events")) {
+        return new Response(new ReadableStream<Uint8Array>({ start(controller) { push = (body) => controller.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_VIEWER_EVENT}\ndata: ${JSON.stringify(body)}\n\n`)); } }), { status: 200 });
+      }
+      if (href.includes("/viewport")) {
+        const body = String(init?.body ?? "");
+        restoreCalls.push({ url: href, body });
+        if (!hostConnected) return new Response(JSON.stringify({ error: "browser_unavailable" }), { status: 409 });
+        return new Response("{}", { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const viewer = createRemoteBrowserViewer({
+      display: { apply() {}, conceal() {}, viewing: () => true, frame() {} },
+      fetch: fetchImpl as typeof fetch,
+      lang: "en",
+      localAct() {},
+    });
+    viewer.follow(ORIGIN);
+    viewer.toggle();
+    await vi.waitFor(() => { if (!push) throw new Error("waiting"); });
+
+    viewer.act(control(), "stage", { action: "viewport", preset: "responsive", width: 500, height: 850 });
+    await vi.waitFor(() => { expect(restoreCalls).toHaveLength(1); });
+
+    // 실행 호스트가 끊겨 복원 POST가 409로 거절되면 재연결 또는 닫기 때까지 보류 목록을 지우지 않는다.
+    hostConnected = false;
+    push!(snapshot(false, "manager_disconnected"));
+    await vi.waitFor(() => { expect(restoreCalls).toHaveLength(2); });
+
+    // 연결이 끊긴 채 추가 상태 이벤트가 와도 쓸데없이 409를 반복하지 않는다.
+    push!(snapshot(false, "manager_disconnected"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(restoreCalls).toHaveLength(2);
+
+    // 실행 호스트가 다시 연결되면(또는 닫을 때) 보류 중이던 스페이스 복원을 다시 보내 200을 받아 정리한다.
+    hostConnected = true;
+    push!(snapshot(false, "connected"));
+    await vi.waitFor(() => { expect(restoreCalls).toHaveLength(3); });
+    expect(JSON.parse(restoreCalls[2]!.body)).toEqual({ preset: "responsive", spaceId: "default" });
+
+    // 200 성공 뒤에는 닫아도 중복 복원 요청을 보내지 않는다.
+    viewer.toggle();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(restoreCalls).toHaveLength(3);
+    viewer.stop();
   });
 
   it("omits managed headers on a cookie session and keeps the guard for remote control", async () => {

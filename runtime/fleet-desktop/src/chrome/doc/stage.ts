@@ -57,6 +57,45 @@ export function mountStage(): {
   const inputActive = (): boolean =>
     last?.viewOnly?.control === true && last?.viewOnly?.status === "connected" && !image.hidden && shownTab !== null;
 
+  /** 제어가 켜진 동안만 스테이지 크기를 알린다. 복귀 POST 는 셸이 한다 — 이 문서는 제어가 끝난 스냅샷을 받은 뒤에야 알고, 그때는 쓰기가 이미 거절된다. */
+  const FIT_DEBOUNCE_MS = 150;
+  const FIT_EPSILON_PX = 4;
+  let fitting = false;
+  let fitTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastFit: { width: number; height: number } | null = null;
+  const measureStage = (): { width: number; height: number } | null => {
+    const width = Math.round(document.documentElement.clientWidth);
+    const height = Math.round(document.documentElement.clientHeight);
+    if (!(width >= 1 && height >= 1)) return null;
+    return { width, height };
+  };
+  const scheduleFit = (): void => {
+    if (fitTimer !== null) clearTimeout(fitTimer);
+    fitTimer = setTimeout(() => {
+      fitTimer = null;
+      if (!inputActive()) return;
+      const size = measureStage();
+      if (!size) return;
+      if (lastFit && Math.abs(lastFit.width - size.width) < FIT_EPSILON_PX && Math.abs(lastFit.height - size.height) < FIT_EPSILON_PX) return;
+      lastFit = size;
+      post("stage", "viewport", { preset: "responsive", width: size.width, height: size.height });
+    }, FIT_DEBOUNCE_MS);
+  };
+  const syncFit = (): void => {
+    if (inputActive()) {
+      if (fitting) return;
+      fitting = true;
+      lastFit = null;
+      scheduleFit();
+      return;
+    }
+    if (!fitting) return;
+    fitting = false;
+    lastFit = null;
+    if (fitTimer !== null) { clearTimeout(fitTimer); fitTimer = null; }
+  };
+  if (typeof ResizeObserver === "function") new ResizeObserver(() => { if (fitting) scheduleFit(); }).observe(document.documentElement);
+
   /** 에이전트가 표시 탭을 모는 동안은 로컬과 똑같이 사람 입력을 막는다. */
   const inputAllowed = (): boolean => inputActive() && last?.control?.holder !== "agent";
 
@@ -130,11 +169,12 @@ export function mountStage(): {
     image.alt = tab ? tab.title || t("viewOnly") : "";
     clear(root);
     root.hidden = !image.hidden;
-    if (!image.hidden) return;
+    if (!image.hidden) { syncFit(); return; }
     const space = shownSpace(state);
     const title = view.status === "unmanaged" ? t("viewOnly.unmanaged") : view.status === "manager_disconnected" ? t("viewOnly.disconnected")
       : tab ? t("viewOnly.waiting") : space?.kind === "commodore" ? t("spaces.emptyTitle", { name: spaceName(t, space) }) : t("viewOnly.noTabs");
     root.append(h("span", { class: "empty-glyph" }, glyph(G.globe, 28)), h("p", { class: "empty-title", text: title }));
+    syncFit();
   };
 
   // ---------- 원격 입력 캡처 ----------
@@ -240,6 +280,7 @@ export function mountStage(): {
       delete document.documentElement.dataset.viewOnly;
       shownTab = null; cssSize = null; sender = null; senderTab = null;
       image.hidden = true; image.removeAttribute("src"); root.hidden = false;
+      syncFit();
       const t = tr(state);
       clear(root);
       const chrome = state.chrome;

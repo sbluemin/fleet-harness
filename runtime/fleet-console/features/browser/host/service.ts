@@ -206,6 +206,8 @@ interface Space {
   viewport: BrowserViewport;
   /** true 이면 논리 뷰포트가 네이티브 pane 을 따른다(에뮬레이션 없음). */
   viewportFollowsPane: boolean;
+  /** 원격 조작 스테이지 맞춤이 세운 뷰포트. 연결이 끊어져 복원 POST가 409로 막혀도 엔진 종료 시 호스트 pane으로 복구한다. */
+  viewportSetRemotely: boolean;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string>; /** 마지막으로 호출을 연 참가자. */ last: string } | null;
   /**
@@ -557,6 +559,19 @@ export class BrowserService {
       op.currentTabs.clear();
       op.contextId = "";
       op.contextPending = null;
+      for (const space of op.spaces.values()) {
+        if (!space.viewportSetRemotely) continue;
+        space.viewportSetRemotely = false;
+        space.viewportFollowsPane = true;
+        space.viewport = {
+          width: op.pane?.width ?? BROWSER_DEFAULT_VIEWPORT.width,
+          height: op.pane?.height ?? BROWSER_DEFAULT_VIEWPORT.height,
+          scale: op.pane?.scale ?? space.viewport.scale,
+          preset: "responsive",
+          setBy: null,
+          colorScheme: space.viewport.colorScheme,
+        };
+      }
       this.emitState(op);
     }
     for (const entry of this.stagedFiles.values()) clearTimeout(entry.timer);
@@ -616,7 +631,7 @@ export class BrowserService {
   private space(op: ObjectiveBrowser, spaceId: string): Space {
     let space = op.spaces.get(spaceId);
     if (!space) {
-      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, agentSession: null, control: "agent", attention: null, pointer: null, controlWaiters: new Set() };
+      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, viewportSetRemotely: false, agentSession: null, control: "agent", attention: null, pointer: null, controlWaiters: new Set() };
       if (op.pane) space.viewport = { ...space.viewport, width: op.pane.width, height: op.pane.height };
       op.spaces.set(spaceId, space);
     }
@@ -1834,7 +1849,7 @@ export class BrowserService {
         // 뷰 크기가 바뀌면 Chromium 이 위젯을 새 뷰 크기로 되돌린다 — 에뮬레이션 뷰포트는 남아도 표면이 줄어 캡처가
         // 어긋난다. 정한 크기를 다시 걸어 위젯을 그 크기로 되돌린다(보이는 곳은 셸이 뷰 자리에서 잘라낸다). 연속 변경은
         // 마지막 한 번으로 모은다 — 그 사이의 캡처는 screenshot 이 먼저 다시 건다.
-        if (!this.spaceOfTab(op, tab).viewportFollowsPane) this.scheduleViewportReapply(tab, op);
+        if (!this.usesNativeLayout(this.spaceOfTab(op, tab))) this.scheduleViewportReapply(tab, op);
         // 요청 탭의 실측만 본다. 다른 탭·parking 창 크기 이벤트로 활성 pane 을 덮지 않는다.
         if (tab.id !== op.activeTabId) return;
         const width = Math.max(1, Math.round(Number(p.width) || 0)), height = Math.max(1, Math.round(Number(p.height) || 0)), scale = Math.max(1, Number(p.scale) || 1);
@@ -1977,6 +1992,14 @@ export class BrowserService {
     if (changed) this.emitState(op);
   }
 
+  private isNativeResponsive(space: Space): boolean {
+    return space.viewport.preset === "responsive" && space.viewport.setBy === "user";
+  }
+
+  private usesNativeLayout(space: Space): boolean {
+    return space.viewportFollowsPane || this.isNativeResponsive(space);
+  }
+
   /**
    * 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋·임의 크기만 뷰 안에서 흉내 낸다.
    * 대기 중인 재적용은 여기서 풀린다. 색 구성은 바뀌었을 때만 보내고, 새 문서가 뜬 뒤처럼 반드시 다시 알려야 하는
@@ -1986,7 +2009,9 @@ export class BrowserService {
     this.cancelViewportReapply(tab);
     const space = this.spaceOfTab(op, tab);
     const viewport = space.viewport;
-    if (space.viewportFollowsPane) {
+    // 사람이 정한 responsive 크기는 셸이 뷰 bounds 를 그 비율로 놓는다. 여기서 요청 크기대로 위젯을 키우면
+    // 호스트 창이 더 작을 때 setBorderRadius 마스크가 페이지 하단을 자른다. 에이전트·mobile/tablet 만 에뮬레이션한다.
+    if (this.usesNativeLayout(space)) {
       await client.send("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined);
     } else {
       const mobile = viewport.preset === "mobile" || viewport.preset === "tablet";
@@ -2003,7 +2028,7 @@ export class BrowserService {
     tab.viewportReapply = setTimeout(() => {
       tab.viewportReapply = undefined;
       const client = this.client;
-      if (!client || this.spaceOfTab(op, tab).viewportFollowsPane || op.tabs.get(tab.id) !== tab) return;
+      if (!client || this.usesNativeLayout(this.spaceOfTab(op, tab)) || op.tabs.get(tab.id) !== tab) return;
       void this.applyViewport(client, tab, op).catch(() => undefined);
     }, VIEWPORT_REAPPLY_MS);
   }
@@ -2017,7 +2042,7 @@ export class BrowserService {
   /**
    * 스페이스 하나의 뷰포트를 정한다. 스페이스를 주지 않으면 표시 탭의 스페이스다 — 셸은 사람이 보고 있는 스페이스를 준다. 그 스페이스의 탭에만 걸린다.
    */
-  async setViewport(objectiveId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent", spaceId?: string): Promise<BrowserViewport> {
+  async setViewport(objectiveId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent", spaceId?: string, options?: { readonly remoteFit?: boolean }): Promise<BrowserViewport> {
     const op = this.objectiveRecord(objectiveId);
     if (spaceId !== undefined) this.admitSpace(spaceId);
     const targetSpace = spaceId ?? this.activeSpace(op)?.id ?? null;
@@ -2040,9 +2065,11 @@ export class BrowserService {
       current: space.viewport,
       pane: this.paneOf(op),
     });
-    const setBy = actor;
+    // 칸을 따르는 복귀는 사람이 크기를 정한 상태가 아니다. setBy 가 user 로 남으면 셸이 원격 맞춤을 풀지 않는다.
+    const setBy = resolved.followsPane ? null : actor;
     const scale = op.pane?.scale ?? space.viewport.scale;
     space.viewportFollowsPane = resolved.followsPane;
+    space.viewportSetRemotely = !resolved.followsPane && options?.remoteFit === true;
     space.viewport = { width: resolved.width, height: resolved.height, scale, preset, setBy, colorScheme: request.colorScheme === undefined ? space.viewport.colorScheme : request.colorScheme };
     if (this.client) {
       const tabs = this.spaceTabs(op, space.id);
@@ -2243,7 +2270,7 @@ export class BrowserService {
     const format = options.format ?? "png";
     const space = this.spaceOfTab(op, tab);
     // 정한 크기를 먼저 다시 건다 — 그 사이 뷰가 줄었으면 위젯이 뷰 크기로 줄어 표면이 뷰포트보다 작다.
-    if (!space.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
+    if (!this.usesNativeLayout(space)) await this.applyViewport(client, tab, op).catch(() => undefined);
     // 표면이 닫혀 있어도 그 탭의 실제 sizes relay 가 오기 전에는 추정값으로 찍지 않는다. layout 은 Desktop 이 아는 뷰 크기(에뮬레이션 중이면 정한 크기)이고 페이지 스크립트는 읽지 않는다.
     // 리사이즈와 캡처가 겹치면 같은 탭의 pane·layout 쌍이 두 번 연속 같아야 한다.
     let layout: { width: number; height: number } | null = null;
@@ -2262,8 +2289,9 @@ export class BrowserService {
     if (!ready || !layout || !pane) throw new BrowserPolicyError("browser_capture_not_ready", "Native pane geometry is not ready. Observe the page and request capture again; do not retry input.");
     // heal 전에 저장된 논리 뷰포트와 실측 layout 불일치를 잡는다 — 이전 스크린샷 좌표를 믿지 말라는 신호.
     const storedBeforeHeal = { width: space.viewport.width, height: space.viewport.height };
-    // 저장된 뷰포트는 띄운(활성) 탭의 실측을 따라간다 — 띄우지 않은 탭(다른 스페이스의 뷰)은 자기 크기로 따로 놓일 수 있어, 그 탭과 비교하는 것은 낡은 좌표 신호가 아니다.
-    const ownsStored = !space.viewportFollowsPane || tab.id === op.activeTabId;
+    // 저장된 뷰포트는 띄운(활성) 탭의 실측을 따라간다 — 띄우지 않은 탭(다른 스페이스의 뷰)이나 사람이 정한 원격 맞춤(요청 비율만 기억)은 실제 위젯 bounds 와 다를 수 있어 낡은 좌표 신호가 아니다.
+    const nativeResponsive = this.isNativeResponsive(space);
+    const ownsStored = (!space.viewportFollowsPane && !nativeResponsive) || (space.viewportFollowsPane && tab.id === op.activeTabId);
     const staleViewport = ownsStored && !options.clip && layout !== null && (layout.width !== storedBeforeHeal.width || layout.height !== storedBeforeHeal.height);
     if (space.viewportFollowsPane && tab.id === op.activeTabId && layout && (layout.width !== space.viewport.width || layout.height !== space.viewport.height)) {
       space.viewport = { ...space.viewport, width: layout.width, height: layout.height };
@@ -2279,7 +2307,7 @@ export class BrowserService {
       result = await client.send<{ data: string }>("Page.captureScreenshot", { format, ...(format === "jpeg" ? { quality: 80 } : {}), clip: { ...clip, scale: output / pane.scale }, captureBeyondViewport: false }, tab.sessionId);
     } catch (error) {
       // Chromium 은 캡처 동안 에뮬레이션을 잠시 바꿨다 되돌린다 — 실패한 캡처가 페이지를 뷰 크기로 풀어 두지 않게 다시 건다.
-      if (!space.viewportFollowsPane) await this.applyViewport(client, tab, op).catch(() => undefined);
+      if (!this.usesNativeLayout(space)) await this.applyViewport(client, tab, op).catch(() => undefined);
       throw error;
     }
     const pixels = capturePixels(result.data);
@@ -2309,7 +2337,7 @@ export class BrowserService {
    */
   private layoutViewport(op: ObjectiveBrowser, tab: Tab): { width: number; height: number } | null {
     const space = this.spaceOfTab(op, tab);
-    if (!space.viewportFollowsPane) return { width: space.viewport.width, height: space.viewport.height };
+    if (!this.usesNativeLayout(space)) return { width: space.viewport.width, height: space.viewport.height };
     const pane = this.paneOfTab(tab);
     return pane ? { width: pane.width, height: pane.height } : null;
   }
