@@ -47,6 +47,8 @@ fleet console
 
 **A browser you share with your agents.** In the desktop app, Fleet Browser opens beside the conversation or in its own window. Agents work in their own spaces on the same tabs and sign-ins, and you can annotate a page to hand it to them.
 
+<img src=".github/browser.webp" alt="Fleet Browser opened beside Atlas's conversation: the Orders Report page in Atlas's space shows the Export CSV button next to the filters, with the tab rail and space switcher" width="100%" />
+
 **Sessions live on your machine, not in the tab.** Close the page, restart the browser, or switch devices; the work keeps running. Use the desktop app for macOS and Windows, pair a phone or another computer through remote access, or use the Android and iOS apps in tester distribution.
 
 <p align="center"><img src=".github/mobile.webp" alt="Fleet on a phone: the Commodore Atlas reporting that it approved the criteria and commenced the objective" width="320" /></p>

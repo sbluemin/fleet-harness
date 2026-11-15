@@ -170,12 +170,6 @@ figcaption { margin-top: 14px; font-size: 13px; color: var(--muted); max-width: 
 .feature p.body { margin-top: 18px; font-size: 16.5px; max-width: 38em; text-wrap: pretty; }
 .feature .shot { margin-top: 44px; }
 
-.pair { margin-top: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; }
-.card { padding: 30px 28px 32px; border: 1px solid var(--line); border-radius: 18px; background: linear-gradient(180deg, rgba(255,255,255,.02), transparent); }
-.card .h2 { font-size: clamp(24px, 2.6vw, 30px); }
-.card p.body { margin-top: 14px; font-size: 15.5px; }
-@media (max-width: 860px) { .pair { grid-template-columns: minmax(0, 1fr); } }
-
 .anywhere { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 320px); gap: 56px; align-items: center; }
 .anywhere .frame { border-radius: 28px; max-width: 320px; margin: 0 auto; }
 @media (max-width: 860px) { .anywhere { grid-template-columns: minmax(0, 1fr); gap: 40px; } }
@@ -306,21 +300,30 @@ footer .shell { display: flex; flex-wrap: wrap; justify-content: space-between; 
     </div>
   </section>
 
-  <!-- 4–5. Models and browser -->
-  <section class="sec" id="models">
-    <div class="shell pair rv">
-      <div class="card">
-        <span class="kicker"><b>04</b>AI Gateway</span>
-        <h2 class="h2"><span lang="en">Every frontier model, <em>behind Claude Code.</em></span><span lang="ko">어떤 프런티어 모델이든 <em>Claude Code 그대로.</em></span></h2>
-        <p class="body" lang="en">Claude Code's own agent loop runs on Codex, Gemini (Antigravity), Grok (xAI) and Muse Code models with the subscriptions you already have. Their credentials stay in the Console. Commodores and Commanders pick from the models you turned on, ordered by remaining quota.</p>
-        <p class="body" lang="ko">Claude Code 고유의 에이전트 루프를 Codex, Gemini(Antigravity), Grok(xAI), Muse Code 모델로 돌립니다. 이미 가진 구독을 그대로 쓰고, 자격 증명은 Console 안에 머뭅니다. 사령관과 지휘관은 내가 켜 둔 모델 가운데 남은 쿼터가 많은 순으로 고릅니다.</p>
-      </div>
-      <div class="card">
-        <span class="kicker"><b>05</b><span lang="en">Fleet Browser</span><span lang="ko">플릿 브라우저</span></span>
-        <h2 class="h2"><span lang="en">A browser you <em>share with agents.</em></span><span lang="ko">에이전트와 <em>함께 쓰는 브라우저.</em></span></h2>
-        <p class="body" lang="en">In the desktop app, Fleet Browser opens beside the conversation or in its own window. Agents work in their own spaces on the same tabs and sign-ins, and you can annotate a page to hand it to them.</p>
-        <p class="body" lang="ko">데스크톱 앱에서 플릿 브라우저는 대화 옆이나 별도 창에 열립니다. 에이전트는 같은 탭과 로그인을 쓰되 자기 공간에서 일하고, 나는 페이지에 주석을 달아 에이전트에게 넘길 수 있습니다.</p>
-      </div>
+  <!-- 4. AI Gateway -->
+  <section class="sec feature" id="models">
+    <div class="shell rv">
+      <span class="kicker"><b>04</b>AI Gateway</span>
+      <h2 class="h2"><span lang="en">Every frontier model, <em>behind Claude Code.</em></span><span lang="ko">어떤 프런티어 모델이든 <em>Claude Code 그대로.</em></span></h2>
+      <p class="body" lang="en">Claude Code's own agent loop runs on Codex, Gemini (Antigravity), Grok (xAI) and Muse Code models with the subscriptions you already have. Their credentials stay in the Console. Commodores and Commanders pick from the models you turned on, ordered by remaining quota.</p>
+      <p class="body" lang="ko">Claude Code 고유의 에이전트 루프를 Codex, Gemini(Antigravity), Grok(xAI), Muse Code 모델로 돌립니다. 이미 가진 구독을 그대로 쓰고, 자격 증명은 Console 안에 머뭅니다. 사령관과 지휘관은 내가 켜 둔 모델 가운데 남은 쿼터가 많은 순으로 고릅니다.</p>
+    </div>
+  </section>
+
+  <!-- 5. Fleet Browser -->
+  <section class="sec feature" id="browser">
+    <div class="shell rv">
+      <span class="kicker"><b>05</b><span lang="en">Fleet Browser</span><span lang="ko">플릿 브라우저</span></span>
+      <h2 class="h2"><span lang="en">A browser you <em>share with agents.</em></span><span lang="ko">에이전트와 <em>함께 쓰는 브라우저.</em></span></h2>
+      <p class="body" lang="en">In the desktop app, Fleet Browser opens beside the conversation or in its own window. Agents work in their own spaces on the same tabs and sign-ins, and you can annotate a page to hand it to them.</p>
+      <p class="body" lang="ko">데스크톱 앱에서 플릿 브라우저는 대화 옆이나 별도 창에 열립니다. 에이전트는 같은 탭과 로그인을 쓰되 자기 공간에서 일하고, 나는 페이지에 주석을 달아 에이전트에게 넘길 수 있습니다.</p>
+      <figure class="shot">
+        <div class="frame">
+          <img src="assets/browser.webp" width="2000" height="1250" loading="lazy"
+               alt="Fleet Browser opened beside Atlas's conversation: the Orders Report page in Atlas's space shows the Export CSV button next to the filters, with the tab rail and space switcher"
+               data-alt-ko="Atlas 대화 옆에 열린 Fleet Browser: Atlas 스페이스의 Orders Report 페이지에서 필터 옆 Export CSV 버튼과 탭 레일, 스페이스 전환이 보인다" />
+        </div>
+      </figure>
     </div>
   </section>
 
