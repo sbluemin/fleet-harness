@@ -48,7 +48,7 @@ if (offline) {
     assertFreshSlot(dir);
     const here = path.dirname(fileURLToPath(import.meta.url));
     const root = path.resolve(here, "../../../../..");
-    const out = execFileSync("pnpm", ["--dir", path.join(root, "runtime/fleet-console"), "exec", "tsx", "--tsconfig", path.join(here, "offline.tsconfig.json"), path.join(here, "offline.mts"), "--dir", dir, "--states", JSON.stringify(states.map((state, i) => ({ ...state, alias: `Seed ${i + 1}` })))], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+    const out = execFileSync("pnpm", ["--dir", path.join(root, "runtime/fleet-console"), "exec", "tsx", "--tsconfig", path.join(here, "offline.tsconfig.json"), path.join(here, "offline.mts"), "--dir", path.resolve(dir), "--states", JSON.stringify(states.map((state, i) => ({ ...state, alias: `Seed ${i + 1}` })))], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
     const made = JSON.parse(out.trim().split("\n").pop());
     const ids = { profile: name, offline: true, commodores: made.map((row, i) => ({ commodoreId: row.commodoreId, theaters: [], objectives: [], advanced: { label: states[i].label, requested: states[i], stored: row.stored, effective: row.effective } })) };
     writeIds(dir, ids);
