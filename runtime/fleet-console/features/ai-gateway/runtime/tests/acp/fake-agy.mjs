@@ -7,6 +7,7 @@
 //   UPSTREAMNET            a code-less "⚠ network issue" message as the whole turn, ended normally (agy's network-error shape)
 // A second session/prompt while a TOOL prompt is blocked on its MCP call is steering (agy 1.5.9): the first prompt is answered end_turn at
 // once, and when the tool result comes the turn continues as `got:<result> steered:<text>` and ends with the steering prompt's response.
+//   ENDEARLY:<name>        call the MCP tool, then end the prompt at once while the call stays held (a turn that is over but whose call is still pending)
 //   BUILTIN                ask permission for a built-in tool and run it anyway
 //   anything else          answer `echo:<first 60 chars>` plus `history:yes|no` (whether a conversation_history block came)
 // Without any of those the original fixed event stream is sent (the session port test relies on it).
@@ -100,6 +101,10 @@ async function runPrompt(id, blocks) {
       send({ id: steer.steerId, result: { stopReason: "end_turn", usage: { inputTokens: 100, outputTokens: 20, thoughtTokens: 5, cachedReadTokens: 0, totalTokens: 125 } } });
       return true;
     }
+  } else if ((match = /^ENDEARLY:(.+)$/s.exec(text))) {
+    void callTool(`Run mcp_fleet_${match[1]}`, match[1], {});
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    log({ endedEarly: true });
   } else if ((match = /^TIMEOUT:(.+)$/s.exec(text))) {
     await callTool(`Run mcp_fleet_${match[1]}`, match[1], {}, 50);
     say("timed out after 3 minutes");

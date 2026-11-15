@@ -176,6 +176,26 @@ describe("agy ACP bridge", () => {
       expect(JSON.stringify(requests)).not.toContain("SECRET-REMINDER");
       expect(requests[0]).toMatchObject({ instructionsHash: expect.stringMatching(/^[0-9a-f]{8}$/), toolsHash: expect.stringMatching(/^[0-9a-f]{8}$/) });
       expect(requests[1]).toMatchObject({ instructionsHash: (requests[0] as { instructionsHash: string }).instructionsHash, toolsHash: (requests[0] as { toolsHash: string }).toolsHash });
+
+      // Steering that cannot be sent falls back to a rebuild: here the agy turn is already over while its tool call is still held,
+      // so there is no running turn to steer. The old session is replaced and the history is replayed.
+      const ended = await turn(bridge, [user("ENDEARLY:Bash")]);
+      const endedUse = toolUse(ended.message);
+      await until(async () => (await log()).some((entry) => entry.endedEarly === true));
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      const sessionsBefore = count(await log(), "session/new");
+      const fallback = await turn(bridge, [
+        user("ENDEARLY:Bash"), call(endedUse.id, {}), result(endedUse.id, "a.txt"),
+        user("<system-reminder>SECRET-REMINDER</system-reminder>"),
+      ]);
+      expect(textOf(fallback.message)).toContain("history:yes");
+      expect(count(await log(), "session/new")).toBe(sessionsBefore + 1);
+      const all = wire.read();
+      expect(all.some((entry) => entry.event === "bridge.steer_failed")).toBe(true);
+      const last = all.filter((entry) => entry.event === "bridge.request").at(-1)!.payload;
+      expect(last).toMatchObject({ route: "rebuild", reason: "steering failed" });
+      expect(last).not.toHaveProperty("steered");
+      expect(JSON.stringify(all)).not.toContain("SECRET-REMINDER");
     } finally {
       wire.cleanup();
     }
