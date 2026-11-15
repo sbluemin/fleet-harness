@@ -13,7 +13,11 @@ import {
   findClaudeGatewayModel,
   findGatewayModel,
   gatewayModelIdentity,
+  GATEWAY_ROLE_THRESHOLDS,
+  gatewayModelIntelligence,
   parseGatewayModelsRegistry,
+  recommendedGatewayModelRole,
+  recommendedGatewayRole,
   resolveGatewayModel,
   toClaudeGatewayModelId,
   toGatewayModelAlias,
@@ -183,6 +187,34 @@ describe("model catalog", () => {
       },
     };
     expect(() => parseGatewayModelsRegistry(invalidOverride)).toThrow(/override is not an advertised level/);
+
+    // 점수는 모델이 실제로 내놓는 강도에만 붙는다 — 없는 강도의 점수는 추천을 지어내게 된다.
+    const unadvertisedScore = minimalRegistry();
+    unadvertisedScore.providers.codex.models[0] = {
+      modelId: "codex-model",
+      name: "Model",
+      effort: { supported: true, levels: ["low", "high"] },
+      intelligence: { source: "https://example.com/model", scores: { max: 60 } },
+    };
+    expect(() => parseGatewayModelsRegistry(unadvertisedScore)).toThrow(/intelligence score is not an advertised level/);
+
+    // 광고 제외는 native 표식이 정한다 — 다른 공급자에 붙으면 그 모델이 조용히 discovery에서 사라진다.
+    const foreignNative = minimalRegistry();
+    Object.assign(foreignNative.providers.codex, { native: true });
+    expect(() => parseGatewayModelsRegistry(foreignNative)).toThrow(/Only claude can be a native/);
+  });
+
+  it("recommends the highest role whose threshold a model's score reaches", () => {
+    const { lead, overseer } = GATEWAY_ROLE_THRESHOLDS;
+    expect(recommendedGatewayRole(lead - 1)).toBeUndefined();
+    expect(recommendedGatewayRole(lead)).toBe("lead");
+    expect(recommendedGatewayRole(overseer)).toBe("overseer");
+    expect(recommendedGatewayRole(undefined)).toBeUndefined();
+    // Claude 가족은 단일 1M 카탈로그 id로 점수를 찾는다. 점수가 없는 강도는 추천하지 않는다.
+    const opus = gatewayModelIntelligence("claude--opus-1m");
+    expect(opus?.scores.max).toBeTypeOf("number");
+    expect(recommendedGatewayModelRole("claude--opus-1m", "max")).toBe(recommendedGatewayRole(opus?.scores.max));
+    expect(recommendedGatewayModelRole("xai--grok-composer-2.5-fast", "high")).toBeUndefined();
   });
 
   it("gives every name of a Claude model the same auto-compact window", () => {
@@ -325,11 +357,14 @@ function minimalRegistry() {
   return {
     version: 1,
     updatedAt: "2026-08-01T00:00:00Z",
+    intelligenceIndex: { name: "Test Index", observedAt: "2026-08-01", note: "test fixture" },
+    roleThresholds: { lead: 50, overseer: 55 },
     providers: {
       antigravity: provider("Antigravity", "gemini-3.7-flash"),
       codex: provider("Codex", "codex-model"),
       xai: provider("Grok", "grok-4.6"),
       "muse-code": provider("Muse Code", "muse-spark-1.3"),
+      claude: { ...provider("Claude", "sonnet"), native: true },
     },
   };
 }

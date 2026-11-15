@@ -2,6 +2,7 @@ import {
   GATEWAY_MODELS,
   GATEWAY_MODELS_UPDATED_AT,
   anthropicModelCapabilities,
+  isNativeGatewayProvider,
   type GatewayModel,
 } from "../../../models.js";
 import { buildAnthropicModelListPayload } from "../../wire/anthropic-messages/protocol.js";
@@ -56,7 +57,7 @@ export function findGrokGatewayModel(
 ): GatewayModel | undefined {
   if (!id.startsWith(GROK_GATEWAY_MODEL_ALIAS_PREFIX)) return undefined;
   const slug = id.slice(GROK_GATEWAY_MODEL_ALIAS_PREFIX.length);
-  return catalog.find((candidate) => candidate.provider !== "claude" && toGrokModelSlug(candidate.id) === slug);
+  return catalog.find((candidate) => !isNativeGatewayProvider(candidate.provider) && toGrokModelSlug(candidate.id) === slug);
 }
 
 /** Grok Build gateway model discovery (`GET /v1/models`). */
@@ -64,7 +65,7 @@ export function buildGrokModelList(
   models: readonly GatewayModel[] = GATEWAY_MODELS,
   createdAt = GATEWAY_MODELS_UPDATED_AT,
 ): AnthropicModelList {
-  const exposed = models.filter((model) => model.provider !== "claude");
+  const exposed = models.filter((model) => !isNativeGatewayProvider(model.provider));
   return buildAnthropicModelListPayload(
     exposed,
     createdAt,
