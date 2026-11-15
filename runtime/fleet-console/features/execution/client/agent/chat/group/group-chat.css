@@ -1522,8 +1522,13 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
    안쪽 채팅 로그가 기둥 pill 몫을 또 비우지 않게 겹침 변수를 끈다. 기둥 아래 시작은 대화 칸의 padding 이 진다. */
 .group-ledger-split {
   --conversation-overlay-top: 0px;
+  /* 오른쪽 컨텍스트 레일(아바타 카드 58px, 칸 오른쪽 끝에서 space-3 안쪽)이 칸 머리·본문을 가리지 않게 그 폭과 양옆 간격만큼
+     오른쪽을 비운다. padding 이 아니라 폭에서 뺀다 — 경계 드래그가 이 상자의 실측 폭으로 가용 폭을 계산한다.
+     레일을 숨긴 동안에도 같은 자리를 비운다(레일 상태를 따라 그리드가 움직이지 않게). */
+  --group-ledger-split-rail: calc(58px + 2 * var(--space-3));
   display: grid;
-  width: 100%;
+  width: calc(100% - var(--group-ledger-split-rail));
+  margin-right: var(--group-ledger-split-rail);
   height: 100%;
   min-width: 0;
   min-height: 0;
