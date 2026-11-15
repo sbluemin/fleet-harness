@@ -196,9 +196,9 @@ function toolCatalog(request: CanonicalResponseRequest): { tools: BridgeToolDef[
 
 /**
  * Counts only (never content or length) of what rides next to the tool results at the end of a request: how often user text
- * accompanies them is what decides how the `[user note]` path should work. The tail is the user-side run after the last
- * assistant item, the same run `outcomesFor` reads. Text parts of one message are already one canonical item, so a
- * count is per message item, not per Anthropic content block; both user and system-role messages count, as in `outcomesFor`.
+ * accompanies them (it makes the request a rebuild, see `classify`) is an operational figure. The tail is the user-side run after the
+ * last assistant item, the same run `classify` reads. Text parts of one message are already one canonical item, so a
+ * count is per message item, not per Anthropic content block; both user and system-role messages count, as in `classify`.
  */
 function tailCounts(items: readonly CanonicalInputItem[]): { tailToolResults: number; tailUserTexts: number; tailReminderTexts: number } {
   let start = items.length;
@@ -277,7 +277,7 @@ type Plan =
   | { readonly route: "new-turn"; readonly session: BridgeSession; readonly tail: readonly CanonicalInputItem[] }
   | { readonly route: "continue"; readonly session: BridgeSession; readonly outcomes: ReadonlyMap<string, McpToolOutcome> }
   | { readonly route: "fresh" }
-  | { readonly route: "rebuild"; readonly reason: string };
+  | { readonly route: "rebuild"; readonly reason: string; readonly stale?: BridgeSession };
 
 function isUserSide(item: CanonicalInputItem): boolean {
   return item.type === "function_call_output" || (item.type === "message" && item.role !== "assistant");
@@ -348,6 +348,8 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         const blocks = plan.route === "fresh"
           ? userTurnBlocks(request.input)
           : replayBlocks(request.input, this.limits.replayBudgetChars);
+        // 옛 세션은 이 요청으로 대체된다: 보류 호출과 열린 agy prompt를 정리하고 자식을 끝낸다.
+        if (plan.route === "rebuild") await plan.stale?.close(`replaced by a rebuilt session (${plan.reason})`);
         session = await this.openSession(request, selection, seed, catalog, plan.route === "rebuild", options.signal);
         await session.startPrompt(blocks);
       }
@@ -400,16 +402,22 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       const session = this.registry.lookup(chain[prefix]!);
       if (!session) continue;
       const tail = items.slice(prefix);
-      if (!tail.every(isUserSide)) return { route: "rebuild", reason: "assistant items after the matched prefix" };
+      if (!tail.every(isUserSide)) return { route: "rebuild", reason: "assistant items after the matched prefix", stale: session };
       const outputs = tail.filter((item): item is CanonicalFunctionCallOutput => item.type === "function_call_output");
       if (session.state === "idle") {
-        return outputs.length === 0 ? { route: "new-turn", session, tail } : { route: "rebuild", reason: "tool results for an idle session" };
+        return outputs.length === 0 ? { route: "new-turn", session, tail } : { route: "rebuild", reason: "tool results for an idle session", stale: session };
       }
       if (session.state === "awaiting_tools") {
-        const outcomes = this.outcomesFor(session, tail, outputs);
-        return outcomes ? { route: "continue", session, outcomes } : { route: "rebuild", reason: "tool results do not match the pending tool calls" };
+        // 도구 결과 옆에 사용자 텍스트(system-reminder·끼어든 메시지)나 이미지가 오면 MCP 응답으로는 user 역할을 보존할 수 없다.
+        // 그 요청은 결과만으로 보류 호출을 풀지 않고 rebuild한다: 새 세션에 이력(user 역할 포함)을 재주입하고 옛 세션은 닫는다.
+        // 실측 빈도가 낮아(실제 세션 22건 중 0건) 매번 재주입해도 비용이 거의 없다.
+        if (tail.some((item) => item.type === "message" && (canonicalMessageText(item.content).length > 0 || canonicalMessageImages(item.content).length > 0))) {
+          return { route: "rebuild", reason: "user content beside the tool results", stale: session };
+        }
+        const outcomes = this.outcomesFor(session, outputs);
+        return outcomes ? { route: "continue", session, outcomes } : { route: "rebuild", reason: "tool results do not match the pending tool calls", stale: session };
       }
-      return { route: "rebuild", reason: `matched session is ${session.state}` };
+      return { route: "rebuild", reason: `matched session is ${session.state}`, stale: session };
     }
     return items.every(isUserSide) && !items.some((item) => item.type === "function_call_output")
       ? { route: "fresh" }
@@ -418,24 +426,12 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
 
   private outcomesFor(
     session: BridgeSession,
-    tail: readonly CanonicalInputItem[],
     outputs: readonly CanonicalFunctionCallOutput[],
   ): ReadonlyMap<string, McpToolOutcome> | undefined {
     const emitted = [...session.pending.values()].filter((call) => call.emitted).map((call) => call.callId);
     const ids = new Set(outputs.map((output) => output.call_id));
     if (emitted.length === 0 || ids.size !== outputs.length || ids.size !== emitted.length || !emitted.every((id) => ids.has(id))) return undefined;
-    // 도구 결과 뒤에 붙은 사용자 텍스트(system-reminder 등)는 MCP 응답 말고는 agy로 돌려보낼 통로가 없어 마지막 결과에 붙인다.
-    const note = tail
-      .flatMap((item) => (item.type === "message" ? [canonicalMessageText(item.content)] : []))
-      .filter((text) => text.length > 0)
-      .join("\n\n");
-    const outcomes = new Map<string, McpToolOutcome>();
-    outputs.forEach((output, index) => {
-      const content = resultContent(output.output);
-      if (note.length > 0 && index === outputs.length - 1) content.push({ type: "text", text: `\n[user note]\n${note}` });
-      outcomes.set(output.call_id, { content, isError: output.is_error === true });
-    });
-    return outcomes;
+    return new Map(outputs.map((output) => [output.call_id, { content: resultContent(output.output), isError: output.is_error === true }]));
   }
 
   private async openSession(
