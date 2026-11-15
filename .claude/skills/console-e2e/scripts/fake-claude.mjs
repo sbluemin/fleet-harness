@@ -33,6 +33,8 @@
 //   sdk-mcp/calls-<ts>-<pid>.json  each call's args, isError, error code and full JSON-RPC result (mode 0600)
 // FAKE_CLAUDE_VERSION (optional): the --version answer (default "2.1.999 (Claude Code)").
 // FAKE_CLAUDE_TOOLS (optional): JSON array of tool names advertised in init.tools (default []).
+// FAKE_CLAUDE_MODELS (optional): JSON array of rows ({value, resolvedModel, displayName, supportedEffortLevels}) returned verbatim as
+//   initialize.models (default []). Synthetic lineup, not evidence of what the real CLI supports.
 // FAKE_CLAUDE_REPLIES (optional): directory of best-effort one-shot reply fixtures; <sessionId>.md, then
 //   <model-prefix>.md (model id up to "["). Unset or no match falls through to reply.md, then the fixed reply.
 // FAKE_CLAUDE_STRUCTURED_OUTPUT (optional): JSON value (any type) returned as result.structured_output on the normal turn
@@ -73,6 +75,22 @@ const configuredTools = (() => {
     return value.filter((name) => typeof name === "string");
   } catch (error) {
     log({ event: "tools-config-ignored", reason: String(error?.message ?? error) });
+    return [];
+  }
+})();
+// Configured initialize.models: a JSON array only; unset or unparsable answers [] as before.
+const configuredModels = (() => {
+  const raw = process.env.FAKE_CLAUDE_MODELS;
+  if (raw === undefined || raw === "") return [];
+  try {
+    const value = JSON.parse(raw);
+    if (!Array.isArray(value)) {
+      log({ event: "models-config-ignored", reason: "not-array" });
+      return [];
+    }
+    return value;
+  } catch (error) {
+    log({ event: "models-config-ignored", reason: String(error?.message ?? error) });
     return [];
   }
 })();
@@ -591,7 +609,7 @@ if (!sdk) {
         if (req.subtype === "initialize") {
           // This fixture emits no hook events; the capability keeps SDK initialization compatible.
           // Hook enforcement must still be verified against the real CLI, not this canned protocol.
-          respond(id, { commands: [], models: [], agents: [], account: {}, output_style: "default", available_output_styles: ["default"], hook_on_failure_supported: true });
+          respond(id, { commands: [], models: configuredModels, agents: [], account: {}, output_style: "default", available_output_styles: ["default"], hook_on_failure_supported: true });
           sdkServers = Array.isArray(req.sdkMcpServers) ? req.sdkMcpServers.filter((name) => typeof name === "string") : [];
           if (sdkServers.length > 0) {
             log({ event: "sdk-mcp-servers", servers: sdkServers });
