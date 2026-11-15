@@ -676,11 +676,6 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
         })}
       </div>
 
-      <div className="commodore-pool-foot">
-        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6.5 9.5l3-3M7 4.5l1-1a2.5 2.5 0 0 1 3.5 3.5l-1 1M9 11.5l-1 1A2.5 2.5 0 0 1 4.5 9l1-1" /></svg>
-        <span>{t("commodore.pool.foot")}</span>
-      </div>
-
       {undo ? (
         <div className="commodore-pool-toast" role="status">
           <span>{undo.text}</span>
