@@ -1282,7 +1282,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-chip:not(.commodore-composer-chips.is-open *)[aria-expanded="true"] { background: var(--wash-selected); color: var(--text-primary); }
 .commodore-composer-chip:focus-visible { outline: none; box-shadow: var(--focus-face); }
 .commodore-composer-chip:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
-.commodore-composer-chip.is-icon { flex: none; width: var(--fc-composer-circle, 28px); padding: 0; justify-content: center; }
 .commodore-composer-chip > * { flex: none; }
 .commodore-composer-chip-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .commodore-composer-chip .objectives-commodore-judgment,

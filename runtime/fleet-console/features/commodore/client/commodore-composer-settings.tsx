@@ -378,12 +378,12 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     : section === "commander" ? t("commodore.settings.commander")
       : section === "pool" ? t("commodore.pool.title")
         : ct("theaterInbox.theaters.page");
-  const chip = (section: CommodoreComposerSettingsSection, aria: string, body: ReactNode, extra = "") => (
+  const chip = (section: CommodoreComposerSettingsSection, aria: string, body: ReactNode) => (
     <button
       ref={(element) => { if (element) chipRefs.current.set(section, element); else chipRefs.current.delete(section); }}
       type="button"
       data-section={section}
-      className={`commodore-composer-chip${extra}`}
+      className="commodore-composer-chip"
       aria-expanded={open === section && !closing}
       aria-controls={open === section ? panelId : undefined}
       aria-label={aria}
