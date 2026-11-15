@@ -60,6 +60,7 @@ import { closeConversationSurface, getConversationSurface, useConversationSurfac
 import { ConversationPanelFrame } from "./conversation-panel-frame.js";
 import { TaskforceCreateMenu } from "../../../commodore/client/taskforce/create-menu.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
+import { useCommodoreList } from "../../../commodore/client/commodore-list.js";
 import { ConsoleGlyph } from "../../../remote-access/client/console-section.js";
 import { consoleSectionManageable, useConsoleSections } from "../../../remote-access/client/console-sections.js";
 import { ConsoleManageIcon } from "../sidebar/sidebar-menu-icons.js";
@@ -847,6 +848,7 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   // 가운데 칸 어느 대화(사령관·지휘관·일반 Objective·빈 칸)든 머리 줄 도구모음은 같다. 지구본은 칩 옆 도구와 따로 맨 위 줄 오른쪽 끝에 선다.
   const [band, setBand] = useState<HTMLDivElement | null>(null);
   const [stageElement, setStageElement] = useState<HTMLElement | null>(null);
+  const hasCommodores = useCommodoreList().length > 0;
   useConversationSidebarCompact(stageElement, viewport, insets.right);
   const tools = (lead: ReactNode = null, trail: ReactNode = null) => <ConversationToolbar context={scopedToolContext} lead={lead} trail={trail} band={band} />;
 
@@ -895,8 +897,13 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
         <div className="conversation-column">
           <div className="conversation-pill-row">{tools(null)}</div>
           <div className="conversation-empty">
-            <strong>{t("conversation.empty.title")}</strong>
-            <span>{t("conversation.empty.body")}</span>
+            <strong>{t(hasCommodores ? "conversation.empty.title" : "conversation.empty.noCommodoreTitle")}</strong>
+            <span>{t(hasCommodores ? "conversation.empty.body" : "conversation.empty.noCommodoreBody")}</span>
+            {!hasCommodores ? (
+              <button type="button" className="conversation-empty-action" onClick={() => requestCommodoreCreate()}>
+                {t("sidebar.commodore.createTitle")}
+              </button>
+            ) : null}
           </div>
         </div>
       )}

@@ -742,6 +742,33 @@
   font-weight: var(--weight-bold);
 }
 
+.conversation-empty-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  margin-top: var(--space-2);
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: var(--control-rest);
+  color: var(--brass-ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide);
+}
+
+.conversation-empty-action:hover {
+  background: var(--control-rest-hover);
+}
+
+.conversation-empty-action:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
 /* ── 사이드바 위·아래 줄 ────────────────────────────────────────────────── */
 .conversation-side-actions {
   display: inline-flex;
