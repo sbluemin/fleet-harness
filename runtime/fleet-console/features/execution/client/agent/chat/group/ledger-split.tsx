@@ -71,6 +71,10 @@ export function GroupLedgerSplit({ panes, language, renderParticipantBody }: Gro
     return () => { for (const stop of release) stop(); };
   }, [framedKey]);
   const t = getGroupT(language);
+  // 마지막 행이 덜 차면 그 행의 마지막 칸이 남는 열까지 늘어난다 — 빈 칸을 두지 않는다. 그 행을 가로지르는 세로 경계는
+  // 그 행 앞에서 끊긴다(3명이면 위 행 지휘관|구성원, 아래 행 구성원 한 칸이 전체 폭).
+  const lastRowCount = panes.length - (shape.rows - 1) * shape.cols;
+  const partialRow = shape.rows > 1 && lastRowCount < shape.cols;
   return (
     <div
       ref={gridRef}
@@ -80,11 +84,12 @@ export function GroupLedgerSplit({ panes, language, renderParticipantBody }: Gro
       {panes.map((pane, index) => {
         const column = index % shape.cols;
         const row = Math.floor(index / shape.cols);
+        const stretch = partialRow && index === panes.length - 1;
         return (
           <section
             key={pane.objectiveRecord.id}
             className="group-ledger-split-pane"
-            style={{ gridColumn: column * 2 + 1, gridRow: row * 2 + 1 }}
+            style={{ gridColumn: stretch ? `${column * 2 + 1} / -1` : column * 2 + 1, gridRow: row * 2 + 1 }}
           >
             <div className="group-ledger-split-head">
               <SpeakerMark speaker={pane.speaker} size="sm" />
@@ -101,6 +106,7 @@ export function GroupLedgerSplit({ panes, language, renderParticipantBody }: Gro
           key={`col-${index}`}
           axis="column"
           index={index}
+          rowEnd={partialRow && index >= lastRowCount - 1 ? (shape.rows - 1) * 2 : null}
           label={t("group.ledger.split.resizeColumn")}
           gridRef={gridRef}
           weights={columns}
@@ -122,9 +128,11 @@ export function GroupLedgerSplit({ panes, language, renderParticipantBody }: Gro
   );
 }
 
-function SplitGutter({ axis, index, label, gridRef, weights, onCommit }: {
+function SplitGutter({ axis, index, rowEnd = null, label, gridRef, weights, onCommit }: {
   readonly axis: "column" | "row";
   readonly index: number;
+  /** 세로 경계가 끝나는 그리드 행 선 — 늘어난 마지막 행 칸을 가로지르지 않게 그 앞에서 끊는다. null 이면 끝까지. */
+  readonly rowEnd?: number | null;
   readonly label: string;
   readonly gridRef: React.RefObject<HTMLDivElement | null>;
   readonly weights: readonly number[];
@@ -170,7 +178,7 @@ function SplitGutter({ axis, index, label, gridRef, weights, onCommit }: {
   return (
     <div
       className={`group-ledger-split-gutter${vertical ? " is-vertical" : " is-horizontal"}`}
-      style={vertical ? { gridColumn: index * 2 + 2, gridRow: "1 / -1" } : { gridRow: index * 2 + 2, gridColumn: "1 / -1" }}
+      style={vertical ? { gridColumn: index * 2 + 2, gridRow: rowEnd === null ? "1 / -1" : `1 / ${rowEnd}` } : { gridRow: index * 2 + 2, gridColumn: "1 / -1" }}
       role="separator"
       aria-orientation={vertical ? "vertical" : "horizontal"}
       aria-valuemin={0}
@@ -187,7 +195,7 @@ function SplitGutter({ axis, index, label, gridRef, weights, onCommit }: {
   );
 }
 
-/** 참여자 수에 맞춘 열·행. 1 → 1×1, 2 → 2×1, 3·4 → 2×2, 5·6 → 3×2. */
+/** 참여자 수에 맞춘 열·행. 1 → 1×1, 2 → 2×1, 3·4 → 2×2, 5·6 → 3×2. 덜 찬 마지막 행은 마지막 칸이 남는 열까지 늘어난다. */
 function gridShape(count: number): { readonly cols: number; readonly rows: number } {
   if (count <= 1) return { cols: 1, rows: 1 };
   const cols = Math.ceil(Math.sqrt(count));

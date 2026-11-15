@@ -39,7 +39,8 @@ import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
 import { SpeakerMark, useLocalizedSnapshot } from "./speaker-mark.js";
 import { registerObjectiveContextRail } from "./context-rail.js";
-import { ConversationViewToggle, setGroupConversationView } from "./conversation-view.js";
+import { ConversationViewToggle, setGroupConversationView, useGroupConversationView } from "./conversation-view.js";
+import { GroupLedgerSplit, type GroupLedgerSplitPane } from "./ledger-split.js";
 
 /**
  * 그룹 대화를 대화 중심 화면에 끼운다 — 가운데 칸 본문 렌더러와 오른쪽 「구성원」 탭.
@@ -158,7 +159,8 @@ function renderConversationBody(context: ConversationBodyContext): React.ReactNo
   // 데스크톱 가운데 칸의 그룹 대화는 루트(지휘관) Objective 본문 대신 선다 — 그 본문의 채팅 링크 경계를 잃지 않게 같은 길로 감싼다.
   // 구성원·지휘관 원장(MemberLedger)은 기본 본문을 그대로 세우므로 그 본문의 경계가 이미 있다.
   const links: GroupLinkPorts = { navigate: context.navigate, ...(context.openObjectiveBrowser ? { openObjectiveBrowser: context.openObjectiveBrowser } : {}) };
-  return <RootBody root={context.objectiveRecord} language={context.language} links={links}>{context.defaultBody}</RootBody>;
+  const split: LedgerSplitPorts = { nestedObjectiveRecords: context.nestedObjectiveRecords, renderParticipantBody: context.renderParticipantBody };
+  return <RootBody root={context.objectiveRecord} language={context.language} links={links} split={split}>{context.defaultBody}</RootBody>;
 }
 
 /**
@@ -177,16 +179,45 @@ interface GroupLinkPorts {
   readonly openObjectiveBrowser?: () => void;
 }
 
+/** 데스크톱 가운데 칸이 원장 분할 화면에 넘기는 창구 — 구성원 레코드와 참여자 본문 슬롯. 폰은 주지 않는다. */
+interface LedgerSplitPorts {
+  readonly nestedObjectiveRecords: readonly ObjectiveRecord[];
+  readonly renderParticipantBody: ConversationBodyContext["renderParticipantBody"];
+}
+
 /**
- * 루트 자리 — 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문).
- * `links` 는 데스크톱 가운데 칸만 준다. 폰은 루트 Objective 본문 안에 서므로 그 본문의 채팅 링크 경계가 이미 감싼다.
+ * 루트 자리 — 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문)이 먼저다. 아니면 데스크톱은 화면 전환 설정이 원장일 때
+ * 원장 분할 화면, 그룹채팅일 때 그룹 대화다. 폰은 늘 그룹 대화다.
+ * `links`·`split` 은 데스크톱 가운데 칸만 준다. 폰은 루트 Objective 본문 안에 서므로 그 본문의 채팅 링크 경계가 이미 감싼다.
  */
-function RootBody({ root, language, phone = false, links, children }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly phone?: boolean; readonly links?: GroupLinkPorts; readonly children: React.ReactNode }) {
+function RootBody({ root, language, phone = false, links, split, children }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly phone?: boolean; readonly links?: GroupLinkPorts; readonly split?: LedgerSplitPorts; readonly children: React.ReactNode }) {
   const commanderLedger = useCommanderLedgerChosen(root.id);
+  const view = useGroupConversationView();
   if (commanderLedger) return <MemberLedger root={root} member={root} language={language}>{children}</MemberLedger>;
+  // 분할 화면은 루트 본문을 칸으로 직접 세우므로 children(같은 id 의 기본 본문)은 그리지 않는다 — 본문 풀은 id 당 슬롯 하나다.
+  if (!phone && split && view === "ledger") return <RootLedgerSplit root={root} language={language} ports={split} />;
   return links
     ? <GroupLinkBoundary root={root} language={language} ports={links}>{(fileLinkError) => <RootConversation root={root} language={language} phone={phone} fileLinkError={fileLinkError} />}</GroupLinkBoundary>
     : <RootConversation root={root} language={language} phone={phone} />;
+}
+
+/**
+ * 원장 분할 화면 — 지휘관 1칸(첫 칸)과 Objective 레코드가 선 구성원 전원. 칸 머리의 표식·이름은 그룹 타임라인의 참여자를 쓰고,
+ * 명부에 아직 없으면 레코드 제목으로 세운다. 레코드가 없는 명부 구성원(시작 전)은 칸이 없다.
+ */
+function RootLedgerSplit({ root, language, ports }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly ports: LedgerSplitPorts }) {
+  const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
+  const { nestedObjectiveRecords, renderParticipantBody } = ports;
+  const panes = React.useMemo<readonly GroupLedgerSplitPane[]>(() => {
+    const speakerOf = (id: string) => snapshot.participants.find((participant) => participant.speaker.objectiveId === id)?.speaker ?? null;
+    const commander: GroupLedgerSplitPane = { objectiveRecord: root, speaker: speakerOf(root.id) ?? { kind: "commander", name: root.title, objectiveId: root.id } };
+    const members = nestedObjectiveRecords.filter((record) => record.parentObjectiveId === root.id);
+    // 구성원 칸은 참여자 순서(명부)를 따르고, 명부에 아직 없는 레코드는 뒤에 붙인다.
+    const order = new Map(snapshot.participants.flatMap((participant, index) => (participant.speaker.objectiveId ? [[participant.speaker.objectiveId, index] as const] : [])));
+    const sorted = [...members].sort((left, right) => (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id) ?? Number.MAX_SAFE_INTEGER));
+    return [commander, ...sorted.map((record) => ({ objectiveRecord: record, speaker: speakerOf(record.id) ?? { kind: "member" as const, name: record.title, objectiveId: record.id } }))];
+  }, [root, nestedObjectiveRecords, snapshot.participants]);
+  return <GroupLedgerSplit panes={panes} language={language} renderParticipantBody={renderParticipantBody} />;
 }
 
 /**
