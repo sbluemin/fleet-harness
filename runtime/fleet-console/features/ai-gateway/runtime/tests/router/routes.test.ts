@@ -1861,6 +1861,7 @@ describe("agy ACP bridge route", () => {
     const res = response();
     await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: GEMINI }));
     expect(res.status).toBe(403);
+    expect(res.body).toContain("Antigravity is turned off");
     expect(open).not.toHaveBeenCalled();
     await router.releaseAgy();
   });

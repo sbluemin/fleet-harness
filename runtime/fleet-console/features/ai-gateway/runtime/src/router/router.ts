@@ -473,7 +473,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 이 거부는 켠 목록이 아니라 공급자 로그인이다. 문구에 "model:"을 넣지 않는다 — 아래 주석.
     // 노브가 최종 권한이다. env 모델 오버라이드도 꺼진 Antigravity는 열지 못한다.
     if (target?.provider === "antigravity" && !antigravityOn()) {
-      writeClientError(res, 403, "permission_error", `AI gateway provider is not signed in: ${requested}`);
+      writeClientError(res, 403, "permission_error", "Antigravity is turned off. Turn it on in AI Gateway settings to use this model.");
       clock?.finish("error", 403);
       return true;
     }
