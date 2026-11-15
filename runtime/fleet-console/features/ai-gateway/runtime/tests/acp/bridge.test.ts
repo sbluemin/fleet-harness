@@ -168,18 +168,26 @@ describe("agy ACP bridge", () => {
     expect(count(await log(), "session/new")).toBe(2);
   });
 
-  it("ends the turn as a rate_limit_error instead of forwarding agy's upstream retry notices as model output", async () => {
+  it("ends the turn as an Anthropic error, not an answer, when agy reports an upstream problem as message text", async () => {
     const { bridge, log } = await setup();
-    const response = await bridge.stream({ model: MODEL, input: [user("UPSTREAM429")], instructions: "be brief", tools: [BASH], stream: true }, { apiKey: "" });
-    expect(response.ok).toBe(false);
-    if (response.ok) return;
-    expect(response.status).toBe(429);
-    const body = JSON.parse(new TextDecoder().decode(response.body)) as { type: string; error: { type: string; message: string } };
+    const open = (prompt: string) => bridge.stream({ model: MODEL, input: [user(prompt)], instructions: "be brief", tools: [BASH], stream: true }, { apiKey: "" });
+    // A retried 429: rate_limit_error before the stream starts, and agy's own retries are not waited for.
+    const limited = await open("UPSTREAM429");
+    expect(limited.ok).toBe(false);
+    if (limited.ok) return;
+    expect(limited.status).toBe(429);
+    const body = JSON.parse(new TextDecoder().decode(limited.body)) as { type: string; error: { type: string; message: string } };
     expect(body).toMatchObject({ type: "error", error: { type: "rate_limit_error" } });
     expect(body.error.message).toContain("RESOURCE_EXHAUSTED");
     expect(JSON.stringify(body)).not.toContain("NOT-A-REAL-ANSWER");
-    // agy's own retries are not waited for: the prompt is cancelled and the child ended.
     await until(async () => (await log()).some((entry) => entry.terminated === true));
+    // A code-less "⚠ network issue" message that is the whole turn: overloaded_error (529, which Claude Code retries), session dropped.
+    const network = await open("UPSTREAMNET");
+    expect(network.ok).toBe(false);
+    if (network.ok) return;
+    expect(network.status).toBe(529);
+    expect(JSON.parse(new TextDecoder().decode(network.body))).toMatchObject({ error: { type: "overloaded_error", message: expect.stringContaining("network issue") } });
+    await until(async () => (await log()).filter((entry) => entry.terminated === true).length === 2);
   });
 
   it("denies built-in tools and fails the turn if one runs anyway", async () => {

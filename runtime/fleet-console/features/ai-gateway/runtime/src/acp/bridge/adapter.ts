@@ -15,7 +15,7 @@ import {
 import { estimateTokens } from "../../transport/token-estimate.js";
 import { wireLog } from "../../transport/wire-log.js";
 import { AcpAuthRequiredError, AcpModelUnavailableError, type AcpPromptBlock, type AcpSessionPort } from "../contract.js";
-import { parseAgyUpstreamError, type AgyUpstreamError } from "../events.js";
+import { agyWarningText, parseAgyUpstreamError, type AgyUpstreamError } from "../events.js";
 import { resolveAcpModelSelection, type AcpModelSelection } from "../models.js";
 import { AGY_INERT_TOOL_TITLES, toolOnlyTitlePrefix } from "../tool-only.js";
 import {
@@ -32,6 +32,7 @@ import {
   READ_ABORTED,
   READ_TIMEOUT,
   SessionRegistry,
+  type BridgeItem,
   type BridgedCall,
 } from "./registry.js";
 
@@ -75,6 +76,10 @@ export interface AgyAcpBridge extends AiGatewayAdapter {
 const MCP_SERVER_NAME = "fleet";
 /** 응답을 내보내기 전에 첫 출력을 기다리는 최대 시간. 첫 출력이 업스트림 오류 알림이면 HTTP 오류로 끝낸다. */
 const FIRST_OUTPUT_WAIT_MS = 8_000;
+/** `⚠` 알림이 한 턴의 전부인지 가리기 위해 턴이 끝나기를 더 기다리는 시간(실측: 알림 뒤 20ms 안에 끝난다). */
+const WARNING_SETTLE_MS = 2_000;
+/** `⚠`로 시작하는 텍스트를 붙잡아 두는 한도. 이보다 길면 알림이 아니라 답이다. */
+const WARNING_HOLD_MAX_CHARS = 400;
 const DEFAULTS = {
   maxSessions: 8,
   callTimeoutSeconds: 3_600,
@@ -166,7 +171,31 @@ function upstreamFailure(error: AgyUpstreamError): { readonly status: number; re
   if (code === 400 || status === "INVALID_ARGUMENT" || status === "FAILED_PRECONDITION") return { status: 400, type: "invalid_request_error", message };
   if (code === 503 || code === 529 || status === "UNAVAILABLE") return { status: 529, type: "overloaded_error", message };
   if (code === 504 || status === "DEADLINE_EXCEEDED") return { status: 504, type: "api_error", message };
-  return { status: code !== undefined && code >= 500 && code <= 599 ? code : 500, type: "api_error", message };
+  // 코드를 알 수 없는 오류(예: 네트워크 문제)는 일시적인 것으로 보고 Claude Code가 재시도하게 529로 보낸다.
+  if (code === undefined) return { status: 529, type: "overloaded_error", message };
+  return { status: code >= 500 && code <= 599 ? code : 500, type: "api_error", message };
+}
+
+/**
+ * 한 턴의 출력이 `⚠ …` 텍스트뿐이면 그 본문을 돌려준다(아니면 undefined).
+ *
+ * 조건: 턴이 `end_turn`으로 끝났고, 텍스트가 `⚠ `로 시작하며, 도구 호출도 도구 시작도 없다(생각 조각은 허용).
+ * 구조 신호가 없는 오류의 마지막 수단이다. **오탐 위험:** 정상 답이 우연히 `⚠ `로 시작하는 한 줄이고 거기서 끝나면 오류로
+ * 처리된다. 이를 감수하는 이유: 놓치면 오류 문구가 assistant 답으로 Claude Code 기록에 남고, 오류 상태가 남은 세션이 다음
+ * 요청에도 같은 문구를 돌려줬다(실측). 오탐이어도 529는 재시도되고 세션은 새로 열린다.
+ */
+function warningOnlyTurn(items: readonly BridgeItem[]): string | undefined {
+  const end = items.findIndex((item) => item.kind === "acp" && item.event.kind === "turn-end");
+  if (end < 0) return undefined;
+  const turnEnd = items[end];
+  if (turnEnd?.kind !== "acp" || turnEnd.event.kind !== "turn-end" || turnEnd.event.stopReason !== "end_turn") return undefined;
+  let text = "";
+  for (const item of items.slice(0, end)) {
+    if (item.kind !== "acp") return undefined;
+    if (item.event.kind === "tool-start") return undefined;
+    if (item.event.kind === "text") text += item.event.text;
+  }
+  return agyWarningText(text);
 }
 
 type Plan =
@@ -265,6 +294,21 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         wireLog("bridge.upstream_error", { session: session.key, status: failure.status, type: failure.type });
         await session.close(failure.message);
         return failedResponse(failure.status, failure.type, failure.message);
+      }
+      // 코드 없는 `⚠ …` 알림(예: 네트워크 문제)은 한 턴의 출력이 그것뿐일 때만 오류다. 곧 끝나는지 짧게 더 본다.
+      if (agyWarningText(first.event.text) !== undefined) {
+        await session.channel.scan(
+          (item) => item.kind !== "acp" || item.event.kind === "turn-end" || item.event.kind === "exit",
+          WARNING_SETTLE_MS,
+          options.signal,
+        );
+        const warning = warningOnlyTurn(session.channel.snapshot());
+        if (warning !== undefined) {
+          const failure = upstreamFailure({ status: undefined, code: undefined, message: warning });
+          wireLog("bridge.upstream_error", { session: session.key, status: failure.status, type: failure.type, kind: "warning-only turn" });
+          await session.close(failure.message);
+          return failedResponse(failure.status, failure.type, failure.message);
+        }
       }
     }
 
@@ -400,6 +444,8 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
     const produced: string[] = [];
     const batch: BridgedCall[] = [];
     let finished = false;
+    /** 아직 내보내지 않고 붙잡아 둔 `⚠ …` 텍스트: 이 턴의 출력이 그것뿐이면 오류, 아니면 풀어서 내보낸다. */
+    let held: string | undefined;
 
     const usage = () => ({
       input_tokens: session.used,
@@ -412,6 +458,22 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         outputIndex += 1;
       }
       open = undefined;
+    };
+    const emitText = function* (chunk: string): Generator<CanonicalResponseEvent> {
+      if (open?.kind !== "text") {
+        yield* closeRun();
+        open = { kind: "text", id: `agm_${sequence++}` };
+        yield { type: "response.content_part.added", item_id: open.id, output_index: outputIndex, content_index: 0, part: { type: "output_text", text: "" } };
+      }
+      text += chunk;
+      produced.push(chunk);
+      yield { type: "response.output_text.delta", item_id: open.id, output_index: outputIndex, content_index: 0, delta: chunk };
+    };
+    const releaseHeld = function* (): Generator<CanonicalResponseEvent> {
+      if (held === undefined) return;
+      const chunk = held;
+      held = undefined;
+      yield* emitText(chunk);
     };
     const fail = async function* (this: AgyAcpBridgeAdapter, message: string, type = "api_error"): AsyncGenerator<CanonicalResponseEvent> {
       yield* closeRun();
@@ -448,7 +510,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
           return;
         }
         if (item.kind === "closed") { yield* fail(item.reason); return; }
-        if (item.kind === "call") { batch.push(item.call); continue; }
+        if (item.kind === "call") { yield* releaseHeld(); batch.push(item.call); continue; }
 
         const event = item.event;
         switch (event.kind) {
@@ -461,14 +523,14 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
               yield* fail(failure.message, failure.type);
               return;
             }
-            if (open?.kind !== "text") {
-              yield* closeRun();
-              open = { kind: "text", id: `agm_${sequence++}` };
-              yield { type: "response.content_part.added", item_id: open.id, output_index: outputIndex, content_index: 0, part: { type: "output_text", text: "" } };
+            // `⚠ …` 알림일 수 있는 텍스트는 이 턴의 출력이 그것뿐인지 알 때까지 붙잡는다(짧을 때만).
+            if (text.length === 0 && (held !== undefined || agyWarningText(event.text) !== undefined)) {
+              held = (held ?? "") + event.text;
+              if (held.length <= WARNING_HOLD_MAX_CHARS) break;
+              yield* releaseHeld();
+              break;
             }
-            text += event.text;
-            produced.push(event.text);
-            yield { type: "response.output_text.delta", item_id: open.id, output_index: outputIndex, content_index: 0, delta: event.text };
+            yield* emitText(event.text);
             break;
           }
           case "thought": {
@@ -478,6 +540,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
             break;
           }
           case "tool-start": {
+            yield* releaseHeld();
             // 내장 도구가 실행되는 것은 차단이 뚫렸다는 뜻이다. 이 턴을 끝내고 세션을 버린다.
             if (!event.name.startsWith(prefix) && !AGY_INERT_TOOL_TITLES.has(event.name)) {
               wireLog("bridge.builtin_leak", { session: session.key, tool: event.name });
@@ -496,6 +559,13 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
           case "turn-end": {
             if (event.stopReason === "cancelled" || event.stopReason === "error") {
               yield* fail(event.stopReason === "cancelled" ? "agy cancelled the turn." : `agy failed the turn: ${event.detail ?? "unknown error"}`);
+              return;
+            }
+            if (held !== undefined) {
+              // 출력이 `⚠ …` 알림뿐인 채 끝난 턴: 오류로 끝내고 세션은 버린다(오류 상태가 남은 세션이 같은 문구를 되풀이한다).
+              const failure = upstreamFailure({ status: undefined, code: undefined, message: agyWarningText(held) ?? held });
+              wireLog("bridge.upstream_error", { session: session.key, status: failure.status, type: failure.type, kind: "warning-only turn" });
+              yield* fail(failure.message, failure.type);
               return;
             }
             yield* closeRun();

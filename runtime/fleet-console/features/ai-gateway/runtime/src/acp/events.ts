@@ -143,3 +143,14 @@ export function parseAgyUpstreamError(text: string): AgyUpstreamError | undefine
   const numeric = /\b(?:code|HTTP|status)[ :]+(\d{3})\b/i.exec(rest);
   return { status: undefined, code: numeric ? Number(numeric[1]) : undefined, message: rest.trim() };
 }
+
+/**
+ * `⚠ `로 시작하는 텍스트면 그 뒤의 본문을 돌려준다.
+ *
+ * agy는 업스트림 오류 중 일부(실측: 네트워크 문제, `⚠ There was a network issue connecting to the server, please try again.`)를
+ * 코드 없이 같은 모양의 `agent_message_chunk`로 내보내고 `end_turn`으로 정상 종료한다. 이 한 줄만으로는 오류인지 알 수 없다 —
+ * 한 턴의 출력이 이런 텍스트**뿐**이고 도구 호출도 다른 텍스트도 없이 끝났을 때만 호출자가 업스트림 오류로 본다.
+ */
+export function agyWarningText(text: string): string | undefined {
+  return /^\s*⚠\s+([\s\S]*?)\s*$/.exec(text)?.[1];
+}

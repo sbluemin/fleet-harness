@@ -47,6 +47,11 @@ export class BridgeChannel {
     this.items.length = 0;
   }
 
+  /** 지금 큐에 쌓인 항목의 복사본(꺼내지 않는다). */
+  snapshot(): readonly BridgeItem[] {
+    return [...this.items];
+  }
+
   async next(timeoutMs: number, signal?: AbortSignal): Promise<BridgeItem | typeof READ_TIMEOUT | typeof READ_ABORTED> {
     const item = await this.scan(() => true, timeoutMs, signal);
     if (typeof item === "object") this.items.splice(this.items.indexOf(item), 1);
