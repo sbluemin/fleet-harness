@@ -165,6 +165,11 @@ describe("objective routing sessions", () => {
     const archivedHome = path.dirname(archived.turns[0]!.configDir);
     await releaseRoutingSession(D);
     expect(existsSync(archivedHome)).toBe(false);
+    await archived.choose(D);
+    expect(archived.turns[1]!.sessionId).toBeTruthy();
+    expect(archived.turns[1]!.sessionId).not.toBe(archived.turns[0]!.sessionId);
+    expect(archived.turns[1]!.resume).toBeUndefined();
+    expect(existsSync(path.dirname(archived.turns[1]!.configDir))).toBe(true);
     const live = harness();
     await live.choose(A);
     const liveHome = path.dirname(live.turns[0]!.configDir);

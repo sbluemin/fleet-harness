@@ -73,15 +73,16 @@ interface LiveSession {
   /** 이어서 성공한 턴 수. 이번 턴 번호는 여기에 1을 더한 값이다. */
   turn: number;
   abort: AbortController | null;
+  /** 보관·종료가 이 세션만 버리라고 표시한다. 키 자체는 다음 판단이 다시 연다. */
+  discard?: DisposeReason;
   sdk?: ClaudeGatewaySdk;
 }
 
 interface Slot {
   tail: Promise<void>;
   session: LiveSession | null;
-  /** 보관은 이 프로세스에서 그 키를 다시 열지 않는다. 종료는 슬롯을 지운다. */
-  closed: "archive" | null;
-  release: DisposeReason | null;
+  /** Console 종료만 이 키를 더 막는다. 보관은 세션을 버릴 뿐 키를 닫지 않는다. */
+  shutdown: boolean;
 }
 
 const slots = new Map<string, Slot>();
@@ -89,7 +90,7 @@ const slots = new Map<string, Slot>();
 function slotOf(objectiveId: string): Slot {
   let slot = slots.get(objectiveId);
   if (!slot) {
-    slot = { tail: Promise.resolve(), session: null, closed: null, release: null };
+    slot = { tail: Promise.resolve(), session: null, shutdown: false };
     slots.set(objectiveId, slot);
   }
   return slot;
@@ -122,6 +123,12 @@ function failureReason(error: unknown): string {
   return line.length > 180 ? line.slice(0, 180) : line;
 }
 
+function abortReason(signal: AbortSignal): Error {
+  const reason = signal.reason;
+  if (reason instanceof Error) return reason;
+  return new Error(typeof reason === "string" && reason ? reason : "Routing judgment aborted");
+}
+
 /** 프로세스와 임시 홈을 걷는다. 세션이 없으면 로그를 남기지 않는다. 턴이 이미 같은 폐기를 적었으면 다시 적지 않는다. */
 async function destroy(slot: Slot, reason: DisposeReason, silent = false): Promise<void> {
   const session = slot.session;
@@ -138,14 +145,20 @@ async function destroy(slot: Slot, reason: DisposeReason, silent = false): Promi
   });
 }
 
-/** 목표 보관. 진행 중인 턴이 있으면 그 턴이 끝난 뒤 임시 홈을 지우고, 같은 키는 다시 열지 않는다. */
+/**
+ * 목표 보관. 그 세션의 진행 중 턴을 끊고 프로세스와 임시 홈만 버린다.
+ * 키는 닫지 않는다. 복원 뒤의 다음 판단이 새 세션을 만든다.
+ */
 export function releaseRoutingSession(objectiveId: string): Promise<void> {
   if (!OBJECTIVE_ID.test(objectiveId)) return Promise.resolve();
-  const slot = slotOf(objectiveId);
-  slot.closed = "archive";
-  slot.release = "archive";
-  slot.session?.abort?.abort();
-  return enqueue(objectiveId, async (current) => { await destroy(current, "archive"); });
+  const slot = slots.get(objectiveId);
+  const target = slot?.session;
+  if (!slot || !target) return Promise.resolve();
+  target.discard = "archive";
+  target.abort?.abort();
+  return enqueue(objectiveId, async (current) => {
+    if (current.session === target) await destroy(current, "archive");
+  });
 }
 
 /** Console 종료. 진행 중인 턴을 끊고 남은 임시 홈을 모두 지운다. */
@@ -154,14 +167,17 @@ export async function releaseAllRoutingSessions(): Promise<void> {
   for (const id of ids) {
     const slot = slots.get(id);
     if (!slot) continue;
-    slot.release = "shutdown";
-    slot.session?.abort?.abort();
+    slot.shutdown = true;
+    if (slot.session) {
+      slot.session.discard = "shutdown";
+      slot.session.abort?.abort();
+    }
   }
   await Promise.all(ids.map(async (id) => {
     const slot = slots.get(id);
     if (!slot) return;
     await enqueue(id, async (current) => {
-      await destroy(current, "shutdown");
+      if (current.session?.discard === "shutdown") await destroy(current, "shutdown");
       if (slots.get(id) === current) slots.delete(id);
     });
   }));
@@ -252,7 +268,13 @@ async function runRoutingModelTurn(input: RoutingModelTurn): Promise<unknown> {
 }
 
 async function runQueuedTurn(slot: Slot, input: RoutingModelTurn): Promise<unknown> {
-  if (slot.closed) throw new Error("Routing session disposed");
+  // 큐에서 기다리는 동안 끊긴 요청은 세션을 시작하지도, 버리지도 않는다.
+  if (slot.shutdown) throw new Error("Routing session disposed");
+  if (input.signal?.aborted) throw abortReason(input.signal);
+  const pendingDiscard = slot.session?.discard;
+  if (pendingDiscard) await destroy(slot, pendingDiscard);
+  if (slot.shutdown) throw new Error("Routing session disposed");
+  if (input.signal?.aborted) throw abortReason(input.signal);
   const roster = buildModelRoster("agent", routingProviderStatuses(input.readProviderStatuses));
   const row = findRosterRow(roster, input.judge.model);
   if (!row) {
@@ -269,15 +291,17 @@ async function runQueuedTurn(slot: Slot, input: RoutingModelTurn): Promise<unkno
   const rung = input.judge.effort === undefined ? undefined : clampRosterEffort(rosterRowEfforts(row), input.judge.effort);
   const effort = isAgentEffort(rung) ? rung : undefined;
   if (slot.session && slot.session.wireModel !== wireModel) await destroy(slot, "model_change");
-  if (slot.closed) throw new Error("Routing session disposed");
+  if (slot.shutdown) throw new Error("Routing session disposed");
+  if (input.signal?.aborted) throw abortReason(input.signal);
   let created = false;
   if (!slot.session) {
     const scratch = await mkdtemp(path.join(tmpdir(), "fleet-routing-"));
     const configDir = path.join(scratch, "claude");
     await mkdir(configDir, { recursive: true });
-    if (slot.closed || slot.release) {
+    if (slot.shutdown || input.signal?.aborted) {
       await rm(scratch, { recursive: true, force: true });
-      throw new Error("Routing session disposed");
+      if (slot.shutdown) throw new Error("Routing session disposed");
+      throw abortReason(input.signal!);
     }
     slot.session = { wireModel, sessionId: randomUUID(), scratch, turn: 0, abort: null };
     created = true;
@@ -309,7 +333,7 @@ async function runQueuedTurn(slot: Slot, input: RoutingModelTurn): Promise<unkno
       ...(executablePath === undefined ? {} : { executablePath }),
     });
     session.sdk = sdk;
-    if (controller.signal.aborted || slot.closed || slot.release) throw controller.signal.reason ?? new Error("Routing session disposed");
+    if (controller.signal.aborted || slot.shutdown || session.discard) throw controller.signal.reason ?? new Error("Routing session disposed");
     const run = await sdk.startTurn({
       model: wireModel, ...(effort ? { effort } : {}), cwd: session.scratch,
       systemPrompt: { mode: "replace", text: input.instructions.join("\n\n") },
@@ -322,7 +346,7 @@ async function runQueuedTurn(slot: Slot, input: RoutingModelTurn): Promise<unkno
     for await (const message of run) {
       if (message.type === "result" && message.subtype === "success") parsed = message.structured_output;
     }
-    if (controller.signal.aborted || slot.closed || slot.release) throw controller.signal.reason ?? new Error("Routing session disposed");
+    if (controller.signal.aborted || slot.shutdown || session.discard) throw controller.signal.reason ?? new Error("Routing session disposed");
     if (parsed === undefined) throw new Error("Routing model returned no structured result");
     const record = parsed as Record<string, unknown>;
     if (!record || typeof record !== "object") throw new Error("Invalid routing model choice");
@@ -333,14 +357,14 @@ async function runQueuedTurn(slot: Slot, input: RoutingModelTurn): Promise<unkno
       model: input.judge.model, effort: effort ?? null, tasks: input.schema.required.length / 2,
       session: created ? "created" : "resumed", turn, disposeReason: null,
     });
-    if (!slot.closed && !slot.release && slot.session === session) session.turn = turn;
+    if (!session.discard && !slot.shutdown && slot.session === session) session.turn = turn;
     return parsed;
   } catch (error) {
     failed = error;
     logJudge({
       event: "judge_result", ok: false, reason: failureReason(error),
       model: input.judge.model, effort: effort ?? null, tasks: input.schema.required.length / 2,
-      session: created ? "created" : "resumed", turn, disposeReason: slot.closed ?? slot.release ?? "failure",
+      session: created ? "created" : "resumed", turn, disposeReason: session.discard ?? "failure",
     });
     throw error;
   } finally {
@@ -349,8 +373,8 @@ async function runQueuedTurn(slot: Slot, input: RoutingModelTurn): Promise<unkno
     await session.sdk?.dispose().catch(() => undefined);
     if (session.sdk) session.sdk = undefined;
     session.abort = null;
-    if (slot.session === session && (failed !== undefined || slot.closed || slot.release)) {
-      await destroy(slot, slot.closed ?? slot.release ?? "failure", failed !== undefined);
+    if (slot.session === session && (failed !== undefined || session.discard)) {
+      await destroy(slot, session.discard ?? "failure", failed !== undefined);
     }
   }
 }
