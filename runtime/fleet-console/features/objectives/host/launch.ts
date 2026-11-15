@@ -205,8 +205,10 @@ const memberSession = (objectiveId: string, commander: string | null, index: num
 export interface LaunchServiceOptions {
   /** 사람이 그 사령관에 정한 지휘관 모델·강도. 첫 구상·개시가 호출이 넘긴 모델보다 이 설정을 먼저 쓴다. 없으면 null. */
   readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null;
-  /** 그 사령관 세션의 모델·강도. 지휘관 라우팅의 judge 다. 세션이 없으면 null. */
+  /** 그 사령관 세션의 모델·강도. 돌고 있으면 판단 모델이다. 세션이 없으면 null. */
   readonly commodoreSession?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null;
+  /** 세션이 없을 때 쓰는 그 사령관의 해석된 모델·강도. 지휘관 모델로 돌아가지 않는다. */
+  readonly commodoreCoordinates?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null;
   /** 지휘관 레코드 생성 시에만 읽는다. 지연 최초 기동·구성원 생성에는 저장값을 쓴다. */
   readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean;
   /** 무보고 깨움까지 기다리는 시간. 기본은 25분. 테스트가 짧은 값을 넣는다. */
@@ -222,14 +224,42 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   }
   const modelCatalog = createModelCatalog(ctx);
   type RoutedSeat = { readonly model: string; readonly effort?: string };
+  /** 판단 모델 — 도는 사령관 세션, 없으면 그 사령관의 해석된 좌표. 지휘관 모델은 쓰지 않는다. */
+  const routingJudge = (commodoreId: string): { readonly model: string; readonly effort?: string } | null => {
+    const running = serviceOptions.commodoreSession?.(commodoreId) ?? null;
+    if (running?.model) return { model: running.model, ...(running.effort ? { effort: running.effort } : {}) };
+    const resolved = serviceOptions.commodoreCoordinates?.(commodoreId) ?? null;
+    if (resolved?.model) return { model: resolved.model, ...(resolved.effort ? { effort: resolved.effort } : {}) };
+    return null;
+  };
+  /** 목표 보관이 그 목표의 판단 세션을 버린다. 게이트웨이가 없어도 보관은 유지한다. */
+  const discardRoutingSession = async (objectiveId: string): Promise<void> => {
+    const origin = ctx.server.origin();
+    if (!origin) return;
+    const timeout = AbortSignal.timeout(5_000);
+    try {
+      await fetch(`${origin}/api/v1/ai-gateway/routing-session/dispose`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin, accept: "application/json" },
+        body: JSON.stringify({ objectiveId }),
+        redirect: "error",
+        signal: timeout,
+      });
+    } catch { /* 세션이 없거나 게이트웨이가 닫혀도 보관은 남는다. */ }
+  };
   /** routing-assign 한 번. 실패·409·모델 없는 항목은 맵에 없다. origin 이 없으면 null. 폴백 모델로 대신 채우지 않는다. */
-  const postRouting = async (origin: string, judge: { readonly model: string; readonly effort?: string }, items: readonly { readonly key: string; readonly prompt: string }[], signal?: AbortSignal): Promise<Map<string, RoutedSeat> | null> => {
+  const postRouting = async (origin: string, objectiveId: string, judge: { readonly model: string; readonly effort?: string }, items: readonly { readonly key: string; readonly prompt: string }[], signal?: AbortSignal, commander?: { readonly model: string; readonly effort?: string }): Promise<Map<string, RoutedSeat> | null> => {
     const timeout = AbortSignal.timeout(ROUTING_TIMEOUT_MS);
     try {
       const response = await fetch(`${origin}${ROUTING_ASSIGN_PATH}`, {
         method: "POST",
         headers: { "content-type": "application/json", origin, accept: "application/json" },
-        body: JSON.stringify({ judge: { model: judge.model, ...(judge.effort ? { effort: judge.effort } : {}) }, items }),
+        body: JSON.stringify({
+          objectiveId,
+          judge: { model: judge.model, ...(judge.effort ? { effort: judge.effort } : {}) },
+          ...(commander ? { commander } : {}),
+          items,
+        }),
         redirect: "error",
         signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
       });
@@ -248,14 +278,14 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       return seats;
     } catch { return null; }
   };
-  const assignRouting = async (judge: { readonly model: string; readonly effort?: string }, items: readonly { readonly key: string; readonly prompt: string }[], signal?: AbortSignal): Promise<Map<string, RoutedSeat> | null> => {
+  const assignRouting = async (objectiveId: string, judge: { readonly model: string; readonly effort?: string }, items: readonly { readonly key: string; readonly prompt: string }[], signal?: AbortSignal, commander?: { readonly model: string; readonly effort?: string }): Promise<Map<string, RoutedSeat> | null> => {
     if (items.length === 0) return new Map();
     const origin = ctx.server.origin();
     if (!origin) return null;
     const decisions = new Map<string, RoutedSeat>();
     for (let start = 0; start < items.length; start += ROUTING_ASSIGN_MAX_ITEMS) {
       const chunk = items.slice(start, start + ROUTING_ASSIGN_MAX_ITEMS);
-      const seats = await postRouting(origin, judge, chunk, signal);
+      const seats = await postRouting(origin, objectiveId, judge, chunk, signal, commander);
       if (!seats) continue;
       for (const [key, seat] of seats) decisions.set(key, seat);
     }
@@ -540,9 +570,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     if (suppliedEffort !== undefined) throw new ObjectiveStoreError("invalid_arguments");
     if (typeof options?.actor === "object" && options.actor.kind === "commodore") {
-      const judge = serviceOptions.commodoreSession?.(current.commodoreId) ?? null;
-      if (!judge?.model) throw routingUnavailable();
-      const decided = await assignRouting(judge, [{ key: objectiveId, prompt: commanderRoutingPrompt(current) }], options.signal);
+      const judge = routingJudge(current.commodoreId);
+      if (!judge) throw routingUnavailable();
+      const decided = await assignRouting(current.id, judge, [{ key: objectiveId, prompt: commanderRoutingPrompt(current) }], options.signal);
       const seat = decided?.get(objectiveId);
       if (!seat) throw routingUnavailable();
       return { choice: seat };
@@ -692,6 +722,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     // removed/pending와 첨부는 보관 확정 전 건드리지 않는다. 응답을 잃어도 같은 ID·Theater·세션 이름으로 재시도한다.
     await ctx.objectiveRecords.archive(id).catch(asStoreError);
+    await discardRoutingSession(id);
   };
   /** 기동·소집 중인 목표의 완료 상태 변경을 거절한다. */
   const assertIdle = (id: string) => {
@@ -753,15 +784,17 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     });
     let routed = new Map<string, { readonly model: string; readonly effort?: string }>();
     if (needsRoute.length > 0) {
-      const judge = commanderPresetOf(objectiveId);
+      const judge = routingJudge(current.commodoreId);
+      const stored = commanderPresetOf(objectiveId);
+      const commander = stored.model ? { model: stored.model, ...(stored.effort ? { effort: stored.effort } : {}) } : undefined;
       const items: { key: string; prompt: string }[] = [];
-      if (judge.model) {
+      if (judge) {
         for (let start = 0; start < needsRoute.length; start += ROUTING_ASSIGN_MAX_ITEMS) {
           const chunk = needsRoute.slice(start, start + ROUTING_ASSIGN_MAX_ITEMS);
           const max = Math.floor(ROUTING_ASSIGN_MAX_PROMPT_SUM / chunk.length);
           for (const member of chunk) items.push({ key: member.id, prompt: memberRoutingPrompt(current, member, max) });
         }
-        routed = (await assignRouting({ model: judge.model, ...(judge.effort ? { effort: judge.effort } : {}) }, items)) ?? routed;
+        routed = (await assignRouting(current.id, judge, items, undefined, commander)) ?? routed;
       }
     }
     const members: MusterMember[] = [];
@@ -1726,6 +1759,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (!ctx.objectiveRecords.archive) throw new ObjectiveStoreError("objectiveRecord_lifecycle_unavailable");
         await ctx.objectiveRecords.archive(objectiveId).catch(asStoreError);
       }
+      await discardRoutingSession(objectiveId);
       store.refresh(objectiveId);
       service.followupTargetChanged(objectiveId);
       return { objective: objective(objectiveId), deleted: false };

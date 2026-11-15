@@ -60,7 +60,7 @@ interface GatewayStartContext {
   /** Console's owned-process port. The Claude CLI queried for supported models must be a child the Console's deadline ends. */
   readonly spawnAgentProcess: ClaudeProcessSpawner;
 }
-import { chooseRoutingModels } from "./routing-model.js";
+import { chooseRoutingModels, parseRoutingAssignRequest, releaseAllRoutingSessions, releaseRoutingSession, routingObjectiveId } from "./routing-model.js";
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
 import { registerConsoleOAuthRoutes } from "./oauth-routes.js";
@@ -119,6 +119,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const wireLog = createWireLogRuntime(ctx);
   applyStoredWireLog(ctx, aiGatewayStore.read);
   ctx.host.lifecycle.registerCleanup(() => setWireLogTarget(undefined));
+  ctx.host.lifecycle.registerCleanup(() => releaseAllRoutingSessions());
   registerTerminalModelAuthRoutes(ctx, {
     authService,
     // OpenCode Go는 키 하나가 로그인이자 사용량 자격이다. 저장·삭제 직후 사용량을 다시 읽어야
@@ -257,11 +258,12 @@ export function startAiGateway(ctx: GatewayStartContext) {
     try {
       const decisions = await decideGatewayRoutingBatch(input.items, currentExposure(), {
         choose: (question, signal) => chooseRoutingModels({
-          ...question, ...(signal ? { signal } : {}), judge: input.judge,
+          ...question, ...(signal ? { signal } : {}), objectiveId: input.objectiveId, judge: input.judge,
           baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
-          directory: path.join(ctx.dataDir, "routing-model"), spawnProcess: ctx.spawnAgentProcess, readProviderStatuses,
+          spawnProcess: ctx.spawnAgentProcess, readProviderStatuses,
           ...(ctx.resolveClaudeExecutable ? { resolveExecutable: ctx.resolveClaudeExecutable } : {}),
         }),
+        ...(input.commander ? { commanderAssignment: input.commander } : {}),
         refreshExposure: currentExposure, signal: controller.signal,
       });
       if (!res.destroyed && !controller.signal.aborted) ctx.host.http.writeJson(res, 200, { decisions });
@@ -271,7 +273,18 @@ export function startAiGateway(ctx: GatewayStartContext) {
       else throw error;
     } finally { res.off("close", abort); }
     return true;
-  }, [{ method: "POST", path: "", summary: "Route tasks with the caller's judge, then deterministic fallbacks.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "POST", path: "", summary: "Route tasks with the commodore judge, then deterministic fallbacks.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  ctx.registerRouter("ai-gateway/routing-session/dispose", async ({ req, res }) => {
+    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
+    const body = await ctx.host.http.readJsonBody<unknown>(req);
+    const objectiveId = routingObjectiveId(body && typeof body === "object" ? (body as { objectiveId?: unknown }).objectiveId : undefined);
+    if (!objectiveId) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    await releaseRoutingSession(objectiveId);
+    if (!res.destroyed) ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }, [{ method: "POST", path: "", summary: "Discard one objective's routing judgment session.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
   const resolveClaudeExecutable = ctx.resolveClaudeExecutable;
   // Claude alias가 가리키는 버전은 Console이 띄우는 그 CLI가 정한다. 필요한 순간에만 묻는다.
   const claudeNativeListeners = new Set<() => void>();
@@ -314,24 +327,3 @@ export function startAiGateway(ctx: GatewayStartContext) {
   return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readCandidates, readEnabledModels };
 }
 
-function parseRoutingAssignRequest(body: unknown): { judge: { model: string; effort?: string }; items: { key: string; prompt: string }[] } | undefined {
-  if (!body || typeof body !== "object") return undefined;
-  const { judge, items } = body as { judge?: unknown; items?: unknown };
-  if (!judge || typeof judge !== "object") return undefined;
-  const { model, effort } = judge as { model?: unknown; effort?: unknown };
-  if (typeof model !== "string" || !model.trim() || (effort !== undefined && typeof effort !== "string")) return undefined;
-  if (!Array.isArray(items) || items.length < 1 || items.length > 20) return undefined;
-  const seen = new Set<string>();
-  let total = 0;
-  const parsed: { key: string; prompt: string }[] = [];
-  for (const item of items) {
-    if (!item || typeof item !== "object") return undefined;
-    const { key, prompt } = item as { key?: unknown; prompt?: unknown };
-    if (typeof key !== "string" || !/^[A-Za-z0-9._:-]{1,64}$/.test(key) || seen.has(key)
-      || typeof prompt !== "string" || !prompt.trim() || prompt.length > 16_384) return undefined;
-    total += prompt.length;
-    if (total > 131_072) return undefined;
-    seen.add(key); parsed.push({ key, prompt });
-  }
-  return { judge: { model, ...(typeof effort === "string" ? { effort } : {}) }, items: parsed };
-}

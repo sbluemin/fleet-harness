@@ -253,6 +253,9 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       const running = id ? supervisor.status(id)?.session : undefined;
       return running?.model ? { model: running.model, ...(running.effort ? { effort: running.effort } : {}) } : null;
     },
+    coordinates(id) {
+      return id ? supervisor.coordinates(id) : null;
+    },
   };
   const context = { host: { experiments: deps.experiments, attachments: deps.attachments, http: deps.http, security: deps.security } };
   const summary = (commodoreId: string): ConsoleCommodoreSummary => {

@@ -64,6 +64,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     const launch = createLaunchService(deps, store, {
       commodoreCommander: (commodoreId) => deps.commodoreCommander?.(commodoreId) ?? null,
       commodoreSession: (commodoreId) => deps.commodoreSession?.(commodoreId) ?? null,
+      commodoreCoordinates: (commodoreId) => deps.commodoreCoordinates?.(commodoreId) ?? null,
       commodoreAutoMemoryEnabled: deps.commodoreAutoMemoryEnabled,
     });
     watchQuiet = () => launch.watchReportQuiet();

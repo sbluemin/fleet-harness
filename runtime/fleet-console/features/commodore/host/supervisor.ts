@@ -101,6 +101,8 @@ export interface CommodoreSupervisor {
   replaceSessionNext(commodoreId: string): void;
   /** 지금 상태 — 감독자가 모르는 Theater(돌지 않는)는 null. */
   status(commodoreId: string): Omit<CommodoreRunStatus, "totals"> | null;
+  /** 세션이 없어도 이 사령관의 해석된 모델·강도. 저장된 사령관이 없으면 null. */
+  coordinates(commodoreId: string): { readonly model: string; readonly effort?: string } | null;
   /** 재시도 대기를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying`. */
   retry(commodoreId: string): Promise<void>;
   /** 진행 중인 턴만 멈춘다. 세션·대기 입력·자율 운영은 그대로 둔다. */
@@ -1560,6 +1562,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     status(commodoreId) {
       const runner = runners.get(commodoreId);
       return runner ? statusOf(runner) : null;
+    },
+    coordinates(commodoreId) {
+      if (deps.store.read(commodoreId) === null) return null;
+      const resolved = resolveCoordinates(commodoreId);
+      return resolved.model ? { model: resolved.model, ...(resolved.effort ? { effort: resolved.effort } : {}) } : null;
     },
     async retry(commodoreId) {
       const runner = runners.get(commodoreId);
