@@ -92,14 +92,6 @@ export function ProviderMark({ provider }: { readonly provider: LaunchProviderGl
   );
 }
 
-/** 로그인 상태를 UI가 그릴 수 있는 4가지 형태로 정규화한다(`gateway-models-card.tsx`와 동일 규칙). */
-export function routingLoginKind(providerId: string, status: string | null | undefined): "in" | "out" | "unknown" | "unlinked" {
-  if (providerId === "claude" && status === "not_connected") return "unlinked";
-  if (status === "signed_out" || status === "not_connected") return "out";
-  if (status === null || status === undefined) return "unknown";
-  return "in";
-}
-
 function bindingWindows(provider: ProviderDto | undefined, quotaScope: string | undefined): readonly QuotaWindow[] {
   if (!provider || (provider.status !== "ok" && provider.status !== "stale")) return [];
   return (provider.windows ?? []).filter((window) => window.isAggregate !== true && (window.scope === undefined || window.scope === quotaScope));
@@ -439,10 +431,9 @@ export function RoutingPoolHelpButton({ pressed, label, title, onClick }: {
   );
 }
 
-export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onCloseHelp, onOpenQuota, mobile = false }: {
+export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, mobile = false }: {
   readonly t: T;
   readonly pool: RoutingPoolData;
-  readonly commanderByJudgment: boolean;
   readonly showHelp: boolean;
   readonly onCloseHelp: () => void;
   readonly onOpenQuota: () => void;
@@ -547,14 +538,13 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
 
   const expandedView = expandedId ? pool.entries.find((item) => item.entry.id === expandedId) ?? null : null;
   const enabledSet = new Set(pool.entries.map((item) => item.entry.id));
-  const anyVisibleGroups = pool.providers.some((group) => group.models.some((model) => matchesModel(group.id, model)));
+  // 담기 목록은 선택기 로스터와 같은 기준으로 로그인된 공급자만 보인다(`isProviderCatalogVisible`: signed_out·not_connected는 빠지고,
+  // Claude의 not_connected와 아직 모르는 상태는 보인다). 이미 담긴 칩은 이 거름과 무관하게 「로그인 대기」로 남는다.
+  const catalogGroups = pool.providers.filter((group) => isProviderCatalogVisible(pool.loginOf(group.id), group.id));
+  const anyVisibleGroups = catalogGroups.some((group) => group.models.some((model) => matchesModel(group.id, model)));
 
   return (
     <div className={`commodore-pool-view${mobile ? " is-mobile" : ""}`}>
-      <p className="commodore-composer-panel-hint">
-        {t("commodore.pool.hintBase")}
-        {commanderByJudgment ? t("commodore.pool.hintJudgment") : ""}
-      </p>
       {pool.error ? <p className="commodore-composer-panel-note" role="alert">{pool.error}</p> : null}
 
       <div className="commodore-pool-sum">
@@ -648,27 +638,15 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
       ) : null}
 
       <div className="commodore-pool-groups">
-        {pool.providers.map((group) => {
+        {catalogGroups.map((group) => {
           const rows = group.models.filter((model) => matchesModel(group.id, model));
           if (rows.length === 0) return null;
-          const loginKind = routingLoginKind(group.id, pool.loginOf(group.id));
           const inPool = pool.entries.some((item) => item.provider === group.id);
           const priorityIndex = pool.priority.indexOf(group.id);
           return (
             <div key={group.id} className="commodore-pool-pgroup">
               <div className="commodore-pool-pgroup-head">
-                <ProviderMark provider={group.id} />
-                <span className="commodore-pool-pgroup-nm">{launchProviderCaption(group.id)}</span>
-                {loginKind === "unlinked" ? (
-                  <button type="button" className="commodore-pool-link-btn is-muted" onClick={onOpenQuota}>{t("commodore.pool.usageUnlinked")}</button>
-                ) : loginKind === "out" ? (
-                  <>
-                    <span className="commodore-pool-login is-out">{t("commodore.pool.needsLogin")}</span>
-                    <button type="button" className="commodore-pool-link-btn" onClick={onOpenQuota}>{t("commodore.pool.signIn")}</button>
-                  </>
-                ) : (
-                  <span className="commodore-pool-login">{loginKind === "unknown" ? t("commodore.pool.checking") : t("commodore.pool.signedIn")}</span>
-                )}
+                <span className="commodore-composer-group-caption">{launchProviderCaption(group.id)}</span>
                 {inPool ? (
                   <button
                     type="button"
@@ -683,7 +661,6 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
                   </button>
                 ) : null}
               </div>
-              {loginKind === "out" ? <p className="commodore-pool-signin-note">{t("commodore.pool.signInNote")}</p> : null}
               {rows.map((model) => {
                 const isIn = enabledSet.has(model.id);
                 const subtitle = shortModelSubtitle(model.id, t, model.description);
@@ -692,6 +669,7 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
                 const addBest = Object.values(addScores).filter((score): score is number => typeof score === "number");
                 return (
                   <div key={model.id} className="commodore-pool-mrow">
+                    <ProviderMark provider={group.id} />
                     <span className="commodore-pool-mrow-nm">
                       {model.name}
                       {subtitle ? <small>{subtitle}</small> : null}
@@ -804,7 +782,7 @@ function PoolDetailBox({ t, view, leadThreshold, saving, onToggleEffort, onToggl
 }
 
 function detailIntelligenceNote(t: T, view: PoolEntryView, leadThreshold: number): string {
-  if (!hasAnyScore(view.scores)) return t("commodore.intel.detailNoScore");
+  if (!hasAnyScore(view.scores)) return t("commodore.intel.readNone");
   if (view.lead) {
     return view.lead.effort === "max"
       ? t("commodore.intel.detailLeadMax", { n: view.lead.score })
@@ -812,8 +790,8 @@ function detailIntelligenceNote(t: T, view: PoolEntryView, leadThreshold: number
   }
   const reach = qualifying(view.scores, view.ladder, leadThreshold);
   return reach
-    ? t("commodore.intel.detailEnable", { t: leadThreshold, effort: effortWord(reach.effort), n: reach.score })
-    : t("commodore.intel.detailNever", { t: leadThreshold });
+    ? t("commodore.intel.insEnable", { effort: effortWord(reach.effort), n: reach.score })
+    : t("commodore.intel.detailNever");
 }
 
 /* ── 풀 지능 분포·안내 ─────────────────────────────────────────────────────── */
@@ -857,7 +835,7 @@ function PoolIntelligence({ t, entries, leadThreshold, saving, showSpread, onEna
         </li>,
       );
     } else {
-      lines.push(<li key="none" className="is-warn"><span className="commodore-pool-ins-dot is-warn" aria-hidden="true" /><span>{t("commodore.intel.insNone", { t: leadThreshold })}</span>{restNote}</li>);
+      lines.push(<li key="none"><span className="commodore-pool-ins-dot is-none" aria-hidden="true" /><span>{t("commodore.intel.insNone", { t: leadThreshold })}</span>{restNote}</li>);
     }
     for (const item of ready) {
       if (lines.length >= INSIGHT_LIMIT) break;

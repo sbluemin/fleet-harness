@@ -847,7 +847,6 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
           <RoutingPoolPanel
             t={t}
             pool={pool}
-            commanderByJudgment={commanderByJudgment(state)}
             showHelp={poolHelp}
             onCloseHelp={() => setPoolHelp(false)}
             onOpenQuota={() => {

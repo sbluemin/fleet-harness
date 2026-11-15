@@ -14,7 +14,7 @@ import { commanderByJudgment, commanderCoordinates, commanderValue, commodoreCoo
 import { CommodoreJudgmentMark } from "./commodore-judgment-glyph.js";
 import { CommodoreSessionSettings } from "./commodore-inbox-section.js";
 import { ProviderMark, RoutingPoolGlyphStack, RoutingPoolHelpButton, RoutingPoolPanel, useRoutingPoolData, type RoutingPoolData } from "./commodore-routing-pool.js";
-import { belowGuide, effortWord, qualifying, RankMark, roleGuide, roleName, RowIntelligence, rowLadder, rowScores, ScoreReadout, type RoleGuide } from "./commodore-intelligence.js";
+import { effortWord, qualifying, RankMark, roleGuide, RowIntelligence, rowLadder, rowScores, ScoreReadout, type RoleGuide } from "./commodore-intelligence.js";
 import { setCommodoreCommander, setCommodoreCoordinates, useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { useCommodoreList } from "./commodore-list.js";
@@ -373,9 +373,6 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   const commanderWord = judgment ? t("commodore.settings.commanderJudgment") : commanderDisplay.words.model;
   const commodoreGuide = roleGuide("overseer", pool.thresholds);
   const commanderGuide = roleGuide("lead", pool.thresholds);
-  const commodoreLow = belowGuide(commodoreGuide, findRosterRow(agentRoster, commodoreDisplay.shown.model), commodoreDisplay.shown.effort);
-  const commanderLow = !judgment && belowGuide(commanderGuide, findRosterRow(launchRoster, commanderDisplay.shown.model), commanderDisplay.shown.effort);
-  const judgmentShort = judgment && commanderGuide !== null && pool.entries.length > 0 && !pool.entries.some((item) => item.status.kind === "ok" && item.lead);
   const openPoolSection = () => { setPopoverSlide(true); setPoolHelp(false); setOpen("pool"); };
   const tabLabel = (section: CommodoreComposerSettingsSection) => section === "commodore" ? t("commodore.settings.model")
     : section === "commander" ? t("commodore.settings.commander")
@@ -418,24 +415,15 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
           style={chipIndicator ? { left: chipIndicator.left, width: chipIndicator.width } : undefined}
           aria-hidden="true"
         />
-        {chip("commodore", [`${t("commodore.settings.model")}: ${coordinateTitle(commodoreDisplay)}`, commodoreLow && commodoreGuide ? t("commodore.intel.chipLow", { role: roleName(t, "overseer"), t: commodoreGuide.threshold }) : ""].filter(Boolean).join(" · "), (
-          <>
-            <CoordinateWords display={commodoreDisplay} />
-            {commodoreLow ? <span className="commodore-intel-chip-ring" aria-hidden="true" /> : null}
-          </>
-        ))}
-        {chip("commander", [`${t("commodore.settings.commander")}: ${judgment ? commanderWord : coordinateTitle(commanderDisplay)}`, judgmentShort && commanderGuide ? t("commodore.intel.judgeNone", { t: commanderGuide.threshold }) : commanderLow && commanderGuide ? t("commodore.intel.chipLow", { role: roleName(t, "lead"), t: commanderGuide.threshold }) : ""].filter(Boolean).join(" · "), judgment ? (
+        {chip("commodore", `${t("commodore.settings.model")}: ${coordinateTitle(commodoreDisplay)}`, <CoordinateWords display={commodoreDisplay} />)}
+        {chip("commander", `${t("commodore.settings.commander")}: ${judgment ? commanderWord : coordinateTitle(commanderDisplay)}`, judgment ? (
           <>
             <CommodoreJudgmentMark />
             <span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>
             <span className="commodore-composer-chip-value">{commanderWord}</span>
-            {judgmentShort ? <span className="commodore-pool-chip-warn" aria-hidden="true" /> : null}
           </>
         ) : (
-          <>
-            <CoordinateWords display={commanderDisplay} prefix={<span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>} />
-            {commanderLow ? <span className="commodore-intel-chip-ring" aria-hidden="true" /> : null}
-          </>
+          <CoordinateWords display={commanderDisplay} prefix={<span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>} />
         ))}
         {chip("pool", pool.chipAria(t), (
           <>
@@ -493,7 +481,6 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
                   onClick={() => togglePoolHelp(!poolHelp)}
                 />
               ) : null}
-              <span className="commodore-settings-popover-kbd" aria-hidden="true">ESC</span>
               <button type="button" className="commodore-composer-panel-close" aria-label={t("commodore.composerSettings.close")} title={t("commodore.composerSettings.close")} onClick={() => close(true)}>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 4.5l7 7M11.5 4.5l-7 7" /></svg>
               </button>
@@ -502,21 +489,18 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
               {open === "commodore" ? (
                 <CoordinateList
                   t={t}
-                  hint={t("commodore.settings.modelHint")}
                   roster={agentRoster}
                   value={commodoreValue(state)}
                   fallback={defaults}
                   labels={labels}
                   ariaLabel={t("commodore.drawer.modelAria")}
                   guide={commodoreGuide}
-                  reset={state.model !== undefined ? { label: t("commodore.settings.useDefault"), description: wordsOf(modelCoordinateDisplay(agentRoster, {}, defaults, labels)), onSelect: () => act(() => setCommodoreCoordinates(commodoreId, null)) } : null}
                   onPick={(next) => act(() => setCommodoreCoordinates(commodoreId, commodoreCoordinates(state, defaults, next)))}
                 />
               ) : null}
               {open === "commander" ? (
                 <CoordinateList
                   t={t}
-                  hint={t("commodore.settings.commanderHint")}
                   roster={launchRoster}
                   value={commanderValue(state)}
                   fallback={COMMANDER_PRESET}
@@ -533,7 +517,6 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
                 <RoutingPoolPanel
                   t={t}
                   pool={pool}
-                  commanderByJudgment={judgment}
                   showHelp={poolHelp}
                   onCloseHelp={() => togglePoolHelp(false)}
                   onOpenQuota={openQuotaFromPool}
@@ -568,7 +551,6 @@ function launchLabels(t: T) {
   };
 }
 
-const wordsOf = (display: ReturnType<typeof modelCoordinateDisplay>) => [display.words.model, display.words.effort].filter(Boolean).join(" · ");
 
 /** 칩의 좌표 낱말 — 공유 선택기 트리거와 같은 「[글리프] [앞표시] 모델 · 강도 [꺼짐·폴백]」 문법이다. */
 function CoordinateWords({ display, prefix }: { readonly display: ReturnType<typeof modelCoordinateDisplay>; readonly prefix?: ReactNode }) {
@@ -616,9 +598,8 @@ function useSlidingIndicator(listRef: { readonly current: HTMLElement | null }, 
  * 원천은 공유 선택기와 같은 로스터·표시 규칙이다: 로스터 밖 저장값은 「꺼짐」(공급자가 사라졌으면 「공급자 제거됨」) 띠에 남고,
  * 로스터가 비면 실행이 서는 폴백 좌표를 「폴백」으로 말한다. 행·강도·Fast 를 누르면 곧 저장한다.
  */
-function CoordinateList({ t, hint, roster, value, fallback, labels, ariaLabel, judgment, judgmentSummary = null, guide = null, reset, autoEffort = false, onPick }: {
+function CoordinateList({ t, roster, value, fallback, labels, ariaLabel, judgment, judgmentSummary = null, guide = null, autoEffort = false, onPick }: {
   readonly t: T;
-  readonly hint: string;
   readonly roster: ModelRoster | null;
   readonly value: ModelCoordinateValue;
   readonly fallback: ModelCoordinateValue;
@@ -629,7 +610,6 @@ function CoordinateList({ t, hint, roster, value, fallback, labels, ariaLabel, j
   readonly judgmentSummary?: ReactNode;
   /** 지능 점수 안내의 역할과 기준. null이면(기준값을 아직 모르면) 안내 없이 그린다. */
   readonly guide?: RoleGuide | null;
-  readonly reset?: { readonly label: string; readonly description: string; readonly onSelect: () => void } | null;
   readonly autoEffort?: boolean;
   readonly onPick: (next: Coordinates) => void;
 }) {
@@ -654,7 +634,10 @@ function CoordinateList({ t, hint, roster, value, fallback, labels, ariaLabel, j
 
   return (
     <div className="commodore-composer-coord" role="radiogroup" aria-label={ariaLabel}>
-      <p className="commodore-composer-panel-hint">{hint}</p>
+      {guide && roster !== null ? <RecommendStrip t={t} guide={guide} roster={roster} activeModel={activeModel} activeEffort={effortNow} onPick={(row, effort) => {
+        const model = row.launch.model ?? row.id;
+        onPick({ model, effort, ...(row.fastSupported === true ? { fast: false } : {}) });
+      }} /> : null}
       {judgment ? (
         <button type="button" role="radio" aria-checked={judgmentActive} className={`commodore-composer-row is-extra${judgmentActive ? " is-active" : ""}`} onClick={() => { if (!judgmentActive) judgment.onPick(); }}>
           <CommodoreJudgmentMark />
@@ -666,10 +649,6 @@ function CoordinateList({ t, hint, roster, value, fallback, labels, ariaLabel, j
         </button>
       ) : null}
       {judgmentActive && judgmentSummary ? judgmentSummary : null}
-      {guide && roster !== null ? <RecommendStrip t={t} guide={guide} roster={roster} activeModel={activeModel} activeEffort={effortNow} onPick={(row, effort) => {
-        const model = row.launch.model ?? row.id;
-        onPick({ model, effort, ...(row.fastSupported === true ? { fast: false } : {}) });
-      }} /> : null}
       {roster === null ? <p className="commodore-composer-panel-note">{t("commodore.board.launch.loading")}</p> : null}
       {roster !== null && roster.length === 0 ? (
         <p className="roster-fallback-note"><span className="roster-fallback-badge">{labels.fallback}</span><span className="roster-fallback-copy">{t("commodore.board.launch.empty")}</span></p>
@@ -690,7 +669,6 @@ function CoordinateList({ t, hint, roster, value, fallback, labels, ariaLabel, j
                   guide={guide}
                   row={row}
                   effort={hasTrack ? resolveRowEffort(row, effortNow) : null}
-                  onRaise={(effort) => pickEffort(row, effort)}
                 />
               ) : null;
               return [
@@ -736,11 +714,6 @@ function CoordinateList({ t, hint, roster, value, fallback, labels, ariaLabel, j
           </div>
           <p className="commodore-composer-panel-note">{t("commodore.board.launch.chooseAnotherModel")}</p>
         </div>
-      ) : null}
-      {reset ? (
-        <button type="button" className="commodore-composer-row is-reset" onClick={reset.onSelect}>
-          <span className="commodore-composer-row-label">{reset.label}<small>{reset.description}</small></span>
-        </button>
       ) : null}
     </div>
   );
@@ -824,12 +797,11 @@ function RecommendStrip({ t, guide, roster, activeModel, activeEffort, onPick }:
     return pick ? [{ row, provider: launchProviderFromGroupId(group.id) ?? launchProviderFromModelId(row.launch.model ?? row.id), ...pick }] : [];
   })).map((item, index) => ({ ...item, index })).sort((left, right) => right.score - left.score || left.index - right.index);
   if (picks.length === 0) return null;
-  const role = roleName(t, guide.role);
   return (
-    <div className="commodore-intel-rec" role="group" aria-label={t("commodore.intel.recHead", { role })}>
+    <div className="commodore-intel-rec" role="group" aria-label={t("commodore.intel.recHead")}>
       <div className="commodore-intel-rec-head">
         <RankMark role={guide.role} />
-        <span>{t("commodore.intel.recHead", { role })}</span>
+        <span>{t("commodore.intel.recHead")}</span>
         <small>{t("commodore.intel.recNote", { n: guide.threshold })}</small>
       </div>
       <div className="commodore-intel-rec-list">
@@ -858,7 +830,7 @@ function RecommendStrip({ t, guide, roster, activeModel, activeEffort, onPick }:
   );
 }
 
-/** 지휘관 「라우팅」 행 아래 — 지금 풀에서 지휘관 추천에 닿는 모델(켜 둔 강도 기준, MAX 포함)과 쉬는 모델 수. */
+/** 지휘관 「라우팅」 행 아래 — 지금 풀의 추천 모델(켜 둔 강도 기준, MAX 포함)과 지금 못 쓰는 모델 수. 없어도 경고하지 않는다. */
 function JudgmentPoolSummary({ t, pool, guide, onOpenPool }: {
   readonly t: T;
   readonly pool: RoutingPoolData;
@@ -868,8 +840,8 @@ function JudgmentPoolSummary({ t, pool, guide, onOpenPool }: {
   if (pool.loading || pool.unavailable) return null;
   if (pool.entries.length === 0) {
     return (
-      <p className="commodore-intel-judge is-warn">
-        <span className="commodore-intel-warn-dot" aria-hidden="true" />
+      <p className="commodore-intel-judge">
+        <span className="commodore-intel-dot" aria-hidden="true" />
         {t("commodore.intel.judgeEmpty")}
         <button type="button" className="commodore-intel-link" onClick={onOpenPool}>{t("commodore.intel.openPool")}</button>
       </p>
@@ -879,8 +851,8 @@ function JudgmentPoolSummary({ t, pool, guide, onOpenPool }: {
   const resting = pool.entries.filter((item) => item.status.kind !== "ok" && item.lead);
   if (ready.length === 0) {
     return (
-      <p className="commodore-intel-judge is-warn">
-        <span className="commodore-intel-warn-dot" aria-hidden="true" />
+      <p className="commodore-intel-judge">
+        <span className="commodore-intel-dot" aria-hidden="true" />
         {t("commodore.intel.judgeNone", { t: guide.threshold })}
         <button type="button" className="commodore-intel-link" onClick={onOpenPool}>{t("commodore.intel.openPool")}</button>
       </p>

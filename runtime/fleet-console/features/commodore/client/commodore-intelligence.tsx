@@ -10,6 +10,7 @@ import type { CommodoreMessageKey } from "./i18n/index.js";
  * 점수·기준값은 Gateway 레지스트리가 원천이고(로스터 칩의 `intelligence`, 카탈로그의 `intelligence`·`roleThresholds`),
  * 「기준에 닿는 가장 낮은 강도」 규칙은 `@fleet-console/ai-gateway/model-family` 한 곳에 있다. 표시 전용이다 —
  * 라우팅·저장값은 이 모듈을 읽지 않는다. 점수가 없는 강도·모델은 낮은 점수로 치지 않는다(추천도 경고도 없다).
+ * 어조는 제안이다 — Fleet가 권하는 모델을 담백하게 보여 줄 뿐, 기준 아래를 경고하거나 고치라고 하지 않는다.
  */
 
 type T = Translate<CommodoreMessageKey>;
@@ -24,10 +25,6 @@ export interface RoleGuide {
 
 export function roleGuide(role: AiGatewayRole, thresholds: AiGatewayRoleThresholds | null): RoleGuide | null {
   return thresholds ? { role, threshold: thresholds[role] } : null;
-}
-
-export function roleName(t: T, role: AiGatewayRole): string {
-  return role === "overseer" ? t("commodore.intel.role.overseer") : t("commodore.intel.role.lead");
 }
 
 /** 런치 메뉴 칩과 같은 강도 낱말(MED). 칩이 없는 라우팅 풀 카탈로그 행도 같은 낱말을 쓴다. */
@@ -87,7 +84,7 @@ export function ScoreBars({ t, guide, ladder, scores }: {
       className="commodore-intel-bars"
       style={{ ["--commodore-intel-th" as string]: `${barHeight(guide.threshold)}px` }}
       role="img"
-      aria-label={t("commodore.intel.barsAria", { role: roleName(t, guide.role), n: guide.threshold })}
+      aria-label={t("commodore.intel.barsAria", { n: guide.threshold })}
     >
       {BAR_AXIS.map((effort) => {
         if (!ladder.includes(effort)) return <i key={effort} className="is-off" />;
@@ -115,7 +112,7 @@ export function RowIntelligence({ t, guide, row }: { readonly t: T; readonly gui
   return (
     <span className="commodore-intel-meta">
       {pick ? (
-        <span className="commodore-intel-from" aria-label={t("commodore.intel.fromAria", { role: roleName(t, guide.role), effort: effortWord(pick.effort) })}>
+        <span className="commodore-intel-from" aria-label={t("commodore.intel.fromAria", { effort: effortWord(pick.effort) })}>
           <RankMark role={guide.role} />
           {t("commodore.intel.from", { effort: effortWord(pick.effort) })}
         </span>
@@ -129,66 +126,40 @@ export function RowIntelligence({ t, guide, row }: { readonly t: T; readonly gui
 export function mobileRowNote(t: T, guide: RoleGuide | null, row: ObjectiveLaunchVariantRow): string | null {
   if (!guide) return null;
   const pick = qualifying(rowScores(row), rowLadder(row), guide.threshold);
-  return pick ? t("commodore.intel.mobileNote", { role: roleName(t, guide.role), effort: effortWord(pick.effort) }) : null;
+  return pick ? t("commodore.intel.mobileNote", { effort: effortWord(pick.effort) }) : null;
 }
 
 /**
- * 고른 행 아래 한 줄 — 지금 강도의 점수와 기준. 기준 아래면 기준에 닿는 가장 낮은 강도로 올리는 단추를 둔다.
+ * 고른 행 아래 한 줄 — 지금 강도의 점수와, 추천하는 가장 낮은 강도. 기준 아래여도 경고색·요구 없이 사실만 말한다.
  * `effort`가 null이면 「자동」 강도다.
  */
-export function ScoreReadout({ t, guide, row, effort, onRaise }: {
+export function ScoreReadout({ t, guide, row, effort }: {
   readonly t: T;
   readonly guide: RoleGuide;
   readonly row: ObjectiveLaunchVariantRow;
   readonly effort: string | null;
-  readonly onRaise: (effort: string) => void;
 }) {
   const scores = rowScores(row);
-  const role = roleName(t, guide.role);
   const pick = qualifying(scores, rowLadder(row), guide.threshold);
-  if (!hasAnyScore(scores)) return <p className="commodore-intel-read is-none"><span className="commodore-intel-ring" aria-hidden="true" />{t("commodore.intel.readNone")}</p>;
+  if (!hasAnyScore(scores)) return <p className="commodore-intel-read">{t("commodore.intel.readNone")}</p>;
   if (effort === null) {
-    return (
-      <p className="commodore-intel-read">
-        {pick ? t("commodore.intel.readAutoRec", { role, effort: effortWord(pick.effort) }) : t("commodore.intel.readAutoNever", { role, t: guide.threshold })}
-      </p>
-    );
+    return <p className="commodore-intel-read">{pick ? t("commodore.intel.readAutoRec", { effort: effortWord(pick.effort) }) : t("commodore.intel.readAuto")}</p>;
   }
   const score = scores[effort];
   if (typeof score !== "number") {
     return (
-      <p className="commodore-intel-read is-none">
-        <span className="commodore-intel-ring" aria-hidden="true" />
-        {pick
-          ? t("commodore.intel.readMissingRec", { effort: effortWord(effort), rec: effortWord(pick.effort), role, n: pick.score })
-          : t("commodore.intel.readMissing", { effort: effortWord(effort) })}
+      <p className="commodore-intel-read">
+        {pick ? t("commodore.intel.readMissingRec", { effort: effortWord(effort), rec: effortWord(pick.effort) }) : t("commodore.intel.readMissing", { effort: effortWord(effort) })}
       </p>
     );
   }
   if (score >= guide.threshold) {
     return (
       <p className="commodore-intel-read">
-        <svg className="commodore-intel-ok" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-6.5" /></svg>
-        {t("commodore.intel.readOk", { n: score, role, t: guide.threshold })}
+        <RankMark role={guide.role} />
+        {t("commodore.intel.readOk", { n: score })}
       </p>
     );
   }
-  return (
-    <p className="commodore-intel-read is-low">
-      <span className="commodore-intel-ring" aria-hidden="true" />
-      {pick ? t("commodore.intel.readLow", { n: score, role, t: guide.threshold }) : t("commodore.intel.readLowNever", { n: score, role, t: guide.threshold })}
-      {pick ? (
-        <button type="button" className="commodore-intel-link" onClick={() => onRaise(pick.effort)}>
-          {t("commodore.intel.raise", { effort: effortWord(pick.effort), n: pick.score })}
-        </button>
-      ) : null}
-    </p>
-  );
-}
-
-/** 선택기 칩의 고리 — 고른 좌표의 점수가 기준 아래일 때만. 점수가 없으면 고리도 없다. */
-export function belowGuide(guide: RoleGuide | null, row: ObjectiveLaunchVariantRow | null, effort: string | null | undefined): boolean {
-  if (!guide || !row || !effort) return false;
-  const score = rowScores(row)[effort];
-  return typeof score === "number" && score < guide.threshold;
+  return <p className="commodore-intel-read">{pick ? t("commodore.intel.readBelow", { n: score, rec: effortWord(pick.effort) }) : t("commodore.intel.readScore", { n: score })}</p>;
 }
