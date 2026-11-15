@@ -5,6 +5,15 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.306.0] - 2026-11-15
+
+### fleet-console
+
+#### Changed
+- Gemini models in the AI Gateway now run through the official `agy acp` agent on your Antigravity sign-in, and Gemini 3.8 Flash joins the model list.
+- Commodore, commander and member sessions on a Gemini model start without Claude Code's built-in system instructions, even when that setting is on.
+- Edit Commodore model and workspace settings directly inside Commodore and Commander group-chat inputs, with quota summaries above the input across conversations.
+
 ## [1.305.0] - 2026-11-14
 
 ### fleet-console

@@ -5,6 +5,15 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.306.0] - 2026-11-15
+
+### fleet-console
+
+#### Changed
+- AI Gateway의 Gemini 모델이 Antigravity 로그인으로 공식 `agy acp` 에이전트를 거쳐 실행되고, Gemini 3.8 Flash가 모델 목록에 추가됩니다.
+- Gemini 모델을 고른 사령관·지휘관·구성원 세션은 해당 설정이 켜져 있어도 Claude Code 기본 시스템 지침 없이 시작합니다.
+- 사령관과 지휘관 그룹채팅 입력창 안에서 사령관의 모델·작전 구역 설정을 바로 바꿀 수 있으며, 대화별 쿼터 요약은 입력창 위에 표시됩니다.
+
 ## [1.305.0] - 2026-11-14
 
 ### fleet-console
