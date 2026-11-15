@@ -1712,6 +1712,61 @@ describe("Muse Code routing", () => {
   });
 });
 
+describe("OpenCode Go routing", () => {
+  it("sends each model over its own wire with the stored key, Fleet's user agent, and one session per conversation", async () => {
+    const calls: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      calls.push({ url: String(url), headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) });
+      return new Response(String(url).endsWith("/responses")
+        ? 'data: {"type":"response.completed","response":{"id":"r","model":"muse-spark-1.3-contributor","usage":{"input_tokens":1,"output_tokens":1}}}\n\n'
+        : "data: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+    });
+
+    // No stored key: refused as a sign-in problem before anything leaves the process.
+    const signedOut = createAiGatewayRouter({ fetch: fetchMock, readOpencodeApiKey: () => undefined });
+    const refused = response();
+    await signedOut.handle(ctx({ res: refused, token: ANTHROPIC_CRED, model: "claude-gateway--opencode--deepseek-v4.1-flash" }));
+    expect(refused.status).toBe(403);
+    expect(refused.body).toContain("OpenCode Go");
+    expect(fetchMock).not.toHaveBeenCalled();
+    signedOut.dispose();
+
+    const router = createAiGatewayRouter({ fetch: fetchMock, readOpencodeApiKey: async () => "opencode-key" });
+    try {
+      const wires = [
+        { model: "deepseek-v4.1-flash", url: "https://opencode.ai/inference/go/openai/v1/chat/completions" },
+        // The same model id Muse Code serves, reached through OpenCode Go instead.
+        { model: "muse-spark-1.3-contributor", url: "https://opencode.ai/inference/go/openai/v1/responses" },
+      ];
+      for (const wire of wires) {
+        calls.length = 0;
+        for (const userId of ["private-user-session-a", "private-user-session-a", "private-user-session-b", null, null]) {
+          const res = response();
+          await router.handle(ctx({
+            res, token: ANTHROPIC_CRED, model: `claude-gateway--opencode--${wire.model}`,
+            metadata: userId === null ? null : { user_id: userId },
+          }));
+          expect(res.status).toBe(200);
+        }
+        for (const call of calls) {
+          expect(call.url).toBe(wire.url);
+          expect(call.body.model).toBe(wire.model);
+          expect(call.headers.get("authorization")).toBe("Bearer opencode-key");
+          expect(call.headers.get("user-agent")).toBe("fleet-console");
+        }
+        const sessions = calls.map((call) => call.headers.get("x-opencode-session"));
+        expect(sessions[0]).toBeTruthy();
+        expect(sessions[1]).toBe(sessions[0]);
+        expect(sessions[2]).not.toBe(sessions[0]);
+        expect(sessions[3]).not.toBe(sessions[4]);
+        expect(sessions.join(" ")).not.toContain("private-user");
+      }
+    } finally {
+      router.dispose();
+    }
+  });
+});
+
 describe("request body limit", () => {
   it("refuses a body past the limit with a 413 that does not arm reactive compaction", async () => {
     // "context window"가 들어간 413만 Claude Code의 압축을 무장시킨다(canonical/index.ts).

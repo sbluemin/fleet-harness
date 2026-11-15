@@ -14,18 +14,18 @@ export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
  * Claude Code serves it under family aliases, discovery never advertises it, and
  * its versions and effort ladders arrive at runtime through
  * {@link applyClaudeNativeModels}. Every other provider is a registry provider
- * whose entries are served as declared. OpenCode Go has no registry entries yet,
- * so it contributes no models.
+ * whose entries are served as declared.
  */
 const NATIVE_PROVIDER = "claude" satisfies GatewayProvider;
-type RegistryProvider = Exclude<GatewayProvider, typeof NATIVE_PROVIDER | "opencode">;
+type RegistryProvider = Exclude<GatewayProvider, typeof NATIVE_PROVIDER>;
 const REGISTRY_PROVIDERS = GATEWAY_PROVIDERS.filter(
-  (provider): provider is RegistryProvider => provider !== NATIVE_PROVIDER && provider !== "opencode",
+  (provider): provider is RegistryProvider => provider !== NATIVE_PROVIDER,
 );
 
 /**
  * The upstream wire protocol a model is served over. xAI and Muse Code declare
- * `responses` so routing never falls back to Anthropic. Omission means `anthropic`.
+ * `responses` so routing never falls back to Anthropic; OpenCode Go serves each
+ * model on exactly one OpenAI wire and declares which. Omission means `anthropic`.
  */
 const GATEWAY_MODEL_WIRES = ["anthropic", "responses", "chat-completions"] as const;
 export type GatewayModelWire = typeof GATEWAY_MODEL_WIRES[number];
@@ -114,6 +114,7 @@ const GatewayModelsRegistrySchema = z.object({
     xai: GatewayProviderSchema,
     antigravity: GatewayProviderSchema,
     "muse-code": GatewayProviderSchema,
+    opencode: GatewayProviderSchema,
     claude: GatewayProviderSchema,
   }).strict(),
 }).strict();
@@ -208,7 +209,6 @@ export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> =
     REGISTRY_PROVIDERS.map((provider) => [provider, registry.providers[provider].name]),
   ) as Record<RegistryProvider, string>,
   claude: nativeProvider.name,
-  opencode: "OpenCode Go",
 });
 
 /**
@@ -497,7 +497,6 @@ export function gatewayModelSummary(model: GatewayModel): string {
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {
-  if (provider === "opencode") throw new Error("Gateway model registry has no default for provider \"opencode\"");
   const defaultId = provider === NATIVE_PROVIDER
     ? claudeFamilyModelId(nativeProvider.defaultModel)
     : scopedModelId(provider, registry.providers[provider].defaultModel);
@@ -652,7 +651,11 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         throw new Error(`Gateway fast selection is only supported by Codex and xAI: ${provider}/${model.modelId}`);
       }
       // xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
-      if (model.wire && provider !== "xai" && provider !== "muse-code") {
+      // OpenCode Go는 모델마다 Responses·Chat Completions 중 하나로만 서빙한다.
+      if (model.wire && provider !== "xai" && provider !== "muse-code" && provider !== "opencode") {
+        throw new Error(`Gateway model wire is not supported by provider: ${provider}/${model.modelId}`);
+      }
+      if (model.wire === "chat-completions" && provider !== "opencode") {
         throw new Error(`Gateway model wire is not supported by provider: ${provider}/${model.modelId}`);
       }
       if (model.intelligence) {
