@@ -264,9 +264,55 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const chatRegistry = new AgentChatRegistry(testChatSdkFactory ?? createChatSdkFactory(ctx.spawnAgentProcess), (objectiveId) => terminalRuntime.awaitWriterExit(objectiveId, PRIOR_WRITER_EXIT_WAIT_MS));
   // 줄바꿈 URL 확인은 호버마다 온다 — transcript 꼬리는 파일이 바뀔 때만 다시 읽는다.
   const transcriptLinks = createTranscriptLinkReader();
+  const listAllObjectiveRecords = (): ObjectiveRecord[] => {
+    const seen = new Set<string>();
+    const records: ObjectiveRecord[] = [];
+    for (const parent of ctx.host.objectiveRecords.list()) {
+      if (!seen.has(parent.id)) {
+        seen.add(parent.id);
+        records.push(parent);
+      }
+      for (const child of parent.sessions ?? []) {
+        if (seen.has(child.id)) continue;
+        const childRecord = ctx.host.objectiveRecords.get(child.id);
+        if (childRecord) {
+          seen.add(childRecord.id);
+          records.push(childRecord);
+        }
+      }
+    }
+    return records;
+  };
+  const findSessionBindingConflict = (
+    targetSessionId: string,
+    candidate: { readonly id?: string; readonly transcriptPath?: string },
+  ): string | undefined => {
+    const candidateTranscriptPath = candidate.transcriptPath ? path.resolve(candidate.transcriptPath) : undefined;
+    for (const record of listAllObjectiveRecords()) {
+      if (record.id === targetSessionId) continue;
+      const session = readAgentSession(record);
+      if (!session) continue;
+      if (
+        candidate.id
+        && (session.id === candidate.id || session.previousSessions?.some((prev) => prev.id === candidate.id))
+      ) {
+        return record.id;
+      }
+      if (candidateTranscriptPath) {
+        const currentTranscriptPath = session.transcriptPath ? path.resolve(session.transcriptPath) : undefined;
+        if (
+          currentTranscriptPath === candidateTranscriptPath
+          || session.previousSessions?.some((prev) => prev.transcriptPath && path.resolve(prev.transcriptPath) === candidateTranscriptPath)
+        ) {
+          return record.id;
+        }
+      }
+    }
+    return undefined;
+  };
   const resolveRecipient = createMessageRecipientResolver({
     claudeConfigDir: resolveClaudeConfigDir(),
-    objectiveRecords: () => ctx.host.objectiveRecords.list().flatMap((parent) => [parent, ...(parent.sessions ?? []).flatMap((child) => ctx.host.objectiveRecords.get(child.id) ?? [])]),
+    objectiveRecords: listAllObjectiveRecords,
   });
   const unbindChatAttach = terminalRuntime.bindChatAttach((socket, context, lifetime) => {
     const sessionId = context.sessionId;
@@ -2057,7 +2103,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     const capturePath = readProviderSession(node)?.transcriptPath;
-    const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath, node.ts.createdAt) : null;
+    const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath) : null;
     const urls = transcriptPath ? selectLinksIn(text, await transcriptLinks.read(transcriptPath)) : [];
     ctx.host.http.writeJson(res, 200, { urls });
     return true;
@@ -2083,7 +2129,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     const capturePath = readProviderSession(node)?.transcriptPath;
-    const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath, node.ts.createdAt) : null;
+    const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath) : null;
     if (!transcriptPath) {
       ctx.host.http.writeJson(res, 404, { error: "history_unavailable" });
       return true;
@@ -2153,13 +2199,13 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (existingSession?.previousSessions) {
       for (const prev of existingSession.previousSessions) {
         if (prev.transcriptPath) {
-          const resolved = await resolveTranscriptPath(prev.transcriptPath, node.ts.createdAt);
+          const resolved = await resolveTranscriptPath(prev.transcriptPath);
           if (resolved) previousTranscriptPaths.push(resolved);
         }
       }
     }
     const transcriptPath = providerSession?.transcriptPath
-      ? await resolveTranscriptPath(providerSession.transcriptPath, node.ts.createdAt)
+      ? await resolveTranscriptPath(providerSession.transcriptPath)
       : null;
     // transcript 부재는 두 가지 뜻일 수 있고, 그것을 가르는 것은 태생이 아니라 **좌표가 한 번
     // 이라도 심겼는지**다.
@@ -2336,6 +2382,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           }
         },
         onProviderSessionUpdate: (updated) => {
+          const conflictRecordId = findSessionBindingConflict(node.id, { id: updated.id, transcriptPath: updated.transcriptPath });
+          if (conflictRecordId) {
+            console.warn(`[fleet-console] ignored conflicting provider session update for ${node.id}: owned by ${conflictRecordId}`);
+            return;
+          }
           const objectiveRecord = ctx.host.objectiveRecords.get(node.id);
           if (objectiveRecord) {
             const existing = readAgentSession(objectiveRecord);
@@ -2529,6 +2580,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     const providerSession = parseCaptureHookInput(body.provider, body.input);
     if (providerSession) {
+      const conflictRecordId = findSessionBindingConflict(sessionId, { id: providerSession.id, transcriptPath: providerSession.transcriptPath });
+      if (conflictRecordId) {
+        console.warn(`[fleet-console] rejected conflicting provider session capture for ${sessionId}: owned by ${conflictRecordId}`);
+        ctx.host.http.writeJson(res, 409, { ok: false, error: "session_id_conflict" });
+        return true;
+      }
       observability.updateTerminalSessionProviderSession(sessionId, providerSession);
       const objectiveRecord = ctx.host.objectiveRecords.get(sessionId);
       if (objectiveRecord) {
