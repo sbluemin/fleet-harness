@@ -8,7 +8,7 @@ import { commodoreAvatarKey, objectiveRecordAvatarKey, type MongleActivity } fro
 import { getT as getCoreT } from "../../../../../../core/client/src/i18n/index.js";
 import { conversationActivityPhrase, useObjectiveMongleActivities } from "../../../avatar-activity.js";
 
-import { ComposerTopEntries, ComposerTrailingEntries } from "../composer-top-entries.js";
+import { ComposerTopEntries, ComposerTrailingControls } from "../composer-top-entries.js";
 import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
 import { ChatReferenceContext, ChatReferenceText } from "../chat-reference.js";
@@ -286,7 +286,7 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
     .filter((name): name is string => typeof name === "string");
   const composerUsesTrailingSlot = typeof composer === "function";
   const renderedComposer = typeof composer === "function"
-    ? composer({ trailing: composerTopEntries ? <ComposerTrailingEntries /> : null })
+    ? composer({ trailing: composerTopEnd ? <ComposerTrailingControls>{composerTopEnd}</ComposerTrailingControls> : null })
     : composer;
   const inlineWorking = Boolean(renderComposerWithWorking || ((composerTopEntries || composerTopEnd) && renderedComposer));
   const workingLine = <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} inline={inlineWorking} commodoreActivity={commodoreActivity} />;
@@ -388,7 +388,7 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
       </div>
       <div ref={dockRef} className="group-chat-dock">
         {renderComposerWithWorking ? renderComposerWithWorking(workingLine) : <>
-          {inlineWorking ? <ComposerTopEntries leading={workingLine} end={composerTopEnd} omitEntries={composerUsesTrailingSlot} /> : workingLine}
+          {inlineWorking ? <ComposerTopEntries leading={workingLine} end={composerUsesTrailingSlot ? null : composerTopEnd} omitEntries={!composerTopEntries} /> : workingLine}
           {/* 플러그인이 준 입력 자리(입력창 또는 단추 하나)는 상자 없는 슬롯에 담는다 — 독 빈 자리의 포인터 통과 규칙이 그 루트를 가리지 않게(group-chat.css). */}
           {renderedComposer ? <div className="group-chat-dock-composer" {...(accessibleNames?.composer ? { role: "group", "aria-label": accessibleNames.composer } : {})}>{renderedComposer}</div> : null}
         </>}

@@ -1249,20 +1249,18 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-person-inbox.is-phone .commodore-person-inbox-reason { flex: 1 1 auto; }
 .commodore-person-inbox.is-phone .commodore-person-inbox-open { grid-column: 2; grid-row: 1; align-self: center; }
 
-/* ── 데스크톱 사령관 입력창 · 위 줄 설정 칩 · 칩 앵커 팝오버 ─────────────────
-   입력 캡슐은 다시 한 줄(「+」 · 입력 · 쿼터 요약 · 보내기)로 컴팩트하게 두고, 네 설정 칩은 위 줄(.conversation-composer-top.has-end)
-   오른쪽 끝에 세운다. 오른쪽 여백을 8px(캡슐 7px 안쪽 여백 + 1px 테두리) 더 두어 「고급」 칩 중심이 보내기 원 중심과 같은 세로선에 선다.
-   칩을 누르면 body 포털 팝오버가 칩 가운데 꼬리를 물고 위 줄 위로 뜬다. 폰·Theater Inbox 입력창은 칩·trailing 을 싣지 않고, TaskForce 입력창은 trailing(쿼터)만 싣는다. */
+/* ── 데스크톱 사령관·그룹 입력창 · 캡슐 안 설정 칩 · 칩 앵커 팝오버 ─────────
+   입력 캡슐은 「+」 · 입력 · 디바이더 · 설정 칩 · 보내기 순서다. 쿼터는 위 줄에 선다.
+   사령관과 목표 그룹 대화는 같은 설정·반응형 규칙을 쓴다. 폰·Theater Inbox·TaskForce에는 설정 칩을 싣지 않는다. */
 .objectives-commodore-composer.has-trailing > .objectives-commodore-composer-input { min-width: 96px; }
 .objectives-commodore-composer.has-trailing > .objectives-commodore-ref-input.is-empty { position: relative; overflow: hidden; }
 .objectives-commodore-composer.has-trailing > .objectives-commodore-ref-input.is-empty::before {
   position: absolute; left: 0; right: 0; top: var(--fc-composer-line-pad, 4px); float: none; height: auto;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.objectives-commodore-conversation .conversation-composer-top.has-end { padding-right: calc(clamp(16px, 4cqi, 48px) + 8px); }
-.commodore-composer-chips { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; height: 36px; }
+.commodore-composer-chips { position: relative; display: flex; align-items: center; gap: 2px; min-width: 0; height: var(--fc-composer-circle, 28px); }
 .commodore-composer-chip-ind {
-  position: absolute; z-index: 0; top: 4px; left: 0; width: 0; height: var(--fc-composer-circle, 28px);
+  position: absolute; z-index: 0; top: 0; left: 0; width: 0; height: var(--fc-composer-circle, 28px);
   border-radius: var(--radius-pill); background: var(--wash-selected); box-shadow: inset 0 0 0 1px var(--surface-rim);
   opacity: 0; pointer-events: none; transition: opacity var(--duration-fast) var(--ease-glide);
 }
@@ -1293,13 +1291,12 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
   border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums;
 }
-/* 폭이 줄면 앞표시(880px 이하) → 사령관·지휘관 칩은 공급자 글리프만(660px 이하) 순으로 접힌다(title·aria-label은 전체 좌표 유지). */
-@container commodore-conv (max-width: 880px) {
+/* 입력 캡슐이 아닌 대화 칸 폭으로 접는다 — 이동 전과 같은 창 폭에서 앞표시(880px 이하) → 모델 글리프만(660px 이하) 순서다. */
+@container group-chat (max-width: 880px) {
   .commodore-composer-chip-label { display: none; }
   .commodore-composer-chip .commodore-composer-chip-value { max-width: 116px; }
 }
-@container commodore-conv (max-width: 660px) {
-  .objectives-commodore-conversation .conversation-composer-top.has-end { column-gap: 6px; }
+@container group-chat (max-width: 660px) {
   .commodore-composer-chip[data-section="theaters"] { padding: 0 8px; gap: 4px; }
   .commodore-composer-chip[data-section="pool"] { padding: 0 8px; }
   .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) { flex: none; width: var(--fc-composer-circle, 28px); padding: 0; justify-content: center; }

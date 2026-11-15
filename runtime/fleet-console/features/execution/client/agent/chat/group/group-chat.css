@@ -8,7 +8,7 @@
   min-height: 0;
   height: 100%;
   /* 말풍선 열과 입력 캡슐의 좌우 여백이 이 칸의 폭(cqi)을 함께 따른다. */
-  container-type: inline-size;
+  container: group-chat / inline-size;
   /* 채팅뷰와 같은 코드 서체 — 말풍선 마크다운이 채팅뷰의 규칙(:is(.agent-chat, .group-chat) …)을 그대로 쓴다. */
   --agent-chat-font: var(--font-code);
 }
@@ -1389,7 +1389,7 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 }
 
 /* 아직 서지 않은 지휘관 자리의 입력창. */
-.group-standin-dock { flex: none; display: flex; flex-direction: column; min-width: 0; }
+.group-standin-dock { flex: none; display: flex; flex-direction: column; min-width: 0; container: group-chat / inline-size; }
 
 /* ── 공유 컨텍스트 — 지휘관과 구성원이 함께 쓰는 컴퓨터의 화면은 이 대화 칸에 선다 ── */
 /* 떠 있는 화면공유 미리보기의 배치 부모. 처음 자리는 진행 줄·입력창 위다(끌어서 옮길 수 있다). */

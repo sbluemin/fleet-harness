@@ -34,18 +34,8 @@ export function ComposerTopEntries({ leading, end, omitEntries = false }: {
   );
 }
 
-/** 입력 캡슐 안 오른쪽(보내기 버튼 왼쪽)에 서는 요약 칸. 항목이 비면 null 을 돌려 구분선도 세우지 않는다. */
-export function ComposerTrailingEntries() {
-  const entries = useContext(ComposerTopEntriesContext);
-  const layout = useViewMode().effective;
-  const popoverAnchorRef = useRef<HTMLSpanElement>(null);
-  if (!entries.length) return null;
-  return (
-    <span className="conversation-composer-trailing" ref={popoverAnchorRef}>
-      {entries.map((entry) => {
-        const Render = entry.render;
-        return <FeatureErrorBoundary key={entry.id} fallback={null}><Render popoverAnchorRef={popoverAnchorRef} layout={layout} placement="capsule" /></FeatureErrorBoundary>;
-      })}
-    </span>
-  );
+/** 입력 캡슐 안 오른쪽(보내기 버튼 왼쪽)의 설정·동작 칩. 내용이 없으면 구분선도 세우지 않는다. */
+export function ComposerTrailingControls({ children }: { readonly children?: ReactNode }) {
+  if (!children) return null;
+  return <span className="conversation-composer-trailing">{children}</span>;
 }
