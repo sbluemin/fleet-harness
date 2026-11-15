@@ -23,7 +23,7 @@ import { createDefaultAgentCliDetector, type AgentCliDetector } from "./agent-cl
 import { buildAgentCliLaunchKinds } from "./agent-cli-launch-kinds.js";
 import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "./agent-cli-paths.js";
-import { findGatewayModel, visibleGatewayModels, type ProviderStatusMap } from "@fleet-console/ai-gateway";
+import { findGatewayModel, isAcpGatewayModelId, visibleGatewayModels, type ProviderStatusMap } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { AiGatewayLaunchBinding } from "./launch.js";
 import { deriveObjectiveLabel } from "./auto-name.js";
@@ -2216,7 +2216,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // admiral이 정한다 — CLI는 기본 프롬프트를 쓸 때 플래그를 싣지 않고 SDK는 그때 preset을
     // 싣는, 서로 뒤집힌 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
     const additionalDirectories = ctx.host.paths.resolveObjectiveAdditionalDirectories?.(node.id);
-    const chatBasePromptEnabled = deps.commodoreSystemPrompts?.basePromptEnabled(node.commodoreId) ?? true;
+    // Gemini 세션은 사령관 설정과 상관없이 Claude Code 기본 시스템 프롬프트 없이 연다 — agy는 그 텍스트를 받지 않는다.
+    const chatBasePromptEnabled = (deps.commodoreSystemPrompts?.basePromptEnabled(node.commodoreId) ?? true) && !isAcpGatewayModelId(launchModel);
     const chatClaudeCodeDisabledAgents = subagentSpawnBlocked(node) ? [ALL_SUBAGENTS] : [];
     const chatDisableAutoMemory = readAgentSession(node)?.disableAutoMemory;
     const chatModelSpeed = readAgentSession(node)?.modelSpeed;

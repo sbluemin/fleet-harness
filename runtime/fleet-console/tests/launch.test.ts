@@ -272,6 +272,27 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ model: "claude-gateway--codex--gpt-6.1-sol[1m]" }));
   });
 
+  it("opens a Gemini session without Claude Code's base system prompt even when the setting is on", async () => {
+    const injectProfile = vi.fn(async (profile: AgentCliProfile, _options?: unknown) => profile);
+    const resolve = createDefaultTerminalLaunchResolver({
+      dataDir: launchDataDir,
+      plugin: launchPluginStub,
+      cwd: "/work",
+      env: { PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: createFakeRuntime(() => undefined) as never,
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: injectProfile as never,
+      resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } })) as never,
+      readAiGatewaySettings: () => ({ version: 1, models: [{ id: "antigravity--gemini-3.8-flash" }, { id: "codex--gpt-6.1-sol" }] }),
+    });
+
+    await resolve("/work/project", { sessionId: "gemini", cliId: "claude", model: "claude-gateway--antigravity--gemini-3.8-flash" });
+    await resolve("/work/project", { sessionId: "codex", cliId: "claude", model: "claude-gateway--codex--gpt-6.1-sol" });
+
+    expect(injectProfile.mock.calls[0]?.[1]).toMatchObject({ claudeCodeSystemPrompt: "off" });
+    expect(injectProfile.mock.calls[1]?.[1]).not.toHaveProperty("claudeCodeSystemPrompt");
+  });
+
   it("launches the user's shell without Agent CLI injection for shell sessions", async () => {
     const resolve = createShellTerminalLaunchResolver({
       cwd: "/work",
