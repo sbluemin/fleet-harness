@@ -39,13 +39,15 @@ export function assemble(api) {
       return commodoreId;
     },
     /**
-     * Per-commodore advanced options through the product's own routes (they own the stored shape, migration markers and versioning).
-     * Only "on" | "off" are accepted ("unset" is rejected, see fixtures.mjs). Returns what the product reports afterwards, with the raw auto-memory field.
+     * Per-commodore advanced options of a RUNNING Console through the product's own routes (they own the stored shape, migration
+     * markers and versioning). Only "on" | "off" are accepted here: "unset" is not producible in a running Console (see fixtures.mjs
+     * and `--offline`). Reports `requested`, `stored` (raw auto-memory field; the prompt/subagents keys are not readable over the API)
+     * and `effective` (the product's reading), kept apart because an absent key is not "never saved".
      */
     async advanced(commodoreId, want) {
       const put = (route, body) => api("PUT", `/api/v1/agent/${route}?commodoreId=${encodeURIComponent(commodoreId)}`, body);
       for (const key of ["autoMemory", "basePrompt", "subagents"]) {
-        if (want[key] !== "on" && want[key] !== "off") throw new Error(`advanced: ${key} must be "on" or "off", got ${JSON.stringify(want[key])}. "unset" cannot be seeded into a running Console: creation stores auto memory false and base prompt "off", no public route removes a stored key, and "on" (base prompt) / "off" (subagents) delete theirs, which reads as the default but is not an unsaved state.`);
+        if (want[key] !== "on" && want[key] !== "off") throw new Error(`advanced: ${key} must be "on" or "off" on a running Console, got ${JSON.stringify(want[key])}; for "unset" seed a data dir before its Console starts: seed.mjs --offline.`);
       }
       await api("POST", "/api/v1/commodore/auto-memory", { commodoreId, autoMemoryEnabled: want.autoMemory === "on" });
       await put("commodore-system-prompt", { basePromptEnabled: want.basePrompt === "on" });
@@ -54,9 +56,8 @@ export function assemble(api) {
       const read = (route) => api("GET", `/api/v1/agent/${route}?commodoreId=${encodeURIComponent(commodoreId)}`);
       return {
         requested: want,
-        autoMemoryEnabledField: (stored.state ?? stored).autoMemoryEnabled, // raw stored field; the product reads absent as on
-        basePromptEnabled: (await read("commodore-system-prompt")).basePromptEnabled, // product's interpretation
-        subagentsKept: (await read("commodore-subagents")).subagentsKept,
+        stored: { autoMemoryEnabled: (stored.state ?? stored).autoMemoryEnabled ?? "absent" },
+        effective: { autoMemory: (stored.state ?? stored).autoMemoryEnabled !== false, basePrompt: (await read("commodore-system-prompt")).basePromptEnabled, subagents: (await read("commodore-subagents")).subagentsKept },
       };
     },
     async theater(commodoreId, folder) {

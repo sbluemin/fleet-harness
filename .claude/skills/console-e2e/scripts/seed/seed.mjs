@@ -6,10 +6,13 @@
  *        [--commodores N] [--theaters M] [--objectives K]
  *        [--root <dir for theater folders>]          default: <os tmpdir>/seed-theaters/<slot hash> (outside every repository)
  *        [--fake-claude-dir <FAKE_CLAUDE_DIR>]       required by objectives and inbox: the fake agent adds them
+ *        [--offline]                                 advanced only: seed a data dir whose Console has NOT started (the only way to get "unset")
  *
  * Prints one JSON object (the ids) on stdout and writes it to <dir>/seed-ids.json; progress goes to stderr.
  */
+import { execFileSync } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
@@ -34,6 +37,27 @@ if (spec.activity && spec.objectives < 1) fail("activity needs at least one obje
 if (spec.advanced && spec.commodores > ADVANCED_STATES.length) fail(`advanced defines ${ADVANCED_STATES.length} states; --commodores must be <= ${ADVANCED_STATES.length}`);
 if (spec.inbox && spec.objectives !== 0) fail("inbox does not take --objectives");
 if (spec.inbox && (spec.theaters < 1 || spec.commodores < 1)) fail("inbox needs a commodore and a theater");
+
+const offline = args.get("offline") === true;
+if (offline && !spec.advanced) fail("--offline applies to the advanced profile only");
+const states = spec.advanced ? ADVANCED_STATES.slice(0, spec.commodores) : [];
+if (spec.advanced && !offline && states.some((state) => Object.values(state).includes("unset"))) fail('a running Console cannot be seeded "unset" (creation already stored auto memory false and base prompt off): use --offline on a data dir before its Console starts, or --commodores 2 for on/off only');
+
+if (offline) {
+  try {
+    assertFreshSlot(dir);
+    const here = path.dirname(fileURLToPath(import.meta.url));
+    const root = path.resolve(here, "../../../../..");
+    const out = execFileSync("pnpm", ["--dir", path.join(root, "runtime/fleet-console"), "exec", "tsx", "--tsconfig", path.join(here, "offline.tsconfig.json"), path.join(here, "offline.mts"), "--dir", dir, "--states", JSON.stringify(states.map((state, i) => ({ ...state, alias: `Seed ${i + 1}` })))], { encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
+    const made = JSON.parse(out.trim().split("\n").pop());
+    const ids = { profile: name, offline: true, commodores: made.map((row, i) => ({ commodoreId: row.commodoreId, theaters: [], objectives: [], advanced: { label: states[i].label, requested: states[i], stored: row.stored, effective: row.effective } })) };
+    writeIds(dir, ids);
+    console.log(JSON.stringify(ids, null, 2));
+    process.exit(0);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
+}
 
 try {
   assertFreshSlot(dir); // before the first commodore exists, so a refused run leaves no half-seeded state

@@ -6,7 +6,7 @@ One procedure for the data a verification needs before the first navigation: com
 node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" --profile <name> [--commodores N] [--theaters M] [--objectives K] [--root <theater folders>] [--fake-claude-dir "$FAKE_CLAUDE_DIR"]
 ```
 
-`--dir` is the owned `FLEET_CONSOLE_DATA_DIR` of a running Console (its `console.lock` names the port). stdout is one JSON object with the ids of what was created, also saved as `<dir>/seed-ids.json`; progress goes to stderr. A slot is seeded once: a run that finds `seed-ids.json` stops before creating anything, so take a fresh slot.
+`--dir` is the owned `FLEET_CONSOLE_DATA_DIR` of a running Console (its `console.lock` names the port); only `advanced --offline` takes one whose Console has not started. stdout is one JSON object with the ids of what was created, also saved as `<dir>/seed-ids.json`; progress goes to stderr. A slot is seeded once: a run that finds `seed-ids.json` stops before creating anything, so take a fresh slot.
 
 | Profile | Contents |
 |---|---|
@@ -16,7 +16,7 @@ node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" -
 | `objectives` | 1 commodore, 1 theater, 2 objectives, each with a roster entry and 2 missions (board data only: no member session is launched or resumed) |
 | `activity` | `objectives` board data, with each commodore's first objective commenced (in-progress commander), a synthetic last reply, and that commodore in a local sidebar section |
 | `details` | `activity` (1 objective by default), with brief, criteria, mission records, sealed results and shared files on its commenced objective; excludes actor-rewritten mission-resume records. |
-| `advanced` | 2 commodores, no theater: per-commodore advanced options (auto memory, base system prompt, subagents) all on and all off. "Unset" (no saved override) cannot be seeded into a running Console and is rejected: creation stores auto memory `false` and prompt `off`, and the product reads a missing field as on. `commodores[].advanced` maps each id to requested and product-read values. |
+| `advanced` | 3 commodores, no theater: per-commodore advanced options (auto memory, base system prompt, subagents) requested on, off and unset (no saved override; product defaults apply). Running Console: on/off only (`--commodores 2`); `unset` needs `--offline` on a data dir before its Console first starts (no `console.lock`), then boot it. Output `commodores[].advanced` keeps `requested`, `stored` and `effective` apart. |
 | `inbox` | 1 commodore, 1 theater, three objectives handed to the person (one criteria proposal, one review, one open follow-up) and one open commodore question. No sidebar section and no transcript turns. |
 
 Counts override with the flags. Theater folders are created under `--root` (default `<os tmpdir>/seed-theaters/<slot hash>`), outside every repository as [setup.md](setup.md) requires; remove them with the run.

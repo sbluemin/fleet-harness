@@ -12,14 +12,18 @@ export const ACTIVITY_SECTION = "Seed section";
 export const ACTIVITY_REPLY = "Synthetic commodore reply (no provider).";
 
 /**
- * `advanced` profile: one commodore per state of the per-commodore advanced options, in order. Values: "on" | "off" only.
- * "unset" (a stored key that is absent) is rejected for all three: creation stores auto memory false and base prompt mode "off",
- * and the public routes cannot remove an auto-memory field; base prompt "on" and subagents "off" delete their key, which is the
- * product default but cannot be told apart from never having been saved. The seed will not call that "unset".
+ * `advanced` profile: one commodore per requested state of the per-commodore advanced options (auto memory, base system prompt,
+ * subagents), in order. Values: "on" | "off" | "unset" (no saved override; product defaults apply).
+ * - "on"/"off" are requests, not raw keys: the product deletes the key when a value is set back to its default (base prompt on,
+ *   subagents off), so an absent key does not mean "never saved".
+ * - "unset" needs the offline path (`--offline`, a data dir whose Console has not started). The running-Console routes cannot
+ *   produce it, because the product's creation step has already stored auto memory false and base prompt "off" there.
+ * The third state is skipped by a running-Console run only when `--commodores 2` is given; otherwise it is refused up front.
  */
 export const ADVANCED_STATES = [
   { label: "on", autoMemory: "on", basePrompt: "on", subagents: "on" },
   { label: "off", autoMemory: "off", basePrompt: "off", subagents: "off" },
+  { label: "unset", autoMemory: "unset", basePrompt: "unset", subagents: "unset" },
 ];
 
 export const PROFILES = {
@@ -32,7 +36,7 @@ export const PROFILES = {
   // One in-progress objective with briefing, criteria, completion records, sealed results and shared files.
   details: { ...objectives, objectives: 1, activity: true, details: true },
   // Person inbox: one criteria proposal, one review, one open follow-up, one ask. No section, no transcript.
-  // Three commodores, no theater: advanced options explicit on and explicit off (see ADVANCED_STATES).
+  // One commodore per ADVANCED_STATES entry, no theater.
   advanced: { commodores: ADVANCED_STATES.length, theaters: 0, objectives: 0, advanced: true },
   inbox: { commodores: 1, theaters: 1, objectives: 0, inbox: true },
 };
