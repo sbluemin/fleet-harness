@@ -1297,9 +1297,11 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 }
 /* 사령관·지휘관·라우팅 풀은 대화 칸 폭과 관계없이 평소엔 공급자 글리프(풀은 겹침, 빈 풀은 ＋)만 보인다.
    이름·모델·강도는 0fr 칸에 접혀 있고, hover·키보드 초점·팝오버 열림에서 풀 글리프 겹침과 같은 220ms spring, 투명도는 200ms로 펼친다.
-   쉬는 상태 구분: 사령관은 brass 안쪽 테, 지휘관은 aurora 안쪽 테. 펼치면 테는 사라지고 이름 문구가 나온다. 풀은 겹침·＋라 테를 두지 않는다. */
+   세 칩은 쉬는 상태에서 모두 28px 원 폭을 지켜, 빈 풀의 ＋도 다른 칩과 같은 크기로 선다. */
 .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]) {
   flex: none;
+  min-width: var(--fc-composer-circle, 28px);
+  justify-content: center;
   gap: 0;
   padding: 0 7px;
   transition:
@@ -1326,17 +1328,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   opacity: 1;
 }
 .commodore-composer-chip-reveal-in { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
-.commodore-composer-chip:is([data-section="commodore"], [data-section="commander"])::before {
-  content: "";
-  position: absolute;
-  inset: 1px;
-  border-radius: inherit;
-  pointer-events: none;
-  transition: opacity 200ms;
-}
-.commodore-composer-chip[data-section="commodore"]::before { box-shadow: inset 0 0 0 1.5px var(--brass); }
-.commodore-composer-chip[data-section="commander"]::before { box-shadow: inset 0 0 0 1.5px var(--aurora); }
-.commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]):is(:hover, :focus-visible, [aria-expanded="true"])::before { opacity: 0; }
 @container group-chat (max-width: 880px) {
   .commodore-composer-chip .commodore-composer-chip-value { max-width: 116px; }
 }
@@ -1697,8 +1688,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled),
   .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]) > .commodore-composer-chip-reveal,
   .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) > .commodore-composer-chip-reveal,
-  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"])::before,
-  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]):is(:hover, :focus-visible, [aria-expanded="true"])::before,
   .commodore-composer-chip-ind, .commodore-composer-chip-ind.is-placed,
   .commodore-settings-popover.is-placed, .commodore-settings-popover.is-placed .commodore-settings-popover-nub,
   .commodore-settings-popover-title-in,
