@@ -53,7 +53,8 @@ function request(method, params) {
   return new Promise((resolve) => outgoing.set(id, resolve));
 }
 
-const promptText = (blocks) => blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+// The bridge carries the standing instructions in the first prompt as <system_instructions>…</system_instructions>; the scripts below act on what follows.
+const promptText = (blocks) => blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n").replace(/^<system_instructions>[\s\S]*?<\/system_instructions>\n\n/, "");
 const say = (text) => update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text } });
 
 async function callTool(title, name, args, giveUpAfterMs) {
@@ -80,7 +81,7 @@ async function callTool(title, name, args, giveUpAfterMs) {
 
 async function runPrompt(id, blocks) {
   const text = promptText(blocks);
-  log({ prompt: text });
+  log({ prompt: text, instructed: blocks.some((block) => block.type === "text" && block.text.startsWith("<system_instructions>")) });
   let match;
   if ((match = /^TOOL:([^:]+):(.*)$/s.exec(text))) {
     const result = await callTool(`Run mcp_fleet_${match[1]}`, match[1], JSON.parse(match[2]));

@@ -89,6 +89,10 @@ describe("agy ACP bridge", () => {
     const argv = entries[0]!.argv as string[];
     expect(argv).toContain("--agent");
     expect(argv).not.toContain("--dangerously-skip-permissions");
+    // Claude Code's system prompt is not sent as the session system prompt (agy's upstream answers 429 to it); it leads the first prompt only.
+    const created = entries.find((entry) => entry.method === "session/new")?.params as { _meta: { antigravity: { systemPrompt: { append: string } } } };
+    expect(created._meta.antigravity.systemPrompt.append).not.toContain("be brief");
+    expect(entries.filter((entry) => typeof entry.prompt === "string").map((entry) => entry.instructed)).toEqual([true, false]);
     expect(entries.find((entry) => entry.mcpTools)).toMatchObject({ mcpTools: ["Bash"], eager: ["Bash"], timeoutSeconds: 3600 });
   });
 
