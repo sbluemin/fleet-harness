@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronGlyph, MenuCheckGlyph, useSelect } from "@fleet-console/ui/react";
 
 import type { IdentityTone } from "../../workspace/shared/identity-tones.js";
-import { COMMODORE_ALIAS_MAX_LENGTH } from "../shared/alias.js";
+import { COMMODORE_ALIAS_MAX_LENGTH, clampCommodoreAlias } from "../shared/alias.js";
 import { commodoreAvatarKey, isPromotedBaseId, pickMongleBase } from "../../workspace/shared/avatars.js";
 import { setMongleLook } from "../../workspace/client/avatar-events.js";
 import { MongleBaseGrid, MonglePreviewStates, MongleToneDots, type MongleAvatarPreviewState } from "../../workspace/client/components/mongle-avatar-picker.js";
@@ -43,6 +43,7 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
   const t = useT();
   const locale = useConsoleLocale() === "ko" ? "ko" : "en";
   const [name, setName] = useState("");
+  const composingRef = useRef(false);
   const [base, setBase] = useState(() => pickMongleBase(new Set()));
   const [tone, setTone] = useState<IdentityTone | null>(null);
   const [preview, setPreview] = useState<MongleAvatarPreviewState>("idle");
@@ -199,11 +200,21 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
             <input
               className="commodore-create-name"
               value={name}
-              maxLength={COMMODORE_ALIAS_MAX_LENGTH}
               autoFocus={!sheet}
               placeholder={t("sidebar.commodore.namePlaceholder")}
               aria-label={t("sidebar.commodore.name")}
-              onChange={(event) => { setName(event.target.value); setFailed(false); setCreateReason(null); }}
+              onChange={(event) => {
+                setName(composingRef.current ? event.target.value : clampCommodoreAlias(event.target.value));
+                setFailed(false);
+                setCreateReason(null);
+              }}
+              onCompositionStart={() => { composingRef.current = true; }}
+              onCompositionEnd={(event) => {
+                composingRef.current = false;
+                setName(clampCommodoreAlias(event.currentTarget.value));
+                setFailed(false);
+                setCreateReason(null);
+              }}
               onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }}
             />
             {nameLimitReached ? <p className="commodore-create-limit" role="status">{t("sidebar.commodore.nameLimit", { max: COMMODORE_ALIAS_MAX_LENGTH })}</p> : null}
