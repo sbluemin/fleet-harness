@@ -56,6 +56,12 @@ export interface GroupConversationProps {
   /** 한 참여자의 원장을 이 자리에 연다 — 셸의 구성원 본문 선택으로 연결한다. */
   readonly onOpenLedger?: (objectiveId: string) => void;
   /**
+   * 말풍선 머리의 네임플레이트(이름·표식)만 누를 때의 동작 — 없으면 `onOpenLedger` 로 그 참여자의 원장을 연다. 작업 줄·진행 메모 링크·
+   * 전언 화면은 늘 `onOpenLedger` 를 쓴다. `nameplateLabel` 은 이 동작을 말하는 이름이다(없으면 「…의 원장 열기」).
+   */
+  readonly onOpenNameplate?: (objectiveId: string) => void;
+  readonly nameplateLabel?: string;
+  /**
    * 사령관 행위 줄에서 그 행위의 기록을 연다 — 임무 14 계약(`useOpenBoardActionRecord()` 가 돌려주는 함수)과 같은 모양이다.
    * 기록이 없는 줄이면 여는 쪽이 아무 일도 하지 않으므로 단추는 늘 둔다.
    */
@@ -111,7 +117,7 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenCommodoreRecord, cards, composer, composerTopEnd, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, commodoreActivity = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenNameplate, nameplateLabel, onOpenCommodoreRecord, cards, composer, composerTopEnd, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, commodoreActivity = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
   const t = getGroupT(language);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
@@ -372,6 +378,8 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
                   participants={snapshot.participants}
                   language={language}
                   onOpenLedger={onOpenLedger}
+                  onOpenNameplate={onOpenNameplate}
+                  nameplateLabel={nameplateLabel}
                   onOpenCommodoreRecord={onOpenCommodoreRecord}
                   boardActionLabel={boardActionLabel}
                   capped={fold}
@@ -723,7 +731,7 @@ function tailExcerpt(text: string, max: number): string {
   return last.length > max ? `…${last.slice(-max)}` : last;
 }
 
-const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenCommodoreRecord, boardActionLabel, capped = false, report, showMark = true, onOpenRelay, onOpenUISend }: {
+const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenNameplate, nameplateLabel, onOpenCommodoreRecord, boardActionLabel, capped = false, report, showMark = true, onOpenRelay, onOpenUISend }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
   /** 이 말 앞에 가운데 시각 줄이 선다 — 같은 발화자의 이어진 말이어도 새 묶음의 머리다. */
@@ -733,6 +741,8 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
+  readonly onOpenNameplate?: GroupConversationProps["onOpenNameplate"];
+  readonly nameplateLabel?: string | undefined;
   readonly onOpenCommodoreRecord: GroupConversationProps["onOpenCommodoreRecord"];
   readonly boardActionLabel: string | undefined;
   readonly capped?: boolean;
@@ -744,7 +754,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly onOpenUISend?: GroupConversationProps["onOpenUISend"];
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} capped={capped} report={report} showMark={showMark} onOpenUISend={onOpenUISend} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} onOpenNameplate={onOpenNameplate} nameplateLabel={nameplateLabel} capped={capped} report={report} showMark={showMark} onOpenUISend={onOpenUISend} />;
     case "delegation": return <RelayLine entry={entry} language={language} onOpen={onOpenRelay} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -754,7 +764,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
     case "note": return <NoteLine entry={entry} language={language} />;
   }
 }, (before, after) => {
-  if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel || before.onOpenRelay !== after.onOpenRelay || before.onOpenUISend !== after.onOpenUISend) return false;
+  if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenNameplate !== after.onOpenNameplate || before.nameplateLabel !== after.nameplateLabel || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel || before.onOpenRelay !== after.onOpenRelay || before.onOpenUISend !== after.onOpenUISend) return false;
   if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report || before.showMark !== after.showMark) return false;
   // 결정 답 줄은 받는 이(지휘관)를 참여자에서 읽는다 — 명부가 늦게 와도 그 표식이 선다.
   if (after.entry.kind === "decision-answer") {
@@ -798,7 +808,7 @@ function showsSpeakerMarks(participants: readonly ConversationParticipant[]): bo
   return false;
 }
 
-function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, capped = false, report, showMark = true, onOpenUISend }: {
+function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, onOpenNameplate, nameplateLabel, capped = false, report, showMark = true, onOpenUISend }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "message" }>;
   readonly continued: boolean;
   readonly tail: boolean;
@@ -806,6 +816,8 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   readonly participants: GroupTimelineSnapshot["participants"];
   readonly language: ConsoleLocale | undefined;
   readonly onOpenLedger: GroupConversationProps["onOpenLedger"];
+  readonly onOpenNameplate?: GroupConversationProps["onOpenNameplate"];
+  readonly nameplateLabel?: string | undefined;
   /** 턴 접기 — 구성원 말풍선에 높이 상한을 두고 넘치면 「전체 보기」로 펼친다. 구성원이 아닌 말에는 걸지 않는다. */
   readonly capped?: boolean;
   /** 턴 접기 — 이 말풍선으로 옮긴 보고 줄. 머리의 꼬리표가 되고 누르면 보고 전문이 펼쳐진다. */
@@ -869,9 +881,11 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   const speaker = entry.speaker.kind === "commodore" ? { ...entry.speaker, name: commodoreDisplayName(entry.speaker.name, t("group.commodore")) } : entry.speaker;
   // 묶음 머리의 이름과 꼬리의 표식은 그 발화자의 원장을 여는 한 대상이다 — 탭 정지는 이름 하나, 표식은 마우스·터치용 복제 히트
   // 영역이다. 원장이 없는 발화자(사람·사령관·명부에 없는 id)와 콜백이 없는 대화(플러그인 대화)에서는 눌리는 척하지 않는다.
-  const target = (continued && !tail) || !onOpenLedger ? null : ledgerOf(speaker, participants);
-  const open = target ? () => onOpenLedger!(target) : undefined;
-  const label = open ? t("group.speaker.openLedger", { name: speaker.name }) : undefined;
+  // 네임플레이트 전용 동작이 있으면 그것을 쓴다(데스크톱 그룹채팅: 원장 분할 화면으로 전환).
+  const openNameplate = onOpenNameplate ?? onOpenLedger;
+  const target = (continued && !tail) || !openNameplate ? null : ledgerOf(speaker, participants);
+  const open = target ? () => openNameplate!(target) : undefined;
+  const label = open ? (onOpenNameplate && nameplateLabel ? nameplateLabel : t("group.speaker.openLedger", { name: speaker.name })) : undefined;
   // 생성형 UI(OpenUI 펜스)는 사령관·지휘관의 말에서만 그린다 — 구성원의 말은 지금처럼 코드 블록이다.
   const openui = speaker.kind === "commodore" || speaker.kind === "commander";
   // 표식은 묶음 꼬리(마지막으로 서는 말풍선) 옆에 선다 — 묶음 왼쪽 아래.
