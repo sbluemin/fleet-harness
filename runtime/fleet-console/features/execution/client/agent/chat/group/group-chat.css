@@ -1542,8 +1542,9 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 }
 /* 칸 안 채팅 바닥 줄 — 칸 머리 대신 칸 주인(아바타·신원 톤 이름)을 왼쪽에 세우고 더 낮게 선다. 본문 풀 포털은 DOM 을 칸 안 슬롯에
    붙이므로 이 스코프가 닿는다. 개별 원장·일반 채팅의 같은 줄은 이 그리드 밖이라 그대로다.
-   높이: 테두리 1 + 위 8 + 도구 30 + 표시줄 아래 6 + 아래 8 = 53px → 테두리 1 + 위 4 + 도구 30 + 아래 4 = 39px. */
-.group-ledger-split .agent-chat-member-foot { padding-block: var(--space-1); }
+   높이: 테두리 1 + 위 8 + 도구 30 + 표시줄 아래 6 + 아래 8 = 53px → 테두리 1 + 위 4 + 도구 30 + 아래 4 = 39px.
+   칸 안에서는 바닥 줄 위 헤어라인을 보이지 않게 한다 — 칸을 나누는 선은 칸 경계 하나로 충분하다. 테두리 1px 자리는 남겨 높이·위치는 그대로다. */
+.group-ledger-split .agent-chat-member-foot { padding-block: var(--space-1); border-top-color: transparent; }
 .group-ledger-split .agent-chat-member-foot .agent-chat-composer-meta { padding-bottom: 0; }
 .group-ledger-split-owner {
   display: inline-flex;
