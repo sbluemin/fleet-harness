@@ -2,15 +2,19 @@
 //
 // Prompt scripts (the prompt text decides what the fake "model" does):
 //   TOOL:<name>:<json>     ask permission for `Run mcp_fleet_<name>`, call that MCP tool, then answer `got:<result text>`
-//   TIMEOUT:<name>         call the MCP tool and give up on it after 50ms (agy's call deadline), then keep talking
-//   UPSTREAM429            agy's upstream-error retry notices as ordinary message chunks, then a normal-looking answer
+//   TIMEOUT:<name>         call the MCP tool and give up on it when the client sends session/cancel (stands in for agy's call deadline),
+//                          then keep talking
+//   UPSTREAM429            agy's upstream-error retry notice as an ordinary message chunk; the turn then stays open (agy keeps retrying)
+//                          until the client cancels it, and only then a normal-looking answer comes
 //   UPSTREAMNET            a code-less "⚠ network issue" message as the whole turn, ended normally (agy's network-error shape)
 // A second session/prompt while a TOOL prompt is blocked on its MCP call is steering (agy 1.5.9): the first prompt is answered end_turn at
 // once, and when the tool result comes the turn continues as `got:<result> steered:<text>` and ends with the steering prompt's response.
-//   ENDEARLY:<name>        call the MCP tool, then end the prompt at once while the call stays held (a turn that is over but whose call is still pending)
+//   ENDEARLY:<name>        call the MCP tool, then end the prompt when the client sends session/cancel while the call stays held
+//                          (a turn that is over but whose call is still pending)
 //   BUILTIN                ask permission for a built-in tool and run it anyway
 //   anything else          answer `echo:<first 60 chars>` plus `history:yes|no` (whether a conversation_history block came)
 // Without any of those the original fixed event stream is sent (the session port test relies on it).
+// The fake never waits on a clock: every step that a real agy would take after some time follows a message from the client instead.
 import { appendFileSync, readFileSync } from "node:fs";
 import { createInterface } from "node:readline";
 
@@ -20,7 +24,6 @@ const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0
 const update = (body) => send({ method: "session/update", params: { sessionId: "s1", update: body } });
 const argv = process.argv.slice(2);
 log({ argv, pid: process.pid });
-process.on("SIGTERM", () => { log({ terminated: true }); process.exit(0); });
 
 const geminiDir = argv[argv.indexOf("--gemini-dir") + 1];
 let mcp;
@@ -61,7 +64,11 @@ function request(method, params) {
 const promptText = (blocks) => blocks.filter((block) => block.type === "text").map((block) => block.text).join("\n");
 const say = (text) => update({ sessionUpdate: "agent_message_chunk", content: { type: "text", text } });
 
-async function callTool(title, name, args, giveUpAfterMs) {
+// Resolves on the client's next session/cancel.
+let onCancel;
+const nextCancel = () => new Promise((resolve) => { onCancel = resolve; });
+
+async function callTool(title, name, args, giveUp) {
   const permission = await request("session/request_permission", {
     sessionId: "s1",
     toolCall: { toolCallId: "tc", title },
@@ -71,7 +78,7 @@ async function callTool(title, name, args, giveUpAfterMs) {
   if (permission?.outcome?.optionId !== "allow") return undefined;
   update({ sessionUpdate: "tool_call", toolCallId: "tc", title, kind: "other", status: "in_progress", rawInput: args });
   const controller = new AbortController();
-  if (giveUpAfterMs !== undefined) setTimeout(() => controller.abort(), giveUpAfterMs);
+  void giveUp?.then(() => controller.abort());
   try {
     // agy adds a `toolSummary` argument to every MCP call.
     const result = await mcpRpc("tools/call", { name, arguments: { ...args, toolSummary: "fake" } }, controller.signal);
@@ -102,20 +109,20 @@ async function runPrompt(id, blocks) {
       return true;
     }
   } else if ((match = /^ENDEARLY:(.+)$/s.exec(text))) {
+    const cancelled = nextCancel();
     void callTool(`Run mcp_fleet_${match[1]}`, match[1], {});
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    await cancelled;
     log({ endedEarly: true });
   } else if ((match = /^TIMEOUT:(.+)$/s.exec(text))) {
-    await callTool(`Run mcp_fleet_${match[1]}`, match[1], {}, 50);
+    await callTool(`Run mcp_fleet_${match[1]}`, match[1], {}, nextCancel());
     say("timed out after 3 minutes");
   } else if (text.startsWith("UPSTREAM429")) {
+    const cancelled = nextCancel();
     say("\n⚠ API error (attempt 1): RESOURCE_EXHAUSTED (code 429): Resource has been exhausted (e.g. check quota).\n");
-    await new Promise((resolve) => setTimeout(resolve, 300));
-    say("\n⚠ API error (attempt 2): RESOURCE_EXHAUSTED (code 429): Resource has been exhausted (e.g. check quota).\n");
+    await cancelled;
     say("NOT-A-REAL-ANSWER");
   } else if (text.startsWith("UPSTREAMNET")) {
     say("\n⚠ There was a network issue connecting to the server, please try again.\n");
-    if (text === "UPSTREAMNET:slow") await new Promise((resolve) => setTimeout(resolve, 2600));
   } else if (text.startsWith("BUILTIN")) {
     await callTool("Run run_command", "run_command", {});
     update({ sessionUpdate: "tool_call", toolCallId: "tb", title: "Run run_command", kind: "other", status: "in_progress", rawInput: {} });
@@ -151,7 +158,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
       ],
     } });
   } else if (message.method === "session/set_config_option") send({ id: message.id, result: { configOptions: [] } });
-  else if (message.method === "session/cancel") log({ cancelled: true });
+  else if (message.method === "session/cancel") {
+    log({ cancelled: true });
+    const resolve = onCancel;
+    onCancel = undefined;
+    resolve?.();
+  }
   else if (message.method === "session/prompt" && running) {
     running.steerText = promptText(message.params.prompt);
     running.steerId = message.id;
