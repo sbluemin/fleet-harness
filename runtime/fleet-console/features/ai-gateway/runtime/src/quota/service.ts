@@ -5,6 +5,7 @@ import { fetchClaudeUsage } from "../upstream/anthropic/quota.js";
 import { createCodexOAuth, type CodexOAuth } from "../oauth/codex/login.js";
 import { createMuseCodeOAuth, type MuseCodeOAuth } from "../oauth/muse-code/login.js";
 import { createXaiOAuth, type XaiOAuth } from "../oauth/xai/login.js";
+import { fetchOpencodeUsage } from "../upstream/opencode-go/quota.js";
 import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
 import { deriveQuotaWindowRisk } from "./pressure.js";
 import { QUOTA_LAST_GOOD_PROVIDERS, type QuotaLastGoodProviderId, type QuotaLastGoodStore } from "./last-good.js";
@@ -52,6 +53,7 @@ export interface QuotaServiceDeps {
   readonly fetchXai?: () => Promise<ProviderResult>;
   readonly fetchAntigravity?: () => Promise<ProviderResult>;
   readonly fetchMuseCode?: () => Promise<ProviderResult>;
+  readonly fetchOpencode?: () => Promise<ProviderResult>;
   /**
    * 마지막 성공 사용량. 호스트가 파일 자리를 정해 넘긴다. 없으면 이 프로세스 메모리만 쓴다.
    * 읽기에 실패하거나 파일이 깨져 있으면 빈 값으로 시작한다.
@@ -65,7 +67,7 @@ export interface QuotaServiceDeps {
 
 /**
  * Deps for building the provider probes. `authService` is required here —
- * Muse Code reads the entry Fleet itself stores through it — so a host
+ * Muse Code and OpenCode Go read the entries Fleet itself stores through it — so a host
  * that composes these collectors can never silently fall back to constructing a
  * default auth path inside the package.
  */
@@ -86,6 +88,7 @@ export interface AiGatewayQuotaCollectors {
   readonly fetchXai: () => Promise<ProviderResult>;
   readonly fetchAntigravity: () => Promise<ProviderResult>;
   readonly fetchMuseCode: () => Promise<ProviderResult>;
+  readonly fetchOpencode: () => Promise<ProviderResult>;
 }
 
 export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps): AiGatewayQuotaCollectors {
@@ -103,6 +106,11 @@ export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps
     fetchXai: () => xai.fetchUsage(),
     fetchAntigravity: () => fetchAntigravityUsage(providerDeps),
     fetchMuseCode: () => museCode.fetchUsage(),
+    fetchOpencode: () => fetchOpencodeUsage({
+      authService: deps.authService,
+      ...(deps.fetch !== undefined ? { fetch: deps.fetch } : {}),
+      ...(deps.now !== undefined ? { now: deps.now } : {}),
+    }),
   };
 }
 
@@ -134,6 +142,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     xai: deps.fetchXai ?? (async () => ({ status: "signed_out" })),
     antigravity: deps.fetchAntigravity ?? (async () => ({ status: "signed_out" })),
     "muse-code": deps.fetchMuseCode ?? (async () => ({ status: "signed_out" })),
+    opencode: deps.fetchOpencode ?? (async () => ({ status: "signed_out" })),
   };
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();
@@ -418,7 +427,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       return { providers: {
         claude: read("claude"), codex: read("codex"),
         xai: read("xai"), antigravity: read("antigravity"),
-        "muse-code": read("muse-code"),
+        "muse-code": read("muse-code"), opencode: read("opencode"),
       } };
     },
     readCachedSummary() {
@@ -440,19 +449,21 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       const xai = read("xai");
       const antigravity = read("antigravity");
       const museCode = read("muse-code");
-      if (!claude || !codex || !xai || !antigravity || !museCode) return undefined;
+      const opencode = read("opencode");
+      if (!claude || !codex || !xai || !antigravity || !museCode || !opencode) return undefined;
       return {
-        summary: { providers: { claude, codex, xai, antigravity, "muse-code": museCode } },
+        summary: { providers: { claude, codex, xai, antigravity, "muse-code": museCode, opencode } },
         expired,
       };
     },
     async getSummary(options = {}) {
-      const [claude, codex, xai, antigravity, museCode] = await Promise.all([
+      const [claude, codex, xai, antigravity, museCode, opencode] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
         load("xai", options.force === true || options.forceProvider === "xai"),
         load("antigravity", options.force === true || options.forceProvider === "antigravity"),
         load("muse-code", options.force === true || options.forceProvider === "muse-code"),
+        load("opencode", options.force === true || options.forceProvider === "opencode"),
       ]);
       const summary = {
         providers: {
@@ -461,6 +472,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
           xai: withRisk(xai),
           antigravity: withRisk(antigravity),
           "muse-code": withRisk(museCode),
+          opencode: withRisk(opencode),
         },
       };
       notifyStatus();

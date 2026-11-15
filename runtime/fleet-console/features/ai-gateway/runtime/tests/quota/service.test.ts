@@ -11,6 +11,7 @@ import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/qu
 import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth/index.js";
 import type { AuthStorageEntry } from "../../src/auth/types.js";
 import { getJson } from "../../src/quota/windows.js";
+import { OPENCODE_AUTH_PROVIDER_ID, OPENCODE_GO_USAGE_URL } from "../../src/upstream/opencode-go/coordinates.js";
 import type { ProviderSuccess } from "../../src/quota/types.js";
 
 function ok(fetchedAt: number, usedPercent = 10): ProviderSuccess {
@@ -149,6 +150,45 @@ describe("quota service", () => {
     expect(error.status).toBe("error");
     expect(error).not.toHaveProperty("windows");
   });
+
+  it("reads OpenCode Go usage with the key Fleet stores and reports the three official windows", async () => {
+    let apiKey: string | undefined = "opencode-key";
+    let status = 200;
+    const authService = {
+      getEntry: async () => undefined, setEntry: async () => undefined, updateEntry: async () => false,
+      getApiKey: vi.fn(async () => apiKey), setApiKey: async () => undefined,
+      deleteApiKey: async () => false, listProviderIds: async () => [],
+    };
+    const fetchImpl = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      usage: {
+        rolling: { percent: 1, resetsAt: "2026-11-16T03:00:00.000Z" },
+        weekly: { percent: 2, resetsAt: "2026-11-16T00:00:00.000Z" },
+        monthly: { percent: 3, resetsAt: "2026-12-01T00:00:00.000Z" },
+      },
+    }), { status, headers: { "Content-Type": "application/json" } }));
+    const collectors = createAiGatewayQuotaCollectors({ authService, fetch: fetchImpl });
+    const service = createQuotaService({
+      isClaudeConnected: async () => false,
+      fetchClaude: async () => ({ status: "signed_out" }),
+      fetchCodex: async () => ({ status: "signed_out" }),
+      fetchOpencode: collectors.fetchOpencode,
+    });
+
+    const opencode = (await service.getSummary()).providers.opencode;
+    expect(opencode).toMatchObject({ status: "ok", plan: "Go" });
+    expect(opencode.windows?.map((window) => [window.id, window.usedPercent])).toEqual([["session", 1], ["weekly", 2], ["cycle", 3]]);
+    expect(authService.getApiKey).toHaveBeenCalledWith(OPENCODE_AUTH_PROVIDER_ID);
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(String(url)).toBe(OPENCODE_GO_USAGE_URL);
+    expect(new Headers(init?.headers).get("authorization")).toBe("Bearer opencode-key");
+
+    // A valid key without a Go plan is not an expired one.
+    status = 403;
+    expect((await service.getSummary({ forceProvider: "opencode" })).providers.opencode.status).toBe("no_subscription");
+    apiKey = undefined;
+    expect((await service.getSummary({ forceProvider: "opencode" })).providers.opencode.status).toBe("signed_out");
+  });
+
   it("keeps only Muse Code usage from the key response and never lets a forced refresh bypass backoff", async () => {
     let now = Date.parse("2026-09-25T00:00:00.000Z");
     let status = 200;

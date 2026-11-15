@@ -17,6 +17,7 @@ export const QUOTA_LAST_GOOD_PROVIDERS = [
   "claude",
   "codex",
   "muse-code",
+  "opencode",
   "xai",
 ] as const;
 

@@ -21,6 +21,7 @@ import { CodexResponsesAdapter } from "../upstream/codex/responses/adapter.js";
 import { compactCodexConversation } from "../upstream/codex/compaction.js";
 import type { ClaudeCodexCompactionStore } from "../upstream/codex/compaction-store.js";
 import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
+import { createOpencodeGoAdapter } from "../upstream/opencode-go/adapter.js";
 import type { QuotaWindow } from "../quota/types.js";
 import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
 import {
@@ -152,6 +153,8 @@ export interface AiGatewayRouteDeps {
    * key endpoint는 진행 중인 창이 없으면 사용량을 싣지 않으므로, 실제 사용 직후의 값은 여기서 온다.
    */
   readonly observeMuseCodeUsage?: (windows: readonly QuotaWindow[], apiKey: string) => void;
+  /** Console이 저장한 OpenCode Go API 키. 미주입이거나 비어 있으면 OpenCode Go 모델은 미로그인으로 거절된다. */
+  readonly readOpencodeApiKey?: () => string | undefined | Promise<string | undefined>;
   readonly readModelOverride?: () => string | undefined;
   /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
   readonly compactionStore?: ClaudeCodexCompactionStore;
@@ -528,6 +531,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       credential = auth.credentials.apiKey;
+    } else if (target?.provider === "opencode") {
+      const apiKey = await deps.readOpencodeApiKey?.();
+      if (!apiKey) {
+        refuseProviderSignIn("No OpenCode Go API key was found. Sign in to OpenCode Go in Console settings first.");
+        return true;
+      }
+      credential = apiKey;
     }
     clock?.markCredential();
 
@@ -581,6 +591,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
             fetch: requestFetch,
             endpoint: xaiEndpoint(),
           }))
+          : target.provider === "opencode"
+          // 카탈로그가 모델마다 선언한 wire 하나로만 간다. 무상태 어댑터라 요청마다 만들고,
+          // fetch를 넘겨야 라우터의 업스트림 게이트를 지난다.
+          ? new AnthropicMessagesGateway(createOpencodeGoAdapter(target, { fetch: requestFetch }))
           : target.provider === "muse-code"
             ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
               fetch: requestFetch,

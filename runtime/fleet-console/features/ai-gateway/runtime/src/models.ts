@@ -6,7 +6,7 @@ import { recommendedRole } from "./model-family.js";
 import type { QuotaScope } from "./quota/types.js";
 import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
-export const GATEWAY_PROVIDERS = ["codex", "xai", "antigravity", "muse-code", "claude"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "antigravity", "muse-code", "opencode", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -14,19 +14,20 @@ export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
  * Claude Code serves it under family aliases, discovery never advertises it, and
  * its versions and effort ladders arrive at runtime through
  * {@link applyClaudeNativeModels}. Every other provider is a registry provider
- * whose entries are served as declared.
+ * whose entries are served as declared. OpenCode Go has no registry entries yet,
+ * so it contributes no models.
  */
 const NATIVE_PROVIDER = "claude" satisfies GatewayProvider;
-type RegistryProvider = Exclude<GatewayProvider, typeof NATIVE_PROVIDER>;
+type RegistryProvider = Exclude<GatewayProvider, typeof NATIVE_PROVIDER | "opencode">;
 const REGISTRY_PROVIDERS = GATEWAY_PROVIDERS.filter(
-  (provider): provider is RegistryProvider => provider !== NATIVE_PROVIDER,
+  (provider): provider is RegistryProvider => provider !== NATIVE_PROVIDER && provider !== "opencode",
 );
 
 /**
  * The upstream wire protocol a model is served over. xAI and Muse Code declare
  * `responses` so routing never falls back to Anthropic. Omission means `anthropic`.
  */
-const GATEWAY_MODEL_WIRES = ["anthropic", "responses"] as const;
+const GATEWAY_MODEL_WIRES = ["anthropic", "responses", "chat-completions"] as const;
 export type GatewayModelWire = typeof GATEWAY_MODEL_WIRES[number];
 
 export const GATEWAY_REASONING_EFFORTS = [
@@ -207,6 +208,7 @@ export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> =
     REGISTRY_PROVIDERS.map((provider) => [provider, registry.providers[provider].name]),
   ) as Record<RegistryProvider, string>,
   claude: nativeProvider.name,
+  opencode: "OpenCode Go",
 });
 
 /**
@@ -495,6 +497,7 @@ export function gatewayModelSummary(model: GatewayModel): string {
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {
+  if (provider === "opencode") throw new Error("Gateway model registry has no default for provider \"opencode\"");
   const defaultId = provider === NATIVE_PROVIDER
     ? claudeFamilyModelId(nativeProvider.defaultModel)
     : scopedModelId(provider, registry.providers[provider].defaultModel);

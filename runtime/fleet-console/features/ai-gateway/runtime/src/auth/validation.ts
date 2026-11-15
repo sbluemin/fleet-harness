@@ -6,7 +6,7 @@ import type {
 
 // A key probe reaches a live upstream whose first byte can take several seconds,
 // so a short budget falsely times out valid keys before they can be stored
-// (observed on a 1-token generation probe of the since-removed OpenCode Go).
+// (observed on OpenCode Go's former 1-token generation probe).
 export const DEFAULT_AUTH_VALIDATION_TIMEOUT_MS = 20_000;
 
 export interface AuthProbeRequest {

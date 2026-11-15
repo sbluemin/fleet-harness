@@ -35,6 +35,7 @@ export * from "./upstream/anthropic/credentials.js";
 export * from "./upstream/codex/quota.js";
 export * from "./upstream/xai/index.js";
 export * from "./upstream/muse-code/index.js";
+export * from "./upstream/opencode-go/quota.js";
 export * from "./canonical/index.js";
 export * from "./router/router.js";
 // 하네스 프로필과 그 계약. 호스트가 `deps.harnesses`에 무엇을 실을지 고르려면 필요하다 —
@@ -132,8 +133,11 @@ export {
 } from "./downstream/harness/claude-code/context.js";
 
 export {
+  OPENCODE_AUTH_PROVIDER_ID,
+  OPENCODE_GO_API_BASE_URL,
   TYPESAFE_API_BASE_URL,
   TYPESAFE_AUTH_PROVIDER_ID,
+  validateOpencodeGoAuthKey,
   validateTypesafeAuthKey,
 } from "./fleet/auth.js";
 export type { AuthKeyValidationResult } from "./fleet/auth.js";
