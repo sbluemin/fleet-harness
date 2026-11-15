@@ -235,7 +235,7 @@ function formatContextWindow(contextWindow: number | undefined): string | undefi
  * 좌표 시트 — 모델 로스터를 모델 팝업의 문법(공급자 묶음 → 구분선 → 강도 탭)으로 편다. 강도 탭은 고른 행이 내놓는
  * 사다리 전체다. 로스터 밖 저장값은 「꺼짐」 묶음에 그대로 서고, 선택 방식(extras)은 맨 위 묶음이다.
  */
-export function MobileCoordinateChoice({ title, roster, value, onSelect, effort, effortLabel, offLabel, providerRemovedLabel, chooseAnotherModelLabel, extras, reset, onClose }: MobileCoordinateChoiceProps) {
+export function MobileCoordinateChoice({ title, roster, value, onSelect, effort, effortLabel, offLabel, providerRemovedLabel, chooseAnotherModelLabel, extras, reset, rowNote, onClose }: MobileCoordinateChoiceProps) {
   const row = findRosterRow(roster, value.model);
   const groups: MobileModelGroup[] = [];
   if (extras?.length) {
@@ -249,7 +249,8 @@ export function MobileCoordinateChoice({ title, roster, value, onSelect, effort,
       ...(provider ? { icon: launchProviderGlyph(provider) } : {}),
       options: group.rows.map((candidate) => {
         const meta = formatContextWindow(candidate.contextWindow);
-        return { value: candidate.launch.model ?? candidate.id, label: candidate.label, ...(meta ? { meta } : {}) };
+        const note = rowNote?.(candidate) ?? null;
+        return { value: candidate.launch.model ?? candidate.id, label: candidate.label, ...(meta ? { meta } : {}), ...(note ? { description: note } : {}) };
       }),
     });
   }

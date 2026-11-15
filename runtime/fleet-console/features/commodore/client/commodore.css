@@ -1673,3 +1673,100 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   .commodore-pool-ex-caption, .commodore-pool-ex-steps button .bar.run,
   .objectives-commodore-conversation .commodore-person-inbox { transition: none; animation: none; }
 }
+
+/* ── 지능 점수 안내(표시 전용) — 사령관·지휘관 선택기와 라우팅 풀. 추천은 색이 아니라 셰브런과 명도로 말하고,
+      기준 아래·후보 없음만 warn 신호를 쓴다. 점수 없음은 낮은 점수가 아니므로 신호색을 쓰지 않는다. ── */
+.commodore-intel-rank { width: 11px; height: 11px; flex: none; fill: none; stroke: var(--text-primary); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.commodore-intel-meta { display: inline-flex; align-items: center; gap: 10px; flex: none; margin-left: auto; }
+.commodore-intel-from { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: var(--t-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.commodore-intel-none { color: var(--text-tertiary); font-size: var(--t-xs); white-space: nowrap; }
+.commodore-intel-bars { position: relative; display: inline-flex; align-items: flex-end; gap: 2px; height: 16px; padding: 0 1px; }
+.commodore-intel-bars::after { content: ""; position: absolute; left: -3px; right: -3px; bottom: var(--commodore-intel-th, 12px); border-top: 1px dashed var(--text-tertiary); pointer-events: none; }
+.commodore-intel-bars > i { width: 4px; border-radius: 1px; background: color-mix(in oklch, var(--text-primary) 24%, transparent); }
+.commodore-intel-bars > i.is-met { background: var(--text-primary); }
+.commodore-intel-bars > i.is-none { height: 4px; background: transparent; box-shadow: inset 0 0 0 1px var(--hairline-strong); }
+.commodore-intel-bars > i.is-off { height: 0; }
+.commodore-composer-effort button.is-qualified::after {
+  content: ""; position: absolute; left: 50%; bottom: 2px; width: 3px; height: 3px; margin-left: -1.5px; border-radius: 50%; background: currentColor; pointer-events: none;
+}
+/* 안내 줄은 글줄 흐름이다 — flex 줄바꿈이면 긴 문장이 통째로 다음 줄로 내려가 앞의 점만 홀로 남는다. */
+.commodore-intel-read, .commodore-intel-judge {
+  display: block; margin: 2px 8px 6px calc(var(--popover-row-inline) + 22px);
+  color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.6; font-variant-numeric: tabular-nums;
+}
+.commodore-intel-read > :first-child, .commodore-intel-judge > :first-child { margin-right: 6px; vertical-align: -1px; }
+.commodore-intel-read .commodore-intel-link, .commodore-intel-judge .commodore-intel-link,
+.commodore-intel-judge > .commodore-intel-judge-who, .commodore-intel-judge > small { margin-left: 8px; }
+.commodore-intel-read.is-low, .commodore-intel-judge.is-warn { color: var(--warn-ink); }
+.commodore-intel-read.is-none { color: var(--text-tertiary); }
+.commodore-intel-ring { display: inline-block; width: 7px; height: 7px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; }
+.commodore-intel-ok { width: 11px; height: 11px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.commodore-intel-warn-dot { display: inline-block; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--warn); }
+.commodore-intel-link {
+  border: 0; background: none; padding: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium);
+  text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--hairline-strong); cursor: pointer;
+}
+.commodore-intel-judge-who { display: inline-flex; align-items: center; gap: 4px; vertical-align: bottom; color: var(--text-primary); }
+.commodore-intel-judge-who small, .commodore-intel-judge > small { color: var(--text-tertiary); font-size: var(--t-xs); }
+.commodore-intel-rec { display: grid; gap: 6px; margin: 2px 0 6px; padding: 8px; border-radius: var(--radius-md); background: var(--control-wash); }
+.commodore-intel-rec-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 0 2px; font-size: var(--t-sm); font-weight: var(--weight-bold); color: var(--text-primary); }
+.commodore-intel-rec-head small { color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-regular); }
+.commodore-intel-rec-list { display: flex; flex-wrap: wrap; gap: 6px; }
+.commodore-intel-rec-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 9px 0 7px; border: 0; border-radius: var(--radius-xs);
+  background: var(--popover-face); box-shadow: 0 0 0 1px var(--hairline); color: var(--text-primary);
+  font-family: var(--font-ui); font-size: var(--t-sm); cursor: pointer; transition: background var(--duration-fast) var(--ease-glide);
+}
+.commodore-intel-rec-chip:hover { background: var(--wash-hover); }
+.commodore-intel-rec-chip:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.commodore-intel-rec-chip.is-on { background: var(--wash-selected); }
+.commodore-intel-rec-eff { color: var(--text-tertiary); font-size: var(--t-2xs); letter-spacing: 0.03em; }
+.commodore-intel-rec-score { color: var(--text-secondary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.commodore-intel-chip-ring { width: 7px; height: 7px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--warn); }
+
+.commodore-pool-pchip-rank { width: 10px; height: 10px; }
+.commodore-pool-opt { display: inline-flex; align-items: center; gap: 5px; }
+.commodore-pool-opt-score { font-style: normal; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.commodore-pool-opt-score.is-none { opacity: 0.7; }
+.commodore-pool-opt.is-met .commodore-pool-opt-score { color: var(--text-primary); font-weight: var(--weight-bold); }
+.commodore-pool-opt[aria-pressed="true"] .commodore-pool-opt-score { color: inherit; }
+.commodore-pool-detail-intel { margin: 0; color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.45; }
+.commodore-pool-mrow-intel { flex: none; }
+.commodore-pool-intel { display: grid; gap: 8px; padding: 10px 10px 8px; border-radius: var(--radius-md); background: var(--control-wash); }
+.commodore-pool-intel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; font-size: var(--t-sm); }
+.commodore-pool-intel-head b { font-weight: var(--weight-bold); color: var(--text-primary); }
+.commodore-pool-intel-head > span { display: inline-flex; gap: 10px; color: var(--text-tertiary); font-size: var(--t-xs); }
+.commodore-pool-intel-key { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; background: var(--text-primary); vertical-align: -0.5px; }
+.commodore-pool-intel-key.is-off { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
+.commodore-pool-intel-grid { display: grid; gap: 3px; }
+.commodore-pool-intel-row { display: grid; grid-template-columns: minmax(0, 9.5em) minmax(0, 1fr) 2.4em; align-items: center; column-gap: 10px; min-height: 22px; }
+.commodore-pool-intel-row.is-dim { opacity: 0.5; }
+.commodore-pool-intel-row.is-axis { min-height: 16px; }
+.commodore-pool-intel-zone-lbl { color: var(--text-tertiary); font-size: var(--t-2xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.commodore-pool-intel-axis { position: relative; height: 14px; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.commodore-pool-intel-axis > span { position: absolute; top: 0; transform: translateX(-50%); }
+.commodore-pool-intel-axis > span.is-th { color: var(--text-primary); font-weight: var(--weight-bold); }
+.commodore-pool-intel-nm { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--t-sm); color: var(--text-primary); }
+.commodore-pool-intel-nm > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-pool-intel-track { position: relative; height: 22px; }
+.commodore-pool-intel-zone { position: absolute; top: 0; bottom: 0; right: 0; background: var(--wash-hover); border-left: 1px dashed var(--text-tertiary); }
+.commodore-pool-intel-range { position: absolute; top: 50%; height: 2px; margin-top: -1px; border-radius: 1px; background: var(--hairline-strong); }
+.commodore-pool-intel-dot { position: absolute; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: var(--text-primary); }
+.commodore-pool-intel-dot.is-off { background: var(--popover-face); box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
+.commodore-pool-intel-na { position: absolute; inset: 3px 0; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-xs); box-shadow: inset 0 0 0 1px var(--hairline-strong); color: var(--text-tertiary); font-size: var(--t-2xs); }
+.commodore-pool-intel-val { text-align: right; color: var(--text-secondary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.commodore-pool-intel-val.is-met { color: var(--text-primary); font-weight: var(--weight-bold); }
+.commodore-pool-ins { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.commodore-pool-intel-grid + .commodore-pool-ins { padding-top: 6px; border-top: 1px solid var(--popover-divider); }
+.commodore-pool-ins > li { display: block; color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.6; }
+.commodore-pool-ins > li > * { margin-right: 7px; }
+.commodore-pool-ins > li > .commodore-pool-link-btn { margin-left: 2px; }
+.commodore-pool-ins > li.is-warn { color: var(--warn-ink); }
+.commodore-pool-ins-who { display: inline-flex; align-items: center; gap: 4px; vertical-align: bottom; color: var(--text-primary); font-weight: var(--weight-medium); }
+.commodore-pool-ins-who.is-muted { color: var(--text-tertiary); font-weight: var(--weight-regular); }
+.commodore-pool-ins-dot { display: inline-block; width: 6px; height: 6px; vertical-align: 1px; border-radius: 50%; }
+.commodore-pool-ins-dot.is-ok { background: var(--aurora); }
+.commodore-pool-ins-dot.is-warn { background: var(--warn); }
+.commodore-pool-ins-dot.is-none { box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
+.commodore-pool-ins-rank { width: 10px; height: 10px; vertical-align: -1px; }
+.commodore-pool-ex-source { margin: 8px 2px 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }

@@ -48,3 +48,36 @@ export function canonicalEffortSelection(
 export function defaultEffortSelection(ladder: readonly string[]): readonly string[] | undefined {
   return canonicalEffortSelection(ladder, ["high"]);
 }
+
+/**
+ * 지능 점수로 권하는 역할. `lead`는 목표를 이끄는 자리, `overseer`는 그 위를 감독하는 자리다.
+ * 점수와 기준값은 레지스트리(`models.json`)가 원천이고, 이 모듈은 둘을 받아 계산만 한다 —
+ * 호스트(카탈로그·로스터)와 브라우저(선택기·라우팅 풀)가 같은 규칙을 쓰게 하는 유일한 자리다.
+ * 표시용이다. 라우팅 판단은 이 값을 읽지 않는다.
+ */
+export type AiGatewayRole = "lead" | "overseer";
+export type AiGatewayRoleThresholds = Readonly<Record<AiGatewayRole, number>>;
+
+/** 점수가 닿는 가장 높은 역할. 점수가 없으면(`undefined`) 권하지 않는다 — 없는 점수는 낮은 점수가 아니다. */
+export function recommendedRole(score: number | undefined, thresholds: AiGatewayRoleThresholds): AiGatewayRole | undefined {
+  if (score === undefined) return undefined;
+  const reached = (Object.entries(thresholds) as [AiGatewayRole, number][])
+    .filter(([, threshold]) => score >= threshold)
+    .sort(([, left], [, right]) => right - left);
+  return reached[0]?.[0];
+}
+
+/**
+ * `efforts`(낮은 단부터) 가운데 점수가 `threshold`에 처음 닿는 강도. 점수가 없는 단은 건너뛰고,
+ * 어느 단도 닿지 않으면 `undefined`다.
+ */
+export function lowestQualifyingEffort(
+  scores: Readonly<Partial<Record<string, number>>>,
+  efforts: readonly string[],
+  threshold: number,
+): string | undefined {
+  return efforts.find((effort) => {
+    const score = scores[effort];
+    return typeof score === "number" && score >= threshold;
+  });
+}

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { ProviderDto, QuotaWindow } from "@fleet-console/ai-gateway";
-import { AI_GATEWAY_OPT_IN_EFFORTS as OPT_IN, aiGatewayModelFamilyKey, canonicalEffortSelection, defaultEffortSelection, isProviderCatalogVisible } from "@fleet-console/ai-gateway/model-family";
+import { AI_GATEWAY_OPT_IN_EFFORTS as OPT_IN, aiGatewayModelFamilyKey, canonicalEffortSelection, defaultEffortSelection, isProviderCatalogVisible, type AiGatewayRoleThresholds } from "@fleet-console/ai-gateway/model-family";
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { useStoreSnapshot } from "@fleet-console/ui/store";
 
@@ -24,6 +24,7 @@ import {
   type AiGatewaySettings,
 } from "../../settings/client/execution-settings.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
+import { effortWord, hasAnyScore, qualifying, RankMark, type IntelligenceScores } from "./commodore-intelligence.js";
 
 type T = Translate<CommodoreMessageKey>;
 
@@ -71,6 +72,12 @@ export interface PoolEntryView {
   readonly ladder: readonly string[];
   readonly fastSupported: boolean;
   readonly status: PoolModelStatus;
+  /** 강도별 지능 점수(카탈로그). 점수가 없는 강도는 키가 없다. */
+  readonly scores: IntelligenceScores;
+  /** 위임에 켜 둔 강도(사다리 순). MAX도 켜 두었으면 들어간다. */
+  readonly exposed: readonly string[];
+  /** 켜 둔 강도로 지휘관 기준에 닿는 가장 낮은 강도. 기준값을 모르거나 닿지 않으면 null. */
+  readonly lead: { readonly effort: string; readonly score: number } | null;
 }
 
 const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
@@ -147,6 +154,9 @@ export interface RoutingPoolData {
   readonly entries: readonly PoolEntryView[];
   readonly poolProviders: readonly { readonly id: AiGatewayProviderId; readonly waiting: boolean; readonly count: number; readonly waitingCount: number; readonly restingCount: number }[];
   readonly usableCount: number;
+  /** 역할별 추천 기준 점수. 옛 서버처럼 카탈로그가 싣지 않으면 null이고, 그때 점수 안내는 서지 않는다. */
+  readonly thresholds: AiGatewayRoleThresholds | null;
+  readonly intelligenceIndex: { readonly name: string; readonly observedAt: string } | null;
   readonly priority: readonly AiGatewayProviderId[];
   readonly loginOf: (providerId: AiGatewayProviderId) => string | null;
   readonly signature: string;
@@ -187,6 +197,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
     return map;
   }, [providers]);
 
+  const thresholds = state?.aiGatewayCatalog.roleThresholds ?? null;
   const loginOf = useCallback(
     (providerId: AiGatewayProviderId): string | null => state?.aiGatewayLogin[providerId] ?? null,
     [state?.aiGatewayLogin],
@@ -207,9 +218,13 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
         rosterRow?.quotaScope,
         locale,
       );
-      return { entry, provider, name, ladder, fastSupported, status };
+      const scores: IntelligenceScores = found?.model.intelligence ?? {};
+      const chosen = entry.efforts ?? ladder;
+      const exposed = ladder.filter((level) => chosen.includes(level));
+      const lead = thresholds ? qualifying(scores, exposed, thresholds.lead) : null;
+      return { entry, provider, name, ladder, fastSupported, status, scores, exposed, lead };
     });
-  }, [enabled, catalogByModelId, launchRoster, loginOf, quotaSnapshot.data, locale]);
+  }, [enabled, catalogByModelId, launchRoster, loginOf, quotaSnapshot.data, locale, thresholds]);
 
   const poolProviders = useMemo(() => {
     const result: Array<{ readonly id: AiGatewayProviderId; readonly waiting: boolean; readonly count: number; readonly waitingCount: number; readonly restingCount: number }> = [];
@@ -362,6 +377,8 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
     entries,
     poolProviders,
     usableCount,
+    thresholds,
+    intelligenceIndex: state?.aiGatewayCatalog.intelligenceIndex ?? null,
     priority,
     loginOf,
     signature,
@@ -498,6 +515,9 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
           {t("commodore.pool.helpBack")}
         </button>
         <RoutingPoolExplainer t={t} entries={pool.entries} />
+        {pool.intelligenceIndex ? (
+          <p className="commodore-pool-ex-source">{t("commodore.intel.source", { name: pool.intelligenceIndex.name, date: pool.intelligenceIndex.observedAt })}</p>
+        ) : null}
       </div>
     );
   }
@@ -556,7 +576,8 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
             : item.status.kind === "rest"
               ? (item.status.resetAtText ? t("commodore.pool.stateRestingUntil", { time: item.status.resetAtText }) : t("commodore.pool.stateResting"))
               : "";
-          const title = `${item.name} · ${stText || t("commodore.pool.ready")}`;
+          const leadText = item.lead ? t("commodore.intel.chipLead", { effort: effortWord(item.lead.effort), n: item.lead.score }) : "";
+          const title = [`${item.name} · ${stText || t("commodore.pool.ready")}`, leadText].filter(Boolean).join("\n");
           const chipClass = `commodore-pool-pchip${item.status.kind === "wait" ? " is-waiting" : item.status.kind === "rest" ? " is-resting" : ""}${isExpanded ? " is-expanded" : ""}`;
           return (
             <span key={item.entry.id} data-pool-id={item.entry.id} className={chipClass}>
@@ -570,6 +591,7 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
                 <ProviderMark provider={item.provider} />
                 <span className="commodore-pool-pchip-nm">{item.name}</span>
                 {stText ? <span className="commodore-pool-pchip-st">{stText}</span> : null}
+                {item.lead ? <RankMark role="lead" className="commodore-pool-pchip-rank" /> : null}
                 <span className={`commodore-pool-sdot is-${item.status.kind}`} aria-hidden="true" />
               </button>
               <button
@@ -590,10 +612,22 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
         <PoolDetailBox
           t={t}
           view={expandedView}
+          leadThreshold={pool.thresholds?.lead ?? null}
           saving={pool.saving}
           onToggleEffort={(level) => pool.toggleEffort(expandedView, level)}
           onToggleFast={() => pool.toggleFast(expandedView)}
           onOpenQuota={onOpenQuota}
+        />
+      ) : null}
+
+      {pool.thresholds ? (
+        <PoolIntelligence
+          t={t}
+          entries={pool.entries}
+          leadThreshold={pool.thresholds.lead}
+          saving={pool.saving}
+          showSpread={!mobile}
+          onEnable={(view, level) => pool.toggleEffort(view, level)}
         />
       ) : null}
 
@@ -653,12 +687,22 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
               {rows.map((model) => {
                 const isIn = enabledSet.has(model.id);
                 const subtitle = shortModelSubtitle(model.id, t, model.description);
+                const addScores: IntelligenceScores = model.intelligence ?? {};
+                const addPick = pool.thresholds ? qualifying(addScores, model.effort?.levels ?? [], pool.thresholds.lead) : null;
+                const addBest = Object.values(addScores).filter((score): score is number => typeof score === "number");
                 return (
                   <div key={model.id} className="commodore-pool-mrow">
                     <span className="commodore-pool-mrow-nm">
                       {model.name}
                       {subtitle ? <small>{subtitle}</small> : null}
                     </span>
+                    {pool.thresholds ? (
+                      addPick ? (
+                        <span className="commodore-intel-from commodore-pool-mrow-intel"><RankMark role="lead" />{t("commodore.intel.addLead", { effort: effortWord(addPick.effort) })}</span>
+                      ) : (
+                        <span className="commodore-intel-none commodore-pool-mrow-intel">{addBest.length > 0 ? t("commodore.intel.addBest", { n: Math.max(...addBest) }) : t("commodore.intel.noScore")}</span>
+                      )
+                    ) : null}
                     <button
                       type="button"
                       className={`commodore-pool-add-btn${isIn ? " is-in" : ""}`}
@@ -686,9 +730,10 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
   );
 }
 
-function PoolDetailBox({ t, view, saving, onToggleEffort, onToggleFast, onOpenQuota }: {
+function PoolDetailBox({ t, view, leadThreshold, saving, onToggleEffort, onToggleFast, onOpenQuota }: {
   readonly t: T;
   readonly view: PoolEntryView;
+  readonly leadThreshold: number | null;
   readonly saving: boolean;
   readonly onToggleEffort: (level: string) => void;
   readonly onToggleFast: () => void;
@@ -716,20 +761,23 @@ function PoolDetailBox({ t, view, saving, onToggleEffort, onToggleFast, onOpenQu
           <span className="commodore-pool-detail-muted">{t("commodore.pool.detailNoEffort")}</span>
         ) : (
           view.ladder.map((level) => {
+            const score = view.scores[level];
+            const met = leadThreshold !== null && typeof score === "number" && score >= leadThreshold;
+            const scoreTag = leadThreshold !== null ? <em className={`commodore-pool-opt-score${typeof score === "number" ? "" : " is-none"}`}>{typeof score === "number" ? score : "–"}</em> : null;
             if (BASE_EFFORTS.has(level)) {
-              return <span key={level} className="commodore-pool-opt is-fixed">{level.toUpperCase()}</span>;
+              return <span key={level} className={`commodore-pool-opt is-fixed${met ? " is-met" : ""}`}>{level.toUpperCase()}{scoreTag}</span>;
             }
             const on = exposed.includes(level);
             return (
               <button
                 key={level}
                 type="button"
-                className="commodore-pool-opt"
+                className={`commodore-pool-opt${met ? " is-met" : ""}`}
                 aria-pressed={on}
                 disabled={saving}
                 onClick={() => onToggleEffort(level)}
               >
-                {on ? "✓ " : "+ "}{level.toUpperCase()}
+                {on ? "✓ " : "+ "}{level.toUpperCase()}{scoreTag}
               </button>
             );
           })
@@ -749,8 +797,155 @@ function PoolDetailBox({ t, view, saving, onToggleEffort, onToggleFast, onOpenQu
           </button>
         </div>
       ) : null}
+      {leadThreshold !== null ? <p className="commodore-pool-detail-intel">{detailIntelligenceNote(t, view, leadThreshold)}</p> : null}
       <p className="commodore-pool-detail-hint">{t("commodore.pool.detailEffortHint")}</p>
     </div>
+  );
+}
+
+function detailIntelligenceNote(t: T, view: PoolEntryView, leadThreshold: number): string {
+  if (!hasAnyScore(view.scores)) return t("commodore.intel.detailNoScore");
+  if (view.lead) {
+    return view.lead.effort === "max"
+      ? t("commodore.intel.detailLeadMax", { n: view.lead.score })
+      : t("commodore.intel.detailLead", { effort: effortWord(view.lead.effort), n: view.lead.score });
+  }
+  const reach = qualifying(view.scores, view.ladder, leadThreshold);
+  return reach
+    ? t("commodore.intel.detailEnable", { t: leadThreshold, effort: effortWord(reach.effort), n: reach.score })
+    : t("commodore.intel.detailNever", { t: leadThreshold });
+}
+
+/* ── 풀 지능 분포·안내 ─────────────────────────────────────────────────────── */
+
+const SPREAD_FLOOR = 10;
+const SPREAD_CEIL = 70;
+const spreadAt = (score: number) => ((Math.min(SPREAD_CEIL, Math.max(SPREAD_FLOOR, score)) - SPREAD_FLOOR) / (SPREAD_CEIL - SPREAD_FLOOR)) * 100;
+const INSIGHT_LIMIT = 3;
+
+/**
+ * 풀이 지휘관을 낼 수 있는지 — 풀 모델마다 강도별 점수를 한 축에 찍고(채운 점: 켜 둔 강도, 빈 점: 꺼 둔 강도),
+ * 그 아래 안내를 세 줄까지 둔다. 지휘관 판정은 켜 둔 강도 전부(MAX 포함)로 하고, MAX에서만 닿으면 라우팅이
+ * MAX를 스스로 고르지 않는다는 사실을 함께 말한다. 표시 전용이다.
+ */
+function PoolIntelligence({ t, entries, leadThreshold, saving, showSpread, onEnable }: {
+  readonly t: T;
+  readonly entries: readonly PoolEntryView[];
+  readonly leadThreshold: number;
+  readonly saving: boolean;
+  readonly showSpread: boolean;
+  readonly onEnable: (view: PoolEntryView, level: string) => void;
+}) {
+  const lines: ReactNode[] = [];
+  if (entries.length === 0) {
+    lines.push(<li key="empty"><span className="commodore-pool-ins-dot is-none" aria-hidden="true" />{t("commodore.intel.insEmpty")}</li>);
+  } else {
+    const ready = entries.filter((item) => item.status.kind === "ok" && item.lead);
+    const resting = entries.filter((item) => item.status.kind !== "ok" && item.lead);
+    const restNote = resting[0] ? (
+      <span className="commodore-pool-ins-who is-muted" key="rest">
+        <ProviderMark provider={resting[0].provider} />{resting[0].name} · {resting[0].status.resetAtText ? t("commodore.pool.stateRestingUntil", { time: resting[0].status.resetAtText }) : t("commodore.pool.stateWaiting")}
+      </span>
+    ) : null;
+    if (ready.length > 0) {
+      lines.push(
+        <li key="ready">
+          <span className="commodore-pool-ins-dot is-ok" aria-hidden="true" />
+          <span>{t("commodore.intel.insOk", { n: ready.length })}</span>
+          {ready.map((item) => <span key={item.entry.id} className="commodore-pool-ins-who"><ProviderMark provider={item.provider} />{item.name}</span>)}
+          {restNote}
+        </li>,
+      );
+    } else {
+      lines.push(<li key="none" className="is-warn"><span className="commodore-pool-ins-dot is-warn" aria-hidden="true" /><span>{t("commodore.intel.insNone", { t: leadThreshold })}</span>{restNote}</li>);
+    }
+    for (const item of ready) {
+      if (lines.length >= INSIGHT_LIMIT) break;
+      if (item.lead?.effort !== "max") continue;
+      lines.push(<li key={`max:${item.entry.id}`}><span className="commodore-pool-ins-who"><ProviderMark provider={item.provider} />{item.name}</span>{t("commodore.intel.insMaxOnly")}</li>);
+    }
+    for (const item of entries) {
+      if (lines.length >= INSIGHT_LIMIT) break;
+      if (item.lead) continue;
+      const reach = qualifying(item.scores, item.ladder, leadThreshold);
+      if (!reach || item.exposed.includes(reach.effort)) continue;
+      lines.push(
+        <li key={`enable:${item.entry.id}`}>
+          <RankMark role="lead" className="commodore-pool-ins-rank" />
+          <span className="commodore-pool-ins-who"><ProviderMark provider={item.provider} />{item.name}</span>
+          {t("commodore.intel.insEnable", { effort: effortWord(reach.effort), n: reach.score })}
+          <button type="button" className="commodore-pool-link-btn" disabled={saving} onClick={() => onEnable(item, reach.effort)}>
+            {t("commodore.intel.insEnableBtn", { effort: effortWord(reach.effort) })}
+          </button>
+        </li>,
+      );
+    }
+    for (const item of entries) {
+      if (lines.length >= INSIGHT_LIMIT) break;
+      if (item.exposed.some((level) => typeof item.scores[level] === "number")) continue;
+      lines.push(
+        <li key={`none:${item.entry.id}`}>
+          <span className="commodore-pool-ins-dot is-none" aria-hidden="true" />
+          <span className="commodore-pool-ins-who"><ProviderMark provider={item.provider} />{item.name}</span>
+          {hasAnyScore(item.scores) ? t("commodore.intel.insNoScoreOn") : t("commodore.intel.insNoScore")}
+        </li>,
+      );
+    }
+  }
+  const ticks = [...new Set([10, 20, 30, 40, 50, 60, 70, leadThreshold])].sort((a, b) => a - b);
+  return (
+    <section className="commodore-pool-intel" aria-label={t("commodore.intel.specTitle")}>
+      {showSpread && entries.length > 0 ? (
+        <>
+          <div className="commodore-pool-intel-head">
+            <b>{t("commodore.intel.specTitle")}</b>
+            <span>
+              <span><i className="commodore-pool-intel-key" aria-hidden="true" />{t("commodore.intel.specOn")}</span>
+              <span><i className="commodore-pool-intel-key is-off" aria-hidden="true" />{t("commodore.intel.specOff")}</span>
+            </span>
+          </div>
+          <div className="commodore-pool-intel-grid">
+            <div className="commodore-pool-intel-row is-axis" aria-hidden="true">
+              <span className="commodore-pool-intel-zone-lbl">{t("commodore.intel.specZone", { t: leadThreshold })}</span>
+              <span className="commodore-pool-intel-axis">
+                {ticks.map((tick) => <span key={tick} className={tick === leadThreshold ? "is-th" : undefined} style={{ left: `${spreadAt(tick)}%` }}>{tick}</span>)}
+              </span>
+              <span />
+            </div>
+            {entries.map((item) => {
+              const known = item.ladder.filter((level) => typeof item.scores[level] === "number");
+              const values = known.map((level) => item.scores[level] as number);
+              const exposedScores = item.exposed.map((level) => item.scores[level]).filter((score): score is number => typeof score === "number");
+              const best = exposedScores.length > 0 ? Math.max(...exposedScores) : null;
+              const dim = item.status.kind !== "ok";
+              return (
+                <div key={item.entry.id} className={`commodore-pool-intel-row${dim ? " is-dim" : ""}`} role="img" aria-label={`${t("commodore.intel.specAria", { name: item.name })}: ${known.map((level) => `${effortWord(level)} ${item.scores[level]}`).join(", ") || t("commodore.intel.noScore")}`}>
+                  <span className="commodore-pool-intel-nm"><ProviderMark provider={item.provider} /><span>{item.name}</span></span>
+                  <span className="commodore-pool-intel-track">
+                    {known.length === 0 ? <span className="commodore-pool-intel-na">{t("commodore.intel.noScore")}</span> : (
+                      <>
+                        <span className="commodore-pool-intel-zone" style={{ left: `${spreadAt(leadThreshold)}%` }} />
+                        <span className="commodore-pool-intel-range" style={{ left: `${spreadAt(Math.min(...values))}%`, width: `${spreadAt(Math.max(...values)) - spreadAt(Math.min(...values))}%` }} />
+                        {known.map((level) => (
+                          <span
+                            key={level}
+                            className={`commodore-pool-intel-dot${item.exposed.includes(level) ? "" : " is-off"}`}
+                            style={{ left: `${spreadAt(item.scores[level] as number)}%` }}
+                            title={t("commodore.intel.effortTitle", { effort: effortWord(level), n: item.scores[level] as number })}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </span>
+                  <span className={`commodore-pool-intel-val${best !== null && best >= leadThreshold ? " is-met" : ""}`}>{best ?? "–"}</span>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
+      <ul className="commodore-pool-ins">{lines}</ul>
+    </section>
   );
 }
 

@@ -49,7 +49,9 @@ function readLaunchVariantRow(value: unknown): ObjectiveLaunchVariantRow | null 
 function readLaunchVariantChip(value: unknown): ObjectiveLaunchVariantChip | null {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.label !== "string") return null;
   const launch = readLaunchPayload(value.launch);
-  return launch ? { id: value.id, label: value.label, launch } : null;
+  if (!launch) return null;
+  const intelligence = typeof value.intelligence === "number" && Number.isFinite(value.intelligence) ? value.intelligence : undefined;
+  return { id: value.id, label: value.label, launch, ...(intelligence !== undefined ? { intelligence } : {}) };
 }
 
 function readLaunchPayload(value: unknown): Readonly<Record<string, string>> | null {

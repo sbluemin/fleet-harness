@@ -10,6 +10,7 @@ import { MODEL_ROSTER_CHANGED_CHANNEL, ROSTER_FALLBACK_GROUP_ID, ROSTER_FALLBACK
 import {
   bareModelName,
   buildGatewayModelQuota,
+  catalogModelIntelligence,
   CLAUDE_COMPAT_CONTEXT_WINDOW,
   CLAUDE_DEFAULT_CONTEXT_WINDOW,
   exposableEffortLadder,
@@ -123,11 +124,12 @@ function toRosterRow(
     ...(model.fastSupported === true && model.fast !== true ? { fastSupported: true } : {}),
   };
   if (ordinary.length === 0) return base;
+  const scores = catalogModelIntelligence(model.id, ordinary) ?? {};
   if (target === "agent") {
     return {
       ...base,
       effortAxis: [...ordinary],
-      chips: ordinary.map((effort) => effortChip(id, effort)),
+      chips: ordinary.map((effort) => effortChip(id, effort, scores[effort])),
     };
   }
   const hasMax = ordinary.includes("max");
@@ -137,12 +139,17 @@ function toRosterRow(
     ...base,
     effortAxis,
     gatedEfforts,
-    chips: ordinary.map((effort) => effortChip(id, effort)),
+    chips: ordinary.map((effort) => effortChip(id, effort, scores[effort])),
   };
 }
 
-function effortChip(model: string, effort: string) {
-  return { id: effort, label: EFFORT_LABELS[effort] ?? effort.toUpperCase(), launch: { model, effort } };
+function effortChip(model: string, effort: string, intelligence?: number) {
+  return {
+    id: effort,
+    label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),
+    launch: { model, effort },
+    ...(intelligence !== undefined ? { intelligence } : {}),
+  };
 }
 
 const CLAUDE_ONE_MILLION_MARKER = "[1m]";

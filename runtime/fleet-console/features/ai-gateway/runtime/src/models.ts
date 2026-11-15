@@ -2,6 +2,7 @@ import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
+import { recommendedRole } from "./model-family.js";
 import type { QuotaScope } from "./quota/types.js";
 import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
@@ -9,13 +10,16 @@ export const GATEWAY_PROVIDERS = ["codex", "xai", "antigravity", "muse-code", "c
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
- * Providers declared in `models.json`. Claude is not among them: its lineup is
- * whatever the installed Claude Code resolves its aliases to, so it is built
- * from {@link CLAUDE_NATIVE_FAMILIES} and {@link applyClaudeNativeModels}.
+ * The one native provider. `models.json` marks it `native: true`: the installed
+ * Claude Code serves it under family aliases, discovery never advertises it, and
+ * its versions and effort ladders arrive at runtime through
+ * {@link applyClaudeNativeModels}. Every other provider is a registry provider
+ * whose entries are served as declared.
  */
-type RegistryProvider = Exclude<GatewayProvider, "claude">;
+const NATIVE_PROVIDER = "claude" satisfies GatewayProvider;
+type RegistryProvider = Exclude<GatewayProvider, typeof NATIVE_PROVIDER>;
 const REGISTRY_PROVIDERS = GATEWAY_PROVIDERS.filter(
-  (provider): provider is RegistryProvider => provider !== "claude",
+  (provider): provider is RegistryProvider => provider !== NATIVE_PROVIDER,
 );
 
 /**
@@ -58,6 +62,12 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
 
 export type GatewayQuotaScope = QuotaScope;
 
+/** Intelligence index score per reasoning effort. An absent effort has no published score. */
+const GatewayModelIntelligenceSchema = z.object({
+  source: z.url(),
+  scores: z.partialRecord(z.enum(GATEWAY_REASONING_EFFORTS), z.number().nonnegative()),
+}).strict();
+
 const GatewayModelEntrySchema = z.object({
   modelId: z.string().min(1),
   name: z.string().min(1),
@@ -71,23 +81,39 @@ const GatewayModelEntrySchema = z.object({
   aliases: z.array(z.string().min(1)).optional(),
   contextWindow: z.number().int().positive().optional(),
   effort: GatewayModelEffortSchema.optional(),
+  intelligence: GatewayModelIntelligenceSchema.optional(),
 }).strict();
 
 const GatewayProviderSchema = z.object({
   name: z.string().min(1),
+  /** Served by an installed agent CLI under its own aliases; never advertised by discovery. */
+  native: z.literal(true).optional(),
   defaultModel: z.string().min(1),
   source: z.string().min(1),
   models: z.array(GatewayModelEntrySchema).min(1),
 }).strict();
 
+/** Minimum intelligence score at which a model × effort is recommended for each role. */
+const GatewayRoleThresholdsSchema = z.object({
+  lead: z.number().nonnegative(),
+  overseer: z.number().nonnegative(),
+}).strict();
+
 const GatewayModelsRegistrySchema = z.object({
   version: z.number().int().positive(),
   updatedAt: z.iso.datetime(),
+  intelligenceIndex: z.object({
+    name: z.string().min(1),
+    observedAt: z.iso.date(),
+    note: z.string().min(1),
+  }).strict(),
+  roleThresholds: GatewayRoleThresholdsSchema,
   providers: z.object({
     codex: GatewayProviderSchema,
     xai: GatewayProviderSchema,
     antigravity: GatewayProviderSchema,
     "muse-code": GatewayProviderSchema,
+    claude: GatewayProviderSchema,
   }).strict(),
 }).strict();
 
@@ -137,30 +163,18 @@ export interface GatewayModel {
   readonly claudeAlias?: string;
 }
 
-const CLAUDE_PROVIDER_NAME = "Claude";
-
 /**
- * Claude Code's model aliases. Each alias stands for its family's latest
- * version, which only the installed CLI knows; the version, wire id, and effort
- * ladder arrive through {@link applyClaudeNativeModels}.
+ * Claude Code's model aliases come from the registry's native provider. Each
+ * alias stands for its family's latest version, which only the installed CLI
+ * knows; the version, wire id, and effort ladder arrive through
+ * {@link applyClaudeNativeModels}, and the registry's effort levels are the
+ * ladder assumed until then.
  *
  * Every current family runs natively on a 1M window, so each family is exactly
  * one catalog entry: `claude--<alias>-1m`, launched as `<alias>[1m]`. The bare
  * alias and the retired 200k scoped id (`claude--<alias>`) are accepted request
  * spellings of that same entry, never entries of their own.
  */
-const CLAUDE_NATIVE_FAMILIES = [
-  { alias: "fable", name: "Fable", description: "Deepest reasoning and architecture model in the Claude lineup." },
-  { alias: "opus", name: "Opus", description: "High-capability reasoning, planning, and coding model." },
-  { alias: "sonnet", name: "Sonnet", description: "Balanced coding and general agent execution model." },
-  { alias: "haiku", name: "Haiku", description: "Lightweight, fast model for simple tasks and scans." },
-] as const satisfies readonly {
-  readonly alias: string;
-  readonly name: string;
-  readonly description: string;
-}[];
-const CLAUDE_DEFAULT_ALIAS = "sonnet";
-const CLAUDE_ONE_MILLION_CONTEXT_WINDOW = 1_000_000;
 const CLAUDE_ONE_MILLION_SUFFIX = /\[1m\]$/i;
 const CLAUDE_ONE_MILLION_ID_SUFFIX = "-1m";
 const CLAUDE_ONE_MILLION_MARKER = "[1m]";
@@ -175,16 +189,6 @@ function claudeFamilyAliases(alias: string): readonly string[] {
   return [`${alias}${CLAUDE_ONE_MILLION_MARKER}`, alias, scopedModelId("claude", alias)];
 }
 
-/**
- * The ladder assumed until the CLI reports one. Haiku assumes none and takes
- * whatever ladder the CLI reports for it.
- */
-const CLAUDE_UNRESOLVED_EFFORT: Readonly<Record<string, readonly GatewayReasoningEffort[]>> = {
-  fable: ["low", "medium", "high", "xhigh", "max"],
-  opus: ["low", "medium", "high", "xhigh", "max"],
-  sonnet: ["low", "medium", "high", "xhigh", "max"],
-};
-
 export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistry {
   const parsed = GatewayModelsRegistrySchema.parse(value);
   validateRegistry(parsed);
@@ -192,6 +196,8 @@ export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistr
 }
 
 const registry = parseGatewayModelsRegistry(modelsData);
+const nativeProvider = registry.providers[NATIVE_PROVIDER];
+const nativeFamilies = nativeProvider.models;
 
 export const GATEWAY_MODELS_UPDATED_AT = registry.updatedAt;
 
@@ -200,8 +206,68 @@ export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> =
   ...Object.fromEntries(
     REGISTRY_PROVIDERS.map((provider) => [provider, registry.providers[provider].name]),
   ) as Record<RegistryProvider, string>,
-  claude: CLAUDE_PROVIDER_NAME,
+  claude: nativeProvider.name,
 });
+
+/**
+ * Whether discovery must leave this provider's models out: a native provider is
+ * served by its installed CLI under its own aliases, not advertised by the gateway.
+ */
+export function isNativeGatewayProvider(provider: GatewayProvider): boolean {
+  return registry.providers[provider].native === true;
+}
+
+/** A role the registry's thresholds can recommend a model × effort for. */
+export type GatewayRole = keyof GatewayModelsRegistry["roleThresholds"];
+
+/** Minimum intelligence score per role, as declared by the registry. */
+export const GATEWAY_ROLE_THRESHOLDS: Readonly<Record<GatewayRole, number>> = Object.freeze({
+  ...registry.roleThresholds,
+});
+
+/** Where the intelligence scores come from and when they were read. */
+export const GATEWAY_INTELLIGENCE_INDEX: Readonly<GatewayModelsRegistry["intelligenceIndex"]> = Object.freeze({
+  ...registry.intelligenceIndex,
+});
+
+export interface GatewayModelIntelligence {
+  readonly source: string;
+  /** Score per reasoning effort. An absent effort has no published score. */
+  readonly scores: Readonly<Partial<Record<GatewayReasoningEffort, number>>>;
+}
+
+/** Catalog id → intelligence data. Claude families key by their single catalog id. */
+const GATEWAY_MODEL_INTELLIGENCE: ReadonlyMap<string, GatewayModelIntelligence> = new Map(
+  GATEWAY_PROVIDERS.flatMap((provider) => registry.providers[provider].models.flatMap((entry) => {
+    if (!entry.intelligence) return [];
+    const id = provider === NATIVE_PROVIDER ? claudeFamilyModelId(entry.modelId) : scopedModelId(provider, entry.modelId);
+    return [[id, Object.freeze({
+      source: entry.intelligence.source,
+      scores: Object.freeze({ ...entry.intelligence.scores }),
+    })] as const];
+  })),
+);
+
+/** The intelligence data of a catalog model, or undefined when no score is published for it. */
+export function gatewayModelIntelligence(modelId: string): GatewayModelIntelligence | undefined {
+  return GATEWAY_MODEL_INTELLIGENCE.get(modelId);
+}
+
+/**
+ * The highest role whose threshold the score reaches. Computed, never stored:
+ * the registry holds only scores and thresholds.
+ */
+export function recommendedGatewayRole(score: number | undefined): GatewayRole | undefined {
+  return recommendedRole(score, GATEWAY_ROLE_THRESHOLDS);
+}
+
+/** The recommended role of a catalog model at one reasoning effort. */
+export function recommendedGatewayModelRole(
+  modelId: string,
+  effort: GatewayReasoningEffort,
+): GatewayRole | undefined {
+  return recommendedGatewayRole(gatewayModelIntelligence(modelId)?.scores[effort]);
+}
 
 /** One row of the installed Claude Code's model picker (`supportedModels()`). */
 export interface ClaudeNativeModelRow {
@@ -236,22 +302,25 @@ let claudeNativeResolutions: ReadonlyMap<string, ClaudeNativeResolution> = new M
 export let GATEWAY_MODELS: readonly GatewayModel[] = buildGatewayModels();
 
 function buildGatewayModels(): readonly GatewayModel[] {
-  const claude = CLAUDE_NATIVE_FAMILIES.map((family) => {
-    const resolution = claudeNativeResolutions.get(family.alias);
-    const levels = resolution ? resolution.effortLevels : CLAUDE_UNRESOLVED_EFFORT[family.alias] ?? [];
+  const claude = nativeFamilies.map((family) => {
+    const alias = family.modelId;
+    const resolution = claudeNativeResolutions.get(alias);
+    const levels = resolution
+      ? resolution.effortLevels
+      : family.effort?.supported ? family.effort.levels : [];
     const effort: GatewayModelEffort = levels.length > 0
       ? Object.freeze({ supported: true as const, levels: Object.freeze([...levels]) })
       : UNSUPPORTED_GATEWAY_MODEL_EFFORT;
     return Object.freeze<GatewayModel>({
-      id: claudeFamilyModelId(family.alias),
-      displayName: `${CLAUDE_PROVIDER_NAME}-${resolution?.displayName ?? family.name}`,
-      provider: "claude",
+      id: claudeFamilyModelId(alias),
+      displayName: `${nativeProvider.name}-${resolution?.displayName ?? family.name}`,
+      provider: NATIVE_PROVIDER,
       ...(resolution ? { upstreamId: resolution.model } : {}),
-      description: family.description,
-      contextWindow: CLAUDE_ONE_MILLION_CONTEXT_WINDOW,
+      ...(family.description ? { description: family.description } : {}),
+      ...(family.contextWindow ? { contextWindow: family.contextWindow } : {}),
       effort,
-      aliases: Object.freeze([...claudeFamilyAliases(family.alias)]),
-      claudeAlias: family.alias,
+      aliases: Object.freeze([...claudeFamilyAliases(alias)]),
+      claudeAlias: alias,
     });
   });
   return Object.freeze([...STATIC_GATEWAY_MODELS, ...claude]);
@@ -268,20 +337,21 @@ function buildGatewayModels(): readonly GatewayModel[] {
  * entry adds it back at launch.
  */
 export function resolveClaudeNativeModels(rows: readonly ClaudeNativeModelRow[]): readonly ClaudeNativeResolution[] {
-  return CLAUDE_NATIVE_FAMILIES.flatMap((family) => {
+  return nativeFamilies.flatMap((family) => {
+    const alias = family.modelId;
     const candidates = rows.flatMap((row) => {
       if (row.value === "default" || !row.resolvedModel) return [];
       const model = row.resolvedModel.replace(CLAUDE_ONE_MILLION_SUFFIX, "");
-      const version = claudeFamilyVersion(model, family.alias);
+      const version = claudeFamilyVersion(model, alias);
       return version ? [{ row, model, version }] : [];
     });
-    const aliasCandidate = candidates.find(({ row }) => row.value === family.alias)
-      ?? candidates.find(({ row }) => row.value === `${family.alias}${CLAUDE_ONE_MILLION_MARKER}`);
+    const aliasCandidate = candidates.find(({ row }) => row.value === alias)
+      ?? candidates.find(({ row }) => row.value === `${alias}${CLAUDE_ONE_MILLION_MARKER}`);
     const picked = aliasCandidate
       ?? [...candidates].sort((left, right) => compareVersions(right.version, left.version))[0];
     if (!picked) return [];
     return [{
-      alias: family.alias,
+      alias,
       model: picked.model,
       displayName: `${family.name} ${picked.version.join(".")}`,
       effortLevels: picked.row.effortLevels.filter(
@@ -425,8 +495,8 @@ export function gatewayModelSummary(model: GatewayModel): string {
 }
 
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {
-  const defaultId = provider === "claude"
-    ? claudeFamilyModelId(CLAUDE_DEFAULT_ALIAS)
+  const defaultId = provider === NATIVE_PROVIDER
+    ? claudeFamilyModelId(nativeProvider.defaultModel)
     : scopedModelId(provider, registry.providers[provider].defaultModel);
   const resolved = GATEWAY_MODELS.find((model) => model.provider === provider && model.id === defaultId);
   if (!resolved) {
@@ -534,13 +604,38 @@ function providerModels(provider: GatewayProvider): readonly GatewayModel[] {
 
 function validateRegistry(value: GatewayModelsRegistry): void {
   const lookupIds = new Set<string>();
-  for (const family of CLAUDE_NATIVE_FAMILIES) {
-    const owner = `claude/${family.alias}${CLAUDE_ONE_MILLION_ID_SUFFIX}`;
-    registerLookupId(lookupIds, claudeFamilyModelId(family.alias), owner);
-    for (const alias of claudeFamilyAliases(family.alias)) registerLookupId(lookupIds, alias, owner);
+  const native = value.providers[NATIVE_PROVIDER];
+  if (native.native !== true) {
+    throw new Error(`Gateway provider must be marked native: ${NATIVE_PROVIDER}`);
+  }
+  const nativeIds = new Set<string>();
+  for (const family of native.models) {
+    const alias = family.modelId;
+    const owner = `${NATIVE_PROVIDER}/${alias}${CLAUDE_ONE_MILLION_ID_SUFFIX}`;
+    if (!/^[a-z]+$/.test(alias)) {
+      throw new Error(`Native gateway model id must be a bare family alias: ${owner}`);
+    }
+    if (nativeIds.has(alias)) throw new Error(`Duplicate gateway model id: ${NATIVE_PROVIDER}/${alias}`);
+    nativeIds.add(alias);
+    // A native entry is judgment data for an alias the CLI resolves; serving fields would never be read.
+    if (
+      family.providerModelId || family.fastSupported || family.fastUpstreamId || family.fast
+      || family.quotaScope || family.wire || family.aliases
+      || (family.effort?.supported && family.effort.upstreamModelIds)
+    ) {
+      throw new Error(`Native gateway model declares a serving field: ${owner}`);
+    }
+    registerLookupId(lookupIds, claudeFamilyModelId(alias), owner);
+    for (const spelling of claudeFamilyAliases(alias)) registerLookupId(lookupIds, spelling, owner);
+  }
+  if (!nativeIds.has(native.defaultModel)) {
+    throw new Error(`Gateway default model is missing: ${NATIVE_PROVIDER}/${native.defaultModel}`);
   }
   for (const provider of REGISTRY_PROVIDERS) {
     const definition = value.providers[provider];
+    if (definition.native) {
+      throw new Error(`Only ${NATIVE_PROVIDER} can be a native gateway provider: ${provider}`);
+    }
     const modelIds = new Set<string>();
     for (const model of definition.models) {
       if (model.modelId.includes("--")) {
@@ -556,6 +651,14 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       // xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
       if (model.wire && provider !== "xai" && provider !== "muse-code") {
         throw new Error(`Gateway model wire is not supported by provider: ${provider}/${model.modelId}`);
+      }
+      if (model.intelligence) {
+        const levels = model.effort?.supported ? model.effort.levels : [];
+        for (const effort of Object.keys(model.intelligence.scores) as GatewayReasoningEffort[]) {
+          if (!levels.includes(effort)) {
+            throw new Error(`Gateway intelligence score is not an advertised level: ${provider}/${model.modelId}/${effort}`);
+          }
+        }
       }
       if (model.effort?.supported) {
         if (new Set(model.effort.levels).size !== model.effort.levels.length) {

@@ -2,6 +2,7 @@ import {
   GATEWAY_MODELS,
   GATEWAY_MODELS_UPDATED_AT,
   anthropicModelCapabilities,
+  isNativeGatewayProvider,
   findGatewayModel,
   resolveGatewayModel,
   type GatewayModel,
@@ -101,7 +102,7 @@ export function buildAnthropicModelList(
   models: readonly GatewayModel[] = GATEWAY_MODELS,
   createdAt = GATEWAY_MODELS_UPDATED_AT,
 ): AnthropicModelList {
-  const exposed = models.filter((model) => model.provider !== "claude");
+  const exposed = models.filter((model) => !isNativeGatewayProvider(model.provider));
   return buildAnthropicModelListPayload(
     exposed,
     createdAt,

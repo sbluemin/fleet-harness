@@ -28,6 +28,8 @@ export interface AiGatewayCatalogModel {
   readonly fast: boolean;
   readonly description: string | null;
   readonly effort: { readonly levels: readonly string[] } | null;
+  /** 강도별 지능 점수. 점수가 없는 단은 키가 없다. 옛 서버 응답에는 필드 자체가 없을 수 있다. */
+  readonly intelligence?: Readonly<Partial<Record<string, number>>> | null;
 }
 
 export interface AiGatewayCatalogProvider {
@@ -37,6 +39,9 @@ export interface AiGatewayCatalogProvider {
 
 export interface AiGatewayCatalog {
   readonly providers: readonly AiGatewayCatalogProvider[];
+  /** 역할별 추천 기준 점수(`lead`·`overseer`). 화면 안내용. */
+  readonly roleThresholds?: { readonly lead: number; readonly overseer: number };
+  readonly intelligenceIndex?: { readonly name: string; readonly observedAt: string };
 }
 
 /** Which xAI endpoint a subscription turn opens on. Mirrors the gateway's own vocabulary. */

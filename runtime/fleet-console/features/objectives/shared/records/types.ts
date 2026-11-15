@@ -225,6 +225,8 @@ export interface ObjectiveLaunchVariantChip {
   readonly id: string;
   readonly label: string;
   readonly launch: Readonly<Record<string, string>>;
+  /** 이 강도의 지능 점수(Gateway 레지스트리). 점수가 없으면 생략한다 — 화면 안내용이고 실행·라우팅은 읽지 않는다. */
+  readonly intelligence?: number;
 }
 
 export interface ObjectiveLaunchVariantRow {

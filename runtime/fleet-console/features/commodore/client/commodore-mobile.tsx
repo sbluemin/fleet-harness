@@ -38,6 +38,7 @@ import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } fr
 import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
 import { useCommodoreSpeakerSection } from "./sidebar-sections.js";
 import { RoutingPoolGlyphStack, RoutingPoolHelpButton, RoutingPoolPanel, useRoutingPoolData } from "./commodore-routing-pool.js";
+import { mobileRowNote, roleGuide } from "./commodore-intelligence.js";
 import { CommodoreComposer, CommodoreDescription, CommodoreSessionSettings, focusAtEnd, useCommodoreIntelAdd, type CommodorePendingMessage } from "./commodore-inbox-section.js";
 import {
   commodoreComposerTopEntriesRenderer,
@@ -748,6 +749,8 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
   const modelOverridden = state.model !== undefined;
   const launchRoster = useCommodoreRoster("launch");
   const pool = useRoutingPoolData(launchRoster, t);
+  const commodoreGuide = roleGuide("overseer", pool.thresholds);
+  const commanderGuide = roleGuide("lead", pool.thresholds);
   const [poolSheetOpen, setPoolSheetOpen] = useState(false);
   const [poolHelp, setPoolHelp] = useState(false);
   const poolHistoryRef = useRef<number | null>(null);
@@ -785,6 +788,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               value={commodoreValue(state)}
               fallback={defaults}
               disabled={!online}
+              rowNote={(row) => mobileRowNote(t, commodoreGuide, row)}
               {...(modelOverridden ? { reset: { label: t("commodore.settings.useDefault"), onSelect: () => act(() => setCommodoreCoordinates(theaterId, null)) } } : {})}
               onChange={(next) => act(() => setCommodoreCoordinates(theaterId, commodoreCoordinates(state, defaults, next)))}
             />
@@ -800,6 +804,7 @@ function CommodoreMobileSettings({ t, theaterId, view, online, failure, onFail, 
               fallback={COMMANDER_PRESET}
               disabled={!online}
               judgment={{ active: commanderByJudgment(state), onPick: () => act(() => setCommodoreCommander(theaterId, null)) }}
+              rowNote={(row) => mobileRowNote(t, commanderGuide, row)}
               onChange={(next) => act(() => setCommodoreCommander(theaterId, commanderCoordinates(state, next)))}
             />
           </SettingsRow>
