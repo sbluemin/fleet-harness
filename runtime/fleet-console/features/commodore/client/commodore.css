@@ -1373,8 +1373,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 
 .commodore-pool-view { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; min-width: 0; max-width: 100%; padding: 0 4px; }
 .commodore-pool-view > * { min-width: 0; }
-.commodore-pool-view.is-mobile .commodore-pool-mrow { padding-left: 16px; }
-.commodore-pool-view.is-mobile .commodore-pool-signin-note { margin-left: 16px; }
 .commodore-pool-view.is-mobile .commodore-pool-ex-stage { height: 276px; }
 .commodore-pool-view.is-mobile .commodore-pool-ex-tile { width: 52px; padding-inline: 2px; box-sizing: border-box; }
 .commodore-pool-view.is-mobile .commodore-pool-ex-tile .lbl { max-width: 48px; }
@@ -1443,10 +1441,8 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-find:focus-visible { outline: none; box-shadow: var(--focus-face); }
 .commodore-pool-groups { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; min-width: 0; }
 .commodore-pool-pgroup { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; min-width: 0; }
-.commodore-pool-pgroup-head { display: flex; align-items: center; gap: 8px; min-width: 0; height: 30px; padding: 0 6px; }
-.commodore-pool-pgroup-nm { font-size: var(--t-sm); font-weight: var(--weight-bold); color: var(--text-primary); }
-.commodore-pool-login { font-size: var(--t-xs); color: var(--text-tertiary); }
-.commodore-pool-login.is-out { color: var(--warn-ink); font-weight: var(--weight-medium); }
+/* 담기 목록은 사령관·지휘관 선택기와 같은 문법 — 공급자는 회색 낱말 머리, 모델 행마다 공급자 글리프. */
+.commodore-pool-pgroup-head { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 26px; padding-right: 6px; }
 .commodore-pool-pin {
   margin-left: auto; display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px;
   border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--text-tertiary); font-size: var(--t-xs); cursor: pointer;
@@ -1454,10 +1450,12 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-pin:hover:not(:disabled) { background: var(--wash-hover); color: var(--text-primary); }
 .commodore-pool-pin[aria-pressed="true"] { background: var(--control-wash); color: var(--text-primary); font-weight: var(--weight-bold); }
 .commodore-pool-pin-n { display: inline-grid; place-items: center; width: 14px; height: 14px; border-radius: 50%; background: var(--text-primary); color: var(--popover-face); font-size: calc(var(--t-2xs) * 0.9); }
-.commodore-pool-signin-note { margin: 0 6px 4px 28px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
-.commodore-pool-mrow { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 32px; padding: 0 6px 0 28px; border-radius: var(--radius-xs); }
+.commodore-pool-mrow {
+  display: flex; align-items: center; gap: var(--popover-row-gap); min-width: 0; min-height: var(--popover-row);
+  padding: 0 6px 0 var(--popover-row-inline); border-radius: var(--popover-row-radius);
+}
 .commodore-pool-mrow:hover { background: var(--wash-hover); }
-.commodore-pool-mrow-nm { flex: 1; min-width: 0; font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
+.commodore-pool-mrow-nm { flex: 1; min-width: 0; font-size: var(--popover-font-size); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); }
 .commodore-pool-mrow-nm small { margin-left: 6px; color: var(--text-tertiary); font-size: var(--t-xs); }
 .commodore-pool-add-btn {
   flex: none; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 9px;

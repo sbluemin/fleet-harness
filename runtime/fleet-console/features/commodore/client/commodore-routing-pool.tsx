@@ -546,7 +546,10 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
 
   const expandedView = expandedId ? pool.entries.find((item) => item.entry.id === expandedId) ?? null : null;
   const enabledSet = new Set(pool.entries.map((item) => item.entry.id));
-  const anyVisibleGroups = pool.providers.some((group) => group.models.some((model) => matchesModel(group.id, model)));
+  // 담기 목록은 선택기 로스터와 같은 기준으로 로그인된 공급자만 보인다(`isProviderCatalogVisible`: signed_out·not_connected는 빠지고,
+  // Claude의 not_connected와 아직 모르는 상태는 보인다). 이미 담긴 칩은 이 거름과 무관하게 「로그인 대기」로 남는다.
+  const catalogGroups = pool.providers.filter((group) => isProviderCatalogVisible(pool.loginOf(group.id), group.id));
+  const anyVisibleGroups = catalogGroups.some((group) => group.models.some((model) => matchesModel(group.id, model)));
 
   return (
     <div className={`commodore-pool-view${mobile ? " is-mobile" : ""}`}>
@@ -643,7 +646,7 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
       ) : null}
 
       <div className="commodore-pool-groups">
-        {pool.providers.map((group) => {
+        {catalogGroups.map((group) => {
           const rows = group.models.filter((model) => matchesModel(group.id, model));
           if (rows.length === 0) return null;
           const loginKind = routingLoginKind(group.id, pool.loginOf(group.id));
@@ -652,18 +655,10 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
           return (
             <div key={group.id} className="commodore-pool-pgroup">
               <div className="commodore-pool-pgroup-head">
-                <ProviderMark provider={group.id} />
-                <span className="commodore-pool-pgroup-nm">{launchProviderCaption(group.id)}</span>
+                <span className="commodore-composer-group-caption">{launchProviderCaption(group.id)}</span>
                 {loginKind === "unlinked" ? (
                   <button type="button" className="commodore-pool-link-btn is-muted" onClick={onOpenQuota}>{t("commodore.pool.usageUnlinked")}</button>
-                ) : loginKind === "out" ? (
-                  <>
-                    <span className="commodore-pool-login is-out">{t("commodore.pool.needsLogin")}</span>
-                    <button type="button" className="commodore-pool-link-btn" onClick={onOpenQuota}>{t("commodore.pool.signIn")}</button>
-                  </>
-                ) : (
-                  <span className="commodore-pool-login">{loginKind === "unknown" ? t("commodore.pool.checking") : t("commodore.pool.signedIn")}</span>
-                )}
+                ) : null}
                 {inPool ? (
                   <button
                     type="button"
@@ -678,7 +673,6 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
                   </button>
                 ) : null}
               </div>
-              {loginKind === "out" ? <p className="commodore-pool-signin-note">{t("commodore.pool.signInNote")}</p> : null}
               {rows.map((model) => {
                 const isIn = enabledSet.has(model.id);
                 const subtitle = shortModelSubtitle(model.id, t, model.description);
@@ -687,6 +681,7 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
                 const addBest = Object.values(addScores).filter((score): score is number => typeof score === "number");
                 return (
                   <div key={model.id} className="commodore-pool-mrow">
+                    <ProviderMark provider={group.id} />
                     <span className="commodore-pool-mrow-nm">
                       {model.name}
                       {subtitle ? <small>{subtitle}</small> : null}
