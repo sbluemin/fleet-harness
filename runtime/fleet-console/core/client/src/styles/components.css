@@ -866,11 +866,12 @@
 
 /* ── 콘솔 추가 팝업 ───────────────────────────────────────────────────
    스위처와 설정의 "콘솔 추가..." 버튼이 함께 여는 한 장. 오버레이 지오메트리는
-   .directory-browser-*의 계약을 승계한다 — 둘 다 배타적인 모달이라 같은 층에 산다. */
+   .directory-browser-*의 계약을 승계한다 — 둘 다 배타적인 모달이라 같은 층에 산다.
+   그 층은 body 포털 팝오버(--z-overlay)보다 한 단 위, 라이트박스(--z-lightbox)보다 아래다. */
 .add-host-overlay {
   position: fixed;
   inset: 0;
-  z-index: 95;
+  z-index: calc(var(--z-overlay) + 1);
   display: grid;
   place-items: center;
   padding: var(--space-6);
@@ -995,7 +996,7 @@
 .pair-overlay {
   position: fixed;
   inset: 0;
-  z-index: 95;
+  z-index: calc(var(--z-overlay) + 1);
   display: grid;
   place-items: center;
   padding: var(--space-6);
@@ -6431,7 +6432,9 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .directory-browser-overlay {
   position: fixed;
   inset: 0;
-  z-index: 95;
+  /* 배타 모달 층(.add-host-overlay·.pair-overlay와 같다). 하드코드 95는
+     칩 팝오버(--z-overlay = 100) 아래라 확인 단추 히트를 팝오버가 먹었다. */
+  z-index: calc(var(--z-overlay) + 1);
   display: grid;
   place-items: center;
   padding: var(--space-6);
