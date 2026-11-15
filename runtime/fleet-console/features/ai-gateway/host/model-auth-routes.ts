@@ -13,7 +13,7 @@ interface ModelAuthHostContext {
 }
 import type http from "node:http";
 
-import { validateTypesafeAuthKey } from "@fleet-console/ai-gateway";
+import { validateOpencodeGoAuthKey, validateTypesafeAuthKey } from "@fleet-console/ai-gateway";
 import type { AuthService, AuthValidationFailureResult } from "@fleet-console/ai-gateway";
 
 import {
@@ -31,6 +31,8 @@ type AuthKeyValidation =
 interface TerminalModelAuthRouteDeps {
   readonly authService: Pick<AuthService, "setApiKey" | "deleteApiKey" | "listProviderIds">;
   readonly validateApiKey: (provider: TerminalModelAuthProviderId, apiKey: string) => Promise<AuthKeyValidation>;
+  /** 키를 저장하거나 지운 뒤. 그 키에 기대는 사용량·노출 상태를 다시 읽게 하는 자리다. 실패는 응답을 막지 않는다. */
+  readonly onChanged?: (provider: TerminalModelAuthProviderId, signedIn: boolean) => void;
 }
 
 interface SignInBody {
@@ -40,12 +42,13 @@ interface SignInBody {
 const UPSTREAM_FAILURE_STATUSES: ReadonlySet<string> = new Set(["timeout", "network", "server"]);
 
 const MODEL_AUTH_VALIDATORS: Readonly<Record<TerminalModelAuthProviderId, (apiKey: string) => Promise<AuthKeyValidation>>> = {
+  opencode: validateOpencodeGoAuthKey,
   typesafe: validateTypesafeAuthKey,
 };
 
 export function registerTerminalModelAuthRoutes(
   ctx: ModelAuthHostContext,
-  deps: Pick<TerminalModelAuthRouteDeps, "authService">,
+  deps: Pick<TerminalModelAuthRouteDeps, "authService" | "onChanged">,
 ): void {
   ctx.registerRouter("model-auth", createTerminalModelAuthRouter(ctx, {
     ...deps,
@@ -129,6 +132,7 @@ async function signInProvider(
     return;
   }
   await deps.authService.setApiKey(MODEL_AUTH_STORE_IDS[provider.provider], apiKey);
+  notifyChanged(deps, provider.provider, true);
   await writeMutationState(ctx, res, deps);
 }
 
@@ -144,7 +148,16 @@ async function signOutProvider(
     return;
   }
   await deps.authService.deleteApiKey(MODEL_AUTH_STORE_IDS[provider]);
+  notifyChanged(deps, provider, false);
   await writeMutationState(ctx, res, deps);
+}
+
+function notifyChanged(deps: TerminalModelAuthRouteDeps, provider: TerminalModelAuthProviderId, signedIn: boolean): void {
+  try {
+    deps.onChanged?.(provider, signedIn);
+  } catch {
+    // 후속 갱신의 실패는 이미 끝난 저장을 되돌리지 않는다.
+  }
 }
 
 async function writeMutationState(

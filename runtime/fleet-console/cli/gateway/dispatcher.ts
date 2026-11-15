@@ -6,6 +6,7 @@ import {
   isSubscriptionSignedOutEntry,
   xaiCliSubscriptionPresent,
   CODEX_AUTH_PROVIDER_ID,
+  OPENCODE_AUTH_PROVIDER_ID,
   XAI_AUTH_PROVIDER_ID,
   type AiGatewaySettingsStore,
   type AuthService,
@@ -145,6 +146,11 @@ async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly Ga
   return [
     { provider: "codex", source: "subscription", state: await probe(readers.codex) },
     { provider: "xai", source: "subscription", state: await probe(readers.xai) },
+    {
+      provider: "opencode",
+      source: "api-key",
+      state: await probe(async () => (await resolveAuthService(deps).getApiKey(OPENCODE_AUTH_PROVIDER_ID)) ?? null),
+    },
   ];
 }
 

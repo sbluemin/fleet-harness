@@ -286,6 +286,10 @@
 }
 
 
+.quota-provider__mark--opencode {
+  color: var(--provider-opencode);
+}
+
 .quota-provider__mark--xai {
   color: var(--provider-xai);
 }

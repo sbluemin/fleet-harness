@@ -31,6 +31,7 @@ import {
   createProviderAuthService,
   defaultCredentialDeps,
   DEFAULT_ROSTER_SEED_MODEL_IDS,
+  OPENCODE_AUTH_PROVIDER_ID,
   setWireLogTarget,
   wireLogEnabled,
   type AiGatewayStoredSettings,
@@ -118,7 +119,16 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const wireLog = createWireLogRuntime(ctx);
   applyStoredWireLog(ctx, aiGatewayStore.read);
   ctx.host.lifecycle.registerCleanup(() => setWireLogTarget(undefined));
-  registerTerminalModelAuthRoutes(ctx, { authService });
+  registerTerminalModelAuthRoutes(ctx, {
+    authService,
+    // OpenCode Go는 키 하나가 로그인이자 사용량 자격이다. 저장·삭제 직후 사용량을 다시 읽어야
+    // 메뉴·배정이 캐시 수명(5분)을 기다리지 않고 새 로그인 상태를 본다.
+    onChanged: (provider, signedIn) => {
+      if (provider !== "opencode") return;
+      if (signedIn) void quota.getSummary({ forceProvider: "opencode" }).catch(() => undefined);
+      else quota.record("opencode", { status: "signed_out" });
+    },
+  });
   /**
    * 공급자별 누적 배정 수. 이 Console 프로세스가 소유한다.
    *
@@ -204,6 +214,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
       xai: summary.providers.xai.status,
       antigravity: summary.providers.antigravity.status,
       "muse-code": summary.providers["muse-code"].status,
+      opencode: summary.providers.opencode.status,
     };
   };
   function assign(request: unknown) {
@@ -296,6 +307,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     readXaiToken: xai.readSubscriptionToken,
     readMuseCodeAuth: museCode.readAuth,
     renewMuseCodeAuth: museCode.renew,
+    readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });

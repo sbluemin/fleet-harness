@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 // Shared provider marks for launch menus and model coordinates. Host chrome and
 // plugins both import this module so the bands cannot restyle apart.
 
-export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "antigravity" | "muse-code";
+export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "antigravity" | "muse-code" | "opencode";
 
 /**
  * Optional intrinsic size for a provider mark.
@@ -19,14 +19,15 @@ export type LaunchProviderGlyphSize = {
 
 type LaunchProviderGlyphProps = { readonly size?: LaunchProviderGlyphSize };
 
-const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "antigravity", "muse-code"] as const;
-const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code"];
+const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"] as const;
+const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"];
 const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> = {
   claude: "Claude",
   codex: "Codex",
   xai: "xAI",
   antigravity: "Antigravity",
   "muse-code": "Muse Code",
+  opencode: "OpenCode Go",
 };
 const CLAUDE_GATEWAY_MODEL_PREFIX = "claude-gateway--";
 
@@ -115,11 +116,22 @@ function MuseCodeGlyph({ size }: LaunchProviderGlyphProps) {
   );
 }
 
+function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
+  // OpenCode 마크의 사각 틀. 원본 비율(240×300)을 지킨다.
+  return (
+    <svg viewBox="0 0 240 300" {...size} aria-hidden="true">
+      <path fillRule="evenodd" d="M240 0H0v300h240V0ZM180 60H60v180h120V60Z" fill="currentColor" />
+      <path d="M60 120h120v120H60V120Z" fill="currentColor" opacity="0.45" />
+    </svg>
+  );
+}
+
 export function launchProviderGlyph(provider: LaunchProviderGlyphId, size?: LaunchProviderGlyphSize): ReactNode {
   if (provider === "claude") return <ClaudeGlyph size={size} />;
   if (provider === "xai") return <GrokGlyph size={size} />;
   if (provider === "antigravity") return <AntigravityGlyph size={size} />;
   if (provider === "muse-code") return <MuseCodeGlyph size={size} />;
+  if (provider === "opencode") return <OpencodeGlyph size={size} />;
   return <CodexGlyph size={size} />;
 }
 

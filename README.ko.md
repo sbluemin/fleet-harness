@@ -43,7 +43,7 @@ fleet console
 
 <img src=".github/taskforce.webp" alt="Release 0.5 태스크포스: Atlas, Vega, Orion이 차례로 의견을 내고, 사람이 동의하자 Vega가 토론에서 문서 목표를 연다" width="100%" />
 
-**어떤 프런티어 모델이든 Claude Code 그대로.** AI Gateway는 Claude Code 고유의 에이전트 루프를 Codex, Gemini(Antigravity), Grok(xAI), Muse Code 모델로 돌립니다. 이미 가진 구독을 그대로 쓰고, 자격 증명은 Console 안에 머뭅니다. 사령관과 지휘관은 내가 켜 둔 모델 가운데 남은 쿼터가 많은 순으로 모델을 고릅니다.
+**어떤 프런티어 모델이든 Claude Code 그대로.** AI Gateway는 Claude Code 고유의 에이전트 루프를 Codex, Gemini(Antigravity), Grok(xAI), Muse Code, OpenCode Go 모델로 돌립니다. 이미 가진 구독을 그대로 쓰고, 자격 증명은 Console 안에 머뭅니다. 사령관과 지휘관은 내가 켜 둔 모델 가운데 남은 쿼터가 많은 순으로 모델을 고릅니다.
 
 **에이전트와 함께 쓰는 브라우저.** 데스크톱 앱에서 플릿 브라우저는 대화 옆이나 별도 창에 열립니다. 에이전트는 같은 탭과 로그인을 쓰되 자기 공간에서 일하고, 나는 페이지에 주석을 달아 에이전트에게 넘길 수 있습니다.
 

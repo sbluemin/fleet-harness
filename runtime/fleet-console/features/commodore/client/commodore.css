@@ -1343,6 +1343,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-st.is-codex, .commodore-pool-ex-tile.is-codex { --tone: var(--provider-codex); }
 .commodore-pool-st.is-xai, .commodore-pool-ex-tile.is-xai { --tone: var(--provider-xai); }
 .commodore-pool-st.is-antigravity, .commodore-pool-ex-tile.is-antigravity { --tone: var(--provider-antigravity); }
+.commodore-pool-st.is-opencode, .commodore-pool-ex-tile.is-opencode { --tone: var(--provider-opencode); }
 .commodore-pool-st.is-muse-code, .commodore-pool-ex-tile.is-muse-code { --tone: color-mix(in oklab, var(--brass-ink) 72%, var(--text-tertiary)); }
 .commodore-pool-st.is-more { width: auto; margin-left: 2px; filter: none; color: var(--text-secondary); font-size: var(--t-2xs); font-weight: var(--weight-bold); font-variant-numeric: tabular-nums; }
 .commodore-pool-st.is-waiting { opacity: 0.42; }

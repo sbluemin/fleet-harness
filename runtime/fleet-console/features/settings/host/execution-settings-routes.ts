@@ -244,7 +244,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
   ]);
 }
 
-const AI_GATEWAY_LOGIN_PROVIDERS = ["antigravity", "claude", "codex", "muse-code", "xai"] as const;
+const AI_GATEWAY_LOGIN_PROVIDERS = ["antigravity", "claude", "codex", "muse-code", "opencode", "xai"] as const;
 
 function toTerminalSettingsState(
   aiGateway: AiGatewayStoredSettings,

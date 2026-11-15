@@ -43,7 +43,7 @@ fleet console
 
 <img src=".github/taskforce.webp" alt="A TaskForce named Release 0.5: Atlas, Vega and Orion each weigh in, the person agrees, and Vega opens a docs objective from the discussion" width="100%" />
 
-**Every frontier model, behind Claude Code.** The AI Gateway runs Claude Code's own agent loop on Codex, Gemini (Antigravity), Grok (xAI) and Muse Code models with the subscriptions you already have. Their credentials stay in the Console. When Commodores and Commanders pick models, they choose from the ones you turned on, ordered by remaining quota.
+**Every frontier model, behind Claude Code.** The AI Gateway runs Claude Code's own agent loop on Codex, Gemini (Antigravity), Grok (xAI), Muse Code and OpenCode Go models with the subscriptions you already have. Their credentials stay in the Console. When Commodores and Commanders pick models, they choose from the ones you turned on, ordered by remaining quota.
 
 **A browser you share with your agents.** In the desktop app, Fleet Browser opens beside the conversation or in its own window. Agents work in their own spaces on the same tabs and sign-ins, and you can annotate a page to hand it to them.
 

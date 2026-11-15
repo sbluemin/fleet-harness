@@ -36,7 +36,7 @@ export const aiGatewaySettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex xai delegation routing pool subagent workflow diagnostics wire log compact",
+    "gateway provider model api key codex xai opencode delegation routing pool subagent workflow diagnostics wire log compact",
     "게이트웨이 공급자 모델 키 배정 위임 라우팅 풀 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
