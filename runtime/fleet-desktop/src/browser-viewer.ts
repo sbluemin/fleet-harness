@@ -114,31 +114,50 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
 
   /** 실행 호스트가 붙어 있고 스냅샷이 원격 조작을 말할 때만. 옛 Console 은 필드가 없어 보기 전용이다. */
   const controllable = (): boolean => open && snapshot?.remoteControl === true && snapshot.executionHost.status === "connected";
-  /** 제어 중에 스테이지가 보낸 맞춤을, 제어가 끝나는 순간 한 번 pane 으로 되돌린다. 보기 전용은 이 깃발을 세우지 않는다. */
+  /** 제어 중에 스테이지가 보낸 맞춤을, 제어가 끝나는 순간 맞춘 모든 스페이스에 대해 한 번 pane 으로 되돌린다. 보기 전용은 이 깃발을 세우지 않는다. */
   let remoteFitActive = false;
+  const fittedSpaces = new Set<string>();
   const releaseControlFit = (): void => {
-    if (!remoteFitActive) return;
+    if (!remoteFitActive) {
+      fittedSpaces.clear();
+      return;
+    }
     remoteFitActive = false;
     const at = origin;
     const chrome = snapshot?.chrome ?? null;
+    const tab = chrome?.tabs.find((item) => item.id === chrome.activeTabId);
+    const targets = new Set(fittedSpaces);
+    fittedSpaces.clear();
+    if (tab?.spaceId) targets.add(tab.spaceId);
     if (!at) return;
     const browserId = chrome?.browserId ?? VIEWER_BROWSER_ID;
-    const tab = chrome?.tabs.find((item) => item.id === chrome.activeTabId);
-    const body = { preset: "responsive", ...(tab ? { spaceId: tab.spaceId } : {}) };
-    // 원격 페어링 쿠키는 창 세션에 있다. credentials 가 없으면 same-origin 기본값이 그 쿠키를 빼서 복귀가 거절되고 맞춘 크기가 남는다.
-    void deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/viewport`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json", Origin: at },
-      body: JSON.stringify(body),
-    }).then((response) => {
-      if (!response.ok) log(`browser viewport restore rejected status=${response.status}`);
-    }, (error: unknown) => {
-      log(`browser viewport restore failed: ${error instanceof Error ? error.message : "unknown"}`);
-    });
+    const bodies = targets.size > 0
+      ? [...targets].map((spaceId) => ({ preset: "responsive", spaceId }))
+      : [{ preset: "responsive" }];
+    for (const body of bodies) {
+      // 원격 페어링 쿠키는 창 세션에 있다. credentials 가 없으면 same-origin 기본값이 그 쿠키를 빼서 복귀가 거절되고 맞춘 크기가 남는다.
+      void deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/viewport`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Origin: at },
+        body: JSON.stringify(body),
+      }).then((response) => {
+        if (!response.ok) log(`browser viewport restore rejected status=${response.status}`);
+      }, (error: unknown) => {
+        log(`browser viewport restore failed: ${error instanceof Error ? error.message : "unknown"}`);
+      });
+    }
   };
   const noteControlFit = (): void => {
-    if (controllable()) { remoteFitActive = true; return; }
+    if (controllable()) {
+      remoteFitActive = true;
+      const chrome = snapshot?.chrome ?? null;
+      const tab = chrome?.tabs.find((item) => item.id === chrome.activeTabId);
+      if (tab?.spaceId && chrome?.viewport.preset === "responsive" && chrome.viewport.setBy === "user") {
+        fittedSpaces.add(tab.spaceId);
+      }
+      return;
+    }
     releaseControlFit();
   };
 
@@ -327,6 +346,14 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
           case "remote-permission":
             remoteActions(control, role, { action: "permission-answer", promptId: action.promptId, tabId: action.tabId, allow: action.allow });
             return;
+          case "viewport": {
+            if (action.width !== undefined && action.height !== undefined) {
+              const spaceId = control.space();
+              if (spaceId) fittedSpaces.add(spaceId);
+            }
+            remoteActions(control, role, action);
+            return;
+          }
           case "pin": case "expand": case "tabs-menu": case "orientation": case "auto-expand":
           case "overlay": case "draft": case "guard-size": case "ready":
             deps.localAct(control, role, action); return;

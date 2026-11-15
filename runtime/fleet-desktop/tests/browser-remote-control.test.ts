@@ -232,6 +232,33 @@ describe("remote browser shell", () => {
     live.stop();
   });
 
+  it("restores every fitted space when remote control ends after switching spaces", async () => {
+    const posts: { url: string; init: RequestInit | undefined }[] = [];
+    const { viewer } = await openViewer(snapshot(true), posts);
+    const spaceControl = (spaceId: string): SurfaceControl => ({
+      ...control(),
+      space: () => spaceId,
+    });
+    viewer.act(spaceControl("commodore-a"), "stage", { action: "viewport", preset: "responsive", width: 500, height: 850 });
+    viewer.act(spaceControl("commodore-b"), "stage", { action: "viewport", preset: "responsive", width: 520, height: 900 });
+    await vi.waitFor(() => {
+      if (posts.filter((call) => call.url.includes("/viewport")).length < 2) throw new Error("waiting");
+    });
+
+    const beforeClose = posts.length;
+    viewer.act(spaceControl("commodore-b"), "bar", { action: "close-surface" });
+    await vi.waitFor(() => {
+      const restoreBodies = posts.slice(beforeClose)
+        .filter((call) => call.url.includes("/viewport"))
+        .map((call) => JSON.parse(String(call.init?.body)) as { preset: string; spaceId?: string });
+      expect(restoreBodies).toEqual(expect.arrayContaining([
+        { preset: "responsive", spaceId: "commodore-a" },
+        { preset: "responsive", spaceId: "commodore-b" },
+      ]));
+    });
+    viewer.stop();
+  });
+
   it("omits managed headers on a cookie session and keeps the guard for remote control", async () => {
     const seen: Headers[] = [];
     const actions = createBrowserActions({

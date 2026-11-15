@@ -134,7 +134,7 @@ function createStubDesktop(options: StubOptions = {}) {
   let seq = 0;
   let lastViewId = "view-stub";
   const defaultLayout = options.layout ?? { width: 1386, height: 1163 };
-  const captureClips: Array<{ scale?: number }> = [];
+  const captureClips: Array<{ x?: number; y?: number; width?: number; height?: number; scale?: number }> = [];
   const desktop = {
     captureClips,
     currentHost: "local" as string | null,
@@ -304,6 +304,37 @@ describe("objectiveRecord browser service contracts", () => {
       const restored = await service.setViewport(OBJECTIVE, { preset: "responsive" }, "user");
       expect(restored.setBy).toBeNull();
       expect(service.state(OBJECTIVE).viewport).toMatchObject({ preset: "responsive", setBy: null });
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("uses native pane geometry for capture and geometryVersion during user responsive fitting", async () => {
+    const desktop = createStubDesktop({ layout: { width: 900, height: 700 } });
+    const service = createService(desktop);
+    try {
+      const tab = await service.createTab(OBJECTIVE, null, "user", { show: true });
+      desktop.setPaneSize({ width: 900, height: 700, scale: 1 });
+      const fitted = await service.setViewport(OBJECTIVE, { preset: "responsive", width: 500, height: 850 }, "user");
+      expect(fitted).toMatchObject({ width: 500, height: 850, preset: "responsive", setBy: "user" });
+
+      // 셸이 호스트 칸(900x700) 안에 비율을 맞춰 412x700 으로 놓은 상태.
+      desktop.setPaneSize({ width: 412, height: 700, scale: 1 });
+      const versionBefore = await service.geometryVersion(OBJECTIVE, tab.id);
+      expect(versionBefore).toBe(`${tab.id}:412x700:1`);
+
+      const shot = await service.screenshot(OBJECTIVE, { tabId: tab.id, format: "jpeg" });
+      expect(desktop.captureClips.at(-1)).toMatchObject({ x: 0, y: 0, width: 412, height: 700, scale: 1 });
+      expect(shot.staleViewport).toBe(false);
+      expect(shot.width).toBe(412);
+      expect(shot.height).toBe(700);
+      expect(shot.layout).toEqual({ width: 412, height: 700 });
+      expect(shot.viewport).toEqual({ width: 412, height: 700, preset: "responsive", followsPane: false });
+      expect(service.state(OBJECTIVE).viewport).toMatchObject({ width: 500, height: 850, preset: "responsive", setBy: "user" });
+
+      // 호스트 창 크기가 바뀌면 geometryVersion 도 새 네이티브 크기를 따라 바뀐다.
+      desktop.setPaneSize({ width: 353, height: 600, scale: 1 });
+      expect(await service.geometryVersion(OBJECTIVE, tab.id)).toBe(`${tab.id}:353x600:1`);
     } finally {
       await service.dispose();
     }
