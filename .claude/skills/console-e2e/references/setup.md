@@ -199,7 +199,7 @@ Do not assume restored Objectives are expanded or visible. Fixtures may restore 
 
 ### Host provider status
 
-Shows or hides the Codex launch-roster group on a running owned Console without a credential, login, or provider call. Its `error` state stands in for a login: every provider's `ok` quota state needs that provider's own call, so it cannot be synthesized here. This is not evidence of real authentication, and not evidence that outbound calls are blocked. Do not mock the roster response or inject `models:roster-changed`; those skip the host.
+Shows or hides the Codex launch-roster group on a running owned Console without a credential, login, or provider call. It covers the `error`↔`not_connected` exposure transition only, not a logged-in state: in the checked paths a provider reaches `ok` only after its own provider call. This is not evidence of real authentication, and not evidence that outbound calls are blocked. Do not mock the roster response or inject `models:roster-changed`; those skip the host.
 
 The [objective-fixture rule](#ui-only-objective-fixtures) still forbids copying user state or overwriting a running server's objective records. This recipe does not touch those files. Only when `<run-dir>/console/auth.json` is absent, create it mode `0600` with `{"Fleet AI Gateway with Codex":{"type":"oauth","version":1}}`. `parseCodexAuthEntry` (`features/ai-gateway/runtime/src/oauth/codex/login.ts`) rejects it for the missing key, expiry and account id, so no secret is stored. Quota re-reads that file. Do not replace an existing `auth.json`.
 
