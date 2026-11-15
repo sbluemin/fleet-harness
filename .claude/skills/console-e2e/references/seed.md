@@ -24,7 +24,7 @@ Counts override with the flags. Theater folders are created under `--root` (defa
 
 - `objectives` and `inbox` need the owned fake agent (`CLAUDE_BIN` = [`fake-claude.mjs`](../scripts/fake-claude.mjs), `--fake-claude-dir` = its `FAKE_CLAUDE_DIR`): the Commodore's `objective` tool is the only creator, so the seed queues `sdk-calls` and wakes the commodore. `inbox` then drives the fake Commander's tools the way `details` does, and hands each waiting item to the person. `add` does not pass a Commander model; that model is chosen when the objective is planned or commenced. `--objectives` does not apply to `inbox`.
 - `activity` and `details` use the same owned fake-agent setup (no provider). Keep the Console running: stopping ends the live fake sessions; restored display/history after restart does not prove a live fake session. Read `commodores[].activity` in the seed output for `inProgressObjectiveId`, `lastResponse`, `sectionId`, and `sectionName`.
-- For `taskforce`, use only this run's seed-output IDs: `commodores[].commodoreId` and `taskforce.taskforceId`.
+- For `taskforce`, start the Console with the same owned fake-agent setup as `objectives`/`inbox`; `--fake-claude-dir` neither sets nor checks the running Console's `CLAUDE_BIN`. Use only this run's seed-output IDs: `commodores[].commodoreId` and `taskforce.taskforceId`.
 - Marking first-run layers as seen is a separate step: [`seed-onboarding.mts`](../scripts/seed-onboarding.mts).
 - Composition lives in [`scripts/seed/lib.mjs`](../scripts/seed/lib.mjs) (API calls, ownership order) and [`fixtures.mjs`](../scripts/seed/fixtures.mjs) (profiles). Use a shared profile as the baseline; keep scenario-specific additions in the objective’s fixture, reusing the helpers.
 
