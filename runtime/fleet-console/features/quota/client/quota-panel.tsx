@@ -72,14 +72,18 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   xai: "quota.xai.signedOut",
 };
 
-export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
-  antigravity: "quota.expired.antigravity",
+export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "antigravity">, QuotaMessageKey>> = {
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
   "muse-code": "quota.expired.museCode",
   opencode: "quota.expired.opencode",
   xai: "quota.expired.xai",
 };
+
+export function expiredMessageKey(id: ProviderId): QuotaMessageKey | undefined {
+  if (id === "antigravity") return undefined;
+  return EXPIRED_KEY[id];
+}
 
 // 구독이 없는 상태는 공급자에 관계없이 같은 안내를 쓴다. OpenCode Go만 키는 유효한데 구독이
 // 없는 경우(403)라, 다시 로그인하라는 대신 그 키에 구독이 없다고 말한다.
@@ -577,8 +581,8 @@ function ProviderCard({
 }) {
   const name = providerName(id, mobile);
   // 이 두 공급자의 로그인은 Console 소유가 아니다. 가짜 로그인 문 대신 기존 CLI 경로를 한 줄로 안내한다.
-  if ((id === "antigravity" || id === "claude") && (provider.status === "signed_out" || provider.status === "expired")) {
-    return <section className="quota-connect-card" data-provider={id}><header className="quota-provider__header"><span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span><h3>{name}</h3><span className="quota-connect-hint" title={t(provider.status === "expired" ? EXPIRED_KEY[id] : SIGNED_OUT_KEY[id])}>{t("quota.login.external", { cli: id === "claude" ? "claude" : "agy" })}</span>{id === "claude" ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}</header></section>;
+  if ((id === "antigravity" && provider.status === "signed_out") || (id === "claude" && (provider.status === "signed_out" || provider.status === "expired"))) {
+    return <section className="quota-connect-card" data-provider={id}><header className="quota-provider__header"><span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span><h3>{name}</h3><span className="quota-connect-hint" title={t(provider.status === "expired" ? EXPIRED_KEY.claude : SIGNED_OUT_KEY[id])}>{t("quota.login.external", { cli: id === "claude" ? "claude" : "agy" })}</span>{id === "claude" ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}</header></section>;
   }
   if (needsConsoleLogin(id, provider.status)) {
     return <LoginCard api={api} provider={id} expired={provider.status === "expired"} now={now} t={t} logout={logout} />;
@@ -606,7 +610,7 @@ function ProviderCard({
       </header>
       {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
-      {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
+      {provider.status === "expired" && expiredMessageKey(id) !== undefined ? <StatusStrip kind="expired">{t(expiredMessageKey(id)!)}</StatusStrip> : null}
       {provider.status === "stale" ? (
         <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip>
       ) : null}

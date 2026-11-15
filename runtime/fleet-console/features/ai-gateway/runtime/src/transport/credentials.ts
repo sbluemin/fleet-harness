@@ -1,15 +1,16 @@
 /**
  * Mechanics for reading a credential another CLI left on this machine.
  *
- * Claude Code (quota only) and the Antigravity CLI (`agy`) still read vendor stores
- * here. Codex and xAI read a vendor CLI file only when the Console slot has no entry
- * for that provider (`src/upstream/<provider>/credentials.ts`); that read never writes.
+ * Claude Code (quota only) still reads a vendor store here. Codex and xAI read a
+ * vendor CLI file only when the Console slot has no entry for that provider
+ * (`src/upstream/<provider>/credentials.ts`); that read never writes.
  * Muse Code never reads vendor files, the environment, or the OS keychain.
+ * Antigravity quota does not read a credential store; it runs the user's agy CLI.
  *
  * This file holds only provider-unaware mechanics: bounded file I/O, platform
  * resolver deps, and the shared credential shapes. Each provider's login path,
  * auth-file parsing, and keychain handling lives in its own provider folder
- * (`src/upstream/anthropic/credentials.ts`, `src/upstream/antigravity/credentials.ts`).
+ * (`src/upstream/anthropic/credentials.ts`).
  */
 
 import { execFile as nodeExecFile } from "node:child_process";

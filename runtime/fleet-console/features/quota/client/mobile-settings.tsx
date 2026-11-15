@@ -6,7 +6,7 @@ import type { SettingsSectionDescriptor } from "../../settings/shared/types.js";
 import { PROVIDER_ORDER_DEFAULT } from "../shared/provider-order.js";
 import { getT } from "./i18n/index.js";
 import type { QuotaWindow } from "@fleet-console/ai-gateway";
-import { EXPIRED_KEY, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, providerName, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel } from "./quota-panel.js";
+import { expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, providerName, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel } from "./quota-panel.js";
 import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subscribeLogins } from "./provider-login.js";
 import type { LoginProvider, ProviderId } from "../shared/provider-order.js";
 import "./mobile.css";
@@ -179,7 +179,10 @@ function countdownText(ms: number, locale: ConsoleLocale): string {
 function statusLine(id: ProviderId, status: string, t: ReturnType<typeof getT>): string {
   if (status === "signed_out") return t(SIGNED_OUT_KEY[id]);
   if (status === "no_subscription") return t(NO_SUBSCRIPTION_KEY[id]);
-  if (status === "expired") return t(EXPIRED_KEY[id]);
+  if (status === "expired") {
+    const key = expiredMessageKey(id);
+    if (key !== undefined) return t(key);
+  }
   return t("quota.error", { provider: providerName(id, true) });
 }
 

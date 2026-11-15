@@ -19,7 +19,7 @@ When changing layer placement, model registration, request shaping, or provider 
 - `models.json` and `src/models.ts` are the central catalog sources. Keep current generations only. Claude entries are Claude Code aliases whose version, wire id, and effort ladder come from the installed CLI's `supportedModels()`; never pin a Claude version in `models.json`. Fleet keeps no third-party benchmark scores, because per-model upkeep and cohort bias outweighed their value.
 - `src/settings/` and `src/auth/` are provider-neutral: neither imports providers nor discovers host data roots. Only `src/auth/` constructs credential stores; providers and quota collectors receive auth dependencies explicitly.
 - `src/oauth/` owns Fleet-initiated provider sign-in (device authorization, key mint, login sessions) and the `auth.json` entries it writes; it receives the auth store rather than constructing one, and `src/router/` and `src/upstream/` get its credential readers by injection instead of importing it. Upstream wire semantics stay in `src/upstream/<provider>/`.
-- The `auth.json` filename and stored provider IDs are signed-in-state compatibility contracts; do not rename or automatically delete existing entries when a provider is removed. Vendor CLI-owned subscription credential files are read-only.
+- The `auth.json` filename and stored provider IDs are signed-in-state compatibility contracts; do not rename or automatically delete existing entries when a provider is removed. Vendor CLI-owned subscription credential files are read-only. Antigravity quota does not read agy's credential store; it runs `agy -p "/usage"`.
 
 ## Loss-prevention boundaries
 

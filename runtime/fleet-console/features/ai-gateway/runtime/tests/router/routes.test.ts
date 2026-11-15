@@ -972,19 +972,26 @@ describe("delegation assignment", () => {
       requireGatewayModel("antigravity--gemini-4-hydrogen"),
     ];
     const argonCriticalWindows = parseAntigravityQuotaSummary({
-      groups: [
-        {
-          displayName: "Gemini 4 Argon",
-          buckets: [{ bucketId: "gemini-argon-wtu-weekly", remainingFraction: 0.02, resetTime: weekReset }],
-        },
-        {
-          displayName: "Gemini Models",
-          buckets: [
-            { bucketId: "gemini-5h", remainingFraction: 0.8, resetTime: sessionReset },
-            { bucketId: "gemini-weekly", remainingFraction: 0.7, resetTime: weekReset },
+      status: "SUCCESS",
+      num_turns: 0,
+      command: {
+        name: "usage",
+        data: {
+          groups: [
+            {
+              name: "Gemini 4 Argon",
+              buckets: [{ id: "gemini-argon-wtu-weekly", remaining_fraction: 0.02, reset_time: weekReset }],
+            },
+            {
+              name: "Gemini Models",
+              buckets: [
+                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
+                { id: "gemini-weekly", remaining_fraction: 0.7, reset_time: weekReset },
+              ],
+            },
           ],
         },
-      ],
+      },
     }) ?? [];
     const argonExposure: GatewayAssignmentExposure = {
       delegationModels: antigravityModels,
@@ -998,19 +1005,26 @@ describe("delegation assignment", () => {
 
     // 4) 공통 창(gemini-weekly 98%)이 critical이면 Antigravity 전 모델이 빠진다.
     const geminiSharedCritical = parseAntigravityQuotaSummary({
-      groups: [
-        {
-          displayName: "Gemini 4 Argon",
-          buckets: [{ bucketId: "gemini-argon-wtu-weekly", remainingFraction: 0.9, resetTime: weekReset }],
-        },
-        {
-          displayName: "Gemini Models",
-          buckets: [
-            { bucketId: "gemini-5h", remainingFraction: 0.8, resetTime: sessionReset },
-            { bucketId: "gemini-weekly", remainingFraction: 0.02, resetTime: weekReset },
+      status: "SUCCESS",
+      num_turns: 0,
+      command: {
+        name: "usage",
+        data: {
+          groups: [
+            {
+              name: "Gemini 4 Argon",
+              buckets: [{ id: "gemini-argon-wtu-weekly", remaining_fraction: 0.9, reset_time: weekReset }],
+            },
+            {
+              name: "Gemini Models",
+              buckets: [
+                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
+                { id: "gemini-weekly", remaining_fraction: 0.02, reset_time: weekReset },
+              ],
+            },
           ],
         },
-      ],
+      },
     }) ?? [];
     expect(buildGatewayCandidates({
       delegationModels: antigravityModels,

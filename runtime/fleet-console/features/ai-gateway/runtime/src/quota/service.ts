@@ -27,6 +27,11 @@ type ProviderId = QuotaLastGoodProviderId;
  * 부르지 않고, 연이은 강제 새로고침도 간격을 둔다 — 새로고침 연타가 무제한 호출이 되지 않게.
  */
 const FORCE_GUARDED: ReadonlySet<ProviderId> = new Set<ProviderId>(["muse-code"]);
+/**
+ * 한 번 signed_out이면 자동 조회는 다시 띄우지 않는다. agy는 미로그인일 때 브라우저를
+ * 열고 오래 기다리므로, 패널 새로고침(force)이나 그 공급자만 강제할 때만 다시 묻는다.
+ */
+const SIGNED_OUT_HELD: ReadonlySet<ProviderId> = new Set<ProviderId>(["antigravity"]);
 export const QUOTA_FORCE_MIN_INTERVAL_MS = 60_000;
 
 export interface QuotaService {
@@ -192,6 +197,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       return value;
     }
     const cached = cache.get(id);
+    if (!force && cached?.value.status === "signed_out" && SIGNED_OUT_HELD.has(id)) return cached.value;
     if (cached && FORCE_GUARDED.has(id)) {
       // stale 값이 backoff보다 먼저 낡아도 backoff는 유지한다.
       if (cached.backoffUntil !== undefined && cached.backoffUntil > now()) return presentable(cached.value);
@@ -286,15 +292,16 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   /**
    * 창이 있는 성공은 마지막 값을 갈아 끼운다. 창이 없는 성공은 저장값을 지우거나 stale로
    * 바꾸지 않는다. Muse는 그 성공을 세션 미사용으로 잇고, 그 외는 리셋 전인 창만 이번 조회
-   * 시각의 ok로 잇는다. 요금제는 새 응답에 있을 때만 갈아 끼운다.
+   * 시각의 ok로 잇는다. 요금제는 새 응답에 있을 때만 갈아 끼운다. Antigravity는 요금제와
+   * 자격 방법을 더 이상 주지 않으므로 이전에 저장해 둔 값도 잇지 않는다.
    */
   function applySettled(id: ProviderId, result: ProviderResult, at: number): ProviderDto {
     if (isProviderSuccess(result) && result.windows.length > 0) {
       const previous = lastGood.get(id);
       const value: ProviderSuccess = {
         ...result,
-        ...(result.plan || !previous?.plan ? {} : { plan: previous.plan }),
-        ...(result.method || !previous?.method ? {} : { method: previous.method }),
+        ...(id === "antigravity" || result.plan || !previous?.plan ? {} : { plan: previous.plan }),
+        ...(id === "antigravity" || result.method || !previous?.method ? {} : { method: previous.method }),
         ...(result.cycleDays !== undefined || previous?.cycleDays === undefined ? {} : { cycleDays: previous.cycleDays }),
         ...(result.credits || !previous?.credits ? {} : { credits: previous.credits }),
       };

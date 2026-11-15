@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createQuotaLastGoodStore } from "../../src/quota/last-good.js";
 import { normalizeRoutingQuota } from "../../src/fleet/routing-quota.js";
 import { parseMuseCodeSubscriptionUsage } from "../../src/upstream/muse-code/quota.js";
-import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
+import { createAiGatewayQuotaCollectors, createQuotaService, QUOTA_CACHE_TTL_MS } from "../../src/quota/service.js";
 import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth/index.js";
 import type { AuthStorageEntry } from "../../src/auth/types.js";
 import { getJson } from "../../src/quota/windows.js";
@@ -29,6 +29,25 @@ describe("quota service", () => {
     });
     expect((await service.getSummary()).providers.claude).toEqual({ status: "not_connected", method: "keychain" });
     expect(fetchClaude).not.toHaveBeenCalled();
+  });
+
+  it("does not ask antigravity again after signed_out until a forced refresh", async () => {
+    let now = 0;
+    const fetchAntigravity = vi.fn(async () => ({ status: "signed_out" as const }));
+    const service = createQuotaService({
+      now: () => now,
+      isClaudeConnected: async () => false,
+      fetchClaude: async () => ({ status: "signed_out" }),
+      fetchCodex: async () => ({ status: "signed_out" }),
+      fetchAntigravity,
+    });
+    expect((await service.getSummary()).providers.antigravity.status).toBe("signed_out");
+    now = QUOTA_CACHE_TTL_MS + 1;
+    expect((await service.getSummary()).providers.antigravity.status).toBe("signed_out");
+    expect(fetchAntigravity).toHaveBeenCalledTimes(1);
+    expect((await service.getSummary({ forceProvider: "antigravity" })).providers.antigravity.status).toBe("signed_out");
+    expect((await service.getSummary({ force: true })).providers.antigravity.status).toBe("signed_out");
+    expect(fetchAntigravity).toHaveBeenCalledTimes(3);
   });
 
   it("uses a five-minute cache, serves an expired one without lapsed windows, supports force bypass, and single-flights", async () => {
