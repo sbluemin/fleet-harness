@@ -291,6 +291,18 @@ function failureWord(t: T, error: unknown): string {
   return code === "commodore_disabled" ? t("commodore.failed.disabled") : code === "commodore_inactive" ? t("commodore.failed.inactive") : t("commodore.failed", { code });
 }
 
+/** 목표의 그룹 대화도 소유 사령관의 설정을 편집한다. 실행 중인 지휘관 세션의 좌표와는 별개다. */
+export function CommodoreGroupComposerSettings({ commodoreId, language, onFailure }: {
+  readonly commodoreId: string;
+  readonly language: "en" | "ko";
+  readonly onFailure: (message: string | null) => void;
+}) {
+  const { view } = useCommodore(commodoreId);
+  const t = getT(language);
+  useEffect(() => { void loadCommodore(commodoreId); }, [commodoreId]);
+  return view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={(error) => onFailure(failureWord(t, error))} onClear={() => onFailure(null)} /> : null;
+}
+
 /** 드러낼 시각이 읽은 기록 창보다 앞이면 이전 쪽을 이만큼까지 더 읽는다 — 한 요청이 기록 전체를 끌어오지 않게. */
 const REVEAL_PAGE_LIMIT = 10;
 

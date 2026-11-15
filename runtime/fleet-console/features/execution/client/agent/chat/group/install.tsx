@@ -31,7 +31,7 @@ import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useG
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
-import { ComposerTopEntries, ComposerTrailingEntries } from "../composer-top-entries.js";
+import { ComposerTopEntries } from "../composer-top-entries.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
@@ -246,8 +246,8 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       snapshot={snapshot}
       actions={actions}
       language={language}
-      topEntries={phone && recordedObjective ? <ComposerTopEntries /> : null}
-      trailing={!phone && recordedObjective ? <ComposerTrailingEntries /> : null}
+      topEntries={recordedObjective ? <ComposerTopEntries /> : null}
+      renderControls={!phone ? clusters.find((cluster) => cluster.conversation?.objectiveId === root.id)?.conversation?.renderComposerControls : undefined}
       workingLine={workingLine}
       onStopOne={stopOne}
     />
@@ -286,9 +286,9 @@ function StandInComposer({ rootId, language }: { readonly rootId: string; readon
   useConversationDockHeight(dockRef);
   const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
   const actions = useGroupConversationActions(rootId);
-  const recordedObjective = useGroupClusters().some((cluster) => cluster.conversation?.objectiveId === rootId && cluster.conversation.recordedObjective === true);
+  const conversation = useGroupClusters().find((cluster) => cluster.conversation?.objectiveId === rootId)?.conversation;
   return <div ref={dockRef} className="group-standin-dock">
-    <GroupComposer rootObjectiveId={rootId} snapshot={snapshot} actions={actions} language={language} trailing={recordedObjective ? <ComposerTrailingEntries /> : null} onStopOne={stopOne} />
+    <GroupComposer rootObjectiveId={rootId} snapshot={snapshot} actions={actions} language={language} topEntries={conversation?.recordedObjective ? <ComposerTopEntries /> : null} renderControls={conversation?.renderComposerControls} onStopOne={stopOne} />
   </div>;
 }
 

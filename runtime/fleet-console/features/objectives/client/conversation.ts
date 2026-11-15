@@ -1,3 +1,5 @@
+import { createElement } from "react";
+import { CommodoreGroupComposerSettings } from "../../commodore/client/commodore-conversation.js";
 import { objectiveOpenUIPort } from "./openui-ports.js";
 import type { ConversationConsultReply, ConversationMember, ConversationMemberProfile, ConversationMessageVia, ConversationSpeaker, GroupConversationActions, GroupTimelineEntry, ObjectiveClusterConversation } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
@@ -14,7 +16,7 @@ export interface ConversationCrew {
 }
 
 /**
- * Console에는 구현 컴포넌트 대신 명부 표식과 보드 사실만 건넨다. 보드 사실의 글은 보드 행과 같은 함수가 같은 값으로 짓는다.
+ * 명부 표식과 보드 사실은 보드 행과 같은 함수가 같은 값으로 짓는다. 소유 사령관의 설정은 렌더 슬롯으로 제공한다.
  */
 export function objectiveConversation(objective: Objective, toneAt: (index: number) => string, openRecord?: (at: number) => void, actions?: GroupConversationActions, crew?: ConversationCrew): ObjectiveClusterConversation {
   const alias = commodoreAliasOf(objective.commodoreId);
@@ -71,7 +73,14 @@ export function objectiveConversation(objective: Objective, toneAt: (index: numb
     const entry = events.find((event) => event.id === entryId && event.kind === "board-action");
     if (entry && entry.at !== null) openRecord(entry.at);
   } : undefined;
-  return { objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true, commodoreAlias: alias, holds: [], members, decision: null, ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}), events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}) };
+  const renderComposerControls: ObjectiveClusterConversation["renderComposerControls"] = (context) => createElement(CommodoreGroupComposerSettings, { commodoreId: objective.commodoreId, ...context });
+  return {
+    objectiveId: objective.id, openUIOpen: objectiveOpenUIPort(objective.theaterId, objective), recordedObjective: objective.recorded === true,
+    ...(objective.recorded ? { renderComposerControls } : {}),
+    commodoreAlias: alias, holds: [], members, decision: null,
+    ...(crew ? { commander: commanderProfile(objective, crew.roster) } : {}),
+    events, truncated, ...(actions ? { actions } : {}), ...(openBoardAction ? { openBoardAction } : {}),
+  };
 }
 
 /**

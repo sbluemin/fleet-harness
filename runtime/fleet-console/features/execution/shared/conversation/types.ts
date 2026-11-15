@@ -170,6 +170,8 @@ export interface ObjectiveClusterConversation {
   readonly objectiveId: string;
   /** 플러그인이 기록한 목표의 대화일 때만 true다. 일반 Objective의 빈 보드·명부·동작으로 추정하지 않는다. */
   readonly recordedObjective?: boolean;
+  /** 소유 기능이 제공하는 입력창 설정. 실행 기능은 설정의 값이나 변경 대상을 해석하지 않는다. */
+  readonly renderComposerControls?: (context: { readonly language: "en" | "ko"; readonly onFailure: (message: string | null) => void }) => ReactNode;
   /**
    * 이 보드를 연 사령관의 별칭 — 그룹 대화가 사령관 발화자의 역할 이름(「Commodore」)을 이 별칭으로 읽는다.
    * 없으면 역할 이름을 화면 언어로 읽는다. 보드를 공급하는 쪽(objectives)이 호스트 창구로 읽어 싣는다.
