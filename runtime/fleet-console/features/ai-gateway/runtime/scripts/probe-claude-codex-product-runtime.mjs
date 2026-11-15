@@ -201,7 +201,6 @@ export async function createProductProbeRuntime(gateway, options, trigger) {
     originator: "fleet-console",
     readAuth: () => auth,
     readXaiToken: () => null,
-    readAntigravityToken: () => null,
     fetch: fetchImpl,
     compactionStore: store,
     compactionHookToken: hookToken,

@@ -16,8 +16,6 @@ import {
   UnsupportedAnthropicContentError,
 } from "../downstream/wire/anthropic-messages/protocol.js";
 import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-messages/protocol.js";
-import { AntigravityGenerateContentAdapter } from "../upstream/antigravity/generate-content/adapter.js";
-import { resolveAntigravityCredentials } from "../upstream/antigravity/credentials.js";
 import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../upstream/codex/responses/adapter.js";
 import { compactCodexConversation } from "../upstream/codex/compaction.js";
@@ -41,7 +39,6 @@ import {
   stripClaudeCompactContinuation,
   stripClaudeCompactPrompt,
 } from "../downstream/harness/claude-code/context.js";
-import { defaultCredentialDeps } from "../transport/credentials.js";
 import { findCauseCode } from "../transport/upstream-sse.js";
 import { createUpstreamGate } from "../transport/upstream-gate.js";
 import type { UpstreamGateOriginStats } from "../transport/upstream-gate.js";
@@ -50,6 +47,7 @@ import type { GatewayFailureSink } from "../transport/failure-journal.js";
 import { RequestClock } from "../transport/request-timing.js";
 import type { GatewayRequestTimingSink } from "../transport/request-timing.js";
 
+import { createAgyAcpBridge, type AcpSessionPort, type AgyAcpBridge } from "../acp/index.js";
 import { applyGatewayRequestPolicy } from "./request-policy.js";
 import {
   applyDecisiveRefusalHeaders,
@@ -103,28 +101,6 @@ export interface CodexSubscriptionAuth {
 }
 
 
-/**
- * The credential the Antigravity CLI (`agy`) left in the OS credential store or
- * its token file.
- *
- * Fleet holds no Antigravity OAuth client and mints no token of its own: `agy
- * login` owns the sign-in, and this reader only decodes what that CLI wrote. A
- * lapsed token is renewed by running the vendor CLI so it renews its own
- * credential, then reading the store again; `forceRenew` asks for that even
- * while the local clock still calls the token healthy, which is what a turn
- * refused upstream with 401/403 needs. Windows skips the renewal spawn (the
- * vendor auto-updater flashes a terminal window there) and only re-reads.
- */
-export async function readAntigravitySubscriptionToken(
-  options: { readonly forceRenew?: boolean } = {},
-): Promise<string | null> {
-  const credentials = await resolveAntigravityCredentials(
-    defaultCredentialDeps,
-    options.forceRenew === true ? { forceRefresh: true } : {},
-  );
-  return credentials?.accessToken ?? null;
-}
-
 /** 호스트가 조달한 추론 키만 받는다. 계정 토큰은 라우터나 추론 헤더에 닿지 않는다. */
 export type MuseCodeInferenceAuth =
   | { readonly status: "ok"; readonly credentials: { readonly apiKey: string; readonly baseUrl?: string } }
@@ -161,14 +137,12 @@ export interface AiGatewayRouteDeps {
   // 접근 금지), 각 호스트가 export된 reader를 명시 주입한다.
   readonly readAuth: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
   readonly readXaiToken?: () => string | null | Promise<string | null>;
-  readonly readAntigravityToken?: () => string | null | Promise<string | null>;
   /**
-   * Re-read the Antigravity credential after the upstream refused it, renewing
-   * it first except on Windows (no renewal spawn there). Absent means a refused
-   * token ends the turn, which is what happens
-   * for every provider that cannot renew on demand.
+   * The agy ACP session port Gemini (Antigravity) models are served through. Absent means those models
+   * are refused with 503. The router builds one bridge from it, keeps it for its lifetime, and closes
+   * every agy child and the bridge's MCP listener in `dispose()`.
    */
-  readonly renewAntigravityToken?: () => string | null | Promise<string | null>;
+  readonly agyAcpPort?: AcpSessionPort;
   /** Muse Code 로그인 판정. 미주입이면 Muse Code 모델은 미로그인으로 거절된다. */
   readonly readMuseCodeAuth?: () => MuseCodeInferenceAuth | Promise<MuseCodeInferenceAuth>;
   /** 401에서만 한 번 호출한다. 호스트가 quota 조회와 single-flight·backoff를 공유한다. */
@@ -227,8 +201,11 @@ export interface AiGatewayRouter {
   readonly handle: GatewayHttpHandler;
   /** Live upstream occupancy per provider origin. Empty when nothing is in flight. */
   upstreamStats(): readonly UpstreamGateOriginStats[];
-  /** Dispose only router-owned provider state; injected gateways remain externally owned. */
-  dispose(): void;
+  /**
+   * Dispose only router-owned provider state; injected gateways remain externally owned. Resolves once the
+   * agy children and the bridge's MCP listener are gone when the router owns a bridge.
+   */
+  dispose(): void | Promise<void>;
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
@@ -262,22 +239,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     deps.maxUpstreamInFlight === undefined ? {} : { maxInFlight: deps.maxUpstreamInFlight },
   );
   const fetchImpl = upstreamGate.fetch as typeof fetch;
-  // Antigravity's adapter is built once and kept: it carries the reasoning-blob
-  // ledger that lets a turn recover a `thoughtSignature` the client did not
-  // replay, and a per-request adapter would forget it between the two halves of
-  // one tool round-trip. The gateway wrapper is lazy so a session that never
-  // selects an Antigravity model pays nothing for it.
-  let ownedAntigravityGateway: AnthropicMessagesGateway | undefined;
-  const antigravityGateway = (): AnthropicMessagesGateway => {
-    ownedAntigravityGateway ??= new AnthropicMessagesGateway(
-      new AntigravityGenerateContentAdapter({
-        fetch: fetchImpl,
-        ...(deps.renewAntigravityToken
-          ? { renewCredential: async () => (await deps.renewAntigravityToken?.()) ?? null }
-          : {}),
-      }),
-    );
-    return ownedAntigravityGateway;
+  // The agy bridge is stateful (live sessions between requests), so it is built once and kept. It is
+  // lazy: a host that never serves a Gemini model starts no listener.
+  let ownedAgyBridge: AgyAcpBridge | undefined;
+  let agyBridgeGatewayInstance: AnthropicMessagesGateway | undefined;
+  const agyBridgeGateway = (port: AcpSessionPort): AnthropicMessagesGateway => {
+    ownedAgyBridge ??= createAgyAcpBridge({ port });
+    agyBridgeGatewayInstance ??= new AnthropicMessagesGateway(ownedAgyBridge);
+    return agyBridgeGatewayInstance;
   };
   // 창을 감당 못 해 본문이 한 번 보류된 스킬들. 이 라우터가 사는 동안 유지해야
   // 다음 세션의 첫 요청부터 목록에서 빠진다 — 프로세스당 한 번만 낭비되는 턴이 된다.
@@ -559,13 +528,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       credential = auth.credentials.apiKey;
-    } else if (target?.provider === "antigravity") {
-      const antigravityToken = await deps.readAntigravityToken?.();
-      if (!antigravityToken) {
-        refuseProviderSignIn("No active Antigravity sign-in was found. Run `agy` and sign in first.");
-        return true;
-      }
-      credential = antigravityToken;
     }
     clock?.markCredential();
 
@@ -604,28 +566,35 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
               : {}),
           })
         : undefined;
+      if (target.provider === "antigravity" && !deps.gateway && !deps.agyAcpPort) {
+        writeClientError(res, 503, "api_error", `${requested} is served through the agy ACP bridge, which this host did not configure.`);
+        clock?.finish("error", 503);
+        return true;
+      }
       const gateway = deps.gateway
-        ?? (target.provider === "xai"
+        ?? (target.provider === "antigravity"
+          // 브리지는 agy가 소유한 구독 로그인으로 말하므로 이 라우터는 Gemini 자격을 조달하지 않는다.
+          // 상태를 가진 어댑터라 요청마다 만들지 않고 호스트가 준 하나를 쓴다.
+          ? agyBridgeGateway(deps.agyAcpPort!)
+          : target.provider === "xai"
           ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
             fetch: requestFetch,
             endpoint: xaiEndpoint(),
           }))
-          : target.provider === "antigravity"
-            ? antigravityGateway()
-            : target.provider === "muse-code"
-              ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
-                fetch: requestFetch,
-                ...(deps.renewMuseCodeAuth ? { renewApiKey: async (failedKey: string) => {
-                  const auth = await deps.renewMuseCodeAuth!(failedKey);
-                  if (auth.status !== "ok") return undefined;
-                  credential = auth.credentials.apiKey;
-                  return credential;
-                } } : {}),
-                ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: (windows: readonly QuotaWindow[]) => deps.observeMuseCodeUsage!(windows, credential) } : {}),
-                ...(harness.messagingToolNames ? { messagingToolNames: harness.messagingToolNames } : {}),
-                ...(harness.yieldToolCalls ? { yieldToolCalls: harness.yieldToolCalls } : {}),
-              }))
-              : new AnthropicMessagesGateway(codexAdapter!));
+          : target.provider === "muse-code"
+            ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
+              fetch: requestFetch,
+              ...(deps.renewMuseCodeAuth ? { renewApiKey: async (failedKey: string) => {
+                const auth = await deps.renewMuseCodeAuth!(failedKey);
+                if (auth.status !== "ok") return undefined;
+                credential = auth.credentials.apiKey;
+                return credential;
+              } } : {}),
+              ...(deps.observeMuseCodeUsage ? { onSubscriptionUsage: (windows: readonly QuotaWindow[]) => deps.observeMuseCodeUsage!(windows, credential) } : {}),
+              ...(harness.messagingToolNames ? { messagingToolNames: harness.messagingToolNames } : {}),
+              ...(harness.yieldToolCalls ? { yieldToolCalls: harness.yieldToolCalls } : {}),
+            }))
+            : new AnthropicMessagesGateway(codexAdapter!));
       const modelContextWindow = typeof target.contextWindow === "number"
         && Number.isFinite(target.contextWindow)
         && target.contextWindow > 0
@@ -812,6 +781,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     dispose: () => {
       upstreamGate.dispose();
       codexCompactionFlights.clear();
+      return ownedAgyBridge?.dispose();
     },
   };
 }

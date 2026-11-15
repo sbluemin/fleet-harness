@@ -6,7 +6,6 @@ import {
 import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-messages/protocol.js";
 import type { GatewayModel, GatewayProvider } from "../models.js";
 import { upstreamModelId } from "../models.js";
-import { antigravityRequestPolicy } from "../upstream/antigravity/request-policy.js";
 import { codexRequestPolicy } from "../upstream/codex/request-policy.js";
 import { museCodeRequestPolicy } from "../upstream/muse-code/request-policy.js";
 import { xaiRequestPolicy } from "../upstream/xai/request-policy.js";
@@ -67,6 +66,15 @@ export interface GatewayRequestPolicy {
 
 const claudeRequestPolicy: GatewayRequestPolicy = {
   provider: "claude",
+  shapeRequest: (request) => request,
+};
+
+/**
+ * Antigravity (Gemini) models are served by the agy ACP bridge (`src/acp/`), which keeps Claude Code's own
+ * system prompt, tools and messages as they are, so nothing is withheld or rewritten here.
+ */
+const antigravityRequestPolicy: GatewayRequestPolicy = {
+  provider: "antigravity",
   shapeRequest: (request) => request,
 };
 

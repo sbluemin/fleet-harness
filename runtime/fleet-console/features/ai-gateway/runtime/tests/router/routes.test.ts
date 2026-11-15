@@ -2,6 +2,7 @@ import { decideGatewayRoutingBatch, NoEnabledGatewayModelsError } from "../../sr
 import { GatewayRoutingDistribution } from "../../src/fleet/routing-distribution.js";
 import {
   AnthropicMessagesGateway,
+  createAgyAcpSessionPort,
   createClaudeCodexCompactionStore,
   createProviderAuthService,
   createMuseCodeOAuth,
@@ -19,6 +20,7 @@ import type {
 } from "../../src/index.js";
 import type { GatewayFailureRecord, GatewayRequestTimingRecord } from "../../src/index.js";
 import type { GatewayHttpHandlerContext } from "../../src/router/types.js";
+import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import http from "node:http";
 import net from "node:net";
@@ -1773,6 +1775,62 @@ describe("route surface", () => {
     expect(res.status).toBe(400);
     expect(res.body).toContain("Unsupported Anthropic content block type: tool_removal_v9");
     expect(streamSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("agy ACP bridge route", () => {
+  const fakeAgy = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "acp", "fake-agy.mjs");
+  const GEMINI = "claude-gateway--antigravity--gemini-4-argon[1m]";
+
+  function agyRouter(directory: string, models?: string) {
+    const port = createAgyAcpSessionPort({
+      sessionsDir: path.join(directory, "sessions"),
+      command: process.execPath,
+      commandArgs: [fakeAgy],
+      env: { ...process.env, FAKE_BRIDGE: "1", FAKE_LOG: path.join(directory, "fake.log"), ...(models ? { FAKE_MODELS: models } : {}) },
+    });
+    return createAiGatewayRouter({ agyAcpPort: port });
+  }
+
+  it("serves a Gemini model through the agy bridge as a tool_use turn and closes every agy child on dispose", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agy-route-"));
+    try {
+      const router = agyRouter(directory);
+      const res = response();
+      await router.handle(ctx({
+        res,
+        token: ANTHROPIC_CRED,
+        model: GEMINI,
+        messages: [{ role: "user", content: 'TOOL:Bash:{"command":"ls"}' }],
+        tools: [{ name: "Bash", description: "Run a command", input_schema: { type: "object", properties: { command: { type: "string" } } } }],
+      }));
+      expect(res.status).toBe(200);
+      expect(res.body).toContain('"type":"tool_use"');
+      expect(res.body).toContain('"name":"Bash"');
+      expect(res.body).toContain('"stop_reason":"tool_use"');
+      expect(fs.readdirSync(path.join(directory, "sessions"))).toHaveLength(1);
+      // Disposing the router ends the held agy session: no child and no session directory survive it.
+      await router.dispose();
+      expect(fs.readFileSync(path.join(directory, "fake.log"), "utf8")).toContain('"terminated":true');
+      expect(fs.readdirSync(path.join(directory, "sessions"))).toEqual([]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("answers a model the agy account does not offer with a 400 that names it, which Claude Code does not retry", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agy-route-"));
+    try {
+      const router = agyRouter(directory, "gemini-4-carbon-low,gemini-4-carbon-medium,gemini-4-carbon-high");
+      const res = response();
+      await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: GEMINI }));
+      expect(res.status).toBe(400);
+      expect(res.body).toContain("gemini-4-argon");
+      expect(res.body).toContain("invalid_request_error");
+      await router.dispose();
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
   });
 });
 

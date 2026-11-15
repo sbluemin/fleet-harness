@@ -8,7 +8,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@fleet-console/process";
-import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId, visibleGatewayModels } from "@fleet-console/ai-gateway";
+import { exposableEffortLadder, findGatewayModel, GATEWAY_REASONING_EFFORTS, isAcpGatewayModelId, resolveAiGatewaySelection, toClaudeGatewayModelId, visibleGatewayModels } from "@fleet-console/ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort, ProviderStatusMap } from "@fleet-console/ai-gateway";
 import { ALL_SUBAGENTS, OBJECTIVE_PEER_TOOLS, createSessionCaptureHookExec, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliId, resolveAgentCliProfile, resolveNativeClaudeModelAlias, type AgentCliId, type AgentCliProfile, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin, LaunchPromptError, type FleetGatewayAgentRuntimeLifecycle, type LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import { modelSpeedLaunchEnv, prepareAiGatewayLaunchProfile, type ModelSpeedChoice } from "@fleet-console/ai-gateway";
@@ -374,7 +374,8 @@ async function createAgentCliLaunchSpec(options: {
       prompt: options.prompt,
       sessionName: options.sessionName,
     });
-    const basePromptEnabled = options.commodoreSystemPrompts?.basePromptEnabled(options.commodoreId) ?? true;
+    // Gemini 세션은 사령관 설정과 상관없이 Claude Code 기본 시스템 프롬프트 없이 연다 — agy는 그 텍스트를 받지 않는다.
+    const basePromptEnabled = (options.commodoreSystemPrompts?.basePromptEnabled(options.commodoreId) ?? true) && !isAcpGatewayModelId(resolvedModel);
     const pluginDirs = options.commodoreId ? options.commodorePluginDirs?.(options.commodoreId) ?? [] : [];
     const pluginEnv = options.commodoreId && pluginDirs.length ? options.commodorePluginEnv?.(options.commodoreId) : undefined;
     const injectedProfile = await options.injectProfile(profile, {

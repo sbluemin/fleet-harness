@@ -31,7 +31,7 @@ Options:
 Example:
   pnpm --filter @fleet-console/ai-gateway e2e:provider-loop -- --model 'claude-gateway--codex--gpt-6.1-sol' --auth-path <console-dir>/auth.json --operations 3 --trials 5 --confirm-live-provider
 
-Antigravity reads its vendor CLI credential, so it needs no --auth-path.
+Antigravity (Gemini) models go to the agy ACP bridge, not an upstream wire, so this loop does not exercise them.
 
 FLEET_GATEWAY_WIRE_LOG records raw prompt and tool payloads. Use it only with an isolated
 scratch path after explicit opt-in; credentials are not recorded, but the payloads are sensitive.
@@ -419,7 +419,6 @@ async function runTrialWithLifecycle({ gateway, options, target }) {
     originator: "core-ai-gateway-provider-loop-e2e",
     readAuth: async () => (await codex?.readSubscription()) ?? null,
     readXaiToken: async () => (await xai?.readSubscriptionToken()) ?? null,
-    readAntigravityToken: gateway.readAntigravitySubscriptionToken,
   });
   const server = createTrialServer(router);
   let serverClosed = false;
