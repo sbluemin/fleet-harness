@@ -12,7 +12,7 @@ import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth
 import type { AuthStorageEntry } from "../../src/auth/types.js";
 import { getJson } from "../../src/quota/windows.js";
 import { OPENCODE_AUTH_PROVIDER_ID, OPENCODE_GO_USAGE_URL } from "../../src/upstream/opencode-go/coordinates.js";
-import type { ProviderSuccess } from "../../src/quota/types.js";
+import type { ProviderResult, ProviderSuccess } from "../../src/quota/types.js";
 
 function ok(fetchedAt: number, usedPercent = 10): ProviderSuccess {
   return { status: "ok", fetchedAt, windows: [{ id: "session", usedPercent }] };
@@ -62,6 +62,28 @@ describe("quota service", () => {
     expect((await service.getSummary()).providers.antigravity).toEqual({ status: "not_connected" });
     expect((await service.getSummary({ force: true })).providers.antigravity).toEqual({ status: "not_connected" });
     expect(fetchAntigravity).not.toHaveBeenCalled();
+  });
+
+  it("does not let a forced refresh join a read that a record invalidated", async () => {
+    const gates: Array<(value: ProviderResult) => void> = [];
+    const fetchAntigravity = vi.fn(() => new Promise<ProviderResult>((resolve) => { gates.push(resolve); }));
+    const service = createQuotaService({
+      isClaudeConnected: async () => false,
+      fetchClaude: async () => ({ status: "signed_out" }),
+      fetchCodex: async () => ({ status: "signed_out" }),
+      fetchAntigravity,
+      antigravityEnabled: () => true,
+    });
+    const first = service.getSummary({ forceProvider: "antigravity" });
+    await Promise.resolve();
+    expect(gates).toHaveLength(1);
+    service.record("antigravity", { status: "not_connected" });
+    const second = service.getSummary({ forceProvider: "antigravity" });
+    expect(gates).toHaveLength(2);
+    gates[0]?.({ status: "ok", windows: [{ id: "session", usedPercent: 1 }], fetchedAt: 1 });
+    gates[1]?.({ status: "ok", windows: [{ id: "session", usedPercent: 4 }], fetchedAt: 2 });
+    expect((await first).providers.antigravity.status).toBe("not_connected");
+    expect((await second).providers.antigravity).toMatchObject({ status: "ok", windows: [{ usedPercent: 4 }] });
   });
 
   it("uses a five-minute cache, serves an expired one without lapsed windows, supports force bypass, and single-flights", async () => {

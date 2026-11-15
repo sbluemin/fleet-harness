@@ -180,7 +180,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       // 깨진 저장소는 없는 것과 같다. 다음 성공이 파일을 다시 쓴다.
     }
   }
-  const inFlight = new Map<ProviderId, Promise<ProviderDto>>();
+  const inFlight = new Map<ProviderId, { readonly revision: number | undefined; readonly task: Promise<ProviderDto> }>();
   /** 공급자별 마지막 추론 관측 시각. 그보다 먼저 시작한 조회는 관측값을 덮지 못한다. */
   const observedAt = new Map<ProviderId, number>();
   const revisions = new Map<ProviderId, number>();
@@ -233,7 +233,10 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       cache.delete(id);
     }
     const pending = inFlight.get(id);
-    if (pending) return pending;
+    // record()가 revision을 올리면 진행 중 읽기는 자기 결과를 버린다. force가 그 읽기에
+    // 합류하면 방금 무효화된 값이 캐시 TTL 동안 남는다. 그 경우에는 새 읽기를 시작한다.
+    const invalidated = pending !== undefined && revisions.get(id) !== pending.revision;
+    if (pending && !(force && invalidated)) return pending.task;
     const startedAt = now();
     const revision = revisions.get(id);
     const currentMutation = () => revisions.get(id) !== revision ? cache.get(id)?.value : undefined;
@@ -264,8 +267,10 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         });
         return value;
       })
-      .finally(() => inFlight.delete(id));
-    inFlight.set(id, task);
+      .finally(() => {
+        if (inFlight.get(id)?.task === task) inFlight.delete(id);
+      });
+    inFlight.set(id, { revision, task });
     return task;
   }
 
