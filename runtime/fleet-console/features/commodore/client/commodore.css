@@ -1291,12 +1291,12 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
   border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums;
 }
-/* 폭이 줄면 앞표시(880px 이하) → 사령관·지휘관 칩은 공급자 글리프만(660px 이하) 순으로 접힌다(title·aria-label은 전체 좌표 유지). */
-@container fc-composer (max-width: 880px) {
+/* 입력 캡슐이 아닌 대화 칸 폭으로 접는다 — 이동 전과 같은 창 폭에서 앞표시(880px 이하) → 모델 글리프만(660px 이하) 순서다. */
+@container group-chat (max-width: 880px) {
   .commodore-composer-chip-label { display: none; }
   .commodore-composer-chip .commodore-composer-chip-value { max-width: 116px; }
 }
-@container fc-composer (max-width: 660px) {
+@container group-chat (max-width: 660px) {
   .commodore-composer-chip[data-section="theaters"] { padding: 0 8px; gap: 4px; }
   .commodore-composer-chip[data-section="pool"] { padding: 0 8px; }
   .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) { flex: none; width: var(--fc-composer-circle, 28px); padding: 0; justify-content: center; }
