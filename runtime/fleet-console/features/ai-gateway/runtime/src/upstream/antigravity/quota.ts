@@ -136,6 +136,15 @@ function isEnoent(error: unknown): boolean {
   return (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
 }
 
+/** The default launcher. `windowsHide` is on the call itself so a hidden window is not optional. */
+function spawnHiddenAgy(
+  file: string,
+  args: readonly string[],
+  options: SpawnOptions,
+): ReturnType<AntigravityCliSpawn> {
+  return nodeSpawn(file, [...args], { ...options, windowsHide: true });
+}
+
 function runAgy(
   spawnImpl: AntigravityCliSpawn,
   file: string,
@@ -362,7 +371,7 @@ export async function fetchAntigravityUsage(deps: AntigravityQuotaDeps = {}): Pr
   const credentialDeps = deps.credentials ?? defaultCredentialDeps;
   const now = deps.now ?? Date.now;
   const statPath = deps.stat ?? nodeStat;
-  const spawnImpl = deps.spawn ?? (nodeSpawn as AntigravityCliSpawn);
+  const spawnImpl = deps.spawn ?? spawnHiddenAgy;
   const command = optionalTrimmedString(credentialDeps.env.FLEET_ANTIGRAVITY_CLI) ?? "agy";
   const located = await locateAgy(command, credentialDeps.platform, credentialDeps.env, statPath);
   if (!located) return { status: "signed_out" };
