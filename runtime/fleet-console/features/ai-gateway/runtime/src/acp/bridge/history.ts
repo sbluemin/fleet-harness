@@ -20,7 +20,7 @@ function sha(text: string): string {
 }
 
 /** 키를 정렬한 JSON. 도구 입력이 왕복하며 키 순서가 바뀌어도 같은 지문이 나오게 한다. */
-function stableJson(value: unknown): string {
+export function stableJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
   if (typeof value === "object" && value !== null) {
     const entries = Object.entries(value as Record<string, unknown>)

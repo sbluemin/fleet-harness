@@ -56,8 +56,11 @@ const assistant = (text: string): CanonicalInputItem => ({ type: "message", role
 const call = (id: string, args: object): CanonicalInputItem => ({ type: "function_call", call_id: id, name: "Bash", arguments: JSON.stringify(args) });
 const result = (id: string, output: string): CanonicalInputItem => ({ type: "function_call_output", call_id: id, output });
 
+// A tool name too long for agy gets an alias; the alias must be the same on every request or each request would open a new session.
+const LONG_TOOL = { type: "function" as const, name: "mcp__plugin_context7_context7__resolve-library-id", parameters: { type: "object", properties: {} } };
+
 async function turn(bridge: AgyAcpBridge, input: CanonicalInputItem[], instructions = "be brief") {
-  const request: CanonicalResponseRequest = { model: MODEL, input, instructions, tools: [BASH], stream: true };
+  const request: CanonicalResponseRequest = { model: MODEL, input, instructions, tools: [BASH, LONG_TOOL], stream: true };
   const response = await bridge.stream(request, { apiKey: "" });
   if (!response.ok) throw new Error(`bridge refused with ${response.status}`);
   const events: CanonicalResponseEvent[] = [];
@@ -124,7 +127,19 @@ describe("agy ACP bridge", () => {
     expect(schema.properties.batch).toEqual({ type: "array", items: {} });
     expect(schema.properties.flags).toEqual({ type: "array", items: {} });
     expect(schema.properties.add.properties.evidence.items.oneOf[0]!.properties.note.pattern).toBe(String.raw`^[^\x{0000}-\x{001f}\x{007f}]+$`);
-    expect(entries.find((entry) => entry.mcpTools)).toMatchObject({ mcpTools: ["Bash"], eager: ["Bash"], timeoutSeconds: 3600 });
+    expect(entries.find((entry) => entry.mcpTools)).toMatchObject({
+      mcpTools: ["Bash", expect.stringMatching(/^mcp__plugin_context7_context7__resolve_[0-9a-f]{8}$/)],
+      eager: ["Bash", expect.stringMatching(/^mcp__plugin_context7_context7__resolve_[0-9a-f]{8}$/)],
+      timeoutSeconds: 3600,
+    });
+
+    // The session was opened with the instructions and tool definitions it was given: the same names with different instructions or
+    // a different tool description must not reuse it (it would never see the change), and the same request keeps reusing it.
+    const history4: CanonicalInputItem[] = [...history, assistant("got:a.txt"), user("hello"), assistant(textOf(third.message)), user("again")];
+    const fourth = await turn(bridge, history4, "be terse");
+    expect(count(await log(), "session/new")).toBe(2);
+    await turn(bridge, [...history4, assistant(textOf(fourth.message)), user("more")], "be terse");
+    expect(count(await log(), "session/new")).toBe(2);
   });
 
   it("rebuilds in a new session, keeping the user role, when user text arrives beside a tool result, and closes the held session; logs only counts", async () => {
@@ -155,6 +170,9 @@ describe("agy ACP bridge", () => {
       expect(requests[0]).toMatchObject({ route: "fresh", tailToolResults: 0, tailUserTexts: 0, tailReminderTexts: 0 });
       expect(requests[1]).toMatchObject({ route: "rebuild", reason: "user content beside the tool results", tailToolResults: 1, tailUserTexts: 1, tailReminderTexts: 1 });
       expect(JSON.stringify(requests)).not.toContain("SECRET-REMINDER");
+      // Hash prefixes of the session's fixed configuration are logged so a real run can show they are stable between requests.
+      expect(requests[0]).toMatchObject({ instructionsHash: expect.stringMatching(/^[0-9a-f]{8}$/), toolsHash: expect.stringMatching(/^[0-9a-f]{8}$/) });
+      expect(requests[1]).toMatchObject({ instructionsHash: (requests[0] as { instructionsHash: string }).instructionsHash, toolsHash: (requests[0] as { toolsHash: string }).toolsHash });
     } finally {
       wire.cleanup();
     }

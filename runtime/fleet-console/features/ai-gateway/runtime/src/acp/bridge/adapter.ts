@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import os from "node:os";
 
 import {
@@ -21,6 +21,7 @@ import { AGY_INERT_TOOL_TITLES, toolOnlyTitlePrefix } from "../tool-only.js";
 import {
   chainAfterAssistant,
   chainOf,
+  stableJson,
   REPLAY_SYSTEM_NOTE,
   replayBlocks,
   userTurnBlocks,
@@ -90,16 +91,28 @@ const DEFAULTS = {
 } as const;
 const MCP_TOOL_NAME = /^[A-Za-z_][A-Za-z0-9_.-]{0,47}$/;
 
+/** 브리지가 세션 system prompt(append)에 싣는 지침 — 세션 신원의 일부이기도 하다. */
+function sessionInstructions(request: CanonicalResponseRequest): string {
+  return stripClaudeCodeIdentity(request.instructions ?? "");
+}
+
 function bridgeNote(): string {
   return "Call tools by their listed `mcp_fleet_` names (`Bash` → `mcp_fleet_Bash`). Do not work around unavailable tools.";
 }
 
-/** MCP로 노출할 이름: agy·Gemini가 받는 형식이면 그대로, 아니면 되돌릴 수 있는 별칭. */
+/**
+ * MCP로 노출할 이름: agy·Gemini가 받는 형식이면 그대로, 아니면 **원래 이름의 해시**로 만든 별칭.
+ *
+ * 결정적이어야 한다: 같은 도구는 요청마다 같은 별칭을 받아야 도구 이름 집합(세션 신원)이 바뀌지 않고, 그래야
+ * 이력이 이어진다. 무작위 별칭은 이름이 긴 도구 하나만 있어도 매 요청이 새 세션이 되게 한다. 별칭 충돌(앞 38자 + 해시 8자가
+ * 같은 서로 다른 이름 둘)은 해시를 16자로 늘려 풀며, 이것도 이름만으로 정해진다.
+ */
 function exposedName(name: string, taken: ReadonlyMap<string, string>): string {
-  const base = MCP_TOOL_NAME.test(name)
-    ? name
-    : `${name.replace(/[^A-Za-z0-9_.-]/g, "_").replace(/^[^A-Za-z_]/, "_").slice(0, 38)}_${randomUUID().slice(0, 8)}`;
-  return taken.has(base) && taken.get(base) !== name ? `${base.slice(0, 38)}_${randomUUID().slice(0, 8)}` : base;
+  if (MCP_TOOL_NAME.test(name)) return name;
+  const digest = createHash("sha256").update(name, "utf8").digest("hex");
+  const stem = name.replace(/[^A-Za-z0-9_.-]/g, "_").replace(/^[^A-Za-z_]/, "_").slice(0, 38);
+  const alias = `${stem}_${digest.slice(0, 8)}`;
+  return taken.has(alias) && taken.get(alias) !== name ? `${stem.slice(0, 29)}_${digest.slice(0, 16)}` : alias;
 }
 
 /**
@@ -322,7 +335,13 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
     }
 
     const catalog = toolCatalog(request);
-    const seed = `${selection.baseId}|${selection.thoughtLevel}|${[...catalog.names.keys()].sort().join(",")}`;
+    // 세션 신원 = agy가 세션을 열 때 고정하는 모든 것: 모델·강도, 도구의 원래 이름 집합, **노출하는 도구 정의 전체**(이름·설명·정규화 스키마)와
+    // 브리지가 append에 넣는 지침. 이름은 그대로인 채 지침이나 도구 정의가 바뀌면 옛 세션은 새 내용을 모르므로 rebuild로 간다.
+    // 요청마다 달라지는 값이 섞이면 매 요청 rebuild가 되므로 두 해시 앞 8자를 wire log에 남긴다(내용은 남기지 않는다).
+    const instructions = sessionInstructions(request);
+    const instructionsHash = createHash("sha256").update(instructions, "utf8").digest("hex");
+    const toolsHash = createHash("sha256").update(stableJson(catalog.tools.map((tool) => [tool.name, tool.description, tool.inputSchema])), "utf8").digest("hex");
+    const seed = `${selection.baseId}|${selection.thoughtLevel}|${[...catalog.names.values()].sort().join(",")}|${instructionsHash}|${toolsHash}`;
     const chain = chainOf(seed, request.input);
     const plan = this.classify(chain, request.input);
     wireLog("bridge.request", {
@@ -331,6 +350,8 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       ...("session" in plan ? { session: plan.session.key } : {}),
       items: request.input.length,
       tools: catalog.tools.length,
+      instructionsHash: instructionsHash.slice(0, 8),
+      toolsHash: toolsHash.slice(0, 8),
       ...tailCounts(request.input),
     });
 
@@ -464,7 +485,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         model: request.model,
         thoughtLevel: selection.thoughtLevel,
         cwd: os.tmpdir(),
-        systemPrompt: [stripClaudeCodeIdentity(request.instructions ?? ""), bridgeNote(), ...(replayed ? [REPLAY_SYSTEM_NOTE] : [])].filter((part) => part.length > 0).join("\n\n"),
+        systemPrompt: [sessionInstructions(request), bridgeNote(), ...(replayed ? [REPLAY_SYSTEM_NOTE] : [])].filter((part) => part.length > 0).join("\n\n"),
         mcpServers: [],
         toolOnly: {
           serverName: MCP_SERVER_NAME,
