@@ -217,9 +217,9 @@ function renderedLength(turns: readonly Turn[], cap: number): number {
  * 결과(다음 user 턴)가 함께 나가고 역할 순서가 깨지지 않는다. 첫 턴(대화의 목적)은 남긴다. `protectLatestUser`면
  * 마지막 사용자 텍스트 턴과 그 뒤(지금 진행 중인 도구 루프)는 뺄 수 없다. 생략한 턴 수는 턴이 아닌 한 줄로 표시한다.
  */
-function fitHistory(turns: readonly Turn[], budgetChars: number, protectLatestUser: boolean): string[] {
+function fitHistory(turns: readonly Turn[], budgetChars: number, protectLatestUser: boolean): { readonly lines: string[]; readonly omittedTurns: number } {
   for (const cap of TRUNCATION_CAPS) {
-    if (renderedLength(turns, cap) <= budgetChars) return turns.map((turn) => renderTurn(turn, cap));
+    if (renderedLength(turns, cap) <= budgetChars) return { lines: turns.map((turn) => renderTurn(turn, cap)), omittedTurns: 0 };
   }
   const cap = TRUNCATION_CAPS[TRUNCATION_CAPS.length - 1]!;
   let protectedFrom = turns.length;
@@ -241,7 +241,7 @@ function fitHistory(turns: readonly Turn[], budgetChars: number, protectLatestUs
   }
   const lines = kept.map((turn) => renderTurn(turn, cap));
   if (omitted > 0) lines.splice(dropFrom, 0, `[${omitted} earlier turns omitted]`);
-  return lines;
+  return { lines, omittedTurns: omitted };
 }
 
 /** 마지막 assistant 항목 뒤의 user·도구 결과 꼬리의 시작 위치. */
@@ -260,19 +260,28 @@ function currentRunStart(items: readonly CanonicalInputItem[]): number {
  * 새 세션의 첫 프롬프트. 이력이 없으면(첫 요청) 재주입 없이 user 텍스트만 보낸다.
  * 마지막 요청이 사용자 메시지면 그 텍스트를 이력 뒤에 그대로 붙이고, 도구 결과면 "이어서 진행하라"를 붙인다.
  */
-export function replayBlocks(items: readonly CanonicalInputItem[], budgetChars: number): AcpPromptBlock[] {
+export function replayBlocks(
+  items: readonly CanonicalInputItem[],
+  budgetChars: number,
+): { readonly blocks: AcpPromptBlock[]; readonly replayChars: number; readonly omittedTurns: number } {
   const start = currentRunStart(items);
-  if (start === 0) return userTurnBlocks(items);
+  if (start === 0) return { blocks: userTurnBlocks(items), replayChars: 0, omittedTurns: 0 };
   const current = items.slice(start);
   const endsWithToolResults = current.some((item) => item.type === "function_call_output");
   // 현재 꼬리가 사용자 메시지뿐이면 이력에서 빼 마지막 질문으로 쓰고, 도구 결과가 있으면 이력에 넣고 이어가라고 한다.
   const historyItems = endsWithToolResults ? items : items.slice(0, start);
-  const lines = fitHistory(toTurns(historyItems), budgetChars, endsWithToolResults);
+  const { lines, omittedTurns } = fitHistory(toTurns(historyItems), budgetChars, endsWithToolResults);
   const closing = endsWithToolResults
     ? CONTINUE_AFTER_TOOL_RESULTS
     : userTurnBlocks(current).filter((block) => block.kind === "text").map((block) => (block as { text: string }).text).join("\n\n");
-  return [
-    { kind: "text", text: `<conversation_history>\n${lines.join("\n")}\n</conversation_history>\n\n${closing}` },
-    ...imageBlocks(userContents(current)),
-  ];
+  const history = lines.join("\n");
+  return {
+    blocks: [
+      { kind: "text", text: `<conversation_history>\n${history}\n</conversation_history>\n\n${closing}` },
+      ...imageBlocks(userContents(current)),
+    ],
+    // 재주입한 이력 부분의 문자 수(태그와 마지막 사용자 메시지는 제외)와 예산 때문에 뺀 턴 수.
+    replayChars: history.length,
+    omittedTurns,
+  };
 }

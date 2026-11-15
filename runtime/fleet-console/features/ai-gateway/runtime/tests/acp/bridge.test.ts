@@ -178,6 +178,10 @@ describe("agy ACP bridge", () => {
       expect(requests[0]).toMatchObject({ route: "fresh", tailToolResults: 0, tailUserTexts: 0, tailReminderTexts: 0 });
       expect(requests[1]).toMatchObject({ route: "rebuild", reason: "user content beside the tool results", tailToolResults: 1, tailUserTexts: 1, tailReminderTexts: 1 });
       expect(JSON.stringify(requests)).not.toContain("SECRET-REMINDER");
+      // Sizes of the first prompt of each newly opened session are counted, never recorded.
+      expect(requests[0]).toMatchObject({ promptChars: expect.any(Number), replayChars: 0 });
+      expect(requests[1]).toMatchObject({ promptChars: expect.any(Number), replayChars: expect.any(Number) });
+      expect((requests[1] as { replayChars: number }).replayChars).toBeGreaterThan(0);
       // Hash prefixes of the session's fixed configuration are logged so a real run can show they are stable between requests.
       expect(requests[0]).toMatchObject({ instructionsHash: expect.stringMatching(/^[0-9a-f]{8}$/), toolsHash: expect.stringMatching(/^[0-9a-f]{8}$/) });
       expect(requests[1]).toMatchObject({ instructionsHash: (requests[0] as { instructionsHash: string }).instructionsHash, toolsHash: (requests[0] as { toolsHash: string }).toolsHash });

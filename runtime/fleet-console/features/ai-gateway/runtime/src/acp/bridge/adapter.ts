@@ -346,6 +346,10 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
     const seed = `${selection.baseId}|${selection.thoughtLevel}|${[...catalog.names.values()].sort().join(",")}|${instructionsHash}|${toolsHash}`;
     const chain = chainOf(seed, request.input);
     const plan = this.classify(chain, request.input);
+    // 새 세션(fresh·rebuild)의 첫 prompt: 내용 없이 문자 수만 로그에 남긴다(재주입 비용을 세는 데 쓴다).
+    const opening = plan.route === "fresh"
+      ? { blocks: userTurnBlocks(request.input), replayChars: 0, omittedTurns: 0 }
+      : plan.route === "rebuild" ? replayBlocks(request.input, this.limits.replayBudgetChars) : undefined;
     wireLog("bridge.request", {
       route: plan.route,
       ...("reason" in plan ? { reason: plan.reason } : {}),
@@ -354,6 +358,11 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       tools: catalog.tools.length,
       instructionsHash: instructionsHash.slice(0, 8),
       toolsHash: toolsHash.slice(0, 8),
+      ...(opening ? {
+        promptChars: opening.blocks.reduce((sum, block) => sum + (block.kind === "text" ? block.text.length : 0), 0),
+        replayChars: opening.replayChars,
+        ...(opening.omittedTurns > 0 ? { omittedTurns: opening.omittedTurns } : {}),
+      } : {}),
       ...tailCounts(request.input),
     });
 
@@ -368,9 +377,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         this.registry.unexpect(session);
         await session.startPrompt(userTurnBlocks(plan.tail));
       } else {
-        const blocks = plan.route === "fresh"
-          ? userTurnBlocks(request.input)
-          : replayBlocks(request.input, this.limits.replayBudgetChars);
+        const blocks = opening!.blocks;
         // 옛 세션은 이 요청으로 대체된다: 보류 호출과 열린 agy prompt를 정리하고 자식을 끝낸다.
         if (plan.route === "rebuild") await plan.stale?.close(`replaced by a rebuilt session (${plan.reason})`);
         session = await this.openSession(request, selection, seed, catalog, plan.route === "rebuild", options.signal);
