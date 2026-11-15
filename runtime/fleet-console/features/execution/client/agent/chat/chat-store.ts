@@ -27,6 +27,7 @@ const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
 const OPEN_READY_STATE = 1;
 const COMMAND_WAIT_MS = 8_000;
+const TERMINAL_CHAT_ERROR_CODES = new Set(["chat_transcript_missing", "session_id_conflict"]);
 
 /**
  * Objective 하나의 채팅 소켓.
@@ -151,11 +152,12 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
     pending.clear();
   };
 
-  const attach = async (url: string): Promise<void> => {
-    await new Promise<void>((resolve, reject) => {
+  const attach = async (url: string): Promise<boolean> => {
+    return await new Promise<boolean>((resolve, reject) => {
       const ws = (options.webSocketFactory ?? defaultChatWebSocketFactory)(url);
       socket = ws;
       let opened = false;
+      let terminalError = false;
       ws.onopen = () => {
         opened = true;
         options.onConnection("open");
@@ -180,6 +182,15 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
             return;
           }
         }
+        if (parsed && typeof parsed === "object" && "event" in parsed) {
+          const inner = (parsed as { readonly event?: unknown }).event;
+          if (inner && typeof inner === "object" && (inner as { readonly kind?: unknown }).kind === "error") {
+            const code = (inner as { readonly code?: unknown }).code;
+            if (typeof code === "string" && TERMINAL_CHAT_ERROR_CODES.has(code)) {
+              terminalError = true;
+            }
+          }
+        }
         options.onEvent(event.data);
       };
       ws.onerror = () => {
@@ -188,7 +199,7 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
       ws.onclose = () => {
         if (socket === ws) socket = null;
         rejectPending(new Error("chat_socket_closed"));
-        if (opened) resolve();
+        if (opened) resolve(terminalError);
         else reject(new Error("chat_socket_closed"));
       };
     });
@@ -197,16 +208,17 @@ export function createChatSocketSession(options: ChatSocketSessionOptions): Chat
   const connectLoop = async (): Promise<void> => {
     while (!abort.signal.aborted) {
       options.onConnection("connecting");
+      let terminalError = false;
       try {
         const ticket = await requestChatTicket(options.objectiveId, abort.signal, fetchImpl);
         if (abort.signal.aborted) return;
-        await attach(buildTerminalWsUrl(ticket, options.location, CHAT_WS_PATH));
+        terminalError = await attach(buildTerminalWsUrl(ticket, options.location, CHAT_WS_PATH));
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
       } catch {
         if (abort.signal.aborted) return;
         options.onConnection("lost");
       }
-      if (abort.signal.aborted) return;
+      if (terminalError || abort.signal.aborted) return;
       await delay(reconnectDelay, abort.signal);
       reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
     }

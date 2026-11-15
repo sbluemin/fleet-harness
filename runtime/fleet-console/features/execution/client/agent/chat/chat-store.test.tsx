@@ -511,3 +511,61 @@ it("keeps group timeline sockets and dormant history closed until the conversati
     setState(previous); setAgentState(previousAgent);
   }
 });
+
+describe("AgentChatView session_id_conflict state", () => {
+  it("shows conflict guidance instead of connecting/hero, stops reconnecting, and disables input", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const context = { objectiveId: "op-conflict", language: "ko", bodyLive: true, objectiveRecord: { id: "op-conflict", payload: {} }, runtimeState: null } as never;
+    act(() => {
+      root!.render(createElement(AgentChatView, { context }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const first = FakeWebSocket.instances[0]!;
+    expect(first).toBeTruthy();
+    act(() => {
+      first.open();
+      first.onmessage?.({ data: JSON.stringify({ seq: 0, event: { kind: "error", code: "session_id_conflict" } }) });
+      first.close();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(container.querySelector(".agent-chat-hero")).toBeNull();
+    const alert = container.querySelector('.agent-chat-sys--error[role="alert"]');
+    expect(alert?.textContent).toContain("새 목표");
+    expect(container.textContent).not.toContain("세션에 연결하는 중");
+    const input = container.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    const sendBtn = container.querySelector<HTMLButtonElement>(".agent-chat-composer-send");
+    expect(input?.disabled).toBe(true);
+    expect(sendBtn?.disabled).toBe(true);
+  });
+
+  it("renders conflict alert below turns when a live stream hits session_id_conflict", async () => {
+    container = document.createElement("div");
+    document.body.append(container);
+    root = createRoot(container);
+    const context = { objectiveId: "op-conflict-live", language: "en", bodyLive: true, objectiveRecord: { id: "op-conflict-live", payload: {} }, runtimeState: null } as never;
+    act(() => {
+      root!.render(createElement(AgentChatView, { context }));
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const socket = FakeWebSocket.instances[0]!;
+    act(() => {
+      socket.open();
+      socket.onmessage?.({ data: JSON.stringify({ seq: 1, event: { kind: "dispatch", text: "hello" } }) });
+      socket.onmessage?.({ data: JSON.stringify({ seq: 2, event: { kind: "turn-start" } }) });
+      socket.onmessage?.({ data: JSON.stringify({ seq: 3, event: { kind: "error", code: "session_id_conflict" } }) });
+    });
+    const alert = container.querySelector('.agent-chat-sys--error[role="alert"]');
+    expect(alert?.textContent).toContain("Start a new objective to continue.");
+    const input = container.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    expect(input?.disabled).toBe(true);
+  });
+});

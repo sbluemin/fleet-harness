@@ -683,6 +683,82 @@ describe("agent chat mode routes", () => {
     const recordAfter = harness.getRecord(sessionId);
     expect((recordAfter?.session as { previousSessions?: unknown[] })?.previousSessions).toHaveLength(2);
   });
+
+  it("does not adopt another session's transcript in the same directory when its own transcript is missing", async () => {
+    const harness = await createHarness({ cliId: "claude" });
+    const sessionB = await harness.createSession();
+    const sessionA = await harness.createSession();
+    harness.attachProviderSession(sessionB);
+
+    const missingTranscriptA = path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-a.jsonl");
+    await harness.post(sessionA, "capture", {
+      provider: "claude",
+      input: JSON.stringify({
+        session_id: "sid-a",
+        transcript_path: missingTranscriptA,
+        hook_event_name: "UserPromptSubmit",
+      }),
+    });
+    expect(harness.responses.at(-1)?.status).toBe(200);
+
+    await harness.get(sessionA, "chat-history");
+    expect(harness.responses.at(-1)).toMatchObject({ status: 404, body: { error: "history_unavailable" } });
+
+    await harness.get(sessionA, "chat-catalog");
+    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "chat_transcript_missing" } });
+
+    await harness.post(sessionA, "message", { text: "continue please" });
+    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "chat_transcript_missing" } });
+  });
+
+  it("rejects binding or resuming a provider session id or transcript path already owned by another objective record", async () => {
+    const harness = await createHarness({ cliId: "claude" });
+    const ownerId = await harness.createSession();
+    const attackerId = await harness.createSession();
+    harness.attachProviderSession(ownerId);
+
+    const ownerTranscript = path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl");
+    await harness.post(attackerId, "capture", {
+      provider: "claude",
+      input: JSON.stringify({
+        session_id: "sid-live",
+        transcript_path: ownerTranscript,
+        hook_event_name: "UserPromptSubmit",
+      }),
+    });
+    expect(harness.responses.at(-1)).toMatchObject({
+      status: 409,
+      body: { ok: false, error: "session_id_conflict" },
+    });
+    expect((harness.getRecord(attackerId)?.session as { id?: string } | undefined)?.id).toBeUndefined();
+
+    // 이미 같은 세션 id·기록 경로가 두 레코드에 박힌 옛 데이터여도 후발/중복 레코드의 재개·열람은 막히고 원 주인은 유지된다.
+    const legacyDupId = await harness.createSession();
+    const legacyDupRecord = harness.getRecord(legacyDupId)!;
+    legacyDupRecord.session = {
+      harness: "claude-code",
+      id: "sid-live",
+      transcriptPath: ownerTranscript,
+      capturedAt: "2026-08-15T00:00:00.000Z",
+    };
+    await harness.get(ownerId, "chat-history");
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    await harness.get(legacyDupId, "chat-history");
+    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "session_id_conflict" } });
+    await harness.get(legacyDupId, "chat-catalog");
+    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "session_id_conflict" } });
+    await harness.post(legacyDupId, "message", { text: "resume duplicate" });
+    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "session_id_conflict" } });
+
+    // SDK init/sync 경로로 타 레코드의 session_id가 들어오면 저장을 막을 뿐 아니라 라이브 채팅 세션을 즉시 종료한다.
+    await harness.consoleControl.disposeChat?.(attackerId);
+    harness.allowConsoleUse(attackerId);
+    harness.setSdkSessionId("sid-live");
+    await harness.post(attackerId, "message", { text: "hijack attempt" });
+    await vi.waitFor(() => expect(harness.sends).toContain("hijack attempt"));
+    await vi.waitFor(() => expect(harness.closeChat).toHaveBeenCalled());
+    expect((harness.getRecord(attackerId)?.session as { id?: string } | undefined)?.id).not.toBe("sid-live");
+  });
 });
 
 function asLegacyTerminal(harness: { objectiveRecord(sessionId: string): Record<string, unknown> | undefined }, sessionId: string): void {
@@ -730,7 +806,10 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     let closed = false;
     const wake = (): void => { const resume = waiting; waiting = null; resume?.(); };
     emitToLatest = (message) => { queue.push(message); wake(); };
-    const sessionInitId = nextSdkSessionId ?? (request as { resume?: string })?.resume ?? "sid-live";
+    const sessionInitId = nextSdkSessionId
+      ?? (request as { resume?: string })?.resume
+      ?? (request as { sessionId?: string })?.sessionId
+      ?? "sid-live";
     const sessionFile = path.join(transcriptDir, `${sessionInitId}.jsonl`);
     try { writeFileSync(sessionFile, "", { flag: "wx" }); } catch {}
     return {

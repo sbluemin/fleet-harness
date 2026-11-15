@@ -222,7 +222,8 @@ export function AgentChatView({
 
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
   // 있음"은 아직 모른다는 뜻이고, 그것을 초대로 읽으면 과거가 있는 세션에도 초대가 잠깐 스친다.
-  const awaitingFirstTurn = state.turns.length === 0 && !state.replaying && state.connection === "open";
+  const blockedError = state.errorCode === "chat_transcript_missing" || state.errorCode === "session_id_conflict";
+  const awaitingFirstTurn = state.turns.length === 0 && !state.replaying && state.connection === "open" && !blockedError;
   // 모바일 「다시 시도」는 마지막 턴에 사람이 보낸 지시를 같은 길로 한 번 더 보낸다 — 새 턴이 서고, 지난 턴은
   // 기록에 남는다. 플러그인·다른 Objective가 보낸 지시는 사람이 쓴 문면이 아니므로 대상이 아니다.
   const lastDispatch = state.turns[state.turns.length - 1]?.dispatch;
@@ -702,10 +703,12 @@ export function AgentChatView({
           않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
           상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
       {state.errorCode === "chat_transcript_missing"
-        ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.transcriptMissing")}</div>
-        : state.connection === "connecting" && turns.length === 0
-          ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
-          : null}
+        ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.transcriptMissing")}</div>
+        : state.errorCode === "session_id_conflict" && turns.length === 0
+          ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.sessionIdConflict")}</div>
+          : state.connection === "connecting" && turns.length === 0
+            ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
+            : null}
       {/* 재생 자체는 소리 없이 콘텐츠만 되쓴다 — 같은 세션의 지난 턴은 표면(CLI/Chat)을 오가도
           사용자 자기 대화이므로, 그것을 "이전 턴 재생됨"으로 알리면 없던 이전 세션을 가리키는
           오독이 된다. 새 도착 오알림을 막는 replay-start/replay-end 경계는 그대로 남는다. */}
@@ -776,6 +779,9 @@ export function AgentChatView({
       <PendingPrompts queue={state.queue} language={language} />
       {/* 모바일 끝 안내(impl-spec S-26, D22) — 대화 맨 아래 한 줄. 데스크톱 원장에는 서지 않는다. */}
       {mobileSurface && turns.length > 0 ? <p className="agent-chat-end-note">{t("terminal.mobile.endNote")}</p> : null}
+      {state.errorCode === "session_id_conflict" && turns.length > 0
+        ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.sessionIdConflict")}</div>
+        : null}
       {state.errorCode === "chat_turn_failed"
         ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
         : null}
@@ -857,6 +863,7 @@ export function AgentChatView({
             queue={state.queue}
             onStop={handleStop}
             onCancelQueued={handleCancelQueued}
+            disabled={blockedError}
           />
         )}
 

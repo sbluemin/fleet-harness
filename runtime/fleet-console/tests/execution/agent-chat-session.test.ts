@@ -1034,6 +1034,33 @@ describe("AgentChatRegistry — background jobs", () => {
     });
     await registry.disposeAll();
   });
+
+  it("checks acceptProviderSessionId only when session_id first appears or changes", async () => {
+    const transcriptPath = writeTranscript("sess-init", []);
+    const acceptProviderSessionId = vi.fn(() => true);
+    const { factory } = createFakeSdkFactory([{
+      messages: [
+        { type: "system", subtype: "init", session_id: "sess-init" },
+        { type: "stream_event", session_id: "sess-init", event: { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "hi" } } },
+        { type: "assistant", session_id: "sess-init", message: { content: [{ type: "text", text: "hi" }] } },
+        { type: "result", subtype: "success", session_id: "sess-init", is_error: false, duration_ms: 10 },
+        { type: "system", subtype: "init", session_id: "sess-next" },
+        { type: "assistant", session_id: "sess-next", message: { content: [{ type: "text", text: "ok" }] } },
+      ],
+    }]);
+    const registry = new AgentChatRegistry(factory);
+    await registry.ensure("op-session-cache", () => ({
+      ...seedFor(transcriptPath),
+      acceptProviderSessionId,
+    }));
+    const session = registry.get("op-session-cache")!;
+    session.send("run");
+    await drainTurn(registry, "op-session-cache");
+    expect(acceptProviderSessionId).toHaveBeenCalledTimes(2);
+    expect(acceptProviderSessionId).toHaveBeenNthCalledWith(1, "sess-init");
+    expect(acceptProviderSessionId).toHaveBeenNthCalledWith(2, "sess-next");
+    await registry.disposeAll();
+  });
 });
 
 /**

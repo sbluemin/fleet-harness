@@ -170,6 +170,7 @@ export function AgentChatComposer({
   onCancelQueued,
   onOpenCoordinates,
   catalogEpoch,
+  disabled = false,
 }: {
   readonly context: ObjectiveRenderContext;
   /** 세션 좌표의 사실 표시 — 모델·강도가 별도 배지 없이 컨트롤 행 좌측에 직접 앉는다. */
@@ -198,6 +199,7 @@ export function AgentChatComposer({
   readonly onOpenCoordinates: (stage: "models" | "effort") => void;
   /** 자식의 능력 목록 판본. 오르면 이 컴포저가 들고 있던 카탈로그 사본이 만료한다. */
   readonly catalogEpoch: number;
+  readonly disabled?: boolean;
 }) {
   const language = context.language ?? "en";
   const t = getT(language);
@@ -376,7 +378,7 @@ export function AgentChatComposer({
   // 그냥 보내면 이 클로저가 **직전** 초안을 읽는다 — 보낼 문면을 인자로 받아야 그 한 틱이 안전하다.
   const send = React.useCallback((override?: string) => {
     const text = (override ?? draft).trim();
-    if (sending) return;
+    if (disabled || sending) return;
     // 문면이 비어도 첨부가 있으면 나간다 — 자식은 첨부 지시 줄만 받고, 말풍선은 첨부만 선다.
     // 업로드가 끝나지 않은 첨부는 아직 보낼 것이 아니므로 둘 다 없을 때와 같이 멈춘다.
     if (text.length === 0) {
@@ -403,7 +405,7 @@ export function AgentChatComposer({
     // 초안 저장소가 중복 발사·첨부 준비·성공/실패를 판정한다. 레이아웃 전환으로 이 입력창이
     // 내려가도 요청은 한 번만 끝나고, 돌아온 입력창이 같은 결말을 구독한다.
     void draftState.send(text);
-  }, [draft, attachments, quotes, sending, catalog, clearArmed, runConsoleCommand, t, draftState, setDraft]);
+  }, [disabled, draft, attachments, quotes, sending, catalog, clearArmed, runConsoleCommand, t, draftState, setDraft]);
 
   /**
    * 덱의 행 하나를 확정한다.
@@ -479,7 +481,7 @@ export function AgentChatComposer({
   // 발사 조건은 전송 경로와 같아야 한다 — 서버는 문면이나 첨부 중 하나라도 있으면 받으므로 버튼도
   // 같은 규칙으로 켠다. 둘 다 없으면(또는 첨부가 아직 올라가는 중이면) 눌러도 나갈 것이 없다.
   const uploading = attachments.some((attachment) => attachment.uploading);
-  const canSend = (draft.trim().length > 0 || attachments.length > 0 || quotes.length > 0) && !sending && !uploading;
+  const canSend = !disabled && (draft.trim().length > 0 || attachments.length > 0 || quotes.length > 0) && !sending && !uploading;
   // 안내는 고정 문구다 — 세션 제목을 넣으면 긴 제목이 두 줄로 접혀 한 줄 상자에서 잘린다.
   // 실제 제목은 캡션이 이미 온전히 보여 준다.
   // 인용이 붙어 있으면 그 사실과 다음 할 일(지시 쓰기)을 빈 칸이 말한다.
@@ -514,7 +516,7 @@ export function AgentChatComposer({
         title={ct("composer.more")}
         aria-expanded={menuOpen}
         aria-controls={menuOpen ? menuId : undefined}
-        disabled={sending}
+        disabled={disabled || sending}
         onClick={() => setMenuOpen((open) => !open)}
       />
       {attachmentInput.fileInput}
@@ -638,8 +640,8 @@ export function AgentChatComposer({
               onHover={setDeckIndex}
             />
           ) : null}
-          <ComposerQuoteTray store={draftState.quotes} t={ct} disabled={sending} onDone={() => inputRef.current?.focus()} />
-          <ComposerAttachmentTray store={draftState.attachments} t={ct} disabled={sending} />
+          <ComposerQuoteTray store={draftState.quotes} t={ct} disabled={disabled || sending} onDone={() => inputRef.current?.focus()} />
+          <ComposerAttachmentTray store={draftState.attachments} t={ct} disabled={disabled || sending} />
           <div className="agent-chat-composer-row">
             {mobileSurface ? null : attachmentEntry}
             <span className="agent-chat-composer-input-wrap">
@@ -653,6 +655,7 @@ export function AgentChatComposer({
                 className="agent-chat-composer-input"
                 rows={1}
                 value={draft}
+                disabled={disabled}
                 placeholder={placeholder}
                 aria-label={t("terminal.chat.composerInputAria")}
                 spellCheck={false}
