@@ -567,6 +567,7 @@ async function* translateChatCompletionsStream(
   let accumulatedText = "";
   let usage: CanonicalUsage | null = null;
   let finishReason: string | undefined;
+  let sawDone = false;
   let failed = false;
   const toolCalls = new Map<number, PendingChatToolCall>();
 
@@ -651,6 +652,11 @@ async function* translateChatCompletionsStream(
 
   function* finish(): Generator<CanonicalResponseEvent> {
     if (failed) return;
+    // 종료 신호(finish_reason 또는 [DONE]) 없이 본문이 끝나면 잘린 스트림이다. 부분 답과 덜 모인
+    // 도구 인자를 완결로 내보내지 않고 실패시켜, 하류가 잘린 응답을 성공으로 받지 않게 한다.
+    if (finishReason === undefined && !sawDone) {
+      throw new UpstreamProtocolError("Chat Completions stream ended before finish_reason or [DONE]");
+    }
     if (!createdEmitted) {
       createdEmitted = true;
       yield {
@@ -727,6 +733,7 @@ async function* translateChatCompletionsStream(
       while (boundary !== undefined) {
         const frame = buffer.slice(0, boundary.index);
         buffer = buffer.slice(boundary.index + boundary.length);
+        if (isDoneFrame(frame)) sawDone = true;
         const frameData = chatFrameData(frame);
         if (frameData !== undefined) {
           // Raw provider payload before canonical consumeChunk assembly.
@@ -738,6 +745,7 @@ async function* translateChatCompletionsStream(
     }
 
     if (buffer.trim().length > 0) {
+      if (isDoneFrame(buffer)) sawDone = true;
       const frameData = chatFrameData(buffer);
       if (frameData !== undefined) {
         logRawWireEvent("openai-chat.wire.event", frameData.event, frameData.data);
@@ -749,6 +757,10 @@ async function* translateChatCompletionsStream(
     await reader.cancel().catch(() => undefined);
     options.onClose();
   }
+}
+
+function isDoneFrame(frame: string): boolean {
+  return parseSseFrameFields(frame).data === "[DONE]";
 }
 
 function chatFrameData(frame: string): RawWireEventPayload | undefined {

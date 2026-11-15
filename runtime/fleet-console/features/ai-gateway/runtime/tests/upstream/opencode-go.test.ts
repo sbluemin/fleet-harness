@@ -61,6 +61,26 @@ describe("OpenCode Go wires", () => {
     expect(properties.file_paths!.items).toHaveProperty("maxLength", 1024);
     expect(properties.asset_id).toHaveProperty("pattern", "^[0-9a-f]{32}$");
   });
+
+  it("fails a chat stream cut off before its terminal chunk instead of completing a half-built tool call", async () => {
+    const entry = MODELS[0];
+    // The body closes cleanly mid tool call: no finish_reason and no [DONE].
+    const cut = `data: ${JSON.stringify({
+      id: "c1",
+      choices: [{ index: 0, delta: { tool_calls: [{ index: 0, id: "call_1", type: "function", function: { name: "Read", arguments: "{\"file_pa" } }] } }],
+    })}\n\n`;
+    const response = await createOpencodeGoAdapter(entry, {
+      fetch: async () => new Response(cut, { status: 200, headers: { "content-type": "text/event-stream" } }),
+    }).stream(request(entry.model), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected a streaming response");
+
+    const types: string[] = [];
+    await expect((async () => {
+      for await (const event of response.events) types.push(event.type);
+    })()).rejects.toThrow("ended before finish_reason or [DONE]");
+    expect(types).not.toContain("response.output_item.done");
+    expect(types).not.toContain("response.completed");
+  });
 });
 
 type ToolParameters = { properties: Record<string, Record<string, unknown>> };
