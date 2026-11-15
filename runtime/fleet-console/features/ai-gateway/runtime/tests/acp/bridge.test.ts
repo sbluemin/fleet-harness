@@ -39,7 +39,7 @@ function counter() {
 // Wraps the real session port so a test can await what the bridge did to its agy sessions:
 // `closed` counts sessions whose close() finished (their agy child has exited by then), `turnsOver` counts agy prompts whose event stream ended.
 // `sessions` gives the raw sessions, through which a test sends what a real agy would react to over time (session/cancel).
-function watch(port: AcpSessionPort) {
+function watch(port: AcpSessionPort, steerGate?: Promise<void>) {
   const closed = counter();
   const turnsOver = counter();
   const sessions: AcpSession[] = [];
@@ -57,7 +57,7 @@ function watch(port: AcpSessionPort) {
             try { yield* events; } finally { turnsOver.bump(); }
           })();
         },
-        steer: (blocks) => session.steer(blocks),
+        steer: async (blocks) => { await session.steer(blocks); await steerGate; },
         cancel: () => session.cancel(),
         async close() {
           await session.close();
@@ -69,7 +69,7 @@ function watch(port: AcpSessionPort) {
   return { port: watched, closed, turnsOver, sessions };
 }
 
-async function setup(bridgeOptions: { replayBudgetChars?: number } = {}) {
+async function setup(bridgeOptions: { replayBudgetChars?: number } = {}, steerGate?: Promise<void>) {
   const root = await mkdtemp(path.join(os.tmpdir(), "fleet-bridge-test-"));
   roots.push(root);
   const logPath = path.join(root, "fake.log");
@@ -78,7 +78,7 @@ async function setup(bridgeOptions: { replayBudgetChars?: number } = {}) {
     command: process.execPath,
     commandArgs: [fakeAgy],
     env: { ...process.env, FAKE_LOG: logPath, FAKE_BRIDGE: "1" },
-  }));
+  }), steerGate);
   const bridge = createAgyAcpBridge({ port, coalesceMs: 10, silenceMs: 5_000, ...bridgeOptions });
   bridges.push(bridge);
   const log = async () => (await readFile(logPath, "utf8").catch(() => "")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
@@ -340,6 +340,21 @@ describe("agy ACP bridge", () => {
         evidence: { oneOf: [{ type: "object", properties: { note: { type: "string" } } }, { type: "string" }] },
       },
     });
+  });
+
+  it("does not release the held tool call until the steering has been handed over", async () => {
+    let open!: () => void;
+    const gate = new Promise<void>((resolve) => { open = resolve; });
+    const { bridge, log } = await setup({}, gate);
+    const first = await turn(bridge, [user('TOOL:Bash:{"command":"ls"}')]);
+    const use = toolUse(first.message);
+    const pending = turn(bridge, [user('TOOL:Bash:{"command":"ls"}'), call(use.id, { command: "ls" }), result(use.id, "a.txt"), user("note")]);
+    // The steering reached agy; the bridge is still waiting on the session, so the MCP result must not have gone out.
+    for (let tries = 0; tries < 200 && !(await log()).some((entry) => entry.steering); tries += 1) await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect((await log()).some((entry) => entry.resultBlocks)).toBe(false);
+    open();
+    expect(textOf((await pending).message)).toBe("got:a.txt steered:note");
   });
 
   it("keeps call/result pairs, roles and the latest user instruction when the replayed history exceeds its budget", async () => {

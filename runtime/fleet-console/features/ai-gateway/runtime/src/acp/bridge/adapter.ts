@@ -454,7 +454,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
     let steered = false;
     if (plan.route === "continue" && plan.steer) {
       try {
-        plan.session.steer(plan.steer);
+        await plan.session.steer(plan.steer);
         steered = true;
       } catch (error) {
         wireLog("bridge.steer_failed", { session: plan.session.key, error: error instanceof Error ? error.message : String(error) });

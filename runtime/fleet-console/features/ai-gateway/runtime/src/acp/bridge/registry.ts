@@ -176,9 +176,9 @@ export class BridgeSession implements McpSessionHandler {
   }
 
   /** 도는 agy 턴(도구 호출 보류 중)에 사용자 내용을 보낸다. 도구 결과를 풀기 **전에** 부른다: 내용은 결과 다음의 user 메시지로 보인다. */
-  steer(blocks: readonly AcpPromptBlock[]): void {
+  async steer(blocks: readonly AcpPromptBlock[]): Promise<void> {
     if (!this.acp || this.current === "closed") throw new Error("The bridge session is closed.");
-    this.acp.steer(blocks);
+    await this.acp.steer(blocks);
   }
 
   /** 보류 호출을 Claude Code의 결과로 푼다. 응답은 이어서 이 큐를 읽는다. */

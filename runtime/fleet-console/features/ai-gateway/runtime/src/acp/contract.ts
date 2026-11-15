@@ -86,9 +86,10 @@ export interface AcpSession {
    * 도는 턴에 사용자 내용을 더 보낸다(steering, agy 1.5.9: 실행 중인 턴에 `session/prompt`를 또 보낸다).
    * 실측: 앞선 prompt 요청은 곧바로 `end_turn`으로 응답하지만 이는 호출자의 턴 끝이 아니다(`turn-end`로 내지 않는다). 턴은 이어지고,
    * 보류 중인 도구 호출이 풀린 뒤 이 내용이 **도구 결과 다음의 user 메시지**로 모델에 보인다. 턴의 `turn-end`는 이 요청의 응답이다.
-   * 도는 턴이 없으면 던진다.
+   * 도는 턴이 없으면 던진다. 앞선 요청의 응답까지 (짧게 한정해) 기다린 뒤 돌아온다: 호출자가 곧바로 도구 결과를 풀어도 agy가 이 내용을
+   * 먼저 받은 뒤라는 보장이다.
    */
-  steer(blocks: readonly AcpPromptBlock[]): void;
+  steer(blocks: readonly AcpPromptBlock[]): void | Promise<void>;
   /** 도는 턴을 취소한다(`session/cancel`). 턴은 `turn-end`(cancelled)로 끝난다. */
   cancel(): Promise<void>;
   /** 세션과 자식 프로세스를 닫는다. 여러 번 불러도 안전하다. */

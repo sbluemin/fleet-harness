@@ -162,15 +162,28 @@ class AgyAcpSession implements AcpSession {
     })();
   }
 
-  steer(blocks: readonly AcpPromptBlock[]): void {
+  /** 진행 중인 마지막 `session/prompt` 요청(응답 처리까지 끝나면 resolve; 실패해도 reject하지 않는다). */
+  private promptInFlight?: Promise<void>;
+
+  async steer(blocks: readonly AcpPromptBlock[]): Promise<void> {
     const queue = this.queue;
     if (!queue || this.closed || this.childExited) throw new Error("No agy ACP turn is running to steer.");
+    const prior = this.promptInFlight;
     this.send(blocks, queue);
+    // agy가 steering을 파싱·수용하는 순간 앞선 요청이 `end_turn`으로 응답한다. 큰 내용은 파이프에 여러 번에 걸쳐 쓰이므로, 그 응답을
+    // 기다려야 호출자가 도구 결과를 풀 때 agy가 이미 내용을 받은 상태다. 응답이 오지 않아도 막히지 않게 상한을 둔다.
+    if (!prior) return;
+    let timer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([prior, new Promise<void>((resolve) => { timer = setTimeout(resolve, STEER_ACK_WAIT_MS); })]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   private send(blocks: readonly AcpPromptBlock[], queue: EventQueue): void {
     const seq = ++this.promptSeq;
-    this.rpc.request("session/prompt", { sessionId: this.sessionId, prompt: toWirePrompt(blocks) }).then(
+    const inFlight: Promise<void> = this.rpc.request("session/prompt", { sessionId: this.sessionId, prompt: toWirePrompt(blocks) }).then(
       (result) => {
         // agy 1.5.9 실측: 도는 턴에 `session/prompt`를 또 보내면(steering) 앞선 요청은 곧바로 `end_turn`으로 응답하고 턴은 새 요청이
         // 이어 간다. 앞선 요청의 응답은 호출자가 보는 턴의 끝이 아니다.
@@ -185,7 +198,8 @@ class AgyAcpSession implements AcpSession {
         queue.push({ kind: "turn-end", stopReason: "error", detail: error instanceof Error ? error.message : String(error) });
         queue.end();
       },
-    );
+    ).finally(() => { if (this.promptInFlight === inFlight) this.promptInFlight = undefined; });
+    this.promptInFlight = inFlight;
   }
 
   async cancel(): Promise<void> {
@@ -202,6 +216,8 @@ class AgyAcpSession implements AcpSession {
     await this.cleanup();
   }
 }
+
+const STEER_ACK_WAIT_MS = 500;
 
 function terminate(child: ChildProcessWithoutNullStreams): Promise<void> {
   if (child.exitCode !== null || child.signalCode !== null) return Promise.resolve();
