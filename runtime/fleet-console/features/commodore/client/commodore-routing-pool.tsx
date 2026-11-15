@@ -92,14 +92,6 @@ export function ProviderMark({ provider }: { readonly provider: LaunchProviderGl
   );
 }
 
-/** 로그인 상태를 UI가 그릴 수 있는 4가지 형태로 정규화한다(`gateway-models-card.tsx`와 동일 규칙). */
-export function routingLoginKind(providerId: string, status: string | null | undefined): "in" | "out" | "unknown" | "unlinked" {
-  if (providerId === "claude" && status === "not_connected") return "unlinked";
-  if (status === "signed_out" || status === "not_connected") return "out";
-  if (status === null || status === undefined) return "unknown";
-  return "in";
-}
-
 function bindingWindows(provider: ProviderDto | undefined, quotaScope: string | undefined): readonly QuotaWindow[] {
   if (!provider || (provider.status !== "ok" && provider.status !== "stale")) return [];
   return (provider.windows ?? []).filter((window) => window.isAggregate !== true && (window.scope === undefined || window.scope === quotaScope));
@@ -649,16 +641,12 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
         {catalogGroups.map((group) => {
           const rows = group.models.filter((model) => matchesModel(group.id, model));
           if (rows.length === 0) return null;
-          const loginKind = routingLoginKind(group.id, pool.loginOf(group.id));
           const inPool = pool.entries.some((item) => item.provider === group.id);
           const priorityIndex = pool.priority.indexOf(group.id);
           return (
             <div key={group.id} className="commodore-pool-pgroup">
               <div className="commodore-pool-pgroup-head">
                 <span className="commodore-composer-group-caption">{launchProviderCaption(group.id)}</span>
-                {loginKind === "unlinked" ? (
-                  <button type="button" className="commodore-pool-link-btn is-muted" onClick={onOpenQuota}>{t("commodore.pool.usageUnlinked")}</button>
-                ) : null}
                 {inPool ? (
                   <button
                     type="button"

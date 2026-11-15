@@ -1429,7 +1429,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   border: 0; background: none; padding: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-xs);
   text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--hairline-strong); cursor: pointer;
 }
-.commodore-pool-link-btn.is-muted { color: var(--text-secondary); }
 
 .commodore-pool-add-head { display: flex; align-items: center; gap: 8px; margin: 2px 4px 0; }
 .commodore-pool-add-head b { flex: none; font-size: var(--t-sm); font-weight: var(--weight-bold); }
