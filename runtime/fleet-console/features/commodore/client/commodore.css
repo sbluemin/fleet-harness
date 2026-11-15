@@ -1463,8 +1463,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-add-btn.is-in { background: transparent; color: var(--text-tertiary); }
 .commodore-pool-add-btn.is-in:hover:not(:disabled) { color: var(--coral-ink); background: var(--coral-glow); }
 
-.commodore-pool-foot { display: flex; align-items: center; gap: 8px; margin: 2px 4px 0; padding-top: 8px; border-top: 1px solid var(--popover-divider); color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
-.commodore-pool-foot svg { flex: none; width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.5; }
 .commodore-pool-toast {
   position: sticky; bottom: 6px; justify-self: center; z-index: 3;
   display: inline-flex; align-items: center; gap: 10px; padding: 7px 8px 7px 12px; border-radius: var(--radius-md);
