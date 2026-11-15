@@ -870,10 +870,11 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
  */
 function ToolbarProviderPicker({ t, mobile }: { readonly t: T; readonly mobile: boolean }) {
   const { toolbarProviders } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+  const antigravityEnabled = useAntigravityEnabled();
   return (
     <div className="quota-footer__row quota-footer__toolbar" role="group" aria-label={t("quota.toolbar.toggle")}>
       <span className="quota-toolbar-picks">
-        {PROVIDER_ORDER_DEFAULT.map((id) => {
+        {PROVIDER_ORDER_DEFAULT.filter((id) => id !== "antigravity" || antigravityEnabled).map((id) => {
           const shown = toolbarProviders.includes(id);
           const label = t("quota.toolbar.switch", { provider: providerName(id, mobile) });
           return (
