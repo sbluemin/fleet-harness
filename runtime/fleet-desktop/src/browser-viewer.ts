@@ -117,36 +117,66 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
   /** 제어 중에 스테이지가 보낸 맞춤을, 제어가 끝나는 순간 맞춘 모든 스페이스에 대해 한 번 pane 으로 되돌린다. 보기 전용은 이 깃발을 세우지 않는다. */
   let remoteFitActive = false;
   const fittedSpaces = new Set<string>();
-  const releaseControlFit = (): void => {
-    if (!remoteFitActive) {
-      fittedSpaces.clear();
-      return;
+  const pendingRestores = new Map<string, { at: string; browserId: string; spaceId?: string }>();
+  const inFlightRestores = new Set<string>();
+  const enqueueRestoreTarget = (at: string, browserId: string, spaceId?: string): void => {
+    const key = spaceId ?? "";
+    if (!spaceId && pendingRestores.size > 0) return;
+    if (spaceId) pendingRestores.delete("");
+    pendingRestores.set(key, { at, browserId, ...(spaceId ? { spaceId } : {}) });
+  };
+  const flushPendingRestores = (forceAttempt = false): void => {
+    if (pendingRestores.size === 0) return;
+    if (!forceAttempt && snapshot?.executionHost.status !== "connected") return;
+    const activeControlledSpace = controllable()
+      ? snapshot?.chrome?.tabs.find((item) => item.id === snapshot?.chrome?.activeTabId)?.spaceId
+      : undefined;
+    for (const [key, entry] of [...pendingRestores.entries()]) {
+      if (remoteFitActive && activeControlledSpace && key === activeControlledSpace) continue;
+      if (inFlightRestores.has(key)) continue;
+      inFlightRestores.add(key);
+      const body = entry.spaceId ? { preset: "responsive", spaceId: entry.spaceId } : { preset: "responsive" };
+      // 원격 페어링 쿠키는 창 세션에 있다. credentials 가 없으면 same-origin 기본값이 그 쿠키를 빼서 복귀가 거절되고 맞춘 크기가 남는다.
+      void deps.fetch(`${entry.at}/api/v1/browser/objectives/${encodeURIComponent(entry.browserId)}/viewport`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json", Origin: entry.at },
+        body: JSON.stringify(body),
+      }).then((response) => {
+        if (response.ok) {
+          if (pendingRestores.get(key) === entry) pendingRestores.delete(key);
+          return;
+        }
+        log(`browser viewport restore rejected status=${response.status}`);
+      }, (error: unknown) => {
+        log(`browser viewport restore failed: ${error instanceof Error ? error.message : "unknown"}`);
+      }).finally(() => {
+        inFlightRestores.delete(key);
+      });
     }
-    remoteFitActive = false;
+  };
+  const releaseControlFit = (forceAttempt = false): void => {
     const at = origin;
     const chrome = snapshot?.chrome ?? null;
     const tab = chrome?.tabs.find((item) => item.id === chrome.activeTabId);
-    const targets = new Set(fittedSpaces);
-    fittedSpaces.clear();
-    if (tab?.spaceId) targets.add(tab.spaceId);
-    if (!at) return;
-    const browserId = chrome?.browserId ?? VIEWER_BROWSER_ID;
-    const bodies = targets.size > 0
-      ? [...targets].map((spaceId) => ({ preset: "responsive", spaceId }))
-      : [{ preset: "responsive" }];
-    for (const body of bodies) {
-      // 원격 페어링 쿠키는 창 세션에 있다. credentials 가 없으면 same-origin 기본값이 그 쿠키를 빼서 복귀가 거절되고 맞춘 크기가 남는다.
-      void deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/viewport`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Origin: at },
-        body: JSON.stringify(body),
-      }).then((response) => {
-        if (!response.ok) log(`browser viewport restore rejected status=${response.status}`);
-      }, (error: unknown) => {
-        log(`browser viewport restore failed: ${error instanceof Error ? error.message : "unknown"}`);
-      });
+    if (remoteFitActive) {
+      remoteFitActive = false;
+      const targets = new Set(fittedSpaces);
+      fittedSpaces.clear();
+      if (tab?.spaceId) targets.add(tab.spaceId);
+      if (at) {
+        const browserId = chrome?.browserId ?? VIEWER_BROWSER_ID;
+        if (targets.size > 0) {
+          for (const spaceId of targets) enqueueRestoreTarget(at, browserId, spaceId);
+        } else {
+          enqueueRestoreTarget(at, browserId);
+        }
+      }
+      flushPendingRestores(true);
+      return;
     }
+    fittedSpaces.clear();
+    flushPendingRestores(forceAttempt);
   };
   const noteControlFit = (): void => {
     if (controllable()) {
@@ -155,10 +185,12 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
       const tab = chrome?.tabs.find((item) => item.id === chrome.activeTabId);
       if (tab?.spaceId && chrome?.viewport.preset === "responsive" && chrome.viewport.setBy === "user") {
         fittedSpaces.add(tab.spaceId);
+        pendingRestores.delete(tab.spaceId);
       }
+      flushPendingRestores(false);
       return;
     }
-    releaseControlFit();
+    releaseControlFit(false);
   };
 
   const place = (): ChromeViewOnly => {
@@ -213,7 +245,7 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
 
   const close = (animate = false): void => {
     if (!open) return;
-    releaseControlFit();
+    releaseControlFit(true);
     open = false;
     stream.stop();
     frameStream.unwatch();
@@ -235,6 +267,8 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     follow(next) {
       if (next === origin) return;
       close();
+      pendingRestores.clear();
+      inFlightRestores.clear();
       origin = next;
     },
     toggle() {
@@ -349,7 +383,10 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
           case "viewport": {
             if (action.width !== undefined && action.height !== undefined) {
               const spaceId = control.space();
-              if (spaceId) fittedSpaces.add(spaceId);
+              if (spaceId) {
+                fittedSpaces.add(spaceId);
+                pendingRestores.delete(spaceId);
+              }
             }
             remoteActions(control, role, action);
             return;

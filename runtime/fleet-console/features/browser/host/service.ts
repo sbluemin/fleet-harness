@@ -206,6 +206,8 @@ interface Space {
   viewport: BrowserViewport;
   /** true 이면 논리 뷰포트가 네이티브 pane 을 따른다(에뮬레이션 없음). */
   viewportFollowsPane: boolean;
+  /** 원격 조작 스테이지 맞춤이 세운 뷰포트. 연결이 끊어져 복원 POST가 409로 막혀도 엔진 종료 시 호스트 pane으로 복구한다. */
+  viewportSetRemotely: boolean;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string>; /** 마지막으로 호출을 연 참가자. */ last: string } | null;
   /**
@@ -557,6 +559,19 @@ export class BrowserService {
       op.currentTabs.clear();
       op.contextId = "";
       op.contextPending = null;
+      for (const space of op.spaces.values()) {
+        if (!space.viewportSetRemotely) continue;
+        space.viewportSetRemotely = false;
+        space.viewportFollowsPane = true;
+        space.viewport = {
+          width: op.pane?.width ?? BROWSER_DEFAULT_VIEWPORT.width,
+          height: op.pane?.height ?? BROWSER_DEFAULT_VIEWPORT.height,
+          scale: op.pane?.scale ?? space.viewport.scale,
+          preset: "responsive",
+          setBy: null,
+          colorScheme: space.viewport.colorScheme,
+        };
+      }
       this.emitState(op);
     }
     for (const entry of this.stagedFiles.values()) clearTimeout(entry.timer);
@@ -616,7 +631,7 @@ export class BrowserService {
   private space(op: ObjectiveBrowser, spaceId: string): Space {
     let space = op.spaces.get(spaceId);
     if (!space) {
-      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, agentSession: null, control: "agent", attention: null, pointer: null, controlWaiters: new Set() };
+      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, viewportSetRemotely: false, agentSession: null, control: "agent", attention: null, pointer: null, controlWaiters: new Set() };
       if (op.pane) space.viewport = { ...space.viewport, width: op.pane.width, height: op.pane.height };
       op.spaces.set(spaceId, space);
     }
@@ -2027,7 +2042,7 @@ export class BrowserService {
   /**
    * 스페이스 하나의 뷰포트를 정한다. 스페이스를 주지 않으면 표시 탭의 스페이스다 — 셸은 사람이 보고 있는 스페이스를 준다. 그 스페이스의 탭에만 걸린다.
    */
-  async setViewport(objectiveId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent", spaceId?: string): Promise<BrowserViewport> {
+  async setViewport(objectiveId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent", spaceId?: string, options?: { readonly remoteFit?: boolean }): Promise<BrowserViewport> {
     const op = this.objectiveRecord(objectiveId);
     if (spaceId !== undefined) this.admitSpace(spaceId);
     const targetSpace = spaceId ?? this.activeSpace(op)?.id ?? null;
@@ -2054,6 +2069,7 @@ export class BrowserService {
     const setBy = resolved.followsPane ? null : actor;
     const scale = op.pane?.scale ?? space.viewport.scale;
     space.viewportFollowsPane = resolved.followsPane;
+    space.viewportSetRemotely = !resolved.followsPane && options?.remoteFit === true;
     space.viewport = { width: resolved.width, height: resolved.height, scale, preset, setBy, colorScheme: request.colorScheme === undefined ? space.viewport.colorScheme : request.colorScheme };
     if (this.client) {
       const tabs = this.spaceTabs(op, space.id);

@@ -340,6 +340,27 @@ describe("objectiveRecord browser service contracts", () => {
     }
   });
 
+  it("restores remotely fitted spaces on engine close while keeping local host presets", async () => {
+    const desktop = createStubDesktop({ layout: { width: 900, height: 700 } });
+    const service = createService(desktop);
+    try {
+      await service.createTab(OBJECTIVE, null, "user", { show: true });
+      desktop.setPaneSize({ width: 900, height: 700, scale: 1 });
+
+      await service.setViewport(OBJECTIVE, { preset: "responsive", width: 320, height: 640 }, "user", "default", { remoteFit: true });
+      await service.stopEngine();
+
+      const opSpaces = (service as unknown as { objectiveRecords: Map<string, { spaces: Map<string, { viewport: { width: number; height: number; preset: string; setBy: string | null }; viewportFollowsPane: boolean }> }> }).objectiveRecords.get(OBJECTIVE)!.spaces;
+      expect(opSpaces.get("default")).toMatchObject({ viewportFollowsPane: true, viewport: { width: 900, height: 700, preset: "responsive", setBy: null } });
+
+      await service.setViewport(OBJECTIVE, { preset: "mobile" }, "user", "default");
+      await service.stopEngine();
+      expect(opSpaces.get("default")).toMatchObject({ viewportFollowsPane: false, viewport: { preset: "mobile", setBy: "user" } });
+    } finally {
+      await service.dispose();
+    }
+  });
+
   it("rejects a mapped but detached ref as a stale reference before dispatching a pointer", async () => {
     const dispatches: string[] = [];
     const desktop = createStubDesktop({
