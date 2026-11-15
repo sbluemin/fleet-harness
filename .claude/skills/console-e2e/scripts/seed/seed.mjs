@@ -2,7 +2,7 @@
 /**
  * Seed an owned, isolated Fleet Console with commodores, theaters and (optionally) objectives. Procedure: ../../references/seed.md
  *
- *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives|activity|details|inbox|advanced
+ *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives|activity|details|inbox|advanced|taskforce
  *        [--commodores N] [--theaters M] [--objectives K]
  *        [--root <dir for theater folders>]          default: <os tmpdir>/seed-theaters/<slot hash> (outside every repository)
  *        [--fake-claude-dir <FAKE_CLAUDE_DIR>]       required by objectives and inbox: the fake agent adds them
@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { ADVANCED_STATES, ACTIVITY_REPLY, ACTIVITY_SECTION, PROFILES } from "./fixtures.mjs";
+import { ADVANCED_STATES, ACTIVITY_REPLY, ACTIVITY_SECTION, PROFILES, TASKFORCE_NAME, TASKFORCE_TOPIC } from "./fixtures.mjs";
 import { seedDetails } from "./details.mjs";
 import { seedInbox } from "./inbox.mjs";
 import { assemble, assertFreshSlot, openConsole, parseArgs, until, writeIds } from "./lib.mjs";
@@ -37,6 +37,7 @@ if (spec.activity && spec.objectives < 1) fail("activity needs at least one obje
 if (spec.advanced && spec.commodores > ADVANCED_STATES.length) fail(`advanced defines ${ADVANCED_STATES.length} states; --commodores must be <= ${ADVANCED_STATES.length}`);
 if (spec.inbox && spec.objectives !== 0) fail("inbox does not take --objectives");
 if (spec.inbox && (spec.theaters < 1 || spec.commodores < 1)) fail("inbox needs a commodore and a theater");
+if (spec.taskforce && (spec.commodores !== 2 || spec.theaters !== 0 || spec.objectives !== 0)) fail("taskforce seeds exactly 2 commodores and no theaters or objectives");
 
 const offline = args.get("offline") === true;
 if (offline && !spec.advanced) fail("--offline applies to the advanced profile only");
@@ -118,6 +119,10 @@ try {
     }
     ids.commodores.push(entry);
     console.error(`seed: commodore ${c}/${spec.commodores} ready`);
+  }
+  if (spec.taskforce) {
+    ids.taskforce = await make.taskforce({ name: TASKFORCE_NAME, topic: TASKFORCE_TOPIC, members: ids.commodores.map((entry) => entry.commodoreId) });
+    console.error("seed: taskforce ready");
   }
   writeIds(dir, ids);
   console.log(JSON.stringify(ids, null, 2));

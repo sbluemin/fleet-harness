@@ -39,4 +39,10 @@ export const PROFILES = {
   // One commodore per ADVANCED_STATES entry, no theater.
   advanced: { commodores: ADVANCED_STATES.length, theaters: 0, objectives: 0, advanced: true },
   inbox: { commodores: 1, theaters: 1, objectives: 0, inbox: true },
+  // Owned-slot taskforce experiment on (other experiment fields kept as read), two commodores, one taskforce. No theater, no fake agent.
+  taskforce: { commodores: 2, theaters: 0, objectives: 0, taskforce: true },
 };
+
+/** Taskforce fixture. Ids come from the run; do not hardcode a commodore. */
+export const TASKFORCE_NAME = "Seed taskforce";
+export const TASKFORCE_TOPIC = "Seed topic";
