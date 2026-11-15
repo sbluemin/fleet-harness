@@ -18,7 +18,7 @@ node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" -
 | `details` | `activity` (1 objective by default), with brief, criteria, mission records, sealed results and shared files on its commenced objective; excludes actor-rewritten mission-resume records. |
 | `advanced` | 3 commodores, no theater: auto memory, base system prompt and subagents requested on/off/unset (no saved override; product defaults apply). Running Console: on/off only (`--commodores 2`). `commodores[].advanced` separates requested, stored and effective values at seed time. |
 | `inbox` | 1 commodore, 1 theater, three objectives handed to the person (one criteria proposal, one review, one open follow-up) and one open commodore question. No sidebar section and no transcript turns. |
-| `taskforce` | Fixed counts: 2 commodores, 1 taskforce, no theaters or objectives. Enables `taskforce` in the owned slot; other experiments unchanged. |
+| `taskforce` | Fixed counts: 2 commodores, 1 taskforce, no theaters or objectives. Enables `taskforce` in the owned slot; other experiments unchanged. Needs the owned fake agent. |
 
 Counts override with the flags. Theater folders are created under `--root` (default `<os tmpdir>/seed-theaters/<slot hash>`), outside every repository as [setup.md](setup.md) requires; remove them with the run.
 

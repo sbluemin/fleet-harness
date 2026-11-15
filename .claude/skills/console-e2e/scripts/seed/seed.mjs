@@ -5,7 +5,7 @@
  *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives|activity|details|inbox|advanced|taskforce
  *        [--commodores N] [--theaters M] [--objectives K]
  *        [--root <dir for theater folders>]          default: <os tmpdir>/seed-theaters/<slot hash> (outside every repository)
- *        [--fake-claude-dir <FAKE_CLAUDE_DIR>]       required by objectives and inbox: the fake agent adds them
+ *        [--fake-claude-dir <FAKE_CLAUDE_DIR>]       required by objectives, inbox, and taskforce: the owned fake agent
  *        [--offline]                                 advanced only: seed a data dir whose Console has NOT started (the only way to get "unset")
  *
  * Prints one JSON object (the ids) on stdout and writes it to <dir>/seed-ids.json; progress goes to stderr.
@@ -32,7 +32,7 @@ const count = (flag, fallback) => (typeof args.get(flag) === "string" ? Number(a
 const spec = { ...profile, commodores: count("commodores", profile.commodores), theaters: count("theaters", profile.theaters), objectives: count("objectives", profile.objectives) };
 for (const key of ["commodores", "theaters", "objectives"]) if (!Number.isInteger(spec[key]) || spec[key] < 0 || spec[key] > 20) fail(`${key} must be an integer 0..20`);
 const fakeDir = args.get("fake-claude-dir");
-if ((spec.objectives > 0 || spec.inbox) && typeof fakeDir !== "string") fail("objectives and inbox need --fake-claude-dir (the fake agent creates them through the Commodore tool)");
+if ((spec.objectives > 0 || spec.inbox || spec.taskforce) && typeof fakeDir !== "string") fail("objectives, inbox, and taskforce need --fake-claude-dir (the owned fake agent)");
 if (spec.activity && spec.objectives < 1) fail("activity needs at least one objective (do not combine it with --objectives 0)");
 if (spec.advanced && spec.commodores > ADVANCED_STATES.length) fail(`advanced defines ${ADVANCED_STATES.length} states; --commodores must be <= ${ADVANCED_STATES.length}`);
 if (spec.inbox && spec.objectives !== 0) fail("inbox does not take --objectives");
