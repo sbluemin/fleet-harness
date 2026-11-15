@@ -60,7 +60,7 @@ Replace `/console/objectives` only when the scenario targets another route. `--h
 
 For page-level API fixtures, use a `window.fetch` wrapper in `open --init-script`, not `agent-browser network route`. In a Console verification run, `network route` did not intercept the app's fetches; accepting the route command is not evidence that a fixture reached the page. This is the preferred page-fetch recipe, not a claim that network routing never works.
 
-To reach Settings › AI Gateway › provider sign-in on a fresh slot, open `/console/settings?section=agent-cli`, then click the `AI Gateway` tab: the query only opens the Settings dialog on `/console/objectives` (Appearance selected; measured 2026-11-15, agent-browser), and the tab's `공급자 로그인` card is the sign-in list.
+To reach Settings › AI Gateway › provider sign-in on a fresh slot in a desktop-width browser layout, open `/console/settings?section=agent-cli`, then click the `AI Gateway` tab: the query only opens the Settings dialog on `/console/objectives` (Appearance selected; measured 2026-11-15, agent-browser), and the tab's `공급자 로그인` card is the sign-in list.
 
 Put the following in the scenario's second `--init-script` file, next to the diagnostics above, before opening a new owned browser session. This example supplies an empty Agent CLI launch list without probing installed CLIs through this endpoint; replace the exact path and JSON with the current endpoint's browser DTO for the scenario.
 
