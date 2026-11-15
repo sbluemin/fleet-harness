@@ -310,6 +310,45 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
     return undefined;
   };
+  const findDuplicateBindingOwner = (
+    targetSessionId: string,
+    candidate: { readonly id?: string; readonly transcriptPath?: string },
+  ): string | undefined => {
+    const candidateTranscriptPath = candidate.transcriptPath ? path.resolve(candidate.transcriptPath) : undefined;
+    if (!candidate.id && !candidateTranscriptPath) return undefined;
+    const ranked: Array<{ readonly record: ObjectiveRecord; readonly isSelfId: boolean; readonly capturedAtMs: number }> = [];
+    for (const record of listAllObjectiveRecords()) {
+      const session = readAgentSession(record);
+      if (!session) continue;
+      let matched = false;
+      let isSelfId = false;
+      let earliestCapturedAtMs = Infinity;
+      for (const entry of [session, ...(session.previousSessions ?? [])]) {
+        const entryTranscript = entry.transcriptPath ? path.resolve(entry.transcriptPath) : undefined;
+        const hitId = Boolean(candidate.id && entry.id === candidate.id);
+        const hitPath = Boolean(candidateTranscriptPath && entryTranscript === candidateTranscriptPath);
+        if (!hitId && !hitPath) continue;
+        matched = true;
+        if (entry.id === record.id || (entryTranscript && path.basename(entryTranscript, ".jsonl") === record.id)) {
+          isSelfId = true;
+        }
+        if (entry.source !== "launch" && entry.capturedAt) {
+          const parsed = Date.parse(entry.capturedAt);
+          if (Number.isFinite(parsed) && parsed < earliestCapturedAtMs) earliestCapturedAtMs = parsed;
+        }
+      }
+      if (matched) ranked.push({ record, isSelfId, capturedAtMs: earliestCapturedAtMs });
+    }
+    if (ranked.length <= 1) return undefined;
+    ranked.sort((a, b) => {
+      if (a.isSelfId !== b.isSelfId) return a.isSelfId ? -1 : 1;
+      if (a.capturedAtMs !== b.capturedAtMs) return a.capturedAtMs - b.capturedAtMs;
+      if (a.record.ts.createdAt !== b.record.ts.createdAt) return a.record.ts.createdAt - b.record.ts.createdAt;
+      return a.record.id.localeCompare(b.record.id);
+    });
+    const owner = ranked[0]?.record;
+    return owner && owner.id !== targetSessionId ? owner.id : undefined;
+  };
   const resolveRecipient = createMessageRecipientResolver({
     claudeConfigDir: resolveClaudeConfigDir(),
     objectiveRecords: listAllObjectiveRecords,
@@ -592,13 +631,23 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       // 터미널 표면 — 캡처된 전사 파일(들)을 바이트 오프셋으로 읽는다.
       const session = readAgentSession(node);
+      const currentProvider = readProviderSession(node);
+      if (currentProvider && findDuplicateBindingOwner(objectiveId, { id: currentProvider.id, transcriptPath: currentProvider.transcriptPath })) {
+        return { error: "transcript_unavailable" };
+      }
       const files: string[] = [];
       if (session?.previousSessions) {
         for (const prev of session.previousSessions) {
-          if (prev.transcriptPath && !files.includes(prev.transcriptPath)) files.push(prev.transcriptPath);
+          if (
+            prev.transcriptPath
+            && !findDuplicateBindingOwner(objectiveId, { id: prev.id, transcriptPath: prev.transcriptPath })
+            && !files.includes(prev.transcriptPath)
+          ) {
+            files.push(prev.transcriptPath);
+          }
         }
       }
-      const currentFile = readProviderSession(node)?.transcriptPath;
+      const currentFile = currentProvider?.transcriptPath;
       if (currentFile && !files.includes(currentFile)) files.push(currentFile);
       if (files.length === 0) return { error: "transcript_unavailable" };
 
@@ -2102,7 +2151,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.http.writeJson(res, 400, { error: "invalid_text" });
       return true;
     }
-    const capturePath = readProviderSession(node)?.transcriptPath;
+    const providerSession = readProviderSession(node);
+    if (providerSession && findDuplicateBindingOwner(node.id, { id: providerSession.id, transcriptPath: providerSession.transcriptPath })) {
+      ctx.host.http.writeJson(res, 200, { urls: [] });
+      return true;
+    }
+    const capturePath = providerSession?.transcriptPath;
     const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath) : null;
     const urls = transcriptPath ? selectLinksIn(text, await transcriptLinks.read(transcriptPath)) : [];
     ctx.host.http.writeJson(res, 200, { urls });
@@ -2128,7 +2182,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       ctx.host.http.writeJson(res, 409, { error: "history_unsupported" });
       return true;
     }
-    const capturePath = readProviderSession(node)?.transcriptPath;
+    const providerSession = readProviderSession(node);
+    if (providerSession && findDuplicateBindingOwner(node.id, { id: providerSession.id, transcriptPath: providerSession.transcriptPath })) {
+      ctx.host.http.writeJson(res, 409, { error: "session_id_conflict" });
+      return true;
+    }
+    const capturePath = providerSession?.transcriptPath;
     const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath) : null;
     if (!transcriptPath) {
       ctx.host.http.writeJson(res, 404, { error: "history_unavailable" });
@@ -2194,11 +2253,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return { ok: false, status: 409, error: "chat_unsupported" };
     }
     const providerSession = readProviderSession(node);
+    if (providerSession && findDuplicateBindingOwner(node.id, { id: providerSession.id, transcriptPath: providerSession.transcriptPath })) {
+      return { ok: false, status: 409, error: "session_id_conflict" };
+    }
     const existingSession = readAgentSession(node);
     const previousTranscriptPaths: string[] = [];
     if (existingSession?.previousSessions) {
       for (const prev of existingSession.previousSessions) {
-        if (prev.transcriptPath) {
+        if (prev.transcriptPath && !findDuplicateBindingOwner(node.id, { id: prev.id, transcriptPath: prev.transcriptPath })) {
           const resolved = await resolveTranscriptPath(prev.transcriptPath);
           if (resolved) previousTranscriptPaths.push(resolved);
         }
@@ -2381,11 +2443,21 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
             freshConsumed = false;
           }
         },
+        acceptProviderSessionId: (candidateSessionId) => {
+          const conflictRecordId = findSessionBindingConflict(node.id, { id: candidateSessionId });
+          if (conflictRecordId) {
+            console.warn(`[fleet-console] aborted live chat session for ${node.id}: session id ${candidateSessionId} owned by ${conflictRecordId}`);
+            queueMicrotask(() => void chatRegistry.dispose(node.id));
+            return false;
+          }
+          return true;
+        },
         onProviderSessionUpdate: (updated) => {
           const conflictRecordId = findSessionBindingConflict(node.id, { id: updated.id, transcriptPath: updated.transcriptPath });
           if (conflictRecordId) {
             console.warn(`[fleet-console] ignored conflicting provider session update for ${node.id}: owned by ${conflictRecordId}`);
-            return;
+            queueMicrotask(() => void chatRegistry.dispose(node.id));
+            return false;
           }
           const objectiveRecord = ctx.host.objectiveRecords.get(node.id);
           if (objectiveRecord) {

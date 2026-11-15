@@ -711,7 +711,7 @@ describe("agent chat mode routes", () => {
     expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "chat_transcript_missing" } });
   });
 
-  it("rejects binding a provider session id or transcript path already owned by another objective record", async () => {
+  it("rejects binding or resuming a provider session id or transcript path already owned by another objective record", async () => {
     const harness = await createHarness({ cliId: "claude" });
     const ownerId = await harness.createSession();
     const attackerId = await harness.createSession();
@@ -732,12 +732,31 @@ describe("agent chat mode routes", () => {
     });
     expect((harness.getRecord(attackerId)?.session as { id?: string } | undefined)?.id).toBeUndefined();
 
-    // SDK init/sync 경로로 같은 session_id가 들어와도 다른 레코드의 세션을 덮어쓰지 않는다.
+    // 이미 같은 세션 id·기록 경로가 두 레코드에 박힌 옛 데이터여도 후발/중복 레코드의 재개·열람은 막히고 원 주인은 유지된다.
+    const legacyDupId = await harness.createSession();
+    const legacyDupRecord = harness.getRecord(legacyDupId)!;
+    legacyDupRecord.session = {
+      harness: "claude-code",
+      id: "sid-live",
+      transcriptPath: ownerTranscript,
+      capturedAt: "2026-08-15T00:00:00.000Z",
+    };
+    await harness.get(ownerId, "chat-history");
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    await harness.get(legacyDupId, "chat-history");
+    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "session_id_conflict" } });
+    await harness.get(legacyDupId, "chat-catalog");
+    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "session_id_conflict" } });
+    await harness.post(legacyDupId, "message", { text: "resume duplicate" });
+    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "session_id_conflict" } });
+
+    // SDK init/sync 경로로 타 레코드의 session_id가 들어오면 저장을 막을 뿐 아니라 라이브 채팅 세션을 즉시 종료한다.
+    await harness.consoleControl.disposeChat?.(attackerId);
     harness.allowConsoleUse(attackerId);
     harness.setSdkSessionId("sid-live");
     await harness.post(attackerId, "message", { text: "hijack attempt" });
     await vi.waitFor(() => expect(harness.sends).toContain("hijack attempt"));
-    await vi.waitFor(() => expect(harness.responses.at(-1)?.status).toBe(200));
+    await vi.waitFor(() => expect(harness.closeChat).toHaveBeenCalled());
     expect((harness.getRecord(attackerId)?.session as { id?: string } | undefined)?.id).not.toBe("sid-live");
   });
 });

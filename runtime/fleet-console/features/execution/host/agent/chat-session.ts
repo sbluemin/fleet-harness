@@ -196,7 +196,8 @@ export interface AgentChatSessionSeed {
    */
   readonly onSessionMessageSent?: (sent: { readonly recipientObjectiveId?: string; readonly text: string; readonly toolUseId: string }) => void;
   readonly cancelComputerUse?: () => void;
-  readonly onProviderSessionUpdate: (providerSession: CapturedAgentSession) => void;
+  readonly acceptProviderSessionId?: (sessionId: string) => boolean;
+  readonly onProviderSessionUpdate: (providerSession: CapturedAgentSession) => boolean | void;
   /**
    * 이 세션의 실행 활동을 Objective 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
    * 뜻이며, 그때는 턴을 시작하지 않는다 — 배선이 끊긴 채 도는 턴은 화면에 휴면으로 보이고,
@@ -2841,6 +2842,10 @@ class AgentChatSession {
     try {
       for await (const message of session as AsyncIterable<ClaudeGatewayMessage>) {
         if (typeof message.session_id === "string" && message.session_id.length > 0) {
+          if (this.seed.acceptProviderSessionId && !this.seed.acceptProviderSessionId(message.session_id)) {
+            this.push({ kind: "error", code: "session_id_conflict" });
+            break;
+          }
           this.latestSessionId = message.session_id;
           // 아직 심지 않은 좌표가 있으면 심는다. 판정을 "id가 바뀌었는가"로 두면 이어받은 세션의
           // **첫** 좌표가 영영 심기지 않는다 — 그 id는 처음부터 알고 있었으므로 바뀌지 않는다.
@@ -3545,13 +3550,20 @@ class AgentChatSession {
     // 재시작이 조용히 세션을 잃는다. 다음 턴이 다시 시도한다.
     if (!transcriptPath) return;
     this.reportedSessionId = sessionId;
-    this.seed.onProviderSessionUpdate({
+    const accepted = this.seed.onProviderSessionUpdate({
       harness: "claude-code",
       id: sessionId,
       transcriptPath,
       source: "chat-mode",
       capturedAt: new Date().toISOString(),
     });
+    if (accepted === false) {
+      this.push({ kind: "error", code: "session_id_conflict" });
+      const activeSession = this.session;
+      if (activeSession) {
+        try { activeSession.close(); } catch {}
+      }
+    }
   }
 
   /**
