@@ -3,7 +3,7 @@ import type { ConsoleUpdateFailureReason, ConsoleUpdateFailureStage, ConsoleUpda
 import type { ConsoleFontSettings } from "../../../features/settings/shared/fonts.js";
 import type { ConsoleExperimentSettings } from "../../../features/settings/shared/experiments.js";
 import type { ShortcutBindings } from "../../../features/settings/shared/shortcuts.js";
-import type { CommanderFolds, CommanderSortPreference, ConsoleThemeId, UiFontSettings } from "../../../features/settings/host/settings-domain.js";
+import type { CommanderFolds, CommanderSortPreference, ConsoleThemeId, ConversationViewMode, UiFontSettings } from "../../../features/settings/host/settings-domain.js";
 
 export interface ConsoleLockPayload {
   readonly pid: number;
@@ -322,6 +322,8 @@ export interface GlobalSettingsState {
   readonly commanderKeepExpanded: boolean | null;
   /** 좌측 사이드바의 시작 전·완료 목표 표시. null은 키 없음(기본 켜짐)이다. */
   readonly commanderShowSettled: boolean | null;
+  /** 그룹 대화의 가운데 칸 화면. null은 키 없음(그룹채팅)이다. */
+  readonly conversationView: ConversationViewMode | null;
   readonly lowerUnfocusedFrameRate: boolean;
   /** TaskForce 사령관 말풍선 테두리를 이름 색으로 그릴지 — 기본은 꺼짐. */
   readonly taskforceBubbleColor: boolean;

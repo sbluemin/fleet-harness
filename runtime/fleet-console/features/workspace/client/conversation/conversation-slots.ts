@@ -21,6 +21,8 @@ export {
  * 3. 사이드바 행 미리보기 — `setConversationPreviewSource`. 원천이 없거나 값이 없으면 행은 상태 문구를 보인다.
  * 4. 대신하는 Objective 의 입력창 — `setConversationStandInComposer`. 플러그인 대화가 아직 서지 않은 Objective 을 대신하면
  *    그 대화의 문맥(`ConversationSurfaceContext.composer`)으로 건넨다.
+ * 5. 머리 줄 도구 묶음의 꼬리 — `setConversationToolbarTail`. Objective 대화의 알림 종 바로 오른쪽에 선다. 「⋯」 넘침 측정이 걷는
+ *    도구 목록 밖이라 종처럼 끝까지 남는다.
  *
  * 모두 호스트 번들 안의 소비자 몫이다. 플러그인 번들은 모듈 사본이 갈릴 수 있어 여기에 등록하지 않는다.
  */
@@ -118,6 +120,12 @@ export interface ConversationBodyContext {
   readonly language: "en" | "ko";
   /** 셸이 그릴 기본 본문 — 렌더러가 감싸 쓰거나 무시한다. 같은 렌더에서 두 번 그리지 않는다. */
   readonly defaultBody: ReactNode;
+  /**
+   * 이 참여자의 기존 본문 슬롯을 그린다. 데스크톱 원장 분할 화면이 칸마다 부른다.
+   * 셸(`ConversationColumn`)이 구현한다. 같은 objectiveId 의 슬롯은 한 번에 하나만 트리에 둔다 —
+   * `defaultBody` 와 같은 id 를 같이 세우면 본문 풀이 한쪽만 붙인다. 폰 경로는 이 포트를 쓰지 않는다.
+   */
+  readonly renderParticipantBody: (objectiveRecord: ObjectiveRecord) => ReactNode;
   /** 기본 본문 대신 세운 글의 파일 링크 열기 — 기본 본문(Objective 본문)이 받는 것과 같은 창구. */
   readonly navigate: ClientNavigateCapability;
   /** 이 대화의 Objective 브라우저 칸을 연다(여는 일만) — 기본 본문의 링크 카드 「Objective 브라우저」 행과 같은 자리. 본문 Objective 이 브라우저를 내주지 않으면 없다. */
@@ -144,6 +152,41 @@ export function useConversationBodyRenderer(): ConversationBodyRenderer | null {
   return useSyncExternalStore(
     (listener) => { bodyListeners.add(listener); return () => { bodyListeners.delete(listener); }; },
     () => bodyRenderer,
+    () => null,
+  );
+}
+
+// ── 머리 줄 도구 묶음의 꼬리 ───────────────────────────────────────────────
+
+export interface ConversationToolbarTailContext {
+  /** 가운데 칸의 주인 — 구성원을 가진 목표면 지휘관이다. */
+  readonly objectiveRecord: ObjectiveRecord;
+  /** 주인의 구성원(코어의 부모 관계). 없으면 빈 배열. */
+  readonly nestedObjectiveRecords: readonly ObjectiveRecord[];
+  readonly language: "en" | "ko";
+}
+
+/** 머리 줄 도구 묶음에서 알림 종 바로 오른쪽에 붙는 자리 — 그룹 대화의 화면 전환처럼 이 대화에만 서는 단추. `null` 이면 비운다. */
+export type ConversationToolbarTailRenderer = (context: ConversationToolbarTailContext) => ReactNode | null;
+
+let toolbarTail: ConversationToolbarTailRenderer | null = null;
+const toolbarTailListeners = new Set<() => void>();
+
+/** 머리 줄 꼬리 렌더러를 둔다. 하나만 선다 — 나중 등록이 이긴다. 돌려준 함수로 걷는다. */
+export function setConversationToolbarTail(renderer: ConversationToolbarTailRenderer): () => void {
+  toolbarTail = renderer;
+  for (const listener of toolbarTailListeners) listener();
+  return () => {
+    if (toolbarTail !== renderer) return;
+    toolbarTail = null;
+    for (const listener of toolbarTailListeners) listener();
+  };
+}
+
+export function useConversationToolbarTail(): ConversationToolbarTailRenderer | null {
+  return useSyncExternalStore(
+    (listener) => { toolbarTailListeners.add(listener); return () => { toolbarTailListeners.delete(listener); }; },
+    () => toolbarTail,
     () => null,
   );
 }

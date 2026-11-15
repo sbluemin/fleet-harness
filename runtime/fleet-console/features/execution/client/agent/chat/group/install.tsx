@@ -13,11 +13,13 @@ import {
   registerConversationObjectiveTab,
   setConversationBodyRenderer,
   setConversationStandInComposer,
+  setConversationToolbarTail,
   subscribeConversationStandIn,
   subscribeConversationSubject,
   useConversationStandIn,
   useConversationSubject,
   type ConversationBodyContext,
+  type ConversationToolbarTailContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
 import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
@@ -37,6 +39,8 @@ import { getGroupT } from "./group-chat-i18n.js";
 import { GroupMembersPanel } from "./group-members-panel.js";
 import { SpeakerMark, useLocalizedSnapshot } from "./speaker-mark.js";
 import { registerObjectiveContextRail } from "./context-rail.js";
+import { ConversationViewToggle, setGroupConversationView, useGroupConversationView } from "./conversation-view.js";
+import { GroupLedgerSplit, type GroupLedgerSplitPane } from "./ledger-split.js";
 
 /**
  * 그룹 대화를 대화 중심 화면에 끼운다 — 가운데 칸 본문 렌더러와 오른쪽 「구성원」 탭.
@@ -47,7 +51,9 @@ import { registerObjectiveContextRail } from "./context-rail.js";
  * 가운데 칸 규칙:
  * - 목표 대화의 뿌리(지휘관)이거나 구성원을 가진 채팅 루트를 보고 있으면 그룹 대화가 선다 — 구성원이 아직 없는 지휘관도
  *   같은 화면이다. 루트의 기존 본문은 칸에 붙지 않으므로 본문 풀에서 주차되고(bodyLive=false) 자기 소켓을 열지 않는다.
- * - 오른쪽 「구성원」 탭의 줄이나 대화 말풍선 머리의 표식·이름을 누르면 그 참여자의 기존 본문을 읽기 전용 틀에 넣어 세운다.
+ * - 데스크톱 그룹채팅의 말풍선 머리 표식·이름(네임플레이트)만 참여자와 무관하게 화면 전환 설정을 원장으로 바꾼다(`conversation-view`).
+ *   알림 종 오른쪽의 전환 단추도 같은 설정을 고친다.
+ * - 오른쪽 「구성원」 탭의 줄, 작업 줄·진행 메모 링크·전언 화면(폰은 네임플레이트도)을 누르면 그 참여자의 기존 본문을 읽기 전용 틀에 넣어 세운다.
  *   구성원은 셸의 구성원 본문 선택이, 지휘관은 `commander-ledger` 가 고른다(셸의 선택은 루트 자신을 고를 수 없다). 원장에는
  *   사람 입력 틀이 없고, 틀 머리의 「대화로 돌아가기」가 대화로 데려온다.
  * - 목표가 아닌 1:1 채팅이거나 루트가 터미널(CLI)로 열려 있으면 기본 본문을 그대로 둔다.
@@ -57,7 +63,19 @@ export function installGroupConversationSurface(): () => void {
   const disposeBody = setConversationBodyRenderer(renderConversationBody);
   const disposeComposer = setConversationStandInComposer((objectiveId, language) => <StandInComposer key={objectiveId} rootId={objectiveId} language={language} />);
   const disposeRail = registerObjectiveContextRail();
-  return () => { disposeRail(); disposeComposer(); disposeBody(); };
+  const disposeTail = setConversationToolbarTail(renderToolbarTail);
+  return () => { disposeTail(); disposeRail(); disposeComposer(); disposeBody(); };
+}
+
+/** 머리 줄 알림 종 오른쪽의 그룹채팅/원장 전환 — 가운데 칸이 그룹 대화일 때만 선다(본문 렌더러와 같은 판정). */
+function renderToolbarTail(context: ConversationToolbarTailContext): React.ReactNode | null {
+  if (!isGroupConversationObjective(context.objectiveRecord, context.nestedObjectiveRecords.length > 0)) return null;
+  return <ConversationViewToggle root={context.objectiveRecord} language={context.language} onLeaveLedger={leaveLedger} />;
+}
+
+/** 개별 원장(「구성원」 탭에서 고른 참여자)을 내린다 — 화면 전환 단추가 고른 화면이 바로 서게. */
+function leaveLedger(rootId: string): void {
+  if (ledgerObjectiveId(rootId) !== null) openLedger(rootId, null);
 }
 
 /**
@@ -141,7 +159,8 @@ function renderConversationBody(context: ConversationBodyContext): React.ReactNo
   // 데스크톱 가운데 칸의 그룹 대화는 루트(지휘관) Objective 본문 대신 선다 — 그 본문의 채팅 링크 경계를 잃지 않게 같은 길로 감싼다.
   // 구성원·지휘관 원장(MemberLedger)은 기본 본문을 그대로 세우므로 그 본문의 경계가 이미 있다.
   const links: GroupLinkPorts = { navigate: context.navigate, ...(context.openObjectiveBrowser ? { openObjectiveBrowser: context.openObjectiveBrowser } : {}) };
-  return <RootBody root={context.objectiveRecord} language={context.language} links={links}>{context.defaultBody}</RootBody>;
+  const split: LedgerSplitPorts = { nestedObjectiveRecords: context.nestedObjectiveRecords, renderParticipantBody: context.renderParticipantBody };
+  return <RootBody root={context.objectiveRecord} language={context.language} links={links} split={split}>{context.defaultBody}</RootBody>;
 }
 
 /**
@@ -160,16 +179,45 @@ interface GroupLinkPorts {
   readonly openObjectiveBrowser?: () => void;
 }
 
+/** 데스크톱 가운데 칸이 원장 분할 화면에 넘기는 창구 — 구성원 레코드와 참여자 본문 슬롯. 폰은 주지 않는다. */
+interface LedgerSplitPorts {
+  readonly nestedObjectiveRecords: readonly ObjectiveRecord[];
+  readonly renderParticipantBody: ConversationBodyContext["renderParticipantBody"];
+}
+
 /**
- * 루트 자리 — 평소에는 그룹 대화, 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문).
- * `links` 는 데스크톱 가운데 칸만 준다. 폰은 루트 Objective 본문 안에 서므로 그 본문의 채팅 링크 경계가 이미 감싼다.
+ * 루트 자리 — 「구성원」 탭에서 지휘관을 고르면 지휘관의 원장(루트의 기존 본문)이 먼저다. 아니면 데스크톱은 화면 전환 설정이 원장일 때
+ * 원장 분할 화면, 그룹채팅일 때 그룹 대화다. 폰은 늘 그룹 대화다.
+ * `links`·`split` 은 데스크톱 가운데 칸만 준다. 폰은 루트 Objective 본문 안에 서므로 그 본문의 채팅 링크 경계가 이미 감싼다.
  */
-function RootBody({ root, language, phone = false, links, children }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly phone?: boolean; readonly links?: GroupLinkPorts; readonly children: React.ReactNode }) {
+function RootBody({ root, language, phone = false, links, split, children }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly phone?: boolean; readonly links?: GroupLinkPorts; readonly split?: LedgerSplitPorts; readonly children: React.ReactNode }) {
   const commanderLedger = useCommanderLedgerChosen(root.id);
+  const view = useGroupConversationView();
   if (commanderLedger) return <MemberLedger root={root} member={root} language={language}>{children}</MemberLedger>;
+  // 분할 화면은 루트 본문을 칸으로 직접 세우므로 children(같은 id 의 기본 본문)은 그리지 않는다 — 본문 풀은 id 당 슬롯 하나다.
+  if (!phone && split && view === "ledger") return <RootLedgerSplit root={root} language={language} ports={split} />;
   return links
     ? <GroupLinkBoundary root={root} language={language} ports={links}>{(fileLinkError) => <RootConversation root={root} language={language} phone={phone} fileLinkError={fileLinkError} />}</GroupLinkBoundary>
     : <RootConversation root={root} language={language} phone={phone} />;
+}
+
+/**
+ * 원장 분할 화면 — 지휘관 1칸(첫 칸)과 Objective 레코드가 선 구성원 전원. 칸 머리의 표식·이름은 그룹 타임라인의 참여자를 쓰고,
+ * 명부에 아직 없으면 레코드 제목으로 세운다. 레코드가 없는 명부 구성원(시작 전)은 칸이 없다.
+ */
+function RootLedgerSplit({ root, language, ports }: { readonly root: ObjectiveRecord; readonly language: "en" | "ko"; readonly ports: LedgerSplitPorts }) {
+  const snapshot = useLocalizedSnapshot(useGroupTimeline(root.id), language);
+  const { nestedObjectiveRecords, renderParticipantBody } = ports;
+  const panes = React.useMemo<readonly GroupLedgerSplitPane[]>(() => {
+    const speakerOf = (id: string) => snapshot.participants.find((participant) => participant.speaker.objectiveId === id)?.speaker ?? null;
+    const commander: GroupLedgerSplitPane = { objectiveRecord: root, speaker: speakerOf(root.id) ?? { kind: "commander", name: root.title, objectiveId: root.id } };
+    const members = nestedObjectiveRecords.filter((record) => record.parentObjectiveId === root.id);
+    // 구성원 칸은 참여자 순서(명부)를 따르고, 명부에 아직 없는 레코드는 뒤에 붙인다.
+    const order = new Map(snapshot.participants.flatMap((participant, index) => (participant.speaker.objectiveId ? [[participant.speaker.objectiveId, index] as const] : [])));
+    const sorted = [...members].sort((left, right) => (order.get(left.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.id) ?? Number.MAX_SAFE_INTEGER));
+    return [commander, ...sorted.map((record) => ({ objectiveRecord: record, speaker: speakerOf(record.id) ?? { kind: "member" as const, name: record.title, objectiveId: record.id } }))];
+  }, [root, nestedObjectiveRecords, snapshot.participants]);
+  return <GroupLedgerSplit panes={panes} language={language} renderParticipantBody={renderParticipantBody} />;
 }
 
 /**
@@ -200,6 +248,9 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const actions = useGroupConversationActions(root.id);
   const useRequests = useGroupUseRequests(root.id);
   const openMemberLedger = React.useCallback((objectiveId: string) => openLedger(root.id, objectiveId), [root.id]);
+  // 데스크톱 그룹채팅의 네임플레이트만 누른 참여자와 무관하게 원장 분할 화면으로 바꾼다(모든 지휘관 공통 설정). 작업 줄·진행 메모 링크·
+  // 전언 화면은 그 참여자의 개별 원장을 그대로 연다. 폰은 네임플레이트도 예전처럼 개별 원장이다.
+  const openLedgerView = React.useCallback(() => setGroupConversationView("ledger"), []);
   const clusters = useGroupClusters();
   const openUIOpen = clusters.find((cluster) => cluster.conversation?.objectiveId === root.id)?.conversation?.openUIOpen;
   // 보드 동작이 있는 일반 Objective도 있다. 목표 플러그인이 명시한 기록 여부만 요약 슬롯의 근거다.
@@ -257,6 +308,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       snapshot={snapshot}
       language={language}
       onOpenLedger={openMemberLedger}
+      {...(phone ? {} : { onOpenNameplate: openLedgerView, nameplateLabel: t("group.view.toLedger") })}
       onOpenCommodoreRecord={openRecord}
       cards={cards}
       fold

@@ -1507,3 +1507,60 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 :root[data-view-mode="mobile"] .group-relay-pill-party { flex: 0 1 auto; gap: 10px; min-height: 36px; overflow: hidden; color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-bold); line-height: 1.2; }
 :root[data-view-mode="mobile"] .group-relay-pill-party .group-chat-mark { flex: none; width: 36px; height: 36px; }
 :root[data-view-mode="mobile"] .group-relay-pill-party-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 머리 줄 도구 묶음의 알림 종 오른쪽 — 세로 구분선과 그룹채팅/원장 전환 단추(conversation-view.tsx). 단추 모양은 이 줄의
+   도구(.conversation-pill-tools .right-rail-ico)를 그대로 따른다. */
+.conversation-pill-tools .group-view-divider {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--space-1);
+  background: var(--hairline-strong);
+}
+
+/* 원장 분할 — 데스크톱 가운데 칸에만 세운다. 칸 크기는 페이지 수명이고, 경계는 끌어 바꾼다.
+   안쪽 채팅 로그가 기둥 pill 몫을 또 비우지 않게 겹침 변수를 끈다. 기둥 아래 시작은 대화 칸의 padding 이 진다. */
+.group-ledger-split {
+  --conversation-overlay-top: 0px;
+  /* 오른쪽 컨텍스트 레일(아바타 카드 58px, 칸 오른쪽 끝에서 space-3 안쪽)이 칸 머리·본문을 가리지 않게 그 폭과 양옆 간격만큼
+     오른쪽을 비운다. padding 이 아니라 폭에서 뺀다 — 경계 드래그가 이 상자의 실측 폭으로 가용 폭을 계산한다.
+     레일을 숨긴 동안에도 같은 자리를 비운다(레일 상태를 따라 그리드가 움직이지 않게). */
+  --group-ledger-split-rail: calc(58px + 2 * var(--space-3));
+  display: grid;
+  width: calc(100% - var(--group-ledger-split-rail));
+  margin-right: var(--group-ledger-split-rail);
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.group-ledger-split-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.group-ledger-split-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--control-rest);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+.group-ledger-split-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-ledger-split-pane-body { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.group-ledger-split-pane-body > * { flex: 1 1 auto; min-width: 0; min-height: 0; }
+.group-ledger-split-gutter { touch-action: none; background: var(--hairline); }
+.group-ledger-split-gutter.is-vertical { cursor: col-resize; }
+.group-ledger-split-gutter.is-horizontal { cursor: row-resize; }
+.group-ledger-split-gutter:hover { background: var(--control-wash-hover); }
+.group-ledger-split-gutter:active { background: var(--control-wash); }
+.group-ledger-split-gutter:focus-visible { box-shadow: var(--focus-face); }
+@media (forced-colors: active) {
+  .group-ledger-split-gutter:focus-visible { outline: 1px solid Highlight; }
+}

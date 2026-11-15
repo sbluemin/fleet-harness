@@ -189,6 +189,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     commanderFolds: toCommanderFolds(payload.commanderFolds),
     commanderKeepExpanded: typeof payload.commanderKeepExpanded === "boolean" ? payload.commanderKeepExpanded : null,
     commanderShowSettled: typeof payload.commanderShowSettled === "boolean" ? payload.commanderShowSettled : null,
+    conversationView: payload.conversationView === "chat" || payload.conversationView === "ledger" ? payload.conversationView : null,
     lowerUnfocusedFrameRate: payload.lowerUnfocusedFrameRate !== false,
     taskforceBubbleColor: payload.taskforceBubbleColor === true,
     uiFont: normalizeUiFont(payload.uiFont),

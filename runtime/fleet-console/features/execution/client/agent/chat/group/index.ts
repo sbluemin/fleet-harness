@@ -4,5 +4,6 @@
  * 원장 보기는 셸의 구성원 본문 선택(코어 `selectNestedBody`)이 고르고, `GroupLedgerFrame` 이 기존 본문을 감싼다.
  */
 export { GroupConversation, GroupLedgerFrame, GroupWorkingLine, type BoardActionRecordRequest, type GroupConversationProps } from "./group-conversation.js";
+export { GroupLedgerSplit, type GroupLedgerSplitPane, type GroupLedgerSplitProps } from "./ledger-split.js";
 export { GroupMembersPanel, type GroupMembersPanelProps } from "./group-members-panel.js";
 export { CONVERSATION_MEMBERS_TAB_ID, installGroupConversationSurface, ledgerObjectiveId, MobileGroupConversation, openLedger, subscribeLedger } from "./install.js";
