@@ -5,7 +5,7 @@ import { getViewModeSnapshot } from "../../../core/client/src/integration/view-m
 import { getT, useTerminalLocale } from "../../execution/client/agent/i18n/index.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
-import { SettingsGroup, SettingsSegments } from "../../settings/client/preferences-context.js";
+import { SettingsGroup, SettingsHelpTip, SettingsSegments } from "../../settings/client/preferences-context.js";
 import { closeSettingsModal } from "../../settings/client/settings-door.js";
 import {
   loadSystemPromptSettings,
@@ -23,6 +23,18 @@ const PROVIDER_LABEL = {
   codex: "terminal.settings.aiGatewayProviderCodex",
   xai: "terminal.settings.aiGatewayProviderXai",
   "muse-code": "terminal.settings.aiGatewayProviderMuseCode",
+} as const;
+
+/**
+ * 게이트웨이가 각 공급자에 붙는 방식. Antigravity만 agy ACP 브리지로 말하고
+ * (router.ts의 agyBridgeGateway), 나머지는 구독 OAuth 자격으로 공급자 API를 직접 부른다.
+ */
+const PROVIDER_TRANSPORT = {
+  antigravity: "terminal.settings.aiGatewayTransportAcp",
+  claude: "terminal.settings.aiGatewayTransportOauth",
+  codex: "terminal.settings.aiGatewayTransportOauth",
+  xai: "terminal.settings.aiGatewayTransportOauth",
+  "muse-code": "terminal.settings.aiGatewayTransportOauth",
 } as const;
 
 /** 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서. */
@@ -116,10 +128,7 @@ export function AiGatewayCompactCard(): React.ReactElement {
         {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
         {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
         {providers.map((provider) => (
-          <React.Fragment key={provider.id}>
-            <ProviderLoginRow provider={provider} status={state.aiGatewayLogin[provider.id] ?? null} />
-            {provider.id === "xai" ? <XaiEndpointRow /> : null}
-          </React.Fragment>
+          <ProviderLoginRow key={provider.id} provider={provider} status={state.aiGatewayLogin[provider.id] ?? null} />
         ))}
         {services.map((service) => (
           <ServiceLoginRow key={service.provider} service={service} busy={auth.busyProvider === service.provider} />
@@ -146,11 +155,22 @@ function ProviderLoginRow({ provider, status }: { readonly provider: AiGatewayCa
   const t = getT(useTerminalLocale(), mobile);
   const name = t(PROVIDER_LABEL[provider.id]);
   const kind = gatewayLoginKind(provider.id, status);
+  // 데스크톱은 이름 옆 「?」, 모바일은 SettingsHelpTip이 행 아래 한 줄로 서므로 행의 마지막 자식으로 둔다.
+  const caution = provider.id === "antigravity" ? (
+    <SettingsHelpTip ariaLabel={t("terminal.settings.helpTipAria", { title: name })}>
+      {t("terminal.settings.aiGatewayAntigravityCaution")}
+    </SettingsHelpTip>
+  ) : null;
   return (
     <div className="ai-gateway-login-row">
       <ProviderMark provider={provider.id} />
-      <span className="ai-gateway-provider-name">{name}</span>
+      <span className="ai-gateway-provider-heading">
+        <span className="ai-gateway-provider-name">{name}</span>
+        <span className="ai-gateway-transport">{t(PROVIDER_TRANSPORT[provider.id])}</span>
+        {mobile ? null : caution}
+      </span>
       <span className="ai-gateway-login-control">
+        {provider.id === "xai" ? <XaiEndpointSegments /> : null}
         {kind === "unlinked" ? (
           <button type="button" className="ai-gateway-login is-unlinked" onClick={() => requestQuotaPanelOpen()}>{t("terminal.settings.aiGatewayUsageUnlinked")}</button>
         ) : kind === "out" ? (
@@ -164,6 +184,7 @@ function ProviderLoginRow({ provider, status }: { readonly provider: AiGatewayCa
           </span>
         )}
       </span>
+      {mobile ? caution : null}
     </div>
   );
 }
@@ -190,7 +211,8 @@ function RoutingPoolStack({ providers }: { readonly providers: readonly LaunchPr
   );
 }
 
-function XaiEndpointRow(): React.ReactElement | null {
+/** xAI 행 안에 서는 엔드포인트 토글 — 별도 하위 행 없이 로그인 상태 앞에 놓인다. */
+function XaiEndpointSegments(): React.ReactElement | null {
   const mobile = useMobileSettingsHost() !== null;
   const t = getT(useTerminalLocale(), mobile);
   const settings = useSystemPromptSettingsStore();
@@ -202,20 +224,15 @@ function XaiEndpointRow(): React.ReactElement | null {
     { value: "direct", label: t("terminal.settings.xaiEndpointDirect") },
   ];
   return (
-    <div className="ai-gateway-endpoint-sub">
-      <div className="ai-gateway-login-row">
-        <span className="ai-gateway-login-name">{t("terminal.settings.xaiEndpoint")}</span>
-        <span className="ai-gateway-login-control">
-          <SettingsSegments
-            ariaLabel={t("terminal.settings.xaiEndpoint")}
-            value={endpoint}
-            disabled={saving}
-            options={options}
-            onChange={(next) => { void setSystemPromptSettingsField("xaiEndpoint", next); }}
-          />
-        </span>
-      </div>
-    </div>
+    <span className="ai-gateway-endpoint">
+      <SettingsSegments
+        ariaLabel={t("terminal.settings.xaiEndpoint")}
+        value={endpoint}
+        disabled={saving}
+        options={options}
+        onChange={(next) => { void setSystemPromptSettingsField("xaiEndpoint", next); }}
+      />
+    </span>
   );
 }
 
@@ -226,7 +243,10 @@ function ServiceLoginRow({ service, busy }: { readonly service: ModelAuthProvide
   return (
     <div className="ai-gateway-login-row">
       <span className="ai-gateway-service-mark" aria-hidden="true">{serviceGlyph("typesafe")}</span>
-      <span className="ai-gateway-provider-name">{service.displayName}</span>
+      <span className="ai-gateway-provider-heading">
+        <span className="ai-gateway-provider-name">{service.displayName}</span>
+        <span className="ai-gateway-transport">{t("terminal.settings.aiGatewayTransportApiKey")}</span>
+      </span>
       <span className="ai-gateway-login-control">
         {service.signedIn ? (
           <button type="button" className="ai-gateway-signout" disabled={busy} onClick={() => void signOutModel(service.provider)}>
