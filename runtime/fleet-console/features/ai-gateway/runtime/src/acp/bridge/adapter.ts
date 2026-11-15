@@ -136,6 +136,20 @@ function re2Pattern(pattern: string): string | undefined {
   return out;
 }
 
+/**
+ * Gemini's function declaration requires `items` on every array schema; a missing one fails the whole turn with
+ * `INVALID_ARGUMENT (code 400): … parameters.properties[batch].items: missing field` (measured on a real Fleet session: MCP
+ * tools such as `{"type":"array"}` with no `items`, which JSON Schema allows). agy converts the schema itself, so what
+ * matters is what its converter keeps. Measured 2026-11-15 (agy 1.5.9, one probe tool with six array variants, gemini-3.8-flash):
+ * `items: {}`, `{type:"string"}`, `{anyOf:[…]}` and `{type:"object"}` are accepted; a missing `items` and `items: true` are the
+ * only ones rejected. The widest accepted form is `items: {}` ("anything"), so that is what an absent or boolean `items` becomes.
+ * Nothing else is rewritten: other Gemini constraints are handled when a real error names them.
+ */
+function withArrayItems(node: Record<string, unknown>): Record<string, unknown> {
+  if (node.type !== "array" || (node.items !== undefined && node.items !== true)) return node;
+  return { ...node, items: {} };
+}
+
 const SCHEMA_VALUE_KEYWORDS: ReadonlySet<string> = new Set(["default", "const", "enum", "examples", "example"]);
 
 function normalizeSchema(node: unknown): unknown {
@@ -160,7 +174,7 @@ function normalizeSchema(node: unknown): unknown {
     }
     out[key] = normalizeSchema(value);
   }
-  return out;
+  return withArrayItems(out);
 }
 
 function toolCatalog(request: CanonicalResponseRequest): { tools: BridgeToolDef[]; names: Map<string, string> } {

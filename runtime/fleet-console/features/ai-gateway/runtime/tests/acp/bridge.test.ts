@@ -44,6 +44,9 @@ const BASH = {
     type: "object",
     properties: {
       command: { type: "string", pattern: String.raw`^(?!rm )\S.*$` },
+      // JSON Schema allows an array with no `items`; Gemini rejects the whole turn for it.
+      batch: { type: "array" },
+      flags: { type: "array", items: true },
       add: { type: "object", properties: { evidence: { type: "array", items: { oneOf: [{ type: "object", properties: { note: { type: "string", pattern: String.raw`^[^\u0000-\u001f\u007f]+$` } } }] } } } },
     },
   },
@@ -115,9 +118,11 @@ describe("agy ACP bridge", () => {
     expect(argv).not.toContain("--dangerously-skip-permissions");
     // agy's toolbox (Go RE2) refuses `\uXXXX` and lookahead patterns and would fail the whole session: the former is respelled, the latter dropped.
     const schema = (entries.find((entry) => entry.mcpSchemas)!.mcpSchemas as {
-      properties: { command: unknown; add: { properties: { evidence: { items: { oneOf: { properties: { note: { pattern: string } } }[] } } } } };
+      properties: { command: unknown; batch: unknown; flags: unknown; add: { properties: { evidence: { items: { oneOf: { properties: { note: { pattern: string } } }[] } } } } };
     }[])[0]!;
     expect(schema.properties.command).toEqual({ type: "string" });
+    expect(schema.properties.batch).toEqual({ type: "array", items: {} });
+    expect(schema.properties.flags).toEqual({ type: "array", items: {} });
     expect(schema.properties.add.properties.evidence.items.oneOf[0]!.properties.note.pattern).toBe(String.raw`^[^\x{0000}-\x{001f}\x{007f}]+$`);
     expect(entries.find((entry) => entry.mcpTools)).toMatchObject({ mcpTools: ["Bash"], eager: ["Bash"], timeoutSeconds: 3600 });
   });
