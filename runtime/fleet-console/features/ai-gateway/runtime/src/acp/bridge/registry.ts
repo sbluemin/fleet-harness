@@ -253,12 +253,15 @@ export class SessionRegistry {
     this.sessions.delete(session);
   }
 
-  /** 새 세션 자리를 만든다: 상한이면 가장 오래 쓰지 않은, 응답 중이 아닌 세션부터 닫는다. */
+  /**
+   * 새 세션 자리를 만든다: 상한이면 응답 중이 아닌 세션부터 닫는다. `idle` 세션이 먼저다 — `awaiting_tools` 세션은 도구 결과가
+   * 곧 돌아올 수 있고(닫으면 진행 중인 agy prompt와 보류 호출이 사라진다) 같은 상태에서 가장 오래 쓰지 않은 것부터 나간다.
+   */
   async makeRoom(): Promise<void> {
     while (this.sessions.size >= this.maxSessions) {
       const victim = [...this.sessions]
         .filter((session) => session.state !== "streaming" && session.state !== "opening")
-        .sort((left, right) => left.lastUsedAt - right.lastUsedAt)[0];
+        .sort((left, right) => Number(left.state === "awaiting_tools") - Number(right.state === "awaiting_tools") || left.lastUsedAt - right.lastUsedAt)[0];
       if (!victim) return;
       await victim.close("evicted: too many bridge sessions");
     }
