@@ -93,6 +93,25 @@ export function assemble(api) {
     async section(name, rowId) {
       return await api("POST", "/api/v1/commodore/sidebar", { op: "create", name, rowId });
     },
+    /**
+     * Turn on only the taskforce experiment of this owned slot, then create one taskforce from the commodores just made.
+     * GET experiments are sent back with `taskforce: true` so computerUse and its backend stay as stored. No provider call.
+     */
+    async taskforce({ name, topic, members }) {
+      const current = await api("GET", "/api/v1/settings/global");
+      const before = current?.experiments ?? {};
+      const saved = await api("PUT", "/api/v1/settings/global", { experiments: { ...before, taskforce: true } });
+      const after = saved?.state?.experiments;
+      if (after?.taskforce !== true) throw new Error("taskforce experiment was not enabled");
+      if ((after.computerUse === true) !== (before.computerUse === true)) throw new Error("taskforce seed changed computerUse");
+      if ((before.computerUseBackend === "sky-computer-use" || before.computerUseBackend === "cua-driver") && after.computerUseBackend !== before.computerUseBackend) {
+        throw new Error("taskforce seed changed computerUseBackend");
+      }
+      const created = await api("POST", "/api/v1/taskforce/create", { name, topic, members });
+      const taskforceId = created?.taskforce?.id;
+      if (typeof taskforceId !== "string") throw new Error("taskforce was not created");
+      return { taskforceId, members: [...members] };
+    },
   };
 }
 
