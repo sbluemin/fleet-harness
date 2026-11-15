@@ -129,6 +129,11 @@ export class BridgeSession implements McpSessionHandler {
   get state(): BridgeSessionState { return this.current; }
 
   attach(acp: AcpSession): void {
+    if (this.current === "closed") {
+      void acp.cancel().catch(() => undefined);
+      void acp.close().catch(() => undefined);
+      return;
+    }
     this.acp = acp;
     this.setState("idle");
   }

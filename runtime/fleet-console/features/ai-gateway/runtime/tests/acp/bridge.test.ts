@@ -124,6 +124,35 @@ const textOf = (message: { content: readonly { type: string; text?: string }[] }
 const count = (entries: readonly Record<string, unknown>[], method: string) => entries.filter((entry) => entry.method === method).length;
 
 describe("agy ACP bridge", () => {
+  it("closes an agy session that finishes opening after the bridge is disposed", async () => {
+    let opened: ((session: AcpSession) => void) | undefined;
+    let openStarted: (() => void) | undefined;
+    const started = new Promise<void>((resolve) => { openStarted = resolve; });
+    let closed = false;
+    const port: AcpSessionPort = {
+      open: () => {
+        openStarted?.();
+        return new Promise((resolve) => { opened = resolve; });
+      },
+    };
+    const bridge = createAgyAcpBridge({ port });
+    bridges.push(bridge);
+    const streaming = bridge.stream({ model: MODEL, input: [user("hi")], stream: true }, { apiKey: "" });
+    await started;
+    await bridge.dispose();
+    opened?.({
+      sessionId: "opening",
+      wireModel: MODEL,
+      prompt: () => (async function* () {})(),
+      steer: async () => undefined,
+      cancel: async () => undefined,
+      close: async () => { closed = true; },
+    });
+    const response = await streaming;
+    expect(response.ok).toBe(false);
+    expect(closed).toBe(true);
+  });
+
   it("drops the header and identity Claude Code puts first in system and keeps the Fleet instruction", async () => {
     const { bridge, log } = await setup();
     const header = "x-anthropic-billing-header: cc_version=2.1.325.ff3; cc_entrypoint=sdk-cli;";
