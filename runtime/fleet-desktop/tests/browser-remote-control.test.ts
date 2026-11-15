@@ -225,6 +225,7 @@ describe("remote browser shell", () => {
     const restored = streamed.filter((call) => call.url.includes("/viewport"));
     expect(restored).toHaveLength(1);
     expect(JSON.parse(String(restored[0]!.init?.body))).toEqual({ preset: "responsive", spaceId: "default" });
+    expect(restored[0]!.init?.credentials).toBe("include");
     push!(snapshot(false, "manager_disconnected"));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(streamed.filter((call) => call.url.includes("/viewport"))).toHaveLength(1);

@@ -125,11 +125,17 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     const browserId = chrome?.browserId ?? VIEWER_BROWSER_ID;
     const tab = chrome?.tabs.find((item) => item.id === chrome.activeTabId);
     const body = { preset: "responsive", ...(tab ? { spaceId: tab.spaceId } : {}) };
+    // 원격 페어링 쿠키는 창 세션에 있다. credentials 가 없으면 same-origin 기본값이 그 쿠키를 빼서 복귀가 거절되고 맞춘 크기가 남는다.
     void deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/viewport`, {
       method: "POST",
+      credentials: "include",
       headers: { "Content-Type": "application/json", Origin: at },
       body: JSON.stringify(body),
-    }).catch(() => undefined);
+    }).then((response) => {
+      if (!response.ok) log(`browser viewport restore rejected status=${response.status}`);
+    }, (error: unknown) => {
+      log(`browser viewport restore failed: ${error instanceof Error ? error.message : "unknown"}`);
+    });
   };
   const noteControlFit = (): void => {
     if (controllable()) { remoteFitActive = true; return; }
