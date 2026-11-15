@@ -20,6 +20,7 @@ import { z } from "zod";
 
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
 import { commodoreTranscriptEntrySchema } from "../features/commodore/shared/contracts/types.js";
+import { commodoreLastMessage } from "../features/commodore/shared/last-message.js";
 import type { ConsoleResidentAgentHost as AgentHost, ConsoleResidentOptions as AgentSessionOptions } from "../features/execution/host/agent/console-resident.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
 import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
@@ -3527,4 +3528,46 @@ it("assembles promoted Commodore character and voice block for Bori, Tori, and D
   const englishPromoted = commodoreSystemPrompt("theater-1", "en", { commodoreId: "bori-id", alias: "Bori", voice: "bori" });
   expect(englishPromoted).not.toContain("# Character & Voice");
   expect(englishPromoted).toContain("like a cheerful, quick-witted, and lively colleague");
+});
+
+it("strips inline Markdown syntax from Commodore sidebar previews while preserving text and non-Markdown punctuation", () => {
+  expect(commodoreLastMessage({
+    seq: 1,
+    at: 100,
+    kind: "text",
+    text: "Opened **/reports/orders** with *italic*, __strong__, _em_, ~~old~~, `code`, ``nested `tick` ``, and [**link** text](https://example.com/a_(b)).",
+  })).toEqual({
+    at: 100,
+    from: "commodore",
+    text: "Opened /reports/orders with italic, strong, em, old, code, nested `tick`, and link text.",
+  });
+
+  expect(commodoreLastMessage({
+    seq: 2,
+    at: 200,
+    kind: "text",
+    text: "## 요약\n- **굵게**·`코드`가 든 답\n> 인용과 `snake_case_id` 및 `2 * 3 = 6`, 그리고 plain_snake_case · 2 * 3 = 6",
+  })).toEqual({
+    at: 200,
+    from: "commodore",
+    text: "요약 굵게·코드가 든 답 인용과 snake_case_id 및 2 * 3 = 6, 그리고 plain_snake_case · 2 * 3 = 6",
+  });
+
+  expect(commodoreLastMessage({
+    seq: 3,
+    at: 300,
+    kind: "text",
+    text: "![alt label](https://example.com/img.png), [`inline_code`](https://example.com), matrix[0][1], and [ERROR][payments] Connection refused",
+  })).toEqual({
+    at: 300,
+    from: "commodore",
+    text: "alt label, inline_code, matrix[0][1], and [ERROR][payments] Connection refused",
+  });
+
+  expect(commodoreLastMessage({
+    seq: 4,
+    at: 400,
+    kind: "text",
+    text: "![](https://example.com/empty.png)\n```ts\nconst x = 1;\n```",
+  })).toBeNull();
 });
