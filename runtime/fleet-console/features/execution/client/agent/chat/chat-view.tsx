@@ -52,6 +52,7 @@ import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } fro
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
+import { useLedgerSplitPaneSpeaker } from "./group/ledger-split-panes.js";
 import { LiveSpeakerMark, SpeakerMark, SpeakerName } from "./group/speaker-mark.js";
 import { getGroupT } from "./group/group-chat-i18n.js";
 import { isGroupConversationRoot, subscribeGroupClusters } from "./group-timeline-store.js";
@@ -116,6 +117,8 @@ export function AgentChatView({
   const isMember = typeof context.objectiveRecord.parentObjectiveId === "string" && context.objectiveRecord.parentObjectiveId.length > 0;
   const commanderLedger = useCommanderLedgerFramed(context.objectiveId);
   const isMemberChat = isMember || commanderLedger;
+  // 원장 분할 칸 안에 선 본문이면 그 칸 주인 — 바닥 줄 왼쪽이 모델 좌표 대신 이 아바타·이름을 말한다(분할 칸 밖은 null).
+  const splitPaneSpeaker = useLedgerSplitPaneSpeaker(context.objectiveId);
   // 생성형 UI(OpenUI 펜스)는 목표의 지휘관 답에서만 그린다 — 그룹 대화 말풍선과 같은 말이 지휘관 채팅(모바일)·원장에서 다르게 보이지
   // 않게. 구성원(하위 Objective)과 일반 Objective 채팅은 목표 대화의 뿌리가 아니므로 코드 블록 그대로다.
   const objectiveCommander = useObjectiveCommander(context.objectiveId) && !isMember;
@@ -844,7 +847,12 @@ export function AgentChatView({
             목록·이미지 투입구는 없고, 좌표 · 선반 · 문맥 계기 · 중지 · 채팅 폭만 남는다. */}
         {isMemberChat ? (
           <MemberChatFooter
-            coordinate={coordinateNode}
+            coordinate={splitPaneSpeaker ? (
+              <span className="group-ledger-split-owner">
+                <SpeakerMark speaker={splitPaneSpeaker} size="sm" />
+                <SpeakerName speaker={splitPaneSpeaker} className="group-ledger-split-owner-name" avatarTone />
+              </span>
+            ) : coordinateNode}
             ledge={ledgeNode}
             language={language}
             turnRunning={turnRunning}

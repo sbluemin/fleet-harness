@@ -4,14 +4,15 @@ import * as React from "react";
 
 import { frameCommanderLedger } from "./commander-ledger.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { SpeakerMark } from "./speaker-mark.js";
+import { markLedgerSplitPane } from "./ledger-split-panes.js";
 
 /**
  * 데스크톱 원장 분할 화면.
  *
  * 지휘관과 구성원의 기존 본문(채팅·터미널)을 한 그리드에 동시에 세운다. 칸 사이 가로·세로 경계를
  * 끌어 크기를 바꾸며, 그 크기는 이 컴포넌트가 마운트된 동안만 유지한다 — 저장하지 않는다.
- * 칸 머리는 발화자 표식과 이름뿐이다. 최대화·순서 변경·대화로 돌아가기 단추는 없다.
+ * 칸 머리는 없다 — 칸 주인(아바타·이름)은 칸 안 채팅 바닥 줄 왼쪽이 말한다(`ledger-split-panes`). 최대화·순서 변경·대화로
+ * 돌아가기 단추는 없다.
  *
  * 통합자가 그룹 대화 루트의 가운데 칸에, 화면이 원장일 때만 세운다. 폰 경로에는 세우지 않는다.
  * `defaultBody`(단일 슬롯)와 같은 objectiveId 를 같이 세우면 안 된다 — 본문 풀은 objectiveId 당
@@ -33,7 +34,7 @@ import { SpeakerMark } from "./speaker-mark.js";
 export interface GroupLedgerSplitPane {
   /** 이 칸의 Objective. 지휘관이면 그룹 루트 레코드. */
   readonly objectiveRecord: ObjectiveRecord;
-  /** 칸 머리의 표식과 이름. */
+  /** 칸 주인의 표식과 이름 — 칸 안 채팅 바닥 줄 왼쪽에 선다. */
   readonly speaker: ConversationSpeaker;
 }
 
@@ -70,6 +71,11 @@ export function GroupLedgerSplit({ panes, language, renderParticipantBody }: Gro
     const release = (framedKey.length === 0 ? [] : framedKey.split("\0")).map((id) => frameCommanderLedger(id));
     return () => { for (const stop of release) stop(); };
   }, [framedKey]);
+  // 칸 머리 대신 칸 안 바닥 줄이 칸 주인(아바타·이름)을 말한다 — 본문은 포털이라 표식 store 로 잇는다.
+  React.useLayoutEffect(() => {
+    const release = panes.map((pane) => markLedgerSplitPane(pane.objectiveRecord.id, pane.speaker));
+    return () => { for (const stop of release) stop(); };
+  }, [panes]);
   const t = getGroupT(language);
   // 마지막 행이 덜 차면 그 행의 마지막 칸이 남는 열까지 늘어난다 — 빈 칸을 두지 않는다. 그 행을 가로지르는 세로 경계는
   // 그 행 앞에서 끊긴다(3명이면 위 행 지휘관|구성원, 아래 행 구성원 한 칸이 전체 폭).
@@ -89,12 +95,9 @@ export function GroupLedgerSplit({ panes, language, renderParticipantBody }: Gro
           <section
             key={pane.objectiveRecord.id}
             className="group-ledger-split-pane"
+            aria-label={pane.speaker.name}
             style={{ gridColumn: stretch ? `${column * 2 + 1} / -1` : column * 2 + 1, gridRow: row * 2 + 1 }}
           >
-            <div className="group-ledger-split-head">
-              <SpeakerMark speaker={pane.speaker} size="sm" />
-              <span className="group-ledger-split-name">{pane.speaker.name}</span>
-            </div>
             <div className="group-ledger-split-pane-body">
               {renderParticipantBody(pane.objectiveRecord)}
             </div>

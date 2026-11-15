@@ -1540,19 +1540,20 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   min-height: 0;
   overflow: hidden;
 }
-.group-ledger-split-head {
-  flex: none;
-  display: flex;
+/* 칸 안 채팅 바닥 줄 — 칸 머리 대신 칸 주인(아바타·신원 톤 이름)을 왼쪽에 세우고 더 낮게 선다. 본문 풀 포털은 DOM 을 칸 안 슬롯에
+   붙이므로 이 스코프가 닿는다. 개별 원장·일반 채팅의 같은 줄은 이 그리드 밖이라 그대로다.
+   높이: 테두리 1 + 위 8 + 도구 30 + 표시줄 아래 6 + 아래 8 = 53px → 테두리 1 + 위 4 + 도구 30 + 아래 4 = 39px. */
+.group-ledger-split .agent-chat-member-foot { padding-block: var(--space-1); }
+.group-ledger-split .agent-chat-member-foot .agent-chat-composer-meta { padding-bottom: 0; }
+.group-ledger-split-owner {
+  display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--hairline);
-  background: var(--control-rest);
+  min-width: 0;
   font-family: var(--font-ui);
   font-size: var(--t-sm);
-  color: var(--text-secondary);
 }
-.group-ledger-split-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-ledger-split-owner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-ledger-split-pane-body { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .group-ledger-split-pane-body > * { flex: 1 1 auto; min-width: 0; min-height: 0; }
 .group-ledger-split-gutter { touch-action: none; background: var(--hairline); }
