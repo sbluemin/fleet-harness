@@ -5,6 +5,37 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.307.0] - 2026-11-15
+
+### fleet-cli
+
+#### Added
+- Sign in to OpenCode Go with an API key from `fleet gateway`, then Providers.
+
+### fleet-console
+
+#### Added
+- Switch a commander's conversation between the group chat and a resizable grid showing every participant's ledger side by side; your choice applies to all commanders and persists across Console restarts.
+- See the models Fleet recommends: the model pickers suggest recommended models and the lowest effort to start from, and the Routing Pool shows which pool models are recommended and which effort would make one recommended. Recommendations are guidance only and never change routing.
+- Bring OpenCode Go back as an AI Gateway provider for DeepSeek V4.1 Flash and Muse Spark 1.3 Contributor: sign in with an OpenCode Go API key in Settings > AI Gateway and see its usage in the quota panel. In your OpenCode workspace privacy settings, DeepSeek needs Global regions and Muse Spark Contributor needs paid endpoints that train on request data allowed.
+
+#### Changed
+- Antigravity usage is read from the agy CLI (1.1.11 or newer), and the plan name is no longer shown. Antigravity is off until you turn it on in AI Gateway settings, including if you already used it.
+- Commodore and Commander chips keep the provider mark with model and effort visible, and show the role name when you point at them or open them. In a narrow conversation the name hides, and in a tighter one those chips collapse to the mark. The Routing Pool chip stays a mark until you point at it or open it.
+- System instructions, Commander auto memory, and subagents now sit at the bottom of the Theaters popover instead of their own chip.
+- While Console is open, an objective keeps one routing conversation for its commander and member model choices, and both are judged by the commodore's model.
+
+#### Fixed
+- Keep large MCP tool sets and tool-result images working reliably in Antigravity Gemini sessions so tools such as `objective` stay callable and screenshots or read images reach the model cleanly.
+- Align the setup guide and empty workspace view with whether a commodore exists, and stop closing the setup guide from opening the Fleet at a glance tour automatically.
+- Keep sessions isolated when a saved transcript file is missing so Console never attaches another session's history or ID from the same folder.
+
+### fleet-desktop
+
+#### Fixed
+- Keep Fleet Browser streaming to remote viewers when the host macOS window is minimized or closed with its close button, and reopen the shell from the Dock.
+- Fit the hosted Fleet Browser viewport to the remote viewer window only during active remote control, and restore the host pane size when control ends.
+
 ## [1.306.0] - 2026-11-15
 
 ### fleet-console
