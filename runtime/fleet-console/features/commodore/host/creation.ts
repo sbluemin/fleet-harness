@@ -80,6 +80,7 @@ export function createCommodoreCreator(deps: {
         replaceTheatersInIndex: (_candidate, next) => { rows = next; },
         emit: () => {},
       });
+      staged.setAutoMemoryEnabled(newId, false);
       staged.setAlias(newId, input.alias);
       staged.setTheaters(newId, theaters);
       staged.setDescription(newId, input.description);

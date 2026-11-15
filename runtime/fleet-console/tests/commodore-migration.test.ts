@@ -171,6 +171,7 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     const created = await call("commodore/create", { alias: "New Commodore" });
     expect(created.commodoreId).not.toBe(resolved.commodoreId);
     expect(created.commodore).toMatchObject({ theaters: [] });
+    expect(await call("commodore/state", { commodoreId: created.commodoreId })).toMatchObject({ state: { autoMemoryEnabled: false } });
     const reread = await call("commodore/state", { commodoreId: same.commodoreId });
     expect({ distinct: spelledId !== workspaceHash(a.root), resolved: same.commodoreId, saved: saved.commodoreId, alias: (saved.state as { alias?: string }).alias, state: reread.commodoreId }).toEqual({ distinct: true, resolved: resolved.commodoreId, saved: resolved.commodoreId, alias: "Kept", state: resolved.commodoreId });
     expect(JSON.stringify(view)).not.toContain(a.root);
@@ -187,6 +188,13 @@ it("migrates legacy workspaces without registration-driven issuance, resumes int
     expect(migrateCommodoreState(migratedRaw)).toEqual(migratedRaw);
     expect(migrateCommodoreState({ directive: { text: "old", rev: 1, updatedAt: 1 }, description: { text: "new", rev: 2, updatedAt: 2 } })).toEqual({ description: { text: "new", rev: 2, updatedAt: 2 } });
     expect(ownerOf(workspaceHash(fresh))).toBeNull();
+    // 기존 목표의 소유자를 복구하는 발급은 신규 사령관의 기본값을 적용하지 않는다.
+    const adoptedRoot = theater("legacy-memory-owner");
+    const adoptedSource = { version: 6, theaters: [{ id: workspaceHash(adoptedRoot), realpath: adoptedRoot }], objectiveRecords: [{ id: "legacy-memory", theaterId: workspaceHash(adoptedRoot), cwd: adoptedRoot, title: "Legacy", ts: { createdAt: 1, updatedAt: 1 } }] };
+    const adoption = prepareTheaterRegistryRetirement({ directory: data, raw: adoptedSource, source: Buffer.from(JSON.stringify(adoptedSource)), ownership: createCommodoreOwnership(deps.paths), workspaceHash });
+    const adoptedId = adoption.ownerOf("legacy-memory", workspaceHash(adoptedRoot));
+    expect(adoptedId).toEqual(expect.any(String));
+    expect(JSON.parse(fs.readFileSync(path.join(entities, adoptedId!, "state.json"), "utf8"))).not.toHaveProperty("autoMemoryEnabled");
     // cwd를 못 읽어도 후보 이름이 겹치는 Theater만 보류한다. 관계없는 새 Theater는 위에서 정상 발급됐다.
     expect(owners(workspaceHash(unknown.root))).toEqual([]);
     expect(() => createCommodoreOwnership(deps.paths).issueForAlias(workspaceHash(unknown.root))).toThrow("theater_unavailable");
