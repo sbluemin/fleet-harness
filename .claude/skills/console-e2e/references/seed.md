@@ -4,7 +4,10 @@ One procedure for the data a verification needs before the first navigation: com
 
 ```bash
 node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" --profile <name> [--commodores N] [--theaters M] [--objectives K] [--root <theater folders>] [--fake-claude-dir "$FAKE_CLAUDE_DIR"]
+node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" --profile ledger --fake-claude-dir "$FAKE_CLAUDE_DIR" --claude-config-dir "$E2E_DIR/claude"
 ```
+
+The `ledger` profile's synthetic turns prepare a ledger or replay check; creating them does not prove that replay works or that an agent survived.
 
 `--dir` is the owned `FLEET_CONSOLE_DATA_DIR` of a running Console (its `console.lock` names the port). For `--profile advanced --offline`, seed a new slot before its first boot through the [isolated-environment wrapper](setup.md#keep-the-real-home-out) with `--bin pnpm` (the helper starts pnpm/tsx), then boot it. stdout is one JSON object with the ids of what was created, also saved as `<dir>/seed-ids.json`; progress goes to stderr. A slot is seeded once: a run that finds `seed-ids.json` stops before creating anything, so take a fresh slot.
 
@@ -19,8 +22,9 @@ node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" -
 | `advanced` | 3 commodores, no theater: auto memory, base system prompt and subagents requested on/off/unset (no saved override; product defaults apply). Running Console: on/off only (`--commodores 2`). `commodores[].advanced` separates requested, stored and effective values at seed time. |
 | `inbox` | 1 commodore, 1 theater, three objectives handed to the person (one criteria proposal, one review, one open follow-up) and one open commodore question. No sidebar section and no transcript turns. |
 | `taskforce` | Fixed counts: 2 commodores, 1 taskforce, no theaters or objectives. Enables `taskforce` in the owned slot; other experiments unchanged. Needs the owned fake agent. |
+| `ledger` | Fixed: 1 commodore, 1 theater, commenced objectives whose commanders and members each have several synthetic turns. No count overrides. Needs the owned fake agent and `--claude-config-dir` (the isolated-env `claude` directory, not the console data dir). |
 
-Counts override with the flags. Theater folders are created under `--root` (default `<os tmpdir>/seed-theaters/<slot hash>`), outside every repository as [setup.md](setup.md) requires; remove them with the run.
+Counts override with the flags, except profiles whose row says the counts are fixed (`taskforce`, `ledger`). Theater folders are created under `--root` (default `<os tmpdir>/seed-theaters/<slot hash>`), outside every repository as [setup.md](setup.md) requires; remove them with the run.
 
 - `objectives` and `inbox` need the owned fake agent (`CLAUDE_BIN` = [`fake-claude.mjs`](../scripts/fake-claude.mjs), `--fake-claude-dir` = its `FAKE_CLAUDE_DIR`): the Commodore's `objective` tool is the only creator, so the seed queues `sdk-calls` and wakes the commodore. `inbox` then drives the fake Commander's tools the way `details` does, and hands each waiting item to the person. `add` does not pass a Commander model; that model is chosen when the objective is planned or commenced. `--objectives` does not apply to `inbox`.
 - `activity` and `details` use the same owned fake-agent setup (no provider). Keep the Console running: stopping ends the live fake sessions; restored display/history after restart does not prove a live fake session. Read `commodores[].activity` in the seed output for `inProgressObjectiveId`, `lastResponse`, `sectionId`, and `sectionName`.

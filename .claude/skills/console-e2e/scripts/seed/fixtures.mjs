@@ -41,6 +41,8 @@ export const PROFILES = {
   inbox: { commodores: 1, theaters: 1, objectives: 0, inbox: true },
   // Owned-slot taskforce experiment on (other experiment fields kept as read), two commodores, one taskforce. No theater. Needs the owned fake agent (same --fake-claude-dir gate); creation wakes members.
   taskforce: { commodores: 2, theaters: 0, objectives: 0, taskforce: true },
+  // Fixed shape: 1 commodore, 1 theater, commenced objectives with synthetic commander and member turns (ledger.mjs). No count overrides.
+  ledger: { commodores: 1, theaters: 1, objectives: 0, ledger: true },
 };
 
 /** Taskforce fixture. Ids come from the run; do not hardcode a commodore. */
