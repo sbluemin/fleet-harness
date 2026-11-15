@@ -199,13 +199,13 @@ Do not assume restored Objectives are expanded or visible. Fixtures may restore 
 
 ### Host provider status
 
-Shows or hides the Codex launch-roster group on a running owned Console without a credential, login, or provider call. This is not evidence of real authentication, and not evidence that outbound calls are blocked. Do not mock the roster response or inject `models:roster-changed`; those skip the host.
+Shows or hides the Codex launch-roster group on a running owned Console without a credential, login, or provider call. Its `error` state stands in for a login: every provider's `ok` quota state needs that provider's own call, so it cannot be synthesized here. This is not evidence of real authentication, and not evidence that outbound calls are blocked. Do not mock the roster response or inject `models:roster-changed`; those skip the host.
 
-The [objective-fixture rule](#ui-only-objective-fixtures) still forbids copying user state or overwriting a running server's objective records. This recipe does not touch those files. Only when `<run-dir>/console/auth.json` is absent, create it mode `0600` with one non-secret entry `parseCodexAuthEntry` rejects (`features/ai-gateway/runtime/src/oauth/codex/login.ts`): store key `Fleet AI Gateway with Codex`, `type` and `version` only, no `key`. Quota re-reads that file. Do not replace an existing `auth.json`.
+The [objective-fixture rule](#ui-only-objective-fixtures) still forbids copying user state or overwriting a running server's objective records. This recipe does not touch those files. Only when `<run-dir>/console/auth.json` is absent, create it mode `0600` with `{"Fleet AI Gateway with Codex":{"type":"oauth","version":1}}`. `parseCodexAuthEntry` (`features/ai-gateway/runtime/src/oauth/codex/login.ts`) rejects it for the missing key, expiry and account id, so no secret is stored. Quota re-reads that file. Do not replace an existing `auth.json`.
 
 Calls use an omitted `Origin` or the owned listener:
 
-1. `GET /api/v1/ai-gateway/quota?forceProvider=codex` — Codex becomes `error`, group `gateway:codex` appears, and the host emits `models:roster-changed`.
+1. `GET /api/v1/ai-gateway/quota?forceProvider=codex` — Codex becomes `error`, group `gateway:codex` appears (an open routing-pool dialog gains the Codex add-model rows), and the host emits `models:roster-changed`.
 2. `POST /api/v1/ai-gateway/oauth/codex/logout` with `Content-Type: application/json` and `{}` — Codex becomes `not_connected` and the group is gone. The host emits again.
 
 A repeat of that logout while Codex is already `not_connected` changes no status and emits nothing. The logout leaves a marker in `auth.json`, so one cycle fits a run directory; use a new one for another. Cleanup is step 2 and stopping the owned Console. Do not copy `auth.json` from another slot.
