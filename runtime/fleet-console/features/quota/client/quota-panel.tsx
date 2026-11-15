@@ -8,6 +8,7 @@ import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCr
 import { isLoginProvider, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
+import { loadSystemPromptSettings, useSystemPromptSettingsStore } from "../../settings/client/execution-settings.js";
 import {
   cancelLogin,
   getLoginStates,
@@ -98,6 +99,15 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
 
 /** 이 Gateway가 아직 보고하지 않는 공급자 — 카드를 빼지 않고 읽을 수 없음으로 둔다. */
 export const UNREPORTED_PROVIDER: ProviderDto = { status: "error" };
+
+/** 노브가 꺼져 있거나 설정을 아직 모르면 Antigravity 사용량 칸을 그리지 않는다. */
+export function useAntigravityEnabled(): boolean {
+  const settings = useSystemPromptSettingsStore();
+  useEffect(() => {
+    void loadSystemPromptSettings();
+  }, []);
+  return settings.state?.antigravityEnabled === true;
+}
 
 export function isConnectable(id: ProviderId): id is ConnectableProviderId {
   return id === "claude";
@@ -814,6 +824,8 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
 }) {
   const t = useMemo(() => getT(locale, mobile), [locale, mobile]);
   const { data, checkedAt, now, requestError, refresh, connect, logout } = useQuotaData(api);
+  const antigravityEnabled = useAntigravityEnabled();
+  const shown = (id: ProviderId) => id !== "antigravity" || antigravityEnabled;
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));
@@ -842,8 +854,8 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
             <p>{t("quota.loading.body")}</p>
           </div>
         ) : null}
-        {data ? PROVIDER_ORDER_DEFAULT.filter((id) => !disconnected(id)).map(renderProvider) : null}
-        {data && PROVIDER_ORDER_DEFAULT.some(disconnected) ? <section className="quota-disconnected" aria-label={t("quota.disconnected")}><h3>{t("quota.disconnected")}</h3>{PROVIDER_ORDER_DEFAULT.filter(disconnected).map(renderProvider)}</section> : null}
+        {data ? PROVIDER_ORDER_DEFAULT.filter((id) => shown(id) && !disconnected(id)).map(renderProvider) : null}
+        {data && PROVIDER_ORDER_DEFAULT.some((id) => shown(id) && disconnected(id)) ? <section className="quota-disconnected" aria-label={t("quota.disconnected")}><h3>{t("quota.disconnected")}</h3>{PROVIDER_ORDER_DEFAULT.filter((id) => shown(id) && disconnected(id)).map(renderProvider)}</section> : null}
       </div>
       <footer className="quota-footer">
         <ToolbarProviderPicker t={t} mobile={mobile} />

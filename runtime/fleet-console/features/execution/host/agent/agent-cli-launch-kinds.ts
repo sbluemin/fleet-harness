@@ -10,6 +10,7 @@ export function buildAgentCliLaunchKinds(
   metadata: readonly AgentCliLaunchMetadata[],
   objectiveRecordType: string,
   statuses?: ProviderStatusMap,
+  antigravityEnabled = false,
 ): ObjectiveLaunchKind[] {
   return metadata
     .map((cli) => {
@@ -22,7 +23,7 @@ export function buildAgentCliLaunchKinds(
           ? { disabled: true, disabledReason }
           : cli.id === "claude"
             ? {
-              variants: buildClaudeLaunchVariants(statuses),
+              variants: buildClaudeLaunchVariants(statuses, antigravityEnabled),
               // 채팅으로 태어나는 길은 SDK 인수 계약 위에 서므로 Claude Gateway 종류에서만 열린다
               // (전환 경로의 `chat_unsupported`와 같은 판정). 다른 종류는 선언하지 않으므로
               // 컴포저의 시작 뷰 선택 자체가 서지 않는다.
@@ -38,8 +39,8 @@ export function buildAgentCliLaunchKinds(
  * 새 세션·채팅 좌표·캔버스·Objectives 보드의 선택지다. 그 카탈로그가 비면(전부 로그아웃) 최후 폴백
  * (sonnet) 한 행의 폴백 띠만 서고, 표면은 그 띠를 폴백 표식으로 그린다.
  */
-function buildClaudeLaunchVariants(statuses?: ProviderStatusMap): readonly ObjectiveLaunchVariantGroup[] {
-  const roster = buildModelRoster("launch", statuses);
+function buildClaudeLaunchVariants(statuses: ProviderStatusMap | undefined, antigravityEnabled: boolean): readonly ObjectiveLaunchVariantGroup[] {
+  const roster = buildModelRoster("launch", statuses, antigravityEnabled);
   return roster.length > 0 ? roster : [buildRosterFallbackGroup()];
 }
 

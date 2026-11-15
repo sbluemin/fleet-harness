@@ -96,7 +96,7 @@ export function createStandaloneCliLaunchResolver(deps: StandaloneCliLaunchDeps)
       terminalName: TERMINAL_TERM,
     }, {
       baseUrl: `${origin}${deps.aiGateway.routePath}`,
-      ...(selection ? { selection: { ...selection, models: visibleGatewayModels(readStatuses(deps.readProviderStatuses)) } } : {}),
+      ...(selection ? { selection: { ...selection, models: visibleGatewayModels(readStatuses(deps.readProviderStatuses), gatewaySettings?.antigravityEnabled === true) } } : {}),
       compactCeiling: gatewaySettings?.compactCeiling ?? null,
       ...(deps.homeDir ? { homeDir: deps.homeDir } : {}),
     });

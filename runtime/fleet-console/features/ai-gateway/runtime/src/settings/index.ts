@@ -120,6 +120,12 @@ export interface AiGatewayStoredSettings {
    * is why it is the default.
    */
   readonly xaiEndpoint?: XaiEndpointPreference;
+  /**
+   * Whether Fleet may use Antigravity at all. Absent is off, including for an
+   * existing installation that has never stored the key. Off does not read or
+   * change agy's own credentials.
+   */
+  readonly antigravityEnabled?: boolean;
 }
 
 /** Where an xAI subscription turn is sent first. */
@@ -176,6 +182,8 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
     ...(compactCeiling !== undefined ? { compactCeiling } : {}),
     ...(xaiEndpoint !== undefined ? { xaiEndpoint } : {}),
+    // false는 키 부재와 같다. 기본은 꺼짐이고, 기존 파일에 키가 없어도 꺼짐이다.
+    ...(value.antigravityEnabled === true ? { antigravityEnabled: true } : {}),
   };
 }
 

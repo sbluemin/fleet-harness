@@ -40,6 +40,7 @@ describe("quota service", () => {
       fetchClaude: async () => ({ status: "signed_out" }),
       fetchCodex: async () => ({ status: "signed_out" }),
       fetchAntigravity,
+      antigravityEnabled: () => true,
     });
     expect((await service.getSummary()).providers.antigravity.status).toBe("signed_out");
     now = QUOTA_CACHE_TTL_MS + 1;
@@ -48,6 +49,19 @@ describe("quota service", () => {
     expect((await service.getSummary({ forceProvider: "antigravity" })).providers.antigravity.status).toBe("signed_out");
     expect((await service.getSummary({ force: true })).providers.antigravity.status).toBe("signed_out");
     expect(fetchAntigravity).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not call the antigravity collector when the knob is absent or off", async () => {
+    const fetchAntigravity = vi.fn(async () => ({ status: "ok" as const, windows: [], fetchedAt: 1 }));
+    const service = createQuotaService({
+      isClaudeConnected: async () => false,
+      fetchClaude: async () => ({ status: "signed_out" }),
+      fetchCodex: async () => ({ status: "signed_out" }),
+      fetchAntigravity,
+    });
+    expect((await service.getSummary()).providers.antigravity).toEqual({ status: "not_connected" });
+    expect((await service.getSummary({ force: true })).providers.antigravity).toEqual({ status: "not_connected" });
+    expect(fetchAntigravity).not.toHaveBeenCalled();
   });
 
   it("uses a five-minute cache, serves an expired one without lapsed windows, supports force bypass, and single-flights", async () => {

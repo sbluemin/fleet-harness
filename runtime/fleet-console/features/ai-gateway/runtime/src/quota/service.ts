@@ -60,6 +60,11 @@ export interface QuotaServiceDeps {
   readonly fetchMuseCode?: () => Promise<ProviderResult>;
   readonly fetchOpencode?: () => Promise<ProviderResult>;
   /**
+   * Antigravity 노브. 없거나 false면 수집기를 부르지 않고 숨김(`not_connected`)이다.
+   * 부재는 꺼짐이다.
+   */
+  readonly antigravityEnabled?: () => boolean;
+  /**
    * 마지막 성공 사용량. 호스트가 파일 자리를 정해 넘긴다. 없으면 이 프로세스 메모리만 쓴다.
    * 읽기에 실패하거나 파일이 깨져 있으면 빈 값으로 시작한다.
    */
@@ -167,7 +172,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       const saved = deps.lastGoodStore.read();
       for (const id of QUOTA_LAST_GOOD_PROVIDERS) {
         const value = saved[id];
-        if (value) lastGood.set(id, value);
+        if (value) lastGood.set(id, withoutRetiredAntigravityFields(id, value));
       }
       // 읽기에서 걸러 낸 비밀·깨진 필드는 다음 성공을 기다리지 않고 파일에서도 뺀다.
       if (lastGood.size > 0) deps.lastGoodStore.write(saved);
@@ -189,7 +194,21 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     return at !== undefined && at > startedAt ? cache.get(id)?.value : undefined;
   }
 
+  function withoutRetiredAntigravityFields(id: ProviderId, value: ProviderSuccess): ProviderSuccess {
+    if (id !== "antigravity" || (value.plan === undefined && value.method === undefined)) return value;
+    const { plan: _plan, method: _method, ...rest } = value;
+    return rest;
+  }
+
   async function load(id: ProviderId, force: boolean): Promise<ProviderDto> {
+    // 노브가 꺼져 있으면(키 부재 포함) agy를 띄우지 않는다. force여도 같다.
+    if (id === "antigravity" && deps.antigravityEnabled?.() !== true) {
+      const at = now();
+      const value: ProviderDto = { status: "not_connected" };
+      forget(id);
+      cache.set(id, { value, expiresAt: at, settledAt: at });
+      return value;
+    }
     if (id === "claude" && !await deps.isClaudeConnected()) {
       const value: ProviderDto = { status: "not_connected", method: (deps.platform ?? process.platform) === "darwin" ? "keychain" : "file" };
       cache.set(id, { value, expiresAt: now(), settledAt: now() });
@@ -370,7 +389,8 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     const previous = lastGood.get(id);
     const failure: ProviderDto = { status: "error", ...(message ? { message } : {}) };
     if (!previous) return failure;
-    return presentable({ ...previous, status: "stale", ...(message ? { message } : {}) }, at, failure);
+    const carried = withoutRetiredAntigravityFields(id, previous);
+    return presentable({ ...carried, status: "stale", ...(message ? { message } : {}) }, at, failure);
   }
 
   /** stale 값을 지금 시각에 맞춰 다듬는다. 리셋이 지나 남은 창이 없으면 `failure`를 돌려준다. */

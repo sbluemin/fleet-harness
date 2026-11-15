@@ -209,6 +209,8 @@ export interface AiGatewayRouter {
    * agy children and the bridge's MCP listener are gone when the router owns a bridge.
    */
   dispose(): void | Promise<void>;
+  /** Close live agy ACP sessions. The next Antigravity turn opens a new bridge. */
+  releaseAgy(): void | Promise<void>;
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
@@ -275,8 +277,16 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return undefined;
     }
   };
+  const antigravityOn = (): boolean => {
+    if (!deps.readAiGatewaySettings) return false;
+    try {
+      return deps.readAiGatewaySettings().antigravityEnabled === true;
+    } catch {
+      return false;
+    }
+  };
   const isModelExposed = (model: GatewayModel): boolean => (
-    visibleGatewayModels(providerStatuses()).some((entry) => entry.id === model.id)
+    visibleGatewayModels(providerStatuses(), antigravityOn()).some((entry) => entry.id === model.id)
   );
   const xaiEndpoint = (): XaiEndpointPreference => {
     if (!deps.readAiGatewaySettings) return DEFAULT_XAI_ENDPOINT_PREFERENCE;
@@ -388,7 +398,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(harness.buildModelList(visibleGatewayModels(providerStatuses()))));
+      res.end(JSON.stringify(harness.buildModelList(visibleGatewayModels(providerStatuses(), antigravityOn()))));
       return true;
     }
     if (!pathname.endsWith("/v1/messages")) return false;
@@ -461,6 +471,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 그 구독을 쓴다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고
     // 호출자 입력과 같은 신뢰 등급이 아니다. Claude 공급자도 같은 규칙이다.
     // 이 거부는 켠 목록이 아니라 공급자 로그인이다. 문구에 "model:"을 넣지 않는다 — 아래 주석.
+    // 노브가 최종 권한이다. env 모델 오버라이드도 꺼진 Antigravity는 열지 못한다.
+    if (target?.provider === "antigravity" && !antigravityOn()) {
+      writeClientError(res, 403, "permission_error", `AI gateway provider is not signed in: ${requested}`);
+      clock?.finish("error", 403);
+      return true;
+    }
     if (target && modelOverride === undefined && !isModelExposed(target)) {
       writeClientError(res, 403, "permission_error", `AI gateway provider is not signed in: ${requested}`);
       clock?.finish("error", 403);
@@ -792,6 +808,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   return {
     handle,
     upstreamStats: () => upstreamGate.stats(),
+    releaseAgy: () => {
+      const bridge = ownedAgyBridge;
+      ownedAgyBridge = undefined;
+      agyBridgeGatewayInstance = undefined;
+      return bridge?.dispose();
+    },
     dispose: () => {
       upstreamGate.dispose();
       codexCompactionFlights.clear();

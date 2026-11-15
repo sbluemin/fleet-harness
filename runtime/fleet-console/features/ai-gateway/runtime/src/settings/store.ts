@@ -37,6 +37,8 @@ export interface AiGatewaySettingsStore {
   readonly writeCompactCeiling: (ceiling: CompactCeiling | undefined) => AiGatewayStoredSettings;
   /** `undefined`는 xaiEndpoint 키를 제거해 기본(direct)으로 돌아간다. */
   readonly writeXaiEndpoint: (endpoint: XaiEndpointPreference | undefined) => AiGatewayStoredSettings;
+  /** false는 키를 지운다. 부재와 꺼짐은 같다. */
+  readonly writeAntigravityEnabled: (enabled: boolean) => AiGatewayStoredSettings;
   /**
    * 모델 로스터 일회 이행 — `rosterSeedVersion` 표식이 {@link ROSTER_SEED_VERSION}에 닿지 않은 설치에서 한 번만 돈다. 표식이
    * 가리키는 판보다 뒤의 단계만 돈다.
@@ -165,6 +167,7 @@ export function createAiGatewaySettingsStore(
       ...(current.providerPriority ? { providerPriority: current.providerPriority } : {}),
       ...(current.compactCeiling !== undefined ? { compactCeiling: current.compactCeiling } : {}),
       ...(current.xaiEndpoint !== undefined ? { xaiEndpoint: current.xaiEndpoint } : {}),
+      ...(current.antigravityEnabled === true ? { antigravityEnabled: true } : {}),
       // 새 강도 선택의 의미만 표시한다. 로스터 표식은 그대로 이월하여 아직 끝내지 않은 이행을 건너뛰지 않는다.
       effortSelectionVersion: 1,
       ...(current.rosterSeedVersion !== undefined ? { rosterSeedVersion: current.rosterSeedVersion } : {}),
@@ -247,6 +250,16 @@ export function createAiGatewaySettingsStore(
       delete withoutEndpoint.xaiEndpoint;
       return withoutEndpoint as AiGatewayStoredSettings;
     }),
+    writeAntigravityEnabled: (enabled) => update((current) => {
+      const next = normalizeAiGatewaySettings({
+        ...current,
+        ...(enabled ? { antigravityEnabled: true } : {}),
+      });
+      if (enabled) return next;
+      const without = { ...next } as { antigravityEnabled?: boolean };
+      delete without.antigravityEnabled;
+      return without as AiGatewayStoredSettings;
+    }),
   };
 }
 
@@ -261,5 +274,6 @@ function hasStoredValue(settings: AiGatewayStoredSettings): boolean {
     || settings.wireLogEnabled !== undefined
     || settings.providerPriority !== undefined
     || settings.compactCeiling !== undefined
-    || settings.xaiEndpoint !== undefined;
+    || settings.xaiEndpoint !== undefined
+    || settings.antigravityEnabled === true;
 }

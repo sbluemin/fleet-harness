@@ -1852,6 +1852,19 @@ describe("agy ACP bridge route", () => {
   const fakeAgy = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "acp", "fake-agy.mjs");
   const GEMINI = "claude-gateway--antigravity--gemini-4-argon[1m]";
 
+  it("does not open agy when Antigravity is off, including when the setting key is absent", async () => {
+    const open = vi.fn();
+    const router = createAiGatewayRouter({
+      agyAcpPort: { open } as unknown as AiGatewayRouteDeps["agyAcpPort"],
+      readAiGatewaySettings: () => ({ version: 1 }),
+    });
+    const res = response();
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: GEMINI }));
+    expect(res.status).toBe(403);
+    expect(open).not.toHaveBeenCalled();
+    await router.releaseAgy();
+  });
+
   function agyRouter(directory: string, models?: string) {
     const port = createAgyAcpSessionPort({
       sessionsDir: path.join(directory, "sessions"),
@@ -1859,7 +1872,10 @@ describe("agy ACP bridge route", () => {
       commandArgs: [fakeAgy],
       env: { ...process.env, FAKE_BRIDGE: "1", FAKE_LOG: path.join(directory, "fake.log"), ...(models ? { FAKE_MODELS: models } : {}) },
     });
-    return createAiGatewayRouter({ agyAcpPort: port });
+    return createAiGatewayRouter({
+      agyAcpPort: port,
+      readAiGatewaySettings: () => ({ version: 1, antigravityEnabled: true }),
+    });
   }
 
   it("serves a Gemini model through the agy bridge as a tool_use turn and closes every agy child on dispose", async () => {

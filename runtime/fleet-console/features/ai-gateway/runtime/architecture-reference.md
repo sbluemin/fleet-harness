@@ -52,6 +52,8 @@ Gateway 레이어·모델 카탈로그·request policy·provider adapter를 변�
 
 ## agy ACP bridge
 
+Antigravity is off unless `antigravityEnabled` is stored as true (an absent key is off, including existing installations). While it is off, Fleet does not spawn agy for `--version`, `/usage`, or `agy acp`, and Gemini models stay out of the catalog, roster, picker, and routing pool. Turning it off closes any live agy ACP sessions.
+
 Gemini models are served by `src/acp/bridge/` (an `AiGatewayAdapter`), which maps Claude Code's Messages requests onto live `agy acp` sessions. Measured on agy 1.5.9 (2026-11-15, gemini-3.8-flash):
 
 - **Tools** reach agy as an HTTP MCP server on a loopback listener (`mcp-server.ts`, per-session Bearer, path carries the session key). agy exposes them as `mcp_fleet_<tool>`, injects a `toolSummary` argument (stripped), and runs calls serially, so a Messages response carries one `tool_use` (a 40 ms coalescing window). When the model calls a tool the response ends with `tool_use` while the ACP prompt stays open and the MCP call is held; the next request's `tool_result` releases it. agy holds a call 180 s by default; the bridge writes `timeoutSeconds: 3600` (a 1500 s hold was measured to resume normally). A deadline or `notifications/cancelled` abandons the call: the session is dropped, never continued, and its later output is not forwarded.
