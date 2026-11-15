@@ -188,6 +188,7 @@ function ProviderLoginRow({ provider, status, keyAuth, busy }: {
         {mobile ? null : caution}
       </span>
       <span className="ai-gateway-login-control">
+        {provider.id === "xai" ? <XaiEndpointSegments /> : null}
         {provider.id === "antigravity" ? <AntigravityEnabledToggle /> : keyAuth ? (
           <ApiKeyLoginControl credential={keyAuth} name={name} busy={busy} />
         ) : kind === "unlinked" ? (
