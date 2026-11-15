@@ -2126,8 +2126,9 @@ describe("Objectives contract", () => {
     activity.set(id, "idle");
     const shelved = await again({ action: "add", theaterId: "t1", title: "Shelved" });
     const shelvedId = shelved.structuredContent.objectiveId as string;
+    const disposedBeforeArchive = disposed.length;
     await relaunch.archive(shelvedId);
-    expect(JSON.parse(disposed.at(-1) ?? "{}")).toEqual({ objectiveId: shelvedId });
+    expect(disposed).toHaveLength(disposedBeforeArchive);
     expect(reloaded.find(shelvedId)).toMatchObject({ hasSession: true, commander: { started: false } });
     expect(reloaded.find(shelvedId)!.commander).not.toHaveProperty("model");
     expect((await again({ action: "plan", objectiveId: shelvedId })).structuredContent).toMatchObject({ error: "gateway_models_unavailable", hint: "AI Gateway routing could not assign a model." });
@@ -2166,6 +2167,32 @@ describe("Objectives contract", () => {
     const coordinatesBody = JSON.parse(routingBodies[askedCoordinates] ?? "{}") as { commander?: unknown };
     expect(coordinatesBody).toMatchObject({ objectiveId: fallbackId, judge: coordinates, items: [expect.objectContaining({ key: fallbackId })] });
     expect(coordinatesBody).not.toHaveProperty("commander");
+    // 레코드 보관 사건만으로 판단 세션을 버린다. 이 테스트의 보관 포트는 사건을 내지 않으므로 기능이 구독하는 사건을 직접 낸다.
+    const listeners = new Map<string, Array<(payload: unknown) => void>>();
+    const bus = {
+      registerSseChannel: () => () => undefined,
+      subscribe(channel: string, listener: (payload: unknown) => void) {
+        const list = listeners.get(channel) ?? [];
+        list.push(listener);
+        listeners.set(channel, list);
+        return () => { listeners.set(channel, (listeners.get(channel) ?? []).filter((item) => item !== listener)); };
+      },
+      publish(channel: string, payload: unknown) {
+        for (const listener of [...(listeners.get(channel) ?? [])]) listener(payload);
+      },
+    };
+    const feature = createObjectivesFeature({ ...ctx, events: bus, registerMcp: () => () => undefined } as ObjectivesFeatureDeps);
+    try {
+      const beforeDispose = disposed.length;
+      bus.publish("objective:archived", { objectiveId: shelvedId });
+      await vi.waitFor(() => expect(disposed.length).toBeGreaterThan(beforeDispose));
+      expect(JSON.parse(disposed.at(-1) ?? "{}")).toEqual({ objectiveId: shelvedId });
+      const memberId = "22222222-2222-4222-8222-222222222222";
+      bus.publish("objective:archived", { objectiveId: memberId });
+      await vi.waitFor(() => expect(disposed.some((body) => JSON.parse(body).objectiveId === memberId)).toBe(true));
+    } finally {
+      feature.dispose();
+    }
   });
 
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.

@@ -62,6 +62,8 @@ export interface LaunchService {
    * 보관함에서 복원하면 휴면 지휘관으로 돌아온다. 영구 삭제는 보관함의 purge만 맡는다.
    */
   archive(objectiveId: string): Promise<{ readonly objective: Objective; readonly deleted: boolean }>;
+  /** 보관 사건이 그 목표의 판단 세션을 버린다. 세션이 없는 키는 호출만 하고 게이트웨이가 넘긴다. */
+  releaseRoutingSession(objectiveId: string): Promise<void>;
   /** 옛 삭제 호출의 호환 경로 — 기동 여부와 무관하게 보관만 한다. */
   remove(objectiveId: string): Promise<Objective>;
   /** 옛 removed 레코드를 같은 ID의 dormant Objective 보관으로 이관한다. */
@@ -722,7 +724,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     // removed/pending와 첨부는 보관 확정 전 건드리지 않는다. 응답을 잃어도 같은 ID·Theater·세션 이름으로 재시도한다.
     await ctx.objectiveRecords.archive(id).catch(asStoreError);
-    await discardRoutingSession(id);
   };
   /** 기동·소집 중인 목표의 완료 상태 변경을 거절한다. */
   const assertIdle = (id: string) => {
@@ -1741,6 +1742,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       }
     },
 
+    releaseRoutingSession: discardRoutingSession,
     archive: (objectiveId) => orderedObjectiveRequest(objectiveId, async () => {
       if (pending.has(objectiveId) || pending.has(`${objectiveId}:muster`)) throw new ObjectiveStoreError("objective_busy");
       const current = objective(objectiveId);
@@ -1759,7 +1761,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (!ctx.objectiveRecords.archive) throw new ObjectiveStoreError("objectiveRecord_lifecycle_unavailable");
         await ctx.objectiveRecords.archive(objectiveId).catch(asStoreError);
       }
-      await discardRoutingSession(objectiveId);
       store.refresh(objectiveId);
       service.followupTargetChanged(objectiveId);
       return { objective: objective(objectiveId), deleted: false };

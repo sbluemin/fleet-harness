@@ -101,7 +101,13 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       launch.followupTargetChanged(objectiveId);
       launch.resumeReservations(objectiveId);
     });
-    on("objective:archived", (objectiveId) => { launch.objectiveRecordChanged(objectiveId); launch.followupTargetChanged(objectiveId); });
+    // 사이드바·채팅 보관은 launch.archive를 거치지 않고 이 사건만 낸다. 레코드 보관도 같은 사건을 내므로 판단 세션 폐기는 여기만 둔다.
+    // 사건 id는 루트와 구성원 세션으로 나뉘어 온다. 세션이 없는 키는 게이트웨이가 넘긴다.
+    on("objective:archived", (objectiveId) => {
+      launch.objectiveRecordChanged(objectiveId);
+      launch.followupTargetChanged(objectiveId);
+      void launch.releaseRoutingSession(objectiveId);
+    });
     on("objective:renamed", (objectiveId) => launch.objectiveRecordChanged(objectiveId));
     // 사람이 채팅 화면에서 모델을 바꾸거나 채팅↔터미널을 전환해도 명단은 지금 세션 좌표를 말해야 한다 — 지휘관이든 구성원이든 그 목표를 다시 방송한다.
     on(OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, (objectiveId) => launch.objectiveRecordChanged(objectiveId));
