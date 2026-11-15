@@ -431,7 +431,6 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
         {chip("theaters", `${ct("theaterInbox.theaters.page")} ${theaterCount}`, (
           <>
             <svg className="commodore-composer-chip-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.4h5.8v6.6h-11z" /></svg>
-            <span className="commodore-composer-chip-label">{ct("theaterInbox.theaters.page")}</span>
             <span className="commodore-composer-chip-count">{theaterCount}</span>
           </>
         ))}
