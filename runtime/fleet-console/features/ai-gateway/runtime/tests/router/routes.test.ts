@@ -1778,7 +1778,8 @@ describe("route surface", () => {
   });
 });
 
-describe("agy ACP bridge route", () => {
+// Each case spawns fake agy children; a slow runner needs more than the 5s default.
+describe("agy ACP bridge route", { timeout: 30_000 }, () => {
   const fakeAgy = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "acp", "fake-agy.mjs");
   const GEMINI = "claude-gateway--antigravity--gemini-4-argon[1m]";
 

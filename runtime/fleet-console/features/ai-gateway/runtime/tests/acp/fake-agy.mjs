@@ -20,7 +20,9 @@ const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0
 const update = (body) => send({ method: "session/update", params: { sessionId: "s1", update: body } });
 const argv = process.argv.slice(2);
 log({ argv, pid: process.pid });
-process.on("SIGTERM", () => { log({ terminated: true }); process.exit(0); });
+// The bridge ends stdin before SIGTERM, so the fake may end on either; `exited` is logged on both paths.
+process.on("exit", () => log({ exited: true }));
+process.on("SIGTERM", () => process.exit(0));
 
 const geminiDir = argv[argv.indexOf("--gemini-dir") + 1];
 let mcp;
