@@ -670,9 +670,11 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-create-body > * { flex-shrink: 0; }
 .commodore-create-hero { display: grid; place-items: center; height: 120px; }
 .commodore-create-body .mongle-picker-preview { margin-top: -12px; }
+.commodore-create-name-group { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; }
 .commodore-create-name { box-sizing: border-box; width: 100%; height: 48px; padding: 0 18px; color: var(--text-primary); text-align: center; font: inherit; font-size: var(--t-base); background: var(--control-field); border: 1px solid var(--hairline); border-radius: var(--radius-md); }
 .commodore-create-name::placeholder { color: var(--text-tertiary); }
 .commodore-create-name:focus { outline: none; border-color: var(--hairline-strong); box-shadow: var(--field-focus-edge); }
+.commodore-create-limit { margin: 0; color: var(--warn-ink); font-size: var(--t-xs); line-height: 1.4; text-align: center; }
 /* 모양 격자는 상자 없이 얼굴만 늘어서고, 고른 얼굴은 둥근 옅은 면과 고리로만 말한다. 색은 네 개씩 두 줄이다. */
 .commodore-create-body .mongle-picker-bases { gap: 12px 22px; width: auto; }
 .commodore-create-body .mongle-picker-base { padding: 6px; border-color: transparent; border-radius: var(--radius-pill); }
@@ -681,7 +683,9 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-create-body .mongle-picker-tones { display: grid; grid-template-columns: repeat(4, auto); justify-content: center; gap: 14px 22px; }
 .commodore-create-body .mongle-picker-tone { padding: 3px; border-width: 1.5px; }
 .commodore-create-body .mongle-picker-tone i { width: 28px; height: 28px; }
-.commodore-create-failed { margin: 0; color: var(--coral-ink); font-size: var(--t-sm); }
+.commodore-create-failed { margin: 0; color: var(--coral-ink); font-size: var(--t-sm); line-height: 1.4; }
+.commodore-create > .commodore-create-failed { flex: none; padding: 10px 24px; text-align: center; border-top: 1px solid var(--hairline); }
+.is-sheet .commodore-create > .commodore-create-failed { border-top: 0; padding: 6px 20px 0; }
 /* 만들 머신 — 페어링된 다른 머신이 있을 때만 헤더 제목 오른쪽에 한 줄 선택기로 선다. 열기 전에는 고른 머신만 은은하게 보인다. */
 .commodore-create-machine { flex: 0 1 auto; min-width: 0; max-width: 100%; }
 .commodore-create-machine .fc-select__trigger { width: auto; max-width: 100%; min-height: 28px; padding: 0 8px 0 10px; gap: 5px; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--control-rest); box-shadow: none; color: var(--text-secondary); font-size: var(--t-sm); font-weight: var(--weight-medium); line-height: 1; }

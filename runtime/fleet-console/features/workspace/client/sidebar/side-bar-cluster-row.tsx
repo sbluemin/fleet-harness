@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent
 import type { ConsoleLocale, LocalizedText } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ObjectiveClusterRow, ObjectiveClusterRowGlyph, ObjectiveClusterRowMark } from "../../../objectives/shared/objective-clusters.js";
+import { MAX_TITLE } from "../../../objectives/shared/types.js";
 
 import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
@@ -339,6 +340,7 @@ export function SideBarClusterRow({ item, onFocus, onRenameBegin, selected, onCo
       className="side-bar-chip-rename-input side-bar-cluster-row-rename-input"
       ref={rename.inputRef}
       value={rename.draftTitle}
+      maxLength={MAX_TITLE}
       aria-label={t("sidebar.chip.renameAria", { title: layout.cluster.title })}
       onChange={(e) => rename.setDraftTitle(e.target.value)}
       onKeyDown={(e) => { e.stopPropagation(); rename.handleKeyDown(e); }}
@@ -430,11 +432,13 @@ export function SideBarClusterRow({ item, onFocus, onRenameBegin, selected, onCo
       </span>
     </span>
   );
+  const renameLimitReached = rename.renaming && rename.draftTitle.length >= MAX_TITLE;
   const mainContent = <>
     <span className="side-bar-cluster-row-head">
       {rename.renaming ? renameInput : titleNode}
       {headMeta.map((part) => <span key={part.key} className={["side-bar-cluster-row-lead", part.tone ? `is-${part.tone}` : ""].filter(Boolean).join(" ")} aria-hidden="true">{part.text}</span>)}
     </span>
+    {renameLimitReached ? <span className="side-bar-cluster-row-rename-hint" role="status">{t("sidebar.chip.renameLimit", { max: MAX_TITLE })}</span> : null}
     {hasProgressButton ? null : statusLine}
   </>;
   // 편집 입력은 버튼의 자식이 아니다. 두 번째 클릭의 기본 포커스 동작이 막 연 입력을 blur/확정하지 않게 한다.
