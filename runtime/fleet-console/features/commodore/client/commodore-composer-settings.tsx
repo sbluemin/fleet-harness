@@ -415,20 +415,26 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
           style={chipIndicator ? { left: chipIndicator.left, width: chipIndicator.width } : undefined}
           aria-hidden="true"
         />
-        {chip("commodore", `${t("commodore.settings.model")}: ${coordinateTitle(commodoreDisplay)}`, <CoordinateWords display={commodoreDisplay} />)}
+        {chip("commodore", `${t("commodore.settings.model")}: ${coordinateTitle(commodoreDisplay)}`, (
+          <CoordinateWords display={commodoreDisplay} prefix={<span className="commodore-composer-chip-label">{t("commodore.composerSettings.commodoreChip")}</span>} />
+        ))}
         {chip("commander", `${t("commodore.settings.commander")}: ${judgment ? commanderWord : coordinateTitle(commanderDisplay)}`, judgment ? (
           <>
             <CommodoreJudgmentMark />
-            <span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>
-            <span className="commodore-composer-chip-value">{commanderWord}</span>
+            <ChipFold>
+              <span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>
+              <span className="commodore-composer-chip-value">{commanderWord}</span>
+            </ChipFold>
           </>
         ) : (
           <CoordinateWords display={commanderDisplay} prefix={<span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>} />
         ))}
         {chip("pool", pool.chipAria(t), (
           <>
-            <span className="commodore-composer-chip-label">{t("commodore.pool.title")}</span>
             <RoutingPoolGlyphStack providers={pool.poolProviders} />
+            <ChipFold>
+              <span className="commodore-composer-chip-label">{t("commodore.pool.title")}</span>
+            </ChipFold>
             {pool.entries.length > 0 && pool.usableCount === 0 ? <span className="commodore-pool-chip-warn" aria-hidden="true" /> : null}
           </>
         ))}
@@ -552,22 +558,34 @@ function launchLabels(t: T) {
 }
 
 
-/** 칩의 좌표 낱말 — 공유 선택기 트리거와 같은 「[글리프] [앞표시] 모델 · 강도 [꺼짐·폴백]」 문법이다. */
+/** 칩의 좌표 낱말 — 글리프(또는 제거된 공급자 이름)는 항상 보이고, 이름·모델·강도는 접힘 칸에 둔다. */
 function CoordinateWords({ display, prefix }: { readonly display: ReturnType<typeof modelCoordinateDisplay>; readonly prefix?: ReactNode }) {
   return (
     <>
       {display.struck && display.removedProvider ? <span className="fc-coord-provider-name">{display.removedProvider}</span> : <ProviderMark provider={display.provider} />}
-      {prefix}
-      <span className={`commodore-composer-chip-value fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
-      {display.words.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{display.words.effort}</span></> : null}
-      {display.badge ? <span className="fc-coord-trigger-badge">{display.badge}</span> : null}
+      <ChipFold>
+        {prefix}
+        <span className={`commodore-composer-chip-value fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
+        {display.words.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{display.words.effort}</span></> : null}
+        {display.badge ? <span className="fc-coord-trigger-badge">{display.badge}</span> : null}
+      </ChipFold>
     </>
+  );
+}
+
+/** 펼침 문구. 칩 aria-label이 이미 모델·강도를 말하므로 이 글은 다시 읽히지 않는다. */
+function ChipFold({ children }: { readonly children: ReactNode }) {
+  return (
+    <span className="commodore-composer-chip-reveal" aria-hidden="true">
+      <span className="commodore-composer-chip-reveal-in">{children}</span>
+    </span>
   );
 }
 
 /**
  * 고른 단추를 따라 미끄러지는 면 — 그 단추의 offsetLeft·offsetWidth 로 left·width 를 옮긴다(CSS 트랜지션).
- * 처음 자리에는 미끄러지지 않고 바로 선다(`placed` 전에는 트랜지션이 없다). 폭이 바뀌어도 자리를 다시 잰다.
+ * 처음 자리에는 미끄러지지 않고 바로 선다(`placed` 전에는 트랜지션이 없다).
+ * 목록 박스 폭은 그대로인데 칩만 호버로 넓어질 수 있어, 칩 너비도 함께 본다. 그 변화는 슬라이드 없이 바로 따라가 알약이 칩과 어긋나지 않는다.
  */
 function useSlidingIndicator(listRef: { readonly current: HTMLElement | null }, selector: string | null, key: unknown): { readonly left: number; readonly width: number; readonly placed: boolean } | null {
   const [indicator, setIndicator] = useState<{ readonly left: number; readonly width: number; readonly placed: boolean } | null>(null);
@@ -587,6 +605,7 @@ function useSlidingIndicator(listRef: { readonly current: HTMLElement | null }, 
     if (!list || !selector || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => measure(false));
     observer.observe(list);
+    for (const button of list.querySelectorAll<HTMLElement>(".commodore-composer-chip")) observer.observe(button);
     return () => observer.disconnect();
   }, [listRef, selector, measure]);
 
