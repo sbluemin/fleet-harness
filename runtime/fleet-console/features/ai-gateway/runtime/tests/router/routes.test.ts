@@ -2084,8 +2084,9 @@ describe("upper-session routing batch", () => {
     expect(question.state).toHaveProperty("tasks");
     expect(JSON.stringify(question.state)).not.toMatch(/intelligenceIndex|roleThresholds/);
     const policy = routingBatchInstructions.join("\n");
-    expect(policy).toContain("task and candidate keys are local to this turn");
-    expect(policy).toContain("Prior choices are not execution evidence");
+    expect(policy).toContain("Per turn, route only state.tasks using current candidates; task and candidate keys are local to this turn. For mutable routing facts, current state supersedes prior turns; missing values remain unknown. Use history for objective context, not as evidence of current routing facts or applied assignments. If present, state.commanderAssignment is the saved commander assignment; use it as context, not a constraint on member choices.");
+    expect(policy).toContain("These counts are neither actual quota consumption nor active runs. Do not add historical choices to recentAssignments. Prioritize remaining quota");
+    expect(policy).not.toContain("Prior choices are not execution evidence");
     expect(policy).toContain("Do not infer capabilities from model names or aliases");
     expect(policy).not.toMatch(/forget/i);
     expect(routingDifficulty.instructions.join("\n")).toContain("If torn between levels, choose the lower one");
