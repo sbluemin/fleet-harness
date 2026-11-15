@@ -1811,7 +1811,11 @@ describe("agy ACP bridge route", () => {
       expect(fs.readdirSync(path.join(directory, "sessions"))).toHaveLength(1);
       // Disposing the router ends the held agy session: no child and no session directory survive it.
       await router.dispose();
-      expect(fs.readFileSync(path.join(directory, "fake.log"), "utf8")).toContain('"terminated":true');
+      // The child may end on stdin EOF before SIGTERM lands, so check that it is gone, not which signal ended it.
+      const pids = fs.readFileSync(path.join(directory, "fake.log"), "utf8").trim().split("\n")
+        .map((line) => (JSON.parse(line) as { pid?: number }).pid).filter((pid): pid is number => typeof pid === "number");
+      expect(pids).toHaveLength(1);
+      expect(() => process.kill(pids[0]!, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
       expect(fs.readdirSync(path.join(directory, "sessions"))).toEqual([]);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });

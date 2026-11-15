@@ -19,7 +19,7 @@ const models = (process.env.FAKE_MODELS ?? "gemini-4-argon-low,gemini-4-argon-me
 const send = (message) => process.stdout.write(`${JSON.stringify({ jsonrpc: "2.0", ...message })}\n`);
 const update = (body) => send({ method: "session/update", params: { sessionId: "s1", update: body } });
 const argv = process.argv.slice(2);
-log({ argv });
+log({ argv, pid: process.pid });
 process.on("SIGTERM", () => { log({ terminated: true }); process.exit(0); });
 
 const geminiDir = argv[argv.indexOf("--gemini-dir") + 1];
