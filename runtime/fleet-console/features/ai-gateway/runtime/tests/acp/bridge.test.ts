@@ -59,8 +59,8 @@ const result = (id: string, output: string): CanonicalInputItem => ({ type: "fun
 // A tool name too long for agy gets an alias; the alias must be the same on every request or each request would open a new session.
 const LONG_TOOL = { type: "function" as const, name: "mcp__plugin_context7_context7__resolve-library-id", parameters: { type: "object", properties: {} } };
 
-async function turn(bridge: AgyAcpBridge, input: CanonicalInputItem[], instructions = "be brief") {
-  const request: CanonicalResponseRequest = { model: MODEL, input, instructions, tools: [BASH, LONG_TOOL], stream: true };
+async function turn(bridge: AgyAcpBridge, input: CanonicalInputItem[], instructions = "be brief", toolChoice?: CanonicalResponseRequest["tool_choice"]) {
+  const request: CanonicalResponseRequest = { model: MODEL, input, instructions, tools: [BASH, LONG_TOOL], ...(toolChoice ? { tool_choice: toolChoice } : {}), stream: true };
   const response = await bridge.stream(request, { apiKey: "" });
   if (!response.ok) throw new Error(`bridge refused with ${response.status}`);
   const events: CanonicalResponseEvent[] = [];
@@ -138,8 +138,16 @@ describe("agy ACP bridge", () => {
     const history4: CanonicalInputItem[] = [...history, assistant("got:a.txt"), user("hello"), assistant(textOf(third.message)), user("again")];
     const fourth = await turn(bridge, history4, "be terse");
     expect(count(await log(), "session/new")).toBe(2);
-    await turn(bridge, [...history4, assistant(textOf(fourth.message)), user("more")], "be terse");
+    const history5: CanonicalInputItem[] = [...history4, assistant(textOf(fourth.message)), user("more")];
+    await turn(bridge, history5, "be terse");
     expect(count(await log(), "session/new")).toBe(2);
+
+    // `tool_choice: "none"`: no tool catalog is exposed and the session that has tools is not reused; the turn runs in a tool-less session.
+    const noTools = await turn(bridge, [...history5, assistant("ok"), user("no tools now")], "be terse", "none");
+    expect(textOf(noTools.message)).toContain("history:yes");
+    const afterNone = await log();
+    expect(count(afterNone, "session/new")).toBe(3);
+    expect(afterNone.filter((entry) => entry.mcpTools).at(-1)).toMatchObject({ mcpTools: [], eager: [] });
   });
 
   it("rebuilds in a new session, keeping the user role, when user text arrives beside a tool result, and closes the held session; logs only counts", async () => {

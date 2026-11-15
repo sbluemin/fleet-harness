@@ -334,7 +334,10 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       return failedResponse(400, "invalid_request_error", "The request must end with a user message or tool results.");
     }
 
-    const catalog = toolCatalog(request);
+    // `tool_choice: "none"` means no tools this turn: the session gets no MCP tools at all (Gemini's function calling mode NONE),
+    // and a session that has tools is never reused for it (the tool set is part of the session identity below). `required` and a
+    // named tool are not supported: they are treated as `auto`.
+    const catalog = request.tool_choice === "none" ? { tools: [], names: new Map<string, string>() } : toolCatalog(request);
     // 세션 신원 = agy가 세션을 열 때 고정하는 모든 것: 모델·강도, 도구의 원래 이름 집합, **노출하는 도구 정의 전체**(이름·설명·정규화 스키마)와
     // 브리지가 append에 넣는 지침. 이름은 그대로인 채 지침이나 도구 정의가 바뀌면 옛 세션은 새 내용을 모르므로 rebuild로 간다.
     // 요청마다 달라지는 값이 섞이면 매 요청 rebuild가 되므로 두 해시 앞 8자를 wire log에 남긴다(내용은 남기지 않는다).
