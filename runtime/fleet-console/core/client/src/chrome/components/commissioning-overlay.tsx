@@ -1,6 +1,8 @@
 import { useEffect, useRef } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 
+import { requestCommodoreCreate } from "../../../../../features/commodore/client/commodore-create-modal.js";
+import { useCommodoreList } from "../../../../../features/commodore/client/commodore-list.js";
 import { useGlobalSettingsStore } from "../../../../../features/settings/client/global-settings-store.js";
 import { takeCommissioningReturnFocus } from "../../integration/shortcuts.js";
 import { useT } from "../../i18n/index.js";
@@ -22,13 +24,18 @@ const FOCUSABLE_SELECTOR = [
 
 export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
   const t = useT();
+  const location = useLocation();
+  const navigate = useNavigate();
   const globalSettings = useGlobalSettingsStore();
+  const hasCommodores = useCommodoreList().length > 0;
   const returnFocusRef = useRef<HTMLElement | null>(null);
+  const skipReturnFocusRef = useRef(false);
   const primaryActionRef = useRef<HTMLButtonElement | HTMLAnchorElement | null>(null);
   const cardRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!state.onboardingOpen) return;
+    skipReturnFocusRef.current = false;
     // 팔레트처럼 자신이 닫히며 여는 표면은 opener를 채널로 넘긴다 — 그 경우 activeElement는 이미 body다.
     returnFocusRef.current = takeCommissioningReturnFocus()
       ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
@@ -36,6 +43,10 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
     return () => {
       const target = returnFocusRef.current;
       returnFocusRef.current = null;
+      if (skipReturnFocusRef.current) {
+        skipReturnFocusRef.current = false;
+        return;
+      }
       target?.focus?.();
     };
   }, [state.onboardingOpen]);
@@ -60,6 +71,16 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
   // onboardingOpen만 켜진 채 아무것도 보이지 않고, 다음 시도는 이미 열린 것으로 보아 무시된다.
   if (globalSettings.loadStatus === "pending" || !state.onboardingOpen) return null;
 
+  const handleCreateCommodore = () => {
+    // 생성 모달로 포커스를 넘기므로 닫힘 cleanup이 예전 요소로 포커스를 되돌리지 않게 한다.
+    skipReturnFocusRef.current = true;
+    closeOnboarding();
+    if (location.pathname !== "/objectives") navigate("/objectives");
+    requestCommodoreCreate();
+  };
+
+  const onObjectivesRoute = location.pathname === "/objectives";
+
   return (
     <div className="commissioning-overlay" role="dialog" aria-modal="true" aria-labelledby="commissioning-title">
       <button type="button" className="commissioning-scrim" onClick={closeOnboarding} aria-label={t("chrome.commissioning.closeAria")} />
@@ -67,26 +88,50 @@ export function CommissioningOverlay({ state }: CommissioningOverlayProps) {
         <header className="commissioning-header">
           <FleetMark />
           <span className="commissioning-eyebrow">{t("chrome.commissioning.eyebrow")}</span>
-          <h2 id="commissioning-title">{t("sidebar.starter.title")}</h2>
-          <p>{t("sidebar.starter.body")}</p>
+          <h2 id="commissioning-title">{t(hasCommodores ? "chrome.commissioning.readyTitle" : "sidebar.starter.title")}</h2>
+          <p>{t(hasCommodores ? "chrome.commissioning.readyBody" : "sidebar.starter.body")}</p>
         </header>
 
         <ol className="commissioning-steps">
           <li className="commissioning-step is-current">
             <span className="commissioning-step-node" aria-hidden="true">1</span>
             <div className="commissioning-step-body">
-              <h3>{t("chrome.commissioning.step2Title")}</h3>
-              <p>{t("chrome.commissioning.step2Body")}</p>
-              <Link
-                ref={(node) => {
-                  primaryActionRef.current = node;
-                }}
-                className="commissioning-primary-action"
-                to="/objectives"
-                onClick={closeOnboarding}
-              >
-                {t("chrome.commissioning.goToObjectiveRecordsArrow")}
-              </Link>
+              <h3>{t(hasCommodores ? "chrome.commissioning.step2Title" : "chrome.commissioning.createTitle")}</h3>
+              <p>{t(hasCommodores ? "chrome.commissioning.step2Body" : "chrome.commissioning.createBody")}</p>
+              {!hasCommodores ? (
+                <button
+                  type="button"
+                  ref={(node) => {
+                    primaryActionRef.current = node;
+                  }}
+                  className="commissioning-primary-action"
+                  onClick={handleCreateCommodore}
+                >
+                  {t("chrome.commissioning.createArrow")}
+                </button>
+              ) : onObjectivesRoute ? (
+                <button
+                  type="button"
+                  ref={(node) => {
+                    primaryActionRef.current = node;
+                  }}
+                  className="commissioning-primary-action"
+                  onClick={closeOnboarding}
+                >
+                  {t("chrome.commissioning.startHereArrow")}
+                </button>
+              ) : (
+                <Link
+                  ref={(node) => {
+                    primaryActionRef.current = node;
+                  }}
+                  className="commissioning-primary-action"
+                  to="/objectives"
+                  onClick={closeOnboarding}
+                >
+                  {t("chrome.commissioning.goToObjectiveRecordsArrow")}
+                </Link>
+              )}
             </div>
           </li>
         </ol>

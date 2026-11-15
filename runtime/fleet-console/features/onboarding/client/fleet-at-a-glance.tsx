@@ -7,14 +7,8 @@ import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useConsoleState } from "../../../core/client/src/hooks/use-store.js";
 import {
   closeFleetAtAGlance,
-  COMMISSIONING_SEEN_KEY,
-  openFleetAtAGlance,
-  readStoredCommissioningSeen,
 } from "../../../core/client/src/integration/store.js";
-import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
-import { readCommodoreList } from "../../commodore/client/commodore-list.js";
-import { FLEET_AT_A_GLANCE_SEEN_KEY, rememberSeen } from "./seen-store.js";
 import {
   fleetGlanceChrome,
   fleetGlanceScenes,
@@ -1292,57 +1286,10 @@ function FleetAtAGlanceDialog({ onClose }: { readonly onClose: () => void }): Re
   );
 }
 
-// ── 호스트: 첫 실행에 한 번 자동으로 열고, 메뉴에서 언제든 다시 연다 ───────
+// ── 호스트: 도움말 › 플릿 한눈에 보기 등에서 사용자가 열 때만 표시한다 ─────
 
 export function FleetAtAGlanceHost(): React.JSX.Element | null {
   const state = useConsoleState();
-  const settings = useGlobalSettingsStore();
-  // 모바일 레이아웃에는 도움말 메뉴가 없어 닫으면 다시 열 길이 없다 — 최초 설정 가이드·투어와
-  // 같은 규칙으로 자동 열림을 데스크톱에만 둔다. 이미 열린 팝업은 레이아웃이 바뀌어도 그대로 둔다.
-  const mobileLayout = useViewMode().effective === "mobile";
-  // 새 사용자·기존 사용자 판정은 세션에서 설정을 처음 ready로 읽은 그 틱에 한 번만 한다.
-  const classifiedRef = useRef<"fresh" | "returning" | null>(null);
-
-  useEffect(() => {
-    if (mobileLayout) return;
-    if (!state.bootstrapped) return;
-    if (settings.loadStatus !== "ready" || !settings.state) return;
-    if (classifiedRef.current === null) {
-      // 전역 설정을 처음 읽은 시점에 최초 설정 가이드를 이미 본 기록(서버 seenFeatureTours의
-      // 승격 전 legacy localStorage 포함)이 있거나 사령관이 이미 있으면 기존 사용자다.
-      // 사령관 목록은 bootstrapped가 서기 전에(이 효과가 도는 조건) 읽혀 있으므로, 분류 시점에
-      // 이미 차 있다 — resolveOnboardingOnBootstrap이 목록을 기다렸다가 bootstrapped를 세운다.
-      // main.tsx가 렌더 전에 이관을 기다리지만, 저장이 막힌 환경에서는 legacy 표식이 남을 수 있어
-      // seen과 legacy를 둘 다 본다.
-      const returning = settings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)
-        || readStoredCommissioningSeen()
-        || readCommodoreList().length > 0;
-      classifiedRef.current = returning ? "returning" : "fresh";
-      if (returning) {
-        // 기존 사용자에게는 자동으로 띄우지 않고 본 기록만 조용히 남긴다 — 메뉴로는 언제든 열린다.
-        if (!settings.state.seenFeatureTours.includes(FLEET_AT_A_GLANCE_SEEN_KEY)) {
-          rememberSeen([FLEET_AT_A_GLANCE_SEEN_KEY]);
-        }
-        return;
-      }
-    }
-    if (classifiedRef.current === "returning") return;
-    if (settings.state.seenFeatureTours.includes(FLEET_AT_A_GLANCE_SEEN_KEY)) return;
-    // 최초 설정 가이드·새 소식이 떠 있는 동안은 기다린다 — 겹쳐 뜨지 않고 그것이 닫힌 뒤에 열린다.
-    if (state.onboardingOpen || state.whatsNewOpen) return;
-    if (state.fleetAtAGlanceOpen) return;
-    openFleetAtAGlance();
-    // 닫으면 다시 뜨지 않는다 — 본 기록은 같은 seenFeatureTours 필드에 쌓인다.
-    rememberSeen([FLEET_AT_A_GLANCE_SEEN_KEY]);
-  }, [
-    mobileLayout,
-    state.bootstrapped,
-    state.onboardingOpen,
-    state.whatsNewOpen,
-    state.fleetAtAGlanceOpen,
-    settings.loadStatus,
-    settings.state,
-  ]);
 
   if (!state.fleetAtAGlanceOpen) return null;
   // 다른 우선 오버레이가 떠 있으면 양보한다 — 새 소식과 같은 규율이다. 억제가 풀리면
