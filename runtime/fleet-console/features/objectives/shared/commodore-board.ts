@@ -61,4 +61,6 @@ export interface CommodoreBoardHost {
   commander(commodoreId: string): { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null;
   /** 그 사령관 세션이 지금 도는 모델·강도. 세션이 없으면 null. */
   session(commodoreId: string): { readonly model: string; readonly effort?: string } | null;
+  /** 세션이 없어도 그 사령관의 해석된 모델·강도. 저장된 사령관이 없으면 null. */
+  coordinates(commodoreId: string): { readonly model: string; readonly effort?: string } | null;
 }

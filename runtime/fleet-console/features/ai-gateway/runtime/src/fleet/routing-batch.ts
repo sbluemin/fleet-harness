@@ -22,6 +22,8 @@ export interface GatewayRoutingBatchOptions {
   }, signal?: AbortSignal) => Promise<Readonly<Record<string, RoutingChoice>>>;
   readonly signal?: AbortSignal;
   readonly refreshExposure?: () => GatewayAssignmentExposure;
+  /** 실제로 확정·저장된 지휘관 모델·강도. 앞 턴의 판단 답이 아니다. */
+  readonly commanderAssignment?: { readonly model: string; readonly effort?: string };
 }
 export class NoEnabledGatewayModelsError extends Error {}
 
@@ -41,8 +43,12 @@ export async function decideGatewayRoutingBatch(
   if (candidates.length && !sole) {
     const tasks = items.map((item, index) => ({ id: `t${index}`, prompt: item.prompt }));
     try {
+      const commander = options.commanderAssignment;
       choices = await options.choose({
-        state: { gateway_models: buildGatewayLoadout(current), tasks },
+        state: {
+          gateway_models: buildGatewayLoadout(current), tasks,
+          ...(commander ? { commanderAssignment: { model: commander.model, ...(commander.effort ? { effort: commander.effort } : {}) } } : {}),
+        },
         instructions: routingBatchInstructions, difficulty: routingDifficulty,
         criteria: Object.fromEntries(candidates.map((entry, index) => [`c${index}`, canonicalGatewayCandidateId(entry.model)])),
         tasks: tasks.map(task => task.id),

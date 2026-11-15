@@ -1,4 +1,5 @@
 import { decideGatewayRoutingBatch, NoEnabledGatewayModelsError } from "../../src/fleet/routing-batch.js";
+import { routingBatchInstructions, routingDifficulty } from "../../src/fleet/routing-decision.js";
 import { GatewayRoutingDistribution } from "../../src/fleet/routing-distribution.js";
 import {
   AnthropicMessagesGateway,
@@ -2069,6 +2070,27 @@ describe("upper-session routing batch", () => {
     expect(decision).toMatchObject({ model: "codex--gpt-6.1-sol", effort: "medium", via: "least-used" });
     expect(choose).not.toHaveBeenCalled();
     await expect(decideGatewayRoutingBatch(items, { delegationModels: [] }, { choose })).rejects.toBeInstanceOf(NoEnabledGatewayModelsError);
+  });
+
+  it("sends a fresh snapshot and the confirmed commander assignment under one policy", async () => {
+    const seen: Array<{ readonly state: Readonly<Record<string, unknown>>; readonly instructions: readonly string[] }> = [];
+    await decideGatewayRoutingBatch(items, { delegationModels: models, providerLoad: new Map() }, {
+      choose: async (input) => { seen.push(input); return { t0: { seat: "c0", difficulty: "low" } }; },
+      commanderAssignment: { model: "opus[1m]", effort: "high" },
+    });
+    const question = seen[0]!;
+    expect(question.state.commanderAssignment).toEqual({ model: "opus[1m]", effort: "high" });
+    expect(question.state).toHaveProperty("gateway_models");
+    expect(question.state).toHaveProperty("tasks");
+    expect(JSON.stringify(question.state)).not.toMatch(/intelligenceIndex|roleThresholds/);
+    const policy = routingBatchInstructions.join("\n");
+    expect(policy).toContain("Per turn, route only state.tasks using current candidates; task and candidate keys are local to this turn. For mutable routing facts, current state supersedes prior turns; missing values remain unknown. Use history for objective context, not as evidence of current routing facts or applied assignments. If present, state.commanderAssignment is the saved commander assignment; use it as context, not a constraint on member choices.");
+    expect(policy).toContain("These counts are neither actual quota consumption nor active runs. Do not add historical choices to recentAssignments. Prioritize remaining quota");
+    expect(policy).not.toContain("Prior choices are not execution evidence");
+    expect(policy).toContain("Do not infer capabilities from model names or aliases");
+    expect(policy).not.toMatch(/forget/i);
+    expect(routingDifficulty.instructions.join("\n")).toContain("If torn between levels, choose the lower one");
+    expect(question.instructions).toEqual(routingBatchInstructions);
   });
 
   it("does not commit an interrupted judgment", async () => {
