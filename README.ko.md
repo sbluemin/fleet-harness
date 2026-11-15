@@ -47,6 +47,8 @@ fleet console
 
 **에이전트와 함께 쓰는 브라우저.** 데스크톱 앱에서 플릿 브라우저는 대화 옆이나 별도 창에 열립니다. 에이전트는 같은 탭과 로그인을 쓰되 자기 공간에서 일하고, 나는 페이지에 주석을 달아 에이전트에게 넘길 수 있습니다.
 
+<img src=".github/browser.webp" alt="Atlas 대화 옆에 열린 Fleet Browser: Atlas 스페이스의 Orders Report 페이지에서 필터 옆 Export CSV 버튼과 탭 레일, 스페이스 전환이 보인다" width="100%" />
+
 **세션은 탭이 아니라 내 머신에 삽니다.** 페이지를 닫든, 브라우저를 다시 열든, 기기를 바꾸든 일은 계속됩니다. macOS·Windows 데스크톱 앱을 쓰거나, 원격 접속으로 폰이나 다른 컴퓨터를 페어링하거나, 테스터 배포 중인 Android·iOS 앱을 쓰세요.
 
 <p align="center"><img src=".github/mobile.webp" alt="폰의 Fleet: 사령관 Atlas가 달성 기준을 승인하고 목표를 개시했다고 알린다" width="320" /></p>
