@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { ChevronGlyph, MenuCheckGlyph, useSelect } from "@fleet-console/ui/react";
 
 import type { IdentityTone } from "../../workspace/shared/identity-tones.js";
+import { COMMODORE_ALIAS_MAX_LENGTH, clampCommodoreAlias } from "../shared/alias.js";
 import { commodoreAvatarKey, isPromotedBaseId, pickMongleBase } from "../../workspace/shared/avatars.js";
 import { setMongleLook } from "../../workspace/client/avatar-events.js";
 import { MongleBaseGrid, MonglePreviewStates, MongleToneDots, type MongleAvatarPreviewState } from "../../workspace/client/components/mongle-avatar-picker.js";
@@ -42,6 +43,7 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
   const t = useT();
   const locale = useConsoleLocale() === "ko" ? "ko" : "en";
   const [name, setName] = useState("");
+  const composingRef = useRef(false);
   const [base, setBase] = useState(() => pickMongleBase(new Set()));
   const [tone, setTone] = useState<IdentityTone | null>(null);
   const [preview, setPreview] = useState<MongleAvatarPreviewState>("idle");
@@ -76,12 +78,13 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
       case "untrusted": return t("sidebar.commodore.createFailed.untrusted");
       case "access": return t("sidebar.commodore.createFailed.access");
       case "unavailable": return t("sidebar.commodore.createFailed.unavailable");
-      case "invalid": return t("sidebar.commodore.createFailed.invalid");
+      case "invalid": return t("sidebar.commodore.createFailed.invalid", { max: COMMODORE_ALIAS_MAX_LENGTH });
       case "unsupported": return t("sidebar.commodore.createFailed.unsupported");
     }
   };
   const targetMachine = otherMachines.find((machine) => machine.consoleId === targetId) ?? null;
   const alias = name.trim();
+  const nameLimitReached = [...name].length >= COMMODORE_ALIAS_MAX_LENGTH;
   // 폰에서는 화면 전체를 덮는 시트다 — 하드웨어·브라우저 뒤로가 시트를 먼저 닫도록 겹침 레지스트리와 history 항목을 함께 든다.
   const sheet = useViewMode().effective === "mobile";
   const closeRef = useRef(onClose);
@@ -147,8 +150,10 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
         openTheaterInbox({ theaterId: commodoreId, sectionId: "commodore:commodore", pageId: "settings" });
         onClose();
       });
-    } catch {
-      setFailed(true);
+    } catch (error) {
+      const status = typeof error === "object" && error !== null && "status" in error ? (error as { readonly status?: unknown }).status : undefined;
+      if (status === 400 || (error instanceof Error && error.message === "invalid_request")) setCreateReason("invalid");
+      else setFailed(true);
     } finally {
       setBusy(false);
     }
@@ -191,22 +196,36 @@ function CommodoreCreateDialog({ onClose }: { readonly onClose: () => void }) {
             <MongleAvatar base={base} tone={tone} role="commodore" state={preview} size={sheet ? 124 : 112} label={alias || t("sidebar.commodore.createTitle")} decorative />
           </div>
           <MonglePreviewStates previewState={preview} label={t("avatar.editor.preview")} states={states} onPreviewState={setPreview} showLabel={false} />
-          <input
-            className="commodore-create-name"
-            value={name}
-            autoFocus={!sheet}
-            placeholder={t("sidebar.commodore.namePlaceholder")}
-            aria-label={t("sidebar.commodore.name")}
-            onChange={(event) => setName(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }}
-          />
+          <div className="commodore-create-name-group">
+            <input
+              className="commodore-create-name"
+              value={name}
+              autoFocus={!sheet}
+              placeholder={t("sidebar.commodore.namePlaceholder")}
+              aria-label={t("sidebar.commodore.name")}
+              onChange={(event) => {
+                setName(composingRef.current ? event.target.value : clampCommodoreAlias(event.target.value));
+                setFailed(false);
+                setCreateReason(null);
+              }}
+              onCompositionStart={() => { composingRef.current = true; }}
+              onCompositionEnd={(event) => {
+                composingRef.current = false;
+                setName(clampCommodoreAlias(event.currentTarget.value));
+                setFailed(false);
+                setCreateReason(null);
+              }}
+              onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }}
+            />
+            {nameLimitReached ? <p className="commodore-create-limit" role="status">{t("sidebar.commodore.nameLimit", { max: COMMODORE_ALIAS_MAX_LENGTH })}</p> : null}
+          </div>
           <MongleBaseGrid role="commodore" base={base} tone={tone} locale={locale} label={t("avatar.editor.baseGroup")} promotedLabel={t("avatar.editor.promotedGroup")} size={sheet ? 46 : 44} onBase={(next) => { setBase(next); if (isPromotedBaseId(next)) setTone(null); }} />
           <MongleToneDots base={base} tone={tone} label={t("avatar.editor.toneGroup")} names={tones} lockedLabel={t("avatar.editor.toneLocked")} onTone={setTone} />
           {targetMachine && blockedReason(targetMachine.consoleId) === null
             ? <p className="commodore-create-machine-note" role="status">{t("sidebar.commodore.createRemoteNote", { machine: targetMachine.label })}</p> : null}
-          {createReason ? <p className="commodore-create-failed" role="alert">{failedNote(createReason)}</p>
-            : failed ? <p className="commodore-create-failed" role="alert">{t("sidebar.commodore.failed")}</p> : null}
         </div>
+        {createReason ? <p className="commodore-create-failed" role="alert">{failedNote(createReason)}</p>
+          : failed ? <p className="commodore-create-failed" role="alert">{t("sidebar.commodore.failed")}</p> : null}
         <footer className="commodore-create-foot">
           {sheet ? null : <button type="button" className="fc-btn fc-btn--secondary commodore-create-button" onClick={onClose}>{t("sidebar.commodore.cancel")}</button>}
           <button type="button" className="fc-btn fc-btn--primary commodore-create-button" disabled={!alias || busy} onClick={() => { void submit(); }}>{t("sidebar.commodore.create")}</button>

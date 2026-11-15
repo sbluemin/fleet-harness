@@ -855,6 +855,15 @@
   min-width: 0;
 }
 
+.side-bar-cluster-row-rename-hint {
+  grid-column: 1 / -1;
+  margin-top: 3px;
+  color: var(--warn-ink);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  line-height: 1.35;
+}
+
 /* 상태 줄 — 고정 길이 게이지와 바로 붙은 분수 뒤에 상태 문구가 선다. 좁은 칸에서는 게이지가 먼저 짧아지고
    더 좁으면 빠져 분수만 남는다(아래 @container). 상태 문구가 길면 문구만 말줄인다. */
 .side-bar-cluster-row-line {
