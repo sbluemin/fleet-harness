@@ -2043,7 +2043,8 @@ export class BrowserService {
       current: space.viewport,
       pane: this.paneOf(op),
     });
-    const setBy = actor;
+    // 칸을 따르는 복귀는 사람이 크기를 정한 상태가 아니다. setBy 가 user 로 남으면 셸이 원격 맞춤을 풀지 않는다.
+    const setBy = resolved.followsPane ? null : actor;
     const scale = op.pane?.scale ?? space.viewport.scale;
     space.viewportFollowsPane = resolved.followsPane;
     space.viewport = { width: resolved.width, height: resolved.height, scale, preset, setBy, colorScheme: request.colorScheme === undefined ? space.viewport.colorScheme : request.colorScheme };

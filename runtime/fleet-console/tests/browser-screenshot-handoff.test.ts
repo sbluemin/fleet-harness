@@ -287,7 +287,23 @@ describe("objectiveRecord browser service contracts", () => {
 
       // 임의 크기는 실제 에뮬레이션으로 잠근다(pane 과 분리).
       const custom = await service.setViewport(OBJECTIVE, { preset: "responsive", width: 1200, height: 900 }, "agent");
-      expect(custom).toMatchObject({ width: 1200, height: 900, preset: "responsive" });
+      expect(custom).toMatchObject({ width: 1200, height: 900, preset: "responsive", setBy: "agent" });
+    } finally {
+      await service.dispose();
+    }
+  });
+
+  it("clears setBy when a user responsive size returns to the pane", async () => {
+    const desktop = createStubDesktop({ layout: { width: 720, height: 568 } });
+    const service = createService(desktop);
+    try {
+      await service.createTab(OBJECTIVE, null, "user", { show: true });
+      desktop.setPaneSize({ width: 720, height: 568, scale: 2 });
+      const fitted = await service.setViewport(OBJECTIVE, { preset: "responsive", width: 500, height: 850 }, "user");
+      expect(fitted).toMatchObject({ width: 500, height: 850, preset: "responsive", setBy: "user" });
+      const restored = await service.setViewport(OBJECTIVE, { preset: "responsive" }, "user");
+      expect(restored.setBy).toBeNull();
+      expect(service.state(OBJECTIVE).viewport).toMatchObject({ preset: "responsive", setBy: null });
     } finally {
       await service.dispose();
     }
