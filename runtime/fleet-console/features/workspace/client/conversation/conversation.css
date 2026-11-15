@@ -723,6 +723,17 @@
   min-height: 0;
 }
 
+/* 원장 분할 칸이 재는 본문 자리. 슬롯이 칸을 채워야 터미널 맞춤이 그 칸을 본다. */
+.conversation-participant-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+
 .conversation-empty {
   flex: 1;
   display: flex;

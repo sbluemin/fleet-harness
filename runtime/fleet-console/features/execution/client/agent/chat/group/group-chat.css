@@ -1517,3 +1517,45 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
   margin: 0 var(--space-1);
   background: var(--hairline-strong);
 }
+
+/* 원장 분할 — 데스크톱 가운데 칸에만 세운다. 칸 크기는 페이지 수명이고, 경계는 끌어 바꾼다.
+   안쪽 채팅 로그가 기둥 pill 몫을 또 비우지 않게 겹침 변수를 끈다. 기둥 아래 시작은 대화 칸의 padding 이 진다. */
+.group-ledger-split {
+  --conversation-overlay-top: 0px;
+  display: grid;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+}
+.group-ledger-split-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+.group-ledger-split-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--control-rest);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+.group-ledger-split-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.group-ledger-split-pane-body { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.group-ledger-split-pane-body > * { flex: 1 1 auto; min-width: 0; min-height: 0; }
+.group-ledger-split-gutter { touch-action: none; background: var(--hairline); }
+.group-ledger-split-gutter.is-vertical { cursor: col-resize; }
+.group-ledger-split-gutter.is-horizontal { cursor: row-resize; }
+.group-ledger-split-gutter:hover { background: var(--control-wash-hover); }
+.group-ledger-split-gutter:active { background: var(--control-wash); }
+.group-ledger-split-gutter:focus-visible { box-shadow: var(--focus-face); }
+@media (forced-colors: active) {
+  .group-ledger-split-gutter:focus-visible { outline: 1px solid Highlight; }
+}
