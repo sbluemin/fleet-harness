@@ -374,7 +374,7 @@ async function boot(): Promise<void> {
     perform: (command) => {
       if (command === "check") void shellUpdater?.check();
       else if (command === "download") void shellUpdater?.download();
-      else shellUpdater?.restart();
+      else void shellUpdater?.restart();
     },
   });
   const subscribeShellUpdates = async (origin: string): Promise<void> => {
@@ -1291,6 +1291,7 @@ async function boot(): Promise<void> {
       currentVersion: () => app.getVersion(),
       publish: (snapshot) => { publishShellUpdate(snapshot); refreshNativeUpdateActions?.(); },
       log: (message) => logger.error(message),
+      prepareToQuit: () => lifecycle.prepareToQuit(),
       ...(developmentConfigPath ? { developmentConfigPath } : {}),
     })
     : null;
@@ -1302,7 +1303,7 @@ async function boot(): Promise<void> {
       version: () => shellUpdater?.snapshot().version ?? null,
       check: () => { void shellUpdater?.check(); },
       download: () => { void shellUpdater?.download(); },
-      restart: () => shellUpdater?.restart(),
+      restart: () => { void shellUpdater?.restart(); },
     };
   const actions = {
     show: () => { void lifecycle.show(); },

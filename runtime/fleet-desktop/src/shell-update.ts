@@ -43,7 +43,7 @@ export interface ShellUpdater {
   /** 주기 확인과 창에서 온 확인이 같은 길을 쓴다 — 결과를 말하는 자리가 하나여야 한다. */
   check(): Promise<void>;
   download(): Promise<void>;
-  restart(): void;
+  restart(): Promise<void>;
   snapshot(): ShellUpdateSnapshot;
 }
 
@@ -52,6 +52,7 @@ export interface CreateShellUpdaterDeps {
   readonly currentVersion: () => string;
   readonly publish: (snapshot: ShellUpdateSnapshot) => void;
   readonly log: (message: string) => void;
+  readonly prepareToQuit: () => Promise<void>;
   /**
    * 개발 실행에서 이 동선을 실제로 밟아 보기 위한 갱신 설정 파일. 패키징된 앱은 언제나 자기 릴리스
    * 설정을 쓰므로 이 값을 받지 않는다 — 제품 경로를 바꾸는 스위치가 아니라, 제품 경로를 개발에서 열어
@@ -126,8 +127,17 @@ export function createShellUpdater(deps: CreateShellUpdaterDeps): ShellUpdater {
     }
   };
 
-  const restart = (): void => {
-    if (state.stage !== "ready") return;
+  let restarting = false;
+  const restart = async (): Promise<void> => {
+    if (state.stage !== "ready" || restarting) return;
+    restarting = true;
+    try {
+      await deps.prepareToQuit();
+    } catch (error) {
+      restarting = false;
+      deps.log(`shell update restart prepare failed: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
     // 설치본이 앱을 다시 띄운다. 여기서 재시작을 따로 예약하면 두 번 뜬다.
     // Windows(NSIS, oneClick 아님)는 인자 없이 부르면 설치 마법사가 뜬다. 조용한 설치에서만
     // `--force-run`이 붙으므로 둘 다 켠다. macOS 갱신기는 이 인자를 받지 않아 그 호출은 그대로다.
