@@ -5,7 +5,7 @@ import { getViewModeSnapshot } from "../../../core/client/src/integration/view-m
 import { getT, useTerminalLocale } from "../../execution/client/agent/i18n/index.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
-import { SettingsGroup, SettingsHelpTip, SettingsSegments } from "../../settings/client/preferences-context.js";
+import { SettingsGroup, SettingsHelpTip, SettingsSegments, SettingsToggle } from "../../settings/client/preferences-context.js";
 import { closeSettingsModal } from "../../settings/client/settings-door.js";
 import {
   loadSystemPromptSettings,
@@ -189,7 +189,7 @@ function ProviderLoginRow({ provider, status, keyAuth, busy }: {
       </span>
       <span className="ai-gateway-login-control">
         {provider.id === "xai" ? <XaiEndpointSegments /> : null}
-        {keyAuth ? (
+        {provider.id === "antigravity" ? <AntigravityEnabledToggle /> : keyAuth ? (
           <ApiKeyLoginControl credential={keyAuth} name={name} busy={busy} />
         ) : kind === "unlinked" ? (
           <button type="button" className="ai-gateway-login is-unlinked" onClick={() => requestQuotaPanelOpen()}>{t("terminal.settings.aiGatewayUsageUnlinked")}</button>
@@ -228,6 +228,22 @@ function RoutingPoolStack({ providers }: { readonly providers: readonly LaunchPr
       ))}
       {extra > 0 ? <span className="ai-gateway-pool-more">+{extra}</span> : null}
     </span>
+  );
+}
+
+/** Antigravity 줄의 유일한 컨트롤. 로그인 문구와 로그인 버튼은 두지 않는다. */
+function AntigravityEnabledToggle(): React.ReactElement {
+  const mobile = useMobileSettingsHost() !== null;
+  const t = getT(useTerminalLocale(), mobile);
+  const settings = useSystemPromptSettingsStore();
+  const enabled = settings.state?.antigravityEnabled === true;
+  return (
+    <SettingsToggle
+      checked={enabled}
+      busy={settings.savingFields.has("antigravityEnabled")}
+      ariaLabel={t("terminal.settings.aiGatewayAntigravityEnabled")}
+      onChange={(next) => { void setSystemPromptSettingsField("antigravityEnabled", next); }}
+    />
   );
 }
 

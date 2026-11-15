@@ -14,7 +14,7 @@ import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@fleet-console/a
 import { PROVIDER_ORDER_DEFAULT, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT } from "./i18n/index.js";
-import { meterSeverity, mostUrgentWindow, providerName, QuotaPanel, windowLabel } from "./quota-panel.js";
+import { meterSeverity, mostUrgentWindow, providerName, QuotaPanel, useAntigravityEnabled, windowLabel } from "./quota-panel.js";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 
@@ -94,6 +94,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
   const mobile = layout === "mobile";
   const inCapsule = placement === "capsule";
   const { toolbarProviders: shown, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+  const antigravityEnabled = useAntigravityEnabled();
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -102,8 +103,10 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
   if (!loaded) return null;
   const locale = currentLocale();
   const t = getT(locale, mobile);
-  const glyphOnly = shown.length === 0;
-  const readings = toolbarReadings(snapshot.data, shown);
+  // 저장된 선호는 그대로 두고, 꺼진 Antigravity만 표시에서 뺀다. 다시 켜면 원래 칸이 돌아온다.
+  const visible = antigravityEnabled ? shown : shown.filter((id) => id !== "antigravity");
+  const glyphOnly = visible.length === 0;
+  const readings = toolbarReadings(snapshot.data, visible);
   const label = glyphOnly
     ? t("quota.panel.title")
     : snapshot.data === null

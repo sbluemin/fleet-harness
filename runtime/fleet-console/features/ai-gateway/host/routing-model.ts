@@ -193,6 +193,7 @@ interface RoutingModelTurn {
   readonly signal?: AbortSignal;
   readonly spawnProcess: ClaudeProcessSpawner;
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
+  readonly antigravityEnabled?: boolean;
   readonly resolveExecutable?: () => Promise<string | undefined>;
   readonly createSdk?: typeof createClaudeGatewaySdk;
   readonly schema: {
@@ -225,6 +226,8 @@ export async function chooseRoutingModels(input: {
   readonly signal?: AbortSignal;
   readonly spawnProcess: ClaudeProcessSpawner;
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
+  /** 노브. 빠지면 꺼짐이라 심사 모델이 Antigravity여도 로스터에서 찾지 않는다. */
+  readonly antigravityEnabled?: boolean;
   readonly resolveExecutable?: () => Promise<string | undefined>;
   readonly createSdk?: typeof createClaudeGatewaySdk;
 }): Promise<Record<string, RoutingChoice>> {
@@ -275,7 +278,7 @@ async function runQueuedTurn(slot: Slot, input: RoutingModelTurn): Promise<unkno
   if (pendingDiscard) await destroy(slot, pendingDiscard);
   if (slot.shutdown) throw new Error("Routing session disposed");
   if (input.signal?.aborted) throw abortReason(input.signal);
-  const roster = buildModelRoster("agent", routingProviderStatuses(input.readProviderStatuses));
+  const roster = buildModelRoster("agent", routingProviderStatuses(input.readProviderStatuses), input.antigravityEnabled === true);
   const row = findRosterRow(roster, input.judge.model);
   if (!row) {
     const existing = slot.session;

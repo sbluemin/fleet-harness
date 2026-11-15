@@ -972,19 +972,26 @@ describe("delegation assignment", () => {
       requireGatewayModel("antigravity--gemini-4-hydrogen"),
     ];
     const argonCriticalWindows = parseAntigravityQuotaSummary({
-      groups: [
-        {
-          displayName: "Gemini 4 Argon",
-          buckets: [{ bucketId: "gemini-argon-wtu-weekly", remainingFraction: 0.02, resetTime: weekReset }],
-        },
-        {
-          displayName: "Gemini Models",
-          buckets: [
-            { bucketId: "gemini-5h", remainingFraction: 0.8, resetTime: sessionReset },
-            { bucketId: "gemini-weekly", remainingFraction: 0.7, resetTime: weekReset },
+      status: "SUCCESS",
+      num_turns: 0,
+      command: {
+        name: "usage",
+        data: {
+          groups: [
+            {
+              name: "Gemini 4 Argon",
+              buckets: [{ id: "gemini-argon-wtu-weekly", remaining_fraction: 0.02, reset_time: weekReset }],
+            },
+            {
+              name: "Gemini Models",
+              buckets: [
+                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
+                { id: "gemini-weekly", remaining_fraction: 0.7, reset_time: weekReset },
+              ],
+            },
           ],
         },
-      ],
+      },
     }) ?? [];
     const argonExposure: GatewayAssignmentExposure = {
       delegationModels: antigravityModels,
@@ -998,19 +1005,26 @@ describe("delegation assignment", () => {
 
     // 4) 공통 창(gemini-weekly 98%)이 critical이면 Antigravity 전 모델이 빠진다.
     const geminiSharedCritical = parseAntigravityQuotaSummary({
-      groups: [
-        {
-          displayName: "Gemini 4 Argon",
-          buckets: [{ bucketId: "gemini-argon-wtu-weekly", remainingFraction: 0.9, resetTime: weekReset }],
-        },
-        {
-          displayName: "Gemini Models",
-          buckets: [
-            { bucketId: "gemini-5h", remainingFraction: 0.8, resetTime: sessionReset },
-            { bucketId: "gemini-weekly", remainingFraction: 0.02, resetTime: weekReset },
+      status: "SUCCESS",
+      num_turns: 0,
+      command: {
+        name: "usage",
+        data: {
+          groups: [
+            {
+              name: "Gemini 4 Argon",
+              buckets: [{ id: "gemini-argon-wtu-weekly", remaining_fraction: 0.9, reset_time: weekReset }],
+            },
+            {
+              name: "Gemini Models",
+              buckets: [
+                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
+                { id: "gemini-weekly", remaining_fraction: 0.02, reset_time: weekReset },
+              ],
+            },
           ],
         },
-      ],
+      },
     }) ?? [];
     expect(buildGatewayCandidates({
       delegationModels: antigravityModels,
@@ -1838,6 +1852,20 @@ describe("agy ACP bridge route", () => {
   const fakeAgy = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "acp", "fake-agy.mjs");
   const GEMINI = "claude-gateway--antigravity--gemini-4-argon[1m]";
 
+  it("does not open agy when Antigravity is off, including when the setting key is absent", async () => {
+    const open = vi.fn();
+    const router = createAiGatewayRouter({
+      agyAcpPort: { open } as unknown as AiGatewayRouteDeps["agyAcpPort"],
+      readAiGatewaySettings: () => ({ version: 1 }),
+    });
+    const res = response();
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: GEMINI }));
+    expect(res.status).toBe(403);
+    expect(res.body).toContain("Antigravity is turned off");
+    expect(open).not.toHaveBeenCalled();
+    await router.releaseAgy();
+  });
+
   function agyRouter(directory: string, models?: string) {
     const port = createAgyAcpSessionPort({
       sessionsDir: path.join(directory, "sessions"),
@@ -1845,7 +1873,10 @@ describe("agy ACP bridge route", () => {
       commandArgs: [fakeAgy],
       env: { ...process.env, FAKE_BRIDGE: "1", FAKE_LOG: path.join(directory, "fake.log"), ...(models ? { FAKE_MODELS: models } : {}) },
     });
-    return createAiGatewayRouter({ agyAcpPort: port });
+    return createAiGatewayRouter({
+      agyAcpPort: port,
+      readAiGatewaySettings: () => ({ version: 1, antigravityEnabled: true }),
+    });
   }
 
   it("serves a Gemini model through the agy bridge as a tool_use turn and closes every agy child on dispose", async () => {

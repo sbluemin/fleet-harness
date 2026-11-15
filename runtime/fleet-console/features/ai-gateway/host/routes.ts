@@ -48,7 +48,7 @@ function sweepStaleAgySessions(sessionsDir: string): void {
 export function registerAiGatewayRoutes(
   ctx: GatewayHostContext,
   deps: ConsoleAiGatewayRouteDeps = {},
-): { readonly compactHookToken: string; readonly modHookToken: string } {
+): { readonly compactHookToken: string; readonly modHookToken: string; readonly releaseAgy: () => void | Promise<void> } {
   // Always on, unlike the wire log: a failed turn is the one event that otherwise leaves no
   // trace, and a post-commit failure reaches the user as a single SSE frame nobody can retrieve.
   const ownedFailureJournal = deps.failureJournal
@@ -106,5 +106,5 @@ export function registerAiGatewayRoutes(
     { method: "POST", path: "/v1/compact-events", summary: "Receive a Claude compact lifecycle event.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/v1/fleet/routing/assign", summary: "Assign a model and reasoning effort to one delegated run.", category: "Console Execution", gate: "lock-token", transport: "http" },
   ]);
-  return { compactHookToken, modHookToken };
+  return { compactHookToken, modHookToken, releaseAgy: () => router.releaseAgy() };
 }

@@ -192,6 +192,7 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(aiGateway.xaiEndpoint !== undefined
             ? { xaiEndpoint: aiGateway.xaiEndpoint }
             : {}),
+          ...(aiGateway.antigravityEnabled === true ? { antigravityEnabled: true } : {}),
           models: [],
           ...(value ?? {}),
         });
@@ -233,6 +234,19 @@ function createRouteHarness(options: HarnessOptions = {}) {
         if (endpoint === undefined) {
           const without = { ...aiGateway } as { xaiEndpoint?: unknown };
           delete without.xaiEndpoint;
+          aiGateway = without as AiGatewayStoredSettings;
+        }
+        return aiGateway;
+      },
+      writeAntigravityEnabled: (enabled) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({
+          ...aiGateway,
+          ...(enabled ? { antigravityEnabled: true } : {}),
+        });
+        if (!enabled) {
+          const without = { ...aiGateway } as { antigravityEnabled?: unknown };
+          delete without.antigravityEnabled;
           aiGateway = without as AiGatewayStoredSettings;
         }
         return aiGateway;

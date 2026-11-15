@@ -19,7 +19,8 @@ describe("buildModelRoster login filter", () => {
     expect(sonnet).toBeDefined();
     expect(claude?.rows.find((row) => row.launch.model === "sonnet[1m]")?.effortAxis).toEqual([...(sonnet ? exposableEffortLadder(sonnet) : [])]);
     expect(roster.some((group) => group.id === "gateway:codex" || group.id === "gateway:xai")).toBe(false);
-    expect(roster.some((group) => group.id === "gateway:antigravity")).toBe(true);
+    expect(roster.some((group) => group.id === "gateway:antigravity")).toBe(false);
+    expect(buildModelRoster("agent", { antigravity: "ok" }, true).some((group) => group.id === "gateway:antigravity")).toBe(true);
     expect(roster.some((group) => group.id === "gateway:muse-code")).toBe(true);
 
     const signedIn = buildModelRoster("launch", {

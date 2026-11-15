@@ -53,6 +53,8 @@ export interface SystemPromptSettingsState {
   readonly wireLogEnabled: boolean;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
+  /** 저장 키 부재는 꺼짐이다. */
+  readonly antigravityEnabled: boolean;
   /** 공급자 로그인 상태. null·부재는 아직 모름이라 로그인 필요로 보지 않는다. */
   readonly aiGatewayLogin: Readonly<Partial<Record<AiGatewayProviderId, string | null>>>;
 }
@@ -61,7 +63,8 @@ export type SystemPromptSettingsUpdate =
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly wireLogEnabled: boolean }
   | { readonly compactCeiling: CompactCeiling | null }
-  | { readonly xaiEndpoint: XaiEndpointPreference };
+  | { readonly xaiEndpoint: XaiEndpointPreference }
+  | { readonly antigravityEnabled: boolean };
 
 class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -114,6 +117,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || typeof payload.wireLogEnabled !== "boolean"
     || !isCompactCeiling(payload.compactCeiling)
     || !isXaiEndpointPreference(payload.xaiEndpoint)
+    || typeof payload.antigravityEnabled !== "boolean"
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
@@ -123,6 +127,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     wireLogEnabled: payload.wireLogEnabled,
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
+    antigravityEnabled: payload.antigravityEnabled,
     aiGatewayLogin: isAiGatewayLogin(payload.aiGatewayLogin) ? payload.aiGatewayLogin : {},
   };
 }
@@ -153,7 +158,7 @@ import * as React from "react";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "aiGateway" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "aiGateway" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint" | "antigravityEnabled";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -273,6 +278,9 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   }
   if (field === "xaiEndpoint") {
     return { xaiEndpoint: state.xaiEndpoint };
+  }
+  if (field === "antigravityEnabled") {
+    return { antigravityEnabled: state.antigravityEnabled };
   }
   // 후미에 아무 필드나 저장하는 폴백을 두면, 분기를 빠뜨린 새 필드가 조용히 **다른 설정**을
   // 저장한다. 필드를 더하고 분기를 빠뜨리면 이 줄이 컴파일에서 막는다.

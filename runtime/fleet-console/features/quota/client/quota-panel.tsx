@@ -8,6 +8,7 @@ import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCr
 import { isLoginProvider, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
+import { loadSystemPromptSettings, useSystemPromptSettingsStore } from "../../settings/client/execution-settings.js";
 import {
   cancelLogin,
   getLoginStates,
@@ -72,14 +73,18 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   xai: "quota.xai.signedOut",
 };
 
-export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
-  antigravity: "quota.expired.antigravity",
+export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "antigravity">, QuotaMessageKey>> = {
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
   "muse-code": "quota.expired.museCode",
   opencode: "quota.expired.opencode",
   xai: "quota.expired.xai",
 };
+
+export function expiredMessageKey(id: ProviderId): QuotaMessageKey | undefined {
+  if (id === "antigravity") return undefined;
+  return EXPIRED_KEY[id];
+}
 
 // 구독이 없는 상태는 공급자에 관계없이 같은 안내를 쓴다. OpenCode Go만 키는 유효한데 구독이
 // 없는 경우(403)라, 다시 로그인하라는 대신 그 키에 구독이 없다고 말한다.
@@ -94,6 +99,15 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
 
 /** 이 Gateway가 아직 보고하지 않는 공급자 — 카드를 빼지 않고 읽을 수 없음으로 둔다. */
 export const UNREPORTED_PROVIDER: ProviderDto = { status: "error" };
+
+/** 노브가 꺼져 있거나 설정을 아직 모르면 Antigravity 사용량 칸을 그리지 않는다. */
+export function useAntigravityEnabled(): boolean {
+  const settings = useSystemPromptSettingsStore();
+  useEffect(() => {
+    void loadSystemPromptSettings();
+  }, []);
+  return settings.state?.antigravityEnabled === true;
+}
 
 export function isConnectable(id: ProviderId): id is ConnectableProviderId {
   return id === "claude";
@@ -577,8 +591,8 @@ function ProviderCard({
 }) {
   const name = providerName(id, mobile);
   // 이 두 공급자의 로그인은 Console 소유가 아니다. 가짜 로그인 문 대신 기존 CLI 경로를 한 줄로 안내한다.
-  if ((id === "antigravity" || id === "claude") && (provider.status === "signed_out" || provider.status === "expired")) {
-    return <section className="quota-connect-card" data-provider={id}><header className="quota-provider__header"><span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span><h3>{name}</h3><span className="quota-connect-hint" title={t(provider.status === "expired" ? EXPIRED_KEY[id] : SIGNED_OUT_KEY[id])}>{t("quota.login.external", { cli: id === "claude" ? "claude" : "agy" })}</span>{id === "claude" ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}</header></section>;
+  if ((id === "antigravity" && provider.status === "signed_out") || (id === "claude" && (provider.status === "signed_out" || provider.status === "expired"))) {
+    return <section className="quota-connect-card" data-provider={id}><header className="quota-provider__header"><span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span><h3>{name}</h3><span className="quota-connect-hint" title={t(provider.status === "expired" ? EXPIRED_KEY.claude : SIGNED_OUT_KEY[id])}>{t("quota.login.external", { cli: id === "claude" ? "claude" : "agy" })}</span>{id === "claude" ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}</header></section>;
   }
   if (needsConsoleLogin(id, provider.status)) {
     return <LoginCard api={api} provider={id} expired={provider.status === "expired"} now={now} t={t} logout={logout} />;
@@ -606,7 +620,7 @@ function ProviderCard({
       </header>
       {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
-      {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
+      {provider.status === "expired" && expiredMessageKey(id) !== undefined ? <StatusStrip kind="expired">{t(expiredMessageKey(id)!)}</StatusStrip> : null}
       {provider.status === "stale" ? (
         <StatusStrip kind="stale">{t("quota.stale", { provider: name, t: elapsed(provider.fetchedAt, now) })}</StatusStrip>
       ) : null}
@@ -810,6 +824,8 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
 }) {
   const t = useMemo(() => getT(locale, mobile), [locale, mobile]);
   const { data, checkedAt, now, requestError, refresh, connect, logout } = useQuotaData(api);
+  const antigravityEnabled = useAntigravityEnabled();
+  const shown = (id: ProviderId) => id !== "antigravity" || antigravityEnabled;
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));
@@ -838,8 +854,8 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
             <p>{t("quota.loading.body")}</p>
           </div>
         ) : null}
-        {data ? PROVIDER_ORDER_DEFAULT.filter((id) => !disconnected(id)).map(renderProvider) : null}
-        {data && PROVIDER_ORDER_DEFAULT.some(disconnected) ? <section className="quota-disconnected" aria-label={t("quota.disconnected")}><h3>{t("quota.disconnected")}</h3>{PROVIDER_ORDER_DEFAULT.filter(disconnected).map(renderProvider)}</section> : null}
+        {data ? PROVIDER_ORDER_DEFAULT.filter((id) => shown(id) && !disconnected(id)).map(renderProvider) : null}
+        {data && PROVIDER_ORDER_DEFAULT.some((id) => shown(id) && disconnected(id)) ? <section className="quota-disconnected" aria-label={t("quota.disconnected")}><h3>{t("quota.disconnected")}</h3>{PROVIDER_ORDER_DEFAULT.filter((id) => shown(id) && disconnected(id)).map(renderProvider)}</section> : null}
       </div>
       <footer className="quota-footer">
         <ToolbarProviderPicker t={t} mobile={mobile} />
@@ -854,10 +870,11 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
  */
 function ToolbarProviderPicker({ t, mobile }: { readonly t: T; readonly mobile: boolean }) {
   const { toolbarProviders } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+  const antigravityEnabled = useAntigravityEnabled();
   return (
     <div className="quota-footer__row quota-footer__toolbar" role="group" aria-label={t("quota.toolbar.toggle")}>
       <span className="quota-toolbar-picks">
-        {PROVIDER_ORDER_DEFAULT.map((id) => {
+        {PROVIDER_ORDER_DEFAULT.filter((id) => id !== "antigravity" || antigravityEnabled).map((id) => {
           const shown = toolbarProviders.includes(id);
           const label = t("quota.toolbar.switch", { provider: providerName(id, mobile) });
           return (

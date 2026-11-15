@@ -315,14 +315,15 @@ async function createAgentCliLaunchSpec(options: {
     let resolvedModel = options.model;
     let effort = options.effort;
     const launchStatuses = cliId === "claude" ? readLaunchProviderStatuses(options.readProviderStatuses) : undefined;
-    const launchCatalog = cliId === "claude" ? visibleGatewayModels(launchStatuses) : [];
+    const antigravityEnabled = gatewaySettings?.antigravityEnabled === true;
+    const launchCatalog = cliId === "claude" ? visibleGatewayModels(launchStatuses, antigravityEnabled) : [];
     // 모델 로스터 — 로그인된 공급자의 카탈로그다. 켠 목록과 무관하다. 모델 없이 그 카탈로그가 비면
     // (전부 로그아웃) 실행만 폴백하며 기록을 남긴다. 강도는 카탈로그 사다리로 클램프한다.
     // 재개는 이 블록을 타지 않는다 — 이어 붙이는 세션은 아래 별칭 접기만 받고 프로세스를 조사만으로 재시작하지 않는다.
     if (cliId === "claude" && !options.resumeSessionId) {
       const nativeAlias = resolvedModel ? resolveNativeClaudeModelAlias(resolvedModel) : undefined;
       if (resolvedModel ? nativeAlias !== undefined : launchCatalog.length === 0) {
-        const roster = buildModelRoster("launch", launchStatuses);
+        const roster = buildModelRoster("launch", launchStatuses, antigravityEnabled);
         const wantedEffort = effort ?? null;
         let coordinate = resolveRosterCoordinate(roster, { model: resolvedModel ?? null, effort: wantedEffort }, { model: ROSTER_FALLBACK_MODEL });
         // 정준 `[1m]` 입력이 아직 bare 행만 있는 가족(Haiku)에 막히지 않게, 같은 가족의 bare 행으로 한 번 더 본다.

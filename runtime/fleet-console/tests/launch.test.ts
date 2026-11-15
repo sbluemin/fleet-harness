@@ -283,7 +283,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       infraServices: createFakeInfraServices() as never,
       injectProfile: injectProfile as never,
       resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } })) as never,
-      readAiGatewaySettings: () => ({ version: 1, models: [{ id: "antigravity--gemini-3.8-flash" }, { id: "codex--gpt-6.1-sol" }] }),
+      readAiGatewaySettings: () => ({ version: 1, antigravityEnabled: true, models: [{ id: "antigravity--gemini-3.8-flash" }, { id: "codex--gpt-6.1-sol" }] }),
     });
 
     await resolve("/work/project", { sessionId: "gemini", cliId: "claude", model: "claude-gateway--antigravity--gemini-3.8-flash" });

@@ -404,6 +404,8 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
   readonly capabilities = {} as const;
   private readonly registry: SessionRegistry;
   private readonly mcp: BridgeMcpServer;
+  /** Aborted by dispose so an open that has not returned yet stops and cannot be attached later. */
+  private readonly lifetime = new AbortController();
   private readonly limits: Required<Pick<AgyAcpBridgeOptions, "silenceMs" | "coalesceMs" | "replayBudgetChars" | "callTimeoutSeconds">> & { holdMs: number; idleTtlMs: number };
 
   constructor(private readonly options: AgyAcpBridgeOptions) {
@@ -422,6 +424,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
   }
 
   async dispose(): Promise<void> {
+    this.lifetime.abort();
     await this.registry.closeAll("bridge disposed");
     await this.mcp.close();
   }
@@ -608,7 +611,9 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
     // 열기 도중의 중단만 이 컨트롤러로 전한다. 열린 세션은 요청보다 오래 산다.
     const opening = new AbortController();
     const relay = (): void => opening.abort();
-    if (signal?.aborted) relay(); else signal?.addEventListener("abort", relay, { once: true });
+    if (signal?.aborted || this.lifetime.signal.aborted) relay();
+    else signal?.addEventListener("abort", relay, { once: true });
+    if (!this.lifetime.signal.aborted) this.lifetime.signal.addEventListener("abort", relay, { once: true });
     try {
       const acp = await this.options.port.open({
         model: request.model,
@@ -624,6 +629,13 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         sessionKey: key,
         signal: opening.signal,
       });
+      // dispose가 open보다 먼저 끝나면 세션은 이미 closed이고 ACP는 아직 없다.
+      // 그 뒤에 도착한 세션을 attach하면 idle로 되살아나 agy가 남는다.
+      if (session.state === "closed" || this.lifetime.signal.aborted) {
+        await acp.cancel().catch(() => undefined);
+        await acp.close().catch(() => undefined);
+        throw new Error("The bridge was disposed while the agy session was opening.");
+      }
       session.attach(acp);
       return session;
     } catch (error) {
@@ -632,6 +644,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       throw error;
     } finally {
       signal?.removeEventListener("abort", relay);
+      this.lifetime.signal.removeEventListener("abort", relay);
     }
   }
 

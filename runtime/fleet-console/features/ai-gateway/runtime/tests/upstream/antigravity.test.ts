@@ -1,209 +1,222 @@
+import { chmod, mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import {
-  ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
-  ANTIGRAVITY_QUOTA_SUMMARY_URLS,
-  antigravityPlanLabel,
-  antigravityUserAgent,
-  fetchAntigravityUsage,
-  loadAntigravityCodeAssist,
-  parseAntigravityQuotaSummary,
-  resolveAntigravityAuth,
-} from "../../src/index.js";
+import { fetchAntigravityUsage } from "../../src/index.js";
 import type { CredentialResolverDeps } from "../../src/index.js";
+import type { AntigravityCliSpawn } from "../../src/upstream/antigravity/quota.js";
 
-const ACCESS = "ya29.a0-access-token";
-const REFRESH = "1//0-refresh-token";
+const USAGE = {
+  status: "SUCCESS",
+  num_turns: 0,
+  conversation_id: "",
+  command: {
+    name: "usage",
+    data: {
+      groups: [
+        {
+          name: "Gemini Models",
+          buckets: [
+            { id: "gemini-weekly", remaining_fraction: 0.5, reset_time: "2026-11-21T07:28:17Z" },
+            { id: "gemini-5h", remaining_fraction: 0.75, reset_time: "2026-11-15T20:58:32Z" },
+          ],
+        },
+        {
+          name: "Claude and GPT models",
+          buckets: [
+            { id: "3p-weekly", remaining_fraction: 1, reset_time: "2026-11-22T17:11:35Z" },
+            { id: "3p-5h", remaining_fraction: 1, reset_time: "2026-11-15T22:11:35Z" },
+          ],
+        },
+      ],
+    },
+  },
+};
 
-function keychainValue(token: Record<string, unknown>): string {
-  const payload = JSON.stringify({ token, auth_method: "consumer" });
-  return `go-keyring-base64:${Buffer.from(payload, "utf8").toString("base64")}`;
+const FAKE = `#!/usr/bin/env node
+const { appendFileSync } = require("node:fs");
+const log = process.env.AGY_FAKE_LOG;
+const args = process.argv.slice(2);
+if (log) appendFileSync(log, JSON.stringify(args) + "\\n");
+const mode = process.env.AGY_FAKE_MODE ?? "ok";
+if (args[0] === "--version") {
+  process.stdout.write((process.env.AGY_FAKE_VERSION ?? "1.5.9") + "\\n");
+  process.exit(0);
 }
+if (mode === "auth-stderr") {
+  process.stderr.write("Authentication required. Please visit the URL to log in:\\n  https://example.invalid/login\\n");
+  setInterval(() => {}, 60_000);
+} else if (mode === "auth-json") {
+  process.stdout.write(JSON.stringify({ status: "ERROR", num_turns: 0, error: "authentication failed or timed out" }));
+  process.exit(1);
+} else if (mode === "other-error") {
+  process.stdout.write(JSON.stringify({ status: "ERROR", num_turns: 0, error: "upstream unavailable" }));
+  process.exit(1);
+} else if (mode === "turns") {
+  process.stdout.write(JSON.stringify({ status: "SUCCESS", num_turns: 1, command: { name: "usage", data: { groups: [{ buckets: [] }] } } }));
+  process.exit(0);
+} else if (mode === "no-buckets") {
+  process.stdout.write(JSON.stringify({ status: "SUCCESS", num_turns: 0, command: { name: "usage", data: { groups: [{ name: "Gemini" }] } } }));
+  process.exit(0);
+} else {
+  process.stdout.write(process.env.AGY_FAKE_USAGE ?? "");
+  process.exit(0);
+}
+`;
 
-function credentialDeps(overrides: Partial<CredentialResolverDeps> = {}): CredentialResolverDeps {
+function credentialDeps(env: NodeJS.ProcessEnv): CredentialResolverDeps {
   return {
     platform: "darwin",
     homedir: () => "/home/tester",
-    env: {},
+    env,
     readBounded: async () => null,
-    execFile: async () => keychainValue({
-      access_token: ACCESS,
-      token_type: "Bearer",
-      refresh_token: REFRESH,
-      expiry: new Date(Date.now() + 3_600_000).toISOString(),
-    }),
-    ...overrides,
+    execFile: async () => "",
   };
 }
 
 describe("antigravity quota", () => {
-  it("does not read credentials on Windows without an Antigravity footprint", async () => {
-    const execFile = vi.fn<CredentialResolverDeps["execFile"]>();
-    const readBounded = vi.fn<CredentialResolverDeps["readBounded"]>();
-    const fetchImpl = vi.fn<typeof fetch>();
-    const result = await fetchAntigravityUsage({
-      credentials: credentialDeps({ platform: "win32", execFile, readBounded }),
-      stat: async () => { throw Object.assign(new Error("missing"), { code: "ENOENT" }); },
-      fetch: fetchImpl,
-    });
-    expect(result).toEqual({ status: "signed_out" });
-    expect(execFile).not.toHaveBeenCalled();
-    expect(readBounded).not.toHaveBeenCalled();
-    expect(fetchImpl).not.toHaveBeenCalled();
+  let directory = "";
+  let binary = "";
+  let stamp = 1_700_000_000_000;
+
+  beforeAll(async () => {
+    directory = await mkdtemp(path.join(tmpdir(), "agy-fake-"));
+    binary = path.join(directory, "agy");
+    await writeFile(binary, FAKE);
+    await chmod(binary, 0o755);
   });
 
-  it("collects separate Gemini pools when a Windows installation hint exists", async () => {
-    const home = "C:\\Users\\tester";
-    const cliDirectory = path.win32.join(home, ".gemini", "antigravity-cli");
-    const execFile = vi.fn<CredentialResolverDeps["execFile"]>().mockResolvedValue(
-      Buffer.from(keychainValue({ access_token: ACCESS }), "utf8").toString("base64"),
-    );
-    const fetchImpl = vi.fn<typeof fetch>().mockImplementation(async (url) => new Response(JSON.stringify(
-      url === ANTIGRAVITY_QUOTA_SUMMARY_URLS[0]
-        ? { groups: [
-          { displayName: "Gemini 4 Argon", buckets: [{
-            bucketId: "gemini-argon-wtu-weekly",
-            remainingFraction: 0.98970413,
-            resetTime: "2026-10-24T22:20:43Z",
-          }] },
-          { displayName: "Claude and GPT models", buckets: [
-            { bucketId: "3p-5h", remainingFraction: 0 },
-            { bucketId: "3p-weekly", remainingFraction: 0 },
-          ] },
-          { displayName: "Gemini Models", buckets: [
-            { bucketId: "gemini-weekly", remainingFraction: 0.5 },
-            { bucketId: "gemini-5h", remainingFraction: 0.75 },
-          ] },
-        ] }
-        : {},
-    )));
-    const deps = {
-      credentials: credentialDeps({ platform: "win32", homedir: () => home, execFile }),
-      stat: async (filePath: string) => {
-        if (filePath === cliDirectory) return {};
-        throw Object.assign(new Error("missing"), { code: "ENOENT" });
-      },
-      fetch: fetchImpl,
+  afterAll(async () => {
+    if (directory) await rm(directory, { recursive: true, force: true });
+  });
+
+  async function touch(): Promise<void> {
+    stamp += 1_000;
+    const at = new Date(stamp);
+    await utimes(binary, at, at);
+  }
+
+  function env(mode: string, extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+    const log = path.join(directory, `${mode}-${stamp}.log`);
+    return {
+      ...process.env,
+      FLEET_ANTIGRAVITY_CLI: binary,
+      AGY_FAKE_MODE: mode,
+      AGY_FAKE_LOG: log,
+      AGY_FAKE_USAGE: JSON.stringify(USAGE),
+      ...extra,
     };
-    const result = await fetchAntigravityUsage(deps);
-    expect(result).toMatchObject({
+  }
+
+  async function calls(mode: string): Promise<readonly string[][]> {
+    const log = path.join(directory, `${mode}-${stamp}.log`);
+    const text = await readFile(log, "utf8");
+    return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]);
+  }
+
+  it("reads Gemini windows from agy /usage and caches the version", async () => {
+    await touch();
+    const now = 1_700_000_000_000;
+    const result = await fetchAntigravityUsage({
+      credentials: credentialDeps(env("ok")),
+      now: () => now,
+    });
+    expect(result).toEqual({
       status: "ok",
-      method: "keychain",
+      fetchedAt: now,
       windows: [
-        { id: "session", label: "Gemini", usedPercent: 25 },
-        { id: "weekly", label: "Gemini", usedPercent: 50 },
+        {
+          id: "session",
+          label: "Gemini",
+          usedPercent: 25,
+          resetsAt: Date.parse("2026-11-15T20:58:32Z"),
+          period: {
+            durationMs: 18_000_000,
+            durationBasis: "catalog",
+            startsAt: Date.parse("2026-11-15T20:58:32Z") - 18_000_000,
+            startsAtBasis: "derived",
+          },
+        },
         {
           id: "weekly",
-          scope: "model:gemini-4-argon",
-          label: "Gemini 4 Argon",
-          usedPercent: 1,
-          resetsAt: Date.parse("2026-10-24T22:20:43Z"),
-          period: { durationMs: 604_800_000, durationBasis: "catalog" },
+          label: "Gemini",
+          usedPercent: 50,
+          resetsAt: Date.parse("2026-11-21T07:28:17Z"),
+          period: {
+            durationMs: 604_800_000,
+            durationBasis: "catalog",
+            startsAt: Date.parse("2026-11-21T07:28:17Z") - 604_800_000,
+            startsAtBasis: "derived",
+          },
         },
       ],
     });
-    expect(execFile).toHaveBeenCalledTimes(1);
-    expect(fetchImpl).toHaveBeenCalledWith(ANTIGRAVITY_QUOTA_SUMMARY_URLS[0], expect.objectContaining({
-      headers: expect.objectContaining({ Authorization: `Bearer ${ACCESS}` }),
-    }));
+    expect(result).not.toHaveProperty("plan");
+    expect(result).not.toHaveProperty("method");
+    expect(await calls("ok")).toEqual([["--version"], ["-p", "/usage", "--output-format", "json"]]);
 
-    // A host without the Argon pool still reports its available Gemini window.
-    fetchImpl.mockResolvedValue(new Response(JSON.stringify({
-      groups: [{ buckets: [{ bucketId: "gemini-5h", remainingFraction: 0.75 }] }],
-    })));
-    expect(await fetchAntigravityUsage(deps)).toMatchObject({
-      status: "ok",
-      windows: [{ id: "session", label: "Gemini", usedPercent: 25 }],
-    });
-  });
-});
-
-describe("antigravity credentials", () => {
-  it("reads whichever store the CLI chose and keeps the fresher token when both hold one", async () => {
-    const tokenFile = path.join("/home/tester", ".gemini", "antigravity-cli", "antigravity-oauth-token");
-    const fileExpiry = new Date(Date.now() + 3_600_000).toISOString();
-    const keychainExpiry = new Date(Date.now() + 7_200_000).toISOString();
-    const readBounded = async (filePath: string): Promise<string | null> => {
-      if (filePath !== tokenFile) throw Object.assign(new Error("missing"), { code: "ENOENT" });
-      return JSON.stringify({
-        token: { access_token: "file-access", token_type: "Bearer", refresh_token: REFRESH, expiry: fileExpiry },
-        auth_method: "consumer",
-      });
-    };
-
-    // Over SSH `agy` keeps its login in the file and leaves no keychain item.
-    const itemNotFound = Object.assign(new Error("item not found"), { code: 44 });
-    const fileOnly = await resolveAntigravityAuth(credentialDeps({
-      readBounded,
-      execFile: async () => { throw itemNotFound; },
-    }));
-    expect(fileOnly).toEqual({
-      status: "ok",
-      credentials: { accessToken: "file-access", method: "file", expiresAt: Date.parse(fileExpiry) },
-    });
-
-    // A later run that chose the keychain renewed only that store.
-    const both = await resolveAntigravityAuth(credentialDeps({
-      readBounded,
-      execFile: async () => keychainValue({ access_token: ACCESS, refresh_token: REFRESH, expiry: keychainExpiry }),
-    }));
-    expect(both).toEqual({
-      status: "ok",
-      credentials: { accessToken: ACCESS, method: "keychain", expiresAt: Date.parse(keychainExpiry) },
-    });
-  });
-
-  it("runs one renewal for concurrent callers rather than racing the credential store", async () => {
-    const execFile = vi.fn(async (_file: string, _args: readonly string[]) => keychainValue({
-      access_token: ACCESS,
-      refresh_token: REFRESH,
-      expiry: new Date(Date.now() + 10_000).toISOString(),
-    }));
-    let running = 0;
-    let overlapped = false;
-    const refreshVendorCredential = vi.fn(async () => {
-      running += 1;
-      if (running > 1) overlapped = true;
-      await new Promise((resolve) => setTimeout(resolve, 5));
-      running -= 1;
-    });
-    const deps = credentialDeps({ execFile });
-    await Promise.all([
-      resolveAntigravityAuth(deps, { refreshVendorCredential }),
-      resolveAntigravityAuth(deps, { refreshVendorCredential }),
-      resolveAntigravityAuth(deps, { refreshVendorCredential }),
+    await fetchAntigravityUsage({ credentials: credentialDeps(env("ok")), now: () => now });
+    expect(await calls("ok")).toEqual([
+      ["--version"],
+      ["-p", "/usage", "--output-format", "json"],
+      ["-p", "/usage", "--output-format", "json"],
     ]);
-    expect(overlapped).toBe(false);
-    expect(refreshVendorCredential).toHaveBeenCalledTimes(1);
   });
 
-  it("never runs the vendor CLI on Windows, judging the stored token as-is", async () => {
-    // The win32 reader emits the blob base64-encoded; the mock must too, or the
-    // value decodes into a bare token with no expiry.
-    const keychain = (expiry: string): CredentialResolverDeps["execFile"] =>
-      (async () => Buffer.from(
-        keychainValue({ access_token: ACCESS, refresh_token: REFRESH, expiry }),
-        "utf8",
-      ).toString("base64")) as CredentialResolverDeps["execFile"];
-    const refreshVendorCredential = vi.fn(async () => {});
-    const fresh = await resolveAntigravityAuth(
-      credentialDeps({
-        platform: "win32",
-        execFile: keychain(new Date(Date.now() + 3_600_000).toISOString()),
-      }),
-      { forceRefresh: true, refreshVendorCredential },
-    );
-    expect(fresh.status).toBe("ok");
-    const stale = await resolveAntigravityAuth(
-      credentialDeps({
-        platform: "win32",
-        execFile: keychain(new Date(Date.now() - 60_000).toISOString()),
-      }),
-      { forceRefresh: true, refreshVendorCredential },
-    );
-    expect(stale).toEqual({ status: "expired" });
-    expect(refreshVendorCredential).not.toHaveBeenCalled();
+  it("reports signed_out when agy cannot be spawned", async () => {
+    const spawn = vi.fn<AntigravityCliSpawn>(() => {
+      throw Object.assign(new Error("spawn agy ENOENT"), { code: "ENOENT" });
+    });
+    const result = await fetchAntigravityUsage({
+      credentials: credentialDeps({ FLEET_ANTIGRAVITY_CLI: binary }),
+      stat: async () => ({ mtimeMs: stamp + 50_000 }),
+      spawn,
+    });
+    expect(result).toEqual({ status: "signed_out" });
+    expect(spawn).toHaveBeenCalledTimes(1);
+    expect(spawn).toHaveBeenCalledWith(binary, ["--version"], expect.objectContaining({
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: expect.objectContaining({ AGY_CLI_DISABLE_AUTO_UPDATE: "1" }),
+    }));
+  });
+
+  it("does not send /usage to an agy older than 1.1.11", async () => {
+    await touch();
+    const result = await fetchAntigravityUsage({
+      credentials: credentialDeps(env("ok", { AGY_FAKE_VERSION: "1.1.10" })),
+    });
+    expect(result).toEqual({ status: "error", message: "agy 1.1.11 or newer is required" });
+    expect(await calls("ok")).toEqual([["--version"]]);
+  });
+
+  it("rejects a payload that spent a turn or omitted buckets", async () => {
+    await touch();
+    const turns = await fetchAntigravityUsage({ credentials: credentialDeps(env("turns")) });
+    expect(turns).toEqual({ status: "error", message: "agy /usage failed" });
+
+    await touch();
+    const missing = await fetchAntigravityUsage({ credentials: credentialDeps(env("no-buckets")) });
+    expect(missing).toEqual({ status: "error", message: "agy /usage failed" });
+  });
+
+  it("stops a not-signed-in agy when stderr asks for authentication", async () => {
+    await touch();
+    const started = Date.now();
+    const result = await fetchAntigravityUsage({ credentials: credentialDeps(env("auth-stderr")) });
+    expect(result).toEqual({ status: "signed_out" });
+    expect(Date.now() - started).toBeLessThan(5_000);
+  });
+
+  it("reads the not-signed-in JSON error as signed_out and any other error as error", async () => {
+    await touch();
+    const signedOut = await fetchAntigravityUsage({ credentials: credentialDeps(env("auth-json")) });
+    expect(signedOut).toEqual({ status: "signed_out" });
+
+    await touch();
+    const other = await fetchAntigravityUsage({ credentials: credentialDeps(env("other-error")) });
+    expect(other).toEqual({ status: "error", message: "agy /usage failed" });
   });
 });

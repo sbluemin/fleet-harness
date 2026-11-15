@@ -1199,7 +1199,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       }
       return { model: nativeAlias, ...(effort === undefined ? {} : { effort }) };
     }
-    const gatewayModel = findGatewayModel(model, visibleGatewayModels(readProviderStatuses()));
+    const gatewayModel = findGatewayModel(model, visibleGatewayModels(readProviderStatuses(), deps.readAiGatewaySettings?.()?.antigravityEnabled === true));
     if (!gatewayModel) {
       reply(409, { error: "gateway_model_not_enabled" });
       return false;
@@ -2044,7 +2044,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 탐지는 바꿀 때마다 자식 프로세스를 띄워 응답을 초 단위로 늦춘다.
     const requested = resolveNativeClaudeModelAlias(model) ?? model;
     const sameLaunchModel = (candidate: string) => (resolveNativeClaudeModelAlias(candidate) ?? candidate) === requested;
-    const row = buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], AGENT_OBJECTIVE_TYPE, readProviderStatuses())
+    const row = buildAgentCliLaunchKinds([{ id: "claude", label: "Claude", available: true, signedIn: true }], AGENT_OBJECTIVE_TYPE, readProviderStatuses(), deps.readAiGatewaySettings?.()?.antigravityEnabled === true)
       .find((kind) => kind.id === "claude")
       ?.variants?.flatMap((group) => group.rows)
       .find((candidate) => candidate.launch.model === model || (candidate.launch.model !== undefined && sameLaunchModel(candidate.launch.model)));
@@ -2309,7 +2309,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       writeGatewayModelCacheForHome({
         baseUrl: gatewayBaseUrl,
         configDir: claudeConfigDir,
-        models: visibleGatewayModels(readProviderStatuses()),
+        models: visibleGatewayModels(readProviderStatuses(), deps.readAiGatewaySettings?.()?.antigravityEnabled === true),
       });
     } catch {
       // 캐시를 세우지 못해도 네이티브 모델 세션은 뜬다. 게이트웨이 별칭 세션만 첫 턴에 드러난다.
@@ -2697,7 +2697,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
   async function buildLaunchKinds(): Promise<readonly ObjectiveLaunchKind[]> {
     const metadata = await buildAgentCliLaunchMetadata();
-    return buildAgentCliLaunchKinds(metadata, AGENT_OBJECTIVE_TYPE, readProviderStatuses());
+    return buildAgentCliLaunchKinds(metadata, AGENT_OBJECTIVE_TYPE, readProviderStatuses(), deps.readAiGatewaySettings?.()?.antigravityEnabled === true);
   }
 
   function launch(cwd: string | undefined, context: { readonly objectiveId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly sessionName?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean } | undefined) {
