@@ -278,7 +278,18 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
         void (async () => { control.patch({ busy: true }); const ok = await attach("annotation", action.png!); control.patch({ busy: false }); if (ok) closeOverlay(); })();
         return;
       }
-      case "viewport": closeOverlay(); void run("viewport", { preset: action.preset, spaceId: control.space() }); return;
+      case "viewport": {
+        closeOverlay();
+        const spaceId = control.space();
+        if (!base) return;
+        // 맞춤 크기는 창을 끄는 동안 거듭 온다. busy 로 크롬을 잠그지 않는다. 프리셋만 오는 메뉴는 예전과 같이 한 번 알린다.
+        if (action.width !== undefined && action.height !== undefined) {
+          void call(`${base}/viewport`, { body: { preset: action.preset, width: action.width, height: action.height, spaceId } }).catch(() => undefined);
+          return;
+        }
+        void run("viewport", { preset: action.preset, spaceId });
+        return;
+      }
       case "profile": {
         if ((control.chrome()?.profile ?? null) === action.profile) { closeOverlay(); return; }
         // 탭이 열려 있으면 먼저 확인을 받는다 — 전환은 그 탭들을 닫는 일이다.

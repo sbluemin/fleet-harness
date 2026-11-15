@@ -1986,7 +1986,10 @@ export class BrowserService {
     this.cancelViewportReapply(tab);
     const space = this.spaceOfTab(op, tab);
     const viewport = space.viewport;
-    if (space.viewportFollowsPane) {
+    // 사람이 정한 responsive 크기는 셸이 뷰 bounds 를 그 비율로 놓는다. 여기서 요청 크기대로 위젯을 키우면
+    // 호스트 창이 더 작을 때 setBorderRadius 마스크가 페이지 하단을 자른다. 에이전트·mobile/tablet 만 에뮬레이션한다.
+    const nativeResponsive = viewport.preset === "responsive" && viewport.setBy === "user";
+    if (space.viewportFollowsPane || nativeResponsive) {
       await client.send("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined);
     } else {
       const mobile = viewport.preset === "mobile" || viewport.preset === "tablet";

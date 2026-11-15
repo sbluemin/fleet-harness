@@ -114,6 +114,27 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
 
   /** 실행 호스트가 붙어 있고 스냅샷이 원격 조작을 말할 때만. 옛 Console 은 필드가 없어 보기 전용이다. */
   const controllable = (): boolean => open && snapshot?.remoteControl === true && snapshot.executionHost.status === "connected";
+  /** 제어 중에 스테이지가 보낸 맞춤을, 제어가 끝나는 순간 한 번 pane 으로 되돌린다. 보기 전용은 이 깃발을 세우지 않는다. */
+  let remoteFitActive = false;
+  const releaseControlFit = (): void => {
+    if (!remoteFitActive) return;
+    remoteFitActive = false;
+    const at = origin;
+    const chrome = snapshot?.chrome ?? null;
+    if (!at) return;
+    const browserId = chrome?.browserId ?? VIEWER_BROWSER_ID;
+    const tab = chrome?.tabs.find((item) => item.id === chrome.activeTabId);
+    const body = { preset: "responsive", ...(tab ? { spaceId: tab.spaceId } : {}) };
+    void deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/viewport`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Origin: at },
+      body: JSON.stringify(body),
+    }).catch(() => undefined);
+  };
+  const noteControlFit = (): void => {
+    if (controllable()) { remoteFitActive = true; return; }
+    releaseControlFit();
+  };
 
   const place = (): ChromeViewOnly => {
     const host = snapshot?.executionHost ?? null;
@@ -162,10 +183,12 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     deps.display.apply({ id: surfaceId, browserId: chrome?.browserId ?? VIEWER_BROWSER_ID, mode }, chrome, origin, place());
     // 표면이 스페이스를 맞추며 보는 탭을 바꿨을 수 있다(apply 안에서 show-tab 이 온다) — 그 뒤의 값으로 프레임을 맞춘다.
     syncWatch();
+    noteControlFit();
   }
 
   const close = (animate = false): void => {
     if (!open) return;
+    releaseControlFit();
     open = false;
     stream.stop();
     frameStream.unwatch();

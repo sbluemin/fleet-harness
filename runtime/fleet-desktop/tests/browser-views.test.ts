@@ -76,6 +76,8 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
     contents: new EventEmitter(),
     filter: null as { urls: readonly string[] } | null,
     listener: null as ((details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number }, callback: (response: { requestHeaders?: Record<string, string> }) => void) => void) | null,
+    frameSubs: { begin: 0, end: 0 },
+    bounds: vi.fn(),
   };
   created.push(record);
   // 페이지 이동은 뷰가 닫힐 때까지 끝나지 않다가 닫히면 거부된다 — 재기동 순간에 걸려 있던 명령.
@@ -96,13 +98,15 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
       },
     }),
     setWindowOpenHandler: () => {},
+    beginFrameSubscription: () => { record.frameSubs.begin += 1; },
+    endFrameSubscription: () => { record.frameSubs.end += 1; },
     loadURL: async () => {},
     insertCSS: async () => "",
     isFocused: () => false,
     isDestroyed: () => record.closed,
     close: () => { record.closed = true; rejectPending(new Error("target closed")); },
   });
-  return { webContents: contents, setBorderRadius: () => {}, setBounds: vi.fn(), setVisible: () => {} } as unknown as WebContentsView;
+  return { webContents: contents, setBorderRadius: () => {}, setBounds: record.bounds, setVisible: () => {} } as unknown as WebContentsView;
 }
 
 /**
@@ -380,7 +384,7 @@ describe("managed browser auth and on-demand frames", () => {
       }
       return new Response(null, { status: 404 });
     });
-    const created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter }> = [];
+    const created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter; frameSubs: { begin: number; end: number } }> = [];
     const shell = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 800, height: 600 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 1, reclaimFocus: vi.fn() } satisfies PageHost;
     let releaseCapture: (() => void) | null = null;
     let captureResult: Buffer | null = Buffer.from("frame-1");
@@ -433,6 +437,7 @@ describe("managed browser auth and on-demand frames", () => {
 
     publish({ ...lifetime, generation: 2, watchedViewIds: ["view-1"] });
     await vi.waitFor(() => expect(captures).toHaveLength(1));
+    expect(created[0]!.frameSubs.begin).toBe(1);
     expect(frames).toHaveLength(0);
     // 유휴 폴링 50ms(활성 최소 33ms) — 기존 250ms 상한을 대체한다.
     expect(pending.some((timer) => timer.ms >= 50)).toBe(true);
@@ -471,6 +476,7 @@ describe("managed browser auth and on-demand frames", () => {
     expect(frames).toHaveLength(2);
 
     publish({ ...lifetime, generation: 3, watchedViewIds: [] });
+    await vi.waitFor(() => expect(created[0]!.frameSubs.end).toBe(1));
     const capturedAtStop = captures.length;
     page.emit("did-navigate");
     page.emit("dom-ready");
@@ -478,6 +484,53 @@ describe("managed browser auth and on-demand frames", () => {
     await Promise.resolve();
     expect(captures).toHaveLength(capturedAtStop);
     expect(created[0]!.closed).toBe(false);
+    views.stop();
+    expect(created[0]!.frameSubs).toEqual({ begin: 1, end: 1 });
+  });
+
+  it("fits a user responsive viewport inside the pane and leaves an agent viewport on the pane", async () => {
+    const ORIGIN = "http://127.0.0.1:4310";
+    let lifetime: DesktopBrowserSnapshot = { generation: 1, epoch: "life", views: [{ ...view("shown"), visible: true }, view("parked")], commands: [] };
+    const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input));
+      if (url.pathname === DESKTOP_BROWSER_RELAY_PATH) return new Response(null, { status: 204 });
+      if (url.pathname === DESKTOP_BROWSER_PATH) return Response.json(lifetime);
+      if (url.pathname === DESKTOP_BROWSER_EVENTS_PATH) {
+        const frame = new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`);
+        return new Response(new ReadableStream<Uint8Array>({ start: (controller) => { streams.push(controller); controller.enqueue(frame); } }));
+      }
+      return new Response(null, { status: 404 });
+    });
+    const created: Array<{ bounds: ReturnType<typeof vi.fn> }> = [];
+    const shell = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 900, height: 700 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 1, reclaimFocus: vi.fn() } satisfies PageHost;
+    const page = { x: 10, y: 20, width: 900, height: 700 };
+    const publish = (next: DesktopBrowserSnapshot): void => {
+      lifetime = next;
+      streams.at(-1)!.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`));
+    };
+    const chrome = (setBy: "user" | "agent") => ({
+      browserId: "global", spaces: [], tabs: [], activeTabId: null,
+      viewport: { preset: "responsive" as const, width: 500, height: 850, setBy },
+      driving: false, profile: null, defaultProfile: null, available: true, reason: null as "desktop_required" | "shared" | null,
+    });
+    const views = createDesktopBrowserViews({
+      shell: () => shell,
+      consoleContents: () => null,
+      surface: { apply: vi.fn(), target: () => ({ host: shell, page }), lastPage: () => null, inputLocked: () => false, refresh: vi.fn(), dispose: vi.fn() },
+      createView: (partition) => fakeView(partition, created as never),
+      product: () => "Chrome/150.0",
+      userAgent: () => "Mozilla/5.0 Chrome/150.0",
+      fetch: fetch as typeof globalThis.fetch,
+    });
+    await views.start(ORIGIN);
+    await vi.waitFor(() => { if (created.length < 2) throw new Error("waiting"); });
+    publish({ ...lifetime, generation: 2, chrome: chrome("user") });
+    await vi.waitFor(() => expect(created[0]!.bounds.mock.calls.at(-1)?.[0]).toEqual({ x: 254, y: 20, width: 412, height: 700 }));
+    expect(created[1]!.bounds.mock.calls.at(-1)?.[0]).toEqual({ x: 899, y: 699, width: 412, height: 700 });
+    publish({ ...lifetime, generation: 3, chrome: chrome("agent") });
+    await vi.waitFor(() => expect(created[0]!.bounds.mock.calls.at(-1)?.[0]).toEqual(page));
+    expect(created[1]!.bounds.mock.calls.at(-1)?.[0]).toEqual({ x: 899, y: 699, width: 900, height: 700 });
     views.stop();
   });
 });

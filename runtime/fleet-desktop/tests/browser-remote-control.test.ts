@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
-import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_STAGE_FILES, type DesktopBrowserChrome, type DesktopBrowserViewerSnapshot } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_STAGE_FILES, DESKTOP_BROWSER_VIEWER_EVENT, type DesktopBrowserChrome, type DesktopBrowserViewerSnapshot } from "@fleet-console/protocol/desktop";
 import { createBrowserActions } from "../src/browser-actions.js";
 import { createBrowserRemoteShell, remotePasswordPrompt } from "../src/browser-remote-shell.js";
 import { chromeControlFor, type SurfaceControl } from "../src/browser-surface.js";
@@ -173,8 +173,62 @@ describe("remote browser shell", () => {
       viewer.act(control(), "bar", { action: "navigate", url: "https://example.com/nope" });
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(posts.some((call) => call.url.includes("/navigate"))).toBe(false);
+      viewer.act(control(), "stage", { action: "viewport", preset: "responsive", width: 500, height: 850 });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(posts.some((call) => call.url.includes("/viewport"))).toBe(false);
       viewer.stop();
     }
+  });
+
+  it("sends a remote stage size only while controlling and restores the pane once when control ends", async () => {
+    const posts: { url: string; init: RequestInit | undefined }[] = [];
+    let push: ((body: DesktopBrowserViewerSnapshot) => void) | null = null;
+    const { viewer } = await openViewer(snapshot(true), posts);
+    const handle = control();
+    viewer.act(handle, "stage", { action: "viewport", preset: "responsive", width: 500, height: 850 });
+    await vi.waitFor(() => { if (!posts.some((call) => call.url.includes("/viewport"))) throw new Error("waiting"); });
+    const fit = posts.find((call) => call.url.includes("/viewport"));
+    expect(fit?.url.startsWith(`${ORIGIN}/api/v1/browser/objectives/global/viewport`)).toBe(true);
+    expect(JSON.parse(String(fit?.init?.body))).toEqual({ preset: "responsive", width: 500, height: 850, spaceId: "default" });
+    viewer.stop();
+
+    const streamed: { url: string; init: RequestInit | undefined }[] = [];
+    const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      streamed.push({ url: href, init });
+      if (href.includes("/viewer/stream")) return new Response("not found", { status: 404 });
+      if (href.includes("/frame")) {
+        return new Promise<Response>((_resolve, reject) => {
+          const abort = () => reject(new DOMException("aborted", "AbortError"));
+          if (init?.signal?.aborted) abort();
+          else init?.signal?.addEventListener("abort", abort, { once: true });
+        });
+      }
+      if (href.includes("/viewer/chrome") && !href.includes("/events")) return new Response(JSON.stringify(snapshot(true)), { status: 200 });
+      if (href.includes("/events")) {
+        return new Response(new ReadableStream<Uint8Array>({ start(controller) { push = (body) => controller.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_VIEWER_EVENT}\ndata: ${JSON.stringify(body)}\n\n`)); } }), { status: 200 });
+      }
+      return new Response("{}", { status: 200 });
+    });
+    const live = createRemoteBrowserViewer({
+      display: { apply() {}, conceal() {}, viewing: () => true, frame() {} },
+      fetch: fetchImpl as typeof fetch,
+      lang: "en",
+      localAct() {},
+    });
+    live.follow(ORIGIN);
+    live.toggle();
+    await vi.waitFor(() => { if (!push) throw new Error("waiting"); });
+    expect(streamed.some((call) => call.url.includes("/viewport"))).toBe(false);
+    push!(snapshot(false, "manager_disconnected"));
+    await vi.waitFor(() => { if (!streamed.some((call) => call.url.includes("/viewport"))) throw new Error("waiting"); });
+    const restored = streamed.filter((call) => call.url.includes("/viewport"));
+    expect(restored).toHaveLength(1);
+    expect(JSON.parse(String(restored[0]!.init?.body))).toEqual({ preset: "responsive", spaceId: "default" });
+    push!(snapshot(false, "manager_disconnected"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(streamed.filter((call) => call.url.includes("/viewport"))).toHaveLength(1);
+    live.stop();
   });
 
   it("omits managed headers on a cookie session and keeps the guard for remote control", async () => {
