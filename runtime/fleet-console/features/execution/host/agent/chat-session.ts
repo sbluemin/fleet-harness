@@ -2839,12 +2839,16 @@ class AgentChatSession {
    * 여기서 끝나는 것은 턴이 아니라 세션이다 — 자식이 죽거나 우리가 접었을 때만 빠져나온다.
    */
   private async readSession(session: ClaudeGatewaySession): Promise<void> {
+    let verifiedSessionId: string | null = null;
     try {
       for await (const message of session as AsyncIterable<ClaudeGatewayMessage>) {
         if (typeof message.session_id === "string" && message.session_id.length > 0) {
-          if (this.seed.acceptProviderSessionId && !this.seed.acceptProviderSessionId(message.session_id)) {
-            this.push({ kind: "error", code: "session_id_conflict" });
-            break;
+          if (message.session_id !== verifiedSessionId) {
+            if (this.seed.acceptProviderSessionId && !this.seed.acceptProviderSessionId(message.session_id)) {
+              this.push({ kind: "error", code: "session_id_conflict" });
+              break;
+            }
+            verifiedSessionId = message.session_id;
           }
           this.latestSessionId = message.session_id;
           // 아직 심지 않은 좌표가 있으면 심는다. 판정을 "id가 바뀌었는가"로 두면 이어받은 세션의
