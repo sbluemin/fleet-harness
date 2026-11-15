@@ -287,7 +287,7 @@ function warningOnlyTurn(items: readonly BridgeItem[]): string | undefined {
 
 type Plan =
   | { readonly route: "new-turn"; readonly session: BridgeSession; readonly tail: readonly CanonicalInputItem[] }
-  | { readonly route: "continue"; readonly session: BridgeSession; readonly outcomes: ReadonlyMap<string, McpToolOutcome> }
+  | { readonly route: "continue"; readonly session: BridgeSession; readonly outcomes: ReadonlyMap<string, McpToolOutcome>; readonly steer?: readonly AcpPromptBlock[] }
   | { readonly route: "fresh" }
   | { readonly route: "rebuild"; readonly reason: string; readonly stale?: BridgeSession };
 
@@ -345,7 +345,19 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
     const toolsHash = createHash("sha256").update(stableJson(catalog.tools.map((tool) => [tool.name, tool.description, tool.inputSchema])), "utf8").digest("hex");
     const seed = `${selection.baseId}|${selection.thoughtLevel}|${[...catalog.names.values()].sort().join(",")}|${instructionsHash}|${toolsHash}`;
     const chain = chainOf(seed, request.input);
-    const plan = this.classify(chain, request.input);
+    let plan = this.classify(chain, request.input);
+    // 사용자 내용이 도구 결과 옆에 왔으면 보류 호출을 풀기 **전에** 같은 agy 턴에 steering으로 보낸다(실측: 내용은 도구 결과 다음의
+    // user 메시지로 보이고 턴은 하나로 이어진다). 보낼 수 없으면(턴이 이미 끝남·세션 닫힘) rebuild로 물러난다.
+    let steered = false;
+    if (plan.route === "continue" && plan.steer) {
+      try {
+        plan.session.steer(plan.steer);
+        steered = true;
+      } catch (error) {
+        wireLog("bridge.steer_failed", { session: plan.session.key, error: error instanceof Error ? error.message : String(error) });
+        plan = { route: "rebuild", reason: "steering failed", stale: plan.session };
+      }
+    }
     // 새 세션(fresh·rebuild)의 첫 prompt: 내용 없이 문자 수만 로그에 남긴다(재주입 비용을 세는 데 쓴다).
     const opening = plan.route === "fresh"
       ? { blocks: userTurnBlocks(request.input), replayChars: 0, omittedTurns: 0 }
@@ -358,6 +370,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       tools: catalog.tools.length,
       instructionsHash: instructionsHash.slice(0, 8),
       toolsHash: toolsHash.slice(0, 8),
+      ...(steered ? { steered: 1 } : {}),
       ...(opening ? {
         promptChars: opening.blocks.reduce((sum, block) => sum + (block.kind === "text" ? block.text.length : 0), 0),
         replayChars: opening.replayChars,
@@ -438,14 +451,15 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         return outputs.length === 0 ? { route: "new-turn", session, tail } : { route: "rebuild", reason: "tool results for an idle session", stale: session };
       }
       if (session.state === "awaiting_tools") {
-        // 도구 결과 옆에 사용자 텍스트(system-reminder·끼어든 메시지)나 이미지가 오면 MCP 응답으로는 user 역할을 보존할 수 없다.
-        // 그 요청은 결과만으로 보류 호출을 풀지 않고 rebuild한다: 새 세션에 이력(user 역할 포함)을 재주입하고 옛 세션은 닫는다.
-        // 실측 빈도가 낮아(실제 세션 22건 중 0건) 매번 재주입해도 비용이 거의 없다.
-        if (tail.some((item) => item.type === "message" && (canonicalMessageText(item.content).length > 0 || canonicalMessageImages(item.content).length > 0))) {
-          return { route: "rebuild", reason: "user content beside the tool results", stale: session };
-        }
         const outcomes = this.outcomesFor(session, outputs);
-        return outcomes ? { route: "continue", session, outcomes } : { route: "rebuild", reason: "tool results do not match the pending tool calls", stale: session };
+        if (!outcomes) return { route: "rebuild", reason: "tool results do not match the pending tool calls", stale: session };
+        // 도구 결과 옆에 사용자 텍스트(system-reminder·환경 갱신·끼어든 메시지)나 이미지가 오면 그 내용은 같은 세션의 **steering**으로 보낸다:
+        // 보류 호출은 결과만으로 풀고(결과 본문에는 아무것도 붙이지 않는다), 사용자 내용은 도는 agy 턴에 보내 모델이 도구 결과 다음의
+        // user 메시지로 보게 한다. steering이 실패하면 rebuild로 물러난다(`stream()`).
+        const userMessages = tail.filter((item) => item.type === "message");
+        const hasUserContent = userMessages.some((item) => item.type === "message"
+          && (canonicalMessageText(item.content).length > 0 || canonicalMessageImages(item.content).length > 0));
+        return hasUserContent ? { route: "continue", session, outcomes, steer: userTurnBlocks(userMessages) } : { route: "continue", session, outcomes };
       }
       return { route: "rebuild", reason: `matched session is ${session.state}`, stale: session };
     }

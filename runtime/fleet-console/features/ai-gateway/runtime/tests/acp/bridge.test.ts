@@ -150,39 +150,30 @@ describe("agy ACP bridge", () => {
     expect(afterNone.filter((entry) => entry.mcpTools).at(-1)).toMatchObject({ mcpTools: [], eager: [] });
   });
 
-  it("rebuilds in a new session, keeping the user role, when user text arrives beside a tool result, and closes the held session; logs only counts", async () => {
+  it("steers the same agy turn with user text that arrives beside a tool result: one session, no rebuild, nothing added to the result", async () => {
     const wire = wireLogFixture("fleet-bridge-wire-");
     try {
       const { bridge, log } = await setup();
       const first = await turn(bridge, [user('TOOL:Bash:{"command":"ls"}')]);
       const use = toolUse(first.message);
-      // The history matches the held session, but a system-reminder rides next to the tool result: the result alone must not release the held call.
+      // The history matches the held session and a system-reminder rides next to the tool result.
       const second = await turn(bridge, [
         user('TOOL:Bash:{"command":"ls"}'), call(use.id, { command: "ls" }), result(use.id, "a.txt"),
         user("<system-reminder>SECRET-REMINDER</system-reminder>"),
       ]);
       expect(second.message.stop_reason).toBe("end_turn");
-      expect(textOf(second.message)).toContain("history:yes");
+      // One agy turn: the tool result as the tool result (no note added), then the user text, answered once.
+      expect(textOf(second.message)).toBe("got:a.txt steered:<system-reminder>SECRET-REMINDER</system-reminder>");
       const entries = await log();
-      expect(count(entries, "session/new")).toBe(2);
-      // The held session was closed, not left waiting for a result that will never come.
-      await until(async () => (await log()).some((entry) => entry.terminated === true));
-      const replay = entries.filter((entry) => typeof entry.prompt === "string").at(-1)!.prompt as string;
-      expect(replay).toContain('<tool_result tool_use_id="' + use.id + '">a.txt</tool_result>');
-      // The reminder keeps its user role in the history; it was not folded into the tool result.
-      expect(replay).toContain("SECRET-REMINDER");
-      expect(replay).not.toContain("[user note]");
-      expect(replay).toMatch(/<turn role="user"><tool_result [^>]*>a\.txt<\/tool_result><system-reminder>SECRET-REMINDER/);
+      expect(count(entries, "session/new")).toBe(1);
+      expect(entries.some((entry) => entry.terminated === true)).toBe(false);
+      expect(entries.find((entry) => entry.steering)).toMatchObject({ steering: "<system-reminder>SECRET-REMINDER</system-reminder>" });
       // The wire log counts what rides next to the tool results; it never records their content.
       const requests = wire.read().filter((entry) => entry.event === "bridge.request").map((entry) => entry.payload);
-      expect(requests[0]).toMatchObject({ route: "fresh", tailToolResults: 0, tailUserTexts: 0, tailReminderTexts: 0 });
-      expect(requests[1]).toMatchObject({ route: "rebuild", reason: "user content beside the tool results", tailToolResults: 1, tailUserTexts: 1, tailReminderTexts: 1 });
+      expect(requests[0]).toMatchObject({ route: "fresh", tailToolResults: 0, tailUserTexts: 0, tailReminderTexts: 0, promptChars: expect.any(Number), replayChars: 0 });
+      expect(requests[1]).toMatchObject({ route: "continue", steered: 1, tailToolResults: 1, tailUserTexts: 1, tailReminderTexts: 1 });
+      expect(requests[1]).not.toHaveProperty("replayChars");
       expect(JSON.stringify(requests)).not.toContain("SECRET-REMINDER");
-      // Sizes of the first prompt of each newly opened session are counted, never recorded.
-      expect(requests[0]).toMatchObject({ promptChars: expect.any(Number), replayChars: 0 });
-      expect(requests[1]).toMatchObject({ promptChars: expect.any(Number), replayChars: expect.any(Number) });
-      expect((requests[1] as { replayChars: number }).replayChars).toBeGreaterThan(0);
-      // Hash prefixes of the session's fixed configuration are logged so a real run can show they are stable between requests.
       expect(requests[0]).toMatchObject({ instructionsHash: expect.stringMatching(/^[0-9a-f]{8}$/), toolsHash: expect.stringMatching(/^[0-9a-f]{8}$/) });
       expect(requests[1]).toMatchObject({ instructionsHash: (requests[0] as { instructionsHash: string }).instructionsHash, toolsHash: (requests[0] as { toolsHash: string }).toolsHash });
     } finally {
@@ -191,6 +182,7 @@ describe("agy ACP bridge", () => {
   });
 
   it("keeps call/result pairs, roles and the latest user instruction when the replayed history exceeds its budget", async () => {
+    const wire = wireLogFixture("fleet-bridge-wire-");
     const { bridge, log } = await setup({ replayBudgetChars: 600 });
     const long = "x".repeat(3_000);
     // A tool loop is in progress: the newest user instruction is inside the history, followed by one call/result pair.
@@ -212,6 +204,12 @@ describe("agy ACP bridge", () => {
     expect(replay.match(/<turn role="user">/g)).toHaveLength(3);
     expect(replay.match(/<turn role="assistant">/g)).toHaveLength(2);
     expect(replay.trimEnd().endsWith("Continue from the latest turn above.")).toBe(true);
+    // The size of the replayed first prompt is logged as counts (the cost of a rebuild), never as content.
+    const logged = wire.read().find((entry) => entry.event === "bridge.request")!.payload as Record<string, unknown>;
+    expect(logged).toMatchObject({ route: "rebuild", promptChars: expect.any(Number), replayChars: expect.any(Number), omittedTurns: 2 });
+    expect(logged.replayChars as number).toBeGreaterThan(0);
+    expect(JSON.stringify(logged)).not.toContain("LATEST");
+    wire.cleanup();
   });
 
   it("recovers by replay after agy gives up on a held tool call, and never lets the abandoned session's output out", async () => {

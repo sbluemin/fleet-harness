@@ -82,6 +82,13 @@ export interface AcpSession {
   readonly wireModel: string;
   /** 한 턴을 보내고, 그 턴의 이벤트를 `turn-end`까지 흘린다. 동시에 두 턴을 돌리지 않는다. */
   prompt(blocks: readonly AcpPromptBlock[]): AsyncIterable<AcpSessionEvent>;
+  /**
+   * 도는 턴에 사용자 내용을 더 보낸다(steering, agy 1.5.9: 실행 중인 턴에 `session/prompt`를 또 보낸다).
+   * 실측: 앞선 prompt 요청은 곧바로 `end_turn`으로 응답하지만 이는 호출자의 턴 끝이 아니다(`turn-end`로 내지 않는다). 턴은 이어지고,
+   * 보류 중인 도구 호출이 풀린 뒤 이 내용이 **도구 결과 다음의 user 메시지**로 모델에 보인다. 턴의 `turn-end`는 이 요청의 응답이다.
+   * 도는 턴이 없으면 던진다.
+   */
+  steer(blocks: readonly AcpPromptBlock[]): void;
   /** 도는 턴을 취소한다(`session/cancel`). 턴은 `turn-end`(cancelled)로 끝난다. */
   cancel(): Promise<void>;
   /** 세션과 자식 프로세스를 닫는다. 여러 번 불러도 안전하다. */

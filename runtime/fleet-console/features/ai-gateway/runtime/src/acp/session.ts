@@ -142,24 +142,16 @@ class AgyAcpSession implements AcpSession {
     this.queue?.end();
   }
 
+  /** 지금까지 보낸 `session/prompt` 수. 응답이 최신 요청의 것일 때만 턴의 끝으로 친다(steering이 앞선 요청을 끝낸다). */
+  private promptSeq = 0;
+
   prompt(blocks: readonly AcpPromptBlock[]): AsyncIterable<AcpSessionEvent> {
     if (this.queue) throw new Error("An agy ACP turn is already running on this session.");
     if (this.closed || this.childExited) throw new Error("The agy ACP session is closed.");
     const queue = new EventQueue();
     this.queue = queue;
     this.normalize = createSessionUpdateNormalizer();
-    this.rpc.request("session/prompt", { sessionId: this.sessionId, prompt: toWirePrompt(blocks) }).then(
-      (result) => {
-        queue.push(toTurnEnd(record(result)?.stopReason, record(result)?.usage));
-        queue.end();
-      },
-      (error: unknown) => {
-        // 자식이 죽어서 끊긴 요청은 `exit`가 이미 알렸다.
-        if (error instanceof JsonRpcClosedError) { queue.end(); return; }
-        queue.push({ kind: "turn-end", stopReason: "error", detail: error instanceof Error ? error.message : String(error) });
-        queue.end();
-      },
-    );
+    this.send(blocks, queue);
     const session = this;
     return (async function* () {
       try {
@@ -168,6 +160,32 @@ class AgyAcpSession implements AcpSession {
         if (session.queue === queue) session.queue = undefined;
       }
     })();
+  }
+
+  steer(blocks: readonly AcpPromptBlock[]): void {
+    const queue = this.queue;
+    if (!queue || this.closed || this.childExited) throw new Error("No agy ACP turn is running to steer.");
+    this.send(blocks, queue);
+  }
+
+  private send(blocks: readonly AcpPromptBlock[], queue: EventQueue): void {
+    const seq = ++this.promptSeq;
+    this.rpc.request("session/prompt", { sessionId: this.sessionId, prompt: toWirePrompt(blocks) }).then(
+      (result) => {
+        // agy 1.5.9 실측: 도는 턴에 `session/prompt`를 또 보내면(steering) 앞선 요청은 곧바로 `end_turn`으로 응답하고 턴은 새 요청이
+        // 이어 간다. 앞선 요청의 응답은 호출자가 보는 턴의 끝이 아니다.
+        if (seq !== this.promptSeq) return;
+        queue.push(toTurnEnd(record(result)?.stopReason, record(result)?.usage));
+        queue.end();
+      },
+      (error: unknown) => {
+        if (seq !== this.promptSeq) return;
+        // 자식이 죽어서 끊긴 요청은 `exit`가 이미 알렸다.
+        if (error instanceof JsonRpcClosedError) { queue.end(); return; }
+        queue.push({ kind: "turn-end", stopReason: "error", detail: error instanceof Error ? error.message : String(error) });
+        queue.end();
+      },
+    );
   }
 
   async cancel(): Promise<void> {

@@ -5,6 +5,8 @@
 //   TIMEOUT:<name>         call the MCP tool and give up on it after 50ms (agy's call deadline), then keep talking
 //   UPSTREAM429            agy's upstream-error retry notices as ordinary message chunks, then a normal-looking answer
 //   UPSTREAMNET            a code-less "⚠ network issue" message as the whole turn, ended normally (agy's network-error shape)
+// A second session/prompt while a TOOL prompt is blocked on its MCP call is steering (agy 1.5.9): the first prompt is answered end_turn at
+// once, and when the tool result comes the turn continues as `got:<result> steered:<text>` and ends with the steering prompt's response.
 //   BUILTIN                ask permission for a built-in tool and run it anyway
 //   anything else          answer `echo:<first 60 chars>` plus `history:yes|no` (whether a conversation_history block came)
 // Without any of those the original fixed event stream is sent (the session port test relies on it).
@@ -80,14 +82,24 @@ async function callTool(title, name, args, giveUpAfterMs) {
   }
 }
 
+let running; // the TOOL prompt blocked on its MCP call: { id, steerId?, steerText? }
+
 async function runPrompt(id, blocks) {
   const text = promptText(blocks);
   log({ prompt: text });
   let match;
   if ((match = /^TOOL:([^:]+):(.*)$/s.exec(text))) {
+    running = { id };
     const result = await callTool(`Run mcp_fleet_${match[1]}`, match[1], JSON.parse(match[2]));
     update({ sessionUpdate: "usage_update", used: 1500, size: 1048576 });
     say(`got:${result?.content?.map((block) => block.text).join("") ?? "none"}`);
+    const steer = running;
+    running = undefined;
+    if (steer.steerId !== undefined) {
+      say(` steered:${steer.steerText}`);
+      send({ id: steer.steerId, result: { stopReason: "end_turn", usage: { inputTokens: 100, outputTokens: 20, thoughtTokens: 5, cachedReadTokens: 0, totalTokens: 125 } } });
+      return true;
+    }
   } else if ((match = /^TIMEOUT:(.+)$/s.exec(text))) {
     await callTool(`Run mcp_fleet_${match[1]}`, match[1], {}, 50);
     say("timed out after 3 minutes");
@@ -135,7 +147,12 @@ createInterface({ input: process.stdin }).on("line", async (line) => {
     } });
   } else if (message.method === "session/set_config_option") send({ id: message.id, result: { configOptions: [] } });
   else if (message.method === "session/cancel") log({ cancelled: true });
-  else if (message.method === "session/prompt") {
+  else if (message.method === "session/prompt" && running) {
+    running.steerText = promptText(message.params.prompt);
+    running.steerId = message.id;
+    log({ steering: running.steerText });
+    send({ id: running.id, result: { stopReason: "end_turn", usage: { inputTokens: 10, outputTokens: 1, thoughtTokens: 0, cachedReadTokens: 0, totalTokens: 11 } } });
+  } else if (message.method === "session/prompt") {
     if (await runPrompt(message.id, message.params.prompt)) return;
     update({ sessionUpdate: "available_commands_update", availableCommands: [] });
     update({ sessionUpdate: "agent_thought_chunk", content: { type: "text", text: "thinking" } });
