@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { MenuCheckGlyph, useSelect, type SelectProps, ChevronGlyph } from "@fleet-console/ui/react";
 import * as React from "react";
-import type { ModelRoster } from "../../ai-gateway/shared/models.js";
+import type { ModelRoster, ModelRosterRow } from "../../ai-gateway/shared/models.js";
 /**
  * 모바일 셸이 설정 화면에 주입하는 능력. 호스트가 provider를 세운 안에서만 값이 있고(데스크톱·구버전 호스트는 `null`),
  * 이 안의 SDK 설정 컴포넌트는 스스로 모바일 문법으로 그린다 — 선택지는 현재값 줄이 있는 행 → 목록 위 팝업.
@@ -132,6 +132,8 @@ export interface MobileCoordinateChoiceProps {
   readonly chooseAnotherModelLabel?: string;
   readonly extras?: readonly { readonly id: string; readonly label: string; readonly hint?: string; readonly icon?: React.ReactNode; readonly active: boolean; readonly disabled?: boolean; readonly onPick: () => void }[];
   readonly reset?: MobileModelReset;
+  /** 모델 행 이름 아래 설명 한 줄. `null`이면 싣지 않는다. */
+  readonly rowNote?: (row: ModelRosterRow) => string | null;
   readonly onClose: () => void;
 }
 

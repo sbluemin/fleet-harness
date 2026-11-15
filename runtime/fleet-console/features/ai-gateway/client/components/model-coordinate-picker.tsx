@@ -2,7 +2,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 
 import type { ObjectiveLaunchVariantRow } from "../../../objectives/shared/records/types.js";
-import { canonicalModelId, findRosterRow, resolveRosterCoordinate, type ModelRoster } from "../../shared/models.js";
+import { canonicalModelId, findRosterRow, resolveRosterCoordinate, type ModelRoster, type ModelRosterRow } from "../../shared/models.js";
 import { useMobileSettingsHost, MobileSettingsRowLabelContext, type MobileCoordinateChoiceProps } from "../../../settings/client/mobile-host.js";
 import { EffortTrack, resolveRowEffort } from "../../../execution/client/composer-primitives/effort-track.js";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, removedLaunchProviderName, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
@@ -120,6 +120,8 @@ export interface ModelCoordinatePickerProps {
   /** 메뉴 폭(px). */
   readonly menuWidth?: number;
   readonly menuClassName?: string;
+  /** 폰 좌표 시트의 모델 행 아래 설명 한 줄(예: 「사령관 추천 · MED부터」). 데스크톱 메뉴는 읽지 않는다. */
+  readonly rowNote?: (row: ModelRosterRow) => string | null;
 }
 
 export type { MobileCoordinateChoiceProps as ModelCoordinateMobileProps } from "../../../settings/client/mobile-host.js";
@@ -713,6 +715,7 @@ function MobileCoordinateTrigger(props: ModelCoordinatePickerProps & { readonly 
           // 모델을 고른 초안이 있으면 선택 방식은 선택으로 서지 않는다 — 데스크톱 메뉴처럼 고른 모델과 그 강도 탭이 선다.
           {...(extras ? { extras: extras.map((extra) => ({ ...extra, active: draft ? false : extra.active, onPick: () => { keepDraft(null); extra.onPick(); } })) } : {})}
           {...(reset ? { reset: { ...reset, onSelect: () => { keepDraft(null); reset.onSelect(); } } } : {})}
+          {...(props.rowNote ? { rowNote: props.rowNote } : {})}
           onClose={closeSheet}
         />
       ) : null}

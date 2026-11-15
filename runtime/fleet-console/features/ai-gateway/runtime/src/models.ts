@@ -2,6 +2,7 @@ import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
+import { recommendedRole } from "./model-family.js";
 import type { QuotaScope } from "./quota/types.js";
 import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
@@ -257,11 +258,7 @@ export function gatewayModelIntelligence(modelId: string): GatewayModelIntellige
  * the registry holds only scores and thresholds.
  */
 export function recommendedGatewayRole(score: number | undefined): GatewayRole | undefined {
-  if (score === undefined) return undefined;
-  const reached = (Object.entries(GATEWAY_ROLE_THRESHOLDS) as [GatewayRole, number][])
-    .filter(([, threshold]) => score >= threshold)
-    .sort(([, left], [, right]) => right - left);
-  return reached[0]?.[0];
+  return recommendedRole(score, GATEWAY_ROLE_THRESHOLDS);
 }
 
 /** The recommended role of a catalog model at one reasoning effort. */

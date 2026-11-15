@@ -1,6 +1,6 @@
 import { ModelCoordinatePicker, rosterCoordinateWords, type ModelCoordinatePickerExtra, type ModelCoordinateValue } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import type { Translate } from "@fleet-console/i18n";
-import { isAgentEffort, type ModelRosterTarget } from "../../ai-gateway/shared/models.js";
+import { isAgentEffort, type ModelRosterRow, type ModelRosterTarget } from "../../ai-gateway/shared/models.js";
 
 import { useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
@@ -19,7 +19,7 @@ type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
  * 호스트의 좌표 시트로 열린다. 값이 비면 `fallback`(기본 좌표)을 보이고, `reset`은 그 기본값의 낱말을 설명으로 단다.
  * `judgment`를 넘기면 메뉴 맨 위에 「라우팅」이 서고, 활성이면 트리거도 글리프와 그 낱말이다(`fallback`을 보이지 않는다). 저장값 null은 그대로다.
  */
-export function CommodoreCoordinateField({ t, target, label, value, fallback, disabled, reset, judgment, onChange }: {
+export function CommodoreCoordinateField({ t, target, label, value, fallback, disabled, reset, judgment, rowNote, onChange }: {
   readonly t: T;
   readonly target: ModelRosterTarget;
   readonly label: string;
@@ -28,6 +28,8 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
   readonly disabled?: boolean;
   readonly reset?: { readonly label: string; readonly onSelect: () => void };
   readonly judgment?: { readonly active: boolean; readonly onPick: () => void };
+  /** 폰 좌표 시트의 행 설명(지능 추천 배지). */
+  readonly rowNote?: (row: ModelRosterRow) => string | null;
   readonly onChange: (next: { readonly model?: string; readonly effort?: string; readonly fast?: boolean }) => void;
 }) {
   const roster = useCommodoreRoster(target);
@@ -62,6 +64,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
         fallback: t("commodore.board.launch.fallback"),
       }}
       {...(extras ? { extras } : {})}
+      {...(rowNote ? { rowNote } : {})}
       trigger={judgmentActive
         ? { variant: "field", title: judgmentHint, text: <><CommodoreJudgmentMark /><span className="fc-coord-trigger-model">{judgmentLabel}</span></> }
         : { variant: "field" }}

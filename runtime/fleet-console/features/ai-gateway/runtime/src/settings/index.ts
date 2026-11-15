@@ -4,12 +4,15 @@ import {
   type CompactCeiling,
 } from "../downstream/harness/claude-code/context.js";
 import {
+  GATEWAY_INTELLIGENCE_INDEX,
   GATEWAY_MODELS,
   GATEWAY_PROVIDER_NAMES,
+  GATEWAY_ROLE_THRESHOLDS,
   GATEWAY_PROVIDERS,
   GATEWAY_REASONING_EFFORTS,
   buildGatewayModelConstraints,
   findGatewayModel,
+  gatewayModelIntelligence,
   withGatewayModelFast,
 } from "../models.js";
 import type {
@@ -18,7 +21,7 @@ import type {
   GatewayProvider,
   GatewayReasoningEffort,
 } from "../models.js";
-import { aiGatewayModelFamilyKey, canonicalEffortSelection } from "../model-family.js";
+import { aiGatewayModelFamilyKey, canonicalEffortSelection, type AiGatewayRoleThresholds } from "../model-family.js";
 
 // AI Gateway 모델 선별의 저장 형태·카탈로그 대조·검증은 이 패키지가 소유한다. 카탈로그를 아는
 // 계층만이 "지금 고를 수 있는 모델·강도"를 판정할 수 있기 때문이다. 호스트는 저장 위치와 HTTP
@@ -477,6 +480,10 @@ function parseExposedEfforts(
 /** 설정 UI가 소비하는 카탈로그 투영. 모델 노출 여부와 무관하게 전체 카탈로그를 담는다. */
 export interface AiGatewayCatalog {
   readonly providers: readonly AiGatewayCatalogProvider[];
+  /** 역할별 최소 지능 점수. 화면이 추천을 그리는 기준선이며 라우팅 판단에는 쓰이지 않는다. */
+  readonly roleThresholds: AiGatewayRoleThresholds;
+  /** 지능 점수의 출처와 읽은 날짜(`YYYY-MM-DD`). */
+  readonly intelligenceIndex: { readonly name: string; readonly observedAt: string };
 }
 
 export interface AiGatewayCatalogProvider {
@@ -500,6 +507,11 @@ export interface AiGatewayCatalogModel {
    * identity. Effort inside a session stays Claude Code's own (`/effort`).
    */
   readonly effort: { readonly levels: readonly string[] } | null;
+  /**
+   * 강도별 지능 점수(`effort.levels` 안의 단만). 점수가 없는 단은 키가 없고, 하나도 없으면 `null`이다 —
+   * 없는 점수를 0으로 채우지 않는다.
+   */
+  readonly intelligence: Readonly<Partial<Record<string, number>>> | null;
 }
 
 export function buildAiGatewayCatalog(models: readonly GatewayModel[] = GATEWAY_MODELS): AiGatewayCatalog {
@@ -510,7 +522,23 @@ export function buildAiGatewayCatalog(models: readonly GatewayModel[] = GATEWAY_
         .filter((model) => model.provider === provider)
         .map((model) => toCatalogModel(model)),
     })),
+    roleThresholds: { ...GATEWAY_ROLE_THRESHOLDS },
+    intelligenceIndex: { name: GATEWAY_INTELLIGENCE_INDEX.name, observedAt: GATEWAY_INTELLIGENCE_INDEX.observedAt },
   };
+}
+
+/** 노출 사다리 안의 단만 남긴 강도별 점수. 남는 단이 없으면 `null`. */
+export function catalogModelIntelligence(
+  modelId: string,
+  levels: readonly string[],
+): Readonly<Partial<Record<string, number>>> | null {
+  const scores = gatewayModelIntelligence(modelId)?.scores;
+  if (!scores) return null;
+  const kept = Object.fromEntries(levels.flatMap((level) => {
+    const score = scores[level as GatewayReasoningEffort];
+    return typeof score === "number" ? [[level, score] as const] : [];
+  }));
+  return Object.keys(kept).length > 0 ? kept : null;
 }
 
 function toCatalogModel(model: GatewayModel): AiGatewayCatalogModel {
@@ -522,6 +550,7 @@ function toCatalogModel(model: GatewayModel): AiGatewayCatalogModel {
     fast: model.fastSupported === true,
     description: model.description ?? null,
     effort: levels.length > 0 ? { levels } : null,
+    intelligence: catalogModelIntelligence(model.id, levels),
   };
 }
 
