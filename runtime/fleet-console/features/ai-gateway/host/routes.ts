@@ -10,11 +10,13 @@ interface GatewayHostContext {
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
 import { randomUUID } from "node:crypto";
+import { readdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 
 import {
   AI_GATEWAY_MODEL_ENV,
   AI_GATEWAY_ROUTE_SEGMENT,
+  createAgyAcpSessionPort,
   createAiGatewayRouter,
   createFailureJournal,
   createRequestTimingJournal,
@@ -28,6 +30,20 @@ export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,
   "originator" | "readModelOverride" | "readAuth" | "readXaiToken" | "readMuseCodeAuth"
 > & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readXaiToken" | "readMuseCodeAuth" | "assignRouting">>;
+
+/** agy 세션 전용 gemini-dir들의 부모. 세션을 닫으면 지우지만, 프로세스가 죽으면 남으므로 시작할 때 오래된 것을 쓴다. */
+const AGY_SESSIONS_STALE_MS = 24 * 60 * 60 * 1000;
+
+function sweepStaleAgySessions(sessionsDir: string): void {
+  try {
+    for (const entry of readdirSync(sessionsDir)) {
+      const target = path.join(sessionsDir, entry);
+      if (Date.now() - statSync(target).mtimeMs > AGY_SESSIONS_STALE_MS) rmSync(target, { recursive: true, force: true });
+    }
+  } catch {
+    // No directory yet, or one a concurrent Console is removing: nothing to sweep.
+  }
+}
 
 export function registerAiGatewayRoutes(
   ctx: GatewayHostContext,
@@ -58,8 +74,12 @@ export function registerAiGatewayRoutes(
   const compactionStore = createClaudeCodexCompactionStore({
     directory: path.join(ctx.dataDir, "ai-gateway"),
   });
+  // agy 세션은 resume하지 않는다: Console이 다시 뜨면 레지스트리가 비어 모든 Gemini 요청이 새 세션으로 시작한다.
+  const agySessionsDir = path.join(ctx.dataDir, "ai-gateway", "agy-sessions");
+  sweepStaleAgySessions(agySessionsDir);
   const router = createAiGatewayRouter({
     ...deps,
+    agyAcpPort: deps.agyAcpPort ?? createAgyAcpSessionPort({ sessionsDir: agySessionsDir }),
     originator: "fleet-console",
     compactionStore,
     compactionHookToken: compactHookToken,
@@ -75,7 +95,7 @@ export function registerAiGatewayRoutes(
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
   });
   ctx.host.lifecycle.registerCleanup(async () => {
-    router.dispose();
+    await router.dispose();
     await ownedFailureJournal?.flush();
     await ownedRequestTiming?.flush();
   });

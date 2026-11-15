@@ -313,7 +313,8 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
 
   private openFailure(error: unknown): AdapterResponse {
     if (error instanceof AcpModelUnavailableError) {
-      return failedResponse(400, "invalid_request_error", `${error.message} Sign in to agy with an account that offers it, or pick another model.`);
+      // A 4xx: Claude Code does not retry a verdict a retry cannot change. The message names the model the session asked for.
+      return failedResponse(400, "invalid_request_error", `${error.message} The agy account offers: ${error.availableModels.join(", ") || "no models"}. Pick another model or sign in to agy with an account that has it.`);
     }
     if (error instanceof AcpAuthRequiredError) {
       return failedResponse(401, "authentication_error", `${error.message} Run \`agy\` and sign in first.`);

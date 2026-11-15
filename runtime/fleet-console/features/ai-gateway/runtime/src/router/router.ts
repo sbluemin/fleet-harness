@@ -47,6 +47,7 @@ import type { GatewayFailureSink } from "../transport/failure-journal.js";
 import { RequestClock } from "../transport/request-timing.js";
 import type { GatewayRequestTimingSink } from "../transport/request-timing.js";
 
+import { createAgyAcpBridge, type AcpSessionPort, type AgyAcpBridge } from "../acp/index.js";
 import { applyGatewayRequestPolicy } from "./request-policy.js";
 import {
   applyDecisiveRefusalHeaders,
@@ -136,6 +137,12 @@ export interface AiGatewayRouteDeps {
   // 접근 금지), 각 호스트가 export된 reader를 명시 주입한다.
   readonly readAuth: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
   readonly readXaiToken?: () => string | null | Promise<string | null>;
+  /**
+   * The agy ACP session port Gemini (Antigravity) models are served through. Absent means those models
+   * are refused with 503. The router builds one bridge from it, keeps it for its lifetime, and closes
+   * every agy child and the bridge's MCP listener in `dispose()`.
+   */
+  readonly agyAcpPort?: AcpSessionPort;
   /** Muse Code 로그인 판정. 미주입이면 Muse Code 모델은 미로그인으로 거절된다. */
   readonly readMuseCodeAuth?: () => MuseCodeInferenceAuth | Promise<MuseCodeInferenceAuth>;
   /** 401에서만 한 번 호출한다. 호스트가 quota 조회와 single-flight·backoff를 공유한다. */
@@ -194,8 +201,11 @@ export interface AiGatewayRouter {
   readonly handle: GatewayHttpHandler;
   /** Live upstream occupancy per provider origin. Empty when nothing is in flight. */
   upstreamStats(): readonly UpstreamGateOriginStats[];
-  /** Dispose only router-owned provider state; injected gateways remain externally owned. */
-  dispose(): void;
+  /**
+   * Dispose only router-owned provider state; injected gateways remain externally owned. Resolves once the
+   * agy children and the bridge's MCP listener are gone when the router owns a bridge.
+   */
+  dispose(): void | Promise<void>;
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
@@ -229,6 +239,15 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     deps.maxUpstreamInFlight === undefined ? {} : { maxInFlight: deps.maxUpstreamInFlight },
   );
   const fetchImpl = upstreamGate.fetch as typeof fetch;
+  // The agy bridge is stateful (live sessions between requests), so it is built once and kept. It is
+  // lazy: a host that never serves a Gemini model starts no listener.
+  let ownedAgyBridge: AgyAcpBridge | undefined;
+  let agyBridgeGatewayInstance: AnthropicMessagesGateway | undefined;
+  const agyBridgeGateway = (port: AcpSessionPort): AnthropicMessagesGateway => {
+    ownedAgyBridge ??= createAgyAcpBridge({ port });
+    agyBridgeGatewayInstance ??= new AnthropicMessagesGateway(ownedAgyBridge);
+    return agyBridgeGatewayInstance;
+  };
   // 창을 감당 못 해 본문이 한 번 보류된 스킬들. 이 라우터가 사는 동안 유지해야
   // 다음 세션의 첫 요청부터 목록에서 빠진다 — 프로세스당 한 번만 낭비되는 턴이 된다.
   const withheldSkills = new Set<string>();
@@ -435,13 +454,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       clock?.finish("error", 400);
       return true;
     }
-    // Gemini(antigravity) 모델은 Messages→agy ACP 브리지(`src/acp/`)가 받을 자리다. 브리지를 잇기 전까지는
-    // Cloud Code Assist로도 다른 모델로도 보내지 않고 여기서 멈춘다.
-    if (target?.provider === "antigravity") {
-      writeClientError(res, 501, "api_error", `${requested} is served through the agy ACP bridge, which is not implemented yet.`);
-      clock?.finish("error", 501);
-      return true;
-    }
     // 디스커버리가 로그인된 공급자만 광고해도, 실행 경로가 로그아웃 공급자를 받아 주면 raw id로
     // 그 구독을 쓴다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고
     // 호출자 입력과 같은 신뢰 등급이 아니다. Claude 공급자도 같은 규칙이다.
@@ -554,8 +566,17 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
               : {}),
           })
         : undefined;
+      if (target.provider === "antigravity" && !deps.gateway && !deps.agyAcpPort) {
+        writeClientError(res, 503, "api_error", `${requested} is served through the agy ACP bridge, which this host did not configure.`);
+        clock?.finish("error", 503);
+        return true;
+      }
       const gateway = deps.gateway
-        ?? (target.provider === "xai"
+        ?? (target.provider === "antigravity"
+          // 브리지는 agy가 소유한 구독 로그인으로 말하므로 이 라우터는 Gemini 자격을 조달하지 않는다.
+          // 상태를 가진 어댑터라 요청마다 만들지 않고 호스트가 준 하나를 쓴다.
+          ? agyBridgeGateway(deps.agyAcpPort!)
+          : target.provider === "xai"
           ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
             fetch: requestFetch,
             endpoint: xaiEndpoint(),
@@ -760,6 +781,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     dispose: () => {
       upstreamGate.dispose();
       codexCompactionFlights.clear();
+      return ownedAgyBridge?.dispose();
     },
   };
 }

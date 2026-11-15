@@ -70,12 +70,16 @@ const claudeRequestPolicy: GatewayRequestPolicy = {
 };
 
 /**
- * Providers whose wire this router relays. Antigravity is not one of them: its models go to the agy ACP
- * bridge (`src/acp/`), and the router stops them before any request is shaped.
+ * Antigravity (Gemini) models are served by the agy ACP bridge (`src/acp/`), which keeps Claude Code's own
+ * system prompt, tools and messages as they are, so nothing is withheld or rewritten here.
  */
-type RoutedGatewayProvider = Exclude<GatewayProvider, "antigravity">;
+const antigravityRequestPolicy: GatewayRequestPolicy = {
+  provider: "antigravity",
+  shapeRequest: (request) => request,
+};
 
-const POLICIES: Readonly<Record<RoutedGatewayProvider, GatewayRequestPolicy>> = {
+const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
+  antigravity: antigravityRequestPolicy,
   claude: claudeRequestPolicy,
   codex: codexRequestPolicy,
   "muse-code": museCodeRequestPolicy,
@@ -84,7 +88,6 @@ const POLICIES: Readonly<Record<RoutedGatewayProvider, GatewayRequestPolicy>> = 
 
 /** The policy a gateway target's provider declared for itself. */
 export function resolveGatewayRequestPolicy(provider: GatewayProvider): GatewayRequestPolicy {
-  if (provider === "antigravity") throw new Error("Antigravity models go to the agy ACP bridge and have no gateway request policy.");
   return POLICIES[provider];
 }
 
