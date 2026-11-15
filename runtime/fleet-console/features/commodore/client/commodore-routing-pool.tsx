@@ -439,10 +439,9 @@ export function RoutingPoolHelpButton({ pressed, label, title, onClick }: {
   );
 }
 
-export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onCloseHelp, onOpenQuota, mobile = false }: {
+export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, mobile = false }: {
   readonly t: T;
   readonly pool: RoutingPoolData;
-  readonly commanderByJudgment: boolean;
   readonly showHelp: boolean;
   readonly onCloseHelp: () => void;
   readonly onOpenQuota: () => void;
@@ -551,10 +550,6 @@ export function RoutingPoolPanel({ t, pool, commanderByJudgment, showHelp, onClo
 
   return (
     <div className={`commodore-pool-view${mobile ? " is-mobile" : ""}`}>
-      <p className="commodore-composer-panel-hint">
-        {t("commodore.pool.hintBase")}
-        {commanderByJudgment ? t("commodore.pool.hintJudgment") : ""}
-      </p>
       {pool.error ? <p className="commodore-composer-panel-note" role="alert">{pool.error}</p> : null}
 
       <div className="commodore-pool-sum">
@@ -804,7 +799,7 @@ function PoolDetailBox({ t, view, leadThreshold, saving, onToggleEffort, onToggl
 }
 
 function detailIntelligenceNote(t: T, view: PoolEntryView, leadThreshold: number): string {
-  if (!hasAnyScore(view.scores)) return t("commodore.intel.detailNoScore");
+  if (!hasAnyScore(view.scores)) return t("commodore.intel.readNone");
   if (view.lead) {
     return view.lead.effort === "max"
       ? t("commodore.intel.detailLeadMax", { n: view.lead.score })
@@ -812,8 +807,8 @@ function detailIntelligenceNote(t: T, view: PoolEntryView, leadThreshold: number
   }
   const reach = qualifying(view.scores, view.ladder, leadThreshold);
   return reach
-    ? t("commodore.intel.detailEnable", { t: leadThreshold, effort: effortWord(reach.effort), n: reach.score })
-    : t("commodore.intel.detailNever", { t: leadThreshold });
+    ? t("commodore.intel.insEnable", { effort: effortWord(reach.effort), n: reach.score })
+    : t("commodore.intel.detailNever");
 }
 
 /* ── 풀 지능 분포·안내 ─────────────────────────────────────────────────────── */
@@ -857,7 +852,7 @@ function PoolIntelligence({ t, entries, leadThreshold, saving, showSpread, onEna
         </li>,
       );
     } else {
-      lines.push(<li key="none" className="is-warn"><span className="commodore-pool-ins-dot is-warn" aria-hidden="true" /><span>{t("commodore.intel.insNone", { t: leadThreshold })}</span>{restNote}</li>);
+      lines.push(<li key="none"><span className="commodore-pool-ins-dot is-none" aria-hidden="true" /><span>{t("commodore.intel.insNone", { t: leadThreshold })}</span>{restNote}</li>);
     }
     for (const item of ready) {
       if (lines.length >= INSIGHT_LIMIT) break;

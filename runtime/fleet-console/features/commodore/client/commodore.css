@@ -1577,8 +1577,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   border: 0; border-radius: var(--radius-xs); background: var(--control-wash); color: var(--text-primary); cursor: pointer;
 }
 .commodore-pool-ex-play svg { width: 12px; height: 12px; fill: currentColor; }
-.commodore-settings-popover-kbd { flex: none; font-size: var(--t-2xs); color: var(--text-tertiary); padding: 1px 5px; border-radius: var(--radius-xs); box-shadow: inset 0 0 0 1px var(--hairline-strong); }
-@container commodore-settings-pop (max-width: 440px) { .commodore-settings-popover-kbd { display: none; } }
 .commodore-settings-popover-nub {
   position: absolute; bottom: -5px; width: 10px; height: 10px; margin-left: -5px; transform: rotate(45deg);
   background: var(--popover-face); box-shadow: 0.5px 0.5px 0 0 var(--popover-rim); border-bottom-right-radius: 2px;
@@ -1604,7 +1602,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-panel-close:focus-visible { outline: none; box-shadow: var(--focus-face); }
 .commodore-composer-panel-close svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; }
 .commodore-composer-panel-body { flex: 1 1 auto; min-height: 0; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; padding: 6px 0 2px; }
-.commodore-composer-panel-hint { margin: 2px 8px 6px; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
 .commodore-composer-panel-note { margin: 4px 8px; color: var(--text-tertiary); font-size: var(--t-xs); }
 .commodore-composer-coord { display: flex; flex-direction: column; gap: var(--popover-list-gap); }
 .commodore-composer-coord .roster-fallback-note { padding-inline: 8px; }
@@ -1626,7 +1623,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-row:focus-visible { outline: none; background: var(--wash-hover); }
 .commodore-composer-row.is-active { font-weight: var(--weight-medium); cursor: default; }
 .commodore-composer-row.is-extra.is-active { background: var(--wash-selected); }
-.commodore-composer-row.is-reset { padding-block: 6px; }
 .commodore-composer-row.is-extra .objectives-commodore-judgment,
 .commodore-composer-row.is-extra .objectives-commodore-judgment svg { width: 16px; height: 16px; }
 .commodore-composer-row-label { display: flex; flex-direction: column; gap: 1px; flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1635,7 +1631,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-row-title { flex: none; white-space: nowrap; }
 .commodore-composer-row-label.is-inline small { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commodore-composer-row.is-off .commodore-composer-row-label { color: var(--text-tertiary); text-decoration: line-through; }
-.commodore-composer-row.is-reset { margin-top: 4px; border-top: 1px solid var(--popover-divider); border-radius: 0; color: var(--text-secondary); }
 .commodore-composer-fast {
   flex: none; height: 24px; padding: 0 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent;
   color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); cursor: pointer;
@@ -1675,8 +1670,8 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   .objectives-commodore-conversation .commodore-person-inbox { transition: none; animation: none; }
 }
 
-/* ── 지능 점수 안내(표시 전용) — 사령관·지휘관 선택기와 라우팅 풀. 추천은 색이 아니라 셰브런과 명도로 말하고,
-      기준 아래·후보 없음만 warn 신호를 쓴다. 점수 없음은 낮은 점수가 아니므로 신호색을 쓰지 않는다. ── */
+/* ── 지능 점수 안내(표시 전용) — 사령관·지휘관 선택기와 라우팅 풀. 추천은 색이 아니라 셰브런과 명도로 말하는 제안이다.
+      기준 아래·후보 없음·점수 없음 어느 것도 경고가 아니므로 warn 신호를 쓰지 않는다. ── */
 .commodore-intel-rank { width: 11px; height: 11px; flex: none; fill: none; stroke: var(--text-primary); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .commodore-intel-meta { display: inline-flex; align-items: center; gap: 10px; flex: none; margin-left: auto; }
 .commodore-intel-from { display: inline-flex; align-items: center; gap: 4px; color: var(--text-secondary); font-size: var(--t-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
@@ -1698,11 +1693,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-intel-read > :first-child, .commodore-intel-judge > :first-child { margin-right: 6px; vertical-align: -1px; }
 .commodore-intel-read .commodore-intel-link, .commodore-intel-judge .commodore-intel-link,
 .commodore-intel-judge > .commodore-intel-judge-who, .commodore-intel-judge > small { margin-left: 8px; }
-.commodore-intel-read.is-low, .commodore-intel-judge.is-warn { color: var(--warn-ink); }
-.commodore-intel-read.is-none { color: var(--text-tertiary); }
-.commodore-intel-ring { display: inline-block; width: 7px; height: 7px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; }
-.commodore-intel-ok { width: 11px; height: 11px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-.commodore-intel-warn-dot { display: inline-block; width: 6px; height: 6px; flex: none; border-radius: 50%; background: var(--warn); }
+.commodore-intel-dot { display: inline-block; width: 6px; height: 6px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
 .commodore-intel-link {
   border: 0; background: none; padding: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-medium);
   text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--hairline-strong); cursor: pointer;
@@ -1723,7 +1714,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-intel-rec-chip.is-on { background: var(--wash-selected); }
 .commodore-intel-rec-eff { color: var(--text-tertiary); font-size: var(--t-2xs); letter-spacing: 0.03em; }
 .commodore-intel-rec-score { color: var(--text-secondary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
-.commodore-intel-chip-ring { width: 7px; height: 7px; flex: none; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--warn); }
 
 .commodore-pool-pchip-rank { width: 10px; height: 10px; }
 .commodore-pool-opt { display: inline-flex; align-items: center; gap: 5px; }
@@ -1762,12 +1752,10 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-ins > li { display: block; color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.6; }
 .commodore-pool-ins > li > * { margin-right: 7px; }
 .commodore-pool-ins > li > .commodore-pool-link-btn { margin-left: 2px; }
-.commodore-pool-ins > li.is-warn { color: var(--warn-ink); }
 .commodore-pool-ins-who { display: inline-flex; align-items: center; gap: 4px; vertical-align: bottom; color: var(--text-primary); font-weight: var(--weight-medium); }
 .commodore-pool-ins-who.is-muted { color: var(--text-tertiary); font-weight: var(--weight-regular); }
 .commodore-pool-ins-dot { display: inline-block; width: 6px; height: 6px; vertical-align: 1px; border-radius: 50%; }
 .commodore-pool-ins-dot.is-ok { background: var(--aurora); }
-.commodore-pool-ins-dot.is-warn { background: var(--warn); }
 .commodore-pool-ins-dot.is-none { box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
 .commodore-pool-ins-rank { width: 10px; height: 10px; vertical-align: -1px; }
 .commodore-pool-ex-source { margin: 8px 2px 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
