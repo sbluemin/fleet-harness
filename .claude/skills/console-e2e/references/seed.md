@@ -1,12 +1,12 @@
 # Seed an owned Console
 
-One procedure for the data a verification needs before the first navigation: commodores, theaters and, optionally, objectives. It shares **how the assets are made**, not the running environment: every objective boots its own Console through [setup.md](setup.md) and seeds that slot. Never seed a Console you do not own.
+One procedure for the data a verification needs before the first navigation: commodores, theaters and, optionally, objectives. It shares **how the assets are made**, not the running environment: every objective runs its own Console through [setup.md](setup.md) and seeds its own slot. Never seed a Console you do not own.
 
 ```bash
 node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" --profile <name> [--commodores N] [--theaters M] [--objectives K] [--root <theater folders>] [--fake-claude-dir "$FAKE_CLAUDE_DIR"]
 ```
 
-`--dir` is the owned `FLEET_CONSOLE_DATA_DIR` of a running Console (its `console.lock` names the port); only `advanced --offline` takes one whose Console has not started. stdout is one JSON object with the ids of what was created, also saved as `<dir>/seed-ids.json`; progress goes to stderr. A slot is seeded once: a run that finds `seed-ids.json` stops before creating anything, so take a fresh slot.
+`--dir` is the owned `FLEET_CONSOLE_DATA_DIR` of a running Console (its `console.lock` names the port). For `--profile advanced --offline`, seed a new slot before its first boot through the [isolated-environment wrapper](setup.md#keep-the-real-home-out) with `--bin pnpm` (the helper starts pnpm/tsx), then boot it. stdout is one JSON object with the ids of what was created, also saved as `<dir>/seed-ids.json`; progress goes to stderr. A slot is seeded once: a run that finds `seed-ids.json` stops before creating anything, so take a fresh slot.
 
 | Profile | Contents |
 |---|---|
@@ -16,7 +16,7 @@ node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" -
 | `objectives` | 1 commodore, 1 theater, 2 objectives, each with a roster entry and 2 missions (board data only: no member session is launched or resumed) |
 | `activity` | `objectives` board data, with each commodore's first objective commenced (in-progress commander), a synthetic last reply, and that commodore in a local sidebar section |
 | `details` | `activity` (1 objective by default), with brief, criteria, mission records, sealed results and shared files on its commenced objective; excludes actor-rewritten mission-resume records. |
-| `advanced` | 3 commodores, no theater: per-commodore advanced options (auto memory, base system prompt, subagents) requested on, off and unset (no saved override; product defaults apply). Running Console: on/off only (`--commodores 2`); `unset` needs `--offline` on a data dir before its Console first starts (no `console.lock`), then boot it. Output `commodores[].advanced` keeps `requested`, `stored` and `effective` apart. |
+| `advanced` | 3 commodores, no theater: auto memory, base system prompt and subagents requested on/off/unset (no saved override; product defaults apply). Running Console: on/off only (`--commodores 2`). `commodores[].advanced` separates requested, stored and effective values at seed time. |
 | `inbox` | 1 commodore, 1 theater, three objectives handed to the person (one criteria proposal, one review, one open follow-up) and one open commodore question. No sidebar section and no transcript turns. |
 
 Counts override with the flags. Theater folders are created under `--root` (default `<os tmpdir>/seed-theaters/<slot hash>`), outside every repository as [setup.md](setup.md) requires; remove them with the run.
