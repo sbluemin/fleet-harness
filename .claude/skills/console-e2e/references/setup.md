@@ -197,6 +197,19 @@ For proposal/audit screens that need Objectives but no model turn, prefer a dura
 
 Do not assume restored Objectives are expanded or visible. Fixtures may restore with no panel open or inside a collapsed group or Theater. Opening a conversation from the sidebar does not open an SDK child; inspect the actual presentation, open/arrange it through real UI actions, and confirm the intended cards/tiles in screenshots before a visual sweep. Objectives have no terminal body. For a separate independent CLI scenario, use [fake Claude](#no-cost-fake-claude) rather than launching an unnecessary paid agent. A missing fixture or hidden tile is not product-defect evidence.
 
+### Host provider status
+
+Shows or hides the Codex launch-roster group on a running owned Console without a credential, login, or provider call. This is not evidence of real authentication, and not evidence that outbound calls are blocked. Do not mock the roster response or inject `models:roster-changed`; those skip the host.
+
+The [objective-fixture rule](#ui-only-objective-fixtures) still forbids copying user state or overwriting a running server's objective records. This recipe does not touch those files. Only when `<run-dir>/console/auth.json` is absent, create it mode `0600` with one non-secret entry `parseCodexAuthEntry` rejects (`features/ai-gateway/runtime/src/oauth/codex/login.ts`): store key `Fleet AI Gateway with Codex`, `type` and `version` only, no `key`. Quota re-reads that file. Do not replace an existing `auth.json`.
+
+Calls use an omitted `Origin` or the owned listener:
+
+1. `GET /api/v1/ai-gateway/quota?forceProvider=codex` — Codex becomes `error`, group `gateway:codex` appears, and the host emits `models:roster-changed`.
+2. `POST /api/v1/ai-gateway/oauth/codex/logout` with `Content-Type: application/json` and `{}` — Codex becomes `not_connected` and the group is gone. The host emits again.
+
+A repeat of that logout while Codex is already `not_connected` changes no status and emits nothing. The logout leaves a marker in `auth.json`, so one cycle fits a run directory; use a new one for another. Cleanup is step 2 and stopping the owned Console. Do not copy `auth.json` from another slot.
+
 ### Objective member child-session fixture
 
 For an Objectives roster with existing member sessions but no model turn, seed **both** the objective roster and the commander's nested sessions. `runtime/fleet-console/features/objectives/host/store.ts` projects each member by matching `members[].id` to the commander's `sessions[].id`, then reads `child.session.sessionName`. A `sessionName` added to the roster record is not its source of truth; a separate top-level member Objective does not establish this relationship either. No matching child means the projected member's `sessionName` is `null`.
