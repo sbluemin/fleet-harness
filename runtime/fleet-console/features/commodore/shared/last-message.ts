@@ -66,8 +66,7 @@ function stripPreviewMarkdown(raw: string): string {
   const { text: withoutCode, spans, sentinel } = stripInlineCodeSpans(withoutBlockPrefixes);
   let stripped = withoutCode
     .replace(/!\[([^\]]*)\]\((?:[^()\n]|\([^()\n]*\))*\)/g, "$1")
-    .replace(/\[([^\]]+)\]\((?:[^()\n]|\([^()\n]*\))*\)/g, "$1")
-    .replace(/\[([^\]]+)\]\[[^\]]*\]/g, "$1");
+    .replace(/\[([^\]]+)\]\((?:[^()\n]|\([^()\n]*\))*\)/g, "$1");
   for (let pass = 0; pass < 2; pass += 1) {
     stripped = stripped
       .replace(/~~(?=\S)([^\n]+?)(?<=\S)~~/g, "$1")

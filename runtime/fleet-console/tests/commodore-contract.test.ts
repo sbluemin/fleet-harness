@@ -3557,11 +3557,11 @@ it("strips inline Markdown syntax from Commodore sidebar previews while preservi
     seq: 3,
     at: 300,
     kind: "text",
-    text: "![alt label](https://example.com/img.png) and [`inline_code`](https://example.com)",
+    text: "![alt label](https://example.com/img.png), [`inline_code`](https://example.com), matrix[0][1], and [ERROR][payments] Connection refused",
   })).toEqual({
     at: 300,
     from: "commodore",
-    text: "alt label and inline_code",
+    text: "alt label, inline_code, matrix[0][1], and [ERROR][payments] Connection refused",
   });
 
   expect(commodoreLastMessage({
