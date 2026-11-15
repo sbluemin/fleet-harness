@@ -1556,12 +1556,42 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-ledger-split-owner-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-ledger-split-pane-body { flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .group-ledger-split-pane-body > * { flex: 1 1 auto; min-width: 0; min-height: 0; }
-.group-ledger-split-gutter { touch-action: none; background: var(--hairline); }
-.group-ledger-split-gutter.is-vertical { cursor: col-resize; }
-.group-ledger-split-gutter.is-horizontal { cursor: row-resize; }
-.group-ledger-split-gutter:hover { background: var(--control-wash-hover); }
-.group-ledger-split-gutter:active { background: var(--control-wash); }
-.group-ledger-split-gutter:focus-visible { box-shadow: var(--focus-face); }
+/* 칸 경계 — 오른쪽 사이드바 분할선(core rail.css `.rail-pane-divider`)과 같은 문법: 잡는 영역 4px(GUTTER_PX), 보이는 선은 가운데 1px
+   hairline(content-box + 양쪽 1.5px 투명 테두리). 가로 경계는 같은 방식을 세로축으로 둔다. 클래스를 공유하지 않는 것은 그 부품이
+   flex 열 사이의 세로 선(폭 4px 고정)이라 그리드 트랙의 가로 경계를 그릴 수 없어서다.
+   가리킴·포커스·끌기는 오른쪽 사이드바 크기 조절 핸들(`.right-rail-resize-handle`)의 값 — 4px 전체를 brass 50%, 끄는 동안 70%,
+   포커스는 50% + focus-face. 분할선의 hover(1px 만 brass 100%)보다 넓게 칠해 잡을 수 있는 자리가 보인다. */
+.group-ledger-split-gutter {
+  box-sizing: border-box;
+  touch-action: none;
+  background: var(--hairline);
+  background-clip: content-box;
+  transition: background-color var(--duration-fast) var(--ease-glide);
+}
+.group-ledger-split-gutter.is-vertical {
+  cursor: col-resize;
+  border-left: 1.5px solid transparent;
+  border-right: 1.5px solid transparent;
+}
+.group-ledger-split-gutter.is-horizontal {
+  cursor: row-resize;
+  border-top: 1.5px solid transparent;
+  border-bottom: 1.5px solid transparent;
+}
+.group-ledger-split-gutter:hover {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+  background-clip: border-box;
+}
+.group-ledger-split-gutter:focus-visible {
+  background: color-mix(in oklch, var(--brass) 50%, transparent);
+  background-clip: border-box;
+  box-shadow: var(--focus-face);
+  outline: none;
+}
+.group-ledger-split-gutter.is-dragging {
+  background: color-mix(in oklch, var(--brass) 70%, transparent);
+  background-clip: border-box;
+}
 @media (forced-colors: active) {
   .group-ledger-split-gutter:focus-visible { outline: 1px solid Highlight; }
 }

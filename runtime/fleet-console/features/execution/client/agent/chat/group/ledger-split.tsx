@@ -48,8 +48,9 @@ export interface GroupLedgerSplitProps {
   readonly renderParticipantBody: (objectiveRecord: ObjectiveRecord) => React.ReactNode;
 }
 
-/** 경계 트랙의 폭·높이(px). 드래그 계산과 그리드 템플릿이 같은 값을 쓴다. */
-const GUTTER_PX = 8;
+/** 경계 트랙의 폭·높이(px) — 오른쪽 사이드바 분할선(`.rail-pane-divider`)과 같은 4px 잡는 영역(보이는 선은 1px).
+ * 드래그 계산과 그리드 템플릿이 같은 값을 쓴다. */
+const GUTTER_PX = 4;
 /** 칸이 이보다 좁아지거나 낮아지지 않는다. */
 const MIN_PANE_PX = 120;
 const KEY_STEP_PX = 32;
@@ -142,6 +143,8 @@ function SplitGutter({ axis, index, rowEnd = null, label, gridRef, weights, onCo
   readonly onCommit: (next: readonly number[]) => void;
 }) {
   const drag = React.useRef<{ pointerId: number; start: number; weights: readonly number[] } | null>(null);
+  // 끄는 동안 경계를 짙게 칠한다(오른쪽 사이드바 크기 조절의 is-dragging 과 같은 단계).
+  const [dragging, setDragging] = React.useState(false);
   const vertical = axis === "column";
   const apply = (startWeights: readonly number[], delta: number) => {
     const grid = gridRef.current;
@@ -158,6 +161,7 @@ function SplitGutter({ axis, index, rowEnd = null, label, gridRef, weights, onCo
     const handle = event.currentTarget;
     try { handle.setPointerCapture(event.pointerId); } catch { /* 캡처가 없어도 칸 안에서는 따라간다. */ }
     drag.current = { pointerId: event.pointerId, start: vertical ? event.clientX : event.clientY, weights };
+    setDragging(true);
   };
   const onPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
     const current = drag.current;
@@ -167,6 +171,7 @@ function SplitGutter({ axis, index, rowEnd = null, label, gridRef, weights, onCo
   const onPointerUp = (event: React.PointerEvent<HTMLDivElement>) => {
     if (drag.current?.pointerId !== event.pointerId) return;
     drag.current = null;
+    setDragging(false);
   };
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const step = event.shiftKey ? KEY_STEP_PX * 2 : KEY_STEP_PX;
@@ -180,7 +185,7 @@ function SplitGutter({ axis, index, rowEnd = null, label, gridRef, weights, onCo
   const right = weights[index + 1] ?? 1;
   return (
     <div
-      className={`group-ledger-split-gutter${vertical ? " is-vertical" : " is-horizontal"}`}
+      className={`group-ledger-split-gutter${vertical ? " is-vertical" : " is-horizontal"}${dragging ? " is-dragging" : ""}`}
       style={vertical ? { gridColumn: index * 2 + 2, gridRow: rowEnd === null ? "1 / -1" : `1 / ${rowEnd}` } : { gridRow: index * 2 + 2, gridColumn: "1 / -1" }}
       role="separator"
       aria-orientation={vertical ? "vertical" : "horizontal"}
