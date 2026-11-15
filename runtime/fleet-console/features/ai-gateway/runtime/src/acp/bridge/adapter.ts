@@ -113,27 +113,6 @@ function toolCatalog(request: CanonicalResponseRequest): { tools: BridgeToolDef[
   return { tools, names };
 }
 
-/**
- * Claude Code's system prompt goes in the session's first prompt, not in `_meta.antigravity.systemPrompt.append`.
- *
- * Measured 2026-11-15 (agy 1.5.9, gemini-3.8-flash/gemini-4-argon): with the real Claude Code system blocks in
- * `append` — even just the 74-character `x-anthropic-billing-header: …` block, or the 62-character
- * `You are a Claude agent, built on Anthropic's Claude Agent SDK.` block, or the 5.5k-character main block — agy's
- * upstream answered `RESOURCE_EXHAUSTED (code 429)` on the very first attempt, every time. The same real request with no
- * system blocks, and with neutral system text of any size tried (including text that mentions "Claude Code"), succeeded;
- * and the same Claude Code text carried in the *message* (the `role: system` environment message Claude Code
- * sends) is accepted. So the instructions ride in the first prompt, wrapped so the model reads them as the standing
- * instructions. The session keeps them in its own history afterwards, so later turns do not repeat them.
- */
-function withInstructions(instructions: string | undefined, blocks: AcpPromptBlock[]): AcpPromptBlock[] {
-  if (!instructions || instructions.length === 0) return blocks;
-  const [first, ...rest] = blocks;
-  const wrapped = `<system_instructions>\n${instructions}\n</system_instructions>\n\n`;
-  return first?.kind === "text"
-    ? [{ kind: "text", text: `${wrapped}${first.text}` }, ...rest]
-    : [{ kind: "text", text: wrapped.trimEnd() }, ...blocks];
-}
-
 function failedResponse(status: number, type: string, message: string): AdapterResponse {
   return {
     ok: false,
@@ -239,9 +218,9 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         this.registry.unexpect(session);
         await session.startPrompt(userTurnBlocks(plan.tail));
       } else {
-        const blocks = withInstructions(request.instructions, plan.route === "fresh"
+        const blocks = plan.route === "fresh"
           ? userTurnBlocks(request.input)
-          : replayBlocks(request.input, this.limits.replayBudgetChars));
+          : replayBlocks(request.input, this.limits.replayBudgetChars);
         session = await this.openSession(request, selection, seed, catalog, plan.route === "rebuild", options.signal);
         await session.startPrompt(blocks);
       }
@@ -347,7 +326,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         model: request.model,
         thoughtLevel: selection.thoughtLevel,
         cwd: os.tmpdir(),
-        systemPrompt: [bridgeNote(), ...(replayed ? [REPLAY_SYSTEM_NOTE] : [])].join("\n\n"),
+        systemPrompt: [request.instructions ?? "", bridgeNote(), ...(replayed ? [REPLAY_SYSTEM_NOTE] : [])].filter((part) => part.length > 0).join("\n\n"),
         mcpServers: [],
         toolOnly: {
           serverName: MCP_SERVER_NAME,
