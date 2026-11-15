@@ -837,7 +837,7 @@ it("creates a Commodore with owned Theaters and selected context atomically, rol
   const id = result.structuredContent.commodoreId as string;
   expect(result.structuredContent.target).toBe(`commodore:${id}`);
   expect(id).not.toBe(sourceId);
-  expect(store.read(id)).toMatchObject({ alias: "Browser", description: { text: input.description, rev: 1 }, intel: [{ text: input.intel[0], source: `commodore:${sourceId}` }] });
+  expect(store.read(id)).toMatchObject({ alias: "Browser", autoMemoryEnabled: false, description: { text: input.description, rev: 1 }, intel: [{ text: input.intel[0], source: `commodore:${sourceId}` }] });
   expect(store.read(id)?.routines ?? []).toEqual([]);
   expect(entities.theatersOf(id)).toEqual([{ path: theater }]);
   expect(ownership.additionalDirectories(id)).toEqual([theater]);

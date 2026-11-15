@@ -357,7 +357,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
       if (first && state) emit({ op: "state", commodoreId: first, theaterIds: theaterIds(first), state, change: "order" });
       else deps.events.publish(COMMODORE_SIDEBAR_CHANNEL, { op: "changed" });
     },
-    create: (alias) => { const id = ownership.create(); deps.created?.(id); store.setAlias(id, alias); store.announceCreated(id); return id; },
+    create: (alias) => { const id = ownership.create(); deps.created?.(id); store.setAutoMemoryEnabled(id, false); store.setAlias(id, alias); store.announceCreated(id); return id; },
     addTheater: async (id, folderGrantId, consent) => {
       const root = deps.folderGrants?.consume(folderGrantId);
       if (!root) throw new CommodoreStoreError("invalid_folder_grant");
