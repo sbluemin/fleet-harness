@@ -15,14 +15,6 @@ export interface AcpMcpServer {
   readonly headers?: Readonly<Record<string, string>>;
 }
 
-/** 이 세션이 쓸 Claude Code 플러그인 하나 — 사령관이 고른, 이미 설치된 사본의 이름과 로컬 디렉터리. */
-export interface AcpPluginSource {
-  /** 플러그인 이름. 변환본이 이 이름으로 노출된다. */
-  readonly name: string;
-  /** Claude Code 쪽 설치본의 절대경로(`.claude-plugin/plugin.json`이 있는 디렉터리). */
-  readonly dir: string;
-}
-
 export type AcpThoughtLevel = "low" | "medium" | "high";
 
 export interface AcpSessionOpenOptions {
@@ -35,11 +27,6 @@ export interface AcpSessionOpenOptions {
   /** 세션 시스템 프롬프트 — `_meta.antigravity.systemPrompt.append`로 붙는다. */
   readonly systemPrompt: string;
   readonly mcpServers: readonly AcpMcpServer[];
-  /**
-   * 이 세션이 쓸 플러그인. 세션을 시작할 때마다 agy 변환 캐시를 이 목록으로 다시 만들고, 세션의 gemini-dir가
-   * 그 이름만(`include_only`) 읽게 한다. 설치·활성 상태는 어디에도 남지 않는다. 비면 플러그인 없이 연다.
-   */
-  readonly plugins?: readonly AcpPluginSource[];
   /** 세션 전용 gemini-dir의 이름으로 쓸 키(`[A-Za-z0-9._-]+`). 생략하면 새 uuid. 세션을 닫으면 그 디렉터리를 지운다. */
   readonly sessionKey?: string;
   /** 세션을 닫으면 자식 프로세스까지 끝낸다. */

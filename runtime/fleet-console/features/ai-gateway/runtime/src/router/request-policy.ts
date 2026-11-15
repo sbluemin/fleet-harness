@@ -6,7 +6,6 @@ import {
 import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-messages/protocol.js";
 import type { GatewayModel, GatewayProvider } from "../models.js";
 import { upstreamModelId } from "../models.js";
-import { antigravityRequestPolicy } from "../upstream/antigravity/request-policy.js";
 import { codexRequestPolicy } from "../upstream/codex/request-policy.js";
 import { museCodeRequestPolicy } from "../upstream/muse-code/request-policy.js";
 import { xaiRequestPolicy } from "../upstream/xai/request-policy.js";
@@ -70,8 +69,13 @@ const claudeRequestPolicy: GatewayRequestPolicy = {
   shapeRequest: (request) => request,
 };
 
-const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
-  antigravity: antigravityRequestPolicy,
+/**
+ * Providers whose wire this router relays. Antigravity is not one of them: its models go to the agy ACP
+ * bridge (`src/acp/`), and the router stops them before any request is shaped.
+ */
+type RoutedGatewayProvider = Exclude<GatewayProvider, "antigravity">;
+
+const POLICIES: Readonly<Record<RoutedGatewayProvider, GatewayRequestPolicy>> = {
   claude: claudeRequestPolicy,
   codex: codexRequestPolicy,
   "muse-code": museCodeRequestPolicy,
@@ -80,6 +84,7 @@ const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
 
 /** The policy a gateway target's provider declared for itself. */
 export function resolveGatewayRequestPolicy(provider: GatewayProvider): GatewayRequestPolicy {
+  if (provider === "antigravity") throw new Error("Antigravity models go to the agy ACP bridge and have no gateway request policy.");
   return POLICIES[provider];
 }
 

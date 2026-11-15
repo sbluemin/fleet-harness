@@ -31,7 +31,6 @@ const UPSTREAM_FOLDERS = [
 
 /** The upstreams a gateway model can name, each of which must declare its own policy. */
 const GATEWAY_PROVIDER_FOLDERS = [
-  "antigravity",
   "codex",
   "xai",
 ] as const;

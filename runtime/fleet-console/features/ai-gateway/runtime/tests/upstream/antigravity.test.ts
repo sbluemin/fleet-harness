@@ -5,30 +5,14 @@ import { describe, expect, it, vi } from "vitest";
 import {
   ANTIGRAVITY_LOAD_CODE_ASSIST_URL,
   ANTIGRAVITY_QUOTA_SUMMARY_URLS,
-  ANTIGRAVITY_STREAM_URL,
-  AntigravityGenerateContentAdapter,
   antigravityPlanLabel,
   antigravityUserAgent,
-  buildAntigravityEnvelope,
-  createAntigravitySignatureLedger,
-  createToolNameCodec,
-  createUpstreamGate,
   fetchAntigravityUsage,
   loadAntigravityCodeAssist,
-  isAntigravitySignature,
   parseAntigravityQuotaSummary,
   resolveAntigravityAuth,
-  resolveAntigravityModelSelection,
-  sanitizeGeminiSchema,
-  translateAntigravityStream,
-  translateAnthropicRequest,
 } from "../../src/index.js";
-import type {
-  AntigravityFrame,
-  CanonicalResponseEvent,
-  CanonicalResponseRequest,
-  CredentialResolverDeps,
-} from "../../src/index.js";
+import type { CredentialResolverDeps } from "../../src/index.js";
 
 const ACCESS = "ya29.a0-access-token";
 const REFRESH = "1//0-refresh-token";
@@ -53,80 +37,6 @@ function credentialDeps(overrides: Partial<CredentialResolverDeps> = {}): Creden
     ...overrides,
   };
 }
-
-function request(overrides: Partial<CanonicalResponseRequest> = {}): CanonicalResponseRequest {
-  return {
-    model: "gemini-3.7-flash-tiered",
-    input: [{ type: "message", role: "user", content: "hi" }],
-    stream: true,
-    ...overrides,
-  };
-}
-
-function envelopeFor(req: CanonicalResponseRequest) {
-  return buildAntigravityEnvelope(req, {
-    project: "model-aria-test",
-    requestId: "agent-test",
-    codec: createToolNameCodec(),
-    ledger: createAntigravitySignatureLedger(),
-  });
-}
-
-async function* frames(...values: AntigravityFrame[]): AsyncGenerator<AntigravityFrame> {
-  for (const value of values) yield value;
-}
-
-function responseFrame(parts: unknown[], extra: Record<string, unknown> = {}): AntigravityFrame {
-  return {
-    response: {
-      candidates: [{ content: { role: "model", parts } }],
-      modelVersion: "gemini-3.7-flash",
-      responseId: "resp-1",
-      ...extra,
-    },
-  };
-}
-
-async function collect(events: AsyncIterable<CanonicalResponseEvent>): Promise<CanonicalResponseEvent[]> {
-  const collected: CanonicalResponseEvent[] = [];
-  for await (const event of events) collected.push(event);
-  return collected;
-}
-
-// A real blob: 436 base64 characters were observed on the live wire.
-const SIGNATURE = "EsMCCsAC".padEnd(120, "AbC+/9=");
-
-describe("antigravity image tool results", () => {
-  it("keeps image bytes next to the named function response across a tool-result batch", () => {
-    const canonical = translateAnthropicRequest({
-      model: "claude-gateway--antigravity--gemini-4-hydrogen",
-      max_tokens: 128,
-      messages: [
-        { role: "user", content: "Inspect both captures." },
-        { role: "assistant", content: [
-          { type: "tool_use", id: "read_1", name: "Read", input: {} },
-          { type: "tool_use", id: "shot_1", name: "Screenshot", input: {} },
-        ] },
-        { role: "user", content: [
-          { type: "tool_result", tool_use_id: "read_1", content: [
-            { type: "text", text: "first capture" },
-            { type: "image", source: { type: "base64", media_type: "image/png", data: "YWJj" } },
-          ] },
-          { type: "tool_result", tool_use_id: "shot_1", content: [
-            { type: "image", source: { type: "base64", media_type: "image/png", data: "ZGVm" } },
-          ] },
-        ] },
-      ],
-    });
-    const envelope = envelopeFor({ ...canonical, model: "gemini-4-hydrogen" });
-    expect(envelope.request.contents.at(-1)).toEqual({ role: "user", parts: [
-      { functionResponse: { name: "Read", id: "read_1", response: { result: "first capture" } } },
-      { inline_data: { mime_type: "image/png", data: "YWJj" } },
-      { functionResponse: { name: "Screenshot", id: "shot_1", response: { result: "" } } },
-      { inline_data: { mime_type: "image/png", data: "ZGVm" } },
-    ] });
-  });
-});
 
 describe("antigravity quota", () => {
   it("does not read credentials on Windows without an Antigravity footprint", async () => {
@@ -295,103 +205,5 @@ describe("antigravity credentials", () => {
     );
     expect(stale).toEqual({ status: "expired" });
     expect(refreshVendorCredential).not.toHaveBeenCalled();
-  });
-});
-
-describe("antigravity request wire", () => {
-
-  it("refuses a foreign provider's reasoning id so the wire fails on the real cause", () => {
-    expect(isAntigravitySignature(SIGNATURE)).toBe(true);
-    for (const foreign of ["rs_68a1b2c3d4", "toolu_01ABCDEFGHIJKL", "fc_abcdef123456", "short", 42, undefined]) {
-      expect(isAntigravitySignature(foreign)).toBe(false);
-    }
-    const envelope = envelopeFor(request({
-      input: [{ type: "function_call", call_id: "c", name: "t", arguments: "{}", reasoning_encrypted: "rs_68a1b2c3d4ef" }],
-    }));
-    expect(envelope.request.contents[0]?.parts[0]?.thoughtSignature).toBeUndefined();
-    // A Codex blob is base64url of a plausible length and passes the shape check; only its
-    // recorded issuer keeps it off this wire after a Codex → Gemini switch.
-    const codexBlob = "gAAAAABo1a2b3c4d5e6f7g8h9i0j_kLmNoPqRsTuVwXyZ-0123456789";
-    expect(isAntigravitySignature(codexBlob)).toBe(true);
-    const switched = envelopeFor(request({
-      input: [{ type: "function_call", call_id: "c", name: "t", arguments: "{}", reasoning_encrypted: codexBlob, reasoning_origin: "codex" }],
-    }));
-    expect(switched.request.contents[0]?.parts[0]?.thoughtSignature).toBeUndefined();
-  });
-});
-
-describe("antigravity adapter", () => {
-
-  it("frees the origin permit it abandoned, so the retry is not queued behind itself", async () => {
-    // The upstream gate holds a permit until the body ends. At a ceiling of one,
-    // an abandoned rejection would make the retry wait behind its own permit —
-    // so this passing at all is the proof the first body was released.
-    const sseFrame = `data: ${JSON.stringify({ response: { candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }], modelVersion: "gemini-3.7-flash", responseId: "r" } })}\n\n`;
-    let attempt = 0;
-    const gate = createUpstreamGate(
-      (async (_input: unknown, init?: RequestInit) => {
-        attempt += 1;
-        if (String((init?.headers as Record<string, string>).Authorization) === `Bearer ${ACCESS}`) {
-          // A real rejection carries a body, which is what holds the permit.
-          return new Response(JSON.stringify({ error: { code: 401, message: "nope" } }), { status: 401 });
-        }
-        return new Response(sseFrame, { status: 200, headers: { "content-type": "text/event-stream" } });
-      }) as never,
-      { maxInFlight: 1, maxQueueWaitMs: 2_000 },
-    );
-    try {
-      const adapter = new AntigravityGenerateContentAdapter({
-        fetch: gate.fetch as never,
-        project: "p",
-        renewCredential: async () => "renewed-token",
-      });
-      const result = await adapter.stream(request(), { apiKey: ACCESS });
-      expect(result.ok).toBe(true);
-      if (!result.ok) return;
-      await collect(result.events);
-      expect(attempt).toBe(2);
-      // Both the discarded rejection and the consumed stream gave their permit back.
-      expect(gate.stats().every((origin) => origin.inFlight === 0)).toBe(true);
-    } finally {
-      gate.dispose();
-    }
-  });
-
-  it("translates MAX_TOKENS and safety filters, leaves STOP complete, and keeps every other stop as its own reason", async () => {
-    async function streamCompleted(finishReason?: string, extra: Record<string, unknown> = {
-      candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason }],
-    }) {
-      const stream = translateAntigravityStream(
-        frames(responseFrame([], extra)),
-        {
-          codec: createToolNameCodec(),
-          ledger: createAntigravitySignatureLedger(),
-          model: "gemini-3.7-flash",
-          callIdPrefix: "test",
-        },
-      );
-      const events = await collect(stream);
-      const completed = events.find((event) => event.type === "response.completed");
-      if (completed?.type !== "response.completed") throw new Error("no response.completed");
-      return completed.response;
-    }
-
-    expect((await streamCompleted("MAX_TOKENS")).incomplete).toEqual({ reason: "max_output_tokens" });
-    expect((await streamCompleted("SAFETY")).incomplete).toEqual({ reason: "content_filter" });
-    expect((await streamCompleted("STOP")).incomplete).toBeUndefined();
-    expect((await streamCompleted("FINISH_REASON_UNSPECIFIED")).incomplete).toBeUndefined();
-    // 대응하는 Anthropic stop reason이 없는 종료는 원래 값을 그대로 넘겨 하류가 오류로 낸다.
-    expect((await streamCompleted("MALFORMED_FUNCTION_CALL")).incomplete).toEqual({ reason: "MALFORMED_FUNCTION_CALL" });
-    // 종료 사유 없이 끊긴 스트림은 완료가 아니라 사유 없는 미완료로 끝난다.
-    expect((await streamCompleted()).incomplete).toEqual({});
-    // 프롬프트 자체가 차단되면 candidates 없이 promptFeedback.blockReason만 온다.
-    expect((await streamCompleted(undefined, {
-      candidates: [],
-      promptFeedback: { blockReason: "PROHIBITED_CONTENT" },
-    })).incomplete).toEqual({ reason: "content_filter" });
-    expect((await streamCompleted(undefined, {
-      candidates: [],
-      promptFeedback: { blockReason: "OTHER" },
-    })).incomplete).toEqual({ reason: "prompt blocked: OTHER" });
   });
 });

@@ -5,8 +5,8 @@ import path from "node:path";
  *
  * 사람의 `~/.gemini`(와 그 아래 `antigravity-cli`)는 건드리지 않는다. agy는 `--app-data-dir`로 **절대경로를
  * 거부**하고 `--gemini-dir` 아래의 상대 이름만 받는다(agy 1.5.9 실측). 그래서 세션마다 gemini-dir를 따로 두고
- * (`<sessionsDir>/<key>`) 그 아래 이름 하나(`fleet-agy`)를 app-data-dir로 쓴다. 세션이 서로의 설정
- * (`config/plugins.json`)을 덮지 못하게 하려는 분리이기도 하다.
+ * (`<sessionsDir>/<key>`) 그 아래 이름 하나(`fleet-agy`)를 app-data-dir로 쓴다. 세션이 서로의 설정을
+ * 덮지 못하게 하려는 분리이기도 하다.
  *
  * 구독 로그인은 gemini-dir가 아니라 사용자 계정 저장소(키체인 등)에 있다 — 새 gemini-dir여도 로그인은 유지된다.
  * 그래서 `agy acp` 자식은 실제 HOME으로 띄운다. HOME까지 옮기면 로그인을 못 찾는다(-32000 Authentication required).

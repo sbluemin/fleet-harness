@@ -26,7 +26,6 @@ async function harness(models?: string) {
   const sessionsDir = path.join(root, "sessions");
   const port = createAgyAcpSessionPort({
     sessionsDir,
-    pluginCacheDir: path.join(root, "plugins"),
     command: process.execPath,
     commandArgs: [fakeAgy],
     env: { ...process.env, FAKE_LOG: log, ...(models ? { FAKE_MODELS: models } : {}) },

@@ -16,7 +16,6 @@ import { createSessionUpdateNormalizer, toTurnEnd } from "./events.js";
 import { JsonRpcClosedError, JsonRpcError, createJsonRpcPeer, type JsonRpcPeer } from "./jsonrpc.js";
 import { isAcpModelAvailable, resolveAcpModelSelection } from "./models.js";
 import { agyAcpStateArgs, resolveAgySessionPaths } from "./paths.js";
-import { refreshAgyPluginCache, writeAgySessionPlugins } from "./plugins.js";
 
 const ACP_PROTOCOL_VERSION = 1;
 const STARTUP_TIMEOUT_MS = 120_000;
@@ -27,8 +26,6 @@ const STDERR_TAIL_BYTES = 4_096;
 export interface AgyAcpPortOptions {
   /** 세션 전용 gemini-dir들의 부모(Fleet 데이터 루트 아래의 절대경로). 세션마다 `<sessionsDir>/<key>`가 생기고 닫을 때 지워진다. */
   readonly sessionsDir: string;
-  /** 플러그인 변환 캐시(`…/commodore-plugins/agy`). 지워도 되는 파생 사본이고, 세션을 시작할 때 다시 만든다. */
-  readonly pluginCacheDir: string;
   /** agy 실행 파일. 기본은 `FLEET_ANTIGRAVITY_CLI` 또는 PATH의 `agy`. */
   readonly command?: string;
   /** 실행 파일 앞에 붙일 인자(테스트가 스크립트를 띄울 때 쓴다). */
@@ -223,16 +220,7 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
       const paths = resolveAgySessionPaths(options.sessionsDir, open.sessionKey ?? randomUUID());
       const removeSessionDir = (): Promise<void> => rm(paths.geminiDir, { recursive: true, force: true });
       try {
-        // 플러그인은 세션을 시작할 때마다 이 세션이 고른 것만 다시 변환한다. 세션 gemini-dir가 그 이름만 읽는다.
-        const pluginNames = await refreshAgyPluginCache({
-          pluginCacheDir: options.pluginCacheDir,
-          plugins: open.plugins ?? [],
-          command,
-          ...(options.commandArgs ? { commandArgs: options.commandArgs } : {}),
-          env,
-        });
         await mkdir(paths.geminiDir, { recursive: true });
-        await writeAgySessionPlugins(paths.geminiDir, options.pluginCacheDir, pluginNames);
       } catch (error) {
         await removeSessionDir();
         throw error;
