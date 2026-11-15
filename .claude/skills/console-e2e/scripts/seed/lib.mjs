@@ -38,6 +38,27 @@ export function assemble(api) {
       const { commodoreId } = await api("POST", "/api/v1/commodore/create", { alias });
       return commodoreId;
     },
+    /**
+     * Per-commodore advanced options through the product's own routes (they own the stored shape, migration markers and versioning).
+     * Only "on" | "off" are accepted ("unset" is rejected, see fixtures.mjs). Returns what the product reports afterwards, with the raw auto-memory field.
+     */
+    async advanced(commodoreId, want) {
+      const put = (route, body) => api("PUT", `/api/v1/agent/${route}?commodoreId=${encodeURIComponent(commodoreId)}`, body);
+      for (const key of ["autoMemory", "basePrompt", "subagents"]) {
+        if (want[key] !== "on" && want[key] !== "off") throw new Error(`advanced: ${key} must be "on" or "off", got ${JSON.stringify(want[key])}. "unset" cannot be seeded into a running Console: creation stores auto memory false and base prompt "off", no public route removes a stored key, and "on" (base prompt) / "off" (subagents) delete theirs, which reads as the default but is not an unsaved state.`);
+      }
+      await api("POST", "/api/v1/commodore/auto-memory", { commodoreId, autoMemoryEnabled: want.autoMemory === "on" });
+      await put("commodore-system-prompt", { basePromptEnabled: want.basePrompt === "on" });
+      await put("commodore-subagents", { subagentsKept: want.subagents === "on" });
+      const stored = await api("POST", "/api/v1/commodore/state", { commodoreId });
+      const read = (route) => api("GET", `/api/v1/agent/${route}?commodoreId=${encodeURIComponent(commodoreId)}`);
+      return {
+        requested: want,
+        autoMemoryEnabledField: (stored.state ?? stored).autoMemoryEnabled, // raw stored field; the product reads absent as on
+        basePromptEnabled: (await read("commodore-system-prompt")).basePromptEnabled, // product's interpretation
+        subagentsKept: (await read("commodore-subagents")).subagentsKept,
+      };
+    },
     async theater(commodoreId, folder) {
       const grant = await api("POST", "/api/v1/theaters/folder-grants", { path: folder });
       const { theaterId } = await api("POST", "/api/v1/commodore/theaters/add", { commodoreId, folderGrantId: grant.folderGrantId });

@@ -2,7 +2,7 @@
 /**
  * Seed an owned, isolated Fleet Console with commodores, theaters and (optionally) objectives. Procedure: ../../references/seed.md
  *
- *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives|activity|details|inbox
+ *   node seed.mjs --dir <FLEET_CONSOLE_DATA_DIR> --profile empty|basic|multi|objectives|activity|details|inbox|advanced
  *        [--commodores N] [--theaters M] [--objectives K]
  *        [--root <dir for theater folders>]          default: <os tmpdir>/seed-theaters/<slot hash> (outside every repository)
  *        [--fake-claude-dir <FAKE_CLAUDE_DIR>]       required by objectives and inbox: the fake agent adds them
@@ -13,7 +13,7 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
-import { ACTIVITY_REPLY, ACTIVITY_SECTION, PROFILES } from "./fixtures.mjs";
+import { ADVANCED_STATES, ACTIVITY_REPLY, ACTIVITY_SECTION, PROFILES } from "./fixtures.mjs";
 import { seedDetails } from "./details.mjs";
 import { seedInbox } from "./inbox.mjs";
 import { assemble, assertFreshSlot, openConsole, parseArgs, until, writeIds } from "./lib.mjs";
@@ -31,6 +31,7 @@ for (const key of ["commodores", "theaters", "objectives"]) if (!Number.isIntege
 const fakeDir = args.get("fake-claude-dir");
 if ((spec.objectives > 0 || spec.inbox) && typeof fakeDir !== "string") fail("objectives and inbox need --fake-claude-dir (the fake agent creates them through the Commodore tool)");
 if (spec.activity && spec.objectives < 1) fail("activity needs at least one objective (do not combine it with --objectives 0)");
+if (spec.advanced && spec.commodores > ADVANCED_STATES.length) fail(`advanced defines ${ADVANCED_STATES.length} states; --commodores must be <= ${ADVANCED_STATES.length}`);
 if (spec.inbox && spec.objectives !== 0) fail("inbox does not take --objectives");
 if (spec.inbox && (spec.theaters < 1 || spec.commodores < 1)) fail("inbox needs a commodore and a theater");
 
@@ -43,6 +44,7 @@ try {
   for (let c = 1; c <= spec.commodores; c += 1) {
     const commodoreId = await make.commodore(`Seed ${c}`);
     const entry = { commodoreId, theaters: [], objectives: [] };
+    if (spec.advanced) entry.advanced = { label: ADVANCED_STATES[c - 1].label, ...(await make.advanced(commodoreId, ADVANCED_STATES[c - 1])) };
     for (let t = 1; t <= spec.theaters; t += 1) {
       const folder = path.join(root, `c${c}-t${t}`);
       mkdirSync(folder, { recursive: true });

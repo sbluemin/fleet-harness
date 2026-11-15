@@ -16,6 +16,7 @@ node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" -
 | `objectives` | 1 commodore, 1 theater, 2 objectives, each with a roster entry and 2 missions (board data only: no member session is launched or resumed) |
 | `activity` | `objectives` board data, with each commodore's first objective commenced (in-progress commander), a synthetic last reply, and that commodore in a local sidebar section |
 | `details` | `activity` (1 objective by default), with brief, criteria, mission records, sealed results and shared files on its commenced objective; excludes actor-rewritten mission-resume records. |
+| `advanced` | 2 commodores, no theater: per-commodore advanced options (auto memory, base system prompt, subagents) all on and all off. "Unset" (no saved override) cannot be seeded into a running Console and is rejected: creation stores auto memory `false` and prompt `off`, and the product reads a missing field as on. `commodores[].advanced` maps each id to requested and product-read values. |
 | `inbox` | 1 commodore, 1 theater, three objectives handed to the person (one criteria proposal, one review, one open follow-up) and one open commodore question. No sidebar section and no transcript turns. |
 
 Counts override with the flags. Theater folders are created under `--root` (default `<os tmpdir>/seed-theaters/<slot hash>`), outside every repository as [setup.md](setup.md) requires; remove them with the run.
