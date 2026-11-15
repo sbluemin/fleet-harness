@@ -142,6 +142,20 @@ describe("agy ACP bridge", () => {
     expect(count(await log(), "session/new")).toBe(2);
   });
 
+  it("ends the turn as a rate_limit_error instead of forwarding agy's upstream retry notices as model output", async () => {
+    const { bridge, log } = await setup();
+    const response = await bridge.stream({ model: MODEL, input: [user("UPSTREAM429")], instructions: "be brief", tools: [BASH], stream: true }, { apiKey: "" });
+    expect(response.ok).toBe(false);
+    if (response.ok) return;
+    expect(response.status).toBe(429);
+    const body = JSON.parse(new TextDecoder().decode(response.body)) as { type: string; error: { type: string; message: string } };
+    expect(body).toMatchObject({ type: "error", error: { type: "rate_limit_error" } });
+    expect(body.error.message).toContain("RESOURCE_EXHAUSTED");
+    expect(JSON.stringify(body)).not.toContain("NOT-A-REAL-ANSWER");
+    // agy's own retries are not waited for: the prompt is cancelled and the child ended.
+    await until(async () => (await log()).some((entry) => entry.terminated === true));
+  });
+
   it("denies built-in tools and fails the turn if one runs anyway", async () => {
     const { bridge, log } = await setup();
     const { events } = await turn(bridge, [user("BUILTIN")]);

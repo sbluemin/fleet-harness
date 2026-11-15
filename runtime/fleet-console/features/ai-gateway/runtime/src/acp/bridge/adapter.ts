@@ -15,6 +15,7 @@ import {
 import { estimateTokens } from "../../transport/token-estimate.js";
 import { wireLog } from "../../transport/wire-log.js";
 import { AcpAuthRequiredError, AcpModelUnavailableError, type AcpPromptBlock, type AcpSessionPort } from "../contract.js";
+import { parseAgyUpstreamError, type AgyUpstreamError } from "../events.js";
 import { resolveAcpModelSelection, type AcpModelSelection } from "../models.js";
 import { AGY_INERT_TOOL_TITLES, toolOnlyTitlePrefix } from "../tool-only.js";
 import {
@@ -71,6 +72,8 @@ export interface AgyAcpBridge extends AiGatewayAdapter {
 }
 
 const MCP_SERVER_NAME = "fleet";
+/** 응답을 내보내기 전에 첫 출력을 기다리는 최대 시간. 첫 출력이 업스트림 오류 알림이면 HTTP 오류로 끝낸다. */
+const FIRST_OUTPUT_WAIT_MS = 8_000;
 const DEFAULTS = {
   maxSessions: 8,
   callTimeoutSeconds: 3_600,
@@ -127,6 +130,21 @@ function resultContent(output: CanonicalFunctionCallOutput["output"]): McpResult
     content.push(match ? { type: "image", mimeType: match[1]!, data: match[2]! } : { type: "text", text: `[image: ${image.image_url}]` });
   }
   return content.length > 0 ? content : [{ type: "text", text: "(no output)" }];
+}
+
+/** agy가 알린 업스트림 오류를 Anthropic 오류 형식(HTTP 상태와 오류 type)으로 옮긴다. */
+function upstreamFailure(error: AgyUpstreamError): { readonly status: number; readonly type: string; readonly message: string } {
+  const message = `agy upstream error${error.status ? ` ${error.status}` : ""}${error.code ? ` (code ${error.code})` : ""}: ${error.message}`;
+  const code = error.code;
+  const status = error.status;
+  if (code === 429 || status === "RESOURCE_EXHAUSTED") return { status: 429, type: "rate_limit_error", message };
+  if (code === 401 || status === "UNAUTHENTICATED") return { status: 401, type: "authentication_error", message };
+  if (code === 403 || status === "PERMISSION_DENIED") return { status: 403, type: "permission_error", message };
+  if (code === 404 || status === "NOT_FOUND") return { status: 404, type: "not_found_error", message };
+  if (code === 400 || status === "INVALID_ARGUMENT" || status === "FAILED_PRECONDITION") return { status: 400, type: "invalid_request_error", message };
+  if (code === 503 || code === 529 || status === "UNAVAILABLE") return { status: 529, type: "overloaded_error", message };
+  if (code === 504 || status === "DEADLINE_EXCEEDED") return { status: 504, type: "api_error", message };
+  return { status: code !== undefined && code >= 500 && code <= 599 ? code : 500, type: "api_error", message };
 }
 
 type Plan =
@@ -208,6 +226,23 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       }
     } catch (error) {
       return this.openFailure(error);
+    }
+
+    // agy는 업스트림 오류(429 등)를 재시도하며 그 알림을 모델 출력처럼 흘린다. 응답을 시작하기 전에 첫 출력을
+    // 보고, 오류 알림이면 재시도를 기다리지 않고 Messages 오류(HTTP 상태)로 끝낸다. 오래 걸리면 그대로 스트림을 연다.
+    const first = await session.channel.scan(
+      (item) => item.kind !== "acp" || ["text", "thought", "turn-end", "exit"].includes(item.event.kind),
+      FIRST_OUTPUT_WAIT_MS,
+      options.signal,
+    );
+    if (typeof first === "object" && first.kind === "acp" && first.event.kind === "text") {
+      const upstream = parseAgyUpstreamError(first.event.text);
+      if (upstream) {
+        const failure = upstreamFailure(upstream);
+        wireLog("bridge.upstream_error", { session: session.key, status: failure.status, type: failure.type });
+        await session.close(failure.message);
+        return failedResponse(failure.status, failure.type, failure.message);
+      }
     }
 
     return {
@@ -355,9 +390,9 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       }
       open = undefined;
     };
-    const fail = async function* (this: AgyAcpBridgeAdapter, message: string): AsyncGenerator<CanonicalResponseEvent> {
+    const fail = async function* (this: AgyAcpBridgeAdapter, message: string, type = "api_error"): AsyncGenerator<CanonicalResponseEvent> {
       yield* closeRun();
-      yield { type: "response.failed", response: { ...snapshot(), error: { type: "api_error", message } } };
+      yield { type: "response.failed", response: { ...snapshot(), error: { type, message } } };
       finished = true;
       await session.close(message);
     }.bind(this);
@@ -395,6 +430,14 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         const event = item.event;
         switch (event.kind) {
           case "text": {
+            // agy의 업스트림 오류 알림은 모델 출력이 아니다: 내보내지 않고 이 턴을 SSE 오류로 끝낸다(agy 재시도를 기다리지 않는다).
+            const upstream = parseAgyUpstreamError(event.text);
+            if (upstream) {
+              const failure = upstreamFailure(upstream);
+              wireLog("bridge.upstream_error", { session: session.key, status: failure.status, type: failure.type });
+              yield* fail(failure.message, failure.type);
+              return;
+            }
             if (open?.kind !== "text") {
               yield* closeRun();
               open = { kind: "text", id: `agm_${sequence++}` };

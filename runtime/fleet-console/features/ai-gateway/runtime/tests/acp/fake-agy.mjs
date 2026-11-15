@@ -3,6 +3,7 @@
 // Prompt scripts (the prompt text decides what the fake "model" does):
 //   TOOL:<name>:<json>     ask permission for `Run mcp_fleet_<name>`, call that MCP tool, then answer `got:<result text>`
 //   TIMEOUT:<name>         call the MCP tool and give up on it after 50ms (agy's call deadline), then keep talking
+//   UPSTREAM429            agy's upstream-error retry notices as ordinary message chunks, then a normal-looking answer
 //   BUILTIN                ask permission for a built-in tool and run it anyway
 //   anything else          answer `echo:<first 60 chars>` plus `history:yes|no` (whether a conversation_history block came)
 // Without any of those the original fixed event stream is sent (the session port test relies on it).
@@ -88,6 +89,11 @@ async function runPrompt(id, blocks) {
   } else if ((match = /^TIMEOUT:(.+)$/s.exec(text))) {
     await callTool(`Run mcp_fleet_${match[1]}`, match[1], {}, 50);
     say("timed out after 3 minutes");
+  } else if (text.startsWith("UPSTREAM429")) {
+    say("\n⚠ API error (attempt 1): RESOURCE_EXHAUSTED (code 429): Resource has been exhausted (e.g. check quota).\n");
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    say("\n⚠ API error (attempt 2): RESOURCE_EXHAUSTED (code 429): Resource has been exhausted (e.g. check quota).\n");
+    say("NOT-A-REAL-ANSWER");
   } else if (text.startsWith("BUILTIN")) {
     await callTool("Run run_command", "run_command", {});
     update({ sessionUpdate: "tool_call", toolCallId: "tb", title: "Run run_command", kind: "other", status: "in_progress", rawInput: {} });

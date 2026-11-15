@@ -109,3 +109,37 @@ export function toTurnEnd(stopReason: unknown, usage?: unknown): Extract<AcpSess
       return { kind: "turn-end", stopReason: "error", detail: `Unexpected stop reason: ${String(stopReason)}` };
   }
 }
+
+/** agy가 모델 출력 대신 내보내는 업스트림 오류 알림. */
+export interface AgyUpstreamError {
+  /** gRPC 상태 이름(`RESOURCE_EXHAUSTED`). 알림에 없으면 비어 있다. */
+  readonly status: string | undefined;
+  /** HTTP 코드(`429`). 알림에 없으면 undefined. */
+  readonly code: number | undefined;
+  /** 알림 문구에서 접두(`⚠`, `API error (attempt N):`)를 뗀 본문. */
+  readonly message: string;
+}
+
+/**
+ * `agent_message_chunk` 텍스트가 agy의 업스트림 오류 알림이면 그 내용을 돌려준다.
+ *
+ * **구조 신호는 없다.** agy 1.5.9는 업스트림 429를 재시도하는 동안(실측: 8회, 약 147초) 오류를 ACP 오류 필드가 아니라
+ * 평범한 `agent_message_chunk`로 내보내고, 포기한 뒤에도 `stopReason: "end_turn"`으로 정상 종료한다(prompt 결과에
+ * 오류 필드가 없었다). 그래서 문자열 패턴이 유일한 감지 수단이다. 패턴은 이 알림이 쓰는 모양에 고정한다:
+ * - 청크가 `⚠`로 시작하고(앞 공백 허용),
+ * - `API error (attempt N): ` 접두가 있거나, `<GRPC_STATUS> (code NNN): ` 꼴이다.
+ * 실측 문구: `\n⚠ API error (attempt 8): RESOURCE_EXHAUSTED (code 429): Resource has been exhausted (e.g. check quota).\n`,
+ * 마지막 포기 알림은 접두 없이 `\n⚠ RESOURCE_EXHAUSTED (code 429): …\n`.
+ * 청크 중간의 `⚠`나 다른 모양은 모델 출력으로 두어 오탐을 피한다.
+ */
+export function parseAgyUpstreamError(text: string): AgyUpstreamError | undefined {
+  const body = /^\s*⚠\s*([\s\S]*?)\s*$/.exec(text)?.[1];
+  if (body === undefined) return undefined;
+  const attempt = /^API error \(attempt \d+\):\s*([\s\S]*)$/.exec(body);
+  const rest = attempt ? attempt[1]! : body;
+  const coded = /^([A-Z][A-Z0-9_]+) \(code (\d{3})\):?\s*([\s\S]*)$/.exec(rest);
+  if (coded) return { status: coded[1]!, code: Number(coded[2]), message: coded[3]!.trim() };
+  if (!attempt) return undefined;
+  const numeric = /\b(?:code|HTTP|status)[ :]+(\d{3})\b/i.exec(rest);
+  return { status: undefined, code: numeric ? Number(numeric[1]) : undefined, message: rest.trim() };
+}

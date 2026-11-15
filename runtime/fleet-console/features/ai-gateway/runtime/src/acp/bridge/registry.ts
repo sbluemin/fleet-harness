@@ -48,9 +48,20 @@ export class BridgeChannel {
   }
 
   async next(timeoutMs: number, signal?: AbortSignal): Promise<BridgeItem | typeof READ_TIMEOUT | typeof READ_ABORTED> {
+    const item = await this.scan(() => true, timeoutMs, signal);
+    if (typeof item === "object") this.items.splice(this.items.indexOf(item), 1);
+    return item;
+  }
+
+  /** 큐에서 꺼내지 않고, 조건에 맞는 첫 항목이 올 때까지 기다린다. */
+  async scan(
+    matches: (item: BridgeItem) => boolean,
+    timeoutMs: number,
+    signal?: AbortSignal,
+  ): Promise<BridgeItem | typeof READ_TIMEOUT | typeof READ_ABORTED> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
-      const item = this.items.shift();
+      const item = this.items.find(matches);
       if (item) return item;
       if (signal?.aborted) return READ_ABORTED;
       const remaining = deadline - Date.now();
