@@ -23,11 +23,13 @@ const PROVIDER_LABEL = {
   codex: "terminal.settings.aiGatewayProviderCodex",
   xai: "terminal.settings.aiGatewayProviderXai",
   "muse-code": "terminal.settings.aiGatewayProviderMuseCode",
+  opencode: "terminal.settings.aiGatewayProviderOpencode",
 } as const;
 
 /**
  * 게이트웨이가 각 공급자에 붙는 방식. Antigravity만 agy ACP 브리지로 말하고
- * (router.ts의 agyBridgeGateway), 나머지는 구독 OAuth 자격으로 공급자 API를 직접 부른다.
+ * (router.ts의 agyBridgeGateway), OpenCode Go는 Console에 저장한 API 키로, 나머지는 구독
+ * OAuth 자격으로 공급자 API를 직접 부른다.
  */
 const PROVIDER_TRANSPORT = {
   antigravity: "terminal.settings.aiGatewayTransportAcp",
@@ -35,10 +37,11 @@ const PROVIDER_TRANSPORT = {
   codex: "terminal.settings.aiGatewayTransportOauth",
   xai: "terminal.settings.aiGatewayTransportOauth",
   "muse-code": "terminal.settings.aiGatewayTransportOauth",
+  opencode: "terminal.settings.aiGatewayTransportApiKey",
 } as const;
 
 /** 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서. */
-const LAUNCH_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code"];
+const LAUNCH_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"];
 
 /**
  * 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서.
@@ -120,6 +123,9 @@ export function AiGatewayCompactCard(): React.ReactElement {
 
   const providers = orderAiGatewayProviders(state.aiGatewayCatalog.providers);
   const services = auth.state?.providers.filter((entry) => entry.kind === "service") ?? [];
+  // 카탈로그 공급자 중 API 키로 로그인하는 것. 그 공급자 줄이 키 입력을 진다.
+  const keyAuthOf = (providerId: string): ModelAuthProviderState | undefined =>
+    auth.state?.providers.find((entry) => entry.kind === "model-provider" && entry.provider === providerId);
   const pool = poolProviders(state.aiGateway?.models);
 
   return (
@@ -128,7 +134,13 @@ export function AiGatewayCompactCard(): React.ReactElement {
         {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
         {auth.error ? <p className="global-settings-error" role="alert">{auth.error}</p> : null}
         {providers.map((provider) => (
-          <ProviderLoginRow key={provider.id} provider={provider} status={state.aiGatewayLogin[provider.id] ?? null} />
+          <ProviderLoginRow
+            key={provider.id}
+            provider={provider}
+            status={state.aiGatewayLogin[provider.id] ?? null}
+            keyAuth={keyAuthOf(provider.id)}
+            busy={auth.busyProvider === provider.id}
+          />
         ))}
         {services.map((service) => (
           <ServiceLoginRow key={service.provider} service={service} busy={auth.busyProvider === service.provider} />
@@ -150,7 +162,13 @@ export function AiGatewayCompactCard(): React.ReactElement {
   );
 }
 
-function ProviderLoginRow({ provider, status }: { readonly provider: AiGatewayCatalogProvider; readonly status: string | null }): React.ReactElement {
+function ProviderLoginRow({ provider, status, keyAuth, busy }: {
+  readonly provider: AiGatewayCatalogProvider;
+  readonly status: string | null;
+  /** API 키로 로그인하는 공급자의 키 상태. 있으면 사용량 패널 대신 이 줄이 키를 받는다. */
+  readonly keyAuth: ModelAuthProviderState | undefined;
+  readonly busy: boolean;
+}): React.ReactElement {
   const mobile = useMobileSettingsHost() !== null;
   const t = getT(useTerminalLocale(), mobile);
   const name = t(PROVIDER_LABEL[provider.id]);
@@ -171,7 +189,9 @@ function ProviderLoginRow({ provider, status }: { readonly provider: AiGatewayCa
       </span>
       <span className="ai-gateway-login-control">
         {provider.id === "xai" ? <XaiEndpointSegments /> : null}
-        {kind === "unlinked" ? (
+        {keyAuth ? (
+          <ApiKeyLoginControl credential={keyAuth} name={name} busy={busy} />
+        ) : kind === "unlinked" ? (
           <button type="button" className="ai-gateway-login is-unlinked" onClick={() => requestQuotaPanelOpen()}>{t("terminal.settings.aiGatewayUsageUnlinked")}</button>
         ) : kind === "out" ? (
           <>
@@ -239,7 +259,6 @@ function XaiEndpointSegments(): React.ReactElement | null {
 function ServiceLoginRow({ service, busy }: { readonly service: ModelAuthProviderState; readonly busy: boolean }): React.ReactElement {
   const mobile = useMobileSettingsHost() !== null;
   const t = getT(useTerminalLocale(), mobile);
-  const [apiKey, setApiKey] = React.useState("");
   return (
     <div className="ai-gateway-login-row">
       <span className="ai-gateway-service-mark" aria-hidden="true">{serviceGlyph("typesafe")}</span>
@@ -248,20 +267,38 @@ function ServiceLoginRow({ service, busy }: { readonly service: ModelAuthProvide
         <span className="ai-gateway-transport">{t("terminal.settings.aiGatewayTransportApiKey")}</span>
       </span>
       <span className="ai-gateway-login-control">
-        {service.signedIn ? (
-          <button type="button" className="ai-gateway-signout" disabled={busy} onClick={() => void signOutModel(service.provider)}>
-            {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
-          </button>
-        ) : (
-          <form className="ai-gateway-key-form" onSubmit={(event) => {
-            event.preventDefault();
-            void signInModel(service.provider, apiKey).then((ok) => { if (ok) setApiKey(""); });
-          }}>
-            <input type="password" className="ai-gateway-key-input" placeholder={t("terminal.auth.apiKey")} value={apiKey} autoComplete="off" spellCheck={false} disabled={busy} aria-label={t("terminal.auth.apiKeyAria", { name: service.displayName })} onChange={(event) => setApiKey(event.target.value)} />
-            <button type="submit" className="ai-gateway-add-button" disabled={busy || apiKey.trim().length === 0}>{busy ? t("terminal.auth.verifying") : t("terminal.auth.signIn")}</button>
-          </form>
-        )}
+        <ApiKeyLoginControl credential={service} name={service.displayName} busy={busy} />
       </span>
     </div>
+  );
+}
+
+/** API 키 하나로 로그인하는 자격의 입력과 로그아웃. 키는 서버가 검증한 뒤에만 저장된다. */
+function ApiKeyLoginControl({ credential, name, busy }: {
+  readonly credential: ModelAuthProviderState;
+  readonly name: string;
+  readonly busy: boolean;
+}): React.ReactElement {
+  const mobile = useMobileSettingsHost() !== null;
+  const t = getT(useTerminalLocale(), mobile);
+  const [apiKey, setApiKey] = React.useState("");
+  const afterChange = (ok: boolean): void => {
+    if (!ok) return;
+    setApiKey("");
+    // 카탈로그 공급자의 로그인 상태는 설정 상태가 나른다. 키가 바뀌면 다시 읽는다.
+    if (credential.kind === "model-provider") void loadSystemPromptSettings();
+  };
+  return credential.signedIn ? (
+    <button type="button" className="ai-gateway-signout" disabled={busy} onClick={() => void signOutModel(credential.provider).then(afterChange)}>
+      {busy ? t("terminal.auth.working") : t("terminal.auth.signOut")}
+    </button>
+  ) : (
+    <form className="ai-gateway-key-form" onSubmit={(event) => {
+      event.preventDefault();
+      void signInModel(credential.provider, apiKey).then(afterChange);
+    }}>
+      <input type="password" className="ai-gateway-key-input" placeholder={t("terminal.auth.apiKey")} value={apiKey} autoComplete="off" spellCheck={false} disabled={busy} aria-label={t("terminal.auth.apiKeyAria", { name })} onChange={(event) => setApiKey(event.target.value)} />
+      <button type="submit" className="ai-gateway-add-button" disabled={busy || apiKey.trim().length === 0}>{busy ? t("terminal.auth.verifying") : t("terminal.auth.signIn")}</button>
+    </form>
   );
 }

@@ -159,6 +159,7 @@
   --provider-typesafe: oklch(73% 0.09 339);
   --provider-codex: oklch(78% 0.035 248);
   --provider-xai: oklch(76% 0.055 258);
+  --provider-opencode: oklch(72% 0.07 165);
   --provider-antigravity: oklch(73% 0.085 288);
   /* 정체성 톤(--id-*) — Objective accent·그룹색·captain 식별이 공유하는 8톤.
      각 테마의 채도 봉투를 따라 재조율된다(다크 C≈0.06). 신호색(brass/aurora/warn/coral)과
@@ -675,6 +676,7 @@
   --provider-typesafe: oklch(52% 0.135 339);
   --provider-codex: oklch(43% 0.035 255);
   --provider-xai: oklch(46% 0.06 258);
+  --provider-opencode: oklch(48% 0.08 165);
   --provider-antigravity: oklch(51% 0.1 288);
 
   --id-crimson: oklch(54% 0.1 25);
@@ -1254,6 +1256,7 @@
   --provider-typesafe: oklch(73% 0.09 339);
   --provider-codex: oklch(78% 0.035 248);
   --provider-xai: oklch(76% 0.055 258);
+  --provider-opencode: oklch(72% 0.07 165);
   --provider-antigravity: oklch(73% 0.085 288);
   --popover-icon-ink: rgb(245 245 245 / 64%);
 }
@@ -1313,6 +1316,7 @@
   --provider-typesafe: oklch(52% 0.135 339);
   --provider-codex: oklch(43% 0.035 255);
   --provider-xai: oklch(46% 0.06 258);
+  --provider-opencode: oklch(48% 0.08 165);
   --provider-antigravity: oklch(51% 0.1 288);
   --popover-icon-ink: rgb(28 28 28 / 66%);
 }

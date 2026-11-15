@@ -1133,7 +1133,7 @@ function usage(value: unknown): CanonicalUsage {
  * so dropping the ones a backend cannot read costs nothing observable — the same trade
  * `strictSchema` already makes for `format`.
  *
- * The backslash-digit escape below is a measurement from the since-removed OpenCode Go
+ * The backslash-digit escape below is a measurement from the OpenCode Go
  * backend, not one taken here: that backend refused `\0`, `\1`, and `\012` while accepting
  * the lookaround this one rejects. The rule stays identical across the copies because dropping
  * an advisory `pattern` a backend would have accepted costs nothing, while a copy that lags the

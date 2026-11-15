@@ -43,7 +43,7 @@ describe("buildModelRoster login filter", () => {
     expect(buildAgentCliLaunchKinds(
       [{ id: "claude", label: "Claude", available: true, signedIn: true }],
       "agent",
-      { claude: "signed_out", codex: "signed_out", xai: "signed_out", antigravity: "not_connected", "muse-code": "signed_out" },
+      { claude: "signed_out", codex: "signed_out", xai: "signed_out", antigravity: "not_connected", "muse-code": "signed_out", opencode: "signed_out" },
     )[0]?.variants?.map((group) => group.id)).toEqual(["roster-fallback"]);
 
     // 사용량 수집 동의가 꺼져 생긴 Claude not_connected는 자격 로그아웃이 아니다. 숨기지 않는다.

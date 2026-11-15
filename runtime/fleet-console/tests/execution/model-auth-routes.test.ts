@@ -15,6 +15,7 @@ interface RouterHarnessOptions {
 
 const BASE_PATH = "/api/v1";
 const TYPESAFE_PROVIDER_ID = "Fleet Console with TypeSafe System One";
+const OPENCODE_PROVIDER_ID = "Claude Code with OpenCode Go";
 const TYPESAFE_PATH = `${BASE_PATH}/model-auth/providers/typesafe`;
 
 describe("terminal model auth routes", () => {
@@ -26,14 +27,16 @@ describe("terminal model auth routes", () => {
       status: 200,
       body: {
         providers: [
-          // 라우팅되는 모델이 없는 서비스 자격증명도 같은 상태에 실린다. `kind`가 그
-          // 차이를 나르므로 브라우저는 공급자 id를 외워 두고 갈라 볼 필요가 없다.
+          // 카탈로그 공급자의 키와 라우팅되는 모델이 없는 서비스 자격증명이 같은 상태에 실린다.
+          // `kind`가 그 차이를 나르므로 브라우저는 공급자 id를 외워 두고 갈라 볼 필요가 없다.
+          { provider: "opencode", kind: "model-provider", displayName: "OpenCode Go", signedIn: false },
           { provider: "typesafe", kind: "service", displayName: "TypeSafe", signedIn: true },
         ],
       },
     });
     const serialized = JSON.stringify(harness.writes);
     expect(serialized).not.toContain(TYPESAFE_PROVIDER_ID);
+    expect(serialized).not.toContain(OPENCODE_PROVIDER_ID);
     expect(serialized).not.toContain("stored-key");
   });
 

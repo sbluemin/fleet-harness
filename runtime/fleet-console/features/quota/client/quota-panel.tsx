@@ -30,6 +30,7 @@ export const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   claude: "Claude Code",
   codex: "Codex",
   "muse-code": "Muse Code",
+  opencode: "OpenCode Go",
   xai: "xAI",
 };
 
@@ -67,6 +68,7 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   claude: "quota.claude.signedOut",
   codex: "quota.codex.signedOut",
   "muse-code": "quota.museCode.signedOut",
+  opencode: "quota.opencode.signedOut",
   xai: "quota.xai.signedOut",
 };
 
@@ -75,15 +77,18 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
   "muse-code": "quota.expired.museCode",
+  opencode: "quota.expired.opencode",
   xai: "quota.expired.xai",
 };
 
-// 구독이 없는 상태는 공급자에 관계없이 같은 안내를 쓴다.
+// 구독이 없는 상태는 공급자에 관계없이 같은 안내를 쓴다. OpenCode Go만 키는 유효한데 구독이
+// 없는 경우(403)라, 다시 로그인하라는 대신 그 키에 구독이 없다고 말한다.
 export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.noSubscription",
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
   "muse-code": "quota.noSubscription",
+  opencode: "quota.opencode.noSubscription",
   xai: "quota.noSubscription",
 };
 

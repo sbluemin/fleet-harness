@@ -51,7 +51,7 @@ describe("TypeSafe auth login flow", () => {
     await expect(runAuthLoginFlow(["bogus"], io, createDeps())).resolves.toBe(1);
     expect(mocks.password).not.toHaveBeenCalled();
     expect(mocks.setApiKey).not.toHaveBeenCalled();
-    expect(io.stderr.output).toBe("Unknown provider: bogus\nUse one of: typesafe.\n");
+    expect(io.stderr.output).toBe("Unknown provider: bogus\nUse one of: opencode, typesafe.\n");
   });
 });
 

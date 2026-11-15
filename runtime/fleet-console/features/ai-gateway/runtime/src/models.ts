@@ -6,7 +6,7 @@ import { recommendedRole } from "./model-family.js";
 import type { QuotaScope } from "./quota/types.js";
 import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
-export const GATEWAY_PROVIDERS = ["codex", "xai", "antigravity", "muse-code", "claude"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "antigravity", "muse-code", "opencode", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -24,9 +24,10 @@ const REGISTRY_PROVIDERS = GATEWAY_PROVIDERS.filter(
 
 /**
  * The upstream wire protocol a model is served over. xAI and Muse Code declare
- * `responses` so routing never falls back to Anthropic. Omission means `anthropic`.
+ * `responses` so routing never falls back to Anthropic; OpenCode Go serves each
+ * model on exactly one OpenAI wire and declares which. Omission means `anthropic`.
  */
-const GATEWAY_MODEL_WIRES = ["anthropic", "responses"] as const;
+const GATEWAY_MODEL_WIRES = ["anthropic", "responses", "chat-completions"] as const;
 export type GatewayModelWire = typeof GATEWAY_MODEL_WIRES[number];
 
 export const GATEWAY_REASONING_EFFORTS = [
@@ -113,6 +114,7 @@ const GatewayModelsRegistrySchema = z.object({
     xai: GatewayProviderSchema,
     antigravity: GatewayProviderSchema,
     "muse-code": GatewayProviderSchema,
+    opencode: GatewayProviderSchema,
     claude: GatewayProviderSchema,
   }).strict(),
 }).strict();
@@ -649,7 +651,11 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         throw new Error(`Gateway fast selection is only supported by Codex and xAI: ${provider}/${model.modelId}`);
       }
       // xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
-      if (model.wire && provider !== "xai" && provider !== "muse-code") {
+      // OpenCode Go는 모델마다 Responses·Chat Completions 중 하나로만 서빙한다.
+      if (model.wire && provider !== "xai" && provider !== "muse-code" && provider !== "opencode") {
+        throw new Error(`Gateway model wire is not supported by provider: ${provider}/${model.modelId}`);
+      }
+      if (model.wire === "chat-completions" && provider !== "opencode") {
         throw new Error(`Gateway model wire is not supported by provider: ${provider}/${model.modelId}`);
       }
       if (model.intelligence) {
