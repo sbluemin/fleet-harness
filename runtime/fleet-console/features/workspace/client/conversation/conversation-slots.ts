@@ -118,6 +118,12 @@ export interface ConversationBodyContext {
   readonly language: "en" | "ko";
   /** 셸이 그릴 기본 본문 — 렌더러가 감싸 쓰거나 무시한다. 같은 렌더에서 두 번 그리지 않는다. */
   readonly defaultBody: ReactNode;
+  /**
+   * 이 참여자의 기존 본문 슬롯을 그린다. 데스크톱 원장 분할 화면이 칸마다 부른다.
+   * 셸(`ConversationColumn`)이 구현한다. 같은 objectiveId 의 슬롯은 한 번에 하나만 트리에 둔다 —
+   * `defaultBody` 와 같은 id 를 같이 세우면 본문 풀이 한쪽만 붙인다. 폰 경로는 이 포트를 쓰지 않는다.
+   */
+  readonly renderParticipantBody: (objectiveRecord: ObjectiveRecord) => ReactNode;
   /** 기본 본문 대신 세운 글의 파일 링크 열기 — 기본 본문(Objective 본문)이 받는 것과 같은 창구. */
   readonly navigate: ClientNavigateCapability;
   /** 이 대화의 Objective 브라우저 칸을 연다(여는 일만) — 기본 본문의 링크 카드 「Objective 브라우저」 행과 같은 자리. 본문 Objective 이 브라우저를 내주지 않으면 없다. */

@@ -53,6 +53,7 @@ import { ObjectiveChipCommodore } from "./objective-chip-commodore.js";
 import { COMMODORE_ROUTINES_TAB_ID, COMMODORE_SURFACE_ID } from "../../../commodore/client/commodore-conversation.js";
 import { FRESH_SURFACE_ID } from "../../../objectives/client/objectives-state.js";
 import { PluginObjectiveRenderer } from "../objective-renderer.js";
+import { ConversationParticipantBody } from "./conversation-participant-body.js";
 import { publishConversationClusters, publishConversationStandIn, publishConversationSubject, useConversationBodyRenderer, useConversationObjectiveRename, useConversationStandIn, useConversationStandInComposer, useConversationSubject } from "./conversation-slots.js";
 import { ConversationPill, ConversationPillContext, PILL_MORPHING_CLASS, useConversationPillHost } from "./pill-takeover.js";
 import { useInlineRename } from "../../../../core/client/src/integration/use-inline-rename.js";
@@ -1574,6 +1575,30 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
     else closeBrowser();
   }, [closeBrowser, openObjectiveBrowser]);
   const hiddenCompanions = browserSurfaceOpen ? NO_HIDDEN_COMPANIONS : CONVERSATION_COMPANION_PANEL_IDS;
+  const closeColumn = useCallback(() => onClose(objectiveRecord.id), [onClose, objectiveRecord.id]);
+  // 원장 분할 화면이 참여자마다 부르는 슬롯. 단일 defaultBody 와 같은 id 를 동시에 세우지 않는다.
+  const renderParticipantBody = useCallback((record: ObjectiveRecord): ReactNode => {
+    const rootPane = record.id === objectiveRecord.id;
+    const participantConfig: Omit<ObjectiveBodyConfig, "geometry" | "onGeometryChange"> = {
+      active: state.activeObjectiveId === objectiveRecord.id,
+      keyboardFocusRequestId: rootPane && state.keyboardFocusRequest?.objectiveId === objectiveRecord.id ? state.keyboardFocusRequest.requestId : 0,
+      objectiveRecord: record,
+      runtimeState: pluginRuntimeState(state.objectiveRecordRuntime, state.objectiveRecordRuntimeHydration, record.id),
+      bodyLive: true,
+      theme: state.activeTheme,
+      language,
+      zoom: 1,
+      onActivate: activate,
+      onClose: rootPane ? closeColumn : noop,
+      ...(offersBrowser ? {
+        onRequestCompanions: noop,
+        companionsOpen: browserSurfaceOpen,
+        hiddenCompanionPanelIds: hiddenCompanions,
+        onSetCompanionPanelVisible: onBodyCompanion,
+      } : {}),
+    };
+    return <ConversationParticipantBody key={record.id} objectiveId={record.id} config={participantConfig} />;
+  }, [activate, browserSurfaceOpen, closeColumn, hiddenCompanions, language, objectiveRecord.id, offersBrowser, onBodyCompanion, state.activeObjectiveId, state.activeTheme, state.keyboardFocusRequest, state.objectiveRecordRuntime, state.objectiveRecordRuntimeHydration]);
 
   const config: ObjectiveBodyConfig = {
     active: state.activeObjectiveId === objectiveRecord.id,
@@ -1599,6 +1624,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   const defaultBody = <ObjectiveBodySlot key={bodyOwner.id} objectiveId={bodyOwner.id} config={config} className="conversation-body-slot" />;
   const custom = bodyRenderer?.({
     objectiveRecord, bodyObjective: bodyOwner, nestedObjectiveRecords: nested, language, defaultBody,
+    renderParticipantBody,
     navigate: capabilities.navigate,
     ...(offersBrowser ? { openObjectiveBrowser } : {}),
   }) ?? null;
