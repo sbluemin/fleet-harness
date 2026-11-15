@@ -169,7 +169,7 @@ const SCHEMA_VALUE_KEYWORDS: ReadonlySet<string> = new Set(["default", "enum"]);
  * to a bare string. Keywords that only validate (the real server and Claude Code still do) are dropped so the budget buys tools.
  */
 const SCHEMA_DROPPED_KEYWORDS: ReadonlySet<string> = new Set([
-  "$schema", "$id", "$comment", "additionalProperties", "format", "minLength", "maxLength", "minimum", "maximum",
+  "$schema", "$id", "$comment", "format", "minLength", "maxLength", "minimum", "maximum",
   "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minItems", "maxItems", "uniqueItems", "minProperties", "maxProperties",
   "propertyNames", "examples", "example",
 ]);
@@ -253,6 +253,8 @@ function normalizeSchema(node: unknown): unknown {
       out[key] = Object.fromEntries(Object.entries(value).map(([name, schema]) => [name, normalizeSchema(schema)]));
       continue;
     }
+    // 불리언 `additionalProperties`는 검증용이라 버리고, record 값 스키마(객체)는 모델이 봐야 하므로 정규화해 둔다.
+    if (key === "additionalProperties" && typeof value === "boolean") continue;
     if (key === "pattern" && typeof value === "string") {
       const converted = re2Pattern(value);
       if (converted !== undefined) out[key] = converted;
