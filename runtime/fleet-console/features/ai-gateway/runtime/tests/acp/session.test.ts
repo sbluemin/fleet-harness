@@ -40,8 +40,7 @@ const open = (port: ReturnType<typeof createAgyAcpSessionPort>, model: string) =
   toolOnly: { serverName: "fleet", url: "http://127.0.0.1:1/mcp", headers: { Authorization: "Bearer t" }, toolNames: ["ping"], callTimeoutSeconds: 3600 },
 });
 
-// Each case spawns a fake agy child; a slow runner needs more than the 5s default.
-describe("agy ACP session port", { timeout: 30_000 }, () => {
+describe("agy ACP session port", () => {
   it("opens a Fleet-scoped session, normalizes one turn, and removes the session directory on close", async () => {
     const { port, sessionsDir, read } = await harness();
     let session: AcpSession | undefined;

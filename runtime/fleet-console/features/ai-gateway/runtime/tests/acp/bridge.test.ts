@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createAgyAcpBridge, createAgyAcpSessionPort, type AgyAcpBridge } from "../../src/acp/index.js";
+import { createAgyAcpBridge, createAgyAcpSessionPort, type AcpSession, type AcpSessionPort, type AgyAcpBridge } from "../../src/acp/index.js";
 import type { CanonicalInputItem, CanonicalResponseEvent, CanonicalResponseRequest } from "../../src/canonical/index.js";
 import { collectAnthropicMessage } from "../../src/downstream/wire/anthropic-messages/protocol.js";
 import { wireLogFixture } from "../helpers/wire-log.js";
@@ -20,20 +20,69 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
+// A count whose targets the test awaits: it settles on what happened, never on elapsed time.
+function counter() {
+  let value = 0;
+  const waiters: { target: number; resolve: () => void }[] = [];
+  return {
+    get value() { return value; },
+    bump() {
+      value += 1;
+      for (const waiter of waiters.filter((entry) => value >= entry.target)) waiter.resolve();
+    },
+    reach(target: number): Promise<void> {
+      return value >= target ? Promise.resolve() : new Promise((resolve) => waiters.push({ target, resolve }));
+    },
+  };
+}
+
+// Wraps the real session port so a test can await what the bridge did to its agy sessions:
+// `closed` counts sessions whose close() finished (their agy child has exited by then), `turnsOver` counts agy prompts whose event stream ended.
+// `sessions` gives the raw sessions, through which a test sends what a real agy would react to over time (session/cancel).
+function watch(port: AcpSessionPort) {
+  const closed = counter();
+  const turnsOver = counter();
+  const sessions: AcpSession[] = [];
+  const watched: AcpSessionPort = {
+    async open(options) {
+      const session = await port.open(options);
+      sessions.push(session);
+      let counted = false;
+      return {
+        get sessionId() { return session.sessionId; },
+        get wireModel() { return session.wireModel; },
+        prompt(blocks) {
+          const events = session.prompt(blocks);
+          return (async function* () {
+            try { yield* events; } finally { turnsOver.bump(); }
+          })();
+        },
+        steer: (blocks) => session.steer(blocks),
+        cancel: () => session.cancel(),
+        async close() {
+          await session.close();
+          if (!counted) { counted = true; closed.bump(); }
+        },
+      };
+    },
+  };
+  return { port: watched, closed, turnsOver, sessions };
+}
+
 async function setup(bridgeOptions: { replayBudgetChars?: number } = {}) {
   const root = await mkdtemp(path.join(os.tmpdir(), "fleet-bridge-test-"));
   roots.push(root);
   const logPath = path.join(root, "fake.log");
-  const port = createAgyAcpSessionPort({
+  const { port, closed, turnsOver, sessions } = watch(createAgyAcpSessionPort({
     sessionsDir: path.join(root, "sessions"),
     command: process.execPath,
     commandArgs: [fakeAgy],
     env: { ...process.env, FAKE_LOG: logPath, FAKE_BRIDGE: "1" },
-  });
+  }));
   const bridge = createAgyAcpBridge({ port, coalesceMs: 10, silenceMs: 5_000, ...bridgeOptions });
   bridges.push(bridge);
   const log = async () => (await readFile(logPath, "utf8").catch(() => "")).trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as Record<string, unknown>);
-  return { bridge, log };
+  return { bridge, log, closed, turnsOver, sessions };
 }
 
 // The command schema carries what Claude Code / Fleet tools carry in real life: an ECMAScript `\uXXXX` pattern nested in oneOf/items, and a lookahead.
@@ -74,20 +123,7 @@ const toolUse = (message: { content: readonly { type: string }[] }) => message.c
 const textOf = (message: { content: readonly { type: string; text?: string }[] }) => message.content.map((block) => block.text ?? "").join("");
 const count = (entries: readonly Record<string, unknown>[], method: string) => entries.filter((entry) => entry.method === method).length;
 
-// Waits on a logged state, never a fixed delay. Its deadline stays well inside the test timeout so a miss fails with this message.
-async function until(check: () => Promise<boolean>, what: string, deadlineMs = 15_000): Promise<void> {
-  const deadline = Date.now() + deadlineMs;
-  while (Date.now() < deadline) {
-    if (await check()) return;
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
-  throw new Error(`condition not reached: ${what}`);
-}
-
-const exits = (entries: readonly Record<string, unknown>[]) => entries.filter((entry) => entry.exited === true).length;
-
-// Every case spawns fake agy children; a slow runner needs more than the 5s default.
-describe("agy ACP bridge", { timeout: 30_000 }, () => {
+describe("agy ACP bridge", () => {
   it("drops the header and identity Claude Code puts first in system and keeps the Fleet instruction", async () => {
     const { bridge, log } = await setup();
     const header = "x-anthropic-billing-header: cc_version=2.1.325.ff3; cc_entrypoint=sdk-cli;";
@@ -158,7 +194,7 @@ describe("agy ACP bridge", { timeout: 30_000 }, () => {
   it("steers the same agy turn with user text that arrives beside a tool result: one session, no rebuild, nothing added to the result", async () => {
     const wire = wireLogFixture("fleet-bridge-wire-");
     try {
-      const { bridge, log } = await setup();
+      const { bridge, log, closed, turnsOver, sessions } = await setup();
       const first = await turn(bridge, [user('TOOL:Bash:{"command":"ls"}')]);
       const use = toolUse(first.message);
       // The history matches the held session and a system-reminder rides next to the tool result.
@@ -171,7 +207,7 @@ describe("agy ACP bridge", { timeout: 30_000 }, () => {
       expect(textOf(second.message)).toBe("got:a.txt steered:<system-reminder>SECRET-REMINDER</system-reminder>");
       const entries = await log();
       expect(count(entries, "session/new")).toBe(1);
-      expect(exits(entries)).toBe(0);
+      expect(closed.value).toBe(0);
       expect(entries.find((entry) => entry.steering)).toMatchObject({ steering: "<system-reminder>SECRET-REMINDER</system-reminder>" });
       // The wire log counts what rides next to the tool results; it never records their content.
       const requests = wire.read().filter((entry) => entry.event === "bridge.request").map((entry) => entry.payload);
@@ -184,12 +220,12 @@ describe("agy ACP bridge", { timeout: 30_000 }, () => {
 
       // Steering that cannot be sent falls back to a rebuild: here the agy turn is already over while its tool call is still held,
       // so there is no running turn to steer. The old session is replaced and the history is replayed.
-      const turnEnds = () => wire.read().filter((entry) => entry.event === "bridge.acp" && (entry.payload as { kind?: string }).kind === "turn-end").length;
-      const turnEndsBefore = turnEnds();
       const ended = await turn(bridge, [user("ENDEARLY:Bash")]);
       const endedUse = toolUse(ended.message);
-      // The bridge has taken the early end_turn of that prompt, so no turn is running to steer.
-      await until(async () => turnEnds() > turnEndsBefore, "the ENDEARLY prompt's turn-end reached the bridge");
+      // The call is held (the response ended with its tool_use); now end that agy prompt and wait until the bridge has seen it end.
+      const turnsBefore = turnsOver.value;
+      await sessions.at(-1)!.cancel();
+      await turnsOver.reach(turnsBefore + 1);
       const sessionsBefore = count(await log(), "session/new");
       const fallback = await turn(bridge, [
         user("ENDEARLY:Bash"), call(endedUse.id, {}), result(endedUse.id, "a.txt"),
@@ -240,10 +276,12 @@ describe("agy ACP bridge", { timeout: 30_000 }, () => {
   });
 
   it("recovers by replay after agy gives up on a held tool call, and never lets the abandoned session's output out", async () => {
-    const { bridge, log } = await setup();
+    const { bridge, log, closed, sessions } = await setup();
     const first = await turn(bridge, [user("TIMEOUT:Bash")]);
     const use = toolUse(first.message);
-    await until(async () => exits(await log()) === 1, "the abandoned session's agy exited");
+    // agy's call deadline passes: the fake drops the held call, and the bridge closes that session.
+    await sessions.at(-1)!.cancel();
+    await closed.reach(1);
     const second = await turn(bridge, [user("TIMEOUT:Bash"), call(use.id, {}), result(use.id, "late result")]);
     expect(textOf(second.message)).toContain("history:yes");
     expect(textOf(first.message) + textOf(second.message)).not.toContain("timed out after 3 minutes");
@@ -251,9 +289,9 @@ describe("agy ACP bridge", { timeout: 30_000 }, () => {
   });
 
   it("ends the turn as an Anthropic error, not an answer, when agy reports an upstream problem as message text", async () => {
-    const { bridge, log } = await setup();
+    const { bridge, closed } = await setup();
     const open = (prompt: string) => bridge.stream({ model: MODEL, input: [user(prompt)], instructions: "be brief", tools: [BASH], stream: true }, { apiKey: "" });
-    // A retried 429: rate_limit_error before the stream starts, and agy's own retries are not waited for.
+    // A retried 429: rate_limit_error before the stream starts, and agy's own retries are not waited for (the fake's turn stays open until cancelled).
     const limited = await open("UPSTREAM429");
     expect(limited.ok).toBe(false);
     if (limited.ok) return;
@@ -262,22 +300,22 @@ describe("agy ACP bridge", { timeout: 30_000 }, () => {
     expect(body).toMatchObject({ type: "error", error: { type: "rate_limit_error" } });
     expect(body.error.message).toContain("RESOURCE_EXHAUSTED");
     expect(JSON.stringify(body)).not.toContain("NOT-A-REAL-ANSWER");
-    await until(async () => exits(await log()) === 1, "the rate-limited session's agy exited");
+    expect(closed.value).toBe(1);
     // A code-less "⚠ network issue" message that is the whole turn: overloaded_error (529, which Claude Code retries), session dropped.
     const network = await open("UPSTREAMNET");
     expect(network.ok).toBe(false);
     if (network.ok) return;
     expect(network.status).toBe(529);
     expect(JSON.parse(new TextDecoder().decode(network.body))).toMatchObject({ error: { type: "overloaded_error", message: expect.stringContaining("network issue") } });
-    await until(async () => exits(await log()) === 2, "the network-warning session's agy exited");
+    expect(closed.value).toBe(2);
   });
 
   it("denies built-in tools and fails the turn if one runs anyway", async () => {
-    const { bridge, log } = await setup();
+    const { bridge, log, closed } = await setup();
     const { events } = await turn(bridge, [user("BUILTIN")]);
     expect(events.at(-1)).toMatchObject({ type: "response.failed", response: { error: { type: "api_error" } } });
     const entries = await log();
     expect(entries.find((entry) => entry.permission === "Run run_command")).toMatchObject({ outcome: { optionId: "deny" } });
-    await until(async () => exits(await log()) === 1, "the session that ran a built-in tool was closed");
+    await closed.reach(1);
   });
 });
