@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { ProviderDto, QuotaWindow } from "@fleet-console/ai-gateway";
-import { AI_GATEWAY_OPT_IN_EFFORTS as OPT_IN, aiGatewayModelFamilyKey, canonicalEffortSelection, defaultEffortSelection, isProviderCatalogVisible, type AiGatewayRoleThresholds } from "@fleet-console/ai-gateway/model-family";
+import { AI_GATEWAY_OPT_IN_EFFORTS as OPT_IN, aiGatewayModelFamilyKey, canonicalEffortSelection, defaultEffortSelection, type AiGatewayRoleThresholds } from "@fleet-console/ai-gateway/model-family";
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
-import { launchProviderCaption, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
+import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { prettyModelId } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import { canonicalModelId, findRosterRow, type ModelRoster } from "../../ai-gateway/shared/models.js";
 import { formatResetInstant, meterSeverity } from "../../quota/client/quota-panel.js";
@@ -108,13 +108,12 @@ function windowResetTimestamp(window: QuotaWindow): number | undefined {
 }
 
 function modelQuotaStatus(
-  providerId: AiGatewayProviderId,
-  loginStatus: string | null | undefined,
+  providerVisible: boolean,
   providerQuota: ProviderDto | undefined,
   quotaScope: string | undefined,
   locale: ConsoleLocale,
 ): PoolModelStatus {
-  if (!isProviderCatalogVisible(loginStatus, providerId)) {
+  if (!providerVisible) {
     return { kind: "wait", headroom: -1 };
   }
   const windows = bindingWindows(providerQuota, quotaScope);
@@ -150,7 +149,8 @@ export interface RoutingPoolData {
   readonly thresholds: AiGatewayRoleThresholds | null;
   readonly intelligenceIndex: { readonly name: string; readonly observedAt: string } | null;
   readonly priority: readonly AiGatewayProviderId[];
-  readonly loginOf: (providerId: AiGatewayProviderId) => string | null;
+  /** 공급자가 지금 선택기 로스터에 나오는지(로그인됨, 또는 상태를 아직 모름). */
+  readonly providerVisible: (providerId: AiGatewayProviderId) => boolean;
   readonly signature: string;
   readonly chipAria: (t: T) => string;
   readonly addModel: (provider: AiGatewayCatalogProvider, model: AiGatewayCatalogModel) => void;
@@ -190,9 +190,22 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
   }, [providers]);
 
   const thresholds = state?.aiGatewayCatalog.roleThresholds ?? null;
-  const loginOf = useCallback(
-    (providerId: AiGatewayProviderId): string | null => state?.aiGatewayLogin[providerId] ?? null,
-    [state?.aiGatewayLogin],
+  // 공급자 노출은 사령관·지휘관 선택기와 같은 원천, 곧 로스터를 따른다. 호스트는 공급자 로그인 상태가 바뀔 때마다
+  // 로스터를 다시 알리므로(models:roster-changed) Console을 다시 열지 않아도 담기 목록과 칩 상태가 따라온다.
+  // 설정 스냅샷의 aiGatewayLogin은 이 훅이 처음 붙을 때 한 번만 받으므로 여기서 읽지 않는다.
+  // 로스터를 아직 받지 못했으면 상태를 모르는 것으로 보고 보인다 — 호스트의 isProviderCatalogVisible과 같은 규칙이다.
+  const rosterProviders = useMemo(() => {
+    if (!launchRoster) return null;
+    const ids = new Set<string>();
+    for (const group of launchRoster) {
+      const provider = launchProviderFromGroupId(group.id);
+      if (provider) ids.add(provider);
+    }
+    return ids;
+  }, [launchRoster]);
+  const providerVisible = useCallback(
+    (providerId: AiGatewayProviderId): boolean => rosterProviders === null || rosterProviders.has(providerId),
+    [rosterProviders],
   );
 
   const entries = useMemo<readonly PoolEntryView[]>(() => {
@@ -204,8 +217,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
       const ladder = found?.model.effort?.levels ?? [];
       const fastSupported = found?.model.fast === true || rosterRow?.fastSupported === true;
       const status = modelQuotaStatus(
-        provider,
-        loginOf(provider),
+        providerVisible(provider),
         quotaSnapshot.data?.providers[provider],
         rosterRow?.quotaScope,
         locale,
@@ -216,7 +228,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
       const lead = thresholds ? qualifying(scores, exposed, thresholds.lead) : null;
       return { entry, provider, name, ladder, fastSupported, status, scores, exposed, lead };
     });
-  }, [enabled, catalogByModelId, launchRoster, loginOf, quotaSnapshot.data, locale, thresholds]);
+  }, [enabled, catalogByModelId, launchRoster, providerVisible, quotaSnapshot.data, locale, thresholds]);
 
   const poolProviders = useMemo(() => {
     const result: Array<{ readonly id: AiGatewayProviderId; readonly waiting: boolean; readonly count: number; readonly waitingCount: number; readonly restingCount: number }> = [];
@@ -372,7 +384,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
     thresholds,
     intelligenceIndex: state?.aiGatewayCatalog.intelligenceIndex ?? null,
     priority,
-    loginOf,
+    providerVisible,
     signature,
     chipAria,
     addModel,
@@ -538,9 +550,9 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
 
   const expandedView = expandedId ? pool.entries.find((item) => item.entry.id === expandedId) ?? null : null;
   const enabledSet = new Set(pool.entries.map((item) => item.entry.id));
-  // 담기 목록은 선택기 로스터와 같은 기준으로 로그인된 공급자만 보인다(`isProviderCatalogVisible`: signed_out·not_connected는 빠지고,
-  // Claude의 not_connected와 아직 모르는 상태는 보인다). 이미 담긴 칩은 이 거름과 무관하게 「로그인 대기」로 남는다.
-  const catalogGroups = pool.providers.filter((group) => isProviderCatalogVisible(pool.loginOf(group.id), group.id));
+  // 담기 목록은 선택기 로스터에 나오는 공급자만 보인다(로스터가 signed_out·not_connected를 거르고, Claude의 not_connected와
+  // 아직 모르는 상태는 남긴다). 이미 담긴 칩은 이 거름과 무관하게 「로그인 대기」로 남는다.
+  const catalogGroups = pool.providers.filter((group) => pool.providerVisible(group.id));
   const anyVisibleGroups = catalogGroups.some((group) => group.models.some((model) => matchesModel(group.id, model)));
 
   return (
