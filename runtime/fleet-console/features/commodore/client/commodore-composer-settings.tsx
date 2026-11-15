@@ -23,8 +23,8 @@ import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 
 /**
- * 데스크톱 사령관·목표 그룹 대화의 설정 칩과 팝오버 — 사령관 모델 · 지휘관 모델 · 라우팅 풀 · 작전 구역 · 고급 옵션 5개 칩이
- * 입력 캡슐 안 오른쪽에 서고, 쿼터는 위 줄에 선다. 칩을 누르면 칩에 매달린 팝오버가 입력창 위로 뜬다.
+ * 데스크톱 사령관·목표 그룹 대화의 설정 칩과 팝오버 — 사령관 모델 · 지휘관 모델 · 라우팅 풀 · 작전 구역 4개 칩이
+ * 입력 캡슐 안 오른쪽에 서고, 쿼터는 위 줄에 선다. 시스템 지침·자동 메모리·서브에이전트는 작전 구역 칸 아래에 선다. 칩을 누르면 칩에 매달린 팝오버가 입력창 위로 뜬다.
  * 열린 동안 칩 줄 자체가 탭 줄이 되어 ←/→ 로 칸을 옮기고, 폰·TaskForce·Theater Inbox 입력창은 이 부품을 싣지 않는다.
  */
 
@@ -32,8 +32,8 @@ type T = Translate<CommodoreMessageKey>;
 type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
 type Coordinates = { readonly model?: string; readonly effort?: string; readonly fast?: boolean };
 
-export type CommodoreComposerSettingsSection = "commodore" | "commander" | "pool" | "theaters" | "advanced";
-const SECTIONS: readonly CommodoreComposerSettingsSection[] = ["commodore", "commander", "pool", "theaters", "advanced"];
+export type CommodoreComposerSettingsSection = "commodore" | "commander" | "pool" | "theaters";
+const SECTIONS: readonly CommodoreComposerSettingsSection[] = ["commodore", "commander", "pool", "theaters"];
 
 /* ── 바깥에서 여는 요청 — 빈 상태의 「작전 구역 추가」·만들기 창 착지가 이 사령관 대화의 팝오버를 연다 ── */
 
@@ -377,13 +377,13 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   const tabLabel = (section: CommodoreComposerSettingsSection) => section === "commodore" ? t("commodore.settings.model")
     : section === "commander" ? t("commodore.settings.commander")
       : section === "pool" ? t("commodore.pool.title")
-        : section === "theaters" ? ct("theaterInbox.theaters.page") : t("commodore.settings.advanced");
-  const chip = (section: CommodoreComposerSettingsSection, aria: string, body: ReactNode, extra = "") => (
+        : ct("theaterInbox.theaters.page");
+  const chip = (section: CommodoreComposerSettingsSection, aria: string, body: ReactNode) => (
     <button
       ref={(element) => { if (element) chipRefs.current.set(section, element); else chipRefs.current.delete(section); }}
       type="button"
       data-section={section}
-      className={`commodore-composer-chip${extra}`}
+      className="commodore-composer-chip"
       aria-expanded={open === section && !closing}
       aria-controls={open === section ? panelId : undefined}
       aria-label={aria}
@@ -423,8 +423,8 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
             <CommodoreJudgmentMark />
             <ChipFold>
               <span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>
-              <span className="commodore-composer-chip-value">{commanderWord}</span>
             </ChipFold>
+            <span className="commodore-composer-chip-value">{commanderWord}</span>
           </>
         ) : (
           <CoordinateWords display={commanderDisplay} prefix={<span className="commodore-composer-chip-label">{t("commodore.composerSettings.commanderChip")}</span>} />
@@ -444,9 +444,6 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
             <span className="commodore-composer-chip-count">{theaterCount}</span>
           </>
         ))}
-        {chip("advanced", t("commodore.settings.advanced"), (
-          <svg className="commodore-composer-chip-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5h6M12 5h1M3 11h1M7 11h6" /><circle cx="10.5" cy="5" r="1.5" /><circle cx="5.5" cy="11" r="1.5" /></svg>
-        ), " is-icon")}
       </div>
       {open !== null && typeof document !== "undefined" ? createPortal(
         <div
@@ -528,8 +525,13 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
                   onOpenQuota={openQuotaFromPool}
                 />
               ) : null}
-              {open === "theaters" ? <div className="commodore-composer-panel-theaters"><CommodoreTheaters commodoreId={commodoreId} /></div> : null}
-              {open === "advanced" ? <div className="commodore-composer-panel-advanced"><CommodoreSessionSettings key={commodoreId} t={t} commodoreId={commodoreId} state={state} inline /></div> : null}
+              {open === "theaters" ? (
+                <>
+                  <div className="commodore-composer-panel-theaters"><CommodoreTheaters commodoreId={commodoreId} /></div>
+                  <div className="commodore-composer-panel-split" role="separator" />
+                  <div className="commodore-composer-panel-advanced"><CommodoreSessionSettings key={commodoreId} t={t} commodoreId={commodoreId} state={state} inline /></div>
+                </>
+              ) : null}
             </div></div>
           </div>
           <span
@@ -558,17 +560,15 @@ function launchLabels(t: T) {
 }
 
 
-/** 칩의 좌표 낱말 — 글리프(또는 제거된 공급자 이름)는 항상 보이고, 이름·모델·강도는 접힘 칸에 둔다. */
+/** 칩의 좌표 낱말 — 글리프·모델·강도는 항상 보이고, 이름표(prefix)만 접힘 칸에 둔다. */
 function CoordinateWords({ display, prefix }: { readonly display: ReturnType<typeof modelCoordinateDisplay>; readonly prefix?: ReactNode }) {
   return (
     <>
       {display.struck && display.removedProvider ? <span className="fc-coord-provider-name">{display.removedProvider}</span> : <ProviderMark provider={display.provider} />}
-      <ChipFold>
-        {prefix}
-        <span className={`commodore-composer-chip-value fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
-        {display.words.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{display.words.effort}</span></> : null}
-        {display.badge ? <span className="fc-coord-trigger-badge">{display.badge}</span> : null}
-      </ChipFold>
+      {prefix ? <ChipFold>{prefix}</ChipFold> : null}
+      <span className={`commodore-composer-chip-value fc-coord-trigger-model${display.struck ? " is-off" : ""}`}>{display.words.model}</span>
+      {display.words.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{display.words.effort}</span></> : null}
+      {display.badge ? <span className="fc-coord-trigger-badge">{display.badge}</span> : null}
     </>
   );
 }

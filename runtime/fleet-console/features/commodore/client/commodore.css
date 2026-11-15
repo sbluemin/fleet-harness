@@ -1282,7 +1282,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-chip:not(.commodore-composer-chips.is-open *)[aria-expanded="true"] { background: var(--wash-selected); color: var(--text-primary); }
 .commodore-composer-chip:focus-visible { outline: none; box-shadow: var(--focus-face); }
 .commodore-composer-chip:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
-.commodore-composer-chip.is-icon { flex: none; width: var(--fc-composer-circle, 28px); padding: 0; justify-content: center; }
 .commodore-composer-chip > * { flex: none; }
 .commodore-composer-chip-icon { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
 .commodore-composer-chip .objectives-commodore-judgment,
@@ -1295,10 +1294,10 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; box-sizing: border-box;
   border-radius: var(--radius-pill); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums;
 }
-/* 사령관·지휘관·라우팅 풀은 대화 칸 폭과 관계없이 평소엔 공급자 글리프(풀은 겹침, 빈 풀은 ＋)만 보인다.
-   이름·모델·강도는 0fr 칸에 접혀 있고, hover·키보드 초점·팝오버 열림에서 풀 글리프 겹침과 같은 220ms spring, 투명도는 200ms로 펼친다.
-   세 칩은 쉬는 상태에서 모두 28px 원 폭을 지켜, 빈 풀의 ＋도 다른 칩과 같은 크기로 선다. */
-.commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]) {
+/* 라우팅 풀은 평소 글리프(겹침, 빈 풀은 ＋)만, 사령관·지휘관은 글리프와 모델·강도를 늘 보인다.
+   이름표만 0fr 칸에 접혀 있고, hover·키보드 초점·팝오버 열림에서 풀 글리프 겹침과 같은 220ms spring, 투명도는 200ms로 펼친다.
+   폭 0인 이름표가 사이 간격을 두 번 먹지 않게, 사령관·지휘관은 gap 대신 다음 형제 여백을 쓰고 접힌 칸의 앞 여백은 펼칠 때만 준다. */
+.commodore-composer-chip[data-section="pool"] {
   flex: none;
   min-width: var(--fc-composer-circle, 28px);
   justify-content: center;
@@ -1310,10 +1309,13 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
     background var(--duration-fast) var(--ease-glide),
     color var(--duration-fast) var(--ease-glide);
 }
-.commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) {
+.commodore-composer-chip[data-section="pool"]:is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) {
   gap: 6px;
   padding: 0 10px;
 }
+.commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) { gap: 0; }
+.commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) > * + * { margin-left: 6px; }
+.commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) > .commodore-composer-chip-reveal { margin-left: 0; }
 .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]) > .commodore-composer-chip-reveal {
   display: grid;
   grid-template-columns: 0fr;
@@ -1321,18 +1323,40 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   min-width: 0;
   overflow: hidden;
   opacity: 0;
-  transition: grid-template-columns 220ms var(--ease-spring), opacity 200ms;
+  transition: grid-template-columns 220ms var(--ease-spring), opacity 200ms, margin-left 220ms var(--ease-spring);
 }
 .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) > .commodore-composer-chip-reveal {
   grid-template-columns: 1fr;
   opacity: 1;
 }
+.commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) > .commodore-composer-chip-reveal { margin-left: 6px; }
 .commodore-composer-chip-reveal-in { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
 @container group-chat (max-width: 880px) {
+  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) .commodore-composer-chip-label { display: none; }
   .commodore-composer-chip .commodore-composer-chip-value { max-width: 116px; }
+  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) > .commodore-composer-chip-reveal {
+    grid-template-columns: 0fr;
+    margin-left: 0;
+    opacity: 0;
+  }
 }
 @container group-chat (max-width: 660px) {
   .commodore-composer-chip[data-section="theaters"] { padding: 0 8px; gap: 4px; }
+  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]),
+  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]):is(:hover, :focus-visible, [aria-expanded="true"]) {
+    flex: none;
+    width: var(--fc-composer-circle, 28px);
+    min-width: var(--fc-composer-circle, 28px);
+    padding: 0;
+    justify-content: center;
+  }
+  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) > * { margin-left: 0; }
+  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]) :is(.commodore-composer-chip-label, .commodore-composer-chip-value, .fc-coord-trigger-dot, .fc-coord-trigger-effort, .fc-coord-trigger-badge, .fc-coord-provider-name) { display: none; }
+  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"]):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) > .commodore-composer-chip-reveal {
+    grid-template-columns: 0fr;
+    margin-left: 0;
+    opacity: 0;
+  }
 }
 
 /* 칩에 매달려 위 줄 위로 뜨는 설정 팝오버 — QuotaPopover 와 같은 body 포털 + --popover-* 공통 표면. */
@@ -1668,6 +1692,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-check.is-on { opacity: 1; transform: none; }
 .commodore-composer-panel-theaters { padding: 0 8px 4px; }
 .commodore-composer-panel-theaters .objectives-commodore-section-title { display: none; }
+.commodore-composer-panel-split { height: 0; margin: 4px 8px 8px; border-top: 1px solid var(--popover-divider); }
 .commodore-composer-panel-advanced { padding: 0 8px 2px; }
 .objectives-commodore-advanced.is-inline { display: grid; gap: 2px; }
 /* 칸 안의 고급 옵션은 칸 행 크기로 줄인다 — 이름은 행 글자(--t-sm), 설명은 작은 글자, 줄 사이 구분선 없이 숨구멍만. */
@@ -1684,8 +1709,8 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top,
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top * { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) {
-  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]),
-  .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled),
+  .commodore-composer-chip[data-section="pool"],
+  .commodore-composer-chip[data-section="pool"]:is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled),
   .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]) > .commodore-composer-chip-reveal,
   .commodore-composer-chip:is([data-section="commodore"], [data-section="commander"], [data-section="pool"]):is(:hover, :focus-visible, [aria-expanded="true"]):not(:disabled) > .commodore-composer-chip-reveal,
   .commodore-composer-chip-ind, .commodore-composer-chip-ind.is-placed,

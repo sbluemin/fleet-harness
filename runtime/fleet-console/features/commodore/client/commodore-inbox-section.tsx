@@ -334,7 +334,7 @@ export function CommodoreSettings({ t, theaterId, view, onFail, onClear }: { rea
   );
 }
 
-/** 고급 옵션 세 줄. `inline`이면 접힘 머리 없이 펼친 채로 선다 — 데스크톱 입력창 설정 칸의 「고급 옵션」이 쓴다. */
+/** 고급 옵션 세 줄. `inline`이면 접힘 머리 없이 펼친 채로 선다 — 데스크톱 입력창의 작전 구역 칸 아래가 쓴다. */
 export function CommodoreSessionSettings({ t, commodoreId, state, phone = false, inline = false }: { readonly t: T; readonly commodoreId: string; readonly state: CommodoreState; readonly phone?: boolean; readonly inline?: boolean }) {
   const [memorySaving, setMemorySaving] = useState(false);
   const [memoryFailed, setMemoryFailed] = useState(false);
