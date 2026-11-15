@@ -16,6 +16,7 @@ import { createSessionUpdateNormalizer, toTurnEnd } from "./events.js";
 import { JsonRpcClosedError, JsonRpcError, createJsonRpcPeer, type JsonRpcPeer } from "./jsonrpc.js";
 import { isAcpModelAvailable, resolveAcpModelSelection } from "./models.js";
 import { agyAcpStateArgs, resolveAgySessionPaths } from "./paths.js";
+import { toolOnlyTitlePrefix, writeToolOnlyLayout } from "./tool-only.js";
 
 const ACP_PROTOCOL_VERSION = 1;
 const STARTUP_TIMEOUT_MS = 120_000;
@@ -159,7 +160,7 @@ class AgyAcpSession implements AcpSession {
     this.normalize = createSessionUpdateNormalizer();
     this.rpc.request("session/prompt", { sessionId: this.sessionId, prompt: toWirePrompt(blocks) }).then(
       (result) => {
-        queue.push(toTurnEnd(record(result)?.stopReason));
+        queue.push(toTurnEnd(record(result)?.stopReason, record(result)?.usage));
         queue.end();
       },
       (error: unknown) => {
@@ -208,7 +209,8 @@ function terminate(child: ChildProcessWithoutNullStreams): Promise<void> {
  * `agy acp`를 세션마다 하나씩 띄우는 포트 구현.
  *
  * resume·loadSession은 쓰지 않는다 — Fleet이 다시 떠도 언제나 `session/new`다.
- * 권한 요청은 `--dangerously-skip-permissions`로 아예 오지 않게 하고, 와도 허용으로 답한다.
+ * 권한 요청은 `--dangerously-skip-permissions`로 아예 오지 않게 하고, 와도 허용으로 답한다. 내장 도구 없는 모드
+ * (`toolOnly`)는 반대로 플래그를 빼고 그 서버의 도구 호출만 허용한다.
  */
 export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionPort {
   const env = options.env ?? process.env;
@@ -219,8 +221,17 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
       const selection = resolveAcpModelSelection(open.model, open.thoughtLevel);
       const paths = resolveAgySessionPaths(options.sessionsDir, open.sessionKey ?? randomUUID());
       const removeSessionDir = (): Promise<void> => rm(paths.geminiDir, { recursive: true, force: true });
+      let cwd = open.cwd;
+      let modeArgs: readonly string[];
       try {
         await mkdir(paths.geminiDir, { recursive: true });
+        if (open.toolOnly) {
+          const layout = await writeToolOnlyLayout(paths.geminiDir, open.toolOnly);
+          cwd = layout.cwd;
+          modeArgs = layout.args;
+        } else {
+          modeArgs = ["--dangerously-skip-permissions", ...(open.addDirs ?? []).flatMap((dir) => ["--add-dir", dir])];
+        }
       } catch (error) {
         await removeSessionDir();
         throw error;
@@ -229,10 +240,9 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
         ...(options.commandArgs ?? []),
         "acp",
         ...agyAcpStateArgs(paths),
-        "--dangerously-skip-permissions",
-        ...(open.addDirs ?? []).flatMap((dir) => ["--add-dir", dir]),
+        ...modeArgs,
       ];
-      const child = spawn(command, args, { cwd: open.cwd, env, stdio: ["pipe", "pipe", "pipe"] });
+      const child = spawn(command, args, { cwd, env, stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
       let stderrTail = "";
       child.stderr.on("data", (chunk: Buffer) => {
         stderrTail = (stderrTail + chunk.toString("utf8")).slice(-STDERR_TAIL_BYTES);
@@ -248,7 +258,9 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
           session.handleUpdate(body.update);
         },
         onRequest: (method, params) => {
-          if (method === "session/request_permission") return allowOutcome(params);
+          if (method === "session/request_permission") {
+            return open.toolOnly ? toolOnlyOutcome(params, toolOnlyTitlePrefix(open.toolOnly.serverName)) : allowOutcome(params);
+          }
           throw new JsonRpcError(-32601, `Method not supported: ${method}`);
         },
         onClose: () => {
@@ -275,7 +287,7 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
           clientInfo: { name: "fleet", version: "1" },
         }, { timeoutMs: STARTUP_TIMEOUT_MS });
         const created = await rpc.request<NewSessionResult>("session/new", {
-          cwd: open.cwd,
+          cwd,
           mcpServers: open.mcpServers.map(toWireMcpServer),
           _meta: { antigravity: { systemPrompt: { append: open.systemPrompt } } },
         }, { timeoutMs: STARTUP_TIMEOUT_MS });
@@ -306,6 +318,18 @@ export function createAgyAcpSessionPort(options: AgyAcpPortOptions): AcpSessionP
       }
     },
   };
+}
+
+/** 내장 도구 없는 모드의 권한 규칙: 이 서버의 도구 호출만 허용하고 나머지는 모두 거절한다. */
+function toolOnlyOutcome(params: unknown, titlePrefix: string): unknown {
+  const body = record(params);
+  const title = record(body?.toolCall)?.title;
+  const options = Array.isArray(body?.options) ? body.options.flatMap((option) => (record(option) ? [record(option)!] : [])) : [];
+  const wanted = typeof title === "string" && title.startsWith(titlePrefix) ? "allow_once" : "reject_once";
+  const choice = options.find((row) => row.kind === wanted);
+  return typeof choice?.optionId === "string"
+    ? { outcome: { outcome: "selected", optionId: choice.optionId } }
+    : { outcome: { outcome: "cancelled" } };
 }
 
 /** `session/request_permission`에는 허용 선택지를 고른다. `allow_always`가 있으면 그것을, 없으면 첫 허용을 쓴다. */

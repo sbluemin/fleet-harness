@@ -17,6 +17,25 @@ export interface AcpMcpServer {
 
 export type AcpThoughtLevel = "low" | "medium" | "high";
 
+/**
+ * 내장 도구 없는 세션 — agy가 이 MCP 서버의 도구만 쓰게 한다(Messages 브리지용).
+ *
+ * agy 1.5.9 실측으로 통과한 조합이다: 세션 전용 gemini-dir에 내장 컴포넌트를 뺀 커스텀 에이전트(`--agent`)와
+ * `config/mcp_config.json`을 써 두고 띄운다. MCP 서버는 ACP `session/new`가 아니라 이 설정 파일로 붙고(그래서
+ * 도구 목록은 세션을 열 때 정해진다), 도구는 `eager`로 직접 노출한다. 권한 요청은 이 서버의 도구만 허용한다.
+ * 세션 cwd는 gemini-dir 아래의 빈 디렉터리다(`AcpSessionOpenOptions.cwd`는 이 모드에서 쓰지 않는다).
+ */
+export interface AcpToolOnlyConfig {
+  /** MCP 서버 이름. agy가 도구를 `mcp_<serverName>_<tool>`로 노출한다. */
+  readonly serverName: string;
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string>>;
+  /** 직접 노출할(eager) 도구 이름들. 목록 밖 도구는 agy가 `call_mcp_tool`로만 부른다. */
+  readonly toolNames: readonly string[];
+  /** agy가 MCP 호출 하나를 붙잡아 두는 한도(초). agy 기본은 180초다. */
+  readonly callTimeoutSeconds: number;
+}
+
 export interface AcpSessionOpenOptions {
   /** 카탈로그의 Gemini 모델 id(예: `gemini-4-argon`). agy 쪽 와이어 id 해석은 포트 구현이 맡는다. */
   readonly model: string;
@@ -27,6 +46,8 @@ export interface AcpSessionOpenOptions {
   /** 세션 시스템 프롬프트 — `_meta.antigravity.systemPrompt.append`로 붙는다. */
   readonly systemPrompt: string;
   readonly mcpServers: readonly AcpMcpServer[];
+  /** 주면 내장 도구 없는 모드로 연다. 이때 `mcpServers`는 비워 둔다(서버는 설정 파일로 붙는다). */
+  readonly toolOnly?: AcpToolOnlyConfig;
   /** 세션 전용 gemini-dir의 이름으로 쓸 키(`[A-Za-z0-9._-]+`). 생략하면 새 uuid. 세션을 닫으면 그 디렉터리를 지운다. */
   readonly sessionKey?: string;
   /** 세션을 닫으면 자식 프로세스까지 끝낸다. */
@@ -37,6 +58,15 @@ export interface AcpSessionOpenOptions {
 export type AcpPromptBlock =
   | { readonly kind: "text"; readonly text: string }
   | { readonly kind: "image"; readonly mimeType: string; readonly data: string };
+
+/** `session/prompt` 응답이 싣는 턴 전체의 토큰 사용량(여러 모델 호출의 합). */
+export interface AcpTurnUsage {
+  readonly inputTokens: number;
+  readonly outputTokens: number;
+  readonly thoughtTokens: number;
+  readonly cachedReadTokens: number;
+  readonly totalTokens: number;
+}
 
 export interface AcpUsage {
   readonly usedTokens: number;
@@ -53,7 +83,7 @@ export type AcpSessionEvent =
   | { readonly kind: "tool-start"; readonly id: string; readonly name: string; readonly input: unknown }
   | { readonly kind: "tool-end"; readonly id: string; readonly isError: boolean; readonly output?: string }
   | { readonly kind: "usage"; readonly usage: AcpUsage }
-  | { readonly kind: "turn-end"; readonly stopReason: "end_turn" | "max_tokens" | "refusal" | "cancelled" | "error"; readonly detail?: string }
+  | { readonly kind: "turn-end"; readonly stopReason: "end_turn" | "max_tokens" | "refusal" | "cancelled" | "error"; readonly detail?: string; readonly usage?: AcpTurnUsage }
   | { readonly kind: "exit"; readonly code: number | null; readonly detail?: string };
 
 export interface AcpSession {

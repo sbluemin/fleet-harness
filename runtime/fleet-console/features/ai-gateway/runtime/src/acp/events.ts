@@ -1,4 +1,4 @@
-import type { AcpSessionEvent } from "./contract.js";
+import type { AcpSessionEvent, AcpTurnUsage } from "./contract.js";
 
 type Json = Record<string, unknown>;
 
@@ -82,14 +82,29 @@ export function createSessionUpdateNormalizer(): (update: unknown) => readonly A
   };
 }
 
-/** `session/prompt` 응답의 stopReason을 계약의 턴 종료로 옮긴다. */
-export function toTurnEnd(stopReason: unknown): Extract<AcpSessionEvent, { kind: "turn-end" }> {
+function turnUsage(value: unknown): AcpTurnUsage | undefined {
+  const raw = record(value);
+  if (!raw) return undefined;
+  const count = (field: string): number => (typeof raw[field] === "number" && Number.isFinite(raw[field]) ? raw[field] as number : 0);
+  const usage = {
+    inputTokens: count("inputTokens"),
+    outputTokens: count("outputTokens"),
+    thoughtTokens: count("thoughtTokens"),
+    cachedReadTokens: count("cachedReadTokens"),
+    totalTokens: count("totalTokens"),
+  };
+  return usage.totalTokens > 0 || usage.inputTokens > 0 || usage.outputTokens > 0 ? usage : undefined;
+}
+
+/** `session/prompt` 응답의 stopReason(과 있으면 usage)을 계약의 턴 종료로 옮긴다. */
+export function toTurnEnd(stopReason: unknown, usage?: unknown): Extract<AcpSessionEvent, { kind: "turn-end" }> {
+  const counted = turnUsage(usage);
   switch (stopReason) {
     case "end_turn":
     case "max_tokens":
     case "refusal":
     case "cancelled":
-      return { kind: "turn-end", stopReason };
+      return { kind: "turn-end", stopReason, ...(counted ? { usage: counted } : {}) };
     default:
       return { kind: "turn-end", stopReason: "error", detail: `Unexpected stop reason: ${String(stopReason)}` };
   }
