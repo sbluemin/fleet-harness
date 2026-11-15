@@ -121,7 +121,7 @@ export function createCommodoreEntities(root: string, theaterIdOf: (canonicalPat
       const staging = path.join(base, `.new-${id}`);
       fs.mkdirSync(staging, { mode: 0o700 });
       try {
-        fs.writeFileSync(path.join(staging, "state.json"), JSON.stringify({ ...EMPTY_COMMODORE_STATE, theaters }), { flag: "wx", mode: 0o600 });
+        fs.writeFileSync(path.join(staging, "state.json"), JSON.stringify({ ...EMPTY_COMMODORE_STATE, ...(!theater ? { autoMemoryEnabled: false } : {}), theaters }), { flag: "wx", mode: 0o600 });
         // 초기 상태와 기억을 완성하기 전에는 목록·세션에 노출하지 않는다. 재기동도 .new- 잔재를 거둔다.
         initialize?.(id, staging);
         const initialized = commodoreEntitySchema.parse(JSON.parse(fs.readFileSync(path.join(staging, "state.json"), "utf8")));
