@@ -180,8 +180,17 @@ interface Tab {
   sessionId: string;
   url: string;
   title: string;
-  /** 페이지가 선언한 아이콘 URL. 클라이언트는 서버 프록시로 받는다(CSP img-src 가 self 뿐이라). */
+  /** 페이지가 선언한 아이콘 URL(`http(s):` 또는 `data:image/…`). 이력·프록시는 이 원본을 쓴다. */
   favicon: string | null;
+  /**
+   * 크롬 문서에 싣는 아이콘. 그 문서의 CSP 는 `img-src data:` 만 열므로 원본 URL 을 그대로 실으면 그려지지 않는다 —
+   * Console 이 아이콘 바이트를 받아 data: URL 로 바꿔 둔다. 원격 뷰어도 같은 값을 받으므로 그 기계의 네트워크를 타지 않는다.
+   */
+  faviconData: string | null;
+  /** `faviconData` 를 만든 원본 URL. 원본이 바뀌면 다시 만든다. */
+  faviconSource: string | null;
+  /** 페이지의 아이콘 선언 변경 알림을 한 번으로 모으는 타이머. */
+  faviconCheck?: ReturnType<typeof setTimeout>;
   /** 메인 프레임 id — 로딩 표시는 이 프레임만 따른다(광고·위젯 iframe 이 끝없이 돌아도 새로고침 글리프가 돌지 않게). */
   frameId: string | null;
   loading: boolean;
@@ -356,8 +365,47 @@ export interface BrowserServiceStatus {
   readonly executionHost: BrowserExecutionHost;
 }
 
-/** 페이지가 선언한 아이콘, 없으면 /favicon.ico. 페이지 안에서 평가되므로 상대 경로가 그 문서 기준으로 풀린다. */
-const FAVICON_EXPRESSION = `(() => { const links = Array.from(document.querySelectorAll('link[rel~="icon"], link[rel="shortcut icon"], link[rel="apple-touch-icon"]')); const pick = links.find((l) => /icon/i.test(l.rel) && !/apple/i.test(l.rel)) || links[0]; try { return new URL(pick ? pick.getAttribute("href") : "/favicon.ico", document.baseURI).href; } catch { return null; } })()`;
+/** data: 아이콘을 그대로 싣는 상한 — Desktop 프로토콜의 favicon 길이 상한(64KiB)과 같다. */
+const FAVICON_DATA_URL_MAX = 65_536;
+/** 탭 아이콘으로 받는 원본 바이트 상한 — base64 를 거쳐도 프로토콜 상한 안에 남는다. */
+const FAVICON_ICON_BYTES_MAX = 32 * 1024;
+/** 페이지의 아이콘 선언이 바뀌었다고 Console 에 알리는 페이지 전역 함수 이름. */
+const FAVICON_BINDING = "__fleetFaviconChanged";
+/**
+ * 페이지가 선언한 아이콘, 없으면 /favicon.ico — Chrome 과 같이 `link rel~=icon`(shortcut icon 포함)을 먼저 보고
+ * apple-touch-icon 을 마지막 후보로 두며, 선언이 없을 때만 사이트 루트의 `/favicon.ico` 를 쓴다.
+ * `data:` 아이콘은 그대로 돌려준다. 페이지 안에서 평가되므로 상대 경로가 그 문서 기준으로 풀린다.
+ */
+const FAVICON_EXPRESSION = `(() => {
+  const rels = (link) => (link.getAttribute("rel") || "").toLowerCase().split(/\\s+/);
+  const links = Array.from(document.querySelectorAll("link[rel]"));
+  const pick = links.find((link) => rels(link).includes("icon") && !rels(link).some((rel) => rel.startsWith("apple"))) || links.find((link) => rels(link).includes("apple-touch-icon")) || null;
+  const href = pick ? (pick.getAttribute("href") || "").trim() : "";
+  try {
+    const resolved = new URL(href && href !== "#" ? href : "/favicon.ico", document.baseURI).href;
+    return resolved.startsWith("data:") && resolved.length > ${FAVICON_DATA_URL_MAX} ? null : resolved;
+  } catch { return null; }
+})()`;
+/**
+ * 아이콘 선언의 동적 변경을 지켜본다 — Chrome 이 탭 아이콘을 DOM 의 `link rel=icon` 변화에 맞춰 바꾸는 것과 같다.
+ * head 의 link 만 보고(그 밖의 head 변경은 무시) Console 에 알린다. 페이지 CSP 와 무관하게 먼저 설치된다.
+ */
+const FAVICON_OBSERVER = `(() => {
+  if (window.top !== window) return;
+  const iconLink = (node) => Boolean(node) && node.nodeType === 1 && node.nodeName === "LINK" && /icon/i.test(node.rel || "");
+  const notify = () => { try { if (typeof window.${FAVICON_BINDING} === "function") window.${FAVICON_BINDING}(); } catch {} };
+  const watch = () => {
+    if (!document.documentElement) return;
+    new MutationObserver((records) => {
+      for (const record of records) {
+        if (record.type === "attributes") { if (iconLink(record.target)) return notify(); continue; }
+        for (const node of record.addedNodes) if (iconLink(node)) return notify();
+        for (const node of record.removedNodes) if (iconLink(node)) return notify();
+      }
+    }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "rel"] });
+  };
+  if (document.documentElement) watch(); else document.addEventListener("DOMContentLoaded", watch, { once: true });
+})()`;
 
 /** macOS 편집 단축키 → Chromium 편집 명령. cmd 단독 조합만 해당한다. */
 function editCommand(key: string, mods: Modifiers): string | undefined {
@@ -886,11 +934,12 @@ export class BrowserService {
     };
   }
 
-  private chromeOf(state: BrowserObjectiveState): DesktopBrowserChrome {
+  private chromeOf(op: ObjectiveBrowser, state: BrowserObjectiveState): DesktopBrowserChrome {
     return {
       browserId: state.browserId,
       spaces: state.spaces,
-      tabs: state.tabs.map((tab) => ({ id: tab.id, spaceId: tab.spaceId, url: tab.url, title: tab.title, favicon: tab.favicon, loading: tab.loading, canGoBack: tab.canGoBack, canGoForward: tab.canGoForward, ...(tab.dialog ? { dialog: tab.dialog } : {}) })),
+      // 크롬 문서는 `img-src data:` 만 연다 — 아이콘은 Console 이 받아 바꾼 data: URL 을 싣는다.
+      tabs: state.tabs.map((tab) => ({ id: tab.id, spaceId: tab.spaceId, url: tab.url, title: tab.title, favicon: op.tabs.get(tab.id)?.faviconData ?? null, loading: tab.loading, canGoBack: tab.canGoBack, canGoForward: tab.canGoForward, ...(tab.dialog ? { dialog: tab.dialog } : {}) })),
       activeTabId: state.activeTabId,
       viewport: { preset: state.viewport.preset, width: state.viewport.width, height: state.viewport.height, setBy: state.viewport.setBy },
       driving: state.driving,
@@ -910,7 +959,7 @@ export class BrowserService {
   viewerSnapshot(objectiveId: string, options?: { readonly remoteControl?: boolean }): DesktopBrowserViewerSnapshot {
     const state = this.state(objectiveId);
     return {
-      chrome: this.chromeOf(state),
+      chrome: this.chromeOf(this.objectiveRecord(objectiveId), state),
       executionHost: state.executionHost,
       ...(options?.remoteControl ? { remoteControl: true } : {}),
       ...(this.shortcuts.length > 0 ? { shortcuts: this.shortcuts } : {}),
@@ -978,7 +1027,7 @@ export class BrowserService {
   private emitState(op: ObjectiveBrowser): void {
     const state = this.state(op.objectiveId);
     // 셸이 표면의 크롬을 그리므로 Console 상태가 바뀔 때마다 투영을 스냅샷에 싣는다. 표면이 없으면 싣지 않는다.
-    if (this.deps.desktop.surfaceState()?.browserId === op.objectiveId) this.deps.desktop.setChrome(this.chromeOf(state));
+    if (this.deps.desktop.surfaceState()?.browserId === op.objectiveId) this.deps.desktop.setChrome(this.chromeOf(op, state));
     for (const listener of this.stateListeners) { try { listener(state); } catch { /* 구독자 오류는 서비스에 번지지 않는다 */ } }
   }
 
@@ -1012,7 +1061,7 @@ export class BrowserService {
     op.agentCalls.clear();
     op.callParticipants.clear();
     await this.disposeContext(op);
-    for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
+    for (const tab of op.tabs.values()) { this.cancelViewportReapply(tab); if (tab.faviconCheck !== undefined) { clearTimeout(tab.faviconCheck); tab.faviconCheck = undefined; } }
     op.tabs.clear();
     this.remotePointers.clear();
     this.pendingFileChooser = null;
@@ -1512,7 +1561,7 @@ export class BrowserService {
         const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
         this.assertContextGeneration(op, generation);
         assertSpace();
-        tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId, targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
+        tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId, targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
         op.tabs.set(tab.id, tab);
       } catch (error) {
         // 리셋으로 등록이 거부되거나 부착이 실패한 타깃은 생성자가 끝까지 정리한다.
@@ -1532,6 +1581,11 @@ export class BrowserService {
       client.send("DOM.enable", {}, tab.sessionId),
       client.send("Emulation.setFocusEmulationEnabled", { enabled: true }, tab.sessionId),
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
+    ]);
+    // 아이콘 선언의 동적 변경을 듣는다 — 도메인을 켠 뒤에 건다. 설치·등록에 실패해도 탭은 연다(그때는 이동·로드 시점에만 갱신된다).
+    await Promise.all([
+      client.send("Runtime.addBinding", { name: FAVICON_BINDING }, tab.sessionId).catch(() => undefined),
+      client.send("Page.addScriptToEvaluateOnNewDocument", { source: FAVICON_OBSERVER }, tab.sessionId).catch(() => undefined),
     ]);
     this.deps.desktop.bindView(tab.targetId, op.objectiveId, actor === "agent");
     await this.applyViewport(client, tab, op);
@@ -1568,6 +1622,7 @@ export class BrowserService {
 
   /** 탭이 사라졌다 — 그 탭을 작업 탭으로 쥔 참가자의 기억에서 뺀다. */
   private forgetTab(op: ObjectiveBrowser, tab: Tab): void {
+    if (tab.faviconCheck !== undefined) { clearTimeout(tab.faviconCheck); tab.faviconCheck = undefined; }
     for (const [participant, id] of [...op.currentTabs]) if (id === tab.id) op.currentTabs.delete(participant);
     const space = op.spaces.get(tab.spaceId);
     if (space?.pointer?.tabId === tab.id) space.pointer = null;
@@ -1673,16 +1728,73 @@ export class BrowserService {
       tab.history = { index: history.currentIndex, length: history.entries.length, leadingBlank: history.entries[0]?.url === "about:blank" };
       if (/^https?:/.test(tab.url)) {
         const icon = await client.send<{ result: { value?: unknown } }>("Runtime.evaluate", { expression: FAVICON_EXPRESSION, returnByValue: true }, tab.sessionId);
-        tab.favicon = typeof icon.result.value === "string" && /^https?:/.test(icon.result.value) ? icon.result.value : null;
+        tab.favicon = this.readFavicon(icon.result.value);
+        if (owner) this.resolveTabFavicon(owner, tab);
         if (scope?.current() && owner?.tabs.get(tab.id) === tab) {
           const increment = tab.lastHistoryUrl !== tab.url;
           tab.lastHistoryUrl = tab.url;
           void this.browsingHistory.record(scope, [{ url: tab.url, title: tab.title, visits: 1, lastVisited: Date.now() }], { iconUrl: tab.favicon, increment })
             .catch(() => this.deps.log("browser history could not be saved"));
         }
+      } else if (owner) {
+        tab.favicon = null;
+        this.setTabFaviconData(owner, tab, null);
       }
     } catch { /* 탭이 닫히는 중 */ }
     tab.refs.clear();
+  }
+
+  /** 페이지가 돌려준 아이콘 값 — 상대 경로는 이미 절대 URL 로 풀렸다. 그릴 수 없는 값은 버린다. */
+  private readFavicon(value: unknown): string | null {
+    return typeof value === "string" && (value.startsWith("data:image/") || /^https?:/.test(value)) ? value : null;
+  }
+
+  /**
+   * 탭 아이콘을 크롬 문서가 그릴 수 있는 `data:` URL 로 바꾼다. 크롬 문서 CSP 는 `img-src data:` 만 열어
+   * 원본 URL 을 그대로 실으면 그려지지 않는다. 아이콘 바이트는 Console 이 받는다 — 원격 뷰어의 기계가
+   * 아이콘을 받으러 그 사이트에 접속하지 않는다.
+   */
+  private resolveTabFavicon(op: ObjectiveBrowser, tab: Tab): void {
+    const source = tab.favicon;
+    if (source === tab.faviconSource && tab.faviconData !== null) return;
+    tab.faviconSource = source;
+    if (source === null) { this.setTabFaviconData(op, tab, null); return; }
+    if (source.startsWith("data:")) { this.setTabFaviconData(op, tab, source.length <= FAVICON_DATA_URL_MAX && /^data:image\/[a-z0-9.+-]+[;,]/.test(source) ? source : null); return; }
+    // 새 아이콘이 도착할 때까지 이전 data: 를 둔다 — 탭이 기본 글리프로 깜빡이지 않게.
+    void this.browsingHistory.faviconForUrl(this.historyScope(op), tab.url, source).then((icon) => {
+      if (tab.favicon !== source || op.tabs.get(tab.id) !== tab) return;
+      this.setTabFaviconData(op, tab, icon !== null && icon.body.byteLength <= FAVICON_ICON_BYTES_MAX ? `data:${icon.type};base64,${icon.body.toString("base64")}` : null);
+    }).catch(() => undefined);
+  }
+
+  private setTabFaviconData(op: ObjectiveBrowser, tab: Tab, value: string | null): void {
+    if (tab.faviconData === value) return;
+    tab.faviconData = value;
+    this.emitState(op);
+  }
+
+  /** 페이지가 아이콘 선언을 바꿨다 — 잇단 알림은 마지막 한 번으로 모아 다시 읽는다. */
+  private scheduleFaviconRefresh(op: ObjectiveBrowser, tab: Tab): void {
+    if (tab.faviconCheck !== undefined) clearTimeout(tab.faviconCheck);
+    tab.faviconCheck = setTimeout(() => {
+      tab.faviconCheck = undefined;
+      const client = this.client;
+      if (!client || op.tabs.get(tab.id) !== tab) return;
+      void this.captureFavicon(client, op, tab);
+    }, 250);
+  }
+
+  /** 아이콘 선언을 다시 읽는다. 값이 그대로면 아무 것도 하지 않는다 — head 를 자주 고치는 페이지에도 상태가 흔들리지 않는다. */
+  private async captureFavicon(client: CdpClient, op: ObjectiveBrowser, tab: Tab): Promise<void> {
+    if (!/^https?:/.test(tab.url)) return;
+    try {
+      const icon = await client.send<{ result: { value?: unknown } }>("Runtime.evaluate", { expression: FAVICON_EXPRESSION, returnByValue: true }, tab.sessionId);
+      if (op.tabs.get(tab.id) !== tab) return;
+      const next = this.readFavicon(icon.result.value);
+      if (tab.favicon === next) return;
+      tab.favicon = next;
+      this.resolveTabFavicon(op, tab);
+    } catch { /* 탭이 닫히는 중 */ }
   }
 
   // ---------- Chrome 에서 가져오기 ----------
@@ -1919,6 +2031,12 @@ export class BrowserService {
         const client = this.client;
         if (client) void this.refreshTab(client, tab).then(() => this.emitState(op));
         if (client) void this.applyViewport(client, tab, op, { media: true }).catch(() => undefined);
+        return;
+      }
+      // 페이지가 아이콘 선언을 바꿨다 — Chrome 처럼 다음 상태에 새 아이콘을 싣는다.
+      case "Runtime.bindingCalled": {
+        if (p.name !== FAVICON_BINDING) return;
+        this.scheduleFaviconRefresh(op, tab);
         return;
       }
       case "Runtime.consoleAPICalled": {
