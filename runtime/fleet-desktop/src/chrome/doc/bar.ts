@@ -26,7 +26,9 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   const reload = h("button", { class: "icon reload", type: "button", on: { click: () => post("bar", "navigate", { url: "reload" }) } }, glyph(G.reload));
   const display = h("span", { class: "url-display", attrs: { "aria-hidden": "true" } });
   const input = h("input", { class: "url-input", type: "text", autocomplete: "off", spellcheck: false, attrs: { inputmode: "url", role: "combobox", "aria-autocomplete": "list" } });
-  const form = h("form", { class: "url" }, display, input);
+  const urlRow = h("div", { class: "url-row" }, display, input);
+  const urlBox = h("div", { class: "url-box" }, urlRow);
+  const form = h("form", { class: "url" }, urlBox);
   const detach = h("button", { class: "icon detach", type: "button", on: { mousedown: (event) => event.preventDefault(), click: () => post("bar", "toggle-mode") } }, "↗");
   // 스페이스 — 도구 메뉴 바로 왼쪽. 단추의 그림이 지금 보는 스페이스의 표식(사령관은 머리글자, 디폴트는 집)이고, 누르면 스페이스들이 그리드로 펼쳐진다.
   // 누르면 초점이 주소줄을 떠난다(mousedown 을 막지 않는다): 스페이스를 옮긴 뒤 주소줄이 고치던 중으로 남아 옛 주소를 붙잡지 않게.
@@ -69,6 +71,8 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   let dirty = false;
   let composing = false;
   let selected = -1;
+  let selectOnMouseUp = false;
+  let downPos: { readonly x: number; readonly y: number } | null = null;
   let suggestTimer: ReturnType<typeof setTimeout> | null = null;
   let annotator: Annotator | null = null;
   let infoTimer: ReturnType<typeof setTimeout> | null = null;
@@ -76,8 +80,12 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   let lastUrl = "";
   let dialogFocusSeen = 0;
 
+  const selectAllInput = (): void => {
+    input.setSelectionRange(0, input.value.length);
+    input.scrollLeft = 0;
+  };
   const submit = (value: string): void => {
-    dirty = false; editing = false;
+    dirty = false; editing = false; selectOnMouseUp = false; downPos = null;
     post("bar", "draft", { value: null });
     closeSuggestions();
     input.blur();
@@ -89,10 +97,11 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     selected = -1;
     post("bar", "suggest", { query: "" });
   };
-  const askSuggest = (value: string): void => {
-    if (suggestTimer !== null) clearTimeout(suggestTimer);
+  const askSuggest = (value: string, immediate = false): void => {
+    if (suggestTimer !== null) { clearTimeout(suggestTimer); suggestTimer = null; }
     selected = -1;
     if (!value.trim() || value.length > 2048 || composing) { post("bar", "suggest", { query: "" }); return; }
+    if (immediate) { post("bar", "suggest", { query: value }); return; }
     suggestTimer = setTimeout(() => { suggestTimer = null; post("bar", "suggest", { query: value }); }, SUGGEST_DELAY_MS);
   };
   const suggestionsOf = (): readonly ChromeSuggestion[] => (editing && !composing && last?.overlay?.kind === "suggestions" ? last.suggestions : []);
@@ -102,20 +111,49 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const next = (event as FocusEvent).relatedTarget as Node | null;
     if (next && (form.contains(next) || overlay.contains(next))) return;
     // 제안 목록의 항목은 mousedown 을 막아 초점을 뺏지 않는다 — 여기까지 온 것은 정말 주소줄을 떠난 것이다.
-    editing = false; render(last!); closeSuggestions();
+    editing = false; selectOnMouseUp = false; downPos = null; if (last) render(last); closeSuggestions();
   });
-  input.addEventListener("focus", () => { if (chromeViewLocked(last?.viewOnly)) { input.blur(); return; } editing = true; input.select(); render(last!); });
-  input.addEventListener("input", () => { if (chromeViewLocked(last?.viewOnly)) return; editing = true; dirty = true; post("bar", "draft", { value: input.value }); askSuggest(input.value); render(last!); });
+  window.addEventListener("blur", () => {
+    if (!editing) return;
+    editing = false; selectOnMouseUp = false; downPos = null; input.blur(); if (last) render(last); closeSuggestions();
+  });
+  input.addEventListener("mousedown", (event) => {
+    if (event.button !== 0 || chromeViewLocked(last?.viewOnly)) return;
+    if (document.activeElement !== input) {
+      selectOnMouseUp = true;
+      downPos = { x: event.clientX, y: event.clientY };
+    }
+  });
+  input.addEventListener("mouseup", (event) => {
+    if (!selectOnMouseUp) return;
+    const pos = downPos;
+    selectOnMouseUp = false;
+    downPos = null;
+    const dragged = pos !== null && Math.hypot(event.clientX - pos.x, event.clientY - pos.y) >= 4 && input.selectionStart !== input.selectionEnd;
+    if (!dragged && event.detail <= 1) {
+      event.preventDefault();
+      selectAllInput();
+    }
+  });
+  input.addEventListener("focus", () => {
+    if (chromeViewLocked(last?.viewOnly)) { input.blur(); return; }
+    editing = true;
+    if (last?.overlay && last.overlay.kind !== "suggestions") post("bar", "overlay", { kind: null });
+    if (last) render(last);
+    selectAllInput();
+    if (input.value.trim() && !composing) askSuggest(input.value, true);
+  });
+  input.addEventListener("input", () => { if (chromeViewLocked(last?.viewOnly)) return; editing = true; dirty = true; post("bar", "draft", { value: input.value }); askSuggest(input.value); if (last) render(last); });
   input.addEventListener("compositionstart", () => { composing = true; closeSuggestions(); });
   input.addEventListener("compositionend", () => { composing = false; askSuggest(input.value); });
   input.addEventListener("keydown", (event) => {
     if (composing || event.isComposing || event.keyCode === 229) { if (event.key === "Enter") event.preventDefault(); return; }
     const list = suggestionsOf();
-    if (event.key === "Escape") { dirty = false; post("bar", "draft", { value: null }); event.preventDefault(); closeSuggestions(); editing = false; input.blur(); render(last!); }
+    if (event.key === "Escape") { dirty = false; selectOnMouseUp = false; downPos = null; post("bar", "draft", { value: null }); event.preventDefault(); closeSuggestions(); editing = false; input.blur(); if (last) render(last); }
     else if (list.length > 0 && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
       event.preventDefault();
       selected = event.key === "ArrowDown" ? (selected + 1) % list.length : (selected <= 0 ? list.length : selected) - 1;
-      renderOverlay(last!);
+      if (last) renderOverlay(last);
     } else if (event.key === "Enter" && list.length > 0 && selected >= 0) { event.preventDefault(); submit(list[selected]!.value); }
   });
   document.addEventListener("keydown", (event) => { if (event.key === "Escape" && last?.overlay && last.overlay.kind !== "suggestions" && last.overlay.kind !== "annotate") post("bar", "dialog-close"); });
@@ -504,9 +542,11 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (current?.kind !== "annotate" && annotator) { annotator.dispose(); annotator = null; }
     // 스페이스 선택 화면이 닫히면 초점을 그 단추로 돌려준다 — 키보드로 연 사람이 화면 밖에서 길을 잃지 않게.
     const leavingSpaces = overlayKey.startsWith("spaces:") && !(showing && current!.kind === "spaces") && overlay.contains(document.activeElement);
-    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? list(state) : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : current!.kind === "password-prompt" || current!.kind === "password-picker" ? JSON.stringify(current) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : remote ? `remote:${JSON.stringify(remote)}` : "none";
+    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? `${editing}:${composing}:${list(state)}` : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : current!.kind === "password-prompt" || current!.kind === "password-picker" ? JSON.stringify(current) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : remote ? `remote:${JSON.stringify(remote)}` : "none";
     const toastKey = `${state.notice ?? ""}|${state.info?.text ?? ""}|${state.info?.action ?? ""}`;
     if (current?.kind === "annotate" && showing) {
+      urlBox.querySelector(".suggestions")?.remove();
+      form.classList.remove("is-expanded");
       if (!annotator) { clear(overlay); annotator = mountAnnotate(overlay, state, t); overlayKey = "annotate"; }
       else annotator.update(state);
       placeToast(state, t, toastKey);
@@ -516,10 +556,20 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (key !== overlayKey) {
       overlayKey = key;
       clear(overlay);
+      urlBox.querySelector(".suggestions")?.remove();
+      form.classList.remove("is-expanded");
       if (leavingSpaces) spacesButton.focus({ preventScroll: true });
       if (showing) {
         const backdrop = h("div", { class: `backdrop${modal ? " modal" : ""}` });
-        backdrop.addEventListener("pointerdown", (event) => { if (event.target === backdrop && !modal) post("bar", "overlay", { kind: null }); });
+        backdrop.addEventListener("pointerdown", (event) => {
+          if (event.target === backdrop && !modal) {
+            if (current!.kind === "suggestions") {
+              editing = false; selectOnMouseUp = false; downPos = null; input.blur();
+              if (last) render(last);
+            }
+            post("bar", "overlay", { kind: null });
+          }
+        });
         if (current!.kind === "menu") {
           const menu = buildMenu(state, t);
           backdrop.append(menu);
@@ -537,7 +587,11 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
           queueMicrotask(() => { if (overlayKey.startsWith("spaces:") && (hadFocus || !overlay.contains(document.activeElement))) (backdrop.querySelector<HTMLElement>(".space-tile.current:not(:disabled)") ?? backdrop.querySelector<HTMLElement>(".space-tile:not(:disabled)"))?.focus(); });
         } else if (current!.kind === "suggestions") {
           const box = buildSuggestions(state, t);
-          if (box) { const rect = form.getBoundingClientRect(); box.style.left = `${rect.left}px`; box.style.width = `${rect.width}px`; box.style.top = `${rect.bottom + 4}px`; backdrop.append(box); }
+          if (box) {
+            urlBox.append(box);
+            form.classList.add("is-expanded");
+            box.querySelector<HTMLElement>('[aria-selected="true"]')?.scrollIntoView({ block: "nearest" });
+          }
         } else if (current!.kind === "password-picker") {
           const box = buildPasswordPicker(t, current as Extract<ChromeOverlay, { kind: "password-picker" }>);
           if (box) { const rect = form.getBoundingClientRect(); box.style.left = `${rect.left}px`; box.style.width = `${rect.width}px`; box.style.top = `${rect.bottom + 4}px`; backdrop.append(box); }
