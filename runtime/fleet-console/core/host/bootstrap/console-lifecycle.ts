@@ -23,7 +23,6 @@ import {
   observeConsoleLockFileWithin,
   recoverConsoleLockSlot,
   readConsoleEnding,
-  readConsoleLockFile,
   reproveConsoleInstance,
   runStopLadder,
   writeConsoleExitRecord,
@@ -163,18 +162,6 @@ export interface ConsoleStopDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop">;
 }
 
-export type ConsoleHookCommand =
-  | { readonly command: "capture-session"; readonly provider: "claude" }
-  | { readonly command: "turn-start" }
-  | { readonly command: "turn-end" }
-  | { readonly command: "workspace" }
-  | { readonly command: "background-report" }
-  | { readonly command: "background-spawn" }
-  | { readonly command: "background-stop" }
-  | { readonly command: "attention" }
-  | { readonly command: "auto-name" }
-  | { readonly command: "agent-call" };
-
 export interface ConsoleRestartDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "stop" | "ensureDaemon" | "probe">;
   readonly report?: (message: string) => void;
@@ -197,11 +184,6 @@ interface ConsoleDaemonChildObservation {
   readonly failurePromise: Promise<ConsoleDaemonChildFailure>;
   readonly exitPromise: Promise<void>;
 }
-
-// background-spawn/background-stop은 더 이상 렌더되지 않지만, 업그레이드 시점에 이미 살아 있는 세션의
-// hooks.json이 여전히 그 이름으로 이 실행 파일을 호출한다(경로가 제자리 덮어써지므로 구 세션이 새 바이너리를 부른다).
-// 이름을 지우면 in-flight 세션의 hook이 예외로 죽으므로 계속 받아주고, 본문도 퇴역 당시 형식을 그대로 보낸다.
-const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "workspace", "background-report", "background-spawn", "background-stop", "attention", "auto-name", "agent-call"]);
 
 export interface ConsoleCliInvocation {
   readonly mode: ConsoleCliMode;
@@ -243,24 +225,6 @@ export function parseConsoleCliInvocation(argv: readonly string[]): ConsoleCliIn
     throw new Error(`Unknown fleet console option: ${arg}\nRun 'fleet console --help' for usage.`);
   }
   return { mode, recover };
-}
-
-export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCommand {
-  const [commandName, ...rest] = argv;
-  if (!commandName || !CONSOLE_HOOK_COMMANDS.has(commandName)) {
-    throw new Error("Unknown fleet-console hook command");
-  }
-  if (commandName === "turn-start" && rest.length === 0) return { command: "turn-start" };
-  if (commandName === "turn-end" && rest.length === 0) return { command: "turn-end" };
-  if (commandName === "workspace" && rest.length === 0) return { command: "workspace" };
-  if (commandName === "background-report" && rest.length === 0) return { command: "background-report" };
-  if (commandName === "background-spawn" && rest.length === 0) return { command: "background-spawn" };
-  if (commandName === "background-stop" && rest.length === 0) return { command: "background-stop" };
-  if (commandName === "attention" && rest.length === 0) return { command: "attention" };
-  if (commandName === "auto-name" && rest.length === 0) return { command: "auto-name" };
-  if (commandName === "agent-call" && rest.length === 0) return { command: "agent-call" };
-  if (commandName === "capture-session" && rest.length === 1 && rest[0] === "claude") return { command: "capture-session", provider: rest[0] };
-  throw new Error("Unknown fleet-console hook command");
 }
 
 export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}): string {
@@ -1108,61 +1072,6 @@ export async function main(): Promise<void> {
     }
     return;
   }
-  if (process.argv[2] === "hook") {
-    const hookCommand = parseConsoleHookCommand(process.argv.slice(3));
-    if (hookCommand.command === "workspace") {
-      const sessionId = process.env.FLEET_CONSOLE_WORKSPACE_SESSION_ID;
-      const runId = process.env.FLEET_CONSOLE_WORKSPACE_RUN_ID;
-      if (!sessionId || !runId) return;
-      const observedAt = performance.timeOrigin;
-      await postAgentHook(`/sessions/${encodeURIComponent(sessionId)}/workspace`, {
-        runId, observedAt, input: await readStdinBestEffort(),
-      }, process.env);
-      return;
-    }
-    if (hookCommand.command === "turn-start" || hookCommand.command === "turn-end") {
-      // 턴 상태 hook은 항상 무출력·exit 0 best-effort다(hook continuation과 block 출력 금지).
-      // 턴 종료(Stop) payload에는 그 시점에 살아 있는 백그라운드 작업 목록도 실려 있다. 같은 POST로 넘겨
-      // 서버가 두 축을 한 번에 반영하게 한다 — 따로 보내면 둘 사이의 찰나에 세션이 거짓 유휴로 보인다.
-      if (hookCommand.command === "turn-start") {
-        await postAgentHook(`/sessions/${readHookSessionId(process.env)}/turn`, { phase: "start", input: await readStdinBestEffort() }, process.env);
-        return;
-      }
-      await postAgentHook(`/sessions/${readHookSessionId(process.env)}/turn`, { phase: "end", input: await readStdinBestEffort() }, process.env);
-      return;
-    }
-    if (hookCommand.command === "background-report") {
-      // 백그라운드 보고 hook도 무출력·exit 0 best-effort다. hook payload를 그대로 넘기고 해석은 서버가 한다.
-      await postAgentHook(`/sessions/${readHookSessionId(process.env)}/background`, { input: await readStdinBestEffort() }, process.env);
-      return;
-    }
-    if (hookCommand.command === "background-spawn" || hookCommand.command === "background-stop") {
-      // 퇴역한 이름은 퇴역 당시의 본문 형식을 그대로 보낸다. 업그레이드는 활성 Objective이 있으면 구 데몬을
-      // 그대로 두는데(ensureDaemon의 workspaceCount 보호), 그 서버는 {event}만 이해하므로 새 형식을 보내면
-      // 400으로 떨어져 살아 있는 세션의 백그라운드 축이 통째로 죽는다. 새 서버는 이 본문을 무의견으로 받고,
-      // 그 세션의 실제 보고는 같은 새 바이너리가 보내는 turn-end payload가 담당한다.
-      await postAgentHook(`/sessions/${readHookSessionId(process.env)}/background`, { event: hookCommand.command === "background-spawn" ? "spawn" : "stop" }, process.env);
-      return;
-    }
-    if (hookCommand.command === "attention") {
-      // 입력 대기 알림 hook도 무출력·exit 0 best-effort다(claude block/추가 stdout 금지).
-      await postAgentHook(`/sessions/${readHookSessionId(process.env)}/attention`, { input: await readStdinBestEffort() }, process.env);
-      return;
-    }
-    if (hookCommand.command === "agent-call") {
-      // 다른 hook과 달리 결정을 stdout으로 낸다. 침묵은 허용이고, 거절은 PreToolUse의 deny와 사유다.
-      const decision = await decideAgentCall(process.env.FLEET_CONSOLE_AGENT_CALL_SESSION_ID, await readStdinBestEffort(), process.env);
-      if (decision) process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: decision } }));
-      return;
-    }
-    if (hookCommand.command === "auto-name") {
-      // 자동 작명 hook도 무출력·exit 0 best-effort다(stdin prompt를 읽어 서버로 전달만 한다).
-      await postAgentHook(`/sessions/${readHookSessionId(process.env)}/auto-name`, { input: await readStdinBestEffort() }, process.env);
-      return;
-    }
-    await postAgentHook(`/sessions/${readHookSessionId(process.env)}/capture`, { provider: hookCommand.provider, input: await readStdinBestEffort() }, process.env);
-    return;
-  }
   const invocation = parseConsoleCliInvocation(process.argv.slice(2));
   await runConsolePublishedCommand(invocation.mode, { stdout: process.stdout, env: process.env }, { recover: invocation.recover });
 }
@@ -1215,100 +1124,4 @@ export function resolveDefaultServerModulePath(moduleUrl: string = import.meta.u
 
 function describeUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function readHookSessionId(env: NodeJS.ProcessEnv): string {
-  return encodeURIComponent(env.FLEET_CONSOLE_SESSION_ID ?? "");
-}
-
-async function postAgentHook(pathname: string, body: Record<string, unknown>, env: NodeJS.ProcessEnv): Promise<void> {
-  try {
-    const paths = createConsolePaths({ env });
-    const lock = readConsoleLockFile<ConsoleLockPayload>(paths.lockFile);
-    if (!lock) return;
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 1500);
-    if (typeof timer.unref === "function") timer.unref();
-    try {
-      await fetch(`${lock.endpoint}api/v1/agent${pathname}`, {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${lock.token}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-    } finally {
-      clearTimeout(timer);
-    }
-  } catch {
-    // provider hook은 UI best-effort 신호라 실패해도 stdout/stderr와 exit code에 영향을 주지 않는다.
-  }
-}
-
-/** Console에 닿지 못해 판단을 받지 못한 서브에이전트 호출의 거절 사유. 판단이 없을 때 서브에이전트를 띄우지 않는다. */
-const AGENT_CALL_UNREACHABLE_REASON = "Subagents are not available in this Fleet Console session, and Fleet Console could not be reached to say how to delegate instead. Continue the work in this session.";
-const AGENT_CALL_TIMEOUT_MS = 5_000;
-
-/**
- * 서브에이전트 호출 하나를 Console에 묻고 거절 사유를 돌려준다. null은 허용이다.
- *
- * 이 세션의 식별자가 없으면 Console이 띄운 Objective이 아니므로 관여하지 않는다. 식별자가 있는데 Console이
- * 답하지 못하면(잠금 없음·시한 초과·오류 응답) 막는다 — 이 hook의 침묵은 곧 서브에이전트 실행이기 때문이다.
- */
-export async function decideAgentCall(sessionId: string | undefined, input: string, env: NodeJS.ProcessEnv, fetchImpl: typeof fetch = fetch): Promise<string | null> {
-  if (!sessionId) return null;
-  if (!isAgentToolCall(input)) return null;
-  try {
-    const lock = readConsoleLockFile<ConsoleLockPayload>(createConsolePaths({ env }).lockFile);
-    if (!lock) return AGENT_CALL_UNREACHABLE_REASON;
-    const response = await fetchImpl(`${lock.endpoint}api/v1/agent/sessions/${encodeURIComponent(sessionId)}/agent-call`, {
-      method: "POST",
-      headers: { authorization: `Bearer ${lock.token}`, "content-type": "application/json" },
-      body: JSON.stringify({ input }),
-      signal: AbortSignal.timeout(AGENT_CALL_TIMEOUT_MS),
-    });
-    if (!response.ok) return AGENT_CALL_UNREACHABLE_REASON;
-    const body = await response.json() as { readonly reason?: unknown };
-    if (body.reason === null) return null;
-    return typeof body.reason === "string" && body.reason.length > 0 ? body.reason : AGENT_CALL_UNREACHABLE_REASON;
-  } catch {
-    return AGENT_CALL_UNREACHABLE_REASON;
-  }
-}
-
-/** 매처가 이미 거르지만, 다른 도구 이름이 이 hook에 닿아도 결정을 내지 않는다. 읽지 못한 입력은 서브에이전트 호출로 본다. */
-function isAgentToolCall(input: string): boolean {
-  try {
-    const toolName = (JSON.parse(input) as { readonly tool_name?: unknown }).tool_name;
-    return typeof toolName !== "string" || toolName === "Agent" || toolName === "Task";
-  } catch {
-    return true;
-  }
-}
-
-function readStdinBestEffort(): Promise<string> {
-  return new Promise((resolve) => {
-    const chunks: Buffer[] = [];
-    let settled = false;
-    const finish = (value: string): void => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-    const timer = setTimeout(() => finish(""), 500);
-    if (typeof timer.unref === "function") timer.unref();
-    process.stdin.on("data", (chunk) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-    });
-    process.stdin.on("error", () => {
-      clearTimeout(timer);
-      finish("");
-    });
-    process.stdin.on("end", () => {
-      clearTimeout(timer);
-      finish(Buffer.concat(chunks).toString("utf8"));
-    });
-  });
 }
