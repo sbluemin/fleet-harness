@@ -1,15 +1,26 @@
 # 실행 활동 상태 참조
 
-SDK 활동, hook, job ledger 또는 레거시 Objective 채택을 수정할 때 읽는다. 상태의 권위·수명주기·실패 처리 근거를 보존한다.
+SDK 활동, job ledger 또는 Objective 세션 수명주기를 수정할 때 읽는다. 상태의 권위·수명주기·실패 처리 근거를 보존한다.
 
-## 현재 Objective 경로
+## Objective 활동의 권위
 
-Objective는 Chat SDK로만 실행한다. SDK 턴 경계가 working을, 승인 대기가 awaiting을, 세션의 live job ledger가 background-pending을 소유한다. background-pending은 working을 대신하지 않으며 거짓 idle만 막는다. Chat ledger에는 TTL을 두지 않고 세션 종료 시 걷는다. 종료된 resident agent는 다시 live 작업으로 세지 않고, kind가 빠진 행은 이미 알려진 kind를 덮지 않는다. `chatActive`는 SDK 자식이 없는 동안에도 소유권을 유지한다.
+모든 Objective 세션은 Chat SDK로 실행한다. SDK 턴 경계가 working을, 승인 대기가 awaiting을, 세션의 live job ledger가 background-pending을 소유한다. background-pending은 working을 대신하지 않으며 거짓 idle만 막는다. 턴이 진행 중이면 working이 먼저 보이고, 턴이 끝난 뒤에도 에이전트 작업이 남았을 때 background-pending이 드러난다. 턴 종료만으로 백그라운드 작업 집합을 비우지 않는다.
 
-레거시 비chat 레코드는 종료/재개 카드와 명시적 Start fresh를 유지한다. 부팅 시 일괄 변환하지 않으며 Resume는 Chat으로만 채택한다. 채택 시 이전 활동 값을 비워야 한다. Objective PTY 생성·티켓·쓰기·sleep은 제공하지 않는다. 아래 PTY 규칙은 남아 있는 레거시 관측 호환 코드의 제약이며 새 Objective 실행 경로가 아니다. 셸과 독립 CLI의 공유 PTY transport는 별도로 유지한다.
+활동 필드는 한 벌이다. SDK 자식이 아직 열리지 않았다는 이유로 다른 표면의 상태를 만들지 않는다. 복원된 Objective 세션은 자식 없이도 live/idle이며, 이력·상태 조회만으로 자식을 열지 않는다. Objective에는 PTY 표면·전환·휴면 재개 경로가 없다. 셸과 독립 Claude CLI의 공유 PTY transport는 별도로 유지한다.
 
-## 레거시 관측 호환 제약
+## 백그라운드 작업 집합
 
-- Agent activity has one authority per axis: the agent CLI's OSC terminal title decides whether the model is working, input-waiting hooks decide the awaiting state that titles cannot distinguish from idle, hook turn state is only the fallback for an unrecognized title, and the authority for background-pending work that outlives the turn is per surface: the live background-task list carried on the turn-stop and subagent-stop hook payloads for the PTY surface, and the session's own live job ledger for the Chat surface, which needs no hook because its SDK stream carries every task start and end for as long as the session lives. That list is applied as an absolute value, never as a spawn/stop tally: one workflow tool call fires a single spawn but one stop per workflow agent, so any counter drains while the workflow is still running. A stopping subagent is still listed as live in its own payload and must be excluded by its agent id, and that exclusion has to be remembered for the rest of the session: a named agent stays resident and listed as running after its work is done, so a payload alone can never tell resident from busy, and re-reading it as live work would wedge the objectiveRecord out of idle and awaiting. The remembered ids are pruned by the next fully readable list that no longer carries them. Only agent work stands on this axis — subagents, named teammates, and workflows — because what a person waits on is the agent doing their work, not a command it left behind: a background shell a finished subagent started stays listed on the parent, and an MCP monitor task is resident for the life of the session, so counting either wedges the objectiveRecord out of idle and blocks idle dormancy. A task type on neither list, and a task record carrying no type at all, is not proof that no work remains, so it stays opinionless like an unreadable list. Turn end carries its own report inside the turn-state signal rather than through a second hook on the same event, because hooks sharing an event run in parallel and a turn end that lands alone reads as a false idle for that frame — a spurious turn-ended notification and an idle arrival. Background-pending must never claim the working axis; it only prevents a false idle and blocks idle dormancy while set. On the hook-fed PTY surface it decays after a bounded TTL because hook delivery is best-effort — a lost stop hook must never wedge the badge on forever. The Chat surface carries no such shelf life, because its ledger is the session stream itself and is always swept when the session goes away, and a deadline there would quietly idle work that is still running. Everything that surface leaves undecided is therefore permanent, so it must decide: an unrecognized task kind does not stand on the axis there, a resident agent still listed after its end event is remembered and excluded exactly as the hook payload's is, and a list row that omits the kind never overwrites a kind already known. The title says that something is working, never whose work it is, so a title still working after turn end is read as the pending background work rather than as a running turn, and running wins only while a turn is in flight. Its working vocabulary is a glyph alphabet the CLI restyles between releases, so it is matched by family and several families stay matched at once. An unrecognized title, and a background report whose task list cannot be read, must stay opinionless so vocabulary drift degrades to the prior state instead of a false idle.
+`chat-session.ts`의 `trackJob`과 `syncBackgroundPending`이 SDK 스트림의 작업 상태를 집계한다.
 
-- The activity axis is one set of fields with two adapters, never one set per surface: the PTY adapter fills them from the OSC title and hooks, the Chat adapter from SDK turn boundaries and its live job ledger, and `chatActive` records only which adapter owns the axis. A chat-adopted session is `registered` and stays `live` even before an SDK child opens; restored chats start `idle`. `chatActive`, never the presence of a child, gates a write to that axis from the Chat side. PTY setters reject chat ownership as well as hooks landing after terminal teardown, so late PTY reports cannot overwrite the chat ledger. Adding a parallel per-surface field splits one concept into two names and forces every reader to choose between them. Switching adapters clears what the previous one left, because a stale value is read as the new surface's first frame.
+- `job`은 실행 중 집합에 넣고 이전 종료 기억을 지운다. 같은 id의 새 시작을 종료된 resident 작업으로 오인하면 안 된다.
+- `job-end`는 실행 중 집합에서 빼고 종료 기억을 남긴다. 종료된 named agent가 목록에 계속 남아 있어도 다시 pending으로 세지 않는다.
+- `jobs`는 증감 카운터가 아니라 전체 집합의 교체다. 한 Workflow 호출이 여러 자식을 만들 수 있으므로 spawn/stop 횟수 차로 작업 수를 추정하지 않는다. 목록에서 사라진 id의 종료 기억은 정리한다.
+- pending으로 세는 것은 `agent`와 `workflow` 작업이다. 백그라운드 셸 명령과 세션에 상주하는 MCP 감시는 사람이 기다리는 에이전트 작업과 다르다. 처음 보는 kind는 pending에 넣지 않으며, kind가 빠진 행은 이미 알려진 kind를 덮지 않는다.
+- ledger에는 TTL을 두지 않는다. SDK 스트림의 작업 상태를 시간 만료로 지우면 실제로 진행 중인 작업을 idle로 표시한다. 세션 종료 시 ledger를 정리한다.
+- 집합이 바뀔 때 pending의 절대값을 보고한다. 마지막 전송값을 별도 소유권 상태로 취급하지 않으며, 같은 값인지는 활동 필드를 가진 쪽에서 판단한다.
+
+## 종료와 대화 보존
+
+한 대화에는 writer가 하나만 있어야 한다. 세션 교체·종료는 이전 SDK writer의 정리를 기다리고, 복원은 저장된 대화 정체성을 따른다. 저장된 transcript가 사라졌다고 자동으로 새 대화를 만들지 않는다. 새 대화는 명시적 fresh 요청의 계약을 따른다.
+
+외부 Fleet command hook과 Objective PTY의 OSC title·hook TTL·표면 전환 규칙은 퇴역한 실행 경로의 규칙이다. 이를 SDK ledger의 새 타임아웃이나 호환 어댑터로 되살리지 않는다.

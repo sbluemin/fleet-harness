@@ -240,6 +240,12 @@ describe("agent chat mode routes", () => {
     await expect(harness.consoleControl.unstartedPreset(plugin, unstarted, { model: "opus[1m]", effort: null })).resolves.toEqual({ ok: false, error: "forbidden" });
     const owned = (await harness.consoleControl.request(plugin, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Own work" })).objectiveId;
     await vi.waitFor(() => expect(harness.consoleControl.observe(owned)).toMatchObject({ lifecycle: "live", activity: "idle" }));
+    // 보관·삭제 전이 중에는 소유한 세션이라도 좌표를 바꾸지 않는다.
+    harness.transitioning.add(owned);
+    const changesBeforeTransition = harness.modelChanges.length;
+    await expect(harness.consoleControl.coordinates(plugin, owned, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: false, error: "chat_not_active" });
+    expect(harness.modelChanges).toHaveLength(changesBeforeTransition);
+    harness.transitioning.delete(owned);
     await expect(harness.consoleControl.coordinates(plugin, owned, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: true, applied: "now" });
     expect(harness.modelChanges.at(-1)).toBe("sonnet[1m]");
     expect(harness.objectiveRecord(owned)?.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
@@ -481,6 +487,7 @@ describe("agent chat mode routes", () => {
 
 async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly basePromptEnabled?: boolean; readonly autoMemoryEnabled?: () => boolean } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
+  const transitioning = new Set<string>();
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir, resolveLaunchAttachmentNamespaceRoot(fleetDataDir));
   vi.stubEnv("CLAUDE_CONFIG_DIR", fleetDataDir);
@@ -618,6 +625,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         releaseSessionToken: () => {}, cleanup: () => {},
       }) },
       objectiveRecords: {
+        isTransitioning: (id: string) => transitioning.has(id),
         list: () => objectiveRecords,
         get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null,
         create: (input: ObjectiveRecordCreateInput) => {
@@ -720,6 +728,7 @@ ts: { createdAt, updatedAt: createdAt }};
 
   return {
     consoleControl,
+    transitioning,
     restart: async () => {
       // durable Objective 기록만 남기고 실행 어댑터를 새로 만든다. 제어 서비스는 연결을 유지한다.
       for (const cleanup of lifecycleCleanups.splice(1).reverse()) await cleanup();

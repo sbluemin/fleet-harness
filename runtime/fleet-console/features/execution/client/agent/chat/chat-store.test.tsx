@@ -349,8 +349,8 @@ it("keeps independent group journals alive across view closure, merges only conf
   const clusterSource: ObjectiveClusterSource = { get: () => clusters, subscribe: () => () => {} };
   const session = (id: string) => ({ sessionId: id, terminalSessionId: id, cwdLabel: "fixture", status: "live" as const, turnState: "running" as const, chatActive: true, createdAt: 1, resumeAvailable: true });
   setState({ objectiveRecords: [{ id: "root", commodoreId: "c1", theaterId: "theater", title: "Commander",
-    ...({ chatMode: true }), ts: { createdAt: 1, updatedAt: 1 }, sessions: [{ id: "member", chatMode: true, ts: { createdAt: 2, updatedAt: 2 } },
-      { id: "archived", chatMode: false, ts: { createdAt: 3, updatedAt: 3 } }, { id: "waking", chatMode: false, ts: { createdAt: 4, updatedAt: 4 } }] }],
+    ts: { createdAt: 1, updatedAt: 1 }, sessions: [{ id: "member", ts: { createdAt: 2, updatedAt: 2 } },
+      { id: "archived", ts: { createdAt: 3, updatedAt: 3 } }, { id: "waking", ts: { createdAt: 4, updatedAt: 4 } }] }],
     objectiveRecordRuntime: { root: { lifecycle: "live", activity: "running" }, member: { lifecycle: "live", activity: "running" } } });
   setObjectiveRuntime("root", { lifecycle: "live", activity: "running" });
   setObjectiveRuntime("member", { lifecycle: "live", activity: "running" });
@@ -415,7 +415,6 @@ it("keeps independent group journals alive across view closure, merges only conf
     expect(group!.unavailableObjectiveIds).toEqual(["waking"]);
     // 이력을 받기 전에 재개되면 live 스냅숏이 권위다 — 늦게 도착한 이력이 그것을 덮지 않는다.
     act(() => {
-      setState({ objectiveRecords: getState().objectiveRecords.map((objectiveRecord) => ({ ...objectiveRecord, sessions: objectiveRecord.sessions?.map((child) => child.id === "waking" ? { ...child, ...({ ...child, chatMode: true }) } : child) })) });
       setObjectiveRuntime("waking", { lifecycle: "live", activity: "idle" });
       setAgentState({ sessions: { ...getAgentState().sessions, waking: session("waking") } });
     });
@@ -455,8 +454,8 @@ it("keeps group timeline sockets and dormant history closed until the conversati
   let subject: string | null = null;
   const listeners = new Set<() => void>();
   setState({ objectiveRecords: [{ id: "root", commodoreId: "c1", theaterId: "theater", title: "Commander",
-    ...({ chatMode: true }), ts: { createdAt: 1, updatedAt: 1 }, sessions: [{ id: "archived", chatMode: false, ts: { createdAt: 3, updatedAt: 3 } }] },
-  { id: "unviewed", commodoreId: "c1", theaterId: "theater", title: "Elsewhere", ...({ chatMode: true }), ts: { createdAt: 5, updatedAt: 5 } }],
+    ts: { createdAt: 1, updatedAt: 1 }, sessions: [{ id: "archived", ts: { createdAt: 3, updatedAt: 3 } }] },
+  { id: "unviewed", commodoreId: "c1", theaterId: "theater", title: "Elsewhere", ts: { createdAt: 5, updatedAt: 5 } }],
     objectiveRecordRuntime: { root: { lifecycle: "live", activity: "running" }, archived: { lifecycle: "dormant" }, unviewed: { lifecycle: "live", activity: "idle" } } });
   setObjectiveRuntime("root", { lifecycle: "live", activity: "running" });
   setObjectiveRuntime("archived", { lifecycle: "dormant" });
@@ -491,15 +490,8 @@ it("keeps group timeline sockets and dormant history closed until the conversati
     act(() => { for (const listener of listeners) listener(); });
     await act(async () => { await Promise.resolve(); });
     expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
-    // 어댑터와 화면 모드가 바뀌는 도중에도 터미널 화면에는 그룹 소켓을 열지 않는다.
-    act(() => {
-      setState({ objectiveRecords: getState().objectiveRecords.map((record) => ({ ...record, chatMode: false })) });
-      setAgentState({ sessions: { ...getAgentState().sessions, root: session } });
-    });
-    await act(async () => { await Promise.resolve(); });
-    expect(FakeWebSocket.instances.every((socket) => socket.closed)).toBe(true);
     // 살아 있는 그룹 채팅은 설정 없이 그 루트의 몫만 열고, 대화 목록(주인 없음)으로 돌아가면 닫는다.
-    act(() => { setState({ objectiveRecords: getState().objectiveRecords.map((record) => ({ ...record, chatMode: true })) }); });
+    act(() => { setAgentState({ sessions: { ...getAgentState().sessions, root: session } }); });
     await act(async () => { await Promise.resolve(); });
     expect(FakeWebSocket.instances.filter((socket) => !socket.closed).map((socket) => socket.url.includes("ticket-for-root"))).toEqual([true]);
     subject = null;

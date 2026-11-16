@@ -161,7 +161,7 @@ type: "agent",
 pluginId: null,
 title: input.title});
       const born = node.session as { model?: string; effort?: string } | undefined;
-      if (node.chatMode === true) seedLaunchCoordinate(id, born?.model, born?.effort ?? null);
+      seedLaunchCoordinate(id, born?.model, born?.effort ?? null);
       activity.set(id, "dormant");
       if (hostFault.afterCreate > 0) { hostFault.afterCreate -= 1; throw new Error("request_timeout"); }
       return node;
@@ -615,7 +615,6 @@ describe("Objectives contract", () => {
     expect(launches.map((entry) => entry.disableAutoMemory)).toEqual([false, false, false]);
     const roster = store.find(objective.id)!;
     const blockedObjectiveId = blocked.id;
-    objectiveRecordsHost.patch(blockedObjectiveId, { chatMode: false });
     activity.set(blockedObjectiveId, "dormant");
     await objectiveRecordsHost.archive(objective.id);
     await launch.memberPatched(objective.id, blocked.id, { subagents: true });
@@ -644,7 +643,6 @@ describe("Objectives contract", () => {
 
     // 아직 뜨지 않은 구성원의 허용 해제는 첫 기동부터 반영한다. 휴면 지휘관이 채팅으로 저장돼 있어도 새 구성원은 채팅으로 태어난다.
     const routed = store.memberAdd(objective.id, { role: "review", subagents: true, launch: SONNET }, "human").members.at(-1)!;
-    objectiveRecords.get(objective.id)!.chatMode = true;
     await launch.memberPatched(objective.id, routed.id, { subagents: false });
     await launch.muster(objective.id);
     expect(launches.at(-1)?.disableSubagents).toBe(true);
@@ -683,7 +681,6 @@ describe("Objectives contract", () => {
     const assign = (memberId: string) => store.missionAdd(objective.id, { text: `work ${memberId}`, member: memberId });
     assign(reviewer.id);
     await launch.startCommander(objective.id);
-    objectiveRecordsHost.patch(reviewer.id, { chatMode: false });
     activity.set(reviewer.id, "dormant");
     const session = () => objectiveRecords.get(reviewer.id)!.session as { model?: string; effort?: string };
     const shown = () => store.find(objective.id)!.members.find((member) => member.id === reviewer.id)!;
@@ -758,7 +755,6 @@ describe("Objectives contract", () => {
     try {
       // 떠 있는 채팅은 호스트가 바꾼다 — 도는 턴 뒤의 예약은 세션 좌표(채팅 칩이 읽는 값)를 미리 고치지 않는다.
       surfaces.delete(reviewer.id);
-      objectiveRecordsHost.patch(reviewer.id, { chatMode: true });
       hostChat.set(reviewer.id, { model: "opus[1m]", effort: "high", pending: null });
       activity.set(reviewer.id, "running");
       await pick("sonnet", "low");

@@ -315,6 +315,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       if (observability.getTerminalSessionInfo(sessionId)?.chatActive !== true) return { error: "chat_not_active" };
       const seed = await resolveChatSeed(node);
       if (!seed.ok) return { error: seed.error };
+      if (!ctx.host.objectiveRecords.get(sessionId) || ctx.host.objectiveRecords.isTransitioning?.(sessionId)) {
+        return { error: "chat_not_active" };
+      }
       try {
         return await chatRegistry.ensure(sessionId, () => seed.seed);
       } catch {
@@ -368,8 +371,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
   });
 
-  // 플러그인이 휴면한 옛 터미널을 채팅 표면으로 인수해도 어댑터는 즉시 live/idle다.
-  // 플러그인이 휴면한 옛 터미널을 채팅 표면으로 인수해도 어댑터는 즉시 live/idle다.
+  // 기동 좌표 변경은 SDK 자식 유무와 관계없이 채팅 어댑터의 live 상태에 반영한다.
   const unsubscribeChatSurface = ctx.host.events.subscribe("objective:launch-changed", (payload) => {
     const id = (payload as { readonly objectiveId?: unknown } | null)?.objectiveId;
     if (typeof id !== "string") return;
@@ -752,6 +754,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     async coordinates(objectiveId, input) {
       const node = ctx.host.objectiveRecords.get(objectiveId);
       if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) return { ok: false, error: "unknown_objectiveRecord" };
+      if (ctx.host.objectiveRecords.isTransitioning?.(objectiveId)) return { ok: false, error: "chat_not_active" };
       return applyObjectiveChatCoordinates(objectiveId, input.model, input.effort);
     },
     prepareChat: prepareChatObjective,
@@ -1185,7 +1188,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     }
   }
 
-  // 살아 있는 PTY에는 곧장 쓴다. 끝난 목표는 채팅으로만 넘기고, 여기서 PTY를 깨우지 않는다.
+  // 모든 Objective 입력은 채팅으로 전달한다. 첫 메시지가 필요할 때 SDK 자식을 연다.
   // 응답에는 프롬프트 원문·providerSession·경로를 싣지 않는다.
   async function handleMessage(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
     if (req.method !== "POST") return methodNotAllowed(res);
@@ -1312,7 +1315,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const generation = chatRegistry.generation(objectiveId);
     const seed = await resolveChatSeed(node);
     if (!seed.ok) throw new ConsoleControlError(seed.error);
-    if (chatRegistry.generation(objectiveId) !== generation || ctx.host.objectiveRecords.isTransitioning?.(objectiveId)) throw new ConsoleControlError("objectiveRecord_busy");
+    if (chatRegistry.generation(objectiveId) !== generation || !ctx.host.objectiveRecords.get(objectiveId) || ctx.host.objectiveRecords.isTransitioning?.(objectiveId)) throw new ConsoleControlError("objectiveRecord_busy");
     const chat = await chatRegistry.ensure(objectiveId, () => seed.seed);
     await chat.prepare();
   }
@@ -1447,6 +1450,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       const generation = chatRegistry.generation(objectiveId);
       const seed = await resolveChatSeed(node);
       if (!seed.ok) return { ok: false, error: "coordinates_apply_failed", cause: { message: seed.error } };
+      if (chatRegistry.generation(objectiveId) !== generation || !ctx.host.objectiveRecords.get(objectiveId) || ctx.host.objectiveRecords.isTransitioning?.(objectiveId)) return { ok: false, error: "chat_not_active" };
       try { chat = await chatRegistry.ensure(objectiveId, () => seed.seed); }
       catch { return { ok: false, error: "coordinates_apply_failed", cause: { message: "chat_unavailable" } }; }
     }
