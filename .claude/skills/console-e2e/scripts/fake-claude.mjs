@@ -17,10 +17,11 @@
 //                    mode "exit-on-spawn" exits at child start and "exit-mid-turn" at the first host turn (exitCode, default 1);
 //                    "result-error" and "compact-failed-error" answer that turn with an error result carrying a valid errors
 //                    array (a string instead when nonstandard is true), and a compact failure also reports compact_result
-//                    "failed". onlyOnResume matches only a --resume launch. The spec is selected once at child start and
-//                    deleted then: it covers this child's whole life (later host turns are logged, not answered, and it
-//                    consumes no ask or wake fixture), and the next child starts normally. An unreadable, unconsumable,
-//                    malformed or unknown spec is a fixture setup failure: stderr, exit 2, file kept.
+//                    "failed". onlyOnResume: true skips a non-resume launch without consuming the file, then tries the
+//                    next candidate. A spec is selected once and deleted at child start; it governs that child's lifetime.
+//                    Later host turns are logged but unanswered, and ask/wake/sdk-calls stay unconsumed. Each new SDK child
+//                    selects again. An unreadable, unconsumable, malformed or unknown spec is a fixture setup failure:
+//                    stderr, exit 2, file kept.
 //   sdk-mcp/tools-<pid>.json  written by every SDK launch the host gave in-process MCP servers (Commodore's fleet-commodore):
 //                    each server's advertised tools with description and inputSchema (field limits included)
 //   sdk-calls        one-shot in-process tool calls on the next turn: {"sessionId"?: string, "calls": [{"server", "tool", "args"?}]};
@@ -160,8 +161,8 @@ log({
   // A prompt can itself start with "--", so keep only tokens shaped like a bare option name.
   flags: args.map((value) => value.split("=")[0]).filter((name) => /^--[a-z][a-z0-9-]*$/.test(name)).slice(0, 80),
 });
-// Failure fixture: one spec per SDK child, selected and deleted at child start, so a file written or removed later
-// cannot change this child and the next child starts normally. Terminal launches never select or consume one.
+// Failure fixture: one spec per SDK child, selected and deleted at child start; later file changes cannot affect it.
+// Each new SDK child selects again. Terminal launches never select or consume one.
 const fault = (() => {
   if (!sdk) return null;
   const fail = (file, reason) => {
