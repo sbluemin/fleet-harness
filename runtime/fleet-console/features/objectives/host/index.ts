@@ -109,7 +109,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
       void launch.releaseRoutingSession(objectiveId);
     });
     on("objective:renamed", (objectiveId) => launch.objectiveRecordChanged(objectiveId));
-    // 사람이 채팅 화면에서 모델을 바꾸거나 채팅↔터미널을 전환해도 명단은 지금 세션 좌표를 말해야 한다 — 지휘관이든 구성원이든 그 목표를 다시 방송한다.
+    // 사람이 채팅 화면에서 모델을 바꾸거나 옛 터미널 목표가 채팅으로 채택·재개돼도 명단은 지금 세션 좌표를 말해야 한다 — 지휘관이든 구성원이든 그 목표를 다시 방송한다.
     on(OBJECTIVE_LAUNCH_CHANGED_EVENT_CHANNEL, (objectiveId) => launch.objectiveRecordChanged(objectiveId));
     // 목표의 그룹은 지휘관 Objective 의 그룹이다 — 옮겨지면(사이드바·목표 화면) 담당이 따라가고 화면을 다시 방송한다.
     on(OBJECTIVE_GROUPED_EVENT_CHANNEL, (_objectiveId, payload) => {

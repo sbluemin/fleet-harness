@@ -311,8 +311,9 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const referenceNode = (id: string) => ctx.objectiveRecords.describe ? ctx.objectiveRecords.describe(id)?.objectiveRecord ?? null : ctx.objectiveRecords.get(id);
   /**
    * 옛 터미널 지휘관을 채팅 표면으로 — 보드 동작은 구성원 채팅 입력창에 서므로 지휘관은 채팅이어야 한다. 휴면일 때만 표면 마커를
-   * 옮긴다: Console 은 휴면 Objective 의 마커로 재개 표면을 고르고 이전 대화는 같은 세션의 transcript 로 되살린다. 살아 있는 터미널은
-   * 끊지 않는다 — 그 동안은 사람이 Console 의 보기 전환으로 옮기거나, 휴면한 뒤 다음 점검·깨움이 옮긴다.
+   * 옮긴다: Console 은 휴면 Objective 의 마커로 재개 표면을 고르고 이전 대화는 같은 세션의 transcript 로 되살린다.
+   * Objective 세션은 채팅으로만 열리므로 수동 보기 전환은 없다 — 부팅·주기 점검·목표 접근이 휴면 레코드를 옮기고,
+   * 살아 있는 세션은 건드리지 않는다.
    */
   const adoptChatSurface = (objectiveId: string): void => {
     const node = ctx.objectiveRecords.get(objectiveId);
