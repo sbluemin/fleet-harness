@@ -55,13 +55,24 @@ export function mountStage(): {
   let senderTab: string | null = null;
 
   const inputActive = (): boolean =>
-    last?.viewOnly?.control === true && last?.viewOnly?.status === "connected" && !image.hidden && shownTab !== null;
+    last?.viewOnly?.control === true && last?.viewOnly?.status === "connected" && !image.hidden && shownTab !== null
+    // 에이전트가 그 스페이스를 모는 동안에는 사람 입력도 스테이지 맞춤도 없다.
+    && last?.control?.holder !== "agent";
 
-  /** 제어가 켜진 동안만 스테이지 크기를 알린다. 복귀 POST 는 셸이 한다 — 이 문서는 제어가 끝난 스냅샷을 받은 뒤에야 알고, 그때는 쓰기가 이미 거절된다. */
+  /** 원격 맞춤은 스페이스가 responsive 일 때만 뜻이 있다 — 모바일·태블릿 프리셋이 이긴다. */
+  const fitAllowed = (): boolean => inputActive() && (last?.chrome?.viewport.preset ?? "responsive") === "responsive";
+
+  /**
+   * 제어가 켜진 동안만 스테이지 크기를 알린다 — Console 이 이 크기를 실행 측 에뮬레이션 뷰포트로 삼는다.
+   * 맞춤은 리스다: 5초마다 다시 알려 Console 이 시청 측이 사라진 것을 15초 안에 알아채게 한다.
+   */
   const FIT_DEBOUNCE_MS = 150;
+  const FIT_LEASE_MS = 5_000;
   const FIT_EPSILON_PX = 4;
   let fitting = false;
   let fitTimer: ReturnType<typeof setTimeout> | null = null;
+  let leaseTimer: ReturnType<typeof setTimeout> | null = null;
+  let fitKey = "";
   let lastFit: { width: number; height: number } | null = null;
   const measureStage = (): { width: number; height: number } | null => {
     const width = Math.round(document.documentElement.clientWidth);
@@ -69,30 +80,54 @@ export function mountStage(): {
     if (!(width >= 1 && height >= 1)) return null;
     return { width, height };
   };
+  const postFit = (size: { width: number; height: number }): void => {
+    lastFit = size;
+    post("stage", "viewport", { preset: "responsive", width: size.width, height: size.height });
+  };
+  const renewLease = (): void => {
+    if (leaseTimer !== null) clearTimeout(leaseTimer);
+    if (!fitting) { leaseTimer = null; return; }
+    leaseTimer = setTimeout(() => {
+      leaseTimer = null;
+      if (!fitting || !fitAllowed()) return;
+      const size = measureStage();
+      if (size) postFit(size);
+      renewLease();
+    }, FIT_LEASE_MS);
+  };
   const scheduleFit = (): void => {
     if (fitTimer !== null) clearTimeout(fitTimer);
     fitTimer = setTimeout(() => {
       fitTimer = null;
-      if (!inputActive()) return;
+      if (!fitAllowed()) return;
       const size = measureStage();
       if (!size) return;
       if (lastFit && Math.abs(lastFit.width - size.width) < FIT_EPSILON_PX && Math.abs(lastFit.height - size.height) < FIT_EPSILON_PX) return;
-      lastFit = size;
-      post("stage", "viewport", { preset: "responsive", width: size.width, height: size.height });
+      postFit(size);
     }, FIT_DEBOUNCE_MS);
   };
-  const syncFit = (): void => {
-    if (inputActive()) {
-      if (fitting) return;
-      fitting = true;
-      lastFit = null;
-      scheduleFit();
-      return;
-    }
+  const stopFit = (): void => {
     if (!fitting) return;
     fitting = false;
     lastFit = null;
     if (fitTimer !== null) { clearTimeout(fitTimer); fitTimer = null; }
+    if (leaseTimer !== null) { clearTimeout(leaseTimer); leaseTimer = null; }
+  };
+  const syncFit = (): void => {
+    // 스페이스나 프리셋이 바뀌면 그 스페이스 기준으로 다시 잰다.
+    const key = `${last?.spaceId ?? ""}|${last?.chrome?.viewport.preset ?? ""}`;
+    if (key !== fitKey) {
+      fitKey = key;
+      fitting = false;
+      lastFit = null;
+      if (fitTimer !== null) { clearTimeout(fitTimer); fitTimer = null; }
+    }
+    if (!fitAllowed()) { stopFit(); return; }
+    if (fitting) return;
+    fitting = true;
+    lastFit = null;
+    scheduleFit();
+    renewLease();
   };
   if (typeof ResizeObserver === "function") new ResizeObserver(() => { if (fitting) scheduleFit(); }).observe(document.documentElement);
 
@@ -118,16 +153,18 @@ export function mountStage(): {
         startSeq: Date.now() % 1_000_000,
         transport: {
           send: (batch) => {
-            // 한 프레임에 몰린 입력은 다음 프레임까지 모아 최신·합산 1건으로 묶는다.
-            // discrete(down/up/key/IME)도 최대 한 프레임만 늦는다 — 원격 지연에 비하면 무시할 수준이다.
+            // 한 프레임에 몰린 입력은 다음 프레임까지 모아 최신·합산 1건으로 묶는다. 다만 discrete(down/up/key/IME)·휠은
+            // 기다리지 않고 바로 보낸다 — 대기 자체가 곧 지연이다. 연속 move 만 프레임 경계로 모은다.
             const events: RemoteBrowserInputEvent[] = [...batch.events];
             return new Promise<void>((resolve) => {
               const fire = (): void => {
                 post("stage", "remote-input", { tabId: batch.tabId, seq: batch.seq, events });
                 resolve();
               };
-              if (typeof requestAnimationFrame === "function") requestAnimationFrame(() => fire());
-              else setTimeout(fire, 16);
+              const movesOnly = events.every((event) => event.kind === "mouse" && event.type === "move");
+              if (movesOnly && typeof requestAnimationFrame === "function") requestAnimationFrame(fire);
+              else if (movesOnly) setTimeout(fire, 16);
+              else fire();
             });
           },
         },
@@ -277,7 +314,8 @@ export function mountStage(): {
       paintColors(state.colors);
       syncShellMotion(state.shellClosing);
       document.documentElement.lang = state.lang;
-      if (state.viewOnly) { renderViewer(state); return; }
+      // 보기 전용으로 바뀌면 이 문서는 맞춤을 선언하지 않는다 — 남은 리스가 실행 측을 붙들지 않게 즉시 멈춘다.
+      if (state.viewOnly) { stopFit(); renderViewer(state); return; }
       delete document.documentElement.dataset.viewOnly;
       shownTab = null; cssSize = null; sender = null; senderTab = null;
       image.hidden = true; image.removeAttribute("src"); root.hidden = false;

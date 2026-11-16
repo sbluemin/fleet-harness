@@ -7,6 +7,7 @@ import {
   type DesktopBrowserSurface,
   type DesktopBrowserViewerSnapshot,
   type RemoteBrowserUploadFile,
+  type ViewerCaptureQuality,
 } from "@fleet-console/protocol/desktop";
 
 import { createBrowserActions } from "./browser-actions.js";
@@ -48,6 +49,8 @@ export interface RemoteBrowserViewerDeps {
   readonly openExternal?: (url: string) => void;
   /** 원격 파일 선택기 — 지금 보는 기기에서 고른 파일 바이트를 돌려준다. */
   readonly pickFiles?: (options: { readonly multiple: boolean }) => Promise<{ readonly cancelled: boolean; readonly files?: readonly RemoteBrowserUploadFile[]; readonly error?: string }>;
+  /** 시청 스트리밍 화질 — 이 기계의 시청 선호로 기억한다. */
+  readonly viewerQuality?: { load(): ViewerCaptureQuality; save(quality: ViewerCaptureQuality): void };
   readonly log?: (message: string) => void;
   readonly setTimeout?: (callback: () => void, delay: number) => unknown;
   readonly clearTimeout?: (timer: unknown) => void;
@@ -90,6 +93,8 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
   let remoteActive: string | null | undefined;
   /** 원격 입력 배치는 앞선 서버 처리가 끝난 뒤에 다음 배치를 보내 click/drag 순서를 지킨다. */
   let remoteInputQueue: Promise<void> = Promise.resolve();
+  /** 시청 스트리밍 화질 — 값의 주인은 이 기계다. Console 은 watch 요청에 실린 값을 실행 측에 중계만 한다. */
+  let quality: ViewerCaptureQuality = deps.viewerQuality?.load() ?? "balanced";
   const frameStream = createRemoteBrowserViewerStream({
     fetch: deps.fetch,
     onFrame: (tabId, frame) => {
@@ -114,83 +119,23 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
 
   /** 실행 호스트가 붙어 있고 스냅샷이 원격 조작을 말할 때만. 옛 Console 은 필드가 없어 보기 전용이다. */
   const controllable = (): boolean => open && snapshot?.remoteControl === true && snapshot.executionHost.status === "connected";
-  /** 제어 중에 스테이지가 보낸 맞춤을, 제어가 끝나는 순간 맞춘 모든 스페이스에 대해 한 번 pane 으로 되돌린다. 보기 전용은 이 깃발을 세우지 않는다. */
-  let remoteFitActive = false;
-  const fittedSpaces = new Set<string>();
-  const pendingRestores = new Map<string, { at: string; browserId: string; spaceId?: string }>();
-  const inFlightRestores = new Set<string>();
-  const enqueueRestoreTarget = (at: string, browserId: string, spaceId?: string): void => {
-    const key = spaceId ?? "";
-    if (!spaceId && pendingRestores.size > 0) return;
-    if (spaceId) pendingRestores.delete("");
-    pendingRestores.set(key, { at, browserId, ...(spaceId ? { spaceId } : {}) });
-  };
-  const flushPendingRestores = (forceAttempt = false): void => {
-    if (pendingRestores.size === 0) return;
-    if (!forceAttempt && snapshot?.executionHost.status !== "connected") return;
-    const activeControlledSpace = controllable()
-      ? snapshot?.chrome?.tabs.find((item) => item.id === snapshot?.chrome?.activeTabId)?.spaceId
-      : undefined;
-    for (const [key, entry] of [...pendingRestores.entries()]) {
-      if (remoteFitActive && activeControlledSpace && key === activeControlledSpace) continue;
-      if (inFlightRestores.has(key)) continue;
-      inFlightRestores.add(key);
-      const body = entry.spaceId ? { preset: "responsive", spaceId: entry.spaceId } : { preset: "responsive" };
-      // 원격 페어링 쿠키는 창 세션에 있다. credentials 가 없으면 same-origin 기본값이 그 쿠키를 빼서 복귀가 거절되고 맞춘 크기가 남는다.
-      void deps.fetch(`${entry.at}/api/v1/browser/objectives/${encodeURIComponent(entry.browserId)}/viewport`, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json", Origin: entry.at },
-        body: JSON.stringify(body),
-      }).then((response) => {
-        if (response.ok) {
-          if (pendingRestores.get(key) === entry) pendingRestores.delete(key);
-          return;
-        }
-        log(`browser viewport restore rejected status=${response.status}`);
-      }, (error: unknown) => {
-        log(`browser viewport restore failed: ${error instanceof Error ? error.message : "unknown"}`);
-      }).finally(() => {
-        inFlightRestores.delete(key);
-      });
-    }
-  };
-  const releaseControlFit = (forceAttempt = false): void => {
+
+  /**
+   * 시청 셸이 닫히면 전이 맞춤을 곧바로 걷는다 — Console 의 맞춤 리스 만료를 기다리지 않는다.
+   * 스페이스의 뷰포트·프리셋은 건드리지 않으므로 실행 측이 보던 크기로 그대로 돌아간다.
+   */
+  const clearRemoteFit = (): void => {
     const at = origin;
+    if (!at || !controllable()) return;
     const chrome = snapshot?.chrome ?? null;
-    const tab = chrome?.tabs.find((item) => item.id === chrome.activeTabId);
-    if (remoteFitActive) {
-      remoteFitActive = false;
-      const targets = new Set(fittedSpaces);
-      fittedSpaces.clear();
-      if (tab?.spaceId) targets.add(tab.spaceId);
-      if (at) {
-        const browserId = chrome?.browserId ?? VIEWER_BROWSER_ID;
-        if (targets.size > 0) {
-          for (const spaceId of targets) enqueueRestoreTarget(at, browserId, spaceId);
-        } else {
-          enqueueRestoreTarget(at, browserId);
-        }
-      }
-      flushPendingRestores(true);
-      return;
-    }
-    fittedSpaces.clear();
-    flushPendingRestores(forceAttempt);
-  };
-  const noteControlFit = (): void => {
-    if (controllable()) {
-      remoteFitActive = true;
-      const chrome = snapshot?.chrome ?? null;
-      const tab = chrome?.tabs.find((item) => item.id === chrome.activeTabId);
-      if (tab?.spaceId && chrome?.viewport.preset === "responsive" && chrome.viewport.setBy === "user") {
-        fittedSpaces.add(tab.spaceId);
-        pendingRestores.delete(tab.spaceId);
-      }
-      flushPendingRestores(false);
-      return;
-    }
-    releaseControlFit(false);
+    const spaceId = chrome?.tabs.find((item) => item.id === chrome.activeTabId)?.spaceId;
+    const browserId = chrome?.browserId ?? VIEWER_BROWSER_ID;
+    void deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/viewport`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", Origin: at },
+      body: JSON.stringify({ clearRemoteFit: true, ...(spaceId ? { spaceId } : {}) }),
+    }).catch(() => undefined);
   };
 
   const place = (): ChromeViewOnly => {
@@ -200,7 +145,7 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
       : host.status === "manager_disconnected" ? (host.hostLabel ? t("viewOnly.disconnectedHost", { host: host.hostLabel }) : t("viewOnly.disconnectedPlace"))
         : host.accessPath === "wsl" ? (host.hostLabel ? `${t("viewOnly.wsl")} · ${host.hostLabel}` : t("viewOnly.wsl"))
           : host.hostLabel ? t("viewOnly.host", { host: host.hostLabel }) : t("viewOnly.desktop");
-    const base: ChromeViewOnly = { place: text, status: host.status };
+    const base: ChromeViewOnly = { place: text, status: host.status, viewerQuality: quality };
     if (!controllable()) return base;
     return {
       ...base,
@@ -227,10 +172,10 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     return { ...remote, activeTabId: viewed };
   };
 
-  /** 보는 탭이 있고 실행 측이 붙어 있는 동안만 프레임을 기다린다. */
+  /** 보는 탭이 있고 실행 측이 붙어 있는 동안만 프레임을 기다린다. 화질이 바뀌면 스트림을 새 값으로 다시 연다. */
   const syncWatch = (): void => {
     const want = open && origin !== null && snapshot?.executionHost.status === "connected" ? viewed : null;
-    if (want !== null && origin !== null) frameStream.watch(want, origin);
+    if (want !== null && origin !== null) frameStream.watch(want, origin, quality);
     else frameStream.unwatch();
   };
 
@@ -240,12 +185,11 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     deps.display.apply({ id: surfaceId, browserId: chrome?.browserId ?? VIEWER_BROWSER_ID, mode }, chrome, origin, place());
     // 표면이 스페이스를 맞추며 보는 탭을 바꿨을 수 있다(apply 안에서 show-tab 이 온다) — 그 뒤의 값으로 프레임을 맞춘다.
     syncWatch();
-    noteControlFit();
   }
 
   const close = (animate = false): void => {
     if (!open) return;
-    releaseControlFit(true);
+    clearRemoteFit();
     open = false;
     stream.stop();
     frameStream.unwatch();
@@ -267,8 +211,6 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     follow(next) {
       if (next === origin) return;
       close();
-      pendingRestores.clear();
-      inFlightRestores.clear();
       origin = next;
     },
     toggle() {
@@ -284,6 +226,15 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     active: () => open,
     act(control, role, action) {
       if (!open) return;
+      // 화질은 이 기계의 시청 선호다 — Console 요청이 아니라 스트림 요청 파라미터로 실행 측에 전달된다. 보기 전용도 쓴다.
+      if (action.action === "viewer-quality") {
+        if (action.quality === quality) return;
+        quality = action.quality;
+        deps.viewerQuality?.save(quality);
+        render();
+        if (viewed !== null && origin !== null) frameStream.watch(viewed, origin, quality);
+        return;
+      }
       if (controllable()) {
         switch (action.action) {
           case "close-surface": close(true); return;
@@ -381,13 +332,6 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
             remoteActions(control, role, { action: "permission-answer", promptId: action.promptId, tabId: action.tabId, allow: action.allow });
             return;
           case "viewport": {
-            if (action.width !== undefined && action.height !== undefined) {
-              const spaceId = control.space();
-              if (spaceId) {
-                fittedSpaces.add(spaceId);
-                pendingRestores.delete(spaceId);
-              }
-            }
             remoteActions(control, role, action);
             return;
           }

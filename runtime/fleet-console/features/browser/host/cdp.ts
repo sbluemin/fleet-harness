@@ -15,6 +15,11 @@ export class CdpError extends Error {
 
 export interface CdpClient {
   send<T = Record<string, unknown>>(method: string, params?: Record<string, unknown>, sessionId?: string): Promise<T>;
+  /**
+   * 여러 명령을 한 번의 왕복으로 보낸다 — 원격 입력 배치가 이벤트 수만큼 왕복하지 않게 한다.
+   * 없으면 호출자가 하나씩 `send` 로 보낸다.
+   */
+  dispatchMany?(commands: readonly { readonly method: string; readonly params: Record<string, unknown>; readonly sessionId: string }[]): Promise<unknown[]>;
   on(listener: CdpListener): () => void;
   readonly closed: Promise<void>;
   close(): Promise<void>;

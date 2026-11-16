@@ -389,6 +389,7 @@ describe("managed browser auth and on-demand frames", () => {
     let releaseCapture: (() => void) | null = null;
     let captureResult: Buffer | null = Buffer.from("frame-1");
     const captures: Buffer[] = [];
+    const captureProfiles: number[] = [];
     let clock = 5_000;
     const pending: { ms: number; cancelled: boolean }[] = [];
     const publish = (next: DesktopBrowserSnapshot): void => {
@@ -406,10 +407,11 @@ describe("managed browser auth and on-demand frames", () => {
       hostLabel: () => "desk",
       platform: "darwin",
       accessPath: "wsl",
-      captureViewerFrame: () => new Promise((resolve) => {
+      captureViewerFrame: (_view, options) => new Promise((resolve) => {
         const jpeg = captureResult ?? Buffer.from("empty");
         captures.push(jpeg);
-        releaseCapture = () => resolve(captureResult === null ? null : { jpeg, width: 320, height: 180 });
+        captureProfiles.push(options.profile.quality);
+        releaseCapture = () => resolve(captureResult === null ? null : { jpeg, width: 320, height: 180, cssWidth: 500, cssHeight: 850 });
       }),
       now: () => clock,
       schedule: (cb, ms) => {
@@ -437,6 +439,8 @@ describe("managed browser auth and on-demand frames", () => {
 
     publish({ ...lifetime, generation: 2, watchedViewIds: ["view-1"] });
     await vi.waitFor(() => expect(captures).toHaveLength(1));
+    // 기본 화질 프로필은 balanced(JPEG 72)다.
+    expect(captureProfiles[0]).toBe(72);
     expect(created[0]!.frameSubs.begin).toBe(1);
     expect(frames).toHaveLength(0);
     // 유휴 폴링 50ms(활성 최소 33ms) — 기존 250ms 상한을 대체한다.
@@ -459,6 +463,9 @@ describe("managed browser auth and on-demand frames", () => {
     expect(frames[0]!.body.equals(Buffer.from("frame-1"))).toBe(true);
     expect(frames[0]!.headers.get(DESKTOP_BROWSER_VIEW_HEADER)).toBe("view-1");
     expect(frames[0]!.headers.get("content-type")).toBe("image/jpeg");
+    // 프레임의 CSS 메타는 뷰 bounds 가 아니라 페이지의 실제 레이아웃이다 — 원격 좌표가 이 값을 쓴다.
+    expect(frames[0]!.headers.get("x-fleet-frame-css-width")).toBe("500");
+    expect(frames[0]!.headers.get("x-fleet-frame-css-height")).toBe("850");
 
     const finishSecond = releaseCapture!;
     captureResult = Buffer.from("frame-2");
@@ -467,15 +474,18 @@ describe("managed browser auth and on-demand frames", () => {
     expect(frames[1]!.body.equals(Buffer.from("frame-2"))).toBe(true);
     expect(captures).toHaveLength(2);
 
+    // 시청자가 고른 화질이 다음 캡처에 바로 반영된다.
+    publish({ ...lifetime, generation: 3, watchedViewIds: ["view-1"], viewerCapture: "high" });
     clock += 300;
     page.emit("did-navigate");
     await vi.waitFor(() => expect(captures).toHaveLength(3));
+    expect(captureProfiles.at(-1)).toBe(85);
     releaseCapture!();
     await Promise.resolve();
     await Promise.resolve();
     expect(frames).toHaveLength(2);
 
-    publish({ ...lifetime, generation: 3, watchedViewIds: [] });
+    publish({ ...lifetime, generation: 4, watchedViewIds: [] });
     await vi.waitFor(() => expect(created[0]!.frameSubs.end).toBe(1));
     const capturedAtStop = captures.length;
     page.emit("did-navigate");
@@ -488,7 +498,7 @@ describe("managed browser auth and on-demand frames", () => {
     expect(created[0]!.frameSubs).toEqual({ begin: 1, end: 1 });
   });
 
-  it("fits a user responsive viewport inside the pane and leaves an agent viewport on the pane", async () => {
+  it("keeps view bounds on the surface page and leaves the logical viewport to the console emulation", async () => {
     const ORIGIN = "http://127.0.0.1:4310";
     let lifetime: DesktopBrowserSnapshot = { generation: 1, epoch: "life", views: [{ ...view("shown"), visible: true }, view("parked")], commands: [] };
     const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
@@ -526,8 +536,9 @@ describe("managed browser auth and on-demand frames", () => {
     await views.start(ORIGIN);
     await vi.waitFor(() => { if (created.length < 2) throw new Error("waiting"); });
     publish({ ...lifetime, generation: 2, chrome: chrome("user") });
-    await vi.waitFor(() => expect(created[0]!.bounds.mock.calls.at(-1)?.[0]).toEqual({ x: 254, y: 20, width: 412, height: 700 }));
-    expect(created[1]!.bounds.mock.calls.at(-1)?.[0]).toEqual({ x: 899, y: 699, width: 412, height: 700 });
+    // 시청 측 크기는 Console 이 뷰포트 에뮬레이션으로 세운다 — 셸은 뷰 bounds 를 바꾸지 않는다.
+    await vi.waitFor(() => expect(created[0]!.bounds.mock.calls.at(-1)?.[0]).toEqual(page));
+    expect(created[1]!.bounds.mock.calls.at(-1)?.[0]).toEqual({ x: 899, y: 699, width: 900, height: 700 });
     publish({ ...lifetime, generation: 3, chrome: chrome("agent") });
     await vi.waitFor(() => expect(created[0]!.bounds.mock.calls.at(-1)?.[0]).toEqual(page));
     expect(created[1]!.bounds.mock.calls.at(-1)?.[0]).toEqual({ x: 899, y: 699, width: 900, height: 700 });

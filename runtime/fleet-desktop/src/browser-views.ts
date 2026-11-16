@@ -15,6 +15,7 @@ import {
   DESKTOP_BROWSER_SHELL_VIEW,
   DESKTOP_BROWSER_VIEW_HEADER,
   isDesktopBrowserSnapshot,
+  VIEWER_CAPTURE_PROFILES,
   type DesktopBrowserAccessPath,
   type DesktopBrowserPlatform,
   type DesktopBrowserRelay,
@@ -23,6 +24,8 @@ import {
   type DesktopBrowserSurface,
   type DesktopBrowserView,
   type DesktopBrowserSurfaceRelay,
+  type ViewerCaptureProfile,
+  type ViewerCaptureQuality,
 } from "@fleet-console/protocol/desktop";
 
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
@@ -96,9 +99,9 @@ export interface DesktopBrowserViewsDeps {
   readonly accessPath?: DesktopBrowserAccessPath;
   /**
    * 열람 중인 뷰의 JPEG 한 장. 없으면 프레임을 찍지 않는다. 테스트가 캡처 시각을 대신한다.
-   * CDP 명령 큐와 분리된 경로에서만 부른다.
+   * CDP 명령 큐와 분리된 경로에서만 부른다. `profile` 은 시청자가 고른 스트리밍 화질이다.
    */
-  readonly captureViewerFrame?: (view: WebContentsView) => Promise<ViewerFrame | null>;
+  readonly captureViewerFrame?: (view: WebContentsView, options: { readonly profile: ViewerCaptureProfile }) => Promise<ViewerFrame | null>;
   /** 시청 중 저주파 변경 확인 간격. 250ms 보다 짧아지지 않는다. */
   readonly viewerPollMs?: number;
   readonly now?: () => number;
@@ -163,6 +166,9 @@ export interface ViewerFrame {
   readonly jpeg: Buffer;
   readonly width: number;
   readonly height: number;
+  /** 원격 입력 좌표가 기준하는 레이아웃 CSS 크기. 없으면 뷰 bounds(이 뷰의 DIP 자리)를 쓴다. */
+  readonly cssWidth?: number;
+  readonly cssHeight?: number;
 }
 
 /**
@@ -435,22 +441,9 @@ function beforeInputModifiers(input: {
 }
 
 /**
- * 원격 조작이 정한 논리 크기를 가용 자리 안에 넣는다. 비율은 유지하고, 자리가 더 크면 줄이지 않는다(1:1).
- * 가로·세로를 따로 clamp 하면 호스트 창이 더 작을 때 비율이 깨지고 페이지 하단이 잘린다.
+ * 원격 조작 맞춤은 Console 이 실행 측 뷰포트를 에뮬레이션하는 일이다 — 셸은 논리 크기로 뷰 bounds 를 바꾸지 않는다.
+ * 뷰 bounds 는 언제나 표면의 페이지 자리(표면이 없으면 주차 기본값)이고, 에뮬레이션된 위젯은 그 자리에서 잘린다.
  */
-function containedSize(requested: { readonly width: number; readonly height: number }, avail: { readonly width: number; readonly height: number }): { width: number; height: number } | null {
-  if (!(requested.width >= 1 && requested.height >= 1 && avail.width >= 1 && avail.height >= 1)) return null;
-  const scale = Math.min(1, avail.width / requested.width, avail.height / requested.height);
-  return { width: Math.max(1, Math.round(requested.width * scale)), height: Math.max(1, Math.round(requested.height * scale)) };
-}
-
-/** 사람이 명시한 responsive 크기만 뷰 bounds 를 바꾼다. 에이전트 에뮬레이션과 mobile/tablet 은 칸 크기를 유지한다. */
-function remoteFitOf(chrome: DesktopBrowserChrome | null | undefined): { width: number; height: number } | null {
-  const viewport = chrome?.viewport;
-  if (!viewport || viewport.preset !== "responsive" || viewport.setBy !== "user") return null;
-  if (!(viewport.width >= 1 && viewport.height >= 1)) return null;
-  return { width: viewport.width, height: viewport.height };
-}
 
 export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): DesktopBrowserViews {
   const fetchFor = deps.fetch ?? globalThis.fetch;
@@ -476,6 +469,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   let capturesWaiting = 0;
   const captureTasks = new Set<{ expire: () => void }>();
   const viewerPollMs = Math.max(VIEWER_FRAME_IDLE_INTERVAL_MS, deps.viewerPollMs ?? VIEWER_FRAME_IDLE_INTERVAL_MS);
+  /** 시청자가 고른 스트리밍 화질 — 이 셸은 시청 프레임 캡처에만 쓴다. 옛 Console 은 값을 싣지 않는다. */
+  let viewerCapture: ViewerCaptureQuality = "balanced";
   const now = deps.now ?? (() => Date.now());
   const schedule = deps.schedule ?? ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
   const cancel = deps.cancel ?? ((handle: unknown) => { clearTimeout(handle as ReturnType<typeof setTimeout>); });
@@ -585,8 +580,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (!watch || !watch.watching || watch.inflight || watch.timer !== null) return;
     if (!watch.dirty && !watch.immediate) return;
     const elapsed = now() - watch.lastStarted;
-    // 입력·항해 직후(immediate)는 대기 없이 쏘고, 유휴 폴링은 활성 최소 간격으로 묶는다.
-    const wait = watch.immediate || watch.lastStarted === 0 ? 0 : Math.max(0, VIEWER_FRAME_ACTIVE_INTERVAL_MS - elapsed);
+    // 입력·항해 직후(immediate)는 대기 없이 쏘고, 유휴 폴링은 활성 최소 간격으로 묶는다. 화질이 낮으면 간격도 넓다.
+    const activeInterval = Math.max(VIEWER_FRAME_ACTIVE_INTERVAL_MS, VIEWER_CAPTURE_PROFILES[viewerCapture].intervalMs);
+    const wait = watch.immediate || watch.lastStarted === 0 ? 0 : Math.max(0, activeInterval - elapsed);
     watch.immediate = false;
     watch.timer = schedule(() => {
       const current = watches.get(id);
@@ -614,13 +610,13 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const token = session;
     const target = origin;
     try {
-      const frame = await capture(entry.view);
+      const frame = await capture(entry.view, { profile: VIEWER_CAPTURE_PROFILES[viewerCapture] });
       if (session !== token || !watch.watching || !target || !frame || frame.jpeg.length === 0 || frame.jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return;
       // 동일 JPEG 중복 전송 억제 — 바뀐 장만 올린다.
       if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return;
-      // CSS 크기는 이 뷰의 DIP 자리 — 픽셀 크기와 함께 스트림·long-poll이 공유한다.
-      const cssWidth = Math.max(1, Math.round(entry.lastBounds?.width ?? frame.width));
-      const cssHeight = Math.max(1, Math.round(entry.lastBounds?.height ?? frame.height));
+      // CSS 크기는 페이지의 실제 레이아웃 — 원격 맞춤·에뮬레이션이면 뷰 bounds 와 다르다. 스트림·long-poll·입력이 함께 쓴다.
+      const cssWidth = Math.max(1, Math.round(frame.cssWidth ?? entry.lastBounds?.width ?? frame.width));
+      const cssHeight = Math.max(1, Math.round(frame.cssHeight ?? entry.lastBounds?.height ?? frame.height));
       const response = await fetchFor(`${target}${DESKTOP_BROWSER_FRAME_PATH}`, {
         method: "POST",
         headers: {
@@ -740,8 +736,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     push({ sizes: [{ viewId, width: bounds.width, height: bounds.height, scale }] });
   };
 
-  /** 스냅샷의 크롬 뷰포트. 사람이 정한 responsive 크기일 때만 뷰를 그 비율로 놓는다. */
-  let remoteFit: { width: number; height: number } | null = null;
+  /** 스냅샷의 크롬 뷰포트. 셸은 이 값으로 뷰 bounds 를 바꾸지 않는다 — Console 이 에뮬레이션으로 정한다. */
   const place = (entry: LiveView): void => {
     const target = deps.surface.target();
     // `visible` 은 사용자에게 보여 줄지(presentation)이지, 네이티브 setVisible 이 아니다. 자리가 있는 표면이 열려 있고 그 표시 탭일 때만 선다.
@@ -754,16 +749,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       entry.parent = host;
     }
     const contentBounds = host.contentBounds();
-    const avail = presented ? target!.page : contentBounds;
-    const fit = remoteFit ? containedSize(remoteFit, avail) : null;
-    // 띄우지 않은 뷰도 같은 비율로 parking 한다. 맞춤이 없으면 표면의 페이지 자리 크기다 — 한 브라우저의 뷰 자리는 하나다.
-    if (fit) entry.parkViewport = fit;
-    else if (pageSize) entry.parkViewport = { width: target!.page.width, height: target!.page.height };
-    const nextBounds = fit
-      ? presented
-        ? { x: target!.page.x + Math.round((target!.page.width - fit.width) / 2), y: target!.page.y, width: fit.width, height: fit.height }
-        : parkedNativeBounds(fit, contentBounds)
-      : presented ? target!.page : parkedNativeBounds(entry.parkViewport, contentBounds);
+    // 띄우지 않은 뷰도 표면의 페이지 자리 크기로 parking 한다 — 한 브라우저의 뷰 자리는 하나다.
+    if (pageSize) entry.parkViewport = { width: target!.page.width, height: target!.page.height };
+    const nextBounds = presented ? target!.page : parkedNativeBounds(entry.parkViewport, contentBounds);
     const boundsChanged = entry.lastBounds === null
       || entry.lastBounds.x !== nextBounds.x
       || entry.lastBounds.y !== nextBounds.y
@@ -1050,7 +1038,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     else if (snapshot.generation < generation) return;
     epoch = next;
     generation = snapshot.generation;
-    remoteFit = remoteFitOf(snapshot.chrome);
+    viewerCapture = snapshot.viewerCapture ?? "balanced";
     if (snapshot.shortcuts !== undefined) {
       registeredShortcuts = new Set(snapshot.shortcuts);
     }
@@ -1118,7 +1106,6 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     executed.clear();
     generation = -1;
     epoch = null;
-    remoteFit = null;
     outbox = emptyOutbox();
     if (flushTimer !== null) { clearTimeout(flushTimer); flushTimer = null; }
   }

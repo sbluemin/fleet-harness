@@ -6,8 +6,30 @@
 
 export const DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY = "browser-remote-control";
 export const DESKTOP_BROWSER_VIEWER_STREAM_PATH = "/api/v1/browser/viewer/stream";
+/** 보기 셸이 프레임 스트림·long-poll 요청에 싣는 화질 선택 파라미터. 읽기 선호이므로 입장 규칙은 프레임 읽기와 같다. */
+export const DESKTOP_BROWSER_VIEWER_QUALITY_PARAM = "quality";
 export const DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER = "x-fleet-frame-css-width";
 export const DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER = "x-fleet-frame-css-height";
+
+/**
+ * 시청 스트리밍 화질 — 값의 주인은 보기 Desktop 이고, 적용 지점은 실행 측의 시청 프레임 캡처 한 곳뿐이다.
+ * 로컬 관리 브라우저의 표시·에이전트 스크린샷에는 쓰이지 않는다.
+ */
+export type ViewerCaptureQuality = "low" | "balanced" | "high";
+export const VIEWER_CAPTURE_QUALITIES: readonly ViewerCaptureQuality[] = ["low", "balanced", "high"];
+/** 캡처 프로필 — 출력 JPEG 품질, 출력 가로 상한, 최소 캡처 간격(ms). `balanced` 가 지금까지의 동작이다. */
+export interface ViewerCaptureProfile { readonly quality: number; readonly maxWidth: number; readonly maxHeight: number; readonly intervalMs: number }
+export const VIEWER_CAPTURE_PROFILES: Readonly<Record<ViewerCaptureQuality, ViewerCaptureProfile>> = {
+  low: { quality: 48, maxWidth: 960, maxHeight: 1200, intervalMs: 66 },
+  balanced: { quality: 72, maxWidth: 1280, maxHeight: 1600, intervalMs: 33 },
+  high: { quality: 85, maxWidth: 1920, maxHeight: 2400, intervalMs: 33 },
+};
+export function isViewerCaptureQuality(value: unknown): value is ViewerCaptureQuality {
+  return value === "low" || value === "balanced" || value === "high";
+}
+export function viewerCaptureQualityOf(value: unknown): ViewerCaptureQuality | null {
+  return isViewerCaptureQuality(value) ? value : null;
+}
 
 export const DESKTOP_BROWSER_ANSWER_PERMISSION = "Fleet.answerPermission";
 export const DESKTOP_BROWSER_PASSWORD_ACTION = "Fleet.passwordAction";

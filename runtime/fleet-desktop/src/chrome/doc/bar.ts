@@ -171,7 +171,18 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId) ?? null;
     const hasCapture = tab !== null && tab.url !== "about:blank";
     const menu = h("div", { class: "menu", role: "menu", attrs: { "aria-label": t("moreTools") } });
-    if (chromeViewLocked(state.viewOnly)) return menu;
+    /** 시청 스트리밍 화질 — 보기 전용에도 서고, 로컬 관리 브라우저 메뉴에는 없다. */
+    const appendQuality = (): void => {
+      const current = state.viewOnly?.viewerQuality ?? "balanced";
+      if (menu.childElementCount > 0) menu.append(h("div", { class: "menu-sep", role: "separator" }));
+      menu.append(h("div", { class: "menu-label", text: t("viewerQuality") }));
+      for (const value of ["low", "balanced", "high"] as const) {
+        menu.append(h("button", { class: "menu-item", type: "button", role: "menuitemradio", attrs: { "aria-checked": String(current === value) }, on: { click: () => post("bar", "viewer-quality", { quality: value }) } },
+          h("span", { class: "menu-glyph" }, glyph(G.monitor)),
+          h("span", { class: "menu-body" }, h("strong", { text: t(`viewerQuality.${value}`) }), h("span", { class: "help", text: t(`viewerQuality.${value}Help`) }))));
+      }
+    };
+    if (state.viewOnly && chromeViewLocked(state.viewOnly)) { appendQuality(); return menu; }
     if (hasCapture) menu.append(item(t, G.camera, t("attachScreenshot"), () => post("bar", "attach-screenshot"), { disabled: !state.captureAvailable || state.busy }));
     menu.append(item(t, G.comment, t("annotate"), () => post("bar", "annotate"), { disabled: !state.captureAvailable || tab === null }));
     if (tab && /^https?:\/\//iu.test(tab.url)) menu.append(item(t, G.external, t("openExternal"), () => post("bar", "open-external")));
@@ -203,6 +214,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
         h("span", { class: "menu-glyph" }, glyph(preset === "mobile" ? G.phone : preset === "tablet" ? G.tablet : G.monitor)),
         h("span", { class: "menu-body" }, h("strong", { text: t(`preset.${preset}`) }))));
     }
+    if (state.viewOnly) appendQuality();
     return menu;
   };
 
@@ -542,7 +554,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     if (current?.kind !== "annotate" && annotator) { annotator.dispose(); annotator = null; }
     // 스페이스 선택 화면이 닫히면 초점을 그 단추로 돌려준다 — 키보드로 연 사람이 화면 밖에서 길을 잃지 않게.
     const leavingSpaces = overlayKey.startsWith("spaces:") && !(showing && current!.kind === "spaces") && overlay.contains(document.activeElement);
-    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? `${editing}:${composing}:${list(state)}` : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : current!.kind === "password-prompt" || current!.kind === "password-picker" ? JSON.stringify(current) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : remote ? `remote:${JSON.stringify(remote)}` : "none";
+    const key = showing ? `${current!.kind}:${current!.kind === "suggestions" ? `${editing}:${composing}:${list(state)}` : current!.kind === "menu" ? JSON.stringify([state.chrome?.profile, state.chrome?.defaultProfile, shownSpace(state)?.viewportPreset, state.chrome?.tabs.length, state.busy, state.captureAvailable, state.viewOnly?.viewerQuality ?? null]) : current!.kind === "spaces" ? spacesKey(state) : current!.kind === "tabs-menu" ? JSON.stringify([current!.x, current!.y, state.orientation, state.pinned, state.autoExpand, state.busy, state.chrome?.available]) : current!.kind === "password-prompt" || current!.kind === "password-picker" ? JSON.stringify(current) : modal ? JSON.stringify([state.busy, (current as { sources?: unknown }).sources ?? null, (current as { profile?: unknown }).profile ?? null, state.chrome?.profile, state.chrome?.tabs.length]) : ""}:${selected}` : asked ? `page-dialog:${JSON.stringify([asked.tab.id, asked.tab.url, asked.dialog, state.busy, state.control?.holder ?? null, state.page])}` : remote ? `remote:${JSON.stringify(remote)}` : "none";
     const toastKey = `${state.notice ?? ""}|${state.info?.text ?? ""}|${state.info?.action ?? ""}`;
     if (current?.kind === "annotate" && showing) {
       urlBox.querySelector(".suggestions")?.remove();
@@ -687,7 +699,9 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     const viewLocked = chromeViewLocked(state.viewOnly);
     document.documentElement.dataset.viewOnly = viewing ? "true" : "false";
     document.documentElement.dataset.remoteControl = state.viewOnly?.control === true ? "true" : "false";
-    back.hidden = forward.hidden = reload.hidden = more.hidden = viewLocked;
+    back.hidden = forward.hidden = reload.hidden = viewLocked;
+    // 보기 전용에서도 도구 메뉴는 남긴다 — 시청 화질은 보기 전용에서도 바꾼다. 메뉴 안의 조작 항목은 잠긴다.
+    more.hidden = false;
     viewMark.hidden = !viewing;
     // 칸(도킹)은 보기 전용이 아니어도 × 로 닫는다. 독립 창은 창 닫기가 그 일을 하고, 보기 전용만 예외로 × 를 남긴다.
     closeView.hidden = state.mode !== "pane" && !viewing;

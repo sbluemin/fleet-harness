@@ -7,7 +7,7 @@ import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet
 import { DESKTOP_BROWSER_PASSWORDS, type BrowserPasswordShellCommand } from "@fleet-console/protocol/desktop/browser-passwords";
 import { acceptBrowserPasswordResult, browserPasswordDispatchError, BrowserPasswordRequestError, type BrowserPasswordDispatchResult } from "./passwords.js";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
-import { applyRemoteInputBatch, applySelectChoice, createRemoteSelectRegistry, probeSelectTarget, RemoteInputError, type RemoteBatchResult, type RemotePointerState } from "./remote-input.js";
+import { applyRemoteInputBatch, applySelectChoice, createRemoteSelectRegistry, probeSelectPresence, probeSelectTarget, RemoteInputError, type RemoteBatchResult, type RemoteInputCommand, type RemotePointerState } from "./remote-input.js";
 import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_PASSWORD_ACTION, DESKTOP_BROWSER_SELECT_POPUP, DESKTOP_BROWSER_STAGE_FILES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, isRemoteBrowserFileChooserAction, isRemoteBrowserInputBatch, isRemoteBrowserPasswordAction, isRemoteBrowserPermissionAction, isRemoteBrowserSelectPopupAction, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer, type RemoteBrowserFileChooserPrompt, type RemoteBrowserInputBatch, type RemoteBrowserPasswordAction, type RemoteBrowserPasswordPrompt, type RemoteBrowserPermissionAction, type RemoteBrowserPermissionPrompt, type RemoteBrowserSelectPopup, type RemoteBrowserSelectPopupAction } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
@@ -30,6 +30,10 @@ export const BROWSER_DEFAULT_VIEWPORT = { width: 1280, height: 800 } as const;
 const IDLE_SHUTDOWN_MS = 5 * 60_000;
 /** 뷰 크기 변경이 멎은 뒤 정한 뷰포트를 다시 걸기까지 — 사이드바 애니메이션 한 번이 마지막 한 번의 재적용이 된다. */
 const VIEWPORT_REAPPLY_MS = 100;
+/** 원격 조작 맞춤 리스 — 갱신이 끊기면(시청 측 종료·절전·단절) 실행 측 뷰포트로 스스로 복원한다. */
+const REMOTE_FIT_TTL_MS = 15_000;
+/** 문서에 `<select>` 가 있는지 기억하는 시간. 네비게이션은 곧바로 버린다 — 그 사이에 동적으로 추가된 select 는 놓칠 수 있다. */
+const SELECT_PROBE_TTL_MS = 30_000;
 const CONSOLE_RING = 500;
 const NETWORK_RING = 400;
 const BODY_LIMIT = 64 * 1024;
@@ -203,6 +207,8 @@ interface Tab {
   emulatedScheme?: string;
   /** 뷰 크기 변경 뒤 정한 크기를 다시 거는 대기 — 연속 변경(사이드바 애니메이션)을 마지막 한 번으로 모은다. */
   viewportReapply?: ReturnType<typeof setTimeout>;
+  /** 이 문서에 `<select>` 가 있는지 — 클릭마다 좌표 프로브를 하지 않기 위한 탭 단위 캐시. */
+  selectProbe: { hasSelect: boolean; at: number } | null;
 }
 
 /**
@@ -215,8 +221,11 @@ interface Space {
   viewport: BrowserViewport;
   /** true 이면 논리 뷰포트가 네이티브 pane 을 따른다(에뮬레이션 없음). */
   viewportFollowsPane: boolean;
-  /** 원격 조작 스테이지 맞춤이 세운 뷰포트. 연결이 끊어져 복원 POST가 409로 막혀도 엔진 종료 시 호스트 pane으로 복구한다. */
-  viewportSetRemotely: boolean;
+  /**
+   * 원격 조작 스테이지가 선언한 전이적 맞춤 — 스페이스의 `viewport` 를 덮어쓰지 않고, 이 값이 있는 동안만
+   * 실행 측이 이 크기로 에뮬레이션한다(실행 측 창 크기와 무관). 리스가 만료되거나 제어권이 돌아가면 지운다.
+   */
+  remoteFit: { width: number; height: number; at: number; timer: ReturnType<typeof setTimeout> } | null;
   /** 에이전트 사용 세션 — 첫 도구 호출에 열리고 턴 종료·중단·회수·유휴로 닫힌다. 호출 사이에도 유지된다. */
   agentSession: { since: number; lastCallAt: number; idle: ReturnType<typeof setTimeout> | null; participants: Set<string>; /** 마지막으로 호출을 연 참가자. */ last: string } | null;
   /**
@@ -615,17 +624,10 @@ export class BrowserService {
       op.contextId = "";
       op.contextPending = null;
       for (const space of op.spaces.values()) {
-        if (!space.viewportSetRemotely) continue;
-        space.viewportSetRemotely = false;
-        space.viewportFollowsPane = true;
-        space.viewport = {
-          width: op.pane?.width ?? BROWSER_DEFAULT_VIEWPORT.width,
-          height: op.pane?.height ?? BROWSER_DEFAULT_VIEWPORT.height,
-          scale: op.pane?.scale ?? space.viewport.scale,
-          preset: "responsive",
-          setBy: null,
-          colorScheme: space.viewport.colorScheme,
-        };
+        // 엔진이 사라지면 원격 맞춤도 함께 걷는다 — 스페이스의 뷰포트는 맞춤이 건드리지 않았으므로 그대로다.
+        if (!space.remoteFit) continue;
+        clearTimeout(space.remoteFit.timer);
+        space.remoteFit = null;
       }
       this.emitState(op);
     }
@@ -656,6 +658,7 @@ export class BrowserService {
     for (const op of this.objectiveRecords.values()) {
       for (const call of op.agentCalls) call.abort();
       for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
+      for (const space of op.spaces.values()) if (space.remoteFit) clearTimeout(space.remoteFit.timer);
     }
     this.stateListeners.clear();
     this.availabilityListeners.clear();
@@ -686,7 +689,7 @@ export class BrowserService {
   private space(op: ObjectiveBrowser, spaceId: string): Space {
     let space = op.spaces.get(spaceId);
     if (!space) {
-      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, viewportSetRemotely: false, agentSession: null, control: "agent", attention: null, pointer: null, controlWaiters: new Set() };
+      space = { id: spaceId, viewport: { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null }, viewportFollowsPane: true, remoteFit: null, agentSession: null, control: "agent", attention: null, pointer: null, controlWaiters: new Set() };
       if (op.pane) space.viewport = { ...space.viewport, width: op.pane.width, height: op.pane.height };
       op.spaces.set(spaceId, space);
     }
@@ -731,6 +734,7 @@ export class BrowserService {
   private pruneSpace(op: ObjectiveBrowser, spaceId: string): void {
     const space = op.spaces.get(spaceId);
     if (!space || space.agentSession || this.spaceTabs(op, spaceId).length > 0) return;
+    if (space.remoteFit) clearTimeout(space.remoteFit.timer);
     op.spaces.delete(spaceId);
   }
 
@@ -843,6 +847,7 @@ export class BrowserService {
       for (const tab of this.spaceTabs(op, spaceId)) await this.closeTab(op.objectiveId, tab.id).catch(() => undefined);
       const space = op.spaces.get(spaceId);
       if (space?.agentSession) { if (space.agentSession.idle) clearTimeout(space.agentSession.idle); space.agentSession = null; }
+      if (space?.remoteFit) clearTimeout(space.remoteFit.timer);
       for (const [participant, id] of [...op.participantSpaces]) if (id === spaceId) this.dropParticipant(op, participant);
       op.spaces.delete(spaceId);
       this.emitState(op);
@@ -1247,6 +1252,8 @@ export class BrowserService {
       for (const [call, participant] of [...op.callParticipants]) if (participants.has(participant)) { call.abort(); op.agentCalls.delete(call); op.callParticipants.delete(call); }
     }
     this.releaseControl(space);
+    // 사람이 제어를 놓으면 시청 측이 선언한 원격 맞춤도 함께 걷는다 — 실행 측 뷰포트가 곧바로 돌아온다.
+    this.clearRemoteFit(op, space, { reapply: true });
     this.cleanupStagedWhere((entry) => entry.objectiveId === op.objectiveId && entry.spaceId === spaceId);
     this.deps.log(`control ${action === "stop" ? "stopped" : "returned to the agent"} in ${op.objectiveId} space ${spaceId}`);
     if (action === "stop" && space.agentSession) this.closeSpaceSession(op, space, "interrupt");
@@ -1360,6 +1367,12 @@ export class BrowserService {
           assertControl: () => this.assertHumanMayOperate(op, tab),
           notePointer: () => undefined,
           interceptSelect: async (x, y) => {
+            // 클릭마다 좌표 프로브를 하지 않는다 — 이 문서에 select 가 있는지 한 번만 보고, 없으면 그대로 보낸다.
+            const cache = tab.selectProbe;
+            const fresh = cache !== null && Date.now() - cache.at < SELECT_PROBE_TTL_MS;
+            const hasSelect = fresh ? cache!.hasSelect : await probeSelectPresence(client, tab.sessionId);
+            if (!fresh) tab.selectProbe = { hasSelect, at: Date.now() };
+            if (!hasSelect) return null;
             const hit = await probeSelectTarget(client, tab.sessionId, x, y);
             if (!hit || hit.disabled) return null;
             const popup = this.remoteSelectRegistry.open(tab.id, tab.sessionId, hit);
@@ -1367,6 +1380,8 @@ export class BrowserService {
             this.emitState(op);
             return popup;
           },
+          // 배치의 명령을 한 왕복으로 보낸다 — 이벤트 수만큼 스냅샷/relay 를 오가지 않는다.
+          dispatch: (commands) => this.dispatchRemoteCommands(client, tab, commands),
         });
         if (outcome.pointer) this.remotePointers.set(tab.id, outcome.pointer);
         else this.remotePointers.delete(tab.id);
@@ -1384,6 +1399,16 @@ export class BrowserService {
     } finally {
       if (this.remoteInputQueues.get(body.tabId) === next) this.remoteInputQueues.delete(body.tabId);
     }
+  }
+
+  /** 원격 입력 명령 묶음 — 엔진이 배치 디스패치를 지원하면 한 스냅샷으로, 아니면 순서대로 보낸다. */
+  private async dispatchRemoteCommands(client: CdpClient, tab: Tab, commands: readonly RemoteInputCommand[]): Promise<void> {
+    if (commands.length === 0) return;
+    if (client.dispatchMany) {
+      await client.dispatchMany(commands.map((command) => ({ method: command.method, params: command.params, sessionId: tab.sessionId })));
+      return;
+    }
+    for (const command of commands) await client.send(command.method, command.params, tab.sessionId);
   }
 
   /** 원격 `<select>` 팝업의 선택·취소. CDP 선택 레지스트리가 연 팝업이면 페이지에 바로 반영하고, 아니면 셸 명령으로 보낸다. */
@@ -1568,7 +1593,7 @@ export class BrowserService {
         const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId: created.targetId, flatten: true });
         this.assertContextGeneration(op, generation);
         assertSpace();
-        tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId, targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map() };
+        tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId, targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), selectProbe: null };
         op.tabs.set(tab.id, tab);
       } catch (error) {
         // 리셋으로 등록이 거부되거나 부착이 실패한 타깃은 생성자가 끝까지 정리한다.
@@ -2013,6 +2038,8 @@ export class BrowserService {
         tab.frameId = typeof p.frame?.id === "string" ? p.frame.id : tab.frameId;
         tab.url = p.frame?.url ?? tab.url;
         tab.title = "";
+        // 문서가 바뀌면 select 캐시도 버린다 — 이전 문서의 판정을 새 문서에 쓰지 않는다.
+        tab.selectProbe = null;
         // 파비콘은 새 문서의 것이 도착할 때까지 이전 것을 둔다 — 탭이 점으로 깜빡이지 않게.
         // 새 문서의 loader 가 아닌 요청은 이전 페이지의 것 — 문서 요청 자체는 남긴다.
         for (const [id, entry] of tab.network) if (entry.loaderId !== p.frame?.loaderId) tab.network.delete(id);
@@ -2117,16 +2144,45 @@ export class BrowserService {
     if (changed) this.emitState(op);
   }
 
-  private isNativeResponsive(space: Space): boolean {
-    return space.viewport.preset === "responsive" && space.viewport.setBy === "user";
+  /** 원격 맞춤이 서 있는 동안은 언제나 에뮬레이션이다 — 실행 측 창/표면 크기를 따르지 않는다. */
+  private usesNativeLayout(space: Space): boolean {
+    return space.remoteFit === null && space.viewportFollowsPane;
   }
 
-  private usesNativeLayout(space: Space): boolean {
-    return space.viewportFollowsPane || this.isNativeResponsive(space);
+  /** 이 스페이스에서 페이지가 지금 배치되는 논리 크기 — 원격 맞춤 > 에뮬레이션 > pane. */
+  private effectiveViewport(space: Space, pane: { readonly width: number; readonly height: number } | null): { width: number; height: number } | null {
+    if (space.remoteFit) return { width: space.remoteFit.width, height: space.remoteFit.height };
+    if (!this.usesNativeLayout(space)) return { width: space.viewport.width, height: space.viewport.height };
+    return pane ? { width: pane.width, height: pane.height } : null;
+  }
+
+  /** 전이적 원격 맞춤을 세우고 리스를 건다 — 리스가 만료되면 실행 측 뷰포트로 스스로 돌아간다. */
+  private setRemoteFit(op: ObjectiveBrowser, space: Space, size: { readonly width: number; readonly height: number }): void {
+    if (space.remoteFit) clearTimeout(space.remoteFit.timer);
+    const timer = setTimeout(() => {
+      const current = this.objectiveRecords.get(op.objectiveId)?.spaces.get(space.id);
+      if (!current?.remoteFit || current.remoteFit.timer !== timer) return;
+      this.clearRemoteFit(op, current, { reapply: true });
+      this.emitState(op);
+    }, REMOTE_FIT_TTL_MS);
+    (timer as { unref?: () => void }).unref?.();
+    space.remoteFit = { width: size.width, height: size.height, at: Date.now(), timer };
+  }
+
+  /** 원격 맞춤을 걷는다. 스페이스의 뷰포트는 맞춤이 건드리지 않았으므로 그대로 복원된다. */
+  private clearRemoteFit(op: ObjectiveBrowser, space: Space, options: { readonly reapply: boolean }): void {
+    if (!space.remoteFit) return;
+    clearTimeout(space.remoteFit.timer);
+    space.remoteFit = null;
+    if (!options.reapply) return;
+    const client = this.client;
+    if (!client) return;
+    for (const tab of this.spaceTabs(op, space.id)) void this.applyViewport(client, tab, op).catch(() => undefined);
   }
 
   /**
-   * 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋·임의 크기만 뷰 안에서 흉내 낸다.
+   * 뷰의 크기는 셸이 패널 자리에 맞춰 놓는다 — 반응형이면 에뮬레이션을 걷고, 프리셋·임의 크기·원격 맞춤은 뷰 안에서 흉내 낸다.
+   * 원격 맞춤은 실행 측 창과 무관하게 시청 측이 선언한 크기를 그대로 에뮬레이션한다.
    * 대기 중인 재적용은 여기서 풀린다. 색 구성은 바뀌었을 때만 보내고, 새 문서가 뜬 뒤처럼 반드시 다시 알려야 하는
    * 곳은 `media` 로 강제한다.
    */
@@ -2134,9 +2190,10 @@ export class BrowserService {
     this.cancelViewportReapply(tab);
     const space = this.spaceOfTab(op, tab);
     const viewport = space.viewport;
-    // 사람이 정한 responsive 크기는 셸이 뷰 bounds 를 그 비율로 놓는다. 여기서 요청 크기대로 위젯을 키우면
-    // 호스트 창이 더 작을 때 setBorderRadius 마스크가 페이지 하단을 자른다. 에이전트·mobile/tablet 만 에뮬레이션한다.
-    if (this.usesNativeLayout(space)) {
+    const fit = space.remoteFit;
+    if (fit) {
+      await client.send("Emulation.setDeviceMetricsOverride", { width: fit.width, height: fit.height, deviceScaleFactor: 0, mobile: false, screenWidth: fit.width, screenHeight: fit.height }, tab.sessionId);
+    } else if (this.usesNativeLayout(space)) {
       await client.send("Emulation.clearDeviceMetricsOverride", {}, tab.sessionId).catch(() => undefined);
     } else {
       const mobile = viewport.preset === "mobile" || viewport.preset === "tablet";
@@ -2167,10 +2224,16 @@ export class BrowserService {
   /**
    * 스페이스 하나의 뷰포트를 정한다. 스페이스를 주지 않으면 표시 탭의 스페이스다 — 셸은 사람이 보고 있는 스페이스를 준다. 그 스페이스의 탭에만 걸린다.
    */
-  async setViewport(objectiveId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent", spaceId?: string, options?: { readonly remoteFit?: boolean }): Promise<BrowserViewport> {
+  async setViewport(objectiveId: string, request: { preset?: ViewportPreset; width?: number; height?: number; colorScheme?: "light" | "dark" | null }, actor: "user" | "agent", spaceId?: string, options?: { readonly remoteFit?: "set" | "clear" }): Promise<BrowserViewport> {
     const op = this.objectiveRecord(objectiveId);
     if (spaceId !== undefined) this.admitSpace(spaceId);
     const targetSpace = spaceId ?? this.activeSpace(op)?.id ?? null;
+    // 원격 맞춤 해제만 하는 요청(시청 셸이 닫힐 때)은 프리셋도 색 구성도 건드리지 않는다.
+    if (options?.remoteFit === "clear" && request.preset === undefined && request.width === undefined && request.height === undefined) {
+      const space = targetSpace ? this.space(op, targetSpace) : null;
+      if (space) { this.clearRemoteFit(op, space, { reapply: true }); this.emitState(op); }
+      return space?.viewport ?? this.state(objectiveId).viewport;
+    }
     // 색 구성만 맞추는 요청(테마 따라가기)은 표시 동기화다 — 띄운 스페이스가 없으면 모든 스페이스에 건다.
     const displayOnly = request.preset === undefined && request.width === undefined && request.height === undefined;
     const spaces = displayOnly && !spaceId ? [...op.spaces.values()] : targetSpace ? [this.space(op, targetSpace)] : [];
@@ -2182,6 +2245,19 @@ export class BrowserService {
       return spaces[0]!.viewport;
     }
     const space = spaces[0]!;
+    const remoteFit = options?.remoteFit;
+    const explicitSize = request.width !== undefined && request.height !== undefined;
+    if (remoteFit === "set" && explicitSize) {
+      // 시청 스테이지가 선언한 전이적 맞춤 — 스페이스의 뷰포트/프리셋은 건드리지 않는다.
+      const resolved = resolveBrowserViewportSize({ preset: "responsive", width: request.width, height: request.height, current: space.viewport, pane: this.paneOf(op) });
+      this.setRemoteFit(op, space, resolved);
+      if (this.client) for (const tab of this.spaceTabs(op, space.id)) await this.applyViewport(this.client, tab, op).catch(() => undefined);
+      this.emitState(op);
+      return { ...space.viewport, width: resolved.width, height: resolved.height, preset: "responsive", setBy: null };
+    }
+    // 프리셋·크기 선택이 맞춤보다 먼저다 — 원격 메뉴의 복귀와 로컬 표시줄의 선택이 같은 규칙이고,
+    // 스테이지 맞춤은 그 프리셋이 responsive 일 때 다음 리스에 다시 선다.
+    if (request.preset !== undefined || explicitSize) this.clearRemoteFit(op, space, { reapply: false });
     const preset = request.preset ?? (request.width || request.height ? "responsive" : space.viewport.preset);
     const resolved = resolveBrowserViewportSize({
       preset,
@@ -2190,11 +2266,10 @@ export class BrowserService {
       current: space.viewport,
       pane: this.paneOf(op),
     });
-    // 칸을 따르는 복귀는 사람이 크기를 정한 상태가 아니다. setBy 가 user 로 남으면 셸이 원격 맞춤을 풀지 않는다.
+    // 칸을 따르는 복귀는 사람이 크기를 정한 상태가 아니다.
     const setBy = resolved.followsPane ? null : actor;
     const scale = op.pane?.scale ?? space.viewport.scale;
     space.viewportFollowsPane = resolved.followsPane;
-    space.viewportSetRemotely = !resolved.followsPane && options?.remoteFit === true;
     space.viewport = { width: resolved.width, height: resolved.height, scale, preset, setBy, colorScheme: request.colorScheme === undefined ? space.viewport.colorScheme : request.colorScheme };
     if (this.client) {
       const tabs = this.spaceTabs(op, space.id);
@@ -2415,10 +2490,9 @@ export class BrowserService {
     // heal 전에 저장된 논리 뷰포트와 실측 layout 불일치를 잡는다 — 이전 스크린샷 좌표를 믿지 말라는 신호.
     const storedBeforeHeal = { width: space.viewport.width, height: space.viewport.height };
     // 저장된 뷰포트는 띄운(활성) 탭의 실측을 따라간다 — 띄우지 않은 탭(다른 스페이스의 뷰)이나 사람이 정한 원격 맞춤(요청 비율만 기억)은 실제 위젯 bounds 와 다를 수 있어 낡은 좌표 신호가 아니다.
-    const nativeResponsive = this.isNativeResponsive(space);
-    const ownsStored = (!space.viewportFollowsPane && !nativeResponsive) || (space.viewportFollowsPane && tab.id === op.activeTabId);
+    const ownsStored = space.remoteFit === null && (!space.viewportFollowsPane || tab.id === op.activeTabId);
     const staleViewport = ownsStored && !options.clip && layout !== null && (layout.width !== storedBeforeHeal.width || layout.height !== storedBeforeHeal.height);
-    if (space.viewportFollowsPane && tab.id === op.activeTabId && layout && (layout.width !== space.viewport.width || layout.height !== space.viewport.height)) {
+    if (space.remoteFit === null && space.viewportFollowsPane && tab.id === op.activeTabId && layout && (layout.width !== space.viewport.width || layout.height !== space.viewport.height)) {
       space.viewport = { ...space.viewport, width: layout.width, height: layout.height };
       this.emitState(op);
     }
@@ -2461,10 +2535,7 @@ export class BrowserService {
    * 덮어쓰거나 대화상자가 떠 있어도 두 경로로 갈라지지 않는다.
    */
   private layoutViewport(op: ObjectiveBrowser, tab: Tab): { width: number; height: number } | null {
-    const space = this.spaceOfTab(op, tab);
-    if (!this.usesNativeLayout(space)) return { width: space.viewport.width, height: space.viewport.height };
-    const pane = this.paneOfTab(tab);
-    return pane ? { width: pane.width, height: pane.height } : null;
+    return this.effectiveViewport(this.spaceOfTab(op, tab), this.paneOfTab(tab));
   }
 
   async evaluate<T = unknown>(objectiveId: string, expression: string, tabId?: string | null): Promise<{ value: T | undefined; error: string | null }> {

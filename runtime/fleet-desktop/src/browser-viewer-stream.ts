@@ -5,9 +5,11 @@ import {
   DESKTOP_BROWSER_FRAME_SEQ_HEADER,
   DESKTOP_BROWSER_FRAME_WIDTH_HEADER,
   DESKTOP_BROWSER_VIEWER_STREAM_PATH,
+  DESKTOP_BROWSER_VIEWER_QUALITY_PARAM,
   REMOTE_FRAME_STREAM_CONTENT_TYPE,
   createRemoteBrowserFrameDecoder,
   type RemoteBrowserDecodedFrame,
+  type ViewerCaptureQuality,
 } from "@fleet-console/protocol/desktop";
 
 /**
@@ -45,8 +47,8 @@ export interface RemoteBrowserViewerStreamDeps {
 }
 
 export interface RemoteBrowserViewerStream {
-  /** 그 탭의 스트림을 연다 — 같은 탭·origin이면 그대로 둔다. */
-  watch(tabId: string, origin: string): void;
+  /** 그 탭의 스트림을 연다 — 같은 탭·origin·화질이면 그대로 둔다. */
+  watch(tabId: string, origin: string, quality: ViewerCaptureQuality): void;
   unwatch(): void;
   stop(): void;
 }
@@ -57,7 +59,7 @@ export function createRemoteBrowserViewerStream(deps: RemoteBrowserViewerStreamD
   const cancel = deps.clearTimeout ?? ((timer: unknown) => { clearTimeout(timer as ReturnType<typeof setTimeout>); });
   const maxFrameBytes = deps.maxFrameBytes ?? DESKTOP_BROWSER_FRAME_MAX_BYTES;
 
-  let current: { readonly tabId: string; readonly origin: string; readonly controller: AbortController } | null = null;
+  let current: { readonly tabId: string; readonly origin: string; readonly quality: ViewerCaptureQuality; readonly controller: AbortController } | null = null;
   let timer: unknown = null;
   let retry = 0;
   /** 구형 Console 로 확인되면 이 origin 에서는 long-poll 만 쓴다. */
@@ -88,14 +90,14 @@ export function createRemoteBrowserViewerStream(deps: RemoteBrowserViewerStreamD
     });
   };
 
-  const runStream = async (tabId: string, origin: string, controller: AbortController): Promise<void> => {
+  const runStream = async (tabId: string, origin: string, quality: ViewerCaptureQuality, controller: AbortController): Promise<void> => {
     const alive = (): boolean => current?.controller === controller && !controller.signal.aborted;
     let after = 0;
     retry = 0;
     while (alive() && !longPollOnly) {
       try {
         const response = await deps.fetch(
-          `${origin}${DESKTOP_BROWSER_VIEWER_STREAM_PATH}?tabId=${encodeURIComponent(tabId)}&afterSeq=${after}`,
+          `${origin}${DESKTOP_BROWSER_VIEWER_STREAM_PATH}?tabId=${encodeURIComponent(tabId)}&afterSeq=${after}&${DESKTOP_BROWSER_VIEWER_QUALITY_PARAM}=${quality}`,
           { headers: { Origin: origin }, signal: controller.signal, cache: "no-store" },
         );
         if (!alive()) return;
@@ -104,7 +106,7 @@ export function createRemoteBrowserViewerStream(deps: RemoteBrowserViewerStreamD
           longPollOnly = true;
           longPollOrigin = origin;
           await response.arrayBuffer().catch(() => undefined);
-          void runLongPoll(tabId, origin, controller, after);
+          void runLongPoll(tabId, origin, quality, controller, after);
           return;
         }
         if (!response.ok || !response.body) {
@@ -118,7 +120,7 @@ export function createRemoteBrowserViewerStream(deps: RemoteBrowserViewerStreamD
           await response.arrayBuffer().catch(() => undefined);
           longPollOnly = true;
           longPollOrigin = origin;
-          void runLongPoll(tabId, origin, controller, after);
+          void runLongPoll(tabId, origin, quality, controller, after);
           return;
         }
         retry = 0;
@@ -161,13 +163,13 @@ export function createRemoteBrowserViewerStream(deps: RemoteBrowserViewerStreamD
     }
   };
 
-  const runLongPoll = async (tabId: string, origin: string, controller: AbortController, startAfter: number): Promise<void> => {
+  const runLongPoll = async (tabId: string, origin: string, quality: ViewerCaptureQuality, controller: AbortController, startAfter: number): Promise<void> => {
     const alive = (): boolean => current?.controller === controller && !controller.signal.aborted;
     let after = startAfter;
     while (alive()) {
       try {
         const response = await deps.fetch(
-          `${origin}${VIEWER_FRAME_PATH}?tabId=${encodeURIComponent(tabId)}&afterSeq=${after}&waitMs=${FRAME_WAIT_MS}`,
+          `${origin}${VIEWER_FRAME_PATH}?tabId=${encodeURIComponent(tabId)}&afterSeq=${after}&waitMs=${FRAME_WAIT_MS}&${DESKTOP_BROWSER_VIEWER_QUALITY_PARAM}=${quality}`,
           { headers: { Origin: origin }, signal: controller.signal, cache: "no-store" },
         );
         if (!alive()) return;
@@ -218,17 +220,17 @@ export function createRemoteBrowserViewerStream(deps: RemoteBrowserViewerStreamD
   };
 
   return {
-    watch(tabId, origin) {
-      if (current && current.tabId === tabId && current.origin === origin) return;
+    watch(tabId, origin, quality) {
+      if (current && current.tabId === tabId && current.origin === origin && current.quality === quality) return;
       stopCurrent(false);
       if (longPollOnly && longPollOrigin !== origin) {
         longPollOnly = false;
         longPollOrigin = null;
       }
       const controller = new AbortController();
-      current = { tabId, origin, controller };
-      if (longPollOnly && longPollOrigin === origin) void runLongPoll(tabId, origin, controller, 0);
-      else void runStream(tabId, origin, controller).catch((error: unknown) => log(`browser viewer stream failed: ${error instanceof Error ? error.message : "unknown"}`));
+      current = { tabId, origin, quality, controller };
+      if (longPollOnly && longPollOrigin === origin) void runLongPoll(tabId, origin, quality, controller, 0);
+      else void runStream(tabId, origin, quality, controller).catch((error: unknown) => log(`browser viewer stream failed: ${error instanceof Error ? error.message : "unknown"}`));
     },
     unwatch() {
       stopCurrent(true);

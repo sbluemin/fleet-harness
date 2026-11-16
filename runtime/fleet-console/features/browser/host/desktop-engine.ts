@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserChrome, type DesktopBrowserHello, type DesktopBrowserPageDialog, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserSurface, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserChrome, type DesktopBrowserHello, type DesktopBrowserPageDialog, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserSurface, type DesktopBrowserView, type ViewerCaptureQuality } from "@fleet-console/protocol/desktop";
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
@@ -95,6 +95,8 @@ export class DesktopEngine implements CdpClient {
   private readonly watchTickets = new Map<string, Set<WatchTicket>>();
   private readonly watchLeases = new Map<string, ReturnType<typeof setTimeout>>();
   private readonly watched = new Set<string>();
+  /** 시청자가 고른 스트리밍 화질 — 시청 프레임 캡처에만 쓰인다(로컬 표시·에이전트 스크린샷과 무관). */
+  private viewerCapture: ViewerCaptureQuality = "balanced";
   private shortcuts: readonly string[] | null = null;
   private surface: BrowserSurfaceState | null = null;
   private chrome: DesktopBrowserChrome | null = null;
@@ -219,6 +221,7 @@ export class DesktopEngine implements CdpClient {
       surface: this.surface,
       chrome: this.surface ? this.chrome : null,
       watchedViewIds: [...this.watched],
+      ...(this.watched.size > 0 ? { viewerCapture: this.viewerCapture } : {}),
     };
   }
 
@@ -391,7 +394,12 @@ export class DesktopEngine implements CdpClient {
   // ---------- 보기 전용 프레임 ----------
 
   /** 이 뷰를 보는 long-poll 하나. 돌려준 함수는 그 폴링이 끝날 때 한 번 부른다. */
-  acquireWatch(viewId: string): (lease: boolean) => void {
+  acquireWatch(viewId: string, options: { readonly quality?: ViewerCaptureQuality | null } = {}): (lease: boolean) => void {
+    const quality = options.quality ?? null;
+    if (quality !== null && quality !== this.viewerCapture) {
+      this.viewerCapture = quality;
+      this.publish();
+    }
     const ticket: WatchTicket = { live: true };
     let tickets = this.watchTickets.get(viewId);
     if (!tickets) { tickets = new Set(); this.watchTickets.set(viewId, tickets); }
@@ -607,16 +615,44 @@ export class DesktopEngine implements CdpClient {
   }
 
   private dispatch<T>(viewId: string, method: string, params: Record<string, unknown>): Promise<T> {
+    const waiting = this.enqueueCommand<T>(viewId, method, params);
+    this.publish();
+    return waiting;
+  }
+
+  /**
+   * 여러 CDP 명령을 **한 스냅샷에 실어** 보낸다 — 원격 입력 배치가 이벤트 수만큼 왕복하지 않게 한다.
+   * 셸은 스냅샷의 명령을 배열 순서대로 실행하고, 결과는 한 relay flush 로 돌아온다. 뷰 세션의 명령만 받는다
+   * (`Target.*`·`Fleet.*` 같은 엔진 라우팅은 배치 경로에서 쓰지 않는다).
+   */
+  async dispatchMany(commands: readonly { readonly method: string; readonly params: Record<string, unknown>; readonly sessionId: string }[]): Promise<unknown[]> {
+    if (commands.length === 0) return [];
+    if (!this.connected) throw new CdpError("desktop", -32000, "desktop_browser_disconnected");
+    const waits = commands.map((command) => {
+      const view = this.views.get(command.sessionId);
+      if (!view) return Promise.reject(new CdpError(command.method, -32601, "desktop_engine_unsupported"));
+      if (view.dialog) return Promise.reject(new PageDialogOpenError(command.method, view.dialog));
+      const { browserContextId: _context, ...rest } = command.params;
+      return this.enqueueCommand<unknown>(command.sessionId, command.method, rest);
+    });
+    this.publish();
+    return Promise.all(waits);
+  }
+
+  private enqueueCommand<T>(viewId: string, method: string, params: Record<string, unknown>): Promise<T> {
     const id = this.nextCommandId++;
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new CdpError(method, -32000, "desktop_command_timeout")); this.publish(); }, COMMAND_TIMEOUT_MS);
       this.pending.set(id, { command: { id, viewId, method, params }, resolve: resolve as (value: unknown) => void, reject, timer });
-      this.publish();
     });
   }
 
   private emit(event: CdpEvent): void { for (const listener of this.listeners) listener(event); }
 
+  /**
+   * 셸에 스냅샷을 알린다. 명령은 결과가 올 때까지 `pending` 에 남으므로, 여러 명령을 한 번에 보낼 때는
+   * `dispatchMany` 가 이 함수를 한 번만 부른다(입력 배치 N개 → publish 1회).
+   */
   private publish(): void {
     this.generation += 1;
     this.deps.publish(this.snapshot(), this.host);

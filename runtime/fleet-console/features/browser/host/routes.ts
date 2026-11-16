@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
-import { DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_BROWSER_VIEWER_STREAM_PATH, DESKTOP_BROWSER_FRAME_AT_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_SEQ_HEADER, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, type BrowserExecutionHost, type BrowserSurfaceModeKind } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_BROWSER_VIEWER_QUALITY_PARAM, DESKTOP_BROWSER_VIEWER_STREAM_PATH, DESKTOP_BROWSER_FRAME_AT_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_SEQ_HEADER, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, viewerCaptureQualityOf, type BrowserExecutionHost, type BrowserSurfaceModeKind } from "@fleet-console/protocol/desktop";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
 import { ViewerFrameClosedError, ViewerFrameDisconnectedError, ViewerFrameTimeoutError, type DesktopEngine } from "./desktop-engine.js";
 import { serveViewerStream } from "./viewer-stream.js";
@@ -260,7 +260,11 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       if (action === "viewport") {
         const preset = body.preset === "responsive" || body.preset === "mobile" || body.preset === "tablet" ? body.preset : undefined;
         const colorScheme = body.colorScheme === "light" || body.colorScheme === "dark" ? body.colorScheme : body.colorScheme === null ? null : undefined;
-        writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user", spaceId(body), { remoteFit: isRemoteBrowserControl(req) }) }); return true;
+        // 원격 시청 셸의 요청은 두 가지다 — 스테이지 크기 선언(전이 맞춤)과 맞춤 해제. 그 밖의 프리셋·색 구성은 로컬과 같다.
+        const remoteFit = isRemoteBrowserControl(req)
+          ? (typeof body.width === "number" && typeof body.height === "number" ? "set" : "clear" as const)
+          : undefined;
+        writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user", spaceId(body), { remoteFit }) }); return true;
       }
       if (action === "surface") {
         if ((body.action !== "open" && body.action !== "close" && body.action !== "focus" && body.action !== "mode")
@@ -414,7 +418,8 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       const afterSeq = Number(params.get("afterSeq") ?? "0");
       const requestedWait = params.has("waitMs") ? Number(params.get("waitMs")) : DEFAULT_FRAME_WAIT_MS;
       const waitMs = Number.isFinite(requestedWait) ? Math.min(MAX_FRAME_WAIT_MS, Math.max(0, requestedWait)) : DEFAULT_FRAME_WAIT_MS;
-      const release = desktopEngine.acquireWatch(viewId);
+      const quality = viewerCaptureQualityOf(params.get(DESKTOP_BROWSER_VIEWER_QUALITY_PARAM));
+      const release = desktopEngine.acquireWatch(viewId, quality ? { quality } : {});
       const abort = new AbortController();
       let settled = false;
       const finish = (lease: boolean) => { if (settled) return; settled = true; release(lease); };
