@@ -429,12 +429,11 @@ function pendingPreset(stored: StoredObjective): PendingCommander | null {
   // 시작 전 목표는 모델을 갖지 않는다. 파일에 남은 옛 model·effort·modelSpeed 는 읽지 않는다.
   return { commodoreId: stored.commodoreId ?? "", theaterId: stored.theaterId ?? "", ...(stored.theaterIdExplicit ? { theaterIdExplicit: true as const } : {}), cwd: stored.cwd ?? "", title: stored.title ?? stored.id, groupId: stored.groupId ?? null,
     createdAt: stored.ts?.createdAt ?? 0, sessionName: typeof session.sessionName === "string" ? session.sessionName : stored.id,
-    ...(typeof session.disableAutoMemory === "boolean" ? { disableAutoMemory: session.disableAutoMemory } : {}),
-    viewMode: stored.chatMode ? "chat" : "terminal" };
+    ...(typeof session.disableAutoMemory === "boolean" ? { disableAutoMemory: session.disableAutoMemory } : {}) };
 }
 function draftFields(preset: PendingCommander) {
   return { pending: true as const, commodoreId: preset.commodoreId, theaterId: preset.theaterId, ...(preset.theaterIdExplicit ? { theaterIdExplicit: true as const } : {}), cwd: preset.cwd, title: preset.title, groupId: preset.groupId,
-    ts: { createdAt: preset.createdAt, updatedAt: preset.createdAt }, session: { sessionName: preset.sessionName, ...(preset.disableAutoMemory !== undefined ? { disableAutoMemory: preset.disableAutoMemory } : {}) }, chatMode: preset.viewMode === "chat" };
+    ts: { createdAt: preset.createdAt, updatedAt: preset.createdAt }, session: { sessionName: preset.sessionName, ...(preset.disableAutoMemory !== undefined ? { disableAutoMemory: preset.disableAutoMemory } : {}) } };
 }
 const bareRecord = (objectiveId: string): StoredObjective => ({ id: objectiveId, rank: 0, note: "", enlisted: true, missions: [] });
 /** 실행만 있는 빈 파일은 옛 가상 목표와 같다. 저장 위치가 생겼다는 이유로 터미널을 채팅으로 바꾸지 않는다. */
@@ -793,7 +792,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
   const project = (stored: StoredObjective, node: ObjectiveRecord | null): Objective => {
     const pending = pendingPreset(stored);
     if (!node && !pending) throw new ObjectiveStoreError("unknown_objective");
-    const launch = node ? readObjectiveLaunch(node) : { sessionName: pending!.sessionName, model: pending!.model, effort: pending!.effort, viewMode: pending!.viewMode, started: false };
+    const launch = node ? readObjectiveLaunch(node) : { sessionName: pending!.sessionName, model: pending!.model, effort: pending!.effort, started: false };
     const addedBy = typeof stored.addedBy === "string" ? { objectiveId: stored.addedBy, title: sessionRecord(stored.addedBy)?.title ?? null } : stored.addedBy ?? null;
     const members = (stored.members ?? []).map((member) => {
       const memberNode = node?.sessions?.find((child) => child.id === member.id);
@@ -832,7 +831,7 @@ export function createObjectiveStore(options: ObjectiveStoreOptions): ObjectiveS
       groupId: node ? node.groupId ?? null : liveGroup(pending!.commodoreId, pending!.groupId),
       title: node?.title ?? pending!.title,
       createdAt: node?.ts.createdAt ?? pending!.createdAt,
-      commander: { sessionName: launch.sessionName, viewMode: launch.viewMode ?? "terminal", ...(launch.model ? { model: canonicalModelId(launch.model) } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started, ...(commanderOutcome ? { outcome: commanderOutcome } : {}) },
+      commander: { sessionName: launch.sessionName, ...(launch.model ? { model: canonicalModelId(launch.model) } : {}), ...(launch.effort ? { effort: launch.effort } : {}), started: launch.started, ...(commanderOutcome ? { outcome: commanderOutcome } : {}) },
       note: stored.note,
       attachments: stored.attachments ?? [],
       results: stored.results ?? [],

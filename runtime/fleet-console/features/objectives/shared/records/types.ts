@@ -38,7 +38,6 @@ export interface ObjectiveRecord {
 
 export interface ObjectiveLaunchInfo {
   readonly sessionName: string | null;
-  readonly viewMode?: "terminal" | "chat";
   readonly model?: string;
   readonly effort?: string;
   /** launch 때 예약한 좌표가 아니라 첫 턴의 provider 세션이 실제로 잡혔는가. */
@@ -65,7 +64,6 @@ export function readObjectiveLaunch(payload: Record<string, unknown>): Objective
   const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
   return {
     sessionName: typeof session.sessionName === "string" && session.sessionName.length > 0 ? session.sessionName : null,
-    viewMode: payload.chatMode === true ? "chat" : "terminal",
     ...(typeof session.model === "string" && session.model.length > 0 ? { model: session.model } : {}),
     ...(typeof session.effort === "string" && session.effort.length > 0 ? { effort: session.effort } : {}),
     started: typeof session.id === "string" && session.id.length > 0
@@ -143,25 +141,11 @@ export function retainUserQuestions(written: Record<string, unknown>, live: Reco
   return next;
 }
 
-/** 기존 세션 좌표·이름·실행 정책을 유지하며 프리셋을 바꾼다. 시작 뷰 변경은 첫 실행 전 호출자가 제한한다. */
-export function withObjectiveLaunchPreset(payload: Record<string, unknown>, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Record<string, unknown> {
+/** 기존 세션 좌표·이름·실행 정책을 유지하며 프리셋을 바꾼다. */
+export function withObjectiveLaunchPreset(payload: Record<string, unknown>, preset: { readonly model?: string; readonly effort?: string }): Record<string, unknown> {
   const value = payload.session;
   const session = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
-  const next: Record<string, unknown> = { ...payload, session: { ...session, ...(preset.model !== undefined ? { model: preset.model } : {}), ...(preset.effort !== undefined ? { effort: preset.effort } : {}) } };
-  if (preset.viewMode !== undefined) {
-    if (preset.viewMode === "chat") { next.chatMode = true; next.chatBorn = true; }
-    else { delete next.chatMode; delete next.chatBorn; }
-  }
-  return next;
-}
-
-/**
- * 이미 실행한 적 있는 휴면 Agent Objective 의 다음 재개 표면을 채팅으로 옮긴다 — 표면 마커(`chatMode`)만 심고 `chatBorn` 은 두지 않는다
- * (첫 턴 뒤의 세션이라 transcript 가 있다). Console 은 휴면 Objective 의 이 마커로 재개 표면을 고르고, 이전 대화는 같은 세션의
- * transcript 재생이 되살린다. 살아 있는 세션에는 쓰지 않는다 — 실행 중 전환은 Console 의 보기 전환이 진다.
- */
-export function withObjectiveChatSurface(payload: Record<string, unknown>): Record<string, unknown> {
-  return payload.chatMode === true ? payload : { ...payload, chatMode: true };
+  return { ...payload, session: { ...session, ...(preset.model !== undefined ? { model: preset.model } : {}), ...(preset.effort !== undefined ? { effort: preset.effort } : {}) } };
 }
 
 export interface ObjectiveRecordCreateInput {
@@ -264,13 +248,6 @@ export interface ObjectiveLaunchVariantGroup {
   readonly label: string;
   readonly rows: readonly ObjectiveLaunchVariantRow[];
 }
-
-/**
- * Objective이 태어날 수 있는 표면. `terminal`은 PTY가 뜨는 지금까지의 유일한 길이고,
- * `chat`은 PTY 없이 채팅 세션으로 곧장 태어나는 길이다.
- */
-export type ObjectiveLaunchView = "terminal" | "chat";
-
 export interface ObjectiveLaunchKind {
   readonly id: string;
   readonly type: string;
@@ -278,12 +255,6 @@ export interface ObjectiveLaunchKind {
   readonly disabled?: boolean;
   readonly disabledReason?: string;
   readonly variants?: readonly ObjectiveLaunchVariantGroup[];
-  /**
-   * 이 실행 종류가 지원하는 시작 표면. 생략은 "터미널뿐"이라는 뜻이며, 그것이 기존 모든
-   * 실행 종류의 사실이다 — 코어가 어느 플러그인이 채팅을 아는지 알 필요가 없도록,
-   * 시작 뷰 선택은 이 선언이 있는 종류에서만 선다.
-   */
-  readonly launchViews?: readonly ObjectiveLaunchView[];
 }
 
 export interface ObjectiveCatalogPlugin {

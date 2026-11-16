@@ -71,9 +71,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     registerCleanup(() => launch.dispose());
     // 옛 정리 데이터는 기간으로 지우지 않는다. 이관 실패는 원본을 둔 채 다음 주기·재시작에서 재시도한다.
     const migrateRemoved = () => { void launch.migrateRemoved().catch((error) => console.warn(`[objectives] removed archive recovery failed: ${error instanceof Error ? error.message : "unexpected_failure"}`)); };
-    // 휴면한 옛 터미널 지휘관은 채팅으로 — 기동 때(재시작으로 모두 휴면이다)와 같은 주기로 다시 본다. 살아 있는 세션은 건드리지 않는다.
-    const adoptChat = () => { try { launch.adoptChatSurfaces(); } catch (error) { console.warn(`[objectives] chat surface adoption skipped: ${error instanceof Error ? error.message : "unexpected_failure"}`); } };
-    const evidenceGc = setInterval(() => { collectEvidence(); migrateRemoved(); adoptChat(); }, RESULT_LIMITS.evidenceGcMs);
+    const evidenceGc = setInterval(() => { collectEvidence(); migrateRemoved(); }, RESULT_LIMITS.evidenceGcMs);
     evidenceGc.unref?.();
     registerCleanup(() => clearInterval(evidenceGc));
     const on = (channel: string, run: (objectiveId: string, payload: unknown) => void) => {
@@ -128,7 +126,6 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     catch (error) { console.warn(`[objectives] group heal skipped: ${error instanceof Error ? error.message : String(error)}`); }
 
     migrateRemoved();
-    adoptChat();
     // 기동 시 보관되지 않은 진행 중/대기 목표 세션은 다음 열기에서 새 세션으로 열리도록 표시한다.
     for (const current of store.all()) {
       if (current.archived || current.removed) continue;

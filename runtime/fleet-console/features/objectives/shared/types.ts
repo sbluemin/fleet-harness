@@ -421,8 +421,8 @@ export interface StoredFollowupBatch {
   readonly by?: ObjectiveActor;
   readonly id: string;
   readonly at: number;
-  /** 고른 순간 동결한 기동 조건 — 원본의 그룹·지휘관 뷰와 알림 언어. 재시도도 이 값을 쓴다. */
-  readonly launch: { readonly groupId: string | null; readonly viewMode: "terminal" | "chat"; readonly language: "en" | "ko" };
+  /** 고른 순간 동결한 기동 조건 — 원본의 그룹·알림 언어. 재시도도 이 값을 쓴다. */
+  readonly launch: { readonly groupId: string | null; readonly language: "en" | "ko" };
   readonly items: readonly StoredFollowupItem[];
 }
 
@@ -615,7 +615,6 @@ export interface PendingCommander {
   readonly sessionName: string;
   readonly model?: string;
   readonly effort?: string;
-  readonly viewMode: "terminal" | "chat";
 }
 
 export interface StoredObjective {
@@ -632,7 +631,6 @@ export interface StoredObjective {
   readonly groupId?: string | null;
   readonly ts?: { readonly createdAt: number; readonly updatedAt: number };
   readonly session?: Readonly<Record<string, unknown>>;
-  readonly chatMode?: boolean;
   /** 목표 id — 지휘관이 태어나면 그 Objective id 이기도 하다. */
   readonly id: string;
   /**
@@ -835,7 +833,7 @@ export interface Objective {
   readonly title: string;
   readonly createdAt: number;
   /** 지휘관 세션 — 이름·모델·강도·한 번이라도 깨었는지는 지휘관 Objective 에서 읽는다. */
-  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat"; readonly started: boolean; readonly outcome?: "failed" };
+  readonly commander: { readonly sessionName: string | null; readonly model?: string; readonly effort?: string; readonly started: boolean; readonly outcome?: "failed" };
   readonly note: string;
   readonly attachments: readonly ObjectiveAttachment[];
   readonly results: readonly ObjectiveResult[];
@@ -1158,7 +1156,7 @@ export const patchObjectiveSchema = z.object({
   today: z.boolean().optional(),
   groupId: ids.nullable().optional(),
   /** 지휘관 모델·강도 — 지휘관 Objective 에 쓴다. */
-  launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional(), viewMode: z.enum(["terminal", "chat"]).optional() }).strict().optional(),
+  launch: z.object({ model: z.string().max(128).optional(), effort: z.string().max(32).optional() }).strict().optional(),
 }).strict();
 
 export const memberLaunchSchema = z.object({ mode: z.literal("model"), model: z.string().trim().min(1).max(128), effort: z.string().max(32).optional() }).strict();
