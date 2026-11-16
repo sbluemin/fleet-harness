@@ -18,9 +18,9 @@
 //                    "result-error" and "compact-failed-error" answer that turn with an error result carrying a valid errors
 //                    array (a string instead when nonstandard is true), and a compact failure also reports compact_result
 //                    "failed". onlyOnResume matches only a --resume launch. The spec is selected once at child start and
-//                    deleted then: it covers this child's whole life (later host turns are logged, not answered), and the next
-//                    child starts normally. An unreadable, malformed or unknown spec is a fixture setup failure: stderr, exit 2,
-//                    file kept.
+//                    deleted then: it covers this child's whole life (later host turns are logged, not answered, and it
+//                    consumes no ask or wake fixture), and the next child starts normally. An unreadable, unconsumable,
+//                    malformed or unknown spec is a fixture setup failure: stderr, exit 2, file kept.
 //   sdk-mcp/tools-<pid>.json  written by every SDK launch the host gave in-process MCP servers (Commodore's fleet-commodore):
 //                    each server's advertised tools with description and inputSchema (field limits included)
 //   sdk-calls        one-shot in-process tool calls on the next turn: {"sessionId"?: string, "calls": [{"server", "tool", "args"?}]};
@@ -186,8 +186,7 @@ const fault = (() => {
     }
     if (spec === null || typeof spec !== "object" || Array.isArray(spec)) fail(name, "not an object");
     const allowed = ["mode", "exitCode", "onlyOnResume", "nonstandard"];
-    const unknown = Object.keys(spec).find((key) => !allowed.includes(key));
-    if (unknown) fail(name, `unknown option ${unknown}`);
+    if (Object.keys(spec).some((key) => !allowed.includes(key))) fail(name, "unknown option");
     if (!["exit-on-spawn", "exit-mid-turn", "result-error", "compact-failed-error"].includes(spec.mode)) fail(name, "unknown mode");
     const exitMode = spec.mode === "exit-on-spawn" || spec.mode === "exit-mid-turn";
     if (spec.exitCode !== undefined && (!exitMode || !Number.isInteger(spec.exitCode) || spec.exitCode < 0 || spec.exitCode > 255)) fail(name, "bad exitCode");
@@ -196,7 +195,10 @@ const fault = (() => {
     if (spec.onlyOnResume === true && !resumeArg) continue;
     try {
       unlinkSync(file);
-    } catch {}
+    } catch {
+      // An unconsumed spec could run again on a later child, so setup fails instead of injecting it.
+      fail(name, "not consumable");
+    }
     log({ event: "fault-launch", file: name, mode: spec.mode, exitCode: spec.exitCode ?? null, sessionId, sessionIdArg, resume: resumeArg });
     return spec;
   }
@@ -407,12 +409,14 @@ if (!sdk) {
     if (stdinEnded) exit("stdin-end");
   };
 
-  const runTurn = async (text, ask = takeAsk(), hostStarted = true) => {
+  // The fault branch runs before takeAsk() so an injected child consumes no ask fixture.
+  const runTurn = async (text, ask, hostStarted = true) => {
     if (fault && hostStarted && !faultFired) {
       faultFired = true;
       await runFaultTurn();
       return;
     }
+    const shouldAsk = ask === undefined ? takeAsk() : ask;
     turnOpen = true;
     turnAborted = false;
     const turnModel = model;
@@ -428,7 +432,7 @@ if (!sdk) {
     let interrupted = turnAborted;
     if (interrupted) {
       // An interrupt during the calls ends the turn without the canned wait.
-    } else if (ask) {
+    } else if (shouldAsk) {
       interrupted = await holdForAnswer(turnModel, usage);
     } else if (text.includes("SLOW")) {
       const release = join(dir, "release");
@@ -529,6 +533,8 @@ if (!sdk) {
   };
 
   const wakePollingTimer = setInterval(() => {
+    // An injected child neither consumes an ask fixture nor opens a wake turn; uninjected launches keep both.
+    if (fault) return;
     if (turnOpen) return;
     if (inited && takeAsk()) {
       void runTurn("", true, false);
