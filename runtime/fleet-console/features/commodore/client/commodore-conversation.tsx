@@ -421,8 +421,10 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   // 답 단추는 기존 사령관 메시지 API로 보낸다. 초안은 건드리지 않으며 읽기 전용이면 전송 포트를 주지 않는다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
   // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
-  const renderComposer = (trailing?: ReactNode) => (
+  // 대기함은 대화 독 안의 입력창 바로 위에 선다 — 독 높이에 함께 재여 기록을 가리지 않는다.
+  const renderComposer = (trailing?: ReactNode, inbox = false) => (
     <footer ref={dockRef} className="objectives-commodore-foot">
+      {inbox ? <CommodorePersonInbox theaterId={commodoreId} language={language} onEnded={fail} /> : null}
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
@@ -475,8 +477,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
             openBoardAction={openBoardAction}
             openLedger={openLedger}
             references={references} openUIOpen={openUIOpen}
-            overlay={readOnly ? null : <CommodorePersonInbox theaterId={commodoreId} language={language} onEnded={fail} />}
-            composer={readOnly ? renderComposer(null) : ({ trailing }) => renderComposer(trailing)}
+            composer={readOnly ? renderComposer(null) : ({ trailing }) => renderComposer(trailing, true)}
             composerTopEnd={topSettings}
             composerTopEntries={!readOnly}
             {...(readOnly ? {} : { onOpenUISend: sendOpenUI })}

@@ -1137,21 +1137,18 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .fc-coord-trigger.is-mobile .objectives-commodore-judgment { vertical-align: -2px; margin-right: 6px; }
 .mobile-choice-icon .objectives-commodore-judgment, .mobile-choice-icon .objectives-commodore-judgment svg { width: 22px; height: 22px; }
 
-/* 사람 대기함 — 입력 독 위에 겹친다. 흐름 밖이라 대화 스크롤을 밀지 않는다. */
+/* 사람 대기함 — 입력창 바로 위, 독의 흐름 안에 선다. 독 높이에 함께 재여 기록이 그만큼 아래를 비우므로 대화를 가리지 않는다.
+   펼친 목록은 화면 높이의 일부까지만 자라고 그 안에서 스크롤한다. 독 안에서는 독의 좌우 여백을 그대로 쓴다. */
 .commodore-person-inbox {
-  position: absolute;
-  z-index: 2;
-  left: 0;
-  right: 0;
-  bottom: var(--m-dock-h, 0px);
+  flex: none;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
-  max-height: min(70%, calc(100% - var(--m-dock-h, 0px) - 48px));
+  max-height: 40dvh;
   padding: 0 clamp(16px, 4cqi, 48px) 8px;
   pointer-events: none;
 }
-.commodore-person-inbox.is-anchored { bottom: var(--commodore-foot-h, 0px); max-height: min(70%, calc(100% - var(--commodore-foot-h, 0px) - 48px)); }
+.objectives-commodore-foot > .commodore-person-inbox { padding-inline: 0; }
+.objectives-cm-dock > .commodore-person-inbox { padding: 0; }
 .commodore-person-inbox-panel {
   pointer-events: auto;
   display: flex;

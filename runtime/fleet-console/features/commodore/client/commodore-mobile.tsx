@@ -491,6 +491,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
   const composer = (
     <div className="objectives-cm-dock">
+      {Conversation ? <CommodorePersonInbox theaterId={commodoreId} contextTheaterId={theaterId} language={language} phone onEnded={onFail} /> : null}
       <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
     </div>
   );
@@ -512,7 +513,6 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
           openBoardAction={openBoardAction}
           openLedger={openLedger}
           references={references} openUIOpen={openUIOpen}
-          overlay={<CommodorePersonInbox theaterId={commodoreId} contextTheaterId={theaterId} language={language} phone onEnded={onFail} />}
           composer={composer}
           composerTopEntries
           onOpenUISend={sendOpenUI}
@@ -643,9 +643,10 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
       <div ref={scrollRef} className={`objectives-cm-chat${loaded && (chat.length > 0 || turn || pending) ? "" : " is-center"}`} onScroll={onScroll}>
         {body}
       </div>
-      <CommodorePersonInbox theaterId={theaterId} language={language} phone leave={leave} onEnded={onFail} />
-      {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
+      {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다.
+          대기함은 독 맨 위에 서서 독 높이(--m-dock-h)에 함께 재인다. */}
       <div ref={dockRef} className="objectives-cm-dock">
+        <CommodorePersonInbox theaterId={theaterId} language={language} phone leave={leave} onEnded={onFail} />
         <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} onFail={onFail} onClear={onClear} />
       </div>
     </div>

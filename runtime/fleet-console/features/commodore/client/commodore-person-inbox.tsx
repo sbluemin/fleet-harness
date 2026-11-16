@@ -1,6 +1,6 @@
 /**
- * 사람 대기함 — 넘긴 기준·검토·후속과 사령관 질문을 입력창 위에 겹쳐 둔다.
- * 로그 안에도, 높이를 재는 독 안에도 두지 않는다. 나타나거나 펼쳐져도 대화의 scrollTop은 그대로다.
+ * 사람 대기함 — 넘긴 기준·검토·후속과 사령관 질문을 입력창 바로 위, 입력 독의 흐름 안에 둔다.
+ * 독 높이(대화는 `--m-dock-h`)에 함께 재여 기록이 그만큼 아래를 비우므로, 접히든 펼쳐지든 마지막 말을 가리지 않는다.
  * 항목이 없으면 아무것도 그리지 않는다.
  */
 
@@ -34,12 +34,11 @@ interface InboxItem {
   readonly ask?: CommodoreAsk;
 }
 
-export function CommodorePersonInbox({ theaterId, contextTheaterId = "", language, phone = false, anchor = false, leave, onEnded }: {
+export function CommodorePersonInbox({ theaterId, contextTheaterId = "", language, phone = false, leave, onEnded }: {
   readonly theaterId: string;
   readonly contextTheaterId?: string;
   readonly language: "en" | "ko";
   readonly phone?: boolean;
-  readonly anchor?: boolean;
   readonly leave?: (run: () => void) => void;
   readonly onEnded?: (error: unknown) => void;
 }) {
@@ -116,7 +115,7 @@ export function CommodorePersonInbox({ theaterId, contextTheaterId = "", languag
   const kinds = (["criteria", "review", "followup", "ask"] as const).filter((kind) => counts[kind] > 0);
 
   return (
-    <div className={`commodore-person-inbox${phone ? " is-phone" : ""}${anchor ? " is-anchored" : ""}`}>
+    <div className={`commodore-person-inbox${phone ? " is-phone" : ""}`}>
       <div className="commodore-person-inbox-panel">
         <button
           type="button"

@@ -1,4 +1,3 @@
-import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
 import { ContextRailInlineChip } from "../../workspace/client/conversation/context-rail/inline.js";
 import { COMMODORE_SURFACE_ID } from "./commodore-conversation.js";
@@ -169,7 +168,6 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLElement | null>(null);
   useConversationDockHeight(dockRef);
-  useChromeHeightProperty(dockRef, rootRef, "--commodore-foot-h");
   const [failure, setFailure] = useState<string | null>(null);
   // 곁 칸에서 고른 시각 — 기록 칸이 그 시각의 턴을 드러낸다. 같은 줄을 다시 눌러도 다시 드러나게 nonce 가 오른다.
   const [reveal, setReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
@@ -272,7 +270,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
-      {tab === "log" && commodoreId ? <CommodorePersonInbox theaterId={commodoreId} contextTheaterId={theaterId} language={language} anchor onEnded={fail} /> : null}
+      {tab === "log" && commodoreId ? <CommodorePersonInbox theaterId={commodoreId} contextTheaterId={theaterId} language={language} onEnded={fail} /> : null}
       {tab !== "log" && (failure || transcriptError) ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}
       {tab === "log" ? <footer ref={dockRef} className="objectives-commodore-foot">{failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
