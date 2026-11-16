@@ -8,6 +8,7 @@ import {
   formatRemoteChord,
   isComposingKey,
   matchesConsoleShortcut,
+  toRemoteMouseEvent,
   toViewportPoint,
 } from "../src/remote-browser-input.js";
 
@@ -41,6 +42,17 @@ describe("remote input geometry", () => {
 
   it("returns the origin for degenerate boxes", () => {
     expect(toViewportPoint(10, 10, { x: 0, y: 0, width: 0, height: 0 }, { width: 800, height: 600 })).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe("chrome wheel axis", () => {
+  const mods = (shift: boolean) => ({ alt: false, ctrl: false, meta: false, shift });
+
+  it("scrolls a shift vertical wheel horizontally and does not swap an existing deltaX", () => {
+    expect(toRemoteMouseEvent("wheel", { x: 1, y: 2 }, { ...mods(true), deltaX: 0, deltaY: 200 })).toMatchObject({ deltaX: 200, deltaY: 0, modifiers: mods(true) });
+    // macOS AppKit이 이미 가로로 바꾼 휠은 다시 뒤집지 않는다. Shift가 없으면 세로는 그대로다.
+    expect(toRemoteMouseEvent("wheel", { x: 1, y: 2 }, { ...mods(true), deltaX: 80, deltaY: 0 })).toMatchObject({ deltaX: 80, deltaY: 0 });
+    expect(toRemoteMouseEvent("wheel", { x: 1, y: 2 }, { ...mods(false), deltaX: 0, deltaY: 200 })).toMatchObject({ deltaX: 0, deltaY: 200 });
   });
 });
 

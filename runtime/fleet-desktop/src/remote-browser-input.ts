@@ -170,7 +170,15 @@ export function toRemoteMouseEvent(
     return { ...mouse, button, ...(event.clickCount !== undefined ? { clickCount: event.clickCount } : {}) };
   }
   if (type === "wheel") {
-    return { ...mouse, ...(event.deltaX !== undefined ? { deltaX: event.deltaX } : {}), ...(event.deltaY !== undefined ? { deltaY: event.deltaY } : {}) };
+    // Chrome은 Shift가 눌리고 가로 델타가 0일 때만 세로 휠을 가로 스크롤로 바꾼다.
+    // macOS AppKit처럼 이미 deltaX가 있으면 다시 바꾸지 않는다. 실행 측 CDP mouseWheel은 이 교환을 하지 않는다.
+    let deltaX = event.deltaX ?? 0;
+    let deltaY = event.deltaY ?? 0;
+    if (event.shift && deltaX === 0 && deltaY !== 0) {
+      deltaX = deltaY;
+      deltaY = 0;
+    }
+    return { ...mouse, deltaX, deltaY };
   }
   return mouse;
 }

@@ -151,6 +151,8 @@ html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background:
 button { font: inherit; color: inherit; }
 svg { display: block; }
 html[data-role="stage"] body { background: var(--surface); }
+/* 스테이지는 스크롤 문서가 아니다. 트랙패드 가로 스와이프가 히스토리 탐색으로 먹히지 않게 Chrome과 같이 오버스크롤 동작을 끈다. */
+html[data-role="stage"], html[data-role="stage"] body { overscroll-behavior: none; }
 /* 주소줄 띠는 도구줄 면 하나다 — 아래 페이지와의 경계만 1px 구분선이 진다(Chrome 실측 라이트 #e1e3e1·다크 #454746).
    가로 탭 표시줄과 닿는 위쪽 변에는 선을 긋지 않는다 — 그 자리는 보는 탭의 색과 도구줄의 색이 맞닿아 이어진다. */
 html[data-role="bar"] .strip { background: var(--chrome-toolbar); }

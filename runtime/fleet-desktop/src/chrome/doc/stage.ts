@@ -218,7 +218,8 @@ export function mountStage(): {
     if (!inputAllowed()) return;
     const point = toViewport(event.clientX, event.clientY);
     if (!point) return;
-    // 줄 단위(deltaMode 1)면 Chromium 픽셀 기준에 맞춘다 — 실행 측과 같은 자리에서 뭉친다.
+    // 줄 단위(deltaMode 1)면 Chromium 픽셀 기준에 맞춘다 — 실행 측 CDP는 픽셀 델타만 받는다.
+    // 축은 여기서 바꾸지 않는다. Shift이고 가로 델타가 0일 때만 toRemoteMouseEvent가 Chrome처럼 가로로 바꾼다.
     const unit = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? 400 : 1;
     event.preventDefault();
     ensureSender()?.pushMouse(toRemoteMouseEvent("wheel", point, {
