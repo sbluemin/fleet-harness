@@ -6,6 +6,7 @@ import { ChatReferenceLinks, ChatReferenceText, referenceLabelText } from "./cha
 import { useCodeBlockCopy } from "./code-block-copy.js";
 import type { ObjectiveRenderContext } from "../../../shared/client-contract.js";
 import { HistoryBand, useHistoryReveal } from "../../components/history-band.js";
+import { BrowserActivityLines } from "../../../../browser/client/browser-activity.js";
 
 import { getT } from "../i18n/index.js";
 import { useViewMode } from "../../../../../core/client/src/integration/view-mode-store.js";
@@ -831,6 +832,9 @@ export function AgentChatView({
             onBack={() => setOpenJobId(null)}
           />
         ) : null}
+        {/* 플릿 브라우저 사건·닫힘 줄 — 타임라인의 끝에서 지금 상태 하나만 말한다(연속 여닫아도 쌓이지 않는다).
+            구성원(자식 세션)은 루트의 브라우저를 함께 쓰지만 닫힘 줄은 루트 대화 하나에만 선다. */}
+        {!commanderLedger && context.objectiveRecord.parentObjectiveId === undefined ? <BrowserActivityLines objectiveId={context.objectiveId} /> : null}
         {/* 패널 안 허용 요청 — 대화 면 바닥, 컴포저 바로 위에 선다. 초점은 가져가지 않는다. */}
         {/* 그룹 루트의 허용 요청은 그룹채팅의 카드 하나가 답한다 — 지휘관 원장 틀 안에서는 다시 그리지 않는다. */}
         {commanderLedger ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="chat" />}

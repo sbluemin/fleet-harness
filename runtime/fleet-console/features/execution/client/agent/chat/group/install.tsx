@@ -25,6 +25,7 @@ import { useOpenBoardActionRecord } from "../../../../../workspace/client/conver
 import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
 import { stopAgentChatTurn } from "../../api.js";
 import { ComputerScreenShare, useComputerActor } from "../../../../../computer-use/client/computer-screen-share.js";
+import { BrowserActivityLines } from "../../../../../browser/client/browser-activity.js";
 import { getT } from "../../i18n/index.js";
 import { MarkdownLinkBoundary } from "../../markdown-link-boundary.js";
 import { useObjectiveLinks } from "../../objective-links.js";
@@ -283,6 +284,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
         />
       ) : null}
       {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} />)}
+      <BrowserActivityLines objectiveId={root.id} />
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );

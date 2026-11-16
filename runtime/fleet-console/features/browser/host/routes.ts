@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse, OutgoingHttpHeaders } from "node:http";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
-import { DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_BROWSER_VIEWER_STREAM_PATH, DESKTOP_BROWSER_FRAME_AT_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_SEQ_HEADER, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, type BrowserExecutionHost, type BrowserSurfaceModeKind } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_BROWSER_VIEWER_STREAM_PATH, DESKTOP_BROWSER_FRAME_AT_HEADER, DESKTOP_BROWSER_FRAME_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_SEQ_HEADER, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, isBrowserSurfaceOrigin, type BrowserExecutionHost, type BrowserSurfaceModeKind, type BrowserSurfaceOrigin } from "@fleet-console/protocol/desktop";
 import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from "./service.js";
 import { ViewerFrameClosedError, ViewerFrameDisconnectedError, ViewerFrameTimeoutError, type DesktopEngine } from "./desktop-engine.js";
 import { serveViewerStream } from "./viewer-stream.js";
@@ -31,6 +31,11 @@ interface BrowserRouteDeps {
   readonly browserOwnerOf?: (objectiveId: string) => string | null;
   /** Desktop 이 그린 크롬에서 만든 이미지(스크린샷·주석 결과)를 Console 화면의 입력창으로 넘긴다 — 이 라우트가 Console 이 받는 유일한 크롬 결과다. */
   readonly publishAttach?: (attach: { readonly kind: "screenshot" | "annotation"; readonly mime: "image/png"; readonly data: string }) => boolean;
+  /**
+   * 칸 머리의 「원본 이동」 — Desktop 이 { action: "reveal" } 로 부르면 지금 표면의 출처를 Console 화면들에 흘린다.
+   * Console 은 그 좌표로 대화를 열고 메시지 위치로 이동한다.
+   */
+  readonly publishSurfaceReveal?: (payload: { readonly browserId: string; readonly origin: BrowserSurfaceOrigin | null }) => void;
   readonly isWriteAdmitted: (req: IncomingMessage) => boolean;
   readonly isExactConsoleOrigin: (req: IncomingMessage) => boolean;
   /** 루프백 리스너로 들어왔는가. 원격 리스너의 같은 출처는 여기 해당하지 않는다. */
@@ -183,7 +188,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     const spaceId = (body: Record<string, unknown>): string | undefined => typeof body.spaceId === "string" && body.spaceId && body.spaceId.length <= 256 ? body.spaceId : undefined;
     // 상태는 쓸 수 없을 때도 답한다 — 패널이 왜 닫혀 있는지 그 답으로 듣는다.
     if (!isHumanRead(req.method ?? "GET", pathname, action) && !admitsBrowserWrite(isNativeBrowserWrite(req), isRemoteBrowserControl(req), action)) { writeJson(res, 403, { error: "browser_viewer_read_only" }); return true; }
-    if (action !== "state" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
+    if (action !== "state" && action !== "surface" && !browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
     const fail = (error: unknown) => {
       if (error instanceof BrowserPolicyError && error.code === "browser_remote_input_unavailable") { writeJson(res, 503, { error: error.code, message: error.message }); return; }
       if (error instanceof BrowserPolicyError) { writeJson(res, 400, { error: error.code, message: error.message, ...error.detail }); return; }
@@ -263,9 +268,21 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         writeJson(res, 200, { viewport: await browserService.setViewport(objectiveId, { preset, width: typeof body.width === "number" ? body.width : undefined, height: typeof body.height === "number" ? body.height : undefined, colorScheme }, "user", spaceId(body), { remoteFit: isRemoteBrowserControl(req) }) }); return true;
       }
       if (action === "surface") {
+        // 칸 머리의 「원본 이동」 — 표면을 열지 않고 지금 표면의 출처만 Console 화면들로 흘린다.
+        if (body.action === "reveal") {
+          const origin = browserService.state(objectiveId).surface?.origin ?? null;
+          deps.publishSurfaceReveal?.({ browserId: objectiveId, origin });
+          writeJson(res, 200, { revealed: origin !== null, origin }); return true;
+        }
         if ((body.action !== "open" && body.action !== "close" && body.action !== "focus" && body.action !== "mode")
           || (body.action !== "open" && typeof body.id !== "string") || (body.mode !== undefined && body.mode !== "pane" && body.mode !== "window") || (body.action === "mode" && body.mode === undefined)) { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        browserService.surface(objectiveId, body.action, typeof body.id === "string" ? body.id : undefined, body.mode as "pane" | "window" | undefined);
+        // 출처는 선택 필드다. 보낸 값이 모양에 맞지 않으면 칸을 열지 않는다 — 칸 머리가 지어낸 출처를 말하면 안 된다.
+        let origin: BrowserSurfaceOrigin | null | undefined;
+        if (body.origin === undefined || body.origin === null) origin = body.origin;
+        else if (isBrowserSurfaceOrigin(body.origin)) origin = body.origin;
+        else { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        if (!browserService.available()) { writeJson(res, 409, { error: "browser_unavailable", ...browserService.availability() }); return true; }
+        browserService.surface(objectiveId, body.action, typeof body.id === "string" ? body.id : undefined, body.mode as "pane" | "window" | undefined, origin);
         writeJson(res, 200, { surface: browserService.state(objectiveId).surface }); return true;
       }
       if (action === "control") {

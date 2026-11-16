@@ -6,7 +6,7 @@ import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
 import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import "@fleet-console/font-picker/styles.css";
-import { CaptionActionButton, CaptionBrowserUseGlyph, CaptionComputerUseGlyph } from "../../../workspace/client/components/caption-actions.js";
+import { CaptionBrowserUseGlyph, CaptionComputerUseGlyph } from "../../../workspace/client/components/caption-actions.js";
 import { launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { defineNotificationKind } from "../notifications.js";
@@ -16,11 +16,7 @@ import * as React from "react";
 import { SegmentedThumb } from "@fleet-console/ui/react";
 import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
-import { isDesktopShell } from "../../../../core/client/src/integration/desktop-shell.js";
 import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus } from "../../../../core/client/src/integration/store.js";
-import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
-import { toggleBrowserPane, useBrowserSurface } from "../../../browser/client/browser-surface.js";
-import { toggleBrowserViewerShell, useBrowserViewerShell } from "../../../browser/client/browser-viewer-shell.js";
 import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
 import { TerminalSurface } from "../terminal/shared/index.js";
 import { disposeObjectiveViewState, installObjectiveViewState } from "../objective-view-state.js";
@@ -83,10 +79,9 @@ export const agentObjectiveKind: ObjectiveKindDescriptor = ({
   subtitle: () => "Claude Code",
   render: (context) => <AgentObjectiveView context={context} />,
   // 뷰 전환·읽기 폭은 캡션 밴드가 진다 — 본문 위에 떠 있던 칩 줄이 하던 일이다.
-  // 대화 머리는 두 캡슐로 가른다: 전환은 보기 캡슐, 지구본은 도구 캡슐 맨 앞. 표식·말풍선은 동작 묶음에 남는다.
+  // 플릿 브라우저의 직접 여는 문은 대화 머리가 아니라 왼쪽 사이드바의 찾기 왼쪽 버튼이다(시안 3 1단계).
   captionActions: (context) => <AgentCaptionActions context={context} part="shelf" />,
   captionViewSwitch: (context) => <AgentCaptionActions context={context} part="view-switch" />,
-  captionToolsLead: (context) => <AgentCaptionActions context={context} part="tools-lead" />,
   // 켜진 스위치는 사이드바 칩에도 마크로 선다 — 목록에서 "이 세션은 콘솔을 잡고 있다"가 읽히게.
   objectiveRecordMarks: (context) => <AgentObjectiveMarks context={context} />,
   // 에이전트 CLI TUI는 화면 바닥에 입력 컴포저와 상태줄(cwd·모델·권한 모드)을 고정으로 그린다 —
@@ -362,18 +357,13 @@ function toggleCompanionPanel(
   for (const id of clusterIds) context.onSetCompanionPanelVisible(id, false);
 }
 
-/** 호스트가 그 companion 패널을 내주는가 — 목록을 주지 않은 호스트는 전부 내준다. 대화 중심 화면은 브라우저만 내준다. */
-function offersCompanion(context: ObjectiveRenderContext, companionId: string): boolean {
-  return context.companionPanelIds === undefined || context.companionPanelIds.includes(companionId);
-}
-
 /**
  * 모바일 Objective 화면에서는 셸이 막대를 그리고 보기 전환 등 본문 크롬은 셸 계약에 따른다 — 캡션 선반을
  * 비워 막대 빈칸에 칩이 끼지 않게 한다. 창구의 유무는 한 마운트 동안 바뀌지 않지만, 훅 순서를 판정에
  * 걸지 않으려고 안쪽 컴포넌트로 가른다.
  */
-/** 대화 머리가 요청하는 조각. shelf 는 표식·말풍선만, 전환과 지구본은 각 캡슐이 가져간다. */
-type AgentCaptionPart = "shelf" | "view-switch" | "tools-lead";
+/** 대화 머리가 요청하는 조각. shelf 는 표식·말풍선만, 전환은 보기 캡슐이 가져간다. */
+type AgentCaptionPart = "shelf" | "view-switch";
 
 function AgentCaptionActions({ context, part = "shelf" }: { readonly context: ObjectiveRenderContext; readonly part?: AgentCaptionPart }) {
   if (mobileObjectiveOf(context)) return null;
@@ -388,34 +378,6 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
   // 브라우저 문 — 대화 중심 화면에서는 이 Session 의 브라우저를 바로 연다. 허용은 패널 안에서 켠다.
   // 자식 세션(목표 구성원)은 루트의 브라우저를 함께 쓴다 — 쓰는 중인지도 루트의 것을 읽는다.
   const using = useObjectiveUse(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
-  const browserOpen = isCompanionPanelVisible(context, BROWSER_COMPANION_ID);
-  const detachedBrowser = useBrowserSurface();
-  // 에이전트가 브라우저를 쓰는 동안은 이 버튼이 곧 표식이다 — 별도 배지를 두지 않는다. 브라우저는 Desktop 앱의 것이라 문은 늘 서되,
-  // 브라우저 탭·모바일로 연 화면이거나 다른 화면이 붙어 멈춘 동안은 닫힌 채로 서서 말풍선이 그 까닭을 말한다(투어도 그때는 이 문을 짚지 않는다).
-  const engine = useBrowserEngine();
-  const viewer = engine?.surfaceMode === "viewer" || (engine === null && !isDesktopShell());
-  // 원격 조작 Desktop 도 네이티브 칸이 아니라 자기 셸을 연다. 웹·모바일·옛 Desktop 은 문이 닫힌 채다.
-  const streamedShell = viewer || engine?.surfaceMode === "remote";
-  const viewerShell = useBrowserViewerShell();
-  const engineMissing = !streamedShell && engine !== null && !engine.available;
-  const remoteOffline = engine?.surfaceMode === "remote" && !engine.available;
-  const browserLabel = viewer || remoteOffline
-    ? t(!viewerShell ? "terminal.browser.desktopOnly" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
-    : engineMissing
-    ? t(isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
-    : detachedBrowser?.mode === "window" ? t("terminal.browser.focus") : using.browser ? t("terminal.browser.agentUsing") : t(browserOpen ? "terminal.browser.exit" : "terminal.browser.open");
-  const browser = context.onRequestCompanions === undefined || !offersCompanion(context, BROWSER_COMPANION_ID) ? null : (
-    <CaptionActionButton
-      actionId="browser"
-      label={browserLabel}
-      pressed={streamedShell ? false : browserOpen}
-      disabled={engineMissing || (streamedShell && !viewerShell)}
-      agent={using.browser}
-      onClick={streamedShell ? toggleBrowserViewerShell : toggleBrowserPane}
-    >
-      <CaptionBrowserUseGlyph />
-    </CaptionActionButton>
-  );
 
   // console_reveal 말풍선 — 선반 끝에 폭 없는 앵커를 두어 ··· 버튼 왼쪽 아래에 선다.
   // 산 이벤트에만 뜬다(지난 사건은 다시 튀어나오지 않는다).
@@ -426,7 +388,6 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
 
   // 그룹 대화는 구성원 턴을 항상 접는다. 1:1 채팅만 이전 문답 자동 접기 전환을 보탠다.
   if (part === "view-switch") return chatMode && !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null;
-  if (part === "tools-lead") return browser;
   // 표식·말풍선이 없을 때는 빈 조각을 넘기지 않는다 — 머리 줄이 빈 캡슐을 세우지 않게.
   if (!using.computer && bubble === null) return null;
   return (

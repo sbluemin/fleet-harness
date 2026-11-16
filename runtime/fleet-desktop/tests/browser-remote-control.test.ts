@@ -6,7 +6,7 @@ import { createBrowserActions } from "../src/browser-actions.js";
 import { createBrowserRemoteShell, remotePasswordPrompt } from "../src/browser-remote-shell.js";
 import { chromeControlFor, type SurfaceControl } from "../src/browser-surface.js";
 import { createRemoteBrowserViewer } from "../src/browser-viewer.js";
-import { chromeViewLocked, readChromeMessage } from "../src/chrome/contract.js";
+import { chromeViewLocked, readBrowserSurfaceOrigin, readChromeMessage } from "../src/chrome/contract.js";
 import type { PasswordPrompt } from "../src/browser-password-page.js";
 
 const ORIGIN = "http://127.0.0.1:44777";
@@ -342,6 +342,30 @@ describe("remote browser shell", () => {
     expect(chromeControlFor(chrome(), "default", { place: "work", status: "connected" }, 1)).toBeNull();
     expect(readChromeMessage(JSON.stringify(["fleet-chrome", "bar", "permission-answer", { promptId: "perm-1", tabId: "tab-1", allow: true }])))
       .toEqual({ role: "bar", action: { action: "permission-answer", promptId: "perm-1", tabId: "tab-1", allow: true } });
+    expect(readChromeMessage(JSON.stringify(["fleet-chrome", "bar", "reveal-origin", {}])))
+      .toEqual({ role: "bar", action: { action: "reveal-origin" } });
+    expect(readChromeMessage(JSON.stringify(["fleet-chrome", "bar", "reveal-origin-now", {}]))).toBeNull();
+    expect(readBrowserSurfaceOrigin({ kind: "sidebar", objectiveId: "obj-1" })).toEqual({ kind: "sidebar", objectiveId: "obj-1" });
+    expect(readBrowserSurfaceOrigin({ kind: "message", actor: "" })).toEqual({ kind: "message" });
+    expect(readBrowserSurfaceOrigin({ kind: "nope" })).toBeNull();
+  });
+
+  it("asks the managed console to close the pane from the header", async () => {
+    const posts: { url: string; body: string }[] = [];
+    const actions = createBrowserActions({
+      fetch: (async (url: string | URL, init?: RequestInit) => {
+        posts.push({ url: String(url), body: String(init?.body ?? "") });
+        return new Response("{}", { status: 200 });
+      }) as typeof fetch,
+      origin: () => ORIGIN,
+      lang: "en",
+      openExternal() { /* 이 기계의 브라우저 */ },
+      log() { /* 없음 */ },
+    });
+    actions(control(), "bar", { action: "close-surface" });
+    await vi.waitFor(() => { if (posts.length === 0) throw new Error("waiting"); });
+    expect(posts[0]?.url).toBe(`${ORIGIN}/api/v1/browser/objectives/global/surface`);
+    expect(JSON.parse(posts[0]!.body)).toEqual({ action: "close", id: "viewer-1" });
   });
 
   it("publishes a masked password prompt and answers a permission without plaintext", async () => {
