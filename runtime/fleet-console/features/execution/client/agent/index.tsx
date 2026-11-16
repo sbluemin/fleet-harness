@@ -8,6 +8,7 @@ import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import "@fleet-console/font-picker/styles.css";
 import { CaptionActionButton, CaptionBrowserUseGlyph, CaptionComputerUseGlyph } from "../../../workspace/client/components/caption-actions.js";
 import { launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
+import type { ClientModelsCapability } from "../../../ai-gateway/shared/model-ports.js";
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import { defineNotificationKind } from "../notifications.js";
 import type { ClientFeatureDescriptor } from "../../../workspace/shared/feature-surfaces.js";
@@ -219,12 +220,14 @@ export const objectiveRecordKinds = [agentObjectiveKind] as const;
 // resumeObjective 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
 // (같은 프로세스 내 plugin 인스턴스는 하나라 core의 단일 install 계약과 충돌하지 않는다.)
 let installedNotifications: ExecutionClientDeps["notifications"] | null = null;
+let installedModels: ClientModelsCapability | undefined;
 
 export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
   installedNotifications = ctx.notifications;
+  installedModels = ctx.models;
   const disposeViewState = installObjectiveViewState(ctx.consoleState);
   const disposeGroupTimeline = installGroupTimeline(ctx);
-  const disposeGroupConversation = installGroupConversationSurface(ctx.models);
+  const disposeGroupConversation = installGroupConversationSurface();
   // `objective:reveal` — 에이전트가 "여기를 봐 달라"고 한 Objective 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
   // 사용자가 입력 중이면(활성 요소가 편집 가능) 포커스를 빼앗지 않고 말풍선만 띄운다.
   const disposeReveal = ctx.consoleEvents.subscribe(OBJECTIVE_REVEAL_EVENT_CHANNEL, (payload) => {
@@ -256,6 +259,7 @@ export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
   });
   return () => {
     installedNotifications = null;
+    installedModels = undefined;
     disposeReveal();
     disposeConnection();
     disposeGroupConversation();
@@ -544,7 +548,7 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
 
   if (chatMode) {
     const chatView = (
-      <OpenUINavigationContext.Provider value={openUIOpen ?? null}><AgentChatView context={context} fileLinkError={fileLinkFailure === null ? null
+      <OpenUINavigationContext.Provider value={openUIOpen ?? null}><AgentChatView context={context} models={installedModels} fileLinkError={fileLinkFailure === null ? null
         : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} /></OpenUINavigationContext.Provider>
     );
     return (

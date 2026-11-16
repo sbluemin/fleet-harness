@@ -6,13 +6,6 @@ import { useConversationDockHeight } from "../../../../../workspace/client/conve
 import { useAvatarAccent } from "../../../../../workspace/client/avatar-accent.js";
 import { commodoreAvatarKey, objectiveRecordAvatarKey, type MongleActivity } from "../../../../../workspace/shared/avatars.js";
 import { getT as getCoreT } from "../../../../../../core/client/src/i18n/index.js";
-import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
-import type { ObjectiveRecord } from "../../../../../../core/client/src/integration/types.js";
-import { launchProviderGlyph, type LaunchProviderGlyphId } from "../../../../../ai-gateway/client/components/launch-provider-glyphs.js";
-import { prettyModelId, rosterCoordinateWords, rosterProviderOf } from "../../../../../ai-gateway/client/components/model-coordinate-picker.js";
-import { useModelRoster } from "../../../../../ai-gateway/client/use-model-roster.js";
-import type { ClientModelsCapability } from "../../../../../ai-gateway/shared/model-ports.js";
-import { canonicalModelId, findRosterRow, type ModelRoster } from "../../../../../ai-gateway/shared/models.js";
 import { conversationActivityPhrase, useObjectiveMongleActivities } from "../../../avatar-activity.js";
 
 import { ComposerTopEntries, ComposerTrailingControls } from "../composer-top-entries.js";
@@ -20,7 +13,6 @@ import { StreamedMarkdown } from "../../streamed-markdown.js";
 import { ChatDispatchAttachments } from "../chat-dispatch-attachments.js";
 import { ChatReferenceContext, ChatReferenceText } from "../chat-reference.js";
 import { useCodeBlockCopy } from "../code-block-copy.js";
-import { EFFORT_LABELS, NATIVE_MODEL_LABELS } from "../session-coordinates.js";
 import { getT } from "../../i18n/index.js";
 import type { ConversationParticipant, ConversationSpeaker, GroupTimelineEntry, GroupTimelineSnapshot } from "../../../../shared/conversation/types.js";
 import type { AgentConversationEntry, AgentConversationProps } from "../../../../shared/chat-renderer.js";
@@ -57,53 +49,9 @@ export type ConversationLogSnapshot = Omit<GroupTimelineSnapshot, "entries"> & {
 
 export const ConversationMessageContent = React.createContext<AgentConversationProps["messageContent"]>(undefined);
 
-export interface SpeakerSessionCoordinate {
-  readonly provider: LaunchProviderGlyphId | null;
-  readonly model: string;
-  readonly effort: string;
-  readonly title: string;
-}
-
-const ConversationSpeakerCoordinates = React.createContext<ReadonlyMap<string, SpeakerSessionCoordinate> | null>(null);
-
-/**
- * 지휘관·구성원 세션이 실제로 쓰는 모델·강도. 보드 예정값이나 기본 폴백은 쓰지 않고 `ObjectiveRecord.session`만 읽는다.
- * 모델을 모르면 null(아무것도 표시하지 않음), 강도 사다리가 없는 모델은 강도 빈 문자열, effort가 auto(생략)면 자동 표기를 쓴다.
- */
-export function readSpeakerSessionCoordinate(
-  record: ObjectiveRecord | undefined,
-  roster: ModelRoster | null,
-  autoLabel: string,
-): SpeakerSessionCoordinate | null {
-  const session = record?.session && typeof record.session === "object" && !Array.isArray(record.session)
-    ? record.session as Record<string, unknown>
-    : undefined;
-  const rawModel = typeof session?.model === "string" && session.model.trim().length > 0 && session.model.trim() !== "default"
-    ? session.model.trim()
-    : null;
-  if (!rawModel) return null;
-  const rawEffort = typeof session?.effort === "string" && session.effort.trim().length > 0 && session.effort.trim() !== "auto"
-    ? session.effort.trim()
-    : null;
-  const row = findRosterRow(roster, rawModel);
-  const words = row
-    ? rosterCoordinateWords(roster, { model: rawModel, ...(rawEffort ? { effort: rawEffort } : {}) }, autoLabel)
-    : {
-        model: NATIVE_MODEL_LABELS[canonicalModelId(rawModel)] ?? NATIVE_MODEL_LABELS[rawModel] ?? prettyModelId(rawModel),
-        effort: rawEffort ? (EFFORT_LABELS[rawEffort] ?? rawEffort.toUpperCase()) : autoLabel,
-      };
-  return {
-    provider: rosterProviderOf(roster, rawModel),
-    model: words.model,
-    effort: words.effort,
-    title: rawEffort ? `${rawModel} · ${rawEffort}` : rawModel,
-  };
-}
-
 export interface GroupConversationProps {
   readonly snapshot: ConversationLogSnapshot;
   readonly language: ConsoleLocale | undefined;
-  readonly models?: ClientModelsCapability;
   readonly accessibleNames?: AgentConversationProps["accessibleNames"];
   /** 한 참여자의 원장을 이 자리에 연다 — 셸의 구성원 본문 선택으로 연결한다. */
   readonly onOpenLedger?: (objectiveId: string) => void;
@@ -169,19 +117,8 @@ const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
 
-export function GroupConversation({ snapshot, language, models, accessibleNames, onOpenLedger, onOpenNameplate, nameplateLabel, onOpenCommodoreRecord, cards, composer, composerTopEnd, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, commodoreActivity = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
+export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenNameplate, nameplateLabel, onOpenCommodoreRecord, cards, composer, composerTopEnd, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, computerActor = null, commodoreActivity = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
   const t = getGroupT(language);
-  const consoleState = useConsoleState();
-  const roster = useModelRoster(models, "launch");
-  const speakerCoords = React.useMemo(() => {
-    const map = new Map<string, SpeakerSessionCoordinate>();
-    const autoLabel = t("group.speaker.effortAuto");
-    for (const record of [...consoleState.objectiveRecords, ...consoleState.nestedObjectiveRecords]) {
-      const coord = readSpeakerSessionCoordinate(record, roster, autoLabel);
-      if (coord) map.set(record.id, coord);
-    }
-    return map;
-  }, [consoleState.objectiveRecords, consoleState.nestedObjectiveRecords, roster, t]);
   const { onClick: onCodeCopyClick, announcement: codeCopyAnnouncement } = useCodeBlockCopy(getT(language));
   const relay = useRelayConversation();
   const entries = snapshot.entries;
@@ -361,8 +298,7 @@ export function GroupConversation({ snapshot, language, models, accessibleNames,
   const workingLine = <GroupWorkingLine working={snapshot.working} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} computerActor={computerActor} inline={inlineWorking} commodoreActivity={commodoreActivity} />;
 
   return (
-    <ConversationSpeakerCoordinates.Provider value={speakerCoords}>
-      <div ref={chatRef} className="group-chat" style={accent} onClick={onCodeCopyClick}>
+    <div ref={chatRef} className="group-chat" style={accent} onClick={onCodeCopyClick}>
       <span className="agent-chat-sr-only" aria-live="polite" aria-atomic="true">{codeCopyAnnouncement}</span>
       <div
         ref={logRef}
@@ -467,8 +403,7 @@ export function GroupConversation({ snapshot, language, models, accessibleNames,
       </div>
       <RelayConversation {...relay.layer} entries={entries} participants={snapshot.participants} language={language} onOpenLedger={onOpenLedger} timeLabel={(at) => breakLabel(at, Date.now(), language)} />
       {overlay}
-      </div>
-    </ConversationSpeakerCoordinates.Provider>
+    </div>
   );
 }
 
@@ -894,7 +829,6 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   const t = getGroupT(language);
   const content = React.useContext(ConversationMessageContent)?.(entry);
   const sectionOf = React.useContext(ConversationSpeakerSection);
-  const speakerCoords = React.useContext(ConversationSpeakerCoordinates);
   // 답 단추는 이 말의 화자에게 보낸다 — 훅은 이른 반환보다 앞에 선다.
   const replySpeaker = entry.speaker;
   const reply = React.useMemo(() => (onOpenUISend ? (text: string) => onOpenUISend(text, replySpeaker) : undefined), [onOpenUISend, replySpeaker]);
@@ -962,16 +896,6 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   const name = open
     ? <button type="button" className="group-chat-speaker-hit is-name group-chat-agent-name" data-ledger-speaker={speaker.kind} aria-label={label} title={label} onClick={open}><SpeakerName speaker={speaker} avatarTone section={section} /></button>
     : <SpeakerName speaker={speaker} className="group-chat-agent-name" avatarTone section={section} />;
-  const coord = !continued && (speaker.kind === "commander" || speaker.kind === "member") && speaker.objectiveId
-    ? speakerCoords?.get(speaker.objectiveId) ?? null
-    : null;
-  const coordNode = coord ? (
-    <span className="group-chat-speaker-coord" title={coord.title}>
-      {coord.provider ? <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${coord.provider}`} aria-hidden="true">{launchProviderGlyph(coord.provider)}</span> : null}
-      <span className="group-chat-speaker-coord-model">{coord.model}</span>
-      {coord.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{coord.effort}</span></> : null}
-    </span>
-  ) : null;
   // 보고 꼬리표 — 은은한 보조 낱말. 말풍선과 문면이 다를 수 있으므로 누르면 보낸 보고 전문이 그 아래에 펼쳐진다.
   const reportTag = report ? (
     <button type="button" className="group-chat-report-tag" aria-expanded={reportOpen} aria-controls={reportOpen ? reportId : undefined} onClick={() => setReportOpen((current) => !current)}>
@@ -1025,7 +949,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
             <SpeakerName speaker={entry.recipient} />
             {via}
           </span>
-        ) : report || coordNode ? <span className="group-chat-agent-head">{name}{coordNode}{reportTag}</span> : name}
+        ) : report ? <span className="group-chat-agent-head">{name}{reportTag}</span> : name}
         <div className={`group-chat-bubble is-agent is-markdown${clip.className}`}>
           {/* 본문 칸 — 높이 상한에 걸리면 이 칸이 그 자리에서 스크롤되고 흐림은 말풍선(바깥 틀)에 고정된다. 상한이 없으면 꾸밈 없는 블록이다. */}
           <div ref={clip.ref} className="group-chat-bubble-body">

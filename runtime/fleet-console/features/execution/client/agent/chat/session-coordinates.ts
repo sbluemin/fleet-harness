@@ -11,7 +11,8 @@
  */
 
 import { launchProviderFromModelId, type LaunchProviderGlyphId } from "../../../../ai-gateway/client/components/launch-provider-glyphs.js";
-import { canonicalModelId } from "../../../../ai-gateway/shared/models.js";
+import { prettyModelId, rosterCoordinateWords, rosterProviderOf } from "../../../../ai-gateway/client/components/model-coordinate-picker.js";
+import { canonicalModelId, findRosterRow, type ModelRoster } from "../../../../ai-gateway/shared/models.js";
 
 /** 게이트웨이 모델 id의 Console 접두. 표시에서는 벗긴다. */
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
@@ -20,7 +21,7 @@ const GATEWAY_MODEL_PREFIX = "claude-gateway--";
  * 표시 어휘는 런치 메뉴와 같아야 한다 — 같은 세션을 두 표면이 다른 이름으로 부르면 사용자는
  * 자기가 고른 것과 지금 도는 것을 대조하지 못한다. 서버의 `agent-cli-launch-kinds.ts`가 원본이다.
  */
-export const NATIVE_MODEL_LABELS: Readonly<Record<string, string>> = {
+const NATIVE_MODEL_LABELS: Readonly<Record<string, string>> = {
   "fable[1m]": "Fable",
   "opus[1m]": "Opus",
   "sonnet[1m]": "Sonnet",
@@ -31,7 +32,7 @@ export const NATIVE_MODEL_LABELS: Readonly<Record<string, string>> = {
   haiku: "Haiku",
 };
 
-export const EFFORT_LABELS: Readonly<Record<string, string>> = {
+const EFFORT_LABELS: Readonly<Record<string, string>> = {
   low: "LOW",
   medium: "MED",
   high: "HIGH",
@@ -85,5 +86,47 @@ export function readAgentChatSessionCoordinates(
     effortLevel: effort ?? "auto",
     title: model === null && effort === null ? null : [model, effort].filter(Boolean).join(" · "),
     provider: launchProviderFromModelId(model),
+  };
+}
+
+export interface SpeakerSessionCoordinate {
+  readonly provider: LaunchProviderGlyphId | null;
+  readonly model: string;
+  readonly effort: string;
+  readonly title: string;
+}
+
+/**
+ * 대화 원장 하단의 지휘관·구성원 아바타/이름 오른쪽에 붙는 실제 실행 모델·강도.
+ * 보드 예정값이나 기본 폴백은 쓰지 않고 `ObjectiveRecord.session`만 읽는다.
+ * 모델을 모르면 null(생략), 강도 사다리가 없는 모델은 강도 빈 문자열, effort가 auto(생략)면 자동 표기를 쓴다.
+ */
+export function readSpeakerSessionCoordinate(
+  record: Record<string, unknown> | undefined,
+  roster: ModelRoster | null,
+  autoLabel: string,
+): SpeakerSessionCoordinate | null {
+  const session = record?.session && typeof record.session === "object" && !Array.isArray(record.session)
+    ? record.session as Record<string, unknown>
+    : undefined;
+  const rawModel = typeof session?.model === "string" && session.model.trim().length > 0 && session.model.trim() !== "default"
+    ? session.model.trim()
+    : null;
+  if (!rawModel) return null;
+  const rawEffort = typeof session?.effort === "string" && session.effort.trim().length > 0 && session.effort.trim() !== "auto"
+    ? session.effort.trim()
+    : null;
+  const row = findRosterRow(roster, rawModel);
+  const words = row
+    ? rosterCoordinateWords(roster, { model: rawModel, ...(rawEffort ? { effort: rawEffort } : {}) }, autoLabel)
+    : {
+        model: NATIVE_MODEL_LABELS[canonicalModelId(rawModel)] ?? NATIVE_MODEL_LABELS[rawModel] ?? prettyModelId(rawModel),
+        effort: rawEffort ? (EFFORT_LABELS[rawEffort] ?? rawEffort.toUpperCase()) : autoLabel,
+      };
+  return {
+    provider: rosterProviderOf(roster, rawModel),
+    model: words.model,
+    effort: words.effort,
+    title: rawEffort ? `${rawModel} · ${rawEffort}` : rawModel,
   };
 }

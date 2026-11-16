@@ -48,7 +48,10 @@ import {
   rosterSenderLabel,
   type AgentChatQueueEntry,
 } from "./chat-events.js";
-import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
+import { launchProviderGlyph } from "../../../../ai-gateway/client/components/launch-provider-glyphs.js";
+import { useModelRoster } from "../../../../ai-gateway/client/use-model-roster.js";
+import type { ClientModelsCapability } from "../../../../ai-gateway/shared/model-ports.js";
+import { readAgentChatSessionCoordinates, readSpeakerSessionCoordinate, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
@@ -95,9 +98,11 @@ const HISTORY_PEEK_PX = 56;
  */
 export function AgentChatView({
   context,
+  models,
   fileLinkError = null,
 }: {
   readonly context: ObjectiveRenderContext;
+  readonly models?: ClientModelsCapability;
   readonly fileLinkError?: string | null;
 }) {
   const t = getT(context.language ?? "en");
@@ -119,6 +124,13 @@ export function AgentChatView({
   const isMemberChat = isMember || commanderLedger;
   // 원장 분할 칸 안에 선 본문이면 그 칸 주인 — 바닥 줄 왼쪽이 모델 좌표 대신 이 아바타·이름을 말한다(분할 칸 밖은 null).
   const splitPaneSpeaker = useLedgerSplitPaneSpeaker(context.objectiveId);
+  const splitRoster = useModelRoster(splitPaneSpeaker ? models : undefined, "launch");
+  const splitOwnerCoord = React.useMemo(
+    () => (splitPaneSpeaker && (splitPaneSpeaker.kind === "commander" || splitPaneSpeaker.kind === "member")
+      ? readSpeakerSessionCoordinate(context.objectiveRecord, splitRoster, t("terminal.chat.coordAutoLabel"))
+      : null),
+    [splitPaneSpeaker, context.objectiveRecord, splitRoster, t],
+  );
   // 생성형 UI(OpenUI 펜스)는 목표의 지휘관 답에서만 그린다 — 그룹 대화 말풍선과 같은 말이 지휘관 채팅(모바일)·원장에서 다르게 보이지
   // 않게. 구성원(하위 Objective)과 일반 Objective 채팅은 목표 대화의 뿌리가 아니므로 코드 블록 그대로다.
   const objectiveCommander = useObjectiveCommander(context.objectiveId) && !isMember;
@@ -851,6 +863,13 @@ export function AgentChatView({
               <span className="group-ledger-split-owner">
                 <SpeakerMark speaker={splitPaneSpeaker} size="sm" />
                 <SpeakerName speaker={splitPaneSpeaker} className="group-ledger-split-owner-name" avatarTone />
+                {splitOwnerCoord ? (
+                  <span className="group-ledger-split-owner-coord" title={splitOwnerCoord.title}>
+                    {splitOwnerCoord.provider ? <span className={`objective-launch-provider-glyph fc-coord-trigger-provider is-${splitOwnerCoord.provider}`} aria-hidden="true">{launchProviderGlyph(splitOwnerCoord.provider)}</span> : null}
+                    <span className="group-ledger-split-owner-coord-model">{splitOwnerCoord.model}</span>
+                    {splitOwnerCoord.effort ? <><span className="fc-coord-trigger-dot" aria-hidden="true">·</span><span className="fc-coord-trigger-effort">{splitOwnerCoord.effort}</span></> : null}
+                  </span>
+                ) : null}
               </span>
             ) : coordinateNode}
             ledge={ledgeNode}
