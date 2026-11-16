@@ -1145,12 +1145,10 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   flex-direction: column;
   max-height: 40dvh;
   padding: 0 clamp(16px, 4cqi, 48px) 8px;
-  pointer-events: none;
 }
 .objectives-commodore-foot > .commodore-person-inbox { padding-inline: 0; }
 .objectives-cm-dock > .commodore-person-inbox { padding: 0; }
 .commodore-person-inbox-panel {
-  pointer-events: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
