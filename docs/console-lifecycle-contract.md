@@ -12,7 +12,7 @@ The serve state owner is `runtime/fleet-console/core/host/bootstrap/serve-lifecy
 
 | # | Invariant |
 |---|---|
-| I1 | No actor signals a process whose identity it has not proven, and no actor removes a lock it did not prove released or dead. |
+| I1 | No actor signals a process whose identity it has not proven, and no actor removes a lock it did not prove released or dead. A recorded `bootSession` that differs from the current OS boot session (both non-empty, same platform) proves the author dead; the pid now using that number is not signalled. |
 | I2 | However a Console ends — clean stop, its own deadline, a crash, an external SIGKILL — it leaves no child process behind. |
 | I3 | A serve that loses the lock writes nothing: no product state, no exit record. |
 | I4 | An external escalation to SIGKILL comes only after the Console's own deadline has had its chance. |
@@ -117,7 +117,7 @@ New outcomes may be added without a version change. A reader that meets an outco
 
 ## Wire compatibility
 
-- The lock payload and the meaning of health answers do not change; additions only. The authenticated health answer carries `lifecycleWire: CONSOLE_LIFECYCLE_WIRE`. Its absence means wire 0 (before this contract).
+- The lock payload and the meaning of health answers do not change; additions only. The lock and a reclaim marker's `owner.json` may carry `bootSession` (an OS boot id). Readers that do not know the field ignore it. Its absence is not a previous boot. This does not raise `CONSOLE_LIFECYCLE_WIRE`. The authenticated health answer carries `lifecycleWire: CONSOLE_LIFECYCLE_WIRE`. Its absence means wire 0 (before this contract).
 - The stop request route is a capability, not a wire revision: the authenticated health answer — the ready 200 and the starting 503 alike — carries `stopRequest: CONSOLE_STOP_REQUEST_REVISION` (1), and a Console without it does not serve the route. The wire stays 1, because raising it would make every older CLI and Desktop treat a newer Console as unverified and leave it running. Which actor uses the route is decided only by `decideConsoleStopRoute` (below); an older actor never reads the field.
 
 | Console | Actor (CLI, Desktop) | Windows stop | POSIX stop |
@@ -170,6 +170,7 @@ An external actor reads the lock through the one lock observer, `observeConsoleL
 | Lock | Pid | Health | Observed | May do |
 |---|---|---|---|---|
 | none | — | — | absent | start |
+| owner whose `bootSession` differs from the current boot | alive or not, including EPERM | — | exited, lock left behind | nothing is signalled; the next `serve` reclaims it |
 | owner | ESRCH | — | exited, lock left behind | nothing; the next `serve` reclaims it |
 | trusted | alive, but started more than `LOCK_AUTHOR_REPLACED_MARGIN_MS` after the lock was written | refused | **replaced**: another program reused an ended Console's pid | nothing: no signal, no removal, no new `serve`; report the lock as blocked (`describeReplacedLockAuthor`) until that pid exits |
 | trusted | alive | 200, same pid, `lifecycleWire` not newer than the observer's | ready | the actor that requests the stop may send its request (stop ladder step 3) |
@@ -182,7 +183,7 @@ An external actor reads the lock through the one lock observer, `observeConsoleL
 
 A refused endpoint with a live pid that still holds the same lock is a Console that has closed its listener and is cleaning up — never an absent owner.
 
-Evidence direction: only ESRCH grants an action that frees the slot — removing a lock, signalling as an absent owner, or starting a new `serve`. A comparison of two wall-clock readings taken at different times (the lock's `startedAt` against the pid's `ps` start time) may only block an action. This limit covers only that comparison between a lock and a process; the identity proofs that compare a process with itself or with its own registration still grant a signal as this contract describes them — an unchanged start time read again (E4), and a registered group's spawn time against `ps` in the deadline and the reaper. So a live pid that started after its lock was written is `replaced`, not `exited`: every actor leaves it and its lock alone, and `serve` itself would not take that lock while the pid runs.
+Evidence direction: ESRCH, or a `bootSession` on the lock or reclaim marker that differs from the current OS boot session, grants an action that frees the slot — removing a lock or starting a new `serve`. Neither grants a signal to the pid that is alive now: a previous boot means that pid is a different process. A missing `bootSession`, or a current boot session that cannot be read, leaves this rule on ESRCH alone. A comparison of two wall-clock readings taken at different times (the lock's `startedAt` against the pid's `ps` start time) may only block an action. This limit covers only that comparison between a lock and a process; the identity proofs that compare a process with itself or with its own registration still grant a signal as this contract describes them — an unchanged start time read again (E4), and a registered group's spawn time against `ps` in the deadline and the reaper. So a live pid that started after its lock was written, on the same boot, is `replaced`, not `exited`: every actor leaves it and its lock alone, and `serve` itself would not take that lock while the pid runs. `fleet console start --recover` and Desktop's recover button are the person's explicit request to clear that lock, and they still refuse a symlink, another user's file, a Console that is `ready`, `starting`, `stopping`, or `releasing`, and an update whose worker is still running.
 
 ### Without credentials: the local Console list
 

@@ -21,6 +21,7 @@ import {
   observeConsoleInstance,
   observeConsoleLockFile,
   observeConsoleLockFileWithin,
+  recoverConsoleLockSlot,
   readConsoleEnding,
   readConsoleLockFile,
   reproveConsoleInstance,
@@ -144,6 +145,9 @@ export interface ConsoleStopResult {
 
 export interface StartFleetConsoleDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "ensureDaemon" | "probe">;
+  /** Clear a stuck lock after the safety check, then start. Refuses when a Console or update is still there. */
+  readonly recover?: boolean;
+  readonly env?: NodeJS.ProcessEnv;
 }
 
 export interface StartFleetConsoleResult {
@@ -199,11 +203,21 @@ interface ConsoleDaemonChildObservation {
 // 이름을 지우면 in-flight 세션의 hook이 예외로 죽으므로 계속 받아주고, 본문도 퇴역 당시 형식을 그대로 보낸다.
 const CONSOLE_HOOK_COMMANDS = new Set(["capture-session", "turn-start", "turn-end", "workspace", "background-report", "background-spawn", "background-stop", "attention", "auto-name", "agent-call"]);
 
+export interface ConsoleCliInvocation {
+  readonly mode: ConsoleCliMode;
+  /** `fleet console start --recover`: clear a stuck lock after the safety check, then start. */
+  readonly recover: boolean;
+}
+
 export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
+  return parseConsoleCliInvocation(argv).mode;
+}
+
+export function parseConsoleCliInvocation(argv: readonly string[]): ConsoleCliInvocation {
   // 인자가 없으면 기본 동작은 start(서버를 보장하고 그 주소를 출력한다)다.
-  if (argv.length === 0) return "start";
+  if (argv.length === 0) return { mode: "start", recover: false };
   const [first, ...rest] = argv;
-  if (first === "--help" || first === "-h") return "help";
+  if (first === "--help" || first === "-h") return { mode: "help", recover: false };
 
   let mode: ConsoleCliMode;
   if (first === "start") {
@@ -218,11 +232,17 @@ export function parseConsoleCliMode(argv: readonly string[]): ConsoleCliMode {
     throw new Error(`Unknown fleet console command: ${first}\nRun 'fleet console --help' for usage.`);
   }
 
+  let recover = false;
   for (const arg of rest) {
-    if (arg === "--help" || arg === "-h") return "help";
+    if (arg === "--help" || arg === "-h") return { mode: "help", recover: false };
+    if (arg === "--recover") {
+      if (mode !== "start") throw new Error(`Unknown fleet console option: ${arg}\n--recover is only valid with fleet console start.\nRun 'fleet console --help' for usage.`);
+      recover = true;
+      continue;
+    }
     throw new Error(`Unknown fleet console option: ${arg}\nRun 'fleet console --help' for usage.`);
   }
-  return mode;
+  return { mode, recover };
 }
 
 export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCommand {
@@ -254,11 +274,12 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
     dim("Observe live output streams and console-owned terminal sessions.", colorEnabled),
     "",
     section("USAGE", colorEnabled),
-    `  ${command("fleet console", colorEnabled)} ${dim("[start|stop|restart|status] [--help]", colorEnabled)}`,
-    `  ${command("fleet-console", colorEnabled)} ${dim("[start|stop|restart|status] [--help]", colorEnabled)}`,
+    `  ${command("fleet console", colorEnabled)} ${dim("[start|stop|restart|status] [--recover] [--help]", colorEnabled)}`,
+    `  ${command("fleet-console", colorEnabled)} ${dim("[start|stop|restart|status] [--recover] [--help]", colorEnabled)}`,
     "",
     section("COMMANDS", colorEnabled),
     `  ${command("start", colorEnabled)}   ${dim("Ensure the local Fleet Console server and print its address. (default)", colorEnabled)}`,
+    `  ${option("--recover", colorEnabled)}  ${dim("With start: after checking that no Console is running and no update is in progress, clear a stuck lock and start.", colorEnabled)}`,
     `  ${command("stop", colorEnabled)}    ${dim("Stop the local Fleet Console server.", colorEnabled)}`,
     `  ${command("restart", colorEnabled)} ${dim("Restart the local Fleet Console server and print its address.", colorEnabled)}`,
     `  ${command("status", colorEnabled)}  ${dim("Show the local Fleet Console server status.", colorEnabled)}`,
@@ -596,18 +617,21 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
 
   /**
    * Decides from the lock whether start may proceed; it never deletes. A trusted lock with a token keeps the probe → stop
-   * flow. An untrusted or tokenless lock is refused while its pid lives, and left for the new Console to reclaim once its
-   * pid is ESRCH. A lock without a readable owner, a symlink, or another user's lock is refused.
+   * flow. An untrusted or tokenless lock is refused while its pid lives on this boot, and left for the new Console to
+   * reclaim once its pid is ESRCH or the lock names a previous boot. A lock without a readable owner, a symlink, or
+   * another user's lock is refused.
    */
   async function readLockForStart(): Promise<ConsoleLockPayload | null> {
     const observed = await observeConsoleLockFileWithin<ConsoleLockPayload>(paths.lockFile);
     if (observed.kind === "absent") return null;
     if (observed.kind === "refused") throw new Error(describeRefusedConsoleLock(paths.lockFile, observed.reason));
     if (observed.kind === "unknown") throw new Error(describeOwnerlessConsoleLock(paths.lockFile, observed.reason));
+    if (observed.previousBoot || (observed.untrusted !== null && !observed.alive)) {
+      report(`Fleet Console lock ${paths.lockFile} belongs to pid ${observed.instance.pid}, which is ${observed.previousBoot ? "from a previous boot" : "no longer running"}; the new Console will reclaim it.`);
+      return null;
+    }
     if (observed.untrusted === null) return observed.instance.payload;
-    if (observed.alive) throw new Error(describeUntrustedLiveLock(observed.instance.pid, observed.untrusted));
-    report(`Fleet Console lock ${paths.lockFile} belongs to pid ${observed.instance.pid}, which is no longer running; the new Console will reclaim it.`);
-    return null;
+    throw new Error(describeUntrustedLiveLock(observed.instance.pid, observed.untrusted));
   }
 
   function describeUntrustedLiveLock(pid: number, issue: string): string {
@@ -969,8 +993,17 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
  * 서버를 보장하고 그 주소를 돌려준다. 화면을 여는 것은 CLI의 일이 아니다 — 터미널에서
  * 주소를 읽은 사용자가 어느 브라우저로 갈지 스스로 정한다.
  */
+async function recoverStuckConsoleLock(env: NodeJS.ProcessEnv): Promise<void> {
+  const paths = createConsolePaths({ env });
+  const dataDir = createConsoleDataPaths({ env }).dir;
+  const result = await recoverConsoleLockSlot(paths.lockFile, dataDir);
+  if (result.kind === "refused") throw new Error(result.reason);
+  if (result.kind === "cleared") process.stderr.write(`Fleet Console lock: cleared ${result.removed.length} stuck lock entr${result.removed.length === 1 ? "y" : "ies"} after --recover.\n`);
+}
+
 export async function startFleetConsole(deps: StartFleetConsoleDeps = {}): Promise<StartFleetConsoleResult> {
-  const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle();
+  const lifecycle = deps.lifecycle ?? createConsoleDaemonLifecycle(deps.env ? { env: deps.env } : {});
+  if (deps.recover) await recoverStuckConsoleLock(deps.env ?? process.env);
   await lifecycle.ensureDaemon();
   const status = await lifecycle.probe();
   if (!status.healthy || !status.lock) {
@@ -1130,14 +1163,15 @@ export async function main(): Promise<void> {
     await postAgentHook(`/sessions/${readHookSessionId(process.env)}/capture`, { provider: hookCommand.provider, input: await readStdinBestEffort() }, process.env);
     return;
   }
-  const mode = parseConsoleCliMode(process.argv.slice(2));
-  await runConsolePublishedCommand(mode, { stdout: process.stdout, env: process.env });
+  const invocation = parseConsoleCliInvocation(process.argv.slice(2));
+  await runConsolePublishedCommand(invocation.mode, { stdout: process.stdout, env: process.env }, { recover: invocation.recover });
 }
 
 // 두 published bin은 실행 순서와 결과 출력을 공유하되 각 진입점의 예외 경계는 유지한다.
 export async function runConsolePublishedCommand(
   mode: ConsoleCliMode,
   io: { readonly stdout: { write(chunk: string): boolean; readonly isTTY?: boolean }; readonly env?: NodeJS.ProcessEnv },
+  options: { readonly recover?: boolean } = {},
 ): Promise<void> {
   if (mode === "help") {
     io.stdout.write(`${buildConsoleHelpText({ env: io.env, isTTY: io.stdout.isTTY })}\n`);
@@ -1156,7 +1190,7 @@ export async function runConsolePublishedCommand(
     io.stdout.write(`${describeConsoleReady("Fleet Console restarted.")}\n${await runConsoleStatus()}\n`);
     return;
   }
-  await startFleetConsole();
+  await startFleetConsole({ recover: options.recover === true, ...(io.env ? { env: io.env } : {}) });
   io.stdout.write(`${describeConsoleReady("Fleet Console is ready.")}\n${await runConsoleStatus()}\n`);
 }
 

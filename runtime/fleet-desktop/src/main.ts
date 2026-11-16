@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 
 import { app, BaseWindow, clipboard, dialog, Menu, nativeImage, Notification, safeStorage, screen, session, shell, systemPreferences, Tray, WebContentsView, type Session } from "electron";
 
+import { recoverConsoleLockSlot } from "@fleet-console/lifecycle";
 import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, REMOTE_FILE_CHOOSER_MAX_FILE_BYTES, REMOTE_FILE_CHOOSER_MAX_FILES, REMOTE_FILE_CHOOSER_MAX_TOTAL_BYTES, type DesktopBrowserPlatform, type RemoteBrowserUploadFile } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
@@ -15,7 +16,7 @@ import { autoUpdater } from "electron-updater";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { persistProfileSessionCookies, PROFILE_SESSION_COOKIE_MAX_AGE_SECONDS, PROFILE_SESSION_COOKIE_PERSIST_TIMEOUT_MS, type ProfileCookieJar, type ProfileCookieRecord } from "./browser-profile-cookies.js";
-import { isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
+import { describeConsoleLockRecoverDialog, isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
 import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
 import { createHydratedDesktopEnvironment, migrateLegacyBrowserProfileRoot, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory, resolveLegacyBrowserProfileRoot } from "./environment.js";
@@ -148,6 +149,10 @@ if (isPackaged) app.setAsDefaultProtocolClient(FLEET_PROTOCOL);
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) app.quit();
 else void boot().catch((error: unknown) => {
+  if (error instanceof Error && error.message === "console_lock_recover_declined") {
+    app.exit(1);
+    return;
+  }
   if (isConsoleConflict(error)) {
     return showConsoleConflictAndQuit(error, { showMessageBox: (options) => dialog.showMessageBox(options), quit: () => app.quit(), logDirectory: readBootLogDirectory() });
   }
@@ -273,6 +278,31 @@ async function boot(): Promise<void> {
     placeTrafficLights();
   };
   const entryLanguage = app.getLocale().toLowerCase().startsWith("ko") ? "ko" : "en";
+  const retryAfterLockRecover = async (error: unknown, retry: () => Promise<string>): Promise<string> => {
+    const options = describeConsoleLockRecoverDialog(error, readBootLogDirectory(), entryLanguage);
+    if (!options) throw error;
+    const choice = await dialog.showMessageBox(options);
+    if (choice.response !== 0) throw new Error("console_lock_recover_declined");
+    const result = await recoverConsoleLockSlot(path.join(environment.consoleDir, "console.lock"), environment.dataDir);
+    if (result.kind === "refused") {
+      const korean = entryLanguage === "ko";
+      await dialog.showMessageBox({
+        type: "warning",
+        title: korean ? "잠금을 지우지 않았습니다" : "The lock was left in place",
+        message: korean ? "살아 있는 Console이나 진행 중인 업데이트가 있어 잠금을 지우지 않았습니다." : "Fleet did not clear the lock.",
+        detail: result.reason,
+        buttons: [korean ? "확인" : "OK"],
+        defaultId: 0,
+        cancelId: 0,
+      });
+      throw new Error("console_lock_recover_declined");
+    }
+    logger.info(`cleared a stuck Console lock (${result.kind}) and is starting again`);
+    return retry();
+  };
+  const startHomeConsole = (report?: Parameters<SidecarSupervisor["startOrAdopt"]>[0]): Promise<string> => (
+    supervisor.startOrAdopt(report).catch((error: unknown) => retryAfterLockRecover(error, () => supervisor.startOrAdopt(report)))
+  );
   /**
    * 호스트를 갈아타는 동안 옛 화면을 붙잡아 두는 판. 진입 화면·종료 인사처럼 수동적인 로컬 뷰다 — 어디로도
    * 항해하지 않고 창도 열지 않으며, 원격 콘솔의 렌더러와는 아무것도 나누지 않는다.
@@ -1011,7 +1041,9 @@ async function boot(): Promise<void> {
         if (action === "stop") throw new Error("console_home_stop_unsupported");
         // The management surface is served by the Console that is about to go away.
         picker.close();
-        const url = action === "restart" ? await supervisor.restart() : await supervisor.startOrAdopt();
+        const url = action === "restart"
+          ? await supervisor.restart().catch((error: unknown) => retryAfterLockRecover(error, () => supervisor.startOrAdopt()))
+          : await startHomeConsole();
         const origin = new URL(url).origin;
         // A Console that starts again may publish another port: the home origin follows it before the window does.
         localConsoleOrigin = origin;
@@ -1256,7 +1288,7 @@ async function boot(): Promise<void> {
       onFirstRunFailure: async () => showFirstRunFailure(),
       onWindowReady: (push) => { pushRuntimeProgress = push; },
       pushEntry: pushEntrySnapshot,
-      startOrAdopt: (report) => supervisor.startOrAdopt(report),
+      startOrAdopt: (report) => startHomeConsole(report),
     });
     return launch.start() as Promise<DesktopShellWindow>;
   }, () => farewell.run(async () => {

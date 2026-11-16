@@ -61,6 +61,18 @@ export function describeBootFailure(error: unknown, logDirectory?: string | null
 
 const CONSOLE_LOCK_ERRORS = new Set(["console_lock_held", "console_lock_ownerless", "console_lock_refused"]);
 
+/**
+ * Lock failures a person can clear from the dialog. A refused lock (symlink, another user) is never offered.
+ * A Console that is starting, stopping, or that outlived SIGKILL is not offered either: it may still be that Console.
+ */
+export function consoleLockRecoverOffered(error: unknown): boolean {
+  const code = error instanceof Error ? error.message : "";
+  if (code === "console_lock_ownerless" || code === "console_lock_held") return true;
+  if (code !== "console_lock_process_unverified") return false;
+  const observed = readConflictDiagnostic(error)?.observed;
+  return observed === "unverified" || observed === "untrusted";
+}
+
 /** The explanation a startup failure carries for the user (SidecarStartError.detail), when there is one. */
 function readFailureDetail(error: unknown): string | null {
   if (!(error instanceof Error)) return null;
@@ -153,6 +165,22 @@ export function describeConsoleConflict(error: unknown, logDirectory?: string | 
     : `${kind === "running" ? "Stop or quit the running Fleet Console before opening Fleet Console Desktop again." : NO_DIAGNOSTIC_GUIDANCE}\n\nThe lock file was left untouched.${where}`;
   const { title, message } = CONFLICT_HEADLINES[kind];
   return { type: "warning", title, message, detail, buttons: ["OK"], defaultId: 0, cancelId: 0 };
+}
+
+export type ConsoleLockRecoverLanguage = "ko" | "en";
+
+/** The recover dialog, or null when this failure must not offer to delete the lock. */
+export function describeConsoleLockRecoverDialog(error: unknown, logDirectory?: string | null, lang: ConsoleLockRecoverLanguage = "en"): ConsoleConflictDialogOptions | null {
+  if (!consoleLockRecoverOffered(error)) return null;
+  const recover = lang === "ko" ? "확인 후 잠금 정리 및 다시 시작" : "Clear the lock and start again";
+  const cancel = lang === "ko" ? "취소" : "Cancel";
+  const base = isConsoleConflict(error) ? describeConsoleConflict(error, logDirectory) : describeBootFailureAsWarning(error, logDirectory);
+  return { ...base, buttons: [recover, cancel], defaultId: 1, cancelId: 1 };
+}
+
+function describeBootFailureAsWarning(error: unknown, logDirectory?: string | null): ConsoleConflictDialogOptions {
+  const notice = describeBootFailure(error, logDirectory);
+  return { type: "warning", title: notice.title, message: notice.message, detail: notice.detail, buttons: ["OK"], defaultId: 0, cancelId: 0 };
 }
 
 export async function showConsoleConflictAndQuit(error: unknown, dependencies: ConsoleConflictHandlerDependencies): Promise<void> {

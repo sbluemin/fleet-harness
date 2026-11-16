@@ -1,4 +1,4 @@
-import { parseConsoleCliMode, runConsolePublishedCommand } from "../core/host/bootstrap/console-lifecycle.js";
+import { parseConsoleCliInvocation, runConsolePublishedCommand } from "../core/host/bootstrap/console-lifecycle.js";
 
 import { buildFleetHelpText, buildFleetVersionText, isFleetVersionArg } from "./cli-args.js";
 import { dispatchGatewayCommand } from "./gateway/dispatcher.js";
@@ -64,8 +64,8 @@ export async function dispatchFleetArgv(
 
   if (dispatch.kind === "console") {
     try {
-      const mode = parseConsoleCliMode(dispatch.consoleArgv);
-      await runConsolePublishedCommand(mode, { stdout: io.stdout, env });
+      const invocation = parseConsoleCliInvocation(dispatch.consoleArgv);
+      await runConsolePublishedCommand(invocation.mode, { stdout: io.stdout, env }, { recover: invocation.recover });
       return 0;
     } catch (error: unknown) {
       io.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);

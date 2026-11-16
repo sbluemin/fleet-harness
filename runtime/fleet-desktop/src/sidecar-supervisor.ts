@@ -581,7 +581,9 @@ export class SidecarSupervisor {
     if (observed.kind === "absent") return observed;
     if (observed.kind === "refused") return { kind: "blocked", code: "console_lock_refused", detail: describeRefusedConsoleLock(lockFile, observed.reason) };
     if (observed.kind === "unknown") return { kind: "blocked", code: "console_lock_ownerless", detail: describeOwnerlessConsoleLock(lockFile, observed.reason) };
-    const { instance, alive } = observed;
+    const { instance } = observed;
+    // A previous boot's pid may be in use again. That author is gone, so the slot is free for the next Console.
+    const alive = observed.alive && !observed.previousBoot;
     const issue = observed.untrusted ?? adoptionPolicyIssue(instance.payload);
     if (issue !== null) return { kind: "untrusted", bytes: instance.bytes, pid: instance.pid, alive, issue };
     return { kind: "trusted", stored: { bytes: instance.bytes, lock: instance.payload }, alive };

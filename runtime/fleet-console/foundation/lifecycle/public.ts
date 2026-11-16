@@ -2,17 +2,20 @@ import net from "node:net";
 
 import { PUBLIC_STATUS_TIMEOUT_MS, classifyConsolePublic, type ConsolePublicState, type ConsolePublicStatus } from "@fleet-console/protocol/lifecycle";
 
+import { bootSessionsDiffer, currentConsoleBootSession } from "./boot-session.js";
 import { isLockAuthorReplaced, isPidAlive } from "./process.js";
 
 export interface ObserveConsolePublicInput {
   /** The lock's pid, its `startedAt`, and its endpoint origin. No token is read or sent. */
-  readonly lock: { readonly pid: number; readonly startedAt: unknown; readonly origin: string };
+  readonly lock: { readonly pid: number; readonly startedAt: unknown; readonly origin: string; readonly bootSession?: unknown };
   /** False when the pid lives in another namespace (a Console inside WSL): its port stands in for its liveness. */
   readonly pidCheckable: boolean;
   /** Injected liveness checks, for a caller that cannot use this machine's process table or sockets as they are. */
   readonly isAlive?: (pid: number) => boolean;
   readonly portOpen?: (origin: string) => Promise<boolean>;
   readonly env?: NodeJS.ProcessEnv;
+  /** Current OS boot session. Defaults to the process cache. A WSL lock is not compared with this machine's boot. */
+  readonly bootSession?: () => string | null;
 }
 
 /**
@@ -22,13 +25,15 @@ export interface ObserveConsolePublicInput {
  */
 export async function observeConsolePublic(input: ObserveConsolePublicInput): Promise<ConsolePublicState> {
   const { lock } = input;
+  // Only a pid this machine can check belongs to this machine's boot. A WSL pid is another namespace.
+  const previousBoot = input.pidCheckable && bootSessionsDiffer(lock.bootSession, (input.bootSession ?? currentConsoleBootSession)());
   const pidAlive = input.pidCheckable ? (input.isAlive ?? isPidAlive)(lock.pid) : null;
   const [portOpen, status] = await Promise.all([
     input.pidCheckable ? Promise.resolve(null) : (input.portOpen ?? isPortOpen)(lock.origin),
     pidAlive === false ? Promise.resolve<ConsolePublicStatus>("unanswered") : probePublicStatus(lock.origin, lock.pid),
   ]);
-  const authorReplaced = status === "refused" && pidAlive === true ? await isLockAuthorReplaced(lock, input.env) : false;
-  return classifyConsolePublic({ pidAlive, portOpen, authorReplaced, status });
+  const authorReplaced = !previousBoot && status === "refused" && pidAlive === true ? await isLockAuthorReplaced(lock, input.env) : false;
+  return classifyConsolePublic({ pidAlive, portOpen, previousBoot, authorReplaced, status });
 }
 
 /**

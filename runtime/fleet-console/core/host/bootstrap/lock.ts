@@ -13,6 +13,8 @@ import {
 import {
   CONSOLE_LOCK_DIR_MODE,
   CONSOLE_LOCK_FILE_MODE,
+  bootSessionsDiffer,
+  currentConsoleBootSession,
   isPidAlive,
   observeConsoleLockFileUntil,
   readConsoleLockFile,
@@ -29,6 +31,8 @@ export interface ConsoleLockDeps {
   readonly hostname?: () => string;
   /** One-line diagnostics (a reclaimed dead lock, the in-place publish fallback). Defaults to stderr. */
   readonly report?: (message: string) => void;
+  /** Current OS boot session. Defaults to the process cache. Null omits the field and keeps the ESRCH rules. */
+  readonly bootSession?: () => string | null;
 }
 
 export interface ConsoleLockCreateInput {
@@ -54,7 +58,7 @@ export type ConsoleLockReclaimResult =
   | { readonly kind: "removed" }
   /** The path no longer holds the target (absent or other bytes); nothing of anyone else was removed. */
   | { readonly kind: "gone" }
-  /** The target's pid is not ESRCH now. The lock and this process's reclaim marker are left in place. */
+  /** The target's author is not gone (not ESRCH, and not a previous boot). The lock and this process's reclaim marker stay. */
   | { readonly kind: "alive"; readonly pid: number }
   /** Another reclaimer holds the marker and is alive, or its marker cannot be judged. Nothing was removed. */
   | { readonly kind: "busy"; readonly claimPath: string; readonly holderPid: number | null; readonly reason: string | null }
@@ -71,6 +75,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   const randomToken = deps.randomToken ?? (() => crypto.randomBytes(32).toString("base64url"));
   const hostname = deps.hostname ?? (() => "127.0.0.1");
   const report = deps.report ?? ((message: string) => { process.stderr.write(`${message}\n`); });
+  const bootSession = deps.bootSession ?? currentConsoleBootSession;
   let linkFallbackReported = false;
 
   function ensureLockDir(dir: string): void {
@@ -80,12 +85,13 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
 
   /**
    * Publishes this process's lock, reclaiming a dead instance on the way. Every attempt uses a fresh token, so a
-   * published payload never reappears once removed. Only a lock whose readable pid is ESRCH is reclaimed, and only
-   * through the reclaim-marker protocol; anything else stays in place and the call throws an EEXIST error.
+   * published payload never reappears once removed. A lock is reclaimed only when its pid is ESRCH or its boot session is
+   * a previous boot, and only through the reclaim-marker protocol; anything else stays and the call throws EEXIST.
    */
   async function acquireLock(input: ConsoleLockCreateInput): Promise<ConsoleLockHandle> {
     ensureLockDir(input.dir);
     const deadline = performance.now() + LOCK_OBSERVE_BUDGET_MS;
+    const recordedBoot = bootSession();
     for (let attempt = 0; attempt < LOCK_PUBLISH_ATTEMPTS; attempt += 1) {
       const payload: ConsoleLockPayload = {
         pid: input.pid,
@@ -96,21 +102,23 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
         token: randomToken(),
         version: input.version,
         ...(input.owner ? { owner: input.owner } : {}),
+        ...(recordedBoot ? { bootSession: recordedBoot } : {}),
       };
       const bytes = Buffer.from(`${JSON.stringify(payload, null, 2)}\n`, "utf8");
       if (publishLockBytes(input.lockFile, bytes) === "published") {
         sweepLeftovers(input.lockFile, sha256(bytes));
         return { payload, release: () => removeOwnLock(input.lockFile, payload.pid) };
       }
-      const observed = await observeConsoleLockFileUntil<ConsoleLockPayload>(input.lockFile, deadline, { host: hostname() });
+      const observed = await observeConsoleLockFileUntil<ConsoleLockPayload>(input.lockFile, deadline, { host: hostname(), bootSession });
       if (observed.kind === "absent") continue;
       if (observed.kind === "refused") throw lockHeldError(input.lockFile, describeRefusedConsoleLock(input.lockFile, observed.reason));
       if (observed.kind === "unknown") throw lockHeldError(input.lockFile, describeOwnerlessConsoleLock(input.lockFile, observed.reason));
-      if (observed.alive) throw lockHeldError(input.lockFile, `Fleet Console lock ${input.lockFile} is held by running pid ${observed.instance.pid}.`);
+      if (observed.alive && !observed.previousBoot) throw lockHeldError(input.lockFile, `Fleet Console lock ${input.lockFile} is held by running pid ${observed.instance.pid}.`);
       const result = await reclaimUntil(input.lockFile, observed.instance, deadline);
       if (result.kind === "removed") {
         const untrusted = observed.untrusted ? ` (the lock was also untrusted: ${observed.untrusted})` : "";
-        report(`Fleet Console lock: reclaimed the lock left by pid ${observed.instance.pid}, which is no longer running (${input.lockFile}).${untrusted}`);
+        const why = observed.previousBoot ? "which belongs to a previous boot" : "which is no longer running";
+        report(`Fleet Console lock: reclaimed the lock left by pid ${observed.instance.pid}, ${why} (${input.lockFile}).${untrusted}`);
         continue;
       }
       if (result.kind === "gone") continue;
@@ -133,30 +141,32 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   }
 
   /**
-   * Stages the complete lock beside the target and hard-links it into place, so the path never shows a partial lock.
-   * A volume without hard links falls back to an exclusive in-place write; that write's short empty window is safe only
-   * because no participant ever removes a lock without a readable owner.
+   * Stages the complete lock, fsyncs it, then hard-links it into place, so the path never shows a partial lock and a
+   * published lock survives power loss. A volume without hard links falls back to an exclusive write of the same bytes;
+   * a failed fallback deletes the file it created, so a 0-byte or torn lock is not left behind by that error.
    */
   function publishLockBytes(lockFile: string, bytes: Buffer): "published" | "exists" {
     const staging = stagingPath(lockFile, "tmp");
     writeExclusiveFile(staging, bytes);
     try {
-      fs.linkSync(staging, lockFile);
-      return "published";
-    } catch (error) {
-      const code = errnoOf(error);
-      if (code === "EEXIST") return "exists";
-      if (!linkFallbackReported) {
-        linkFallbackReported = true;
-        report(`Fleet Console lock: hard links are not available in ${path.dirname(lockFile)} (${code ?? "error"}); publishing the lock in place.`);
-      }
       try {
-        writeExclusiveFile(lockFile, bytes);
-        return "published";
-      } catch (fallbackError) {
-        if (errnoOf(fallbackError) === "EEXIST") return "exists";
-        throw fallbackError;
+        fs.linkSync(staging, lockFile);
+      } catch (error) {
+        const code = errnoOf(error);
+        if (code === "EEXIST") return "exists";
+        if (!linkFallbackReported) {
+          linkFallbackReported = true;
+          report(`Fleet Console lock: hard links are not available in ${path.dirname(lockFile)} (${code ?? "error"}); publishing the lock in place.`);
+        }
+        try {
+          writeExclusiveFile(lockFile, bytes);
+        } catch (fallbackError) {
+          if (errnoOf(fallbackError) === "EEXIST") return "exists";
+          throw fallbackError;
+        }
       }
+      fsyncDirectory(path.dirname(lockFile));
+      return "published";
     } finally {
       removeQuietly(staging);
     }
@@ -164,11 +174,29 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
 
   function writeExclusiveFile(filePath: string, bytes: Buffer): void {
     const fd = fs.openSync(filePath, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_WRONLY, CONSOLE_LOCK_FILE_MODE);
+    let durable = false;
     try {
       fs.writeFileSync(fd, bytes);
       fs.fchmodSync(fd, CONSOLE_LOCK_FILE_MODE);
+      fs.fsyncSync(fd);
+      durable = true;
     } finally {
       fs.closeSync(fd);
+      if (!durable) removeQuietly(filePath);
+    }
+  }
+
+  /** Best-effort: a directory fsync makes the new name durable. Volumes that cannot fsync a directory still published. */
+  function fsyncDirectory(dir: string): void {
+    if (process.platform === "win32") return;
+    let fd: number | null = null;
+    try {
+      fd = fs.openSync(dir, "r");
+      fs.fsyncSync(fd);
+    } catch {
+      // The file data is already durable. A directory fsync is the extra step, not a reason to fail the publish.
+    } finally {
+      if (fd !== null) fs.closeSync(fd);
     }
   }
 
@@ -228,8 +256,8 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
 
   /**
    * The only place a participant unlinks someone else's lock. Requires holding the newest marker, the exact target
-   * bytes on the path, and ESRCH for the target pid right now. On any other outcome while the target may still be on
-   * the path, this process's marker stays complete so no one else can take the same generation while it lives.
+   * bytes on the path, and a dead author right now: ESRCH, or a boot session that is not the current one. On any other
+   * outcome while the target may still be on the path, this process's marker stays complete.
    */
   function finalizeReclaim(lockFile: string, target: ConsoleLockInstance, h: string): ConsoleLockReclaimResult {
     let stat: fs.Stats;
@@ -251,7 +279,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
       return { kind: "failed", reason: `the lock could not be read (${errnoOf(error) ?? "error"})` };
     }
     if (!current.equals(target.bytes)) return goneAfterCleanup(lockFile, h);
-    if (isPidAlive(target.pid)) return { kind: "alive", pid: target.pid };
+    if (isPidAlive(target.pid) && !bootSessionsDiffer(target.payload.bootSession, bootSession())) return { kind: "alive", pid: target.pid };
     try {
       fs.unlinkSync(lockFile);
     } catch (error) {
@@ -273,12 +301,14 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
    * there is not verified to refuse an existing target). A lost publication never touches the existing marker.
    */
   function publishClaim(lockFile: string, claimPath: string, h: string): "won" | "lost" {
-    const owner = Buffer.from(`${JSON.stringify({ v: 1, pid: process.pid, h })}\n`, "utf8");
+    const recordedBoot = bootSession();
+    const owner = Buffer.from(`${JSON.stringify({ v: 1, pid: process.pid, h, ...(recordedBoot ? { bootSession: recordedBoot } : {}) })}\n`, "utf8");
     const staging = stagingPath(lockFile, "ctmp");
     if (process.platform === "win32") {
       writeExclusiveFile(staging, owner);
       try {
         fs.linkSync(staging, claimPath);
+        fsyncDirectory(path.dirname(claimPath));
         return "won";
       } catch (error) {
         if (errnoOf(error) === "EEXIST") return "lost";
@@ -301,6 +331,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
       if (CLAIM_LOST_CODES.has(errnoOf(error) ?? "")) return "lost";
       throw error;
     }
+    fsyncDirectory(path.dirname(claimPath));
     return "won";
   }
 
@@ -312,7 +343,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
     | { readonly kind: "alive"; readonly pid: number }
     | { readonly kind: "dead" };
 
-  /** Read errors are not evidence; only an incomplete marker (which no participant publishes) or ESRCH hands a generation over. */
+  /** Read errors are not evidence. An incomplete marker, ESRCH, or a previous boot hands a generation over. */
   function classifyClaim(claimPath: string, h: string): ClaimState {
     const uid = currentUid();
     let stat: fs.Stats;
@@ -355,6 +386,7 @@ export function createConsoleLock(deps: ConsoleLockDeps = {}) {
       return { kind: "corrupt" };
     }
     if (!isPlainObject(record) || record.v !== 1 || !isPositiveSafeInteger(record.pid) || record.h !== h) return { kind: "corrupt" };
+    if (bootSessionsDiffer(record.bootSession, bootSession())) return { kind: "dead" };
     return isPidAlive(record.pid) ? { kind: "alive", pid: record.pid } : { kind: "dead" };
   }
 

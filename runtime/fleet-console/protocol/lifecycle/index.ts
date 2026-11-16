@@ -78,9 +78,11 @@ export type ConsoleHealthEvidence =
 
 /**
  * A Console instance as an outside actor observes it (docs/console-lifecycle-contract.md, "Observing an instance").
- * `exited` means the lock pid is gone (ESRCH). `replaced` means the lock pid is alive but started after the lock was
- * written, so another program reused the pid of a Console that ended: no actor signals it, removes the lock, or starts a
- * new serve beside it, because only ESRCH grants those (a start-time comparison may block an action, never allow one).
+ * `exited` means the lock pid is gone (ESRCH), or the lock names a previous OS boot (`previousBoot`): that author is dead
+ * even when the pid number is now in use, so the next serve may reclaim the lock and nobody signals the new process.
+ * `replaced` means the lock pid is alive on this boot but started after the lock was written, so another program reused
+ * the pid: no actor signals it, removes the lock, or starts a new serve beside it, because a start-time comparison may
+ * only block an action. A missing boot session, or a current boot session that cannot be read, is not `previousBoot`.
  */
 export type ConsoleObservedState = "exited" | "replaced" | "starting" | "ready" | "stopping" | "releasing" | "unverified";
 
@@ -95,6 +97,11 @@ export interface ConsoleInstanceEvidence {
   readonly lockPid: number;
   /** False only on ESRCH. */
   readonly pidAlive: boolean;
+  /**
+   * The lock's boot session and the current OS boot session are both non-empty and differ. The author died with the
+   * previous boot. Absent or false keeps the ESRCH and `replaced` rules, including locks that record no boot session.
+   */
+  readonly previousBoot?: boolean;
   /** The lock passed every trust check and carries a token, so its endpoint may be asked. */
   readonly trusted: boolean;
   /** The lock pid started well after the lock was written (see LOCK_AUTHOR_REPLACED_MARGIN_MS). */
@@ -111,7 +118,7 @@ export interface ConsoleInstanceEvidence {
  * a signal either. A Console that reports a newer lifecycle wire than this contract is unverified.
  */
 export function classifyConsoleInstance(input: ConsoleInstanceEvidence): { readonly state: ConsoleObservedState; readonly identity: ConsoleIdentity } {
-  if (!input.pidAlive) return { state: "exited", identity: "absent" };
+  if (input.previousBoot === true || !input.pidAlive) return { state: "exited", identity: "absent" };
   if (input.authorReplaced) return { state: "replaced", identity: "unverified" };
   if (!input.lockHeldBySameInstance) return { state: "releasing", identity: "unverified" };
   if (!input.trusted || input.health === null) return { state: "unverified", identity: "unverified" };
@@ -141,6 +148,8 @@ export type ConsolePublicState = "ready" | "starting" | "stopping" | "unresponsi
 export interface ConsolePublicEvidence {
   /** False only on ESRCH; null when the pid cannot be checked from here (a Console inside WSL). */
   readonly pidAlive: boolean | null;
+  /** The lock names a previous OS boot. A public reader treats that Console as exited and does not ask its port. */
+  readonly previousBoot?: boolean;
   /** For a Console whose pid cannot be checked: whether its port accepted a TCP connection. Null otherwise. */
   readonly portOpen: boolean | null;
   /** The lock pid started well after the lock was written (see LOCK_AUTHOR_REPLACED_MARGIN_MS). */
@@ -149,7 +158,7 @@ export interface ConsolePublicEvidence {
 }
 
 export function classifyConsolePublic(input: ConsolePublicEvidence): ConsolePublicState {
-  if (input.pidAlive === false) return "exited";
+  if (input.previousBoot === true || input.pidAlive === false) return "exited";
   // A refused port is not ESRCH: it says nothing reachable listens there, never that the pid is gone.
   if (input.portOpen === false) return "unreachable";
   if (input.status === "starting") return "starting";
