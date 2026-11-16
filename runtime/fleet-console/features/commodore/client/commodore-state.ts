@@ -45,11 +45,12 @@ interface TheaterCommodore {
   /** 기록 읽기 실패 코드. 없으면 null. */
   readonly transcriptError: string | null;
   readonly clearedThrough: number;
+  readonly clearedAt: number | null;
   /** 마지막 확정 줄 뒤의 라이브 사건(글자 흐름·진행 중 도구) — 저장되지 않고, 확정 줄이 오면 그 몫을 걷는다. */
   readonly live: readonly CommodoreLiveEvent[];
 }
 
-const EMPTY: TheaterCommodore = { view: null, entries: [], hasMore: false, transcriptLoaded: false, transcriptError: null, clearedThrough: 0, live: [] };
+const EMPTY: TheaterCommodore = { view: null, entries: [], hasMore: false, transcriptLoaded: false, transcriptError: null, clearedThrough: 0, clearedAt: null, live: [] };
 /** 라이브 글자는 한 덩어리로 잇는다 — 확정 줄이 늦어도 사건 배열이 델타 수만큼 자라지 않게. */
 const MAX_LIVE_TEXT = 60_000;
 
@@ -135,13 +136,20 @@ export function setCommodorePeek(commodoreId: string | null): void {
   notify();
 }
 
+function maxTimestamp(a: number | null | undefined, b: number | null | undefined): number | null {
+  if (a === undefined || a === null) return b ?? null;
+  if (b === undefined || b === null) return a;
+  return Math.max(a, b);
+}
+
 function setTheater(theaterId: string, patch: Partial<TheaterCommodore>, announce = true): void {
   if (wasCommodoreRemoved(theaterId)) return;
   const current = theaters.get(theaterId) ?? EMPTY;
   if (patch.view && (patch.view.state.transcriptClearedThrough ?? 0) < current.clearedThrough) return;
   const clearedThrough = Math.max(current.clearedThrough, patch.clearedThrough ?? 0, patch.view?.state.transcriptClearedThrough ?? 0);
+  const clearedAt = maxTimestamp(current.clearedAt, maxTimestamp(patch.clearedAt, patch.view?.state.transcriptClearedAt));
   const cleared = clearedThrough > current.clearedThrough;
-  const next = { ...current, ...patch, clearedThrough };
+  const next = { ...current, ...patch, clearedThrough, clearedAt };
   if (cleared) { next.entries = []; next.live = []; next.hasMore = false; }
   if (patch.entries || cleared) next.entries = (patch.entries ?? next.entries).filter((entry) => entry.seq > clearedThrough);
   theaters.set(theaterId, next);
@@ -214,7 +222,7 @@ export function installCommodoreState(ctx: CommodoreClientDeps): () => void {
       if (memories.has(commodoreId)) void loadCommodoreMemory(commodoreId);
       return;
     }
-    if (event.op === "state" && event.change === "clear") setTheater(commodoreId, { clearedThrough: event.state.transcriptClearedThrough ?? 0 }, false);
+    if (event.op === "state" && event.change === "clear") setTheater(commodoreId, { clearedThrough: event.state.transcriptClearedThrough ?? 0, clearedAt: event.state.transcriptClearedAt ?? null }, false);
     const current = theaters.get(commodoreId);
     if (event.op === "transcript") {
       // 아직 서랍을 연 적 없는 Theater 의 기록은 붙들지 않는다 — 열 때 한 쪽을 읽는다.

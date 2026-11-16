@@ -25,7 +25,7 @@ import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 
 import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreMobileSessions } from "./deps.js";
-import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
+import { commodoreChatEntries, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodorePersonInbox } from "./commodore-person-inbox.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
@@ -215,7 +215,7 @@ function sectionTitle(t: T, section: CommodoreMobileTab): string {
  * 깊은 링크(`openCommodoreMobile(tab, id, true)`)와 대화의 원장 열기는 세부와 그 구역을 한 번에 세운다(깊이 0 → 2) — 뒤로는 구역 → 세부 → 대화다.
  */
 function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias, panelRequest }: { readonly t: T; readonly theaterId: string; readonly commodoreId: string | null; readonly enabled: boolean; readonly bar: ClientMobileBarCapability | null; readonly title: string; readonly alias: string; readonly panelRequest: string | undefined }) {
-  const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
+  const { view, entries, live, hasMore, transcriptLoaded, transcriptError, clearedAt } = useCommodore(commodoreId);
   const requested = useCommodoreMobileTab();
   const online = useCommodoreOnline();
   const sessionsPort = commodoreMobileSessions();
@@ -332,6 +332,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           commodoreId={commodoreId ?? ""}
           theaterId={theaterId}
           view={view}
+          clearedAt={clearedAt}
           entries={entries}
           live={live}
           hasMore={hasMore}
@@ -429,12 +430,13 @@ function ProfileRow({ section, icon, label, value, onOpen }: { readonly section:
  * 첨부 미리보기(`messageImages` → `ChatDispatchAttachments`)로 선다. 보내는 동안의 말은 확정 줄이 오기 전까지 흐린 사람 말풍선이다.
  * 사령관 이름은 칩 화면의 기록 탭(상세 원장)을 연다.
  */
-function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entries, live, hasMore, loaded, online, failure, onFail, onClear, onOpenLog }: {
+function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, clearedAt, entries, live, hasMore, loaded, online, failure, onFail, onClear, onOpenLog }: {
   readonly t: T;
   readonly language: "en" | "ko";
   readonly commodoreId: string;
   readonly theaterId: string;
   readonly view: CommodoreView | null;
+  readonly clearedAt: number | null;
   readonly entries: readonly CommodoreTranscriptEntry[];
   readonly live: readonly CommodoreLiveEvent[];
   readonly hasMore: boolean;
@@ -453,7 +455,8 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, entrie
   const [pending, setPending] = useState<CommodorePendingMessage | null>(null);
   const index = useCommodoreObjectiveIndex(commodoreId);
   const name = useCommodoreName(commodoreId, t);
-  const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, asks, index.finished, name), [t, commodoreId, entries, board.objectives, asks, index.finished, name]);
+  const consultationCutoff = commodoreConsultationCutoff(view, clearedAt);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, asks, index.finished, name, consultationCutoff), [t, commodoreId, entries, board.objectives, asks, index.finished, name, consultationCutoff]);
   const items = useMemo<readonly AgentConversationEntry[]>(() => {
     const base = commodoreConversationLiveEntries(t, entries, live, confirmed, name, commodoreId);
     if (!pending) return base;
