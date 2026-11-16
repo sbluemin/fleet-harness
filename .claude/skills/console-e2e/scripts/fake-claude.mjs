@@ -12,6 +12,15 @@
 //   ask              one-shot ExitPlanMode approval hold on the next turn, or while initialized and idle
 //   ask-<sessionId>  same hold, scoped to this launch's --session-id/--resume (use with a shared directory)
 //                    empty file or JSON {sessionId?: string}; mismatched targets leave the file untouched
+//   fault            one-shot failure for the next SDK child of this directory: JSON {mode, exitCode?, onlyOnResume?, nonstandard?}
+//   fault-<sessionId>   the same spec scoped to this launch's --session-id/--resume and tried first; another launch's file is left in place
+//                    mode "exit-on-spawn" exits at child start and "exit-mid-turn" at the first host turn (exitCode, default 1);
+//                    "result-error" and "compact-failed-error" answer that turn with an error result carrying a valid errors
+//                    array (a string instead when nonstandard is true), and a compact failure also reports compact_result
+//                    "failed". onlyOnResume matches only a --resume launch. The spec is selected once at child start and
+//                    deleted then: it covers this child's whole life (later host turns are logged, not answered), and the next
+//                    child starts normally. An unreadable, malformed or unknown spec is a fixture setup failure: stderr, exit 2,
+//                    file kept.
 //   sdk-mcp/tools-<pid>.json  written by every SDK launch the host gave in-process MCP servers (Commodore's fleet-commodore):
 //                    each server's advertised tools with description and inputSchema (field limits included)
 //   sdk-calls        one-shot in-process tool calls on the next turn: {"sessionId"?: string, "calls": [{"server", "tool", "args"?}]};
@@ -136,19 +145,67 @@ if (mcpArg !== undefined) {
 const withStructured = structuredOutput !== undefined && argAfter("--json-schema") !== undefined;
 const sdk = argAfter("--input-format") === "stream-json";
 let model = argAfter("--model") ?? "default";
-const sessionId = argAfter("--session-id") ?? argAfter("--resume") ?? randomUUID();
+const sessionIdArg = argAfter("--session-id") ?? null;
+const resumeArg = argAfter("--resume") ?? null;
+const sessionId = sessionIdArg ?? resumeArg ?? randomUUID();
 log({
   event: "launch",
   mode: sdk ? "sdk" : "terminal",
   cwd: process.cwd(),
   model,
-  sessionIdArg: argAfter("--session-id") ?? null,
-  resume: argAfter("--resume") ?? null,
+  sessionIdArg,
+  resume: resumeArg,
   mcpServers,
   // Flag names only: values and positional arguments (the launch prompt, inline settings) can hold sensitive input.
   // A prompt can itself start with "--", so keep only tokens shaped like a bare option name.
   flags: args.map((value) => value.split("=")[0]).filter((name) => /^--[a-z][a-z0-9-]*$/.test(name)).slice(0, 80),
 });
+// Failure fixture: one spec per SDK child, selected and deleted at child start, so a file written or removed later
+// cannot change this child and the next child starts normally. Terminal launches never select or consume one.
+const fault = (() => {
+  if (!sdk) return null;
+  const fail = (file, reason) => {
+    log({ event: "fault-config-error", file, reason });
+    process.stderr.write(`fake-claude: invalid fault spec ${file}: ${reason}\n`);
+    process.exit(2);
+  };
+  for (const name of [`fault-${sessionId}`, "fault"]) {
+    const file = join(dir, name);
+    let raw;
+    try {
+      raw = readFileSync(file, "utf8");
+    } catch (error) {
+      if (error.code === "ENOENT") continue;
+      fail(name, "unreadable");
+    }
+    let spec;
+    try {
+      spec = JSON.parse(raw);
+    } catch {
+      fail(name, "not JSON");
+    }
+    if (spec === null || typeof spec !== "object" || Array.isArray(spec)) fail(name, "not an object");
+    const allowed = ["mode", "exitCode", "onlyOnResume", "nonstandard"];
+    const unknown = Object.keys(spec).find((key) => !allowed.includes(key));
+    if (unknown) fail(name, `unknown option ${unknown}`);
+    if (!["exit-on-spawn", "exit-mid-turn", "result-error", "compact-failed-error"].includes(spec.mode)) fail(name, "unknown mode");
+    const exitMode = spec.mode === "exit-on-spawn" || spec.mode === "exit-mid-turn";
+    if (spec.exitCode !== undefined && (!exitMode || !Number.isInteger(spec.exitCode) || spec.exitCode < 0 || spec.exitCode > 255)) fail(name, "bad exitCode");
+    if (spec.nonstandard !== undefined && (exitMode || typeof spec.nonstandard !== "boolean")) fail(name, "bad nonstandard");
+    if (spec.onlyOnResume !== undefined && typeof spec.onlyOnResume !== "boolean") fail(name, "bad onlyOnResume");
+    if (spec.onlyOnResume === true && !resumeArg) continue;
+    try {
+      unlinkSync(file);
+    } catch {}
+    log({ event: "fault-launch", file: name, mode: spec.mode, exitCode: spec.exitCode ?? null, sessionId, sessionIdArg, resume: resumeArg });
+    return spec;
+  }
+  return null;
+})();
+if (fault?.mode === "exit-on-spawn") {
+  log({ event: "fault-exit", reason: "exit-on-spawn", code: fault.exitCode ?? 1 });
+  process.exit(fault.exitCode ?? 1);
+}
 let abortAsk = () => {};
 // Observable queue snapshot for exit logging; wired to the SDK turn queue below (terminal mode stays null).
 const pendingState = { queue: null, isTurnOpen: () => false };
@@ -320,15 +377,47 @@ if (!sdk) {
   };
 
   // hostStarted is false for the idle ask hold the fake opens itself; SDK call plans wait for a host-started turn.
+  const emitInit = () => {
+    if (inited) return;
+    out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: configuredTools, mcp_servers: [...mcpServers.map(({ name }) => name), ...sdkServers].map((name) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
+    inited = true;
+  };
+  let faultFired = false;
+  // The first host-started turn answers with the injected failure; later host turns are not answered.
+  const runFaultTurn = async () => {
+    turnOpen = true;
+    turnAborted = false;
+    log({ event: "turn-start", model, faultMode: fault.mode });
+    emitInit();
+    const tokens = ctx();
+    const usage = { input_tokens: tokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 0 };
+    if (fault.mode === "exit-mid-turn") {
+      log({ event: "fault-exit", reason: "exit-mid-turn", code: fault.exitCode ?? 1 });
+      process.exit(fault.exitCode ?? 1);
+    }
+    if (fault.mode === "compact-failed-error") {
+      out({ type: "system", subtype: "status", compact_result: "failed", ...envelope() });
+      log({ event: "fault-emit", phase: "compact-failed", sessionId });
+    }
+    const errorText = "fake turn error";
+    out({ type: "result", subtype: "error_during_execution", is_error: true, duration_ms: 1, duration_api_ms: 1, num_turns: 1, result: errorText, errors: fault.nonstandard === true ? errorText : [errorText], stop_reason: null, session_id: sessionId, total_cost_usd: 0, usage, modelUsage: {}, permission_denials: [], uuid: randomUUID() });
+    log({ event: "fault-emit", phase: "result-error", sessionId, nonstandard: fault.nonstandard === true });
+    log({ event: "turn-end", model, error: "fault" });
+    turnOpen = false;
+    if (stdinEnded) exit("stdin-end");
+  };
+
   const runTurn = async (text, ask = takeAsk(), hostStarted = true) => {
+    if (fault && hostStarted && !faultFired) {
+      faultFired = true;
+      await runFaultTurn();
+      return;
+    }
     turnOpen = true;
     turnAborted = false;
     const turnModel = model;
     log({ event: "turn-start", model: turnModel, chars: text.length });
-    if (!inited) {
-      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: configuredTools, mcp_servers: [...mcpServers.map(({ name }) => name), ...sdkServers].map((name) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
-      inited = true;
-    }
+    emitInit();
     const tokens = ctx();
     const usage = { input_tokens: tokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 8 };
     out({ type: "stream_event", event: { type: "message_start", message: { id: `msg_${randomUUID()}`, type: "message", role: "assistant", model: turnModel, content: [], usage: { input_tokens: 0, output_tokens: 0 } } }, ...envelope() });
@@ -371,10 +460,7 @@ if (!sdk) {
     turnOpen = true;
     const turnModel = model;
     log({ event: "turn-start", model: turnModel, wakeKind: wake.kind ?? "peer", wake });
-    if (!inited) {
-      out({ type: "system", subtype: "init", session_id: sessionId, model, cwd: process.cwd(), tools: configuredTools, mcp_servers: [...mcpServers.map(({ name }) => name), ...sdkServers].map((name) => ({ name, status: "connected" })), permissionMode: "default", slash_commands: [], apiKeySource: "none", claude_code_version: "2.1.999", output_style: "default", agents: [], skills: [], plugins: [], uuid: randomUUID() });
-      inited = true;
-    }
+    emitInit();
     const tokens = ctx();
     const usage = { input_tokens: tokens, cache_read_input_tokens: 0, cache_creation_input_tokens: 0, output_tokens: 8 };
 
@@ -524,7 +610,9 @@ if (!sdk) {
       if (message.type === "user") {
         const content = message.message?.content;
         const text = typeof content === "string" ? content : Array.isArray(content) ? content.map((block) => block?.text ?? "").join("") : "";
-        if (turnOpen) {
+        if (fault && faultFired) {
+          log({ event: "fault-ignored-user", sessionId, chars: text.length });
+        } else if (turnOpen) {
           queue.push(text);
           log({ event: "turn-queued", sessionId, chars: text.length, queueDepth: queue.length });
         } else void runTurn(text);
