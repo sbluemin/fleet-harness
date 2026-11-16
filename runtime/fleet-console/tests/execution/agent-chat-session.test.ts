@@ -5,6 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
+import { canRouteGatewayDelegation, GATEWAY_MODELS, GatewayRoutingDistribution, type GatewayAssignmentExposure } from "@fleet-console/ai-gateway";
 
 import { chatReplayFromTranscriptLine } from "../../features/execution/host/agent/chat-events.js";
 import { AgentChatRegistry, createTranscriptReplayer, readTranscriptHistory, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
@@ -271,7 +272,7 @@ function withoutSnapshotEnd(events: readonly AgentChatJournalEvent[]): readonly 
 }
 
 describe("AgentChatRegistry — chat-born sessions", () => {
-  it("preserves a model-owning agent when the first dispatch races catalog initialization", async () => {
+  it("preserves model-owning and unrouted agents while routing eligible dispatches", async () => {
     const home = tempDir("chat-agent-policy-");
     let hostHooks: import("@fleet-console/agent-runtime/claude").ClaudeGatewayHostHooks | undefined;
     let release!: () => void;
@@ -286,8 +287,12 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     };
     const registry = new AgentChatRegistry(factory as never);
     const recordIntent = vi.fn();
+    const providerLoad = new Map<string, number>();
+    const distribution = new GatewayRoutingDistribution();
+    const delegationModels = GATEWAY_MODELS.filter((model) => model.provider === "opencode");
+    let exposure: GatewayAssignmentExposure = { delegationModels, providerLoad, distribution };
     try {
-      const session = await registry.ensure("agent-policy", () => ({ ...freshSeedFor(home), routeDelegatedModels: true, recordDelegationIntent: recordIntent }));
+      const session = await registry.ensure("agent-policy", () => ({ ...freshSeedFor(home), routeDelegatedModels: (request) => canRouteGatewayDelegation(request, exposure), recordDelegationIntent: recordIntent }));
       await session.prepare();
       const decision = hostHooks!.preToolUse!({ sessionId: "sdk-parent", toolUseId: "first-agent", toolName: "Agent",
         toolInput: { subagent_type: "custom-reviewer", prompt: "Review the change" },
@@ -295,6 +300,20 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       release();
       expect(await decision).toBeUndefined();
       expect(recordIntent).not.toHaveBeenCalled();
+      exposure = { ...exposure, delegationModels: [] };
+      const explore = { sessionId: "sdk-parent", toolUseId: "explore", toolName: "Agent",
+        toolInput: { subagent_type: "Explore", model: "haiku", effort: "low", prompt: "Find the entry" },
+      };
+      expect(await hostHooks!.preToolUse!(explore)).toBeUndefined();
+      expect(recordIntent).not.toHaveBeenCalled();
+      exposure = { ...exposure, delegationModels };
+      expect(await hostHooks!.preToolUse!(explore)).toMatchObject({ subagentType: "fleet:execute", stripModel: true });
+      expect(recordIntent).toHaveBeenCalledTimes(1);
+      expect(providerLoad.size).toBe(0);
+      expect(distribution.snapshot(exposure).providers.opencode?.assignments).toBe(0);
+      exposure = { ...exposure, delegationModels: [] };
+      expect(await hostHooks!.preToolUse!(explore)).toBeUndefined();
+      expect(recordIntent).toHaveBeenCalledTimes(1);
     } finally {
       release();
       await registry.disposeAll();

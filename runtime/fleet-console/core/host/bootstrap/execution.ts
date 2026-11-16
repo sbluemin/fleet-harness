@@ -39,7 +39,7 @@ export async function startConsoleExecution(
     return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
   };
   const delegationIntents = createDelegationIntentLedger();
-  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, syncAntigravity, releaseExecutionSession } = startAiGateway({
+  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, syncAntigravity, releaseExecutionSession, canRouteDelegation } = startAiGateway({
     ...ctx,
     delegationIntents,
     host: { ...ctx.host, storage: quotaStorage },
@@ -105,6 +105,7 @@ export async function startConsoleExecution(
       origin: () => ctx.host.server.origin(),
     },
     delegationIntents,
+    canRouteDelegation,
     releaseExecutionSession,
     recordCompactEvent: aiGatewayRuntime.recordCompactEvent,
     // 턴이 멈추면(정상·중단 모두) 에이전트 사용 표식을 내린다. Computer Use 는 기기 소유도 함께 놓는다 — 표식만

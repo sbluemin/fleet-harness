@@ -190,6 +190,7 @@ export {
 } from "./fleet/model-loadout.js";
 export {
   decideGatewayRoutingAssignment,
+  canRouteGatewayDelegation,
 } from "./fleet/routing-decision.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 

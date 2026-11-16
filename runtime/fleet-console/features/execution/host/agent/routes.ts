@@ -76,6 +76,7 @@ interface AgentRouteDeps {
   readonly commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly delegationIntents?: DelegationIntentLedger;
+  readonly canRouteDelegation?: (request: import("@fleet-console/ai-gateway").GatewayAssignmentRequest) => boolean;
   readonly releaseExecutionSession?: (sessionId: string) => void;
   readonly recordCompactEvent?: (event: ClaudeGatewayCompactEvent) => void;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
@@ -1746,7 +1747,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         },
         releaseDelegationSession: deps.releaseExecutionSession,
         recordCompactEvent: deps.recordCompactEvent,
-        routeDelegatedModels: deps.delegationIntents !== undefined,
+        ...(deps.delegationIntents !== undefined && deps.canRouteDelegation !== undefined
+          ? { routeDelegatedModels: deps.canRouteDelegation } : {}),
         model: launchModel,
         // 자식은 창이 500k인 모델도 자기 200k 좌표로 재고, 그 좌표를 물어보는 모든 표면에 그대로
         // 말한다. 실제 창과 투영에 쓰인 압축 정책을 함께 실어야 세션이 그것을 되돌릴 수 있다.

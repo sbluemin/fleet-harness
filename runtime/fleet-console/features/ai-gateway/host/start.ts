@@ -22,6 +22,8 @@ import {
   GATEWAY_PROVIDERS,
   GatewayRoutingDistribution,
   decideGatewayRoutingAssignment,
+  canRouteGatewayDelegation,
+  type GatewayAssignmentRequest,
   buildGatewayCandidates,
   buildGatewayEnabledModels,
   decideGatewayRoutingBatch,
@@ -244,6 +246,10 @@ export function startAiGateway(ctx: GatewayStartContext) {
       void quota.getSummary().catch(() => undefined);
       return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), currentExposure());
   }
+  const canRouteDelegation = (request: GatewayAssignmentRequest): boolean => {
+    void quota.getSummary().catch(() => undefined);
+    return canRouteGatewayDelegation(request, currentExposure());
+  };
   // 위임 실행의 가상 모델 id → 실제 배정. 실행 하나의 배정은 첫 요청에서 한 번만 정하고
   // 그 실행 id에 묶어 둔다 — 두 번째 요청이나 재시도에서 모델이 바뀌면 안 된다.
   const delegationIntents = ctx.delegationIntents;
@@ -396,6 +402,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     subscribeProviderStatus,
     readCandidates,
     readEnabledModels,
+    canRouteDelegation,
     syncAntigravity,
     // SDK 세션이 접힐 때 그 세션의 위임 배정을 걷는다. 실행 host의 dispose가 이 자리를 부른다.
     releaseExecutionSession,

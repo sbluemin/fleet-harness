@@ -228,10 +228,10 @@ export interface AgentChatSessionSeed {
   /** 압축 이벤트. 생략하면 이 세션은 압축 사건을 기록하지 않는다. */
   readonly recordCompactEvent?: (event: ClaudeGatewayCompactEvent) => void;
   /**
-   * 위임 실행의 모델을 게이트웨이가 고르게 할지. 켜면 실행 에이전트가 게이트웨이의 가상 모델 id를
-   * 들고, 배정은 요청 시점에 게이트웨이가 정한다. 끄면 세션 모델을 그대로 물려받는다.
+   * 호출 시점에 위임 가능한 후보가 있는지 부작용 없이 확인한다. 후보가 없으면 원래 도구 입력을
+   * 그대로 둔다. 후보가 있으면 가상 모델을 싣고 실제 배정은 요청 시점에 게이트웨이가 정한다.
    */
-  readonly routeDelegatedModels?: boolean;
+  readonly routeDelegatedModels?: (request: import("@fleet-console/ai-gateway").GatewayAssignmentRequest) => boolean;
   /**
    * 활동축이 이 세션의 보고를 받을 수 있는지 묻기만 한다 — 아무것도 쓰지 않는다.
    * 쓰는 프로브는 진행 중 턴을 유휴로 뒤집고 그 전이를 방송해, 첫 턴이 도는 중에 들어온
@@ -2630,11 +2630,13 @@ class AgentChatSession {
     if (subagentType !== undefined && !this.isRoutableAgent(subagentType)) return undefined;
     const requestedModel = readToolInputString(input.toolInput.model);
     const description = readToolInputString(input.toolInput.description);
-    const tier = routingTierFor({
-      surface: "agent",
+    const request = {
+      surface: "agent" as const,
       ...(requestedModel === undefined ? {} : { requestedModel }),
       ...(subagentType === undefined ? {} : { subagentType }),
-    });
+    };
+    if (!this.seed.routeDelegatedModels(request)) return undefined;
+    const tier = routingTierFor(request);
     this.seed.recordDelegationIntent?.({
       toolUseId: input.toolUseId,
       sessionId: input.sessionId,
