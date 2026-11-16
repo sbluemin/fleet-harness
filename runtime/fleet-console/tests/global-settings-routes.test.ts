@@ -220,6 +220,27 @@ describe("global settings routes", () => {
     expect(harness.writes.at(-1)?.body).toMatchObject({ state: { archiveRetentionDays: null } });
   });
 
+  it("round-trips the composer chip expansion preference with collapsed as the absent default", async () => {
+    // 입력 캡슐의 칩 줄 표시 선호는 서버 전역 설정 하나다. 없는 화면은 접힘이고, 저장 실패·거절은 이전 값을 지킨다.
+    const missing = createRouterHarness({});
+    await missing.router({ req: jsonReq("GET"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(missing.writes[0]?.body).toMatchObject({ commodoreComposerChipsExpanded: false });
+
+    const rejected = createRouterHarness({ general: { commodoreComposerChipsExpanded: true }, body: { commodoreComposerChipsExpanded: "yes" } });
+    await rejected.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(rejected.writes[0]).toEqual({ status: 400, body: { error: "invalid_commodore_composer_chips_expanded" } });
+    expect(rejected.currentGeneral()?.commodoreComposerChipsExpanded).toBe(true);
+
+    const harness = createRouterHarness({ body: { commodoreComposerChipsExpanded: true } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.currentGeneral()?.commodoreComposerChipsExpanded).toBe(true);
+    expect(harness.writes[0]?.body).toMatchObject({ state: { commodoreComposerChipsExpanded: true } });
+    harness.setBody({ commodoreComposerChipsExpanded: false });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.currentGeneral()?.commodoreComposerChipsExpanded).toBe(false);
+    expect(harness.writes[1]?.body).toMatchObject({ state: { commodoreComposerChipsExpanded: false } });
+  });
+
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
     const harness = createRouterHarness({ authorized: false, body: { theme: "dark" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
