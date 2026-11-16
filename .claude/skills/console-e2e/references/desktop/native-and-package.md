@@ -74,31 +74,17 @@ Mark every unrun native row `[Unverified — requires <OS>]`; cross-platform uni
 
 Read this only to start Desktop on a run's own empty Console lock so the native recovery dialog can appear. The [launch gate](setup.md#launch-gate) still refuses that lock: preflight exit 20 does not start its command. This section adds no flag to `desktop-preflight.mjs` or `launch-owned-desktop.mjs`, no general allow-lock, and no deletion of a lock. It does not call the product's lock recovery, and it does not signal a lock pid.
 
-The only fixture is a 0-byte `<run-dir>/console/console.lock`. Claim the run with `isolated-env.mjs` while that file is still absent (`--check` does not record ownership), then create the empty file. Do not replace either file afterwards. `isolated-env.mjs` will not claim a run whose lock is unreadable, and a 0-byte lock is unreadable, so a matching `owner` cannot be created after this fixture exists. The command also requires the `owner` file's birth time to be earlier than `console.lock`'s. That pair is the proof of preparation order. A copied or replaced file that breaks it is refused.
+Use an absolute, whitespace-free owned `--run-dir`. Claim it with `isolated-env.mjs` while `<run-dir>/console/console.lock` is absent (`--check` does not record ownership), then create that file with 0 bytes. Do not replace `owner` or `console.lock` afterwards. The console directory (mode `0700`) and regular lock file (mode `0600`) must both be owned by the current user and must not be symbolic links. `<run-dir>/console/update-progress.json` must be absent at start; only after the recovery dialog is visible may an owned update-progress file be added there to observe the product's `active_update` refusal.
 
-`<run-dir>/console` must be mode `0700` and `console.lock` mode `0600`, both regular files or directories owned by the current user, not symbolic links. `<run-dir>/console/update-progress.json` must be absent at start. On a dev Desktop, `FLEET_CONSOLE_DATA_DIR` is the data directory recovery reads, so after the recovery dialog is visible, and only then, an owned update-progress file may be added there to observe the product's `active_update` refusal on the recover button. This command never creates or removes that file. Cancel leaves the lock and does not start Console; that refusal does too. Those two outcomes are distinguished by which dialog the product shows, not by this command.
-
-`--record-sentinel` starts one Node process and writes `<run-dir>/owned-process.json`. The process executable is this Node's real path, and its arguments are exactly `-e`, `setInterval(()=>{},1e9)`, `--`, `--owned-lock-sentinel`, and the absolute `--run-dir`. A later launch accepts the process only when all of these match the record: that executable (the `ps` argument vector and `lsof`'s text file), that full argument vector with nothing added or removed, and the same `ps -o lstart=` text read with `LC_ALL=C` and `TZ=UTC`. A live pid, or a command line that merely contains the run path, is not enough. The record command does not touch the lock. If it cannot read the process it just started, it sends that process `SIGTERM` and writes no record. It never signals any other pid. When the run is over, stop the recorded pid yourself.
-
-`--run-dir` must not contain whitespace. Other preflight blockers still refuse the start: an occupied CDP or inspector port, a Desktop already running for the worktree, a console directory inside the user or an inherited Fleet data root, and anything other than the single blocker `Console lock: unknown`. On refusal the command exits 20, prints `lock-dialog: refused (<reason>); Electron was not started`, and starts nothing.
+`--record-sentinel` starts one owned Node process and writes `<run-dir>/owned-process.json` without touching the lock. The helper verifies the exact fixture and recorded sentinel identity. Failed proofs or any other preflight blocker — an occupied CDP or inspector port, an existing Desktop for the worktree, or a user/inherited Fleet slot — exit 20 without starting Electron or changing the lock. Stop only the recorded owned sentinel when the run is over.
 
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/launch-owned-lock-dialog.mjs <worktree> \
   --run-dir <owned-run> --record-sentinel
 node <worktree>/.claude/skills/console-e2e/scripts/launch-owned-lock-dialog.mjs <worktree> \
   --run-dir <owned-run> --cdp-port <cdp-port> --inspector-port <inspector-port> --dry-run
-node <worktree>/.claude/skills/console-e2e/scripts/launch-owned-lock-dialog.mjs <worktree> \
-  --run-dir <owned-run> --cdp-port <cdp-port> --inspector-port <inspector-port> -- \
-  env -i HOME="<owned-run>/home" TMPDIR="<owned-run>/tmp" USER="<user>" LANG="<locale>" \
-  PATH="<owned-run>/pathbin:/usr/bin:/bin:/usr/sbin:/sbin" \
-  FLEET_DATA_DIR="<owned-run>/root" \
-  FLEET_CONSOLE_DATA_DIR="<owned-run>/console" \
-  FLEET_DESKTOP_DATA_DIR="<owned-run>/desktop" \
-  FLEET_CONSOLE_NODE_PATH="<absolute-node>" \
-  CLAUDE_CONFIG_DIR="<owned-run>/claude" \
-  CLAUDE_BIN="<owned-run>/bin/claude" CODEX_BIN="<owned-run>/bin/codex-absent" \
-  CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1 \
-  pnpm desktop --remote-debugging-port=<cdp-port>
 ```
 
-The command after `--` is the [launch gate](setup.md#launch-gate) allowlist, with `FLEET_CONSOLE_DATA_DIR` equal to `<owned-run>/console`. `--dry-run` takes no command and starts no Electron. This path changes which command may start Electron for this one proven fixture. Judge that `launch-owned-desktop.mjs` still exits 20 for the same 0-byte lock, and that this command starts a process only after the proofs above. No paid before/after comparison of agent behavior was run, so this page does not claim that boundary is followed in practice.
+For launch, replace `--dry-run` with `--` followed by the complete allowlisted `env -i` command from [Setup](setup.md#preflight-and-ownership), using the same run and ports. `FLEET_CONSOLE_DATA_DIR` must equal `<run-dir>/console`. `--dry-run` takes no command and starts no Electron.
+
+For this fixture, the expected recovery dialog precedes Console handoff. After recovery, confirm the owned loopback `/console/` target. Cancel and product refusal both leave the lock and start no Console; record the action and observed dialog to distinguish them.
