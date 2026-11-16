@@ -130,17 +130,16 @@ node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$
 
 ### Shared input, dialog, and fake-login page
 
-A scenario that needs a text input, select, native alert/confirm, or a login form does not need its own page. Start the owned [page fixture server](../scripts/page-fixture-server.mjs) as a background process and keep its pid; it starts no shell, agent CLI, pnpm, or `tsx`, so it is one of the plain-Node HTTP helpers [the wrapper exceptions](#keep-the-real-home-out) name:
+A scenario that needs a text input, select, native alert/confirm, or a login form does not need its own page. Start the owned [page fixture server](../scripts/page-fixture-server.mjs) as the runner's managed background process and keep its startup line; it starts no shell, agent CLI, pnpm, or `tsx`, so it is one of the plain-Node HTTP helpers [the wrapper exceptions](#keep-the-real-home-out) name:
 
 ```bash
-node <worktree>/.claude/skills/console-e2e/scripts/page-fixture-server.mjs --port 0 \
-  > "$E2E_DIR/page-fixture.log" 2>&1 &
-PAGE_PID=$!
-cat "$E2E_DIR/page-fixture.log"   # {"url":"http://127.0.0.1:<port>/","pid":<pid>}
-curl -s -o /dev/null -w '%{http_code}\n' "<url>"   # expect 200
+node <worktree>/.claude/skills/console-e2e/scripts/page-fixture-server.mjs --port 0
+# wait for the single startup line before acting:
+# {"url":"http://127.0.0.1:<port>/","pid":<pid>}
+curl -s -o /dev/null -w '%{http_code}\n' "<recorded-url>"   # expect 200
 ```
 
-With no `--port` or `--port 0` it asks the OS for a port and prints the actual url and pid; it binds `127.0.0.1` only, and an explicit port that is invalid or already in use exits 1 with the reason on stderr. Stop only the recorded pid with `kill -TERM "$PAGE_PID"` and confirm it exits 0; a restart on port `0` gets a new URL.
+With no `--port` or `--port 0` it asks the OS for a port, so the startup line carries the actual url and pid; record both. It binds `127.0.0.1` only, and an explicit port that is invalid or already in use exits 1 with the reason on stderr. Stop only the recorded pid with `kill -TERM <pid>` and confirm the managed process exits 0. On a restart, read the new startup line's url again before connecting; the OS may reuse the previous port.
 
 The page is fixture-only. Its login form accepts fake values, blocks submit, and shows completion on the page alone, so no credential reaches the URL, a request, a log, or storage; there is no file, notification, or drag control. It does not verify IME composition or authentication success, which keep their existing routes.
 
