@@ -260,6 +260,14 @@ setting any `FLEET_GATEWAY_WIRE_LOG` or `FLEET_AI_GATEWAY_MODEL` on that `serve`
 is ephemeral (`DEFAULT_PORT = 0` in `runtime/fleet-console/core/host/bootstrap/server.ts`), so
 write `gateway-settings.json` below only after the read, and rewrite it after every restart. For paid runs,
 the change under test must be in that host: apply the [serve bundle check](#serve-bundle-freshness).
+
+Match the headless client's base-system-prompt choice to the production launch/profile under
+test (`runtime/fleet-console/features/execution/host/agent/launch.ts`,
+`runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-cli/builders/claude.ts`).
+Antigravity/agy (ACP) disables Claude Code's base system prompt regardless of the setting; add
+`--system-prompt ""` for that case. For other providers, follow the tested launch/profile's
+setting rather than disabling it globally.
+
 The wrapper refuses `--set ANTHROPIC_BASE_URL`, so point Claude Code at the gateway with a
 settings file in the run directory, and start it through the wrapper from a clean environment,
 because an agent session inherits its parent Console's slot variables and pnpm's `INIT_CWD`
