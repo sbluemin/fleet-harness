@@ -106,8 +106,8 @@ export function mountStage(): {
       postFit(size);
     }, FIT_DEBOUNCE_MS);
   };
+  /** 맞춤을 그만둔다 — 걸어 둔 디바운스·리스 타이머를 함께 거둔다(리스 콜백 가드에 기대지 않는다). */
   const stopFit = (): void => {
-    if (!fitting) return;
     fitting = false;
     lastFit = null;
     if (fitTimer !== null) { clearTimeout(fitTimer); fitTimer = null; }
@@ -118,9 +118,7 @@ export function mountStage(): {
     const key = `${last?.spaceId ?? ""}|${last?.chrome?.viewport.preset ?? ""}`;
     if (key !== fitKey) {
       fitKey = key;
-      fitting = false;
-      lastFit = null;
-      if (fitTimer !== null) { clearTimeout(fitTimer); fitTimer = null; }
+      stopFit();
     }
     if (!fitAllowed()) { stopFit(); return; }
     if (fitting) return;
