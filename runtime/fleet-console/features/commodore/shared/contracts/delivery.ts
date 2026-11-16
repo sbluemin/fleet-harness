@@ -14,6 +14,19 @@ export function undeliveredMessageSeqs(entries: readonly CommodoreTranscriptEntr
   return new Set([...waiting].flatMap(([seq, open]) => (open ? [seq] : [])));
 }
 
+/**
+ * 다시 보내지 못하고 건너뛴(격리된) 사람의 메시지 — seq → 사유. 그 메시지는 배달되지 않았으므로 화면은 말풍선에
+ * 「전달되지 않음」과 사유를 함께 단다. 기록은 덧붙이기만 하므로 나중 줄이 앞의 판정을 덮는다.
+ */
+export function skippedMessageReasons(entries: readonly CommodoreTranscriptEntry[]): ReadonlyMap<number, { readonly code: string; readonly detail?: string }> {
+  const skipped = new Map<number, { readonly code: string; readonly detail?: string }>();
+  for (const entry of entries) {
+    if (entry.kind !== "skipped") continue;
+    for (const seq of entry.seqs) skipped.set(seq, { code: entry.code, ...(entry.detail ? { detail: entry.detail } : {}) });
+  }
+  return skipped;
+}
+
 /** 다음 기동이 다시 깨울 보드 깨움 — 지난 종료가 듣지 못했다고 남긴 것. */
 export interface CommodoreUnheardWakes {
   /** 대기 중인 그룹을 가리지 않고 다시 본다 — 목표를 가리키지 않는 이유가 남았거나 지난 실행이 종료를 기록하지 못했다. */

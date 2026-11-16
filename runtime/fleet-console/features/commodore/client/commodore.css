@@ -168,7 +168,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 .objectives-commodore-default:hover { color: var(--text-primary); text-decoration-color: currentColor; }
 .objectives-commodore-default:focus-visible { border-radius: 2px; box-shadow: var(--focus-face); }
 
-.objectives-commodore-retry { flex: none; display: flex; align-items: center; gap: 10px; margin: 10px 28px 0; color: var(--warn-ink); font-size: var(--t-xs); }
+.objectives-commodore-retry { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 10px 28px 0; color: var(--warn-ink); font-size: var(--t-xs); }
 
 /* 스크롤바는 Objective 패널과 같은 전역 문법을 그대로 입는다(자체 규칙 없음). 가로로는 흐르지 않는다 — 내용이 줄을 바꾼다. */
 .objectives-commodore-body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 16px 28px 24px; display: grid; grid-template-columns: minmax(0, 880px); gap: 14px; align-content: start; overflow-wrap: anywhere; }

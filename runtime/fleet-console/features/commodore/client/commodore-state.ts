@@ -656,6 +656,10 @@ export const setCommodoreAutoMemory = (commodoreId: string, autoMemoryEnabled: b
 export const toggleCommodoreRoutine = (commodoreId: string, routineId: string, enabled: boolean) => write(commodoreId, "/commodore/routine-toggle", { routineId, enabled });
 export const removeCommodoreRoutine = (commodoreId: string, routineId: string) => write(commodoreId, "/commodore/routine-remove", { routineId });
 export const retryCommodore = (theaterId: string) => write(theaterId, "/commodore/retry", {});
+/** 막힌 세션만 새 세션으로 바꿔 지금 재시도한다 — 대화 전체(기록·설정)를 지우지 않는다. */
+export const retryCommodoreNewSession = (theaterId: string) => write(theaterId, "/commodore/retry-new-session", {});
+/** 재시도를 기다리는 실패 메시지 한 건을 건너뛴다 — 기록에 사유를 남기고 뒤의 대기 메시지로 이어 간다. */
+export const skipCommodoreFailed = (theaterId: string) => write(theaterId, "/commodore/skip-failed", {});
 export const stopCommodore = (commodoreId: string) => write(commodoreId, "/commodore/stop", {});
 export const clearCommodore = (theaterId: string) => write(theaterId, "/commodore/clear", { confirm: true });
 

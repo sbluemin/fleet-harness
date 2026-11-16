@@ -55,6 +55,8 @@ import {
   transcriptNeeded,
   removeCommodoreIntel,
   retryCommodore,
+  retryCommodoreNewSession,
+  skipCommodoreFailed,
   setCommodoreCommander,
   setCommodoreCoordinates,
   subscribeCommodore,
@@ -312,7 +314,11 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           ) : (
             <span className="objectives-cm-band-text is-danger">{[t("commodore.meta.error"), run.reason ? errorWord(t, run.reason) : null].filter(Boolean).join(" · ")}</span>
           )}
-          <button type="button" data-press="r1" className="objectives-cm-band-act" disabled={!online || !commodoreId} onClick={() => { if (!commodoreId) return; clear(); void retryCommodore(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
+          <span className="objectives-cm-band-actions">
+            <button type="button" data-press="r1" className="objectives-cm-band-act" disabled={!online || !commodoreId} onClick={() => { if (!commodoreId) return; clear(); void retryCommodore(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
+            <button type="button" data-press="r1" className="objectives-cm-band-act" disabled={!online || !commodoreId} onClick={() => { if (!commodoreId) return; clear(); void retryCommodoreNewSession(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNewSession")}</button>
+            {run.failedMessage ? <button type="button" data-press="r1" className="objectives-cm-band-act" disabled={!online || !commodoreId} onClick={() => { if (!commodoreId) return; clear(); void skipCommodoreFailed(commodoreId).catch(fail); }}>{t("commodore.drawer.skipFailed")}</button> : null}
+          </span>
         </div>
       ) : null}
       {panel ? (

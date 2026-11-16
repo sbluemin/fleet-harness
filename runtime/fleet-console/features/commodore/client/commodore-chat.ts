@@ -4,7 +4,7 @@ import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationRefer
 import { type ConversationSpeaker } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
 
-import { undeliveredMessageSeqs } from "../shared/contracts/delivery.js";
+import { skippedMessageReasons, undeliveredMessageSeqs } from "../shared/contracts/delivery.js";
 import { BOARD_TOOL_NAMES, COMMODORES_TOOL_NAMES } from "../shared/tool-names.js";
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
@@ -24,6 +24,8 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
   const out: AgentChatTranscriptEntry[] = [];
   const push = (event: AgentChatTranscriptEvent, at?: number) => out.push(at !== undefined ? { event, at } : { event });
   const undelivered = undeliveredMessageSeqs(entries);
+  // 다시 보내지 못하고 건너뛴 말 — 말풍선에 「전달되지 않음」을 달고 사유는 안내 줄이 말한다.
+  const skipped = skippedMessageReasons(entries);
   const delivered = new Set(entries.flatMap((entry) => (entry.kind === "delivered" ? entry.seqs : [])));
   let turnAt: number | null = null;
   // 실패한 턴의 1줄 요약 — 바로 뒤의 재시도 예약(error 줄)이 같은 실패를 한 줄로 잇는다.
@@ -59,11 +61,12 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
       case "message": {
         const { text, references, quotes } = quotedMessageWords(entry);
         const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
+        const missed = undelivered.has(entry.seq) || skipped.has(entry.seq);
         if (turnAt !== null && delivered.has(entry.seq)) push({ kind: "turn-inject", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at }, entry.at);
-        else if (turnAt !== null) heldMessages.push({ event: { kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, at: entry.at });
+        else if (turnAt !== null) heldMessages.push({ event: { kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(missed ? { undelivered: true as const } : {}) }, at: entry.at });
         else {
           // 쉬는 동안 받은 말은 말풍선 하나다 — 그 말이 깨운 턴은 뒤따르는 깨움 줄이 연다. 열린 채 두면 빈 턴이 「작업 중」으로 선다.
-          push({ kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, entry.at);
+          push({ kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(missed ? { undelivered: true as const } : {}) }, entry.at);
           push({ kind: "turn-end", ok: true }, entry.at);
         }
         break;
@@ -116,6 +119,10 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
         push({ kind: "note", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }), at: entry.at, tone: "warn" }, entry.at);
         break;
       }
+      // 다시 보내도 성공할 수 없어 건너뛴 말 — 말풍선 옆에 사유 한 줄을 남긴다.
+      case "skipped":
+        push({ kind: "note", text: t("commodore.log.skipped", { reason: failureWord(t, entry.code, entry.detail) }), at: entry.at, tone: "warn" }, entry.at);
+        break;
       // 사령관이 물었다 — 그 턴 안의 글로 선다(이유·질문·선택지). 지금 상태(답을 기다림·답함·거둠)는 상태의 질문에서 읽는다.
       case "ask":
         resume(entry.at);
@@ -194,6 +201,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   const mentionResults = new Map(entries.flatMap((entry) => entry.kind === "mention-result" ? [[entry.messageSeq, entry.unrelayed] as const] : []));
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = undeliveredMessageSeqs(entries);
+  const skipped = skippedMessageReasons(entries);
   // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
   // 도는 턴이 집은 말(delivered)은 이미 읽혔고, 다시 실린 말(requeued)은 그 뒤의 깨움이 집을 때까지 기다린다.
   const lastWakeSeq = entries.reduce((max, entry) => entry.kind === "wake" ? Math.max(max, entry.seq) : max, -1);
@@ -209,9 +217,10 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         const { text, references, quotes } = quotedMessageWords(entry);
         const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
         const unrelayed = mentionResults.get(entry.seq);
+        const skippedReason = skipped.get(entry.seq);
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, objectiveId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
-          ...(unrelayed?.length ? { deliveryNote: t("commodore.message.unrelayed", { names: unrelayed.map((peer) => peer.alias).join(", ") }) } : {}),
-          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}),
+          ...(skippedReason ? { deliveryNote: t("commodore.message.skipped", { reason: failureWord(t, skippedReason.code, skippedReason.detail) }) } : unrelayed?.length ? { deliveryNote: t("commodore.message.unrelayed", { names: unrelayed.map((peer) => peer.alias).join(", ") }) } : {}),
+          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) || skippedReason ? { undelivered: true as const } : {}),
           ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
         break;
       }
@@ -263,6 +272,10 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }) });
         break;
       }
+      // 다시 보내도 성공할 수 없어 건너뛴 말 — 말풍선 배지 옆에 사유와 다음 안내를 한 줄로 남긴다.
+      case "skipped":
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("commodore.log.skipped", { reason: failureWord(t, entry.code, entry.detail) }) });
+        break;
       // 물음과 답은 보드 행위 줄과 같은 가운데 줄이다 — 물음은 사령관, 답은 사람이 낸 줄. 펼치면 이유·질문(답)이 선다.
       case "ask": {
         const status = askStatusWord(t, entry.askId, asks);

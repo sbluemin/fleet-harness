@@ -614,7 +614,7 @@ function failureCode(message: string): string {
   if (/\b429\b|rate[ _-]?limit|overloaded|too many requests|quota|usage limit/iu.test(text)) return "rate_limited";
   if (/\b5\d\d\b|internal server error|bad gateway|service unavailable|server_error/iu.test(text)) return "upstream_error";
   if (/ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|network error|fetch failed|socket hang|timeout|connection error/iu.test(text)) return "network";
-  if (/\b400\b|invalid[ _-]?request|malformed/iu.test(text)) return "invalid_request";
+  if (/\b400\b|invalid[ _-]?request|malformed|message required|base64 image blocks/iu.test(text)) return "invalid_request";
   // 턴이 끝나기 전에 자식 프로세스가 끝났다 — 세션이 아니라 프로세스 사건이다.
   if (/exited with code|exited with signal|was ended by SIG|process (exited|terminated)/iu.test(text)) return "cli_exited";
   return "turn_failed";

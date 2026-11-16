@@ -558,17 +558,28 @@ it("attaches retained prior-turn person images via objective add and commodores 
 
   const prompts: unknown[] = [];
   let toolsForTurn: Record<string, ConsoleMcpTool> = {};
+  // 사령관마다 자기 턴의 도구·바인딩 — 두 사령관의 턴이 겹쳐도 검증 대상(`to`)의 것을 고른다.
+  const toolsByOwner = new Map<string, Record<string, ConsoleMcpTool>>();
+  const turnsByOwner = new Map<string, CommodoreTurnBindings>();
   let capturedTurn: CommodoreTurnBindings | undefined;
   let onTurn: (() => Promise<void>) | undefined;
   let finish = () => {};
-  const agent: AgentHost = { createSession: async (options) => ({
-    send: async (input) => {
-      prompts.push(input);
-      if (onTurn) await onTurn();
-      await new Promise<void>((resolve) => { finish = () => { options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); }; });
-    },
-    steer: () => false, cancel: () => finish(), dispose: async () => {},
-  }) };
+  const agent: AgentHost = { createSession: async (options) => {
+    // 두 사령관의 턴이 함께 돌 수 있다 — 검증 대상(`to`)과 다른 사령관의 턴을 가른다.
+    const mine = options.sessionName?.includes(to.slice(0, 12)) === true;
+    let releaseOther: (() => void) | null = null;
+    return {
+      send: async (input) => {
+        prompts.push(input);
+        if (onTurn && mine) await onTurn();
+        await new Promise<void>((resolve) => {
+          const done = () => { releaseOther = null; options.onEvent?.({ kind: "result", isError: false, source: "message" }); resolve(); };
+          if (mine) finish = done; else releaseOther = done;
+        });
+      },
+      steer: () => false, cancel: () => { if (mine) finish(); else releaseOther?.(); }, dispose: async () => {},
+    };
+  } };
   let supervisor: ReturnType<typeof createHostSupervisor>;
   const send = createCommodoreMessenger({ store, assertWritable: ownership.assertWritable, acceptsMessage: (id) => supervisor.acceptsMessage(id) });
   supervisor = createHostSupervisor({
@@ -577,6 +588,7 @@ it("attaches retained prior-turn person images via objective add and commodores 
     board: () => ({
       tools: (commodoreId, turn) => {
         capturedTurn = turn;
+        turnsByOwner.set(commodoreId, turn);
         const boardTools = createCommodoreBoardTools(boardCtx, objectiveStore, objectiveLaunch, commodoreId, turn.readAttachments);
         const coreTools = createCommodoreTools({ commodoreId, theaterRoot: dir, store, taskforce });
         const mgmtTools = createCommodoreManagementTools({
@@ -585,6 +597,7 @@ it("attaches retained prior-turn person images via objective add and commodores 
           message: (input) => send(commodoreId, input, turn),
         });
         toolsForTurn = Object.fromEntries([...boardTools, ...coreTools, ...mgmtTools].map((tool) => [tool.name, tool]));
+        toolsByOwner.set(commodoreId, toolsForTurn);
         return boardTools;
       },
       watch: () => ({ dispose() {}, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }),
@@ -634,7 +647,6 @@ it("attaches retained prior-turn person images via objective add and commodores 
     taskforce.moveImages(tf.state.id, draftSeq, tfEntry.entry.seq);
     const tfImageId = tfEntry.entry.images![0]!.id;
     expect(taskforce.readImage(tf.state.id, tfEntry.entry.seq, tfImageId)).not.toBeNull();
-
     await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
     expect(prompts).toHaveLength(1);
     const turn1Text = (Array.isArray(prompts[0]) ? prompts[0] as { type: string; text?: string }[] : [])
@@ -642,41 +654,39 @@ it("attaches retained prior-turn person images via objective add and commodores 
     expect(turn1Text).toContain("Attached images from the person (copy with attachmentIds; do not reconstruct them as text):");
     expect(turn1Text).toContain("Attached mail images (copy with attachmentIds before the turn ends; do not reconstruct them as text):");
     expect(turn1Text).toContain(`Attached Commodore images for message ${mailSent.messageId}:`);
-
     finish(); await vi.advanceTimersByTimeAsync(1);
     expect(attachments.read(to, kept.entry.messageId)).toEqual([]);
-    expect(() => capturedTurn?.readAttachments([kept.id!])).toThrow("attachment_not_available");
+    expect(() => turnsByOwner.get(to)?.readAttachments([kept.id!])).toThrow("attachment_not_available");
     store.images.remove(to, evicted.entry.messageId);
 
     // 2턴(텍스트만 깨움): conversation 노출, 이전 턴 사람 이미지 첨부, 타 사령관·이전 턴 mail·TF·회수 이미지 거절을 검증한다.
     let turn2Checks: Record<string, any> = {};
     onTurn = async () => {
-      const searchRes = await toolsForTurn.conversation!.execute({ action: "search", target: "own", query: "사람 사진 1" }, { cwd: dir }) as any;
-      const aroundRes = await toolsForTurn.conversation!.execute({ action: "around", anchor: { source: "own", seq: kept.entry.seq }, before: 0, after: 0 }, { cwd: dir }) as any;
-      const mailSearch = await toolsForTurn.conversation!.execute({ action: "search", target: "own", speaker: "other" }, { cwd: dir }) as any;
-      const tfSearch = await toolsForTurn.conversation!.execute({ action: "search", target: "taskforce", taskforceId: tf.state.id }, { cwd: dir }) as any;
-      const objAdd = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "이전 사진 목표", note: "비교", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
-      const objEdit = await toolsForTurn.objective!.execute({ action: "edit", objectiveId: objAdd.structuredContent?.objectiveId, brief: "수정 브리핑", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
-      const msgOk = await toolsForTurn.commodores!.execute({ action: "message", to: from, text: "이전 사람 사진 전달", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
-      const foreignObj = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "타 사령관", attachmentIds: [foreignId] }, { cwd: dir }) as any;
-      const foreignMsg = await toolsForTurn.commodores!.execute({ action: "message", to: from, text: "타 사령관", attachmentIds: [foreignId] }, { cwd: dir }) as any;
-      const staleMailObj = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "지난 메일", attachmentIds: [mailId] }, { cwd: dir }) as any;
-      const staleMailMsg = await toolsForTurn.commodores!.execute({ action: "message", to: from, text: "지난 메일", attachmentIds: [mailId] }, { cwd: dir }) as any;
-      const tfObj = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "TF", attachmentIds: [tfImageId] }, { cwd: dir }) as any;
-      const evictedObj = await toolsForTurn.objective!.execute({ action: "add", theaterId: "t1", title: "회수", attachmentIds: [evicted.id!] }, { cwd: dir }) as any;
+      const ownTools = toolsByOwner.get(to)!;
+      const searchRes = await ownTools.conversation!.execute({ action: "search", target: "own", query: "사람 사진 1" }, { cwd: dir }) as any;
+      const aroundRes = await ownTools.conversation!.execute({ action: "around", anchor: { source: "own", seq: kept.entry.seq }, before: 0, after: 0 }, { cwd: dir }) as any;
+      const mailSearch = await ownTools.conversation!.execute({ action: "search", target: "own", speaker: "other" }, { cwd: dir }) as any;
+      const tfSearch = await ownTools.conversation!.execute({ action: "search", target: "taskforce", taskforceId: tf.state.id }, { cwd: dir }) as any;
+      const objAdd = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "이전 사진 목표", note: "비교", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
+      const objEdit = await ownTools.objective!.execute({ action: "edit", objectiveId: objAdd.structuredContent?.objectiveId, brief: "수정 브리핑", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
+      const msgOk = await ownTools.commodores!.execute({ action: "message", to: from, text: "이전 사람 사진 전달", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
+      const foreignObj = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "타 사령관", attachmentIds: [foreignId] }, { cwd: dir }) as any;
+      const foreignMsg = await ownTools.commodores!.execute({ action: "message", to: from, text: "타 사령관", attachmentIds: [foreignId] }, { cwd: dir }) as any;
+      const staleMailObj = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "지난 메일", attachmentIds: [mailId] }, { cwd: dir }) as any;
+      const staleMailMsg = await ownTools.commodores!.execute({ action: "message", to: from, text: "지난 메일", attachmentIds: [mailId] }, { cwd: dir }) as any;
+      const tfObj = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "TF", attachmentIds: [tfImageId] }, { cwd: dir }) as any;
+      const evictedObj = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "회수", attachmentIds: [evicted.id!] }, { cwd: dir }) as any;
       turn2Checks = { searchRes, aroundRes, mailSearch, tfSearch, objAdd, objEdit, msgOk, foreignObj, foreignMsg, staleMailObj, staleMailMsg, tfObj, evictedObj };
     };
     await postHumanMessage(to, "이전 턴 사진으로 목표 만들고 전달해줘");
     await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
     finish(); await vi.advanceTimersByTimeAsync(1);
-
     expect(turn2Checks.searchRes.structuredContent.results[0]).toMatchObject({ hasImages: true, attachmentIds: [kept.id] });
     expect(turn2Checks.aroundRes.structuredContent.items[0]).toMatchObject({ hasImages: true, attachmentIds: [kept.id] });
     expect(turn2Checks.mailSearch.structuredContent.results[0]).toMatchObject({ hasImages: true });
     expect(turn2Checks.mailSearch.structuredContent.results[0]).not.toHaveProperty("attachmentIds");
     expect(turn2Checks.tfSearch.structuredContent.results[0]).toMatchObject({ hasImages: true });
     expect(turn2Checks.tfSearch.structuredContent.results[0]).not.toHaveProperty("attachmentIds");
-
     expect(turn2Checks.objAdd).toMatchObject({ isError: false, structuredContent: { ok: true } });
     expect(turn2Checks.objEdit).toMatchObject({ isError: false, structuredContent: { ok: true } });
     const createdObj = objectiveStore.find(turn2Checks.objAdd.structuredContent.objectiveId as string)!;
@@ -684,10 +694,8 @@ it("attaches retained prior-turn person images via objective add and commodores 
     for (const attachment of createdObj.attachments) {
       expect(fs.readFileSync(objectiveStore.attachmentPath(createdObj, attachment))).toEqual(png);
     }
-
     expect(turn2Checks.msgOk).toMatchObject({ isError: false, structuredContent: { delivered: true } });
     expect(store.images.read(from, turn2Checks.msgOk.structuredContent.messageId as string, kept.id!)?.bytes).toEqual(png);
-
     expect(turn2Checks.foreignObj).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
     expect(turn2Checks.foreignMsg).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
     expect(store.images.read(to, mailSent.messageId, mailId)?.bytes).toEqual(png);
@@ -2388,6 +2396,30 @@ describe("commodore failure display", () => {
     expect(commodoreTranscriptEntrySchema.safeParse({ seq: 5, at: 1, kind: "error", code: "turn_failed", detail: "boom", retryAt: 2 }).success).toBe(true);
     expect(commodoreTranscriptEntrySchema.safeParse({ seq: 6, at: 1, kind: "result", outcome: "error", error: "API Error: 500 boom" }).success).toBe(true);
   });
+
+  it("marks a skipped message as not processed on its bubble and adds one guidance line", async () => {
+    const { commodoreChatEntries, commodoreConversationEntries } = await import("../features/commodore/client/commodore-chat.js");
+    const { getT } = await import("../features/commodore/client/i18n/index.js");
+    const t = getT("ko");
+    const entries: CommodoreTranscriptEntry[] = [
+      { seq: 1, at: 1_000, kind: "message", text: "사진 커서 안 되는 말" },
+      { seq: 2, at: 1_100, kind: "skipped", seqs: [1], code: "image_too_large", detail: "API Error: 400 image exceeds 5 MB maximum" },
+    ];
+    const conversation = commodoreConversationEntries(t, "t1", entries, [], []);
+    // 사람 말풍선은 남고, 「전달되지 않음」과 처리 불가 사유가 함께 선다.
+    expect(conversation.find((entry) => entry.kind === "message")).toMatchObject({ undelivered: true, deliveryNote: expect.stringContaining("처리 불가") });
+    // 안내는 한 줄 — 사유와 다음 행선지를 말한다.
+    const notes = conversation.flatMap((entry) => (entry.kind === "note" ? [entry.text] : []));
+    expect(notes).toHaveLength(1);
+    expect(notes[0]).toContain("건너뛰었어요");
+    expect(notes[0]).toContain("다음 대화로 이어갑니다");
+    // 펼친 기록도 같은 말풍선 배지와 안내 줄을 세운다.
+    const chat = commodoreChatEntries(t, "t1", entries, []);
+    expect(chat.some((entry) => entry.event.kind === "dispatch" && entry.event.undelivered === true)).toBe(true);
+    expect(chat.filter((entry) => entry.event.kind === "note").map((entry) => entry.event.kind === "note" ? entry.event.text : "")).toEqual(notes);
+    // 스키마는 새 줄을 받아들이고 옛 줄은 그대로 읽는다.
+    expect(commodoreTranscriptEntrySchema.safeParse({ seq: 7, at: 1, kind: "skipped", seqs: [1], code: "turn_failed" }).success).toBe(true);
+  });
 });
 
 describe("commodore supervisor", () => {
@@ -3627,6 +3659,8 @@ describe("commodore supervisor", () => {
       expect(sessions).toHaveLength(2);
       await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + 1);
       expect(sessions).toHaveLength(2);
+      // 일시 오류로 실패한 말은 격리하지 않는다 — 메시지 탓이 아니다(메시지를 잃지 않는다).
+      expect(h.store.transcriptRead("t1").entries.some((entry) => entry.kind === "skipped")).toBe(false);
       failure = null;
       await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[1]! + 1);
       expect(sessions).toHaveLength(3);
@@ -3645,6 +3679,145 @@ describe("commodore supervisor", () => {
       expect(sessions[2]!.disposed).toBe(true);
       expect(sessionEvents().at(-1)).toBe("replaced");
       expect(h.store.transcriptRead("t1").entries.findLast((entry) => entry.kind === "result" && entry.outcome === "error")).toMatchObject({ error: "turn_failed", detail: expect.stringContaining("Cannot read properties") });
+    } finally { await supervisor.dispose(); vi.useRealTimers(); }
+  });
+
+  it("skips a message that cannot be processed, keeps the messages behind it, and continues immediately", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-17T12:00:00Z"));
+    const h = harness(Date.now);
+    h.setExperiments({ commodore: true });
+    const sessions: { sent: AgentInput[]; disposed: boolean }[] = [];
+    let sends = 0;
+    const agent: AgentHost = { createSession: async (options) => {
+      const entry = { sent: [] as AgentInput[], disposed: false };
+      sessions.push(entry);
+      return {
+        send: async (input) => {
+          entry.sent.push(input);
+          sends += 1;
+          // 첫 턴만 첨부 이미지 규격 초과로 실패한다 — 다시 보내도 성공할 수 없는 입력 오류다.
+          options.onEvent?.(sends === 1
+            ? { kind: "result", isError: true, source: "message", detail: "API Error: 400 image exceeds 5 MB maximum" }
+            : { kind: "result", isError: false, source: "message" });
+        },
+        steer: () => false, cancel: () => undefined, dispose: async () => { entry.disposed = true; },
+      };
+    } };
+    const supervisor = createCommodoreSupervisor({ store: h.store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+    const promptText = (input: AgentInput) => typeof input === "string" ? input : input.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+    try {
+      // 독성 메시지와 후속 메시지가 한 배치로 묶인다.
+      const poison = h.store.transcriptAppend("t1", { kind: "message", text: "poison image" });
+      const follow = h.store.transcriptAppend("t1", { kind: "message", text: "why is this" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions).toHaveLength(1);
+      // 선두 실패 메시지만 격리되고 뒤의 정상 메시지는 큐에 남는다.
+      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "skipped")).toMatchObject({ kind: "skipped", seqs: [poison.seq], code: "image_too_large" });
+      // 후속 메시지는 재시도 간격을 기다리지 않고 곧바로 다음 턴이 처리한다.
+      expect(sessions[0]!.sent).toHaveLength(2);
+      expect(promptText(sessions[0]!.sent[1]!)).toContain("why is this");
+      expect(promptText(sessions[0]!.sent[1]!)).not.toContain("poison image");
+      // 사람 말풍선은 지우지 않는다 — 화면이 「전달되지 않음 · 처리 불가」를 단다.
+      expect(h.store.transcriptRead("t1").entries.filter((entry) => entry.kind === "message").map((entry) => entry.seq)).toEqual([poison.seq, follow.seq]);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+    } finally { await supervisor.dispose(); vi.useRealTimers(); }
+  });
+
+  it("isolates a message only after a fresh session repeats the same failure, never for transient errors", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-17T12:00:00Z"));
+    const h = harness(Date.now);
+    h.setExperiments({ commodore: true });
+    const sessions: { sent: AgentInput[]; disposed: boolean }[] = [];
+    let failure: string | null = null;
+    const agent: AgentHost = { createSession: async (options) => {
+      const entry = { sent: [] as AgentInput[], disposed: false };
+      sessions.push(entry);
+      return {
+        send: async (input) => {
+          entry.sent.push(input);
+          options.onEvent?.(failure
+            ? { kind: "result", isError: true, source: "message", detail: failure }
+            : { kind: "result", isError: false, source: "message" });
+        },
+        steer: () => false, cancel: () => undefined, dispose: async () => { entry.disposed = true; },
+      };
+    } };
+    const supervisor = createCommodoreSupervisor({ store: h.store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+    const skipped = () => h.store.transcriptRead("t1").entries.filter((entry) => entry.kind === "skipped");
+    try {
+      // 상태가 오염됐을 수 있는 실패는 새 세션으로 폴백한다 — 그 세션에서도 같은 배치가 실패해야 메시지 탓이다.
+      failure = "TypeError: Cannot read properties of undefined (reading 'map')";
+      const message = h.store.transcriptAppend("t1", { kind: "message", text: "state poisoned" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(sessions).toHaveLength(1);
+      expect(skipped()).toEqual([]);
+      await vi.advanceTimersByTimeAsync(RETRY_DELAYS_MS[0]! + 1);
+      // 새 세션의 첫 턴도 같은 배치로 실패했다 — 그 메시지만 격리한다.
+      expect(sessions).toHaveLength(2);
+      expect(skipped()).toMatchObject([{ kind: "skipped", seqs: [message.seq], code: "turn_failed" }]);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+      failure = null;
+      await vi.advanceTimersByTimeAsync(1);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+    } finally { await supervisor.dispose(); vi.useRealTimers(); }
+  });
+
+  it("retries in a new session and skips the failed message on request without clearing the transcript", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-17T12:00:00Z"));
+    const h = harness(Date.now);
+    h.setExperiments({ commodore: true });
+    const sessions: { sent: AgentInput[]; disposed: boolean }[] = [];
+    let failure: string | null = "API Error: 429 rate_limit_error";
+    const agent: AgentHost = { createSession: async (options) => {
+      const entry = { sent: [] as AgentInput[], disposed: false };
+      sessions.push(entry);
+      return {
+        send: async (input) => {
+          entry.sent.push(input);
+          options.onEvent?.(failure
+            ? { kind: "result", isError: true, source: "message", detail: failure }
+            : { kind: "result", isError: false, source: "message" });
+        },
+        steer: () => false, cancel: () => undefined, dispose: async () => { entry.disposed = true; },
+      };
+    } };
+    const supervisor = createCommodoreSupervisor({ store: h.store, agent, experiments: h.experiments, theater: () => ({ label: "test", root: h.objectivesDir }), objectives: () => [], subscribeObjectives: () => () => undefined, boardTools: () => [], emit: () => undefined });
+    const promptText = (input: AgentInput) => typeof input === "string" ? input : input.filter((block) => block.type === "text").map((block) => block.text).join("\n");
+    try {
+      // 일시 오류 한 번 — 같은 세션에 남아 있고, 사람이 「새 세션으로 다시 시도」를 고른다.
+      failure = "API Error: 429 rate_limit_error";
+      h.store.transcriptAppend("t1", { kind: "message", text: "retry me now" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "retrying", failedMessage: { code: "rate_limited" } });
+      failure = null;
+      await supervisor.retryNewSession("t1");
+      expect(sessions).toHaveLength(2);
+      expect(sessions[0]!.disposed).toBe(true);
+      expect(h.store.transcriptRead("t1").entries.flatMap((entry) => (entry.kind === "session" ? [entry.event] : [])).at(-1)).toBe("replaced");
+      expect(promptText(sessions[1]!.sent[0]!)).toContain("retry me now");
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+
+      // 실패한 메시지 건너뛰기 — 기록 전체는 그대로 두고 그 말만 뺀다.
+      failure = "API Error: 429 rate_limit_error";
+      const poison = h.store.transcriptAppend("t1", { kind: "message", text: "skip this one" });
+      h.store.transcriptAppend("t1", { kind: "message", text: "keep this one" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "retrying", failedMessage: { seq: poison.seq } });
+      failure = null;
+      const transcriptBefore = h.store.transcriptRead("t1").entries.length;
+      await supervisor.skipFailed("t1");
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.store.transcriptRead("t1").entries.find((entry) => entry.kind === "skipped")).toMatchObject({ kind: "skipped", seqs: [poison.seq] });
+      expect(h.store.transcriptRead("t1").entries.length).toBeGreaterThan(transcriptBefore);
+      expect(sessions).toHaveLength(2);
+      const lastPrompt = promptText(sessions[1]!.sent.at(-1)!);
+      // 건너뛴 말은 다시 실리지 않고, 뒤의 정상 메시지는 남아 다음 턴이 처리한다.
+      expect(lastPrompt).not.toContain("skip this one");
+      expect(lastPrompt).toContain("keep this one");
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
 });

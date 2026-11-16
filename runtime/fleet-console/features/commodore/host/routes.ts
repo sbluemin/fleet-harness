@@ -85,6 +85,10 @@ export interface CommodoreRouteHooks {
   readonly run?: (commodoreId: string) => Omit<CommodoreRunStatus, "totals"> | null;
   /** 재시도 대기(`retrying`·`error`)를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying` 을 던진다. */
   readonly retry?: (commodoreId: string) => Promise<void> | void;
+  /** 재시도 대기를 새 세션으로 깨운다 — 막힌 세션만 바꾸고 대화 전체는 남긴다. */
+  readonly retryNewSession?: (commodoreId: string) => Promise<void> | void;
+  /** 재시도를 기다리는 실패 메시지 한 건을 건너뛴다. 그런 메시지가 없으면 `commodore_not_retrying` 을 던진다. */
+  readonly skipFailed?: (commodoreId: string) => Promise<void> | void;
   readonly stopTurn?: (commodoreId: string) => Promise<void>;
   readonly clear?: (commodoreId: string) => Promise<void>;
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly commodoreId: string; readonly title: string; readonly removed?: unknown } | null;
@@ -465,6 +469,18 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       read(commodoreId);
       if (!hooks.retry) throw new CommodoreStoreError("commodore_not_retrying");
       await hooks.retry(commodoreId);
+      return view(commodoreId, read(commodoreId));
+    }) },
+    { name: "commodore/retry-new-session", method: "POST", summary: "Retry now in a fresh session instead of waiting, keeping the transcript, settings and queued inputs.", handler: json(commodoreRef, async ({ commodoreId }) => {
+      read(commodoreId);
+      if (!hooks.retryNewSession) throw new CommodoreStoreError("commodore_not_retrying");
+      await hooks.retryNewSession(commodoreId);
+      return view(commodoreId, read(commodoreId));
+    }) },
+    { name: "commodore/skip-failed", method: "POST", summary: "Skip the queued message that keeps failing, mark it as not processed in the log, and continue with the messages behind it.", handler: json(commodoreRef, async ({ commodoreId }) => {
+      read(commodoreId);
+      if (!hooks.skipFailed) throw new CommodoreStoreError("commodore_not_retrying");
+      await hooks.skipFailed(commodoreId);
       return view(commodoreId, read(commodoreId));
     }) },
     { name: "commodore/stop", method: "POST", summary: "Stop only the running Commodore turn, keeping the session context, transcript and queued inputs without changing autonomous settings. No-op when no turn is running.", handler: json(commodoreRef.strict(), async ({ commodoreId }) => {
