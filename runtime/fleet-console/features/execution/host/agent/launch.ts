@@ -375,7 +375,7 @@ async function createAgentCliLaunchSpec(options: {
       prompt: options.prompt,
       sessionName: options.sessionName,
     });
-    // Gemini 세션은 사령관 설정과 상관없이 Claude Code 기본 시스템 프롬프트 없이 연다 — agy는 그 텍스트를 받지 않는다.
+    // Antigravity 세션은 사령관 설정과 상관없이 Claude Code 기본 시스템 프롬프트 없이 연다 — agy는 그 텍스트를 받지 않는다.
     const basePromptEnabled = (options.commodoreSystemPrompts?.basePromptEnabled(options.commodoreId) ?? true) && !isAcpGatewayModelId(resolvedModel);
     const pluginDirs = options.commodoreId ? options.commodorePluginDirs?.(options.commodoreId) ?? [] : [];
     const pluginEnv = options.commodoreId && pluginDirs.length ? options.commodorePluginEnv?.(options.commodoreId) : undefined;

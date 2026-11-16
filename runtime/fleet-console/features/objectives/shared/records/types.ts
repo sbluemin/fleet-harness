@@ -250,7 +250,11 @@ export interface ObjectiveLaunchVariantRow {
   readonly contextWindow?: number;
   /** Gateway가 판정한 한도 풀과 그 범위. Gateway 모델이 아니거나 모르면 생략한다. */
   readonly quotaPool?: string;
-  readonly quotaScope?: string;
+  /**
+   * 이 모델이 무는 쿼터 범위 전부(가장 좁은 것이 마지막) — 선언된 풀과 모델 자신의 하위 한도.
+   * 범위 없는 공급자 공통 창은 여기 오지 않는다: 모든 모델이 함께 읽는다.
+   */
+  readonly quotaScopes?: readonly string[];
   /** 같은 모델을 Fast로도 돌릴 수 있다(Codex·xAI). 행 id는 하나이고, 일반·Fast는 선택기가 속도로 따로 고른다. */
   readonly fastSupported?: boolean;
 }

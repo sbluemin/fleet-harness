@@ -147,7 +147,11 @@ export interface GatewayModel {
   readonly fastUpstreamId?: string;
   /** Selected service tier; never a separate model identity. */
   readonly fast?: boolean;
-  /** Optional explicit sub-pool override; defaults to `model:<id>` derived from the catalog entry. */
+  /**
+   * Optional declared sub-pool: the allowance pool this catalog entry spends
+   * (e.g. Antigravity's `pool:gemini`). Its own `model:` limit is derived from
+   * the entry either way — see {@link resolveModelQuotaScopes}.
+   */
   readonly quotaScope?: GatewayQuotaScope;
   /** 공급자가 선언한 업스트림 와이어 프로토콜. 생략하면 `anthropic`이다. */
   readonly wire?: GatewayModelWire;
@@ -447,44 +451,57 @@ export interface GatewayModelConstraints {
    */
   readonly effortLadder: readonly GatewayReasoningEffort[];
   readonly effortSupported: boolean;
-  readonly quotaScope?: GatewayQuotaScope;
+  /**
+   * Every sub-budget this model spends, most specific last: the pool its
+   * `models.json` entry declares and its own `model:` limit. A live window binds
+   * to the model when it carries no scope (provider-wide) or one of these. Empty
+   * means the model reads only provider-wide windows.
+   */
+  readonly quotaScopes: readonly GatewayQuotaScope[];
 }
 
-export function resolveModelQuotaScope(model: Pick<GatewayModel, "id" | "provider" | "claudeAlias" | "quotaScope">): GatewayQuotaScope | undefined {
-  if (model.quotaScope !== undefined) return model.quotaScope;
-  if (model.provider === "claude" && model.claudeAlias) {
-    return modelQuotaScope(model.claudeAlias);
-  }
-  const bareId = model.id.startsWith(`${model.provider}--`)
-    ? model.id.slice(model.provider.length + 2)
-    : model.id;
-  return modelQuotaScope(bareId);
+/**
+ * The scopes a model spends. A declared `quotaScope` is the pool its catalog
+ * entry belongs to (`pool:gemini`); the model's own `model:` limit comes from
+ * its id (or Claude family alias), so a catalog entry that declares a pool keeps
+ * its model-scoped window too.
+ */
+export function resolveModelQuotaScopes(model: Pick<GatewayModel, "id" | "provider" | "claudeAlias" | "quotaScope">): readonly GatewayQuotaScope[] {
+  const scopes: GatewayQuotaScope[] = [];
+  if (model.quotaScope !== undefined) scopes.push(model.quotaScope);
+  const owned = model.provider === "claude" && model.claudeAlias
+    ? modelQuotaScope(model.claudeAlias)
+    : modelQuotaScope(model.id.startsWith(`${model.provider}--`)
+      ? model.id.slice(model.provider.length + 2)
+      : model.id);
+  if (owned !== undefined && !scopes.includes(owned)) scopes.push(owned);
+  return scopes;
 }
 
 export function buildGatewayModelConstraints(model: GatewayModel): GatewayModelConstraints {
   const ladder = model.effort.supported
     ? model.effort.levels.filter((level) => ANTHROPIC_EFFORT_RUNGS.has(level))
     : [];
-  const quotaScope = resolveModelQuotaScope(model);
   return {
     provider: model.provider,
     ...(model.contextWindow !== undefined ? { contextWindow: model.contextWindow } : {}),
     effortLadder: Object.freeze([...ladder]),
     effortSupported: ladder.length > 0,
-    ...(quotaScope === undefined ? {} : { quotaScope }),
+    quotaScopes: Object.freeze(resolveModelQuotaScopes(model)),
   };
 }
 
 /**
  * Baseline allowance-pool identity exposed on the catalog; the routing loadout
- * narrows `quotaPool` to `${provider}:${quotaScope}` when live quota reports a
- * matching scoped window.
+ * narrows `quotaPool` to `${provider}:${scope}` when live quota reports a
+ * matching scoped window. A model that declares no pool spends the provider's
+ * shared allowance, so its baseline identity stays `${provider}:shared`.
  */
 export function buildGatewayModelQuota(model: GatewayModel) {
-  const { quotaScope } = buildGatewayModelConstraints(model);
+  const { quotaScopes } = buildGatewayModelConstraints(model);
   return {
     quotaPool: model.quotaScope ? `${model.provider}:${model.quotaScope}` : `${model.provider}:shared`,
-    ...(quotaScope === undefined ? {} : { quotaScope }),
+    ...(quotaScopes.length === 0 ? {} : { quotaScopes }),
   };
 }
 

@@ -48,9 +48,22 @@ export function toolbarReadings(
     .map((id) => ({ id, lines: summaryLines(readableWindows(data?.providers[id])) }));
 }
 
-/** 두 줄 — 가장 짧은 창 하나와, 남은 창 중 가장 급한 하나. 창이 하나면 한 줄. */
+/** 공급자가 풀을 나눠 재면(예: Antigravity의 Gemini와 Claude & GPT) 풀마다 한 줄 — 풀마다 가장 급한 창 하나.
+ *  한 풀이 소진돼도 다른 풀의 숫자에 묻히지 않는다. 그 밖에는 두 줄 — 가장 짧은 창 하나와, 남은 창 중 가장 급한 하나. */
 export function summaryLines(windows: readonly QuotaWindow[]): readonly QuotaWindow[] {
   if (windows.length <= 1) return windows;
+  const byPool = new Map<string, readonly QuotaWindow[]>();
+  for (const window of windows) {
+    // 범위 없는 창은 공급자 공통 한도다 — 풀 하나로 묶어 한 줄로 대표한다.
+    const pool = window.scope?.startsWith("pool:") ? window.scope : "";
+    byPool.set(pool, [...(byPool.get(pool) ?? []), window]);
+  }
+  if ([...byPool.keys()].some((pool) => pool !== "")) {
+    return [...byPool.values()].flatMap((pool) => {
+      const urgent = mostUrgentWindow(pool);
+      return urgent === null ? [] : [urgent];
+    });
+  }
   const duration = (window: QuotaWindow) => window.period?.durationMs ?? (window.id === "session" ? SESSION_FALLBACK_MS : Number.POSITIVE_INFINITY);
   const short = windows.reduce((shortest, window) => (duration(window) < duration(shortest) ? window : shortest));
   const long = mostUrgentWindow(windows.filter((window) => window !== short));

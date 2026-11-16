@@ -15,9 +15,10 @@ import type { CredentialResolverDeps } from "../transport/credentials.js";
 import type { ProviderDto, QuotaScope, QuotaWindowPeriod, WindowDurationBasis } from "./types.js";
 
 const MODEL_SCOPE_PREFIX = "model:";
-const MODEL_SCOPE_SLUG_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+const POOL_SCOPE_PREFIX = "pool:";
+const SCOPE_SLUG_PATTERN = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 
-export function modelQuotaScope(raw: string): `model:${string}` | undefined {
+function scopeSlug(raw: string): string | undefined {
   const slug = raw
     .trim()
     .toLowerCase()
@@ -25,14 +26,26 @@ export function modelQuotaScope(raw: string): `model:${string}` | undefined {
     .replace(/^-+|-+$/g, "")
     .slice(0, 64)
     .replace(/-+$/, "");
-  return MODEL_SCOPE_SLUG_PATTERN.test(slug) ? `${MODEL_SCOPE_PREFIX}${slug}` : undefined;
+  return SCOPE_SLUG_PATTERN.test(slug) ? slug : undefined;
+}
+
+export function modelQuotaScope(raw: string): `model:${string}` | undefined {
+  const slug = scopeSlug(raw);
+  return slug === undefined ? undefined : `${MODEL_SCOPE_PREFIX}${slug}`;
+}
+
+/** A model family's shared allowance — every model of the family binds to it. */
+export function poolQuotaScope(raw: string): `pool:${string}` | undefined {
+  const slug = scopeSlug(raw);
+  return slug === undefined ? undefined : `${POOL_SCOPE_PREFIX}${slug}`;
 }
 
 export function isQuotaScope(value: unknown): value is QuotaScope {
   if (typeof value !== "string") return false;
   if (value === "auto") return true;
-  return value.startsWith(MODEL_SCOPE_PREFIX)
-    && MODEL_SCOPE_SLUG_PATTERN.test(value.slice(MODEL_SCOPE_PREFIX.length));
+  if (value.startsWith(MODEL_SCOPE_PREFIX)) return SCOPE_SLUG_PATTERN.test(value.slice(MODEL_SCOPE_PREFIX.length));
+  if (value.startsWith(POOL_SCOPE_PREFIX)) return SCOPE_SLUG_PATTERN.test(value.slice(POOL_SCOPE_PREFIX.length));
+  return false;
 }
 
 export const REQUEST_TIMEOUT_MS = 10_000;

@@ -341,7 +341,7 @@ export function windowLabel(window: QuotaWindow, t: T): string {
   );
 }
 
-/** 창의 주기 표식(5h·7d·Nd). 같은 라벨을 쓰는 창들(예: Antigravity의 두 "Gemini")은 이것으로만 갈린다. */
+/** 창의 주기 표식(5h·7d·Nd). 같은 라벨을 쓰는 창들(Antigravity의 Gemini 5h·주간)은 이것으로만 갈린다. */
 function windowChip(window: QuotaWindow, cycleDays?: number): string | undefined {
   return window.id === "session"
     ? "5h"

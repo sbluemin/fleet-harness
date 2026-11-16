@@ -11,9 +11,10 @@ import type { AcpThoughtLevel } from "./contract.js";
 /**
  * 고른 카탈로그 모델과 강도가 agy에서 어떻게 열려야 하는지.
  *
- * agy 1.5.9 실측: `session/new`의 `availableModels`는 강도가 새겨진 id(`gemini-4-argon-medium`)로 오지만
- * `configOptions.model`의 값은 기본 id(`gemini-4-argon`)이고 강도는 별도 `thought_level`(low/medium/high)이다.
- * 그래서 모델은 기본 id로 고르고, 계정에 그 모델이 있는지는 기본 id 접두 일치로 판정한다.
+ * agy 1.5.9 실측(2026-11-16): `session/new`의 `availableModels`는 강도가 새겨진 id(`gemini-4-argon-medium`,
+ * `claude-opus-5-5-high`)로 오지만 `configOptions.model`의 값은 기본 id(`gemini-4-argon`, `claude-opus-5-5`)이고
+ * 강도는 별도 `thought_level`(low/medium/high)이다. 그래서 모델은 기본 id로 고르고, 계정에 그 모델이 있는지는
+ * 기본 id 접두 일치로 판정한다. Gemini와 Claude가 같은 규칙을 쓴다.
  */
 export interface AcpModelSelection {
   /** 카탈로그 id(`antigravity--gemini-4-argon`). 실패 메시지에 쓴다. */

@@ -6,7 +6,7 @@
  */
 
 import { isProviderCatalogVisible } from "../model-family.js";
-import { buildGatewayModelConstraints, type GatewayModel, type GatewayModelConstraints } from "../models.js";
+import { buildGatewayModelConstraints, type GatewayModel, type GatewayModelConstraints, type GatewayQuotaScope } from "../models.js";
 import { deriveQuotaWindowRisk, type QuotaWindowPressure } from "../quota/pressure.js";
 import type { GatewayProviderQuota, GatewayQuotaSnapshot } from "./quota-snapshot.js";
 import { bindingQuotaWindows } from "./routing-quota.js";
@@ -48,7 +48,7 @@ function round(value: number): number {
  */
 export function evaluateModelAllowance(
   quota: GatewayProviderQuota | undefined,
-  constraints: Pick<GatewayModelConstraints, "quotaScope"> | undefined,
+  constraints: { readonly quotaScopes?: readonly GatewayQuotaScope[] } | undefined,
   now = Date.now(),
 ): GatewayModelAllowance {
   if (!quota) return { pressure: "unknown" };
@@ -59,8 +59,8 @@ export function evaluateModelAllowance(
   if (fetchedAt !== undefined && (!Number.isFinite(fetchedAt) || fetchedAt < 0 || fetchedAt > now)) {
     return { pressure: "unknown" };
   }
-  const scope = constraints?.quotaScope;
-  const binding = bindingQuotaWindows(quota, scope);
+  const scopes = constraints?.quotaScopes;
+  const binding = bindingQuotaWindows(quota, scopes);
   if (binding.length === 0) return { pressure: "unknown" };
   const hasAggregate = (quota.windows ?? []).some((window) => window.isAggregate === true);
   const at = typeof fetchedAt === "number" && Number.isFinite(fetchedAt) ? fetchedAt : now;
@@ -109,7 +109,9 @@ export function evaluateModelAllowance(
   }
 
   if (unreadable) return { pressure: worst === "critical" ? "critical" : "unknown" };
-  if (hasAggregate && scope !== undefined && !binding.some((window) => window.scope === scope)) {
+  const scopedWindow = binding.some((window) => window.scope !== undefined
+    && scopes?.some((scope) => scope === window.scope) === true);
+  if (hasAggregate && scopes !== undefined && scopes.length > 0 && !scopedWindow) {
     return { pressure: worst === "critical" ? "critical" : "unknown" };
   }
   if (worst === undefined) return { pressure: "unknown" };
@@ -201,7 +203,7 @@ export function evaluateGatewayCandidateModels(
 
 export function modelPressure(
   quota: GatewayProviderQuota | undefined,
-  constraints: Pick<GatewayModelConstraints, "quotaScope"> | undefined,
+  constraints: { readonly quotaScopes?: readonly GatewayQuotaScope[] } | undefined,
   now = Date.now(),
 ): QuotaWindowPressure | undefined {
   const allowance = evaluateModelAllowance(quota, constraints, now);

@@ -81,6 +81,27 @@ describe("agy ACP session port", () => {
     expect(await readdir(sessionsDir)).toEqual([]);
   });
 
+  it("opens a Claude model on the same ACP path with the account's base id and thought level", async () => {
+    const { port, read } = await harness("claude-sonnet-5-5-low,claude-sonnet-5-5-medium,claude-sonnet-5-5-high");
+    let session: AcpSession | undefined;
+    try {
+      // 카탈로그 id는 dot 표기(`claude-sonnet-5.5`)이고, agy 와이어 id는 강도가 새겨진 하이픈 표기다.
+      session = await open(port, "antigravity--claude-sonnet-5.5");
+      for await (const _event of session.prompt([{ kind: "text", text: "hi" }])) {
+        // 턴을 끝까지 흘려보낸다.
+      }
+      const configured = (await read())
+        .filter((entry) => entry.method === "session/set_config_option")
+        .map((entry) => entry.params);
+      expect(configured).toEqual([
+        { sessionId: "s1", configId: "model", value: "claude-sonnet-5-5" },
+        { sessionId: "s1", configId: "thought_level", value: "high" },
+      ]);
+    } finally {
+      await session?.close();
+    }
+  });
+
   it("fails the open at once when the account does not offer the chosen model", async () => {
     const { port, sessionsDir } = await harness("gemini-4-carbon-low,gemini-4-carbon-medium,gemini-4-carbon-high");
     const failure = await open(port, "antigravity--gemini-4-argon").catch((error: unknown) => error);

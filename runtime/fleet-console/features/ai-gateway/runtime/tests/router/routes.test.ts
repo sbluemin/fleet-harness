@@ -690,6 +690,13 @@ describe("delegation assignment", () => {
     const discovery = buildAnthropicModelList(GATEWAY_MODELS);
     const discoveredIds = discovery.data.map((entry) => entry.id);
     expect(discoveredIds.some((id) => id.startsWith("claude-gateway--claude--") || id === "sonnet" || id === "opus[1m]")).toBe(false);
+    // Antigravity가 서빙하는 Claude 모델은 광고되고, 같은 agy 그룹의 GPT-OSS 120B는 카탈로그·디스커버리 어디에도 없다.
+    expect(discoveredIds).toEqual(expect.arrayContaining([
+      "claude-gateway--antigravity--claude-opus-5.5[1m]",
+      "claude-gateway--antigravity--claude-sonnet-5.5[1m]",
+    ]));
+    expect(discoveredIds.some((id) => id.includes("gpt-oss"))).toBe(false);
+    expect(GATEWAY_MODELS.some((model) => model.id.includes("gpt-oss"))).toBe(false);
   });
 
   it("routes delegation to Claude native models without gateway prefix", () => {
@@ -1030,6 +1037,55 @@ describe("delegation assignment", () => {
       delegationModels: antigravityModels,
       quota: { antigravity: { status: "ok", fetchedAt: now, windows: geminiSharedCritical } },
     }, now).candidates).toEqual([]);
+
+    // 5) Gemini 풀과 Claude & GPT 풀(3p-*)은 서로 번지지 않는다. 한쪽 주간 한도가 critical이어도 다른 쪽 모델은 후보로 남는다.
+    const mixedModels = [
+      ...antigravityModels,
+      requireGatewayModel("antigravity--claude-opus-5.5"),
+      requireGatewayModel("antigravity--claude-sonnet-5.5"),
+    ];
+    const byFamily = (geminiWeekly: number, claudeWeekly: number) => parseAntigravityQuotaSummary({
+      status: "SUCCESS",
+      num_turns: 0,
+      command: {
+        name: "usage",
+        data: {
+          groups: [
+            {
+              name: "Gemini Models",
+              buckets: [
+                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
+                { id: "gemini-weekly", remaining_fraction: geminiWeekly, reset_time: weekReset },
+              ],
+            },
+            {
+              name: "Claude and GPT models",
+              buckets: [
+                { id: "3p-5h", remaining_fraction: 0.8, reset_time: sessionReset },
+                { id: "3p-weekly", remaining_fraction: claudeWeekly, reset_time: weekReset },
+              ],
+            },
+          ],
+        },
+      },
+    }) ?? [];
+    const claudePoolCritical = buildGatewayCandidates({
+      delegationModels: mixedModels,
+      quota: { antigravity: { status: "ok", fetchedAt: now, windows: byFamily(0.9, 0.02) } },
+    }, now).candidates.map((candidate) => candidate.model).sort();
+    expect(claudePoolCritical).toEqual([
+      "antigravity--gemini-4-argon",
+      "antigravity--gemini-4-carbon",
+      "antigravity--gemini-4-hydrogen",
+    ]);
+    const geminiPoolCritical = buildGatewayCandidates({
+      delegationModels: mixedModels,
+      quota: { antigravity: { status: "ok", fetchedAt: now, windows: byFamily(0.02, 0.9) } },
+    }, now).candidates.map((candidate) => candidate.model).sort();
+    expect(geminiPoolCritical).toEqual([
+      "antigravity--claude-opus-5.5",
+      "antigravity--claude-sonnet-5.5",
+    ]);
   });
 });
 
@@ -1904,6 +1960,28 @@ describe("agy ACP bridge route", () => {
       expect(pids).toHaveLength(1);
       expect(() => process.kill(pids[0]!, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
       expect(fs.readdirSync(path.join(directory, "sessions"))).toEqual([]);
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("serves a Claude model through the same agy bridge from its Claude Code discovery id", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agy-route-"));
+    try {
+      const router = agyRouter(directory, "claude-opus-5-5-low,claude-opus-5-5-medium,claude-opus-5-5-high");
+      const res = response();
+      await router.handle(ctx({
+        res,
+        token: ANTHROPIC_CRED,
+        // 카탈로그 id는 `antigravity--claude-opus-5.5`, Claude Code가 보내는 표기는 여기에 1M 마커가 붙는다.
+        model: "claude-gateway--antigravity--claude-opus-5.5[1m]",
+        messages: [{ role: "user", content: 'TOOL:Bash:{"command":"ls"}' }],
+        tools: [{ name: "Bash", description: "Run a command", input_schema: { type: "object", properties: { command: { type: "string" } } } }],
+      }));
+      expect(res.status).toBe(200);
+      expect(res.body).toContain('"type":"tool_use"');
+      expect(res.body).toContain('"name":"Bash"');
+      await router.dispose();
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }

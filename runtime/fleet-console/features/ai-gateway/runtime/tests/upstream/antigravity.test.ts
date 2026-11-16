@@ -116,7 +116,7 @@ describe("antigravity quota", () => {
     return text.trim().split("\n").filter(Boolean).map((line) => JSON.parse(line) as string[]);
   }
 
-  it("reads Gemini windows from agy /usage and caches the version", async () => {
+  it("reads the Gemini and Claude & GPT pools from agy /usage and caches the version", async () => {
     await touch();
     const now = 1_700_000_000_000;
     const result = await fetchAntigravityUsage({
@@ -129,6 +129,7 @@ describe("antigravity quota", () => {
       windows: [
         {
           id: "session",
+          scope: "pool:gemini",
           label: "Gemini",
           usedPercent: 25,
           resetsAt: Date.parse("2026-11-15T20:58:32Z"),
@@ -141,6 +142,7 @@ describe("antigravity quota", () => {
         },
         {
           id: "weekly",
+          scope: "pool:gemini",
           label: "Gemini",
           usedPercent: 50,
           resetsAt: Date.parse("2026-11-21T07:28:17Z"),
@@ -148,6 +150,33 @@ describe("antigravity quota", () => {
             durationMs: 604_800_000,
             durationBasis: "catalog",
             startsAt: Date.parse("2026-11-21T07:28:17Z") - 604_800_000,
+            startsAtBasis: "derived",
+          },
+        },
+        // "Claude and GPT models"는 별도 풀이다 — Gemini 창과 잔여량을 공유하지 않는다.
+        {
+          id: "session",
+          scope: "pool:claude-gpt",
+          label: "Claude & GPT",
+          usedPercent: 0,
+          resetsAt: Date.parse("2026-11-15T22:11:35Z"),
+          period: {
+            durationMs: 18_000_000,
+            durationBasis: "catalog",
+            startsAt: Date.parse("2026-11-15T22:11:35Z") - 18_000_000,
+            startsAtBasis: "derived",
+          },
+        },
+        {
+          id: "weekly",
+          scope: "pool:claude-gpt",
+          label: "Claude & GPT",
+          usedPercent: 0,
+          resetsAt: Date.parse("2026-11-22T17:11:35Z"),
+          period: {
+            durationMs: 604_800_000,
+            durationBasis: "catalog",
+            startsAt: Date.parse("2026-11-22T17:11:35Z") - 604_800_000,
             startsAtBasis: "derived",
           },
         },
