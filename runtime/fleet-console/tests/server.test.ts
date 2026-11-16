@@ -179,7 +179,7 @@ describe("console terminal observability", () => {
         const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: objectivesDir, commodoreId: ownerId, legacyTheaterId: workspaceHash(cwd), legacyCwd: cwd, theaterIdOf: (value: string) => workspaceHash(value) }] });
         storage.load();
         storage.save({ version: STATE_VERSION, objectiveRecords: [] });
-        storage.board.save(ownerId, { id: "11111111-1111-4111-8111-111111111111", cwd, commodoreId: ownerId, theaterId: workspaceHash(cwd), pending: true, title: "Owned objective", rank: 0, note: "", enlisted: true, missions: [], groupId: null, session: { sessionName: "owned-1-cmdr" }, chatMode: true, ts: { createdAt: 1, updatedAt: 1 } });
+        storage.board.save(ownerId, { id: "11111111-1111-4111-8111-111111111111", cwd, commodoreId: ownerId, theaterId: workspaceHash(cwd), pending: true, title: "Owned objective", rank: 0, note: "", enlisted: true, missions: [], groupId: null, session: { sessionName: "owned-1-cmdr" }, ts: { createdAt: 1, updatedAt: 1 } });
       },
     });
     const post = async (pathname: string, body: unknown) => {

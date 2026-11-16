@@ -1,5 +1,5 @@
 import { readObjectiveLaunchSource } from "../../../features/objectives/shared/records/launch-source.js";
-import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveLaunchKind, ObjectiveLaunchView } from "../../../features/objectives/shared/records/types.js";
+import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveLaunchKind } from "../../../features/objectives/shared/records/types.js";
 import type { ConsoleControlHost } from "../../../features/execution/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
@@ -580,7 +580,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   let stopForArchive: ((objectiveRecord: ObjectiveRecord) => Promise<void>) | null = null;
   let purgeCoreObjective: ((objectiveId: string) => void) | null = null;
-  let resumeArchivedObjective: import("../../../features/execution/host/agent/routes.js").AgentExecutionActions["resume"];
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   let quotaMigrationReady = false;
   const quotaSettings = createQuotaSettingsStore(durablePaths.dir, () => quotaMigrationReady);
@@ -777,10 +776,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await stopForArchive(objectiveRecord);
     },
     use: async (id, intent) => {
-      if (intent === "resume") {
-        const result = await resumeArchivedObjective?.(id);
-        if (!result?.ok) throw new ObjectiveArchiveError(409, result && !result.ok ? result.error : "archive_stop_failed");
-      } else if (intent === "open" || intent === "activate") publishPluginEvent("objective:reveal", { objectiveId: id, reason: "", at: Date.now() });
+      // 세션은 채팅으로 복원되므로 복원·열기·활성화는 모두 같은 reveal 로 알린다.
+      if (intent === "resume" || intent === "open" || intent === "activate") publishPluginEvent("objective:reveal", { objectiveId: id, reason: "", at: Date.now() });
     },
     readRetentionDays: () => readArchiveRetentionDays(consoleSettingsStore.load().general?.archiveRetentionDays),
     publish: (event) => {
@@ -1155,7 +1152,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           persistDurableState();
           // 브라우저가 볼 수 있는 투영이 실제로 달라졌을 때만 밀어낸다 — 민감 필드
           // (providerSession 등)만 바뀐 patch는 sanitized DTO가 같아 계속 침묵하고,
-          // payload 모드 마커(예: chatMode)처럼 뷰 분기를 쥔 변화는 리로드 없이 도달한다.
+          // 세션 좌표처럼 뷰 분기를 쥔 변화는 리로드 없이 도달한다.
           const changed = objectiveRecords.get(parentId ?? id)!;
           if (sanitizedObjectiveJson(before) !== sanitizedObjectiveJson(changed)) {
             broadcastObjectiveChanged(changed);
@@ -2993,7 +2990,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       readGatewayCompactCeiling = execution.readGatewayCompactCeiling;
       readGatewayProviderStatuses = execution.readProviderStatuses;
       readGatewaySettings = execution.readGatewaySettings;
-      resumeArchivedObjective = execution.actions.resume;
       stopForArchive = execution.stopForArchive;
       purgeCoreObjective = execution.purgeObjective;
       // 사령관·지휘관만 받는 Gateway 후보 도구 — 사령관은 세션 묶음으로, 지휘관은 예약 HTTP 서버로 받는다.
@@ -3865,7 +3861,6 @@ function isValidConsoleStaticPort(value: unknown): value is number {
 function sanitizeLaunchKind(value: unknown): ObjectiveLaunchKind | null {
   if (!isPlainObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || typeof value.title !== "string") return null;
   const variants = readLaunchVariantGroups(value.variants);
-  const launchViews = readLaunchViews(value.launchViews);
   return {
     id: value.id,
     type: value.type,
@@ -3873,21 +3868,7 @@ function sanitizeLaunchKind(value: unknown): ObjectiveLaunchKind | null {
     ...(typeof value.disabled === "boolean" ? { disabled: value.disabled } : {}),
     ...(typeof value.disabledReason === "string" ? { disabledReason: value.disabledReason } : {}),
     ...(variants.length > 0 ? { variants } : {}),
-    ...(launchViews.length > 0 ? { launchViews } : {}),
   };
-}
-
-/**
- * 이 실행 종류가 태어날 수 있는 표면. SDK의 브라우저 sanitizer와 같은 규칙이다 — 모르는 이름은
- * 버리고, `terminal` 하나만 남는 선언은 선택지가 아니므로 생략과 같게 접는다.
- */
-function readLaunchViews(value: unknown): readonly ObjectiveLaunchView[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<ObjectiveLaunchView>();
-  for (const entry of value) {
-    if (entry === "terminal" || entry === "chat") seen.add(entry);
-  }
-  return seen.has("chat") ? [...seen] : [];
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<T | null> {

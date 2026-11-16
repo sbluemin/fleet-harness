@@ -40,16 +40,15 @@ describe("agent dormant ticket guards", () => {
     const harness = await createHarness();
     const control = harness.control;
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    const id = (await control.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "terminal", title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).objectiveId;
+    const id = (await control.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, title: "Commander", model: "opus[1m]", effort: "high", sessionName: "commander", disableSubagents: true })).objectiveId;
     expect(harness.attach).not.toHaveBeenCalled();
     expect(control.observe(id)).toMatchObject({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: ["send"] });
     const objectiveRecord = harness.objectiveRecords.find((op) => op.id === id)!;
-    expect(readObjectiveLaunch(objectiveRecord)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", viewMode: "chat", started: false });
+    expect(readObjectiveLaunch(objectiveRecord)).toMatchObject({ sessionName: "commander", model: "opus[1m]", effort: "high", started: false });
     expect(harness.objectiveRecords).toHaveLength(1);
     expect(harness.attach).not.toHaveBeenCalled();
-    harness.patch(id, { ...(withObjectiveLaunchPreset(objectiveRecord, { model: "sonnet", effort: "low", viewMode: "chat" })) });
+    harness.patch(id, { ...(withObjectiveLaunchPreset(objectiveRecord, { model: "sonnet", effort: "low" })) });
     expect(harness.objectiveRecords.find((op) => op.id === id)).toHaveProperty("chatBorn", true);
-    expect(control.observe(id)?.surface).toBe("chat");
     expect(await control.request(caller, { kind: "send", objectiveId: id, text: "Begin" })).toMatchObject({ objectiveId: id });
     expect(harness.attach).not.toHaveBeenCalled();
   });
@@ -75,9 +74,7 @@ describe("agent dormant ticket guards", () => {
     const sessionId = await harness.createLiveSession();
     // 생산자 세대는 같은 프로세스가 사는 동안 그대로이고, 재개한 새 프로세스에서 바뀐다 — 플러그인은 이것으로 그 사이의 휴면을 안다.
     const caller = { kind: "plugin" as const, pluginId: "objectives" };
-    await expect(harness.control.request(caller, { kind: "resume", objectiveId: sessionId })).rejects.toThrow("chat_resume_unsupported");
     expect(harness.attach).not.toHaveBeenCalled();
-    expect(harness.control.observe(sessionId)?.surface).toBe("chat");
   });
 
   it("rejects a terminal ticket for an Objective session", async () => {

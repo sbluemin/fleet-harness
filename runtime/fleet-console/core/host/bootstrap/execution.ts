@@ -62,10 +62,6 @@ export async function startConsoleExecution(
     onAntigravityEnabled: syncAntigravity,
   });
   const runtime = createTerminalRuntime(ctx);
-  // Objective Browser 의 스크린샷 첨부 — 서버가 올린 이미지를 CLI 가 읽도록 Windows 는 Alt+V(ESC v), 나머지는 Ctrl+V 를
-  // PTY 에 넣는다. 줄 종결자는 없다(보내는 순간은 사람이 정한다).
-  const unbindBrowserPaste = ctx.host.browserMcp?.bindTerminalPaste((objectiveId) => runtime.write(objectiveId, process.platform === "win32" ? "\x1bv" : "\u0016"));
-  if (unbindBrowserPaste) ctx.host.lifecycle.registerCleanup(unbindBrowserPaste);
   registerWsHandler(ctx, "/", runtime.handleUpgrade, { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Console Execution", gate: "one-use-ticket", transport: "websocket" });
   ctx.host.lifecycle.registerCleanup(() => runtime.stop());
   const unsubscribeDelete = ctx.host.events.subscribe(OBJECTIVE_DELETED_EVENT_CHANNEL, (payload) => {

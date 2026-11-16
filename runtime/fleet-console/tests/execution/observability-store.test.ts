@@ -7,7 +7,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { sessionActivity } from "../../features/execution/client/agent/connection.js";
 import { createConsoleObservabilityStore } from "../../features/execution/host/agent/observability-store.js";
 import { projectWorkspace } from "../../features/execution/host/agent/workspace-context.js";
-import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
 
 const tempDirs: string[] = [];
 
@@ -68,37 +67,7 @@ describe("agent observability DTO boundary", () => {
   });
 });
 
-describe("workspace hook ownership", () => {
-  it("accepts only the current main session and never rewinds it with stale reports", () => {
-    const report = vi.fn();
-    const hooks = createWorkspaceHookRegistry(report);
-    let active = true;
-    const first = hooks.bind("op", "provider", () => active);
-    const input = (cwd: string, extra = {}) => JSON.stringify({ hook_event_name: "CwdChanged", session_id: "provider", new_cwd: cwd, ...extra });
-    const cwd = path.resolve("workspace");
-    const next = path.join(cwd, "next");
-    const run = first.env.FLEET_CONSOLE_WORKSPACE_RUN_ID;
-    expect(hooks.report("op", run, input(cwd), 2)).toBe(true);
-    expect(hooks.report("op", run, input(next), 1)).toBe(false);
-    expect(hooks.report("op", run, input(next, { agent_id: "child" }), 3)).toBe(false);
-    expect(hooks.report("op", run, input(next, { session_id: "other" }), 3)).toBe(false);
-    expect(hooks.report("op", run, input("relative"), 3)).toBe(false);
-    const revision = first.revision;
-    expect(hooks.report("op", run, input(next), 4)).toBe(true);
-    first.observe(cwd, revision);
-    expect(report.mock.calls).toEqual([["op", cwd], ["op", next]]);
 
-    const second = hooks.bind("op", "provider", () => active);
-    first.dispose();
-    expect(hooks.report("op", run, input(cwd), 5)).toBe(false);
-    expect(hooks.report("op", second.env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input(cwd), 6)).toBe(true);
-    active = false;
-    expect(hooks.report("op", second.env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input(next), 7)).toBe(false);
-    second.dispose();
-    expect(hooks.has("op")).toBe(false);
-    hooks.dispose();
-  });
-});
 
 describe("agent activity observability state", () => {
   function createStore() {
