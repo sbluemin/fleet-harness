@@ -1,6 +1,9 @@
 import { getT as getBrowserT } from "./i18n.js";
+import { useBrowserEngine } from "./browser-engine.js";
 import { useBrowserClosedTabs, useBrowserDriving, useBrowserTabCount, useBrowserSurface, openBrowserPane } from "./browser-surface.js";
+import { toggleBrowserViewerShell, useBrowserViewerShell } from "./browser-viewer-shell.js";
 import { useObjectiveUse } from "../../computer-use/client/computer-screen-share.js";
+import { isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 
 /**
@@ -12,11 +15,21 @@ import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
  */
 export function BrowserActivityLines({ objectiveId }: { readonly objectiveId: string }) {
   const t = getBrowserT(useConsoleLocale());
+  const engine = useBrowserEngine();
   const surface = useBrowserSurface();
   const driving = useBrowserDriving();
   const tabs = useBrowserTabCount();
   const closedTabs = useBrowserClosedTabs();
   const agentUsing = useObjectiveUse(objectiveId).browser;
+  const viewer = engine?.surfaceMode === "viewer" || (engine === null && !isDesktopShell());
+  const streamedShell = viewer || engine?.surfaceMode === "remote";
+  const viewerShell = useBrowserViewerShell();
+  const engineMissing = !streamedShell && engine !== null && !engine.available;
+  const canLaunch = !engineMissing && (!streamedShell || viewerShell);
+  const openAction = () => {
+    if (streamedShell) toggleBrowserViewerShell();
+    else openBrowserPane({ kind: "event", objectiveId });
+  };
   // 에이전트가 이 대화의 세션으로 쓰는 중이거나, 전역 브라우저가 구동 중이면 그 사실이 먼저다.
   // 칸이 닫혀 있어도 에이전트가 쓰는 동안은 이 줄이 남는다 — 보기로 다시 열 수 있다.
   const live = driving || agentUsing;
@@ -24,7 +37,7 @@ export function BrowserActivityLines({ objectiveId }: { readonly objectiveId: st
     const label = live
       ? t("terminal.browser.activity.agentUsing", { count: tabs })
       : t("terminal.browser.activity.open", { count: tabs });
-    const canOpen = surface === null || surface.mode === "window";
+    const canOpen = canLaunch && (streamedShell || surface === null || surface.mode === "window");
     return (
       <div className="agent-chat-browser-line is-live">
         <span className="agent-chat-browser-dot" aria-hidden="true" />
@@ -33,7 +46,7 @@ export function BrowserActivityLines({ objectiveId }: { readonly objectiveId: st
           <button
             type="button"
             className="agent-chat-browser-action"
-            onClick={() => openBrowserPane({ kind: "event", objectiveId })}
+            onClick={openAction}
           >
             {t(surface?.mode === "window" ? "terminal.browser.activity.focus" : "terminal.browser.activity.view")}
           </button>
@@ -46,9 +59,11 @@ export function BrowserActivityLines({ objectiveId }: { readonly objectiveId: st
     return (
       <div className="agent-chat-browser-line">
         <span className="agent-chat-browser-text">{t("terminal.browser.activity.closed", { count: closedTabs })}</span>
-        <button type="button" className="agent-chat-browser-action" onClick={() => openBrowserPane({ kind: "event", objectiveId })}>
-          {t("terminal.browser.activity.reopen")}
-        </button>
+        {canLaunch ? (
+          <button type="button" className="agent-chat-browser-action" onClick={openAction}>
+            {t("terminal.browser.activity.reopen")}
+          </button>
+        ) : null}
       </div>
     );
   }
