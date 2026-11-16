@@ -68,7 +68,7 @@ import {
   type ChatOrigin,
 } from "./chat-events.js";
 import { createChatStepReporter, type ChatStepReporter } from "./chat-step.js";
-import { FLEET_EXECUTION_AGENT_TYPE, FLEET_EXECUTION_CONTRACT, FLEET_HARNESS_VERSION, FLEET_PLUGIN_NAME, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
+import { FLEET_EXECUTION_AGENT_TYPE, FLEET_EXECUTION_CONTRACT, FLEET_HARNESS_VERSION, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
@@ -223,8 +223,8 @@ export interface AgentChatSessionSeed {
   readonly recordDelegationIntent?: (intent: DelegationIntent) => void;
   /** `system/task_*` 고지. 도구 호출 id를 실행 id에 잇고 실행 종료를 표시한다. */
   readonly bindDelegationTask?: (event: ClaudeGatewayTaskEvent) => void;
-  /** 이 세션이 접힐 때 그 세션의 위임 기록을 걷는다. */
-  readonly releaseDelegationSession?: () => void;
+  /** 이 세션이 접힐 때 그 세션(SDK 세션 id)의 위임 기록·배정을 걷는다. */
+  readonly releaseDelegationSession?: (providerSessionId: string) => void;
   /** 압축 이벤트. 생략하면 이 세션은 압축 사건을 기록하지 않는다. */
   readonly recordCompactEvent?: (event: ClaudeGatewayCompactEvent) => void;
   /**
@@ -862,7 +862,6 @@ class AgentChatSession {
    */
   private skillNames: Set<string> = new Set();
   /** 이 세션의 init에서 Fleet 플러그인 적재를 이미 판정했는가. 세션당 한 번만 알린다. */
-  private fleetPluginVerified = false;
   /** 세션 스트림을 소진하는 리더. dispose가 착지를 기다리는 자리다. */
   private readerDone: Promise<void> | null = null;
   /**
@@ -1777,7 +1776,8 @@ class AgentChatSession {
     session?.close();
     const sdk = this.sdk;
     this.sdk = null;
-    this.seed.releaseDelegationSession?.();
+    const providerSessionId = this.claudeSession?.sessionId;
+    if (providerSessionId !== undefined) this.seed.releaseDelegationSession?.(providerSessionId);
     if (sdk) await sdk.dispose().catch(() => undefined);
     if (this.readerDone) await this.readerDone.catch(() => undefined);
     // 줄 서 있던 디스패치를 깨운다. 닫을 턴이 없어 closeTurn이 그냥 돌아가는 경로에서도 이들을
@@ -1916,24 +1916,6 @@ class AgentChatSession {
     if (!Array.isArray(skills)) return;
     // 더한다 — reloadSkills가 이미 채워 둔 이름을 지우면 그쪽만 아는 스킬이 명령으로 되돌아간다.
     for (const name of skills) if (typeof name === "string") this.skillNames.add(name);
-  }
-
-  /**
-   * 자식이 Fleet 플러그인을 실제로 실었는지 init으로 확인한다.
-   *
-   * 플러그인은 자식이 세션 시작에 루프백 zip을 받아 싣는다. 그 fetch가 실패하면 자식은 오류 없이
-   * 플러그인만 뺀 채 뜬다 — 정책 훅도 게이트웨이 정체성도 없는 세션이 화면에는 멀쩡해 보인다.
-   * 도구 좌표 실패(`chat_fleet_tools_unavailable`)와 같은 무게로 저널에 남긴다. `plugins`가 없는
-   * init은 판정하지 않는다 — 없는 목록은 누락의 증거가 아니다.
-   */
-  private verifyFleetPluginLoaded(message: ClaudeGatewayMessage): void {
-    if (message.type !== "system" || message.subtype !== "init" || this.fleetPluginVerified) return;
-    const plugins = (message as { plugins?: unknown }).plugins;
-    if (!Array.isArray(plugins)) return;
-    this.fleetPluginVerified = true;
-    const loaded = plugins.some((plugin) => typeof plugin === "object" && plugin !== null
-      && (plugin as { name?: unknown }).name === FLEET_PLUGIN_NAME);
-    if (!loaded) this.push({ kind: "error", code: "chat_fleet_plugin_unavailable" });
   }
 
   /**
@@ -2496,7 +2478,7 @@ class AgentChatSession {
    *
    * 두 번 받으면 안 된다 — 두 번째 호출은 같은 트리에 홀더를 하나 더 세우고, dispose가 반납하는
    * 것은 마지막 것뿐이라 첫 홀더가 영원히 남는다. 발급자가 없는 seed(테스트·구세대 배선)는
-   * 여기서 실패하고, 그 실패가 곧 `chat_fleet_plugin_unavailable`이다.
+   * 여기서 실패하고, 그 실패가 곧 `chat_session_unavailable`이다.
    */
   private async resolveClaudeSession(): Promise<ClaudeSessionHandle> {
     if (this.claudeSession) return this.claudeSession;
@@ -2523,13 +2505,13 @@ class AgentChatSession {
     if (this.sdk) return this.sdk;
     if (!this.sdkFlight) {
       this.sdkFlight = (async () => {
-        // 플러그인을 못 실으면 스킬도 게이트웨이 정체성도 정책 훅도 없는 세션이 된다. 그런 세션을
-        // 조용히 계속 돌리면 같은 Objective을 터미널로 열었을 때와 다른, 특히 위임 가드가 없는
-        // 능력을 갖게 되고 그 차이는 화면 어디에도 드러나지 않는다 — 구체 코드를 저널에 남기고
-        // 턴을 실패시킨다. 실패한 턴이 무장 해제된 세션보다 낫다.
+        // 세션 좌표를 확정하지 못하면 정책 훅·도구 좌표·모델 정책이 없는 세션이 된다. 그런 세션을
+        // 조용히 계속 돌리면 같은 Objective을 다르게 연 세션과 능력이 갈리고 그 차이는 화면에
+        // 드러나지 않는다 — 구체 코드를 저널에 남기고 턴을 실패시킨다. 실패한 턴이 무장 해제된
+        // 세션보다 낫다.
         const claudeSession = await this.resolveClaudeSession()
           .catch((error: unknown) => {
-            this.push({ kind: "error", code: "chat_fleet_plugin_unavailable" });
+            this.push({ kind: "error", code: "chat_session_unavailable" });
             throw error instanceof Error ? error : new Error("Fleet plugin session unavailable");
           });
         try {
@@ -2628,11 +2610,12 @@ class AgentChatSession {
     this.seed.recordDelegationIntent?.({
       toolUseId: input.toolUseId,
       sessionId: input.sessionId,
+      inheritModel: this.coordinates.model,
       ...(requestedModel === undefined ? {} : { requestedModel }),
       ...(subagentType === undefined ? {} : { subagentType }),
       ...(description === undefined ? {} : { description }),
     });
-    return { subagentType: FLEET_EXECUTION_AGENT_TYPE, effort: GATEWAY_TIER_EFFORT[tier] };
+    return { subagentType: FLEET_EXECUTION_AGENT_TYPE, effort: GATEWAY_TIER_EFFORT[tier], stripModel: true };
   }
 
   /**
@@ -2939,7 +2922,6 @@ class AgentChatSession {
           ? this.turnApiError : undefined;
         if (message.type === "result" && message["parent_tool_use_id"] == null) this.turnApiError = undefined;
         this.rememberSkillNames(message);
-        this.verifyFleetPluginLoaded(message);
         this.invalidateCatalog(message);
         this.rememberJobOutput(message);
         this.rememberJobKinds(message);

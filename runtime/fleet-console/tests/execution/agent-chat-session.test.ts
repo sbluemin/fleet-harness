@@ -234,17 +234,15 @@ function fakeClaudeSession(
   } = {},
 ): ClaudeSessionHandle {
   const sessionId = overrides.resumeOf ?? overrides.sessionId ?? "11111111-2222-4333-8444-555555555555";
-  const pluginUrl = "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip";
+  void "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip";
   const claudeCodeSystemPrompt = overrides.claudeCodeSystemPrompt ?? "off";
   return {
     sessionId,
     coordinate: overrides.resumeOf ? { kind: "resume", sessionId } : { kind: "new", sessionId },
-    pluginUrl,
     claudeCodeSystemPrompt,
     sdk: {
       options: {
-        pluginUrl,
-        settingSources: ["user", "project", "local"],
+            settingSources: ["user", "project", "local"],
         allowAmbientMcpServers: true,
         disableBundledSkills: true,
         skillOverrides: { "plugin-authoring": "off" },

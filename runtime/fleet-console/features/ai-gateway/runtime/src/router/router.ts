@@ -436,6 +436,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       }
       resolvedExecution = resolution;
       target = harness.findModel(resolution.modelId, GATEWAY_MODELS);
+      // 상속·명시 배정이 native Claude 모델이면 비가상 경로와 같은 계약을 지난다.
+      if (target?.provider === "claude" && deps.ensureClaudeNativeModels) {
+        await deps.ensureClaudeNativeModels();
+        target = harness.findModel(resolution.modelId, GATEWAY_MODELS);
+      }
       if (!target) {
         writeClientError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${resolution.modelId}`);
         clock?.finish("error", 400);

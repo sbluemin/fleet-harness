@@ -79,7 +79,7 @@ export interface ClaudeGatewayServedMcpServer {
  * 호출자가 지목한 외부 MCP 서버 — 자식이 직접 띄우거나(stdio) 접속한다(http·sse).
  *
  * `servedMcpServers`(호스트가 서빙하는 엔드포인트)와 달리 이 패키지도 호스트도 서버를 소유하지 않는다. 자식이
- * 스스로 찾아 읽는 ambient 설정이 아니라 호출자가 좌표를 골라 건넨 것이므로 `pluginUrl`과 같은 자격이다 —
+ * 스스로 찾아 읽는 ambient 설정이 아니라 호출자가 좌표를 골라 건넨 것이므로 세션 프롬프트와 같은 자격이다 —
  * `strictMcpConfig`는 그대로이고, 이 좌표 밖의 `.mcp.json`은 여전히 읽히지 않는다.
  *
  * 값의 `${VAR}`는 자식이 자기 환경으로 펼친다(CLI 2.1.310 실측). stdio 서버는 자식의 작업 폴더에서 뜬다 — 다른
@@ -221,6 +221,12 @@ export interface ClaudeGatewayPreToolUseDecision {
   readonly effort?: ClaudeGatewayEffort;
   /** 실행할 에이전트 정의의 이름. 등록되지 않은 이름이면 자식이 그 호출을 거부한다. */
   readonly subagentType?: string;
+  /**
+   * 도구 입력의 `model`을 지운다. 이 호출을 Fleet 실행 정체성으로 바꿀 때만 쓴다 — 남겨 두면
+   * 자식이 붙인 alias(`haiku` 등)가 정의의 가상 모델을 덮는다(0.3.322 실측: 엔진은 남은
+   * 입력 필드를 정의의 모델보다 앞세운다).
+   */
+  readonly stripModel?: boolean;
 }
 
 /** 서브에이전트 시작·종료. `agentId`는 자식 요청 헤더의 id와 같은 값이다. */
@@ -283,6 +289,8 @@ export interface ClaudeGatewayAgentDefinition {
 /** 서브에이전트 작업 하나의 고지. vendor `system/task_started`·`task_updated`·`task_notification`의 부분집합이다. */
 export interface ClaudeGatewayTaskEvent {
   readonly kind: "started" | "updated" | "notification";
+  /** 이 작업이 속한 SDK 세션 id. 저장소·배정의 범위는 이 값이다. */
+  readonly sessionId: string;
   /** 작업 id. 자식 요청 헤더의 `agent-id`와 같은 값이다(0.3.322 실측). */
   readonly taskId: string;
   /** 이 실행의 id. 같은 작업의 재개는 새 run id를 받는다. */
@@ -338,17 +346,6 @@ export interface ClaudeGatewaySdkOptions {
   readonly spawnProcess?: ClaudeProcessSpawner;
   /** 격리 config dir을 만들 부모 디렉터리. 기본값은 OS 임시 디렉터리. `home`이 공유면 무시된다. */
   readonly tempRoot?: string;
-  /**
-   * 자식이 세션 시작에 받아 실을 플러그인 zip의 주소(CLI `--plugin-url`). 그 안의 스킬·훅·
-   * 에이전트·커맨드가 함께 들어온다.
-   *
-   * ambient가 아니다 — 호출자가 이 주소를 직접 지목한다. 자식이 스스로 찾아 읽는 것과 호출자가
-   * 지목한 것의 차이가 이 패키지의 경계이고, 후자는 `systemPrompt`와 같은 자격이다. vendor SDK의
-   * `plugins`는 로컬 디렉터리(`type: 'local'`)만 받으므로 CLI 인자로 싣는다(SDK 0.3.283 기준).
-   * 그 경로에는 `--plugin-dir-no-mcp`에 해당하는 변형이 없어 zip의 MCP 선언도 읽힌다 — MCP 좌표를
-   * 호출자가 `mcpServers`/`servedMcpServers`로 소유하려면 zip에 MCP 선언을 싣지 말 것.
-   */
-  readonly pluginUrl?: string;
   /**
    * 자식이 디스크에서 읽어도 되는 설정 층. 생략하면 아무것도 읽지 않는다.
    *
@@ -513,7 +510,7 @@ export interface ClaudeGatewayTurn {
   /** 호출자가 지목한 외부 MCP 서버. 이름이 `mcpServers`·`servedMcpServers`와 겹치면 거부한다. */
   readonly externalMcpServers?: Readonly<Record<string, ClaudeGatewayExternalMcpServer>>;
   /**
-   * 이 세션에 싣는 로컬 플러그인 디렉터리(vendor `plugins`의 `type: 'local'`). `pluginUrl`처럼 호출자가 지목한 것이라
+   * 이 세션에 싣는 로컬 플러그인 디렉터리(vendor `plugins`의 `type: 'local'`). 호출자가 지목한 것이라
    * ambient가 아니다. 스킬·에이전트·커맨드·훅이 실린다. 플러그인의 MCP 선언은 `strictMcpConfig`가 막으므로(SDK 0.3.306
    * 실측) MCP를 쓰려면 호출자가 그 선언을 `externalMcpServers`로 옮기고 `skipMcp`로 중복 탐색을 끈다.
    */

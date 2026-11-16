@@ -50,9 +50,6 @@ import {
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
   FLEET_MODEL_SPEED_HEADER,
-  FLEET_EXECUTION_VIRTUAL_MODEL,
-  CLAUDE_CODE_AGENT_ID_HEADER,
-  CLAUDE_CODE_SESSION_ID_HEADER,
 } from "../../src/index.js";
 import {
   pickSeat,
@@ -87,22 +84,6 @@ const SEARCH_CATALOG = [
 ];
 
 describe("Claude Codex compaction routing", () => {
-
-  it("keeps compaction recording off the HTTP surface", async () => {
-    const router = createAiGatewayRouter({
-      readAuth,
-      compactionStore: {} as any,
-    });
-    const res = response();
-    const handled = await router.handle(ctx({
-      res,
-      pathname: `${BASE}/v1/compact-events`,
-      rawBody: { hook_event_name: "PreCompact", session_id: "session", trigger: "auto" },
-    }));
-    // 압축 사건은 이제 인프로세스 콜백이 기록한다 — 게이트웨이의 HTTP 표면에는 없다.
-    expect(handled).toBe(false);
-    expect(res.status).toBe(0);
-  });
 
   it("recovers input overflow before commit and preserves streaming after output starts", async () => {
     const overflow = { type: "invalid_request_error", code: "context_length_exceeded", message: "Your input exceeds the context window of this model." };
@@ -242,13 +223,10 @@ describe("Claude Codex compaction routing", () => {
     });
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-compaction-"));
     const compactionStore = createClaudeCodexCompactionStore({ directory });
-    const router = createAiGatewayRouter({
-      readAuth,
-      fetch: fetchMock,
-      compactionStore,
-    });
+    const router = createAiGatewayRouter({ readAuth, fetch: fetchMock, compactionStore });
     const sessionId = "4d7c1b52-3f7e-4f0a-9d55-2b8f6a1c0e91";
     const metadata = { user_id: JSON.stringify({ session_id: sessionId }) };
+    // 압축 사건은 이제 인프로세스 콜백이 저장소에 직접 기록한다 — 퇴역한 HTTP 경로를 거치지 않는다.
     const hook = async (event: Record<string, unknown>) => {
       if (event.hook_event_name === "PreCompact") {
         compactionStore.recordPreCompact({
@@ -257,7 +235,10 @@ describe("Claude Codex compaction routing", () => {
           customInstructions: typeof event.custom_instructions === "string" ? event.custom_instructions : "",
         });
       } else {
-        compactionStore.recordPostCompact({ sessionId, summary: typeof event.compact_summary === "string" ? event.compact_summary : "" });
+        compactionStore.recordPostCompact({
+          sessionId,
+          summary: typeof event.compact_summary === "string" ? event.compact_summary : "",
+        });
       }
     };
     try {
@@ -298,35 +279,20 @@ describe("Claude Codex compaction routing", () => {
 });
 
 /**
- * 위임 배정. 라우팅 Mod가 사실을 보내고 Console이 모델과 강도를 답하는 경로다.
+ * 위임 배정. 호출 전 판정이 남긴 사실을 Console의 코드 규칙이 모델과 강도로 바꾸는 경계다.
  *
- * 이 계약을 여기서 고정하는 이유는 세 가지가 한 요청 안에서 동시에 성립해야 하기 때문이다:
- * 자격 없는 호출은 원문 프롬프트를 실은 본문을 읽지 못해야 하고, 답은 훅이 그대로 스폰에
- * 실을 수 있는 모양이어야 하며, Fleet 자신의 실행 정체성을 호스트가 이름으로 불렀다고 해서
- * 배정이 꺼지면 안 된다 — 마지막 것은 목록에 보이는 이름 하나가 배정을 통째로 끄는 함정을
- * 실제로 만들었던 자리다.
+ * 여기서 고정하는 것은 판정 규칙 자체다 — 노출·쿼터·공급자 부하·모델 범위 제한이 후보를
+ * 어떻게 가르는지, 그리고 Fleet 자신의 실행 정체성을 호스트가 이름으로 불렀다고 해서
+ * 배정이 꺼지지 않는지. 퇴역한 mod HTTP 경로는 부르지 않고 판정 함수를 직접 부른다.
  */
 describe("delegation assignment", () => {
-  const MOD_TOKEN = "mod-token";
   const exposure = {
     delegationModels: [requireGatewayModel("codex--gpt-6.1-terra")],
   };
-  const assigningRouter = () => createAiGatewayRouter({
-    readAuth,
-    modHookToken: MOD_TOKEN,
-    assignRouting: (request) => decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), exposure),
-  });
-  // 자격 없음은 `null`로 말한다. `undefined`를 넘기면 기본 인자가 되살아나 자격이 실린다.
-  const assign = async (body: Record<string, unknown>, token: string | null = MOD_TOKEN) => {
-    const res = response();
-    await assigningRouter().handle(ctx({
-      res,
-      method: "POST",
-      pathname: `${BASE}/v1/fleet/routing/assign`,
-      headers: token === null ? {} : { "x-fleet-mod-token": token },
-      rawBody: body,
-    }));
-    return res;
+  // 퇴역한 HTTP 배정 경로 대신 공개 판정 경계를 직접 부른다. 판정 규칙은 그대로다.
+  const assign = async (body: Record<string, unknown>) => {
+    const decision = decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(body), exposure);
+    return { status: 200, body: JSON.stringify(decision) };
   };
 
   it("assigns subagents and workflow stages by the code rule without an AI routing-model call", async () => {
@@ -479,11 +445,6 @@ describe("delegation assignment", () => {
     ]);
   });
 
-  it("refuses an assignment request that carries no mod credential", async () => {
-    const res = await assign({ surface: "agent", prompt: "secret host prompt" }, null);
-    expect(res.status).toBe(401);
-  });
-
   it("assigns a model and effort to a run that named none", async () => {
     const res = await assign({
       surface: "agent",
@@ -610,30 +571,6 @@ describe("delegation assignment", () => {
       "sonnet[1m]",
       "codex--gpt-6.1-sol",
     ]);
-  });
-
-  it("routes a workflow stage instead of letting it keep the model it inherited", async () => {
-    // 스테이지는 스폰을 지나지 않아 세션의 모델을 그대로 물려받는다. 그것을 결정으로 읽으면
-    // 한 워크플로우의 스테이지 전부가 같은 모델에 몰리고 배분이 아예 돌지 않는다.
-    const providerLoad = new Map<string, number>();
-    const inherited = "claude-gateway--xai--grok-4.6";
-    const exposure = {
-      delegationModels: [
-        requireGatewayModel("codex--gpt-6.1-terra"),
-        requireGatewayModel("xai--grok-composer-2.5-fast"),
-      ],
-      providerLoad,
-    } satisfies GatewayAssignmentExposure;
-
-    const carried = [0, 1, 2, 3].map(() => decideGatewayRoutingAssignment(
-      { surface: "stage", requestedModel: inherited },
-      exposure,
-    ).model);
-
-    expect(carried).not.toContain(inherited);
-    expect(new Set(carried).size).toBe(2);
-    expect(providerLoad.get("codex")).toBe(2);
-    expect(providerLoad.get("xai")).toBe(2);
   });
 
   it("proxies native Claude requests to Anthropic with caller credentials and without alias advertisement", async () => {
@@ -2085,104 +2022,6 @@ describe("agy ACP bridge route", () => {
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }
-  });
-});
-
-
-/**
- * 위임 실행의 가상 모델. 자식의 `AgentDefinition.model`이 이 id를 들고 오면, 게이트웨이는
- * 실행 정체성 헤더로 배정을 찾아 실제 모델로 바꾼다. 여기서 고정하는 계약은 셋이다:
- * 정체성 없는 요청은 배정하지 않고, 배정할 수 없으면 명시 오류로 끝나며, 성공하면 업스트림은
- * 가상 id가 아니라 실제 모델 id를 받는다.
- */
-describe("delegated virtual model", () => {
-  const sseBody = (model: string) => new Response(
-    [
-      { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "ok" },
-      { type: "response.completed", response: { id: "r", model, usage: { input_tokens: 1, output_tokens: 1 } } },
-    ].map((frame) => `data: ${JSON.stringify(frame)}\n\n`).join(""),
-    { headers: { "content-type": "text/event-stream" } },
-  );
-  const virtualBody = () => ({
-    model: FLEET_EXECUTION_VIRTUAL_MODEL,
-    messages: [{ role: "user", content: "Hello" }],
-    max_tokens: 32,
-  });
-  const identity = {
-    [CLAUDE_CODE_SESSION_ID_HEADER]: "session-1",
-    [CLAUDE_CODE_AGENT_ID_HEADER]: "agent-1",
-  };
-
-  it("assigns only an identified run and sends the resolved model upstream", async () => {
-    const bodies: Record<string, unknown>[] = [];
-    const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
-      bodies.push(JSON.parse(String(init?.body)) as Record<string, unknown>);
-      return sseBody("gpt-6.1-terra");
-    });
-    const resolveExecutionModel = vi.fn(async () => ({ modelId: "codex--gpt-6.1-terra" }));
-    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth, resolveExecutionModel });
-
-    const anonymous = response();
-    await router.handle(ctx({ res: anonymous, token: ANTHROPIC_CRED, rawBody: virtualBody() }));
-    expect(anonymous.status).toBe(400);
-    expect(anonymous.body).toContain("no session or agent identity");
-    expect(resolveExecutionModel).not.toHaveBeenCalled();
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    const assigned = response();
-    await router.handle(ctx({ res: assigned, token: ANTHROPIC_CRED, rawBody: virtualBody(), headers: identity }));
-    expect(resolveExecutionModel).toHaveBeenCalledWith({ sessionId: "session-1", agentId: "agent-1" });
-    expect(assigned.status).toBe(200);
-    expect(bodies).toHaveLength(1);
-    expect(bodies[0]?.model).toBe(findGatewayModel("codex--gpt-6.1-terra")?.upstreamId);
-  });
-
-  it("refuses an unmatched run instead of inventing an assignment", async () => {
-    const fetchMock = vi.fn<typeof fetch>();
-    const router = createAiGatewayRouter({
-      fetch: fetchMock,
-      readAuth,
-      resolveExecutionModel: async () => ({ error: "could not match this delegated run" }),
-    });
-    const res = response();
-    await router.handle(ctx({ res, token: ANTHROPIC_CRED, rawBody: virtualBody(), headers: identity }));
-    expect(res.status).toBe(400);
-    expect(res.body).toContain("could not match this delegated run");
-    expect(fetchMock).not.toHaveBeenCalled();
-  });
-});
-
-
-/**
- * 위임 배정 규칙. 게이트웨이가 요청 시점에 부르는 판정이라, 배정이 꺼져야 하는 경우와
- * 그대로 존중해야 하는 경우를 한자리에서 고정한다.
- */
-describe("delegation decision rules", () => {
-  const exposure: GatewayAssignmentExposure = {
-    delegationModels: [requireGatewayModel("codex--gpt-6.1-terra")],
-  };
-  const decide = (body: Record<string, unknown>) =>
-    decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(body), exposure);
-
-  it("inherits for forks and own-definition agents, and keeps an explicit delegable model", () => {
-    expect(decide({ surface: "agent", fork: true }).model).toBeUndefined();
-    expect(decide({ surface: "agent", subagentType: "custom", providerPlugin: "engine-plugin" }).model).toBeUndefined();
-    const explicit = decide({
-      surface: "agent",
-      subagentType: "fleet:execute",
-      requestedModel: "claude-gateway--codex--gpt-6.1-terra[1m]",
-    });
-    expect(explicit.model).toBe("claude-gateway--codex--gpt-6.1-terra[1m]");
-    expect(explicit.because).toBe("already carried a gateway model");
-  });
-
-  it("inherits when no gateway model is exposed", () => {
-    const inherited = decideGatewayRoutingAssignment(
-      parseGatewayAssignmentRequest({ surface: "agent", subagentType: "fleet:execute" }),
-      { delegationModels: [] },
-    );
-    expect(inherited.model).toBeUndefined();
-    expect(inherited.label).toBe("session model");
   });
 });
 

@@ -9,7 +9,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentCliProfile, InjectAgentCliProfileOptions } from "@fleet-console/agent-runtime/fleet";
 import type { AgentOptionsData } from "@fleet-console/infra";
 
-import { renderConsoleAgentCliPlugin } from "../features/execution/host/agent/host-hooks.js";
 import { createDefaultTerminalLaunchResolver as createDefaultTerminalLaunchResolverImpl } from "../features/execution/host/agent/launch.js";
 import { createCommodoreSystemPromptService } from "../features/settings/host/agent-options.js";
 import { createShellTerminalLaunchResolver, resolveNodePtyModulePath, resolveUseConptyDll } from "../features/execution/host/terminal/pty.js";
@@ -162,43 +161,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     // 재개는 좌표로 넘어간다. 대역이 아니라 실제 주입이 읽는 필드여야 한다 — 예전 이름을
     // 그대로 두면 주입이 그것을 무시한 채 매번 새 세션을 열고, 대화가 조용히 끊긴다.
     expect(injectedOptions[0]?.origin).toEqual({ kind: "resume", sessionId: "provider-session-a" });
-  });
-
-  it("bakes the capture hook into the archive it packs at startup", async () => {
-    // 세션 포착은 이제 런치가 아니라 기동의 렌더가 싣는다. 명령이 Console CLI 진입점을
-    // 가리키지 않으면 자식의 세션이 어느 Objective의 것인지 호스트가 영영 알지 못한다.
-    // 자식이 받는 그 주소에서 읽어야 묶기와 내주기까지 함께 확인된다.
-    const plugin = renderConsoleAgentCliPlugin({
-      entryPath: "/console/cli.ts",
-      execPath: "/node",
-      tsxLoaderPath: "/loader/tsx.mjs",
-    });
-    let archive: Uint8Array;
-    try {
-      const response = await fetch(await plugin.url());
-      expect(response.status).toBe(200);
-      archive = new Uint8Array(await response.arrayBuffer());
-    } finally {
-      await plugin.close();
-    }
-
-    const entries = unzipSync(archive);
-    expect(Object.keys(entries)).toContain(".claude-plugin/plugin.json");
-    const hooks = JSON.parse(strFromU8(entries["hooks/hooks.json"]!)) as {
-      hooks: { UserPromptSubmit: { hooks: { command: string; args: string[] }[] }[]; StopFailure?: { hooks: { command: string; args: string[] }[] }[] };
-    };
-    expect(hooks.hooks.UserPromptSubmit[0]?.hooks[0]).toEqual({
-      type: "command",
-      command: "/node",
-      args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "capture-session", "claude"],
-    });
-    // 실패 hook의 등록 누락은 route 주입으로 잡히지 않는다. 소스가 아니라 자식이 받은 archive의 계약을 확인한다.
-    // Claude Code 2.1.289 P$e(byte 189450669)는 API 오류를 정상 Stop 대신 StopFailure로 보낸다.
-    expect(hooks.hooks.StopFailure?.flatMap((entry) => entry.hooks)).toEqual([{
-      type: "command",
-      command: "/node",
-      args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "turn-end"],
-    }]);
   });
 
   it("rejects a scoped gateway model whose provider is signed out and still runs one that is signed in", async () => {

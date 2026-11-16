@@ -5,7 +5,7 @@ import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { CleanupPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
-import type { DelegationIntentLedger } from "@fleet-console/ai-gateway";
+import { createExecutionAssignmentCache, type DelegationIntentLedger } from "@fleet-console/ai-gateway";
 import path from "node:path";
 import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
 import {
@@ -244,13 +244,14 @@ export function startAiGateway(ctx: GatewayStartContext) {
       void quota.getSummary().catch(() => undefined);
       return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), currentExposure());
   }
-  // 위임 실행의 가상 모델 id → 실제 배정. 자식이 실행 정체성 헤더를 싣고, 그 실행의 의도가
-  // 호출 전 판정에서 이미 적혀 있어야 답한다. 의도를 못 찾으면 배정하지 않고 명시 오류로 끝낸다.
+  // 위임 실행의 가상 모델 id → 실제 배정. 실행 하나의 배정은 첫 요청에서 한 번만 정하고
+  // 그 실행 id에 묶어 둔다 — 두 번째 요청이나 재시도에서 모델이 바뀌면 안 된다.
   const delegationIntents = ctx.delegationIntents;
-  const resolveExecutionModel = delegationIntents === undefined ? undefined : async (request: { readonly sessionId: string; readonly agentId: string }) => {
-      const intent = await delegationIntents.awaitIntent(request.agentId, EXECUTION_INTENT_TIMEOUT_MS);
+  const executionAssignments = delegationIntents === undefined ? undefined : createExecutionAssignmentCache({
+    resolve: async (request) => {
+      const intent = await delegationIntents.awaitIntent(request.sessionId, request.agentId, EXECUTION_INTENT_TIMEOUT_MS);
       if (intent === undefined) return { error: EXECUTION_INTENT_TIMEOUT_MESSAGE };
-      if (intent.sessionId !== undefined && intent.sessionId !== request.sessionId) {
+      if (intent.sessionId !== request.sessionId) {
         return { error: "This delegated run does not match its dispatch session." };
       }
       void quota.getSummary().catch(() => undefined);
@@ -260,8 +261,20 @@ export function startAiGateway(ctx: GatewayStartContext) {
         ...(intent.requestedModel === undefined ? {} : { requestedModel: intent.requestedModel }),
         ...(intent.subagentType === undefined ? {} : { subagentType: intent.subagentType }),
       }), currentExposure());
-      if (decision.model === undefined) return { error: "No gateway model is available for this delegated run." };
-      return { modelId: decision.model, label: decision.label, because: decision.because };
+      if (decision.model !== undefined) {
+        return { modelId: decision.model, label: decision.label, because: decision.because };
+      }
+      // 후보가 없거나 모두 위험한 것은 오류가 아니라 정상 상속이다. 호출 시점의 세션 모델로 돌린다.
+      if (intent.inheritModel === undefined || intent.inheritModel.length === 0) {
+        return { error: "Fleet could not determine which model this delegated run should inherit." };
+      }
+      return { modelId: intent.inheritModel, label: decision.label, because: decision.because };
+    },
+  });
+  const resolveExecutionModel = executionAssignments?.assign.bind(executionAssignments);
+  const releaseExecutionSession = (sessionId: string): void => {
+    executionAssignments?.releaseSession(sessionId);
+    delegationIntents?.releaseSession(sessionId);
   };
   /** 설정 카드의 코드 규칙 후보. 갱신은 비동기로, 응답은 현재 캐시로 낸다. */
   const readCandidates = () => {
@@ -373,6 +386,19 @@ export function startAiGateway(ctx: GatewayStartContext) {
     quota.record("antigravity", { status: "not_connected" });
     void aiGatewayRuntime.releaseAgy();
   };
-  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readCandidates, readEnabledModels, syncAntigravity };
+  return {
+    store: aiGatewayStore,
+    wireLog,
+    runtime: aiGatewayRuntime,
+    ensureClaudeNativeModels,
+    onClaudeNativeModelsChanged,
+    readProviderStatuses,
+    subscribeProviderStatus,
+    readCandidates,
+    readEnabledModels,
+    syncAntigravity,
+    // SDK 세션이 접힐 때 그 세션의 위임 배정을 걷는다. 실행 host의 dispose가 이 자리를 부른다.
+    releaseExecutionSession,
+  };
 }
 

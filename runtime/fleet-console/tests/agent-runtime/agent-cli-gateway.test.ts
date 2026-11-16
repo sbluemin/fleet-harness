@@ -7,7 +7,7 @@ import { findGatewayModel } from "@fleet-console/ai-gateway";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { FLEET_PLUGIN_NAME } from "@fleet-console/ai-gateway";
-import { GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, buildDisabledSkillOverrides, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliProfile, type AgentCliProfile, type FleetHookExec } from "@fleet-console/agent-runtime/fleet";
+import { GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, parseAgentCliId, buildDisabledSkillOverrides, injectAgentCliProfile, prepareClaudeSession, resolveAgentCliProfile, type AgentCliProfile } from "@fleet-console/agent-runtime/fleet";
 import { buildClaudeGatewayArgs } from "../../foundation/agent-runtime/src/fleet/agent-cli/builders/claude.js";
 import type { AgentCliInjectionContext } from "../../foundation/agent-runtime/src/fleet/agent-cli/types.js";
 
@@ -20,7 +20,6 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-const pluginStub = { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} };
 
 describe("claude-gateway profile", () => {
   it("is the only published Agent CLI and normalizes exact retired aliases", () => {
@@ -110,7 +109,6 @@ describe("claude-gateway argument composition", () => {
     const session = await prepareClaudeSession({
       cliId: "claude",
       cwd: root,
-      plugin: pluginStub,
       origin: { kind: "new" },
       claudeCodeDisabledAgents: ["*"],
       claudeCodeDisabledTools: ["AskUserQuestion"],
@@ -119,7 +117,7 @@ describe("claude-gateway argument composition", () => {
     expect(session.sdk.request.disallowedTools).toEqual(["Agent", "Task", "AskUserQuestion"]);
 
     // 옵트아웃이 없으면 규칙 키 자체가 실리지 않는다.
-    const untouched = await prepareClaudeSession({ cliId: "claude", cwd: root, plugin: pluginStub, origin: { kind: "new" } });
+    const untouched = await prepareClaudeSession({ cliId: "claude", cwd: root, origin: { kind: "new" } });
     expect(untouched.sdk.request).not.toHaveProperty("disallowedTools");
     expect(untouched.sdk.options.disableBundledSkills).toBe(true);
     expect(untouched.sdk.options.skillOverrides).toEqual({ "plugin-authoring": "off" });
@@ -224,7 +222,6 @@ function baseProfile(
 function baseInjectOptions(
   root: string,
   overrides: {
-    readonly captureSessionHookExec?: FleetHookExec;
     readonly claudeCodeSystemPrompt?: "on" | "off";
     readonly additionalDirectories?: readonly string[];
     readonly claudeCodeDisabledAgents?: readonly string[];
@@ -232,7 +229,6 @@ function baseInjectOptions(
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
-    plugin: pluginStub,
     ...(overrides.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: overrides.claudeCodeSystemPrompt } : {}),
     ...(overrides.additionalDirectories ? { additionalDirectories: overrides.additionalDirectories } : {}),
     ...(overrides.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: overrides.claudeCodeDisabledAgents } : {}),
@@ -246,6 +242,5 @@ function baseInjectOptions(
       },
       releaseSessionToken() {},
     },
-    ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
   };
 }

@@ -141,9 +141,9 @@ export async function createClaudeGatewaySdk(
     ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
     ...(request.forkSession === undefined ? {} : { forkSession: request.forkSession }),
     ...(request.persistSession === undefined ? {} : { persistSession: request.persistSession }),
-    // SDK에 필드가 없는 두 값을 CLI 인자로 싣는다 — 세션 이름, 그리고 URL 플러그인(vendor `plugins`는
-    // 로컬 디렉터리만 받는다). 임의 인자 통로(`extraArgs`)는 계약에 열지 않고 이 두 키만 옮긴다.
-    ...vendorExtraArgs(options.pluginUrl, request.sessionName),
+    // SDK에 필드가 없는 세션 이름을 CLI 인자로 싣는다. 임의 인자 통로(`extraArgs`)는 계약에
+    // 열지 않고 이 한 키만 옮긴다.
+    ...vendorExtraArgs(request.sessionName),
     ...(request.maxTurns === undefined ? {} : { maxTurns: request.maxTurns }),
     ...(request.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: request.maxBudgetUsd }),
     ...(request.outputFormat === undefined ? {} : { outputFormat: request.outputFormat }),
@@ -471,9 +471,8 @@ function vendorMcpServers(request: ClaudeGatewaySessionRequest): Record<string, 
   return merged;
 }
 
-function vendorExtraArgs(pluginUrl: string | undefined, sessionName: string | undefined): { extraArgs?: Record<string, string> } {
+function vendorExtraArgs(sessionName: string | undefined): { extraArgs?: Record<string, string> } {
   const extraArgs: Record<string, string> = {
-    ...(pluginUrl === undefined ? {} : { "plugin-url": pluginUrl }),
     ...(sessionName === undefined ? {} : { name: sessionName }),
   };
   return Object.keys(extraArgs).length === 0 ? {} : { extraArgs };
@@ -489,8 +488,11 @@ function readTaskEvent(message: ClaudeGatewayMessage): ClaudeGatewayTaskEvent | 
   if (kind === undefined) return undefined;
   const taskId = message.task_id;
   if (typeof taskId !== "string" || taskId.length === 0) return undefined;
+  const context = readHookContext(message as unknown as Record<string, unknown>);
+  if (context === undefined) return undefined;
   return {
     kind,
+    sessionId: context.sessionId,
     taskId,
     ...(typeof message.run_id === "string" && message.run_id.length > 0 ? { runId: message.run_id } : {}),
     ...(typeof message.tool_use_id === "string" && message.tool_use_id.length > 0 ? { toolUseId: message.tool_use_id } : {}),
@@ -651,10 +653,14 @@ async function decidePreToolUse(
   const updated: Record<string, unknown> = {};
   if (decision?.effort !== undefined && HOOK_EFFORT_VALUES.includes(decision.effort)) updated.effort = decision.effort;
   if (decision?.subagentType !== undefined && decision.subagentType.length > 0) updated.subagent_type = decision.subagentType;
+  const stripModel = decision?.stripModel === true;
+  const merged: Record<string, unknown> = { ...toolInput, ...updated };
+  // 라우팅 대상으로 바꿀 때는 자식이 붙인 alias를 지운다. 남으면 정의의 모델을 덮는다.
+  if (stripModel) delete merged.model;
   return {
     hookSpecificOutput: {
       hookEventName: "PreToolUse",
-      ...(Object.keys(updated).length === 0 ? {} : { updatedInput: { ...toolInput, ...updated } }),
+      ...(Object.keys(updated).length === 0 && !stripModel ? {} : { updatedInput: merged }),
     },
   };
 }

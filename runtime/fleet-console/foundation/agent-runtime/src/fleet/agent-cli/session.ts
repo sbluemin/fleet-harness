@@ -4,7 +4,7 @@ import type { ClaudeGatewaySystemPrompt } from "../../claude/index.js";
 
 import { buildClaudeDenyRules } from "./claude-agent-rules.js";
 import { GATEWAY_DISABLED_CLAUDE_SKILLS, SDK_CLAUDE_SKILL_OVERRIDES, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
-import type { AgentCliPlugin, ClaudeSessionCoordinate } from "./types.js";
+import type { ClaudeSessionCoordinate } from "./types.js";
 
 /**
  * 이 런치가 여는 Claude 세션이 어디서 시작하는가.
@@ -29,8 +29,6 @@ export type { ClaudeSessionCoordinate } from "./types.js";
 
 /** `createClaudeGatewaySdk` 옵션에 그대로 펼치는 몫. */
 export interface ClaudeSessionSdkOptions {
-  /** 자식이 받아 갈 Fleet 플러그인 zip 주소. CLI 표면의 `--plugin-url`과 같은 값이다. */
-  readonly pluginUrl: string;
   readonly settingSources: readonly ("user" | "project" | "local")[];
   readonly allowAmbientMcpServers: boolean;
   readonly disableBundledSkills: true;
@@ -59,8 +57,6 @@ export interface ClaudeSessionSdkProjection {
 export interface ClaudeSessionHandle {
   readonly sessionId: string;
   readonly coordinate: ClaudeSessionCoordinate;
-  /** 이 세션이 실을 Fleet 플러그인 zip 주소. */
-  readonly pluginUrl: string;
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
   readonly claudeCodeSystemPrompt: "on" | "off";
   /** 이 세션에서 끈 내장 서브에이전트 이름들. 생략은 전부 남는다는 뜻이다. */
@@ -80,12 +76,6 @@ export interface ClaudeSessionHandle {
 export interface PrepareClaudeSessionOptions {
   readonly cliId: string;
   readonly cwd: string;
-  /**
-   * 호스트가 기동에 한 번 렌더해 둔 플러그인 트리. 세션마다 다시 렌더하지 않는다 — 내용이
-   * 같아 디스크는 그대로지만, 매 런치가 저장소 락을 잡고 트리 전체를 다시 읽는 비용은 남고,
-   * 여러 Objective을 동시에 여는 순간 그 락에서 직렬화된다.
-   */
-  readonly plugin: AgentCliPlugin;
   readonly origin: ClaudeSessionOrigin;
   /**
    * 이 세션에 Claude Code 기본 시스템 프롬프트를 실을지. 생략하면 `on`, `off`는 시스템 프롬프트 없이 연다.
@@ -141,12 +131,10 @@ export async function prepareClaudeSession(
   const claudeCodeDisabledTools = [...new Set(options.claudeCodeDisabledTools ?? [])];
   const denyRules = buildClaudeDenyRules(claudeCodeDisabledAgents, claudeCodeDisabledTools);
   const skillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
-  const pluginUrl = await options.plugin.url();
   const pluginDirs = [...new Set(options.pluginDirs ?? [])];
   return {
     sessionId: coordinate.sessionId,
     coordinate,
-    pluginUrl,
     ...(skillOverrides ? { skillOverrides } : {}),
     claudeCodeSystemPrompt,
     ...(claudeCodeDisabledAgents.length > 0 ? { claudeCodeDisabledAgents } : {}),
@@ -156,7 +144,6 @@ export async function prepareClaudeSession(
     ...(pluginDirs.length > 0 && options.pluginEnv && Object.keys(options.pluginEnv).length > 0 ? { pluginEnv: { ...options.pluginEnv } } : {}),
     sdk: {
       options: {
-        pluginUrl,
         // 터미널로 열었을 때 CLI가 읽는 층을 그대로 읽어야 한 세션의 두 얼굴이 된다 —
         // 리포의 `CLAUDE.md`와 사용자 설정을 표면에 따라 잃지 않는다.
         settingSources: ["user", "project", "local"],

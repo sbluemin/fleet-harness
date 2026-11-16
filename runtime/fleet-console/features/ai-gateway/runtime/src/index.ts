@@ -206,6 +206,11 @@ export {
   type ExecutionModelResolution,
 } from "./fleet/execution-routing.js";
 export {
+  createExecutionAssignmentCache,
+  type ExecutionAssignmentCache,
+  type ExecutionAssignmentCacheOptions,
+} from "./fleet/execution-assignment.js";
+export {
   createDelegationIntentLedger,
   type DelegationIntent,
   type DelegationIntentLedger,

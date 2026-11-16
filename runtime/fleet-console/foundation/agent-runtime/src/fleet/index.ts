@@ -13,7 +13,6 @@ export {
   type AgentCliProfile,
   type AgentCliProfileOptions,
   type CliMessagePolicy,
-  type FleetHookExec,
   type PtyInputChunk,
 } from "./agent-cli/types.js";
 export {
@@ -60,11 +59,7 @@ export {
 // Agent CLI 주입 능력 맵
 export { getAgentCliInjectionCapability } from "./agent-cli/capabilities.js";
 
-// Agent CLI 프로파일/플러그인/인자 주입 조립
-export {
-  createSessionCaptureHookExec,
-} from "./agent-cli/session-capture-hook.js";
-
+// Agent CLI 프로파일/인자 주입 조립
 export {
   injectAgentCliProfile,
   type InjectAgentCliProfileOptions,
@@ -87,12 +82,6 @@ export {
   type PrepareClaudeSessionOptions,
 } from "./agent-cli/session.js";
 
-export {
-  createAgentCliPlugin,
-  type AgentCliPlugin,
-  type AgentCliPluginHttpMount,
-  type CreateAgentCliPluginOptions,
-} from "./agent-cli/plugin/index.js";
 export { reclaimLegacyTrees } from "./agent-cli/plugin/legacy-trees.js";
 
 
