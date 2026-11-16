@@ -283,9 +283,10 @@ async function boot(): Promise<void> {
     if (!options) throw error;
     const choice = await dialog.showMessageBox(options);
     if (choice.response !== 0) throw new Error("console_lock_recover_declined");
-    const result = await recoverConsoleLockSlot(path.join(environment.consoleDir, "console.lock"), environment.dataDir);
+    const lockFile = path.join(environment.consoleDir, "console.lock");
+    const result = await recoverConsoleLockSlot(lockFile, environment.dataDir);
     if (result.kind === "refused") {
-      await dialog.showMessageBox(describeConsoleLockRecoverRefusedDialog(result, entryLanguage));
+      await dialog.showMessageBox(describeConsoleLockRecoverRefusedDialog(result, entryLanguage, lockFile));
       throw new Error("console_lock_recover_declined");
     }
     logger.info(`cleared a stuck Console lock (${result.kind}) and is starting again`);

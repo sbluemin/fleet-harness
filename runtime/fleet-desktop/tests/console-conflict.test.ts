@@ -83,16 +83,23 @@ describe("Console conflict handling", () => {
     expect(describeConsoleLockRecoverDialog(stopping)).toBeNull();
     expect(describeConsoleLockRecoverDialog(new Error("console_lock_refused"))).toBeNull();
 
-    const symlinkRefused = describeConsoleLockRecoverRefusedDialog({ code: "symlink", reason: "Refusing /fleet/console.lock: it is a symbolic link." }, "ko");
-    const changedRefused = describeConsoleLockRecoverRefusedDialog({ code: "lock_changed", reason: "the lock changed while recovery was checking it" }, "ko");
-    const liveRefused = describeConsoleLockRecoverRefusedDialog({ code: "live_console", reason: "pid 4242 is still running" }, "ko");
-    const foreignRefused = describeConsoleLockRecoverRefusedDialog({ code: "foreign_owner", reason: "owned by uid 0" }, "ko");
+    const symlinkRefused = describeConsoleLockRecoverRefusedDialog({ code: "symlink", reason: "Refusing /fleet/console.lock: it is a symbolic link." }, "ko", LOCK_FILE);
+    const changedRefused = describeConsoleLockRecoverRefusedDialog({ code: "lock_changed", reason: "the lock changed while recovery was checking it" }, "ko", LOCK_FILE);
+    const liveRefused = describeConsoleLockRecoverRefusedDialog({ code: "live_console", reason: "pid 4242 is still running" }, "ko", LOCK_FILE);
+    const foreignRefused = describeConsoleLockRecoverRefusedDialog({ code: "foreign_owner", reason: "owned by uid 0" }, "ko", LOCK_FILE);
     expect(symlinkRefused.message).toContain("심볼릭 링크");
     expect(changedRefused.message).toContain("바뀌어");
     expect(liveRefused.message).toContain("실행 중인 Console");
     expect(foreignRefused.message).toContain("다른 사용자");
+    for (const refused of [symlinkRefused, changedRefused, liveRefused, foreignRefused]) {
+      expect(refused.detail).toMatch(/[가-힣]/);
+      expect(refused.detail).toContain(LOCK_FILE);
+      expect(refused.detail).not.toMatch(/Refusing|still running|while recovery|owned by/i);
+    }
     expect(new Set([symlinkRefused.message, changedRefused.message, liveRefused.message, foreignRefused.message]).size).toBe(4);
     expect(symlinkRefused.buttons).toEqual(["확인"]);
+    const symlinkRefusedEn = describeConsoleLockRecoverRefusedDialog({ code: "symlink", reason: "Refusing /fleet/console.lock: it is a symbolic link." }, "en", LOCK_FILE);
+    expect(symlinkRefusedEn.detail).toBe("Refusing /fleet/console.lock: it is a symbolic link.");
   });
 
   it("quits even when Electron cannot show the acknowledgement dialog", async () => {
