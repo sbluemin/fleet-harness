@@ -1,5 +1,5 @@
 import { getT as getBrowserT } from "./i18n.js";
-import { useBrowserClosedTabs, useBrowserDriving, useBrowserTabCount, useBrowserSurface, toggleBrowserPane, openBrowserPane } from "./browser-surface.js";
+import { useBrowserClosedTabs, useBrowserDriving, useBrowserTabCount, useBrowserSurface, openBrowserPane } from "./browser-surface.js";
 import { useObjectiveUse } from "../../computer-use/client/computer-screen-share.js";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 
@@ -24,17 +24,20 @@ export function BrowserActivityLines({ objectiveId }: { readonly objectiveId: st
     const label = live
       ? t("terminal.browser.activity.agentUsing", { count: tabs })
       : t("terminal.browser.activity.open", { count: tabs });
+    const canOpen = surface === null || surface.mode === "window";
     return (
       <div className="agent-chat-browser-line is-live">
         <span className="agent-chat-browser-dot" aria-hidden="true" />
         <span className="agent-chat-browser-text">{label}</span>
-        <button
-          type="button"
-          className="agent-chat-browser-action"
-          onClick={() => { if (surface === null) openBrowserPane({ kind: "event", objectiveId }); else toggleBrowserPane({ kind: "event", objectiveId }); }}
-        >
-          {t(surface?.mode === "window" ? "terminal.browser.activity.focus" : "terminal.browser.activity.view")}
-        </button>
+        {canOpen ? (
+          <button
+            type="button"
+            className="agent-chat-browser-action"
+            onClick={() => openBrowserPane({ kind: "event", objectiveId })}
+          >
+            {t(surface?.mode === "window" ? "terminal.browser.activity.focus" : "terminal.browser.activity.view")}
+          </button>
+        ) : null}
       </div>
     );
   }
