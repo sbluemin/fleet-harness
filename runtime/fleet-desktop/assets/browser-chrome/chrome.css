@@ -426,7 +426,8 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
    변마다 두 겹이다: 번지는 빛 한 겹과, 같은 자리에 찍힌 촘촘한 점 한 겹(커서 둘레의 점 격자와 같은 무늬). 두 겹이 서로 다른 빠르기로 마주 흐르고
    깊이도 따로 숨쉬어서, 어느 순간에도 같은 모양이 되풀이되지 않는다. */
 .guard-spectrum { --tile: 560px; --from: 0px; --to: 560px; --edge: 0%; --dir: 180deg; --depth: clamp(44px, 13vmin, 96px); opacity: 0.6; background: linear-gradient(var(--dir), color-mix(in oklab, var(--agent-control-badge) 62%, transparent) 0%, var(--guard-glow) 30%, transparent 100%); }
-.guard-spectrum.b { --tile: 390px; --from: 390px; --to: 0px; opacity: 0.8; background: radial-gradient(circle, var(--guard-line) 0 1px, transparent 1.5px) 0 0 / 8px 8px; }
+/* 점 격자는 뷰포트 (0, 0) 에 고정한다 — 아래·오른쪽 띠 두께가 숨쉬어도 점이 미끄러지지 않고 네 모서리 격자가 한 격자로 맞는다. */
+.guard-spectrum.b { --tile: 390px; --from: 390px; --to: 0px; opacity: 0.8; background: radial-gradient(circle, var(--guard-line) 0 1px, transparent 1.5px) 0 0 / 8px 8px fixed; }
 .guard-spectrum.top, .guard-spectrum.bottom { left: 0; right: 0; height: var(--depth);
   -webkit-mask-image: radial-gradient(ellipse 20% 100% at 22% var(--edge), #000 18%, transparent 100%), radial-gradient(ellipse 12% 58% at 58% var(--edge), #000 18%, transparent 100%), radial-gradient(ellipse 16% 80% at 86% var(--edge), #000 18%, transparent 100%), linear-gradient(var(--dir), #000 0%, transparent 26%); mask-image: radial-gradient(ellipse 20% 100% at 22% var(--edge), #000 18%, transparent 100%), radial-gradient(ellipse 12% 58% at 58% var(--edge), #000 18%, transparent 100%), radial-gradient(ellipse 16% 80% at 86% var(--edge), #000 18%, transparent 100%), linear-gradient(var(--dir), #000 0%, transparent 26%);
   -webkit-mask-size: var(--tile) 100%, var(--tile) 100%, var(--tile) 100%, auto; mask-size: var(--tile) 100%, var(--tile) 100%, var(--tile) 100%, auto;
