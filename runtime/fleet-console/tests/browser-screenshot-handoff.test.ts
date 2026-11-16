@@ -137,8 +137,10 @@ function createStubDesktop(options: StubOptions = {}) {
   let lastViewId = "view-stub";
   const defaultLayout = options.layout ?? { width: 1386, height: 1163 };
   const captureClips: Array<{ x?: number; y?: number; width?: number; height?: number; scale?: number }> = [];
+  const cdpCalls: Array<{ method: string; params: Record<string, unknown> }> = [];
   const desktop = {
     captureClips,
+    cdpCalls,
     currentHost: "local" as string | null,
     onSurface: () => () => undefined,
     surfaceState: () => null,
@@ -165,6 +167,7 @@ function createStubDesktop(options: StubOptions = {}) {
     },
     setLayout(next: { width: number; height: number }, id = lastViewId) { layouts.set(id, next); },
     async send<T = Record<string, unknown>>(method: string, _params: Record<string, unknown> = {}, _sessionId?: string): Promise<T> {
+      cdpCalls.push({ method, params: _params });
       switch (method) {
         case "Browser.getVersion":
           return { product: "Chrome/150.0.0.0", userAgent: "Mozilla/5.0 Chrome/150.0.0.0", protocolVersion: "1.3" } as T;
@@ -278,9 +281,15 @@ describe("objectiveRecord browser service contracts", () => {
     const iconUrl = "http://localhost/favicon.ico";
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=", "base64");
     const fetched = vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(new Uint8Array(png), { headers: { "content-type": "image/png" } }));
-    const service = createService(createStubDesktop({ page: { url: "http://localhost/", favicon: iconUrl } }));
+    const desktop = createStubDesktop({ page: { url: "http://localhost/", favicon: iconUrl } });
+    const service = createService(desktop);
     try {
       await service.createTab(OBJECTIVE, "http://localhost/", "user", { show: true });
+      const bindingCall = desktop.cdpCalls.find((call) => call.method === "Runtime.addBinding");
+      const observerCall = desktop.cdpCalls.find((call) => call.method === "Page.addScriptToEvaluateOnNewDocument");
+      expect(typeof bindingCall?.params.executionContextName).toBe("string");
+      expect(bindingCall?.params.executionContextName).toBeTruthy();
+      expect(observerCall?.params.worldName).toBe(bindingCall?.params.executionContextName);
       // 크롬 문서는 img-src data: 만 연다 — 원본 URL 이 아니라 그릴 수 있는 data: URL 을 실어야 한다.
       await vi.waitFor(() => expect(service.viewerSnapshot(OBJECTIVE).chrome?.tabs[0]?.favicon).toBe(`data:image/png;base64,${png.toString("base64")}`), { timeout: 3_000 });
       // Console 상태는 원본 URL 을 유지한다 — 이력과 파비콘 프록시가 그 값을 쓴다.

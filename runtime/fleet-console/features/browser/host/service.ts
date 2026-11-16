@@ -369,8 +369,10 @@ export interface BrowserServiceStatus {
 const FAVICON_DATA_URL_MAX = 65_536;
 /** 탭 아이콘으로 받는 원본 바이트 상한 — base64 를 거쳐도 프로토콜 상한 안에 남는다. */
 const FAVICON_ICON_BYTES_MAX = 32 * 1024;
-/** 페이지의 아이콘 선언이 바뀌었다고 Console 에 알리는 페이지 전역 함수 이름. */
+/** 페이지의 아이콘 선언이 바뀌었다고 Console 에 알리는 바인딩 이름. */
 const FAVICON_BINDING = "__fleetFaviconChanged";
+/** 페이지 스크립트가 바인딩을 보거나 호출하지 못하도록 `FAVICON_OBSERVER` 와 바인딩을 묶는 격리 월드 이름. */
+const FAVICON_WORLD = "fleet-favicon";
 /**
  * 페이지가 선언한 아이콘, 없으면 /favicon.ico — Chrome 과 같이 `link rel~=icon`(shortcut icon 포함)을 먼저 보고
  * apple-touch-icon 을 마지막 후보로 두며, 선언이 없을 때만 사이트 루트의 `/favicon.ico` 를 쓴다.
@@ -387,8 +389,9 @@ const FAVICON_EXPRESSION = `(() => {
   } catch { return null; }
 })()`;
 /**
- * 아이콘 선언의 동적 변경을 지켜본다 — Chrome 이 탭 아이콘을 DOM 의 `link rel=icon` 변화에 맞춰 바꾸는 것과 같다.
- * head 의 link 만 보고(그 밖의 head 변경은 무시) Console 에 알린다. 페이지 CSP 와 무관하게 먼저 설치된다.
+ * 아이콘 선언의 동적 변경을 지켜본다 — Chrome 이 탭 아이콘을 DOM 의 `link[rel]` 변화에 맞춰 바꾸는 것과 같다.
+ * `documentElement` 아래 `link[rel]` 의 추가·제거 및 `href`/`rel` 변경(아이콘 선언 해제 포함)을 보고 Console 에 알린다.
+ * 격리 월드(`FAVICON_WORLD`)에 설치되므로 페이지 스크립트에서 보이지 않고 페이지 CSP 의 영향도 받지 않는다.
  */
 const FAVICON_OBSERVER = `(() => {
   if (window.top !== window) return;
@@ -398,11 +401,15 @@ const FAVICON_OBSERVER = `(() => {
     if (!document.documentElement) return;
     new MutationObserver((records) => {
       for (const record of records) {
-        if (record.type === "attributes") { if (iconLink(record.target)) return notify(); continue; }
+        if (record.type === "attributes") {
+          const target = record.target;
+          if (iconLink(target) || (record.attributeName === "rel" && target.nodeName === "LINK" && /icon/i.test(record.oldValue || ""))) return notify();
+          continue;
+        }
         for (const node of record.addedNodes) if (iconLink(node)) return notify();
         for (const node of record.removedNodes) if (iconLink(node)) return notify();
       }
-    }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ["href", "rel"] });
+    }).observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeOldValue: true, attributeFilter: ["href", "rel"] });
   };
   if (document.documentElement) watch(); else document.addEventListener("DOMContentLoaded", watch, { once: true });
 })()`;
@@ -1582,10 +1589,10 @@ export class BrowserService {
       client.send("Emulation.setFocusEmulationEnabled", { enabled: true }, tab.sessionId),
       ...(this.identity ? [client.send("Emulation.setUserAgentOverride", { userAgent: this.identity.userAgent, platform: process.platform === "darwin" ? "MacIntel" : process.platform === "win32" ? "Win32" : "Linux x86_64", userAgentMetadata: this.identity.metadata }, tab.sessionId)] : []),
     ]);
-    // 아이콘 선언의 동적 변경을 듣는다 — 도메인을 켠 뒤에 건다. 설치·등록에 실패해도 탭은 연다(그때는 이동·로드 시점에만 갱신된다).
+    // 아이콘 선언의 동적 변경을 듣는다 — 도메인을 켠 뒤에 격리 월드로 건다. 설치·등록에 실패해도 탭은 연다(그때는 이동·로드 시점에만 갱신된다).
     await Promise.all([
-      client.send("Runtime.addBinding", { name: FAVICON_BINDING }, tab.sessionId).catch(() => undefined),
-      client.send("Page.addScriptToEvaluateOnNewDocument", { source: FAVICON_OBSERVER }, tab.sessionId).catch(() => undefined),
+      client.send("Runtime.addBinding", { name: FAVICON_BINDING, executionContextName: FAVICON_WORLD }, tab.sessionId).catch(() => undefined),
+      client.send("Page.addScriptToEvaluateOnNewDocument", { source: FAVICON_OBSERVER, worldName: FAVICON_WORLD }, tab.sessionId).catch(() => undefined),
     ]);
     this.deps.desktop.bindView(tab.targetId, op.objectiveId, actor === "agent");
     await this.applyViewport(client, tab, op);
