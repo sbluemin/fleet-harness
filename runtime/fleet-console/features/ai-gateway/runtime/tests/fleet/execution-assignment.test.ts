@@ -54,6 +54,26 @@ describe("delegated assignment state", () => {
     expect(await cache.assign({ sessionId: "s1", agentId: "a1" })).toMatchObject({ modelId: "model-1" });
   });
 
+  it("reserves pending decisions against capacity and keeps a released flight from writing over the next run", async () => {
+    const resolvers: Array<(value: { modelId: string } | { error: string }) => void> = [];
+    const resolve = vi.fn(() => new Promise<{ modelId: string } | { error: string }>((settle) => { resolvers.push(settle); }));
+    const cache = createExecutionAssignmentCache({ maxAssignments: 1, resolve });
+
+    const first = cache.assign({ sessionId: "s1", agentId: "a1" });
+    // 아직 판정이 도는 중이어도 그 예약이 한도를 차지한다.
+    expect(await cache.assign({ sessionId: "s2", agentId: "a2" })).toMatchObject({ error: expect.stringContaining("too many") });
+
+    // release 뒤 같은 세션으로 새 실행이 선다. 이전 판정이 늦게 끝나도 새 세대의 캐시를
+    // 채우거나 새 flight를 지우지 않는다.
+    cache.releaseSession("s1");
+    const second = cache.assign({ sessionId: "s1", agentId: "a1" });
+    resolvers[0]?.({ modelId: "old" });
+    expect(await first).toMatchObject({ modelId: "old" });
+    resolvers[1]?.({ modelId: "new" });
+    expect(await second).toMatchObject({ modelId: "new" });
+    expect(await cache.assign({ sessionId: "s1", agentId: "a1" })).toMatchObject({ modelId: "new" });
+  });
+
   it("scopes the intent ledger by SDK session and refuses overflow without evicting", async () => {
     const ledger = createDelegationIntentLedger({ maxPending: 1, maxBound: 1 });
     expect(ledger.record({ sessionId: "s1", toolUseId: "call-1", subagentType: "fleet:execute" })).toBe(true);

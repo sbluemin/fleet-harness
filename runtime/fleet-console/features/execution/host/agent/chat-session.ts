@@ -750,6 +750,9 @@ class AgentChatSession {
   private readonly seed: AgentChatSessionSeed;
   private readonly createSdk: CreateChatSdk;
   private sdk: ClaudeGatewaySdk | null = null;
+  /** 자식이 실제로 쓰는 SDK 세션 id들. `/clear`·재생성으로 id가 바뀌면 이전 기록을 걷는다. */
+  private readonly providerSessionIds = new Set<string>();
+  private liveProviderSessionId: string | null = null;
   private sdkFlight: Promise<ClaudeGatewaySdk> | null = null;
   /** admiral이 확정한 이 세션의 좌표. 세션당 한 번 받아 두고 dispose에서 반납한다. */
   private claudeSession: ClaudeSessionHandle | null = null;
@@ -1776,8 +1779,10 @@ class AgentChatSession {
     session?.close();
     const sdk = this.sdk;
     this.sdk = null;
-    const providerSessionId = this.claudeSession?.sessionId;
-    if (providerSessionId !== undefined) this.seed.releaseDelegationSession?.(providerSessionId);
+    const releasedSessions = new Set(this.providerSessionIds);
+    const handleSessionId = this.claudeSession?.sessionId;
+    if (handleSessionId !== undefined) releasedSessions.add(handleSessionId);
+    for (const sessionId of releasedSessions) this.seed.releaseDelegationSession?.(sessionId);
     if (sdk) await sdk.dispose().catch(() => undefined);
     if (this.readerDone) await this.readerDone.catch(() => undefined);
     // 줄 서 있던 디스패치를 깨운다. 닫을 턴이 없어 closeTurn이 그냥 돌아가는 경로에서도 이들을
@@ -2573,6 +2578,20 @@ class AgentChatSession {
   }
 
   /**
+   * 자식이 실제로 쓰는 SDK 세션 id를 따라간다. `/clear`·재생성으로 id가 바뀌면 이전 세션의
+   * 위임 기록은 더 이상 자랄 수 없으므로 그 자리에서 걷는다 — 생성 시 못박은 핸들 id만 믿으면
+   * 새 세션의 기록이 회수되지 않는다.
+   */
+  private noteProviderSessionId(message: ClaudeGatewayMessage): void {
+    const sessionId = message.session_id;
+    if (typeof sessionId !== "string" || sessionId.length === 0 || sessionId === this.liveProviderSessionId) return;
+    const previous = this.liveProviderSessionId;
+    this.liveProviderSessionId = sessionId;
+    this.providerSessionIds.add(sessionId);
+    if (previous !== null) this.seed.releaseDelegationSession?.(previous);
+  }
+
+  /**
    * 이 세션의 인프로세스 훅. 외부 프로세스를 세우지 않는다 — 판정·관찰·압축 고지가 모두 같은
    * 프로세스 안에서 끝나고, 훅이 실을 수 있는 출력도 foundation이 좁혀 둔 두 필드뿐이다.
    */
@@ -2922,6 +2941,7 @@ class AgentChatSession {
           ? this.turnApiError : undefined;
         if (message.type === "result" && message["parent_tool_use_id"] == null) this.turnApiError = undefined;
         this.rememberSkillNames(message);
+        this.noteProviderSessionId(message);
         this.invalidateCatalog(message);
         this.rememberJobOutput(message);
         this.rememberJobKinds(message);

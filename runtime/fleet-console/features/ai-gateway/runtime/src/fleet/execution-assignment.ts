@@ -41,8 +41,12 @@ export function createExecutionAssignmentCache(options: ExecutionAssignmentCache
   const assignments = new Map<string, ExecutionModelResolution>();
   /** 같은 실행의 동시 첫 요청이 판정을 두 번 하지 않게 한다. */
   const flights = new Map<string, Promise<ExecutionModelResolution | ExecutionModelFailure>>();
-  /** 이 세션이 아직 살아 있는가. 진행 중 판정이 끝난 뒤 늦게 캐시를 채우지 않게 한다. */
-  const liveSessions = new Set<string>();
+  /**
+   * 세션 세대. release 뒤 같은 세션 id로 새 요청이 시작될 수 있으므로, 진행 중이던 판정이
+   * 늦게 도착해 새 세대의 캐시를 채우거나 새 flight를 지우지 않게 세대를 대조한다.
+   */
+  const generations = new Map<string, number>();
+  const generationOf = (sessionId: string): number => generations.get(sessionId) ?? 0;
 
   return {
     assign(request) {
@@ -51,24 +55,29 @@ export function createExecutionAssignmentCache(options: ExecutionAssignmentCache
       if (cached !== undefined) return Promise.resolve(cached);
       const flying = flights.get(lookupKey);
       if (flying !== undefined) return flying;
-      if (assignments.size >= maxAssignments) return Promise.resolve({ error: CAPACITY_MESSAGE });
-      liveSessions.add(request.sessionId);
-      const flight = (async (): Promise<ExecutionModelResolution | ExecutionModelFailure> => {
+      // 진행 중인 판정도 예약으로 센다 — 기다리는 요청이 한도를 넘어 들어오면 안 된다.
+      if (assignments.size + flights.size >= maxAssignments) return Promise.resolve({ error: CAPACITY_MESSAGE });
+      const generation = generationOf(request.sessionId);
+      let flight!: Promise<ExecutionModelResolution | ExecutionModelFailure>;
+      flight = (async (): Promise<ExecutionModelResolution | ExecutionModelFailure> => {
         try {
           const result = await options.resolve(request);
-          if (!("error" in result) && liveSessions.has(request.sessionId)) assignments.set(lookupKey, result);
+          // release가 지나갔거나 같은 키에 새 flight가 섰다면 이 결과는 이미 남의 세대다.
+          if (!("error" in result) && generationOf(request.sessionId) === generation && flights.get(lookupKey) === flight) {
+            assignments.set(lookupKey, result);
+          }
           return result;
         } catch {
           return { error: FAILURE_MESSAGE };
         } finally {
-          flights.delete(lookupKey);
+          if (flights.get(lookupKey) === flight) flights.delete(lookupKey);
         }
       })();
       flights.set(lookupKey, flight);
       return flight;
     },
     releaseSession(sessionId) {
-      liveSessions.delete(sessionId);
+      generations.set(sessionId, generationOf(sessionId) + 1);
       const prefix = `${sessionId}\u0000`;
       for (const lookupKey of [...assignments.keys()]) {
         if (lookupKey.startsWith(prefix)) assignments.delete(lookupKey);
