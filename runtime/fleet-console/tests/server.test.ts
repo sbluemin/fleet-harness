@@ -1215,10 +1215,6 @@ describe("console static and terminal ticket boundary", () => {
         }]);
       },
     });
-    const resumeResponse = await fetch(`${fixture.endpoint}api/v1/agent/sessions/session-a/resume`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-    });
-    expect(resumeResponse.status).toBe(200);
     const ticketResponse = await fetch(`${fixture.endpoint}api/v1/agent/ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

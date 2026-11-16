@@ -334,6 +334,15 @@ describe("agent chat mode routes", () => {
     expect(closedWith).toBe(4003);
   });
 
+  it("refuses an Objective ticket without the chat channel", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+
+    await harness.postTicket(sessionId);
+
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_channel" } });
+  });
+
   it("restores a legacy chat live, reads its saved conversation without a child and continues it on send", async () => {
     // 이전 durable 채팅도 조회만으로 SDK를 열지 않으며, 첫 메시지가 같은 대화를 이어 간다.
     const harness = await createHarness();

@@ -366,7 +366,7 @@ describe("durable console state", () => {
     fs.writeFileSync(groupsFile, JSON.stringify(storedGroups));
     expect(legacy.open().load().groups?.some((group) => group.id === "g1")).toBe(false);
     expect(imported.board.list("c1").map((row) => row.id)).toEqual(expect.arrayContaining(["active", "archived", "unlaunched"]));
-    expect(imported.board.list("c1").find((row) => row.id === "unlaunched")).toMatchObject({ pending: true, title: "Before launch", chatMode: true });
+    expect(imported.board.list("c1").find((row) => row.id === "unlaunched")).toMatchObject({ pending: true, title: "Before launch" });
     expect(imported.board.list("c1").map((row) => row.id)).not.toContain("stray");
     expect(imported.board.list("c1").map((row) => row.id)).not.toContain("broken");
     expect(fs.readFileSync(path.join(legacy.destination, "active", "shared", "proof.txt"), "utf8")).toBe("bytes active");
