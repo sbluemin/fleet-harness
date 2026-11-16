@@ -19,6 +19,7 @@ import { commodoreAvatarKey, fallbackMongleBase } from "../../shared/avatars.js"
 import { MongleAvatar } from "../components/mongle-avatar.js";
 import { openCommanderConversation } from "../commander-tab/commander-navigation.js";
 import { openCommanderRowGlyphTab } from "../commander-tab/commander-popups.js";
+import { selectBrowserSpaceForCommodore } from "../../../browser/client/browser-surface.js";
 import { useRemoteSidebarDirectory } from "./remote-sidebar-store.js";
 import { RemoteSidebarRow } from "./remote-sidebar-row.js";
 import type { SidebarRemotePage } from "../../shared/sidebar-remote.js";
@@ -456,8 +457,10 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
     setMenu(null);
     setChipCard(null);
     if (homeHere) {
-      if (commanderId !== null) openCommanderConversation(row.commodoreId, commanderId);
-      else onOpenHomeCommodore(row);
+      if (commanderId !== null) {
+        openCommanderConversation(row.commodoreId, commanderId);
+        if (!row.commodoreId.startsWith("taskforce:")) selectBrowserSpaceForCommodore(row.commodoreId);
+      } else onOpenHomeCommodore(row);
       return;
     }
     if (!entry) return;
