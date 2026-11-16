@@ -96,7 +96,6 @@ export interface AgentCliInjectionContext {
    * `off`로 넣는다. 프로세스 단위 필터라 서브에이전트 목록에도 함께 적용된다.
    */
   readonly skillOverrides?: Readonly<Record<string, ClaudeSkillOverride>>;
-  readonly workspaceHookExec?: FleetHookExec;
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   /** 자식이 `--plugin-url`로 받아 갈 Fleet 플러그인 zip의 루프백 주소. */
   readonly pluginUrl: string;
@@ -136,27 +135,11 @@ export type AgentCliInjectionCapability = AgentCliInjectionCapabilityEnabled;
  * 같기 때문이고, 그래서 호스트는 기동에 한 번만 묶어 모든 세션에 같은 주소를 넘긴다.
  */
 export interface CreateAgentCliPluginOptions {
-  readonly captureSessionHookExec?: FleetHookExec;
   /**
    * zip을 얹을 호스트 리스너. 생략하면 이 패키지가 127.0.0.1에 자기 리스너를 연다.
    * 호스트가 루프백 전용 불투명 경로를 이미 운영한다면(Console의 MCP 자리) 그것을 넘긴다.
    */
   readonly transport?: AgentCliPluginHttpMount;
-  // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호를 호스트로 알리는 hook. host가 빌드해 주입한다.
-  readonly turnStartHookExec?: FleetHookExec;
-  readonly turnEndHookExec?: FleetHookExec;
-  readonly workspaceHookExec?: FleetHookExec;
-  // 서브에이전트 종료(SubagentStop) 시점에 살아 있는 백그라운드 작업 목록을 호스트로 보고하는 hook.
-  // 턴 종료(Stop) 시점의 같은 보고는 turnEndHookExec이 함께 실어 나른다.
-  readonly backgroundReportHookExec?: FleetHookExec;
-  // 입력 대기(AskUserQuestion의 PreToolUse · permission/idle/elicitation Notification) 신호를 호스트로
-  // 알리는 hook. AskUserQuestion은 Notification 훅을 발화하지 않으므로 두 이벤트 경로로 건다. Claude 전용.
-  readonly inputWaitingHookExec?: FleetHookExec;
-  // 목표명 자동 작명(UserPromptSubmit)을 위해 prompt를 호스트로 전달하는 hook.
-  readonly autoNameHookExec?: FleetHookExec;
-  // 서브에이전트 호출(Agent·Task의 PreToolUse)을 호스트에 묻는 hook. 호스트가 거절과 그 사유를 정하며,
-  // 이 패키지는 문구를 싣지 않는다. Workflow 도구의 agent()는 이 도구를 거치지 않으므로 걸리지 않는다.
-  readonly agentCallHookExec?: FleetHookExec;
   /** Gateway가 렌더링한 파일과 등록 이름. 파일 내용과 호출 허용 이름은 같은 투영이다. */
   /** 테스트가 레거시 트리 회수의 시계와 나이 창을 갈아 끼우는 자리. 프로덕션은 비워 둔다. */
 }

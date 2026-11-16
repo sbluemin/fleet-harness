@@ -10,7 +10,7 @@ export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): strin
     context.pluginUrl,
     ...(context.pluginDirs ?? []).flatMap((directory) => ["--plugin-dir", directory]),
     ...(context.mcpServers.length > 0 ? ["--mcp-config", buildClaudeMcpConfig(context.mcpServers)] : []),
-    ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents, context.claudeCodeDisabledTools, context.workspaceHookExec, context.disableAutoMemory),
+    ...buildSettingsArgs(context.skillOverrides, context.claudeCodeDisabledAgents, context.claudeCodeDisabledTools, context.disableAutoMemory),
     ...buildSearchToolArgs(),
     ...buildPermissionArgs(),
   ];
@@ -56,7 +56,6 @@ function buildSettingsArgs(
   skillOverrides: AgentCliInjectionContext["skillOverrides"],
   disabledAgents: AgentCliInjectionContext["claudeCodeDisabledAgents"],
   disabledTools: AgentCliInjectionContext["claudeCodeDisabledTools"],
-  workspaceHook: AgentCliInjectionContext["workspaceHookExec"],
   disableAutoMemory: AgentCliInjectionContext["disableAutoMemory"],
 ): string[] {
   const settings: Record<string, unknown> = {};
@@ -67,17 +66,6 @@ function buildSettingsArgs(
   if (deny.length > 0) settings.permissions = { deny };
   // SDK 표면의 flag settings와 같은 키다(`session.ts`). 명시한 켬·끔을 모두 싣는다.
   if (disableAutoMemory !== undefined) settings.autoMemoryEnabled = !disableAutoMemory;
-  if (workspaceHook) {
-    // plugin CwdChanged는 2.1.212에서 누락된다. flag settings는 PTY와 SDK 양쪽에서 발화한다.
-    const hook = { type: "command", command: workspaceHook.command, args: [...workspaceHook.args] };
-    settings.hooks = {
-      CwdChanged: [{ hooks: [hook] }],
-      SessionStart: [{ hooks: [hook] }],
-      UserPromptSubmit: [{ hooks: [hook] }],
-      Stop: [{ hooks: [hook] }],
-      PostToolUse: [{ matcher: "EnterWorktree|ExitWorktree", hooks: [hook] }],
-    };
-  }
   if (Object.keys(settings).length === 0) return [];
   return ["--settings", JSON.stringify(settings)];
 }

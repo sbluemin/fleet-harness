@@ -8,7 +8,6 @@ import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { chatReplayFromTranscriptLine } from "../../features/execution/host/agent/chat-events.js";
 import { AgentChatRegistry, createTranscriptReplayer, readTranscriptHistory, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
-import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
 import { initialAgentChatLogState, reduceAgentChatLog, splitAgentChatTurn } from "../../features/execution/client/agent/chat/chat-events.js";
 import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
 
@@ -311,7 +310,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
   });
 
   // Console 자신이 Fleet 터미널에서 떴다면 그 세션 id를 상속하고 있다. 자식에게 따라가면
-  // 자식의 훅이 남의 세션 축에 턴을 보고한다.
+  // 자식의 훅이 남의 세션 축에 턴을 보고한다. 위치 관찰은 이제 같은 프로세스의 훅이 넘긴다.
   it("keeps the inherited terminal session id out of the sdk child", async () => {
     const home = tempDir("chat-home-");
     const previous = process.env.FLEET_CONSOLE_SESSION_ID;
@@ -321,29 +320,29 @@ describe("AgentChatRegistry — chat-born sessions", () => {
         { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
       ]);
       const locations: string[] = [];
-      const workspaceHooks = createWorkspaceHookRegistry((_id, cwd) => locations.push(cwd));
       const registry = new AgentChatRegistry(factory);
       const session = await registry.ensure("op-env", () => ({
         ...freshSeedFor(home),
-        bindWorkspaceHook: (id) => workspaceHooks.bind("op-env", id, () => true),
+        onCwdChanged: (cwd) => locations.push(cwd),
       }));
       session.send("go");
       await drainTurn(registry, "op-env");
 
-      expect(factory).toHaveBeenCalledWith(expect.objectContaining({
-        env: expect.not.objectContaining({ FLEET_CONSOLE_SESSION_ID: expect.anything() }),
-      }));
-      const env = (vi.mocked(factory as (options: { env: NodeJS.ProcessEnv }) => unknown).mock.calls[0]![0]).env;
-      expect(env.FLEET_CONSOLE_WORKSPACE_SESSION_ID).toBe("op-env");
+      const options = vi.mocked(factory as (options: Record<string, unknown>) => unknown).mock.calls[0]![0] as {
+        env: NodeJS.ProcessEnv;
+        hooks?: { observeCwd?: (observation: { event: string; sessionId: string; cwd: string }) => void };
+      };
+      expect(options.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
+      // 외부 훅을 위한 실행 축·자격은 더 이상 자식에 실리지 않는다.
+      expect(options.env.FLEET_CONSOLE_WORKSPACE_SESSION_ID).toBeUndefined();
+      expect(options.env.FLEET_CONSOLE_WORKSPACE_RUN_ID).toBeUndefined();
+      expect(options.env.FLEET_CONSOLE_AGENT_CALL_SESSION_ID).toBeUndefined();
+      expect(options.env.FLEET_MOD_BASE_URL).toBeUndefined();
       const cwd = path.resolve("chat-moved");
-      const input = JSON.stringify({ hook_event_name: "CwdChanged", session_id: fakeClaudeSession().sessionId, new_cwd: cwd });
-      expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 1)).toBe(true);
+      options.hooks?.observeCwd?.({ event: "cwd_changed", sessionId: fakeClaudeSession().sessionId, cwd });
       expect(locations).toEqual([cwd]);
-      // 자식이 끝나면 그 실행의 hook 바인딩도 풀린다.
-      liveSession()?.close();
-      await vi.waitFor(() => { expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 2)).toBe(false); });
       await registry.disposeAll();
-      expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 2)).toBe(false);
+      void liveSession;
     } finally {
       if (previous === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
       else process.env.FLEET_CONSOLE_SESSION_ID = previous;

@@ -5,6 +5,7 @@ import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { CleanupPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
+import type { DelegationIntentLedger } from "@fleet-console/ai-gateway";
 import path from "node:path";
 import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
 import {
@@ -59,11 +60,20 @@ interface GatewayStartContext {
   readonly resolveClaudeExecutable?: () => Promise<string | undefined>;
   /** Console's owned-process port. The Claude CLI queried for supported models must be a child the Console's deadline ends. */
   readonly spawnAgentProcess: ClaudeProcessSpawner;
+  /**
+   * 위임 실행의 의도를 담아 두는 장부. 호출 전 판정(execution host)이 쓰고 이 게이트웨이가 읽는다.
+   * 생략하면 가상 모델 id 요청은 구성 오류로 거절된다 — 선언 없이 기본 배정을 지어내지 않는다.
+   */
+  readonly delegationIntents?: DelegationIntentLedger;
 }
 import { chooseRoutingModels, parseRoutingAssignRequest, releaseAllRoutingSessions, releaseRoutingSession, routingObjectiveId } from "./routing-model.js";
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
 import { registerConsoleOAuthRoutes } from "./oauth-routes.js";
+
+/** 호출 전 판정과 첫 자식 요청 사이의 시한. 두 고지는 같은 밀리초대에 도착한다(0.3.322 실측). */
+const EXECUTION_INTENT_TIMEOUT_MS = 1_500;
+const EXECUTION_INTENT_TIMEOUT_MESSAGE = "Fleet could not match this delegated run to a dispatch, so it was not assigned a model.";
 
 function applyWireLog(ctx: GatewayStartContext, stored: boolean | undefined): void {
   setWireLogTarget(stored === undefined
@@ -234,6 +244,25 @@ export function startAiGateway(ctx: GatewayStartContext) {
       void quota.getSummary().catch(() => undefined);
       return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), currentExposure());
   }
+  // 위임 실행의 가상 모델 id → 실제 배정. 자식이 실행 정체성 헤더를 싣고, 그 실행의 의도가
+  // 호출 전 판정에서 이미 적혀 있어야 답한다. 의도를 못 찾으면 배정하지 않고 명시 오류로 끝낸다.
+  const delegationIntents = ctx.delegationIntents;
+  const resolveExecutionModel = delegationIntents === undefined ? undefined : async (request: { readonly sessionId: string; readonly agentId: string }) => {
+      const intent = await delegationIntents.awaitIntent(request.agentId, EXECUTION_INTENT_TIMEOUT_MS);
+      if (intent === undefined) return { error: EXECUTION_INTENT_TIMEOUT_MESSAGE };
+      if (intent.sessionId !== undefined && intent.sessionId !== request.sessionId) {
+        return { error: "This delegated run does not match its dispatch session." };
+      }
+      void quota.getSummary().catch(() => undefined);
+      const decision = decideGatewayRoutingAssignment(parseGatewayAssignmentRequest({
+        surface: "agent",
+        ...(intent.description === undefined ? {} : { description: intent.description }),
+        ...(intent.requestedModel === undefined ? {} : { requestedModel: intent.requestedModel }),
+        ...(intent.subagentType === undefined ? {} : { subagentType: intent.subagentType }),
+      }), currentExposure());
+      if (decision.model === undefined) return { error: "No gateway model is available for this delegated run." };
+      return { modelId: decision.model, label: decision.label, because: decision.because };
+  };
   /** 설정 카드의 코드 규칙 후보. 갱신은 비동기로, 응답은 현재 캐시로 낸다. */
   const readCandidates = () => {
     void quota.getSummary().catch(() => undefined);
@@ -327,7 +356,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,
-    assignRouting: async (request) => assign(request),
+    ...(resolveExecutionModel === undefined ? {} : { resolveExecutionModel }),
     readAuth: codex.readSubscription,
     readXaiToken: xai.readSubscriptionToken,
     readMuseCodeAuth: museCode.readAuth,

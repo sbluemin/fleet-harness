@@ -4,7 +4,7 @@ import type { ClaudeGatewaySystemPrompt } from "../../claude/index.js";
 
 import { buildClaudeDenyRules } from "./claude-agent-rules.js";
 import { GATEWAY_DISABLED_CLAUDE_SKILLS, SDK_CLAUDE_SKILL_OVERRIDES, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
-import type { AgentCliPlugin, ClaudeSessionCoordinate, FleetHookExec } from "./types.js";
+import type { AgentCliPlugin, ClaudeSessionCoordinate } from "./types.js";
 
 /**
  * 이 런치가 여는 Claude 세션이 어디서 시작하는가.
@@ -33,7 +33,6 @@ export interface ClaudeSessionSdkOptions {
   readonly pluginUrl: string;
   readonly settingSources: readonly ("user" | "project" | "local")[];
   readonly allowAmbientMcpServers: boolean;
-  readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
   readonly disableBundledSkills: true;
   readonly skillOverrides: typeof SDK_CLAUDE_SKILL_OVERRIDES;
   readonly autoMemoryEnabled?: boolean;
@@ -87,8 +86,6 @@ export interface PrepareClaudeSessionOptions {
    * 여러 Objective을 동시에 여는 순간 그 락에서 직렬화된다.
    */
   readonly plugin: AgentCliPlugin;
-  /** SDK 표면의 cwd 훅. 트리에 실리지 않고 세션 투영에만 들어간다. */
-  readonly workspaceHookExec?: FleetHookExec;
   readonly origin: ClaudeSessionOrigin;
   /**
    * 이 세션에 Claude Code 기본 시스템 프롬프트를 실을지. 생략하면 `on`, `off`는 시스템 프롬프트 없이 연다.
@@ -164,7 +161,6 @@ export async function prepareClaudeSession(
         // 리포의 `CLAUDE.md`와 사용자 설정을 표면에 따라 잃지 않는다.
         settingSources: ["user", "project", "local"],
         allowAmbientMcpServers: true,
-        ...(options.workspaceHookExec ? { cwdHook: options.workspaceHookExec } : {}),
         // 출처 차단과 vendor 공백의 한 이름 보완을 함께 적용한다.
         disableBundledSkills: true,
         skillOverrides: SDK_CLAUDE_SKILL_OVERRIDES,

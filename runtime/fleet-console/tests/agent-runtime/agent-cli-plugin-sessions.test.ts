@@ -29,11 +29,8 @@ describe("agent CLI plugin archive delivery", () => {
       const served = await request(url, {});
       expect(served.status).toBe(200);
       const entries = unzipSync(served.body);
-      expect(Object.keys(entries)).toEqual(expect.arrayContaining([
-        ".claude-plugin/plugin.json",
-        "hooks/hooks.json",
-        "hooks/fleet-compact-event.mjs",
-      ]));
+      // 훅·에이전트는 SDK 세션 옵션이 소유한다 — zip에는 매니페스트만 남는다.
+      expect(Object.keys(entries)).toEqual([".claude-plugin/plugin.json"]);
 
       expect((await request(url, { origin: "http://127.0.0.1:1" })).status).toBe(404);
       expect((await request(url, { host: `fleet.example:${url.port}` })).status).toBe(404);

@@ -6,7 +6,13 @@ import { withLoopbackProxyBypass } from "@fleet-console/process";
 import {
   CLAUDE_GATEWAY_SESSION_KEYS,
   CLAUDE_GATEWAY_TURN_KEYS,
+  type ClaudeGatewayAgentDefinition,
   type ClaudeGatewayCanUseTool,
+  type ClaudeGatewayCompactEvent,
+  type ClaudeGatewayCwdObservation,
+  type ClaudeGatewayEffort,
+  type ClaudeGatewayHookContext,
+  type ClaudeGatewayHostHooks,
   type ClaudeModelResolution,
   type ClaudeGatewayMessage,
   type ClaudeGatewayRun,
@@ -15,7 +21,9 @@ import {
   type ClaudeGatewaySdkOptions,
   type ClaudeGatewaySession,
   type ClaudeGatewaySessionRequest,
+  type ClaudeGatewaySubagentHookInput,
   type ClaudeGatewaySystemPrompt,
+  type ClaudeGatewayTaskEvent,
   type ClaudeGatewayTurn,
 } from "./contracts.js";
 
@@ -122,6 +130,10 @@ export async function createClaudeGatewaySdk(
     // `--settings`와 같은 자리다. flag 소스로 병합되므로 사용자·프로젝트 설정을 대체하지 않는다.
     // 명시한 키만 연다 — settings 전체를 열면 호출자가 쓰지 않은 지시가 들어온다.
     ...vendorFlagSettings(options),
+    // 훅과 에이전트 정의도 인스턴스가 소유한다. 세션마다 새 인스턴스를 만들므로 세션별 정책이
+    // 그대로 반영되고, turn 요청의 allowlist는 넓어지지 않는다.
+    ...(options.agents === undefined ? {} : { agents: vendorAgents(options.agents) }),
+    ...(options.hooks === undefined ? {} : { hooks: vendorHostHooks(options.hooks) }),
     ...(request.effort === undefined ? {} : { effort: request.effort }),
     ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
     ...(request.additionalDirectories === undefined ? {} : { additionalDirectories: [...request.additionalDirectories] }),
@@ -183,6 +195,7 @@ export async function createClaudeGatewaySdk(
               async next(): Promise<IteratorResult<ClaudeGatewayMessage>> {
                 const result = await iterator.next();
                 if (result.done === true) release();
+                else notifyTaskEvent(options.onTaskEvent, result.value);
                 return result;
               },
             };
@@ -240,7 +253,7 @@ export async function createClaudeGatewaySdk(
             await session.setModel(next);
           },
           applySessionSettings: (settings) => session.applySessionSettings(settings),
-          [Symbol.asyncIterator]: () => session[Symbol.asyncIterator](),
+          [Symbol.asyncIterator]: () => observeTaskEvents(session, options.onTaskEvent)[Symbol.asyncIterator](),
           close(): void {
             try {
               session.close();
@@ -371,16 +384,6 @@ function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settin
       Object.entries(options.modelAutoCompactWindows).map(([id, autoCompactWindow]) => [id, { autoCompactWindow }]),
     );
   }
-  if (options.cwdHook) {
-    const hook = { type: "command", command: options.cwdHook.command, args: [...options.cwdHook.args] };
-    settings.hooks = {
-      CwdChanged: [{ hooks: [hook] }],
-      SessionStart: [{ hooks: [hook] }],
-      UserPromptSubmit: [{ hooks: [hook] }],
-      Stop: [{ hooks: [hook] }],
-      PostToolUse: [{ matcher: "EnterWorktree|ExitWorktree", hooks: [hook] }],
-    };
-  }
   return Object.keys(settings).length > 0 ? { settings } : {};
 }
 
@@ -474,4 +477,240 @@ function vendorExtraArgs(pluginUrl: string | undefined, sessionName: string | un
     ...(sessionName === undefined ? {} : { name: sessionName }),
   };
   return Object.keys(extraArgs).length === 0 ? {} : { extraArgs };
+}
+
+/** `system/task_*` 하나를 좁은 좌표로 줄인다. 그 밖의 시스템 메시지는 지나간다. */
+function readTaskEvent(message: ClaudeGatewayMessage): ClaudeGatewayTaskEvent | undefined {
+  if (message.type !== "system") return undefined;
+  const kind = message.subtype === "task_started" ? "started"
+    : message.subtype === "task_updated" ? "updated"
+      : message.subtype === "task_notification" ? "notification"
+        : undefined;
+  if (kind === undefined) return undefined;
+  const taskId = message.task_id;
+  if (typeof taskId !== "string" || taskId.length === 0) return undefined;
+  return {
+    kind,
+    taskId,
+    ...(typeof message.run_id === "string" && message.run_id.length > 0 ? { runId: message.run_id } : {}),
+    ...(typeof message.tool_use_id === "string" && message.tool_use_id.length > 0 ? { toolUseId: message.tool_use_id } : {}),
+    ...(typeof message.subagent_type === "string" && message.subagent_type.length > 0 ? { subagentType: message.subagent_type } : {}),
+    ...(message.is_backgrounded === true ? { isBackgrounded: true } : {}),
+    ...(message.is_backgrounded === false ? { isBackgrounded: false } : {}),
+    ...(typeof message.spawn_depth === "number" ? { spawnDepth: message.spawn_depth } : {}),
+  };
+}
+
+function notifyTaskEvent(
+  callback: ((event: ClaudeGatewayTaskEvent) => void) | undefined,
+  message: ClaudeGatewayMessage,
+): void {
+  if (callback === undefined) return;
+  const event = readTaskEvent(message);
+  if (event === undefined) return;
+  try {
+    callback(event);
+  } catch {
+    // 고지 하나가 스트림을 끊지 않는다. 배선 실패는 호스트가 자기 로그로 남긴다.
+  }
+}
+
+function observeTaskEvents(
+  source: AsyncIterable<ClaudeGatewayMessage>,
+  callback: ((event: ClaudeGatewayTaskEvent) => void) | undefined,
+): AsyncIterable<ClaudeGatewayMessage> {
+  if (callback === undefined) return source;
+  return {
+    async *[Symbol.asyncIterator](): AsyncGenerator<ClaudeGatewayMessage> {
+      for await (const message of source) {
+        notifyTaskEvent(callback, message);
+        yield message;
+      }
+    },
+  };
+}
+
+/** `Agent` 도구 입력의 `effort`가 받는 값. 훅이 다른 값을 돌려주면 그 필드를 건드리지 않는다. */
+const HOOK_EFFORT_VALUES: readonly ClaudeGatewayEffort[] = ["low", "medium", "high", "xhigh", "max"];
+
+/** 판정하지 못한 위임 호출의 거절 사유. 침묵이 곧 서브에이전트 실행이 되면 안 된다. */
+const DELEGATION_UNDECIDED_REASON = "Fleet could not decide this delegated call. Continue the work in this session.";
+
+/**
+ * 좁은 호스트 훅을 vendor `hooks`로 옮긴다.
+ *
+ * 여기서 만드는 것은 콜백뿐이다 — 외부 프로세스를 세우지 않으므로 이벤트마다 node를 띄우던
+ * 비용이 없고, 훅이 보는 입력과 돌려줄 수 있는 출력도 이 패키지가 정한 좁은 모양으로 잘린다.
+ */
+function vendorHostHooks(hooks: ClaudeGatewayHostHooks): Record<string, unknown> {
+  const events: Record<string, unknown[]> = {};
+  const add = (event: string, matcher: Record<string, unknown>): void => {
+    (events[event] ??= []).push(matcher);
+  };
+
+  const preToolUse = hooks.preToolUse;
+  if (preToolUse) {
+    // 위임 가드는 판정 실패를 허용으로 접지 않는다. vendor는 onFailure를 차단으로 옮긴다.
+    add("PreToolUse", {
+      matcher: "Agent|Task",
+      onFailure: "block",
+      hooks: [async (input: unknown) => decidePreToolUse(preToolUse, input)],
+    });
+  }
+
+  const sessionContext = hooks.sessionContext;
+  const observeCwd = hooks.observeCwd;
+  if (sessionContext || observeCwd) {
+    add("SessionStart", {
+      hooks: [async (input: unknown) => {
+        if (observeCwd) observeCwdFromHook(input, observeCwd, "session_start");
+        return sessionStartOutput(sessionContext?.());
+      }],
+    });
+  }
+  if (observeCwd) {
+    add("UserPromptSubmit", { hooks: [async (input: unknown) => observeAndContinue(input, observeCwd, "user_prompt_submit")] });
+    add("Stop", { hooks: [async (input: unknown) => observeAndContinue(input, observeCwd, "stop")] });
+    add("CwdChanged", { hooks: [async (input: unknown) => observeAndContinue(input, observeCwd, "cwd_changed")] });
+    add("PostToolUse", {
+      matcher: "EnterWorktree|ExitWorktree",
+      hooks: [async (input: unknown) => observeAndContinue(input, observeCwd, "worktree")],
+    });
+  }
+
+  const compact = hooks.compact;
+  if (compact) {
+    add("PreCompact", { matcher: "manual|auto", hooks: [async (input: unknown) => { recordCompactEvent(compact, "pre", input); return { continue: true }; }] });
+    add("PostCompact", { matcher: "manual|auto", hooks: [async (input: unknown) => { recordCompactEvent(compact, "post", input); return { continue: true }; }] });
+  }
+
+  const subagentStart = hooks.subagentStart;
+  if (subagentStart) {
+    add("SubagentStart", { hooks: [async (input: unknown) => { const event = readSubagentHookInput(input); if (event) subagentStart(event); return { continue: true }; }] });
+  }
+  const subagentStop = hooks.subagentStop;
+  if (subagentStop) {
+    add("SubagentStop", { hooks: [async (input: unknown) => { const event = readSubagentHookInput(input); if (event) subagentStop(event); return { continue: true }; }] });
+  }
+
+  return events;
+}
+
+/** 호스트 정의를 vendor `agents`로 옮긴다. 이 패키지가 여는 필드는 넷뿐이다. */
+function vendorAgents(agents: Readonly<Record<string, ClaudeGatewayAgentDefinition>>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(agents).map(([name, agent]) => [name, {
+    description: agent.description,
+    prompt: agent.prompt,
+    ...(agent.model === undefined ? {} : { model: agent.model }),
+  }]));
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : undefined;
+}
+
+/** vendor 훅 입력에서 이 패키지가 호스트에 넘기는 다섯 좌표만 꺼낸다. */
+function readHookContext(record: Record<string, unknown>): ClaudeGatewayHookContext | undefined {
+  const sessionId = record.session_id;
+  if (typeof sessionId !== "string" || sessionId.length === 0) return undefined;
+  return {
+    sessionId,
+    ...(typeof record.agent_id === "string" && record.agent_id.length > 0 ? { agentId: record.agent_id } : {}),
+    ...(typeof record.agent_type === "string" && record.agent_type.length > 0 ? { agentType: record.agent_type } : {}),
+    ...(typeof record.prompt_id === "string" && record.prompt_id.length > 0 ? { promptId: record.prompt_id } : {}),
+  };
+}
+
+function readSubagentHookInput(input: unknown): ClaudeGatewaySubagentHookInput | undefined {
+  const record = asRecord(input);
+  if (!record) return undefined;
+  const context = readHookContext(record);
+  if (!context || context.agentId === undefined || context.agentType === undefined) return undefined;
+  return { ...context, agentId: context.agentId, agentType: context.agentType };
+}
+
+async function decidePreToolUse(
+  callback: NonNullable<ClaudeGatewayHostHooks["preToolUse"]>,
+  input: unknown,
+): Promise<unknown> {
+  const record = asRecord(input);
+  const context = record === undefined ? undefined : readHookContext(record);
+  const toolName = record?.tool_name;
+  const toolUseId = record?.tool_use_id;
+  if (!context || typeof toolName !== "string" || typeof toolUseId !== "string") return { continue: true };
+  const toolInput = asRecord(record?.tool_input) ?? {};
+  let decision: Awaited<ReturnType<typeof callback>>;
+  try {
+    decision = await callback({ ...context, toolName, toolUseId, toolInput });
+  } catch {
+    return denyPreToolUse(DELEGATION_UNDECIDED_REASON);
+  }
+  if (decision?.denyReason !== undefined) {
+    return denyPreToolUse(decision.denyReason.length > 0 ? decision.denyReason : DELEGATION_UNDECIDED_REASON);
+  }
+  const updated: Record<string, unknown> = {};
+  if (decision?.effort !== undefined && HOOK_EFFORT_VALUES.includes(decision.effort)) updated.effort = decision.effort;
+  if (decision?.subagentType !== undefined && decision.subagentType.length > 0) updated.subagent_type = decision.subagentType;
+  return {
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      ...(Object.keys(updated).length === 0 ? {} : { updatedInput: { ...toolInput, ...updated } }),
+    },
+  };
+}
+
+function denyPreToolUse(reason: string): unknown {
+  return { hookSpecificOutput: { hookEventName: "PreToolUse", permissionDecision: "deny", permissionDecisionReason: reason } };
+}
+
+function sessionStartOutput(context: string | undefined): unknown {
+  const text = context?.trim();
+  return text !== undefined && text.length > 0
+    ? { hookSpecificOutput: { hookEventName: "SessionStart", additionalContext: text } }
+    : { continue: true };
+}
+
+function observeAndContinue(
+  input: unknown,
+  observe: NonNullable<ClaudeGatewayHostHooks["observeCwd"]>,
+  event: ClaudeGatewayCwdObservation["event"],
+): unknown {
+  observeCwdFromHook(input, observe, event);
+  return { continue: true };
+}
+
+/**
+ * 위치 관찰 하나를 호스트에 넘긴다. 서브에이전트의 cwd는 상위 Objective의 위치가 아니므로
+ * 메인 스레드 관찰만 옮긴다 — 명령 훅 시절의 판정과 같다.
+ */
+function observeCwdFromHook(
+  input: unknown,
+  observe: NonNullable<ClaudeGatewayHostHooks["observeCwd"]>,
+  event: ClaudeGatewayCwdObservation["event"],
+): void {
+  const record = asRecord(input);
+  if (!record) return;
+  const context = readHookContext(record);
+  if (!context || context.agentId !== undefined) return;
+  const raw = event === "cwd_changed" ? record.new_cwd : record.cwd;
+  if (typeof raw !== "string" || !path.isAbsolute(raw)) return;
+  observe({ event, sessionId: context.sessionId, cwd: raw });
+}
+
+function recordCompactEvent(
+  callback: NonNullable<ClaudeGatewayHostHooks["compact"]>,
+  phase: ClaudeGatewayCompactEvent["phase"],
+  input: unknown,
+): void {
+  const record = asRecord(input);
+  if (!record) return;
+  const context = readHookContext(record);
+  if (!context) return;
+  callback({
+    phase,
+    sessionId: context.sessionId,
+    ...(typeof record.trigger === "string" ? { trigger: record.trigger } : {}),
+    ...(typeof record.custom_instructions === "string" ? { customInstructions: record.custom_instructions } : {}),
+    ...(typeof record.compact_summary === "string" ? { summary: record.compact_summary } : {}),
+  });
 }

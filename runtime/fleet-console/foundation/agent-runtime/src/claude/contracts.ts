@@ -191,6 +191,111 @@ export interface ReadClaudeSupportedModelsOptions {
   readonly spawnProcess?: ClaudeProcessSpawner;
 }
 
+/** 훅 하나가 아는 이벤트 좌표. vendor 입력 중 이 다섯만 호스트에 넘긴다. */
+export interface ClaudeGatewayHookContext {
+  /** 상위 세션 id. vendor `session_id`. */
+  readonly sessionId: string;
+  /** 서브에이전트 실행의 id. 메인 스레드 이벤트에는 없다. vendor `agent_id`. */
+  readonly agentId?: string;
+  /** 실행 중인 에이전트 정의의 이름. vendor `agent_type`. */
+  readonly agentType?: string;
+  /** 한 사용자 프롬프트와 그 이후 이벤트를 잇는 id. vendor `prompt_id`. */
+  readonly promptId?: string;
+}
+
+/** `PreToolUse` 하나가 호스트에게 보이는 전부. 도구 입력은 읽기 전용 사본이다. */
+export interface ClaudeGatewayPreToolUseInput extends ClaudeGatewayHookContext {
+  readonly toolName: string;
+  readonly toolUseId: string;
+  readonly toolInput: Readonly<Record<string, unknown>>;
+}
+
+/**
+ * 호스트의 답. `denyReason`이 있으면 도구는 실행되지 않고 그 문구가 모델에게 오류로 온다.
+ * `effort`와 `subagentType`은 도구 입력의 두 필드를 다시 쓰는 자리이며, 그 밖의 필드는
+ * 이 패키지가 건드리지 않는다 — `model`처럼 자식이 스스로 검증하는 필드를 훅이 덮으면
+ * 스키마 검증에서 거부된다(0.3.322 실측: `Agent.model`은 `sonnet|opus|haiku|fable`만 받는다).
+ */
+export interface ClaudeGatewayPreToolUseDecision {
+  readonly denyReason?: string;
+  readonly effort?: ClaudeGatewayEffort;
+  /** 실행할 에이전트 정의의 이름. 등록되지 않은 이름이면 자식이 그 호출을 거부한다. */
+  readonly subagentType?: string;
+}
+
+/** 서브에이전트 시작·종료. `agentId`는 자식 요청 헤더의 id와 같은 값이다. */
+export interface ClaudeGatewaySubagentHookInput extends ClaudeGatewayHookContext {
+  readonly agentId: string;
+  readonly agentType: string;
+}
+
+/** 압축 이벤트 하나. 자식이 보고하는 사실만 옮긴다. */
+export interface ClaudeGatewayCompactEvent {
+  readonly phase: "pre" | "post";
+  readonly sessionId: string;
+  readonly trigger?: string;
+  readonly customInstructions?: string;
+  readonly summary?: string;
+}
+
+/** cwd 관찰 하나. 어떤 이벤트가 그 관찰을 만들었는지 함께 싣는다. */
+export interface ClaudeGatewayCwdObservation {
+  readonly event: "cwd_changed" | "session_start" | "user_prompt_submit" | "stop" | "worktree";
+  readonly sessionId: string;
+  /** 서브에이전트 실행이면 그 id. 메인 스레드 관찰에는 없다. */
+  readonly agentId?: string;
+  readonly cwd: string;
+}
+
+/**
+ * 호스트가 자식의 이벤트를 받는 좁은 포트. vendor `hooks`의 부분집합이며, 각 콜백이 돌려줄 수
+ * 있는 것도 좁다. 생략한 이벤트는 등록되지 않고, 등록된 이벤트의 콜백이 던지면 `PreToolUse`는
+ * 거절로 접히고(위임 가드는 fail-closed), 나머지는 그 이벤트를 지나간다.
+ */
+export interface ClaudeGatewayHostHooks {
+  /** 위임 호출 전 판정. 등록하면 `Agent|Task`에만 걸린다. */
+  readonly preToolUse?: (
+    input: ClaudeGatewayPreToolUseInput,
+  ) => ClaudeGatewayPreToolUseDecision | undefined | Promise<ClaudeGatewayPreToolUseDecision | undefined>;
+  readonly subagentStart?: (input: ClaudeGatewaySubagentHookInput) => void;
+  readonly subagentStop?: (input: ClaudeGatewaySubagentHookInput) => void;
+  /**
+   * 세션 시작에 자식에게 실을 한 줄. 호출자가 쓴 문맥이며 지시 주입의 유일한 자리다 —
+   * 생략하거나 빈 문자열을 돌려주면 아무것도 싣지 않는다.
+   */
+  readonly sessionContext?: () => string | undefined;
+  readonly compact?: (event: ClaudeGatewayCompactEvent) => void;
+  /** 메인 스레드의 위치 관찰. 서브에이전트의 cwd는 상위 Objective의 위치가 아니므로 오지 않는다. */
+  readonly observeCwd?: (observation: ClaudeGatewayCwdObservation) => void;
+}
+
+/** vendor `agents` 한 항목 중 이 패키지가 여는 필드. */
+export interface ClaudeGatewayAgentDefinition {
+  readonly description: string;
+  readonly prompt: string;
+  /**
+   * 이 정의가 부르는 모델. alias·정식 id·게이트웨이 id 어느 쪽이든 문자열이며, 해석은 자식이 한다.
+   * 게이트웨이 라우터의 가상 id를 두면 실제 배정은 게이트웨이가 요청 시점에 정한다.
+   */
+  readonly model?: string;
+}
+
+/** 서브에이전트 작업 하나의 고지. vendor `system/task_started`·`task_updated`·`task_notification`의 부분집합이다. */
+export interface ClaudeGatewayTaskEvent {
+  readonly kind: "started" | "updated" | "notification";
+  /** 작업 id. 자식 요청 헤더의 `agent-id`와 같은 값이다(0.3.322 실측). */
+  readonly taskId: string;
+  /** 이 실행의 id. 같은 작업의 재개는 새 run id를 받는다. */
+  readonly runId?: string;
+  /** 이 작업을 띄운 도구 호출 id. 호출 전 판정의 `tool_use_id`와 같은 값이다. */
+  readonly toolUseId?: string;
+  readonly subagentType?: string;
+  /** 배경 등록 여부. 전경 실행은 false다. */
+  readonly isBackgrounded?: boolean;
+  /** 중첩 깊이. 최상위 스폰은 1이다. */
+  readonly spawnDepth?: number;
+}
+
 export interface ClaudeGatewaySdkOptions {
   /** 모델 의미와 discovery 표기는 호출자가 소유한다. */
   readonly modelPolicy: ClaudeModelPolicy;
@@ -280,8 +385,29 @@ export interface ClaudeGatewaySdkOptions {
    * (CLI 2.1.310 실측: 메모리 파일 0개, 스킬 발견은 그대로).
    */
   readonly claudeMdExcludes?: readonly string[];
-  /** 호출자가 제공한 cwd 관찰 명령. plugin hook이 아닌 flag settings에 등록한다. */
-  readonly cwdHook?: { readonly command: string; readonly args: readonly string[] };
+  /**
+   * 자식의 이벤트를 호스트가 같은 프로세스에서 받는 좁은 포트.
+   *
+   * vendor `hooks`를 그대로 열지 않는 이유는 그 출력이 `additionalContext`·`appendSystemPrompt`를
+   * 실어 호출자가 쓰지 않은 지시를 자식에게 주입하는 통로이기 때문이다. 이 포트가 실을 수 있는
+   * 것은 거절 사유와 도구 입력의 두 필드(`effort`·`subagent_type`)뿐이고, 지시를 싣는 자리는
+   * `sessionContext` 하나로 명시해 둔다. 외부 프로세스를 세우지 않으므로 이벤트마다 node를
+   * 띄우던 비용도 함께 사라진다.
+   */
+  readonly hooks?: ClaudeGatewayHostHooks;
+  /**
+   * 호스트가 정의한 서브에이전트. vendor `agents`로 그대로 옮긴다 — 이름·설명·프롬프트·모델만 열고,
+   * 도구 목록·스킬·MCP처럼 지시와 능력을 넓히는 필드는 열지 않는다.
+   */
+  readonly agents?: Readonly<Record<string, ClaudeGatewayAgentDefinition>>;
+  /**
+   * 서브에이전트 작업 등록 고지. vendor `system/task_started` 하나를 이 네 좌표로 줄여 부른다.
+   *
+   * `toolUseId`와 `taskId`를 함께 받는 것이 요점이다 — 도구 호출 id는 호출 전 판정에서만 알 수
+   * 있고 자식 실행 id는 자식 요청의 헤더에만 실리므로, 두 id를 잇는 자리는 이 메시지뿐이다.
+   * 도착 시각과 `taskId`가 헤더 `agent-id`와 같은지는 SDK 계약이 아니라 실측이 정한다.
+   */
+  readonly onTaskEvent?: (event: ClaudeGatewayTaskEvent) => void;
   /**
    * 세션 설정 `autoMemoryEnabled`. 명시하면 flag 설정과 자식의 disable 환경을 함께 맞춘다.
    * 생략하면 상속된 정책을 유지한다. 끔은 기존 파일을 삭제하거나 이미 읽은 기억을 지우지 않는다.

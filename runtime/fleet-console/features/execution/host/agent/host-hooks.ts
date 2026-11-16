@@ -112,17 +112,10 @@ export interface RenderConsoleAgentCliPluginDeps {
  * zip을 받아 자기 임시 자리에 풀므로, 세션끼리도 `fleet` 런처와도 디스크를 나눠 쓰지 않는다.
  */
 export function renderConsoleAgentCliPlugin(deps: RenderConsoleAgentCliPluginDeps): AgentCliPlugin {
-  const entry = buildConsoleHookEntry(deps);
+  // 훅과 에이전트 등록은 SDK 세션 옵션이 소유한다. 플러그인 zip에는 매니페스트만 남는다 —
+  // 이벤트마다 외부 프로세스를 세우던 hook 설정이 여기서 사라진 이유다.
   return createAgentCliPlugin({
     ...(deps.transport ? { transport: deps.transport } : {}),
-    // 캡처 훅의 provider는 어떤 CLI로 열든 claude 하나다 — 그래서 이 조립이 세션과 무관하다.
-    captureSessionHookExec: buildConsoleCaptureHookCommand(entry, "claude"),
-    turnStartHookExec: buildConsoleTurnHookCommand(entry, "start"),
-    turnEndHookExec: buildConsoleTurnHookCommand(entry, "end"),
-    backgroundReportHookExec: buildConsoleBackgroundHookCommand(entry),
-    inputWaitingHookExec: buildConsoleAttentionHookCommand(entry),
-    autoNameHookExec: buildConsoleAutoNameHookCommand(entry),
-    agentCallHookExec: buildConsoleAgentCallHookCommand(entry),
   });
 }
 

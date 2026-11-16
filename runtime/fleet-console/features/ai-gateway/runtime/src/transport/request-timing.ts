@@ -14,7 +14,10 @@ export interface GatewayRequestTimingRecord {
   /** t0: 메서드·호출자 자격 판정 뒤, body 읽기 전(router.ts). 소켓 도착 시각이 아니다. */
   readonly ts: string;
   readonly sessionId?: string;
+  /** 요청이 지목한 모델. 위임 실행이면 가상 모델 id다. */
   readonly model?: string;
+  /** 게이트웨이가 실제로 고른 모델. 가상 id가 아닐 때는 싣지 않는다. */
+  readonly resolvedModel?: string;
   readonly provider?: string;
   readonly route: "passthrough" | "translated" | "compaction" | "refused";
   readonly stream?: boolean;
@@ -105,6 +108,7 @@ export class RequestClock {
 
   private sessionId?: string;
   private model?: string;
+  private resolvedModel?: string;
   private provider?: string;
   private route: "passthrough" | "translated" | "compaction" | "refused" = "refused";
   private stream?: boolean;
@@ -185,6 +189,11 @@ export class RequestClock {
     if (typeof body.max_tokens === "number" && Number.isFinite(body.max_tokens)) {
       this.maxTokens = body.max_tokens;
     }
+  }
+
+  /** 가상 모델 id가 실제 모델로 풀린 자리. 요청 모델과 배정 모델을 함께 남기기 위한 필드다. */
+  setResolvedModel(model: string): void {
+    if (model.length > 0) this.resolvedModel = model;
   }
 
   setRoute(route: "passthrough" | "translated" | "compaction" | "refused"): void {
@@ -412,6 +421,7 @@ export class RequestClock {
       ts: new Date(this.t0).toISOString(),
       ...(this.sessionId ? { sessionId: this.sessionId } : {}),
       ...(this.model ? { model: this.model } : {}),
+      ...(this.resolvedModel ? { resolvedModel: this.resolvedModel } : {}),
       ...(this.provider ? { provider: this.provider } : {}),
       route: this.route,
       ...(this.stream !== undefined ? { stream: this.stream } : {}),

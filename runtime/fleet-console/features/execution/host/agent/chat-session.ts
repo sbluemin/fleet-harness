@@ -1,5 +1,5 @@
 import { CONTEXT_RESERVED_NAME, CONTEXT_UNSPENT, skillRowsOf } from "./context-breakdown.js";
-import { claudeGatewayModelPolicy, claudeModelAutoCompactWindows, GATEWAY_MODELS, modelSpeedLaunchEnv, type ModelSpeedChoice } from "@fleet-console/ai-gateway";
+import { claudeGatewayModelPolicy, claudeModelAutoCompactWindows, FLEET_EXECUTION_VIRTUAL_MODEL, GATEWAY_MODELS, GATEWAY_TIER_EFFORT, modelSpeedLaunchEnv, routingTierFor, type DelegationIntent, type ModelSpeedChoice } from "@fleet-console/ai-gateway";
 import { resolveNativeClaudeModelAlias } from "@fleet-console/agent-runtime/fleet";
 import { randomUUID } from "node:crypto";
 import { createReadStream, promises as fs } from "node:fs";
@@ -8,8 +8,13 @@ import path from "node:path";
 
 import {
   createClaudeGatewaySdk,
+  type ClaudeGatewayCompactEvent,
   type ClaudeGatewayContextUsage,
   type ClaudeGatewayEffort,
+  type ClaudeGatewayHostHooks,
+  type ClaudeGatewayPreToolUseDecision,
+  type ClaudeGatewayPreToolUseInput,
+  type ClaudeGatewayTaskEvent,
   type ClaudeGatewayAgent,
   type ClaudeGatewayCommand,
   type ClaudeGatewayMessage,
@@ -63,13 +68,12 @@ import {
   type ChatOrigin,
 } from "./chat-events.js";
 import { createChatStepReporter, type ChatStepReporter } from "./chat-step.js";
-import { FLEET_PLUGIN_NAME, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
+import { FLEET_EXECUTION_AGENT_TYPE, FLEET_EXECUTION_CONTRACT, FLEET_HARNESS_VERSION, FLEET_PLUGIN_NAME, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { chatChildEnv } from "../terminal/launch-env.js";
 import type { CapturedAgentSession } from "./types.js";
-import type { WorkspaceHookBinding } from "./workspace-hooks.js";
 
 /**
  * Chat Mode 세션 하나의 서버 소유 상태.
@@ -114,9 +118,6 @@ export interface AgentChatSessionSeed {
   /** Console의 CLI 경로 우선순위로 고른 실행기. 새 SDK 인스턴스를 만들 때 다시 해석한다. */
   readonly resolveExecutablePath?: () => Promise<string>;
   readonly baseUrl: string;
-  readonly compactHookToken?: string;
-  /** 라우팅 Mod가 정체성을 물을 때 쓰는 자격. 없으면 이 채팅 세션은 게이트웨이 정체성을 얻지 못한다. */
-  readonly modHookToken?: string;
   readonly model: string;
   /**
    * 이 모델의 **실제** 문맥 창(카탈로그 값). 자식이 재는 창이 아니다 — 광고는 `[1m]`(1M 좌표)이고
@@ -213,7 +214,24 @@ export interface AgentChatSessionSeed {
    * 절대 경로는 여기서 호스트 추적기로만 들어가고 브라우저로는 투영만 나간다.
    */
   readonly onCwdChanged?: (cwd: string) => void;
-  readonly bindWorkspaceHook?: (providerSessionId: string) => WorkspaceHookBinding;
+  /**
+   * 위임 호출의 가드. Console이 정한 사유를 돌려주면 그 호출은 실행되지 않는다.
+   * 생략하면 가드가 없는 세션이다 — 판정은 이 세션의 Objective 축을 아는 호스트 몫이다.
+   */
+  readonly guardDelegatedCall?: (input: ClaudeGatewayPreToolUseInput) => string | null;
+  /** 호출 전 판정의 의도. 자식 실행 id가 확인될 때까지 장부에 남는다. */
+  readonly recordDelegationIntent?: (intent: DelegationIntent) => void;
+  /** `system/task_*` 고지. 도구 호출 id를 실행 id에 잇고 실행 종료를 표시한다. */
+  readonly bindDelegationTask?: (event: ClaudeGatewayTaskEvent) => void;
+  /** 이 세션이 접힐 때 그 세션의 위임 기록을 걷는다. */
+  readonly releaseDelegationSession?: () => void;
+  /** 압축 이벤트. 생략하면 이 세션은 압축 사건을 기록하지 않는다. */
+  readonly recordCompactEvent?: (event: ClaudeGatewayCompactEvent) => void;
+  /**
+   * 위임 실행의 모델을 게이트웨이가 고르게 할지. 켜면 실행 에이전트가 게이트웨이의 가상 모델 id를
+   * 들고, 배정은 요청 시점에 게이트웨이가 정한다. 끄면 세션 모델을 그대로 물려받는다.
+   */
+  readonly routeDelegatedModels?: boolean;
   /**
    * 활동축이 이 세션의 보고를 받을 수 있는지 묻기만 한다 — 아무것도 쓰지 않는다.
    * 쓰는 프로브는 진행 중 턴을 유휴로 뒤집고 그 전이를 방송해, 첫 턴이 도는 중에 들어온
@@ -735,7 +753,6 @@ class AgentChatSession {
   private sdkFlight: Promise<ClaudeGatewaySdk> | null = null;
   /** admiral이 확정한 이 세션의 좌표. 세션당 한 번 받아 두고 dispose에서 반납한다. */
   private claudeSession: ClaudeSessionHandle | null = null;
-  private workspaceHook: WorkspaceHookBinding | null = null;
   private claudeSessionFlight: Promise<ClaudeSessionHandle> | null = null;
   /**
    * Fleet MCP 좌표. 세션당 한 번 발급하고 dispose에서 되돌린다 — 턴마다 발급하면 반납되지 않은
@@ -1760,8 +1777,7 @@ class AgentChatSession {
     session?.close();
     const sdk = this.sdk;
     this.sdk = null;
-    this.workspaceHook?.dispose();
-    this.workspaceHook = null;
+    this.seed.releaseDelegationSession?.();
     if (sdk) await sdk.dispose().catch(() => undefined);
     if (this.readerDone) await this.readerDone.catch(() => undefined);
     // 줄 서 있던 디스패치를 깨운다. 닫을 턴이 없어 closeTurn이 그냥 돌아가는 경로에서도 이들을
@@ -2516,7 +2532,6 @@ class AgentChatSession {
             this.push({ kind: "error", code: "chat_fleet_plugin_unavailable" });
             throw error instanceof Error ? error : new Error("Fleet plugin session unavailable");
           });
-        this.workspaceHook = this.seed.bindWorkspaceHook?.(claudeSession.sessionId) ?? null;
         try {
           const executablePath = await this.seed.resolveExecutablePath?.().catch((error: unknown) => {
             this.push({ kind: "error", code: "chat_cli_unavailable" });
@@ -2534,29 +2549,26 @@ class AgentChatSession {
             // 조립하면 PTY 런치와 갈리고, 그 차이는 화면 어디에도 드러나지 않는다.
             ...claudeSession.sdk.options,
             ...(Object.keys(modelAutoCompactWindows).length > 0 ? { modelAutoCompactWindows } : {}),
+            hooks: this.hostHooks(),
+            onTaskEvent: this.seed.bindDelegationTask,
+            ...(this.seed.routeDelegatedModels
+              ? {
+                agents: {
+                  [FLEET_EXECUTION_AGENT_TYPE]: {
+                    description: "Fleet execution agent. Fleet assigns its model; naming it is never required.",
+                    prompt: FLEET_EXECUTION_CONTRACT,
+                    model: FLEET_EXECUTION_VIRTUAL_MODEL,
+                  },
+                },
+              }
+              : {}),
             // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
             env: {
               ...chatChildEnv(process.env),
               ...(this.seed.additionalDirectories === undefined ? {} : { CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD: "1" }),
-              ...this.workspaceHook?.env,
               // 사령관 플러그인 MCP 의 `${VAR}` 키 — 자식이 플러그인 MCP 를 읽으며 이 환경으로 펼친다.
               ...claudeSession.pluginEnv,
-              // 서브에이전트 호출 hook만 이 세션의 Objective을 안다. 턴·주의 hook의 식별자와 이름을 나눠
-              // 그 hook들이 채팅 자식에서 남의 축이 아니라 아예 침묵하는 지금 동작을 그대로 둔다.
-              FLEET_CONSOLE_AGENT_CALL_SESSION_ID: this.objectiveId,
-              FLEET_COMPACT_BASE_URL: this.seed.baseUrl,
-              ...(this.seed.compactHookToken
-                ? { FLEET_COMPACT_HOOK_TOKEN: this.seed.compactHookToken }
-                : {}),
-              // 정체성은 Mod가 올린다. PTY 런치는 prepareAiGatewayLaunchProfile이 같은 값을
-              // 싣는데, 채팅은 자기 env를 따로 조립하므로 여기서 다시 실어야 한다 — 빠지면
-              // 이 세션에는 게이트웨이 서브에이전트가 하나도 없다.
-              CLAUDE_CODE_ENABLE_FUNCTION_HOOKS:
-                process.env.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS ?? "1",
-              ...(this.seed.modHookToken
-                ? { FLEET_MOD_BASE_URL: this.seed.baseUrl, FLEET_MOD_TOKEN: this.seed.modHookToken }
-                : {}),
               ...(this.seed.modelSpeed ? modelSpeedLaunchEnv(process.env, this.seed.modelSpeed) : {}),
             },
           });
@@ -2567,8 +2579,6 @@ class AgentChatSession {
           this.sdk = sdk;
           return sdk;
         } catch (error) {
-          this.workspaceHook?.dispose();
-          this.workspaceHook = null;
           // 트리는 그대로 둔다 — 이 세션의 것이고, 다음 시도가 같은 자리를 다시 쓴다.
           this.claudeSession = null;
           throw error;
@@ -2578,6 +2588,63 @@ class AgentChatSession {
       });
     }
     return this.sdkFlight;
+  }
+
+  /**
+   * 이 세션의 인프로세스 훅. 외부 프로세스를 세우지 않는다 — 판정·관찰·압축 고지가 모두 같은
+   * 프로세스 안에서 끝나고, 훅이 실을 수 있는 출력도 foundation이 좁혀 둔 두 필드뿐이다.
+   */
+  private hostHooks(): ClaudeGatewayHostHooks {
+    return {
+      preToolUse: (input) => this.decideDelegatedCall(input),
+      sessionContext: () => `Fleet plugin version: ${FLEET_HARNESS_VERSION}`,
+      observeCwd: (observation) => {
+        this.seed.onCwdChanged?.(observation.cwd);
+      },
+      ...(this.seed.recordCompactEvent === undefined ? {} : { compact: this.seed.recordCompactEvent }),
+    };
+  }
+
+  /**
+   * 위임 호출 하나의 판정. 거절 사유가 있으면 그대로 돌려주고, 배정 대상이면 실행 정체성과
+   * 강도를 정한다. 모델은 여기서 고르지 않는다 — 도구 입력의 `model`은 닫힌 enum이라 재작성하면
+   * 스키마 검증에서 거부되고(0.3.322 실측), 실제 모델은 게이트웨이가 요청 시점에 정한다.
+   */
+  private decideDelegatedCall(input: ClaudeGatewayPreToolUseInput): ClaudeGatewayPreToolUseDecision | undefined {
+    const denyReason = this.seed.guardDelegatedCall?.(input) ?? null;
+    if (denyReason !== null) return { denyReason };
+    if (!this.seed.routeDelegatedModels) return undefined;
+    const subagentType = readToolInputString(input.toolInput.subagent_type);
+    // fork는 부모의 문맥과 모델을 그대로 물려받는다 — 재작성도 배정도 하지 않는다.
+    if (subagentType === "fork") return undefined;
+    if (subagentType !== undefined && !this.isRoutableAgent(subagentType)) return undefined;
+    const requestedModel = readToolInputString(input.toolInput.model);
+    const description = readToolInputString(input.toolInput.description);
+    const tier = routingTierFor({
+      surface: "agent",
+      ...(requestedModel === undefined ? {} : { requestedModel }),
+      ...(subagentType === undefined ? {} : { subagentType }),
+    });
+    this.seed.recordDelegationIntent?.({
+      toolUseId: input.toolUseId,
+      sessionId: input.sessionId,
+      ...(requestedModel === undefined ? {} : { requestedModel }),
+      ...(subagentType === undefined ? {} : { subagentType }),
+      ...(description === undefined ? {} : { description }),
+    });
+    return { subagentType: FLEET_EXECUTION_AGENT_TYPE, effort: GATEWAY_TIER_EFFORT[tier] };
+  }
+
+  /**
+   * 이 이름의 실행을 Fleet이 배정해도 되는가.
+   *
+   * 모델을 정의에 박아 둔 에이전트는 그 선택을 존중한다 — 우리가 등록하지 않은 정의가 그렇게
+   * 하는 경우가 그것이다. 명부에 없는 이름(내장·기본)은 배정 대상이다.
+   */
+  private isRoutableAgent(subagentType: string): boolean {
+    if (subagentType === FLEET_EXECUTION_AGENT_TYPE) return true;
+    const known = this.rawAgents?.find((agent) => agent.name === subagentType);
+    return known === undefined || known.model === null;
   }
 
   /**
@@ -3293,8 +3360,6 @@ class AgentChatSession {
   private async reportTranscriptCwd(): Promise<void> {
     const sessionId = this.latestSessionId;
     if (!sessionId || this.disposed) return;
-    const binding = this.workspaceHook;
-    const revision = binding?.revision ?? 0;
     const transcriptPath = await this.locateTranscript(sessionId);
     if (!transcriptPath) return;
     // 마지막 레코드가 창보다 클 수 있다(큰 도구 결과). 창 경계에서 잘린 줄은 파싱되지 않으므로
@@ -3306,10 +3371,9 @@ class AgentChatSession {
       cwd = latestTranscriptCwd(window.text);
       if (cwd !== null || !window.headCut) break;
     }
-    if (cwd === null || (!binding && cwd === this.reportedCwd) || this.disposed) return;
+    if (cwd === null || cwd === this.reportedCwd || this.disposed) return;
     this.reportedCwd = cwd;
-    if (binding) binding.observe(cwd, revision);
-    else this.seed.onCwdChanged?.(cwd);
+    this.seed.onCwdChanged?.(cwd);
   }
 
   /** 자리가 비었음을 줄 서 있던 디스패치들에게 알린다. 결말 하나가 전부를 깨운다. */
@@ -3344,8 +3408,6 @@ class AgentChatSession {
   private retireSession(session: ClaudeGatewaySession): void {
     if (this.session === session) {
       this.session = null;
-      this.workspaceHook?.dispose();
-      this.workspaceHook = null;
       const sdk = this.sdk;
       this.sdk = null;
       if (sdk) void sdk.dispose().catch(() => undefined);
@@ -3728,4 +3790,8 @@ function readClaudeOccupiedInputTokens(usage: unknown): number | null {
     found = true;
   }
   return found ? total : null;
+}
+
+function readToolInputString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }

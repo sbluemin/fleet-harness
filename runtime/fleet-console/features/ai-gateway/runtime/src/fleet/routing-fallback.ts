@@ -49,6 +49,20 @@ export function requestTierEffort(request: GatewayAssignmentRequest): GatewayRea
   return TIER_EFFORT[tierOf(request)];
 }
 
+/**
+ * 요청 하나가 속한 등급. 호출 전 판정이 스폰별 강도를 고를 때 쓴다 — 배정 판정과 같은 규칙을
+ * 쓰도록 여기서 한 번만 노출한다.
+ */
+export function routingTierFor(
+  request: Pick<GatewayAssignmentRequest, "surface" | "requestedModel" | "subagentType">,
+): GatewayRoutingTier {
+  return tierOf({
+    surface: request.surface,
+    ...(request.requestedModel === undefined ? {} : { requestedModel: request.requestedModel }),
+    ...(request.subagentType === undefined ? {} : { subagentType: request.subagentType }),
+  });
+}
+
 function describeAsk(request: GatewayAssignmentRequest): string {
   if (request.surface === "stage") return "not from the Agent tool";
   if (request.requestedModel !== undefined) return request.requestedModel;

@@ -129,3 +129,4 @@ export {
   FLEET_EXECUTION_CONTRACT,
 } from "./agent-cli/execution-contract.js";
 export { FLEET_PLUGIN_NAME } from "./agent-cli/types.js";
+export { FLEET_HARNESS_VERSION } from "./agent-cli/assets.generated.js";

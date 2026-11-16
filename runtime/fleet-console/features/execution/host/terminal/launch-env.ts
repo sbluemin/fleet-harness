@@ -20,6 +20,12 @@ const CONSOLE_INTERNAL_ENV_KEYS = [
   "FLEET_CONSOLE_WORKSPACE_SESSION_ID",
   "FLEET_CONSOLE_AGENT_CALL_SESSION_ID",
   "FLEET_CONSOLE_WORKSPACE_RUN_ID",
+  // 퇴역한 외부 훅의 자격. 상속된 값이 자식에게 따라가면 더는 쓰지 않는 비밀이 자식 env에 남는다.
+  "FLEET_MOD_TOKEN",
+  "FLEET_MOD_BASE_URL",
+  "FLEET_COMPACT_HOOK_TOKEN",
+  "FLEET_COMPACT_BASE_URL",
+  "CLAUDE_CODE_ENABLE_FUNCTION_HOOKS",
 ] as const;
 
 // 데스크톱 셸이 sidecar에 주입하는 프로토콜 마커와 호스트 내부 힌트가 터미널 세션으로 새어 나가면,
