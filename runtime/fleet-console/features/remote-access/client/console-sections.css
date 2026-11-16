@@ -169,12 +169,33 @@
 .unified-row-head .side-bar-theater-activate { padding-right: 30px; }
 /* 비중첩 activation 표면에서도 칩은 이름 줄에 남고, 옛 명부 행의 우측 메뉴 자리는 비운다. */
 .unified-row-head.side-bar-theater-header--split > .side-bar-theater-text { padding-right: 30px; }
-/* 다른 머신 행의 이름 옆 칩 — 글자만 둔다. 톤은 머신마다 고정(테마를 아는 토큰만 쓴다). 닿지 않는 머신은 행이 흐려진다. */
-.unified-machine-chip { display: inline-flex; align-items: center; flex: none; max-width: 112px; padding: 3px 7px; border: 0; border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--mc, var(--text-secondary)) 16%, transparent); color: color-mix(in oklch, var(--mc, var(--text-secondary)) 60%, var(--text-primary));
-  font-size: var(--t-xs); font-weight: var(--weight-bold); line-height: 1; cursor: pointer; }
-.unified-machine-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 다른 머신 행의 이름 옆 칩 — 평상시엔 원격 표식만 두고, 그 표식에 올리거나 초점이 오면 머신 이름이 펼쳐진다.
+   톤은 머신마다 고정(테마를 아는 토큰만 쓴다). 닿지 않는 머신은 행이 흐려진다. */
+.unified-machine-chip { position: relative; display: inline-flex; align-items: center; flex: none; gap: 0; height: 17px; max-width: 17px; padding: 0 3px;
+  box-sizing: border-box; border: 0; border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mc, var(--text-secondary)) 22%, transparent); color: color-mix(in oklch, var(--mc, var(--text-secondary)) 60%, var(--text-primary));
+  font-size: var(--t-xs); font-weight: var(--weight-bold); line-height: 1; cursor: pointer;
+  transition: max-width var(--duration-base) var(--ease-spring), padding var(--duration-base) var(--ease-spring), gap var(--duration-base) var(--ease-spring);
+  transition-delay: 60ms; }
+.unified-machine-chip-glyph { display: block; flex: none; width: 11px; height: 11px; color: var(--mc, var(--text-secondary)); }
+.unified-machine-chip-label { max-width: 0; opacity: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  transition: opacity var(--duration-fast) var(--ease-spring), max-width var(--duration-base) var(--ease-spring); transition-delay: 60ms; }
+/* 펼침: 칩에 올렸을 때(행을 훑고 지날 때 깜빡이지 않게 120ms 뒤), 키보드 초점, 머신 카드가 열린 동안. */
+@media (hover: hover) {
+  .unified-machine-chip:hover { max-width: min(176px, calc(100% - 36px)); padding: 0 7px 0 4px; gap: 4px; transition-delay: 120ms; }
+  .unified-machine-chip:hover .unified-machine-chip-label { max-width: 160px; opacity: 1; transition-delay: 160ms; }
+}
+/* 이름 줄 폭에서 36px를 남긴다 — 펼쳐도 사령관 이름 자리(30px 남짓)가 사라지지 않는다. 넘치는 머신 이름은 여기서 말줄임된다. */
+.unified-machine-chip:is(:focus-visible, [aria-expanded="true"]) { max-width: min(176px, calc(100% - 36px)); padding: 0 7px 0 4px; gap: 4px; transition-delay: 0ms; }
+.unified-machine-chip:is(:focus-visible, [aria-expanded="true"]) .unified-machine-chip-label { max-width: 160px; opacity: 1; transition-delay: 40ms; }
 .unified-machine-chip:focus-visible { box-shadow: var(--focus-face); outline: none; }
+@media (prefers-reduced-motion: reduce) {
+  .unified-machine-chip, .unified-machine-chip-label { transition: none; }
+}
+/* 터치에는 hover 펼침이 없다. 접힌 표식의 누르는 영역만 행 높이 안에서 24px로 넓힌다(레이아웃 크기는 그대로). */
+@media (hover: none) {
+  .unified-machine-chip::before { content: ""; position: absolute; inset: 0; margin: -3.5px; }
+}
 /* 행의 ⋯ — 머리 위에 겹쳐 뜨고, 가리키거나 초점이 오면 보인다. */
 .unified-row-menu-trigger { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 22px; height: 22px;
   border: 0; border-radius: 6px; background: none; color: var(--text-tertiary); cursor: pointer; opacity: 0; }
