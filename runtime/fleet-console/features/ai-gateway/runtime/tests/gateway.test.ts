@@ -225,6 +225,15 @@ describe("model catalog", () => {
     const windows = claudeModelAutoCompactWindows(models, null);
     expect(Object.keys(windows).sort()).toEqual(["claude-opus-5-5[1m]", "opus[1m]"]);
     expect(windows["opus[1m]"]).toBe(windows["claude-opus-5-5[1m]"]);
+    // 네이티브 Claude 가족은 1M 창 그대로다 — 500k 정의는 Antigravity가 서빙하는 Claude에만 적용된다.
+    expect(windows["opus[1m]"]).toBe(1_000_000);
+    // Antigravity가 서빙하는 Claude 모델은 Fleet 정의 창 500k로 압축 지점을 잡는다(500k − 16k + 33k).
+    // 광고 id의 `[1m]` 표식은 그대로라 Claude Code가 이 id를 200k로 clamp하지 않는다.
+    const antigravityOpus = GATEWAY_MODELS.find((model) => model.id === "antigravity--claude-opus-5.5")!;
+    expect(toClaudeGatewayModelId(antigravityOpus)).toBe("claude-gateway--antigravity--claude-opus-5.5[1m]");
+    expect(claudeModelAutoCompactWindows([antigravityOpus], null)).toEqual({
+      "claude-gateway--antigravity--claude-opus-5.5[1m]": 517_000,
+    });
     // A session's alias, its pinned id, and an id the catalog has not learned yet all reach the same names.
     for (const requested of ["opus[1m]", "claude-opus-5-5[1m]", "claude-opus-5-6[1m]"]) {
       expect(claudeAutoCompactTarget(requested, models).keys).toEqual(expect.arrayContaining(["opus[1m]", "claude-opus-5-5[1m]", requested]));

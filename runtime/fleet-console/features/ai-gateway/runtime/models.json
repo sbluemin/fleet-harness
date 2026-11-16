@@ -14,7 +14,7 @@
     "antigravity": {
       "name": "Antigravity",
       "defaultModel": "gemini-4-hydrogen",
-      "source": "Fleet agy ACP (agy 1.5.9, 2026-11-16): these models are served by the gateway's Messages-to-agy-ACP bridge (`agy acp`, subscription sign-in), not by a direct Cloud Code Assist chat call. `agy acp` reports availableModels as rung ids (`gemini-4-argon-medium`, `claude-opus-5-5-high`) and `configOptions.model` as the base id (`gemini-4-argon`, `claude-opus-5-5`) with the rung in a separate `thought_level` (low/medium/high); a model the account's availableModels lacks fails session open. Gemini models keep the 1,048,576-token window measured from ACP usage_update; the Claude entries carry 1,000,000 pending a two-turn usage_update reading. Quota is read from agy -p /usage (agy 1.1.11 or newer): the Gemini models spend the gemini-weekly and gemini-5h pools (Argon also has gemini-argon-wtu-weekly), and the Claude models spend the separate 3p-weekly and 3p-5h pools — the two families never share headroom (measured 2026-11-16). `gpt-oss-120b-medium` sits in the same agy group but is deliberately not served here, so it appears in no catalog, discovery, roster or picker. Earlier measurements (agy 1.1.18-1.4.1, Cloud Code Assist fetchAvailableModels/streamGenerateContent, 2026-09-03 to 2026-11-13) confirmed the Gemini 3.8 Flash, Gemini 4 Argon, Carbon and Hydrogen rungs and the same 1,048,576-token window; Hydrogen also lists xhigh.",
+      "source": "Fleet agy ACP (agy 1.5.9, 2026-11-16): these models are served by the gateway's Messages-to-agy-ACP bridge (`agy acp`, subscription sign-in), not by a direct Cloud Code Assist chat call. `agy acp` reports availableModels as rung ids (`gemini-4-argon-medium`, `claude-opus-5-5-high`) and `configOptions.model` as the base id (`gemini-4-argon`, `claude-opus-5-5`) with the rung in a separate `thought_level` (low/medium/high); a model the account's availableModels lacks fails session open. Gemini models keep the 1,048,576-token window measured from ACP usage_update. The Claude entries declare a fixed 500,000-token Fleet window (decision 8320fe11, the same convention as the Codex GPT entries: a Fleet-defined window rather than the model's own), and their Claude Code discovery ids still carry the `[1m]` marker so the child does not clamp them to 200k — the auto-compact point is therefore 500,000 − 16,000 = 484,000. Quota is read from agy -p /usage (agy 1.1.11 or newer): the Gemini models spend the gemini-weekly and gemini-5h pools (Argon also has gemini-argon-wtu-weekly), and the Claude models spend the separate 3p-weekly and 3p-5h pools — the two families never share headroom (measured 2026-11-16). `gpt-oss-120b-medium` sits in the same agy group but is deliberately not served here, so it appears in no catalog, discovery, roster or picker. Earlier measurements (agy 1.1.18-1.4.1, Cloud Code Assist fetchAvailableModels/streamGenerateContent, 2026-09-03 to 2026-11-13) confirmed the Gemini 3.8 Flash, Gemini 4 Argon, Carbon and Hydrogen rungs and the same 1,048,576-token window; Hydrogen also lists xhigh.",
       "models": [
         {
           "modelId": "gemini-3.8-flash",
@@ -140,7 +140,7 @@
           "description": "High-capability reasoning, planning, and coding model.",
           "providerModelId": "claude-opus-5-5-medium",
           "quotaScope": "pool:claude-gpt",
-          "contextWindow": 1000000,
+          "contextWindow": 500000,
           "effort": {
             "supported": true,
             "levels": [
@@ -169,7 +169,7 @@
           "description": "Balanced coding and general agent execution model.",
           "providerModelId": "claude-sonnet-5-5-medium",
           "quotaScope": "pool:claude-gpt",
-          "contextWindow": 1000000,
+          "contextWindow": 500000,
           "effort": {
             "supported": true,
             "levels": [
