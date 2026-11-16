@@ -299,7 +299,7 @@ export function compactionReplayBlocks(
   if (turns.length === 0) {
     return { blocks: [{ kind: "text", text: summaryPrompt }], replayChars: 0, omittedTurns: 0 };
   }
-  const { lines, omittedTurns } = fitHistory(turns, budgetChars, false);
+  const { lines, omittedTurns } = fitHistory(turns, budgetChars, true);
   const history = lines.join("\n");
   return {
     blocks: [{ kind: "text", text: `<conversation_history>\n${history}\n</conversation_history>\n\n${summaryPrompt}` }],

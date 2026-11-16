@@ -99,6 +99,7 @@ export async function compactAgyConversation(options: {
 
   let attemptedTool: string | undefined;
   let acp: AcpSession | undefined;
+  let iterator: AsyncIterator<import("../contract.js").AcpSessionEvent> | undefined;
   const handler: McpSessionHandler = {
     tools: () => [],
     onCall: (call) => {
@@ -154,15 +155,13 @@ export async function compactAgyConversation(options: {
       held = undefined;
     };
 
-    const iterator = acp.prompt(blocks)[Symbol.asyncIterator]();
+    iterator = acp.prompt(blocks)[Symbol.asyncIterator]();
     for (;;) {
       const step = await nextWithSilenceTimeout(iterator, options.silenceMs, options.signal);
       if (step === "aborted") {
-        await iterator.return?.().catch(() => undefined);
         throw new AgyCompactionError(503, "api_error", "Antigravity compaction was aborted.");
       }
       if (step === "timeout") {
-        await iterator.return?.().catch(() => undefined);
         throw new AgyCompactionError(
           503,
           "api_error",
@@ -252,6 +251,7 @@ export async function compactAgyConversation(options: {
       await acp.cancel().catch(() => undefined);
       await acp.close().catch(() => undefined);
     }
+    await iterator?.return?.().catch(() => undefined);
   }
 }
 

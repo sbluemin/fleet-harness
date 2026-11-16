@@ -499,4 +499,49 @@ describe("agy ACP bridge", () => {
       customInstructions: "FORCE_COMPACT_TOOL",
     })).rejects.toThrow(/tool|aborted/i);
   });
+
+  it("protects the latest user task when compaction exceeds replay budget and unblocks silent ACP turns on timeout", async () => {
+    const { bridge, log } = await setup({ replayBudgetChars: 350 });
+    const huge = "z".repeat(1_000);
+    const compacted = await bridge.compact({
+      model: MODEL,
+      input: [
+        user("initial goal"),
+        call("c1", { command: "old" }), result("c1", huge),
+        assistant("ok"),
+        user("LATEST_CONSTRAINT: keep migration idempotent"),
+        assistant("acknowledged"),
+      ],
+    });
+    expect(compacted.summary).toContain("Compacted summary (0 tools) history:yes");
+    const prompt = (await log()).filter((entry) => typeof entry.prompt === "string").at(-1)!.prompt as string;
+    expect(prompt).toContain("[2 earlier turns omitted]");
+    expect(prompt).toContain("LATEST_CONSTRAINT: keep migration idempotent");
+
+    // A stalled prompt whose generator awaits session close must still fail with 503 instead of deadlocking iterator.return().
+    let releaseQueue: (() => void) | undefined;
+    let closed = false;
+    const stalledPort: AcpSessionPort = {
+      open: async () => ({
+        sessionId: "stalled",
+        wireModel: MODEL,
+        prompt: () => (async function* () {
+          await new Promise<void>((resolve) => { releaseQueue = resolve; });
+        })(),
+        steer: async () => undefined,
+        cancel: async () => undefined,
+        close: async () => {
+          closed = true;
+          releaseQueue?.();
+        },
+      }),
+    };
+    const silentBridge = createAgyAcpBridge({ port: stalledPort, silenceMs: 25 });
+    bridges.push(silentBridge);
+    await expect(silentBridge.compact({ model: MODEL, input: [user("hello")] })).rejects.toMatchObject({
+      status: 503,
+      message: expect.stringContaining("no compaction output"),
+    });
+    expect(closed).toBe(true);
+  });
 });
