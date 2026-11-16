@@ -312,8 +312,8 @@ export function mountStage(): {
       paintColors(state.colors);
       syncShellMotion(state.shellClosing);
       document.documentElement.lang = state.lang;
-      // 보기 전용으로 바뀌면 이 문서는 맞춤을 선언하지 않는다 — 남은 리스가 실행 측을 붙들지 않게 즉시 멈춘다.
-      if (state.viewOnly) { stopFit(); renderViewer(state); return; }
+      // 원격 조작 중에도 viewOnly 는 참이다 — 맞춤 유지는 renderViewer 의 syncFit 이 맡고, 여기서 리스를 걷지 않는다.
+      if (state.viewOnly) { renderViewer(state); return; }
       delete document.documentElement.dataset.viewOnly;
       shownTab = null; cssSize = null; sender = null; senderTab = null;
       image.hidden = true; image.removeAttribute("src"); root.hidden = false;
