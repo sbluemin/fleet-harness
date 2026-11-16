@@ -5,6 +5,56 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.308.0] - 2026-11-16
+
+### fleet-cli
+
+#### Added
+- `fleet console start --recover` clears a broken or stuck Console lock after checking that no Console is running and no update is in progress, then starts.
+
+### fleet-console
+
+#### Added
+- Antigravity now serves Claude Opus 5.5 and Claude Sonnet 5.5 alongside the Gemini models, with the Claude-specific weekly and five-hour limits shown separately from the Gemini allowance.
+- Open and reopen the Fleet Browser from the left sidebar, including when the sidebar is narrow, and from links or agent activity in the conversation.
+- Show each commander and member's active model and reasoning effort beside their name at the bottom of the conversation ledger.
+- Retry a failed turn in a fresh session, or skip just the message that keeps failing, from the warning line, without clearing the conversation.
+
+#### Changed
+- The Commodore composer's settings chips now start collapsed as a compact summary of both roles and the Theater count; expand them whenever you need the full chips, and Fleet remembers that choice across Commodores and Objective group chats.
+- Remote commodores show a compact remote marker beside their name instead of a permanent machine-name chip; pointing at the marker or focusing it with the keyboard smoothly expands it to reveal the machine name, and the machine card stays reachable from it.
+- All Objective sessions use chat, without a separate terminal mode or conversion step. Saved conversations remain available, and the independent Claude CLI remains available.
+
+#### Fixed
+- Hovering a settings chip shows its name as a tooltip instead of widening the chip and shifting the input, and narrow composer widths label the Commodore and Commander glyphs so they stay distinguishable.
+- Tab now enters an open settings panel from the chip row, and closing it with Escape no longer leaves the chip's nameplate showing.
+- The machine card now closes with Escape and returns focus to the marker that opened it.
+- Long Antigravity sessions compact cleanly instead of stalling or failing with an empty summary response.
+- After the computer restarts, Fleet Console starts again even when a leftover lock still names a process id that another program is now using.
+- Clearing a Commodore conversation now hides consultation request and reply entries created before the clear, while keeping the objective board records intact and showing new consultations that arrive afterward.
+- A failed Commodore turn now says why in one line, and a message that can't be processed is marked as not processed instead of blocking every message sent after it.
+
+#### Removed
+- Removed the Objective terminal view, Workflow stage-by-stage model assignment, and the Fleet Routing terminal pane.
+
+### fleet-desktop
+
+#### Added
+- Automatically switch an open Fleet Browser to the matching commodore space when selecting a commodore or commander in the left sidebar.
+- Close the Fleet Browser pane directly from its header.
+- The tools menu can change the remote view's streaming quality, from data saver to sharp.
+- When Desktop cannot start because a Console lock is in the way, the dialog can clear that lock and start again after checking that no Console is running and no update is in progress.
+
+#### Changed
+- Fleet Browser's address bar and tab strip now use Chrome's light and dark surface layers, with the active tab joined to the toolbar and a recessed address field.
+- Clicking the Fleet Browser address bar now reveals and selects the full URL while expanding the bar with suggestions into a unified Chrome-style panel.
+- Typing, dragging and scrolling in a remote Fleet Browser respond faster.
+
+#### Fixed
+- While controlling a remote Fleet Browser, the page now fits your window instead of the other computer's size, and returns when you stop.
+- Show page favicons in both local and remote Fleet Browser tab strips and space tiles, updating dynamically when a page changes its icon.
+- Scroll remote Fleet Browser pages horizontally when holding Shift with a vertical wheel or swiping horizontally on a trackpad.
+
 ## [1.307.0] - 2026-11-15
 
 ### fleet-cli
