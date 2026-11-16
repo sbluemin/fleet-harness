@@ -607,9 +607,11 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
    */
   interface ViewerScreencast {
     readonly quality: ViewerCaptureQuality;
-    /** 이 세션의 프레임을 한 장이라도 올렸는가 — 올리면 폴링 캡처가 할 일이 없다. */
+    /** 이 세션의 프레임을 한 장이라도 **올렸는가** — 실패한 업로드는 세지 않는다(그때는 폴링 캡처가 다시 맡는다). */
     seen: boolean;
     pending: ViewerFrame | null;
+    /** 업로드 한 건이 끝날 때까지 다음 장은 `pending` 에 최신 한 장으로만 남긴다 — 순서와 대역을 함께 지킨다. */
+    posting: boolean;
     timer: unknown;
   }
   const screencasts = new Map<string, ViewerScreencast>();
@@ -633,7 +635,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const contents = entry.view.webContents;
     if (typeof contents.debugger?.sendCommand !== "function") return;
     const profile = VIEWER_CAPTURE_PROFILES[viewerCapture];
-    const state: ViewerScreencast = { quality: viewerCapture, seen: false, pending: null, timer: null };
+    const state: ViewerScreencast = { quality: viewerCapture, seen: false, pending: null, posting: false, timer: null };
     screencasts.set(id, state);
     void contents.debugger.sendCommand("Page.startScreencast", {
       format: "jpeg",
@@ -647,8 +649,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   async function postViewerFrame(watch: ViewerWatch, entry: LiveView, frame: ViewerFrame): Promise<boolean> {
     const target = origin;
     if (!target || frame.jpeg.length === 0 || frame.jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return false;
-    // 동일 JPEG 중복 전송 억제 — 바뀐 장만 올린다.
-    if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return false;
+    // 동일 JPEG 중복 전송 억제 — 바뀐 장만 올린다. 이미 그 장이 화면에 있으므로 전달된 것으로 친다.
+    if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return true;
     // CSS 크기는 페이지의 실제 레이아웃 — 원격 맞춤·에뮬레이션이면 뷰 bounds 와 다르다. 스트림·long-poll·입력이 함께 쓴다.
     const cssWidth = Math.max(1, Math.round(frame.cssWidth ?? entry.lastBounds?.width ?? frame.width));
     const cssHeight = Math.max(1, Math.round(frame.cssHeight ?? entry.lastBounds?.height ?? frame.height));
@@ -672,10 +674,15 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     return true;
   }
   /** 화질별 최소 간격으로 한 장씩만 올린다 — 그 사이에 온 장은 최신 한 장으로 합친다. */
+  /**
+   * 화질별 최소 간격으로 한 장씩만 올린다 — 그 사이에 온 장은 최신 한 장으로 합치고, 앞 업로드가 끝날 때까지
+   * 다음 업로드를 시작하지 않는다(느린 회선에서 업로드가 쌓여 순서가 뒤집히지 않게). 실패한 업로드는 `seen` 을
+   * 세우지 않으므로 폴링 캡처가 다시 맡는다.
+   */
   const flushScreencast = (id: string): void => {
     const state = screencasts.get(id);
     const watch = watches.get(id);
-    if (!state || !state.pending || !watch?.watching || state.timer !== null) return;
+    if (!state || !state.pending || !watch?.watching || state.timer !== null || state.posting) return;
     const interval = Math.max(VIEWER_FRAME_ACTIVE_INTERVAL_MS, VIEWER_CAPTURE_PROFILES[viewerCapture].intervalMs);
     const send = (): void => {
       state.timer = null;
@@ -683,11 +690,20 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       const pending = current?.pending ?? null;
       const entry = live.get(id);
       const currentWatch = watches.get(id);
-      if (!current || !pending || !entry || !currentWatch?.watching) return;
+      if (!current || !pending || !entry || !currentWatch?.watching || current.posting) return;
       current.pending = null;
-      current.seen = true;
+      current.posting = true;
       currentWatch.lastStarted = now();
-      void postViewerFrame(currentWatch, entry, pending).catch((error: unknown) => { log(`browser frame failed: ${error instanceof Error ? error.message : "unknown"}`); });
+      void postViewerFrame(currentWatch, entry, pending)
+        .then((posted) => {
+          // 성공한 장만 "스크린캐스트가 맡았다"로 친다 — 실패하면 폴링 캡처가 그 사실을 모른 채 계속 살아 있다.
+          if (posted) current.seen = true;
+        })
+        .catch((error: unknown) => { log(`browser frame failed: ${error instanceof Error ? error.message : "unknown"}`); })
+        .finally(() => {
+          current.posting = false;
+          if (current.pending !== null) flushScreencast(id);
+        });
     };
     const wait = Math.max(0, interval - (now() - watch.lastStarted));
     if (wait === 0) { send(); return; }

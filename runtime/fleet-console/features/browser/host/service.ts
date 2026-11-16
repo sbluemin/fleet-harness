@@ -422,6 +422,31 @@ const FAVICON_OBSERVER = `(() => {
   };
   if (document.documentElement) watch(); else document.addEventListener("DOMContentLoaded", watch, { once: true });
 })()`;
+/** 페이지에 `<select>` 가 새로 생겼다고 Console 에 알리는 바인딩 이름. */
+const SELECT_BINDING = "__fleetSelectChanged";
+/** 페이지 스크립트가 바인딩을 보거나 호출하지 못하도록 `SELECT_OBSERVER` 와 묶는 격리 월드 이름. */
+const SELECT_WORLD = "fleet-select";
+/**
+ * `<select>` 의 동적 추가를 지켜본다 — "이 문서에 select 없음" 판정은 문서가 바뀔 때만 버리므로,
+ * SPA 가 나중에 폼을 열어 select 를 넣으면 그 음성 판정이 틀린다(첫 클릭이 네이티브 드롭다운으로 새어 나간다).
+ * 추가된 노드만 보면 충분하다 — 음성 판정을 무효로 만드는 사건은 select 의 등장뿐이다.
+ */
+const SELECT_OBSERVER = `(() => {
+  if (window.top !== window) return;
+  const notify = () => { try { if (typeof window.${SELECT_BINDING} === "function") window.${SELECT_BINDING}(""); } catch {} };
+  const holdsSelect = (node) => {
+    if (!node || node.nodeType !== 1) return false;
+    if (node.nodeName === "SELECT") return true;
+    try { return typeof node.querySelector === "function" && node.querySelector("select") !== null; } catch { return false; }
+  };
+  const watch = () => {
+    if (!document.documentElement) return;
+    new MutationObserver((records) => {
+      for (const record of records) for (const node of record.addedNodes) if (holdsSelect(node)) return notify();
+    }).observe(document.documentElement, { childList: true, subtree: true });
+  };
+  if (document.documentElement) watch(); else document.addEventListener("DOMContentLoaded", watch, { once: true });
+})()`;
 
 /** macOS 편집 단축키 → Chromium 편집 명령. cmd 단독 조합만 해당한다. */
 function editCommand(key: string, mods: Modifiers): string | undefined {
@@ -1621,6 +1646,11 @@ export class BrowserService {
       client.send("Runtime.addBinding", { name: FAVICON_BINDING, executionContextName: FAVICON_WORLD }, tab.sessionId).catch(() => undefined),
       client.send("Page.addScriptToEvaluateOnNewDocument", { source: FAVICON_OBSERVER, worldName: FAVICON_WORLD }, tab.sessionId).catch(() => undefined),
     ]);
+    // select 존재 캐시(음성)를 문서 변화에 무효화한다 — 나중에 추가된 select 를 클릭 한 번으로 놓치지 않게.
+    await Promise.all([
+      client.send("Runtime.addBinding", { name: SELECT_BINDING, executionContextName: SELECT_WORLD }, tab.sessionId).catch(() => undefined),
+      client.send("Page.addScriptToEvaluateOnNewDocument", { source: SELECT_OBSERVER, worldName: SELECT_WORLD }, tab.sessionId).catch(() => undefined),
+    ]);
     this.deps.desktop.bindView(tab.targetId, op.objectiveId, actor === "agent");
     await this.applyViewport(client, tab, op);
     if (caller) { op.currentTabs.set(caller.participantId, tab.id); this.bindParticipant(op, caller); }
@@ -2071,6 +2101,11 @@ export class BrowserService {
       }
       // 페이지가 아이콘 선언을 바꿨다 — Chrome 처럼 다음 상태에 새 아이콘을 싣는다.
       case "Runtime.bindingCalled": {
+        if (p.name === SELECT_BINDING) {
+          // 문서에 select 가 새로 생겼다 — "없음" 캐시를 버려 다음 클릭이 그 자리에서 다시 본다.
+          tab.selectProbe = null;
+          return;
+        }
         if (p.name !== FAVICON_BINDING) return;
         this.scheduleFaviconRefresh(op, tab);
         return;

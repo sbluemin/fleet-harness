@@ -505,11 +505,19 @@ describe("managed browser auth and on-demand frames", () => {
     const frames: { body: Buffer; headers: Headers }[] = [];
     const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
     const headerOf = (init?: RequestInit): Headers => new Headers(init?.headers);
+    let holdFramePost = false;
+    let releaseFramePost: (() => void) | null = null;
+    let failFramePost = false;
     const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
       const url = new URL(String(input));
       if (url.pathname === DESKTOP_BROWSER_RELAY_PATH) return new Response(null, { status: 204 });
       if (url.pathname === DESKTOP_BROWSER_FRAME_PATH) {
-        frames.push({ body: Buffer.from(init?.body as Uint8Array), headers: headerOf(init) });
+        const body = Buffer.from(init?.body as Uint8Array);
+        const headers = headerOf(init);
+        // 업로드가 느린 회선을 흉내 낸다 — 응답 전에는 frames 에 남기지 않는다.
+        if (holdFramePost) { holdFramePost = false; await new Promise<void>((resolve) => { releaseFramePost = resolve; }); }
+        if (failFramePost) { failFramePost = false; return new Response(null, { status: 500 }); }
+        frames.push({ body, headers });
         return new Response(null, { status: 204 });
       }
       if (url.pathname === DESKTOP_BROWSER_PATH) return Response.json(lifetime);
@@ -587,11 +595,40 @@ describe("managed browser auth and on-demand frames", () => {
       emitFrame(streamed);
       await new Promise((resolve) => setTimeout(resolve, 20));
       expect(frames).toHaveLength(2);
+
+      // 업로드가 간격보다 오래 걸려도 한 건만 띄우고, 그 사이 장은 최신 한 장으로 합친다(순서 보존).
+      const first = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 0x02]);
+      const latest = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 0x03]);
+      const dropped = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 0x04]);
+      holdFramePost = true;
+      emitFrame(first);
+      await vi.waitFor(() => expect(releaseFramePost).not.toBeNull());
+      emitFrame(dropped);
+      emitFrame(latest);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(frames).toHaveLength(2);
+      clock += 100;
+      releaseFramePost!();
+      await vi.waitFor(() => expect(frames).toHaveLength(4));
+      expect(frames[2]!.body.equals(first)).toBe(true);
+      expect(frames[3]!.body.equals(latest)).toBe(true);
+
       // 화질이 바뀌면 감시 중인 스크린캐스트를 새 프로필로 다시 건다.
       publish({ ...lifetime, generation: 3, watchedViewIds: ["view-1"], viewerCapture: "high" });
       await vi.waitFor(() => expect(screencastParams()).toHaveLength(2));
       expect(screencastParams()[1]).toMatchObject({ quality: 85, maxWidth: 1920 });
       expect(created[0]!.commands).toContain("Page.stopScreencast");
+
+      // 첫 장 업로드가 실패하면 폴링 캡처가 다시 맡는다 — 정지한 페이지가 빈 화면으로 남지 않는다.
+      failFramePost = true;
+      emitFrame(dropped);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(frames).toHaveLength(4);
+      page.emit("did-navigate");
+      clock += 100;
+      await vi.waitFor(() => expect(captures).toHaveLength(2));
+      releaseCapture!();
+      await vi.waitFor(() => expect(frames).toHaveLength(5));
 
       // 감시가 끝나면 스크린캐스트도 멈춘다.
       publish({ ...lifetime, generation: 4, watchedViewIds: [] });
