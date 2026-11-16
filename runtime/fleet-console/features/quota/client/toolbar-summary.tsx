@@ -192,7 +192,7 @@ function QuotaSummaryHold() {
   return null;
 }
 
-const POPOVER_WIDTH = 340;
+const POPOVER_WIDTH = 364;
 const POPOVER_MAX_HEIGHT = 470;
 const POPOVER_GAP = 6;
 const VIEWPORT_MARGIN = 8;
