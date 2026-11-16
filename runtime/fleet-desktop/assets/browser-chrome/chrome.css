@@ -1,6 +1,7 @@
 /* Fleet Browser 크롬(주소줄·세로 탭 레일·스테이지) — Desktop 이 소유한 정적 문서의 스타일. 문서는 스크립트 CSP 로 막혀 있고, main 이 주입하는 프로그램이 이 CSS 의
    클래스만 켜고 끈다. 색과 치수는 Console 의 것이다: 테마마다 다른 색 토큰은 Console 이 테마 스냅샷에 실어 보내면 main 이 같은 이름의 변수로 밀어 넣고(아래 첫 프레임
-   기본값은 다크 판), 치수·파생 토큰은 theme.css 에서 옮긴 아래 블록이 같은 이름으로 준다(design-contract.test.ts 가 일치를 지킨다). 신호 규칙은 Console 과 같다:
+   기본값은 다크 판), 치수·파생 토큰은 theme.css 에서 옮긴 아래 블록이 같은 이름으로 준다(design-contract.test.ts 가 일치를 지킨다). 브라우저 크롬의 면은 그 원료 토큰을
+   바로 쓰지 않고 아래 `--chrome-*` 역할 사다리를 거친다 — 프레임·주소 필드·도구줄(보는 탭은 도구줄과 같은 면)의 관계가 테마마다 뒤집히지 않게 하는 자리다. 신호 규칙은 Console 과 같다:
    상태는 신호 토큰만(에이전트 조작=agent-control-badge, 오류=coral, 라이브=aurora), 위치·포커스는 brass. */
 @font-face { font-family: "Manrope Variable"; src: url("../entry/fonts/manrope-latin-wght-normal.woff2") format("woff2"); font-style: normal; font-weight: 100 900; font-display: swap; }
 :root {
@@ -119,25 +120,53 @@
   --aurora-glow: oklch(50% 0.1 210 / 15%);
 }
 /* ==== /Console 테마 토큰 ==== */
+/* ---- 브라우저 크롬의 면 사다리 — Chrome 의 네 재료를 Console 토큰 위에 이름으로 세운다.
+   프레임(가로 탭 표시줄·세로 레일) → 주소 필드 → 도구줄(주소줄 띠) 순으로 면이 밝아지고, 보는 탭은 도구줄과 같은 면이다.
+   첨부한 Chrome 4장의 실측(sRGB): 라이트 프레임 #e3e3e3 · 필드 #efeded · 도구줄·보는 탭 #ffffff,
+   다크 프레임 #1f2020 · 필드 #282828 · 도구줄·보는 탭 #3c3c3c — 두 테마 모두 필드는 도구줄에서 프레임 쪽으로 한 단 물러나고,
+   보는 탭은 도구줄과 같은 값이라 아래 띠에 틈 없이 이어진다(가로 표시줄의 활성 탭이 그 자리에서 합류한다).
+   `--chrome-ink` 는 프레임 위에 놓이는 글자다 — 라이트 회색 프레임에서는 보조 회색이 너무 옅어져 본문 잉크를 쓴다.
+   크롬의 모든 규칙은 원료 잉크 토큰 대신 이 역할 이름만 쓴다 — 테마가 바뀌어도 면의 관계는 그대로다.
+   값은 Console 이 준다(스냅샷 21 토큰 + 첫 프레임 미러 블록). 여기서 새 색을 정하지 않는다.
+   `--ink-mid` 는 스냅샷에 없으므로 쓰지 않는다. ---- */
+:root {
+  --chrome-frame: var(--popover-face);
+  --chrome-field: color-mix(in oklab, var(--chrome-toolbar) 25%, var(--chrome-frame));
+  --chrome-toolbar: var(--ink-veil);
+  --chrome-tab: var(--chrome-toolbar);
+  --chrome-divider: var(--ink-rim);
+  --chrome-ink: var(--text-secondary);
+  --chrome-field-hover: color-mix(in oklab, var(--text-primary) 5%, var(--chrome-field));
+}
+:root[data-scheme="light"] {
+  --chrome-frame: var(--ink-veil);
+  --chrome-field: var(--ink-deep);
+  --chrome-toolbar: var(--popover-face);
+  --chrome-divider: var(--hairline);
+  --chrome-ink: var(--text-primary);
+}
 * { box-sizing: border-box; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); user-select: none; -webkit-user-select: none; }
 :focus-visible { outline: none; }
 button { font: inherit; color: inherit; }
 svg { display: block; }
-html[data-role="stage"] body, html[data-role="bar"] .strip { background: var(--surface); }
+html[data-role="stage"] body { background: var(--surface); }
+/* 주소줄 띠는 도구줄 면 하나다 — 아래 페이지와의 경계만 1px 구분선이 진다(Chrome 실측 라이트 #e1e3e1·다크 #454746).
+   가로 탭 표시줄과 닿는 위쪽 변에는 선을 긋지 않는다 — 그 자리는 보는 탭의 색과 도구줄의 색이 맞닿아 이어진다. */
+html[data-role="bar"] .strip { background: var(--chrome-toolbar); }
 
 /* ---- 주소줄 ---- */
-.strip { position: relative; z-index: 2; border-bottom: 1px solid var(--hairline); display: flex; align-items: center; gap: var(--space-1); height: var(--strip); padding: 0 var(--space-2); -webkit-app-region: drag; }
+.strip { position: relative; z-index: 2; display: flex; align-items: center; gap: var(--space-1); height: var(--strip); padding: 0 var(--space-2); border-bottom: 1px solid var(--chrome-divider); -webkit-app-region: drag; }
 .strip > * { -webkit-app-region: no-drag; }
 .strip > .pad { flex: none; height: 100%; -webkit-app-region: drag; }
 .icon { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; background: transparent; border: 0; border-radius: var(--radius-xs); color: var(--text-secondary); font-size: var(--t-md); text-decoration: none; cursor: pointer; }
-.icon:hover:not(:disabled), .icon:focus-visible { color: var(--brass-ink); background: var(--ink-veil); outline: none; }
+.icon:hover:not(:disabled), .icon:focus-visible { color: var(--brass-ink); background: var(--wash-selected); outline: none; }
 .icon:disabled { opacity: 0.35; cursor: default; }
 .icon svg { width: 14px; height: 14px; }
 .reload.loading svg { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.url { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center; height: 30px; background: var(--ink-veil); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
-.url:hover { background: var(--ink-rim); }
+.url { position: relative; flex: 1; min-width: 80px; display: flex; align-items: center; height: 34px; background: var(--chrome-field); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
+.url:hover { background: var(--chrome-field-hover); }
 .url:focus-within { box-shadow: var(--field-focus-edge); }
 .url-input { flex: 1; min-width: 0; height: 100%; padding: 0 var(--space-3); background: transparent; color: var(--text-primary); border: 0; border-radius: var(--radius-pill); font-family: var(--font-ui); font-size: var(--t-sm); user-select: text; -webkit-user-select: text; }
 .url-input:focus { outline: none; }
@@ -149,7 +178,7 @@ html[data-role="stage"] body, html[data-role="bar"] .strip { background: var(--s
 /* 칸이 가장 좁을 때(320)는 단추와 간격을 조금 조여 주소가 잘리지 않게 한다. */
 @media (max-width: 360px) { .strip { gap: 2px; padding: 0 6px; } .strip > .icon { width: 28px; } }
 .more-button { border-radius: var(--radius-pill); }
-.more-button.open { background: var(--ink-rim); color: var(--text-primary); }
+.more-button.open { background: var(--wash-selected); color: var(--text-primary); }
 .more-glyph { overflow: visible; }
 .more-glyph :is(.more-dots, .more-x) { transform-box: fill-box; transform-origin: center; transition: transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1), opacity 160ms ease; }
 .more-x { opacity: 0; transform: rotate(-90deg) scale(0.6); }
@@ -272,20 +301,20 @@ html[data-role="stage"] body, html[data-role="bar"] .strip { background: var(--s
 
 /* ---- 탭 표시줄: 세로 레일(기본)과 가로 표시줄. 몸(.rail)만 바탕을 칠한다 — 접히는 동안 뷰의 남는 자리는 비쳐 보여야 한다. ---- */
 html[data-role="rail"] body { width: var(--rail-expanded); }
-.rail { isolation: isolate; position: absolute; top: 0; bottom: 0; left: 0; border-right: 1px solid var(--hairline); width: var(--rail-collapsed); display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--surface); color: var(--text-secondary); font-size: var(--t-xs); transition: width var(--rail-motion) var(--rail-ease), box-shadow var(--rail-motion) var(--rail-ease); }
+.rail { isolation: isolate; position: absolute; top: 0; bottom: 0; left: 0; border-right: 1px solid var(--chrome-divider); width: var(--rail-collapsed); display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) 8px; overflow: hidden; background: var(--chrome-frame); color: var(--chrome-ink); font-size: var(--t-xs); transition: width var(--rail-motion) var(--rail-ease), box-shadow var(--rail-motion) var(--rail-ease); }
 .rail.open { width: var(--rail-expanded); }
 .rail > .pad { display: none; }
 .rail.open:not(.pinned) { box-shadow: 0 18px 38px -22px oklch(0% 0 0 / 30%); }
 .divider { flex: none; height: 1px; margin: 2px var(--space-1); background: var(--hairline); }
 .scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-1); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .rail.open .scroll { scrollbar-width: thin; }
-.row { flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; overflow: hidden; padding: 0 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); font-size: var(--t-sm); text-align: start; white-space: nowrap; cursor: pointer; }
-.row:hover:not(:disabled), .tab:hover { background: var(--ink-veil); color: var(--text-primary); }
+.row { flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; overflow: hidden; padding: 0 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--chrome-ink); font-size: var(--t-sm); text-align: start; white-space: nowrap; cursor: pointer; }
+.row:hover:not(:disabled), .tab:hover { background: var(--wash-selected); color: var(--text-primary); }
 .row:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
 .row.set { color: var(--brass-ink); }
-.row.new { justify-content: center; padding: 0; background: var(--ink-veil); }
+.row.new { justify-content: center; padding: 0; background: transparent; }
 .row.new .glyph { width: auto; height: auto; font-size: 20px; font-weight: 300; }
-.row.new:hover:not(:disabled) { background: var(--ink-rim); }
+.row.new:hover:not(:disabled) { background: var(--wash-selected); }
 .row:focus-visible, .tab:focus-visible, .tab-close:focus-visible { box-shadow: var(--focus-face); }
 .glyph { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
 .glyph svg { width: 14px; height: 14px; }
@@ -299,8 +328,8 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 @media (prefers-reduced-motion: reduce) { .rail, .rail :is(.label, .tab-title, .tab-close) { transition: none; } }
 .tabs { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .tabs[hidden] { display: none; }
-.tab { position: relative; flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; overflow: hidden; padding: 0 8px 0 12px; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; font-size: var(--t-sm); line-height: 18px; }
-.tab.active { background: var(--ink-rim); color: var(--text-primary); }
+.tab { position: relative; flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; overflow: hidden; padding: 0 8px 0 12px; border-radius: var(--radius-md); background: transparent; color: var(--chrome-ink); cursor: pointer; font-size: var(--t-sm); line-height: 18px; }
+.tab.active { background: var(--chrome-tab); color: var(--text-primary); }
 .tab-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab-close { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-inline-start: auto; padding: 0; background: transparent; border: 0; color: var(--text-tertiary); font-size: var(--t-md); line-height: 1; cursor: pointer; border-radius: var(--radius-pill); }
 .tab-close:hover, .tab-close:focus-visible { color: var(--text-primary); background: var(--wash-selected); }
@@ -325,24 +354,41 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 /* ---- 가로 탭 표시줄: 같은 문서가 주소줄 위 한 줄로 눕는다. 맨 위 줄이므로 신호등·캡션 자리를 비우고(.pad), 그 여백으로 창을 끈다.
    탭이 놓이는 자리는 끌기 영역이 아니다 — 끌기 영역은 우클릭을 받지 못해 표시줄 메뉴가 뜨지 않는다. ---- */
 html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
-.rail.horizontal { right: 0; bottom: auto; width: auto; height: var(--strip); flex-direction: row; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border-right: 0; transition: none; }
-.rail.horizontal > .pad { display: block; flex: none; height: 100%; -webkit-app-region: drag; }
+/* 가로 탭은 아래 도구줄 띠와 한 면으로 이어진다 — 탭 줄은 위 8px를 프레임으로 비우고 바닥까지 차며(탭 상자는 모두 공유한다),
+   보는 탭만 아래 양 모서리가 바깥으로 말려 도구줄로 녹는다(Chrome 의 역곡선). 상자를 공유하므로 탭을 오갈 때
+   글자·아이콘의 세로 자리가 움직이지 않고, 아래 띠와의 사이에는 어떤 선도 놓지 않는다. */
+.rail.horizontal { --tab-flare: 8px; right: 0; bottom: auto; width: auto; height: var(--strip); flex-direction: row; align-items: center; gap: var(--space-1); padding: 8px var(--space-2) 0; border-right: 0; transition: none; }
+.rail.horizontal > .pad { position: relative; z-index: 2; display: block; flex: none; height: 100%; -webkit-app-region: drag; }
 .rail.horizontal :is(.rail-pin, .divider) { display: none; }
-.rail.horizontal .scroll { flex: 1 1 auto; min-width: 0; height: 100%; flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
-.rail.horizontal .tabs { flex: 0 1 auto; flex-direction: row; min-width: 0; }
-.rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; }
+/* 첫 탭의 말림도 잘리지 않게 스크롤 상자의 안쪽 여백을 양옆으로 주고 같은 만큼 바깥 여백으로 되돌린다. */
+.rail.horizontal .scroll { flex: 1 1 auto; min-width: 0; height: 100%; flex-direction: row; align-items: stretch; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; padding-inline: var(--tab-flare); margin-inline: calc(-1 * var(--tab-flare)); }
+.rail.horizontal .tabs { flex: 0 1 auto; flex-direction: row; align-items: stretch; gap: 0; min-width: 0; }
+.rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; height: 100%; }
 .rail.horizontal .tab-title { flex: 1 1 auto; }
+/* 보고 있지 않은 탭의 호버는 탭 상자(바닥까지)가 아니라 글자 줄 높이의 둥근 면으로 남는다 — 보는 탭의 합류와 헷갈리지 않게. */
+.rail.horizontal .tab:not(.active)::before { content: ""; position: absolute; inset: 5px 0; border-radius: var(--radius-md); pointer-events: none; }
+.rail.horizontal .tab:not(.active):hover { background: transparent; color: var(--text-primary); }
+.rail.horizontal .tab:not(.active):hover::before { background: var(--wash-selected); }
+/* 비활성 탭 사이의 1px 세로 구분선. 보는 탭과 호버 중인 탭 양옆에서는 걷힌다 — 그 자리는 합류와 호버 면이 대신한다. */
+.rail.horizontal .tab:not(.active)::after { content: ""; position: absolute; top: 50%; right: 0; width: 1px; height: 16px; translate: 0 -50%; background: var(--hairline-strong); pointer-events: none; }
+.rail.horizontal .tab:not(.active):hover::after,
+.rail.horizontal .tab:not(.active):last-child::after,
+.rail.horizontal .tab:not(.active):has(+ .tab.active)::after,
+.rail.horizontal .tab:not(.active):has(+ .tab:hover)::after { display: none; }
 /* 보는 탭은 닫기 단추가 탭 안에 다 보일 만큼은 남는다(여백 12+8, 아이콘 14, 닫기 22, 간격 10×2 = 76; 에이전트 표식이 붙으면 +24). 넘치면 줄이 옆으로 넘어간다. */
-.rail.horizontal .tab.active { min-width: 76px; }
+.rail.horizontal .tab.active { z-index: 1; min-width: 76px; overflow: visible; border-radius: var(--radius-md) var(--radius-md) 0 0; }
+.rail.horizontal .tab.active::before, .rail.horizontal .tab.active::after { content: ""; position: absolute; bottom: 0; width: var(--tab-flare); height: var(--tab-flare); background: var(--chrome-tab); pointer-events: none; }
+.rail.horizontal .tab.active::before { right: 100%; -webkit-mask: radial-gradient(circle at 0 0, transparent calc(var(--tab-flare) - 0.5px), #000 var(--tab-flare)); mask: radial-gradient(circle at 0 0, transparent calc(var(--tab-flare) - 0.5px), #000 var(--tab-flare)); }
+.rail.horizontal .tab.active::after { left: 100%; -webkit-mask: radial-gradient(circle at 100% 0, transparent calc(var(--tab-flare) - 0.5px), #000 var(--tab-flare)); mask: radial-gradient(circle at 100% 0, transparent calc(var(--tab-flare) - 0.5px), #000 var(--tab-flare)); }
 .rail.horizontal .tab.active.is-agent { min-width: 100px; }
 /* 탭이 좁아지면(문서가 .tight 를 건다) 보고 있지 않은 탭은 닫기 단추를 접어 제목에 자리를 준다 — 보는 탭의 닫기는 남는다.
    컨테이너 질의는 쓰지 않는다: 탭에 크기 격리를 걸면 탭 줄의 폭 계산에서 탭이 0 으로 세어져 모든 탭이 최소 폭으로 쪼그라든다. */
 .rail.horizontal .tabs.tight .tab:not(.active) .tab-close { display: none; }
-.rail.horizontal .row.new { flex: none; width: 34px; }
+.rail.horizontal .row.new { flex: none; align-self: center; width: 34px; border-radius: var(--radius-pill); }
 /* 주소줄 단추 — 사령관 스페이스를 보는 동안 글리프가 그 스페이스의 색을 입는다. */
 .spaces-button { border-radius: var(--radius-pill); }
 .spaces-button svg { width: 16px; height: 16px; }
-.spaces-button.open { background: var(--ink-rim); color: var(--text-primary); }
+.spaces-button.open { background: var(--wash-selected); color: var(--text-primary); }
 /* 단추의 그림은 지금 보는 스페이스의 표식이다. 스페이스를 옮기면 옛 표식이 위로 물러나고 새 표식이 아래에서 들어선다. */
 .spaces-glyph { position: relative; display: inline-flex; width: 22px; height: 22px; }
 .spaces-face { position: absolute; inset: 0; display: inline-flex; }
@@ -353,7 +399,7 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 @media (prefers-reduced-motion: reduce) { .spaces-face.entering { animation: none; } .spaces-face.leaving { display: none; } }
 /* 다른 스페이스에서 에이전트가 일하는 중 — 단추 모서리의 점 하나(조작 신호 토큰). */
 .spaces-button { position: relative; }
-.spaces-button.elsewhere::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--agent-control-badge); box-shadow: 0 0 0 1.5px var(--surface); }
+.spaces-button.elsewhere::after { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: var(--radius-pill); background: var(--agent-control-badge); box-shadow: 0 0 0 1.5px var(--chrome-toolbar); }
 /* 다른 스페이스에서 에이전트가 일하는 중 — 표식 둘레를 빛줄기가 돌고 점에서 고리가 퍼진다. 보고 있지 않은 곳에서 일이 벌어지고 있다는 표시다. */
 .spaces-button.working .spaces-glyph::after { content: ""; position: absolute; inset: -3px; border-radius: 7px; padding: 1.5px; background: conic-gradient(from var(--guard-beam), transparent 0 52%, var(--agent-control-badge) 80%, color-mix(in oklab, var(--agent-control-badge) 60%, white) 96%, transparent 100%); -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; animation: guard-beam 2.2s linear infinite; pointer-events: none; }
 .spaces-button.working::before { content: ""; position: absolute; top: 4px; right: 4px; width: 7px; height: 7px; border-radius: var(--radius-pill); border: 1px solid var(--agent-control-badge); animation: guard-pulse 1.8s ease-out infinite; pointer-events: none; }
@@ -514,7 +560,7 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .origin-link:focus-visible { box-shadow: var(--focus-face); }
 .origin-link[hidden] { display: none; }
 html[data-view-only="true"]:not([data-remote-control="true"]) .url { pointer-events: none; }
-html[data-view-only="true"]:not([data-remote-control="true"]) .url:hover { background: var(--ink-veil); }
+html[data-view-only="true"]:not([data-remote-control="true"]) .url:hover { background: var(--chrome-field); }
 .rail.viewing .tab-close { display: none; }
 html[data-role="stage"] .frame { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; object-position: top center; user-select: none; -webkit-user-drag: none; }
 
