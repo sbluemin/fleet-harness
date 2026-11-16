@@ -433,7 +433,9 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
     && (row.home ? standingHome : entry?.active === true);
   const [menu, setMenu] = useState<DOMRect | null>(null);
   const [menuFocusFirst, setMenuFocusFirst] = useState(false);
-  const [chipCard, setChipCard] = useState<DOMRect | null>(null);
+  const [chipCard, setChipCard] = useState<{ readonly anchor: DOMRect; readonly opener: HTMLElement } | null>(null);
+  /** 카드를 연 칩을 함께 남긴다 — Escape로 닫을 때 그 칩으로 초점을 돌려준다. */
+  const openChipCard = (anchor: DOMRect, opener: HTMLElement) => setChipCard({ anchor, opener });
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const longPress = useLongPress<HTMLDivElement>((element) => openMenu(element.getBoundingClientRect(), returnFocusRef.current));
   const openMenu = (anchor: DOMRect, returnFocus: HTMLElement | null, focusFirst = false) => {
@@ -480,12 +482,12 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
 
   if (standingRow && standingMenu) return <li className={`side-bar-theater-section${current ? " side-bar-theater-section--active" : ""}${dropBefore ? " side-bar-theater-section--drop-before" : ""}${dropAfter ? " side-bar-theater-section--drop-after" : ""}`}
     data-theater-id={rowKey} data-commodore-id={row.commodoreId}>
-    {standingMenu.renderHeader(row, { accessory: !row.home && !compact ? <UnifiedMachineChip row={row} onOpenCard={setChipCard} /> : null, dragging, dropTarget: dropBefore, dragOffsetY, menuTarget: menu !== null,
+    {standingMenu.renderHeader(row, { accessory: !row.home && !compact ? <UnifiedMachineChip row={row} expanded={chipCard !== null} onOpenCard={openChipCard} /> : null, dragging, dropTarget: dropBefore, dragOffsetY, menuTarget: menu !== null,
       onMenu: (anchor, opener, _atCursor, focusFirst) => openMenu(anchor, opener, focusFirst),
       onPointerDragStart: (event) => onPointerDragStart(event, rowKey) })}
     {!compact ? standingMenu.renderCommanders(row) : null}
     {menu ? <UnifiedRowMenu anchor={menu} focusFirst={menuFocusFirst} opener={returnFocusRef.current} label={row.name} unified={unified} rowKey={rowKey} onClose={closeMenu} standingRow={standingRow} standingMenu={standingMenu} /> : null}
-    {chipCard && !row.home ? <UnifiedMachineCard anchor={chipCard} row={row} entry={entry} consoles={consoles} onClose={() => setChipCard(null)} /> : null}
+    {chipCard && !row.home ? <UnifiedMachineCard anchor={chipCard.anchor} opener={chipCard.opener} row={row} entry={entry} consoles={consoles} onClose={() => setChipCard(null)} /> : null}
   </li>;
 
   const remoteSummary = remotePage?.commodores.find((item) => item.id === row.commodoreId);
@@ -493,9 +495,9 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
     className={`side-bar-theater-section${dropBefore ? " side-bar-theater-section--drop-before" : ""}${dropAfter ? " side-bar-theater-section--drop-after" : ""}${dim ? " is-unified-dim" : ""}`}
     data-theater-id={rowKey} data-commodore-id={row.commodoreId}>
     <RemoteSidebarRow row={row} console={entry.id} summary={remoteSummary} directory={remotePage} compact={compact}
-      frame={{ accessory: !row.home && !compact ? <UnifiedMachineChip row={row} onOpenCard={setChipCard} /> : null, dragging, dropTarget: dropBefore, dragOffsetY, menuTarget: false, onMenu: onCancelPendingDrag, onPointerDragStart: (event) => onPointerDragStart(event, rowKey) }}
+      frame={{ accessory: !row.home && !compact ? <UnifiedMachineChip row={row} expanded={chipCard !== null} onOpenCard={openChipCard} /> : null, dragging, dropTarget: dropBefore, dragOffsetY, menuTarget: false, onMenu: onCancelPendingDrag, onPointerDragStart: (event) => onPointerDragStart(event, rowKey) }}
       onOpen={open} placement={(close) => <UnifiedPlacementMenu unified={unified} rowKey={rowKey} onClose={close} />} />
-    {chipCard && !row.home ? <UnifiedMachineCard anchor={chipCard} row={row} entry={entry} consoles={consoles} onClose={() => setChipCard(null)} /> : null}
+    {chipCard && !row.home ? <UnifiedMachineCard anchor={chipCard.anchor} opener={chipCard.opener} row={row} entry={entry} consoles={consoles} onClose={() => setChipCard(null)} /> : null}
   </li>;
 
   if (compact) {
@@ -552,7 +554,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
       <span className="side-bar-theater-text">
         <span className="unified-row-line">
           <span className="side-bar-theater-name" onClick={(event) => open(null, event.currentTarget.closest<HTMLElement>(".side-bar-theater-header") ?? event.currentTarget)}>{row.name}</span>
-          {!row.home ? <UnifiedMachineChip row={row} onOpenCard={setChipCard} /> : null}
+          {!row.home ? <UnifiedMachineChip row={row} expanded={chipCard !== null} onOpenCard={openChipCard} /> : null}
         </span>
         <span className="side-bar-theater-sub">{previewText}</span>
       </span>
@@ -575,33 +577,44 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
       </div>
     </div> : null}
     {menu ? <UnifiedRowMenu anchor={menu} focusFirst={menuFocusFirst} opener={returnFocusRef.current} label={row.name} unified={unified} rowKey={rowKey} onClose={closeMenu} standingRow={standingRow} standingMenu={standingMenu} /> : null}
-    {chipCard && !row.home ? <UnifiedMachineCard anchor={chipCard} row={row} entry={entry} consoles={consoles} onClose={() => setChipCard(null)} /> : null}
+    {chipCard && !row.home ? <UnifiedMachineCard anchor={chipCard.anchor} opener={chipCard.opener} row={row} entry={entry} consoles={consoles} onClose={() => setChipCard(null)} /> : null}
   </li>;
 }
 
-/** 다른 머신 행의 이름 옆 칩. 이름이 길면 이름이 먼저 줄고 칩은 남는다. */
-function UnifiedMachineChip({ row, onOpenCard }: {
+/** 다른 머신 행의 이름 옆 칩. 평상시엔 원격 표식만 두고, 칩에 올리거나 초점이 오면 머신 이름이 펼쳐진다. 이름이 길면 이름이 먼저 줄고 칩은 남는다. */
+function UnifiedMachineChip({ row, expanded, onOpenCard }: {
   readonly row: UnifiedSidebarRow;
-  readonly onOpenCard: (anchor: DOMRect) => void;
+  readonly expanded: boolean;
+  readonly onOpenCard: (anchor: DOMRect, opener: HTMLElement) => void;
 }) {
   const t = useT();
   const tone = unifiedMachineTone(row.consoleId);
+  const label = t("sidebar.unified.machineInfo", { machine: row.machineLabel });
   return <button type="button" className="unified-machine-chip"
     style={{ "--mc": `var(--id-${tone})` } as CSSProperties}
-    aria-label={t("sidebar.unified.machineInfo", { machine: row.machineLabel })}
-    title={t("sidebar.unified.machineInfo", { machine: row.machineLabel })}
+    aria-label={label}
+    aria-haspopup="menu"
+    // 카드가 열린 동안 칩을 펼친 채로 두어 어느 칩에서 나온 카드인지 보인다.
+    aria-expanded={expanded}
     onPointerDown={(event) => event.stopPropagation()}
     onClick={(event) => {
       event.stopPropagation();
-      onOpenCard(event.currentTarget.getBoundingClientRect());
+      onOpenCard(event.currentTarget.getBoundingClientRect(), event.currentTarget);
     }}>
-    <span>{row.machineLabel}</span>
+    {/* 접힌 상태에서도 머신 톤과 「다른 머신」이라는 신호만 남기는 원격 화면 글리프. 접근 이름은 aria-label이 읽는다. */}
+    <svg className="unified-machine-chip-glyph" viewBox="0 0 12 12" aria-hidden="true">
+      <rect x="1.2" y="1.8" width="9.6" height="6.4" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M4 10.4h4M6 8.2v2.2" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+    <span className="unified-machine-chip-label">{row.machineLabel}</span>
   </button>;
 }
 
 /** 칩을 누르면 나오는 머신 카드 — 이름·주소·상태와 「이 콘솔 관리」 진입. 저장된 원격 머신은 이름 바꾸기·잊기도 옛 머리글 폼과 같은 규칙으로 여기서 든다. */
-function UnifiedMachineCard({ anchor, row, entry, consoles, onClose }: {
+function UnifiedMachineCard({ anchor, opener, row, entry, consoles, onClose }: {
   readonly anchor: DOMRect;
+  /** 카드를 연 칩 — Escape로 닫으면 초점이 여기로 돌아온다. */
+  readonly opener: HTMLElement;
   readonly row: UnifiedSidebarRow;
   readonly entry: ConsoleSectionEntry | null;
   readonly consoles: ConsoleSections;
@@ -619,7 +632,7 @@ function UnifiedMachineCard({ anchor, row, entry, consoles, onClose }: {
   const remote = entry !== null && entry.kind === "remote";
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(entry?.label ?? row.machineLabel);
-  return <SectionMenu anchor={anchor} focusFirst={false} opener={null} label={row.machineLabel} onClose={onClose}>
+  return <SectionMenu anchor={anchor} focusFirst={false} opener={opener} label={row.machineLabel} onClose={onClose}>
     <div className="unified-machine-card" role="presentation">
       <b>{row.machineLabel}</b>
       <div>{row.machineAddress}{status ? ` · ${status}` : ""}</div>

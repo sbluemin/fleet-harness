@@ -4,6 +4,12 @@ const MENU_ITEM_SELECTOR = 'button[role^="menuitem"]:not(:disabled)';
 // accent 섹션 판별은 data 마커로만 한다 — 접근 이름 문구는 다듬을 수 있는 표현이라 근거로 삼으면 조용히 깨진다.
 const ACCENT_OPTION_ATTRIBUTE = "data-accent-option";
 
+/** 메뉴 안의 입력 폼은 Escape를 스스로 처리한다(이름 입력 취소). 메뉴가 먼저 닫아 버리지 않는다. */
+function editableTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement
+    && (target.isContentEditable || target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement || target instanceof HTMLSelectElement);
+}
+
 interface ContextMenuKeyboardOptions {
   readonly open: boolean;
   readonly menuSelector: string;
@@ -48,9 +54,9 @@ export function useContextMenuKeyboard({
       const handlePointerMove = () => { delete menu.dataset.menuPointerIdle; };
 
       const handleKeyDown = (event: KeyboardEvent) => {
-        const currentItems = items();
-        if (currentItems.length === 0) return;
+        // Escape는 항목이 없어도 닫는다 — 머신 카드처럼 menuitem 없이 폼·설명만 든 메뉴가 여기 걸린다.
         if (event.key === "Escape") {
+          if (editableTarget(event.target)) return;
           event.preventDefault();
           event.stopPropagation();
           const returnFocus = returnFocusRef.current;
@@ -58,6 +64,8 @@ export function useContextMenuKeyboard({
           returnFocus?.focus();
           return;
         }
+        const currentItems = items();
+        if (currentItems.length === 0) return;
         if (event.key === "Enter" && document.activeElement instanceof HTMLButtonElement && menu.contains(document.activeElement)) {
           event.preventDefault();
           event.stopPropagation();
