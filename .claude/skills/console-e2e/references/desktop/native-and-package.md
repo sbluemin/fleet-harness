@@ -69,3 +69,22 @@ Verify shell-only ASAR contents, passive entry assets, Node manifest, absence of
 - **Linux:** tray lifecycle, desktop integration, architecture, checksum/GPG release evidence. Verify on Linux.
 
 Mark every unrun native row `[Unverified — requires <OS>]`; cross-platform unit fixtures do not replace live native evidence.
+
+## Owned empty-lock recovery dialog
+
+Read this only to start Desktop on a run's own empty Console lock so the native recovery dialog can appear. The [launch gate](setup.md#launch-gate) still refuses that lock: preflight exit 20 does not start its command. This section adds no flag to `desktop-preflight.mjs` or `launch-owned-desktop.mjs`, no general allow-lock, and no deletion of a lock. It does not call the product's lock recovery, and it does not signal a lock pid.
+
+Use an absolute, whitespace-free owned `--run-dir`. Claim it with `isolated-env.mjs` while `<run-dir>/console/console.lock` is absent (`--check` does not record ownership), then create that file with 0 bytes. Do not replace `owner` or `console.lock` afterwards. The console directory (mode `0700`) and regular lock file (mode `0600`) must both be owned by the current user and must not be symbolic links. `<run-dir>/console/update-progress.json` must be absent at start; only after the recovery dialog is visible may an owned update-progress file be added there to observe the product's `active_update` refusal.
+
+`--record-sentinel` starts one owned Node process and writes `<run-dir>/owned-process.json` without touching the lock. The helper verifies the exact fixture and recorded sentinel identity. Failed proofs or any other preflight blocker — an occupied CDP or inspector port, an existing Desktop for the worktree, or a user/inherited Fleet slot — exit 20 without starting Electron or changing the lock. Stop only the recorded owned sentinel when the run is over.
+
+```bash
+node <worktree>/.claude/skills/console-e2e/scripts/launch-owned-lock-dialog.mjs <worktree> \
+  --run-dir <owned-run> --record-sentinel
+node <worktree>/.claude/skills/console-e2e/scripts/launch-owned-lock-dialog.mjs <worktree> \
+  --run-dir <owned-run> --cdp-port <cdp-port> --inspector-port <inspector-port> --dry-run
+```
+
+For launch, replace `--dry-run` with `--` followed by the complete allowlisted `env -i` command from [Setup](setup.md#preflight-and-ownership), using the same run and ports. `FLEET_CONSOLE_DATA_DIR` must equal `<run-dir>/console`. `--dry-run` takes no command and starts no Electron.
+
+For this fixture, the expected recovery dialog precedes Console handoff. After recovery, confirm the owned loopback `/console/` target. Cancel and product refusal both leave the lock and start no Console; record the action and observed dialog to distinguish them.

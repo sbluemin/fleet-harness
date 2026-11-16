@@ -24,6 +24,16 @@ import { existsSync, mkdirSync, realpathSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+function invokedDirectly() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
 const preflight = fileURLToPath(new URL('./desktop-preflight.mjs', import.meta.url));
 
 function parse(argv) {
@@ -64,7 +74,7 @@ function preflightArgs(opts) {
   ];
 }
 
-function isolatedLaunch(opts) {
+export function isolatedCommand(opts) {
   const [envCommand, clear, ...args] = opts.command;
   if (!['env', '/usr/bin/env'].includes(envCommand) || clear !== '-i') {
     throw new Error('the launch command must start with env -i (references/desktop/setup.md)');
@@ -87,8 +97,13 @@ function isolatedLaunch(opts) {
   if (existsSync(tmpDir) && realpathSync(tmpDir) !== path.join(realpathSync(runDir), 'tmp')) {
     throw new Error('TMPDIR must not resolve outside the owned run');
   }
-  mkdirSync(tmpDir, { recursive: true, mode: 0o700 });
   return [envCommand, '-i', ...assignments.filter((entry) => !entry.startsWith('TMPDIR=')), `TMPDIR=${tmpDir}`, ...args];
+}
+
+export function isolatedLaunch(opts) {
+  const command = isolatedCommand(opts);
+  mkdirSync(path.join(path.dirname(path.resolve(opts['--console-dir'])), 'tmp'), { recursive: true, mode: 0o700 });
+  return command;
 }
 
 function main() {
@@ -113,9 +128,11 @@ function main() {
   process.exitCode = child.status === null ? 1 : child.status;
 }
 
-try {
-  main();
-} catch (error) {
-  console.error(`launch: refused (${error.message}); Electron was not started`);
-  process.exitCode = 20;
+if (invokedDirectly()) {
+  try {
+    main();
+  } catch (error) {
+    console.error(`launch: refused (${error.message}); Electron was not started`);
+    process.exitCode = 20;
+  }
 }
