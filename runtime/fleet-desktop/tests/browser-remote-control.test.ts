@@ -58,6 +58,7 @@ async function openViewer(
   body: DesktopBrowserViewerSnapshot,
   posts: { url: string; init: RequestInit | undefined }[],
   viewerQuality?: { load(): ViewerCaptureQuality; save(quality: ViewerCaptureQuality): void },
+  localAct?: (control: unknown, role: unknown, action: unknown) => void,
 ) {
   const applied: unknown[] = [];
   const fetchImpl = vi.fn(async (url: string | URL, init?: RequestInit) => {
@@ -87,7 +88,7 @@ async function openViewer(
     },
     fetch: fetchImpl as typeof fetch,
     lang: "en",
-    localAct() { /* 표시줄 모양만 */ },
+    localAct: localAct ?? (() => { /* 표시줄 모양만 */ }),
     openExternal: vi.fn(),
     ...(viewerQuality ? { viewerQuality } : {}),
   });
@@ -246,13 +247,17 @@ describe("remote browser shell", () => {
 
   it("restarts the frame stream with the chosen quality and remembers it locally", async () => {
     const saved: ViewerCaptureQuality[] = [];
+    const localActions: unknown[] = [];
     const qualityStore = { load: (): ViewerCaptureQuality => "balanced", save: (quality: ViewerCaptureQuality) => { saved.push(quality); } };
     const posts: { url: string; init: RequestInit | undefined }[] = [];
-    const { viewer, applied } = await openViewer(snapshot(false), posts, qualityStore);
+    const { viewer, applied } = await openViewer(snapshot(false), posts, qualityStore, (_c, _r, action) => { localActions.push(action); });
     const viewOnly = (applied.at(-1) as unknown[])[3] as { viewerQuality?: string };
     expect(viewOnly.viewerQuality).toBe("balanced");
     expect(posts.some((call) => call.url.includes("quality=balanced"))).toBe(true);
-    viewer.act(control(), "bar", { action: "viewer-quality", quality: "high" });
+    const handle = control();
+    viewer.act(handle, "bar", { action: "overlay", kind: "menu" });
+    expect(localActions).toEqual([{ action: "overlay", kind: "menu" }]);
+    viewer.act(handle, "bar", { action: "viewer-quality", quality: "high" });
     await vi.waitFor(() => {
       if (!posts.some((call) => call.url.includes("quality=high"))) throw new Error("waiting");
     });

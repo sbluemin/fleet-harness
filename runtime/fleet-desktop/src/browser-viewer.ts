@@ -354,7 +354,7 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
         }
         case "toggle-mode": mode = mode === "pane" ? "window" : "pane"; render(); return;
         case "close-surface": close(true); return;
-        case "overlay": if (action.kind === null || action.kind === "spaces") deps.localAct(control, role, action); return;
+        case "overlay": if (action.kind === null || action.kind === "spaces" || action.kind === "menu") deps.localAct(control, role, action); return;
         case "pin": case "expand": case "tabs-menu": case "orientation": case "auto-expand": case "dialog-close": case "ready":
           deps.localAct(control, role, action); return;
         // 그 밖의 동작(탐색, 탭 열기·닫기, 프로필, 뷰포트, 제어권, 캡처·주석 …)은 보기 전용 셸에서 뜻이 없다. 문서가 그리지 않지만 와도 버린다.
