@@ -58,7 +58,7 @@ import { createConsoleControl } from "../../../features/execution/host/console-c
 import { createAdmiralMcpHost } from "../../../features/execution/host/admiral-mcp.js";
 
 import { CuaDriverInstaller, createCuaComputerUsePlatform, createMacOSComputerUsePlatform } from "@fleet-console/computer-use";
-import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_BROWSER_VIEWER_EVENT, DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type BrowserExecutionHost, type BrowserSurfaceModeKind, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_COMMODORE_SPACE_PREFIX, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, BROWSER_REVEAL_EVENT, commodoreBrowserSpaceId, commodoreOfBrowserSpace, DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, DESKTOP_BROWSER_VIEWER_EVENT, DESKTOP_BROWSER_VIEWER_EVENTS_PATH, DESKTOP_BROWSER_VIEWER_PATH, DESKTOP_SCREEN_PERMISSION_REPORT_AGENT, DESKTOP_WINDOW_COMMAND_EVENT, type BrowserExecutionHost, type BrowserSurfaceModeKind, type BrowserSurfaceOrigin, type DesktopScreenPermissionReason, type DesktopWindowCommand } from "@fleet-console/protocol/desktop";
 import { createOwnedProcessRegistry, pruneConsoleExitRecords, type OwnedProcessRegistry } from "@fleet-console/lifecycle";
 import { createApprovalCore } from "@fleet-console/approval";
 import { APPROVAL_CHANNEL, APPROVAL_NOTICE_CHANNEL } from "@fleet-console/approval/contract";
@@ -1685,6 +1685,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     isLoopbackListener: (req) => isLoopbackListener(req),
     isSameOriginConsoleRead: (req) => isSameOriginConsoleRead(req),
     viewerFrameRead: (req) => viewerFrameRead(req),
+    publishSurfaceReveal: (payload) => { broadcastBrowserReveal(payload); },
     subscribeViewer: (req, res) => {
       const subscription = viewerSubscriptionOf(req);
       const data = encodeSseData(DESKTOP_BROWSER_VIEWER_EVENT, browserService.viewerSnapshot(GLOBAL_BROWSER_OWNER_ID, { remoteControl: subscriptionRemoteControl(subscription) }));
@@ -2766,6 +2767,16 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     for (const subscriber of objectiveRecordSseSubscribers) {
       if (subscriber.client === "objective-browser") continue;
       writeObjectiveSse(subscriber, encodeSseData(BROWSER_STATE_EVENT, { ...state, surfaceMode: surfaceModeOf(subscriber) }));
+    }
+  }
+
+  /** 칸 머리의 「원본 이동」 — 같은 Console 을 보는 화면들이 출처 좌표를 받아 그 대화/메시지로 돌아간다. */
+  function broadcastBrowserReveal(payload: { readonly browserId: string; readonly origin: BrowserSurfaceOrigin | null }): void {
+    if (objectiveRecordSseSubscribers.size === 0) return;
+    const data = encodeSseData(BROWSER_REVEAL_EVENT, payload);
+    for (const subscriber of objectiveRecordSseSubscribers) {
+      if (subscriber.client === "objective-browser") continue;
+      writeObjectiveSse(subscriber, data);
     }
   }
 

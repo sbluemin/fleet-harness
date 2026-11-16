@@ -277,6 +277,18 @@ export interface DesktopBrowserSnapshot {
  * 서로 다른 모양을 주고받는 대신 브라우저가 닫혀 있어야 한다(옛 이름 `browser-surface` 는 탭 그룹 시절의 투영이다).
  */
 export const DESKTOP_BROWSER_SURFACE_CAPABILITY = "browser-surface-spaces";
+/** 브라우저 칸을 연 곳의 종류 — 메시지의 링크, 타임라인의 사건, 좌측 사이드바의 버튼. */
+export type BrowserSurfaceOriginKind = "message" | "event" | "sidebar";
+/**
+ * 브라우저 칸을 연 곳. 칸 머리가 「↩ …에서 열림」으로 말하고, Console 은 「원본 이동」에서 이 좌표로 돌아간다.
+ * 전부 선택 필드라 옛 Console 은 싣지 않고 옛 셸은 무시한다.
+ */
+export interface BrowserSurfaceOrigin {
+  readonly kind: BrowserSurfaceOriginKind;
+  readonly actor?: string;
+  readonly objectiveId?: string;
+  readonly messageId?: string;
+}
 export interface DesktopBrowserSurface {
   readonly id: string;
   readonly browserId: string;
@@ -284,6 +296,17 @@ export interface DesktopBrowserSurface {
   readonly mode: "pane" | "window";
   /** 사람이 기존 분리 창을 다시 부를 때만 증가한다. */
   readonly focusRequest?: number;
+  /**
+   * 이 칸을 연 곳. 사람이 링크·타임라인·사이드바 어디서 열었는지 칸 머리가 말하고, 「원본 이동」이 이 좌표로
+   * 돌아간다. 선택 필드이므로 옛 Console 은 싣지 않고, 옛 셸은 이 필드를 무시한다.
+   */
+  readonly origin?: BrowserSurfaceOrigin | null;
+}
+/** Console 화면이 칸의 출처로 돌아가는 요청 — Desktop 칸 머리의 「원본 이동」이 낸다. */
+export const BROWSER_REVEAL_EVENT = "browser:reveal";
+export interface BrowserSurfaceReveal {
+  readonly browserId: string;
+  readonly origin: BrowserSurfaceOrigin | null;
 }
 export interface DesktopBrowserSurfaceRelay {
   readonly id: string;
@@ -468,10 +491,19 @@ export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowse
 
 export function isDesktopBrowserSurface(value: unknown): value is DesktopBrowserSurface {
   return isRecord(value) && isSafeId(value.id) && isSafeId(value.browserId) && (value.mode === "pane" || value.mode === "window")
-    && (value.focusRequest === undefined || (Number.isSafeInteger(value.focusRequest) && Number(value.focusRequest) >= 0));
+    && (value.focusRequest === undefined || (Number.isSafeInteger(value.focusRequest) && Number(value.focusRequest) >= 0))
+    && (value.origin === undefined || value.origin === null || isBrowserSurfaceOrigin(value.origin));
 }
 
 const isShortText = (value: unknown, max = 4096): value is string => typeof value === "string" && value.length <= max;
+/** 칸을 연 곳의 좌표. 모르는 종류와 너무 긴 좌표는 거부한다 — 저장된 출처가 화면을 깨뜨리지 않게. */
+export function isBrowserSurfaceOrigin(value: unknown): value is BrowserSurfaceOrigin {
+  if (!isRecord(value)) return false;
+  return (value.kind === "message" || value.kind === "event" || value.kind === "sidebar")
+    && (value.actor === undefined || isShortText(value.actor, 256))
+    && (value.objectiveId === undefined || isSafeId(value.objectiveId))
+    && (value.messageId === undefined || isSafeId(value.messageId));
+}
 const isFaviconUrl = (value: unknown): value is string | null => value === null || (typeof value === "string" && value.length <= 65536 && /^(?:data:image\/[a-z0-9.+-]+[;,]|https?:)/iu.test(value));
 
 function isDesktopBrowserPointer(value: unknown): value is DesktopBrowserPointer {

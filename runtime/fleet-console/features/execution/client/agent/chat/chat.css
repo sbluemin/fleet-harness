@@ -125,6 +125,42 @@
 .agent-chat-sys--warn { color: var(--warn-ink); }
 .agent-chat-sys--error { color: var(--coral-ink); }
 
+/* 플릿 브라우저 사건·닫힘 줄 — 타임라인의 한 줄. 지금 상태 하나만 서고, 연속으로 여닫아도 쌓이지 않는다.
+   살아 있는 동안은 aurora 점(상태 채널)이 말하고, 닫힘 줄은 색을 얻지 않는다. */
+.agent-chat-browser-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--agent-chat-font);
+  font-size: var(--font-code-size);
+  color: var(--text-tertiary);
+}
+.agent-chat-browser-line.is-live { color: var(--text-secondary); }
+.agent-chat-browser-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--aurora);
+  box-shadow: 0 0 0 3px var(--aurora-glow);
+}
+.agent-chat-browser-action {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.agent-chat-browser-action:hover,
+.agent-chat-browser-action:focus-visible {
+  color: var(--text-primary);
+  outline: none;
+}
+
 /* 정비 명령 한 줄. 원장에서 유일하게 턴이 아닌 항목이다.
    턴 문법(회전하는 노드·경과 시계·흐르는 글)은 전부 "모델이 생각하고 있다"를 말한다. 이 셋은
    세션 상태를 즉시 바꾸는 동작이고 둘은 모델을 아예 부르지 않으므로, 그 어휘를 하나도 빌리지

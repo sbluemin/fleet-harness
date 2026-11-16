@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 
 import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
+import type { BrowserSurfaceOrigin } from "@fleet-console/protocol/desktop";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ConversationSurfaceContext, ConversationSurfaceDescriptor } from "../../shared/conversation-surfaces.js";
 import type { ObjectiveKindDescriptor } from "../../../execution/shared/client-contract.js";
@@ -13,7 +14,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
-import { getState, selectNestedBody, setActiveObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
+import { getState, selectNestedBody, setActiveObjective, focusObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
 import { useStandaloneCliShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { StandaloneCliLayer } from "../../../execution/client/standalone-cli/layer.js";
 import { conversationSurfaceInboxSectionId, useFeatureRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/feature-registry.js";
@@ -38,12 +39,11 @@ import { pluginRuntimeState } from "../../../execution/client/objective-activity
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
-import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserSurface } from "../../../browser/client/browser-surface.js";
+import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserDriving, useBrowserReveal, useBrowserSurface } from "../../../browser/client/browser-surface.js";
 import { toggleBrowserViewerShell, useBrowserViewerShell } from "../../../browser/client/browser-viewer-shell.js";
 import { publishBrowserPluginAttach } from "../../../browser/client/browser-engine.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
-import { CaptionActionButton, CaptionBrowserUseGlyph } from "../components/caption-actions.js";
-import { useCommodoreBrowserUse } from "../../../computer-use/client/computer-screen-share.js";
+import { CaptionBrowserUseGlyph } from "../components/caption-actions.js";
 import { desktopPickerAnchor, desktopPickerUrl, isDesktopShell, PICKER_SURFACE_OPEN, useDesktopHomeOrigin } from "../../../../core/client/src/integration/desktop-shell.js";
 import { setChatReadingWidthDefault } from "../../../execution/client/terminal/shared/terminal-preferences.js";
 import { ObjectiveCaptionContributions } from "../objective-contributions.js";
@@ -111,6 +111,18 @@ function writeLastPanel(id: string): void {
 /** 셸이 서 있는 동안 오른쪽 패널 앞 묶음(Objective 탭)을 레일 목록에 싣는다. 그리는 것은 없다. */
 export function ConversationShellHost(): null {
   useEffect(() => mountConversationObjectiveTabsHost(), []);
+  // Desktop 칸 머리의 「원본 이동」 — 칸을 연 곳의 대화로 돌아간다. 메시지 좌표가 오면 그 위치를 강조할 수 있지만,
+  // 지금 대화 원장은 메시지 id 를 DOM 좌표로 들고 있지 않으므로 대화 전환까지만 한다(모르는 위치를 지어내지 않는다).
+  const reveal = useBrowserReveal();
+  const revealNonce = reveal?.nonce ?? null;
+  useEffect(() => {
+    if (reveal === null || reveal.origin === null) return;
+    const objectiveId = reveal.origin.objectiveId;
+    if (typeof objectiveId !== "string" || objectiveId.length === 0) return;
+    // 플러그인 대화(사령관 등)가 가운데를 차지하고 있으면 걷고 그 Objective 대화로 간다.
+    closeConversationSurface();
+    focusObjective(objectiveId);
+  }, [revealNonce, reveal]);
   // 이 화면의 채팅은 가운데 칸 폭에 맞춘다(Fit) — 사람이 「채팅 폭」을 직접 골랐으면 그 값이 그대로 선다. 셸이 걷히면 기본 읽기 폭으로 돌아간다.
   useEffect(() => setChatReadingWidthDefault("full"), []);
   // 마지막으로 연 오른쪽 패널을 기억한다 — 헤더 pill 이 다시 열 때 쓴다(설정은 문으로만 연다).
@@ -265,8 +277,9 @@ export function ConversationSideBarActions() {
   // 목록 쪽 훅이 상태를 묻는다. 여기서는 능력만 읽어 주기를 겹치지 않는다.
   const consoles = useConsoleSections({ refresh: false });
   const home = useDesktopHomeOrigin();
-  // 좁은 열은 아바타 열만 남긴다 — 찾기(⌘K)와 만들기는 팔레트·단축키로 닿는다.
-  if (compact) return <span className="conversation-side-actions" />;
+  // 좁은 열은 아바타 열만 남기되, 플릿 브라우저 버튼 하나는 유지한다 — 여는 문이 화면이 붐빌 때 사라지면
+  // 그 가치(늘 같은 자리)가 가장 필요한 순간에 없어진다. 찾기(⌘K)와 만들기는 팔레트·단축키로 닿는다.
+  if (compact) return <span className="conversation-side-actions is-compact"><SideBarBrowserButton /></span>;
   const menu = enabled || consoles.capable;
   // 콘솔이 둘 이상이면 지금 콘솔에 머리글이 없다. 관리·이름 바꾸기가 가능할 때만 메뉴에 둔다.
   const active = consoles.capable && consoles.entries.length > 1 ? consoles.active : null;
@@ -282,6 +295,7 @@ export function ConversationSideBarActions() {
   const trailing = consoles.capable ? 1 + (canManage || canRename ? 1 : 0) : 0;
   return (
     <span className="conversation-side-actions">
+      <SideBarBrowserButton />
       <button type="button" className="conversation-round" onClick={toggleObjectiveSearch} aria-label={t("conversation.side.search")} title={t("conversation.side.search")}>
         <SearchGlyph />
       </button>
@@ -296,6 +310,45 @@ export function ConversationSideBarActions() {
         </button> : null}
       </> : undefined}><PlusGlyph /></TaskforceCreateMenu> : <button type="button" className="conversation-round" onClick={() => requestCommodoreCreate()} aria-label={t("sidebar.commodore.createTitle")} title={t("sidebar.commodore.createTitle")}><PlusGlyph /></button>}
     </span>
+  );
+}
+
+/**
+ * 왼쪽 사이드바의 플릿 브라우저 문 — 찾기(⌘K) 바로 왼쪽에 서고, 좁은 열(72px)에서는 이 버튼 하나만 남는다.
+ * 누르면 칸을 여닫는다(독립 창이면 앞으로 부른다). 웹·보기 전용·셸 없음에서는 지구본과 같은 판정으로 닫힌 채
+ * 까닭을 말한다. 에이전트가 브라우저를 쓰는 동안에는 aurora 점이 상태를 말한다(누름 여부와 다른 채널).
+ */
+function SideBarBrowserButton() {
+  const t = getBrowserT(useConsoleLocale());
+  const engine = useBrowserEngine();
+  const surface = useBrowserSurface();
+  const driving = useBrowserDriving();
+  // 원격 조작 Desktop 도 네이티브 칸이 아니라 이 창의 셸을 연다.
+  const viewer = engine?.surfaceMode === "viewer" || (engine === null && !isDesktopShell());
+  const streamedShell = viewer || engine?.surfaceMode === "remote";
+  const viewerShell = useBrowserViewerShell();
+  const engineMissing = !streamedShell && engine !== null && !engine.available;
+  const remoteOffline = engine?.surfaceMode === "remote" && !engine.available;
+  const detached = surface?.mode === "window";
+  const base = viewer || remoteOffline
+    ? t(!viewerShell ? "terminal.browser.desktopOnly" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
+    : engineMissing
+    ? t(isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
+    : t(detached ? "terminal.browser.focus" : driving ? "terminal.browser.agentUsing" : surface !== null ? "terminal.browser.exit" : "terminal.browser.open");
+  const disabled = engineMissing || (streamedShell && !viewerShell);
+  return (
+    <button
+      type="button"
+      className={`conversation-round conversation-side-browser${surface !== null ? " is-open" : ""}${driving ? " is-driving" : ""}`}
+      aria-label={base}
+      title={base}
+      aria-pressed={streamedShell ? false : surface !== null}
+      disabled={disabled}
+      onClick={() => { if (streamedShell) toggleBrowserViewerShell(); else toggleBrowserPane({ kind: "sidebar" }); }}
+    >
+      <CaptionBrowserUseGlyph />
+      {driving ? <span className="conversation-side-browser-live" aria-hidden="true" /> : null}
+    </button>
   );
 }
 
@@ -728,8 +781,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
   const sessionPluginId = sessionScopeId === null ? null : surfaceDescriptor?.pluginId ?? null;
   const sessionSubjectKey = sessionPluginId === null || sessionScopeId === null ? null : `${sessionPluginId}:${sessionScopeId}`;
   // 사령관 대화면 그 사령관 — 대화의 세션 scope 가 그 사령관의 것일 때만이다(TaskForce 대화의 세션은 어느 한 사령관의 것이 아니다).
-  const surfaceCommodoreId = typeof surface?.params.commodoreId === "string" ? surface.params.commodoreId : null;
-  const surfaceOwnerCommodoreId = surfaceCommodoreId !== null && sessionScopeId === `commodore:${surfaceCommodoreId}` ? surfaceCommodoreId : null;
   // 가운데 칸에 선 대화가 곧 활성 Objective 이다 — 사이드바 줄이 칩과 같은 선택 표시(테두리 + 면)를 받고, 도착 표식도
   // 보고 있는 대화만큼 정리된다. 크롬을 눌러 활성이 풀려도 칸의 대화는 그대로이므로 다시 활성으로 세운다.
   const activeObjectiveId = state.activeObjectiveId;
@@ -878,8 +929,6 @@ export function ConversationStage({ state, insets, language, objectiveRecordKind
           theme={state.activeTheme}
           onToggleDetails={toggleDetails}
           tools={tools}
-          sessionBrowser={sessionPluginId !== null && sessionScopeId !== null && sessionSubjectKey !== null ? { pluginId: sessionPluginId, scopeId: sessionScopeId, subjectKey: sessionSubjectKey, commodoreId: surfaceOwnerCommodoreId } : null}
-          browserSurfaceOpen={browserOpen}
         />
       ) : subject ? (
         <ConversationColumn
@@ -1373,7 +1422,7 @@ function CommodoreRailTabs({ descriptor, commodoreId, language, theme }: {
  * 가운데 칸의 플러그인 대화 — 머리 pill 은 호스트가, 본문은 플러그인이 그린다. 대화가 선 동안 플러그인 탭이 오른쪽
  * 패널 앞 묶음에 서고, 패널이 닫혀 있으면 기본 탭을 연다.
  */
-function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails, tools, sessionBrowser, browserSurfaceOpen }: {
+function ConversationSurfaceColumn({ descriptor, selection, language, theme, onToggleDetails, tools }: {
   readonly descriptor: ResolvedConversationSurface;
   readonly selection: ConversationSurfaceSelection;
   readonly language: "en" | "ko";
@@ -1381,10 +1430,6 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   readonly onToggleDetails: () => void;
   /** 머리 줄 도구모음. 지구본(lead)을 넘기면 맨 위 줄 오른쪽 끝에 서고, trail 은 칩 옆 묶음의 「⋯」 뒤에 선다. */
   readonly tools: (lead?: ReactNode, trail?: ReactNode) => ReactNode;
-  /** 이 대화의 에이전트 세션이 쓰는 Session 브라우저(descriptor.sessionBrowser) — 있으면 pill 바로 옆에 지구본이 선다. */
-  readonly sessionBrowser: SurfaceSessionBrowser | null;
-  /** 오른쪽 분할 칸에 브라우저(Fleet·Session 어느 쪽이든)가 서 있는가 — 지구본이 켜짐으로 말한다. */
-  readonly browserSurfaceOpen: boolean;
 }) {
   const t = useT();
   useConversationSurfaceHead(descriptor);
@@ -1474,11 +1519,9 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
   // 대화의 동작은 Objective 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.
-  // 지구본은 맨 위 줄 오른쪽 끝이다. 플러그인 대화에는 CLI/채팅 전환이 없다.
+  // 플릿 브라우저의 직접 여는 문은 대화 머리가 아니라 왼쪽 사이드바의 찾기 왼쪽 버튼이다(시안 3 1단계).
   const actions = descriptor.actions?.(context) ?? null;
   const hasActions = actions !== null && actions !== false;
-  // 플릿 브라우저는 Desktop 의 것이다 — 웹 브라우저 Console 에서는 지구본을 세우지 않는다(시안 v2 규칙 g).
-  const browser = sessionBrowser === null ? null : <SurfaceBrowserButton session={sessionBrowser} language={language} splitOpen={browserSurfaceOpen} />;
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Objective 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
   const pill = useConversationPillHost(descriptor.pillOwner?.(context) ?? { kind: "surface", id: descriptor.id });
@@ -1494,7 +1537,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
             <span className="conversation-pill-title">{title}</span>
             {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
         </ConversationPill>
-        {tools(browser, <span ref={setRailSlot} className="conversation-rail-slot" />)}
+        {tools(null, <span ref={setRailSlot} className="conversation-rail-slot" />)}
       </div>
       <ContextRailHost scope={railScope} slot={railSlot}>
         <div className="conversation-body is-surface">
@@ -1560,20 +1603,20 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   // ── 브라우저 — 메인 창 오른쪽 셸 칸 또는 독립 창에 선다 ──
   const offersBrowser = descriptor?.companions?.some((panel) => panel.id === BROWSER_COMPANION_ID) === true;
   // 칸이 여는 브라우저의 주인은 늘 이 대화의 루트다 — 구성원(자식 세션)은 Objective 이 아니라 루트의 브라우저를 함께 쓰므로,
-  // 구성원 원장을 보는 중에 지구본을 눌러도 그룹채팅과 같은 탭 집합이 열린다.
+  // 구성원 원장을 보는 중에 링크로 열어도 그룹채팅과 같은 탭 집합이 열린다.
   // 브라우저 표면은 Console 전역 수명이므로 대화를 바꿔도 유지한다.
-  const openObjectiveBrowser = useCallback(() => { openBrowserPane(); }, []);
+  const openObjectiveBrowser = useCallback((origin?: BrowserSurfaceOrigin) => { openBrowserPane(origin === undefined ? undefined : { ...origin, objectiveId: objectiveRecord.id }); }, [objectiveRecord.id]);
   const closeBrowser = useCallback(() => { closeBrowserSurface(); }, []);
-  // pill 의 지구본: 칸이 비어 있으면 이 대화의 Session 브라우저를 바로 열고, 칸이 서 있으면 걷는다.
+  // 도구 캡슐의 브라우저 단축키(Alt+B)로 칸을 열면 그 열림은 직접 연 것이다 — 출처를 사건으로 남긴다.
   const onCaptionCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
     if (!visible) { closeBrowser(); return; }
-    openObjectiveBrowser();
+    openObjectiveBrowser({ kind: "event" });
   }, [closeBrowser, openObjectiveBrowser]);
   // 본문(채팅·CLI 링크 카드)의 「Objective 브라우저」 행은 묻지 않고 바로 칸에 연다 — 이미 고른 답이다.
   const onBodyCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
-    if (visible) openObjectiveBrowser();
+    if (visible) openObjectiveBrowser({ kind: "message" });
     else closeBrowser();
   }, [closeBrowser, openObjectiveBrowser]);
   const hiddenCompanions = browserSurfaceOpen ? NO_HIDDEN_COMPANIONS : CONVERSATION_COMPANION_PANEL_IDS;
@@ -1655,7 +1698,7 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
       <PluginObjectiveRenderer {...captionRender} render={descriptor.captionViewSwitch} />
     </FeatureErrorBoundary>
   );
-  // 지구본(tools-lead)은 플릿 브라우저 문이다 — 웹 브라우저 Console 에서는 세우지 않는다(시안 v2 규칙 g).
+  // 머리 줄 앞쪽(lead)은 플러그인이 넘긴 동작 자리다 — 아직 플릿 브라우저 문을 넘기는 플러그인은 없다(사이드바 버튼이 그 문이다).
   const toolsLead = descriptor?.captionToolsLead === undefined ? null : (
     <FeatureErrorBoundary fallback={<></>}>
       <PluginObjectiveRenderer {...captionRender} render={descriptor.captionToolsLead} />
@@ -1723,49 +1766,4 @@ function useViewportSize(): { readonly width: number; readonly height: number } 
     return () => window.removeEventListener("resize", onResize);
   }, []);
   return size;
-}
-
-/** 플러그인 대화(사령관)가 쓰는 Session 브라우저 — 플러그인 id 는 호스트 등록 id, scopeId 는 그 대화가 돌려준 세션 scope 다. */
-interface SurfaceSessionBrowser {
-  readonly pluginId: string;
-  readonly scopeId: string;
-  /** 이 대화의 세션 열쇠 — `<pluginId>:<scopeId>`. */
-  readonly subjectKey: string;
-  /** 이 대화가 사령관의 것이면 그 사령관 — 그 세션이 브라우저를 쓰는 동안 지구본이 표식이 된다. */
-  readonly commodoreId: string | null;
-}
-
-/**
- * 플러그인 대화(사령관)의 브라우저 지구본 — Objective 대화의 지구본과 같은 글리프·크기·말풍선이다. 누르면 Desktop 셸의 브라우저 칸을
- * 열고 닫는다. 독립 창이 열려 있으면 그 창으로 이동한다. 엔진이 없거나 공유 중이면 지구본 자체가 닫힌 채
- * 까닭을 말한다. 웹 브라우저 Console 에서는 서지 않는다(시안 v2 규칙 g).
- */
-function SurfaceBrowserButton({ session, language, splitOpen }: {
-  readonly session: SurfaceSessionBrowser;
-  readonly language: "en" | "ko";
-  readonly splitOpen: boolean;
-}) {
-  const t = getBrowserT(language);
-  const engine = useBrowserEngine();
-  const viewer = engine?.surfaceMode === "viewer" || (engine === null && !isDesktopShell());
-  // 원격 조작 Desktop 도 네이티브 칸이 아니라 이 창의 셸을 연다.
-  const streamedShell = viewer || engine?.surfaceMode === "remote";
-  const viewerShell = useBrowserViewerShell();
-  const engineMissing = !streamedShell && engine !== null && !engine.available;
-  const detached = useBrowserSurface()?.mode === "window";
-  // 이 사령관의 세션이 브라우저를 쓰는 동안 — Objective 대화의 지구본과 같은 표식·같은 말이다.
-  const agentUsing = useCommodoreBrowserUse(session.commodoreId);
-  const remoteOffline = engine?.surfaceMode === "remote" && !engine.available;
-  const base = viewer || remoteOffline
-    ? t(!viewerShell ? "terminal.browser.desktopOnly" : engine?.executionHost.status === "unmanaged" ? "terminal.browser.unmanaged" : engine?.executionHost.status === "manager_disconnected" ? "terminal.browser.managerDisconnected" : "terminal.browser.viewerOpen")
-    : engineMissing
-    ? t(isDesktopShell() ? "terminal.browser.desktopMissing" : "terminal.browser.desktopOnly")
-    : t(detached ? "terminal.browser.focus" : agentUsing ? "terminal.browser.agentUsing" : splitOpen ? "terminal.browser.exit" : "terminal.browser.open");
-  return (
-    <span className="conversation-pill-browser">
-      <CaptionActionButton actionId="browser" label={base} pressed={streamedShell ? false : splitOpen} disabled={engineMissing || (streamedShell && !viewerShell)} agent={agentUsing} onClick={streamedShell ? toggleBrowserViewerShell : toggleBrowserPane}>
-        <CaptionBrowserUseGlyph />
-      </CaptionActionButton>
-    </span>
-  );
 }

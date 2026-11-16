@@ -539,12 +539,11 @@
   opacity: 0.42;
 }
 
-/* 오른쪽 끝 묶음의 지구본. 측정이 걷는 .right-rail-ico 밖이라 「⋯」로 걷히지 않는다. */
+/* 머리 줄 오른쪽 끝 묶음(플러그인이 넘긴 동작·trail). 측정이 걷는 .right-rail-ico 밖이라 「⋯」로 걷히지 않는다. */
 .conversation-pill-tools-lead,
-.conversation-pill-tools-trail,
-.conversation-pill-browser { display: inline-flex; flex: none; align-items: center; }
+.conversation-pill-tools-trail { display: inline-flex; flex: none; align-items: center; }
 
-/* 도구 줄의 캡션 버튼(지구본)은 이 줄의 도구 말풍선(toolbar-tip.tsx)이 이름을 말한다 — 캡션 자리의 이름표까지 서면 모양이 다른 풍선이 겹친다. */
+/* 도구 줄의 캡션 버튼은 이 줄의 도구 말풍선(toolbar-tip.tsx)이 이름을 말한다 — 캡션 자리의 이름표까지 서면 모양이 다른 풍선이 겹친다. */
 .conversation-pill-tools .fleet-caption-tip { display: none; }
 
 /* 머리 줄 버튼(전환·지구본)의 겨눔·켜짐은 이 줄의 도구(.conversation-pill-tools .right-rail-ico)와 같은 모양이다.
@@ -641,6 +640,31 @@
 }
 
 .conversation-round svg { width: 15px; height: 15px; }
+
+/* 왼쪽 사이드바의 플릿 브라우저 문 — 찾기 왼쪽에 늘 같은 자리로 선다. 열림은 brass(위치 채널), 에이전트가 쓰는
+   동안은 aurora 점(상태 채널)이 말한다 — 두 채널을 한 색으로 합치지 않는다. */
+.conversation-side-browser { position: relative; }
+.conversation-side-browser.is-open {
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim-strong));
+  color: var(--text-primary);
+}
+.conversation-side-browser.is-driving { color: var(--text-secondary); }
+.conversation-side-browser-live {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--aurora);
+  box-shadow: 0 0 0 2px var(--surface-glass), 0 0 6px var(--aurora);
+}
+/* 좁은 열(72px)에서는 이 버튼 하나만 남는다 — 아바타 열의 가운데에 서서 위아래 줄과 섞이지 않는다. */
+.conversation-side-actions.is-compact {
+  align-items: center;
+  justify-content: center;
+  margin-left: 0;
+}
 
 .conversation-round:hover,
 .conversation-round:focus-visible {
