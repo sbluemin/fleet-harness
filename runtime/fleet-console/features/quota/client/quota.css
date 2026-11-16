@@ -329,7 +329,7 @@
   --meter-accent: var(--ink-fog);
   --meter-weight: var(--gauge-weight-quiet);
   display: grid;
-  grid-template-columns: minmax(34px, fit-content(96px)) minmax(24px, 1fr) 32px 88px;
+  grid-template-columns: minmax(34px, 80px) minmax(24px, 1fr) 32px 88px;
   align-items: center;
   gap: 6px;
   margin-top: 9px;
