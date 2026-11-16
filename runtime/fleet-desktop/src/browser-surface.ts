@@ -161,7 +161,7 @@ export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base
  * 브라우저 표면 — 칸(메인 창 오른쪽)과 독립 창을 같은 구조로 소유한다: 상단 줄 뷰·세로 레일 뷰·페이지 뷰. 레이아웃·오버레이 크기·페이지 자리는
  * 전부 여기서 같은 main 틱에 정한다. Console 은 상태와 정책만 보내고(스냅샷), 이 표면은 사람의 동작을 REST 로 돌려보낸다.
  */
-export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; conceal(): void; captionInset(kind: "pane" | "window"): number; viewing(): boolean; frame(tabId: string, jpeg: Buffer, meta?: { readonly cssWidth: number; readonly cssHeight: number } | null): void } {
+export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHost & { relay(surface: DesktopBrowserSurfaceRelay): void; retheme(): void; conceal(): void; captionInset(kind: "pane" | "window"): number; viewing(): boolean; frame(tabId: string, jpeg: Buffer, meta?: { readonly cssWidth: number; readonly cssHeight: number } | null): void; selectSpace(spaceId: string): void } {
   type Docs = { bar: ChromeDoc; rail: ChromeDoc; stage: ChromeDoc; guard: ChromeDoc };
   let surface: DesktopBrowserSurface | null = null;
   let chrome: DesktopBrowserChrome | null = null;
@@ -681,6 +681,16 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     // 에이전트가 표시 탭을 모는 동안에는 사람의 키보드도 그 페이지에 닿지 않아야 한다 — browser-views 가 이 값으로 키 입력을 막고 초점을 거둔다.
     inputLocked: () => controlState()?.holder === "agent",
     captionInset: (kind) => (docs && hostKind === kind && !horizontal() ? Math.max(1, Math.round(zoom())) : 0),
+    selectSpace(spaceId) {
+      if (!surface || closingSurface || !chrome) return;
+      if (!chrome.available && !viewOnly) return;
+      const spaceBefore = spaces.current();
+      const request = spaces.choose(spaceId, chrome);
+      const overlayChanged = ui.overlay !== null || ui.suggestions.length > 0;
+      if (overlayChanged) ui = { ...ui, overlay: null, suggestions: [] };
+      if (spaces.current() !== spaceBefore || overlayChanged) update();
+      if (request) deps.act(control, "bar", { action: "show-tab", id: request.kind === "select" ? request.tabId : null });
+    },
   };
 }
 

@@ -7,7 +7,7 @@ const MAX_WINDOW_COMMAND_SSE_BUFFER_CHARS = 4 * 1024;
 
 export interface DesktopWindowCommandSynchronizerDeps {
   /** 창이 시킨 창 조작. Console은 명령을 걸어 두지 않으므로 재연결이 같은 명령을 되풀이하지 않는다. */
-  readonly perform: (command: DesktopWindowCommand) => void;
+  readonly perform: (command: DesktopWindowCommand, spaceId?: string) => void;
   readonly fetch?: typeof fetch;
 }
 
@@ -22,7 +22,7 @@ export function createDesktopWindowCommandSynchronizer(deps: DesktopWindowComman
     eventName: DESKTOP_WINDOW_COMMAND_EVENT,
     parseSnapshot: (value) => isDesktopWindowCommandSnapshot(value) ? value : null,
     apply: (snapshot) => {
-      if (snapshot.command !== null) deps.perform(snapshot.command);
+      if (snapshot.command !== null) deps.perform(snapshot.command, snapshot.spaceId);
     },
     maxFrameChars: MAX_WINDOW_COMMAND_SSE_BUFFER_CHARS,
     normalizeOrigin: (origin) => normalizeAnyConsoleOrigin(origin, "desktop_window_command_origin_invalid"),

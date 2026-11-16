@@ -580,17 +580,27 @@ export const DESKTOP_WINDOW_COMMAND_EVENT = "desktop:window-command";
  *
  * `toggle-browser-viewer`는 이 Console 을 관리하지 않는 Desktop 창에서 사람이 브라우저 단추를 누른 것이다. 그 셸이 자기 보기 전용
  * 플릿 브라우저 셸을 열거나 닫는다 — 열림 상태는 셸만 안다. 관리 창의 셸과 모르는 옛 셸은 이 명령을 버린다.
+ *
+ * `select-browser-space`는 좌측 사이드바에서 사령관·지휘관을 골랐을 때, 창에 플릿 브라우저가 열려 있는 경우에만 그 스페이스(`spaceId`)로
+ * 옮겨 달라는 요청이다. 닫혀 있으면 열지 않고, 모르는 옛 셸은 프레임을 버린다.
  */
-export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings", "console-ready", "toggle-browser-viewer"] as const;
+export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings", "console-ready", "toggle-browser-viewer", "select-browser-space"] as const;
 export type DesktopWindowCommand = (typeof DESKTOP_WINDOW_COMMANDS)[number];
-export interface DesktopWindowCommandSnapshot { readonly command: DesktopWindowCommand | null }
+export interface DesktopWindowCommandSnapshot {
+  readonly command: DesktopWindowCommand | null;
+  readonly spaceId?: string;
+}
 
 export function isDesktopWindowCommand(value: unknown): value is DesktopWindowCommand {
   return typeof value === "string" && (DESKTOP_WINDOW_COMMANDS as readonly string[]).includes(value);
 }
 
 export function isDesktopWindowCommandSnapshot(value: unknown): value is DesktopWindowCommandSnapshot {
-  return isRecord(value) && Object.keys(value).length === 1 && (value.command === null || isDesktopWindowCommand(value.command));
+  if (!isRecord(value)) return false;
+  for (const key of Object.keys(value)) if (key !== "command" && key !== "spaceId") return false;
+  if (value.command !== null && !isDesktopWindowCommand(value.command)) return false;
+  if (value.command === "select-browser-space") return isSafeId(value.spaceId);
+  return value.spaceId === undefined;
 }
 
 export { readDesktopEntryFonts, type DesktopEntryFonts, type DesktopFontAxis } from "./fonts.js";

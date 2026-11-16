@@ -1513,7 +1513,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const desktopWindowCommandRouter = createDesktopWindowCommandRouter({
     isAuthorized: isExactConsoleOrigin,
     readJsonBody,
-    requestCommand: (req, command) => {
+    requestCommand: (req, command, spaceId) => {
       const owner = shellOwnerOf(req);
       if (owner === null) return;
       // 권한 요청은 Computer Use가 조작하는 이 기계의 셸에만, 실제로 그 사유로 공유가 막혀 있을 때만 보낸다.
@@ -1528,7 +1528,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         logComputerCapture({ captureReason: "screen_recording_settings", admitted });
         if (!admitted) return;
       }
-      publishDesktopWindowCommand(owner, command);
+      publishDesktopWindowCommand(owner, command, spaceId);
     },
     subscribe: (req, res) => {
       const owner = shellOwnerOf(req);
@@ -2835,10 +2835,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
-  function publishDesktopWindowCommand(owner: string | "local", command: DesktopWindowCommand): void {
+  function publishDesktopWindowCommand(owner: string | "local", command: DesktopWindowCommand, spaceId?: string): void {
     if (desktopWindowCommandSseSubscribers.size === 0) return;
     settleRemoteExpiry();
-    const data = encodeSseData(DESKTOP_WINDOW_COMMAND_EVENT, { command });
+    const data = encodeSseData(DESKTOP_WINDOW_COMMAND_EVENT, { command, ...(spaceId !== undefined ? { spaceId } : {}) });
     for (const [res, subscriber] of desktopWindowCommandSseSubscribers) {
       if (subscriber === owner && !res.destroyed) res.write(data);
     }

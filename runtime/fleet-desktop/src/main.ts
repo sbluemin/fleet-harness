@@ -411,9 +411,10 @@ async function boot(): Promise<void> {
    */
   let consoleFullscreen: FullscreenController | null = null;
   let browserViewer: ReturnType<typeof createRemoteBrowserViewer> | null = null;
+  let selectBrowserSpace: ((spaceId: string) => void) | null = null;
   const windowCommands = createDesktopWindowCommandSynchronizer({
     fetch: consoleFetch,
-    perform: (command) => {
+    perform: (command, spaceId) => {
       if (command === "request-accessibility-permission") {
         // Computer Use는 로컬 기계만 조작한다 — 원격 콘솔을 보고 있는 창은 이 기계의 권한 안내를 띄우지 않는다.
         if (policy?.currentConsoleOrigin() === localConsoleOrigin && localConsoleOrigin !== null) requestAccessibilityPermission((message) => logger.info(message));
@@ -433,6 +434,10 @@ async function boot(): Promise<void> {
       }
       // 이 Desktop 이 관리하지 않는 Console 화면에서 사람이 브라우저 단추를 눌렀다 — 보기 전용 셸을 열거나 닫는다. 관리 Console 을 보는 동안에는 아무 일도 없다.
       if (command === "toggle-browser-viewer") { browserViewer?.toggle(); return; }
+      if (command === "select-browser-space") {
+        if (spaceId) selectBrowserSpace?.(spaceId);
+        return;
+      }
       consoleFullscreen?.perform(command);
     },
   });
@@ -647,6 +652,7 @@ async function boot(): Promise<void> {
     reducedMotion: () => systemPreferences.getAnimationSettings().prefersReducedMotion,
     log: (message) => logger.info(message),
   });
+  selectBrowserSpace = (spaceId) => browserSurface.selectSpace(spaceId);
   browserRetheme = () => browserSurface.retheme();
   browserViewer = createRemoteBrowserViewer({
     display: browserSurface,

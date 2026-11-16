@@ -1,8 +1,9 @@
 import * as React from "react";
 import type { DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
-import { DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_SURFACE_CAPABILITY } from "@fleet-console/protocol/desktop";
-import { desktopShellCapabilities } from "../../../core/client/src/integration/desktop-shell.js";
+import { commodoreBrowserSpaceId, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_WINDOW_COMMAND_PATH } from "@fleet-console/protocol/desktop";
+import { desktopShellCapabilities, isDesktopShell } from "../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
+import { getBrowserEngineSnapshot } from "./browser-engine.js";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
 /**
@@ -12,6 +13,7 @@ import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
 const endpoint = `/api/v1/browser/objectives/${encodeURIComponent(BROWSER_GLOBAL_ID)}`;
 const BROWSER_STATE_EVENT = "browser:state";
+const COMMODORE_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 let current: DesktopBrowserSurface | null = null;
 /** 에이전트가 이 Console 의 브라우저를 쓰고 있는가 — 사이드바 버튼의 aurora 신호가 읽는다. */
@@ -20,6 +22,7 @@ let driving = false;
 let tabCount = 0;
 /** 마지막으로 닫힌 순간의 탭 수. 열려 있거나 연 적이 없으면 null 이다. */
 let closedTabs: number | null = null;
+let hydrated = false;
 const listeners = new Set<() => void>();
 let started = false;
 
@@ -64,6 +67,7 @@ function readMeta(frame: { readonly driving?: unknown; readonly tabs?: unknown }
 function receive(payload: unknown): void {
   const frame = payload as { browserId?: unknown; surface?: DesktopBrowserSurface | null; driving?: unknown; tabs?: unknown } | null;
   if (!frame || frame.browserId !== BROWSER_GLOBAL_ID) return;
+  hydrated = true;
   publish(frame.surface ?? null, readMeta(frame));
 }
 
@@ -75,6 +79,7 @@ function start(): void {
   void fetch(`${endpoint}/state`).then(async (response) => {
     if (!response.ok) return;
     const body = await response.json() as { surface?: DesktopBrowserSurface | null; driving?: unknown; tabs?: unknown };
+    hydrated = true;
     if (current === null) publish(body.surface ?? null, readMeta(body));
   }).catch(() => undefined);
 }
@@ -130,6 +135,22 @@ export function closeBrowserSurface(): void {
 export function toggleBrowserPane(): void {
   if (current?.mode === "window") { void request("focus", current.id).catch(() => undefined); return; }
   if (current) closeBrowserSurface(); else openBrowserPane();
+}
+
+/**
+ * 좌측 사이드바에서 사령관·지휘관을 골랐을 때, 창에 플릿 브라우저가 열려 있는 경우에만 그 사령관 스페이스로 옮긴다.
+ * 닫혀 있으면 열지 않고, 관리 콘솔에서 이미 닫힘을 안 때는 불필요한 창 명령 요청을 생략한다.
+ */
+export function selectBrowserSpaceForCommodore(commodoreId: string): void {
+  if (!COMMODORE_UUID.test(commodoreId) || !isDesktopShell() || typeof fetch !== "function") return;
+  const engine = getBrowserEngineSnapshot();
+  if (engine?.surfaceMode === "native" && hydrated && current === null) return;
+  void fetch(DESKTOP_WINDOW_COMMAND_PATH, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ command: "select-browser-space", spaceId: commodoreBrowserSpaceId(commodoreId) }),
+    signal: AbortSignal.timeout(3000),
+  }).catch(() => undefined);
 }
 
 /**

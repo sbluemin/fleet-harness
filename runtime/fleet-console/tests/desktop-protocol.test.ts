@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid } from "@fleet-console/protocol/desktop";
+import { formatDesktopResourceRootMarker, isDesktopResourceRootMarkerValid, isDesktopWindowCommandSnapshot } from "@fleet-console/protocol/desktop";
 import {
   CONSOLE_OBJECTIVE_PEEK_MAX_BYTES,
   isConsoleObjectivePeek,
@@ -115,5 +115,13 @@ describe("desktop protocol", () => {
     expect(desktop).toEqual({ owner: { kind: "desktop", id: "desktop-owner-1", protocolVersion: 1 }, resourceRoot: fs.realpathSync(root) });
     expect(isCompatibleDesktopOwner(desktop?.owner, "1.2.3", { id: "desktop-owner-1", version: "1.2.3" })).toBe(true);
     expect(isCompatibleDesktopOwner(desktop?.owner, "1.2.4", { id: "desktop-owner-1", version: "1.2.3" })).toBe(false);
+  });
+
+  it("validates select-browser-space window command payloads", () => {
+    expect(isDesktopWindowCommandSnapshot({ command: "select-browser-space", spaceId: "commodore:00000000-0000-0000-0000-000000000001" })).toBe(true);
+    expect(isDesktopWindowCommandSnapshot({ command: "select-browser-space" })).toBe(false);
+    expect(isDesktopWindowCommandSnapshot({ command: "select-browser-space", spaceId: "bad space/id" })).toBe(false);
+    expect(isDesktopWindowCommandSnapshot({ command: "console-ready", spaceId: "default" })).toBe(false);
+    expect(isDesktopWindowCommandSnapshot({ command: null })).toBe(true);
   });
 });

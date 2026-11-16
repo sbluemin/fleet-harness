@@ -62,6 +62,7 @@ import { ensureCommanderExpanded, noteCommanderNavigated, readCommanderKeepExpan
 import { CommodoreHoverDock } from "./commodore-hover-dock.js";
 import { RowToolUse } from "./side-bar-cluster-row.js";
 import { useCommodoreBrowserUse } from "../../../computer-use/client/computer-screen-share.js";
+import { selectBrowserSpaceForCommodore } from "../../../browser/client/browser-surface.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
@@ -123,6 +124,8 @@ interface TheaterSectionHeaderProps extends TheaterAliasEditing {
   readonly dock: boolean;
   /** 표식(아바타) 단추가 직접 대화를 열 때도 「활성 사령관을 다시 골랐다」를 알린다 — 이름 쪽 활성화는 `onOpenInbox` 가 알린다. */
   readonly onReselect?: () => void;
+  /** 표식(아바타) 단추로 사령관 대화를 열 때(첫 선택·전환 포함) 부른다. */
+  readonly onMarkSelect?: () => void;
   readonly showStatusLiveTick: boolean;
   /**
    * 사람에게 넘긴 기준·검토·후속이 이 사령관에 있다 — 접힌 머리라도 아바타에 결정 상태를 남긴다.
@@ -310,6 +313,9 @@ export function ObjectiveRecordsSideBar({
             frame = requestAnimationFrame(attempt);
             return;
           }
+        }
+        if (arrivalOpened.current !== openKey && knownNow && (commanderId === null || commanderKnown || past)) {
+          selectBrowserSpaceForCommodore(arrival.commodore);
         }
         arrivalOpened.current = openKey;
         phase = "settle";
@@ -604,6 +610,7 @@ export function ObjectiveRecordsSideBar({
     setActiveContextMenu(null);
     reselectActiveCommodore(theater.id);
     setZoneCommodore(theater.id);
+    selectBrowserSpaceForCommodore(theater.id);
     if (openCommodoreConversation(theater.id)) return;
     const landing = resolveTheaterInboxLanding(registry.theaterContributions, theater.id);
     if (landing) openTheaterInbox({ theaterId: theater.id, ...landing, returnFocus });
@@ -676,7 +683,7 @@ export function ObjectiveRecordsSideBar({
       const theater = standingTheaterFor(row);
       return <TheaterSectionHeader theater={theater} active={theater.id === owningCommodoreId} selectedOverride={theater.id === owningCommodoreId}
         lastResponse={commodoreSections.find((section) => section.commodoreId === theater.id)?.lastResponse?.text}
-        dock={!compact} onReselect={() => reselectActiveCommodore(theater.id)} {...aliasEditingFor(theater.id)}
+        dock={!compact} onReselect={() => reselectActiveCommodore(theater.id)} onMarkSelect={() => selectBrowserSpaceForCommodore(theater.id)} {...aliasEditingFor(theater.id)}
         showStatusLiveTick={countAwaitingObjectiveRecords(objectiveRecords.filter((record) => record.commodoreId === theater.id), objectiveRecordRuntime) > 0}
         hasPersonDecision={personDecisionOwners.has(theater.id)} dragging={frame.dragging} dropTarget={frame.dropTarget}
         accessory={frame.accessory} dragOffsetY={frame.dragOffsetY} onOpenInbox={openTheaterHeaderInbox} onContextMenu={frame.onMenu}
@@ -826,6 +833,7 @@ export function ObjectiveRecordsSideBar({
                 // ⋯ 호버 독은 사령관 행에 달되, 아바타만 서는 좁은 열에는 두지 않는다.
                 dock={!compact}
                 onReselect={() => reselectActiveCommodore(theater.id)}
+                onMarkSelect={() => selectBrowserSpaceForCommodore(theater.id)}
                 {...aliasEditingFor(theater.id)}
                 showStatusLiveTick={waitingCount > 0}
                 hasPersonDecision={personDecisionOwners.has(theater.id)}
@@ -1007,6 +1015,7 @@ export function TheaterSectionHeader({
   lastResponse,
   dock,
   onReselect,
+  onMarkSelect,
   editingAlias,
   clampAlias,
   showStatusLiveTick,
@@ -1109,7 +1118,10 @@ export function TheaterSectionHeader({
 
   // 표식 단추는 자기 클릭을 끝까지 처리하고 버블을 멈춘다 — 활성 사령관 재선택은 캡처 단계에서 먼저 알린다.
   const markClickCapture = (event: MouseEvent<HTMLSpanElement>) => {
-    if (event.target instanceof Element && event.target.closest("button")) onReselect?.();
+    if (event.target instanceof Element && event.target.closest("button")) {
+      onReselect?.();
+      onMarkSelect?.();
+    }
   };
 
   // 이름은 사령관의 대화를 연다.

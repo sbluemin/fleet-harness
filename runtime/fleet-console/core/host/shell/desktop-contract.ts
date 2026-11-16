@@ -43,7 +43,7 @@ interface DesktopWindowCommandRouteDeps {
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   /** 요청한 창의 셸 주인에게만 흘린다. 주인을 가릴 수 없는 요청은 조용히 버린다. */
-  readonly requestCommand: (req: http.IncomingMessage, command: DesktopWindowCommand) => void;
+  readonly requestCommand: (req: http.IncomingMessage, command: DesktopWindowCommand, spaceId?: string) => void;
   readonly subscribe: (req: http.IncomingMessage, res: http.ServerResponse) => void;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly writeNoContent: (res: http.ServerResponse) => void;
@@ -77,7 +77,7 @@ export function createDesktopWindowCommandRouter(deps: DesktopWindowCommandRoute
       deps.writeJson(res, 400, { error: "invalid_desktop_window_command" });
       return true;
     }
-    deps.requestCommand(req, body.command);
+    deps.requestCommand(req, body.command, body.spaceId);
     deps.writeNoContent(res);
     return true;
   };
