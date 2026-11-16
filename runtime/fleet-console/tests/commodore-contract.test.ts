@@ -2538,7 +2538,8 @@ describe("commodore supervisor", () => {
       h.setAuthorized(true);
       expect((await h.route("commodore/clear", { commodoreId: "t1", confirm: true }, hooks)).status).toBe(200);
       expect(sessions[0]!.disposed).toBe(true);
-      expect(h.store.read("t1")).toEqual({ ...before, transcriptClearedThrough: expect.any(Number) });
+      expect(h.store.read("t1")).toEqual({ ...before, transcriptClearedThrough: expect.any(Number), transcriptClearedAt: expect.any(Number) });
+      const clearedAt = h.store.read("t1")!.transcriptClearedAt!;
       expect(fs.existsSync(file)).toBe(false);
       expect(h.store.transcriptRead("t1").entries).toEqual([]);
       expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
@@ -2551,6 +2552,23 @@ describe("commodore supervisor", () => {
       fs.writeFileSync(file, oldRaw);
       const reopened = createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined });
       expect(reopened.transcriptRead("t1").entries).toEqual([]);
+      expect(reopened.read("t1")?.transcriptClearedAt).toBe(clearedAt);
+      const { commodoreConversationEntries, commodoreConsultationCutoff } = await import("../features/commodore/client/commodore-chat.js");
+      const { getT } = await import("../features/commodore/client/i18n/index.js");
+      const consultBoardObjective = {
+        id: "obj-consult",
+        title: "Consult Objective",
+        consults: [
+          { id: "c-before", at: clearedAt - 10, question: "Before clear?", reply: { text: "Old advice", at: clearedAt - 5 } },
+          { id: "c-after", at: clearedAt + 10, question: "After clear?", reply: { text: "Fresh advice", at: clearedAt + 20 } },
+        ],
+      } as unknown as Parameters<typeof commodoreConversationEntries>[4][number];
+      const translator = getT("en");
+      // 상태 적재 전에는 지난 자문이 번쩍이지 않도록 경계를 Infinity 로 가린다.
+      expect(commodoreConversationEntries(translator, "t1", [], [], [consultBoardObjective], undefined, null, "Commodore", commodoreConsultationCutoff(null, null))).toEqual([]);
+      // 비운 뒤에는 비우기 전 자문만 빠지고 새 자문 요청·답변은 그대로 보인다.
+      const visibleAfterClear = commodoreConversationEntries(translator, "t1", [], [], [consultBoardObjective], undefined, null, "Commodore", commodoreConsultationCutoff({ state: reopened.read("t1")! }, null));
+      expect(visibleAfterClear.map((entry) => entry.id)).toEqual(["consult:obj-consult:c-after:ask", "consult:obj-consult:c-after:reply"]);
       fs.rmSync(file);
       hold = false;
       h.store.transcriptAppend("t1", { kind: "message", text: "A fresh instruction." });

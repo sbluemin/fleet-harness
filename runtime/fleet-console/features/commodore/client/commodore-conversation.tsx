@@ -11,7 +11,7 @@ import type { Translate } from "@fleet-console/i18n";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "../../workspace/shared/conversation-surfaces.js";
 import type { ClientTheaterInboxCapability } from "../../workspace/shared/theater-inbox.js";
 
-import { commodoreChatEntries, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
+import { commodoreChatEntries, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { CommodorePersonInbox } from "./commodore-person-inbox.js";
 import { CommodoreTasks } from "./commodore-tasks.js";
@@ -314,7 +314,7 @@ const REVEAL_PAGE_LIMIT = 10;
 function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language, onBack }: { readonly commodoreId: string; readonly theaterId: string | null; readonly readOnly: boolean; readonly language: "en" | "ko"; readonly onBack: () => void }) {
   const t = getT(language);
   noteCommodoreLanguage(language);
-  const { view, entries, live, hasMore, transcriptLoaded, transcriptError } = useCommodore(commodoreId);
+  const { view, entries, live, hasMore, transcriptLoaded, transcriptError, clearedAt } = useCommodore(commodoreId);
   const board = useObjectiveTheater(commodoreId);
   const reveal = useCommodoreReveal(commodoreId);
   const failure = useConversationFailure(commodoreId) ?? (transcriptError ? failureWord(t, new Error(transcriptError)) : null);
@@ -331,7 +331,8 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const screenTheaterId = theaterId ?? "";
   const index = useCommodoreObjectiveIndex(commodoreId);
   const name = useCommodoreName(commodoreId, t);
-  const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, view?.state.asks, index.finished, name), [t, commodoreId, entries, board.objectives, view?.state.asks, index.finished, name]);
+  const consultationCutoff = commodoreConsultationCutoff(view, clearedAt);
+  const confirmed = useMemo(() => commodoreConversationEntries(t, commodoreId, entries, [], board.objectives, view?.state.asks, index.finished, name, consultationCutoff), [t, commodoreId, entries, board.objectives, view?.state.asks, index.finished, name, consultationCutoff]);
   const items = useMemo(() => commodoreConversationLiveEntries(t, entries, live, confirmed, name, commodoreId), [t, entries, live, confirmed, name, commodoreId]);
   // 사령관이 턴을 도는 동안 진행 줄이 서고, 최신 말풍선의 몽글도 작업 중 얼굴이다.
   const turning = run?.phase === "turn";

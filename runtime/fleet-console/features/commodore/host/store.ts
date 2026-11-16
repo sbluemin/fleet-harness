@@ -395,7 +395,7 @@ export function createCommodoreStore(options: CommodoreStoreOptions): CommodoreS
       const current = load(commodoreId);
       const clearedThrough = seqOf(commodoreId) + 1;
       // 삭제 도중 프로세스가 내려가도 남은 파일의 옛 줄을 읽지 않게 경계를 먼저 영속한다.
-      const state = commit(commodoreId, { ...current, transcriptClearedThrough: clearedThrough }, "clear");
+      const state = commit(commodoreId, { ...current, transcriptClearedThrough: clearedThrough, transcriptClearedAt: now() }, "clear");
       lastSeq.set(commodoreId, clearedThrough);
       lastMessages.set(commodoreId, null);
       lastResponses.set(commodoreId, null);

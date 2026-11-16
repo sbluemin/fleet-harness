@@ -149,6 +149,8 @@ export const commodoreStateSchema = z.object({
   routineNotices: z.array(z.object({ id: ids, name: z.string().max(60) }).strict()).optional(),
   /** Clear가 지운 마지막 seq. 파일 삭제와 재시작·재연결 사이에도 옛 기록을 되살리지 않는 영속 경계. */
   transcriptClearedThrough: z.number().int().nonnegative().optional(),
+  /** Clear가 지운 시각(epoch ms). 보드 자문 기록에서 비우기 전 자문 줄만 사령관 대화 화면에서 숨기는 영속 경계. */
+  transcriptClearedAt: z.number().int().nonnegative().optional(),
   /** 사람이 이 Theater 를 보는 언어 — 서랍의 요청이 남긴다. 사령관 기록의 언어이고, 없으면 목표의 언어·영어 순이다. */
   language: z.enum(["en", "ko"]).optional(),
   /** 사람에게 묻는 질문 — 서 있는 것과 최근에 끝난 것. */

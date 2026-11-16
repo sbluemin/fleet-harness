@@ -182,7 +182,7 @@ function quotedMessageWords(entry: Extract<CommodoreTranscriptEntry, { kind: "me
  * 깨움·세션 교대(열림·재시작·멈춤)·문맥 압축 같은 실행 경과는 세우지 않는다 — 그 경과는 펼친 턴 기록(`commodoreChatEntries`)이 보인다.
  * 라이브 글자 흐름은 마지막 확정 줄 뒤의 흐르는 말풍선 하나다.
  */
-export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[], finished: readonly Objective[] | null = null, name = t("commodore.name")): readonly AgentConversationEntry[] {
+export function commodoreConversationEntries(t: T, theaterId: string, entries: readonly CommodoreTranscriptEntry[], live: readonly CommodoreLiveEvent[], objectives: readonly Objective[], asks?: readonly CommodoreAsk[], finished: readonly Objective[] | null = null, name = t("commodore.name"), clearedAt: number | null = null): readonly AgentConversationEntry[] {
   const commodore: ConversationSpeaker = { kind: "commodore", commodoreId: theaterId, name };
   const mentionResults = new Map(entries.flatMap((entry) => entry.kind === "mention-result" ? [[entry.messageSeq, entry.unrelayed] as const] : []));
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
@@ -272,14 +272,24 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
     }
   }
-  return commodoreConversationLiveEntries(t, entries, live, withConsultations(t, out, commodore, objectives, finished), name, theaterId);
+  return commodoreConversationLiveEntries(t, entries, live, withConsultations(t, out, commodore, objectives, finished, clearedAt), name, theaterId);
+}
+
+/**
+ * 사령관 대화의 자문 표시 경계 — 상태가 아직 읽히지 않았으면(`view === null && clearedAt === null`) 불러오는 동안 지난 자문이
+ * 잠깐 번쩍이지 않게 `Infinity` 로 가리고, 읽힌 뒤에는 저장된 비우기 시각(없으면 `null`)을 그대로 돌려준다.
+ */
+export function commodoreConsultationCutoff(view: { readonly state: { readonly transcriptClearedAt?: number | undefined } } | null, clearedAt: number | null): number | null {
+  if (clearedAt !== null) return clearedAt;
+  if (view !== null) return view.state.transcriptClearedAt ?? null;
+  return Number.POSITIVE_INFINITY;
 }
 
 /**
  * 지휘관이 이 사령관에게 구한 자문 — 질문·답은 전언 줄(`자문 요청`/`자문 답변`)로 각자의 시각 자리에 끼우고, 본문은 슬라이드 창에서 읽는다.
- * 기록 줄이 아니라 보드의 자문 기록이 원천이다(깨움 줄은 대화에 서지 않는다).
+ * 기록 줄이 아니라 보드의 자문 기록이 원천이다(깨움 줄은 대화에 서지 않는다). `clearedAt` 이 있으면 그 시각 이하의 줄만 사령관 대화에서 숨긴다(보드 기록은 그대로다).
  */
-function withConsultations(t: T, out: readonly AgentConversationEntry[], commodore: ConversationSpeaker, live: readonly Objective[], finished: readonly Objective[] | null): readonly AgentConversationEntry[] {
+function withConsultations(t: T, out: readonly AgentConversationEntry[], commodore: ConversationSpeaker, live: readonly Objective[], finished: readonly Objective[] | null, clearedAt: number | null = null): readonly AgentConversationEntry[] {
   const seen = new Set<string>();
   const consults: AgentConversationEntry[] = [];
   for (const objective of [...live, ...(finished ?? [])]) {
@@ -287,19 +297,22 @@ function withConsultations(t: T, out: readonly AgentConversationEntry[], commodo
     seen.add(objective.id);
     const commander: ConversationSpeaker = { kind: "commander", name: t("commodore.consult.commander", { title: objective.title }), objectiveId: objective.id };
     for (const consult of objective.consults ?? []) {
-      consults.push({
-        kind: "delegation",
-        id: `consult:${objective.id}:${consult.id}:ask`,
-        at: consult.at,
-        sender: commander,
-        recipients: [commodore],
-        text: consult.question,
-        result: "",
-        received: true,
-        via: "consult",
-      });
+      if (clearedAt === null || consult.at > clearedAt) {
+        consults.push({
+          kind: "delegation",
+          id: `consult:${objective.id}:${consult.id}:ask`,
+          at: consult.at,
+          sender: commander,
+          recipients: [commodore],
+          text: consult.question,
+          result: "",
+          received: true,
+          via: "consult",
+        });
+      }
       if (!consult.reply) continue;
       const { text, at } = consult.reply;
+      if (clearedAt !== null && at <= clearedAt) continue;
       consults.push({
         kind: "delegation",
         id: `consult:${objective.id}:${consult.id}:reply`,
