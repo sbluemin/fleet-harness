@@ -1152,6 +1152,20 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   pointer-events: none;
 }
 .commodore-person-inbox.is-anchored { bottom: var(--commodore-foot-h, 0px); max-height: min(70%, calc(100% - var(--commodore-foot-h, 0px) - 48px)); }
+/* 사령관 대화에서 결정 요청 박스가 열리면 쿼터·진행 줄 위에 얹히지 않고 입력 푸터(--commodore-foot-h) 바로 위까지 쓴다.
+   박스가 열려 있는 동안 가려지는 쿼터 줄은 숨겨 8px 빈틈으로 비치거나 초점을 받지 않게 하고, 답하거나 닫으면 원래대로 돌아온다. */
+.objectives-commodore-conversation .commodore-person-inbox.is-open {
+  bottom: var(--commodore-foot-h, var(--m-dock-h, 0px));
+  max-height: min(70%, calc(100% - var(--commodore-foot-h, var(--m-dock-h, 0px)) - 48px));
+}
+.objectives-commodore-conversation:not([data-settings-open="true"]):has(.commodore-person-inbox.is-open) .group-chat-dock > :is(.conversation-composer-top, .group-chat-working) {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.objectives-commodore-conversation:not([data-settings-open="true"]):has(.commodore-person-inbox.is-open) .group-chat-dock > :is(.conversation-composer-top, .group-chat-working) * {
+  pointer-events: none;
+}
 .commodore-person-inbox-panel {
   pointer-events: auto;
   display: flex;
@@ -1702,7 +1716,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-panel-advanced .fc-settings-row__hint { color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
 .commodore-composer-panel-advanced .fc-settings-row__copy { max-width: 60ch; }
 /* 팝오버가 열린 동안 — 대기함은 비켜 서고, 위로 읽는 중이어도 칩 줄은 붙잡아 둔다. */
-.objectives-commodore-conversation .commodore-person-inbox { transition: opacity var(--duration-base) var(--ease-glide), transform var(--duration-slow) var(--ease-spring); }
+.objectives-commodore-conversation .commodore-person-inbox { transition: opacity var(--duration-base) var(--ease-glide), transform var(--duration-slow) var(--ease-spring), bottom var(--duration-base) var(--ease-glide); }
 .objectives-commodore-conversation[data-settings-open="true"] .commodore-person-inbox { opacity: 0; transform: translateY(8px); }
 .objectives-commodore-conversation[data-settings-open="true"] .commodore-person-inbox-panel { pointer-events: none; }
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top { transform: none; opacity: 1; }

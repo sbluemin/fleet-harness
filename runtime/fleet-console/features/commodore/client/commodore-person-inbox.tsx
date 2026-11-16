@@ -116,7 +116,7 @@ export function CommodorePersonInbox({ theaterId, contextTheaterId = "", languag
   const kinds = (["criteria", "review", "followup", "ask"] as const).filter((kind) => counts[kind] > 0);
 
   return (
-    <div className={`commodore-person-inbox${phone ? " is-phone" : ""}${anchor ? " is-anchored" : ""}`}>
+    <div className={`commodore-person-inbox${phone ? " is-phone" : ""}${anchor ? " is-anchored" : ""}${sheet ? " is-open" : ""}`}>
       <div className="commodore-person-inbox-panel">
         <button
           type="button"

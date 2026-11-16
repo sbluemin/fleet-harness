@@ -1,3 +1,4 @@
+import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
 import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
@@ -342,8 +343,10 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
   // 진행 줄의 이름 뒤 낱말 — 아바타가 연기하는 것과 같은 턴의 계열이다.
   const activity = useCommodoreMongleActivity(turning ? commodoreId : null);
+  const conversationRef = useRef<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLElement | null>(null);
   useConversationDockHeight(dockRef);
+  useChromeHeightProperty(dockRef, conversationRef, "--commodore-foot-h");
 
   const [loadingOlder, setLoadingOlder] = useState(false);
   const readOlder = () => {
@@ -431,7 +434,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   );
   const topSettings = !readOnly && view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} onOpenChange={setSettingsOpen} /> : null;
   return (
-    <div className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
+    <div ref={conversationRef} className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
       {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
           밑으로 흘러 올라간다. */}
       {(run?.phase === "retrying" || run?.phase === "error") ? (
