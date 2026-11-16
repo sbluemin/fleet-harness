@@ -558,6 +558,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     if (wasWatching) {
       const entry = live.get(id);
       if (entry) disarmFrameSubscription(entry);
+      stopScreencast(id);
       setFileChooserIntercept(id, false);
       deps.onWatch?.(id, false);
     }
@@ -578,6 +579,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   function kick(id: string): void {
     const watch = watches.get(id);
     if (!watch || !watch.watching || watch.inflight || watch.timer !== null) return;
+    // 스크린캐스트가 프레임을 밀어 주는 동안에는 폴링·입력 캡처가 할 일이 없다.
+    if (screencasts.get(id)?.seen) { watch.dirty = false; watch.immediate = false; return; }
     if (!watch.dirty && !watch.immediate) return;
     const elapsed = now() - watch.lastStarted;
     // 입력·항해 직후(immediate)는 대기 없이 쏘고, 유휴 폴링은 활성 최소 간격으로 묶는다. 화질이 낮으면 간격도 넓다.
@@ -598,43 +601,146 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     watch.immediate = true;
     kick(id);
   }
+  /**
+   * 시청 프레임 스크린캐스트 — Chromium 이 갱신 때마다 밀어 주는 JPEG 를 디코드·리사이즈 없이 그대로 올린다.
+   * 프레임마다 `Page.getLayoutMetrics`·`Page.captureScreenshot` 를 왕복하던 경로를 대신한다.
+   */
+  interface ViewerScreencast {
+    readonly quality: ViewerCaptureQuality;
+    /** 이 세션의 프레임을 한 장이라도 올렸는가 — 올리면 폴링 캡처가 할 일이 없다. */
+    seen: boolean;
+    pending: ViewerFrame | null;
+    timer: unknown;
+  }
+  const screencasts = new Map<string, ViewerScreencast>();
+  const stopScreencast = (id: string, options: { readonly notify?: boolean } = {}): void => {
+    const state = screencasts.get(id);
+    if (!state) return;
+    if (state.timer !== null) cancel(state.timer);
+    screencasts.delete(id);
+    if (options.notify === false) return;
+    const contents = live.get(id)?.view.webContents;
+    if (!contents || (typeof contents.isDestroyed === "function" && contents.isDestroyed())) return;
+    if (typeof contents.debugger?.sendCommand !== "function") return;
+    void contents.debugger.sendCommand("Page.stopScreencast").catch(() => undefined);
+  };
+  /** 감시 중인 뷰에 스크린캐스트를 건다. 지원하지 않는 환경(테스트 목·옛 Chromium)이면 폴링 캡처가 그대로 돈다. */
+  const startScreencast = (id: string): void => {
+    stopScreencast(id);
+    const entry = live.get(id);
+    const watch = watches.get(id);
+    if (!entry?.attached || !watch?.watching) return;
+    const contents = entry.view.webContents;
+    if (typeof contents.debugger?.sendCommand !== "function") return;
+    const profile = VIEWER_CAPTURE_PROFILES[viewerCapture];
+    const state: ViewerScreencast = { quality: viewerCapture, seen: false, pending: null, timer: null };
+    screencasts.set(id, state);
+    void contents.debugger.sendCommand("Page.startScreencast", {
+      format: "jpeg",
+      quality: profile.quality,
+      maxWidth: profile.maxWidth,
+      maxHeight: profile.maxHeight,
+      everyNthFrame: 1,
+    }).catch(() => { if (screencasts.get(id) === state) screencasts.delete(id); });
+  };
+  /** 프레임을 Console 로 올린다. 같은 JPEG 는 두 번 올리지 않는다 — 폴백 캡처와 스크린캐스트가 함께 쓴다. */
+  async function postViewerFrame(watch: ViewerWatch, entry: LiveView, frame: ViewerFrame): Promise<boolean> {
+    const target = origin;
+    if (!target || frame.jpeg.length === 0 || frame.jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return false;
+    // 동일 JPEG 중복 전송 억제 — 바뀐 장만 올린다.
+    if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return false;
+    // CSS 크기는 페이지의 실제 레이아웃 — 원격 맞춤·에뮬레이션이면 뷰 bounds 와 다르다. 스트림·long-poll·입력이 함께 쓴다.
+    const cssWidth = Math.max(1, Math.round(frame.cssWidth ?? entry.lastBounds?.width ?? frame.width));
+    const cssHeight = Math.max(1, Math.round(frame.cssHeight ?? entry.lastBounds?.height ?? frame.height));
+    const response = await fetchFor(`${target}${DESKTOP_BROWSER_FRAME_PATH}`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(),
+        [DESKTOP_BROWSER_VIEW_HEADER]: entry.spec.id,
+        [DESKTOP_BROWSER_FRAME_WIDTH_HEADER]: String(frame.width),
+        [DESKTOP_BROWSER_FRAME_HEIGHT_HEADER]: String(frame.height),
+        [DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER]: String(cssWidth),
+        [DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER]: String(cssHeight),
+        "Content-Type": "image/jpeg",
+        Origin: target,
+      },
+      body: frame.jpeg,
+    });
+    if (!response.ok) return false;
+    watch.lastJpeg = Buffer.from(frame.jpeg);
+    watch.sent = true;
+    return true;
+  }
+  /** 화질별 최소 간격으로 한 장씩만 올린다 — 그 사이에 온 장은 최신 한 장으로 합친다. */
+  const flushScreencast = (id: string): void => {
+    const state = screencasts.get(id);
+    const watch = watches.get(id);
+    if (!state || !state.pending || !watch?.watching || state.timer !== null) return;
+    const interval = Math.max(VIEWER_FRAME_ACTIVE_INTERVAL_MS, VIEWER_CAPTURE_PROFILES[viewerCapture].intervalMs);
+    const send = (): void => {
+      state.timer = null;
+      const current = screencasts.get(id);
+      const pending = current?.pending ?? null;
+      const entry = live.get(id);
+      const currentWatch = watches.get(id);
+      if (!current || !pending || !entry || !currentWatch?.watching) return;
+      current.pending = null;
+      current.seen = true;
+      currentWatch.lastStarted = now();
+      void postViewerFrame(currentWatch, entry, pending).catch((error: unknown) => { log(`browser frame failed: ${error instanceof Error ? error.message : "unknown"}`); });
+    };
+    const wait = Math.max(0, interval - (now() - watch.lastStarted));
+    if (wait === 0) { send(); return; }
+    state.timer = schedule(send, wait);
+  };
+  /**
+   * `Page.screencastFrame` — ack 를 곧바로 보내야 Chromium 이 다음 장을 보낸다. 프레임은 base64 그대로 쓰고,
+   * CSS 크기는 메타데이터의 장치 크기다. 화면이 정지해 첫 장이 오지 않는 경우는 폴링 캡처가 맡는다.
+   */
+  const onScreencastFrame = (id: string, params: Record<string, unknown>): void => {
+    const state = screencasts.get(id);
+    const entry = live.get(id);
+    if (!state || !entry) return;
+    const contents = entry.view.webContents;
+    if (typeof contents.debugger?.sendCommand === "function") {
+      void contents.debugger.sendCommand("Page.screencastFrameAck", { sessionId: params.sessionId }).catch(() => undefined);
+    }
+    const data = params.data;
+    if (typeof data !== "string" || data.length === 0) return;
+    const jpeg = Buffer.from(data, "base64");
+    // JPEG 매직 — 손상된 장을 스트림에 올리지 않는다.
+    if (jpeg.length < 2 || jpeg[0] !== 0xff || jpeg[1] !== 0xd8) return;
+    const metadata = (params.metadata && typeof params.metadata === "object" ? params.metadata : {}) as { deviceWidth?: unknown; deviceHeight?: unknown };
+    const cssOf = (value: unknown, fallback: number): number => {
+      const size = Number(value);
+      return Number.isFinite(size) && size >= 1 && size <= 10_000 ? Math.round(size) : fallback;
+    };
+    const cssWidth = cssOf(metadata.deviceWidth, Math.max(1, Math.round(entry.lastBounds?.width ?? 1)));
+    const cssHeight = cssOf(metadata.deviceHeight, Math.max(1, Math.round(entry.lastBounds?.height ?? 1)));
+    // Chromium 이 maxWidth/maxHeight 안에 비율을 유지해 줄인다 — 헤더용 픽셀 크기는 그 비율로 계산한다(디코드 없음).
+    const profile = VIEWER_CAPTURE_PROFILES[state.quality];
+    const scale = Math.min(1, profile.maxWidth / cssWidth, profile.maxHeight / cssHeight);
+    state.pending = { jpeg, width: Math.max(1, Math.round(cssWidth * scale)), height: Math.max(1, Math.round(cssHeight * scale)), cssWidth, cssHeight };
+    flushScreencast(id);
+  };
   async function captureFrame(id: string): Promise<void> {
     const capture = deps.captureViewerFrame;
     const watch = watches.get(id);
     const entry = live.get(id);
     const contents = entry?.view.webContents;
     if (!capture || !watch || !watch.watching || watch.inflight || !entry || !contents || (typeof contents.isDestroyed === "function" && contents.isDestroyed())) return;
+    // 스크린캐스트가 이미 프레임을 밀어 주는 동안에는 폴링 캡처를 쉰다 — 프레임당 CDP 왕복 두 번을 없애는 지점이다.
+    if (screencasts.get(id)?.seen) return;
     watch.inflight = true;
     watch.dirty = false;
     watch.lastStarted = now();
     const token = session;
-    const target = origin;
     try {
       const frame = await capture(entry.view, { profile: VIEWER_CAPTURE_PROFILES[viewerCapture] });
-      if (session !== token || !watch.watching || !target || !frame || frame.jpeg.length === 0 || frame.jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return;
-      // 동일 JPEG 중복 전송 억제 — 바뀐 장만 올린다.
-      if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return;
-      // CSS 크기는 페이지의 실제 레이아웃 — 원격 맞춤·에뮬레이션이면 뷰 bounds 와 다르다. 스트림·long-poll·입력이 함께 쓴다.
-      const cssWidth = Math.max(1, Math.round(frame.cssWidth ?? entry.lastBounds?.width ?? frame.width));
-      const cssHeight = Math.max(1, Math.round(frame.cssHeight ?? entry.lastBounds?.height ?? frame.height));
-      const response = await fetchFor(`${target}${DESKTOP_BROWSER_FRAME_PATH}`, {
-        method: "POST",
-        headers: {
-          ...authHeaders(),
-          [DESKTOP_BROWSER_VIEW_HEADER]: id,
-          [DESKTOP_BROWSER_FRAME_WIDTH_HEADER]: String(frame.width),
-          [DESKTOP_BROWSER_FRAME_HEIGHT_HEADER]: String(frame.height),
-          [DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER]: String(cssWidth),
-          [DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER]: String(cssHeight),
-          "Content-Type": "image/jpeg",
-          Origin: target,
-        },
-        body: frame.jpeg,
-      });
-      if (session === token && watch.watching && response.ok) {
-        watch.lastJpeg = Buffer.from(frame.jpeg);
-        watch.sent = true;
-      }
+      if (session !== token || !watch.watching || !frame) return;
+      // 기다리는 사이 스크린캐스트가 더 새 장을 올렸으면 이 폴백 장은 버린다 — 오래된 그림이 최신을 덮지 않게.
+      if (screencasts.get(id)?.seen) return;
+      await postViewerFrame(watch, entry, frame);
     } catch (error) {
       log(`browser frame failed: ${error instanceof Error ? error.message : "unknown"}`);
     } finally {
@@ -655,6 +761,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       watch.sent = false;
       watch.lastJpeg = null;
       armFrameSubscription(id);
+      // 화면 갱신은 스크린캐스트가 맡는다 — 첫 장이 오기 전까지는 폴링 캡처가 한 장을 만든다.
+      startScreencast(id);
       setFileChooserIntercept(id, true);
       deps.onWatch?.(id, true);
       kick(id);
@@ -916,6 +1024,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       contents.debugger.on("message", (_event, method, params, sessionId) => {
         // 하위 타깃(iframe·워커)의 세션 이벤트는 콘솔이 다루지 않는다 — 페이지 세션의 것만 올린다.
         if (sessionId) return;
+        // 시청 스크린캐스트 프레임은 화면 스트림으로만 쓴다 — Console 이벤트 릴레이로 base64 를 보내지 않는다.
+        if (method === "Page.screencastFrame") { onScreencastFrame(spec.id, (params ?? {}) as Record<string, unknown>); return; }
         if (method === "Runtime.consoleAPICalled" && isPasswordConsoleDebuggerParams(params, passwordPrefix)) return;
         // CDP 가 대화상자에 답했다 — 쥐고 있던 콜백은 이미 쓰인 것이라 버린다.
         if (method === "Page.javascriptDialogClosed") releaseDialog(null);
@@ -941,6 +1051,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const entry = live.get(id);
     if (!entry) return;
     disarmFrameSubscription(entry);
+    // 뷰가 사라지면 스크린캐스트 상태도 함께 걷는다 — 디버거는 이어서 떨어지므로 중지 명령은 보내지 않는다.
+    stopScreencast(id, { notify: false });
     live.delete(id);
     stopWatch(id);
     deps.passwords?.detachView(id);
@@ -1038,7 +1150,12 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     else if (snapshot.generation < generation) return;
     epoch = next;
     generation = snapshot.generation;
-    viewerCapture = snapshot.viewerCapture ?? "balanced";
+    // 시청자가 고른 화질 — 시청 프레임 캡처에만 쓰고, 바뀌면 감시 중인 스크린캐스트를 새 프로필로 다시 건다.
+    const nextCapture = snapshot.viewerCapture ?? "balanced";
+    if (nextCapture !== viewerCapture) {
+      viewerCapture = nextCapture;
+      for (const id of [...screencasts.keys()]) startScreencast(id);
+    }
     if (snapshot.shortcuts !== undefined) {
       registeredShortcuts = new Set(snapshot.shortcuts);
     }

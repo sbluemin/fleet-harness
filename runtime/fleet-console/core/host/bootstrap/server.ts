@@ -633,6 +633,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         try { forgetShellOwner(handle); } catch (error) { recordFailure("session_shell_forget_failed", error); }
         remoteSessionBindings.closeSession(handle);
       }
+      // 원격 세션이 끝나면 그 세션이 선언한 시청 맞춤도 그 자리에서 걷는다 — 리스 만료까지 실행 측 크기를 붙들지 않는다.
+      try { browserService.clearAllRemoteFits(); } catch (error) { recordFailure("browser_remote_fit_clear_failed", error); }
       if (controlEndNotifyQueued) return;
       controlEndNotifyQueued = true;
       queueMicrotask(() => {
@@ -1484,9 +1486,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     setShell: (req, snapshot) => {
       const owner = shellOwnerOf(req);
       if (owner === null) return;
+      const hadRemoteControl = shellHasRemoteControl(owner);
       // homeOrigin이 비면 그 창은 더 이상 집을 주장하지 않는다 — 빈 스냅샷을 남기는 대신 지운다.
       if (snapshot.homeOrigin === null) desktopShellsByOwner.delete(owner);
       else desktopShellsByOwner.set(owner, snapshot);
+      // 이 게시에서 원격 조작 자격이 사라졌다면 시청 측이 선언한 맞춤도 즉시 걷는다.
+      if (hadRemoteControl && !shellHasRemoteControl(owner)) { try { browserService.clearAllRemoteFits(); } catch { /* 다음 상태가 정리한다. */ } }
       // 이 게시는 화면이 이미 물어본 뒤에 도착했을 수 있다(재기동·새로고침). 그 창에만 실어 보낸다.
       broadcastDesktopShellChanged(owner, snapshot);
       // 원격 조작 능력이 이 게시에 실리거나 빠지면, 이미 열린 투영의 remoteControl 도 다시 보낸다.

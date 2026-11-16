@@ -5,7 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { readChromeHistory } from "../src/chrome-history.js";
 import { createBrowserHistoryStorage } from "../src/browser-history-storage.js";
-import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, type DesktopBrowserRelay, type DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_EVENT, DESKTOP_BROWSER_EVENTS_PATH, DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER, DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER, DESKTOP_BROWSER_FRAME_PATH, DESKTOP_BROWSER_FRAME_WIDTH_HEADER, DESKTOP_BROWSER_OWNER_HEADER, DESKTOP_BROWSER_PATH, DESKTOP_BROWSER_RELAY_PATH, DESKTOP_BROWSER_VIEW_HEADER, type DesktopBrowserRelay, type DesktopBrowserSnapshot } from "@fleet-console/protocol/desktop";
 import type { WebContentsView } from "electron";
 import { createDesktopShellWindow, createDesktopViewStack, parkedNativeBounds } from "../src/shell-window.js";
 import { createBrowserSurface } from "../src/browser-surface.js";
@@ -68,11 +68,12 @@ function deliverViewRequest(
 }
 
 /** 셸이 만든 네이티브 뷰 — 이 계약이 보는 것은 만들어졌는지, 닫혔는지, 어떤 CDP 명령을 받았는지뿐이다. */
-function fakeView(partition: string, created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter }>): WebContentsView {
+function fakeView(partition: string, created: Array<{ partition: string; closed: boolean; commands: string[]; sent?: Array<{ method: string; params: Record<string, unknown> }>; contents: EventEmitter }>): WebContentsView {
   const record = {
     partition,
     closed: false,
     commands: [] as string[],
+    sent: [] as Array<{ method: string; params: Record<string, unknown> }>,
     contents: new EventEmitter(),
     filter: null as { urls: readonly string[] } | null,
     listener: null as ((details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number }, callback: (response: { requestHeaders?: Record<string, string> }) => void) => void) | null,
@@ -92,8 +93,9 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
       attach: () => {},
       detach: () => {},
       isAttached: () => true,
-      sendCommand: (method: string) => {
+      sendCommand: (method: string, params?: Record<string, unknown>) => {
         record.commands.push(method);
+        record.sent.push({ method, params: params ?? {} });
         return method === "Page.navigate" ? new Promise((_resolve, reject) => { rejectPending = reject; }) : Promise.resolve({});
       },
     }),
@@ -496,6 +498,107 @@ describe("managed browser auth and on-demand frames", () => {
     expect(created[0]!.closed).toBe(false);
     views.stop();
     expect(created[0]!.frameSubs).toEqual({ begin: 1, end: 1 });
+  });
+
+  it("streams viewer frames from the page screencast instead of polling captures", async () => {
+    let lifetime: DesktopBrowserSnapshot = { generation: 1, epoch: "life", views: [view("view-1")], commands: [] };
+    const frames: { body: Buffer; headers: Headers }[] = [];
+    const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
+    const headerOf = (init?: RequestInit): Headers => new Headers(init?.headers);
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const url = new URL(String(input));
+      if (url.pathname === DESKTOP_BROWSER_RELAY_PATH) return new Response(null, { status: 204 });
+      if (url.pathname === DESKTOP_BROWSER_FRAME_PATH) {
+        frames.push({ body: Buffer.from(init?.body as Uint8Array), headers: headerOf(init) });
+        return new Response(null, { status: 204 });
+      }
+      if (url.pathname === DESKTOP_BROWSER_PATH) return Response.json(lifetime);
+      if (url.pathname === DESKTOP_BROWSER_EVENTS_PATH) {
+        const frame = new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`);
+        return new Response(new ReadableStream<Uint8Array>({ start: (controller) => { streams.push(controller); controller.enqueue(frame); } }));
+      }
+      return new Response(null, { status: 404 });
+    });
+    const created: Array<{ partition: string; closed: boolean; commands: string[]; sent: Array<{ method: string; params: Record<string, unknown> }>; contents: EventEmitter; frameSubs: { begin: number; end: number } }> = [];
+    const shell = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 800, height: 600 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 1, reclaimFocus: vi.fn() } satisfies PageHost;
+    let releaseCapture: (() => void) | null = null;
+    const captures: Buffer[] = [];
+    let clock = 5_000;
+    const publish = (next: DesktopBrowserSnapshot): void => {
+      lifetime = next;
+      streams.at(-1)!.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`));
+    };
+    const views = createDesktopBrowserViews({
+      shell: () => shell,
+      consoleContents: () => null,
+      surface: { apply: vi.fn(), target: () => null, lastPage: () => null, inputLocked: () => false, refresh: vi.fn(), dispose: vi.fn() },
+      createView: (partition) => fakeView(partition, created),
+      product: () => "Chrome/150.0",
+      userAgent: () => "Mozilla/5.0 Chrome/150.0",
+      auth: () => ({ token: "lock-token", ownerId: "owner-1" }),
+      hostLabel: () => "desk",
+      platform: "darwin",
+      accessPath: "wsl",
+      captureViewerFrame: () => new Promise((resolve) => {
+        const jpeg = Buffer.from("fallback");
+        captures.push(jpeg);
+        releaseCapture = () => resolve({ jpeg, width: 320, height: 180, cssWidth: 506, cssHeight: 848 });
+      }),
+      now: () => clock,
+      schedule: (cb, ms) => {
+        const handle = { ms, cancelled: false };
+        if (ms === 0) queueMicrotask(() => { if (!handle.cancelled) cb(); });
+        return handle;
+      },
+      cancel: (handle) => { (handle as { cancelled: boolean }).cancelled = true; },
+      fetch: fetch as typeof globalThis.fetch,
+    });
+    const screencastParams = (): Record<string, unknown>[] => created[0]!.sent.filter((command) => command.method === "Page.startScreencast").map((command) => command.params);
+    try {
+      await views.start(ORIGIN);
+      await vi.waitFor(() => expect(created).toHaveLength(1));
+      publish({ ...lifetime, generation: 2, watchedViewIds: ["view-1"] });
+      // 감시가 시작되면 스크린캐스트를 걸고, 첫 장이 오기 전에는 폴백 캡처가 한 장을 만든다.
+      await vi.waitFor(() => expect(created[0]!.commands).toContain("Page.startScreencast"));
+      expect(screencastParams()[0]).toMatchObject({ format: "jpeg", quality: 72, maxWidth: 1280, everyNthFrame: 1 });
+      await vi.waitFor(() => expect(captures).toHaveLength(1));
+      releaseCapture!();
+      await vi.waitFor(() => expect(frames).toHaveLength(1));
+      expect(frames[0]!.body.equals(Buffer.from("fallback"))).toBe(true);
+
+      // 스크린캐스트 프레임은 디코드 없이 그대로 올라가고, CSS 크기는 메타데이터의 장치 크기다.
+      const page = created[0]!.contents as EventEmitter & { debugger: EventEmitter };
+      const streamed = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 0x01]);
+      const emitFrame = (jpeg: Buffer): void => {
+        clock += 100;
+        page.debugger.emit("message", {}, "Page.screencastFrame", { data: jpeg.toString("base64"), metadata: { deviceWidth: 506, deviceHeight: 848 }, sessionId: 3 });
+      };
+      emitFrame(streamed);
+      await vi.waitFor(() => expect(frames).toHaveLength(2));
+      expect(frames[1]!.body.equals(streamed)).toBe(true);
+      expect(frames[1]!.headers.get(DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER)).toBe("506");
+      expect(frames[1]!.headers.get(DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER)).toBe("848");
+      expect(frames[1]!.headers.get(DESKTOP_BROWSER_FRAME_WIDTH_HEADER)).toBe("506");
+      expect(created[0]!.commands).toContain("Page.screencastFrameAck");
+      // 스크린캐스트가 밀어 주는 동안 폴링 캡처는 더 돌지 않는다.
+      expect(captures).toHaveLength(1);
+
+      // 같은 JPEG 는 두 번 올리지 않는다.
+      emitFrame(streamed);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(frames).toHaveLength(2);
+      // 화질이 바뀌면 감시 중인 스크린캐스트를 새 프로필로 다시 건다.
+      publish({ ...lifetime, generation: 3, watchedViewIds: ["view-1"], viewerCapture: "high" });
+      await vi.waitFor(() => expect(screencastParams()).toHaveLength(2));
+      expect(screencastParams()[1]).toMatchObject({ quality: 85, maxWidth: 1920 });
+      expect(created[0]!.commands).toContain("Page.stopScreencast");
+
+      // 감시가 끝나면 스크린캐스트도 멈춘다.
+      publish({ ...lifetime, generation: 4, watchedViewIds: [] });
+      await vi.waitFor(() => expect(created[0]!.commands.filter((method) => method === "Page.stopScreencast")).toHaveLength(2));
+    } finally {
+      views.stop();
+    }
   });
 
   it("keeps view bounds on the surface page and leaves the logical viewport to the console emulation", async () => {

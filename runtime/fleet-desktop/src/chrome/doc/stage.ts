@@ -65,8 +65,9 @@ export function mountStage(): {
   /**
    * 제어가 켜진 동안만 스테이지 크기를 알린다 — Console 이 이 크기를 실행 측 에뮬레이션 뷰포트로 삼는다.
    * 맞춤은 리스다: 5초마다 다시 알려 Console 이 시청 측이 사라진 것을 15초 안에 알아채게 한다.
+   * 창을 끄는 동안 온 크기는 짧게 모은다 — 디바운스 자체가 실행 측 반영을 늦추지 않게 60ms.
    */
-  const FIT_DEBOUNCE_MS = 150;
+  const FIT_DEBOUNCE_MS = 60;
   const FIT_LEASE_MS = 5_000;
   const FIT_EPSILON_PX = 4;
   let fitting = false;

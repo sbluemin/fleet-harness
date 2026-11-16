@@ -1242,6 +1242,8 @@ export class BrowserService {
     if (!space) throw new BrowserPolicyError("browser_space_not_found", "That space does not exist. Check tabs_context(all:true).", { spaceId });
     if (action === "take") {
       if (space.control !== "user") { space.control = "user"; this.deps.log(`control taken by the person in ${op.objectiveId} space ${spaceId}`); }
+      // 사람이 제어를 가져오면 시청 측 맞춤은 그 자리에서 끝난다 — 실행 측은 자기 크기로 돌아간다.
+      this.clearRemoteFit(op, space, { reapply: true });
       this.emitState(op);
       return space.control;
     }
@@ -2167,6 +2169,22 @@ export class BrowserService {
     }, REMOTE_FIT_TTL_MS);
     (timer as { unref?: () => void }).unref?.();
     space.remoteFit = { width: size.width, height: size.height, at: Date.now(), timer };
+  }
+
+  /**
+   * 모든 스페이스의 전이적 원격 맞춤을 즉시 걷는다 — Console 원격 제어 자격이 회수되거나 원격 세션이 끝날 때.
+   * 맞춤은 스페이스의 뷰포트를 건드리지 않았으므로 곧바로 실행 측 크기로 돌아간다(리스 만료를 기다리지 않는다).
+   */
+  clearAllRemoteFits(): void {
+    for (const op of this.objectiveRecords.values()) {
+      let changed = false;
+      for (const space of op.spaces.values()) {
+        if (!space.remoteFit) continue;
+        this.clearRemoteFit(op, space, { reapply: true });
+        changed = true;
+      }
+      if (changed) this.emitState(op);
+    }
   }
 
   /** 원격 맞춤을 걷는다. 스페이스의 뷰포트는 맞춤이 건드리지 않았으므로 그대로 복원된다. */

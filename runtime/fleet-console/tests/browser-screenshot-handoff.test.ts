@@ -399,6 +399,17 @@ describe("objectiveRecord browser service contracts", () => {
       expect(desktop.deviceMetrics.at(-1)).toMatchObject({ width: 320, height: 640, mobile: false });
       expect(opSpaces.get("default")).toMatchObject({ viewport: { preset: "mobile", setBy: "user" }, remoteFit: { width: 320, height: 640 } });
 
+      // 실행 측이 제어권을 가져오면(Console 원격 제어 회수) 리스 만료를 기다리지 않고 맞춤이 걷힌다.
+      service.setControl(OBJECTIVE, "default", "take");
+      expect(opSpaces.get("default")!.remoteFit).toBeNull();
+      expect(desktop.deviceMetrics.at(-1)).toMatchObject({ width: 375, height: 812, mobile: true });
+
+      // 원격 세션이 끝나도 같은 자리에서 걷힌다.
+      await service.setViewport(OBJECTIVE, { preset: "responsive", width: 320, height: 640 }, "user", "default", { remoteFit: "set" });
+      service.clearAllRemoteFits();
+      expect(opSpaces.get("default")!.remoteFit).toBeNull();
+      expect(desktop.deviceMetrics.at(-1)).toMatchObject({ width: 375, height: 812, mobile: true });
+
       // 엔진이 사라지면 리스 타이머를 기다리지 않고 맞춤만 걷는다 — 스페이스의 뷰포트는 그대로다.
       await service.stopEngine();
       expect(opSpaces.get("default")!.remoteFit).toBeNull();
