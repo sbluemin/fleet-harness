@@ -54,6 +54,15 @@ For isolated macOS dev runs using only fake credentials, you may append `--use-m
 
 For a no-cost fake, select it in this allowlist before Desktop boots: point `CLAUDE_BIN` at [`fake-claude.mjs`](../../scripts/fake-claude.mjs) and set an owned `FAKE_CLAUDE_DIR`, instead of the sleep stub, and confirm that executable after boot. Apply [No-cost fake Commodore](../setup.md#no-cost-fake-commodore) and [in-process SDK tools](../setup.md#in-process-sdk-tools) to the Console this Desktop starts; do not start their `serve` or stop it with `cli.mjs stop`. Name the Commodore, session, and result only as those sections require. Its call limit stays the one stated in that SDK section.
 
+To prepare and launch in one call through the [launch gate](#launch-gate), use the helper below. It claims the owned run and builds the same allowlist. `--agent-cli fake|absent` is required: `fake` selects `fake-claude.mjs`; `absent` sets missing CLI paths. The CDP port is forwarded to `pnpm desktop`; `--inspector-port` is only checked for conflicts and starts no inspector. For the main inspector, use the [manual launch](native-and-package.md#main-inspector-observation-lane).
+
+```bash
+node <worktree>/.claude/skills/console-e2e/scripts/prepare-owned-desktop.mjs <worktree> \
+  --run-dir <owned-run> --cdp-port <cdp-port> --inspector-port <inspector-port> --agent-cli fake
+```
+
+`--dry-run` performs read-only isolation and gate checks without claiming ownership, writing files, or launching. Exit codes follow the gate; helper refusal also exits 20.
+
 Starting the Electron binary yourself bypasses that data root and reads the user's real one. It also drops the managed Node path, which a development build takes from `FLEET_CONSOLE_NODE_PATH` or from the `npm_node_execpath` that pnpm/npm sets, and without it the main process aborts before opening a window. Keep a direct invocation for a claim that genuinely needs one, and give it the same allowlist, still as the command after the launch gate's `--`. Started that way, the main's parent is the gate process, not init, so the helper below, which selects init-parented mains, does not stop it; stop it by its recorded PID. Use an absolute Node path and absolute E2E main path; package-filter commands change cwd.
 
 Store temporary logs, screenshots, and artifacts in the session scratchpad, and place `<owned-run>` per [Setup](../setup.md#isolate-the-console). Set the absolute target worktree path for every command. `ab()`, `SESSION`, and `CDP_PORT` do not survive independent shell calls; redeclare them or substitute the same recorded literals.
