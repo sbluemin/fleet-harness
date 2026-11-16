@@ -190,8 +190,8 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
     try {
       const where = `commodore ${options.commodoreId} · ${options.coordinates.model}${options.coordinates.effort ? `/${options.coordinates.effort}` : ""}`;
       const logged = new Error(clip(maskSensitiveInfo(`${where} · ${failure.code} · ${raw}`), MAX_FAILURE_LOG));
-      // 원래 스택이 있으면 그대로 — 예외 경로에서만 있다.
-      const stack = thrown instanceof Error ? thrown.stack : undefined;
+      // 원래 스택이 있으면 그것을, 없으면 방금 만든 스택을 쓴다 — 둘 다 콘솔 사용자 경로를 담을 수 있어 가린다.
+      const stack = thrown instanceof Error ? thrown.stack : logged.stack;
       if (stack) logged.stack = clip(maskSensitiveInfo(stack), MAX_FAILURE_LOG);
       log(kind, logged);
     } catch { /* 진단 기록 실패가 턴 결과를 바꾸지 않는다 */ }

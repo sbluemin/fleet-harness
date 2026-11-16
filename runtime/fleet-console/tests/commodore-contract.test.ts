@@ -2356,6 +2356,9 @@ describe("commodore session", () => {
     expect(logged[0]).toMatchObject({ kind: "commodore_turn_error" });
     expect(logged[0]!.message).toContain("commodore t1 · opus[1m]/high · image_too_large");
     expect(logged[0]!.message).toContain("image exceeds 5 MB");
+    // 예외 객체가 없는 결과 오류의 스택도 콘솔 사용자 경로를 그대로 남기지 않는다.
+    expect(logged[0]!.stack).toBeTruthy();
+    expect(logged[0]!.stack).not.toContain("/Users/");
 
     // 예외 경로 — 원인이 코드 한 낱말이 아니면 분류하고, 원래 스택을 함께 남긴다.
     stub.setScript(async () => { throw new Error("Claude Code process exited with code 1"); });
