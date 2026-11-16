@@ -16,7 +16,7 @@ import { autoUpdater } from "electron-updater";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { persistProfileSessionCookies, PROFILE_SESSION_COOKIE_MAX_AGE_SECONDS, PROFILE_SESSION_COOKIE_PERSIST_TIMEOUT_MS, type ProfileCookieJar, type ProfileCookieRecord } from "./browser-profile-cookies.js";
-import { describeConsoleLockRecoverDialog, isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
+import { describeConsoleLockRecoverDialog, describeConsoleLockRecoverRefusedDialog, isConsoleConflict, showBootFailureAndExit, showConsoleConflictAndQuit } from "./boot-dialogs.js";
 import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole, republishShellHomeOnArrival, type ShellHomePublication } from "./console-handoff.js";
 import { createHydratedDesktopEnvironment, migrateLegacyBrowserProfileRoot, resolveBrowserProfileRoot, resolveDesktopUserDataDirectory, resolveLegacyBrowserProfileRoot } from "./environment.js";
@@ -285,16 +285,7 @@ async function boot(): Promise<void> {
     if (choice.response !== 0) throw new Error("console_lock_recover_declined");
     const result = await recoverConsoleLockSlot(path.join(environment.consoleDir, "console.lock"), environment.dataDir);
     if (result.kind === "refused") {
-      const korean = entryLanguage === "ko";
-      await dialog.showMessageBox({
-        type: "warning",
-        title: korean ? "잠금을 지우지 않았습니다" : "The lock was left in place",
-        message: korean ? "살아 있는 Console이나 진행 중인 업데이트가 있어 잠금을 지우지 않았습니다." : "Fleet did not clear the lock.",
-        detail: result.reason,
-        buttons: [korean ? "확인" : "OK"],
-        defaultId: 0,
-        cancelId: 0,
-      });
+      await dialog.showMessageBox(describeConsoleLockRecoverRefusedDialog(result, entryLanguage));
       throw new Error("console_lock_recover_declined");
     }
     logger.info(`cleared a stuck Console lock (${result.kind}) and is starting again`);
