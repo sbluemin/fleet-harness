@@ -322,7 +322,8 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     if (!request || request.commodoreId !== commodoreId) return;
     consumeRequest(request.nonce);
     if (Date.now() - request.at > REQUEST_TTL_MS) return;
-    setTempExpanded(true);
+    // 이미 펼쳐 둔 사람에게는 잠깐 펼침을 얹지 않는다 — 닫을 때 칩 초점 복귀를 가로채지 않게.
+    if (settingsStore.state?.commodoreComposerChipsExpanded !== true) setTempExpanded(true);
     reopen(request.section);
   }, [request, commodoreId]); // eslint-disable-line react-hooks/exhaustive-deps -- reopen 은 최신 상태를 읽는다.
 
