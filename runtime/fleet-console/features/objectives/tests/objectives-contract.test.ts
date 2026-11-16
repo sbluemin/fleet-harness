@@ -25,6 +25,7 @@ import { createObjectiveStore, ObjectiveStoreError, type ObjectiveStore } from "
 import { extensionOf, MAX_FOLLOWUPS, MAX_TITLE, type Objective, type ObjectiveEvent } from "../shared/types.js";
 import { RESULT_LIMITS, type ObjectiveResult } from "../shared/results.js";
 import { createGhPrLookup, createPrStatusService } from "../host/pr-status.js";
+import { readLaunchVariantGroups } from "../shared/records/launch-variants.js";
 
 /**
  * 목표의 필수 계약 — 목표 레코드는 Objective 없이 태어나고, 개시·구상 때 같은 id 의 지휘관이 한 번만 선다.
@@ -3730,5 +3731,30 @@ describe("Objectives contract", () => {
     expect((await route("objective/patch", { objectiveId: id, patch: { title: humanTitle } })).status).toBe(200);
     expect(store.find(id)!.title).toBe(humanTitle);
     expect((await route("objective/patch", { objectiveId: id, patch: { title: `${humanTitle}!` } })).status).toBe(400);
+  });
+
+  it("reads legacy single quotaScope string into quotaScopes on saved launch variants", () => {
+    const groups = readLaunchVariantGroups([
+      {
+        id: "gateway:antigravity",
+        label: "Antigravity",
+        rows: [
+          {
+            id: "antigravity--gemini-4-argon",
+            label: "Gemini-4-Argon",
+            launch: { model: "antigravity--gemini-4-argon" },
+            quotaScope: "model:gemini-4-argon",
+          },
+          {
+            id: "antigravity--claude-opus-5.5",
+            label: "Claude-Opus-5.5",
+            launch: { model: "antigravity--claude-opus-5.5" },
+            quotaScopes: ["pool:claude-gpt", "model:claude-opus-5.5"],
+          },
+        ],
+      },
+    ]);
+    expect(groups[0]?.rows[0]?.quotaScopes).toEqual(["model:gemini-4-argon"]);
+    expect(groups[0]?.rows[1]?.quotaScopes).toEqual(["pool:claude-gpt", "model:claude-opus-5.5"]);
   });
 });

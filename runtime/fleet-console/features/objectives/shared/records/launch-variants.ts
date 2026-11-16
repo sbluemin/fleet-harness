@@ -29,7 +29,9 @@ function readLaunchVariantRow(value: unknown): ObjectiveLaunchVariantRow | null 
     : [];
   const quotaScopes = Array.isArray(value.quotaScopes)
     ? value.quotaScopes.filter((scope): scope is string => typeof scope === "string" && scope.length > 0)
-    : [];
+    : typeof value.quotaScope === "string" && value.quotaScope.length > 0
+      ? [value.quotaScope]
+      : [];
   return {
     id: value.id,
     label: value.label,
