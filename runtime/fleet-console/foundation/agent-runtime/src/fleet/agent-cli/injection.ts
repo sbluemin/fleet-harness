@@ -20,11 +20,9 @@ import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { prepareClaudeSession, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "./session.js";
 import type {
-  AgentCliPlugin,
   AgentCliInjectionContext,
   AgentCliMcpServerArg,
   AgentCliProfile,
-  FleetHookExec,
 } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
@@ -33,21 +31,8 @@ export interface InjectAgentCliProfileOptions {
   readonly pluginDirs?: readonly string[];
   /** 그 플러그인 MCP 선언의 `${VAR}` 값. 자식 환경에만 실린다(`session.ts`). */
   readonly pluginEnv?: Readonly<Record<string, string>>;
-  /** 호스트가 기동에 한 번 묶어 둔 플러그인. 런치는 그 주소만 싣는다. */
-  readonly plugin: AgentCliPlugin;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
-  readonly captureSessionHookExec?: FleetHookExec;
-  // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호 hook. host가 빌드해 주입한다.
-  readonly turnStartHookExec?: FleetHookExec;
-  readonly turnEndHookExec?: FleetHookExec;
-  readonly workspaceHookExec?: FleetHookExec;
-  // 입력 대기 신호 hook. Claude plugin에 와이어링된다.
-  readonly inputWaitingHookExec?: FleetHookExec;
-  // 살아 있는 백그라운드 작업 보고(SubagentStop) hook. 턴 종료 시점의 같은 보고는 turnEndHookExec이 함께 실어 나른다.
-  readonly backgroundReportHookExec?: FleetHookExec;
-  // 목표명 자동 작명(UserPromptSubmit) hook. host가 빌드해 주입한다.
-  readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   /**
    * launch·시스템 프롬프트 파일을 둘 자리. 정리 없이 끝난 프로세스의 잔재를 회수할 호스트(Console)만
@@ -157,11 +142,9 @@ export async function injectAgentCliProfile(
       ...(options.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: options.claudeCodeDisabledAgents } : {}),
       ...(options.claudeCodeDisabledTools ? { claudeCodeDisabledTools: options.claudeCodeDisabledTools } : {}),
       ...(options.disableAutoMemory !== undefined ? { disableAutoMemory: options.disableAutoMemory } : {}),
-      plugin: options.plugin,
       ...(options.pluginDirs?.length ? { pluginDirs: options.pluginDirs } : {}),
       ...(options.pluginEnv ? { pluginEnv: options.pluginEnv } : {}),
-      ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
-      // 게이트웨이 정체성은 Mod가 세션 시작에 올린다. argv에도 파일에도 정의가 실리지 않는다.
+      // 게이트웨이 정체성은 SDK 세션의 agents 등록이 소유한다. argv에도 파일에도 정의가 실리지 않는다.
     });
     const cleanup = createOnceCleanup(() => {
       for (const tempCleanup of tempCleanups) {
@@ -174,11 +157,9 @@ export async function injectAgentCliProfile(
       ...(options.additionalDirectories ? { additionalDirectories: options.additionalDirectories } : {}),
       cliId: profile.id,
       mcpServers,
-      pluginUrl: session.pluginUrl,
       ...(session.pluginDirs ? { pluginDirs: session.pluginDirs } : {}),
       ...(session.skillOverrides ? { skillOverrides: session.skillOverrides } : {}),
       sessionCoordinate: session.coordinate,
-      ...(options.workspaceHookExec ? { workspaceHookExec: options.workspaceHookExec } : {}),
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
       ...(session.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: session.claudeCodeDisabledAgents } : {}),
       ...(session.claudeCodeDisabledTools ? { claudeCodeDisabledTools: session.claudeCodeDisabledTools } : {}),

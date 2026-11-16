@@ -152,13 +152,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
   };
   const specs = createBrowserToolSpecs(deps);
   let disposed = false;
-  // 터미널 Objective 의 CLI 에 붙여넣기를 누르는 손 — PTY 는 실행 런타임이 소유하므로 그쪽이 기동하며 묶는다.
-  let terminalPaste: ((objectiveId: string) => boolean) | null = null;
   return {
-    /** 실행 런타임이 PTY 의 Ctrl+V 쓰기를 건다. */
-    bindTerminalPaste(paste: (objectiveId: string) => boolean): () => void { terminalPaste = paste; return () => { if (terminalPaste === paste) terminalPaste = null; }; },
-    /** 터미널 Objective 의 CLI 에 붙여넣기를 누른다. PTY 가 없거나 죽었으면 false. */
-    pasteIntoTerminal(objectiveId: string): boolean { return terminalPaste ? terminalPaste(objectiveId) : false; },
     connect(): BrowserMcpConnection {
       if (disposed) throw new Error("Browser MCP host is disposed");
       const controller = new AbortController();

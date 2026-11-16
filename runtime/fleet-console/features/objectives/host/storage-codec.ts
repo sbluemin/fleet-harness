@@ -20,7 +20,7 @@ export interface ObjectiveDocumentContext {
   readonly legacyFolders?: readonly { readonly path: string; readonly ids: readonly string[] }[];
   readonly theaterIdOf: (cwd: string) => string;
 }
-const executionKeys = ["cwd", "session", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "launchedBy", "consoleUse", "computerUse", "labelSource", "providerTitle", "objectiveLanguage"] as const;
+const executionKeys = ["cwd", "session", "dormantBorn", "restoredDormant", "subagentSpawn", "launchedBy", "consoleUse", "computerUse", "labelSource", "providerTitle", "objectiveLanguage"] as const;
 const sessionKeys = ["harness", "model", "effort", "sessionName", "id", "transcriptPath", "source", "capturedAt", "disableSubagents", "disableAutoMemory", "modelSpeed", "previousSessions"] as const;
 const surfaceKeys = ["title", "groupId", "order", "ts", "sessions", ...executionKeys];
 export const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === "object" && !Array.isArray(value);

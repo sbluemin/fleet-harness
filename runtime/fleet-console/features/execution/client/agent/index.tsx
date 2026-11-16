@@ -4,7 +4,6 @@ import type { ExecutionClientDeps } from "../deps.js";
 import { OpenUINavigationContext } from "./openui-boundary.js";
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
-import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import "@fleet-console/font-picker/styles.css";
 import { CaptionBrowserUseGlyph, CaptionComputerUseGlyph } from "../../../workspace/client/components/caption-actions.js";
 import { launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
@@ -19,30 +18,27 @@ import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
 import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus } from "../../../../core/client/src/integration/store.js";
 import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
-import { TerminalSurface } from "../terminal/shared/index.js";
 import { disposeObjectiveViewState, installObjectiveViewState } from "../objective-view-state.js";
 import type { ChatReadingWidth, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, setChatReadingWidth, setTerminalInactiveFlush, setTerminalRenderer, setTerminalCopyOnSelect, setTerminalScrollback, TERMINAL_SCROLLBACK_CHOICES, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
 import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
 import { useObjectiveLinks } from "./objective-links.js";
-import { UseRequestCards } from "./use-request-card.js";
 import { MobileSurfaceProvider, mobileObjectiveOf, useMobileSurface } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, recordObjectiveReveal, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
-import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
+import { getT, useTerminalLocale } from "./i18n/index.js";
 
 
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
-import { AgentApiError, confirmAgentSessionLinks, discardLaunchAttachment, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
+import { discardLaunchAttachment, messageAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { HistoryFoldButton } from "./chat/composer.js";
 import { installGroupTimeline, useGroupClusters, useHasGroupConversation } from "./chat/group-timeline-store.js";
 import { installGroupConversationSurface, MobileGroupConversation } from "./chat/group/index.js";
 import { useCommanderLedgerFramed } from "./chat/group/commander-ledger.js";
 import { startAgentConnection } from "./connection.js";
-import { applySessionUpdate, getAgentState, removeSession, selectSession, useAgentState } from "./store.js";
-import type { SessionInfo } from "./types.js";
+import { removeSession, useAgentState } from "./store.js";
 
 interface SettingToggleRowProps {
   readonly title: string;
@@ -61,8 +57,6 @@ const RENDERER_IDS = ["webgl", "dom"] as const satisfies readonly TerminalRender
 // 절약 → 즉시 순서로 둔다 — 세그먼트를 오른쪽으로 갈수록 더 자주 그리는 축으로 읽게 한다.
 const INACTIVE_FLUSH_IDS = ["saving", "balanced", "instant"] as const satisfies readonly TerminalInactiveFlush[];
 
-const AGENT_TICKET_PATH = "/api/v1/agent/ticket";
-const TERMINAL_WS_PATH = "/api/v1/terminal/ws";
 const PIN_SLACK_PX = 56;
 
 const TRACK_PHASE_COPY_KEYS = {
@@ -143,50 +137,17 @@ const agentEndedNotification = defineNotificationKind({
   title: (locale) => getT(locale)("terminal.notifications.agentTurnEnded"),
 });
 
-// resume 실패는 사용자의 다음 행동(Try again / Start fresh)이 필요한 이벤트다.
-// ".end"/"done"을 id에 넣지 않아 core mapNotificationKind가 input-waiting으로 분류하게 둔다.
-const agentResumeFailedNotification = defineNotificationKind({
-  id: "agent.resume-failed",
-  title: (locale) => getT(locale)("terminal.notifications.resumeFailed"),
-});
-
-function isLaunchOptionError(error: unknown): boolean {
-  return error instanceof AgentApiError
-    && (error.message === "gateway_model_not_enabled" || error.message === "invalid_effort");
-}
-
-function resumeFailureMessage(error: unknown, locale?: ConsoleLocale): string {
-  return getT(locale)(isLaunchOptionError(error)
-    ? "terminal.notifications.resumeLaunchOptionFailedMessage"
-    : "terminal.notifications.resumeFailedMessage");
-}
-
 export const agentExecution: ClientFeatureDescriptor = {
   id: null,
   objectiveRecordKinds: [agentObjectiveKind],
   settingsSections: [generalSettingsSection, agentSettingsSection],
-  notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
+  notificationKinds: [agentAttentionNotification, agentEndedNotification],
   closeObjective: async (objectiveId) => {
     try {
       await terminateAgentSession(objectiveId);
     } finally {
       disposeObjectiveViewState(objectiveId);
       removeSession(objectiveId);
-    }
-  },
-  resumeObjective: async (objectiveId) => {
-    // 팔레트·사이드바 등 프레임 밖 resume 진입점. 패널의 Start fresh 판정과 같은 근거를 쓴다 —
-    // 재개 마커가 없으면 서버가 409 resume_unavailable 로 거절하므로 fresh 로 보낸다.
-    try {
-      await resumeSession(objectiveId, { fresh: await shouldResumeFresh(objectiveId) });
-      installedNotifications?.dismiss(objectiveId);
-    } catch (error) {
-      installedNotifications?.emit({
-        kind: agentResumeFailedNotification.id,
-        objectiveId,
-        message: resumeFailureMessage(error, currentTerminalLocale()),
-      });
-      throw error;
     }
   },
   // 새 세션 멘션 전달. 실패 표현은 컴포저가 거절 코드로 소유하므로 여기서는 알림을 내지 않는다.
@@ -212,7 +173,7 @@ export { ComposerTopEntries } from "./chat/composer-top-entries.js";
 
 export const objectiveRecordKinds = [agentObjectiveKind] as const;
 
-// resumeObjective 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
+// close·message 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
 // (같은 프로세스 내 plugin 인스턴스는 하나라 core의 단일 install 계약과 충돌하지 않는다.)
 let installedNotifications: ExecutionClientDeps["notifications"] | null = null;
 let installedModels: ClientModelsCapability | undefined;
@@ -376,7 +337,6 @@ function AgentCaptionActions({ context, part = "shelf" }: { readonly context: Ob
 
 function AgentCaptionActionsBody({ context, part }: { readonly context: ObjectiveRenderContext; readonly part: AgentCaptionPart }) {
   const t = getT(context.language ?? "en");
-  const chatMode = context.objectiveRecord.chatMode === true;
   const groupConversation = useHasGroupConversation(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
 
   // 브라우저 문 — 대화 중심 화면에서는 이 Session 의 브라우저를 바로 연다. 허용은 패널 안에서 켠다.
@@ -391,7 +351,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
     : null;
 
   // 그룹 대화는 구성원 턴을 항상 접는다. 1:1 채팅만 이전 문답 자동 접기 전환을 보탠다.
-  if (part === "view-switch") return chatMode && !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null;
+  if (part === "view-switch") return !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null;
   // 표식·말풍선이 없을 때는 빈 조각을 넘기지 않는다 — 머리 줄이 빈 캡슐을 세우지 않게.
   if (!using.computer && bubble === null) return null;
   return (
@@ -452,19 +412,6 @@ function RevealBubble({ context, reveal }: { readonly context: ObjectiveRenderCo
 }
 
 /**
- * 터미널 표면의 PTY가 끝났다(4001). 그 표면이 붙어 있던 세대의 항목일 때만 지운다 — 항목이 이미 다른 세대를
- * 싣고 있으면 그 사이 새 PTY가 섰다는 뜻이고, 늦게 온 옛 종료가 방금 선 세션을 지우면 패널은 「종료됨」에
- * 멈춘다. 세대가 없는 항목(옛 서버)은 예전처럼 지운다.
- */
-function removeExitedSession(sessionId: string, mountedGeneration: string | undefined): void {
-  const current = getAgentState().sessions[sessionId];
-  if (current?.generation !== undefined && current.generation !== mountedGeneration) return;
-  removeSession(sessionId);
-}
-
-const SORTIE_RIBBON_INLINE_LIMIT = 2;
-
-/**
  * 모바일 Objective 화면이면 본문 전체를 모바일 판정으로 감싸고(CSS는 `[data-mobile-surface]`만 읽는다)
  * ⋮ 항목을 셸에 올린다. 데스크톱은 감싸지 않아 DOM이 그대로다.
  */
@@ -483,12 +430,8 @@ function AgentObjectiveView({ context }: { readonly context: ObjectiveRenderCont
 function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderContext }) {
   const t = getT(context.language ?? "en");
   const mobileSurface = useMobileSurface();
-  // CLI 확인 줄은 입력 대기 신호(훅이 지는 축)가 선 동안만 — 터미널 출력을 해석해 추정하지 않는다.
-  const awaitingInput = context.runtimeState?.lifecycle === "live" && context.runtimeState.activity === "awaiting";
   const state = useAgentState();
   const observed = state.sessions[context.objectiveId];
-  const session = observed ?? sessionFromObjective(context);
-  const chatMode = context.objectiveRecord.chatMode === true;
   // 주소를 누르면 어디서 열지 먼저 묻는다 — 떠 있는 터미널과 채팅이 같은 카드를 쓴다.
   // 수식 없는 왼클릭은 3행 카드, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다.
   // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다(채팅·CLI 공통). 가운데 칸의 그룹 대화도 같은 길을 쓴다(objective-links).
@@ -500,67 +443,24 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
     openCompanion: () => openBrowserCompanion(context),
   });
   const fileLinkFailure = links.fileLinkFailure;
-  const terminalFileLinks = useAgentTerminalFileLinks(context.objectiveId, context.objectiveRecord.theaterId, context.navigate);
   // 모바일의 살아 있는 그룹 채팅 루트는 1:1 원장 대신 그룹 대화를 세운다(데스크톱 가운데 칸과 같은 화면).
   const groupConversation = useHasGroupConversation(context.objectiveId);
   const openUIOpen = useGroupClusters().find((cluster) => cluster.conversation?.objectiveId === context.objectiveId)?.conversation?.openUIOpen;
   // 그룹 루트의 화면공유는 그룹채팅에 선다 — 이 본문이 지휘관 원장 틀 안에 선 동안에는 다시 그리지 않는다.
   const commanderLedger = useCommanderLedgerFramed(context.objectiveId);
 
-  if (chatMode) {
-    const chatView = (
-      <OpenUINavigationContext.Provider value={openUIOpen ?? null}><AgentChatView context={context} models={installedModels} fileLinkError={fileLinkFailure === null ? null
-        : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} /></OpenUINavigationContext.Provider>
-    );
-    return (
-      <MarkdownLinkBoundary className="agent-stream-host" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" openUIChoose={links.choose} {...links.fileLinks}>
-        {mobileSurface && groupConversation && observed?.chatActive === true
-          ? <MobileGroupConversation root={context.objectiveRecord} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
-          : chatView}
-        {commanderLedger ? null : <ComputerScreenShare objectiveId={context.objectiveId} />}
-        {links.card}
-      </MarkdownLinkBoundary>
-    );
-  }
-
-  if (session.status === "dormant") {
-    return (
-      <div className="agent-stream-host">
-        <DormantObjectiveView context={context} session={session} />
-      </div>
-    );
-  }
-
+  const chatView = (
+    <OpenUINavigationContext.Provider value={openUIOpen ?? null}><AgentChatView context={context} models={installedModels} fileLinkError={fileLinkFailure === null ? null
+      : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} /></OpenUINavigationContext.Provider>
+  );
   return (
-    <div className="agent-stream-host">
-      {/* 떠 있는 PTY만 이 표면을 유지한다. 세대가 바뀌면(재기동) 표면을 새로 붙인다 — 같은 청크로 휴면과 새 기동이 함께 오면 휴면을 그리지 못한 채
-          옛 표면이 남고, 그 연결은 옛 PTY의 종료(4001)로 재접속을 멈춘다. 새 표면이 새 티켓으로 새 PTY에 붙는다. */}
-      <TerminalSurface
-        key={session.generation}
-        objectiveId={session.sessionId}
-        ticketPath={AGENT_TICKET_PATH}
-        wsPath={TERMINAL_WS_PATH}
-        active={context.active}
-        visible={context.bodyLive !== false}
-        keyboardFocusRequestId={context.keyboardFocusRequestId}
-        zoom={context.zoom}
-        theme={context.theme}
-        mobile={mobileSurface}
-        awaitingConfirm={mobileSurface && awaitingInput}
-        {...(mobileSurface ? { mobileDockTop: <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="terminal" /> } : {})}
-        locale={context.language}
-        onStatusDetail={(detail) => context.statusDetail.set(context.objectiveId, detail)}
-        onOpenLink={links.choose}
-        onOpenLinkDirect={links.openDirect}
-        knownLinks={(text) => confirmAgentSessionLinks(session.sessionId, text)}
-        fileLinks={terminalFileLinks}
-        onExit={() => removeExitedSession(session.sessionId, session.generation)}
-      />
-      <ComputerScreenShare objectiveId={context.objectiveId} />
-      {/* 모바일은 같은 카드를 터미널 독 맨 위(mobileDockTop)에 쌓는다 — 여기 떠 있으면 확인 줄을 덮는다. */}
-      {mobileSurface ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="terminal" />}
+    <MarkdownLinkBoundary className="agent-stream-host" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" openUIChoose={links.choose} {...links.fileLinks}>
+      {mobileSurface && groupConversation && observed?.chatActive === true
+        ? <MobileGroupConversation root={context.objectiveRecord} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
+        : chatView}
+      {commanderLedger ? null : <ComputerScreenShare objectiveId={context.objectiveId} />}
       {links.card}
-    </div>
+    </MarkdownLinkBoundary>
   );
 }
 
@@ -650,120 +550,6 @@ function SettingToggleRow({ title, help, value, disabled, onToggle }: SettingTog
       />
     </div>
   );
-}
-
-async function resumeSession(sessionId: string, options?: { readonly fresh?: boolean }): Promise<void> {
-  applySessionUpdate(await resumeAgentSession(sessionId, options));
-  selectSession(sessionId);
-}
-
-// 패널 DormantObjectiveView 의 freshOnly(!session.resumeAvailable) 와 같은 판정.
-// 세션 스냅샷이 아직 없으면 호스트 DTO 의 파생 마커를 읽는다. 조회가 실패하면
-// fresh 를 추측하지 않는다 — 재개 가능한 Claude 세션을 지울 수 있다.
-async function shouldResumeFresh(objectiveId: string): Promise<boolean> {
-  const session = getAgentState().sessions[objectiveId];
-  if (session) return !session.resumeAvailable;
-  try {
-    const response = await fetch(`/api/v1/objectives/records/${encodeURIComponent(objectiveId)}`);
-    if (!response.ok) return false;
-    const payload = await response.json() as {
-      readonly objectiveRecord?: { readonly payload?: { readonly resumeAvailable?: unknown } };
-    };
-    return payload.objectiveRecord?.payload?.resumeAvailable !== true;
-  } catch {
-    return false;
-  }
-}
-
-// dormant 프레임의 resume 상태기계. 실패는 프레임 내 에러 카드(Try again / Start fresh)와
-// Alerts 알림(agent.resume-failed) 두 경로로 표면화한다 — 어느 쪽도 침묵하지 않는다.
-function DormantObjectiveView({ context, session }: { readonly context: ObjectiveRenderContext; readonly session: SessionInfo }) {
-  const t = getT(context.language ?? "en");
-  const freshOnly = !session.resumeAvailable;
-  const [resumeState, setResumeState] = React.useState<"idle" | "resuming" | "error" | "launch-option-error">("idle");
-  const resume = React.useCallback(async (fresh: boolean) => {
-    setResumeState("resuming");
-    try {
-      await resumeSession(session.sessionId, { fresh });
-      // 성공 시 이전 실패 알림을 거둔다 — 두지 않으면 live 세션에 "Resume failed" 뱃지가 남는다.
-      context.notifications.dismiss(session.sessionId);
-    } catch (error) {
-      setResumeState(isLaunchOptionError(error) ? "launch-option-error" : "error");
-      context.notifications.emit({
-        kind: agentResumeFailedNotification.id,
-        objectiveId: session.sessionId,
-        message: resumeFailureMessage(error, context.language),
-      });
-    }
-  }, [context, session.sessionId, t]);
-
-  if (resumeState === "error" || resumeState === "launch-option-error") {
-    return (
-      <div className="objective-dormant objective-dormant--error" role="alert">
-        <span className="objective-dormant-status">{t("terminal.dormant.status")}</span>
-        <p className="objective-dormant-error">
-          {resumeState === "launch-option-error"
-            ? t("terminal.dormant.resumeLaunchOptionFailedBody", { name: session.label || session.cwdLabel })
-            : freshOnly
-              ? t("terminal.dormant.startFreshFailedBody", { name: session.label || session.cwdLabel })
-              : t("terminal.dormant.resumeFailedBody", { name: session.label || session.cwdLabel })}
-        </p>
-        <div className="objective-dormant-error-actions">
-          {freshOnly ? (
-            <button type="button" className="objective-dormant-action" onClick={() => { void resume(true); }}>
-              {t("terminal.dormant.tryAgain")}
-            </button>
-          ) : (
-            <button type="button" className="objective-dormant-action" onClick={() => { void resume(false); }}>
-              {t("terminal.dormant.tryAgain")}
-            </button>
-          )}
-          {resumeState === "launch-option-error" || freshOnly ? null : (
-            <button type="button" className="objective-dormant-action objective-dormant-action--ghost" onClick={() => { void resume(true); }}>
-              {t("terminal.dormant.startFresh")}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <button type="button" className="objective-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(freshOnly); }}>
-      <span className="objective-dormant-status">{t("terminal.dormant.status")}</span>
-      <span className={`objective-dormant-action${resumeState === "resuming" ? " objective-dormant-action--pending" : ""}`}>
-        {resumeState === "resuming"
-          ? t(freshOnly ? "terminal.dormant.startingFresh" : "terminal.dormant.resuming")
-          : t(freshOnly ? "terminal.dormant.startFresh" : "terminal.dormant.resume")}
-      </span>
-    </button>
-  );
-}
-
-function sessionFromObjective(context: ObjectiveRenderContext): SessionInfo {
-  return {
-    sessionId: context.objectiveRecord.id,
-    terminalSessionId: context.objectiveRecord.id,
-    cwdLabel: context.objectiveRecord.title || "Workspace",
-    label: context.objectiveRecord.title,
-    status: "dormant",
-    turnState: "none",
-    createdAt: context.objectiveRecord.ts.createdAt,
-    theaterId: context.theaterId,
-    tenantId: readPayloadString(context.objectiveRecord, "tenantId") ?? undefined,
-    registrationId: readPayloadString(context.objectiveRecord, "registrationId") ?? undefined,
-    resumeAvailable: context.objectiveRecord.resumeAvailable === true,
-  };
-}
-
-function readPayloadString(payload: Record<string, unknown>, key: string): string | null {
-  const value = payload[key];
-  return typeof value === "string" ? value : null;
-}
-
-function readPayloadNumber(payload: Record<string, unknown>, key: string): number | null {
-  const value = payload[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 // 렌더러와 갱신 주기는 같은 축이다 — 둘 다 이 브라우저가 터미널을 그리는 방식이고, 둘 다 브라우저

@@ -5,10 +5,10 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
+import { canRouteGatewayDelegation, createDelegationIntentLedger, GATEWAY_MODELS, GatewayRoutingDistribution, type GatewayAssignmentExposure } from "@fleet-console/ai-gateway";
 
 import { chatReplayFromTranscriptLine } from "../../features/execution/host/agent/chat-events.js";
 import { AgentChatRegistry, createTranscriptReplayer, readTranscriptHistory, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
-import { createWorkspaceHookRegistry } from "../../features/execution/host/agent/workspace-hooks.js";
 import { initialAgentChatLogState, reduceAgentChatLog, splitAgentChatTurn } from "../../features/execution/client/agent/chat/chat-events.js";
 import type { AgentChatJournalEvent, AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
 
@@ -235,17 +235,15 @@ function fakeClaudeSession(
   } = {},
 ): ClaudeSessionHandle {
   const sessionId = overrides.resumeOf ?? overrides.sessionId ?? "11111111-2222-4333-8444-555555555555";
-  const pluginUrl = "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip";
+  void "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip";
   const claudeCodeSystemPrompt = overrides.claudeCodeSystemPrompt ?? "off";
   return {
     sessionId,
     coordinate: overrides.resumeOf ? { kind: "resume", sessionId } : { kind: "new", sessionId },
-    pluginUrl,
     claudeCodeSystemPrompt,
     sdk: {
       options: {
-        pluginUrl,
-        settingSources: ["user", "project", "local"],
+            settingSources: ["user", "project", "local"],
         allowAmbientMcpServers: true,
         disableBundledSkills: true,
         skillOverrides: { "plugin-authoring": "off" },
@@ -274,6 +272,61 @@ function withoutSnapshotEnd(events: readonly AgentChatJournalEvent[]): readonly 
 }
 
 describe("AgentChatRegistry — chat-born sessions", () => {
+  it("preserves model-owning and unrouted agents while routing eligible dispatches", async () => {
+    const home = tempDir("chat-agent-policy-");
+    let hostHooks: import("@fleet-console/agent-runtime/claude").ClaudeGatewayHostHooks | undefined;
+    let release!: () => void;
+    const commands = new Promise<readonly []>((resolve) => { release = () => resolve([]); });
+    const factory = async (options: import("@fleet-console/agent-runtime/claude").ClaudeGatewaySdkOptions) => {
+      hostHooks = options.hooks;
+      return { configDir: home, models: options.models, dispose: async () => {},
+        openSession: async () => ({ ...fakeSession([]), supportedCommands: () => commands,
+          supportedAgents: async () => [{ name: "custom-reviewer", description: "Review", model: "sonnet" }],
+        }),
+      };
+    };
+    const registry = new AgentChatRegistry(factory as never);
+    const ledger = createDelegationIntentLedger();
+    const recordIntent = vi.fn(ledger.record);
+    const providerLoad = new Map<string, number>();
+    const distribution = new GatewayRoutingDistribution();
+    const delegationModels = GATEWAY_MODELS.filter((model) => model.provider === "opencode");
+    let exposure: GatewayAssignmentExposure = { delegationModels, providerLoad, distribution };
+    try {
+      const session = await registry.ensure("agent-policy", () => ({ ...freshSeedFor(home), routeDelegatedModels: (request) => canRouteGatewayDelegation(request, exposure), recordDelegationIntent: recordIntent }));
+      await session.prepare();
+      const decision = hostHooks!.preToolUse!({ sessionId: "sdk-parent", toolUseId: "first-agent", toolName: "Agent",
+        toolInput: { subagent_type: "custom-reviewer", prompt: "Review the change" },
+      });
+      release();
+      expect(await decision).toBeUndefined();
+      expect(recordIntent).not.toHaveBeenCalled();
+      exposure = { ...exposure, delegationModels: [] };
+      const explore = { sessionId: "sdk-parent", toolUseId: "explore", toolName: "Agent",
+        toolInput: { subagent_type: "Explore", model: "haiku", effort: "low", prompt: "Find the entry" },
+      };
+      expect(await hostHooks!.preToolUse!(explore)).toBeUndefined();
+      expect(recordIntent).not.toHaveBeenCalled();
+      exposure = { ...exposure, delegationModels };
+      expect(await hostHooks!.preToolUse!(explore)).toMatchObject({ subagentType: "fleet:execute", stripModel: true });
+      expect(recordIntent).toHaveBeenCalledTimes(1);
+      expect(providerLoad.size).toBe(0);
+      expect(distribution.snapshot(exposure).providers.opencode?.assignments).toBe(0);
+      exposure = { ...exposure, delegationModels: [] };
+      expect(await hostHooks!.preToolUse!(explore)).toBeUndefined();
+      expect(recordIntent).toHaveBeenCalledTimes(1);
+      expect(await hostHooks!.preToolUse!({ sessionId: "sdk-parent", toolUseId: "direct-execute", toolName: "Agent",
+        toolInput: { subagent_type: "fleet:execute", prompt: "Execute the task" },
+      })).toBeUndefined();
+      ledger.bind({ sessionId: "sdk-parent", toolUseId: "direct-execute", taskId: "direct-child" });
+      expect(await ledger.awaitIntent("sdk-parent", "direct-child", 10)).toMatchObject({
+        inheritModel: "opus[1m]", subagentType: "fleet:execute",
+      });
+    } finally {
+      release();
+      await registry.disposeAll();
+    }
+  });
   it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
     const home = tempDir("chat-home-");
     const { factory, openSession, sends, liveSession } = createFakeSdkFactory([
@@ -311,7 +364,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
   });
 
   // Console 자신이 Fleet 터미널에서 떴다면 그 세션 id를 상속하고 있다. 자식에게 따라가면
-  // 자식의 훅이 남의 세션 축에 턴을 보고한다.
+  // 자식의 훅이 남의 세션 축에 턴을 보고한다. 위치 관찰은 이제 같은 프로세스의 훅이 넘긴다.
   it("keeps the inherited terminal session id out of the sdk child", async () => {
     const home = tempDir("chat-home-");
     const previous = process.env.FLEET_CONSOLE_SESSION_ID;
@@ -321,29 +374,62 @@ describe("AgentChatRegistry — chat-born sessions", () => {
         { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
       ]);
       const locations: string[] = [];
-      const workspaceHooks = createWorkspaceHookRegistry((_id, cwd) => locations.push(cwd));
       const registry = new AgentChatRegistry(factory);
       const session = await registry.ensure("op-env", () => ({
         ...freshSeedFor(home),
-        bindWorkspaceHook: (id) => workspaceHooks.bind("op-env", id, () => true),
+        onCwdChanged: (cwd) => locations.push(cwd),
       }));
       session.send("go");
       await drainTurn(registry, "op-env");
 
-      expect(factory).toHaveBeenCalledWith(expect.objectContaining({
-        env: expect.not.objectContaining({ FLEET_CONSOLE_SESSION_ID: expect.anything() }),
-      }));
-      const env = (vi.mocked(factory as (options: { env: NodeJS.ProcessEnv }) => unknown).mock.calls[0]![0]).env;
-      expect(env.FLEET_CONSOLE_WORKSPACE_SESSION_ID).toBe("op-env");
+      const options = vi.mocked(factory as (options: Record<string, unknown>) => unknown).mock.calls[0]![0] as {
+        env: NodeJS.ProcessEnv;
+        hooks?: { observeCwd?: (observation: { event: string; sessionId: string; cwd: string }) => void };
+      };
+      expect(options.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
+      // 외부 훅을 위한 실행 축·자격은 더 이상 자식에 실리지 않는다.
+      expect(options.env.FLEET_CONSOLE_WORKSPACE_SESSION_ID).toBeUndefined();
+      expect(options.env.FLEET_CONSOLE_WORKSPACE_RUN_ID).toBeUndefined();
+      expect(options.env.FLEET_CONSOLE_AGENT_CALL_SESSION_ID).toBeUndefined();
+      expect(options.env.FLEET_MOD_BASE_URL).toBeUndefined();
       const cwd = path.resolve("chat-moved");
-      const input = JSON.stringify({ hook_event_name: "CwdChanged", session_id: fakeClaudeSession().sessionId, new_cwd: cwd });
-      expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 1)).toBe(true);
+      options.hooks?.observeCwd?.({ event: "cwd_changed", sessionId: fakeClaudeSession().sessionId, cwd });
       expect(locations).toEqual([cwd]);
-      // 자식이 끝나면 그 실행의 hook 바인딩도 풀린다.
-      liveSession()?.close();
-      await vi.waitFor(() => { expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 2)).toBe(false); });
-      await registry.disposeAll();
-      expect(workspaceHooks.report("op-env", env.FLEET_CONSOLE_WORKSPACE_RUN_ID, input, 2)).toBe(false);
+      // 이전 턴의 파일 읽기가 늦어져도 다음 SDK cwd 관측을 되돌리지 않는다.
+      const sid = fakeClaudeSession().sessionId;
+      const project = path.join(home, "projects", "-tmp-workspace");
+      mkdirSync(project, { recursive: true });
+      const transcript = path.join(project, `${sid}.jsonl`);
+      writeFileSync(transcript, JSON.stringify({ type: "user", sessionId: sid, cwd, message: { role: "user", content: "previous turn" } }) + "\n");
+      let opened!: () => void;
+      let release!: () => void;
+      let closed!: () => void;
+      const reading = new Promise<void>((resolve) => { opened = resolve; });
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const finished = new Promise<void>((resolve) => { closed = resolve; });
+      const originalOpen = nodeFs.open.bind(nodeFs);
+      const openSpy = vi.spyOn(nodeFs, "open").mockImplementation(async (file, flags, mode) => {
+        const handle = await originalOpen(file, flags, mode);
+        if (String(file) === transcript) {
+          opened();
+          await gate;
+          const originalClose = handle.close.bind(handle);
+          handle.close = async () => { await originalClose(); closed(); };
+        }
+        return handle;
+      });
+      try {
+        session.send("next turn");
+        await vi.waitFor(() => expect(registry.isBusy("op-env")).toBe(true));
+        liveSession()!.emit({ type: "result", subtype: "success", session_id: sid, is_error: false, duration_ms: 1 });
+        await reading;
+        const newerCwd = path.resolve("chat-newer-worktree");
+        options.hooks?.observeCwd?.({ event: "cwd_changed", sessionId: sid, cwd: newerCwd });
+        release();
+        await finished;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(locations).toEqual([cwd, newerCwd]);
+      } finally { release(); openSpy.mockRestore(); await registry.disposeAll(); }
     } finally {
       if (previous === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
       else process.env.FLEET_CONSOLE_SESSION_ID = previous;

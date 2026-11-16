@@ -153,18 +153,12 @@ function prettyModelId(id: string): string {
     .map((token) => (/^(gpt|o\d|glm|qwen)/i.test(token) ? token.toUpperCase() : token.charAt(0).toUpperCase() + token.slice(1))).join(" ");
 }
 
-export type StartView = "terminal" | "chat";
-export const StartViewGlyph = ({ view }: { readonly view: StartView }) => <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{view === "chat" ? <path d="M2.75 4.25c0-.83.67-1.5 1.5-1.5h7.5c.83 0 1.5.67 1.5 1.5v5c0 .83-.67 1.5-1.5 1.5H7.2L4.5 13.1v-2.35h-.25c-.83 0-1.5-.67-1.5-1.5z" /> : <path d="M3 4.5 6.5 8 3 11.5M8 12h5" />}</svg>;
-export const startViewLabel = (t: Translate<ObjectiveMessageKey>, view: StartView) => t(view === "chat" ? "objectives.view.chat" : "objectives.view.terminal");
-
 interface LaunchControlProps {
   readonly t: Translate<ObjectiveMessageKey>;
   readonly model: string | undefined;
   readonly effort: string | undefined;
   readonly locked: boolean;
   readonly onChange: (next: { model?: string; effort?: string }) => void;
-  readonly viewMode?: StartView;
-  readonly onViewChange?: (view: StartView) => void;
   /** 트리거를 글리프 하나로 — 모델 낱말을 쓸 자리가 없을 때. */
   readonly trigger?: ReactNode;
   readonly triggerLabel?: string;
@@ -194,9 +188,8 @@ function useLaunchRoster(): ModelRoster | null {
   return useModelRoster(models, "launch");
 }
 
-export function LaunchControl({ t, model, effort, locked, onChange, viewMode, trigger, triggerLabel, triggerText, triggerTitle, unset = false, startAtList = false, subagents, head, extras, reconfirm = false }: LaunchControlProps) {
+export function LaunchControl({ t, model, effort, locked, onChange, trigger, triggerLabel, triggerText, triggerTitle, unset = false, startAtList = false, subagents, head, extras, reconfirm = false }: LaunchControlProps) {
   const roster = useLaunchRoster();
-  const viewPrefix = viewMode ? <><span className="objectives-launch-view"><StartViewGlyph view={viewMode} /><span className="objectives-launch-view-word">{startViewLabel(t, viewMode)}</span></span><span className="objectives-launch-separator" aria-hidden="true" /></> : undefined;
   const footer = subagents ? (
     <>
       {subagents ? <div className="fc-coord-menu-group" role="group" aria-label={t("objectives.members.subagentsGroup")}>
@@ -239,7 +232,6 @@ export function LaunchControl({ t, model, effort, locked, onChange, viewMode, tr
         ...(trigger ? { node: trigger } : {}),
         ...(triggerText ? { text: triggerText } : {}),
         ...(triggerTitle ? { title: triggerTitle } : {}),
-        ...(viewPrefix ? { prefix: viewPrefix } : {}),
         // 행 배치 오버라이드(objectives.css)가 이 이름으로 자리를 잡는다.
         className: `objectives-launch${trigger ? " objectives-glyph" : ""}`,
       }}

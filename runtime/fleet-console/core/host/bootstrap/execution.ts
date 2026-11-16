@@ -1,4 +1,5 @@
 import { startAiGateway } from "../../../features/ai-gateway/host/start.js";
+import { createDelegationIntentLedger } from "@fleet-console/ai-gateway";
 
 /** Console이 제어 보유자 변화를 알리는 채널. 이름은 core/host/access-control-contract.ts와 한 벌이다. */
 const CONTROL_HOLDER_EVENT_CHANNEL = "control:holder";
@@ -13,7 +14,6 @@ import { registerAgentRoutes } from "../../../features/execution/host/agent/rout
 import { registerStandaloneCliRoutes } from "../../../features/execution/host/standalone-cli/routes.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import { createTerminalRuntime } from "../../../features/execution/host/terminal/index.js";
-import { isClaudePathTrusted } from "../../../features/workspace/host/theaters/claude-trust.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
 import type { CommodoreSystemPromptService } from "../../../features/settings/host/agent-options.js";
 
@@ -38,8 +38,10 @@ export async function startConsoleExecution(
     const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: (await agentCliPaths.read()).paths });
     return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
   };
-  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, syncAntigravity } = startAiGateway({
+  const delegationIntents = createDelegationIntentLedger();
+  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, syncAntigravity, releaseExecutionSession, canRouteDelegation } = startAiGateway({
     ...ctx,
+    delegationIntents,
     host: { ...ctx.host, storage: quotaStorage },
     // Claude alias의 버전은 런치가 쓰는 바로 그 실행 파일에게 묻는다.
     resolveClaudeExecutable,
@@ -60,10 +62,6 @@ export async function startConsoleExecution(
     onAntigravityEnabled: syncAntigravity,
   });
   const runtime = createTerminalRuntime(ctx);
-  // Objective Browser 의 스크린샷 첨부 — 서버가 올린 이미지를 CLI 가 읽도록 Windows 는 Alt+V(ESC v), 나머지는 Ctrl+V 를
-  // PTY 에 넣는다. 줄 종결자는 없다(보내는 순간은 사람이 정한다).
-  const unbindBrowserPaste = ctx.host.browserMcp?.bindTerminalPaste((objectiveId) => runtime.write(objectiveId, process.platform === "win32" ? "\x1bv" : "\u0016"));
-  if (unbindBrowserPaste) ctx.host.lifecycle.registerCleanup(unbindBrowserPaste);
   registerWsHandler(ctx, "/", runtime.handleUpgrade, { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Console Execution", gate: "one-use-ticket", transport: "websocket" });
   ctx.host.lifecycle.registerCleanup(() => runtime.stop());
   const unsubscribeDelete = ctx.host.events.subscribe(OBJECTIVE_DELETED_EVENT_CHANNEL, (payload) => {
@@ -98,7 +96,6 @@ export async function startConsoleExecution(
     ...(commodorePluginDirs ? { commodorePluginDirs } : {}),
     ...(commodorePluginEnv ? { commodorePluginEnv } : {}),
     ...(commodoreAutoMemoryEnabled ? { commodoreAutoMemoryEnabled } : {}),
-    isClaudePathTrusted,
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,
     // 지휘관 채팅은 사령관과 같은 별칭 고정을 쓴다.
@@ -106,9 +103,11 @@ export async function startConsoleExecution(
     aiGateway: {
       routePath: aiGatewayRoutePath,
       origin: () => ctx.host.server.origin(),
-      compactHookToken: aiGatewayRuntime.compactHookToken,
-      modHookToken: aiGatewayRuntime.modHookToken,
     },
+    delegationIntents,
+    canRouteDelegation,
+    releaseExecutionSession,
+    recordCompactEvent: aiGatewayRuntime.recordCompactEvent,
     // 턴이 멈추면(정상·중단 모두) 에이전트 사용 표식을 내린다. Computer Use 는 기기 소유도 함께 놓는다 — 표식만
     // 내리고 잡고 있으면 공유 화면이 조용히 살아 있는 셈이다. 세 호출 모두 멱등이라 겹쳐 불려도 된다.
     // 자식 세션은 루트의 사용 컨텍스트를 함께 쓴다 — 한 참가자의 턴 종료는 그 참가자의 호출·세션만 닫고, 브라우저 표식·기기는
@@ -144,7 +143,7 @@ export async function startConsoleExecution(
     stopForArchive: async (objectiveRecord: import("../../../features/objectives/shared/records/types.js").ObjectiveRecord, preserveState = true) => {
       runtime.invalidateTicketsForSession(objectiveRecord.id);
       {
-        await agent.stopForArchive(objectiveRecord.id, preserveState);
+        await agent.stopForArchive(objectiveRecord.id);
         if (!preserveState && !await runtime.awaitWriterExit(objectiveRecord.id, 10_000)) throw new Error("archive_stop_failed");
       }
       await ctx.host.browserMcp?.revokeObjective(objectiveRecord.id);

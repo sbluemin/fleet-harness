@@ -15,9 +15,6 @@ export interface AiGatewayLaunchEnvOptions {
 	readonly baseUrl: string;
 	readonly selection?: AiGatewaySelection;
 	readonly homeDir?: string;
-	readonly compactHookToken?: string;
-	/** 라우팅 Mod가 `/v1/fleet/routing/assign`을 부를 때 쓰는 자격. */
-	readonly modHookToken?: string;
 	/** Fleet 압축 시점. 없으면 Auto(창 − 16_000). */
 	readonly compactCeiling?: CompactCeiling | null;
 }
@@ -35,25 +32,6 @@ export function prepareAiGatewayLaunchProfile(
 		CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
 		// Gateway가 tool_reference 계약을 보존하고 공급자 경계에서 각자의 wire 형식으로 정규화한다.
 		ENABLE_TOOL_SEARCH: "true",
-		// 함수 훅 모듈(Mod)을 싣는다. 좌석 라우팅과 Fleet Routing 판이 이 표면에서 돈다.
-		// 기본값은 off이고 롤아웃 플래그가 켜 줄 때까지 기다리면 게이트웨이 세션마다 라우팅이
-		// 있다 없다 한다. 운영자가 미리 정한 값은 보존한다 — 끄고 돌려 보는 경로를 막지 않는다.
-		CLAUDE_CODE_ENABLE_FUNCTION_HOOKS:
-			profile.env.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS ?? "1",
-		...(options.compactHookToken
-			? {
-				FLEET_COMPACT_BASE_URL: options.baseUrl,
-				FLEET_COMPACT_HOOK_TOKEN: options.compactHookToken,
-			}
-			: {}),
-		// 라우팅 Mod는 위임마다 이 주소에 모델을 묻는다. 없으면 아무것도 재작성하지 않고
-		// 디스패치 기록만 한다 — 게이트웨이 없이 뜬 세션이 그 경우다.
-		...(options.modHookToken
-			? {
-				FLEET_MOD_BASE_URL: options.baseUrl,
-				FLEET_MOD_TOKEN: options.modHookToken,
-			}
-			: {}),
 	};
 	// 압축 창은 --settings의 modelSettings로 간다. 이 env는 settings보다 우선하므로
 	// 주입하지 않고, 셸에서 상속된 값도 지운다.

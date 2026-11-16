@@ -59,24 +59,6 @@ export async function fetchObjectiveRecordsSnapshot(signal?: AbortSignal): Promi
   return { objectiveRecords: payload.objectiveRecords.map((objectiveRecord) => assertObjectiveRecord(objectiveRecord, response.status)) };
 }
 
-export async function resumeAgentSession(sessionId: string, options?: { readonly fresh?: boolean; readonly signal?: AbortSignal }): Promise<SessionInfo> {
-  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/resume`, {
-    method: "POST",
-    ...(options?.fresh
-      ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fresh: true }) }
-      : {}),
-    signal: options?.signal,
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
-    throw new AgentApiError(
-      response.status,
-      typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`,
-    );
-  }
-  return assertSessionInfo(await response.json(), response.status);
-}
-
 export async function messageAgentSession(sessionId: string, text: string, attachmentIds?: readonly string[], signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/message`, {
     method: "POST",
@@ -86,7 +68,7 @@ export async function messageAgentSession(sessionId: string, text: string, attac
   });
   if (!response.ok) {
     // 서버 거절 코드를 그대로 실어 던진다 — 새 세션 멘션 컴포저가 초안을 지키면서
-    // 무엇이 잘못됐는지 말하려면 상태 코드만으로는 부족하다(resumeAgentSession과 같은 형태).
+    // 무엇이 잘못됐는지 말하려면 상태 코드만으로는 부족하다.
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(
       response.status,
@@ -227,23 +209,6 @@ export async function readAgentChatCatalog(
   }
   const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
   return readAgentChatCatalogPayload(payload);
-}
-
-/**
- * 화면에서 이어 붙인 글 가운데 이 세션 transcript에 실제로 적힌 http(s) 주소 — 터미널이 줄바꿈으로
- * 가른 URL을 이을 때의 원문 확인이다. 서버는 보낸 글 안에 있는 주소만 돌려준다.
- * 확인하지 못하면 빈 목록이다: 호출부는 잇지 않고 원래 링크 동작을 쓴다.
- */
-export async function confirmAgentSessionLinks(sessionId: string, text: string, signal?: AbortSignal): Promise<readonly string[]> {
-  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/links`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-    signal,
-  });
-  if (!response.ok) return [];
-  const payload = await response.json().catch(() => null) as { readonly urls?: unknown } | null;
-  return Array.isArray(payload?.urls) ? payload.urls.filter((url): url is string => typeof url === "string" && text.includes(url)) : [];
 }
 
 export async function uploadLaunchAttachment(file: Blob, signal?: AbortSignal): Promise<{ readonly id: string }> {

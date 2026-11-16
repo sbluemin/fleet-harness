@@ -31,7 +31,7 @@ describe("AI gateway Console route adapter", () => {
     expect(registerRouter).toHaveBeenCalledTimes(1);
     expect(registerRouter.mock.calls[0]?.[0]).toBe("ai-gateway");
     expect(cleanup).toBeTypeOf("function");
-    expect(runtime.compactHookToken).toMatch(/^[0-9a-f-]{36}$/);
+    expect(runtime.recordCompactEvent).toBeTypeOf("function");
     await cleanup?.();
   });
 });

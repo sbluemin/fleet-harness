@@ -190,11 +190,33 @@ export {
 } from "./fleet/model-loadout.js";
 export {
   decideGatewayRoutingAssignment,
+  canRouteGatewayDelegation,
 } from "./fleet/routing-decision.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 
 export { GatewayRoutingDistribution } from "./fleet/routing-distribution.js";
-export { fallbackGatewayRoutingAssignment } from "./fleet/routing-fallback.js";
+export { fallbackGatewayRoutingAssignment, routingTierFor, requestTierEffort } from "./fleet/routing-fallback.js";
+export { TIER_EFFORT as GATEWAY_TIER_EFFORT } from "./fleet/routing-table.js";
+export {
+  CLAUDE_CODE_AGENT_ID_HEADER,
+  CLAUDE_CODE_SESSION_ID_HEADER,
+  FLEET_EXECUTION_VIRTUAL_MODEL,
+  isExecutionVirtualModel,
+  type ExecutionModelFailure,
+  type ExecutionModelRequest,
+  type ExecutionModelResolution,
+} from "./fleet/execution-routing.js";
+export {
+  createExecutionAssignmentCache,
+  type ExecutionAssignmentCache,
+  type ExecutionAssignmentCacheOptions,
+} from "./fleet/execution-assignment.js";
+export {
+  createDelegationIntentLedger,
+  type DelegationIntent,
+  type DelegationIntentLedger,
+  type DelegationIntentLedgerOptions,
+} from "./fleet/delegation-intent.js";
 export { createClaudeNativeModelSync } from "./fleet/claude-native-sync.js";
 export type { ClaudeNativeModelSync, ClaudeNativeModelSyncDeps } from "./fleet/claude-native-sync.js";
 

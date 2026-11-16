@@ -99,7 +99,7 @@ describe("standalone Claude Code CLI launch", () => {
           // 이 env는 settings보다 우선하므로 Fleet 자식에서는 지운다.
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: "200000",
         },
-        aiGateway: { routePath: "/api/v1/ai-gateway", origin: () => "http://127.0.0.1:4100", compactHookToken: "compact-token", modHookToken: "mod-token" },
+        aiGateway: { routePath: "/api/v1/ai-gateway", origin: () => "http://127.0.0.1:4100" },
         homeDir: home,
       });
       const spec = await launch(theater, { sessionId: "standalone-cli", objectiveRecordType: "standalone-cli" });

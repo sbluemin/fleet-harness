@@ -86,7 +86,19 @@ straight to stdout, with the payload passed as an argument rather than embedded 
 evaluated code. The PostToolUse `Workflow` receipt hook and the model-guard asset that
 served it were retired together.
 
-## 2.1 Routing Mod
+## 2.1 SDK Delegation Routing
+
+Fleet registers one `fleet:execute` identity through the Claude Agent SDK `agents` option. Its execution contract is constant; neither a per-model identity nor a plugin snapshot encodes the current model pool. Fleet no longer delivers a plugin zip, command hooks, or the routing Mod.
+
+The in-process PreToolUse callback enforces the Console's subagent policy, records the dispatch intent, and sets the supported effort value. Routed calls drop their tool-input `model` so it cannot override the agent definition. Forks and model-owning custom definitions keep their existing selection. The definition carries a virtual model id, `claude-gateway--fleet--execute`, because the Agent tool revalidates `updatedInput.model` against its closed alias enum and rejects gateway ids.
+
+SDK `task_started` connects `(session_id, tool_use_id)` to `task_id`. The child's `x-claude-code-session-id` and `x-claude-code-agent-id` identify that same execution. AI Gateway joins those facts without inserting identifiers into prompts, then applies its existing exposure, quota, and routing policy. It fixes the first successful assignment for that execution, including concurrent requests and retries. Missing identities or unmatched dispatches fail explicitly; an ordinary policy decision to inherit uses the recorded parent model. Session disposal releases its intent and assignment records. Identity headers are correlation data, not an authorization grant.
+
+Claude Code 2.1.325 with SDK 0.3.322 was measured accepting the virtual definition model, retaining distinct ids for parallel children and stable ids across a retry and a subsequent tool-result request. `updatedInput.effort` reached the child's `output_config.effort`. The same run showed `task_started` carrying both ids before the first request, but the implementation also handles asynchronous arrival rather than treating that observed order as a protocol guarantee.
+
+Workflow `turn.step` model assignment and the Mod's `/fleet-routing` pane are retired. Routing diagnostics belong to the host's request records, which distinguish requested and resolved models. The historical notes below explain the replaced implementation; they are not current setup instructions.
+
+### Retired Mod implementation (historical)
 
 `runtime/fleet-console/foundation/agent-runtime/assets/hooks/fleet-routing-mod.tsx` is a
 Claude Code function-hooks module (a "mod"), rendered into the Fleet plugin at

@@ -5,6 +5,7 @@ import type { HttpPort } from "@fleet-console/infra/http/host-ports";
 import type { CleanupPort } from "@fleet-console/infra/http/host-ports";
 import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
+import { createExecutionAssignmentCache, type DelegationIntentLedger } from "@fleet-console/ai-gateway";
 import path from "node:path";
 import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
 import {
@@ -21,6 +22,8 @@ import {
   GATEWAY_PROVIDERS,
   GatewayRoutingDistribution,
   decideGatewayRoutingAssignment,
+  canRouteGatewayDelegation,
+  type GatewayAssignmentRequest,
   buildGatewayCandidates,
   buildGatewayEnabledModels,
   decideGatewayRoutingBatch,
@@ -59,11 +62,20 @@ interface GatewayStartContext {
   readonly resolveClaudeExecutable?: () => Promise<string | undefined>;
   /** Console's owned-process port. The Claude CLI queried for supported models must be a child the Console's deadline ends. */
   readonly spawnAgentProcess: ClaudeProcessSpawner;
+  /**
+   * 위임 실행의 의도를 담아 두는 장부. 호출 전 판정(execution host)이 쓰고 이 게이트웨이가 읽는다.
+   * 생략하면 가상 모델 id 요청은 구성 오류로 거절된다 — 선언 없이 기본 배정을 지어내지 않는다.
+   */
+  readonly delegationIntents?: DelegationIntentLedger;
 }
 import { chooseRoutingModels, parseRoutingAssignRequest, releaseAllRoutingSessions, releaseRoutingSession, routingObjectiveId } from "./routing-model.js";
 import { registerAiGatewayRoutes } from "./routes.js";
 import { registerTerminalModelAuthRoutes } from "./model-auth-routes.js";
 import { registerConsoleOAuthRoutes } from "./oauth-routes.js";
+
+/** 호출 전 판정과 첫 자식 요청 사이의 시한. 두 고지는 같은 밀리초대에 도착한다(0.3.322 실측). */
+const EXECUTION_INTENT_TIMEOUT_MS = 1_500;
+const EXECUTION_INTENT_TIMEOUT_MESSAGE = "Fleet could not match this delegated run to a dispatch, so it was not assigned a model.";
 
 function applyWireLog(ctx: GatewayStartContext, stored: boolean | undefined): void {
   setWireLogTarget(stored === undefined
@@ -234,6 +246,42 @@ export function startAiGateway(ctx: GatewayStartContext) {
       void quota.getSummary().catch(() => undefined);
       return decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), currentExposure());
   }
+  const canRouteDelegation = (request: GatewayAssignmentRequest): boolean => {
+    void quota.getSummary().catch(() => undefined);
+    return canRouteGatewayDelegation(request, currentExposure());
+  };
+  // 위임 실행의 가상 모델 id → 실제 배정. 실행 하나의 배정은 첫 요청에서 한 번만 정하고
+  // 그 실행 id에 묶어 둔다 — 두 번째 요청이나 재시도에서 모델이 바뀌면 안 된다.
+  const delegationIntents = ctx.delegationIntents;
+  const executionAssignments = delegationIntents === undefined ? undefined : createExecutionAssignmentCache({
+    resolve: async (request) => {
+      const intent = await delegationIntents.awaitIntent(request.sessionId, request.agentId, EXECUTION_INTENT_TIMEOUT_MS);
+      if (intent === undefined) return { error: EXECUTION_INTENT_TIMEOUT_MESSAGE };
+      if (intent.sessionId !== request.sessionId) {
+        return { error: "This delegated run does not match its dispatch session." };
+      }
+      void quota.getSummary().catch(() => undefined);
+      const decision = decideGatewayRoutingAssignment(parseGatewayAssignmentRequest({
+        surface: "agent",
+        ...(intent.description === undefined ? {} : { description: intent.description }),
+        ...(intent.requestedModel === undefined ? {} : { requestedModel: intent.requestedModel }),
+        ...(intent.subagentType === undefined ? {} : { subagentType: intent.subagentType }),
+      }), currentExposure());
+      if (decision.model !== undefined) {
+        return { modelId: decision.model, label: decision.label, because: decision.because };
+      }
+      // 후보가 없거나 모두 위험한 것은 오류가 아니라 정상 상속이다. 호출 시점의 세션 모델로 돌린다.
+      if (intent.inheritModel === undefined || intent.inheritModel.length === 0) {
+        return { error: "Fleet could not determine which model this delegated run should inherit." };
+      }
+      return { modelId: intent.inheritModel, label: decision.label, because: decision.because };
+    },
+  });
+  const resolveExecutionModel = executionAssignments?.assign.bind(executionAssignments);
+  const releaseExecutionSession = (sessionId: string): void => {
+    executionAssignments?.releaseSession(sessionId);
+    delegationIntents?.releaseSession(sessionId);
+  };
   /** 설정 카드의 코드 규칙 후보. 갱신은 비동기로, 응답은 현재 캐시로 낸다. */
   const readCandidates = () => {
     void quota.getSummary().catch(() => undefined);
@@ -327,7 +375,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,
-    assignRouting: async (request) => assign(request),
+    ...(resolveExecutionModel === undefined ? {} : { resolveExecutionModel }),
     readAuth: codex.readSubscription,
     readXaiToken: xai.readSubscriptionToken,
     readMuseCodeAuth: museCode.readAuth,
@@ -344,6 +392,20 @@ export function startAiGateway(ctx: GatewayStartContext) {
     quota.record("antigravity", { status: "not_connected" });
     void aiGatewayRuntime.releaseAgy();
   };
-  return { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readCandidates, readEnabledModels, syncAntigravity };
+  return {
+    store: aiGatewayStore,
+    wireLog,
+    runtime: aiGatewayRuntime,
+    ensureClaudeNativeModels,
+    onClaudeNativeModelsChanged,
+    readProviderStatuses,
+    subscribeProviderStatus,
+    readCandidates,
+    readEnabledModels,
+    canRouteDelegation,
+    syncAntigravity,
+    // SDK 세션이 접힐 때 그 세션의 위임 배정을 걷는다. 실행 host의 dispose가 이 자리를 부른다.
+    releaseExecutionSession,
+  };
 }
 

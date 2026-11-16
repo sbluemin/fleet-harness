@@ -1,5 +1,5 @@
 export type ConsoleActivity = "idle" | "running" | "awaiting" | "background" | "ended" | "unknown";
-export type ConsoleActionKind = "launch" | "send" | "interrupt" | "resume";
+export type ConsoleActionKind = "launch" | "send" | "interrupt";
 export type ConsoleCaller = { readonly kind: "objectiveRecord"; readonly objectiveId: string } | { readonly kind: "plugin"; readonly pluginId: string };
 
 /** 플러그인이 대신 보낸 말이 덧붙여진 보드 행위. */
@@ -34,7 +34,6 @@ export interface ConsoleActionInput {
   readonly attachmentIds?: readonly string[];
   readonly model?: string;
   readonly effort?: string;
-  readonly viewMode?: "chat" | "terminal";
   /**
    * launch·send 전용 — 원장(채팅뷰 말풍선)에 세울 문면. 없으면 `text` 가 그대로 선다. 자식에게 가는 것은 언제나
    * `text` 다. 플러그인이 모델용 구조화 프롬프트와 사람용 요약을 갈라 보낼 때 쓴다. send 의 빈 문자열은 "보일 문면이
@@ -76,8 +75,6 @@ export interface ConsoleActionInput {
   readonly childSessionId?: string;
   /** 플러그인의 새 기동에서만 지정할 수 있는 Objective UUID. */
   readonly newObjectiveId?: string;
-  /** resume 전용 — 재개 사유("switch_live" 등). 실험 기능의 재개 분기 제어에 쓰인다. */
-  readonly reason?: string;
 }
 
 /** 턴 실패의 원문 데이터 — 문자열을 요약하거나 지시로 실행하지 않는다. */
@@ -132,7 +129,6 @@ export interface ConsoleObjectiveObservation {
   readonly observedAt: string;
   readonly source: "host";
   readonly attention: { readonly kind: "none" | "input" | "permission" | "failure" | "unknown" };
-  readonly surface: "chat" | "terminal";
   readonly supportedActions: readonly ConsoleActionKind[];
   readonly output: {
     readonly status: "available" | "unavailable";

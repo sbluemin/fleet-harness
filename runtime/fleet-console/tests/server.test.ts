@@ -179,7 +179,7 @@ describe("console terminal observability", () => {
         const storage = createObjectiveStorage({ directory, stateStore, owners: () => [{ directory: objectivesDir, commodoreId: ownerId, legacyTheaterId: workspaceHash(cwd), legacyCwd: cwd, theaterIdOf: (value: string) => workspaceHash(value) }] });
         storage.load();
         storage.save({ version: STATE_VERSION, objectiveRecords: [] });
-        storage.board.save(ownerId, { id: "11111111-1111-4111-8111-111111111111", cwd, commodoreId: ownerId, theaterId: workspaceHash(cwd), pending: true, title: "Owned objective", rank: 0, note: "", enlisted: true, missions: [], groupId: null, session: { sessionName: "owned-1-cmdr" }, chatMode: true, ts: { createdAt: 1, updatedAt: 1 } });
+        storage.board.save(ownerId, { id: "11111111-1111-4111-8111-111111111111", cwd, commodoreId: ownerId, theaterId: workspaceHash(cwd), pending: true, title: "Owned objective", rank: 0, note: "", enlisted: true, missions: [], groupId: null, session: { sessionName: "owned-1-cmdr" }, ts: { createdAt: 1, updatedAt: 1 } });
       },
     });
     const post = async (pathname: string, body: unknown) => {
@@ -836,7 +836,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(fs.readdirSync(backups).some((name) => fs.readFileSync(path.join(backups, name), "utf8") === original)).toBe(true);
   });
 
-  it("rehydrates durable provider titles as dormant without starting PTYs", async () => {
+  it("rehydrates durable provider titles as live chat without starting PTYs", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
     tempDirs.push(dir);
     const realpath = fs.realpathSync.native(dir);
@@ -878,7 +878,7 @@ describe("console static and terminal ticket boundary", () => {
     const serialized = JSON.stringify({ sessions });
 
     expect(startedShells).toEqual([]);
-    expect(sessions.sessions[0]).toMatchObject({ sessionId: "session-a", status: "dormant", resumeAvailable: true });
+    expect(sessions.sessions[0]).toMatchObject({ sessionId: "session-a", status: "registered", resumeAvailable: true });
     expect(sessions.sessions[0]).toMatchObject({ label: "Durable provider title" });
     expect(saved.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
     expect(saved).toMatchObject({ title: "Durable provider title", providerTitle: { source: "provider" } });
@@ -890,6 +890,24 @@ describe("console static and terminal ticket boundary", () => {
   });
 
   it("scopes live subagent permission to Commanders and preserves member policy across the durable state boundary", async () => {
+    const sdkHooks: import("@fleet-console/agent-runtime/claude").ClaudeGatewayHostHooks[] = [];
+    (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async (options: import("@fleet-console/agent-runtime/claude").ClaudeGatewaySdkOptions) => {
+      if (options.hooks) sdkHooks.push(options.hooks);
+      return {
+        configDir: os.tmpdir(), models: options.models, dispose: async () => {},
+        openSession: async () => {
+          let wake: (() => void) | undefined;
+          let closed = false;
+          return {
+            send: () => {}, interrupt: async () => {}, getContextUsage: async () => null,
+            supportedCommands: async () => [], supportedAgents: async () => [], reloadSkills: async () => [],
+            setModel: async () => {}, applySessionSettings: async () => {},
+            close: () => { closed = true; wake?.(); },
+            async *[Symbol.asyncIterator]() { while (!closed) await new Promise<void>((resolve) => { wake = resolve; }); },
+          };
+        },
+      };
+    };
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-subagent-"));
     tempDirs.push(dir);
     const other = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-location-"));
@@ -954,12 +972,20 @@ describe("console static and terminal ticket boundary", () => {
     const settingsFile = path.join(fixture.fleetDataDir, "console", "settings.json");
     const agentOptions = () => JSON.parse(fs.readFileSync(settingsFile, "utf8")).agent;
     expect(agentOptions().claudeCodeCommodoreSubagents).toEqual({ [ownerId]: true });
+    const sessionHooks = new Map<string, import("@fleet-console/agent-runtime/claude").ClaudeGatewayHostHooks>();
     const agentCall = async (sessionId: string) => {
-      const response = await fetch(`${origin}/api/v1/agent/sessions/${sessionId}/agent-call`, {
-        method: "POST", headers: { Authorization: `Bearer ${fixture.lock.token}` },
-      });
-      expect(response.status).toBe(200);
-      return response.json();
+      let hooks = sessionHooks.get(sessionId);
+      if (!hooks) {
+        const count = sdkHooks.length;
+        const catalog = await fetch(`${origin}/api/v1/agent/sessions/${sessionId}/chat-catalog`, { headers: { origin } });
+        expect(catalog.status).toBe(200);
+        await vi.waitFor(() => expect(sdkHooks.length).toBeGreaterThan(count));
+        hooks = sdkHooks[count]!;
+        sessionHooks.set(sessionId, hooks);
+      }
+      expect(hooks.preToolUse).toBeTypeOf("function");
+      const decision = await hooks.preToolUse!({ sessionId, toolUseId: "guard-probe", toolName: "Agent", toolInput: {} });
+      return { reason: decision?.denyReason ?? null };
     };
     const setAllowed = async (subagentsKept: boolean) => {
       const response = await fetch(`${origin}/api/v1/agent/commodore-subagents?commodoreId=${ownerId}`, {
@@ -981,13 +1007,15 @@ describe("console static and terminal ticket boundary", () => {
     const saved = JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"));
     expect(saved.sessions).toEqual([expect.objectContaining({ id: "member-1", subagentSpawn: "blocked" })]);
     expect(saved.members).toEqual([expect.objectContaining({ id: "member-1" })]);
-    const sessionsBefore = await getJson(`${origin}/api/v1/agent/sessions`);
+    const sessionIds = async () => ((await getJson(`${origin}/api/v1/agent/sessions`)) as { sessions: { sessionId: string }[] }).sessions.map((session) => session.sessionId).sort();
+    const sessionsBefore = await sessionIds();
     const ownerless = await fetch(`${origin}/api/v1/agent/sessions`, {
       method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ theaterId, cliId: "claude" }),
     });
     expect(ownerless.status).toBe(405);
     expect(await ownerless.json()).toEqual({ error: "Method not allowed" });
-    expect(await getJson(`${origin}/api/v1/agent/sessions`)).toEqual(sessionsBefore);
+    expect(await sessionIds()).toEqual(sessionsBefore);
+    expect(JSON.parse(fs.readFileSync(path.join(ownerRoot, ownerId, "objectives/commander-1/objective.json"), "utf8"))).toEqual(saved);
 
     // 사령관 생성·그룹·다중 작업 범위는 같은 서버 writer를 지나며 기존 목표 위치와 파일을 건드리지 않는다.
     const post = async (route: string, body: unknown) => {
@@ -1183,10 +1211,6 @@ describe("console static and terminal ticket boundary", () => {
         }]);
       },
     });
-    const resumeResponse = await fetch(`${fixture.endpoint}api/v1/agent/sessions/session-a/resume`, {
-      method: "POST", headers: { "Content-Type": "application/json" },
-    });
-    expect(resumeResponse.status).toBe(200);
     const ticketResponse = await fetch(`${fixture.endpoint}api/v1/agent/ticket`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

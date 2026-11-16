@@ -49,9 +49,9 @@ One serve process runs one instance: its server starts at most once, and a serve
 
 ### Objective restoration
 
-Stopping the Console still ends every owned child; a chat's `live` lifecycle does not keep an SDK process or an in-flight turn alive across an update. On the next start, chat Objectives (`chatMode: true`) restore as `live` / `idle` without starting SDK children. The next message lazily opens the same conversation from its saved transcript; a previously captured transcript that is missing is an error, never permission to silently replace the conversation. Observing history, status, or a chat socket does not start an SDK child. Explicit chat preparation (for example Objectives muster) makes its messaging address available without starting a model turn.
+Stopping the Console still ends every owned child; a chat's `live` lifecycle does not keep an SDK process or an in-flight turn alive across an update. On the next start, Objective sessions restore as `live` / `idle` without starting SDK children. The next message lazily opens the same conversation from its saved transcript; a previously captured transcript that is missing is an error, never permission to silently replace the conversation. Observing history, status, or a chat socket does not start an SDK child. Explicit chat preparation (for example Objectives muster) makes its messaging address available without starting a model turn.
 
-Terminal Objectives keep their dormant restoration, sleep, and resume contract. Changing a chat back to a terminal first disposes its SDK writer; terminal resume still waits for the previous writer to exit. Archiving ends resources and preserves the complete parent/child record, while restoring a chat makes the conversation available without a resume step.
+All Objective sessions are chats; there is no terminal surface or surface-conversion lifecycle. Archiving ends resources and preserves the complete parent/child record, while restoring makes the conversation available without a resume step. Conversation writers remain exclusive: replacing or closing a session must dispose its SDK writer before another writer takes ownership. Independent CLI and shell terminals retain their separate process lifecycle.
 
 ## Time budgets
 

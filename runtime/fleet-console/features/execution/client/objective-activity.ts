@@ -12,8 +12,8 @@ import { resolveConsoleLanguage } from "../../updates/client/whatsnew-i18n.js";
 export type ObjectiveActivityVisual = "running" | "awaiting" | "ended" | "idle";
 
 // 런타임 맵에 항목이 없는 Objective의 분류 폭백. 방금 만든 셸/에이전트는 스냅샷 전에
-// 런타임이 비어 있으므로, 복원 마커가 있을 때만 ended 다. resumeAvailable 은 Claude 재개
-// 경로이고, restoredDormant 는 부팅 복원 Shell·Agent 공통 마커다.
+// 런타임이 비어 있으므로, 복원 마커가 있을 때만 ended 다. restoredDormant 는 부팅 복원
+// Shell 마커이고, Agent Objective 은 채팅으로 복원되며 채택 시 이 마커를 지운다.
 // 사이드바 STATUS 축, Objective 검색, 팔레트 뱃지가 같은 원천 활동 분류를 공유하도록 이 함수가 단일 기준이다.
 export function resolveObjectiveActivity(
   objectiveRecord: ObjectiveRecord,
@@ -36,7 +36,7 @@ export function resolveObjectiveRuntimeActivity(
 }
 
 function isRestoredAbsentObjective(objectiveRecord: ObjectiveRecord): boolean {
-  return objectiveRecord?.chatMode !== true && (objectiveRecord?.restoredDormant === true || objectiveRecord?.resumeAvailable === true);
+  return objectiveRecord?.restoredDormant === true;
 }
 
 // 런타임 상태 → 표시 어휘. 프로세스 없음은 활동값을 가지지 않으므로 여기서만 두 축이 만난다.

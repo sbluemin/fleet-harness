@@ -1,5 +1,5 @@
 import { readObjectiveLaunchSource } from "../../../features/objectives/shared/records/launch-source.js";
-import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveLaunchKind, ObjectiveLaunchView } from "../../../features/objectives/shared/records/types.js";
+import type { ObjectiveCatalogPlugin, ObjectiveLaunchCatalogProvider, ObjectiveLaunchKind } from "../../../features/objectives/shared/records/types.js";
 import type { ConsoleControlHost } from "../../../features/execution/shared/control-port.js";
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
@@ -45,7 +45,6 @@ import { CORE_AGENT_SENSITIVE_FIELDS, startConsoleExecution } from "./execution.
 
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
-import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { createLaunchPromptNamespace } from "../../../features/execution/host/agent/launch-prompt-namespace.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "../../../features/objectives/shared/records/launch-variants.js";
@@ -581,7 +580,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   });
   let stopForArchive: ((objectiveRecord: ObjectiveRecord) => Promise<void>) | null = null;
   let purgeCoreObjective: ((objectiveId: string) => void) | null = null;
-  let resumeArchivedObjective: import("../../../features/execution/host/agent/routes.js").AgentExecutionActions["resume"];
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   let quotaMigrationReady = false;
   const quotaSettings = createQuotaSettingsStore(durablePaths.dir, () => quotaMigrationReady);
@@ -778,10 +776,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       await stopForArchive(objectiveRecord);
     },
     use: async (id, intent) => {
-      if (intent === "resume") {
-        const result = await resumeArchivedObjective?.(id);
-        if (!result?.ok) throw new ObjectiveArchiveError(409, result && !result.ok ? result.error : "archive_stop_failed");
-      } else if (intent === "open" || intent === "activate") publishPluginEvent("objective:reveal", { objectiveId: id, reason: "", at: Date.now() });
+      // 세션은 채팅으로 복원되므로 복원·열기·활성화는 모두 같은 reveal 로 알린다.
+      if (intent === "resume" || intent === "open" || intent === "activate") publishPluginEvent("objective:reveal", { objectiveId: id, reason: "", at: Date.now() });
     },
     readRetentionDays: () => readArchiveRetentionDays(consoleSettingsStore.load().general?.archiveRetentionDays),
     publish: (event) => {
@@ -1041,8 +1037,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return { computer: computerObjective, computerActor, browser: browserObjectiveRecords, browserCommodores };
   };
   const consoleActions = createWorkspaceActions({ objectiveRecords, deletionCoordinator, archive: objectiveRecordArchive.archive, listObjectiveUse, patchObjective: (id, input) => consoleFeaturePorts.objectiveRecords.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged });
-  // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.
-  let sleepObjective: ((objectiveId: string) => Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>) | undefined;
   // 플러그인 MCP 도구의 호출자 — 세션 라벨(`<objectiveId>` 또는 `chat:<objectiveId>`)을 Objective 으로 푼다.
   const pluginMcp = createAdmiralMcpHost(mcpHttp.transport, {
     onFailure: recordFailure,
@@ -1158,7 +1152,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           persistDurableState();
           // 브라우저가 볼 수 있는 투영이 실제로 달라졌을 때만 밀어낸다 — 민감 필드
           // (providerSession 등)만 바뀐 patch는 sanitized DTO가 같아 계속 침묵하고,
-          // payload 모드 마커(예: chatMode)처럼 뷰 분기를 쥔 변화는 리로드 없이 도달한다.
+          // 세션 좌표처럼 뷰 분기를 쥔 변화는 리로드 없이 도달한다.
           const changed = objectiveRecords.get(parentId ?? id)!;
           if (sanitizedObjectiveJson(before) !== sanitizedObjectiveJson(changed)) {
             broadcastObjectiveChanged(changed);
@@ -1320,17 +1314,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     observe: (objectiveId) => consoleControl.observe(objectiveId),
     subscribeTurnEnds: (listener) => consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId }, listener),
-    sleep: async (objectiveId, options) => {
-      if (!objectiveRecords.get(objectiveId)) return { ok: false, error: "unknown_objectiveRecord" };
-      const observation = consoleControl.observe(objectiveId);
-      if (!observation || !sleepObjective) return { ok: false, error: "capability_unavailable" };
-      if (observation.surface === "chat") return { ok: false, error: "chat_sleep_unsupported" };
-      if (observation.lifecycle === "dormant") return { ok: false, error: "already_dormant" };
-      // 터미널의 답 대기와 백그라운드 작업은 interrupt 로 풀 수 없다 — 호출자가 종결을 결정했을 때만 그대로 재운다.
-      const endsPendingWork = options?.endPendingWork === true && ((observation.surface === "terminal" && observation.activity === "awaiting") || observation.activity === "background");
-      if (observation.activity !== "idle" && !endsPendingWork) return { ok: false, error: "not_idle" };
-      return sleepObjective(objectiveId);
-    },
     // 다음 기동 정책만 남긴다. 세션 스냅샷을 고치거나 떠 있는 프로세스를 중단하지 않는다.
     // 플러그인 objectiveRecords.patch와 같은 영속 경로를 탄다. 저장소 patch만 호출하면 재시작 뒤 정책이 사라진다.
     setSubagentSpawn: (objectiveId, policy) => {
@@ -2972,9 +2955,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       quotaMigrationReady = retireConsoleData(durablePaths.dir);
       consoleSettingsStore.load();
       await rehydrateDurableState();
-      // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
-      // 같은 루프백 전용 불투명 경로이고, 리스너가 뜬 뒤에야 주소가 정해지므로 런치가 그때 묻는다.
-      const agentCliPlugin = renderConsoleAgentCliPlugin({ transport: mcpHttp.transport });
       // launch 프롬프트 파일은 이 lock 도메인의 자리에 둔다. 지난 프로세스가 남긴 것의 회수는 lock을 쓴 뒤에만 한다.
       const launchPromptDirectories = createLaunchPromptNamespace({ lockFile: lockPaths.lockFile });
       const execution = await startConsoleExecution(createConsoleRuntimeContext({
@@ -2987,7 +2967,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         dataDir: durablePaths.dir,
         recordFailure,
         agentOptions,
-        agentCliPlugin,
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,
@@ -3011,8 +2990,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       readGatewayCompactCeiling = execution.readGatewayCompactCeiling;
       readGatewayProviderStatuses = execution.readProviderStatuses;
       readGatewaySettings = execution.readGatewaySettings;
-      sleepObjective = execution.actions.sleep;
-      resumeArchivedObjective = execution.actions.resume;
       stopForArchive = execution.stopForArchive;
       purgeCoreObjective = execution.purgeObjective;
       // 사령관·지휘관만 받는 Gateway 후보 도구 — 사령관은 세션 묶음으로, 지휘관은 예약 HTTP 서버로 받는다.
@@ -3091,7 +3068,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             const sessions = new Set(records.flatMap((node) => archiveSessionNodes(node).map((session) => session.id)));
             const archived = archiveStorage.entries().filter((entry) => entry.objectiveRecord.commodoreId === id).length;
             return { objectives: { total: ids.size, active: boards.filter((board) => !board.done && !board.archived && !board.removed).length, archived },
-              runningSessions: execution.listSessions().filter((session) => sessions.has(session.sessionId) && ["starting", "terminal-only", "registered"].includes(session.status)).length };
+              runningSessions: execution.listSessions().filter((session) => sessions.has(session.sessionId) && ["starting", "registered"].includes(session.status)).length };
           },
           stopObjectives: async (id) => {
             // 이미 시작한 보관 전이가 정지 뒤 저장하지 않도록 소유자 차단 후 큐를 비운다.
@@ -3884,7 +3861,6 @@ function isValidConsoleStaticPort(value: unknown): value is number {
 function sanitizeLaunchKind(value: unknown): ObjectiveLaunchKind | null {
   if (!isPlainObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || typeof value.title !== "string") return null;
   const variants = readLaunchVariantGroups(value.variants);
-  const launchViews = readLaunchViews(value.launchViews);
   return {
     id: value.id,
     type: value.type,
@@ -3892,21 +3868,7 @@ function sanitizeLaunchKind(value: unknown): ObjectiveLaunchKind | null {
     ...(typeof value.disabled === "boolean" ? { disabled: value.disabled } : {}),
     ...(typeof value.disabledReason === "string" ? { disabledReason: value.disabledReason } : {}),
     ...(variants.length > 0 ? { variants } : {}),
-    ...(launchViews.length > 0 ? { launchViews } : {}),
   };
-}
-
-/**
- * 이 실행 종류가 태어날 수 있는 표면. SDK의 브라우저 sanitizer와 같은 규칙이다 — 모르는 이름은
- * 버리고, `terminal` 하나만 남는 선언은 선택지가 아니므로 생략과 같게 접는다.
- */
-function readLaunchViews(value: unknown): readonly ObjectiveLaunchView[] {
-  if (!Array.isArray(value)) return [];
-  const seen = new Set<ObjectiveLaunchView>();
-  for (const entry of value) {
-    if (entry === "terminal" || entry === "chat") seen.add(entry);
-  }
-  return seen.has("chat") ? [...seen] : [];
 }
 
 async function readJsonBody<T>(req: http.IncomingMessage, maxBytes = MAX_BODY_BYTES): Promise<T | null> {

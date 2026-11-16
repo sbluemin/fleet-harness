@@ -1,5 +1,5 @@
 import { readObjectiveLaunchSource } from "../../shared/records/launch-source.js";
-const EXECUTION_FIELDS = ["cwd", "session", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "launchedBy", "consoleUse", "computerUse", "labelSource", "providerTitle", "objectiveLanguage"];
+const EXECUTION_FIELDS = ["cwd", "session", "dormantBorn", "restoredDormant", "subagentSpawn", "launchedBy", "consoleUse", "computerUse", "labelSource", "providerTitle", "objectiveLanguage"];
 function executionFields(value: object): Record<string, unknown> {
   return Object.fromEntries(Object.entries(value).filter(([key]) => EXECUTION_FIELDS.includes(key)));
 }
@@ -100,7 +100,7 @@ const FIXED_SENSITIVE_OBJECTIVE_FIELDS = new Set([
 ]);
 
 export function createSanitizedOpDto(node: ObjectiveRecord, options: ObjectiveSanitizeOptions = {}): ObjectiveRecord {
-  const keys = ["id", "commodoreId", "theaterId", "title", "groupId", "order", "parentObjectiveId", "ts", "chatMode", "chatBorn", "dormantBorn", "restoredDormant", "subagentSpawn", "consoleUse", "computerUse", "labelSource", "session"];
+  const keys = ["id", "commodoreId", "theaterId", "title", "groupId", "order", "parentObjectiveId", "ts", "dormantBorn", "restoredDormant", "subagentSpawn", "consoleUse", "computerUse", "labelSource", "session"];
   const fields = Object.fromEntries(keys.filter((key) => node[key] !== undefined).map((key) => [key, node[key]]));
   const sensitive = new Set([...FIXED_SENSITIVE_OBJECTIVE_FIELDS, ...(options.sensitiveFields ?? [])]);
   return { ...sanitizeChildPayload(fields, sensitive, options),

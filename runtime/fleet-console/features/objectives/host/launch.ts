@@ -2,7 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 import type { ConsoleActionInput, ConsoleCaller, ConsoleCoordinatesResult, ConsoleObjectiveObservation } from "../../execution/shared/control.js";
 import { canonicalModelId } from "../../ai-gateway/shared/models.js";
-import { messageChannelKnown, readObjectiveLaunch, withObjectiveChatSurface, withObjectiveLaunchPreset, type ObjectiveGroupedEvent } from "../shared/records/types.js";
+import { messageChannelKnown, readObjectiveLaunch, withObjectiveLaunchPreset, type ObjectiveGroupedEvent } from "../shared/records/types.js";
 import type { ObjectivesFeatureDeps } from "./deps.js";
 
 import { commanderRestFacts, restClock } from "../shared/board-state.js";
@@ -39,7 +39,7 @@ export interface CompactTarget {
 export interface LaunchService {
   describe(): { readonly available: boolean };
   /** 목표 레코드만 만든다. 후속 후보는 안정적인 objectiveId 를 지정할 수 있다. */
-  create(input: { readonly commodoreId: string; readonly cwd?: string; readonly theaterId: string; readonly theaterIdSpecified?: boolean; readonly title: string; readonly groupId: string | null; readonly viewMode?: "terminal" | "chat"; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
+  create(input: { readonly commodoreId: string; readonly cwd?: string; readonly theaterId: string; readonly theaterIdSpecified?: boolean; readonly title: string; readonly groupId: string | null; readonly objectiveId?: string } & ObjectiveInit, options?: LaunchOptions): Promise<Objective>;
   /**
    * 고른 후속 후보와 함께 완료한다 — 완료·배치 기록을 한 번에 쓴 뒤 Core에 보관을 요청하고 후속 목표 레코드를
    * 뒤에서 만든다. 같은 배치로 다시 부르면 그대로 돌려준다.
@@ -51,8 +51,6 @@ export interface LaunchService {
   retryFollowup(objectiveId: string, batchId: string, candidateId: string): Objective;
   /** 끝나지 않은 후속 생성(creating)을 이어 간다 — 기동 때와 원본이 복원될 때. objectiveId 가 없으면 모든 목표. */
   resumeFollowups(objectiveId?: string): void;
-  /** 휴면한 옛 터미널 지휘관의 다음 재개 표면을 채팅으로 옮긴다(살아 있는 세션은 건드리지 않는다). */
-  adoptChatSurfaces(): void;
   /** 후속으로 만든 Objective 이 지워지거나 돌아왔다 — 그 후속을 배치에 가진 원본 화면을 다시 방송한다. */
   followupTargetChanged(sessionId: string): void;
   /** 다음 열기에서 이전 대화를 싣지 않는 새 세션으로 열도록 표시를 남긴다(실험 켜짐일 때만). */
@@ -87,7 +85,7 @@ export interface LaunchService {
   rename(objectiveId: string, title: string): Promise<Objective>;
   regroup(objectiveId: string, groupId: string | null): Promise<Objective>;
   /** 지휘관의 모델·강도 — 미기동·휴면·유휴일 때만 고친다. 턴이 도는 동안은 거절한다. */
-  setPreset(objectiveId: string, preset: { readonly model?: string; readonly effort?: string; readonly viewMode?: "terminal" | "chat" }): Promise<Objective>;
+  setPreset(objectiveId: string, preset: { readonly model?: string; readonly effort?: string }): Promise<Objective>;
   /** 개시 — 구성원을 모은 뒤 지휘관에게 첫 알림을 보낸다. 띄우지 못한 구성원은 failed 로 알리고 개시는 이어 간다. */
   startCommander(objectiveId: string, options?: LaunchOptions): Promise<{ readonly objective: Objective; readonly objectiveId: string; readonly failed: readonly { readonly id: string; readonly role: string; readonly error: string }[]; readonly notice?: string }>;
   /** 「이번 턴 뒤」 예약을 거둔다 — 세션은 실행값 그대로이고 예약 전 선택으로 돌아간다. 실패 표시도 같은 길로 닫는다. */
@@ -309,24 +307,10 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     return found;
   };
   const referenceNode = (id: string) => ctx.objectiveRecords.describe ? ctx.objectiveRecords.describe(id)?.objectiveRecord ?? null : ctx.objectiveRecords.get(id);
-  /**
-   * 옛 터미널 지휘관을 채팅 표면으로 — 보드 동작은 구성원 채팅 입력창에 서므로 지휘관은 채팅이어야 한다. 휴면일 때만 표면 마커를
-   * 옮긴다: Console 은 휴면 Objective 의 마커로 재개 표면을 고르고 이전 대화는 같은 세션의 transcript 로 되살린다. 살아 있는 터미널은
-   * 끊지 않는다 — 그 동안은 사람이 Console 의 보기 전환으로 옮기거나, 휴면한 뒤 다음 점검·깨움이 옮긴다.
-   */
-  const adoptChatSurface = (objectiveId: string): void => {
-    const node = ctx.objectiveRecords.get(objectiveId);
-    // 명시적인 목표 레코드가 없는 일반 CLI Objective을 부팅만으로 채팅으로 바꾸지 않는다.
-    if (!node || node.chatMode === true || !store.recorded(objectiveId)) return;
-    if (ctx.consoleControl?.observe(objectiveId)?.lifecycle !== "dormant") return;
-    if (ctx.objectiveRecords.patch(objectiveId, { ...(withObjectiveChatSurface(node)) })) store.refresh(objectiveId);
-  };
   // 명시적인 편집·실행만 Core에 사용 의도를 전한다. metadata 조회·통지·삭제에는 쓰지 않는다.
   const accessObjective = async (id: string): Promise<void> => {
     if (ctx.objectiveRecords.access) await ctx.objectiveRecords.access(id, "ensure-active").catch(asStoreError);
     else if (!ctx.objectiveRecords.get(id)) throw new ObjectiveStoreError("unknown_objectiveRecord");
-    // 깨우기 직전 — 휴면한 옛 터미널 지휘관은 채팅으로 재개된다.
-    adoptChatSurface(id);
   };
   const editableObjective = (id: string): Objective => {
     const current = objective(id);
@@ -439,14 +423,13 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (!groupId || !groups) return groupId ?? null;
     return groups.get(groupId)?.commodoreId === commodoreId ? groupId : null;
   };
-  const launch = async (input: { objectiveId: string; newObjectiveId?: string; commodoreId: string; cwd?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; modelSpeed?: ObjectiveModelSpeed; groupId?: string | null; viewMode?: "terminal" | "chat"; dormant?: boolean; subagents?: boolean; disableAutoMemory?: boolean; parentObjectiveId?: string; childSessionId?: string }): Promise<string> => {
+  const launch = async (input: { objectiveId: string; newObjectiveId?: string; commodoreId: string; cwd?: string; theaterId: string; title?: string; sessionName: string; model?: string; effort?: string; modelSpeed?: ObjectiveModelSpeed; groupId?: string | null; dormant?: boolean; subagents?: boolean; disableAutoMemory?: boolean; parentObjectiveId?: string; childSessionId?: string }): Promise<string> => {
     const groupId = liveGroupId(input.commodoreId, input.groupId);
     const result = await control().request({
       kind: "launch",
       commodoreId: input.commodoreId,
       theaterId: input.theaterId,
       ...(input.title ? { title: input.title } : {}),
-      viewMode: input.viewMode ?? "terminal",
       sessionName: input.sessionName,
       ...(input.dormant ? { dormant: true } : {}),
       // 허용하지 않은 구성원만 태어날 때 서브에이전트(fleet:execute 포함)를 끈다. 허용은 전역 정책을 그대로 쓴다.
@@ -508,7 +491,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     // 지휘관은 늘 채팅으로 선다 — 구성원 채팅 입력창이 보드 동작을 받는다. 옛 터미널 프리셋이 저장된 목표도 채팅으로 띄운다.
     const launchedId = await launch({
       ...rest, model: preset.model, ...(preset.effort ? { effort: preset.effort } : {}), ...(preset.modelSpeed ? { modelSpeed: preset.modelSpeed } : {}),
-      viewMode: "chat", objectiveId, dormant: true, newObjectiveId: objectiveId,
+      objectiveId, dormant: true, newObjectiveId: objectiveId,
     }).catch(asStoreError);
     if (launchedId !== objectiveId) throw new ObjectiveStoreError("objectiveRecord_id_taken");
     if (store.pending(objectiveId)) store.launched(objectiveId);
@@ -595,7 +578,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const active = ctx.objectiveRecords.get(objectiveId);
     if (!active) throw new ObjectiveStoreError("unknown_objective");
     const apply = ctx.consoleControl?.setUnstartedPreset;
-    if (apply && active.chatMode === true) {
+    if (apply) {
       const result = await apply(objectiveId, { model: choice.model, effort: choice.effort ?? null });
       if (!result.ok) throw coordinatesError(result);
     } else patchObjective(objectiveId, withObjectiveLaunchPreset(active, { model: choice.model, ...(choice.effort ? { effort: choice.effort } : {}) }));
@@ -669,7 +652,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     if (pending.has(objectiveId) || working(objectiveId)) return false;
     const observation = control().observe(objectiveId);
     if (!observation || observation.lifecycle === "dormant") return true;
-    if (observation.lifecycle !== "live" || record.chatMode !== true) return false;
+    if (observation.lifecycle !== "live") return false;
     return observation.activity === "idle";
   };
   const stoppable = (sessionId: string) => { const observation = ctx.consoleControl?.observe(sessionId); return !!observation && observation.lifecycle !== "dormant" && observation.activity !== "idle" && observation.activity !== "ended"; };
@@ -708,7 +691,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         const created = ctx.objectiveRecords.create({ id, commodoreId: config.commodoreId, cwd: config.cwd, theaterId: config.theaterId,
           title: config.title, createdAt: config.createdAt,
           ...({ launchedBy: { kind: "feature", featureId: "objectives" }, dormantBorn: true, restoredDormant: true,
-            chatMode: true, chatBorn: true,
             session: { harness: "claude-code", source: "launch", sessionName: config.sessionName,
               ...(config.disableAutoMemory !== undefined ? { disableAutoMemory: config.disableAutoMemory } : {}),
               ...(config.model ? { model: config.model } : {}), ...(config.effort ? { effort: config.effort } : {}),
@@ -809,11 +791,11 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const observation = sessionId ? ctx.consoleControl?.observe(sessionId) : null;
       const node = sessionId ? ctx.objectiveRecords.get(sessionId) : null;
       if (node && node.commodoreId !== current.commodoreId) throw new ObjectiveStoreError("unknown_objectiveRecord");
-      if (sessionId && node?.chatMode === true) {
+      if (sessionId && node) {
         const session = member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1);
         rememberSubagentSpawn(sessionId, objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
         try {
-          await settleTurn(objectiveId, member.id, { idle: 0 });
+          await settleTurn(objectiveId, member.id);
           const prepare = ctx.consoleControl?.prepareChat;
           if (!prepare) throw new ObjectiveStoreError("capability_unavailable");
           await prepare(sessionId);
@@ -827,23 +809,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (sessionId && node && observation?.lifecycle === "live") {
         touchLive(sessionId);
         members.push({ id: member.id, role: member.role, session: member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1), objectiveId: sessionId, state: "live" });
-        continue;
-      }
-      if (sessionId && node && observation?.lifecycle === "dormant") {
-        // 앞선 구성원의 기동·재개를 기다리는 동안 바뀐 허용값도 이번 재개부터 반영한다.
-        rememberSubagentSpawn(sessionId, objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
-        const session = member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1);
-        // 이번 턴 뒤를 기다리던 예약이면 잠든 지금이 그 뒤다 — 이 재개가 그 좌표로 서게 먼저 적용한다.
-        settleDormant(objectiveId, member.id);
-        try {
-          await control().request({ kind: "resume", objectiveId: sessionId });
-          touchLive(sessionId);
-          members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "resumed" });
-        } catch (error) {
-          if (error instanceof ObjectiveStoreError) throw error;
-          // 그 구성원만 실패로 알리고 개시 전체는 멈추지 않는다.
-          members.push({ id: member.id, role: member.role, session, objectiveId: sessionId, state: "failed", error: failureCode(error) });
-        }
         continue;
       }
       // 관측이 없는 Objective 은 세울지 판단할 수 없다 — 그 구성원만 건너뛰고 알린다(한 구성원 때문에 개시 전체를 막지 않는다).
@@ -866,7 +831,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 옛 지휘관은 구성원을 항상 끄던 정책을 보존한다. 새 지휘관은 생성 시 고정값을 상속한다.
       const commanderPolicy = (referenceNode(current.id)?.session as { disableAutoMemory?: unknown } | undefined)?.disableAutoMemory ?? store.pending(current.id)?.disableAutoMemory;
       const memberDisableAutoMemory = typeof commanderPolicy === "boolean" ? commanderPolicy : true;
-      const spawn = (with_: MemberPreset) => launch({ objectiveId, commodoreId: current.commodoreId, cwd: memberCwd, theaterId: memberCwd ? ctx.paths.workspaceHash(memberCwd) : current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, disableAutoMemory: memberDisableAutoMemory, viewMode: "chat", parentObjectiveId: current.id, childSessionId: member.id });
+      const spawn = (with_: MemberPreset) => launch({ objectiveId, commodoreId: current.commodoreId, cwd: memberCwd, theaterId: memberCwd ? ctx.paths.workspaceHash(memberCwd) : current.theaterId, sessionName: session, ...with_, subagents: allowed ? undefined : false, disableAutoMemory: memberDisableAutoMemory, parentObjectiveId: current.id, childSessionId: member.id });
       let launchedId: string;
       try { launchedId = await spawn(preset); }
       catch (error) {
@@ -904,17 +869,11 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const node = ctx.objectiveRecords.get(sessionId);
     if (node) patchObjective(sessionId, { ...(withSessionPreset(node, preset)) });
   };
-  /** 실행값으로 되돌려 한 번 더 깨운다 — 깨었는지를 돌려준다. */
-  const resumeWith = async (sessionId: string, preset: MemberPreset): Promise<boolean> => {
-    patchMemberPreset(sessionId, preset);
-    try { await control().request({ kind: "resume", objectiveId: sessionId, reason: "switch_live" }); touchLive(sessionId); return true; }
-    catch { return false; }
-  };
 
-  /** 떠 있는 채팅의 호스트 좌표 — 실행값과 턴 경계를 기다리는 예약. 포트가 없는 호스트·휴면·터미널이면 null. */
+  /** 떠 있는 채팅의 호스트 좌표 — 실행값과 턴 경계를 기다리는 예약. 포트가 없는 호스트·휴면이면 null. */
   const hostCoordinates = (sessionId: string) => {
     const observation = ctx.consoleControl?.observe(sessionId);
-    if (!ctx.consoleControl?.setCoordinates || observation?.lifecycle !== "live" || observation.surface !== "chat") return null;
+    if (!ctx.consoleControl?.setCoordinates || observation?.lifecycle !== "live") return null;
     return ctx.consoleControl.coordinates?.(sessionId) ?? null;
   };
   /** 미기동은 저장 선택, 기동 뒤에는 실행값·유효 예약을 기준으로 같은 확정을 가른다. 외부에서 달라진 실행값을 저장값으로 덮어 보지 않는다. */
@@ -943,41 +902,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     ctx.consoleControl!.setCoordinates!(sessionId, { model: preset.model, effort: preset.effort ?? null });
   const goalOf = (next: MemberNext) => ({ model: next.model, ...(next.effort ? { effort: next.effort } : {}) });
 
-  /**
-   * 떠 있는 유휴 구성원을 이 좌표로 다시 세운다 — 재우고, 세션 좌표를 고치고, 그 세션째 깨운다(대화는 --resume 으로 이어진다). 좌표는
-   * 재우기가 받아들여지는 즉시 고친다 — 그사이 휴면 중 전달이 먼저 깨워도 새 좌표로 선다. 재우기가 `ending`(옛 프로세스의 종료를 아직
-   * 확인하지 못함)이어도 곧바로 깨운다 — 호스트가 옛 프로세스가 사라질 때까지 기동을 미루므로 같은 Claude 세션의 두 필자는 서지 않는다.
-   * 깨우기는 휴면을 관측한 뒤에만 보낸다 — 떠 있는 터미널에 보낸 재개는 프로세스를 그대로 두므로 바뀐 줄 알게 된다. 휴면이 보이지 않으면
-   * 좌표를 실행값으로 되돌리고 "busy" 로 답한다(그새 턴이 시작돼 재울 수 없을 때와 같다). 호스트가 상한 안에 옛 프로세스의 종료를 보지 못해
-   * objectiveRecord_busy 로 거절했고 여전히 잠들어 있으면 좌표를 그대로 두고 "applied" 로 답한다 — 잠든 구성원은 좌표를 고친 것이 곧 적용이고
-   * 다음 깨움이 그 값으로 선다. 그 밖에 깨우기가 거절되면(그새 노출이 꺼진 모델 등) 실행값으로 되돌려 다시 깨우고 그 코드로 던진다.
-   * 감수한 비용: 터미널 입력줄에 쓰다 만 글은 사라지고, 다시 뜨는 몇 초 동안 넣은 메시지는 보관됐다가 세션이 선 뒤에 전달된다. 터미널의
-   * 문맥이 새 모델의 창보다 큰지는 플러그인이 알 수 없다(채팅만 호스트가 막는다).
-   */
-  const switchLive = async (sessionId: string, goal: MemberPreset, running: MemberPreset): Promise<"applied" | "busy"> => {
-    const sleep = ctx.consoleControl?.sleep;
-    if (!sleep) throw new ObjectiveStoreError("capability_unavailable");
-    const slept = await sleep(sessionId);
-    if (!slept.ok) {
-      if (slept.error === "not_idle") return "busy";
-      // 그새 잠들었다 — 좌표만 고치면 다음 깨움이 이 값으로 선다.
-      if (slept.error === "already_dormant") { patchMemberPreset(sessionId, goal); return "applied"; }
-      throw new ObjectiveStoreError(slept.error);
-    }
-    patchMemberPreset(sessionId, goal);
-    if (ctx.consoleControl?.observe(sessionId)?.lifecycle !== "dormant") { patchMemberPreset(sessionId, running); return "busy"; }
-    try { await control().request({ kind: "resume", objectiveId: sessionId, reason: "switch_live" }); touchLive(sessionId); return "applied"; }
-    catch (error) {
-      // 휴면을 본 뒤 고친 좌표다 — 그새 누가 깨웠거나(not_dormant) 응답만 늦었으면(request_timeout) 떠 있는 것은 새 좌표로 선 프로세스다.
-      const lifecycle = ctx.consoleControl?.observe(sessionId)?.lifecycle;
-      if (lifecycle === "live") { touchLive(sessionId); return "applied"; }
-      const code = failureCode(error);
-      // 옛 프로세스가 아직 끝나지 않아 호스트가 기동을 거절했다 — 잠든 채 새 좌표를 들고 있으니 다음 깨움이 그 값으로 선다.
-      if (code === "objectiveRecord_busy" && lifecycle === "dormant") return "applied";
-      await resumeWith(sessionId, running);
-      throw new ObjectiveStoreError(code);
-    }
-  };
   /** 메뉴의 후보는 모두 Claude Code 의 모델이다 — 다른 하네스의 세션에 실으면 그 CLI 가 모르는 모델로 깬다. */
   const assertSwitchable = (payload: Record<string, unknown>) => {
     const harness = (payload.session as { harness?: unknown } | undefined)?.harness;
@@ -986,8 +910,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
 
   /**
    * 개시한 구성원의 모델 선택 — 사람이 고른 순간 바뀐다. 휴면이면 세션 좌표를 고치는 것이 곧 적용이다(다음 깨움이 그 값으로 선다).
-   * 떠 있는 채팅은 호스트에 맡긴다 — 유휴면 곧바로, 턴이 돌면 그 턴이 닫히는 경계에서 바뀌고 세션 좌표도 그때 호스트가 고친다. 떠 있는
-   * 터미널은 유휴면 재웠다 새 좌표로 깨우고(switchLive), 일하는 중이면 이번 턴 뒤 예약으로 들고 감시자가 유휴를 보면 같은 길로 바꾼다.
+   * 떠 있는 채팅은 호스트에 맡긴다 — 유휴면 곧바로, 턴이 돌면 그 턴이 닫히는 경계에서 바뀌고 세션 좌표도 그때 호스트가 고친다.
    * 일하는 동안에는 세션 좌표를 미리 고치지 않는다 — 고치면 패널이 옛 프로세스를 새 모델로 말한다. 실행값과 같은 값을 고르면 예약을
    * 거두고, 선택을 비우면 예약만 거둔다. 바꾸지 못한 변경은 오류 코드로 던진다.
    */
@@ -1029,13 +952,11 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         throw coordinatesError(result);
       }
     }
-    // 채팅은 자식이 없더라도 호스트 좌표 포트로만 바꾼다. 터미널 sleep fallback으로 가지 않는다.
-    if (node.chatMode === true) throw new ObjectiveStoreError("chat_not_active");
+    // 자식이 없더라도 호스트 좌표 포트로만 바꾼다.
     if (!target?.model || samePreset(target, running)) { store.memberLaunchState(current.id, memberId, { next: null }); return; }
     const goal = { ...target, model: target.model };
     const observation = ctx.consoleControl?.observe(memberId);
     if (observation?.lifecycle !== "live") { patchMemberPreset(memberId, goal); applied(); return; }
-    if (observation.activity === "idle" && await switchLive(memberId, goal, running) === "applied") { applied(); return; }
     // 일하는 중이다(running·awaiting·background, 또는 그새 턴이 시작됐다) — 이번 턴 뒤 예약으로 들고 감시자가 유휴를 기다린다.
     store.memberLaunchState(current.id, memberId, { next: { ...goal, from: running, ...(was ? { was } : {}), held: "plugin" } });
     watch(current.id, memberId);
@@ -1056,18 +977,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    * 서버가 받는 활동 이벤트는 없다). 턴은 몇 시간도 걸리므로 마감은 없고, 예약이 사라지거나 구성원·목표가 지워지면 놓는다. 기동 때
    * 저장된 예약으로 다시 건다(resumeReservations). 정산은 수정·취소와 같은 목표 순서 안에서 한다.
    */
-  const watched = new Map<string, { readonly objectiveId: string; idle: number }>();
+  const watched = new Map<string, { readonly objectiveId: string }>();
   let watchTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
   const WATCH_MS = 1_000;
-  /** 유휴가 이만큼 잇달아 보여야 재운다 — 턴이 닫힌 직후 줄 서 있던 다음 말이 곧 시작하는 틈에 재우지 않는다. */
-  const IDLE_TICKS = 2;
   const armWatch = () => {
     if (disposed || watchTimer || watched.size === 0) return;
     watchTimer = setTimeout(() => { watchTimer = null; void sweepWatched(); }, WATCH_MS);
   };
   const watch = (objectiveId: string, memberId: string) => {
-    if (!watched.has(memberId)) watched.set(memberId, { objectiveId, idle: 0 });
+    if (!watched.has(memberId)) watched.set(memberId, { objectiveId });
     armWatch();
   };
   /** 그 구성원(또는 그 목표의 모든 구성원)의 감시를 놓는다. */
@@ -1077,18 +996,17 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const sweepWatched = async () => {
     for (const [memberId, entry] of [...watched]) {
       if (disposed) return;
-      try { await orderedObjectiveRequest(entry.objectiveId, () => settleTurn(entry.objectiveId, memberId, entry)); }
+      try { await orderedObjectiveRequest(entry.objectiveId, () => settleTurn(entry.objectiveId, memberId)); }
       catch { /* 저장이 실패했다 — 다음 틱이 다시 읽는다 */ }
     }
     armWatch();
   };
   /**
    * 턴 뒤 예약 하나를 지금 상태로 정산한다. 잠들었으면 세션 좌표를 고치는 것이 적용이고(사람이 재웠어도), 떠 있는 채팅이면 호스트에
-   * 맡기고(터미널에서 채팅으로 바뀐 경우도), 떠 있는 터미널이 잇달아 유휴면 재웠다 깨운다. 일하는 중이면 기다린다 — background 도 재우면
-   * 그 작업이 끝나므로 끝날 때까지 기다린다. 사람이 그새 재웠다 깨웠어도 세션 좌표는 그대로라 새 프로세스도 옛 모델이다 — 같은 규칙으로
-   * 계속 기다리면 된다. 호스트가 든 예약이 채팅이 터미널로 바뀌며 사라졌으면 플러그인이 다시 든다.
+   * 맡긴다. 일하는 중이면 기다린다 — background 도 끝나기를 기다린다. 사람이 그새 재웠다 깨웠어도 세션 좌표는 그대로라
+   * 새 프로세스도 옛 모델이다 — 같은 규칙으로 계속 기다리면 된다. 호스트가 든 예약이 사라졌으면 플러그인이 다시 든다.
    */
-  const settleTurn = async (objectiveId: string, memberId: string, entry: { idle: number }) => {
+  const settleTurn = async (objectiveId: string, memberId: string) => {
     const next = store.storedMember(objectiveId, memberId)?.next;
     const node = ctx.objectiveRecords.get(memberId);
     if (!next || next.failed || !next.held || !node) { watched.delete(memberId); return; }
@@ -1113,13 +1031,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       else done({ next: null });
       return;
     }
-    if (node.chatMode === true) { failed("chat_not_active"); return; }
-    if (next.held === "host") store.memberLaunchState(objectiveId, memberId, { next: { ...next, held: "plugin" } });
-    if (observation.activity !== "idle") { entry.idle = 0; return; }
-    if (++entry.idle < IDLE_TICKS) return;
-    entry.idle = 0;
-    try { if (await switchLive(memberId, goal, presetOf(readObjectiveLaunch(node))) === "applied") done({ next: null }); }
-    catch (error) { failed(failureCode(error)); }
+    // 호스트 좌표가 없는 살아 있는 세션에는 적용할 길이 없다.
+    failed("chat_not_active");
   };
 
   // 후보 UUID 를 별도 이름 공간의 안정 UUID 로 바꾼다. 배치가 재시작되어도 같은 후보는 같은 목표다.
@@ -1143,7 +1056,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         if (existing && (existing.origin?.objectiveId !== objectiveId || existing.origin.candidateId !== candidateId)) throw new ObjectiveStoreError("objective_id_taken");
         // 후보·배치 스냅샷에 옛 criteria 가 남아 있어도 새 목표로 옮기지 않는다. 기준은 그 목표의 지휘관이 계획 때 제안한다.
         const created = existing ?? await service.create({
-          commodoreId: source.commodoreId, cwd: ctx.paths.resolveObjectivePath?.(source.id) ?? store.pending(source.id)?.cwd, theaterId: source.theaterId, title: entry.snapshot.title, groupId: batch.launch.groupId, viewMode: batch.launch.viewMode,
+          commodoreId: source.commodoreId, cwd: ctx.paths.resolveObjectivePath?.(source.id) ?? store.pending(source.id)?.cwd, theaterId: source.theaterId, title: entry.snapshot.title, groupId: batch.launch.groupId,
           note: entry.snapshot.brief, addedBy: objectiveId,
           origin: { objectiveId, candidateId, batchId, userImpact: entry.snapshot.userImpact, evidence: entry.snapshot.evidence }, objectiveId: id,
         }, { language: batch.launch.language, actor: batch.by });
@@ -1455,12 +1368,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       touchLive(objectiveId);
       return;
     }
-    if (observation.lifecycle === "dormant") {
-      try { await control().request({ kind: "resume", objectiveId }); }
-      catch { return; }
-      observation = ctx.consoleControl.observe(objectiveId);
-      if (!observation || observation.activity === "awaiting") return;
-    }
+    if (observation.lifecycle === "dormant") return;
     for (const consult of waiting) {
       const fresh = store.find(objectiveId);
       const row = fresh?.consultations.find((entry) => entry.id === consult.id);
@@ -1509,7 +1417,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       try {
         if (memberId === null) {
           await ensureCommander(objectiveId);
-          if (ctx.consoleControl?.observe(targetId)?.lifecycle === "dormant") await control().request({ kind: "resume", objectiveId: targetId });
         } else {
           const mustered = await muster(objectiveId, () => new Set([memberId]));
           // 라우팅이 모델을 주지 못한 구성원에게는 전달하지 않는다 — 조용히 미뤄 두지 않고 보낸 쪽에 그 사유를 돌려준다.
@@ -1522,14 +1429,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!referenceNode(targetId) && ctx.consoleControl?.observe(targetId)?.lifecycle !== "live") return "held";
     }
     const before = ctx.consoleControl?.observe(targetId);
-    const dormant = before?.lifecycle === "dormant" || (!before && !!node);
-    if (dormant) {
-      try { await control().request({ kind: "resume", objectiveId: targetId }); }
-      catch (error) {
-        if (holdableDelivery(error)) return "held";
-        throw error;
-      }
-    }
+    if (!before && !node) return "held";
     if (attentionBlocks(targetId) || ctx.objectiveRecords.isTransitioning?.(targetId)) return "held";
     // 레코드 표식은 이 빌드의 create/createChild 전부(UI 런처·채팅·터미널·구성원)에 있다. channelTold 는 그 표식이 없는 예전 세션에 안내를 한 번 보낸 뒤의 기록이다.
     const told = store.channelTold(objectiveId, targetId) || messageChannelKnown(ctx.objectiveRecords.get(targetId));
@@ -1554,7 +1454,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     }
     if (!told) store.markChannelTold(objectiveId, targetId);
     touchLive(targetId);
-    if (dormant || !before) return "woke";
+    if (!before) return "woke";
     if (before.activity === "running" || before.activity === "background") return "steered";
     return "next_turn";
   };
@@ -1671,7 +1571,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (store.recorded(id)) return objective(id);
       if (referenceNode(id)) throw new ObjectiveStoreError("objectiveRecord_id_taken");
       // 생성은 모델을 저장하지 않는다. 첫 구상·개시가 고른다. 지휘관의 뷰는 누가 만들든 채팅이다 —
-      // 보드 동작이 구성원 채팅 입력창에 서므로 보기 선택은 없다(옛 요청의 viewMode 는 받되 쓰지 않는다).
+      // 보드 동작이 구성원 채팅 입력창에 서므로 보기 선택은 없다.
       const actor = options?.actor ?? init.by;
       const byCommodore = !!actor && typeof actor === "object" && actor.kind === "commodore";
       if (byCommodore && actor.commodoreId !== input.commodoreId) throw new ObjectiveStoreError("other_commodore");
@@ -1691,7 +1591,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         ...(bound ? { theaterIdExplicit: true as const } : {}),
         cwd, title: input.title, groupId: input.groupId, createdAt: Date.now(),
         disableAutoMemory: !(serviceOptions.commodoreAutoMemoryEnabled?.(input.commodoreId) ?? true),
-        sessionName: commanderSession(), viewMode: "chat",
+        sessionName: commanderSession(),
       });
     },
 
@@ -1701,7 +1601,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       // 완료는 지휘관 Objective 을 보관하지 않는다 — 보관은 사람이 따로 한다.
       store.completeWithFollowups(objectiveId, {
         ...selection,
-        launch: { groupId: current.groupId, viewMode: "chat", language: languageOf(options) },
+        launch: { groupId: current.groupId, language: languageOf(options) },
       }, options?.actor);
       service.resumeFollowups(objectiveId);
       return objective(objectiveId);
@@ -1711,7 +1611,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       const current = objective(objectiveId);
       store.followupAdopt(objectiveId, {
         ...selection,
-        launch: { groupId: current.groupId, viewMode: "chat", language: languageOf(options) },
+        launch: { groupId: current.groupId, language: languageOf(options) },
       }, options?.actor);
       service.resumeFollowups(objectiveId);
       return objective(objectiveId);
@@ -1727,10 +1627,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       for (const current of store.all()) {
         if (current.followupBatches.some((batch) => batch.items.some((entry) => entry.objectiveId === sessionId))) store.refresh(current.id);
       }
-    },
-
-    adoptChatSurfaces() {
-      for (const current of store.all()) if (!current.removed) adoptChatSurface(current.id);
     },
 
     resumeFollowups(objectiveId) {
@@ -1885,8 +1781,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       return objective(objectiveId);
     }),
 
-    setPreset: (objectiveId, { viewMode: _view, ...preset }) => orderedObjectiveRequest(objectiveId, async () => {
-      // 지휘관의 뷰는 채팅으로 고정이다 — 옛 클라이언트가 보내는 viewMode 는 받되 쓰지 않는다.
+    setPreset: (objectiveId, preset) => orderedObjectiveRequest(objectiveId, async () => {
       editableObjective(objectiveId);
       const node = referenceNode(objectiveId);
       // 세션이 없는 목표는 모델을 고치지 못한다. 첫 모델은 구상·개시가 고른다.
@@ -1902,12 +1797,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       if (!commanderModelMutable(objectiveId, active)) throw new ObjectiveStoreError("objective_busy");
       const session = readObjectiveLaunch(active);
       const coordinates = { model: preset.model ?? session.model ?? "opus[1m]", effort: preset.effort ?? session.effort ?? null };
-      if (active.chatMode === true && !session.started) {
+      if (!session.started) {
         const apply = ctx.consoleControl?.setUnstartedPreset;
         if (!apply) throw new ObjectiveStoreError("capability_unavailable");
         const result = await apply(objectiveId, coordinates);
         if (!result.ok) throw coordinatesError(result);
-      } else if (active.chatMode === true && control().observe(objectiveId)?.lifecycle === "live") {
+      } else if (control().observe(objectiveId)?.lifecycle === "live") {
         const apply = ctx.consoleControl?.setCoordinates;
         if (!apply) throw new ObjectiveStoreError("capability_unavailable");
         const result = await apply(objectiveId, coordinates);
@@ -1955,9 +1850,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
           if (!next || next.failed) continue;
           if (next.held) {
             // Console과 함께 사라진 채팅 예약은 새 호스트 포트로 다시 적용한다. 실패한 예약은 재시도하지 않는다.
-            const node = ctx.objectiveRecords.get(member.id);
             const host = hostCoordinates(member.id);
-            if (node?.chatMode === true && next.held === "host" && !host?.pending && !host?.refused) {
+            if (next.held === "host" && !host?.pending && !host?.refused) {
               store.memberLaunchState(current.id, member.id, { next: { ...next, held: "plugin" } });
             }
             watch(current.id, member.id);
@@ -2213,14 +2107,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         }
       }));
       for (const sessionId of ids) {
-        try {
-          const observation = ctx.consoleControl?.observe(sessionId);
-          if (observation?.surface === "terminal" && observation.lifecycle === "live") {
-            await ctx.consoleControl?.sleep?.(sessionId, { endPendingWork: true });
-          } else {
-            await ctx.consoleControl?.disposeChat?.(sessionId);
-          }
-        } catch { /* 정리 실패는 무시 */ }
+        try { await ctx.consoleControl?.disposeChat?.(sessionId); } catch { /* 정리 실패는 무시 */ }
         ctx.consoleControl?.markNextOpenFresh?.(sessionId);
       }
       // 멈춘 사실을 보드에 남긴다 — 재시작 뒤에도 그 뒤로는 보고를 기대하지 않는다(signals.ts expectsReport). 보고 경보는 개시된 목표에만

@@ -149,7 +149,7 @@ export function subscribeLedger(listener: () => void): () => void {
 
 /** 이 채팅 루트의 가운데 칸이 그룹 대화인가 — 목표 대화의 뿌리이거나 구성원을 가진 채팅. 모바일 본문도 같은 판정을 쓴다. */
 export function isGroupConversationObjective(objectiveRecord: ObjectiveRecord, hasNested: boolean): boolean {
-  return objectiveRecord.chatMode === true && (hasNested || isGroupConversationRoot(objectiveRecord.id));
+  return hasNested || isGroupConversationRoot(objectiveRecord.id);
 }
 
 function renderConversationBody(context: ConversationBodyContext): React.ReactNode | null {

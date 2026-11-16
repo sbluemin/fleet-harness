@@ -18,6 +18,17 @@ export function decideGatewayRoutingAssignment(
   return fallbackGatewayRoutingAssignment(request, exposure);
 }
 
+/** 호출 입력을 바꾸기 전 후보 유무만 본다. 실제 배정 횟수와 분포는 요청 시점에만 기록한다. */
+export function canRouteGatewayDelegation(request: GatewayAssignmentRequest, exposure: GatewayAssignmentExposure): boolean {
+  const { delegationModels, effortExposure, providerPriority, quota } = exposure;
+  return decideGatewayRoutingAssignment(request, {
+    delegationModels,
+    ...(effortExposure === undefined ? {} : { effortExposure }),
+    ...(providerPriority === undefined ? {} : { providerPriority }),
+    ...(quota === undefined ? {} : { quota }),
+  }).model !== undefined;
+}
+
 /** 판단 하나의 답. 좌석은 모델만 고르고, 강도는 난이도가 정한다. */
 export interface RoutingChoice {
   readonly seat?: string;

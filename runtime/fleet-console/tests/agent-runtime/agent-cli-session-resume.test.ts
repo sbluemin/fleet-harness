@@ -11,8 +11,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import * as Admiral from "../../foundation/agent-runtime/src/fleet/index.js";
 import { injectAgentCliProfile } from "../../foundation/agent-runtime/src/fleet/agent-cli/injection.js";
-import { createAgentCliPlugin } from "../../foundation/agent-runtime/src/fleet/agent-cli/plugin/index.js";
-import type { AgentCliProfile, FleetHookExec } from "../../foundation/agent-runtime/src/fleet/agent-cli/types.js";
+import type { AgentCliProfile } from "../../foundation/agent-runtime/src/fleet/agent-cli/types.js";
 
 interface TestDedicatedMcpSession {
   readonly issuedRequests: Array<{ readonly label: string; readonly cwd: string }>;
@@ -30,7 +29,6 @@ afterEach(() => {
   }
 });
 
-const pluginStub = { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} };
 
 describe("agent CLI session resume and capture hooks", () => {
   it("places Claude --resume before Fleet injection flags", async () => {
@@ -46,7 +44,6 @@ describe("agent CLI session resume and capture hooks", () => {
     }));
 
     expect(injected.args.slice(0, 4)).toEqual(["--model", "claude-opus", "--resume", resumeSessionId]);
-    expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--plugin-url"]));
     expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--mcp-config"]));
     // 주입 인자의 마지막 가족을 기준으로 잰다 — 바이패스 플래그는 옵트인일 때만 실리므로
     // 순서 계약의 기준점이 될 수 없다.
@@ -66,8 +63,6 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(fresh.env.CLAUDE_CODE_DISABLE_AUTO_MEMORY).toBe("0");
     expect(indexOfSequence(fresh.args, ["--session-id", fresh.session.sessionId])).toBeGreaterThanOrEqual(0);
     expect(fresh.args).not.toContain("--resume");
-    // 세션 좌표와 무관하게 모든 런치는 호스트가 기동에 묶어 둔 같은 zip을 받는다.
-    expect(fresh.session.pluginUrl).toBe("http://127.0.0.1:9/fleet-plugin-stub/fleet.zip");
 
     const from = randomUUID();
     const forked = await injectAgentCliProfile({ ...profile, env: { ...profile.env, CLAUDE_CODE_DISABLE_AUTO_MEMORY: "0" } }, {
@@ -118,7 +113,6 @@ function baseInjectOptions(
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
-    plugin: pluginStub,
     dedicatedMcpSession: overrides.dedicatedMcpSession ?? createDedicatedMcpSession(),
     ...(overrides.origin ? { origin: overrides.origin } : {}),
   };
@@ -155,10 +149,6 @@ function readTextFilesRecursively(directory: string): string[] {
     const entryPath = path.join(directory, entry.name);
     return entry.isDirectory() ? readTextFilesRecursively(entryPath) : [readFileSync(entryPath, "utf8")];
   });
-}
-
-function hookExec(command: string, args: readonly string[]): FleetHookExec {
-  return { args, command };
 }
 
 function indexOfSequence(values: readonly string[], sequence: readonly string[]): number {

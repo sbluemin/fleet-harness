@@ -137,7 +137,6 @@ function expandPendingDraft(raw: Record<string, unknown>): Record<string, unknow
     ...(draft.groupId === null || typeof draft.groupId === "string" ? { groupId: draft.groupId } : {}),
     ...(Number.isFinite(createdAt) ? { ts: { createdAt, updatedAt: createdAt } } : {}),
     ...(Object.keys(session).length ? { session } : {}),
-    ...(draft.viewMode === "chat" ? { chatMode: true } : {}),
   };
 }
 function renameKeys(value: unknown): unknown {

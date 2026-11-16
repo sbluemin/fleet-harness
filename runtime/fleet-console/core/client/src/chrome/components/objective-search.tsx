@@ -45,7 +45,7 @@ import { PaletteActionGlyph, PaletteCommandGlyph, PaletteRailIcon } from "./pale
 import { resolveObjectiveActivity, resolveObjectiveDisplayActivity, resolveObjectiveMarkVisual } from "../../../../../features/execution/client/objective-activity.js";
 import { useObjectiveClusters } from "../../../../../features/workspace/client/objective-clusters.js";
 import { CONVERSATION_ROW_PHRASE } from "../../../../../features/workspace/client/sidebar/side-bar-row-style.js";
-import { archiveObjectiveFromUi, resumeObjectiveInPlace, type ArchiveOutcome } from "../../integration/objective-actions.js";
+import { archiveObjectiveFromUi, type ArchiveOutcome } from "../../integration/objective-actions.js";
 import { openArchiveSheet } from "../../integration/objective-archive.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../../../../../features/execution/client/objective-marks.js";
 import {
@@ -444,15 +444,6 @@ export function ObjectiveSearch({
         else requestCommodoreCreate();
         break;
       }
-      case "resume-objectiveRecord": {
-        // plugin이 resumeObjective 훅을 제공하면 직접 재개하고, 미제공 시에만 프레임 포커스로 폭백한다.
-        // 실패 시에는 포커스하지 않는다 — focusObjective은 알림을 제거하므로(store.ts) plugin이 emit한
-        // agent.resume-failed가 지워져 침묵 실패가 된다. 실패 피드백은 칩 뱃지 + Alerts 항목이 담당한다.
-        previousFocusRef.current = null;
-        if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
-        resumeObjectiveInPlace(action.objectiveId, state.objectiveRecords, plugins, focusObjective);
-        break;
-      }
       case "archive-objectiveRecord": {
         previousFocusRef.current = null;
         if (!location.pathname.startsWith("/objectives")) navigate("/objectives");
@@ -546,9 +537,6 @@ export function ObjectiveSearch({
     const actions: RowAction[] = [
       { id: "open", label: t("chrome.objectiveRecordSearch.actionOpen"), glyph: "objective-open", run: () => selectEntry(entry.objectiveId) },
     ];
-    if (entry.activity === "ended") {
-      actions.push({ id: "resume", label: t("chrome.objectiveRecordSearch.actionResume"), glyph: "objective-resume", run: () => runAction({ kind: "resume-objectiveRecord", objectiveId: entry.objectiveId }, false) });
-    }
     // 이름 변경은 사이드바가 소비하는 요청이다. 모바일 셸에는 사이드바가 없어 요청이 아무 데도
     // 닿지 않고 나중에 데스크톱 사이드바가 서면 뒤늦게 재생되므로, 그 표면에서는 띠에 올리지 않는다.
     if (getViewModeSnapshot().effective !== "mobile") {

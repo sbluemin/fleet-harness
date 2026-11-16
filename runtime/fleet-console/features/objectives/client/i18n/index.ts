@@ -3,9 +3,6 @@ import { createTranslator } from "@fleet-console/i18n/translate";
 
 export const objectivesEn = {
   "objectives.panel.title": "Objectives",
-  "objectives.view.label": "Start view",
-  "objectives.view.terminal": "Terminal view",
-  "objectives.view.chat": "Chat view",
   "objectives.state.fresh": "Not started",
   "objectives.state.planning": "planning",
   "objectives.state.planned": "planned · not commenced",
@@ -558,9 +555,6 @@ export const objectivesEn = {
 
 export const objectivesKo: Record<keyof typeof objectivesEn, string> = {
   "objectives.panel.title": "목표",
-  "objectives.view.label": "시작 뷰",
-  "objectives.view.terminal": "터미널뷰",
-  "objectives.view.chat": "채팅뷰",
   "objectives.state.fresh": "시작 전",
   "objectives.state.planning": "구상 중",
   "objectives.state.planned": "구상됨 · 개시 전",

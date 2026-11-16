@@ -12,7 +12,7 @@ afterEach(() => {
 });
 
 describe("createShellTerminalLaunchResolver", () => {
-  it("advertises truecolor without replacing the compatible TERM entry", async () => {
+  it("launches the user's shell without Agent CLI injection and preserves terminal capabilities", async () => {
     const resolve = createShellTerminalLaunchResolver({
       cwd: "/work",
       env: { COLORTERM: "256color", SHELL: "/bin/sh" } as NodeJS.ProcessEnv,
@@ -21,10 +21,13 @@ describe("createShellTerminalLaunchResolver", () => {
 
     const spec = await resolve();
 
+    expect(spec).toMatchObject({ bin: "/bin/sh", args: [], cwd: "/work" });
     expect(spec.env).toMatchObject({
       COLORTERM: "truecolor",
       TERM: "xterm-256color",
     });
+    expect(spec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
+    expect(spec.env.INIT_CWD).toBeUndefined();
   });
 });
 

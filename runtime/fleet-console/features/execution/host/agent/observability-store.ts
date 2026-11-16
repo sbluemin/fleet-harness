@@ -19,7 +19,6 @@ import type {
   AgentSessionUpdatedEvent,
   AgentSessionWorkspace,
   AgentTerminalSessionInfo,
-  AgentTurnState,
   AgentWorkStep,
 } from "./types.js";
 
@@ -65,7 +64,6 @@ interface PendingTerminalSessionState {
   readonly theaterId: string;
   readonly terminalSessionId: string;
   status: AgentSessionStatus;
-  turnState?: AgentTurnState;
   modelActivity?: AgentModelActivity;
   attentionPending?: boolean;
   backgroundPending?: boolean;
@@ -73,8 +71,6 @@ interface PendingTerminalSessionState {
   chatActive?: boolean;
   /** Chat 턴 안에서 지금 하는 일의 계열. 턴이 닫히거나 표면이 바뀌면 지운다. */
   step?: AgentWorkStep;
-  backgroundPendingExpiry?: ReturnType<typeof setTimeout>;
-  settledAgentIds?: ReadonlySet<string>;
   registrationId?: string;
   cliRunId?: string;
   session?: CapturedAgentSession;
@@ -112,8 +108,6 @@ const JOB_EVENT_LIMIT = 200;
 const TENANT_FINALIZED_JOB_LIMIT = 100;
 const TENANT_JOB_LIMIT = 200;
 const EVENT_TEXT_RETENTION_LIMIT = 8_192;
-const BACKGROUND_PENDING_TTL_MS = 30 * 60_000;
-const EMPTY_SETTLED_AGENT_IDS: ReadonlySet<string> = new Set<string>();
 const REDACTED_REQUEST_PATH = "[redacted path]";
 
 export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreDeps = {}) {
@@ -312,52 +306,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return terminalSessionsById.get(sessionId)?.workspace ?? null;
   }
 
-  function setTerminalSessionTurnState(sessionId: string, turnState: AgentTurnState): AgentTerminalSessionInfo | null {
-    const session = terminalSessionsById.get(sessionId);
-    if (!session || session.chatActive === true) return null;
-    session.turnState = turnState;
-    delete session.modelActivity;
-    delete session.attentionPending;
-    return toTerminalSessionInfo(session);
-  }
-
-  // 이 세션이 이미 stop을 보고받은 agent id. 상주하는 teammate가 다음 턴 종료 payload에 계속 잡혀도
-  // 살아 있는 작업으로 다시 읽히지 않게 하는 기억이며, 세션 라이프사이클과 함께만 비워진다.
-  function getTerminalSessionSettledAgentIds(sessionId: string): ReadonlySet<string> {
-    return terminalSessionsById.get(sessionId)?.settledAgentIds ?? EMPTY_SETTLED_AGENT_IDS;
-  }
-
-  // 살아 있는 백그라운드 작업 보고를 절대값으로 반영한다. 증감이 아니라 대입이므로, 하나의 Workflow가
-  // 에이전트 수만큼 stop을 발화해도 남은 작업이 있는 한 pending이 꺼지지 않는다.
-  function setTerminalSessionBackgroundPending(
-    sessionId: string,
-    pending: boolean,
-    settledAgentIds?: ReadonlySet<string>,
-  ): AgentTerminalSessionInfo | null {
-    const session = terminalSessionsById.get(sessionId);
-    if (!session) return null;
-    // dormant/closed/error 세션에 뒤늦게 도착한 best-effort hook은 무시한다 — 라이프사이클 정리
-    // (clearTerminalSessionBackgroundPending) 뒤에 상태·타이머를 되살리면 resume 후 거짓 배지가 남는다.
-    if (session.chatActive === true || session.status === "dormant" || session.status === "closed" || session.status === "error") return null;
-    if (!pending) {
-      // 꺼질 때는 만료 타이머도 함께 정리한다 — 30분 뒤 무의미한 false→false notify를 남기지 않는다.
-      // 기억은 그 정리 뒤에 심는다 — pending이 꺼졌다고 stop 보고까지 잊으면 상주 항목이 다음 턴에 되살아난다.
-      clearTerminalSessionBackgroundPending(session);
-      if (settledAgentIds) session.settledAgentIds = settledAgentIds;
-      return toTerminalSessionInfo(session);
-    }
-    session.backgroundPending = true;
-    if (settledAgentIds) session.settledAgentIds = settledAgentIds;
-    if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
-    session.backgroundPendingExpiry = setTimeout(() => {
-      session.backgroundPending = false;
-      delete session.backgroundPendingExpiry;
-      notifySessionUpdated(toTerminalSessionInfo(session));
-    }, BACKGROUND_PENDING_TTL_MS);
-    if (typeof session.backgroundPendingExpiry.unref === "function") session.backgroundPendingExpiry.unref();
-    return toTerminalSessionInfo(session);
-  }
-
   function setTerminalSessionModelActivity(sessionId: string, modelActivity: AgentModelActivity): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session || session.chatActive === true) return null;
@@ -409,7 +357,6 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     // 직후 첫 프레임이 옛 표면의 마지막 상태로 그려진다.
     delete session.modelActivity;
     delete session.attentionPending;
-    delete session.turnState;
     delete session.step;
     clearTerminalSessionBackgroundPending(session);
     return toTerminalSessionInfo(session);
@@ -455,24 +402,13 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
    * 읽는 쪽이 대기를 작업보다 앞세운다.
    */
   /**
-   * 채팅 표면의 백그라운드 대기 보고. 필드는 PTY 쪽과 같은 하나지만, 그 setter를 그대로 쓸 수 없는
-   * 이유가 둘이다.
-   *
-   * 하나는 소유권이다. 채팅에서 태어나거나 복원된 세션은 자식이 없어도 registered/live다.
-   * PTY의 훅은 그 활동축에 쓸 수 없고, 여기서는 chatActive가 채팅 보고의 소유권을 확인한다.
-   *
-   * 다른 하나는 TTL이다. hook 전달은 best-effort라 잃어버린 stop 하나가 배지를 영영 켜 둘 수 있어 PTY
-   * 쪽은 시한을 둔다. 채팅의 원장은 세션 스트림 자체이고 세션이 사라지면 반드시 걷히므로, 여기에 시한을
-   * 두면 아직 도는 작업을 30분 뒤에 조용히 유휴로 만든다. 그래서 앞 표면이 남긴 타이머만 거두고
-   * 새로 걸지는 않는다.
+   * 채팅 표면의 백그라운드 대기 보고. `chatActive`가 채팅 보고의 소유권을 확인한다 — 채팅에서 태어나거나
+   * 복원된 세션은 자식이 없어도 registered/live다. 채팅의 원장은 세션 스트림 자체이고 세션이 사라지면
+   * 반드시 걷히므로 여기에 시한을 두지 않는다 — 두면 아직 도는 작업을 조용히 유휴로 만든다.
    */
   function setTerminalSessionChatBackgroundPending(sessionId: string, pending: boolean): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session || session.chatActive !== true) return null;
-    if (session.backgroundPendingExpiry) {
-      clearTimeout(session.backgroundPendingExpiry);
-      delete session.backgroundPendingExpiry;
-    }
     session.backgroundPending = pending;
     return toTerminalSessionInfo(session);
   }
@@ -570,10 +506,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   }
 
   function clearTerminalSessionBackgroundPending(session: PendingTerminalSessionState): void {
-    if (session.backgroundPendingExpiry) clearTimeout(session.backgroundPendingExpiry);
-    delete session.backgroundPendingExpiry;
     session.backgroundPending = false;
-    delete session.settledAgentIds;
   }
 
   function removeTerminalSession(sessionId: string): boolean {
@@ -615,11 +548,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     updateTerminalSessionProviderSession,
     clearTerminalSessionProviderSession,
     updateTerminalSessionStatus,
-    setTerminalSessionTurnState,
     setTerminalSessionWorkspace,
     getTerminalSessionWorkspace,
-    setTerminalSessionBackgroundPending,
-    getTerminalSessionSettledAgentIds,
     setTerminalSessionModelActivity,
     setTerminalSessionChatActive,
     setTerminalSessionChatBackgroundPending,
@@ -649,7 +579,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     cliId: state.cliId,
     cliLabel: state.cliLabel,
     status: state.status,
-    turnState: state.turnState ?? "none",
+    turnState: "none",
     ...(state.modelActivity ? { modelActivity: state.modelActivity } : {}),
     ...(state.attentionPending === true ? { attentionPending: true } : {}),
     ...(state.backgroundPending === true ? { backgroundPending: true } : {}),

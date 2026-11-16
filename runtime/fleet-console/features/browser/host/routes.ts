@@ -5,7 +5,6 @@ import { BrowserPolicyError, GLOBAL_BROWSER_OWNER_ID, type BrowserService } from
 import { ViewerFrameClosedError, ViewerFrameDisconnectedError, ViewerFrameTimeoutError, type DesktopEngine } from "./desktop-engine.js";
 import { serveViewerStream } from "./viewer-stream.js";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
-import { writeImageToClipboard } from "./clipboard.js";
 import { DEFAULT_BROWSER_SUGGESTION_SETTINGS, suggestionSkipReason, type BrowserSuggestionSettings } from "../shared/suggestions.js";
 import type { BrowserPasswordShellCommand } from "@fleet-console/protocol/desktop/browser-passwords";
 import { browserPasswordHttpError, browserPasswordId, browserPasswordOrigin, browserPasswordSecret, browserPasswordUsername } from "./passwords.js";
@@ -23,7 +22,6 @@ interface BrowserRouteDeps {
   };
   readonly logSuggestion?: (event: { readonly event: "browser.suggest"; readonly timestamp: string; readonly transmitted: boolean; readonly reason: string; readonly count: number }) => void;
   readonly browserMcp: {
-    pasteIntoTerminal(id: string): boolean;
     isSessionOwner?(id: string): boolean;
   };
   readonly objectiveRecords: { get(id: string): { id: string; commodoreId: string; [key: string]: unknown } | null };
@@ -167,7 +165,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
       writeJson(res, 200, { ok: true, shortcuts: body.shortcuts });
       return true;
     }
-    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|paste|favicon|history|import|profile|clear-profile|surface|control|input|select-popup|permission|password-action|file-chooser)$/u.exec(pathname);
+    const match = /^\/api\/v1\/browser\/objectives\/([^/]+)\/(state|screenshot|tabs|navigate|viewport|inspect|favicon|history|import|profile|clear-profile|surface|control|input|select-popup|permission|password-action|file-chooser)$/u.exec(pathname);
     if (!match) { writeJson(res, 404, { error: "not_found" }); return true; }
     const requestedId = decodeURIComponent(match[1] ?? "");
     const action = match[2] ?? "";
@@ -221,7 +219,7 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
     }
     if (req.method !== "POST") { writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!isExactConsoleOrigin(req) && !isManagingDesktopProcess(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
-    const body = await readJsonBody<Record<string, unknown>>(req, action === "paste" ? BROWSER_PASTE_MAX_BYTES : action === "file-chooser" ? BROWSER_FILE_UPLOAD_MAX_BYTES : undefined);
+    const body = await readJsonBody<Record<string, unknown>>(req, action === "file-chooser" ? BROWSER_FILE_UPLOAD_MAX_BYTES : undefined);
     if (!body) { writeJson(res, 400, { error: "invalid_request" }); return true; }
     try {
       if (action === "history") {
@@ -288,18 +286,10 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         if (typeof body.x !== "number" || typeof body.y !== "number") { writeJson(res, 400, { error: "invalid_request" }); return true; }
         writeJson(res, 200, { element: await browserService.inspectAt(objectiveId, body.x, body.y, typeof body.tabId === "string" ? body.tabId : null) }); return true;
       }
-      if (action === "paste") {
-        // 사람이 패널에서 만든 스크린샷을 이 기계의 OS 클립보드에 올린 뒤 터미널 Objective 의 CLI 에 붙여넣기(Ctrl+V)를
-        // 눌러 준다 — CLI 는 자기가 도는 기계의 클립보드를 읽으므로, 서버가 올리고 나서야 키를 보내야 순서가 맞는다.
-        if (!objectiveRecord) { writeJson(res, 409, { error: "terminal_not_running" }); return true; }
-        if (objectiveRecord.chatMode === true) { writeJson(res, 409, { error: "objectiveRecord_in_chat_mode" }); return true; }
-        if (typeof body.data !== "string" || body.data.length === 0) { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        const png = Buffer.from(body.data, "base64");
-        if (png.length < 8 || png.readUInt32BE(0) !== 0x89504e47) { writeJson(res, 400, { error: "invalid_request" }); return true; }
-        try { await writeImageToClipboard(png); }
-        catch (error) { process.stdout.write(`[fleet-browser] paste: clipboard write failed: ${error instanceof Error ? error.message : "unknown"}\n`); writeJson(res, 500, { error: "clipboard_failed" }); return true; }
-        if (!browserMcp.pasteIntoTerminal(objectiveRecord.id)) { writeJson(res, 409, { error: "terminal_not_running" }); return true; }
-        writeJson(res, 200, { pasted: true }); return true;
+      if (action === "file-chooser") { writeJson(res, 200, await browserService.answerFileChooser(objectiveId, body)); return true; }
+      if (action === "inspect") {
+        if (typeof body.x !== "number" || typeof body.y !== "number") { writeJson(res, 400, { error: "invalid_request" }); return true; }
+        writeJson(res, 200, { element: await browserService.inspectAt(objectiveId, body.x, body.y, typeof body.tabId === "string" ? body.tabId : null) }); return true;
       }
       writeJson(res, 404, { error: "not_found" });
     } catch (error) { fail(error); }

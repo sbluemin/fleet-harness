@@ -9,7 +9,7 @@ import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
 import type { EventPort } from "@fleet-console/infra/http/host-ports";
 import type { McpTransport } from "@fleet-console/infra/http/mcp-transport";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
-import type { AgentCliPlugin, LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
+import type { LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/infra/http/routing";
@@ -17,7 +17,7 @@ import type { RouteHandler, UpgradeHandler } from "@fleet-console/infra/http/rou
 export type ConsoleRuntimeHost = { readonly mcpTransport?: McpTransport; readonly events: EventPort; readonly server: ServerOriginPort; readonly http: HttpPort; readonly security: HttpSecurityPort; readonly lifecycle: CleanupPort; readonly experiments?: ExperimentsHost; } & {
   readonly admiralMcp: Pick<AdmiralMcpHost, "connect">;
   readonly computerUseMcp?: { connect(): import("../../computer-use/host/mcp.js").ComputerUseMcpConnection; revokeObjective(objectiveId: string): void; endParticipant(objectiveId: string): void };
-  readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeObjective(objectiveId: string): void | Promise<void>; bindTerminalPaste(paste: (objectiveId: string) => boolean): () => void; endAgentSession(objectiveId: string): void };
+  readonly browserMcp?: { connect(): import("../../browser/host/mcp.js").BrowserMcpConnection; revokeObjective(objectiveId: string): void | Promise<void>; endAgentSession(objectiveId: string): void };
   /** 패널 안 허용 요청(컴퓨터 사용). 답하는 라우트와, 턴이 끝날 때 붙잡힌 호출을 푸는 곳이 쓴다. */
   readonly useRequests?: Pick<import("../../computer-use/host/use-requests.js").UseRequestBroker, "answer" | "settle" | "leave" | "revoke" | "list">;
   /** 자식 세션 → 루트. 두 사용 도구가 공유하는 컨텍스트의 계보 규칙이다(`use-context.ts`). */
@@ -51,8 +51,6 @@ export interface ConsoleRuntimeContext {
   readonly recordFailure?: (kind: string, error: unknown) => void;
   /** Agent 실행 옵션. 저장 자리(Console 슬롯)는 부트스트랩이 정해 붙인다. */
   readonly agentOptions: AgentOptionsService;
-  /** 기동에 한 번 렌더한 Claude 플러그인 트리. 런치는 이것을 쓰기만 한다. */
-  readonly agentCliPlugin: AgentCliPlugin;
   /** launch 프롬프트 파일의 자리. 이 Console의 runtime lock 도메인에 묶여 있고, 회수는 부트스트랩이 lock 뒤에 부른다. */
   readonly launchPromptDirectories?: LaunchPromptDirectoryAllocator;
   /**

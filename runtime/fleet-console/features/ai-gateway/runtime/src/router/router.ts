@@ -31,6 +31,13 @@ import {
 } from "../models.js";
 import type { GatewayModel } from "../models.js";
 import { FLEET_MODEL_SPEED_HEADER, readModelSpeedHeader } from "../fleet/model-speed.js";
+import {
+  CLAUDE_CODE_AGENT_ID_HEADER,
+  CLAUDE_CODE_SESSION_ID_HEADER,
+  isExecutionVirtualModel,
+  type ExecutionModelFailure,
+  type ExecutionModelResolution,
+} from "../fleet/execution-routing.js";
 import { visibleGatewayModels, type ProviderStatusMap } from "../catalog-access.js";
 import { DEFAULT_XAI_ENDPOINT_PREFERENCE } from "../settings/index.js";
 import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
@@ -82,7 +89,7 @@ export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
  * `/v1/messages`를 떼면 남는 마지막 조각이 `grok`이다. 마운트 경로에 우연히 같은 이름이
  * 들어 있어도 그것은 접미 바로 앞이 아니므로 선택자가 되지 않는다.
  */
-const WIRE_ENDPOINT_SUFFIXES = ["/v1/messages", "/v1/models", "/v1/compact-events"] as const;
+const WIRE_ENDPOINT_SUFFIXES = ["/v1/messages", "/v1/models"] as const;
 
 /**
  * `/v1/messages` 본문의 상한.
@@ -165,21 +172,18 @@ export interface AiGatewayRouteDeps {
   readonly readModelOverride?: () => string | undefined;
   /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
   readonly compactionStore?: ClaudeCodexCompactionStore;
-  /** Process-local hook credential injected into Fleet-launched Claude children. */
-  readonly compactionHookToken?: string;
   /**
-   * 라우팅 Mod가 배정을 물을 때 제시하는 자격. 압축 훅과 다른 값을 쓴다 — 두 소비자가 같은
-   * 비밀을 공유하면 하나를 회수할 때 다른 하나가 같이 끊긴다.
+   * 위임 실행의 가상 모델 id를 실제 배정으로 바꾼다.
    *
-   * 이 자격은 편의가 아니라 권한 게이트다. 배정은 Console의 모델 노출과 공급자 배정 수를
-   * 바꾸므로, 같은 기계의 아무 프로세스나 이 경로를 두드릴 수 있으면 안 된다.
+   * 호출 시점의 노출을 읽으므로 세션 중 설정 변경이 다음 요청부터 먹는다. 자식이 실행
+   * 정체성을 싣지 않았거나, 그 실행의 의도를 확인할 수 없으면 `{ error }`를 돌려준다 —
+   * 여기서 임의의 기본값을 지어내면 잘못된 배정이 조용히 남는다. 생략하면 가상 id 요청은
+   * 구성 오류로 거절된다.
    */
-  readonly modHookToken?: string;
-  /**
-   * 위임 하나를 무엇으로 보낼지 판정한다. 호출 시점의 노출을 읽으므로 세션 중 설정 변경이
-   * 다음 배정부터 먹는다. 생략하면 이 세션의 위임은 재작성되지 않는다.
-   */
-  readonly assignRouting?: (request: unknown) => Promise<unknown> | unknown;
+  readonly resolveExecutionModel?: (request: {
+    readonly sessionId: string;
+    readonly agentId: string;
+  }) => Promise<ExecutionModelResolution | ExecutionModelFailure> | ExecutionModelResolution | ExecutionModelFailure;
   readonly fetch?: typeof fetch;
   /**
    * Concurrent upstream calls allowed per provider origin, for every provider reached over `fetch`.
@@ -334,78 +338,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       res.end("{}");
       return true;
     }
-    // 라우팅 Mod가 위임 하나를 무엇으로 보낼지 묻는 자리. 판정은 전부 Console이 한다 —
-    // 훅은 사실만 싣고 답을 그대로 적용한다. 플러그인 스냅숏은 내용 해시로 발행되는 공유
-    // 트리라 노출이나 판정을 거기 구워 넣으면 모델을 켤 때마다 새 트리가 발행되고, 그때
-    // 열려 있던 모든 세션이 훅을 다시 싣는다. 스냅숏은 정적으로 두고 답은 여기서 낸다.
-    if (pathname.endsWith("/v1/fleet/routing/assign")) {
-      if (req.method !== "POST") {
-        writeClientError(res, 405, "invalid_request_error", "Method not allowed");
-        return true;
-      }
-      const modToken = req.headers["x-fleet-mod-token"];
-      if (!deps.assignRouting || !deps.modHookToken || modToken !== deps.modHookToken) {
-        writeClientError(res, 401, "authentication_error", "Invalid mod credential");
-        return true;
-      }
-      try {
-        // 받는 쪽의 상한을 둔다 — 보내는 쪽의 선의에 서버의 메모리를 걸지 않는다.
-        const request = await readJsonBody<Record<string, unknown>>(req, 1024 * 1024);
-        if (!request) {
-          writeClientError(res, 400, "invalid_request_error", "Invalid routing request");
-          return true;
-        }
-        const decision = await deps.assignRouting(request);
-        if (!res.writableEnded) {
-          res.writeHead(200, { "content-type": "application/json" });
-          res.end(JSON.stringify(decision));
-        }
-      } catch {
-        if (!res.writableEnded) {
-          writeClientError(res, 500, "api_error", "Could not assign a model to the delegated run");
-        }
-      }
-      return true;
-    }
-    if (pathname.endsWith("/v1/compact-events")) {
-      if (req.method !== "POST") {
-        writeClientError(res, 405, "invalid_request_error", "Method not allowed");
-        return true;
-      }
-      const hookToken = req.headers["x-fleet-compact-token"];
-      if (!deps.compactionStore || !deps.compactionHookToken || hookToken !== deps.compactionHookToken) {
-        writeClientError(res, 401, "authentication_error", "Invalid compact hook credential");
-        return true;
-      }
-      try {
-        const event = await readJsonBody<Record<string, unknown>>(req, 4 * 1024 * 1024);
-        if (!event || typeof event.session_id !== "string") {
-          writeClientError(res, 400, "invalid_request_error", "Invalid compact event");
-          return true;
-        }
-        if (event.hook_event_name === "PreCompact") {
-          deps.compactionStore.recordPreCompact({
-            sessionId: event.session_id,
-            trigger: event.trigger === "manual" ? "manual" : "auto",
-            customInstructions: typeof event.custom_instructions === "string" ? event.custom_instructions : "",
-          });
-        } else if (event.hook_event_name === "PostCompact") {
-          deps.compactionStore.recordPostCompact({
-            sessionId: event.session_id,
-            summary: typeof event.compact_summary === "string" ? event.compact_summary : "",
-          });
-        } else {
-          writeClientError(res, 400, "invalid_request_error", "Unknown compact event");
-          return true;
-        }
-        res.writeHead(200, { "content-type": "application/json" });
-        res.end('{"ok":true}');
-      } catch {
-        writeClientError(res, 400, "invalid_request_error", "Invalid compact event");
-      }
-      return true;
-    }
-    // 하네스의 gateway model discovery. 이게 있어야 Claude Code의 /model picker에 GPT가 뜬다.
     if (pathname.endsWith("/v1/models")) {
       if (!acceptedCredential(req.headers, harness)) {
         writeClientError(res, 401, "authentication_error", "Missing Anthropic credential");
@@ -470,16 +402,64 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 요청이 지목한 모델이 어느 구독으로 가는지 정한다. env 오버라이드가 있으면 그쪽이 이긴다.
     const modelOverride = deps.readModelOverride?.();
     const requested = modelOverride ?? body.model;
-    let target = harness.findModel(requested, GATEWAY_MODELS);
-    // Claude alias의 버전은 설치된 CLI가 정한다. 표를 갱신하면 카탈로그가 새로 지어지므로 다시 찾는다.
-    if (target?.provider === "claude" && deps.ensureClaudeNativeModels) {
-      await deps.ensureClaudeNativeModels();
+    const virtualRequest = isExecutionVirtualModel(requested);
+    let resolvedExecution: ExecutionModelResolution | undefined;
+    let target: GatewayModel | undefined;
+    if (virtualRequest) {
+      // 가상 id는 자식의 실행 정체성과 짝지어야 실제 모델이 된다. 표식이 없거나 그 실행의
+      // 의도를 확인할 수 없으면 배정하지 않고 멈춘다 — 조용한 기본값은 잘못된 라우팅이다.
+      const resolveExecution = deps.resolveExecutionModel;
+      if (resolveExecution === undefined) {
+        writeClientError(res, 400, "invalid_request_error", "Delegated gateway routing is not configured.");
+        clock?.finish("error", 400);
+        return true;
+      }
+      const headerSessionId = readHeaderValue(req.headers[CLAUDE_CODE_SESSION_ID_HEADER]);
+      const headerAgentId = readHeaderValue(req.headers[CLAUDE_CODE_AGENT_ID_HEADER]);
+      if (headerSessionId === undefined || headerAgentId === undefined) {
+        writeClientError(res, 400, "invalid_request_error", "This delegated run carries no session or agent identity.");
+        clock?.finish("error", 400);
+        return true;
+      }
+      let resolution: ExecutionModelResolution | ExecutionModelFailure;
+      try {
+        resolution = await resolveExecution({ sessionId: headerSessionId, agentId: headerAgentId });
+      } catch {
+        writeClientError(res, 500, "api_error", "Fleet could not assign a model to this delegated run.");
+        clock?.finish("error", 500);
+        return true;
+      }
+      if ("error" in resolution) {
+        writeClientError(res, 400, "invalid_request_error", resolution.error);
+        clock?.finish("error", 400);
+        return true;
+      }
+      resolvedExecution = resolution;
+      target = harness.findModel(resolution.modelId, GATEWAY_MODELS);
+      // 상속·명시 배정이 native Claude 모델이면 비가상 경로와 같은 계약을 지난다.
+      if (target?.provider === "claude" && deps.ensureClaudeNativeModels) {
+        await deps.ensureClaudeNativeModels();
+        target = harness.findModel(resolution.modelId, GATEWAY_MODELS);
+      }
+      if (!target && !harness.relaysUnmatchedModel(resolution.modelId)) {
+        writeClientError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${resolution.modelId}`);
+        clock?.finish("error", 400);
+        return true;
+      }
+      // 버전 고정 native 모델은 카탈로그 alias가 아니다. 일반 요청과 같은 passthrough로 보낸다.
+      if (!target) body = { ...body, model: resolution.modelId };
+    } else {
       target = harness.findModel(requested, GATEWAY_MODELS);
-    }
-    if (!target && !harness.relaysUnmatchedModel(requested)) {
-      writeClientError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
-      clock?.finish("error", 400);
-      return true;
+      // Claude alias의 버전은 설치된 CLI가 정한다. 표를 갱신하면 카탈로그가 새로 지어지므로 다시 찾는다.
+      if (target?.provider === "claude" && deps.ensureClaudeNativeModels) {
+        await deps.ensureClaudeNativeModels();
+        target = harness.findModel(requested, GATEWAY_MODELS);
+      }
+      if (!target && !harness.relaysUnmatchedModel(requested)) {
+        writeClientError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
+        clock?.finish("error", 400);
+        return true;
+      }
     }
     // 디스커버리가 로그인된 공급자만 광고해도, 실행 경로가 로그아웃 공급자를 받아 주면 raw id로
     // 그 구독을 쓴다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고
@@ -492,7 +472,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return true;
     }
     if (target && modelOverride === undefined && !isModelExposed(target)) {
-      writeClientError(res, 403, "permission_error", `AI gateway provider is not signed in: ${requested}`);
+      writeClientError(res, 403, "permission_error", `AI gateway provider is not signed in: ${resolvedExecution === undefined ? requested : target.id}`);
       clock?.finish("error", 403);
       return true;
     }
@@ -509,6 +489,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     const sessionId = claudeSessionId(body.metadata?.user_id);
     clock?.setRequestBody(body, requested, sessionId);
     const isCompactRequest = isClaudeCompactSummaryRequest(body.messages);
+    if (resolvedExecution !== undefined) clock?.setResolvedModel(target?.id ?? resolvedExecution.modelId);
     const compactSummary = target?.provider === "codex"
       && sessionId !== undefined
       && isCompactRequest
@@ -949,6 +930,11 @@ async function proxyToAnthropic(
  * 이미 값이 있으면 덮지 않는다. 본문에 직접 싣는 클라이언트(Claude Code)의 값이 언제나
  * 이기며, 그래야 기존 동작이 글자 하나 바뀌지 않는다.
  */
+function readHeaderValue(value: unknown): string | undefined {
+  const raw = Array.isArray(value) ? value[0] : value;
+  return typeof raw === "string" && raw.trim().length > 0 ? raw.trim() : undefined;
+}
+
 function claudeSessionId(rawUserId: unknown): string | undefined {
   if (typeof rawUserId !== "string" || rawUserId.trim().length === 0) return undefined;
   try {

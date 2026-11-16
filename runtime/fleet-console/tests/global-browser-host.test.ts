@@ -31,7 +31,7 @@ describe("session browser host contract", () => {
     let status = 0;
     const router = createBrowserRouter({
       browserService: service,
-      browserMcp: { pasteIntoTerminal: () => false },
+      browserMcp: { },
       objectiveRecords: { get: () => null },
       suggestionSettings: {
         read: () => ({ enabled: stored.browser?.suggestionsEnabled === true, prompted: stored.browser?.suggestionsPrompted === true }),
@@ -100,7 +100,7 @@ describe("session browser host contract", () => {
     const delivered: unknown[] = [];
     let status = 0;
     const router = createBrowserRouter({
-      browserService: service, browserMcp: { pasteIntoTerminal: () => false }, objectiveRecords: { get: () => null },
+      browserService: service, browserMcp: { }, objectiveRecords: { get: () => null },
       publishAttach: (attach) => { if (receiver) delivered.push(attach); return receiver; },
       desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok", isLoopbackListener: () => true, isSameOriginConsoleRead: () => true,
       isWriteAdmitted: () => true, isExactConsoleOrigin: () => exactOrigin,
@@ -165,7 +165,7 @@ describe("session browser host contract", () => {
 
     const router = createBrowserRouter({
       browserService: service,
-      browserMcp: { pasteIntoTerminal: () => false, isSessionOwner: (id) => id === "commodore:c" || id === "plugin-browser:s" },
+      browserMcp: { isSessionOwner: (id) => id === "commodore:c" || id === "plugin-browser:s" },
       objectiveRecords: { get: (id: string) => objectiveRecords.get(id) ?? null },
       browserOwnerOf: (id) => id === "child" ? "root" : id,
       desktopEngine: engine, surfaceMode: () => "native", isNativeBrowserWrite: () => true, isManagingDesktopProcess: () => false, viewerFrameRead: () => "ok", isLoopbackListener: () => true, isSameOriginConsoleRead: () => true,
@@ -550,7 +550,7 @@ describe("session browser host contract", () => {
     const headers: string[] = [];
     const router = createBrowserRouter({
       browserService: service,
-      browserMcp: { pasteIntoTerminal: () => false },
+      browserMcp: { },
       objectiveRecords: { get: () => null },
       suggestionSettings: {
         read: () => ({ enabled: stored.browser?.suggestionsEnabled === true, prompted: stored.browser?.suggestionsPrompted === true }),
@@ -641,7 +641,7 @@ describe("session browser host contract", () => {
     let cache = "";
     const router = createBrowserRouter({
       browserService: service,
-      browserMcp: { pasteIntoTerminal: () => false },
+      browserMcp: { },
       objectiveRecords: { get: () => null },
       desktopEngine: engine,
       surfaceMode: () => gate.native ? "native" : "viewer",
@@ -729,7 +729,7 @@ describe("session browser host contract", () => {
     let payload: Record<string, unknown> = {};
     const router = createBrowserRouter({
       browserService: service,
-      browserMcp: { pasteIntoTerminal: () => false },
+      browserMcp: { },
       objectiveRecords: { get: () => null },
       desktopEngine: engine,
       surfaceMode: () => "native",
@@ -842,7 +842,7 @@ describe("session browser host contract", () => {
     const offlineService = new BrowserService({ enabled: () => true, availability: () => ({ available: false, reason: "desktop_required", host: null }), desktop: offline, log: () => {}, defaultProfile: { read: () => null, write: () => {} } });
     const offlineRouter = createBrowserRouter({
       browserService: offlineService,
-      browserMcp: { pasteIntoTerminal: () => false },
+      browserMcp: { },
       objectiveRecords: { get: () => null },
       desktopEngine: offline,
       surfaceMode: () => "native",
@@ -876,7 +876,7 @@ describe("session browser host contract", () => {
     try {
       const iconRouter = createBrowserRouter({
         browserService: service,
-        browserMcp: { pasteIntoTerminal: () => false },
+        browserMcp: { },
         objectiveRecords: { get: () => null },
         desktopEngine: engine,
         surfaceMode: () => "native",

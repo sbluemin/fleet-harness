@@ -174,7 +174,7 @@ function createRegistryAwareTerminalLaunchResolver(defaultResolver: TerminalLaun
     if (!objectiveRecordType) return defaultResolver(cwd, context);
     const resolver = resolvers.get(objectiveRecordType);
     if (resolver) return resolver(cwd, context);
-    if (objectiveRecordType === "agent") return defaultResolver(cwd, context);
+    // Agent Objective 세션은 PTY 로 열지 않는다 — 등록된 리졸버가 없으면 셸로 대신 띄우지 않고 거절한다.
     throw new Error(`terminal_launch_resolver_missing:${objectiveRecordType}`);
   };
 }

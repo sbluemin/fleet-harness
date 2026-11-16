@@ -85,21 +85,6 @@ const SEARCH_CATALOG = [
 
 describe("Claude Codex compaction routing", () => {
 
-  it("refuses compact events without the process token", async () => {
-    const router = createAiGatewayRouter({
-      readAuth,
-      compactionStore: {} as any,
-      compactionHookToken: "hook-token",
-    });
-    const res = response();
-    await router.handle(ctx({
-      res,
-      pathname: `${BASE}/v1/compact-events`,
-      rawBody: { hook_event_name: "PreCompact", session_id: "session", trigger: "auto" },
-    }));
-    expect(res.status).toBe(401);
-  });
-
   it("recovers input overflow before commit and preserves streaming after output starts", async () => {
     const overflow = { type: "invalid_request_error", code: "context_length_exceeded", message: "Your input exceeds the context window of this model." };
     const frame = (event: unknown) => `data: ${JSON.stringify(event)}\n\n`;
@@ -237,23 +222,24 @@ describe("Claude Codex compaction routing", () => {
       ]);
     });
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "codex-compaction-"));
-    const router = createAiGatewayRouter({
-      readAuth,
-      fetch: fetchMock,
-      compactionStore: createClaudeCodexCompactionStore({ directory }),
-      compactionHookToken: "hook-token",
-    });
+    const compactionStore = createClaudeCodexCompactionStore({ directory });
+    const router = createAiGatewayRouter({ readAuth, fetch: fetchMock, compactionStore });
     const sessionId = "4d7c1b52-3f7e-4f0a-9d55-2b8f6a1c0e91";
     const metadata = { user_id: JSON.stringify({ session_id: sessionId }) };
+    // 압축 사건은 이제 인프로세스 콜백이 저장소에 직접 기록한다 — 퇴역한 HTTP 경로를 거치지 않는다.
     const hook = async (event: Record<string, unknown>) => {
-      const res = response();
-      await router.handle(ctx({
-        res,
-        pathname: `${BASE}/v1/compact-events`,
-        headers: { "x-fleet-compact-token": "hook-token" },
-        rawBody: { session_id: sessionId, trigger: "manual", ...event },
-      }));
-      expect(res.status).toBe(200);
+      if (event.hook_event_name === "PreCompact") {
+        compactionStore.recordPreCompact({
+          sessionId,
+          trigger: event.trigger === "manual" ? "manual" : "auto",
+          customInstructions: typeof event.custom_instructions === "string" ? event.custom_instructions : "",
+        });
+      } else {
+        compactionStore.recordPostCompact({
+          sessionId,
+          summary: typeof event.compact_summary === "string" ? event.compact_summary : "",
+        });
+      }
     };
     try {
       await hook({ hook_event_name: "PreCompact" });
@@ -293,35 +279,20 @@ describe("Claude Codex compaction routing", () => {
 });
 
 /**
- * 위임 배정. 라우팅 Mod가 사실을 보내고 Console이 모델과 강도를 답하는 경로다.
+ * 위임 배정. 호출 전 판정이 남긴 사실을 Console의 코드 규칙이 모델과 강도로 바꾸는 경계다.
  *
- * 이 계약을 여기서 고정하는 이유는 세 가지가 한 요청 안에서 동시에 성립해야 하기 때문이다:
- * 자격 없는 호출은 원문 프롬프트를 실은 본문을 읽지 못해야 하고, 답은 훅이 그대로 스폰에
- * 실을 수 있는 모양이어야 하며, Fleet 자신의 실행 정체성을 호스트가 이름으로 불렀다고 해서
- * 배정이 꺼지면 안 된다 — 마지막 것은 목록에 보이는 이름 하나가 배정을 통째로 끄는 함정을
- * 실제로 만들었던 자리다.
+ * 여기서 고정하는 것은 판정 규칙 자체다 — 노출·쿼터·공급자 부하·모델 범위 제한이 후보를
+ * 어떻게 가르는지, 그리고 Fleet 자신의 실행 정체성을 호스트가 이름으로 불렀다고 해서
+ * 배정이 꺼지지 않는지. 퇴역한 mod HTTP 경로는 부르지 않고 판정 함수를 직접 부른다.
  */
 describe("delegation assignment", () => {
-  const MOD_TOKEN = "mod-token";
   const exposure = {
     delegationModels: [requireGatewayModel("codex--gpt-6.1-terra")],
   };
-  const assigningRouter = () => createAiGatewayRouter({
-    readAuth,
-    modHookToken: MOD_TOKEN,
-    assignRouting: (request) => decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(request), exposure),
-  });
-  // 자격 없음은 `null`로 말한다. `undefined`를 넘기면 기본 인자가 되살아나 자격이 실린다.
-  const assign = async (body: Record<string, unknown>, token: string | null = MOD_TOKEN) => {
-    const res = response();
-    await assigningRouter().handle(ctx({
-      res,
-      method: "POST",
-      pathname: `${BASE}/v1/fleet/routing/assign`,
-      headers: token === null ? {} : { "x-fleet-mod-token": token },
-      rawBody: body,
-    }));
-    return res;
+  // 퇴역한 HTTP 배정 경로 대신 공개 판정 경계를 직접 부른다. 판정 규칙은 그대로다.
+  const assign = async (body: Record<string, unknown>) => {
+    const decision = decideGatewayRoutingAssignment(parseGatewayAssignmentRequest(body), exposure);
+    return { status: 200, body: JSON.stringify(decision) };
   };
 
   it("assigns subagents and workflow stages by the code rule without an AI routing-model call", async () => {
@@ -474,11 +445,6 @@ describe("delegation assignment", () => {
     ]);
   });
 
-  it("refuses an assignment request that carries no mod credential", async () => {
-    const res = await assign({ surface: "agent", prompt: "secret host prompt" }, null);
-    expect(res.status).toBe(401);
-  });
-
   it("assigns a model and effort to a run that named none", async () => {
     const res = await assign({
       surface: "agent",
@@ -607,30 +573,6 @@ describe("delegation assignment", () => {
     ]);
   });
 
-  it("routes a workflow stage instead of letting it keep the model it inherited", async () => {
-    // 스테이지는 스폰을 지나지 않아 세션의 모델을 그대로 물려받는다. 그것을 결정으로 읽으면
-    // 한 워크플로우의 스테이지 전부가 같은 모델에 몰리고 배분이 아예 돌지 않는다.
-    const providerLoad = new Map<string, number>();
-    const inherited = "claude-gateway--xai--grok-4.6";
-    const exposure = {
-      delegationModels: [
-        requireGatewayModel("codex--gpt-6.1-terra"),
-        requireGatewayModel("xai--grok-composer-2.5-fast"),
-      ],
-      providerLoad,
-    } satisfies GatewayAssignmentExposure;
-
-    const carried = [0, 1, 2, 3].map(() => decideGatewayRoutingAssignment(
-      { surface: "stage", requestedModel: inherited },
-      exposure,
-    ).model);
-
-    expect(carried).not.toContain(inherited);
-    expect(new Set(carried).size).toBe(2);
-    expect(providerLoad.get("codex")).toBe(2);
-    expect(providerLoad.get("xai")).toBe(2);
-  });
-
   it("proxies native Claude requests to Anthropic with caller credentials and without alias advertisement", async () => {
     // Claude Code 2.1.284가 실제로 보고한 표 모양이다. Opus는 1M 좌표로만 오고 구버전 명시 id도 섞인다.
     // alias는 그중 최신으로만 풀리고, API로 가는 id에는 1M 표식이 남지 않아야 한다.
@@ -675,7 +617,7 @@ describe("delegation assignment", () => {
       { delegationModels: [requireGatewayModel("claude--opus-1m")] },
     );
     expect(decision.model).toBe("opus[1m]");
-    const nativeRouter = createAiGatewayRouter({ fetch: vi.fn<typeof fetch>(async (_url, init) => {
+    const nativeRouter = createAiGatewayRouter({ resolveExecutionModel: async () => ({ modelId: "claude-opus-5-5" }), fetch: vi.fn<typeof fetch>(async (_url, init) => {
       expect(JSON.parse(String(init?.body)).model).toBe("claude-opus-5-5");
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
@@ -685,6 +627,14 @@ describe("delegation assignment", () => {
     const delegated = response();
     await nativeRouter.handle(ctx({ res: delegated, token: ANTHROPIC_CRED, model: decision.model!, messages: [{ role: "user", content: "hello" }] }));
     expect(delegated.status).toBe(200);
+    // 후보가 없으면 지휘관의 버전 고정 native 모델을 상속한다. 가상 id가 upstream으로 새면 안 된다.
+    const inherited = response();
+    await nativeRouter.handle(ctx({ res: inherited, token: ANTHROPIC_CRED,
+      model: "claude-gateway--fleet--execute",
+      headers: { "x-claude-code-session-id": "parent", "x-claude-code-agent-id": "child", "anthropic-beta": "context-1m-2025-08-07" },
+      messages: [{ role: "user", content: "hello" }],
+    }));
+    expect(inherited.status).toBe(200);
 
     // Verify /v1/models excludes native Claude aliases (no duplicate advertisement)
     const discovery = buildAnthropicModelList(GATEWAY_MODELS);

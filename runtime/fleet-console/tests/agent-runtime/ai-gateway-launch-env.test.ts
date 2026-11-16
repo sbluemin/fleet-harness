@@ -35,7 +35,6 @@ describe("prepareAiGatewayLaunchProfile", () => {
 		const prepared = prepareAiGatewayLaunchProfile(profile, {
 			baseUrl: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
 			homeDir,
-			compactHookToken: "compact-token",
 		});
 
 		expect(prepared).not.toBe(profile);
@@ -56,9 +55,11 @@ describe("prepareAiGatewayLaunchProfile", () => {
 			ANTHROPIC_BASE_URL: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
 			CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
 			ENABLE_TOOL_SEARCH: "true",
-			FLEET_COMPACT_BASE_URL: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
-			FLEET_COMPACT_HOOK_TOKEN: "compact-token",
 		});
+		// 압축 사건은 이제 SDK 세션의 인프로세스 훅이 기록한다 — 자식 env에 토큰이 실리지 않는다.
+		expect(prepared.env.FLEET_COMPACT_BASE_URL).toBeUndefined();
+		expect(prepared.env.FLEET_COMPACT_HOOK_TOKEN).toBeUndefined();
+		expect(prepared.env.CLAUDE_CODE_ENABLE_FUNCTION_HOOKS).toBeUndefined();
 
 		const cachePath = path.join(homeDir, ".claude", "cache", "gateway-models.json");
 		const cache = JSON.parse(readFileSync(cachePath, "utf8")) as {

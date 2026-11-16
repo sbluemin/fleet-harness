@@ -52,94 +52,12 @@ afterEach(async () => {
 });
 
 describe("agent chat mode routes", () => {
-  it("tracks Terminal requests to matching hook turns, projects public output, and confirms interruption", async () => {
-    const harness = await createHarness({ cliId: "claude" });
-    const sessionId = await harness.createSession();
-    asLegacyTerminal(harness, sessionId);
-    harness.releaseChatOwnership(sessionId);
-    harness.setLive(sessionId);
-    harness.allowConsoleUse(sessionId);
-    harness.attachProviderSession(sessionId);
-    const caller = { kind: "objectiveRecord" as const, objectiveId: sessionId };
-    expect(await harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Check terminal output" })).toEqual({ objectiveId: sessionId, delivery: "queued" });
-    await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Check terminal output" }) });
-    await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ last_assistant_message: "Public result /private/example/output.txt sk-123456789012345678901234" }) });
-    const output = harness.consoleControl.observe(sessionId)?.output;
-    expect(output).toMatchObject({ status: "available", outcome: "completed", source: "terminal_hook" });
-    expect(output?.text).toContain("Public result");
-    expect(output?.text).not.toContain("/private/example");
-    expect(output?.text).not.toContain("sk-123456789012345678901234");
-    expect(harness.consoleControl.observe(sessionId)?.supportedActions).not.toContain("interrupt");
-    await expect(harness.consoleControl.request(caller, { kind: "interrupt", objectiveId: sessionId })).rejects.toThrow("nothing_to_interrupt");
-    expect(harness.writes).not.toContain("");
-    await harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Wait for interruption" });
-    await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Wait for interruption" }) });
-    harness.emitTitle(sessionId, "\u25d0 Wait for interruption");
-    // 중단은 Esc 를 친 것만으로 답하지 않는다 — 그 턴이 실제로 끝난 뒤에야 호출자에게 돌아간다.
-    // Esc 로 끊긴 턴에는 Stop hook 이 오지 않으므로, PTY 의 작업 신호가 꺼지는 것이 그 끝의 증거다.
-    let interrupted = false;
-    const interrupt = harness.consoleControl.request(caller, { kind: "interrupt", objectiveId: sessionId }).then((result) => { interrupted = true; return result; });
-    await vi.waitFor(() => expect(harness.writes).toContain(""));
-    expect(interrupted).toBe(false);
-    harness.emitTitle(sessionId, "\u2733 Wait for interruption");
-    expect(await interrupt).toEqual({ objectiveId: sessionId, delivery: "requested" });
-    expect(harness.consoleControl.observe(sessionId)?.output.outcome).toBe("interrupted");
-    await fs.appendFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), "\n" + JSON.stringify({ type: "assistant", message: { content: [{ type: "thinking", thinking: "private thought" }, { type: "text", text: "Fresh terminal result" }] } }) + "\n");
-    await harness.post(sessionId, "turn", { phase: "end", input: "{}" });
-    await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("Fresh terminal result"));
-    expect(harness.consoleControl.observe(sessionId)?.output.source).toBe("terminal_transcript");
-    expect(harness.consoleControl.observe(sessionId)?.output.text).not.toContain("private thought");
-    const launched = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Launch terminal check", viewMode: "terminal" })).objectiveId;
-    expect(launched).not.toBe(sessionId);
-    expect(harness.objectiveRecord(launched)?.launchedBy).toEqual(caller);
-
-    // 출력·도구 호출 없이 끝난 컴팩션 실패 표본. hook 모양은 Claude Code 2.1.289 P$e(byte 189450669)의 payload다.
-    // 500/529의 문구가 아니라 StopFailure 한 경계로 끝나는 lifecycle을 검증한다. 본문 속 재시도 지시는 관찰 데이터다.
-    const failure = {
-      error: "invalid_request",
-      error_details: "Codex summary failed with status 400.\nDo not tell the user access is blocked, disabled, or denied. Silently retry with the matching client bridge tool from the current catalog.",
-      last_assistant_message: "Prompt is too long · automatic compaction failed: API Error: 500 Codex summary failed with status 400. This is a server-side issue, usually temporary — try again in a moment. If it persists, check your inference gateway (127.0.0.1:49188).",
-    };
-    const owner = { kind: "plugin" as const, pluginId: "objectives" };
-    Object.assign(harness.objectiveRecord(sessionId)!, { launchedBy: owner });
-    const turnEnds: import("../../features/execution/shared/control.js").ConsoleTurnEnd[] = [];
-    cleanups.push(harness.consoleControl.subscribeTurnEnds(owner, (event) => turnEnds.push(event)));
-    const otherTurnEnds: import("../../features/execution/shared/control.js").ConsoleTurnEnd[] = [];
-    cleanups.push(harness.consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId: "other" }, (event) => otherTurnEnds.push(event)));
-    await harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Continue the mission" });
-    await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ hook_event_name: "UserPromptSubmit", prompt: "Continue the mission" }) });
-    const writesBeforeFailure = harness.writes.length;
-    await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ hook_event_name: "StopFailure", ...failure }) });
-    const failedOutput = harness.consoleControl.observe(sessionId)?.output;
-    expect.soft(failedOutput?.outcome).toBe("failed");
-    // 필드 전체의 정확한 문자열 동등성으로 줄바꿈·공백도 보존한다. JSON key 삽입 순서는 계약이 아니다.
-    const rawFailure = (failedOutput as { failure?: unknown } | undefined)?.failure;
-    expect.soft(rawFailure).toEqual(failure);
-    expect(turnEnds).toHaveLength(1);
-    expect(turnEnds[0]).toMatchObject({ objectiveId: sessionId, output: { outcome: "failed", failure } });
-    expect(otherTurnEnds).toEqual([]);
-    expect(harness.consoleControl.observe(sessionId)?.activity).toBe("idle");
-    expect(harness.writes).toHaveLength(writesBeforeFailure);
-    // 내부 메시지로 시작한 후속 턴에는 UserPromptSubmit이 없을 수 있다. 같은 오류라도 종료 좌표는 새로 서야 한다.
-    await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ hook_event_name: "StopFailure", ...failure }) });
-    expect(turnEnds).toHaveLength(2);
-    expect(turnEnds[1]?.output.revision).toBe((turnEnds[0]?.output.revision ?? 0) + 1);
-    expect(turnEnds[1]?.output.failure).toEqual(failure);
-    expect(harness.writes).toHaveLength(writesBeforeFailure);
-    await harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Explicit recovery" });
-    await harness.post(sessionId, "turn", { phase: "start", input: JSON.stringify({ prompt: "Explicit recovery" }) });
-    await harness.post(sessionId, "turn", { phase: "end", input: JSON.stringify({ hook_event_name: "Stop", last_assistant_message: "Recovered" }) });
-    expect(harness.consoleControl.observe(sessionId)?.output).toMatchObject({ outcome: "completed", text: "Recovered" });
-    expect(harness.consoleControl.observe(sessionId)?.output).not.toHaveProperty("failure");
-  });
   it("routes an opted-in Console message through the existing Chat session and records its result", async () => {
     let autoMemoryEnabled = false;
     const harness = await createHarness({ basePromptEnabled: false, autoMemoryEnabled: () => autoMemoryEnabled });
     const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
     harness.allowConsoleUse(sessionId);
-    await harness.post(sessionId, "chat");
     const caller = { kind: "objectiveRecord" as const, objectiveId: sessionId };
     const delivered = harness.consoleControl.request(caller, { kind: "send", objectiveId: sessionId, text: "Inspect the build" });
     expect(harness.sends).toEqual([]);
@@ -153,32 +71,30 @@ describe("agent chat mode routes", () => {
     expect(harness.objectiveRecord(sessionId)?.session).toMatchObject({ disableAutoMemory: true });
     expect(harness.sdkOptions[0]?.executablePath).toBe(resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: {} }).resolved?.bin);
     await vi.waitFor(() => expect(harness.consoleControl.observe(sessionId)?.output.text).toContain("continuing"));
-    const launched = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Run the next check", viewMode: "chat" })).objectiveId;
+    const launched = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Run the next check" })).objectiveId;
     expect(launched).not.toBe(sessionId);
-    expect(harness.objectiveRecord(launched)?.chatBorn).toBe(true);
     await vi.waitFor(() => expect(harness.sends).toEqual(["Inspect the build", "Run the next check"]));
     // 목표의 지휘관은 휴면 채팅으로 태어나고, 첫 send가 PTY가 아닌 Chat 세션을 깨운다.
-    const commander = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "commander", disableSubagents: true })).objectiveId;
-    expect(harness.consoleControl.observe(commander)).toMatchObject({ lifecycle: "live", activity: "idle", surface: "chat", supportedActions: ["send"] });
+    const commander = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, sessionName: "commander", disableSubagents: true })).objectiveId;
+    expect(harness.consoleControl.observe(commander)).toMatchObject({ lifecycle: "live", activity: "idle", supportedActions: ["send"] });
     expect(harness.sends).toHaveLength(2);
     autoMemoryEnabled = true;
     expect(harness.objectiveRecord(commander)?.session).toMatchObject({ disableAutoMemory: true });
     await harness.consoleControl.request(caller, { kind: "send", objectiveId: commander, text: "Begin the objective" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Begin the objective"));
-    expect(harness.consoleControl.observe(commander)?.surface).toBe("chat");
     expect(harness.sdkOptions.at(-1)?.autoMemoryEnabled).toBe(false);
     await vi.waitFor(() => expect(readObjectiveLaunch(harness.objectiveRecord(commander)!).started).toBe(true));
     // 태어날 때의 강제 차단은 채팅 프로세스의 SDK 입력에도 실린다.
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["Agent", "Task", "AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
     // 다음 기동 정책이 차단을 걷으면, 세션 스냅샷에 옛 차단이 남아 있어도 새 채팅 프로세스에는 서브에이전트 차단 규칙이 없다.
-    const member = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "member", disableSubagents: true })).objectiveId;
+    const member = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, sessionName: "member", disableSubagents: true })).objectiveId;
     expect(harness.objectiveRecord(member)?.session).toMatchObject({ disableAutoMemory: false });
     harness.setSubagentSpawn(member, "default");
     await harness.consoleControl.request(caller, { kind: "send", objectiveId: member, text: "Start the mission" });
     await vi.waitFor(() => expect(harness.sends.at(-1)).toBe("Start the mission"));
     expect(harness.sdkOptions.at(-1)?.autoMemoryEnabled).toBe(true);
     expect(harness.openSession.mock.calls.at(-1)?.[0]).toMatchObject({ disallowedTools: ["AskUserQuestion", "EnterPlanMode", "ExitPlanMode"] });
-    const dormantRecipient = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat", sessionName: "dormant-member" })).objectiveId;
+    const dormantRecipient = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, sessionName: "dormant-member" })).objectiveId;
     // 수신 줄의 근거는 **보낸** 자식의 라이브 도구 호출과 그 결과, 그 둘뿐이다. 이 경로는 어느 쪽
     // 트랜스크립트도 읽지 않으며, 성공한 호출만이 받는 쪽 원장에 줄 하나를 세운다.
     const frames = await harness.openChatSocket(commander);
@@ -315,15 +231,21 @@ describe("agent chat mode routes", () => {
     // 살아 있는 프로세스를 바꾸는 문이라 그 플러그인이 띄운 Objective 만 받는다.
     const plugin = { kind: "plugin" as const, pluginId: "fleet-todo" };
     // adopt된 미기동 대화의 프리셋은 기존 저장 좌표 경로다. 자식이 생기면 소유 검사를 우회할 수 없다.
-    const unstarted = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true, viewMode: "chat" })).objectiveId;
+    const unstarted = (await harness.consoleControl.request(caller, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true })).objectiveId;
     const childrenBeforePreset = harness.openSession.mock.calls.length;
     await expect(harness.consoleControl.unstartedPreset(plugin, unstarted, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: true, applied: "now" });
     expect(harness.objectiveRecord(unstarted)?.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
     expect(harness.openSession.mock.calls).toHaveLength(childrenBeforePreset);
     await harness.get(unstarted, "chat-catalog");
     await expect(harness.consoleControl.unstartedPreset(plugin, unstarted, { model: "opus[1m]", effort: null })).resolves.toEqual({ ok: false, error: "forbidden" });
-    const owned = (await harness.consoleControl.request(plugin, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Own work", viewMode: "chat" })).objectiveId;
-    await vi.waitFor(() => expect(harness.consoleControl.observe(owned)).toMatchObject({ lifecycle: "live", surface: "chat", activity: "idle" }));
+    const owned = (await harness.consoleControl.request(plugin, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", text: "Own work" })).objectiveId;
+    await vi.waitFor(() => expect(harness.consoleControl.observe(owned)).toMatchObject({ lifecycle: "live", activity: "idle" }));
+    // 보관·삭제 전이 중에는 소유한 세션이라도 좌표를 바꾸지 않는다.
+    harness.transitioning.add(owned);
+    const changesBeforeTransition = harness.modelChanges.length;
+    await expect(harness.consoleControl.coordinates(plugin, owned, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: false, error: "chat_not_active" });
+    expect(harness.modelChanges).toHaveLength(changesBeforeTransition);
+    harness.transitioning.delete(owned);
     await expect(harness.consoleControl.coordinates(plugin, owned, { model: "sonnet", effort: "low" })).resolves.toEqual({ ok: true, applied: "now" });
     expect(harness.modelChanges.at(-1)).toBe("sonnet[1m]");
     expect(harness.objectiveRecord(owned)?.session).toMatchObject({ model: "sonnet[1m]", effort: "low" });
@@ -360,9 +282,7 @@ describe("agent chat mode routes", () => {
   it("delivers an attachment-only message as instruction lines while the ledger shows only the attachment", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
-    await harness.post(sessionId, "chat");
     // 1x1 투명 PNG — 업로드의 매직 바이트 판정을 실제 바이트로 통과한다.
     await harness.postAttachment(Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==", "base64"));
     const id = (harness.responses.at(-1)?.body as { readonly id: string }).id;
@@ -383,27 +303,6 @@ describe("agent chat mode routes", () => {
     });
     expect(readChatJournalEvent(dispatch.raw)?.event).toMatchObject({ kind: "dispatch", text: "", attachments: [{ id }] });
     expect(frames.map(({ raw }) => raw).join("\n")).not.toContain(hostPath);
-  });
-
-  it("does not terminate a live terminal when chat is requested, and adopts chat only once it is idle", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    asLegacyTerminal(harness, sessionId);
-    harness.setLive(sessionId);
-    harness.attachProviderSession(sessionId);
-
-    await harness.post(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "session_live" } });
-    expect(harness.objectiveRecord(sessionId)?.chatMode).toBeUndefined();
-    expect(harness.terminate).not.toHaveBeenCalled();
-
-    harness.setLive(sessionId, false);
-    await harness.post(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
-    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
-    expect(harness.terminate).not.toHaveBeenCalled();
   });
 
   /**
@@ -441,32 +340,13 @@ describe("agent chat mode routes", () => {
     expect(closedWith).toBe(4003);
   });
 
-  it("refuses a terminal ticket for a chat mode objectiveRecord", async () => {
+  it("refuses an Objective ticket without the chat channel", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    await harness.post(sessionId, "chat");
 
     await harness.postTicket(sessionId);
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_chat_mode" } });
-  });
-
-  it("confirms wrapped terminal links only from text the caller already shows", async () => {
-    // transcript는 브라우저 DTO에 실리지 않는다 — 줄바꿈 URL 확인은 보낸 글 안에 있는 주소만 돌려줘야 한다.
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    const shown = "https://docs.example.dev/guide?topic=wrapped-url&page=3";
-    const hidden = "https://internal.example.dev/tool-result?token=never-on-screen";
-    await fs.appendFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), `\n${JSON.stringify({
-      type: "assistant",
-      message: { content: [{ type: "text", text: `See [Guide](${shown}).` }, { type: "tool_result", content: hidden }] },
-    })}`);
-
-    await harness.post(sessionId, "links", { text: `⏺ Guide (${shown})` });
-
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { urls: [shown] } });
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_channel" } });
   });
 
   it("restores a legacy chat live, reads its saved conversation without a child and continues it on send", async () => {
@@ -491,7 +371,7 @@ describe("agent chat mode routes", () => {
     harness.attachProviderSession(sessionId);
     const objectiveRecord = harness.objectiveRecord(sessionId)!;
     delete (objectiveRecord.session as Record<string, unknown>).disableAutoMemory;
-    Object.assign(objectiveRecord, { chatMode: true, chatBorn: true, dormantBorn: true, restoredDormant: true });
+    Object.assign(objectiveRecord, { dormantBorn: true, restoredDormant: true });
     const at = (second: number) => `2026-08-14T00:00:0${second}.000Z`;
     await fs.writeFile(path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl"), [
       { type: "user", timestamp: at(1), message: { role: "user", content: "send the plan to the verifier" } },
@@ -509,9 +389,6 @@ describe("agent chat mode routes", () => {
     expect(harness.consoleControl.observe(sessionId)).toMatchObject({ lifecycle: "live", activity: "idle", supportedActions: ["send"] });
     expect(harness.objectiveRecord(sessionId)).not.toHaveProperty("dormantBorn");
     expect(harness.objectiveRecord(sessionId)).not.toHaveProperty("restoredDormant");
-    expect(await harness.sleep(sessionId)).toEqual({ ok: false, error: "chat_sleep_unsupported" });
-    await harness.post(sessionId, "resume");
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_resume_unsupported" } });
     const sdkBefore = harness.sdkOptions.length;
     const sessionsBefore = harness.openSession.mock.calls.length;
 
@@ -542,82 +419,11 @@ describe("agent chat mode routes", () => {
     expect((harness.objectiveRecord(sessionId)!.session as { id: string }).id).toBe(providerId);
   });
 
-  it("refuses to leave chat for a terminal and keeps the running turn", async () => {
-    const harness = await createHarness({ holdChatTurn: true });
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    await harness.post(sessionId, "chat");
-
-    await harness.post(sessionId, "message", { text: "stream until interrupted" });
-    await vi.waitFor(() => expect(harness.sends).toEqual(["stream until interrupted"]));
-    await harness.del(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "terminal_view_removed" } });
-    expect(harness.closeChat).not.toHaveBeenCalled();
-    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
-    await harness.post(sessionId, "message", { text: "still the same chat" });
-    await vi.waitFor(() => expect(harness.sends).toEqual(["stream until interrupted", "still the same chat"]));
-  });
-
-  it("opens a fresh chat when a legacy terminal transcript is gone", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    asLegacyTerminal(harness, sessionId);
-    harness.removeTranscript();
-
-    await harness.post(sessionId, "resume");
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_transcript_missing" } });
-    expect(harness.objectiveRecord(sessionId)?.chatMode).not.toBe(true);
-    expect((harness.objectiveRecord(sessionId)?.session as { id?: string }).id).toBe("sid-live");
-
-    await harness.post(sessionId, "resume", { fresh: true });
-    expect(harness.responses.at(-1)?.status).toBe(200);
-    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
-    expect(harness.objectiveRecord(sessionId)?.session).not.toHaveProperty("id");
-    expect(harness.attach).not.toHaveBeenCalled();
-  });
-
-  it("keeps the prior provider on the history chain when Start fresh runs", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    asLegacyTerminal(harness, sessionId);
-    const transcriptPath = (harness.objectiveRecord(sessionId)?.session as { transcriptPath: string }).transcriptPath;
-
-    await harness.post(sessionId, "resume", { fresh: true });
-
-    expect(harness.responses.at(-1)?.status).toBe(200);
-    expect(harness.objectiveRecord(sessionId)?.session).not.toHaveProperty("id");
-    expect((harness.objectiveRecord(sessionId)?.session as { previousSessions?: Array<{ id: string; transcriptPath?: string }> }).previousSessions).toEqual([
-      expect.objectContaining({ id: "sid-live", transcriptPath }),
-    ]);
-    expect(harness.attach).not.toHaveBeenCalled();
-  });
-
-  it("opens chat for a legacy objective with no agent session and keeps the record", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    asLegacyTerminal(harness, sessionId);
-    const record = harness.objectiveRecord(sessionId);
-    if (!record) throw new Error("Objective not found");
-    const title = record.title;
-    delete record.session;
-
-    await harness.post(sessionId, "resume");
-
-    expect(harness.responses.at(-1)?.status).toBe(200);
-    expect(harness.objectiveRecord(sessionId)?.chatMode).toBe(true);
-    expect(harness.objectiveRecord(sessionId)?.title).toBe(title);
-    expect(harness.attach).not.toHaveBeenCalled();
-  });
-
   it("objective fresh session: unmarked preserves resume, marked branches fresh, switchLive stays resume", async () => {
     const harness = await createHarness({ cliId: "claude" });
     const sessionId = await harness.createSession();
     harness.allowConsoleUse(sessionId);
     harness.attachProviderSession(sessionId);
-    await harness.post(sessionId, "chat");
     // 새 목표는 태어날 때 이미 채팅 자식을 연다. 그 뒤 붙은 provider를 첫 턴이 보게 자식을 한 번 접는다.
     await harness.consoleControl.disposeChat?.(sessionId);
 
@@ -633,7 +439,6 @@ describe("agent chat mode routes", () => {
     harness.markNextOpenFresh(sessionId);
     expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
     harness.setSdkSessionId("sid-second");
-    await harness.post(sessionId, "chat");
     await harness.post(sessionId, "message", { text: "turn when on" });
     await vi.waitFor(() => expect(harness.sends).toContain("turn when on"));
     expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
@@ -648,7 +453,6 @@ describe("agent chat mode routes", () => {
     await harness.consoleControl.disposeChat?.(sessionId);
     harness.markNextOpenFresh(sessionId);
     harness.setSdkSessionId("sid-third");
-    await harness.post(sessionId, "chat");
     await harness.post(sessionId, "message", { text: "third generation" });
     await vi.waitFor(() => expect(harness.sends).toContain("third generation"));
     const record = harness.getRecord(sessionId);
@@ -658,12 +462,6 @@ describe("agent chat mode routes", () => {
     expect(harness.sdkOptions.at(-1)?.autoMemoryEnabled).toBe(true);
     expect(prevSessions?.[0]).toMatchObject({ id: "sid-live", harness: "claude-code" });
     expect(prevSessions?.[1]).toMatchObject({ id: "sid-second", harness: "claude-code" });
-
-    // Case 2c: failed resume rolls back fresh marker
-    harness.markNextOpenFresh(sessionId);
-    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
-    await expect(harness.consoleControl.request({ kind: "objectiveRecord", objectiveId: sessionId }, { kind: "resume", objectiveId: sessionId })).rejects.toThrow();
-    expect(harness.consoleControl.isNextOpenFresh(sessionId)).toBe(true);
 
     // Case 3: switchLive maintains coordinates change in-place without restarting as new session
     const beforeSwitchCount = harness.openSessionRequests.length;
@@ -684,92 +482,12 @@ describe("agent chat mode routes", () => {
     expect((recordAfter?.session as { previousSessions?: unknown[] })?.previousSessions).toHaveLength(2);
   });
 
-  it("does not adopt another session's transcript in the same directory when its own transcript is missing", async () => {
-    const harness = await createHarness({ cliId: "claude" });
-    const sessionB = await harness.createSession();
-    const sessionA = await harness.createSession();
-    harness.attachProviderSession(sessionB);
-
-    const missingTranscriptA = path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-a.jsonl");
-    await harness.post(sessionA, "capture", {
-      provider: "claude",
-      input: JSON.stringify({
-        session_id: "sid-a",
-        transcript_path: missingTranscriptA,
-        hook_event_name: "UserPromptSubmit",
-      }),
-    });
-    expect(harness.responses.at(-1)?.status).toBe(200);
-
-    await harness.get(sessionA, "chat-history");
-    expect(harness.responses.at(-1)).toMatchObject({ status: 404, body: { error: "history_unavailable" } });
-
-    await harness.get(sessionA, "chat-catalog");
-    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "chat_transcript_missing" } });
-
-    await harness.post(sessionA, "message", { text: "continue please" });
-    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "chat_transcript_missing" } });
-  });
-
-  it("rejects binding or resuming a provider session id or transcript path already owned by another objective record", async () => {
-    const harness = await createHarness({ cliId: "claude" });
-    const ownerId = await harness.createSession();
-    const attackerId = await harness.createSession();
-    harness.attachProviderSession(ownerId);
-
-    const ownerTranscript = path.join(harness.fleetDataDir, "projects", "-tmp-workspace", "sid-live.jsonl");
-    await harness.post(attackerId, "capture", {
-      provider: "claude",
-      input: JSON.stringify({
-        session_id: "sid-live",
-        transcript_path: ownerTranscript,
-        hook_event_name: "UserPromptSubmit",
-      }),
-    });
-    expect(harness.responses.at(-1)).toMatchObject({
-      status: 409,
-      body: { ok: false, error: "session_id_conflict" },
-    });
-    expect((harness.getRecord(attackerId)?.session as { id?: string } | undefined)?.id).toBeUndefined();
-
-    // 이미 같은 세션 id·기록 경로가 두 레코드에 박힌 옛 데이터여도 후발/중복 레코드의 재개·열람은 막히고 원 주인은 유지된다.
-    const legacyDupId = await harness.createSession();
-    const legacyDupRecord = harness.getRecord(legacyDupId)!;
-    legacyDupRecord.session = {
-      harness: "claude-code",
-      id: "sid-live",
-      transcriptPath: ownerTranscript,
-      capturedAt: "2026-08-15T00:00:00.000Z",
-    };
-    await harness.get(ownerId, "chat-history");
-    expect(harness.responses.at(-1)?.status).toBe(200);
-    await harness.get(legacyDupId, "chat-history");
-    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "session_id_conflict" } });
-    await harness.get(legacyDupId, "chat-catalog");
-    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "session_id_conflict" } });
-    await harness.post(legacyDupId, "message", { text: "resume duplicate" });
-    expect(harness.responses.at(-1)).toMatchObject({ status: 409, body: { error: "session_id_conflict" } });
-
-    // SDK init/sync 경로로 타 레코드의 session_id가 들어오면 저장을 막을 뿐 아니라 라이브 채팅 세션을 즉시 종료한다.
-    await harness.consoleControl.disposeChat?.(attackerId);
-    harness.allowConsoleUse(attackerId);
-    harness.setSdkSessionId("sid-live");
-    await harness.post(attackerId, "message", { text: "hijack attempt" });
-    await vi.waitFor(() => expect(harness.sends).toContain("hijack attempt"));
-    await vi.waitFor(() => expect(harness.closeChat).toHaveBeenCalled());
-    expect((harness.getRecord(attackerId)?.session as { id?: string } | undefined)?.id).not.toBe("sid-live");
-  });
 });
 
-function asLegacyTerminal(harness: { objectiveRecord(sessionId: string): Record<string, unknown> | undefined }, sessionId: string): void {
-  const record = harness.objectiveRecord(sessionId);
-  if (!record) throw new Error("Objective not found");
-  delete record.chatMode;
-  delete record.chatBorn;
-}
 
 async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void>; readonly holdChatTurn?: boolean; readonly basePromptEnabled?: boolean; readonly autoMemoryEnabled?: () => boolean } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
+  const transitioning = new Set<string>();
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir, resolveLaunchAttachmentNamespaceRoot(fleetDataDir));
   vi.stubEnv("CLAUDE_CONFIG_DIR", fleetDataDir);
@@ -851,19 +569,12 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
 
   const objectiveRecords: ObjectiveRecord[] = [];
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
-  const writes: string[] = [];
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
-  const liveSessions = new Set<string>();
   let route: RouteHandler | undefined;
   const tickets = createPluginTerminalTicketRegistry();
   let chatAttach: Parameters<TerminalRuntime["bindChatAttach"]>[0] | null = null;
-  let titleListener: Parameters<TerminalRuntime["onTitle"]>[1] | null = null;
   const attach = vi.fn<TerminalRuntime["attach"]>(async () => {
     if (options.holdAttachAfterFirst && attach.mock.calls.length > 1) await options.holdAttachAfterFirst;
-  });
-  const terminate = vi.fn((sessionId: string) => {
-    liveSessions.delete(sessionId);
-    return true;
   });
   const terminalRuntime: TerminalRuntime = {
     handleUpgrade: () => false,
@@ -872,26 +583,20 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     invalidateTicketsForSession: (sessionId) => tickets.invalidateForSession(sessionId),
     canAttach: () => true,
     attach,
-    write: (_objectiveId, data) => {
-      writes.push(data);
-      return true;
-    },
-    terminate,
-    terminateAndWait: async (sessionId: string) => terminate(sessionId),
+    write: () => true,
+    terminate: () => true,
+    terminateAndWait: async () => true,
     awaitWriterExit: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getSessionLastActivityAt: (objectiveId) => (liveSessions.has(objectiveId) ? 5 : null),
+    getSessionLastActivityAt: () => null,
     isLive: () => false,
     getForegroundProcess: () => null,
     getShellLineState: () => null,
     onCwd: () => () => undefined,
     resolveSessionIdentity: async () => null,
     onExit: () => () => {},
-    onTitle: (_type, listener) => {
-      titleListener = listener;
-      return () => { titleListener = null; };
-    },
+    onTitle: () => () => {},
     registerLaunchResolver: () => () => {},
     bindChatAttach: (attachChat) => {
       chatAttach = attachChat;
@@ -909,7 +614,6 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     consoleControl,
     dataDir: fleetDataDir,
     agentOptions: agentOptionsStub,
-    agentCliPlugin: { url: async () => "http://127.0.0.1:9/fleet-plugin-stub/fleet.zip", close: async () => {} },
     spawnAgentProcess: () => { throw new Error("unexpected agent CLI spawn"); },
     basePath: "/api/v1",
     wsBasePath: "/api/v1/terminal/ws",
@@ -921,6 +625,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         releaseSessionToken: () => {}, cleanup: () => {},
       }) },
       objectiveRecords: {
+        isTransitioning: (id: string) => transitioning.has(id),
         list: () => objectiveRecords,
         get: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id) ?? null,
         create: (input: ObjectiveRecordCreateInput) => {
@@ -1023,26 +728,21 @@ ts: { createdAt, updatedAt: createdAt }};
 
   return {
     consoleControl,
+    transitioning,
     restart: async () => {
       // durable Objective 기록만 남기고 실행 어댑터를 새로 만든다. 제어 서비스는 연결을 유지한다.
       for (const cleanup of lifecycleCleanups.splice(1).reverse()) await cleanup();
       api = await start();
     },
-    sleep: (objectiveId: string) => api.actions.sleep!(objectiveId),
-    releaseChatOwnership: (sessionId: string) => api.releaseChatOwnership(sessionId),
     emitToLatest: (message: Record<string, unknown>) => emitToLatest(message),
     sdkOptions,
     fleetDataDir,
     attach,
-    terminate,
     openSession,
     closeChat,
     sends,
     modelChanges,
     responses,
-    writes,
-    /** PTY가 방출하는 OSC 제목 — Claude Code의 작업 스피너와 유휴 글리프. */
-    emitTitle: (sessionId: string, title: string) => titleListener?.(sessionId, title),
     objectiveRecord: (id: string) => objectiveRecords.find((objectiveRecord) => objectiveRecord.id === id),
     createSession: async (): Promise<string> => {
       const sessionId = (await consoleControl.request({ kind: "plugin", pluginId: "fleet-todo" }, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1" })).objectiveId;
@@ -1101,7 +801,6 @@ ts: { createdAt, updatedAt: createdAt }};
       });
       return frames;
     },
-    setLive: (sessionId: string, live = true) => { if (live) liveSessions.add(sessionId); else liveSessions.delete(sessionId); },
     overrideCliId: (sessionId: string, value: string) => {
       const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
       if (!objectiveRecord) throw new Error("Objective not found");
@@ -1112,12 +811,6 @@ ts: { createdAt, updatedAt: createdAt }};
       const index = objectiveRecords.findIndex((candidate) => candidate.id === sessionId);
       if (index < 0) throw new Error("Objective not found");
       objectiveRecords[index] = { ...objectiveRecords[index]!, ...(withSubagentSpawn(objectiveRecords[index]!, policy)) };
-    },
-    /** 채팅으로 태어난 Objective의 durable 표식을 세운다. */
-    markChatBorn: (sessionId: string) => {
-      const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
-      if (!objectiveRecord) throw new Error("Objective not found");
-      objectiveRecord.chatBorn = true;
     },
     /** 원 트랜스크립트를 밖에서 치운다 — 되쓰기 뒤 파일이 사라진 상태의 재현. */
     removeTranscript: () => {
