@@ -120,7 +120,10 @@ export interface CommodoreTurnOutcome {
   /** 이 턴에서 대화 요약이 실패했고 그 뒤 성공하지 못했다 — 오류 턴이면 이 세션은 넘친 채로 남는다. */
   readonly compactionFailed?: true;
   readonly usage?: AgentUsage;
+  /** 정규화된 실패 코드 — 화면 문구·재시도 판정이 같은 낱말을 본다. */
   readonly error?: string;
+  /** 실패 원문을 가려 한 줄로 접은 요약 — 재시도 줄이 페이지 경계를 넘어도 함께 남는다. */
+  readonly detail?: string;
   /** 이 턴에서 보드에 쓴 행위 수. */
   readonly actions: number;
 }
@@ -283,7 +286,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         const raw = event.detail ?? "";
         const failure = event.isError ? classifyFailure(raw) : null;
         if (failure) logTurnFailure("commodore_turn_error", failure, raw || `result:${event.source}`);
-        turnResult = { outcome: event.isError ? "error" : "ok", ...(event.usage ? { usage: event.usage } : {}), ...(failure ? { error: failure.code } : {}), ...(compactionFailed ? { compactionFailed: true as const } : {}), actions: turnActions };
+        turnResult = { outcome: event.isError ? "error" : "ok", ...(event.usage ? { usage: event.usage } : {}), ...(failure ? { error: failure.code, ...(failure.detail ? { detail: failure.detail } : {}) } : {}), ...(compactionFailed ? { compactionFailed: true as const } : {}), actions: turnActions };
         record({ kind: "result", outcome: turnResult.outcome, ...(event.usage?.costUsd !== undefined ? { costUsd: event.usage.costUsd } : {}), ...(event.usage ? { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens } : {}), ...(failure ? { error: failure.code, ...(failure.detail ? { detail: failure.detail } : {}) } : {}) });
         return;
       }
@@ -442,7 +445,7 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
         // 예외도 원문은 로그에, 화면에는 코드와 1줄 요약만 — 같은 예외가 다음 턴에 되풀이될 때 비교할 근거가 남는다.
         const failure = classifyFailure(error);
         logTurnFailure("commodore_turn_failed", failure, errorMessage(error), error);
-        if (!turnResult) { turnResult = { outcome: "error", error: failure.code, actions: turnActions }; record({ kind: "result", outcome: "error", error: failure.code, ...(failure.detail ? { detail: failure.detail } : {}) }); }
+        if (!turnResult) { turnResult = { outcome: "error", error: failure.code, ...(failure.detail ? { detail: failure.detail } : {}), actions: turnActions }; record({ kind: "result", outcome: "error", error: failure.code, ...(failure.detail ? { detail: failure.detail } : {}) }); }
       } finally { turnActive = false; stepReporter?.turnClosed(); }
       const result: CommodoreTurnOutcome = turnResult ?? { outcome: "error", error: "no_result", actions: turnActions };
       if (!turnResult) record({ kind: "result", outcome: "error", error: "no_result" });

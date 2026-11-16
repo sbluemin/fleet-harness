@@ -30,6 +30,11 @@ import { commodoreCompactAt, EMPTY_RUN_TOTALS, type CommodoreContextDetail, MAX_
 
 export const RETRY_DELAYS_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_000];
 export const RETRY_STEADY_MS = 60 * 60_000;
+/**
+ * 같은 세션으로 한 번 더 시도해 볼 만한 일시적 업스트림 오류 — 첫 실패는 같은 세션으로 재시도하고,
+ * 두 번째 연속 실패가 오면 다음 재시도는 새 세션으로 연다.
+ */
+const TRANSIENT_TURN_FAILURES: ReadonlySet<string> = new Set(["rate_limited", "upstream_error", "network"]);
 /** 깨움 이유를 모으는 시간. */
 export const COALESCE_MS = 3_000;
 /** TaskForce 사람 발언 묶음 — 마지막 발언 뒤 이만큼 기다리고, 처음 발언부터 최대 이만큼까지만 미룬다. */
@@ -242,6 +247,11 @@ interface Runner {
   turnMail: readonly ReceivedMessage[];
   sessionImageBytes: number;
   sessionImageBase64Bytes: number;
+  /**
+   * 같은 세션에서 연속으로 실패한 일시적 업스트림 오류(429·5xx·네트워크)의 수 — 첫 실패는 같은 세션으로 한 번 더,
+   * 두 번째부터는 새 세션으로 연다. 성공하거나 세션이 교체되면 0으로 돌아간다.
+   */
+  transientFailures: number;
   coalesce: ReturnType<typeof setTimeout> | null;
   routineTimer: ReturnType<typeof setTimeout> | null;
   routineTimes: Map<string, { at: number; revision: string }>;
@@ -521,10 +531,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     publish(runner);
   };
 
-  const scheduleRetry = (runner: Runner, code: string) => {
+  const scheduleRetry = (runner: Runner, code: string, detail?: string) => {
     if (!canRun(runner.commodoreId)) {
       runner.nextWakeAt = undefined;
-      record(runner, { kind: "error", code });
+      record(runner, { kind: "error", code, ...(detail ? { detail } : {}) });
       setPhase(runner, "error", code);
       return;
     }
@@ -532,7 +542,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.retryAttempt += 1;
     const at = now() + delay;
     runner.nextWakeAt = at;
-    record(runner, { kind: "error", code, retryAt: at });
+    record(runner, { kind: "error", code, ...(detail ? { detail } : {}), retryAt: at });
     setPhase(runner, runner.retryAttempt > RETRY_DELAYS_MS.length ? "error" : "retrying", code);
     schedule(runner, "retry", delay, () => { runner.nextWakeAt = undefined; void runTurn(runner); });
   };
@@ -616,6 +626,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.contextDetail = null;
     runner.sessionImageBytes = 0;
     runner.sessionImageBase64Bytes = 0;
+    // 새 세션은 같은-세션 연속 실패의 시작점이다 — 이전 세션의 실패 수를 물려받지 않는다.
+    runner.transientFailures = 0;
     // 세션을 열 때마다 새 대화다.
     deps.store.addRunTotals(runner.commodoreId, { session: 1 });
     record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}), model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) });
@@ -1093,9 +1105,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       // 깨운 목표(대기 중·정체·맡김)의 보드 요약과 깨우지 않고 모은 단계 이동 — 모델이 이 턴에 읽는다.
       const board = runner.board?.brief([...new Set(pending.flatMap(([, reason]) => [...(reason.ids?.keys() ?? [])]))]) ?? null;
       setPhase(runner, "turn");
-      // 실패한 턴도 살아 있는 세션의 CLI 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
-      runner.sessionImageBytes += batchBytes;
-      runner.sessionImageBase64Bytes += batchBase64Bytes;
+      // 이미지는 턴이 성공한 뒤에만 세션 예산에 센다 — 실패한 턴이 재시도의 예산을 미리 먹으면
+      // 같은 메시지가 새 세션 없이 한도를 넘긴 것으로 보인다(누적은 성공 결말에서).
       const mail = runner.mail.splice(0, mailCount);
       runner.turnMessages = messages;
       runner.turnMail = preparedMail;
@@ -1124,6 +1135,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (outcome.outcome === "ok" || stoppedByPerson) for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
       } finally { runner.turnMessages = []; runner.turnMail = []; }
       if (outcome.outcome === "ok") {
+        // 성공한 턴만 세션의 이미지 예산에 센다 — 실패한 턴이 재시도 예산을 미리 먹지 않는다.
+        // 성공은 같은-세션 일시 오류 연속 실패도 끝낸다.
+        runner.sessionImageBytes += batchBytes;
+        runner.sessionImageBase64Bytes += batchBase64Bytes;
+        runner.transientFailures = 0;
         for (let at = 0; at < mail.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "received-read", seqs: mail.slice(at, at + MAX_TRANSCRIPT_PAGE).map((entry) => entry.seq) });
         // 받은 처리 확정 뒤 명시적 회수 — 보호가 풀린 사본의 초과분을 다음 저장까지 남기지 않는다.
         if (mail.length) { try { deps.store.images.trim(runner.commodoreId); } catch { /* 다음 정리에 다시 거둔다. */ } }
@@ -1195,10 +1211,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           }
         }
         if (!stoppedByPerson) runner.messages.unshift(...messages);
-        if (outcome.error === "session_disposed" || outcome.error === "session_failed") { runner.session = null; }
-        // 요약이 실패한 채 턴이 오류로 끝난 세션은 넘친 대화를 그대로 안고 있다 — 같은 세션으로 다시 시도하면 같은 오류다.
-        // 다음 시도는 최근 행위 요약으로 새 세션을 연다. 요약만 실패하고 턴이 끝난 세션은 다음 턴에 자식이 다시 요약한다.
-        else if (outcome.outcome === "error" && outcome.compactionFailed) { runner.rotateNext ??= "replaced"; }
+        const code = outcome.error ?? "turn_failed";
         if (runner.turnStopRequested) {
           // 중지는 실패 재시도가 아니다. 건넨 사람 입력은 소비하고, 미배달 입력·mail·깨움만 다음 새 사건에 함께 싣는다.
           runner.retryAttempt = 0;
@@ -1206,7 +1219,22 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           scheduleRoutines(runner);
           return;
         }
-        scheduleRetry(runner, outcome.error ?? "turn_failed");
+        if (outcome.outcome === "error") {
+          if (code === "session_disposed" || code === "session_failed") runner.session = null;
+          // 요약이 실패한 채 턴이 오류로 끝난 세션은 넘친 대화를 그대로 안고 있다 — 같은 세션으로 다시 시도하면 같은 오류다.
+          // 다음 시도는 최근 행위 요약으로 새 세션을 연다. 요약만 실패하고 턴이 끝난 세션은 다음 턴에 자식이 다시 요약한다.
+          else if (outcome.compactionFailed) { runner.rotateNext ??= "replaced"; runner.transientFailures = 0; }
+          // 오류 성격에 따라 같은 세션을 한 번 더 쓸지 정한다 — 깨진 세션에 같은 입력을 반복하지 않는다.
+          // 429·5xx·네트워크는 업스트림의 일시 사정이라 같은 세션으로 한 번은 더 보내고, 그마저 실패하면 새 세션으로.
+          else if (TRANSIENT_TURN_FAILURES.has(code)) {
+            runner.transientFailures += 1;
+            if (runner.transientFailures >= 2) runner.rotateNext ??= "replaced";
+          }
+          // 그 밖의 턴 실패(cli_exited·400/413·문맥 초과·turn_failed 등)는 세션 상태·문맥이 오염됐을 수 있다 —
+          // 첫 실패 뒤 재시도는 바로 새 세션으로 연다.
+          else { runner.rotateNext ??= "replaced"; runner.transientFailures = 0; }
+        }
+        scheduleRetry(runner, code, outcome.detail);
         return;
       }
       if (runner.messages.length) wake(runner, "message");
@@ -1295,7 +1323,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, turnStopRequested: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, transientFailures: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, turnStopRequested: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),

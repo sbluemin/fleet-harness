@@ -47,8 +47,13 @@ interface ResidentState {
 
 interface Child {
   readonly session: ClaudeGatewaySession;
-  /** 이 자식이 resume으로 열렸고 아직 아무 메시지도 내지 않았다 — 그대로 끝나면 resume이 깨진 것이다. */
-  silentResume: boolean;
+  /**
+   * 이 자식이 resume으로 열렸고 아직 성공한 턴(`result` with `!isError`)을 내지 않았다 — 그대로 끝나면 resume이 깨진 것이다.
+   * `system/init` 한 줄은 증명이 아니다: 좌표만 맞고 대화를 열지 못한 자식도 init은 낸다.
+   */
+  resumeUnproven: boolean;
+  /** 이 루프가 접으려고 닫았다(중지·폐기) — 스스로 끝난 것이 아니므로 resume 판정에 쓰지 않는다. */
+  closed: boolean;
 }
 
 type ResultEvent = Extract<ClaudeExecutionEvent, { kind: "result" }>;
@@ -76,7 +81,8 @@ const HELD_RESULT_MS = 60_000;
  * 도는 턴에 말을 건네며(`steer`), 세션 id를 좌표 파일에 못박아 다음 인스턴스가 같은 자리에서 resume한다.
  *
  * 좌표는 자식을 띄우기 **전에** 쓴다(채팅이 세션 id를 못박는 방식과 같다) — 띄운 뒤에 쓰면 그 사이에 죽은 프로세스가
- * 트랜스크립트만 남기고 좌표를 잃는다. 모델이 바뀌었거나 트랜스크립트가 없거나 resume이 말 한마디 없이 끝나면 새 대화로 연다.
+ * 트랜스크립트만 남기고 좌표를 잃는다. 모델이 바뀌었거나 트랜스크립트가 없거나, resume으로 연 자식이 성공한 턴 없이
+ * (`init`만 내고 `is_error`로 끝나거나 그대로 종료) 끝나면 새 대화로 연다.
  * 중지는 자식을 접는 것이다 — 다음 턴이 같은 대화를 다시 resume하므로 중지 결말을 따로 정산할 것이 없다.
  */
 export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): ClaudeResidentLoop {
@@ -134,7 +140,7 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
     const coordinate = reuse ? { resume: state!.sessionId } : { sessionId: state!.sessionId };
     const session = await owned.openSession({ ...built, ...coordinate });
     if (disposed) { session.close(); throw new Error("Session disposed"); }
-    const opened: Child = { session, silentResume: reuse };
+    const opened: Child = { session, resumeUnproven: reuse, closed: false };
     childCost = 0;
     child = opened;
     void read(opened);
@@ -153,8 +159,7 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
       for await (const message of owner.session) {
         // 접힌 자식이 늦게 흘린 것은 지금 자식의 턴에 섞지 않는다.
         if (child !== owner) break;
-        owner.silentResume = false;
-        handle(message);
+        handle(message, owner);
       }
     } catch (error) { failure = error; }
     // 자식이 끝났다 — 접힌 것(중지·폐기)이든 스스로 죽은 것이든 다음 턴은 새 자식을 띄워 같은 대화를 resume한다.
@@ -162,7 +167,9 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
     // 접힌 자식의 close는 멱등이고, 그사이 새 자식이 슬롯을 잡았어도 그 슬롯을 건드리지 않는다.
     try { owner.session.close(); } catch { /* 정리 실패가 다음 턴을 막지 않는다 */ }
     if (child === owner) child = null;
-    if (owner.silentResume) resumeBroken = true;
+    // resume으로 연 자식이 성공한 턴 없이 스스로 끝났다 — 깨진 대화로 보고 다음 자식은 새 세션으로 연다.
+    // 우리가 접으려고 닫은 자식(중지·폐기)은 resume 판정을 바꾸지 않는다.
+    if (owner.resumeUnproven && !owner.closed && !disposed) resumeBroken = true;
     const turn = current;
     if (turn && turn.owner === owner && !disposed) {
       cancelHosted(turn.hosted);
@@ -172,12 +179,15 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
     }
   }
 
-  function handle(message: ClaudeGatewayMessage): void {
+  function handle(message: ClaudeGatewayMessage, owner: Child): void {
     if (message.type === "command_lifecycle") { lifecycle(message); return; }
     const turn = current;
     const decoder = turn?.decoder ?? strayDecoder;
     for (const event of decoder.decode(message)) {
       if (event.kind !== "result") { emit(event); continue; }
+      // 성공한 턴만 resume이 살아 있음을 증명한다 — init만 내고 error로 끝난 resumed 자식은 깨진 대화다.
+      if (event.isError) { if (owner.resumeUnproven) resumeBroken = true; }
+      else owner.resumeUnproven = false;
       const result = perTurnCost(event);
       if (!turn) { emit(result); continue; }
       const merged = turn.held ? mergeResults(turn.held, result) : result;
@@ -294,7 +304,8 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
     child = null;
     cancelHosted(turn.hosted);
     turn.settle(null);
-    owner?.session.close();
+    // 우리가 접는 자식이다 — 다음 턴의 resume 판정을 깨진 것으로 바꾸지 않는다.
+    if (owner) { owner.closed = true; owner.session.close(); }
   }
 
   async function dispose(): Promise<void> {
@@ -302,7 +313,9 @@ export function createClaudeResidentLoop(options: ClaudeResidentLoopOptions): Cl
     disposed = true;
     const turn = current;
     if (turn) { cancelHosted(turn.hosted); turn.settle(null); }
-    child?.session.close();
+    // 폐기는 우리가 접는 것이다 — resume 판정에 남기지 않는다.
+    if (turn) turn.owner.closed = true;
+    if (child) { child.closed = true; child.session.close(); }
     child = null;
     await opening?.then((opened) => { opened.session.close(); }, () => undefined);
     await startFlight?.catch(() => undefined);
