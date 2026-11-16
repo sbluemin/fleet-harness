@@ -128,6 +128,22 @@ node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$
 - When the claim concerns commissioning, the "Fleet at a glance" popup, the TaskForce intro card, or the Quaker promotion card, do not seed or dismiss the layers under test: pass `--keep <key>` for each one, which also clears that key on a reused slot, and install diagnostics before the first navigation so their appearance and race stay observable.
 - Confirm the first screenshot shows no unseeded first-run layer before acting.
 
+### Shared input, dialog, and fake-login page
+
+A scenario that needs a text input, select, native alert/confirm, or a login form does not need its own page. Start the owned [page fixture server](../scripts/page-fixture-server.mjs) as a background process and keep its pid; it starts no shell, agent CLI, pnpm, or `tsx`, so it is one of the plain-Node HTTP helpers [the wrapper exceptions](#keep-the-real-home-out) name:
+
+```bash
+node <worktree>/.claude/skills/console-e2e/scripts/page-fixture-server.mjs --port 0 \
+  > "$E2E_DIR/page-fixture.log" 2>&1 &
+PAGE_PID=$!
+cat "$E2E_DIR/page-fixture.log"   # {"url":"http://127.0.0.1:<port>/","pid":<pid>}
+curl -s -o /dev/null -w '%{http_code}\n' "<url>"   # expect 200
+```
+
+With no `--port` or `--port 0` it asks the OS for a port and prints the actual url and pid; it binds `127.0.0.1` only, and an explicit port that is invalid or already in use exits 1 with the reason on stderr. Stop only the recorded pid with `kill -TERM "$PAGE_PID"` and confirm it exits 0; a restart on port `0` gets a new URL.
+
+The page is fixture-only. Its login form accepts fake values, blocks submit, and shows completion on the page alone, so no credential reaches the URL, a request, a log, or storage; there is no file, notification, or drag control. It does not verify IME composition or authentication success, which keep their existing routes.
+
 ### No-cost fake Claude
 
 When the claim needs a live agent process, MCP tools, or chat protocol traffic but not model output, point `CLAUDE_BIN` at [`scripts/fake-claude.mjs`](../scripts/fake-claude.mjs) instead of the real CLI. It answers `--version`, speaks the SDK stream-json control protocol in chat (`initialize`, `set_model`, `get_context_usage`, one canned turn per user message), and otherwise stays alive as an interactive terminal that echoes input. The fake CLI reaches no provider, so this path spends no quota and needs no credential. That does not stop the Console's other network calls.
