@@ -9,7 +9,7 @@ import { acceptBrowserPasswordResult, browserPasswordDispatchError, BrowserPassw
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import { applyRemoteInputBatch, applySelectChoice, createRemoteSelectRegistry, probeSelectTarget, RemoteInputError, type RemoteBatchResult, type RemotePointerState } from "./remote-input.js";
 import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
-import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_PASSWORD_ACTION, DESKTOP_BROWSER_SELECT_POPUP, DESKTOP_BROWSER_STAGE_FILES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, isRemoteBrowserFileChooserAction, isRemoteBrowserInputBatch, isRemoteBrowserPasswordAction, isRemoteBrowserPermissionAction, isRemoteBrowserSelectPopupAction, type BrowserExecutionHost, type BrowserSurfaceOrigin, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer, type RemoteBrowserFileChooserPrompt, type RemoteBrowserInputBatch, type RemoteBrowserPasswordAction, type RemoteBrowserPasswordPrompt, type RemoteBrowserPermissionAction, type RemoteBrowserPermissionPrompt, type RemoteBrowserSelectPopup, type RemoteBrowserSelectPopupAction } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_PASSWORD_ACTION, DESKTOP_BROWSER_SELECT_POPUP, DESKTOP_BROWSER_STAGE_FILES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, isRemoteBrowserFileChooserAction, isRemoteBrowserInputBatch, isRemoteBrowserPasswordAction, isRemoteBrowserPermissionAction, isRemoteBrowserSelectPopupAction, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer, type RemoteBrowserFileChooserPrompt, type RemoteBrowserInputBatch, type RemoteBrowserPasswordAction, type RemoteBrowserPasswordPrompt, type RemoteBrowserPermissionAction, type RemoteBrowserPermissionPrompt, type RemoteBrowserSelectPopup, type RemoteBrowserSelectPopupAction } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
 /**
@@ -898,9 +898,9 @@ export class BrowserService {
   }
 
   /** 표면(칸·독립 창) 요청. 표면은 셸이 그리고 소유하며, Console 은 열림·모드·닫힘만 기억한다. */
-  surface(objectiveId: string, action: "open" | "close" | "focus" | "mode", id?: string, mode?: "pane" | "window", origin?: BrowserSurfaceOrigin | null): void {
+  surface(objectiveId: string, action: "open" | "close" | "focus" | "mode", id?: string, mode?: "pane" | "window"): void {
     this.objectiveRecord(objectiveId);
-    if (action === "open") { this.deps.desktop.openSurface(objectiveId, mode ?? "pane", origin); return; }
+    if (action === "open") { this.deps.desktop.openSurface(objectiveId, mode ?? "pane"); return; }
     const lease = this.deps.desktop.surfaceState();
     if (lease?.browserId !== objectiveId || lease.id !== id) return;
     if (action === "focus") this.deps.desktop.focusSurface(id);

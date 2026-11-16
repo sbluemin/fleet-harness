@@ -624,14 +624,6 @@ async function boot(): Promise<void> {
     zoom: consoleZoomFactor,
     stripPrefs: desktopState.browserStrip,
     scaleFactor: (base) => { try { return screen.getDisplayMatching(base.getBounds()).scaleFactor; } catch { return 1; } },
-    consoleRequest: {
-      fetch: consoleFetch,
-      origin: () => browserHost.shownOrigin(),
-      headers: () => {
-        const shown = browserHost.shownConnection();
-        return shown ? managedBrowserHeaders(shown) : {};
-      },
-    },
     // 동작의 주인은 지금 서 있는 표면의 주인이다. 보기 전용 셸의 표면이면 그 셸로 가고(Console 로 쓰기 요청을 보내는 관리 표면의 처리기를 타지 않는다),
     // 관리 세션의 표면이면 관리 처리기로 간다 — 보기 셸이 아직 닫히는 중이어도 관리 표면의 동작이 그쪽으로 새지 않는다.
     // 비밀번호 카드 동작은 Console 이 아니라 이 기계의 금고·채움기로만 간다(보기 전용 셸에는 페이지 뷰가 없어 버린다).

@@ -57,34 +57,6 @@ export interface ChromeControl {
 
 export interface ChromeColors { readonly scheme: "dark" | "light"; readonly tokens: Readonly<Record<string, string>>; readonly fonts?: Readonly<Record<string, { readonly family: string; readonly size: number }>> }
 
-/** Console 표면이 칸을 연 곳. 프로토콜 필드가 아직 선택이면 Desktop 이 같은 모양으로 읽는다. */
-export type BrowserSurfaceOriginKind = "message" | "event" | "sidebar";
-export interface BrowserSurfaceOrigin {
-  readonly kind: BrowserSurfaceOriginKind;
-  readonly actor?: string;
-  readonly objectiveId?: string;
-  readonly messageId?: string;
-}
-
-const ORIGIN_KINDS = new Set<BrowserSurfaceOriginKind>(["message", "event", "sidebar"]);
-
-/** 스냅샷에 실린 출처. 없거나 모양이 아니면 null — 칸 머리는 그때 배지를 그리지 않는다. */
-export function readBrowserSurfaceOrigin(value: unknown): BrowserSurfaceOrigin | null {
-  if (typeof value !== "object" || value === null) return null;
-  const body = value as Record<string, unknown>;
-  if (typeof body.kind !== "string" || !ORIGIN_KINDS.has(body.kind as BrowserSurfaceOriginKind)) return null;
-  const text = (field: unknown, max: number): string | undefined => typeof field === "string" && field.length > 0 && field.length <= max ? field : undefined;
-  const actor = text(body.actor, 120);
-  const objectiveId = text(body.objectiveId, 200);
-  const messageId = text(body.messageId, 200);
-  return {
-    kind: body.kind as BrowserSurfaceOriginKind,
-    ...(actor !== undefined ? { actor } : {}),
-    ...(objectiveId !== undefined ? { objectiveId } : {}),
-    ...(messageId !== undefined ? { messageId } : {}),
-  };
-}
-
 /** main 이 두 문서에 똑같이 밀어 넣는 상태. 문서는 이것을 그리기만 한다. */
 export interface ChromeUiState {
   readonly lang: "ko" | "en";
@@ -130,8 +102,6 @@ export interface ChromeUiState {
    * 관리 Console 의 표면이면 null 이다.
    */
   readonly viewOnly: ChromeViewOnly | null;
-  /** 이 칸을 연 곳. 없으면 null. 칸 모드에서만 주소줄이 배지로 그린다. */
-  readonly origin?: BrowserSurfaceOrigin | null;
   /** 셸이 닫히는 중이다 — 크롬 문서가 비대칭 퇴장 모션을 돌린 뒤 main 이 뷰를 거둔다. */
   readonly shellClosing?: boolean;
 }
@@ -182,8 +152,6 @@ export type ChromeAction =
   | { readonly action: "toggle-mode" }
   /** 보기 전용 셸의 닫기 단추 — 그 표면은 이 Desktop 의 것이라 여기서 닫는다. 관리 Console 의 칸도 같은 동작으로 Console 에 닫기를 요청한다. */
   | { readonly action: "close-surface" }
-  /** 칸 머리의 출처 배지 — 이 칸을 연 곳으로 Console 이 돌아가게 한다. */
-  | { readonly action: "reveal-origin" }
   | { readonly action: "open-external" }
   | { readonly action: "suggest"; readonly query: string }
   | { readonly action: "suggest-settings"; readonly enabled: boolean }
@@ -279,7 +247,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
   const make = (action: ChromeAction | null) => action ? { role, action } : null;
   switch (name) {
     case "navigate": return make(str(body.url, 4096) ? { action: "navigate", url: body.url } : null);
-    case "new-tab": case "toggle-mode": case "close-surface": case "reveal-origin": case "open-external": case "attach-screenshot": case "annotate": case "import-open": case "clear-open": case "clear-run": case "dialog-close": case "info-action": case "ready":
+    case "new-tab": case "toggle-mode": case "close-surface": case "open-external": case "attach-screenshot": case "annotate": case "import-open": case "clear-open": case "clear-run": case "dialog-close": case "info-action": case "ready":
       return make({ action: name });
     case "password-save": case "password-dismiss": case "password-never": return make(passwordRelay(name, body));
     case "password-pick": return make(str(body.username, 512) && body.username.length > 0 ? passwordRelay("password-pick", body, body.username) : null);

@@ -28,7 +28,7 @@ export function BrowserActivityLines({ objectiveId }: { readonly objectiveId: st
   const canLaunch = !engineMissing && (!streamedShell || viewerShell);
   const openAction = () => {
     if (streamedShell) toggleBrowserViewerShell();
-    else openBrowserPane({ kind: "event", objectiveId });
+    else openBrowserPane();
   };
   // 에이전트가 이 대화의 세션으로 쓰는 중이거나, 전역 브라우저가 구동 중이면 그 사실이 먼저다.
   // 칸이 닫혀 있어도 에이전트가 쓰는 동안은 이 줄이 남는다 — 보기로 다시 열 수 있다.

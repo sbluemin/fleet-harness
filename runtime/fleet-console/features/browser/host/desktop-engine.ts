@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { DESKTOP_BROWSER_SHELL_VIEW, type BrowserSurfaceOrigin, type DesktopBrowserChrome, type DesktopBrowserHello, type DesktopBrowserPageDialog, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserSurface, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_SHELL_VIEW, type DesktopBrowserChrome, type DesktopBrowserHello, type DesktopBrowserPageDialog, type DesktopBrowserCommand, type DesktopBrowserRelay, type DesktopBrowserSnapshot, type DesktopBrowserSurface, type DesktopBrowserView } from "@fleet-console/protocol/desktop";
 import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp.js";
 
 /**
@@ -24,12 +24,6 @@ const ATTACH_TIMEOUT_MS = 10_000;
 /** 셸의 구독이 끊긴 뒤 이만큼 안에 다시 붙으면 뷰와 탭을 그대로 잇는다 — 절전·루프백 순단은 창이 닫힌 것이 아니다. */
 const RECONNECT_GRACE_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 60_000;
-
-/** 출처 비교 — 같은 자리에서 다시 연 것은 칸 머리를 바꾸지 않는다. */
-function sameOrigin(left: BrowserSurfaceOrigin | null, right: BrowserSurfaceOrigin | null): boolean {
-  if (left === null || right === null) return left === right;
-  return left.kind === right.kind && left.actor === right.actor && left.objectiveId === right.objectiveId && left.messageId === right.messageId;
-}
 
 interface Pending { readonly command: DesktopBrowserCommand; readonly resolve: (value: unknown) => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }
 interface ViewRecord { id: string; objectiveId: string; partition: string; profile: string | null; url: string; attached: boolean; active: boolean; agent: boolean; size: { width: number; height: number; scale: number } | null; frameSeq: number; dialog?: BrowserPageDialog | null; answering?: string | null }
@@ -110,19 +104,13 @@ export class DesktopEngine implements CdpClient {
   onSurface(listener: () => void): () => void { this.surfaceListeners.add(listener); return () => { this.surfaceListeners.delete(listener); }; }
 
   /** 표면(칸 또는 독립 창)은 브라우저당 하나다. 셸이 이 스냅샷의 표면을 그리고, 닫히면(사람이 창을 닫으면) `closed` 로 알려 온다. */
-  openSurface(browserId: string, mode: "pane" | "window", origin?: BrowserSurfaceOrigin | null): BrowserSurfaceState {
+  openSurface(browserId: string, mode: "pane" | "window"): BrowserSurfaceState {
     if (!this.connected) throw new Error("desktop_browser_disconnected");
     if (this.surface) {
       if (this.surface.browserId !== browserId) throw new Error("browser_surface_busy");
-      // 이미 열린 칸을 새 출처에서 다시 열면 그 출처가 칸 머리에 선다 — 링크 하나를 따라가도 출처가 낡지 않는다.
-      if (origin !== undefined && sameOrigin(this.surface.origin ?? null, origin ?? null)) return this.surface;
-      if (origin !== undefined) {
-        this.surface = { ...this.surface, origin: origin ?? null };
-        this.surfaceChanged();
-      }
       return this.surface;
     }
-    this.surface = { id: `surface-${crypto.randomUUID()}`, browserId, mode, origin: origin ?? null };
+    this.surface = { id: `surface-${crypto.randomUUID()}`, browserId, mode };
     this.surfaceChanged();
     return this.surface;
   }
