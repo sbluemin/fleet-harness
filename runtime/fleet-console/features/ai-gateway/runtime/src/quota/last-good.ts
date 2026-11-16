@@ -42,17 +42,27 @@ function shortLabel(value: unknown): string | undefined {
   return trimmed;
 }
 
-function sanitizeWindow(value: unknown): QuotaWindow | undefined {
+function sanitizeWindow(value: unknown, providerId: QuotaLastGoodProviderId): QuotaWindow | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const window = value as Record<string, unknown>;
   if (!WINDOW_IDS.includes(window.id as WindowId)) return undefined;
   const usedPercent = finite(window.usedPercent);
   if (usedPercent === undefined || usedPercent < 0 || usedPercent > 100) return undefined;
   const rawScope = window.scope;
-  const scope = isQuotaScope(rawScope) ? rawScope : undefined;
+  const label = shortLabel(window.label);
+  let scope = isQuotaScope(rawScope) ? rawScope : undefined;
   // 은퇴한 풀의 창은 scope를 비우면 공유 제한으로 둔갑해 배정을 그르치므로 버린다.
   if (rawScope !== undefined && scope === undefined) return undefined;
-  const label = shortLabel(window.label);
+  // 업그레이드 전 저장된 Antigravity Gemini 창(scope 없음)을 pool:gemini로 이관해 Claude 모델에 섞이지 않게 한다.
+  if (providerId === "antigravity" && scope === undefined) {
+    if (label === "Gemini" || (label === undefined && (window.id === "session" || window.id === "weekly"))) {
+      scope = "pool:gemini";
+    } else if (label === "Claude & GPT") {
+      scope = "pool:claude-gpt";
+    } else {
+      return undefined;
+    }
+  }
   const resetsAt = safeTime(window.resetsAt);
   let period: QuotaWindow["period"];
   if (typeof window.period === "object" && window.period !== null && !Array.isArray(window.period)) {
@@ -100,13 +110,13 @@ function sanitizeCredits(value: unknown): ResetCredits | undefined {
   return { available, ...(nextExpiresAt !== undefined ? { nextExpiresAt } : {}) };
 }
 
-function sanitizeSuccess(value: unknown): ProviderSuccess | undefined {
+function sanitizeSuccess(value: unknown, providerId: QuotaLastGoodProviderId): ProviderSuccess | undefined {
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const record = value as Record<string, unknown>;
   if (record.status !== "ok" || !Array.isArray(record.windows)) return undefined;
   const fetchedAt = safeTime(record.fetchedAt);
   if (fetchedAt === undefined) return undefined;
-  const windows = record.windows.map(sanitizeWindow).filter((window): window is QuotaWindow => window !== undefined);
+  const windows = record.windows.map((window) => sanitizeWindow(window, providerId)).filter((window): window is QuotaWindow => window !== undefined);
   if (windows.length === 0) return undefined;
   const plan = titleCase(record.plan);
   const method: CredentialMethod | undefined = record.method === "keychain" || record.method === "file" ? record.method : undefined;
@@ -138,7 +148,7 @@ function sanitizeDocument(value: unknown): QuotaLastGoodDocument {
   const providers: Partial<Record<QuotaLastGoodProviderId, ProviderSuccess>> = {};
   const raw = root.providers as Record<string, unknown>;
   for (const id of QUOTA_LAST_GOOD_PROVIDERS) {
-    const success = sanitizeSuccess(raw[id]);
+    const success = sanitizeSuccess(raw[id], id);
     if (success) providers[id] = success;
   }
   return { version: 1, providers };

@@ -518,12 +518,15 @@ describe("quota service", () => {
             status: "ok",
             fetchedAt: now,
             windows: [
+              { id: "session", label: "Gemini", usedPercent: 95, resetsAt },
+              { id: "weekly", label: "Gemini", usedPercent: 98, resetsAt },
               { id: "weekly", scope: "model:gemini-4-argon", label: "Gemini 4 Argon", usedPercent: 12, resetsAt },
             ],
           },
         },
       }));
       // 은퇴한 풀의 창이 scope 없이 살아남으면 Auto 모델의 공유 제한으로 읽혀 배정을 그르친다.
+      // 업그레이드 전 저장된 Antigravity Gemini 창도 pool:gemini로 이관해 Claude 모델에 전파되지 않게 한다.
       const read = createQuotaLastGoodStore({ filePath }).read();
       expect(read.xai?.windows).toEqual([
         { id: "cycle", scope: "auto", label: "Auto", usedPercent: 10, resetsAt },
@@ -534,6 +537,8 @@ describe("quota service", () => {
         { id: "model", scope: "model:future-model", label: "Future", usedPercent: 10, resetsAt },
       ]);
       expect(read.antigravity?.windows).toEqual([
+        { id: "session", scope: "pool:gemini", label: "Gemini", usedPercent: 95, resetsAt },
+        { id: "weekly", scope: "pool:gemini", label: "Gemini", usedPercent: 98, resetsAt },
         { id: "weekly", scope: "model:gemini-4-argon", label: "Gemini 4 Argon", usedPercent: 12, resetsAt },
       ]);
     } finally {
