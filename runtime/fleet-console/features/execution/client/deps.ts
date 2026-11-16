@@ -3,6 +3,7 @@ import type { ClientConsoleEventsCapability } from "../../workspace/shared/navig
 import type { ClientConsoleStateCapability } from "../../workspace/shared/console-state.js";
 import type { ClientConversationCapability } from "../../workspace/shared/conversation-surfaces.js";
 import type { ClientExperimentsCapability } from "../../settings/shared/client-ports.js";
+import type { ClientModelsCapability } from "../../ai-gateway/shared/model-ports.js";
 import type { ClientNotificationsCapability } from "../shared/notification-ports.js";
 import type { ClientObjectiveRuntimeCapability, ClientObjectiveStatusDetailCapability, ClientObjectiveRecordsCapability } from "../shared/client-contract.js";
 export interface ExecutionClientDeps {
@@ -12,6 +13,7 @@ export interface ExecutionClientDeps {
   readonly runtime: ClientObjectiveRuntimeCapability;
   readonly statusDetail: ClientObjectiveStatusDetailCapability;
   readonly experiments: ClientExperimentsCapability;
+  readonly models?: ClientModelsCapability;
   readonly conversation?: ClientConversationCapability;
   readonly consoleEvents: ClientConsoleEventsCapability;
   readonly objectiveRecords: ClientObjectiveRecordsCapability;
