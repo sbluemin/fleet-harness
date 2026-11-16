@@ -90,6 +90,7 @@ describe("Console conflict handling", () => {
     expect(symlinkRefused.message).toContain("심볼릭 링크");
     expect(changedRefused.message).toContain("바뀌어");
     expect(liveRefused.message).toContain("실행 중인 Console");
+    expect(liveRefused.detail).toContain("실행 중인 Fleet Console을 종료한 뒤 다시 시작하세요.");
     expect(foreignRefused.message).toContain("다른 사용자");
     for (const refused of [symlinkRefused, changedRefused, liveRefused, foreignRefused]) {
       expect(refused.detail).toMatch(/[가-힣]/);

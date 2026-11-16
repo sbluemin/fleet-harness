@@ -276,7 +276,7 @@ const RECOVER_REFUSAL_MESSAGES: Readonly<Record<ConsoleLockRecoverRefusalCode, R
 };
 
 const RECOVER_REFUSAL_DETAILS_KO: Readonly<Record<ConsoleLockRecoverRefusalCode, string>> = {
-  live_console: "실행 중인 Console이 확인되지 않으면 해당 프로세스를 종료한 뒤 다시 시작하세요.",
+  live_console: "실행 중인 Fleet Console을 종료한 뒤 다시 시작하세요.",
   active_update: "진행 중인 업데이트가 끝난 뒤 다시 시작하세요.",
   symlink: "심볼릭 링크는 안전을 위해 자동으로 삭제하지 않습니다. 경로를 직접 확인하세요.",
   foreign_owner: "현재 사용자 소유가 아닌 파일·디렉터리가 있어 자동으로 삭제하지 않습니다. 소유자와 권한을 확인하세요.",
