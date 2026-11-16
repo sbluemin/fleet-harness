@@ -1843,15 +1843,4 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-intel-na { position: absolute; inset: 3px 0; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-xs); box-shadow: inset 0 0 0 1px var(--hairline-strong); color: var(--text-tertiary); font-size: var(--t-2xs); }
 .commodore-pool-intel-val { text-align: right; color: var(--text-secondary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 .commodore-pool-intel-val.is-met { color: var(--text-primary); font-weight: var(--weight-bold); }
-.commodore-pool-ins { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
-.commodore-pool-intel-grid + .commodore-pool-ins { padding-top: 6px; border-top: 1px solid var(--popover-divider); }
-.commodore-pool-ins > li { display: block; color: var(--text-secondary); font-size: var(--t-xs); line-height: 1.6; }
-.commodore-pool-ins > li > * { margin-right: 7px; }
-.commodore-pool-ins > li > .commodore-pool-link-btn { margin-left: 2px; }
-.commodore-pool-ins-who { display: inline-flex; align-items: center; gap: 4px; vertical-align: bottom; color: var(--text-primary); font-weight: var(--weight-medium); }
-.commodore-pool-ins-who.is-muted { color: var(--text-tertiary); font-weight: var(--weight-regular); }
-.commodore-pool-ins-dot { display: inline-block; width: 6px; height: 6px; vertical-align: 1px; border-radius: 50%; }
-.commodore-pool-ins-dot.is-ok { background: var(--aurora); }
-.commodore-pool-ins-dot.is-none { box-shadow: inset 0 0 0 1.5px var(--text-tertiary); }
-.commodore-pool-ins-rank { width: 10px; height: 10px; vertical-align: -1px; }
 .commodore-pool-ex-source { margin: 8px 2px 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
