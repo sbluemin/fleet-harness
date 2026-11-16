@@ -441,11 +441,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         await deps.ensureClaudeNativeModels();
         target = harness.findModel(resolution.modelId, GATEWAY_MODELS);
       }
-      if (!target) {
+      if (!target && !harness.relaysUnmatchedModel(resolution.modelId)) {
         writeClientError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${resolution.modelId}`);
         clock?.finish("error", 400);
         return true;
       }
+      // 버전 고정 native 모델은 카탈로그 alias가 아니다. 일반 요청과 같은 passthrough로 보낸다.
+      if (!target) body = { ...body, model: resolution.modelId };
     } else {
       target = harness.findModel(requested, GATEWAY_MODELS);
       // Claude alias의 버전은 설치된 CLI가 정한다. 표를 갱신하면 카탈로그가 새로 지어지므로 다시 찾는다.
@@ -487,7 +489,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     const sessionId = claudeSessionId(body.metadata?.user_id);
     clock?.setRequestBody(body, requested, sessionId);
     const isCompactRequest = isClaudeCompactSummaryRequest(body.messages);
-    if (resolvedExecution !== undefined && target !== undefined) clock?.setResolvedModel(target.id);
+    if (resolvedExecution !== undefined) clock?.setResolvedModel(target?.id ?? resolvedExecution.modelId);
     const compactSummary = target?.provider === "codex"
       && sessionId !== undefined
       && isCompactRequest

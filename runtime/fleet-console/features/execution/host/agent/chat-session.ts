@@ -2611,13 +2611,18 @@ class AgentChatSession {
    * 강도를 정한다. 모델은 여기서 고르지 않는다 — 도구 입력의 `model`은 닫힌 enum이라 재작성하면
    * 스키마 검증에서 거부되고(0.3.322 실측), 실제 모델은 게이트웨이가 요청 시점에 정한다.
    */
-  private decideDelegatedCall(input: ClaudeGatewayPreToolUseInput): ClaudeGatewayPreToolUseDecision | undefined {
+  private async decideDelegatedCall(input: ClaudeGatewayPreToolUseInput): Promise<ClaudeGatewayPreToolUseDecision | undefined> {
     const denyReason = this.seed.guardDelegatedCall?.(input) ?? null;
     if (denyReason !== null) return { denyReason };
     if (!this.seed.routeDelegatedModels) return undefined;
     const subagentType = readToolInputString(input.toolInput.subagent_type);
     // fork는 부모의 문맥과 모델을 그대로 물려받는다 — 재작성도 배정도 하지 않는다.
     if (subagentType === "fork") return undefined;
+    // 첫 턴은 카탈로그 준비와 경쟁한다. 아직 모르는 사용자 정의를 기본 agent로 바꾸지 않는다.
+    if (subagentType !== undefined && subagentType !== FLEET_EXECUTION_AGENT_TYPE && this.rawAgents === null) {
+      await this.catalogFlight;
+      if (this.rawAgents === null) return undefined;
+    }
     if (subagentType !== undefined && !this.isRoutableAgent(subagentType)) return undefined;
     const requestedModel = readToolInputString(input.toolInput.model);
     const description = readToolInputString(input.toolInput.description);

@@ -271,6 +271,35 @@ function withoutSnapshotEnd(events: readonly AgentChatJournalEvent[]): readonly 
 }
 
 describe("AgentChatRegistry — chat-born sessions", () => {
+  it("preserves a model-owning agent when the first dispatch races catalog initialization", async () => {
+    const home = tempDir("chat-agent-policy-");
+    let hostHooks: import("@fleet-console/agent-runtime/claude").ClaudeGatewayHostHooks | undefined;
+    let release!: () => void;
+    const commands = new Promise<readonly []>((resolve) => { release = () => resolve([]); });
+    const factory = async (options: import("@fleet-console/agent-runtime/claude").ClaudeGatewaySdkOptions) => {
+      hostHooks = options.hooks;
+      return { configDir: home, models: options.models, dispose: async () => {},
+        openSession: async () => ({ ...fakeSession([]), supportedCommands: () => commands,
+          supportedAgents: async () => [{ name: "custom-reviewer", description: "Review", model: "sonnet" }],
+        }),
+      };
+    };
+    const registry = new AgentChatRegistry(factory as never);
+    const recordIntent = vi.fn();
+    try {
+      const session = await registry.ensure("agent-policy", () => ({ ...freshSeedFor(home), routeDelegatedModels: true, recordDelegationIntent: recordIntent }));
+      await session.prepare();
+      const decision = hostHooks!.preToolUse!({ sessionId: "sdk-parent", toolUseId: "first-agent", toolName: "Agent",
+        toolInput: { subagent_type: "custom-reviewer", prompt: "Review the change" },
+      });
+      release();
+      expect(await decision).toBeUndefined();
+      expect(recordIntent).not.toHaveBeenCalled();
+    } finally {
+      release();
+      await registry.disposeAll();
+    }
+  });
   it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
     const home = tempDir("chat-home-");
     const { factory, openSession, sends, liveSession } = createFakeSdkFactory([

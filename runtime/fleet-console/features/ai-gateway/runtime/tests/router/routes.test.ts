@@ -617,7 +617,7 @@ describe("delegation assignment", () => {
       { delegationModels: [requireGatewayModel("claude--opus-1m")] },
     );
     expect(decision.model).toBe("opus[1m]");
-    const nativeRouter = createAiGatewayRouter({ fetch: vi.fn<typeof fetch>(async (_url, init) => {
+    const nativeRouter = createAiGatewayRouter({ resolveExecutionModel: async () => ({ modelId: "claude-opus-5-5" }), fetch: vi.fn<typeof fetch>(async (_url, init) => {
       expect(JSON.parse(String(init?.body)).model).toBe("claude-opus-5-5");
       const headers = new Headers(init?.headers);
       expect(headers.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
@@ -627,6 +627,14 @@ describe("delegation assignment", () => {
     const delegated = response();
     await nativeRouter.handle(ctx({ res: delegated, token: ANTHROPIC_CRED, model: decision.model!, messages: [{ role: "user", content: "hello" }] }));
     expect(delegated.status).toBe(200);
+    // 후보가 없으면 지휘관의 버전 고정 native 모델을 상속한다. 가상 id가 upstream으로 새면 안 된다.
+    const inherited = response();
+    await nativeRouter.handle(ctx({ res: inherited, token: ANTHROPIC_CRED,
+      model: "claude-gateway--fleet--execute",
+      headers: { "x-claude-code-session-id": "parent", "x-claude-code-agent-id": "child", "anthropic-beta": "context-1m-2025-08-07" },
+      messages: [{ role: "user", content: "hello" }],
+    }));
+    expect(inherited.status).toBe(200);
 
     // Verify /v1/models excludes native Claude aliases (no duplicate advertisement)
     const discovery = buildAnthropicModelList(GATEWAY_MODELS);
