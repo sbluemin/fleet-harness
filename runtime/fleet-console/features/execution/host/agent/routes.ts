@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 
-import { ALL_SUBAGENTS, buildDisabledSkillOverrides, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId, type PtyInputChunk } from "@fleet-console/agent-runtime/fleet";
+import { ALL_SUBAGENTS, buildDisabledSkillOverrides, createFleetGatewayAgentRuntimeLifecycle, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId } from "@fleet-console/agent-runtime/fleet";
 import { writeGatewayModelCacheForHome } from "@fleet-console/ai-gateway";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { ensureWorkspaceDirectory, withDirectoryLock, type AgentOptionsService } from "@fleet-console/infra";
@@ -16,7 +16,7 @@ import { ConsoleControlError } from "../console-control.js";
 import { readObjectiveLaunch, retainSubagentSpawn, subagentSpawnBlocked, withSubagentSpawn, type ObjectiveGeometry, type ObjectiveLaunchKind, type ObjectiveRecord, type ObjectiveRecordPatchInput } from "../../../objectives/shared/records/types.js";
 import { registerRouter } from "../context.js";
 import type { ConsoleRuntimeContext } from "../context.js";
-import { PRIOR_WRITER_EXIT_WAIT_MS, readSocketRole, readTicketChannel } from "../terminal/index.js";
+import { PRIOR_WRITER_EXIT_WAIT_MS, readTicketChannel } from "../terminal/index.js";
 import type { TerminalRuntime } from "../terminal/index.js";
 
 import { createDefaultAgentCliDetector, type AgentCliDetector } from "./agent-cli-detect.js";
@@ -28,11 +28,10 @@ import type { AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { AiGatewayLaunchBinding } from "./launch.js";
 import { deriveObjectiveLabel } from "./auto-name.js";
 import { readBackgroundHookReport } from "./background-report.js";
-import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, prepareChatClaudeSession, type ConsoleRuntimeSessionInfo } from "./launch.js";
+import { isGatewayLaunchEffortAllowed, prepareChatClaudeSession } from "./launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./launch-attachments.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { writeAgentSessionEvents } from "./observability-routes.js";
-import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./osc-agent-activity.js";
 import { mergeCapturedAgentSession, readAgentSession, readCapturedProviderSession, readProviderSession, type CapturedProviderSession } from "./provider-session.js";
 import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
 import { createMessageRecipientResolver } from "./message-recipient.js";
@@ -40,7 +39,6 @@ import { AgentChatRegistry, createChatSdkFactory, readTranscriptHistory, type Ag
 import { maskChatText, neutralizeChatOriginTag, splitDisplayQuotes, type ChatOrigin } from "./chat-events.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveConsoleAiGatewayBaseUrl } from "../../../ai-gateway/host/gateway-url.js";
-import { createTranscriptLinkReader, MAX_LINK_TEXT_CHARS, selectLinksIn } from "./transcript-links.js";
 import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { createWorkspaceHookRegistry } from "./workspace-hooks.js";
@@ -66,7 +64,6 @@ export interface AgentOrganizeActions {
 
 export interface AgentExecutionActions {
   readonly resume?: (objectiveId: string) => Promise<{ readonly ok: true; readonly status: string } | { readonly ok: false; readonly error: string }>;
-  readonly sleep?: (objectiveId: string) => Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>;
   readonly setView?: (objectiveId: string, mode: "chat" | "terminal") => Promise<{ readonly ok: true; readonly mode: "chat" | "terminal"; readonly changed: boolean } | { readonly ok: false; readonly error: string }>;
   readonly pendingAsks?: (objectiveId: string) => readonly { readonly id: string; readonly form: string; readonly questions: readonly unknown[] }[];
   readonly answer?: (objectiveId: string, askId: string, input: { readonly answers?: readonly string[]; readonly message?: string }, by?: ConsoleCaller) => { readonly ok: true; readonly outcome: string } | { readonly ok: false; readonly error: string };
@@ -85,7 +82,6 @@ interface AgentRouteDeps {
   readonly commodorePluginDirs?: (commodoreId: string) => readonly string[];
   /** 그 플러그인 MCP 선언의 `${VAR}`에 채울 키 — 같은 세션의 자식 환경에 얹는다. */
   readonly commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>;
-  readonly isClaudePathTrusted?: (cwd: string) => Promise<boolean>;
   readonly aiGateway?: AiGatewayLaunchBinding;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /** 공급자 로그인 상태. 없으면 미상으로 보아 카탈로그 전체를 고를 수 있다. */
@@ -96,14 +92,13 @@ interface AgentRouteDeps {
    */
   readonly pinClaudeVersion?: (wireModel: string) => Promise<string>;
   /**
-   * 턴이 어떤 결말로든 멈췄다 — 정상 종료·중단·PTY 의 작업 신호 소실 모두. 여러 경로에서 겹쳐 불릴 수 있으므로
+   * 턴이 어떤 결말로든 멈췄다 — 정상 종료·중단·신호 소실 모두. 여러 경로에서 겹쳐 불릴 수 있으므로
    * 받는 쪽은 멱등이어야 한다. 에이전트 사용 표식을 내리는 자리다.
    */
   readonly onTurnSettled?: (objectiveId: string) => void;
 }
 
 const AGENT_OBJECTIVE_TYPE = "agent";
-const CONSOLE_PTY_MESSAGE_DELIVERY = { submitDelayMs: 250 } as const;
 const OBJECTIVE_RENAMED_EVENT_CHANNEL = "objective:renamed";
 const OBJECTIVE_RESTORED_EVENT_CHANNEL = "objective:restored";
 const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
@@ -128,13 +123,10 @@ const CLAUDE_HARNESS_ID = "claude";
  * 그 문장은 자식에게 오류 결과로 전달된다 — 새 지시를 보내는 통로가 아니므로 길 필요가 없다.
  */
 const MAX_CHAT_ANSWER_MESSAGE_CHARS = 2_000;
-/** 플러그인 제어 경로의 sleep 이 PTY 종료 → 휴면 전이를 기다려 주는 상한. 넘기면 `ending` 으로 답한다. */
-const SLEEP_SETTLE_MS = 5_000;
-/** 터미널을 넘겨받은 채팅이 옛 CLI의 실제 종료를 기다리는 한도. 넘기면 첫 메시지가 자식을 연다. */
 
 /**
- * 사용자의 실제 Claude 홈. 터미널로 띄운 CLI와 Chat Mode의 SDK가 **같이** 쓰는 한 곳이며,
- * 그래서 한 세션을 어느 표면으로 열든 같은 트랜스크립트가 자란다.
+ * 사용자의 실제 Claude 홈. 독립 CLI(ctrl+`)와 Chat Mode의 SDK가 **같이** 쓰는 한 곳이며,
+ * 그래서 한 세션의 트랜스크립트를 어느 표면에서든 이어 읽을 수 있다.
  *
  * 규칙은 자격증명 해석(core-ai-gateway `anthropic/credentials.ts`)과 같다 — 여기서 다르게 읽으면
  * 같은 사용자의 Claude 홈을 두 곳으로 갈라 보게 된다.
@@ -150,10 +142,6 @@ export async function registerAgentRoutes(
   deps: AgentRouteDeps,
 ) {
   const api = await createAgentApi(ctx, terminalRuntime, deps);
-  terminalRuntime.registerLaunchResolver(AGENT_OBJECTIVE_TYPE, api.launch);
-  terminalRuntime.onExit(async (objectiveId) => {
-    await api.handleExit(objectiveId);
-  });
   ctx.host.lifecycle.registerCleanup(api.cleanup);
   registerRouter(ctx, "agent", api.handle, [
     { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http" },
@@ -162,7 +150,7 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/sessions/:sessionId", summary: "Delete an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/resume", summary: "Resume an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/message", summary: "Deliver a prompt to an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/sessions/:sessionId/chat", summary: "Open a not-live Agent session as chat without stopping a live terminal.", category: "Console Execution", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/chat", summary: "Open a not-live Agent session as chat.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId/chat", summary: "Rejected. Objective sessions no longer return from chat to a terminal.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-answer", summary: "Answer a pending Agent chat question.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-stop", summary: "Stop the in-flight Agent chat turn.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -171,7 +159,6 @@ export async function registerAgentRoutes(
     { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-history", summary: "Read an Agent session's saved conversation as a read-only group-chat projection without resuming it.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-catalog", summary: "Read the Agent chat session's command, skill, and agent catalog.", category: "Console Execution", gate: "origin-write", transport: "http" },
-    { method: "POST", path: "/sessions/:sessionId/links", summary: "Confirm which links in displayed terminal text appear in an Agent session's transcript.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/workspace", summary: "Receive an Agent workspace hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
@@ -184,7 +171,7 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent new session image attachment.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/attachments/:attachmentId/preview", summary: "Read a sent image attachment for the chat ledger.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
-  return { launchKinds: api.launchKinds, actions: api.actions, listSessions: api.listSessions, subscribeSessionChanged: api.subscribeSessionChanged, stopForArchive: api.stopForArchive, purgeObjective: api.purgeObjective, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin, releaseChatOwnership: api.releaseChatOwnership };
+  return { launchKinds: api.launchKinds, actions: api.actions, listSessions: api.listSessions, subscribeSessionChanged: api.subscribeSessionChanged, stopForArchive: api.stopForArchive, purgeObjective: api.purgeObjective, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
 }
 
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
@@ -202,7 +189,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   if (computerUseMcp) ctx.host.lifecycle.registerCleanup(() => computerUseMcp.dispose());
   const browserMcp = ctx.host.browserMcp?.connect();
   if (browserMcp) ctx.host.lifecycle.registerCleanup(() => browserMcp.dispose());
-  const archiveStops = new Set<string>();
   // 세션 레코드 삭제 — 자식 세션은 부모 레코드 안에서 지운다(롤백·정리). 최상위 Objective 은 평소 삭제 경로다.
   const deleteSessionRecord = (id: string): boolean => ctx.host.objectiveRecords.get(id)?.parentObjectiveId ? (ctx.host.objectiveRecords.deleteChild?.(id) ?? false) : ctx.host.objectiveRecords.delete(id);
   /**
@@ -252,18 +238,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   const testDetector = (globalThis as { __fleetAgentCliDetector?: AgentCliDetector }).__fleetAgentCliDetector;
   const detector = testDetector ?? createDefaultAgentCliDetector(readAgentCliPaths);
   const launchAttachments = createLaunchAttachmentStore({ dataDir: ctx.host.paths.consoleDataDir });
-  const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
-  // 확인된 실행 중 PTY는 설정 파일이 나중에 바뀌어도 이미 Trust 문턱을 지났다. 재개 때는 다시 확인한다.
-  const trustedPtySessions = new Set<string>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
-  const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
   const freshOpenSessions = new Set<string>();
   const freshNoticeSessions = new Set<string>();
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
   const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
   const chatRegistry = new AgentChatRegistry(testChatSdkFactory ?? createChatSdkFactory(ctx.spawnAgentProcess), (objectiveId) => terminalRuntime.awaitWriterExit(objectiveId, PRIOR_WRITER_EXIT_WAIT_MS));
-  // 줄바꿈 URL 확인은 호버마다 온다 — transcript 꼬리는 파일이 바뀔 때만 다시 읽는다.
-  const transcriptLinks = createTranscriptLinkReader();
   const listAllObjectiveRecords = (): ObjectiveRecord[] => {
     const seen = new Set<string>();
     const records: ObjectiveRecord[] = [];
@@ -376,61 +356,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     });
   });
   ctx.host.lifecycle.registerCleanup(unbindChatAttach);
-  const launchResolver = createAgentTerminalLaunchResolver({
-    agentRuntime: runtime,
-    ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
-    ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
-    ...(deps.readProviderStatuses ? { readProviderStatuses: deps.readProviderStatuses } : {}),
-    dataDir: ctx.host.paths.consoleDataDir,
-    plugin: ctx.agentCliPlugin,
-    ...(ctx.launchPromptDirectories ? { promptDirectories: ctx.launchPromptDirectories } : {}),
-    infraServices: deps,
-    ...(deps.commodoreSystemPrompts ? { commodoreSystemPrompts: deps.commodoreSystemPrompts } : {}),
-    ...(deps.commodorePluginDirs ? { commodorePluginDirs: deps.commodorePluginDirs } : {}),
-    ...(deps.commodorePluginEnv ? { commodorePluginEnv: deps.commodorePluginEnv } : {}),
-    readAgentCliPaths,
-    onRuntimeSessionStart: (session) => {
-      pendingRuntimeSessions.set(session.sessionId, session);
-    },
-    bindWorkspaceHook: (objectiveId, providerSessionId) => workspaceHooks.bind(objectiveId, providerSessionId, () => {
-      const session = observability.getTerminalSessionInfo(objectiveId);
-      return !!session && session.chatActive !== true && session.status !== "dormant";
-    }),
-  });
   const consoleTerminal = createConsoleTerminalObserver({
     transcript: (id) => readProviderSession(ctx.host.objectiveRecords.get(id))?.transcriptPath,
     onTurnEnd: (id, output) => ctx.consoleControl?.reportTurnEnd(id, output),
     cwd: (id) => { const op = ctx.host.objectiveRecords.get(id); return op ? confirmedObjectiveCwd(id, op) ?? undefined : undefined; },
   });
   ctx.host.lifecycle.registerCleanup(() => consoleTerminal.dispose());
-  const unsubscribeTitle = terminalRuntime.onTitle(AGENT_OBJECTIVE_TYPE, (sessionId, title) => {
-    // spinner는 프레임마다 타이틀을 방출하므로 tracker가 이미 있으면 세션 조회(DTO 투영)를 건너뛴다.
-    let tracker = oscActivityTrackers.get(sessionId);
-    if (!tracker) {
-      const session = observability.getTerminalSessionInfo(sessionId);
-      if (!session) return;
-      const cliId = session.cliId;
-      if (cliId !== "claude") return;
-      tracker = createOscAgentActivityTracker({
-        cliId,
-        cwdBasename: session.cwdLabel,
-        onActivity: (modelActivity) => {
-          const before = observability.getTerminalSessionInfo(sessionId)?.modelActivity;
-          const updated = observability.setTerminalSessionModelActivity(sessionId, modelActivity);
-          if (updated) observability.notifySessionUpdated(updated);
-          // Stop hook 은 사람이 Esc 로 끊은 턴에는 오지 않는다 — PTY 의 작업 신호가 꺼지는 순간이 그 턴의 결말이다.
-          if (before === "working" && modelActivity !== "working") {
-            deps.onTurnSettled?.(sessionId);
-            consoleTerminal.idle(sessionId);
-          }
-        },
-      });
-      oscActivityTrackers.set(sessionId, tracker);
-    }
-    tracker.observeTitle(title);
-  });
-  // rename 주입이 세션 단위로 직렬화되도록 공유 writer를 쓴다.
-  const reminderWriter = createDelayedPtyWriter();
   const unsubscribeRename = ctx.host.events.subscribe(OBJECTIVE_RENAMED_EVENT_CHANNEL, (payload) => {
     if (!isObjectiveRenamedEvent(payload)) return;
     if (payload.pluginId !== null || payload.type !== AGENT_OBJECTIVE_TYPE) return;
@@ -447,15 +378,12 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ctx.host.objectiveRecords.patch(payload.objectiveId, { title: updated.label ?? updated.cwdLabel, ...(toObjectivePayload(objectiveRecord, cwd, updated, providerSession)) });
       }
     }
-    void injectRenameCommand(payload.objectiveId, payload.title);
   });
   const unsubscribeChatDelete = ctx.host.events.subscribe(OBJECTIVE_DELETED_EVENT_CHANNEL, (payload) => {
     if (!isObjectiveDeletedEventPayload(payload) || payload.pluginId !== null) return;
     const id = payload.objectiveId;
     void chatRegistry.dispose(id);
-    terminalRuntime.terminate(id);
     consoleTerminal.forget(id);
-    reminderWriter.cancel(id);
     workspaceContext.forget(id);
     observability.removeTerminalSession(id);
   });
@@ -543,36 +471,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     resume: async (objectiveId) => {
       const result = await resumeObjective(objectiveId, false);
       return result.ok ? { ok: true, status: result.resumed.status } : { ok: false, error: result.error };
-    },
-    // 휴면은 PTY 종료의 결과다(handleExit). 유휴 청소기와 같은 terminate 를 밟되, 캡처된 provider
-    // 세션이 없으면 그 종료가 삭제로 끝나므로 여기서 거절한다. 전이는 exit 콜백이 하므로 잠깐 기다려
-    // 준다 — 그 안에 못 보면 `ending` 으로 답하고, 다음 관측이 휴면을 말한다.
-    // 휴면 전이는 kill 신호 직후에 나가므로 그것만으로는 옛 프로세스가 사라졌다는 뜻이 아니다. `dormant` 는
-    // 프로세스 종료까지 확인한 뒤에만 답하고, 못 봤으면 `ending` 이다. 어느 쪽이든 곧바로 깨워도 된다 — 같은
-    // 세션의 다음 기동(PTY 재개·휴면 중 전달·채팅 자식)은 옛 프로세스가 사라질 때까지 기다리고, 상한을 넘기면
-    // objectiveRecord_busy 로 거절해 휴면으로 남긴다(session-manager 의 관문).
-    //
-    // 채팅 표면에는 접을 PTY가 없다 — 대신 SDK 자식과 원장을 거두는 같은 결말을 밟고, 그
-    // 전이는 그 자리에서 끝나므로 기다릴 것도 없다.
-    sleep: async (objectiveId) => {
-      const session = observability.getTerminalSessionInfo(objectiveId);
-      if (!session) return { ok: false, error: "unknown_objectiveRecord" };
-      if (ctx.host.objectiveRecords.get(objectiveId)?.[CHAT_MODE_PAYLOAD_KEY] === true) {
-        return { ok: false, error: "chat_sleep_unsupported" };
-      }
-      if (session.status === "dormant") return { ok: false, error: "already_dormant" };
-      if (!readProviderSession(ctx.host.objectiveRecords.get(objectiveId))) return { ok: false, error: "not_resumable" };
-      const exited = terminalRuntime.terminateAndWait(objectiveId, SLEEP_SETTLE_MS);
-      const dormant = new Promise<boolean>((resolve) => {
-        const finish = (value: boolean) => { clearTimeout(timer); unsubscribe(); resolve(value); };
-        const timer = setTimeout(() => finish(false), SLEEP_SETTLE_MS);
-        const unsubscribe = observability.subscribeAll((event) => {
-          if (event.type === "session:updated" && "session" in event && event.session.sessionId === objectiveId && event.session.status === "dormant") finish(true);
-        });
-        if (observability.getTerminalSessionInfo(objectiveId)?.status === "dormant") finish(true);
-      });
-      const [gone, settled] = await Promise.all([exited, dormant]);
-      return { ok: true, lifecycle: gone && settled ? "dormant" : "ending" };
     },
     setView: (objectiveId, mode) => setChatMode(objectiveId, mode === "chat"),
     pendingAsks: (objectiveId) => chatRegistry.get(objectiveId)?.listPendingAsks().map((ask) => ({ id: ask.id, form: ask.form, questions: ask.questions })) ?? [],
@@ -896,17 +794,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         }
       }
       if (input.kind === "interrupt") {
-        const confirmed = targetChat
-          ? await chatRegistry.get(objectiveId)?.interruptForConsole()
-          : await consoleTerminal.interrupt(objectiveId, () => {
-            assertCurrent();
-            const activity = observability.getTerminalSessionInfo(objectiveId);
-            if (!activity || activity.attentionPending) return false;
-            const current = sessionRuntime(activity);
-            if (current.lifecycle !== "live" || current.activity !== "running") return false;
-            reminderWriter.cancel(objectiveId);
-            return terminalRuntime.write(objectiveId, "\u001b");
-          });
+        // Objective 세션의 중단은 채팅 턴 하나뿐이다 — PTY 로 보내는 경로는 제거됐다.
+        const confirmed = targetChat ? await chatRegistry.get(objectiveId)?.interruptForConsole() : false;
         if (!confirmed) throw new ConsoleControlError("interrupt_unconfirmed");
         settled("interrupted");
         return { objectiveId, delivery: "requested" };
@@ -988,7 +877,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
         return true;
       }
-      const body = await ctx.host.http.readJsonBody<{ readonly objectiveId?: unknown; readonly colorScheme?: unknown; readonly role?: unknown; readonly channel?: unknown }>(req);
+      const body = await ctx.host.http.readJsonBody<{ readonly objectiveId?: unknown; readonly channel?: unknown }>(req);
       if (typeof body?.objectiveId !== "string") {
         ctx.host.http.writeJson(res, 400, { error: "terminal_session_not_found" });
         return true;
@@ -1023,38 +912,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         }));
         return true;
       }
-      // dormant 세션은 ticket 발급을 거부한다 — stale 클라이언트가 PTY를 재생성하지 못하게 한다.
-      // resume은 /resume이 status를 dormant에서 뺀 뒤에야 TerminalSurface가 ticket을 요청한다.
-      if (observability.getTerminalSessionInfo(objectiveRecord.id)?.status === "dormant") {
-        ctx.host.http.writeJson(res, 409, { error: "objectiveRecord_dormant" });
-        return true;
-      }
-      // chat 전환 응답과 PTY 종료 사이의 좁은 창에서 stale TerminalSurface가 ticket으로
-      // 터미널을 되살리지 못하게 한다 — 터미널 복귀는 /chat DELETE + /resume 경로만이 연다.
-      if (objectiveRecord[CHAT_MODE_PAYLOAD_KEY] === true) {
-        ctx.host.http.writeJson(res, 409, { error: "objectiveRecord_chat_mode" });
-        return true;
-      }
-      const cwd = confirmedObjectiveCwd(objectiveRecord.id, objectiveRecord);
-      if (!cwd) {
-        ctx.host.http.writeJson(res, 404, { error: "unavailable" });
-        return true;
-      }
-      const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
-      // 등급은 Console이 정한다. 요청이 control을 원해도 제어를 쥔 원격이 있으면 관전으로 내려간다 —
-      // 새로고침 한 번이 조용히 제어를 되가져가는 경합을 클라이언트에 맡기지 않는다.
-      const role = ctx.host.security.resolveTerminalSocketRole(req) === "viewer" ? "viewer" : readSocketRole(body?.role);
-      ctx.host.http.writeJson(res, 200, terminalRuntime.issueTicket({
-        cwd,
-        sessionId: objectiveRecord.id,
-        objectiveId: objectiveRecord.id,
-        objectiveRecordType: "agent",
-        pluginId: null,
-        theaterId: objectiveRecord.theaterId,
-        cliId: CLAUDE_HARNESS_ID,
-        ...(colorScheme ? { colorScheme } : {}),
-        ...(role ? { role } : {}),
-      }));
+      // Objective 세션의 티켓은 채팅 채널뿐이다 — 터미널로 여는 길은 제거됐다.
+      ctx.host.http.writeJson(res, 409, { error: "terminal_view_removed" });
       return true;
     }
     return false;
@@ -1230,7 +1089,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (action === "chat-coordinates") return handleChatCoordinates(req, res, sessionId);
     if (action === "chat-job") return handleChatJob(req, res, sessionId);
     if (action === "chat-catalog") return handleChatCatalog(req, res, sessionId);
-    if (action === "links") return handleLinks(req, res, sessionId);
     if (action === "chat-job-stop") return handleChatJobStop(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
@@ -1401,89 +1259,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         reply(200, dormant);
         return;
       }
-      if (launchOptions.chatBorn) {
-        await startChatBornSession(sessionId, reply, launchOptions);
-        return;
-      }
-      if (launchOptions.onSettled && launchOptions.prompt) consoleTerminal.begin(sessionId, launchOptions.prompt, true, launchOptions.onSettled);
-      try {
-        trustedPtySessions.delete(sessionId);
-        await terminalRuntime.attach({
-          cwd,
-          sessionId,
-          objectiveId: sessionId,
-          objectiveRecordType: AGENT_OBJECTIVE_TYPE,
-          pluginId: null,
-          theaterId,
-          cliId,
-          ...(launchOptions.model ? { model: launchOptions.model } : {}),
-          ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
-          // spawn-only 상태 — Objective payload·브라우저 DTO에 넣지 않는다
-          // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
-          ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
-          ...(launchOptions.sessionName ? { sessionName: launchOptions.sessionName } : {}),
-          ...(launchOptions.disableSubagents ? { disableSubagents: true } : {}),
-          ...(launchOptions.disableAutoMemory !== undefined ? { disableAutoMemory: launchOptions.disableAutoMemory } : {}),
-          ...(launchOptions.parentObjectiveId || ctx.isCommanderSession?.(sessionId) ? { objectiveMessaging: true as const } : {}),
-        });
-        // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
-        // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
-        if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
-          launchAttachments.bind(sessionId, launchOptions.attachmentIds);
-          // attach의 await 동안 DELETE가 지나갔다면 이 bind는 고아다 — 되짚어 거둔다(멘션 경로와 같은 계약).
-          if (!ctx.host.objectiveRecords.get(sessionId)) launchAttachments.releaseSession(sessionId);
-        }
-        const runtimeSession = pendingRuntimeSessions.get(sessionId);
-        pendingRuntimeSessions.delete(sessionId);
-        const created = runtimeSession
-          ? observability.registerTerminalRuntimeSession(runtimeSession) ?? namedSession
-          : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? namedSession;
-        observability.notifySessionUpdated(created);
-        // 세션 좌표는 런치 시점에 이미 확정이다 — Fleet이 못박은 id이므로 capture hook을 기다리지
-        // 않는다. 첫 프롬프트 없이 닫히는 패널도 자기 플러그인 트리를 걷을 수 있어야 한다.
-        // 이미 좌표가 있으면 그것을 남긴다 — 재개 런치의 기존 기록이 트랜스크립트 경로까지 들고
-        // 있고, 못박은 id는 그 기록과 같은 값이라 덮어써서 얻을 것이 없다.
-        const launchedProviderSession = readProviderSession(ctx.host.objectiveRecords.get(sessionId))
-          ?? (runtimeSession?.claudeSessionId
-            ? {
-              harness: "claude-code" as const,
-              id: runtimeSession.claudeSessionId,
-              capturedAt: new Date().toISOString(),
-              source: "launch",
-            }
-            : undefined);
-        ctx.host.objectiveRecords.patch(sessionId, { ...(toObjectivePayload(ctx.host.objectiveRecords.get(sessionId), cwd, created, launchedProviderSession, observability.getDurableObjective(sessionId)?.providerTitle)) });
-        reply(200, created);
-      } catch (error) {
-        consoleTerminal.cancel(sessionId);
-        // 실패한 스폰은 첨부 예약을 되돌린다 — 재시도가 같은 id를 다시 실을 수 있고,
-        // 남으면 TTL이 거둔다.
-        if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
-          launchAttachments.unreserve(launchOptions.attachmentIds);
-        }
-        if (error instanceof GatewayLaunchOptionError) {
-          removeSession(sessionId);
-          reply(gatewayLaunchOptionErrorStatus(error), { error: error.code });
-          return;
-        }
-        // 프롬프트를 이 실행 경로로 안전하게 전달할 수 없을 때 spawn 전에 거부된다(cmd.exe shim 재해석,
-        // FLEET_TERMINAL_CMD 대체 실행). 요청이 잘못된 것이지 터미널이 죽은 게 아니므로 503이 아니라 400이다.
-        if (error instanceof LaunchPromptError) {
-          removeSession(sessionId);
-          // 몇 글자를 줄여야 하는지는 서버만 알 수 있다 — 상한이 이 실행의 argv 전체에 달려 있어
-          // 브라우저가 되계산할 수 없다. 코드만 실어 보내면 사용자는 다시 찍어 보는 수밖에 없다.
-          reply(400, {
-            error: error.code,
-            ...(error.shortenByChars === undefined ? {} : { shortenByChars: error.shortenByChars }),
-          });
-          return;
-        }
-        pendingRuntimeSessions.delete(sessionId);
-        observability.updateTerminalSessionStatus(sessionId, "error");
-        // 실패의 종류만 내보낸다. spawn 오류 메시지에는 실행 파일의 절대 경로가 실려 있어
-        // 그대로 실으면 경로가 브라우저 DTO로 새어 나간다 — errno는 경로를 담지 않는다.
-        reply(503, { error: classifyLaunchSpawnFailure(error) });
-      }
+      // Agent Objective 세션은 채팅으로만 태어난다 — PTY 를 스폰하지 않는다.
+      await startChatBornSession(sessionId, reply, launchOptions);
     } catch (error) {
       // 원장 생성·채팅 준비의 예외도 예약된 starting 세션을 남기지 않는다.
       if (launchOptions.attachmentIds?.length) launchAttachments.unreserve(launchOptions.attachmentIds);
@@ -1613,7 +1390,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     };
     // resolve가 연 예약은 아래 어떤 경로로 던져져도 닫혀야 한다 — settle을 지나 bind된 뒤의
     // unreserve는 no-op이라(sessionId가 이미 붙었다) 이중 정산이 안전하다.
-    let terminalTurnReserved = false;
     try {
     // 떠 있지 않은 옛 터미널 목표는 이 전달이 다음 열기다. PTY를 깨우지 않고 채팅으로 넘긴 뒤 같은 길을 탄다.
     let active = node;
@@ -1697,62 +1473,11 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       reply(200, { delivered: true, chat: true });
       return true;
     }
-    const deliveredText = composeLaunchPromptWithAttachments(neutralizeChatOriginTag(sanitized), attachmentPaths) as string;
-    const livePty = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
-    if (!livePty) trustedPtySessions.delete(sessionId);
-    if (deps.isClaudePathTrusted && !trustedPtySessions.has(sessionId)) {
-      const cwd = confirmedObjectiveCwd(sessionId, node) || "";
-      if (!await deps.isClaudePathTrusted(cwd)) {
-        settleAttachments(false);
-        reply(409, { error: "claude_trust_required" });
-        return true;
-      }
-      if (livePty) trustedPtySessions.add(sessionId);
-    }
-    if (onSettled) {
-      // 실행 중이어도 사람 경로와 같이 큐잉한다. 막는 것은 권한 프롬프트 대기 하나뿐이다 — 본문 끝의
-      // Enter가 대기 중인 선택지를 확정해 버린다. 이미 귀속 대기 중인 console 턴이 있으면 이 요청의
-      // Stop을 가려낼 수 없으므로 전달은 하되 결과는 unknown으로 정산한다.
-      if (observability.getTerminalSessionInfo(sessionId)?.attentionPending) throw new ConsoleControlError("session_awaiting_input");
-      terminalTurnReserved = consoleTerminal.begin(sessionId, deliveredText, false, onSettled);
-      if (!terminalTurnReserved) onSettled("unknown");
-    }
-    const deliver = (leadChunks: readonly PtyInputChunk[] = []) => {
-      const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
-      // rename 주입과 같은 세션 키/writer로 직렬화해 rename+메시지 인터리브를 막는다.
-      reminderWriter.enqueue(
-        sessionId,
-        (data) => {
-          if (onSettled && observability.getTerminalSessionInfo(sessionId)?.attentionPending) { consoleTerminal.cancel(sessionId); return false; }
-          const written = terminalRuntime.write(sessionId, data);
-          if (!written && onSettled) consoleTerminal.cancel(sessionId);
-          return written;
-        },
-        [...leadChunks, ...formatPtyMessage(policy, deliveredText, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY)],
-      );
-    };
-    if (livePty) {
-      // awaiting 재검사: 덱은 pick 시점만 가드한다 — 작성하는 사이 CLI가 권한 프롬프트로 전환하면
-      // 전달 끝의 줄 종결자가 대기 중인 선택지를 그대로 확정해 버린다. 직접 POST 호출도 여기서 닫힌다.
-      if (observability.getTerminalSessionInfo(sessionId)?.attentionPending === true) {
-        if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
-        settleAttachments(false);
-        reply(409, { error: "session_awaiting_input" });
-        return true;
-      }
-      assertCurrent();
-      deliver();
-      settleAttachments(true);
-      reply(200, { delivered: true });
-      return true;
-    }
-    // 끝난 목표에 메시지를 넣으며 PTY를 깨우지 않는다. 채팅으로 넘기지 못한 전달은 거절만 한다.
-    if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
+    // Objective 세션에 남은 PTY는 없다 — 채팅으로 넘기지 못한 전달은 PTY를 건드리지 않고 거절만 한다.
     settleAttachments(false);
-    reply(409, { error: "resume_unavailable" });
+    reply(409, { error: "session_live" });
     return true;
     } catch (error) {
-      if (terminalTurnReserved) consoleTerminal.cancel(sessionId);
       // 처리되지 않은 throw가 예약을 영구 고착시키면 그 id는 어떤 재시도에도 실리지 못한다.
       if (attachmentIds.length > 0) launchAttachments.unreserve(attachmentIds);
       throw error;
@@ -1773,8 +1498,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
   }
 
   // ── Chat Mode ──────────────────────────────────────────────────────────────
-  // 전환(POST)·터미널 복귀 준비(DELETE). 전환은 payload 마커를 먼저 심은 뒤 PTY를 접는다 —
-  // handleExit의 payload 재작성은 기존 키를 보존하므로 마커는 dormant 전이를 지나도 남는다.
+  // 전환(POST)과 터미널 복귀 준비(DELETE). 전환은 payload 마커를 심고 채팅 어댑터를 세운다.
   async function handleChat(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
     if (req.method !== "POST" && req.method !== "DELETE") return methodNotAllowed(res);
     if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
@@ -2132,38 +1856,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 구분해야 하고, 빈 목록은 전자만 뜻해야 한다.
    */
   /**
-   * 터미널이 줄바꿈으로 가른 URL을 이을 때의 원문 확인. 클라이언트는 화면에서 이어 붙인 글을 보내고,
-   * 이 문은 그 글 **안에 이미 있는** 주소 가운데 이 세션 transcript에도 적힌 것만 돌려준다 — transcript의
-   * 내용이 브라우저로 새 나가지 않는다. 터미널을 볼 수 있는 호출자만 묻는다. transcript가 없거나(첫 턴 전,
-   * 다른 CLI) 읽을 수 없으면 빈 목록이며, 호출부는 원래 링크 동작으로 떨어진다.
-   */
-  async function handleLinks(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
-    if (req.method !== "POST") return methodNotAllowed(res);
-    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
-    const body = await ctx.host.http.readJsonBody<{ readonly text?: unknown }>(req);
-    const text = typeof body?.text === "string" ? body.text : "";
-    if (text.length === 0 || text.length > MAX_LINK_TEXT_CHARS) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_text" });
-      return true;
-    }
-    const providerSession = readProviderSession(node);
-    if (providerSession && findDuplicateBindingOwner(node.id, { id: providerSession.id, transcriptPath: providerSession.transcriptPath })) {
-      ctx.host.http.writeJson(res, 200, { urls: [] });
-      return true;
-    }
-    const capturePath = providerSession?.transcriptPath;
-    const transcriptPath = capturePath ? await resolveTranscriptPath(capturePath) : null;
-    const urls = transcriptPath ? selectLinksIn(text, await transcriptLinks.read(transcriptPath)) : [];
-    ctx.host.http.writeJson(res, 200, { urls });
-    return true;
-  }
-
-  /**
    * 그룹 대화의 지난 대화 — 저장된 트랜스크립트를 재개 재생과 같은 해석으로 읽기 전용 투영한다.
    * 트랜스크립트·대상 신원을 읽기 전용으로 조회할 뿐이다: 채팅 세션을 세우지도 찾지도 않고(`chatRegistry`),
    * 시드를 풀지 않으며(`resolveChatSeed`의 게이트웨이 캐시·MCP 토큰), ticket·재개·payload 변경도 없다.
@@ -2420,7 +2112,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           const hadSession = !!providerSession?.id || !!existingSession?.previousSessions?.length;
           return prepareChatClaudeSession({
             cwd,
-            dataDir: ctx.host.paths.consoleDataDir,
             plugin: ctx.agentCliPlugin,
             ...(chatBasePromptEnabled ? {} : { claudeCodeSystemPrompt: "off" as const }),
             claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
@@ -2433,8 +2124,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
               : (sessionOrigin.kind === "resume"
                 ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
                 : { kind: "new", preferredSessionId: node.id }),
-            ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
-    ...(deps.readProviderStatuses ? { readProviderStatuses: deps.readProviderStatuses } : {}),
           });
         },
         onClaudeSessionFailed: () => {
@@ -2546,7 +2235,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         void consoleTerminal.end(sessionId, body?.input).catch(() => consoleTerminal.cancel(sessionId));
       }
     }
-    oscActivityTrackers.get(sessionId)?.reset();
     // hook stdin의 cwd는 에이전트가 세션 중 옮겨 간 자리다 — 실행 cwd와 다르면 "지금 어디" 축이 따라간다.
     // 절대 경로는 여기서 추적기로만 들어가고 DTO에는 투영만 실린다.
     const hookCwd = readHookCwd(body?.input);
@@ -2700,164 +2388,48 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return buildAgentCliLaunchKinds(metadata, AGENT_OBJECTIVE_TYPE, readProviderStatuses(), deps.readAiGatewaySettings?.()?.antigravityEnabled === true);
   }
 
-  function launch(cwd: string | undefined, context: { readonly objectiveId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly sessionName?: string; readonly disableSubagents?: boolean; readonly disableAutoMemory?: boolean } | undefined) {
-    const objectiveId = context?.objectiveId ?? "";
-    const objectiveRecord = ctx.host.objectiveRecords.get(objectiveId);
-    const cliId = objectiveRecord ? CLAUDE_HARNESS_ID : undefined;
-    const blockSubagents = objectiveRecord ? subagentSpawnBlocked(objectiveRecord) : context?.disableSubagents === true;
-    const disableAutoMemory = objectiveRecord ? readAgentSession(objectiveRecord)?.disableAutoMemory : context?.disableAutoMemory;
-    const modelSpeed = readAgentSession(objectiveRecord)?.modelSpeed;
-    const providerSession = readProviderSession(objectiveRecord)?.id;
-    // prompt는 spawn-only. Objective payload·브라우저 DTO에 넣지 않는다(FORBIDDEN_BROWSER_PAYLOAD_KEYS).
-    return launchResolver(cwd, {
-      sessionId: objectiveId,
-      objectiveId,
-      objectiveRecordType: AGENT_OBJECTIVE_TYPE,
-      pluginId: null,
-      ...(objectiveRecord?.theaterId ? { theaterId: objectiveRecord.theaterId } : {}),
-      ...(objectiveRecord?.commodoreId ? { commodoreId: objectiveRecord.commodoreId } : {}),
-      additionalDirectories: ctx.host.paths.resolveObjectiveAdditionalDirectories?.(objectiveId),
-      ...(cliId ? { cliId } : {}),
-      ...(context?.model ? { model: context.model } : {}),
-      ...(context?.effort ? { effort: context.effort } : {}),
-      ...(context?.prompt ? { prompt: context.prompt } : {}),
-      ...(context?.sessionName ? { sessionName: context.sessionName } : {}),
-      ...(blockSubagents ? { disableSubagents: true } : {}),
-      ...(disableAutoMemory !== undefined ? { disableAutoMemory } : {}),
-      ...(modelSpeed ? { modelSpeed } : {}),
-      ...(providerSession ? { resumeSessionId: providerSession } : {}),
-    });
-  }
 
-  async function stopForArchive(objectiveId: string, preserveState = true): Promise<void> {
-    archiveStops.add(objectiveId);
-    try {
-      terminalRuntime.invalidateTicketsForSession(objectiveId);
-      await chatRegistry.dispose(objectiveId);
-      if (!await terminalRuntime.terminateAndWait(objectiveId, 10_000)) throw new Error("archive_stop_failed");
-      workspaceContext.forget(objectiveId);
-      observability.setTerminalSessionWorkspace(objectiveId, null);
-      const objectiveRecord = ctx.host.objectiveRecords.get(objectiveId);
-      if (objectiveRecord?.[CHAT_MODE_PAYLOAD_KEY] === true) {
-        observability.setTerminalSessionChatBackgroundPending(objectiveId, false);
-        const idle = observability.setTerminalSessionChatWorking(objectiveId, false);
-        if (idle) observability.notifySessionUpdated(idle);
-      } else {
-        const parked = observability.updateTerminalSessionStatus(objectiveId, "dormant");
-        if (parked) observability.notifySessionUpdated(parked);
-        if (objectiveRecord && preserveState) ctx.host.objectiveRecords.patch(objectiveId, { ...({ ...objectiveRecord, restoredDormant: true }) });
-      }
-    } finally { archiveStops.delete(objectiveId); }
+
+  async function stopForArchive(objectiveId: string): Promise<void> {
+    terminalRuntime.invalidateTicketsForSession(objectiveId);
+    await chatRegistry.dispose(objectiveId);
+    workspaceContext.forget(objectiveId);
+    observability.setTerminalSessionWorkspace(objectiveId, null);
+    const objectiveRecord = ctx.host.objectiveRecords.get(objectiveId);
+    if (objectiveRecord?.[CHAT_MODE_PAYLOAD_KEY] === true) {
+      observability.setTerminalSessionChatBackgroundPending(objectiveId, false);
+      const idle = observability.setTerminalSessionChatWorking(objectiveId, false);
+      if (idle) observability.notifySessionUpdated(idle);
+    }
   }
 
   function purgeObjective(objectiveId: string): void {
     launchAttachments.releaseSession(objectiveId);
   }
 
-  async function handleExit(objectiveId: string): Promise<void> {
-    trustedPtySessions.delete(objectiveId);
-    consoleTerminal.cancel(objectiveId);
-    reminderWriter.cancel(objectiveId);
-    resetOscActivity(objectiveId);
-    pendingRuntimeSessions.delete(objectiveId);
-    const providerSession = readProviderSession(ctx.host.objectiveRecords.get(objectiveId));
-    if (archiveStops.has(objectiveId)) {
-      if (providerSession) observability.updateTerminalSessionProviderSession(objectiveId, providerSession);
-      const parked = observability.updateTerminalSessionStatus(objectiveId, "dormant");
-      if (parked) observability.notifySessionUpdated(parked);
-      return;
-    }
-    if (providerSession) {
-      observability.updateTerminalSessionProviderSession(objectiveId, providerSession);
-      // 휴면은 추적 대상이 아니다 — 추적기에서 잊는 것만으로는 스토어에 남은 투영이 DTO에 계속 실리고,
-      // 그 뒤 실험을 꺼도 추적기가 모르는 세션이라 지우지 못한다. 잊을 때 투영도 함께 지운다.
-      // 단 Chat이 인수한 세션의 PTY 종료는 표면 전환이지 휴면이 아니다 — 자식은 SDK 위에서 계속
-      // 돌고 cwd는 턴 경계마다 세션이 알리므로, 추적과 투영을 그대로 둔다.
-      if (observability.getTerminalSessionInfo(objectiveId)?.chatActive !== true) {
-        workspaceContext.forget(objectiveId);
-        observability.setTerminalSessionWorkspace(objectiveId, null);
-      }
-      const dormant = observability.transitionTerminalSessionToDormant(objectiveId, providerSession);
-      if (dormant) {
-        // 전이 전 발급된 미소비 ticket이 WS consume으로 PTY를 되살리지 못하도록 폐기한다.
-        terminalRuntime.invalidateTicketsForSession(objectiveId);
-        observability.notifySessionUpdated(dormant);
-        const exitCwd = readPayloadString(ctx.host.objectiveRecords.get(objectiveId) ?? {}, "cwd") ?? "";
-        ctx.host.objectiveRecords.patch(objectiveId, {
-          ...({
-            ...toObjectivePayload(ctx.host.objectiveRecords.get(objectiveId), exitCwd, dormant, providerSession, observability.getDurableObjective(objectiveId)?.providerTitle),
-            ...(dormant.chatActive === true ? {} : { restoredDormant: true }),
-          }),
-        });
-      }
-    } else if (ctx.host.objectiveRecords.get(objectiveId)?.[CHAT_MODE_PAYLOAD_KEY] === true) {
-      // 채팅이 인수한 세션의 PTY 종료는 재개 불가 종료가 아니라 **표면 전환**이다. 첫 턴 전에
-      // 넘어왔다면 좌표가 아직 없을 뿐이고, 여기서 아래 정리로 떨어뜨리면 방금 전환한 Objective이
-      // 그 자리에서 사라진다 — 스트림은 session_not_found를 받고 터미널로 돌아갈 곳도 없어진다.
-      //
-      // PTY가 없어져도 채팅 어댑터와 활동축은 그대로 유지한다.
-      const parked = observability.getTerminalSessionInfo(objectiveId);
-      if (parked) {
-        terminalRuntime.invalidateTicketsForSession(objectiveId);
-        observability.notifySessionUpdated(parked);
-      }
-    } else {
-      try {
-        deleteSessionRecord(objectiveId);
-      } catch (error) {
-        // 저장 실패로 삭제가 롤백된 Objective은 PTY 없이 남는다. 살아 있는 세션으로 보이지 않게 한다.
-        if (ctx.host.objectiveRecords.get(objectiveId)) {
-          const dormant = observability.updateTerminalSessionStatus(objectiveId, "dormant");
-          if (dormant) observability.notifySessionUpdated(dormant);
-          terminalRuntime.invalidateTicketsForSession(objectiveId);
-        }
-        throw error;
-      }
-      workspaceContext.forget(objectiveId);
-      observability.removeTerminalSession(objectiveId);
-      // 삭제가 확정된 뒤에만 첨부를 회수한다. 롤백된 Objective의 파일은 보존한다.
-      launchAttachments.releaseSession(objectiveId);
-    }
-  }
-
   function removeSession(sessionId: string): void {
-    trustedPtySessions.delete(sessionId);
     consoleTerminal.forget(sessionId);
-    reminderWriter.cancel(sessionId);
-    resetOscActivity(sessionId);
     void chatRegistry.dispose(sessionId).catch(() => undefined);
-    terminalRuntime.terminate(sessionId);
-    pendingRuntimeSessions.delete(sessionId);
     workspaceContext.forget(sessionId);
     observability.removeTerminalSession(sessionId);
-    // 첨부 파일의 수명은 Objective을 따른다 — dormant·재개를 지나도 남고, 삭제와 함께 거둔다.
+    // 첨부 파일의 수명은 Objective을 따른다 — 재개를 지나도 남고, 삭제와 함께 거둔다.
     launchAttachments.releaseSession(sessionId);
     deleteSessionRecord(sessionId);
   }
 
   async function cleanup(): Promise<void> {
-    // 종료는 자원 회수다. 터미널은 exit로 휴면이 되고, 채팅은 다음 부팅에서 live/idle로 복원된다.
+    // 종료는 자원 회수다. 채팅은 다음 부팅에서 live/idle로 복원된다.
     consoleTerminal.dispose();
-    reminderWriter.cancelAll();
     unsubscribeRename();
     unsubscribeRestore();
     unsubscribeChatSurface();
     unsubscribeChatDelete();
     unsubscribePurge();
-    unsubscribeTitle();
     await chatRegistry.disposeAll();
-    for (const tracker of oscActivityTrackers.values()) tracker.reset();
-    oscActivityTrackers.clear();
     workspaceHooks.dispose();
     workspaceContext.dispose();
     launchAttachments.cleanup();
     await runtime.cleanup();
-  }
-
-  function resetOscActivity(sessionId: string): void {
-    const tracker = oscActivityTrackers.get(sessionId);
-    tracker?.reset();
-    oscActivityTrackers.delete(sessionId);
   }
 
   function scheduleIdentityRefresh(sessionId: string): void {
@@ -2901,26 +2473,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           identityRefreshes.delete(sessionId);
         }
       });
-  }
-
-  async function injectRenameCommand(sessionId: string, label: string | undefined): Promise<void> {
-    if (!label) return;
-    const objectiveRecord = ctx.host.objectiveRecords.get(sessionId);
-    const cwd = objectiveRecord ? confirmedObjectiveCwd(sessionId, objectiveRecord) : null;
-    if (!cwd || (deps.isClaudePathTrusted && !trustedPtySessions.has(sessionId) && !(await deps.isClaudePathTrusted(cwd)))) return;
-    // 신뢰 조회 중 더 새 이름이 저장됐다면 낡은 /rename을 나중에 보내지 않는다.
-    if (!objectiveRecord || ctx.host.objectiveRecords.get(sessionId)?.title !== objectiveRecord.title) return;
-    const renameCommand = terminalRuntime.getRenameCommand(sessionId);
-    if (!renameCommand) return;
-    const safeLabel = sanitizePtyMessageText(label.replace(/[\r\n\t]+/g, " ")).trim();
-    if (safeLabel.length === 0) return;
-    const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
-    // 리마인더와 동일한 세션 키/writer로 직렬화해 rename+리마인더 인터리브를 막는다.
-    reminderWriter.enqueue(
-      sessionId,
-      (data) => terminalRuntime.write(sessionId, data),
-      formatPtyMessage(policy, `${renameCommand} ${safeLabel}`, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
-    );
   }
 
   /** restore가 있으면 표시 정리 patch를 바로 저장하지 않고 기동 복원의 일괄 적용에 넘긴다. */
@@ -2999,7 +2551,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
 
 
-  return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds, actions, listSessions: () => observability.listTerminalSessions(), subscribeSessionChanged: (notify: (id: string) => void) => observability.subscribeAll((event) => { if ((event.type === "session:updated" || event.type === "session:attention") && "session" in event) notify(event.session.sessionId); }), stopForArchive, purgeObjective, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin, releaseChatOwnership: (sessionId: string) => { observability.setTerminalSessionChatActive(sessionId, false); observability.updateTerminalSessionStatus(sessionId, "terminal-only"); } };
+  return { cleanup, handle, launchKinds: buildLaunchKinds, actions, listSessions: () => observability.listTerminalSessions(), subscribeSessionChanged: (notify: (id: string) => void) => observability.subscribeAll((event) => { if ((event.type === "session:updated" || event.type === "session:attention") && "session" in event) notify(event.session.sessionId); }), stopForArchive, purgeObjective, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin };
 
   function methodNotAllowed(res: Parameters<typeof handle>[0]["res"]): true {
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
@@ -3111,11 +2663,6 @@ function readProviderTitle(value: Record<string, unknown> | undefined): AgentPro
   return { source: "provider" };
 }
 
-// create와 resume는 같은 launch-option 오류 계약을 공유한다.
-function gatewayLaunchOptionErrorStatus(error: GatewayLaunchOptionError): 400 | 409 {
-  return error.code === "gateway_model_not_enabled" ? 409 : 400;
-}
-
 /**
  * 카탈로그가 아는 이 모델의 실제 창. 압축 창 계산이 읽는 것과 같은 조회다.
  * 카탈로그 밖 id는 `undefined`다.
@@ -3155,17 +2702,3 @@ function readHookPrompt(value: unknown): string | undefined {
   }
 }
 
-
-/**
- * spawn 실패를 브라우저가 문장으로 옮길 수 있는 코드로 분류한다.
- *
- * 원본 메시지를 그대로 실으면 실행 파일의 절대 경로가 따라 나가므로 errno만 읽는다.
- * 분류되지 않는 실패는 예전과 같은 `terminal_unavailable`로 남는다 — 새 어휘를 추측으로
- * 넓히면 화면이 사실이 아닌 원인을 말하게 된다.
- */
-function classifyLaunchSpawnFailure(error: unknown): string {
-  const code = (error as NodeJS.ErrnoException | undefined)?.code;
-  if (code === "ENOENT") return "agent_cli_binary_missing";
-  if (code === "EACCES" || code === "EPERM") return "agent_cli_not_executable";
-  return "terminal_unavailable";
-}

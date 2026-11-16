@@ -139,7 +139,6 @@ ts: child.ts};
   // 휴면 채팅을 깨운 send 가 그 순간 읽은 기동 좌표. 기록 패치만으로는 바뀌지 않는다.
   const woken: { objectiveId: string; model: string; effort: string | null }[] = [];
   const resumed: string[] = [];
-  const slept: string[] = [];
   const subagentSpawns: { objectiveId: string; policy: "blocked" | "default" }[] = [];
   // 호스트처럼 표면은 채팅 표식이 말하고, 살아 있는 세션은 지금 보이는 표면으로 덮을 수 있다.
   const surfaces = new Map<string, "chat" | "terminal">();
@@ -273,16 +272,6 @@ title: input.title});
       transcript: async (objectiveId: string, input: { cursor?: string; limit: number; tail?: boolean }) => ({ source: "chat", entries: [{ kind: "assistant", text: `from ${objectiveId}` }], nextCursor: input.tail ? null : "7", truncated: false }),
       observe: observeSession,
       subscribeTurnEnds: (listener: (event: import("../../execution/shared/control.js").ConsoleTurnEnd) => void) => { turnEndListeners.add(listener); return () => { turnEndListeners.delete(listener); }; },
-      // 호스트처럼 유휴만 재운다 — 떠 있던 채팅의 호스트 좌표도 함께 사라진다.
-      sleep: async (objectiveId: string) => {
-        if (surfaceOf(objectiveId) === "chat") return { ok: false, error: "chat_sleep_unsupported" };
-        const state = activity.get(objectiveId);
-        if (!state) return { ok: false, error: "unknown_objectiveRecord" };
-        if (state === "dormant") return { ok: false, error: "already_dormant" };
-        if (state !== "idle") return { ok: false, error: "not_idle" };
-        slept.push(objectiveId); activity.set(objectiveId, "dormant"); hostChat.delete(objectiveId);
-        return { ok: true, lifecycle: "dormant" };
-      },
       setSubagentSpawn: (objectiveId: string, policy: "blocked" | "default") => { subagentSpawns.push({ objectiveId, policy }); },
       setUnstartedPreset: async (objectiveId: string, input: { model: string; effort: string | null }) => {
         const node = objectiveRecords.get(objectiveId)!;
@@ -369,7 +358,7 @@ title: input.title});
   return { ctx, store, events, launch, call, consoleTool, consoleDetail, route, resultFile, objectiveRecords, archivedObjectiveRecords, archiveCalls, accessCalls, objectiveRecordsHost, add, sent, deliveries, launches, woken, deleted, objectivesDir, objectiveFile, savedObjective, savedIds, workspace, activity, outcomes, outputDetails, turnEndListeners, emitTurnEnd: (id: string) => {
     const output = { status: "unavailable" as const, outcome: outcomes.get(id) ?? "unknown", ...outputDetails.get(id) };
     for (const listener of turnEndListeners) listener({ objectiveId: id, output });
-  }, interrupted, resumed, slept, subagentSpawns, surfaces, hostChat, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; } };
+  }, interrupted, resumed, subagentSpawns, surfaces, hostChat, hostFault, removedGroups, restart, advertised, advanceClock: (ms: number) => { clock += ms; } };
 }
 
 const PNG = Buffer.from("89504e470d0a1a0a0000000d4948445200000002000000030806000000", "hex");
@@ -692,7 +681,7 @@ describe("Objectives contract", () => {
   // 개시한 구성원의 모델은 세션 좌표가 권위다. 고른 순간 바뀌고(일하는 중이면 그 턴 뒤), 호스트가 한 구성원을 거절해도 개시는 이어져야 한다.
   it("switches a launched member's model now or after its turn and keeps one refused member from stopping the muster", async () => {
     const commodoreJudge = { model: "codex--gpt-6.1-sol", effort: "medium" };
-    const { store, launch, route, objectiveRecords, objectiveRecordsHost, activity, resumed, slept, hostFault, hostChat, surfaces, events, objectiveFile, objectivesDir } = harness(() => null, { commodoreSession: () => commodoreJudge });
+    const { store, launch, route, objectiveRecords, objectiveRecordsHost, activity, resumed, hostFault, hostChat, surfaces, events, objectiveFile, objectivesDir } = harness(() => null, { commodoreSession: () => commodoreJudge });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
     // 개시는 임무를 맡은 구성원만 세운다.
@@ -772,31 +761,6 @@ describe("Objectives contract", () => {
 
     vi.useFakeTimers();
     try {
-      // 떠 있는 유휴 터미널은 재웠다 새 좌표로 그 세션째 깨운다(재운 뒤 패널이 휴면을 볼 틈을 두고) — 행은 곧바로 새 모델이다.
-      const switched = (model: string, effort: string) => { const done = pick(model, effort); return vi.advanceTimersByTimeAsync(1_000).then(() => done); };
-      surfaces.set(reviewer.id, "terminal");
-      await switched("sonnet", "low");
-      expect(slept).toEqual([reviewer.id]);
-      expect(resumed).toEqual([reviewer.id, reviewer.id]);
-      expect(shown()).toMatchObject({ model: "sonnet[1m]", effort: "low", next: null });
-      // 새 좌표로 깨우기를 거절하면 실행값으로 되돌려 다시 깨우고 그 코드로 거절한다 — 선택도 고르기 전으로 돌아간다.
-      expect((await switched("fable", "high")).value).toEqual({ error: "gateway_model_not_enabled" });
-      expect(activity.get(reviewer.id)).toBe("idle");
-      expect(shown()).toMatchObject({ model: "sonnet[1m]", effort: "low", launch: { mode: "model", model: "sonnet[1m]", effort: "low" }, next: null });
-      hostFault.rejectModel = null;
-
-      // 일하는 터미널은 이번 턴 뒤 — 세션 좌표를 미리 고치지 않고, 화면 없이도 서버 감시자가 잇달아 유휴를 보면 같은 길로 바꾼다.
-      activity.set(reviewer.id, "running");
-      await pick("opus[1m]", "high");
-      expect(session()).toMatchObject({ model: "sonnet[1m]", effort: "low" });
-      expect(shown()).toMatchObject({ model: "sonnet[1m]", next: { model: "opus[1m]", effort: "high", failed: null } });
-      await vi.advanceTimersByTimeAsync(5_000);
-      expect(shown().next).toMatchObject({ model: "opus[1m]", failed: null });
-      activity.set(reviewer.id, "idle");
-      await vi.advanceTimersByTimeAsync(3_000);
-      expect(slept).toHaveLength(3);
-      expect(shown()).toMatchObject({ model: "opus[1m]", effort: "high", next: null });
-
       // 떠 있는 채팅은 호스트가 바꾼다 — 도는 턴 뒤의 예약은 세션 좌표(채팅 칩이 읽는 값)를 미리 고치지 않는다.
       surfaces.delete(reviewer.id);
       objectiveRecordsHost.patch(reviewer.id, { chatMode: true });

@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { formatPtyMessage, MAX_LAUNCH_PROMPT_CHARS } from "@fleet-console/agent-runtime/fleet";
+import { MAX_LAUNCH_PROMPT_CHARS } from "@fleet-console/agent-runtime/fleet";
 import type { ObjectiveRecordCreateInput, ObjectiveRecord, ObjectiveRecordPatchInput } from "../../features/objectives/shared/records/types.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
@@ -13,7 +13,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";
 import { createConsoleControl } from "../../features/execution/host/console-control.js";
 import type { TerminalRuntime } from "../../features/execution/host/terminal/index.js";
-import { createPluginTerminalTicketRegistry } from "../../features/execution/host/terminal/tickets.js";
 
 type TestRequest = http.IncomingMessage & { __body?: Record<string, unknown> };
 
@@ -25,68 +24,19 @@ afterEach(async () => {
   for (const directory of temporaryDirectories.splice(0)) rmSync(directory, { recursive: true, force: true });
 });
 
-// 라우트가 실제로 PTY에 쓰는 바이트는 formatPtyMessage 계약 그대로여야 한다 — 기대값을 같은
-// 함수로 만들어 정책 기본값(bracketed paste·줄 종결자)이 바뀌어도 테스트가 따라간다.
-function expectedChunks(text: string): readonly string[] {
-  return formatPtyMessage({}, text, process.platform, { submitDelayMs: 250 }).map((chunk) => chunk.data);
-}
-
 describe("agent message delivery", () => {
-  it("writes the formatted prompt into a live session and reports delivered", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-
-    await harness.postMessage(sessionId, { text: "run the suite" });
-
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true } });
-    await vi.waitFor(() => {
-      expect(harness.writes).toEqual(expectedChunks("run the suite"));
-    });
-    expect(harness.attach).not.toHaveBeenCalled();
-  });
-
   it.each([
     [{ text: 7 }, 400, "message_invalid"],
     [{ text: "a".repeat(MAX_LAUNCH_PROMPT_CHARS + 1) }, 400, "prompt_too_long"],
     [{ text: "\u0007\u0000" }, 400, "message_empty"],
-  ] as const)("rejects an invalid body %# without touching the PTY", async (body, status, error) => {
+  ] as const)("rejects an invalid body %#", async (body, status, error) => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
 
     await harness.postMessage(sessionId, body as Record<string, unknown>);
 
     expect(harness.responses.at(-1)).toEqual({ status, body: { error } });
-    expect(harness.writes).toEqual([]);
-  });
-
-  it("does not type a structured message into an untrusted live or resuming PTY", async () => {
-    const harness = await createHarness({ trusted: false });
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    harness.setLive(sessionId);
-    await harness.postMessage(sessionId, { text: "start the objective" });
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "claude_trust_required" } });
     expect(harness.attach).not.toHaveBeenCalled();
-    await harness.postMessage(sessionId, { text: "confirm the objective" });
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "claude_trust_required" } });
-    expect(harness.writes).toEqual([]);
-  });
-
-  it("forgets a prior PTY trust check when that execution exits", async () => {
-    const harness = await createHarness({ trusted: true });
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-    harness.setLive(sessionId);
-    await harness.postMessage(sessionId, { text: "first turn" });
-    await vi.waitFor(() => expect(harness.writes.length).toBeGreaterThan(0));
-    harness.setTrust(false);
-    await harness.fireExit(sessionId);
-    const previousWrites = harness.writes.length;
-    await harness.postMessage(sessionId, { text: "second turn" });
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "claude_trust_required" } });
-    expect(harness.writes).toHaveLength(previousWrites);
   });
 
   it("rejects an unknown objectiveRecord with 404", async () => {
@@ -107,19 +57,6 @@ describe("agent message delivery", () => {
     expect(harness.attach).not.toHaveBeenCalled();
   });
 
-  it("rejects delivery into a session awaiting terminal input with 409", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-    // 작성 중 CLI가 권한 프롬프트로 전환한 경합 — 전달 직전 재검사가 줄 종결자의 무단 확정을 막는다.
-    await harness.postAttention(sessionId);
-
-    await harness.postMessage(sessionId, { text: "run the suite" });
-
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "session_awaiting_input" } });
-    expect(harness.writes).toEqual([]);
-  });
-
   it("delivers a dormant launch session as chat without starting a PTY", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
@@ -129,60 +66,37 @@ describe("agent message delivery", () => {
 
     expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, chat: true } });
     expect(harness.attach).not.toHaveBeenCalled();
-    expect(harness.writes).toEqual([]);
-  });
-
-  it("does not type into a PTY when a dormant launch session is delivered as chat", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
-
-    await harness.postMessage(sessionId, { text: "resume and summarize" });
-
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, chat: true } });
-    expect(harness.writes).toEqual([]);
-    expect(harness.attach).not.toHaveBeenCalled();
   });
 });
 
-async function createHarness(options: { readonly resumeAttachError?: Error; readonly trusted?: boolean } = {}) {
+async function createHarness() {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-message-"));
   temporaryDirectories.push(fleetDataDir);
   const objectiveRecords: ObjectiveRecord[] = [];
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
-  const writes: string[] = [];
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
-  const liveSessions = new Set<string>();
-  let trustAllowed = options.trusted;
-  let onExit: ((sessionId: string) => void | Promise<void>) | null = null;
   let route: RouteHandler | undefined;
-  const tickets = createPluginTerminalTicketRegistry();
-  const attach = vi.fn<TerminalRuntime["attach"]>(async () => {
-    if (options.resumeAttachError && attach.mock.calls.length > 1) throw options.resumeAttachError;
-  });
+  const attach = vi.fn<TerminalRuntime["attach"]>(async () => {});
   const terminalRuntime: TerminalRuntime = {
     handleUpgrade: () => false,
     renegotiateSockets: () => {},
-    issueTicket: (context) => tickets.issue(context),
-    invalidateTicketsForSession: (sessionId) => tickets.invalidateForSession(sessionId),
+    issueTicket: () => ({ ticket: "ticket", ttlMs: 1_000, role: "control" as const }),
+    invalidateTicketsForSession: () => {},
     canAttach: () => true,
     attach,
-    write: (_objectiveId, data) => {
-      writes.push(data);
-      return true;
-    },
+    write: () => true,
     terminate: () => true,
     terminateAndWait: async () => true,
     awaitWriterExit: async () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getSessionLastActivityAt: (objectiveId) => (liveSessions.has(objectiveId) ? 5 : null),
+    getSessionLastActivityAt: () => null,
     isLive: () => false,
     getForegroundProcess: () => null,
     getShellLineState: () => null,
     onCwd: () => () => undefined,
     resolveSessionIdentity: async () => null,
-    onExit: (callback) => { onExit = callback; return () => { onExit = null; }; },
+    onExit: () => () => {},
     onTitle: () => () => {},
     registerLaunchResolver: () => () => {},
     bindChatAttach: () => () => {},
@@ -285,9 +199,8 @@ ts: { createdAt, updatedAt: createdAt }};
     openSession: () => ({ send: async function* () {}, close: async () => {} }),
     dispose: async () => {},
   });
-  const api = await registerAgentRoutes(ctx, terminalRuntime, {
+  await registerAgentRoutes(ctx, terminalRuntime, {
     agentOptionsService: agentOptionsStub,
-    ...(options.trusted === undefined ? {} : { isClaudePathTrusted: async () => trustAllowed === true }),
   });
   cleanups.push(async () => {
     if (previousTerminalCommand === undefined) delete process.env.FLEET_TERMINAL_CMD;
@@ -296,13 +209,7 @@ ts: { createdAt, updatedAt: createdAt }};
   });
 
   async function createSession(): Promise<string> {
-    const sessionId = (await control.request({ kind: "plugin", pluginId: "fixture" }, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true })).objectiveId;
-    const objectiveRecord = objectiveRecords.find((row) => row.id === sessionId);
-    if (!objectiveRecord) throw new Error(`Session create failed: ${sessionId}`);
-    delete objectiveRecord.chatMode;
-    delete objectiveRecord.chatBorn;
-    api.releaseChatOwnership(objectiveRecord.id);
-    return objectiveRecord.id;
+    return (await control.request({ kind: "plugin", pluginId: "fixture" }, { kind: "launch", commodoreId: "owner-1", theaterId: "theater-1", dormant: true })).objectiveId;
   }
 
   async function postMessage(sessionId: string, body: Record<string, unknown>): Promise<void> {
@@ -314,25 +221,11 @@ ts: { createdAt, updatedAt: createdAt }};
     });
   }
 
-  async function postAttention(sessionId: string): Promise<void> {
-    if (!route) throw new Error("Agent route was not registered");
-    await route({
-      req: { method: "POST", url: `/api/v1/agent/sessions/${sessionId}/attention`, __body: { reason: "permission" } } as unknown as TestRequest,
-      res: {} as http.ServerResponse,
-      pathname: `/api/v1/agent/sessions/${sessionId}/attention`,
-    });
-  }
-
   return {
     attach,
     responses,
-    writes,
     createSession,
     postMessage,
-    postAttention,
-    setLive: (sessionId: string) => { liveSessions.add(sessionId); },
-    setTrust: (trusted: boolean) => { trustAllowed = trusted; },
-    fireExit: async (sessionId: string) => { if (onExit) await onExit(sessionId); },
     attachProviderSession: (sessionId: string) => {
       const objectiveRecord = objectiveRecords.find((candidate) => candidate.id === sessionId);
       if (!objectiveRecord) throw new Error("Objective not found");

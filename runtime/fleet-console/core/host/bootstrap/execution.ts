@@ -13,7 +13,6 @@ import { registerAgentRoutes } from "../../../features/execution/host/agent/rout
 import { registerStandaloneCliRoutes } from "../../../features/execution/host/standalone-cli/routes.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
 import { createTerminalRuntime } from "../../../features/execution/host/terminal/index.js";
-import { isClaudePathTrusted } from "../../../features/workspace/host/theaters/claude-trust.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
 import type { CommodoreSystemPromptService } from "../../../features/settings/host/agent-options.js";
 
@@ -98,7 +97,6 @@ export async function startConsoleExecution(
     ...(commodorePluginDirs ? { commodorePluginDirs } : {}),
     ...(commodorePluginEnv ? { commodorePluginEnv } : {}),
     ...(commodoreAutoMemoryEnabled ? { commodoreAutoMemoryEnabled } : {}),
-    isClaudePathTrusted,
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,
     // 지휘관 채팅은 사령관과 같은 별칭 고정을 쓴다.
@@ -144,7 +142,7 @@ export async function startConsoleExecution(
     stopForArchive: async (objectiveRecord: import("../../../features/objectives/shared/records/types.js").ObjectiveRecord, preserveState = true) => {
       runtime.invalidateTicketsForSession(objectiveRecord.id);
       {
-        await agent.stopForArchive(objectiveRecord.id, preserveState);
+        await agent.stopForArchive(objectiveRecord.id);
         if (!preserveState && !await runtime.awaitWriterExit(objectiveRecord.id, 10_000)) throw new Error("archive_stop_failed");
       }
       await ctx.host.browserMcp?.revokeObjective(objectiveRecord.id);

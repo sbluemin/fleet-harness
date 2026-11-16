@@ -4,7 +4,6 @@ import type { ExecutionClientDeps } from "../deps.js";
 import { OpenUINavigationContext } from "./openui-boundary.js";
 import { MarkdownLinkBoundary } from "./markdown-link-boundary.js";
 import { getGlobalSettingsStoreState, subscribe as subscribeGlobalSettings } from "../../../settings/client/global-settings-store.js";
-import { useAgentTerminalFileLinks } from "./terminal-file-links.js";
 import "@fleet-console/font-picker/styles.css";
 import { CaptionBrowserUseGlyph, CaptionComputerUseGlyph } from "../../../workspace/client/components/caption-actions.js";
 import { launchProviderGlyph } from "../../../ai-gateway/client/components/launch-provider-glyphs.js";
@@ -19,14 +18,12 @@ import { Select } from "../../../settings/client/mobile-host.js";
 import { SettingsCheckbox, SettingsGroup, SettingsHelpTip, SettingsItem, SettingsSegments, SettingsToggle, defineSettingsSection } from "../../../settings/client/preferences-context.js";
 import { focusObjective as focusConsoleObjective, requestObjectiveKeyboardFocus } from "../../../../core/client/src/integration/store.js";
 import { ComputerScreenShare, useObjectiveUse } from "../../../computer-use/client/computer-screen-share.js";
-import { TerminalSurface } from "../terminal/shared/index.js";
 import { disposeObjectiveViewState, installObjectiveViewState } from "../objective-view-state.js";
 import type { ChatReadingWidth, TerminalInactiveFlush, TerminalRenderer } from "../terminal/shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, setChatReadingWidth, setTerminalInactiveFlush, setTerminalRenderer, setTerminalCopyOnSelect, setTerminalScrollback, TERMINAL_SCROLLBACK_CHOICES, useChatReadingWidth, useTerminalPrefs } from "../terminal/shared/terminal-preferences.js";
 import "./agent-cli.css";
 import { BROWSER_COMPANION_ID, openBrowserCompanion } from "./browser-companion.js";
 import { useObjectiveLinks } from "./objective-links.js";
-import { UseRequestCards } from "./use-request-card.js";
 import { MobileSurfaceProvider, mobileObjectiveOf, useMobileSurface } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, recordObjectiveReveal, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
@@ -34,7 +31,7 @@ import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale,
 
 
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
-import { AgentApiError, confirmAgentSessionLinks, discardLaunchAttachment, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
+import { AgentApiError, discardLaunchAttachment, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { HistoryFoldButton } from "./chat/composer.js";
 import { installGroupTimeline, useGroupClusters, useHasGroupConversation } from "./chat/group-timeline-store.js";
@@ -61,8 +58,6 @@ const RENDERER_IDS = ["webgl", "dom"] as const satisfies readonly TerminalRender
 // 절약 → 즉시 순서로 둔다 — 세그먼트를 오른쪽으로 갈수록 더 자주 그리는 축으로 읽게 한다.
 const INACTIVE_FLUSH_IDS = ["saving", "balanced", "instant"] as const satisfies readonly TerminalInactiveFlush[];
 
-const AGENT_TICKET_PATH = "/api/v1/agent/ticket";
-const TERMINAL_WS_PATH = "/api/v1/terminal/ws";
 const PIN_SLACK_PX = 56;
 
 const TRACK_PHASE_COPY_KEYS = {
@@ -452,19 +447,6 @@ function RevealBubble({ context, reveal }: { readonly context: ObjectiveRenderCo
 }
 
 /**
- * 터미널 표면의 PTY가 끝났다(4001). 그 표면이 붙어 있던 세대의 항목일 때만 지운다 — 항목이 이미 다른 세대를
- * 싣고 있으면 그 사이 새 PTY가 섰다는 뜻이고, 늦게 온 옛 종료가 방금 선 세션을 지우면 패널은 「종료됨」에
- * 멈춘다. 세대가 없는 항목(옛 서버)은 예전처럼 지운다.
- */
-function removeExitedSession(sessionId: string, mountedGeneration: string | undefined): void {
-  const current = getAgentState().sessions[sessionId];
-  if (current?.generation !== undefined && current.generation !== mountedGeneration) return;
-  removeSession(sessionId);
-}
-
-const SORTIE_RIBBON_INLINE_LIMIT = 2;
-
-/**
  * 모바일 Objective 화면이면 본문 전체를 모바일 판정으로 감싸고(CSS는 `[data-mobile-surface]`만 읽는다)
  * ⋮ 항목을 셸에 올린다. 데스크톱은 감싸지 않아 DOM이 그대로다.
  */
@@ -483,8 +465,6 @@ function AgentObjectiveView({ context }: { readonly context: ObjectiveRenderCont
 function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderContext }) {
   const t = getT(context.language ?? "en");
   const mobileSurface = useMobileSurface();
-  // CLI 확인 줄은 입력 대기 신호(훅이 지는 축)가 선 동안만 — 터미널 출력을 해석해 추정하지 않는다.
-  const awaitingInput = context.runtimeState?.lifecycle === "live" && context.runtimeState.activity === "awaiting";
   const state = useAgentState();
   const observed = state.sessions[context.objectiveId];
   const session = observed ?? sessionFromObjective(context);
@@ -500,7 +480,6 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
     openCompanion: () => openBrowserCompanion(context),
   });
   const fileLinkFailure = links.fileLinkFailure;
-  const terminalFileLinks = useAgentTerminalFileLinks(context.objectiveId, context.objectiveRecord.theaterId, context.navigate);
   // 모바일의 살아 있는 그룹 채팅 루트는 1:1 원장 대신 그룹 대화를 세운다(데스크톱 가운데 칸과 같은 화면).
   const groupConversation = useHasGroupConversation(context.objectiveId);
   const openUIOpen = useGroupClusters().find((cluster) => cluster.conversation?.objectiveId === context.objectiveId)?.conversation?.openUIOpen;
@@ -523,43 +502,11 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
     );
   }
 
-  if (session.status === "dormant") {
-    return (
-      <div className="agent-stream-host">
-        <DormantObjectiveView context={context} session={session} />
-      </div>
-    );
-  }
-
+  // Objective 세션은 채팅 표면으로만 열린다. 남은 비chat Objective은 종료/재개 카드로만 열고,
+  // 재개는 서버가 채팅으로 전환한다 — 이전 대화는 같은 transcript 에서 이어진다.
   return (
     <div className="agent-stream-host">
-      {/* 떠 있는 PTY만 이 표면을 유지한다. 세대가 바뀌면(재기동) 표면을 새로 붙인다 — 같은 청크로 휴면과 새 기동이 함께 오면 휴면을 그리지 못한 채
-          옛 표면이 남고, 그 연결은 옛 PTY의 종료(4001)로 재접속을 멈춘다. 새 표면이 새 티켓으로 새 PTY에 붙는다. */}
-      <TerminalSurface
-        key={session.generation}
-        objectiveId={session.sessionId}
-        ticketPath={AGENT_TICKET_PATH}
-        wsPath={TERMINAL_WS_PATH}
-        active={context.active}
-        visible={context.bodyLive !== false}
-        keyboardFocusRequestId={context.keyboardFocusRequestId}
-        zoom={context.zoom}
-        theme={context.theme}
-        mobile={mobileSurface}
-        awaitingConfirm={mobileSurface && awaitingInput}
-        {...(mobileSurface ? { mobileDockTop: <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="terminal" /> } : {})}
-        locale={context.language}
-        onStatusDetail={(detail) => context.statusDetail.set(context.objectiveId, detail)}
-        onOpenLink={links.choose}
-        onOpenLinkDirect={links.openDirect}
-        knownLinks={(text) => confirmAgentSessionLinks(session.sessionId, text)}
-        fileLinks={terminalFileLinks}
-        onExit={() => removeExitedSession(session.sessionId, session.generation)}
-      />
-      <ComputerScreenShare objectiveId={context.objectiveId} />
-      {/* 모바일은 같은 카드를 터미널 독 맨 위(mobileDockTop)에 쌓는다 — 여기 떠 있으면 확인 줄을 덮는다. */}
-      {mobileSurface ? null : <UseRequestCards objectiveId={context.objectiveId} childSessionIds={context.objectiveRecord.sessions?.map((child) => child.id)} placement="terminal" />}
-      {links.card}
+      <DormantObjectiveView context={context} session={session} />
     </div>
   );
 }

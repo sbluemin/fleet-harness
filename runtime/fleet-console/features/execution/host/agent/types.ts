@@ -1,4 +1,4 @@
-export type AgentSessionStatus = "starting" | "terminal-only" | "registered" | "closed" | "error" | "dormant";
+export type AgentSessionStatus = "starting" | "registered" | "closed" | "error" | "dormant";
 
 export type AgentTurnState = "none" | "running" | "ended";
 

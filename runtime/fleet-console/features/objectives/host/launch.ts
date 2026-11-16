@@ -813,7 +813,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         const session = member.sessionName ?? memberSession(current.id, current.commander.sessionName, index + 1);
         rememberSubagentSpawn(sessionId, objective(objectiveId).members.find((candidate) => candidate.id === member.id)?.subagents === true);
         try {
-          await settleTurn(objectiveId, member.id, { idle: 0 });
+          await settleTurn(objectiveId, member.id);
           const prepare = ctx.consoleControl?.prepareChat;
           if (!prepare) throw new ObjectiveStoreError("capability_unavailable");
           await prepare(sessionId);
@@ -904,14 +904,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const node = ctx.objectiveRecords.get(sessionId);
     if (node) patchObjective(sessionId, { ...(withSessionPreset(node, preset)) });
   };
-  /** 실행값으로 되돌려 한 번 더 깨운다 — 깨었는지를 돌려준다. */
-  const resumeWith = async (sessionId: string, preset: MemberPreset): Promise<boolean> => {
-    patchMemberPreset(sessionId, preset);
-    try { await control().request({ kind: "resume", objectiveId: sessionId, reason: "switch_live" }); touchLive(sessionId); return true; }
-    catch { return false; }
-  };
 
-  /** 떠 있는 채팅의 호스트 좌표 — 실행값과 턴 경계를 기다리는 예약. 포트가 없는 호스트·휴면·터미널이면 null. */
+  /** 떠 있는 채팅의 호스트 좌표 — 실행값과 턴 경계를 기다리는 예약. 포트가 없는 호스트·휴면이면 null. */
   const hostCoordinates = (sessionId: string) => {
     const observation = ctx.consoleControl?.observe(sessionId);
     if (!ctx.consoleControl?.setCoordinates || observation?.lifecycle !== "live" || observation.surface !== "chat") return null;
@@ -943,41 +937,6 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     ctx.consoleControl!.setCoordinates!(sessionId, { model: preset.model, effort: preset.effort ?? null });
   const goalOf = (next: MemberNext) => ({ model: next.model, ...(next.effort ? { effort: next.effort } : {}) });
 
-  /**
-   * 떠 있는 유휴 구성원을 이 좌표로 다시 세운다 — 재우고, 세션 좌표를 고치고, 그 세션째 깨운다(대화는 --resume 으로 이어진다). 좌표는
-   * 재우기가 받아들여지는 즉시 고친다 — 그사이 휴면 중 전달이 먼저 깨워도 새 좌표로 선다. 재우기가 `ending`(옛 프로세스의 종료를 아직
-   * 확인하지 못함)이어도 곧바로 깨운다 — 호스트가 옛 프로세스가 사라질 때까지 기동을 미루므로 같은 Claude 세션의 두 필자는 서지 않는다.
-   * 깨우기는 휴면을 관측한 뒤에만 보낸다 — 떠 있는 터미널에 보낸 재개는 프로세스를 그대로 두므로 바뀐 줄 알게 된다. 휴면이 보이지 않으면
-   * 좌표를 실행값으로 되돌리고 "busy" 로 답한다(그새 턴이 시작돼 재울 수 없을 때와 같다). 호스트가 상한 안에 옛 프로세스의 종료를 보지 못해
-   * objectiveRecord_busy 로 거절했고 여전히 잠들어 있으면 좌표를 그대로 두고 "applied" 로 답한다 — 잠든 구성원은 좌표를 고친 것이 곧 적용이고
-   * 다음 깨움이 그 값으로 선다. 그 밖에 깨우기가 거절되면(그새 노출이 꺼진 모델 등) 실행값으로 되돌려 다시 깨우고 그 코드로 던진다.
-   * 감수한 비용: 터미널 입력줄에 쓰다 만 글은 사라지고, 다시 뜨는 몇 초 동안 넣은 메시지는 보관됐다가 세션이 선 뒤에 전달된다. 터미널의
-   * 문맥이 새 모델의 창보다 큰지는 플러그인이 알 수 없다(채팅만 호스트가 막는다).
-   */
-  const switchLive = async (sessionId: string, goal: MemberPreset, running: MemberPreset): Promise<"applied" | "busy"> => {
-    const sleep = ctx.consoleControl?.sleep;
-    if (!sleep) throw new ObjectiveStoreError("capability_unavailable");
-    const slept = await sleep(sessionId);
-    if (!slept.ok) {
-      if (slept.error === "not_idle") return "busy";
-      // 그새 잠들었다 — 좌표만 고치면 다음 깨움이 이 값으로 선다.
-      if (slept.error === "already_dormant") { patchMemberPreset(sessionId, goal); return "applied"; }
-      throw new ObjectiveStoreError(slept.error);
-    }
-    patchMemberPreset(sessionId, goal);
-    if (ctx.consoleControl?.observe(sessionId)?.lifecycle !== "dormant") { patchMemberPreset(sessionId, running); return "busy"; }
-    try { await control().request({ kind: "resume", objectiveId: sessionId, reason: "switch_live" }); touchLive(sessionId); return "applied"; }
-    catch (error) {
-      // 휴면을 본 뒤 고친 좌표다 — 그새 누가 깨웠거나(not_dormant) 응답만 늦었으면(request_timeout) 떠 있는 것은 새 좌표로 선 프로세스다.
-      const lifecycle = ctx.consoleControl?.observe(sessionId)?.lifecycle;
-      if (lifecycle === "live") { touchLive(sessionId); return "applied"; }
-      const code = failureCode(error);
-      // 옛 프로세스가 아직 끝나지 않아 호스트가 기동을 거절했다 — 잠든 채 새 좌표를 들고 있으니 다음 깨움이 그 값으로 선다.
-      if (code === "objectiveRecord_busy" && lifecycle === "dormant") return "applied";
-      await resumeWith(sessionId, running);
-      throw new ObjectiveStoreError(code);
-    }
-  };
   /** 메뉴의 후보는 모두 Claude Code 의 모델이다 — 다른 하네스의 세션에 실으면 그 CLI 가 모르는 모델로 깬다. */
   const assertSwitchable = (payload: Record<string, unknown>) => {
     const harness = (payload.session as { harness?: unknown } | undefined)?.harness;
@@ -986,8 +945,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
 
   /**
    * 개시한 구성원의 모델 선택 — 사람이 고른 순간 바뀐다. 휴면이면 세션 좌표를 고치는 것이 곧 적용이다(다음 깨움이 그 값으로 선다).
-   * 떠 있는 채팅은 호스트에 맡긴다 — 유휴면 곧바로, 턴이 돌면 그 턴이 닫히는 경계에서 바뀌고 세션 좌표도 그때 호스트가 고친다. 떠 있는
-   * 터미널은 유휴면 재웠다 새 좌표로 깨우고(switchLive), 일하는 중이면 이번 턴 뒤 예약으로 들고 감시자가 유휴를 보면 같은 길로 바꾼다.
+   * 떠 있는 채팅은 호스트에 맡긴다 — 유휴면 곧바로, 턴이 돌면 그 턴이 닫히는 경계에서 바뀌고 세션 좌표도 그때 호스트가 고친다.
    * 일하는 동안에는 세션 좌표를 미리 고치지 않는다 — 고치면 패널이 옛 프로세스를 새 모델로 말한다. 실행값과 같은 값을 고르면 예약을
    * 거두고, 선택을 비우면 예약만 거둔다. 바꾸지 못한 변경은 오류 코드로 던진다.
    */
@@ -1029,13 +987,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         throw coordinatesError(result);
       }
     }
-    // 채팅은 자식이 없더라도 호스트 좌표 포트로만 바꾼다. 터미널 sleep fallback으로 가지 않는다.
+    // 채팅은 자식이 없더라도 호스트 좌표 포트로만 바꾼다. 다른 표면은 없다.
     if (node.chatMode === true) throw new ObjectiveStoreError("chat_not_active");
     if (!target?.model || samePreset(target, running)) { store.memberLaunchState(current.id, memberId, { next: null }); return; }
     const goal = { ...target, model: target.model };
     const observation = ctx.consoleControl?.observe(memberId);
     if (observation?.lifecycle !== "live") { patchMemberPreset(memberId, goal); applied(); return; }
-    if (observation.activity === "idle" && await switchLive(memberId, goal, running) === "applied") { applied(); return; }
     // 일하는 중이다(running·awaiting·background, 또는 그새 턴이 시작됐다) — 이번 턴 뒤 예약으로 들고 감시자가 유휴를 기다린다.
     store.memberLaunchState(current.id, memberId, { next: { ...goal, from: running, ...(was ? { was } : {}), held: "plugin" } });
     watch(current.id, memberId);
@@ -1056,18 +1013,16 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
    * 서버가 받는 활동 이벤트는 없다). 턴은 몇 시간도 걸리므로 마감은 없고, 예약이 사라지거나 구성원·목표가 지워지면 놓는다. 기동 때
    * 저장된 예약으로 다시 건다(resumeReservations). 정산은 수정·취소와 같은 목표 순서 안에서 한다.
    */
-  const watched = new Map<string, { readonly objectiveId: string; idle: number }>();
+  const watched = new Map<string, { readonly objectiveId: string }>();
   let watchTimer: ReturnType<typeof setTimeout> | null = null;
   let disposed = false;
   const WATCH_MS = 1_000;
-  /** 유휴가 이만큼 잇달아 보여야 재운다 — 턴이 닫힌 직후 줄 서 있던 다음 말이 곧 시작하는 틈에 재우지 않는다. */
-  const IDLE_TICKS = 2;
   const armWatch = () => {
     if (disposed || watchTimer || watched.size === 0) return;
     watchTimer = setTimeout(() => { watchTimer = null; void sweepWatched(); }, WATCH_MS);
   };
   const watch = (objectiveId: string, memberId: string) => {
-    if (!watched.has(memberId)) watched.set(memberId, { objectiveId, idle: 0 });
+    if (!watched.has(memberId)) watched.set(memberId, { objectiveId });
     armWatch();
   };
   /** 그 구성원(또는 그 목표의 모든 구성원)의 감시를 놓는다. */
@@ -1077,18 +1032,17 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
   const sweepWatched = async () => {
     for (const [memberId, entry] of [...watched]) {
       if (disposed) return;
-      try { await orderedObjectiveRequest(entry.objectiveId, () => settleTurn(entry.objectiveId, memberId, entry)); }
+      try { await orderedObjectiveRequest(entry.objectiveId, () => settleTurn(entry.objectiveId, memberId)); }
       catch { /* 저장이 실패했다 — 다음 틱이 다시 읽는다 */ }
     }
     armWatch();
   };
   /**
    * 턴 뒤 예약 하나를 지금 상태로 정산한다. 잠들었으면 세션 좌표를 고치는 것이 적용이고(사람이 재웠어도), 떠 있는 채팅이면 호스트에
-   * 맡기고(터미널에서 채팅으로 바뀐 경우도), 떠 있는 터미널이 잇달아 유휴면 재웠다 깨운다. 일하는 중이면 기다린다 — background 도 재우면
-   * 그 작업이 끝나므로 끝날 때까지 기다린다. 사람이 그새 재웠다 깨웠어도 세션 좌표는 그대로라 새 프로세스도 옛 모델이다 — 같은 규칙으로
-   * 계속 기다리면 된다. 호스트가 든 예약이 채팅이 터미널로 바뀌며 사라졌으면 플러그인이 다시 든다.
+   * 맡긴다. 일하는 중이면 기다린다 — background 도 끝나기를 기다린다. 사람이 그새 재웠다 깨웠어도 세션 좌표는 그대로라
+   * 새 프로세스도 옛 모델이다 — 같은 규칙으로 계속 기다리면 된다. 호스트가 든 예약이 사라졌으면 플러그인이 다시 든다.
    */
-  const settleTurn = async (objectiveId: string, memberId: string, entry: { idle: number }) => {
+  const settleTurn = async (objectiveId: string, memberId: string) => {
     const next = store.storedMember(objectiveId, memberId)?.next;
     const node = ctx.objectiveRecords.get(memberId);
     if (!next || next.failed || !next.held || !node) { watched.delete(memberId); return; }
@@ -1114,12 +1068,8 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
       return;
     }
     if (node.chatMode === true) { failed("chat_not_active"); return; }
-    if (next.held === "host") store.memberLaunchState(objectiveId, memberId, { next: { ...next, held: "plugin" } });
-    if (observation.activity !== "idle") { entry.idle = 0; return; }
-    if (++entry.idle < IDLE_TICKS) return;
-    entry.idle = 0;
-    try { if (await switchLive(memberId, goal, presetOf(readObjectiveLaunch(node))) === "applied") done({ next: null }); }
-    catch (error) { failed(failureCode(error)); }
+    // 세션은 채팅 표면뿐이다 — 호스트 좌표가 없는 살아 있는 세션에는 적용할 길이 없다.
+    failed("chat_not_active");
   };
 
   // 후보 UUID 를 별도 이름 공간의 안정 UUID 로 바꾼다. 배치가 재시작되어도 같은 후보는 같은 목표다.
@@ -2213,14 +2163,7 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
         }
       }));
       for (const sessionId of ids) {
-        try {
-          const observation = ctx.consoleControl?.observe(sessionId);
-          if (observation?.surface === "terminal" && observation.lifecycle === "live") {
-            await ctx.consoleControl?.sleep?.(sessionId, { endPendingWork: true });
-          } else {
-            await ctx.consoleControl?.disposeChat?.(sessionId);
-          }
-        } catch { /* 정리 실패는 무시 */ }
+        try { await ctx.consoleControl?.disposeChat?.(sessionId); } catch { /* 정리 실패는 무시 */ }
         ctx.consoleControl?.markNextOpenFresh?.(sessionId);
       }
       // 멈춘 사실을 보드에 남긴다 — 재시작 뒤에도 그 뒤로는 보고를 기대하지 않는다(signals.ts expectsReport). 보고 경보는 개시된 목표에만

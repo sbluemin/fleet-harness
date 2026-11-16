@@ -50,7 +50,7 @@ export function createObjectivesFeature(deps: ObjectivesFeatureDeps) {
     registerCleanup(releaseChannel);
     let prStatus: PrStatusService | undefined;
     let watchQuiet: () => void = () => {};
-    const store = createObjectiveStore({ dirOf, storage: deps.storage, commodoreIds: () => deps.storage?.owners().map((owner) => owner.commodoreId) ?? [], objectiveRecords: deps.objectiveRecords, coordinates: (objectiveId) => deps.consoleControl?.coordinates?.(objectiveId) ?? null, advertisedTools: (objectiveId) => deps.consoleControl?.advertisedTools?.(objectiveId) ?? null, liveSwitch: !!deps.consoleControl?.sleep, observe: (objectiveId) => deps.consoleControl?.observe(objectiveId) ?? null, onAssignment: () => watchQuiet(), emit: (event, source) => {
+    const store = createObjectiveStore({ dirOf, storage: deps.storage, commodoreIds: () => deps.storage?.owners().map((owner) => owner.commodoreId) ?? [], objectiveRecords: deps.objectiveRecords, coordinates: (objectiveId) => deps.consoleControl?.coordinates?.(objectiveId) ?? null, advertisedTools: (objectiveId) => deps.consoleControl?.advertisedTools?.(objectiveId) ?? null, liveSwitch: !!deps.consoleControl?.setCoordinates, observe: (objectiveId) => deps.consoleControl?.observe(objectiveId) ?? null, onAssignment: () => watchQuiet(), emit: (event, source) => {
       deps.events.publish(OBJECTIVE_CHANNEL, event);
       // 관측 자체는 PR 대상·완료 여부를 바꾸지 않는다. 화면 방송만 하고 같은 응답을 다시 스캔하지 않는다.
       if (source !== "pr-observation") prStatus?.refresh(event.objectiveId);

@@ -1,4 +1,4 @@
-export type SessionStatus = "starting" | "live" | "registered" | "terminal-only" | "closed" | "error" | "dormant";
+export type SessionStatus = "starting" | "live" | "registered" | "closed" | "error" | "dormant";
 
 export type TurnState = "none" | "running" | "ended";
 export type ModelActivity = "working" | "not-working";

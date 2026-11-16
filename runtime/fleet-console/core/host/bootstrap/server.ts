@@ -1041,8 +1041,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return { computer: computerObjective, computerActor, browser: browserObjectiveRecords, browserCommodores };
   };
   const consoleActions = createWorkspaceActions({ objectiveRecords, deletionCoordinator, archive: objectiveRecordArchive.archive, listObjectiveUse, patchObjective: (id, input) => consoleFeaturePorts.objectiveRecords.patch(id, input), publishPluginEvent, persistDurableState, broadcastGroupRemoved, broadcastGroupChanged, broadcastObjectiveChanged });
-  // 실행 라우트가 시작될 때 채워진다. 플러그인은 그 뒤에 부팅하며, 동일한 sleep 동작을 공유한다.
-  let sleepObjective: ((objectiveId: string) => Promise<{ readonly ok: true; readonly lifecycle: "dormant" | "ending" } | { readonly ok: false; readonly error: string }>) | undefined;
   // 플러그인 MCP 도구의 호출자 — 세션 라벨(`<objectiveId>` 또는 `chat:<objectiveId>`)을 Objective 으로 푼다.
   const pluginMcp = createAdmiralMcpHost(mcpHttp.transport, {
     onFailure: recordFailure,
@@ -1320,17 +1318,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     observe: (objectiveId) => consoleControl.observe(objectiveId),
     subscribeTurnEnds: (listener) => consoleControl.subscribeTurnEnds({ kind: "plugin", pluginId }, listener),
-    sleep: async (objectiveId, options) => {
-      if (!objectiveRecords.get(objectiveId)) return { ok: false, error: "unknown_objectiveRecord" };
-      const observation = consoleControl.observe(objectiveId);
-      if (!observation || !sleepObjective) return { ok: false, error: "capability_unavailable" };
-      if (observation.surface === "chat") return { ok: false, error: "chat_sleep_unsupported" };
-      if (observation.lifecycle === "dormant") return { ok: false, error: "already_dormant" };
-      // 터미널의 답 대기와 백그라운드 작업은 interrupt 로 풀 수 없다 — 호출자가 종결을 결정했을 때만 그대로 재운다.
-      const endsPendingWork = options?.endPendingWork === true && ((observation.surface === "terminal" && observation.activity === "awaiting") || observation.activity === "background");
-      if (observation.activity !== "idle" && !endsPendingWork) return { ok: false, error: "not_idle" };
-      return sleepObjective(objectiveId);
-    },
     // 다음 기동 정책만 남긴다. 세션 스냅샷을 고치거나 떠 있는 프로세스를 중단하지 않는다.
     // 플러그인 objectiveRecords.patch와 같은 영속 경로를 탄다. 저장소 patch만 호출하면 재시작 뒤 정책이 사라진다.
     setSubagentSpawn: (objectiveId, policy) => {
@@ -3011,7 +2998,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       readGatewayCompactCeiling = execution.readGatewayCompactCeiling;
       readGatewayProviderStatuses = execution.readProviderStatuses;
       readGatewaySettings = execution.readGatewaySettings;
-      sleepObjective = execution.actions.sleep;
       resumeArchivedObjective = execution.actions.resume;
       stopForArchive = execution.stopForArchive;
       purgeCoreObjective = execution.purgeObjective;
@@ -3091,7 +3077,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             const sessions = new Set(records.flatMap((node) => archiveSessionNodes(node).map((session) => session.id)));
             const archived = archiveStorage.entries().filter((entry) => entry.objectiveRecord.commodoreId === id).length;
             return { objectives: { total: ids.size, active: boards.filter((board) => !board.done && !board.archived && !board.removed).length, archived },
-              runningSessions: execution.listSessions().filter((session) => sessions.has(session.sessionId) && ["starting", "terminal-only", "registered"].includes(session.status)).length };
+              runningSessions: execution.listSessions().filter((session) => sessions.has(session.sessionId) && ["starting", "registered"].includes(session.status)).length };
           },
           stopObjectives: async (id) => {
             // 이미 시작한 보관 전이가 정지 뒤 저장하지 않도록 소유자 차단 후 큐를 비운다.

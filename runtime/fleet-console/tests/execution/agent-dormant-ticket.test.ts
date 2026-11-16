@@ -12,7 +12,6 @@ import type { ConsoleRuntimeContext } from "../../features/execution/host/contex
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GatewayLaunchOptionError, isGatewayLaunchEffortAllowed } from "../../features/execution/host/agent/launch.js";
 import { registerAgentRoutes } from "../../features/execution/host/agent/routes.js";
 import type { TerminalRuntime } from "../../features/execution/host/terminal/index.js";
 import { createPluginTerminalTicketRegistry } from "../../features/execution/host/terminal/tickets.js";
@@ -81,35 +80,13 @@ describe("agent dormant ticket guards", () => {
     expect(harness.control.observe(sessionId)?.surface).toBe("chat");
   });
 
-  it("rejects ticket issuance for a dormant session with objectiveRecord_dormant", async () => {
+  it("rejects a terminal ticket for an Objective session", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
 
     await harness.postTicket(sessionId);
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_chat_mode" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "terminal_view_removed" } });
     expect(harness.ticketsIssued).toBe(0);
-  });
-
-  it("invalidates outstanding tickets when a session transitions to dormant", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createLiveSession();
-    const issued = harness.issueDirectTicket(sessionId);
-    expect(harness.tickets.consume(issued.ticket)).toMatchObject({ sessionId });
-
-    const second = harness.issueDirectTicket(sessionId);
-    await harness.postTicket(sessionId);
-
-    expect(harness.tickets.consume(second.ticket)).toMatchObject({ sessionId });
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_chat_mode" } });
-  });
-
-  it("allows ticket issuance after resume moves the session out of dormant", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createLiveSession();
-
-    await harness.postTicket(sessionId);
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "objectiveRecord_chat_mode" } });
-    expect(harness.attach).not.toHaveBeenCalled();
   });
 });
 
