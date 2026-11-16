@@ -13,10 +13,20 @@ import {
 } from "../../canonical/index.js";
 import { estimateTokens } from "../../transport/token-estimate.js";
 import { wireLog } from "../../transport/wire-log.js";
-import { AcpAuthRequiredError, AcpModelUnavailableError, type AcpPromptBlock, type AcpSessionPort } from "../contract.js";
-import { agyWarningText, parseAgyUpstreamError, type AgyUpstreamError } from "../events.js";
+import { type AcpPromptBlock, type AcpSessionPort } from "../contract.js";
+import {
+  agyWarningText,
+  classifyAgyOpenFailure,
+  classifyAgyUpstreamFailure,
+  parseAgyUpstreamError,
+} from "../events.js";
 import { resolveAcpModelSelection, type AcpModelSelection } from "../models.js";
 import { AGY_INERT_TOOL_TITLES, toolOnlyTitlePrefix } from "../tool-only.js";
+import {
+  compactAgyConversation,
+  type AgyCompactionRequest,
+  type AgyCompactionResult,
+} from "./compaction.js";
 import {
   chainAfterAssistant,
   chainOf,
@@ -69,6 +79,11 @@ export interface AgyAcpBridgeOptions {
 }
 
 export interface AgyAcpBridge extends AiGatewayAdapter {
+  /** Claude Code 압축 요청(compactSummary)을 도구 없는 전용 세션으로 처리해 평문 요약을 만든다. */
+  compact(
+    request: AgyCompactionRequest,
+    options?: { readonly signal?: AbortSignal },
+  ): Promise<AgyCompactionResult>;
   /** 열려 있는 세션과 MCP 리스너를 닫는다. */
   dispose(): Promise<void>;
 }
@@ -351,21 +366,24 @@ function resultContent(output: CanonicalFunctionCallOutput["output"]): McpResult
   return content.length > 0 ? content : [{ type: "text", text: "(no output)" }];
 }
 
-/** agy가 알린 업스트림 오류를 Anthropic 오류 형식(HTTP 상태와 오류 type)으로 옮긴다. */
-function upstreamFailure(error: AgyUpstreamError): { readonly status: number; readonly type: string; readonly message: string } {
-  const message = `agy upstream error${error.status ? ` ${error.status}` : ""}${error.code ? ` (code ${error.code})` : ""}: ${error.message}`;
-  const code = error.code;
-  const status = error.status;
-  if (code === 429 || status === "RESOURCE_EXHAUSTED") return { status: 429, type: "rate_limit_error", message };
-  if (code === 401 || status === "UNAUTHENTICATED") return { status: 401, type: "authentication_error", message };
-  if (code === 403 || status === "PERMISSION_DENIED") return { status: 403, type: "permission_error", message };
-  if (code === 404 || status === "NOT_FOUND") return { status: 404, type: "not_found_error", message };
-  if (code === 400 || status === "INVALID_ARGUMENT" || status === "FAILED_PRECONDITION") return { status: 400, type: "invalid_request_error", message };
-  if (code === 503 || code === 529 || status === "UNAVAILABLE") return { status: 529, type: "overloaded_error", message };
-  if (code === 504 || status === "DEADLINE_EXCEEDED") return { status: 504, type: "api_error", message };
-  // 코드를 알 수 없는 오류(예: 네트워크 문제)는 일시적인 것으로 보고 Claude Code가 재시도하게 529로 보낸다.
-  if (code === undefined) return { status: 529, type: "overloaded_error", message };
-  return { status: code >= 500 && code <= 599 ? code : 500, type: "api_error", message };
+function estimateBridgeInputTokens(request: CanonicalResponseRequest): number {
+  const parts: string[] = [];
+  if (request.instructions !== undefined) parts.push(request.instructions);
+  for (const item of request.input) {
+    if (item.type === "message") {
+      parts.push(canonicalMessageText(item.content));
+    } else if (item.type === "function_call") {
+      parts.push(item.name, item.arguments);
+    } else if (item.type === "function_call_output") {
+      parts.push(canonicalMessageText(item.output));
+    }
+  }
+  for (const tool of request.tools ?? []) {
+    parts.push(tool.name);
+    if (tool.description !== undefined) parts.push(tool.description);
+    parts.push(JSON.stringify(tool.parameters));
+  }
+  return estimateTokens(parts.join("\n"), request.model);
 }
 
 /**
@@ -421,6 +439,34 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       coalesceMs: options.coalesceMs ?? DEFAULTS.coalesceMs,
       replayBudgetChars: options.replayBudgetChars ?? DEFAULTS.replayBudgetChars,
     };
+  }
+
+  async compact(
+    request: AgyCompactionRequest,
+    options: { readonly signal?: AbortSignal } = {},
+  ): Promise<AgyCompactionResult> {
+    const controller = new AbortController();
+    const abort = (): void => controller.abort(options.signal?.reason ?? this.lifetime.signal.reason);
+    if (options.signal?.aborted || this.lifetime.signal.aborted) abort();
+    else {
+      options.signal?.addEventListener("abort", abort, { once: true });
+      this.lifetime.signal.addEventListener("abort", abort, { once: true });
+    }
+    try {
+      return await compactAgyConversation({
+        port: this.options.port,
+        mcp: this.mcp,
+        serverName: MCP_SERVER_NAME,
+        replayBudgetChars: this.limits.replayBudgetChars,
+        callTimeoutSeconds: this.limits.callTimeoutSeconds,
+        silenceMs: this.limits.silenceMs,
+        request,
+        signal: controller.signal,
+      });
+    } finally {
+      options.signal?.removeEventListener("abort", abort);
+      this.lifetime.signal.removeEventListener("abort", abort);
+    }
   }
 
   async dispose(): Promise<void> {
@@ -518,7 +564,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
     if (typeof first === "object" && first.kind === "acp" && first.event.kind === "text") {
       const upstream = parseAgyUpstreamError(first.event.text);
       if (upstream) {
-        const failure = upstreamFailure(upstream);
+        const failure = classifyAgyUpstreamFailure(upstream);
         wireLog("bridge.upstream_error", { session: session.key, status: failure.status, type: failure.type });
         await session.close(failure.message);
         return failedResponse(failure.status, failure.type, failure.message);
@@ -532,7 +578,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
         );
         const warning = warningOnlyTurn(session.channel.snapshot());
         if (warning !== undefined) {
-          const failure = upstreamFailure({ status: undefined, code: undefined, message: warning });
+          const failure = classifyAgyUpstreamFailure({ status: undefined, code: undefined, message: warning });
           wireLog("bridge.upstream_error", { session: session.key, status: failure.status, type: failure.type, kind: "warning-only turn" });
           await session.close(failure.message);
           return failedResponse(failure.status, failure.type, failure.message);
@@ -540,11 +586,18 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       }
     }
 
+    const estimatedInputTokens = options.estimatedInputTokens ?? estimateBridgeInputTokens(request);
     return {
       ok: true,
       status: 200,
       headers: new Headers(),
-      events: this.respond(session, { model: request.model, baseChain: chain[chain.length - 1]!, signal: options.signal }),
+      events: this.respond(session, {
+        model: request.model,
+        baseChain: chain[chain.length - 1]!,
+        estimatedInputTokens,
+        ...(options.modelContextWindow === undefined ? {} : { modelContextWindow: options.modelContextWindow }),
+        signal: options.signal,
+      }),
     };
   }
 
@@ -618,7 +671,11 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
       const acp = await this.options.port.open({
         model: request.model,
         thoughtLevel: selection.thoughtLevel,
-        systemPrompt: [sessionInstructions(request), bridgeNote(), ...(replayed ? [REPLAY_SYSTEM_NOTE] : [])].filter((part) => part.length > 0).join("\n\n"),
+        systemPrompt: [
+          sessionInstructions(request),
+          ...(catalog.tools.length > 0 ? [bridgeNote()] : []),
+          ...(replayed ? [REPLAY_SYSTEM_NOTE] : []),
+        ].filter((part) => part.length > 0).join("\n\n"),
         toolOnly: {
           serverName: MCP_SERVER_NAME,
           url: registration.url,
@@ -649,20 +706,20 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
   }
 
   private openFailure(error: unknown): AdapterResponse {
-    if (error instanceof AcpModelUnavailableError) {
-      // A 4xx: Claude Code does not retry a verdict a retry cannot change. The message names the model the session asked for.
-      return failedResponse(400, "invalid_request_error", `${error.message} The agy account offers: ${error.availableModels.join(", ") || "no models"}. Pick another model or sign in to agy with an account that has it.`);
-    }
-    if (error instanceof AcpAuthRequiredError) {
-      return failedResponse(401, "authentication_error", `${error.message} Run \`agy\` and sign in first.`);
-    }
-    return failedResponse(503, "api_error", error instanceof Error ? error.message : String(error));
+    const failure = classifyAgyOpenFailure(error);
+    return failedResponse(failure.status, failure.type, failure.message);
   }
 
   /** 세션의 큐를 읽어 Messages 응답 하나분의 canonical 이벤트로 바꾼다. */
   private async *respond(
     session: BridgeSession,
-    context: { readonly model: string; readonly baseChain: string; readonly signal: AbortSignal | undefined },
+    context: {
+      readonly model: string;
+      readonly baseChain: string;
+      readonly estimatedInputTokens: number;
+      readonly modelContextWindow?: number;
+      readonly signal: AbortSignal | undefined;
+    },
   ): AsyncGenerator<CanonicalResponseEvent> {
     const responseId = `msg_agy_${randomUUID().replace(/-/g, "")}`;
     const snapshot = (usage: { input_tokens: number; output_tokens: number; context_window?: number } | null = null) => ({ id: responseId, model: context.model, usage });
@@ -679,10 +736,13 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
     /** 아직 내보내지 않고 붙잡아 둔 `⚠ …` 텍스트: 이 턴의 출력이 그것뿐이면 오류, 아니면 풀어서 내보낸다. */
     let held: string | undefined;
 
+    // agy가 내부 체크포인트로 자체 압축하면 session.used가 낮아지므로, 이 세션의 최고 점유와
+    // 현재 요청 추정치 중 큰 값을 보고해 Claude Code가 자동 압축 시점을 놓치지 않게 한다.
+    const reportedWindow = context.modelContextWindow ?? (session.contextWindow > 0 ? session.contextWindow : undefined);
     const usage = () => ({
-      input_tokens: session.used,
+      input_tokens: Math.max(session.peakUsed, context.estimatedInputTokens),
       output_tokens: estimateTokens(produced.join(""), context.model),
-      ...(session.contextWindow > 0 ? { context_window: session.contextWindow } : {}),
+      ...(reportedWindow !== undefined ? { context_window: reportedWindow } : {}),
     });
     const closeRun = function* (): Generator<CanonicalResponseEvent> {
       if (open?.kind === "text") {
@@ -750,7 +810,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
             // agy의 업스트림 오류 알림은 모델 출력이 아니다: 내보내지 않고 이 턴을 SSE 오류로 끝낸다(agy 재시도를 기다리지 않는다).
             const upstream = parseAgyUpstreamError(event.text);
             if (upstream) {
-              const failure = upstreamFailure(upstream);
+              const failure = classifyAgyUpstreamFailure(upstream);
               wireLog("bridge.upstream_error", { session: session.key, status: failure.status, type: failure.type });
               yield* fail(failure.message, failure.type);
               return;
@@ -795,7 +855,7 @@ class AgyAcpBridgeAdapter implements AgyAcpBridge {
             }
             if (held !== undefined) {
               // 출력이 `⚠ …` 알림뿐인 채 끝난 턴: 오류로 끝내고 세션은 버린다(오류 상태가 남은 세션이 같은 문구를 되풀이한다).
-              const failure = upstreamFailure({ status: undefined, code: undefined, message: agyWarningText(held) ?? held });
+              const failure = classifyAgyUpstreamFailure({ status: undefined, code: undefined, message: agyWarningText(held) ?? held });
               wireLog("bridge.upstream_error", { session: session.key, status: failure.status, type: failure.type, kind: "warning-only turn" });
               yield* fail(failure.message, failure.type);
               return;

@@ -285,3 +285,25 @@ export function replayBlocks(
     omittedTurns,
   };
 }
+
+/**
+ * 압축 전용 프롬프트 블록: 전체 대화 이력을 `<conversation_history>`로 넣되(마지막 턴이 도구 결과로 끝나더라도
+ * 이어하기 문구를 붙이지 않는다), 닫는 지시로 평문 요약 지침만 붙인다.
+ */
+export function compactionReplayBlocks(
+  items: readonly CanonicalInputItem[],
+  budgetChars: number,
+  summaryPrompt: string,
+): { readonly blocks: AcpPromptBlock[]; readonly replayChars: number; readonly omittedTurns: number } {
+  const turns = toTurns(items);
+  if (turns.length === 0) {
+    return { blocks: [{ kind: "text", text: summaryPrompt }], replayChars: 0, omittedTurns: 0 };
+  }
+  const { lines, omittedTurns } = fitHistory(turns, budgetChars, false);
+  const history = lines.join("\n");
+  return {
+    blocks: [{ kind: "text", text: `<conversation_history>\n${history}\n</conversation_history>\n\n${summaryPrompt}` }],
+    replayChars: history.length,
+    omittedTurns,
+  };
+}

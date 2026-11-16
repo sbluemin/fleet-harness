@@ -1,4 +1,4 @@
-import type { AcpSessionEvent, AcpTurnUsage } from "./contract.js";
+import { AcpAuthRequiredError, AcpModelUnavailableError, type AcpSessionEvent, type AcpTurnUsage } from "./contract.js";
 
 type Json = Record<string, unknown>;
 
@@ -153,4 +153,52 @@ export function parseAgyUpstreamError(text: string): AgyUpstreamError | undefine
  */
 export function agyWarningText(text: string): string | undefined {
   return /^\s*⚠\s+([\s\S]*?)\s*$/.exec(text)?.[1];
+}
+
+/** agy가 알린 업스트림 오류를 Anthropic 오류 형식(HTTP 상태와 오류 type)으로 옮긴다. */
+export function classifyAgyUpstreamFailure(error: AgyUpstreamError): {
+  readonly status: number;
+  readonly type: string;
+  readonly message: string;
+} {
+  const message = `agy upstream error${error.status ? ` ${error.status}` : ""}${error.code ? ` (code ${error.code})` : ""}: ${error.message}`;
+  const code = error.code;
+  const status = error.status;
+  if (code === 429 || status === "RESOURCE_EXHAUSTED") return { status: 429, type: "rate_limit_error", message };
+  if (code === 401 || status === "UNAUTHENTICATED") return { status: 401, type: "authentication_error", message };
+  if (code === 403 || status === "PERMISSION_DENIED") return { status: 403, type: "permission_error", message };
+  if (code === 404 || status === "NOT_FOUND") return { status: 404, type: "not_found_error", message };
+  if (code === 400 || status === "INVALID_ARGUMENT" || status === "FAILED_PRECONDITION") return { status: 400, type: "invalid_request_error", message };
+  if (code === 503 || code === 529 || status === "UNAVAILABLE") return { status: 529, type: "overloaded_error", message };
+  if (code === 504 || status === "DEADLINE_EXCEEDED") return { status: 504, type: "api_error", message };
+  // 코드를 알 수 없는 오류(예: 네트워크 문제)는 일시적인 것으로 보고 Claude Code가 재시도하게 529로 보낸다.
+  if (code === undefined) return { status: 529, type: "overloaded_error", message };
+  return { status: code >= 500 && code <= 599 ? code : 500, type: "api_error", message };
+}
+
+/** `port.open` 실패를 Anthropic HTTP 상태·오류 형식으로 옮긴다. */
+export function classifyAgyOpenFailure(error: unknown): {
+  readonly status: number;
+  readonly type: string;
+  readonly message: string;
+} {
+  if (error instanceof AcpModelUnavailableError) {
+    return {
+      status: 400,
+      type: "invalid_request_error",
+      message: `${error.message} The agy account offers: ${error.availableModels.join(", ") || "no models"}. Pick another model or sign in to agy with an account that has it.`,
+    };
+  }
+  if (error instanceof AcpAuthRequiredError) {
+    return {
+      status: 401,
+      type: "authentication_error",
+      message: `${error.message} Run \`agy\` and sign in first.`,
+    };
+  }
+  return {
+    status: 503,
+    type: "api_error",
+    message: error instanceof Error ? error.message : String(error),
+  };
 }

@@ -504,6 +504,12 @@ export interface AdapterCallOptions {
    * it is never a projection denominator and never a transport budget.
    */
   modelContextWindow?: number;
+  /**
+   * Conservative character-based estimate of this request's input tokens. Stateful bridges
+   * whose upstream session may internally compact use it as a floor so client-facing
+   * usage never drops while the client's own conversation history is still full.
+   */
+  estimatedInputTokens?: number;
   signal?: AbortSignal;
 }
 

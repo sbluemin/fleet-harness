@@ -462,4 +462,41 @@ describe("agy ACP bridge", () => {
     expect(entries.find((entry) => entry.permission === "Run run_command")).toMatchObject({ outcome: { optionId: "deny" } });
     await closed.reach(1);
   });
+
+  it("keeps reported input_tokens from dropping when agy checkpoints internally, and resets on a rebuilt session", async () => {
+    const { bridge } = await setup();
+    const first = await turn(bridge, [user("USAGE:480000")]);
+    const firstCompleted = first.events.find((event) => event.type === "response.completed");
+    expect(firstCompleted).toMatchObject({ type: "response.completed", response: { usage: { input_tokens: 480_000 } } });
+
+    // agy checkpoints internally and reports a tiny session.used (26,139); usage() stays >= peakUsed and request estimate.
+    const second = await turn(bridge, [user("USAGE:480000"), assistant("usage:480000"), user("USAGE:26139")]);
+    const secondCompleted = second.events.find((event) => event.type === "response.completed");
+    expect(secondCompleted).toMatchObject({ type: "response.completed", response: { usage: { input_tokens: 480_000 } } });
+
+    // When Claude Code itself replaces history (compaction/rewind -> rebuild), the new session resets peakUsed.
+    const rebuilt = await turn(bridge, [user("USAGE:12000")]);
+    const rebuiltCompleted = rebuilt.events.find((event) => event.type === "response.completed");
+    expect(rebuiltCompleted).toMatchObject({ type: "response.completed", response: { usage: { input_tokens: 12_000 } } });
+  });
+
+  it("runs dedicated compaction without tools and rejects tool-call attempts", async () => {
+    const { bridge, log } = await setup();
+    const compacted = await bridge.compact({
+      model: MODEL,
+      input: [user("remember token"), call("c1", { command: "ls" }), result("c1", "file.ts"), assistant("done")],
+      customInstructions: "preserve file.ts",
+    });
+    expect(compacted.summary).toContain("Compacted summary (0 tools) history:yes");
+    const entries = await log();
+    const compactLog = entries.find((entry) => typeof entry.prompt === "string" && entry.prompt.includes("preserve file.ts"));
+    expect(compactLog).toBeDefined();
+    expect(entries.filter((entry) => Array.isArray(entry.mcpTools)).at(-1)?.mcpTools).toEqual([]);
+
+    await expect(bridge.compact({
+      model: MODEL,
+      input: [user("hello")],
+      customInstructions: "FORCE_COMPACT_TOOL",
+    })).rejects.toThrow(/tool|aborted/i);
+  });
 });

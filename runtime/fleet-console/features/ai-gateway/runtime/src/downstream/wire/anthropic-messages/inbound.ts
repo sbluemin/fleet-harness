@@ -106,6 +106,7 @@ export class AnthropicMessagesGateway {
       ...(options.modelContextWindow === undefined
         ? {}
         : { modelContextWindow: options.modelContextWindow }),
+      estimatedInputTokens,
       signal: options.signal
     });
 

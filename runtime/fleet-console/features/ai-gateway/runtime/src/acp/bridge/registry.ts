@@ -113,8 +113,9 @@ export class BridgeSession implements McpSessionHandler {
   /** 다음 요청이 이 세션으로 이어지려면 그 요청 이력이 가져야 하는 체인. 응답이 끝날 때 갱신한다. */
   expectNext: string | undefined;
   lastUsedAt = Date.now();
-  /** `usage_update`가 마지막으로 알린 컨텍스트 점유와 창. */
+  /** `usage_update`가 마지막으로 알린 컨텍스트 점유와 창, 그리고 이 세션의 최고 점유. */
   used = 0;
+  peakUsed = 0;
   contextWindow = 0;
   private current: BridgeSessionState = "opening";
   private acp: AcpSession | undefined;
@@ -170,7 +171,11 @@ export class BridgeSession implements McpSessionHandler {
         for await (const event of stream) {
           if (this.current === "closed") return;
           wireLog("bridge.acp", { session: this.key, kind: event.kind, ...("text" in event ? { chars: event.text.length } : {}), ...("name" in event ? { name: event.name } : {}) });
-          if (event.kind === "usage") { this.used = event.usage.usedTokens; this.contextWindow = event.usage.contextWindow; }
+          if (event.kind === "usage") {
+            this.used = event.usage.usedTokens;
+            this.peakUsed = Math.max(this.peakUsed, event.usage.usedTokens);
+            this.contextWindow = event.usage.contextWindow;
+          }
           this.channel.push({ kind: "acp", event });
           if (event.kind === "exit") void this.close(`agy exited${event.detail ? `: ${event.detail}` : ""}`);
         }

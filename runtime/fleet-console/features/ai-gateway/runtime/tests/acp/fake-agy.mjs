@@ -27,6 +27,7 @@ log({ argv, pid: process.pid });
 
 const geminiDir = argv[argv.indexOf("--gemini-dir") + 1];
 let mcp;
+let listedTools = [];
 let nextMcpId = 0;
 const outgoing = new Map();
 let nextRequestId = 1000;
@@ -52,7 +53,8 @@ async function connectMcp() {
   // The session-port tests point at an address nothing listens on: a failed connect is logged, not fatal.
   try { await mcpRpc("initialize", { protocolVersion: "2025-11-25", capabilities: {} }); } catch (error) { log({ mcpUnreachable: String(error) }); return; }
   const listed = await mcpRpc("tools/list", {});
-  log({ mcpTools: listed.tools.map((tool) => tool.name), mcpSchemas: listed.tools.map((tool) => tool.inputSchema), eager: Object.keys(config.tools ?? {}), timeoutSeconds: config.timeoutSeconds });
+  listedTools = listed.tools.map((tool) => tool.name);
+  log({ mcpTools: listedTools, mcpSchemas: listed.tools.map((tool) => tool.inputSchema), eager: Object.keys(config.tools ?? {}), timeoutSeconds: config.timeoutSeconds });
 }
 
 function request(method, params) {
@@ -124,6 +126,22 @@ async function runPrompt(id, blocks) {
     say("NOT-A-REAL-ANSWER");
   } else if (text.startsWith("UPSTREAMNET")) {
     say("\n⚠ There was a network issue connecting to the server, please try again.\n");
+  } else if ((match = /^USAGE:(\d+)/s.exec(text))) {
+    const used = Number(match[1]);
+    update({ sessionUpdate: "usage_update", used, size: 1048576 });
+    say(`usage:${used}`);
+  } else if (text.includes("Create a detailed plaintext handoff summary")) {
+    if (text.includes("FORCE_COMPACT_TOOL")) {
+      await callTool("Run run_command", "run_command", {});
+      update({ sessionUpdate: "tool_call", toolCallId: "tb", title: "Run run_command", kind: "other", status: "in_progress", rawInput: {} });
+      say("should-have-failed");
+    } else if (listedTools.length > 0) {
+      // Reproduces the real agy failure when tools stay exposed on compaction: calls a tool with no text.
+      await callTool(`Run mcp_fleet_${listedTools[0]}`, listedTools[0], {});
+    } else {
+      update({ sessionUpdate: "usage_update", used: 320, size: 1048576 });
+      say(`Compacted summary (${listedTools.length} tools) history:${text.includes("<conversation_history>") ? "yes" : "no"}`);
+    }
   } else if (text.startsWith("BUILTIN")) {
     await callTool("Run run_command", "run_command", {});
     update({ sessionUpdate: "tool_call", toolCallId: "tb", title: "Run run_command", kind: "other", status: "in_progress", rawInput: {} });
