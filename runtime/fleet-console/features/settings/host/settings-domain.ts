@@ -112,6 +112,11 @@ export interface ConsoleGeneralSettings {
   /** 몽글 아바타를 차분하게 — 사람을 부르는 상태(답을 기다림·결정 요청·오류)만 움직인다. 부재는 꺼짐(몽글)이다. */
   readonly calmAvatars?: boolean;
   /**
+   * 입력 캡슐의 사령관·지휘관 설정 칩 줄을 펼쳐 둘지. 부재는 접힘(false)이다 — 칩이 기본으로 물러나고,
+   * 한 번 펼친 사람만 그 상태를 이어 받는다. 사령관 대화와 목표 그룹 대화가 이 값 하나를 함께 쓴다.
+   */
+  readonly commodoreComposerChipsExpanded?: boolean;
+  /**
    * 지휘관 목록 정렬. 부재는 한 번도 저장된 적 없음이다.
    * localStorage 키(`fleet-console.commanderTab.sort`)는 같은 origin의 첫 그리기용 캐시로만 쓰고,
    * 원천은 이 값이다 — Console 포트가 바뀌면 origin이 바뀌어 캐시가 사라지기 때문이다.
@@ -397,6 +402,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
   const sideBarDoubleClickOpen = typeof value.sideBarDoubleClickOpen === "boolean" ? value.sideBarDoubleClickOpen : undefined;
   const reduceMotion = typeof value.reduceMotion === "boolean" ? value.reduceMotion : undefined;
   const calmAvatars = typeof value.calmAvatars === "boolean" ? value.calmAvatars : undefined;
+  const commodoreComposerChipsExpanded = typeof value.commodoreComposerChipsExpanded === "boolean" ? value.commodoreComposerChipsExpanded : undefined;
   const commanderSort = readCommanderSortPreference(value.commanderSort);
   const commanderFolds = readCommanderFolds(value.commanderFolds);
   const commanderKeepExpanded = typeof value.commanderKeepExpanded === "boolean" ? value.commanderKeepExpanded : undefined;
@@ -419,6 +425,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(sideBarDoubleClickOpen !== undefined ? { sideBarDoubleClickOpen } : {}),
     ...(reduceMotion !== undefined ? { reduceMotion } : {}),
     ...(calmAvatars !== undefined ? { calmAvatars } : {}),
+    ...(commodoreComposerChipsExpanded !== undefined ? { commodoreComposerChipsExpanded } : {}),
     ...(commanderSort !== undefined ? { commanderSort } : {}),
     ...(commanderFolds !== undefined ? { commanderFolds } : {}),
     ...(commanderKeepExpanded !== undefined ? { commanderKeepExpanded } : {}),
@@ -581,6 +588,7 @@ interface GlobalSettingsBody {
   readonly sideBarDoubleClickOpen?: unknown;
   readonly reduceMotion?: unknown;
   readonly calmAvatars?: unknown;
+  readonly commodoreComposerChipsExpanded?: unknown;
   readonly commanderSort?: unknown;
   readonly commanderFolds?: unknown;
   readonly commanderKeepExpanded?: unknown;
@@ -722,6 +730,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_calm_avatars" });
     return;
   }
+  if (body.commodoreComposerChipsExpanded !== undefined && typeof body.commodoreComposerChipsExpanded !== "boolean") {
+    deps.writeJson(res, 400, { error: "invalid_commodore_composer_chips_expanded" });
+    return;
+  }
   // 정렬·접힘도 잘못된 값을 조용히 기본값으로 접지 않는다 — 형태가 틀리면 400이다.
   const commanderSort = body.commanderSort === undefined ? undefined : readCommanderSortPreference(body.commanderSort);
   if (body.commanderSort !== undefined && commanderSort === undefined) {
@@ -808,6 +820,7 @@ async function mutateGlobalSettings(
       ...(typeof body.sideBarDoubleClickOpen === "boolean" ? { sideBarDoubleClickOpen: body.sideBarDoubleClickOpen } : {}),
       ...(typeof body.reduceMotion === "boolean" ? { reduceMotion: body.reduceMotion } : {}),
       ...(typeof body.calmAvatars === "boolean" ? { calmAvatars: body.calmAvatars } : {}),
+      ...(typeof body.commodoreComposerChipsExpanded === "boolean" ? { commodoreComposerChipsExpanded: body.commodoreComposerChipsExpanded } : {}),
       ...(commanderSort !== undefined ? { commanderSort } : {}),
       ...(commanderFolds !== undefined ? { commanderFolds } : {}),
       ...(typeof body.commanderKeepExpanded === "boolean" ? { commanderKeepExpanded: body.commanderKeepExpanded } : {}),
@@ -887,6 +900,8 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     sideBarDoubleClickOpen: general.sideBarDoubleClickOpen ?? false,
     reduceMotion: general.reduceMotion ?? false,
     calmAvatars: general.calmAvatars ?? false,
+    // 키 없음·손상 값은 접힘이다 — 이 선호를 저장한 적 없는 화면은 칩을 물러 두고 시작한다.
+    commodoreComposerChipsExpanded: general.commodoreComposerChipsExpanded === true,
     // 키 없음·손상 값은 null이다 — "한 번도 저장된 적 없음"과 명시 저장을 구분한다.
     commanderSort: readCommanderSortPreference(general.commanderSort) ?? null,
     commanderFolds: readCommanderFolds(general.commanderFolds) ?? null,
