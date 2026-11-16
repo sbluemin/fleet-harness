@@ -508,6 +508,11 @@ html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
 .view-mark { flex: none; display: inline-flex; align-items: center; gap: var(--space-2); min-width: 0; max-width: 46%; padding-inline: var(--space-1); font-size: var(--t-xs); white-space: nowrap; }
 .view-mark-badge { flex: none; padding: 2px var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-pill); color: var(--text-secondary); font-weight: var(--weight-medium); }
 .view-mark-place { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-tertiary); }
+/* 칸 머리 출처 — 좁은 칸(320px~)에서도 주소 입력(min-width)을 먼저 지키고, 배지는 말줄임으로 줄어든다. 닫기 × 는 캡션 여백(.pad) 왼쪽에 둔다. */
+.origin-link { flex: 0 1 auto; display: inline-flex; align-items: center; min-width: 0; max-width: 42%; height: 28px; padding: 0 var(--space-2); border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.origin-link:hover { color: var(--text-primary); background: var(--wash-hover); }
+.origin-link:focus-visible { box-shadow: var(--focus-face); }
+.origin-link[hidden] { display: none; }
 html[data-view-only="true"]:not([data-remote-control="true"]) .url { pointer-events: none; }
 html[data-view-only="true"]:not([data-remote-control="true"]) .url:hover { background: var(--ink-veil); }
 .rail.viewing .tab-close { display: none; }

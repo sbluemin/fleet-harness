@@ -60,9 +60,10 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
   const viewPlace = h("span", { class: "view-mark-place" });
   const viewMark = h("span", { class: "view-mark", hidden: true as unknown as boolean }, viewBadge, viewPlace);
   const closeView = h("button", { class: "icon close-view", type: "button", hidden: true as unknown as boolean, on: { click: () => post("bar", "close-surface") } }, "×");
+  const originLink = h("button", { class: "origin-link", type: "button", hidden: true as unknown as boolean, on: { click: () => post("bar", "reveal-origin") } });
   const leading = h("span", { class: "pad" });
   const trailing = h("span", { class: "pad" });
-  strip.append(leading, back, forward, reload, viewMark, form, detach, spacesButton, more, closeView, trailing);
+  strip.append(leading, back, forward, reload, viewMark, originLink, form, detach, spacesButton, more, closeView, trailing);
 
   let last: ChromeUiState | null = null;
   let editing = false;
@@ -634,12 +635,24 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
     document.documentElement.dataset.viewOnly = viewing ? "true" : "false";
     document.documentElement.dataset.remoteControl = state.viewOnly?.control === true ? "true" : "false";
     back.hidden = forward.hidden = reload.hidden = more.hidden = viewLocked;
-    viewMark.hidden = closeView.hidden = !viewing;
+    viewMark.hidden = !viewing;
+    // 칸(도킹)은 보기 전용이 아니어도 × 로 닫는다. 독립 창은 창 닫기가 그 일을 하고, 보기 전용만 예외로 × 를 남긴다.
+    closeView.hidden = state.mode !== "pane" && !viewing;
+    if (!closeView.hidden) closeView.title = closeView.ariaLabel = viewing ? t(state.viewOnly?.control ? "remote.close" : "viewOnly.close") : t("close");
+    const origin = state.mode === "pane" ? state.origin ?? null : null;
+    originLink.hidden = origin === null;
+    if (origin) {
+      const label = origin.kind === "message"
+        ? (origin.actor ? t("origin.messageActor", { actor: origin.actor }) : t("origin.message"))
+        : t(origin.kind === "event" ? "origin.event" : "origin.sidebar");
+      originLink.textContent = label;
+      originLink.title = t("origin.reveal");
+      originLink.ariaLabel = label;
+    }
     if (state.viewOnly) {
       viewBadge.textContent = state.viewOnly.control ? t("remote.badge") : t("viewOnly");
       viewPlace.textContent = state.viewOnly.place;
       viewMark.title = `${state.viewOnly.control ? t("remote.badge") : t("viewOnly")} · ${state.viewOnly.place}`;
-      closeView.title = closeView.ariaLabel = t(state.viewOnly.control ? "remote.close" : "viewOnly.close");
     }
     more.title = state.overlay?.kind === "menu" ? "" : t("moreTools"); more.ariaLabel = t("moreTools");
     more.setAttribute("aria-expanded", String(state.overlay?.kind === "menu"));

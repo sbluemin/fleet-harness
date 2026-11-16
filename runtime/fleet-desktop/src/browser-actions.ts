@@ -161,6 +161,20 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
         void call("/api/v1/browser/objectives/" + encodeURIComponent(surface.browserId) + "/surface", { body: { action: "mode", id: surface.id, mode: surface.mode === "pane" ? "window" : "pane" } }).catch(() => control.notify(t("detachFailed"), "error"));
         return;
       }
+      case "close-surface": {
+        // 칸의 × 는 보기 전용과 같은 동작 이름이다. 관리 표면은 여기서 Console 이 그 칸을 닫게 한다.
+        const surface = control.surface();
+        if (!surface) return;
+        void (async () => {
+          try {
+            const response = await call("/api/v1/browser/objectives/" + encodeURIComponent(surface.browserId) + "/surface", { body: { action: "close", id: surface.id } });
+            if (!response.ok) control.notify(await failureText(response), "error");
+          } catch { control.notify(t("requestFailed"), "error"); }
+        })();
+        return;
+      }
+      // 출처로 돌아가기는 표면이 Console reveal 과 메인 창 포커스를 직접 처리한다. 여기까지 오면 다시 보내지 않는다.
+      case "reveal-origin": return;
       case "open-external": {
         const chrome = control.chrome();
         const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId);

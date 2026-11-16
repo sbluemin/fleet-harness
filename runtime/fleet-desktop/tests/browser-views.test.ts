@@ -190,6 +190,66 @@ describe("desktop native browser views across a Console restart", () => {
     expect(consoleView.setBounds).toHaveBeenLastCalledWith({ x: 0, y: 0, width: 1100, height: 700 });
   });
 
+  it("relays a pane origin into chrome state and reveals it on the main console", async () => {
+    const content = { x: 0, y: 0, width: 1400, height: 900 };
+    const windowFocus = vi.fn();
+    const base = Object.assign(new EventEmitter(), {
+      getContentBounds: () => content, isDestroyed: () => false, isMinimized: () => false, show: vi.fn(), focus: windowFocus, restore: vi.fn(),
+      contentView: { addChildView: vi.fn(), removeChildView: vi.fn() },
+    });
+    const makeView = () => {
+      const mainFrame = { url: "" };
+      const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false, close: vi.fn(), focus: vi.fn(), reload: vi.fn(), setZoomFactor: vi.fn(),
+        setWindowOpenHandler: vi.fn(), loadURL: vi.fn(async (url: string) => { mainFrame.url = url; }),
+        loadFile: vi.fn(async (file: string) => { mainFrame.url = pathToFileURL(file).href; }), executeJavaScript: vi.fn(async () => undefined) });
+      return { webContents, setBounds: vi.fn(), setVisible: vi.fn(), setBackgroundColor: vi.fn() };
+    };
+    const consoleView = makeView();
+    const stack = createDesktopViewStack(base as never, consoleView as never);
+    const shell = createDesktopShellWindow(base as never, consoleView as never, stack);
+    const views: ReturnType<typeof makeView>[] = [];
+    const posts: { url: string; body: string; headers: Headers }[] = [];
+    const acted: string[] = [];
+    const surface = createBrowserSurface({
+      main: () => shell,
+      createChromeView: () => { const created = makeView(); views.push(created); return created as never; },
+      createDividerView: () => { const created = makeView(); views.push(created); return created as never; },
+      createWindow: () => { throw new Error("window mode is not part of this contract"); },
+      chromeDir: "/assets/browser-chrome", program: () => "", colors: () => null, lang: "ko", platform: "linux", scaleFactor: () => 1, zoom: () => 1,
+      act: (_control, role, action) => { acted.push(`${role}:${action.action}`); },
+      relay: vi.fn(), changed: vi.fn(), reducedMotion: () => true, log: vi.fn(),
+      consoleRequest: {
+        fetch: (async (url: string | URL, init?: RequestInit) => {
+          posts.push({ url: String(url), body: String(init?.body ?? ""), headers: new Headers(init?.headers) });
+          return new Response("{}");
+        }) as typeof fetch,
+        origin: () => "http://127.0.0.1:9",
+        headers: () => ({ "x-fleet-lock": "lock" }),
+      },
+    });
+    surface.apply({ id: "surface-1", browserId: "global", mode: "pane", origin: { kind: "message", actor: "Ada", messageId: "m-1" } } as never, null, "http://127.0.0.1:9");
+    const bar = views[0]!;
+    bar.webContents.emit("console-message", { frame: bar.webContents.mainFrame, message: JSON.stringify(["fleet-chrome", "bar", "ready", {}]) });
+    const pushed = (): string => {
+      const calls = (bar.webContents.executeJavaScript as unknown as { mock: { calls: unknown[][] } }).mock.calls;
+      return String(calls.at(-1)?.[0] ?? "");
+    };
+    expect(pushed()).toContain('"origin":{"kind":"message","actor":"Ada","messageId":"m-1"}');
+    bar.webContents.emit("console-message", { frame: bar.webContents.mainFrame, message: JSON.stringify(["fleet-chrome", "bar", "reveal-origin", {}]) });
+    await vi.waitFor(() => { if (posts.length === 0) throw new Error("waiting"); });
+    expect(posts[0]?.url).toBe("http://127.0.0.1:9/api/v1/browser/objectives/global/surface");
+    expect(JSON.parse(posts[0]!.body)).toEqual({ action: "reveal", id: "surface-1" });
+    expect(posts[0]?.headers.get("x-fleet-lock")).toBe("lock");
+    expect(windowFocus).toHaveBeenCalled();
+    expect(consoleView.webContents.focus).toHaveBeenCalled();
+    expect(acted).not.toContain("bar:reveal-origin");
+    bar.webContents.emit("console-message", { frame: bar.webContents.mainFrame, message: JSON.stringify(["fleet-chrome", "bar", "close-surface", {}]) });
+    expect(acted).toContain("bar:close-surface");
+    surface.apply({ id: "surface-1", browserId: "global", mode: "pane", origin: { kind: "event" } } as never, null, "http://127.0.0.1:9");
+    expect(pushed()).toContain('"origin":{"kind":"event"}');
+    surface.dispose();
+  });
+
   it("glides pane open (460ms spring) and asymmetric close (320ms glide) without resizing page width, and skips under reduced motion", () => {
     vi.useFakeTimers();
     try {
