@@ -393,7 +393,7 @@ const FAVICON_EXPRESSION = `(() => {
 const FAVICON_OBSERVER = `(() => {
   if (window.top !== window) return;
   const iconLink = (node) => Boolean(node) && node.nodeType === 1 && node.nodeName === "LINK" && /icon/i.test(node.rel || "");
-  const notify = () => { try { if (typeof window.${FAVICON_BINDING} === "function") window.${FAVICON_BINDING}(); } catch {} };
+  const notify = () => { try { if (typeof window.${FAVICON_BINDING} === "function") window.${FAVICON_BINDING}(""); } catch {} };
   const watch = () => {
     if (!document.documentElement) return;
     new MutationObserver((records) => {
