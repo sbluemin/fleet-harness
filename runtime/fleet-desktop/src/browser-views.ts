@@ -504,6 +504,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     lastStarted: number;
     lastJpeg: Buffer | null;
     sent: boolean;
+    /** 업로드 한 건이 진행 중인가 — 폴백 캡처와 스크린캐스트가 같은 줄을 쓴다(순서 보존). */
+    posting: boolean;
     timer: unknown;
     poll: unknown;
   }
@@ -511,7 +513,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const watchOf = (id: string): ViewerWatch => {
     let watch = watches.get(id);
     if (!watch) {
-      watch = { watching: false, dirty: false, inflight: false, immediate: false, lastStarted: 0, lastJpeg: null, sent: false, timer: null, poll: null };
+      watch = { watching: false, dirty: false, inflight: false, immediate: false, lastStarted: 0, lastJpeg: null, sent: false, posting: false, timer: null, poll: null };
       watches.set(id, watch);
     }
     return watch;
@@ -610,8 +612,6 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     /** 이 세션의 프레임을 한 장이라도 **올렸는가** — 실패한 업로드는 세지 않는다(그때는 폴링 캡처가 다시 맡는다). */
     seen: boolean;
     pending: ViewerFrame | null;
-    /** 업로드 한 건이 끝날 때까지 다음 장은 `pending` 에 최신 한 장으로만 남긴다 — 순서와 대역을 함께 지킨다. */
-    posting: boolean;
     timer: unknown;
   }
   const screencasts = new Map<string, ViewerScreencast>();
@@ -635,7 +635,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const contents = entry.view.webContents;
     if (typeof contents.debugger?.sendCommand !== "function") return;
     const profile = VIEWER_CAPTURE_PROFILES[viewerCapture];
-    const state: ViewerScreencast = { quality: viewerCapture, seen: false, pending: null, posting: false, timer: null };
+    const state: ViewerScreencast = { quality: viewerCapture, seen: false, pending: null, timer: null };
     screencasts.set(id, state);
     void contents.debugger.sendCommand("Page.startScreencast", {
       format: "jpeg",
@@ -645,44 +645,58 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       everyNthFrame: 1,
     }).catch(() => { if (screencasts.get(id) === state) screencasts.delete(id); });
   };
-  /** 프레임을 Console 로 올린다. 같은 JPEG 는 두 번 올리지 않는다 — 폴백 캡처와 스크린캐스트가 함께 쓴다. */
-  async function postViewerFrame(watch: ViewerWatch, entry: LiveView, frame: ViewerFrame): Promise<boolean> {
+  /**
+   * 프레임을 Console 로 올린다. 같은 JPEG 는 두 번 올리지 않는다 — 폴백 캡처와 스크린캐스트가 같은 줄을 쓴다.
+   * 한 번에 한 건만 올린다: 업로드가 진행 중이면 `busy` 를 돌려주고 시작하지 않는다(늦게 온 옛 장이 새 장을 덮지 않게).
+   */
+  async function postViewerFrame(watch: ViewerWatch, entry: LiveView, frame: ViewerFrame): Promise<"sent" | "duplicate" | "busy" | "failed"> {
+    if (watch.posting) return "busy";
     const target = origin;
-    if (!target || frame.jpeg.length === 0 || frame.jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return false;
+    if (!target || frame.jpeg.length === 0 || frame.jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return "failed";
     // 동일 JPEG 중복 전송 억제 — 바뀐 장만 올린다. 이미 그 장이 화면에 있으므로 전달된 것으로 친다.
-    if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return true;
+    if (watch.sent && watch.lastJpeg !== null && watch.lastJpeg.equals(frame.jpeg)) return "duplicate";
     // CSS 크기는 페이지의 실제 레이아웃 — 원격 맞춤·에뮬레이션이면 뷰 bounds 와 다르다. 스트림·long-poll·입력이 함께 쓴다.
     const cssWidth = Math.max(1, Math.round(frame.cssWidth ?? entry.lastBounds?.width ?? frame.width));
     const cssHeight = Math.max(1, Math.round(frame.cssHeight ?? entry.lastBounds?.height ?? frame.height));
-    const response = await fetchFor(`${target}${DESKTOP_BROWSER_FRAME_PATH}`, {
-      method: "POST",
-      headers: {
-        ...authHeaders(),
-        [DESKTOP_BROWSER_VIEW_HEADER]: entry.spec.id,
-        [DESKTOP_BROWSER_FRAME_WIDTH_HEADER]: String(frame.width),
-        [DESKTOP_BROWSER_FRAME_HEIGHT_HEADER]: String(frame.height),
-        [DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER]: String(cssWidth),
-        [DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER]: String(cssHeight),
-        "Content-Type": "image/jpeg",
-        Origin: target,
-      },
-      body: frame.jpeg,
-    });
-    if (!response.ok) return false;
-    watch.lastJpeg = Buffer.from(frame.jpeg);
-    watch.sent = true;
-    return true;
+    watch.posting = true;
+    try {
+      const response = await fetchFor(`${target}${DESKTOP_BROWSER_FRAME_PATH}`, {
+        method: "POST",
+        headers: {
+          ...authHeaders(),
+          [DESKTOP_BROWSER_VIEW_HEADER]: entry.spec.id,
+          [DESKTOP_BROWSER_FRAME_WIDTH_HEADER]: String(frame.width),
+          [DESKTOP_BROWSER_FRAME_HEIGHT_HEADER]: String(frame.height),
+          [DESKTOP_BROWSER_FRAME_CSS_WIDTH_HEADER]: String(cssWidth),
+          [DESKTOP_BROWSER_FRAME_CSS_HEIGHT_HEADER]: String(cssHeight),
+          "Content-Type": "image/jpeg",
+          Origin: target,
+        },
+        body: frame.jpeg,
+      });
+      if (!response.ok) return "failed";
+      watch.lastJpeg = Buffer.from(frame.jpeg);
+      watch.sent = true;
+      return "sent";
+    } catch (error) {
+      log(`browser frame failed: ${error instanceof Error ? error.message : "unknown"}`);
+      return "failed";
+    } finally {
+      watch.posting = false;
+      // 이 업로드가 끝날 때까지 쌓인 스크린캐스트 장을 이어서 보낸다 — 순서는 도착 순서 그대로다.
+      const state = screencasts.get(entry.spec.id);
+      if (state?.pending) flushScreencast(entry.spec.id);
+    }
   }
-  /** 화질별 최소 간격으로 한 장씩만 올린다 — 그 사이에 온 장은 최신 한 장으로 합친다. */
   /**
    * 화질별 최소 간격으로 한 장씩만 올린다 — 그 사이에 온 장은 최신 한 장으로 합치고, 앞 업로드가 끝날 때까지
    * 다음 업로드를 시작하지 않는다(느린 회선에서 업로드가 쌓여 순서가 뒤집히지 않게). 실패한 업로드는 `seen` 을
-   * 세우지 않으므로 폴링 캡처가 다시 맡는다.
+   * 내려 폴링 캡처가 다시 맡게 한다.
    */
   const flushScreencast = (id: string): void => {
     const state = screencasts.get(id);
     const watch = watches.get(id);
-    if (!state || !state.pending || !watch?.watching || state.timer !== null || state.posting) return;
+    if (!state || !state.pending || !watch?.watching || state.timer !== null || watch.posting) return;
     const interval = Math.max(VIEWER_FRAME_ACTIVE_INTERVAL_MS, VIEWER_CAPTURE_PROFILES[viewerCapture].intervalMs);
     const send = (): void => {
       state.timer = null;
@@ -690,20 +704,18 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       const pending = current?.pending ?? null;
       const entry = live.get(id);
       const currentWatch = watches.get(id);
-      if (!current || !pending || !entry || !currentWatch?.watching || current.posting) return;
+      if (!current || !pending || !entry || !currentWatch?.watching || currentWatch.posting) return;
       current.pending = null;
-      current.posting = true;
       currentWatch.lastStarted = now();
       void postViewerFrame(currentWatch, entry, pending)
-        .then((posted) => {
-          // 성공한 장만 "스크린캐스트가 맡았다"로 친다 — 실패하면 폴링 캡처가 그 사실을 모른 채 계속 살아 있다.
-          if (posted) current.seen = true;
+        .then((outcome) => {
+          // 성공한 장만 "스크린캐스트가 맡았다"로 치고, 실패하면 폴링 캡처가 다시 맡게 한다.
+          if (outcome === "sent" || outcome === "duplicate") current.seen = true;
+          else if (outcome === "failed") current.seen = false;
+          // busy 는 다른 업로드가 막 시작한 경우 — 그 업로드의 finally 가 이 장을 이어서 보낸다.
+          else if (current.pending === null) current.pending = pending;
         })
-        .catch((error: unknown) => { log(`browser frame failed: ${error instanceof Error ? error.message : "unknown"}`); })
-        .finally(() => {
-          current.posting = false;
-          if (current.pending !== null) flushScreencast(id);
-        });
+        .catch((error: unknown) => { log(`browser frame failed: ${error instanceof Error ? error.message : "unknown"}`); current.seen = false; });
     };
     const wait = Math.max(0, interval - (now() - watch.lastStarted));
     if (wait === 0) { send(); return; }
@@ -756,6 +768,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       if (session !== token || !watch.watching || !frame) return;
       // 기다리는 사이 스크린캐스트가 더 새 장을 올렸으면 이 폴백 장은 버린다 — 오래된 그림이 최신을 덮지 않게.
       if (screencasts.get(id)?.seen) return;
+      // 업로드가 이미 진행 중이면(스크린캐스트 장) 이 폴백 장은 버린다 — 그 업로드가 순서를 지킨다.
+      if (watch.posting) return;
       await postViewerFrame(watch, entry, frame);
     } catch (error) {
       log(`browser frame failed: ${error instanceof Error ? error.message : "unknown"}`);

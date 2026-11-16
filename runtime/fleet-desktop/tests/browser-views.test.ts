@@ -531,6 +531,7 @@ describe("managed browser auth and on-demand frames", () => {
     const shell = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 800, height: 600 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 1, reclaimFocus: vi.fn() } satisfies PageHost;
     let releaseCapture: (() => void) | null = null;
     const captures: Buffer[] = [];
+    let captureSeq = 0;
     let clock = 5_000;
     const publish = (next: DesktopBrowserSnapshot): void => {
       lifetime = next;
@@ -548,7 +549,9 @@ describe("managed browser auth and on-demand frames", () => {
       platform: "darwin",
       accessPath: "wsl",
       captureViewerFrame: () => new Promise((resolve) => {
-        const jpeg = Buffer.from("fallback");
+        captureSeq += 1;
+        // 매번 다른 장 — 같은 JPEG 는 전송 억제되므로 폴백이 실제로 올라갔는지 이 본문으로 구분한다.
+        const jpeg = Buffer.from(`fallback-${captureSeq}`);
         captures.push(jpeg);
         releaseCapture = () => resolve({ jpeg, width: 320, height: 180, cssWidth: 506, cssHeight: 848 });
       }),
@@ -572,7 +575,7 @@ describe("managed browser auth and on-demand frames", () => {
       await vi.waitFor(() => expect(captures).toHaveLength(1));
       releaseCapture!();
       await vi.waitFor(() => expect(frames).toHaveLength(1));
-      expect(frames[0]!.body.equals(Buffer.from("fallback"))).toBe(true);
+      expect(frames[0]!.body.equals(Buffer.from("fallback-1"))).toBe(true);
 
       // 스크린캐스트 프레임은 디코드 없이 그대로 올라가고, CSS 크기는 메타데이터의 장치 크기다.
       const page = created[0]!.contents as EventEmitter & { debugger: EventEmitter };
@@ -629,6 +632,24 @@ describe("managed browser auth and on-demand frames", () => {
       await vi.waitFor(() => expect(captures).toHaveLength(2));
       releaseCapture!();
       await vi.waitFor(() => expect(frames).toHaveLength(5));
+
+      // 폴백 업로드가 느릴 때 그 사이 온 스크린캐스트 장은 기다렸다가 뒤에 올라간다 — 옛 장이 새 장을 덮지 않는다.
+      page.emit("did-navigate");
+      clock += 100;
+      await vi.waitFor(() => expect(captures).toHaveLength(3));
+      holdFramePost = true;
+      releaseFramePost = null;
+      releaseCapture!();
+      await vi.waitFor(() => expect(releaseFramePost).not.toBeNull());
+      const afterFallback = Buffer.from([0xff, 0xd8, 0xff, 0xd9, 0x05]);
+      emitFrame(afterFallback);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(frames).toHaveLength(5);
+      clock += 100;
+      releaseFramePost!();
+      await vi.waitFor(() => expect(frames).toHaveLength(7));
+      expect(frames[5]!.body.equals(Buffer.from("fallback-3"))).toBe(true);
+      expect(frames[6]!.body.equals(afterFallback)).toBe(true);
 
       // 감시가 끝나면 스크린캐스트도 멈춘다.
       publish({ ...lifetime, generation: 4, watchedViewIds: [] });
