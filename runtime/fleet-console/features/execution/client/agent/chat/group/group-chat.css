@@ -1363,8 +1363,25 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-chat-more { align-self: flex-start; margin-left: var(--space-1); }
 
 /* 보고 꼬리표 — 이름 옆의 은은한 보조 낱말. 누르면 보낸 보고 전문이 말풍선 아래에 펼쳐진다. */
-.group-chat-agent-head { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; }
+.group-chat-agent-head { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 2px var(--space-2); min-width: 0; }
+.group-chat-agent-head .group-chat-speaker-hit.is-name { align-self: center; }
 .group-chat-agent-head.is-after { padding-left: var(--space-1); }
+/* 지휘관·구성원 말풍선 머리의 실제 세션 모델·강도 — 기존 모델 칩 문법([글리프] 모델 · 강도)을 따른다. */
+.group-chat-speaker-coord {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--t-xs);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.group-chat-speaker-coord .fc-coord-trigger-provider { flex: none; width: 12px; height: 12px; }
+.group-chat-speaker-coord .fc-coord-trigger-provider svg { width: 11px; height: 11px; }
+.group-chat-speaker-coord-model { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-secondary); }
+.group-chat-speaker-coord .fc-coord-trigger-dot,
+.group-chat-speaker-coord .fc-coord-trigger-effort { flex: none; }
 .group-chat-report-tag {
   padding: 0 var(--space-1);
   border: 0;

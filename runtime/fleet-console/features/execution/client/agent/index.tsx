@@ -224,7 +224,7 @@ export function installAgentExecution(ctx: ExecutionClientDeps): () => void {
   installedNotifications = ctx.notifications;
   const disposeViewState = installObjectiveViewState(ctx.consoleState);
   const disposeGroupTimeline = installGroupTimeline(ctx);
-  const disposeGroupConversation = installGroupConversationSurface();
+  const disposeGroupConversation = installGroupConversationSurface(ctx.models);
   // `objective:reveal` — 에이전트가 "여기를 봐 달라"고 한 Objective 을 앞에 세우고 사유를 캡션 말풍선에 남긴다.
   // 사용자가 입력 중이면(활성 요소가 편집 가능) 포커스를 빼앗지 않고 말풍선만 띄운다.
   const disposeReveal = ctx.consoleEvents.subscribe(OBJECTIVE_REVEAL_EVENT_CHANNEL, (payload) => {

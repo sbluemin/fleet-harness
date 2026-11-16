@@ -20,7 +20,7 @@ const GATEWAY_MODEL_PREFIX = "claude-gateway--";
  * 표시 어휘는 런치 메뉴와 같아야 한다 — 같은 세션을 두 표면이 다른 이름으로 부르면 사용자는
  * 자기가 고른 것과 지금 도는 것을 대조하지 못한다. 서버의 `agent-cli-launch-kinds.ts`가 원본이다.
  */
-const NATIVE_MODEL_LABELS: Readonly<Record<string, string>> = {
+export const NATIVE_MODEL_LABELS: Readonly<Record<string, string>> = {
   "fable[1m]": "Fable",
   "opus[1m]": "Opus",
   "sonnet[1m]": "Sonnet",
@@ -31,7 +31,7 @@ const NATIVE_MODEL_LABELS: Readonly<Record<string, string>> = {
   haiku: "Haiku",
 };
 
-const EFFORT_LABELS: Readonly<Record<string, string>> = {
+export const EFFORT_LABELS: Readonly<Record<string, string>> = {
   low: "LOW",
   medium: "MED",
   high: "HIGH",

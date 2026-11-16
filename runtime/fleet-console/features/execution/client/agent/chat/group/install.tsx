@@ -1,6 +1,7 @@
 import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
 import { OpenUINavigationContext } from "../../openui-boundary.js";
 import type { ConversationParticipant, ConversationSpeaker } from "../../../../shared/conversation/types.js";
+import type { ClientModelsCapability } from "../../../../../ai-gateway/shared/model-ports.js";
 import type { RailPanelContext } from "../../../../../workspace/shared/rail.js";
 import * as React from "react";
 
@@ -58,13 +59,19 @@ import { GroupLedgerSplit, type GroupLedgerSplitPane } from "./ledger-split.js";
  *   사람 입력 틀이 없고, 틀 머리의 「대화로 돌아가기」가 대화로 데려온다.
  * - 목표가 아닌 1:1 채팅이거나 루트가 터미널(CLI)로 열려 있으면 기본 본문을 그대로 둔다.
  */
-export function installGroupConversationSurface(): () => void {
+let installedModels: ClientModelsCapability | undefined;
+
+export function installGroupConversationSurface(models?: ClientModelsCapability): () => void {
+  installedModels = models;
   ensureMembersTab();
   const disposeBody = setConversationBodyRenderer(renderConversationBody);
   const disposeComposer = setConversationStandInComposer((objectiveId, language) => <StandInComposer key={objectiveId} rootId={objectiveId} language={language} />);
   const disposeRail = registerObjectiveContextRail();
   const disposeTail = setConversationToolbarTail(renderToolbarTail);
-  return () => { disposeTail(); disposeRail(); disposeComposer(); disposeBody(); };
+  return () => {
+    if (installedModels === models) installedModels = undefined;
+    disposeTail(); disposeRail(); disposeComposer(); disposeBody();
+  };
 }
 
 /** 머리 줄 알림 종 오른쪽의 그룹채팅/원장 전환 — 가운데 칸이 그룹 대화일 때만 선다(본문 렌더러와 같은 판정). */
@@ -307,6 +314,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
     <OpenUINavigationContext.Provider value={openUIOpen ?? null}><GroupConversation
       snapshot={snapshot}
       language={language}
+      models={installedModels}
       onOpenLedger={openMemberLedger}
       {...(phone ? {} : { onOpenNameplate: openLedgerView, nameplateLabel: t("group.view.toLedger") })}
       onOpenCommodoreRecord={openRecord}
