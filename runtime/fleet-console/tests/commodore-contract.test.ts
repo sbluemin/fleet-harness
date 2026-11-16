@@ -2400,23 +2400,29 @@ describe("commodore failure display", () => {
     expect(commodoreTranscriptEntrySchema.safeParse({ seq: 6, at: 1, kind: "result", outcome: "error", error: "API Error: 500 boom" }).success).toBe(true);
   });
 
-  it("marks a skipped message as not processed on its bubble and adds one guidance line", async () => {
+  it("marks a skipped message once on its bubble and shows the reason once on the guidance line", async () => {
     const { commodoreChatEntries, commodoreConversationEntries } = await import("../features/commodore/client/commodore-chat.js");
     const { getT } = await import("../features/commodore/client/i18n/index.js");
     const t = getT("ko");
     const entries: CommodoreTranscriptEntry[] = [
       { seq: 1, at: 1_000, kind: "message", text: "사진 커서 안 되는 말" },
-      { seq: 2, at: 1_100, kind: "skipped", seqs: [1], code: "image_too_large", detail: "API Error: 400 image exceeds 5 MB maximum" },
+      { seq: 2, at: 1_050, kind: "wake", reasons: ["message"] },
+      { seq: 3, at: 1_080, kind: "result", outcome: "error", error: "image_too_large", detail: "API Error: 400 image exceeds 5 MB maximum" },
+      { seq: 4, at: 1_090, kind: "error", code: "image_too_large", retryAt: 61_090 },
+      { seq: 5, at: 1_100, kind: "skipped", seqs: [1], code: "image_too_large", detail: "API Error: 400 image exceeds 5 MB maximum" },
     ];
     const conversation = commodoreConversationEntries(t, "t1", entries, [], []);
-    // 사람 말풍선은 남고, 「전달되지 않음」과 처리 불가 사유가 함께 선다.
-    expect(conversation.find((entry) => entry.kind === "message")).toMatchObject({ undelivered: true, deliveryNote: expect.stringContaining("처리 불가") });
-    // 안내는 한 줄 — 사유와 다음 행선지를 말한다.
+    // 사람 말풍선에는 「처리 불가」 배지 하나만 세우고(전달되지 않음·사유 중복 없음), 사유는 안내 줄에만 1회 남긴다.
+    const bubble = conversation.find((entry) => entry.kind === "message") as { undelivered?: boolean; deliveryNote?: string } | undefined;
+    expect(bubble?.deliveryNote).toBe("처리 불가");
+    expect(bubble?.undelivered).toBeUndefined();
+    // 건너뛰기로 끝난 실패 구간의 앞선 오류/재시도 줄은 가려 사유가 딱 한 줄로만 보인다.
     const notes = conversation.flatMap((entry) => (entry.kind === "note" ? [entry.text] : []));
     expect(notes).toHaveLength(1);
     expect(notes[0]).toContain("건너뛰었어요");
+    expect(notes[0]).toContain("첨부 이미지가 API 허용 크기를 넘었어요");
     expect(notes[0]).toContain("다음 대화로 이어갑니다");
-    // 펼친 기록도 같은 말풍선 배지와 안내 줄을 세운다.
+    // 펼친 기록도 같은 단일 안내 줄만 세운다.
     const chat = commodoreChatEntries(t, "t1", entries, []);
     expect(chat.some((entry) => entry.event.kind === "dispatch" && entry.event.undelivered === true)).toBe(true);
     expect(chat.filter((entry) => entry.event.kind === "note").map((entry) => entry.event.kind === "note" ? entry.event.text : "")).toEqual(notes);

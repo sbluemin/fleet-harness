@@ -26,6 +26,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
   const undelivered = undeliveredMessageSeqs(entries);
   // 다시 보내지 못하고 건너뛴 말 — 말풍선에 「전달되지 않음」을 달고 사유는 안내 줄이 말한다.
   const skipped = skippedMessageReasons(entries);
+  const hiddenFailures = supersededFailureIndices(entries);
   const delivered = new Set(entries.flatMap((entry) => (entry.kind === "delivered" ? entry.seqs : [])));
   let turnAt: number | null = null;
   // 실패한 턴의 1줄 요약 — 바로 뒤의 재시도 예약(error 줄)이 같은 실패를 한 줄로 잇는다.
@@ -99,6 +100,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
         resume(entry.at);
         end(entry.at, entry.outcome);
         if (entry.outcome !== "error") break;
+        if (hiddenFailures.has(position)) { failureDetail = undefined; break; }
         // 바로 뒤의 재시도 예약(error 줄)이 같은 실패다 — 두 줄 경고 대신 그 한 줄에 요약을 실어 보낸다.
         if (retryTail(entries, position)) { failureDetail = entry.detail; break; }
         push({ kind: "note", text: t("commodore.log.turnError", { reason: failureWord(t, entry.error, entry.detail) }), at: entry.at, tone: "warn" }, entry.at);
@@ -115,6 +117,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
         end(entry.at, "error");
         const detail = failureDetail ?? entry.detail;
         failureDetail = undefined;
+        if (hiddenFailures.has(position)) break;
         const code = failureWord(t, entry.code, detail);
         push({ kind: "note", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }), at: entry.at, tone: "warn" }, entry.at);
         break;
@@ -202,6 +205,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = undeliveredMessageSeqs(entries);
   const skipped = skippedMessageReasons(entries);
+  const hiddenFailures = supersededFailureIndices(entries);
   // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
   // 도는 턴이 집은 말(delivered)은 이미 읽혔고, 다시 실린 말(requeued)은 그 뒤의 깨움이 집을 때까지 기다린다.
   const lastWakeSeq = entries.reduce((max, entry) => entry.kind === "wake" ? Math.max(max, entry.seq) : max, -1);
@@ -219,9 +223,9 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         const unrelayed = mentionResults.get(entry.seq);
         const skippedReason = skipped.get(entry.seq);
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, objectiveId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
-          ...(skippedReason ? { deliveryNote: t("commodore.message.skipped", { reason: failureWord(t, skippedReason.code, skippedReason.detail) }) } : unrelayed?.length ? { deliveryNote: t("commodore.message.unrelayed", { names: unrelayed.map((peer) => peer.alias).join(", ") }) } : {}),
-          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) || skippedReason ? { undelivered: true as const } : {}),
-          ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
+          ...(skippedReason ? { deliveryNote: t("commodore.message.skipped") } : unrelayed?.length ? { deliveryNote: t("commodore.message.unrelayed", { names: unrelayed.map((peer) => peer.alias).join(", ") }) } : {}),
+          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) && !skippedReason ? { undelivered: true as const } : {}),
+          ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !skippedReason && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
         break;
       }
       case "sent":
@@ -253,6 +257,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       }
       case "result":
         if (entry.outcome === "error") {
+          if (hiddenFailures.has(position)) { failureDetail = undefined; break; }
           // 바로 뒤의 재시도 예약(error 줄)이 같은 실패다 — 두 줄 경고 대신 그 한 줄에 요약을 실어 보낸다.
           if (retryTail(entries, position)) failureDetail = entry.detail;
           else out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("commodore.log.turnError", { reason: failureWord(t, entry.error, entry.detail) }) });
@@ -268,6 +273,7 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
       case "error": {
         const detail = failureDetail ?? entry.detail;
         failureDetail = undefined;
+        if (hiddenFailures.has(position)) break;
         const code = failureWord(t, entry.code, detail);
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }) });
         break;
@@ -640,6 +646,22 @@ function retryTail(entries: readonly CommodoreTranscriptEntry[], index: number):
     if (entry.kind === "result" || entry.kind === "wake" || entry.kind === "message" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "ask" || entry.kind === "ask-answered") return null;
   }
   return null;
+}
+
+/** 건너뛰기로 끝난 실패 구간 — 앞선 `result(error)`·`error` 줄은 같은 사유를 겹쳐 세우지 않는다. */
+function supersededFailureIndices(entries: readonly CommodoreTranscriptEntry[]): ReadonlySet<number> {
+  const hidden = new Set<number>();
+  for (const [position, entry] of entries.entries()) {
+    if (entry.kind !== "skipped" || !entry.seqs.length) continue;
+    const floorSeq = Math.min(...entry.seqs);
+    for (let i = position - 1; i >= 0; i -= 1) {
+      const candidate = entries[i]!;
+      if (candidate.seq < floorSeq) break;
+      if (candidate.kind === "result" && candidate.outcome === "ok") break;
+      if ((candidate.kind === "result" && candidate.outcome === "error") || candidate.kind === "error") hidden.add(i);
+    }
+  }
+  return hidden;
 }
 
 /** 깨움 이유 — `code` 또는 `code:N` 토큰. 모르는 토큰(문장)은 그대로 보인다. */
