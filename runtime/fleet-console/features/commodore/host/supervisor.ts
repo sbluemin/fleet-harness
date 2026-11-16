@@ -276,6 +276,8 @@ interface Runner {
   retry: ReturnType<typeof setTimeout> | null;
   retryAttempt: number;
   inflight: Promise<void> | null;
+  /** runTurn 동기 도입부에서 async IIFE가 inflight를 채우기 전에도 턴 진행 중임을 표시한다. */
+  turning: boolean;
   stopping: boolean;
   /** 사람이 멈춘 턴의 정산 중 — 듣지 못한 입력은 보존하되 스스로 재시작하지 않는다. */
   turnStopRequested: boolean;
@@ -499,7 +501,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (!runner.messages.length) { scheduleRoutines(runner); return; }
     // 뒤에 남은 정상 메시지는 재시도 간격을 기다리지 않고 곧바로 다음 턴이 읽는다.
     wake(runner, "message");
-    if (runner.inflight) { runner.immediateNext = true; return; }
+    if (runner.inflight || runner.turning) { runner.immediateNext = true; return; }
     schedule(runner, "coalesce", 0, () => { void runTurn(runner); });
   }
 
@@ -546,7 +548,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     else if (input.count !== undefined) reason.count = input.count;
     if (input.detail && !reason.details.includes(input.detail)) reason.details.push(input.detail);
     if (!existing) runner.pending.set(code, reason);
-    if (runner.inflight) return;
+    if (runner.inflight || runner.turning) return;
     // 새 사건도 예약 재시도에 합친다.
     if (runner.phase === "retrying" || runner.phase === "error") return;
     scheduleTurn(runner);
@@ -1003,6 +1005,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner.stopping || disposed) return;
     if (!canRun(runner.commodoreId)) return;
     if (runner.inflight) return runner.inflight;
+    if (runner.turning) return;
     if (!runner.pending.size) return;
     tfWaits.delete(runner.commodoreId);
     // 읽지 않은 판단 항목 없는 taskforce 깨움은 턴을 세우지 않는다 — 이유를 걷고 판단 중에서도
@@ -1019,6 +1022,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (!runner.pending.size) { setPhase(runner, "idle"); scheduleRoutines(runner); return; }
     }
     clearTimer(runner, "coalesce"); clearTimer(runner, "retry");
+    runner.turning = true;
     runner.inflight = (async () => {
       // 이미 수락한 말은 순서를 지키며 나눈다. 초과분은 다음 턴에 남고 빠지지 않는다.
       let batchBytes = 0;
@@ -1311,6 +1315,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       setPhase(runner, "idle");
       scheduleRoutines(runner);
     })().finally(() => {
+      runner.turning = false;
       runner.inflight = null;
       const stoppedTurn = runner.turnStopRequested;
       runner.turnStopRequested = false;
@@ -1392,7 +1397,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, transientFailures: 0, failedBatch: null, immediateNext: false, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, turnStopRequested: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, transientFailures: 0, failedBatch: null, immediateNext: false, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, turning: false, stopping: false, turnStopRequested: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),
