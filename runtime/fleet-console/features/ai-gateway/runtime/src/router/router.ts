@@ -35,6 +35,7 @@ import { visibleGatewayModels, type ProviderStatusMap } from "../catalog-access.
 import { DEFAULT_XAI_ENDPOINT_PREFERENCE } from "../settings/index.js";
 import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
 import {
+  CLAUDE_COMPACT_PROMPT_MARKER,
   hasClaudeCompactContinuation,
   isClaudeCompactSummaryRequest,
   stripClaudeCompactContinuation,
@@ -48,7 +49,13 @@ import type { GatewayFailureSink } from "../transport/failure-journal.js";
 import { RequestClock } from "../transport/request-timing.js";
 import type { GatewayRequestTimingSink } from "../transport/request-timing.js";
 
-import { createAgyAcpBridge, type AcpSessionPort, type AgyAcpBridge } from "../acp/index.js";
+import {
+  AgyCompactionError,
+  createAgyAcpBridge,
+  type AcpSessionPort,
+  type AgyAcpBridge,
+  type AgyCompactionResult,
+} from "../acp/index.js";
 import { applyGatewayRequestPolicy } from "./request-policy.js";
 import {
   applyDecisiveRefusalHeaders,
@@ -248,9 +255,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   // lazy: a host that never serves an Antigravity model starts no listener.
   let ownedAgyBridge: AgyAcpBridge | undefined;
   let agyBridgeGatewayInstance: AnthropicMessagesGateway | undefined;
-  const agyBridgeGateway = (port: AcpSessionPort): AnthropicMessagesGateway => {
+  const ensureAgyBridge = (port: AcpSessionPort): AgyAcpBridge => {
     ownedAgyBridge ??= createAgyAcpBridge({ port });
-    agyBridgeGatewayInstance ??= new AnthropicMessagesGateway(ownedAgyBridge);
+    return ownedAgyBridge;
+  };
+  const agyBridgeGateway = (port: AcpSessionPort): AnthropicMessagesGateway => {
+    agyBridgeGatewayInstance ??= new AnthropicMessagesGateway(ensureAgyBridge(port));
     return agyBridgeGatewayInstance;
   };
   // 창을 감당 못 해 본문이 한 번 보류된 스킬들. 이 라우터가 사는 동안 유지해야
@@ -262,6 +272,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   const codexCompactionFlights = new Map<
     string,
     ReturnType<typeof compactCodexConversation>
+  >();
+  const antigravityCompactionFlights = new Map<
+    string,
+    Promise<AgyCompactionResult>
   >();
   const gatewaySettings = (): AiGatewayStoredSettings | undefined => (
     deps.readAiGatewaySettings ? deps.readAiGatewaySettings() : undefined
@@ -494,12 +508,23 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
     const sessionId = claudeSessionId(body.metadata?.user_id);
     clock?.setRequestBody(body, requested, sessionId);
+    const isCompactRequest = isClaudeCompactSummaryRequest(body.messages);
     const compactSummary = target?.provider === "codex"
       && sessionId !== undefined
-      && isClaudeCompactSummaryRequest(body.messages)
+      && isCompactRequest
       ? deps.compactionStore?.readPending(sessionId)
       : undefined;
-    if (compactSummary) body = { ...body, messages: stripClaudeCompactPrompt(body.messages) };
+    const antigravityCompact = target?.provider === "antigravity"
+      && !deps.gateway
+      && deps.agyAcpPort !== undefined
+      && isCompactRequest;
+    const antigravityCompactInstructions = antigravityCompact
+      ? (sessionId !== undefined ? deps.compactionStore?.readPending(sessionId)?.customInstructions : undefined)
+        ?? extractCompactCustomInstructions(body.messages)
+      : undefined;
+    if (compactSummary || antigravityCompact) {
+      body = { ...body, messages: stripClaudeCompactPrompt(body.messages) };
+    }
 
     // 대상을 가리지 않고 모든 요청에 닿아야 하는 다듬기는 하네스가 선언한다. 게이트웨이 대상이
     // 없는 네이티브 Anthropic까지 덮어야 하므로 아래 공급자 정책으로 내려갈 수 없다.
@@ -702,6 +727,45 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
 
+      if (antigravityCompact) {
+        const compactBody: AnthropicMessagesRequest = {
+          ...body,
+          tools: undefined,
+          tool_choice: { type: "none" },
+        };
+        const canonical = translateAnthropicRequest(compactBody, {
+          model: upstreamModelId(target),
+          ...(target.effort.supported ? { reasoningEfforts: target.effort.levels } : {}),
+        });
+        clock?.setRoute("compaction");
+        const agyBridge = ensureAgyBridge(deps.agyAcpPort!);
+        let compactFlight = sessionId ? antigravityCompactionFlights.get(sessionId) : undefined;
+        if (!compactFlight) {
+          compactFlight = agyBridge.compact(
+            {
+              model: canonical.model,
+              input: canonical.input,
+              ...(antigravityCompactInstructions ? { customInstructions: antigravityCompactInstructions } : {}),
+            },
+            // Shared per-session flights survive a client transport retry; standalone requests bind to this socket.
+            sessionId ? undefined : { signal: controller.signal },
+          );
+          if (sessionId) {
+            const flight = compactFlight;
+            antigravityCompactionFlights.set(sessionId, flight);
+            void flight.finally(() => {
+              if (antigravityCompactionFlights.get(sessionId) === flight) {
+                antigravityCompactionFlights.delete(sessionId);
+              }
+            }).catch(() => undefined);
+          }
+        }
+        const compacted = await compactFlight;
+        writeClaudeCompactMessage(res, body, compacted.summary, compacted.summaryResponse);
+        clock?.finish("ok");
+        return true;
+      }
+
       let upstream;
       if (target.provider === "codex" && sessionId && hasClaudeCompactContinuation(body.messages)) {
         const ready = deps.compactionStore?.readReady(sessionId, compactBinding(target.id, chatgptAccountId));
@@ -741,22 +805,30 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // Whatever surfaced first — the abort reason, an aborted read, a failed write — the cause
       // is the client leaving, and that is what the journal has to say.
       const disconnected = controller.signal.aborted && controller.signal.reason === clientDisconnected;
+      const agyFailure = error instanceof AgyCompactionError ? error : undefined;
       const invalidRequest = error instanceof UnsupportedReasoningEffortError
         || error instanceof ContextWindowExceededError
         // A content block this wire cannot translate is the client's malformed body, not a
         // gateway fault: on a 400 naming the block Claude Code falls back to another shape,
         // whereas the transient status only makes it retry the same body.
-        || error instanceof UnsupportedAnthropicContentError;
-      const type = invalidRequest ? "invalid_request_error" : "api_error";
+        || error instanceof UnsupportedAnthropicContentError
+        || (agyFailure !== undefined && agyFailure.status >= 400 && agyFailure.status < 500 && agyFailure.status !== 408 && agyFailure.status !== 409 && agyFailure.status !== 429);
+      const type = agyFailure?.errorType ?? (invalidRequest ? "invalid_request_error" : "api_error");
       // Claude Code arms reactive compaction only from a 413 whose message names the
       // context window; a 400 carrying the same text ends the turn instead. Everything
       // else keeps 400 so the client does not compact after an unrelated refusal.
       // A transient gateway-side fault must arrive as a status Claude Code's retry budget acts
       // on. `502` is not one of them, so every dropped socket and stalled stream used to end the
       // turn at the client on the first try.
-      const status = error instanceof ContextWindowExceededError
-        ? 413
-        : invalidRequest ? 400 : harness.transientErrorStatus;
+      const mappedAgyStatus = agyFailure
+        ? (harness.decisiveRefusalStatus?.(harness.retryableStatus?.(agyFailure.status) ?? agyFailure.status)
+          ?? harness.retryableStatus?.(agyFailure.status)
+          ?? agyFailure.status)
+        : undefined;
+      const status = mappedAgyStatus
+        ?? (error instanceof ContextWindowExceededError
+          ? 413
+          : invalidRequest ? 400 : harness.transientErrorStatus);
       const message = disconnected ? clientDisconnected.message : errorMessage(error);
       const recordFailure = (): void => {
         if (!deps.failureJournal) return;
@@ -817,6 +889,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     dispose: () => {
       upstreamGate.dispose();
       codexCompactionFlights.clear();
+      antigravityCompactionFlights.clear();
       return ownedAgyBridge?.dispose();
     },
   };
@@ -996,6 +1069,31 @@ function callerWireCredentials(headers: Record<string, unknown>): readonly strin
 export function callerAnthropicCredential(headers: Record<string, unknown>): string | null {
   return callerWireCredentials(headers)
     .find((credential) => claudeCodeHarnessProfile.acceptsCredential(credential)) ?? null;
+}
+
+function extractCompactCustomInstructions(messages: AnthropicMessagesRequest["messages"]): string | undefined {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (!message || message.role !== "user") continue;
+    const text = typeof message.content === "string"
+      ? message.content
+      : Array.isArray(message.content)
+        ? message.content
+            .filter((block): block is { type: "text"; text: string } => (
+              typeof block === "object"
+              && block !== null
+              && (block as { type?: unknown }).type === "text"
+              && typeof (block as { text?: unknown }).text === "string"
+            ))
+            .map((block) => block.text)
+            .join("\n")
+        : "";
+    if (!text.includes(CLAUDE_COMPACT_PROMPT_MARKER)) continue;
+    const match = /\bAdditional Instructions:\s*\n([\s\S]*?)(?=\n\s*CRITICAL:|$)/.exec(text);
+    const instructions = match?.[1]?.trim();
+    if (instructions) return instructions;
+  }
+  return undefined;
 }
 
 async function readJsonBody<T>(req: {

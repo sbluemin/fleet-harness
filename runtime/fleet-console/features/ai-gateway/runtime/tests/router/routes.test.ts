@@ -2001,6 +2001,86 @@ describe("agy ACP bridge route", () => {
       fs.rmSync(directory, { recursive: true, force: true });
     }
   });
+
+  it("advertises 500k Gemini models with [1m] and recovers from 413 through dedicated tool-less compaction", async () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agy-route-"));
+    try {
+      for (const modelId of [
+        "antigravity--gemini-3.8-flash",
+        "antigravity--gemini-4-argon",
+        "antigravity--gemini-4-carbon",
+        "antigravity--gemini-4-hydrogen",
+      ]) {
+        expect(findGatewayModel(modelId)?.contextWindow).toBe(500_000);
+      }
+
+      const router = agyRouter(directory);
+      const modelsRes = response();
+      await router.handle(ctx({
+        res: modelsRes,
+        method: "GET",
+        pathname: `${BASE}/v1/models`,
+        token: ANTHROPIC_CRED,
+      }));
+      expect(modelsRes.status).toBe(200);
+      const advertisedIds = (JSON.parse(modelsRes.body) as { data: { id: string }[] }).data.map((entry) => entry.id);
+      expect(advertisedIds).toContain(GEMINI);
+      expect(advertisedIds).toContain("claude-gateway--antigravity--gemini-4-hydrogen[1m]");
+
+      const tools = [{ name: "Bash", description: "Run a command", input_schema: { type: "object", properties: { command: { type: "string" } } } }];
+      // 1) Prompt exceeding 500k hits pre-flight 413.
+      const overflowRes = response();
+      await router.handle(ctx({
+        res: overflowRes,
+        token: ANTHROPIC_CRED,
+        model: GEMINI,
+        messages: [{ role: "user", content: "x".repeat(2_100_000) }],
+        tools,
+      }));
+      expect(overflowRes.status).toBe(413);
+      expect(JSON.parse(overflowRes.body).error.message).toMatch(/^Prompt is too long: \d+ tokens > 500000 maximum context window$/);
+
+      // 2) Subsequent compactSummary request (even with tools attached and >500k body) runs dedicated tool-less compaction.
+      const compactRes = response();
+      await router.handle(ctx({
+        res: compactRes,
+        token: ANTHROPIC_CRED,
+        model: GEMINI,
+        metadata: { user_id: JSON.stringify({ session_id: "agy-compact-repro-1" }) },
+        messages: [
+          { role: "user", content: "x".repeat(2_100_000) },
+          { role: "assistant", content: "working on task" },
+          { role: "user", content: `${CLAUDE_COMPACT_PROMPT_MARKER} Summarize.` },
+        ],
+        tools,
+      }));
+      expect(compactRes.status).toBe(200);
+      expect(compactRes.body).toContain("Compacted summary (0 tools) history:yes");
+      expect(compactRes.body).not.toContain('"type":"tool_use"');
+      expect(compactRes.body).toContain('"stop_reason":"end_turn"');
+
+      // 3) Next turn with compacted continuation succeeds cleanly.
+      const nextRes = response();
+      await router.handle(ctx({
+        res: nextRes,
+        token: ANTHROPIC_CRED,
+        model: GEMINI,
+        metadata: { user_id: JSON.stringify({ session_id: "agy-compact-repro-1" }) },
+        messages: [
+          { role: "user", content: `${CLAUDE_COMPACT_CONTINUATION_MARKER}\n\nCompacted summary` },
+          { role: "assistant", content: "ready" },
+          { role: "user", content: "continue" },
+        ],
+        tools,
+      }));
+      expect(nextRes.status).toBe(200);
+      expect(nextRes.body).toContain("history:yes");
+      expect(nextRes.body).toContain('"stop_reason":"end_turn"');
+      await router.dispose();
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
 });
 
 function createAiGatewayRouter(
