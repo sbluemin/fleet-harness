@@ -6,11 +6,13 @@
 import type { DesktopBrowserChrome } from "@fleet-console/protocol/desktop";
 import {
   isRemoteBrowserInputBatch,
+  isViewerCaptureQuality,
   type RemoteBrowserFileChooserPrompt,
   type RemoteBrowserInputEvent,
   type RemoteBrowserPasswordPrompt,
   type RemoteBrowserPermissionPrompt,
   type RemoteBrowserSelectPopup,
+  type ViewerCaptureQuality,
 } from "@fleet-console/protocol/desktop/browser-remote";
 
 export type ChromeRole = "bar" | "rail" | "stage" | "guard";
@@ -128,6 +130,8 @@ export interface ChromeViewOnly {
   /** 레거시/스테이지 호환 별칭 — selectPopup / permissionPrompts 와 함께 쓴다. */
   readonly select?: RemoteBrowserSelectPopup | null;
   readonly permission?: RemoteBrowserPermissionPrompt | null;
+  /** 이 기계가 고른 시청 스트리밍 화질 — 보기 전용에서도 ⋮ 메뉴로 바꾼다. */
+  readonly viewerQuality?: ViewerCaptureQuality;
 }
 
 /** 보기 전용이라 탐색·탭 조작을 잠그는가. 원격 조작(`control`)은 잠그지 않는다. */
@@ -162,6 +166,8 @@ export type ChromeAction =
   | { readonly action: "annotate-capture"; readonly seq: number }
   | { readonly action: "annotate-done"; readonly png: string | null }
   | { readonly action: "viewport"; readonly preset: "responsive" | "mobile" | "tablet"; readonly width?: number; readonly height?: number }
+  /** 시청 스트리밍 화질 선택 — 이 기계의 선호로 기억하고, 프레임 스트림 요청에 실어 실행 측 캡처에 반영한다. */
+  | { readonly action: "viewer-quality"; readonly quality: ViewerCaptureQuality }
   | { readonly action: "profile"; readonly profile: string | null }
   | { readonly action: "profile-confirm"; readonly profile: string | null }
   | { readonly action: "default-profile"; readonly profile: string | null }
@@ -268,6 +274,7 @@ export function readChromeMessage(text: string): { readonly role: ChromeRole; re
     case "annotate-inspect": return make(typeof body.x === "number" && typeof body.y === "number" && Number.isFinite(body.x) && Number.isFinite(body.y) && typeof body.seq === "number" ? { action: "annotate-inspect", x: body.x, y: body.y, seq: body.seq } : null);
     case "annotate-capture": return make(typeof body.seq === "number" ? { action: "annotate-capture", seq: body.seq } : null);
     case "annotate-done": return make(body.png === null || (typeof body.png === "string" && body.png.length <= 3_500_000) ? { action: "annotate-done", png: body.png as string | null } : null);
+    case "viewer-quality": return make(isViewerCaptureQuality(body.quality) ? { action: "viewer-quality", quality: body.quality } : null);
     case "viewport": {
       if (body.preset !== "responsive" && body.preset !== "mobile" && body.preset !== "tablet") return null;
       const sized = body.width !== undefined || body.height !== undefined;

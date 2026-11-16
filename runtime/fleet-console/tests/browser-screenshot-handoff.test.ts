@@ -138,9 +138,11 @@ function createStubDesktop(options: StubOptions = {}) {
   const defaultLayout = options.layout ?? { width: 1386, height: 1163 };
   const captureClips: Array<{ x?: number; y?: number; width?: number; height?: number; scale?: number }> = [];
   const cdpCalls: Array<{ method: string; params: Record<string, unknown> }> = [];
+  const deviceMetrics: Array<Record<string, unknown>> = [];
   const desktop = {
     captureClips,
     cdpCalls,
+    deviceMetrics,
     currentHost: "local" as string | null,
     onSurface: () => () => undefined,
     surfaceState: () => null,
@@ -192,8 +194,10 @@ function createStubDesktop(options: StubOptions = {}) {
         case "Emulation.setFocusEmulationEnabled":
         case "Emulation.setUserAgentOverride":
         case "Emulation.clearDeviceMetricsOverride":
-        case "Emulation.setDeviceMetricsOverride":
         case "Emulation.setEmulatedMedia":
+          return {} as T;
+        case "Emulation.setDeviceMetricsOverride":
+          deviceMetrics.push(_params);
           return {} as T;
         case "Page.navigate": {
           if (options.detachOnNavigate) desktop.emit({ method: "Target.detachedFromTarget", params: {}, sessionId: _sessionId });
@@ -339,7 +343,7 @@ describe("objectiveRecord browser service contracts", () => {
     }
   });
 
-  it("uses native pane geometry for capture and geometryVersion during user responsive fitting", async () => {
+  it("emulates an explicit responsive size instead of resizing the native pane", async () => {
     const desktop = createStubDesktop({ layout: { width: 900, height: 700 } });
     const service = createService(desktop);
     try {
@@ -348,43 +352,67 @@ describe("objectiveRecord browser service contracts", () => {
       const fitted = await service.setViewport(OBJECTIVE, { preset: "responsive", width: 500, height: 850 }, "user");
       expect(fitted).toMatchObject({ width: 500, height: 850, preset: "responsive", setBy: "user" });
 
-      // 셸이 호스트 칸(900x700) 안에 비율을 맞춰 412x700 으로 놓은 상태.
+      // 셸은 뷰 bounds 를 논리 크기로 바꾸지 않는다 — 논리 크기는 에뮬레이션으로 서고, pane 실측 변화는 그 값을 흔들지 않는다.
       desktop.setPaneSize({ width: 412, height: 700, scale: 1 });
-      const versionBefore = await service.geometryVersion(OBJECTIVE, tab.id);
-      expect(versionBefore).toBe(`${tab.id}:412x700:1`);
+      expect(await service.geometryVersion(OBJECTIVE, tab.id)).toBe(`${tab.id}:500x850:1`);
 
       const shot = await service.screenshot(OBJECTIVE, { tabId: tab.id, format: "jpeg" });
-      expect(desktop.captureClips.at(-1)).toMatchObject({ x: 0, y: 0, width: 412, height: 700, scale: 1 });
+      expect(desktop.captureClips.at(-1)).toMatchObject({ x: 0, y: 0, width: 500, height: 850, scale: 1 });
       expect(shot.staleViewport).toBe(false);
-      expect(shot.width).toBe(412);
-      expect(shot.height).toBe(700);
-      expect(shot.layout).toEqual({ width: 412, height: 700 });
-      expect(shot.viewport).toEqual({ width: 412, height: 700, preset: "responsive", followsPane: false });
+      expect(shot.width).toBe(500);
+      expect(shot.height).toBe(850);
+      expect(shot.layout).toEqual({ width: 500, height: 850 });
+      expect(shot.viewport).toEqual({ width: 500, height: 850, preset: "responsive", followsPane: false });
       expect(service.state(OBJECTIVE).viewport).toMatchObject({ width: 500, height: 850, preset: "responsive", setBy: "user" });
 
-      // 호스트 창 크기가 바뀌면 geometryVersion 도 새 네이티브 크기를 따라 바뀐다.
+      // 호스트 창 크기가 바뀌어도 논리 크기는 그대로다.
       desktop.setPaneSize({ width: 353, height: 600, scale: 1 });
-      expect(await service.geometryVersion(OBJECTIVE, tab.id)).toBe(`${tab.id}:353x600:1`);
+      expect(await service.geometryVersion(OBJECTIVE, tab.id)).toBe(`${tab.id}:500x850:1`);
     } finally {
       await service.dispose();
     }
   });
 
-  it("restores remotely fitted spaces on engine close while keeping local host presets", async () => {
+  it("keeps the space viewport while a remote fit is active and drops only the fit on engine close", async () => {
     const desktop = createStubDesktop({ layout: { width: 900, height: 700 } });
     const service = createService(desktop);
     try {
-      await service.createTab(OBJECTIVE, null, "user", { show: true });
+      const tab = await service.createTab(OBJECTIVE, null, "user", { show: true });
       desktop.setPaneSize({ width: 900, height: 700, scale: 1 });
 
-      await service.setViewport(OBJECTIVE, { preset: "responsive", width: 320, height: 640 }, "user", "default", { remoteFit: true });
-      await service.stopEngine();
+      // 원격 맞춤은 스페이스의 뷰포트·프리셋을 덮어쓰지 않고, 실행 측은 그 크기를 에뮬레이션한다.
+      const fitted = await service.setViewport(OBJECTIVE, { preset: "responsive", width: 320, height: 640 }, "user", "default", { remoteFit: "set" });
+      expect(fitted).toMatchObject({ width: 320, height: 640, preset: "responsive", setBy: null });
+      expect(desktop.deviceMetrics.at(-1)).toMatchObject({ width: 320, height: 640, mobile: false });
+      expect(await service.geometryVersion(OBJECTIVE, tab.id)).toBe(`${tab.id}:320x640:1`);
+      const opSpaces = (service as unknown as { objectiveRecords: Map<string, { spaces: Map<string, { remoteFit: { width: number; height: number } | null; viewport: { width: number; height: number; preset: string; setBy: string | null }; viewportFollowsPane: boolean }> }> }).objectiveRecords.get(OBJECTIVE)!.spaces;
+      expect(opSpaces.get("default")).toMatchObject({ viewportFollowsPane: true, viewport: { width: 900, height: 700, preset: "responsive", setBy: null }, remoteFit: { width: 320, height: 640 } });
 
-      const opSpaces = (service as unknown as { objectiveRecords: Map<string, { spaces: Map<string, { viewport: { width: number; height: number; preset: string; setBy: string | null }; viewportFollowsPane: boolean }> }> }).objectiveRecords.get(OBJECTIVE)!.spaces;
-      expect(opSpaces.get("default")).toMatchObject({ viewportFollowsPane: true, viewport: { width: 900, height: 700, preset: "responsive", setBy: null } });
-
+      // 맞춤 중에 프리셋을 고르면 프리셋이 이긴다 — 스테이지 리스를 기다리지 않고 맞춤을 걷는다.
       await service.setViewport(OBJECTIVE, { preset: "mobile" }, "user", "default");
+      expect(opSpaces.get("default")!.remoteFit).toBeNull();
+      expect(opSpaces.get("default")).toMatchObject({ viewportFollowsPane: false, viewport: { preset: "mobile", setBy: "user" } });
+      expect(desktop.deviceMetrics.at(-1)).toMatchObject({ width: 375, height: 812, mobile: true });
+
+      // 맞춤은 그 뒤에도 프리셋을 덮어쓰지 않고 자기 크기만 에뮬레이션한다.
+      await service.setViewport(OBJECTIVE, { preset: "responsive", width: 320, height: 640 }, "user", "default", { remoteFit: "set" });
+      expect(desktop.deviceMetrics.at(-1)).toMatchObject({ width: 320, height: 640, mobile: false });
+      expect(opSpaces.get("default")).toMatchObject({ viewport: { preset: "mobile", setBy: "user" }, remoteFit: { width: 320, height: 640 } });
+
+      // 실행 측이 제어권을 가져오면(Console 원격 제어 회수) 리스 만료를 기다리지 않고 맞춤이 걷힌다.
+      service.setControl(OBJECTIVE, "default", "take");
+      expect(opSpaces.get("default")!.remoteFit).toBeNull();
+      expect(desktop.deviceMetrics.at(-1)).toMatchObject({ width: 375, height: 812, mobile: true });
+
+      // 원격 세션이 끝나도 같은 자리에서 걷힌다.
+      await service.setViewport(OBJECTIVE, { preset: "responsive", width: 320, height: 640 }, "user", "default", { remoteFit: "set" });
+      service.clearAllRemoteFits();
+      expect(opSpaces.get("default")!.remoteFit).toBeNull();
+      expect(desktop.deviceMetrics.at(-1)).toMatchObject({ width: 375, height: 812, mobile: true });
+
+      // 엔진이 사라지면 리스 타이머를 기다리지 않고 맞춤만 걷는다 — 스페이스의 뷰포트는 그대로다.
       await service.stopEngine();
+      expect(opSpaces.get("default")!.remoteFit).toBeNull();
       expect(opSpaces.get("default")).toMatchObject({ viewportFollowsPane: false, viewport: { preset: "mobile", setBy: "user" } });
     } finally {
       await service.dispose();

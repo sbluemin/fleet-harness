@@ -291,7 +291,9 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
         return;
       }
       case "viewport": {
-        closeOverlay();
+        // 스테이지의 크기 알림·5초 리스 갱신은 자동이다 — 그때 열려 있던 메뉴·주석을 닫지 않는다.
+        // 사용자가 메뉴에서 프리셋을 고른 경우(bar)에만 오버레이를 닫는다.
+        if (_role !== "stage") closeOverlay();
         const spaceId = control.space();
         if (!base) return;
         // 맞춤 크기는 창을 끄는 동안 거듭 온다. busy 로 크롬을 잠그지 않는다. 프리셋만 오는 메뉴는 예전과 같이 한 번 알린다.

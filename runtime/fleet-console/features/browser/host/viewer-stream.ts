@@ -1,8 +1,10 @@
 import type * as http from "node:http";
 import {
   DESKTOP_BROWSER_VIEWER_STREAM_PATH,
+  DESKTOP_BROWSER_VIEWER_QUALITY_PARAM,
   REMOTE_FRAME_STREAM_CONTENT_TYPE,
   encodeRemoteBrowserFrame,
+  viewerCaptureQualityOf,
   type BrowserExecutionHost,
 } from "@fleet-console/protocol/desktop";
 import type { DesktopEngine } from "./desktop-engine.js";
@@ -61,7 +63,7 @@ export function createViewerStreamHandler(deps: ViewerStreamDeps): (req: http.In
     const rawAfter = Number(params.get("afterSeq") ?? "0");
     let after = Number.isFinite(rawAfter) && rawAfter >= 0 ? Math.floor(rawAfter) : 0;
 
-    const release = desktopEngine.acquireWatch(viewId);
+    const release = desktopEngine.acquireWatch(viewId, { quality: viewerCaptureQualityOf(params.get(DESKTOP_BROWSER_VIEWER_QUALITY_PARAM)) });
     let settled = false;
     let unsubscribe: (() => void) | null = null;
     const finish = (lease: boolean): void => {

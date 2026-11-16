@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { app, BaseWindow, clipboard, dialog, Menu, nativeImage, Notification, safeStorage, screen, session, shell, systemPreferences, Tray, WebContentsView, type Session } from "electron";
 
 import { recoverConsoleLockSlot } from "@fleet-console/lifecycle";
-import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, REMOTE_FILE_CHOOSER_MAX_FILE_BYTES, REMOTE_FILE_CHOOSER_MAX_FILES, REMOTE_FILE_CHOOSER_MAX_TOTAL_BYTES, type DesktopBrowserPlatform, type RemoteBrowserUploadFile } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_FRAME_MAX_BYTES, DESKTOP_BROWSER_REMOTE_CONTROL_CAPABILITY, DESKTOP_BROWSER_SURFACE_CAPABILITY, DESKTOP_BROWSER_VIEWER_CAPABILITY, DESKTOP_BROWSER_PROFILE_ID, REMOTE_FILE_CHOOSER_MAX_FILE_BYTES, REMOTE_FILE_CHOOSER_MAX_FILES, REMOTE_FILE_CHOOSER_MAX_TOTAL_BYTES, type DesktopBrowserPlatform, type RemoteBrowserUploadFile, type ViewerCaptureProfile } from "@fleet-console/protocol/desktop";
 import { readConsoleReleaseTagOverride } from "@fleet-console/protocol/release";
 
 import { autoUpdater } from "electron-updater";
@@ -659,6 +659,7 @@ async function boot(): Promise<void> {
     fetch: consoleFetch,
     lang: entryLanguage,
     localAct: browserActions,
+    viewerQuality: desktopState.browserViewer,
     openExternal: (url) => { void shell.openExternal(url); },
     pickFiles: async ({ multiple }) => {
       const properties: ("openFile" | "multiSelections")[] = multiple ? ["openFile", "multiSelections"] : ["openFile"];
@@ -682,26 +683,61 @@ async function boot(): Promise<void> {
     },
     log: (message) => logger.info(message),
   });
-  const captureViewerFrame = async (view: WebContentsView): Promise<{ jpeg: Buffer; width: number; height: number } | null> => {
+  /**
+   * 시청 프레임 한 장. 그림은 **페이지의 레이아웃 뷰포트**다 — 뷰 bounds 가 아니다. 화질 프로필은 이 시청 캡처
+   * 한 곳에만 쓴다(로컬 표시·에이전트 스크린샷과 무관).
+   *
+   * 레이아웃이 뷰 자리와 같으면(네이티브) `capturePage` 가 가장 싸고 숨은 뷰에서도 렌더링을 강제한다. 다르면
+   * (원격 맞춤·프리셋·에이전트 에뮬레이션) CDP 로 화면 뷰포트를 그대로 받는다 — `capturePage` 는 뷰 자리만 담는다.
+   * CDP 에 clip 을 주지 않는다: clip 은 스크롤 위치에서 문서 좌표로 읽히고 라이브 뷰에 캡처용 에뮬레이션을 건다.
+   * 어느 경로든 응답이 멎을 수 있으므로 시간을 제한한다.
+   */
+  const captureViewerFrame = async (view: WebContentsView, options: { readonly profile: ViewerCaptureProfile }): Promise<{ jpeg: Buffer; width: number; height: number; cssWidth?: number; cssHeight?: number } | null> => {
     const contents = view.webContents;
     if (contents.isDestroyed()) return null;
-    let image;
-    // 빈 rect 는 뷰 전체다. stayHidden false · stayAwake true 는 탭 캡처와 같이, 이 복사 동안 렌더러를 보이는 상태로 두고 슬립을 막는다.
-    try { image = await contents.capturePage({ x: 0, y: 0, width: 0, height: 0 }, { stayHidden: false, stayAwake: true }); } catch { return null; }
-    if (image.isEmpty()) {
+    const profile = options.profile;
+    const bounded = async <T,>(work: Promise<T>, ms: number): Promise<T | null> => {
       try {
-        const shot = await contents.debugger.sendCommand("Page.captureScreenshot", { format: "jpeg", quality: 72 }) as { data?: unknown };
-        if (typeof shot.data !== "string" || shot.data.length === 0) return null;
-        image = nativeImage.createFromBuffer(Buffer.from(shot.data, "base64"));
+        return await Promise.race([work, new Promise<null>((resolve) => { setTimeout(() => resolve(null), ms); })]);
       } catch { return null; }
+    };
+    // 페이지의 실제 레이아웃 — 원격 맞춤·에뮬레이션이면 뷰 bounds 와 다르다. 프레임 CSS 메타와 원격 좌표의 기준이다.
+    let cssWidth: number | null = null;
+    let cssHeight: number | null = null;
+    const metrics = await bounded(contents.debugger.sendCommand("Page.getLayoutMetrics", {}) as Promise<{ cssLayoutViewport?: { clientWidth?: unknown; clientHeight?: unknown } }>, 2_000);
+    const metricWidth = Number(metrics?.cssLayoutViewport?.clientWidth);
+    const metricHeight = Number(metrics?.cssLayoutViewport?.clientHeight);
+    if (metricWidth >= 1 && metricWidth <= 10_000 && metricHeight >= 1 && metricHeight <= 10_000) { cssWidth = Math.round(metricWidth); cssHeight = Math.round(metricHeight); }
+    /** 캡처 결과를 프로필 예산으로 줄이고 JPEG 로 만든다. CSS 메타는 그림이 아니라 레이아웃에서 온다. */
+    const finish = (image: ReturnType<typeof nativeImage.createFromBuffer> | null): { jpeg: Buffer; width: number; height: number; cssWidth?: number; cssHeight?: number } | null => {
+      if (!image || image.isEmpty()) return null;
+      let sized = image;
+      const size = sized.getSize();
+      if (size.width > profile.maxWidth) sized = sized.resize({ width: profile.maxWidth, height: Math.max(1, Math.round(size.height * (profile.maxWidth / size.width))), quality: "good" });
+      const scaled = sized.getSize();
+      if (scaled.height > profile.maxHeight) sized = sized.resize({ height: profile.maxHeight, width: Math.max(1, Math.round(scaled.width * (profile.maxHeight / scaled.height))), quality: "good" });
+      const jpeg = sized.toJPEG(profile.quality);
+      if (jpeg.length === 0 || jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return null;
+      const encoded = sized.getSize();
+      return { jpeg, width: encoded.width, height: encoded.height, ...(cssWidth !== null && cssHeight !== null ? { cssWidth, cssHeight } : {}) };
+    };
+    const capturePage = () => bounded(contents.capturePage({ x: 0, y: 0, width: 0, height: 0 }, { stayHidden: false, stayAwake: true }), 3_000);
+    const bounds = view.getBounds();
+    const emulated = cssWidth !== null && cssHeight !== null
+      && (Math.abs(bounds.width - cssWidth) > 1 || Math.abs(bounds.height - cssHeight) > 1);
+    if (!emulated) {
+      const framed = finish(await capturePage());
+      if (framed) return framed;
     }
-    if (image.isEmpty()) return null;
-    const size = image.getSize();
-    if (size.width > 1280 && size.width > 0) image = image.resize({ width: 1280, height: Math.max(1, Math.round(size.height * (1280 / size.width))), quality: "good" });
-    const jpeg = image.toJPEG(72);
-    if (jpeg.length === 0 || jpeg.length > DESKTOP_BROWSER_FRAME_MAX_BYTES) return null;
-    const encoded = image.getSize();
-    return { jpeg, width: encoded.width, height: encoded.height };
+    // 화면 뷰포트 그대로 — clip 없이 받아 스크롤·라이브 에뮬레이션 부작용을 피한다.
+    const shot = await bounded(contents.debugger.sendCommand("Page.captureScreenshot", { format: "jpeg", quality: profile.quality, optimizeForSpeed: true }) as Promise<{ data?: unknown }>, 3_000);
+    if (typeof shot?.data === "string" && shot.data.length > 0) {
+      const framed = finish(nativeImage.createFromBuffer(Buffer.from(shot.data, "base64")));
+      if (framed) return framed;
+    }
+    // CDP 가 답하지 않으면 뷰 자리라도 보낸다 — CSS 메타는 레이아웃 값이므로 원격 좌표는 그대로 맞는다.
+    if (emulated) return finish(await capturePage());
+    return null;
   };
   const browserHost = createManagedBrowserHost({
     display: browserSurface,

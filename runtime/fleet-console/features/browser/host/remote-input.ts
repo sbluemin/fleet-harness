@@ -48,6 +48,17 @@ export interface RemoteInputHooks {
   notePointer(kind: "move" | "click" | "type" | "scroll", at?: { x: number; y: number }): void;
   /** 클릭을 보내기 전 `<select>` 가로채기. 원격 팝업을 띄웠으면 그 팝업을 돌려준다. */
   interceptSelect?(x: number, y: number): Promise<RemoteBrowserSelectPopup | null>;
+  /**
+   * 모아 둔 CDP 명령을 한 왕복으로 보낸다. 없으면 하나씩 `client.send` 로 보낸다 —
+   * 순서는 어느 쪽이든 배치의 이벤트 순서 그대로다.
+   */
+  dispatch?(commands: readonly RemoteInputCommand[]): Promise<void>;
+}
+
+/** 배치 하나가 만든 CDP 명령 — `method`+`params` 만. 세션은 호출자가 쥔다. */
+export interface RemoteInputCommand {
+  readonly method: string;
+  readonly params: Record<string, unknown>;
 }
 
 const BUTTONS = { left: 1, right: 2, middle: 4 } as const;
@@ -59,6 +70,27 @@ const toModifiers = (event: { modifiers?: { alt: boolean; ctrl: boolean; meta: b
   shift: event.modifiers?.shift ?? false,
 });
 
+/** 마우스 한 건의 CDP 명령과 다음 포인터 상태 — service.mouse 와 같은 좌표·버튼 규칙. */
+export function remoteMouseCommand(event: RemoteBrowserMouseEvent, pointer: RemotePointerState | null): { command: RemoteInputCommand; pointer: RemotePointerState | null } {
+  const button = event.button ?? "left";
+  const base = { x: Math.round(event.x), y: Math.round(event.y), modifiers: modifierBits(toModifiers(event)) };
+  if (event.type === "wheel") {
+    return { command: { method: "Input.dispatchMouseEvent", params: { ...base, type: "mouseWheel", deltaX: event.deltaX ?? 0, deltaY: event.deltaY ?? 0 } }, pointer };
+  }
+  if (event.type === "move") {
+    return {
+      command: { method: "Input.dispatchMouseEvent", params: { ...base, type: "mouseMoved", button: pointer?.button ?? "none", ...(pointer ? { buttons: pointer.buttons } : {}) } },
+      pointer,
+    };
+  }
+  const clickCount = event.clickCount ?? 1;
+  const buttons = BUTTONS[button];
+  if (event.type === "down") {
+    return { command: { method: "Input.dispatchMouseEvent", params: { ...base, type: "mousePressed", button, buttons, clickCount } }, pointer: { button, buttons } };
+  }
+  return { command: { method: "Input.dispatchMouseEvent", params: { ...base, type: "mouseReleased", button, clickCount } }, pointer: null };
+}
+
 /** 마우스 한 건 — service.mouse 와 같은 좌표·버튼 규칙. 다음 포인터 상태를 돌려준다. */
 export async function dispatchRemoteMouse(
   client: CdpClient,
@@ -66,29 +98,37 @@ export async function dispatchRemoteMouse(
   event: RemoteBrowserMouseEvent,
   pointer: RemotePointerState | null,
 ): Promise<RemotePointerState | null> {
-  const button = event.button ?? "left";
-  const base = { x: Math.round(event.x), y: Math.round(event.y), modifiers: modifierBits(toModifiers(event)) };
-  if (event.type === "wheel") {
-    await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseWheel", deltaX: event.deltaX ?? 0, deltaY: event.deltaY ?? 0 }, sessionId);
-    return pointer;
+  const outcome = remoteMouseCommand(event, pointer);
+  await client.send(outcome.command.method, outcome.command.params, sessionId);
+  return outcome.pointer;
+}
+
+/** 키 한 건의 CDP 명령. IME 조합 키(229·isComposing)는 명령이 아니라 `"ime-deferred"` 다. */
+export function remoteKeyCommand(event: RemoteBrowserKeyEvent): RemoteInputCommand | "ime-deferred" {
+  if (isImeKeyEvent({ keyCode: event.keyCode, key: event.key })) return "ime-deferred";
+  const mods = toModifiers(event);
+  const params = toCdpKeyParams(describeDomKey(event.key, event.code, mods), mods);
+  if (event.type === "keyUp") {
+    return {
+      method: "Input.dispatchKeyEvent",
+      params: {
+        key: params.key,
+        code: params.code,
+        windowsVirtualKeyCode: params.windowsVirtualKeyCode,
+        nativeVirtualKeyCode: params.nativeVirtualKeyCode,
+        modifiers: params.modifiers,
+        type: "keyUp",
+      },
+    };
   }
-  if (event.type === "move") {
-    await client.send("Input.dispatchMouseEvent", {
-      ...base,
-      type: "mouseMoved",
-      button: pointer?.button ?? "none",
-      ...(pointer ? { buttons: pointer.buttons } : {}),
-    }, sessionId);
-    return pointer;
-  }
-  const clickCount = event.clickCount ?? 1;
-  const buttons = BUTTONS[button];
-  if (event.type === "down") {
-    await client.send("Input.dispatchMouseEvent", { ...base, type: "mousePressed", button, buttons, clickCount }, sessionId);
-    return { button, buttons };
-  }
-  await client.send("Input.dispatchMouseEvent", { ...base, type: "mouseReleased", button, clickCount }, sessionId);
-  return null;
+  return {
+    method: "Input.dispatchKeyEvent",
+    params: {
+      ...params,
+      type: params.text !== undefined ? "keyDown" : "rawKeyDown",
+      ...(event.repeat ? { autoRepeat: true } : {}),
+    },
+  };
 }
 
 /**
@@ -100,48 +140,35 @@ export async function dispatchRemoteKey(
   sessionId: string,
   event: RemoteBrowserKeyEvent,
 ): Promise<"dispatched" | "ime-deferred"> {
-  if (isImeKeyEvent({ keyCode: event.keyCode, key: event.key })) return "ime-deferred";
-  const mods = toModifiers(event);
-  const params = toCdpKeyParams(describeDomKey(event.key, event.code, mods), mods);
-  if (event.type === "keyUp") {
-    await client.send("Input.dispatchKeyEvent", {
-      key: params.key,
-      code: params.code,
-      windowsVirtualKeyCode: params.windowsVirtualKeyCode,
-      nativeVirtualKeyCode: params.nativeVirtualKeyCode,
-      modifiers: params.modifiers,
-      type: "keyUp",
-    }, sessionId);
-    return "dispatched";
-  }
-  await client.send("Input.dispatchKeyEvent", {
-    ...params,
-    type: params.text !== undefined ? "keyDown" : "rawKeyDown",
-    ...(event.repeat ? { autoRepeat: true } : {}),
-  }, sessionId);
+  const command = remoteKeyCommand(event);
+  if (command === "ime-deferred") return "ime-deferred";
+  await client.send(command.method, command.params, sessionId);
   return "dispatched";
 }
 
-/** IME 한 건 — `composition` 은 진행 중 조합, `commit` 은 확정, `cancel` 은 버림. */
-export async function dispatchRemoteIme(client: CdpClient, sessionId: string, event: RemoteBrowserImeEvent): Promise<void> {
+/** IME 한 건의 CDP 명령 — `composition` 은 진행 중 조합, `commit` 은 확정, `cancel` 은 버림. */
+export function remoteImeCommand(event: RemoteBrowserImeEvent): RemoteInputCommand | null {
   const text = event.text ?? "";
   if (event.type === "commit") {
-    if (text) await client.send("Input.insertText", { text }, sessionId);
-    return;
+    return text ? { method: "Input.insertText", params: { text } } : null;
   }
   if (event.type === "cancel") {
-    await client.send("Input.imeSetComposition", { text: "", selectionStart: 0, selectionEnd: 0 }, sessionId);
-    return;
+    return { method: "Input.imeSetComposition", params: { text: "", selectionStart: 0, selectionEnd: 0 } };
   }
-  await client.send(
-    "Input.imeSetComposition",
-    {
+  return {
+    method: "Input.imeSetComposition",
+    params: {
       text,
       selectionStart: event.selectionStart ?? text.length,
       selectionEnd: event.selectionEnd ?? text.length,
     },
-    sessionId,
-  );
+  };
+}
+
+/** IME 한 건 — `composition` 은 진행 중 조합, `commit` 은 확정, `cancel` 은 버림. */
+export async function dispatchRemoteIme(client: CdpClient, sessionId: string, event: RemoteBrowserImeEvent): Promise<void> {
+  const command = remoteImeCommand(event);
+  if (command) await client.send(command.method, command.params, sessionId);
 }
 
 export interface RemoteBatchResult {
@@ -151,8 +178,11 @@ export interface RemoteBatchResult {
 }
 
 /**
- * 배치 한 묶음을 순서대로 실행 측에 닿게 한다. 마우스 `down` 앞에서는 `<select>` 를 먼저 봐서
- * 네이티브 드롭다운이 실행 기기 화면을 묶기 전에 팝업으로 바꾼다.
+ * 배치 한 묶음을 순서대로 실행 측에 닿게 한다.
+ *
+ * 이벤트를 CDP 명령으로 모아 두고 한 번에 보낸다(`hooks.dispatch`) — 실시간 입력이 이벤트 수만큼
+ * 왕복하지 않게 하기 위해서다. 마우스 `down` 앞에서는 `<select>` 를 먼저 봐야 하므로 그때까지 모은
+ * 명령만 먼저 보내고 프로브한 뒤, 팝업이 아니면 클릭을 이어서 모은다.
  */
 export async function applyRemoteInputBatch(
   client: CdpClient,
@@ -163,10 +193,16 @@ export async function applyRemoteInputBatch(
 ): Promise<{ pointer: RemotePointerState | null; result: RemoteBatchResult }> {
   if (!isRemoteBrowserInputBatch(batch)) throw new RemoteInputError("remote_input_invalid", "Remote input batch failed validation.");
   hooks.assertControl();
+  const flush = async (commands: RemoteInputCommand[]): Promise<void> => {
+    if (commands.length === 0) return;
+    if (hooks.dispatch) { await hooks.dispatch(commands); return; }
+    for (const command of commands) await client.send(command.method, command.params, sessionId);
+  };
   let next = pointer;
   let dispatched = 0;
   let imeDeferred = 0;
   let select: RemoteBrowserSelectPopup | null = null;
+  const queued: RemoteInputCommand[] = [];
   for (const event of batch.events) {
     hooks.assertControl();
     if (event.kind === "focus") {
@@ -175,21 +211,23 @@ export async function applyRemoteInputBatch(
       continue;
     }
     if (event.kind === "ime") {
-      await dispatchRemoteIme(client, sessionId, event);
+      const command = remoteImeCommand(event);
+      if (command) queued.push(command);
       hooks.notePointer("type");
       dispatched += 1;
       continue;
     }
     if (event.kind === "key") {
-      const outcome = await dispatchRemoteKey(client, sessionId, event);
-      if (outcome === "ime-deferred") imeDeferred += 1;
-      else dispatched += 1;
+      const command = remoteKeyCommand(event);
+      if (command === "ime-deferred") imeDeferred += 1;
+      else { queued.push(command); dispatched += 1; }
       hooks.notePointer("type");
       continue;
     }
-    // mouse
+    // mouse — 클릭 앞의 select 프로브는 그때까지 모은 명령을 먼저 보낸 뒤에 한다.
     const at = { x: Math.round(event.x), y: Math.round(event.y) };
     if (event.type === "down" && hooks.interceptSelect) {
+      await flush(queued.splice(0));
       const popup = await hooks.interceptSelect(event.x, event.y).catch(() => null);
       if (popup) {
         select = popup;
@@ -197,10 +235,13 @@ export async function applyRemoteInputBatch(
         continue;
       }
     }
-    next = await dispatchRemoteMouse(client, sessionId, event, next);
+    const outcome = remoteMouseCommand(event, next);
+    next = outcome.pointer;
+    queued.push(outcome.command);
     hooks.notePointer(event.type === "wheel" ? "scroll" : event.type === "down" || event.type === "up" ? "click" : "move", at);
     dispatched += 1;
   }
+  await flush(queued);
   return { pointer: next, result: { dispatched, imeDeferred, select } };
 }
 
@@ -243,6 +284,18 @@ export interface SelectProbeHit {
   readonly disabled: boolean;
   readonly rect: { x: number; y: number; width: number; height: number };
   readonly options: readonly RemoteBrowserSelectOption[];
+}
+
+/**
+ * 그 문서에 `<select>` 가 하나라도 있는지 — 클릭마다 좌표 프로브를 하지 않기 위한 탭 단위 캐시의 원천.
+ * 문서가 바뀌면(네비게이션) 호출자가 캐시를 버린다.
+ */
+export async function probeSelectPresence(client: CdpClient, sessionId: string): Promise<boolean> {
+  const found = await client.send<{ result?: { value?: unknown } }>("Runtime.evaluate", {
+    expression: `document.querySelector("select") !== null`,
+    returnByValue: true,
+  }, sessionId).catch(() => null);
+  return found?.result?.value === true;
 }
 
 /**

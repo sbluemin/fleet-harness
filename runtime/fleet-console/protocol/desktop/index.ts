@@ -4,10 +4,12 @@ import {
   isRemoteBrowserPasswordPrompt,
   isRemoteBrowserPermissionPrompt,
   isRemoteBrowserSelectPopup,
+  isViewerCaptureQuality,
   type RemoteBrowserFileChooserPrompt,
   type RemoteBrowserPasswordPrompt,
   type RemoteBrowserPermissionPrompt,
   type RemoteBrowserSelectPopup,
+  type ViewerCaptureQuality,
 } from "./browser-remote.js";
 export * from "./browser-remote.js";
 
@@ -268,6 +270,11 @@ export interface DesktopBrowserSnapshot {
   readonly chrome?: DesktopBrowserChrome | null;
   /** 원격·비관리 보기 전용 뷰어가 실제로 열람 중이라 최신 프레임 캡처가 필요한 뷰 id 목록. 비어 있으면 캡처하지 않는다. */
   readonly watchedViewIds?: readonly string[];
+  /**
+   * 시청자가 고른 스트리밍 화질 — 시청 프레임 캡처에만 쓰인다. 선택 필드이므로 옛 Console 은 싣지 않고,
+   * 옛 셸은 무시해 현행(balanced) 동작으로 남는다.
+   */
+  readonly viewerCapture?: ViewerCaptureQuality;
 }
 
 /**
@@ -463,7 +470,8 @@ export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowse
     && (value.epoch === undefined || typeof value.epoch === "string")
     && (value.surface === undefined || value.surface === null || isDesktopBrowserSurface(value.surface))
     && (value.chrome === undefined || value.chrome === null || isDesktopBrowserChrome(value.chrome))
-    && (value.watchedViewIds === undefined || (Array.isArray(value.watchedViewIds) && value.watchedViewIds.length <= 64 && value.watchedViewIds.every(isSafeId)));
+    && (value.watchedViewIds === undefined || (Array.isArray(value.watchedViewIds) && value.watchedViewIds.length <= 64 && value.watchedViewIds.every(isSafeId)))
+    && (value.viewerCapture === undefined || isViewerCaptureQuality(value.viewerCapture));
 }
 
 export function isDesktopBrowserSurface(value: unknown): value is DesktopBrowserSurface {

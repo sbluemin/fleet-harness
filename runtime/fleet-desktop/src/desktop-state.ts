@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { isViewerCaptureQuality, type ViewerCaptureQuality } from "@fleet-console/protocol/desktop";
 
 export const DEFAULT_ZOOM_LEVEL = 0;
 export const MIN_ZOOM_LEVEL = -3;
@@ -48,11 +49,18 @@ export interface BrowserStripStore {
   save(prefs: BrowserStripPrefs): void;
 }
 
+/** 원격 브라우저 시청 스트리밍 화질 — 이 기계의 선호다. */
+export interface BrowserViewerStore {
+  load(): ViewerCaptureQuality;
+  save(quality: ViewerCaptureQuality): void;
+}
+
 /** desktop-state.json 한 파일을 줌·창·브라우저 탭 표시줄이 나눠 쓴다 — 한쪽을 쓸 때 다른 쪽을 지우지 않는다. */
 export interface DesktopState {
   readonly zoom: ZoomState;
   readonly window: WindowStateStore;
   readonly browserStrip: BrowserStripStore;
+  readonly browserViewer: BrowserViewerStore;
 }
 
 export function clampZoomLevel(zoomLevel: number): number {
@@ -64,6 +72,7 @@ interface PersistedDesktopState {
   zoomLevel?: number;
   window?: WindowState;
   browserStrip?: BrowserStripPrefs;
+  viewerQuality?: ViewerCaptureQuality;
 }
 
 export function createDesktopState(statePath: string, fileSystem: DesktopStateFileSystem = fs): DesktopState {
@@ -80,6 +89,7 @@ export function createDesktopState(statePath: string, fileSystem: DesktopStateFi
       if (window) state.window = window;
       const browserStrip = parseBrowserStrip(record.browserStrip);
       if (browserStrip) state.browserStrip = browserStrip;
+      if (isViewerCaptureQuality(record.viewerQuality)) state.viewerQuality = record.viewerQuality;
       return state;
     } catch {
       return {};
@@ -106,6 +116,10 @@ export function createDesktopState(statePath: string, fileSystem: DesktopStateFi
     browserStrip: {
       load: () => read().browserStrip ?? null,
       save: (prefs) => write({ browserStrip: { pinned: prefs.pinned, orientation: prefs.orientation, autoExpand: prefs.autoExpand } }),
+    },
+    browserViewer: {
+      load: () => read().viewerQuality ?? "balanced",
+      save: (quality) => write({ viewerQuality: quality }),
     },
   };
 }

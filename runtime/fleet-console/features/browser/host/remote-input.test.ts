@@ -123,6 +123,32 @@ describe("remote batch application", () => {
     expect(hooks.assertControl).not.toHaveBeenCalled();
   });
 
+  it("sends a batch's commands in one dispatch so an input batch costs one round trip", async () => {
+    const { client, calls } = fakeClient();
+    const batches: Array<readonly { method: string; params: Record<string, unknown> }[]> = [];
+    const hooks = {
+      assertControl: vi.fn(),
+      notePointer: vi.fn(),
+      dispatch: vi.fn(async (commands: readonly { method: string; params: Record<string, unknown> }[]) => { batches.push(commands); }),
+    };
+    const { result } = await applyRemoteInputBatch(client, "sess", {
+      tabId: "t",
+      events: [
+        { kind: "mouse", type: "move", x: 1, y: 2, modifiers: { alt: false, ctrl: false, meta: false, shift: false } },
+        { kind: "mouse", type: "down", x: 1, y: 2, button: "left", modifiers: { alt: false, ctrl: false, meta: false, shift: false } },
+        { kind: "key", type: "keyDown", key: "a", code: "KeyA", modifiers: { alt: false, ctrl: false, meta: false, shift: false } },
+      ],
+    }, null, hooks);
+    expect(calls).toHaveLength(0);
+    expect(batches).toHaveLength(1);
+    expect(batches[0]!.map((command) => `${command.method}:${(command.params as { type?: string }).type ?? ""}`)).toEqual([
+      "Input.dispatchMouseEvent:mouseMoved",
+      "Input.dispatchMouseEvent:mousePressed",
+      "Input.dispatchKeyEvent:keyDown",
+    ]);
+    expect(result).toMatchObject({ dispatched: 3, imeDeferred: 0 });
+  });
+
   it("keeps event order and skips the click when a select popup opens", async () => {
     const { client, calls } = fakeClient();
     const hooks = {

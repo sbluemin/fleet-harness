@@ -31,6 +31,11 @@ describe("managed desktop browser engine", () => {
 
     const release = engine.acquireWatch(viewId);
     expect(engine.snapshot().watchedViewIds).toEqual([viewId]);
+    // 시청 화질은 watch 요청이 정하고 스냅샷으로 실행 측에 실린다(로컬 표시와 무관).
+    expect(engine.snapshot().viewerCapture).toBe("balanced");
+    const highQuality = engine.acquireWatch(viewId, { quality: "high" });
+    expect(engine.snapshot().viewerCapture).toBe("high");
+    highQuality(false);
     const first = Buffer.from([0xff, 0xd8, 0x01]);
     const second = Buffer.from([0xff, 0xd8, 0x02]);
     expect(engine.ingestFrame(viewId, first, 10, 8)?.seq).toBe(1);
@@ -494,7 +499,9 @@ describe("remote desktop browser control", () => {
       }) as unknown as ServerResponse;
       const jpeg = (marker: number) => Buffer.from([0xff, 0xd8, 0xff, 0xd9, marker]);
       engine.ingestFrame(currentViewId, jpeg(1), 100, 100, 100, 100);
-      await handler(Object.assign(Readable.from([]), { method: "GET", url: `${DESKTOP_BROWSER_VIEWER_STREAM_PATH}?tabId=${tab.id}&afterSeq=0` }) as IncomingMessage, res);
+      await handler(Object.assign(Readable.from([]), { method: "GET", url: `${DESKTOP_BROWSER_VIEWER_STREAM_PATH}?tabId=${tab.id}&afterSeq=0&quality=high` }) as IncomingMessage, res);
+      // 스트림 요청의 화질 선택이 watch 속성으로 실행 측 스냅샷에 실린다.
+      expect(engine.snapshot().viewerCapture).toBe("high");
       // 첫 프레임이 drain 대기에 걸린 상태에서 2, 3, 4번 프레임이 연속 도착한다.
       engine.ingestFrame(currentViewId, jpeg(2), 100, 100, 100, 100);
       engine.ingestFrame(currentViewId, jpeg(3), 100, 100, 100, 100);
