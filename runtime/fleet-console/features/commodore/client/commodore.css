@@ -1746,8 +1746,12 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top,
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top * { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) {
-  .commodore-composer-chips-fold,
-  .commodore-composer-chips-expanded,
+  /* 칩 줄의 상태 선택자(0,2,0·0,3,0)와 theme.css의 전역 transition-duration !important를 함께 이겨야 한다.
+     특히 visibility의 140ms 지연이 남으면 초점을 옮기는 순간 대상 단추가 아직 hidden이라 초점이 BODY로 떨어진다. */
+  .commodore-composer-chips-switch > .commodore-composer-chips-fold,
+  .commodore-composer-chips-switch > .commodore-composer-chips-expanded,
+  .commodore-composer-chips-switch:not(.is-expanded) > .commodore-composer-chips-fold,
+  .commodore-composer-chips-switch.is-expanded > .commodore-composer-chips-expanded { transition: none !important; }
   .commodore-composer-chip[data-tip]::after,
   .commodore-composer-chips-fold[data-tip]::after,
   .commodore-composer-chips-unfold[data-tip]::after,
