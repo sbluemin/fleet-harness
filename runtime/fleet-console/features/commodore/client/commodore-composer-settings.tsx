@@ -20,7 +20,7 @@ import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { useCommodoreList } from "./commodore-list.js";
 import { useCommodoreName } from "./commodore-name.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
-import { setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
+import { isSavingGlobalSettingsField, setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 
 /**
@@ -35,6 +35,8 @@ type Coordinates = { readonly model?: string; readonly effort?: string; readonly
 
 export type CommodoreComposerSettingsSection = "commodore" | "commander" | "pool" | "theaters";
 const SECTIONS: readonly CommodoreComposerSettingsSection[] = ["commodore", "commander", "pool", "theaters"];
+/** 칩 줄 표시 선호의 전역 설정 필드 — 서버 전역 설정의 한 boolean이다. */
+const CHIPS_EXPANDED_FIELD = "commodoreComposerChipsExpanded" as const;
 
 /* ── 바깥에서 여는 요청 — 빈 상태의 「작전 구역 추가」·만들기 창 착지가 이 사령관 대화의 팝오버를 연다 ── */
 
@@ -62,6 +64,8 @@ const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.
 const OPEN_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const CLOSE_EASE = "cubic-bezier(0.4, 0.14, 0.2, 1)";
 const MOTION_MS = { open: 340, openFade: 180, openContent: 360, section: 420, sectionContent: 360, content: 360, close: 200 } as const;
+/** 접힌 요약 ↔ 펼친 줄의 폭 흐름 — 한 상자 안에서 겹쳐 둔 두 모습이 서로 자리를 바꾼다. */
+const CHIPS_MORPH_MS = 240;
 type HeightChange = "section" | "content";
 
 interface SettingsPopoverPlacement {
@@ -122,15 +126,23 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   const [tempExpanded, setTempExpanded] = useState(false);
   /** Esc로 닫고 칩에 초점이 돌아온 순간의 이름표 말풍선을 한 번만 눌러 둔다. */
   const [tipMuted, setTipMuted] = useState(false);
+  /** 저장이 끝나기 전에 누른 마지막 토글 목표 — 화면은 이 목표를 즉시 따르고, 저장은 직렬로 한 번 더 나간다. */
+  const [chipsIntent, setChipsIntent] = useState<boolean | null>(null);
   const chipsRef = useRef<HTMLDivElement | null>(null);
+  const switchRef = useRef<HTMLDivElement | null>(null);
+  const chipsMorphRef = useRef<Animation | null>(null);
   const summaryRef = useRef<HTMLButtonElement | null>(null);
-  const focusSummaryRef = useRef(false);
+  const unfoldRef = useRef<HTMLButtonElement | null>(null);
+  /** 명시적 접기/펼치기 액션만 초점을 옮긴다 — 마운트·새로고침·창 전환은 건드리지 않는다. */
+  const toggleFocusRef = useRef<"unfold" | "summary" | null>(null);
+  /** 저장 중에 눌린 마지막 목표 — 그 필드의 저장이 끝난 뒤 한 번 더 저장한다. */
+  const pendingChipsExpandedRef = useRef<boolean | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
   const chipRefs = useRef(new Map<CommodoreComposerSettingsSection, HTMLButtonElement>());
   const panelId = useId();
   const titleId = useId();
   const settingsStore = useGlobalSettingsStore();
-  const chipsExpanded = settingsStore.state?.commodoreComposerChipsExpanded === true || tempExpanded;
+  const chipsExpanded = tempExpanded || (chipsIntent ?? settingsStore.state?.commodoreComposerChipsExpanded === true);
   const name = useCommodoreName(commodoreId, t);
   const theaterCount = useCommodoreList().find((row) => row.commodoreId === commodoreId)?.theaters.length ?? 0;
   const agentRoster = useCommodoreRoster("agent");
@@ -139,6 +151,51 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   const labels = launchLabels(t);
 
   const chipIndicator = useSlidingIndicator(chipsRef, open !== null && !closing ? `[data-section="${open}"]` : null, `${open ?? ""}:${commodoreDisplayKey(state)}:${theaterCount}:${pool.signature}`);
+
+  // 접힌 요약과 펼친 줄을 한 상자에 겹쳐 두고 폭만 흐르게 한다 — 조건부 교체 없이 전환해 초점이 DOM에서 사라지지 않는다.
+  useLayoutEffect(() => {
+    const wrapper = switchRef.current;
+    if (!wrapper) return;
+    const active = chipsToggleContent(wrapper, chipsExpanded);
+    if (!active) return;
+    const from = wrapper.getBoundingClientRect().width;
+    const target = active.getBoundingClientRect().width;
+    const running = chipsMorphRef.current;
+    chipsMorphRef.current = null;
+    running?.cancel();
+    wrapper.classList.remove("is-morphing");
+    if (!(target > 0)) return;
+    wrapper.style.width = `${target}px`;
+    if (from <= 0 || reducedMotion() || typeof wrapper.animate !== "function" || Math.abs(from - target) < 1) return;
+    // 폭이 흐르는 동안만 넘치는 쪽을 자른다. 끝나면 overflow를 풀어 말풍선이 클리핑되지 않는다.
+    wrapper.classList.add("is-morphing");
+    const anim = wrapper.animate([{ width: `${from}px` }, { width: `${target}px` }], { duration: CHIPS_MORPH_MS, easing: OPEN_EASE });
+    chipsMorphRef.current = anim;
+    const settle = () => {
+      if (chipsMorphRef.current !== anim) return;
+      chipsMorphRef.current = null;
+      wrapper.classList.remove("is-morphing");
+      const settled = chipsToggleContent(wrapper, chipsExpanded)?.getBoundingClientRect().width ?? 0;
+      if (settled > 0) wrapper.style.width = `${settled}px`;
+    };
+    anim.onfinish = settle;
+    anim.oncancel = settle;
+  }, [chipsExpanded]);
+
+  // 같은 모습 안에서 내용(모델명·구역 수·테마 폭)이 바뀌면 상자 폭도 따라간다 — 흐름 중에는 건드리지 않는다.
+  useLayoutEffect(() => {
+    const wrapper = switchRef.current;
+    if (!wrapper || typeof ResizeObserver === "undefined") return;
+    const active = chipsToggleContent(wrapper, chipsExpanded);
+    if (!active) return;
+    const observer = new ResizeObserver(() => {
+      if (chipsMorphRef.current) return;
+      const width = active.getBoundingClientRect().width;
+      if (width > 0) wrapper.style.width = `${width}px`;
+    });
+    observer.observe(active);
+    return () => observer.disconnect();
+  }, [chipsExpanded]);
 
   useEffect(() => {
     onOpenChange?.(open !== null && !closing);
@@ -208,7 +265,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     const settleTemp = () => {
       if (!collapsingTemp) return;
       setTempExpanded(false);
-      if (refocus) focusSummaryRef.current = true;
+      if (refocus) toggleFocusRef.current = "summary";
     };
     const panel = panelRef.current;
     if (!panel || reducedMotion() || typeof panel.animate !== "function") {
@@ -241,6 +298,18 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
       settleTemp();
     };
   }, [open, tempExpanded]);
+
+  /**
+   * 칩 줄 표시 선호 저장 — 저장 중이면 마지막 목표만 남겨 두고 그 필드의 저장이 끝난 뒤 한 번 더 보낸다.
+   * 화면은 누른 목표를 즉시 따르므로 빠른 연속 토글(펼침→접기, 접기→펼침)도 조용히 버려지지 않는다.
+   */
+  const requestChipsExpanded = (next: boolean) => {
+    setChipsIntent(next);
+    pendingChipsExpandedRef.current = next;
+    if (isSavingGlobalSettingsField(CHIPS_EXPANDED_FIELD)) return;
+    pendingChipsExpandedRef.current = null;
+    void setGlobalSettingsField(CHIPS_EXPANDED_FIELD, next);
+  };
 
   // 닫히는 중에 칩을 다시 누르면 닫힘을 멈추고 지금 보이는 상태에서 그 칸으로 다시 연다.
   const reopen = (section: CommodoreComposerSettingsSection) => {
@@ -324,15 +393,37 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     if (Date.now() - request.at > REQUEST_TTL_MS) return;
     // 이미 펼쳐 둔 사람에게는 잠깐 펼침을 얹지 않는다 — 닫을 때 칩 초점 복귀를 가로채지 않게.
     if (settingsStore.state?.commodoreComposerChipsExpanded !== true) setTempExpanded(true);
+    // 방금 닫혀 접힌 단추로 초점이 돌아온 참이면, 다시 펼칠 때 그 단추가 inert가 되므로 초점을 펼친 줄로 넘긴다.
+    if (document.activeElement === summaryRef.current) toggleFocusRef.current = "unfold";
     reopen(request.section);
   }, [request, commodoreId]); // eslint-disable-line react-hooks/exhaustive-deps -- reopen 은 최신 상태를 읽는다.
 
-  // 잠깐 펼친 줄이 닫혀 다시 접히면 초점은 사라진 칩이 아니라 접힌 단추로 돌아간다.
-  useEffect(() => {
-    if (chipsExpanded || !focusSummaryRef.current) return;
-    focusSummaryRef.current = false;
-    summaryRef.current?.focus({ preventScroll: true });
+  // 명시적 토글·잠깐 펼침의 닫힘에서만 초점을 옮긴다 — 전환으로 사라지는 단추 대신 새로 선 단추로.
+  // 마운트·새로고침·창 전환은 이 플래그를 세우지 않으므로 초점을 뺏지 않는다.
+  useLayoutEffect(() => {
+    const target = toggleFocusRef.current;
+    if (target === null) return;
+    if (target === "unfold" ? !chipsExpanded : chipsExpanded) return;
+    toggleFocusRef.current = null;
+    (target === "unfold" ? unfoldRef.current : summaryRef.current)?.focus({ preventScroll: true });
   }, [chipsExpanded]);
+
+  // 저장 중 눌린 마지막 목표는 그 필드의 저장이 끝난 뒤 보낸다 — 두 번째 토글이 조용히 버려지지 않는다.
+  useEffect(() => {
+    if (isSavingGlobalSettingsField(CHIPS_EXPANDED_FIELD) || pendingChipsExpandedRef.current === null) return;
+    const next = pendingChipsExpandedRef.current;
+    pendingChipsExpandedRef.current = null;
+    // 그 사이 서버가 같은 값으로 끝났으면(펼침→접기→펼침) 다시 보내지 않는다.
+    if (settingsStore.state?.commodoreComposerChipsExpanded === next) return;
+    void setGlobalSettingsField(CHIPS_EXPANDED_FIELD, next);
+  }, [settingsStore.savingFields]);
+
+  // 저장이 끝나면 화면은 서버가 확정한 값(실패 시 되돌림)을 따른다 — 낙관 목표를 거둔다.
+  useEffect(() => {
+    if (chipsIntent === null) return;
+    if (isSavingGlobalSettingsField(CHIPS_EXPANDED_FIELD) || pendingChipsExpandedRef.current !== null) return;
+    setChipsIntent(null);
+  }, [chipsIntent, settingsStore.savingFields]);
 
   // Esc 뒤 초점이 돌아온 칩의 이름표 말풍선은 다음 누름·키 입력까지 눌러 둔다.
   useEffect(() => {
@@ -384,7 +475,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     setPoolHelp(false);
     setOpen(null);
     setTempExpanded(false);
-    focusSummaryRef.current = false;
+    toggleFocusRef.current = null;
   };
   useEffect(dismiss, [commodoreId]);
   useEffect(() => { if (disabled) dismiss(); }, [disabled]);
@@ -478,15 +569,36 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
 
   return (
     <>
-      {chipsExpanded ? (
-        <>
+      <div ref={switchRef} className={`commodore-composer-chips-switch${chipsExpanded ? " is-expanded" : ""}`}>
+        <button
+          ref={summaryRef}
+          type="button"
+          className="commodore-composer-chips-fold"
+          aria-label={t("commodore.composerSettings.expandChipsAria", { commodore: commodoreDisplay.title, commander: judgment ? commanderWord : commanderDisplay.title, theaters: theaterCount })}
+          aria-expanded={chipsExpanded}
+          data-tip={tipMuted ? undefined : t("commodore.composerSettings.expandChips")}
+          disabled={disabled}
+          inert={chipsExpanded}
+          onClick={() => { setTipMuted(false); toggleFocusRef.current = "unfold"; requestChipsExpanded(true); }}
+        >
+          <span className="commodore-composer-chips-duo" aria-hidden="true">
+            <ProviderMark provider={commodoreDisplay.provider} />
+            {judgment ? <CommodoreJudgmentMark /> : <ProviderMark provider={commanderDisplay.provider} />}
+          </span>
+          <svg className="commodore-composer-chip-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.4h5.8v6.6h-11z" /></svg>
+          <span className="commodore-composer-chip-count">{theaterCount}</span>
+          <svg className="commodore-composer-chips-chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" /></svg>
+          {chipsWarning ? <span className="commodore-composer-chips-warn" aria-hidden="true" /> : null}
+        </button>
+        <div className="commodore-composer-chips-expanded" inert={!chipsExpanded}>
           <button
+            ref={unfoldRef}
             type="button"
             className="commodore-composer-chips-unfold"
             aria-label={t("commodore.composerSettings.collapseChips")}
             data-tip={tipMuted ? undefined : t("commodore.composerSettings.collapseChips")}
             disabled={disabled}
-            onClick={() => { setTipMuted(false); close(false); void setGlobalSettingsField("commodoreComposerChipsExpanded", false); }}
+            onClick={() => { setTipMuted(false); toggleFocusRef.current = "summary"; close(false); requestChipsExpanded(false); }}
           >
             <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M4.5 2.5 8 6 4.5 9.5" /></svg>
           </button>
@@ -521,28 +633,8 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
               </>
             ))}
           </div>
-        </>
-      ) : (
-        <button
-          ref={summaryRef}
-          type="button"
-          className="commodore-composer-chips-fold"
-          aria-label={t("commodore.composerSettings.expandChipsAria", { commodore: commodoreDisplay.title, commander: judgment ? commanderWord : commanderDisplay.title, theaters: theaterCount })}
-          aria-expanded={false}
-          data-tip={tipMuted ? undefined : t("commodore.composerSettings.expandChips")}
-          disabled={disabled}
-          onClick={() => { setTipMuted(false); void setGlobalSettingsField("commodoreComposerChipsExpanded", true); }}
-        >
-          <span className="commodore-composer-chips-duo" aria-hidden="true">
-            <ProviderMark provider={commodoreDisplay.provider} />
-            {judgment ? <CommodoreJudgmentMark /> : <ProviderMark provider={commanderDisplay.provider} />}
-          </span>
-          <svg className="commodore-composer-chip-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h4l1.2 1.4h5.8v6.6h-11z" /></svg>
-          <span className="commodore-composer-chip-count">{theaterCount}</span>
-          <svg className="commodore-composer-chips-chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M7.5 2.5 4 6l3.5 3.5" /></svg>
-          {chipsWarning ? <span className="commodore-composer-chips-warn" aria-hidden="true" /> : null}
-        </button>
-      )}
+        </div>
+      </div>
       {open !== null && typeof document !== "undefined" ? createPortal(
         <div
           ref={panelRef}
@@ -670,6 +762,11 @@ function CoordinateWords({ display, roleLabel }: { readonly display: ReturnType<
       {display.badge ? <span className="fc-coord-trigger-badge">{display.badge}</span> : null}
     </>
   );
+}
+
+/** 지금 보여야 할 칩 줄 모습 — 접힌 요약 또는 펼친 줄. */
+function chipsToggleContent(wrapper: HTMLElement, expanded: boolean): HTMLElement | null {
+  return wrapper.querySelector<HTMLElement>(expanded ? ".commodore-composer-chips-expanded" : ".commodore-composer-chips-fold");
 }
 
 /** 열린 창 안에서 Tab이 도는 조작들 — 보이지 않는(display:none·숨은) 조작은 뺀다. */

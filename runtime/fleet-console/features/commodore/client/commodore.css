@@ -1336,6 +1336,24 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   position: absolute; top: 3px; right: 4px; width: 6px; height: 6px; border-radius: 50%;
   background: var(--warn); box-shadow: 0 0 0 1.5px var(--surface-capsule);
 }
+/* 접힌 요약과 펼친 줄을 한 상자에 겹쳐 두고 폭만 흐르게 한다 — 조건부 교체 없이 전환해 초점이 DOM에서 사라지지 않고,
+   전환 중에만 넘치는 쪽을 자른다. 끝나면 overflow를 풀어 칩 위 말풍선이 클리핑되지 않는다. */
+.commodore-composer-chips-switch {
+  position: relative; flex: none; height: var(--fc-composer-circle, 28px); overflow: visible;
+}
+.commodore-composer-chips-switch.is-morphing { overflow: hidden; }
+.commodore-composer-chips-switch > .commodore-composer-chips-fold,
+.commodore-composer-chips-expanded {
+  position: absolute; top: 0; right: 0; display: inline-flex; align-items: center; width: max-content; height: 100%;
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity 140ms var(--ease-glide), visibility 0s linear 140ms;
+}
+.commodore-composer-chips-expanded { gap: 4px; }
+.commodore-composer-chips-switch:not(.is-expanded) > .commodore-composer-chips-fold,
+.commodore-composer-chips-switch.is-expanded > .commodore-composer-chips-expanded {
+  opacity: 1; visibility: visible; pointer-events: auto;
+  transition: opacity 140ms var(--ease-glide), visibility 0s;
+}
 /* 라우팅 풀은 평소 글리프(겹침, 빈 풀은 ＋)만, 사령관·지휘관은 글리프와 모델·강도를 늘 보인다.
    이름표(「사령관」·「지휘관」·「라우팅 풀」)는 흐름에서 빠져 있고 hover·키보드 초점에서 칩 위 말풍선으로만 선다 —
    펼침이 칩 너비를 바꾸지 않으므로 입력칸이 밀리지 않는다. */
@@ -1728,6 +1746,8 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top,
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top * { pointer-events: auto; }
 @media (prefers-reduced-motion: reduce) {
+  .commodore-composer-chips-fold,
+  .commodore-composer-chips-expanded,
   .commodore-composer-chip[data-tip]::after,
   .commodore-composer-chips-fold[data-tip]::after,
   .commodore-composer-chips-unfold[data-tip]::after,
