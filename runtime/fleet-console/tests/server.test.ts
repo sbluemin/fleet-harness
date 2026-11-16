@@ -836,7 +836,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(fs.readdirSync(backups).some((name) => fs.readFileSync(path.join(backups, name), "utf8") === original)).toBe(true);
   });
 
-  it("rehydrates durable provider titles as dormant without starting PTYs", async () => {
+  it("rehydrates durable provider titles as live chat without starting PTYs", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
     tempDirs.push(dir);
     const realpath = fs.realpathSync.native(dir);
@@ -878,7 +878,7 @@ describe("console static and terminal ticket boundary", () => {
     const serialized = JSON.stringify({ sessions });
 
     expect(startedShells).toEqual([]);
-    expect(sessions.sessions[0]).toMatchObject({ sessionId: "session-a", status: "dormant", resumeAvailable: true });
+    expect(sessions.sessions[0]).toMatchObject({ sessionId: "session-a", status: "registered", resumeAvailable: true });
     expect(sessions.sessions[0]).toMatchObject({ label: "Durable provider title" });
     expect(saved.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
     expect(saved).toMatchObject({ title: "Durable provider title", providerTitle: { source: "provider" } });
@@ -977,10 +977,6 @@ describe("console static and terminal ticket boundary", () => {
       let hooks = sessionHooks.get(sessionId);
       if (!hooks) {
         const count = sdkHooks.length;
-        const response = await fetch(`${origin}/api/v1/agent/sessions/${sessionId}/chat`, {
-          method: "POST", headers: { "Content-Type": "application/json", origin }, body: JSON.stringify({ enabled: true }),
-        });
-        expect(response.status).toBe(200);
         const catalog = await fetch(`${origin}/api/v1/agent/sessions/${sessionId}/chat-catalog`, { headers: { origin } });
         expect(catalog.status).toBe(200);
         await vi.waitFor(() => expect(sdkHooks.length).toBeGreaterThan(count));

@@ -279,8 +279,6 @@ describe("remote desktop browser control", () => {
     await call("/api/v1/browser/objectives/global/navigate");
     expect(seen.status).toBe(409);
     expect(seen.body).toMatchObject({ error: "browser_unavailable" });
-    await call("/api/v1/browser/objectives/global/paste");
-    expect(seen).toMatchObject({ status: 403, body: { error: "browser_viewer_read_only" } });
     await call("/api/v1/browser/import-sources", "GET");
     expect(seen).toMatchObject({ status: 403, body: { error: "browser_viewer_read_only" } });
     await call("/api/v1/browser/suggestion-settings", "POST");

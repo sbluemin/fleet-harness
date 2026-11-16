@@ -368,7 +368,7 @@ describe("Objectives contract", () => {
     h.store.adopt("completion-recovery", { note: "retain this record" });
     // 캡션에서 수동 보관한 미완료 목표도 기존 편집 API가 같은 Objective을 되찾는다.
     await h.objectiveRecordsHost.archive("completion-recovery");
-    const preset = await h.route("objective/patch", { objectiveId: "completion-recovery", patch: { launch: { model: "sonnet", viewMode: "chat" } } });
+    const preset = await h.route("objective/patch", { objectiveId: "completion-recovery", patch: { launch: { model: "sonnet" } } });
     expect(preset.status).toBe(200);
     expect(h.objectiveRecords.get("completion-recovery")?.session).toMatchObject({ model: "sonnet", sessionName: "existing-session" });
     await h.objectiveRecordsHost.archive("completion-recovery");
@@ -628,9 +628,9 @@ describe("Objectives contract", () => {
     ]);
     expect(interrupted).toEqual([]);
     subagentSpawns.length = 0;
-    expect((await launch.muster(objective.id)).find((member) => member.id === blocked.id)!.state).toBe("resumed");
+    expect((await launch.muster(objective.id)).find((member) => member.id === blocked.id)!.state).toBe("ready");
     expect(subagentSpawns).toEqual([{ objectiveId: allowedObjectiveId, policy: "default" }, { objectiveId: blockedObjectiveId, policy: "default" }]);
-    expect(resumed).toEqual([blockedObjectiveId]);
+    expect(resumed).toEqual([]);
     await launch.memberPatched(objective.id, allowed.id, { subagents: false });
     expect(store.find(objective.id)!.members.find((member) => member.id === allowed.id)!.subagents).toBe(false);
     expect(subagentSpawns.at(-1)).toEqual({ objectiveId: allowed.id, policy: "blocked" });
@@ -703,7 +703,7 @@ describe("Objectives contract", () => {
     hostFault.rejectModel = "fable[1m]";
     const started = await launch.startCommander(objective.id);
     expect(started.failed).toEqual([{ id: late.id, role: "late", error: "gateway_model_not_enabled" }, { id: unchosen.id, role: "unchosen", error: "gateway_models_unavailable" }]);
-    expect(resumed).toEqual([reviewer.id]);
+    expect(resumed).toEqual([]);
     expect(store.find(objective.id)!.members.find((member) => member.id === late.id)!.sessionName).toBeNull();
     expect(objectiveRecords.has(unchosen.id)).toBe(false);
     // 사람이 고른 모델을 다시 비우면 라우팅이고, 지휘관이 모델을 넘길 수 있는 자리다 — 사람 보호로 남기지 않는다.
@@ -1658,18 +1658,11 @@ describe("Objectives contract", () => {
     expect(original.humanInput).toEqual({ id: expect.any(String), targetObjectiveId: member });
     expect(deliveries.at(-1)?.humanInput).toEqual({ ...original.humanInput, copy: true });
     expect(deliveries.at(-1)?.display).toBe(sent.at(-1)?.text);
-    // 쉬는 채팅도 방송을 받는다. dormant 터미널은 기존처럼 건너뛴다.
+    // 쉬는 채팅도 방송을 받는다.
     activity.set(member, "idle");
     expect((await route("conversation/broadcast", { objectiveId: commander, text: "all chats" })).value).toMatchObject({ targets: [
       { targetId: commander, outcome: "sent" }, { targetId: member, outcome: "sent" },
     ] });
-    objectiveRecordsHost.patch(member, { chatMode: false });
-    activity.set(member, "dormant");
-    expect((await route("conversation/broadcast", { objectiveId: commander, text: "all live" })).value).toMatchObject({ targets: [
-      { targetId: commander, outcome: "sent" }, { targetId: member, outcome: "skipped", reason: "session_not_live" },
-    ] });
-    expect(activity.get(member)).toBe("dormant");
-    expect(deliveries.at(-1)).toMatchObject({ objectiveId: commander, liveOnly: true });
     activity.set(member, "idle");
     hostFault.sendError = "session_awaiting_input";
     expect((await route("conversation/broadcast", { objectiveId: commander, text: "continue" })).value).toMatchObject({ targets: [

@@ -2121,6 +2121,19 @@ function readOptionalAgentCliId(value: unknown, res: Parameters<ConsoleRuntimeCo
 }
 
 /** hook stdin(JSON 문자열)의 `cwd` — 절대 경로일 때만 믿는다. 파싱 실패는 무의견이다. */
+function readProviderTitle(value: Record<string, unknown> | undefined): AgentProviderTitleMarker | undefined {
+  const marker = value?.providerTitle;
+  if (!marker || typeof marker !== "object" || Array.isArray(marker)) return undefined;
+  const candidate = marker as Record<string, unknown>;
+  if (candidate.source !== "provider" || Object.keys(candidate).length !== 1) return undefined;
+  return { source: "provider" };
+}
+
+function catalogContextWindow(model: string): number | undefined {
+  const window = findGatewayModel(model)?.contextWindow;
+  return typeof window === "number" && Number.isFinite(window) && window > 0 ? window : undefined;
+}
+
 function readPayloadString(payload: Record<string, unknown>, key: string): string {
   const value = payload[key];
   return typeof value === "string" ? value : "";
