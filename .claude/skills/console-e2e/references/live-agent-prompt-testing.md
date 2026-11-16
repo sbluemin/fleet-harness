@@ -262,8 +262,8 @@ write `gateway-settings.json` below only after the read, and rewrite it after ev
 the change under test must be in that host: apply the [serve bundle check](#serve-bundle-freshness).
 
 Match the headless client's base-system-prompt choice to the production launch/profile under
-test ([launch.ts](../../../../runtime/fleet-console/features/execution/host/agent/launch.ts),
-[builders/claude.ts](../../../../runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-cli/builders/claude.ts)).
+test (`runtime/fleet-console/features/execution/host/agent/launch.ts`,
+`runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-cli/builders/claude.ts`).
 Antigravity/agy (ACP) disables Claude Code's base system prompt regardless of the setting; add
 `--system-prompt ""` for that case. For other providers, follow the tested launch/profile's
 setting rather than disabling it globally.
