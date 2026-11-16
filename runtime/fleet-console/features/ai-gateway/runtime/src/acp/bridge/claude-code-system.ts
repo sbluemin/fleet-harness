@@ -5,7 +5,7 @@
  * 정체성 한 줄(`You are Claude Code, …` / `You are a Claude agent, …`). 둘 다 블록 하나를 통째로 차지하고 그 뒤 블록이
  * Fleet 지침이므로, 블록 경계에서 정확히 일치하는 것만 뗀다(측정: Claude Code 2.1.325, 설정 켬·끔·append·하위 에이전트
  * 모두 같은 자리). 본문(기본 프롬프트)과 하위 에이전트 프롬프트는 여기서 건드리지 않는다 — 그 안에 Fleet 텍스트가
- * 섞일 수 있어 문자열 경계로 잘라 낼 근거가 없다. 본문은 Gemini 세션을 열 때 호스트가 설정을 꺼서 싣지 않는다.
+ * 섞일 수 있어 문자열 경계로 잘라 낼 근거가 없다. 본문은 Antigravity 세션을 열 때 호스트가 설정을 꺼서 싣지 않는다.
  *
  * `instructions`는 블록들을 빈 줄 하나로 이은 문자열이다(downstream anthropic-messages protocol).
  */

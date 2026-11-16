@@ -50,10 +50,14 @@ const SESSION_MS = 5 * HOUR_MS;
  * pool too. Carbon does not: measured 2026-11-11, the quota summary had no
  * Carbon bucket and Carbon's per-model quotaInfo matched the Gemini pools, so
  * it is not a row here. Hydrogen measured the same way on 2026-11-13 and is
- * not a row either. This table is also the reason `reported: false` exists.
- * Fleet exposes Gemini models only, and a pool none of them can spend is not
- * this provider's headroom. Exposing a Claude or GPT model here is what flips
- * that flag, and the entries stay listed so that stays a one-word change.
+ * not a row either.
+ *
+ * Every pool window carries a `pool:` scope, so a model binds only to its own
+ * family's allowance: the Gemini models spend `pool:gemini`, the Claude models
+ * spend `pool:claude-gpt`, and no window of one family reaches the other
+ * (measured agy 1.5.9, 2026-11-16: "Gemini Models" and "Claude and GPT models"
+ * report separate weekly and 5-hour buckets at 100% each). `3p-*` is reported
+ * because Fleet now serves that group's Claude models.
  */
 const BUCKETS: Readonly<Record<string, {
   readonly id: WindowId;
@@ -62,8 +66,8 @@ const BUCKETS: Readonly<Record<string, {
   readonly reported: boolean;
   readonly scope?: QuotaScope;
 }>> = Object.freeze({
-  "gemini-5h": { id: "session", label: "Gemini", durationMs: SESSION_MS, reported: true },
-  "gemini-weekly": { id: "weekly", label: "Gemini", durationMs: WEEK_MS, reported: true },
+  "gemini-5h": { id: "session", label: "Gemini", durationMs: SESSION_MS, reported: true, scope: "pool:gemini" },
+  "gemini-weekly": { id: "weekly", label: "Gemini", durationMs: WEEK_MS, reported: true, scope: "pool:gemini" },
   "gemini-argon-wtu-weekly": {
     id: "weekly",
     label: "Gemini 4 Argon",
@@ -71,8 +75,8 @@ const BUCKETS: Readonly<Record<string, {
     reported: true,
     scope: "model:gemini-4-argon",
   },
-  "3p-5h": { id: "session", label: "Claude & GPT", durationMs: SESSION_MS, reported: false },
-  "3p-weekly": { id: "weekly", label: "Claude & GPT", durationMs: WEEK_MS, reported: false },
+  "3p-5h": { id: "session", label: "Claude & GPT", durationMs: SESSION_MS, reported: true, scope: "pool:claude-gpt" },
+  "3p-weekly": { id: "weekly", label: "Claude & GPT", durationMs: WEEK_MS, reported: true, scope: "pool:claude-gpt" },
 });
 
 /** Order the panel reads: within each spent pool, shorter cadences first. */

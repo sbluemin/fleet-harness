@@ -1,5 +1,5 @@
 /**
- * agy ACP 세션 포트 — Gemini 모델을 고른 Fleet 세션(사령관·지휘관·구성원)이 `agy acp` 자식과 말하는 유일한 계약.
+ * agy ACP 세션 포트 — Antigravity 카탈로그 모델(Gemini와 Claude)을 고른 Fleet 세션이 `agy acp` 자식과 말하는 유일한 계약.
  *
  * 게이트웨이는 Cloud Code Assist를 직접 부르지 않는다. 대신 이 포트 뒤에서 `agy acp`를 전용 app-data-dir로 기동하고,
  * ACP 업데이트를 아래 어휘로 정규화해 호스트에 넘긴다. 호스트(execution·commodore)는 이 타입만 알고 ACP 와이어는 모른다.
@@ -30,7 +30,7 @@ export interface AcpToolOnlyConfig {
 }
 
 export interface AcpSessionOpenOptions {
-  /** 카탈로그의 Gemini 모델 id(예: `gemini-4-argon`). agy 쪽 와이어 id 해석은 포트 구현이 맡는다. */
+  /** 카탈로그의 Antigravity 모델 id(예: `gemini-4-argon`, `claude-opus-5.5`). agy 쪽 와이어 id 해석은 포트 구현이 맡는다. */
   readonly model: string;
   readonly thoughtLevel?: AcpThoughtLevel;
   /** 세션 시스템 프롬프트 — `_meta.antigravity.systemPrompt.append`로 붙는다. */

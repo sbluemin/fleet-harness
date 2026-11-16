@@ -71,7 +71,7 @@ const claudeRequestPolicy: GatewayRequestPolicy = {
 };
 
 /**
- * Antigravity (Gemini) models are served by the agy ACP bridge (`src/acp/`), which keeps Claude Code's own
+ * Antigravity models (Gemini and Claude) are served by the agy ACP bridge (`src/acp/`), which keeps Claude Code's own
  * system prompt, tools and messages as they are, so nothing is withheld or rewritten here.
  */
 const antigravityRequestPolicy: GatewayRequestPolicy = {

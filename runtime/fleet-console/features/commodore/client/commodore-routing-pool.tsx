@@ -92,9 +92,10 @@ export function ProviderMark({ provider }: { readonly provider: LaunchProviderGl
   );
 }
 
-function bindingWindows(provider: ProviderDto | undefined, quotaScope: string | undefined): readonly QuotaWindow[] {
+function bindingWindows(provider: ProviderDto | undefined, quotaScopes: readonly string[] | undefined): readonly QuotaWindow[] {
   if (!provider || (provider.status !== "ok" && provider.status !== "stale")) return [];
-  return (provider.windows ?? []).filter((window) => window.isAggregate !== true && (window.scope === undefined || window.scope === quotaScope));
+  return (provider.windows ?? []).filter((window) => window.isAggregate !== true
+    && (window.scope === undefined || quotaScopes?.includes(window.scope) === true));
 }
 
 function windowResetTimestamp(window: QuotaWindow): number | undefined {
@@ -110,13 +111,13 @@ function windowResetTimestamp(window: QuotaWindow): number | undefined {
 function modelQuotaStatus(
   providerVisible: boolean,
   providerQuota: ProviderDto | undefined,
-  quotaScope: string | undefined,
+  quotaScopes: readonly string[] | undefined,
   locale: ConsoleLocale,
 ): PoolModelStatus {
   if (!providerVisible) {
     return { kind: "wait", headroom: -1 };
   }
-  const windows = bindingWindows(providerQuota, quotaScope);
+  const windows = bindingWindows(providerQuota, quotaScopes);
   if (windows.length === 0) return { kind: "ok", headroom: 50 };
   const critical = windows.filter((window) => meterSeverity(window) === "critical");
   const minRemaining = Math.min(...windows.map((window) => Math.max(0, 100 - window.usedPercent)));
@@ -219,7 +220,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
       const status = modelQuotaStatus(
         providerVisible(provider),
         quotaSnapshot.data?.providers[provider],
-        rosterRow?.quotaScope,
+        rosterRow?.quotaScopes,
         locale,
       );
       const scores: IntelligenceScores = found?.model.intelligence ?? {};

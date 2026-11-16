@@ -74,7 +74,7 @@ export function registerAiGatewayRoutes(
   const compactionStore = createClaudeCodexCompactionStore({
     directory: path.join(ctx.dataDir, "ai-gateway"),
   });
-  // agy 세션은 resume하지 않는다: Console이 다시 뜨면 레지스트리가 비어 모든 Gemini 요청이 새 세션으로 시작한다.
+  // agy 세션은 resume하지 않는다: Console이 다시 뜨면 레지스트리가 비어 모든 Antigravity 요청이 새 세션으로 시작한다.
   const agySessionsDir = path.join(ctx.dataDir, "ai-gateway", "agy-sessions");
   sweepStaleAgySessions(agySessionsDir);
   const router = createAiGatewayRouter({

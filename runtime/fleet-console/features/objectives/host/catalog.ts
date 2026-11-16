@@ -31,7 +31,7 @@ export interface CatalogModel {
   readonly efforts: readonly string[];
   readonly available: boolean;
   readonly reason?: string;
-  readonly quotaScope?: string;
+  readonly quotaScopes?: readonly string[];
   readonly quotaPool?: string;
 }
 
@@ -80,7 +80,7 @@ export function createModelCatalog(ctx: ObjectivesFeatureDeps) {
             if (!model || seen.has(model)) continue;
             seen.add(model);
             const efforts = (row.chips ?? []).flatMap((chip) => (chip.launch.effort ? [chip.launch.effort] : []));
-            rows.push({ model, label: row.label, provider: providerOf(group.id, model), efforts, available, ...(reason ? { reason } : {}), ...(row.quotaScope ? { quotaScope: row.quotaScope } : {}), ...(row.quotaPool ? { quotaPool: row.quotaPool } : {}) });
+            rows.push({ model, label: row.label, provider: providerOf(group.id, model), efforts, available, ...(reason ? { reason } : {}), ...(row.quotaScopes ? { quotaScopes: row.quotaScopes } : {}), ...(row.quotaPool ? { quotaPool: row.quotaPool } : {}) });
           }
         }
       }

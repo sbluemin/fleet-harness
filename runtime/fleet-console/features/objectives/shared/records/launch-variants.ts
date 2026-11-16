@@ -27,13 +27,16 @@ function readLaunchVariantRow(value: unknown): ObjectiveLaunchVariantRow | null 
   const gatedEfforts = Array.isArray(value.gatedEfforts)
     ? value.gatedEfforts.filter((effort): effort is string => typeof effort === "string" && effort.length > 0)
     : [];
+  const quotaScopes = Array.isArray(value.quotaScopes)
+    ? value.quotaScopes.filter((scope): scope is string => typeof scope === "string" && scope.length > 0)
+    : [];
   return {
     id: value.id,
     label: value.label,
     ...(typeof value.starred === "boolean" ? { starred: value.starred } : {}),
     launch,
     ...(typeof value.quotaPool === "string" && value.quotaPool.length > 0 ? { quotaPool: value.quotaPool } : {}),
-    ...(typeof value.quotaScope === "string" && value.quotaScope.length > 0 ? { quotaScope: value.quotaScope } : {}),
+    ...(quotaScopes.length > 0 ? { quotaScopes } : {}),
     ...(value.fastSupported === true ? { fastSupported: true } : {}),
     ...(typeof value.contextWindow === "number" && Number.isFinite(value.contextWindow) && value.contextWindow > 0
       ? { contextWindow: value.contextWindow }

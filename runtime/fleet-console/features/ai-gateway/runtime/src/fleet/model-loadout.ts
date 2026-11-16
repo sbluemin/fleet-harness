@@ -56,12 +56,14 @@ export function buildGatewayLoadout(exposure: GatewayAssignmentExposure, now = D
       const constraints = buildGatewayModelConstraints(model);
       const efforts = exposedEffortLadder(model.id, constraints.effortLadder, exposure.effortExposure);
       const providerQuota = exposure.quota?.[model.provider];
-      const hasScopedWindow = constraints.quotaScope !== undefined
-        && (providerQuota?.windows ?? []).some((window) => window.scope === constraints.quotaScope);
-      const pool = hasScopedWindow
-        ? `${model.provider}:${constraints.quotaScope}`
+      const liveScopes = new Set((providerQuota?.windows ?? []).flatMap((window) => (window.scope === undefined ? [] : [window.scope])));
+      // 풀 이름은 실제로 관측된 범위 가운데 가장 좁은 것을 쓴다 — 자기 하위 한도가 있으면 그 풀(Argon),
+      // 없으면 같은 패밀리가 공유하는 풀(Gemini·Claude & GPT)이다. 모델이 공유하는 풀만 같은 `quotaPools` 키를 쓴다.
+      const observed = [...constraints.quotaScopes].reverse().find((scope) => liveScopes.has(scope));
+      const pool = observed !== undefined
+        ? `${model.provider}:${observed}`
         : buildGatewayModelQuota(model).quotaPool;
-      quotaPools[pool] ??= normalizeRoutingQuota(providerQuota, constraints.quotaScope, now);
+      quotaPools[pool] ??= normalizeRoutingQuota(providerQuota, constraints.quotaScopes, now);
       const rank = preference.indexOf(model.provider);
       // 카탈로그 창을 그대로 싣는다 — Claude 가족 항목은 모두 1M이다.
       const contextWindow = gatewayModelContextWindow(model);

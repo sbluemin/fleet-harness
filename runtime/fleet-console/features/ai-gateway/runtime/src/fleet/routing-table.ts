@@ -27,8 +27,8 @@ export interface GatewayRoutingCandidate {
   readonly label: string;
   /** 이 모델이 비용을 무는 공급자. 배정이 공급자 사이를 고르게 돌릴 때 이 값으로 센다. */
   readonly provider: GatewayProvider;
-  /** 공급자가 풀을 나눠 재는 경우 이 모델을 묶는 풀. 허용량을 읽을 창을 이 값이 고른다. */
-  readonly quotaScope?: GatewayModelConstraints["quotaScope"];
+  /** 공급자가 풀을 나눠 재는 경우 이 모델이 무는 범위. 허용량을 읽을 창을 이 값들이 고른다. */
+  readonly quotaScopes?: GatewayModelConstraints["quotaScopes"];
 }
 
 export interface GatewayRoutingTable {
@@ -110,7 +110,7 @@ function toCandidate(
     ...(effort === undefined ? {} : { effort }),
     label: effort === undefined ? label : `${label} @${effort}`,
     provider: model.provider,
-    ...(constraints.quotaScope === undefined ? {} : { quotaScope: constraints.quotaScope }),
+    ...(constraints.quotaScopes.length === 0 ? {} : { quotaScopes: constraints.quotaScopes }),
   };
 }
 

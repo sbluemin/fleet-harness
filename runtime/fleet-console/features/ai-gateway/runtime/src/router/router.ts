@@ -139,7 +139,7 @@ export interface AiGatewayRouteDeps {
   readonly readAuth: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
   readonly readXaiToken?: () => string | null | Promise<string | null>;
   /**
-   * The agy ACP session port Gemini (Antigravity) models are served through. Absent means those models
+   * The agy ACP session port Antigravity models are served through. Absent means those models
    * are refused with 503. The router builds one bridge from it, keeps it for its lifetime, and closes
    * every agy child and the bridge's MCP listener in `dispose()`.
    */
@@ -245,7 +245,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   );
   const fetchImpl = upstreamGate.fetch as typeof fetch;
   // The agy bridge is stateful (live sessions between requests), so it is built once and kept. It is
-  // lazy: a host that never serves a Gemini model starts no listener.
+  // lazy: a host that never serves an Antigravity model starts no listener.
   let ownedAgyBridge: AgyAcpBridge | undefined;
   let agyBridgeGatewayInstance: AnthropicMessagesGateway | undefined;
   const agyBridgeGateway = (port: AcpSessionPort): AnthropicMessagesGateway => {
@@ -599,7 +599,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       }
       const gateway = deps.gateway
         ?? (target.provider === "antigravity"
-          // 브리지는 agy가 소유한 구독 로그인으로 말하므로 이 라우터는 Gemini 자격을 조달하지 않는다.
+          // 브리지는 agy가 소유한 구독 로그인으로 말하므로 이 라우터는 Antigravity 자격을 조달하지 않는다.
           // 상태를 가진 어댑터라 요청마다 만들지 않고 호스트가 준 하나를 쓴다.
           ? agyBridgeGateway(deps.agyAcpPort!)
           : target.provider === "xai"

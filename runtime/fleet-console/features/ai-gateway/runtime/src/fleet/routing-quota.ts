@@ -14,23 +14,28 @@ export interface RoutingQuota {
   readonly recovery?: { readonly inSeconds: number; readonly remainingPercent: number };
 }
 
-/** 집계 풀은 빼되, 모델별 풀과 동시에 적용되는 공급자 공통 제한은 함께 보존한다. */
-export function bindingQuotaWindows(quota: GatewayProviderQuota | undefined, scope?: string): readonly GatewayQuotaWindow[] {
+/**
+ * 이 모델에 묶이는 창. 범위 없는 창은 공급자 공통 한도라 모든 모델에 묶이고, 범위가 있는 창은
+ * 모델이 무는 범위일 때만 묶인다 — 풀끼리(예: Antigravity의 Gemini와 Claude & GPT) 잔여량이 섞이지 않는다.
+ * 집계 풀은 뺀다.
+ */
+export function bindingQuotaWindows(quota: GatewayProviderQuota | undefined, scopes?: readonly string[]): readonly GatewayQuotaWindow[] {
   return (quota?.windows ?? []).filter(window => window.isAggregate !== true
-    && (window.scope === undefined || window.scope === scope));
+    && (window.scope === undefined || scopes?.includes(window.scope) === true));
 }
 
 /** 원자료는 그대로 두고 판단 모델에만 병목을 보존한 무차원 여유를 제공한다. */
-export function normalizeRoutingQuota(quota: GatewayProviderQuota | undefined, scope: string | undefined, now: number): RoutingQuota {
+export function normalizeRoutingQuota(quota: GatewayProviderQuota | undefined, scopes: readonly string[] | undefined, now: number): RoutingQuota {
   const at = quota?.fetchedAt;
   if (at === undefined || !Number.isFinite(at) || at < 0 || at > now) return { observation: "unknown" };
   const ageSeconds = Math.floor((now - at) / 1_000);
   const stale = quota?.status === "stale" || now - at > MAX_OBSERVATION_AGE_MS;
-  const windows = bindingQuotaWindows(quota, scope);
+  const windows = bindingQuotaWindows(quota, scopes);
   if ((quota?.status !== "ok" && quota?.status !== "stale") || windows.length === 0) return { observation: "unknown", ageSeconds };
   // 집계 풀만 보고 모델 전용 풀의 잔여량을 추정하지 않는다. 공통 제한만 있는 계정은 그 공통 창으로 판정한다.
   const hasAggregate = (quota?.windows ?? []).some(window => window.isAggregate === true);
-  const missingScope = hasAggregate && scope !== undefined && !windows.some(window => window.scope === scope);
+  const missingScope = hasAggregate && scopes !== undefined && scopes.length > 0
+    && !windows.some(window => window.scope !== undefined && scopes.includes(window.scope));
   const facts = windows.map(window => {
     const validUsage = Number.isFinite(window.usedPercent) && window.usedPercent >= 0;
     const remaining = validUsage ? Math.max(0, 1 - window.usedPercent / 100) : undefined;
