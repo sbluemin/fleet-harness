@@ -6,7 +6,8 @@ import path from "node:path";
 import process from "node:process";
 
 import { ALL_SUBAGENTS, buildDisabledSkillOverrides, createFleetGatewayAgentRuntimeLifecycle, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId } from "@fleet-console/agent-runtime/fleet";
-import { writeGatewayModelCacheForHome } from "@fleet-console/ai-gateway";
+import { writeGatewayModelCacheForHome, type DelegationIntentLedger } from "@fleet-console/ai-gateway";
+import type { ClaudeGatewayCompactEvent } from "@fleet-console/agent-runtime/claude";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { ensureWorkspaceDirectory, withDirectoryLock, type AgentOptionsService } from "@fleet-console/infra";
 import type { ConsoleCaller, ConsoleCoordinatesResult } from "../../shared/control.js";
@@ -83,6 +84,9 @@ interface AgentRouteDeps {
   /** 그 플러그인 MCP 선언의 `${VAR}`에 채울 키 — 같은 세션의 자식 환경에 얹는다. */
   readonly commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>;
   readonly aiGateway?: AiGatewayLaunchBinding;
+  readonly delegationIntents?: DelegationIntentLedger;
+  readonly releaseExecutionSession?: (sessionId: string) => void;
+  readonly recordCompactEvent?: (event: ClaudeGatewayCompactEvent) => void;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /** 공급자 로그인 상태. 없으면 미상으로 보아 카탈로그 전체를 고를 수 있다. */
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
@@ -163,7 +167,6 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/attention", summary: "Receive an Agent attention hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
-    { method: "POST", path: "/sessions/:sessionId/agent-call", summary: "Decide an Agent session's subagent call.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/auto-name", summary: "Receive an Agent auto-name hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/capture", summary: "Receive an Agent session capture hook.", category: "Console Execution", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -1075,7 +1078,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (action === "turn") return handleTurn(req, res, sessionId);
     if (action === "background") return handleBackground(req, res, sessionId);
     if (action === "attention") return handleAttention(req, res, sessionId);
-    if (action === "agent-call") return handleAgentCall(req, res, sessionId);
     if (action === "auto-name") return handleAutoName(req, res, sessionId);
     if (action === "capture") return handleCapture(req, res, sessionId);
     // 읽기 전용 이력은 전이 중에도 파일만 읽는다 — 재개·좌표 변경과 경합하지 않으므로 전이 가드 앞에 둔다.
@@ -2035,8 +2037,25 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           return resolution.resolved.bin;
         },
         baseUrl: gatewayBaseUrl,
-        compactHookToken: deps.aiGateway?.compactHookToken,
-        modHookToken: deps.aiGateway?.modHookToken,
+        guardDelegatedCall: () => {
+          const current = ctx.host.objectiveRecords.get(node.id);
+          if (!current) return "This Objective has closed. This Agent call did not run.";
+          if (ctx.isCommanderSession?.(node.id) && (subagentSpawnBlocked(current) || !deps.commodoreSystemPrompts?.subagentsKept(current.commodoreId))) {
+            return "Subagents are disabled for this Commander. This Agent call did not run.";
+          }
+          return null;
+        },
+        recordDelegationIntent: deps.delegationIntents?.record,
+        bindDelegationTask: (event) => {
+          if (event.kind === "started" && event.toolUseId !== undefined) {
+            deps.delegationIntents?.bind({ sessionId: event.sessionId, toolUseId: event.toolUseId, taskId: event.taskId });
+          } else if (event.kind !== "started") {
+            deps.delegationIntents?.noteTaskRunEnded({ sessionId: event.sessionId, taskId: event.taskId, ...(event.runId === undefined ? {} : { runId: event.runId }) });
+          }
+        },
+        releaseDelegationSession: deps.releaseExecutionSession,
+        recordCompactEvent: deps.recordCompactEvent,
+        routeDelegatedModels: deps.delegationIntents !== undefined,
         model: launchModel,
         // 자식은 창이 500k인 모델도 자기 200k 좌표로 재고, 그 좌표를 물어보는 모든 표면에 그대로
         // 말한다. 실제 창과 투영에 쓰인 압축 정책을 함께 실어야 세션이 그것을 되돌릴 수 있다.
@@ -2112,7 +2131,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
           const hadSession = !!providerSession?.id || !!existingSession?.previousSessions?.length;
           return prepareChatClaudeSession({
             cwd,
-            plugin: ctx.agentCliPlugin,
             ...(chatBasePromptEnabled ? {} : { claudeCodeSystemPrompt: "off" as const }),
             claudeCodeDisabledAgents: chatClaudeCodeDisabledAgents,
             ...(chatDisableAutoMemory !== undefined ? { disableAutoMemory: chatDisableAutoMemory } : {}),
@@ -2173,8 +2191,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
         onTurnEnd: (output) => ctx.consoleControl?.reportTurnEnd(node.id, output),
         // 채팅 자식의 cwd도 같은 이유로 세션이 직접 알린다 — "지금 어디" 축이 두 얼굴에서 같이 따라간다.
         onCwdChanged: (nextCwd) => workspaceContext.observe(node.id, node.theaterId, nextCwd),
-        bindWorkspaceHook: (providerSessionId) => workspaceHooks.bind(node.id, providerSessionId,
-          () => observability.getTerminalSessionInfo(node.id)?.chatActive === true),
         reportActivity: (working) => {
           const updated = observability.setTerminalSessionChatWorking(node.id, working);
           // null은 이 세션이 채팅으로 인수되지 않았다는 뜻이다 — 축이 이 보고를 받을 자리가 없다.
@@ -2288,30 +2304,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const body = await ctx.host.http.readJsonBody<HookAttentionBody>(req);
     observability.notifySessionAttention(session, normalizeAttentionReason(body?.reason ?? readHookNotificationType(body?.input)));
     ctx.host.http.writeJson(res, 200, { ok: true });
-    return true;
-  }
-
-  /** 서브에이전트 호출 hook의 질문. 답은 거절 사유이거나 null(허용)이다. 판단이 실패하면 hook이 막도록 오류로 답한다. */
-  async function handleAgentCall(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
-    if (req.method !== "POST") return methodNotAllowed(res);
-    if (!ctx.host.security.isLockAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node) {
-      ctx.host.http.writeJson(res, 404, { error: "unknown_objectiveRecord" });
-      return true;
-    }
-    let reason: string | null = null;
-    try {
-      // 사령관의 지휘관 허용값은 호출마다 읽는다. 구성원별 기동 정책은 별도 경로가 그대로 맡는다.
-      if (ctx.isCommanderSession?.(sessionId) && (subagentSpawnBlocked(node) || !deps.commodoreSystemPrompts?.subagentsKept(node.commodoreId))) {
-        reason = "Subagents are disabled for this Commander. This Agent call did not run.";
-      }
-    } catch (error) {
-      ctx.recordFailure?.("commander-subagents", error);
-      ctx.host.http.writeJson(res, 500, { error: "agent_call_undecided" });
-      return true;
-    }
-    ctx.host.http.writeJson(res, 200, { reason });
     return true;
   }
 

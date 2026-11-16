@@ -28,8 +28,8 @@ export function useAttentionReason(row: MobileAttentionRow): string {
   if (row.kind === "plugin") return row.item.reason;
   if (row.kind === "approval") return expiresAt !== undefined ? t("mobile.attention.useRequest", { time: formatRemaining(expiresAt - now) }) : row.detail;
   if (expiresAt !== undefined) return t("mobile.attention.useRequest", { time: formatRemaining(expiresAt - now) });
-  // 채팅 Objective의 대기는 질문, 터미널의 대기는 CLI 확인이다(S-35).
-  return t(row.objectiveRecord.chatMode === true ? "mobile.attention.question" : "mobile.attention.terminal");
+  // Objective의 확인은 채팅에서 이어 간다(S-35).
+  return t("mobile.attention.question");
 }
 
 /** 보조 줄 텍스트만 그리는 작은 조각 — 행마다 훅을 쓰기 위한 경계. */

@@ -1,5 +1,5 @@
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
-import type { AgentCliPlugin, LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
+import type { LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/infra/http/routing";
@@ -12,7 +12,6 @@ export function createConsoleRuntimeContext(deps: {
   readonly dataDir: string;
   readonly recordFailure?: (kind: string, error: unknown) => void;
   readonly agentOptions: AgentOptionsService;
-  readonly agentCliPlugin: AgentCliPlugin;
   readonly launchPromptDirectories?: LaunchPromptDirectoryAllocator;
   readonly spawnAgentProcess: ClaudeProcessSpawner;
   readonly routes: RouteRegistry;
@@ -36,7 +35,6 @@ export function createConsoleRuntimeContext(deps: {
     dataDir: deps.dataDir,
     recordFailure: deps.recordFailure,
     agentOptions: deps.agentOptions,
-    agentCliPlugin: deps.agentCliPlugin,
     ...(deps.launchPromptDirectories ? { launchPromptDirectories: deps.launchPromptDirectories } : {}),
     spawnAgentProcess: deps.spawnAgentProcess,
     basePath,

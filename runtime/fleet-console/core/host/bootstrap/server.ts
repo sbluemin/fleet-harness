@@ -45,7 +45,6 @@ import { CORE_AGENT_SENSITIVE_FIELDS, startConsoleExecution } from "./execution.
 
 import { createAiGatewaySettingsStore, resolveAiGatewaySelection } from "@fleet-console/ai-gateway";
 import { reclaimLegacyTrees } from "@fleet-console/agent-runtime/fleet";
-import { renderConsoleAgentCliPlugin } from "../../../features/execution/host/agent/host-hooks.js";
 import { createLaunchPromptNamespace } from "../../../features/execution/host/agent/launch-prompt-namespace.js";
 import { adoptLegacyWorkspaces, ensureWorkspaceDirectory, getFleetDataDir, withDirectoryLock } from "@fleet-console/infra";
 import { readLaunchVariantGroups } from "../../../features/objectives/shared/records/launch-variants.js";
@@ -2959,9 +2958,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       quotaMigrationReady = retireConsoleData(durablePaths.dir);
       consoleSettingsStore.load();
       await rehydrateDurableState();
-      // 플러그인은 기동에 한 번만 zip으로 묶는다 — 세션마다 같은 내용이다. 내주는 자리는 MCP와
-      // 같은 루프백 전용 불투명 경로이고, 리스너가 뜬 뒤에야 주소가 정해지므로 런치가 그때 묻는다.
-      const agentCliPlugin = renderConsoleAgentCliPlugin({ transport: mcpHttp.transport });
       // launch 프롬프트 파일은 이 lock 도메인의 자리에 둔다. 지난 프로세스가 남긴 것의 회수는 lock을 쓴 뒤에만 한다.
       const launchPromptDirectories = createLaunchPromptNamespace({ lockFile: lockPaths.lockFile });
       const execution = await startConsoleExecution(createConsoleRuntimeContext({
@@ -2974,7 +2970,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         dataDir: durablePaths.dir,
         recordFailure,
         agentOptions,
-        agentCliPlugin,
         launchPromptDirectories,
         spawnAgentProcess: createAgentProcessSpawner(ownedProcesses, recordFailure),
         routes: routeRegistry, upgrades: upgradeRegistry, catalog: executionApiCatalog,

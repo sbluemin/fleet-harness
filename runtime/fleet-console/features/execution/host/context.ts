@@ -9,7 +9,7 @@ import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
 import type { EventPort } from "@fleet-console/infra/http/host-ports";
 import type { McpTransport } from "@fleet-console/infra/http/mcp-transport";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
-import type { AgentCliPlugin, LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
+import type { LaunchPromptDirectoryAllocator } from "@fleet-console/agent-runtime/fleet";
 import type { AgentOptionsService } from "@fleet-console/infra";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { RouteHandler, UpgradeHandler } from "@fleet-console/infra/http/routing";
@@ -51,8 +51,6 @@ export interface ConsoleRuntimeContext {
   readonly recordFailure?: (kind: string, error: unknown) => void;
   /** Agent 실행 옵션. 저장 자리(Console 슬롯)는 부트스트랩이 정해 붙인다. */
   readonly agentOptions: AgentOptionsService;
-  /** 기동에 한 번 렌더한 Claude 플러그인 트리. 런치는 이것을 쓰기만 한다. */
-  readonly agentCliPlugin: AgentCliPlugin;
   /** launch 프롬프트 파일의 자리. 이 Console의 runtime lock 도메인에 묶여 있고, 회수는 부트스트랩이 lock 뒤에 부른다. */
   readonly launchPromptDirectories?: LaunchPromptDirectoryAllocator;
   /**

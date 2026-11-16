@@ -1,4 +1,5 @@
 import { startAiGateway } from "../../../features/ai-gateway/host/start.js";
+import { createDelegationIntentLedger } from "@fleet-console/ai-gateway";
 
 /** Console이 제어 보유자 변화를 알리는 채널. 이름은 core/host/access-control-contract.ts와 한 벌이다. */
 const CONTROL_HOLDER_EVENT_CHANNEL = "control:holder";
@@ -37,8 +38,10 @@ export async function startConsoleExecution(
     const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: (await agentCliPaths.read()).paths });
     return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
   };
-  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, syncAntigravity } = startAiGateway({
+  const delegationIntents = createDelegationIntentLedger();
+  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, syncAntigravity, releaseExecutionSession } = startAiGateway({
     ...ctx,
+    delegationIntents,
     host: { ...ctx.host, storage: quotaStorage },
     // Claude alias의 버전은 런치가 쓰는 바로 그 실행 파일에게 묻는다.
     resolveClaudeExecutable,
@@ -104,9 +107,10 @@ export async function startConsoleExecution(
     aiGateway: {
       routePath: aiGatewayRoutePath,
       origin: () => ctx.host.server.origin(),
-      compactHookToken: aiGatewayRuntime.compactHookToken,
-      modHookToken: aiGatewayRuntime.modHookToken,
     },
+    delegationIntents,
+    releaseExecutionSession,
+    recordCompactEvent: aiGatewayRuntime.recordCompactEvent,
     // 턴이 멈추면(정상·중단 모두) 에이전트 사용 표식을 내린다. Computer Use 는 기기 소유도 함께 놓는다 — 표식만
     // 내리고 잡고 있으면 공유 화면이 조용히 살아 있는 셈이다. 세 호출 모두 멱등이라 겹쳐 불려도 된다.
     // 자식 세션은 루트의 사용 컨텍스트를 함께 쓴다 — 한 참가자의 턴 종료는 그 참가자의 호출·세션만 닫고, 브라우저 표식·기기는

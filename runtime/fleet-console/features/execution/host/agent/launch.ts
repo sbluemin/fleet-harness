@@ -1,8 +1,6 @@
 import { exposableEffortLadder, GATEWAY_REASONING_EFFORTS } from "@fleet-console/ai-gateway";
 import type { GatewayModel, GatewayReasoningEffort } from "@fleet-console/ai-gateway";
-import { OBJECTIVE_PEER_TOOLS, prepareClaudeSession, type AgentCliPlugin, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "@fleet-console/agent-runtime/fleet";
-
-import { buildConsoleHookEntry, buildConsoleWorkspaceHookCommand } from "./host-hooks.js";
+import { OBJECTIVE_PEER_TOOLS, prepareClaudeSession, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "@fleet-console/agent-runtime/fleet";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
 export interface AiGatewayLaunchBinding {
@@ -10,10 +8,6 @@ export interface AiGatewayLaunchBinding {
   readonly routePath: string;
   /** Console이 리슨 중인 origin. MCP는 별도 포트라 여기서 유도하면 안 된다. */
   origin(): string | null;
-  /** Process-local credential accepted only by the compact lifecycle endpoint. */
-  readonly compactHookToken?: string;
-  /** 라우팅 Mod가 정체성을 물을 때 쓰는 자격. */
-  readonly modHookToken?: string;
 }
 
 /** Chat Mode 세션을 열 때 넘기는 좌표 — PTY 런치와 공유하던 필드 가운데 채팅이 실제로 읽는 것만 남긴다. */
@@ -22,8 +16,6 @@ export interface ChatSessionPreparationDeps {
   readonly entryPath?: string;
   readonly execPath?: string;
   readonly tsxLoaderPath?: string;
-  /** 기동에 한 번 렌더해 둔 플러그인 트리. */
-  readonly plugin: AgentCliPlugin;
   /** 사령관이 고른 플러그인의 로컬 디렉터리 — 그 사령관 목표의 세션이 새로 열릴 때 싣는다. */
   readonly pluginDirs?: readonly string[];
   /** 그 플러그인 MCP 선언의 `${VAR}`에 채울 키 — 같은 세션의 자식 환경에 얹는다. */
@@ -56,7 +48,6 @@ export async function prepareChatClaudeSession(
   return prepareClaudeSession({
     cliId: CHAT_PLUGIN_CLI_ID,
     cwd: deps.cwd,
-    plugin: deps.plugin,
     ...(deps.pluginDirs?.length ? { pluginDirs: deps.pluginDirs } : {}),
     ...(deps.pluginEnv ? { pluginEnv: deps.pluginEnv } : {}),
     origin: deps.origin,
@@ -64,7 +55,6 @@ export async function prepareChatClaudeSession(
     ...(deps.claudeCodeDisabledAgents ? { claudeCodeDisabledAgents: deps.claudeCodeDisabledAgents } : {}),
     ...(deps.disableAutoMemory !== undefined ? { disableAutoMemory: deps.disableAutoMemory } : {}),
     claudeCodeDisabledTools: consoleDisabledTools(deps.objectiveMessaging),
-    workspaceHookExec: buildConsoleWorkspaceHookCommand(buildConsoleHookEntry(deps)),
   });
 }
 

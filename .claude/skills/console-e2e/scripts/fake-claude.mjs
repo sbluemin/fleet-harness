@@ -589,7 +589,9 @@ if (!sdk) {
         const id = message.request_id;
         log({ event: "control", subtype: req.subtype ?? null, model: req.model ?? null, turnOpen });
         if (req.subtype === "initialize") {
-          respond(id, { commands: [], models: [], agents: [], account: {}, output_style: "default", available_output_styles: ["default"] });
+          // This fixture emits no hook events; the capability keeps SDK initialization compatible.
+          // Hook enforcement must still be verified against the real CLI, not this canned protocol.
+          respond(id, { commands: [], models: [], agents: [], account: {}, output_style: "default", available_output_styles: ["default"], hook_on_failure_supported: true });
           sdkServers = Array.isArray(req.sdkMcpServers) ? req.sdkMcpServers.filter((name) => typeof name === "string") : [];
           if (sdkServers.length > 0) {
             log({ event: "sdk-mcp-servers", servers: sdkServers });
