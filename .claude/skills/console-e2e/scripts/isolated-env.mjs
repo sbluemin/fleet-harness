@@ -48,6 +48,7 @@ import { createHash } from 'node:crypto';
 import { accessSync, constants as fsConstants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { constants, userInfo } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { mainCheckoutOf } from './stop-owned-desktop.mjs';
 
 // State and credential stores only: executables legitimately live under ~/.local or a version manager's directory.
@@ -104,7 +105,7 @@ function findOnPath(name) {
 }
 
 /** A non-secret caller identity that survives a session resume; only its hash is stored. */
-function callerHash() {
+export function callerHash() {
   const id = process.env.FLEET_CONSOLE_WORKSPACE_SESSION_ID
     ? `fleet:${process.env.FLEET_CONSOLE_WORKSPACE_SESSION_ID}`
     : process.env.CLAUDE_CODE_SESSION_ID ? `claude:${process.env.CLAUDE_CODE_SESSION_ID}` : 'none';
@@ -341,4 +342,14 @@ function main() {
   });
 }
 
-main();
+function invokedDirectly() {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return realpathSync(entry) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (invokedDirectly()) main();
