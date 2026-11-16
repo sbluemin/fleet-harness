@@ -65,8 +65,7 @@ export function useLinkOpenChoice(target: LinkOpenChoiceTarget): LinkOpenChoice 
       onClose={close}
       companion={{
         // 보기 전용 화면은 카드가 이 행을 막는다. 네이티브 관리 창만 탭을 연다.
-        // 이 링크는 대화의 메시지에서 나왔다 — 칸 머리가 그 출처를 말하고 Console 이 그 자리로 돌아간다.
-        open: () => { if (!viewer) void openBrowserLink(pending.url, { kind: "message", objectiveId: target.objectiveId }); },
+        open: () => { if (!viewer) void openBrowserLink(pending.url); },
       }}
     />
   );
@@ -113,7 +112,7 @@ export function openObjectiveLink(
   if (!availability.canOffer) return false;
   if (gesture === "click") return false;
   if (gesture === "background" || gesture === "companion") {
-    void openBrowserLink(url, { kind: "message", objectiveId: target.objectiveId });
+    void openBrowserLink(url);
     return true;
   }
   if (gesture === "external") {

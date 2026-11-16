@@ -5,7 +5,7 @@ import type { DesktopBrowserChrome, DesktopBrowserSurface, DesktopBrowserSurface
 
 import { createBrowserSpaceView, type BrowserSpaceRequest } from "./browser-spaces.js";
 import type { BrowserSurfaceHost, PageHost } from "./browser-views.js";
-import { readBrowserSurfaceOrigin, readChromeMessage, type BrowserSurfaceOrigin, type ChromeAction, type ChromeColors, type ChromeControl, type ChromeOverlay, type ChromeRole, type ChromeTabsOrientation, type ChromeUiState, type ChromeViewOnly } from "./chrome/contract.js";
+import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeControl, type ChromeOverlay, type ChromeRole, type ChromeTabsOrientation, type ChromeUiState, type ChromeViewOnly } from "./chrome/contract.js";
 import type { BrowserStripPrefs } from "./desktop-state.js";
 import type { DesktopShellWindow } from "./shell-window.js";
 
@@ -132,15 +132,6 @@ export interface BrowserSurfaceDeps {
   readonly stripPrefs?: { load(): BrowserStripPrefs | null; save(prefs: BrowserStripPrefs): void };
   /** 문서가 보낸 동작 하나를 처리한다. */
   readonly act: (control: SurfaceControl, role: ChromeRole, action: ChromeAction) => void;
-  /**
-   * 칸 머리 출처 배지가 Console 표면 reveal 을 보낼 때 쓰는 같은 출처 fetch.
-   * 없으면 메인 창 포커스만 돌린다. 관리 표면이 아닐 때는 호출하지 않는다.
-   */
-  readonly consoleRequest?: {
-    readonly fetch: typeof fetch;
-    readonly origin: () => string | null;
-    readonly headers?: () => Record<string, string>;
-  };
   readonly relay: (surface: DesktopBrowserSurfaceRelay) => void;
   /** 페이지 자리가 바뀌었다 — browser-views 가 뷰를 같은 틱에 다시 놓는다. */
   readonly changed: () => void;
@@ -152,12 +143,6 @@ export interface BrowserSurfaceDeps {
 interface ChromeDoc { readonly role: ChromeRole; readonly view: WebContentsView; ready: boolean; lastJson: string }
 
 const escapeScript = (value: string): string => value.replace(/[<>&\u2028\u2029]/g, (character) => ({ "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" })[character] ?? character);
-
-/** \ud504\ub85c\ud1a0\ucf5c \ud45c\uba74\uc758 \uc120\ud0dd \ud544\ub4dc `origin`. \ud0c0\uc785\uc774 \uc544\uc9c1 \uc5c6\uc5b4\ub3c4 \uac19\uc740 \uac1d\uccb4\ub97c \uadf8\ub300\ub85c \uc77d\ub294\ub2e4. */
-function surfaceOrigin(value: object | null): BrowserSurfaceOrigin | null {
-  if (!value || !("origin" in value)) return null;
-  return readBrowserSurfaceOrigin((value as { origin?: unknown }).origin);
-}
 
 /** 메인 창을 페이지 뷰의 집으로 보이는 어댑터 — Console 뒤에 주차하고, 표면이 칸이면 Console 앞(레일 아래)에 세운다. */
 export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base: BaseWindow) => number): PageHost {
@@ -361,35 +346,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       suggest: ui.suggest, suggestions: ui.suggestions, captureAvailable: true, importUnavailable: deps.platform === "win32", draft: ui.draft,
       control: controlState(),
       viewOnly,
-      origin: surfaceOrigin(surface),
       shellClosing: closingSurface,
     };
-  };
-
-  const focusConsole = (): void => {
-    const main = deps.main();
-    if (!main || main.isDestroyed()) return;
-    if (main.isMinimized()) main.restore();
-    main.show();
-    main.focus();
-    if (!main.consoleContents.isDestroyed()) main.consoleContents.focus();
-  };
-
-  /** 출처 배지 — Console 에 reveal 을 보내고 메인 창의 Console 뷰로 초점을 돌린다. */
-  const revealOrigin = (): void => {
-    const current = surface;
-    const request = deps.consoleRequest;
-    if (current && !viewOnly && request) {
-      const at = request.origin();
-      if (at) {
-        void request.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(current.browserId)}/surface`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Origin: at, ...(request.headers?.() ?? {}) },
-          body: JSON.stringify({ action: "reveal", id: current.id }),
-        }).catch(() => deps.log("browser reveal-origin failed"));
-      }
-    }
-    focusConsole();
   };
 
   let dividerScheme = "";
@@ -455,7 +413,6 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       const message = readChromeMessage(details.message);
       if (!message || message.role !== role) return;
       if (message.action.action === "ready") { doc.ready = true; doc.lastJson = ""; push(); if (role === "stage") paintFrame(); return; }
-      if (message.action.action === "reveal-origin") { revealOrigin(); return; }
       deps.act(control, role, message.action);
     });
     // 문서를 적재하면 배율이 1로 돌아간다 — 적재 전에 건 배율은 남지 않으므로, 문서가 준비될 때마다 현재 배율을 다시 건다.
@@ -665,12 +622,10 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
         if (first && docs) finalizeClose();
       }
       const viewChanged = JSON.stringify(viewOnly) !== JSON.stringify(nextViewOnly);
-      const originBefore = surfaceOrigin(surface);
       const remoteCardBefore = remoteCard();
       viewOnly = nextViewOnly;
       const remoteCardChanged = remoteCard() !== remoteCardBefore;
       surface = next;
-      const originChanged = JSON.stringify(surfaceOrigin(surface)) !== JSON.stringify(originBefore);
       if (!docs) { docs = { bar: makeDoc("bar"), rail: makeDoc("rail"), stage: makeDoc("stage"), guard: makeDoc("guard") }; }
       const json = JSON.stringify(nextChrome);
       const chromeChanged = json !== chromeJson;
@@ -698,7 +653,7 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
         const held = controlState();
         if (viewOnly?.control === true && held?.holder === "agent" && !docs.guard.view.webContents.isDestroyed()) docs.guard.view.webContents.focus();
       }
-      else if (chromeChanged || viewChanged || originChanged || spaces.current() !== spaceBefore) push();
+      else if (chromeChanged || viewChanged || spaces.current() !== spaceBefore) push();
       else layout();
       if (request) deps.act(control, "bar", { action: "show-tab", id: request.kind === "select" ? request.tabId : null });
     },

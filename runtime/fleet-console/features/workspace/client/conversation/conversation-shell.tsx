@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState, useSyncExternalStore, type ComponentProps, type CSSProperties, type ReactNode } from "react";
 
 import { FeatureErrorBoundary, useViewportFit } from "@fleet-console/ui/react";
-import type { BrowserSurfaceOrigin } from "@fleet-console/protocol/desktop";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import type { ConversationSurfaceContext, ConversationSurfaceDescriptor } from "../../shared/conversation-surfaces.js";
 import type { ObjectiveKindDescriptor } from "../../../execution/shared/client-contract.js";
@@ -14,7 +13,7 @@ import { useConsoleLocale, useT } from "../../../../core/client/src/i18n/index.j
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
 import type { ArenaInsets } from "./arena-insets.js";
 import type { ConsoleState, ObjectiveGeometry, ObjectiveRecord } from "../../../../core/client/src/integration/types.js";
-import { getState, selectNestedBody, setActiveObjective, focusObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
+import { getState, selectNestedBody, setActiveObjective, toggleObjectiveSearch } from "../../../../core/client/src/integration/store.js";
 import { useStandaloneCliShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { StandaloneCliLayer } from "../../../execution/client/standalone-cli/layer.js";
 import { conversationSurfaceInboxSectionId, useFeatureRegistry, type ResolvedConversationSurface } from "../../../../core/client/src/integration/feature-registry.js";
@@ -39,7 +38,7 @@ import { pluginRuntimeState } from "../../../execution/client/objective-activity
 import { CONVERSATION_MEMBERS_TAB_ID } from "../../../execution/client/agent/chat/group/index.js";
 import { BROWSER_COMPANION_ID } from "../../../execution/client/agent/browser-companion.js";
 import { useBrowserEngine } from "../../../browser/client/browser-engine.js";
-import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserDriving, useBrowserReveal, useBrowserSurface } from "../../../browser/client/browser-surface.js";
+import { openBrowserPane, closeBrowserSurface, toggleBrowserPane, useBrowserDriving, useBrowserSurface } from "../../../browser/client/browser-surface.js";
 import { toggleBrowserViewerShell, useBrowserViewerShell } from "../../../browser/client/browser-viewer-shell.js";
 import { publishBrowserPluginAttach } from "../../../browser/client/browser-engine.js";
 import { getT as getBrowserT } from "../../../browser/client/i18n.js";
@@ -111,18 +110,6 @@ function writeLastPanel(id: string): void {
 /** 셸이 서 있는 동안 오른쪽 패널 앞 묶음(Objective 탭)을 레일 목록에 싣는다. 그리는 것은 없다. */
 export function ConversationShellHost(): null {
   useEffect(() => mountConversationObjectiveTabsHost(), []);
-  // Desktop 칸 머리의 「원본 이동」 — 칸을 연 곳의 대화로 돌아간다. 메시지 좌표가 오면 그 위치를 강조할 수 있지만,
-  // 지금 대화 원장은 메시지 id 를 DOM 좌표로 들고 있지 않으므로 대화 전환까지만 한다(모르는 위치를 지어내지 않는다).
-  const reveal = useBrowserReveal();
-  const revealNonce = reveal?.nonce ?? null;
-  useEffect(() => {
-    if (reveal === null || reveal.origin === null) return;
-    const objectiveId = reveal.origin.objectiveId;
-    if (typeof objectiveId !== "string" || objectiveId.length === 0) return;
-    // 플러그인 대화(사령관 등)가 가운데를 차지하고 있으면 걷고 그 Objective 대화로 간다.
-    closeConversationSurface();
-    focusObjective(objectiveId);
-  }, [revealNonce, reveal]);
   // 이 화면의 채팅은 가운데 칸 폭에 맞춘다(Fit) — 사람이 「채팅 폭」을 직접 골랐으면 그 값이 그대로 선다. 셸이 걷히면 기본 읽기 폭으로 돌아간다.
   useEffect(() => setChatReadingWidthDefault("full"), []);
   // 마지막으로 연 오른쪽 패널을 기억한다 — 헤더 pill 이 다시 열 때 쓴다(설정은 문으로만 연다).
@@ -344,7 +331,7 @@ function SideBarBrowserButton() {
       title={base}
       aria-pressed={streamedShell ? false : surface !== null}
       disabled={disabled}
-      onClick={() => { if (streamedShell) toggleBrowserViewerShell(); else toggleBrowserPane({ kind: "sidebar" }); }}
+      onClick={() => { if (streamedShell) toggleBrowserViewerShell(); else toggleBrowserPane(); }}
     >
       <CaptionBrowserUseGlyph />
       {driving ? <span className="conversation-side-browser-live" aria-hidden="true" /> : null}
@@ -1605,18 +1592,17 @@ function ConversationColumn({ state, objectiveRecord, language, objectiveRecordK
   // 칸이 여는 브라우저의 주인은 늘 이 대화의 루트다 — 구성원(자식 세션)은 Objective 이 아니라 루트의 브라우저를 함께 쓰므로,
   // 구성원 원장을 보는 중에 링크로 열어도 그룹채팅과 같은 탭 집합이 열린다.
   // 브라우저 표면은 Console 전역 수명이므로 대화를 바꿔도 유지한다.
-  const openObjectiveBrowser = useCallback((origin?: BrowserSurfaceOrigin) => { openBrowserPane(origin === undefined ? undefined : { ...origin, objectiveId: objectiveRecord.id }); }, [objectiveRecord.id]);
+  const openObjectiveBrowser = useCallback(() => { openBrowserPane(); }, []);
   const closeBrowser = useCallback(() => { closeBrowserSurface(); }, []);
-  // 도구 캡슐의 브라우저 단축키(Alt+B)로 칸을 열면 그 열림은 직접 연 것이다 — 출처를 사건으로 남긴다.
   const onCaptionCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
     if (!visible) { closeBrowser(); return; }
-    openObjectiveBrowser({ kind: "event" });
+    openObjectiveBrowser();
   }, [closeBrowser, openObjectiveBrowser]);
   // 본문(채팅·CLI 링크 카드)의 「Objective 브라우저」 행은 묻지 않고 바로 칸에 연다 — 이미 고른 답이다.
   const onBodyCompanion = useCallback((companionPanelId: string, visible: boolean) => {
     if (companionPanelId !== BROWSER_COMPANION_ID) return;
-    if (visible) openObjectiveBrowser({ kind: "message" });
+    if (visible) openObjectiveBrowser();
     else closeBrowser();
   }, [closeBrowser, openObjectiveBrowser]);
   const hiddenCompanions = browserSurfaceOpen ? NO_HIDDEN_COMPANIONS : CONVERSATION_COMPANION_PANEL_IDS;

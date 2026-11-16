@@ -1,6 +1,6 @@
 import * as React from "react";
-import type { BrowserSurfaceOrigin, BrowserSurfaceReveal, DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
-import { BROWSER_REVEAL_EVENT, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_SURFACE_CAPABILITY } from "@fleet-console/protocol/desktop";
+import type { DesktopBrowserSurface } from "@fleet-console/protocol/desktop";
+import { DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_SURFACE_CAPABILITY } from "@fleet-console/protocol/desktop";
 import { desktopShellCapabilities } from "../../../core/client/src/integration/desktop-shell.js";
 import { subscribeConsoleChannel } from "../../../core/client/src/integration/objective-records-sse.js";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
@@ -34,14 +34,9 @@ function markDockedPane(next: DesktopBrowserSurface | null): void {
   else document.documentElement.removeAttribute("data-browser-pane");
 }
 
-function sameOrigin(left: DesktopBrowserSurface["origin"], right: DesktopBrowserSurface["origin"]): boolean {
-  if (left == null || right == null) return left == null && right == null;
-  return left.kind === right.kind && left.actor === right.actor && left.objectiveId === right.objectiveId && left.messageId === right.messageId;
-}
-
 function sameSurface(left: DesktopBrowserSurface | null, right: DesktopBrowserSurface | null): boolean {
   if (left === null || right === null) return left === right;
-  return left.id === right.id && left.mode === right.mode && sameOrigin(left.origin, right.origin);
+  return left.id === right.id && left.mode === right.mode;
 }
 
 function publish(next: DesktopBrowserSurface | null, meta?: { readonly driving: boolean; readonly tabCount: number }): void {
@@ -72,34 +67,11 @@ function receive(payload: unknown): void {
   publish(frame.surface ?? null, readMeta(frame));
 }
 
-// ---------- 원본 이동 ----------
-
-let reveal: (BrowserSurfaceReveal & { readonly nonce: number }) | null = null;
-let revealNonce = 0;
-const revealListeners = new Set<() => void>();
-
-/** 칸 머리의 「원본 이동」이 보낸 좌표. 마지막 한 건만 남고, 새 요청마다 nonce 가 오른다. */
-export function useBrowserReveal(): (BrowserSurfaceReveal & { readonly nonce: number }) | null {
-  return React.useSyncExternalStore(subscribeReveal, () => reveal, () => null);
-}
-
-const subscribeReveal = (listener: () => void) => { start(); revealListeners.add(listener); return () => { revealListeners.delete(listener); }; };
-
-function receiveReveal(payload: unknown): void {
-  if (!payload || typeof payload !== "object") return;
-  const frame = payload as { browserId?: unknown; origin?: unknown };
-  const origin = frame.origin === null || frame.origin === undefined ? null : frame.origin as BrowserSurfaceOrigin;
-  if (typeof frame.browserId !== "string") return;
-  reveal = { browserId: frame.browserId, origin, nonce: ++revealNonce };
-  for (const listener of revealListeners) listener();
-}
-
 /** 상태 스트림은 이미 열려 있는 Console 스트림을 탄다 — 구독이 시작될 때 출발점을 한 번 읽는다. */
 function start(): void {
   if (started) return;
   started = true;
   subscribeConsoleChannel(BROWSER_STATE_EVENT, receive);
-  subscribeConsoleChannel(BROWSER_REVEAL_EVENT, receiveReveal);
   void fetch(`${endpoint}/state`).then(async (response) => {
     if (!response.ok) return;
     const body = await response.json() as { surface?: DesktopBrowserSurface | null; driving?: unknown; tabs?: unknown };
@@ -129,8 +101,8 @@ export function useBrowserClosedTabs(): number | null {
   return React.useSyncExternalStore(subscribe, () => closedTabs, () => null);
 }
 
-async function request(action: "open" | "close" | "focus" | "mode", id?: string, mode?: "pane" | "window", origin?: BrowserSurfaceOrigin | null): Promise<DesktopBrowserSurface | null> {
-  const response = await fetch(`${endpoint}/surface`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id, mode, ...(origin === undefined ? {} : { origin }) }) });
+async function request(action: "open" | "close" | "focus" | "mode", id?: string, mode?: "pane" | "window"): Promise<DesktopBrowserSurface | null> {
+  const response = await fetch(`${endpoint}/surface`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, id, mode }) });
   if (!response.ok) throw new Error("browser_surface_failed");
   const body = await response.json() as { surface?: DesktopBrowserSurface | null };
   publish(body.surface ?? null);
@@ -145,32 +117,27 @@ export function focusBrowserWindow(): boolean {
 }
 
 /** 지구본·링크는 기본 셸 칸을 연다. 표면 능력이 없는 옛 셸에서는 열리지 않는다(브라우저 문이 닫혀 있다). */
-export function openBrowserPane(origin?: BrowserSurfaceOrigin | null): void {
-  if (focusBrowserWindow()) return;
-  // 이미 열린 칸이면 출처만 새 자리로 옮긴다 — 칸 머리가 마지막으로 연 곳을 말한다.
-  if (current) {
-    if (origin !== undefined) void request("open", undefined, current.mode, origin).catch(() => undefined);
-    return;
-  }
+export function openBrowserPane(): void {
+  if (focusBrowserWindow() || current) return;
   if (!desktopShellCapabilities().includes(DESKTOP_BROWSER_SURFACE_CAPABILITY)) return;
-  void request("open", undefined, "pane", origin).catch(() => undefined);
+  void request("open", undefined, "pane").catch(() => undefined);
 }
 
 export function closeBrowserSurface(): void {
   if (current) void request("close", current.id).catch(() => undefined);
 }
 
-export function toggleBrowserPane(origin?: BrowserSurfaceOrigin | null): void {
+export function toggleBrowserPane(): void {
   if (current?.mode === "window") { void request("focus", current.id).catch(() => undefined); return; }
-  if (current) closeBrowserSurface(); else openBrowserPane(origin);
+  if (current) closeBrowserSurface(); else openBrowserPane();
 }
 
 /**
  * CLI·채팅에서 고른 주소를 브라우저로 연다. 표면을 열고, 링크는 디폴트 스페이스의 새 탭에서 — 사람이 거기서 보던 빈 탭만 그 자리에서 쓴다(사람이 보던 페이지를 링크 하나가 밀어내지 않게).
  * 표면 안의 화면은 Desktop 이 그리므로 이 요청은 서버의 탭 REST 로 곧장 간다.
  */
-export async function openBrowserLink(url: string, origin?: BrowserSurfaceOrigin | null): Promise<void> {
-  openBrowserPane(origin);
+export async function openBrowserLink(url: string): Promise<void> {
+  openBrowserPane();
   try {
     const stateResponse = await fetch(`${endpoint}/state`);
     const state = stateResponse.ok ? await stateResponse.json() as { activeTabId?: string | null; tabs?: { id: string; url: string; spaceId: string }[] } : null;

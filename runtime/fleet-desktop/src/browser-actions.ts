@@ -173,8 +173,6 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
         })();
         return;
       }
-      // 출처로 돌아가기는 표면이 Console reveal 과 메인 창 포커스를 직접 처리한다. 여기까지 오면 다시 보내지 않는다.
-      case "reveal-origin": return;
       case "open-external": {
         const chrome = control.chrome();
         const tab = chrome?.tabs.find((candidate) => candidate.id === chrome.activeTabId);
