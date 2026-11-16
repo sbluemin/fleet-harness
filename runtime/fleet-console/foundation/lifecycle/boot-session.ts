@@ -3,11 +3,13 @@ import fs from "node:fs";
 
 /**
  * The OS boot this process belongs to, as `<platform>:<id>`.
- * macOS reads `kern.bootsessionuuid`, Linux `/proc/sys/kernel/random/boot_id`, and Windows the last boot time.
+ * macOS reads `kern.bootsessionuuid`, Linux `/proc/sys/kernel/random/boot_id`, and Windows the kernel `BootId`
+ * registry value (`PrefetchParameters\BootId`).
  * A failure is null: callers then keep the ESRCH and `replaced` rules. The platform prefix keeps a lock written in
  * another namespace (a Linux Console read from Windows) from looking like a previous boot.
  */
 const BOOT_SESSION_TEXT = /^[A-Za-z0-9._:-]{1,128}$/;
+const WIN_PREFETCH_BOOT_ID_KEY = "HKLM\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management\\PrefetchParameters";
 
 let cached: string | null | undefined;
 let sourceOverride: (() => string | null) | undefined;
@@ -74,14 +76,33 @@ function readRawBootId(): string | null {
   return null;
 }
 
-/** Last boot time as UTC epoch seconds. A slow or failed query is null, and the caller falls back to ESRCH. */
-function readWindowsBootId(): string | null {
-  const script = "[DateTimeOffset]::new((Get-CimInstance -ClassName Win32_OperatingSystem).LastBootUpTime).ToUnixTimeSeconds()";
-  const output = execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], {
+/**
+ * Parses `reg.exe query ...\PrefetchParameters /v BootId` output. Returns the positive kernel boot id string,
+ * or null when absent/zero/unreadable so callers fall back to ESRCH and `replaced`.
+ */
+export function parseWindowsBootIdRegOutput(output: string): string | null {
+  const match = /^\s*BootId\s+REG_DWORD\s+(0x[0-9a-fA-F]+|\d+)\b/m.exec(output);
+  if (!match) return null;
+  const raw = match[1]!;
+  const value = raw.toLowerCase().startsWith("0x") ? Number.parseInt(raw.slice(2), 16) : Number(raw);
+  return Number.isSafeInteger(value) && value > 0 ? String(value) : null;
+}
+
+/**
+ * Clock-independent kernel boot id from Windows `PrefetchParameters\BootId`.
+ * A missing key, failed query, or uninitialized value returns null so the caller falls back to ESRCH.
+ */
+export function readWindowsBootId(
+  query: (file: string, args: readonly string[]) => string = (file, args) => execFileSync(file, args, {
     encoding: "utf8",
-    timeout: 3_000,
+    timeout: 1_000,
     windowsHide: true,
-  });
-  const seconds = Number(String(output).trim());
-  return Number.isSafeInteger(seconds) && seconds > 0 ? String(seconds) : null;
+  }),
+): string | null {
+  try {
+    const output = query("reg.exe", ["query", WIN_PREFETCH_BOOT_ID_KEY, "/v", "BootId"]);
+    return parseWindowsBootIdRegOutput(String(output));
+  } catch {
+    return null;
+  }
 }

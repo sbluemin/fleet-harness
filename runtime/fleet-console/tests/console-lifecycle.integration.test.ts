@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createOwnedProcessRegistry, proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, recoverConsoleLockSlot, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
+import { createOwnedProcessRegistry, parseWindowsBootIdRegOutput, proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, readWindowsBootId, recoverConsoleLockSlot, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
 import { createWindowsJobContainment, type WindowsJobBindings } from "../core/host/bootstrap/windows-job-containment.js";
 import { describeReplacedLockAuthor, HEALTH_PROBE_TIMEOUT_MS, PROCESS_START_MARGIN_MS } from "@fleet-console/protocol/lifecycle";
 
@@ -218,6 +218,37 @@ describe("Console daemon lifecycle integration", () => {
     fs.writeFileSync(lockFile, "", { mode: 0o600 });
     await expect(recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot })).resolves.toMatchObject({ kind: "refused" });
     expect(fs.readFileSync(lockFile, "utf8")).toBe("");
+
+    // Race guard: if a newly published lock replaces the observed lock before rm, recover refuses and leaves it intact.
+    fs.rmSync(path.join(dir, "update-progress.json"));
+    const backupsBefore = fs.readdirSync(dir).filter((name) => name.startsWith(".console.lock.recover-"));
+    const staleReplaced = { pid: bystanderPid, host: "127.0.0.1", port, endpoint: `http://127.0.0.1:${port}/`, startedAt: Date.now() - 60_000, token: "stale-replaced", version: "v", bootSession: boot };
+    fs.writeFileSync(lockFile, `${JSON.stringify(staleReplaced, null, 2)}\n`, { mode: 0o600 });
+    const raceResult = await recoverConsoleLockSlot(lockFile, dir, {
+      bootSession: () => boot,
+      isLockAuthorReplaced: async () => {
+        const freshLive = { pid: bystanderPid, host: "127.0.0.1", port, endpoint: `http://127.0.0.1:${port}/`, startedAt: Date.now(), token: "new-live-token", version: "v", bootSession: boot };
+        fs.writeFileSync(lockFile, `${JSON.stringify(freshLive, null, 2)}\n`, { mode: 0o600 });
+        return true;
+      },
+    });
+    expect(raceResult.kind).toBe("refused");
+    expect(readConsoleLockFile(lockFile)?.token).toBe("new-live-token");
+    expect(fs.readdirSync(dir).filter((name) => name.startsWith(".console.lock.recover-"))).toEqual(backupsBefore);
+  });
+
+  it("parses Windows kernel BootId from PrefetchParameters registry output and returns null when unreadable", () => {
+    const regOutput = [
+      "",
+      "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management\\PrefetchParameters",
+      "    BootId    REG_DWORD    0x2f",
+      "",
+    ].join("\r\n");
+    expect(parseWindowsBootIdRegOutput(regOutput)).toBe("47");
+    expect(parseWindowsBootIdRegOutput("    BootId    REG_DWORD    0x0\r\n")).toBeNull();
+    expect(parseWindowsBootIdRegOutput("    OtherKey    REG_DWORD    0x5\r\n")).toBeNull();
+    expect(readWindowsBootId(() => regOutput)).toBe("47");
+    expect(readWindowsBootId(() => { throw new Error("missing registry key"); })).toBeNull();
   });
 
   it("lets one live reclaimer at a time act on a dead lock and hands over only after it exits", async () => {

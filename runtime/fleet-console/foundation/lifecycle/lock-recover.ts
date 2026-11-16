@@ -21,24 +21,41 @@ export type ConsoleLockRecoverResult =
 export interface ConsoleLockRecoverDeps {
   readonly bootSession?: () => string | null;
   readonly isPidAlive?: (pid: number) => boolean;
+  readonly isLockAuthorReplaced?: (lock: ConsoleLockFilePayload) => Promise<boolean>;
   readonly now?: () => number;
 }
+
+type ExpectedLockState =
+  | { readonly kind: "absent" }
+  | { readonly kind: "present"; readonly bytes: Buffer };
 
 /**
  * Clears one slot's lock, reclaim markers, and staging leftovers after a person asks (`fleet console start --recover`,
  * or Desktop's recover button). A symlink or another user's entry is never deleted. A live Console from this boot,
- * or an update whose worker is still running, is refused and nothing is removed.
+ * an update whose worker is still running, or a lock that changed before removal is refused and nothing is removed.
  */
 export async function recoverConsoleLockSlot(lockFile: string, dataDir: string, deps: ConsoleLockRecoverDeps = {}): Promise<ConsoleLockRecoverResult> {
   const pidAlive = deps.isPidAlive ?? isPidAlive;
   const bootSession = deps.bootSession ?? currentConsoleBootSession;
+  const checkAuthorReplaced = deps.isLockAuthorReplaced ?? isLockAuthorReplaced;
+  const now = deps.now ?? Date.now;
   const trust: ConsoleLockTrustOptions = { bootSession };
   const observed = observeConsoleLockFile(lockFile, trust);
   if (observed.kind === "refused") return { kind: "refused", reason: describeRefusedConsoleLock(lockFile, observed.reason) };
-  const update = activeUpdateReason(dataDir, pidAlive, (deps.now ?? Date.now)());
+  let expectedLock: ExpectedLockState;
+  if (observed.kind === "absent") {
+    expectedLock = { kind: "absent" };
+  } else if (observed.kind === "owner") {
+    expectedLock = { kind: "present", bytes: observed.instance.bytes };
+  } else {
+    const read = readOwnedRegularLockBytes(lockFile);
+    if (read.kind === "refused") return read;
+    expectedLock = { kind: "present", bytes: read.bytes };
+  }
+  const update = activeUpdateReason(dataDir, pidAlive, now());
   if (update !== null) return { kind: "refused", reason: update };
   if (observed.kind === "owner" && observed.alive && !observed.previousBoot) {
-    const replaced = await isLockAuthorReplaced(observed.instance.payload);
+    const replaced = await checkAuthorReplaced(observed.instance.payload);
     if (!replaced) {
       return {
         kind: "refused",
@@ -50,6 +67,8 @@ export async function recoverConsoleLockSlot(lockFile: string, dataDir: string, 
   const names = listDir(dir);
   const foreign = foreignSlotEntry(dir, lockFile, names);
   if (foreign !== null) return { kind: "refused", reason: foreign };
+  const preCheck = verifyExpectedLock(lockFile, expectedLock);
+  if (preCheck !== null) return preCheck;
   const targets = slotEntries(dir, lockFile, names, pidAlive);
   if (observed.kind === "absent" && targets.length === 0) return { kind: "absent" };
   const backup = path.join(dir, `.console.lock.recover-${Date.now().toString(36)}-${crypto.randomBytes(4).toString("hex")}`);
@@ -57,15 +76,120 @@ export async function recoverConsoleLockSlot(lockFile: string, dataDir: string, 
   const removed: string[] = [];
   try {
     for (const name of targets) {
+      copyOwnedEntry(path.join(dir, name), path.join(backup, name));
+    }
+    const updateBeforeRemove = activeUpdateReason(dataDir, pidAlive, now());
+    if (updateBeforeRemove !== null) {
+      removeBackupQuietly(backup);
+      return { kind: "refused", reason: updateBeforeRemove };
+    }
+    const lockBeforeRemove = verifyExpectedLock(lockFile, expectedLock);
+    if (lockBeforeRemove !== null) {
+      removeBackupQuietly(backup);
+      return lockBeforeRemove;
+    }
+    const lockBase = path.basename(lockFile);
+    for (const name of targets) {
       const entry = path.join(dir, name);
-      copyOwnedEntry(entry, path.join(backup, name));
+      if (name === lockBase) {
+        const finalCheck = verifyExpectedLock(lockFile, expectedLock);
+        if (finalCheck !== null) {
+          if (removed.length === 0) removeBackupQuietly(backup);
+          return finalCheck;
+        }
+      } else if (!isOwnedNonSymlink(entry)) {
+        continue;
+      }
       fs.rmSync(entry, { recursive: true, force: true });
       removed.push(entry);
     }
   } catch (error) {
+    if (removed.length === 0) removeBackupQuietly(backup);
     return { kind: "refused", reason: `recovery stopped before the slot was cleared (${error instanceof Error ? error.message : String(error)}). Already copied entries are in ${backup}.` };
   }
   return { kind: "cleared", removed };
+}
+
+function readOwnedRegularLockBytes(lockFile: string): { readonly kind: "present"; readonly bytes: Buffer } | { readonly kind: "refused"; readonly reason: string } {
+  const uid = currentUid();
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(lockFile);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { kind: "refused", reason: "the lock changed while recovery was checking it; nothing was removed." };
+    }
+    return { kind: "refused", reason: `the lock could not be read (${(error as NodeJS.ErrnoException).code ?? "error"}); nothing was removed.` };
+  }
+  if (stat.isSymbolicLink()) return { kind: "refused", reason: describeRefusedConsoleLock(lockFile, "it is a symbolic link") };
+  if (uid !== null && stat.uid !== uid) return { kind: "refused", reason: describeRefusedConsoleLock(lockFile, `it is owned by uid ${stat.uid}`) };
+  if (!stat.isFile()) return { kind: "refused", reason: `the lock ${lockFile} is not a regular file; nothing was removed.` };
+  try {
+    return { kind: "present", bytes: fs.readFileSync(lockFile) };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return {
+      kind: "refused",
+      reason: code === "ENOENT"
+        ? "the lock changed while recovery was checking it; nothing was removed."
+        : `the lock could not be read (${code ?? "error"}); nothing was removed.`,
+    };
+  }
+}
+
+function verifyExpectedLock(lockFile: string, expected: ExpectedLockState): { readonly kind: "refused"; readonly reason: string } | null {
+  const uid = currentUid();
+  let stat: fs.Stats;
+  try {
+    stat = fs.lstatSync(lockFile);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return expected.kind === "absent"
+        ? null
+        : { kind: "refused", reason: "the lock changed while recovery was checking it; nothing was removed." };
+    }
+    return { kind: "refused", reason: `the lock could not be verified (${(error as NodeJS.ErrnoException).code ?? "error"}); nothing was removed.` };
+  }
+  if (expected.kind === "absent") {
+    return { kind: "refused", reason: "a new lock appeared while recovery was checking the slot; nothing was removed." };
+  }
+  if (stat.isSymbolicLink()) return { kind: "refused", reason: describeRefusedConsoleLock(lockFile, "it is a symbolic link") };
+  if (uid !== null && stat.uid !== uid) return { kind: "refused", reason: describeRefusedConsoleLock(lockFile, `it is owned by uid ${stat.uid}`) };
+  if (!stat.isFile()) return { kind: "refused", reason: "the lock changed into something that is not a regular lock file; nothing was removed." };
+  let currentBytes: Buffer;
+  try {
+    currentBytes = fs.readFileSync(lockFile);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return {
+      kind: "refused",
+      reason: code === "ENOENT"
+        ? "the lock changed while recovery was checking it; nothing was removed."
+        : `the lock could not be verified (${code ?? "error"}); nothing was removed.`,
+    };
+  }
+  if (!currentBytes.equals(expected.bytes)) {
+    return { kind: "refused", reason: "the lock changed while recovery was checking it; nothing was removed." };
+  }
+  return null;
+}
+
+function isOwnedNonSymlink(entry: string): boolean {
+  try {
+    const stat = fs.lstatSync(entry);
+    const uid = currentUid();
+    return !stat.isSymbolicLink() && (uid === null || stat.uid === uid);
+  } catch {
+    return false;
+  }
+}
+
+function removeBackupQuietly(backup: string): void {
+  try {
+    fs.rmSync(backup, { recursive: true, force: true });
+  } catch {
+    // Best-effort cleanup when recovery refused before deleting anything.
+  }
 }
 
 function activeUpdateReason(dataDir: string, pidAlive: (pid: number) => boolean, now: number): string | null {
