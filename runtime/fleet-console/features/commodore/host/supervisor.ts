@@ -82,6 +82,11 @@ export interface CommodoreSupervisorDeps {
   readonly intelProposals?: (commodoreId: string) => import("./intel-proposals.js").CommodoreIntelProposals;
   /** 이 사령관의 응답 말투 — 조립이 아바타 책에서 읽어 주입한다. 세션을 열 때 한 번 읽고, 없으면 기본 말투다. */
   readonly voiceOf?: (commodoreId: string) => import("./prompt.js").CommodoreVoice | null;
+  /**
+   * Console의 로컬 오류 로그(`errors.jsonl`) 포트 — 조립부가 건넨다. 세션이 턴 실패 원문을 여기 남긴다.
+   * 없으면 기록하지 않고, Console의 다른 실패 기록과 같은 파일에 쌓인다.
+   */
+  readonly recordFailure?: (kind: string, error: unknown) => void;
 }
 
 /** 한 턴을 여는 실행 좌표. `model`은 Agent SDK wire id다. */
@@ -596,6 +601,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         wake(runner, "message");
       },
       ...(deps.execute ? { execute: deps.execute } : {}),
+      ...(deps.recordFailure ? { recordFailure: deps.recordFailure } : {}),
     });
     await session.start();
     runner.session = session;

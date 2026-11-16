@@ -16,7 +16,7 @@ import { aliasNote, commodoreSystemPrompt, memoryNote, messageNote, replacementN
 import type { CommodoreStore } from "./store.js";
 import { COMMODORES_TOOL_NAMES, FLEET_COMMODORE_TOOL_GROUP } from "../shared/tool-names.js";
 import { createCommodoreTools, type CommandExecute, type CommodoreTaskforceLedger } from "./tools.js";
-import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
+import { MAX_SCOPE_ITEMS, MAX_TRANSCRIPT_DETAIL, MAX_TRANSCRIPT_TEXT, type CommodoreLiveEvent, type CommodoreTranscriptEntry, type CommodoreTranscriptInput } from "../shared/contracts/types.js";
 
 /** 사령관 세션 — Console 내부 상주 자식을 매번 새 대화로 연다. 제품 기록·기억만 다음 세션으로 이어진다. */
 
@@ -75,6 +75,11 @@ export interface CommodoreSessionOptions {
   /** 설명·정보 변경 제안. 없으면 그 제안 도구를 싣지 않는다. */
   readonly proposals?: import("./description-proposals.js").CommodoreDescriptionProposals;
   readonly intelProposals?: import("./intel-proposals.js").CommodoreIntelProposals;
+  /**
+   * Console의 로컬 오류 로그(`errors.jsonl`) 포트 — 호스트(조립부)가 건넨다.
+   * 턴 실패의 원문은 여기 남고 화면에는 안전한 1줄 요약만 간다. 없으면 기록하지 않는다.
+   */
+  readonly recordFailure?: (kind: string, error: unknown) => void;
 }
 
 export interface CommodoreTurnInput {
@@ -136,7 +141,8 @@ export interface CommodoreSession {
 
 const MCP_PREFIX = /^mcp__[^_]+(?:_[^_]+)*__/;
 const MAX_SUMMARY = 200;
-const MAX_ERROR = 200;
+/** errors.jsonl 한 항목의 상한 — 원인 원문은 남기되 무한히 크지 않게 자른다. */
+const MAX_FAILURE_LOG = 8_000;
 
 export function createCommodoreSession(options: CommodoreSessionOptions): CommodoreSession {
   const now = options.now ?? Date.now;
@@ -170,6 +176,22 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
   const record = (entry: CommodoreTranscriptInput) => {
     try { options.store.transcriptAppend(options.commodoreId, entry); }
     catch (error) { console.warn(`[objectives] commodore transcript append failed: ${error instanceof Error ? error.message : String(error)}`); }
+  };
+  /**
+   * 턴 실패 원문을 Console의 로컬 오류 로그에 남긴다 — 화면에는 마스킹한 1줄 요약만 가므로,
+   * 사후 디버깅에 필요한 원인·스택은 여기 남아야 한다(민감 토큰·개인 경로는 가린다).
+   */
+  const logTurnFailure = (kind: string, failure: FailureClassification, raw: string, thrown?: unknown) => {
+    const log = options.recordFailure;
+    if (!log) return;
+    try {
+      const where = `commodore ${options.commodoreId} · ${options.coordinates.model}${options.coordinates.effort ? `/${options.coordinates.effort}` : ""}`;
+      const logged = new Error(clip(maskSensitiveInfo(`${where} · ${failure.code} · ${raw}`), MAX_FAILURE_LOG));
+      // 원래 스택이 있으면 그대로 — 예외 경로에서만 있다.
+      const stack = thrown instanceof Error ? thrown.stack : undefined;
+      if (stack) logged.stack = clip(maskSensitiveInfo(stack), MAX_FAILURE_LOG);
+      log(kind, logged);
+    } catch { /* 진단 기록 실패가 턴 결과를 바꾸지 않는다 */ }
   };
   const flushText = () => {
     if (textBuffer.trim()) {
@@ -257,9 +279,12 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       }
       case "result": {
         flushText(); flushTools();
-        const error = event.isError ? clip(event.detail ?? event.source, MAX_ERROR) : undefined;
-        turnResult = { outcome: event.isError ? "error" : "ok", ...(event.usage ? { usage: event.usage } : {}), ...(error ? { error } : {}), ...(compactionFailed ? { compactionFailed: true as const } : {}), actions: turnActions };
-        record({ kind: "result", outcome: turnResult.outcome, ...(event.usage?.costUsd !== undefined ? { costUsd: event.usage.costUsd } : {}), ...(event.usage ? { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens } : {}), ...(error ? { error } : {}) });
+        // 업스트림 원문을 정규화 코드와 안전한 1줄 요약으로 가른다 — 화면은 코드별 문구를, 원문은 로그를 쓴다.
+        const raw = event.detail ?? "";
+        const failure = event.isError ? classifyFailure(raw) : null;
+        if (failure) logTurnFailure("commodore_turn_error", failure, raw || `result:${event.source}`);
+        turnResult = { outcome: event.isError ? "error" : "ok", ...(event.usage ? { usage: event.usage } : {}), ...(failure ? { error: failure.code } : {}), ...(compactionFailed ? { compactionFailed: true as const } : {}), actions: turnActions };
+        record({ kind: "result", outcome: turnResult.outcome, ...(event.usage?.costUsd !== undefined ? { costUsd: event.usage.costUsd } : {}), ...(event.usage ? { inputTokens: event.usage.inputTokens, outputTokens: event.usage.outputTokens } : {}), ...(failure ? { error: failure.code, ...(failure.detail ? { detail: failure.detail } : {}) } : {}) });
         return;
       }
       case "compact-failed": compactionFailed = true; return;
@@ -414,8 +439,10 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       try { await session.send(prompt); }
       catch (error) {
         flushText(); flushTools();
-        const code = failureCode(error);
-        if (!turnResult) { turnResult = { outcome: "error", error: code, actions: turnActions }; record({ kind: "result", outcome: "error", error: code }); }
+        // 예외도 원문은 로그에, 화면에는 코드와 1줄 요약만 — 같은 예외가 다음 턴에 되풀이될 때 비교할 근거가 남는다.
+        const failure = classifyFailure(error);
+        logTurnFailure("commodore_turn_failed", failure, errorMessage(error), error);
+        if (!turnResult) { turnResult = { outcome: "error", error: failure.code, actions: turnActions }; record({ kind: "result", outcome: "error", error: failure.code, ...(failure.detail ? { detail: failure.detail } : {}) }); }
       } finally { turnActive = false; stepReporter?.turnClosed(); }
       const result: CommodoreTurnOutcome = turnResult ?? { outcome: "error", error: "no_result", actions: turnActions };
       if (!turnResult) record({ kind: "result", outcome: "error", error: "no_result" });
@@ -531,11 +558,61 @@ function clip(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
 }
 
-function failureCode(error: unknown): string {
-  const message = error instanceof Error ? error.message : String(error);
-  if (/disposed/i.test(message)) return "session_disposed";
-  if (/rate|429|overloaded|limit/i.test(message)) return "rate_limited";
-  if (/ECONN|ENOTFOUND|network|fetch failed|socket|timeout/i.test(message)) return "network";
-  if (/^[a-z_]{1,64}$/.test(message)) return message;
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** 한 턴 실패의 분류 — 화면 문구·기록·재시도 판정이 함께 쓰는 정규화 코드와 안전한 1줄 요약. */
+export interface FailureClassification {
+  readonly code: string;
+  /** 사람이 읽을 한 줄. 내부 코드 한 낱말처럼 원문이 곧 코드면 없다. */
+  readonly detail?: string;
+}
+
+/**
+ * 턴 실패 원문을 정규화 코드로 분류하고, 민감정보를 가린 1줄 요약을 함께 낸다.
+ * 코드는 화면이 문구로 옮기고 재시도 판정이 같은 낱말을 본다 — 원문 문구로 갈라지지 않게 한 표만 쓴다.
+ */
+export function classifyFailure(error: unknown): FailureClassification {
+  const message = errorMessage(error);
+  const code = failureCode(message);
+  const detail = oneLine(message, MAX_TRANSCRIPT_DETAIL);
+  // 내부 코드 한 낱말(예: `session_disposed`)은 원문이 곧 코드다 — 같은 낱말을 요약으로 한 번 더 싣지 않는다.
+  return detail && detail !== code ? { code, detail } : { code };
+}
+
+/** 원문을 한 줄로 접고 가린 뒤 자른다 — 화면·로그가 같은 마스킹 표를 쓴다. */
+function oneLine(text: string, max: number): string {
+  const line = maskSensitiveInfo(text.replace(/\s+/gu, " ").trim());
+  return clip(line, max);
+}
+
+/** 민감정보 마스킹 — API 키·토큰·자격증명 값과 사용자 개인 경로를 가린다. */
+export function maskSensitiveInfo(text: string): string {
+  return text
+    .replace(/\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}/giu, "$1 ***")
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/gu, "sk-***")
+    .replace(/\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|auth[_-]?token|oauth[_-]?token|client[_-]?secret|authorization|password|secret)\b(\s*[=:]\s*)("?)[^\s"',;}]{4,}/giu, "$1$2***")
+    .replace(/\/(?:Users|home)\/[^/\s"']+/gu, "/$HOME")
+    .replace(/[A-Za-z]:\\Users\\[^\\\s"']+/gu, "C:\\Users\\***");
+}
+
+/** 원문 → 정규화 코드. 분류에 걸리지 않으면 `turn_failed`. */
+function failureCode(message: string): string {
+  const text = message.trim();
+  if (!text) return "turn_failed";
+  // 내부 코드 한 낱말은 그대로 쓴다(session_disposed·gateway_unavailable 등).
+  if (/^[a-z][a-z0-9_]{0,63}$/u.test(text)) return text;
+  if (/disposed/iu.test(text)) return "session_disposed";
+  // 입력 자체가 한도를 넘은 경우 — 같은 메시지를 다시 보내도 풀리지 않는다(격리 판정의 근거).
+  if (/prompt is too long|prompt too long|context[ _-]?(length|window)[^.]{0,40}(exceed|too long)|context_length_exceeded/iu.test(text)) return "prompt_too_long";
+  if (/image[^.]{0,80}(too large|exceeds?|\bover\b|\bmax(imum)?\b|\b5\s*mb\b)/iu.test(text)) return "image_too_large";
+  if (/\b413\b|request (body|entity) too large|payload too large|too many bytes/iu.test(text)) return "payload_too_large";
+  if (/\b429\b|rate[ _-]?limit|overloaded|too many requests|quota|usage limit/iu.test(text)) return "rate_limited";
+  if (/\b5\d\d\b|internal server error|bad gateway|service unavailable|server_error/iu.test(text)) return "upstream_error";
+  if (/ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|network error|fetch failed|socket hang|timeout|connection error/iu.test(text)) return "network";
+  if (/\b400\b|invalid[ _-]?request|malformed/iu.test(text)) return "invalid_request";
+  // 턴이 끝나기 전에 자식 프로세스가 끝났다 — 세션이 아니라 프로세스 사건이다.
+  if (/exited with code|exited with signal|was ended by SIG|process (exited|terminated)/iu.test(text)) return "cli_exited";
   return "turn_failed";
 }

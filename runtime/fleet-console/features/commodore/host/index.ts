@@ -90,6 +90,11 @@ export interface CommodoreFeatureDeps {
    * 명부에 실릴 자격이 있는 목표만 답한다 — 상한에 잘려 목록에 없어도 된다(완료·보관·없음은 null).
    */
   readonly objectivePeekOf?: (objectiveId: string) => import("../../../protocol/desktop/console-section.js").ConsoleObjectivePeek | null;
+  /**
+   * Console의 로컬 오류 로그(`errors.jsonl`) 포트 — 조립부(core)가 건넨다. 사령관 세션이 턴 실패 원문을 여기 남기고,
+   * feature는 core를 직접 import하지 않는다.
+   */
+  readonly recordFailure?: (kind: string, error: unknown) => void;
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -190,6 +195,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     ...(deps.gatewayTools ? { gatewayTools: deps.gatewayTools } : {}),
     ...(deps.voiceOf ? { voiceOf: deps.voiceOf } : {}),
     emit,
+    ...(deps.recordFailure ? { recordFailure: deps.recordFailure } : {}),
     taskforce: taskforce.store,
     onTaskforceEvent: (event) => emit(event),
     ...(proposals ? { proposals: (commodoreId: string) => proposals!.forCommodore(commodoreId) } : {}),

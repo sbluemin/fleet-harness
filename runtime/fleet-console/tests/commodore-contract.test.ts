@@ -41,7 +41,7 @@ import { createObjectiveStore } from "../features/objectives/host/store.js";
 import { createCommodoreBoardTools } from "../features/objectives/host/console-tools.js";
 import { COALESCE_MS, COMMODORE_IDLE_ROTATE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
-import { commodoreCompactAt, MAX_TRANSCRIPT_TEXT, type CommodoreEvent } from "../features/commodore/shared/contracts/types.js";
+import { commodoreCompactAt, MAX_TRANSCRIPT_TEXT, type CommodoreEvent, type CommodoreTranscriptEntry } from "../features/commodore/shared/contracts/types.js";
 import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
 import type { CommodoreAttachmentReader, CommodorePersonMessageReader, CommodoreTurnBindings } from "../features/objectives/shared/commodore-board.js";
 import type { ConsoleMcpTool } from "../features/execution/shared/tools.js";
@@ -2322,6 +2322,71 @@ describe("commodore session", () => {
       expect(absent.workspace.plugins).toEqual([{ path: fleetDir, skipMcp: true }]);
       await absent.session.dispose();
     } finally { warn.mockRestore(); }
+  });
+
+  it("classifies a turn failure, masks the cause in the local error log, and records one safe detail line", async () => {
+    const h = harness();
+    const stub = agentStub();
+    const logged: { kind: string; message: string; stack: string | null }[] = [];
+    const session = createCommodoreSession({
+      commodoreId: "t1", cwd: h.objectivesDir, theaterLabel: "t", theaterRoot: h.objectivesDir, agent: stub.agent, store: h.store,
+      coordinates: { model: "opus[1m]", effort: "high" }, boardTools: [], now: () => 10_000,
+      recordFailure: (kind, error) => logged.push({ kind, message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack ?? null : null }),
+    });
+    // 업스트림 결과 오류 — 정규화 코드와 가린 1줄 요약이 기록에 남고, 원문은 로컬 오류 로그로 간다.
+    stub.setScript(async () => { stub.emit({ kind: "result", isError: true, source: "message", detail: "API Error: 400 image exceeds 5 MB maximum (key sk-ant-api03-SECRETVALUE9999, file /Users/someone/private.png)" }); });
+    expect(await session.turn({ reasons: ["message"] })).toMatchObject({ outcome: "error", error: "image_too_large" });
+    const result = h.store.transcriptRead("t1").entries.at(-1) as Extract<CommodoreTranscriptEntry, { kind: "result" }>;
+    expect(result).toMatchObject({ kind: "result", outcome: "error", error: "image_too_large" });
+    expect(result.detail).toContain("image exceeds 5 MB");
+    for (const secret of ["SECRETVALUE9999", "/Users/someone"]) {
+      expect(result.detail).not.toContain(secret);
+      expect(logged[0]!.message).not.toContain(secret);
+    }
+    // 원인은 화면 요약과 달리 로컬 로그에 남는다 — 좌표·코드·원문이 함께.
+    expect(logged).toHaveLength(1);
+    expect(logged[0]).toMatchObject({ kind: "commodore_turn_error" });
+    expect(logged[0]!.message).toContain("commodore t1 · opus[1m]/high · image_too_large");
+    expect(logged[0]!.message).toContain("image exceeds 5 MB");
+
+    // 예외 경로 — 원인이 코드 한 낱말이 아니면 분류하고, 원래 스택을 함께 남긴다.
+    stub.setScript(async () => { throw new Error("Claude Code process exited with code 1"); });
+    expect(await session.turn({ reasons: ["routine"] })).toMatchObject({ outcome: "error", error: "cli_exited" });
+    expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "error", error: "cli_exited", detail: "Claude Code process exited with code 1" });
+    expect(logged.at(-1)).toMatchObject({ kind: "commodore_turn_failed" });
+    expect(logged.at(-1)!.stack).toContain("commodore-contract.test.ts");
+    await session.dispose();
+  });
+});
+
+describe("commodore failure display", () => {
+  it("shows a failed turn and its retry schedule as one warning line, with the original cause only when unclassified", async () => {
+    const { commodoreChatEntries, commodoreConversationEntries, failureWord } = await import("../features/commodore/client/commodore-chat.js");
+    const { getT } = await import("../features/commodore/client/i18n/index.js");
+    const t = getT("ko");
+    const entries: CommodoreTranscriptEntry[] = [
+      { seq: 1, at: 1_000, kind: "wake", reasons: ["message"] },
+      { seq: 2, at: 9_000, kind: "result", outcome: "error", error: "payload_too_large", detail: "API Error: 413 request body too large" },
+      { seq: 3, at: 9_001, kind: "error", code: "payload_too_large", retryAt: 129_001 },
+    ];
+    const notes = (list: readonly { readonly event: { readonly kind: string; readonly text?: string } }[]) =>
+      list.flatMap((entry) => (entry.event.kind === "note" ? [entry.event.text ?? ""] : []));
+    const chat = notes(commodoreChatEntries(t, "t1", entries, []));
+    // 결말 줄과 재시도 예약 줄은 같은 실패다 — 두 줄 경고가 아니라 한 줄이다.
+    expect(chat).toHaveLength(1);
+    expect(chat[0]).toContain("요청 본문이 모델 한도를 넘었어요(413)");
+    expect(chat[0]).toContain("다시 시도");
+    // 대화 화면도 같은 한 줄만 세운다.
+    expect(commodoreConversationEntries(t, "t1", entries, [], []).flatMap((entry) => (entry.kind === "note" ? [entry.text] : []))).toEqual(chat);
+    // 분류되지 않은 실패는 「처리하지 못했어요」로 뭉개지 않고 원인 1줄을 보인다.
+    expect(failureWord(t, "turn_failed", "동기화 중 TypeError: x is undefined")).toBe("동기화 중 TypeError: x is undefined");
+    expect(failureWord(t, undefined, undefined)).toBe(t("commodore.meta.error"));
+    // 옛 기록의 result.error(코드가 아닌 원문)도 그대로 읽힌다.
+    expect(failureWord(t, "API Error: 500 boom", undefined)).toBe("API Error: 500 boom");
+    // 스키마는 detail을 더한 하위 호환이고, 옛 줄(detail 없음)도 읽는다.
+    expect(commodoreTranscriptEntrySchema.safeParse({ seq: 4, at: 1, kind: "result", outcome: "error", error: "turn_failed", detail: "boom" }).success).toBe(true);
+    expect(commodoreTranscriptEntrySchema.safeParse({ seq: 5, at: 1, kind: "error", code: "turn_failed", detail: "boom", retryAt: 2 }).success).toBe(true);
+    expect(commodoreTranscriptEntrySchema.safeParse({ seq: 6, at: 1, kind: "result", outcome: "error", error: "API Error: 500 boom" }).success).toBe(true);
   });
 });
 

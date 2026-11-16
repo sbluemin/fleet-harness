@@ -3172,6 +3172,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         },
         created: (id) => { commodoreSystemPrompts.setBasePromptEnabled(id, false); },
         beforeTheatersChange: (id) => archiveStorage.assertTheatersMutable(id),
+        // 사령관 턴 실패의 원문은 Console의 로컬 오류 로그(errors.jsonl)에 남는다 — feature는 이 포트로만 닿는다.
+        recordFailure,
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
         attachments: attachmentsForPlugin?.("commodore"),
