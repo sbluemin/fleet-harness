@@ -368,8 +368,41 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       const cwd = path.resolve("chat-moved");
       options.hooks?.observeCwd?.({ event: "cwd_changed", sessionId: fakeClaudeSession().sessionId, cwd });
       expect(locations).toEqual([cwd]);
-      await registry.disposeAll();
-      void liveSession;
+      // 이전 턴의 파일 읽기가 늦어져도 다음 SDK cwd 관측을 되돌리지 않는다.
+      const sid = fakeClaudeSession().sessionId;
+      const project = path.join(home, "projects", "-tmp-workspace");
+      mkdirSync(project, { recursive: true });
+      const transcript = path.join(project, `${sid}.jsonl`);
+      writeFileSync(transcript, JSON.stringify({ type: "user", sessionId: sid, cwd, message: { role: "user", content: "previous turn" } }) + "\n");
+      let opened!: () => void;
+      let release!: () => void;
+      let closed!: () => void;
+      const reading = new Promise<void>((resolve) => { opened = resolve; });
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      const finished = new Promise<void>((resolve) => { closed = resolve; });
+      const originalOpen = nodeFs.open.bind(nodeFs);
+      const openSpy = vi.spyOn(nodeFs, "open").mockImplementation(async (file, flags, mode) => {
+        const handle = await originalOpen(file, flags, mode);
+        if (String(file) === transcript) {
+          opened();
+          await gate;
+          const originalClose = handle.close.bind(handle);
+          handle.close = async () => { await originalClose(); closed(); };
+        }
+        return handle;
+      });
+      try {
+        session.send("next turn");
+        await vi.waitFor(() => expect(registry.isBusy("op-env")).toBe(true));
+        liveSession()!.emit({ type: "result", subtype: "success", session_id: sid, is_error: false, duration_ms: 1 });
+        await reading;
+        const newerCwd = path.resolve("chat-newer-worktree");
+        options.hooks?.observeCwd?.({ event: "cwd_changed", sessionId: sid, cwd: newerCwd });
+        release();
+        await finished;
+        await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(locations).toEqual([cwd, newerCwd]);
+      } finally { release(); openSpy.mockRestore(); await registry.disposeAll(); }
     } finally {
       if (previous === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
       else process.env.FLEET_CONSOLE_SESSION_ID = previous;

@@ -772,6 +772,8 @@ class AgentChatSession {
   private reportedSessionId: string | null = null;
   /** 마지막으로 알린 자식 cwd. 실행 cwd로 출발하므로 같은 자리는 다시 알리지 않는다. */
   private reportedCwd: string;
+  /** SDK 관측 이후 늦게 끝난 transcript 읽기가 이전 위치를 되살리지 못하게 한다. */
+  private cwdObservationRevision = 0;
   /** 날고 있는 좌표 심기. 리더가 메시지마다 이 자리를 지나므로 겹치지 않게 붙든다. */
   private syncFlight: Promise<void> | null = null;
   /** 그 비행 중에 들어온 요청이 있었다. 착지 후 좌표가 아직 남아 있으면 한 번 더 간다. */
@@ -2600,6 +2602,8 @@ class AgentChatSession {
       preToolUse: (input) => this.decideDelegatedCall(input),
       sessionContext: () => `Fleet plugin version: ${FLEET_HARNESS_VERSION}`,
       observeCwd: (observation) => {
+        this.cwdObservationRevision += 1;
+        this.reportedCwd = observation.cwd;
         this.seed.onCwdChanged?.(observation.cwd);
       },
       ...(this.seed.recordCompactEvent === undefined ? {} : { compact: this.seed.recordCompactEvent }),
@@ -3363,6 +3367,7 @@ class AgentChatSession {
    * 자리다. 파일 전체가 아니라 꼬리 창만 읽고, 못 읽으면 무의견이다.
    */
   private async reportTranscriptCwd(): Promise<void> {
+    const revision = this.cwdObservationRevision;
     const sessionId = this.latestSessionId;
     if (!sessionId || this.disposed) return;
     const transcriptPath = await this.locateTranscript(sessionId);
@@ -3376,7 +3381,7 @@ class AgentChatSession {
       cwd = latestTranscriptCwd(window.text);
       if (cwd !== null || !window.headCut) break;
     }
-    if (cwd === null || cwd === this.reportedCwd || this.disposed) return;
+    if (cwd === null || cwd === this.reportedCwd || this.disposed || revision !== this.cwdObservationRevision) return;
     this.reportedCwd = cwd;
     this.seed.onCwdChanged?.(cwd);
   }
