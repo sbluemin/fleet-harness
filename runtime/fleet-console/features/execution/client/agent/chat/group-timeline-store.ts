@@ -62,7 +62,7 @@ export function useHasGroupConversation(objectiveId: string): boolean {
 export function showsMobileGroupConversation(objectiveId: string): boolean {
   if (getAgentState().sessions[objectiveId]?.chatActive !== true) return false;
   const objectiveRecord = getState().objectiveRecords.find((candidate) => candidate.id === objectiveId);
-  return objectiveRecord?.chatMode === true && hasGroupConversation(objectiveId);
+  return !!objectiveRecord && hasGroupConversation(objectiveId);
 }
 
 /**
@@ -168,7 +168,7 @@ export function installGroupTimeline(ctx: {
           notify();
         });
       }
-      if (!enabled || !demanded.has(root) || session?.chatActive !== true || objectiveRecord.chatMode !== true || record.socket) continue;
+      if (!enabled || !demanded.has(root) || session?.chatActive !== true || record.socket) continue;
       stopHistory(record);
       const current = record;
       current.loading = true;

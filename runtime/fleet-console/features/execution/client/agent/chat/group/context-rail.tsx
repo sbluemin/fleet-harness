@@ -29,7 +29,7 @@ const ObjectiveContextRail: ContextRailProvider = ({ scope, children }) => {
   };
   if (scope.kind !== "objective" || root === null) return null;
   const rootRecord = state.objectiveRecords.find((record) => record.id === root);
-  if (!rootRecord || rootRecord.chatMode !== true) return null;
+  if (!rootRecord) return null;
   const board = clusters.find((cluster) => cluster.conversation?.objectiveId === root)?.conversation;
   const nested = state.nestedObjectiveRecords.filter((record) => record.parentObjectiveId === root);
   const sessions: ContextRailSession[] = [{

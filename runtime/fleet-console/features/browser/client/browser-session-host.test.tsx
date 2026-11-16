@@ -30,7 +30,7 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function mount(records: Array<{ id: string; chatMode?: boolean }>, activeId: string, pushComposerInbox = vi.fn()): ReturnType<typeof vi.fn> {
+function mount(records: Array<{ id: string }>, activeId: string, pushComposerInbox = vi.fn()): ReturnType<typeof vi.fn> {
   document.documentElement.dataset.desktopShell = "true";
   setState({ objectiveRecords: records as never, activeObjectiveId: activeId });
   container = document.createElement("div");
@@ -41,19 +41,13 @@ function mount(records: Array<{ id: string; chatMode?: boolean }>, activeId: str
 }
 
 describe("Desktop image hand-off receiver", () => {
-  it("puts the image in a chat composer, and posts it to the paste route when the active Objective is a terminal", () => {
+  it("puts the image in the active Objective's chat composer", () => {
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response("{}", { status: 200 }));
-    const push = mount([{ id: "chat-1", chatMode: true }, { id: "term-1" }], "chat-1");
+    const push = mount([{ id: "one" }, { id: "two" }], "one");
     act(() => channels.listeners.get("browser:attach")?.({ kind: "screenshot", mime: "image/png", data: PNG }));
-    expect(push).toHaveBeenCalledTimes(1);
-    expect(fetchMock).not.toHaveBeenCalled();
-
-    act(() => { setState({ activeObjectiveId: "term-1" }); });
+    act(() => { setState({ activeObjectiveId: "two" }); });
     act(() => channels.listeners.get("browser:attach")?.({ kind: "annotation", mime: "image/png", data: PNG }));
-    expect(push).toHaveBeenCalledTimes(1);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    const [url, init] = fetchMock.mock.calls[0]!;
-    expect(url).toBe("/api/v1/browser/objectives/term-1/paste");
-    expect(JSON.parse(String((init as RequestInit).body))).toEqual({ data: PNG });
+    expect(push).toHaveBeenCalledTimes(2);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

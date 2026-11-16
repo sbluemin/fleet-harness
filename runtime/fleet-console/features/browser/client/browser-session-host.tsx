@@ -18,18 +18,13 @@ export interface BrowserClientServices {
 const BROWSER_ATTACH_EVENT = "browser:attach";
 interface AttachPayload { readonly kind: "screenshot" | "annotation"; readonly mime: "image/png"; readonly data: string }
 
-/** 지금 보는 대화(활성 Objective) — 첨부가 향하는 곳. */
-function useActiveAttachTarget(): { readonly objectiveId: string; readonly chat: boolean } | null {
+/** 지금 보는 대화(활성 Objective) — 첨부가 향하는 곳. 모든 Objective 은 채팅이다. */
+function useActiveAttachTarget(): { readonly objectiveId: string } | null {
   const key = React.useSyncExternalStore(subscribe, () => {
     const state = getState();
-    const record = state.activeObjectiveId === null ? undefined : state.objectiveRecords.find((entry) => entry.id === state.activeObjectiveId);
-    return record ? `${record.chatMode === true ? "chat" : "terminal"}|${record.id}` : "";
+    return state.activeObjectiveId ?? "";
   }, () => "");
-  return React.useMemo(() => {
-    if (key === "") return null;
-    const split = key.indexOf("|");
-    return { chat: key.slice(0, split) === "chat", objectiveId: key.slice(split + 1) };
-  }, [key]);
+  return React.useMemo(() => key === "" ? null : { objectiveId: key }, [key]);
 }
 
 function pngFile(payload: AttachPayload): File {
@@ -41,7 +36,7 @@ function pngFile(payload: AttachPayload): File {
  * Session 브라우저가 쓰는 Console 전역 호스트. 표면과 크롬은 Desktop 이 그리므로 여기에는 그릴 것이 없다.
  * - 네이티브 뷰가 포커스를 가져도 단축키가 따라가게 한다.
  * - 엔진 가용성을 지구본에 알린다.
- * - Desktop 이 넘긴 이미지를 지금 보는 대화의 입력창으로 올린다: 채팅이면 컴포저 칩, 터미널이면 서버가 CLI 기계의 클립보드에 올려 붙여넣는다.
+ * - Desktop 이 넘긴 이미지를 지금 보는 대화의 입력창으로 올린다.
  */
 export function BrowserSessionHost({ language, services }: {
   readonly language: ConsoleLocale | undefined;
@@ -58,19 +53,9 @@ export function BrowserSessionHost({ language, services }: {
   const deliver = React.useRef<(payload: AttachPayload) => void>(() => undefined);
   deliver.current = (payload) => {
     // 컴포저에 칩이 서는 것이 곧 결과다 — 안내 문구를 따로 띄우지 않는다.
-    if (attach?.chat) { pushComposerInbox(attach.objectiveId, { files: [pngFile(payload)] }); return; }
-    if (attach === null && pluginAttach) { pluginAttach([pngFile(payload)]); return; }
-    if (attach === null) { setNotice(t("terminal.browser.requestFailed")); return; }
-    // 터미널 Objective: 서버가 이 기계의 클립보드에 올린 뒤 Ctrl+V 를 눌러 준다 — CLI 는 자기가 도는 기계의 클립보드를 읽는다.
-    void fetch(`/api/v1/browser/objectives/${encodeURIComponent(attach.objectiveId)}/paste`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ data: payload.data }) })
-      .then(async (response) => {
-        // 터미널에 이미지가 붙는 것이 곧 결과다 — 성공 안내는 없고 실패만 말한다.
-        if (response.ok) return;
-        let code: string | null = null;
-        try { code = ((await response.json()) as { error?: string }).error ?? null; } catch { /* 본문 없음 */ }
-        setNotice(code === "terminal_not_running" ? t("terminal.browser.terminalNotRunning") : code === "clipboard_failed" ? t("terminal.browser.clipboardFailed") : t("terminal.browser.requestFailed"));
-      })
-      .catch(() => setNotice(t("terminal.browser.requestFailed")));
+    if (attach) { pushComposerInbox(attach.objectiveId, { files: [pngFile(payload)] }); return; }
+    if (pluginAttach) { pluginAttach([pngFile(payload)]); return; }
+    setNotice(t("terminal.browser.requestFailed"));
   };
   React.useEffect(() => {
     if (!isDesktopShell()) return;

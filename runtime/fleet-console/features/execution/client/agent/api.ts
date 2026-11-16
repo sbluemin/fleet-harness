@@ -59,24 +59,6 @@ export async function fetchObjectiveRecordsSnapshot(signal?: AbortSignal): Promi
   return { objectiveRecords: payload.objectiveRecords.map((objectiveRecord) => assertObjectiveRecord(objectiveRecord, response.status)) };
 }
 
-export async function resumeAgentSession(sessionId: string, options?: { readonly fresh?: boolean; readonly signal?: AbortSignal }): Promise<SessionInfo> {
-  const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/resume`, {
-    method: "POST",
-    ...(options?.fresh
-      ? { headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fresh: true }) }
-      : {}),
-    signal: options?.signal,
-  });
-  if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
-    throw new AgentApiError(
-      response.status,
-      typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`,
-    );
-  }
-  return assertSessionInfo(await response.json(), response.status);
-}
-
 export async function messageAgentSession(sessionId: string, text: string, attachmentIds?: readonly string[], signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/api/v1/agent/sessions/${encodeURIComponent(sessionId)}/message`, {
     method: "POST",
@@ -86,7 +68,7 @@ export async function messageAgentSession(sessionId: string, text: string, attac
   });
   if (!response.ok) {
     // 서버 거절 코드를 그대로 실어 던진다 — 새 세션 멘션 컴포저가 초안을 지키면서
-    // 무엇이 잘못됐는지 말하려면 상태 코드만으로는 부족하다(resumeAgentSession과 같은 형태).
+    // 무엇이 잘못됐는지 말하려면 상태 코드만으로는 부족하다.
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(
       response.status,

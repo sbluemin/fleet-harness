@@ -161,7 +161,7 @@ describe("managed desktop browser routes", () => {
     const browser = createBrowserRouter({
       browserService: service,
       desktopEngine: engine,
-      browserMcp: { pasteIntoTerminal: () => false },
+      browserMcp: { },
       objectiveRecords: { get: () => null },
       isWriteAdmitted: () => true,
       isExactConsoleOrigin: () => true,
@@ -251,7 +251,7 @@ describe("remote desktop browser control", () => {
     const browser = createBrowserRouter({
       browserService: service,
       desktopEngine: engine,
-      browserMcp: { pasteIntoTerminal: () => false },
+      browserMcp: { },
       objectiveRecords: { get: () => null },
       isWriteAdmitted: () => true,
       isExactConsoleOrigin: () => true,

@@ -12,7 +12,7 @@ import type { ClientFeatureDescriptor } from "../shared/feature-surfaces.js";
 import { createGroup, fetchGroups, fetchObjectiveRecords, patchObjective, renameObjective } from "../../../core/client/src/integration/api.js";
 import { clearActiveObjective, shouldReleaseActiveObjective } from "../../../core/client/src/integration/active-objective-surface.js";
 import { blocksObjectiveRecordsShortcutWhileEditing, isBlockingDialogOpen, resolveObjectiveRecordsArrowShortcutAction } from "../../../core/client/src/integration/shortcuts.js";
-import { archiveObjectiveFromUi, resumeDormantOnOpen, type ArchiveOutcome } from "../../../core/client/src/integration/objective-actions.js";
+import { archiveObjectiveFromUi, type ArchiveOutcome } from "../../../core/client/src/integration/objective-actions.js";
 import { addCommodoreTheaterFromPath } from "../../commodore/client/theaters-api.js";
 import { refreshCommodoreList, readCommodoreList } from "../../commodore/client/commodore-list.js";
 import { GroupContextMenu, type GroupContextMenuAlign } from "./sidebar/group-context-menu.js";
@@ -100,41 +100,6 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
   const objectiveRecordMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   stateRef.current = state;
 
-  // 여는 제스처로 이어지는 휴면 재개 — 대화 화면에서는 여는 제스처가 곧 재개 판정이다.
-  //
-  // 자동 재개는 관측된 런타임 축 위에서만 한다. 축이 권위를 갖지 못한 구간의 휴면 표시는 사실이
-  // 아니라 보수적 폭백이고(pluginRuntimeState 가 degraded 를 플러그인에 넘기지 않는 것과 같은 이유),
-  // 사용자가 누른 것은 "재개"가 아니라 "열기"라 그 위에서 프로세스를 되살리면 안 된다.
-  //
-  // 두 미관측 구간은 갈 길이 다르다. pending 은 곧 권위가 도착하므로 여는 제스처를 붙들었다가 그때
-  // 다시 판정한다. degraded 는 언제 회복될지 모르는 구간이라 붙들지 않는다. 어느 쪽이든
-  // 프레임의 Resume 는 그대로 있어 사용자가 직접 누를 수 있다.
-  const deferredOpenResumeRef = useRef<Set<string>>(new Set());
-  const resumeIfDormant = useCallback((objectiveId: string) => {
-    const hydration = getState().objectiveRecordRuntimeHydration;
-    if (hydration !== "ready") {
-      if (hydration === "pending") deferredOpenResumeRef.current.add(objectiveId);
-      return;
-    }
-    resumeDormantOnOpen(objectiveId, stateRef.current.objectiveRecords, registry.providers);
-  }, [registry.providers]);
-
-  useEffect(() => {
-    // degraded 는 "모른다"는 뜻이다 — 붙들어 둔 제스처를 사실로 승격하지 않고 버린다.
-    if (state.objectiveRecordRuntimeHydration === "degraded") {
-      deferredOpenResumeRef.current.clear();
-      return;
-    }
-    if (state.objectiveRecordRuntimeHydration !== "ready" || deferredOpenResumeRef.current.size === 0) return;
-    const deferred = [...deferredOpenResumeRef.current];
-    deferredOpenResumeRef.current.clear();
-    for (const objectiveId of deferred) {
-      const objectiveRecord = stateRef.current.objectiveRecords.find((candidate) => candidate.id === objectiveId);
-      if (!objectiveRecord) continue;
-      resumeDormantOnOpen(objectiveId, stateRef.current.objectiveRecords, registry.providers);
-    }
-  }, [registry.providers, state.objectiveRecordRuntimeHydration]);
-
   // Alt+좌우는 사이드바 표시 순서로 대화를 옮긴다.
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
@@ -166,11 +131,10 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
       const objectiveRecord = theaterObjectiveRecords.find((candidate) => candidate.id === nextId);
       if (!objectiveRecord) return;
       focusConversationObjective(objectiveRecord);
-      resumeIfDormant(nextId);
     };
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
-  }, [resumeIfDormant, viewMode.effective]);
+  }, [viewMode.effective]);
 
   // 사이드바·레일·커맨드 밴드 밖을 누르면 패널 활성화를 푼다.
   useEffect(() => {
@@ -219,8 +183,7 @@ export function ObjectiveRecords({ aliasEditor, state, onArchived, deletionToast
     const objectiveRecord = stateRef.current.objectiveRecords.find((candidate) => candidate.id === objectiveId);
     if (!objectiveRecord) return;
     focusConversationObjective(objectiveRecord);
-    resumeIfDormant(objectiveId);
-  }, [resumeIfDormant]);
+  }, []);
 
   const runMutation = useCallback((task: () => Promise<void>, rollback: () => Promise<void>) => {
     const attempt = () => {

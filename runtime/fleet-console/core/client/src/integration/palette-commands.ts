@@ -63,7 +63,6 @@ export type PaletteCommandAction =
   | { readonly kind: "open-theater-section"; readonly theaterId: string; readonly sectionId: string; readonly pageId: string }
   | { readonly kind: "new-theater" }
   | { readonly kind: "new-taskforce" }
-  | { readonly kind: "resume-objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "archive-objectiveRecord"; readonly objectiveId: string }
   | { readonly kind: "open-archive" }
   | { readonly kind: "open-rail-panel"; readonly panelId: string; readonly surfaceId?: string }
@@ -170,7 +169,6 @@ export function buildPaletteCommands(
   if (activeObjective) {
     const subject = activeObjective.title;
     if (resolveObjectiveActivity(activeObjective, current.objectiveRecordRuntime) === "ended") {
-      push({ commandId: `resume-objectiveRecord:${activeObjective.id}`, label: t("palette.resumeObjective", { title: subject }), aliasLabel: alias("palette.resumeObjective", { title: subject }), action: { kind: "resume-objectiveRecord", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-resume", subject });
     }
     push({ commandId: "rename-objectiveRecord", label: t("palette.renameObjective"), aliasLabel: alias("palette.renameObjective"), action: { kind: "rename-objectiveRecord", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-rename", subject });
     push({ commandId: "assign-objective-group", label: t("palette.assignGroup"), aliasLabel: alias("palette.assignGroup"), action: { kind: "assign-objective-group", objectiveId: activeObjective.id }, group: "current-objectiveRecord", glyph: "objective-group", subject });

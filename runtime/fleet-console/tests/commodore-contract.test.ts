@@ -546,7 +546,7 @@ it("attaches retained prior-turn person images via objective add and commodores 
   });
   const objectiveLaunch = {
     create: async (input: Parameters<typeof objectiveStore.adopt>[1] & { commodoreId: string; theaterId: string; title: string; groupId: string | null }) =>
-      objectiveStore.adopt(randomUUID(), input, { commodoreId: input.commodoreId, theaterId: input.theaterId || "t1", title: input.title, groupId: input.groupId ?? null, cwd: dir, createdAt: Date.now(), sessionName: input.title, viewMode: "chat" }),
+      objectiveStore.adopt(randomUUID(), input, { commodoreId: input.commodoreId, theaterId: input.theaterId || "t1", title: input.title, groupId: input.groupId ?? null, cwd: dir, createdAt: Date.now(), sessionName: input.title,  }),
     observeBoard: () => null,
     busy: () => false,
   } as never;

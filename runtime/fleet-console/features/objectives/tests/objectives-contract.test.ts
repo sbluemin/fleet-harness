@@ -130,7 +130,7 @@ ts: child.ts};
   // 떠 있는 세션이 init 에서 광고한 도구 — 없으면 호스트가 아직 모른다(null).
   const advertised = new Map<string, readonly string[]>();
   const interrupted: string[] = [];
-  const launches: { title?: string; sessionName?: string; viewMode?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableAutoMemory?: boolean; groupId?: string }[] = [];
+  const launches: { title?: string; sessionName?: string; text?: string; dormant?: boolean; disableSubagents?: boolean; disableAutoMemory?: boolean; groupId?: string }[] = [];
   // 채팅의 다음 프로세스 기동 좌표. 레코드의 session.model 과 따로다 — 미시작 좌표를 거치지 않은 기록 수정은 여기 닿지 않는다.
   const launchCoordinates = new Map<string, { model: string; effort: string | null }>();
   const seedLaunchCoordinate = (id: string, model?: string, effort?: string | null) => {
@@ -204,7 +204,7 @@ title: input.title});
     deleteChild: (id: string) => { if (!objectiveRecords.get(id)?.parentObjectiveId) return false; deleted.push(id); return objectiveRecords.delete(id); },
     groups: { list: () => [], get: (id: string) => (id.startsWith("g-") && !removedGroups.has(id) ? { id, commodoreId: "c1", theaterId: "t1" } : null), create: () => { throw new Error("unused"); }, patch: () => null, delete: () => false },
   };
-  const surfaceOf = (id: string) => surfaces.get(id) ?? (objectiveRecords.get(id)?.chatMode === true ? "chat" : "terminal");
+  const surfaceOf = (_id: string) => "chat";
   const chatCoordinates = (id: string) => {
     if (surfaceOf(id) !== "chat") return null;
     const saved = objectiveRecords.get(id)?.session as { model?: string; effort?: string } | undefined;
@@ -217,7 +217,6 @@ title: input.title});
     return state ? {
       lifecycle: state === "dormant" ? "dormant" : "live",
       activity: state === "dormant" ? "idle" : state,
-      surface: surfaces.get(id) ?? (objectiveRecords.get(id)?.chatMode === true ? "chat" : "terminal"),
       supportedActions: ["send", ...(state === "running" ? ["interrupt"] : [])],
       ...(outcome ? { output: { status: "unavailable", outcome, ...outputDetails.get(id) } } : {}),
     } : null;
@@ -247,8 +246,6 @@ title: input.title});
         }
         // 호스트처럼 터미널은 실행 중일 때만 interrupt 를 받는다.
         if (input.kind === "interrupt") { if (activity.get(input.objectiveId!) !== "running") throw new Error("capability_unavailable"); interrupted.push(input.objectiveId!); activity.set(input.objectiveId!, "idle"); return { objectiveId: input.objectiveId }; }
-        // resume 은 휴면만 세션째 되살린다.
-        if (input.kind === "resume") { if (activity.get(input.objectiveId!) !== "dormant") throw new Error("not_dormant"); if (hostFault.rejectModel && (objectiveRecords.get(input.objectiveId!)?.session as { model?: string } | undefined)?.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled"); resumed.push(input.objectiveId!); activity.set(input.objectiveId!, "idle"); return { objectiveId: input.objectiveId }; }
         if (hostFault.rejectModel && input.model === hostFault.rejectModel) throw new Error("gateway_model_not_enabled");
         await new Promise((resolve) => setTimeout(resolve, 5));
         const id = input.childSessionId ?? input.newObjectiveId ?? `launched-${launches.length + 1}`;
@@ -257,10 +254,10 @@ title: input.title});
           return { objectiveId: id };
         }
         if (input.newObjectiveId && (objectiveRecords.has(id) || archivedObjectiveRecords.has(id))) throw new Error("objectiveRecord_id_taken");
-        launches.push({ title: input.title, sessionName: input.sessionName, viewMode: input.viewMode, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableAutoMemory: input.disableAutoMemory, groupId: input.groupId });
+        launches.push({ title: input.title, sessionName: input.sessionName, text: input.text, dormant: input.dormant, disableSubagents: input.disableSubagents, disableAutoMemory: input.disableAutoMemory, groupId: input.groupId });
         // 호스트 관측 — 첫 메시지 없이 띄운 세션은 유휴(대기), dormant 로 만든 것은 휴면.
         activity.set(id, input.dormant ? "dormant" : "idle");
-        const payload = { ...(input.viewMode === "chat" ? { chatMode: true } : {}), session: { harness: "claude-code", ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}), ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.modelSpeed ? { modelSpeed: input.modelSpeed } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
+        const payload = { session: { harness: "claude-code", ...(input.disableAutoMemory !== undefined ? { disableAutoMemory: input.disableAutoMemory } : {}), ...(input.model ? { model: input.model } : {}), ...(input.effort ? { effort: input.effort } : {}), ...(input.modelSpeed ? { modelSpeed: input.modelSpeed } : {}), ...(input.sessionName ? { sessionName: input.sessionName } : {}) } };
         if (input.childSessionId && input.parentObjectiveId) {
           const parent = objectiveRecords.get(input.parentObjectiveId)!;
           parent.sessions = [...(parent.sessions ?? []), { id, ...payload, ts: { createdAt: clock++, updatedAt: clock } }];
@@ -613,7 +610,7 @@ describe("Objectives contract", () => {
     await launch.muster(objective.id);
     expect(launches.slice(1).map((entry) => entry.disableSubagents)).toEqual([undefined, true]);
     // 새 구성원은 지휘관의 뷰와 무관하게 채팅으로 뜬다 — 미기동 지휘관의 저장된 시작 뷰가 터미널이어도.
-    expect(launches.slice(1).map((entry) => entry.viewMode)).toEqual(["chat", "chat"]);
+    expect(launches.slice(1)).toHaveLength(2);
     // 기본 켬은 지휘관과 구성원 모두 명시해서 전달한다.
     expect(launches.map((entry) => entry.disableAutoMemory)).toEqual([false, false, false]);
     const roster = store.find(objective.id)!;
@@ -651,7 +648,6 @@ describe("Objectives contract", () => {
     await launch.memberPatched(objective.id, routed.id, { subagents: false });
     await launch.muster(objective.id);
     expect(launches.at(-1)?.disableSubagents).toBe(true);
-    expect(launches.at(-1)?.viewMode).toBe("chat");
 
     // 명단에서 뺀 구성원은 코어 부모의 sessions에서도 없어진다.
     await objectiveRecordsHost.archive(objective.id);
@@ -667,7 +663,6 @@ describe("Objectives contract", () => {
     surfaces.set(objective.id, "terminal");
     const late = store.memberAdd(objective.id, { role: "late", launch: SONNET }, "human").members.at(-1)!;
     await launch.muster(objective.id);
-    expect(launches.at(-1)?.viewMode).toBe("chat");
     await launch.memberRemoved(objective.id, late.id);
 
     // 부모 삭제는 자식 레코드도 함께 거두며, 재기동 대상으로 다시 분리되지 않는다.
@@ -853,8 +848,7 @@ describe("Objectives contract", () => {
     expect((await route("edge/toggle", { objectiveId: objective.id, from: c!.id, to: a!.id, linked: true })).status).toBeGreaterThanOrEqual(400);
     expect(store.find(objective.id)!.missions.find(m => m.id === a!.id)!.prerequisites).toEqual([]);
     // 지휘관의 뷰는 채팅으로 고정이다. 세션이 없는 목표의 모델 수정은 거절하고, 생성 때의 채팅은 그대로다.
-    await expect(launch.setPreset(objective.id, { viewMode: "terminal" })).rejects.toThrow("not_started");
-    expect(store.find(objective.id)!.commander.viewMode).toBe("chat");
+    await expect(launch.setPreset(objective.id, {})).rejects.toThrow("not_started");
     await launch.rename(objective.id, "Release renamed");
     expect(store.find(objective.id)!.title).toBe("Release renamed");
     // 구성원 명단 — 임무는 구성원만 가리킨다. 두 임무가 한 구성원을 나눠 쓴다.
@@ -888,7 +882,7 @@ describe("Objectives contract", () => {
     activity.set(objective.id, "running");
     await expect(launch.setPreset(objective.id, { model: "sonnet" })).rejects.toThrow("objective_busy");
     activity.set(objective.id, "idle");
-    expect((await launch.setPreset(objective.id, { model: "sonnet" })).commander).toMatchObject({ viewMode: "chat", model: "sonnet[1m]" });
+    expect((await launch.setPreset(objective.id, { model: "sonnet" })).commander).toMatchObject({ model: "sonnet[1m]" });
     // 위임할 때마다 새 Objective 을 만들지 않는다 — 같은 구성원의 임무는 같은 Objective 이다.
     expect(store.find(objective.id)!.missions.map((mission) => mission.objectiveId)).toEqual([research, build, build]);
     // 임무 진행(blocked/done)은 그대로 두되, 실제 구성원 입력 대기를 별도 신호로 cluster 서술자에 전달한다.
@@ -1943,7 +1937,7 @@ describe("Objectives contract", () => {
     // 디스크에 남은 옛 criteria 는 후보·배치를 지우지 않고 읽은 뒤 버린다. 도구 execute 직접 호출은 호스트의 스키마 재검사를 거치지 않는다.
     const saved = JSON.parse(fs.readFileSync(objectiveFile(source.id), "utf8")) as { followups: { criteria?: string[] }[]; followupBatches?: unknown[] };
     saved.followups[0]!.criteria = ["Verified"];
-    saved.followupBatches = [{ id: "3f1c8f3e-1111-4a8b-9c0d-000000000009", at: 1, launch: { groupId: null, viewMode: "terminal", language: "en" }, items: [{ candidateId: "batch-legacy", rev: 1, state: "failed", attempts: 1, snapshot: { ...body, criteria: ["old"] } }] }];
+    saved.followupBatches = [{ id: "3f1c8f3e-1111-4a8b-9c0d-000000000009", at: 1, launch: { groupId: null, language: "en" }, items: [{ candidateId: "batch-legacy", rev: 1, state: "failed", attempts: 1, snapshot: { ...body, criteria: ["old"] } }] }];
     fs.writeFileSync(objectiveFile(source.id), JSON.stringify(saved));
     const reloaded = restart().store;
     expect(reloaded.find(source.id)!.followups).toHaveLength(MAX_FOLLOWUPS);
@@ -2293,10 +2287,9 @@ describe("Objectives contract", () => {
     expect(createObjectiveStore({ documentContext, dirOf: () => objectivesDir, commodoreIds: () => ["c1"], objectiveRecords: objectiveRecordsHost, emit: () => undefined }).find(personal)).not.toHaveProperty("commodoreOperated");
     expect(launches).toHaveLength(0);
     // 사령관이 만든 목표의 지휘관도 채팅 뷰로 준비된다 — 보기 선택은 없다.
-    expect(store.find(id)!.commander.viewMode).toBe("chat");
     expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id, reasons: ["pending"] }));
     await board({ action: "plan", objectiveId: id });
-    expect(launches[0]).toMatchObject({ viewMode: "chat" });
+    expect(launches[0]).toMatchObject({ sessionName: expect.any(String) });
     const commanderBoard = (await command("read", {}, id)).objective as { attachments: { path: string }[] };
     expect(commanderBoard.attachments).toHaveLength(3);
     for (const attachment of commanderBoard.attachments) expect(fs.readFileSync(attachment.path)).toEqual(PNG);
@@ -2573,7 +2566,6 @@ describe("Objectives contract", () => {
     // 사령관이 고른 후속도 기본 운영이다 — 맡기기가 필요 없다.
     expect((await board({ action: "list", view: "inbox" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, reasons: ["pending"] }));
     // 사령관이 고른 후속은 터미널 원본의 뷰를 이어받지 않고 채팅 뷰 지휘관으로 시작한다.
-    expect(store.find(nextId)!.commander.viewMode).toBe("chat");
     await board({ action: "commence", objectiveId: nextId });
     expect((await board({ action: "list", view: "fleet" })).objectives).toContainEqual(expect.objectContaining({ id: nextId, commenced: true }));
     expect(store.find(id)!.done?.by).toEqual(actor);

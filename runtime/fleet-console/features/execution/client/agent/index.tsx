@@ -27,19 +27,18 @@ import { useObjectiveLinks } from "./objective-links.js";
 import { MobileSurfaceProvider, mobileObjectiveOf, useMobileSurface } from "./mobile-surface.js";
 import { pushComposerInbox } from "./chat/composer-inbox.js";
 import { OBJECTIVE_REVEAL_EVENT_CHANNEL, getObjectiveReveal, isObjectiveRevealEvent, recordObjectiveReveal, subscribeObjectiveReveals, type ObjectiveReveal } from "./experiments-api.js";
-import { currentTerminalLocale, getT, translateServerMessage, useTerminalLocale, type TerminalMessageKey } from "./i18n/index.js";
+import { getT, useTerminalLocale } from "./i18n/index.js";
 
 
 import { aiGatewaySettingsSection as agentSettingsSection } from "../../../ai-gateway/client/settings.js";
-import { AgentApiError, discardLaunchAttachment, messageAgentSession, resumeAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
+import { discardLaunchAttachment, messageAgentSession, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { HistoryFoldButton } from "./chat/composer.js";
 import { installGroupTimeline, useGroupClusters, useHasGroupConversation } from "./chat/group-timeline-store.js";
 import { installGroupConversationSurface, MobileGroupConversation } from "./chat/group/index.js";
 import { useCommanderLedgerFramed } from "./chat/group/commander-ledger.js";
 import { startAgentConnection } from "./connection.js";
-import { applySessionUpdate, getAgentState, removeSession, selectSession, useAgentState } from "./store.js";
-import type { SessionInfo } from "./types.js";
+import { removeSession, useAgentState } from "./store.js";
 
 interface SettingToggleRowProps {
   readonly title: string;
@@ -138,50 +137,17 @@ const agentEndedNotification = defineNotificationKind({
   title: (locale) => getT(locale)("terminal.notifications.agentTurnEnded"),
 });
 
-// resume 실패는 사용자의 다음 행동(Try again / Start fresh)이 필요한 이벤트다.
-// ".end"/"done"을 id에 넣지 않아 core mapNotificationKind가 input-waiting으로 분류하게 둔다.
-const agentResumeFailedNotification = defineNotificationKind({
-  id: "agent.resume-failed",
-  title: (locale) => getT(locale)("terminal.notifications.resumeFailed"),
-});
-
-function isLaunchOptionError(error: unknown): boolean {
-  return error instanceof AgentApiError
-    && (error.message === "gateway_model_not_enabled" || error.message === "invalid_effort");
-}
-
-function resumeFailureMessage(error: unknown, locale?: ConsoleLocale): string {
-  return getT(locale)(isLaunchOptionError(error)
-    ? "terminal.notifications.resumeLaunchOptionFailedMessage"
-    : "terminal.notifications.resumeFailedMessage");
-}
-
 export const agentExecution: ClientFeatureDescriptor = {
   id: null,
   objectiveRecordKinds: [agentObjectiveKind],
   settingsSections: [generalSettingsSection, agentSettingsSection],
-  notificationKinds: [agentAttentionNotification, agentEndedNotification, agentResumeFailedNotification],
+  notificationKinds: [agentAttentionNotification, agentEndedNotification],
   closeObjective: async (objectiveId) => {
     try {
       await terminateAgentSession(objectiveId);
     } finally {
       disposeObjectiveViewState(objectiveId);
       removeSession(objectiveId);
-    }
-  },
-  resumeObjective: async (objectiveId) => {
-    // 팔레트·사이드바 등 프레임 밖 resume 진입점. 패널의 Start fresh 판정과 같은 근거를 쓴다 —
-    // 재개 마커가 없으면 서버가 409 resume_unavailable 로 거절하므로 fresh 로 보낸다.
-    try {
-      await resumeSession(objectiveId, { fresh: await shouldResumeFresh(objectiveId) });
-      installedNotifications?.dismiss(objectiveId);
-    } catch (error) {
-      installedNotifications?.emit({
-        kind: agentResumeFailedNotification.id,
-        objectiveId,
-        message: resumeFailureMessage(error, currentTerminalLocale()),
-      });
-      throw error;
     }
   },
   // 새 세션 멘션 전달. 실패 표현은 컴포저가 거절 코드로 소유하므로 여기서는 알림을 내지 않는다.
@@ -207,7 +173,7 @@ export { ComposerTopEntries } from "./chat/composer-top-entries.js";
 
 export const objectiveRecordKinds = [agentObjectiveKind] as const;
 
-// resumeObjective 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
+// close·message 훅은 install context를 받지 못하므로 notifications만 모듈 스코프로 캡처한다.
 // (같은 프로세스 내 plugin 인스턴스는 하나라 core의 단일 install 계약과 충돌하지 않는다.)
 let installedNotifications: ExecutionClientDeps["notifications"] | null = null;
 let installedModels: ClientModelsCapability | undefined;
@@ -371,7 +337,6 @@ function AgentCaptionActions({ context, part = "shelf" }: { readonly context: Ob
 
 function AgentCaptionActionsBody({ context, part }: { readonly context: ObjectiveRenderContext; readonly part: AgentCaptionPart }) {
   const t = getT(context.language ?? "en");
-  const chatMode = context.objectiveRecord.chatMode === true;
   const groupConversation = useHasGroupConversation(context.objectiveRecord.parentObjectiveId ?? context.objectiveId);
 
   // 브라우저 문 — 대화 중심 화면에서는 이 Session 의 브라우저를 바로 연다. 허용은 패널 안에서 켠다.
@@ -386,7 +351,7 @@ function AgentCaptionActionsBody({ context, part }: { readonly context: Objectiv
     : null;
 
   // 그룹 대화는 구성원 턴을 항상 접는다. 1:1 채팅만 이전 문답 자동 접기 전환을 보탠다.
-  if (part === "view-switch") return chatMode && !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null;
+  if (part === "view-switch") return !groupConversation ? <HistoryFoldButton language={context.language ?? "en"} caption /> : null;
   // 표식·말풍선이 없을 때는 빈 조각을 넘기지 않는다 — 머리 줄이 빈 캡슐을 세우지 않게.
   if (!using.computer && bubble === null) return null;
   return (
@@ -467,8 +432,6 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
   const mobileSurface = useMobileSurface();
   const state = useAgentState();
   const observed = state.sessions[context.objectiveId];
-  const session = observed ?? sessionFromObjective(context);
-  const chatMode = context.objectiveRecord.chatMode === true;
   // 주소를 누르면 어디서 열지 먼저 묻는다 — 떠 있는 터미널과 채팅이 같은 카드를 쓴다.
   // 수식 없는 왼클릭은 3행 카드, 수정키·중간 클릭은 카드를 건너뛰어 곧장 연다.
   // shared 중에는 카드 없이 내 브라우저로 열고 처음 한 번 안내한다(채팅·CLI 공통). 가운데 칸의 그룹 대화도 같은 길을 쓴다(objective-links).
@@ -486,28 +449,18 @@ function AgentObjectiveBody({ context }: { readonly context: ObjectiveRenderCont
   // 그룹 루트의 화면공유는 그룹채팅에 선다 — 이 본문이 지휘관 원장 틀 안에 선 동안에는 다시 그리지 않는다.
   const commanderLedger = useCommanderLedgerFramed(context.objectiveId);
 
-  if (chatMode) {
-    const chatView = (
-      <OpenUINavigationContext.Provider value={openUIOpen ?? null}><AgentChatView context={context} models={installedModels} fileLinkError={fileLinkFailure === null ? null
-        : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} /></OpenUINavigationContext.Provider>
-    );
-    return (
-      <MarkdownLinkBoundary className="agent-stream-host" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" openUIChoose={links.choose} {...links.fileLinks}>
-        {mobileSurface && groupConversation && observed?.chatActive === true
-          ? <MobileGroupConversation root={context.objectiveRecord} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
-          : chatView}
-        {commanderLedger ? null : <ComputerScreenShare objectiveId={context.objectiveId} />}
-        {links.card}
-      </MarkdownLinkBoundary>
-    );
-  }
-
-  // Objective 세션은 채팅 표면으로만 열린다. 남은 비chat Objective은 종료/재개 카드로만 열고,
-  // 재개는 서버가 채팅으로 전환한다 — 이전 대화는 같은 transcript 에서 이어진다.
+  const chatView = (
+    <OpenUINavigationContext.Provider value={openUIOpen ?? null}><AgentChatView context={context} models={installedModels} fileLinkError={fileLinkFailure === null ? null
+      : t(fileLinkFailure === "unsupported" ? "terminal.fileLink.unsupported" : "terminal.fileLink.failed")} /></OpenUINavigationContext.Provider>
+  );
   return (
-    <div className="agent-stream-host">
-      <DormantObjectiveView context={context} session={session} />
-    </div>
+    <MarkdownLinkBoundary className="agent-stream-host" onClick={links.onLinkClick} onAuxClick={links.onLinkClick} fleetLink="self" openUIChoose={links.choose} {...links.fileLinks}>
+      {mobileSurface && groupConversation && observed?.chatActive === true
+        ? <MobileGroupConversation root={context.objectiveRecord} language={context.language ?? "en"}>{chatView}</MobileGroupConversation>
+        : chatView}
+      {commanderLedger ? null : <ComputerScreenShare objectiveId={context.objectiveId} />}
+      {links.card}
+    </MarkdownLinkBoundary>
   );
 }
 
@@ -597,120 +550,6 @@ function SettingToggleRow({ title, help, value, disabled, onToggle }: SettingTog
       />
     </div>
   );
-}
-
-async function resumeSession(sessionId: string, options?: { readonly fresh?: boolean }): Promise<void> {
-  applySessionUpdate(await resumeAgentSession(sessionId, options));
-  selectSession(sessionId);
-}
-
-// 패널 DormantObjectiveView 의 freshOnly(!session.resumeAvailable) 와 같은 판정.
-// 세션 스냅샷이 아직 없으면 호스트 DTO 의 파생 마커를 읽는다. 조회가 실패하면
-// fresh 를 추측하지 않는다 — 재개 가능한 Claude 세션을 지울 수 있다.
-async function shouldResumeFresh(objectiveId: string): Promise<boolean> {
-  const session = getAgentState().sessions[objectiveId];
-  if (session) return !session.resumeAvailable;
-  try {
-    const response = await fetch(`/api/v1/objectives/records/${encodeURIComponent(objectiveId)}`);
-    if (!response.ok) return false;
-    const payload = await response.json() as {
-      readonly objectiveRecord?: { readonly payload?: { readonly resumeAvailable?: unknown } };
-    };
-    return payload.objectiveRecord?.payload?.resumeAvailable !== true;
-  } catch {
-    return false;
-  }
-}
-
-// dormant 프레임의 resume 상태기계. 실패는 프레임 내 에러 카드(Try again / Start fresh)와
-// Alerts 알림(agent.resume-failed) 두 경로로 표면화한다 — 어느 쪽도 침묵하지 않는다.
-function DormantObjectiveView({ context, session }: { readonly context: ObjectiveRenderContext; readonly session: SessionInfo }) {
-  const t = getT(context.language ?? "en");
-  const freshOnly = !session.resumeAvailable;
-  const [resumeState, setResumeState] = React.useState<"idle" | "resuming" | "error" | "launch-option-error">("idle");
-  const resume = React.useCallback(async (fresh: boolean) => {
-    setResumeState("resuming");
-    try {
-      await resumeSession(session.sessionId, { fresh });
-      // 성공 시 이전 실패 알림을 거둔다 — 두지 않으면 live 세션에 "Resume failed" 뱃지가 남는다.
-      context.notifications.dismiss(session.sessionId);
-    } catch (error) {
-      setResumeState(isLaunchOptionError(error) ? "launch-option-error" : "error");
-      context.notifications.emit({
-        kind: agentResumeFailedNotification.id,
-        objectiveId: session.sessionId,
-        message: resumeFailureMessage(error, context.language),
-      });
-    }
-  }, [context, session.sessionId, t]);
-
-  if (resumeState === "error" || resumeState === "launch-option-error") {
-    return (
-      <div className="objective-dormant objective-dormant--error" role="alert">
-        <span className="objective-dormant-status">{t("terminal.dormant.status")}</span>
-        <p className="objective-dormant-error">
-          {resumeState === "launch-option-error"
-            ? t("terminal.dormant.resumeLaunchOptionFailedBody", { name: session.label || session.cwdLabel })
-            : freshOnly
-              ? t("terminal.dormant.startFreshFailedBody", { name: session.label || session.cwdLabel })
-              : t("terminal.dormant.resumeFailedBody", { name: session.label || session.cwdLabel })}
-        </p>
-        <div className="objective-dormant-error-actions">
-          {freshOnly ? (
-            <button type="button" className="objective-dormant-action" onClick={() => { void resume(true); }}>
-              {t("terminal.dormant.tryAgain")}
-            </button>
-          ) : (
-            <button type="button" className="objective-dormant-action" onClick={() => { void resume(false); }}>
-              {t("terminal.dormant.tryAgain")}
-            </button>
-          )}
-          {resumeState === "launch-option-error" || freshOnly ? null : (
-            <button type="button" className="objective-dormant-action objective-dormant-action--ghost" onClick={() => { void resume(true); }}>
-              {t("terminal.dormant.startFresh")}
-            </button>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <button type="button" className="objective-dormant" disabled={resumeState === "resuming"} onClick={() => { void resume(freshOnly); }}>
-      <span className="objective-dormant-status">{t("terminal.dormant.status")}</span>
-      <span className={`objective-dormant-action${resumeState === "resuming" ? " objective-dormant-action--pending" : ""}`}>
-        {resumeState === "resuming"
-          ? t(freshOnly ? "terminal.dormant.startingFresh" : "terminal.dormant.resuming")
-          : t(freshOnly ? "terminal.dormant.startFresh" : "terminal.dormant.resume")}
-      </span>
-    </button>
-  );
-}
-
-function sessionFromObjective(context: ObjectiveRenderContext): SessionInfo {
-  return {
-    sessionId: context.objectiveRecord.id,
-    terminalSessionId: context.objectiveRecord.id,
-    cwdLabel: context.objectiveRecord.title || "Workspace",
-    label: context.objectiveRecord.title,
-    status: "dormant",
-    turnState: "none",
-    createdAt: context.objectiveRecord.ts.createdAt,
-    theaterId: context.theaterId,
-    tenantId: readPayloadString(context.objectiveRecord, "tenantId") ?? undefined,
-    registrationId: readPayloadString(context.objectiveRecord, "registrationId") ?? undefined,
-    resumeAvailable: context.objectiveRecord.resumeAvailable === true,
-  };
-}
-
-function readPayloadString(payload: Record<string, unknown>, key: string): string | null {
-  const value = payload[key];
-  return typeof value === "string" ? value : null;
-}
-
-function readPayloadNumber(payload: Record<string, unknown>, key: string): number | null {
-  const value = payload[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
 // 렌더러와 갱신 주기는 같은 축이다 — 둘 다 이 브라우저가 터미널을 그리는 방식이고, 둘 다 브라우저

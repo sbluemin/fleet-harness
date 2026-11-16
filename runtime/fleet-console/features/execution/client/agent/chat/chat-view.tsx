@@ -92,10 +92,8 @@ const HISTORY_PEEK_PX = 56;
  * 있는지. 도중에 넘어진 스텝은 결말이 아니라 과정이므로 그 수를 접힌 줄에 싣지 않고,
  * 펼침 안에서 ✕와 실패 사유로 온전히 선다.
  *
- * 구성원 모드 — 이 뷰는 채팅 표면(chatMode)에서만 서므로, `parentObjectiveId`가 있으면
- * Objectives 구성원이다. 그때는 입력 틀·예약 목록·이미지 투입구를 빼고 바닥 줄(좌표 ·
- * 선반 · 문맥 계기 · 중지 · 채팅 폭)만 남긴다. 터미널 표면의 구성원과 일반 Objective은
- * 이 구성원 모드 분기를 타지 않는다.
+ * 구성원 모드 — `parentObjectiveId`가 있으면 Objectives 구성원이다. 그때는 입력 틀·예약
+ * 목록·이미지 투입구를 빼고 바닥 줄(좌표 · 선반 · 문맥 계기 · 중지 · 채팅 폭)만 남긴다.
  */
 export function AgentChatView({
   context,
@@ -119,7 +117,7 @@ export function AgentChatView({
   // 대화 컬럼과 입력창이 이 값 하나를 함께 따른다.
   const readingWidth = useChatReadingWidth();
   // 구성원 모드 — 채팅으로 열린 Objectives 구성원(parentObjectiveId)이거나, 그룹 대화의 「구성원」 탭에서 고른 지휘관 원장이다
-  // (지휘관 본문이 읽기 전용 틀 안에 서 있는 동안만). 이 뷰 자체가 chatMode 분기에서만 마운트되므로 터미널(CLI)은 여기에 오지 않는다.
+  // (지휘관 본문이 읽기 전용 틀 안에 서 있는 동안만).
   const isMember = typeof context.objectiveRecord.parentObjectiveId === "string" && context.objectiveRecord.parentObjectiveId.length > 0;
   const commanderLedger = useCommanderLedgerFramed(context.objectiveId);
   const isMemberChat = isMember || commanderLedger;
