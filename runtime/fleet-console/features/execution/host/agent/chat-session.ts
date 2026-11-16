@@ -2635,8 +2635,9 @@ class AgentChatSession {
       ...(requestedModel === undefined ? {} : { requestedModel }),
       ...(subagentType === undefined ? {} : { subagentType }),
     };
-    if (!this.seed.routeDelegatedModels(request)) return undefined;
-    const tier = routingTierFor(request);
+    const shouldRoute = this.seed.routeDelegatedModels(request);
+    // 직접 부른 Fleet 정의도 가상 모델을 쓴다. 상속일 때도 자식 요청이 부모 모델을 찾을 의도가 필요하다.
+    if (!shouldRoute && subagentType !== FLEET_EXECUTION_AGENT_TYPE) return undefined;
     this.seed.recordDelegationIntent?.({
       toolUseId: input.toolUseId,
       sessionId: input.sessionId,
@@ -2645,6 +2646,8 @@ class AgentChatSession {
       ...(subagentType === undefined ? {} : { subagentType }),
       ...(description === undefined ? {} : { description }),
     });
+    if (!shouldRoute) return undefined;
+    const tier = routingTierFor(request);
     return { subagentType: FLEET_EXECUTION_AGENT_TYPE, effort: GATEWAY_TIER_EFFORT[tier], stripModel: true };
   }
 

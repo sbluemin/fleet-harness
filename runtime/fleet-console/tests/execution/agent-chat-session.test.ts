@@ -5,7 +5,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
-import { canRouteGatewayDelegation, GATEWAY_MODELS, GatewayRoutingDistribution, type GatewayAssignmentExposure } from "@fleet-console/ai-gateway";
+import { canRouteGatewayDelegation, createDelegationIntentLedger, GATEWAY_MODELS, GatewayRoutingDistribution, type GatewayAssignmentExposure } from "@fleet-console/ai-gateway";
 
 import { chatReplayFromTranscriptLine } from "../../features/execution/host/agent/chat-events.js";
 import { AgentChatRegistry, createTranscriptReplayer, readTranscriptHistory, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
@@ -286,7 +286,8 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       };
     };
     const registry = new AgentChatRegistry(factory as never);
-    const recordIntent = vi.fn();
+    const ledger = createDelegationIntentLedger();
+    const recordIntent = vi.fn(ledger.record);
     const providerLoad = new Map<string, number>();
     const distribution = new GatewayRoutingDistribution();
     const delegationModels = GATEWAY_MODELS.filter((model) => model.provider === "opencode");
@@ -314,6 +315,13 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       exposure = { ...exposure, delegationModels: [] };
       expect(await hostHooks!.preToolUse!(explore)).toBeUndefined();
       expect(recordIntent).toHaveBeenCalledTimes(1);
+      expect(await hostHooks!.preToolUse!({ sessionId: "sdk-parent", toolUseId: "direct-execute", toolName: "Agent",
+        toolInput: { subagent_type: "fleet:execute", prompt: "Execute the task" },
+      })).toBeUndefined();
+      ledger.bind({ sessionId: "sdk-parent", toolUseId: "direct-execute", taskId: "direct-child" });
+      expect(await ledger.awaitIntent("sdk-parent", "direct-child", 10)).toMatchObject({
+        inheritModel: "opus[1m]", subagentType: "fleet:execute",
+      });
     } finally {
       release();
       await registry.disposeAll();
