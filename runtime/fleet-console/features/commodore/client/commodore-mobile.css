@@ -13,6 +13,9 @@
 .objectives-cm-band { flex: none; display: flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 16px; background: var(--m-bg-deep); color: var(--m-text-muted); font-size: var(--m-fs-caption); }
 .objectives-cm-band-text { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
 .objectives-cm .objectives-cm-band-act { margin-left: auto; margin-right: -10px; padding: 4px 10px; color: var(--m-text); font-weight: var(--weight-bold); white-space: nowrap; --pr-r: 14px; }
+/* 재시도 띠의 여러 조작 — 좁은 폭에서는 줄을 바꾸고, 띠의 오른쪽 끝을 함께 지킨다. */
+.objectives-cm-band-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 2px 8px; margin-left: auto; margin-right: -10px; min-width: 0; }
+.objectives-cm .objectives-cm-band-actions .objectives-cm-band-act { margin-left: 0; margin-right: 0; }
 
 /*
  * 세부(프로필) — 큰 아바타 · 이름 · 상태 한 줄 · 「편집」 알약, 그 아래 둥근 카드 두 장의 구역 행(아이콘 · 이름 · 회색 값 · ›).

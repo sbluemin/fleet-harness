@@ -13,7 +13,7 @@ import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, type ConsoleExper
 
 import type { CommodoreAttachmentReader, CommodoreBoardWakeCode, CommodoreBoardAdapter, CommodoreBoardWatch, CommodoreTurnBindings } from "../../objectives/shared/commodore-board.js";
 import { CommodoreStoreError } from "./errors.js";
-import { createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnInput, type CommodoreTurnOutcome } from "./session.js";
+import { classifyFailure, createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnInput, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
@@ -30,6 +30,18 @@ import { commodoreCompactAt, EMPTY_RUN_TOTALS, type CommodoreContextDetail, MAX_
 
 export const RETRY_DELAYS_MS: readonly number[] = [60_000, 5 * 60_000, 15 * 60_000];
 export const RETRY_STEADY_MS = 60 * 60_000;
+/**
+ * 같은 세션으로 한 번 더 시도해 볼 만한 일시적 업스트림 오류 — 첫 실패는 같은 세션으로 재시도하고,
+ * 두 번째 연속 실패가 오면 다음 재시도는 새 세션으로 연다.
+ */
+const TRANSIENT_TURN_FAILURES: ReadonlySet<string> = new Set(["rate_limited", "upstream_error", "network"]);
+/** 다시 보내도 성공할 수 없는 입력 오류 — 재시도 큐에 돌려보내지 않고 그 메시지만 건너뛴다. */
+const INPUT_POISON_FAILURES: ReadonlySet<string> = new Set(["attachment_not_found", "invalid_request", "image_too_large"]);
+/**
+ * 메시지 자체가 원인일 수 있는 턴 실패 — 새 세션으로 폴백한 턴에서 같은 배치가 또 실패하면 그 메시지를 격리한다.
+ * 일시적 업스트림 오류(429·5xx·네트워크)와 세션 개설 실패는 메시지 탓이 아니므로 넣지 않는다(메시지를 잃지 않는다).
+ */
+const BATCH_POISON_FAILURES: ReadonlySet<string> = new Set(["turn_failed", "cli_exited", "invalid_request", "payload_too_large", "image_too_large", "prompt_too_long"]);
 /** 깨움 이유를 모으는 시간. */
 export const COALESCE_MS = 3_000;
 /** TaskForce 사람 발언 묶음 — 마지막 발언 뒤 이만큼 기다리고, 처음 발언부터 최대 이만큼까지만 미룬다. */
@@ -82,6 +94,11 @@ export interface CommodoreSupervisorDeps {
   readonly intelProposals?: (commodoreId: string) => import("./intel-proposals.js").CommodoreIntelProposals;
   /** 이 사령관의 응답 말투 — 조립이 아바타 책에서 읽어 주입한다. 세션을 열 때 한 번 읽고, 없으면 기본 말투다. */
   readonly voiceOf?: (commodoreId: string) => import("./prompt.js").CommodoreVoice | null;
+  /**
+   * Console의 로컬 오류 로그(`errors.jsonl`) 포트 — 조립부가 건넨다. 세션이 턴 실패 원문을 여기 남긴다.
+   * 없으면 기록하지 않고, Console의 다른 실패 기록과 같은 파일에 쌓인다.
+   */
+  readonly recordFailure?: (kind: string, error: unknown) => void;
 }
 
 /** 한 턴을 여는 실행 좌표. `model`은 Agent SDK wire id다. */
@@ -105,6 +122,10 @@ export interface CommodoreSupervisor {
   coordinates(commodoreId: string): { readonly model: string; readonly effort?: string } | null;
   /** 재시도 대기를 지금 깨운다. 그 상태가 아니면 `commodore_not_retrying`. */
   retry(commodoreId: string): Promise<void>;
+  /** 재시도 대기를 새 세션으로 깨운다 — 대화 전체를 지우지 않고 막힌 세션만 바꾼다. 그 상태가 아니면 `commodore_not_retrying`. */
+  retryNewSession(commodoreId: string): Promise<void>;
+  /** 재시도를 기다리는 실패 메시지 한 건을 건너뛴다. 그런 메시지가 없으면 `commodore_not_retrying`. */
+  skipFailed(commodoreId: string): Promise<void>;
   /** 진행 중인 턴만 멈춘다. 세션·대기 입력·자율 운영은 그대로 둔다. */
   stopTurn(commodoreId: string): Promise<void>;
   /** 진행 턴·대기 메시지를 거두고 요약 없이 새 문맥으로 시작한다. 기록 파일도 지운다. */
@@ -237,12 +258,26 @@ interface Runner {
   turnMail: readonly ReceivedMessage[];
   sessionImageBytes: number;
   sessionImageBase64Bytes: number;
+  /**
+   * 같은 세션에서 연속으로 실패한 일시적 업스트림 오류(429·5xx·네트워크)의 수 — 첫 실패는 같은 세션으로 한 번 더,
+   * 두 번째부터는 새 세션으로 연다. 성공하거나 세션이 교체되면 0으로 돌아간다.
+   */
+  transientFailures: number;
+  /**
+   * 직전 실패 턴이 실었던 선두 메시지의 seq — 새 세션으로 폴백한 턴이 같은 배치로 또 실패하면 그 메시지 때문이다.
+   * 격리하거나 성공하면 비운다.
+   */
+  failedBatch: number | null;
+  /** 격리 뒤 후속 메시지를 재시도 간격 없이 바로 다음 턴으로 넘긴다 — 턴이 도는 중이면 그 턴이 끝난 뒤. */
+  immediateNext: boolean;
   coalesce: ReturnType<typeof setTimeout> | null;
   routineTimer: ReturnType<typeof setTimeout> | null;
   routineTimes: Map<string, { at: number; revision: string }>;
   retry: ReturnType<typeof setTimeout> | null;
   retryAttempt: number;
   inflight: Promise<void> | null;
+  /** runTurn 동기 도입부에서 async IIFE가 inflight를 채우기 전에도 턴 진행 중임을 표시한다. */
+  turning: boolean;
   stopping: boolean;
   /** 사람이 멈춘 턴의 정산 중 — 듣지 못한 입력은 보존하되 스스로 재시작하지 않는다. */
   turnStopRequested: boolean;
@@ -416,7 +451,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     };
   };
 
-  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.step ? { step: runner.step } : {}), routineTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, routineNextRuns: Object.fromEntries([...runner.routineTimes].map(([id, value]) => [id, value.at])), ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}), ...(runner.contextDetail ? { detail: runner.contextDetail } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}) });
+  const statusOf = (runner: Runner): Omit<CommodoreRunStatus, "totals"> => ({ phase: runner.phase, ...(runner.step ? { step: runner.step } : {}), routineTimeZone: Intl.DateTimeFormat().resolvedOptions().timeZone, routineNextRuns: Object.fromEntries([...runner.routineTimes].map(([id, value]) => [id, value.at])), ...(runner.reason ? { reason: runner.reason } : {}), ...(runner.nextWakeAt ? { nextWakeAt: runner.nextWakeAt } : {}), ...(runner.stalledReported.size ? { stalled: [...runner.stalledReported] } : {}), ...(runner.contextWindow > 0 && runner.lastInputTokens > 0 ? { context: { window: runner.contextWindow, inputTokens: runner.lastInputTokens, ...(runner.compactAt !== null ? { compactAt: runner.compactAt } : {}), ...(runner.contextDetail ? { detail: runner.contextDetail } : {}) } } : {}), ...(runner.session && runner.coordinates ? { session: { model: runner.coordinates.model, ...(runner.coordinates.effort ? { effort: runner.coordinates.effort } : {}) } } : {}), ...((() => { const failed = runner.failedBatch !== null ? runner.messages.find((message) => message.seq === runner.failedBatch) ?? runner.messages[0] : undefined; return (runner.phase === "retrying" || runner.phase === "error") && failed ? { failedMessage: { seq: failed.seq, code: runner.reason ?? "turn_failed" } } : {}; })()) });
   const publish = (runner: Runner) => {
     const totals = deps.store.read(runner.commodoreId)?.run ?? EMPTY_RUN_TOTALS;
     deps.emit({ op: "run", commodoreId: runner.commodoreId, theaterIds: deps.theaterIds(runner.commodoreId), run: { ...statusOf(runner), totals } });
@@ -443,6 +478,32 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     timer.unref?.();
     runner[key] = timer;
   };
+
+  /**
+   * 실패한 사람 메시지 한 건을 큐에서 격리한다 — 다시 보내도 성공할 수 없거나, 새 세션에서도 같은 배치가 실패했다.
+   * 첨부 보관은 거두고 기록에 사유를 남기지만 사람 말풍선은 지우지 않는다(화면이 「전달되지 않음 · 처리 불가」를 단다).
+   * 같은 배치의 나머지 메시지는 큐에 남아 다음 턴이 읽는다.
+   */
+  function isolateMessage(runner: Runner, message: QueuedMessage, code: string, detail?: string): void {
+    const at = runner.messages.findIndex((queued) => queued.seq === message.seq);
+    if (at >= 0) runner.messages.splice(at, 1);
+    releaseMessages(runner, [message]);
+    if (message.messageId) { try { deps.store.images.trim(runner.commodoreId); } catch { /* 다음 정리가 다시 거둔다. */ } }
+    record(runner, { kind: "skipped", seqs: [message.seq], code, ...(detail ? { detail } : {}) });
+    // 격리는 실패 재시도가 아니다 — 다음 시도를 다시 재우지 않는다.
+    runner.retryAttempt = 0;
+    runner.failedBatch = null;
+    clearTimer(runner, "retry");
+    runner.nextWakeAt = undefined;
+    // 격리한 말이 이 턴의 유일한 입력이었으면 빈 깨움을 남기지 않는다.
+    if (!runner.messages.length) runner.pending.delete("message");
+    setPhase(runner, "idle");
+    if (!runner.messages.length) { scheduleRoutines(runner); return; }
+    // 뒤에 남은 정상 메시지는 재시도 간격을 기다리지 않고 곧바로 다음 턴이 읽는다.
+    wake(runner, "message");
+    if (runner.inflight || runner.turning) { runner.immediateNext = true; return; }
+    schedule(runner, "coalesce", 0, () => { void runTurn(runner); });
+  }
 
   /**
    * TaskForce 깨움 묶음 — 사람 발언은 조용해질 때까지(새 발언이 재대기, 최대 30초), 사령관 발언은 같이 깬
@@ -487,7 +548,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     else if (input.count !== undefined) reason.count = input.count;
     if (input.detail && !reason.details.includes(input.detail)) reason.details.push(input.detail);
     if (!existing) runner.pending.set(code, reason);
-    if (runner.inflight) return;
+    if (runner.inflight || runner.turning) return;
     // 새 사건도 예약 재시도에 합친다.
     if (runner.phase === "retrying" || runner.phase === "error") return;
     scheduleTurn(runner);
@@ -516,10 +577,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     publish(runner);
   };
 
-  const scheduleRetry = (runner: Runner, code: string) => {
+  const scheduleRetry = (runner: Runner, code: string, detail?: string) => {
     if (!canRun(runner.commodoreId)) {
       runner.nextWakeAt = undefined;
-      record(runner, { kind: "error", code });
+      record(runner, { kind: "error", code, ...(detail ? { detail } : {}) });
       setPhase(runner, "error", code);
       return;
     }
@@ -527,7 +588,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.retryAttempt += 1;
     const at = now() + delay;
     runner.nextWakeAt = at;
-    record(runner, { kind: "error", code, retryAt: at });
+    record(runner, { kind: "error", code, ...(detail ? { detail } : {}), retryAt: at });
     setPhase(runner, runner.retryAttempt > RETRY_DELAYS_MS.length ? "error" : "retrying", code);
     schedule(runner, "retry", delay, () => { runner.nextWakeAt = undefined; void runTurn(runner); });
   };
@@ -596,6 +657,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         wake(runner, "message");
       },
       ...(deps.execute ? { execute: deps.execute } : {}),
+      ...(deps.recordFailure ? { recordFailure: deps.recordFailure } : {}),
     });
     await session.start();
     runner.session = session;
@@ -610,6 +672,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.contextDetail = null;
     runner.sessionImageBytes = 0;
     runner.sessionImageBase64Bytes = 0;
+    // 새 세션은 같은-세션 연속 실패의 시작점이다 — 이전 세션의 실패 수를 물려받지 않는다.
+    runner.transientFailures = 0;
     // 세션을 열 때마다 새 대화다.
     deps.store.addRunTotals(runner.commodoreId, { session: 1 });
     record(runner, { kind: "session", event, ...(coordinates.fallback ? { reason: coordinates.fallback } : {}), model: coordinates.model, ...(coordinates.effort ? { effort: coordinates.effort } : {}) });
@@ -941,6 +1005,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner.stopping || disposed) return;
     if (!canRun(runner.commodoreId)) return;
     if (runner.inflight) return runner.inflight;
+    if (runner.turning) return;
     if (!runner.pending.size) return;
     tfWaits.delete(runner.commodoreId);
     // 읽지 않은 판단 항목 없는 taskforce 깨움은 턴을 세우지 않는다 — 이유를 걷고 판단 중에서도
@@ -957,6 +1022,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       if (!runner.pending.size) { setPhase(runner, "idle"); scheduleRoutines(runner); return; }
     }
     clearTimer(runner, "coalesce"); clearTimer(runner, "retry");
+    runner.turning = true;
     runner.inflight = (async () => {
       // 이미 수락한 말은 순서를 지키며 나눈다. 초과분은 다음 턴에 남고 빠지지 않는다.
       let batchBytes = 0;
@@ -986,16 +1052,22 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       let mailImages: readonly { readonly messageId: string; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] }[] = [];
       let mailBase64Bytes = 0;
       let session = runner.session;
+      /** 이 턴이 실패 뒤 폴백으로 열렸는가 — 같은 배치의 재실패를 격리 판정에 쓴다. */
+      let failureFallback = false;
+      /** 첨부 준비 중 예외를 낸 바로 그 메시지 — 선두가 아닌 뒤쪽 메시지가 잃은 첨부일 때 앞의 정상 메시지를 버리지 않는다. */
+      let failingMessage: QueuedMessage | undefined;
       try {
         // 교대 — 좌표·언어가 바뀌었거나 이미지 예산을 넘었거나 마지막 턴 뒤 1시간이 지났거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
         // 문맥 길이는 교대 사유가 아니다 — 세션이 스스로 압축해 이어 간다. 유휴 교대는 따로 알리지 않고 원래 깨운 그 턴에 새 세션을 쓴다.
         preparedMessages = selected.map((message) => {
+          failingMessage = message;
           if (!message.attachments?.length) return message.text;
           if (!deps.attachments || !message.messageId) throw new Error("attachment_not_found");
           const images = deps.attachments.read(runner.commodoreId, message.messageId);
           if (images.length !== message.attachments.length || images.some((image, index) => image.id !== message.attachments![index]!.id)) throw new Error("attachment_not_found");
           return { text: `${message.text}\n\nAttached images from the person (copy with attachmentIds; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
+        failingMessage = undefined;
         batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
         // 사령관 연락의 이미지 — 사람 메시지와 같은 턴·세션 예산에 센다. 사본은 수신 때 저장소에서 받았다.
         // 원본을 잃은 mail 한 건이 큐 전체를 막지 않게 텍스트만 전달하고 받은 처리를 확정한다(복사는 attachment_not_available).
@@ -1026,6 +1098,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         batchBase64Bytes += taskforceInput.tfImageBase64Bytes;
         const sizedOut = session !== null && (coordinatesChanged(runner) || runner.sessionImageBytes + batchBytes > MAX_COMMODORE_SESSION_IMAGE_BYTES || runner.sessionImageBase64Bytes + batchBase64Bytes > MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES);
         const idleExpired = session !== null && runner.lastTurnAt !== null && now() - runner.lastTurnAt > COMMODORE_IDLE_ROTATE_MS;
+        // 실패 뒤 폴백으로 여는 턴 — 같은 배치가 또 실패하면 메시지 자체가 원인이다.
+        failureFallback = runner.rotateNext === "replaced" && runner.failedBatch !== null;
         const rotate = runner.rotateNext ?? (sizedOut || idleExpired ? "replaced" : null);
         const silentIdle = runner.rotateNext === null && !sizedOut && idleExpired;
         if (session && rotate) { await session.dispose(); session = null; runner.session = null; }
@@ -1037,7 +1111,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         }
       } catch (error) {
         if (runner.stopping) return;
-        scheduleRetry(runner, failureCode(error, "session_failed"));
+        const code = failureCode(error, "session_failed");
+        // 첨부를 잃은 말은 다시 보내도 성공할 수 없다 — 같은 배치를 재시도하지 않고 실제로 실패한 그 메시지만 건너뛴다.
+        const target = failingMessage ?? selected[0];
+        if (code === "attachment_not_found" && target) { isolateMessage(runner, target, code, classifyFailure(error).detail); return; }
+        scheduleRetry(runner, code);
         return;
       }
       // 여는 동안 꺼졌다 — 막 연 세션은 stop() 이 거둔다. 턴도 상태 방송도 하지 않는다.
@@ -1087,9 +1165,8 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       // 깨운 목표(대기 중·정체·맡김)의 보드 요약과 깨우지 않고 모은 단계 이동 — 모델이 이 턴에 읽는다.
       const board = runner.board?.brief([...new Set(pending.flatMap(([, reason]) => [...(reason.ids?.keys() ?? [])]))]) ?? null;
       setPhase(runner, "turn");
-      // 실패한 턴도 살아 있는 세션의 CLI 이력에 남을 수 있다 — 재시도 이미지도 예산에 보수적으로 센다.
-      runner.sessionImageBytes += batchBytes;
-      runner.sessionImageBase64Bytes += batchBase64Bytes;
+      // 이미지는 턴이 성공한 뒤에만 세션 예산에 센다 — 실패한 턴이 재시도의 예산을 미리 먹으면
+      // 같은 메시지가 새 세션 없이 한도를 넘긴 것으로 보인다(누적은 성공 결말에서).
       const mail = runner.mail.splice(0, mailCount);
       runner.turnMessages = messages;
       runner.turnMail = preparedMail;
@@ -1118,6 +1195,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (outcome.outcome === "ok" || stoppedByPerson) for (const message of runner.turnMessages) if (message.mentions?.length) record(runner, { kind: "mention-result", messageSeq: message.seq, unrelayed: message.mentions.filter((peer) => !runner.turnSent.has(peer.id)) });
       } finally { runner.turnMessages = []; runner.turnMail = []; }
       if (outcome.outcome === "ok") {
+        // 성공한 턴만 세션의 이미지 예산에 센다 — 실패한 턴이 재시도 예산을 미리 먹지 않는다.
+        // 성공은 같은-세션 일시 오류 연속 실패도 끝낸다.
+        runner.sessionImageBytes += batchBytes;
+        runner.sessionImageBase64Bytes += batchBase64Bytes;
+        runner.transientFailures = 0;
+        runner.failedBatch = null;
         for (let at = 0; at < mail.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "received-read", seqs: mail.slice(at, at + MAX_TRANSCRIPT_PAGE).map((entry) => entry.seq) });
         // 받은 처리 확정 뒤 명시적 회수 — 보호가 풀린 사본의 초과분을 다음 저장까지 남기지 않는다.
         if (mail.length) { try { deps.store.images.trim(runner.commodoreId); } catch { /* 다음 정리에 다시 거둔다. */ } }
@@ -1189,10 +1272,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           }
         }
         if (!stoppedByPerson) runner.messages.unshift(...messages);
-        if (outcome.error === "session_disposed" || outcome.error === "session_failed") { runner.session = null; }
-        // 요약이 실패한 채 턴이 오류로 끝난 세션은 넘친 대화를 그대로 안고 있다 — 같은 세션으로 다시 시도하면 같은 오류다.
-        // 다음 시도는 최근 행위 요약으로 새 세션을 연다. 요약만 실패하고 턴이 끝난 세션은 다음 턴에 자식이 다시 요약한다.
-        else if (outcome.outcome === "error" && outcome.compactionFailed) { runner.rotateNext ??= "replaced"; }
+        const code = outcome.error ?? "turn_failed";
         if (runner.turnStopRequested) {
           // 중지는 실패 재시도가 아니다. 건넨 사람 입력은 소비하고, 미배달 입력·mail·깨움만 다음 새 사건에 함께 싣는다.
           runner.retryAttempt = 0;
@@ -1200,7 +1280,31 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           scheduleRoutines(runner);
           return;
         }
-        scheduleRetry(runner, outcome.error ?? "turn_failed");
+        if (outcome.outcome === "error") {
+          // 막힌 메시지 격리 — 다시 보내도 성공할 수 없는 입력 오류이거나, 새 세션에서도 같은 배치가 실패했다.
+          const lead = messages[0];
+          const repeatedOnFallback = lead !== undefined && failureFallback && runner.failedBatch === lead.seq && BATCH_POISON_FAILURES.has(code);
+          if (lead && (INPUT_POISON_FAILURES.has(code) || repeatedOnFallback)) {
+            isolateMessage(runner, lead, code, outcome.detail);
+            return;
+          }
+          // 실패한 배치의 선두 — 격리 판정과 「실패한 메시지 건너뛰기」가 같은 자리를 본다.
+          runner.failedBatch = lead?.seq ?? null;
+          if (code === "session_disposed" || code === "session_failed") runner.session = null;
+          // 요약이 실패한 채 턴이 오류로 끝난 세션은 넘친 대화를 그대로 안고 있다 — 같은 세션으로 다시 시도하면 같은 오류다.
+          // 다음 시도는 최근 행위 요약으로 새 세션을 연다. 요약만 실패하고 턴이 끝난 세션은 다음 턴에 자식이 다시 요약한다.
+          else if (outcome.compactionFailed) { runner.rotateNext ??= "replaced"; runner.transientFailures = 0; }
+          // 오류 성격에 따라 같은 세션을 한 번 더 쓸지 정한다 — 깨진 세션에 같은 입력을 반복하지 않는다.
+          // 429·5xx·네트워크는 업스트림의 일시 사정이라 같은 세션으로 한 번은 더 보내고, 그마저 실패하면 새 세션으로.
+          else if (TRANSIENT_TURN_FAILURES.has(code)) {
+            runner.transientFailures += 1;
+            if (runner.transientFailures >= 2) runner.rotateNext ??= "replaced";
+          }
+          // 그 밖의 턴 실패(cli_exited·400/413·문맥 초과·turn_failed 등)는 세션 상태·문맥이 오염됐을 수 있다 —
+          // 첫 실패 뒤 재시도는 바로 새 세션으로 연다.
+          else { runner.rotateNext ??= "replaced"; runner.transientFailures = 0; }
+        }
+        scheduleRetry(runner, code, outcome.detail);
         return;
       }
       if (runner.messages.length) wake(runner, "message");
@@ -1211,11 +1315,15 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       setPhase(runner, "idle");
       scheduleRoutines(runner);
     })().finally(() => {
+      runner.turning = false;
       runner.inflight = null;
       const stoppedTurn = runner.turnStopRequested;
       runner.turnStopRequested = false;
       // 사람이 멈춘 턴의 대기 입력은 남기되 즉시 되살리지 않는다. 이후 새 메시지·보드·루틴 깨움은 평소대로 돈다.
-      if (!stoppedTurn && runner.pending.size && !runner.stopping && !disposed && runner.phase !== "retrying" && runner.phase !== "error") scheduleTurn(runner);
+      if (stoppedTurn || !runner.pending.size || runner.stopping || disposed || runner.phase === "retrying" || runner.phase === "error") { runner.immediateNext = false; return; }
+      // 격리 직후의 후속 메시지는 재시도 간격 없이 바로 다음 턴으로 넘긴다.
+      if (runner.immediateNext) { runner.immediateNext = false; schedule(runner, "coalesce", 0, () => { void runTurn(runner); }); return; }
+      scheduleTurn(runner);
     });
     return runner.inflight;
   };
@@ -1289,7 +1397,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, stopping: false, turnStopRequested: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, transientFailures: 0, failedBatch: null, immediateNext: false, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, turning: false, stopping: false, turnStopRequested: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),
@@ -1576,6 +1684,26 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       wake(runner, "retry");
       clearTimer(runner, "coalesce");
       await runTurn(runner);
+    },
+    async retryNewSession(commodoreId) {
+      const runner = runners.get(commodoreId);
+      if (!runner || (runner.phase !== "retrying" && runner.phase !== "error")) throw new Error("commodore_not_retrying");
+      // 막힌 세션만 바꾼다 — 기록·설정·대화 전체는 그대로다.
+      runner.rotateNext = "replaced";
+      clearTimer(runner, "retry");
+      runner.nextWakeAt = undefined;
+      wake(runner, "retry");
+      clearTimer(runner, "coalesce");
+      await runTurn(runner);
+    },
+    async skipFailed(commodoreId) {
+      const runner = runners.get(commodoreId);
+      if (!runner || (runner.phase !== "retrying" && runner.phase !== "error")) throw new Error("commodore_not_retrying");
+      // 재시도를 기다리는 실패 메시지 한 건만 건너뛴다 — 뒤의 정상 메시지는 다음 턴이 읽는다.
+      const failed = runner.failedBatch !== null ? runner.messages.find((message) => message.seq === runner.failedBatch) : undefined;
+      const lead = failed ?? runner.messages[0];
+      if (!lead) throw new Error("commodore_not_retrying");
+      isolateMessage(runner, lead, runner.reason ?? "turn_failed");
     },
     async stopTurn(commodoreId) {
       const runner = runners.get(commodoreId);

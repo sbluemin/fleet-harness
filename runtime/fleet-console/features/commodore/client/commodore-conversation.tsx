@@ -22,7 +22,7 @@ import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreRefere
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreMongleActivity } from "./commodore-avatar.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, retryCommodoreNewSession, skipCommodoreFailed, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
 import { getConversationSurface, subscribeConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
 import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
@@ -442,6 +442,9 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
           <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
+          <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodoreNewSession(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNewSession")}</button>
+          {/* 대기 중인 실패 메시지가 있을 때만 — 대화를 지우지 않고 그 말만 빼고 이어 간다. */}
+          {run.failedMessage ? <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void skipCommodoreFailed(commodoreId).catch(fail); }}>{t("commodore.drawer.skipFailed")}</button> : null}
         </div>
       ) : null}
       {peerLedger ? <div className="objectives-commodore-ledger" data-commodore-ledger=""><CommodorePeerLedger speaker={peerLedger} language={language} onBack={() => setPeerLedger(null)} /></div> : ledgerOpen && Ledger ? (

@@ -1,5 +1,6 @@
 import { claudeGatewayModelPolicy } from "@fleet-console/ai-gateway";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -145,5 +146,124 @@ describe("system prompt channel", () => {
     }
     expect(runVendorQuery).not.toHaveBeenCalled();
     await sdk.dispose();
+  });
+});
+
+describe("resident loop resume", () => {
+  /** 자식 스트림 하나 — 테스트가 메시지를 밀어 넣고 end로 자식의 종료를 흉내 낸다. */
+  function fakeChild() {
+    const pending: Record<string, unknown>[] = [];
+    let exited = false;
+    let closedByLoop = false;
+    let notify: (() => void) | null = null;
+    const release = () => { const wake = notify; notify = null; wake?.(); };
+    return {
+      send: () => undefined,
+      async *[Symbol.asyncIterator]() {
+        while (true) {
+          if (pending.length) { yield pending.shift()!; continue; }
+          if (exited) return;
+          await new Promise<void>((resolve) => {
+            notify = resolve;
+            // 대기를 등록하는 사이에 이미 밀어 넣었거나 끝났으면 스스로 깨운다.
+            if (pending.length || exited) { notify = null; resolve(); }
+          });
+        }
+      },
+      push(message: Record<string, unknown>) { pending.push(message); release(); },
+      /** 자식 프로세스가 스스로 끝났다. */
+      end() { exited = true; release(); },
+      /** 루프가 자식을 닫았다 — 조금 뒤 루프의 read가 끝나 resume 판정이 선다. */
+      close() { closedByLoop = true; exited = true; release(); },
+      closed: () => closedByLoop,
+      interrupt: async () => undefined,
+      getContextUsage: async () => null,
+    };
+  }
+  /** 파일 쓰기·스트림 정산처럼 실제 타이머가 필요한 단계를 기다린다. */
+  const until = async (check: () => boolean) => {
+    for (let attempt = 0; attempt < 2_000; attempt += 1) {
+      if (check()) return;
+      await new Promise((resolve) => setTimeout(resolve, 1));
+    }
+    throw new Error("resident loop did not reach the expected state in time");
+  };
+
+  it("opens a fresh session when a resumed child ends after init without a successful turn", async () => {
+    const { createClaudeResidentLoop } = await import("../../foundation/agent-runtime/src/claude/resident-loop.js");
+    const dir = mkdtempSync(path.join(os.tmpdir(), "fleet-resident-resume-"));
+    try {
+      const configDir = path.join(dir, "config");
+      // 남은 대화의 트랜스크립트 — 이게 있어야 루프가 resume으로 연다.
+      const projects = path.join(configDir, "projects", "-work");
+      mkdirSync(projects, { recursive: true });
+      const original = "11111111-1111-1111-1111-111111111111";
+      writeFileSync(path.join(projects, `${original}.jsonl`), "");
+      const stateFile = path.join(dir, "session.json");
+      writeFileSync(stateFile, JSON.stringify({ sessionId: original, model: FABLE_1M }));
+
+      const requests: { resume?: string; sessionId?: string }[] = [];
+      const children: ReturnType<typeof fakeChild>[] = [];
+      const sdk = {
+        configDir,
+        openSession: async (request: { resume?: string; sessionId?: string }) => {
+          requests.push(request);
+          const child = fakeChild();
+          children.push(child);
+          return child;
+        },
+        dispose: async () => undefined,
+      };
+      const loop = createClaudeResidentLoop({
+        createSdk: async () => sdk as never,
+        buildSession: () => ({ model: FABLE_1M }) as never,
+        stateFile,
+        settlement: "result",
+      });
+      await loop.start();
+      expect(loop.resumed).toBe(true);
+
+      // resume으로 연 자식이 init만 내고 is_error로 끝나고, 이어서 자식이 종료된다.
+      const first = loop.run("first");
+      await until(() => children.length === 1);
+      expect(requests[0]).toMatchObject({ resume: original });
+      children[0]!.push({ type: "system", subtype: "init" });
+      children[0]!.push({ type: "result", subtype: "error", is_error: true, result: "No conversation found with session ID" });
+      await first;
+      children[0]!.end();
+      await until(() => children[0]!.closed());
+
+      // 깨진 resume이다 — 다음 자식은 같은 대화가 아니라 새 --session-id로 연다.
+      const second = loop.run("second");
+      await until(() => children.length === 2);
+      expect(requests[1]!.resume).toBeUndefined();
+      expect(requests[1]!.sessionId).toMatch(/^[0-9a-f-]{36}$/i);
+      expect(requests[1]!.sessionId).not.toBe(original);
+      const fresh = requests[1]!.sessionId!;
+      children[1]!.push({ type: "system", subtype: "init" });
+      children[1]!.push({ type: "result", subtype: "success", is_error: false });
+      await second;
+      children[1]!.end();
+      await until(() => children[1]!.closed());
+
+      // 첫 턴을 성공한 세션은 정상이다 — 다음 자식은 그 대화를 그대로 resume한다.
+      const third = loop.run("third");
+      await until(() => children.length === 3);
+      expect(requests[2]).toMatchObject({ resume: fresh });
+      children[2]!.push({ type: "system", subtype: "init" });
+      children[2]!.push({ type: "result", subtype: "success", is_error: false });
+      await third;
+      children[2]!.end();
+      await until(() => children[2]!.closed());
+
+      // resume으로 열렸지만 첫 턴을 성공했으면 다시 새 세션을 열지 않는다.
+      const fourth = loop.run("fourth");
+      await until(() => children.length === 4);
+      expect(requests[3]).toMatchObject({ resume: fresh });
+      children[3]!.push({ type: "result", subtype: "success", is_error: false });
+      await fourth;
+      expect(requests).toHaveLength(4);
+      await loop.dispose();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });

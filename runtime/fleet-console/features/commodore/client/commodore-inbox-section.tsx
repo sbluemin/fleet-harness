@@ -60,6 +60,8 @@ import {
   INTEL_EDIT_ATTRIBUTE,
   useCommodoreIntelEdits,
   retryCommodore,
+  retryCommodoreNewSession,
+  skipCommodoreFailed,
   stopCommodore,
   saveCommodoreDescription,
   setCommodoreCommander,
@@ -242,6 +244,9 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
           <button type="button" className="objectives-commodore-text-button" onClick={() => { if (!commodoreId) return; setFailure(null); void retryCommodore(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
+          <button type="button" className="objectives-commodore-text-button" onClick={() => { if (!commodoreId) return; setFailure(null); void retryCommodoreNewSession(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNewSession")}</button>
+          {/* 대기 중인 실패 메시지가 있을 때만 — 대화를 지우지 않고 그 말만 빼고 이어 간다. */}
+          {run.failedMessage ? <button type="button" className="objectives-commodore-text-button" onClick={() => { if (!commodoreId) return; setFailure(null); void skipCommodoreFailed(commodoreId).catch(fail); }}>{t("commodore.drawer.skipFailed")}</button> : null}
         </div>
       ) : null}
       {tab === "log" ? (

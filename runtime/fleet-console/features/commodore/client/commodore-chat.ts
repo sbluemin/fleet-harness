@@ -4,7 +4,7 @@ import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationRefer
 import { type ConversationSpeaker } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
 
-import { undeliveredMessageSeqs } from "../shared/contracts/delivery.js";
+import { skippedMessageReasons, undeliveredMessageSeqs } from "../shared/contracts/delivery.js";
 import { BOARD_TOOL_NAMES, COMMODORES_TOOL_NAMES } from "../shared/tool-names.js";
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
@@ -24,8 +24,13 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
   const out: AgentChatTranscriptEntry[] = [];
   const push = (event: AgentChatTranscriptEvent, at?: number) => out.push(at !== undefined ? { event, at } : { event });
   const undelivered = undeliveredMessageSeqs(entries);
+  // 다시 보내지 못하고 건너뛴 말 — 말풍선에 「전달되지 않음」을 달고 사유는 안내 줄이 말한다.
+  const skipped = skippedMessageReasons(entries);
+  const hiddenFailures = supersededFailureIndices(entries);
   const delivered = new Set(entries.flatMap((entry) => (entry.kind === "delivered" ? entry.seqs : [])));
   let turnAt: number | null = null;
+  // 실패한 턴의 1줄 요약 — 바로 뒤의 재시도 예약(error 줄)이 같은 실패를 한 줄로 잇는다.
+  let failureDetail: string | undefined;
   // 턴 중에 왔지만 그 턴이 집지 않은 말 — 다음 턴이 읽는다. 턴이 닫힌 뒤 말풍선으로 선다(턴 안에 두면 읽힌 것처럼 보인다).
   let heldMessages: { readonly event: AgentChatTranscriptEvent; readonly at: number }[] = [];
   // 턴 안의 압축은 그 턴이 닫힌 뒤 구분선으로 선다 — 턴 한가운데의 구분선은 턴을 둘로 가른다(턴 묶음은 구분선에서 끊긴다).
@@ -46,7 +51,7 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
     for (const held of heldMessages) { push(held.event, held.at); push({ kind: "turn-end", ok: true }, held.at); }
     heldMessages = [];
   };
-  for (const entry of entries) {
+  for (const [position, entry] of entries.entries()) {
     switch (entry.kind) {
       case "wake":
         if (turnAt !== null) end(entry.at, "ok");
@@ -57,11 +62,12 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
       case "message": {
         const { text, references, quotes } = quotedMessageWords(entry);
         const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
+        const missed = undelivered.has(entry.seq) || skipped.has(entry.seq);
         if (turnAt !== null && delivered.has(entry.seq)) push({ kind: "turn-inject", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at }, entry.at);
-        else if (turnAt !== null) heldMessages.push({ event: { kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, at: entry.at });
+        else if (turnAt !== null) heldMessages.push({ event: { kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(missed ? { undelivered: true as const } : {}) }, at: entry.at });
         else {
           // 쉬는 동안 받은 말은 말풍선 하나다 — 그 말이 깨운 턴은 뒤따르는 깨움 줄이 연다. 열린 채 두면 빈 턴이 「작업 중」으로 선다.
-          push({ kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}) }, entry.at);
+          push({ kind: "dispatch", text, ...(references ? { references } : {}), ...(attachments?.length ? { attachments } : {}), at: entry.at, ...(missed ? { undelivered: true as const } : {}) }, entry.at);
           push({ kind: "turn-end", ok: true }, entry.at);
         }
         break;
@@ -93,7 +99,11 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
       case "result":
         resume(entry.at);
         end(entry.at, entry.outcome);
-        if (entry.outcome === "error") push({ kind: "note", text: t("commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("commodore.meta.error") }), at: entry.at, tone: "warn" }, entry.at);
+        if (entry.outcome !== "error") break;
+        if (hiddenFailures.has(position)) { failureDetail = undefined; break; }
+        // 바로 뒤의 재시도 예약(error 줄)이 같은 실패다 — 두 줄 경고 대신 그 한 줄에 요약을 실어 보낸다.
+        if (retryTail(entries, position)) { failureDetail = entry.detail; break; }
+        push({ kind: "note", text: t("commodore.log.turnError", { reason: failureWord(t, entry.error, entry.detail) }), at: entry.at, tone: "warn" }, entry.at);
         break;
       case "compacted":
         if (turnAt !== null) heldNotes.push({ text: compactedText(t, entry), at: entry.at });
@@ -105,10 +115,17 @@ export function commodoreChatEntries(t: T, theaterId: string, entries: readonly 
         break;
       case "error": {
         end(entry.at, "error");
-        const code = errorWord(t, entry.code);
+        const detail = failureDetail ?? entry.detail;
+        failureDetail = undefined;
+        if (hiddenFailures.has(position)) break;
+        const code = failureWord(t, entry.code, detail);
         push({ kind: "note", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }), at: entry.at, tone: "warn" }, entry.at);
         break;
       }
+      // 다시 보내도 성공할 수 없어 건너뛴 말 — 말풍선 옆에 사유 한 줄을 남긴다.
+      case "skipped":
+        push({ kind: "note", text: t("commodore.log.skipped", { reason: failureWord(t, entry.code, entry.detail) }), at: entry.at, tone: "warn" }, entry.at);
+        break;
       // 사령관이 물었다 — 그 턴 안의 글로 선다(이유·질문·선택지). 지금 상태(답을 기다림·답함·거둠)는 상태의 질문에서 읽는다.
       case "ask":
         resume(entry.at);
@@ -187,6 +204,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   const mentionResults = new Map(entries.flatMap((entry) => entry.kind === "mention-result" ? [[entry.messageSeq, entry.unrelayed] as const] : []));
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = undeliveredMessageSeqs(entries);
+  const skipped = skippedMessageReasons(entries);
+  const hiddenFailures = supersededFailureIndices(entries);
   // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
   // 도는 턴이 집은 말(delivered)은 이미 읽혔고, 다시 실린 말(requeued)은 그 뒤의 깨움이 집을 때까지 기다린다.
   const lastWakeSeq = entries.reduce((max, entry) => entry.kind === "wake" ? Math.max(max, entry.seq) : max, -1);
@@ -194,16 +213,19 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   const requeuedWaiting = new Set(entries.flatMap((entry) => (entry.kind === "requeued" && entry.seq > lastWakeSeq ? entry.seqs : [])));
   const index: CommodoreObjectiveIndex = { live: objectives, finished };
   const out: AgentConversationEntry[] = [];
-  for (const entry of entries) {
+  // 실패한 턴의 1줄 요약 — 바로 뒤의 재시도 예약(error 줄)이 같은 실패를 한 줄로 잇는다.
+  let failureDetail: string | undefined;
+  for (const [position, entry] of entries.entries()) {
     switch (entry.kind) {
       case "message": {
         const { text, references, quotes } = quotedMessageWords(entry);
         const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
         const unrelayed = mentionResults.get(entry.seq);
+        const skippedReason = skipped.get(entry.seq);
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, objectiveId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
-          ...(unrelayed?.length ? { deliveryNote: t("commodore.message.unrelayed", { names: unrelayed.map((peer) => peer.alias).join(", ") }) } : {}),
-          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) ? { undelivered: true as const } : {}),
-          ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
+          ...(skippedReason ? { deliveryNote: t("commodore.message.skipped") } : unrelayed?.length ? { deliveryNote: t("commodore.message.unrelayed", { names: unrelayed.map((peer) => peer.alias).join(", ") }) } : {}),
+          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) && !skippedReason ? { undelivered: true as const } : {}),
+          ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !skippedReason && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
         break;
       }
       case "sent":
@@ -234,7 +256,12 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       }
       case "result":
-        if (entry.outcome === "error") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("commodore.log.turnError", { reason: entry.error ? errorWord(t, entry.error) : t("commodore.meta.error") }) });
+        if (entry.outcome === "error") {
+          if (hiddenFailures.has(position)) { failureDetail = undefined; break; }
+          // 바로 뒤의 재시도 예약(error 줄)이 같은 실패다 — 두 줄 경고 대신 그 한 줄에 요약을 실어 보낸다.
+          if (retryTail(entries, position)) failureDetail = entry.detail;
+          else out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("commodore.log.turnError", { reason: failureWord(t, entry.error, entry.detail) }) });
+        }
         else if (entry.outcome === "cancelled") out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, text: t("commodore.log.turnStopped") });
         break;
       // 세션 교대 자체는 세우지 않고, 고른 모델 대신 다른 모델로 돈다는 안내만 남긴다 — 사람이 모델을 다시 골라야 할 수 있다.
@@ -244,10 +271,17 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         break;
       }
       case "error": {
-        const code = errorWord(t, entry.code);
+        const detail = failureDetail ?? entry.detail;
+        failureDetail = undefined;
+        if (hiddenFailures.has(position)) break;
+        const code = failureWord(t, entry.code, detail);
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }) });
         break;
       }
+      // 다시 보내도 성공할 수 없어 건너뛴 말 — 말풍선 배지 옆에 사유와 다음 안내를 한 줄로 남긴다.
+      case "skipped":
+        out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: t("commodore.log.skipped", { reason: failureWord(t, entry.code, entry.detail) }) });
+        break;
       // 물음과 답은 보드 행위 줄과 같은 가운데 줄이다 — 물음은 사령관, 답은 사람이 낸 줄. 펼치면 이유·질문(답)이 선다.
       case "ask": {
         const status = askStatusWord(t, entry.askId, asks);
@@ -587,6 +621,47 @@ function answeredText(entry: AnsweredEntry): string {
 export function errorWord(t: T, code: string): string {
   const key = `commodore.errorCode.${code}`;
   return Object.hasOwn(commodoreEn, key) ? t(key as CommodoreMessageKey) : t("commodore.errorCode.failed");
+}
+
+/**
+ * 실패 한 줄의 이유 — 분류 코드는 코드별 문구로, 분류에 걸리지 않은 실패는 원문을 가린 1줄 요약으로 보인다.
+ * 「턴 실패: 턴 실패」처럼 코드 문구와 요약이 겹치지 않게, 일반 코드(`turn_failed`)는 요약을 쓴다.
+ */
+export function failureWord(t: T, code: string | undefined, detail?: string): string {
+  const known = code !== undefined && Object.hasOwn(commodoreEn, `commodore.errorCode.${code}`);
+  if (known && code !== "turn_failed") return errorWord(t, code);
+  // 옛 기록의 `error`는 코드가 아니라 원문이다 — 한 낱말 코드가 아니면 그 원문을 그대로 요약으로 쓴다.
+  const summary = (detail ?? (code !== undefined && !/^[a-z][a-z0-9_]*$/.test(code) ? code : undefined))?.trim();
+  return summary || t("commodore.meta.error");
+}
+
+/**
+ * 실패한 턴 바로 뒤의 재시도 예약 줄 — 둘은 같은 실패라 화면에는 한 줄로 선다.
+ * 사이에 낀 세션 교대·압축 같은 안내는 건너뛰고, 새 턴(깨움·결말·말·글·도구)을 만나면 다른 사건으로 본다.
+ */
+function retryTail(entries: readonly CommodoreTranscriptEntry[], index: number): Extract<CommodoreTranscriptEntry, { kind: "error" }> | null {
+  for (let at = index + 1; at < entries.length; at += 1) {
+    const entry = entries[at]!;
+    if (entry.kind === "error") return entry;
+    if (entry.kind === "result" || entry.kind === "wake" || entry.kind === "message" || entry.kind === "text" || entry.kind === "tool" || entry.kind === "ask" || entry.kind === "ask-answered") return null;
+  }
+  return null;
+}
+
+/** 건너뛰기로 끝난 실패 구간 — 앞선 `result(error)`·`error` 줄은 같은 사유를 겹쳐 세우지 않는다. */
+function supersededFailureIndices(entries: readonly CommodoreTranscriptEntry[]): ReadonlySet<number> {
+  const hidden = new Set<number>();
+  for (const [position, entry] of entries.entries()) {
+    if (entry.kind !== "skipped" || !entry.seqs.length) continue;
+    const floorSeq = Math.min(...entry.seqs);
+    for (let i = position - 1; i >= 0; i -= 1) {
+      const candidate = entries[i]!;
+      if (candidate.seq < floorSeq) break;
+      if (candidate.kind === "result" && candidate.outcome === "ok") break;
+      if ((candidate.kind === "result" && candidate.outcome === "error") || candidate.kind === "error") hidden.add(i);
+    }
+  }
+  return hidden;
 }
 
 /** 깨움 이유 — `code` 또는 `code:N` 토큰. 모르는 토큰(문장)은 그대로 보인다. */
