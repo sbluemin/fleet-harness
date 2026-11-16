@@ -201,7 +201,7 @@ describe("Console daemon lifecycle integration", () => {
 
     fs.symlinkSync(path.join(dir, "missing-target"), lockFile);
     const symlink = await recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot });
-    expect(symlink.kind).toBe("refused");
+    expect(symlink).toMatchObject({ kind: "refused", code: "symlink" });
     expect(fs.lstatSync(lockFile).isSymbolicLink()).toBe(true);
     fs.unlinkSync(lockFile);
 
@@ -209,14 +209,14 @@ describe("Console daemon lifecycle integration", () => {
     const port = await closedPort();
     const live = { pid: bystanderPid, host: "127.0.0.1", port, endpoint: `http://127.0.0.1:${port}/`, startedAt: Date.now(), token: "live-token", version: "v", bootSession: boot };
     fs.writeFileSync(lockFile, `${JSON.stringify(live, null, 2)}\n`, { mode: 0o600 });
-    await expect(recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot })).resolves.toMatchObject({ kind: "refused" });
+    await expect(recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot })).resolves.toMatchObject({ kind: "refused", code: "live_console" });
     expect(readConsoleLockFile(lockFile)?.token).toBe("live-token");
 
     fs.writeFileSync(path.join(dir, "update-progress.json"), JSON.stringify({
       phase: "installing", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), targetVersion: "2", fromVersion: "1", workerPid: bystanderPid,
     }));
     fs.writeFileSync(lockFile, "", { mode: 0o600 });
-    await expect(recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot })).resolves.toMatchObject({ kind: "refused" });
+    await expect(recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot })).resolves.toMatchObject({ kind: "refused", code: "active_update" });
     expect(fs.readFileSync(lockFile, "utf8")).toBe("");
 
     // Race guard: if a newly published lock replaces the observed lock before rm, recover refuses and leaves it intact.
@@ -232,7 +232,7 @@ describe("Console daemon lifecycle integration", () => {
         return true;
       },
     });
-    expect(raceResult.kind).toBe("refused");
+    expect(raceResult).toMatchObject({ kind: "refused", code: "lock_changed" });
     expect(readConsoleLockFile(lockFile)?.token).toBe("new-live-token");
     expect(fs.readdirSync(dir).filter((name) => name.startsWith(".console.lock.recover-"))).toEqual(backupsBefore);
   });
