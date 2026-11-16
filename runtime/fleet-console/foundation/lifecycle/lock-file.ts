@@ -4,6 +4,7 @@ import { performance } from "node:perf_hooks";
 
 import { classifyConsoleLockContent, LOCK_OBSERVE_BUDGET_MS, LOCK_REREAD_INTERVAL_MS } from "@fleet-console/protocol/lifecycle";
 
+import { bootSessionsDiffer, currentConsoleBootSession } from "./boot-session.js";
 import { isPidAlive } from "./process.js";
 
 /** The lock directory's and the lock file's POSIX modes. */
@@ -22,6 +23,8 @@ export interface ConsoleLockFilePayload {
   readonly token: string;
   readonly version: string;
   readonly owner?: unknown;
+  /** OS boot session (`<platform>:<id>`) of the process that published the lock. Absent on older locks. */
+  readonly bootSession?: string;
 }
 
 /** One published lock instance: its exact bytes identify it, its pid names its writer. */
@@ -37,12 +40,17 @@ export type ConsoleLockFileObservation<P extends ConsoleLockFilePayload = Consol
   | { readonly kind: "refused"; readonly reason: string }
   /** No readable owner (empty, unparseable, invalid payload, read error, not a file). Never reclaimed. */
   | { readonly kind: "unknown"; readonly reason: string }
-  /** `alive` is false only on ESRCH. `untrusted` names the first trust problem, or null for a fully trusted lock. */
-  | { readonly kind: "owner"; readonly instance: ConsoleLockFileInstance<P>; readonly alive: boolean; readonly untrusted: string | null };
+  /**
+   * `alive` is false only on ESRCH. `previousBoot` is the other proof the author is gone: the lock's boot session and the
+   * current one are both non-empty and differ. `untrusted` names the first trust problem, or null for a fully trusted lock.
+   */
+  | { readonly kind: "owner"; readonly instance: ConsoleLockFileInstance<P>; readonly alive: boolean; readonly previousBoot: boolean; readonly untrusted: string | null };
 
 export interface ConsoleLockTrustOptions {
   /** The host a trusted lock must name. Defaults to the loopback host every Console publishes. */
   readonly host?: string;
+  /** Current OS boot session. Defaults to the process cache. Tests pass a fixed id. */
+  readonly bootSession?: () => string | null;
 }
 
 export interface ConsoleLockTrustInput<P extends ConsoleLockFilePayload = ConsoleLockFilePayload> {
@@ -92,6 +100,7 @@ export function observeConsoleLockFile<P extends ConsoleLockFilePayload = Consol
     kind: "owner",
     instance: { bytes, pid: payload.pid, payload },
     alive: isPidAlive(payload.pid),
+    previousBoot: bootSessionsDiffer(payload.bootSession, (options.bootSession ?? currentConsoleBootSession)()),
     untrusted: describeConsoleLockTrustIssue(lockFile, payload, options),
   };
 }

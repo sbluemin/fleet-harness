@@ -11,6 +11,7 @@ import {
   type ConsoleObservedState,
 } from "@fleet-console/protocol/lifecycle";
 
+import { bootSessionsDiffer, currentConsoleBootSession } from "./boot-session.js";
 import { toConsoleHealthEvidence, type ConsoleHealthTarget, type ConsoleProbeOptions, type ConsoleProbeResult } from "./health.js";
 import { consoleLockInstanceState } from "./lock-file.js";
 import { isLockAuthorReplaced, isPidAlive, readProcessStartTime } from "./process.js";
@@ -18,6 +19,8 @@ import { isLockAuthorReplaced, isPidAlive, readProcessStartTime } from "./proces
 /** The lock instance an observer read: the pid it names, when it was written, and its token. */
 export interface ConsoleObservedLock extends ConsoleHealthTarget {
   readonly startedAt: unknown;
+  /** Boot session recorded in the lock, when the publisher wrote one. */
+  readonly bootSession?: unknown;
 }
 
 export interface ConsoleInstanceObservation<L extends ConsoleObservedLock> {
@@ -37,22 +40,28 @@ export interface ObserveConsoleInstanceInput<L extends ConsoleObservedLock> {
   /** The observer's probe budget: HEALTH_PROBE_TIMEOUT_MS, or INTERACTIVE_PROBE_TIMEOUT_MS on a path a person waits on. */
   readonly probeTimeoutMs?: number;
   readonly env?: NodeJS.ProcessEnv;
+  /** Current OS boot session. Defaults to the process cache. */
+  readonly bootSession?: () => string | null;
 }
 
 /** Reads one lock instance from outside and classifies it with the contract's single rule. Sends no signal. */
 export async function observeConsoleInstance<L extends ConsoleObservedLock>(input: ObserveConsoleInstanceInput<L>): Promise<ConsoleInstanceObservation<L>> {
   const { lock } = input;
   const trusted = input.trusted && typeof lock.token === "string" && lock.token.length > 0;
+  const previousBoot = bootSessionsDiffer(lock.bootSession, (input.bootSession ?? currentConsoleBootSession)());
+  const pidAlive = isPidAlive(lock.pid);
   let probe: ConsoleProbeResult<L> | null = null;
   let authorReplaced = false;
-  if (isPidAlive(lock.pid) && trusted) {
+  // A previous boot's pid number may belong to someone else. Do not probe or classify that process as the Console.
+  if (pidAlive && trusted && !previousBoot) {
     probe = await input.probe(lock, { timeoutMs: input.probeTimeoutMs ?? HEALTH_PROBE_TIMEOUT_MS });
     if (probe.refused) authorReplaced = await isLockAuthorReplaced(lock, input.env);
   }
   const health = probe ? toConsoleHealthEvidence(probe) : null;
   const classified = classifyConsoleInstance({
     lockPid: lock.pid,
-    pidAlive: isPidAlive(lock.pid),
+    pidAlive,
+    previousBoot,
     trusted,
     authorReplaced,
     lockHeldBySameInstance: input.isHeld(),

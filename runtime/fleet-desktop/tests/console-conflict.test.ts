@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isConsoleConflict, showConsoleConflictAndQuit, type ConsoleConflictDialogOptions } from "../src/boot-dialogs.js";
+import { describeConsoleLockRecoverDialog, isConsoleConflict, showConsoleConflictAndQuit, type ConsoleConflictDialogOptions } from "../src/boot-dialogs.js";
 import { SidecarLockConflictError } from "../src/sidecar-supervisor.js";
 
 const LOCK_FILE = "/fleet/console/runtime/console.lock";
@@ -54,6 +54,20 @@ describe("Console conflict handling", () => {
     expect(options.buttons).toEqual(["OK"]);
     expect(options.title.length).toBeGreaterThan(0);
     expect(options.detail).not.toContain("pid");
+  });
+
+  it("offers to clear a stuck lock and refuses that offer for a symlink", () => {
+    const unverified = new SidecarLockConflictError("console_lock_process_unverified", { pid: 4242, lockFile: LOCK_FILE, observed: "unverified", reason: "it did not prove it is the Console" });
+    const offered = describeConsoleLockRecoverDialog(unverified, "/fleet/logs", "ko");
+    expect(offered?.buttons[0]).toBe("확인 후 잠금 정리 및 다시 시작");
+    expect(offered?.cancelId).toBe(1);
+    expect(offered?.defaultId).toBe(1);
+    expect(JSON.stringify(offered)).not.toContain(TOKEN);
+
+    const stopping = new SidecarLockConflictError("console_lock_process_unverified", { pid: 4242, lockFile: LOCK_FILE, observed: "stopping", reason: "it is shutting down" });
+    expect(describeConsoleLockRecoverDialog(stopping)).toBeNull();
+    expect(describeConsoleLockRecoverDialog(new Error("console_lock_refused"))).toBeNull();
+    expect(describeConsoleLockRecoverDialog(new Error("console_lock_ownerless"))?.buttons).toEqual(["Clear the lock and start again", "Cancel"]);
   });
 
   it("quits even when Electron cannot show the acknowledgement dialog", async () => {

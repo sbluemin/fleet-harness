@@ -85,7 +85,7 @@ export async function listLocalConsoles(deps: LocalConsoleScanDeps = {}): Promis
   // 다른 네임스페이스라 포트로 생존을 보고, 비인증 status 하나로 상태를 나눈다. 후보마다 병렬로 묻는다.
   const entries = await Promise.all(candidates.map(async (candidate) => {
     const state = await observeConsolePublic({
-      lock: { pid: candidate.pid, startedAt: candidate.startedAt, origin: candidate.console.origin },
+      lock: { pid: candidate.pid, startedAt: candidate.startedAt, origin: candidate.console.origin, bootSession: candidate.bootSession },
       pidCheckable: candidate.console.distro === null,
       ...(deps.isAlive ? { isAlive: deps.isAlive } : {}),
       ...(deps.reachable ? { portOpen: deps.reachable } : {}),
@@ -168,6 +168,7 @@ interface LockCandidate {
   readonly console: Omit<LocalConsoleEntry, "state">;
   readonly pid: number;
   readonly startedAt: unknown;
+  readonly bootSession?: unknown;
 }
 
 /**
@@ -188,6 +189,7 @@ function readCandidate(file: string, distro: string | null): LockCandidate | nul
   return {
     pid: payload.pid,
     startedAt: payload.startedAt,
+    bootSession: payload.bootSession,
     console: {
       origin,
       version: typeof payload.version === "string" ? payload.version : "",

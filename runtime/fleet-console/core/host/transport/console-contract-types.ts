@@ -14,6 +14,8 @@ export interface ConsoleLockPayload {
   readonly token: string;
   readonly version: string;
   readonly owner?: ConsoleOwnerMetadata;
+  /** OS boot session (`<platform>:<id>`) of the process that published the lock. Omitted when the boot id cannot be read. */
+  readonly bootSession?: string;
 }
 
 export interface ConsoleOwnerMetadata {

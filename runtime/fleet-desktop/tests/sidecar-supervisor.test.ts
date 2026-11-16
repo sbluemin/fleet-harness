@@ -9,7 +9,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { REAPER_DRAIN_MAX_MS, consoleLockInstanceState, createConsoleHealthClient, isPidAlive, observeConsoleInstance, readProcessStartTime, reproveConsoleInstance, runStopLadder, type ConsoleLockFilePayload } from "@fleet-console/lifecycle";
+import { REAPER_DRAIN_MAX_MS, consoleLockInstanceState, createConsoleHealthClient, currentConsoleBootSession, isPidAlive, observeConsoleInstance, readProcessStartTime, reproveConsoleInstance, runStopLadder, type ConsoleLockFilePayload } from "@fleet-console/lifecycle";
 import { DESKTOP_PROTOCOL_VERSION } from "@fleet-console/protocol/desktop";
 import { CONSOLE_STOP_DEADLINE_MS, ESCALATION_MARGIN_MS, LOCK_AUTHOR_REPLACED_MARGIN_MS, PROCESS_TABLE_TIMEOUT_MS, describeReplacedLockAuthor } from "@fleet-console/protocol/lifecycle";
 
@@ -27,8 +27,8 @@ function writeLock(payload: unknown): void {
 }
 
 /** A lock as a Console publishes it, so it passes the contract's trust checks; `fields` sets the pid, port, and owner. */
-function lockPayload(fields: { readonly pid: number; readonly port: number; readonly token?: string; readonly owner?: unknown }): Record<string, unknown> {
-  return { pid: fields.pid, host: "127.0.0.1", port: fields.port, endpoint: `http://127.0.0.1:${fields.port}/`, startedAt: Date.now(), token: fields.token ?? "secret", version: "1.23.0", owner: fields.owner ?? { kind: "desktop", id: "owner-1", protocolVersion: 1 } };
+function lockPayload(fields: { readonly pid: number; readonly port: number; readonly token?: string; readonly owner?: unknown; readonly bootSession?: string }): Record<string, unknown> {
+  return { pid: fields.pid, host: "127.0.0.1", port: fields.port, endpoint: `http://127.0.0.1:${fields.port}/`, startedAt: Date.now(), token: fields.token ?? "secret", version: "1.23.0", owner: fields.owner ?? { kind: "desktop", id: "owner-1", protocolVersion: 1 }, ...(fields.bootSession ? { bootSession: fields.bootSession } : {}) };
 }
 
 /** Advances the supervisor's waits without sleeping them out, while still yielding so child processes and sockets progress. */
@@ -218,6 +218,35 @@ describe("sidecar supervisor", () => {
       fs.writeFileSync(lockFile, deadLock, { mode: 0o600 });
       await expect(instance.startOrAdopt()).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/console\/$/);
       expect(JSON.parse(fs.readFileSync(lockFile, "utf8")).token).toBe("secret");
+    } finally {
+      await instance.stop();
+    }
+  }, 15_000);
+
+  it("starts beside a live pid when the lock names a previous boot, and does not signal that pid", async () => {
+    expect(currentConsoleBootSession(), "this test needs a readable OS boot session").toEqual(expect.any(String));
+    const bystander = spawn(process.execPath, ["-e", "setInterval(() => {}, 1 << 30)"], { stdio: "ignore" });
+    children.push(bystander);
+    const cliPath = path.join(lockDir, "console", "dist", "cli.mjs");
+    fs.mkdirSync(path.dirname(cliPath), { recursive: true });
+    fs.writeFileSync(cliPath, `
+      import fs from "node:fs"; import http from "node:http";
+      if (fs.readFileSync(process.env.LOCK_FILE, "utf8") !== process.env.DEAD_LOCK) process.exit(73);
+      fs.unlinkSync(process.env.LOCK_FILE);
+      const server = http.createServer((_request, response) => response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, pid: process.pid })));
+      server.listen(0, "127.0.0.1", () => { const port = server.address().port; fs.writeFileSync(process.env.LOCK_FILE, JSON.stringify({ pid: process.pid, host: "127.0.0.1", port, endpoint: "http://127.0.0.1:" + port + "/", startedAt: Date.now(), token: "secret", version: "1.23.0", owner: { kind: "desktop", id: "owner-1", protocolVersion: 1 } }), { flag: "wx", mode: 0o600 }); });
+      process.on("SIGTERM", () => process.exit(0));
+    `);
+    const previous = lockPayload({ pid: bystander.pid!, port: 9, token: "old", bootSession: `${process.platform}:previous-boot` });
+    const deadLock = JSON.stringify(previous);
+    const runtime: SidecarRuntime = { nodePath: process.execPath, cliPath, serviceRoot: path.dirname(path.dirname(cliPath)), serviceVersion: "1.23.0" };
+    const instance = new SidecarSupervisor({ resolveRuntime: async () => runtime, serviceVersion: "1.23.0", env: { LOCK_FILE: lockFile, DEAD_LOCK: deadLock }, lockFile, ownerId: "owner-1", log: { info: vi.fn(), error: vi.fn() } });
+    try {
+      fs.writeFileSync(lockFile, deadLock, { mode: 0o600 });
+      await expect(instance.startOrAdopt()).resolves.toMatch(/^http:\/\/127\.0\.0\.1:\d+\/console\/$/);
+      expect(bystander.exitCode, "the reused pid is not signalled").toBeNull();
+      expect(bystander.signalCode).toBeNull();
+      expect(() => process.kill(bystander.pid!, 0)).not.toThrow();
     } finally {
       await instance.stop();
     }

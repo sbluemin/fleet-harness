@@ -143,16 +143,16 @@ export type SlotForStart =
   | { readonly kind: "blocked"; readonly detail: string };
 
 /**
- * Whether a new serve may start in the slot. Only ESRCH frees a slot (docs/console-lifecycle-contract.md, "Evidence
- * direction"): a lock whose pid still runs — a Console, or another program that reused an ended Console's pid — keeps the
- * slot, and a lock that cannot be read keeps it too.
+ * Whether a new serve may start in the slot. ESRCH, or a boot session from a previous boot, frees a slot
+ * (docs/console-lifecycle-contract.md, "Evidence direction"): a lock whose pid still runs on this boot — a Console, or
+ * another program that reused an ended Console's pid — keeps the slot, and a lock that cannot be read keeps it too.
  */
 export function judgeSlotForStart(lockFile: string, oldConsole: { readonly pid: number; readonly token: string }): SlotForStart {
   const observed = observeConsoleLockFile(lockFile);
   if (observed.kind === "absent") return { kind: "free" };
   if (observed.kind !== "owner") return { kind: "blocked", detail: observed.reason };
   const { pid, payload } = observed.instance;
-  if (!observed.alive) return { kind: "exited", pid };
+  if (!observed.alive || observed.previousBoot) return { kind: "exited", pid };
   const sameInstance = pid === oldConsole.pid && payload.token === oldConsole.token;
   const detail = sameInstance ? `pid ${pid} is alive and still holds the old console's lock` : `pid ${pid} is alive and holds the lock`;
   return { kind: "held", pid, detail };
@@ -169,7 +169,7 @@ export interface SlotConsoleProbe {
  */
 export async function probeSlotConsole(lockFile: string, options: { readonly deadline: number; readonly targetVersion?: string; readonly oldPid?: number }): Promise<SlotConsoleProbe> {
   const observed = observeConsoleLockFile(lockFile);
-  if (observed.kind !== "owner" || observed.untrusted !== null || !observed.alive) return { state: "unhealthy", endpoint: null };
+  if (observed.kind !== "owner" || observed.untrusted !== null || !observed.alive || observed.previousBoot) return { state: "unhealthy", endpoint: null };
   const lock = observed.instance.payload;
   const remaining = Math.max(1, Math.min(HEALTH_PROBE_TIMEOUT_MS, options.deadline - Date.now()));
   const probe = await createConsoleHealthClient().probe(lock, { timeoutMs: remaining });
@@ -181,8 +181,10 @@ export async function probeSlotConsole(lockFile: string, options: { readonly dea
 }
 
 function observe(lockFile: string, lock: WorkerLock): Promise<ConsoleInstanceObservation<WorkerLock>> {
+  const recorded = observeConsoleLockFile(lockFile);
+  const bootSession = recorded.kind === "owner" ? recorded.instance.payload.bootSession : undefined;
   return observeConsoleInstance({
-    lock,
+    lock: bootSession === undefined ? lock : { ...lock, bootSession },
     trusted: true,
     isHeld: () => consoleLockInstanceState(lockFile, { pid: lock.pid, token: lock.token }) !== "released",
     probe: (target, options) => createConsoleHealthClient().probe(target, options),

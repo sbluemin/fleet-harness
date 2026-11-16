@@ -1,4 +1,5 @@
 import { spawn, spawnSync, type ChildProcessByStdio } from "node:child_process";
+import crypto from "node:crypto";
 import { EventEmitter } from "node:events";
 import fs from "node:fs";
 import http from "node:http";
@@ -11,11 +12,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { createOwnedProcessRegistry, proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
+import { createOwnedProcessRegistry, parseWindowsBootIdRegOutput, proveExitedLeaderGroup, readConsoleExitRecord, readConsoleLockFile, readWindowsBootId, recoverConsoleLockSlot, REAPER_DRAIN_MAX_MS, selectSameGroupDescendants } from "@fleet-console/lifecycle";
 import { createWindowsJobContainment, type WindowsJobBindings } from "../core/host/bootstrap/windows-job-containment.js";
 import { describeReplacedLockAuthor, HEALTH_PROBE_TIMEOUT_MS, PROCESS_START_MARGIN_MS } from "@fleet-console/protocol/lifecycle";
 
-import { createConsoleDaemonLifecycle, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
+import { createConsoleDaemonLifecycle, parseConsoleCliInvocation, type ConsoleDaemonProcess } from "../core/host/bootstrap/console-lifecycle.js";
 import { createConsoleLock } from "../core/host/bootstrap/lock.js";
 import { createConsolePaths } from "../core/host/bootstrap/paths.js";
 
@@ -149,6 +150,105 @@ describe("Console daemon lifecycle integration", () => {
     expect(fs.existsSync(fixture.pidFile)).toBe(false);
     expect(bystanderSignal).toBeNull();
     expect(() => process.kill(bystanderPid, 0)).not.toThrow();
+  });
+
+  it("reclaims a previous boot's lock and claim without signalling the live pid, and keeps a same-boot lock", async () => {
+    const fixture = createFixturePaths("previous-boot");
+    const bystander = spawn(process.execPath, ["-e", "setInterval(() => {}, 60_000)"], { stdio: "ignore" });
+    const bystanderPid = bystander.pid!;
+    CHILD_PIDS.add(bystanderPid);
+    let bystanderSignal: NodeJS.Signals | null = null;
+    bystander.once("exit", (_code, signal) => { bystanderSignal = signal ?? "SIGHUP"; });
+    const port = await closedPort();
+    const previous = `${process.platform}:previous-boot`;
+    const current = `${process.platform}:current-boot`;
+    const endpoint = `http://127.0.0.1:${port}/`;
+    const payload = { pid: bystanderPid, host: "127.0.0.1", port, endpoint, startedAt: Date.now(), token: "old-token", version: "crashed", bootSession: previous };
+    const bytes = Buffer.from(`${JSON.stringify(payload, null, 2)}\n`, "utf8");
+    fs.mkdirSync(path.dirname(fixture.lockFile), { recursive: true, mode: 0o700 });
+    fs.chmodSync(path.dirname(fixture.lockFile), 0o700);
+    fs.writeFileSync(fixture.lockFile, bytes, { mode: 0o600 });
+    const hash = crypto.createHash("sha256").update(bytes).digest("hex");
+    const claim = path.join(path.dirname(fixture.lockFile), `.console.lock.claim-${hash}-1`);
+    fs.mkdirSync(claim, { mode: 0o700 });
+    fs.writeFileSync(path.join(claim, "owner.json"), `${JSON.stringify({ v: 1, pid: bystanderPid, h: hash, bootSession: previous })}\n`, { mode: 0o600 });
+    const publish = { dir: path.dirname(fixture.lockFile), lockFile: fixture.lockFile, pid: process.pid, port, endpoint, version: "next" };
+
+    await expect(createConsoleLock({ bootSession: () => previous, report: () => {} }).acquireLock(publish)).rejects.toThrow(`held by running pid ${bystanderPid}`);
+    expect(readConsoleLockFile(fixture.lockFile)?.token).toBe("old-token");
+
+    const handle = await createConsoleLock({ bootSession: () => current, report: () => {} }).acquireLock(publish);
+    expect(handle.payload.bootSession).toBe(current);
+    expect(readConsoleLockFile(fixture.lockFile)?.pid).toBe(process.pid);
+    expect(fs.existsSync(claim)).toBe(false);
+    expect(bystanderSignal).toBeNull();
+    expect(() => process.kill(bystanderPid, 0)).not.toThrow();
+    handle.release();
+  });
+
+  it("clears an ownerless lock with --recover's helper and refuses a symlink, a live Console, and a running update", async () => {
+    expect(parseConsoleCliInvocation(["start", "--recover"])).toEqual({ mode: "start", recover: true });
+    expect(() => parseConsoleCliInvocation(["stop", "--recover"])).toThrow(/only valid with fleet console start/);
+
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-recover-"));
+    TEMP_DIRS.push(dir);
+    fs.chmodSync(dir, 0o700);
+    const lockFile = path.join(dir, "console.lock");
+    const boot = `${process.platform}:same-boot`;
+    fs.writeFileSync(lockFile, "", { mode: 0o600 });
+    await expect(recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot })).resolves.toMatchObject({ kind: "cleared" });
+    expect(fs.existsSync(lockFile)).toBe(false);
+
+    fs.symlinkSync(path.join(dir, "missing-target"), lockFile);
+    const symlink = await recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot });
+    expect(symlink.kind).toBe("refused");
+    expect(fs.lstatSync(lockFile).isSymbolicLink()).toBe(true);
+    fs.unlinkSync(lockFile);
+
+    const bystanderPid = spawnIdleProcess();
+    const port = await closedPort();
+    const live = { pid: bystanderPid, host: "127.0.0.1", port, endpoint: `http://127.0.0.1:${port}/`, startedAt: Date.now(), token: "live-token", version: "v", bootSession: boot };
+    fs.writeFileSync(lockFile, `${JSON.stringify(live, null, 2)}\n`, { mode: 0o600 });
+    await expect(recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot })).resolves.toMatchObject({ kind: "refused" });
+    expect(readConsoleLockFile(lockFile)?.token).toBe("live-token");
+
+    fs.writeFileSync(path.join(dir, "update-progress.json"), JSON.stringify({
+      phase: "installing", startedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), targetVersion: "2", fromVersion: "1", workerPid: bystanderPid,
+    }));
+    fs.writeFileSync(lockFile, "", { mode: 0o600 });
+    await expect(recoverConsoleLockSlot(lockFile, dir, { bootSession: () => boot })).resolves.toMatchObject({ kind: "refused" });
+    expect(fs.readFileSync(lockFile, "utf8")).toBe("");
+
+    // Race guard: if a newly published lock replaces the observed lock before rm, recover refuses and leaves it intact.
+    fs.rmSync(path.join(dir, "update-progress.json"));
+    const backupsBefore = fs.readdirSync(dir).filter((name) => name.startsWith(".console.lock.recover-"));
+    const staleReplaced = { pid: bystanderPid, host: "127.0.0.1", port, endpoint: `http://127.0.0.1:${port}/`, startedAt: Date.now() - 60_000, token: "stale-replaced", version: "v", bootSession: boot };
+    fs.writeFileSync(lockFile, `${JSON.stringify(staleReplaced, null, 2)}\n`, { mode: 0o600 });
+    const raceResult = await recoverConsoleLockSlot(lockFile, dir, {
+      bootSession: () => boot,
+      isLockAuthorReplaced: async () => {
+        const freshLive = { pid: bystanderPid, host: "127.0.0.1", port, endpoint: `http://127.0.0.1:${port}/`, startedAt: Date.now(), token: "new-live-token", version: "v", bootSession: boot };
+        fs.writeFileSync(lockFile, `${JSON.stringify(freshLive, null, 2)}\n`, { mode: 0o600 });
+        return true;
+      },
+    });
+    expect(raceResult.kind).toBe("refused");
+    expect(readConsoleLockFile(lockFile)?.token).toBe("new-live-token");
+    expect(fs.readdirSync(dir).filter((name) => name.startsWith(".console.lock.recover-"))).toEqual(backupsBefore);
+  });
+
+  it("parses Windows kernel BootId from PrefetchParameters registry output and returns null when unreadable", () => {
+    const regOutput = [
+      "",
+      "HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Control\\Session Manager\\Memory Management\\PrefetchParameters",
+      "    BootId    REG_DWORD    0x2f",
+      "",
+    ].join("\r\n");
+    expect(parseWindowsBootIdRegOutput(regOutput)).toBe("47");
+    expect(parseWindowsBootIdRegOutput("    BootId    REG_DWORD    0x0\r\n")).toBeNull();
+    expect(parseWindowsBootIdRegOutput("    OtherKey    REG_DWORD    0x5\r\n")).toBeNull();
+    expect(readWindowsBootId(() => regOutput)).toBe("47");
+    expect(readWindowsBootId(() => { throw new Error("missing registry key"); })).toBeNull();
   });
 
   it("lets one live reclaimer at a time act on a dead lock and hands over only after it exits", async () => {
