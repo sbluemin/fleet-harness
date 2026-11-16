@@ -595,7 +595,7 @@ export function maskSensitiveInfo(text: string): string {
   return text
     .replace(/\b(bearer)\s+[A-Za-z0-9._~+/=-]{8,}/giu, "$1 ***")
     .replace(/\bsk-[A-Za-z0-9_-]{8,}/gu, "sk-***")
-    .replace(/\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|auth[_-]?token|oauth[_-]?token|client[_-]?secret|authorization|password|secret)\b(\s*[=:]\s*)("?)[^\s"',;}]{4,}/giu, "$1$2***")
+    .replace(/\b(api[_-]?key|apikey|access[_-]?token|refresh[_-]?token|auth[_-]?token|oauth[_-]?token|client[_-]?secret|authorization|password|secret)\b(["']?\s*[=:]\s*["']?)[^\s"',;}]{4,}/giu, "$1$2***")
     .replace(/\/(?:Users|home)\/[^/\s"']+/gu, "/$HOME")
     .replace(/[A-Za-z]:\\Users\\[^\\\s"']+/gu, "C:\\Users\\***");
 }

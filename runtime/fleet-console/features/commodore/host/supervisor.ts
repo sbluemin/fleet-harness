@@ -1050,16 +1050,20 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       let session = runner.session;
       /** 이 턴이 실패 뒤 폴백으로 열렸는가 — 같은 배치의 재실패를 격리 판정에 쓴다. */
       let failureFallback = false;
+      /** 첨부 준비 중 예외를 낸 바로 그 메시지 — 선두가 아닌 뒤쪽 메시지가 잃은 첨부일 때 앞의 정상 메시지를 버리지 않는다. */
+      let failingMessage: QueuedMessage | undefined;
       try {
         // 교대 — 좌표·언어가 바뀌었거나 이미지 예산을 넘었거나 마지막 턴 뒤 1시간이 지났거나 재시작 뒤다. 새 세션은 최근 행위 요약으로 연다.
         // 문맥 길이는 교대 사유가 아니다 — 세션이 스스로 압축해 이어 간다. 유휴 교대는 따로 알리지 않고 원래 깨운 그 턴에 새 세션을 쓴다.
         preparedMessages = selected.map((message) => {
+          failingMessage = message;
           if (!message.attachments?.length) return message.text;
           if (!deps.attachments || !message.messageId) throw new Error("attachment_not_found");
           const images = deps.attachments.read(runner.commodoreId, message.messageId);
           if (images.length !== message.attachments.length || images.some((image, index) => image.id !== message.attachments![index]!.id)) throw new Error("attachment_not_found");
           return { text: `${message.text}\n\nAttached images from the person (copy with attachmentIds; do not reconstruct them as text):\n${images.map((image, index) => `${index + 1}. ${image.id}`).join("\n")}`, images: images.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: Buffer.from(image.bytes).toString("base64") } })) };
         });
+        failingMessage = undefined;
         batchBase64Bytes = preparedMessages.reduce((total, message) => total + (typeof message === "string" ? 0 : message.images.reduce((bytes, image) => bytes + image.source.data.length, 0)), 0);
         // 사령관 연락의 이미지 — 사람 메시지와 같은 턴·세션 예산에 센다. 사본은 수신 때 저장소에서 받았다.
         // 원본을 잃은 mail 한 건이 큐 전체를 막지 않게 텍스트만 전달하고 받은 처리를 확정한다(복사는 attachment_not_available).
@@ -1104,9 +1108,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       } catch (error) {
         if (runner.stopping) return;
         const code = failureCode(error, "session_failed");
-        // 첨부를 잃은 말은 다시 보내도 성공할 수 없다 — 같은 배치를 재시도하지 않고 그 메시지만 건너뛴다.
-        const lead = selected[0];
-        if (code === "attachment_not_found" && lead) { isolateMessage(runner, lead, code, classifyFailure(error).detail); return; }
+        // 첨부를 잃은 말은 다시 보내도 성공할 수 없다 — 같은 배치를 재시도하지 않고 실제로 실패한 그 메시지만 건너뛴다.
+        const target = failingMessage ?? selected[0];
+        if (code === "attachment_not_found" && target) { isolateMessage(runner, target, code, classifyFailure(error).detail); return; }
         scheduleRetry(runner, code);
         return;
       }

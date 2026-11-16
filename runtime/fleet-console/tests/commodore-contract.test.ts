@@ -2342,12 +2342,12 @@ describe("commodore session", () => {
       recordFailure: (kind, error) => logged.push({ kind, message: error instanceof Error ? error.message : String(error), stack: error instanceof Error ? error.stack ?? null : null }),
     });
     // 업스트림 결과 오류 — 정규화 코드와 가린 1줄 요약이 기록에 남고, 원문은 로컬 오류 로그로 간다.
-    stub.setScript(async () => { stub.emit({ kind: "result", isError: true, source: "message", detail: "API Error: 400 image exceeds 5 MB maximum (key sk-ant-api03-SECRETVALUE9999, file /Users/someone/private.png)" }); });
+    stub.setScript(async () => { stub.emit({ kind: "result", isError: true, source: "message", detail: 'API Error: 400 image exceeds 5 MB maximum (key sk-ant-api03-SECRETVALUE9999, {"access_token":"PRIVATE_JSON_TOKEN_777"}, file /Users/someone/private.png)' }); });
     expect(await session.turn({ reasons: ["message"] })).toMatchObject({ outcome: "error", error: "image_too_large" });
     const result = h.store.transcriptRead("t1").entries.at(-1) as Extract<CommodoreTranscriptEntry, { kind: "result" }>;
     expect(result).toMatchObject({ kind: "result", outcome: "error", error: "image_too_large" });
     expect(result.detail).toContain("image exceeds 5 MB");
-    for (const secret of ["SECRETVALUE9999", "/Users/someone"]) {
+    for (const secret of ["SECRETVALUE9999", "PRIVATE_JSON_TOKEN_777", "/Users/someone"]) {
       expect(result.detail).not.toContain(secret);
       expect(logged[0]!.message).not.toContain(secret);
     }
@@ -3727,8 +3727,20 @@ describe("commodore supervisor", () => {
       expect(sessions[0]!.sent).toHaveLength(2);
       expect(promptText(sessions[0]!.sent[1]!)).toContain("why is this");
       expect(promptText(sessions[0]!.sent[1]!)).not.toContain("poison image");
-      // 사람 말풍선은 지우지 않는다 — 화면이 「전달되지 않음 · 처리 불가」를 단다.
+      // 사람 말풍선은 지우지 않는다 — 화면이 「처리 불가」를 단다.
       expect(h.store.transcriptRead("t1").entries.filter((entry) => entry.kind === "message").map((entry) => entry.seq)).toEqual([poison.seq, follow.seq]);
+      expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
+
+      // 같은 배치의 앞 메시지가 정상이고 뒤 메시지만 첨부를 잃었다면, 앞 메시지는 살리고 첨부를 잃은 뒤 메시지만 격리한다.
+      const validFirst = h.store.transcriptAppend("t1", { kind: "message", text: "valid batch leader" });
+      const missingSecond = h.store.transcriptAppend("t1", { kind: "message", text: "broken trailing attachment", messageId: "missing-msg", attachments: [{ id: "missing-att" }] });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(h.store.transcriptRead("t1").entries.filter((entry) => entry.kind === "skipped").map((entry) => entry.seqs)).toEqual([[poison.seq], [missingSecond.seq]]);
+      expect(sessions[0]!.sent).toHaveLength(3);
+      expect(promptText(sessions[0]!.sent[2]!)).toContain("valid batch leader");
+      expect(promptText(sessions[0]!.sent[2]!)).not.toContain("broken trailing attachment");
+      expect(validFirst.seq).toBeLessThan(missingSecond.seq);
       expect(supervisor.status("t1")).toMatchObject({ phase: "idle" });
     } finally { await supervisor.dispose(); vi.useRealTimers(); }
   });
