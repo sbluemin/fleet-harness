@@ -46,17 +46,17 @@ export const MAP_TOKENS: Record<keyof MapPalette, string> = {
   stale: "--warn",
 };
 
-/** 토큰이 없을 때 쓰는 대체값(다크 기준 oklch) — 렌더러가 임무 5 전에도 선다. */
+/** 토큰이 없을 때 쓰는 대체값(다크 theme.css와 같은 값) — 렌더러가 임무 5 전에도 선다. */
 const MAP_FALLBACKS: Record<keyof MapPalette, string> = {
   core: "oklch(80% 0.085 78)",
-  description: "oklch(70% 0.06 250)",
-  intel: "oklch(72% 0.07 200)",
-  person: "oklch(74% 0.07 150)",
-  theater: "oklch(72% 0.07 250)",
-  lessons: "oklch(74% 0.07 90)",
-  crew: "oklch(72% 0.07 320)",
-  source: "oklch(65% 0.05 250)",
-  objective: "oklch(68% 0.06 180)",
+  description: "oklch(72% 0.07 270)",
+  intel: "oklch(72% 0.07 215)",
+  person: "oklch(72% 0.07 130)",
+  theater: "oklch(72% 0.07 245)",
+  lessons: "oklch(72% 0.07 105)",
+  crew: "oklch(72% 0.07 330)",
+  source: "oklch(65% 0.02 250)",
+  objective: "oklch(58% 0.03 250)",
   ink: "oklch(94% 0.008 90)",
   inkDim: "oklch(70% 0.012 245)",
   hair: "oklch(37% 0.02 245)",

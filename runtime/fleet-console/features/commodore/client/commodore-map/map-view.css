@@ -1,0 +1,312 @@
+/* 사령관 지도 — 정보 칸 '지도로 보기' 대화상자. 색은 토큰만 쓴다. */
+.commodore-map-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: var(--dialog-scrim);
+}
+
+.commodore-map-dialog {
+  width: min(1060px, 100%);
+  height: min(740px, calc(100vh - 64px));
+  height: min(740px, calc(100dvh - 64px));
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  border: 0;
+  border-radius: var(--dialog-radius);
+  background: var(--dialog-face);
+  box-shadow: var(--dialog-surface-shadow);
+  color: var(--text-primary);
+  overflow: hidden;
+  outline: none;
+}
+
+.commodore-map-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 12px 6px 20px;
+}
+
+.commodore-map-title {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--weight-bold);
+}
+
+.commodore-map-head-spacer {
+  flex: 1;
+}
+
+.commodore-map-icon-btn {
+  display: grid;
+  place-items: center;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.commodore-map-icon-btn:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.commodore-map-icon-btn:focus-visible {
+  background: var(--wash-hover);
+  box-shadow: var(--focus-face);
+  outline: none;
+}
+
+.commodore-map-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 4px 12px 10px 20px;
+}
+
+.commodore-map-chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.commodore-map-chip {
+  border: 0;
+  border-radius: var(--radius-pill);
+  padding: 4px 10px 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: var(--t-sm);
+}
+
+.commodore-map-chip:hover {
+  background: var(--wash-hover);
+  color: var(--text-primary);
+}
+
+.commodore-map-chip:focus-visible {
+  background: var(--wash-hover);
+  box-shadow: var(--focus-face);
+  outline: none;
+}
+
+.commodore-map-chip[aria-pressed="true"] {
+  background: var(--wash-selected);
+  color: var(--text-primary);
+}
+
+.commodore-map-chip-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--map-objective);
+}
+
+.commodore-map-chip-dot[data-branch="description"] { background: var(--map-description); }
+.commodore-map-chip-dot[data-branch="intel"] { background: var(--map-intel); }
+.commodore-map-chip-dot[data-branch="person"] { background: var(--map-branch-person); }
+.commodore-map-chip-dot[data-branch="theater"] { background: var(--map-branch-theater); }
+.commodore-map-chip-dot[data-branch="lessons"] { background: var(--map-branch-lessons); }
+.commodore-map-chip-dot[data-branch="crew"] { background: var(--map-branch-crew); }
+
+.commodore-map-search {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  background: var(--wash-hover);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+}
+
+.commodore-map-search input {
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  outline: none;
+  width: 11em;
+}
+
+.commodore-map-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-height: 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.commodore-map-stage {
+  position: relative;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  background: var(--canvas-abyss);
+}
+
+.commodore-map-canvas-host {
+  position: absolute;
+  inset: 0;
+}
+
+.commodore-map-canvas-host canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.commodore-map-nodes {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.commodore-map-node {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--map-objective);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.commodore-map-node[data-kind="core"] { background: var(--role-commodore); }
+.commodore-map-node[data-kind="description"] { background: var(--map-description); }
+.commodore-map-node[data-kind="intel-hub"],
+.commodore-map-node[data-kind="intel"] { background: var(--map-intel); }
+.commodore-map-node[data-kind="intel-overflow"] { background: var(--map-intel); }
+.commodore-map-node[data-kind="source"] { background: var(--map-source); }
+.commodore-map-node[data-kind="objective"] { background: var(--map-objective); }
+.commodore-map-node[data-kind="branch"][data-branch="person"],
+.commodore-map-node[data-kind="topic"][data-branch="person"],
+.commodore-map-node[data-kind="memory"][data-branch="person"] { background: var(--map-branch-person); }
+.commodore-map-node[data-kind="branch"][data-branch="theater"],
+.commodore-map-node[data-kind="topic"][data-branch="theater"],
+.commodore-map-node[data-kind="memory"][data-branch="theater"] { background: var(--map-branch-theater); }
+.commodore-map-node[data-kind="branch"][data-branch="lessons"],
+.commodore-map-node[data-kind="topic"][data-branch="lessons"],
+.commodore-map-node[data-kind="memory"][data-branch="lessons"] { background: var(--map-branch-lessons); }
+.commodore-map-node[data-kind="branch"][data-branch="crew"],
+.commodore-map-node[data-kind="topic"][data-branch="crew"],
+.commodore-map-node[data-kind="memory"][data-branch="crew"] { background: var(--map-branch-crew); }
+
+.commodore-map-node[data-stale="true"] { opacity: 0.45; }
+.commodore-map-node[data-fresh="true"] { box-shadow: 0 0 8px var(--aurora); }
+
+.commodore-map-node:hover { filter: brightness(1.2); }
+
+.commodore-map-node:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.commodore-map-node[data-selected="true"] {
+  box-shadow: 0 0 0 2px var(--dialog-face), 0 0 0 4px var(--text-primary);
+}
+
+.commodore-map-panel {
+  width: 300px;
+  min-height: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--hairline);
+  padding: 14px 16px 20px;
+  font-size: var(--t-sm);
+}
+
+.commodore-map-panel h3 {
+  margin: 0 0 8px;
+  font-size: var(--t-md);
+}
+
+.commodore-map-panel-close {
+  float: right;
+}
+
+.commodore-map-panel p {
+  margin: 0 0 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.commodore-map-panel-meta {
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+}
+
+.commodore-map-panel h4 {
+  margin: 14px 0 6px;
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+  font-weight: var(--weight-bold);
+}
+
+.commodore-map-panel ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.commodore-map-panel-link {
+  border: 0;
+  background: transparent;
+  padding: 4px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--text-primary);
+  text-align: left;
+  cursor: pointer;
+  font-size: var(--t-sm);
+  width: 100%;
+}
+
+.commodore-map-panel-link:hover {
+  background: var(--wash-hover);
+}
+
+.commodore-map-panel-link:focus-visible {
+  background: var(--wash-hover);
+  box-shadow: var(--focus-face);
+  outline: none;
+}
+
+.commodore-map-state {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  pointer-events: none;
+}
+
+.commodore-map-state button {
+  pointer-events: auto;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .commodore-map-node { transition: none; }
+}

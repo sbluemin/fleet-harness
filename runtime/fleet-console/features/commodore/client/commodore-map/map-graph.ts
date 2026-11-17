@@ -1,7 +1,7 @@
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import { MEMORY_BRANCHES, type MemoryBranch, type MemoryEntry } from "../../shared/contracts/memory.js";
 import { MEMORY_STALE_MS } from "../../shared/contracts/memory-stale.js";
-import type { CommodoreStateView } from "../../shared/contracts/types.js";
+import type { CommodoreState } from "../../shared/contracts/types.js";
 
 /**
  * 지도 그래프 모델 — 순수 TS. `commodore/state` 한 건과 `commodore/memory` 목록을
@@ -62,6 +62,8 @@ export interface MapNode {
   readonly objectiveId?: string;
   /** 묶음에 든 정보 id 전체 — 오래된 순 (`intel-overflow`, 상세 패널이 읽는다). */
   readonly overflowIds?: readonly string[];
+  /** 핵의 정체성 톤 — 입력 그대로 둔다. 핵에만 선다. */
+  readonly tone?: IdentityTone | null;
 }
 
 export interface MapEdge {
@@ -83,12 +85,24 @@ export interface MapGraph {
 }
 
 export interface MapGraphInput {
-  readonly view: CommodoreStateView;
+  readonly state: CommodoreState;
   readonly memories: readonly MemoryEntry[];
   /** 핵 색(아바타 책). null이면 기본 — 모델은 색값을 모른다(팔레트 몫). */
   readonly tone: IdentityTone | null;
   /** 상태 신호 기준 시각. 기본 `Date.now()`. */
   readonly now?: number;
+  /**
+   * 화면 언어로 읽히는 표시 이름 — 캔버스에 갈래 키(`person` 등)가 보이지 않게
+   * 렌더러는 `label`을 그대로 그린다. 없으면 영어 키 그대로 둔다.
+   */
+  readonly labels?: MapDisplayLabels;
+}
+
+/** 표시 이름 해석기 — 화면 i18n이 건넨다. */
+export interface MapDisplayLabels {
+  readonly description: string;
+  readonly intelHub: string;
+  readonly branch: (branch: MemoryBranch) => string;
 }
 
 const PERSON_SOURCE = "person";
@@ -100,7 +114,12 @@ function excerpt(text: string, limit = 60): string {
 
 export function buildMapGraph(input: MapGraphInput): MapGraph {
   const now = input.now ?? Date.now();
-  const { state } = input.view;
+  const { state } = input;
+  const labels: MapDisplayLabels = input.labels ?? {
+    description: "description",
+    intelHub: "intel",
+    branch: (branch) => branch,
+  };
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
   const seen = new Set<string>();
@@ -115,19 +134,19 @@ export function buildMapGraph(input: MapGraphInput): MapGraph {
   nodes.push({
     id: "core", kind: "core", branch: null,
     label: alias || "commodore", text: state.description.text,
-    fresh: false, stale: false,
+    fresh: false, stale: false, tone: input.tone ?? null,
   });
 
   // 설명 가지 — rev 증가가 핵 주위 성장 표시의 원천이라 updatedAt 신호를 둔다.
   nodes.push({
     id: "desc", kind: "description", branch: "description",
-    label: excerpt(state.description.text) || "description", text: state.description.text,
+    label: excerpt(state.description.text) || labels.description, text: state.description.text,
     fresh: now - state.description.updatedAt <= MAP_RECENT_MS, stale: false,
   });
   link("core", "desc", "tree");
 
   // 정보 가지 — 결정 499e8035: 최근 12개만 점, 나머지는 묶음 1개.
-  nodes.push({ id: "intel", kind: "intel-hub", branch: "intel", label: "intel", text: "", fresh: false, stale: false });
+  nodes.push({ id: "intel", kind: "intel-hub", branch: "intel", label: labels.intelHub, text: "", fresh: false, stale: false });
   link("core", "intel", "tree");
   const byAt = [...state.intel].sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
   const shown = byAt.slice(0, RECENT_INTEL_LIMIT);
@@ -169,7 +188,7 @@ export function buildMapGraph(input: MapGraphInput): MapGraph {
 
   // 기억 4갈래 — 허브 → 주제 → 항목. 결정 d9c36b41: 기억끼리는 links·같은 목표로만.
   for (const branch of MEMORY_BRANCHES) {
-    nodes.push({ id: `mem:${branch}`, kind: "branch", branch, label: branch, text: "", fresh: false, stale: false });
+    nodes.push({ id: `mem:${branch}`, kind: "branch", branch, label: labels.branch(branch), text: "", fresh: false, stale: false });
     link("core", `mem:${branch}`, "tree");
   }
   const topics = new Map<string, { branch: MemoryBranch; topic: string }>();

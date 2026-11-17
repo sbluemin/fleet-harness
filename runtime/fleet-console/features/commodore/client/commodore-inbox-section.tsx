@@ -35,6 +35,7 @@ import { CommodorePersonInbox } from "./commodore-person-inbox.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
 import { CommodoreMemory } from "./commodore-memory.js";
+import { CommodoreMapDialog } from "./commodore-map/map-view.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime, nextRoutineWord } from "./commodore-header.js";
@@ -964,16 +965,21 @@ function saveDescriptionBoxHeight(height: number): void {
 /** `after` 는 기억 아래 섹션(대화 중심 화면의 「목표 기록」)이다 — 기억 항목을 읽는 동안에는 설명·정보처럼 내린다. */
 export function CommodoreInfo({ t, commodoreId, view, onFail, onClear, focusRequest, after }: { readonly t: T; readonly commodoreId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly focusRequest?: TheaterInboxBodyContext["focusRequest"]; readonly after?: ReactNode }) {
   const [reading, setReading] = useState(false);
+  const [mapOpen, setMapOpen] = useState(false);
   return (
     <>
       {reading ? null : (
         <>
+          <div className="objectives-commodore-section objectives-commodore-panel-section">
+            <button type="button" className="objectives-commodore-text-button" aria-haspopup="dialog" onClick={() => setMapOpen(true)}>{t("commodore.map.open")}</button>
+          </div>
           <CommodoreDescription key={commodoreId} t={t} commodoreId={commodoreId} description={view.state.description} focusRequest={focusRequest} onFail={onFail} onClear={onClear} />
           <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={onFail} onClear={onClear} />
         </>
       )}
       <CommodoreMemory t={t} theaterId={commodoreId} onReading={setReading} />
       {reading ? null : after}
+      {mapOpen ? <CommodoreMapDialog t={t} commodoreId={commodoreId} state={view.state} onClose={() => setMapOpen(false)} /> : null}
     </>
   );
 }
