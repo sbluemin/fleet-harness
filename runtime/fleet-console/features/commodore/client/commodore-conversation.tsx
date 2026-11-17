@@ -444,6 +444,12 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   );
   const topSettings = !readOnly && view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} onOpenChange={setSettingsOpen} /> : null;
   const mapMode = useCommodoreMapMode(commodoreId);
+  // 지도 모드에서는 레일 탭 줄을 걷고 패널만 둔다. 탭·열림 상태는 그대로라 채팅으로 돌아오면 원래 탭이 선다.
+  useEffect(() => {
+    if (mapMode !== "map") return;
+    document.body.setAttribute("data-commodore-map", "panel");
+    return () => { document.body.removeAttribute("data-commodore-map"); };
+  }, [mapMode]);
   return (
     <div ref={conversationRef} className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
       {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
