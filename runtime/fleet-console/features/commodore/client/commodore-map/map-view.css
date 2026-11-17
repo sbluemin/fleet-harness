@@ -1,4 +1,4 @@
-/* 사령관 지도 — 정보 칸 '지도로 보기' 대화상자. 색은 토큰만 쓴다. */
+/* 사령관 지도 — 시안(안 D) 겉모습을 따른다. 색은 토큰만 쓴다. */
 .commodore-map-scrim {
   position: fixed;
   inset: 0;
@@ -10,9 +10,9 @@
 }
 
 .commodore-map-dialog {
-  width: min(1060px, 100%);
-  height: min(740px, calc(100vh - 64px));
-  height: min(740px, calc(100dvh - 64px));
+  width: min(1180px, 100%);
+  height: min(880px, calc(100vh - 64px));
+  height: min(880px, calc(100dvh - 64px));
   display: grid;
   grid-template-rows: auto auto minmax(0, 1fr);
   border: 0;
@@ -74,66 +74,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
   padding: 4px 12px 10px 20px;
-}
-
-.commodore-map-chips {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.commodore-map-chip {
-  border: 0;
-  border-radius: var(--radius-pill);
-  padding: 4px 10px 4px 8px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: var(--t-sm);
-}
-
-.commodore-map-chip:hover {
-  background: var(--wash-hover);
-  color: var(--text-primary);
-}
-
-.commodore-map-chip:focus-visible {
-  background: var(--wash-hover);
-  box-shadow: var(--focus-face);
-  outline: none;
-}
-
-.commodore-map-chip[aria-pressed="true"] {
-  background: var(--wash-selected);
-  color: var(--text-primary);
-}
-
-.commodore-map-chip-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: var(--radius-pill);
-  background: var(--map-objective);
-}
-
-.commodore-map-chip-dot[data-branch="description"] { background: var(--map-description); }
-.commodore-map-chip-dot[data-branch="intel"] { background: var(--map-intel); }
-.commodore-map-chip-dot[data-branch="person"] { background: var(--map-branch-person); }
-.commodore-map-chip-dot[data-branch="theater"] { background: var(--map-branch-theater); }
-.commodore-map-chip-dot[data-branch="lessons"] { background: var(--map-branch-lessons); }
-.commodore-map-chip-dot[data-branch="crew"] { background: var(--map-branch-crew); }
-
-/* 꺼진 칩은 점이 비고 글자가 흐려진다 — 켜짐과 분명히 갈린다. */
-.commodore-map-chip[aria-pressed="false"] {
-  color: var(--text-tertiary);
-}
-
-.commodore-map-chip[aria-pressed="false"] .commodore-map-chip-dot {
-  opacity: 0.3;
 }
 
 .commodore-map-search {
@@ -141,7 +82,6 @@
   align-items: center;
   gap: 6px;
   flex: none;
-  margin-left: auto;
   border-radius: var(--radius-xs);
   padding: 4px 8px;
   background: var(--wash-hover);
@@ -160,7 +100,7 @@
 
 .commodore-map-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 340px;
   min-height: 0;
   border-top: 1px solid var(--hairline);
 }
@@ -170,7 +110,10 @@
   min-height: 0;
   min-width: 0;
   overflow: hidden;
-  background: var(--canvas-abyss);
+  margin: 12px 0 12px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-lg);
+  background: radial-gradient(ellipse at 50% 45%, var(--ink-deep), var(--canvas-abyss) 70%);
 }
 
 .commodore-map-canvas-host {
@@ -193,7 +136,7 @@
   pointer-events: none;
 }
 
-/* D4 — 핵·허브·주제 이름표. 눌리지 않고 읽히지도 않는다(단추 층이 맡는다). */
+/* 이름표 — 시안대로 pill 없이 글자에 그림자, 점 오른쪽에 둔다. */
 .commodore-map-tags {
   position: absolute;
   inset: 0;
@@ -205,17 +148,20 @@
   position: absolute;
   top: 0;
   left: 0;
-  max-width: 180px;
-  padding: 1px 7px;
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklab, var(--dialog-face) 92%, transparent);
-  color: var(--text-primary);
+  max-width: 220px;
+  color: var(--text-secondary);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
-  line-height: 1.5;
+  line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  text-shadow: 0 0 6px var(--canvas-abyss), 0 0 2px var(--canvas-abyss);
+}
+
+.commodore-map-tag[data-hub="true"] {
+  color: var(--text-primary);
+  font-size: var(--t-sm);
 }
 
 .commodore-map-node {
@@ -232,7 +178,7 @@
   cursor: pointer;
 }
 
-.commodore-map-node[data-kind="core"] { background: var(--role-commodore); }
+.commodore-map-node[data-kind="core"] { background: var(--map-core); }
 .commodore-map-node[data-kind="description"] { background: var(--map-description); }
 .commodore-map-node[data-kind="intel-hub"],
 .commodore-map-node[data-kind="intel"] { background: var(--map-intel); }
@@ -266,18 +212,174 @@
   box-shadow: 0 0 0 2px var(--dialog-face), 0 0 0 4px var(--text-primary);
 }
 
+/* 무대 위 겹침 층 — 칩(왼쪽 위)·안내(오른쪽 위)·범례(오른쪽 아래). */
+.commodore-map-chips,
+.commodore-map-hint,
+.commodore-map-legend {
+  position: absolute;
+  z-index: 3;
+}
+
+.commodore-map-chips {
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.commodore-map-chip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px 4px 8px;
+  background: color-mix(in oklab, var(--dialog-face) 82%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.commodore-map-chip:hover {
+  color: var(--text-primary);
+}
+
+.commodore-map-chip:focus-visible {
+  box-shadow: var(--focus-face);
+  outline: none;
+}
+
+.commodore-map-chip[aria-pressed="false"] {
+  opacity: 0.45;
+}
+
+.commodore-map-sw {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-pill);
+  background: var(--c, var(--text-secondary));
+  flex: none;
+}
+
+.commodore-map-sw.is-sq {
+  border-radius: 2px;
+}
+
+.commodore-map-sw.is-ring {
+  background: transparent;
+  border: 1.5px solid var(--c, var(--text-secondary));
+}
+
+.commodore-map-sw.is-line {
+  width: 14px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.commodore-map-chip[aria-pressed="false"] .commodore-map-sw {
+  background: transparent;
+  border: 1.5px dashed var(--c, var(--text-secondary));
+}
+
+.commodore-map-chip[aria-pressed="false"] .commodore-map-sw.is-line {
+  border: 0;
+  border-top: 1.5px dashed var(--c, var(--text-secondary));
+  height: 0;
+}
+
+.commodore-map-n {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--weight-regular);
+}
+
+.commodore-map-hint {
+  top: 52px;
+  right: 12px;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  pointer-events: none;
+  text-align: right;
+  max-width: 40%;
+}
+
+.commodore-map-legend {
+  right: 12px;
+  bottom: 12px;
+  max-width: 250px;
+}
+
+.commodore-map-legend details {
+  background: color-mix(in oklab, var(--dialog-face) 86%, transparent);
+  backdrop-filter: blur(6px);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  padding: 6px 10px;
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+}
+
+.commodore-map-legend summary {
+  cursor: pointer;
+  font-weight: var(--weight-bold);
+  list-style: none;
+}
+
+.commodore-map-legend summary::-webkit-details-marker {
+  display: none;
+}
+
+.commodore-map-legend summary:focus-visible {
+  box-shadow: var(--focus-face);
+  outline: none;
+}
+
+.commodore-map-legend ul {
+  margin: 8px 0 2px;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+}
+
+.commodore-map-legend li {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.commodore-map-legend .commodore-map-sw.is-core { background: var(--map-core); }
+.commodore-map-legend .commodore-map-sw.is-entry { background: var(--map-branch-lessons); }
+.commodore-map-legend .commodore-map-sw.is-intel { background: var(--map-intel); border-radius: 2px; }
+.commodore-map-legend .commodore-map-sw.is-objective { background: transparent; border: 1.5px solid var(--map-objective); }
+.commodore-map-legend .commodore-map-sw.is-link { background: var(--map-link); width: 14px; height: 2px; border-radius: 1px; }
+.commodore-map-legend .commodore-map-sw.is-shared { background: transparent; border-top: 2px dashed var(--text-tertiary); height: 0; border-radius: 0; width: 14px; }
+.commodore-map-legend .commodore-map-sw.is-fresh { background: var(--aurora); opacity: 0.3; }
+.commodore-map-legend .commodore-map-sw.is-stale { background: transparent; border: 1.4px dashed var(--warn); }
+
 .commodore-map-panel {
-  width: 300px;
   min-height: 0;
   overflow-y: auto;
   border-left: 1px solid var(--hairline);
-  padding: 14px 16px 20px;
+  padding: 18px 18px 24px;
   font-size: var(--t-sm);
+  display: grid;
+  align-content: start;
+  gap: 16px;
 }
 
-.commodore-map-panel h3 {
-  margin: 0 0 8px;
-  font-size: var(--t-md);
+.commodore-map-panel h2 {
+  margin: 0;
+  font-size: var(--t-lg);
+  font-weight: var(--weight-bold);
+  text-wrap: balance;
 }
 
 .commodore-map-panel-close {
@@ -285,30 +387,77 @@
 }
 
 .commodore-map-panel p {
-  margin: 0 0 10px;
+  margin: 0;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-primary);
 }
 
-/* 목록 항목의 본문·날짜 줄은 붙이고, 항목 사이는 벌린다(수정 6, 10). */
-.commodore-map-panel li > p {
-  margin-bottom: 2px;
+.commodore-map-crumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 4px;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+}
+
+.commodore-map-crumb-link {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.commodore-map-crumb-link:hover {
+  color: var(--text-primary);
+}
+
+.commodore-map-crumb-link:focus-visible {
+  box-shadow: var(--focus-face);
+  outline: none;
 }
 
 .commodore-map-panel-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
   color: var(--text-secondary);
-  margin-bottom: 10px;
-}
-
-.commodore-map-panel h4 {
-  margin: 14px 0 6px;
   font-size: var(--t-sm);
-  color: var(--text-secondary);
-  font-weight: var(--weight-bold);
 }
 
-.commodore-map-panel ul {
+.commodore-map-panel-meta .is-stale {
+  color: var(--warn);
+}
+
+.commodore-map-panel-meta .is-fresh {
+  color: var(--aurora);
+}
+
+.commodore-map-sec h3 {
+  margin: 0 0 6px;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: var(--text-secondary);
+}
+
+.commodore-map-lst {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 4px;
+}
+
+.commodore-map-sec h3 {
+  margin: 0 0 6px;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: var(--text-secondary);
+}
+
+.commodore-map-lst {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -326,6 +475,9 @@
   cursor: pointer;
   font-size: var(--t-sm);
   width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .commodore-map-panel-link:hover {
@@ -336,6 +488,122 @@
   background: var(--wash-hover);
   box-shadow: var(--focus-face);
   outline: none;
+}
+
+.commodore-map-panel-link .commodore-map-panel-link-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.commodore-map-panel-link small {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+.commodore-map-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--radius-pill);
+  flex: none;
+}
+
+.commodore-map-dot.is-sq {
+  border-radius: 2px;
+  background: var(--map-intel);
+}
+
+.commodore-map-dot.is-ring {
+  background: transparent;
+  border: 1.5px solid var(--map-objective);
+}
+
+.commodore-map-dot[data-branch="person"] { background: var(--map-branch-person); }
+.commodore-map-dot[data-branch="theater"] { background: var(--map-branch-theater); }
+.commodore-map-dot[data-branch="lessons"] { background: var(--map-branch-lessons); }
+.commodore-map-dot[data-branch="crew"] { background: var(--map-branch-crew); }
+.commodore-map-dot[data-branch=""] { background: var(--text-tertiary); }
+
+.commodore-map-soma {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.commodore-map-soma h2 {
+  margin: 0;
+}
+
+.commodore-map-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.commodore-map-stat {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  padding: 8px 6px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.commodore-map-stat b {
+  font-size: var(--t-md);
+  font-variant-numeric: tabular-nums;
+}
+
+.commodore-map-stat span {
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+}
+
+.commodore-map-bars {
+  display: grid;
+  gap: 6px;
+}
+
+.commodore-map-bar {
+  display: grid;
+  grid-template-columns: 72px 1fr 28px;
+  gap: 8px;
+  align-items: center;
+}
+
+.commodore-map-bar[data-branch="person"] { --c: var(--map-branch-person); }
+.commodore-map-bar[data-branch="theater"] { --c: var(--map-branch-theater); }
+.commodore-map-bar[data-branch="lessons"] { --c: var(--map-branch-lessons); }
+.commodore-map-bar[data-branch="crew"] { --c: var(--map-branch-crew); }
+
+.commodore-map-bar i {
+  display: block;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--c);
+}
+
+.commodore-map-bar span {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+.commodore-map-howto {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.commodore-map-ref {
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
 }
 
 .commodore-map-state {
@@ -350,6 +618,23 @@
 
 .commodore-map-state button {
   pointer-events: auto;
+}
+
+@media (max-width: 700px) {
+  .commodore-map-body {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .commodore-map-stage {
+    min-height: 320px;
+    margin: 12px 12px 0;
+  }
+
+  .commodore-map-panel {
+    border-left: 0;
+    border-top: 1px solid var(--hairline);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

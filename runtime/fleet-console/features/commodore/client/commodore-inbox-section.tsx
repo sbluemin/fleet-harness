@@ -36,6 +36,7 @@ import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
 import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreMapDialog } from "./commodore-map/map-view.js";
+import { mapPanelFacts } from "./commodore-map/map-panel.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime, nextRoutineWord } from "./commodore-header.js";
@@ -979,7 +980,7 @@ export function CommodoreInfo({ t, commodoreId, view, onFail, onClear, focusRequ
       )}
       <CommodoreMemory t={t} theaterId={commodoreId} onReading={setReading} />
       {reading ? null : after}
-      {mapOpen ? <CommodoreMapDialog t={t} commodoreId={commodoreId} state={view.state} onClose={() => setMapOpen(false)} /> : null}
+      {mapOpen ? <CommodoreMapDialog t={t} commodoreId={commodoreId} state={view.state} facts={mapPanelFacts(view.run, view.defaults.model)} onClose={() => setMapOpen(false)} /> : null}
     </>
   );
 }

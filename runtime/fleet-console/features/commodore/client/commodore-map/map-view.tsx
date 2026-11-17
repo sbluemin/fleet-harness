@@ -10,18 +10,16 @@ import { useGlobalSettingsStore, getGlobalSettingsStoreState } from "../../../se
 import type { CommodoreState } from "../../shared/contracts/types.js";
 import type { MemoryBranch } from "../../shared/contracts/memory.js";
 import { loadCommodoreMemory, useCommodoreMemory } from "../commodore-state.js";
-import { MEMORY_BRANCH_LABEL, memoryDay, memoryLinks } from "../commodore-memory.js";
-import { MEMORY_STALE_MS } from "../../shared/contracts/memory-stale.js";
+import { MEMORY_BRANCH_LABEL } from "../commodore-memory.js";
 import type { CommodoreMessageKey } from "../i18n/index.js";
 import {
   buildMapGraph,
-  MAP_BRANCH_ORDER,
   matchMapQuery,
-  RECENT_INTEL_LIMIT,
   visibleMapIds,
   type MapBranchKey,
   type MapNode,
 } from "./map-graph.js";
+import { MapPanel, type MapPanelFacts } from "./map-panel.js";
 import { layoutMapGraph } from "./map-layout.js";
 import {
   chooseMapRendererKind,
@@ -80,19 +78,16 @@ function branchChipLabel(t: T, branch: MapBranchKey): string {
   return t(MEMORY_BRANCH_LABEL[branch]);
 }
 
-interface DetailTarget {
-  readonly node: MapNode;
-}
-
 /**
  * 사령관 지도 대화상자 — 정보 칸 '지도로 보기'가 연다. 그리기·고르기·화면 좌표는
  * MapRenderer 계약에만 기대고, 종류는 환경(모바일·동작 줄이기·WebGL2)으로 고른다.
  * 렌더러 로드·mount 실패는 Canvas로 넘어간다. 닫으면 dispose로 반납한다.
  */
-export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
+export function CommodoreMapDialog({ t, commodoreId, state, facts, onClose }: {
   readonly t: T;
   readonly commodoreId: string;
   readonly state: CommodoreState;
+  readonly facts: MapPanelFacts;
   readonly onClose: () => void;
 }) {
   const memory = useCommodoreMemory(commodoreId);
@@ -107,6 +102,8 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
   const tagRefs = useRef(new Map<string, HTMLDivElement>());
   const rovingRef = useRef<string | null>(null);
   const [hidden, setHidden] = useState<ReadonlySet<MapBranchKey>>(() => new Set());
+  const [hideObjective, setHideObjective] = useState(false);
+  const [hideLinks, setHideLinks] = useState(false);
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -126,15 +123,19 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     source: (label: string): string => t("commodore.map.node.source", { label }),
   }), [t, branchName]);
   const graph = useMemo(
-    () => buildMapGraph({ state, memories: memory.entries, tone: look.tone ?? null, labels }),
-    [state, memory.entries, look.tone, labels],
+    () => buildMapGraph({ state, memories: memory.entries, tone: look.tone ?? null, labels, links: !hideLinks }),
+    [state, memory.entries, look.tone, labels, hideLinks],
   );
   const layout = useMemo(() => layoutMapGraph(graph), [graph]);
   const model = useMemo(() => ({ graph, layout }), [graph, layout]);
   const hits = useMemo(() => matchMapQuery(graph, query), [graph, query]);
-  const visible = useMemo(() => visibleMapIds(graph, hidden, hits), [graph, hidden, hits]);
+  const visibleBase = useMemo(() => visibleMapIds(graph, hidden, hits), [graph, hidden, hits]);
+  const visible = useMemo(() => {
+    if (!hideObjective) return visibleBase;
+    return new Set([...visibleBase].filter((id) => graph.byId.get(id)?.kind !== "objective"));
+  }, [visibleBase, hideObjective, graph]);
   const palette = useMemo(() => readMapPalette(), [paletteTick]);
-  // D1 — 칩 숫자는 노드 수가 아니라 기억·정보 개수다.
+  // 칩 숫자는 노드 수가 아니라 기억·정보 개수다. 목표·링크는 그래프 개수.
   const chipCounts = useMemo(() => {
     const counts: Record<MapBranchKey, number> = { description: 0, intel: 0, person: 0, theater: 0, lessons: 0, crew: 0 };
     counts.description = state.description.text === "" ? 0 : 1;
@@ -142,8 +143,10 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     for (const entry of memory.entries) counts[entry.branch] += 1;
     return counts;
   }, [state.description.text, state.intel.length, memory.entries]);
+  const objectiveCount = useMemo(() => graph.nodes.filter((node) => node.kind === "objective").length, [graph]);
+  const linkCount = useMemo(() => graph.edges.filter((edge) => edge.kind === "link").length, [graph]);
   const isEmpty = state.description.text === "" && graph.intelTotal === 0 && memory.entries.length === 0;
-  const selected: DetailTarget | null = selectedId ? (graph.byId.get(selectedId) ? { node: graph.byId.get(selectedId)! } : null) : null;
+  const selected: { readonly node: MapNode } | null = selectedId ? (graph.byId.get(selectedId) ? { node: graph.byId.get(selectedId)! } : null) : null;
   // D6 — 노드 층의 Tab 정지점은 하나로, 방향키로 옮겨 다닌다.
   const orderedIds = useMemo(() => [...visible], [visible]);
   const [roving, setRoving] = useState<string | null>(null);
@@ -151,12 +154,12 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     ? roving
     : (selectedId !== null && visible.has(selectedId) ? selectedId : (orderedIds[0] ?? null));
   rovingRef.current = rovingId;
-  // 7 — 검색 일치 잎 라벨(상한 40, 겹치면 컬링).
+  // 7 — 검색 일치 잎 라벨(상한 60, 겹치면 컬링).
   const hitLabelIds = useMemo((): readonly string[] => {
     if (!hits) return [];
     const out: string[] = [];
     for (const id of orderedIds) {
-      if (out.length >= 40) break;
+      if (out.length >= 60) break;
       if (!hits.has(id)) continue;
       const kind = graph.byId.get(id)?.kind;
       if (kind === "memory" || kind === "intel") out.push(id);
@@ -203,9 +206,11 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
         }
       }
       // 라벨 자리 — 핵·가지 허브부터 잡고, 주제·검색 일치는 겹치지 않을 때만 선다.
-      const shown: { x: number; y: number }[] = [];
-      const near = (x: number, y: number): boolean => shown.some((spot) => Math.abs(spot.x - x) < 44 && Math.abs(spot.y - y) < 20);
-      // 점 무리에 묻힌 이름표는 읽히지 않으니 세우지 않는다(수정 6, 3).
+      // 시안대로 점 오른쪽에 둔다.
+      const shown: { x0: number; y0: number; x1: number; y1: number }[] = [];
+      const rectOf = (x: number, y: number, w: number): { x0: number; y0: number; x1: number; y1: number } => ({ x0: x, y0: y - 10, x1: x + w, y1: y + 10 });
+      const near = (rect: { x0: number; y0: number; x1: number; y1: number }): boolean => shown.some((spot) => rect.x0 < spot.x1 && spot.x0 < rect.x1 && rect.y0 < spot.y1 && spot.y0 < rect.y1);
+      // 점 무리에 묻힌 이름표는 읽히지 않으니 세우지 않는다.
       const crowded = (id: string, x: number, y: number): boolean => {
         for (const [other, spot] of spots) {
           if (other === id) continue;
@@ -213,19 +218,21 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
         }
         return false;
       };
-      const place = (id: string, lift: number, always: boolean): void => {
+      const place = (id: string, node: MapNode, lift: number, always: boolean): void => {
         const element = tagRefs.current.get(id);
         const point = spots.get(id);
         if (!element || !point) return;
-        const x = point.x;
-        const y = point.y - lift;
-        if (!always && (near(x, y) || crowded(id, x, y))) {
+        const w = Math.min(220, node.label.length * 6.5 + 8);
+        const x = point.x + lift;
+        const y = point.y;
+        const rect = rectOf(x, y, w);
+        if (!always && (near(rect) || crowded(id, x, y))) {
           element.style.display = "none";
           return;
         }
         element.style.display = "";
-        element.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
-        shown.push({ x, y });
+        element.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(0, -50%)`;
+        shown.push(rect);
       };
       for (const [id] of tagRefs.current) {
         if (!spots.has(id)) {
@@ -237,13 +244,13 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
         const node = modelRef.current.graph.byId.get(id);
         if (!node) continue;
         if (node.kind !== "core" && node.kind !== "description" && node.kind !== "intel-hub" && node.kind !== "intel-overflow" && node.kind !== "branch" && node.kind !== "source") continue;
-        place(id, node.kind === "core" ? 20 : 16, true);
+        place(id, node, node.kind === "core" ? 20 : 16, true);
       }
       for (const id of visibleRef.current) {
         const node = modelRef.current.graph.byId.get(id);
         if (!node) continue;
         if (node.kind !== "topic" && !hitLabelsRef.current.includes(id)) continue;
-        place(id, 14, false);
+        place(id, node, 12, false);
       }
     } catch {
       /* project 실패는 그 프레임을 건너뛴다 */
@@ -276,10 +283,11 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
 
   // (b) setFitInsets는 렌더러가 맞춤 보기를 다시 돌리므로 마운트·크기 변경 때만 부른다.
   // 선택·검색·테마로는 바꾸지 않는다 — 확대·회전해 둔 보기가 튀어 돌아가지 않게.
+  // 칩이 무대 안에 겹치므로 위쪽 여백은 칩 줄 높이 정도만 둔다.
   const applyInsets = useCallback((): void => {
     rendererRef.current?.setFitInsets?.({
-      top: 96,
-      right: selectedRef.current ? 316 : 16,
+      top: 64,
+      right: selectedRef.current ? 340 : 16,
       bottom: 24,
       left: 24,
     });
@@ -504,23 +512,6 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
           <button type="button" className="commodore-map-icon-btn" aria-label={t("commodore.map.close")} onClick={onClose}>✕</button>
         </div>
         <div className="commodore-map-toolbar">
-          <div className="commodore-map-chips" role="group" aria-label={t("commodore.map.title")}>
-            {MAP_BRANCH_ORDER.map((branch) => {
-              const pressed = !hidden.has(branch);
-              return (
-                <button
-                  key={branch}
-                  type="button"
-                  className="commodore-map-chip"
-                  aria-pressed={pressed}
-                  onClick={() => toggleBranch(branch)}
-                >
-                  <span className="commodore-map-chip-dot" data-branch={branch} aria-hidden="true" />
-                  {branchChipLabel(t, branch)} {chipCounts[branch] ?? 0}
-                </button>
-              );
-            })}
-          </div>
           <label className="commodore-map-search">
             <span aria-hidden="true">⌕</span>
             <input
@@ -538,6 +529,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
               tabIndex={searching ? 0 : -1}
             >✕</button>
           </label>
+          <span className="commodore-map-head-spacer" />
           <button
             type="button"
             className="commodore-map-icon-btn commodore-map-fit"
@@ -625,249 +617,90 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
                         else tagRefs.current.delete(id);
                       }}
                       className="commodore-map-tag"
-                      data-kind={node.kind}
+                      data-hub={hub || undefined}
                     >
                       {node.label}
                     </div>
                   );
                 }) : null}
               </div>
+              <div className="commodore-map-chips" role="group" aria-label={t("commodore.map.chips")}>
+                {(["person", "theater", "lessons", "crew", "intel", "description"] as const).map((branch) => (
+                  <button
+                    key={branch}
+                    type="button"
+                    className="commodore-map-chip"
+                    aria-pressed={!hidden.has(branch)}
+                    onClick={() => toggleBranch(branch)}
+                  >
+                    <span className="commodore-map-sw" style={{ "--c": `var(--map-${branch === "description" ? "description" : branch === "intel" ? "intel" : `branch-${branch}`})` } as React.CSSProperties} aria-hidden="true" />
+                    {branchChipLabel(t, branch)} <span className="commodore-map-n">{chipCounts[branch] ?? 0}</span>
+                  </button>
+                ))}
+                <button
+                  type="button"
+                  className="commodore-map-chip"
+                  aria-pressed={!hideObjective}
+                  onClick={() => setHideObjective((value) => !value)}
+                >
+                  <span className="commodore-map-sw is-ring" style={{ "--c": "var(--map-objective)" } as React.CSSProperties} aria-hidden="true" />
+                  {t("commodore.tasks.goals")} <span className="commodore-map-n">{objectiveCount}</span>
+                </button>
+                <button
+                  type="button"
+                  className="commodore-map-chip"
+                  aria-pressed={!hideLinks}
+                  onClick={() => setHideLinks((value) => !value)}
+                >
+                  <span className="commodore-map-sw is-line" style={{ "--c": "var(--map-link)" } as React.CSSProperties} aria-hidden="true" />
+                  {t("commodore.map.chip.link")} <span className="commodore-map-n">{linkCount}</span>
+                </button>
+              </div>
+              <div className="commodore-map-hint" aria-hidden="true">{t("commodore.map.hint")}</div>
+              <div className="commodore-map-legend">
+                <details>
+                  <summary>{t("commodore.map.legend.title")}</summary>
+                  <ul>
+                    {[
+                      { sw: "is-core", text: t("commodore.map.legend.core") },
+                      { sw: "is-entry", text: t("commodore.map.legend.entry") },
+                      { sw: "is-intel", text: t("commodore.map.legend.intel") },
+                      { sw: "is-objective", text: t("commodore.map.legend.objective") },
+                      { sw: "is-link", text: t("commodore.map.legend.link") },
+                      { sw: "is-shared", text: t("commodore.map.legend.shared") },
+                      { sw: "is-fresh", text: t("commodore.map.legend.fresh") },
+                      { sw: "is-stale", text: t("commodore.map.legend.stale") },
+                    ].map((row) => (
+                      <li key={row.text}>
+                        <span className={`commodore-map-sw ${row.sw}`} aria-hidden="true" />
+                        <span>{row.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              </div>
               </>
             )}
           </div>
-          {selected ? (
-            <MapDetailPanel
-              t={t}
-              node={selected.node}
-              state={state}
-              entries={memory.entries}
-              branchName={branchName}
-              onSelect={setSelectedId}
-              onClose={() => {
-                setSelectedId(null);
-                if (selectedId) buttonRefs.current.get(selectedId)?.focus();
-              }}
-            />
-          ) : null}
+          <MapPanel
+            t={t}
+            commodoreId={commodoreId}
+            node={selected?.node ?? null}
+            state={state}
+            entries={memory.entries}
+            graph={graph}
+            facts={facts}
+            branchName={branchName}
+            onSelect={setSelectedId}
+            onClose={() => {
+              setSelectedId(null);
+              if (selectedId) buttonRefs.current.get(selectedId)?.focus();
+            }}
+          />
         </div>
         {searching && matchCount === 0 ? <div className="commodore-map-state">{t("commodore.map.noMatch")}</div> : null}
       </div>
     </div>,
     document.body,
   );
-}
-
-function MapDetailPanel({ t, node, state, entries, branchName, onSelect, onClose }: {
-  readonly t: T;
-  readonly node: MapNode;
-  readonly state: CommodoreState;
-  readonly entries: readonly import("../../shared/contracts/memory.js").MemoryEntry[];
-  readonly branchName: (branch: MemoryBranch) => string;
-  readonly onSelect: (id: string) => void;
-  readonly onClose: () => void;
-}) {
-  const entry = node.ref ? entries.find((candidate) => candidate.ref === node.ref) ?? null : null;
-  const closeRef = useRef<HTMLButtonElement>(null);
-  useEffect(() => { closeRef.current?.focus(); }, []);
-
-  let body: React.ReactNode = null;
-  if (node.kind === "memory" && entry) {
-    const links = memoryLinks(entry, entries);
-    const isStale = Date.now() - entry.verified > MEMORY_STALE_MS;
-    const shared = entries.filter((candidate) =>
-      candidate.ref !== entry.ref &&
-      candidate.sources.some((source) => entry.sources.some((own) => own.objectiveId === source.objectiveId)),
-    );
-    body = (
-      <>
-        <div className="commodore-map-panel-meta">
-          {branchName(entry.branch)} · {entry.topic} · {t("commodore.memory.updated", { date: memoryDay(entry.updated) })}
-          {isStale ? ` · ${t("commodore.memory.stale")}` : ""}
-        </div>
-        {entry.description ? (<><h4>{t("commodore.memory.summary")}</h4><p>{entry.description}</p></>) : null}
-        {entry.why ? (<><h4>{t("commodore.memory.why")}</h4><p>{entry.why}</p></>) : null}
-        {entry.how ? (<><h4>{t("commodore.memory.how")}</h4><p>{entry.how}</p></>) : null}
-        {entry.sources.length > 0 ? (
-          <>
-            <h4>{t("commodore.memory.sources")}</h4>
-            <ul>
-              {entry.sources.map((source) => (
-                <li key={source.objectiveId}>
-                  <button type="button" className="commodore-map-panel-link" onClick={() => onSelect(`obj:${source.objectiveId}`)}>{source.title}</button>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
-        {links.length > 0 ? (
-          <>
-            <h4>{t("commodore.memory.links")}</h4>
-            <ul>
-              {links.map((linked) => (
-                <li key={linked.ref}>
-                  <button type="button" className="commodore-map-panel-link" onClick={() => onSelect(`mem:${linked.ref}`)}>{linked.title}</button>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
-        {shared.length > 0 ? (
-          <>
-            <h4>{t("commodore.map.objectiveMemories")}</h4>
-            <ul>
-              {shared.map((other) => (
-                <li key={other.ref}>
-                  <button type="button" className="commodore-map-panel-link" onClick={() => onSelect(`mem:${other.ref}`)}>{other.title}</button>
-                </li>
-              ))}
-            </ul>
-          </>
-        ) : null}
-      </>
-    );
-  } else if (node.kind === "intel" && node.intelId) {
-    const item = state.intel.find((candidate) => candidate.id === node.intelId);
-    body = item ? (
-      <>
-        <div className="commodore-map-panel-meta">
-          {sourceLabelOf(t, state, item.source)} · {memoryDay(item.at)}
-        </div>
-        <p>{item.text}</p>
-      </>
-    ) : null;
-  } else if (node.kind === "intel-hub") {
-    // 지도에 점으로 나온 것과 같은 정렬·개수(RECENT_INTEL_LIMIT) — id 규칙은 map-graph.ts.
-    const items = [...state.intel].sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
-    const shown = items.slice(0, RECENT_INTEL_LIMIT);
-    const rest = items.length - shown.length;
-    body = (
-      <>
-        <div className="commodore-map-panel-meta">{t("commodore.map.countIntel", { n: items.length })}</div>
-        {items.length === 0 ? <p>{t("commodore.intel.empty")}</p> : (
-          <ul>
-            {shown.map((item) => (
-              <li key={item.id}>
-                <button type="button" className="commodore-map-panel-link" onClick={() => onSelect(`intel:${item.id}`)}>{excerptText(item.text)}</button>
-              </li>
-            ))}
-            {rest > 0 ? (
-              <li key="__overflow">
-                <button type="button" className="commodore-map-panel-link" onClick={() => onSelect("intel-overflow")}>{t("commodore.map.allIntelCount", { n: items.length })}</button>
-              </li>
-            ) : null}
-          </ul>
-        )}
-      </>
-    );
-  } else if (node.kind === "intel-overflow") {
-    const rest = [...state.intel].sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
-    body = (
-      <ul>
-        {rest.map((item) => (
-            <li key={item.id}>
-              <p>{item.text}</p>
-              <div className="commodore-map-panel-meta">{sourceLabelOf(t, state, item.source)} · {memoryDay(item.at)}</div>
-            </li>
-          ))}
-        </ul>
-    );
-  } else if (node.kind === "topic" && node.branch && node.topic) {
-    const inTopic = entries.filter((candidate) => candidate.branch === node.branch && candidate.topic === node.topic);
-    body = (
-      <>
-        <h4>{t("commodore.map.topicEntries")}</h4>
-        <ul>
-          {inTopic.map((item) => (
-            <li key={item.ref}>
-              <button type="button" className="commodore-map-panel-link" onClick={() => onSelect(`mem:${item.ref}`)}>{item.title}</button>
-            </li>
-          ))}
-        </ul>
-      </>
-    );
-  } else if (node.kind === "branch" && node.branch) {
-    const topics = [...new Set(entries.filter((candidate) => candidate.branch === node.branch).map((candidate) => candidate.topic))].sort();
-    body = (
-      <>
-        <h4>{t("commodore.map.branchTopics")}</h4>
-        <ul>
-          {topics.map((topic) => (
-            <li key={topic}>
-              <button type="button" className="commodore-map-panel-link" onClick={() => onSelect(`topic:${node.branch}:${topic}`)}>{topic}</button>
-            </li>
-          ))}
-        </ul>
-      </>
-    );
-  } else if (node.kind === "source" && node.sourceId) {
-    const items = state.intel.filter((item) => item.source === node.sourceId).sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
-    body = (
-      <>
-        <div className="commodore-map-panel-meta">{sourceLabelOf(t, state, node.sourceId)} · {items.length}</div>
-        <h4>{t("commodore.map.sourceIntel")}</h4>
-        <ul>
-          {items.map((item) => (
-            <li key={item.id}>
-              <p>{item.text}</p>
-              <div className="commodore-map-panel-meta">{memoryDay(item.at)}</div>
-            </li>
-          ))}
-        </ul>
-      </>
-    );
-  } else if (node.kind === "objective" && node.objectiveId) {
-    const linked = entries.filter((candidate) => candidate.sources.some((source) => source.objectiveId === node.objectiveId));
-    body = (
-      <>
-        <h4>{t("commodore.map.objectiveMemories")}</h4>
-        <ul>
-          {linked.map((item) => (
-            <li key={item.ref}>
-              <button type="button" className="commodore-map-panel-link" onClick={() => onSelect(`mem:${item.ref}`)}>{item.title}</button>
-            </li>
-          ))}
-        </ul>
-      </>
-    );
-  } else if (node.kind === "description") {
-    body = (
-      <>
-        <div className="commodore-map-panel-meta">
-          {t("commodore.description.rev", { rev: state.description.rev, time: memoryDay(state.description.updatedAt) })}
-        </div>
-        <p>{state.description.text}</p>
-      </>
-    );
-  } else if (node.kind === "core") {
-    body = (
-      <>
-        <div className="commodore-map-panel-meta">
-          {t("commodore.map.countMemory", { n: entries.length })} · {t("commodore.map.countIntel", { n: state.intel.length })} · {t("commodore.map.countSources", { n: state.sources.length })}
-        </div>
-        {state.description.text ? <p>{state.description.text}</p> : null}
-      </>
-    );
-  }
-
-  // 1 — 묶음 패널 제목은 본문과 하나로(노드 '+N' 표기는 캔버스용으로 둔다).
-  const title = node.kind === "intel-overflow" ? t("commodore.map.allIntelCount", { n: state.intel.length }) : node.label;
-
-  return (
-    <aside className="commodore-map-panel" aria-label={title}>
-      <button ref={closeRef} type="button" className="commodore-map-icon-btn commodore-map-panel-close" aria-label={t("commodore.map.closePanel")} onClick={onClose}>✕</button>
-      <h3>{title}</h3>
-      {body}
-    </aside>
-  );
-}
-
-function sourceLabelOf(t: T, state: CommodoreState, sourceId: string): string {
-  if (sourceId === "person") return t("commodore.intel.fromYou");
-  return state.sources.find((source) => source.id === sourceId)?.label ?? sourceId;
-}
-
-/** 정보 목록 줄임말 — 그래프 노드 라벨과 같은 앞부분 규칙. */
-function excerptText(text: string, limit = 60): string {
-  const flat = text.replace(/\s+/g, " ").trim();
-  return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
 }

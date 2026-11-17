@@ -91,6 +91,8 @@ export interface MapGraphInput {
   readonly tone: IdentityTone | null;
   /** 상태 신호 기준 시각. 기본 `Date.now()`. */
   readonly now?: number;
+  /** 명시 링크 연결을 뺀다 — 링크 칩 끄기용. 렌더러 계약을 바꾸지 않고 화면에서 가린다. 기본 true. */
+  readonly links?: boolean;
   /**
    * 화면 언어로 읽히는 표시 이름 — 캔버스에 갈래 키(`person` 등)가 보이지 않게
    * 렌더러는 `label`을 그대로 그린다. 없으면 영어 키 그대로 둔다.
@@ -146,7 +148,7 @@ export function buildMapGraph(input: MapGraphInput): MapGraph {
   // 설명 가지 — rev 증가가 핵 주위 성장 표시의 원천이라 updatedAt 신호를 둔다.
   nodes.push({
     id: "desc", kind: "description", branch: "description",
-    label: excerpt(state.description.text) || labels.description, text: state.description.text,
+    label: labels.description, text: state.description.text,
     fresh: now - state.description.updatedAt <= MAP_RECENT_MS, stale: false,
   });
   link("core", "desc", "tree");
@@ -209,6 +211,7 @@ export function buildMapGraph(input: MapGraphInput): MapGraph {
     link(`mem:${branch}`, id, "tree");
   }
   const refIds = new Set(input.memories.map((entry) => entry.ref));
+  const withLinks = input.links ?? true;
   for (const entry of input.memories) {
     const id = `mem:${entry.ref}`;
     nodes.push({
@@ -219,11 +222,13 @@ export function buildMapGraph(input: MapGraphInput): MapGraph {
       ref: entry.ref, topic: entry.topic,
     });
     link(`topic:${entry.branch}:${entry.topic}`, id, "tree");
-    for (const target of entry.links) {
-      if (refIds.has(target)) {
-        const a = `mem:${entry.ref}`;
-        const b = `mem:${target}`;
-        link(a < b ? a : b, a < b ? b : a, "link");
+    if (withLinks) {
+      for (const target of entry.links) {
+        if (refIds.has(target)) {
+          const a = `mem:${entry.ref}`;
+          const b = `mem:${target}`;
+          link(a < b ? a : b, a < b ? b : a, "link");
+        }
       }
     }
   }
