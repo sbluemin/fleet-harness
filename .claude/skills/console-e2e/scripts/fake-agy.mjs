@@ -9,7 +9,7 @@
 //   acp --gemini-dir <dir> ...       one launch per Gateway agy session open, including the tool-less compaction session.
 //                                    Chat turns answer `echo:<first 60 chars> history:yes|no`; the handoff-summary
 //                                    (compaction) prompt answers `Compacted summary (0 tools) history:yes|no` in a tool-less
-//                                    session and calls a tool instead when tools are exposed (agy's real failure).
+//                                    session and calls a tool instead when tools are exposed (a synthetic failure branch).
 // FAKE_MODELS (optional, read at each acp launch): comma-separated availableModels rung ids. Default: the gemini-4-hydrogen and
 //   claude-opus-5-5 rungs. Opening any other catalog model fails like an account that lacks it.
 // FAKE_AGY_LOG (optional, absolute path): JSONL appended per launch and per client→agy message: at, pid, mode, flag names,
