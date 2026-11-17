@@ -244,7 +244,8 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   const mongle = commodoreMongleState(view, board.objectives);
   const mapMode = useCommodoreMapMode(commodoreId);
   // 사령관 대화 화면(세부가 아닌 동안)의 대화 머리에 컨텍스트 칩이 선다.
-  useMobileContextRailScope((!panel || section === "log") && commodoreId ? { kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } } : null);
+  // 지도일 때는 채팅 세션의 컨텍스트 칩·▥ 단추를 내려 막대에 사령관 이름 자리를 둔다(데스크톱 지도도 칩을 가린다).
+  useMobileContextRailScope((!panel ? mapMode !== "map" : section === "log") && commodoreId ? { kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } } : null);
   const pillStatus = commodorePillStatus(t, view);
   // 세부에서 다른 화면으로 옮기는 동작 — 세부(구역·기억 단계 포함)를 먼저 접어 막대가 쌓은 깊이 항목을 걷고, 그 뒤로(popstate)가 내려앉은 뒤에 옮긴다(`mobileBar.leave`).
   // 접기 전에 옮기면 그 항목이 history에 남아, 다음 뒤로가 그것을 걷으며 주소만 사령관으로 돌아가고 화면은 남는다(홈 시트의 「닫고 나서 연다」와 같은 규칙).
