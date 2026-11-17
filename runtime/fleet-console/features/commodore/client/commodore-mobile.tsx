@@ -268,7 +268,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         ...(commodoreId ? {
           actions: [
             ...(actions ? [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] : []),
-            { id: "map", label: t(mapMode === "map" ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph />, run: () => setCommodoreMapMode(commodoreId, mapMode === "map" ? "chat" : "map") },
+            { id: "map", label: t(mapMode === "map" ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph size={22} />, pressed: mapMode === "map", run: () => setCommodoreMapMode(commodoreId, mapMode === "map" ? "chat" : "map") },
           ],
         } : {}),
       });

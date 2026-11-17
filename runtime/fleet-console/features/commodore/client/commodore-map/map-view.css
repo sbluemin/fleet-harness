@@ -358,7 +358,8 @@
 }
 
 .commodore-map-panel-close {
-  float: right;
+  justify-self: end;
+  margin-bottom: -8px;
 }
 
 .commodore-map-panel p {
@@ -410,19 +411,9 @@
   color: var(--aurora);
 }
 
-.commodore-map-sec h3 {
-  margin: 0 0 6px;
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  color: var(--text-secondary);
-}
-
-.commodore-map-lst {
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  display: grid;
-  gap: 4px;
+.commodore-map-sec {
+  border-top: 1px solid var(--hairline);
+  padding-top: 12px;
 }
 
 .commodore-map-sec h3 {
@@ -554,6 +545,11 @@
 .commodore-map-bar[data-branch="lessons"] { --c: var(--map-branch-lessons); }
 .commodore-map-bar[data-branch="crew"] { --c: var(--map-branch-crew); }
 
+.commodore-map-bar .commodore-map-crumb-link {
+  justify-self: start;
+  text-align: left;
+}
+
 .commodore-map-bar i {
   display: block;
   height: 8px;
@@ -576,9 +572,11 @@
   color: var(--text-secondary);
 }
 
-.commodore-map-ref {
+.commodore-map-panel .commodore-map-ref {
+  font-family: var(--font-code);
   font-size: var(--t-xs);
   color: var(--text-tertiary);
+  overflow-wrap: anywhere;
 }
 
 .commodore-map-state {
@@ -595,19 +593,23 @@
   pointer-events: auto;
 }
 
-@media (max-width: 700px) {
-  .commodore-map-body {
-    overflow-y: auto;
-  }
+/* 휴대폰 — 레일이 없어 패널이 무대 아래에 선다. 시안 900px 이하처럼 세로로 쌓고 무대는 64vh(최소 440px). */
+:root[data-view-mode="mobile"] .commodore-map-body {
+  flex-direction: column;
+  overflow-y: auto;
+}
 
-  .commodore-map-stage {
-    margin: 12px 12px 0;
-  }
+:root[data-view-mode="mobile"] .commodore-map-stage {
+  flex: none;
+  height: 64vh;
+  min-height: 440px;
+  margin: 12px 12px 0;
+}
 
-  .commodore-map-panel {
-    border-left: 0;
-    border-top: 1px solid var(--hairline);
-  }
+:root[data-view-mode="mobile"] .commodore-map-panel {
+  border-left: 0;
+  border-top: 1px solid var(--hairline);
+  overflow-y: visible;
 }
 
 @media (prefers-reduced-motion: reduce) {

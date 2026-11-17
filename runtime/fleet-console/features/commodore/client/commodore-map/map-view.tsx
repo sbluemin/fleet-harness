@@ -363,8 +363,14 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
       event.preventDefault();
-      if (selectedRef.current) setSelectedId(null);
-      else onExit();
+      const picked = selectedRef.current;
+      if (!picked) { onExit(); return; }
+      setSelectedId(null);
+      // 패널이 닫히며 포커스가 사라지지 않게 고른 점(없으면 정지점)으로 돌려놓는다.
+      const shown = (element: HTMLButtonElement | undefined): element is HTMLButtonElement =>
+        element !== undefined && element.style.display !== "none" && element.style.visibility !== "hidden";
+      const back = [buttonRefs.current.get(picked), rovingRef.current !== null ? buttonRefs.current.get(rovingRef.current) : undefined].find(shown);
+      back?.focus();
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
@@ -603,7 +609,8 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                   {t("commodore.map.chip.link")} <span className="commodore-map-n">{linkCount}</span>
                 </button>
               </div>
-              <div className="commodore-map-hint" aria-hidden="true">{t("commodore.map.hint")}</div>
+              {/* 끌기·휠 조작은 WebGL만 받는다 — Canvas는 조작이 없고, 휴대폰 궤도는 좁은 화면이라 시안대로 숨긴다. */}
+              {rendererKind === "webgl" ? <div className="commodore-map-hint" aria-hidden="true">{t("commodore.map.hint")}</div> : null}
               </div>
               <div className="commodore-map-legend">
                 <details>

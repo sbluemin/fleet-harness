@@ -1,10 +1,15 @@
+import { useEffect, useRef } from "react";
+
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
 import { setCommodoreMapMode, useCommodoreMapMode } from "./commodore-map-mode.js";
 
-/** 신경망 글리프 — 머리 줄 전환 단추와 휴대폰 막대 동작이 함께 쓴다. */
-export function CommodoreMapGlyph(): React.JSX.Element {
+/**
+ * 신경망 글리프 — 머리 줄 전환 단추와 휴대폰 막대 동작이 함께 쓴다.
+ * `size`를 주면 그 크기로 서고(휴대폰 막대 22), 없으면 단추 CSS가 정한다.
+ */
+export function CommodoreMapGlyph({ size }: { readonly size?: number } = {}): React.JSX.Element {
   return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true">
+    <svg width={size} height={size} viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" aria-hidden="true">
       <circle cx="3" cy="8" r="1.6" />
       <circle cx="8" cy="3.5" r="1.6" />
       <circle cx="8" cy="12.5" r="1.6" />
@@ -25,11 +30,22 @@ export function CommodoreMapToggle({ commodoreId, language, className }: {
 }) {
   const t = getT(language);
   const map = useCommodoreMapMode(commodoreId) === "map";
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const wasMap = useRef(map);
+  // 지도가 Esc 등으로 닫혀 포커스가 지도와 함께 사라졌으면 이 단추로 돌려놓는다.
+  useEffect(() => {
+    const closed = wasMap.current && !map;
+    wasMap.current = map;
+    if (!closed) return;
+    const active = document.activeElement;
+    if (active === null || active === document.body) buttonRef.current?.focus();
+  }, [map]);
   const label = t(map ? "commodore.map.toggle.chat" satisfies CommodoreMessageKey : "commodore.map.toggle.map" satisfies CommodoreMessageKey);
   return (
     <>
       <span className="commodore-map-divider" aria-hidden="true" />
       <button
+        ref={buttonRef}
         type="button"
         className={`right-rail-ico commodore-map-toggle${map ? " is-active" : ""}${className ? ` ${className}` : ""}`}
         aria-pressed={map}

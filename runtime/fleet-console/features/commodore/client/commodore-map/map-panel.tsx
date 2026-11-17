@@ -158,8 +158,9 @@ function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branch
   );
 }
 
-function MemoryDetail({ t, node, entry, entries, branchName, onSelect }: {
+function MemoryDetail({ t, node, entry, entries, crumbTop, branchName, onSelect }: {
   readonly t: T;
+  readonly crumbTop: { readonly label: string; readonly id: string };
   readonly node: MapNode;
   readonly entry: MemoryEntry;
   readonly entries: readonly MemoryEntry[];
@@ -175,7 +176,7 @@ function MemoryDetail({ t, node, entry, entries, branchName, onSelect }: {
   const fresh = Date.now() - entry.updated <= 7 * 24 * 60 * 60 * 1000;
   return (
     <>
-      <Crumb trail={[{ label: entry.title, id: "core" }, { label: branchName(entry.branch), id: `mem:${entry.branch}` }, { label: entry.topic }]} onSelect={onSelect} />
+      <Crumb trail={[crumbTop, { label: branchName(entry.branch), id: `mem:${entry.branch}` }, { label: entry.topic }]} onSelect={onSelect} />
       <h2>{entry.title}</h2>
       {entry.description ? <p>{entry.description}</p> : null}
       <div className="commodore-map-panel-meta">
@@ -186,26 +187,26 @@ function MemoryDetail({ t, node, entry, entries, branchName, onSelect }: {
       </div>
       {entry.why ? <section className="commodore-map-sec" aria-label={t("commodore.memory.why")}><h3>{t("commodore.memory.why")}</h3><p>{entry.why}</p></section> : null}
       {entry.how ? <section className="commodore-map-sec" aria-label={t("commodore.memory.how")}><h3>{t("commodore.memory.how")}</h3><p>{entry.how}</p></section> : null}
-      <section className="commodore-map-sec" aria-label={t("commodore.memory.sources")}>
-        <h3>{t("commodore.memory.sources")}</h3>
-        {entry.sources.length > 0 ? (
+      {entry.sources.length > 0 ? (
+        <section className="commodore-map-sec" aria-label={t("commodore.memory.sources")}>
+          <h3>{t("commodore.memory.sources")}</h3>
           <ul className="commodore-map-lst">
             {entry.sources.map((source) => (
               <EntryRow key={source.objectiveId} title={source.title} sub={t("commodore.tasks.goals")} branch={null} shape="ring" onOpen={() => onSelect(`obj:${source.objectiveId}`)} />
             ))}
           </ul>
-        ) : null}
-      </section>
-      <section className="commodore-map-sec" aria-label={t("commodore.memory.links")}>
-        <h3>{t("commodore.memory.links")}</h3>
-        {links.length > 0 ? (
+        </section>
+      ) : null}
+      {links.length > 0 ? (
+        <section className="commodore-map-sec" aria-label={t("commodore.memory.links")}>
+          <h3>{t("commodore.memory.links")}</h3>
           <ul className="commodore-map-lst">
             {links.map((linked) => (
               <EntryRow key={linked.ref} title={linked.title} sub={branchName(linked.branch)} branch={linked.branch} onOpen={() => onSelect(`mem:${linked.ref}`)} />
             ))}
           </ul>
-        ) : null}
-      </section>
+        </section>
+      ) : null}
       {shared.length > 0 ? (
         <section className="commodore-map-sec" aria-label={t("commodore.map.objectiveMemories")}>
           <h3>{t("commodore.map.objectiveMemories")} {shared.length}</h3>
@@ -238,7 +239,7 @@ export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, b
   const entry = node?.ref ? entries.find((candidate) => candidate.ref === node.ref) ?? null : null;
   if (node && entry && node.kind === "memory") {
     title = entry.title;
-    body = <MemoryDetail t={t} node={node} entry={entry} entries={entries} branchName={branchName} onSelect={onSelect} />;
+    body = <MemoryDetail t={t} node={node} entry={entry} entries={entries} crumbTop={crumbTop} branchName={branchName} onSelect={onSelect} />;
   } else if (node?.kind === "branch" && node.branch && node.branch !== "description" && node.branch !== "intel") {
     const branchEntries = entries.filter((candidate) => candidate.branch === node.branch);
     const topics = [...new Set(branchEntries.map((candidate) => candidate.topic))].sort();

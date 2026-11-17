@@ -337,6 +337,8 @@ export interface MobileBarAction {
   /** 접근성 이름(이미 현지화된 문자열) — 막대에는 아이콘만 선다. */
   readonly label: string;
   readonly icon: ReactNode;
+  /** 켬/끔 전환 단추면 지금 켜졌는지 — 주면 막대가 `aria-pressed`로 알린다. */
+  readonly pressed?: boolean;
   readonly run: () => void;
 }
 
