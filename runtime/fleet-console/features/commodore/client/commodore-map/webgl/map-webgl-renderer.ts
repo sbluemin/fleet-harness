@@ -239,6 +239,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private by = new Float32Array(0);
   private stretchX = 1;
   private stretchY = 1;
+  /** GPU 버퍼에 올라가 있는 펼침·z 배율 — 좌표 배열과 따로 추적해 일부만 갱신되는 일이 없게 한다. */
+  private uploaded = { sx: NaN, sy: NaN, sz: NaN };
   private baseCenter = new Vector3();
   private wz = new Float32Array(0);
   /** 시안 z(스케일 전) — 무대가 좁으면 `zScale`배로 키워 깊이감이 무대 모양과 무관하게 같다. */
@@ -642,6 +644,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.lines.renderOrder = 0;
     this.points.renderOrder = 1;
     this.scene.add(this.lines, this.points);
+    this.uploaded = { sx: this.stretchX, sy: this.stretchY, sz: this.zScale };
 
     this.updateFocus();
     // 노드 구성이 바뀌었을 때만 정면으로 되돌린다 — 테마 전환 등 같은 지도는 카메라를 지킨다.
@@ -761,7 +764,6 @@ class MapWebglRendererImpl implements MapWebglRenderer {
 
   /** 펼침(x·y)과 z 배율을 적용해 좌표·지오메트리를 갱신한다 — project·pick이 같은 좌표를 읽는다. */
   private applyShape(sx: number, sy: number, sz: number, upload: boolean): void {
-    const same = Math.abs(sx - this.stretchX) < 1e-3 && Math.abs(sy - this.stretchY) < 1e-3 && Math.abs(sz - this.zScale) < 1e-3;
     this.stretchX = sx;
     this.stretchY = sy;
     this.zScale = sz;
@@ -772,7 +774,10 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.wy[i] = this.baseCenter.y + (this.by[i]! - this.baseCenter.y) * sy;
       this.wz[i] = this.z0[i]! * sz;
     }
-    if (!upload || (same && n > 0)) return;
+    if (!upload) return;
+    const up = this.uploaded;
+    if (Math.abs(sx - up.sx) < 1e-3 && Math.abs(sy - up.sy) < 1e-3 && Math.abs(sz - up.sz) < 1e-3) return;
+    this.uploaded = { sx, sy, sz };
     const position = this.pointGeo.getAttribute("position") as BufferAttribute | undefined;
     if (position) {
       for (let i = 0; i < n; i += 1) position.setXYZ(i, this.wx[i]!, this.wy[i]!, this.wz[i]!);
