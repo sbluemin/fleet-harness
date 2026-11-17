@@ -135,6 +135,8 @@
 .commodore-map-tag[data-hub="true"] {
   color: var(--text-primary);
   font-size: var(--t-sm);
+  /* 허브 라벨은 무리 한가운데의 가장 밝은 발광 위에 선다 — 바탕 그림자를 넓혀 200개에서도 읽히게 한다. */
+  text-shadow: 0 0 2px var(--canvas-abyss), 0 0 6px var(--canvas-abyss), 0 0 12px var(--canvas-abyss);
 }
 
 .commodore-map-node {
