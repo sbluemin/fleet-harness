@@ -34,7 +34,6 @@ import { readTerminalViewPosition, saveTerminalViewPosition, type TerminalViewPo
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForTerminalFallbackFonts } from "./terminal-fallback-fonts.js";
-import { useTerminalWebglGrant } from "./terminal-webgl-budget.js";
 import "./terminal-key-bar.css";
 
 type TerminalThemeId = "dark" | "light";
@@ -81,7 +80,7 @@ export interface TerminalSurfaceProps {
   // 이 터미널이 활성(선택)으로 전환될 때 마우스 클릭 없이 키보드 포커스를 잡아준다(Map 검색 이동 등).
   readonly active?: boolean;
   /**
-   * 본문이 화면에 서 있는지(주차되지 않았는지). WebGL 슬롯은 보이는 터미널만 요청한다 — 생략하면 보인다고 본다.
+   * 본문이 화면에 서 있는지(주차되지 않았는지) — 생략하면 보인다고 본다.
    */
   readonly visible?: boolean;
   readonly keyboardFocusRequestId?: number;
@@ -306,9 +305,18 @@ export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath,
   const terminalRef = useRef<XtermTerminal | null>(null);
   const connectionRef = useRef<TerminalConnection | null>(null);
   const webglAddonRef = useRef<WebglAddon | null>(null);
-  const webgl = useTerminalWebglGrant({ wanted: terminalRenderer === "webgl", visible, active: active !== false, touchKey: keyboardFocusRequestId });
-  const onWebglLostRef = useRef(webgl.onLost);
-  onWebglLostRef.current = webgl.onLost;
+  // WebGL 상한(terminal-webgl-budget) 제거 후: 터미널이 하나뿐이라 슬롯 배분이 필요 없다.
+  // 설정이 WebGL을 원하면 붙이고, GPU 컨텍스트를 잃으면 DOM 렌더러로 떨어졌다가 사용자가 다시
+  // 손대면(active·visible·키보드 요청) 다시 붙인다. DOM 설정(wanted 분기)과 손실 폴백은 유지된다.
+  const webglWanted = terminalRenderer === "webgl";
+  const [webglLost, setWebglLost] = useState(false);
+  const granted = webglWanted && !webglLost;
+  const onWebglLost = useCallback(() => setWebglLost(true), []);
+  const onWebglLostRef = useRef(onWebglLost);
+  onWebglLostRef.current = onWebglLost;
+  useEffect(() => {
+    setWebglLost(false);
+  }, [active, visible, keyboardFocusRequestId, webglWanted]);
   const outputSchedulerRef = useRef<TerminalOutputScheduler | null>(null);
   const statusDetailReporterRef = useRef<TerminalStatusDetailReporter | null>(null);
   const scrollFollowRef = useRef<TerminalScrollFollowController | null>(null);
@@ -916,15 +924,15 @@ export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath,
   }, []);
 
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
-  // 슬롯(terminal-webgl-budget)을 받은 동안만 붙인다 — 슬롯을 내주면 이 effect의 정리가 addon을 떼어
-  // DOM 렌더러로 돌아가고, 다시 받으면 새 addon을 붙인다.
+  // 설정이 WebGL을 원하고 컨텍스트를 잃지 않은 동안만 붙인다 — 떼면 이 effect의 정리가 addon을 떼어
+  // DOM 렌더러로 돌아가고, 다시 조건이 서면 새 addon을 붙인다.
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
 
     let disposed = false;
 
-    if (webgl.granted) {
+    if (granted) {
       try {
         const webglAddon = new WebglAddon();
         webglAddonRef.current = webglAddon;
@@ -965,7 +973,7 @@ export function TerminalSurface({ objectiveId, ticketPath, ticketFields, wsPath,
         // xterm 내부 dispose 버그(메인 cleanup의 terminal.dispose 경로 포함)를 흡수한다.
       }
     };
-  }, [webgl.granted, objectiveId, mountedTerminalEpoch]);
+  }, [granted, objectiveId, mountedTerminalEpoch]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
