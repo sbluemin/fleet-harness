@@ -22,7 +22,14 @@ import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreRefere
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreMongleActivity } from "./commodore-avatar.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
-import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, retryCommodoreNewSession, skipCommodoreFailed, subscribeCommodore, transcriptNeeded, useCommodore } from "./commodore-state.js";
+import { CommodoreMapScreen } from "./commodore-map/map-view.js";
+import { CommodoreMapToggle } from "./commodore-map-toggle.js";
+import { MapPanel, mapPanelFacts } from "./commodore-map/map-panel.js";
+import { setCommodoreMapMode, setCommodoreMapSelection, useCommodoreMapMode, useCommodoreMapSelection } from "./commodore-map-mode.js";
+import type { MemoryBranch } from "../shared/contracts/memory.js";
+import { MEMORY_BRANCH_LABEL } from "./commodore-memory.js";
+import { buildMapGraph } from "./commodore-map/map-graph.js";
+import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, retryCommodoreNewSession, skipCommodoreFailed, subscribeCommodore, transcriptNeeded, useCommodore, useCommodoreMemory } from "./commodore-state.js";
 import { getConversationSurface, subscribeConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
 import { getConversationSubject } from "../../workspace/client/conversation/conversation-slots.js";
@@ -324,6 +331,8 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
     void loadCommodore(commodoreId);
     if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   }, [commodoreId]);
+  // 다시 들어오면 항상 채팅으로 시작한다.
+  useEffect(() => { setCommodoreMapMode(commodoreId, "chat"); }, [commodoreId]);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const run = view?.run;
   const { meta, routine } = commodoreSummary(t, view, board.objectives);
@@ -434,6 +443,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
     </footer>
   );
   const topSettings = !readOnly && view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} onOpenChange={setSettingsOpen} /> : null;
+  const mapMode = useCommodoreMapMode(commodoreId);
   return (
     <div ref={conversationRef} className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
       {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
@@ -447,7 +457,17 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
           {run.failedMessage ? <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void skipCommodoreFailed(commodoreId).catch(fail); }}>{t("commodore.drawer.skipFailed")}</button> : null}
         </div>
       ) : null}
-      {peerLedger ? <div className="objectives-commodore-ledger" data-commodore-ledger=""><CommodorePeerLedger speaker={peerLedger} language={language} onBack={() => setPeerLedger(null)} /></div> : ledgerOpen && Ledger ? (
+      {mapMode === "map" && view ? (
+        <CommodoreMapScreen
+          t={t}
+          commodoreId={commodoreId}
+          state={view.state}
+          facts={mapPanelFacts(view.run, view.defaults.model)}
+          onExit={() => setCommodoreMapMode(commodoreId, "chat")}
+        />
+      ) : null}
+      {mapMode === "chat" ? (
+        <>{peerLedger ? <div className="objectives-commodore-ledger" data-commodore-ledger=""><CommodorePeerLedger speaker={peerLedger} language={language} onBack={() => setPeerLedger(null)} /></div> : ledgerOpen && Ledger ? (
         // 그룹 대화가 지휘관 원장을 여는 그 틀·본문·바닥 줄(호스트 `ctx.chat.Ledger`)이다. 이 상자는 머리 pill 오버레이 밑자리만 진다.
         <div className="objectives-commodore-ledger" data-commodore-ledger="">
           <Ledger
@@ -490,7 +510,8 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
           />
         ) : renderComposer(null)}
       </div>
-      )}
+      )}</>
+      ) : null}
     </div>
   );
 }
@@ -514,6 +535,11 @@ function CommodoreConversationActions({ commodoreId, language }: { readonly comm
 function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab: ConversationTab; readonly commodoreId: string; readonly language: "en" | "ko" }) {
   const t = getT(language);
   const { view } = useCommodore(commodoreId);
+  const memory = useCommodoreMemory(commodoreId);
+  const mapMode = useCommodoreMapMode(commodoreId);
+  // 지도일 때 우측 레일 전체가 시안 상세 패널이다 — 탭(작업·정보)은 그대로 두고 내용만 바꾼다.
+  // 선택은 가운데 칸과 함께 읽는다.
+  const railSelectionId = useCommodoreMapSelection(commodoreId);
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
@@ -525,6 +551,26 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
     ? surface.params.objectiveId
     : objectiveOwner === commodoreId ? activeObjectiveId : null;
   if (!view) return null;
+  if (mapMode === "map") {
+    const railGraph = buildMapGraph({ state: view.state, memories: memory.entries, tone: null });
+    const railNode = railSelectionId ? railGraph.byId.get(railSelectionId) ?? null : null;
+    return (
+      <div className="objectives-commodore-body objectives-commodore-conversation-tab">
+        <MapPanel
+          t={t}
+          commodoreId={commodoreId}
+          node={railNode}
+          state={view.state}
+          entries={memory.entries}
+          graph={railGraph}
+          facts={mapPanelFacts(view.run, view.defaults.model)}
+          branchName={(branch: MemoryBranch) => t(MEMORY_BRANCH_LABEL[branch])}
+          onSelect={(id) => setCommodoreMapSelection(commodoreId, id)}
+          onClose={() => setCommodoreMapSelection(commodoreId, null)}
+        />
+      </div>
+    );
+  }
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
       {tab === "info" ? (
@@ -590,6 +636,11 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   actions: (ctx) => {
     const params = readParams(ctx.params);
     return params && !params.readOnly ? <CommodoreConversationActions commodoreId={params.commodoreId} language={ctx.language} /> : null;
+  },
+  // 머리 줄 알림 종 오른쪽의 지도 전환 — 구분선 + 신경망 단추. 같은 단추로 채팅에 돌아온다.
+  toolbarTail: (ctx) => {
+    const params = readParams(ctx.params);
+    return params ? <CommodoreMapToggle commodoreId={params.commodoreId} language={ctx.language} /> : null;
   },
   render: (ctx) => {
     const params = readParams(ctx.params);

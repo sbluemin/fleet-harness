@@ -33,8 +33,10 @@ import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoo
 import { CommodoreAvatar, useCommodoreMongleActivity } from "./commodore-avatar.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
-import { CommodoreMapDialog } from "./commodore-map/map-view.js";
+import { CommodoreMapScreen } from "./commodore-map/map-view.js";
 import { mapPanelFacts } from "./commodore-map/map-panel.js";
+import { CommodoreMapGlyph } from "./commodore-map-toggle.js";
+import { setCommodoreMapMode, useCommodoreMapMode } from "./commodore-map-mode.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
@@ -240,6 +242,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   const [failure, setFailure] = useState<string | null>(null);
   const shownFailure = failure ?? (transcriptError ? failWord(t, new Error(transcriptError)) : null);
   const mongle = commodoreMongleState(view, board.objectives);
+  const mapMode = useCommodoreMapMode(commodoreId);
   // 사령관 대화 화면(세부가 아닌 동안)의 대화 머리에 컨텍스트 칩이 선다.
   useMobileContextRailScope((!panel || section === "log") && commodoreId ? { kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } } : null);
   const pillStatus = commodorePillStatus(t, view);
@@ -250,6 +253,8 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
     bar.leave(() => { setSection(null); setMemoryTrail([]); setPanel(false); }, run);
   }, [bar]);
   useEffect(() => commodoreId ? registerCommodoreDeparture(commodoreId, leave) : undefined, [commodoreId, leave]);
+  // 다른 사령관으로 옮기면 채팅으로 시작한다.
+  useEffect(() => { if (commodoreId) setCommodoreMapMode(commodoreId, "chat"); }, [commodoreId]);
   useEffect(() => {
     if (!bar) return;
     if (!panel) {
@@ -259,7 +264,13 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         depth: 0,
         // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(Theater·삭제)는 깊이 1에 그대로 둔다.
         pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
-        ...(actions && commodoreId ? { actions: [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] } : {}),
+        // 대화 머리 줄의 지도 전환 — 데스크톱 머리 줄 꼬리 단추와 같은 동작.
+        ...(commodoreId ? {
+          actions: [
+            ...(actions ? [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] : []),
+            { id: "map", label: t(mapMode === "map" ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph />, run: () => setCommodoreMapMode(commodoreId, mapMode === "map" ? "chat" : "map") },
+          ],
+        } : {}),
       });
       return;
     }
@@ -288,7 +299,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       depth: 2 + (section === "info" ? memoryTrail.length : 0),
       onBack: () => { if (section === "info" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
     });
-  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, online, t, actions, pill.takeover]);
+  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, online, t, actions, pill.takeover, mapMode]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -334,6 +345,17 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           {section === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
+        mapMode === "map" && view && commodoreId ? (
+          <div className="objectives-cm-fill">
+            <CommodoreMapScreen
+              t={t}
+              commodoreId={commodoreId}
+              state={view.state}
+              facts={mapPanelFacts(view.run, view.defaults.model)}
+              onExit={() => setCommodoreMapMode(commodoreId, "chat")}
+            />
+          </div>
+        ) : (
         <ConversationPillContext.Provider value={pill.port}><CommodoreMobileChat
           t={t}
           language={commodoreLanguage() ?? "en"}
@@ -351,6 +373,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           onClear={clear}
           onOpenLog={openLog}
         /></ConversationPillContext.Provider>
+        )
       )}
     </div>
   );
@@ -679,17 +702,12 @@ interface TabProps {
 function CommodoreMobileDescription({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
   // 실패는 그 일을 한 섹션 곁에 남긴다.
   const [failedAt, setFailedAt] = useState<"description" | "intel">("description");
-  const [mapOpen, setMapOpen] = useState(false);
   const failIn = (part: "description" | "intel") => (error: unknown) => { setFailedAt(part); onFail(error); };
   return (
     <>
-      <div className="objectives-cm-mapentry">
-        <button type="button" data-press="r3" className="objectives-cm-pill" aria-haspopup="dialog" onClick={() => setMapOpen(true)}>{t("commodore.map.open")}</button>
-      </div>
       <CommodoreDescription key={theaterId} t={t} commodoreId={theaterId} description={view.state.description} phone online={online} onFail={failIn("description")} onClear={onClear} />
       {failure && failedAt === "description" ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
       <CommodoreMobileIntel t={t} theaterId={theaterId} view={view} online={online} failure={failedAt === "intel" ? failure : null} onFail={failIn("intel")} onClear={onClear} />
-      {mapOpen ? <CommodoreMapDialog t={t} commodoreId={theaterId} state={view.state} facts={mapPanelFacts(view.run, view.defaults.model)} onClose={() => setMapOpen(false)} /> : null}
     </>
   );
 }

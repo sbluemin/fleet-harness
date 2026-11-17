@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/i18n";
 
 import { useMongleLook } from "../../../workspace/client/avatar-events.js";
 import { commodoreAvatarKey } from "../../../workspace/shared/avatars.js";
-import { pushOverlayHistory, releaseOverlayHistory } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { useGlobalSettingsStore, getGlobalSettingsStoreState } from "../../../settings/client/global-settings-store.js";
 import type { CommodoreState } from "../../shared/contracts/types.js";
 import type { MemoryBranch } from "../../shared/contracts/memory.js";
@@ -20,6 +18,7 @@ import {
   type MapNode,
 } from "./map-graph.js";
 import { MapPanel, type MapPanelFacts } from "./map-panel.js";
+import { setCommodoreMapSelection, useCommodoreMapSelection } from "../commodore-map-mode.js";
 import { layoutMapGraph } from "./map-layout.js";
 import {
   chooseMapRendererKind,
@@ -48,15 +47,6 @@ function useOsReducedMotion(): boolean {
   return reduced;
 }
 
-const FOCUSABLE_SELECTOR = [
-  "a[href]",
-  "button:not([disabled])",
-  "input:not([disabled])",
-  "select:not([disabled])",
-  "textarea:not([disabled])",
-  '[tabindex]:not([tabindex="-1"])',
-].join(",");
-
 function nodeAria(t: T, node: MapNode, branchName: (branch: MemoryBranch) => string, intelTotal: number): string {
   switch (node.kind) {
     case "core": return t("commodore.map.node.core", { name: node.label });
@@ -79,22 +69,21 @@ function branchChipLabel(t: T, branch: MapBranchKey): string {
 }
 
 /**
- * 사령관 지도 대화상자 — 정보 칸 '지도로 보기'가 연다. 그리기·고르기·화면 좌표는
+ * 사령관 지도 화면 — 대화 영역 전체를 차지한다. 그리기·고르기·화면 좌표는
  * MapRenderer 계약에만 기대고, 종류는 환경(모바일·동작 줄이기·WebGL2)으로 고른다.
- * 렌더러 로드·mount 실패는 Canvas로 넘어간다. 닫으면 dispose로 반납한다.
+ * 렌더러 로드·mount 실패는 Canvas로 넘어간다. 닫히면 dispose로 반납한다.
  */
-export function CommodoreMapDialog({ t, commodoreId, state, facts, onClose }: {
+export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit }: {
   readonly t: T;
   readonly commodoreId: string;
   readonly state: CommodoreState;
   readonly facts: MapPanelFacts;
-  readonly onClose: () => void;
+  readonly onExit: () => void;
 }) {
   const memory = useCommodoreMemory(commodoreId);
   const look = useMongleLook(commodoreAvatarKey(commodoreId));
   const settings = useGlobalSettingsStore();
   const osReduced = useOsReducedMotion();
-  const dialogRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
@@ -105,7 +94,9 @@ export function CommodoreMapDialog({ t, commodoreId, state, facts, onClose }: {
   const [hideObjective, setHideObjective] = useState(false);
   const [hideLinks, setHideLinks] = useState(false);
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  // 선택은 가운데 칸과 레일이 함께 읽는다(사령관별 저장소).
+  const selectedId = useCommodoreMapSelection(commodoreId);
+  const setSelectedId = useCallback((next: string | null) => setCommodoreMapSelection(commodoreId, next), [commodoreId]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   // (a) D4 DOM 라벨 층은 WebGL일 때만 — Canvas·궤도는 캔버스에 직접 그린다.
@@ -361,62 +352,19 @@ export function CommodoreMapDialog({ t, commodoreId, state, facts, onClose }: {
     rendererRef.current?.setSelection(selectedId);
   }, [selectedId]);
 
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
-
-  // 모달 규율 — 셸을 inert로 잠그고, 포커스를 돌려놓고, Tab을 창 안에서 끝낸다.
-  // 휴대폰에서는 시스템 뒤로가기도 닫기로 잇는다.
-  useEffect(() => {
-    const shell = document.querySelector<HTMLElement>(".console-shell");
-    const previous = document.body.getAttribute("data-commodore-map-open");
-    document.body.setAttribute("data-commodore-map-open", "true");
-    if (shell) shell.inert = true;
-    const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    dialogRef.current?.focus();
-    const mobile = typeof document !== "undefined"
-      && document.documentElement.getAttribute("data-view-mode") === "mobile";
-    const overlayId = mobile ? pushOverlayHistory(() => onCloseRef.current()) : null;
-    return () => {
-      if (overlayId !== null) releaseOverlayHistory(overlayId);
-      if (previous === null) document.body.removeAttribute("data-commodore-map-open");
-      else document.body.setAttribute("data-commodore-map-open", previous);
-      if (shell) shell.inert = false;
-      returnFocus?.focus?.();
-    };
-  }, []);
-
+  // Esc — 고른 점을 먼저 풀고, 없으면 채팅으로 돌아간다.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        if (selectedRef.current) setSelectedId(null);
-        else onClose();
-      } else if (event.key === "Tab") {
-        const container = dialogRef.current;
-        if (!container) return;
-        const focusable = [...container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)]
-          .filter((element) => element.tabIndex >= 0 && element.style.display !== "none" && element.style.visibility !== "hidden" && !element.hasAttribute("aria-hidden"));
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (!first || !last) {
-          event.preventDefault();
-          return;
-        }
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      } else {
-        return;
-      }
-      event.stopImmediatePropagation();
+      if (event.key !== "Escape") return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      event.preventDefault();
+      if (selectedRef.current) setSelectedId(null);
+      else onExit();
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [onClose]);
+  }, [onExit]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -503,14 +451,8 @@ export function CommodoreMapDialog({ t, commodoreId, state, facts, onClose }: {
   const searching = query.trim().length > 0;
   const matchCount = hits?.size ?? 0;
 
-  return createPortal(
-    <div className="commodore-map-scrim">
-      <div ref={dialogRef} className="commodore-map-dialog" role="dialog" aria-modal="true" aria-label={t("commodore.map.title")} tabIndex={-1}>
-        <div className="commodore-map-head">
-          <h2 className="commodore-map-title">{t("commodore.map.title")}</h2>
-          <span className="commodore-map-head-spacer" />
-          <button type="button" className="commodore-map-icon-btn" aria-label={t("commodore.map.close")} onClick={onClose}>✕</button>
-        </div>
+  return (
+    <div className="commodore-map-screen" role="group" aria-label={t("commodore.map.title")}>
         <div className="commodore-map-toolbar">
           <label className="commodore-map-search">
             <span aria-hidden="true">⌕</span>
@@ -545,7 +487,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, facts, onClose }: {
             onClick={(event) => {
               if ((event.target as HTMLElement).closest(".commodore-map-node")) return;
               const id = pickAt(event.clientX, event.clientY);
-              setSelectedId((current) => (id === null || id === current ? null : id));
+              setSelectedId(id === selectedId ? null : id);
               if (id !== null) setRoving(id);
             }}
             onDoubleClick={() => { rendererRef.current?.fit(); trackMotion(600); }}
@@ -594,7 +536,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, facts, onClose }: {
                       tabIndex={rovingId === id ? 0 : -1}
                       onClick={(event) => {
                         event.stopPropagation();
-                        setSelectedId((current) => (current === id ? null : id));
+                        setSelectedId(selectedId === id ? null : id);
                         setRoving(id);
                       }}
                       onFocus={() => { setRoving(id); rendererRef.current?.setHover(id); }}
@@ -699,8 +641,6 @@ export function CommodoreMapDialog({ t, commodoreId, state, facts, onClose }: {
           />
         </div>
         {searching && matchCount === 0 ? <div className="commodore-map-state">{t("commodore.map.noMatch")}</div> : null}
-      </div>
-    </div>,
-    document.body,
+    </div>
   );
 }

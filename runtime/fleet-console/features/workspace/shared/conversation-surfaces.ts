@@ -71,6 +71,11 @@ export interface ConversationSurfaceDescriptor {
    * 진다 — 그 줄은 Desktop 에서 창을 끄는 자리라, 본문이 맨 위 줄에 단추를 띄우면 pill 밖에서는 눌리지 않는다. 없거나 null 이면 묶음이 서지 않는다.
    */
   readonly actions?: (ctx: ConversationSurfaceContext) => ReactNode;
+  /**
+   * 머리 줄 도구모음의 꼬리 — 알림 종 바로 오른쪽에 붙는다. Objective 대화의 「⋯」 넘침 측정이 걷는
+   * 도구 목록 밖에 서므로 끝까지 남는다. 없거나 null 이면 비운다.
+   */
+  readonly toolbarTail?: (ctx: ConversationSurfaceContext) => ReactNode;
   readonly tabs?: readonly ConversationSurfaceTab[];
   /** 열 때 오른쪽 패널이 닫혀 있으면 연다 — 이 대화에서 마지막으로 선 탭이 있으면 그 탭을, 없으면 이 탭을 연다. */
   readonly defaultTab?: string;

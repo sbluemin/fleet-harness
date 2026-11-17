@@ -133,8 +133,6 @@
 .objectives-cm-secnote.is-dock { padding: 0 8px; }
 .objectives-cm-secnote.is-done { color: var(--m-idle); }
 .objectives-cm-crow { display: flex; align-items: center; gap: 8px; }
-/* 정보 화면의 지도 진입 줄 — 설명 위에 한 줄로 선다. */
-.objectives-cm-mapentry { display: flex; margin: 2px 0 10px; }
 .objectives-cm .is-grow { flex: 1; }
 .objectives-cm .objectives-cm-pill { position: relative; display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 16px; border-radius: 20px; background: var(--m-chip); color: var(--m-text); font-size: var(--m-fs-secondary); font-weight: var(--weight-medium); text-decoration: none; }
 .objectives-cm .objectives-cm-pill.is-inverse { background: var(--m-inverse); color: var(--m-on-inverse); font-weight: var(--weight-bold); }

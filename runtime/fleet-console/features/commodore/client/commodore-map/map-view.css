@@ -1,40 +1,11 @@
-/* 사령관 지도 — 시안(안 D) 겉모습을 따른다. 색은 토큰만 쓴다. */
-.commodore-map-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 80;
+/* 사령관 지도 — 시안(안 D) 겉모습을 따른다. 색은 토큰만 쓴다. 대화 영역 전체를 차지한다. */
+.commodore-map-screen {
+  position: relative;
   display: grid;
-  place-items: center;
-  padding: 20px;
-  background: var(--dialog-scrim);
-}
-
-.commodore-map-dialog {
-  width: min(1180px, 100%);
-  height: min(880px, calc(100vh - 64px));
-  height: min(880px, calc(100dvh - 64px));
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  border: 0;
-  border-radius: var(--dialog-radius);
-  background: var(--dialog-face);
-  box-shadow: var(--dialog-surface-shadow);
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
   color: var(--text-primary);
-  overflow: hidden;
-  outline: none;
-}
-
-.commodore-map-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 12px 6px 20px;
-}
-
-.commodore-map-title {
-  margin: 0;
-  font-size: var(--t-lg);
-  font-weight: var(--weight-bold);
 }
 
 .commodore-map-head-spacer {

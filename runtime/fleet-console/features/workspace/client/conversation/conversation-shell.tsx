@@ -1415,8 +1415,8 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   readonly language: "en" | "ko";
   readonly theme: ConversationSurfaceContext["theme"];
   readonly onToggleDetails: () => void;
-  /** 머리 줄 도구모음. 지구본(lead)을 넘기면 맨 위 줄 오른쪽 끝에 서고, trail 은 칩 옆 묶음의 「⋯」 뒤에 선다. */
-  readonly tools: (lead?: ReactNode, trail?: ReactNode) => ReactNode;
+  /** 머리 줄 도구모음. 지구본(lead)을 넘기면 맨 위 줄 오른쪽 끝에 서고, trail 은 칩 옆 묶음의 「⋯」 뒤에 서며, tail 은 알림 종 바로 오른쪽에 선다. */
+  readonly tools: (lead?: ReactNode, trail?: ReactNode, tail?: ReactNode) => ReactNode;
 }) {
   const t = useT();
   useConversationSurfaceHead(descriptor);
@@ -1509,6 +1509,8 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   // 플릿 브라우저의 직접 여는 문은 대화 머리가 아니라 왼쪽 사이드바의 찾기 왼쪽 버튼이다(시안 3 1단계).
   const actions = descriptor.actions?.(context) ?? null;
   const hasActions = actions !== null && actions !== false;
+  // surface 대화의 머리 줄 꼬리 — descriptor 가 선언한 것만 그린다(전역 슬롯·Objective 셸과 무관).
+  const toolbarTail = descriptor.toolbarTail?.(context) ?? null;
   // 대화의 주인에게 몽글 아바타가 있으면 pill 도 그 아바타다(Objective 대화의 pill 과 같은 20px) — 오른쪽 패널 머리의 64px 아바타와 같은 얼굴.
   const avatar = descriptor.avatar?.(context) ?? null;
   const pill = useConversationPillHost(descriptor.pillOwner?.(context) ?? { kind: "surface", id: descriptor.id });
@@ -1524,7 +1526,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
             <span className="conversation-pill-title">{title}</span>
             {subtitle ? <span className="conversation-pill-sub">· {subtitle}</span> : null}
         </ConversationPill>
-        {tools(null, <span ref={setRailSlot} className="conversation-rail-slot" />)}
+        {tools(null, <span ref={setRailSlot} className="conversation-rail-slot" />, toolbarTail)}
       </div>
       <ContextRailHost scope={railScope} slot={railSlot}>
         <div className="conversation-body is-surface">
