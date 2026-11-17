@@ -1,26 +1,29 @@
 import type { GlanceKit } from "@fleet-console/ui/glance-kit";
 
 import { MAP_BRANCH_ORDER, type MapBranchKey, type MapGraph, type MapNode } from "../map-graph.js";
-import { mapNodeSize } from "../map-layout.js";
 import type { MapPalette } from "../map-palette.js";
 import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
 import {
   DEFAULT_MAP_INSETS,
-  MAP_LABEL_GAP,
   MAP_LABEL_PRIORITY,
-  MAP_LABEL_SIZE,
   attachMapCanvas,
   clampMapInsets,
   drawMapLabels,
+  mapEdgeAlpha,
+  mapEdgeRgb,
+  mapEdgeRole,
   mapGlanceKit,
-  mapLabelReserve,
+  mapNodeDegree,
+  mapNodeRadiusPx,
   mapNodeRgb,
   mapRgbPalette,
+  readMapBackdrop,
   readMapFont,
   rgbCss,
   type MapCanvasSurface,
   type MapFitInsets,
   type MapLabelCandidate,
+  type MapRgb,
   type MapRgbPalette,
 } from "../fallback/map-fallback-common.js";
 
@@ -35,24 +38,25 @@ import {
  * 기억 200개에서 SVG 요소 수백 개의 레이아웃·래스터 비용을 피하며, 핀치 변환을
  * 우리가 직접 소유해 라벨 컬링까지 한 번에 처리할 수 있다.
  *
- * 크기 규칙(D13): 점 크기는 보이는 노드 수와 잎 고리 둘레로 줄인다. 라벨 규칙(D11)은
- * 핵·허브는 항상, 주제는 충돌 회피, 기억·정보·목표는 2.2배 넘게 확대했거나 호버·선택일 때만.
+ * 크기·선·라벨은 시안 비율을 휴대폰 크기로 줄여 쓴다(m9-mockup-gap G3·G4·G8):
+ * 점은 `ORBIT_RADIUS_SCALE`만큼 작게, 라벨은 pill 없이 바탕색 그림자 + 점 오른쪽.
  */
 
 /** 작은 갈래도 받는 최소 구역 폭(20°). */
 const MIN_SECTOR = Math.PI / 9;
-const HUB_RADIUS = 1;
-const INTEL_RADIUS = 1.85;
-const TOPIC_RADIUS = 1.7;
-const LEAF_RADII = [2.4, 2.72, 3.02] as const;
-const SOURCE_RADIUS = 3.25;
-const OBJECTIVE_RADIUS = 3.95;
+/** 허브 고리는 라벨이 서로 겹치지 않게 조금 넓힌다 — 바깥 고리 대비 비율은 시안과 같다. */
+const HUB_RADIUS = 1.8;
+const INTEL_RADIUS = 2.35;
+const TOPIC_RADIUS = 2.2;
+const LEAF_RADII = [2.7, 2.95, 3.2] as const;
+const SOURCE_RADIUS = 3.6;
+const OBJECTIVE_RADIUS = 4.1;
 
-/** 노드 size 1(핵)이 15 CSS px — 고르기 반경도 이 보이는 크기 × 배율이다. */
-const NODE_PX = 15;
+/** 시안 radius를 휴대폰 무대에 맞게 줄인 배율 — 고르기 반경도 이 보이는 크기다. */
+const ORBIT_RADIUS_SCALE = 0.7;
 const LABEL_MAX = 132;
-/** 이 배율을 넘겨 확대하면 잎(기억·정보·목표) 라벨도 단다. */
-const LEAF_LABEL_ZOOM = 2.2;
+/** 이 배율을 넘겨 확대하면 주제 라벨도 단다(자문 답 I). */
+const TOPIC_LABEL_ZOOM = 2.2;
 /** 노드가 이보다 많으면 점을 줄이기 시작한다. */
 const DENSITY_FULL = 96;
 const DENSITY_MIN = 0.5;
@@ -63,6 +67,8 @@ const MIN_NODE_PX = 3;
 const MAX_NODE_PX = 22;
 /** 손가락 고르기 — 점이 작아도 이 반경 안이면 맞는다. */
 const MIN_HIT_PX = 5;
+/** 초점 집합이 이보다 크면 라벨을 달지 않는다(시안 placeLabels). */
+const LABEL_FOCUS_LIMIT = 60;
 
 interface OrbitSector {
   start: number;
@@ -90,6 +96,7 @@ interface OrbitState {
   surface: MapCanvasSurface | null;
   model: PositionedMapModel | null;
   rgb: MapRgbPalette | null;
+  backdrop: MapRgb;
   kit: GlanceKit | null;
   font: string;
   points: Map<string, { x: number; y: number }>;
@@ -149,7 +156,7 @@ function placeGraph(graph: MapGraph): Map<string, { x: number; y: number }> {
   const intelSector = sectorOf("intel");
   const intelNodes = graph.nodes.filter((node) => node.kind === "intel" || node.kind === "intel-overflow");
   intelNodes.forEach((node, index) => {
-    const radius = node.kind === "intel-overflow" ? 1.28 : INTEL_RADIUS + (index % 2) * 0.26;
+    const radius = node.kind === "intel-overflow" ? 1.6 : INTEL_RADIUS + (index % 2) * 0.26;
     out.set(node.id, polar(angleAt(intelSector, index, intelNodes.length), radius));
   });
   const sources = graph.nodes.filter((node) => node.kind === "source");
@@ -213,6 +220,7 @@ export function createMapRenderer(): MapRenderer {
     surface: null,
     model: null,
     rgb: null,
+    backdrop: readMapBackdrop(),
     kit: null,
     font: readMapFont(),
     points: new Map(),
@@ -251,11 +259,12 @@ export function createMapRenderer(): MapRenderer {
     return circumference / leaves;
   };
 
-  /** 보이는 크기(노드 size × 배율) — 고르기 반경도 이 값을 쓴다. */
-  const nodeRadius = (node: MapNode, radii: OrbitRadii): number => {
-    // `+N` 묶음은 정보 점보다 크게(수정 8-1).
-    const boost = node.kind === "intel-overflow" ? 1.6 : 1;
-    const base = mapNodeSize(node.kind) * NODE_PX * boost * radii.density * zoom();
+  /** 보이는 크기 — 시안 radius × 휴대폰 배율 × 밀도 × 확대. 고르기 반경도 이 값이다. */
+  const nodeRadius = (node: MapNode, radii: OrbitRadii, atZoom = zoom()): number => {
+    const model = state.model;
+    const degree = model ? mapNodeDegree(model.graph, node.id) : 0;
+    const enlarged = node.id === state.hover || node.id === state.selection ? 1.4 : 1;
+    const base = mapNodeRadiusPx(node, degree) * ORBIT_RADIUS_SCALE * radii.density * atZoom * enlarged;
     const leaf = node.kind === "intel" || node.kind === "memory";
     const capped = leaf ? Math.min(base, radii.spacing * LEAF_SPACING_RATIO) : base;
     const floor = leaf ? MIN_LEAF_PX : node.kind === "core" ? MIN_NODE_PX + 2 : MIN_NODE_PX;
@@ -277,8 +286,27 @@ export function createMapRenderer(): MapRenderer {
     return model.graph.nodes.filter((node) => isVisible(node.id) && state.points.has(node.id));
   };
 
-  /** 라벨 후보 — 목표·기억·정보는 충분히 확대했거나 호버·선택일 때만. */
-  const labelPriority = (node: MapNode): number | null => {
+  /**
+   * 검색 중인가 — 칩 필터는 갈래를 통째로 가리지만, 검색은 한 갈래의 일부만 남긴다.
+   * 계약에 검색 집합이 없어 이 차이로 알아본다(선 ×2에만 쓴다).
+   */
+  const searchActive = (): boolean => {
+    const model = state.model;
+    if (!model || state.filter === null) return false;
+    const branches = new Map<MapBranchKey, { seen: boolean; hidden: boolean }>();
+    for (const node of model.graph.nodes) {
+      if (node.branch === null) continue;
+      const entry = branches.get(node.branch) ?? { seen: false, hidden: false };
+      if (isVisible(node.id)) entry.seen = true;
+      else entry.hidden = true;
+      branches.set(node.branch, entry);
+    }
+    for (const entry of branches.values()) if (entry.seen && entry.hidden) return true;
+    return false;
+  };
+
+  /** 시안 라벨 집합 — 기본(핵·설명·허브·+N·출처), 초점(주제 제외), 확대 시 주제(자문 답 I). */
+  const labelPriority = (node: MapNode, focusLabels: ReadonlySet<string> | null): number | null => {
     switch (node.kind) {
       case "core":
         return MAP_LABEL_PRIORITY.core;
@@ -286,22 +314,22 @@ export function createMapRenderer(): MapRenderer {
       case "intel-hub":
       case "branch":
         return MAP_LABEL_PRIORITY.hub;
-      case "topic":
-        return MAP_LABEL_PRIORITY.topic;
+      case "intel-overflow":
+        return MAP_LABEL_PRIORITY.hub;
       case "source":
         return MAP_LABEL_PRIORITY.secondary;
-      case "intel-overflow":
-        // `+N`은 늘 보이는 라벨 — 허브와 같은 급(수정 8-1).
-        return MAP_LABEL_PRIORITY.hub;
+      case "topic":
+        if (node.id === state.selection || node.id === state.hover) return MAP_LABEL_PRIORITY.forced;
+        return zoom() >= TOPIC_LABEL_ZOOM ? MAP_LABEL_PRIORITY.zoomTopic : null;
       case "objective":
       case "memory":
-      case "intel": {
-        if (node.id === state.hover || node.id === state.selection) return MAP_LABEL_PRIORITY.forced;
-        return zoom() >= LEAF_LABEL_ZOOM ? MAP_LABEL_PRIORITY.leaf : null;
-      }
+      case "intel":
+        if (node.id === state.selection || node.id === state.hover) return MAP_LABEL_PRIORITY.forced;
+        return focusLabels?.has(node.id) ? MAP_LABEL_PRIORITY.focus : null;
     }
   };
 
+  /** 맞춤 보기 — 시안 `extent()*1.04`처럼 보이는 점 반경 최대의 1.04배를 여백으로 쓴다. */
   const fit = (): void => {
     const surface = state.surface;
     const model = state.model;
@@ -309,12 +337,13 @@ export function createMapRenderer(): MapRenderer {
     const { width: w, height: h } = surface;
     const nodes = shownNodes();
     const insets = clampMapInsets(state.insets, w, h);
-
-    const pad = 10;
-    const left = insets.left + pad;
-    const right = w - insets.right - pad;
-    const top = insets.top + pad;
-    const bottom = h - insets.bottom - pad - mapLabelReserve();
+    const radii = { density: densityFactor(), spacing: Infinity };
+    const maxRadius = nodes.reduce((max, node) => Math.max(max, nodeRadius(node, radii, 1)), 1);
+    const margin = maxRadius * 1.04;
+    const left = insets.left + margin;
+    const right = w - insets.right - margin;
+    const top = insets.top + margin;
+    const bottom = h - insets.bottom - margin;
 
     let minX = Infinity;
     let maxX = -Infinity;
@@ -372,6 +401,7 @@ export function createMapRenderer(): MapRenderer {
     }
     const core = points.get("core");
     const focus = focusSet();
+    const search = searchActive();
     const radii = orbitRadii();
 
     // 궤도 안내 고리 — 방사형 읽기를 돕는다. 중심은 핵.
@@ -381,18 +411,22 @@ export function createMapRenderer(): MapRenderer {
       }
     }
 
+    // 연결선 — 시안 알파(trunk .55/branch .4/twig .26/intel .26/link .6/목표 .11).
+    // 초점과 이어진 선은 a×2.6+0.25, 나머지 ×0.12. 검색 중엔 남은 선 ×2.
     for (const edge of graph.edges) {
       if (!isVisible(edge.from) || !isVisible(edge.to)) continue;
       const a = points.get(edge.from);
       const b = points.get(edge.to);
       if (!a || !b) continue;
-      const highlighted = focus !== null && (focus.has(edge.from) || focus.has(edge.to));
-      const dim = focus !== null && !highlighted;
-      const to = graph.byId.get(edge.to);
-      const color = to ? mapNodeRgb(rgb, to) : rgb.inkDim;
-      const alpha = dim ? 0.05 : highlighted ? 0.85 : edge.kind === "tree" ? 0.34 : edge.kind === "link" ? 0.4 : edge.kind === "objective" ? 0.17 : 0.16;
-      // 같은 목표 연결은 구조선보다 확실히 약하게(수정 8-8).
-      const width = highlighted ? 1.9 : edge.kind === "tree" ? 1.5 : edge.kind === "objective" ? 0.8 : 1;
+      const role = mapEdgeRole(graph, edge);
+      const base = mapEdgeAlpha(role);
+      const touches = focus !== null && (focus.has(edge.from) || focus.has(edge.to));
+      const alpha = search
+        ? Math.min(1, base * 2)
+        : focus !== null
+          ? touches ? Math.min(1, base * 2.6 + 0.25) : base * 0.12
+          : base;
+      const color = mapEdgeRgb(rgb, graph, edge);
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
       const cx = core ? mx + (core.x - mx) * 0.1 : mx;
@@ -400,7 +434,7 @@ export function createMapRenderer(): MapRenderer {
       ctx.save();
       ctx.globalAlpha = alpha;
       ctx.strokeStyle = rgbCss(color);
-      ctx.lineWidth = width;
+      ctx.lineWidth = touches ? 1.6 : role === "trunk" ? 1.2 : 1;
       if (edge.kind === "link" || edge.kind === "objective" || edge.kind === "source") ctx.setLineDash([2, 3]);
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
@@ -409,6 +443,7 @@ export function createMapRenderer(): MapRenderer {
       ctx.restore();
     }
 
+    // 노드 — 시안 알파(0.9 · 초점 밖 0.13 · stale ×0.5 · 주제 ×0.6), 호버·선택은 ×1.4.
     for (const node of graph.nodes) {
       if (!isVisible(node.id)) continue;
       const point = points.get(node.id);
@@ -416,7 +451,7 @@ export function createMapRenderer(): MapRenderer {
       const r = nodeRadius(node, radii);
       const dim = focus !== null && !focus.has(node.id);
       const color = mapNodeRgb(rgb, node);
-      const alpha = dim ? 0.18 : node.stale ? 0.55 : 1;
+      const alpha = 0.9 * (dim ? 0.13 : 1) * (node.stale ? 0.5 : 1) * (node.kind === "topic" ? 0.6 : 1);
       const glowColor = node.fresh && !dim ? rgb.fresh : color;
       kit.glow(point.x, point.y, Math.max(0.01, r * 3), rgbCss(glowColor), dim ? 0.08 : node.kind === "core" ? 0.95 : node.fresh ? 0.7 : 0.4);
 
@@ -429,40 +464,47 @@ export function createMapRenderer(): MapRenderer {
       } else {
         kit.dot(point.x, point.y, Math.max(0.01, node.kind === "objective" ? r * 0.55 : r), rgbCss(color), alpha);
       }
-      if (node.kind === "objective") kit.ring(point.x, point.y, r, r, rgbCss(color, 0.8), dim ? 0.15 : 0.8, 1.2);
+      if (node.kind === "objective") kit.ring(point.x, point.y, r, r, rgbCss(color, 0.8), dim ? 0.13 : 0.8, 1.2);
       if (node.kind === "intel-overflow") {
         // 정보 점과 구별되는 큰 점 + 고리(수정 8-1).
-        kit.ring(point.x, point.y, r + 3, r + 3, rgbCss(color, 0.9), dim ? 0.15 : 0.85, 1.8);
+        kit.ring(point.x, point.y, r + 3, r + 3, rgbCss(color, 0.9), dim ? 0.13 : 0.85, 1.8);
       }
-      if (node.stale && !dim) kit.ring(point.x, point.y, r + 3.5, r + 3.5, rgbCss(rgb.stale, 0.85), 1, 1.2, [2.5, 2]);
+      if (node.stale && !dim) kit.ring(point.x, point.y, r + 3.5, r + 3.5, rgbCss(rgb.stale, 0.85), 0.5, 1.2, [2.5, 2]);
       if (node.id === state.selection || node.id === state.hover) {
         kit.ring(point.x, point.y, r + 5, r + 5, rgbCss(node.id === state.selection ? rgb.ink : rgb.inkDim), 1, node.id === state.selection ? 2 : 1.2);
       }
     }
 
-    // 라벨 — 우선순위대로 자리를 잡고 겹치면 낮은 쪽을 버린다(D11·D13).
-    // 설명 허브는 핵 반대 바깥쪽에 둔다 — 중앙에서 핵 라벨과 겹치던 것을 떼어 놓는다(수정 4 D2).
+    // 라벨 — 기본은 핵·설명·허브·+N·출처. 초점(≤60)은 그 점들(주제 제외),
+    // 주제는 2.2배 넘게 확대했을 때만 단다(자문 답 I). 충돌하면 낮은 쪽을 버린다.
+    const shown = shownNodes();
+    const focusLabels = focus !== null && focus.size <= LABEL_FOCUS_LIMIT
+      ? focus
+      : search && shown.length <= LABEL_FOCUS_LIMIT
+        ? new Set(shown.map((node) => node.id))
+        : null;
     const candidates: MapLabelCandidate[] = [];
-    const corePoint = points.get("core");
     for (const node of graph.nodes) {
       if (!isVisible(node.id) || !node.label) continue;
-      const priority = labelPriority(node);
+      const priority = labelPriority(node, focusLabels);
       if (priority === null) continue;
       const point = points.get(node.id);
       if (!point) continue;
       if (point.x < -40 || point.x > w + 40 || point.y < -20 || point.y > h + 20) continue;
-      const dim = focus !== null && !focus.has(node.id);
-      const outward = node.kind === "description" && corePoint ? Math.sign(point.y - corePoint.y) || 1 : 1;
+      const strong = node.kind === "core" || node.kind === "description" || node.kind === "branch" || node.kind === "intel-hub";
+      const outside = focus !== null && !focus.has(node.id);
       candidates.push({
         text: node.label,
         x: point.x,
-        y: point.y + outward * (nodeRadius(node, radii) + MAP_LABEL_GAP + MAP_LABEL_SIZE * 0.6),
+        y: point.y,
+        radius: nodeRadius(node, radii),
         priority,
-        color: rgbCss(dim ? rgb.inkDim : rgb.ink),
-        alpha: dim ? 0.3 : 0.92,
+        color: rgbCss(outside ? rgb.inkDim : strong ? rgb.ink : rgb.inkDim),
+        alpha: outside ? 0.35 : 1,
+        strong,
       });
     }
-    drawMapLabels(ctx, kit, state.font, candidates, w, h, Math.min(LABEL_MAX, Math.max(56, w * 0.42)));
+    drawMapLabels(ctx, state.font, state.backdrop, candidates, w, h, Math.min(LABEL_MAX, Math.max(56, w * 0.42)));
     for (const listener of state.viewListeners) {
       try { listener(); } catch { /* DOM 동기 실패는 다음 그림으로 미룬다 */ }
     }
@@ -580,6 +622,7 @@ export function createMapRenderer(): MapRenderer {
   const readPalette = (palette: MapPalette): void => {
     state.rgb = mapRgbPalette(palette);
     state.font = readMapFont();
+    state.backdrop = readMapBackdrop();
     state.kit = state.surface ? mapGlanceKit(state.surface.ctx, palette, state.font) : null;
   };
 
