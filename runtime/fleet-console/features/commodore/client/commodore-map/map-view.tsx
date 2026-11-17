@@ -27,6 +27,7 @@ import {
   detectMapRendererEnv,
   mountMapRenderer,
   type MapRenderer,
+  type MapRendererKind,
 } from "./map-renderers.js";
 import { readMapPalette } from "./map-palette.js";
 import "./map-view.css";
@@ -109,6 +110,8 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
+  // (a) D4 DOM 라벨 층은 WebGL일 때만 — Canvas·궤도는 캔버스에 직접 그린다.
+  const [rendererKind, setRendererKind] = useState<MapRendererKind | null>(null);
   const [paletteTick, setPaletteTick] = useState(0);
   const trackRaf = useRef(0);
   const trackTail = useRef(0);
@@ -245,6 +248,17 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     return () => observer.disconnect();
   }, []);
 
+  // (b) setFitInsets는 렌더러가 맞춤 보기를 다시 돌리므로 마운트·크기 변경 때만 부른다.
+  // 선택·검색·테마로는 바꾸지 않는다 — 확대·회전해 둔 보기가 튀어 돌아가지 않게.
+  const applyInsets = useCallback((): void => {
+    rendererRef.current?.setFitInsets?.({
+      top: 96,
+      right: selectedRef.current ? 316 : 16,
+      bottom: 24,
+      left: 24,
+    });
+  }, []);
+
   // 생성·반납 — 실패하면 Canvas로 넘어가고, 그것마저 실패하면 안내만 둔다.
   useEffect(() => {
     const container = containerRef.current;
@@ -255,16 +269,17 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     const want = chooseMapRendererKind(detectMapRendererEnv({ reducedMotion: reduced }));
     setLoadError(null);
     mountMapRenderer(want, container, modelRef.current, paletteRef.current)
-      .then(({ renderer }) => {
+      .then(({ renderer, kind }) => {
         if (cancelled) {
           try { renderer.dispose(); } catch { /* 버려진 마운트는 조용히 걷는다 */ }
           return;
         }
         owned = renderer;
         rendererRef.current = renderer;
+        setRendererKind(kind);
         renderer.setFilter(visibleRef.current);
         renderer.setSelection(selectedRef.current);
-        renderer.setFitInsets?.({ top: 96, right: selectedRef.current ? 316 : 16, bottom: 24, left: 24 });
+        applyInsets();
         renderer.fit();
         syncPositions();
       })
@@ -274,6 +289,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     return () => {
       cancelled = true;
       stopTracking();
+      setRendererKind(null);
       const ownedNow = owned ?? rendererRef.current;
       rendererRef.current = null;
       owned = null;
@@ -303,7 +319,6 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
 
   useEffect(() => {
     rendererRef.current?.setSelection(selectedId);
-    rendererRef.current?.setFitInsets?.({ top: 96, right: selectedId ? 316 : 16, bottom: 24, left: 24 });
   }, [selectedId]);
 
   const onCloseRef = useRef(onClose);
@@ -366,10 +381,13 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
   useEffect(() => {
     const container = containerRef.current;
     if (!container || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => syncPositions());
+    const observer = new ResizeObserver(() => {
+      applyInsets();
+      syncPositions();
+    });
     observer.observe(container);
     return () => observer.disconnect();
-  }, [syncPositions]);
+  }, [syncPositions, applyInsets]);
 
   const toggleBranch = (branch: MapBranchKey): void => {
     setHidden((current) => {
@@ -557,7 +575,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
                 })}
               </div>
               <div className="commodore-map-tags" aria-hidden="true">
-                {[...visible].map((id) => {
+                {rendererKind === "webgl" ? [...visible].map((id) => {
                   const node = graph.byId.get(id);
                   if (!node) return null;
                   if (node.kind !== "core" && node.kind !== "description" && node.kind !== "intel-hub" && node.kind !== "branch" && node.kind !== "topic") return null;
@@ -574,7 +592,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
                       {node.label}
                     </div>
                   );
-                })}
+                }) : null}
               </div>
               </>
             )}
