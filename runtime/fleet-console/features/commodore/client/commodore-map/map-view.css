@@ -491,7 +491,7 @@
 .commodore-map-dot[data-branch="theater"] { background: var(--map-branch-theater); }
 .commodore-map-dot[data-branch="lessons"] { background: var(--map-branch-lessons); }
 .commodore-map-dot[data-branch="crew"] { background: var(--map-branch-crew); }
-.commodore-map-dot[data-branch=""] { background: var(--text-tertiary); }
+.commodore-map-dot[data-branch=""]:not(.is-ring, .is-sq) { background: var(--text-tertiary); }
 
 .commodore-map-soma {
   display: flex;
