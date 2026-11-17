@@ -42,10 +42,19 @@ import {
 const LABEL_MAX = 180;
 /** 초점 집합이 이보다 크면 라벨을 달지 않는다(시안 placeLabels). */
 const LABEL_FOCUS_LIMIT = 60;
+/** 배치 단위가 작아(≈2) 화면 px 배율이 수백이 된다 — 빈 그래프에서만 걸리는 상한. */
+const MAX_SCALE = 4000;
+/**
+ * 무대 비율 채움 — map-webgl과 같은 규칙(0a3295c30):
+ * `want = (availW/availH) / (halfW/halfH)`, 한 축만 펼치고 상한은 2배, 줄이지 않는다.
+ * 중심은 그대로 두고 좌표만 중심 기준으로 늘리므로 project·pick도 같은 변환을 탄다.
+ */
+const MAX_AXIS_STRETCH = 2;
 
 interface CanvasView {
-  /** 화면 px / 배치 단위. */
-  scale: number;
+  /** 화면 px / 배치 단위 — 축마다 다르다(무대 비율을 채운다). */
+  sx: number;
+  sy: number;
   /** 배치 원점의 화면 px. */
   ox: number;
   oy: number;
@@ -78,7 +87,7 @@ export function createMapRenderer(): MapRenderer {
     selection: null,
     hover: null,
     filter: null,
-    view: { scale: 1, ox: 0, oy: 0 },
+    view: { sx: 1, sy: 1, ox: 0, oy: 0 },
     insets: DEFAULT_MAP_INSETS,
     viewListeners: new Set(),
   };
@@ -99,7 +108,7 @@ export function createMapRenderer(): MapRenderer {
   const screenOf = (node: MapNode): { x: number; y: number } | null => {
     const point = state.model?.layout.positions.get(node.id);
     if (!point) return null;
-    return { x: state.view.ox + point.x * state.view.scale, y: state.view.oy + point.y * state.view.scale };
+    return { x: state.view.ox + point.x * state.view.sx, y: state.view.oy + point.y * state.view.sy };
   };
 
   const shownNodes = (): MapNode[] => {
@@ -127,7 +136,10 @@ export function createMapRenderer(): MapRenderer {
     return false;
   };
 
-  /** 맞춤 보기 — 시안 `extent()*1.04`처럼 보이는 점 반경 최대의 1.04배를 여백으로 쓴다. */
+  /**
+   * 맞춤 보기 — 여백(clamp 20%) 안쪽에서 무대 비율대로 두 축을 채운다.
+   * map-webgl과 같은 규칙(0a3295c30): want = 무대비 ÷ 지도비, 한 축만 2배까지 펼친다.
+   */
   const fit = (): void => {
     const surface = state.surface;
     const model = state.model;
@@ -135,12 +147,10 @@ export function createMapRenderer(): MapRenderer {
     const { width: w, height: h } = surface;
     const nodes = shownNodes();
     const insets = clampMapInsets(state.insets, w, h);
-    const maxRadius = nodes.reduce((max, node) => Math.max(max, baseRadius(node)), 1);
-    const margin = maxRadius * 1.04;
-    const left = insets.left + margin;
-    const right = w - insets.right - margin;
-    const top = insets.top + margin;
-    const bottom = h - insets.bottom - margin;
+    const left = insets.left;
+    const right = w - insets.right;
+    const top = insets.top;
+    const bottom = h - insets.bottom;
 
     let minX = Infinity;
     let maxX = -Infinity;
@@ -154,19 +164,58 @@ export function createMapRenderer(): MapRenderer {
       if (point.y > maxY) maxY = point.y;
     }
     if (!Number.isFinite(minX)) {
-      state.view = { scale: 1, ox: w / 2, oy: h / 2 };
+      state.view = { sx: 1, sy: 1, ox: w / 2, oy: h / 2 };
       return;
     }
 
-    const worldW = Math.max(1e-3, maxX - minX);
-    const worldH = Math.max(1e-3, maxY - minY);
+    // ② 경계 상자 중심에서 가장 먼 점의 |Δ| + 그 점의 반경.
+    // Canvas의 반경은 화면 px이라 배치 단위(월드)로 바꿔 더한다 — 균일 배율로 두 번 접는다.
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    let farX = 0;
+    let farY = 0;
+    let radiusX = 0;
+    let radiusY = 0;
+    for (const node of nodes) {
+      const point = model.layout.positions.get(node.id)!;
+      const radius = baseRadius(node);
+      const dx = Math.abs(point.x - cx);
+      const dy = Math.abs(point.y - cy);
+      if (dx > farX) { farX = dx; radiusX = radius; }
+      if (dy > farY) { farY = dy; radiusY = radius; }
+    }
+    farX = Math.max(farX, 1e-3);
+    farY = Math.max(farY, 1e-3);
+
     const availW = Math.max(1, right - left);
     const availH = Math.max(1, bottom - top);
-    const scale = Math.min(400, Math.max(8, Math.min(availW / worldW, availH / worldH)));
+    let base = Math.min(availW / (2 * farX), availH / (2 * farY));
+    let halfW = farX + radiusX / base;
+    let halfH = farY + radiusY / base;
+    for (let pass = 0; pass < 2; pass += 1) {
+      base = Math.min(availW / (2 * halfW), availH / (2 * halfH));
+      halfW = farX + radiusX / base;
+      halfH = farY + radiusY / base;
+    }
+    halfW = Math.max(halfW, 1e-3);
+    halfH = Math.max(halfH, 1e-3);
+
+    // ③④ 무대가 지도보다 넓은 쪽 축 하나만 2배 안에서 펼친다(줄이지 않음).
+    const want = (availW / availH) / (halfW / halfH);
+    let stretchX = 1;
+    let stretchY = 1;
+    if (want > 1) stretchX = Math.min(want, MAX_AXIS_STRETCH);
+    else if (want < 1) stretchY = Math.min(1 / want, MAX_AXIS_STRETCH);
+
+    // ① 균일 배율은 여백 안쪽에 반폭·반높이를 맞추는 값 — 펼침은 그 위에 곱한다.
+    const sx = Math.min(MAX_SCALE, Math.max(8, base * stretchX));
+    const sy = Math.min(MAX_SCALE, Math.max(8, base * stretchY));
+    // ⑤ 중심은 그대로 — 화면 중심에 지도 중심을 두고 계수만 축별로 곱한다.
     state.view = {
-      scale,
-      ox: left + (availW - worldW * scale) / 2 - minX * scale,
-      oy: top + (availH - worldH * scale) / 2 - minY * scale,
+      sx,
+      sy,
+      ox: left + availW / 2 - cx * sx,
+      oy: top + availH / 2 - cy * sy,
     };
   };
 
