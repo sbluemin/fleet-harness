@@ -253,7 +253,9 @@ export function createMapRenderer(): MapRenderer {
 
   /** 보이는 크기(노드 size × 배율) — 고르기 반경도 이 값을 쓴다. */
   const nodeRadius = (node: MapNode, radii: OrbitRadii): number => {
-    const base = mapNodeSize(node.kind) * NODE_PX * radii.density * zoom();
+    // `+N` 묶음은 정보 점보다 크게(수정 8-1).
+    const boost = node.kind === "intel-overflow" ? 1.6 : 1;
+    const base = mapNodeSize(node.kind) * NODE_PX * boost * radii.density * zoom();
     const leaf = node.kind === "intel" || node.kind === "memory";
     const capped = leaf ? Math.min(base, radii.spacing * LEAF_SPACING_RATIO) : base;
     const floor = leaf ? MIN_LEAF_PX : node.kind === "core" ? MIN_NODE_PX + 2 : MIN_NODE_PX;
@@ -287,8 +289,10 @@ export function createMapRenderer(): MapRenderer {
       case "topic":
         return MAP_LABEL_PRIORITY.topic;
       case "source":
-      case "intel-overflow":
         return MAP_LABEL_PRIORITY.secondary;
+      case "intel-overflow":
+        // `+N`은 늘 보이는 라벨 — 허브와 같은 급(수정 8-1).
+        return MAP_LABEL_PRIORITY.hub;
       case "objective":
       case "memory":
       case "intel": {
@@ -386,8 +390,9 @@ export function createMapRenderer(): MapRenderer {
       const dim = focus !== null && !highlighted;
       const to = graph.byId.get(edge.to);
       const color = to ? mapNodeRgb(rgb, to) : rgb.inkDim;
-      const alpha = dim ? 0.05 : highlighted ? 0.85 : edge.kind === "tree" ? 0.34 : edge.kind === "link" ? 0.4 : edge.kind === "objective" ? 0.3 : 0.16;
-      const width = highlighted ? 1.9 : edge.kind === "tree" ? 1.5 : 1;
+      const alpha = dim ? 0.05 : highlighted ? 0.85 : edge.kind === "tree" ? 0.34 : edge.kind === "link" ? 0.4 : edge.kind === "objective" ? 0.17 : 0.16;
+      // 같은 목표 연결은 구조선보다 확실히 약하게(수정 8-8).
+      const width = highlighted ? 1.9 : edge.kind === "tree" ? 1.5 : edge.kind === "objective" ? 0.8 : 1;
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
       const cx = core ? mx + (core.x - mx) * 0.1 : mx;
@@ -425,6 +430,10 @@ export function createMapRenderer(): MapRenderer {
         kit.dot(point.x, point.y, Math.max(0.01, node.kind === "objective" ? r * 0.55 : r), rgbCss(color), alpha);
       }
       if (node.kind === "objective") kit.ring(point.x, point.y, r, r, rgbCss(color, 0.8), dim ? 0.15 : 0.8, 1.2);
+      if (node.kind === "intel-overflow") {
+        // 정보 점과 구별되는 큰 점 + 고리(수정 8-1).
+        kit.ring(point.x, point.y, r + 3, r + 3, rgbCss(color, 0.9), dim ? 0.15 : 0.85, 1.8);
+      }
       if (node.stale && !dim) kit.ring(point.x, point.y, r + 3.5, r + 3.5, rgbCss(rgb.stale, 0.85), 1, 1.2, [2.5, 2]);
       if (node.id === state.selection || node.id === state.hover) {
         kit.ring(point.x, point.y, r + 5, r + 5, rgbCss(node.id === state.selection ? rgb.ink : rgb.inkDim), 1, node.id === state.selection ? 2 : 1.2);

@@ -105,6 +105,8 @@ export interface MapDisplayLabels {
   readonly branch: (branch: MemoryBranch) => string;
   /** 사람 묶음 출처 노드 — 기본 키 그대로 두지 않는다. */
   readonly personSource: string;
+  /** 출처 노드 겉이름 — aria·화면·캔버스·상세가 같은 말을 쓴다. */
+  readonly source: (label: string) => string;
 }
 
 const PERSON_SOURCE = "person";
@@ -122,6 +124,7 @@ export function buildMapGraph(input: MapGraphInput): MapGraph {
     intelHub: "intel",
     branch: (branch) => branch,
     personSource: "person",
+    source: (label) => label,
   };
   const nodes: MapNode[] = [];
   const edges: MapEdge[] = [];
@@ -180,9 +183,10 @@ export function buildMapGraph(input: MapGraphInput): MapGraph {
   const sourceLabel = new Map(state.sources.map((source) => [source.id, source.label] as const));
   for (const sourceId of [...sourceIds].sort()) {
     const id = `src:${sourceId}`;
+    const bare = sourceId === PERSON_SOURCE ? labels.personSource : (sourceLabel.get(sourceId) ?? sourceId);
     nodes.push({
       id, kind: "source", branch: "intel",
-      label: sourceId === PERSON_SOURCE ? labels.personSource : (sourceLabel.get(sourceId) ?? sourceId),
+      label: labels.source(bare),
       text: "", fresh: false, stale: false, sourceId,
     });
     link("intel", id, "tree");
