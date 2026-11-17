@@ -17,6 +17,7 @@ import {
   buildMapGraph,
   MAP_BRANCH_ORDER,
   matchMapQuery,
+  RECENT_INTEL_LIMIT,
   visibleMapIds,
   type MapBranchKey,
   type MapNode,
@@ -703,6 +704,30 @@ function MapDetailPanel({ t, node, state, entries, branchName, onSelect, onClose
         <p>{item.text}</p>
       </>
     ) : null;
+  } else if (node.kind === "intel-hub") {
+    // 지도에 점으로 나온 것과 같은 정렬·개수(RECENT_INTEL_LIMIT) — id 규칙은 map-graph.ts.
+    const items = [...state.intel].sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
+    const shown = items.slice(0, RECENT_INTEL_LIMIT);
+    const rest = items.length - shown.length;
+    body = (
+      <>
+        <div className="commodore-map-panel-meta">{t("commodore.map.countIntel", { n: items.length })}</div>
+        {items.length === 0 ? <p>{t("commodore.intel.empty")}</p> : (
+          <ul>
+            {shown.map((item) => (
+              <li key={item.id}>
+                <button type="button" className="commodore-map-panel-link" onClick={() => onSelect(`intel:${item.id}`)}>{excerptText(item.text)}</button>
+              </li>
+            ))}
+            {rest > 0 ? (
+              <li key="__overflow">
+                <button type="button" className="commodore-map-panel-link" onClick={() => onSelect("intel-overflow")}>{t("commodore.map.allIntelCount", { n: items.length })}</button>
+              </li>
+            ) : null}
+          </ul>
+        )}
+      </>
+    );
   } else if (node.kind === "intel-overflow") {
     const rest = [...state.intel].sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
     body = (
@@ -798,7 +823,7 @@ function MapDetailPanel({ t, node, state, entries, branchName, onSelect, onClose
 
   return (
     <aside className="commodore-map-panel" aria-label={node.label}>
-      <button ref={closeRef} type="button" className="commodore-map-icon-btn commodore-map-panel-close" aria-label={t("commodore.map.close")} onClick={onClose}>✕</button>
+      <button ref={closeRef} type="button" className="commodore-map-icon-btn commodore-map-panel-close" aria-label={t("commodore.map.closePanel")} onClick={onClose}>✕</button>
       <h3>{node.label}</h3>
       {body}
     </aside>
@@ -808,4 +833,10 @@ function MapDetailPanel({ t, node, state, entries, branchName, onSelect, onClose
 function sourceLabelOf(t: T, state: CommodoreState, sourceId: string): string {
   if (sourceId === "person") return t("commodore.intel.fromYou");
   return state.sources.find((source) => source.id === sourceId)?.label ?? sourceId;
+}
+
+/** 정보 목록 줄임말 — 그래프 노드 라벨과 같은 앞부분 규칙. */
+function excerptText(text: string, limit = 60): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
 }
