@@ -4,18 +4,20 @@
  * `readGlancePalette`·`makeGlanceKit`이 foundation으로 승격되면 그 키트와 합칠 자리다.
  */
 
-/** 렌더러가 읽는 지도 팔레트 — 신호 토큰은 상태(fresh·stale)에만 쓴다. */
+/** 렌더러가 읽는 지도 팔레트 — 신호 토큰은 상태(fresh·stale)에만 쓴다. 시안 mind 값을 읽는다. */
 export interface MapPalette {
-  /** 핵 — 정체성 톤 전용이 아니라 역할 금색(`--role-commodore`). */
+  /** 핵 — 정체성 색(`--mongle-teal`). */
   readonly core: string;
   readonly description: string;
   readonly intel: string;
+  readonly source: string;
+  readonly objective: string;
+  /** 명시 링크 선 — text-2(aurora 금지). */
+  readonly link: string;
   readonly person: string;
   readonly theater: string;
   readonly lessons: string;
   readonly crew: string;
-  readonly source: string;
-  readonly objective: string;
   readonly ink: string;
   readonly inkDim: string;
   readonly hair: string;
@@ -25,20 +27,18 @@ export interface MapPalette {
   readonly stale: string;
 }
 
-/**
- * 팔레트 키 → theme 토큰. `--map-*` 갈래 범주색은 아직 theme.css에 없으므로
- * 임무 5에서 둔다(design-contract 함께 갱신) — 그 전까지 아래 대체값이 선다.
- */
+/** 팔레트 키 → theme 토큰. `getComputedStyle`이 var() 별칭까지 풀어 준다. */
 export const MAP_TOKENS: Record<keyof MapPalette, string> = {
-  core: "--role-commodore",
+  core: "--map-core",
   description: "--map-description",
   intel: "--map-intel",
+  source: "--map-source",
+  objective: "--map-objective",
+  link: "--map-link",
   person: "--map-branch-person",
   theater: "--map-branch-theater",
   lessons: "--map-branch-lessons",
   crew: "--map-branch-crew",
-  source: "--map-source",
-  objective: "--map-objective",
   ink: "--text-primary",
   inkDim: "--text-secondary",
   hair: "--hairline-strong",
@@ -46,17 +46,18 @@ export const MAP_TOKENS: Record<keyof MapPalette, string> = {
   stale: "--warn",
 };
 
-/** 토큰이 없을 때 쓰는 대체값(다크 theme.css와 같은 값) — 렌더러가 임무 5 전에도 선다. */
+/** 토큰이 없을 때 쓰는 대체값(다크 시안 mind와 같은 값). */
 const MAP_FALLBACKS: Record<keyof MapPalette, string> = {
-  core: "oklch(80% 0.085 78)",
-  description: "oklch(72% 0.07 270)",
-  intel: "oklch(72% 0.07 215)",
-  person: "oklch(72% 0.07 130)",
-  theater: "oklch(72% 0.07 245)",
-  lessons: "oklch(72% 0.07 55)",
-  crew: "oklch(72% 0.07 330)",
-  source: "oklch(65% 0.02 250)",
-  objective: "oklch(58% 0.03 250)",
+  core: "oklch(82% 0.07 190)",
+  description: "oklch(82% 0.07 190)",
+  intel: "oklch(70% 0.012 245)",
+  source: "oklch(70% 0.012 245)",
+  objective: "oklch(64% 0.012 245)",
+  link: "oklch(70% 0.012 245)",
+  person: "oklch(80% 0.11 75)",
+  theater: "oklch(74% 0.11 250)",
+  lessons: "oklch(75% 0.12 318)",
+  crew: "oklch(82% 0.1 115)",
   ink: "oklch(94% 0.008 90)",
   inkDim: "oklch(70% 0.012 245)",
   hair: "oklch(37% 0.02 245)",

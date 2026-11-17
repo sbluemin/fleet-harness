@@ -106,18 +106,19 @@
   /* 칩 hover·열림의 청록. aurora(상태)와 갈라 이 창만 쓴다. */
   --context-rail-accent: oklch(82% 0.07 190);
 
-  /* 사령관 지도 갈래 범주 — 종류를 말하는 채널이라 신호 토큰(aurora·warn·coral·positive)을 쓰지 않는다.
-     hue 215·245는 aurora 200과 15° 이상, 사람 130은 positive 160·warn 85와 30° 이상,
-     교훈 55는 warn 85·coral 25와 30° 이상 떨어져 있다.
-     출처·목표는 구조물이라 무채색에 가깝게 둔다(모양은 렌더러 몫). 두 테마가 같은 hue로 종류를 기억한다. */
-  --map-description: oklch(72% 0.07 270);
-  --map-intel: oklch(72% 0.07 215);
-  --map-branch-person: oklch(72% 0.07 130);
-  --map-branch-theater: oklch(72% 0.07 245);
-  --map-branch-lessons: oklch(72% 0.07 55);
-  --map-branch-crew: oklch(72% 0.07 330);
-  --map-source: oklch(65% 0.02 250);
-  --map-objective: oklch(58% 0.03 250);
+  /* 사령관 지도 갈래 범주 — 시안 mind 값(판단 기준은 시안 원본 코드).
+     핵·설명은 정체성(mongle-teal), 목표는 text-3, 명시 링크는 text-2, 정보·출처는 neutral.
+     신호 토큰(aurora·warn·coral·positive)을 쓰지 않는다. */
+  --map-core: var(--mongle-teal);
+  --map-description: var(--mongle-teal);
+  --map-intel: oklch(70% 0.012 245);
+  --map-source: oklch(70% 0.012 245);
+  --map-objective: var(--text-tertiary);
+  --map-link: var(--text-secondary);
+  --map-branch-person: oklch(80% 0.11 75);
+  --map-branch-theater: oklch(74% 0.11 250);
+  --map-branch-lessons: oklch(75% 0.12 318);
+  --map-branch-crew: oklch(82% 0.1 115);
 
   /* 신호 ink 티어 — 텍스트로 쓰이는 신호색 전용 채널. 다크은 base 신호색을 그대로 별칭하고,
      라이트만 L 42~46% 리터럴로 오버라이드해 자기 glow 틴트 위에서도 AA(4.5:1)를 지킨다.
@@ -627,15 +628,13 @@
   --warn-glow: oklch(55% 0.11 82 / 16%);
   /* 도움말 '플릿 한눈에 보기' 무대의 사람 점 — 승인 시안의 주황. 다른 신호 대신 쓰지 않는다. */
   --glance-person: oklch(66% 0.13 60);
-  /* 사령관 지도 갈래 범주 — 밝은 바탕에서 읽히는 명도로만 분화하고 hue는 다크와 같다. */
-  --map-description: oklch(52% 0.09 270);
-  --map-intel: oklch(50% 0.09 215);
-  --map-branch-person: oklch(50% 0.09 130);
-  --map-branch-theater: oklch(50% 0.09 245);
-  --map-branch-lessons: oklch(52% 0.09 55);
-  --map-branch-crew: oklch(50% 0.09 330);
-  --map-source: oklch(50% 0.02 250);
-  --map-objective: oklch(42% 0.03 250);
+  /* 사령관 지도 갈래 범주 — 밝은 바탕에서 읽히는 명도로만 분화하고 hue는 시안과 같다. */
+  --map-branch-person: oklch(60% 0.13 70);
+  --map-intel: oklch(50% 0 0);
+  --map-branch-theater: oklch(52% 0.14 250);
+  --map-branch-lessons: oklch(52% 0.15 318);
+  --map-branch-crew: oklch(56% 0.12 125);
+  --map-source: oklch(50% 0 0);
   --positive: oklch(50% 0.12 160);
   --positive-glow: oklch(50% 0.12 160 / 15%);
 
@@ -1107,15 +1106,15 @@
   --crest-ink: var(--crest);
   /* 모바일에서는 이 팝업을 열지 않지만, Console 테마 값이 새지 않게 덮는다. */
   --glance-person: var(--m-running);
-  /* 사령관 지도 갈래 범주 — 모바일 극성별 --m-map-* 값을 가리킨다. */
-  --map-description: var(--m-map-description);
+  /* 사령관 지도 갈래 범주 — 모바일 극성별 --m-map-* 값을 가리킨다.
+     핵·설명·목표는 base 별칭(정체성·text 티어)을 그대로 잇는다. */
   --map-intel: var(--m-map-intel);
   --map-branch-person: var(--m-map-branch-person);
   --map-branch-theater: var(--m-map-branch-theater);
   --map-branch-lessons: var(--m-map-branch-lessons);
   --map-branch-crew: var(--m-map-branch-crew);
   --map-source: var(--m-map-source);
-  --map-objective: var(--m-map-objective);
+  --map-link: var(--m-text-nav);
 
   /* 계기 — 채움은 읽기 단계 회색(시안의 진행 막대), 손잡이는 면, 경고 단만 신호를 빌린다. */
   --gauge-face: var(--m-surface);
@@ -1290,15 +1289,13 @@
   --provider-opencode: oklch(72% 0.07 165);
   --provider-antigravity: oklch(73% 0.085 288);
   --popover-icon-ink: rgb(245 245 245 / 64%);
-  /* 사령관 지도 갈래 범주 — 데스크톱 다크와 같은 hue·명도로 종류를 기억한다. */
-  --m-map-description: oklch(72% 0.07 270);
-  --m-map-intel: oklch(72% 0.07 215);
-  --m-map-branch-person: oklch(72% 0.07 130);
-  --m-map-branch-theater: oklch(72% 0.07 245);
-  --m-map-branch-lessons: oklch(72% 0.07 55);
-  --m-map-branch-crew: oklch(72% 0.07 330);
-  --m-map-source: oklch(65% 0.02 250);
-  --m-map-objective: oklch(58% 0.03 250);
+  /* 사령관 지도 갈래 범주 — 시안 mind 값(다크). */
+  --m-map-intel: oklch(70% 0.012 245);
+  --m-map-branch-person: oklch(80% 0.11 75);
+  --m-map-branch-theater: oklch(74% 0.11 250);
+  --m-map-branch-lessons: oklch(75% 0.12 318);
+  --m-map-branch-crew: oklch(82% 0.1 115);
+  --m-map-source: oklch(70% 0.012 245);
 }
 
 :root[data-view-mode="mobile"][data-mobile-scheme="light"] {
@@ -1359,15 +1356,13 @@
   --provider-opencode: oklch(48% 0.08 165);
   --provider-antigravity: oklch(51% 0.1 288);
   --popover-icon-ink: rgb(28 28 28 / 66%);
-  /* 사령관 지도 갈래 범주 — 데스크톱 라이트와 같은 hue·명도로 종류를 기억한다. */
-  --m-map-description: oklch(52% 0.09 270);
-  --m-map-intel: oklch(50% 0.09 215);
-  --m-map-branch-person: oklch(50% 0.09 130);
-  --m-map-branch-theater: oklch(50% 0.09 245);
-  --m-map-branch-lessons: oklch(52% 0.09 55);
-  --m-map-branch-crew: oklch(50% 0.09 330);
-  --m-map-source: oklch(50% 0.02 250);
-  --m-map-objective: oklch(42% 0.03 250);
+  /* 사령관 지도 갈래 범주 — 시안 mind 값(라이트). */
+  --m-map-intel: oklch(50% 0 0);
+  --m-map-branch-person: oklch(60% 0.13 70);
+  --m-map-branch-theater: oklch(52% 0.14 250);
+  --m-map-branch-lessons: oklch(52% 0.15 318);
+  --m-map-branch-crew: oklch(56% 0.12 125);
+  --m-map-source: oklch(50% 0 0);
 }
 
 /* 글자 배율 세 단(브리지 계약 fontScale) — 기본은 위 블록의 1. */
