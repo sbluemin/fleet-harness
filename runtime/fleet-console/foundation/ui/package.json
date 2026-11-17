@@ -15,6 +15,10 @@
     "./native-view": {
       "types": "./native-view.ts",
       "default": "./native-view.ts"
+    },
+    "./glance-kit": {
+      "types": "./glance-kit.ts",
+      "default": "./glance-kit.ts"
     }
   },
   "dependencies": {
