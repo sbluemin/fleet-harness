@@ -51,6 +51,8 @@ const FOV_DEG = 42;
 const FIT_MARGIN = 1.04;
 /** 좁은 무대에서 z를 키우는 상한. */
 const Z_SCALE_MAX = 3;
+/** 무대 비율에 맞춰 한 축을 펼치는 상한 — 극단 비율에서도 지도가 일그러지지 않게. */
+const STRETCH_MAX = 2;
 /** 시안 `uScale` 계수와 스프라이트 상한(CSS px 기준 110, 장치 px로는 ×dpr). */
 const SPRITE_K = 4.6;
 const MAX_SPRITE_CSS = 110;
@@ -232,6 +234,12 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private nodes: MapNode[] = [];
   private wx = new Float32Array(0);
   private wy = new Float32Array(0);
+  /** 펼치기 전 배치(시안 단위) — 무대 비율에 따라 축마다 `stretchX/Y`배로 펼친다. */
+  private bx = new Float32Array(0);
+  private by = new Float32Array(0);
+  private stretchX = 1;
+  private stretchY = 1;
+  private baseCenter = new Vector3();
   private wz = new Float32Array(0);
   /** 시안 z(스케일 전) — 무대가 좁으면 `zScale`배로 키워 깊이감이 무대 모양과 무관하게 같다. */
   private z0 = new Float32Array(0);
@@ -566,6 +574,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const n = nodes.length;
     this.wx = new Float32Array(n);
     this.wy = new Float32Array(n);
+    this.bx = new Float32Array(n);
+    this.by = new Float32Array(n);
     this.wz = new Float32Array(n);
     this.z0 = new Float32Array(n);
     this.radius = new Float32Array(n);
@@ -574,8 +584,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.coreIndex = nodes.findIndex((node) => node.kind === "core");
     nodes.forEach((node, i) => {
       const p = layout.positions.get(node.id)!;
-      this.wx[i] = p.x * WORLD_SCALE;
-      this.wy[i] = -p.y * WORLD_SCALE; // 화면 y는 아래로 자란다.
+      this.bx[i] = p.x * WORLD_SCALE;
+      this.by[i] = -p.y * WORLD_SCALE; // 화면 y는 아래로 자란다.
       this.z0[i] = depthOf(node);
       this.wz[i] = this.z0[i]! * this.zScale;
     });
@@ -586,9 +596,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       if (a === undefined || b === undefined) continue;
       this.degree[a]! += 1;
       this.degree[b]! += 1;
-      // 시안 선 알파: trunk .55 · branch .4 · twig/intel .26 · 목표·출처 .11 · link는 text-2가 시안 청록보다 하얘 .38
+      // 시안 선 알파: trunk .55 · branch .4 · twig/intel .26 · 목표·출처 .11 · link .6(색은 text-2)
       let base = 0.26;
-      if (edge.kind === "link") base = 0.38;
+      if (edge.kind === "link") base = 0.6;
       else if (edge.kind === "objective" || edge.kind === "source") base = 0.11;
       else if (nodes[a]!.kind === "core") base = 0.55;
       else if (nodes[b]!.kind === "topic") base = 0.4;
@@ -596,7 +606,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     }
     nodes.forEach((node, i) => { this.radius[i] = radiusOf(node, this.degree[i]!); });
     const { minX, maxX, minY, maxY } = layout.bounds;
-    this.center.set(((minX + maxX) / 2) * WORLD_SCALE, -((minY + maxY) / 2) * WORLD_SCALE, 0);
+    this.baseCenter.set(((minX + maxX) / 2) * WORLD_SCALE, -((minY + maxY) / 2) * WORLD_SCALE, 0);
+    this.applyShape(this.stretchX, this.stretchY, this.zScale, false);
 
     const dynamic = (array: Float32Array, size: number) => new BufferAttribute(array, size).setUsage(DynamicDrawUsage);
     const pointGeo = new BufferGeometry();
@@ -702,8 +713,20 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const availW = Math.max(40, width - insets.left - insets.right);
     const availH = Math.max(40, height - insets.top - insets.bottom);
     const f = this.focalPx();
-    // 시안은 거리 ≈ 반경/tan(fov/2)(≈1200)에서 z 폭 ±150이 초점 범위(거리×0.24)의 절반쯤이라 빛망울이 된다.
-    // 세로로 긴 무대에서는 거리가 길어져 같은 z 폭이 초점 안에 들어가 평평해지므로, 거리 비율만큼 z를 키운다.
+    // 1) 무대 비율에 맞춰 축마다 펼친다 — 지도가 한 축에만 몰려 무대가 비는 것을 막는다.
+    //    펼침 = (무대 비율 ÷ 지도 비율)을 긴 쪽 축에 곱하고, 한 축 STRETCH_MAX배까지만(극단 비율에서 일그러지지 않게).
+    let halfW = 1;
+    let halfH = 1;
+    for (let i = 0; i < this.nodes.length; i += 1) {
+      halfW = Math.max(halfW, Math.abs(this.bx[i]! - this.baseCenter.x) + this.radius[i]!);
+      halfH = Math.max(halfH, Math.abs(this.by[i]! - this.baseCenter.y) + this.radius[i]!);
+    }
+    const want = availW / availH / (halfW / halfH);
+    const sx = want > 1 ? Math.min(want, STRETCH_MAX) : 1;
+    const sy = want < 1 ? Math.min(1 / want, STRETCH_MAX) : 1;
+    this.applyShape(sx, sy, this.zScale, false);
+    // 2) 시안은 거리 ≈ 반경/tan(fov/2)(≈1200)에서 z 폭 ±150이 초점 범위(거리×0.24)의 절반쯤이라 빛망울이 된다.
+    //    세로로 긴 무대에서는 거리가 길어져 같은 z 폭이 초점 안에 들어가 평평해지므로, 거리 비율만큼 z를 키운다.
     let reach = 1;
     let flat = 1;
     for (let i = 0; i < this.nodes.length; i += 1) {
@@ -713,7 +736,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       flat = Math.max(flat, (dx * f) / (availW / 2), (dy * f) / (availH / 2));
     }
     const refDist = reach / Math.tan((FOV_DEG * Math.PI) / 360);
-    this.setDepthScale(clamp(flat / refDist, 1, Z_SCALE_MAX));
+    this.applyShape(sx, sy, clamp(flat / refDist, 1, Z_SCALE_MAX), true);
     let dist = 1;
     let extent = 1;
     for (let i = 0; i < this.nodes.length; i += 1) {
@@ -736,20 +759,30 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.placeCamera();
   }
 
-  private setDepthScale(scale: number): void {
-    if (Math.abs(scale - this.zScale) < 1e-3 && this.wz.length > 0) return;
-    this.zScale = scale;
-    for (let i = 0; i < this.wz.length; i += 1) this.wz[i] = this.z0[i]! * scale;
+  /** 펼침(x·y)과 z 배율을 적용해 좌표·지오메트리를 갱신한다 — project·pick이 같은 좌표를 읽는다. */
+  private applyShape(sx: number, sy: number, sz: number, upload: boolean): void {
+    const same = Math.abs(sx - this.stretchX) < 1e-3 && Math.abs(sy - this.stretchY) < 1e-3 && Math.abs(sz - this.zScale) < 1e-3;
+    this.stretchX = sx;
+    this.stretchY = sy;
+    this.zScale = sz;
+    this.center.set(this.baseCenter.x, this.baseCenter.y, 0);
+    const n = this.wx.length;
+    for (let i = 0; i < n; i += 1) {
+      this.wx[i] = this.baseCenter.x + (this.bx[i]! - this.baseCenter.x) * sx;
+      this.wy[i] = this.baseCenter.y + (this.by[i]! - this.baseCenter.y) * sy;
+      this.wz[i] = this.z0[i]! * sz;
+    }
+    if (!upload || (same && n > 0)) return;
     const position = this.pointGeo.getAttribute("position") as BufferAttribute | undefined;
     if (position) {
-      for (let i = 0; i < this.wz.length; i += 1) position.setZ(i, this.wz[i]!);
+      for (let i = 0; i < n; i += 1) position.setXYZ(i, this.wx[i]!, this.wy[i]!, this.wz[i]!);
       position.needsUpdate = true;
     }
     const lines = this.lineGeo.getAttribute("position") as BufferAttribute | undefined;
     if (lines) {
       this.edgeIdx.forEach(({ a, b }, e) => {
-        lines.setZ(e * 2, this.wz[a]!);
-        lines.setZ(e * 2 + 1, this.wz[b]!);
+        lines.setXYZ(e * 2, this.wx[a]!, this.wy[a]!, this.wz[a]!);
+        lines.setXYZ(e * 2 + 1, this.wx[b]!, this.wy[b]!, this.wz[b]!);
       });
       lines.needsUpdate = true;
     }
@@ -919,7 +952,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const focusIndex = this.focusId !== null ? this.index.get(this.focusId) : undefined;
     this.edgeIdx.forEach(({ a, b, base, kind }, e) => {
       const live = shown[a]! && shown[b]!;
-      let alphaEdge = live ? base * alphaScale : 0;
+      let alphaEdge = live ? base : 0;
       const touches = focusIndex !== undefined && (a === focusIndex || b === focusIndex);
       if (live && focusIndex !== undefined) alphaEdge = touches ? Math.min(1, alphaEdge * 2.6 + 0.25) : alphaEdge * 0.12;
       // 색: 자식 노드 색. 연결(link)은 text-2, 목표·출처는 text-3 — 닿은 점이 고른 점이면 연결 색으로 밝힌다.
