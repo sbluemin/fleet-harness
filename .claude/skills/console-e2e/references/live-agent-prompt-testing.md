@@ -7,13 +7,12 @@ reproducing a provider-specific tool-call defect, or measuring what a model actu
 on the wire.
 
 The base skill still owns isolation, instrumentation, and cleanup. Complete
-[Claude state and trust preflight](claude-state.md) before starting either a terminal
-agent or an SDK/chat child. This page only adds provider-specific steps; its snippets
+[Claude state and trust preflight](claude-state.md) before starting an SDK/chat child. This page only adds provider-specific steps; its snippets
 assume the preflight environment is already applied and do not replace it.
 
 ## Browser driver
 
-Keep the driver selected by the base skill. The `ab` examples below are agent-browser or Desktop CDP commands; on the Fleet Browser fallback use its page, form, pointer, keyboard, screenshot, and read-only inspection tools, select combobox options with real input rather than JavaScript mutation, and confirm canvas-terminal input by screenshot.
+Keep the driver selected by the base skill. The `ab` examples below are agent-browser or Desktop CDP commands; on the Fleet Browser fallback use its page, form, pointer, keyboard, screenshot, and read-only inspection tools, select combobox options with real input rather than JavaScript mutation.
 
 ## Absolute paths, or you test the wrong build
 
@@ -175,7 +174,7 @@ Add the throwaway folder to the intended Commodore's own Theater list through Co
 (a modal backed by `/api/v1/theaters/folder-listings`), not a native dialog or the retired global registry.
 Fill the absolute-path textbox, use its Go action, and confirm the folder. Use current localized accessible labels
 and retain both the owning Commodore UUID and Theater id for launch requests. The session's model chip lists
-Claude and exposed gateway models; the start-view chip switches between chat and terminal.
+Claude and exposed gateway models.
 
 Verify the launch actually attached to the gateway rather than trusting the banner — the
 header still reads the Claude model name even when every request is being rerouted. Confirm
@@ -190,9 +189,10 @@ secrecy boundary. The same holds for `console.lock`, `auth.json`, and other cred
 files: read only the keys you need with `node`/`jq`/`python3`, never `cat` or `sed`-mask them —
 BSD `sed` does not know `\s`, so such a mask can print a live token.
 
-## Typing into the terminal
+## Typing into the standalone CLI
 
-`ab type` and `ab fill` **do not reach xterm**. Only `press` does, one key at a time:
+Objectives have no terminal body, so the standalone CLI (toggled with Ctrl+Backquote) is the
+only terminal to type into. `ab type` and `ab fill` **do not reach xterm**. Only `press` does, one key at a time:
 
 ```bash
 for k in "/" m o d e l; do ab --session fleet-console-e2e-20260807-strict press "$k" >/dev/null; done
