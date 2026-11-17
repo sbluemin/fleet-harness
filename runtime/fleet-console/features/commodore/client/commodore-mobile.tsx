@@ -33,6 +33,7 @@ import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoo
 import { CommodoreAvatar, useCommodoreMongleActivity } from "./commodore-avatar.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
+import { CommodoreMapDialog } from "./commodore-map/map-view.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
@@ -677,12 +678,17 @@ interface TabProps {
 function CommodoreMobileDescription({ t, theaterId, view, online, failure, onFail, onClear }: TabProps) {
   // 실패는 그 일을 한 섹션 곁에 남긴다.
   const [failedAt, setFailedAt] = useState<"description" | "intel">("description");
+  const [mapOpen, setMapOpen] = useState(false);
   const failIn = (part: "description" | "intel") => (error: unknown) => { setFailedAt(part); onFail(error); };
   return (
     <>
+      <div className="objectives-cm-mapentry">
+        <button type="button" data-press="r3" className="objectives-cm-pill" aria-haspopup="dialog" onClick={() => setMapOpen(true)}>{t("commodore.map.open")}</button>
+      </div>
       <CommodoreDescription key={theaterId} t={t} commodoreId={theaterId} description={view.state.description} phone online={online} onFail={failIn("description")} onClear={onClear} />
       {failure && failedAt === "description" ? <p className="objectives-cm-note" role="alert">{failure}</p> : null}
       <CommodoreMobileIntel t={t} theaterId={theaterId} view={view} online={online} failure={failedAt === "intel" ? failure : null} onFail={failIn("intel")} onClear={onClear} />
+      {mapOpen ? <CommodoreMapDialog t={t} commodoreId={theaterId} state={view.state} onClose={() => setMapOpen(false)} /> : null}
     </>
   );
 }

@@ -94,27 +94,16 @@ export interface MapRendererModule {
   readonly createMapRenderer: () => MapRenderer;
 }
 
-/** 지연 청크 자리 — 임무 3·4가 파일을 두면 위 switch가 살아난다. 빌드는 `@vite-ignore`로 넘긴다. */
-const MAP_RENDERER_MODULE: Record<MapRendererKind, string> = {
-  webgl: "./webgl/map-webgl-renderer.js",
-  canvas: "./canvas/map-canvas-renderer.js",
-  orbit: "./orbit/map-orbit-renderer.js",
-};
-
 /**
- * 고른 렌더러를 지연 청크로 받아 만든다.
- * TODO(임무 6 통합): 임무 3·4 파일이 들어오면 아래 switch의 주석을 떼고 사용한다.
- * 리터럴 경로라 각 렌더러가 자기 청크에 실린다.
+ * 고른 렌더러를 지연 청크로 받아 만든다. 리터럴 경로라 각 렌더러가 자기 청크에 실린다.
+ * mount가 throw하면 상위는 Canvas로 넘어간다(map-webgl도 mount 실패는 throw).
  */
 export async function loadMapRenderer(kind: MapRendererKind): Promise<MapRenderer> {
   switch (kind) {
-    // case "webgl": return (await import("./webgl/map-webgl-renderer.js") as MapRendererModule).createMapRenderer();
-    // case "canvas": return (await import("./canvas/map-canvas-renderer.js") as MapRendererModule).createMapRenderer();
-    // case "orbit": return (await import("./orbit/map-orbit-renderer.js") as MapRendererModule).createMapRenderer();
-    default: break;
+    case "webgl": return (await import("./webgl/map-webgl-renderer.js") as MapRendererModule).createMapRenderer();
+    case "canvas": return (await import("./canvas/map-canvas-renderer.js") as MapRendererModule).createMapRenderer();
+    case "orbit": return (await import("./orbit/map-orbit-renderer.js") as MapRendererModule).createMapRenderer();
   }
-  const module = (await import(/* @vite-ignore */ MAP_RENDERER_MODULE[kind])) as MapRendererModule;
-  return module.createMapRenderer();
 }
 
 /**

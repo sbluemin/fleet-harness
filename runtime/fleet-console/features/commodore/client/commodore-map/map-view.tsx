@@ -5,6 +5,7 @@ import type { Translate } from "@fleet-console/i18n";
 
 import { useMongleLook } from "../../../workspace/client/avatar-events.js";
 import { commodoreAvatarKey } from "../../../workspace/shared/avatars.js";
+import { pushOverlayHistory, releaseOverlayHistory } from "../../../../core/client/src/chrome/mobile/mobile-overlay-history.js";
 import { useGlobalSettingsStore, getGlobalSettingsStoreState } from "../../../settings/client/global-settings-store.js";
 import type { CommodoreState } from "../../shared/contracts/types.js";
 import type { MemoryBranch } from "../../shared/contracts/memory.js";
@@ -241,7 +242,11 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     rendererRef.current?.setFitInsets?.({ top: 96, right: selectedId ? 316 : 16, bottom: 24, left: 24 });
   }, [selectedId]);
 
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
   // 모달 규율 — 셸을 inert로 잠그고, 포커스를 돌려놓고, Tab을 창 안에서 끝낸다.
+  // 휴대폰에서는 시스템 뒤로가기도 닫기로 잇는다.
   useEffect(() => {
     const shell = document.querySelector<HTMLElement>(".console-shell");
     const previous = document.body.getAttribute("data-commodore-map-open");
@@ -249,7 +254,11 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     if (shell) shell.inert = true;
     const returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     dialogRef.current?.focus();
+    const mobile = typeof document !== "undefined"
+      && document.documentElement.getAttribute("data-view-mode") === "mobile";
+    const overlayId = mobile ? pushOverlayHistory(() => onCloseRef.current()) : null;
     return () => {
+      if (overlayId !== null) releaseOverlayHistory(overlayId);
       if (previous === null) document.body.removeAttribute("data-commodore-map-open");
       else document.body.setAttribute("data-commodore-map-open", previous);
       if (shell) shell.inert = false;
