@@ -79,7 +79,9 @@ export function createMapRenderer(): MapRenderer {
 
   const isVisible = (id: string): boolean => state.filter === null || state.filter.has(id);
 
-  const nodeRadius = (node: MapNode): number => Math.max(0.01, mapNodeSize(node.kind) * NODE_PX);
+  /** `+N` 묶음은 정보 점보다 크게 그린다 — 갈래 안의 묶음으로 읽히게(수정 8-1). */
+  const nodeRadius = (node: MapNode): number =>
+    Math.max(0.01, mapNodeSize(node.kind) * NODE_PX * (node.kind === "intel-overflow" ? 1.55 : 1));
 
   const screenOf = (node: MapNode): { x: number; y: number } | null => {
     const point = state.model?.layout.positions.get(node.id);
@@ -105,8 +107,10 @@ export function createMapRenderer(): MapRenderer {
       case "topic":
         return MAP_LABEL_PRIORITY.topic;
       case "source":
-      case "intel-overflow":
         return MAP_LABEL_PRIORITY.secondary;
+      case "intel-overflow":
+        // `+N`은 늘 보이는 라벨 — 허브와 같은 급으로 놓는다(수정 8-1).
+        return MAP_LABEL_PRIORITY.hub;
       case "objective":
       case "memory":
       case "intel":
@@ -122,13 +126,13 @@ export function createMapRenderer(): MapRenderer {
     const { width: w, height: h } = surface;
     const nodes = shownNodes();
     const insets = clampMapInsets(state.insets, w, h);
-    const coreRadius = Math.max(...nodes.map(nodeRadius), 0) || NODE_PX;
 
-    const pad = 12;
+    const pad = 6;
     const left = insets.left + pad;
     const right = w - insets.right - pad;
     const top = insets.top + pad;
-    const bottom = h - insets.bottom - pad - mapLabelReserve() - coreRadius;
+    // 아래는 라벨 높이 + 가장 낮은 라벨 노드의 반지름만 예약한다(무대를 넉넉히 채우게, 수정 8-4).
+    const bottom = h - insets.bottom - pad - mapLabelReserve() - 10;
 
     let minX = Infinity;
     let maxX = -Infinity;
@@ -195,8 +199,9 @@ export function createMapRenderer(): MapRenderer {
       const dim = focus !== null && !highlighted;
       const to = graph.byId.get(edge.to);
       const color = to ? mapNodeRgb(rgb, to) : rgb.inkDim;
-      const alpha = dim ? 0.05 : highlighted ? 0.85 : edge.kind === "tree" ? 0.38 : edge.kind === "link" ? 0.4 : edge.kind === "objective" ? 0.3 : 0.18;
-      const width = highlighted ? 1.9 : edge.kind === "tree" ? 1.6 : 1;
+      const alpha = dim ? 0.05 : highlighted ? 0.85 : edge.kind === "tree" ? 0.38 : edge.kind === "link" ? 0.4 : edge.kind === "objective" ? 0.17 : 0.18;
+      // 같은 목표 연결은 구조선보다 확실히 약하게 — 점선이라 더 눈에 띄던 것을 낮춘다(수정 8-8).
+      const width = highlighted ? 1.9 : edge.kind === "tree" ? 1.6 : edge.kind === "objective" ? 0.8 : 1;
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
       const cx = core ? mx + (core.x - mx) * 0.16 : mx;
@@ -236,6 +241,10 @@ export function createMapRenderer(): MapRenderer {
       }
       if (node.kind === "objective") {
         kit.ring(point.x, point.y, r, r, rgbCss(color, 0.8), dim ? 0.15 : 0.8, 1.2);
+      }
+      if (node.kind === "intel-overflow") {
+        // 정보 점과 구별되는 큰 점 + 고리 — 묶음으로 읽히게(수정 8-1).
+        kit.ring(point.x, point.y, r + 3, r + 3, rgbCss(color, 0.9), dim ? 0.15 : 0.85, 1.8);
       }
       if (node.stale && !dim) {
         kit.ring(point.x, point.y, r + 3.5, r + 3.5, rgbCss(rgb.stale, 0.85), 1, 1.2, [2.5, 2]);
