@@ -5,18 +5,22 @@ import { mapNodeSize } from "../map-layout.js";
 import type { MapPalette } from "../map-palette.js";
 import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
 import {
+  DEFAULT_MAP_INSETS,
   MAP_LABEL_GAP,
+  MAP_LABEL_PRIORITY,
   MAP_LABEL_SIZE,
   attachMapCanvas,
+  clampMapInsets,
+  drawMapLabels,
   mapGlanceKit,
   mapLabelReserve,
   mapNodeRgb,
   mapRgbPalette,
   readMapFont,
   rgbCss,
-  setMapLabelFont,
-  truncateLabel,
   type MapCanvasSurface,
+  type MapFitInsets,
+  type MapLabelCandidate,
   type MapRgbPalette,
 } from "../fallback/map-fallback-common.js";
 
@@ -30,6 +34,9 @@ import {
  * Canvas 2D를 고른 이유: 승격한 glance 키트의 발광(radial gradient)을 그대로 쓰고,
  * 기억 200개에서 SVG 요소 수백 개의 레이아웃·래스터 비용을 피하며, 핀치 변환을
  * 우리가 직접 소유해 라벨 컬링까지 한 번에 처리할 수 있다.
+ *
+ * 크기 규칙(D13): 점 크기는 보이는 노드 수와 잎 고리 둘레로 줄인다. 라벨 규칙(D11)은
+ * 핵·허브는 항상, 주제는 충돌 회피, 기억·정보·목표는 2.2배 넘게 확대했거나 호버·선택일 때만.
  */
 
 /** 작은 갈래도 받는 최소 구역 폭(20°). */
@@ -44,13 +51,29 @@ const OBJECTIVE_RADIUS = 3.95;
 /** 노드 size 1(핵)이 15 CSS px — 고르기 반경도 이 보이는 크기 × 배율이다. */
 const NODE_PX = 15;
 const LABEL_MAX = 132;
-/** 이 배율을 넘겨 확대하면 잎(기억·정보) 라벨도 단다. */
+/** 이 배율을 넘겨 확대하면 잎(기억·정보·목표) 라벨도 단다. */
 const LEAF_LABEL_ZOOM = 2.2;
-const LEAF_LABEL_LIMIT = 20;
+/** 노드가 이보다 많으면 점을 줄이기 시작한다. */
+const DENSITY_FULL = 96;
+const DENSITY_MIN = 0.5;
+/** 잎 점 지름이 이웃 잎 간격의 이 비율을 넘지 않게 한다. */
+const LEAF_SPACING_RATIO = 0.3;
+const MIN_LEAF_PX = 2;
+const MIN_NODE_PX = 3;
+const MAX_NODE_PX = 22;
+/** 손가락 고르기 — 점이 작아도 이 반경 안이면 맞는다. */
+const MIN_HIT_PX = 5;
 
 interface OrbitSector {
   start: number;
   end: number;
+}
+
+interface OrbitRadii {
+  /** 노드 수에 따른 축소 배율. */
+  readonly density: number;
+  /** 잎 고리 둘레의 이웃 간격(px). */
+  readonly spacing: number;
 }
 
 interface OrbitView {
@@ -74,6 +97,7 @@ interface OrbitState {
   hover: string | null;
   filter: ReadonlySet<string> | null;
   view: OrbitView;
+  insets: MapFitInsets;
   cleanup: (() => void) | null;
 }
 
@@ -194,14 +218,47 @@ export function createMapRenderer(): MapRenderer {
     hover: null,
     filter: null,
     view: { k: 1, tx: 0, ty: 0, fitK: 1 },
+    insets: DEFAULT_MAP_INSETS,
     cleanup: null,
   };
 
   const isVisible = (id: string): boolean => state.filter === null || state.filter.has(id);
   const zoom = (): number => (state.view.fitK > 0 ? state.view.k / state.view.fitK : 1);
 
-  /** 보이는 크기 — 노드 size × 배율(맞춤 보기 기준 1배). 고르기 반경도 같은 값이다. */
-  const nodeRadius = (node: MapNode): number => Math.max(0.01, mapNodeSize(node.kind) * NODE_PX * zoom());
+  /**
+   * 노드 수가 많을수록 점을 줄인다(D13). 200개 무대에서 잎이 궤도보다 커 보이던 것을
+   * 96개를 기준으로 줄이고, 아래에서는 잎 고리 둘레의 이웃 간격에도 맞춘다.
+   */
+  const densityFactor = (): number => {
+    const count = Math.max(1, shownNodes().length);
+    return Math.min(1, Math.max(DENSITY_MIN, Math.sqrt(DENSITY_FULL / count)));
+  };
+
+  /** 잎이 놓인 세 고리의 둘레를 잎 수로 나눈 화면 간격(px). */
+  const leafSpacing = (): number => {
+    const model = state.model;
+    if (!model) return Infinity;
+    let leaves = 0;
+    for (const node of model.graph.nodes) {
+      if (!isVisible(node.id)) continue;
+      if (node.kind === "intel" || node.kind === "memory") leaves += 1;
+    }
+    if (leaves === 0) return Infinity;
+    const circumference = Math.PI * 2 * state.view.k * LEAF_RADII.reduce((sum, radius) => sum + radius, 0);
+    return circumference / leaves;
+  };
+
+  /** 보이는 크기(노드 size × 배율) — 고르기 반경도 이 값을 쓴다. */
+  const nodeRadius = (node: MapNode, radii: OrbitRadii): number => {
+    const base = mapNodeSize(node.kind) * NODE_PX * radii.density * zoom();
+    const leaf = node.kind === "intel" || node.kind === "memory";
+    const capped = leaf ? Math.min(base, radii.spacing * LEAF_SPACING_RATIO) : base;
+    const floor = leaf ? MIN_LEAF_PX : node.kind === "core" ? MIN_NODE_PX + 2 : MIN_NODE_PX;
+    return Math.max(0.01, Math.min(MAX_NODE_PX, Math.max(floor, capped)));
+  };
+
+  /** 한 번 그릴 때의 밀도·간격 — 노드마다 다시 세지 않는다. */
+  const orbitRadii = (): OrbitRadii => ({ density: densityFactor(), spacing: leafSpacing() });
 
   const screenOf = (node: MapNode): { x: number; y: number } | null => {
     const point = state.points.get(node.id);
@@ -215,25 +272,26 @@ export function createMapRenderer(): MapRenderer {
     return model.graph.nodes.filter((node) => isVisible(node.id) && state.points.has(node.id));
   };
 
-  const labelsLeaves = (nodes: readonly MapNode[]): boolean => {
-    if (zoom() >= LEAF_LABEL_ZOOM) return true;
-    let leaves = 0;
-    for (const node of nodes) {
-      if (node.kind === "intel" || node.kind === "memory") leaves += 1;
-      if (leaves > LEAF_LABEL_LIMIT) return false;
-    }
-    return true;
-  };
-
-  const leavesShowing = (): boolean => labelsLeaves(shownNodes());
-
-  const hasLabel = (node: MapNode, leaves: boolean): boolean => {
+  /** 라벨 후보 — 목표·기억·정보는 충분히 확대했거나 호버·선택일 때만. */
+  const labelPriority = (node: MapNode): number | null => {
     switch (node.kind) {
-      case "intel":
+      case "core":
+        return MAP_LABEL_PRIORITY.core;
+      case "description":
+      case "intel-hub":
+      case "branch":
+        return MAP_LABEL_PRIORITY.hub;
+      case "topic":
+        return MAP_LABEL_PRIORITY.topic;
+      case "source":
+      case "intel-overflow":
+        return MAP_LABEL_PRIORITY.secondary;
+      case "objective":
       case "memory":
-        return leaves || node.id === state.hover || node.id === state.selection;
-      default:
-        return Boolean(node.label);
+      case "intel": {
+        if (node.id === state.hover || node.id === state.selection) return MAP_LABEL_PRIORITY.forced;
+        return zoom() >= LEAF_LABEL_ZOOM ? MAP_LABEL_PRIORITY.leaf : null;
+      }
     }
   };
 
@@ -241,23 +299,15 @@ export function createMapRenderer(): MapRenderer {
     const surface = state.surface;
     const model = state.model;
     if (!surface || !model || surface.width <= 0 || surface.height <= 0) return;
-    const { ctx, width: w, height: h } = surface;
+    const { width: w, height: h } = surface;
     const nodes = shownNodes();
-    setMapLabelFont(ctx, state.font);
-    const labelMax = Math.min(LABEL_MAX, Math.max(56, w * 0.42));
-    const leaves = labelsLeaves(nodes);
-    let halfLabel = 0;
-    for (const node of nodes) {
-      if (!hasLabel(node, leaves)) continue;
-      halfLabel = Math.max(halfLabel, ctx.measureText(truncateLabel(ctx, node.label, labelMax)).width / 2);
-    }
+    const insets = clampMapInsets(state.insets, w, h);
 
-    const pad = 16;
-    const side = Math.min(halfLabel + 8, w * 0.2);
-    const left = pad + side;
-    const right = w - pad - side;
-    const top = pad + NODE_PX;
-    const bottom = h - pad - (mapLabelReserve() + NODE_PX);
+    const pad = 10;
+    const left = insets.left + pad;
+    const right = w - insets.right - pad;
+    const top = insets.top + pad;
+    const bottom = h - insets.bottom - pad - mapLabelReserve();
 
     let minX = Infinity;
     let maxX = -Infinity;
@@ -315,6 +365,7 @@ export function createMapRenderer(): MapRenderer {
     }
     const core = points.get("core");
     const focus = focusSet();
+    const radii = orbitRadii();
 
     // 궤도 안내 고리 — 방사형 읽기를 돕는다. 중심은 핵.
     if (core) {
@@ -354,7 +405,7 @@ export function createMapRenderer(): MapRenderer {
       if (!isVisible(node.id)) continue;
       const point = points.get(node.id);
       if (!point) continue;
-      const r = nodeRadius(node);
+      const r = nodeRadius(node, radii);
       const dim = focus !== null && !focus.has(node.id);
       const color = mapNodeRgb(rgb, node);
       const alpha = dim ? 0.18 : node.stale ? 0.55 : 1;
@@ -377,25 +428,26 @@ export function createMapRenderer(): MapRenderer {
       }
     }
 
-    setMapLabelFont(ctx, state.font);
-    const labelMax = Math.min(LABEL_MAX, Math.max(56, w * 0.42));
-    const leaves = leavesShowing();
+    // 라벨 — 우선순위대로 자리를 잡고 겹치면 낮은 쪽을 버린다(D11·D13).
+    const candidates: MapLabelCandidate[] = [];
     for (const node of graph.nodes) {
-      if (!isVisible(node.id)) continue;
-      const leaf = node.kind === "intel" || node.kind === "memory";
-      if (leaf && !leaves && node.id !== state.hover && node.id !== state.selection) continue;
-      if (!node.label) continue;
+      if (!isVisible(node.id) || !node.label) continue;
+      const priority = labelPriority(node);
+      if (priority === null) continue;
       const point = points.get(node.id);
       if (!point) continue;
       if (point.x < -40 || point.x > w + 40 || point.y < -20 || point.y > h + 20) continue;
       const dim = focus !== null && !focus.has(node.id);
-      kit.text(truncateLabel(ctx, node.label, labelMax), point.x, point.y + nodeRadius(node) + MAP_LABEL_GAP + MAP_LABEL_SIZE * 0.6, {
-        color: rgbCss(dim ? rgb.inkDim : rgb.ink, dim ? 0.3 : 0.92),
-        size: MAP_LABEL_SIZE,
-        weight: 600,
-        a: 1,
+      candidates.push({
+        text: node.label,
+        x: point.x,
+        y: point.y + nodeRadius(node, radii) + MAP_LABEL_GAP + MAP_LABEL_SIZE * 0.6,
+        priority,
+        color: rgbCss(dim ? rgb.inkDim : rgb.ink),
+        alpha: dim ? 0.3 : 0.92,
       });
     }
+    drawMapLabels(ctx, kit, state.font, candidates, w, h, Math.min(LABEL_MAX, Math.max(56, w * 0.42)));
   };
 
   /** 포인터 — 한 손가락은 끌기, 두 손가락은 핀치. 두 번 누르면 맞춤 보기. */
@@ -549,16 +601,25 @@ export function createMapRenderer(): MapRenderer {
       state.filter = visible;
       draw();
     },
+    setFitInsets(insets) {
+      const next = { top: insets.top, right: insets.right, bottom: insets.bottom, left: insets.left };
+      const current = state.insets;
+      if (next.top === current.top && next.right === current.right && next.bottom === current.bottom && next.left === current.left) return;
+      state.insets = next;
+      fit();
+      draw();
+    },
     pick(x, y) {
       const model = state.model;
       if (!model) return null;
+      const radii = orbitRadii();
       let best: string | null = null;
       let bestDistance = Infinity;
       for (const node of model.graph.nodes) {
         if (!isVisible(node.id)) continue;
         const point = screenOf(node);
         if (!point) continue;
-        const r = nodeRadius(node);
+        const r = Math.max(nodeRadius(node, radii), MIN_HIT_PX);
         const distance = Math.hypot(point.x - x, point.y - y);
         if (distance <= r && distance < bestDistance) {
           best = node.id;

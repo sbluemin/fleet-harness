@@ -5,18 +5,22 @@ import { mapNodeSize } from "../map-layout.js";
 import type { MapPalette } from "../map-palette.js";
 import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
 import {
+  DEFAULT_MAP_INSETS,
   MAP_LABEL_GAP,
+  MAP_LABEL_PRIORITY,
   MAP_LABEL_SIZE,
   attachMapCanvas,
+  clampMapInsets,
+  drawMapLabels,
   mapGlanceKit,
   mapLabelReserve,
   mapNodeRgb,
   mapRgbPalette,
   readMapFont,
   rgbCss,
-  setMapLabelFont,
-  truncateLabel,
   type MapCanvasSurface,
+  type MapFitInsets,
+  type MapLabelCandidate,
   type MapRgbPalette,
 } from "../fallback/map-fallback-common.js";
 
@@ -26,12 +30,13 @@ import {
  * 동작 줄이기 경로이므로 **정지 그림**이다. 펄스·흔들림·상시 rAF 루프를 두지 않고,
  * 선택·호버·필터·크기 변경처럼 상태가 바뀔 때만 다시 그린다. 발광은 foundation으로
  * 승격한 glance 키트(`makeGlanceKit`)로 긋는다. WebGL 컨텍스트는 만들지 않는다.
+ *
+ * 라벨 규칙(D11): 핵·갈래 허브는 항상, 주제는 자리가 있을 때만(충돌 회피), 목표·기억·정보는
+ * 호버·선택할 때만 그린다. 캔버스에는 확대가 없으므로 그 둘은 상태 라벨로만 선다.
  */
 
 /** 노드 size 1(핵)이 17 CSS px — 고르기 반경도 이 보이는 크기를 그대로 쓴다. */
 const NODE_PX = 17;
-/** 이보다 적은 잎 노드만 보이면 라벨을 모두 단다(21개 기준). 200개에서는 겹침을 피한다. */
-const LEAF_LABEL_LIMIT = 24;
 const LABEL_MAX = 180;
 
 interface CanvasView {
@@ -52,7 +57,7 @@ interface CanvasState {
   hover: string | null;
   filter: ReadonlySet<string> | null;
   view: CanvasView;
-  leafLabels: boolean;
+  insets: MapFitInsets;
 }
 
 export function createMapRenderer(): MapRenderer {
@@ -66,7 +71,7 @@ export function createMapRenderer(): MapRenderer {
     hover: null,
     filter: null,
     view: { scale: 1, ox: 0, oy: 0 },
-    leafLabels: false,
+    insets: DEFAULT_MAP_INSETS,
   };
 
   const isVisible = (id: string): boolean => state.filter === null || state.filter.has(id);
@@ -85,49 +90,42 @@ export function createMapRenderer(): MapRenderer {
     return model.graph.nodes.filter((node) => isVisible(node.id) && model.layout.positions.has(node.id));
   };
 
-  const labelsLeaves = (nodes: readonly MapNode[]): boolean => {
-    let leaves = 0;
-    for (const node of nodes) {
-      if (node.kind === "intel" || node.kind === "memory") leaves += 1;
-      if (leaves > LEAF_LABEL_LIMIT) return false;
-    }
-    return true;
-  };
-
-  const hasLabel = (node: MapNode): boolean => {
+  /** 라벨을 달 후보인가 — 목표·기억·정보는 호버·선택일 때만 강제로 단다. */
+  const labelPriority = (node: MapNode): number | null => {
     switch (node.kind) {
-      case "intel":
+      case "core":
+        return MAP_LABEL_PRIORITY.core;
+      case "description":
+      case "intel-hub":
+      case "branch":
+        return MAP_LABEL_PRIORITY.hub;
+      case "topic":
+        return MAP_LABEL_PRIORITY.topic;
+      case "source":
+      case "intel-overflow":
+        return MAP_LABEL_PRIORITY.secondary;
+      case "objective":
       case "memory":
-        return state.leafLabels || node.id === state.hover || node.id === state.selection;
-      default:
-        return Boolean(node.label);
+      case "intel":
+        return node.id === state.hover || node.id === state.selection ? MAP_LABEL_PRIORITY.forced : null;
     }
   };
 
-  /** 맞춤 보기 — 라벨 여백과 아래 예약을 포함한 bounds가 용기 안에 들어오게 맞춘다. */
+  /** 맞춤 보기 — 여백(setFitInsets)·아래 라벨 예약을 포함한 bounds가 용기 안에 들어오게 맞춘다. */
   const fit = (): void => {
     const surface = state.surface;
     const model = state.model;
     if (!surface || !model || surface.width <= 0 || surface.height <= 0) return;
-    const { ctx, width: w, height: h } = surface;
+    const { width: w, height: h } = surface;
     const nodes = shownNodes();
-    state.leafLabels = labelsLeaves(nodes);
+    const insets = clampMapInsets(state.insets, w, h);
+    const coreRadius = Math.max(...nodes.map(nodeRadius), 0) || NODE_PX;
 
-    const labelShown = nodes.filter(hasLabel);
-    setMapLabelFont(ctx, state.font);
-    const labelMax = Math.min(LABEL_MAX, Math.max(60, w * 0.5));
-    let halfLabel = 0;
-    for (const node of labelShown) {
-      halfLabel = Math.max(halfLabel, ctx.measureText(truncateLabel(ctx, node.label, labelMax)).width / 2);
-    }
-    const coreRadius = Math.max(...nodes.map(nodeRadius), 0);
-
-    const pad = 18;
-    const side = Math.min(halfLabel, w * 0.18);
-    const left = pad + side;
-    const right = w - pad - side;
-    const top = pad + coreRadius * 0.4;
-    const bottom = h - pad - (labelShown.length > 0 ? mapLabelReserve() + coreRadius : coreRadius);
+    const pad = 12;
+    const left = insets.left + pad;
+    const right = w - insets.right - pad;
+    const top = insets.top + pad;
+    const bottom = h - insets.bottom - pad - mapLabelReserve() - coreRadius;
 
     let minX = Infinity;
     let maxX = -Infinity;
@@ -181,7 +179,6 @@ export function createMapRenderer(): MapRenderer {
       const screen = screenOf(node);
       if (screen) points.set(node.id, screen);
     }
-    state.leafLabels = labelsLeaves(shownNodes());
     const core = points.get("core");
     const focus = focusSet();
 
@@ -245,21 +242,25 @@ export function createMapRenderer(): MapRenderer {
       }
     }
 
-    // 라벨 — 노드 아래. 아래 예약은 fit이 이미 잡았다.
-    setMapLabelFont(ctx, state.font);
-    const labelMax = Math.min(LABEL_MAX, Math.max(60, w * 0.5));
+    // 라벨 — 우선순위대로 자리를 잡고 겹치면 낮은 쪽을 버린다(D11). 아래 예약은 fit이 잡았다.
+    const candidates: MapLabelCandidate[] = [];
     for (const node of graph.nodes) {
-      if (!isVisible(node.id) || !hasLabel(node)) continue;
+      if (!isVisible(node.id)) continue;
+      const priority = labelPriority(node);
+      if (priority === null || !node.label) continue;
       const point = points.get(node.id);
       if (!point) continue;
       const dim = focus !== null && !focus.has(node.id);
-      kit.text(truncateLabel(ctx, node.label, labelMax), point.x, point.y + nodeRadius(node) + MAP_LABEL_GAP + MAP_LABEL_SIZE * 0.6, {
-        color: rgbCss(dim ? rgb.inkDim : rgb.ink, dim ? 0.35 : 0.92),
-        size: MAP_LABEL_SIZE,
-        weight: 600,
-        a: 1,
+      candidates.push({
+        text: node.label,
+        x: point.x,
+        y: point.y + nodeRadius(node) + MAP_LABEL_GAP + MAP_LABEL_SIZE * 0.6,
+        priority,
+        color: rgbCss(dim ? rgb.inkDim : rgb.ink),
+        alpha: dim ? 0.35 : 0.92,
       });
     }
+    drawMapLabels(ctx, kit, state.font, candidates, w, h, Math.min(LABEL_MAX, Math.max(60, w * 0.5)));
   };
 
   const readPalette = (palette: MapPalette): void => {
@@ -300,6 +301,14 @@ export function createMapRenderer(): MapRenderer {
     },
     setFilter(visible) {
       state.filter = visible;
+      draw();
+    },
+    setFitInsets(insets) {
+      const next = { top: insets.top, right: insets.right, bottom: insets.bottom, left: insets.left };
+      const current = state.insets;
+      if (next.top === current.top && next.right === current.right && next.bottom === current.bottom && next.left === current.left) return;
+      state.insets = next;
+      fit();
       draw();
     },
     pick(x, y) {
