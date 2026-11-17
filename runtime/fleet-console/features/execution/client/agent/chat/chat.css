@@ -126,13 +126,15 @@
 .agent-chat-sys--error { color: var(--coral-ink); }
 
 /* 플릿 브라우저 사건·닫힘 줄 — 타임라인의 한 줄. 지금 상태 하나만 서고, 연속으로 여닫아도 쌓이지 않는다.
-   살아 있는 동안은 aurora 점(상태 채널)이 말하고, 닫힘 줄은 색을 얻지 않는다. */
+   살아 있는 동안은 aurora 점(상태 채널)이 말하고, 닫힘 줄은 색을 얻지 않는다.
+   문구는 채팅 본문과 같은 UI 서체(--font-ui)를 쓴다 — 시스템 줄·셸 명령·경로·출력의
+   등폭(--agent-chat-font)과 달리 이것은 사람에게 말하는 한 줄이기 때문이다. */
 .agent-chat-browser-line {
   display: flex;
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  font-family: var(--agent-chat-font);
+  font-family: var(--font-ui);
   font-size: var(--font-code-size);
   color: var(--text-tertiary);
 }
