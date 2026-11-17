@@ -158,7 +158,7 @@ const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
 type Rgb = readonly [number, number, number];
-type PaletteRgb = Record<string, Rgb>;
+type PaletteRgb = ReturnType<typeof mapPaletteToRgb>;
 
 /** 시안 `zOf` — 노드 id 해시로 정해지는 고정 깊이. 정면에서는 구조가 읽히고 빛망울로 깊이가 보인다. */
 const Z_SPAN: Partial<Record<MapNode["kind"], number>> = {
@@ -185,8 +185,8 @@ function radiusOf(node: MapNode, degree: number): number {
   }
 }
 
-/** 팔레트 키 — 신호 토큰은 상태에 쓰지 않는다. */
-function paletteKeyOf(node: MapNode): string {
+/** 팔레트 키 — 신호 토큰(fresh·stale)은 범주색에 쓰지 않는다. */
+function paletteKeyOf(node: MapNode): keyof MapPalette {
   switch (node.kind) {
     case "core": return "core";
     case "description": return "description";
@@ -541,8 +541,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private applyModel(model: PositionedMapModel, palette: MapPalette, first: boolean): void {
     const previous = this.model;
     this.model = model;
-    this.rgb = mapPaletteToRgb(palette) as PaletteRgb;
-    const light = relativeLuminance(this.rgb.ink!) < 0.45;
+    this.rgb = mapPaletteToRgb(palette);
+    const light = relativeLuminance(this.rgb.ink) < 0.45;
     if (light !== this.light || first) {
       this.light = light;
       this.applyBlending();
@@ -839,7 +839,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
 
   private nodeRgb(i: number): Rgb {
     const rgb = this.rgb!;
-    return rgb[paletteKeyOf(this.nodes[i]!)] ?? rgb.ink!;
+    return rgb[paletteKeyOf(this.nodes[i]!)];
   }
 
   private writeBuffers(): void {
@@ -848,8 +848,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const crowd = clamp((this.nodes.length - CROWD_FROM) / (CROWD_TO - CROWD_FROM), 0, 1);
     const alphaScale = lerp(1, 0.8, crowd);
     const focus = this.focus;
-    const linkRgb = rgb.link ?? rgb.inkDim!;
-    const objectiveRgb = rgb.objective ?? rgb.inkDim!;
+    const linkRgb = rgb.link;
+    const objectiveRgb = rgb.objective;
 
     const color = this.pointGeo.getAttribute("aColor") as BufferAttribute;
     const size = this.pointGeo.getAttribute("aSize") as BufferAttribute;
