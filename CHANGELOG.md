@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.309.0] - 2026-11-17
+
+### fleet-console
+
+#### Added
+- The Commodore conversation header now has a network button that swaps the whole chat area for a navigable map of the Commodore's description, intel, and memories, with branch filters, search, and a detail panel in the right rail.
+
+### fleet-desktop
+
+#### Fixed
+- Opening the Fleet Browser now shows the space of the commodore you selected while it was closed, instead of the previous commodore's space.
+
 ## [1.308.0] - 2026-11-16
 
 ### fleet-cli

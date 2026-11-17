@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.309.0] - 2026-11-17
+
+### fleet-console
+
+#### Added
+- 사령관 대화 위쪽 줄에 신경망 단추가 생겨 채팅 영역 전체를 사령관의 설명·정보·기억 지도로 바꿔 볼 수 있습니다. 지도에서 갈래를 거르고 검색할 수 있고, 고른 항목의 상세는 오른쪽 레일에 나옵니다.
+
+### fleet-desktop
+
+#### Fixed
+- 플릿 브라우저가 닫혀 있는 동안 사령관을 바꾼 뒤 열면, 이전 사령관 스페이스가 아니라 지금 고른 사령관의 스페이스가 보입니다.
+
 ## [1.308.0] - 2026-11-16
 
 ### fleet-cli
