@@ -7,7 +7,7 @@ reproducing a provider-specific tool-call defect, or measuring what a model actu
 on the wire.
 
 The base skill still owns isolation, instrumentation, and cleanup. Complete
-[Claude state and trust preflight](claude-state.md) before starting an SDK/chat child. This page only adds provider-specific steps; its snippets
+[Claude state and trust preflight](claude-state.md) before starting an SDK/chat child or the standalone CLI. This page only adds provider-specific steps; its snippets
 assume the preflight environment is already applied and do not replace it.
 
 ## Browser driver
