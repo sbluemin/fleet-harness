@@ -41,6 +41,8 @@ export interface MapPanelProps {
   readonly branchName: (branch: MemoryBranch) => string;
   readonly onSelect: (id: string) => void;
   readonly onClose: () => void;
+  /** 레일 안에서는 공용 머리(아바타·이름)가 있으니 요약 머리를 뺀다. */
+  readonly compactSummary?: boolean;
 }
 
 function sourceLabelOf(t: T, state: CommodoreState, sourceId: string): string {
@@ -90,7 +92,7 @@ function useStaleCount(entries: readonly MemoryEntry[]): number {
   return entries.filter((entry) => now - entry.verified > MEMORY_STALE_MS).length;
 }
 
-function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branchName, onSelect }: Omit<MapPanelProps, "node" | "onClose">) {
+function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branchName, onSelect, compact }: Omit<MapPanelProps, "node" | "onClose"> & { readonly compact?: boolean }) {
   const stale = useStaleCount(entries);
   const links = graph.edges.filter((edge) => edge.kind === "link").length;
   const objectives = graph.nodes.filter((node) => node.kind === "objective").length;
@@ -106,6 +108,12 @@ function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branch
   ];
   return (
     <>
+      {compact ? (
+        <div className="commodore-map-panel-meta">
+          {[facts.model, facts.session !== null ? t("commodore.drawer.session", { n: facts.session }) : null, facts.actions !== null ? t("commodore.meta.handled", { n: facts.actions }) : null]
+            .filter((part) => part !== null).join(" · ")}
+        </div>
+      ) : (
       <div className="commodore-map-soma">
         <CommodoreAvatar commodoreId={commodoreId} state="idle" size={52} label="" decorative />
         <div>
@@ -116,6 +124,7 @@ function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branch
           </div>
         </div>
       </div>
+      )}
       {state.description.text ? <p>{state.description.text.split("\n")[0]}</p> : null}
       <div className="commodore-map-stats">
         {stats.map((stat) => (
@@ -216,7 +225,7 @@ function MemoryDetail({ t, node, entry, entries, branchName, onSelect }: {
  * 시안 모양의 상세 패널 — 고르면 그 항목, 고르지 않으면 사령관 요약.
  * 없는 값은 항목째 뺀다(`없음` 문구 금지).
  */
-export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, branchName, onSelect, onClose }: MapPanelProps) {
+export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, branchName, onSelect, onClose, compactSummary }: MapPanelProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { closeRef.current?.focus(); }, [node?.id]);
   const name = (state.alias ?? "").trim() || "commodore";
@@ -224,7 +233,7 @@ export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, b
 
   let title = name;
   let body: React.ReactNode = (
-    <CommanderSummary t={t} commodoreId={commodoreId} state={state} entries={entries} graph={graph} facts={facts} branchName={branchName} onSelect={onSelect} />
+    <CommanderSummary t={t} commodoreId={commodoreId} state={state} entries={entries} graph={graph} facts={facts} branchName={branchName} onSelect={onSelect} compact={compactSummary} />
   );
   const entry = node?.ref ? entries.find((candidate) => candidate.ref === node.ref) ?? null : null;
   if (node && entry && node.kind === "memory") {

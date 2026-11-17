@@ -73,12 +73,14 @@ function branchChipLabel(t: T, branch: MapBranchKey): string {
  * MapRenderer 계약에만 기대고, 종류는 환경(모바일·동작 줄이기·WebGL2)으로 고른다.
  * 렌더러 로드·mount 실패는 Canvas로 넘어간다. 닫히면 dispose로 반납한다.
  */
-export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit }: {
+export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showPanel }: {
   readonly t: T;
   readonly commodoreId: string;
   readonly state: CommodoreState;
   readonly facts: MapPanelFacts;
   readonly onExit: () => void;
+  /** 모바일처럼 레일이 없으면 상세 패널을 무대 아래에 둔다. 기본은 두지 않는다(레일이 맡는다). */
+  readonly showPanel?: boolean;
 }) {
   const memory = useCommodoreMemory(commodoreId);
   const look = useMongleLook(commodoreAvatarKey(commodoreId));
@@ -214,7 +216,9 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit }: {
         const point = spots.get(id);
         if (!element || !point) return;
         const w = Math.min(220, node.label.length * 6.5 + 8);
-        const x = point.x + lift;
+        // 무대 오른쪽에서 잘리지 않게 안쪽으로 민다.
+        const maxX = Math.max(4, (containerRef.current?.clientWidth ?? 0) - w - 4);
+        const x = Math.max(4, Math.min(point.x + lift, maxX));
         const y = point.y;
         const rect = rectOf(x, y, w);
         if (!always && (near(rect) || crowded(id, x, y))) {
@@ -566,6 +570,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit }: {
                   );
                 }) : null}
               </div>
+              <div className="commodore-map-top">
               <div className="commodore-map-chips" role="group" aria-label={t("commodore.map.chips")}>
                 {(["person", "theater", "lessons", "crew", "intel", "description"] as const).map((branch) => (
                   <button
@@ -599,6 +604,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit }: {
                 </button>
               </div>
               <div className="commodore-map-hint" aria-hidden="true">{t("commodore.map.hint")}</div>
+              </div>
               <div className="commodore-map-legend">
                 <details>
                   <summary>{t("commodore.map.legend.title")}</summary>
@@ -624,6 +630,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit }: {
               </>
             )}
           </div>
+          {showPanel ? (
           <MapPanel
             t={t}
             commodoreId={commodoreId}
@@ -639,6 +646,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit }: {
               if (selectedId) buttonRefs.current.get(selectedId)?.focus();
             }}
           />
+          ) : null}
         </div>
         {searching && matchCount === 0 ? <div className="commodore-map-state">{t("commodore.map.noMatch")}</div> : null}
     </div>

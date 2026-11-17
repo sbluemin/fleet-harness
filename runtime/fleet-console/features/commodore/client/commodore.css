@@ -555,12 +555,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-text-button:disabled { opacity: 0.45; cursor: default; }
 .objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 3px; }
 
-/* 지도 모드에서는 레일 탭 줄을 걷고 패널만 둔다(자문 답 A 가). 탭·열림 상태는 그대로다. */
-body[data-commodore-map="panel"] .conversation-panel-segments,
-body[data-commodore-map="panel"] .conversation-panel-sections {
-  display: none;
-}
-
 /* 대화 머리 줄의 지도 전환 — 알림 종 오른쪽 구분선 뒤에 선다. */
 .conversation-pill-tools .commodore-map-divider {
   flex: none;

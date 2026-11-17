@@ -25,7 +25,7 @@ import { CommodoreTrailSection } from "./commodore-trail.js";
 import { CommodoreMapScreen } from "./commodore-map/map-view.js";
 import { CommodoreMapToggle } from "./commodore-map-toggle.js";
 import { MapPanel, mapPanelFacts } from "./commodore-map/map-panel.js";
-import { setCommodoreMapMode, setCommodoreMapSelection, useCommodoreMapMode, useCommodoreMapSelection } from "./commodore-map-mode.js";
+import { readCommodoreMapMode, setCommodoreMapMode, setCommodoreMapSelection, subscribeCommodoreMapMode, useCommodoreMapMode, useCommodoreMapSelection } from "./commodore-map-mode.js";
 import type { MemoryBranch } from "../shared/contracts/memory.js";
 import { MEMORY_BRANCH_LABEL } from "./commodore-memory.js";
 import { buildMapGraph } from "./commodore-map/map-graph.js";
@@ -444,12 +444,6 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   );
   const topSettings = !readOnly && view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} onOpenChange={setSettingsOpen} /> : null;
   const mapMode = useCommodoreMapMode(commodoreId);
-  // 지도 모드에서는 레일 탭 줄을 걷고 패널만 둔다. 탭·열림 상태는 그대로라 채팅으로 돌아오면 원래 탭이 선다.
-  useEffect(() => {
-    if (mapMode !== "map") return;
-    document.body.setAttribute("data-commodore-map", "panel");
-    return () => { document.body.removeAttribute("data-commodore-map"); };
-  }, [mapMode]);
   return (
     <div ref={conversationRef} className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
       {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
@@ -573,6 +567,7 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
           branchName={(branch: MemoryBranch) => t(MEMORY_BRANCH_LABEL[branch])}
           onSelect={(id) => setCommodoreMapSelection(commodoreId, id)}
           onClose={() => setCommodoreMapSelection(commodoreId, null)}
+          compactSummary
         />
       </div>
     );
@@ -630,7 +625,9 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   subscribe: (listener) => {
     const offCommodore = subscribeCommodore(listener);
     const offBoard = subscribeObjective(listener);
-    return () => { offCommodore(); offBoard(); };
+    // 지도 모드 전환도 머리·패널 다시 그리기가 알아야 한다 — subtitle·actions와 같은 경로.
+    const offMapMode = subscribeCommodoreMapMode(listener);
+    return () => { offCommodore(); offBoard(); offMapMode(); };
   },
   // 사령관 세션은 이 scope 로 Session 브라우저를 얻는다(Console 사령관 feature의 tools.browser). 호스트가 지구본·카드·칸을 그린다.
   sessionBrowser: (ctx) => {
@@ -647,6 +644,11 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   toolbarTail: (ctx) => {
     const params = readParams(ctx.params);
     return params ? <CommodoreMapToggle commodoreId={params.commodoreId} language={ctx.language} /> : null;
+  },
+  // 지도 모드에서는 레일 탭 줄을 걷고 패널 본문만 둔다. 탭·열림 상태는 그대로다.
+  hidePanelTabs: (ctx) => {
+    const params = readParams(ctx.params);
+    return params ? readCommodoreMapMode(params.commodoreId) === "map" : false;
   },
   render: (ctx) => {
     const params = readParams(ctx.params);

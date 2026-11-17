@@ -352,6 +352,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
               commodoreId={commodoreId}
               state={view.state}
               facts={mapPanelFacts(view.run, view.defaults.model)}
+              showPanel
               onExit={() => setCommodoreMapMode(commodoreId, "chat")}
             />
           </div>

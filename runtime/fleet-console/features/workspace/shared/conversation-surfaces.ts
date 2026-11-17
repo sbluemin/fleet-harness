@@ -76,6 +76,11 @@ export interface ConversationSurfaceDescriptor {
    * 도구 목록 밖에 서므로 끝까지 남는다. 없거나 null 이면 비운다.
    */
   readonly toolbarTail?: (ctx: ConversationSurfaceContext) => ReactNode;
+  /**
+   * 오른쪽 패널 머리(공용 머리 아래)의 탭 줄(섹션·글자 탭)을 걷는다 — 패널 본문만 둔다.
+   * 탭·열림 상태는 그대로라 돌아오면 원래 탭이 선다. 없거나 false 면 그대로 둔다.
+   */
+  readonly hidePanelTabs?: (ctx: ConversationSurfaceContext) => boolean;
   readonly tabs?: readonly ConversationSurfaceTab[];
   /** 열 때 오른쪽 패널이 닫혀 있으면 연다 — 이 대화에서 마지막으로 선 탭이 있으면 그 탭을, 없으면 이 탭을 연다. */
   readonly defaultTab?: string;

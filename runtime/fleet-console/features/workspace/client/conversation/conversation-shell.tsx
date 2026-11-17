@@ -366,6 +366,21 @@ export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
 
 export function ConversationPanelHeader({ context }: { readonly context: RailToolContext }) {
   const t = useT();
+  const language = useConsoleLocale() === "ko" ? "ko" : "en";
+  const state = useConsoleState();
+  const surface = useConversationSurface();
+  const { conversationSurfaces } = useFeatureRegistry();
+  const descriptor = surface === null ? null : conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null;
+  // descriptor 가 바뀌면 머리 값을 다시 읽는다 — 사령관 대화는 지도 모드 전환도 여기서 알린다.
+  useConversationSurfaceHead(descriptor);
+  const hidePanelTabs = (() => {
+    if (!descriptor?.hidePanelTabs || !surface) return false;
+    try {
+      return descriptor.hidePanelTabs({ params: surface.params, language, theme: state.activeTheme, close: () => { if (descriptor) closeConversationSurface(descriptor.id); } });
+    } catch {
+      return false;
+    }
+  })();
   const sections = usePanelSections();
   const rowRef = useRef<HTMLDivElement | null>(null);
   const moreRef = useRef<HTMLButtonElement | null>(null);
@@ -445,8 +460,8 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       </div>
       <ConversationPanelIdentity />
       {/* Theater 를 연 동안(Theater Inbox 를 패널로 옮긴 자리) 섹션이 둘 이상이면 — 사령관 | Theater 설정 — 섹션 줄이 탭 줄 위에 선다.
-          고른 섹션의 칸만 탭 줄에 선다. */}
-      {sections.list.length >= 2 ? (
+          고른 섹션의 칸만 탭 줄에 선다. 지도 모드(사령관 대화의 hidePanelTabs)는 패널 본문만 둔다. */}
+      {!hidePanelTabs && sections.list.length >= 2 ? (
         <div className="conversation-panel-sections" role="group" aria-label={t("theaterInbox.panelSections")}>
           {sections.list.map((section) => (
             <button
@@ -463,6 +478,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
       ) : null}
       {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 기록·루틴·정보·설정)이 한 줄에 선다.
           켜진 것은 둥근 면 하나로 말한다. 넘치는 탭은 줄 끝 「⋯」 메뉴에 모인다. */}
+      {!hidePanelTabs ? (
       <div className="conversation-panel-segments">
         <div className="conversation-panel-segment-row" ref={rowRef}>
           <span className="conversation-panel-tabs">
@@ -502,6 +518,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
           ) : null}
         </span>
       </div>
+      ) : null}
     </div>
   );
 }
@@ -510,8 +527,8 @@ function isConversationTab(entry: RailEntryDescriptor): boolean {
   return entry.conversationTab === true;
 }
 
-/** 플러그인 대화의 머리 값(아바타 얼굴 등)은 플러그인 저장소에 산다 — 그 대화가 알리면 머리를 다시 그린다. */
-function useConversationSurfaceHead(descriptor: Pick<ConversationSurfaceDescriptor, "subscribe"> | null): void {
+/** 플러그인 대화의 머리 값(아바타 얼굴 등)은 플러그인 저장소에 산다 — 그 대화가 알리면 머리·오른쪽 패널 머리를 다시 그린다. */
+export function useConversationSurfaceHead(descriptor: Pick<ConversationSurfaceDescriptor, "subscribe"> | null): void {
   const [, refresh] = useReducer((count: number) => count + 1, 0);
   const subscribe = descriptor?.subscribe;
   useEffect(() => (subscribe ? subscribe(refresh) : undefined), [subscribe]);

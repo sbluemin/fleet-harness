@@ -71,18 +71,18 @@
 }
 
 .commodore-map-body {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  display: flex;
   min-height: 0;
   border-top: 1px solid var(--hairline);
 }
 
 .commodore-map-stage {
   position: relative;
-  min-height: 0;
+  flex: 1 1 auto;
+  min-height: 320px;
   min-width: 0;
   overflow: hidden;
-  margin: 12px 0 12px 12px;
+  margin: 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: radial-gradient(ellipse at 50% 45%, var(--ink-deep), var(--canvas-abyss) 70%);
@@ -184,18 +184,20 @@
   box-shadow: 0 0 0 2px var(--dialog-face), 0 0 0 4px var(--text-primary);
 }
 
-/* 무대 위 겹침 층 — 칩(왼쪽 위)·안내(오른쪽 위)·범례(오른쪽 아래). */
-.commodore-map-chips,
-.commodore-map-hint,
-.commodore-map-legend {
+/* 무대 위 겹침 층 — 위쪽 줄(칩·안내)과 오른쪽 아래 범례. 칩 줄 아래에 안내가 흘러 겹치지 않는다. */
+.commodore-map-top {
   position: absolute;
-  z-index: 3;
-}
-
-.commodore-map-chips {
   top: 12px;
   left: 12px;
   right: 12px;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.commodore-map-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
@@ -272,16 +274,17 @@
 }
 
 .commodore-map-hint {
-  top: 52px;
-  right: 12px;
+  align-self: flex-end;
   font-size: var(--t-xs);
   color: var(--text-tertiary);
   pointer-events: none;
   text-align: right;
-  max-width: 40%;
+  max-width: 60%;
 }
 
 .commodore-map-legend {
+  position: absolute;
+  z-index: 3;
   right: 12px;
   bottom: 12px;
   max-width: 250px;
@@ -594,12 +597,10 @@
 
 @media (max-width: 700px) {
   .commodore-map-body {
-    grid-template-columns: 1fr;
     overflow-y: auto;
   }
 
   .commodore-map-stage {
-    min-height: 320px;
     margin: 12px 12px 0;
   }
 

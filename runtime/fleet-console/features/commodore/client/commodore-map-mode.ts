@@ -53,6 +53,8 @@ function subscribe(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
+export { subscribe as subscribeCommodoreMapMode };
+
 export function useCommodoreMapMode(commodoreId: string | null | undefined): CommodoreMapMode {
   return useSyncExternalStore(subscribe, () => read(commodoreId).mode, () => "chat");
 }
