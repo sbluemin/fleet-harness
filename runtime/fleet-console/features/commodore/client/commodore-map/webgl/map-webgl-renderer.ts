@@ -3,8 +3,9 @@ import {
   BufferAttribute,
   BufferGeometry,
   CustomBlending,
+  DoubleSide,
   DynamicDrawUsage,
-  LineSegments,
+  Mesh,
   NormalBlending,
   OneFactor,
   OneMinusSrcAlphaFactor,
@@ -28,7 +29,7 @@ import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
 
 /**
  * three.js 렌더러(안 D) — 이 파일과 three는 지도를 열 때만 받는 지연 청크다.
- * 점 셰이더 1개(발광·초점 흐림)·선 셰이더 1개·Bloom, WebGL2 컨텍스트 1개.
+ * 점 셰이더 1개(발광·초점 흐림)·연결선 셰이더 1개(화면 폭 리본)·Bloom, WebGL2 컨텍스트 1개.
  * 카메라는 정면이 기본이고 끌 때만 돈다(자동 회전 없음, 손을 떼면 그 각도로 머문다).
  * CSP 때문에 blob 워커·WASM·eval은 쓰지 않는다.
  */
@@ -61,7 +62,9 @@ const MIN_HIT_PX = 4;
 const MAX_PIXEL_RATIO = 1.5;
 const ZOOM_MIN = 0.15;
 const ZOOM_MAX = 2.5;
-const PITCH_LIMIT = 1.35;
+/** 끌기 감도(rad/px)와 회전 범위 — 점 z 깊이가 ±8%뿐이라 그 이상 돌리면 옆면에서 점만 겹친다. */
+const DRAG_RAD_PER_PX = 0.0016;
+const ANGLE_LIMIT = (35 * Math.PI) / 180;
 const DRAG_THRESHOLD_PX = 3;
 const FIT_TWEEN_MS = 450;
 /** 밀도 보정이 서는 구간 — 이 수 이하는 성글게, 이 수 이상은 가장 빽빽하게 본다. */
@@ -99,26 +102,53 @@ varying float vCoc;
 void main() {
   float d = length(gl_PointCoord * 2.0 - 1.0);
   if (d > 1.0) discard;
-  float sharp = smoothstep(0.42, 0.3, d) + exp(-d * d * 7.0) * 0.45;
+  float sharp = smoothstep(0.42, 0.3, d) + exp(-d * d * 7.0) * 0.45 * smoothstep(1.0, 0.6, d);
   float bokeh = smoothstep(1.0, 0.84, d) * (0.42 + 0.58 * smoothstep(0.5, 0.95, d));
   float a = clamp(mix(sharp, bokeh, vCoc) * vAlpha, 0.0, 1.0);
   vec3 rgb = vColor * uGain;
   gl_FragColor = vec4(mix(rgb * a, rgb, uLight), a);
 }`;
 
+/**
+ * 연결선 — 화면 폭이 있는 리본. 선택·호버 강조에서 굵기를 키우려고 GL 선(1px 고정) 대신 쓴다.
+ * 두 끝점을 화면 px로 옮겨 수직 방향으로 `aWidth`만큼 벌린다.
+ */
 const LINE_VERTEX = /* glsl */ `
+attribute vec3 aOther;
+attribute vec2 aSide;
 attribute vec4 aRgba;
+attribute float aWidth;
+uniform vec2 uRes;
 varying vec4 vC;
+varying float vDist;
+varying float vHalf;
 void main() {
+  mat4 m = projectionMatrix * modelViewMatrix;
+  vec4 p0 = m * vec4(position, 1.0);
+  vec4 p1 = m * vec4(aOther, 1.0);
+  vec2 half_ = uRes * 0.5;
+  vec2 s0 = p0.xy / p0.w * half_;
+  vec2 s1 = p1.xy / p1.w * half_;
+  vec2 d = s1 - s0;
+  float len = length(d);
+  d = len > 1e-4 ? d / len * aSide.y : vec2(1.0, 0.0);
+  vec2 n = vec2(-d.y, d.x);
+  float hw = aWidth * 0.5;
+  vec2 s = s0 + n * aSide.x * (hw + 0.75);
+  gl_Position = vec4(s / half_ * p0.w, p0.z, p0.w);
   vC = aRgba;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vDist = aSide.x * (hw + 0.75);
+  vHalf = hw;
 }`;
 
 const LINE_FRAGMENT = /* glsl */ `
 uniform float uLight;
 varying vec4 vC;
+varying float vDist;
+varying float vHalf;
 void main() {
-  gl_FragColor = vec4(mix(vC.rgb * vC.a, vC.rgb, uLight), vC.a);
+  float a = vC.a * clamp(vHalf - abs(vDist) + 0.5, 0.0, 1.0);
+  gl_FragColor = vec4(mix(vC.rgb * a, vC.rgb, uLight), a);
 }`;
 
 /**
@@ -133,13 +163,17 @@ const FINAL_SHADER = {
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
     varying vec2 vUv;
+    // 화면 위치 기반 삼각 분포 잡음 — 어두운 발광 꼬리가 8비트에서 동심원 띠로 끊기는 것을 푼다.
+    float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
     void main() {
       vec3 c = max(texture2D(tDiffuse, vUv).rgb, vec3(0.0));
       float m = max(c.r, max(c.g, c.b));
       if (m <= 0.0) { gl_FragColor = vec4(0.0); return; }
       float knee = 0.7;
       float soft = m < knee ? m : knee + (1.0 - knee) * (1.0 - exp(-(m - knee) / (1.0 - knee)));
-      gl_FragColor = vec4(c * (soft / m), soft);
+      float noise = (ign(gl_FragCoord.xy) + ign(gl_FragCoord.xy + vec2(5.588238, 5.588238)) - 1.0) / 255.0;
+      vec3 outRgb = max(c * (soft / m) + noise, vec3(0.0));
+      gl_FragColor = vec4(outRgb, max(soft + noise, 0.0));
     }`,
 };
 
@@ -150,6 +184,8 @@ const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2,
 type Rgb = readonly [number, number, number];
 type PaletteKey = keyof MapPalette;
 
+/** 연결선 기본 굵기(CSS px) — 강조되면 최대 +1.9. */
+const EDGE_WIDTH = 1.1;
 const EDGE_ALPHA: Record<MapEdgeKind, number> = { tree: 0.38, link: 0.45, objective: 0.4, source: 0.14 };
 
 function paletteKeyOf(node: MapNode): PaletteKey {
@@ -185,7 +221,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private lineMat: ShaderMaterial | null = null;
   private readonly lightUniform = { value: 0 };
   private points: Points | null = null;
-  private lines: LineSegments | null = null;
+  private lines: Mesh | null = null;
+  private readonly resUniform = { value: new Vector2(1, 1) };
 
   private model: PositionedMapModel | null = null;
   private rgb: Record<PaletteKey, Rgb> | null = null;
@@ -203,6 +240,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private filter: ReadonlySet<string> | null = null;
   private selection: string | null = null;
   private hover: string | null = null;
+  /** 노드별 강조 정도 0–1 — 고른 점·호버 점과 그 이웃. */
+  private emph = new Float32Array(0);
+  private focused = false;
   private visibleCount = 0;
 
   private width = 0;
@@ -242,8 +282,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const dy = event.clientY - drag.y;
     drag.x = event.clientX;
     drag.y = event.clientY;
-    this.yaw -= dx * 0.006;
-    this.pitch = clamp(this.pitch + dy * 0.006, -PITCH_LIMIT, PITCH_LIMIT);
+    this.yaw = clamp(this.yaw - dx * DRAG_RAD_PER_PX, -ANGLE_LIMIT, ANGLE_LIMIT);
+    this.pitch = clamp(this.pitch + dy * DRAG_RAD_PER_PX, -ANGLE_LIMIT, ANGLE_LIMIT);
     this.schedule();
   };
   private readonly onPointerEnd = (event: PointerEvent) => {
@@ -320,6 +360,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   setSelection(id: string | null): void {
     if (this.selection === id) return;
     this.selection = id;
+    this.updateEmphasis();
     this.dataDirty = true;
     this.schedule();
   }
@@ -327,6 +368,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   setHover(id: string | null): void {
     if (this.hover === id) return;
     this.hover = id;
+    this.updateEmphasis();
     this.dataDirty = true;
     this.schedule();
   }
@@ -377,8 +419,6 @@ class MapWebglRendererImpl implements MapWebglRenderer {
 
   fit(): void {
     if (!this.renderer) return;
-    // 가장 짧은 각도로 정면에 돌아온다.
-    this.yaw = Math.atan2(Math.sin(this.yaw), Math.cos(this.yaw));
     this.tween = { t0: performance.now(), dur: FIT_TWEEN_MS, yaw0: this.yaw, pitch0: this.pitch, zoom0: this.zoom };
     this.schedule();
   }
@@ -436,10 +476,10 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       transparent: true, depthTest: false, depthWrite: false,
     });
     this.lineMat = new ShaderMaterial({
-      uniforms: { uLight: this.lightUniform },
+      uniforms: { uLight: this.lightUniform, uRes: this.resUniform },
       vertexShader: LINE_VERTEX,
       fragmentShader: LINE_FRAGMENT,
-      transparent: true, depthTest: false, depthWrite: false,
+      transparent: true, depthTest: false, depthWrite: false, side: DoubleSide,
     });
     this.applyBlending();
   }
@@ -509,14 +549,28 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     pointGeo.setAttribute("aColor", dynamic(new Float32Array(n * 3), 3));
     pointGeo.setAttribute("aSize", dynamic(new Float32Array(n), 1));
     pointGeo.setAttribute("aAlpha", dynamic(new Float32Array(n), 1));
+    // 연결선 — 선분마다 네 꼭짓점 리본(끝마다 좌·우). aOther는 반대쪽 끝, aSide=(좌우, 방향 부호).
     const lineGeo = new BufferGeometry();
     const m = this.edgeIdx.length;
-    const linePos = new Float32Array(m * 6);
+    const linePos = new Float32Array(m * 12);
+    const lineOther = new Float32Array(m * 12);
+    const lineSide = new Float32Array(m * 8);
+    const lineIndex = new Uint32Array(m * 6);
     this.edgeIdx.forEach(({ a, b }, e) => {
-      linePos.set([this.px[a]!, this.py[a]!, this.pz[a]!, this.px[b]!, this.py[b]!, this.pz[b]!], e * 6);
+      const pa = [this.px[a]!, this.py[a]!, this.pz[a]!];
+      const pb = [this.px[b]!, this.py[b]!, this.pz[b]!];
+      linePos.set([...pa, ...pa, ...pb, ...pb], e * 12);
+      lineOther.set([...pb, ...pb, ...pa, ...pa], e * 12);
+      lineSide.set([-1, 1, 1, 1, -1, -1, 1, -1], e * 8);
+      const v = e * 4;
+      lineIndex.set([v, v + 1, v + 2, v + 1, v + 3, v + 2], e * 6);
     });
     lineGeo.setAttribute("position", new BufferAttribute(linePos, 3));
-    lineGeo.setAttribute("aRgba", dynamic(new Float32Array(m * 8), 4));
+    lineGeo.setAttribute("aOther", new BufferAttribute(lineOther, 3));
+    lineGeo.setAttribute("aSide", new BufferAttribute(lineSide, 2));
+    lineGeo.setIndex(new BufferAttribute(lineIndex, 1));
+    lineGeo.setAttribute("aRgba", dynamic(new Float32Array(m * 16), 4));
+    lineGeo.setAttribute("aWidth", dynamic(new Float32Array(m * 4), 1));
 
     if (this.points) this.scene.remove(this.points);
     if (this.lines) this.scene.remove(this.lines);
@@ -524,7 +578,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.lineGeo.dispose();
     this.pointGeo = pointGeo;
     this.lineGeo = lineGeo;
-    this.lines = new LineSegments(lineGeo, this.lineMat!);
+    this.lines = new Mesh(lineGeo, this.lineMat!);
     this.points = new Points(pointGeo, this.pointMat!);
     this.lines.frustumCulled = false;
     this.points.frustumCulled = false;
@@ -533,6 +587,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.scene.add(this.lines, this.points);
 
     this.countVisible();
+    this.updateEmphasis();
     // 노드 구성이 바뀌었을 때만 정면으로 되돌린다 — 테마 전환 등 같은 지도는 카메라를 지킨다.
     const signature = this.ids.join("\n");
     if (signature !== this.signature) {
@@ -540,6 +595,27 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.yaw = 0; this.pitch = 0; this.zoom = 1; this.tween = null;
     }
     this.computeFit();
+  }
+
+  /** 고른 점(1)·그 이웃(0.8), 호버한 점(0.65)·그 이웃(0.45) — 큰 쪽을 쓴다. */
+  private updateEmphasis(): void {
+    const n = this.nodes.length;
+    if (this.emph.length !== n) this.emph = new Float32Array(n);
+    this.emph.fill(0);
+    const adjacent = this.model?.graph.adjacent;
+    const mark = (id: string | null, self: number, near: number) => {
+      if (id === null) return;
+      const i = this.index.get(id);
+      if (i === undefined) return;
+      this.emph[i] = Math.max(this.emph[i]!, self);
+      for (const other of adjacent?.get(id) ?? []) {
+        const j = this.index.get(other);
+        if (j !== undefined) this.emph[j] = Math.max(this.emph[j]!, near);
+      }
+    };
+    mark(this.hover, 0.65, 0.45);
+    mark(this.selection, 1, 0.8);
+    this.focused = this.hover !== null && this.index.has(this.hover) || this.selection !== null && this.index.has(this.selection);
   }
 
   private isVisible(id: string): boolean {
@@ -561,6 +637,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     if (!force && w === this.width && h === this.height) return;
     this.width = w;
     this.height = h;
+    this.resUniform.value.set(w, h);
     renderer.setSize(w, h, false);
     this.composer?.setSize(w, h);
     this.camera.aspect = w / h;
@@ -625,7 +702,10 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const node = this.nodes[i]!;
     let scale = mapNodeSize(node.kind) * DOT_UNIT * lerp(1, 0.8, this.crowd());
     if (node.fresh) scale *= 1.15;
-    if (emphasize && (node.id === this.hover || node.id === this.selection)) scale *= 1.4;
+    if (emphasize) {
+      if (node.id === this.hover || node.id === this.selection) scale *= 1.4;
+      else scale *= 1 + (this.emph[i] ?? 0) * 0.25;
+    }
     return scale;
   }
 
@@ -707,12 +787,11 @@ class MapWebglRendererImpl implements MapWebglRenderer {
 
   private writeBuffers(): void {
     const rgb = this.rgb;
-    const model = this.model;
-    if (!rgb || !model) return;
+    if (!rgb) return;
     const crowd = this.crowd();
     const alphaScale = lerp(1, 0.7, crowd);
-    const focusId = this.hover ?? this.selection;
-    const near = focusId ? new Set<string>([focusId, ...(model.graph.adjacent.get(focusId) ?? [])]) : null;
+    const focused = this.focused;
+    const ink = rgb.ink;
 
     const color = this.pointGeo.getAttribute("aColor") as BufferAttribute;
     const size = this.pointGeo.getAttribute("aSize") as BufferAttribute;
@@ -723,14 +802,18 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       const node = this.nodes[i]!;
       const visible = this.isVisible(node.id);
       shown.push(visible);
-      const c = this.nodeRgb(i);
-      colors.push(c);
+      const level = this.emph[i] ?? 0;
+      const base = this.nodeRgb(i);
+      colors.push(base);
+      // 강조된 점은 잉크 쪽으로 살짝 밝힌다 — 연결선 색과 함께 방사형으로 읽힌다.
+      const c = level > 0 ? mix(base, ink, level * 0.3) : base;
       color.setXYZ(i, c[0] / 255, c[1] / 255, c[2] / 255);
       size.setX(i, visible ? this.dotDiameter(i) : 0);
       let a = (node.kind === "core" ? 1 : 0.9) * alphaScale;
       if (node.stale) a *= 0.6;
       if (node.kind === "topic") a *= 0.7;
-      if (near && !near.has(node.id)) a *= 0.3;
+      // 강조가 있으면 이웃이 아닌 점은 물러난다. 이웃은 밀도 보정 없이 또렷하게 둔다.
+      if (focused) a = level > 0 ? Math.max(a, 0.9 * Math.min(1, level * 1.25)) : a * 0.16;
       alpha.setX(i, visible ? a : 0);
     }
     color.needsUpdate = true;
@@ -738,21 +821,32 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     alpha.needsUpdate = true;
 
     const edgeColor = this.lineGeo.getAttribute("aRgba") as BufferAttribute;
-    const ink = rgb.ink;
+    const edgeWidth = this.lineGeo.getAttribute("aWidth") as BufferAttribute;
     const inkDim = rgb.inkDim;
+    const selected = this.selection !== null ? this.index.get(this.selection) : undefined;
+    const hovered = this.hover !== null ? this.index.get(this.hover) : undefined;
     this.edgeIdx.forEach(({ a, b, kind }, e) => {
       const live = shown[a]! && shown[b]!;
       let alphaEdge = live ? EDGE_ALPHA[kind] * lerp(1, 0.6, crowd) : 0;
-      if (live && focusId) {
-        const touches = this.ids[a] === focusId || this.ids[b] === focusId;
-        alphaEdge = touches ? Math.min(1, alphaEdge * 2.4 + 0.2) : alphaEdge * 0.15;
+      // 고른 점에 닿은 선은 1, 호버한 점에 닿은 선은 0.6 — 나머지는 가라앉는다.
+      let level = 0;
+      if (live) {
+        if (selected !== undefined && (a === selected || b === selected)) level = 1;
+        else if (hovered !== undefined && (a === hovered || b === hovered)) level = 0.6;
+        if (level > 0) alphaEdge = lerp(alphaEdge, 0.95, level);
+        else if (focused) alphaEdge *= 0.08;
       }
-      const ca = kind === "source" ? inkDim : kind === "link" ? ink : colors[a]!;
-      const cb = kind === "source" ? inkDim : kind === "link" ? ink : colors[b]!;
-      edgeColor.setXYZW(e * 2, ca[0] / 255, ca[1] / 255, ca[2] / 255, alphaEdge);
-      edgeColor.setXYZW(e * 2 + 1, cb[0] / 255, cb[1] / 255, cb[2] / 255, alphaEdge);
+      const ca = level > 0 ? mix(colors[a]!, ink, level * 0.35) : kind === "source" ? inkDim : kind === "link" ? ink : colors[a]!;
+      const cb = level > 0 ? mix(colors[b]!, ink, level * 0.35) : kind === "source" ? inkDim : kind === "link" ? ink : colors[b]!;
+      const width = EDGE_WIDTH + level * 1.9;
+      for (let k = 0; k < 4; k += 1) {
+        const c = k < 2 ? ca : cb;
+        edgeColor.setXYZW(e * 4 + k, c[0] / 255, c[1] / 255, c[2] / 255, alphaEdge);
+        edgeWidth.setX(e * 4 + k, width);
+      }
     });
     edgeColor.needsUpdate = true;
+    edgeWidth.needsUpdate = true;
   }
 }
 
