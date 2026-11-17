@@ -589,8 +589,8 @@ export const DESKTOP_WINDOW_COMMAND_EVENT = "desktop:window-command";
  * `toggle-browser-viewer`는 이 Console 을 관리하지 않는 Desktop 창에서 사람이 브라우저 단추를 누른 것이다. 그 셸이 자기 보기 전용
  * 플릿 브라우저 셸을 열거나 닫는다 — 열림 상태는 셸만 안다. 관리 창의 셸과 모르는 옛 셸은 이 명령을 버린다.
  *
- * `select-browser-space`는 좌측 사이드바에서 사령관·지휘관을 골랐을 때, 창에 플릿 브라우저가 열려 있는 경우에만 그 스페이스(`spaceId`)로
- * 옮겨 달라는 요청이다. 닫혀 있으면 열지 않고, 모르는 옛 셸은 프레임을 버린다.
+ * `select-browser-space`는 좌측 사이드바에서 사령관·지휘관을 골랐을 때 플릿 브라우저를 그 스페이스(`spaceId`)로 옮겨 달라는 요청이다.
+ * 열려 있으면 곧바로 옮기고, 닫혀 있으면 열지 않은 채 기억했다가 다음에 열 때 그 스페이스로 연다. 모르는 옛 셸은 프레임을 버린다.
  */
 export const DESKTOP_WINDOW_COMMANDS = ["enter-fullscreen", "leave-fullscreen", "request-accessibility-permission", "open-screen-recording-settings", "console-ready", "toggle-browser-viewer", "select-browser-space"] as const;
 export type DesktopWindowCommand = (typeof DESKTOP_WINDOW_COMMANDS)[number];
