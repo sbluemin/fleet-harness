@@ -97,6 +97,95 @@ export interface MapCanvasSurface {
   dispose(): void;
 }
 
+export interface MapFitInsets {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+/** `setFitInsets`를 주지 않는 쪽을 위한 기본 여백 — 칩·패널이 없는 무대. */
+export const DEFAULT_MAP_INSETS: MapFitInsets = { top: 32, right: 32, bottom: 32, left: 32 };
+
+/** 계약: 변마다 20%가 상한. 음수는 0으로 본다. */
+export function clampMapInsets(insets: MapFitInsets, width: number, height: number): MapFitInsets {
+  const capX = width * 0.2;
+  const capY = height * 0.2;
+  return {
+    top: Math.max(0, Math.min(insets.top, capY)),
+    bottom: Math.max(0, Math.min(insets.bottom, capY)),
+    left: Math.max(0, Math.min(insets.left, capX)),
+    right: Math.max(0, Math.min(insets.right, capX)),
+  };
+}
+
+/**
+ * 라벨 우선순위 — 낮을수록 먼저 자리를 잡는다. 낮은 쪽이 이미 놓인 라벨과 겹치면 생략한다.
+ * `forced`(호버·선택)는 언제나 그린다.
+ */
+export const MAP_LABEL_PRIORITY = {
+  forced: -1,
+  core: 0,
+  hub: 1,
+  topic: 2,
+  secondary: 3,
+  /** 충분히 확대했을 때만 후보가 되는 잎(기억·정보·목표) — 겹치면 버린다. */
+  leaf: 4,
+} as const;
+
+export interface MapLabelCandidate {
+  readonly text: string;
+  /** 앵커 x — 화면 밖으로 넘치지 않게 안쪽으로 밀린다. */
+  readonly x: number;
+  /** 라벨 중심 y. */
+  readonly y: number;
+  readonly priority: number;
+  readonly color: string;
+  readonly alpha: number;
+}
+
+/**
+ * 라벨 배치 — 충돌 회피와 좌우 클램프. 라벨끼리 겹치면 우선순위가 낮은 후보를 버린다.
+ * 좌·우 여백을 예약하지 않는 대신, 가장자리 라벨은 무대 안으로 밀어 그린다.
+ */
+export function drawMapLabels(
+  ctx: CanvasRenderingContext2D,
+  kit: GlanceKit,
+  font: string,
+  candidates: readonly MapLabelCandidate[],
+  width: number,
+  height: number,
+  maxTextWidth: number,
+): void {
+  setMapLabelFont(ctx, font);
+  const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  const halfHeight = MAP_LABEL_SIZE * 0.62;
+  const sorted = [...candidates].sort((a, b) => a.priority - b.priority);
+  for (const candidate of sorted) {
+    const text = truncateLabel(ctx, candidate.text, maxTextWidth);
+    if (!text) continue;
+    const halfWidth = ctx.measureText(text).width / 2;
+    if (halfWidth * 2 > width - 8) continue;
+    const x = Math.min(width - 4 - halfWidth, Math.max(4 + halfWidth, candidate.x));
+    const rect = {
+      x0: x - halfWidth - 2,
+      y0: candidate.y - halfHeight - 0.5,
+      x1: x + halfWidth + 2,
+      y1: candidate.y + halfHeight + 0.5,
+    };
+    if (rect.y0 < 0 || rect.y1 > height) continue;
+    const overlaps = placed.some((other) => rect.x0 < other.x1 && other.x0 < rect.x1 && rect.y0 < other.y1 && other.y0 < rect.y1);
+    if (overlaps && candidate.priority >= 0) continue;
+    placed.push(rect);
+    kit.text(text, x, candidate.y, {
+      color: candidate.color,
+      size: MAP_LABEL_SIZE,
+      weight: 600,
+      a: candidate.alpha,
+    });
+  }
+}
+
 /**
  * 용기에 Canvas를 붙이고 DPR을 맞춘다. 크기 변화는 ResizeObserver가 알리며,
  * 부르는 쪽이 다시 그린다(상시 rAF 루프 없음).
