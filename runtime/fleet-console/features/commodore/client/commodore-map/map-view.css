@@ -594,6 +594,11 @@
 }
 
 /* 휴대폰 — 레일이 없어 패널이 무대 아래에 선다. 시안 900px 이하처럼 세로로 쌓고 무대는 64vh(최소 440px). */
+/* 상단 막대는 본문 위에 떠 있다 — 검색 줄이 그 뒤에 깔리지 않게 막대 몫(--m-chrome-top)을 비운다. */
+:root[data-view-mode="mobile"] .commodore-map-screen {
+  padding-top: var(--m-chrome-top, 0px);
+}
+
 :root[data-view-mode="mobile"] .commodore-map-body {
   flex-direction: column;
   overflow-y: auto;
