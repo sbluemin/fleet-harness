@@ -102,6 +102,8 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
   const nodesRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
+  const tagRefs = useRef(new Map<string, HTMLDivElement>());
+  const rovingRef = useRef<string | null>(null);
   const [hidden, setHidden] = useState<ReadonlySet<MapBranchKey>>(() => new Set());
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -116,6 +118,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     description: t("commodore.description.label"),
     intelHub: t("commodore.intel.label"),
     branch: branchName,
+    personSource: t("commodore.intel.fromYou"),
   }), [t, branchName]);
   const graph = useMemo(
     () => buildMapGraph({ state, memories: memory.entries, tone: look.tone ?? null, labels }),
@@ -126,8 +129,23 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
   const hits = useMemo(() => matchMapQuery(graph, query), [graph, query]);
   const visible = useMemo(() => visibleMapIds(graph, hidden, hits), [graph, hidden, hits]);
   const palette = useMemo(() => readMapPalette(), [paletteTick]);
+  // D1 — 칩 숫자는 노드 수가 아니라 기억·정보 개수다.
+  const chipCounts = useMemo(() => {
+    const counts: Record<MapBranchKey, number> = { description: 0, intel: 0, person: 0, theater: 0, lessons: 0, crew: 0 };
+    counts.description = state.description.text === "" ? 0 : 1;
+    counts.intel = state.intel.length;
+    for (const entry of memory.entries) counts[entry.branch] += 1;
+    return counts;
+  }, [state.description.text, state.intel.length, memory.entries]);
   const isEmpty = state.description.text === "" && graph.intelTotal === 0 && memory.entries.length === 0;
   const selected: DetailTarget | null = selectedId ? (graph.byId.get(selectedId) ? { node: graph.byId.get(selectedId)! } : null) : null;
+  // D6 — 노드 층의 Tab 정지점은 하나로, 방향키로 옮겨 다닌다.
+  const orderedIds = useMemo(() => [...visible], [visible]);
+  const [roving, setRoving] = useState<string | null>(null);
+  const rovingId = roving !== null && visible.has(roving)
+    ? roving
+    : (selectedId !== null && visible.has(selectedId) ? selectedId : (orderedIds[0] ?? null));
+  rovingRef.current = rovingId;
 
   const modelRef = useRef(model);
   modelRef.current = model;
@@ -138,11 +156,13 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
   const paletteRef = useRef(palette);
   paletteRef.current = palette;
 
+  // D4 — 핵·허브 라벨은 항상, 주제 라벨은 겹치지 않을 때만 DOM 층에 띠운다.
+  // 렌더러를 고치지 않고 project 좌표를 읽으므로 끌기·확대 때 따라 움직인다.
   const syncPositions = useCallback((): void => {
     const renderer = rendererRef.current;
-    const layer = nodesRef.current;
-    if (!renderer || !layer) return;
+    if (!renderer) return;
     try {
+      const spots = new Map<string, { x: number; y: number }>();
       for (const [id, element] of buttonRefs.current) {
         if (!visibleRef.current.has(id)) {
           element.style.display = "none";
@@ -156,10 +176,45 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
           element.setAttribute("aria-hidden", "true");
         } else {
           element.style.visibility = "";
-          element.tabIndex = 0;
+          element.tabIndex = id === rovingRef.current ? 0 : -1;
           element.removeAttribute("aria-hidden");
           element.style.transform = `translate(${point.x.toFixed(1)}px, ${point.y.toFixed(1)}px) translate(-50%, -50%)`;
+          spots.set(id, point);
         }
+      }
+      // 라벨 자리 — 핵·가지 허브부터 잡고, 주제는 44px 안에 남의 자리가 없을 때만 선다.
+      const shown: { x: number; y: number }[] = [];
+      const near = (x: number, y: number): boolean => shown.some((spot) => Math.abs(spot.x - x) < 44 && Math.abs(spot.y - y) < 20);
+      const place = (id: string, lift: number, always: boolean): void => {
+        const element = tagRefs.current.get(id);
+        const point = spots.get(id);
+        if (!element || !point) return;
+        const x = point.x;
+        const y = point.y - lift;
+        if (!always && near(x, y)) {
+          element.style.display = "none";
+          return;
+        }
+        element.style.display = "";
+        element.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(-50%, -100%)`;
+        shown.push({ x, y });
+      };
+      for (const [id] of tagRefs.current) {
+        if (!spots.has(id)) {
+          const element = tagRefs.current.get(id);
+          if (element) element.style.display = "none";
+        }
+      }
+      for (const id of visibleRef.current) {
+        const node = modelRef.current.graph.byId.get(id);
+        if (!node) continue;
+        if (node.kind !== "core" && node.kind !== "description" && node.kind !== "intel-hub" && node.kind !== "branch") continue;
+        place(id, node.kind === "core" ? 20 : 16, true);
+      }
+      for (const id of visibleRef.current) {
+        const node = modelRef.current.graph.byId.get(id);
+        if (!node || node.kind !== "topic") continue;
+        place(id, 14, false);
       }
     } catch {
       /* project 실패는 그 프레임을 건너뛴다 */
@@ -224,6 +279,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
       owned = null;
       try { ownedNow?.dispose(); } catch { /* 닫기 실패는 조용히 둔다 */ }
       buttonRefs.current.clear();
+      tagRefs.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [osReduced, retryToken, isEmpty]);
@@ -235,7 +291,15 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     renderer.update(model, palette);
     renderer.setFilter(visible);
     syncPositions();
-  }, [model, palette, visible, syncPositions]);
+    // 가려진 점에 포커스가 남았으면 정지점으로 돌려놓는다.
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active.classList.contains("commodore-map-node")
+      && (active.style.display === "none" || active.style.visibility === "hidden")) {
+      const fallback = (rovingId !== null ? buttonRefs.current.get(rovingId) : undefined)
+        ?? [...buttonRefs.current.values()].find((element) => element.style.display !== "none" && element.style.visibility !== "hidden");
+      fallback?.focus();
+    }
+  }, [model, palette, visible, rovingId, syncPositions]);
 
   useEffect(() => {
     rendererRef.current?.setSelection(selectedId);
@@ -276,7 +340,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
         const container = dialogRef.current;
         if (!container) return;
         const focusable = [...container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)]
-          .filter((element) => element.style.display !== "none" && element.style.visibility !== "hidden" && !element.hasAttribute("aria-hidden"));
+          .filter((element) => element.tabIndex >= 0 && element.style.display !== "none" && element.style.visibility !== "hidden" && !element.hasAttribute("aria-hidden"));
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (!first || !last) {
@@ -314,6 +378,37 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
       else next.add(branch);
       return next;
     });
+  };
+
+  // D6 — 노드 층 방향키 이동. Enter·Space는 버튼 기본 동작(고르기) 그대로 둔다.
+  const moveRoving = (key: string): void => {
+    const candidates = orderedIds.filter((id) => {
+      const element = buttonRefs.current.get(id);
+      return element !== undefined && element.style.display !== "none" && element.style.visibility !== "hidden";
+    });
+    if (candidates.length === 0) return;
+    const active = document.activeElement;
+    const activeId = active instanceof HTMLElement
+      ? ([...buttonRefs.current].find(([, element]) => element === active)?.[0] ?? null)
+      : null;
+    const at = activeId !== null ? candidates.indexOf(activeId) : candidates.indexOf(rovingRef.current ?? "");
+    let next: number;
+    if (key === "Home") next = 0;
+    else if (key === "End") next = candidates.length - 1;
+    else if (at < 0) next = key === "ArrowLeft" || key === "ArrowUp" ? candidates.length - 1 : 0;
+    else next = (at + (key === "ArrowLeft" || key === "ArrowUp" ? -1 : 1) + candidates.length) % candidates.length;
+    const target = candidates[next];
+    if (target !== undefined) buttonRefs.current.get(target)?.focus();
+  };
+
+  const handleStageKeyDown = (event: React.KeyboardEvent): void => {
+    const target = event.target as HTMLElement | null;
+    if (!target?.classList.contains("commodore-map-node")) return;
+    if (event.key === "ArrowRight" || event.key === "ArrowDown" || event.key === "ArrowLeft" || event.key === "ArrowUp" || event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      event.stopPropagation();
+      moveRoving(event.key);
+    }
   };
 
   const pickAt = (clientX: number, clientY: number): string | null => {
@@ -371,7 +466,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
                   onClick={() => toggleBranch(branch)}
                 >
                   <span className="commodore-map-chip-dot" data-branch={branch} aria-hidden="true" />
-                  {branchChipLabel(t, branch)} {graph.branchCounts[branch] ?? 0}
+                  {branchChipLabel(t, branch)} {chipCounts[branch] ?? 0}
                 </button>
               );
             })}
@@ -404,9 +499,11 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
               if ((event.target as HTMLElement).closest(".commodore-map-node")) return;
               const id = pickAt(event.clientX, event.clientY);
               setSelectedId((current) => (id === null || id === current ? null : id));
+              if (id !== null) setRoving(id);
             }}
             onDoubleClick={() => { rendererRef.current?.fit(); trackMotion(600); }}
             onMouseMove={handleMouseMove}
+            onKeyDown={handleStageKeyDown}
             onPointerDown={() => trackMotion(Infinity)}
             onPointerUp={() => trackMotion(800)}
             onPointerCancel={() => stopTracking()}
@@ -427,6 +524,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
                 <button type="button" className="commodore-map-icon-btn" onClick={() => setRetryToken((token) => token + 1)}>{t("commodore.map.retry")}</button>
               </div>
             ) : (
+              <>
               <div className="commodore-map-nodes">
                 {[...visible].map((id) => {
                   const node = graph.byId.get(id);
@@ -446,16 +544,39 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
                       data-stale={node.stale}
                       data-selected={selectedId === id}
                       aria-label={nodeAria(t, node, branchName)}
+                      tabIndex={rovingId === id ? 0 : -1}
                       onClick={(event) => {
                         event.stopPropagation();
                         setSelectedId((current) => (current === id ? null : id));
+                        setRoving(id);
                       }}
-                      onFocus={() => rendererRef.current?.setHover(id)}
+                      onFocus={() => { setRoving(id); rendererRef.current?.setHover(id); }}
                       onBlur={() => rendererRef.current?.setHover(null)}
                     />
                   );
                 })}
               </div>
+              <div className="commodore-map-tags" aria-hidden="true">
+                {[...visible].map((id) => {
+                  const node = graph.byId.get(id);
+                  if (!node) return null;
+                  if (node.kind !== "core" && node.kind !== "description" && node.kind !== "intel-hub" && node.kind !== "branch" && node.kind !== "topic") return null;
+                  return (
+                    <div
+                      key={id}
+                      ref={(element) => {
+                        if (element) tagRefs.current.set(id, element);
+                        else tagRefs.current.delete(id);
+                      }}
+                      className="commodore-map-tag"
+                      data-kind={node.kind}
+                    >
+                      {node.label}
+                    </div>
+                  );
+                })}
+              </div>
+              </>
             )}
           </div>
           {selected ? (
@@ -466,7 +587,10 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
               entries={memory.entries}
               branchName={branchName}
               onSelect={setSelectedId}
-              onClose={() => setSelectedId(null)}
+              onClose={() => {
+                setSelectedId(null);
+                if (selectedId) buttonRefs.current.get(selectedId)?.focus();
+              }}
             />
           ) : null}
         </div>
@@ -559,7 +683,7 @@ function MapDetailPanel({ t, node, state, entries, branchName, onSelect, onClose
     const rest = [...state.intel].sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
     body = (
       <>
-        <h4>{t("commodore.map.allIntel")}</h4>
+        <h4>{t("commodore.map.allIntelCount", { n: state.intel.length })}</h4>
         <ul>
           {rest.map((item) => (
             <li key={item.id}>

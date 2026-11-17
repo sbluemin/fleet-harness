@@ -107,13 +107,14 @@
   --context-rail-accent: oklch(82% 0.07 190);
 
   /* 사령관 지도 갈래 범주 — 종류를 말하는 채널이라 신호 토큰(aurora·warn·coral·positive)을 쓰지 않는다.
-     hue 215·245는 aurora 200과 15° 이상 떨어져 있고, 105·130은 warn 85와 20° 이상 떨어져 있다.
+     hue 215·245는 aurora 200과 15° 이상, 사람 130은 positive 160·warn 85와 30° 이상,
+     교훈 55는 warn 85·coral 25와 30° 이상 떨어져 있다.
      출처·목표는 구조물이라 무채색에 가깝게 둔다(모양은 렌더러 몫). 두 테마가 같은 hue로 종류를 기억한다. */
   --map-description: oklch(72% 0.07 270);
   --map-intel: oklch(72% 0.07 215);
   --map-branch-person: oklch(72% 0.07 130);
   --map-branch-theater: oklch(72% 0.07 245);
-  --map-branch-lessons: oklch(72% 0.07 105);
+  --map-branch-lessons: oklch(72% 0.07 55);
   --map-branch-crew: oklch(72% 0.07 330);
   --map-source: oklch(65% 0.02 250);
   --map-objective: oklch(58% 0.03 250);
@@ -631,7 +632,7 @@
   --map-intel: oklch(50% 0.09 215);
   --map-branch-person: oklch(50% 0.09 130);
   --map-branch-theater: oklch(50% 0.09 245);
-  --map-branch-lessons: oklch(52% 0.09 105);
+  --map-branch-lessons: oklch(52% 0.09 55);
   --map-branch-crew: oklch(50% 0.09 330);
   --map-source: oklch(50% 0.02 250);
   --map-objective: oklch(42% 0.03 250);
@@ -1294,7 +1295,7 @@
   --m-map-intel: oklch(72% 0.07 215);
   --m-map-branch-person: oklch(72% 0.07 130);
   --m-map-branch-theater: oklch(72% 0.07 245);
-  --m-map-branch-lessons: oklch(72% 0.07 105);
+  --m-map-branch-lessons: oklch(72% 0.07 55);
   --m-map-branch-crew: oklch(72% 0.07 330);
   --m-map-source: oklch(65% 0.02 250);
   --m-map-objective: oklch(58% 0.03 250);
@@ -1363,7 +1364,7 @@
   --m-map-intel: oklch(50% 0.09 215);
   --m-map-branch-person: oklch(50% 0.09 130);
   --m-map-branch-theater: oklch(50% 0.09 245);
-  --m-map-branch-lessons: oklch(52% 0.09 105);
+  --m-map-branch-lessons: oklch(52% 0.09 55);
   --m-map-branch-crew: oklch(50% 0.09 330);
   --m-map-source: oklch(50% 0.02 250);
   --m-map-objective: oklch(42% 0.03 250);

@@ -971,7 +971,7 @@ export function CommodoreInfo({ t, commodoreId, view, onFail, onClear, focusRequ
       {reading ? null : (
         <>
           <div className="objectives-commodore-section objectives-commodore-panel-section">
-            <button type="button" className="objectives-commodore-text-button" aria-haspopup="dialog" onClick={() => setMapOpen(true)}>{t("commodore.map.open")}</button>
+            <button type="button" className="objectives-commodore-map-button" aria-haspopup="dialog" onClick={() => setMapOpen(true)}>{t("commodore.map.open")}</button>
           </div>
           <CommodoreDescription key={commodoreId} t={t} commodoreId={commodoreId} description={view.state.description} focusRequest={focusRequest} onFail={onFail} onClear={onClear} />
           <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={onFail} onClear={onClear} />

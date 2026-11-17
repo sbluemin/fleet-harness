@@ -122,6 +122,15 @@
 .commodore-map-chip-dot[data-branch="lessons"] { background: var(--map-branch-lessons); }
 .commodore-map-chip-dot[data-branch="crew"] { background: var(--map-branch-crew); }
 
+/* 꺼진 칩은 점이 비고 글자가 흐려진다 — 켜짐과 분명히 갈린다. */
+.commodore-map-chip[aria-pressed="false"] {
+  color: var(--text-tertiary);
+}
+
+.commodore-map-chip[aria-pressed="false"] .commodore-map-chip-dot {
+  opacity: 0.3;
+}
+
 .commodore-map-search {
   display: inline-flex;
   align-items: center;
@@ -176,6 +185,30 @@
   inset: 0;
   overflow: hidden;
   pointer-events: none;
+}
+
+/* D4 — 핵·허브·주제 이름표. 눌리지 않고 읽히지도 않는다(단추 층이 맡는다). */
+.commodore-map-tags {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.commodore-map-tag {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: 180px;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--dialog-face) 82%, transparent);
+  color: var(--text-primary);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .commodore-map-node {

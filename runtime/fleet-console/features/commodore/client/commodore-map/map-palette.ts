@@ -53,7 +53,7 @@ const MAP_FALLBACKS: Record<keyof MapPalette, string> = {
   intel: "oklch(72% 0.07 215)",
   person: "oklch(72% 0.07 130)",
   theater: "oklch(72% 0.07 245)",
-  lessons: "oklch(72% 0.07 105)",
+  lessons: "oklch(72% 0.07 55)",
   crew: "oklch(72% 0.07 330)",
   source: "oklch(65% 0.02 250)",
   objective: "oklch(58% 0.03 250)",

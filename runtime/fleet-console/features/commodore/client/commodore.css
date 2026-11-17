@@ -555,6 +555,15 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-text-button:disabled { opacity: 0.45; cursor: default; }
 .objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 3px; }
 
+/* 정보 칸의 지도 진입 — 본문 글자 크기의 테두리 단추. 눌림·포커스는 중립 워시로만 알린다(링 없음). */
+.objectives-commodore-map-button {
+  padding: 6px 14px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent;
+  color: var(--text-primary); font: inherit; font-size: var(--t-sm); font-weight: var(--weight-bold); cursor: pointer; white-space: nowrap;
+}
+.objectives-commodore-map-button:hover:not(:disabled) { background: var(--wash-hover); }
+.objectives-commodore-map-button:focus-visible { background: var(--wash-hover); box-shadow: var(--focus-face); outline: none; }
+.objectives-commodore-map-button:disabled { opacity: 0.45; cursor: default; }
+
 .objectives-commodore-failure { margin: 0 28px 8px; color: var(--coral); font-size: var(--t-xs); }
 /* 입력 — 캡슐·원·첨부 줄·안내 줄·「+」 메뉴의 외양은 지휘관 대화 입력창과 한 벌이다(SDK `fc-composer-*`, 호스트 components.css).
    여기에는 사령관 입력창의 자리만 둔다: 폭은 기록 칸과 같은 선, 「+」 메뉴는 캡슐 왼쪽 끝에 맞춰 캡슐 위로 뜬다. */
