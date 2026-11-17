@@ -111,6 +111,7 @@
 /* 이름표 — 시안대로 pill 없이 글자에 그림자, 점 오른쪽에 둔다. */
 .commodore-map-tags {
   position: absolute;
+  z-index: 1;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
@@ -134,8 +135,6 @@
 .commodore-map-tag[data-hub="true"] {
   color: var(--text-primary);
   font-size: var(--t-sm);
-  /* 허브는 무리 한가운데라 발광이 가장 밝다 — 바탕 그림자를 한 겹 넓혀 200개에서도 읽히게 한다. */
-  text-shadow: 0 0 2px var(--canvas-abyss), 0 0 6px var(--canvas-abyss), 0 0 12px var(--canvas-abyss), 0 0 18px var(--canvas-abyss);
 }
 
 .commodore-map-node {
