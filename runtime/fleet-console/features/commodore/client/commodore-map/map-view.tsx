@@ -300,7 +300,9 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     const reduced = osReduced || getGlobalSettingsStoreState().state?.reduceMotion === true || settings.state?.reduceMotion === true;
     const want = chooseMapRendererKind(detectMapRendererEnv({ reducedMotion: reduced }));
     setLoadError(null);
-    mountMapRenderer(want, container, modelRef.current, paletteRef.current)
+    const mountedModel = modelRef.current;
+    const mountedPalette = paletteRef.current;
+    mountMapRenderer(want, container, mountedModel, mountedPalette)
       .then(({ renderer, kind }) => {
         if (cancelled) {
           try { renderer.dispose(); } catch { /* 버려진 마운트는 조용히 걷는다 */ }
@@ -309,6 +311,10 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
         owned = renderer;
         rendererRef.current = renderer;
         setRendererKind(kind);
+        // 청크를 받는 동안 기억이 도착하거나 테마가 바뀌면 갱신 효과는 렌더러 없이 지나갔다 — 최신 모델로 맞춘다.
+        if (modelRef.current !== mountedModel || paletteRef.current !== mountedPalette) {
+          renderer.update(modelRef.current, paletteRef.current);
+        }
         renderer.setFilter(visibleRef.current);
         renderer.setSelection(selectedRef.current);
         applyInsets();
