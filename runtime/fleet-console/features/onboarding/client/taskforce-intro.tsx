@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import type { ConsoleLocale } from "@fleet-console/i18n";
+import { makeGlanceKit, readGlancePalette } from "@fleet-console/ui/glance-kit";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
@@ -9,7 +10,6 @@ import { requestTaskforceRowHighlight } from "../../settings/client/taskforce-hi
 import type { FeatureCardContentProps, FeatureCardLinkProps } from "./feature-cards.js";
 import { TASKFORCE_INTRO_LOOP_S, TASKFORCE_INTRO_REST, taskforceIntroCanvas, taskforceIntroCopy } from "./taskforce-intro-copy.js";
 import { drawTaskforceIntro } from "./taskforce-intro-scene.js";
-import { makeGlanceKit, readGlancePalette } from "./fleet-at-a-glance.js";
 import "./taskforce-intro.css";
 
 // 승인 시안 v2의 신규 기능 카드 — 실험 기능을 켜지 않은 기존 사용자에게 데스크톱 콘솔 시작 시

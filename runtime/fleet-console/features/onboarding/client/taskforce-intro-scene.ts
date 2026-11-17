@@ -1,4 +1,5 @@
-import type { GlanceKit, GlancePalette } from "./fleet-at-a-glance.js";
+import type { GlanceKit, GlancePalette } from "@fleet-console/ui/glance-kit";
+
 import type { TaskforceIntroCanvasCopy } from "./taskforce-intro-copy.js";
 
 // 승인 시안 v2의 drawTaskforce를 Console로 옮긴 것이다 — 모이기·판단은 '플릿 한눈에 보기'의

@@ -555,6 +555,20 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-text-button:disabled { opacity: 0.45; cursor: default; }
 .objectives-commodore-retry .objectives-commodore-text-button { color: var(--warn-ink); text-decoration: underline; text-underline-offset: 3px; }
 
+/* 대화 머리 줄의 지도 전환 — 알림 종 오른쪽 구분선 뒤에 선다. */
+.conversation-pill-tools .commodore-map-divider {
+  flex: none;
+  width: 1px;
+  height: 16px;
+  margin: 0 var(--space-1);
+  background: var(--hairline-strong);
+}
+
+.conversation-pill-tools .commodore-map-toggle.is-active {
+  background: var(--wash-selected);
+  color: var(--text-primary);
+}
+
 .objectives-commodore-failure { margin: 0 28px 8px; color: var(--coral); font-size: var(--t-xs); }
 /* 입력 — 캡슐·원·첨부 줄·안내 줄·「+」 메뉴의 외양은 지휘관 대화 입력창과 한 벌이다(SDK `fc-composer-*`, 호스트 components.css).
    여기에는 사령관 입력창의 자리만 둔다: 폭은 기록 칸과 같은 선, 「+」 메뉴는 캡슐 왼쪽 끝에 맞춰 캡슐 위로 뜬다. */

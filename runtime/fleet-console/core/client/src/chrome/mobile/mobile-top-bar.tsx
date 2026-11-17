@@ -47,7 +47,7 @@ export function MobileTopBar() {
       {bar.variant === "centered" && actionsCount === 0 ? <span className="mobile-bar-spacer" aria-hidden="true" /> : null}
       <MobileContextRail />
       {bar.actions?.map((action) => (
-        <button type="button" key={action.id} className="mobile-bar-button" aria-label={action.label} onClick={() => getLiveMobileBar()?.actions?.find((item) => item.id === action.id)?.run()}>
+        <button type="button" key={action.id} className="mobile-bar-button" aria-label={action.label} aria-pressed={action.pressed} onClick={() => getLiveMobileBar()?.actions?.find((item) => item.id === action.id)?.run()}>
           {action.icon}
         </button>
       ))}

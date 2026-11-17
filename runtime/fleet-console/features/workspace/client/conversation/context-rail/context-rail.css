@@ -357,6 +357,8 @@ svg.context-rail-chev { display: block; width: 10px; height: 10px; }
 }
 .context-rail-toggle:hover { background: var(--brass-glow); }
 .context-rail-toggle[aria-pressed="true"] { color: var(--text-primary); }
+/* 본문을 통째로 쓰는 표면(지도)이 칩을 가리는 동안은 자리만 지킨다. */
+.context-rail-toggle:disabled { opacity: 0.35; cursor: default; background: transparent; }
 
 @media (prefers-reduced-motion: reduce) {
   .context-rail-bar > i,

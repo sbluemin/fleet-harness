@@ -19,9 +19,14 @@ export type Translate = ReturnType<typeof useT>;
  *
  * `slot`은 대화 머리 오른쪽 끝의 자리다. 창을 켜고 끄는 단추만 거기에 선다.
  */
-export function ContextRailHost({ scope, slot, children }: {
+export function ContextRailHost({ scope, slot, hidden, children }: {
   readonly scope: ContextRailScope;
   readonly slot: HTMLElement | null;
+  /**
+   * 참이면 제공자 칩을 그리지 않는다 — 본문을 통째로 쓰는 표면(지도)이 가릴 때 쓴다.
+   * 머리 줄의 켜고 끄는 단추는 자리를 지킨 채 비활성으로 남겨, 전환할 때 옆 단추들이 밀리지 않게 한다.
+   */
+  readonly hidden?: boolean;
   readonly children: React.ReactNode;
 }) {
   const providers = useContextRailProviders();
@@ -30,16 +35,17 @@ export function ContextRailHost({ scope, slot, children }: {
       {children}
       {providers.map((Provider, index) => (
         <Provider key={index} scope={scope}>
-          {(sessions) => sessions.length > 0 ? <ContextRail sessions={sessions} slot={slot} /> : null}
+          {(sessions) => sessions.length > 0 ? <ContextRail sessions={sessions} slot={slot} hidden={hidden === true} /> : null}
         </Provider>
       ))}
     </div>
   );
 }
 
-function ContextRail({ sessions, slot }: {
+function ContextRail({ sessions, slot, hidden }: {
   readonly sessions: readonly ContextRailSession[];
   readonly slot: HTMLElement | null;
+  readonly hidden: boolean;
 }) {
   const t = useT();
   const state = useContextRailState();
@@ -135,6 +141,7 @@ function ContextRail({ sessions, slot }: {
       aria-pressed={state.enabled}
       aria-label={toggleLabel}
       title={toggleLabel}
+      disabled={hidden}
       onClick={() => setContextRailEnabled(!state.enabled)}
     >
       <RailGlyph />
@@ -144,7 +151,7 @@ function ContextRail({ sessions, slot }: {
   return (
     <>
       {slot ? createPortal(toggle, slot) : null}
-      {state.enabled ? (
+      {state.enabled && !hidden ? (
         <div
           className="context-rail-overlay"
           role="group"

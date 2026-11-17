@@ -33,6 +33,10 @@ import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoo
 import { CommodoreAvatar, useCommodoreMongleActivity } from "./commodore-avatar.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
+import { CommodoreMapScreen } from "./commodore-map/map-view.js";
+import { mapPanelFacts } from "./commodore-map/map-panel.js";
+import { CommodoreMapGlyph } from "./commodore-map-toggle.js";
+import { setCommodoreMapMode, useCommodoreMapMode } from "./commodore-map-mode.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
@@ -238,8 +242,10 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   const [failure, setFailure] = useState<string | null>(null);
   const shownFailure = failure ?? (transcriptError ? failWord(t, new Error(transcriptError)) : null);
   const mongle = commodoreMongleState(view, board.objectives);
+  const mapMode = useCommodoreMapMode(commodoreId);
   // 사령관 대화 화면(세부가 아닌 동안)의 대화 머리에 컨텍스트 칩이 선다.
-  useMobileContextRailScope((!panel || section === "log") && commodoreId ? { kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } } : null);
+  // 지도일 때는 채팅 세션의 컨텍스트 칩·▥ 단추를 내려 막대에 사령관 이름 자리를 둔다(데스크톱 지도도 칩을 가린다).
+  useMobileContextRailScope((!panel ? mapMode !== "map" : section === "log") && commodoreId ? { kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } } : null);
   const pillStatus = commodorePillStatus(t, view);
   // 세부에서 다른 화면으로 옮기는 동작 — 세부(구역·기억 단계 포함)를 먼저 접어 막대가 쌓은 깊이 항목을 걷고, 그 뒤로(popstate)가 내려앉은 뒤에 옮긴다(`mobileBar.leave`).
   // 접기 전에 옮기면 그 항목이 history에 남아, 다음 뒤로가 그것을 걷으며 주소만 사령관으로 돌아가고 화면은 남는다(홈 시트의 「닫고 나서 연다」와 같은 규칙).
@@ -248,6 +254,8 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
     bar.leave(() => { setSection(null); setMemoryTrail([]); setPanel(false); }, run);
   }, [bar]);
   useEffect(() => commodoreId ? registerCommodoreDeparture(commodoreId, leave) : undefined, [commodoreId, leave]);
+  // 다른 사령관으로 옮기면 채팅으로 시작한다.
+  useEffect(() => { if (commodoreId) setCommodoreMapMode(commodoreId, "chat"); }, [commodoreId]);
   useEffect(() => {
     if (!bar) return;
     if (!panel) {
@@ -257,7 +265,13 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         depth: 0,
         // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(Theater·삭제)는 깊이 1에 그대로 둔다.
         pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
-        ...(actions && commodoreId ? { actions: [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] } : {}),
+        // 대화 머리 줄의 지도 전환 — 데스크톱 머리 줄 꼬리 단추와 같은 동작.
+        ...(commodoreId ? {
+          actions: [
+            ...(actions ? [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] : []),
+            { id: "map", label: t(mapMode === "map" ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph size={22} />, pressed: mapMode === "map", run: () => setCommodoreMapMode(commodoreId, mapMode === "map" ? "chat" : "map") },
+          ],
+        } : {}),
       });
       return;
     }
@@ -286,7 +300,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       depth: 2 + (section === "info" ? memoryTrail.length : 0),
       onBack: () => { if (section === "info" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
     });
-  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, online, t, actions, pill.takeover]);
+  }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, online, t, actions, pill.takeover, mapMode]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -332,6 +346,18 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           {section === "settings" && view ? <CommodoreMobileSettings t={t} theaterId={commodoreId ?? ""} view={view} online={online} failure={failure} onFail={fail} onClear={clear} /> : null}
         </>
       ) : (
+        mapMode === "map" && view && commodoreId ? (
+          <div className="objectives-cm-fill">
+            <CommodoreMapScreen
+              t={t}
+              commodoreId={commodoreId}
+              state={view.state}
+              facts={mapPanelFacts(view.run, view.defaults.model)}
+              showPanel
+              onExit={() => setCommodoreMapMode(commodoreId, "chat")}
+            />
+          </div>
+        ) : (
         <ConversationPillContext.Provider value={pill.port}><CommodoreMobileChat
           t={t}
           language={commodoreLanguage() ?? "en"}
@@ -349,6 +375,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
           onClear={clear}
           onOpenLog={openLog}
         /></ConversationPillContext.Provider>
+        )
       )}
     </div>
   );
