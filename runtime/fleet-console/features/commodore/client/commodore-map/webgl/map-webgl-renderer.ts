@@ -49,6 +49,8 @@ const DEFAULT_INSETS: MapFitInsets = { top: 36, right: 36, bottom: 36, left: 36 
 const WORLD_SCALE = 200;
 const FOV_DEG = 42;
 const FIT_MARGIN = 1.04;
+/** 좁은 무대에서 z를 키우는 상한. */
+const Z_SCALE_MAX = 3;
 /** 시안 `uScale` 계수와 스프라이트 상한(CSS px 기준 110, 장치 px로는 ×dpr). */
 const SPRITE_K = 4.6;
 const MAX_SPRITE_CSS = 110;
@@ -163,7 +165,7 @@ type PaletteRgb = ReturnType<typeof mapPaletteToRgb>;
 /** 시안 `zOf` — 노드 id 해시로 정해지는 고정 깊이. 정면에서는 구조가 읽히고 빛망울로 깊이가 보인다. */
 const Z_SPAN: Partial<Record<MapNode["kind"], number>> = {
   core: 0, "intel-hub": 50, branch: 50, description: 40, topic: 110,
-  memory: 300, intel: 180, "intel-overflow": 180, objective: 420,
+  memory: 300, intel: 180, "intel-overflow": 180, objective: 420, source: 420,
 };
 function depthOf(node: MapNode): number {
   let h = 2166136261;
@@ -181,7 +183,8 @@ function radiusOf(node: MapNode, degree: number): number {
     case "objective": case "source": return 5 + Math.min(5, degree * 0.6);
     case "intel": return 4.5;
     case "intel-overflow": return 4.5 * 1.9;
-    case "memory": return 3.6 + Math.min(5, (degree - 1) * 0.9);
+    // 시안은 기억마다 목표 노드로 가는 선이 있어 연결 수가 하나 더 많다 — 혼자뿐인 목표는 노드가 서지 않으니 그만큼 더한다.
+    case "memory": return 3.6 + Math.min(5, degree * 0.9);
   }
 }
 
@@ -230,6 +233,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private wx = new Float32Array(0);
   private wy = new Float32Array(0);
   private wz = new Float32Array(0);
+  /** 시안 z(스케일 전) — 무대가 좁으면 `zScale`배로 키워 깊이감이 무대 모양과 무관하게 같다. */
+  private z0 = new Float32Array(0);
+  private zScale = 1;
   private radius = new Float32Array(0);
   /** 그려지는 크기(시안 단위 반경 × 호버·선택 배율) — 셰이더와 고르기가 같은 값을 읽는다. */
   private size = new Float32Array(0);
@@ -561,6 +567,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.wx = new Float32Array(n);
     this.wy = new Float32Array(n);
     this.wz = new Float32Array(n);
+    this.z0 = new Float32Array(n);
     this.radius = new Float32Array(n);
     this.size = new Float32Array(n);
     this.degree = new Int32Array(n);
@@ -569,7 +576,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       const p = layout.positions.get(node.id)!;
       this.wx[i] = p.x * WORLD_SCALE;
       this.wy[i] = -p.y * WORLD_SCALE; // 화면 y는 아래로 자란다.
-      this.wz[i] = depthOf(node);
+      this.z0[i] = depthOf(node);
+      this.wz[i] = this.z0[i]! * this.zScale;
     });
     this.edgeIdx = [];
     for (const edge of graph.edges) {
@@ -578,9 +586,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       if (a === undefined || b === undefined) continue;
       this.degree[a]! += 1;
       this.degree[b]! += 1;
-      // 시안 선 알파: trunk .55 · branch .4 · twig/intel .26 · link .6 · 목표·출처 .11
+      // 시안 선 알파: trunk .55 · branch .4 · twig/intel .26 · 목표·출처 .11 · link는 text-2가 시안 청록보다 하얘 .38
       let base = 0.26;
-      if (edge.kind === "link") base = 0.6;
+      if (edge.kind === "link") base = 0.38;
       else if (edge.kind === "objective" || edge.kind === "source") base = 0.11;
       else if (nodes[a]!.kind === "core") base = 0.55;
       else if (nodes[b]!.kind === "topic") base = 0.4;
@@ -694,6 +702,18 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const availW = Math.max(40, width - insets.left - insets.right);
     const availH = Math.max(40, height - insets.top - insets.bottom);
     const f = this.focalPx();
+    // 시안은 거리 ≈ 반경/tan(fov/2)(≈1200)에서 z 폭 ±150이 초점 범위(거리×0.24)의 절반쯤이라 빛망울이 된다.
+    // 세로로 긴 무대에서는 거리가 길어져 같은 z 폭이 초점 안에 들어가 평평해지므로, 거리 비율만큼 z를 키운다.
+    let reach = 1;
+    let flat = 1;
+    for (let i = 0; i < this.nodes.length; i += 1) {
+      const dx = (Math.abs(this.wx[i]! - this.center.x) + this.radius[i]!) * FIT_MARGIN;
+      const dy = (Math.abs(this.wy[i]! - this.center.y) + this.radius[i]!) * FIT_MARGIN;
+      reach = Math.max(reach, Math.hypot(dx, dy));
+      flat = Math.max(flat, (dx * f) / (availW / 2), (dy * f) / (availH / 2));
+    }
+    const refDist = reach / Math.tan((FOV_DEG * Math.PI) / 360);
+    this.setDepthScale(clamp(flat / refDist, 1, Z_SCALE_MAX));
     let dist = 1;
     let extent = 1;
     for (let i = 0; i < this.nodes.length; i += 1) {
@@ -714,6 +734,25 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     }
     this.camera.updateProjectionMatrix();
     this.placeCamera();
+  }
+
+  private setDepthScale(scale: number): void {
+    if (Math.abs(scale - this.zScale) < 1e-3 && this.wz.length > 0) return;
+    this.zScale = scale;
+    for (let i = 0; i < this.wz.length; i += 1) this.wz[i] = this.z0[i]! * scale;
+    const position = this.pointGeo.getAttribute("position") as BufferAttribute | undefined;
+    if (position) {
+      for (let i = 0; i < this.wz.length; i += 1) position.setZ(i, this.wz[i]!);
+      position.needsUpdate = true;
+    }
+    const lines = this.lineGeo.getAttribute("position") as BufferAttribute | undefined;
+    if (lines) {
+      this.edgeIdx.forEach(({ a, b }, e) => {
+        lines.setZ(e * 2, this.wz[a]!);
+        lines.setZ(e * 2 + 1, this.wz[b]!);
+      });
+      lines.needsUpdate = true;
+    }
   }
 
   private placeCamera(): void {
