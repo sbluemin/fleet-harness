@@ -19,12 +19,15 @@ export type Translate = ReturnType<typeof useT>;
  *
  * `slot`은 대화 머리 오른쪽 끝의 자리다. 창을 켜고 끄는 단추만 거기에 선다.
  */
-export function ContextRailHost({ scope, slot, children }: {
+export function ContextRailHost({ scope, slot, hidden, children }: {
   readonly scope: ContextRailScope;
   readonly slot: HTMLElement | null;
+  /** 참이면 제공자 칩을 그리지 않는다 — 본문을 통째로 쓰는 표면(지도)이 가릴 때 쓴다. */
+  readonly hidden?: boolean;
   readonly children: React.ReactNode;
 }) {
   const providers = useContextRailProviders();
+  if (hidden) return <div className="conversation-main">{children}</div>;
   return (
     <div className="conversation-main">
       {children}

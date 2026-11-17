@@ -77,6 +77,11 @@ export interface ConversationSurfaceDescriptor {
    */
   readonly toolbarTail?: (ctx: ConversationSurfaceContext) => ReactNode;
   /**
+   * 본문 위 컨텍스트 창 칩을 걷는다 — 대화 영역을 지도처럼 통째로 쓰는 표면용.
+   * 채팅으로 돌아오면 그대로 다시 선다. 없거나 false 면 그대로 둔다.
+   */
+  readonly hideContextRail?: (ctx: ConversationSurfaceContext) => boolean;
+  /**
    * 오른쪽 패널 머리(공용 머리 아래)의 탭 줄(섹션·글자 탭)을 걷는다 — 패널 본문만 둔다.
    * 탭·열림 상태는 그대로라 돌아오면 원래 탭이 선다. 없거나 false 면 그대로 둔다.
    */

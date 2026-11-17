@@ -1448,6 +1448,14 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
     ...(standInId !== null && standInComposer !== null ? { composer: () => standInComposer(standInId, language) } : {}),
   }), [descriptor.id, language, selection.params, theme, standInId, standInComposer]);
   const section = useSurfaceTabSection(descriptor, context, language);
+  // 본문을 통째로 쓰는 표면(사령관 지도)은 컨텍스트 창 칩을 걷는다. 채팅 복귀 시 그대로 다시 선다.
+  const hideContextRail = (() => {
+    try {
+      return descriptor.hideContextRail?.(context) === true;
+    } catch {
+      return false;
+    }
+  })();
   // 탭은 레일 패널로 선다 — 독점 슬롯·폭 기억·밀어내기를 그대로 받는다. 맥락(같은 대화의 새 요청·언어·테마)이 바뀌어 탭을 다시 세울
   // 때는 패널을 그대로 둔다.
   const tabIdsRef = useRef<readonly string[]>([]);
@@ -1545,7 +1553,7 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
         </ConversationPill>
         {tools(null, <span ref={setRailSlot} className="conversation-rail-slot" />, toolbarTail)}
       </div>
-      <ContextRailHost scope={railScope} slot={railSlot}>
+      <ContextRailHost scope={railScope} slot={railSlot} hidden={hideContextRail}>
         <div className="conversation-body is-surface">
           <ConversationPillContext.Provider value={pill.port}><FeatureErrorBoundary fallback={null}>{descriptor.render(context)}</FeatureErrorBoundary></ConversationPillContext.Provider>
         </div>

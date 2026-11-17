@@ -650,6 +650,11 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     const params = readParams(ctx.params);
     return params ? readCommodoreMapMode(params.commodoreId) === "map" : false;
   },
+  // 지도 모드에서는 본문 위 컨텍스트 창 칩을 걷는다 — 채팅 복귀 시 그대로 다시 선다.
+  hideContextRail: (ctx) => {
+    const params = readParams(ctx.params);
+    return params ? readCommodoreMapMode(params.commodoreId) === "map" : false;
+  },
   render: (ctx) => {
     const params = readParams(ctx.params);
     return params ? <CommodoreConversationBody commodoreId={params.commodoreId} theaterId={params.theaterId} readOnly={params.readOnly} language={ctx.language} onBack={ctx.close} /> : null;
