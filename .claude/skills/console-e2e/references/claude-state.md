@@ -31,7 +31,7 @@ On macOS, supported Claude config relocation also changes the Keychain service i
 
 Use a clean allowlisted environment rather than forwarding an agent session's credentials, Console identity, or session-access tokens. Merely removing `CLAUDE_CODE_CHILD_SESSION` is insufficient. In particular, do not inherit `CLAUDE_CODE_SESSION_ACCESS_TOKEN`, OAuth/API credentials, proxy/remote-session authentication, or `CLAUDE_SECURESTORAGE_CONFIG_DIR` accidentally. Do not dump those values to check them.
 
-For a credential-free run, boot through the [isolated-environment wrapper](setup.md#keep-the-real-home-out). It creates the owned directories and builds this allowlisted environment (owned `HOME`, `TMPDIR`, the three Fleet paths, `CLAUDE_CONFIG_DIR`, an explicit `PATH`, and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`), and it refuses credential-like variables:
+For a credential-free run, boot through the [isolated-environment wrapper](setup.md#keep-the-real-home-out). It creates the owned directories and builds this allowlisted environment (owned `HOME`, `TMPDIR`, the three Fleet paths, `CLAUDE_CONFIG_DIR`, `CLAUDE_CODE_TMPDIR`, an explicit `PATH`, and `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`), and it refuses credential-like variables:
 
 ```bash
 cd <worktree>
