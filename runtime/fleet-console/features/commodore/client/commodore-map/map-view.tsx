@@ -59,14 +59,14 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(",");
 
-function nodeAria(t: T, node: MapNode, branchName: (branch: MemoryBranch) => string): string {
+function nodeAria(t: T, node: MapNode, branchName: (branch: MemoryBranch) => string, intelTotal: number): string {
   switch (node.kind) {
     case "core": return t("commodore.map.node.core", { name: node.label });
     case "description": return t("commodore.map.node.description");
     case "intel-hub": return t("commodore.map.node.intelHub");
     case "intel": return t("commodore.map.node.intel", { title: node.label });
-    case "intel-overflow": return t("commodore.map.node.overflow", { n: node.overflowIds?.length ?? 0 });
-    case "source": return t("commodore.map.node.source", { label: node.label });
+    case "intel-overflow": return t("commodore.map.allIntelCount", { n: intelTotal });
+    case "source": return node.label;
     case "branch": return t("commodore.map.node.branch", { branch: node.branch ? branchName(node.branch as MemoryBranch) : node.label });
     case "topic": return t("commodore.map.node.topic", { topic: node.topic ?? node.label });
     case "memory": return t("commodore.map.node.memory", { title: node.label });
@@ -123,6 +123,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     intelHub: t("commodore.intel.label"),
     branch: branchName,
     personSource: t("commodore.intel.fromYou"),
+    source: (label: string): string => t("commodore.map.node.source", { label }),
   }), [t, branchName]);
   const graph = useMemo(
     () => buildMapGraph({ state, memories: memory.entries, tone: look.tone ?? null, labels }),
@@ -150,6 +151,19 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     ? roving
     : (selectedId !== null && visible.has(selectedId) ? selectedId : (orderedIds[0] ?? null));
   rovingRef.current = rovingId;
+  // 7 — 검색 일치 잎 라벨(상한 40, 겹치면 컬링).
+  const hitLabelIds = useMemo((): readonly string[] => {
+    if (!hits) return [];
+    const out: string[] = [];
+    for (const id of orderedIds) {
+      if (out.length >= 40) break;
+      if (!hits.has(id)) continue;
+      const kind = graph.byId.get(id)?.kind;
+      if (kind === "memory" || kind === "intel") out.push(id);
+    }
+    return out;
+  }, [hits, orderedIds, graph]);
+  const hitLabelSet = useMemo(() => new Set(hitLabelIds), [hitLabelIds]);
 
   const modelRef = useRef(model);
   modelRef.current = model;
@@ -157,6 +171,8 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
   visibleRef.current = visible;
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
+  const hitLabelsRef = useRef<readonly string[]>([]);
+  hitLabelsRef.current = hitLabelIds;
   const paletteRef = useRef(palette);
   paletteRef.current = palette;
 
@@ -186,16 +202,24 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
           spots.set(id, point);
         }
       }
-      // 라벨 자리 — 핵·가지 허브부터 잡고, 주제는 44px 안에 남의 자리가 없을 때만 선다.
+      // 라벨 자리 — 핵·가지 허브부터 잡고, 주제·검색 일치는 겹치지 않을 때만 선다.
       const shown: { x: number; y: number }[] = [];
       const near = (x: number, y: number): boolean => shown.some((spot) => Math.abs(spot.x - x) < 44 && Math.abs(spot.y - y) < 20);
+      // 점 무리에 묻힌 이름표는 읽히지 않으니 세우지 않는다(수정 6, 3).
+      const crowded = (id: string, x: number, y: number): boolean => {
+        for (const [other, spot] of spots) {
+          if (other === id) continue;
+          if (Math.hypot(spot.x - x, spot.y - y) < 30) return true;
+        }
+        return false;
+      };
       const place = (id: string, lift: number, always: boolean): void => {
         const element = tagRefs.current.get(id);
         const point = spots.get(id);
         if (!element || !point) return;
         const x = point.x;
         const y = point.y - lift;
-        if (!always && near(x, y)) {
+        if (!always && (near(x, y) || crowded(id, x, y))) {
           element.style.display = "none";
           return;
         }
@@ -212,12 +236,13 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
       for (const id of visibleRef.current) {
         const node = modelRef.current.graph.byId.get(id);
         if (!node) continue;
-        if (node.kind !== "core" && node.kind !== "description" && node.kind !== "intel-hub" && node.kind !== "branch") continue;
+        if (node.kind !== "core" && node.kind !== "description" && node.kind !== "intel-hub" && node.kind !== "intel-overflow" && node.kind !== "branch" && node.kind !== "source") continue;
         place(id, node.kind === "core" ? 20 : 16, true);
       }
       for (const id of visibleRef.current) {
         const node = modelRef.current.graph.byId.get(id);
-        if (!node || node.kind !== "topic") continue;
+        if (!node) continue;
+        if (node.kind !== "topic" && !hitLabelsRef.current.includes(id)) continue;
         place(id, 14, false);
       }
     } catch {
@@ -504,17 +529,22 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
               placeholder={t("commodore.map.search")}
               aria-label={t("commodore.map.search")}
             />
-            {searching ? (
-              <button type="button" className="commodore-map-icon-btn" aria-label={t("commodore.map.clearSearch")} onClick={() => setQuery("")}>✕</button>
-            ) : null}
+            <button
+              type="button"
+              className="commodore-map-icon-btn"
+              aria-label={t("commodore.map.clearSearch")}
+              onClick={() => setQuery("")}
+              style={{ visibility: searching ? "visible" : "hidden" }}
+              tabIndex={searching ? 0 : -1}
+            >✕</button>
           </label>
           <button
             type="button"
-            className="commodore-map-icon-btn"
+            className="commodore-map-icon-btn commodore-map-fit"
             title={t("commodore.map.fitHint")}
             aria-label={t("commodore.map.fit")}
             onClick={() => { rendererRef.current?.fit(); trackMotion(600); }}
-          >⤢</button>
+          >{t("commodore.map.fit")}</button>
         </div>
         <div className="commodore-map-body">
           <div
@@ -568,7 +598,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
                       data-fresh={node.fresh}
                       data-stale={node.stale}
                       data-selected={selectedId === id}
-                      aria-label={nodeAria(t, node, branchName)}
+                      aria-label={nodeAria(t, node, branchName, graph.intelTotal)}
                       tabIndex={rovingId === id ? 0 : -1}
                       onClick={(event) => {
                         event.stopPropagation();
@@ -585,7 +615,8 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
                 {rendererKind === "webgl" ? [...visible].map((id) => {
                   const node = graph.byId.get(id);
                   if (!node) return null;
-                  if (node.kind !== "core" && node.kind !== "description" && node.kind !== "intel-hub" && node.kind !== "branch" && node.kind !== "topic") return null;
+                  const hub = node.kind === "core" || node.kind === "description" || node.kind === "intel-hub" || node.kind === "intel-overflow" || node.kind === "branch" || node.kind === "source";
+                  if (!hub && node.kind !== "topic" && !hitLabelSet.has(id)) return null;
                   return (
                     <div
                       key={id}
@@ -731,17 +762,14 @@ function MapDetailPanel({ t, node, state, entries, branchName, onSelect, onClose
   } else if (node.kind === "intel-overflow") {
     const rest = [...state.intel].sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
     body = (
-      <>
-        <h4>{t("commodore.map.allIntelCount", { n: state.intel.length })}</h4>
-        <ul>
-          {rest.map((item) => (
+      <ul>
+        {rest.map((item) => (
             <li key={item.id}>
               <p>{item.text}</p>
               <div className="commodore-map-panel-meta">{sourceLabelOf(t, state, item.source)} · {memoryDay(item.at)}</div>
             </li>
           ))}
         </ul>
-      </>
     );
   } else if (node.kind === "topic" && node.branch && node.topic) {
     const inTopic = entries.filter((candidate) => candidate.branch === node.branch && candidate.topic === node.topic);
@@ -821,10 +849,13 @@ function MapDetailPanel({ t, node, state, entries, branchName, onSelect, onClose
     );
   }
 
+  // 1 — 묶음 패널 제목은 본문과 하나로(노드 '+N' 표기는 캔버스용으로 둔다).
+  const title = node.kind === "intel-overflow" ? t("commodore.map.allIntelCount", { n: state.intel.length }) : node.label;
+
   return (
-    <aside className="commodore-map-panel" aria-label={node.label}>
+    <aside className="commodore-map-panel" aria-label={title}>
       <button ref={closeRef} type="button" className="commodore-map-icon-btn commodore-map-panel-close" aria-label={t("commodore.map.closePanel")} onClick={onClose}>✕</button>
-      <h3>{node.label}</h3>
+      <h3>{title}</h3>
       {body}
     </aside>
   );

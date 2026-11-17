@@ -59,6 +59,11 @@
   color: var(--text-primary);
 }
 
+/* 맞춤 보기 — 뜻이 읽히는 텍스트 단추. */
+.commodore-map-fit {
+  white-space: nowrap;
+}
+
 .commodore-map-icon-btn:focus-visible {
   background: var(--wash-hover);
   box-shadow: var(--focus-face);
@@ -135,6 +140,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex: none;
   margin-left: auto;
   border-radius: var(--radius-xs);
   padding: 4px 8px;
@@ -202,9 +208,10 @@
   max-width: 180px;
   padding: 1px 7px;
   border-radius: var(--radius-pill);
-  background: color-mix(in oklab, var(--dialog-face) 82%, transparent);
+  background: color-mix(in oklab, var(--dialog-face) 92%, transparent);
   color: var(--text-primary);
   font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
   line-height: 1.5;
   white-space: nowrap;
   overflow: hidden;
@@ -282,6 +289,11 @@
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--text-primary);
+}
+
+/* 목록 항목의 본문·날짜 줄은 붙이고, 항목 사이는 벌린다(수정 6, 10). */
+.commodore-map-panel li > p {
+  margin-bottom: 2px;
 }
 
 .commodore-map-panel-meta {
