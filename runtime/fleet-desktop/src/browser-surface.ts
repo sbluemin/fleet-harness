@@ -225,6 +225,8 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
   let lastPageSize: { width: number; height: number } | null = null;
   /** 어느 스페이스를 보여 주는가 — 표면이 닫혀도 남는다. 다시 열면 보던 스페이스에서 이어진다. */
   const spaces = createBrowserSpaceView();
+  /** 표면이 닫혀 있는 동안 사이드바가 고른 스페이스 — 다음에 열 때 첫 스냅샷에서 그 스페이스를 띄운다. 열린 동안 고르면 곧바로 옮기므로 비운다. */
+  let pendingSpace: string | null = null;
 
   const surfaceRect = (): Rectangle | null => {
     if (hostKind === "pane") {
@@ -633,7 +635,14 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
       chrome = nextChrome; chromeJson = json;
       // 표시 스페이스는 여기서 정한다 — 표시 탭이 다른 스페이스로 옮겨 갔으면 따라가고, 화면이 어긋나 있으면 맞춰 달라고 요청한다.
       const spaceBefore = spaces.current();
-      const request = chromeChanged ? spaces.observe(nextChrome) : null;
+      let request = chromeChanged ? spaces.observe(nextChrome) : null;
+      // 닫혀 있는 동안 사령관을 옮겼다면 열린 첫 스냅샷에서 그 스페이스로 간다 — 열려 있을 때 고른 것과 같은 결과다. 모르는 스페이스면 버린다.
+      if (pendingSpace !== null && nextChrome && (nextChrome.available || nextViewOnly)) {
+        const wanted = pendingSpace;
+        pendingSpace = null;
+        const chosen = spaces.choose(wanted, nextChrome);
+        if (spaces.current() === wanted) request = chosen;
+      }
       ensureHost(next, initialProgress);
       if (hostKind === null) return;
       if (next.mode === "window" && (next.focusRequest ?? 0) > focusSeen && windowBase && !windowBase.isDestroyed()) {
@@ -682,7 +691,9 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     inputLocked: () => controlState()?.holder === "agent",
     captionInset: (kind) => (docs && hostKind === kind && !horizontal() ? Math.max(1, Math.round(zoom())) : 0),
     selectSpace(spaceId) {
-      if (!surface || closingSurface || !chrome) return;
+      // 닫혀 있거나 닫히는 중이면 열지 않고 기억만 한다 — 다음에 열 때 `apply` 가 이 스페이스로 연다.
+      if (!surface || closingSurface || !chrome) { pendingSpace = spaceId; return; }
+      pendingSpace = null;
       if (!chrome.available && !viewOnly) return;
       const spaceBefore = spaces.current();
       const request = spaces.choose(spaceId, chrome);
