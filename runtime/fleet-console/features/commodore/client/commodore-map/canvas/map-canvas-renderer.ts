@@ -58,6 +58,8 @@ interface CanvasState {
   filter: ReadonlySet<string> | null;
   view: CanvasView;
   insets: MapFitInsets;
+  /** 보기 변화 구독 — 그리기는 상태 변화 때만 돈다. */
+  viewListeners: Set<() => void>;
 }
 
 export function createMapRenderer(): MapRenderer {
@@ -72,6 +74,7 @@ export function createMapRenderer(): MapRenderer {
     filter: null,
     view: { scale: 1, ox: 0, oy: 0 },
     insets: DEFAULT_MAP_INSETS,
+    viewListeners: new Set(),
   };
 
   const isVisible = (id: string): boolean => state.filter === null || state.filter.has(id);
@@ -261,6 +264,9 @@ export function createMapRenderer(): MapRenderer {
       });
     }
     drawMapLabels(ctx, kit, state.font, candidates, w, h, Math.min(LABEL_MAX, Math.max(60, w * 0.5)));
+    for (const listener of state.viewListeners) {
+      try { listener(); } catch { /* DOM 동기 실패는 다음 그림으로 미룬다 */ }
+    }
   };
 
   const readPalette = (palette: MapPalette): void => {
@@ -339,6 +345,10 @@ export function createMapRenderer(): MapRenderer {
       return { x: point.x, y: point.y, visible };
     },
     fit,
+    onViewChange(listener) {
+      state.viewListeners.add(listener);
+      return () => { state.viewListeners.delete(listener); };
+    },
     dispose,
   };
 
@@ -349,5 +359,6 @@ export function createMapRenderer(): MapRenderer {
     state.rgb = null;
     state.kit = null;
     state.filter = null;
+    state.viewListeners.clear();
   }
 }

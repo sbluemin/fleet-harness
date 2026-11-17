@@ -260,6 +260,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private dataDirty = true;
   private disposed = false;
   private readonly tmp = new Vector3();
+  /** 보기 변화 구독 — 그릴 때마다 알린다(그리기는 요청 때만 돈다). */
+  private readonly viewListeners = new Set<() => void>();
 
   private readonly onResize = () => this.resize();
   private readonly onContextLost = (event: Event) => { event.preventDefault(); };
@@ -420,12 +422,20 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   fit(): void {
     if (!this.renderer) return;
     this.tween = { t0: performance.now(), dur: FIT_TWEEN_MS, yaw0: this.yaw, pitch0: this.pitch, zoom0: this.zoom };
+    // 첫 그리기 전에도 project가 맞는 답을 내놓게 카메라를 곧바로 둔다.
+    this.placeCamera();
     this.schedule();
+  }
+
+  onViewChange(listener: () => void): () => void {
+    this.viewListeners.add(listener);
+    return () => { this.viewListeners.delete(listener); };
   }
 
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.viewListeners.clear();
     if (this.raf) cancelAnimationFrame(this.raf);
     this.raf = 0;
     this.resizeObserver?.disconnect();
@@ -755,6 +765,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     if (!this.light && this.composer) this.composer.render();
     else renderer.render(this.scene, this.camera);
     if (this.tween) this.schedule();
+    for (const listener of this.viewListeners) {
+      try { listener(); } catch { /* DOM 동기 실패는 다음 그림으로 미룬다 */ }
+    }
   }
 
   private writeUniforms(): void {

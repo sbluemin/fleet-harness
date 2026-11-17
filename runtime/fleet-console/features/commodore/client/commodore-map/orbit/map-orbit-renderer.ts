@@ -99,6 +99,8 @@ interface OrbitState {
   view: OrbitView;
   insets: MapFitInsets;
   cleanup: (() => void) | null;
+  /** 보기 변화 구독 — 그리기는 제스처·상태 변화 때만 돈다. */
+  viewListeners: Set<() => void>;
 }
 
 function sectorAllocation(graph: MapGraph): Map<MapBranchKey, OrbitSector> {
@@ -220,6 +222,7 @@ export function createMapRenderer(): MapRenderer {
     view: { k: 1, tx: 0, ty: 0, fitK: 1 },
     insets: DEFAULT_MAP_INSETS,
     cleanup: null,
+    viewListeners: new Set(),
   };
 
   const isVisible = (id: string): boolean => state.filter === null || state.filter.has(id);
@@ -429,7 +432,9 @@ export function createMapRenderer(): MapRenderer {
     }
 
     // 라벨 — 우선순위대로 자리를 잡고 겹치면 낮은 쪽을 버린다(D11·D13).
+    // 설명 허브는 핵 반대 바깥쪽에 둔다 — 중앙에서 핵 라벨과 겹치던 것을 떼어 놓는다(수정 4 D2).
     const candidates: MapLabelCandidate[] = [];
+    const corePoint = points.get("core");
     for (const node of graph.nodes) {
       if (!isVisible(node.id) || !node.label) continue;
       const priority = labelPriority(node);
@@ -438,16 +443,20 @@ export function createMapRenderer(): MapRenderer {
       if (!point) continue;
       if (point.x < -40 || point.x > w + 40 || point.y < -20 || point.y > h + 20) continue;
       const dim = focus !== null && !focus.has(node.id);
+      const outward = node.kind === "description" && corePoint ? Math.sign(point.y - corePoint.y) || 1 : 1;
       candidates.push({
         text: node.label,
         x: point.x,
-        y: point.y + nodeRadius(node, radii) + MAP_LABEL_GAP + MAP_LABEL_SIZE * 0.6,
+        y: point.y + outward * (nodeRadius(node, radii) + MAP_LABEL_GAP + MAP_LABEL_SIZE * 0.6),
         priority,
         color: rgbCss(dim ? rgb.inkDim : rgb.ink),
         alpha: dim ? 0.3 : 0.92,
       });
     }
     drawMapLabels(ctx, kit, state.font, candidates, w, h, Math.min(LABEL_MAX, Math.max(56, w * 0.42)));
+    for (const listener of state.viewListeners) {
+      try { listener(); } catch { /* DOM 동기 실패는 다음 그림으로 미룬다 */ }
+    }
   };
 
   /** 포인터 — 한 손가락은 끌기, 두 손가락은 핀치. 두 번 누르면 맞춤 보기. */
@@ -638,6 +647,10 @@ export function createMapRenderer(): MapRenderer {
       return { x: point.x, y: point.y, visible };
     },
     fit,
+    onViewChange(listener) {
+      state.viewListeners.add(listener);
+      return () => { state.viewListeners.delete(listener); };
+    },
     dispose,
   };
 
@@ -651,5 +664,6 @@ export function createMapRenderer(): MapRenderer {
     state.kit = null;
     state.filter = null;
     state.points = new Map();
+    state.viewListeners.clear();
   }
 }

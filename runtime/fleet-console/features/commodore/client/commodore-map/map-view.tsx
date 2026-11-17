@@ -260,11 +260,14 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
   }, []);
 
   // 생성·반납 — 실패하면 Canvas로 넘어가고, 그것마저 실패하면 안내만 둔다.
+  // 보기 변화 알림(onViewChange)이 오면 DOM 층을 다시 읽는다. 첫 그림·맞춤 트윈이
+  // 비동기라 마운트 직후에는 짧게 따라가며 동기화한다(수정 4 D1).
   useEffect(() => {
     const container = containerRef.current;
     if (!container || isEmpty) return;
     let cancelled = false;
     let owned: MapRenderer | null = null;
+    let offView: (() => void) | null = null;
     const reduced = osReduced || getGlobalSettingsStoreState().state?.reduceMotion === true || settings.state?.reduceMotion === true;
     const want = chooseMapRendererKind(detectMapRendererEnv({ reducedMotion: reduced }));
     setLoadError(null);
@@ -281,7 +284,9 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
         renderer.setSelection(selectedRef.current);
         applyInsets();
         renderer.fit();
+        offView = renderer.onViewChange?.(() => syncPositions()) ?? null;
         syncPositions();
+        trackMotion(1200);
       })
       .catch((error: unknown) => {
         if (!cancelled) setLoadError(error instanceof Error ? error.message : "failed");
@@ -289,6 +294,7 @@ export function CommodoreMapDialog({ t, commodoreId, state, onClose }: {
     return () => {
       cancelled = true;
       stopTracking();
+      offView?.();
       setRendererKind(null);
       const ownedNow = owned ?? rendererRef.current;
       rendererRef.current = null;
