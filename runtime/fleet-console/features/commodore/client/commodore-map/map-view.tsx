@@ -12,6 +12,7 @@ import { MEMORY_BRANCH_LABEL } from "../commodore-memory.js";
 import type { CommodoreMessageKey } from "../i18n/index.js";
 import {
   buildMapGraph,
+  resolveMapDetailNode,
   matchMapQuery,
   visibleMapIds,
   type MapBranchKey,
@@ -139,7 +140,8 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   const objectiveCount = useMemo(() => graph.nodes.filter((node) => node.kind === "objective").length, [graph]);
   const linkCount = useMemo(() => graph.edges.filter((edge) => edge.kind === "link").length, [graph]);
   const isEmpty = state.description.text === "" && graph.intelTotal === 0 && memory.entries.length === 0;
-  const selected: { readonly node: MapNode } | null = selectedId ? (graph.byId.get(selectedId) ? { node: graph.byId.get(selectedId)! } : null) : null;
+  const selectedNode = selectedId ? resolveMapDetailNode(graph, selectedId, state, memory.entries) : null;
+  const selected: { readonly node: MapNode } | null = selectedNode ? { node: selectedNode } : null;
   // D6 — 노드 층의 Tab 정지점은 하나로, 방향키로 옮겨 다닌다.
   const orderedIds = useMemo(() => [...visible], [visible]);
   const [roving, setRoving] = useState<string | null>(null);
@@ -514,15 +516,15 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
             onPointerCancel={() => stopTracking()}
           >
             <div ref={nodesRef} className="commodore-map-canvas-host" aria-hidden="true" />
-            {isEmpty ? (
-              <div className="commodore-map-state">{t("commodore.map.empty")}</div>
-            ) : !memory.loaded ? (
+            {!memory.loaded ? (
               <div className="commodore-map-state">{t("commodore.map.loading")}</div>
             ) : memory.failed ? (
               <div className="commodore-map-state">
                 {t("commodore.memory.failed")}{" "}
                 <button type="button" className="commodore-map-icon-btn" onClick={() => void loadCommodoreMemory(commodoreId)}>{t("commodore.map.retry")}</button>
               </div>
+            ) : isEmpty ? (
+              <div className="commodore-map-state">{t("commodore.map.empty")}</div>
             ) : loadError ? (
               <div className="commodore-map-state">
                 {t("commodore.map.failed", { code: loadError })}{" "}

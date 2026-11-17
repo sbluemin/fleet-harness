@@ -118,6 +118,42 @@ function excerpt(text: string, limit = 60): string {
   return flat.length > limit ? `${flat.slice(0, limit)}…` : flat;
 }
 
+/**
+ * 상세 패널이 고른 id를 노드로 푼다. 그래프에 점이 없는 대상도 상세는 낸다 —
+ * 묶음(`+N`)에 든 오래된 정보, 기억 하나만 가리킨 목표. 그 밖의 모르는 id는 null.
+ */
+export function resolveMapDetailNode(
+  graph: MapGraph,
+  id: string,
+  state: CommodoreState,
+  memories: readonly MemoryEntry[],
+  now = Date.now(),
+): MapNode | null {
+  const node = graph.byId.get(id);
+  if (node) return node;
+  if (id.startsWith("intel:")) {
+    const item = state.intel.find((candidate) => `intel:${candidate.id}` === id);
+    if (!item) return null;
+    return {
+      id, kind: "intel", branch: "intel",
+      label: excerpt(item.text), text: item.text,
+      fresh: now - item.at <= MAP_RECENT_MS, stale: false,
+      intelId: item.id, at: item.at,
+    };
+  }
+  if (id.startsWith("obj:")) {
+    const objectiveId = id.slice("obj:".length);
+    const entry = memories.find((candidate) => candidate.sources.some((source) => source.objectiveId === objectiveId));
+    const source = entry?.sources.find((candidate) => candidate.objectiveId === objectiveId);
+    if (!entry || !source) return null;
+    return {
+      id, kind: "objective", branch: entry.branch,
+      label: source.title, text: "", fresh: false, stale: false, objectiveId,
+    };
+  }
+  return null;
+}
+
 export function buildMapGraph(input: MapGraphInput): MapGraph {
   const now = input.now ?? Date.now();
   const { state } = input;

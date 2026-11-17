@@ -28,7 +28,7 @@ import { MapPanel, mapPanelFacts } from "./commodore-map/map-panel.js";
 import { readCommodoreMapMode, setCommodoreMapMode, setCommodoreMapSelection, subscribeCommodoreMapMode, useCommodoreMapMode, useCommodoreMapSelection } from "./commodore-map-mode.js";
 import type { MemoryBranch } from "../shared/contracts/memory.js";
 import { MEMORY_BRANCH_LABEL } from "./commodore-memory.js";
-import { buildMapGraph } from "./commodore-map/map-graph.js";
+import { buildMapGraph, resolveMapDetailNode } from "./commodore-map/map-graph.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, retryCommodoreNewSession, skipCommodoreFailed, subscribeCommodore, transcriptNeeded, useCommodore, useCommodoreMemory } from "./commodore-state.js";
 import { getConversationSurface, subscribeConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
@@ -553,7 +553,7 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
   if (!view) return null;
   if (mapMode === "map") {
     const railGraph = buildMapGraph({ state: view.state, memories: memory.entries, tone: null });
-    const railNode = railSelectionId ? railGraph.byId.get(railSelectionId) ?? null : null;
+    const railNode = railSelectionId ? resolveMapDetailNode(railGraph, railSelectionId, view.state, memory.entries) : null;
     return (
       <div className="objectives-commodore-body objectives-commodore-conversation-tab">
         <MapPanel
