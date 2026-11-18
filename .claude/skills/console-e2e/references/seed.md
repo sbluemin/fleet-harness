@@ -36,7 +36,7 @@ On a running owned Console booted with the owned fake agent (description and int
 node .claude/skills/console-e2e/scripts/seed/memory-scale.mjs --dir "$E2E_DIR/console"
 ```
 
-Writes fleet-memory only under that slot. `POST /api/v1/commodore/memory` is read-only, so there is no API write and the helper does not touch `MEMORY.md`. Description and intel use the product routes. stdout is one JSON object, also `<dir>/memory-scale.json`; a second run stops. Counts and branch distribution are in that object, read back from the API. Map fill and rail switching are not part of this seed.
+Writes fleet-memory only under that slot. `POST /api/v1/commodore/memory` is read-only, so there is no API write and the helper does not touch `MEMORY.md`. Description and intel use the product routes. stdout is one JSON object, also `<dir>/memory-scale.json`, with the counts and branch distribution read back from the API. An existing `memory-scale.json` stops the run.
 
 ## Canary default-screen check
 
