@@ -87,6 +87,20 @@ it("persists UUID section order through the public route without rewriting entit
   const events: CommodoreEvent[] = [];
   const sidebarEvents: unknown[] = [];
   const write = vi.fn((ids: readonly string[]) => { settings.update((current) => ({ ...current, commodoreOrder: ids })); });
+  // 지휘관 로스터는 살아 있는 두 모델만 담는다 — 제거된 모델의 저장값은 기존 로스터 폴백으로 선다.
+  const launchRoster = [{ id: "gateway:codex", label: "Codex", rows: [
+    { id: "codex--gpt-6.2-sol", label: "Sol", launch: { model: "codex--gpt-6.2-sol" } },
+    { id: "codex--gpt-6.2-astra", label: "Astra", launch: { model: "codex--gpt-6.2-astra" } },
+  ] }];
+  const models = {
+    roster: () => launchRoster,
+    resolve: (stored: ModelCoordinate) => {
+      const resolved = resolveRosterCoordinate(launchRoster, stored);
+      return { ...resolved, wireModel: resolved.model };
+    },
+    pinClaudeVersion: async (model: string) => model,
+    enabled: () => null,
+  };
   const create = () => createCommodoreFeature({
     paths: { fleetDataDir: dir, consoleDataDir: dir, resolveCommodoreTheaterPath: () => null, resolveObjectiveOwner: () => null, listCommodoreTheaters: () => [], workspaceHash,
       canonicalizeTheaterPath: (cwd) => fs.realpathSync.native(cwd),
@@ -99,7 +113,7 @@ it("persists UUID section order through the public route without rewriting entit
     http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, value: unknown) => { result = { status, value }; } } as never,
     security: { isTerminalAuthorized: () => authorized } as never,
     agent: { baseUrl: () => "http://127.0.0.1", resolveExecutablePath: async () => { throw new Error("unexpected_agent_launch"); } } as never,
-    experiments: undefined, models: undefined, attachments: undefined,
+    experiments: undefined, models: models as never, attachments: undefined,
   });
   let feature = create();
   const route = async (name: string, input: unknown = {}) => {
@@ -121,6 +135,13 @@ it("persists UUID section order through the public route without rewriting entit
     const a = (await route("create", { alias: "A" })).value.commodoreId;
     const b = (await route("create", { alias: "B" })).value.commodoreId;
     const c = (await route("create", { alias: "C" })).value.commodoreId;
+    // 저장된 지휘관 모델이 제거된 모델이면 로스터의 기존 폴백으로 서고, 그 모델에 저장된 속도는 싣지 않는다. 저장값은 고쳐 쓰지 않는다.
+    expect((await route("commander", { commodoreId: a, model: "codex--gpt-6-astra", effort: "high", speed: "fast" })).status).toBe(200);
+    expect(feature.host.commander(a)).toEqual({ model: "codex--gpt-6.2-sol" });
+    expect(JSON.parse(fs.readFileSync(path.join(dir, "commodore", a, "state.json"), "utf8"))).toMatchObject({ commanderModel: "codex--gpt-6-astra", commanderSpeed: "fast" });
+    // 살아 있는 모델은 지금처럼 저장값 그대로다.
+    expect((await route("commander", { commodoreId: a, model: "codex--gpt-6.2-sol", effort: "high", speed: "fast" })).status).toBe(200);
+    expect(feature.host.commander(a)).toEqual({ model: "codex--gpt-6.2-sol", effort: "high", speed: "fast" });
     const ids = async () => (await route("list")).value.commodores.map((row: { commodoreId: string }) => row.commodoreId);
     const initial = await ids();
     expect(initial).toEqual([a, b, c]);
