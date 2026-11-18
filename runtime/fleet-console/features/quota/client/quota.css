@@ -842,96 +842,8 @@
 .quota-signin-close { border: 0; background: transparent; color: var(--text-secondary); font: inherit; min-width: 32px; min-height: 32px; cursor: pointer; }
 .quota-signin-note { margin: 0; padding: 8px 16px 16px; color: var(--text-primary); }
 
-/* Gemini 지출 — 금액과 (예산이 있으면) 사용률 막대. QuotaWindow가 아니므로 미터 그리드를 쓰지 않는다. */
-.quota-spend { margin-top: 12px; }
-
-.quota-spend__head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-
-.quota-spend__label {
-  color: var(--text-secondary);
-  font-size: var(--t-md);
-}
-
-.quota-spend__amount {
-  color: var(--text-primary);
-  font-family: var(--font-ui);
-  font-size: var(--t-base);
-  font-weight: var(--weight-medium);
-  font-variant-numeric: tabular-nums;
-}
-
-/* 금액 옆의 인라인 진입점 — 예산을 넣고 지우는 자리가 보는 자리와 같다. */
-.quota-spend__edit {
-  margin-left: auto;
-  padding: 2px 4px;
-  border: 0;
-  color: var(--text-tertiary);
-  background: transparent;
-  font: inherit;
-  font-size: var(--t-xs);
-  cursor: pointer;
-}
-
-.quota-spend__edit:hover,
-.quota-spend__edit:focus-visible {
-  color: var(--brass-ink);
-}
-
-.quota-spend__bar {
-  position: relative;
-  height: 6px;
-  margin-top: 9px;
-  overflow: hidden;
-  border: 1px solid var(--gauge-rim);
-  border-radius: var(--radius-pill);
-  background: var(--ink-veil);
-}
-
-.quota-spend__fill {
-  position: absolute;
-  inset-block: 0;
-  left: 0;
-  border-radius: var(--radius-pill);
-  background: var(--ink-fog);
-  transition: width var(--duration-base) ease;
-}
-
-.quota-spend__fill--warning {
-  background: color-mix(in oklab, var(--warn) var(--gauge-weight-warn), transparent);
-}
-
-.quota-spend__fill--critical {
-  background: color-mix(in oklab, var(--coral) var(--gauge-weight-critical), transparent);
-}
-
-.quota-spend__foot {
-  display: flex;
-  justify-content: space-between;
-  gap: 8px;
-  margin-top: 6px;
-  color: var(--text-tertiary);
-  font-family: var(--font-ui);
-  font-size: var(--t-xs);
-}
-
-.quota-spend__foot > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 플릿이 센 추정치라는 사실은 카드마다 남긴다 — 실청구와 다른 수일 수 있는 유일한 값이다. */
-.quota-spend__basis {
-  margin: 8px 0 0;
-  color: var(--text-tertiary);
-  font-size: var(--t-xs);
-  line-height: 1.4;
-}
-
+/* 지출 — 한도 미터와 같은 형상(주간 라벨·막대·퍼센트·리셋)에 금액 줄 하나를 더한다.
+   QuotaWindow가 아니므로 windows에 싣지 않지만, 그림은 .quota-meter를 그대로 쓴다. */
 .quota-budget {
   display: flex;
   flex-wrap: wrap;
@@ -969,12 +881,6 @@
   margin: 0;
   color: var(--coral-ink);
   font-size: var(--t-xs);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .quota-spend__fill {
-    transition: none;
-  }
 }
 
 /* API 키 한도 — 마지막 응답 헤더가 알려 준 분당 한도. 창이 아니므로 미터 대신 표로 그린다. */

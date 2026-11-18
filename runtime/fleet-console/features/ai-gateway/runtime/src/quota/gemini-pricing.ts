@@ -11,8 +11,9 @@
  * 바꾼다 — 부동소수 누적은 센트 아래에서 조용히 틀어진다.
  *
  * Argon·Carbon은 "through November 30, 2026 / starting December 1, 2026"으로 2026-12-01부터
- * 정확히 2배가 된다. 전환 시각의 시간대는 문서에 없어 **America/Los_Angeles 자정**을 쓴다.
- * 근거는 `geminiMonthBounds`의 주석과 같다(Google이 유일하게 명시한 리셋 기준이 태평양시).
+ * 정확히 2배가 된다. 전환 시각의 시간대는 문서에 없어 **America/Los_Angeles 자정**을 쓴다 —
+ * 주 경계(`spendWeekBounds`)와 같은 시간대이고, Google이 유일하게 시간대를 명시한 리셋 기준
+ * (rate-limits의 RPD "midnight Pacific time")과도 같다.
  *
  * Contributor(초대제 private preview) 단가는 초대받은 계정에만 적용되어 플릿이 티어를 알 수
  * 없으므로 표에 넣지 않는다. Hydrogen은 Free tier가 있지만 무료 프로젝트인지 알 수 없어
@@ -46,7 +47,7 @@ export interface GeminiTokenPrice {
 }
 
 const PICO_USD_SCALE = 10n ** 12n;
-const MAX_BUDGET_PICO_USD = 10n ** 21n; // $1,000,000,000 — 입력 상한(사람이 넣는 월 예산)
+const MAX_BUDGET_PICO_USD = 10n ** 21n; // $1,000,000,000 — 입력 상한(사람이 넣는 주 예산)
 
 /**
  * serviceTier 원문 → 단가 tier. 없거나 모르는 값은 standard로 센다(가장 흔한 경로이고,
@@ -145,8 +146,8 @@ export function picoUsdFromUsd(value: string): bigint | undefined {
 }
 
 /**
- * 사람이 넣은 월 예산 → 저장 형식(USD 십진 문자열). 0 이하·숫자 아님·상한 초과는 undefined다.
- * 예산은 달마다 반복되는 하나의 값이라 월 키와 함께 저장하지 않는다.
+ * 사람이 넣은 주 예산 → 저장 형식(USD 십진 문자열). 0 이하·숫자 아님·상한 초과는 undefined다.
+ * 예산은 주마다 반복되는 하나의 값이라 주 키와 함께 저장하지 않는다.
  */
 export function normalizeBudgetUsd(value: unknown): string | undefined {
   if (typeof value !== "string" && typeof value !== "number") return undefined;
@@ -164,41 +165,58 @@ export function budgetUsedPercent(spentPicoUsd: bigint, budgetPicoUsd: bigint): 
 }
 
 /**
- * America/Los_Angeles 달력 월 경계.
+ * America/Los_Angeles 기준 주 경계 — 월요일 00:00에 시작해 다음 월요일 00:00에 리셋한다.
  *
- * 월 경계와 단가 전환 시각을 태평양시 자정으로 두는 근거: 공식 문서는 티어 월 상한 리셋을
- * "the 1st of each month", 단가 전환을 "starting December 1, 2026"으로만 적고 시간대를
- * 밝히지 않는다. Google이 유일하게 시간대를 명시한 리셋은 rate-limits의 RPD
- * "midnight Pacific time"이므로 그 기준을 따른다(consult be2bde67, 2026-11-18).
- * 이 값은 사람의 요구사항이 아니라 사령관 판단이다.
+ * 사람 결정(A1): 주 경계는 월요일 00:00 America/Los_Angeles이며, 기존 월 경계와 같은 시간대다.
+ * 키는 그 주 월요일의 달력 날짜("2026-11-16")라 달 키("2026-11")와 구별되고, 사전순이 곧 시간순이다.
+ * 로케일별 주 시작 요일(Intl의 firstDay)은 쓰지 않는다 — 이 값은 표시 형식이 아니라 제품 계약이다.
  */
-export function geminiMonthBounds(at: number): { readonly key: string; readonly periodStart: number; readonly resetsAt: number } {
-  const parts = LA_MONTH_FORMAT.formatToParts(new Date(at));
+export function spendWeekBounds(at: number): { readonly key: string; readonly periodStart: number; readonly resetsAt: number } {
+  const parts = LA_DATE_FORMAT.formatToParts(new Date(at));
   const year = Number(parts.find((part) => part.type === "year")?.value);
   const month = Number(parts.find((part) => part.type === "month")?.value);
+  const day = Number(parts.find((part) => part.type === "day")?.value);
+  // 태평양시 달력 날짜의 요일은 그 날짜를 UTC 자정으로 세운 순간의 요일과 같다.
+  const localDay = Date.UTC(year, month - 1, day);
+  const sinceMonday = (new Date(localDay).getUTCDay() + 6) % 7;
+  const monday = new Date(localDay - sinceMonday * DAY_MS);
+  const nextMonday = new Date(localDay + (7 - sinceMonday) * DAY_MS);
+  const startYear = monday.getUTCFullYear();
+  const startMonth = monday.getUTCMonth() + 1;
+  const startDay = monday.getUTCDate();
+  const nextYear = nextMonday.getUTCFullYear();
+  const nextMonth = nextMonday.getUTCMonth() + 1;
+  const nextDay = nextMonday.getUTCDate();
   return {
-    key: `${year}-${String(month).padStart(2, "0")}`,
-    periodStart: zonedMidnightEpoch(year, month - 1),
-    resetsAt: zonedMidnightEpoch(year, month),
+    key: `${startYear}-${twoDigits(startMonth)}-${twoDigits(startDay)}`,
+    periodStart: zonedMidnightEpoch(startYear, startMonth - 1, startDay),
+    resetsAt: zonedMidnightEpoch(nextYear, nextMonth - 1, nextDay),
   };
+}
+
+const DAY_MS = 86_400_000;
+
+function twoDigits(value: number): string {
+  return String(value).padStart(2, "0");
 }
 
 /** 태평양시 2026-12-01 00:00 — Argon·Carbon 단가가 2배가 되는 순간. */
 const GEMINI_PRICE_DOUBLING_AT = zonedMidnightEpoch(2026, 11);
 
-const LA_MONTH_FORMAT = new Intl.DateTimeFormat("en-US", {
+const LA_DATE_FORMAT = new Intl.DateTimeFormat("en-US", {
   timeZone: GEMINI_PRICING_TIME_ZONE,
   year: "numeric",
   month: "2-digit",
+  day: "2-digit",
 });
 
 /**
- * 태평양시 자정의 epoch ms. UTC 벽시계로 자정을 잡은 뒤 그 순간의 오프셋만큼 밀고,
- * 오프셋이 바뀔 수 있는 경계를 대비해 한 번 더 수렴시킨다(DST 전환은 3월·11월의 일요일이라
- * 월초와 겹치지 않지만, 계산이 그 사실에 기대지 않게 한다).
+ * 태평양시 달력 날짜(기본 1일)의 자정 epoch ms. UTC 벽시계로 자정을 잡은 뒤 그 순간의 오프셋만큼
+ * 밀고, 오프셋이 바뀔 수 있는 경계를 대비해 한 번 더 수렴시킨다(DST 전환은 3월·11월의 일요일이라
+ * 대개 월요일 경계와 겹치지 않지만, 계산이 그 사실에 기대지 않게 한다).
  */
-function zonedMidnightEpoch(year: number, monthIndex: number): number {
-  const utcMidnight = Date.UTC(year, monthIndex, 1);
+function zonedMidnightEpoch(year: number, monthIndex: number, day = 1): number {
+  const utcMidnight = Date.UTC(year, monthIndex, day);
   let instant = utcMidnight;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     instant = utcMidnight - timeZoneOffsetMs(instant);

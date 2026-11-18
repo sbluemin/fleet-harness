@@ -133,7 +133,7 @@ export async function handleConnect(
 export type LoginAction = "start" | "status" | "cancel" | "logout";
 
 /**
- * 지출 원장의 월 예산을 가진 공급자 — Quota 화면에서 지출 카드를 그리는 둘뿐이다. 플러그인 라우트
+ * 지출 원장의 주 예산을 가진 공급자 — Quota 화면에서 지출 카드를 그리는 둘뿐이다. 플러그인 라우트
  * 이름(`<id>-budget`)과 게이트웨이 라우트 이름이 이 id로 함께 세워지므로 표가 아니라 타입으로 묶는다.
  */
 export type BudgetProvider = Extract<ProviderId, "gemini" | "anthropic">;
@@ -154,7 +154,7 @@ export interface SpendBudgetGateway {
 }
 
 /**
- * 지출 카드의 월 예산 저장·삭제. 성공하면 갱신된 요약을 함께 돌려줘 카드가 곧바로 막대를 세운다.
+ * 지출 카드의 주 예산 저장·삭제. 성공하면 갱신된 요약을 함께 돌려줘 카드가 곧바로 막대를 세운다.
  * 값 검증(양수·숫자)은 원장과 입력 UI가 각자 하고, 여기서는 모양만 본다.
  */
 export async function handleSpendBudget(

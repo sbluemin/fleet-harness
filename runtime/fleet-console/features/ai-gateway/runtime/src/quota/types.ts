@@ -79,20 +79,20 @@ export interface ResetCredits {
  *
  * 금액은 부동소수 누적을 하지 않는다 — 원장이 정수(pico-USD)로 세고, 경계를 넘을 때만
  * 십진 문자열로 바꾼다. 이 DTO는 그 문자열을 그대로 나른다. `budget`이 없으면 금액만
- * 보이고, 있으면 이번 달 사용률 막대를 세운다. 이 값은 `QuotaWindow`가 아니다: routing은
+ * 보이고, 있으면 이번 주 사용률 막대를 세운다. 이 값은 `QuotaWindow`가 아니다: routing은
  * `windows`로 압박도를 계산하므로, 지출을 창으로 만들면 사람이 요청한 적 없는 라우팅 제외가 생긴다.
  */
 export interface ProviderSpend {
   readonly currency: "USD";
-  /** 이번 달 누적 지출. USD 십진 문자열(최대 12자리 소수). */
+  /** 이번 주 누적 지출. USD 십진 문자열(최대 12자리 소수). */
   readonly spent: string;
-  /** 사람이 정한 월 예산. 모든 달에 적용된다. 없으면 금액만 보인다. */
+  /** 사람이 정한 주 예산. 모든 주에 적용된다. 없으면 금액만 보인다. */
   readonly budget?: string;
   /** `spent / budget` 백분율(소수 한 자리). 예산을 넘으면 100을 넘는다. */
   readonly usedPercent?: number;
-  /** 이번 달 시작 — America/Los_Angeles 자정(epoch ms). */
+  /** 이번 주 시작 — America/Los_Angeles 월요일 자정(epoch ms). */
   readonly periodStart: number;
-  /** 다음 달 시작 = 이번 달 리셋 시각(epoch ms). */
+  /** 다음 주 시작 = 이번 주 리셋 시각(epoch ms). */
   readonly resetsAt: number;
   /**
    * 값의 출처. Gemini API는 잔액·지출을 주지 않으므로 플릿이 응답 usageMetadata의 토큰에
@@ -151,7 +151,7 @@ export interface ProviderDto {
   readonly cycleDays?: number;
   readonly windows?: readonly QuotaWindow[];
   readonly credits?: ResetCredits;
-  /** 지출을 금액으로만 아는 공급자(Gemini)의 이번 달 누적. 창이 아니다. */
+  /** 지출을 금액으로만 아는 공급자(Gemini·Anthropic API 키)의 이번 주 누적. 창이 아니다. */
   readonly spend?: ProviderSpend;
   /** 마지막 거절(402·429, Anthropic은 400 포함). 성공 사용량이 오면 사라진다. */
   readonly block?: ProviderBlock;
@@ -164,13 +164,13 @@ export interface ProviderDto {
 export interface QuotaSummaryDto {
   readonly providers: {
     /**
-     * Anthropic API 키(크레딧) — 플릿이 응답 usage로 센 이번 달 지출과 마지막 한도 헤더를 싣는다.
+     * Anthropic API 키(크레딧) — 플릿이 응답 usage로 센 이번 주 지출과 마지막 한도 헤더를 싣는다.
      * 구독 `claude`와 별도 항목이다.
      */
     readonly anthropic: ProviderDto;
     readonly claude: ProviderDto;
     readonly codex: ProviderDto;
-    /** Gemini Developer API 키 — 플릿이 응답 토큰으로 센 이번 달 지출을 싣는다. */
+    /** Gemini Developer API 키 — 플릿이 응답 토큰으로 센 이번 주 지출을 싣는다. */
     readonly gemini: ProviderDto;
     readonly "muse-code": ProviderDto;
     readonly opencode: ProviderDto;
