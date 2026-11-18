@@ -28,6 +28,16 @@ Counts override with the flags. Theater folders are created under `--root` (defa
 - Marking first-run layers as seen is a separate step: [`seed-onboarding.mts`](../scripts/seed-onboarding.mts).
 - Composition lives in [`scripts/seed/lib.mjs`](../scripts/seed/lib.mjs) (API calls, ownership order) and [`fixtures.mjs`](../scripts/seed/fixtures.mjs) (profiles). Use a shared profile as the baseline; keep scenario-specific additions in the objective’s fixture, reusing the helpers.
 
+## Memory and intel scale
+
+On a running owned Console booted with the owned fake agent (description and intel wake the commodore; no provider):
+
+```bash
+node .claude/skills/console-e2e/scripts/seed/memory-scale.mjs --dir "$E2E_DIR/console"
+```
+
+Writes fleet-memory only under that slot. `POST /api/v1/commodore/memory` is read-only, so there is no API write and the helper does not touch `MEMORY.md`. Description and intel use the product routes. stdout is one JSON object, also `<dir>/memory-scale.json`; a second run stops. Counts and branch distribution are in that object, read back from the API. Map fill and rail switching are not part of this seed.
+
 ## Canary default-screen check
 
 `node scripts/check-canary-screen.mjs` builds nothing: with the Console built, it serves it in a temp slot with the fake agent, seeds `basic`, loads the default screen in headless Chrome (`CHROME_BIN` or a standard path) and exits 1 on a thrown error, `console.error`, a 5xx answer or an empty screen. `--probe` prints the DOM summary instead. CI runs it as `.github/workflows/canary-screen.yml` after every canary merge and on relevant pull requests.
