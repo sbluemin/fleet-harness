@@ -23,6 +23,7 @@ import type { ClaudeCodexCompactionStore } from "../upstream/codex/compaction-st
 import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
 import { createOpencodeGoAdapter } from "../upstream/opencode-go/adapter.js";
 import type { QuotaWindow } from "../quota/types.js";
+import type { GeminiUsagePort } from "../quota/gemini-usage.js";
 import { XaiResponsesAdapter } from "../upstream/xai/responses/adapter.js";
 import {
   GATEWAY_MODELS,
@@ -169,6 +170,10 @@ export interface AiGatewayRouteDeps {
   readonly observeMuseCodeUsage?: (windows: readonly QuotaWindow[], apiKey: string) => void;
   /** Console이 저장한 OpenCode Go API 키. 미주입이거나 비어 있으면 OpenCode Go 모델은 미로그인으로 거절된다. */
   readonly readOpencodeApiKey?: () => string | undefined | Promise<string | undefined>;
+  /** Console이 저장한 Gemini API 키. 미주입이거나 비어 있으면 Gemini 모델은 미로그인으로 거절된다. */
+  readonly readGeminiApiKey?: () => string | undefined | Promise<string | undefined>;
+  /** Gemini 턴의 사용량·402/429 차단을 받는 지출 원장. 미주입이면 플릿은 Gemini 지출을 세지 않는다. */
+  readonly geminiUsage?: GeminiUsagePort;
   readonly readModelOverride?: () => string | undefined;
   /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
   readonly compactionStore?: ClaudeCodexCompactionStore;
