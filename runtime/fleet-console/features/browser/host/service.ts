@@ -8,7 +8,7 @@ import { DESKTOP_BROWSER_PASSWORDS, type BrowserPasswordShellCommand } from "@fl
 import { acceptBrowserPasswordResult, browserPasswordDispatchError, BrowserPasswordRequestError, type BrowserPasswordDispatchResult } from "./passwords.js";
 import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import { applyRemoteInputBatch, applySelectChoice, createRemoteSelectRegistry, probeSelectPresence, probeSelectTarget, RemoteInputError, type RemoteBatchResult, type RemoteInputCommand, type RemotePointerState } from "./remote-input.js";
-import type { BrowserPageDialog, DesktopEngine } from "./desktop-engine.js";
+import { DESKTOP_BROWSER_POPUP_EVENT, type BrowserPageDialog, type DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_PASSWORD_ACTION, DESKTOP_BROWSER_SELECT_POPUP, DESKTOP_BROWSER_STAGE_FILES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, isRemoteBrowserFileChooserAction, isRemoteBrowserInputBatch, isRemoteBrowserPasswordAction, isRemoteBrowserPermissionAction, isRemoteBrowserSelectPopupAction, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer, type RemoteBrowserFileChooserPrompt, type RemoteBrowserInputBatch, type RemoteBrowserPasswordAction, type RemoteBrowserPasswordPrompt, type RemoteBrowserPermissionAction, type RemoteBrowserPermissionPrompt, type RemoteBrowserSelectPopup, type RemoteBrowserSelectPopupAction } from "@fleet-console/protocol/desktop";
 import { BROWSER_GLOBAL_ID } from "../shared/browser-id.js";
 
@@ -180,6 +180,8 @@ interface Tab {
   readonly spaceId: string;
   /** 이 탭을 연 묶음(`BrowserCaller.ownerId`). 사람이 열었으면 null 이다. */
   readonly ownerId: string | null;
+  /** 페이지 팝업으로 열린 탭이면 `window.open` 을 부른 탭. 팝업이 닫히면 이 탭으로 돌아간다. */
+  readonly openerTabId?: string;
   readonly targetId: string;
   sessionId: string;
   url: string;
@@ -1678,6 +1680,17 @@ export class BrowserService {
       const left = (op.pendingSpaces.get(spaceId) ?? 1) - 1;
       if (left > 0) op.pendingSpaces.set(spaceId, left); else op.pendingSpaces.delete(spaceId);
     }
+    await this.prepareTab(client, tab, op, actor);
+    if (caller) { op.currentTabs.set(caller.participantId, tab.id); this.bindParticipant(op, caller); }
+    // 에이전트의 탭은 사람 화면을 빼앗지 않는다. 사람이 그 스페이스의 빈 화면을 보고 있었다면 셸이 이 탭을 띄워 달라고 요청한다.
+    if (actor === "user" || options.show) await this.selectTab(objectiveId, tab.id);
+    else this.emitState(op);
+    if (target) await this.navigateTab(op, tab, target.href);
+    return this.tabState(this.tab(op, tab.id));
+  }
+
+  /** 부착한 탭을 첫 이동 전에 준비한다 — 도메인·UA·Chrome 표면·관찰 스크립트·뷰 묶음·뷰포트. */
+  private async prepareTab(client: CdpClient, tab: Tab, op: ObjectiveBrowser, actor: "user" | "agent"): Promise<void> {
     await Promise.all([
       client.send("Page.enable", {}, tab.sessionId),
       client.send("Runtime.enable", {}, tab.sessionId),
@@ -1701,12 +1714,56 @@ export class BrowserService {
     ]);
     this.deps.desktop.bindView(tab.targetId, op.objectiveId, actor === "agent");
     await this.applyViewport(client, tab, op);
-    if (caller) { op.currentTabs.set(caller.participantId, tab.id); this.bindParticipant(op, caller); }
-    // 에이전트의 탭은 사람 화면을 빼앗지 않는다. 사람이 그 스페이스의 빈 화면을 보고 있었다면 셸이 이 탭을 띄워 달라고 요청한다.
-    if (actor === "user" || options.show) await this.selectTab(objectiveId, tab.id);
-    else this.emitState(op);
-    if (target) await this.navigateTab(op, tab, target.href);
-    return this.tabState(this.tab(op, tab.id));
+  }
+
+  /**
+   * 페이지가 연 팝업(`window.open` 의 새 창)을 opener 와 같은 스페이스의 새 탭으로 받는다. Chrome 처럼 opener 관계가 살아 있어
+   * 팝업이 `window.opener.postMessage` 로 결과를 돌려주고 스스로 닫을 수 있다. 셸이 첫 이동을 붙잡아 두었으므로 탭 준비
+   * (Chrome 표면 등)를 마친 뒤 그 주소로 보낸다. 받을 수 없으면(상한·주소 정책) 팝업을 닫는다 — opener 는 닫힌 창을 본다.
+   */
+  private async adoptPopup(op: ObjectiveBrowser, opener: Tab, targetId: string, url: string): Promise<void> {
+    const { client } = await this.context(op);
+    const refuse = async (): Promise<void> => { await client.send("Target.closeTarget", { targetId }).catch(() => undefined); };
+    const spaceFull = this.spaceTabs(op, opener.spaceId).length + (op.pendingSpaces.get(opener.spaceId) ?? 0) >= browserSpaceTabLimit(opener.spaceId);
+    if (spaceFull || op.tabs.size + op.pendingTabs >= DESKTOP_BROWSER_TAB_LIMITS.total) { await refuse(); return; }
+    const actor = opener.ownerId === null ? "user" : "agent";
+    let target: URL | null = null;
+    if (url !== "" && url !== "about:blank") {
+      try { target = this.admit(op, url, actor); } catch { await refuse(); return; }
+    }
+    // 상한 검사와 예약을 첫 await 전에 마친다 — 한 relay 에 여러 팝업이 와도 같은 빈자리를 함께 차지하지 않는다(createTab 과 같다).
+    const spaceId = opener.spaceId;
+    op.pendingTabs += 1;
+    op.pendingSpaces.set(spaceId, (op.pendingSpaces.get(spaceId) ?? 0) + 1);
+    let tab: Tab;
+    try {
+      const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+      // 준비 중에 팝업이 스스로 닫혀도(detachedFromTarget) 이 탭을 찾아 접을 수 있게 먼저 등록한다.
+      tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId: opener.ownerId, openerTabId: opener.id, targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), selectProbe: null };
+      op.tabs.set(tab.id, tab);
+    } catch { await refuse(); return; } finally {
+      op.pendingTabs -= 1;
+      const left = (op.pendingSpaces.get(spaceId) ?? 1) - 1;
+      if (left > 0) op.pendingSpaces.set(spaceId, left); else op.pendingSpaces.delete(spaceId);
+    }
+    try {
+      await this.prepareTab(client, tab, op, actor);
+      if (op.tabs.get(tab.id) !== tab) return;
+      // Chrome 은 팝업을 앞에 띄운다 — 사람이 opener 를 보고 있었을 때만. 에이전트의 작업 탭은 그대로 둔다.
+      if (op.activeTabId === opener.id) await this.selectTab(op.objectiveId, tab.id);
+      else this.emitState(op);
+      if (target) await this.navigateTab(op, tab, target.href);
+    } catch {
+      // 엔진의 closeTarget 은 detachedFromTarget 을 내지 않는다 — 등록한 탭을 여기서 직접 접는다(띄운 탭이었으면 opener 로 돌아간다).
+      if (op.tabs.get(tab.id) === tab) await this.closeTab(op.objectiveId, tab.id).catch(() => refuse());
+      else await refuse();
+    }
+  }
+
+  /** 띄운 탭이 사라졌을 때 다음으로 세울 탭 — 팝업이었으면 아직 남은 opener, 아니면 같은 스페이스의 마지막 탭. */
+  private nextTabAfter(op: ObjectiveBrowser, closed: Tab): string | null {
+    if (closed.openerTabId && op.tabs.get(closed.openerTabId)?.spaceId === closed.spaceId) return closed.openerTabId;
+    return this.spaceTabs(op, closed.spaceId).pop()?.id ?? null;
   }
 
   async closeTab(objectiveId: string, tabId: string): Promise<void> {
@@ -1718,7 +1775,7 @@ export class BrowserService {
     if (this.client) { try { await this.client.send("Target.closeTarget", { targetId: tab.targetId }); } catch { /* 이미 닫혔다 */ } }
     // 띄운 탭을 닫았으면 같은 스페이스의 남은 탭을 앞으로 세운다 — 엔진에도 알려야 그 뷰가 보인다(뷰는 활성인 것 하나만 그려진다).
     if (op.activeTabId === tab.id) {
-      const next = this.spaceTabs(op, tab.spaceId).pop()?.id ?? null;
+      const next = this.nextTabAfter(op, tab);
       op.activeTabId = null;
       if (next) { await this.selectTab(objectiveId, next); this.scheduleIdle(); return; }
       this.deps.desktop.deactivate(op.objectiveId);
@@ -2080,13 +2137,22 @@ export class BrowserService {
         this.applyNativePane(op, { width, height, scale });
         return;
       }
+      case DESKTOP_BROWSER_POPUP_EVENT: {
+        const targetId = typeof p.targetId === "string" ? p.targetId : null;
+        if (!targetId) return;
+        void this.adoptPopup(op, tab, targetId, typeof p.url === "string" ? p.url : "about:blank").catch(() => {
+          // 탭 등록 전(컨텍스트 조회)에 실패한 팝업 — 셸의 뷰만 닫으면 된다. 등록 뒤의 실패는 adoptPopup 이 탭까지 접는다.
+          void this.client?.send("Target.closeTarget", { targetId }).catch(() => undefined);
+        });
+        return;
+      }
       case "Target.detachedFromTarget": {
         // 셸이 뷰를 잃었다(렌더러 사망·창 종료). 탭도 함께 접고, 활성이었으면 남은 탭을 앞으로 세운다.
         op.tabs.delete(tab.id);
         this.cancelViewportReapply(tab);
         this.forgetTab(op, tab);
         if (op.activeTabId === tab.id) {
-          const next = this.spaceTabs(op, tab.spaceId).pop()?.id ?? null;
+          const next = this.nextTabAfter(op, tab);
           op.activeTabId = null;
           if (next) { void this.selectTab(op.objectiveId, next).catch(() => undefined); return; }
         }

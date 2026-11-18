@@ -749,8 +749,9 @@ async function boot(): Promise<void> {
     // 항해는 에이전트도 수행한다 — 페이지 적재가 Console의 입력 포커스를 가져가면 안 된다.
     // 사람이 뷰를 직접 클릭해 포커스를 옮기는 경로는 그대로 둔다.
     // 영속 프로필이면 그 프로필의 디스크 세션에, 아니면 Objective 의 메모리 파티션에 뷰를 연다.
-    createView: (partition, profile) => {
-      const view = new WebContentsView({
+    createView: (partition, profile, guest) => {
+      // 팝업은 Chromium 이 opener 의 설정·세션으로 이미 만든 webContents 를 받는다 — 같은 세션이라 아래 세션 설정은 다시 걸어도 같다.
+      const view = guest ? new WebContentsView({ webContents: guest }) : new WebContentsView({
         webPreferences: {
           ...(profile === null ? { partition } : { session: browserProfileSession(profile) }),
           focusOnNavigation: false, nodeIntegration: false, contextIsolation: true, sandbox: true, webSecurity: true, backgroundThrottling: false,

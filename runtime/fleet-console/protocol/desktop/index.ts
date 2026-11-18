@@ -275,6 +275,11 @@ export interface DesktopBrowserSnapshot {
    * 옛 셸은 무시해 현행(balanced) 동작으로 남는다.
    */
   readonly viewerCapture?: ViewerCaptureQuality;
+  /**
+   * Console 이 페이지 팝업(`window.open` 의 새 창)을 opener 와 이어진 새 탭으로 받아들인다. 선택 필드이므로 옛 Console 은
+   * 싣지 않고, 그때 셸은 팝업을 지금처럼 같은 뷰에서 연다. 옛 셸은 이 필드를 무시한다.
+   */
+  readonly popups?: boolean;
 }
 
 /**
@@ -443,9 +448,21 @@ export interface DesktopBrowserRelay {
   readonly sizes?: readonly { readonly viewId: string; readonly width: number; readonly height: number; readonly scale: number }[];
   readonly results?: readonly { readonly id: number; readonly result?: unknown; readonly error?: string }[];
   readonly events?: readonly { readonly viewId: string; readonly method: string; readonly params: Record<string, unknown> }[];
+  /**
+   * 페이지가 연 팝업 창. 셸은 opener 관계를 유지한 새 뷰를 이미 만들어 첫 이동을 붙잡아 두었고(`about:blank`), Console 이 그
+   * 뷰를 탭으로 받아 준비를 마친 뒤 `url` 로 보낸다. 스냅샷이 `popups` 를 실은 Console 에만 보낸다.
+   */
+  readonly popups?: readonly DesktopBrowserPopup[];
   readonly selectPopup?: RemoteBrowserSelectPopup | null;
   readonly permissionPrompts?: readonly RemoteBrowserPermissionPrompt[];
   readonly passwordPrompt?: RemoteBrowserPasswordPrompt | null;
+}
+
+/** 셸이 만든 팝업 뷰 하나. `openerViewId` 는 `window.open` 을 부른 뷰다. */
+export interface DesktopBrowserPopup {
+  readonly viewId: string;
+  readonly openerViewId: string;
+  readonly url: string;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -471,7 +488,8 @@ export function isDesktopBrowserSnapshot(value: unknown): value is DesktopBrowse
     && (value.surface === undefined || value.surface === null || isDesktopBrowserSurface(value.surface))
     && (value.chrome === undefined || value.chrome === null || isDesktopBrowserChrome(value.chrome))
     && (value.watchedViewIds === undefined || (Array.isArray(value.watchedViewIds) && value.watchedViewIds.length <= 64 && value.watchedViewIds.every(isSafeId)))
-    && (value.viewerCapture === undefined || isViewerCaptureQuality(value.viewerCapture));
+    && (value.viewerCapture === undefined || isViewerCaptureQuality(value.viewerCapture))
+    && (value.popups === undefined || typeof value.popups === "boolean");
 }
 
 export function isDesktopBrowserSurface(value: unknown): value is DesktopBrowserSurface {
@@ -538,6 +556,7 @@ export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRe
   if (value.sizes !== undefined && !(Array.isArray(value.sizes) && value.sizes.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isFiniteNumber(entry.width) && isFiniteNumber(entry.height) && isFiniteNumber(entry.scale)))) return false;
   if (value.results !== undefined && !(Array.isArray(value.results) && value.results.every((entry) => isRecord(entry) && isFiniteNumber(entry.id) && (entry.error === undefined || typeof entry.error === "string")))) return false;
   if (value.events !== undefined && !(Array.isArray(value.events) && value.events.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && typeof entry.method === "string" && isRecord(entry.params)))) return false;
+  if (value.popups !== undefined && !(Array.isArray(value.popups) && value.popups.length <= 16 && value.popups.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isSafeId(entry.openerViewId) && isShortText(entry.url, 8192)))) return false;
   if (value.selectPopup !== undefined && value.selectPopup !== null && !isRemoteBrowserSelectPopup(value.selectPopup)) return false;
   if (value.permissionPrompts !== undefined && !(Array.isArray(value.permissionPrompts) && value.permissionPrompts.length <= 32 && value.permissionPrompts.every(isRemoteBrowserPermissionPrompt))) return false;
   if (value.passwordPrompt !== undefined && value.passwordPrompt !== null && !isRemoteBrowserPasswordPrompt(value.passwordPrompt)) return false;

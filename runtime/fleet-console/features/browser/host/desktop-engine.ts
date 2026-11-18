@@ -19,6 +19,8 @@ import { CdpError, type CdpClient, type CdpEvent, type CdpListener } from "./cdp
 
 /** 뷰어 long-poll 이 끝난 뒤 다음 폴링이 이어질 때까지 캡처를 유지하는 시간. */
 export const VIEWER_WATCH_LEASE_MS = 2_500;
+/** 셸이 페이지 팝업을 새 뷰로 열었다 — opener 세션으로 오고, params 는 `{ targetId, url }` 이다. */
+export const DESKTOP_BROWSER_POPUP_EVENT = "Fleet.popupOpened";
 
 const ATTACH_TIMEOUT_MS = 10_000;
 /** 셸의 구독이 끊긴 뒤 이만큼 안에 다시 붙으면 뷰와 탭을 그대로 잇는다 — 절전·루프백 순단은 창이 닫힌 것이 아니다. */
@@ -222,6 +224,8 @@ export class DesktopEngine implements CdpClient {
       chrome: this.surface ? this.chrome : null,
       watchedViewIds: [...this.watched],
       ...(this.watched.size > 0 ? { viewerCapture: this.viewerCapture } : {}),
+      // 페이지 팝업을 opener 와 이어진 새 탭으로 받는다 — 이 표시가 없는 옛 Console 에서는 셸이 팝업을 같은 뷰에서 연다.
+      popups: true,
     };
   }
 
@@ -259,6 +263,14 @@ export class DesktopEngine implements CdpClient {
     if (body.hello) this.identities.set(owner, body.hello);
     if (owner !== this.host) return;
     if (body.surface && body.surface.id === this.surface?.id && body.surface.status === "closed") this.closeSurface(body.surface.id);
+    // 팝업은 셸이 이미 만든 뷰다(opener 관계는 셸 쪽 Chromium 에만 있다). opener 의 자리를 이어받아 등록하고, 탭으로 받는 일은
+    // opener 세션의 이벤트로 서비스에 넘긴다. opener 를 모르면 등록하지 않는다 — 셸은 받아 주지 않은 팝업을 스스로 닫는다.
+    for (const popup of body.popups ?? []) {
+      const opener = this.views.get(popup.openerViewId);
+      if (!opener || this.views.has(popup.viewId)) continue;
+      this.views.set(popup.viewId, { id: popup.viewId, objectiveId: opener.objectiveId, partition: opener.partition, profile: opener.profile, url: "about:blank", attached: true, active: false, agent: opener.agent, size: null, frameSeq: 0 });
+      this.emit({ method: DESKTOP_BROWSER_POPUP_EVENT, params: { targetId: popup.viewId, url: popup.url }, sessionId: opener.id });
+    }
     for (const id of body.attached ?? []) {
       const view = this.views.get(id);
       if (!view) continue;
@@ -301,7 +313,7 @@ export class DesktopEngine implements CdpClient {
       } else if (event.method === "Page.javascriptDialogClosed" || (event.method === "Page.frameNavigated" && !(event.params.frame as { parentId?: unknown } | undefined)?.parentId)) { view.dialog = null; view.answering = null; }
       this.emit({ method: event.method, params: event.params, sessionId: event.viewId });
     }
-    if ((body.attached?.length ?? 0) + (body.detached?.length ?? 0) > 0 || (body.results?.length ?? 0) > 0) this.publish();
+    if ((body.attached?.length ?? 0) + (body.detached?.length ?? 0) + (body.popups?.length ?? 0) > 0 || (body.results?.length ?? 0) > 0) this.publish();
   }
 
   // ---------- CdpClient ----------
