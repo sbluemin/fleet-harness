@@ -12,14 +12,11 @@ import { ObjectiveScheduleMenu } from "./group-context-menu.js";
 import type { SidebarRemoteCommodore, SidebarRemoteObjective, SidebarRemotePage } from "../../shared/sidebar-remote.js";
 import type { UnifiedSidebarRow } from "@fleet-console/protocol/desktop/console-section";
 import { sidebarJson } from "../../../remote-access/client/sidebar-transport.js";
-import { objectiveTabHasContent } from "../../../objectives/client/detail-content.js";
-import type { SharedFolderList } from "../../../objectives/shared/shared-folder.js";
 import { objectiveSidebarRow } from "../../../objectives/client/clusters.js";
 import { indexClusters } from "../objective-clusters.js";
 import { sortCommanderRows } from "../commander-tab/commander-sort.js";
 import { isNotStartedRow, settledOrder, type CommanderSection } from "../commander-tab/commander-rows.js";
 import { CommanderSidebarSections } from "../commander-tab/commander-list.js";
-import { CommanderRowGlyphButtons, type CommanderRowGlyphTab } from "../commander-tab/commander-row-glyphs.js";
 import { MongleAvatar } from "../components/mongle-avatar.js";
 import { fallbackMongleBase, objectiveRecordAvatarKey, commodoreAvatarKey } from "../../shared/avatars.js";
 import { SideBarClusterRow, type SideBarRowItem } from "./side-bar-cluster-row.js";
@@ -29,7 +26,6 @@ import { CommodoreHoverDock } from "./commodore-hover-dock.js";
 import { SectionMenu, MenuItem } from "./commodore-sidebar-sections.js";
 import { requestSideBarObjectiveAction } from "./interaction.js";
 import { useRemoteSidebar, refreshRemoteSidebar } from "./remote-sidebar-store.js";
-import { RemoteSidebarPopup } from "./remote-sidebar-popup.js";
 
 type Menu = { readonly kind: "owner"; readonly anchor: DOMRect; readonly opener: HTMLElement | null; readonly focus: boolean }
   | { readonly kind: "objective"; readonly item: SideBarRowItem; readonly source: SidebarRemoteObjective; readonly anchor: DOMRect; readonly opener: HTMLElement | null; readonly focus: boolean };
@@ -49,7 +45,6 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<"group" | "delete" | "taskforce" | "deleteTaskforce" | "folder" | null>(null);
   const [draft, setDraft] = useState("");
-  const [popup, setPopup] = useState<{ readonly id: string; readonly tab: CommanderRowGlyphTab; readonly opener: HTMLElement } | null>(null);
   const [archive, setArchive] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const pendingOpen = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -109,13 +104,9 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
     const shownState = state === "decision" ? "awaiting" : state === "error" ? "idle" : state;
     const activities = [id, ...source.objective.members.map((member) => member.id)].map((entryId) => source.faces[entryId]?.activity ?? null);
     const rowActivity = activities.find((activity) => activity !== null && activity !== "background") ?? activities.find((activity) => activity !== null) ?? null;
-    const openPopup = (tab: CommanderRowGlyphTab, opener: HTMLElement) => setPopup({ id, tab, opener });
     return <SideBarClusterRow key={id} item={item} selected={false} settled={settled}
       presentation={{ state: shownState, avatar: face(source, state), activity: rowActivity, toolUse: source.tool }}
       onRenameBegin={cancelOpen} onFocus={(_id, element) => { if (element) openFromClick(id, element); }}
-      popups={{ onAvatar: (opener) => openPopup("goal", opener), onProgress: (opener) => openPopup("crew", opener), avatarLabel: source.objective.title,
-        progressLabel: (done, total) => `${source.objective.title} ${done}/${total}` }}
-      rowGlyphs={<RemoteRowGlyphs console={console} source={source} onGlyph={openPopup} />}
       onContextMenu={(item, anchor, opener, focus = false) => { cancelOpen(); setMenu({ kind: "objective", source, item, anchor, opener, focus }); }} />;
   };
   const active = items.filter(({ item }) => !isNotStartedRow(item.row) && item.row.glyph !== "done");
@@ -222,31 +213,7 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
     </SectionMenu> : null}
     {archive ? <ConfirmDialog question={t("sidebar.groupMenu.archive")} cancelLabel={t("common.cancel")} confirmLabel={t("sidebar.groupMenu.archive")} danger busy={busy} error={error}
       onCancel={() => setArchive(null)} onConfirm={() => { void mutate("archive", { objectiveId: archive, restorable: true }).then(() => setArchive(null)).catch(() => undefined); }} /> : null}
-    {popup ? <RemoteSidebarPopup console={console} objectiveId={popup.id} machine={row.machineLabel} tab={popup.tab} opener={popup.opener} onClose={() => setPopup(null)} /> : null}
   </>;
-}
-
-function RemoteRowGlyphs({ console, source, onGlyph }: { readonly console: string; readonly source: SidebarRemoteObjective; readonly onGlyph: (tab: CommanderRowGlyphTab, opener: HTMLElement) => void }) {
-  const group = useRef<HTMLSpanElement>(null);
-  const [near, setNear] = useState(false);
-  const [shared, setShared] = useState<number | null>(null);
-  const id = source.objective.id;
-  useEffect(() => {
-    const row = group.current?.closest<HTMLElement>(".side-bar-cluster-row");
-    if (!row) return;
-    const on = () => setNear(true), off = () => setNear(false);
-    row.addEventListener("pointerenter", on); row.addEventListener("pointerleave", off); row.addEventListener("focusin", on); row.addEventListener("focusout", off);
-    return () => { row.removeEventListener("pointerenter", on); row.removeEventListener("pointerleave", off); row.removeEventListener("focusin", on); row.removeEventListener("focusout", off); };
-  }, []);
-  useEffect(() => {
-    if (!near) return;
-    const abort = new AbortController();
-    void sidebarJson<SharedFolderList>(console, "shared", undefined, { objectiveId: id }, abort.signal)
-      .then((list) => { if (!abort.signal.aborted) setShared(list.entries.length); }).catch(() => undefined);
-    return () => abort.abort();
-  }, [console, id, near]);
-  return <CommanderRowGlyphButtons groupRef={group} title={source.objective.title}
-    empty={(tab) => !(tab === "goal" && !source.objective.done) && !objectiveTabHasContent(source.objective, tab, shared)} onGlyph={onGlyph} />;
 }
 
 function RemoteDeleteCommodore({ console, summary, language, onClose }: {

@@ -3,8 +3,7 @@ import type { ConsoleRosterCommander, ConsoleRosterCommodore, ConsoleRosterRun, 
 import { ChevronGlyph } from "@fleet-console/ui/react";
 import { useT } from "../../../../core/client/src/i18n/index.js";
 import { getRailStoreSnapshot } from "../../../../core/client/src/chrome/rail/rail-store.js";
-import { ConsoleSectionHead, consoleObjectivePeekAllowed, consoleSwitchBlocked, type ConsoleSections } from "../../../remote-access/client/console-sections.js";
-import { openObjectivePeek } from "../../../remote-access/client/objective-peek.js";
+import { ConsoleSectionHead, consoleSwitchBlocked, type ConsoleSections } from "../../../remote-access/client/console-sections.js";
 import { commodoreAvatarKey, fallbackMongleBase, objectiveRecordAvatarKey, type MongleState } from "../../shared/avatars.js";
 import { isIdentityTone } from "../../shared/identity-tones.js";
 import { MongleAvatar } from "../components/mongle-avatar.js";
@@ -17,16 +16,6 @@ export function currentRightPanel(): { readonly open: boolean; readonly tab?: st
   if (id === null) return { open: false };
   if (id.length > 0 && id.length <= 32 && !/[\u0000-\u001f\u007f]/u.test(id)) return { open: true, tab: id };
   return { open: true };
-}
-
-/** 두 명부 경로가 같은 셸 명령과 지역 스토어 밖의 읽기 전용 창을 쓴다. */
-export function openRosterObjectivePeek(sections: ConsoleSections, entry: ConsoleSectionEntry, commander: ConsoleRosterCommander,
-  tab: CommanderRowGlyphTab, opener: HTMLElement, openConsole: () => void): void {
-  if (!consoleObjectivePeekAllowed(sections, entry.id)) return;
-  openObjectivePeek({
-    console: entry.id, objective: commander.id, machine: entry.label, title: commander.title, opener, openConsole,
-    request: (nonce) => sections.command({ peek: { console: entry.id, objective: commander.id, nonce } }),
-  }, tab);
 }
 
 function rosterMongleState(run: ConsoleRosterRun): MongleState {
@@ -101,9 +90,7 @@ export function ConsoleRosterSection({ entry, sections, list, compact }: {
         <div className="commander-tab">
           <ol className="commander-tab-list side-bar-group-chips">
             {commanders.map((commander) => <CommanderRosterRow key={commander.id} commodoreId={commodore.id} commander={commander} blocked={blocked}
-              onOpen={(row) => open(commodore, commander.id, row)}
-              onGlyph={consoleObjectivePeekAllowed(sections, entry.id) ? (tab, opener) =>
-                openRosterObjectivePeek(sections, entry, commander, tab, opener, () => open(commodore, commander.id, opener.closest<HTMLElement>(".side-bar-cluster-row") ?? opener)) : undefined} />)}
+              onOpen={(row) => open(commodore, commander.id, row)} />)}
           </ol>
           {moreCommanders > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(moreCommanders) })}</p> : null}
         </div>

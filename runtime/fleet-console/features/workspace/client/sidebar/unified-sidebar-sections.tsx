@@ -2,7 +2,6 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperti
 import { ChevronGlyph, ConfirmDialog } from "@fleet-console/ui/react";
 import {
   consoleSectionManageable,
-  consoleObjectivePeekAllowed,
   consoleSwitchBlocked,
   type ConsoleSections,
 } from "../../../remote-access/client/console-sections.js";
@@ -25,7 +24,7 @@ import { RemoteSidebarRow } from "./remote-sidebar-row.js";
 import type { SidebarRemotePage } from "../../shared/sidebar-remote.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { useLongPress } from "../long-press.js";
-import { CommanderRosterRow, currentRightPanel, openRosterObjectivePeek } from "./console-roster.js";
+import { CommanderRosterRow, currentRightPanel } from "./console-roster.js";
 import { CommodoreSectionMoveMenu, MenuItem, SectionMenu, SectionNameInput } from "./commodore-sidebar-sections.js";
 import { PlusIcon, TrashIcon, PencilIcon } from "./sidebar-menu-icons.js";
 import { commodoreSectionDropFromPoint, theaterDropIndexFromPoint, type CommodoreSectionDrop } from "./objective-records-side-bar-hit-test.js";
@@ -572,9 +571,7 @@ function UnifiedCommodoreRow({ rowKey, row, consoles, list, remotePage, compact,
         <ol className="commander-tab-list side-bar-group-chips">
           {commanders.map((commander) => <CommanderRosterRow key={commander.id} commodoreId={row.commodoreId} commander={commander} blocked={blocked && !homeHere}
             onOpen={(rowEl) => open(commander.id, rowEl)} localGlyphs={homeHere}
-            onGlyph={homeHere ? (tab, opener) => openCommanderRowGlyphTab(commander.id, tab, opener)
-              : entry && consoleObjectivePeekAllowed(consoles, entry.id) ? (tab, opener) =>
-                openRosterObjectivePeek(consoles, entry, commander, tab, opener, () => open(commander.id, opener.closest<HTMLElement>(".side-bar-cluster-row") ?? opener)) : undefined} />)}
+            onGlyph={homeHere ? (tab, opener) => openCommanderRowGlyphTab(commander.id, tab, opener) : undefined} />)}
         </ol>
         {moreCommanders > 0 ? <p className="side-console-more">{t("chrome.consoles.rosterMore", { count: String(moreCommanders) })}</p> : null}
       </div>

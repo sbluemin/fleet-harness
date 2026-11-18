@@ -7,9 +7,8 @@ import { createQuotaFeature } from "../../../features/quota/host/index.js";
 import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
-import { CONSOLE_SIDEBAR_PATH, sidebarTarget, CONSOLE_OBJECTIVE_PEEK_PATH, CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isUnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
+import { CONSOLE_SIDEBAR_PATH, sidebarTarget, CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isUnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
 import { consoleRosterCommanders, consoleRosterRun, rosterCommanderIncluded, ROSTER_SORT_DEFAULT, type RosterSort } from "../../../features/commodore/host/roster.js";
-import { buildObjectivePeek } from "../../../features/commodore/host/objective-peek.js";
 import { isCommodoreWaiting, livePersonHold } from "../../../features/objectives/shared/board-state.js";
 import { PERSON_HOLD_TARGETS, type Objective } from "../../../features/objectives/shared/types.js";
 import { COMMODORE_CHANNEL, type CommodoreEvent } from "../../../features/commodore/shared/contracts/types.js";
@@ -20,7 +19,7 @@ import { createObjectiveArchiveCoordinator } from "../../../features/workspace/h
 import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
 import { createSidebarMotionJournal } from "../../../features/workspace/host/sidebar-motion.js";
-import { sidebarRemotePage, sidebarSafeObjective, parseSidebarPreferences } from "../../../features/workspace/host/sidebar-remote.js";
+import { sidebarRemotePage, parseSidebarPreferences } from "../../../features/workspace/host/sidebar-remote.js";
 import type { SidebarRemoteCommodore, SidebarRemoteFace } from "../../../features/workspace/shared/sidebar-remote.js";
 import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleStateOf, mongleVoiceOf, objectiveRecordAvatarKey } from "../../../features/workspace/shared/avatars.js";
 import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
@@ -418,14 +417,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "GET",
     path: "/api/v1/console-roster/changes",
     summary: "Long-poll extended Desktop sidebar turn and state transition motions after a journal cursor.",
-    category: "Desktop",
-    gate: "origin-write",
-    transport: "http",
-  },
-  {
-    method: "GET",
-    path: "/api/v1/console-roster/objective-full",
-    summary: "Read one unredacted sidebar objective record for the extended Desktop sidebar without joining a session.",
     category: "Desktop",
     gate: "origin-write",
     transport: "http",
@@ -1737,13 +1728,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     return true;
   });
-  routeRegistry.register("/api/v1/console-roster/objective-full", ({ req, res }) => {
-    if (req.method !== "GET" || !isTerminalAuthorized(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
-    const id = readUrl(req).searchParams.get("objectiveId");
-    const objective = objectives?.listAll().find((entry) => entry.id === id && !entry.removed);
-    if (!objective) { writeJson(res, 404, { error: "not_found" }); return true; }
-    res.setHeader("Cache-Control", "no-store"); writeJson(res, 200, { objective: sidebarSafeObjective(objective) }); return true;
-  });
   routeRegistry.register("/api/v1/console-roster/preferences", async ({ req, res }) => {
     if (req.method !== "POST" || !isTerminalAuthorized(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
     const patch = parseSidebarPreferences(await readJsonBody(req));
@@ -1830,11 +1814,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (!isReadOnlyRequest(req)) return { admitted: false };
       // 페어링 명부는 접속이 아니다. 세션 쿠키가 함께 와도 세션을 해석·연장·묶지 않고,
       // peek만 써서 lastSeenAt과 제어권, 끝난 세션의 사유까지 그대로 둔다.
-      if (pairedDeviceStore.peek(readPairingCookie(req.headers, listener.port), listener.audience) !== null) return { admitted: true, sessionHandle: null };
-    }
-    if (pathname === CONSOLE_OBJECTIVE_PEEK_PATH) {
-      if (!isReadOnlyRequest(req)) return { admitted: false };
-      // 명부와 같은 자격. 세션이 없어도 페어링 peek만으로 지나가고, 살아 있는 세션도 아래에서 그대로 받는다.
       if (pairedDeviceStore.peek(readPairingCookie(req.headers, listener.port), listener.audience) !== null) return { admitted: true, sessionHandle: null };
     }
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
@@ -3041,18 +3020,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
             });
           }
           return consoleRosterCommanders(sources, objectiveRecords.listAllGroups().filter((group) => group.commodoreId === commodoreId).map((group) => ({ id: group.id, order: group.order, createdAt: group.createdAt })), sort);
-        },
-        // 진행 중 목표 하나의 표시 전용 스냅샷 — 명부에 실릴 자격이 있는 목표만 답한다.
-        // 상한에 잘려 목록에 없어도 되며, 판정은 rosterCommandersOf와 같은 포함 규칙을 쓴다.
-        // peek 경로의 입장 판정을 통과한 읽기만 여기까지 오므로, 여기서 세션·페어링을 다시 보지 않는다.
-        objectivePeekOf: (objectiveId) => {
-          const objective = objectives?.listAll().find((entry) => entry.id === objectiveId) ?? null;
-          if (!objective || objective.archived === true || objective.removed) return null;
-          const commodoreOn = consoleFeaturePorts.experiments?.read().commodore ?? true;
-          const personWaiting = rosterPersonWaiting(objective, commodoreOn);
-          const fresh = !objective.done && !objective.awaitingReview && !objective.commander.started && objective.hasSession !== true;
-          if (!rosterCommanderIncluded({ removed: false, archived: false, done: objective.done !== null, fresh, personWaiting })) return null;
-          return buildObjectivePeek(objective, (memberId) => consoleRosterRun(false, [consoleControl.observe(memberId)?.activity]));
         },
         gatewayTools: { name: FLEET_AI_GATEWAY_MCP_SERVER, tools: [gatewayModelsTool], alwaysLoad: true },
         ownership,
