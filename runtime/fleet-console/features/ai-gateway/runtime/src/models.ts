@@ -6,7 +6,7 @@ import { recommendedRole } from "./model-family.js";
 import type { QuotaScope } from "./quota/types.js";
 import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
-export const GATEWAY_PROVIDERS = ["codex", "xai", "antigravity", "muse-code", "opencode", "gemini", "claude"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "muse-code", "opencode", "gemini", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -45,16 +45,10 @@ export type GatewayReasoningEffort = typeof GATEWAY_REASONING_EFFORTS[number];
  */
 export type GatewayEffortExposure = Readonly<Record<string, readonly GatewayReasoningEffort[]>>;
 
-const GatewayEffortUpstreamModelIdsSchema = z.partialRecord(
-  z.enum(GATEWAY_REASONING_EFFORTS),
-  z.string().min(1),
-);
-
 const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   z.object({
     supported: z.literal(true),
     levels: z.array(z.enum(GATEWAY_REASONING_EFFORTS)).min(1),
-    upstreamModelIds: GatewayEffortUpstreamModelIdsSchema.optional(),
   }).strict(),
   z.object({
     supported: z.literal(false),
@@ -114,7 +108,6 @@ const GatewayModelsRegistrySchema = z.object({
   providers: z.object({
     codex: GatewayProviderSchema,
     xai: GatewayProviderSchema,
-    antigravity: GatewayProviderSchema,
     "muse-code": GatewayProviderSchema,
     opencode: GatewayProviderSchema,
     gemini: GatewayProviderSchema,
@@ -130,8 +123,6 @@ export type GatewayModelEffort =
   | {
       readonly supported: true;
       readonly levels: readonly GatewayReasoningEffort[];
-      /** Exact upstream wire ids for Antigravity effort tiers. */
-      readonly upstreamModelIds?: Readonly<Partial<Record<GatewayReasoningEffort, string>>>;
     };
 
 const UNSUPPORTED_GATEWAY_MODEL_EFFORT = Object.freeze({ supported: false as const });
@@ -152,7 +143,7 @@ export interface GatewayModel {
   readonly fast?: boolean;
   /**
    * Optional declared sub-pool: the allowance pool this catalog entry spends
-   * (e.g. Antigravity's `pool:gemini`). Its own `model:` limit is derived from
+   * (e.g. `pool:gemini`). Its own `model:` limit is derived from
    * the entry either way — see {@link resolveModelQuotaScopes}.
    */
   readonly quotaScope?: GatewayQuotaScope;
@@ -657,7 +648,6 @@ function validateRegistry(value: GatewayModelsRegistry): void {
     if (
       family.providerModelId || family.fastSupported || family.fastUpstreamId || family.fast
       || family.quotaScope || family.wire || family.aliases
-      || (family.effort?.supported && family.effort.upstreamModelIds)
     ) {
       throw new Error(`Native gateway model declares a serving field: ${owner}`);
     }
@@ -704,20 +694,6 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         if (new Set(model.effort.levels).size !== model.effort.levels.length) {
           throw new Error(`Gateway effort levels contain duplicates: ${provider}/${model.modelId}`);
         }
-        const exactModelIds = model.effort.upstreamModelIds;
-        if (exactModelIds) {
-          // Antigravity spells a rung inside the wire model id and needs
-          // per-level overrides. Every other provider carries effort as a
-          // request field, where an id override would silently never be read.
-          if (provider !== "antigravity") {
-            throw new Error(`Gateway effort model id overrides are only supported by Antigravity: ${provider}/${model.modelId}`);
-          }
-          for (const effort of Object.keys(exactModelIds) as GatewayReasoningEffort[]) {
-            if (!model.effort.levels.includes(effort)) {
-              throw new Error(`Gateway effort model id override is not an advertised level: ${provider}/${model.modelId}/${effort}`);
-            }
-          }
-        }
       }
       const scopedId = scopedModelId(provider, model.modelId);
       registerLookupId(lookupIds, scopedId, `${provider}/${model.modelId}`);
@@ -757,9 +733,6 @@ function freezeGatewayModelEffort(
   return Object.freeze({
     supported: true as const,
     levels: Object.freeze([...effort.levels]),
-    ...(effort.upstreamModelIds
-      ? { upstreamModelIds: Object.freeze({ ...effort.upstreamModelIds }) }
-      : {}),
   });
 }
 

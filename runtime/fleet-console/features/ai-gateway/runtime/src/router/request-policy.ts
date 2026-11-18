@@ -71,17 +71,7 @@ const claudeRequestPolicy: GatewayRequestPolicy = {
   shapeRequest: (request) => request,
 };
 
-/**
- * Antigravity models (Gemini and Claude) are served by the agy ACP bridge (`src/acp/`), which keeps Claude Code's own
- * system prompt, tools and messages as they are, so nothing is withheld or rewritten here.
- */
-const antigravityRequestPolicy: GatewayRequestPolicy = {
-  provider: "antigravity",
-  shapeRequest: (request) => request,
-};
-
 const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
-  antigravity: antigravityRequestPolicy,
   claude: claudeRequestPolicy,
   codex: codexRequestPolicy,
   gemini: geminiRequestPolicy,
