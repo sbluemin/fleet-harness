@@ -100,6 +100,8 @@ For a model picker that needs Codex and xAI groups, `node .claude/skills/console
 
 Keep unmatched requests unchanged and scope mocks to the owned origin, exact endpoint, method, and any scenario-specific query/body discriminator. For a POST read endpoint, inspect a cloned `Request` rather than consuming the body that a passthrough request still needs. Never broadly mock writes, authentication, permission denials, or provider launches to make a check pass. This wrapper covers page `fetch`, not worker fetches, XHR, WebSockets, or server-side calls; live events may overwrite a mocked snapshot. Report the mocked lane as UI-only evidence, not proof of backend behavior or agent activity. For durable objective/member identity, use the [child-session fixture](setup.md#objective-member-child-session-fixture) rather than inventing session names in a response.
 
+A page `fetch` wrapper or a dispatched window event does not publish the host event and is not evidence of it. To show or hide a provider group through the host, use [Host provider status](setup.md#host-provider-status) instead of mocking the roster.
+
 ## Driver pitfalls
 
 These CLI behaviors have produced false results in Console runs. Recheck them against the installed agent-browser version before relying on a workaround, and verify every action with an `eval` of the expected DOM or state change; an exit code of 0 is not evidence that input landed.
