@@ -272,7 +272,7 @@
 
 /* 고른 종류 — 꺼짐이 아니라 '골랐다'로 읽히게 바탕을 채우고 글자를 밝힌다. 고르지 않은 칩은 평소 모습 그대로다. */
 .commodore-map-chip[aria-pressed="true"] {
-  border-color: var(--text-tertiary);
+  border-color: var(--text-secondary);
   background: color-mix(in oklab, var(--wash-selected) 100%, var(--dialog-face));
   color: var(--text-primary);
 }
