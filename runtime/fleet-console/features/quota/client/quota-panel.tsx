@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@fleet-console/ai-gateway";
-import { isLoginProvider, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
+import { isLoginProvider, isProviderId, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, sameProviderOrder, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { isSpendProvider, SpendSection, spendSetLabel, useBudgetEditor, type SpendProvider } from "./spend-section.js";
 import { UsageMeter } from "./meter.js";
@@ -22,7 +22,7 @@ import {
   type LoginState,
 } from "./provider-login.js";
 import { getQuotaSummarySnapshot, holdQuotaPanel, publishQuotaSummary } from "./summary-store.js";
-import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting, toggleQuotaToolbarProvider } from "./toolbar-setting.js";
+import { getQuotaToolbarSetting, moveQuotaProvider, setQuotaProviderOrder, subscribeQuotaToolbarSetting, toggleQuotaToolbarProvider } from "./toolbar-setting.js";
 
 type T = Translate<QuotaMessageKey>;
 /** Providers whose credential read is gated behind an explicit connect. */
@@ -839,8 +839,9 @@ export function useQuotaData(api: ClientApiCapability) {
 }
 
 /**
- * 사용 한도 팝업의 내용 — 머리(제목·갱신 시각·범례·새로고침), 공급자 카드(고정 순서), 바닥의
+ * 사용 한도 팝업의 내용 — 머리(제목·갱신 시각·범례·새로고침), 공급자 카드(사용자 순서), 바닥의
  * 「사이드바에 표시」 글리프 줄. 열려 있는 동안 폴링은 이 패널 몫이다(holdQuotaPanel).
+ * 연결 안 됨 묶음도 같은 순서를 따르되, 묶음은 연결된 카드 아래에 그대로 둔다.
  */
 export function QuotaPanel({ api, locale, labelId, mobile = false }: {
   readonly api: ClientApiCapability;
@@ -850,6 +851,7 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
 }) {
   const t = useMemo(() => getT(locale, mobile), [locale, mobile]);
   const { data, checkedAt, now, requestError, refresh, connect, logout, saveBudget } = useQuotaData(api);
+  const { providerOrder } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));
@@ -878,8 +880,8 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
             <p>{t("quota.loading.body")}</p>
           </div>
         ) : null}
-        {data ? PROVIDER_ORDER_DEFAULT.filter((id) => !disconnected(id)).map(renderProvider) : null}
-        {data && PROVIDER_ORDER_DEFAULT.some((id) => disconnected(id)) ? <section className="quota-disconnected" aria-label={t("quota.disconnected")}><h3>{t("quota.disconnected")}</h3>{PROVIDER_ORDER_DEFAULT.filter((id) => disconnected(id)).map(renderProvider)}</section> : null}
+        {data ? providerOrder.filter((id) => !disconnected(id)).map(renderProvider) : null}
+        {data && providerOrder.some((id) => disconnected(id)) ? <section className="quota-disconnected" aria-label={t("quota.disconnected")}><h3>{t("quota.disconnected")}</h3>{providerOrder.filter((id) => disconnected(id)).map(renderProvider)}</section> : null}
       </div>
       <footer className="quota-footer">
         <ToolbarProviderPicker t={t} mobile={mobile} />
@@ -888,27 +890,167 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
   );
 }
 
+/** 포인터가 이웃 글리프의 가운데를 지나면 그 칸으로 옮긴 순서를 돌려준다. 줄이 비거나 어긋나면 그대로 둔다. */
+function orderFromPointer(id: ProviderId, clientX: number, row: HTMLElement): readonly ProviderId[] | null {
+  const buttons = [...row.querySelectorAll<HTMLButtonElement>("[data-provider]")];
+  const ids = buttons.map((button) => button.dataset.provider).filter((value): value is ProviderId => isProviderId(value));
+  const from = ids.indexOf(id);
+  if (from < 0 || ids.length !== buttons.length) return null;
+  let to = from;
+  for (let index = 0; index < buttons.length; index += 1) {
+    const rect = buttons[index]?.getBoundingClientRect();
+    if (rect === undefined) continue;
+    const mid = rect.left + rect.width / 2;
+    if (index < from && clientX < mid) {
+      to = index;
+      break;
+    }
+    if (index > from && clientX > mid) to = index;
+  }
+  if (to === from) return ids;
+  const next = [...ids];
+  const [moving] = next.splice(from, 1);
+  if (moving === undefined) return ids;
+  next.splice(to, 0, moving);
+  return next;
+}
+
+const DRAG_THRESHOLD_PX = 5;
+
 /**
  * 팝업 바닥의 도구모음 표시 글리프 줄 — 공급자마다 글리프 하나로 요약에 세울지를 고른다.
- * 순서는 고정 순서다. 모두 끄면 도구모음에는 막대 글리프 하나만 남아 이 팝업을 다시 연다.
+ * 같은 줄을 끌어 옮기거나(클릭과 구분되는 움직임만), 포커스 뒤 왼쪽·오른쪽 화살표로 순서를 바꾼다.
+ * 포인터 캡처는 버튼이 아니라 줄에 둔다. 순서가 바뀌며 버튼이 DOM에서 옮겨져도 드래그가 끊기지 않는다.
+ * 모두 끄면 도구모음에는 막대 글리프 하나만 남아 이 팝업을 다시 연다.
  */
 function ToolbarProviderPicker({ t, mobile }: { readonly t: T; readonly mobile: boolean }) {
-  const { toolbarProviders } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+  const { toolbarProviders, providerOrder } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+  const rowRef = useRef<HTMLSpanElement | null>(null);
+  const dragRef = useRef<{ id: ProviderId; startX: number; pointerId: number; active: boolean } | null>(null);
+  const previewRef = useRef<readonly ProviderId[] | null>(null);
+  const suppressClickRef = useRef(false);
+  const focusProviderRef = useRef<ProviderId | null>(null);
+  const [draggingId, setDraggingId] = useState<ProviderId | null>(null);
+  const [preview, setPreview] = useState<readonly ProviderId[] | null>(null);
+  const displayed = preview ?? providerOrder;
+
+  useEffect(() => {
+    const id = focusProviderRef.current;
+    if (id === null) return;
+    focusProviderRef.current = null;
+    rowRef.current?.querySelector<HTMLButtonElement>(`[data-provider="${id}"]`)?.focus();
+  }, [providerOrder]);
+
+  const finishDrag = (commit: boolean) => {
+    const drag = dragRef.current;
+    if (drag === null) return;
+    const next = previewRef.current;
+    // releasePointerCapture가 lostpointercapture를 동기적으로 부르므로, 먼저 드래그를 비운다.
+    dragRef.current = null;
+    previewRef.current = null;
+    setDraggingId(null);
+    setPreview(null);
+    if (drag.active) suppressClickRef.current = true;
+    const row = rowRef.current;
+    if (row?.hasPointerCapture(drag.pointerId) === true) row.releasePointerCapture(drag.pointerId);
+    if (!commit || next === null || sameProviderOrder(next, getQuotaToolbarSetting().providerOrder)) return;
+    void setQuotaProviderOrder(next);
+  };
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    if (event.button !== 0) return;
+    const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-provider]") : null;
+    if (button === null || !event.currentTarget.contains(button)) return;
+    const id = button.dataset.provider;
+    if (!isProviderId(id)) return;
+    suppressClickRef.current = false;
+    dragRef.current = { id, startX: event.clientX, pointerId: event.pointerId, active: false };
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    const drag = dragRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    if (!drag.active && Math.abs(event.clientX - drag.startX) < DRAG_THRESHOLD_PX) return;
+    if (!drag.active) {
+      drag.active = true;
+      setDraggingId(drag.id);
+      // 버튼이 아니라 줄이 캡처를 쥔다. 순서가 바뀌어 버튼이 옮겨져도 캡처가 풀리지 않는다.
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    const next = orderFromPointer(drag.id, event.clientX, event.currentTarget);
+    if (next === null) return;
+    const base = previewRef.current ?? getQuotaToolbarSetting().providerOrder;
+    if (sameProviderOrder(next, base)) return;
+    previewRef.current = next;
+    setPreview(next);
+  };
+
+  const onPointerUp = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    const drag = dragRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    // 임계값 전의 손떼기는 클릭이다. 버튼의 onClick이 토글한다.
+    if (!drag.active) {
+      dragRef.current = null;
+      return;
+    }
+    finishDrag(true);
+  };
+
   return (
-    <div className="quota-footer__row quota-footer__toolbar" role="group" aria-label={t("quota.toolbar.toggle")}>
-      <span className="quota-toolbar-picks">
-        {PROVIDER_ORDER_DEFAULT.map((id) => {
+    <div
+      className="quota-footer__row quota-footer__toolbar"
+      role="group"
+      aria-label={`${t("quota.toolbar.toggle")}. ${t("quota.order.hint")}`}
+    >
+      <span
+        ref={rowRef}
+        className={`quota-toolbar-picks${draggingId !== null ? " is-reordering" : ""}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={(event) => {
+          if (dragRef.current?.pointerId !== event.pointerId) return;
+          finishDrag(false);
+        }}
+        onLostPointerCapture={(event) => {
+          if (dragRef.current?.pointerId !== event.pointerId) return;
+          finishDrag(true);
+        }}
+      >
+        {displayed.map((id) => {
           const shown = toolbarProviders.includes(id);
           const label = t("quota.toolbar.switch", { provider: providerName(id, mobile) });
           return (
             <button
               key={id}
               type="button"
-              className="quota-toolbar-pick"
+              data-provider={id}
+              draggable={false}
+              className={`quota-toolbar-pick${draggingId === id ? " is-dragging" : ""}`}
               aria-pressed={shown}
+              aria-keyshortcuts="ArrowLeft ArrowRight"
               aria-label={label}
               title={label}
-              onClick={() => { toggleQuotaToolbarProvider(id, !shown).catch(() => undefined); }}
+              onDragStart={(event) => event.preventDefault()}
+              onClick={() => {
+                if (suppressClickRef.current) {
+                  suppressClickRef.current = false;
+                  return;
+                }
+                toggleQuotaToolbarProvider(id, !shown).catch(() => undefined);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+                if (event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
+                event.preventDefault();
+                const rtl = rowRef.current !== null && getComputedStyle(rowRef.current).direction === "rtl";
+                const delta: -1 | 1 = event.key === "ArrowRight" ? (rtl ? -1 : 1) : (rtl ? 1 : -1);
+                const before = getQuotaToolbarSetting().providerOrder;
+                focusProviderRef.current = id;
+                void moveQuotaProvider(id, delta).then(() => {
+                  if (sameProviderOrder(getQuotaToolbarSetting().providerOrder, before)) focusProviderRef.current = null;
+                });
+              }}
             >
               <span className={`quota-provider__mark quota-provider__mark--${id}`} aria-hidden="true">{providerGlyph(id)}</span>
             </button>

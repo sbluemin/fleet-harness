@@ -5,6 +5,7 @@ import type { QuotaService } from "@fleet-console/ai-gateway";
 import { describe, expect, it, vi } from "vitest";
 
 import { handleConnect, handleProviderLogin, handleSummary } from "../host/handlers.js";
+import { PROVIDER_ORDER_DEFAULT, sanitizeProviderOrder, shiftProviderOrder } from "../shared/provider-order.js";
 import type { LoginGateway, SettingsSerializer } from "../host/handlers.js";
 
 function createSerializer(): SettingsSerializer {
@@ -110,5 +111,35 @@ describe("quota route handlers", () => {
     await handleProviderLogin(allowed.req, allowed.res, allowed.ctx, "xai", "logout", gateway, allowed.service);
     expect(gateway.call).toHaveBeenCalledWith("xai", "logout", { body: {} });
     expect(allowed.writes[0]?.status).toBe(200);
+  });
+});
+
+describe("provider order", () => {
+  it("drops unknown ids, keeps the saved sequence, and appends missing providers in the default order", () => {
+    expect(sanitizeProviderOrder(["gemini", "retired", "gemini", "claude"])).toEqual([
+      "gemini",
+      "claude",
+      "anthropic",
+      "codex",
+      "xai",
+      "muse-code",
+      "opencode",
+    ]);
+    expect(sanitizeProviderOrder(undefined)).toEqual([...PROVIDER_ORDER_DEFAULT]);
+    expect(sanitizeProviderOrder({ providerOrder: ["codex"] })).toEqual([...PROVIDER_ORDER_DEFAULT]);
+  });
+
+  it("moves a provider one step and leaves the ends alone", () => {
+    expect(shiftProviderOrder(["claude", "gemini", "codex"], "gemini", -1)).toEqual([
+      "gemini",
+      "claude",
+      "codex",
+      "anthropic",
+      "xai",
+      "muse-code",
+      "opencode",
+    ]);
+    expect(shiftProviderOrder(PROVIDER_ORDER_DEFAULT, "claude", -1)).toEqual([...PROVIDER_ORDER_DEFAULT]);
+    expect(shiftProviderOrder(PROVIDER_ORDER_DEFAULT, "gemini", 1)).toEqual([...PROVIDER_ORDER_DEFAULT]);
   });
 });

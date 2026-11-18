@@ -40,3 +40,47 @@ export function toggledProviderSet(
   if (!next.delete(id)) next.add(id);
   return PROVIDER_ORDER_DEFAULT.filter((entry) => next.has(entry));
 }
+
+/**
+ * 사용자가 고른 표시 순서. 집합과 달리 저장 순서를 유지한다.
+ * 모르는 id와 중복은 버리고, 빠진 id는 기본 순서대로 뒤에 붙인다.
+ * 배열이 아니면(키 없음·다른 타입) 기본 순서다 — 릴리스가 공급자를 더하거나 빼도 목록이 비지 않는다.
+ */
+export function sanitizeProviderOrder(value: unknown): ProviderId[] {
+  const ordered: ProviderId[] = [];
+  const seen = new Set<ProviderId>();
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (!isProviderId(entry) || seen.has(entry)) continue;
+      seen.add(entry);
+      ordered.push(entry);
+    }
+  }
+  for (const id of PROVIDER_ORDER_DEFAULT) {
+    if (!seen.has(id)) ordered.push(id);
+  }
+  return ordered;
+}
+
+export function sameProviderOrder(left: readonly ProviderId[], right: readonly ProviderId[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index]);
+}
+
+/** 한 칸 이웃과 바꾼다. 줄의 끝이면 순서를 바꾸지 않는다. */
+export function shiftProviderOrder(
+  order: readonly ProviderId[],
+  id: ProviderId,
+  delta: -1 | 1,
+): ProviderId[] {
+  const next = sanitizeProviderOrder([...order]);
+  const from = next.indexOf(id);
+  const to = from + delta;
+  if (from < 0 || to < 0 || to >= next.length) return next;
+  const swapped = next.slice();
+  const moving = swapped[from];
+  const neighbor = swapped[to];
+  if (moving === undefined || neighbor === undefined) return next;
+  swapped[from] = neighbor;
+  swapped[to] = moving;
+  return swapped;
+}

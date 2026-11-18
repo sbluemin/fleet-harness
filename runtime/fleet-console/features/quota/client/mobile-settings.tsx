@@ -3,7 +3,7 @@ import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports
 import { useStoreSnapshot } from "@fleet-console/ui/store";
 import type { SettingsSectionDescriptor } from "../../settings/shared/types.js";
 
-import { PROVIDER_ORDER_DEFAULT } from "../shared/provider-order.js";
+import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 import { getT } from "./i18n/index.js";
 import { isSpendProvider, SpendRows } from "./spend-section.js";
 import { RateLimitRows } from "./rate-limit.js";
@@ -31,12 +31,13 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
   const locale: ConsoleLocale = document.documentElement.lang === "ko" ? "ko" : "en";
   const t = getT(locale, true);
   const { data, now, requestError, connect, logout, saveBudget } = useQuotaData(api);
+  const { providerOrder } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   if (requestError && data === null) return <p className="quota-m-note">{t(requestError)}</p>;
   if (data === null) return <p className="quota-m-note" role="status">{t("quota.loading.title")}</p>;
   return (
     <div className="quota-m">
       {requestError ? <p className="quota-m-note" role="alert">{t(requestError)}</p> : null}
-      {PROVIDER_ORDER_DEFAULT.map((id) => {
+      {providerOrder.map((id) => {
         const provider = data.providers[id] ?? UNREPORTED_PROVIDER;
         const name = providerName(id, true);
         const readable = provider.status === "ok" || provider.status === "stale";
@@ -206,7 +207,7 @@ function summary(locale: ConsoleLocale): string | null {
   const data = getQuotaSummarySnapshot().data;
   if (data === null) return null;
   const t = getT(locale, true);
-  for (const id of PROVIDER_ORDER_DEFAULT) {
+  for (const id of getQuotaToolbarSetting().providerOrder) {
     const provider = data.providers[id];
     if (provider === undefined || (provider.status !== "ok" && provider.status !== "stale")) continue;
     const line = summaryLines(provider.windows ?? [])[0];
@@ -219,7 +220,8 @@ function summary(locale: ConsoleLocale): string | null {
 function subscribe(listener: () => void): () => void {
   const release = holdQuotaSummary();
   const off = subscribeQuotaSummary(listener);
-  return () => { off(); release(); };
+  const offOrder = subscribeQuotaToolbarSetting(listener);
+  return () => { off(); offOrder(); release(); };
 }
 
 export const quotaSettingsSection: SettingsSectionDescriptor = {

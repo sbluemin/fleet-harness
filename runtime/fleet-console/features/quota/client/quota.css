@@ -617,6 +617,11 @@
   display: flex;
   flex: none;
   gap: 2px;
+  touch-action: none;
+}
+
+.quota-toolbar-picks.is-reordering {
+  cursor: grabbing;
 }
 
 /* 꺼진 글리프는 무채색으로 물러나고, 켜진 글리프는 제 색과 고른 행의 중립 워시를 얻는다. */
@@ -629,7 +634,8 @@
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
-  cursor: pointer;
+  cursor: grab;
+  user-select: none;
   transition:
     background var(--duration-fast) var(--ease-glide),
     border-color var(--duration-fast) var(--ease-glide);
@@ -665,6 +671,17 @@
 .quota-toolbar-pick[aria-pressed="true"] svg {
   opacity: 1;
   filter: none;
+}
+
+.quota-toolbar-pick.is-dragging {
+  position: relative;
+  z-index: 1;
+  cursor: grabbing;
+  background: var(--wash-selected);
+}
+
+.quota-toolbar-pick.is-dragging svg {
+  opacity: 1;
 }
 
 /* ── 도구모음 요약(Bridge) ─────────────────────────────────────────
