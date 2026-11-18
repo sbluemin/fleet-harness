@@ -53,10 +53,14 @@ export function modelRosterGroupId(provider: GatewayProvider): string {
   return `gateway:${provider}`;
 }
 
-/** Claude 공급자를 맨 앞에, 나머지는 GATEWAY_PROVIDERS 순서로 — AI Gateway 로스터 화면과 같은 규칙. */
+/**
+ * Claude 공급자를 맨 앞에, 같은 Claude 가족을 API 키로 서빙하는 Anthropic을 그 바로 뒤에, 나머지는 GATEWAY_PROVIDERS
+ * 순서로 — 클라이언트의 공급자 순서(글리프·라우팅 풀·Quota)와 같은 규칙. 같은 모델의 두 경로가 나란히 보인다.
+ */
 const ROSTER_PROVIDER_ORDER: readonly GatewayProvider[] = [
   "claude",
-  ...GATEWAY_PROVIDERS.filter((provider) => provider !== "claude"),
+  "anthropic",
+  ...GATEWAY_PROVIDERS.filter((provider) => provider !== "claude" && provider !== "anthropic"),
 ];
 
 /**
