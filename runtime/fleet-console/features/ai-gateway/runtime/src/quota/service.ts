@@ -61,7 +61,7 @@ export interface QuotaServiceDeps {
   readonly fetchMuseCode?: () => Promise<ProviderResult>;
   readonly fetchOpencode?: () => Promise<ProviderResult>;
   /**
-   * Gemini — upstream 조회가 아니라 플릿이 센 이번 달 지출 원장과 키 보관 여부로 답한다.
+   * Gemini — upstream 조회가 아니라 플릿이 센 이번 주 지출 원장과 키 보관 여부로 답한다.
    * 없으면 미로그인(`signed_out`)으로 둔다. 지출은 `windows`가 아닌 `spend`에 실린다.
    */
   readonly fetchGemini?: () => Promise<ProviderResult>;

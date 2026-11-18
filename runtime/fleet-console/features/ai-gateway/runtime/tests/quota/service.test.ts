@@ -9,7 +9,7 @@ import { createAnthropicSpendLedger } from "../../src/quota/anthropic-ledger.js"
 import { priceAnthropicTurn } from "../../src/quota/anthropic-pricing.js";
 import { classifyAnthropicBlock } from "../../src/upstream/anthropic/observe.js";
 import { createGeminiSpendLedger } from "../../src/quota/gemini-ledger.js";
-import { budgetUsedPercent, geminiMonthBounds, geminiTokenPrice } from "../../src/quota/gemini-pricing.js";
+import { budgetUsedPercent, geminiTokenPrice, spendWeekBounds } from "../../src/quota/gemini-pricing.js";
 import { normalizeRoutingQuota } from "../../src/fleet/routing-quota.js";
 import { parseMuseCodeSubscriptionUsage } from "../../src/upstream/muse-code/quota.js";
 import { createAiGatewayQuotaCollectors, createQuotaService, QUOTA_CACHE_TTL_MS } from "../../src/quota/service.js";
@@ -504,58 +504,66 @@ describe("quota service", () => {
 });
 
 describe("gemini spend ledger", () => {
-  it("prices turns, keeps the Pacific month, doubles Argon on December 1, and clears a block on the next usage", () => {
+  it("prices turns, keeps the Pacific week, doubles Argon on December 1, and clears a block on the next usage", () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gemini-spend-"));
     const filePath = path.join(directory, "gemini-spend.json");
-    // 태평양시 2026-11-30 23:58(PST)과 12-01 00:01(PST) — 달과 단가가 함께 바뀌는 자리.
-    const november = Date.UTC(2026, 11, 1, 7, 58);
-    const december = Date.UTC(2026, 11, 1, 8, 1);
+    // 11-16(월, PST)이 시작하는 주와, Argon 단가가 2배가 된 뒤의 다른 주(11-30 월요일이 시작).
+    const firstWeek = Date.UTC(2026, 10, 18, 12);
+    const laterWeek = Date.UTC(2026, 11, 1, 9);
     try {
+      // 주 단위 전환 전의 달 누적은 지우지 않고 남긴다 — 화면과 계산은 이번 주만 본다(A3).
+      fs.writeFileSync(filePath, JSON.stringify({ version: 1, months: { "2026-11": "5000000000000" } }));
       const ledger = createGeminiSpendLedger({ filePath });
-      // 2026-11-01 00:00 태평양시는 아직 PDT(-7)다. 월초 그 자체가 DST 전환일이어도 경계는 그 시각의
-      // 오프셋으로 잡는다. 리셋은 12-01 00:00 PST(-8)다.
-      expect(geminiMonthBounds(november)).toEqual({
-        key: "2026-11",
-        periodStart: Date.UTC(2026, 10, 1, 7),
-        resetsAt: Date.UTC(2026, 11, 1, 8),
+      // 11-16 00:00 PST(-8)에 시작해 11-23 00:00 PST에 리셋한다.
+      expect(spendWeekBounds(firstWeek)).toEqual({
+        key: "2026-11-16",
+        periodStart: Date.UTC(2026, 10, 16, 8),
+        resetsAt: Date.UTC(2026, 10, 23, 8),
       });
-      expect(geminiMonthBounds(december).key).toBe("2026-12");
-      // 전환은 태평양시 12-01 00:00 정각부터다.
+      // DST가 끼는 주는 시작(3-02 PST)과 리셋(3-09 PDT)의 오프셋이 다르다.
+      expect(spendWeekBounds(Date.UTC(2026, 2, 4, 12))).toEqual({
+        key: "2026-03-02",
+        periodStart: Date.UTC(2026, 2, 2, 8),
+        resetsAt: Date.UTC(2026, 2, 9, 7),
+      });
+      // 단가 전환은 태평양시 12-01 00:00 정각부터다.
       expect(geminiTokenPrice("gemini-4-argon", "standard", Date.UTC(2026, 11, 1, 8) - 1).input).toBe(2_000_000n);
       expect(geminiTokenPrice("gemini-4-argon", "standard", Date.UTC(2026, 11, 1, 8)).input).toBe(4_000_000n);
 
       // Hydrogen: (100−40)×1.5 + 40×0.075(캐시) + (10+10)×7.5 = 0.000243 USD.
-      ledger.observeUsage({ model: "gemini-4-hydrogen", at: november, serviceTier: "standard", promptTokens: 100, cachedTokens: 40, candidatesTokens: 10, thoughtsTokens: 10 });
+      ledger.observeUsage({ model: "gemini-4-hydrogen", at: firstWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 40, candidatesTokens: 10, thoughtsTokens: 10 });
       // Argon(11월): 100×2 + 20×10 = 0.0004 USD.
-      ledger.observeUsage({ model: "gemini-4-argon", at: november, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
-      expect(ledger.read(november).spend).toMatchObject({ currency: "USD", spent: "0.000643", basis: "fleet_measured" });
-      // 12월은 Argon이 2배다: 100×4 + 20×20 = 0.0008 USD. 11월 누적은 그대로 남는다.
-      ledger.observeUsage({ model: "gemini-4-argon", at: december, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
-      expect(ledger.read(december).spend.spent).toBe("0.0008");
-      expect(ledger.read(november).spend.spent).toBe("0.000643");
+      ledger.observeUsage({ model: "gemini-4-argon", at: firstWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
+      // 레거시 달 누적(US$5)은 이번 주 지출에 더하지 않는다.
+      expect(ledger.read(firstWeek).spend).toMatchObject({ currency: "USD", spent: "0.000643", basis: "fleet_measured" });
+      // 다음 주 Argon은 2배다: 100×4 + 20×20 = 0.0008 USD. 첫 주 누적은 그대로 남는다.
+      ledger.observeUsage({ model: "gemini-4-argon", at: laterWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
+      expect(ledger.read(laterWeek).spend.spent).toBe("0.0008");
+      expect(ledger.read(firstWeek).spend.spent).toBe("0.000643");
 
-      // 예산은 달을 넘어 유지되고, 사용률은 이번 달 누적에만 걸린다.
+      // 예산은 주를 넘어 유지되고, 사용률은 이번 주 누적에만 걸린다.
       expect(budgetUsedPercent(5n * 10n ** 12n, 10n * 10n ** 12n)).toBe(50);
       expect(ledger.setBudget("10")).toBe(true);
       expect(ledger.setBudget("0")).toBe(false);
       expect(ledger.setBudget("-3")).toBe(false);
       expect(ledger.setBudget("abc")).toBe(false);
-      expect(ledger.read(november).spend).toMatchObject({ budget: "10", usedPercent: 0 });
-      // 재시작해도 누적·예산이 남는다 — 파일이 원장의 유일한 저장소다.
-      expect(createGeminiSpendLedger({ filePath }).read(december).spend).toMatchObject({ spent: "0.0008", budget: "10" });
+      expect(ledger.read(firstWeek).spend).toMatchObject({ budget: "10", usedPercent: 0 });
+      // 재시작해도 누적·예산·레거시 달 기록이 남는다 — 파일이 원장의 유일한 저장소다.
+      expect(createGeminiSpendLedger({ filePath }).read(laterWeek).spend).toMatchObject({ spent: "0.0008", budget: "10" });
+      expect(JSON.parse(fs.readFileSync(filePath, "utf8")).months).toEqual({ "2026-11": "5000000000000" });
 
-      // 402는 사유·시각과 함께 남고, 지난달의 차단은 이번 달 카드에 서지 않는다.
-      ledger.observeBlock({ model: "gemini-4-argon", at: november, httpStatus: 402, reason: "balance_depleted", code: "payment_required", message: "Prepay credit balance is depleted." });
-      expect(ledger.read(november).block).toMatchObject({ httpStatus: 402, reason: "balance_depleted", code: "payment_required" });
-      expect(ledger.read(december).block).toBeUndefined();
+      // 402는 사유·시각과 함께 남고, 지난주의 차단은 이번 주 카드에 서지 않는다.
+      ledger.observeBlock({ model: "gemini-4-argon", at: firstWeek, httpStatus: 402, reason: "balance_depleted", code: "payment_required", message: "Prepay credit balance is depleted." });
+      expect(ledger.read(firstWeek).block).toMatchObject({ httpStatus: 402, reason: "balance_depleted", code: "payment_required" });
+      expect(ledger.read(laterWeek).block).toBeUndefined();
       // 다음 성공 사용량이 차단 표시를 걷는다.
-      ledger.observeUsage({ model: "gemini-4-argon", at: december, serviceTier: "standard", promptTokens: 1, cachedTokens: 0, candidatesTokens: 0, thoughtsTokens: 0 });
-      expect(ledger.read(december).block).toBeUndefined();
-      expect(ledger.read(november).block).toBeUndefined();
+      ledger.observeUsage({ model: "gemini-4-argon", at: laterWeek, serviceTier: "standard", promptTokens: 1, cachedTokens: 0, candidatesTokens: 0, thoughtsTokens: 0 });
+      expect(ledger.read(laterWeek).block).toBeUndefined();
+      expect(ledger.read(firstWeek).block).toBeUndefined();
 
       ledger.clearBudget();
-      expect(ledger.read(december).spend.budget).toBeUndefined();
-      expect(ledger.read(december).spend.usedPercent).toBeUndefined();
+      expect(ledger.read(laterWeek).spend.budget).toBeUndefined();
+      expect(ledger.read(laterWeek).spend.usedPercent).toBeUndefined();
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }
@@ -566,7 +574,7 @@ describe("anthropic spend ledger", () => {
   const cost = (observation: Parameters<typeof priceAnthropicTurn>[0]) => priceAnthropicTurn(observation)?.costPicoUsd;
   const turn = { at: Date.UTC(2026, 10, 18, 12), inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, webSearchRequests: 0 } as const;
 
-  it("prices every token class, splits Haiku at 100k, keeps the month and budget on disk, and tells credit exhaustion from other refusals", () => {
+  it("prices every token class, splits Haiku at 100k, keeps the week and budget on disk, and tells credit exhaustion from other refusals", () => {
     // Sonnet 5.5: 1000×2 + 500×10 + 200×0.10 + 100×2.5 + 100×4 = 7,670 µ$ → 0.00767 USD.
     expect(cost({ ...turn, model: "claude-sonnet-5-5", inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, cacheWrite5mTokens: 100, cacheWrite1hTokens: 100 })).toBe(7_670_000_000n);
     // Haiku 5.5는 요청의 모든 입력(캐시 포함)이 100,000을 넘어야 높은 단가다 — 입력 50k + 캐시 읽기 50,001.
@@ -577,19 +585,19 @@ describe("anthropic spend ledger", () => {
 
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), "anthropic-spend-"));
     const filePath = path.join(directory, "anthropic-spend.json");
-    const november = Date.UTC(2026, 10, 18, 12);
-    const december = Date.UTC(2026, 11, 1, 9);
+    const firstWeek = Date.UTC(2026, 10, 18, 12);
+    const laterWeek = Date.UTC(2026, 11, 1, 9);
     try {
       const ledger = createAnthropicSpendLedger({ filePath });
-      ledger.observeUsage({ ...turn, model: "claude-opus-5-5", at: november, inputTokens: 1000, outputTokens: 100 });
+      ledger.observeUsage({ ...turn, model: "claude-opus-5-5", at: firstWeek, inputTokens: 1000, outputTokens: 100 });
       // 4×1000 + 20×100 = 6,000 µ$.
-      expect(ledger.read(november).spend).toMatchObject({ currency: "USD", spent: "0.006", basis: "fleet_measured" });
-      expect(ledger.read(december).spend.spent).toBe("0");
+      expect(ledger.read(firstWeek).spend).toMatchObject({ currency: "USD", spent: "0.006", basis: "fleet_measured" });
+      expect(ledger.read(laterWeek).spend.spent).toBe("0");
       expect(ledger.setBudget("10")).toBe(true);
       expect(ledger.setBudget("0")).toBe(false);
       expect(ledger.setBudget("abc")).toBe(false);
       // 재시작해도 누적·예산이 남고, 파일에는 키·본문이 없다.
-      expect(createAnthropicSpendLedger({ filePath }).read(november).spend).toMatchObject({ spent: "0.006", budget: "10" });
+      expect(createAnthropicSpendLedger({ filePath }).read(firstWeek).spend).toMatchObject({ spent: "0.006", budget: "10" });
       expect(fs.readFileSync(filePath, "utf8")).not.toMatch(/sk-ant|authorization/i);
 
       // 잔액 소진은 400·402 어느 쪽으로 와도 같은 사유다. 모델 제약 400·인증 401은 차단이 아니다.
@@ -602,13 +610,13 @@ describe("anthropic spend ledger", () => {
       expect(classifyAnthropicBlock(400, { error: { type: "invalid_request_error", message: "max_tokens: too large" } })).toBeUndefined();
       expect(classifyAnthropicBlock(401, { error: { type: "authentication_error", message: "invalid x-api-key" } })).toBeUndefined();
 
-      ledger.observeBlock({ model: "claude-opus-5-5", at: november, ...depleted402! });
-      ledger.observeRateLimit({ observedAt: november, requests: { limit: 50, remaining: 0, resetsAt: november + 30_000 } });
-      expect(ledger.read(november)).toMatchObject({ block: { httpStatus: 402, reason: "balance_depleted" }, rateLimit: { requests: { remaining: 0 } } });
-      // 지난달 차단은 이번 달 카드에 서지 않고, 다음 성공 사용량이 걷는다.
-      expect(ledger.read(december).block).toBeUndefined();
-      ledger.observeUsage({ ...turn, model: "claude-opus-5-5", at: november, inputTokens: 1, outputTokens: 1 });
-      expect(ledger.read(november).block).toBeUndefined();
+      ledger.observeBlock({ model: "claude-opus-5-5", at: firstWeek, ...depleted402! });
+      ledger.observeRateLimit({ observedAt: firstWeek, requests: { limit: 50, remaining: 0, resetsAt: firstWeek + 30_000 } });
+      expect(ledger.read(firstWeek)).toMatchObject({ block: { httpStatus: 402, reason: "balance_depleted" }, rateLimit: { requests: { remaining: 0 } } });
+      // 지난주 차단은 이번 주 카드에 서지 않고, 다음 성공 사용량이 걷는다.
+      expect(ledger.read(laterWeek).block).toBeUndefined();
+      ledger.observeUsage({ ...turn, model: "claude-opus-5-5", at: firstWeek, inputTokens: 1, outputTokens: 1 });
+      expect(ledger.read(firstWeek).block).toBeUndefined();
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }
@@ -639,8 +647,8 @@ describe("anthropic pricing for versions and families the table does not list", 
       expect(ledger.read(base.at).spend.spent).toBe("0.018");
       const stored = JSON.parse(fs.readFileSync(filePath, "utf8")) as { estimates: unknown; unpriced: unknown };
       // 어떤 버전을 어느 단가로 셌는지, 못 센 턴이 몇 번인지 파일에 남고 재시작해도 읽힌다.
-      expect(stored.estimates).toEqual({ "2026-11": { "claude-opus-5-6": { pricedAs: "claude-opus-5-5", turns: 2, costPicoUsd: "12000000000", lastAt: base.at } } });
-      expect(stored.unpriced).toEqual({ "2026-11": { "claude-ember-1-0": { turns: 1, lastAt: base.at } } });
+      expect(stored.estimates).toEqual({ "2026-11-16": { "claude-opus-5-6": { pricedAs: "claude-opus-5-5", turns: 2, costPicoUsd: "12000000000", lastAt: base.at } } });
+      expect(stored.unpriced).toEqual({ "2026-11-16": { "claude-ember-1-0": { turns: 1, lastAt: base.at } } });
       expect(createAnthropicSpendLedger({ filePath }).read(base.at).spend.spent).toBe("0.018");
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });

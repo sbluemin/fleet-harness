@@ -8,9 +8,9 @@ import type {
 } from "./anthropic-usage.js";
 import {
   budgetUsedPercent,
-  geminiMonthBounds,
   normalizeBudgetUsd,
   picoUsdFromUsd,
+  spendWeekBounds,
   usdFromPicoUsd,
 } from "./gemini-pricing.js";
 import type { ProviderBlock, ProviderRateLimit, ProviderSpend } from "./types.js";
@@ -19,28 +19,28 @@ import type { ProviderBlock, ProviderRateLimit, ProviderSpend } from "./types.js
  * Anthropic 지출 원장.
  *
  * 크레딧 잔액을 읽을 API가 없으므로(2026-11-18 실측) 게이트웨이가 응답마다 넘겨 준 usage 토큰에 확인한 단가를
- * 곱해 **America/Los_Angeles 달력 월**별로 누적한다(사람 결정 58f4b5a3: Gemini와 같은 달력 월). 크레딧의
- * 실제 주기는 구독 결제 주기라 이 달력 월과 어긋난다 — 이 원장은 "플릿이 센 이번 달 사용액"이지 크레딧
- * 잔액이 아니다. 월 경계 계산은 Gemini 원장이 쓰는 `geminiMonthBounds`를 그대로 쓴다(이름만 Gemini이고
- * 태평양시 달력 월 하나를 계산하는 순수 함수다). 단가·계산은 `anthropic-pricing.ts`가 갖는다.
+ * 곱해 **America/Los_Angeles 주**(월요일 00:00 시작)별로 누적한다(사람 결정 A1: 주 예산). 이 원장은
+ * "플릿이 센 이번 주 사용액"이지 크레딧 잔액이 아니다 — 크레딧의 실제 주기는 구독 결제 주기라 이 주와
+ * 어긋난다. 주 경계 계산은 `spendWeekBounds`를 쓴다. 단가·계산은 `anthropic-pricing.ts`가 갖는다.
  *
- * 자리는 호스트가 넘긴다. 저장 파일은 월별 누적과 월 예산, 마지막 차단뿐이고 키·요청 본문은 담지 않는다.
+ * 자리는 호스트가 넘긴다. 저장 파일은 주별 누적과 주 예산, 마지막 차단뿐이고 키·요청 본문은 담지 않는다.
+ * 주 단위로 바뀌기 전의 달별 누적은 지우지 않고 남긴다 — 화면과 계산은 이번 주만 본다(A3).
  * 마지막 `anthropic-ratelimit-*` 관측은 **메모리에만** 둔다 — 분 단위 한도라 재시작 뒤에 의미가 없고,
  * 응답마다 파일을 쓸 이유도 없다.
  *
  * 금액은 pico-USD 정수(bigint)로만 더하고, 파일에는 십진 정수 문자열로 쓴다.
  */
 export interface AnthropicSpendLedger extends AnthropicUsagePort {
-  /** 그 시각이 속한 달의 누적과, 아직 유효한 마지막 차단·한도 관측. `at` 생략 시 지금. */
+  /** 그 시각이 속한 주의 누적과, 아직 유효한 마지막 차단·한도 관측. `at` 생략 시 지금. */
   read(at?: number): AnthropicSpendReading;
-  /** 월 예산(USD) 설정. 모든 달에 적용된다. 0 이하·숫자 아님·형식 오류면 저장하지 않고 false. */
+  /** 주 예산(USD) 설정. 모든 주에 적용된다. 0 이하·숫자 아님·형식 오류면 저장하지 않고 false. */
   setBudget(value: unknown): boolean;
   clearBudget(): void;
 }
 
 export interface AnthropicSpendReading {
   readonly spend: ProviderSpend;
-  /** 마지막 거절. 다음 `observeUsage`나 다음 달이 걷는다. */
+  /** 마지막 거절. 다음 `observeUsage`나 다음 주가 걷는다. */
   readonly block?: ProviderBlock;
   /** 마지막 응답 헤더의 분당 한도(이 프로세스가 본 것). */
   readonly rateLimit?: ProviderRateLimit;
@@ -64,17 +64,20 @@ interface StoredBlock {
 
 interface AnthropicSpendDocument {
   readonly version: 1;
-  /** 태평양시 달력 월 키("2026-11") → 그 달 누적 지출(pico-USD 십진 정수 문자열). */
+  /** 레거시 달 키("2026-11") → 그 달 누적. 주 단위 전환 전 기록이라 읽지도 쓰지도 않고 지우지 않는다(A3). */
   readonly months: Readonly<Record<string, string>>;
-  /** 사람이 정한 월 예산(USD 십진 문자열). 달마다 반복되는 값이라 월 키에 넣지 않는다. */
+  /** 주 키("2026-11-16" — 그 주 월요일) → 그 주 누적 지출(pico-USD 십진 정수 문자열). */
+  readonly weeks?: Readonly<Record<string, string>>;
+  /** 사람이 정한 주 예산(USD 십진 문자열). 주마다 반복되는 값이라 주 키에 넣지 않는다. */
   readonly budgetUsd?: string;
   readonly block?: StoredBlock;
   /**
-   * 단가표에 없는 버전을 같은 가족의 가장 최근 표 버전 단가로 **추정해** 센 턴 — 달 키 → 상류 id → 기록.
+   * 단가표에 없는 버전을 같은 가족의 가장 최근 표 버전 단가로 **추정해** 센 턴 — 주 키 → 상류 id → 기록.
    * 나중에 어떤 버전을 어느 단가로 셌는지 알아보는 자리다. 정확한 단가로 센 턴은 여기에 없다.
+   * 주 단위 전환 전 기록은 달 키로 남아 있다.
    */
   readonly estimates?: Readonly<Record<string, Readonly<Record<string, StoredEstimate>>>>;
-  /** 가족이 표에 없어 **세지 못한** 턴 — 달 키 → 상류 id → 횟수. 지출에는 더하지 않는다(0으로도 지어내지 않는다). */
+  /** 가족이 표에 없어 **세지 못한** 턴 — 주 키 → 상류 id → 횟수. 지출에는 더하지 않는다(0으로도 지어내지 않는다). */
   readonly unpriced?: Readonly<Record<string, Readonly<Record<string, StoredUnpriced>>>>;
 }
 
@@ -92,7 +95,7 @@ interface StoredUnpriced {
   readonly lastAt: number;
 }
 
-const MAX_MODELS_PER_MONTH = 16;
+const MAX_MODELS_PER_PERIOD = 16;
 const MAX_MODEL_ID_LENGTH = 64;
 
 const EMPTY_DOCUMENT: AnthropicSpendDocument = { version: 1, months: {} };
@@ -138,24 +141,24 @@ export function createAnthropicSpendLedger(deps: AnthropicSpendLedgerDeps): Anth
     notify();
   }
 
-  function monthSpentPico(key: string): bigint {
-    const raw = document.months[key];
+  function weekSpentPico(key: string): bigint {
+    const raw = document.weeks?.[key];
     return raw !== undefined && /^\d{1,40}$/.test(raw) ? BigInt(raw) : 0n;
   }
 
-  /** 이번 달 이전의 차단은 지난달 사실이다 — 리셋 뒤에도 남은 거절이 현재 사유로 보이지 않게 뺀다. */
+  /** 이번 주 이전의 차단은 지난주 사실이다 — 리셋 뒤에도 남은 거절이 현재 사유로 보이지 않게 뺀다. */
   function currentBlock(at: number): ProviderBlock | undefined {
     const block = document.block;
     if (block === undefined) return undefined;
-    const bounds = geminiMonthBounds(at);
+    const bounds = spendWeekBounds(at);
     if (block.at < bounds.periodStart || block.at > at) return undefined;
     return block;
   }
 
   return {
     read(at = now()) {
-      const bounds = geminiMonthBounds(at);
-      const spentPicoUsd = monthSpentPico(bounds.key);
+      const bounds = spendWeekBounds(at);
+      const spentPicoUsd = weekSpentPico(bounds.key);
       const budget = document.budgetUsd;
       const budgetPicoUsd = budget === undefined ? undefined : picoUsdFromUsd(budget);
       const usedPercent = budgetPicoUsd === undefined ? undefined : budgetUsedPercent(spentPicoUsd, budgetPicoUsd);
@@ -178,7 +181,7 @@ export function createAnthropicSpendLedger(deps: AnthropicSpendLedgerDeps): Anth
     observeUsage(observation) {
       try {
         const at = Number.isFinite(observation.at) ? observation.at : now();
-        const bounds = geminiMonthBounds(at);
+        const bounds = spendWeekBounds(at);
         const model = observation.model.slice(0, MAX_MODEL_ID_LENGTH);
         const turn = priceAnthropicTurn(observation);
         // 성공한 턴은 이전 차단을 걷는다(포트 계약). 0원 관측은 누적을 바꾸지 않으므로 지울 차단이 없으면
@@ -187,29 +190,29 @@ export function createAnthropicSpendLedger(deps: AnthropicSpendLedgerDeps): Anth
         const { block: _cleared, ...rest } = document;
         if (turn === undefined) {
           // 가족이 표에 없다: 비용을 지어내지 않고, 센 턴이 아니라 못 센 턴으로만 남긴다.
-          const month = { ...document.unpriced?.[bounds.key] };
-          const previous = month[model];
-          if (previous === undefined && Object.keys(month).length >= MAX_MODELS_PER_MONTH) return;
-          month[model] = { turns: (previous?.turns ?? 0) + 1, lastAt: at };
-          commit({ ...rest, unpriced: { ...document.unpriced, [bounds.key]: month } });
+          const period = { ...document.unpriced?.[bounds.key] };
+          const previous = period[model];
+          if (previous === undefined && Object.keys(period).length >= MAX_MODELS_PER_PERIOD) return;
+          period[model] = { turns: (previous?.turns ?? 0) + 1, lastAt: at };
+          commit({ ...rest, unpriced: { ...document.unpriced, [bounds.key]: period } });
           return;
         }
-        const months = { ...document.months, [bounds.key]: (monthSpentPico(bounds.key) + turn.costPicoUsd).toString() };
+        const weeks = { ...document.weeks, [bounds.key]: (weekSpentPico(bounds.key) + turn.costPicoUsd).toString() };
         if (!turn.estimated) {
-          commit({ ...rest, months });
+          commit({ ...rest, weeks });
           return;
         }
-        const month = { ...document.estimates?.[bounds.key] };
-        const previous = month[model];
-        if (previous !== undefined || Object.keys(month).length < MAX_MODELS_PER_MONTH) {
-          month[model] = {
+        const period = { ...document.estimates?.[bounds.key] };
+        const previous = period[model];
+        if (previous !== undefined || Object.keys(period).length < MAX_MODELS_PER_PERIOD) {
+          period[model] = {
             pricedAs: turn.pricedAs,
             turns: (previous?.turns ?? 0) + 1,
             costPicoUsd: (BigInt(previous?.costPicoUsd ?? "0") + turn.costPicoUsd).toString(),
             lastAt: at,
           };
         }
-        commit({ ...rest, months, estimates: { ...document.estimates, [bounds.key]: month } });
+        commit({ ...rest, weeks, estimates: { ...document.estimates, [bounds.key]: period } });
       } catch {
         // 원장 실패는 추론을 막지 않는다.
       }
@@ -306,18 +309,21 @@ function sanitizeUnpriced(value: unknown): StoredUnpriced | undefined {
   return lastAt === undefined || turns === undefined ? undefined : { turns, lastAt };
 }
 
-/** 달 키 → 상류 id → 기록 맵. 형식이 틀린 달·id·기록은 버리고, 달마다 {@link MAX_MODELS_PER_MONTH}개까지만 남긴다. */
-function sanitizeMonthlyRecords<T>(
+/**
+ * 주 키 → 상류 id → 기록 맵. 형식이 틀린 주·id·기록은 버리고, 주마다 {@link MAX_MODELS_PER_PERIOD}개까지만
+ * 남긴다. 주 단위 전환 전의 달 키 기록도 함께 받아 보존한다.
+ */
+function sanitizePeriodRecords<T>(
   value: unknown,
   sanitizeEntry: (entry: unknown) => T | undefined,
 ): Record<string, Record<string, T>> | undefined {
   if (!isRecord(value)) return undefined;
   const result: Record<string, Record<string, T>> = {};
   for (const [key, models] of Object.entries(value)) {
-    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(key) || !isRecord(models)) continue;
+    if (!/^\d{4}-(0[1-9]|1[0-2])(?:-\d{2})?$/.test(key) || !isRecord(models)) continue;
     const kept: Record<string, T> = {};
     for (const [model, entry] of Object.entries(models)) {
-      if (model.length > MAX_MODEL_ID_LENGTH || Object.keys(kept).length >= MAX_MODELS_PER_MONTH) continue;
+      if (model.length > MAX_MODEL_ID_LENGTH || Object.keys(kept).length >= MAX_MODELS_PER_PERIOD) continue;
       const clean = sanitizeEntry(entry);
       if (clean !== undefined) kept[model] = clean;
     }
@@ -326,24 +332,33 @@ function sanitizeMonthlyRecords<T>(
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
-/** 깨진 파일·손으로 고친 값은 버린다. 남은 값만 다음 저장이 다시 쓴다. */
+/** 주 키 — 그 주 월요일의 달력 날짜("2026-11-16"). */
+const WEEK_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/;
+
+function sanitizeAmounts(value: unknown, pattern: RegExp): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  const result: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (!pattern.test(key)) continue;
+    if (typeof raw !== "string" || !/^\d{1,40}$/.test(raw)) continue;
+    result[key] = raw;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/** 깨진 파일·손으로 고친 값은 버린다. 남은 값만 다음 저장이 다시 쓴다. 레거시 달 누적은 그대로 보존한다. */
 function sanitizeDocument(value: unknown): AnthropicSpendDocument {
   if (!isRecord(value) || value.version !== 1) return EMPTY_DOCUMENT;
-  const months: Record<string, string> = {};
-  if (isRecord(value.months)) {
-    for (const [key, raw] of Object.entries(value.months)) {
-      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(key)) continue;
-      if (typeof raw !== "string" || !/^\d{1,40}$/.test(raw)) continue;
-      months[key] = raw;
-    }
-  }
+  const months = sanitizeAmounts(value.months, /^\d{4}-(0[1-9]|1[0-2])$/);
+  const weeks = sanitizeAmounts(value.weeks, WEEK_KEY_PATTERN);
   const budgetUsd = normalizeBudgetUsd(value.budgetUsd);
   const block = sanitizeBlock(value.block);
-  const estimates = sanitizeMonthlyRecords(value.estimates, sanitizeEstimate);
-  const unpriced = sanitizeMonthlyRecords(value.unpriced, sanitizeUnpriced);
+  const estimates = sanitizePeriodRecords(value.estimates, sanitizeEstimate);
+  const unpriced = sanitizePeriodRecords(value.unpriced, sanitizeUnpriced);
   return {
     version: 1,
-    months,
+    months: months ?? {},
+    ...(weeks !== undefined ? { weeks } : {}),
     ...(budgetUsd !== undefined ? { budgetUsd } : {}),
     ...(block !== undefined ? { block } : {}),
     ...(estimates !== undefined ? { estimates } : {}),

@@ -2,10 +2,10 @@ import { createDurableJsonStore } from "@fleet-console/infra";
 
 import {
   budgetUsedPercent,
-  geminiMonthBounds,
   geminiTurnCostPicoUsd,
   normalizeBudgetUsd,
   picoUsdFromUsd,
+  spendWeekBounds,
   usdFromPicoUsd,
 } from "./gemini-pricing.js";
 import type {
@@ -21,19 +21,21 @@ import type { ProviderBlock, ProviderSpend } from "./types.js";
  *
  * Gemini API는 잔액·지출·한도를 API로 주지 않는다(2026-11-18 실측: /usage·/quota·/billing 등
  * 404). 그래서 게이트웨이가 응답마다 넘겨 준 usageMetadata 토큰에 확인한 단가를 곱해
- * America/Los_Angeles 달력 월별로 누적한다. 단가·월 경계·예산 계산은 `gemini-pricing.ts`가 갖는다.
+ * America/Los_Angeles 주(월요일 00:00 시작)별로 누적한다. 단가·주 경계·예산 계산은
+ * `gemini-pricing.ts`가 갖는다.
  *
  * 자리는 호스트가 넘긴다 — 이 모듈은 데이터 루트를 찾지 않는다(`last-good.ts`와 같은 규칙).
- * 저장 파일은 날짜별 누적과 월 예산, 마지막 402·429뿐이고 키·요청 본문은 담지 않는다.
+ * 저장 파일은 주별 누적과 주 예산, 마지막 402·429뿐이고 키·요청 본문은 담지 않는다.
+ * 주 단위로 바뀌기 전의 달별 누적은 지우지 않고 남긴다 — 화면과 계산은 이번 주만 본다(A3).
  *
  * 금액은 pico-USD 정수(bigint)로만 더하고, 파일에는 십진 정수 문자열로 쓴다. 부동소수 누적은
  * 하지 않는다.
  */
 export interface GeminiSpendLedger extends GeminiUsagePort {
-  /** 그 시각이 속한 달의 누적과, 아직 유효한 마지막 차단. `at` 생략 시 지금. */
+  /** 그 시각이 속한 주의 누적과, 아직 유효한 마지막 차단. `at` 생략 시 지금. */
   read(at?: number): GeminiSpendReading;
   /**
-   * 월 예산(USD) 설정. 모든 달에 적용된다. 0 이하·숫자 아님·형식 오류면 저장하지 않고
+   * 주 예산(USD) 설정. 모든 주에 적용된다. 0 이하·숫자 아님·형식 오류면 저장하지 않고
    * false를 돌려준다(핸들러가 그것을 400으로 옮긴다).
    */
   setBudget(value: unknown): boolean;
@@ -42,7 +44,7 @@ export interface GeminiSpendLedger extends GeminiUsagePort {
 
 export interface GeminiSpendReading {
   readonly spend: ProviderSpend;
-  /** 마지막 402·429. 다음 `observeUsage`나 다음 달이 걷는다. */
+  /** 마지막 402·429. 다음 `observeUsage`나 다음 주가 걷는다. */
   readonly block?: ProviderBlock;
 }
 
@@ -67,9 +69,11 @@ interface StoredBlock {
 
 interface GeminiSpendDocument {
   readonly version: 1;
-  /** 태평양시 달력 월 키("2026-11") → 그 달 누적 지출(pico-USD 십진 정수 문자열). */
+  /** 레거시 달 키("2026-11") → 그 달 누적. 주 단위 전환 전 기록이라 읽지도 쓰지도 않고 지우지 않는다(A3). */
   readonly months: Readonly<Record<string, string>>;
-  /** 사람이 정한 월 예산(USD 십진 문자열). 달마다 반복되는 값이라 월 키에 넣지 않는다. */
+  /** 주 키("2026-11-16" — 그 주 월요일) → 그 주 누적 지출(pico-USD 십진 정수 문자열). */
+  readonly weeks?: Readonly<Record<string, string>>;
+  /** 사람이 정한 주 예산(USD 십진 문자열). 주마다 반복되는 값이라 주 키에 넣지 않는다. */
   readonly budgetUsd?: string;
   readonly block?: StoredBlock;
 }
@@ -114,24 +118,24 @@ export function createGeminiSpendLedger(deps: GeminiSpendLedgerDeps): GeminiSpen
     }
   }
 
-  function monthSpentPico(key: string): bigint {
-    const raw = document.months[key];
+  function weekSpentPico(key: string): bigint {
+    const raw = document.weeks?.[key];
     return raw !== undefined && /^\d{1,40}$/.test(raw) ? BigInt(raw) : 0n;
   }
 
-  /** 이번 달 이전의 차단은 지난달 사실이다 — 리셋 뒤에도 남은 429가 현재 사유로 보이지 않게 뺀다. */
+  /** 이번 주 이전의 차단은 지난주 사실이다 — 리셋 뒤에도 남은 429가 현재 사유로 보이지 않게 뺀다. */
   function currentBlock(at: number): ProviderBlock | undefined {
     const block = document.block;
     if (block === undefined) return undefined;
-    const bounds = geminiMonthBounds(at);
+    const bounds = spendWeekBounds(at);
     if (block.at < bounds.periodStart || block.at > at) return undefined;
     return block;
   }
 
   return {
     read(at = now()) {
-      const bounds = geminiMonthBounds(at);
-      const spentPicoUsd = monthSpentPico(bounds.key);
+      const bounds = spendWeekBounds(at);
+      const spentPicoUsd = weekSpentPico(bounds.key);
       const budget = document.budgetUsd;
       const budgetPicoUsd = budget === undefined ? undefined : picoUsdFromUsd(budget);
       const usedPercent = budgetPicoUsd === undefined ? undefined : budgetUsedPercent(spentPicoUsd, budgetPicoUsd);
@@ -150,14 +154,14 @@ export function createGeminiSpendLedger(deps: GeminiSpendLedgerDeps): GeminiSpen
     observeUsage(observation) {
       try {
         const at = Number.isFinite(observation.at) ? observation.at : now();
-        const bounds = geminiMonthBounds(at);
+        const bounds = spendWeekBounds(at);
         const cost = geminiTurnCostPicoUsd(observation, at);
         // 성공한 턴은 이전 차단을 걷는다(포트 계약). 0토큰 관측은 누적을 바꾸지 않으므로
         // 지울 차단이 없으면 파일도 건드리지 않는다.
         if (cost === 0n && document.block === undefined) return;
-        const months = { ...document.months, [bounds.key]: (monthSpentPico(bounds.key) + cost).toString() };
+        const weeks = { ...document.weeks, [bounds.key]: (weekSpentPico(bounds.key) + cost).toString() };
         const { block: _cleared, ...rest } = document;
-        commit({ ...rest, months });
+        commit({ ...rest, weeks });
       } catch {
         // 원장 실패는 추론을 막지 않는다.
       }
@@ -228,22 +232,31 @@ function sanitizeBlock(value: unknown): StoredBlock | undefined {
   };
 }
 
-/** 깨진 파일·손으로 고친 값은 버린다. 남은 값만 다음 저장이 다시 쓴다. */
+/** 주 키 — 그 주 월요일의 달력 날짜("2026-11-16"). */
+const WEEK_KEY_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-\d{2}$/;
+
+function sanitizeAmounts(value: unknown, pattern: RegExp): Record<string, string> | undefined {
+  if (!isRecord(value)) return undefined;
+  const result: Record<string, string> = {};
+  for (const [key, raw] of Object.entries(value)) {
+    if (!pattern.test(key)) continue;
+    if (typeof raw !== "string" || !/^\d{1,40}$/.test(raw)) continue;
+    result[key] = raw;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/** 깨진 파일·손으로 고친 값은 버린다. 남은 값만 다음 저장이 다시 쓴다. 레거시 달 누적은 그대로 보존한다. */
 function sanitizeDocument(value: unknown): GeminiSpendDocument {
   if (!isRecord(value) || value.version !== 1) return EMPTY_DOCUMENT;
-  const months: Record<string, string> = {};
-  if (isRecord(value.months)) {
-    for (const [key, raw] of Object.entries(value.months)) {
-      if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(key)) continue;
-      if (typeof raw !== "string" || !/^\d{1,40}$/.test(raw)) continue;
-      months[key] = raw;
-    }
-  }
+  const months = sanitizeAmounts(value.months, /^\d{4}-(0[1-9]|1[0-2])$/);
+  const weeks = sanitizeAmounts(value.weeks, WEEK_KEY_PATTERN);
   const budgetUsd = normalizeBudgetUsd(value.budgetUsd);
   const block = sanitizeBlock(value.block);
   return {
     version: 1,
-    months,
+    months: months ?? {},
+    ...(weeks !== undefined ? { weeks } : {}),
     ...(budgetUsd !== undefined ? { budgetUsd } : {}),
     ...(block !== undefined ? { block } : {}),
   };

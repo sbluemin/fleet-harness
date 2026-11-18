@@ -7,7 +7,8 @@ import { useStoreSnapshot } from "@fleet-console/ui/store";
 import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@fleet-console/ai-gateway";
 import { isLoginProvider, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
-import { isSpendProvider, SpendSection, type SpendProvider } from "./spend-section.js";
+import { isSpendProvider, SpendSection, spendSetLabel, useBudgetEditor, type SpendProvider } from "./spend-section.js";
+import { UsageMeter } from "./meter.js";
 import { RateLimitSection } from "./rate-limit.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import {
@@ -368,43 +369,20 @@ function Meter({
   const projection = projectedSpan(window, now);
   const elapsedMark = elapsedMarkPercent(window);
   return (
-    <div className={`quota-meter quota-meter--${severity}`}>
-      <div className="quota-meter__top">
-        <span className="quota-meter__label" title={chip ? `${label} · ${chip}` : label}>{label}</span>
-        {note !== null ? <span className="quota-meter__forecast">{note}</span> : null}
-      </div>
-      <div
-        className="quota-meter__bar"
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={0}
-        aria-valuemax={100}
-        aria-valuenow={window.usedPercent}
-        {...(note !== null ? { "aria-valuetext": `${usedText} · ${note}` } : {})}
-      >
-        {projection ? (
-          <span
-            className="quota-meter__projection"
-            title={t("quota.meter.projected")}
-            style={{ left: `${projection.left}%`, width: `${projection.width}%` }}
-          />
-        ) : null}
-        <span className="quota-meter__fill" style={{ width: `${clampPercent(window.usedPercent)}%` }} />
-        {elapsedMark !== null ? (
-          <span
-            className="quota-meter__elapsed"
-            title={t("quota.meter.elapsed", { pct: elapsedMark })}
-            style={{ left: `${elapsedMark}%` }}
-          />
-        ) : null}
-      </div>
-      <div className="quota-meter__foot">
-        <span className="quota-meter__percent" aria-label={usedText}>{Math.round(window.usedPercent)}%</span>
-        {window.resetsAt !== undefined ? (
-          <span className="quota-meter__reset" title={resetCaption(window.resetsAt, now, locale, t)}>{t("quota.meter.resets", { t: formatCountdown(window.resetsAt, now) })}</span>
-        ) : null}
-      </div>
-    </div>
+    <UsageMeter
+      label={label}
+      {...(chip ? { labelTitle: `${label} · ${chip}` } : {})}
+      percent={window.usedPercent}
+      usedText={usedText}
+      severity={severity}
+      note={note}
+      {...(projection ? { projection, projectionTitle: t("quota.meter.projected") } : {})}
+      {...(elapsedMark !== null ? { elapsedMark, elapsedTitle: t("quota.meter.elapsed", { pct: elapsedMark }) } : {})}
+      {...(window.resetsAt !== undefined ? {
+        resetText: t("quota.meter.resets", { t: formatCountdown(window.resetsAt, now) }),
+        resetTitle: resetCaption(window.resetsAt, now, locale, t),
+      } : {})}
+    />
   );
 }
 
@@ -589,6 +567,11 @@ function ProviderCard({
   readonly saveBudget: (provider: SpendProvider, usd: string | null) => Promise<boolean>;
 }) {
   const name = providerName(id, mobile);
+  // 지출 카드의 예산 폼은 머리줄 단추와 본문이 같은 상태를 본다 — 이 카드가 편집 상태를 소유한다.
+  const spendProvider: SpendProvider | undefined =
+    (provider.status === "ok" || provider.status === "stale") && isSpendProvider(id) && provider.spend !== undefined ? id : undefined;
+  const budgetEditor = useBudgetEditor(provider.spend?.budget, (usd) =>
+    spendProvider === undefined ? Promise.resolve(false) : saveBudget(spendProvider, usd));
   // Claude의 로그인은 Console 소유가 아니다. 가짜 로그인 문 대신 기존 CLI 경로를 한 줄로 안내한다.
   if (id === "claude" && (provider.status === "signed_out" || provider.status === "expired")) {
     return <section className="quota-connect-card" data-provider={id}><header className="quota-provider__header"><span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span><h3>{name}</h3><span className="quota-connect-hint" title={t(provider.status === "expired" ? EXPIRED_KEY.claude : SIGNED_OUT_KEY[id])}>{t("quota.login.external", { cli: "claude" })}</span><button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button></header></section>;
@@ -615,6 +598,8 @@ function ProviderCard({
         <h3>{name}</h3>
         {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
         {isLoginProvider(id) ? <button type="button" className="quota-disconnect" onClick={() => logout(id)}>{t("quota.login.logout")}</button> : null}
+        {/* 로그아웃과 같은 머리줄 자리 — 예산 유무와 관계없이 같은 단추 문구 하나로 연다. */}
+        {spendProvider !== undefined && !budgetEditor.editing ? <button type="button" className="quota-disconnect" onClick={budgetEditor.begin}>{t(spendSetLabel(spendProvider))}</button> : null}
         {provider.plan ? <span className="quota-plan" title={provider.plan}>{displayPlanName(id, provider.plan)}</span> : null}
       </header>
       {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
@@ -630,15 +615,16 @@ function ProviderCard({
         }
         return <div className="quota-error">{t("quota.error", { provider: name })}</div>;
       })() : null}
-      {(provider.status === "ok" || provider.status === "stale") && isSpendProvider(id) && provider.spend !== undefined ? (
+      {spendProvider !== undefined && provider.spend !== undefined ? (
         <SpendSection
-          provider={id}
+          provider={spendProvider}
           spend={provider.spend}
           {...(provider.block !== undefined ? { block: provider.block } : {})}
           locale={locale}
           t={t}
-          resetText={resetCaption(provider.spend.resetsAt, now, locale, t)}
-          saveBudget={(usd) => saveBudget(id, usd)}
+          resetText={t("quota.meter.resets", { t: formatCountdown(provider.spend.resetsAt, now) })}
+          resetTitle={resetCaption(provider.spend.resetsAt, now, locale, t)}
+          editor={budgetEditor}
         />
       ) : null}
       {(provider.status === "ok" || provider.status === "stale") && provider.rateLimit !== undefined ? (

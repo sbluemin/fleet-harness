@@ -94,7 +94,7 @@ export function createQuotaFeature(deps: QuotaFeatureDeps) {
     await handleConnect(req, res, ctx, service, serializeSettings);
     return true;
   }, { method: "POST", path: "", summary: "Update provider quota connection state.", category: "Quota", gate: "origin-write", transport: "http" });
-  // 월 예산은 지출 원장과 같은 파일에 살고 원장은 Gateway가 소유한다. 플러그인은 저장하지 않고
+  // 주 예산은 지출 원장과 같은 파일에 살고 원장은 Gateway가 소유한다. 플러그인은 저장하지 않고
   // Gateway의 판정을 옮긴 뒤, 저장된 예산이 반영된 요약을 돌려준다(연결·로그아웃과 같은 규칙).
   const budget: SpendBudgetGateway = {
     async setBudget(provider, request) {
@@ -115,7 +115,7 @@ export function createQuotaFeature(deps: QuotaFeatureDeps) {
     addRoute(`${provider}-budget`, async ({ req, res }) => {
       await handleSpendBudget(req, res, ctx, provider, budget, service);
       return true;
-    }, { method: "POST", path: "", summary: `Set or clear the ${provider} monthly spend budget.`, category: "Quota", gate: "origin-write", transport: "http" });
+    }, { method: "POST", path: "", summary: `Set or clear the ${provider} weekly spend budget.`, category: "Quota", gate: "origin-write", transport: "http" });
   }
   for (const provider of LOGIN_PROVIDERS) {
     for (const route of LOGIN_ROUTES) {
