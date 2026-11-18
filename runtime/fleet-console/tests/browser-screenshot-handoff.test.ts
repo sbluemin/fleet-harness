@@ -290,7 +290,8 @@ describe("objectiveRecord browser service contracts", () => {
     try {
       await service.createTab(OBJECTIVE, "http://localhost/", "user", { show: true });
       const bindingCall = desktop.cdpCalls.find((call) => call.method === "Runtime.addBinding");
-      const observerCall = desktop.cdpCalls.find((call) => call.method === "Page.addScriptToEvaluateOnNewDocument");
+      // 메인 월드 스크립트(window.chrome 표면)는 worldName 이 없다 — 격리 월드 관찰자만 본다.
+      const observerCall = desktop.cdpCalls.find((call) => call.method === "Page.addScriptToEvaluateOnNewDocument" && typeof call.params.worldName === "string");
       expect(typeof bindingCall?.params.executionContextName).toBe("string");
       expect(bindingCall?.params.executionContextName).toBeTruthy();
       expect(observerCall?.params.worldName).toBe(bindingCall?.params.executionContextName);
