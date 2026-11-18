@@ -16,7 +16,7 @@ export interface RoutingQuota {
 
 /**
  * 이 모델에 묶이는 창. 범위 없는 창은 공급자 공통 한도라 모든 모델에 묶이고, 범위가 있는 창은
- * 모델이 무는 범위일 때만 묶인다 — 풀끼리(예: Antigravity의 Gemini와 Claude & GPT) 잔여량이 섞이지 않는다.
+ * 모델이 무는 범위일 때만 묶인다 — 풀끼리 잔여량이 섞이지 않는다.
  * 집계 풀은 뺀다.
  */
 export function bindingQuotaWindows(quota: GatewayProviderQuota | undefined, scopes?: readonly string[]): readonly GatewayQuotaWindow[] {

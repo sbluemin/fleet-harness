@@ -321,9 +321,9 @@ export interface CanonicalReasoningOutputItem {
   type: "reasoning";
   encrypted_content?: string;
   /**
-   * The adapter's own provider id (`"codex"`, `"xai"`, `"antigravity"`). A blob is only ever
+   * The adapter's own provider id (`"codex"`, `"xai"`). A blob is only ever
    * readable by the provider that issued it, and a foreign one can pass another provider's
-   * shape check — a Codex blob is valid base64 to Antigravity — so the issuer travels with it.
+   * shape check, so the issuer travels with it.
    */
   origin: string;
 }

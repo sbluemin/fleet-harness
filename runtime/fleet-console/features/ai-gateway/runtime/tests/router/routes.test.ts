@@ -3,7 +3,6 @@ import { routingBatchInstructions, routingDifficulty } from "../../src/fleet/rou
 import { GatewayRoutingDistribution } from "../../src/fleet/routing-distribution.js";
 import {
   AnthropicMessagesGateway,
-  createAgyAcpSessionPort,
   createClaudeCodexCompactionStore,
   createProviderAuthService,
   createMuseCodeOAuth,
@@ -45,7 +44,6 @@ import {
   applyClaudeNativeModels,
   findGatewayModel,
   GATEWAY_MODELS,
-  parseAntigravityQuotaSummary,
   parseClaudeUsage,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
@@ -302,7 +300,7 @@ describe("delegation assignment", () => {
       delegationModels: [
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-4.7"),
-        requireGatewayModel("antigravity--gemini-4-argon"),
+        requireGatewayModel("opencode--deepseek-v4.1-flash"),
         requireGatewayModel("muse-code--muse-spark-1.3-contributor"),
       ],
       quota: {
@@ -319,7 +317,7 @@ describe("delegation assignment", () => {
           windows: [{ id: "session", usedPercent: 84, resetsAt: now + 1.5 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
         },
         // ok: 20% 사용, 경과 50%(남은 기간 50%) → paceRatio 0.4, sustainableHeadroom 1.6
-        antigravity: {
+        opencode: {
           status: "ok",
           fetchedAt: now,
           windows: [{ id: "session", usedPercent: 20, resetsAt: now + 2.5 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
@@ -330,7 +328,7 @@ describe("delegation assignment", () => {
 
     const evaluated = evaluateGatewayCandidateModels(exposure, now);
     expect(evaluated.map((entry) => [entry.model.provider, entry.allowance.pressure])).toEqual([
-      ["antigravity", "ok"],
+      ["opencode", "ok"],
       ["xai", "elevated"],
       ["muse-code", "unknown"],
     ]);
@@ -339,15 +337,15 @@ describe("delegation assignment", () => {
       { surface: "agent", subagentType: "general-purpose", providerPlugin: "engine" },
       exposure,
     );
-    expect(agentDecision.model).toBe("claude-gateway--antigravity--gemini-4-argon[1m]");
-    expect(agentDecision.effort).toBe("medium");
+    expect(agentDecision.model).toBe("claude-gateway--opencode--deepseek-v4.1-flash[1m]");
+    expect(agentDecision.effort).toBe("high");
     expect(agentDecision.because).not.toContain("fallback");
 
     const stageDecision = decideGatewayRoutingAssignment(
       { surface: "stage" },
       exposure,
     );
-    expect(stageDecision.model).toBe("claude-gateway--antigravity--gemini-4-argon[1m]");
+    expect(stageDecision.model).toBe("claude-gateway--opencode--deepseek-v4.1-flash[1m]");
   });
 
   it("orders candidates within the same pressure class by sustainableHeadroom first and falls back to remainingPercent only when headroom is absent", () => {
@@ -358,7 +356,7 @@ describe("delegation assignment", () => {
       delegationModels: [
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-4.7"),
-        requireGatewayModel("antigravity--gemini-4-argon"),
+        requireGatewayModel("opencode--deepseek-v4.1-flash"),
         requireGatewayModel("muse-code--muse-spark-1.3-contributor"),
         requireGatewayModel("claude--sonnet-1m"),
       ],
@@ -376,8 +374,8 @@ describe("delegation assignment", () => {
           fetchedAt: now,
           windows: [{ id: "session", usedPercent: 40, resetsAt: now + 1 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
         },
-        // antigravity(elevated): used 88%(remaining 12%), 경과 80%(남은 기간 20%, paceRatio 1.1 → elevated) → sustainableHeadroom = 0.12 / 0.2 = 0.6
-        antigravity: {
+        // opencode(elevated): used 88%(remaining 12%), 경과 80%(남은 기간 20%, paceRatio 1.1 → elevated) → sustainableHeadroom = 0.12 / 0.2 = 0.6
+        opencode: {
           status: "ok",
           fetchedAt: now,
           windows: [{ id: "session", usedPercent: 88, resetsAt: now + 1 * hour, period: { durationMs: 5 * hour, durationBasis: "upstream" } }],
@@ -396,7 +394,7 @@ describe("delegation assignment", () => {
       "xai",
       "codex",
       "muse-code",
-      "antigravity",
+      "opencode",
       "claude",
     ]);
 
@@ -405,19 +403,19 @@ describe("delegation assignment", () => {
     // 양쪽 모두 sustainableHeadroom이 없을 때만 remainingPercent로 비교한다.
     const tiedAndClockless = evaluateGatewayCandidateModels({
       delegationModels: [
-        requireGatewayModel("antigravity--gemini-4-argon"),
+        requireGatewayModel("opencode--deepseek-v4.1-flash"),
         requireGatewayModel("muse-code--muse-spark-1.3-contributor"),
         requireGatewayModel("codex--gpt-6.1-terra"),
         requireGatewayModel("xai--grok-4.7"),
       ],
       quota: {
-        // antigravity: 시계 없는 창(sustainableHeadroom 없음), used 40%(remaining 60%)
-        antigravity: {
+        // opencode: 시계 없는 창(sustainableHeadroom 없음), used 40%(remaining 60%)
+        opencode: {
           status: "ok",
           fetchedAt: now,
           windows: [{ id: "cycle", usedPercent: 40 }],
         },
-        // muse-code: 시계 없는 창(sustainableHeadroom 없음), used 10%(remaining 90% > 60%) → 양쪽 모두 headroom이 없으므로 antigravity보다 앞
+        // muse-code: 시계 없는 창(sustainableHeadroom 없음), used 10%(remaining 90% > 60%) → 양쪽 모두 headroom이 없으므로 opencode보다 앞
         "muse-code": {
           status: "ok",
           fetchedAt: now,
@@ -441,7 +439,7 @@ describe("delegation assignment", () => {
       "codex",
       "xai",
       "muse-code",
-      "antigravity",
+      "opencode",
     ]);
   });
 
@@ -640,13 +638,6 @@ describe("delegation assignment", () => {
     const discovery = buildAnthropicModelList(GATEWAY_MODELS);
     const discoveredIds = discovery.data.map((entry) => entry.id);
     expect(discoveredIds.some((id) => id.startsWith("claude-gateway--claude--") || id === "sonnet" || id === "opus[1m]")).toBe(false);
-    // Antigravity가 서빙하는 Claude 모델은 광고되고, 같은 agy 그룹의 GPT-OSS 120B는 카탈로그·디스커버리 어디에도 없다.
-    expect(discoveredIds).toEqual(expect.arrayContaining([
-      "claude-gateway--antigravity--claude-opus-5.5[1m]",
-      "claude-gateway--antigravity--claude-sonnet-5.5[1m]",
-    ]));
-    expect(discoveredIds.some((id) => id.includes("gpt-oss"))).toBe(false);
-    expect(GATEWAY_MODELS.some((model) => model.id.includes("gpt-oss"))).toBe(false);
   });
 
   it("routes delegation to Claude native models without gateway prefix", () => {
@@ -863,7 +854,7 @@ describe("delegation assignment", () => {
     }, now).candidates).toEqual([]);
   });
 
-  it("isolates every model-scoped limit (Claude weekly_scoped, future models, Antigravity Argon) while applying common limits to all", () => {
+  it("isolates every model-scoped limit (Claude weekly_scoped, future models) while applying common limits to all", () => {
     const now = Date.parse("2026-11-15T04:00:00Z");
     const sessionReset = new Date(now + 3 * 3_600_000).toISOString();
     const weekReset = new Date(now + 5 * 24 * 3_600_000).toISOString();
@@ -920,121 +911,6 @@ describe("delegation assignment", () => {
       "sonnet[1m]",
       "opus[1m]",
       "fable[1m]",
-    ]);
-
-    // 3) Antigravity의 gemini-argon-wtu-weekly(98%)는 Argon만 빼고 Carbon·Hydrogen은 후보로 남긴다.
-    const antigravityModels = [
-      requireGatewayModel("antigravity--gemini-4-argon"),
-      requireGatewayModel("antigravity--gemini-4-carbon"),
-      requireGatewayModel("antigravity--gemini-4-hydrogen"),
-    ];
-    const argonCriticalWindows = parseAntigravityQuotaSummary({
-      status: "SUCCESS",
-      num_turns: 0,
-      command: {
-        name: "usage",
-        data: {
-          groups: [
-            {
-              name: "Gemini 4 Argon",
-              buckets: [{ id: "gemini-argon-wtu-weekly", remaining_fraction: 0.02, reset_time: weekReset }],
-            },
-            {
-              name: "Gemini Models",
-              buckets: [
-                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
-                { id: "gemini-weekly", remaining_fraction: 0.7, reset_time: weekReset },
-              ],
-            },
-          ],
-        },
-      },
-    }) ?? [];
-    const argonExposure: GatewayAssignmentExposure = {
-      delegationModels: antigravityModels,
-      quota: { antigravity: { status: "ok", fetchedAt: now, windows: argonCriticalWindows } },
-    };
-    const antigravityCandidates = buildGatewayCandidates(argonExposure, now).candidates;
-    expect(antigravityCandidates.map((candidate) => [candidate.model, candidate.pressure])).toEqual([
-      ["antigravity--gemini-4-carbon", "ok"],
-      ["antigravity--gemini-4-hydrogen", "ok"],
-    ]);
-
-    // 4) 공통 창(gemini-weekly 98%)이 critical이면 Antigravity 전 모델이 빠진다.
-    const geminiSharedCritical = parseAntigravityQuotaSummary({
-      status: "SUCCESS",
-      num_turns: 0,
-      command: {
-        name: "usage",
-        data: {
-          groups: [
-            {
-              name: "Gemini 4 Argon",
-              buckets: [{ id: "gemini-argon-wtu-weekly", remaining_fraction: 0.9, reset_time: weekReset }],
-            },
-            {
-              name: "Gemini Models",
-              buckets: [
-                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
-                { id: "gemini-weekly", remaining_fraction: 0.02, reset_time: weekReset },
-              ],
-            },
-          ],
-        },
-      },
-    }) ?? [];
-    expect(buildGatewayCandidates({
-      delegationModels: antigravityModels,
-      quota: { antigravity: { status: "ok", fetchedAt: now, windows: geminiSharedCritical } },
-    }, now).candidates).toEqual([]);
-
-    // 5) Gemini 풀과 Claude & GPT 풀(3p-*)은 서로 번지지 않는다. 한쪽 주간 한도가 critical이어도 다른 쪽 모델은 후보로 남는다.
-    const mixedModels = [
-      ...antigravityModels,
-      requireGatewayModel("antigravity--claude-opus-5.5"),
-      requireGatewayModel("antigravity--claude-sonnet-5.5"),
-    ];
-    const byFamily = (geminiWeekly: number, claudeWeekly: number) => parseAntigravityQuotaSummary({
-      status: "SUCCESS",
-      num_turns: 0,
-      command: {
-        name: "usage",
-        data: {
-          groups: [
-            {
-              name: "Gemini Models",
-              buckets: [
-                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
-                { id: "gemini-weekly", remaining_fraction: geminiWeekly, reset_time: weekReset },
-              ],
-            },
-            {
-              name: "Claude and GPT models",
-              buckets: [
-                { id: "3p-5h", remaining_fraction: 0.8, reset_time: sessionReset },
-                { id: "3p-weekly", remaining_fraction: claudeWeekly, reset_time: weekReset },
-              ],
-            },
-          ],
-        },
-      },
-    }) ?? [];
-    const claudePoolCritical = buildGatewayCandidates({
-      delegationModels: mixedModels,
-      quota: { antigravity: { status: "ok", fetchedAt: now, windows: byFamily(0.9, 0.02) } },
-    }, now).candidates.map((candidate) => candidate.model).sort();
-    expect(claudePoolCritical).toEqual([
-      "antigravity--gemini-4-argon",
-      "antigravity--gemini-4-carbon",
-      "antigravity--gemini-4-hydrogen",
-    ]);
-    const geminiPoolCritical = buildGatewayCandidates({
-      delegationModels: mixedModels,
-      quota: { antigravity: { status: "ok", fetchedAt: now, windows: byFamily(0.02, 0.9) } },
-    }, now).candidates.map((candidate) => candidate.model).sort();
-    expect(geminiPoolCritical).toEqual([
-      "antigravity--claude-opus-5.5",
-      "antigravity--claude-sonnet-5.5",
     ]);
   });
 });
@@ -1815,7 +1691,6 @@ describe("Gemini routing", () => {
       expect(res.status).toBe(200);
       expect(calls[0]?.url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:streamGenerateContent?alt=sse");
       expect(calls[0]?.headers.get("x-goog-api-key")).toBe("gemini-key");
-      // Same model name as the Antigravity entry, but a separate provider: the usage is attributed to this one.
       expect(geminiUsage.observeUsage).toHaveBeenCalledTimes(1);
       expect(geminiUsage.observeUsage).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-4-argon", promptTokens: 3, serviceTier: "standard" }));
     } finally {
@@ -1887,185 +1762,6 @@ describe("route surface", () => {
     expect(res.status).toBe(400);
     expect(res.body).toContain("Unsupported Anthropic content block type: tool_removal_v9");
     expect(streamSpy).toHaveBeenCalledTimes(1);
-  });
-});
-
-describe("agy ACP bridge route", () => {
-  const fakeAgy = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "acp", "fake-agy.mjs");
-  const GEMINI = "claude-gateway--antigravity--gemini-4-argon[1m]";
-
-  it("does not open agy when Antigravity is off, including when the setting key is absent", async () => {
-    const open = vi.fn();
-    const router = createAiGatewayRouter({
-      agyAcpPort: { open } as unknown as AiGatewayRouteDeps["agyAcpPort"],
-      readAiGatewaySettings: () => ({ version: 1 }),
-    });
-    const res = response();
-    await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: GEMINI }));
-    expect(res.status).toBe(403);
-    expect(res.body).toContain("Antigravity is turned off");
-    expect(open).not.toHaveBeenCalled();
-    await router.releaseAgy();
-  });
-
-  function agyRouter(directory: string, models?: string) {
-    const port = createAgyAcpSessionPort({
-      sessionsDir: path.join(directory, "sessions"),
-      command: process.execPath,
-      commandArgs: [fakeAgy],
-      env: { ...process.env, FAKE_BRIDGE: "1", FAKE_LOG: path.join(directory, "fake.log"), ...(models ? { FAKE_MODELS: models } : {}) },
-    });
-    return createAiGatewayRouter({
-      agyAcpPort: port,
-      readAiGatewaySettings: () => ({ version: 1, antigravityEnabled: true }),
-    });
-  }
-
-  it("serves a Gemini model through the agy bridge as a tool_use turn and closes every agy child on dispose", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agy-route-"));
-    try {
-      const router = agyRouter(directory);
-      const res = response();
-      await router.handle(ctx({
-        res,
-        token: ANTHROPIC_CRED,
-        model: GEMINI,
-        messages: [{ role: "user", content: 'TOOL:Bash:{"command":"ls"}' }],
-        tools: [{ name: "Bash", description: "Run a command", input_schema: { type: "object", properties: { command: { type: "string" } } } }],
-      }));
-      expect(res.status).toBe(200);
-      expect(res.body).toContain('"type":"tool_use"');
-      expect(res.body).toContain('"name":"Bash"');
-      expect(res.body).toContain('"stop_reason":"tool_use"');
-      expect(fs.readdirSync(path.join(directory, "sessions"))).toHaveLength(1);
-      // Disposing the router ends the held agy session: no child and no session directory survive it.
-      await router.dispose();
-      // The child may end on stdin EOF before SIGTERM lands, so check that it is gone, not which signal ended it.
-      const pids = fs.readFileSync(path.join(directory, "fake.log"), "utf8").trim().split("\n")
-        .map((line) => (JSON.parse(line) as { pid?: number }).pid).filter((pid): pid is number => typeof pid === "number");
-      expect(pids).toHaveLength(1);
-      expect(() => process.kill(pids[0]!, 0)).toThrow(expect.objectContaining({ code: "ESRCH" }));
-      expect(fs.readdirSync(path.join(directory, "sessions"))).toEqual([]);
-    } finally {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
-  it("serves a Claude model through the same agy bridge from its Claude Code discovery id", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agy-route-"));
-    try {
-      const router = agyRouter(directory, "claude-opus-5-5-low,claude-opus-5-5-medium,claude-opus-5-5-high");
-      const res = response();
-      await router.handle(ctx({
-        res,
-        token: ANTHROPIC_CRED,
-        // 카탈로그 id는 `antigravity--claude-opus-5.5`, Claude Code가 보내는 표기는 여기에 1M 마커가 붙는다.
-        model: "claude-gateway--antigravity--claude-opus-5.5[1m]",
-        messages: [{ role: "user", content: 'TOOL:Bash:{"command":"ls"}' }],
-        tools: [{ name: "Bash", description: "Run a command", input_schema: { type: "object", properties: { command: { type: "string" } } } }],
-      }));
-      expect(res.status).toBe(200);
-      expect(res.body).toContain('"type":"tool_use"');
-      expect(res.body).toContain('"name":"Bash"');
-      await router.dispose();
-    } finally {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
-  it("answers a model the agy account does not offer with a 400 that names it, which Claude Code does not retry", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agy-route-"));
-    try {
-      const router = agyRouter(directory, "gemini-4-carbon-low,gemini-4-carbon-medium,gemini-4-carbon-high");
-      const res = response();
-      await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: GEMINI }));
-      expect(res.status).toBe(400);
-      expect(res.body).toContain("gemini-4-argon");
-      expect(res.body).toContain("invalid_request_error");
-      await router.dispose();
-    } finally {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
-  });
-
-  it("advertises 500k Gemini models with [1m] and recovers from 413 through dedicated tool-less compaction", async () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-agy-route-"));
-    try {
-      for (const modelId of [
-        "antigravity--gemini-3.8-flash",
-        "antigravity--gemini-4-argon",
-        "antigravity--gemini-4-carbon",
-        "antigravity--gemini-4-hydrogen",
-      ]) {
-        expect(findGatewayModel(modelId)?.contextWindow).toBe(500_000);
-      }
-
-      const router = agyRouter(directory);
-      const modelsRes = response();
-      await router.handle(ctx({
-        res: modelsRes,
-        method: "GET",
-        pathname: `${BASE}/v1/models`,
-        token: ANTHROPIC_CRED,
-      }));
-      expect(modelsRes.status).toBe(200);
-      const advertisedIds = (JSON.parse(modelsRes.body) as { data: { id: string }[] }).data.map((entry) => entry.id);
-      expect(advertisedIds).toContain(GEMINI);
-      expect(advertisedIds).toContain("claude-gateway--antigravity--gemini-4-hydrogen[1m]");
-
-      const tools = [{ name: "Bash", description: "Run a command", input_schema: { type: "object", properties: { command: { type: "string" } } } }];
-      // 1) Prompt exceeding 500k hits pre-flight 413.
-      const overflowRes = response();
-      await router.handle(ctx({
-        res: overflowRes,
-        token: ANTHROPIC_CRED,
-        model: GEMINI,
-        messages: [{ role: "user", content: "x".repeat(2_100_000) }],
-        tools,
-      }));
-      expect(overflowRes.status).toBe(413);
-      expect(JSON.parse(overflowRes.body).error.message).toMatch(/^Prompt is too long: \d+ tokens > 500000 maximum context window$/);
-
-      // 2) Subsequent compactSummary request (even with tools attached and >500k body) runs dedicated tool-less compaction.
-      const compactRes = response();
-      await router.handle(ctx({
-        res: compactRes,
-        token: ANTHROPIC_CRED,
-        model: GEMINI,
-        metadata: { user_id: JSON.stringify({ session_id: "agy-compact-repro-1" }) },
-        messages: [
-          { role: "user", content: "x".repeat(2_100_000) },
-          { role: "assistant", content: "working on task" },
-          { role: "user", content: `${CLAUDE_COMPACT_PROMPT_MARKER} Summarize.` },
-        ],
-        tools,
-      }));
-      expect(compactRes.status).toBe(200);
-      expect(compactRes.body).toContain("Compacted summary (0 tools) history:yes");
-      expect(compactRes.body).not.toContain('"type":"tool_use"');
-      expect(compactRes.body).toContain('"stop_reason":"end_turn"');
-
-      // 3) Next turn with compacted continuation succeeds cleanly.
-      const nextRes = response();
-      await router.handle(ctx({
-        res: nextRes,
-        token: ANTHROPIC_CRED,
-        model: GEMINI,
-        metadata: { user_id: JSON.stringify({ session_id: "agy-compact-repro-1" }) },
-        messages: [
-          { role: "user", content: `${CLAUDE_COMPACT_CONTINUATION_MARKER}\n\nCompacted summary` },
-          { role: "assistant", content: "ready" },
-          { role: "user", content: "continue" },
-        ],
-        tools,
-      }));
-      expect(nextRes.status).toBe(200);
-      expect(nextRes.body).toContain("history:yes");
-      expect(nextRes.body).toContain('"stop_reason":"end_turn"');
-      await router.dispose();
-    } finally {
-      fs.rmSync(directory, { recursive: true, force: true });
-    }
   });
 });
 

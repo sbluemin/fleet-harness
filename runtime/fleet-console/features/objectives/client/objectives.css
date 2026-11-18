@@ -194,7 +194,6 @@ span.objectives-row-main { cursor: default; }
 .objectives-launch-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
 .objectives-launch-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
 .objectives-launch-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
-.objectives-launch-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .objectives-launch-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .objectives-launch-provider.is-gemini { --launch-provider-tone: var(--provider-gemini); }
 

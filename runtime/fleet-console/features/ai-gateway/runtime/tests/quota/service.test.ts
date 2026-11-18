@@ -33,59 +33,25 @@ describe("quota service", () => {
     expect(fetchClaude).not.toHaveBeenCalled();
   });
 
-  it("does not ask antigravity again after signed_out until a forced refresh", async () => {
-    let now = 0;
-    const fetchAntigravity = vi.fn(async () => ({ status: "signed_out" as const }));
-    const service = createQuotaService({
-      now: () => now,
-      isClaudeConnected: async () => false,
-      fetchClaude: async () => ({ status: "signed_out" }),
-      fetchCodex: async () => ({ status: "signed_out" }),
-      fetchAntigravity,
-      antigravityEnabled: () => true,
-    });
-    expect((await service.getSummary()).providers.antigravity.status).toBe("signed_out");
-    now = QUOTA_CACHE_TTL_MS + 1;
-    expect((await service.getSummary()).providers.antigravity.status).toBe("signed_out");
-    expect(fetchAntigravity).toHaveBeenCalledTimes(1);
-    expect((await service.getSummary({ forceProvider: "antigravity" })).providers.antigravity.status).toBe("signed_out");
-    expect((await service.getSummary({ force: true })).providers.antigravity.status).toBe("signed_out");
-    expect(fetchAntigravity).toHaveBeenCalledTimes(3);
-  });
-
-  it("does not call the antigravity collector when the knob is absent or off", async () => {
-    const fetchAntigravity = vi.fn(async () => ({ status: "ok" as const, windows: [], fetchedAt: 1 }));
-    const service = createQuotaService({
-      isClaudeConnected: async () => false,
-      fetchClaude: async () => ({ status: "signed_out" }),
-      fetchCodex: async () => ({ status: "signed_out" }),
-      fetchAntigravity,
-    });
-    expect((await service.getSummary()).providers.antigravity).toEqual({ status: "not_connected" });
-    expect((await service.getSummary({ force: true })).providers.antigravity).toEqual({ status: "not_connected" });
-    expect(fetchAntigravity).not.toHaveBeenCalled();
-  });
-
   it("does not let a forced refresh join a read that a record invalidated", async () => {
     const gates: Array<(value: ProviderResult) => void> = [];
-    const fetchAntigravity = vi.fn(() => new Promise<ProviderResult>((resolve) => { gates.push(resolve); }));
+    const fetchXai = vi.fn(() => new Promise<ProviderResult>((resolve) => { gates.push(resolve); }));
     const service = createQuotaService({
       isClaudeConnected: async () => false,
       fetchClaude: async () => ({ status: "signed_out" }),
       fetchCodex: async () => ({ status: "signed_out" }),
-      fetchAntigravity,
-      antigravityEnabled: () => true,
+      fetchXai,
     });
-    const first = service.getSummary({ forceProvider: "antigravity" });
+    const first = service.getSummary({ forceProvider: "xai" });
     await Promise.resolve();
     expect(gates).toHaveLength(1);
-    service.record("antigravity", { status: "not_connected" });
-    const second = service.getSummary({ forceProvider: "antigravity" });
+    service.record("xai", { status: "not_connected" });
+    const second = service.getSummary({ forceProvider: "xai" });
     expect(gates).toHaveLength(2);
     gates[0]?.({ status: "ok", windows: [{ id: "session", usedPercent: 1 }], fetchedAt: 1 });
     gates[1]?.({ status: "ok", windows: [{ id: "session", usedPercent: 4 }], fetchedAt: 2 });
-    expect((await first).providers.antigravity.status).toBe("not_connected");
-    expect((await second).providers.antigravity).toMatchObject({ status: "ok", windows: [{ usedPercent: 4 }] });
+    expect((await first).providers.xai.status).toBe("not_connected");
+    expect((await second).providers.xai).toMatchObject({ status: "ok", windows: [{ usedPercent: 4 }] });
   });
 
   it("uses a five-minute cache, serves an expired one without lapsed windows, supports force bypass, and single-flights", async () => {
@@ -516,19 +482,9 @@ describe("quota service", () => {
               { id: "model", scope: "model:future-model", label: "Future", usedPercent: 10, resetsAt },
             ],
           },
-          antigravity: {
-            status: "ok",
-            fetchedAt: now,
-            windows: [
-              { id: "session", label: "Gemini", usedPercent: 95, resetsAt },
-              { id: "weekly", label: "Gemini", usedPercent: 98, resetsAt },
-              { id: "weekly", scope: "model:gemini-4-argon", label: "Gemini 4 Argon", usedPercent: 12, resetsAt },
-            ],
-          },
         },
       }));
       // 은퇴한 풀의 창이 scope 없이 살아남으면 Auto 모델의 공유 제한으로 읽혀 배정을 그르친다.
-      // 업그레이드 전 저장된 Antigravity Gemini 창도 pool:gemini로 이관해 Claude 모델에 전파되지 않게 한다.
       const read = createQuotaLastGoodStore({ filePath }).read();
       expect(read.xai?.windows).toEqual([
         { id: "cycle", scope: "auto", label: "Auto", usedPercent: 10, resetsAt },
@@ -537,11 +493,6 @@ describe("quota service", () => {
         { id: "weekly", usedPercent: 66, resetsAt },
         { id: "model", scope: "model:fable", label: "Fable", usedPercent: 95, resetsAt },
         { id: "model", scope: "model:future-model", label: "Future", usedPercent: 10, resetsAt },
-      ]);
-      expect(read.antigravity?.windows).toEqual([
-        { id: "session", scope: "pool:gemini", label: "Gemini", usedPercent: 95, resetsAt },
-        { id: "weekly", scope: "pool:gemini", label: "Gemini", usedPercent: 98, resetsAt },
-        { id: "weekly", scope: "model:gemini-4-argon", label: "Gemini 4 Argon", usedPercent: 12, resetsAt },
       ]);
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });

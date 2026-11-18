@@ -5,20 +5,20 @@ import { getViewModeSnapshot } from "../../../core/client/src/integration/view-m
 import { getT, useTerminalLocale } from "../../execution/client/agent/i18n/index.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
-import { SettingsGroup, SettingsHelpTip, SettingsSegments, SettingsToggle } from "../../settings/client/preferences-context.js";
+import { SettingsGroup, SettingsSegments } from "../../settings/client/preferences-context.js";
 import { closeSettingsModal } from "../../settings/client/settings-door.js";
 import {
   loadSystemPromptSettings,
   setSystemPromptSettingsField,
   useSystemPromptSettingsStore,
   type AiGatewayCatalogProvider,
+  type AiGatewayProviderId,
   type XaiEndpointPreference,
 } from "../../settings/client/execution-settings.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { launchProviderFromModelId, launchProviderGlyph, serviceGlyph, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
 
 const PROVIDER_LABEL = {
-  antigravity: "terminal.settings.aiGatewayProviderAntigravity",
   claude: "terminal.settings.aiGatewayProviderClaude",
   codex: "terminal.settings.aiGatewayProviderCodex",
   xai: "terminal.settings.aiGatewayProviderXai",
@@ -28,12 +28,10 @@ const PROVIDER_LABEL = {
 } as const;
 
 /**
- * 게이트웨이가 각 공급자에 붙는 방식. Antigravity만 agy ACP 브리지로 말하고
- * (router.ts의 agyBridgeGateway), OpenCode Go와 Gemini는 Console에 저장한 API 키로, 나머지는 구독
- * OAuth 자격으로 공급자 API를 직접 부른다.
+ * 게이트웨이가 각 공급자에 붙는 방식. OpenCode Go와 Gemini는 Console에 저장한 API 키로,
+ * 나머지는 구독 OAuth 자격으로 공급자 API를 직접 부른다.
  */
 const PROVIDER_TRANSPORT = {
-  antigravity: "terminal.settings.aiGatewayTransportAcp",
   claude: "terminal.settings.aiGatewayTransportOauth",
   codex: "terminal.settings.aiGatewayTransportOauth",
   xai: "terminal.settings.aiGatewayTransportOauth",
@@ -43,7 +41,7 @@ const PROVIDER_TRANSPORT = {
 } as const;
 
 /** 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서. */
-const LAUNCH_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
+const LAUNCH_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "muse-code", "opencode", "gemini"];
 
 /**
  * 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서.
@@ -171,27 +169,19 @@ function ProviderLoginRow({ provider, status, keyAuth, busy }: {
   readonly keyAuth: ModelAuthProviderState | undefined;
   readonly busy: boolean;
 }): React.ReactElement {
-  const mobile = useMobileSettingsHost() !== null;
-  const t = getT(useTerminalLocale(), mobile);
+  const t = getT(useTerminalLocale(), useMobileSettingsHost() !== null);
   const name = t(PROVIDER_LABEL[provider.id]);
   const kind = gatewayLoginKind(provider.id, status);
-  // 데스크톱은 이름 옆 「?」, 모바일은 SettingsHelpTip이 행 아래 한 줄로 서므로 행의 마지막 자식으로 둔다.
-  const caution = provider.id === "antigravity" ? (
-    <SettingsHelpTip ariaLabel={t("terminal.settings.helpTipAria", { title: name })}>
-      {t("terminal.settings.aiGatewayAntigravityCaution")}
-    </SettingsHelpTip>
-  ) : null;
   return (
     <div className="ai-gateway-login-row">
       <ProviderMark provider={provider.id} />
       <span className="ai-gateway-provider-heading">
         <span className="ai-gateway-provider-name">{name}</span>
         <span className="ai-gateway-transport">{t(PROVIDER_TRANSPORT[provider.id])}</span>
-        {mobile ? null : caution}
       </span>
       <span className="ai-gateway-login-control">
         {provider.id === "xai" ? <XaiEndpointSegments /> : null}
-        {provider.id === "antigravity" ? <AntigravityEnabledToggle /> : keyAuth ? (
+        {keyAuth ? (
           <ApiKeyLoginControl credential={keyAuth} name={name} busy={busy} />
         ) : kind === "unlinked" ? (
           <button type="button" className="ai-gateway-login is-unlinked" onClick={() => requestQuotaPanelOpen()}>{t("terminal.settings.aiGatewayUsageUnlinked")}</button>
@@ -206,7 +196,6 @@ function ProviderLoginRow({ provider, status, keyAuth, busy }: {
           </span>
         )}
       </span>
-      {mobile ? caution : null}
     </div>
   );
 }
@@ -230,22 +219,6 @@ function RoutingPoolStack({ providers }: { readonly providers: readonly LaunchPr
       ))}
       {extra > 0 ? <span className="ai-gateway-pool-more">+{extra}</span> : null}
     </span>
-  );
-}
-
-/** Antigravity 줄의 유일한 컨트롤. 로그인 문구와 로그인 버튼은 두지 않는다. */
-function AntigravityEnabledToggle(): React.ReactElement {
-  const mobile = useMobileSettingsHost() !== null;
-  const t = getT(useTerminalLocale(), mobile);
-  const settings = useSystemPromptSettingsStore();
-  const enabled = settings.state?.antigravityEnabled === true;
-  return (
-    <SettingsToggle
-      checked={enabled}
-      busy={settings.savingFields.has("antigravityEnabled")}
-      ariaLabel={t("terminal.settings.aiGatewayAntigravityEnabled")}
-      onChange={(next) => { void setSystemPromptSettingsField("antigravityEnabled", next); }}
-    />
   );
 }
 

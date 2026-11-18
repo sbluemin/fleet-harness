@@ -10,7 +10,6 @@ export function buildAgentCliLaunchKinds(
   metadata: readonly AgentCliLaunchMetadata[],
   objectiveRecordType: string,
   statuses?: ProviderStatusMap,
-  antigravityEnabled = false,
 ): ObjectiveLaunchKind[] {
   return metadata
     .map((cli) => {
@@ -23,7 +22,7 @@ export function buildAgentCliLaunchKinds(
           ? { disabled: true, disabledReason }
           : cli.id === "claude"
             ? {
-              variants: buildClaudeLaunchVariants(statuses, antigravityEnabled),
+              variants: buildClaudeLaunchVariants(statuses),
             }
             : {}),
       };
@@ -35,8 +34,8 @@ export function buildAgentCliLaunchKinds(
  * 새 세션·채팅 좌표·캔버스·Objectives 보드의 선택지다. 그 카탈로그가 비면(전부 로그아웃) 최후 폴백
  * (sonnet) 한 행의 폴백 띠만 서고, 표면은 그 띠를 폴백 표식으로 그린다.
  */
-function buildClaudeLaunchVariants(statuses: ProviderStatusMap | undefined, antigravityEnabled: boolean): readonly ObjectiveLaunchVariantGroup[] {
-  const roster = buildModelRoster("launch", statuses, antigravityEnabled);
+function buildClaudeLaunchVariants(statuses: ProviderStatusMap | undefined): readonly ObjectiveLaunchVariantGroup[] {
+  const roster = buildModelRoster("launch", statuses);
   return roster.length > 0 ? roster : [buildRosterFallbackGroup()];
 }
 

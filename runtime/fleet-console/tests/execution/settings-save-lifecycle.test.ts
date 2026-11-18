@@ -8,7 +8,6 @@ const BASE: SystemPromptSettingsState = {
   wireLogEnabled: false,
   compactCeiling: null,
   xaiEndpoint: "cli-proxy",
-  antigravityEnabled: false,
   aiGatewayLogin: {},
 };
 

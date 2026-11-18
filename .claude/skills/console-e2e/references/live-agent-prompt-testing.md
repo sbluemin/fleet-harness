@@ -264,9 +264,6 @@ the change under test must be in that host: apply the [serve bundle check](#serv
 Match the headless client's base-system-prompt choice to the production launch/profile under
 test (`runtime/fleet-console/features/execution/host/agent/launch.ts`,
 `runtime/fleet-console/foundation/agent-runtime/src/fleet/agent-cli/builders/claude.ts`).
-Antigravity/agy (ACP) disables Claude Code's base system prompt regardless of the setting; add
-`--system-prompt ""` for that case. For other providers, follow the tested launch/profile's
-setting rather than disabling it globally.
 
 The wrapper refuses `--set ANTHROPIC_BASE_URL`, so point Claude Code at the gateway with a
 settings file in the run directory, and start it through the wrapper from a clean environment,
@@ -313,8 +310,8 @@ Anthropic instead, because the settings file did not apply.
   `--resume --model <other>` it drops them. A defect that needs one provider's reasoning
   metadata to reach another provider is therefore reproduced by keeping the Claude Code model
   and switching the gateway underneath it with `FLEET_AI_GATEWAY_MODEL`.
-- Keep providers whose credentials live in the macOS keychain and refresh themselves (for
-  example Antigravity via `agy`) out of isolated runs unless the person agrees: reading them
+- Keep providers whose credentials live in the macOS keychain and refresh themselves out of
+  isolated runs unless the person agrees: reading them
   can raise a keychain prompt or rotate the real token.
 - Afterwards, confirm the real `~/.claude` holds nothing new from the run by content — the run
   directory or session id — within the run's time window, not by one file's mtime; other

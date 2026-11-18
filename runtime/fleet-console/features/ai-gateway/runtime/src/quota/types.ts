@@ -9,8 +9,8 @@ export type WindowId = "session" | "weekly" | "model" | "cycle";
  * more than one pool. A scoped window must not be confused with the provider's
  * combined usage, which can be healthy while one pool is exhausted.
  *
- * - `"pool:<slug>"` — a model family that shares one allowance (e.g. Antigravity's
- *   `"pool:gemini"` and `"pool:claude-gpt"`). Every model of the family binds to it.
+ * - `"pool:<slug>"` — a model family that shares one allowance. Every model of the
+ *   family binds to it.
  * - `"model:<slug>"` — a single model's own limit inside its pool (e.g.
  *   `"model:fable"`, `"model:gemini-4-argon"`).
  * - `"auto"` — a legacy named sub-pool.
@@ -130,13 +130,9 @@ export interface ProviderDto {
 
 export interface QuotaSummaryDto {
   readonly providers: {
-    readonly antigravity: ProviderDto;
     readonly claude: ProviderDto;
     readonly codex: ProviderDto;
-    /**
-     * Gemini Developer API 키 — 플릿이 응답 토큰으로 센 이번 달 지출을 싣는다.
-     * Antigravity 경로의 같은 모델과 별도 항목이다.
-     */
+    /** Gemini Developer API 키 — 플릿이 응답 토큰으로 센 이번 달 지출을 싣는다. */
     readonly gemini: ProviderDto;
     readonly "muse-code": ProviderDto;
     readonly opencode: ProviderDto;

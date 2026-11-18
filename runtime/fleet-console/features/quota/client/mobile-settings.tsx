@@ -7,7 +7,7 @@ import { PROVIDER_ORDER_DEFAULT } from "../shared/provider-order.js";
 import { getT } from "./i18n/index.js";
 import { GeminiSpendRows } from "./gemini-spend.js";
 import type { QuotaWindow } from "@fleet-console/ai-gateway";
-import { expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, providerName, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useAntigravityEnabled, useQuotaData, windowLabel } from "./quota-panel.js";
+import { expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, providerName, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel } from "./quota-panel.js";
 import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subscribeLogins } from "./provider-login.js";
 import type { LoginProvider, ProviderId } from "../shared/provider-order.js";
 import "./mobile.css";
@@ -30,13 +30,12 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
   const locale: ConsoleLocale = document.documentElement.lang === "ko" ? "ko" : "en";
   const t = getT(locale, true);
   const { data, now, requestError, connect, logout, saveBudget } = useQuotaData(api);
-  const antigravityEnabled = useAntigravityEnabled();
   if (requestError && data === null) return <p className="quota-m-note">{t(requestError)}</p>;
   if (data === null) return <p className="quota-m-note" role="status">{t("quota.loading.title")}</p>;
   return (
     <div className="quota-m">
       {requestError ? <p className="quota-m-note" role="alert">{t(requestError)}</p> : null}
-      {PROVIDER_ORDER_DEFAULT.filter((id) => id !== "antigravity" || antigravityEnabled).map((id) => {
+      {PROVIDER_ORDER_DEFAULT.map((id) => {
         const provider = data.providers[id] ?? UNREPORTED_PROVIDER;
         const name = providerName(id, true);
         const readable = provider.status === "ok" || provider.status === "stale";

@@ -121,11 +121,7 @@ export interface AiGatewayStoredSettings {
    * is why it is the default.
    */
   readonly xaiEndpoint?: XaiEndpointPreference;
-  /**
-   * Whether Fleet may use Antigravity at all. Absent is off, including for an
-   * existing installation that has never stored the key. Off does not read or
-   * change agy's own credentials.
-   */
+  /** Retained on disk for compatibility; no runtime behavior reads this flag. */
   readonly antigravityEnabled?: boolean;
 }
 
