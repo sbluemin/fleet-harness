@@ -1731,16 +1731,33 @@ export class BrowserService {
     if (url !== "" && url !== "about:blank") {
       try { target = this.admit(op, url, actor); } catch { await refuse(); return; }
     }
-    const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
-    // 준비 중에 팝업이 스스로 닫혀도(detachedFromTarget) 이 탭을 찾아 접을 수 있게 먼저 등록한다.
-    const tab: Tab = { id: crypto.randomUUID().slice(0, 8), spaceId: opener.spaceId, ownerId: opener.ownerId, openerTabId: opener.id, targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), selectProbe: null };
-    op.tabs.set(tab.id, tab);
-    await this.prepareTab(client, tab, op, actor);
-    if (op.tabs.get(tab.id) !== tab) return;
-    // Chrome 은 팝업을 앞에 띄운다 — 사람이 opener 를 보고 있었을 때만. 에이전트의 작업 탭은 그대로 둔다.
-    if (op.activeTabId === opener.id) await this.selectTab(op.objectiveId, tab.id);
-    else this.emitState(op);
-    if (target) await this.navigateTab(op, tab, target.href);
+    // 상한 검사와 예약을 첫 await 전에 마친다 — 한 relay 에 여러 팝업이 와도 같은 빈자리를 함께 차지하지 않는다(createTab 과 같다).
+    const spaceId = opener.spaceId;
+    op.pendingTabs += 1;
+    op.pendingSpaces.set(spaceId, (op.pendingSpaces.get(spaceId) ?? 0) + 1);
+    let tab: Tab;
+    try {
+      const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
+      // 준비 중에 팝업이 스스로 닫혀도(detachedFromTarget) 이 탭을 찾아 접을 수 있게 먼저 등록한다.
+      tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId: opener.ownerId, openerTabId: opener.id, targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), selectProbe: null };
+      op.tabs.set(tab.id, tab);
+    } catch { await refuse(); return; } finally {
+      op.pendingTabs -= 1;
+      const left = (op.pendingSpaces.get(spaceId) ?? 1) - 1;
+      if (left > 0) op.pendingSpaces.set(spaceId, left); else op.pendingSpaces.delete(spaceId);
+    }
+    try {
+      await this.prepareTab(client, tab, op, actor);
+      if (op.tabs.get(tab.id) !== tab) return;
+      // Chrome 은 팝업을 앞에 띄운다 — 사람이 opener 를 보고 있었을 때만. 에이전트의 작업 탭은 그대로 둔다.
+      if (op.activeTabId === opener.id) await this.selectTab(op.objectiveId, tab.id);
+      else this.emitState(op);
+      if (target) await this.navigateTab(op, tab, target.href);
+    } catch {
+      // 엔진의 closeTarget 은 detachedFromTarget 을 내지 않는다 — 등록한 탭을 여기서 직접 접는다(띄운 탭이었으면 opener 로 돌아간다).
+      if (op.tabs.get(tab.id) === tab) await this.closeTab(op.objectiveId, tab.id).catch(() => refuse());
+      else await refuse();
+    }
   }
 
   /** 띄운 탭이 사라졌을 때 다음으로 세울 탭 — 팝업이었으면 아직 남은 opener, 아니면 같은 스페이스의 마지막 탭. */
@@ -2124,7 +2141,7 @@ export class BrowserService {
         const targetId = typeof p.targetId === "string" ? p.targetId : null;
         if (!targetId) return;
         void this.adoptPopup(op, tab, targetId, typeof p.url === "string" ? p.url : "about:blank").catch(() => {
-          // 받다가 실패한 팝업은 닫는다 — 셸이 뷰를 거두면 detachedFromTarget 이 등록된 탭도 접는다.
+          // 탭 등록 전(컨텍스트 조회)에 실패한 팝업 — 셸의 뷰만 닫으면 된다. 등록 뒤의 실패는 adoptPopup 이 탭까지 접는다.
           void this.client?.send("Target.closeTarget", { targetId }).catch(() => undefined);
         });
         return;
