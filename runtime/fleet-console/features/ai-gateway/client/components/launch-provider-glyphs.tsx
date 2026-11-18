@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 // Shared provider marks for launch menus and model coordinates. Host chrome and
 // plugins both import this module so the bands cannot restyle apart.
 
-export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "antigravity" | "muse-code" | "opencode" | "gemini";
+export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "muse-code" | "opencode" | "gemini";
 
 /**
  * Optional intrinsic size for a provider mark.
@@ -19,13 +19,12 @@ export type LaunchProviderGlyphSize = {
 
 type LaunchProviderGlyphProps = { readonly size?: LaunchProviderGlyphSize };
 
-const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"] as const;
-const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
+const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "muse-code", "opencode", "gemini"] as const;
+const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "muse-code", "opencode", "gemini"];
 const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> = {
   claude: "Claude",
   codex: "Codex",
   xai: "xAI",
-  antigravity: "Antigravity",
   "muse-code": "Muse Code",
   opencode: "OpenCode Go",
   gemini: "Gemini",
@@ -89,15 +88,6 @@ function CodexGlyph({ size }: LaunchProviderGlyphProps) {
   );
 }
 
-function AntigravityGlyph({ size }: LaunchProviderGlyphProps) {
-  // Antigravity's official product mark, flattened to one currentColor path.
-  return (
-    <svg viewBox="0 0 100 100" {...size} aria-hidden="true">
-      <path d="M85.2843 88.0301C90.1329 91.6664 97.4057 89.2422 90.7389 82.5755C70.7389 63.1816 74.9813 9.84827 50.1329 9.84827C25.2843 9.84827 29.5267 63.1816 9.52673 82.5755C2.25402 89.8483 10.1328 91.6664 14.9813 88.0301C33.7692 75.3028 32.5571 52.8786 50.1329 52.8786C67.7086 52.8786 66.4965 75.3028 85.2843 88.0301Z" fill="currentColor" />
-    </svg>
-  );
-}
-
 function GrokGlyph({ size }: LaunchProviderGlyphProps) {
   // Official Grok product mark served by https://grok.com/images/favicon.svg.
   return (
@@ -128,7 +118,7 @@ function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
 }
 
 function GeminiGlyph({ size }: LaunchProviderGlyphProps) {
-  // 공식 로고가 아닌 공급자 식별용 네 갈래 별. Antigravity 마크와 겹치지 않는 윤곽이다.
+  // 공식 로고가 아닌 공급자 식별용 네 갈래 별.
   return (
     <svg viewBox="0 0 24 24" {...size} aria-hidden="true">
       <path d="M12 2c.5 5.6 4.4 9.5 10 10-5.6.5-9.5 4.4-10 10-.5-5.6-4.4-9.5-10-10 5.6-.5 9.5-4.4 10-10Z" fill="currentColor" />
@@ -139,7 +129,6 @@ function GeminiGlyph({ size }: LaunchProviderGlyphProps) {
 export function launchProviderGlyph(provider: LaunchProviderGlyphId, size?: LaunchProviderGlyphSize): ReactNode {
   if (provider === "claude") return <ClaudeGlyph size={size} />;
   if (provider === "xai") return <GrokGlyph size={size} />;
-  if (provider === "antigravity") return <AntigravityGlyph size={size} />;
   if (provider === "muse-code") return <MuseCodeGlyph size={size} />;
   if (provider === "opencode") return <OpencodeGlyph size={size} />;
   if (provider === "gemini") return <GeminiGlyph size={size} />;

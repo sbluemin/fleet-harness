@@ -273,10 +273,6 @@
   color: var(--text-tertiary);
 }
 
-.quota-provider__mark--antigravity {
-  color: var(--provider-antigravity);
-}
-
 .quota-provider__mark--claude {
   color: var(--provider-claude);
 }
