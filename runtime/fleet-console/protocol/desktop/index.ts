@@ -475,6 +475,12 @@ export interface DesktopBrowserPopup {
   readonly background?: boolean;
   /** 셸·Chromium 이 `url` 을 이미 적재 중이다(POST·blob 열기는 첫 이동을 붙잡지 않는다) — Console 은 이동 없이 등록만 한다. */
   readonly loaded?: boolean;
+  /**
+   * 창 기능 팝업(`window.open(url, name, "popup,…")`, Chromium disposition `new-window` + 기능) — 크롬에서는 별도 창이다.
+   * Console 은 이 탭이 닫힐 때 삽입 관계가 잊혔어도 opener 로 돌아간다. 탭형 열기(`_blank`·기능 없는 `window.open`·수정키
+   * 클릭·form POST)와 옛 셸은 이 값을 싣지 않는다 — 그러면 Console 은 탭형으로 본다.
+   */
+  readonly windowPopup?: boolean;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
@@ -569,7 +575,7 @@ export function isDesktopBrowserRelay(value: unknown): value is DesktopBrowserRe
   if (value.sizes !== undefined && !(Array.isArray(value.sizes) && value.sizes.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isFiniteNumber(entry.width) && isFiniteNumber(entry.height) && isFiniteNumber(entry.scale)))) return false;
   if (value.results !== undefined && !(Array.isArray(value.results) && value.results.every((entry) => isRecord(entry) && isFiniteNumber(entry.id) && (entry.error === undefined || typeof entry.error === "string")))) return false;
   if (value.events !== undefined && !(Array.isArray(value.events) && value.events.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && typeof entry.method === "string" && isRecord(entry.params)))) return false;
-  if (value.popups !== undefined && !(Array.isArray(value.popups) && value.popups.length <= 16 && value.popups.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isSafeId(entry.openerViewId) && isShortText(entry.url, 8192) && (entry.background === undefined || typeof entry.background === "boolean") && (entry.loaded === undefined || typeof entry.loaded === "boolean")))) return false;
+  if (value.popups !== undefined && !(Array.isArray(value.popups) && value.popups.length <= 16 && value.popups.every((entry) => isRecord(entry) && isSafeId(entry.viewId) && isSafeId(entry.openerViewId) && isShortText(entry.url, 8192) && (entry.background === undefined || typeof entry.background === "boolean") && (entry.loaded === undefined || typeof entry.loaded === "boolean") && (entry.windowPopup === undefined || typeof entry.windowPopup === "boolean")))) return false;
   if (value.selectPopup !== undefined && value.selectPopup !== null && !isRemoteBrowserSelectPopup(value.selectPopup)) return false;
   if (value.permissionPrompts !== undefined && !(Array.isArray(value.permissionPrompts) && value.permissionPrompts.length <= 32 && value.permissionPrompts.every(isRemoteBrowserPermissionPrompt))) return false;
   if (value.passwordPrompt !== undefined && value.passwordPrompt !== null && !isRemoteBrowserPasswordPrompt(value.passwordPrompt)) return false;

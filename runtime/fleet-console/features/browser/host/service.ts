@@ -183,6 +183,12 @@ interface Tab {
   /** 페이지 팝업으로 열린 탭이면 `window.open` 을 부른 탭. 팝업이 닫히면 이 탭으로 돌아간다. */
   readonly openerTabId?: string;
   /**
+   * 셸이 알려 준 **창 기능 팝업** 여부(`window.open(url, name, "popup,…")`: 크롬에서는 별도 창).
+   * 탭형 열기(`_blank`·기능 없는 `window.open`·수정키 클릭)와 옛 셸(플래그 없음)에서는 없다.
+   * 이 탭이 닫힐 때 삽입 관계가 잊혔어도 `openerTabId` 로 돌아가는 근거다(`nextTabAfter` ⓪).
+   */
+  readonly windowPopup?: boolean;
+  /**
    * 탭 순서에서 이 탭을 어디에 넣을지 정한 opener(삽입 관계). 크롬 `TabStripModel` 의 opener 에 해당하고
    * `openerTabId`(닫힌 뒤 돌아갈 탭)와 별개다 — 앞 열기·표시 탭 전환·주소 이동·닫힘에서 지워지거나 이어받는다.
    */
@@ -1820,7 +1826,7 @@ export class BrowserService {
    * 상한은 여기가 최종 판정이다. 셸은 스냅샷의 `tabOpens.full` 로 받을지 정하지만 그 값은 스냅샷 시점의 것이라, 여러 열기가
    * 한꺼번에 오거나 스냅샷이 닿기 전에 열리면 낡았다. 그때 이 검사가 넘는 열기를 닫는다(셸은 이미 창을 돌려줬으므로 같은 뷰로 대체할 수 없다).
    */
-  private async adoptPopup(op: ObjectiveBrowser, opener: Tab, targetId: string, url: string, flags: { readonly background?: boolean; readonly loaded?: boolean } = {}): Promise<void> {
+  private async adoptPopup(op: ObjectiveBrowser, opener: Tab, targetId: string, url: string, flags: { readonly background?: boolean; readonly loaded?: boolean; readonly windowPopup?: boolean } = {}): Promise<void> {
     const { client } = await this.context(op);
     const refuse = async (): Promise<void> => { await client.send("Target.closeTarget", { targetId }).catch(() => undefined); };
     const spaceFull = this.spaceTabs(op, opener.spaceId).length + (op.pendingSpaces.get(opener.spaceId) ?? 0) >= browserSpaceTabLimit(opener.spaceId);
@@ -1841,7 +1847,7 @@ export class BrowserService {
       const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
       // 준비 중에 팝업이 스스로 닫혀도(detachedFromTarget) 이 탭을 찾아 접을 수 있게 먼저 등록한다.
       const slot = this.popupOrderTarget(op, opener, flags.background === true);
-      tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId: opener.ownerId, openerTabId: opener.id, ...(slot.openerId !== null ? { orderOpener: slot.openerId } : {}), targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), selectProbe: null };
+      tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId: opener.ownerId, openerTabId: opener.id, ...(flags.windowPopup === true ? { windowPopup: true } : {}), ...(slot.openerId !== null ? { orderOpener: slot.openerId } : {}), targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), selectProbe: null };
       // 앞으로 여는 열기는 이 스페이스에 살아 있던 삽입 관계를 모두 지운 뒤 새 탭만 opener 에 매단다(크롬과 같다).
       if (!flags.background && slot.openerId !== null) this.forgetOrderOpeners(op, spaceId);
       this.registerTab(op, tab, slot.index);
@@ -1897,22 +1903,55 @@ export class BrowserService {
     this.deps.desktop.setTabOpenFull(full);
   }
 
-  /** 띄운 탭이 사라졌을 때 다음으로 세울 탭 — 팝업이었으면 아직 남은 opener, 아니면 같은 스페이스의 마지막 탭. */
+  /**
+   * 띄운 탭이 사라졌을 때 다음으로 세울 탭 — 크롬 `TabStripModel::DetermineNewSelectedIndex` 순서를
+   * `orderOpener`·스페이스 순서로 옮긴 것이다. **`removeTab` 전에** 닫히기 전의 관계로 계산해야 한다:
+   * `removeTab` 은 닫힌 탭을 opener 로 둔 탭에 그 관계를 이어받게 하므로, 그 뒤에는 크롬과 달라진다.
+   *
+   * ⓪ 창 기능 팝업은 관계가 잊혀도 `openerTabId`(같은 스페이스에 남아 있을 때), 그다음 ① 자식(직계
+   * `orderOpener`, 오른쪽부터 없으면 왼쪽) ② 같은 opener 의 형제 ③ `orderOpener` ④ 오른쪽 이웃, 없으면 왼쪽.
+   * 후보는 닫힌 탭의 스페이스 안이다(크롬의 창 범위). 사이트별 분기는 없다.
+   */
   private nextTabAfter(op: ObjectiveBrowser, closed: Tab): string | null {
-    if (closed.openerTabId && op.tabs.get(closed.openerTabId)?.spaceId === closed.spaceId) return closed.openerTabId;
-    return this.spaceTabs(op, closed.spaceId).pop()?.id ?? null;
+    // ⓪ 창 기능 팝업(크롬에서는 별도 창)이 닫히면 결과를 기다리는 opener 로 돌아간다 — 관계의 잊힘은 보지 않는다.
+    if (closed.windowPopup && closed.openerTabId) {
+      const opener = op.tabs.get(closed.openerTabId);
+      if (opener?.spaceId === closed.spaceId) return opener.id;
+    }
+    const space = this.spaceTabs(op, closed.spaceId);
+    const at = space.findIndex((tab) => tab.id === closed.id);
+    // 오른쪽부터, 없으면 왼쪽부터.
+    const scan = (predicate: (tab: Tab) => boolean): string | null => {
+      for (let index = at + 1; index < space.length; index += 1) if (predicate(space[index]!)) return space[index]!.id;
+      for (let index = at - 1; index >= 0; index -= 1) if (predicate(space[index]!)) return space[index]!.id;
+      return null;
+    };
+    // ① 닫힌 탭이 연 탭 — 직계 삽입 opener 만 보고 전이 사슬은 보지 않는다.
+    const child = scan((tab) => tab.orderOpener === closed.id);
+    if (child) return child;
+    if (closed.orderOpener !== undefined) {
+      // ② 같은 opener 의 형제.
+      const sibling = scan((tab) => tab.orderOpener === closed.orderOpener);
+      if (sibling) return sibling;
+      // ③ 닫힌 탭의 opener.
+      const opener = op.tabs.get(closed.orderOpener);
+      if (opener?.spaceId === closed.spaceId) return opener.id;
+    }
+    // ④ 오른쪽 이웃, 없으면 왼쪽 이웃. 없으면 띄우지 않는다(스페이스 정리 경로).
+    return at >= 0 ? space[at + 1]?.id ?? space[at - 1]?.id ?? null : null;
   }
 
   async closeTab(objectiveId: string, tabId: string): Promise<void> {
     const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
+    // 다음 탭은 닫기 전의 관계·순서로 정한다 — removeTab 이 삽입 관계를 이어받기 전에 계산해야 크롬과 같다.
+    const next = op.activeTabId === tab.id ? this.nextTabAfter(op, tab) : null;
     this.removeTab(op, tab);
     this.cancelViewportReapply(tab);
     this.forgetTab(op, tab);
     if (this.client) { try { await this.client.send("Target.closeTarget", { targetId: tab.targetId }); } catch { /* 이미 닫혔다 */ } }
     // 띄운 탭을 닫았으면 같은 스페이스의 남은 탭을 앞으로 세운다 — 엔진에도 알려야 그 뷰가 보인다(뷰는 활성인 것 하나만 그려진다).
     if (op.activeTabId === tab.id) {
-      const next = this.nextTabAfter(op, tab);
       op.activeTabId = null;
       if (next) { await this.selectTab(objectiveId, next); this.scheduleIdle(); return; }
       this.deps.desktop.deactivate(op.objectiveId);
@@ -2285,7 +2324,7 @@ export class BrowserService {
       case DESKTOP_BROWSER_POPUP_EVENT: {
         const targetId = typeof p.targetId === "string" ? p.targetId : null;
         if (!targetId) return;
-        void this.adoptPopup(op, tab, targetId, typeof p.url === "string" ? p.url : "about:blank", { background: p.background === true, loaded: p.loaded === true }).catch(() => {
+        void this.adoptPopup(op, tab, targetId, typeof p.url === "string" ? p.url : "about:blank", { background: p.background === true, loaded: p.loaded === true, windowPopup: p.windowPopup === true }).catch(() => {
           // 탭 등록 전(컨텍스트 조회)에 실패한 팝업 — 셸의 뷰만 닫으면 된다. 등록 뒤의 실패는 adoptPopup 이 탭까지 접는다.
           void this.client?.send("Target.closeTarget", { targetId }).catch(() => undefined);
         });
@@ -2293,11 +2332,12 @@ export class BrowserService {
       }
       case "Target.detachedFromTarget": {
         // 셸이 뷰를 잃었다(렌더러 사망·창 종료). 탭도 함께 접고, 활성이었으면 남은 탭을 앞으로 세운다.
+        // 다음 탭은 닫기 전의 관계·순서로 정한다 — removeTab 이 삽입 관계를 이어받기 전에 계산해야 크롬과 같다.
+        const next = op.activeTabId === tab.id ? this.nextTabAfter(op, tab) : null;
         this.removeTab(op, tab);
         this.cancelViewportReapply(tab);
         this.forgetTab(op, tab);
         if (op.activeTabId === tab.id) {
-          const next = this.nextTabAfter(op, tab);
           op.activeTabId = null;
           if (next) { void this.selectTab(op.objectiveId, next).catch(() => undefined); return; }
         }
