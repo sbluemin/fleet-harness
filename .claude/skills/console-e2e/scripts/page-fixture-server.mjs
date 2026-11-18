@@ -17,12 +17,12 @@
  * authentication success.
  *
  * `/opener` opens `/child` as a tab or a popup, and the child posts one fixed
- * synthetic result to the opener before calling `window.close()`. The opener
- * accepts a message only from the same origin, from a window it opened, and with
- * that exact result. Its "result" marker means only that the opener received
- * the message, and its handle state is the opener's own observation of the
- * handle; neither proves the child's tab actually disappeared, which the browser
- * context list decides.
+ * synthetic result to the opener before calling `window.close()`. Each open
+ * clears the opener's result, and the opener accepts a message only from the
+ * same origin, from the handle that open created, and with that exact result.
+ * Its "result" marker means only that the opener received the message; it does
+ * not prove the child's tab actually disappeared, which the browser context
+ * list decides.
  */
 
 import http from 'node:http';
@@ -120,42 +120,28 @@ const OPENER = `<!doctype html>
   <h2>Open child</h2>
   <button id="open-tab" type="button">Open child as tab</button>
   <button id="open-popup" type="button">Open child as popup</button>
-  <p>opened: <output id="opened-count">0</output></p>
-  <p>child handle: <output id="child-handle">none</output></p>
+  <p>open: <output id="open-state">idle</output></p>
 </section>
 <section>
   <h2>Result</h2>
   <p>result: <output id="parent-result">none</output></p>
   <p>received: <output id="parent-result-detail">none</output></p>
-  <p>This marker means only that this page received the fixed message. The handle state is this page's own observation; confirm the child actually disappeared in the browser context list.</p>
+  <p>Each open clears this result, and only the current child's fixed message fills it. It means only that this page received that message; confirm the child actually disappeared in the browser context list.</p>
 </section>
 <script>
   const CHILD_URL = '/child';
   const EXPECTED = { fixture: 'child-result', value: 'fixed' };
-  const opened = [];
-  let lastHandle = null;
-  const count = document.getElementById('opened-count');
-  const handleOut = document.getElementById('child-handle');
+  const openState = document.getElementById('open-state');
+  const resultOut = document.getElementById('parent-result');
+  const detailOut = document.getElementById('parent-result-detail');
+  let activeHandle = null;
 
-  const watch = (handle) => {
-    lastHandle = handle;
-    const timer = setInterval(() => {
-      if (!handle || handle.closed) {
-        clearInterval(timer);
-        if (lastHandle === handle) handleOut.textContent = 'closed';
-      }
-    }, 100);
-  };
   const open = (target, features) => {
+    resultOut.textContent = 'none';
+    detailOut.textContent = 'none';
     const handle = window.open(CHILD_URL, target, features);
-    if (handle) {
-      opened.push(handle);
-      handleOut.textContent = 'open';
-      watch(handle);
-    } else {
-      handleOut.textContent = 'blocked';
-    }
-    count.textContent = String(opened.length);
+    activeHandle = handle;
+    openState.textContent = handle ? 'open' : 'blocked';
   };
 
   document.getElementById('open-tab').addEventListener('click', () => open('_blank', ''));
@@ -163,12 +149,12 @@ const OPENER = `<!doctype html>
 
   window.addEventListener('message', (event) => {
     if (event.origin !== location.origin) return;
-    if (!opened.includes(event.source)) return;
+    if (!activeHandle || event.source !== activeHandle) return;
     const data = event.data;
     if (data === null || typeof data !== 'object') return;
     if (Object.keys(data).length !== 2 || data.fixture !== EXPECTED.fixture || data.value !== EXPECTED.value) return;
-    document.getElementById('parent-result').textContent = 'child-result-received';
-    document.getElementById('parent-result-detail').textContent = JSON.stringify(data);
+    resultOut.textContent = 'child-result-received';
+    detailOut.textContent = JSON.stringify(data);
   });
 </script>
 </body>
@@ -211,6 +197,12 @@ const CHILD = `<!doctype html>
 </script>
 </body>
 </html>`;
+
+const PAGES = new Map([
+  ['/', HTML],
+  ['/opener', OPENER],
+  ['/child', CHILD],
+]);
 
 function fail(message) {
   process.stderr.write(`page-fixture-server: ${message}\n`);
@@ -256,8 +248,7 @@ function main() {
       res.end('bad request');
       return;
     }
-    const pages = { '/': HTML, '/opener': OPENER, '/child': CHILD };
-    const page = pages[pathname];
+    const page = PAGES.get(pathname);
     if (page === undefined) {
       res.statusCode = 404;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
