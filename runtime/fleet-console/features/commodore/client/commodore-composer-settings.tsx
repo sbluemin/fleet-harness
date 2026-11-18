@@ -918,6 +918,7 @@ function CoordinateList({ t, roster, value, fallback, labels, ariaLabel, judgmen
                   {active && speedSupported(row) ? (
                     <Select
                       className="commodore-composer-speed"
+                      popupClassName="commodore-composer-speed-popup"
                       compact
                       label={t("commodore.settings.speedAria")}
                       value={speedForRow(row)}
