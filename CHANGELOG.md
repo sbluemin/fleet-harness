@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.310.0] - 2026-11-18
+
+### fleet-console
+
+#### Added
+- Add GPT-6.2 Astra and GPT-6.2 Sol to the Codex models, with GPT-6.2 Astra as the new Codex default. GPT-6 Astra and GPT-6.1 Sol remain available.
+
 ## [1.309.0] - 2026-11-17
 
 ### fleet-console

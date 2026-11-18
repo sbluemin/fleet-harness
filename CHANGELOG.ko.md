@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.310.0] - 2026-11-18
+
+### fleet-console
+
+#### Added
+- Codex 모델에 GPT-6.2 Astra와 GPT-6.2 Sol을 추가하고, Codex 기본 모델을 GPT-6.2 Astra로 바꿉니다. GPT-6 Astra와 GPT-6.1 Sol도 계속 쓸 수 있습니다.
+
 ## [1.309.0] - 2026-11-17
 
 ### fleet-console
