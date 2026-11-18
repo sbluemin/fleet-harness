@@ -84,6 +84,9 @@ function FitGlyph() {
   );
 }
 
+/** 무대 위에 겹친 조작 층 — 여기서 난 클릭은 지도 고르기로 넘기지 않는다. */
+const STAGE_OVERLAY = ".commodore-map-node, .commodore-map-top, .commodore-map-legend";
+
 function branchChipLabel(t: T, branch: MapBranchKey): string {
   if (branch === "description") return t("commodore.description.label");
   if (branch === "intel") return t("commodore.intel.label");
@@ -492,6 +495,8 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   };
 
   const searching = query.trim().length > 0;
+  // 휴대폰 폭에서 접힌 검색은 돋보기만 보인다 — 그때는 돋보기가 키보드 정지점이다. 보기 방식 바뀜은 위 관찰자가 다시 그리게 한다.
+  const searchCollapsed = document.documentElement.dataset.viewMode === "mobile" && !searchOpen && !searching;
   const matchCount = hits?.size ?? 0;
 
   return (
@@ -501,12 +506,17 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
             ref={containerRef}
             className="commodore-map-stage"
             onClick={(event) => {
-              if ((event.target as HTMLElement).closest(".commodore-map-node")) return;
+              // 점·위쪽 줄(검색·칩·맞춤 보기)·범례를 누른 것은 지도 고르기가 아니다 — 그 아래 점을 고르거나 선택을 풀지 않는다.
+              if ((event.target as HTMLElement).closest(STAGE_OVERLAY)) return;
               const id = pickAt(event.clientX, event.clientY);
               setSelectedId(id === selectedId ? null : id);
               if (id !== null) setRoving(id);
             }}
-            onDoubleClick={() => { rendererRef.current?.fit(); trackMotion(600); }}
+            onDoubleClick={(event) => {
+              if ((event.target as HTMLElement).closest(STAGE_OVERLAY)) return;
+              rendererRef.current?.fit();
+              trackMotion(600);
+            }}
             onMouseMove={handleMouseMove}
             onKeyDown={handleStageKeyDown}
             onPointerDown={() => trackMotion(Infinity)}
@@ -588,7 +598,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                 <div className="commodore-map-search" role="search" data-open={searchOpen || searching ? "true" : undefined}>
                   <button
                     type="button"
-                    tabIndex={-1}
+                    tabIndex={searchCollapsed ? 0 : -1}
                     className="commodore-map-search-glyph"
                     aria-label={t("commodore.map.search")}
                     title={t("commodore.map.search")}
