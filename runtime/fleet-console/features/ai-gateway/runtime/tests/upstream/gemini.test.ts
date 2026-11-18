@@ -58,6 +58,9 @@ describe("Gemini upstream", () => {
     expect(String(url)).toBe(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent?alt=sse`);
     expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBe(KEY);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    // 등급은 요청 최상위의 소문자 standard로 늘 명시한다.
+    expect(body).toMatchObject({ serviceTier: "standard" });
+    expect(body.generationConfig).not.toHaveProperty("serviceTier");
     expect(body).toMatchObject({
       systemInstruction: { parts: [{ text: "be brief" }] },
       // 모델 출력 상한(hydrogen 65536)으로 줄이고, 생각 요약을 켠다.
@@ -176,50 +179,5 @@ describe("Gemini upstream", () => {
     // 다른 400은 키 거절이 아니다.
     expect((await probe(400, { error: { code: 400, status: "INVALID_ARGUMENT", details: [{ reason: "OTHER" }] } })).result.status).toBe("unknown");
     expect((await validateGeminiApiKey({ providerId: GEMINI_AUTH_PROVIDER_ID, apiKey: "  " })).status).toBe("unauthorized");
-  });
-
-  it("sends the tier at the top level and re-sends a Flex turn once as Standard on a 503 before any output", async () => {
-    const { port, usage, block } = usagePort();
-    const unavailable = () => new Response(JSON.stringify({ error: { code: 503, status: "UNAVAILABLE", message: "capacity" } }), { status: 503 });
-    const answer = (tier: string) => sse({
-      candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason: "STOP" }],
-      usageMetadata: { promptTokenCount: 4, candidatesTokenCount: 1, serviceTier: tier },
-    });
-    const tiersOf = (mock: ReturnType<typeof vi.fn<typeof fetch>>) =>
-      mock.mock.calls.map(([, init]) => (JSON.parse(String(init?.body)) as { serviceTier?: string; generationConfig: Record<string, unknown> }));
-
-    // HTTP 503, then an in-stream 503 frame that is the first thing the stream says: both fall back once.
-    for (const first of [unavailable, () => sse({ error: { code: 503, status: "UNAVAILABLE", message: "capacity" } })]) {
-      const fetchMock = vi.fn<typeof fetch>()
-        .mockImplementationOnce(async () => first())
-        .mockImplementationOnce(async () => answer("standard"));
-      const response = await createGeminiAdapter({ fetch: fetchMock, usage: port }).stream(request({ service_tier: "flex" }), { apiKey: KEY });
-      if (!response.ok) throw new Error("expected a streaming response");
-      const events = await collect(response.events);
-      expect(events.at(-1)).toMatchObject({ type: "response.completed" });
-      const sent = tiersOf(fetchMock);
-      expect(sent.map((body) => body.serviceTier)).toEqual(["flex", "standard"]);
-      // The tier is a top-level field, never inside generationConfig (a 400 there).
-      expect(sent[0]!.generationConfig).not.toHaveProperty("serviceTier");
-    }
-    // Spend follows the tier the response reports; a 503 is not a block.
-    expect(usage).toHaveBeenCalledTimes(2);
-    expect(usage).toHaveBeenLastCalledWith(expect.objectContaining({ serviceTier: "standard" }));
-    expect(block).not.toHaveBeenCalled();
-
-    // After output has gone downstream a 503 frame is an error, not a re-send; an explicit Standard is never replaced.
-    const afterOutput = vi.fn<typeof fetch>(async () => sse(
-      { candidates: [{ content: { role: "model", parts: [{ text: "par" }] } }] },
-      { error: { code: 503, status: "UNAVAILABLE", message: "capacity" } },
-    ));
-    const partial = await createGeminiAdapter({ fetch: afterOutput }).stream(request({ service_tier: "flex" }), { apiKey: KEY });
-    if (!partial.ok) throw new Error("expected a streaming response");
-    expect((await collect(partial.events)).at(-1)).toMatchObject({ type: "response.failed" });
-    expect(afterOutput).toHaveBeenCalledTimes(1);
-
-    const standard = vi.fn<typeof fetch>(async () => unavailable());
-    const refused = await createGeminiAdapter({ fetch: standard }).stream(request({ service_tier: "standard" }), { apiKey: KEY });
-    expect(refused).toMatchObject({ ok: false, status: 503 });
-    expect(standard).toHaveBeenCalledTimes(1);
   });
 });

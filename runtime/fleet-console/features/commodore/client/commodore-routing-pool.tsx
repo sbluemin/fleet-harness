@@ -731,11 +731,6 @@ function PoolDetailBox({ t, view, leadThreshold, saving, onToggleEffort, onToggl
   readonly onOpenQuota: () => void;
 }) {
   const exposed = view.entry.efforts ?? view.ladder;
-  // Gemini의 선택지는 Flex(기본)와 Standard다. 저장값 `fast`는 「기본이 아닌 등급 선택」이라 Gemini에서는 Standard이고,
-  // 토글은 기본인 Flex를 말한다(켜짐 = Flex, 끄면 Standard). 다른 공급자는 그대로 Fast다.
-  const geminiTier = view.provider === "gemini";
-  const speedOn = geminiTier ? view.entry.fast !== true : view.entry.fast === true;
-  const speedWord = geminiTier ? t("commodore.settings.flex") : "Fast";
   return (
     <div className="commodore-pool-detail">
       {view.status.kind === "wait" ? (
@@ -785,11 +780,11 @@ function PoolDetailBox({ t, view, leadThreshold, saving, onToggleEffort, onToggl
           <button
             type="button"
             className="commodore-pool-opt"
-            aria-pressed={speedOn}
+            aria-pressed={view.entry.fast === true}
             disabled={saving}
             onClick={onToggleFast}
           >
-            {speedOn ? "✓ " : ""}{speedWord}
+            {view.entry.fast === true ? "✓ Fast" : "Fast"}
           </button>
         </div>
       ) : null}

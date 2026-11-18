@@ -48,7 +48,7 @@ export function CommodoreCoordinateField({ t, target, label, value, fallback, di
       fallback={fallback}
       onChange={onChange}
       startAt="list"
-      speed={{ fastLabel: t("commodore.settings.fast"), standardLabel: t("commodore.settings.standard") }}
+      speed={{ fastLabel: t("commodore.settings.fast") }}
       {...(disabled ? { disabled } : {})}
       {...(reset ? { reset: { ...reset, description: [fallbackWords.model, fallbackWords.effort].filter(Boolean).join(" · ") } } : {})}
       labels={{

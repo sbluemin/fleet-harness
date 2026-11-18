@@ -144,8 +144,7 @@ export interface GatewayModel {
   readonly provider: GatewayProvider;
   /** Model id sent to the selected upstream provider. */
   readonly upstreamId?: string;
-  /** `priority` for a Codex Fast turn; `flex`/`standard` for Gemini, which always carries one. */
-  readonly serviceTier?: "priority" | "flex" | "standard";
+  readonly serviceTier?: "priority";
   /** Whether this model offers an optional priority service tier. */
   readonly fastSupported?: boolean;
   readonly fastUpstreamId?: string;
@@ -442,9 +441,6 @@ export function withGatewayModelFast(model: GatewayModel, selected: boolean): Ga
     fast,
     ...(fast && model.fastUpstreamId ? { upstreamId: model.fastUpstreamId } : {}),
     ...(fast && model.provider === "codex" ? { serviceTier: "priority" as const } : {}),
-    // Gemini's selectable axis is Flex (the default) versus Standard. `fast` is the flag every layer
-    // already stores and carries for "the non-default tier is selected", so for Gemini it means Standard.
-    ...(model.provider === "gemini" ? { serviceTier: fast ? "standard" as const : "flex" as const } : {}),
   };
 }
 
@@ -685,8 +681,8 @@ function validateRegistry(value: GatewayModelsRegistry): void {
         throw new Error(`Duplicate gateway model id: ${provider}/${model.modelId}`);
       }
       modelIds.add(model.modelId);
-      if (model.fastSupported && provider !== "codex" && provider !== "xai" && provider !== "gemini") {
-        throw new Error(`Gateway fast selection is only supported by Codex, xAI and Gemini: ${provider}/${model.modelId}`);
+      if (model.fastSupported && provider !== "codex" && provider !== "xai") {
+        throw new Error(`Gateway fast selection is only supported by Codex and xAI: ${provider}/${model.modelId}`);
       }
       // xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
       // OpenCode Go는 모델마다 Responses·Chat Completions 중 하나로만 서빙한다.

@@ -233,11 +233,7 @@ export interface CanonicalResponseRequest {
   max_output_tokens?: number;
   metadata?: Record<string, string>;
   reasoning?: CanonicalReasoning;
-  /**
-   * `priority` is Codex's Fast. `flex` and `standard` are Gemini's selectable tiers: the router
-   * always names one for a Gemini model, and the adapter sends it as the request's top-level `serviceTier`.
-   */
-  service_tier?: "priority" | "flex" | "standard";
+  service_tier?: "priority";
   stream: true;
 }
 

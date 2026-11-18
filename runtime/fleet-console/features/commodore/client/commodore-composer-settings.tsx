@@ -831,8 +831,6 @@ function CoordinateList({ t, roster, value, fallback, labels, ariaLabel, judgmen
   const activeModel = judgmentActive ? null : display.shown.model ?? null;
   const effortNow = display.shown.effort ?? null;
   const fastNow = value.fast === true;
-  // Gemini는 기본 등급이 Flex라 이 토글이 Flex를 말한다(켜짐 = Flex, 끄면 Standard). 저장하는 `fast`는 그대로 「기본이 아닌 등급」이다.
-  const isGeminiRow = (model: string) => launchProviderFromModelId(model) === "gemini";
   // 「자동」(강도 비움)은 저장값이 강도를 비울 수 있는 지휘관 좌표에만 선다 — 사령관 좌표는 늘 구체 강도로 저장된다.
   const pickEffort = (row: ObjectiveLaunchVariantRow, effort: string | null) => {
     const model = row.launch.model ?? row.id;
@@ -909,7 +907,7 @@ function CoordinateList({ t, roster, value, fallback, labels, ariaLabel, judgmen
                     />
                   ) : null}
                   {active && row.fastSupported === true ? (
-                    <button type="button" className="commodore-composer-fast" aria-pressed={isGeminiRow(model) ? !fastNow : fastNow} onClick={() => onPick({ model, ...(effortNow ? { effort: effortNow } : {}), fast: !fastNow })}>{isGeminiRow(model) ? t("commodore.settings.flex") : t("commodore.settings.fast")}</button>
+                    <button type="button" className="commodore-composer-fast" aria-pressed={fastNow} onClick={() => onPick({ model, ...(effortNow ? { effort: effortNow } : {}), fast: !fastNow })}>{t("commodore.settings.fast")}</button>
                   ) : null}
                 </div>,
                 readout,

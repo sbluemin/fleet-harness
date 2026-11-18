@@ -57,10 +57,11 @@ export type GeminiFunctionCallingMode = "NONE" | "ANY";
 export interface GeminiGenerateContentRequest {
   contents: GeminiContent[];
   /**
-   * 서비스 등급. **요청 최상위**의 소문자 `"flex"`·`"standard"`다 — 2026-11-18 사령관 실측: 대문자·모르는
-   * 값과 `generationConfig` 안의 위치는 400이고, 같은 필드를 `service_tier`로 써도 받는다.
+   * 서비스 등급. 사람 결정(ee41ae9b)으로 **Standard만** 쓴다 — 모델·설정·헤더 어디서도 바꾸지 않는다.
+   * 요청 최상위의 소문자 `"standard"`다(2026-11-18 사령관 실측: 대문자·모르는 값과 `generationConfig` 안의
+   * 위치는 400이고, 같은 필드를 `service_tier`로 써도 받는다). 생략해도 Standard로 나가지만 "강제"이므로 명시한다.
    */
-  serviceTier?: "flex" | "standard";
+  serviceTier: "standard";
   systemInstruction?: { parts: [{ text: string }] };
   tools?: [{ functionDeclarations: GeminiFunctionDeclaration[] }];
   toolConfig?: {
@@ -582,15 +583,9 @@ export function buildGeminiRequest(
   const declarations = geminiFunctionDeclarations(request.tools ?? [], options.codec);
   const toolConfig = geminiToolConfig(request.tool_choice, options.codec);
   const thinkingLevel = geminiThinkingLevel(request.model, request.reasoning?.effort);
-  // Standard도 명시해서 보낸다. 라우터는 Gemini 모델에 늘 등급을 정하고(기본 Flex), 그 선택이 업스트림
-  // 기본값이 바뀌어도 같은 뜻으로 남아야 하며, Flex 503 대체 요청이 "standard"를 이름으로 말해야 한다.
-  // 등급이 없는 요청(라우터를 거치지 않은 호출자)은 업스트림 기본에 맡긴다. `priority`는 이 공급자의 선택지가 아니다.
-  const serviceTier = request.service_tier === "flex" || request.service_tier === "standard"
-    ? request.service_tier
-    : undefined;
   return {
     contents,
-    ...(serviceTier === undefined ? {} : { serviceTier }),
+    serviceTier: "standard",
     ...(request.instructions === undefined || request.instructions.length === 0
       ? {}
       : { systemInstruction: { parts: [{ text: request.instructions }] as [{ text: string }] } }),
