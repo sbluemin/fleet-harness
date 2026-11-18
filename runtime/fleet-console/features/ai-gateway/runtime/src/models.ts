@@ -2,7 +2,7 @@ import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
-import { GATEWAY_MODEL_SUCCESSORS, recommendedRole } from "./model-family.js";
+import { recommendedRole } from "./model-family.js";
 import type { QuotaScope } from "./quota/types.js";
 import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
@@ -616,10 +616,8 @@ function toGatewayModel(
   providerName: string,
   entry: GatewayModelEntry,
 ): GatewayModel {
-  const id = scopedModelId(provider, entry.modelId);
-  const aliases = catalogAliases(id, entry.aliases);
   return {
-    id,
+    id: scopedModelId(provider, entry.modelId),
     displayName: `${providerName}-${entry.name}`,
     provider,
     upstreamId: entry.providerModelId ?? entry.modelId,
@@ -631,16 +629,8 @@ function toGatewayModel(
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
-    ...(aliases.length > 0 ? { aliases: Object.freeze(aliases) } : {}),
+    ...(entry.aliases ? { aliases: Object.freeze([...entry.aliases]) } : {}),
   };
-}
-
-/** A catalog entry's own aliases plus the retired ids it carries forward, each scoped and bare. */
-function catalogAliases(scopedId: string, own: readonly string[] | undefined): string[] {
-  const retired = Object.entries(GATEWAY_MODEL_SUCCESSORS)
-    .filter(([, successor]) => successor === scopedId)
-    .flatMap(([id]) => [id, id.slice(id.indexOf("--") + 2)]);
-  return [...(own ?? []), ...retired];
 }
 
 function providerModels(provider: GatewayProvider): readonly GatewayModel[] {
@@ -730,23 +720,12 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       }
       const scopedId = scopedModelId(provider, model.modelId);
       registerLookupId(lookupIds, scopedId, `${provider}/${model.modelId}`);
-      for (const alias of catalogAliases(scopedId, model.aliases)) {
+      for (const alias of model.aliases ?? []) {
         registerLookupId(lookupIds, alias, `${provider}/${model.modelId}`);
       }
     }
     if (!modelIds.has(definition.defaultModel)) {
       throw new Error(`Gateway default model is missing: ${provider}/${definition.defaultModel}`);
-    }
-  }
-  // A retired id carries forward only to a model still in the catalog; otherwise the stored value would resolve to nothing.
-  for (const [retired, successor] of Object.entries(GATEWAY_MODEL_SUCCESSORS)) {
-    const separator = successor.indexOf("--");
-    const provider = successor.slice(0, separator);
-    const definition = (REGISTRY_PROVIDERS as readonly string[]).includes(provider)
-      ? value.providers[provider as RegistryProvider]
-      : undefined;
-    if (!definition?.models.some((model) => model.modelId === successor.slice(separator + 2))) {
-      throw new Error(`Gateway model successor is missing: ${retired} -> ${successor}`);
     }
   }
 }

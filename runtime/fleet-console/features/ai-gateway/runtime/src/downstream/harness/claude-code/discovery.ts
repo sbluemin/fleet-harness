@@ -7,7 +7,6 @@ import {
   resolveGatewayModel,
   type GatewayModel,
 } from "../../../models.js";
-import { GATEWAY_MODEL_SUCCESSORS } from "../../../model-family.js";
 import { buildAnthropicModelListPayload } from "../../wire/anthropic-messages/protocol.js";
 import type {
   AnthropicModelEntry,
@@ -79,9 +78,7 @@ export function findClaudeGatewayModel(
     return findGatewayModel(id, catalog)
       ?? catalog.find((model) => model.provider === "claude" && toClaudeGatewayModelId(model) === id);
   }
-  const spelled = stripClaudeOneMillionMarker(id).slice(GATEWAY_MODEL_ALIAS_PREFIX.length);
-  // 저장된 세션·기본값이 구형 모델을 가리키면 이어받는 모델로 읽는다.
-  const scopedId = GATEWAY_MODEL_SUCCESSORS[spelled] ?? spelled;
+  const scopedId = stripClaudeOneMillionMarker(id).slice(GATEWAY_MODEL_ALIAS_PREFIX.length);
   const model = catalog.find((candidate) => candidate.id === scopedId);
   if (!model || model.provider === "claude") return undefined;
   return hasClaudeOneMillionMarker(id)

@@ -673,7 +673,7 @@ describe("Objectives contract", () => {
 
   // 개시한 구성원의 모델은 세션 좌표가 권위다. 고른 순간 바뀌고(일하는 중이면 그 턴 뒤), 호스트가 한 구성원을 거절해도 개시는 이어져야 한다.
   it("switches a launched member's model now or after its turn and keeps one refused member from stopping the muster", async () => {
-    const commodoreJudge = { model: "codex--gpt-6.2-sol", effort: "medium" };
+    const commodoreJudge = { model: "codex--gpt-6.1-sol", effort: "medium" };
     const { store, launch, route, objectiveRecords, objectiveRecordsHost, activity, resumed, hostFault, hostChat, surfaces, events, objectiveFile, objectivesDir } = harness(() => null, { commodoreSession: () => commodoreJudge });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
@@ -1983,7 +1983,7 @@ describe("Objectives contract", () => {
 
   it("chooses the Commander model at plan or commence and edits it only after a session exists", async () => {
     let configured: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = null;
-    const judge = { model: "codex--gpt-6.2-sol", effort: "medium" };
+    const judge = { model: "codex--gpt-6.1-sol", effort: "medium" };
     let running: { readonly model: string; readonly effort?: string } | null = judge;
     const coordinates = { model: "xai--grok-4.7", effort: "low" };
     const { ctx, store, launch, workspace, launches, activity, surfaces, objectiveRecords, objectivesDir, objectiveRecordsHost } = harness(() => "http://console.invalid", { commodoreCommander: () => configured, commodoreSession: () => running, commodoreCoordinates: () => coordinates });
@@ -2147,7 +2147,7 @@ describe("Objectives contract", () => {
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
     // 사람이 이 사령관에 정한 지휘관 모델 — 처음에는 없다.
     let configured: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = null;
-    const judge = { model: "codex--gpt-6.2-sol", effort: "high" };
+    const judge = { model: "codex--gpt-6.1-sol", effort: "high" };
     const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid", { commodoreCommander: () => configured, commodoreSession: () => judge });
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [

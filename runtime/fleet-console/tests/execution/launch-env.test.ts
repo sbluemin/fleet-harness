@@ -111,7 +111,7 @@ describe("standalone Claude Code CLI launch", () => {
         modelSettings: Record<string, { autoCompactWindow: number }>;
       };
       // 카탈로그 500_000 × Auto(창−16_000) + 33_000.
-      expect(settings.modelSettings["claude-gateway--codex--gpt-6.2-sol[1m]"]?.autoCompactWindow).toBe(517_000);
+      expect(settings.modelSettings["claude-gateway--codex--gpt-6.1-sol[1m]"]?.autoCompactWindow).toBe(517_000);
       expect(spec.cwd).toBe(theater);
       expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:4100/api/v1/ai-gateway");
       expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBeUndefined();
