@@ -349,7 +349,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
 
 /** CLI가 아직 알려 주지 않은 빈 사다리는 지원하지 않는다는 확정이 아니다. */
 function hasUnresolvedEffortLadder(model: GatewayModel): boolean {
-  return model.provider === "claude" && model.upstreamId === undefined && !model.effort.supported;
+  return (model.provider === "claude" || model.provider === "anthropic") && model.upstreamId === undefined && !model.effort.supported;
 }
 
 /**

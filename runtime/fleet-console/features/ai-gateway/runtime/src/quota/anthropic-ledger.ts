@@ -1,6 +1,6 @@
 import { createDurableJsonStore } from "@fleet-console/infra";
 
-import { anthropicTurnCostPicoUsd } from "./anthropic-pricing.js";
+import { priceAnthropicTurn } from "./anthropic-pricing.js";
 import type {
   AnthropicBlockObservation,
   AnthropicBlockReason,
@@ -69,7 +69,31 @@ interface AnthropicSpendDocument {
   /** 사람이 정한 월 예산(USD 십진 문자열). 달마다 반복되는 값이라 월 키에 넣지 않는다. */
   readonly budgetUsd?: string;
   readonly block?: StoredBlock;
+  /**
+   * 단가표에 없는 버전을 같은 가족의 가장 최근 표 버전 단가로 **추정해** 센 턴 — 달 키 → 상류 id → 기록.
+   * 나중에 어떤 버전을 어느 단가로 셌는지 알아보는 자리다. 정확한 단가로 센 턴은 여기에 없다.
+   */
+  readonly estimates?: Readonly<Record<string, Readonly<Record<string, StoredEstimate>>>>;
+  /** 가족이 표에 없어 **세지 못한** 턴 — 달 키 → 상류 id → 횟수. 지출에는 더하지 않는다(0으로도 지어내지 않는다). */
+  readonly unpriced?: Readonly<Record<string, Readonly<Record<string, StoredUnpriced>>>>;
 }
+
+interface StoredEstimate {
+  /** 단가를 가져온 표의 상류 id. */
+  readonly pricedAs: string;
+  readonly turns: number;
+  /** 이 상류 id의 추정 지출 합(pico-USD 십진 정수 문자열). */
+  readonly costPicoUsd: string;
+  readonly lastAt: number;
+}
+
+interface StoredUnpriced {
+  readonly turns: number;
+  readonly lastAt: number;
+}
+
+const MAX_MODELS_PER_MONTH = 16;
+const MAX_MODEL_ID_LENGTH = 64;
 
 const EMPTY_DOCUMENT: AnthropicSpendDocument = { version: 1, months: {} };
 const MAX_BLOCK_TEXT = 300;
@@ -155,13 +179,37 @@ export function createAnthropicSpendLedger(deps: AnthropicSpendLedgerDeps): Anth
       try {
         const at = Number.isFinite(observation.at) ? observation.at : now();
         const bounds = geminiMonthBounds(at);
-        const cost = anthropicTurnCostPicoUsd(observation);
+        const model = observation.model.slice(0, MAX_MODEL_ID_LENGTH);
+        const turn = priceAnthropicTurn(observation);
         // 성공한 턴은 이전 차단을 걷는다(포트 계약). 0원 관측은 누적을 바꾸지 않으므로 지울 차단이 없으면
-        // 파일도 건드리지 않는다.
-        if (cost === 0n && document.block === undefined) return;
-        const months = { ...document.months, [bounds.key]: (monthSpentPico(bounds.key) + cost).toString() };
+        // 파일도 건드리지 않는다. 추정·단가 없음은 0원이어도 남긴다 — 그 기록이 이 자리의 목적이다.
+        if (turn !== undefined && turn.costPicoUsd === 0n && !turn.estimated && document.block === undefined) return;
         const { block: _cleared, ...rest } = document;
-        commit({ ...rest, months });
+        if (turn === undefined) {
+          // 가족이 표에 없다: 비용을 지어내지 않고, 센 턴이 아니라 못 센 턴으로만 남긴다.
+          const month = { ...document.unpriced?.[bounds.key] };
+          const previous = month[model];
+          if (previous === undefined && Object.keys(month).length >= MAX_MODELS_PER_MONTH) return;
+          month[model] = { turns: (previous?.turns ?? 0) + 1, lastAt: at };
+          commit({ ...rest, unpriced: { ...document.unpriced, [bounds.key]: month } });
+          return;
+        }
+        const months = { ...document.months, [bounds.key]: (monthSpentPico(bounds.key) + turn.costPicoUsd).toString() };
+        if (!turn.estimated) {
+          commit({ ...rest, months });
+          return;
+        }
+        const month = { ...document.estimates?.[bounds.key] };
+        const previous = month[model];
+        if (previous !== undefined || Object.keys(month).length < MAX_MODELS_PER_MONTH) {
+          month[model] = {
+            pricedAs: turn.pricedAs,
+            turns: (previous?.turns ?? 0) + 1,
+            costPicoUsd: (BigInt(previous?.costPicoUsd ?? "0") + turn.costPicoUsd).toString(),
+            lastAt: at,
+          };
+        }
+        commit({ ...rest, months, estimates: { ...document.estimates, [bounds.key]: month } });
       } catch {
         // 원장 실패는 추론을 막지 않는다.
       }
@@ -241,6 +289,43 @@ function sanitizeBlock(value: unknown): StoredBlock | undefined {
   };
 }
 
+function sanitizeEstimate(value: unknown): StoredEstimate | undefined {
+  if (!isRecord(value)) return undefined;
+  const lastAt = safeTime(value.lastAt);
+  const turns = safeTime(value.turns);
+  if (lastAt === undefined || turns === undefined) return undefined;
+  if (typeof value.pricedAs !== "string" || value.pricedAs.length > MAX_MODEL_ID_LENGTH) return undefined;
+  if (typeof value.costPicoUsd !== "string" || !/^\d{1,40}$/.test(value.costPicoUsd)) return undefined;
+  return { pricedAs: value.pricedAs, turns, costPicoUsd: value.costPicoUsd, lastAt };
+}
+
+function sanitizeUnpriced(value: unknown): StoredUnpriced | undefined {
+  if (!isRecord(value)) return undefined;
+  const lastAt = safeTime(value.lastAt);
+  const turns = safeTime(value.turns);
+  return lastAt === undefined || turns === undefined ? undefined : { turns, lastAt };
+}
+
+/** 달 키 → 상류 id → 기록 맵. 형식이 틀린 달·id·기록은 버리고, 달마다 {@link MAX_MODELS_PER_MONTH}개까지만 남긴다. */
+function sanitizeMonthlyRecords<T>(
+  value: unknown,
+  sanitizeEntry: (entry: unknown) => T | undefined,
+): Record<string, Record<string, T>> | undefined {
+  if (!isRecord(value)) return undefined;
+  const result: Record<string, Record<string, T>> = {};
+  for (const [key, models] of Object.entries(value)) {
+    if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(key) || !isRecord(models)) continue;
+    const kept: Record<string, T> = {};
+    for (const [model, entry] of Object.entries(models)) {
+      if (model.length > MAX_MODEL_ID_LENGTH || Object.keys(kept).length >= MAX_MODELS_PER_MONTH) continue;
+      const clean = sanitizeEntry(entry);
+      if (clean !== undefined) kept[model] = clean;
+    }
+    if (Object.keys(kept).length > 0) result[key] = kept;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
 /** 깨진 파일·손으로 고친 값은 버린다. 남은 값만 다음 저장이 다시 쓴다. */
 function sanitizeDocument(value: unknown): AnthropicSpendDocument {
   if (!isRecord(value) || value.version !== 1) return EMPTY_DOCUMENT;
@@ -254,10 +339,14 @@ function sanitizeDocument(value: unknown): AnthropicSpendDocument {
   }
   const budgetUsd = normalizeBudgetUsd(value.budgetUsd);
   const block = sanitizeBlock(value.block);
+  const estimates = sanitizeMonthlyRecords(value.estimates, sanitizeEstimate);
+  const unpriced = sanitizeMonthlyRecords(value.unpriced, sanitizeUnpriced);
   return {
     version: 1,
     months,
     ...(budgetUsd !== undefined ? { budgetUsd } : {}),
     ...(block !== undefined ? { block } : {}),
+    ...(estimates !== undefined ? { estimates } : {}),
+    ...(unpriced !== undefined ? { unpriced } : {}),
   };
 }

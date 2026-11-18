@@ -4,7 +4,6 @@ import type {
   AnthropicUsagePort,
 } from "../../quota/anthropic-usage.js";
 import type { ProviderRateLimit, ProviderRateLimitWindow } from "../../quota/types.js";
-import { isAnthropicModelId } from "./coordinates.js";
 
 /**
  * Anthropic API 키 passthrough의 관찰 tap.
@@ -24,7 +23,7 @@ export interface AnthropicPassthroughObserver {
 }
 
 export interface AnthropicObserverOptions {
-  /** 카탈로그의 상류 모델 id. 모르는 id면 관찰하지 않는다. */
+  /** 카탈로그의 상류 모델 id(Claude Code 동기화가 알려 준 값). 단가가 없는 가족도 관찰은 한다 — 값은 원장이 가린다. */
   readonly model: string;
   readonly port: AnthropicUsagePort;
   /**
@@ -183,7 +182,7 @@ function pick(facts: UsageFacts, key: string): number | undefined {
 /** 스트림 두 usage(또는 비스트리밍 하나)에서 한 턴의 관측을 만든다. 출력 토큰이 없으면 undefined다. */
 function buildUsageObservation(
   facts: UsageFacts,
-  model: AnthropicUsageObservation["model"],
+  model: string,
   at: number,
   oneHourCache: boolean,
 ): AnthropicUsageObservation | undefined {
@@ -212,9 +211,8 @@ function buildUsageObservation(
   };
 }
 
-export function createAnthropicApiObserver(options: AnthropicObserverOptions): AnthropicPassthroughObserver | undefined {
+export function createAnthropicApiObserver(options: AnthropicObserverOptions): AnthropicPassthroughObserver {
   const model = options.model;
-  if (!isAnthropicModelId(model)) return undefined;
   const now = options.now ?? Date.now;
   const decoder = new TextDecoder();
   let status = 0;

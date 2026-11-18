@@ -17,10 +17,18 @@ export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
  * whose entries are served as declared.
  */
 const NATIVE_PROVIDER = "claude" satisfies GatewayProvider;
-type RegistryProvider = Exclude<GatewayProvider, typeof NATIVE_PROVIDER>;
+/**
+ * The one derived provider. It serves the native families' models over an API key instead of the subscription,
+ * so `models.json` declares no entries for it: each is built from the native family it names, and its name,
+ * description, scores, effort ladder and version are the Claude row's own — one source, never two copies.
+ */
+const DERIVED_PROVIDER = "anthropic" satisfies GatewayProvider;
+type RegistryProvider = Exclude<GatewayProvider, typeof NATIVE_PROVIDER | typeof DERIVED_PROVIDER>;
 const REGISTRY_PROVIDERS = GATEWAY_PROVIDERS.filter(
-  (provider): provider is RegistryProvider => provider !== NATIVE_PROVIDER,
+  (provider): provider is RegistryProvider => provider !== NATIVE_PROVIDER && provider !== DERIVED_PROVIDER,
 );
+/** Providers whose models.json entries are their own (everything but the derived one). */
+const DECLARING_PROVIDERS: readonly (RegistryProvider | typeof NATIVE_PROVIDER)[] = [...REGISTRY_PROVIDERS, NATIVE_PROVIDER];
 
 /**
  * The upstream wire protocol a model is served over. xAI and Muse Code declare
@@ -96,6 +104,16 @@ const GatewayProviderSchema = z.object({
   models: z.array(GatewayModelEntrySchema).min(1),
 }).strict();
 
+/** A provider that serves a subset of the native families under its own credential; it declares no models itself. */
+const GatewayDerivedProviderSchema = z.object({
+  name: z.string().min(1),
+  derivedFrom: z.literal("claude"),
+  /** Native family aliases it serves. Only a family the pricing table knows belongs here. */
+  families: z.array(z.string().min(1)).min(1),
+  defaultModel: z.string().min(1),
+  source: z.string().min(1),
+}).strict();
+
 /** Minimum intelligence score at which a model × effort is recommended for each role. */
 const GatewayRoleThresholdsSchema = z.object({
   lead: z.number().nonnegative(),
@@ -118,7 +136,7 @@ const GatewayModelsRegistrySchema = z.object({
     "muse-code": GatewayProviderSchema,
     opencode: GatewayProviderSchema,
     gemini: GatewayProviderSchema,
-    anthropic: GatewayProviderSchema,
+    anthropic: GatewayDerivedProviderSchema,
     claude: GatewayProviderSchema,
   }).strict(),
 }).strict();
@@ -199,6 +217,21 @@ function claudeFamilyAliases(alias: string): readonly string[] {
   return [`${alias}${CLAUDE_ONE_MILLION_MARKER}`, alias, scopedModelId("claude", alias)];
 }
 
+/**
+ * The single catalog id of an Anthropic API-key model (`anthropic--sonnet-1m`). It follows the Claude family's
+ * id (`claude--sonnet-1m`) with another provider scope, so it names the family, not a version: a version change
+ * the Claude Code sync reports moves the wire id and the label, never this id, and every stored selection,
+ * client subtitle and score keyed by family keeps matching.
+ */
+function anthropicFamilyModelId(alias: string): string {
+  return scopedModelId(DERIVED_PROVIDER, `${alias}${CLAUDE_ONE_MILLION_ID_SUFFIX}`);
+}
+
+/** Request spellings of that entry: the bare scoped id. The bare alias belongs to the subscription entry. */
+function anthropicFamilyAliases(alias: string): readonly string[] {
+  return [scopedModelId(DERIVED_PROVIDER, alias)];
+}
+
 export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistry {
   const parsed = GatewayModelsRegistrySchema.parse(value);
   validateRegistry(parsed);
@@ -208,6 +241,9 @@ export function parseGatewayModelsRegistry(value: unknown): GatewayModelsRegistr
 const registry = parseGatewayModelsRegistry(modelsData);
 const nativeProvider = registry.providers[NATIVE_PROVIDER];
 const nativeFamilies = nativeProvider.models;
+const derivedProvider = registry.providers[DERIVED_PROVIDER];
+/** The native families the derived provider serves, in the native order. */
+const derivedFamilies = nativeFamilies.filter((family) => derivedProvider.families.includes(family.modelId));
 
 export const GATEWAY_MODELS_UPDATED_AT = registry.updatedAt;
 
@@ -217,6 +253,7 @@ export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> =
     REGISTRY_PROVIDERS.map((provider) => [provider, registry.providers[provider].name]),
   ) as Record<RegistryProvider, string>,
   claude: nativeProvider.name,
+  anthropic: derivedProvider.name,
 });
 
 /**
@@ -224,7 +261,7 @@ export const GATEWAY_PROVIDER_NAMES: Readonly<Record<GatewayProvider, string>> =
  * served by its installed CLI under its own aliases, not advertised by the gateway.
  */
 export function isNativeGatewayProvider(provider: GatewayProvider): boolean {
-  return registry.providers[provider].native === true;
+  return provider === NATIVE_PROVIDER;
 }
 
 /** A role the registry's thresholds can recommend a model × effort for. */
@@ -251,7 +288,8 @@ export interface GatewayModelIntelligence {
  * the same day, otherwise `<earliest>–<latest>`. An entry without its own date was read on the registry-wide one.
  */
 export const GATEWAY_INTELLIGENCE_OBSERVED_SPAN: string = (() => {
-  const dates = GATEWAY_PROVIDERS.flatMap((provider) => registry.providers[provider].models.flatMap((entry) =>
+  // The derived provider's scores are the native families' own, so they add no date of their own.
+  const dates = DECLARING_PROVIDERS.flatMap((provider) => registry.providers[provider].models.flatMap((entry) =>
     entry.intelligence ? [entry.intelligence.observedAt ?? registry.intelligenceIndex.observedAt] : []));
   if (dates.length === 0) return registry.intelligenceIndex.observedAt;
   const sorted = [...dates].sort();
@@ -262,13 +300,18 @@ export const GATEWAY_INTELLIGENCE_OBSERVED_SPAN: string = (() => {
 
 /** Catalog id → intelligence data. Claude families key by their single catalog id. */
 const GATEWAY_MODEL_INTELLIGENCE: ReadonlyMap<string, GatewayModelIntelligence> = new Map(
-  GATEWAY_PROVIDERS.flatMap((provider) => registry.providers[provider].models.flatMap((entry) => {
+  DECLARING_PROVIDERS.flatMap((provider) => registry.providers[provider].models.flatMap((entry) => {
     if (!entry.intelligence) return [];
-    const id = provider === NATIVE_PROVIDER ? claudeFamilyModelId(entry.modelId) : scopedModelId(provider, entry.modelId);
-    return [[id, Object.freeze({
+    const intelligence = Object.freeze({
       source: entry.intelligence.source,
       scores: Object.freeze({ ...entry.intelligence.scores }),
-    })] as const];
+    });
+    const id = provider === NATIVE_PROVIDER ? claudeFamilyModelId(entry.modelId) : scopedModelId(provider, entry.modelId);
+    // The API-key entry of a native family reads the very same record, so a score can never differ between the two.
+    const derived = provider === NATIVE_PROVIDER && derivedFamilies.some((family) => family.modelId === entry.modelId)
+      ? [[anthropicFamilyModelId(entry.modelId), intelligence] as const]
+      : [];
+    return [[id, intelligence] as const, ...derived];
   })),
 );
 
@@ -326,7 +369,7 @@ let claudeNativeResolutions: ReadonlyMap<string, ClaudeNativeResolution> = new M
 export let GATEWAY_MODELS: readonly GatewayModel[] = buildGatewayModels();
 
 function buildGatewayModels(): readonly GatewayModel[] {
-  const claude = nativeFamilies.map((family) => {
+  const familyEntry = (family: GatewayModelEntry, provider: GatewayProvider) => {
     const alias = family.modelId;
     const resolution = claudeNativeResolutions.get(alias);
     const levels = resolution
@@ -335,19 +378,38 @@ function buildGatewayModels(): readonly GatewayModel[] {
     const effort: GatewayModelEffort = levels.length > 0
       ? Object.freeze({ supported: true as const, levels: Object.freeze([...levels]) })
       : UNSUPPORTED_GATEWAY_MODEL_EFFORT;
-    return Object.freeze<GatewayModel>({
-      id: claudeFamilyModelId(alias),
-      displayName: `${nativeProvider.name}-${resolution?.displayName ?? family.name}`,
-      provider: NATIVE_PROVIDER,
+    return {
+      alias,
+      displayName: `${GATEWAY_PROVIDER_NAMES[provider]}-${resolution?.displayName ?? family.name}`,
       ...(resolution ? { upstreamId: resolution.model } : {}),
       ...(family.description ? { description: family.description } : {}),
       ...(family.contextWindow ? { contextWindow: family.contextWindow } : {}),
       effort,
+    };
+  };
+  const claude = nativeFamilies.map((family) => {
+    const { alias, ...entry } = familyEntry(family, NATIVE_PROVIDER);
+    return Object.freeze<GatewayModel>({
+      id: claudeFamilyModelId(alias),
+      provider: NATIVE_PROVIDER,
+      ...entry,
       aliases: Object.freeze([...claudeFamilyAliases(alias)]),
       claudeAlias: alias,
     });
   });
-  return Object.freeze([...STATIC_GATEWAY_MODELS, ...claude]);
+  // The API-key twin of each served family: same label, description, window and ladder as the Claude row, the
+  // wire id the sync reports for it. It carries no `claudeAlias` — that would bind it to the subscription's
+  // quota scope and auto-compact names, and it is never launched as a bare alias.
+  const anthropic = derivedFamilies.map((family) => {
+    const { alias, ...entry } = familyEntry(family, DERIVED_PROVIDER);
+    return Object.freeze<GatewayModel>({
+      id: anthropicFamilyModelId(alias),
+      provider: DERIVED_PROVIDER,
+      ...entry,
+      aliases: Object.freeze([...anthropicFamilyAliases(alias)]),
+    });
+  });
+  return Object.freeze([...STATIC_GATEWAY_MODELS, ...anthropic, ...claude]);
 }
 
 /**
@@ -534,7 +596,9 @@ export function gatewayModelSummary(model: GatewayModel): string {
 export function gatewayProviderDefault(provider: GatewayProvider): GatewayModel {
   const defaultId = provider === NATIVE_PROVIDER
     ? claudeFamilyModelId(nativeProvider.defaultModel)
-    : scopedModelId(provider, registry.providers[provider].defaultModel);
+    : provider === DERIVED_PROVIDER
+      ? anthropicFamilyModelId(derivedProvider.defaultModel)
+      : scopedModelId(provider, registry.providers[provider].defaultModel);
   const resolved = GATEWAY_MODELS.find((model) => model.provider === provider && model.id === defaultId);
   if (!resolved) {
     throw new Error(`Gateway model registry has no default for provider "${provider}"`);
@@ -667,6 +731,21 @@ function validateRegistry(value: GatewayModelsRegistry): void {
   }
   if (!nativeIds.has(native.defaultModel)) {
     throw new Error(`Gateway default model is missing: ${NATIVE_PROVIDER}/${native.defaultModel}`);
+  }
+  const derived = value.providers[DERIVED_PROVIDER];
+  const derivedOwner = `${DERIVED_PROVIDER}/${derived.defaultModel}`;
+  for (const family of derived.families) {
+    if (!nativeIds.has(family)) {
+      throw new Error(`Derived gateway provider names a family that is not native: ${DERIVED_PROVIDER}/${family}`);
+    }
+    if (derived.families.indexOf(family) !== derived.families.lastIndexOf(family)) {
+      throw new Error(`Duplicate gateway model id: ${DERIVED_PROVIDER}/${family}`);
+    }
+    registerLookupId(lookupIds, anthropicFamilyModelId(family), `${DERIVED_PROVIDER}/${family}`);
+    for (const spelling of anthropicFamilyAliases(family)) registerLookupId(lookupIds, spelling, `${DERIVED_PROVIDER}/${family}`);
+  }
+  if (!derived.families.includes(derived.defaultModel)) {
+    throw new Error(`Gateway default model is missing: ${derivedOwner}`);
   }
   for (const provider of REGISTRY_PROVIDERS) {
     const definition = value.providers[provider];
