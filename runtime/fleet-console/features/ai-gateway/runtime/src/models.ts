@@ -6,7 +6,7 @@ import { recommendedRole } from "./model-family.js";
 import type { QuotaScope } from "./quota/types.js";
 import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
-export const GATEWAY_PROVIDERS = ["codex", "xai", "antigravity", "muse-code", "opencode", "claude"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "antigravity", "muse-code", "opencode", "gemini", "claude"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -117,6 +117,7 @@ const GatewayModelsRegistrySchema = z.object({
     antigravity: GatewayProviderSchema,
     "muse-code": GatewayProviderSchema,
     opencode: GatewayProviderSchema,
+    gemini: GatewayProviderSchema,
     claude: GatewayProviderSchema,
   }).strict(),
 }).strict();

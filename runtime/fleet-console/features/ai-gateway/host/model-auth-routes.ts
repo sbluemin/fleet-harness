@@ -13,7 +13,7 @@ interface ModelAuthHostContext {
 }
 import type http from "node:http";
 
-import { validateOpencodeGoAuthKey, validateTypesafeAuthKey } from "@fleet-console/ai-gateway";
+import { validateGeminiAuthKey, validateOpencodeGoAuthKey, validateTypesafeAuthKey } from "@fleet-console/ai-gateway";
 import type { AuthService, AuthValidationFailureResult } from "@fleet-console/ai-gateway";
 
 import {
@@ -43,6 +43,7 @@ const UPSTREAM_FAILURE_STATUSES: ReadonlySet<string> = new Set(["timeout", "netw
 
 const MODEL_AUTH_VALIDATORS: Readonly<Record<TerminalModelAuthProviderId, (apiKey: string) => Promise<AuthKeyValidation>>> = {
   opencode: validateOpencodeGoAuthKey,
+  gemini: validateGeminiAuthKey,
   typesafe: validateTypesafeAuthKey,
 };
 

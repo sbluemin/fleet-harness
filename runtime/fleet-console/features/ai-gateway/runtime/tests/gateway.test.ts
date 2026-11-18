@@ -374,6 +374,7 @@ function minimalRegistry() {
       xai: provider("Grok", "grok-4.6"),
       "muse-code": provider("Muse Code", "muse-spark-1.3"),
       opencode: provider("OpenCode Go", "deepseek-v4.1-flash"),
+      gemini: provider("Gemini", "gemini-4-hydrogen"),
       claude: { ...provider("Claude", "sonnet"), native: true },
     },
   };

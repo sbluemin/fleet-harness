@@ -1788,6 +1788,42 @@ describe("OpenCode Go routing", () => {
   });
 });
 
+describe("Gemini routing", () => {
+  it("refuses without a stored key, then calls the Gemini API with that key and reports the turn to the ledger", async () => {
+    const calls: Array<{ url: string; headers: Headers }> = [];
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      calls.push({ url: String(url), headers: new Headers(init?.headers) });
+      return new Response(`data: ${JSON.stringify({
+        candidates: [{ content: { role: "model", parts: [{ text: "ok" }] }, finishReason: "STOP" }],
+        usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1, serviceTier: "standard" },
+      })}\n\n`, { headers: { "content-type": "text/event-stream" } });
+    });
+    const geminiUsage = { observeUsage: vi.fn(), observeBlock: vi.fn() };
+
+    const signedOut = createAiGatewayRouter({ fetch: fetchMock, readGeminiApiKey: () => undefined, geminiUsage });
+    const refused = response();
+    await signedOut.handle(ctx({ res: refused, token: ANTHROPIC_CRED, model: "claude-gateway--gemini--gemini-4-hydrogen" }));
+    expect(refused.status).toBe(403);
+    expect(refused.body).toContain("Gemini");
+    expect(fetchMock).not.toHaveBeenCalled();
+    signedOut.dispose();
+
+    const router = createAiGatewayRouter({ fetch: fetchMock, readGeminiApiKey: async () => "gemini-key", geminiUsage });
+    try {
+      const res = response();
+      await router.handle(ctx({ res, token: ANTHROPIC_CRED, model: "claude-gateway--gemini--gemini-4-argon" }));
+      expect(res.status).toBe(200);
+      expect(calls[0]?.url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-4-argon:streamGenerateContent?alt=sse");
+      expect(calls[0]?.headers.get("x-goog-api-key")).toBe("gemini-key");
+      // Same model name as the Antigravity entry, but a separate provider: the usage is attributed to this one.
+      expect(geminiUsage.observeUsage).toHaveBeenCalledTimes(1);
+      expect(geminiUsage.observeUsage).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-4-argon", promptTokens: 3, serviceTier: "standard" }));
+    } finally {
+      router.dispose();
+    }
+  });
+});
+
 describe("request body limit", () => {
   it("refuses a body past the limit with a 413 that does not arm reactive compaction", async () => {
     // "context window"가 들어간 413만 Claude Code의 압축을 무장시킨다(canonical/index.ts).

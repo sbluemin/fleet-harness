@@ -6,6 +6,7 @@ import {
   isSubscriptionSignedOutEntry,
   xaiCliSubscriptionPresent,
   CODEX_AUTH_PROVIDER_ID,
+  GEMINI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
   XAI_AUTH_PROVIDER_ID,
   type AiGatewaySettingsStore,
@@ -150,6 +151,11 @@ async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly Ga
       provider: "opencode",
       source: "api-key",
       state: await probe(async () => (await resolveAuthService(deps).getApiKey(OPENCODE_AUTH_PROVIDER_ID)) ?? null),
+    },
+    {
+      provider: "gemini",
+      source: "api-key",
+      state: await probe(async () => (await resolveAuthService(deps).getApiKey(GEMINI_AUTH_PROVIDER_ID)) ?? null),
     },
   ];
 }

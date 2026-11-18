@@ -1,3 +1,4 @@
+import { GEMINI_AUTH_PROVIDER_ID, validateGeminiApiKey } from "../upstream/gemini/index.js";
 import { OPENCODE_AUTH_PROVIDER_ID, OPENCODE_GO_API_BASE_URL, validateOpencodeGoApiKey } from "../upstream/opencode-go/index.js";
 import { TYPESAFE_API_BASE_URL, TYPESAFE_AUTH_PROVIDER_ID, validateTypesafeApiKey } from "../upstream/typesafe/index.js";
 import { isAuthValidationSuccess } from "../auth/validation.js";
@@ -35,6 +36,17 @@ export async function validateTypesafeAuthKey(apiKey: string): Promise<AuthKeyVa
 export async function validateOpencodeGoAuthKey(apiKey: string): Promise<AuthKeyValidationResult> {
   return toKeyValidationResult(await validateOpencodeGoApiKey({
     providerId: OPENCODE_AUTH_PROVIDER_ID,
+    apiKey,
+  }));
+}
+
+/**
+ * Gemini API 키는 공급자 폴더의 모델 목록 프로브로 확인한다. 추론 토큰을 쓰지 않는다. 잘못된 키는
+ * 401이 아니라 400 `API_KEY_INVALID`로 거절되며 그 판정은 프로브가 소유한다.
+ */
+export async function validateGeminiAuthKey(apiKey: string): Promise<AuthKeyValidationResult> {
+  return toKeyValidationResult(await validateGeminiApiKey({
+    providerId: GEMINI_AUTH_PROVIDER_ID,
     apiKey,
   }));
 }

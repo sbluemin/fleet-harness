@@ -28,7 +28,7 @@ import { effortWord, hasAnyScore, qualifying, RankMark, type IntelligenceScores 
 
 type T = Translate<CommodoreMessageKey>;
 
-const LAUNCH_PROVIDER_ORDER: readonly AiGatewayProviderId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"];
+const LAUNCH_PROVIDER_ORDER: readonly AiGatewayProviderId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
 const BASE_EFFORTS = new Set(["low", "medium"]);
 
 const MODEL_SUBTITLE_KEYS: Readonly<Record<string, CommodoreMessageKey>> = {
@@ -221,7 +221,8 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
       const fastSupported = found?.model.fast === true || rosterRow?.fastSupported === true;
       const status = modelQuotaStatus(
         providerVisible(provider),
-        quotaSnapshot.data?.providers[provider],
+        // Gemini는 아직 Quota 요약의 키가 아니다(지출 원장이 그 항목을 들일 때 이 단언이 필요 없어진다).
+        quotaSnapshot.data?.providers[provider as keyof NonNullable<typeof quotaSnapshot.data>["providers"]],
         rosterRow?.quotaScopes,
         locale,
       );
