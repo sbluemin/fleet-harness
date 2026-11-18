@@ -130,7 +130,7 @@ node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir "$
 
 ### Shared input, dialog, and fake-login page
 
-A scenario that needs a text input, select, native alert/confirm, or a login form does not need its own page. Start the owned [page fixture server](../scripts/page-fixture-server.mjs) as the runner's managed background process and keep its startup line; it starts no shell, agent CLI, pnpm, or `tsx`, so it is one of the plain-Node HTTP helpers [the wrapper exceptions](#keep-the-real-home-out) name:
+A scenario that needs a text input, select, native alert/confirm, or a login form at `/`, or a same-origin tab or popup that returns a fixed result to its opener at `/opener` and `/child`, does not need its own page. Start the owned [page fixture server](../scripts/page-fixture-server.mjs) as the runner's managed background process and keep its startup line; it starts no shell, agent CLI, pnpm, or `tsx`, so it is one of the plain-Node HTTP helpers [the wrapper exceptions](#keep-the-real-home-out) name:
 
 ```bash
 node <worktree>/.claude/skills/console-e2e/scripts/page-fixture-server.mjs --port 0
