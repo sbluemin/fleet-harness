@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 // Shared provider marks for launch menus and model coordinates. Host chrome and
 // plugins both import this module so the bands cannot restyle apart.
 
-export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "antigravity" | "muse-code" | "opencode";
+export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "antigravity" | "muse-code" | "opencode" | "gemini";
 
 /**
  * Optional intrinsic size for a provider mark.
@@ -19,8 +19,8 @@ export type LaunchProviderGlyphSize = {
 
 type LaunchProviderGlyphProps = { readonly size?: LaunchProviderGlyphSize };
 
-const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"] as const;
-const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"];
+const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"] as const;
+const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
 const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> = {
   claude: "Claude",
   codex: "Codex",
@@ -28,6 +28,7 @@ const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> 
   antigravity: "Antigravity",
   "muse-code": "Muse Code",
   opencode: "OpenCode Go",
+  gemini: "Gemini",
 };
 const CLAUDE_GATEWAY_MODEL_PREFIX = "claude-gateway--";
 
@@ -116,6 +117,15 @@ function MuseCodeGlyph({ size }: LaunchProviderGlyphProps) {
   );
 }
 
+function GeminiGlyph({ size }: LaunchProviderGlyphProps) {
+  // 공식 로고가 아닌 공급자 식별용 네 갈래 별. Antigravity 경로의 같은 모델과 구분되는 항목이다.
+  return (
+    <svg viewBox="0 0 24 24" {...size} aria-hidden="true">
+      <path d="M12 2.2c.6 4.9 4.3 8.6 9.2 9.2-4.9.6-8.6 4.3-9.2 9.2-.6-4.9-4.3-8.6-9.2-9.2 4.9-.6 8.6-4.3 9.2-9.2Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
   // OpenCode 마크의 사각 틀. 원본 비율(240×300)을 지킨다.
   return (
@@ -128,6 +138,7 @@ function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
 
 export function launchProviderGlyph(provider: LaunchProviderGlyphId, size?: LaunchProviderGlyphSize): ReactNode {
   if (provider === "claude") return <ClaudeGlyph size={size} />;
+  if (provider === "gemini") return <GeminiGlyph size={size} />;
   if (provider === "xai") return <GrokGlyph size={size} />;
   if (provider === "antigravity") return <AntigravityGlyph size={size} />;
   if (provider === "muse-code") return <MuseCodeGlyph size={size} />;

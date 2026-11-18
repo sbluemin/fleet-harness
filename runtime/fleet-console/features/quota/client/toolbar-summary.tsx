@@ -14,6 +14,7 @@ import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@fleet-console/a
 import { PROVIDER_ORDER_DEFAULT, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT } from "./i18n/index.js";
+import { spendSeverity } from "./gemini-spend.js";
 import { meterSeverity, mostUrgentWindow, providerName, QuotaPanel, useAntigravityEnabled, windowLabel } from "./quota-panel.js";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
@@ -28,6 +29,11 @@ export interface QuotaToolbarReading {
   readonly id: ProviderId;
   /** 비어 있으면 아직 읽지 못했거나 읽을 수 없는 공급자다 — 칸은 남기고 숫자 자리에 「–」를 둔다. */
   readonly lines: readonly QuotaWindow[];
+  /**
+   * 창이 아니라 금액으로만 아는 공급자(Gemini)의 예산 사용률. 창을 만들지 않고 이 칸에만 싣는다 —
+   * 지출을 QuotaWindow로 만들면 routing이 그것으로 압박도를 계산한다.
+   */
+  readonly spendPercent?: number;
 }
 
 function readableWindows(provider: ProviderDto | undefined): readonly QuotaWindow[] {
@@ -45,7 +51,11 @@ export function toolbarReadings(
 ): readonly QuotaToolbarReading[] {
   return PROVIDER_ORDER_DEFAULT
     .filter((id) => shown.includes(id))
-    .map((id) => ({ id, lines: summaryLines(readableWindows(data?.providers[id])) }));
+    .map((id) => {
+      const lines = summaryLines(readableWindows(data?.providers[id]));
+      const spendPercent = lines.length === 0 ? data?.providers[id]?.spend?.usedPercent : undefined;
+      return { id, lines, ...(spendPercent !== undefined ? { spendPercent } : {}) };
+    });
 }
 
 /** 공급자가 풀을 나눠 재면(예: Antigravity의 Gemini와 Claude & GPT) 풀마다 한 줄 — 풀마다 가장 급한 창 하나.
@@ -127,7 +137,9 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
       : readings.map((reading) => t("quota.toolbar.reading", {
         provider: providerName(reading.id, mobile),
         windows: reading.lines.length === 0
-          ? "–"
+          ? (reading.spendPercent !== undefined
+            ? t("quota.gemini.budget.used", { pct: Math.round(reading.spendPercent) })
+            : "–")
           : reading.lines.map((window) => `${windowLabel(window, t)} ${t("quota.meter.used", { pct: Math.round(window.usedPercent) })}`).join(" · "),
       })).join(" / ");
   return (
@@ -155,7 +167,9 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
                 </span>
                 <span className="quota-toolbar-summary__lines">
                   {reading.lines.length === 0
-                    ? <span className="quota-toolbar-summary__pct">–</span>
+                    ? (reading.spendPercent === undefined
+                      ? <span className="quota-toolbar-summary__pct">–</span>
+                      : <span className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${spendSeverity(reading.spendPercent)}`}>{Math.round(reading.spendPercent)}%</span>)
                     : reading.lines.map((window, index) => (
                       <span key={`${window.id}-${window.label ?? index}`} className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${meterSeverity(window)}`}>
                         {Math.round(window.usedPercent)}%

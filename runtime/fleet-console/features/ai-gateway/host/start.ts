@@ -14,6 +14,7 @@ import {
   createClaudeNativeModelSync,
   createQuotaLastGoodStore,
   createQuotaService,
+  createGeminiSpendLedger,
   createMuseCodeOAuth,
   createCodexOAuth,
   createXaiOAuth,
@@ -34,6 +35,7 @@ import {
   createProviderAuthService,
   defaultCredentialDeps,
   DEFAULT_ROSTER_SEED_MODEL_IDS,
+  GEMINI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
   setWireLogTarget,
   wireLogEnabled,
@@ -137,6 +139,15 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // OpenCode Go는 키 하나가 로그인이자 사용량 자격이다. 저장·삭제 직후 사용량을 다시 읽어야
     // 메뉴·배정이 캐시 수명(5분)을 기다리지 않고 새 로그인 상태를 본다.
     onChanged: (provider, signedIn) => {
+      // Gemini 키도 같은 규칙이다 — 저장하면 그 공급자만 다시 읽어 메뉴 노출과 지출 카드가
+      // 캐시 수명(5분)을 기다리지 않는다. `gemini`는 상류 브랜치가 여는 공급자 id라 이 브랜치의
+      // 유니온에는 아직 없어 문자열로 비교한다(통합 때 유니온이 넓어지면 그대로 유효하다).
+      const providerId: string = provider;
+      if (providerId === "gemini") {
+        if (signedIn) void quota.getSummary({ forceProvider: "gemini" }).catch(() => undefined);
+        else quota.record("gemini", { status: "signed_out" });
+        return;
+      }
       if (provider !== "opencode") return;
       if (signedIn) void quota.getSummary({ forceProvider: "opencode" }).catch(() => undefined);
       else quota.record("opencode", { status: "signed_out" });
@@ -167,6 +178,14 @@ export function startAiGateway(ctx: GatewayStartContext) {
   ctx.host.lifecycle.registerCleanup(() => xai.dispose());
   registerConsoleOAuthRoutes(ctx, "xai", "xAI", xai);
   const providerStatusListeners = new Set<() => void>();
+  // Gemini 지출 원장 — 응답 usageMetadata 토큰 × 확인 단가를 태평양시 달 경계로 누적하고,
+  // 월 예산과 마지막 402·429를 같은 파일에 둔다. 값이 바뀌면 사용량 캐시를 만료시켜 다음 조회가
+  // 새 값을 읽는다. 원장은 upstream을 모르고, 이 자리는 원장의 계산을 모른다.
+  let expireGeminiQuota: (() => void) | undefined;
+  const geminiLedger = createGeminiSpendLedger({
+    filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "gemini-spend.json"),
+    onChange: () => expireGeminiQuota?.(),
+  });
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
     onProviderStatusChanged: () => {
@@ -184,7 +203,51 @@ export function startAiGateway(ctx: GatewayStartContext) {
     lastGoodStore: createQuotaLastGoodStore({
       filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "quota-last-good.json"),
     }),
+    // Gemini는 조회할 upstream 사용량 API가 없다. 키가 저장돼 있는지만 보고, 지출·예산·차단은
+    // 원장이 답한다 — 키가 없으면 미로그인(signed_out)이고 지출도 싣지 않는다.
+    fetchGemini: async () => {
+      const apiKey = await authService.getApiKey(GEMINI_AUTH_PROVIDER_ID);
+      if (apiKey === undefined || apiKey.trim().length === 0) return { status: "signed_out" };
+      const at = Date.now();
+      const reading = geminiLedger.read(at);
+      return {
+        status: "ok",
+        fetchedAt: at,
+        spend: reading.spend,
+        ...(reading.block !== undefined ? { block: reading.block } : {}),
+      };
+    },
   });
+  expireGeminiQuota = () => quota.expire("gemini");
+  // Gemini 월 예산 — Quota 패널의 Gemini 카드가 지출 금액 옆에서 넣고 지운다. `usd: null`은 삭제다.
+  // 저장 자리는 원장과 같은 파일이라 지출과 예산이 한 잠금 아래에서 함께 읽힌다.
+  ctx.registerRouter("ai-gateway/quota/gemini-budget", async ({ req, res }) => {
+    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
+    let body: unknown;
+    try {
+      body = await ctx.host.http.readJsonBody<unknown>(req);
+    } catch {
+      body = null;
+    }
+    if (typeof body !== "object" || body === null || Array.isArray(body)) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_budget_request" }); return true;
+    }
+    const fields = Object.keys(body);
+    if (fields.length !== 1 || !("usd" in body)) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_budget_request" }); return true;
+    }
+    const usd = (body as { readonly usd?: unknown }).usd;
+    if (usd === null) {
+      geminiLedger.clearBudget();
+    } else if (!geminiLedger.setBudget(usd)) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_budget" }); return true;
+    }
+    ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }, [{ method: "POST", path: "", summary: "Set or clear the Gemini monthly spend budget.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+
   ctx.registerRouter("ai-gateway/quota", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -232,14 +295,17 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const readProviderStatuses = (): ProviderStatusMap | undefined => {
     const summary = quota.peekSummary();
     if (!summary) return undefined;
-    return {
+    const statuses = {
       claude: summary.providers.claude.status,
       codex: summary.providers.codex.status,
       xai: summary.providers.xai.status,
       antigravity: summary.providers.antigravity.status,
       "muse-code": summary.providers["muse-code"].status,
       opencode: summary.providers.opencode.status,
-    };
+    } satisfies ProviderStatusMap;
+    // Gemini 키의 유무가 모델 메뉴와 설정의 로그인 표시를 가른다. 이 브랜치의 GatewayProvider
+    // 유니온에는 아직 gemini가 없어(상류 브랜치가 넓힌다) 임시 단언으로 싣는다 — 통합 뒤에도 유효하다.
+    return { ...statuses, gemini: summary.providers.gemini.status } as unknown as ProviderStatusMap;
   };
   function assign(request: unknown) {
       // 갱신은 비동기로, 배정은 같은 서비스의 현재 캐시를 즉시 읽는다.
@@ -381,6 +447,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
     readMuseCodeAuth: museCode.readAuth,
     renewMuseCodeAuth: museCode.renew,
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
+    // Gemini 턴이 끝나거나 402·429로 거절될 때 업스트림이 부르는 지출 원장.
+    geminiUsage: geminiLedger,
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
