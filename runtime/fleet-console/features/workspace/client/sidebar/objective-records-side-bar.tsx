@@ -116,6 +116,8 @@ interface TheaterAliasEditing {
 /** 「사령관 설정」 — 머리의 아바타 자리에 우측 패널 머리와 같은 아바타 편집기를 띄운다. 사령관 행만 받는다. */
 interface TheaterAvatarEditing {
   readonly editingAvatar?: boolean;
+  /** 「사령관 설정」을 누를 때마다 바뀐다 — 「되돌리기」 줄이 떠 있는 동안 다시 눌러도 편집기가 새로 열린다. */
+  readonly avatarEditRequest?: number;
   readonly onFinishAvatarEdit?: (theaterId: string) => void;
 }
 
@@ -231,7 +233,7 @@ export function ObjectiveRecordsSideBar({
   const [browserCommodoreId, setBrowserCommodoreId] = useState<string | null>(null);
   const [addFailure, setAddFailure] = useState<string | null>(null);
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
-  const [avatarEditingTheaterId, setAvatarEditingTheaterId] = useState<string | null>(null);
+  const [avatarEditing, setAvatarEditing] = useState<{ readonly theaterId: string; readonly request: number } | null>(null);
   const [aliasError, setAliasError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
@@ -647,17 +649,17 @@ export function ObjectiveRecordsSideBar({
 
   const startAliasEdit = (theaterId: string) => {
     setActiveContextMenu(null);
-    setAvatarEditingTheaterId(null);
+    setAvatarEditing(null);
     setAliasEditingTheaterId(theaterId);
   };
   // 「사령관 설정」 — 이름은 F2·이름 더블클릭이 맡고, 메뉴는 우측 패널 머리와 같은 아바타 편집기를 행의 아바타 자리에 연다.
   const startAvatarEdit = (theaterId: string) => {
     setActiveContextMenu(null);
     setAliasEditingTheaterId(null);
-    setAvatarEditingTheaterId(theaterId);
+    setAvatarEditing((current) => ({ theaterId, request: (current?.request ?? 0) + 1 }));
   };
   const finishAvatarEdit = (theaterId: string) => {
-    setAvatarEditingTheaterId((current) => (current === theaterId ? null : current));
+    setAvatarEditing((current) => (current?.theaterId === theaterId ? null : current));
   };
   const finishAliasEdit = (theaterId: string, alias: string | null | undefined) => {
     setAliasEditingTheaterId((current) => (current === theaterId ? null : current));
@@ -671,7 +673,8 @@ export function ObjectiveRecordsSideBar({
     editingAlias: aliasEditingTheaterId === theaterId,
     onStartAliasEdit: startAliasEdit,
     onFinishAliasEdit: finishAliasEdit,
-    editingAvatar: avatarEditingTheaterId === theaterId,
+    editingAvatar: avatarEditing?.theaterId === theaterId,
+    avatarEditRequest: avatarEditing?.request ?? 0,
     onFinishAvatarEdit: finishAvatarEdit,
   });
 
@@ -1052,6 +1055,7 @@ export function TheaterSectionHeader({
   onPointerDragStart,
   avatarOverride,
   editingAvatar = false,
+  avatarEditRequest = 0,
   onFinishAvatarEdit,
 }: TheaterSectionHeaderProps) {
   const t = useT();
@@ -1161,7 +1165,7 @@ export function TheaterSectionHeader({
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
       {/* 표식이 없을 때의 사령관 머리 — 사람에게 넘긴 항목이 남아 있으면 답하기 전까지 결정 얼굴로 선다(열람으로 지워지지 않는다). */}
       {editingAvatar && onFinishAvatarEdit ? (
-        <AnchoredAvatarEditor avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"}
+        <AnchoredAvatarEditor key={avatarEditRequest} avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"}
           size={editingInMarkSlot ? 18 : 32} figure={editingInMarkSlot}
           onReturnFocus={() => activateRef.current?.focus({ preventScroll: true })} onDone={() => onFinishAvatarEdit(theater.id)} />
       ) : <KeyedAvatar avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"} size={32} label="" decorative />}
