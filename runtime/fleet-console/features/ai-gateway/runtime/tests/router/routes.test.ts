@@ -338,7 +338,7 @@ describe("delegation assignment", () => {
       exposure,
     );
     expect(agentDecision.model).toBe("claude-gateway--opencode--deepseek-v4.1-flash[1m]");
-    expect(agentDecision.effort).toBe("medium");
+    expect(agentDecision.effort).toBe("high");
     expect(agentDecision.because).not.toContain("fallback");
 
     const stageDecision = decideGatewayRoutingAssignment(

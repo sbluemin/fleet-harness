@@ -19,7 +19,6 @@ import {
   recommendedGatewayModelRole,
   recommendedGatewayRole,
   resolveGatewayModel,
-  toClaudeGatewayModelId,
   toGatewayModelAlias,
   DEFAULT_CODEX_MODEL,
   CHATGPT_CODEX_RESPONSES_URL,
