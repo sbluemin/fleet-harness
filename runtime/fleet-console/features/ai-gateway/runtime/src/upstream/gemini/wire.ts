@@ -56,6 +56,12 @@ export type GeminiFunctionCallingMode = "NONE" | "ANY";
 
 export interface GeminiGenerateContentRequest {
   contents: GeminiContent[];
+  /**
+   * 서비스 등급. 사람 결정(ee41ae9b)으로 **Standard만** 쓴다 — 모델·설정·헤더 어디서도 바꾸지 않는다.
+   * 요청 최상위의 소문자 `"standard"`다(2026-11-18 사령관 실측: 대문자·모르는 값과 `generationConfig` 안의
+   * 위치는 400이고, 같은 필드를 `service_tier`로 써도 받는다). 생략해도 Standard로 나가지만 "강제"이므로 명시한다.
+   */
+  serviceTier: "standard";
   systemInstruction?: { parts: [{ text: string }] };
   tools?: [{ functionDeclarations: GeminiFunctionDeclaration[] }];
   toolConfig?: {
@@ -579,6 +585,7 @@ export function buildGeminiRequest(
   const thinkingLevel = geminiThinkingLevel(request.model, request.reasoning?.effort);
   return {
     contents,
+    serviceTier: "standard",
     ...(request.instructions === undefined || request.instructions.length === 0
       ? {}
       : { systemInstruction: { parts: [{ text: request.instructions }] as [{ text: string }] } }),

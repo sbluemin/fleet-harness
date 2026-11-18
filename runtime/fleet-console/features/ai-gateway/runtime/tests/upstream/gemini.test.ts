@@ -58,6 +58,9 @@ describe("Gemini upstream", () => {
     expect(String(url)).toBe(`https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:streamGenerateContent?alt=sse`);
     expect((init?.headers as Record<string, string>)["x-goog-api-key"]).toBe(KEY);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    // 등급은 요청 최상위의 소문자 standard로 늘 명시한다.
+    expect(body).toMatchObject({ serviceTier: "standard" });
+    expect(body.generationConfig).not.toHaveProperty("serviceTier");
     expect(body).toMatchObject({
       systemInstruction: { parts: [{ text: "be brief" }] },
       // 모델 출력 상한(hydrogen 65536)으로 줄이고, 생각 요약을 켠다.
