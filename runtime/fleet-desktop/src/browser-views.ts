@@ -543,8 +543,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const disarmFrameSubscription = (entry: LiveView): void => {
     if (!entry.frameSubscribed) return;
     entry.frameSubscribed = false;
-    const contents = entry.view.webContents as WebContents & { endFrameSubscription?: () => void };
-    if (typeof contents.isDestroyed === "function" && contents.isDestroyed()) return;
+    // 페이지가 스스로 닫히면(window.close) 뷰가 webContents 를 먼저 잃는다 — 그 뒤의 drop 에서도 정리를 이어 간다.
+    const contents = entry.view.webContents as (WebContents & { endFrameSubscription?: () => void }) | undefined;
+    if (!contents || (typeof contents.isDestroyed === "function" && contents.isDestroyed())) return;
     if (typeof contents.endFrameSubscription !== "function") return;
     try { contents.endFrameSubscription(); } catch { /* 뷰가 먼저 끊겼다. */ }
   };

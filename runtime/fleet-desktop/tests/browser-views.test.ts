@@ -388,6 +388,7 @@ describe("managed browser auth and on-demand frames", () => {
     });
     const created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter; frameSubs: { begin: number; end: number } }> = [];
     const shell = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 800, height: 600 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 1, reclaimFocus: vi.fn() } satisfies PageHost;
+    const nativeViews: WebContentsView[] = [];
     let releaseCapture: (() => void) | null = null;
     let captureResult: Buffer | null = Buffer.from("frame-1");
     const captures: Buffer[] = [];
@@ -402,7 +403,7 @@ describe("managed browser auth and on-demand frames", () => {
       shell: () => shell,
       consoleContents: () => null,
       surface: { apply: vi.fn(), target: () => null, lastPage: () => null, inputLocked: () => false, refresh: vi.fn(), dispose: vi.fn() },
-      createView: (partition) => fakeView(partition, created),
+      createView: (partition) => { const native = fakeView(partition, created); nativeViews.push(native); return native; },
       product: () => "Chrome/150.0",
       userAgent: () => "Mozilla/5.0 Chrome/150.0",
       auth: () => ({ token: "lock-token", ownerId: "owner-1" }),
@@ -496,8 +497,18 @@ describe("managed browser auth and on-demand frames", () => {
     await Promise.resolve();
     expect(captures).toHaveLength(capturedAtStop);
     expect(created[0]!.closed).toBe(false);
+
+    // 보던 페이지가 스스로 닫히면(window.close) 뷰가 webContents 를 먼저 잃은 채 디버거 detach 가 온다.
+    // 메인 프로세스 예외 없이 정리를 끝내고 Console 에 detached 를 알려야 한다.
+    publish({ ...lifetime, generation: 5, watchedViewIds: ["view-1"] });
+    await vi.waitFor(() => expect(created[0]!.frameSubs.begin).toBe(2));
+    const pageDebugger = (created[0]!.contents as EventEmitter & { debugger: EventEmitter }).debugger;
+    (nativeViews[0] as unknown as { webContents?: unknown }).webContents = undefined;
+    expect(() => pageDebugger.emit("detach", {}, "target closed")).not.toThrow();
+    expect(shell.remove).toHaveBeenCalledWith(nativeViews[0]);
+    await vi.waitFor(() => expect(relays.flatMap((relay) => relay.detached ?? [])).toContain("view-1"));
     views.stop();
-    expect(created[0]!.frameSubs).toEqual({ begin: 1, end: 1 });
+    expect(created[0]!.frameSubs).toEqual({ begin: 2, end: 1 });
   });
 
   it("streams viewer frames from the page screencast instead of polling captures", async () => {
