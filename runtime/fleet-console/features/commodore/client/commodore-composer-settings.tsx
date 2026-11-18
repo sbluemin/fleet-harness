@@ -446,7 +446,8 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
       const target = event.target as Element | null;
       if (!target) return;
       if (panelRef.current?.contains(target) || chipsRef.current?.contains(target)) return;
-      if (target.closest?.("[aria-modal='true'], .fc-coord-menu, [role='menu'], [role='dialog']")) return;
+      // 칸이 연 body 포털(공용 Select 목록 포함) 안의 누름도 열어 둔다 — 목록은 팝오버의 자식이 아니다.
+      if (target.closest?.("[aria-modal='true'], .fc-coord-menu, .fc-select__popup, [role='menu'], [role='listbox'], [role='dialog']")) return;
       close(false);
     };
     const onKey = (event: KeyboardEvent) => {
