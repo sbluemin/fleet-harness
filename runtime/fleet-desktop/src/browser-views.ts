@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { Rectangle, Session, WebContents, WebContentsView } from "electron";
+import type { HandlerDetails, Rectangle, Session, WebContents, WebContentsView } from "electron";
 import {
   DESKTOP_BROWSER_EVENT,
   DESKTOP_BROWSER_EVENTS_PATH,
@@ -292,6 +292,32 @@ export interface DesktopBrowserViews {
 }
 
 /**
+ * `window.open` 의 기능 문자열이 창(팝업)을 요구하는가. HTML 명세처럼 `noopener`·`noreferrer` 는 창 기능이 아니라서, 그것뿐이면
+ * 탭이다. Shift 클릭도 disposition 은 `new-window` 이지만 기능이 비어 있어 창이 아니다.
+ */
+export function featuresRequestPopup(features: string): boolean {
+  return features.split(",").some((token) => {
+    const key = token.split("=")[0]!.trim().toLowerCase();
+    return key !== "" && key !== "noopener" && key !== "noreferrer";
+  });
+}
+
+/**
+ * 페이지가 연 창이 받을 만한 주소인가 — Console 의 `admit` 과 같은 스킴(http·https·about)에, opener 와 같은 출처의 `blob:` 을 더한다.
+ * 그 밖(`data:` 등)은 새 탭으로도 같은 뷰로도 열지 않는다. (`javascript:`·빈 주소는 Chromium 이 `about:blank` 로 넘긴다.)
+ */
+export function pageOpenUrlAllowed(url: string, openerUrl: string): boolean {
+  let target: URL;
+  try { target = new URL(url); } catch { return false; }
+  if (target.protocol === "http:" || target.protocol === "https:" || target.protocol === "about:") return true;
+  if (target.protocol !== "blob:") return false;
+  try {
+    const opener = new URL(openerUrl);
+    return (opener.protocol === "http:" || opener.protocol === "https:") && target.origin === opener.origin;
+  } catch { return false; }
+}
+
+/**
  * 페이지의 alert·confirm 을 OS 메시지 상자 대신 브라우저 안에서 답하게 한다. Electron 의 기본 처리는 WebContents 마다 붙는
  * 비공개 `-run-dialog` 리스너가 `dialog.showMessageBox` 로 앱 밖 창을 띄우는 것이고(v43.1.0 `lib/browser/api/web-contents.ts`),
  * CDP 로 답해도 그 창은 남는다. 리스너를 바꿔 창을 띄우지 않고 콜백만 쥔다 — 대화상자는 `Page.javascriptDialogOpening` 으로
@@ -479,6 +505,8 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   let viewerCapture: ViewerCaptureQuality = "balanced";
   /** 지금 Console 이 페이지 팝업을 새 탭으로 받는가(스냅샷의 `popups`). 아니면 팝업을 지금처럼 같은 뷰에서 연다. */
   let popupsAccepted = false;
+  /** 지금 Console 이 탭형 열기도 새 탭으로 받는가(스냅샷의 `tabOpens`)와, 더 받지 못하는 뷰. null 이면 옛 Console — 탭형 열기는 같은 뷰에서 연다. */
+  let tabOpens: { readonly full: ReadonlySet<string> } | null = null;
   /** Console 의 스냅샷에 아직 오르지 않은 팝업 뷰 — 그동안은 스냅샷에 없다고 거두지 않는다. 값은 받기를 기다리는 만료 타이머. */
   const pendingPopups = new Map<string, ReturnType<typeof setTimeout>>();
   const now = deps.now ?? (() => Date.now());
@@ -970,9 +998,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     });
   };
 
-  const create = (spec: DesktopBrowserView, guest?: WebContents): void => {
+  const create = (spec: DesktopBrowserView, guest?: WebContents): WebContents | null => {
     const shell = deps.shell();
-    if (!shell || shell.isDestroyed()) return;
+    if (!shell || shell.isDestroyed()) return null;
     const view = deps.createView(spec.partition, spec.profile ?? null, guest);
     deps.onView?.(view, spec.id);
     // 출처 표식보다 먼저 단다. origin이 없어 표식을 건너뛰어도 형제 쿠키는 나가지 않는다.
@@ -1041,12 +1069,20 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     entry.lastBounds = initialBounds;
     view.setVisible(true);
     shell.park(view);
-    // 창 기능을 단 window.open(팝업)은 Console 이 받을 때 opener 와 이어진 새 탭으로 연다 — Chrome 의 팝업처럼 opener 가
-    // 결과를 돌려받고 팝업이 스스로 닫힐 수 있다. 탭형 열기(target=_blank, 기능 없는 window.open)와 옛 Console 에서는 같은 뷰에서 연다.
+    // 페이지가 연 창은 Console 이 받을 때 opener 와 같은 스페이스의 새 탭으로 연다. 창 기능을 단 window.open(팝업)은 Chrome 의 팝업처럼
+    // opener 가 결과를 돌려받고 스스로 닫을 수 있고, 탭형 열기(target=_blank·기능 없는 window.open·수정키 클릭·form POST)는 opener 를
+    // 그대로 두고(noopener 면 Chromium 이 끊는다) 새 탭에 열린다. 받을 수 없으면(옛 Console, 탭 상한) 지금처럼 같은 뷰에서 연다.
+    // 받을 만한 주소가 아니면 어느 쪽도 열지 않는다.
     contents.setWindowOpenHandler((details) => {
+      let openerUrl = "";
+      try { openerUrl = contents.getURL(); } catch { /* 뷰가 사라지는 중 */ }
+      if (!pageOpenUrlAllowed(details.url, openerUrl)) return { action: "deny" };
       const host = deps.shell();
-      if (popupsAccepted && details.disposition === "new-window" && live.has(spec.id) && host && !host.isDestroyed()) {
-        return { action: "allow", outlivesOpener: true, createWindow: (options) => openPopup(spec.id, (options as { webContents: WebContents }).webContents, details.url) };
+      const popup = details.disposition === "new-window" && featuresRequestPopup(details.features);
+      // 탭 상한 판정은 createWindow 를 돌려주기 전에 동기로 해야 한다 — 값은 스냅샷 시점의 것이라 낡을 수 있고, 그때는 Console 의 adoptPopup 이 닫는다.
+      const accepted = live.has(spec.id) && host && !host.isDestroyed() && (popup ? popupsAccepted : tabOpens !== null && !tabOpens.full.has(spec.id));
+      if (accepted) {
+        return { action: "allow", outlivesOpener: true, createWindow: (options) => openWindow(spec.id, spec, (options as { webContents?: WebContents }).webContents, details) };
       }
       void contents.loadURL(details.url).catch(() => undefined);
       return { action: "deny" };
@@ -1093,48 +1129,65 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     } catch (error) {
       log(`browser view debugger attach failed: ${error instanceof Error ? error.message : "unknown"}`);
       drop(spec.id, true);
-      return;
+      return contents;
     }
-    // 팝업은 Chromium 이 연 주소로 이미 떠난다 — openPopup 이 그 첫 이동을 붙잡는다.
+    // 페이지가 연 창은 Chromium 이 연 주소로 이미 떠난다 — openWindow 가 그 첫 이동을 붙잡는다.
     if (!guest) void contents.loadURL(spec.url).catch(() => undefined);
     place(entry);
+    return contents;
   };
 
   /**
-   * 페이지가 연 팝업 창을 opener 와 이어진 새 뷰로 만든다. 첫 이동은 붙잡아 `about:blank` 에 세워 두고 그 주소를 Console 에
-   * 알린다 — Console 이 탭으로 받아 Chrome 표면 등 준비를 마친 뒤 그 주소로 보낸다(준비 전 문서는 그 스크립트를 받지 못한다).
-   * 빈 팝업(`window.open("")`)은 붙잡지 않고 바로 알린다 — 여는 쪽이 곧바로 문서를 써 넣을 수 있다.
+   * 페이지가 연 창(팝업·탭형 열기)을 새 뷰로 만든다. `guest` 가 있으면 Chromium 이 opener 관계를 이어(noopener 면 끊어) 이미 만든
+   * webContents 이고, 없으면(Cmd·중간·Shift 클릭 — Chromium 이 문서를 만들지 않는다) 셸이 직접 뷰를 만든다(opener 없음).
+   * 첫 이동은 붙잡아 `about:blank` 에 세워 두고 그 주소를 Console 에 알린다 — Console 이 탭으로 받아 Chrome 표면 등 준비를 마친
+   * 뒤 그 주소로 보낸다(준비 전 문서는 그 스크립트를 받지 못한다). 빈 열기(`window.open("")`)는 붙잡지 않고 바로 알린다 — 여는
+   * 쪽이 곧바로 문서를 써 넣을 수 있다. POST 열기와 blob: 열기도 붙잡지 않는다 — Console 의 `Page.navigate` 는 GET 이라 POST 본문이
+   * 사라지고, blob 은 Console 의 `admit` 이 받지 않는다. 그 열기는 Chromium·셸이 직접 적재하고 Console 은 이동 없이 등록만 하므로
+   * 그 문서는 준비 스크립트를 첫 문서에 받지 못할 수 있다.
    */
-  const openPopup = (openerId: string, guest: WebContents, url: string): WebContents => {
-    const opener = live.get(openerId)!.spec;
+  const openWindow = (openerId: string, openerSpec: DesktopBrowserView, guest: WebContents | undefined, details: HandlerDetails): WebContents => {
+    // opener 가 그 사이 사라졌어도 창은 만들어 돌려준다 — Console 이 모르는 opener 의 팝업은 등록되지 않아 아래 만료 타이머가 거둔다.
+    const opener = live.get(openerId)?.spec ?? openerSpec;
+    const url = details.url;
     const id = `popup-${randomUUID().slice(0, 8)}`;
     const spec: DesktopBrowserView = { id, objectiveId: opener.objectiveId, partition: opener.partition, profile: opener.profile ?? null, visible: false, url: "about:blank", ...(opener.pageDialogs !== undefined ? { pageDialogs: opener.pageDialogs } : {}), ...(opener.agent ? { agent: true } : {}) };
+    const background = details.disposition === "background-tab";
+    const postBody = details.postBody ?? null;
+    const blank = url === "" || url === "about:blank";
+    const loadedHere = postBody !== null || url.startsWith("blob:");
     let announced = false;
-    const announce = (target: string): void => {
+    const announce = (target: string, loaded = false): void => {
       if (announced || !live.has(id)) return;
       announced = true;
-      push({ popups: [{ viewId: id, openerViewId: openerId, url: target }] });
+      push({ popups: [{ viewId: id, openerViewId: openerId, url: target, ...(background ? { background: true } : {}), ...(loaded ? { loaded: true } : {}) }] });
       const bounds = live.get(id)?.lastBounds;
       if (bounds) reportSize(id, bounds);
     };
-    const blank = url === "" || url === "about:blank";
-    let holding = !blank;
-    guest.on("will-frame-navigate", (event) => {
+    let holding = guest !== undefined && !blank && !loadedHere;
+    guest?.on("will-frame-navigate", (event) => {
       if (!holding || !event.isMainFrame) return;
       holding = false;
       event.preventDefault();
       void guest.loadURL("about:blank").catch(() => undefined);
       announce(event.url);
     });
-    create(spec, guest);
+    const contents = create(spec, guest) ?? guest ?? null;
     pendingPopups.set(id, setTimeout(() => {
       pendingPopups.delete(id);
-      if (live.has(id)) { log("browser popup was not adopted; closing it"); drop(id, true); }
+      if (live.has(id)) { log("browser window was not adopted; closing it"); drop(id, true); }
     }, POPUP_ADOPT_MS));
+    if (!guest && contents && loadedHere) {
+      const contentType = postBody ? (postBody.boundary && !/boundary=/iu.test(postBody.contentType) ? `${postBody.contentType}; boundary=${postBody.boundary}` : postBody.contentType) : null;
+      void contents.loadURL(url, { httpReferrer: details.referrer, ...(postBody ? { postData: postBody.data, extraHeaders: `Content-Type: ${contentType}\n` } : {}) }).catch(() => undefined);
+    }
     if (blank) announce("about:blank");
-    // 첫 이동이 오지 않으면(붙잡지 못하면) 그 주소대로 둔 채 알린다 — 준비 스크립트가 첫 문서에 늦을 뿐 팝업은 산다.
+    else if (loadedHere) announce(url, true);
+    // 셸이 만든 뷰는 about:blank 에 서 있다 — 바로 알리면 Console 이 준비한 뒤 그 주소로 보낸다.
+    else if (!guest) announce(url);
+    // 첫 이동이 오지 않으면(붙잡지 못하면) 그 주소대로 둔 채 알린다 — 준비 스크립트가 첫 문서에 늦을 뿐 창은 산다.
     else setTimeout(() => { if (holding) { holding = false; announce(url); } }, 2_000);
-    return guest;
+    return contents as WebContents;
   };
 
   const drop = (id: string, report: boolean): void => {
@@ -1253,6 +1306,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     }
     deps.surface.apply(snapshot.surface ?? null, snapshot.chrome ?? null, origin);
     popupsAccepted = snapshot.popups === true;
+    tabOpens = snapshot.tabOpens ? { full: new Set(snapshot.tabOpens.full) } : null;
     const wanted = new Set(snapshot.views.map((view) => view.id));
     for (const id of [...pendingPopups.keys()]) {
       if (!wanted.has(id)) continue;
