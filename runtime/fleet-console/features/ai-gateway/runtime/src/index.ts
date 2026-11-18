@@ -21,6 +21,8 @@ export type {
   QuotaWindowAmounts,
   QuotaWindow,
   ResetCredits,
+  ProviderSpend,
+  ProviderBlock,
   ProviderDto,
   QuotaSummaryDto,
   ProviderSuccess,
@@ -36,6 +38,10 @@ export * from "./upstream/codex/quota.js";
 export * from "./upstream/xai/index.js";
 export * from "./upstream/muse-code/index.js";
 export * from "./upstream/opencode-go/quota.js";
+export * from "./upstream/gemini/index.js";
+export * from "./quota/gemini-usage.js";
+export * from "./quota/gemini-pricing.js";
+export * from "./quota/gemini-ledger.js";
 export * from "./canonical/index.js";
 export * from "./router/router.js";
 // 하네스 프로필과 그 계약. 호스트가 `deps.harnesses`에 무엇을 실을지 고르려면 필요하다 —
@@ -137,6 +143,7 @@ export {
   OPENCODE_GO_API_BASE_URL,
   TYPESAFE_API_BASE_URL,
   TYPESAFE_AUTH_PROVIDER_ID,
+  validateGeminiAuthKey,
   validateOpencodeGoAuthKey,
   validateTypesafeAuthKey,
 } from "./fleet/auth.js";

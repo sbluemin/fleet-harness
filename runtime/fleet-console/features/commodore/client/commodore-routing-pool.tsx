@@ -28,7 +28,7 @@ import { effortWord, hasAnyScore, qualifying, RankMark, type IntelligenceScores 
 
 type T = Translate<CommodoreMessageKey>;
 
-const LAUNCH_PROVIDER_ORDER: readonly AiGatewayProviderId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"];
+const LAUNCH_PROVIDER_ORDER: readonly AiGatewayProviderId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
 const BASE_EFFORTS = new Set(["low", "medium"]);
 
 const MODEL_SUBTITLE_KEYS: Readonly<Record<string, CommodoreMessageKey>> = {

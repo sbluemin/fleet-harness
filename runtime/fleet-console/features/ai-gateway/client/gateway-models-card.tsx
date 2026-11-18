@@ -24,11 +24,12 @@ const PROVIDER_LABEL = {
   xai: "terminal.settings.aiGatewayProviderXai",
   "muse-code": "terminal.settings.aiGatewayProviderMuseCode",
   opencode: "terminal.settings.aiGatewayProviderOpencode",
+  gemini: "terminal.settings.aiGatewayProviderGemini",
 } as const;
 
 /**
  * 게이트웨이가 각 공급자에 붙는 방식. Antigravity만 agy ACP 브리지로 말하고
- * (router.ts의 agyBridgeGateway), OpenCode Go는 Console에 저장한 API 키로, 나머지는 구독
+ * (router.ts의 agyBridgeGateway), OpenCode Go와 Gemini는 Console에 저장한 API 키로, 나머지는 구독
  * OAuth 자격으로 공급자 API를 직접 부른다.
  */
 const PROVIDER_TRANSPORT = {
@@ -38,10 +39,11 @@ const PROVIDER_TRANSPORT = {
   xai: "terminal.settings.aiGatewayTransportOauth",
   "muse-code": "terminal.settings.aiGatewayTransportOauth",
   opencode: "terminal.settings.aiGatewayTransportApiKey",
+  gemini: "terminal.settings.aiGatewayTransportApiKey",
 } as const;
 
 /** 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서. */
-const LAUNCH_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"];
+const LAUNCH_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
 
 /**
  * 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서.

@@ -1,6 +1,6 @@
 import { cancel, isCancel, password, select } from "@clack/prompts";
 import type { AuthService } from "@fleet-console/ai-gateway";
-import { OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, validateOpencodeGoAuthKey, validateTypesafeAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
+import { GEMINI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, validateGeminiAuthKey, validateOpencodeGoAuthKey, validateTypesafeAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
 
 export interface AuthCommandDeps {
   readonly authService: AuthService;
@@ -11,7 +11,7 @@ export interface AuthCommandIo {
   readonly stderr: Pick<NodeJS.WriteStream, "write">;
 }
 
-export type AuthCliId = "opencode" | "typesafe";
+export type AuthCliId = "opencode" | "gemini" | "typesafe";
 
 interface AuthCliDefinition {
   readonly label: string;
@@ -27,6 +27,12 @@ export const AUTH_CLI_DEFINITIONS: Readonly<Record<AuthCliId, AuthCliDefinition>
     shortName: "OpenCode Go",
     providerId: OPENCODE_AUTH_PROVIDER_ID,
     validate: validateOpencodeGoAuthKey,
+  },
+  gemini: {
+    label: "Gemini API key for AI Gateway",
+    shortName: "Gemini",
+    providerId: GEMINI_AUTH_PROVIDER_ID,
+    validate: validateGeminiAuthKey,
   },
   typesafe: {
     label: "TypeSafe System One",

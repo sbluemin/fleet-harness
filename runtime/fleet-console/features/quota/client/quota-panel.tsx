@@ -7,6 +7,7 @@ import { useStoreSnapshot } from "@fleet-console/ui/store";
 import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@fleet-console/ai-gateway";
 import { isLoginProvider, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
+import { GeminiSpendSection } from "./gemini-spend.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import { loadSystemPromptSettings, useSystemPromptSettingsStore } from "../../settings/client/execution-settings.js";
 import {
@@ -30,6 +31,7 @@ export const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   antigravity: "Antigravity",
   claude: "Claude Code",
   codex: "Codex",
+  gemini: "Gemini",
   "muse-code": "Muse Code",
   opencode: "OpenCode Go",
   xai: "xAI",
@@ -68,12 +70,13 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   antigravity: "quota.antigravity.signedOut",
   claude: "quota.claude.signedOut",
   codex: "quota.codex.signedOut",
+  gemini: "quota.gemini.signedOut",
   "muse-code": "quota.museCode.signedOut",
   opencode: "quota.opencode.signedOut",
   xai: "quota.xai.signedOut",
 };
 
-export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "antigravity">, QuotaMessageKey>> = {
+export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "antigravity" | "gemini">, QuotaMessageKey>> = {
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
   "muse-code": "quota.expired.museCode",
@@ -82,7 +85,8 @@ export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "antigravity">, Qu
 };
 
 export function expiredMessageKey(id: ProviderId): QuotaMessageKey | undefined {
-  if (id === "antigravity") return undefined;
+  // Antigravity는 CLI 로그인을 다시 안내하고, Gemini는 API 키(만료 개념 없음)라 이 줄을 쓰지 않는다.
+  if (id === "antigravity" || id === "gemini") return undefined;
   return EXPIRED_KEY[id];
 }
 
@@ -92,6 +96,7 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
   antigravity: "quota.noSubscription",
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
+  gemini: "quota.noSubscription",
   "muse-code": "quota.noSubscription",
   opencode: "quota.opencode.noSubscription",
   xai: "quota.noSubscription",
@@ -578,6 +583,7 @@ function ProviderCard({
   api,
   connect,
   logout,
+  saveBudget,
 }: {
   readonly id: ProviderId;
   readonly mobile: boolean;
@@ -588,6 +594,7 @@ function ProviderCard({
   readonly api: ClientApiCapability;
   readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
   readonly logout: (provider: LoginProvider) => void;
+  readonly saveBudget: (usd: string | null) => Promise<boolean>;
 }) {
   const name = providerName(id, mobile);
   // 이 두 공급자의 로그인은 Console 소유가 아니다. 가짜 로그인 문 대신 기존 CLI 경로를 한 줄로 안내한다.
@@ -631,6 +638,16 @@ function ProviderCard({
         }
         return <div className="quota-error">{t("quota.error", { provider: name })}</div>;
       })() : null}
+      {(provider.status === "ok" || provider.status === "stale") && id === "gemini" && provider.spend !== undefined ? (
+        <GeminiSpendSection
+          spend={provider.spend}
+          {...(provider.block !== undefined ? { block: provider.block } : {})}
+          locale={locale}
+          t={t}
+          resetText={resetCaption(provider.spend.resetsAt, now, locale, t)}
+          saveBudget={saveBudget}
+        />
+      ) : null}
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
         <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} locale={locale} t={t} />
       )) : null}
@@ -729,6 +746,32 @@ export function useQuotaData(api: ClientApiCapability) {
     postForSummary(`${provider}/logout`, {});
   }, [postForSummary]);
 
+  /**
+   * Gemini 월 예산 저장·삭제(`usd: null`). 성공하면 Gateway가 저장된 예산이 반영된 요약을
+   * 돌려주므로 곧바로 그린다 — 막대가 서고, 지우면 금액만 남는다. 실패는 입력 자리가 말한다.
+   */
+  const saveGeminiBudget = useCallback((usd: string | null): Promise<boolean> => {
+    const generation = beginRequestGeneration(requestGenerationRef);
+    if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(null);
+    return api.fetch("quota/gemini-budget", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ usd }),
+    })
+      .then((response) => response.json() as Promise<SummaryResponse>)
+      .then((result) => {
+        if (isLatestRequestGeneration(requestGenerationRef, generation)) {
+          setData(result);
+          setRequestError(null);
+          const adoptedAt = Date.now();
+          setNow(adoptedAt);
+          setCheckedAt(adoptedAt);
+        }
+        return true;
+      })
+      .catch(() => false);
+  }, [api]);
+
   useEffect(() => {
     const generation = beginRequestGeneration(requestGenerationRef);
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(null);
@@ -809,7 +852,7 @@ export function useQuotaData(api: ClientApiCapability) {
     };
   }, [refresh]);
 
-  return { data, checkedAt, now, requestError, refresh, connect, logout };
+  return { data, checkedAt, now, requestError, refresh, connect, logout, saveBudget: saveGeminiBudget };
 }
 
 /**
@@ -823,14 +866,14 @@ export function QuotaPanel({ api, locale, labelId, mobile = false }: {
   readonly mobile?: boolean;
 }) {
   const t = useMemo(() => getT(locale, mobile), [locale, mobile]);
-  const { data, checkedAt, now, requestError, refresh, connect, logout } = useQuotaData(api);
+  const { data, checkedAt, now, requestError, refresh, connect, logout, saveBudget } = useQuotaData(api);
   const antigravityEnabled = useAntigravityEnabled();
   const shown = (id: ProviderId) => id !== "antigravity" || antigravityEnabled;
   const fetchedAt = Math.max(0, ...PROVIDER_ORDER_DEFAULT.map((id) => data?.providers[id]?.fetchedAt ?? 0));
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   const checkedMinutes = Math.max(0, Math.floor((now - checkedAt) / 60_000));
   const disconnected = (id: ProviderId) => ["not_connected", "signed_out", "expired"].includes(data?.providers[id]?.status ?? "error");
-  const renderProvider = (id: ProviderId) => <ProviderCard key={id} id={id} mobile={mobile} provider={data?.providers[id] ?? UNREPORTED_PROVIDER} now={now} locale={locale} t={t} api={api} connect={connect} logout={logout} />;
+  const renderProvider = (id: ProviderId) => <ProviderCard key={id} id={id} mobile={mobile} provider={data?.providers[id] ?? UNREPORTED_PROVIDER} now={now} locale={locale} t={t} api={api} connect={connect} logout={logout} saveBudget={saveBudget} />;
   return (
     <div className="quota-root">
       <header className="quota-head">

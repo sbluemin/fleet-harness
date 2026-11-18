@@ -515,6 +515,80 @@
         }
       ]
     },
+    "gemini": {
+      "name": "Gemini",
+      "defaultModel": "gemini-4-hydrogen",
+      "source": "Gemini Developer API (Google AI Studio API key, https://ai.google.dev/gemini-api/docs, read 2026-11-18): base https://generativelanguage.googleapis.com/v1beta, x-goog-api-key auth, POST models/{model}:streamGenerateContent?alt=sse. Only the Gemini 4 lineup is exposed (3.8 Flash is out of scope). GET /v1beta/models on 2026-11-18 lists gemini-4-argon (input 1048576, output 32768), gemini-4-carbon (1048576, 32768) and gemini-4-hydrogen (1048576, 65536), all with generateContent and thinking. Effort ladders follow the thinking guide's per-model table (read 2026-11-18): argon and carbon low/medium/high, hydrogen low/medium/high/xhigh; minimal is not supported on Gemini 4. These are separate entries from the Antigravity models of the same name: a different credential, a different wire, and spend counted by Fleet from usageMetadata rather than a subscription quota. The output limits live in upstream/gemini/wire.ts (not a catalog field).",
+      "models": [
+        {
+          "modelId": "gemini-4-argon",
+          "name": "Gemini-4-Argon",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "intelligence": {
+            "source": "https://artificialanalysis.ai/models/gemini-4-argon",
+            "observedAt": "2026-11-18",
+            "scores": {
+              "medium": 48,
+              "high": 50
+            }
+          }
+        },
+        {
+          "modelId": "gemini-4-carbon",
+          "name": "Gemini-4-Carbon",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "intelligence": {
+            "source": "https://artificialanalysis.ai/models/gemini-4-carbon",
+            "observedAt": "2026-11-18",
+            "scores": {
+              "low": 54,
+              "medium": 58,
+              "high": 60
+            }
+          }
+        },
+        {
+          "modelId": "gemini-4-hydrogen",
+          "name": "Gemini-4-Hydrogen",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "intelligence": {
+            "source": "https://artificialanalysis.ai/models/gemini-4-hydrogen",
+            "observedAt": "2026-11-18",
+            "scores": {
+              "low": 27,
+              "medium": 41,
+              "high": 51,
+              "xhigh": 54
+            }
+          }
+        }
+      ]
+    },
     "claude": {
       "name": "Claude",
       "native": true,

@@ -5,6 +5,8 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createQuotaLastGoodStore } from "../../src/quota/last-good.js";
+import { createGeminiSpendLedger } from "../../src/quota/gemini-ledger.js";
+import { budgetUsedPercent, geminiMonthBounds, geminiTokenPrice } from "../../src/quota/gemini-pricing.js";
 import { normalizeRoutingQuota } from "../../src/fleet/routing-quota.js";
 import { parseMuseCodeSubscriptionUsage } from "../../src/upstream/muse-code/quota.js";
 import { createAiGatewayQuotaCollectors, createQuotaService, QUOTA_CACHE_TTL_MS } from "../../src/quota/service.js";
@@ -12,7 +14,7 @@ import { createMuseCodeOAuth, MUSE_CODE_AUTH_PROVIDER_ID } from "../../src/oauth
 import type { AuthStorageEntry } from "../../src/auth/types.js";
 import { getJson } from "../../src/quota/windows.js";
 import { OPENCODE_AUTH_PROVIDER_ID, OPENCODE_GO_USAGE_URL } from "../../src/upstream/opencode-go/coordinates.js";
-import type { ProviderResult, ProviderSuccess } from "../../src/quota/types.js";
+import type { ProviderResult, ProviderSpend, ProviderSuccess } from "../../src/quota/types.js";
 
 function ok(fetchedAt: number, usedPercent = 10): ProviderSuccess {
   return { status: "ok", fetchedAt, windows: [{ id: "session", usedPercent }] };
@@ -544,5 +546,88 @@ describe("quota service", () => {
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe("gemini spend ledger", () => {
+  it("prices turns, keeps the Pacific month, doubles Argon on December 1, and clears a block on the next usage", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "gemini-spend-"));
+    const filePath = path.join(directory, "gemini-spend.json");
+    // 태평양시 2026-11-30 23:58(PST)과 12-01 00:01(PST) — 달과 단가가 함께 바뀌는 자리.
+    const november = Date.UTC(2026, 11, 1, 7, 58);
+    const december = Date.UTC(2026, 11, 1, 8, 1);
+    try {
+      const ledger = createGeminiSpendLedger({ filePath });
+      // 2026-11-01 00:00 태평양시는 아직 PDT(-7)다. 월초 그 자체가 DST 전환일이어도 경계는 그 시각의
+      // 오프셋으로 잡는다. 리셋은 12-01 00:00 PST(-8)다.
+      expect(geminiMonthBounds(november)).toEqual({
+        key: "2026-11",
+        periodStart: Date.UTC(2026, 10, 1, 7),
+        resetsAt: Date.UTC(2026, 11, 1, 8),
+      });
+      expect(geminiMonthBounds(december).key).toBe("2026-12");
+      // 전환은 태평양시 12-01 00:00 정각부터다.
+      expect(geminiTokenPrice("gemini-4-argon", "standard", Date.UTC(2026, 11, 1, 8) - 1).input).toBe(2_000_000n);
+      expect(geminiTokenPrice("gemini-4-argon", "standard", Date.UTC(2026, 11, 1, 8)).input).toBe(4_000_000n);
+
+      // Hydrogen: (100−40)×1.5 + 40×0.075(캐시) + (10+10)×7.5 = 0.000243 USD.
+      ledger.observeUsage({ model: "gemini-4-hydrogen", at: november, serviceTier: "standard", promptTokens: 100, cachedTokens: 40, candidatesTokens: 10, thoughtsTokens: 10 });
+      // Argon(11월): 100×2 + 20×10 = 0.0004 USD.
+      ledger.observeUsage({ model: "gemini-4-argon", at: november, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
+      expect(ledger.read(november).spend).toMatchObject({ currency: "USD", spent: "0.000643", basis: "fleet_measured" });
+      // 12월은 Argon이 2배다: 100×4 + 20×20 = 0.0008 USD. 11월 누적은 그대로 남는다.
+      ledger.observeUsage({ model: "gemini-4-argon", at: december, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
+      expect(ledger.read(december).spend.spent).toBe("0.0008");
+      expect(ledger.read(november).spend.spent).toBe("0.000643");
+
+      // 예산은 달을 넘어 유지되고, 사용률은 이번 달 누적에만 걸린다.
+      expect(budgetUsedPercent(5n * 10n ** 12n, 10n * 10n ** 12n)).toBe(50);
+      expect(ledger.setBudget("10")).toBe(true);
+      expect(ledger.setBudget("0")).toBe(false);
+      expect(ledger.setBudget("-3")).toBe(false);
+      expect(ledger.setBudget("abc")).toBe(false);
+      expect(ledger.read(november).spend).toMatchObject({ budget: "10", usedPercent: 0 });
+      // 재시작해도 누적·예산이 남는다 — 파일이 원장의 유일한 저장소다.
+      expect(createGeminiSpendLedger({ filePath }).read(december).spend).toMatchObject({ spent: "0.0008", budget: "10" });
+
+      // 402는 사유·시각과 함께 남고, 지난달의 차단은 이번 달 카드에 서지 않는다.
+      ledger.observeBlock({ model: "gemini-4-argon", at: november, httpStatus: 402, reason: "balance_depleted", code: "payment_required", message: "Prepay credit balance is depleted." });
+      expect(ledger.read(november).block).toMatchObject({ httpStatus: 402, reason: "balance_depleted", code: "payment_required" });
+      expect(ledger.read(december).block).toBeUndefined();
+      // 다음 성공 사용량이 차단 표시를 걷는다.
+      ledger.observeUsage({ model: "gemini-4-argon", at: december, serviceTier: "standard", promptTokens: 1, cachedTokens: 0, candidatesTokens: 0, thoughtsTokens: 0 });
+      expect(ledger.read(december).block).toBeUndefined();
+      expect(ledger.read(november).block).toBeUndefined();
+
+      ledger.clearBudget();
+      expect(ledger.read(december).spend.budget).toBeUndefined();
+      expect(ledger.read(december).spend.usedPercent).toBeUndefined();
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("gemini quota provider", () => {
+  it("serves spend from the ledger without making it a window, and signed_out without a stored key", async () => {
+    const spend: ProviderSpend = { currency: "USD", spent: "0.000643", periodStart: 1, resetsAt: 2, basis: "fleet_measured" };
+    const fetchGemini = vi.fn(async (): Promise<ProviderResult> => ({ status: "ok", fetchedAt: 5, spend }));
+    const service = createQuotaService({
+      now: () => 10,
+      isClaudeConnected: async () => false,
+      fetchClaude: async () => ({ status: "signed_out" }),
+      fetchCodex: async () => ({ status: "signed_out" }),
+      fetchGemini,
+    });
+    const summary = await service.getSummary();
+    expect(summary.providers.gemini).toMatchObject({ status: "ok", spend });
+    // 지출·예산은 창이 아니다 — routing이 windows로 압박도를 계산하므로 여기에 싣지 않는다.
+    expect(summary.providers.gemini.windows).toBeUndefined();
+    // 원장이 바뀌면 게이트웨이가 캐시를 만료시켜 다음 읽기가 다시 부른다(키 저장·삭제도 같은 길).
+    fetchGemini.mockResolvedValueOnce({ status: "signed_out" });
+    service.expire("gemini");
+    expect(service.readCachedSummary()?.expired).toBe(true);
+    expect((await service.getSummary()).providers.gemini.status).toBe("signed_out");
+    expect(fetchGemini).toHaveBeenCalledTimes(2);
   });
 });

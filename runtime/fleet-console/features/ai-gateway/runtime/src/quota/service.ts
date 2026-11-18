@@ -19,7 +19,10 @@ export const QUOTA_CACHE_TTL_MS = 5 * 60_000;
  */
 const STALE_TTL_MS = 1_800_000;
 
-type ProviderId = QuotaLastGoodProviderId;
+type ProviderId = QuotaLastGoodProviderId | "gemini";
+
+/** status 서명에 세는 공급자 — 마지막 성공값을 저장하지 않는 Gemini도 키 저장·삭제가 메뉴에 닿아야 한다. */
+const STATUS_SIGNATURE_PROVIDERS: readonly ProviderId[] = [...QUOTA_LAST_GOOD_PROVIDERS, "gemini"];
 
 /**
  * 사용량 조회가 rate limit이 걸린 key endpoint인 공급자(Muse Code). 실패 뒤에는
@@ -49,6 +52,11 @@ export interface QuotaService {
     readonly force?: boolean;
     readonly forceProvider?: ProviderId;
   }): Promise<QuotaSummaryDto>;
+  /**
+   * 캐시를 지금 만료시켜 다음 조회가 다시 읽게 한다. 값은 지우지 않는다 — `readCachedSummary`가
+   * 그릴 마지막 값은 남고, `expired`만 선다. 지출 원장처럼 upstream 밖에서 값이 바뀌는 공급자가 쓴다.
+   */
+  expire(id: ProviderId): void;
 }
 
 export interface QuotaServiceDeps {
@@ -59,6 +67,11 @@ export interface QuotaServiceDeps {
   readonly fetchAntigravity?: () => Promise<ProviderResult>;
   readonly fetchMuseCode?: () => Promise<ProviderResult>;
   readonly fetchOpencode?: () => Promise<ProviderResult>;
+  /**
+   * Gemini — upstream 조회가 아니라 플릿이 센 이번 달 지출 원장과 키 보관 여부로 답한다.
+   * 없으면 미로그인(`signed_out`)으로 둔다. 지출은 `windows`가 아닌 `spend`에 실린다.
+   */
+  readonly fetchGemini?: () => Promise<ProviderResult>;
   /**
    * Antigravity 노브. 없거나 false면 수집기를 부르지 않고 숨김(`not_connected`)이다.
    * 부재는 꺼짐이다.
@@ -153,12 +166,13 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     antigravity: deps.fetchAntigravity ?? (async () => ({ status: "signed_out" })),
     "muse-code": deps.fetchMuseCode ?? (async () => ({ status: "signed_out" })),
     opencode: deps.fetchOpencode ?? (async () => ({ status: "signed_out" })),
+    gemini: deps.fetchGemini ?? (async () => ({ status: "signed_out" })),
   };
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();
   let statusSignature = "";
   const notifyStatus = (): void => {
-    const next = QUOTA_LAST_GOOD_PROVIDERS.map((id) => cache.get(id)?.value.status ?? "").join("|");
+    const next = STATUS_SIGNATURE_PROVIDERS.map((id) => cache.get(id)?.value.status ?? "").join("|");
     if (next === statusSignature) return;
     statusSignature = next;
     try {
@@ -459,7 +473,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       return { providers: {
         claude: read("claude"), codex: read("codex"),
         xai: read("xai"), antigravity: read("antigravity"),
-        "muse-code": read("muse-code"), opencode: read("opencode"),
+        "muse-code": read("muse-code"), opencode: read("opencode"), gemini: read("gemini"),
       } };
     },
     readCachedSummary() {
@@ -482,20 +496,22 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       const antigravity = read("antigravity");
       const museCode = read("muse-code");
       const opencode = read("opencode");
-      if (!claude || !codex || !xai || !antigravity || !museCode || !opencode) return undefined;
+      const gemini = read("gemini");
+      if (!claude || !codex || !xai || !antigravity || !museCode || !opencode || !gemini) return undefined;
       return {
-        summary: { providers: { claude, codex, xai, antigravity, "muse-code": museCode, opencode } },
+        summary: { providers: { claude, codex, xai, antigravity, "muse-code": museCode, opencode, gemini } },
         expired,
       };
     },
     async getSummary(options = {}) {
-      const [claude, codex, xai, antigravity, museCode, opencode] = await Promise.all([
+      const [claude, codex, xai, antigravity, museCode, opencode, gemini] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
         load("xai", options.force === true || options.forceProvider === "xai"),
         load("antigravity", options.force === true || options.forceProvider === "antigravity"),
         load("muse-code", options.force === true || options.forceProvider === "muse-code"),
         load("opencode", options.force === true || options.forceProvider === "opencode"),
+        load("gemini", options.force === true || options.forceProvider === "gemini"),
       ]);
       const summary = {
         providers: {
@@ -505,10 +521,16 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
           antigravity: withRisk(antigravity),
           "muse-code": withRisk(museCode),
           opencode: withRisk(opencode),
+          gemini: withRisk(gemini),
         },
       };
       notifyStatus();
       return summary;
+    },
+    expire(id) {
+      const cached = cache.get(id);
+      if (cached === undefined) return;
+      cache.set(id, { ...cached, expiresAt: now() });
     },
   };
 }
