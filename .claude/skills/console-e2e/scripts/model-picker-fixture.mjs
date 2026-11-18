@@ -11,7 +11,7 @@
  * loaded through the worktree's tsx, not a product change. Muse Code is marked
  * signed_out only so an omitted status is not treated as unknown and kept visible.
  * The generated wrapper still forwards every roster request to the real host and
- * appends only the two groups the live response does not already contain.
+ * appends only the groups the live response does not already contain.
  *
  * SYNTHETIC page fixture. This is not a provider login, device-code, token refresh,
  * or launch. A merged row does not block a real provider call, so do not launch a
