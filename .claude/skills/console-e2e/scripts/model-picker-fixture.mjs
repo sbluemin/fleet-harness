@@ -6,12 +6,11 @@
  *
  *   node model-picker-fixture.mjs --out <absolute-path.js>
  *
- * The groups come from the product catalog via buildModelRoster(target, {claude:'ok',
- * codex:'ok', xai:'ok', 'muse-code':'signed_out'}) — host source,
+ * The groups come from the product catalog via buildModelRoster — host source,
  * loaded through the worktree's tsx, not a product change. Muse Code is marked
  * signed_out only so an omitted status is not treated as unknown and kept visible.
  * The generated wrapper still forwards every roster request to the real host and
- * appends only the groups the live response does not already contain.
+ * appends only missing fixture groups.
  *
  * SYNTHETIC page fixture. This is not a provider login, device-code, token refresh,
  * or launch. A merged row does not block a real provider call, so do not launch a
