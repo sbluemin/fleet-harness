@@ -35,8 +35,8 @@ describe("stored model selection", () => {
     ]);
     expect(effortLadderFor(id).length).toBeGreaterThan(0);
     expect(toStoredModels([id], models)).toEqual([{ id, efforts: ["high"] }]);
-    expect(toStoredModels(["codex--gpt-6.1-sol"], undefined)).toEqual([
-      { id: "codex--gpt-6.1-sol", efforts: ["low", "medium", "high"] },
+    expect(toStoredModels(["codex--gpt-6.2-sol"], undefined)).toEqual([
+      { id: "codex--gpt-6.2-sol", efforts: ["low", "medium", "high"] },
     ]);
     const highOff = [{ id, efforts: ["low", "medium"] }];
     expect(toStoredModels([id], highOff)).toEqual(highOff);

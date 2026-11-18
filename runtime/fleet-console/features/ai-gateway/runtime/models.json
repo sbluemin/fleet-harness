@@ -1,10 +1,10 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-16T00:00:00Z",
+  "updatedAt": "2026-11-18T00:00:00Z",
   "intelligenceIndex": {
     "name": "Artificial Analysis Intelligence Index",
     "observedAt": "2026-11-15",
-    "note": "Each model's intelligence.scores are read per reasoning effort from its intelligence.source page on observedAt. An effort without a score is one the page publishes no score for; nothing is estimated."
+    "note": "Each model's intelligence.scores are read per reasoning effort from its intelligence.source page on its intelligence.observedAt, or on the registry-wide observedAt when the entry has no date of its own. An effort without a score is one the page publishes no score for; nothing is estimated."
   },
   "roleThresholds": {
     "lead": 50,
@@ -196,12 +196,12 @@
     },
     "codex": {
       "name": "Codex",
-      "defaultModel": "gpt-6-astra",
+      "defaultModel": "gpt-6.2-astra",
       "source": "Codex current-generation model lineup and reasoning ladders; Fleet exposes one id per model, a fixed 500000-token context window, and an optional priority service tier selected by the fast flag. Context-window and service-tier variants are not model identities.",
       "models": [
         {
-          "modelId": "gpt-6-astra",
-          "name": "GPT-6-Astra",
+          "modelId": "gpt-6.2-astra",
+          "name": "GPT-6.2-Astra",
           "description": "Flagship coding and reasoning model.",
           "contextWindow": 500000,
           "effort": {
@@ -215,23 +215,24 @@
             ]
           },
           "aliases": [
-            "gpt-6-astra"
+            "gpt-6.2-astra"
           ],
           "fastSupported": true,
           "intelligence": {
-            "source": "https://artificialanalysis.ai/models/gpt-6-astra",
+            "source": "https://artificialanalysis.ai/models/gpt-6-2-astra",
+            "observedAt": "2026-11-18",
             "scores": {
-              "low": 43,
-              "medium": 52,
-              "high": 55,
-              "xhigh": 55,
-              "max": 57
+              "low": 46,
+              "medium": 57,
+              "high": 60,
+              "xhigh": 62,
+              "max": 62
             }
           }
         },
         {
-          "modelId": "gpt-6.1-sol",
-          "name": "GPT-6.1-Sol",
+          "modelId": "gpt-6.2-sol",
+          "name": "GPT-6.2-Sol",
           "description": "Deep reasoning and architecture model.",
           "contextWindow": 500000,
           "effort": {
@@ -245,17 +246,18 @@
             ]
           },
           "aliases": [
-            "gpt-6.1-sol"
+            "gpt-6.2-sol"
           ],
           "fastSupported": true,
           "intelligence": {
-            "source": "https://artificialanalysis.ai/models/gpt-6-1-sol",
+            "source": "https://artificialanalysis.ai/models/gpt-6-2-sol",
+            "observedAt": "2026-11-18",
             "scores": {
-              "low": 35,
-              "medium": 46,
-              "high": 50,
-              "xhigh": 52,
-              "max": 55
+              "low": 41,
+              "medium": 53,
+              "high": 55,
+              "xhigh": 56,
+              "max": 57
             }
           }
         },

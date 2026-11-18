@@ -2,7 +2,7 @@ import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
-import { recommendedRole } from "./model-family.js";
+import { GATEWAY_MODEL_SUCCESSORS, recommendedRole } from "./model-family.js";
 import type { QuotaScope } from "./quota/types.js";
 import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
@@ -66,6 +66,8 @@ export type GatewayQuotaScope = QuotaScope;
 /** Intelligence index score per reasoning effort. An absent effort has no published score. */
 const GatewayModelIntelligenceSchema = z.object({
   source: z.url(),
+  /** When this entry's scores were read, if not on the registry-wide `intelligenceIndex.observedAt`. */
+  observedAt: z.iso.date().optional(),
   scores: z.partialRecord(z.enum(GATEWAY_REASONING_EFFORTS), z.number().nonnegative()),
 }).strict();
 
@@ -241,6 +243,20 @@ export interface GatewayModelIntelligence {
   /** Score per reasoning effort. An absent effort has no published score. */
   readonly scores: Readonly<Partial<Record<GatewayReasoningEffort, number>>>;
 }
+
+/**
+ * The dates the catalog's scores were read, as one display value: a single date when every entry was read on
+ * the same day, otherwise `<earliest>–<latest>`. An entry without its own date was read on the registry-wide one.
+ */
+export const GATEWAY_INTELLIGENCE_OBSERVED_SPAN: string = (() => {
+  const dates = GATEWAY_PROVIDERS.flatMap((provider) => registry.providers[provider].models.flatMap((entry) =>
+    entry.intelligence ? [entry.intelligence.observedAt ?? registry.intelligenceIndex.observedAt] : []));
+  if (dates.length === 0) return registry.intelligenceIndex.observedAt;
+  const sorted = [...dates].sort();
+  const earliest = sorted[0]!;
+  const latest = sorted.at(-1)!;
+  return earliest === latest ? earliest : `${earliest}–${latest}`;
+})();
 
 /** Catalog id → intelligence data. Claude families key by their single catalog id. */
 const GATEWAY_MODEL_INTELLIGENCE: ReadonlyMap<string, GatewayModelIntelligence> = new Map(
@@ -600,8 +616,10 @@ function toGatewayModel(
   providerName: string,
   entry: GatewayModelEntry,
 ): GatewayModel {
+  const id = scopedModelId(provider, entry.modelId);
+  const aliases = catalogAliases(id, entry.aliases);
   return {
-    id: scopedModelId(provider, entry.modelId),
+    id,
     displayName: `${providerName}-${entry.name}`,
     provider,
     upstreamId: entry.providerModelId ?? entry.modelId,
@@ -613,8 +631,16 @@ function toGatewayModel(
     ...(entry.description ? { description: entry.description } : {}),
     ...(entry.contextWindow ? { contextWindow: entry.contextWindow } : {}),
     effort: freezeGatewayModelEffort(entry.effort),
-    ...(entry.aliases ? { aliases: Object.freeze([...entry.aliases]) } : {}),
+    ...(aliases.length > 0 ? { aliases: Object.freeze(aliases) } : {}),
   };
+}
+
+/** A catalog entry's own aliases plus the retired ids it carries forward, each scoped and bare. */
+function catalogAliases(scopedId: string, own: readonly string[] | undefined): string[] {
+  const retired = Object.entries(GATEWAY_MODEL_SUCCESSORS)
+    .filter(([, successor]) => successor === scopedId)
+    .flatMap(([id]) => [id, id.slice(id.indexOf("--") + 2)]);
+  return [...(own ?? []), ...retired];
 }
 
 function providerModels(provider: GatewayProvider): readonly GatewayModel[] {
@@ -704,12 +730,23 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       }
       const scopedId = scopedModelId(provider, model.modelId);
       registerLookupId(lookupIds, scopedId, `${provider}/${model.modelId}`);
-      for (const alias of model.aliases ?? []) {
+      for (const alias of catalogAliases(scopedId, model.aliases)) {
         registerLookupId(lookupIds, alias, `${provider}/${model.modelId}`);
       }
     }
     if (!modelIds.has(definition.defaultModel)) {
       throw new Error(`Gateway default model is missing: ${provider}/${definition.defaultModel}`);
+    }
+  }
+  // A retired id carries forward only to a model still in the catalog; otherwise the stored value would resolve to nothing.
+  for (const [retired, successor] of Object.entries(GATEWAY_MODEL_SUCCESSORS)) {
+    const separator = successor.indexOf("--");
+    const provider = successor.slice(0, separator);
+    const definition = (REGISTRY_PROVIDERS as readonly string[]).includes(provider)
+      ? value.providers[provider as RegistryProvider]
+      : undefined;
+    if (!definition?.models.some((model) => model.modelId === successor.slice(separator + 2))) {
+      throw new Error(`Gateway model successor is missing: ${retired} -> ${successor}`);
     }
   }
 }

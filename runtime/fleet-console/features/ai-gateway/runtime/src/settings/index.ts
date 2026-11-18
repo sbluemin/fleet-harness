@@ -5,6 +5,7 @@ import {
 } from "../downstream/harness/claude-code/context.js";
 import {
   GATEWAY_INTELLIGENCE_INDEX,
+  GATEWAY_INTELLIGENCE_OBSERVED_SPAN,
   GATEWAY_MODELS,
   GATEWAY_PROVIDER_NAMES,
   GATEWAY_ROLE_THRESHOLDS,
@@ -21,7 +22,7 @@ import type {
   GatewayProvider,
   GatewayReasoningEffort,
 } from "../models.js";
-import { aiGatewayModelFamilyKey, canonicalEffortSelection, type AiGatewayRoleThresholds } from "../model-family.js";
+import { aiGatewayModelFamilyKey, canonicalEffortSelection, gatewayModelSuccessor, type AiGatewayRoleThresholds } from "../model-family.js";
 
 // AI Gateway 모델 선별의 저장 형태·카탈로그 대조·검증은 이 패키지가 소유한다. 카탈로그를 아는
 // 계층만이 "지금 고를 수 있는 모델·강도"를 판정할 수 있기 때문이다. 호스트는 저장 위치와 HTTP
@@ -187,9 +188,12 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
   };
 }
 
-/** 저장할 모델 id. Claude 가족은 bare·200k scoped·1M 어느 표기든 가족의 단일 1M id(`claude--sonnet-1m`)다. */
+/**
+ * 저장할 모델 id. Claude 가족은 bare·200k scoped·1M 어느 표기든 가족의 단일 1M id(`claude--sonnet-1m`)다.
+ * 카탈로그에서 빠진 구형 id는 이어받는 모델의 id로 접는다(`codex--gpt-6.1-sol` → `codex--gpt-6.2-sol`).
+ */
 function storedModelId(model: GatewayModel, id: string): string {
-  return model.provider === "claude" ? model.id : id;
+  return model.provider === "claude" || gatewayModelSuccessor(id) !== undefined ? model.id : id;
 }
 
 /**
@@ -500,7 +504,7 @@ export interface AiGatewayCatalogProvider {
 }
 
 export interface AiGatewayCatalogModel {
-  /** Scoped gateway model id, e.g. `codex--gpt-6.1-sol`. */
+  /** Scoped gateway model id, e.g. `codex--gpt-6.2-sol`. */
   readonly id: string;
   /** Bare model label without the provider prefix. */
   readonly name: string;
@@ -531,7 +535,7 @@ export function buildAiGatewayCatalog(models: readonly GatewayModel[] = GATEWAY_
         .map((model) => toCatalogModel(model)),
     })),
     roleThresholds: { ...GATEWAY_ROLE_THRESHOLDS },
-    intelligenceIndex: { name: GATEWAY_INTELLIGENCE_INDEX.name, observedAt: GATEWAY_INTELLIGENCE_INDEX.observedAt },
+    intelligenceIndex: { name: GATEWAY_INTELLIGENCE_INDEX.name, observedAt: GATEWAY_INTELLIGENCE_OBSERVED_SPAN },
   };
 }
 
