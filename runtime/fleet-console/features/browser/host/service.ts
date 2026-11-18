@@ -182,6 +182,11 @@ interface Tab {
   readonly ownerId: string | null;
   /** 페이지 팝업으로 열린 탭이면 `window.open` 을 부른 탭. 팝업이 닫히면 이 탭으로 돌아간다. */
   readonly openerTabId?: string;
+  /**
+   * 탭 순서에서 이 탭을 어디에 넣을지 정한 opener(삽입 관계). 크롬 `TabStripModel` 의 opener 에 해당하고
+   * `openerTabId`(닫힌 뒤 돌아갈 탭)와 별개다 — 앞 열기·표시 탭 전환·주소 이동·닫힘에서 지워지거나 이어받는다.
+   */
+  orderOpener?: string;
   readonly targetId: string;
   sessionId: string;
   url: string;
@@ -254,6 +259,11 @@ interface ObjectiveBrowser {
   /** 사람이 고른 세션의 정체. 기본은 임시(`null`) — 에이전트가 모는 브라우저라 로그인이 기본으로 남으면 안 된다. */
   profile: string | null;
   tabs: Map<string, Tab>;
+  /**
+   * 탭 순서(명시적 상태). 스페이스별 순서는 이 배열을 스페이스로 걸러 낸 것이고, Console state 의 `tabs`·
+   * 에이전트 `tabs_context`·셸 탭줄이 모두 이 순서를 쓴다. 사람의 재정렬 기능은 아직 없다 — 생기면 이 배열을 고친다.
+   */
+  tabOrder: string[];
   /** 사람 화면에 띄운 탭(표시 탭). 사람의 선택과 `tabs_select(show)` 만 바꾼다. 셸이 탭 없는 스페이스를 띄우면 null 이다. */
   activeTabId: string | null;
   spaces: Map<string, Space>;
@@ -692,6 +702,7 @@ export class BrowserService {
       op.resetGeneration += 1;
       for (const tab of op.tabs.values()) this.cancelViewportReapply(tab);
       op.tabs.clear();
+      op.tabOrder = [];
       op.activeTabId = null;
       op.currentTabs.clear();
       op.contextId = "";
@@ -751,7 +762,7 @@ export class BrowserService {
     if (!op) {
       // 전역 브라우저는 사람이 정해 둔 기본 세션으로 시작한다 — 모르는 이름이면 임시로 떨어진다.
       const preferred = this.deps.defaultProfile.read();
-      op = { objectiveId, contextId: "", contextPending: null, resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), activeTabId: null, spaces: new Map(), currentTabs: new Map(), participantSpaces: new Map(), participantOwners: new Map(), pane: null, agentCalls: new Set(), callParticipants: new Map(), participantSerials: new Map(), interruptSerial: 0, pointer: null, pendingTabs: 0, pendingSpaces: new Map(), spaceGenerations: new Map(), ownerGenerations: new Map() };
+      op = { objectiveId, contextId: "", contextPending: null, resetGeneration: 0, profile: preferred === DESKTOP_BROWSER_DEFAULT_PROFILE ? preferred : null, tabs: new Map(), tabOrder: [], activeTabId: null, spaces: new Map(), currentTabs: new Map(), participantSpaces: new Map(), participantOwners: new Map(), pane: null, agentCalls: new Set(), callParticipants: new Map(), participantSerials: new Map(), interruptSerial: 0, pointer: null, pendingTabs: 0, pendingSpaces: new Map(), spaceGenerations: new Map(), ownerGenerations: new Map() };
       this.objectiveRecords.set(objectiveId, op);
     }
     return op;
@@ -801,7 +812,87 @@ export class BrowserService {
     op.participantOwners.set(caller.participantId, caller.ownerId);
   }
 
-  private spaceTabs(op: ObjectiveBrowser, spaceId: string): Tab[] { return [...op.tabs.values()].filter((tab) => tab.spaceId === spaceId); }
+  /** 명시적 탭 순서대로. 순서에 없는 탭(다른 경로가 등록했을 수 있는 탭)은 뒤에 붙여 잃지 않는다. */
+  private orderedTabs(op: ObjectiveBrowser): Tab[] {
+    const seen = new Set<string>();
+    const out: Tab[] = [];
+    for (const id of op.tabOrder) { const tab = op.tabs.get(id); if (tab && !seen.has(id)) { out.push(tab); seen.add(id); } }
+    for (const tab of op.tabs.values()) if (!seen.has(tab.id)) out.push(tab);
+    return out;
+  }
+
+  private spaceTabs(op: ObjectiveBrowser, spaceId: string): Tab[] { return this.orderedTabs(op).filter((tab) => tab.spaceId === spaceId); }
+
+  /** 탭의 삽입 관계 사슬을 따라 올라가 `ancestorId` 에 닿는가 — 크롬의 전이 자손 판정과 같다. */
+  private openedByChain(op: ObjectiveBrowser, tab: Tab, ancestorId: string): boolean {
+    const seen = new Set<string>([tab.id]);
+    let opener = tab.orderOpener;
+    while (opener !== undefined && !seen.has(opener)) {
+      if (opener === ancestorId) return true;
+      seen.add(opener);
+      opener = op.tabs.get(opener)?.orderOpener;
+    }
+    return false;
+  }
+
+  /** 새 탭을 탭 순서에 등록한다 — 스페이스 순서의 `index` 자리(그 자리 탭 앞)에 넣는다. `index` 가 끝이면 그 스페이스 끝이다. */
+  private registerTab(op: ObjectiveBrowser, tab: Tab, index: number): void {
+    const space = this.spaceTabs(op, tab.spaceId);
+    let at: number;
+    if (space.length === 0) at = op.tabOrder.length;
+    else if (index >= space.length) at = op.tabOrder.indexOf(space[space.length - 1]!.id) + 1;
+    else at = op.tabOrder.indexOf(space[Math.max(0, index)]!.id);
+    if (at < 0) at = op.tabOrder.length;
+    op.tabOrder.splice(at, 0, tab.id);
+    op.tabs.set(tab.id, tab);
+  }
+
+  /** 탭을 순서와 저장소에서 뺀다. 그 탭을 삽입 opener 로 둔 탭은 닫힌 탭의 관계를 이어받는다 — 크롬과 같다. */
+  private removeTab(op: ObjectiveBrowser, tab: Tab): void {
+    for (const other of this.spaceTabs(op, tab.spaceId)) {
+      if (other.orderOpener !== tab.id) continue;
+      if (tab.orderOpener !== undefined) other.orderOpener = tab.orderOpener; else delete other.orderOpener;
+    }
+    op.tabs.delete(tab.id);
+    const at = op.tabOrder.indexOf(tab.id);
+    if (at >= 0) op.tabOrder.splice(at, 1);
+  }
+
+  /** 그 스페이스의 삽입 관계를 모두 지운다 — 크롬의 `ForgetAllOpeners()`(창 범위)에 해당한다. */
+  private forgetOrderOpeners(op: ObjectiveBrowser, spaceId: string): void {
+    for (const tab of this.spaceTabs(op, spaceId)) delete tab.orderOpener;
+  }
+
+  /**
+   * 사람이 표시 탭을 바꿀 때 크롬의 잊힘 조건을 그대로 쓴다 — 이전 탭과 새 탭의 삽입 opener 가 다르고 서로
+   * 부모·자식이 아니면 그 스페이스의 관계를 모두 지운다. 형제·부모·자식 사이 이동은 유지한다.
+   */
+  private forgetOpenersOnTabSwitch(op: ObjectiveBrowser, previous: Tab, next: Tab): void {
+    if (previous.spaceId !== next.spaceId) return;
+    const nextOpener = next.orderOpener;
+    const previousOpener = previous.orderOpener;
+    if (nextOpener === previousOpener) return;
+    if (nextOpener === previous.id || previousOpener === next.id) return;
+    this.forgetOrderOpeners(op, next.spaceId);
+  }
+
+  /**
+   * 팝업이 들어갈 스페이스 순서상의 자리와 삽입 관계. opener 가 이 스페이스에 없거나 사라졌으면 끝에 넣는다.
+   * 앞으로 여는 열기는 opener 바로 오른쪽, 백그라운드 열기는 opener 다음으로 이어지는 전이 자손 뒤다.
+   */
+  private popupOrderTarget(op: ObjectiveBrowser, opener: Tab, background: boolean): { index: number; openerId: string | null } {
+    const space = this.spaceTabs(op, opener.spaceId);
+    if (op.tabs.get(opener.id) !== opener) return { index: space.length, openerId: null };
+    const at = space.findIndex((tab) => tab.id === opener.id);
+    if (at < 0) return { index: space.length, openerId: null };
+    if (!background) return { index: at + 1, openerId: opener.id };
+    let last = at;
+    for (let index = at + 1; index < space.length; index += 1) {
+      if (!this.openedByChain(op, space[index]!, opener.id)) break;
+      last = index;
+    }
+    return { index: last + 1, openerId: opener.id };
+  }
 
   /** 스페이스가 비고 에이전트도 쓰지 않으면 거둔다 — 뷰포트 설정도 함께 사라진다(다음에 새로 연다). */
   private pruneSpace(op: ObjectiveBrowser, spaceId: string): void {
@@ -1009,7 +1100,7 @@ export class BrowserService {
       available,
       reason,
       executionHost,
-      tabs: [...op.tabs.values()].map((tab) => this.tabState(tab)),
+      tabs: this.orderedTabs(op).map((tab) => this.tabState(tab)),
       activeTabId: op.activeTabId,
       viewport: active?.viewport ?? { ...BROWSER_DEFAULT_VIEWPORT, scale: op.pane?.scale ?? 1, preset: "responsive", setBy: null, colorScheme: null },
       driving: [...op.spaces.values()].some((space) => space.agentSession !== null),
@@ -1149,6 +1240,7 @@ export class BrowserService {
     await this.disposeContext(op);
     for (const tab of op.tabs.values()) { this.cancelViewportReapply(tab); if (tab.faviconCheck !== undefined) { clearTimeout(tab.faviconCheck); tab.faviconCheck = undefined; } }
     op.tabs.clear();
+    op.tabOrder = [];
     this.remotePointers.clear();
     this.pendingFileChooser = null;
     this.cleanupStagedWhere((entry) => entry.objectiveId === op.objectiveId);
@@ -1670,7 +1762,8 @@ export class BrowserService {
         this.assertContextGeneration(op, generation);
         assertSpace();
         tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId, targetId: created.targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), selectProbe: null };
-        op.tabs.set(tab.id, tab);
+        // 사람의 새 탭·에이전트 `tabs_create` 는 그 스페이스 끝에 선다 — 크롬 Ctrl+T 와 같고 삽입 관계가 없다.
+        this.registerTab(op, tab, Number.MAX_SAFE_INTEGER);
       } catch (error) {
         // 리셋으로 등록이 거부되거나 부착이 실패한 타깃은 생성자가 끝까지 정리한다.
         try { await client.send("Target.closeTarget", { targetId: created.targetId }); } catch { /* 이미 닫혔다 */ }
@@ -1747,8 +1840,11 @@ export class BrowserService {
     try {
       const attached = await client.send<{ sessionId: string }>("Target.attachToTarget", { targetId, flatten: true });
       // 준비 중에 팝업이 스스로 닫혀도(detachedFromTarget) 이 탭을 찾아 접을 수 있게 먼저 등록한다.
-      tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId: opener.ownerId, openerTabId: opener.id, targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), selectProbe: null };
-      op.tabs.set(tab.id, tab);
+      const slot = this.popupOrderTarget(op, opener, flags.background === true);
+      tab = { id: crypto.randomUUID().slice(0, 8), spaceId, ownerId: opener.ownerId, openerTabId: opener.id, ...(slot.openerId !== null ? { orderOpener: slot.openerId } : {}), targetId, sessionId: attached.sessionId, url: "about:blank", title: "", favicon: null, faviconData: null, faviconSource: null, frameId: null, loading: false, history: { index: 0, length: 1, leadingBlank: true }, console: [], consoleErrors: 0, network: new Map(), refs: new Map(), selectProbe: null };
+      // 앞으로 여는 열기는 이 스페이스에 살아 있던 삽입 관계를 모두 지운 뒤 새 탭만 opener 에 매단다(크롬과 같다).
+      if (!flags.background && slot.openerId !== null) this.forgetOrderOpeners(op, spaceId);
+      this.registerTab(op, tab, slot.index);
     } catch { await refuse(); return; } finally {
       op.pendingTabs -= 1;
       const left = (op.pendingSpaces.get(spaceId) ?? 1) - 1;
@@ -1759,7 +1855,7 @@ export class BrowserService {
       if (op.tabs.get(tab.id) !== tab) return;
       if (flags.loaded) await this.refreshTab(client, tab);
       if (flags.background) {
-        // 백그라운드 탭(Cmd·중간 클릭)은 스페이스 끝에 붙을 뿐 사람 화면도 에이전트의 현재 탭도 바꾸지 않는다.
+        // 백그라운드 탭(Cmd·중간 클릭)은 opener 의 자손 뒤에 붙을 뿐 사람 화면도 에이전트의 현재 탭도 바꾸지 않는다.
         this.emitState(op);
       } else {
         // Chrome 은 앞에 띄우는 열기를 앞에 둔다 — 사람이 opener 를 보고 있었을 때만. 에이전트의 작업 탭은 그 탭을 현재 탭으로 쥔 참가자만 옮긴다.
@@ -1810,7 +1906,7 @@ export class BrowserService {
   async closeTab(objectiveId: string, tabId: string): Promise<void> {
     const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
-    op.tabs.delete(tab.id);
+    this.removeTab(op, tab);
     this.cancelViewportReapply(tab);
     this.forgetTab(op, tab);
     if (this.client) { try { await this.client.send("Target.closeTarget", { targetId: tab.targetId }); } catch { /* 이미 닫혔다 */ } }
@@ -1849,11 +1945,16 @@ export class BrowserService {
     }
   }
 
-  /** 사람 화면에 탭을 띄운다(표시 탭). 사람의 선택과 `tabs_select(show)` 만 부른다. */
-  async selectTab(objectiveId: string, tabId: string): Promise<void> {
+  /**
+   * 사람 화면에 탭을 띄운다(표시 탭). 사람의 선택과 `tabs_select(show)` 만 부른다.
+   * `gesture` 는 사람이 탭을 직접 고른 경우다 — 그때만 크롬처럼 삽입 관계를 잊는다(닫힘·앞 열기로 인한 전환은 아니다).
+   */
+  async selectTab(objectiveId: string, tabId: string, gesture = false): Promise<void> {
     const op = this.objectiveRecord(objectiveId);
     const tab = this.tab(op, tabId);
-    const previous = op.activeTabId ? op.tabs.get(op.activeTabId)?.spaceId ?? null : null;
+    const previousTab = op.activeTabId ? op.tabs.get(op.activeTabId) ?? null : null;
+    if (gesture && previousTab && previousTab.id !== tab.id) this.forgetOpenersOnTabSwitch(op, previousTab, tab);
+    const previous = previousTab?.spaceId ?? null;
     op.activeTabId = tab.id;
     if (previous && previous !== tab.spaceId) this.pruneSpace(op, previous);
     if (this.client) { try { await this.client.send("Target.activateTarget", { targetId: tab.targetId }); } catch { /* 뷰가 사라지는 중 */ } }
@@ -1923,6 +2024,9 @@ export class BrowserService {
       this.emitState(op);
     } else {
       const url = this.admit(op, target, actor);
+      // 사람의 주소창 이동(링크가 아닌 이동)은 그 스페이스의 삽입 관계를 지운다 — 크롬과 같다. 에이전트 navigate 는
+      // 사람의 제스처가 아니므로 지우지 않는다(사람이 Cmd 클릭으로 쌓는 순서를 같은 스페이스의 에이전트가 끊지 않게).
+      if (actor === "user") this.forgetOrderOpeners(op, tab.spaceId);
       outcome = await this.navigateTab(op, tab, url.href);
     }
     return { tab: this.tabState(this.tab(op, tab.id)), ...outcome };
@@ -2189,7 +2293,7 @@ export class BrowserService {
       }
       case "Target.detachedFromTarget": {
         // 셸이 뷰를 잃었다(렌더러 사망·창 종료). 탭도 함께 접고, 활성이었으면 남은 탭을 앞으로 세운다.
-        op.tabs.delete(tab.id);
+        this.removeTab(op, tab);
         this.cancelViewportReapply(tab);
         this.forgetTab(op, tab);
         if (op.activeTabId === tab.id) {

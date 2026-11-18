@@ -244,7 +244,8 @@ export function createBrowserRouter(deps: BrowserRouteDeps): RouteHandler {
         const tabId = typeof body.tabId === "string" ? body.tabId : null;
         if (body.action === "create") { const space = spaceId(body); const tab = await browserService.createTab(objectiveId, typeof body.url === "string" ? body.url : null, "user", space ? { spaceId: space } : {}); writeJson(res, 200, { tab }); return true; }
         if (body.action === "close" && tabId) { await browserService.closeTab(objectiveId, tabId); writeJson(res, 200, { closed: tabId }); return true; }
-        if (body.action === "select" && tabId) { await browserService.selectTab(objectiveId, tabId); writeJson(res, 200, { selected: tabId }); return true; }
+        // 사람이 탭줄에서 직접 고른 표시 탭이다 — 삽입 관계를 잊는 크롬 규칙을 적용하는 유일한 제스처 경로다.
+        if (body.action === "select" && tabId) { await browserService.selectTab(objectiveId, tabId, true); writeJson(res, 200, { selected: tabId }); return true; }
         // 크롬 표시줄의 확인·취소 — 그 탭의 alert·confirm 에 답한다.
         if (body.action === "dialog" && tabId && typeof body.accept === "boolean" && typeof body.dialogId === "string") { await browserService.answerDialog(objectiveId, body.accept, body.dialogId, tabId); writeJson(res, 200, { answered: body.dialogId }); return true; }
         // 셸이 탭 없는 스페이스를 띄운다 — 표시 탭만 내리고 탭은 그대로 둔다.
