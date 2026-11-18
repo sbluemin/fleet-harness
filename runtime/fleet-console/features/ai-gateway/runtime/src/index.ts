@@ -36,7 +36,7 @@ export * from "./upstream/codex/quota.js";
 export * from "./upstream/xai/index.js";
 export * from "./upstream/muse-code/index.js";
 export * from "./upstream/opencode-go/quota.js";
-export * from "./upstream/gemini/coordinates.js";
+export * from "./upstream/gemini/index.js";
 export * from "./quota/gemini-usage.js";
 export * from "./canonical/index.js";
 export * from "./router/router.js";
@@ -139,6 +139,7 @@ export {
   OPENCODE_GO_API_BASE_URL,
   TYPESAFE_API_BASE_URL,
   TYPESAFE_AUTH_PROVIDER_ID,
+  validateGeminiAuthKey,
   validateOpencodeGoAuthKey,
   validateTypesafeAuthKey,
 } from "./fleet/auth.js";

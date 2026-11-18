@@ -21,6 +21,7 @@ import { CodexResponsesAdapter } from "../upstream/codex/responses/adapter.js";
 import { compactCodexConversation } from "../upstream/codex/compaction.js";
 import type { ClaudeCodexCompactionStore } from "../upstream/codex/compaction-store.js";
 import { MuseCodeResponsesAdapter } from "../upstream/muse-code/responses/adapter.js";
+import { createGeminiAdapter } from "../upstream/gemini/adapter.js";
 import { createOpencodeGoAdapter } from "../upstream/opencode-go/adapter.js";
 import type { QuotaWindow } from "../quota/types.js";
 import type { GeminiUsagePort } from "../quota/gemini-usage.js";
@@ -565,6 +566,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       credential = apiKey;
+    } else if (target?.provider === "gemini") {
+      const apiKey = await deps.readGeminiApiKey?.();
+      if (!apiKey) {
+        refuseProviderSignIn("No Gemini API key was found. Sign in to Gemini in Console settings first.");
+        return true;
+      }
+      credential = apiKey;
     }
     clock?.markCredential();
 
@@ -622,6 +630,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           // 카탈로그가 모델마다 선언한 wire 하나로만 간다. 무상태 어댑터라 요청마다 만들고,
           // fetch를 넘겨야 라우터의 업스트림 게이트를 지난다.
           ? new AnthropicMessagesGateway(createOpencodeGoAdapter(target, { fetch: requestFetch }))
+          : target.provider === "gemini"
+          // 무상태 어댑터. 사용량·402/429 보고는 어댑터가 와이어에서 읽은 값으로 원장 포트에 직접 한다.
+          ? new AnthropicMessagesGateway(createGeminiAdapter({
+            fetch: requestFetch,
+            ...(deps.geminiUsage ? { usage: deps.geminiUsage } : {}),
+          }))
           : target.provider === "muse-code"
             ? new AnthropicMessagesGateway(new MuseCodeResponsesAdapter({
               fetch: requestFetch,

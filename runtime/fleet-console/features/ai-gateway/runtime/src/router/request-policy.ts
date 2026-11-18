@@ -7,6 +7,7 @@ import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-mess
 import type { GatewayModel, GatewayProvider } from "../models.js";
 import { upstreamModelId } from "../models.js";
 import { codexRequestPolicy } from "../upstream/codex/request-policy.js";
+import { geminiRequestPolicy } from "../upstream/gemini/request-policy.js";
 import { museCodeRequestPolicy } from "../upstream/muse-code/request-policy.js";
 import { opencodeGoRequestPolicy } from "../upstream/opencode-go/request-policy.js";
 import { xaiRequestPolicy } from "../upstream/xai/request-policy.js";
@@ -83,6 +84,7 @@ const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
   antigravity: antigravityRequestPolicy,
   claude: claudeRequestPolicy,
   codex: codexRequestPolicy,
+  gemini: geminiRequestPolicy,
   "muse-code": museCodeRequestPolicy,
   // The provider id is `opencode`; its folder carries the `-go` subscription name.
   opencode: opencodeGoRequestPolicy,
