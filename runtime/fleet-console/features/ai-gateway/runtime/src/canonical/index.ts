@@ -233,7 +233,7 @@ export interface CanonicalResponseRequest {
   max_output_tokens?: number;
   metadata?: Record<string, string>;
   reasoning?: CanonicalReasoning;
-  service_tier?: "priority";
+  service_tier?: "priority" | "ultrafast";
   stream: true;
 }
 

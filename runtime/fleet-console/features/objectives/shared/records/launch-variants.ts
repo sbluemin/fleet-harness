@@ -40,6 +40,7 @@ function readLaunchVariantRow(value: unknown): ObjectiveLaunchVariantRow | null 
     ...(typeof value.quotaPool === "string" && value.quotaPool.length > 0 ? { quotaPool: value.quotaPool } : {}),
     ...(quotaScopes.length > 0 ? { quotaScopes } : {}),
     ...(value.fastSupported === true ? { fastSupported: true } : {}),
+    ...(value.ultrafastSupported === true ? { ultrafastSupported: true } : {}),
     ...(typeof value.contextWindow === "number" && Number.isFinite(value.contextWindow) && value.contextWindow > 0
       ? { contextWindow: value.contextWindow }
       : {}),

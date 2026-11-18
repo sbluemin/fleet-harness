@@ -253,7 +253,9 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     },
     commander(id) {
       const state = id ? store.read(id) : null;
-      return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}), ...(typeof state.commanderFast === "boolean" ? { fast: state.commanderFast } : {}) } : null;
+      if (!state?.commanderModel) return null;
+      const speed = state.commanderSpeed ?? (state.commanderFast === true ? "fast" as const : state.commanderFast === false ? "standard" as const : undefined);
+      return { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}), ...(speed ? { speed } : {}) };
     },
     session(id) {
       const running = id ? supervisor.status(id)?.session : undefined;

@@ -21,6 +21,7 @@ import { useCommodoreList } from "./commodore-list.js";
 import { useCommodoreName } from "./commodore-name.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import { isSavingGlobalSettingsField, setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
+import { Select } from "../../settings/client/mobile-host.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 
 /**
@@ -31,7 +32,8 @@ import type { CommodoreMessageKey } from "./i18n/index.js";
 
 type T = Translate<CommodoreMessageKey>;
 type CommodoreView = NonNullable<ReturnType<typeof useCommodore>["view"]>;
-type Coordinates = { readonly model?: string; readonly effort?: string; readonly fast?: boolean };
+type Speed = "standard" | "fast" | "ultrafast";
+type Coordinates = { readonly model?: string; readonly effort?: string; readonly speed?: Speed };
 
 export type CommodoreComposerSettingsSection = "commodore" | "commander" | "pool" | "theaters";
 const SECTIONS: readonly CommodoreComposerSettingsSection[] = ["commodore", "commander", "pool", "theaters"];
@@ -738,7 +740,8 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
 }
 
 function commodoreDisplayKey(state: CommodoreView["state"]): string {
-  return `${state.model ?? ""}:${state.effort ?? ""}:${state.fast ? 1 : 0}:${state.commanderModel ?? ""}:${state.commanderEffort ?? ""}`;
+  const speed = state.speed ?? (state.fast === true ? "fast" : state.fast === false ? "standard" : "");
+  return `${state.model ?? ""}:${state.effort ?? ""}:${speed}:${state.commanderModel ?? ""}:${state.commanderEffort ?? ""}`;
 }
 
 function launchLabels(t: T) {
@@ -830,18 +833,24 @@ function CoordinateList({ t, roster, value, fallback, labels, ariaLabel, judgmen
   const judgmentActive = judgment?.active === true;
   const activeModel = judgmentActive ? null : display.shown.model ?? null;
   const effortNow = display.shown.effort ?? null;
-  const fastNow = value.fast === true;
+  // 그 모델이 받는 속도 등급만 보인다 — 속도를 받지 않는 모델에는 리스트박스가 서지 않는다.
+  const speedSupported = (row: ObjectiveLaunchVariantRow) => row.fastSupported === true || row.ultrafastSupported === true;
+  const speedForRow = (row: ObjectiveLaunchVariantRow): Speed => {
+    if (value.speed === "ultrafast" && row.ultrafastSupported === true) return "ultrafast";
+    if ((value.speed === "fast" || value.speed === "ultrafast") && row.fastSupported === true) return "fast";
+    return "standard";
+  };
   // 「자동」(강도 비움)은 저장값이 강도를 비울 수 있는 지휘관 좌표에만 선다 — 사령관 좌표는 늘 구체 강도로 저장된다.
   const pickEffort = (row: ObjectiveLaunchVariantRow, effort: string | null) => {
     const model = row.launch.model ?? row.id;
-    onPick(effort ? { effort } : { model, ...(row.fastSupported === true ? { fast: fastNow } : {}) });
+    onPick(effort ? { effort } : { model, ...(speedSupported(row) ? { speed: speedForRow(row) } : {}) });
   };
   const groups = roster ?? [];
   const pickRow = (row: ObjectiveLaunchVariantRow) => {
     const model = row.launch.model ?? row.id;
     if (!judgmentActive && activeModel && model === activeModel && !display.off) return;
     const effort = resolveRowEffort(row, effortNow) ?? undefined;
-    onPick({ model, ...(effort ? { effort } : {}), ...(row.fastSupported === true ? { fast: false } : {}) });
+    onPick({ model, ...(effort ? { effort } : {}), ...(speedSupported(row) ? { speed: "standard" as const } : {}) });
   };
   const offRow = display.off && value.model ? { model: value.model, label: prettyModelId(value.model) } : null;
 
@@ -849,7 +858,7 @@ function CoordinateList({ t, roster, value, fallback, labels, ariaLabel, judgmen
     <div className="commodore-composer-coord" role="radiogroup" aria-label={ariaLabel}>
       {guide && roster !== null ? <RecommendStrip t={t} guide={guide} roster={roster} activeModel={activeModel} activeEffort={effortNow} onPick={(row, effort) => {
         const model = row.launch.model ?? row.id;
-        onPick({ model, effort, ...(row.fastSupported === true ? { fast: false } : {}) });
+        onPick({ model, effort, ...(speedSupported(row) ? { speed: "standard" as const } : {}) });
       }} /> : null}
       {judgment ? (
         <button type="button" role="radio" aria-checked={judgmentActive} className={`commodore-composer-row is-extra${judgmentActive ? " is-active" : ""}`} onClick={() => { if (!judgmentActive) judgment.onPick(); }}>
@@ -890,7 +899,7 @@ function CoordinateList({ t, roster, value, fallback, labels, ariaLabel, judgmen
                     <ProviderMark provider={provider ?? launchProviderFromModelId(model)} />
                     <span className="commodore-composer-row-label">{row.label}</span>
                     {!active && guide ? <RowIntelligence t={t} guide={guide} row={row} /> : null}
-                    {active && !hasTrack && row.fastSupported !== true ? <Check on /> : null}
+                    {active && !hasTrack && !speedSupported(row) ? <Check on /> : null}
                   </button>
                   {hasTrack ? (
                     <EffortSegment
@@ -906,8 +915,19 @@ function CoordinateList({ t, roster, value, fallback, labels, ariaLabel, judgmen
                       onPick={(effort) => pickEffort(row, effort)}
                     />
                   ) : null}
-                  {active && row.fastSupported === true ? (
-                    <button type="button" className="commodore-composer-fast" aria-pressed={fastNow} onClick={() => onPick({ model, ...(effortNow ? { effort: effortNow } : {}), fast: !fastNow })}>{t("commodore.settings.fast")}</button>
+                  {active && speedSupported(row) ? (
+                    <Select
+                      className="commodore-composer-speed"
+                      compact
+                      label={t("commodore.settings.speedAria")}
+                      value={speedForRow(row)}
+                      options={[
+                        { value: "standard", label: t("commodore.settings.speedStandard") },
+                        ...(row.fastSupported === true ? [{ value: "fast", label: t("commodore.settings.fast") }] : []),
+                        ...(row.ultrafastSupported === true ? [{ value: "ultrafast", label: t("commodore.settings.ultrafast") }] : []),
+                      ]}
+                      onChange={(next) => onPick({ model, ...(effortNow ? { effort: effortNow } : {}), speed: next as Speed })}
+                    />
                   ) : null}
                 </div>,
                 readout,

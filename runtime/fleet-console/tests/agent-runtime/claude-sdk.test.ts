@@ -44,7 +44,7 @@ const { createClaudeGatewaySdk } = await import("../../foundation/agent-runtime/
 
 const BASE_URL = "http://127.0.0.1:43210/plugins/terminal/ai-gateway";
 const LUNA = "claude-gateway--codex--gpt-6-luna";
-const SOL = "claude-gateway--codex--gpt-6.1-sol";
+const SOL = "claude-gateway--codex--gpt-6.2-sol";
 const FABLE_1M = "fable[1m]";
 
 async function drain(run: AsyncIterable<unknown>): Promise<void> {

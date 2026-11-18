@@ -86,10 +86,10 @@ describe("Claude Codex compaction routing", () => {
   it("recovers input overflow before commit and preserves streaming after output starts", async () => {
     const overflow = { type: "invalid_request_error", code: "context_length_exceeded", message: "Your input exceeds the context window of this model." };
     const frame = (event: unknown) => `data: ${JSON.stringify(event)}\n\n`;
-    const created = { type: "response.created", response: { id: "r", model: "gpt-6.1-sol", usage: null } };
+    const created = { type: "response.created", response: { id: "r", model: "gpt-6.2-sol", usage: null } };
     const failed = { type: "response.failed", response: { error: overflow } };
     const text = { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "recovered" };
-    const completed = { type: "response.completed", response: { id: "r", model: "gpt-6.1-sol", usage: { input_tokens: 1, output_tokens: 1 } } };
+    const completed = { type: "response.completed", response: { id: "r", model: "gpt-6.2-sol", usage: { input_tokens: 1, output_tokens: 1 } } };
     let mode: "http" | "early" | "summary" | "late" | "success" | "quiet" = "http";
     let finish: (() => void) | undefined;
     const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
@@ -203,7 +203,7 @@ describe("Claude Codex compaction routing", () => {
     );
     const completed = (id: string) => ({
       type: "response.completed",
-      response: { id, model: "gpt-6.1-sol", usage: { input_tokens: 10, output_tokens: 5 } },
+      response: { id, model: "gpt-6.2-sol", usage: { input_tokens: 10, output_tokens: 5 } },
     });
     const bodies: Array<Record<string, any>> = [];
     const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
@@ -555,7 +555,7 @@ describe("delegation assignment", () => {
   });
 
   it("drops a not-connected Codex model from delegation and keeps a consent-off Claude model", () => {
-    const models = [requireGatewayModel("claude--sonnet-1m"), requireGatewayModel("codex--gpt-6.1-sol")];
+    const models = [requireGatewayModel("claude--sonnet-1m"), requireGatewayModel("codex--gpt-6.2-sol")];
     const hidden = {
       delegationModels: models,
       quota: { claude: { status: "not_connected" }, codex: { status: "not_connected" } },
@@ -567,7 +567,7 @@ describe("delegation assignment", () => {
     ).model).toBe("sonnet[1m]");
     expect(buildGatewayCandidates({ delegationModels: models }).candidates.map((candidate) => candidate.model)).toEqual([
       "sonnet[1m]",
-      "codex--gpt-6.1-sol",
+      "codex--gpt-6.2-sol",
     ]);
   });
 
@@ -995,28 +995,37 @@ describe("oversized skill payloads", () => {
 });
 
 describe("session model speed", () => {
-  it("lets a session's explicit speed for its model override the Fast toggle, and keeps one catalog identity", async () => {
+  it("lets a session's explicit speed for its model override the pool selection, and keeps one catalog identity", async () => {
     const tiers: Array<string | undefined> = [];
-    const send = async (fastToggle: boolean, speed?: string) => {
+    const send = async (setting: { readonly fast?: boolean; readonly speed?: "fast" | "ultrafast" }, speed?: string, model = "codex--gpt-6.2-sol") => {
       const router = createAiGatewayRouter({
         gateway: stubGateway((request) => tiers.push(request.service_tier)),
         readAuth,
-        readAiGatewaySettings: aiGatewaySettingsStub({ version: 1, models: [{ id: "codex--gpt-6.1-sol", ...(fastToggle ? { fast: true } : {}) }] }),
+        readAiGatewaySettings: aiGatewaySettingsStub({ version: 1, models: [{ id: model, ...setting }] }),
       });
-      await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model: "claude-gateway--codex--gpt-6.1-sol", ...(speed ? { headers: { [FLEET_MODEL_SPEED_HEADER]: speed } } : {}) }));
+      await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model: `claude-gateway--${model}`, ...(speed ? { headers: { [FLEET_MODEL_SPEED_HEADER]: speed } } : {}) }));
     };
-    await send(true);
-    // 「일반」도 명시값이다 — 토글이 켜져 있어도 일반으로 돈다.
-    await send(true, "codex--gpt-6.1-sol=standard");
-    await send(false, "codex--gpt-6.1-sol=fast");
+    await send({ fast: true });
+    // 「일반」도 명시값이다 — 설정이 켜져 있어도 일반으로 돈다.
+    await send({ fast: true }, "codex--gpt-6.2-sol=standard");
+    await send({}, "codex--gpt-6.2-sol=fast");
     // 다른 모델에 대한 명시는 이 요청에 새지 않는다(위임·압축 요청).
-    await send(true, "codex--gpt-6.1-terra=standard");
-    expect(tiers).toEqual(["priority", undefined, "priority", "priority"]);
+    await send({ fast: true }, "codex--gpt-6.1-terra=standard");
+    // Ultrafast는 카탈로그가 sol에만 선언한다 — Codex 요청에는 service_tier "ultrafast"로 실린다.
+    await send({}, "codex--gpt-6.2-sol=ultrafast");
+    await send({ fast: true }, "codex--gpt-6.2-sol=ultrafast");
+    // 설정(라우팅 풀)이 고른 Ultrafast도 세션 요청에 그대로 실린다.
+    await send({ speed: "ultrafast" });
+    // astra는 Fast까지만 — 지원하지 않는 Ultrafast 명시는 실리지 않는다.
+    await send({}, "codex--gpt-6.2-astra=ultrafast", "codex--gpt-6.2-astra");
+    expect(tiers).toEqual(["priority", undefined, "priority", "priority", "ultrafast", "ultrafast", "ultrafast", undefined]);
 
-    // Fast는 속도 선택일 뿐 새 모델 항목이 아니다.
-    expect(buildAnthropicModelList(GATEWAY_MODELS).data.filter((entry) => entry.id.includes("gpt-6.1-sol"))).toHaveLength(1);
-    expect(buildGatewayCandidates({ delegationModels: [requireGatewayModel("codex--gpt-6.1-sol")] }).candidates).toEqual([
-      expect.objectContaining({ model: "codex--gpt-6.1-sol", fast: false }),
+    // 속도는 속도 선택일 뿐 새 모델 항목이 아니다.
+    expect(buildAnthropicModelList(GATEWAY_MODELS).data.filter((entry) => entry.id.includes("gpt-6.2-sol"))).toHaveLength(1);
+    expect(requireGatewayModel("codex--gpt-6.2-sol").ultrafastSupported).toBe(true);
+    expect(requireGatewayModel("codex--gpt-6.2-astra").ultrafastSupported).toBeUndefined();
+    expect(buildGatewayCandidates({ delegationModels: [requireGatewayModel("codex--gpt-6.2-sol")] }).candidates).toEqual([
+      expect.objectContaining({ model: "codex--gpt-6.2-sol", fast: false }),
     ]);
   });
 });
@@ -1029,7 +1038,7 @@ describe("Astra asynchronous tools", () => {
     const bodies: Array<Record<string, any>> = [];
     const fetchMock = vi.fn<typeof fetch>(async (_url, init) => {
       bodies.push(JSON.parse(String(init?.body)));
-      return new Response('data: {"type":"response.completed","response":{"id":"r","model":"gpt-6-astra","usage":{"input_tokens":1,"output_tokens":1}}}\n\n', {
+      return new Response('data: {"type":"response.completed","response":{"id":"r","model":"gpt-6.2-astra","usage":{"input_tokens":1,"output_tokens":1}}}\n\n', {
         headers: { "content-type": "text/event-stream" },
       });
     });
@@ -1037,7 +1046,7 @@ describe("Astra asynchronous tools", () => {
     const tools = ["Read", "Grep", "Glob", "Bash", "Edit", "AskUserQuestion", "mcp__other__Read"]
       .map((name) => ({ name, input_schema: { type: "object", properties: {}, additionalProperties: false } }));
     const base = {
-      model: "claude-gateway--codex--gpt-6-astra",
+      model: "claude-gateway--codex--gpt-6.2-astra",
       messages: [{ role: "user", content: "read the files" }], tools, stream: true, max_tokens: 128,
     };
     try {
@@ -1045,7 +1054,7 @@ describe("Astra asynchronous tools", () => {
         base,
         { ...base, stream: false },
         { ...base, tool_choice: { type: "auto", disable_parallel_tool_use: true } },
-        { ...base, model: "claude-gateway--codex--gpt-6.1-sol" },
+        { ...base, model: "claude-gateway--codex--gpt-6.2-sol" },
       ]) {
         const res = response();
         await router.handle(ctx({ res, token: ANTHROPIC_CRED, rawBody }));
@@ -2013,7 +2022,7 @@ function ctx(options: {
   readonly rawBody?: unknown;
 }): GatewayHttpHandlerContext {
   const payload = JSON.stringify(options.rawBody ?? {
-    model: options.model ?? "claude-gateway--codex--gpt-6.1-sol",
+    model: options.model ?? "claude-gateway--codex--gpt-6.2-sol",
     messages: options.messages ?? [{ role: "user", content: "Hello" }],
     max_tokens: 128,
     ...(options.thinking ? { thinking: options.thinking } : {}),
@@ -2048,7 +2057,7 @@ function ctx(options: {
 
 describe("upper-session routing batch", () => {
   const items = [{ key: "member", prompt: "Implement the requested change" }];
-  const models = [requireGatewayModel("claude--opus-1m"), requireGatewayModel("codex--gpt-6.1-sol")];
+  const models = [requireGatewayModel("claude--opus-1m"), requireGatewayModel("codex--gpt-6.2-sol")];
 
   it("commits judged choices and rule fallbacks, and rechecks exposure after the judgment", async () => {
     const providerLoad = new Map<string, number>();
@@ -2056,7 +2065,7 @@ describe("upper-session routing batch", () => {
     const exposure: GatewayAssignmentExposure = { delegationModels: models, providerLoad, distribution };
     const choose = vi.fn(async () => ({ t0: { seat: "c1", difficulty: "xhigh" } }));
     const [routed] = await decideGatewayRoutingBatch(items, exposure, { choose });
-    expect(routed).toMatchObject({ key: "member", model: "codex--gpt-6.1-sol", effort: "xhigh", via: "route" });
+    expect(routed).toMatchObject({ key: "member", model: "codex--gpt-6.2-sol", effort: "xhigh", via: "route" });
     expect(choose.mock.calls).toHaveLength(1);
     expect(providerLoad.get("codex")).toBe(1);
     const [failed] = await decideGatewayRoutingBatch(items, exposure, { choose: async () => { throw new Error("judge failed"); } });
@@ -2079,11 +2088,11 @@ describe("upper-session routing batch", () => {
     const exposure: GatewayAssignmentExposure = { delegationModels: models, quota: { claude: quota(100), codex: quota(40) } };
     expect(buildGatewayCandidates(exposure).candidates).toEqual([]);
     const enabled = buildGatewayEnabledModels(exposure);
-    expect(enabled.models.map(row => row.model)).toEqual(["opus[1m]", "codex--gpt-6.1-sol"]);
+    expect(enabled.models.map(row => row.model)).toEqual(["opus[1m]", "codex--gpt-6.2-sol"]);
     expect(Object.keys(enabled.models[0]!)).toEqual(["model", "fast", "efforts", "summary"]);
     const choose = vi.fn(async () => ({}));
     const [decision] = await decideGatewayRoutingBatch(items, exposure, { choose });
-    expect(decision).toMatchObject({ model: "codex--gpt-6.1-sol", effort: "medium", via: "least-used" });
+    expect(decision).toMatchObject({ model: "codex--gpt-6.2-sol", effort: "medium", via: "least-used" });
     expect(choose).not.toHaveBeenCalled();
     await expect(decideGatewayRoutingBatch(items, { delegationModels: [] }, { choose })).rejects.toBeInstanceOf(NoEnabledGatewayModelsError);
   });

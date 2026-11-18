@@ -87,10 +87,14 @@ export function mergeCapturedAgentSession(
   };
 }
 
-function readModelSpeed(value: unknown): { readonly model: string; readonly fast: boolean } | undefined {
+function readModelSpeed(value: unknown): { readonly model: string; readonly speed: "standard" | "fast" | "ultrafast" } | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const { model, fast } = value as Record<string, unknown>;
-  return readString(model) && typeof fast === "boolean" ? { model: model as string, fast } : undefined;
+  const { model, speed, fast } = value as Record<string, unknown>;
+  if (!readString(model)) return undefined;
+  // 옛 저장값은 Fast 불리언이다 — `fast: true`는 Fast, `false`는 일반.
+  if (speed === "standard" || speed === "fast" || speed === "ultrafast") return { model: model as string, speed };
+  if (typeof fast === "boolean") return { model: model as string, speed: fast ? "fast" : "standard" };
+  return undefined;
 }
 
 function readString(value: unknown): string | undefined {

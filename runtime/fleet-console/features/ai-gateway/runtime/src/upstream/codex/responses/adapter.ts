@@ -214,7 +214,7 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
       this.reasoningReplayOrigin,
       this.strictToolsByDefault(),
     );
-    if (this.dropSamplingParams && (request.model === "gpt-6.2-astra" || request.model === "gpt-6-astra")
+    if (this.dropSamplingParams && request.model === "gpt-6.2-astra"
       && request.parallel_tool_calls !== false && request.tool_choice !== "none") {
       let hasAsyncTools = false;
       for (const tool of payload.tools ?? []) {
@@ -1123,7 +1123,7 @@ function usage(value: unknown): CanonicalUsage {
  * It runs every function tool's `pattern` through RE2, which has neither lookaround nor
  * Unicode property escapes, and refuses the request as a whole — `param: "tools"`, not the one
  * tool — so a single unreadable pattern kills the turn before any output reaches the client.
- * Measured 2026-09-09 against `gpt-6-astra`: `(?!…)` returns `regex lookaround is not
+ * Measured 2026-09-09 against `gpt-6.2-astra`: `(?!…)` returns `regex lookaround is not
  * supported` and `\p{…}` returns `is not a 'regex'`, both with and without `strict`, which is
  * why the sanitizer runs ahead of the strict branch rather than inside it.
  *

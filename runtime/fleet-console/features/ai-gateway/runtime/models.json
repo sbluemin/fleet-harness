@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-11-18T00:00:00Z",
+  "updatedAt": "2026-11-19T00:00:00Z",
   "intelligenceIndex": {
     "name": "Artificial Analysis Intelligence Index",
     "observedAt": "2026-11-15",
@@ -14,7 +14,7 @@
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-6.2-astra",
-      "source": "Codex current-generation model lineup and reasoning ladders; Fleet exposes one id per model, a fixed 500000-token context window, and an optional priority service tier selected by the fast flag. Context-window and service-tier variants are not model identities.",
+      "source": "Codex current-generation model lineup and reasoning ladders; Fleet exposes one id per model, a fixed 500000-token context window, and optional priority (Fast) and ultrafast service tiers selected per model. Context-window and service-tier variants are not model identities.",
       "models": [
         {
           "modelId": "gpt-6.2-astra",
@@ -66,6 +66,7 @@
             "gpt-6.2-sol"
           ],
           "fastSupported": true,
+          "ultrafastSupported": true,
           "intelligence": {
             "source": "https://artificialanalysis.ai/models/gpt-6-2-sol",
             "observedAt": "2026-11-18",
@@ -75,66 +76,6 @@
               "high": 55,
               "xhigh": 56,
               "max": 57
-            }
-          }
-        },
-        {
-          "modelId": "gpt-6-astra",
-          "name": "GPT-6-Astra",
-          "description": "Flagship coding and reasoning model.",
-          "contextWindow": 500000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6-astra"
-          ],
-          "fastSupported": true,
-          "intelligence": {
-            "source": "https://artificialanalysis.ai/models/gpt-6-astra",
-            "scores": {
-              "low": 43,
-              "medium": 52,
-              "high": 55,
-              "xhigh": 55,
-              "max": 57
-            }
-          }
-        },
-        {
-          "modelId": "gpt-6.1-sol",
-          "name": "GPT-6.1-Sol",
-          "description": "Deep reasoning and architecture model.",
-          "contextWindow": 500000,
-          "effort": {
-            "supported": true,
-            "levels": [
-              "low",
-              "medium",
-              "high",
-              "xhigh",
-              "max"
-            ]
-          },
-          "aliases": [
-            "gpt-6.1-sol"
-          ],
-          "fastSupported": true,
-          "intelligence": {
-            "source": "https://artificialanalysis.ai/models/gpt-6-1-sol",
-            "scores": {
-              "low": 35,
-              "medium": 46,
-              "high": 50,
-              "xhigh": 52,
-              "max": 55
             }
           }
         },

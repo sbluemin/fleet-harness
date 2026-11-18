@@ -57,8 +57,8 @@ export interface CommodoreBoardAdapter {
 
 export interface CommodoreBoardHost {
   registerBoard(adapter: CommodoreBoardAdapter): () => void;
-  /** `fast`: 사람이 그 모델에 고른 속도(일반·Fast). 없으면 AI Gateway의 Fast 토글을 따른다. */
-  commander(commodoreId: string): { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null;
+  /** `speed`: 사람이 그 모델에 고른 속도(일반·Fast·Ultrafast). 없으면 AI Gateway 설정을 따른다. */
+  commander(commodoreId: string): { readonly model: string; readonly effort?: string; readonly speed?: "standard" | "fast" | "ultrafast" } | null;
   /** 그 사령관 세션이 지금 도는 모델·강도. 세션이 없으면 null. */
   session(commodoreId: string): { readonly model: string; readonly effort?: string } | null;
   /** 세션이 없어도 그 사령관의 해석된 모델·강도. 저장된 사령관이 없으면 null. */

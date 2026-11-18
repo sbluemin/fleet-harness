@@ -437,9 +437,15 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const stored = state?.model && state.effort ? { model: state.model, effort: state.effort } : experimentAideSelection(settings(), "commodore");
     if (!deps.models) return { model: stored.model, effort: stored.effort, contextWindow: contextWindow(stored.model) };
     const resolved = deps.models.resolve(stored, "agent");
-    // 사람이 고른 속도는 그 모델이 그대로 설 때만 싣는다 — 폴백 모델이나 Fast를 받지 않는 모델에는 명시하지 않는다(토글을 따른다).
-    const speed = typeof state?.fast === "boolean" && state.model && !resolved.fallback && resolved.row?.fastSupported === true
-      ? { model: resolved.model, fast: state.fast }
+    // 사람이 고른 속도는 그 모델이 그대로 설 때만 싣는다 — 폴백 모델이나 그 등급을 받지 않는 모델에는 명시하지 않는다(설정을 따른다).
+    const selectedSpeed = state?.speed ?? (state?.fast === true ? "fast" : state?.fast === false ? "standard" : undefined);
+    const speedSupported = selectedSpeed === "ultrafast"
+      ? resolved.row?.ultrafastSupported === true
+      : selectedSpeed === "fast"
+        ? resolved.row?.fastSupported === true
+        : selectedSpeed === "standard";
+    const speed = selectedSpeed && state?.model && !resolved.fallback && speedSupported
+      ? { model: resolved.model, speed: selectedSpeed }
       : undefined;
     return {
       model: resolved.wireModel,
@@ -1363,7 +1369,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
 
   const coordinatesChanged = (runner: Runner) => {
     const coordinates = resolveCoordinates(runner.commodoreId);
-    return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.coordinates.speed?.fast !== coordinates.speed?.fast || runner.language !== resolveLanguage(runner.commodoreId);
+    return !runner.coordinates || runner.coordinates.model !== coordinates.model || runner.coordinates.effort !== coordinates.effort || runner.coordinates.speed?.speed !== coordinates.speed?.speed || runner.language !== resolveLanguage(runner.commodoreId);
   };
 
   /** clear 경계 뒤 최근 결말과 같은 턴의 성공한 보드 쓰기만 복원한다. 원시 대화는 읽지 않는다. */

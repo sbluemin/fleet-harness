@@ -1042,16 +1042,19 @@ describe("commodore theater state", () => {
     expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: "sonnet", effort: null })).status).toBe(400);
     // Gateway scoped Claude 표기도 받되 정준 id(실행 id)로 접어 저장한다.
     expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: "claude--sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet[1m]", effort: "xhigh" });
+    // 속도도 같은 좌표로 저장된다 — Ultrafast까지 왕복하고 새 저장소가 그대로 읽는다.
+    expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: "codex--gpt-6.2-sol", effort: "high", speed: "ultrafast" })).value.state).toMatchObject({ model: "codex--gpt-6.2-sol", effort: "high", speed: "ultrafast" });
+    expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: null, effort: null, speed: "fast" })).status).toBe(400);
 
     // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽는다. 옛 실험 설정은 자율 운영을 바꾸지 않는다.
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, unknown>;
-    expect(saved).toMatchObject({ description: { rev: 1 }, model: "sonnet[1m]", effort: "xhigh" });
+    expect(saved).toMatchObject({ description: { rev: 1 }, model: "codex--gpt-6.2-sol", effort: "high", speed: "ultrafast" });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")).toEqual(h.store.read("t1"));
     // 재시작 복원은 등록된 Theater 를 훑는다 — 읽을 수 없는 Theater 는 빠지고 던지지 않는다.
     expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), commodoreIds: () => ["t1", "gone"], emit: () => undefined }).availableCommodores()).toEqual(["t1"]);
     h.setExperiments({ commodore: false });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
-    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "language", "description", "intel", "intel", "intel-edited", "coordinates"]);
+    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "language", "description", "intel", "intel", "intel-edited", "coordinates", "coordinates"]);
 
     // SDK 기억 정책도 같은 영속·인가 경계를 쓴다. 기존 파일이나 Fleet 기억은 삭제하지 않는다.
     expect(h.store.read("t1")?.autoMemoryEnabled ?? true).toBe(true);

@@ -2,7 +2,7 @@ import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
-import { recommendedRole } from "./model-family.js";
+import { recommendedRole, type AiGatewaySpeed } from "./model-family.js";
 import type { QuotaScope } from "./quota/types.js";
 import { isQuotaScope, modelQuotaScope } from "./quota/windows.js";
 
@@ -79,6 +79,8 @@ const GatewayModelEntrySchema = z.object({
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
   fastSupported: z.boolean().optional(),
+  /** Whether this model also offers the Ultrafast service tier. Codex only. */
+  ultrafastSupported: z.boolean().optional(),
   fastUpstreamId: z.string().min(1).optional(),
   fast: z.boolean().optional(),
   quotaScope: z.string().refine(isQuotaScope, { message: "invalid quotaScope" }).optional(),
@@ -154,9 +156,11 @@ export interface GatewayModel {
   readonly provider: GatewayProvider;
   /** Model id sent to the selected upstream provider. */
   readonly upstreamId?: string;
-  readonly serviceTier?: "priority";
+  readonly serviceTier?: "priority" | "ultrafast";
   /** Whether this model offers an optional priority service tier. */
   readonly fastSupported?: boolean;
+  /** Whether this model also offers the Ultrafast service tier (catalog flag; Codex only). */
+  readonly ultrafastSupported?: boolean;
   readonly fastUpstreamId?: string;
   /** Selected service tier; never a separate model identity. */
   readonly fast?: boolean;
@@ -487,14 +491,23 @@ export function findGatewayModel(
   return catalog.find((model) => model.id === id || model.aliases?.includes(id));
 }
 
-/** Apply the selected speed without creating a second catalog identity. */
-export function withGatewayModelFast(model: GatewayModel, selected: boolean): GatewayModel {
-  const fast = model.fast === true || (model.fastSupported === true && selected);
+/**
+ * Apply the selected speed without creating a second catalog identity.
+ *
+ * `fast` and `ultrafast` are service tiers, not model ids: Fast rides Codex's
+ * `priority` tier, Ultrafast its `ultrafast` tier (`standard` omits the field).
+ * A catalog `fast: true` entry is permanently fast and ignores the argument.
+ * A tier the model does not declare is dropped rather than forwarded.
+ */
+export function withGatewayModelSpeed(model: GatewayModel, selected: AiGatewaySpeed | undefined): GatewayModel {
+  const forcedFast = model.fast === true;
+  const fast = forcedFast || (selected === "fast" && model.fastSupported === true);
+  const ultrafast = fast ? false : selected === "ultrafast" && model.ultrafastSupported === true;
   return {
     ...model,
     fast,
     ...(fast && model.fastUpstreamId ? { upstreamId: model.fastUpstreamId } : {}),
-    ...(fast && model.provider === "codex" ? { serviceTier: "priority" as const } : {}),
+    ...(ultrafast ? { serviceTier: "ultrafast" as const } : fast && model.provider === "codex" ? { serviceTier: "priority" as const } : {}),
   };
 }
 
@@ -679,6 +692,7 @@ function toGatewayModel(
     provider,
     upstreamId: entry.providerModelId ?? entry.modelId,
     ...(entry.fastSupported ? { fastSupported: true } : {}),
+    ...(entry.ultrafastSupported ? { ultrafastSupported: true } : {}),
     ...(entry.fastUpstreamId ? { fastUpstreamId: entry.fastUpstreamId } : {}),
     ...(entry.fast ? { fast: true } : {}),
     ...(entry.quotaScope ? { quotaScope: entry.quotaScope as GatewayQuotaScope } : {}),
@@ -711,7 +725,7 @@ function validateRegistry(value: GatewayModelsRegistry): void {
     nativeIds.add(alias);
     // A native entry is judgment data for an alias the CLI resolves; serving fields would never be read.
     if (
-      family.providerModelId || family.fastSupported || family.fastUpstreamId || family.fast
+      family.providerModelId || family.fastSupported || family.ultrafastSupported || family.fastUpstreamId || family.fast
       || family.quotaScope || family.wire || family.aliases
     ) {
       throw new Error(`Native gateway model declares a serving field: ${owner}`);
@@ -753,6 +767,14 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       modelIds.add(model.modelId);
       if (model.fastSupported && provider !== "codex" && provider !== "xai") {
         throw new Error(`Gateway fast selection is only supported by Codex and xAI: ${provider}/${model.modelId}`);
+      }
+      if (model.ultrafastSupported) {
+        if (provider !== "codex") {
+          throw new Error(`Gateway ultrafast selection is only supported by Codex: ${provider}/${model.modelId}`);
+        }
+        if (!model.fastSupported) {
+          throw new Error(`Gateway ultrafast selection requires the fast tier: ${provider}/${model.modelId}`);
+        }
       }
       // xAI Grok CLI와 Muse Code 구독은 Responses 고정이지만 라우팅이 Anthropic으로 떨어지지 않도록 명시한다.
       // OpenCode Go는 모델마다 Responses·Chat Completions 중 하나로만 서빙한다.

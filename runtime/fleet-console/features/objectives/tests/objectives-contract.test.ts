@@ -70,7 +70,7 @@ const stubEnabledModels = () => vi.stubGlobal("fetch", async (url: string) => St
     ] })
   : new Response("", { status: 404 }));
 
-function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null; readonly commodoreSession?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null; readonly commodoreCoordinates?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null }) {
+function harness(routingOrigin: () => string | null = () => null, options?: { readonly reportQuietMs?: number; readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean; readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly speed?: "standard" | "fast" | "ultrafast"; readonly fast?: boolean } | null; readonly commodoreSession?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null; readonly commodoreCoordinates?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null }) {
   // 실제 파일 저장소는 심볼릭 링크 경로를 거절한다 — macOS 의 /var 같은 임시 경로도 실경로로 고정한다.
   const dir = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "fleet-objectives-")));
   dirs.push(dir);
@@ -673,7 +673,7 @@ describe("Objectives contract", () => {
 
   // 개시한 구성원의 모델은 세션 좌표가 권위다. 고른 순간 바뀌고(일하는 중이면 그 턴 뒤), 호스트가 한 구성원을 거절해도 개시는 이어져야 한다.
   it("switches a launched member's model now or after its turn and keeps one refused member from stopping the muster", async () => {
-    const commodoreJudge = { model: "codex--gpt-6.1-sol", effort: "medium" };
+    const commodoreJudge = { model: "codex--gpt-6.2-sol", effort: "medium" };
     const { store, launch, route, objectiveRecords, objectiveRecordsHost, activity, resumed, hostFault, hostChat, surfaces, events, objectiveFile, objectivesDir } = harness(() => null, { commodoreSession: () => commodoreJudge });
     const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Swap", groupId: null, note: "brief" });
     const reviewer = store.memberAdd(objective.id, { role: "review", launch: { mode: "model", model: "sonnet", effort: "medium" } }, "human").members[0]!;
@@ -1982,8 +1982,8 @@ describe("Objectives contract", () => {
   });
 
   it("chooses the Commander model at plan or commence and edits it only after a session exists", async () => {
-    let configured: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = null;
-    const judge = { model: "codex--gpt-6.1-sol", effort: "medium" };
+    let configured: { readonly model: string; readonly effort?: string; readonly speed?: "standard" | "fast" | "ultrafast"; readonly fast?: boolean } | null = null;
+    const judge = { model: "codex--gpt-6.2-sol", effort: "medium" };
     let running: { readonly model: string; readonly effort?: string } | null = judge;
     const coordinates = { model: "xai--grok-4.7", effort: "low" };
     const { ctx, store, launch, workspace, launches, activity, surfaces, objectiveRecords, objectivesDir, objectiveRecordsHost } = harness(() => "http://console.invalid", { commodoreCommander: () => configured, commodoreSession: () => running, commodoreCoordinates: () => coordinates });
@@ -2084,14 +2084,14 @@ describe("Objectives contract", () => {
     expect((await again({ action: "plan", objectiveId: shelvedId, commanderModel: "opus[1m]", commanderEffort: "high" })).structuredContent).toMatchObject({ ok: true });
     expect(objectiveRecords.get(shelvedId)!.session).toMatchObject({ model: "opus[1m]", effort: "high" });
     // 사람이 사령관 설정에 명시한 모델은 후보에서 빠져도 실행 카탈로그에 있으면 구상·개시가 그 모델로 기동한다. 호출이 넘긴 값은 버린다.
-    configured = { model: "opus[1m]", effort: "high", fast: true };
+    configured = { model: "opus[1m]", effort: "high", speed: "fast" };
     enabled.models = enabled.models.filter((entry) => entry.model !== "opus[1m]");
     const person = await again({ action: "add", theaterId: "t1", title: "Person chose" });
     expect(person.structuredContent).toMatchObject({ ok: true });
     const personId = person.structuredContent.objectiveId as string;
     expect(reloaded.find(personId)!.commander).not.toHaveProperty("model");
     expect((await again({ action: "plan", objectiveId: personId, commanderModel: "not-a-model", commanderEffort: "low" })).structuredContent).toMatchObject({ ok: true, notice: "Supplied model/effort ignored; using person's Commander setting." });
-    expect(objectiveRecords.get(personId)!.session).toMatchObject({ model: "opus[1m]", effort: "high", modelSpeed: { model: "opus[1m]", fast: true } });
+    expect(objectiveRecords.get(personId)!.session).toMatchObject({ model: "opus[1m]", effort: "high", modelSpeed: { model: "opus[1m]", speed: "fast" } });
     const editPerson = await again({ action: "edit", objectiveId: personId, commanderModel: "sonnet[1m]" });
     expect(editPerson.structuredContent).toMatchObject({ ok: true, notice: expect.stringContaining("person's Commander setting") });
     expect(objectiveRecords.get(personId)!.session).toMatchObject({ model: "opus[1m]" });
@@ -2146,8 +2146,8 @@ describe("Objectives contract", () => {
   // 기존 계약들은 화면 라우트를 섞는다. 사령관의 바깥 루프가 그 라우트 없이 닫히는 공개 도구 경계는 여기서 한 번 검증한다.
   it("closes the outer loop through console_objectives without person routes and refuses self-approval", async () => {
     // 사람이 이 사령관에 정한 지휘관 모델 — 처음에는 없다.
-    let configured: { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null = null;
-    const judge = { model: "codex--gpt-6.1-sol", effort: "high" };
+    let configured: { readonly model: string; readonly effort?: string; readonly speed?: "standard" | "fast" | "ultrafast"; readonly fast?: boolean } | null = null;
+    const judge = { model: "codex--gpt-6.2-sol", effort: "high" };
     const { ctx, store, launch, call, consoleDetail, route, workspace, launches, activity, outcomes, objectiveRecords, objectiveRecordsHost, objectivesDir, hostChat, hostFault, restart } = harness(() => "http://console.invalid", { commodoreCommander: () => configured, commodoreSession: () => judge });
     // Console 의 실행 카탈로그(루프백) — 모델 메뉴와 사령관의 구성원 모델 선택이 같은 행을 읽는다. 라우팅은 꺼져 있다.
     const catalog = { plugins: [{ id: "terminal", title: "Terminal", kinds: [{ id: "agent", type: "agent", title: "Agent", variants: [{ id: "native", label: "Claude", rows: [
@@ -2203,7 +2203,7 @@ describe("Objectives contract", () => {
     expect(objectiveRecords.has(unmodeledId)).toBe(false);
     expect(judged).toHaveLength(1);
     // 사람이 정한 사령관 설정은 사람의 명시 선택이다 — candidates 에 없어도 실행 카탈로그에서 고를 수 있으면 구상·개시가 그 모델을 쓴다.
-    configured = { model: "opus[1m]", effort: "high", fast: true };
+    configured = { model: "opus[1m]", effort: "high", speed: "fast" };
     const actor = { kind: "commodore", commodoreId: "c1" };
     const requestSource = { kind: "taskforce", taskforceId: randomUUID(), seq: 7 };
     const created = await board({ action: "add", theaterId: "t1", title: "Sealed loop", note: "Verify and hand off", dueDate: "2026-10-31", attachmentIds: [firstImage], requestSource });
