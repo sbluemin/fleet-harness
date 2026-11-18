@@ -14,7 +14,7 @@ import {
   buildGatewayModelConstraints,
   findGatewayModel,
   gatewayModelIntelligence,
-  withGatewayModelFast,
+  withGatewayModelSpeed,
 } from "../models.js";
 import type {
   GatewayEffortExposure,
@@ -22,7 +22,7 @@ import type {
   GatewayProvider,
   GatewayReasoningEffort,
 } from "../models.js";
-import { aiGatewayModelFamilyKey, canonicalEffortSelection, type AiGatewayRoleThresholds } from "../model-family.js";
+import { aiGatewayModelFamilyKey, canonicalEffortSelection, isAiGatewaySpeedTier, type AiGatewayRoleThresholds, type AiGatewaySpeedTier } from "../model-family.js";
 
 // AI Gateway 모델 선별의 저장 형태·카탈로그 대조·검증은 이 패키지가 소유한다. 카탈로그를 아는
 // 계층만이 "지금 고를 수 있는 모델·강도"를 판정할 수 있기 때문이다. 호스트는 저장 위치와 HTTP
@@ -35,6 +35,12 @@ import { aiGatewayModelFamilyKey, canonicalEffortSelection, type AiGatewayRoleTh
 export interface AiGatewayStoredModel {
   readonly id: string;
   readonly efforts?: readonly string[];
+  /** 고른 서비스 티어. 부재 = 일반(standard). */
+  readonly speed?: AiGatewaySpeedTier;
+  /**
+   * 옛 Fast 불리언. 읽기 전용 하위 호환 입력이며, 정규형은 `speed`로 쓴다 — `fast: true`는 Fast로 읽는다.
+   * (`fast: false`는 일반과 같다.)
+   */
   readonly fast?: boolean;
 }
 
@@ -189,6 +195,19 @@ function storedModelId(model: GatewayModel, id: string): string {
   return model.provider === "claude" ? model.id : id;
 }
 
+/** 저장 항목의 속도 — 새 `speed`가 정본이고, 옛 `fast: true`는 Fast로 읽는다. 모델이 받지 않는 등급은 버린다. */
+function storedSpeed(model: GatewayModel, entry: Pick<AiGatewayStoredModel, "speed" | "fast">): AiGatewaySpeedTier | undefined {
+  if (entry.speed === "fast" && model.fastSupported === true) return "fast";
+  if (entry.speed === "ultrafast" && model.ultrafastSupported === true) return "ultrafast";
+  return entry.fast === true && model.fastSupported === true ? "fast" : undefined;
+}
+
+/** 두 저장 항목을 합칠 때 남는 속도 — 더 높은 등급이 이긴다(입력은 이미 모델 지원으로 걸러졌다). */
+function strongestSpeed(left: AiGatewaySpeedTier | undefined, right: AiGatewaySpeedTier | undefined): AiGatewaySpeedTier | undefined {
+  if (left === "ultrafast" || right === "ultrafast") return "ultrafast";
+  return left === "fast" || right === "fast" ? "fast" : undefined;
+}
+
 /**
  * 같은 id를 가리키는 저장 항목을 먼저 나온 자리 한 행으로 합친다 — 구 Claude 200k·1M 두 좌표가 한 항목으로 접힐 때다.
  * 강도는 어느 한쪽이 전체면 전체, 둘 다 좁혔으면 합집합을 사다리 순으로 남긴다. 4판 이전의 `hostOnly`는
@@ -208,9 +227,10 @@ function mergeStoredModels(entries: readonly LegacyStoredModel[], keepHostOnly: 
       ? narrowEffortLadder(model, [...existing.efforts, ...entry.efforts])
       : undefined;
     const hostOnly = keepHostOnly && (existing.hostOnly === true || entry.hostOnly === true);
+    const speed = model ? strongestSpeed(storedSpeed(model, existing), storedSpeed(model, entry)) : undefined;
     merged[index] = {
       id: existing.id,
-      ...(existing.fast ? { fast: true } : {}),
+      ...(speed ? { speed } : {}),
       ...(efforts ? { efforts: [...efforts] } : {}),
       ...(hostOnly ? { hostOnly: true } : {}),
     };
@@ -236,9 +256,10 @@ function canonicalizeStoredModels(entries: readonly LegacyStoredModel[], rosterS
     const exposed = narrowed && !selectableHigh
       ? narrowEffortLadder(model, [...narrowed, "high"])
       : narrowed;
+    const speed = storedSpeed(model, entry);
     return [{
       id: storedModelId(model, entry.id),
-      ...(model.fastSupported && entry.fast === true ? { fast: true } : {}),
+      ...(speed ? { speed } : {}),
       ...(exposed ? { efforts: [...exposed] } : {}),
       ...(keepHostOnly && entry.hostOnly === true ? { hostOnly: true as const } : {}),
     }];
@@ -273,11 +294,12 @@ function contextTokens(id: string): number {
 
 function withCanonicalEfforts(entry: LegacyStoredModel): AiGatewayStoredModel {
   const model = findGatewayModel(entry.id);
-  if (!model) return { id: entry.id, ...(entry.efforts ? { efforts: entry.efforts } : {}) };
+  if (!model) return { id: entry.id, ...(entry.speed ? { speed: entry.speed } : {}), ...(entry.efforts ? { efforts: entry.efforts } : {}) };
   const efforts = hasUnresolvedEffortLadder(model)
     ? entry.efforts
     : canonicalEffortSelection(exposableEffortLadder(model), entry.efforts);
-  return { id: entry.id, ...(entry.fast ? { fast: true } : {}), ...(efforts ? { efforts: [...efforts] } : {}) };
+  const speed = storedSpeed(model, entry);
+  return { id: entry.id, ...(speed ? { speed } : {}), ...(efforts ? { efforts: [...efforts] } : {}) };
 }
 
 function sanitizeProviderPriority(value: unknown): readonly GatewayProvider[] | undefined {
@@ -330,7 +352,7 @@ export function resolveAiGatewaySelection(settings: AiGatewayStoredSettings | un
   for (const entry of entries) {
     const model = findGatewayModel(entry.id);
     if (!model || enabled.some((existing) => existing.id === model.id)) continue;
-    enabled.push(withGatewayModelFast(model, entry.fast === true));
+    enabled.push(withGatewayModelSpeed(model, storedSpeed(model, entry)));
     const exposed = entry.efforts;
     if (exposed && exposed.length > 0) effortExposure[model.id] = exposed as readonly GatewayReasoningEffort[];
   }
@@ -403,15 +425,23 @@ export function parseAiGatewayUpdate(value: unknown):
     if (!Array.isArray(record.models)) return { ok: false };
     for (const raw of record.models) {
       if (!raw || typeof raw !== "object" || Array.isArray(raw)) return { ok: false };
-      const entry = raw as { readonly id?: unknown; readonly efforts?: unknown; readonly hostOnly?: unknown; readonly fast?: unknown };
+      const entry = raw as { readonly id?: unknown; readonly efforts?: unknown; readonly hostOnly?: unknown; readonly fast?: unknown; readonly speed?: unknown };
       // 옛 클라이언트의 hostOnly는 어떤 값이든 버린다. 그 키만으로 400을 주지 않고, 항목은 켠 채로 남긴다.
-      if (Object.keys(entry).some((key) => key !== "id" && key !== "efforts" && key !== "hostOnly" && key !== "fast")) {
+      if (Object.keys(entry).some((key) => key !== "id" && key !== "efforts" && key !== "hostOnly" && key !== "fast" && key !== "speed")) {
         return { ok: false };
       }
       if (typeof entry.id !== "string") return { ok: false };
       const model = findGatewayModel(entry.id);
       if (!model) return { ok: false };
-      if (entry.fast !== undefined && (typeof entry.fast !== "boolean" || (entry.fast && !model.fastSupported))) return { ok: false };
+      if (entry.fast !== undefined && typeof entry.fast !== "boolean") return { ok: false };
+      if (entry.speed !== undefined && !isAiGatewaySpeedTier(entry.speed)) return { ok: false };
+      // 새 `speed`와 옛 `fast`를 함께 보내 모순된 선택을 만들지 않는다.
+      if (entry.speed !== undefined && entry.fast !== undefined) return { ok: false };
+      const speed: AiGatewaySpeedTier | undefined = entry.speed !== undefined
+        ? entry.speed as AiGatewaySpeedTier
+        : entry.fast === true ? "fast" : undefined;
+      if (speed === "fast" && model.fastSupported !== true) return { ok: false };
+      if (speed === "ultrafast" && model.ultrafastSupported !== true) return { ok: false };
       // 같은 모델을 두 번 보내는 것은 거부한다. 다만 구 Claude 좌표(`claude--sonnet`)와 1M id처럼 표기만 다른 같은 가족은
       // 옛 화면이 보낸 값이므로 아래에서 한 행으로 합친다. 계열의 다른 변형(창·Fast)은 정규화가 하나 남긴다.
       if (models.some((existing) => existing.id === model.id) && (model.provider !== "claude" || rawIds.has(entry.id))) {
@@ -422,7 +452,7 @@ export function parseAiGatewayUpdate(value: unknown):
       if (efforts === null) return { ok: false };
       models.push({
         id: model.id,
-        ...(entry.fast === true ? { fast: true } : {}),
+        ...(speed ? { speed } : {}),
         ...(efforts ? { efforts } : {}),
       });
     }
@@ -504,6 +534,8 @@ export interface AiGatewayCatalogModel {
   readonly contextWindow: number | null;
   /** Whether the model supports the optional priority service tier. */
   readonly fast: boolean;
+  /** Whether the model also offers the Ultrafast service tier. */
+  readonly ultrafast: boolean;
   readonly description: string | null;
   /**
    * The rungs this model can be exposed at. Not the raw catalog ladder: a level
@@ -553,6 +585,7 @@ function toCatalogModel(model: GatewayModel): AiGatewayCatalogModel {
     name: bareModelName(model),
     contextWindow: gatewayModelContextWindow(model),
     fast: model.fastSupported === true,
+    ultrafast: model.ultrafastSupported === true,
     description: model.description ?? null,
     effort: levels.length > 0 ? { levels } : null,
     intelligence: catalogModelIntelligence(model.id, levels),

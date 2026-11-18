@@ -1732,14 +1732,16 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-row-title { flex: none; white-space: nowrap; }
 .commodore-composer-row-label.is-inline small { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .commodore-composer-row.is-off .commodore-composer-row-label { color: var(--text-tertiary); text-decoration: line-through; }
-.commodore-composer-fast {
-  flex: none; height: 24px; padding: 0 10px; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: transparent;
-  color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+.commodore-composer-speed { flex: none; min-width: 0; }
+.commodore-composer-speed .fc-select__trigger {
+  min-height: 24px; height: 24px; padding: 0 8px; border-radius: var(--radius-pill); background: transparent; box-shadow: none;
+  color: var(--text-secondary); font-family: var(--font-ui); font-size: var(--t-xs); font-weight: var(--weight-regular);
 }
-.commodore-composer-fast:hover { color: var(--text-primary); }
-.commodore-composer-fast[aria-pressed="true"] { border-color: var(--text-tertiary); background: var(--control-wash); color: var(--text-primary); }
-.commodore-composer-fast:focus-visible { outline: none; box-shadow: var(--focus-face); }
+.commodore-composer-speed .fc-select__trigger:hover { color: var(--text-primary); }
+.commodore-composer-speed .fc-select__trigger:focus-visible { outline: none; box-shadow: var(--focus-face); }
+/* 설정 팝오버(z-index --z-overlay) 위에 목록이 떠야 한다 — 공용 40은 이 팝오버에 가린다.
+   공용 토큰은 그대로 두고, 이 호출부의 팝업만 오버레이 사다리 바로 위로 올린다(라이트박스 104 아래). */
+.fc-select__popup.commodore-composer-speed-popup { z-index: calc(var(--z-overlay) + 1); }
 .commodore-composer-check { flex: none; width: 14px; height: 14px; margin-left: auto; fill: none; stroke: var(--text-primary); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; opacity: 0; transform: scale(0.6); transition: opacity var(--duration-fast), transform var(--duration-base) var(--ease-spring); }
 .commodore-composer-check.is-on { opacity: 1; transform: none; }
 .commodore-composer-panel-theaters { padding: 0 8px 4px; }

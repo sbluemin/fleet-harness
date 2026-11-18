@@ -241,6 +241,8 @@ export interface ObjectiveLaunchVariantRow {
   readonly quotaScopes?: readonly string[];
   /** 같은 모델을 Fast로도 돌릴 수 있다(Codex·xAI). 행 id는 하나이고, 일반·Fast는 선택기가 속도로 따로 고른다. */
   readonly fastSupported?: boolean;
+  /** 같은 모델을 Ultrafast로도 돌릴 수 있다(Codex). Fast 위에 한 등급 더 있다. */
+  readonly ultrafastSupported?: boolean;
 }
 
 export interface ObjectiveLaunchVariantGroup {

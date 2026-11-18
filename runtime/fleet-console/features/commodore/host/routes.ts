@@ -385,18 +385,22 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     { name: "commodore/intel/add", method: "POST", summary: "Add an intel item from the person to a Commodore.", handler: json(commodoreRef.extend({ text: z.string().trim().min(1).max(MAX_INTEL_TEXT) }).strict(), ({ commodoreId, text }) => { read(commodoreId); const { state, item } = store.addIntel(commodoreId, { text, source: "person" }); return { ...view(commodoreId, state), item }; }) },
     { name: "commodore/intel/edit", method: "POST", summary: "Edit the text of an intel item in place; its id, source and position stay. Unchanged text is a no-op.", handler: json(commodoreRef.extend({ intelId: ids, text: z.string().trim().min(1).max(MAX_INTEL_TEXT) }).strict(), ({ commodoreId, intelId, text }) => { read(commodoreId); const { state, item } = store.editIntel(commodoreId, intelId, text); return { ...view(commodoreId, state), item }; }) },
     { name: "commodore/intel/remove", method: "POST", summary: "Remove an intel item from a Commodore.", handler: json(commodoreRef.extend({ intelId: ids }).strict(), ({ commodoreId, intelId }) => { read(commodoreId); return view(commodoreId, store.removeIntel(commodoreId, intelId)); }) },
-    { name: "commodore/coordinates", method: "POST", summary: "Set or clear a Theater's Commodore model and effort; cleared falls back to the experiment defaults. Applies from the next turn.", handler: json(commodoreRef.extend({ model: z.string().refine(isExperimentModelId).nullable(), effort: z.enum(COMMODORE_EFFORTS).nullable(), fast: z.boolean().optional() }).strict(), ({ commodoreId, model, effort, fast }) => {
+    { name: "commodore/coordinates", method: "POST", summary: "Set or clear a Theater's Commodore model and effort; cleared falls back to the experiment defaults. Applies from the next turn.", handler: json(commodoreRef.extend({ model: z.string().refine(isExperimentModelId).nullable(), effort: z.enum(COMMODORE_EFFORTS).nullable(), speed: z.enum(["standard", "fast", "ultrafast"]).optional(), fast: z.boolean().optional() }).strict(), ({ commodoreId, model, effort, speed, fast }) => {
       read(commodoreId);
-      if ((model === null) !== (effort === null) || (model === null && fast !== undefined)) throw new CommodoreStoreError("invalid_request");
+      if (speed !== undefined && fast !== undefined) throw new CommodoreStoreError("invalid_request");
+      const selectedSpeed = speed ?? (fast === true ? "fast" : fast === false ? "standard" : undefined);
+      if ((model === null) !== (effort === null) || (model === null && selectedSpeed !== undefined)) throw new CommodoreStoreError("invalid_request");
       // 정준 id(실행 id)로 접어 저장한다 — 옛 표기(`claude-gateway--…`)도 받는다. Gateway에서 꺼진 모델도 저장은 하고
       // 실행만 폴백한다(감독자가 턴마다 로스터에 대조한다).
-      return view(commodoreId, store.setCoordinates(commodoreId, model !== null && effort !== null ? { model: canonicalModelId(model), effort, ...(fast !== undefined ? { fast } : {}) } : null));
+      return view(commodoreId, store.setCoordinates(commodoreId, model !== null && effort !== null ? { model: canonicalModelId(model), effort, ...(selectedSpeed !== undefined ? { speed: selectedSpeed } : {}) } : null));
     }) },
-    { name: "commodore/commander", method: "POST", summary: "Set or clear the Commander model for objectives the Commodore creates. A model keeps that coordinate; cleared, AI Gateway routing chooses the Commander model for each objective unless the Commodore passes one.", handler: json(commodoreRef.extend({ model: z.string().trim().min(1).max(128).nullable().optional(), effort: z.string().trim().min(1).max(32).nullable().optional(), fast: z.boolean().optional() }).strict(), ({ commodoreId, model, effort, fast }) => {
+    { name: "commodore/commander", method: "POST", summary: "Set or clear the Commander model for objectives the Commodore creates. A model keeps that coordinate; cleared, AI Gateway routing chooses the Commander model for each objective unless the Commodore passes one.", handler: json(commodoreRef.extend({ model: z.string().trim().min(1).max(128).nullable().optional(), effort: z.string().trim().min(1).max(32).nullable().optional(), speed: z.enum(["standard", "fast", "ultrafast"]).optional(), fast: z.boolean().optional() }).strict(), ({ commodoreId, model, effort, speed, fast }) => {
       read(commodoreId);
       if (model === undefined) throw new CommodoreStoreError("invalid_request");
-      if (model === null && (effort || fast !== undefined)) throw new CommodoreStoreError("invalid_request");
-      return view(commodoreId, store.setCommander(commodoreId, model === null ? null : { model: canonicalModelId(model), ...(effort ? { effort } : {}), ...(fast !== undefined ? { fast } : {}) }));
+      if (speed !== undefined && fast !== undefined) throw new CommodoreStoreError("invalid_request");
+      const selectedSpeed = speed ?? (fast === true ? "fast" : fast === false ? "standard" : undefined);
+      if (model === null && (effort || selectedSpeed !== undefined)) throw new CommodoreStoreError("invalid_request");
+      return view(commodoreId, store.setCommander(commodoreId, model === null ? null : { model: canonicalModelId(model), ...(effort ? { effort } : {}), ...(selectedSpeed !== undefined ? { speed: selectedSpeed } : {}) }));
     }) },
     { name: "commodore/routine-toggle", method: "POST", summary: "Enable or pause a routine as the person.", handler: json(commodoreRef.extend({ routineId: ids, enabled: z.boolean() }).strict(), ({ commodoreId, routineId, enabled }) => {
       read(commodoreId);

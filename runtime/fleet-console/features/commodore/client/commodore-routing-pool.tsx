@@ -38,8 +38,6 @@ const MODEL_SUBTITLE_KEYS: Readonly<Record<string, CommodoreMessageKey>> = {
   haiku: "commodore.pool.sub.haiku",
   "gpt-6.2-astra": "commodore.pool.sub.gpt-6.2-astra",
   "gpt-6.2-sol": "commodore.pool.sub.gpt-6.2-sol",
-  "gpt-6-astra": "commodore.pool.sub.gpt-6-astra",
-  "gpt-6.1-sol": "commodore.pool.sub.gpt-6.1-sol",
   "gpt-6-luna": "commodore.pool.sub.gpt-6-luna",
   "gpt-6.1-terra": "commodore.pool.sub.gpt-6.1-terra",
   "grok-4.7": "commodore.pool.sub.grok-4.7",
@@ -73,6 +71,7 @@ export interface PoolEntryView {
   readonly name: string;
   readonly ladder: readonly string[];
   readonly fastSupported: boolean;
+  readonly ultrafastSupported: boolean;
   readonly status: PoolModelStatus;
   /** 강도별 지능 점수(카탈로그). 점수가 없는 강도는 키가 없다. */
   readonly scores: IntelligenceScores;
@@ -159,7 +158,7 @@ export interface RoutingPoolData {
   readonly addModel: (provider: AiGatewayCatalogProvider, model: AiGatewayCatalogModel) => void;
   readonly removeModel: (modelId: string, onUndo?: (undo: { readonly text: string; readonly restore: () => void }) => void, t?: T) => void;
   readonly toggleEffort: (entry: PoolEntryView, level: string) => void;
-  readonly toggleFast: (entry: PoolEntryView) => void;
+  readonly toggleSpeed: (entry: PoolEntryView, speed: "standard" | "fast" | "ultrafast") => void;
   readonly togglePriority: (providerId: AiGatewayProviderId) => void;
   readonly findCatalogModel: (modelId: string) => { readonly provider: AiGatewayCatalogProvider; readonly model: AiGatewayCatalogModel } | null;
 }
@@ -219,6 +218,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
       const name = found?.model.name ?? rosterRow?.label ?? prettyModelId(entry.id);
       const ladder = found?.model.effort?.levels ?? [];
       const fastSupported = found?.model.fast === true || rosterRow?.fastSupported === true;
+      const ultrafastSupported = found?.model.ultrafast === true || rosterRow?.ultrafastSupported === true;
       const status = modelQuotaStatus(
         providerVisible(provider),
         quotaSnapshot.data?.providers[provider],
@@ -229,7 +229,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
       const chosen = entry.efforts ?? ladder;
       const exposed = ladder.filter((level) => chosen.includes(level));
       const lead = thresholds ? qualifying(scores, exposed, thresholds.lead) : null;
-      return { entry, provider, name, ladder, fastSupported, status, scores, exposed, lead };
+      return { entry, provider, name, ladder, fastSupported, ultrafastSupported, status, scores, exposed, lead };
     });
   }, [enabled, catalogByModelId, launchRoster, providerVisible, quotaSnapshot.data, locale, thresholds]);
 
@@ -275,7 +275,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
     const removedEntry: AiGatewayModelSelection = {
       id: removed.id,
       ...(removed.efforts ? { efforts: [...removed.efforts] } : {}),
-      ...(removed.fast ? { fast: true } : {}),
+      ...(removed.speed ? { speed: removed.speed } : {}),
     };
     const remaining = currentModels.filter((item) => item.id !== modelId);
     const found = catalogByModelId.get(modelId);
@@ -327,21 +327,23 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
     saveModels(
       latestModels.map((item) =>
         item.id === current.id
-          ? { id: item.id, ...(item.fast ? { fast: true } : {}), ...(nextEfforts ? { efforts: nextEfforts } : {}) }
+          ? { id: item.id, ...(item.speed ? { speed: item.speed } : {}), ...(nextEfforts ? { efforts: nextEfforts } : {}) }
           : item,
       ),
     );
   }, [enabled, saveModels]);
 
-  const toggleFast = useCallback((view: PoolEntryView) => {
+  /** 한 항목의 속도 하나를 고른다 — 일반·Fast·Ultrafast 중 하나만 남고, 켜진 등급을 다시 누르면 일반으로 돌아간다. */
+  const toggleSpeed = useCallback((view: PoolEntryView, speed: "standard" | "fast" | "ultrafast") => {
     const latestModels = getSystemPromptSettingsStoreState().state?.aiGateway?.models ?? enabled;
     saveModels(
       latestModels.map((item) => {
         if (item.id !== view.entry.id) return item;
-        const nextFast = item.fast !== true;
+        const current = item.speed ?? (item.fast === true ? "fast" : "standard");
+        const next = speed !== "standard" && current === speed ? "standard" : speed;
         return {
           id: item.id,
-          ...(nextFast ? { fast: true } : {}),
+          ...(next !== "standard" ? { speed: next } : {}),
           ...(item.efforts ? { efforts: item.efforts } : {}),
         };
       }),
@@ -393,7 +395,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
     addModel,
     removeModel,
     toggleEffort,
-    toggleFast,
+    toggleSpeed,
     togglePriority,
     findCatalogModel: useCallback((modelId: string) => catalogByModelId.get(modelId) ?? null, [catalogByModelId]),
   };
@@ -620,7 +622,7 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
           leadThreshold={pool.thresholds?.lead ?? null}
           saving={pool.saving}
           onToggleEffort={(level) => pool.toggleEffort(expandedView, level)}
-          onToggleFast={() => pool.toggleFast(expandedView)}
+          onToggleSpeed={(speed) => pool.toggleSpeed(expandedView, speed)}
           onOpenQuota={onOpenQuota}
         />
       ) : null}
@@ -721,13 +723,13 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
   );
 }
 
-function PoolDetailBox({ t, view, leadThreshold, saving, onToggleEffort, onToggleFast, onOpenQuota }: {
+function PoolDetailBox({ t, view, leadThreshold, saving, onToggleEffort, onToggleSpeed, onOpenQuota }: {
   readonly t: T;
   readonly view: PoolEntryView;
   readonly leadThreshold: number | null;
   readonly saving: boolean;
   readonly onToggleEffort: (level: string) => void;
-  readonly onToggleFast: () => void;
+  readonly onToggleSpeed: (speed: "standard" | "fast" | "ultrafast") => void;
   readonly onOpenQuota: () => void;
 }) {
   const exposed = view.entry.efforts ?? view.ladder;
@@ -774,18 +776,29 @@ function PoolDetailBox({ t, view, leadThreshold, saving, onToggleEffort, onToggl
           })
         )}
       </div>
-      {view.fastSupported ? (
+      {view.fastSupported || view.ultrafastSupported ? (
         <div className="commodore-pool-detail-row">
           <span>{t("commodore.pool.detailSpeed")}</span>
-          <button
-            type="button"
-            className="commodore-pool-opt"
-            aria-pressed={view.entry.fast === true}
-            disabled={saving}
-            onClick={onToggleFast}
-          >
-            {view.entry.fast === true ? "✓ Fast" : "Fast"}
-          </button>
+          {(["standard", "fast", "ultrafast"] as const).map((speed) => {
+            if (speed === "fast" && !view.fastSupported) return null;
+            if (speed === "ultrafast" && !view.ultrafastSupported) return null;
+            // 한 항목은 일반·Fast·Ultrafast 중 하나만 고른다 — 다른 등급을 누르면 앞 선택이 풀린다.
+            const current = view.entry.speed ?? (view.entry.fast === true ? "fast" : "standard");
+            const on = current === speed;
+            const label = speed === "standard" ? t("commodore.settings.speedStandard") : speed === "fast" ? t("commodore.settings.fast") : t("commodore.settings.ultrafast");
+            return (
+              <button
+                key={speed}
+                type="button"
+                className="commodore-pool-opt"
+                aria-pressed={on}
+                disabled={saving}
+                onClick={() => onToggleSpeed(speed)}
+              >
+                {on ? "✓ " : ""}{label}
+              </button>
+            );
+          })}
         </div>
       ) : null}
       {leadThreshold !== null ? <p className="commodore-pool-detail-intel">{detailIntelligenceNote(t, view, leadThreshold)}</p> : null}

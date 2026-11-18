@@ -4,6 +4,25 @@
  * 모델은 창·속도와 무관하게 단일 id를 갖는다. 계열 키도 그 id 자체다.
  */
 
+/**
+ * 모델 속도 등급. `standard`(일반)는 항상 가능한 기본 등급이고, `fast`·`ultrafast`는 카탈로그가
+ * 모델별로 선언한 서비스 티어다. 속도는 별도 모델 id가 아니라 업스트림 요청의 `service_tier`로 실린다.
+ */
+export const AI_GATEWAY_SPEEDS = ["standard", "fast", "ultrafast"] as const;
+export type AiGatewaySpeed = (typeof AI_GATEWAY_SPEEDS)[number];
+
+/** 선택 가능한 상위 등급 — `standard`는 선택 값이 없는 상태다. */
+export const AI_GATEWAY_SPEED_TIERS = ["fast", "ultrafast"] as const;
+export type AiGatewaySpeedTier = (typeof AI_GATEWAY_SPEED_TIERS)[number];
+
+export function isAiGatewaySpeed(value: unknown): value is AiGatewaySpeed {
+  return typeof value === "string" && (AI_GATEWAY_SPEEDS as readonly string[]).includes(value);
+}
+
+export function isAiGatewaySpeedTier(value: unknown): value is AiGatewaySpeedTier {
+  return value === "fast" || value === "ultrafast";
+}
+
 /** 위임에 켜면 늘 포함하는 강도. */
 export const AI_GATEWAY_BASE_EFFORTS = ["low", "medium"] as const;
 

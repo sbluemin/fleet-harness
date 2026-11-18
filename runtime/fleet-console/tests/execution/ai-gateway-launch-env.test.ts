@@ -50,7 +50,7 @@ describe("Claude gateway launch environment", () => {
       version: 1,
       models: [
         { id: "xai--grok-composer-2.5-fast" },
-        { id: "codex--gpt-6.1-sol" },
+        { id: "codex--gpt-6.2-sol" },
         { id: "xai--grok-4.7" },
         { id: "codex--gpt-6-luna" },
       ],
@@ -72,7 +72,7 @@ describe("Claude gateway launch environment", () => {
       readonly models: readonly { readonly id: string }[];
     };
     expect(cache.models.map((model) => model.id)).toEqual([
-      "claude-gateway--codex--gpt-6.1-sol[1m]",
+      "claude-gateway--codex--gpt-6.2-sol[1m]",
       "claude-gateway--codex--gpt-6-luna[1m]",
       "claude-gateway--xai--grok-4.7[1m]",
       "claude-gateway--xai--grok-composer-2.5-fast[1m]",
@@ -108,7 +108,7 @@ describe("Claude gateway launch environment", () => {
 
     const selection = resolveAiGatewaySelection({
       version: 1,
-      models: [{ id: "codex--gpt-6.1-sol" }],
+      models: [{ id: "codex--gpt-6.2-sol" }],
     });
     const configured = prepareAiGatewayLaunchProfile({
       id: "claude",
@@ -116,13 +116,13 @@ describe("Claude gateway launch environment", () => {
       bin: "claude",
       args: [],
       cwd: "/workspace",
-      env: { CLAUDE_CONFIG_DIR: configDir, ANTHROPIC_MODEL: "claude-gateway--codex--gpt-6.1-sol" },
+      env: { CLAUDE_CONFIG_DIR: configDir, ANTHROPIC_MODEL: "claude-gateway--codex--gpt-6.2-sol" },
       terminalName: "xterm-256color",
     } as const, {
       baseUrl: "http://127.0.0.1:4310/api/v1/ai-gateway",
       selection,
     });
 
-    expect(configured.env.ANTHROPIC_MODEL).toBe("claude-gateway--codex--gpt-6.1-sol");
+    expect(configured.env.ANTHROPIC_MODEL).toBe("claude-gateway--codex--gpt-6.2-sol");
   });
 });

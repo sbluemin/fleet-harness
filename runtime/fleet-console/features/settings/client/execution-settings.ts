@@ -4,6 +4,8 @@ export interface AiGatewayModelSelection {
   readonly id: string;
   /** 위임에 줄 강도. 부재 = 이 모델의 사다리 전체. */
   readonly efforts?: readonly string[];
+  /** 고른 서비스 티어. 부재 = 일반. 옛 서버·저장값의 `fast`는 읽을 때 Fast로 접는다. */
+  readonly speed?: "fast" | "ultrafast";
   readonly fast?: boolean;
 }
 
@@ -26,6 +28,8 @@ export interface AiGatewayCatalogModel {
   readonly name: string;
   readonly contextWindow: number | null;
   readonly fast: boolean;
+  /** 이 모델이 Ultrafast 등급도 받는가. 옛 서버 응답에는 필드가 없을 수 있다. */
+  readonly ultrafast?: boolean;
   readonly description: string | null;
   readonly effort: { readonly levels: readonly string[] } | null;
   /** 강도별 지능 점수. 점수가 없는 단은 키가 없다. 옛 서버 응답에는 필드 자체가 없을 수 있다. */

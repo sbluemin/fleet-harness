@@ -87,6 +87,20 @@ it("persists UUID section order through the public route without rewriting entit
   const events: CommodoreEvent[] = [];
   const sidebarEvents: unknown[] = [];
   const write = vi.fn((ids: readonly string[]) => { settings.update((current) => ({ ...current, commodoreOrder: ids })); });
+  // 지휘관 로스터는 살아 있는 두 모델만 담는다 — 제거된 모델의 저장값은 기존 로스터 폴백으로 선다.
+  const launchRoster = [{ id: "gateway:codex", label: "Codex", rows: [
+    { id: "codex--gpt-6.2-sol", label: "Sol", launch: { model: "codex--gpt-6.2-sol" } },
+    { id: "codex--gpt-6.2-astra", label: "Astra", launch: { model: "codex--gpt-6.2-astra" } },
+  ] }];
+  const models = {
+    roster: () => launchRoster,
+    resolve: (stored: ModelCoordinate) => {
+      const resolved = resolveRosterCoordinate(launchRoster, stored);
+      return { ...resolved, wireModel: resolved.model };
+    },
+    pinClaudeVersion: async (model: string) => model,
+    enabled: () => null,
+  };
   const create = () => createCommodoreFeature({
     paths: { fleetDataDir: dir, consoleDataDir: dir, resolveCommodoreTheaterPath: () => null, resolveObjectiveOwner: () => null, listCommodoreTheaters: () => [], workspaceHash,
       canonicalizeTheaterPath: (cwd) => fs.realpathSync.native(cwd),
@@ -99,7 +113,7 @@ it("persists UUID section order through the public route without rewriting entit
     http: { readJsonBody: async () => body, writeJson: (_res: unknown, status: number, value: unknown) => { result = { status, value }; } } as never,
     security: { isTerminalAuthorized: () => authorized } as never,
     agent: { baseUrl: () => "http://127.0.0.1", resolveExecutablePath: async () => { throw new Error("unexpected_agent_launch"); } } as never,
-    experiments: undefined, models: undefined, attachments: undefined,
+    experiments: undefined, models: models as never, attachments: undefined,
   });
   let feature = create();
   const route = async (name: string, input: unknown = {}) => {
@@ -121,6 +135,13 @@ it("persists UUID section order through the public route without rewriting entit
     const a = (await route("create", { alias: "A" })).value.commodoreId;
     const b = (await route("create", { alias: "B" })).value.commodoreId;
     const c = (await route("create", { alias: "C" })).value.commodoreId;
+    // 저장된 지휘관 모델이 제거된 모델이면 로스터의 기존 폴백으로 서고, 그 모델에 저장된 속도는 싣지 않는다. 저장값은 고쳐 쓰지 않는다.
+    expect((await route("commander", { commodoreId: a, model: "codex--gpt-6-astra", effort: "high", speed: "fast" })).status).toBe(200);
+    expect(feature.host.commander(a)).toEqual({ model: "codex--gpt-6.2-sol" });
+    expect(JSON.parse(fs.readFileSync(path.join(dir, "commodore", a, "state.json"), "utf8"))).toMatchObject({ commanderModel: "codex--gpt-6-astra", commanderSpeed: "fast" });
+    // 살아 있는 모델은 지금처럼 저장값 그대로다.
+    expect((await route("commander", { commodoreId: a, model: "codex--gpt-6.2-sol", effort: "high", speed: "fast" })).status).toBe(200);
+    expect(feature.host.commander(a)).toEqual({ model: "codex--gpt-6.2-sol", effort: "high", speed: "fast" });
     const ids = async () => (await route("list")).value.commodores.map((row: { commodoreId: string }) => row.commodoreId);
     const initial = await ids();
     expect(initial).toEqual([a, b, c]);
@@ -1042,16 +1063,19 @@ describe("commodore theater state", () => {
     expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: "sonnet", effort: null })).status).toBe(400);
     // Gateway scoped Claude 표기도 받되 정준 id(실행 id)로 접어 저장한다.
     expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: "claude--sonnet", effort: "xhigh" })).value.state).toMatchObject({ model: "sonnet[1m]", effort: "xhigh" });
+    // 속도도 같은 좌표로 저장된다 — Ultrafast까지 왕복하고 새 저장소가 그대로 읽는다.
+    expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: "codex--gpt-6.2-sol", effort: "high", speed: "ultrafast" })).value.state).toMatchObject({ model: "codex--gpt-6.2-sol", effort: "high", speed: "ultrafast" });
+    expect((await h.route("commodore/coordinates", { commodoreId: "t1", model: null, effort: null, speed: "fast" })).status).toBe(400);
 
     // 영속 — 새 저장소가 같은 파일에서 같은 상태를 읽는다. 옛 실험 설정은 자율 운영을 바꾸지 않는다.
     const saved = JSON.parse(fs.readFileSync(stateFile, "utf8")) as Record<string, unknown>;
-    expect(saved).toMatchObject({ description: { rev: 1 }, model: "sonnet[1m]", effort: "xhigh" });
+    expect(saved).toMatchObject({ description: { rev: 1 }, model: "codex--gpt-6.2-sol", effort: "high", speed: "ultrafast" });
     expect(createCommodoreStore({ dirOf: () => h.objectivesDir, emit: () => undefined }).read("t1")).toEqual(h.store.read("t1"));
     // 재시작 복원은 등록된 Theater 를 훑는다 — 읽을 수 없는 Theater 는 빠지고 던지지 않는다.
     expect(createCommodoreStore({ dirOf: (id) => (id === "t1" ? h.objectivesDir : null), commodoreIds: () => ["t1", "gone"], emit: () => undefined }).availableCommodores()).toEqual(["t1"]);
     h.setExperiments({ commodore: false });
     expect(commodoreActive(h.ctx, h.store, "t1")).toBe(true);
-    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "language", "description", "intel", "intel", "intel-edited", "coordinates"]);
+    expect(h.events.map((event) => event.op === "state" ? event.change : event.op)).toEqual(["alias", "alias", "language", "description", "intel", "intel", "intel-edited", "coordinates", "coordinates"]);
 
     // SDK 기억 정책도 같은 영속·인가 경계를 쓴다. 기존 파일이나 Fleet 기억은 삭제하지 않는다.
     expect(h.store.read("t1")?.autoMemoryEnabled ?? true).toBe(true);

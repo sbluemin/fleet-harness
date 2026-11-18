@@ -132,7 +132,7 @@ export interface AgentChatSessionSeed {
    */
   readonly compactCeiling?: CompactCeiling | null;
   readonly effort?: ClaudeGatewayEffort;
-  /** 사람이 그 모델에 고른 속도 — 자식 env의 게이트웨이 요청 헤더로 실린다. 그 모델 요청에만 AI Gateway의 Fast 토글보다 앞선다. */
+  /** 사람이 그 모델에 고른 속도 — 자식 env의 게이트웨이 요청 헤더로 실린다. 그 모델 요청에만 AI Gateway 설정보다 앞선다. */
   readonly modelSpeed?: ModelSpeedChoice;
   /**
    * 세션 도중 바꾼 모델의 카탈로그 창을 다시 읽는다. `contextWindow`와 같은 규칙이다 — 네이티브

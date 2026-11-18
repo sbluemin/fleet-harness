@@ -204,7 +204,7 @@ const memberSession = (objectiveId: string, commander: string | null, index: num
 
 export interface LaunchServiceOptions {
   /** 사람이 그 사령관에 정한 지휘관 모델·강도. 첫 구상·개시가 호출이 넘긴 모델보다 이 설정을 먼저 쓴다. 없으면 null. */
-  readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly fast?: boolean } | null;
+  readonly commodoreCommander?: (commodoreId: string) => { readonly model: string; readonly effort?: string; readonly speed?: "standard" | "fast" | "ultrafast"; readonly fast?: boolean } | null;
   /** 그 사령관 세션의 모델·강도. 돌고 있으면 판단 모델이다. 세션이 없으면 null. */
   readonly commodoreSession?: (commodoreId: string) => { readonly model: string; readonly effort?: string } | null;
   /** 세션이 없을 때 쓰는 그 사령관의 해석된 모델·강도. 지휘관 모델로 돌아가지 않는다. */
@@ -540,11 +540,12 @@ export function createLaunchService(ctx: ObjectivesFeatureDeps, store: Objective
     const configured = serviceOptions.commodoreCommander?.(current.commodoreId) ?? null;
     if (configured) {
       await modelCatalog.checkAvailable({ model: configured.model }, options?.signal);
+      const configuredSpeed = configured.speed ?? (configured.fast === true ? "fast" as const : configured.fast === false ? "standard" as const : undefined);
       return {
         choice: {
           model: configured.model,
           ...(configured.effort ? { effort: configured.effort } : {}),
-          ...(typeof configured.fast === "boolean" ? { modelSpeed: { model: configured.model, fast: configured.fast } } : {}),
+          ...(configuredSpeed ? { modelSpeed: { model: configured.model, speed: configuredSpeed } } : {}),
         },
         ...(supplied ? { notice: PERSON_COMMANDER_NOTICE } : {}),
       };

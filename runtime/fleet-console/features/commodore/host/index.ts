@@ -253,7 +253,16 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     },
     commander(id) {
       const state = id ? store.read(id) : null;
-      return state?.commanderModel ? { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}), ...(typeof state.commanderFast === "boolean" ? { fast: state.commanderFast } : {}) } : null;
+      if (!state?.commanderModel) return null;
+      // 저장된 지휘관 모델이 로스터 밖이면(제거된 모델·꺼진 공급자) 지휘관 로스터의 기존 폴백으로 선다 —
+      // 사령관 자신의 좌표(supervisor.resolveCoordinates)와 같은 models.resolve 규칙이다. 저장값은 고쳐 쓰지 않는다.
+      const resolved = deps.models?.resolve(
+        { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}) },
+        "launch",
+      );
+      if (resolved?.fallback) return { model: resolved.model, ...(resolved.effort ? { effort: resolved.effort } : {}) };
+      const speed = state.commanderSpeed ?? (state.commanderFast === true ? "fast" as const : state.commanderFast === false ? "standard" as const : undefined);
+      return { model: state.commanderModel, ...(state.commanderEffort ? { effort: state.commanderEffort } : {}), ...(speed ? { speed } : {}) };
     },
     session(id) {
       const running = id ? supervisor.status(id)?.session : undefined;

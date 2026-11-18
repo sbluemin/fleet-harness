@@ -89,11 +89,11 @@ describe("ai-gateway settings store", () => {
       models: [{ id: "codex--gpt-6-luna" }],
       compactCeiling: "early",
     });
-    store.write({ models: [{ id: "codex--gpt-6.1-sol" }] });
+    store.write({ models: [{ id: "codex--gpt-6.2-sol" }] });
     expect(store.read()).toEqual({
       version: 1,
       effortSelectionVersion: 1,
-      models: [{ id: "codex--gpt-6.1-sol" }],
+      models: [{ id: "codex--gpt-6.2-sol" }],
       compactCeiling: "early",
     });
     store.writeCompactCeiling(94);
@@ -102,7 +102,7 @@ describe("ai-gateway settings store", () => {
     expect(store.read()).toEqual({
       version: 1,
       effortSelectionVersion: 1,
-      models: [{ id: "codex--gpt-6.1-sol" }],
+      models: [{ id: "codex--gpt-6.2-sol" }],
     });
   });
 
@@ -117,13 +117,13 @@ describe("ai-gateway settings store", () => {
       xaiEndpoint: "cli-proxy",
     });
     // A models-only save must not silently move the endpoint back to the default.
-    store.write({ models: [{ id: "codex--gpt-6.1-sol" }] });
+    store.write({ models: [{ id: "codex--gpt-6.2-sol" }] });
     expect(store.read()?.xaiEndpoint).toBe("cli-proxy");
     store.writeXaiEndpoint(undefined);
     expect(store.read()).toEqual({
       version: 1,
       effortSelectionVersion: 1,
-      models: [{ id: "codex--gpt-6.1-sol" }],
+      models: [{ id: "codex--gpt-6.2-sol" }],
     });
   });
 
@@ -142,8 +142,8 @@ describe("ai-gateway settings store", () => {
     const dataDir = createDataDir();
     const legacyDir = seedLegacySettings(dataDir, {
       version: 1,
-      models: [{ id: "muse-code--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "codex--gpt-6.1-sol" }],
-      defaultModel: "codex--gpt-6.1-sol",
+      models: [{ id: "muse-code--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "codex--gpt-6.2-sol" }],
+      defaultModel: "codex--gpt-6.2-sol",
       wireLogEnabled: false,
     });
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
@@ -151,7 +151,7 @@ describe("ai-gateway settings store", () => {
     // 레거시 defaultModel은 승계 시 조용히 버린다.
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "muse-code--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "codex--gpt-6.1-sol" }],
+      models: [{ id: "muse-code--muse-spark-1.3-contributor", efforts: ["high"] }, { id: "codex--gpt-6.2-sol" }],
       wireLogEnabled: false,
     });
     // 승계는 새 축에 실제로 안착해야 한다 — 매 부팅 과거 파일을 다시 읽는 상태로 남으면 안 된다.
@@ -167,7 +167,7 @@ describe("ai-gateway settings store", () => {
     const dataDir = createDataDir();
     writeFileSync(
       path.join(dataDir, "ai-gateway.json"),
-      JSON.stringify({ version: 1, models: [{ id: "codex--gpt-6.1-sol" }] }),
+      JSON.stringify({ version: 1, models: [{ id: "codex--gpt-6.2-sol" }] }),
       "utf-8",
     );
 
@@ -175,12 +175,12 @@ describe("ai-gateway settings store", () => {
     store.writeWireLogEnabled(true);
 
     expect(existsSync(store.path)).toBe(true);
-    expect(store.read().models).toEqual([{ id: "codex--gpt-6.1-sol" }]);
+    expect(store.read().models).toEqual([{ id: "codex--gpt-6.2-sol" }]);
   });
 
   it("performs no adoption when no host directory is given", () => {
     const dataDir = createDataDir();
-    seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.1-sol" }] });
+    seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.2-sol" }] });
     const store = createAiGatewaySettingsStore({ dataDir });
 
     expect(store.read()).toEqual({ version: 1 });
@@ -189,7 +189,7 @@ describe("ai-gateway settings store", () => {
 
   it("never overwrites settings that already exist on the new axis", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.1-sol" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.2-sol" }] });
     createAiGatewaySettingsStore({ dataDir }).write({ models: [{ id: "codex--gpt-6-luna" }] });
 
     const store = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
@@ -198,7 +198,7 @@ describe("ai-gateway settings store", () => {
 
   it("treats an emptied selection as a real state rather than something to re-adopt or re-seed", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.1-sol" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.2-sol" }] });
     // 사용자가 전부 지운 상태. 빈 배열로 남아 승계도, 기본 로스터 이행도 되살리지 않는다.
     createAiGatewaySettingsStore({ dataDir }).write(undefined);
 
@@ -221,32 +221,32 @@ describe("ai-gateway settings store", () => {
     // 멱등 — 두 번째 기동은 아무것도 바꾸지 않고, 사용자가 그 뒤 고친 로스터(Claude를 끈 것 포함)도 되살리지 않는다.
     expect(fresh.seedModels(seed)).toBe(false);
     expect(fresh.read()).toEqual(seeded);
-    fresh.write({ models: [{ id: "codex--gpt-6.1-sol" }] });
+    fresh.write({ models: [{ id: "codex--gpt-6.2-sol" }] });
     expect(fresh.seedModels(seed)).toBe(false);
-    expect(fresh.read()).toEqual({ version: 1, wireLogEnabled: false, models: [{ id: "codex--gpt-6.1-sol" }], rosterSeedVersion: 5, effortSelectionVersion: 1 });
+    expect(fresh.read()).toEqual({ version: 1, wireLogEnabled: false, models: [{ id: "codex--gpt-6.2-sol" }], rosterSeedVersion: 5, effortSelectionVersion: 1 });
 
     // 업그레이드 — Claude 없이 비어 있지 않은 목록에는 Claude를 뒤에 더한다(예전에는 Claude가 늘 깔려 있었다).
     const upgraded = createAiGatewaySettingsStore({ dataDir: createDataDir() });
-    writeFileSync(upgraded.path, JSON.stringify({ version: 1, models: [{ id: "codex--gpt-6.1-sol", efforts: ["high"] }] }));
+    writeFileSync(upgraded.path, JSON.stringify({ version: 1, models: [{ id: "codex--gpt-6.2-sol", efforts: ["high"] }] }));
     expect(upgraded.seedModels(seed)).toBe(true);
-    expect(upgraded.read()?.models).toEqual([{ id: "codex--gpt-6.1-sol", efforts: ["low", "medium", "high"] }, ...claude]);
+    expect(upgraded.read()?.models).toEqual([{ id: "codex--gpt-6.2-sol", efforts: ["low", "medium", "high"] }, ...claude]);
     // 이행 뒤 사용자가 Claude를 끄면 다음 기동이 다시 넣지 않는다.
-    upgraded.write({ models: [{ id: "codex--gpt-6.1-sol", efforts: ["high"] }] });
+    upgraded.write({ models: [{ id: "codex--gpt-6.2-sol", efforts: ["high"] }] });
     expect(upgraded.seedModels(seed)).toBe(false);
-    expect(upgraded.read()?.models).toEqual([{ id: "codex--gpt-6.1-sol", efforts: ["low", "medium", "high"] }]);
+    expect(upgraded.read()?.models).toEqual([{ id: "codex--gpt-6.2-sol", efforts: ["low", "medium", "high"] }]);
 
     // Claude 항목이 이미 있는 목록은 사용자가 Claude를 고른 것이다 — 목록은 그대로, 표식만 남긴다.
     const chosen = createAiGatewaySettingsStore({ dataDir: createDataDir() });
-    writeFileSync(chosen.path, JSON.stringify({ version: 1, models: [{ id: "claude--opus-1m" }, { id: "codex--gpt-6.1-sol" }] }));
+    writeFileSync(chosen.path, JSON.stringify({ version: 1, models: [{ id: "claude--opus-1m" }, { id: "codex--gpt-6.2-sol" }] }));
     expect(chosen.seedModels(seed)).toBe(false);
-    expect(chosen.read()).toEqual({ version: 1, models: [{ id: "claude--opus-1m" }, { id: "codex--gpt-6.1-sol" }], rosterSeedVersion: 5, effortSelectionVersion: 1 });
+    expect(chosen.read()).toEqual({ version: 1, models: [{ id: "claude--opus-1m" }, { id: "codex--gpt-6.2-sol" }], rosterSeedVersion: 5, effortSelectionVersion: 1 });
 
     // 승계가 먼저다 — 옛 자리의 선별을 받은 뒤 같은 규칙으로 이행한다.
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.1-sol" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.2-sol" }] });
     const adopted = createAiGatewaySettingsStore({ dataDir, legacyDirs: [legacyDir] });
     expect(adopted.seedModels(seed)).toBe(true);
-    expect(adopted.read()?.models).toEqual([{ id: "codex--gpt-6.1-sol" }, ...claude]);
+    expect(adopted.read()?.models).toEqual([{ id: "codex--gpt-6.2-sol" }, ...claude]);
   });
 
   it("releases a Claude host-only flag left from the ignored era once, then honours one the user sets again", () => {
@@ -264,25 +264,25 @@ describe("ai-gateway settings store", () => {
     };
 
     // 1판까지 끝난 설치 — Claude hostOnly는 그 시기 화면에서 꺼진 것으로 보였다. 한 번 지우고, 다른 공급자 표식·강도는 둔다.
-    const seeded = onDisk({ version: 1, models: [{ id: "claude--opus-1m", efforts: ["high"], hostOnly: true }, { id: "codex--gpt-6.1-sol", hostOnly: true }], rosterSeedVersion: 1 });
+    const seeded = onDisk({ version: 1, models: [{ id: "claude--opus-1m", efforts: ["high"], hostOnly: true }, { id: "codex--gpt-6.2-sol", hostOnly: true }], rosterSeedVersion: 1 });
     expect(seeded.seedModels(seed)).toBe(true);
     expect(seeded.read()).toEqual({ version: 1, models: [{ id: "claude--opus-1m", efforts: ["low", "medium", "high"] }], rosterSeedVersion: 5, effortSelectionVersion: 1 });
     expect(delegable(seeded)).toEqual(["claude--opus-1m"]);
     // 4판 이후의 hostOnly 키는 버린다. 항목은 켠 채로 남고, 빠진 low는 다시 합쳐진다.
-    seeded.write({ models: [{ id: "claude--opus-1m", efforts: ["high"], hostOnly: true }, { id: "codex--gpt-6.1-sol", hostOnly: true }] } as never);
+    seeded.write({ models: [{ id: "claude--opus-1m", efforts: ["high"], hostOnly: true }, { id: "codex--gpt-6.2-sol", hostOnly: true }] } as never);
     expect(seeded.seedModels(seed)).toBe(false);
     expect(seeded.read()?.models).toEqual([
       { id: "claude--opus-1m", efforts: ["low", "medium", "high"] },
-      { id: "codex--gpt-6.1-sol" },
+      { id: "codex--gpt-6.2-sol" },
     ]);
-    expect(delegable(seeded)).toEqual(["codex--gpt-6.1-sol", "claude--opus-1m"]);
+    expect(delegable(seeded)).toEqual(["codex--gpt-6.2-sol", "claude--opus-1m"]);
 
     // 표식 없는 옛 설치 — 1판(Claude가 이미 있으니 목록은 그대로)과 2판(해제)이 한 번에 돈다. 구 200k 좌표는 1M id로 접힌다.
     const legacy = onDisk({ version: 1, models: [{ id: "claude--sonnet", hostOnly: true }] });
     expect(legacy.seedModels(seed)).toBe(true);
     expect(legacy.read()).toEqual({ version: 1, models: [{ id: "claude--sonnet-1m" }], rosterSeedVersion: 5, effortSelectionVersion: 1 });
     // Claude 없는 목록 — 1판이 Claude를 더하고, 다른 공급자의 호스트 전용은 그대로다.
-    const claudeless = onDisk({ version: 1, models: [{ id: "codex--gpt-6.1-sol", hostOnly: true }] });
+    const claudeless = onDisk({ version: 1, models: [{ id: "codex--gpt-6.2-sol", hostOnly: true }] });
     expect(claudeless.seedModels(seed)).toBe(true);
     expect(claudeless.read()?.models).toEqual(seed.map((id) => ({ id, efforts: ["low", "medium", "high"] })));
     // 해제할 것이 없는 1판 설치는 표식만 올린다.
@@ -294,32 +294,32 @@ describe("ai-gateway settings store", () => {
     // 사용자가 다시 둔 호스트 전용은 어느 한쪽만 켰어도 남는다. 2판의 해제는 다시 돌지 않는다.
     const doubled = onDisk({ version: 1, models: [
       { id: "claude--sonnet", efforts: ["high"], hostOnly: true },
-      { id: "codex--gpt-6.1-sol" },
+      { id: "codex--gpt-6.2-sol" },
       { id: "claude--sonnet-1m", efforts: ["low"] },
       { id: "claude--opus" },
       { id: "claude--opus-1m", efforts: ["max"] },
     ], rosterSeedVersion: 2 });
     expect(doubled.seedModels(seed)).toBe(true);
     const merged = [
-      { id: "codex--gpt-6.1-sol" },
+      { id: "codex--gpt-6.2-sol" },
       // 한쪽이 사다리 전체였으면 전체다. hostOnly로 합쳐진 Sonnet은 켠 목록에서 빠진다.
       { id: "claude--opus-1m" },
     ];
     expect(doubled.read()).toEqual({ version: 1, models: merged, rosterSeedVersion: 5, effortSelectionVersion: 1 });
     expect(JSON.parse(readFileSync(doubled.path, "utf-8")).models).toEqual(merged);
-    expect(delegable(doubled)).toEqual(["codex--gpt-6.1-sol", "claude--opus-1m"]);
+    expect(delegable(doubled)).toEqual(["codex--gpt-6.2-sol", "claude--opus-1m"]);
     // 2판에서 Claude를 끈 목록은 3판이 되살리지 않는다.
-    const claudeOff = onDisk({ version: 1, models: [{ id: "codex--gpt-6.1-sol" }], rosterSeedVersion: 2 });
+    const claudeOff = onDisk({ version: 1, models: [{ id: "codex--gpt-6.2-sol" }], rosterSeedVersion: 2 });
     expect(claudeOff.seedModels(seed)).toBe(false);
-    expect(claudeOff.read()).toEqual({ version: 1, models: [{ id: "codex--gpt-6.1-sol" }], rosterSeedVersion: 5, effortSelectionVersion: 1 });
+    expect(claudeOff.read()).toEqual({ version: 1, models: [{ id: "codex--gpt-6.2-sol" }], rosterSeedVersion: 5, effortSelectionVersion: 1 });
 
     // 4판: hostOnly는 켜 둔 변형을 남긴 채 빠지고, 남은 계열은 가장 큰 창 하나, 강도는 low–high에 켠 xhigh·max만 더한다.
     const migrated = onDisk({
       version: 1,
       rosterSeedVersion: 3,
       models: [
-        { id: "codex--gpt-6.1-sol", efforts: ["medium"] },
-        { id: "codex--gpt-6.1-sol-1m-fast", hostOnly: true, efforts: ["max"] },
+        { id: "codex--gpt-6.2-sol", efforts: ["medium"] },
+        { id: "codex--gpt-6.2-sol-1m-fast", hostOnly: true, efforts: ["max"] },
         { id: "xai--grok-4.7", hostOnly: true },
         { id: "claude--opus-1m", efforts: ["xhigh", "max"] },
         { id: "gemini--gemini-4-hydrogen", efforts: ["high"] },
@@ -327,7 +327,7 @@ describe("ai-gateway settings store", () => {
     });
     expect(migrated.seedModels(seed)).toBe(true);
     expect(migrated.read()?.models).toEqual([
-      { id: "codex--gpt-6.1-sol", efforts: ["low", "medium", "high"] },
+      { id: "codex--gpt-6.2-sol", efforts: ["low", "medium", "high"] },
       { id: "claude--opus-1m" },
       { id: "gemini--gemini-4-hydrogen", efforts: ["low", "medium", "high"] },
     ]);
@@ -337,12 +337,12 @@ describe("ai-gateway settings store", () => {
   it("migrates high once and keeps a later opt-out through writes, restart, and delegation", () => {
     const dataDir = createDataDir();
     const store = createAiGatewaySettingsStore({ dataDir });
-    const id = "codex--gpt-6.1-sol";
+    const id = "codex--gpt-6.2-sol";
     writeFileSync(store.path, JSON.stringify({ version: 1, rosterSeedVersion: 4, models: [
       { id, fast: true, efforts: ["low", "medium", "xhigh"] },
     ] }));
     // 표식을 쓰기 전 읽기에서도 high를 잃지 않고, 나머지 선택은 그대로 남는다.
-    const migrated = [{ id, fast: true, efforts: ["low", "medium", "high", "xhigh"] }];
+    const migrated = [{ id, speed: "fast", efforts: ["low", "medium", "high", "xhigh"] }];
     expect(store.read().models).toEqual(migrated);
     store.seedModels([]);
     expect(JSON.parse(readFileSync(store.path, "utf-8"))).toEqual({ version: 1, rosterSeedVersion: 5, effortSelectionVersion: 1, models: migrated });
@@ -359,7 +359,7 @@ describe("ai-gateway settings store", () => {
     expect(restarted.seedModels([])).toBe(false);
     const settings = restarted.read();
     expect(normalizeAiGatewaySettings(settings)).toEqual(settings);
-    expect(settings.models).toEqual([{ id, fast: true, efforts: ["low", "medium"] }]);
+    expect(settings.models).toEqual([{ id, speed: "fast", efforts: ["low", "medium"] }]);
     const exposure = resolveAiGatewaySelection(settings);
     expect(buildGatewayCandidates(exposure).candidates[0]?.efforts).toEqual(["low", "medium"]);
     // deep의 목표 high도 노출 사다리 안의 medium으로 내려간다. 명시 stage 요청도 같은 규칙이다.
@@ -374,15 +374,21 @@ describe("ai-gateway settings store", () => {
     const cli = createAiGatewaySettingsStore({ dataDir: freshDir });
     cli.write(off.value);
     expect(cli.read().rosterSeedVersion).toBeUndefined();
-    expect(cli.read().models).toEqual([{ id, fast: true, efforts: ["low", "medium"] }]);
+    expect(cli.read().models).toEqual([{ id, speed: "fast", efforts: ["low", "medium"] }]);
     expect(cli.seedModels(["claude--opus-1m"])).toBe(true);
     const afterConsoleStart = createAiGatewaySettingsStore({ dataDir: freshDir }).read();
     expect(afterConsoleStart.rosterSeedVersion).toBe(5);
     expect(afterConsoleStart.effortSelectionVersion).toBe(1);
     expect(afterConsoleStart.models).toEqual([
-      { id, fast: true, efforts: ["low", "medium"] },
+      { id, speed: "fast", efforts: ["low", "medium"] },
       { id: "claude--opus-1m", efforts: ["low", "medium", "high"] },
     ]);
+
+    // Ultrafast도 같은 저장 경로를 왕복한다 — 새 스토어가 그 등급을 그대로 읽고 Codex 요청 등급으로 해석한다.
+    restarted.write({ models: [{ id, speed: "ultrafast", efforts: ["low", "medium"] }] });
+    const ultrafastStore = createAiGatewaySettingsStore({ dataDir });
+    expect(ultrafastStore.read().models).toEqual([{ id, speed: "ultrafast", efforts: ["low", "medium"] }]);
+    expect(resolveAiGatewaySelection(ultrafastStore.read()).models[0]?.serviceTier).toBe("ultrafast");
   });
 
   it("preserves explicit effort choices while the native ladder is unresolved across restarts", () => {
@@ -417,7 +423,7 @@ describe("ai-gateway settings store", () => {
   });
 
   it("stays unconfigured when the host directory holds nothing usable", () => {
-    for (const seeded of [undefined, "{ not json", { version: 1 }, { version: 9, models: [{ id: "codex--gpt-6.1-sol" }] }]) {
+    for (const seeded of [undefined, "{ not json", { version: 1 }, { version: 9, models: [{ id: "codex--gpt-6.2-sol" }] }]) {
       const dataDir = createDataDir();
       const legacyDir = path.join(dataDir, "previous-fleet");
       if (seeded !== undefined) {
@@ -450,7 +456,7 @@ describe("ai-gateway settings store", () => {
 
   it("retries adoption after a write it could not complete, instead of settling on the loss", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.1-sol" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.2-sol" }] });
     // 다른 프로세스가 락을 쥐고 있는 상태. staleLockMs를 크게 잡아 stale 회수 경로를 배제한다.
     const lockDir = path.join(dataDir, "ai-gateway.json.lock");
     mkdirSync(lockDir, { recursive: true });
@@ -470,14 +476,14 @@ describe("ai-gateway settings store", () => {
     store.writeWireLogEnabled(true);
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "codex--gpt-6.1-sol" }],
+      models: [{ id: "codex--gpt-6.2-sol" }],
       wireLogEnabled: true,
     });
   });
 
   it("refuses to write while the previous file exists but cannot be read yet", () => {
     const dataDir = createDataDir();
-    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.1-sol" }] });
+    const legacyDir = seedLegacySettings(dataDir, { version: 1, models: [{ id: "codex--gpt-6.2-sol" }] });
     const legacyFile = path.join(legacyDir, "ai-gateway.json");
     chmodSync(legacyFile, 0o000);
     // root는 권한 검사를 우회해 EACCES가 나지 않는다. 그 환경에서는 이 경로를 재현할 수 없다.
@@ -501,7 +507,7 @@ describe("ai-gateway settings store", () => {
     store.writeWireLogEnabled(true);
     expect(store.read()).toEqual({
       version: 1,
-      models: [{ id: "codex--gpt-6.1-sol" }],
+      models: [{ id: "codex--gpt-6.2-sol" }],
       wireLogEnabled: true,
     });
   });
@@ -521,7 +527,7 @@ describe("ai-gateway settings store", () => {
   it("cleans up its own orphaned temp files", () => {
     const dataDir = createDataDir();
     const store = createAiGatewaySettingsStore({ dataDir });
-    store.write({ models: [{ id: "codex--gpt-6.1-sol" }] });
+    store.write({ models: [{ id: "codex--gpt-6.2-sol" }] });
     // writeAtomicSync이 실제로 만드는 이름은 `<파일명>.<pid>.<ts>.<rand>.<host>.tmp`다.
     // 정리 접두가 그 규약과 어긋나면 고아 temp가 영원히 쌓인다.
     const orphan = `${store.path}.999.1.abc.host.tmp`;

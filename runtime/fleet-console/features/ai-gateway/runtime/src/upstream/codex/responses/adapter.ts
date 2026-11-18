@@ -214,7 +214,7 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
       this.reasoningReplayOrigin,
       this.strictToolsByDefault(),
     );
-    if (this.dropSamplingParams && (request.model === "gpt-6.2-astra" || request.model === "gpt-6-astra")
+    if (this.dropSamplingParams && request.model === "gpt-6.2-astra"
       && request.parallel_tool_calls !== false && request.tool_choice !== "none") {
       let hasAsyncTools = false;
       for (const tool of payload.tools ?? []) {

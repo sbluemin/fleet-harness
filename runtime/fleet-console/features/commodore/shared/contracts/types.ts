@@ -127,7 +127,9 @@ export const commodoreStateSchema = z.object({
   /** Theater 별 모델·강도. 없으면 실험 기능 행의 기본 좌표. 다음 턴부터 적용된다. */
   model: modelId.optional(),
   effort: effort.optional(),
-  /** 사람이 사령관 모델 선택기에서 고른 속도(일반·Fast). Fast 지원 모델에만 둔다. 없으면 AI Gateway의 Fast 토글을 따른다. */
+  /** 사람이 사령관 모델 선택기에서 고른 속도(일반·Fast·Ultrafast). Fast 지원 모델에만 둔다. 없으면 AI Gateway 설정을 따른다. */
+  speed: z.enum(["standard", "fast", "ultrafast"]).optional(),
+  /** 옛 저장값 — Fast 불리언. 읽을 때만 보존하고 `speed`가 정본이다. */
   fast: z.boolean().optional(),
   /**
    * 사람이 정한, 사령관이 만드는 목표(직접 추가·후속 선택)의 지휘관 모델·강도. 없으면 라우팅이다(사령관이 넘긴 모델이 없으면 AI Gateway가 고른다). 강도는 모델 행의 사다리에서
@@ -135,7 +137,9 @@ export const commodoreStateSchema = z.object({
    */
   commanderModel: z.string().trim().min(1).max(128).optional(),
   commanderEffort: z.string().trim().min(1).max(32).optional(),
-  /** 그 지휘관 모델의 속도(일반·Fast) — 사령관이 지휘관 모델을 생략해 이 설정을 쓸 때만 실행에 실린다. Fast 지원 모델에만 둔다. */
+  /** 그 지휘관 모델의 속도(일반·Fast·Ultrafast) — 사령관이 지휘관 모델을 생략해 이 설정을 쓸 때만 실행에 실린다. 속도 지원 모델에만 둔다. */
+  commanderSpeed: z.enum(["standard", "fast", "ultrafast"]).optional(),
+  /** 옛 저장값 — 지휘관 모델의 Fast 불리언. 읽을 때만 보존하고 `commanderSpeed`가 정본이다. */
   commanderFast: z.boolean().optional(),
   /** 사람이 고른 플러그인(`plugin@marketplace`) — 이 사령관 세션이 다음 턴부터 싣는다. 목표 세션은 `objectiveExcluded` 로 한 번 더 거른다. */
   plugins: commodorePluginsSchema.optional(),
@@ -252,7 +256,7 @@ export const EMPTY_COMMODORE_STATE: CommodoreState = Object.freeze({
 export interface CommodoreCoordinates {
   readonly model: string;
   readonly effort: AgentEffort;
-  readonly fast?: boolean;
+  readonly speed?: "standard" | "fast" | "ultrafast";
 }
 
 /**

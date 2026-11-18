@@ -26,7 +26,7 @@ export interface CommodoreSessionCoordinates {
   readonly effort?: AgentEffort;
   /** 대화를 요약해 이어 갈 문맥 토큰 — 세션이 열릴 때 정해진다. */
   readonly compactAt?: number;
-  /** 사람이 고른 속도(일반·Fast) — 그 모델 요청에만 AI Gateway의 Fast 토글보다 앞선다. 없으면 토글을 따른다. */
+  /** 사람이 고른 속도(일반·Fast·Ultrafast) — 그 모델 요청에만 AI Gateway 설정보다 앞선다. 없으면 설정을 따른다. */
   readonly speed?: ModelSpeedChoice;
 }
 

@@ -27,16 +27,22 @@ describe("buildModelRoster login filter", () => {
       xai: "ok",
       "muse-code": "ok",
     });
-    const sol = signedIn.find((group) => group.id === "gateway:codex")?.rows.find((row) => row.launch.model === "codex--gpt-6.1-sol");
-    const solModel = findGatewayModel("codex--gpt-6.1-sol");
+    const sol = signedIn.find((group) => group.id === "gateway:codex")?.rows.find((row) => row.launch.model === "codex--gpt-6.2-sol");
+    const solModel = findGatewayModel("codex--gpt-6.2-sol");
     expect(solModel).toBeDefined();
     const ladder = solModel ? exposableEffortLadder(solModel) : [];
     expect(sol?.effortAxis).toEqual([...ladder.filter((effort) => effort !== "max" || ladder.includes("max"))]);
     expect(sol?.chips?.map((chip) => chip.id)).toEqual([...ladder]);
     expect(sol?.gatedEfforts).toEqual(ladder.includes("max") ? ["max"] : []);
-    // 브라우저가 받는 로스터는 클라이언트 파서를 거친다 — Fast 지원 표식이 빠지면 선택기에 Fast 행이 서지 않고 고른 속도가 실행에 닿지 않는다.
-    const parsedSol = parseModelRoster(JSON.parse(JSON.stringify(signedIn))).find((group) => group.id === "gateway:codex")?.rows.find((row) => row.launch.model === "codex--gpt-6.1-sol");
+    // 브라우저가 받는 로스터는 클라이언트 파서를 거친다 — 속도 지원 표식이 빠지면 선택기에 상위 속도 행이 서지 않고 고른 속도가 실행에 닿지 않는다.
+    const parsedRoster = parseModelRoster(JSON.parse(JSON.stringify(signedIn))).find((group) => group.id === "gateway:codex")?.rows;
+    const parsedSol = parsedRoster?.find((row) => row.launch.model === "codex--gpt-6.2-sol");
+    const parsedAstra = parsedRoster?.find((row) => row.launch.model === "codex--gpt-6.2-astra");
     expect(parsedSol?.fastSupported).toBe(true);
+    // Ultrafast는 카탈로그가 sol에만 선언한다 — astra는 Fast까지만.
+    expect(parsedSol?.ultrafastSupported).toBe(true);
+    expect(parsedAstra?.fastSupported).toBe(true);
+    expect(parsedAstra?.ultrafastSupported).toBeUndefined();
 
     expect(buildAgentCliLaunchKinds(
       [{ id: "claude", label: "Claude", available: true, signedIn: true }],

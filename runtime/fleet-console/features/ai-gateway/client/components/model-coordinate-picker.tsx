@@ -24,14 +24,16 @@ import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromMod
 export interface ModelCoordinateValue {
   readonly model?: string;
   readonly effort?: string;
-  /** `speed`를 켠 선택기에서만 쓴다 — Fast 지원 모델에 고른 속도(일반 `false`·Fast `true`). */
-  readonly fast?: boolean;
+  /** `speed`를 켠 선택기에서만 쓴다 — 속도 지원 모델에 고른 속도(일반 `standard`·Fast·Ultrafast). */
+  readonly speed?: "standard" | "fast" | "ultrafast";
 }
 
-/** Fast 지원 모델의 일반·Fast를 따로 세운다. 로스터 행 id는 그대로이고, 선택기 안에서만 Fast 행을 펼친다. */
+/** 속도 지원 모델의 일반·Fast·Ultrafast를 따로 세운다. 로스터 행 id는 그대로이고, 선택기 안에서만 상위 등급 행을 펼친다. */
 export interface ModelCoordinateSpeed {
   /** Fast 행에 붙는 낱말(「Fast」). */
   readonly fastLabel: string;
+  /** Ultrafast 행에 붙는 낱말(「Ultrafast」). 없으면 Ultrafast 행을 펼치지 않는다. */
+  readonly ultrafastLabel?: string;
 }
 
 export interface ModelCoordinatePickerExtra {
@@ -72,10 +74,10 @@ export interface ModelCoordinatePickerProps {
   /** 로스터. `null`은 아직 읽는 중이다. */
   readonly roster: ModelRoster | null;
   readonly value: ModelCoordinateValue;
-  readonly onChange: (next: { readonly model?: string; readonly effort?: string; readonly fast?: boolean }) => void;
+  readonly onChange: (next: { readonly model?: string; readonly effort?: string; readonly speed?: "standard" | "fast" | "ultrafast" }) => void;
   /**
-   * 켜면 Fast 지원 모델(`fastSupported` 행)이 일반 행과 「· Fast」 행으로 따로 선다. `value.fast`를 읽고, 그런 모델을 고르면
-   * `onChange`에 `fast`(일반도 `false`로 명시)를 싣는다. 켜지 않은 선택기는 지금과 같다.
+   * 켜면 속도 지원 모델(`fastSupported`·`ultrafastSupported` 행)이 일반 행과 「· Fast」·「· Ultrafast」 행으로 따로 선다.
+   * `value.speed`를 읽고, 그런 모델을 고르면 `onChange`에 `speed`(일반도 `standard`로 명시)를 싣는다. 켜지 않은 선택기는 지금과 같다.
    */
   readonly speed?: ModelCoordinateSpeed;
   /** 값이 비었을 때 서는 좌표 — 표시에만 쓰고 저장하지 않는다. */
@@ -178,46 +180,80 @@ export function ModelCoordinatePicker(props: ModelCoordinatePickerProps): React.
   return <DesktopCoordinatePicker {...inner} />;
 }
 
-/** 선택기 안에서만 쓰는 Fast 행의 모델 표기 — 저장·실행 id가 아니다. 모델 id에는 `#`이 없다. */
+/** 선택기 안에서만 쓰는 상위 속도 행의 모델 표기 — 저장·실행 id가 아니다. 모델 id에는 `#`이 없다. */
 const FAST_ROW_SUFFIX = "#fast";
+const ULTRAFAST_ROW_SUFFIX = "#ultrafast";
 
-function withFastRows(roster: ModelRoster | null, fastLabel: string): ModelRoster | null {
+/** 상위 속도 행을 붙인 로스터 — 일반 행 뒤에 지원하는 등급 행이 순서대로 선다. */
+function withSpeedRows(roster: ModelRoster | null, speed: ModelCoordinateSpeed): ModelRoster | null {
   if (!roster) return roster;
   return roster.map((group) => ({
     ...group,
     rows: group.rows.flatMap((row): ObjectiveLaunchVariantRow[] => {
-      if (row.fastSupported !== true) return [row];
-      const { fastSupported: _fast, ...rest } = row;
+      if (row.fastSupported !== true && (row.ultrafastSupported !== true || speed.ultrafastLabel === undefined)) return [row];
+      const { fastSupported: _fast, ultrafastSupported: _ultrafast, ...rest } = row;
       const model = row.launch.model ?? row.id;
-      return [row, {
-        ...rest,
-        id: `${row.id}${FAST_ROW_SUFFIX}`,
-        label: `${row.label} · ${fastLabel}`,
-        launch: { ...row.launch, model: `${model}${FAST_ROW_SUFFIX}` },
-        ...(row.chips ? { chips: row.chips.map((chip) => ({ ...chip, launch: { ...chip.launch, ...(chip.launch.model ? { model: `${chip.launch.model}${FAST_ROW_SUFFIX}` } : {}) } })) } : {}),
-      }];
+      const rows: ObjectiveLaunchVariantRow[] = [row];
+      if (row.fastSupported === true) {
+        rows.push({
+          ...rest,
+          id: `${row.id}${FAST_ROW_SUFFIX}`,
+          label: `${row.label} · ${speed.fastLabel}`,
+          launch: { ...row.launch, model: `${model}${FAST_ROW_SUFFIX}` },
+          ...(row.chips ? { chips: row.chips.map((chip) => ({ ...chip, launch: { ...chip.launch, ...(chip.launch.model ? { model: `${chip.launch.model}${FAST_ROW_SUFFIX}` } : {}) } })) } : {}),
+        });
+      }
+      if (row.ultrafastSupported === true && speed.ultrafastLabel !== undefined) {
+        rows.push({
+          ...rest,
+          id: `${row.id}${ULTRAFAST_ROW_SUFFIX}`,
+          label: `${row.label} · ${speed.ultrafastLabel}`,
+          launch: { ...row.launch, model: `${model}${ULTRAFAST_ROW_SUFFIX}` },
+          ...(row.chips ? { chips: row.chips.map((chip) => ({ ...chip, launch: { ...chip.launch, ...(chip.launch.model ? { model: `${chip.launch.model}${ULTRAFAST_ROW_SUFFIX}` } : {}) } })) } : {}),
+        });
+      }
+      return rows;
     }),
   }));
 }
 
 /**
- * `speed`를 켠 선택기의 안쪽 속성 — Fast 행을 펼친 로스터, 그 행을 가리키는 값, 그리고 고른 행을 `{ model, fast }`로 되돌리는
- * `onChange`. 저장값의 Fast는 그 모델이 지금도 Fast를 받을 때만 Fast 행으로 선다(아니면 일반 행 — 읽을 때 무시한다).
+ * `speed`를 켠 선택기의 안쪽 속성 — 상위 속도 행을 펼친 로스터, 그 행을 가리키는 값, 그리고 고른 행을 `{ model, speed }`로 되돌리는
+ * `onChange`. 저장값의 속도는 그 모델이 지금도 그 등급을 받을 때만 그 행으로 선다(아니면 일반 행 — 읽을 때 무시한다).
  */
 function useSpeedRows(props: ModelCoordinatePickerProps): ModelCoordinatePickerProps {
   const { roster, speed, value, onChange } = props;
   const fastLabel = speed?.fastLabel;
-  const rows = React.useMemo(() => (fastLabel === undefined ? roster : withFastRows(roster, fastLabel)), [roster, fastLabel]);
+  const ultraLabel = speed?.ultrafastLabel;
+  const rows = React.useMemo(
+    () => (fastLabel === undefined ? roster : withSpeedRows(roster, { fastLabel, ...(ultraLabel !== undefined ? { ultrafastLabel: ultraLabel } : {}) })),
+    [roster, fastLabel, ultraLabel],
+  );
   if (fastLabel === undefined) return props;
   const fastCapable = (model: string | undefined) => !!model && findRosterRow(roster, model)?.fastSupported === true;
-  const { fast, ...plain } = value;
+  const ultraCapable = (model: string | undefined) => ultraLabel !== undefined && !!model && findRosterRow(roster, model)?.ultrafastSupported === true;
+  const { speed: stored, ...plain } = value;
+  const rowModel = plain.model === undefined
+    ? undefined
+    : stored === "ultrafast" && ultraCapable(plain.model)
+      ? `${plain.model}${ULTRAFAST_ROW_SUFFIX}`
+      : stored === "fast" && fastCapable(plain.model)
+        ? `${plain.model}${FAST_ROW_SUFFIX}`
+        : plain.model;
   return {
     ...props,
     roster: rows,
-    value: fast === true && plain.model && (roster === null || fastCapable(plain.model)) ? { ...plain, model: `${plain.model}${FAST_ROW_SUFFIX}` } : plain,
+    value: rowModel === undefined ? plain : { ...plain, model: rowModel },
     onChange: (next) => {
-      if (next.model?.endsWith(FAST_ROW_SUFFIX)) { onChange({ ...next, model: next.model.slice(0, -FAST_ROW_SUFFIX.length), fast: true }); return; }
-      onChange(fastCapable(next.model) ? { ...next, fast: false } : next);
+      if (next.model?.endsWith(ULTRAFAST_ROW_SUFFIX)) {
+        onChange({ ...next, model: next.model.slice(0, -ULTRAFAST_ROW_SUFFIX.length), speed: "ultrafast" });
+        return;
+      }
+      if (next.model?.endsWith(FAST_ROW_SUFFIX)) {
+        onChange({ ...next, model: next.model.slice(0, -FAST_ROW_SUFFIX.length), speed: "fast" });
+        return;
+      }
+      onChange(fastCapable(next.model) || ultraCapable(next.model) ? { ...next, speed: "standard" } : next);
     },
   };
 }

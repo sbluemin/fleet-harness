@@ -129,6 +129,7 @@ function toRosterRow(
     ...buildGatewayModelQuota(model),
     ...(contextWindow ? { contextWindow } : {}),
     ...(model.fastSupported === true && model.fast !== true ? { fastSupported: true } : {}),
+    ...(model.ultrafastSupported === true && model.fast !== true ? { ultrafastSupported: true } : {}),
   };
   if (ordinary.length === 0) return base;
   const scores = catalogModelIntelligence(model.id, ordinary) ?? {};

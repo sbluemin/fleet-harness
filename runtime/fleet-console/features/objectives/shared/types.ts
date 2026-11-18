@@ -590,20 +590,23 @@ export interface StoredPersonHold {
   readonly settled?: { readonly at: number; readonly by: ObjectiveReviewer; readonly outcome: "answered" | "returned" };
 }
 
-/** 세션에 고정한 모델 속도 — 그 모델 id에만 묶인다. */
-export interface ObjectiveModelSpeed { readonly model: string; readonly fast: boolean }
+/** 세션에 고정한 모델 속도 — 그 모델 id에만 묶인다. `standard`도 명시값이다. */
+export interface ObjectiveModelSpeed { readonly model: string; readonly speed: "standard" | "fast" | "ultrafast" }
 
-/** 저장된 값의 모델 속도. 모양이 다르면 명시가 없는 것이다. */
+/** 저장된 값의 모델 속도. 모양이 다르면 명시가 없는 것이다. 옛 `fast` 불리언은 Fast·일반으로 읽는다. */
 export function readObjectiveModelSpeed(value: unknown): ObjectiveModelSpeed | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const { model, fast } = value as Record<string, unknown>;
-  return typeof model === "string" && model.length > 0 && typeof fast === "boolean" ? { model, fast } : undefined;
+  const { model, speed, fast } = value as Record<string, unknown>;
+  if (typeof model !== "string" || model.length === 0) return undefined;
+  if (speed === "standard" || speed === "fast" || speed === "ultrafast") return { model, speed };
+  if (typeof fast === "boolean") return { model, speed: fast ? "fast" : "standard" };
+  return undefined;
 }
 
 export interface PendingCommander {
   /** 생성 시 고정하는 자동 메모리 정책. 옛 레코드의 생략은 기존 설정을 보존한다. */
   readonly disableAutoMemory?: boolean;
-  /** 사람이 사령관 설정에서 그 지휘관 모델에 고른 속도. 그 모델 요청에만 AI Gateway의 Fast 토글보다 앞선다. */
+  /** 사람이 사령관 설정에서 그 지휘관 모델에 고른 속도. 그 모델 요청에만 AI Gateway 설정보다 앞선다. */
   readonly modelSpeed?: ObjectiveModelSpeed;
   readonly commodoreId: string;
   readonly cwd: string;
