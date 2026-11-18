@@ -27,6 +27,26 @@ export function aiGatewayModelFamilyKey(id: string): string {
 }
 
 /**
+ * 카탈로그에서 뺀 모델 → 그 자리를 이어받는 모델(둘 다 `공급자--모델` 정준 id).
+ * 구형을 고른 저장값은 읽을 때 후속 모델로 이어진다. 카탈로그는 구형 표기를 후속 항목의 별칭으로 등록하고,
+ * 저장값 정규화(`canonicalModelId`)와 Claude 표기 조회가 같은 표를 쓴다.
+ */
+export const GATEWAY_MODEL_SUCCESSORS: Readonly<Record<string, string>> = Object.freeze({
+  "codex--gpt-6-astra": "codex--gpt-6.2-astra",
+  "codex--gpt-6.1-sol": "codex--gpt-6.2-sol",
+});
+
+/** 구형 모델의 후속 정준 id. 정준 id와 공급자 없는 맨 id를 모두 받는다. 구형이 아니면 `undefined`. */
+export function gatewayModelSuccessor(id: string): string | undefined {
+  const scoped = GATEWAY_MODEL_SUCCESSORS[id];
+  if (scoped !== undefined) return scoped;
+  for (const [retired, successor] of Object.entries(GATEWAY_MODEL_SUCCESSORS)) {
+    if (retired.slice(retired.indexOf("--") + 2) === id) return successor;
+  }
+  return undefined;
+}
+
+/**
  * 저장 강도 = 사다리 ∩ ({low, medium} ∪ 켠 high·xhigh·max).
  * 사다리 전체와 같으면 `undefined`(키 부재). `selected` 부재는 사다리 전체로 읽는다.
  * 빈 배열은 옵트인이 없는 기본값이다 — 부재와 같지 않다.

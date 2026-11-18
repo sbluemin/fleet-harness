@@ -1,3 +1,4 @@
+import { gatewayModelSuccessor } from "@fleet-console/ai-gateway/model-family";
 import { readLaunchVariantGroups } from "../../objectives/shared/records/launch-variants.js";
 import type { ObjectiveLaunchVariantGroup, ObjectiveLaunchVariantRow } from "../../objectives/shared/records/types.js";
 
@@ -79,6 +80,7 @@ const CLAUDE_NATIVE_FAMILIES: ReadonlySet<string> = new Set(["fable", "opus", "s
  *
  * - `claude-gateway--codex--gpt-6-luna[1m]` → `codex--gpt-6-luna` (Claude Code 디스커버리 표기)
  * - Claude 네이티브 가족은 `sonnet`·`claude--sonnet`·`claude--sonnet-1m` 모두 `sonnet[1m]` (가족당 1M 한 좌표)
+ * - 카탈로그에서 빠진 구형 모델은 이어받는 모델로: `codex--gpt-6.1-sol`·`gpt-6.1-sol` → `codex--gpt-6.2-sol`
  * - 그 밖(`opus[1m]`, `codex--gpt-6-luna`, 명시적 `claude-<버전>` 원문)은 이미 정준 id다.
  */
 export function canonicalModelId(id: string): string {
@@ -94,7 +96,8 @@ export function canonicalModelId(id: string): string {
       ? `${family}${ONE_MILLION_MARKER}`
       : alias;
   }
-  return CLAUDE_NATIVE_FAMILIES.has(value) ? `${value}${ONE_MILLION_MARKER}` : value;
+  if (CLAUDE_NATIVE_FAMILIES.has(value)) return `${value}${ONE_MILLION_MARKER}`;
+  return gatewayModelSuccessor(value) ?? value;
 }
 
 export function rosterRows(roster: ModelRoster | null | undefined): readonly ObjectiveLaunchVariantRow[] {
