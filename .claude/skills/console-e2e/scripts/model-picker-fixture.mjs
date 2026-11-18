@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
- * Write an agent-browser --init-script that synthesizes Codex, xAI, and Antigravity
+ * Write an agent-browser --init-script that synthesizes Codex and xAI
  * groups into the page's GET /api/v1/models/roster responses (references/agent-browser.md,
  * "Mock page API responses before navigation").
  *
  *   node model-picker-fixture.mjs --out <absolute-path.js>
  *
  * The groups come from the product catalog via buildModelRoster(target, {claude:'ok',
- * codex:'ok', xai:'ok', antigravity:'ok', 'muse-code':'signed_out'}) — host source,
+ * codex:'ok', xai:'ok', 'muse-code':'signed_out'}) — host source,
  * loaded through the worktree's tsx, not a product change. Muse Code is marked
  * signed_out only so an omitted status is not treated as unknown and kept visible.
  * The generated wrapper still forwards every roster request to the real host and
- * appends only the three groups the live response does not already contain.
+ * appends only the two groups the live response does not already contain.
  *
  * SYNTHETIC page fixture. This is not a provider login, device-code, token refresh,
  * or launch. A merged row does not block a real provider call, so do not launch a
@@ -25,7 +25,7 @@ import { pathToFileURL } from 'node:url';
 
 const ROSTER_SOURCE = 'runtime/fleet-console/features/ai-gateway/host/model-roster.ts';
 const TSX_REGISTER = 'runtime/fleet-console/node_modules/tsx/dist/esm/index.mjs';
-const SYNTHETIC_IDS = ['gateway:codex', 'gateway:xai', 'gateway:antigravity'];
+const SYNTHETIC_IDS = ['gateway:codex', 'gateway:xai'];
 
 function fail(message) {
   process.stderr.write(`model-picker-fixture: ${message}\n`);
@@ -59,7 +59,7 @@ function catalogGroups(root) {
   const tsx = path.join(root, TSX_REGISTER);
   const loader = `
     import { buildModelRoster } from ${JSON.stringify(pathToFileURL(rosterFile).href)};
-    const statuses = { claude: 'ok', codex: 'ok', xai: 'ok', antigravity: 'ok', 'muse-code': 'signed_out' };
+    const statuses = { claude: 'ok', codex: 'ok', xai: 'ok', 'muse-code': 'signed_out' };
     const want = new Set(${JSON.stringify(SYNTHETIC_IDS)});
     const pick = (target) => buildModelRoster(target, statuses).filter((group) => want.has(group.id));
     process.stdout.write(JSON.stringify({ launch: pick('launch'), agent: pick('agent') }));
@@ -97,7 +97,7 @@ function catalogGroups(root) {
 function initScript(groups) {
   const embedded = JSON.stringify(groups);
   return `/* SYNTHETIC page fixture — not a provider login.
-   Codex, xAI, and Antigravity groups below were copied from the product catalog
+   Codex and xAI groups below were copied from the product catalog
    (buildModelRoster with those providers marked ok) and are merged into this
    page's GET /api/v1/models/roster responses only. The live host is still called.
    A merged row does not block a real provider call: do not launch on one.
@@ -108,7 +108,7 @@ function initScript(groups) {
   const hits = (window.__fleetE2EMockHits = []);
   window.__fleetModelPickerFixture = {
     synthetic: true,
-    providers: ['codex', 'xai', 'antigravity'],
+    providers: ['codex', 'xai'],
     note: 'page response merge only; not a login and not safe to launch',
   };
   window.fetch = async (input, init) => {
