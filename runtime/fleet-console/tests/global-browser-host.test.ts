@@ -467,14 +467,8 @@ describe("session browser host contract", () => {
       await service.closeTab(BROWSER_GLOBAL_ID, CM1);
       expect(displayed()).toBe(CL4);
       const CN = (await service.createTab(BROWSER_GLOBAL_ID, "https://close.example/n", "user", { spaceId: closeSpace })).id;
-      // ④ 플래그 없는 탭형 열기(_blank·기능 없는 window.open·수정키 클릭)도 관계가 잊히면 오른쪽 이웃이다.
-      await service.selectTab(BROWSER_GLOBAL_ID, CB);
-      const CT = await openPopup(CB, "https://close.example/t");
-      await service.selectTab(BROWSER_GLOBAL_ID, CL3, true);
-      await service.selectTab(BROWSER_GLOBAL_ID, CT, true);
-      await service.closeTab(BROWSER_GLOBAL_ID, CT);
-      expect(displayed()).toBe(CN);
-      // ④ 옛 셸은 같은 창 기능 팝업에도 플래그를 싣지 않는다 — Console 은 그 열기를 탭형으로 본다.
+      // ④ 탭형 열기(_blank·기능 없는 window.open·수정키 클릭)와 옛 셸의 창 기능 팝업은 모두 플래그가 없다 —
+      // 관계가 잊히면 Console 은 둘을 탭형으로 보고 오른쪽 이웃을 띄운다.
       await service.selectTab(BROWSER_GLOBAL_ID, CB);
       const CW = await openPopup(CB, "https://close.example/w");
       await service.selectTab(BROWSER_GLOBAL_ID, CL3, true);
