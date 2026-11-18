@@ -1,6 +1,5 @@
 import type { AuthService } from "../auth/types.js";
 
-import { fetchAntigravityUsage } from "../upstream/antigravity/quota.js";
 import { fetchClaudeUsage } from "../upstream/anthropic/quota.js";
 import { createCodexOAuth, type CodexOAuth } from "../oauth/codex/login.js";
 import { createMuseCodeOAuth, type MuseCodeOAuth } from "../oauth/muse-code/login.js";
@@ -30,11 +29,6 @@ const STATUS_SIGNATURE_PROVIDERS: readonly ProviderId[] = [...QUOTA_LAST_GOOD_PR
  * 부르지 않고, 연이은 강제 새로고침도 간격을 둔다 — 새로고침 연타가 무제한 호출이 되지 않게.
  */
 const FORCE_GUARDED: ReadonlySet<ProviderId> = new Set<ProviderId>(["muse-code"]);
-/**
- * 한 번 signed_out이면 자동 조회는 다시 띄우지 않는다. agy는 미로그인일 때 브라우저를
- * 열고 오래 기다리므로, 패널 새로고침(force)이나 그 공급자만 강제할 때만 다시 묻는다.
- */
-const SIGNED_OUT_HELD: ReadonlySet<ProviderId> = new Set<ProviderId>(["antigravity"]);
 export const QUOTA_FORCE_MIN_INTERVAL_MS = 60_000;
 
 export interface QuotaService {
@@ -64,7 +58,6 @@ export interface QuotaServiceDeps {
   readonly fetchClaude: () => Promise<ProviderResult>;
   readonly fetchCodex: () => Promise<ProviderResult>;
   readonly fetchXai?: () => Promise<ProviderResult>;
-  readonly fetchAntigravity?: () => Promise<ProviderResult>;
   readonly fetchMuseCode?: () => Promise<ProviderResult>;
   readonly fetchOpencode?: () => Promise<ProviderResult>;
   /**
@@ -77,11 +70,6 @@ export interface QuotaServiceDeps {
    * 마지막 응답 헤더의 분당 한도로 답한다. 없으면 미로그인(`signed_out`)이다.
    */
   readonly fetchAnthropic?: () => Promise<ProviderResult>;
-  /**
-   * Antigravity 노브. 없거나 false면 수집기를 부르지 않고 숨김(`not_connected`)이다.
-   * 부재는 꺼짐이다.
-   */
-  readonly antigravityEnabled?: () => boolean;
   /**
    * 마지막 성공 사용량. 호스트가 파일 자리를 정해 넘긴다. 없으면 이 프로세스 메모리만 쓴다.
    * 읽기에 실패하거나 파일이 깨져 있으면 빈 값으로 시작한다.
@@ -114,7 +102,6 @@ export interface AiGatewayQuotaCollectors {
   readonly fetchClaude: () => Promise<ProviderResult>;
   readonly fetchCodex: () => Promise<ProviderResult>;
   readonly fetchXai: () => Promise<ProviderResult>;
-  readonly fetchAntigravity: () => Promise<ProviderResult>;
   readonly fetchMuseCode: () => Promise<ProviderResult>;
   readonly fetchOpencode: () => Promise<ProviderResult>;
 }
@@ -132,7 +119,6 @@ export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps
     fetchClaude: () => fetchClaudeUsage(providerDeps),
     fetchCodex: () => codex.fetchUsage(),
     fetchXai: () => xai.fetchUsage(),
-    fetchAntigravity: () => fetchAntigravityUsage(providerDeps),
     fetchMuseCode: () => museCode.fetchUsage(),
     fetchOpencode: () => fetchOpencodeUsage({
       authService: deps.authService,
@@ -168,7 +154,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     claude: deps.fetchClaude,
     codex: deps.fetchCodex,
     xai: deps.fetchXai ?? (async () => ({ status: "signed_out" })),
-    antigravity: deps.fetchAntigravity ?? (async () => ({ status: "signed_out" })),
     "muse-code": deps.fetchMuseCode ?? (async () => ({ status: "signed_out" })),
     opencode: deps.fetchOpencode ?? (async () => ({ status: "signed_out" })),
     gemini: deps.fetchGemini ?? (async () => ({ status: "signed_out" })),
@@ -192,7 +177,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       const saved = deps.lastGoodStore.read();
       for (const id of QUOTA_LAST_GOOD_PROVIDERS) {
         const value = saved[id];
-        if (value) lastGood.set(id, withoutRetiredAntigravityFields(id, value));
+        if (value) lastGood.set(id, value);
       }
       // 읽기에서 걸러 낸 비밀·깨진 필드는 다음 성공을 기다리지 않고 파일에서도 뺀다.
       if (lastGood.size > 0) deps.lastGoodStore.write(saved);
@@ -214,21 +199,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     return at !== undefined && at > startedAt ? cache.get(id)?.value : undefined;
   }
 
-  function withoutRetiredAntigravityFields(id: ProviderId, value: ProviderSuccess): ProviderSuccess {
-    if (id !== "antigravity" || (value.plan === undefined && value.method === undefined)) return value;
-    const { plan: _plan, method: _method, ...rest } = value;
-    return rest;
-  }
-
   async function load(id: ProviderId, force: boolean): Promise<ProviderDto> {
-    // 노브가 꺼져 있으면(키 부재 포함) agy를 띄우지 않는다. force여도 같다.
-    if (id === "antigravity" && deps.antigravityEnabled?.() !== true) {
-      const at = now();
-      const value: ProviderDto = { status: "not_connected" };
-      forget(id);
-      cache.set(id, { value, expiresAt: at, settledAt: at });
-      return value;
-    }
     if (id === "claude" && !await deps.isClaudeConnected()) {
       const value: ProviderDto = { status: "not_connected", method: (deps.platform ?? process.platform) === "darwin" ? "keychain" : "file" };
       cache.set(id, { value, expiresAt: now(), settledAt: now() });
@@ -236,7 +207,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       return value;
     }
     const cached = cache.get(id);
-    if (!force && cached?.value.status === "signed_out" && SIGNED_OUT_HELD.has(id)) return cached.value;
     if (cached && FORCE_GUARDED.has(id)) {
       // stale 값이 backoff보다 먼저 낡아도 backoff는 유지한다.
       if (cached.backoffUntil !== undefined && cached.backoffUntil > now()) return presentable(cached.value);
@@ -336,16 +306,15 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
   /**
    * 창이 있는 성공은 마지막 값을 갈아 끼운다. 창이 없는 성공은 저장값을 지우거나 stale로
    * 바꾸지 않는다. Muse는 그 성공을 세션 미사용으로 잇고, 그 외는 리셋 전인 창만 이번 조회
-   * 시각의 ok로 잇는다. 요금제는 새 응답에 있을 때만 갈아 끼운다. Antigravity는 요금제와
-   * 자격 방법을 더 이상 주지 않으므로 이전에 저장해 둔 값도 잇지 않는다.
+   * 시각의 ok로 잇는다. 요금제는 새 응답에 있을 때만 갈아 끼운다.
    */
   function applySettled(id: ProviderId, result: ProviderResult, at: number): ProviderDto {
     if (isProviderSuccess(result) && result.windows.length > 0) {
       const previous = lastGood.get(id);
       const value: ProviderSuccess = {
         ...result,
-        ...(id === "antigravity" || result.plan || !previous?.plan ? {} : { plan: previous.plan }),
-        ...(id === "antigravity" || result.method || !previous?.method ? {} : { method: previous.method }),
+        ...(result.plan || !previous?.plan ? {} : { plan: previous.plan }),
+        ...(result.method || !previous?.method ? {} : { method: previous.method }),
         ...(result.cycleDays !== undefined || previous?.cycleDays === undefined ? {} : { cycleDays: previous.cycleDays }),
         ...(result.credits || !previous?.credits ? {} : { credits: previous.credits }),
       };
@@ -414,8 +383,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     const previous = lastGood.get(id);
     const failure: ProviderDto = { status: "error", ...(message ? { message } : {}) };
     if (!previous) return failure;
-    const carried = withoutRetiredAntigravityFields(id, previous);
-    return presentable({ ...carried, status: "stale", ...(message ? { message } : {}) }, at, failure);
+    return presentable({ ...previous, status: "stale", ...(message ? { message } : {}) }, at, failure);
   }
 
   /** stale 값을 지금 시각에 맞춰 다듬는다. 리셋이 지나 남은 창이 없으면 `failure`를 돌려준다. */
@@ -478,7 +446,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       };
       return { providers: {
         claude: read("claude"), codex: read("codex"),
-        xai: read("xai"), antigravity: read("antigravity"),
+        xai: read("xai"),
         "muse-code": read("muse-code"), opencode: read("opencode"), gemini: read("gemini"),
         anthropic: read("anthropic"),
       } };
@@ -500,23 +468,21 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       const claude = read("claude");
       const codex = read("codex");
       const xai = read("xai");
-      const antigravity = read("antigravity");
       const museCode = read("muse-code");
       const opencode = read("opencode");
       const gemini = read("gemini");
       const anthropic = read("anthropic");
-      if (!claude || !codex || !xai || !antigravity || !museCode || !opencode || !gemini || !anthropic) return undefined;
+      if (!claude || !codex || !xai || !museCode || !opencode || !gemini || !anthropic) return undefined;
       return {
-        summary: { providers: { claude, codex, xai, antigravity, "muse-code": museCode, opencode, gemini, anthropic } },
+        summary: { providers: { claude, codex, xai, "muse-code": museCode, opencode, gemini, anthropic } },
         expired,
       };
     },
     async getSummary(options = {}) {
-      const [claude, codex, xai, antigravity, museCode, opencode, gemini, anthropic] = await Promise.all([
+      const [claude, codex, xai, museCode, opencode, gemini, anthropic] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
         load("xai", options.force === true || options.forceProvider === "xai"),
-        load("antigravity", options.force === true || options.forceProvider === "antigravity"),
         load("muse-code", options.force === true || options.forceProvider === "muse-code"),
         load("opencode", options.force === true || options.forceProvider === "opencode"),
         load("gemini", options.force === true || options.forceProvider === "gemini"),
@@ -527,7 +493,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
           claude: withRisk(claude),
           codex: withRisk(codex),
           xai: withRisk(xai),
-          antigravity: withRisk(antigravity),
           "muse-code": withRisk(museCode),
           opencode: withRisk(opencode),
           gemini: withRisk(gemini),

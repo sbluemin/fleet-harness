@@ -205,13 +205,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
       for (const listener of providerStatusListeners) listener();
     },
     ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai }),
-    antigravityEnabled: () => {
-      try {
-        return aiGatewayStore.read().antigravityEnabled === true;
-      } catch {
-        return false;
-      }
-    },
     // 마지막 성공 사용량. Console 슬롯(격리 실행이면 격리 루트) 아래. 키·토큰은 넣지 않는다.
     lastGoodStore: createQuotaLastGoodStore({
       filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "quota-last-good.json"),
@@ -318,11 +311,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
     const settings = aiGatewayStore.read();
     const selection = resolveAiGatewaySelection(settings);
     const allowance = parseGatewayQuotaSnapshot(quota.peekSummary());
-    const delegationModels = settings.antigravityEnabled === true
-      ? selection.delegationModels
-      : selection.delegationModels.filter((model) => model.provider !== "antigravity");
     return {
-      delegationModels,
+      delegationModels: selection.delegationModels,
       ...(selection.effortExposure === undefined ? {} : { effortExposure: selection.effortExposure }),
       ...(selection.providerPriority === undefined ? {} : { providerPriority: selection.providerPriority }),
       ...(allowance === undefined ? {} : { quota: allowance }),
@@ -337,7 +327,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
       claude: summary.providers.claude.status,
       codex: summary.providers.codex.status,
       xai: summary.providers.xai.status,
-      antigravity: summary.providers.antigravity.status,
       "muse-code": summary.providers["muse-code"].status,
       opencode: summary.providers.opencode.status,
       // Gemini 키의 유무가 모델 메뉴와 설정의 로그인 표시를 가른다.
@@ -425,7 +414,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
           ...question, ...(signal ? { signal } : {}), objectiveId: input.objectiveId, judge: input.judge,
           baseUrl: `${ctx.host.server.origin()}${ctx.basePath}/ai-gateway`,
           spawnProcess: ctx.spawnAgentProcess, readProviderStatuses,
-          antigravityEnabled: aiGatewayStore.read().antigravityEnabled === true,
           ...(ctx.resolveClaudeExecutable ? { resolveExecutable: ctx.resolveClaudeExecutable } : {}),
         }),
         ...(input.commander ? { commanderAssignment: input.commander } : {}),
@@ -495,14 +483,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });
-  const syncAntigravity = (enabled: boolean): void => {
-    if (enabled) {
-      void quota.getSummary({ forceProvider: "antigravity" }).catch(() => undefined);
-      return;
-    }
-    quota.record("antigravity", { status: "not_connected" });
-    void aiGatewayRuntime.releaseAgy();
-  };
   return {
     store: aiGatewayStore,
     wireLog,
@@ -514,7 +494,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
     readCandidates,
     readEnabledModels,
     canRouteDelegation,
-    syncAntigravity,
     // SDK 세션이 접힐 때 그 세션의 위임 배정을 걷는다. 실행 host의 dispose가 이 자리를 부른다.
     releaseExecutionSession,
   };

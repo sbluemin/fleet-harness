@@ -7,7 +7,7 @@
  * (`/usage`·`/quota`·`/billing` 등 404). 그래서 사용량은 플릿이 응답 usageMetadata로 직접 센다.
  */
 
-/** Quota·게이트웨이·설정이 함께 쓰는 공급자 id. Antigravity 경로의 같은 모델과 별도 항목이다. */
+/** Quota·게이트웨이·설정이 함께 쓰는 공급자 id. */
 export const GEMINI_PROVIDER_ID = "gemini";
 /** auth.json에 저장되는 공급자 id. 저장된 키가 업그레이드 뒤에도 읽히도록 바꾸지 않는다. */
 export const GEMINI_AUTH_PROVIDER_ID = "Gemini API";

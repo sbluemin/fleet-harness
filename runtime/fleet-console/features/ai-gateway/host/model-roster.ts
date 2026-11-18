@@ -98,9 +98,8 @@ export function canonicalGatewayModelId(model: GatewayModel): string {
 export function buildModelRoster(
   target: ModelRosterTarget,
   statuses?: ProviderStatusMap,
-  antigravityEnabled = false,
 ): ModelRoster {
-  const visible = visibleGatewayModels(statuses, antigravityEnabled);
+  const visible = visibleGatewayModels(statuses);
   const groups: ObjectiveLaunchVariantGroup[] = [];
   for (const provider of ROSTER_PROVIDER_ORDER) {
     const models = visible.filter((model) => model.provider === provider);
@@ -197,13 +196,7 @@ export function createModelRosterHost(deps: {
       // 상태 조회 실패는 숨기지 않는다 — 모르는 공급자는 카탈로그에 남긴다.
       statuses = undefined;
     }
-    let antigravityEnabled = false;
-    try {
-      antigravityEnabled = deps.readGatewaySettings?.()?.antigravityEnabled === true;
-    } catch {
-      antigravityEnabled = false;
-    }
-    return buildModelRoster(target, statuses, antigravityEnabled);
+    return buildModelRoster(target, statuses);
   };
   return {
     roster,

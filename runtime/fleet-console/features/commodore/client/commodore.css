@@ -1445,7 +1445,6 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-pool-st.is-claude, .commodore-pool-ex-tile.is-claude { --tone: var(--provider-claude); }
 .commodore-pool-st.is-codex, .commodore-pool-ex-tile.is-codex { --tone: var(--provider-codex); }
 .commodore-pool-st.is-xai, .commodore-pool-ex-tile.is-xai { --tone: var(--provider-xai); }
-.commodore-pool-st.is-antigravity, .commodore-pool-ex-tile.is-antigravity { --tone: var(--provider-antigravity); }
 .commodore-pool-st.is-opencode, .commodore-pool-ex-tile.is-opencode { --tone: var(--provider-opencode); }
 .commodore-pool-st.is-gemini, .commodore-pool-ex-tile.is-gemini { --tone: var(--provider-gemini); }
 .commodore-pool-st.is-anthropic, .commodore-pool-ex-tile.is-anthropic { --tone: var(--provider-anthropic); }

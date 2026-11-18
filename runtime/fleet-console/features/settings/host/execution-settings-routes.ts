@@ -39,8 +39,6 @@ interface TerminalSettingsRouteDeps {
   };
   /** AI Gateway 설정을 쓴 직후. 모델 로스터가 그 파일에서 투영되므로 열린 화면에 다시 읽으라고 알린다. */
   readonly onAiGatewayChanged?: () => void;
-  /** 노브가 바뀐 직후. true면 쿼터를 다시 읽고, false면 살아 있는 agy 세션을 닫는다. */
-  readonly onAntigravityEnabled?: (enabled: boolean) => void;
   /** 공급자 로그인 상태. 없으면 화면은 미상(로그인 필요로 보지 않음)으로 그린다. */
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
 }
@@ -50,15 +48,13 @@ interface TerminalSettingsBody {
   readonly wireLogEnabled?: unknown;
   readonly compactCeiling?: unknown;
   readonly xaiEndpoint?: unknown;
-  readonly antigravityEnabled?: unknown;
 }
 
 type TerminalSettingsUpdate =
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly wireLogEnabled: boolean }
   | { readonly compactCeiling: CompactCeiling | undefined }
-  | { readonly xaiEndpoint: XaiEndpointPreference }
-  | { readonly antigravityEnabled: boolean };
+  | { readonly xaiEndpoint: XaiEndpointPreference };
 
 export interface TerminalSettingsState {
   readonly aiGateway: AiGatewayUpdateValue | null;
@@ -66,8 +62,7 @@ export interface TerminalSettingsState {
   readonly wireLogEnabled: boolean;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
-  /** 저장 키 부재는 false다. */
-  readonly antigravityEnabled: boolean;
+  /** 퇴역한 공급자 키. 서버가 더 이상 내보내지 않으며, 읽힘은 꺼짐과 같다. */
   /** 공급자별 로그인 상태. null은 아직 모름(숨기지 않음). */
   readonly aiGatewayLogin: Readonly<Record<string, string | null>>;
 }
@@ -151,16 +146,6 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
       }
       if ("xaiEndpoint" in update) {
         const stored = deps.aiGatewayStore.writeXaiEndpoint(update.xaiEndpoint);
-        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
-          stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
-        ));
-        return true;
-      }
-      if ("antigravityEnabled" in update) {
-        const stored = deps.aiGatewayStore.writeAntigravityEnabled(update.antigravityEnabled);
-        const enabled = stored.antigravityEnabled === true;
-        deps.onAntigravityEnabled?.(enabled);
-        deps.onAiGatewayChanged?.();
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
           stored, deps.wireLogRuntime.enabled(), deps.readProviderStatuses,
         ));
@@ -260,7 +245,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
   ]);
 }
 
-const AI_GATEWAY_LOGIN_PROVIDERS = ["anthropic", "antigravity", "claude", "codex", "gemini", "muse-code", "opencode", "xai"] as const;
+const AI_GATEWAY_LOGIN_PROVIDERS = ["anthropic", "claude", "codex", "gemini", "muse-code", "opencode", "xai"] as const;
 
 function toTerminalSettingsState(
   aiGateway: AiGatewayStoredSettings,
@@ -280,7 +265,6 @@ function toTerminalSettingsState(
     wireLogEnabled,
     compactCeiling: aiGateway.compactCeiling ?? null,
     xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
-    antigravityEnabled: aiGateway.antigravityEnabled === true,
     aiGatewayLogin: aiGatewayLogin(readProviderStatuses),
   };
 }
@@ -319,11 +303,6 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
     return typeof body.xaiEndpoint === "string"
       && XAI_ENDPOINT_PREFERENCES.includes(body.xaiEndpoint as XaiEndpointPreference)
       ? { xaiEndpoint: body.xaiEndpoint as XaiEndpointPreference }
-      : null;
-  }
-  if (keys[0] === "antigravityEnabled") {
-    return typeof body.antigravityEnabled === "boolean"
-      ? { antigravityEnabled: body.antigravityEnabled }
       : null;
   }
   return null;

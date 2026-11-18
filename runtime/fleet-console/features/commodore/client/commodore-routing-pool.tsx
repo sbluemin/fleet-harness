@@ -28,7 +28,7 @@ import { effortWord, hasAnyScore, qualifying, RankMark, type IntelligenceScores 
 
 type T = Translate<CommodoreMessageKey>;
 
-const LAUNCH_PROVIDER_ORDER: readonly AiGatewayProviderId[] = ["claude", "anthropic", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
+const LAUNCH_PROVIDER_ORDER: readonly AiGatewayProviderId[] = ["claude", "anthropic", "codex", "xai", "muse-code", "opencode", "gemini"];
 const BASE_EFFORTS = new Set(["low", "medium"]);
 
 const MODEL_SUBTITLE_KEYS: Readonly<Record<string, CommodoreMessageKey>> = {
@@ -890,7 +890,6 @@ const SAMPLE_EXPLAINER_ITEMS: readonly SampleExplainerItem[] = [
   { id: "opus", provider: "claude", name: "Opus", ladder: ["low", "medium", "high", "xhigh", "max"], statusKind: "ok", headroom: 64 },
   { id: "sonnet", provider: "claude", name: "Sonnet", ladder: ["low", "medium", "high"], statusKind: "ok", headroom: 58 },
   { id: "codex--gpt-5.4", provider: "codex", name: "GPT", ladder: ["low", "medium", "high", "xhigh"], statusKind: "rest", headroom: 0 },
-  { id: "antigravity--gemini-3.1-pro", provider: "antigravity", name: "Gemini", ladder: ["low", "medium", "high"], statusKind: "ok", headroom: 81 },
 ];
 
 function RoutingPoolExplainer({ t, entries }: {

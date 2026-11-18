@@ -15,7 +15,7 @@ import { PROVIDER_ORDER_DEFAULT, type ProviderId } from "../shared/provider-orde
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT } from "./i18n/index.js";
 import { spendSeverity } from "./spend-section.js";
-import { meterSeverity, mostUrgentWindow, providerName, QuotaPanel, useAntigravityEnabled, windowLabel } from "./quota-panel.js";
+import { meterSeverity, mostUrgentWindow, providerName, QuotaPanel, windowLabel } from "./quota-panel.js";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 
@@ -58,7 +58,7 @@ export function toolbarReadings(
     });
 }
 
-/** 공급자가 풀을 나눠 재면(예: Antigravity의 Gemini와 Claude & GPT) 풀마다 한 줄 — 풀마다 가장 급한 창 하나.
+/** 공급자가 풀을 나눠 재면 풀마다 한 줄 — 풀마다 가장 급한 창 하나.
  *  한 풀이 소진돼도 다른 풀의 숫자에 묻히지 않는다. 그 밖에는 두 줄 — 가장 짧은 창 하나와, 남은 창 중 가장 급한 하나. */
 export function summaryLines(windows: readonly QuotaWindow[]): readonly QuotaWindow[] {
   if (windows.length <= 1) return windows;
@@ -117,7 +117,6 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
   const mobile = layout === "mobile";
   const inCapsule = placement === "capsule";
   const { toolbarProviders: shown, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
-  const antigravityEnabled = useAntigravityEnabled();
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -126,10 +125,9 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
   if (!loaded) return null;
   const locale = currentLocale();
   const t = getT(locale, mobile);
-  // 저장된 선호는 그대로 두고, 꺼진 Antigravity만 표시에서 뺀다. 다시 켜면 원래 칸이 돌아온다.
-  const visible = antigravityEnabled ? shown : shown.filter((id) => id !== "antigravity");
-  const glyphOnly = visible.length === 0;
-  const readings = toolbarReadings(snapshot.data, visible);
+  // 저장된 선호는 그대로 두고, 지원하는 공급자만 표시한다.
+  const glyphOnly = shown.length === 0;
+  const readings = toolbarReadings(snapshot.data, shown);
   const label = glyphOnly
     ? t("quota.panel.title")
     : snapshot.data === null

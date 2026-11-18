@@ -87,14 +87,6 @@ export function findClaudeGatewayModel(
     : model;
 }
 
-/**
- * Whether a Claude Code model id names an Antigravity model (Gemini or Claude), which the gateway serves through an
- * agy ACP session. Launch surfaces use this to open such a session without Claude Code's own base system prompt.
- */
-export function isAcpGatewayModelId(id: string | undefined): boolean {
-  return id !== undefined && findClaudeGatewayModel(id)?.provider === "antigravity";
-}
-
 export type { AnthropicModelEntry, AnthropicModelList };
 
 /** Claude Code gateway model discovery (`GET /v1/models`). */

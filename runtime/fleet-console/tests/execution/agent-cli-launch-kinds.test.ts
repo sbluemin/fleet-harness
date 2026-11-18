@@ -19,15 +19,12 @@ describe("buildModelRoster login filter", () => {
     expect(sonnet).toBeDefined();
     expect(claude?.rows.find((row) => row.launch.model === "sonnet[1m]")?.effortAxis).toEqual([...(sonnet ? exposableEffortLadder(sonnet) : [])]);
     expect(roster.some((group) => group.id === "gateway:codex" || group.id === "gateway:xai")).toBe(false);
-    expect(roster.some((group) => group.id === "gateway:antigravity")).toBe(false);
-    expect(buildModelRoster("agent", { antigravity: "ok" }, true).some((group) => group.id === "gateway:antigravity")).toBe(true);
     expect(roster.some((group) => group.id === "gateway:muse-code")).toBe(true);
 
     const signedIn = buildModelRoster("launch", {
       claude: "ok",
       codex: "ok",
       xai: "ok",
-      antigravity: "ok",
       "muse-code": "ok",
     });
     const sol = signedIn.find((group) => group.id === "gateway:codex")?.rows.find((row) => row.launch.model === "codex--gpt-6.1-sol");
@@ -44,7 +41,7 @@ describe("buildModelRoster login filter", () => {
     expect(buildAgentCliLaunchKinds(
       [{ id: "claude", label: "Claude", available: true, signedIn: true }],
       "agent",
-      { claude: "signed_out", codex: "signed_out", xai: "signed_out", antigravity: "not_connected", "muse-code": "signed_out", opencode: "signed_out", gemini: "signed_out", anthropic: "signed_out" },
+      { claude: "signed_out", codex: "signed_out", xai: "signed_out", "muse-code": "signed_out", opencode: "signed_out", gemini: "signed_out", anthropic: "signed_out" },
     )[0]?.variants?.map((group) => group.id)).toEqual(["roster-fallback"]);
 
     // 사용량 수집 동의가 꺼져 생긴 Claude not_connected는 자격 로그아웃이 아니다. 숨기지 않는다.

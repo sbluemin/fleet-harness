@@ -65,13 +65,6 @@ import type { GatewayFailureSink } from "../transport/failure-journal.js";
 import { RequestClock } from "../transport/request-timing.js";
 import type { GatewayRequestTimingSink } from "../transport/request-timing.js";
 
-import {
-  AgyCompactionError,
-  createAgyAcpBridge,
-  type AcpSessionPort,
-  type AgyAcpBridge,
-  type AgyCompactionResult,
-} from "../acp/index.js";
 import { applyGatewayRequestPolicy } from "./request-policy.js";
 import {
   applyDecisiveRefusalHeaders,
@@ -161,12 +154,6 @@ export interface AiGatewayRouteDeps {
   // 접근 금지), 각 호스트가 export된 reader를 명시 주입한다.
   readonly readAuth: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
   readonly readXaiToken?: () => string | null | Promise<string | null>;
-  /**
-   * The agy ACP session port Antigravity models are served through. Absent means those models
-   * are refused with 503. The router builds one bridge from it, keeps it for its lifetime, and closes
-   * every agy child and the bridge's MCP listener in `dispose()`.
-   */
-  readonly agyAcpPort?: AcpSessionPort;
   /** Muse Code 로그인 판정. 미주입이면 Muse Code 모델은 미로그인으로 거절된다. */
   readonly readMuseCodeAuth?: () => MuseCodeInferenceAuth | Promise<MuseCodeInferenceAuth>;
   /** 401에서만 한 번 호출한다. 호스트가 quota 조회와 single-flight·backoff를 공유한다. */
@@ -236,12 +223,9 @@ export interface AiGatewayRouter {
   /** Live upstream occupancy per provider origin. Empty when nothing is in flight. */
   upstreamStats(): readonly UpstreamGateOriginStats[];
   /**
-   * Dispose only router-owned provider state; injected gateways remain externally owned. Resolves once the
-   * agy children and the bridge's MCP listener are gone when the router owns a bridge.
+   * Dispose only router-owned provider state; injected gateways remain externally owned.
    */
-  dispose(): void | Promise<void>;
-  /** Close live agy ACP sessions. The next Antigravity turn opens a new bridge. */
-  releaseAgy(): void | Promise<void>;
+  dispose(): void;
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
@@ -275,18 +259,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     deps.maxUpstreamInFlight === undefined ? {} : { maxInFlight: deps.maxUpstreamInFlight },
   );
   const fetchImpl = upstreamGate.fetch as typeof fetch;
-  // The agy bridge is stateful (live sessions between requests), so it is built once and kept. It is
-  // lazy: a host that never serves an Antigravity model starts no listener.
-  let ownedAgyBridge: AgyAcpBridge | undefined;
-  let agyBridgeGatewayInstance: AnthropicMessagesGateway | undefined;
-  const ensureAgyBridge = (port: AcpSessionPort): AgyAcpBridge => {
-    ownedAgyBridge ??= createAgyAcpBridge({ port });
-    return ownedAgyBridge;
-  };
-  const agyBridgeGateway = (port: AcpSessionPort): AnthropicMessagesGateway => {
-    agyBridgeGatewayInstance ??= new AnthropicMessagesGateway(ensureAgyBridge(port));
-    return agyBridgeGatewayInstance;
-  };
   // 창을 감당 못 해 본문이 한 번 보류된 스킬들. 이 라우터가 사는 동안 유지해야
   // 다음 세션의 첫 요청부터 목록에서 빠진다 — 프로세스당 한 번만 낭비되는 턴이 된다.
   const withheldSkills = new Set<string>();
@@ -296,10 +268,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   const codexCompactionFlights = new Map<
     string,
     ReturnType<typeof compactCodexConversation>
-  >();
-  const antigravityCompactionFlights = new Map<
-    string,
-    Promise<AgyCompactionResult>
   >();
   const gatewaySettings = (): AiGatewayStoredSettings | undefined => (
     deps.readAiGatewaySettings ? deps.readAiGatewaySettings() : undefined
@@ -315,16 +283,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return undefined;
     }
   };
-  const antigravityOn = (): boolean => {
-    if (!deps.readAiGatewaySettings) return false;
-    try {
-      return deps.readAiGatewaySettings().antigravityEnabled === true;
-    } catch {
-      return false;
-    }
-  };
   const isModelExposed = (model: GatewayModel): boolean => (
-    visibleGatewayModels(providerStatuses(), antigravityOn()).some((entry) => entry.id === model.id)
+    visibleGatewayModels(providerStatuses()).some((entry) => entry.id === model.id)
   );
   const xaiEndpoint = (): XaiEndpointPreference => {
     if (!deps.readAiGatewaySettings) return DEFAULT_XAI_ENDPOINT_PREFERENCE;
@@ -364,7 +324,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify(harness.buildModelList(visibleGatewayModels(providerStatuses(), antigravityOn()))));
+      res.end(JSON.stringify(harness.buildModelList(visibleGatewayModels(providerStatuses()))));
       return true;
     }
     if (!pathname.endsWith("/v1/messages")) return false;
@@ -485,12 +445,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 그 구독을 쓴다. env 오버라이드는 예외다 — 그 값을 세팅한 주체는 이 프로세스의 운영자이고
     // 호출자 입력과 같은 신뢰 등급이 아니다. Claude 공급자도 같은 규칙이다.
     // 이 거부는 켠 목록이 아니라 공급자 로그인이다. 문구에 "model:"을 넣지 않는다 — 아래 주석.
-    // 노브가 최종 권한이다. env 모델 오버라이드도 꺼진 Antigravity는 열지 못한다.
-    if (target?.provider === "antigravity" && !antigravityOn()) {
-      writeClientError(res, 403, "permission_error", "Antigravity is turned off. Turn it on in AI Gateway settings to use this model.");
-      clock?.finish("error", 403);
-      return true;
-    }
     if (target && modelOverride === undefined && !isModelExposed(target)) {
       writeClientError(res, 403, "permission_error", `AI gateway provider is not signed in: ${resolvedExecution === undefined ? requested : target.id}`);
       clock?.finish("error", 403);
@@ -515,15 +469,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       && isCompactRequest
       ? deps.compactionStore?.readPending(sessionId)
       : undefined;
-    const antigravityCompact = target?.provider === "antigravity"
-      && !deps.gateway
-      && deps.agyAcpPort !== undefined
-      && isCompactRequest;
-    const antigravityCompactInstructions = antigravityCompact
-      ? (sessionId !== undefined ? deps.compactionStore?.readPending(sessionId)?.customInstructions : undefined)
-        ?? extractCompactCustomInstructions(body.messages)
-      : undefined;
-    if (compactSummary || antigravityCompact) {
+    if (compactSummary) {
       body = { ...body, messages: stripClaudeCompactPrompt(body.messages) };
     }
 
@@ -659,17 +605,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
               : {}),
           })
         : undefined;
-      if (target.provider === "antigravity" && !deps.gateway && !deps.agyAcpPort) {
-        writeClientError(res, 503, "api_error", `${requested} is served through the agy ACP bridge, which this host did not configure.`);
-        clock?.finish("error", 503);
-        return true;
-      }
       const gateway = deps.gateway
-        ?? (target.provider === "antigravity"
-          // 브리지는 agy가 소유한 구독 로그인으로 말하므로 이 라우터는 Antigravity 자격을 조달하지 않는다.
-          // 상태를 가진 어댑터라 요청마다 만들지 않고 호스트가 준 하나를 쓴다.
-          ? agyBridgeGateway(deps.agyAcpPort!)
-          : target.provider === "xai"
+        ?? (target.provider === "xai"
           ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
             fetch: requestFetch,
             endpoint: xaiEndpoint(),
@@ -775,45 +712,6 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
 
-      if (antigravityCompact) {
-        const compactBody: AnthropicMessagesRequest = {
-          ...body,
-          tools: undefined,
-          tool_choice: { type: "none" },
-        };
-        const canonical = translateAnthropicRequest(compactBody, {
-          model: upstreamModelId(target),
-          ...(target.effort.supported ? { reasoningEfforts: target.effort.levels } : {}),
-        });
-        clock?.setRoute("compaction");
-        const agyBridge = ensureAgyBridge(deps.agyAcpPort!);
-        let compactFlight = sessionId ? antigravityCompactionFlights.get(sessionId) : undefined;
-        if (!compactFlight) {
-          compactFlight = agyBridge.compact(
-            {
-              model: canonical.model,
-              input: canonical.input,
-              ...(antigravityCompactInstructions ? { customInstructions: antigravityCompactInstructions } : {}),
-            },
-            // Shared per-session flights survive a client transport retry; standalone requests bind to this socket.
-            sessionId ? undefined : { signal: controller.signal },
-          );
-          if (sessionId) {
-            const flight = compactFlight;
-            antigravityCompactionFlights.set(sessionId, flight);
-            void flight.finally(() => {
-              if (antigravityCompactionFlights.get(sessionId) === flight) {
-                antigravityCompactionFlights.delete(sessionId);
-              }
-            }).catch(() => undefined);
-          }
-        }
-        const compacted = await compactFlight;
-        writeClaudeCompactMessage(res, body, compacted.summary, compacted.summaryResponse);
-        clock?.finish("ok");
-        return true;
-      }
-
       let upstream;
       if (target.provider === "codex" && sessionId && hasClaudeCompactContinuation(body.messages)) {
         const ready = deps.compactionStore?.readReady(sessionId, compactBinding(target.id, chatgptAccountId));
@@ -853,30 +751,22 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // Whatever surfaced first — the abort reason, an aborted read, a failed write — the cause
       // is the client leaving, and that is what the journal has to say.
       const disconnected = controller.signal.aborted && controller.signal.reason === clientDisconnected;
-      const agyFailure = error instanceof AgyCompactionError ? error : undefined;
       const invalidRequest = error instanceof UnsupportedReasoningEffortError
         || error instanceof ContextWindowExceededError
         // A content block this wire cannot translate is the client's malformed body, not a
         // gateway fault: on a 400 naming the block Claude Code falls back to another shape,
         // whereas the transient status only makes it retry the same body.
-        || error instanceof UnsupportedAnthropicContentError
-        || (agyFailure !== undefined && agyFailure.status >= 400 && agyFailure.status < 500 && agyFailure.status !== 408 && agyFailure.status !== 409 && agyFailure.status !== 429);
-      const type = agyFailure?.errorType ?? (invalidRequest ? "invalid_request_error" : "api_error");
+        || error instanceof UnsupportedAnthropicContentError;
+      const type = invalidRequest ? "invalid_request_error" : "api_error";
       // Claude Code arms reactive compaction only from a 413 whose message names the
       // context window; a 400 carrying the same text ends the turn instead. Everything
       // else keeps 400 so the client does not compact after an unrelated refusal.
       // A transient gateway-side fault must arrive as a status Claude Code's retry budget acts
       // on. `502` is not one of them, so every dropped socket and stalled stream used to end the
       // turn at the client on the first try.
-      const mappedAgyStatus = agyFailure
-        ? (harness.decisiveRefusalStatus?.(harness.retryableStatus?.(agyFailure.status) ?? agyFailure.status)
-          ?? harness.retryableStatus?.(agyFailure.status)
-          ?? agyFailure.status)
-        : undefined;
-      const status = mappedAgyStatus
-        ?? (error instanceof ContextWindowExceededError
-          ? 413
-          : invalidRequest ? 400 : harness.transientErrorStatus);
+      const status = error instanceof ContextWindowExceededError
+        ? 413
+        : invalidRequest ? 400 : harness.transientErrorStatus;
       const message = disconnected ? clientDisconnected.message : errorMessage(error);
       const recordFailure = (): void => {
         if (!deps.failureJournal) return;
@@ -928,17 +818,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   return {
     handle,
     upstreamStats: () => upstreamGate.stats(),
-    releaseAgy: () => {
-      const bridge = ownedAgyBridge;
-      ownedAgyBridge = undefined;
-      agyBridgeGatewayInstance = undefined;
-      return bridge?.dispose();
-    },
     dispose: () => {
       upstreamGate.dispose();
       codexCompactionFlights.clear();
-      antigravityCompactionFlights.clear();
-      return ownedAgyBridge?.dispose();
     },
   };
 }

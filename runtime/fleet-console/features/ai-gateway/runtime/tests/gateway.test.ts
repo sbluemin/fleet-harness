@@ -20,7 +20,6 @@ import {
   recommendedGatewayModelRole,
   recommendedGatewayRole,
   resolveGatewayModel,
-  toClaudeGatewayModelId,
   toGatewayModelAlias,
   DEFAULT_CODEX_MODEL,
   CHATGPT_CODEX_RESPONSES_URL,
@@ -141,7 +140,7 @@ describe("model catalog", () => {
     expect(() => parseGatewayModelsRegistry(duplicate)).toThrow(/Duplicate gateway model id/);
 
     const invalidTier = minimalRegistry();
-    invalidTier.providers.antigravity.models[0] = {
+    invalidTier.providers.opencode.models[0] = {
       modelId: "grok-4.6",
       name: "Grok",
       providerModelId: "grok-4.6",
@@ -176,18 +175,6 @@ describe("model catalog", () => {
       effort: { supported: true, levels: ["low", "low"] },
     };
     expect(() => parseGatewayModelsRegistry(duplicateEffort)).toThrow(/levels contain duplicates/);
-
-    const invalidOverride = minimalRegistry();
-    invalidOverride.providers.antigravity.models[0] = {
-      modelId: "gemini-3.7-flash",
-      name: "Model",
-      effort: {
-        supported: true,
-        levels: ["low", "high"],
-        upstreamModelIds: { max: "gemini-thinking-max" },
-      },
-    };
-    expect(() => parseGatewayModelsRegistry(invalidOverride)).toThrow(/override is not an advertised level/);
 
     // 점수는 모델이 실제로 내놓는 강도에만 붙는다 — 없는 강도의 점수는 추천을 지어내게 된다.
     const unadvertisedScore = minimalRegistry();
@@ -259,15 +246,8 @@ describe("model catalog", () => {
     const windows = claudeModelAutoCompactWindows(models, null);
     expect(Object.keys(windows).sort()).toEqual(["claude-opus-5-5[1m]", "opus[1m]"]);
     expect(windows["opus[1m]"]).toBe(windows["claude-opus-5-5[1m]"]);
-    // 네이티브 Claude 가족은 1M 창 그대로다 — 500k 정의는 Antigravity가 서빙하는 Claude에만 적용된다.
+    // 네이티브 Claude 가족은 1M 창 그대로다.
     expect(windows["opus[1m]"]).toBe(1_000_000);
-    // Antigravity가 서빙하는 Claude 모델은 Fleet 정의 창 500k로 압축 지점을 잡는다(500k − 16k + 33k).
-    // 광고 id의 `[1m]` 표식은 그대로라 Claude Code가 이 id를 200k로 clamp하지 않는다.
-    const antigravityOpus = GATEWAY_MODELS.find((model) => model.id === "antigravity--claude-opus-5.5")!;
-    expect(toClaudeGatewayModelId(antigravityOpus)).toBe("claude-gateway--antigravity--claude-opus-5.5[1m]");
-    expect(claudeModelAutoCompactWindows([antigravityOpus], null)).toEqual({
-      "claude-gateway--antigravity--claude-opus-5.5[1m]": 517_000,
-    });
     // A session's alias, its pinned id, and an id the catalog has not learned yet all reach the same names.
     for (const requested of ["opus[1m]", "claude-opus-5-5[1m]", "claude-opus-5-6[1m]"]) {
       expect(claudeAutoCompactTarget(requested, models).keys).toEqual(expect.arrayContaining(["opus[1m]", "claude-opus-5-5[1m]", requested]));
@@ -403,7 +383,6 @@ function minimalRegistry() {
     intelligenceIndex: { name: "Test Index", observedAt: "2026-08-01", note: "test fixture" },
     roleThresholds: { lead: 50, overseer: 55 },
     providers: {
-      antigravity: provider("Antigravity", "gemini-3.7-flash"),
       codex: provider("Codex", "codex-model"),
       xai: provider("Grok", "grok-4.6"),
       "muse-code": provider("Muse Code", "muse-spark-1.3"),

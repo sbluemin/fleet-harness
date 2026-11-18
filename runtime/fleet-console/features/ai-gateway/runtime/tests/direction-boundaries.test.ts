@@ -23,7 +23,6 @@ const HARNESS_ROOT = "downstream/harness";
  */
 const UPSTREAM_FOLDERS = [
   "anthropic",
-  "antigravity",
   "codex",
   "typesafe",
   "xai",

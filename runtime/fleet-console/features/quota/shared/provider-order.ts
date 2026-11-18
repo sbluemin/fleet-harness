@@ -1,4 +1,4 @@
-export const PROVIDER_ORDER_DEFAULT = ["claude", "anthropic", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"] as const;
+export const PROVIDER_ORDER_DEFAULT = ["claude", "anthropic", "codex", "xai", "muse-code", "opencode", "gemini"] as const;
 export type ProviderId = (typeof PROVIDER_ORDER_DEFAULT)[number];
 
 /**

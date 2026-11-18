@@ -4736,9 +4736,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   font-weight: var(--weight-regular);
 }
 
-.objective-launch-variant-caption.is-antigravity,
-.launch-pop-band.is-antigravity,
-.fc-composer-deck-band.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .objective-launch-variant-caption.is-claude,
 .launch-pop-band.is-claude,
 .fc-composer-deck-band.is-claude { --launch-provider-tone: var(--provider-claude); }
@@ -4758,7 +4755,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .launch-pop-band.is-xai,
 .fc-composer-deck-band.is-xai { --launch-provider-tone: var(--provider-xai); }
 /* 설정의 ModelPicker는 런치 메뉴와 같은 공급자 톤을 글리프에 입힌다 — 같은 모델이 두 표면에서 같은 색으로 보여야 한다. */
-.fc-model-picker__glyph.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .fc-model-picker__glyph.is-claude { --launch-provider-tone: var(--provider-claude); }
 .fc-model-picker__glyph.is-codex { --launch-provider-tone: var(--provider-codex); }
 .fc-model-picker__glyph.is-opencode { --launch-provider-tone: var(--provider-opencode); }
@@ -4789,7 +4785,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
   height: 10px;
 }
 
-.launch-kind-icon.is-antigravity,
 .launch-kind-icon.is-claude,
 .launch-kind-icon.is-codex,
 .launch-kind-icon.is-opencode,
@@ -4798,7 +4793,6 @@ button.side-bar-cluster-row-glyph.is-actionable:focus-visible {
 .launch-kind-icon.is-xai {
   color: var(--launch-provider-tone);
 }
-.launch-kind-icon.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
 .launch-kind-icon.is-codex { --launch-provider-tone: var(--provider-codex); }
 .launch-kind-icon.is-opencode { --launch-provider-tone: var(--provider-opencode); }
@@ -9710,7 +9704,6 @@ button.fc-mention-chip:focus-visible { box-shadow: var(--focus-face); }
 .fc-coord-menu-provider.is-claude, .fc-coord-trigger-provider.is-claude { --launch-provider-tone: var(--provider-claude); }
 .fc-coord-menu-provider.is-codex, .fc-coord-trigger-provider.is-codex { --launch-provider-tone: var(--provider-codex); }
 .fc-coord-menu-provider.is-xai, .fc-coord-trigger-provider.is-xai { --launch-provider-tone: var(--provider-xai); }
-.fc-coord-menu-provider.is-antigravity, .fc-coord-trigger-provider.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .fc-coord-menu-provider.is-opencode, .fc-coord-trigger-provider.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .fc-coord-menu-provider.is-gemini, .fc-coord-trigger-provider.is-gemini { --launch-provider-tone: var(--provider-gemini); }
 .fc-coord-menu-provider.is-anthropic, .fc-coord-trigger-provider.is-anthropic { --launch-provider-tone: var(--provider-anthropic); }

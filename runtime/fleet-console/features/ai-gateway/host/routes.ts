@@ -9,13 +9,11 @@ interface GatewayHostContext {
   readonly dataDir: string;
   registerRouter(path: string, handler: RouteHandler, catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
-import { readdirSync, rmSync, statSync } from "node:fs";
 import path from "node:path";
 
 import {
   AI_GATEWAY_MODEL_ENV,
   AI_GATEWAY_ROUTE_SEGMENT,
-  createAgyAcpSessionPort,
   createAiGatewayRouter,
   createFailureJournal,
   createRequestTimingJournal,
@@ -39,27 +37,12 @@ export interface ConsoleCompactEvent {
   readonly summary?: string;
 }
 
-/** agy 세션 전용 gemini-dir들의 부모. 세션을 닫으면 지우지만, 프로세스가 죽으면 남으므로 시작할 때 오래된 것을 쓴다. */
-const AGY_SESSIONS_STALE_MS = 24 * 60 * 60 * 1000;
-
-function sweepStaleAgySessions(sessionsDir: string): void {
-  try {
-    for (const entry of readdirSync(sessionsDir)) {
-      const target = path.join(sessionsDir, entry);
-      if (Date.now() - statSync(target).mtimeMs > AGY_SESSIONS_STALE_MS) rmSync(target, { recursive: true, force: true });
-    }
-  } catch {
-    // No directory yet, or one a concurrent Console is removing: nothing to sweep.
-  }
-}
-
 export function registerAiGatewayRoutes(
   ctx: GatewayHostContext,
   deps: ConsoleAiGatewayRouteDeps = {},
 ): {
   /** 압축 사건 하나를 그 세션의 저장소에 기록한다. 인프로세스 훅이 부르는 자리다. */
   readonly recordCompactEvent: (event: ConsoleCompactEvent) => void;
-  readonly releaseAgy: () => void | Promise<void>;
 } {
   // Always on, unlike the wire log: a failed turn is the one event that otherwise leaves no
   // trace, and a post-commit failure reaches the user as a single SSE frame nobody can retrieve.
@@ -84,12 +67,8 @@ export function registerAiGatewayRoutes(
   const compactionStore = createClaudeCodexCompactionStore({
     directory: path.join(ctx.dataDir, "ai-gateway"),
   });
-  // agy 세션은 resume하지 않는다: Console이 다시 뜨면 레지스트리가 비어 모든 Antigravity 요청이 새 세션으로 시작한다.
-  const agySessionsDir = path.join(ctx.dataDir, "ai-gateway", "agy-sessions");
-  sweepStaleAgySessions(agySessionsDir);
   const router = createAiGatewayRouter({
     ...deps,
-    agyAcpPort: deps.agyAcpPort ?? createAgyAcpSessionPort({ sessionsDir: agySessionsDir }),
     originator: "fleet-console",
     compactionStore,
     // 호출 시점의 노출을 읽는다 — 스냅숏이 아니라 지금 켜져 있는 모델이 답이 된다.
@@ -124,6 +103,5 @@ export function registerAiGatewayRoutes(
         compactionStore.recordPostCompact({ sessionId: event.sessionId, summary: event.summary ?? "" });
       }
     },
-    releaseAgy: () => router.releaseAgy(),
   };
 }
