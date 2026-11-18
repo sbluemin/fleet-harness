@@ -5,6 +5,7 @@ import {
 } from "../downstream/harness/claude-code/context.js";
 import {
   GATEWAY_INTELLIGENCE_INDEX,
+  GATEWAY_INTELLIGENCE_OBSERVED_SPAN,
   GATEWAY_MODELS,
   GATEWAY_PROVIDER_NAMES,
   GATEWAY_ROLE_THRESHOLDS,
@@ -534,7 +535,7 @@ export function buildAiGatewayCatalog(models: readonly GatewayModel[] = GATEWAY_
         .map((model) => toCatalogModel(model)),
     })),
     roleThresholds: { ...GATEWAY_ROLE_THRESHOLDS },
-    intelligenceIndex: { name: GATEWAY_INTELLIGENCE_INDEX.name, observedAt: GATEWAY_INTELLIGENCE_INDEX.observedAt },
+    intelligenceIndex: { name: GATEWAY_INTELLIGENCE_INDEX.name, observedAt: GATEWAY_INTELLIGENCE_OBSERVED_SPAN },
   };
 }
 

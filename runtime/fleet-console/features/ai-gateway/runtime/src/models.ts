@@ -66,6 +66,8 @@ export type GatewayQuotaScope = QuotaScope;
 /** Intelligence index score per reasoning effort. An absent effort has no published score. */
 const GatewayModelIntelligenceSchema = z.object({
   source: z.url(),
+  /** When this entry's scores were read, if not on the registry-wide `intelligenceIndex.observedAt`. */
+  observedAt: z.iso.date().optional(),
   scores: z.partialRecord(z.enum(GATEWAY_REASONING_EFFORTS), z.number().nonnegative()),
 }).strict();
 
@@ -241,6 +243,20 @@ export interface GatewayModelIntelligence {
   /** Score per reasoning effort. An absent effort has no published score. */
   readonly scores: Readonly<Partial<Record<GatewayReasoningEffort, number>>>;
 }
+
+/**
+ * The dates the catalog's scores were read, as one display value: a single date when every entry was read on
+ * the same day, otherwise `<earliest>–<latest>`. An entry without its own date was read on the registry-wide one.
+ */
+export const GATEWAY_INTELLIGENCE_OBSERVED_SPAN: string = (() => {
+  const dates = GATEWAY_PROVIDERS.flatMap((provider) => registry.providers[provider].models.flatMap((entry) =>
+    entry.intelligence ? [entry.intelligence.observedAt ?? registry.intelligenceIndex.observedAt] : []));
+  if (dates.length === 0) return registry.intelligenceIndex.observedAt;
+  const sorted = [...dates].sort();
+  const earliest = sorted[0]!;
+  const latest = sorted.at(-1)!;
+  return earliest === latest ? earliest : `${earliest}–${latest}`;
+})();
 
 /** Catalog id → intelligence data. Claude families key by their single catalog id. */
 const GATEWAY_MODEL_INTELLIGENCE: ReadonlyMap<string, GatewayModelIntelligence> = new Map(
