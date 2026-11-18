@@ -207,7 +207,7 @@ export const quotaKo: Record<keyof typeof quotaEn, string> = {
   "quota.anthropic.rateLimit.outputTokens": "출력 토큰",
   "quota.anthropic.rateLimit.left": "{limit} 중 {remaining} 남음",
   "quota.anthropic.rateLimit.resets": "{t} 뒤 초기화",
-  "quota.anthropic.rateLimit.observed": "마지막 응답에서 {t}에 읽음",
+  "quota.anthropic.rateLimit.observed": "마지막 응답 기준 · {t}",
   "quota.anthropic.rateLimit.note": "이 API 키의 마지막 응답이 알려 준 한도예요. 구독 사용량이 아니에요.",
   "quota.login.title": "{provider} 로그인",
   "quota.login.title.again": "{provider} 다시 로그인",

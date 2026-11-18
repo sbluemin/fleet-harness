@@ -69,6 +69,11 @@ export interface RateLimitProps {
 }
 
 function windowSummary(locale: ConsoleLocale, window: ProviderRateLimitWindow, now: number, t: T): string {
+  // `resetsAt`은 한도가 다 채워지는 시각이다. 지난 뒤의 잔량은 낡은 값이라 한도 전체로 말한다.
+  if (window.resetsAt <= now) {
+    const limit = formatCount(locale, window.limit);
+    return t("quota.anthropic.rateLimit.left", { remaining: limit, limit });
+  }
   return `${t("quota.anthropic.rateLimit.left", {
     remaining: formatCount(locale, window.remaining),
     limit: formatCount(locale, window.limit),
