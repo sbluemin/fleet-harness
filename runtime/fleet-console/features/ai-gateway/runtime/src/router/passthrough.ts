@@ -1,6 +1,7 @@
 import { withSseKeepAlive } from "../transport/sse-keepalive.js";
 import { logRawPassthroughBody } from "../transport/wire-log.js";
 import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-messages/protocol.js";
+import type { AnthropicPassthroughObserver } from "../upstream/anthropic/observe.js";
 
 import { applyDecisiveRefusalHeaders, drain, type GatewayProxyResponse } from "./http.js";
 
@@ -27,6 +28,11 @@ export interface AnthropicProxyOptions {
   readonly wireEventLabel?: string;
   /** Client session the router read from the request; ties wire log entries to its transcript. */
   readonly wireSessionId?: string;
+  /**
+   * 응답을 바꾸지 않고 옆에서 읽는 관찰자(헤더·usage·거절). 상류 바이트는 그대로 나가고, 관찰자가 던져도
+   * 응답은 영향받지 않는다(관찰자 쪽이 삼킨다). 본문을 끝까지 읽었을 때만 `end`가 불린다.
+   */
+  readonly observe?: AnthropicPassthroughObserver;
   readonly fetchImpl: typeof fetch;
   readonly headers: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
@@ -65,12 +71,14 @@ export async function proxyAnthropicMessages(
   // would strand a transient upstream failure that one attempt would have cleared.
   // Native Anthropic's 401 belongs to the caller's own credential and stays unchanged.
   const status = options.retryableStatus?.(upstream.status) ?? upstream.status;
+  // 관찰자는 하네스가 바꾼 상태가 아니라 상류가 실제로 답한 상태를 본다 — 차단 분류가 그 값에 기댄다.
+  options.observe?.response(upstream.status, upstream.headers);
   res.writeHead(status, applyDecisiveRefusalHeaders(status, responseHeaders, options.decisiveRefusalHeaders));
   if (!upstream.body) {
     res.end();
     return;
   }
-  const rawBody = readResponseBody(upstream.body);
+  const rawBody = options.observe === undefined ? readResponseBody(upstream.body) : observeResponseBody(readResponseBody(upstream.body), options.observe);
   const contentType = upstream.headers.get("content-type");
   const upstreamRequestId = upstream.headers.get("request-id");
   // Observation tap: records provider response payloads while passing the upstream bytes
@@ -93,6 +101,18 @@ export async function proxyAnthropicMessages(
     if (!res.write(chunk)) await drain(res, options.signal);
   }
   res.end();
+}
+
+/** 청크를 관찰자에게 보여 주되 그대로 흘린다. 끝까지 읽혔을 때만 `end`를 부른다(중단·오류는 부르지 않는다). */
+async function* observeResponseBody(
+  body: AsyncGenerator<Uint8Array>,
+  observer: AnthropicPassthroughObserver,
+): AsyncGenerator<Uint8Array> {
+  for await (const chunk of body) {
+    observer.chunk(chunk);
+    yield chunk;
+  }
+  observer.end();
 }
 
 async function* readResponseBody(

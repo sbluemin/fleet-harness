@@ -6,6 +6,12 @@ import {
 } from "../downstream/wire/anthropic-messages/inbound.js";
 import { anthropicApiKeyBody, anthropicApiKeyHeaders } from "../upstream/anthropic/api-key.js";
 import {
+  createAnthropicApiObserver,
+  requestUsesOneHourCache,
+  type AnthropicPassthroughObserver,
+} from "../upstream/anthropic/observe.js";
+import type { AnthropicUsagePort } from "../quota/anthropic-usage.js";
+import {
   anthropicNativeHeaders,
   ANTHROPIC_MESSAGES_URL,
 } from "../upstream/anthropic/native.js";
@@ -178,6 +184,11 @@ export interface AiGatewayRouteDeps {
   readonly geminiUsage?: GeminiUsagePort;
   /** Console이 저장한 Anthropic API 키. 미주입이거나 비어 있으면 Anthropic 모델은 미로그인으로 거절된다. */
   readonly readAnthropicApiKey?: () => string | undefined | Promise<string | undefined>;
+  /**
+   * Anthropic 턴의 usage·거절·`anthropic-ratelimit-*` 헤더를 받는 지출 원장. 미주입이면 플릿은 Anthropic
+   * 지출을 세지 않는다(응답은 그대로 중계된다).
+   */
+  readonly anthropicUsage?: AnthropicUsagePort;
   readonly readModelOverride?: () => string | undefined;
   /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
   readonly compactionStore?: ClaudeCodexCompactionStore;
@@ -600,11 +611,18 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         // 상류가 그 키를 401로 거절하면 호출자의 구독 로그인이 풀린 것으로 읽히지 않도록, 하네스가 정한
         // 로그인 거절 상태(401 → 403)로 내보낸다 — 공급자 로그인 거절과 같은 규칙이다.
         clock?.setRoute("passthrough");
+        const observe = deps.anthropicUsage === undefined
+          ? undefined
+          : createAnthropicApiObserver({
+              model: upstreamModelId(target),
+              port: deps.anthropicUsage,
+              oneHourCache: requestUsesOneHourCache(body),
+            });
         await proxyToAnthropicApiKey(req.headers, res,
           anthropicApiKeyBody(body, upstreamModelId(target)) as AnthropicMessagesRequest,
           credential, requestFetch, controller.signal,
           (status) => (harness.decisiveRefusalStatus ?? ((value: number) => value))(harness.retryableStatus?.(status) ?? status),
-          sessionId, harness.decisiveRefusalHeaders);
+          sessionId, harness.decisiveRefusalHeaders, observe);
         clock?.finish("ok");
         return true;
       }
@@ -965,10 +983,12 @@ async function proxyToAnthropicApiKey(
   retryableStatus: ((status: number) => number) | undefined,
   sessionId?: string,
   decisiveRefusalHeaders?: (status: number) => Readonly<Record<string, string>> | undefined,
+  observe?: AnthropicPassthroughObserver,
 ): Promise<void> {
   await proxyAnthropicMessages(res, body, {
     ...(retryableStatus ? { retryableStatus } : {}),
     ...(decisiveRefusalHeaders ? { decisiveRefusalHeaders } : {}),
+    ...(observe ? { observe } : {}),
     keepAlive: true,
     fetchImpl,
     headers: anthropicApiKeyHeaders(requestHeaders, apiKey),
