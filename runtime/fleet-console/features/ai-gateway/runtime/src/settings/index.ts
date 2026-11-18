@@ -506,7 +506,7 @@ export interface AiGatewayCatalogModel {
   /** Bare model label without the provider prefix. */
   readonly name: string;
   readonly contextWindow: number | null;
-  /** Whether the model offers an alternate service tier: Codex/xAI Fast, or Gemini Standard (its default is Flex). */
+  /** Whether the model supports the optional priority service tier. */
   readonly fast: boolean;
   readonly description: string | null;
   /**

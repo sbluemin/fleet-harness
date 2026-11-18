@@ -32,11 +32,6 @@ export interface ModelCoordinateValue {
 export interface ModelCoordinateSpeed {
   /** Fast 행에 붙는 낱말(「Fast」). */
   readonly fastLabel: string;
-  /**
-   * Gemini 행에 붙는 낱말(「Standard」). Gemini는 표기 없는 행이 기본 등급 Flex이고 추가 행이 Standard다 — 같은 `fast`
-   * 값(「기본이 아닌 등급 선택」)을 싣되 낱말만 다르다. 없으면 `fastLabel`을 쓴다.
-   */
-  readonly standardLabel?: string;
 }
 
 export interface ModelCoordinatePickerExtra {
@@ -186,7 +181,7 @@ export function ModelCoordinatePicker(props: ModelCoordinatePickerProps): React.
 /** 선택기 안에서만 쓰는 Fast 행의 모델 표기 — 저장·실행 id가 아니다. 모델 id에는 `#`이 없다. */
 const FAST_ROW_SUFFIX = "#fast";
 
-function withFastRows(roster: ModelRoster | null, fastLabel: string, standardLabel: string): ModelRoster | null {
+function withFastRows(roster: ModelRoster | null, fastLabel: string): ModelRoster | null {
   if (!roster) return roster;
   return roster.map((group) => ({
     ...group,
@@ -194,11 +189,10 @@ function withFastRows(roster: ModelRoster | null, fastLabel: string, standardLab
       if (row.fastSupported !== true) return [row];
       const { fastSupported: _fast, ...rest } = row;
       const model = row.launch.model ?? row.id;
-      const alternateLabel = launchProviderFromModelId(model) === "gemini" ? standardLabel : fastLabel;
       return [row, {
         ...rest,
         id: `${row.id}${FAST_ROW_SUFFIX}`,
-        label: `${row.label} · ${alternateLabel}`,
+        label: `${row.label} · ${fastLabel}`,
         launch: { ...row.launch, model: `${model}${FAST_ROW_SUFFIX}` },
         ...(row.chips ? { chips: row.chips.map((chip) => ({ ...chip, launch: { ...chip.launch, ...(chip.launch.model ? { model: `${chip.launch.model}${FAST_ROW_SUFFIX}` } : {}) } })) } : {}),
       }];
@@ -213,11 +207,7 @@ function withFastRows(roster: ModelRoster | null, fastLabel: string, standardLab
 function useSpeedRows(props: ModelCoordinatePickerProps): ModelCoordinatePickerProps {
   const { roster, speed, value, onChange } = props;
   const fastLabel = speed?.fastLabel;
-  const standardLabel = speed?.standardLabel ?? fastLabel;
-  const rows = React.useMemo(
-    () => (fastLabel === undefined || standardLabel === undefined ? roster : withFastRows(roster, fastLabel, standardLabel)),
-    [roster, fastLabel, standardLabel],
-  );
+  const rows = React.useMemo(() => (fastLabel === undefined ? roster : withFastRows(roster, fastLabel)), [roster, fastLabel]);
   if (fastLabel === undefined) return props;
   const fastCapable = (model: string | undefined) => !!model && findRosterRow(roster, model)?.fastSupported === true;
   const { fast, ...plain } = value;
