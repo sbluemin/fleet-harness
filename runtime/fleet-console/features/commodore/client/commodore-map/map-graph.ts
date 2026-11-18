@@ -326,15 +326,46 @@ export function mapNeighbors(graph: MapGraph, id: string): ReadonlySet<string> {
   return new Set(graph.adjacent.get(id) ?? []);
 }
 
-/** 보이는 노드 — 갈래가 가려지면 숨고, 검색 중이면 맞은 점과 그 이웃만 선다. 핵은 항상 선다. */
+/** 종류 단추 — 갈래 여섯, 같은 목표 노드, 명시 링크. */
+export type MapChipKey = MapBranchKey | "objective" | "link";
+
+/**
+ * 보이는 노드 — 종류 단추는 '고르기'다. 아무것도 고르지 않으면 전부 서고, 고르면 고른 종류(와 핵, 그 점까지
+ * 이어지는 허브·주제)만 선다. 목표는 그 목표 노드와 이어진 기억, 명시 링크는 링크 양 끝 기억을 세운다.
+ * 검색 중이면 그 안에서 맞은 점과 그 이웃만 선다. 핵은 항상 선다.
+ */
 export function visibleMapIds(
   graph: MapGraph,
-  hidden: ReadonlySet<MapBranchKey>,
+  picks: ReadonlySet<MapChipKey>,
   hits: ReadonlySet<string> | null,
 ): ReadonlySet<string> {
+  let picked: Set<string> | null = null;
+  if (picks.size > 0) {
+    picked = new Set<string>();
+    for (const node of graph.nodes) {
+      if (node.branch === null) picked.add(node.id);
+      else if (node.kind === "objective" ? picks.has("objective") : picks.has(node.branch)) picked.add(node.id);
+    }
+    for (const edge of graph.edges) {
+      if ((edge.kind === "objective" && picks.has("objective")) || (edge.kind === "link" && picks.has("link"))) {
+        picked.add(edge.from);
+        picked.add(edge.to);
+      }
+    }
+    // 고른 점이 핵에서 떨어져 떠 있지 않게 나무 위쪽(허브·주제)을 함께 세운다.
+    const parent = new Map<string, string>();
+    for (const edge of graph.edges) if (edge.kind === "tree") parent.set(edge.to, edge.from);
+    for (const id of [...picked]) {
+      let up = parent.get(id);
+      while (up !== undefined && !picked.has(up)) {
+        picked.add(up);
+        up = parent.get(up);
+      }
+    }
+  }
   const visible = new Set<string>();
   for (const node of graph.nodes) {
-    if (node.branch !== null && hidden.has(node.branch)) continue;
+    if (picked !== null && !picked.has(node.id)) continue;
     if (hits !== null && node.branch !== null && !hits.has(node.id)) {
       const near = graph.adjacent.get(node.id) ?? [];
       if (!near.some((other) => hits.has(other))) continue;
