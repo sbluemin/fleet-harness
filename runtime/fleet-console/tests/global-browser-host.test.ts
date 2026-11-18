@@ -387,6 +387,48 @@ describe("session browser host contract", () => {
       expect(service.state(BROWSER_GLOBAL_ID).tabs.some((tab) => tab.url.startsWith("data:"))).toBe(false);
       engine.relay("local", { detached: ["tab-background", "tab-front"] });
       expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual(sharedTabs.slice(1).map((tab) => tab.id));
+
+      // 탭 순서는 명시적 상태다 — Console state(`tabs`)·`spaceTabs`·`tabs_context` 가 같은 순서를 보인다.
+      // 탭형 열기는 그 순서에서 opener 를 기준으로 들어간다(앞 열기: opener 오른쪽, 백그라운드: 이어진 자손 뒤).
+      const orderSpace = commodoreBrowserSpaceId("order");
+      const orderState = () => service.state(BROWSER_GLOBAL_ID).tabs;
+      const order = () => orderState().filter((tab) => tab.spaceId === orderSpace).map((tab) => tab.id);
+      const orderCaller = { participantId: "order", spaceId: orderSpace, ownerId: "order" };
+      const tabIdAt = (url: string) => orderState().find((tab) => tab.url === url)!.id;
+      const openPopup = async (openerId: string, url: string, background = false): Promise<string> => {
+        engine.relay("local", { popups: [{ viewId: `popup-${url.replace(/\W+/gu, "-")}`, openerViewId: service.viewIdOfTab(BROWSER_GLOBAL_ID, openerId)!, url, background }] });
+        await vi.waitFor(() => expect(orderState().some((tab) => tab.url === url)).toBe(true));
+        return tabIdAt(url);
+      };
+      const A = (await service.createTab(BROWSER_GLOBAL_ID, "https://order.example/a", "user", { spaceId: orderSpace })).id;
+      const B = (await service.createTab(BROWSER_GLOBAL_ID, "https://order.example/b", "user", { spaceId: orderSpace })).id;
+      await service.selectTab(BROWSER_GLOBAL_ID, A);
+      // 백그라운드 연속 열기(Cmd·중간 클릭)는 앞서 연 자식 뒤로 이어진다.
+      const L1 = await openPopup(A, "https://order.example/l1", true);
+      const L2 = await openPopup(A, "https://order.example/l2", true);
+      expect(order()).toEqual([A, L1, L2, B]);
+      expect(service.agentTabs(BROWSER_GLOBAL_ID, orderCaller, false).tabs.map((tab) => tab.tabId)).toEqual([A, L1, L2, B]);
+      // 앞 열기(_blank·window.open)는 opener 바로 오른쪽이고, 같은 스페이스의 삽입 관계를 모두 지운다.
+      const F = await openPopup(A, "https://order.example/f");
+      expect(order()).toEqual([A, F, L1, L2, B]);
+      const L3 = await openPopup(A, "https://order.example/l3", true);
+      expect(order()).toEqual([A, F, L3, L1, L2, B]);
+      // 사람이 자식에서 부모로 표시 탭을 옮기는 것은 관계를 유지한다(크롬 잊힘 조건).
+      await service.selectTab(BROWSER_GLOBAL_ID, A, true);
+      const L4 = await openPopup(A, "https://order.example/l4", true);
+      // L3 도 A 의 자식이므로 A 다음으로 이어진 F·L3 뒤에 들어간다.
+      expect(order()).toEqual([A, F, L3, L4, L1, L2, B]);
+      // 무관한 탭 사이의 표시 탭 이동은 관계를 모두 지운다 — 다음 백그라운드는 opener 바로 오른쪽이다.
+      await service.selectTab(BROWSER_GLOBAL_ID, F, true);
+      await service.selectTab(BROWSER_GLOBAL_ID, L1, true);
+      const M = await openPopup(A, "https://order.example/m", true);
+      expect(order()).toEqual([A, M, F, L3, L4, L1, L2, B]);
+      // 닫힌 탭을 opener 로 둔 탭은 그 탭의 관계를 이어받는다 — A→M→N 에서 M 을 닫으면 N 은 A 의 자식이다.
+      const N = await openPopup(M, "https://order.example/n", true);
+      await service.closeTab(BROWSER_GLOBAL_ID, M);
+      const P = await openPopup(A, "https://order.example/p", true);
+      expect(order()).toEqual([A, N, P, F, L3, L4, L1, L2, B]);
+      await service.closeSpace(orderSpace);
       // 없는 스페이스에는 열 수 없다 — 스페이스는 디폴트와 사령관의 것뿐이다.
       await expect(service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: "objective-a" })).rejects.toMatchObject({ code: "browser_space_not_found" });
 
