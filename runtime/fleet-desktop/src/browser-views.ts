@@ -22,6 +22,7 @@ import {
   type DesktopBrowserSnapshot,
   type DesktopBrowserChrome,
   type DesktopBrowserSurface,
+  type DesktopBrowserPopup,
   type DesktopBrowserView,
   type DesktopBrowserSurfaceRelay,
   type ViewerCaptureProfile,
@@ -50,6 +51,8 @@ const RELAY_FLUSH_MS = 8;
 const RELAY_RETRY_MS = 500;
 /** Chromium 이 순서를 지켜 주는 이벤트지만, 한 번에 너무 많이 쌓이면 relay 하나가 콘솔의 한도를 넘는다. */
 const RELAY_MAX_EVENTS = 400;
+/** 셸이 만든 팝업 뷰를 Console 이 탭으로 받기까지 기다리는 시간. 받지 않으면 팝업을 닫는다. */
+const POPUP_ADOPT_MS = 15_000;
 
 /**
  * 페이지 뷰가 서는 창. 메인 창(Console 뒤에 주차)이거나 독립 창이다. 두 창 모두 같은 뜻의 조작만 받는다 — 어느 창에 서는지는 표면이 정한다.
@@ -87,8 +90,11 @@ export interface DesktopBrowserViewsDeps {
   /** 메인 창의 Console 렌더러 — 등록 단축키를 눌렀을 때 입력을 돌려보낸다. */
   readonly consoleContents: () => WebContents | null;
   readonly surface: BrowserSurfaceHost;
-  /** `profile` 이 있으면 그 영속 프로필의 디스크 세션에, `null` 이면 `partition` 의 메모리 세션에 뷰를 연다. */
-  readonly createView: (partition: string, profile: string | null) => WebContentsView;
+  /**
+   * `profile` 이 있으면 그 영속 프로필의 디스크 세션에, `null` 이면 `partition` 의 메모리 세션에 뷰를 연다. `guest` 가 있으면
+   * 페이지 팝업으로 Chromium 이 이미 만든(opener 와 같은 세션의) webContents 를 그 뷰에 담는다.
+   */
+  readonly createView: (partition: string, profile: string | null, guest?: WebContents) => WebContentsView;
   readonly product: () => string;
   readonly userAgent: () => string;
   /** 이 세션이 붙는 매니지드 콘솔의 락 토큰. 없으면 자격 헤더를 보내지 않는다. */
@@ -458,7 +464,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   /** 마지막 스냅샷을 낸 Console 프로세스의 수명 표. 싣지 않는 옛 Console 이면 null. */
   let epoch: string | null = null;
   let registeredShortcuts = new Set<string>();
-  let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[] } = emptyOutbox();
+  let outbox: DesktopBrowserRelay & { attached: string[]; detached: string[]; popups: DesktopBrowserPopup[]; sizes: { viewId: string; width: number; height: number; scale: number }[]; results: { id: number; result?: unknown; error?: string }[]; events: { viewId: string; method: string; params: Record<string, unknown> }[] } = emptyOutbox();
   let flushTimer: ReturnType<typeof setTimeout> | null = null;
   let flushing: Promise<void> = Promise.resolve();
   /**
@@ -471,6 +477,10 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const viewerPollMs = Math.max(VIEWER_FRAME_IDLE_INTERVAL_MS, deps.viewerPollMs ?? VIEWER_FRAME_IDLE_INTERVAL_MS);
   /** 시청자가 고른 스트리밍 화질 — 이 셸은 시청 프레임 캡처에만 쓴다. 옛 Console 은 값을 싣지 않는다. */
   let viewerCapture: ViewerCaptureQuality = "balanced";
+  /** 지금 Console 이 페이지 팝업을 새 탭으로 받는가(스냅샷의 `popups`). 아니면 팝업을 지금처럼 같은 뷰에서 연다. */
+  let popupsAccepted = false;
+  /** Console 의 스냅샷에 아직 오르지 않은 팝업 뷰 — 그동안은 스냅샷에 없다고 거두지 않는다. 값은 받기를 기다리는 만료 타이머. */
+  const pendingPopups = new Map<string, ReturnType<typeof setTimeout>>();
   const now = deps.now ?? (() => Date.now());
   const schedule = deps.schedule ?? ((callback: () => void, delayMs: number) => setTimeout(callback, delayMs));
   const cancel = deps.cancel ?? ((handle: unknown) => { clearTimeout(handle as ReturnType<typeof setTimeout>); });
@@ -801,7 +811,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     }
   }
 
-  function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[] }; }
+  function emptyOutbox() { return { attached: [] as string[], detached: [] as string[], popups: [] as DesktopBrowserPopup[], sizes: [] as { viewId: string; width: number; height: number; scale: number }[], results: [] as { id: number; result?: unknown; error?: string }[], events: [] as { viewId: string; method: string; params: Record<string, unknown> }[] }; }
   let relayExtrasJson = "";
   const changedRelayExtras = (): Pick<DesktopBrowserRelay, "selectPopup" | "permissionPrompts" | "passwordPrompt"> | null => {
     if (!deps.relayExtras) return null;
@@ -822,13 +832,15 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const token = session;
     if (!target) { outbox = emptyOutbox(); return; }
     const extras = changedRelayExtras();
-    if (!outbox.surface && outbox.attached.length + outbox.detached.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0 && extras === null) return;
+    if (!outbox.surface && outbox.attached.length + outbox.detached.length + outbox.popups.length + outbox.sizes.length + outbox.results.length + outbox.events.length === 0 && extras === null) return;
     const batch = outbox;
     outbox = emptyOutbox();
     const body: DesktopBrowserRelay = {
       ...(batch.surface ? { surface: batch.surface } : {}),
       ...(batch.attached.length ? { attached: batch.attached } : {}),
       ...(batch.detached.length ? { detached: batch.detached } : {}),
+      // 크기 보고보다 앞에 — Console 은 팝업을 등록한 뒤에야 그 뷰의 크기를 받는다.
+      ...(batch.popups.length ? { popups: batch.popups } : {}),
       ...(batch.sizes.length ? { sizes: batch.sizes } : {}),
       ...(batch.results.length ? { results: batch.results } : {}),
       ...(batch.events.length ? { events: batch.events } : {}),
@@ -861,6 +873,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
   const push = (partial: Partial<typeof outbox>): void => {
     if (partial.attached) outbox.attached.push(...partial.attached);
     if (partial.detached) outbox.detached.push(...partial.detached);
+    if (partial.popups) outbox.popups.push(...partial.popups);
     if (partial.sizes) outbox.sizes.push(...partial.sizes);
     if (partial.results) outbox.results.push(...partial.results);
     if (partial.events) { outbox.events.push(...partial.events); if (outbox.events.length >= RELAY_MAX_EVENTS) { flush(); return; } }
@@ -957,10 +970,10 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     });
   };
 
-  const create = (spec: DesktopBrowserView): void => {
+  const create = (spec: DesktopBrowserView, guest?: WebContents): void => {
     const shell = deps.shell();
     if (!shell || shell.isDestroyed()) return;
-    const view = deps.createView(spec.partition, spec.profile ?? null);
+    const view = deps.createView(spec.partition, spec.profile ?? null, guest);
     deps.onView?.(view, spec.id);
     // 출처 표식보다 먼저 단다. origin이 없어 표식을 건너뛰어도 형제 쿠키는 나가지 않는다.
     installRequestGuard(view.webContents.session);
@@ -1028,8 +1041,16 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     entry.lastBounds = initialBounds;
     view.setVisible(true);
     shell.park(view);
-    // 페이지가 새 창을 열려 하면 같은 뷰에서 연다 — 이 뷰 밖으로 나가는 창은 없다.
-    contents.setWindowOpenHandler(({ url }) => { void contents.loadURL(url).catch(() => undefined); return { action: "deny" }; });
+    // 창 기능을 단 window.open(팝업)은 Console 이 받을 때 opener 와 이어진 새 탭으로 연다 — Chrome 의 팝업처럼 opener 가
+    // 결과를 돌려받고 팝업이 스스로 닫힐 수 있다. 탭형 열기(target=_blank, 기능 없는 window.open)와 옛 Console 에서는 같은 뷰에서 연다.
+    contents.setWindowOpenHandler((details) => {
+      const host = deps.shell();
+      if (popupsAccepted && details.disposition === "new-window" && live.has(spec.id) && host && !host.isDestroyed()) {
+        return { action: "allow", outlivesOpener: true, createWindow: (options) => openPopup(spec.id, (options as { webContents: WebContents }).webContents, details.url) };
+      }
+      void contents.loadURL(details.url).catch(() => undefined);
+      return { action: "deny" };
+    });
     // 새 문서가 자리잡을 때마다 다시 넣는다 — 삽입한 스타일은 그 문서에만 산다.
     contents.on("did-navigate", () => { void contents.insertCSS(PAGE_NO_DRAG_CSS, { cssOrigin: "user" }).catch(() => undefined); });
     attachShortcutSource(contents, spec.id);
@@ -1074,11 +1095,51 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       drop(spec.id, true);
       return;
     }
-    void contents.loadURL(spec.url).catch(() => undefined);
+    // 팝업은 Chromium 이 연 주소로 이미 떠난다 — openPopup 이 그 첫 이동을 붙잡는다.
+    if (!guest) void contents.loadURL(spec.url).catch(() => undefined);
     place(entry);
   };
 
+  /**
+   * 페이지가 연 팝업 창을 opener 와 이어진 새 뷰로 만든다. 첫 이동은 붙잡아 `about:blank` 에 세워 두고 그 주소를 Console 에
+   * 알린다 — Console 이 탭으로 받아 Chrome 표면 등 준비를 마친 뒤 그 주소로 보낸다(준비 전 문서는 그 스크립트를 받지 못한다).
+   * 빈 팝업(`window.open("")`)은 붙잡지 않고 바로 알린다 — 여는 쪽이 곧바로 문서를 써 넣을 수 있다.
+   */
+  const openPopup = (openerId: string, guest: WebContents, url: string): WebContents => {
+    const opener = live.get(openerId)!.spec;
+    const id = `popup-${randomUUID().slice(0, 8)}`;
+    const spec: DesktopBrowserView = { id, objectiveId: opener.objectiveId, partition: opener.partition, profile: opener.profile ?? null, visible: false, url: "about:blank", ...(opener.pageDialogs !== undefined ? { pageDialogs: opener.pageDialogs } : {}), ...(opener.agent ? { agent: true } : {}) };
+    let announced = false;
+    const announce = (target: string): void => {
+      if (announced || !live.has(id)) return;
+      announced = true;
+      push({ popups: [{ viewId: id, openerViewId: openerId, url: target }] });
+      const bounds = live.get(id)?.lastBounds;
+      if (bounds) reportSize(id, bounds);
+    };
+    const blank = url === "" || url === "about:blank";
+    let holding = !blank;
+    guest.on("will-frame-navigate", (event) => {
+      if (!holding || !event.isMainFrame) return;
+      holding = false;
+      event.preventDefault();
+      void guest.loadURL("about:blank").catch(() => undefined);
+      announce(event.url);
+    });
+    create(spec, guest);
+    pendingPopups.set(id, setTimeout(() => {
+      pendingPopups.delete(id);
+      if (live.has(id)) { log("browser popup was not adopted; closing it"); drop(id, true); }
+    }, POPUP_ADOPT_MS));
+    if (blank) announce("about:blank");
+    // 첫 이동이 오지 않으면(붙잡지 못하면) 그 주소대로 둔 채 알린다 — 준비 스크립트가 첫 문서에 늦을 뿐 팝업은 산다.
+    else setTimeout(() => { if (holding) { holding = false; announce(url); } }, 2_000);
+    return guest;
+  };
+
   const drop = (id: string, report: boolean): void => {
+    const pending = pendingPopups.get(id);
+    if (pending !== undefined) { clearTimeout(pending); pendingPopups.delete(id); }
     const entry = live.get(id);
     if (!entry) return;
     disarmFrameSubscription(entry);
@@ -1191,8 +1252,14 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       registeredShortcuts = new Set(snapshot.shortcuts);
     }
     deps.surface.apply(snapshot.surface ?? null, snapshot.chrome ?? null, origin);
+    popupsAccepted = snapshot.popups === true;
     const wanted = new Set(snapshot.views.map((view) => view.id));
-    for (const id of [...live.keys()]) if (!wanted.has(id)) drop(id, false);
+    for (const id of [...pendingPopups.keys()]) {
+      if (!wanted.has(id)) continue;
+      clearTimeout(pendingPopups.get(id)!);
+      pendingPopups.delete(id);
+    }
+    for (const id of [...live.keys()]) if (!wanted.has(id) && !pendingPopups.has(id)) drop(id, false);
     for (const spec of snapshot.views) {
       const entry = live.get(spec.id);
       if (!entry) { create(spec); continue; }

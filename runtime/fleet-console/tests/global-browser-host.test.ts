@@ -360,6 +360,15 @@ describe("session browser host contract", () => {
       await service.closeOwner("objective-a");
       expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual(sharedTabs.slice(1).map((tab) => tab.id));
       foreign = sharedTabs[2]!;
+      // 페이지 팝업(window.open 의 새 창)은 opener 와 같은 스페이스의 새 탭이 되어 준비 뒤 그 주소로 간다 — opener 관계는 셸의
+      // Chromium 에 산다. opener 를 모르는 팝업은 받지 않고, 팝업이 스스로 닫히면(셸의 detached) 그 탭도 접힌다.
+      expect(engine.snapshot().popups).toBe(true);
+      engine.relay("local", { popups: [{ viewId: "popup-orphan", openerViewId: "view-missing", url: "https://accounts.example/orphan" }] });
+      engine.relay("local", { popups: [{ viewId: "popup-login", openerViewId: service.viewIdOfTab(BROWSER_GLOBAL_ID, foreign.id)!, url: "https://accounts.example/oauth" }] });
+      await vi.waitFor(() => expect(service.state(BROWSER_GLOBAL_ID).tabs.find((tab) => tab.url === "https://accounts.example/oauth")).toMatchObject({ spaceId: foreign.spaceId }));
+      expect(engine.snapshot().views.some((view) => view.id === "popup-orphan")).toBe(false);
+      engine.relay("local", { detached: ["popup-login"] });
+      expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual(sharedTabs.slice(1).map((tab) => tab.id));
       // 없는 스페이스에는 열 수 없다 — 스페이스는 디폴트와 사령관의 것뿐이다.
       await expect(service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: "objective-a" })).rejects.toMatchObject({ code: "browser_space_not_found" });
 
