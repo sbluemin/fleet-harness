@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Reusable page fixture for an owned browser run: text input, select, native
- * alert/confirm, and a fake login form.
+ * alert/confirm, and a fake login form at `/`; a same-origin opener page at
+ * `/opener` and its child at `/child`.
  *
  *   node page-fixture-server.mjs [--port <0-65535>]
  *
@@ -11,9 +12,17 @@
  *
  * The login form is a fixture. Submit is prevented and the page only shows an
  * in-page completion marker; its inputs carry no names, and the server never
- * reads a body, parses a query, logs a request, or sets a cookie. The page uses
- * no storage and calls no network. It does not verify IME composition or real
+ * reads a body, parses a query, logs a request, or sets a cookie. No page uses
+ * storage or calls the network. It does not verify IME composition or real
  * authentication success.
+ *
+ * `/opener` opens `/child` as a tab or a popup, and the child posts one fixed
+ * synthetic result to the opener before calling `window.close()`. Each open
+ * clears the opener's result, and the opener accepts a message only from the
+ * same origin, from the handle that open created, and with that exact result.
+ * Its "result" marker means only that the opener received the message; it does
+ * not prove the child's tab actually disappeared, which the browser context
+ * list decides.
  */
 
 import http from 'node:http';
@@ -92,6 +101,109 @@ const HTML = `<!doctype html>
 </body>
 </html>`;
 
+const OPENER = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet fixture opener</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; line-height: 1.5; }
+  section { border: 1px solid #888; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+  output { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<h1>Fleet fixture opener</h1>
+<p>Fixture only. It opens the fixed same-origin child and accepts its fixed result.</p>
+<section>
+  <h2>Open child</h2>
+  <button id="open-tab" type="button">Open child as tab</button>
+  <button id="open-popup" type="button">Open child as popup</button>
+  <p>open: <output id="open-state">idle</output></p>
+</section>
+<section>
+  <h2>Result</h2>
+  <p>result: <output id="parent-result">none</output></p>
+  <p>received: <output id="parent-result-detail">none</output></p>
+  <p>Each open clears this result, and only the current child's fixed message fills it. It means only that this page received that message; confirm the child actually disappeared in the browser context list.</p>
+</section>
+<script>
+  const CHILD_URL = '/child';
+  const EXPECTED = { fixture: 'child-result', value: 'fixed' };
+  const openState = document.getElementById('open-state');
+  const resultOut = document.getElementById('parent-result');
+  const detailOut = document.getElementById('parent-result-detail');
+  let activeHandle = null;
+
+  const open = (target, features) => {
+    resultOut.textContent = 'none';
+    detailOut.textContent = 'none';
+    const handle = window.open(CHILD_URL, target, features);
+    activeHandle = handle;
+    openState.textContent = handle ? 'open' : 'blocked';
+  };
+
+  document.getElementById('open-tab').addEventListener('click', () => open('_blank', ''));
+  document.getElementById('open-popup').addEventListener('click', () => open('', 'popup,width=420,height=520'));
+
+  window.addEventListener('message', (event) => {
+    if (event.origin !== location.origin) return;
+    if (!activeHandle || event.source !== activeHandle) return;
+    const data = event.data;
+    if (data === null || typeof data !== 'object') return;
+    if (Object.keys(data).length !== 2 || data.fixture !== EXPECTED.fixture || data.value !== EXPECTED.value) return;
+    resultOut.textContent = 'child-result-received';
+    detailOut.textContent = JSON.stringify(data);
+  });
+</script>
+</body>
+</html>`;
+
+const CHILD = `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fleet fixture child</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; line-height: 1.5; }
+  section { border: 1px solid #888; border-radius: 8px; padding: 12px; margin-bottom: 16px; }
+  output { font-family: ui-monospace, monospace; }
+</style>
+</head>
+<body>
+<h1>Fleet fixture child</h1>
+<p>Fixture only. It sends the fixed synthetic result to its opener and then calls <code>window.close()</code>.</p>
+<section>
+  <p>opener: <output id="child-opener">absent</output></p>
+  <button id="send-close" type="button">Send fixed result and close</button>
+  <p>state: <output id="child-state">idle</output></p>
+  <p>Calling <code>window.close()</code> is not proof that this tab disappeared; confirm that in the browser context list.</p>
+</section>
+<script>
+  document.getElementById('child-opener').textContent = window.opener ? 'present' : 'absent';
+  document.getElementById('send-close').addEventListener('click', () => {
+    const target = window.opener;
+    const state = document.getElementById('child-state');
+    if (!target) {
+      state.textContent = 'no-opener';
+      return;
+    }
+    target.postMessage({ fixture: 'child-result', value: 'fixed' }, location.origin);
+    state.textContent = 'result-sent-close-requested';
+    window.close();
+  });
+</script>
+</body>
+</html>`;
+
+const PAGES = new Map([
+  ['/', HTML],
+  ['/opener', OPENER],
+  ['/child', CHILD],
+]);
+
 function fail(message) {
   process.stderr.write(`page-fixture-server: ${message}\n`);
   process.exit(1);
@@ -136,7 +248,8 @@ function main() {
       res.end('bad request');
       return;
     }
-    if (pathname !== '/') {
+    const page = PAGES.get(pathname);
+    if (page === undefined) {
       res.statusCode = 404;
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
       res.end('not found');
@@ -144,7 +257,7 @@ function main() {
     }
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-store');
-    res.end(req.method === 'HEAD' ? undefined : HTML);
+    res.end(req.method === 'HEAD' ? undefined : page);
   });
 
   let stopping = false;
