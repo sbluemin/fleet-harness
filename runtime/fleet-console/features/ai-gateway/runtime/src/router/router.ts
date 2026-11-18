@@ -952,7 +952,6 @@ function findGateStats(
   return match ? { inFlight: match.inFlight, queued: match.queued } : undefined;
 }
 
-/** Anthropic 모델은 번역하지 않는다. 요청 본문과 응답 스트림을 그대로 통과시킨다. */
 /**
  * 설치된 Claude Code가 가족 이름의 버전을 정하는 모델인가. 구독 `claude`와, 같은 가족을 API 키로 서빙하는
  * `anthropic` 모두 상류 id를 그 동기화에서 받는다.
@@ -961,6 +960,7 @@ function resolvesThroughClaudeCli(target: GatewayModel | undefined): boolean {
   return target?.provider === "claude" || target?.provider === "anthropic";
 }
 
+/** Anthropic 모델은 번역하지 않는다. 요청 본문과 응답 스트림을 그대로 통과시킨다. */
 async function proxyToAnthropic(
   requestHeaders: Record<string, unknown>,
   res: GatewayProxyResponse,
