@@ -39,7 +39,7 @@ export async function startConsoleExecution(
     return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
   };
   const delegationIntents = createDelegationIntentLedger();
-  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, syncAntigravity, releaseExecutionSession, canRouteDelegation } = startAiGateway({
+  const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, releaseExecutionSession, canRouteDelegation } = startAiGateway({
     ...ctx,
     delegationIntents,
     host: { ...ctx.host, storage: quotaStorage },
@@ -59,7 +59,6 @@ export async function startConsoleExecution(
     ...(ensureClaudeNativeModels ? { ensureClaudeNativeModels } : {}),
     wireLogRuntime: wireLog,
     onAiGatewayChanged: modelRoster.notify,
-    onAntigravityEnabled: syncAntigravity,
   });
   const runtime = createTerminalRuntime(ctx);
   registerWsHandler(ctx, "/", runtime.handleUpgrade, { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Console Execution", gate: "one-use-ticket", transport: "websocket" });
