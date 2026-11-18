@@ -238,19 +238,6 @@ function createRouteHarness(options: HarnessOptions = {}) {
         }
         return aiGateway;
       },
-      writeAntigravityEnabled: (enabled) => {
-        updateCalls += 1;
-        aiGateway = normalizeAiGatewaySettings({
-          ...aiGateway,
-          ...(enabled ? { antigravityEnabled: true } : {}),
-        });
-        if (!enabled) {
-          const without = { ...aiGateway } as { antigravityEnabled?: unknown };
-          delete without.antigravityEnabled;
-          aiGateway = without as AiGatewayStoredSettings;
-        }
-        return aiGateway;
-      },
     },
     wireLogRuntime: {
       enabled: () => options.wireLogEnabled ?? aiGateway.wireLogEnabled === true,

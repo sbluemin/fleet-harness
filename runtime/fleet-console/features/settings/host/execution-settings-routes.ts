@@ -62,8 +62,8 @@ export interface TerminalSettingsState {
   readonly wireLogEnabled: boolean;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
-  /** 저장 키 부재는 false다. */
-  readonly antigravityEnabled: boolean;
+  /** 퇴역한 공급자 키. 서버가 더 이상 내보내지 않으며, 읽힘은 꺼짐과 같다. */
+  readonly antigravityEnabled?: boolean;
   /** 공급자별 로그인 상태. null은 아직 모름(숨기지 않음). */
   readonly aiGatewayLogin: Readonly<Record<string, string | null>>;
 }
@@ -246,7 +246,7 @@ export function registerTerminalSettingsRoutes(ctx: ExecutionSettingsContext, de
   ]);
 }
 
-const AI_GATEWAY_LOGIN_PROVIDERS = ["antigravity", "claude", "codex", "gemini", "muse-code", "opencode", "xai"] as const;
+const AI_GATEWAY_LOGIN_PROVIDERS = ["claude", "codex", "gemini", "muse-code", "opencode", "xai"] as const;
 
 function toTerminalSettingsState(
   aiGateway: AiGatewayStoredSettings,
@@ -266,7 +266,6 @@ function toTerminalSettingsState(
     wireLogEnabled,
     compactCeiling: aiGateway.compactCeiling ?? null,
     xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
-    antigravityEnabled: aiGateway.antigravityEnabled === true,
     aiGatewayLogin: aiGatewayLogin(readProviderStatuses),
   };
 }

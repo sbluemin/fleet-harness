@@ -53,8 +53,8 @@ export interface SystemPromptSettingsState {
   readonly wireLogEnabled: boolean;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
-  /** 저장 키 부재는 꺼짐이다. */
-  readonly antigravityEnabled: boolean;
+  /** 퇴역한 공급자 키. 서버가 더 이상 내보내지 않으며, 읽힘은 꺼짐과 같다. */
+  readonly antigravityEnabled?: boolean;
   /** 공급자 로그인 상태. null·부재는 아직 모름이라 로그인 필요로 보지 않는다. */
   readonly aiGatewayLogin: Readonly<Partial<Record<AiGatewayProviderId, string | null>>>;
 }
@@ -116,7 +116,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || typeof payload.wireLogEnabled !== "boolean"
     || !isCompactCeiling(payload.compactCeiling)
     || !isXaiEndpointPreference(payload.xaiEndpoint)
-    || typeof payload.antigravityEnabled !== "boolean"
+    || (payload.antigravityEnabled !== undefined && typeof payload.antigravityEnabled !== "boolean")
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
@@ -126,7 +126,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     wireLogEnabled: payload.wireLogEnabled,
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
-    antigravityEnabled: payload.antigravityEnabled,
+    antigravityEnabled: payload.antigravityEnabled ?? false,
     aiGatewayLogin: isAiGatewayLogin(payload.aiGatewayLogin) ? payload.aiGatewayLogin : {},
   };
 }
