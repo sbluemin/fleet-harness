@@ -257,7 +257,8 @@ export function registerModelRosterRoutes(ctx: ModelRosterRouteContext, models: 
     if (!isModelRosterTarget(target)) { ctx.host.http.writeJson(res, 400, { error: "invalid_target" }); return true; }
     const roster = models.roster(target);
     // Claude 행이 있으면 버전 이름을 채우러 간다 — 응답은 기다리지 않고, 표가 바뀌면 변경 알림이 다시 읽게 한다.
-    if (roster.some((group) => group.id === modelRosterGroupId("claude"))) models.warmClaudeVersions?.();
+    // Anthropic API 키 행도 같은 동기화에서 버전을 받는다.
+    if (roster.some((group) => group.id === modelRosterGroupId("claude") || group.id === modelRosterGroupId("anthropic"))) models.warmClaudeVersions?.();
     ctx.host.http.writeJson(res, 200, { target, roster });
     return true;
   }, [{ method: "GET", path: "", summary: "Read the model roster every Console model picker shares.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);

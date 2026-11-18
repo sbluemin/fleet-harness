@@ -1825,7 +1825,13 @@ describe("Gemini routing", () => {
 });
 
 describe("Anthropic API key routing", () => {
-  const CREDIT_MODEL = "claude-gateway--anthropic--claude-sonnet-5-5";
+  // 카탈로그 id는 가족 기준(`anthropic--sonnet-1m`)이고, 상류 id는 설치된 Claude Code 동기화가 알려 주는 값이다.
+  const CREDIT_MODEL = "claude-gateway--anthropic--sonnet-1m[1m]";
+  const syncClaudeLineup = (version: string) => async () => {
+    applyClaudeNativeModels([
+      { value: "sonnet[1m]", resolvedModel: `claude-sonnet-${version}[1m]`, displayName: "Sonnet", effortLevels: ["low", "medium", "high", "xhigh", "max"] },
+    ]);
+  };
   const sse = (events: ReadonlyArray<Record<string, unknown>>): string =>
     events.map((event) => `event: ${String(event.type)}\ndata: ${JSON.stringify(event)}\n\n`).join("");
   const completedTurn = sse([
@@ -1850,7 +1856,8 @@ describe("Anthropic API key routing", () => {
     });
     const anthropicUsage = { observeUsage: vi.fn(), observeBlock: vi.fn(), observeRateLimit: vi.fn() };
 
-    const signedOut = createAiGatewayRouter({ fetch: fetchMock, readAnthropicApiKey: () => undefined, anthropicUsage });
+    const ensureClaudeNativeModels = vi.fn(syncClaudeLineup("5-5"));
+    const signedOut = createAiGatewayRouter({ fetch: fetchMock, ensureClaudeNativeModels, readAnthropicApiKey: () => undefined, anthropicUsage });
     const refused = response();
     await signedOut.handle(ctx({ res: refused, token: ANTHROPIC_CRED, model: CREDIT_MODEL }));
     expect(refused.status).toBe(403);
@@ -1858,7 +1865,7 @@ describe("Anthropic API key routing", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     signedOut.dispose();
 
-    const router = createAiGatewayRouter({ fetch: fetchMock, readAnthropicApiKey: async () => "sk-ant-api03-stored", anthropicUsage });
+    const router = createAiGatewayRouter({ fetch: fetchMock, ensureClaudeNativeModels, readAnthropicApiKey: async () => "sk-ant-api03-stored", anthropicUsage });
     try {
       const res = response();
       await router.handle(ctx({
@@ -1878,7 +1885,7 @@ describe("Anthropic API key routing", () => {
       // OAuth 전용 베타는 빠지고, 나머지 베타·진입점 표식(user-agent)은 호출자 값 그대로다.
       expect(calls[0]?.headers.get("anthropic-beta")).toBe("context-management-2025-06-27");
       expect(calls[0]?.headers.get("user-agent")).toBe("claude-cli/9.9.9 (external, sdk-ts)");
-      // 가상 id는 상류 id로 바뀌고 Fast(`speed`)는 지워진다.
+      // 가상 id는 동기화가 알려 준 상류 id로 바뀌고 Fast(`speed`)는 지워진다.
       expect(calls[0]?.body.model).toBe("claude-sonnet-5-5");
       expect(calls[0]?.body).not.toHaveProperty("speed");
       // 응답은 그대로 흘러가고, 옆에서 지출·한도 헤더를 읽는다.
@@ -1923,7 +1930,7 @@ describe("Anthropic API key routing", () => {
         { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5 } },
       ]), { status: 200, headers: { "content-type": "text/event-stream" } }),
     ];
-    const router = createAiGatewayRouter({ fetch: vi.fn<typeof fetch>(async () => bodies.shift()!), readAnthropicApiKey: async () => "sk-ant-api03-stored", anthropicUsage });
+    const router = createAiGatewayRouter({ fetch: vi.fn<typeof fetch>(async () => bodies.shift()!), ensureClaudeNativeModels: syncClaudeLineup("5-5"), readAnthropicApiKey: async () => "sk-ant-api03-stored", anthropicUsage });
     try {
       const depleted = response();
       await router.handle(ctx({ res: depleted, token: ANTHROPIC_CRED, model: CREDIT_MODEL }));
@@ -1932,6 +1939,30 @@ describe("Anthropic API key routing", () => {
       // 스트림이 message_stop 없이 끝났다 — 0이나 부분값으로 지어내지 않는다.
       await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model: CREDIT_MODEL }));
       expect(anthropicUsage.observeUsage).not.toHaveBeenCalled();
+    } finally {
+      router.dispose();
+    }
+  });
+
+  it("does not send an alias upstream before Claude Code has reported the version, and follows a version change", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (_url, init) =>
+      new Response(JSON.stringify({ id: "msg", type: "message", role: "assistant", content: [], model: JSON.parse(String(init?.body)).model }), { status: 200, headers: { "content-type": "application/json" } }));
+    applyClaudeNativeModels([]);
+    const unresolved = createAiGatewayRouter({ fetch: fetchMock, ensureClaudeNativeModels: async () => undefined, readAnthropicApiKey: async () => "sk-ant-api03-stored" });
+    const early = response();
+    await unresolved.handle(ctx({ res: early, token: ANTHROPIC_CRED, model: CREDIT_MODEL }));
+    expect(early.status).toBe(503);
+    expect(fetchMock).not.toHaveBeenCalled();
+    unresolved.dispose();
+
+    // 같은 카탈로그 id가 버전이 바뀐 뒤에도 그대로 새 상류 id로 간다.
+    let version = "5-5";
+    const router = createAiGatewayRouter({ fetch: fetchMock, ensureClaudeNativeModels: async () => syncClaudeLineup(version)(), readAnthropicApiKey: async () => "sk-ant-api03-stored" });
+    try {
+      await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model: CREDIT_MODEL }));
+      version = "5-6";
+      await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model: CREDIT_MODEL }));
+      expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init?.body)).model)).toEqual(["claude-sonnet-5-5", "claude-sonnet-5-6"]);
     } finally {
       router.dispose();
     }

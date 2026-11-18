@@ -457,7 +457,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       resolvedExecution = resolution;
       target = harness.findModel(resolution.modelId, GATEWAY_MODELS);
       // 상속·명시 배정이 native Claude 모델이면 비가상 경로와 같은 계약을 지난다.
-      if (target?.provider === "claude" && deps.ensureClaudeNativeModels) {
+      if (resolvesThroughClaudeCli(target) && deps.ensureClaudeNativeModels) {
         await deps.ensureClaudeNativeModels();
         target = harness.findModel(resolution.modelId, GATEWAY_MODELS);
       }
@@ -471,7 +471,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     } else {
       target = harness.findModel(requested, GATEWAY_MODELS);
       // Claude alias의 버전은 설치된 CLI가 정한다. 표를 갱신하면 카탈로그가 새로 지어지므로 다시 찾는다.
-      if (target?.provider === "claude" && deps.ensureClaudeNativeModels) {
+      if (resolvesThroughClaudeCli(target) && deps.ensureClaudeNativeModels) {
         await deps.ensureClaudeNativeModels();
         target = harness.findModel(requested, GATEWAY_MODELS);
       }
@@ -607,6 +607,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
     try {
       if (target?.provider === "anthropic") {
+        // 상류 id는 설치된 Claude Code가 가족 이름을 푼 값이다(Claude 경로와 같은 원칙). 아직 모르면 가상
+        // id나 별칭을 API로 흘리지 않고 여기서 멈춘다 — 호출자 자격은 이 시점까지 어디로도 나가지 않았다.
+        if (target.upstreamId === undefined) {
+          writeClientError(res, 503, "api_error", `Claude Code has not reported which model "${requested}" resolves to yet.`);
+          clock?.finish("error", 503);
+          return true;
+        }
         // 호출자의 구독 자격은 상류로 가지 않는다. 저장된 키가 x-api-key로 가고, 청구는 API 크레딧이다.
         // 상류가 그 키를 401로 거절하면 호출자의 구독 로그인이 풀린 것으로 읽히지 않도록, 하네스가 정한
         // 로그인 거절 상태(401 → 403)로 내보낸다 — 공급자 로그인 거절과 같은 규칙이다.
@@ -946,6 +953,14 @@ function findGateStats(
 }
 
 /** Anthropic 모델은 번역하지 않는다. 요청 본문과 응답 스트림을 그대로 통과시킨다. */
+/**
+ * 설치된 Claude Code가 가족 이름의 버전을 정하는 모델인가. 구독 `claude`와, 같은 가족을 API 키로 서빙하는
+ * `anthropic` 모두 상류 id를 그 동기화에서 받는다.
+ */
+function resolvesThroughClaudeCli(target: GatewayModel | undefined): boolean {
+  return target?.provider === "claude" || target?.provider === "anthropic";
+}
+
 async function proxyToAnthropic(
   requestHeaders: Record<string, unknown>,
   res: GatewayProxyResponse,

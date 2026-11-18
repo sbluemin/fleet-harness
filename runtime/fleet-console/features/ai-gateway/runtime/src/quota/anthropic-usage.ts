@@ -1,5 +1,3 @@
-import type { AnthropicModelId } from "../upstream/anthropic/coordinates.js";
-
 import type { ProviderRateLimit } from "./types.js";
 
 /**
@@ -27,7 +25,8 @@ export interface AnthropicUsagePort {
 }
 
 export interface AnthropicUsageObservation {
-  readonly model: AnthropicModelId;
+  /** 상류 와이어 id(Claude Code 동기화가 알려 준 값, 예 `claude-opus-5-5`). 단가는 이 값으로 찾는다. */
+  readonly model: string;
   /** 턴이 끝난 시각(epoch ms). 원장이 월 경계를 이 값으로 고른다. */
   readonly at: number;
   /** `usage.input_tokens` — 마지막 캐시 중단점 뒤의 캐시 밖 입력. */
@@ -54,7 +53,8 @@ export interface AnthropicUsageObservation {
 export type AnthropicBlockReason = "balance_depleted" | "spend_limit" | "rate_limited";
 
 export interface AnthropicBlockObservation {
-  readonly model: AnthropicModelId;
+  /** 상류 와이어 id(Claude Code 동기화가 알려 준 값, 예 `claude-opus-5-5`). 단가는 이 값으로 찾는다. */
+  readonly model: string;
   readonly at: number;
   readonly httpStatus: 400 | 402 | 429;
   readonly reason: AnthropicBlockReason;

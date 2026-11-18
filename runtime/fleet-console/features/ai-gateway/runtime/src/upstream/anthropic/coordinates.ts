@@ -15,14 +15,3 @@ export const ANTHROPIC_PROVIDER_ID = "anthropic";
 /** auth.json에 저장되는 공급자 id. 저장된 키가 업그레이드 뒤에도 읽히도록 바꾸지 않는다. */
 export const ANTHROPIC_AUTH_PROVIDER_ID = "Anthropic API";
 export const ANTHROPIC_API_BASE_URL = "https://api.anthropic.com";
-
-/**
- * 사람이 고른 범위: Opus 5.5·Sonnet 5.5·Haiku 5.5. Fable은 넣지 않는다.
- * 카탈로그 modelId이자 상류 와이어 id다(`anthropic--<id>`가 카탈로그 id).
- */
-export const ANTHROPIC_MODEL_IDS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"] as const;
-export type AnthropicModelId = (typeof ANTHROPIC_MODEL_IDS)[number];
-
-export function isAnthropicModelId(value: string): value is AnthropicModelId {
-  return (ANTHROPIC_MODEL_IDS as readonly string[]).includes(value);
-}
