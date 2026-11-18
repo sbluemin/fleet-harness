@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
@@ -934,6 +934,7 @@ const DRAG_THRESHOLD_PX = 5;
 /**
  * 팝업 바닥의 도구모음 표시 글리프 줄 — 공급자마다 글리프 하나로 요약에 세울지를 고른다.
  * 같은 줄을 끌어 옮기거나(클릭과 구분되는 움직임만), 포커스 뒤 왼쪽·오른쪽 화살표로 순서를 바꾼다.
+ * 포인터 캡처는 버튼이 아니라 줄에 둔다. 순서가 바뀌며 버튼이 DOM에서 옮겨져도 드래그가 끊기지 않는다.
  * 모두 끄면 도구모음에는 막대 글리프 하나만 남아 이 팝업을 다시 연다.
  */
 function ToolbarProviderPicker({ t, mobile }: { readonly t: T; readonly mobile: boolean }) {
@@ -956,14 +957,57 @@ function ToolbarProviderPicker({ t, mobile }: { readonly t: T; readonly mobile: 
 
   const finishDrag = (commit: boolean) => {
     const drag = dragRef.current;
+    if (drag === null) return;
     const next = previewRef.current;
+    // releasePointerCapture가 lostpointercapture를 동기적으로 부르므로, 먼저 드래그를 비운다.
     dragRef.current = null;
     previewRef.current = null;
     setDraggingId(null);
     setPreview(null);
-    if (drag?.active === true) suppressClickRef.current = true;
+    if (drag.active) suppressClickRef.current = true;
+    const row = rowRef.current;
+    if (row?.hasPointerCapture(drag.pointerId) === true) row.releasePointerCapture(drag.pointerId);
     if (!commit || next === null || sameProviderOrder(next, getQuotaToolbarSetting().providerOrder)) return;
     void setQuotaProviderOrder(next);
+  };
+
+  const onPointerDown = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    if (event.button !== 0) return;
+    const button = event.target instanceof Element ? event.target.closest<HTMLButtonElement>("[data-provider]") : null;
+    if (button === null || !event.currentTarget.contains(button)) return;
+    const id = button.dataset.provider;
+    if (!isProviderId(id)) return;
+    suppressClickRef.current = false;
+    dragRef.current = { id, startX: event.clientX, pointerId: event.pointerId, active: false };
+  };
+
+  const onPointerMove = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    const drag = dragRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    if (!drag.active && Math.abs(event.clientX - drag.startX) < DRAG_THRESHOLD_PX) return;
+    if (!drag.active) {
+      drag.active = true;
+      setDraggingId(drag.id);
+      // 버튼이 아니라 줄이 캡처를 쥔다. 순서가 바뀌어 버튼이 옮겨져도 캡처가 풀리지 않는다.
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    const next = orderFromPointer(drag.id, event.clientX, event.currentTarget);
+    if (next === null) return;
+    const base = previewRef.current ?? getQuotaToolbarSetting().providerOrder;
+    if (sameProviderOrder(next, base)) return;
+    previewRef.current = next;
+    setPreview(next);
+  };
+
+  const onPointerUp = (event: ReactPointerEvent<HTMLSpanElement>) => {
+    const drag = dragRef.current;
+    if (drag === null || drag.pointerId !== event.pointerId) return;
+    // 임계값 전의 손떼기는 클릭이다. 버튼의 onClick이 토글한다.
+    if (!drag.active) {
+      dragRef.current = null;
+      return;
+    }
+    finishDrag(true);
   };
 
   return (
@@ -972,7 +1016,21 @@ function ToolbarProviderPicker({ t, mobile }: { readonly t: T; readonly mobile: 
       role="group"
       aria-label={`${t("quota.toolbar.toggle")}. ${t("quota.order.hint")}`}
     >
-      <span ref={rowRef} className={`quota-toolbar-picks${draggingId !== null ? " is-reordering" : ""}`}>
+      <span
+        ref={rowRef}
+        className={`quota-toolbar-picks${draggingId !== null ? " is-reordering" : ""}`}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={(event) => {
+          if (dragRef.current?.pointerId !== event.pointerId) return;
+          finishDrag(false);
+        }}
+        onLostPointerCapture={(event) => {
+          if (dragRef.current?.pointerId !== event.pointerId) return;
+          finishDrag(true);
+        }}
+      >
         {displayed.map((id) => {
           const shown = toolbarProviders.includes(id);
           const label = t("quota.toolbar.switch", { provider: providerName(id, mobile) });
@@ -1006,37 +1064,6 @@ function ToolbarProviderPicker({ t, mobile }: { readonly t: T; readonly mobile: 
                 void moveQuotaProvider(id, delta).then(() => {
                   if (sameProviderOrder(getQuotaToolbarSetting().providerOrder, before)) focusProviderRef.current = null;
                 });
-              }}
-              onPointerDown={(event) => {
-                if (event.button !== 0) return;
-                suppressClickRef.current = false;
-                dragRef.current = { id, startX: event.clientX, pointerId: event.pointerId, active: false };
-                event.currentTarget.setPointerCapture(event.pointerId);
-              }}
-              onPointerMove={(event) => {
-                const drag = dragRef.current;
-                if (drag === null || drag.pointerId !== event.pointerId || drag.id !== id) return;
-                if (!drag.active && Math.abs(event.clientX - drag.startX) < DRAG_THRESHOLD_PX) return;
-                if (!drag.active) {
-                  drag.active = true;
-                  setDraggingId(id);
-                }
-                const row = rowRef.current;
-                if (row === null) return;
-                const next = orderFromPointer(id, event.clientX, row);
-                if (next === null) return;
-                const base = previewRef.current ?? getQuotaToolbarSetting().providerOrder;
-                if (sameProviderOrder(next, base)) return;
-                previewRef.current = next;
-                setPreview(next);
-              }}
-              onPointerUp={(event) => {
-                if (dragRef.current?.pointerId !== event.pointerId) return;
-                finishDrag(true);
-              }}
-              onPointerCancel={(event) => {
-                if (dragRef.current?.pointerId !== event.pointerId) return;
-                finishDrag(false);
               }}
             >
               <span className={`quota-provider__mark quota-provider__mark--${id}`} aria-hidden="true">{providerGlyph(id)}</span>
