@@ -11,7 +11,7 @@ import type { ComposerTopEntryContext } from "../../workspace/shared/surface-con
 import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@fleet-console/ai-gateway";
-import { PROVIDER_ORDER_DEFAULT, type ProviderId } from "../shared/provider-order.js";
+import { sanitizeProviderOrder, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT } from "./i18n/index.js";
 import { spendSeverity } from "./spend-section.js";
@@ -44,12 +44,13 @@ function readableWindows(provider: ProviderDto | undefined): readonly QuotaWindo
   return pools.length > 0 ? pools : windows;
 }
 
-/** 고른 공급자마다 한 칸 — 고정 순서를 따른다. 값이 없어도 칸은 선다(켜고 끈 것만 폭을 바꾼다). */
+/** 고른 공급자마다 한 칸 — 사용자 순서를 따른다. 값이 없어도 칸은 선다(켜고 끈 것만 폭을 바꾼다). */
 export function toolbarReadings(
   data: QuotaSummaryDto | null,
   shown: readonly ProviderId[],
+  order: readonly ProviderId[],
 ): readonly QuotaToolbarReading[] {
-  return PROVIDER_ORDER_DEFAULT
+  return sanitizeProviderOrder(order)
     .filter((id) => shown.includes(id))
     .map((id) => {
       const lines = summaryLines(readableWindows(data?.providers[id]));
@@ -116,7 +117,7 @@ export function requestQuotaPanelOpen(): void {
 export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top" }: ComposerTopEntryContext) {
   const mobile = layout === "mobile";
   const inCapsule = placement === "capsule";
-  const { toolbarProviders: shown, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
+  const { toolbarProviders: shown, providerOrder, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement | null>(null);
@@ -127,7 +128,7 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
   const t = getT(locale, mobile);
   // 저장된 선호는 그대로 두고, 지원하는 공급자만 표시한다.
   const glyphOnly = shown.length === 0;
-  const readings = toolbarReadings(snapshot.data, shown);
+  const readings = toolbarReadings(snapshot.data, shown, providerOrder);
   const label = glyphOnly
     ? t("quota.panel.title")
     : snapshot.data === null

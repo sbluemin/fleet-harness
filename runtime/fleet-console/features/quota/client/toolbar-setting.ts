@@ -1,22 +1,37 @@
 import type { ClientSettingsCapability } from "../../settings/shared/client-ports.js";
 
-import { PROVIDER_ORDER_DEFAULT, sanitizeProviderSet, toggledProviderSet, type ProviderId } from "../shared/provider-order.js";
+import {
+  PROVIDER_ORDER_DEFAULT,
+  sameProviderOrder,
+  sanitizeProviderOrder,
+  sanitizeProviderSet,
+  shiftProviderOrder,
+  toggledProviderSet,
+  type ProviderId,
+} from "../shared/provider-order.js";
 
 /**
- * 「도구모음 요약」에 세울 공급자. 값은 Console 설정의 quota 문서에 살고, 팝업 바닥의
- * 글리프 줄이 읽고 쓴다.
+ * 「도구모음 요약」에 세울 공급자와, 패널·글리프 줄·요약이 함께 따르는 표시 순서.
+ * 값은 Console 설정의 quota 문서에 살고, 팝업 바닥의 글리프 줄이 읽고 쓴다.
  *
  * 저장값이 없거나(키 없음·배열 아님) 아직 읽지 못했으면 지원하는 공급자 전부다 — 첫 사용자도 요약을
  * 본다. 저장된 배열은 그대로 따르고, 빈 배열은 "직접 모두 껐다"는 뜻이라 요약 대신 막대 글리프 하나만 선다.
+ * 순서는 `providerOrder`다. 없을 때는 기본 순서이고, 집합(`toolbarProviders`)의 정렬과는 따로다.
  */
 export interface QuotaToolbarSetting {
-  /** 기본 순서로 정렬된 집합 — 표시 순서도 기본 순서다. */
+  /** 기본 순서로 정렬된 집합 — 누가 켜져 있는지만 담는다. 표시 순서는 `providerOrder`다. */
   readonly toolbarProviders: readonly ProviderId[];
+  /** 카드·글리프 줄·입력창 위 요약·모바일 목록이 따르는 순서. */
+  readonly providerOrder: readonly ProviderId[];
   /** 플러그인 문서를 한 번이라도 읽었는가(실패도 읽은 것으로 친다) — 읽기 전에는 요약을 그리지 않는다. */
   readonly loaded: boolean;
 }
 
-const DEFAULT_SETTING: QuotaToolbarSetting = { toolbarProviders: PROVIDER_ORDER_DEFAULT, loaded: false };
+const DEFAULT_SETTING: QuotaToolbarSetting = {
+  toolbarProviders: PROVIDER_ORDER_DEFAULT,
+  providerOrder: PROVIDER_ORDER_DEFAULT,
+  loaded: false,
+};
 
 /** 저장된 값을 집합으로 읽는다. 키가 없거나 배열이 아니면 "고른 적 없음"이라 전부를 뜻한다. */
 export function storedToolbarProviders(value: unknown): readonly ProviderId[] {
@@ -43,7 +58,11 @@ export function connectQuotaToolbarSetting(next: ClientSettingsCapability): () =
   writeChain = next.read().then((value) => {
     if (capability !== next) return;
     document_ = value ?? {};
-    persisted = { toolbarProviders: storedToolbarProviders(value?.toolbarProviders), loaded: true };
+    persisted = {
+      toolbarProviders: storedToolbarProviders(value?.toolbarProviders),
+      providerOrder: sanitizeProviderOrder(value?.providerOrder),
+      loaded: true,
+    };
     if (pendingWrites > 0) return;
     setting = persisted;
     emit();
@@ -69,21 +88,47 @@ export function subscribeQuotaToolbarSetting(listener: () => void): () => void {
   return () => { listeners.delete(listener); };
 }
 
-/** 한 공급자를 넣거나 뺀다 — 직전 쓰기가 끝나기 전에 연달아 눌러도 낙관 반영된 집합 위에 얹힌다. */
+/** 한 공급자를 넣거나 뺀다 — 직전 쓰기가 끝나기 전에 연달아 눌러도 낙관 반영된 집합 위에 얹힌다. 순서는 건드리지 않는다. */
 export function toggleQuotaToolbarProvider(id: ProviderId, shown: boolean): Promise<void> {
   const current = setting.toolbarProviders;
   if (current.includes(id) === shown) return Promise.resolve();
-  return writeQuotaToolbarProviders(toggledProviderSet(current, id));
+  return commitQuotaSetting({ toolbarProviders: toggledProviderSet(current, id) });
 }
 
-/** 낙관 반영 후 저장한다. 실패하면 마지막으로 저장된 값으로 되돌린다. 쓰기는 한 줄로 세운다. */
-function writeQuotaToolbarProviders(providers: readonly ProviderId[]): Promise<void> {
+/** 표시 순서를 바꾼다. 문서의 다른 필드(도구모음 선택 포함)는 그대로 둔다. */
+export function setQuotaProviderOrder(order: readonly ProviderId[]): Promise<void> {
+  const providerOrder = sanitizeProviderOrder(order);
+  if (sameProviderOrder(providerOrder, setting.providerOrder)) return Promise.resolve();
+  return commitQuotaSetting({ providerOrder });
+}
+
+/** 키보드로 한 칸 옮긴다. 줄의 끝이면 저장하지 않는다. */
+export function moveQuotaProvider(id: ProviderId, delta: -1 | 1): Promise<void> {
+  return setQuotaProviderOrder(shiftProviderOrder(setting.providerOrder, id, delta));
+}
+
+/**
+ * 낙관 반영 후 저장한다. 실패하면 마지막으로 저장된 값으로 되돌린다. 쓰기는 한 줄로 세운다.
+ * 선택과 순서를 이 스냅샷 기준으로 함께 쓰되, 문서의 다른 필드는 펼쳐서 그대로 둔다.
+ */
+function commitQuotaSetting(
+  patch: Partial<Pick<QuotaToolbarSetting, "toolbarProviders" | "providerOrder">>,
+): Promise<void> {
   pendingWrites += 1;
-  const next: QuotaToolbarSetting = { toolbarProviders: providers, loaded: true };
+  const next: QuotaToolbarSetting = {
+    toolbarProviders: patch.toolbarProviders ?? setting.toolbarProviders,
+    providerOrder: patch.providerOrder ?? setting.providerOrder,
+    loaded: true,
+  };
   setting = next;
   emit();
+  // 낙관 스냅샷의 두 필드를 함께 쓴다. 직전 쓰기가 실패해도 뒤의 쓰기가 화면과 문서를 다시 맞춘다.
+  const storedPatch = {
+    toolbarProviders: [...next.toolbarProviders],
+    providerOrder: [...next.providerOrder],
+  };
   const run = writeChain.then(async () => {
-    const nextDocument = { ...document_, toolbarProviders: providers };
+    const nextDocument = { ...document_, ...storedPatch };
     try {
       await capability?.write(nextDocument);
       document_ = nextDocument;
