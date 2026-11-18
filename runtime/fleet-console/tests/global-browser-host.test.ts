@@ -428,6 +428,13 @@ describe("session browser host contract", () => {
       await service.closeTab(BROWSER_GLOBAL_ID, M);
       const P = await openPopup(A, "https://order.example/p", true);
       expect(order()).toEqual([A, N, P, F, L3, L4, L1, L2, B]);
+      // 에이전트 navigate 는 사람의 제스처가 아니라 관계를 지우지 않고, 사람의 주소창 이동은 지운다.
+      await service.navigate(BROWSER_GLOBAL_ID, "https://order.example/b-agent", "agent", B);
+      const Q = await openPopup(A, "https://order.example/q", true);
+      expect(order()).toEqual([A, N, P, Q, F, L3, L4, L1, L2, B]);
+      await service.navigate(BROWSER_GLOBAL_ID, "https://order.example/b-user", "user", B);
+      const R = await openPopup(A, "https://order.example/r", true);
+      expect(order()).toEqual([A, R, N, P, Q, F, L3, L4, L1, L2, B]);
       await service.closeSpace(orderSpace);
       // 없는 스페이스에는 열 수 없다 — 스페이스는 디폴트와 사령관의 것뿐이다.
       await expect(service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: "objective-a" })).rejects.toMatchObject({ code: "browser_space_not_found" });

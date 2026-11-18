@@ -2024,8 +2024,9 @@ export class BrowserService {
       this.emitState(op);
     } else {
       const url = this.admit(op, target, actor);
-      // 링크가 아닌 이동(사람 주소창·에이전트 navigate)은 그 스페이스의 삽입 관계를 지운다 — 크롬과 같다.
-      this.forgetOrderOpeners(op, tab.spaceId);
+      // 사람의 주소창 이동(링크가 아닌 이동)은 그 스페이스의 삽입 관계를 지운다 — 크롬과 같다. 에이전트 navigate 는
+      // 사람의 제스처가 아니므로 지우지 않는다(사람이 Cmd 클릭으로 쌓는 순서를 같은 스페이스의 에이전트가 끊지 않게).
+      if (actor === "user") this.forgetOrderOpeners(op, tab.spaceId);
       outcome = await this.navigateTab(op, tab, url.href);
     }
     return { tab: this.tabState(this.tab(op, tab.id)), ...outcome };
