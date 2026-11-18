@@ -1,5 +1,5 @@
 ---
-branch: refactor/remove-antigravity-settings
+branch: feat/retire-antigravity
 ---
 
 ### fleet-console
