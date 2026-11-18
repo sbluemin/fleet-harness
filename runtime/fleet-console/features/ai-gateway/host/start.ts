@@ -35,6 +35,7 @@ import {
   createProviderAuthService,
   defaultCredentialDeps,
   DEFAULT_ROSTER_SEED_MODEL_IDS,
+  ANTHROPIC_AUTH_PROVIDER_ID,
   GEMINI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
   setWireLogTarget,
@@ -146,6 +147,12 @@ export function startAiGateway(ctx: GatewayStartContext) {
         else quota.record("gemini", { status: "signed_out" });
         return;
       }
+      // Anthropic 키도 같은 규칙이다 — 저장·삭제 직후 메뉴 노출이 바뀐다.
+      if (provider === "anthropic") {
+        if (signedIn) void quota.getSummary({ forceProvider: "anthropic" }).catch(() => undefined);
+        else quota.record("anthropic", { status: "signed_out" });
+        return;
+      }
       if (provider !== "opencode") return;
       if (signedIn) void quota.getSummary({ forceProvider: "opencode" }).catch(() => undefined);
       else quota.record("opencode", { status: "signed_out" });
@@ -214,6 +221,13 @@ export function startAiGateway(ctx: GatewayStartContext) {
         spend: reading.spend,
         ...(reading.block !== undefined ? { block: reading.block } : {}),
       };
+    },
+    // Anthropic도 크레딧 잔액을 읽을 API가 없다(2026-11-18 실측). 키가 저장돼 있는지만 본다 — 키가
+    // 없으면 미로그인(signed_out)이라 모델 메뉴에서 빠진다.
+    fetchAnthropic: async () => {
+      const apiKey = await authService.getApiKey(ANTHROPIC_AUTH_PROVIDER_ID);
+      if (apiKey === undefined || apiKey.trim().length === 0) return { status: "signed_out" };
+      return { status: "ok", fetchedAt: Date.now() };
     },
   });
   expireGeminiQuota = () => quota.expire("gemini");
@@ -302,6 +316,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
       opencode: summary.providers.opencode.status,
       // Gemini 키의 유무가 모델 메뉴와 설정의 로그인 표시를 가른다.
       gemini: summary.providers.gemini.status,
+      // Anthropic 키의 유무가 크레딧 모델의 메뉴 노출을 가른다.
+      anthropic: summary.providers.anthropic.status,
     } satisfies ProviderStatusMap;
   };
   function assign(request: unknown) {
@@ -445,6 +461,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     renewMuseCodeAuth: museCode.renew,
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     readGeminiApiKey: () => authService.getApiKey(GEMINI_AUTH_PROVIDER_ID),
+    readAnthropicApiKey: () => authService.getApiKey(ANTHROPIC_AUTH_PROVIDER_ID),
     // Gemini 턴이 끝나거나 402·429로 거절될 때 업스트림이 부르는 지출 원장.
     geminiUsage: geminiLedger,
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.

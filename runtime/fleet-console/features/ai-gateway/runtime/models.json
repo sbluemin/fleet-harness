@@ -589,6 +589,54 @@
         }
       ]
     },
+    "anthropic": {
+      "name": "Anthropic",
+      "defaultModel": "claude-sonnet-5-5",
+      "source": "Anthropic API key / API credit (Claude Console key, https://platform.claude.com/docs/en/models/overview, read 2026-11-18): the gateway relays the Claude Code child's /v1/messages body to https://api.anthropic.com/v1/messages unchanged except the model id and a dropped `speed`, and sends the stored key as x-api-key instead of the caller's subscription Authorization. Only Opus 5.5, Sonnet 5.5 and Haiku 5.5 are exposed (Fable is out of scope); Claude API ids are pinned snapshots (claude-opus-5-5, claude-sonnet-5-5, claude-haiku-5-5), 1M context, 128K max output. These are separate entries from the native `claude` family aliases of the same names: a different credential (an API key), a different billing pool (the monthly API credit, which Anthropic applies to Agent SDK sessions and refuses for interactive Claude Code, measured 2026-11-18), and spend that Fleet counts itself from response usage because the credit balance is not readable through any API. Effort ladders and the 1M window match the native entries of the same family; Haiku declares none. Prices live in quota/anthropic-pricing.ts, not in this catalog.",
+      "models": [
+        {
+          "modelId": "claude-opus-5-5",
+          "name": "Opus",
+          "description": "High-capability reasoning, planning, and coding model, billed to the Anthropic API credit.",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+            ]
+          }
+        },
+        {
+          "modelId": "claude-sonnet-5-5",
+          "name": "Sonnet",
+          "description": "Balanced coding and general agent execution model, billed to the Anthropic API credit.",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+            "low",
+            "medium",
+            "high",
+            "xhigh",
+            "max"
+            ]
+          }
+        },
+        {
+          "modelId": "claude-haiku-5-5",
+          "name": "Haiku",
+          "description": "Lightweight, fast model for simple tasks and scans, billed to the Anthropic API credit.",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": false
+          }
+        }
+      ]
+    },
     "claude": {
       "name": "Claude",
       "native": true,
