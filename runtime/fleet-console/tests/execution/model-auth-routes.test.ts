@@ -31,6 +31,7 @@ describe("terminal model auth routes", () => {
           // `kind`가 그 차이를 나르므로 브라우저는 공급자 id를 외워 두고 갈라 볼 필요가 없다.
           { provider: "opencode", kind: "model-provider", displayName: "OpenCode Go", signedIn: false },
           { provider: "gemini", kind: "model-provider", displayName: "Gemini", signedIn: false },
+          { provider: "anthropic", kind: "model-provider", displayName: "Anthropic", signedIn: false },
           { provider: "typesafe", kind: "service", displayName: "TypeSafe", signedIn: true },
         ],
       },
