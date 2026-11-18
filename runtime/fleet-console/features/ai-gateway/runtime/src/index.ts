@@ -6,7 +6,6 @@ export * from "./downstream/harness/claude-code/auto-compact-window.js";
 export * from "./downstream/harness/claude-code/discovery.js";
 export * from "./downstream/wire/anthropic-messages/inbound.js";
 export * from "./upstream/anthropic/native.js";
-export * from "./upstream/antigravity/index.js";
 export * from "./acp/index.js";
 // Provider quota probes and the shared quota vocabulary. `CredentialMethod` is
 // re-exported from transport/credentials.js (same closed shape), so the quota

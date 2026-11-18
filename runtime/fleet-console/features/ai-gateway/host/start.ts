@@ -190,13 +190,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
       for (const listener of providerStatusListeners) listener();
     },
     ...createAiGatewayQuotaCollectors({ authService, museCode, codex, xai }),
-    antigravityEnabled: () => {
-      try {
-        return aiGatewayStore.read().antigravityEnabled === true;
-      } catch {
-        return false;
-      }
-    },
     // 마지막 성공 사용량. Console 슬롯(격리 실행이면 격리 루트) 아래. 키·토큰은 넣지 않는다.
     lastGoodStore: createQuotaLastGoodStore({
       filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "quota-last-good.json"),

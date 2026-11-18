@@ -45,7 +45,6 @@ import {
   applyClaudeNativeModels,
   findGatewayModel,
   GATEWAY_MODELS,
-  parseAntigravityQuotaSummary,
   parseClaudeUsage,
   parseGatewayAssignmentRequest,
   resolveAiGatewaySelection,
@@ -863,7 +862,7 @@ describe("delegation assignment", () => {
     }, now).candidates).toEqual([]);
   });
 
-  it("isolates every model-scoped limit (Claude weekly_scoped, future models, Antigravity Argon) while applying common limits to all", () => {
+  it("isolates every model-scoped limit (Claude weekly_scoped, future models) while applying common limits to all", () => {
     const now = Date.parse("2026-11-15T04:00:00Z");
     const sessionReset = new Date(now + 3 * 3_600_000).toISOString();
     const weekReset = new Date(now + 5 * 24 * 3_600_000).toISOString();
@@ -920,121 +919,6 @@ describe("delegation assignment", () => {
       "sonnet[1m]",
       "opus[1m]",
       "fable[1m]",
-    ]);
-
-    // 3) Antigravity의 gemini-argon-wtu-weekly(98%)는 Argon만 빼고 Carbon·Hydrogen은 후보로 남긴다.
-    const antigravityModels = [
-      requireGatewayModel("antigravity--gemini-4-argon"),
-      requireGatewayModel("antigravity--gemini-4-carbon"),
-      requireGatewayModel("antigravity--gemini-4-hydrogen"),
-    ];
-    const argonCriticalWindows = parseAntigravityQuotaSummary({
-      status: "SUCCESS",
-      num_turns: 0,
-      command: {
-        name: "usage",
-        data: {
-          groups: [
-            {
-              name: "Gemini 4 Argon",
-              buckets: [{ id: "gemini-argon-wtu-weekly", remaining_fraction: 0.02, reset_time: weekReset }],
-            },
-            {
-              name: "Gemini Models",
-              buckets: [
-                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
-                { id: "gemini-weekly", remaining_fraction: 0.7, reset_time: weekReset },
-              ],
-            },
-          ],
-        },
-      },
-    }) ?? [];
-    const argonExposure: GatewayAssignmentExposure = {
-      delegationModels: antigravityModels,
-      quota: { antigravity: { status: "ok", fetchedAt: now, windows: argonCriticalWindows } },
-    };
-    const antigravityCandidates = buildGatewayCandidates(argonExposure, now).candidates;
-    expect(antigravityCandidates.map((candidate) => [candidate.model, candidate.pressure])).toEqual([
-      ["antigravity--gemini-4-carbon", "ok"],
-      ["antigravity--gemini-4-hydrogen", "ok"],
-    ]);
-
-    // 4) 공통 창(gemini-weekly 98%)이 critical이면 Antigravity 전 모델이 빠진다.
-    const geminiSharedCritical = parseAntigravityQuotaSummary({
-      status: "SUCCESS",
-      num_turns: 0,
-      command: {
-        name: "usage",
-        data: {
-          groups: [
-            {
-              name: "Gemini 4 Argon",
-              buckets: [{ id: "gemini-argon-wtu-weekly", remaining_fraction: 0.9, reset_time: weekReset }],
-            },
-            {
-              name: "Gemini Models",
-              buckets: [
-                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
-                { id: "gemini-weekly", remaining_fraction: 0.02, reset_time: weekReset },
-              ],
-            },
-          ],
-        },
-      },
-    }) ?? [];
-    expect(buildGatewayCandidates({
-      delegationModels: antigravityModels,
-      quota: { antigravity: { status: "ok", fetchedAt: now, windows: geminiSharedCritical } },
-    }, now).candidates).toEqual([]);
-
-    // 5) Gemini 풀과 Claude & GPT 풀(3p-*)은 서로 번지지 않는다. 한쪽 주간 한도가 critical이어도 다른 쪽 모델은 후보로 남는다.
-    const mixedModels = [
-      ...antigravityModels,
-      requireGatewayModel("antigravity--claude-opus-5.5"),
-      requireGatewayModel("antigravity--claude-sonnet-5.5"),
-    ];
-    const byFamily = (geminiWeekly: number, claudeWeekly: number) => parseAntigravityQuotaSummary({
-      status: "SUCCESS",
-      num_turns: 0,
-      command: {
-        name: "usage",
-        data: {
-          groups: [
-            {
-              name: "Gemini Models",
-              buckets: [
-                { id: "gemini-5h", remaining_fraction: 0.8, reset_time: sessionReset },
-                { id: "gemini-weekly", remaining_fraction: geminiWeekly, reset_time: weekReset },
-              ],
-            },
-            {
-              name: "Claude and GPT models",
-              buckets: [
-                { id: "3p-5h", remaining_fraction: 0.8, reset_time: sessionReset },
-                { id: "3p-weekly", remaining_fraction: claudeWeekly, reset_time: weekReset },
-              ],
-            },
-          ],
-        },
-      },
-    }) ?? [];
-    const claudePoolCritical = buildGatewayCandidates({
-      delegationModels: mixedModels,
-      quota: { antigravity: { status: "ok", fetchedAt: now, windows: byFamily(0.9, 0.02) } },
-    }, now).candidates.map((candidate) => candidate.model).sort();
-    expect(claudePoolCritical).toEqual([
-      "antigravity--gemini-4-argon",
-      "antigravity--gemini-4-carbon",
-      "antigravity--gemini-4-hydrogen",
-    ]);
-    const geminiPoolCritical = buildGatewayCandidates({
-      delegationModels: mixedModels,
-      quota: { antigravity: { status: "ok", fetchedAt: now, windows: byFamily(0.02, 0.9) } },
-    }, now).candidates.map((candidate) => candidate.model).sort();
-    expect(geminiPoolCritical).toEqual([
-      "antigravity--claude-opus-5.5",
-      "antigravity--claude-sonnet-5.5",
     ]);
   });
 });
