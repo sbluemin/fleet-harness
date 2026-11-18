@@ -1082,6 +1082,17 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
       // 탭 상한 판정은 createWindow 를 돌려주기 전에 동기로 해야 한다 — 값은 스냅샷 시점의 것이라 낡을 수 있고, 그때는 Console 의 adoptPopup 이 닫는다.
       const accepted = live.has(spec.id) && host && !host.isDestroyed() && (popup ? popupsAccepted : tabOpens !== null && !tabOpens.full.has(spec.id));
       if (accepted) {
+        // Cmd·중간 클릭(background-tab)은 Chromium 이 문서도 opener 관계도 만들지 않는다. 셸이 직접 만드는 이 뷰를
+        // Electron 의 새 창 콜백 안에서 돌려주면, parking 뒤 처음 표시될 때 OS 합성에 나타나지 않는 경우가 있었다.
+        // 그래서 이 열기만 deny 로 끝내고 다음 tick 에 다른 셸 뷰처럼 콜백 밖에서 만든다. 거절된 열기의 같은 뷰
+        // 대체(loadURL)와는 다르다 — 이쪽은 새 탭으로 연다.
+        if (details.disposition === "background-tab") {
+          setImmediate(() => {
+            if (!live.has(spec.id)) return;
+            openWindow(spec.id, spec, undefined, details);
+          });
+          return { action: "deny" };
+        }
         return { action: "allow", outlivesOpener: true, createWindow: (options) => openWindow(spec.id, spec, (options as { webContents?: WebContents }).webContents, details) };
       }
       void contents.loadURL(details.url).catch(() => undefined);

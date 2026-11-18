@@ -322,11 +322,15 @@ describe("desktop native browser views across a Console restart", () => {
     await update({ tabOpens: { full: [] } }, () => expect(open(tab).action).toBe("allow"));
     expect(open(shiftClick).action).toBe("allow");
     expect(open({ ...tab, url: "data:text/html,x" }).action).toBe("deny");
-    // 수정키 클릭은 Chromium 이 webContents 를 만들지 않는다 — 셸이 직접 뷰를 만들어 알린다(백그라운드는 표시). 그 뷰는 about:blank 에 서고
-    // Console 이 준비한 뒤 주소로 보낸다. POST 열기는 붙잡지 않고 셸이 본문째 적재하며 Console 은 이동 없이 등록만 한다.
+    // 수정키 클릭은 Chromium 이 webContents 를 만들지 않는다. handler 는 deny 로 끝내고 셸이 콜백 밖(다음 tick)에서 뷰를
+    // 만들어 Console 에 알린다(백그라운드는 표시). 그 뷰는 about:blank 에 서고 Console 이 준비한 뒤 주소로 보낸다. POST 열기는
+    // 붙잡지 않고 셸이 본문째 적재하며 Console 은 이동 없이 등록만 한다.
     const popups = () => relays.flatMap((relay) => relay.popups ?? []);
-    (open({ ...tab, disposition: "background-tab" }).createWindow as (options: object) => unknown)({});
+    const sameViewLoads = [...loaded];
+    expect(open({ ...tab, disposition: "background-tab" }).action).toBe("deny");
     await vi.waitFor(() => expect(popups()).toEqual([{ viewId: expect.stringMatching(/^popup-/u), openerViewId: "view-a", url: tab.url, background: true }]));
+    // 거절된 열기의 같은 뷰 대체(loadURL)는 일어나지 않는다 — 뷰가 새 탭으로 만들어졌다.
+    expect(loaded).toEqual(sameViewLoads);
     expect(created).toHaveLength(2);
     expect(created[1]!.loaded).toEqual(["about:blank"]);
     const post = { data: [{ type: "rawData", bytes: Buffer.from("k=v") }], contentType: "application/x-www-form-urlencoded" };
