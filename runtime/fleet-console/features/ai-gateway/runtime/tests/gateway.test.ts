@@ -250,7 +250,7 @@ describe("OpenAI Responses adapter", () => {
         sent = JSON.parse(String(init?.body));
         return sseResponse(frame("response.completed", {
           type: "response.completed",
-          response: { id: "image_reply", model: "gpt-6.2-sol", output: [] },
+          response: { id: "image_reply", model: "gpt-6.1-sol", output: [] },
         }));
       },
     });

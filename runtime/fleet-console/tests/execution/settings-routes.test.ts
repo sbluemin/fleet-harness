@@ -104,7 +104,7 @@ describe("terminal settings routes", () => {
 
   it("ignores retired delegation routing keys on read and drops them on the next save", async () => {
     const legacy = {
-      version: 1, models: [{ id: "codex--gpt-6.2-sol" }],
+      version: 1, models: [{ id: "codex--gpt-6.1-sol" }],
       delegationRoutingEnabled: true, delegationRoutingMode: "model", delegationRoutingModel: "sonnet", delegationRoutingEffort: "low",
     } as AiGatewayStoredSettings;
     const harness = createRouteHarness({ aiGateway: legacy, body: { delegationRoutingMode: "model" } });
@@ -116,7 +116,7 @@ describe("terminal settings routes", () => {
     const saved = createRouteHarness({ aiGateway: legacy, body: { wireLogEnabled: true } });
     await saved.handle({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/agent/settings" });
     expect(saved.writes[0]?.status).toBe(200);
-    expect(saved.currentAiGateway()).toEqual({ version: 1, models: [{ id: "codex--gpt-6.2-sol" }], wireLogEnabled: true });
+    expect(saved.currentAiGateway()).toEqual({ version: 1, models: [{ id: "codex--gpt-6.1-sol" }], wireLogEnabled: true });
   });
 
   it("PUT /api/v1/agent/settings rejects payloads with unknown extra keys", async () => {
