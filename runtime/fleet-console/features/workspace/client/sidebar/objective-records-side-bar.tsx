@@ -1063,8 +1063,10 @@ export function TheaterSectionHeader({
   const contributionSummary = useMemo(() => ({ id: contributionId, label: theater.label }), [contributionId, theater.label]);
   const contributedMark = useTheaterContributionMark(contributionSummary);
   // 자기 아바타를 가진 행(TaskForce)은 사령관 표식을 받지 않는다 — 표식이 TF id를 사령관으로 그리지 않게 한다.
-  // 「사령관 설정」 중에는 표식 자리에도 고치는 아바타가 선다 — 미리보기가 보일 자리가 있어야 한다.
+  // 「사령관 설정」 중에는 표식 자리에도 고치는 아바타가 선다 — 미리보기가 보일 자리가 있어야 한다. 표식(사령관 글리프)을
+  // 대신할 때는 그 글리프와 같은 크기·진급 모양으로 그려, 고르기 전의 얼굴이 행에서 달라 보이지 않게 한다.
   const mark = presentation ? presentation.mark : avatarOverride || editingAvatar ? null : contributedMark;
+  const editingInMarkSlot = editingAvatar && !presentation && !avatarOverride && contributedMark !== null;
   const contributedLive = useTheaterHeaderLive(contributionId);
   const live = presentation?.live ?? liveOverride ?? contributedLive;
   const contributedSelected = useTheaterHeaderSelected(contributionId);
@@ -1159,7 +1161,8 @@ export function TheaterSectionHeader({
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
       {/* 표식이 없을 때의 사령관 머리 — 사람에게 넘긴 항목이 남아 있으면 답하기 전까지 결정 얼굴로 선다(열람으로 지워지지 않는다). */}
       {editingAvatar && onFinishAvatarEdit ? (
-        <AnchoredAvatarEditor avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"} size={32}
+        <AnchoredAvatarEditor avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"}
+          size={editingInMarkSlot ? 18 : 32} figure={editingInMarkSlot}
           onReturnFocus={() => activateRef.current?.focus({ preventScroll: true })} onDone={() => onFinishAvatarEdit(theater.id)} />
       ) : <KeyedAvatar avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"} size={32} label="" decorative />}
       {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에

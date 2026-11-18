@@ -454,11 +454,13 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
  * 메뉴에서 여는 같은 편집기 — 사이드바 사령관 행의 「사령관 설정」. 행의 아바타 자리를 대신 그려 미리보기를 싣고, 판은 그 아바타
  * 왼쪽 끝 아래에 body 로 옮겨 띄운다. 올라오자마자 판이 열리며, 판이 닫히고 「되돌리기」 줄까지 사라지면 `onDone` 을 부른다.
  */
-export function AnchoredAvatarEditor({ avatarKey, role, state, size, onReturnFocus, onDone }: {
+export function AnchoredAvatarEditor({ avatarKey, role, state, size, figure, onReturnFocus, onDone }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
   readonly size: number;
+  /** 진급 사령관을 견장·날개 윗부분까지 그린다 — 행이 원래 세우던 얼굴과 같은 모양으로 미리본다. */
+  readonly figure?: boolean;
   /** 취소·Esc·적용으로 판을 닫았을 때 포커스를 돌려줄 자리 — 앵커인 아바타는 단추가 아니다. */
   readonly onReturnFocus: () => void;
   readonly onDone: () => void;
@@ -477,7 +479,7 @@ export function AnchoredAvatarEditor({ avatarKey, role, state, size, onReturnFoc
   const shown = draft ?? { base: look.base, tone: look.tone };
   return (
     <span ref={anchorRef} className="avatar-editor-anchor">
-      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} size={size} label="" decorative />
+      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} size={size} label="" decorative figure={figure} />
       <AvatarEditorPopover session={session} anchorRef={anchorRef} layout="inline" portal autoFocus onClose={onReturnFocus} />
       {undo && !draft ? createPortal(<div ref={undoRef} className="avatar-editor-undo-float"><AvatarEditorUndo session={session} /></div>, document.body) : null}
     </span>
