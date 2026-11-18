@@ -334,6 +334,10 @@ describe("desktop native browser views across a Console restart", () => {
     await vi.waitFor(() => expect(popups()).toHaveLength(2));
     expect(popups()[1]).toEqual({ viewId: expect.stringMatching(/^popup-/u), openerViewId: "view-a", url: tab.url, loaded: true });
     expect(created[2]!.loaded).toEqual(["about:blank", tab.url]);
+    // 창 기능 팝업은 그 플래그를 함께 싣는다 — Console 이 닫은 뒤 선택에서 탭형 열기와 구별한다. 탭형(백그라운드·POST)에는 없다.
+    (open(popup).createWindow as (options: object) => unknown)({});
+    await vi.waitFor(() => expect(popups()).toHaveLength(3));
+    expect(popups()[2]).toEqual({ viewId: expect.stringMatching(/^popup-/u), openerViewId: "view-a", url: tab.url, windowPopup: true });
     await update({ tabOpens: { full: ["view-a"] } }, () => expect(open(tab).action).toBe("deny"));
     expect(open(popup).action).toBe("allow");
     expect(loaded.at(-1)).toBe(tab.url);

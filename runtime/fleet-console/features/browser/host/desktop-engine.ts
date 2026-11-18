@@ -283,7 +283,7 @@ export class DesktopEngine implements CdpClient {
       const opener = this.views.get(popup.openerViewId);
       if (!opener || this.views.has(popup.viewId)) continue;
       this.views.set(popup.viewId, { id: popup.viewId, objectiveId: opener.objectiveId, partition: opener.partition, profile: opener.profile, url: "about:blank", attached: true, active: false, agent: opener.agent, size: null, frameSeq: 0 });
-      this.emit({ method: DESKTOP_BROWSER_POPUP_EVENT, params: { targetId: popup.viewId, url: popup.url, ...(popup.background ? { background: true } : {}), ...(popup.loaded ? { loaded: true } : {}) }, sessionId: opener.id });
+      this.emit({ method: DESKTOP_BROWSER_POPUP_EVENT, params: { targetId: popup.viewId, url: popup.url, ...(popup.background ? { background: true } : {}), ...(popup.loaded ? { loaded: true } : {}), ...(popup.windowPopup ? { windowPopup: true } : {}) }, sessionId: opener.id });
     }
     for (const id of body.attached ?? []) {
       const view = this.views.get(id);

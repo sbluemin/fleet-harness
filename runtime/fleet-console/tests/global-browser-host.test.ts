@@ -395,8 +395,8 @@ describe("session browser host contract", () => {
       const order = () => orderState().filter((tab) => tab.spaceId === orderSpace).map((tab) => tab.id);
       const orderCaller = { participantId: "order", spaceId: orderSpace, ownerId: "order" };
       const tabIdAt = (url: string) => orderState().find((tab) => tab.url === url)!.id;
-      const openPopup = async (openerId: string, url: string, background = false): Promise<string> => {
-        engine.relay("local", { popups: [{ viewId: `popup-${url.replace(/\W+/gu, "-")}`, openerViewId: service.viewIdOfTab(BROWSER_GLOBAL_ID, openerId)!, url, background }] });
+      const openPopup = async (openerId: string, url: string, background = false, windowPopup = false): Promise<string> => {
+        engine.relay("local", { popups: [{ viewId: `popup-${url.replace(/\W+/gu, "-")}`, openerViewId: service.viewIdOfTab(BROWSER_GLOBAL_ID, openerId)!, url, background, ...(windowPopup ? { windowPopup: true } : {}) }] });
         await vi.waitFor(() => expect(orderState().some((tab) => tab.url === url)).toBe(true));
         return tabIdAt(url);
       };
@@ -435,6 +435,60 @@ describe("session browser host contract", () => {
       await service.navigate(BROWSER_GLOBAL_ID, "https://order.example/b-user", "user", B);
       const R = await openPopup(A, "https://order.example/r", true);
       expect(order()).toEqual([A, R, N, P, Q, F, L3, L4, L1, L2, B]);
+      // 표시 탭을 닫은 뒤 띄울 탭은 크롬 DetermineNewSelectedIndex 순서다 — 닫기 전의 삽입 관계와 스페이스 순서로
+      // 계산한다(removeTab 이 관계를 이어받기 전). ⓪ 창 기능 팝업 opener, ① 자식, ② 형제, ③ opener, ④ 오른쪽→왼쪽.
+      const closeSpace = commodoreBrowserSpaceId("close-sel");
+      const displayed = () => service.state(BROWSER_GLOBAL_ID).activeTabId;
+      const closeOrder = () => orderState().filter((tab) => tab.spaceId === closeSpace).map((tab) => tab.url);
+      const CA = (await service.createTab(BROWSER_GLOBAL_ID, "https://close.example/a", "user", { spaceId: closeSpace })).id;
+      const CB = (await service.createTab(BROWSER_GLOBAL_ID, "https://close.example/b", "user", { spaceId: closeSpace })).id;
+      await service.selectTab(BROWSER_GLOBAL_ID, CA);
+      const CL1 = await openPopup(CA, "https://close.example/l1", true);
+      const CL2 = await openPopup(CA, "https://close.example/l2", true);
+      expect(closeOrder()).toEqual(["https://close.example/a", "https://close.example/l1", "https://close.example/l2", "https://close.example/b"]);
+      // ② 형제: 같은 opener 의 자식 중에는 오른쪽이 먼저다.
+      await service.selectTab(BROWSER_GLOBAL_ID, CL1, true);
+      await service.closeTab(BROWSER_GLOBAL_ID, CL1);
+      expect(displayed()).toBe(CL2);
+      // ③ opener: 자식도 형제도 없으면 닫힌 탭의 삽입 opener 로 돌아간다.
+      await service.selectTab(BROWSER_GLOBAL_ID, CL2, true);
+      await service.closeTab(BROWSER_GLOBAL_ID, CL2);
+      expect(displayed()).toBe(CA);
+      const CL3 = await openPopup(CA, "https://close.example/l3", true);
+      const CL4 = await openPopup(CA, "https://close.example/l4", true);
+      // ① 자식: opener 를 닫으면 그 직계 자식이 뜬다(전이 사슬은 보지 않는다).
+      await service.closeTab(BROWSER_GLOBAL_ID, CA);
+      expect(displayed()).toBe(CL3);
+      expect(closeOrder()).toEqual(["https://close.example/l3", "https://close.example/l4", "https://close.example/b"]);
+      // ④ 관계가 잊힌 탭형은 오른쪽 이웃이다 — 사람의 주소창 이동이 삽입 관계를 지운다.
+      const CM1 = await openPopup(CL3, "https://close.example/m1", true);
+      await service.selectTab(BROWSER_GLOBAL_ID, CM1, true);
+      await service.navigate(BROWSER_GLOBAL_ID, "https://close.example/m2", "user", CM1);
+      await service.closeTab(BROWSER_GLOBAL_ID, CM1);
+      expect(displayed()).toBe(CL4);
+      const CN = (await service.createTab(BROWSER_GLOBAL_ID, "https://close.example/n", "user", { spaceId: closeSpace })).id;
+      // ④ 플래그 없는 탭형 열기(_blank·기능 없는 window.open·수정키 클릭)도 관계가 잊히면 오른쪽 이웃이다.
+      await service.selectTab(BROWSER_GLOBAL_ID, CB);
+      const CT = await openPopup(CB, "https://close.example/t");
+      await service.selectTab(BROWSER_GLOBAL_ID, CL3, true);
+      await service.selectTab(BROWSER_GLOBAL_ID, CT, true);
+      await service.closeTab(BROWSER_GLOBAL_ID, CT);
+      expect(displayed()).toBe(CN);
+      // ④ 옛 셸은 같은 창 기능 팝업에도 플래그를 싣지 않는다 — Console 은 그 열기를 탭형으로 본다.
+      await service.selectTab(BROWSER_GLOBAL_ID, CB);
+      const CW = await openPopup(CB, "https://close.example/w");
+      await service.selectTab(BROWSER_GLOBAL_ID, CL3, true);
+      await service.selectTab(BROWSER_GLOBAL_ID, CW, true);
+      await service.closeTab(BROWSER_GLOBAL_ID, CW);
+      expect(displayed()).toBe(CN);
+      // ⓪ 창 기능 팝업은 삽입 관계가 잊혀도 닫히면 결과를 기다리는 opener 로 돌아간다.
+      await service.selectTab(BROWSER_GLOBAL_ID, CB);
+      const CP = await openPopup(CB, "https://close.example/p", false, true);
+      await service.selectTab(BROWSER_GLOBAL_ID, CN, true);
+      await service.selectTab(BROWSER_GLOBAL_ID, CP, true);
+      await service.closeTab(BROWSER_GLOBAL_ID, CP);
+      expect(displayed()).toBe(CB);
+      await service.closeSpace(closeSpace);
       await service.closeSpace(orderSpace);
       // 없는 스페이스에는 열 수 없다 — 스페이스는 디폴트와 사령관의 것뿐이다.
       await expect(service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: "objective-a" })).rejects.toMatchObject({ code: "browser_space_not_found" });

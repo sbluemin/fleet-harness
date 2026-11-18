@@ -1153,6 +1153,9 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const id = `popup-${randomUUID().slice(0, 8)}`;
     const spec: DesktopBrowserView = { id, objectiveId: opener.objectiveId, partition: opener.partition, profile: opener.profile ?? null, visible: false, url: "about:blank", ...(opener.pageDialogs !== undefined ? { pageDialogs: opener.pageDialogs } : {}), ...(opener.agent ? { agent: true } : {}) };
     const background = details.disposition === "background-tab";
+    // 창 기능 팝업(Chromium disposition `new-window` + 기능)은 크롬에서 별도 창이다 — Console 이 닫은 뒤 선택에서
+    // 탭형 열기와 구별하도록 싣는다. Shift 클릭은 disposition 이 `new-window` 여도 기능이 비어 탭형이다.
+    const windowPopup = details.disposition === "new-window" && featuresRequestPopup(details.features);
     const postBody = details.postBody ?? null;
     const blank = url === "" || url === "about:blank";
     const loadedHere = postBody !== null || url.startsWith("blob:");
@@ -1160,7 +1163,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
     const announce = (target: string, loaded = false): void => {
       if (announced || !live.has(id)) return;
       announced = true;
-      push({ popups: [{ viewId: id, openerViewId: openerId, url: target, ...(background ? { background: true } : {}), ...(loaded ? { loaded: true } : {}) }] });
+      push({ popups: [{ viewId: id, openerViewId: openerId, url: target, ...(background ? { background: true } : {}), ...(loaded ? { loaded: true } : {}), ...(windowPopup ? { windowPopup: true } : {}) }] });
       const bounds = live.get(id)?.lastBounds;
       if (bounds) reportSize(id, bounds);
     };
