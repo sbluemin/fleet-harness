@@ -16,6 +16,7 @@ import {
   matchMapQuery,
   visibleMapIds,
   type MapBranchKey,
+  type MapChipKey,
   type MapNode,
 } from "./map-graph.js";
 import { MapPanel, type MapPanelFacts } from "./map-panel.js";
@@ -63,6 +64,26 @@ function nodeAria(t: T, node: MapNode, branchName: (branch: MemoryBranch) => str
   }
 }
 
+/** 돋보기 — 지도 안 검색의 자리표이자 휴대폰 폭에서 입력을 펴는 단추. */
+function SearchGlyph() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.5" />
+      <path d="m10.5 10.5 3 3" />
+    </svg>
+  );
+}
+
+/** 맞춤 보기 — 네 모서리 틀 안의 점: 지도 전체를 틀에 맞춘다. */
+function FitGlyph() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M2.5 5.5v-3h3M10.5 2.5h3v3M13.5 10.5v3h-3M5.5 13.5h-3v-3" />
+      <circle cx="8" cy="8" r="1.6" fill="currentColor" stroke="none" />
+    </svg>
+  );
+}
+
 function branchChipLabel(t: T, branch: MapBranchKey): string {
   if (branch === "description") return t("commodore.description.label");
   if (branch === "intel") return t("commodore.intel.label");
@@ -93,10 +114,12 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
   const tagRefs = useRef(new Map<string, HTMLDivElement>());
   const rovingRef = useRef<string | null>(null);
-  const [hidden, setHidden] = useState<ReadonlySet<MapBranchKey>>(() => new Set());
-  const [hideObjective, setHideObjective] = useState(false);
-  const [hideLinks, setHideLinks] = useState(false);
+  // 종류 단추는 고르기다 — 비어 있으면 전부, 고르면 고른 종류만 선다.
+  const [picks, setPicks] = useState<ReadonlySet<MapChipKey>>(() => new Set());
   const [query, setQuery] = useState("");
+  // 휴대폰 폭에서는 돋보기만 두고 누르면 입력을 편다(질의가 있으면 늘 펴 둔다).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
   // 선택은 가운데 칸과 레일이 함께 읽는다(사령관별 저장소).
   const selectedId = useCommodoreMapSelection(commodoreId);
   const setSelectedId = useCallback((next: string | null) => setCommodoreMapSelection(commodoreId, next), [commodoreId]);
@@ -116,18 +139,20 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     personSource: t("commodore.intel.fromYou"),
     source: (label: string): string => t("commodore.map.node.source", { label }),
   }), [t, branchName]);
-  const graph = useMemo(
-    () => buildMapGraph({ state, memories: memory.entries, tone: look.tone ?? null, labels, links: !hideLinks }),
-    [state, memory.entries, look.tone, labels, hideLinks],
+  // 배치는 링크까지 든 전체 그래프로 한 번만 잡는다 — 종류를 골라 링크가 빠져도 점이 튀어 옮겨 가지 않는다.
+  const fullGraph = useMemo(
+    () => buildMapGraph({ state, memories: memory.entries, tone: look.tone ?? null, labels }),
+    [state, memory.entries, look.tone, labels],
   );
-  const layout = useMemo(() => layoutMapGraph(graph), [graph]);
+  const showLinks = picks.size === 0 || picks.has("link");
+  const graph = useMemo(
+    () => (showLinks ? fullGraph : buildMapGraph({ state, memories: memory.entries, tone: look.tone ?? null, labels, links: false })),
+    [showLinks, fullGraph, state, memory.entries, look.tone, labels],
+  );
+  const layout = useMemo(() => layoutMapGraph(fullGraph), [fullGraph]);
   const model = useMemo(() => ({ graph, layout }), [graph, layout]);
   const hits = useMemo(() => matchMapQuery(graph, query), [graph, query]);
-  const visibleBase = useMemo(() => visibleMapIds(graph, hidden, hits), [graph, hidden, hits]);
-  const visible = useMemo(() => {
-    if (!hideObjective) return visibleBase;
-    return new Set([...visibleBase].filter((id) => graph.byId.get(id)?.kind !== "objective"));
-  }, [visibleBase, hideObjective, graph]);
+  const visible = useMemo(() => visibleMapIds(graph, picks, hits), [graph, picks, hits]);
   const palette = useMemo(() => readMapPalette(), [paletteTick]);
   // 칩 숫자는 노드 수가 아니라 기억·정보 개수다. 목표·링크는 그래프 개수.
   const chipCounts = useMemo(() => {
@@ -138,7 +163,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     return counts;
   }, [state.description.text, state.intel.length, memory.entries]);
   const objectiveCount = useMemo(() => graph.nodes.filter((node) => node.kind === "objective").length, [graph]);
-  const linkCount = useMemo(() => graph.edges.filter((edge) => edge.kind === "link").length, [graph]);
+  const linkCount = useMemo(() => fullGraph.edges.filter((edge) => edge.kind === "link").length, [fullGraph]);
   const isEmpty = state.description.text === "" && graph.intelTotal === 0 && memory.entries.length === 0;
   const selectedNode = selectedId ? resolveMapDetailNode(graph, selectedId, state, memory.entries) : null;
   const selected: { readonly node: MapNode } | null = selectedNode ? { node: selectedNode } : null;
@@ -395,11 +420,11 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     return () => observer.disconnect();
   }, [syncPositions, applyInsets]);
 
-  const toggleBranch = (branch: MapBranchKey): void => {
-    setHidden((current) => {
+  const togglePick = (key: MapChipKey): void => {
+    setPicks((current) => {
       const next = new Set(current);
-      if (next.has(branch)) next.delete(branch);
-      else next.add(branch);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
       return next;
     });
   };
@@ -471,33 +496,6 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
 
   return (
     <div className="commodore-map-screen" role="group" aria-label={t("commodore.map.title")}>
-        <div className="commodore-map-toolbar">
-          <label className="commodore-map-search">
-            <span aria-hidden="true">⌕</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder={t("commodore.map.search")}
-              aria-label={t("commodore.map.search")}
-            />
-            <button
-              type="button"
-              className="commodore-map-icon-btn"
-              aria-label={t("commodore.map.clearSearch")}
-              onClick={() => setQuery("")}
-              style={{ visibility: searching ? "visible" : "hidden" }}
-              tabIndex={searching ? 0 : -1}
-            >✕</button>
-          </label>
-          <span className="commodore-map-head-spacer" />
-          <button
-            type="button"
-            className="commodore-map-icon-btn commodore-map-fit"
-            title={t("commodore.map.fitHint")}
-            aria-label={t("commodore.map.fit")}
-            onClick={() => { rendererRef.current?.fit(); trackMotion(600); }}
-          >{t("commodore.map.fit")}</button>
-        </div>
         <div className="commodore-map-body">
           <div
             ref={containerRef}
@@ -585,14 +583,41 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                 }) : null}
               </div>
               <div className="commodore-map-top">
+              <div className="commodore-map-top-row">
               <div className="commodore-map-chips" role="group" aria-label={t("commodore.map.chips")}>
+                <div className="commodore-map-search" role="search" data-open={searchOpen || searching ? "true" : undefined}>
+                  <button
+                    type="button"
+                    tabIndex={-1}
+                    className="commodore-map-search-glyph"
+                    aria-label={t("commodore.map.search")}
+                    title={t("commodore.map.search")}
+                    onClick={() => { setSearchOpen(true); requestAnimationFrame(() => searchRef.current?.focus()); }}
+                  ><SearchGlyph /></button>
+                  <input
+                    ref={searchRef}
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    onBlur={() => { if (query.trim() === "") setSearchOpen(false); }}
+                    placeholder={t("commodore.map.search")}
+                    aria-label={t("commodore.map.search")}
+                  />
+                  <button
+                    type="button"
+                    className="commodore-map-icon-btn commodore-map-search-clear"
+                    aria-label={t("commodore.map.clearSearch")}
+                    onClick={() => { setQuery(""); searchRef.current?.focus(); }}
+                    style={{ visibility: searching ? "visible" : "hidden" }}
+                    tabIndex={searching ? 0 : -1}
+                  >✕</button>
+                </div>
                 {(["person", "theater", "lessons", "crew", "intel", "description"] as const).map((branch) => (
                   <button
                     key={branch}
                     type="button"
                     className="commodore-map-chip"
-                    aria-pressed={!hidden.has(branch)}
-                    onClick={() => toggleBranch(branch)}
+                    aria-pressed={picks.has(branch)}
+                    onClick={() => togglePick(branch)}
                   >
                     <span className="commodore-map-sw" style={{ "--c": `var(--map-${branch === "description" ? "description" : branch === "intel" ? "intel" : `branch-${branch}`})` } as React.CSSProperties} aria-hidden="true" />
                     {branchChipLabel(t, branch)} <span className="commodore-map-n">{chipCounts[branch] ?? 0}</span>
@@ -601,8 +626,8 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                 <button
                   type="button"
                   className="commodore-map-chip"
-                  aria-pressed={!hideObjective}
-                  onClick={() => setHideObjective((value) => !value)}
+                  aria-pressed={picks.has("objective")}
+                  onClick={() => togglePick("objective")}
                 >
                   <span className="commodore-map-sw is-ring" style={{ "--c": "var(--map-objective)" } as React.CSSProperties} aria-hidden="true" />
                   {t("commodore.tasks.goals")} <span className="commodore-map-n">{objectiveCount}</span>
@@ -610,12 +635,20 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                 <button
                   type="button"
                   className="commodore-map-chip"
-                  aria-pressed={!hideLinks}
-                  onClick={() => setHideLinks((value) => !value)}
+                  aria-pressed={picks.has("link")}
+                  onClick={() => togglePick("link")}
                 >
                   <span className="commodore-map-sw is-line" style={{ "--c": "var(--map-link)" } as React.CSSProperties} aria-hidden="true" />
                   {t("commodore.map.chip.link")} <span className="commodore-map-n">{linkCount}</span>
                 </button>
+              </div>
+              <button
+                type="button"
+                className="commodore-map-icon-btn commodore-map-fit"
+                title={t("commodore.map.fitHint")}
+                aria-label={t("commodore.map.fit")}
+                onClick={() => { rendererRef.current?.fit(); trackMotion(600); }}
+              ><FitGlyph /></button>
               </div>
               {/* 끌기·휠 조작은 WebGL만 받는다 — Canvas는 조작이 없고, 휴대폰 궤도는 좁은 화면이라 시안대로 숨긴다. */}
               {rendererKind === "webgl" ? <div className="commodore-map-hint" aria-hidden="true">{t("commodore.map.hint")}</div> : null}

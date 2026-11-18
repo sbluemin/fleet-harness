@@ -7,6 +7,7 @@ import {
   NormalBlending,
   PerspectiveCamera,
   Points,
+  Quaternion,
   Scene,
   ShaderMaterial,
   Vector2,
@@ -63,9 +64,8 @@ const MIN_HIT_PX = 4;
 const MAX_PIXEL_RATIO = 1.5;
 const ZOOM_MIN = 0.15;
 const ZOOM_MAX = 2.5;
-/** 끌기 감도(rad/px)와 회전 범위 — 정면에서 크게 돌리면 점이 겹쳐 하얗게 뭉친다. */
-const DRAG_RAD_PER_PX = 0.0016;
-const ANGLE_LIMIT = (35 * Math.PI) / 180;
+/** 끌기 감도(rad/px) — 각도 제한 없이 360도 돈다. 무대 폭 절반쯤 끌면 반 바퀴. */
+const DRAG_RAD_PER_PX = 0.0045;
 const DRAG_THRESHOLD_PX = 3;
 const FIT_TWEEN_MS = 450;
 /** 핵 맥동은 느려 30fps로 충분하다 — 움직임이 없을 때 그리는 간격. */
@@ -159,6 +159,7 @@ const FINAL_SHADER = {
 
 const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+const IDENTITY = new Quaternion();
 const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
 type Rgb = readonly [number, number, number];
@@ -268,11 +269,11 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private insets: MapFitInsets = DEFAULT_INSETS;
   private fitDist = 1200;
   private zoom = 1;
-  private yaw = 0;
-  private pitch = 0;
-  private panX = 0;
-  private panY = 0;
-  private tween: { t0: number; dur: number; yaw0: number; pitch0: number; zoom0: number; panX0: number; panY0: number } | null = null;
+  /** 카메라 자세 — 트랙볼처럼 화면 축 기준으로 쌓는다. 극을 넘어도 뒤집히지 않는다. 항등이면 정면. */
+  private readonly orient = new Quaternion();
+  /** 바라보는 점의 이동(세계 좌표) — 오른쪽 끌기는 화면 평면을 따라 옮긴다. */
+  private readonly pan = new Vector3();
+  private tween: { t0: number; dur: number; orient0: Quaternion; zoom0: number; pan0: Vector3 } | null = null;
   private drag: { id: number; x: number; y: number; active: boolean; pan: boolean } | null = null;
 
   private raf = 0;
@@ -317,14 +318,17 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     drag.x = event.clientX;
     drag.y = event.clientY;
     if (drag.pan) {
-      // 끈 만큼 내용이 따라오게 — 초점 거리에서 1px이 가리키는 세계 길이.
+      // 끈 만큼 내용이 따라오게 — 초점 거리에서 1px이 가리키는 세계 길이. 돌려 둔 화면의 가로·세로 축을 따른다.
       const perPx = (this.fitDist * this.zoom) / this.focalPx();
+      const right = this.tmp.set(1, 0, 0).applyQuaternion(this.orient).multiplyScalar(-dx * perPx);
+      this.pan.add(right);
+      const up = this.tmp.set(0, 1, 0).applyQuaternion(this.orient).multiplyScalar(dy * perPx);
+      this.pan.add(up);
       const limit = this.extent;
-      this.panX = clamp(this.panX - dx * perPx, -limit, limit);
-      this.panY = clamp(this.panY + dy * perPx, -limit, limit);
+      this.pan.set(clamp(this.pan.x, -limit, limit), clamp(this.pan.y, -limit, limit), clamp(this.pan.z, -limit, limit));
     } else {
-      this.yaw = clamp(this.yaw - dx * DRAG_RAD_PER_PX, -ANGLE_LIMIT, ANGLE_LIMIT);
-      this.pitch = clamp(this.pitch + dy * DRAG_RAD_PER_PX, -ANGLE_LIMIT, ANGLE_LIMIT);
+      // 화면 세로축(가로 끌기)·가로축(세로 끌기)으로 돌린다 — 각도 제한이 없어 어느 방향으로든 360도 이어진다.
+      this.rotateBy(-dx * DRAG_RAD_PER_PX, -dy * DRAG_RAD_PER_PX);
     }
     this.viewDirty = true;
     this.schedule();
@@ -469,7 +473,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     if (!this.renderer) return;
     this.tween = {
       t0: performance.now(), dur: FIT_TWEEN_MS,
-      yaw0: this.yaw, pitch0: this.pitch, zoom0: this.zoom, panX0: this.panX, panY0: this.panY,
+      orient0: this.orient.clone(), zoom0: this.zoom, pan0: this.pan.clone(),
     };
     // 첫 그리기 전에도 project가 맞는 답을 내놓게 카메라를 곧바로 둔다.
     this.placeCamera();
@@ -651,7 +655,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const signature = this.ids.join("\n");
     if (signature !== this.signature) {
       this.signature = signature;
-      this.yaw = 0; this.pitch = 0; this.zoom = 1; this.panX = 0; this.panY = 0; this.tween = null;
+      this.orient.identity(); this.zoom = 1; this.pan.set(0, 0, 0); this.tween = null;
     }
     this.computeFit();
   }
@@ -793,18 +797,21 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     }
   }
 
+  /** 화면 축 기준 회전 — yaw는 화면 세로축, pitch는 화면 가로축. 자세에 오른쪽으로 곱해 지금 보이는 화면을 기준으로 돈다. */
+  private rotateBy(yaw: number, pitch: number): void {
+    const step = new Quaternion().setFromAxisAngle(this.tmp.set(0, 1, 0), yaw);
+    this.orient.multiply(step);
+    step.setFromAxisAngle(this.tmp.set(1, 0, 0), pitch);
+    this.orient.multiply(step).normalize();
+  }
+
   private placeCamera(): void {
     const dist = this.fitDist * this.zoom;
-    const cp = Math.cos(this.pitch);
-    const tx = this.center.x + this.panX;
-    const ty = this.center.y + this.panY;
-    this.camera.position.set(
-      tx + dist * Math.sin(this.yaw) * cp,
-      ty + dist * Math.sin(this.pitch),
-      dist * Math.cos(this.yaw) * cp,
-    );
-    this.camera.up.set(0, 1, 0);
-    this.camera.lookAt(tx, ty, 0);
+    // 자세가 항등이면 +z 정면에서 바라본다. 카메라는 자기 -z를 보므로 자세를 그대로 쓰면 늘 중심을 향한다.
+    const target = this.tmp.set(this.center.x + this.pan.x, this.center.y + this.pan.y, this.pan.z);
+    this.camera.quaternion.copy(this.orient);
+    this.camera.position.set(0, 0, dist).applyQuaternion(this.orient).add(target);
+    this.camera.up.set(0, 1, 0).applyQuaternion(this.orient);
     this.camera.updateMatrixWorld();
   }
 
@@ -854,11 +861,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     if (tween) {
       const t = clamp((now - tween.t0) / tween.dur, 0, 1);
       const e = easeInOut(t);
-      this.yaw = lerp(tween.yaw0, 0, e);
-      this.pitch = lerp(tween.pitch0, 0, e);
+      this.orient.slerpQuaternions(tween.orient0, IDENTITY, e);
       this.zoom = lerp(tween.zoom0, 1, e);
-      this.panX = lerp(tween.panX0, 0, e);
-      this.panY = lerp(tween.panY0, 0, e);
+      this.pan.copy(tween.pan0).multiplyScalar(1 - e);
       if (t >= 1) this.tween = null;
       this.viewDirty = true;
     }
@@ -881,7 +886,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
 
   /** 카메라·크기가 바뀐 그림에서만 DOM 층에 알린다(맥동 그림에서는 알리지 않는다). */
   private notifyView(): void {
-    const signature = [this.yaw, this.pitch, this.zoom, this.panX, this.panY, this.width, this.height, this.fitDist]
+    const o = this.orient;
+    const signature = [o.x, o.y, o.z, o.w, this.zoom, this.pan.x, this.pan.y, this.pan.z, this.width, this.height, this.fitDist]
       .map((v) => v.toFixed(4)).join(",");
     if (signature === this.lastView) return;
     this.lastView = signature;

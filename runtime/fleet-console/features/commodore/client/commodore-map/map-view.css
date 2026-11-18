@@ -1,16 +1,14 @@
-/* 사령관 지도 — 시안(안 D) 겉모습을 따른다. 색은 토큰만 쓴다. 대화 영역 전체를 차지한다. */
+/* 사령관 지도 — 시안(안 D) 겉모습을 따른다. 색은 토큰만 쓴다. 대화 영역 전체를 차지한다.
+   지도 몫의 머리 줄은 따로 두지 않는다 — 위쪽은 채팅과 같은 투명 맨 위 줄(--conversation-overlay-top)이고, 지도는 그 아래에 선다.
+   검색·맞춤 보기는 무대 안 위쪽 줄에 겹친다. */
 .commodore-map-screen {
   position: relative;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   flex: 1 1 auto;
-  height: 100%;
   min-height: 0;
+  margin-top: var(--conversation-overlay-top, 0px);
   color: var(--text-primary);
-}
-
-.commodore-map-head-spacer {
-  flex: 1;
 }
 
 .commodore-map-icon-btn {
@@ -31,9 +29,18 @@
   color: var(--text-primary);
 }
 
-/* 맞춤 보기 — 뜻이 읽히는 텍스트 단추. */
+/* 맞춤 보기 — 무대 오른쪽 위의 글리프 단추 하나. 뜻은 툴팁·접근 이름이 말한다. */
 .commodore-map-fit {
-  white-space: nowrap;
+  pointer-events: auto;
+  flex: none;
+  width: 30px;
+  min-width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--dialog-face) 82%, transparent);
+  backdrop-filter: blur(6px);
 }
 
 .commodore-map-icon-btn:focus-visible {
@@ -42,23 +49,36 @@
   outline: none;
 }
 
-.commodore-map-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 4px 12px 10px 20px;
-}
-
+/* 기억 찾기 — 무대 왼쪽 위, 종류 단추 줄 맨 앞. 칩과 같은 유리 바탕에 바깥 테두리만 강조한다. */
 .commodore-map-search {
+  pointer-events: auto;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   flex: none;
-  border-radius: var(--radius-xs);
-  padding: 4px 8px;
-  background: var(--wash-hover);
+  height: 26px;
+  box-sizing: border-box;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  padding: 0 2px 0 8px;
+  background: color-mix(in oklab, var(--dialog-face) 82%, transparent);
+  backdrop-filter: blur(6px);
   color: var(--text-secondary);
-  font-size: var(--t-sm);
+  font-size: var(--t-xs);
+}
+
+.commodore-map-search:focus-within {
+  border-color: var(--text-tertiary);
+}
+
+.commodore-map-search-glyph {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: text;
 }
 
 .commodore-map-search input {
@@ -67,13 +87,21 @@
   color: var(--text-primary);
   font: inherit;
   outline: none;
-  width: 11em;
+  width: 10em;
+  min-width: 0;
+}
+
+.commodore-map-search-clear {
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: var(--radius-pill);
+  font-size: var(--t-xs);
 }
 
 .commodore-map-body {
   display: flex;
   min-height: 0;
-  border-top: 1px solid var(--hairline);
 }
 
 .commodore-map-stage {
@@ -82,7 +110,7 @@
   min-height: 320px;
   min-width: 0;
   overflow: hidden;
-  margin: 12px;
+  margin: 0 12px 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
   background: radial-gradient(ellipse at 50% 45%, var(--ink-deep), var(--canvas-abyss) 70%);
@@ -200,9 +228,19 @@
   pointer-events: none;
 }
 
+/* 위쪽 줄 — 왼쪽은 검색과 종류 단추(넘치면 줄바꿈), 오른쪽 끝은 맞춤 보기. */
+.commodore-map-top-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .commodore-map-chips {
   display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
   flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   pointer-events: none;
 }
@@ -232,8 +270,15 @@
   outline: none;
 }
 
-.commodore-map-chip[aria-pressed="false"] {
-  opacity: 0.45;
+/* 고른 종류 — 꺼짐이 아니라 '골랐다'로 읽히게 바탕을 채우고 글자를 밝힌다. 고르지 않은 칩은 평소 모습 그대로다. */
+.commodore-map-chip[aria-pressed="true"] {
+  border-color: var(--text-tertiary);
+  background: color-mix(in oklab, var(--wash-selected) 100%, var(--dialog-face));
+  color: var(--text-primary);
+}
+
+.commodore-map-chip[aria-pressed="true"] .commodore-map-n {
+  color: var(--text-primary);
 }
 
 .commodore-map-sw {
@@ -257,17 +302,6 @@
   width: 14px;
   height: 2px;
   border-radius: 1px;
-}
-
-.commodore-map-chip[aria-pressed="false"] .commodore-map-sw {
-  background: transparent;
-  border: 1.5px dashed var(--c, var(--text-secondary));
-}
-
-.commodore-map-chip[aria-pressed="false"] .commodore-map-sw.is-line {
-  border: 0;
-  border-top: 1.5px dashed var(--c, var(--text-secondary));
-  height: 0;
 }
 
 .commodore-map-n {
@@ -597,9 +631,26 @@
 }
 
 /* 휴대폰 — 레일이 없어 패널이 무대 아래에 선다. 시안 900px 이하처럼 세로로 쌓고 무대는 64vh(최소 440px). */
-/* 상단 막대는 본문 위에 떠 있다 — 검색 줄이 그 뒤에 깔리지 않게 막대 몫(--m-chrome-top)을 비운다. */
+/* 상단 막대는 본문 위에 떠 있다 — 무대가 그 뒤에 깔리지 않게 막대 몫(--m-chrome-top)만 비운다. 지도 몫의 머리 줄은 없다. */
 :root[data-view-mode="mobile"] .commodore-map-screen {
+  margin-top: 0;
   padding-top: var(--m-chrome-top, 0px);
+}
+
+/* 좁은 폭에서는 돋보기만 두고 누르면 입력을 편다. */
+:root[data-view-mode="mobile"] .commodore-map-search:not([data-open="true"]) {
+  padding: 0;
+  width: 26px;
+  justify-content: center;
+}
+
+:root[data-view-mode="mobile"] .commodore-map-search:not([data-open="true"]) input,
+:root[data-view-mode="mobile"] .commodore-map-search:not([data-open="true"]) .commodore-map-search-clear {
+  display: none;
+}
+
+:root[data-view-mode="mobile"] .commodore-map-search:not([data-open="true"]) .commodore-map-search-glyph {
+  cursor: pointer;
 }
 
 :root[data-view-mode="mobile"] .commodore-map-body {
@@ -611,7 +662,7 @@
   flex: none;
   height: 64vh;
   min-height: 440px;
-  margin: 12px 12px 0;
+  margin: 0 12px;
 }
 
 :root[data-view-mode="mobile"] .commodore-map-panel {
