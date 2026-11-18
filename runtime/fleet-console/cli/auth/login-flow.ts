@@ -1,6 +1,6 @@
 import { cancel, isCancel, password, select } from "@clack/prompts";
 import type { AuthService } from "@fleet-console/ai-gateway";
-import { GEMINI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, validateGeminiAuthKey, validateOpencodeGoAuthKey, validateTypesafeAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
+import { ANTHROPIC_AUTH_PROVIDER_ID, GEMINI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID, validateAnthropicAuthKey, validateGeminiAuthKey, validateOpencodeGoAuthKey, validateTypesafeAuthKey, type AuthKeyValidationResult } from "@fleet-console/ai-gateway";
 
 export interface AuthCommandDeps {
   readonly authService: AuthService;
@@ -11,7 +11,7 @@ export interface AuthCommandIo {
   readonly stderr: Pick<NodeJS.WriteStream, "write">;
 }
 
-export type AuthCliId = "opencode" | "gemini" | "typesafe";
+export type AuthCliId = "opencode" | "gemini" | "anthropic" | "typesafe";
 
 interface AuthCliDefinition {
   readonly label: string;
@@ -33,6 +33,12 @@ export const AUTH_CLI_DEFINITIONS: Readonly<Record<AuthCliId, AuthCliDefinition>
     shortName: "Gemini",
     providerId: GEMINI_AUTH_PROVIDER_ID,
     validate: validateGeminiAuthKey,
+  },
+  anthropic: {
+    label: "Anthropic API key for AI Gateway",
+    shortName: "Anthropic",
+    providerId: ANTHROPIC_AUTH_PROVIDER_ID,
+    validate: validateAnthropicAuthKey,
   },
   typesafe: {
     label: "TypeSafe System One",

@@ -5,17 +5,18 @@ import type { ServerOriginPort } from "@fleet-console/infra/http/host-ports";
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
 import type { RouteHandler } from "@fleet-console/infra/http/routing";
 import {
+  BUDGET_PROVIDERS,
   handleConnect,
-  handleGeminiBudget,
   handleProviderLogin,
+  handleSpendBudget,
   handleSummary,
   LOGIN_PROVIDERS,
   type GatewayQuotaSummary,
-  type GeminiBudgetGateway,
   type LoginAction,
   type LoginGateway,
   type LoginProvider,
   type QuotaSummarySource,
+  type SpendBudgetGateway,
 } from "./handlers.js";
 
 const LOGIN_LABEL: Readonly<Record<LoginProvider, string>> = {
@@ -93,13 +94,13 @@ export function createQuotaFeature(deps: QuotaFeatureDeps) {
     await handleConnect(req, res, ctx, service, serializeSettings);
     return true;
   }, { method: "POST", path: "", summary: "Update provider quota connection state.", category: "Quota", gate: "origin-write", transport: "http" });
-  // Gemini 월 예산은 지출 원장과 같은 파일에 살고 원장은 Gateway가 소유한다. 플러그인은 저장하지 않고
+  // 월 예산은 지출 원장과 같은 파일에 살고 원장은 Gateway가 소유한다. 플러그인은 저장하지 않고
   // Gateway의 판정을 옮긴 뒤, 저장된 예산이 반영된 요약을 돌려준다(연결·로그아웃과 같은 규칙).
-  const budget: GeminiBudgetGateway = {
-    async setBudget(request) {
+  const budget: SpendBudgetGateway = {
+    async setBudget(provider, request) {
       const origin = ctx.host.server.origin();
       if (!origin) throw new Error("Console is not listening");
-      const url = new URL("/api/v1/ai-gateway/quota/gemini-budget", origin);
+      const url = new URL(`/api/v1/ai-gateway/quota/${provider}-budget`, origin);
       const response = await fetch(url, {
         method: "POST",
         headers: { Origin: origin, Accept: "application/json", "Content-Type": "application/json" },
@@ -110,10 +111,12 @@ export function createQuotaFeature(deps: QuotaFeatureDeps) {
       return { status: response.status, payload: await response.json().catch(() => null) as unknown };
     },
   };
-  addRoute("gemini-budget", async ({ req, res }) => {
-    await handleGeminiBudget(req, res, ctx, budget, service);
-    return true;
-  }, { method: "POST", path: "", summary: "Set or clear the Gemini monthly spend budget.", category: "Quota", gate: "origin-write", transport: "http" });
+  for (const provider of BUDGET_PROVIDERS) {
+    addRoute(`${provider}-budget`, async ({ req, res }) => {
+      await handleSpendBudget(req, res, ctx, provider, budget, service);
+      return true;
+    }, { method: "POST", path: "", summary: `Set or clear the ${provider} monthly spend budget.`, category: "Quota", gate: "origin-write", transport: "http" });
+  }
   for (const provider of LOGIN_PROVIDERS) {
     for (const route of LOGIN_ROUTES) {
       addRoute(`${provider}/${route.action}`, async ({ req, res }) => {

@@ -298,6 +298,10 @@
   color: var(--provider-gemini);
 }
 
+.quota-provider__mark--anthropic {
+  color: var(--provider-anthropic);
+}
+
 .quota-plan {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
@@ -975,4 +979,58 @@
   .quota-spend__fill {
     transition: none;
   }
+}
+
+/* API 키 한도 — 마지막 응답 헤더가 알려 준 분당 한도. 창이 아니므로 미터 대신 표로 그린다. */
+.quota-ratelimit {
+  margin-top: 12px;
+}
+
+.quota-ratelimit__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.quota-ratelimit__label {
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+}
+
+.quota-ratelimit__observed {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+}
+
+.quota-ratelimit__rows {
+  display: grid;
+  gap: 2px;
+  margin: 6px 0 0;
+}
+
+.quota-ratelimit__row {
+  display: grid;
+  grid-template-columns: minmax(72px, auto) 1fr;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.quota-ratelimit__name {
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+}
+
+.quota-ratelimit__value {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.quota-ratelimit__note {
+  margin: 6px 0 0;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  line-height: 1.45;
 }

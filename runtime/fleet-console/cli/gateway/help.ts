@@ -25,7 +25,7 @@ export function buildGatewayHelpText(options: BuildGatewayHelpTextOptions = {}):
     dim(`Fleet AI Gateway · ${release.version} · ${release.channel}`, colorEnabled),
     "",
     dim("One Anthropic-compatible endpoint over your Codex, xAI, and", colorEnabled),
-    dim("OpenCode Go subscriptions and your Gemini API key. Same configuration the Console screen edits.", colorEnabled),
+    dim("OpenCode Go subscriptions and your Gemini or Anthropic API key. Same configuration the Console screen edits.", colorEnabled),
     "",
     section("USAGE", colorEnabled),
     `  ${command("fleet gateway", colorEnabled)} ${dim("[command] [options]", colorEnabled)}`,
