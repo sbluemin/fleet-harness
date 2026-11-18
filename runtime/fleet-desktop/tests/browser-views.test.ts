@@ -68,7 +68,8 @@ function deliverViewRequest(
 }
 
 /** 셸이 만든 네이티브 뷰 — 이 계약이 보는 것은 만들어졌는지, 닫혔는지, 어떤 CDP 명령을 받았는지뿐이다. */
-function fakeView(partition: string, created: Array<{ partition: string; closed: boolean; commands: string[]; sent?: Array<{ method: string; params: Record<string, unknown> }>; contents: EventEmitter }>): WebContentsView {
+type OpenHandler = (details: { url: string; disposition: string; features: string; frameName: string; postBody?: unknown }) => { action: string; createWindow?: unknown };
+function fakeView(partition: string, created: Array<{ partition: string; closed: boolean; commands: string[]; sent?: Array<{ method: string; params: Record<string, unknown> }>; contents: EventEmitter; openHandler?: OpenHandler; loaded?: string[] }>): WebContentsView {
   const record = {
     partition,
     closed: false,
@@ -79,6 +80,8 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
     listener: null as ((details: { url: string; requestHeaders: Record<string, string>; webContentsId?: number }, callback: (response: { requestHeaders?: Record<string, string> }) => void) => void) | null,
     frameSubs: { begin: 0, end: 0 },
     bounds: vi.fn(),
+    openHandler: undefined as OpenHandler | undefined,
+    loaded: [] as string[],
   };
   created.push(record);
   // 페이지 이동은 뷰가 닫힐 때까지 끝나지 않다가 닫히면 거부된다 — 재기동 순간에 걸려 있던 명령.
@@ -99,10 +102,11 @@ function fakeView(partition: string, created: Array<{ partition: string; closed:
         return method === "Page.navigate" ? new Promise((_resolve, reject) => { rejectPending = reject; }) : Promise.resolve({});
       },
     }),
-    setWindowOpenHandler: () => {},
+    setWindowOpenHandler: (handler: OpenHandler) => { record.openHandler = handler; },
+    getURL: () => "https://opener.example/page",
     beginFrameSubscription: () => { record.frameSubs.begin += 1; },
     endFrameSubscription: () => { record.frameSubs.end += 1; },
-    loadURL: async () => {},
+    loadURL: async (url: string) => { record.loaded.push(url); },
     insertCSS: async () => "",
     isFocused: () => false,
     isDestroyed: () => record.closed,
@@ -269,6 +273,73 @@ describe("desktop native browser views across a Console restart", () => {
       vi.useRealTimers();
     }
   });
+  // 셸 게이트: 페이지가 연 창을 새 탭으로 받을지 같은 뷰에서 열지(또는 열지 않을지)를 핸들러에서 동기로 정한다.
+  it("opens page-opened windows as tabs only when the Console takes them, and keeps the same-view fallback and the address gate", async () => {
+    let lifetime: DesktopBrowserSnapshot = { generation: 1, epoch: "gate", views: [view("view-a")], commands: [], popups: true };
+    const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
+    const relays: DesktopBrowserRelay[] = [];
+    const fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+      const { pathname } = new URL(String(input));
+      if (pathname === DESKTOP_BROWSER_RELAY_PATH) { relays.push(JSON.parse(String(init?.body))); return new Response(null, { status: 204 }); }
+      if (pathname === DESKTOP_BROWSER_PATH) return Response.json(lifetime);
+      if (pathname === DESKTOP_BROWSER_EVENTS_PATH) return new Response(new ReadableStream<Uint8Array>({ start: (controller) => { streams.push(controller); controller.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`)); } }));
+      return new Response(null, { status: 404 });
+    });
+    const created: Array<{ partition: string; closed: boolean; commands: string[]; contents: EventEmitter; openHandler?: OpenHandler; loaded?: string[] }> = [];
+    const mainHost = { isDestroyed: () => false, contentBounds: () => ({ x: 0, y: 0, width: 1200, height: 800 }), park: vi.fn(), present: vi.fn(), remove: vi.fn(), scale: () => 2, reclaimFocus: vi.fn() } satisfies PageHost;
+    const views = createDesktopBrowserViews({
+      shell: () => mainHost, consoleContents: () => null,
+      surface: { apply: vi.fn(), target: () => null, lastPage: () => null, inputLocked: () => false, refresh: vi.fn(), dispose: vi.fn() },
+      createView: (partition) => fakeView(partition, created), product: () => "Chrome/150.0", userAgent: () => "Mozilla/5.0 Chrome/150.0", fetch: fetch as typeof globalThis.fetch,
+    });
+    await views.start(REMOTE);
+    await vi.waitFor(() => expect(created[0]?.openHandler).toBeDefined());
+    const open = created[0]!.openHandler!;
+    const loaded = created[0]!.loaded!;
+    await vi.waitFor(() => expect(loaded).toEqual(["about:blank"]));
+    loaded.length = 0;
+    const tab = { url: "https://links.example/next", disposition: "foreground-tab", features: "", frameName: "" };
+    const shiftClick = { ...tab, disposition: "new-window" };
+    const popup = { ...tab, disposition: "new-window", features: "width=400,height=300" };
+    const update = async (next: Partial<DesktopBrowserSnapshot>, expectOpens: () => void) => {
+      lifetime = { ...lifetime, ...next, generation: lifetime.generation + 1 };
+      streams.at(-1)!.enqueue(new TextEncoder().encode(`event: ${DESKTOP_BROWSER_EVENT}\ndata: ${JSON.stringify(lifetime)}\n\n`));
+      await vi.waitFor(expectOpens);
+    };
+
+    // 옛 Console(탭형 열기 표시 없음): 팝업만 새 창으로 받고, 탭형 열기와 Shift 클릭(new-window 이지만 기능이 비어 있다)은 같은 뷰에서 연다.
+    expect(open(popup).action).toBe("allow");
+    expect(open(tab).action).toBe("deny");
+    expect(open(shiftClick).action).toBe("deny");
+    expect(loaded).toEqual([tab.url, tab.url]);
+    // 받을 만하지 않은 주소(data:)는 받는 Console 이든 아니든 새 탭으로도 같은 뷰로도 열지 않는다. 같은 출처 blob: 은 같은 뷰로 열린다.
+    expect(open({ ...tab, url: "data:text/html,<b>x</b>" }).action).toBe("deny");
+    expect(open({ ...tab, url: "blob:https://opener.example/1234" }).action).toBe("deny");
+    expect(open({ ...tab, url: "blob:https://elsewhere.example/1234" }).action).toBe("deny");
+    expect(loaded).toEqual([tab.url, tab.url, "blob:https://opener.example/1234"]);
+
+    // 새 Console: 탭형 열기와 Shift 클릭도 새 탭으로 받는다. 그 뷰의 스페이스가 가득 찼다고 알리면 같은 뷰에서 연다(상한 초과).
+    await update({ tabOpens: { full: [] } }, () => expect(open(tab).action).toBe("allow"));
+    expect(open(shiftClick).action).toBe("allow");
+    expect(open({ ...tab, url: "data:text/html,x" }).action).toBe("deny");
+    // 수정키 클릭은 Chromium 이 webContents 를 만들지 않는다 — 셸이 직접 뷰를 만들어 알린다(백그라운드는 표시). 그 뷰는 about:blank 에 서고
+    // Console 이 준비한 뒤 주소로 보낸다. POST 열기는 붙잡지 않고 셸이 본문째 적재하며 Console 은 이동 없이 등록만 한다.
+    const popups = () => relays.flatMap((relay) => relay.popups ?? []);
+    (open({ ...tab, disposition: "background-tab" }).createWindow as (options: object) => unknown)({});
+    await vi.waitFor(() => expect(popups()).toEqual([{ viewId: expect.stringMatching(/^popup-/u), openerViewId: "view-a", url: tab.url, background: true }]));
+    expect(created).toHaveLength(2);
+    expect(created[1]!.loaded).toEqual(["about:blank"]);
+    const post = { data: [{ type: "rawData", bytes: Buffer.from("k=v") }], contentType: "application/x-www-form-urlencoded" };
+    (open({ ...tab, postBody: post }).createWindow as (options: object) => unknown)({});
+    await vi.waitFor(() => expect(popups()).toHaveLength(2));
+    expect(popups()[1]).toEqual({ viewId: expect.stringMatching(/^popup-/u), openerViewId: "view-a", url: tab.url, loaded: true });
+    expect(created[2]!.loaded).toEqual(["about:blank", tab.url]);
+    await update({ tabOpens: { full: ["view-a"] } }, () => expect(open(tab).action).toBe("deny"));
+    expect(open(popup).action).toBe("allow");
+    expect(loaded.at(-1)).toBe(tab.url);
+    views.stop();
+  });
+
   it("rebuilds views and runs commands from a restarted Console on the same origin", async () => {
     let lifetime: DesktopBrowserSnapshot = {
       generation: 58, epoch: "before", views: [view("view-old")],

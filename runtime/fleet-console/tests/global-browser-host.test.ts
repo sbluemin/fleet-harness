@@ -369,6 +369,24 @@ describe("session browser host contract", () => {
       expect(engine.snapshot().views.some((view) => view.id === "popup-orphan")).toBe(false);
       engine.relay("local", { detached: ["popup-login"] });
       expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual(sharedTabs.slice(1).map((tab) => tab.id));
+      // 탭형 열기(_blank·기능 없는 window.open·수정키 클릭)도 새 탭이다. 앞에 띄우는 열기는 opener 를 현재 탭으로 쥔 에이전트의 현재 탭을 새
+      // 탭으로 옮기고, 백그라운드 열기는 현재 탭도 화면도 그대로 둔다. 주소가 받을 만하지 않은 붙잡지 않은 열기(data:)는 받지 않는다.
+      expect(engine.snapshot().tabOpens).toEqual({ full: [] });
+      const otherCaller = { participantId: "other", spaceId: commodoreBrowserSpaceId("other"), ownerId: commodoreBrowserSpaceId("other") };
+      const openerView = service.viewIdOfTab(BROWSER_GLOBAL_ID, foreign.id)!;
+      service.setCurrentTab(BROWSER_GLOBAL_ID, otherCaller, foreign.id);
+      expect(service.agentTabs(BROWSER_GLOBAL_ID, otherCaller, false).currentTabId).toBe(foreign.id);
+      engine.relay("local", { popups: [{ viewId: "tab-background", openerViewId: openerView, url: "https://links.example/bg", background: true }] });
+      await vi.waitFor(() => expect(service.state(BROWSER_GLOBAL_ID).tabs.find((tab) => tab.url === "https://links.example/bg")).toMatchObject({ spaceId: foreign.spaceId }));
+      expect(service.agentTabs(BROWSER_GLOBAL_ID, otherCaller, false).currentTabId).toBe(foreign.id);
+      engine.relay("local", { popups: [{ viewId: "tab-data", openerViewId: openerView, url: "data:text/html,x", loaded: true }] });
+      engine.relay("local", { popups: [{ viewId: "tab-front", openerViewId: openerView, url: "https://links.example/front" }] });
+      await vi.waitFor(() => expect(service.state(BROWSER_GLOBAL_ID).tabs.find((tab) => tab.url === "https://links.example/front")).toMatchObject({ spaceId: foreign.spaceId }));
+      const front = service.state(BROWSER_GLOBAL_ID).tabs.find((tab) => tab.url === "https://links.example/front")!;
+      expect(service.agentTabs(BROWSER_GLOBAL_ID, otherCaller, false).currentTabId).toBe(front.id);
+      expect(service.state(BROWSER_GLOBAL_ID).tabs.some((tab) => tab.url.startsWith("data:"))).toBe(false);
+      engine.relay("local", { detached: ["tab-background", "tab-front"] });
+      expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual(sharedTabs.slice(1).map((tab) => tab.id));
       // 없는 스페이스에는 열 수 없다 — 스페이스는 디폴트와 사령관의 것뿐이다.
       await expect(service.createTab(BROWSER_GLOBAL_ID, null, "user", { spaceId: "objective-a" })).rejects.toMatchObject({ code: "browser_space_not_found" });
 
@@ -379,6 +397,10 @@ describe("session browser host contract", () => {
       expect(concurrent.filter((result) => result.status === "rejected").map((result) => result.reason.code)).toEqual([
         "browser_tab_limit", "browser_tab_limit", "browser_tab_limit",
       ]);
+      // 더 받지 못하는 스페이스의 뷰는 스냅샷으로 셸에 알린다 — 셸이 탭형 열기를 받을지 같은 뷰에서 열지 동기로 정하는 근거다.
+      const defaultViews = service.state(BROWSER_GLOBAL_ID).tabs.filter((tab) => tab.spaceId === DESKTOP_BROWSER_DEFAULT_SPACE_ID).map((tab) => service.viewIdOfTab(BROWSER_GLOBAL_ID, tab.id)!).sort();
+      expect(defaultViews).toHaveLength(DESKTOP_BROWSER_TAB_LIMITS.default);
+      expect([...engine.snapshot().tabOpens!.full]).toEqual(defaultViews);
       const limited = { participantId: "limited", spaceId: commodoreBrowserSpaceId("limited"), ownerId: commodoreBrowserSpaceId("limited") };
       for (let index = 0; index < DESKTOP_BROWSER_TAB_LIMITS.commodore; index += 1) await service.createTab(BROWSER_GLOBAL_ID, null, "agent", { caller: limited });
       await expect(service.createTab(BROWSER_GLOBAL_ID, null, "agent", { caller: limited })).rejects.toMatchObject({ code: "browser_tab_limit", detail: { limit: DESKTOP_BROWSER_TAB_LIMITS.commodore } });

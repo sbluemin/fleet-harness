@@ -146,6 +146,7 @@ function createStubDesktop(options: StubOptions = {}) {
     currentHost: "local" as string | null,
     onSurface: () => () => undefined,
     surfaceState: () => null,
+    setTabOpenFull: () => undefined,
     get connected() { return true; },
     closed: new Promise<void>(() => undefined),
     viewSize: (id: string) => sizes.get(id) ?? null,

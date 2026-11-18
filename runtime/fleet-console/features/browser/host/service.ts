@@ -1110,6 +1110,7 @@ export class BrowserService {
   }
 
   private emitState(op: ObjectiveBrowser): void {
+    this.syncTabOpenRoom();
     const state = this.state(op.objectiveId);
     // 셸이 표면의 크롬을 그리므로 Console 상태가 바뀔 때마다 투영을 스냅샷에 싣는다. 표면이 없으면 싣지 않는다.
     if (this.deps.desktop.surfaceState()?.browserId === op.objectiveId) this.deps.desktop.setChrome(this.chromeOf(op, state));
@@ -1717,18 +1718,25 @@ export class BrowserService {
   }
 
   /**
-   * 페이지가 연 팝업(`window.open` 의 새 창)을 opener 와 같은 스페이스의 새 탭으로 받는다. Chrome 처럼 opener 관계가 살아 있어
-   * 팝업이 `window.opener.postMessage` 로 결과를 돌려주고 스스로 닫을 수 있다. 셸이 첫 이동을 붙잡아 두었으므로 탭 준비
-   * (Chrome 표면 등)를 마친 뒤 그 주소로 보낸다. 받을 수 없으면(상한·주소 정책) 팝업을 닫는다 — opener 는 닫힌 창을 본다.
+   * 페이지가 연 창(팝업과 탭형 열기: `window.open`·`target=_blank`·수정키 클릭·form POST)을 opener 와 같은 스페이스의 새 탭으로
+   * 받는다. opener 관계는 Chromium 에 있어(noopener 면 끊김) 팝업은 `window.opener.postMessage` 로 결과를 돌려주고 스스로 닫을 수
+   * 있다. 셸이 첫 이동을 붙잡아 두었으므로 탭 준비(Chrome 표면 등)를 마친 뒤 그 주소로 보낸다 — 붙잡지 않은 열기(`loaded`: POST·blob)는
+   * 이미 적재 중이라 이동 없이 등록만 하고, 그 문서는 준비 스크립트를 첫 문서에 받지 못할 수 있다. 받을 수 없으면(상한·주소 정책)
+   * 창을 닫는다 — opener 는 닫힌 창을 본다.
+   *
+   * 상한은 여기가 최종 판정이다. 셸은 스냅샷의 `tabOpens.full` 로 받을지 정하지만 그 값은 스냅샷 시점의 것이라, 여러 열기가
+   * 한꺼번에 오거나 스냅샷이 닿기 전에 열리면 낡았다. 그때 이 검사가 넘는 열기를 닫는다(셸은 이미 창을 돌려줬으므로 같은 뷰로 대체할 수 없다).
    */
-  private async adoptPopup(op: ObjectiveBrowser, opener: Tab, targetId: string, url: string): Promise<void> {
+  private async adoptPopup(op: ObjectiveBrowser, opener: Tab, targetId: string, url: string, flags: { readonly background?: boolean; readonly loaded?: boolean } = {}): Promise<void> {
     const { client } = await this.context(op);
     const refuse = async (): Promise<void> => { await client.send("Target.closeTarget", { targetId }).catch(() => undefined); };
     const spaceFull = this.spaceTabs(op, opener.spaceId).length + (op.pendingSpaces.get(opener.spaceId) ?? 0) >= browserSpaceTabLimit(opener.spaceId);
     if (spaceFull || op.tabs.size + op.pendingTabs >= DESKTOP_BROWSER_TAB_LIMITS.total) { await refuse(); return; }
     const actor = opener.ownerId === null ? "user" : "agent";
     let target: URL | null = null;
-    if (url !== "" && url !== "about:blank") {
+    if (flags.loaded) {
+      if (!this.admitLoaded(opener, url)) { await refuse(); return; }
+    } else if (url !== "" && url !== "about:blank") {
       try { target = this.admit(op, url, actor); } catch { await refuse(); return; }
     }
     // 상한 검사와 예약을 첫 await 전에 마친다 — 한 relay 에 여러 팝업이 와도 같은 빈자리를 함께 차지하지 않는다(createTab 과 같다).
@@ -1749,15 +1757,48 @@ export class BrowserService {
     try {
       await this.prepareTab(client, tab, op, actor);
       if (op.tabs.get(tab.id) !== tab) return;
-      // Chrome 은 팝업을 앞에 띄운다 — 사람이 opener 를 보고 있었을 때만. 에이전트의 작업 탭은 그대로 둔다.
-      if (op.activeTabId === opener.id) await this.selectTab(op.objectiveId, tab.id);
-      else this.emitState(op);
+      if (flags.loaded) await this.refreshTab(client, tab);
+      if (flags.background) {
+        // 백그라운드 탭(Cmd·중간 클릭)은 스페이스 끝에 붙을 뿐 사람 화면도 에이전트의 현재 탭도 바꾸지 않는다.
+        this.emitState(op);
+      } else {
+        // Chrome 은 앞에 띄우는 열기를 앞에 둔다 — 사람이 opener 를 보고 있었을 때만. 에이전트의 작업 탭은 그 탭을 현재 탭으로 쥔 참가자만 옮긴다.
+        for (const [participant, id] of [...op.currentTabs]) if (id === opener.id) op.currentTabs.set(participant, tab.id);
+        if (op.activeTabId === opener.id) await this.selectTab(op.objectiveId, tab.id);
+        else this.emitState(op);
+      }
       if (target) await this.navigateTab(op, tab, target.href);
     } catch {
       // 엔진의 closeTarget 은 detachedFromTarget 을 내지 않는다 — 등록한 탭을 여기서 직접 접는다(띄운 탭이었으면 opener 로 돌아간다).
       if (op.tabs.get(tab.id) === tab) await this.closeTab(op.objectiveId, tab.id).catch(() => refuse());
       else await refuse();
     }
+  }
+
+  /**
+   * 셸이 붙잡지 않고 적재한 열기(POST·blob)의 주소가 받을 만한가. 셸이 이미 같은 검사를 했지만 Console 도 스스로 확인한다 —
+   * http(s)와 opener 와 같은 출처의 blob: 만. (에이전트 navigate 의 `admit` 은 그대로다.)
+   */
+  private admitLoaded(opener: Tab, input: string): boolean {
+    let url: URL;
+    let from: URL | null = null;
+    try { url = new URL(input); } catch { return false; }
+    if (url.protocol === "http:" || url.protocol === "https:") return true;
+    if (url.protocol !== "blob:") return false;
+    try { from = new URL(opener.url); } catch { return false; }
+    return (from.protocol === "http:" || from.protocol === "https:") && url.origin === from.origin;
+  }
+
+  /** 새 탭을 더 받지 못하는 탭의 뷰를 엔진에 알린다 — 셸이 탭형 열기를 받을지 같은 뷰에서 열지 동기로 정하는 근거다(낡을 수 있다). */
+  private syncTabOpenRoom(): void {
+    const full: string[] = [];
+    for (const op of this.objectiveRecords.values()) {
+      const totalFull = op.tabs.size + op.pendingTabs >= DESKTOP_BROWSER_TAB_LIMITS.total;
+      for (const tab of op.tabs.values()) {
+        if (totalFull || this.spaceTabs(op, tab.spaceId).length + (op.pendingSpaces.get(tab.spaceId) ?? 0) >= browserSpaceTabLimit(tab.spaceId)) full.push(tab.targetId);
+      }
+    }
+    this.deps.desktop.setTabOpenFull(full);
   }
 
   /** 띄운 탭이 사라졌을 때 다음으로 세울 탭 — 팝업이었으면 아직 남은 opener, 아니면 같은 스페이스의 마지막 탭. */
@@ -2140,7 +2181,7 @@ export class BrowserService {
       case DESKTOP_BROWSER_POPUP_EVENT: {
         const targetId = typeof p.targetId === "string" ? p.targetId : null;
         if (!targetId) return;
-        void this.adoptPopup(op, tab, targetId, typeof p.url === "string" ? p.url : "about:blank").catch(() => {
+        void this.adoptPopup(op, tab, targetId, typeof p.url === "string" ? p.url : "about:blank", { background: p.background === true, loaded: p.loaded === true }).catch(() => {
           // 탭 등록 전(컨텍스트 조회)에 실패한 팝업 — 셸의 뷰만 닫으면 된다. 등록 뒤의 실패는 adoptPopup 이 탭까지 접는다.
           void this.client?.send("Target.closeTarget", { targetId }).catch(() => undefined);
         });

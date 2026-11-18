@@ -142,6 +142,7 @@ export class DesktopEngine implements CdpClient {
     this.publish();
     for (const listener of this.surfaceListeners) listener();
   }
+  private tabOpenFull: readonly string[] = [];
   private nextCommandId = 1;
   private dialogSerial = 0;
   private generation = 0;
@@ -226,7 +227,20 @@ export class DesktopEngine implements CdpClient {
       ...(this.watched.size > 0 ? { viewerCapture: this.viewerCapture } : {}),
       // 페이지 팝업을 opener 와 이어진 새 탭으로 받는다 — 이 표시가 없는 옛 Console 에서는 셸이 팝업을 같은 뷰에서 연다.
       popups: true,
+      // 탭형 열기(_blank·기능 없는 window.open·수정키 클릭·form POST)도 새 탭으로 받는다. full 은 더 받지 못하는 뷰.
+      tabOpens: { full: this.tabOpenFull },
     };
+  }
+
+  /**
+   * 새 탭을 더 받지 못하는 뷰(스페이스·전체 상한)를 셸에 알린다 — 셸이 탭형 열기를 받을지 같은 뷰에서 열지 동기로 정하는 근거다.
+   * 달라졌을 때만 스냅샷을 다시 낸다.
+   */
+  setTabOpenFull(viewIds: readonly string[]): void {
+    const next = [...viewIds].sort();
+    if (next.length === this.tabOpenFull.length && next.every((id, index) => id === this.tabOpenFull[index])) return;
+    this.tabOpenFull = next;
+    this.publish();
   }
 
   /** 크롬이 그릴 브라우저 상태. 표면이 닫혀 있으면 스냅샷에 싣지 않는다. */
@@ -269,7 +283,7 @@ export class DesktopEngine implements CdpClient {
       const opener = this.views.get(popup.openerViewId);
       if (!opener || this.views.has(popup.viewId)) continue;
       this.views.set(popup.viewId, { id: popup.viewId, objectiveId: opener.objectiveId, partition: opener.partition, profile: opener.profile, url: "about:blank", attached: true, active: false, agent: opener.agent, size: null, frameSeq: 0 });
-      this.emit({ method: DESKTOP_BROWSER_POPUP_EVENT, params: { targetId: popup.viewId, url: popup.url }, sessionId: opener.id });
+      this.emit({ method: DESKTOP_BROWSER_POPUP_EVENT, params: { targetId: popup.viewId, url: popup.url, ...(popup.background ? { background: true } : {}), ...(popup.loaded ? { loaded: true } : {}) }, sessionId: opener.id });
     }
     for (const id of body.attached ?? []) {
       const view = this.views.get(id);
