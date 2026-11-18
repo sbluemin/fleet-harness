@@ -18,7 +18,7 @@
  * against a live or dead lock is allowed only for that same pid. Do not delete the lock by hand.
  *
  * The child gets a fresh environment, not the caller's: HOME, TMPDIR, FLEET_DATA_DIR, FLEET_CONSOLE_DATA_DIR,
- * FLEET_DESKTOP_DATA_DIR and CLAUDE_CONFIG_DIR point under <run-dir> (home, tmp, root, console, desktop, claude),
+ * FLEET_DESKTOP_DATA_DIR, CLAUDE_CONFIG_DIR and CLAUDE_CODE_TMPDIR point under <run-dir> (home, tmp, root, console, desktop, claude, claude-tmp),
  * except FLEET_CONSOLE_DATA_DIR when --canonical-console-dir is set,
  * plus USER/LOGNAME, LANG, SHELL, TERM and CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1. PATH is a fresh per-call
  * <run-dir>/pathbin/call-*, which links only this Node and this call's --bin (resolved on the caller's PATH), then the
@@ -60,12 +60,12 @@ const PROTECTED_HOME_ENTRIES = [
   '.bash_history', '.bash_sessions', '.bashrc', '.bash_profile', '.profile', '.history',
 ];
 const MANAGED = ['HOME', 'TMPDIR', 'FLEET_DATA_DIR', 'FLEET_CONSOLE_DATA_DIR', 'FLEET_CONSOLE_DIR', 'FLEET_DESKTOP_DATA_DIR',
-  'CLAUDE_CONFIG_DIR', 'PATH', 'USER', 'LOGNAME', 'ZDOTDIR', 'HISTFILE', 'INIT_CWD'];
+  'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_TMPDIR', 'PATH', 'USER', 'LOGNAME', 'ZDOTDIR', 'HISTFILE', 'INIT_CWD'];
 const REFUSED_NAME = /TOKEN|SECRET|PASSWORD|PASSWD|API_?KEY|CREDENTIAL|COOKIE|SESSION_ACCESS|^ANTHROPIC_|^OPENAI_|^AWS_|^CLAUDE_SECURESTORAGE_CONFIG_DIR$|^CLAUDE_CODE_CHILD_SESSION$|^SSH_AUTH_SOCK$/i;
 // Fixed, publicly documented local placeholders. Anything else under a credential-like name is refused.
 const PLACEHOLDERS = { ANTHROPIC_API_KEY: 'sk-ant-fleet-local' };
 const SYSTEM_PATH = ['/usr/bin', '/bin', '/usr/sbin', '/sbin'];
-const OWNED_DIRS = ['home', 'tmp', 'root', 'console', 'desktop', 'claude', 'pathbin'];
+const OWNED_DIRS = ['home', 'tmp', 'root', 'console', 'desktop', 'claude', 'claude-tmp', 'pathbin'];
 
 function fail(message) {
   process.stderr.write(`isolated-env: ${message}\n`);
@@ -172,7 +172,7 @@ function main() {
   const forbidden = [
     // dotfile 관리자가 ~/.config·~/.claude를 심볼릭 링크로 두면 후보만 realpath해서는 비교가 빗나가므로 보호 경로도 해석한다.
     ...PROTECTED_HOME_ENTRIES.map((entry) => resolveReal(path.join(realHome, entry))),
-    ...['FLEET_DATA_DIR', 'FLEET_CONSOLE_DATA_DIR', 'FLEET_CONSOLE_DIR', 'FLEET_DESKTOP_DATA_DIR', 'CLAUDE_CONFIG_DIR']
+    ...['FLEET_DATA_DIR', 'FLEET_CONSOLE_DATA_DIR', 'FLEET_CONSOLE_DIR', 'FLEET_DESKTOP_DATA_DIR', 'CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_TMPDIR']
       .map((name) => process.env[name]).filter((value) => value && path.isAbsolute(value)).map(resolveReal),
   ];
   const checkPath = (label, value) => {
@@ -255,6 +255,7 @@ function main() {
     FLEET_CONSOLE_DATA_DIR: consoleDataDir,
     FLEET_DESKTOP_DATA_DIR: owned.desktop,
     CLAUDE_CONFIG_DIR: owned.claude,
+    CLAUDE_CODE_TMPDIR: owned['claude-tmp'],
     CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
   };
   const setNames = [];
