@@ -6,6 +6,7 @@ import {
 import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-messages/protocol.js";
 import type { GatewayModel, GatewayProvider } from "../models.js";
 import { upstreamModelId } from "../models.js";
+import { anthropicRequestPolicy } from "../upstream/anthropic/request-policy.js";
 import { codexRequestPolicy } from "../upstream/codex/request-policy.js";
 import { geminiRequestPolicy } from "../upstream/gemini/request-policy.js";
 import { museCodeRequestPolicy } from "../upstream/muse-code/request-policy.js";
@@ -72,6 +73,7 @@ const claudeRequestPolicy: GatewayRequestPolicy = {
 };
 
 const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
+  anthropic: anthropicRequestPolicy,
   claude: claudeRequestPolicy,
   codex: codexRequestPolicy,
   gemini: geminiRequestPolicy,

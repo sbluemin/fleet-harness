@@ -19,6 +19,7 @@ import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type Model
 import { launchProviderFromModelId, launchProviderGlyph, serviceGlyph, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
 
 const PROVIDER_LABEL = {
+  anthropic: "terminal.settings.aiGatewayProviderAnthropic",
   claude: "terminal.settings.aiGatewayProviderClaude",
   codex: "terminal.settings.aiGatewayProviderCodex",
   xai: "terminal.settings.aiGatewayProviderXai",
@@ -28,10 +29,11 @@ const PROVIDER_LABEL = {
 } as const;
 
 /**
- * 게이트웨이가 각 공급자에 붙는 방식. OpenCode Go와 Gemini는 Console에 저장한 API 키로,
+ * 게이트웨이가 각 공급자에 붙는 방식. OpenCode Go·Gemini·Anthropic은 Console에 저장한 API 키로,
  * 나머지는 구독 OAuth 자격으로 공급자 API를 직접 부른다.
  */
 const PROVIDER_TRANSPORT = {
+  anthropic: "terminal.settings.aiGatewayTransportApiKey",
   claude: "terminal.settings.aiGatewayTransportOauth",
   codex: "terminal.settings.aiGatewayTransportOauth",
   xai: "terminal.settings.aiGatewayTransportOauth",
@@ -41,7 +43,7 @@ const PROVIDER_TRANSPORT = {
 } as const;
 
 /** 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서. */
-const LAUNCH_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "muse-code", "opencode", "gemini"];
+const LAUNCH_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "anthropic", "codex", "xai", "muse-code", "opencode", "gemini"];
 
 /**
  * 공급자 표시 순서: Claude가 맨 앞, 나머지 구독·CLI 공급자는 카탈로그 순서.

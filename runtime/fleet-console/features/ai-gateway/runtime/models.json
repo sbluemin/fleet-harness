@@ -406,6 +406,17 @@
         }
       ]
     },
+    "anthropic": {
+      "name": "Anthropic",
+      "derivedFrom": "claude",
+      "families": [
+        "opus",
+        "sonnet",
+        "haiku"
+      ],
+      "defaultModel": "sonnet",
+      "source": "Anthropic API key / API credit (Claude Console key, https://platform.claude.com/docs/en/models/overview, read 2026-11-18): the gateway relays the Claude Code child's /v1/messages body to https://api.anthropic.com/v1/messages unchanged except the model id and a dropped `speed`, and sends the stored key as x-api-key instead of the caller's subscription Authorization. This provider declares no models of its own: its entries are derived from the native `claude` families listed in `families` (Fable is out of scope), so name, description, scores, effort ladder and version come from the same Claude Code sync as the Claude rows and the two can never disagree. The wire id is the id Claude Code reports for the family (`claude-opus-5-5`). Different from the native entries: the credential (an API key), the billing pool (the monthly API credit, which Anthropic applies to Agent SDK sessions and refuses for interactive Claude Code, measured 2026-11-18), and spend that Fleet counts itself from response usage because the credit balance is not readable through any API. Prices live in quota/anthropic-pricing.ts, not in this catalog."
+    },
     "claude": {
       "name": "Claude",
       "native": true,

@@ -1,3 +1,4 @@
+import { ANTHROPIC_AUTH_PROVIDER_ID, validateAnthropicApiKey } from "../upstream/anthropic/index.js";
 import { GEMINI_AUTH_PROVIDER_ID, validateGeminiApiKey } from "../upstream/gemini/index.js";
 import { OPENCODE_AUTH_PROVIDER_ID, OPENCODE_GO_API_BASE_URL, validateOpencodeGoApiKey } from "../upstream/opencode-go/index.js";
 import { TYPESAFE_API_BASE_URL, TYPESAFE_AUTH_PROVIDER_ID, validateTypesafeApiKey } from "../upstream/typesafe/index.js";
@@ -47,6 +48,17 @@ export async function validateOpencodeGoAuthKey(apiKey: string): Promise<AuthKey
 export async function validateGeminiAuthKey(apiKey: string): Promise<AuthKeyValidationResult> {
   return toKeyValidationResult(await validateGeminiApiKey({
     providerId: GEMINI_AUTH_PROVIDER_ID,
+    apiKey,
+  }));
+}
+
+/**
+ * Anthropic API 키는 공급자 폴더의 모델 목록 프로브(`GET /v1/models`)로 확인한다. 추론 토큰을 쓰지
+ * 않아 크레딧을 소모하지 않는다. 잘못된 키는 401로 거절된다.
+ */
+export async function validateAnthropicAuthKey(apiKey: string): Promise<AuthKeyValidationResult> {
+  return toKeyValidationResult(await validateAnthropicApiKey({
+    providerId: ANTHROPIC_AUTH_PROVIDER_ID,
     apiKey,
   }));
 }

@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS,
+  applyClaudeNativeModels,
   AnthropicMessagesGateway,
   GATEWAY_MODELS,
   CODEX_SUBSCRIPTION_MODELS,
@@ -185,10 +186,43 @@ describe("model catalog", () => {
     };
     expect(() => parseGatewayModelsRegistry(unadvertisedScore)).toThrow(/intelligence score is not an advertised level/);
 
+    // 파생 공급자는 자기 모델을 선언하지 않는다 — 네이티브가 아닌 가족을 가리키면 그 항목이 어디서도 만들어지지 않는다.
+    const foreignFamily = minimalRegistry();
+    foreignFamily.providers.anthropic.families = ["ember"];
+    expect(() => parseGatewayModelsRegistry(foreignFamily)).toThrow(/not native/);
+
     // 광고 제외는 native 표식이 정한다 — 다른 공급자에 붙으면 그 모델이 조용히 discovery에서 사라진다.
     const foreignNative = minimalRegistry();
     Object.assign(foreignNative.providers.codex, { native: true });
     expect(() => parseGatewayModelsRegistry(foreignNative)).toThrow(/Only claude can be a native/);
+  });
+
+  it("derives the Anthropic API-key entries from the Claude families so name, description, ladder and score never diverge", () => {
+    const ladder = ["low", "medium", "high", "xhigh", "max"];
+    const row = (value: string, resolvedModel: string) => ({ value, resolvedModel, displayName: value, effortLevels: ladder });
+    applyClaudeNativeModels([row("opus[1m]", "claude-opus-5-5[1m]"), row("sonnet", "claude-sonnet-5-5"), row("haiku", "claude-haiku-5-5")]);
+    const pair = (family: string) => ({
+      claude: GATEWAY_MODELS.find((model) => model.id === `claude--${family}-1m`)!,
+      anthropic: GATEWAY_MODELS.find((model) => model.id === `anthropic--${family}-1m`)!,
+    });
+    for (const family of ["opus", "sonnet", "haiku"]) {
+      const { claude, anthropic } = pair(family);
+      expect(anthropic.displayName).toBe(claude.displayName.replace("Claude-", "Anthropic-"));
+      expect(anthropic.description).toBe(claude.description);
+      expect(anthropic.effort).toEqual(claude.effort);
+      expect(anthropic.contextWindow).toBe(claude.contextWindow);
+      expect(anthropic.upstreamId).toBe(claude.upstreamId);
+      expect(gatewayModelIntelligence(anthropic.id)).toEqual(gatewayModelIntelligence(claude.id));
+    }
+    expect(pair("opus").anthropic).toMatchObject({ displayName: "Anthropic-Opus 5.5", upstreamId: "claude-opus-5-5" });
+    // Fable은 범위 밖이고, 구독 항목의 별칭(`opus`)은 구독 항목이 계속 갖는다.
+    expect(GATEWAY_MODELS.some((model) => model.id === "anthropic--fable-1m")).toBe(false);
+    expect(findGatewayModel("opus")?.provider).toBe("claude");
+
+    // 버전이 오르면 라벨과 상류 id만 바뀌고 카탈로그 id는 그대로다.
+    applyClaudeNativeModels([row("opus[1m]", "claude-opus-5-6[1m]")]);
+    expect(pair("opus").anthropic).toMatchObject({ id: "anthropic--opus-1m", displayName: "Anthropic-Opus 5.6", upstreamId: "claude-opus-5-6" });
+    applyClaudeNativeModels([]);
   });
 
   it("recommends the highest role whose threshold a model's score reaches", () => {
@@ -354,6 +388,7 @@ function minimalRegistry() {
       "muse-code": provider("Muse Code", "muse-spark-1.3"),
       opencode: provider("OpenCode Go", "deepseek-v4.1-flash"),
       gemini: provider("Gemini", "gemini-4-hydrogen"),
+      anthropic: { name: "Anthropic", derivedFrom: "claude", families: ["sonnet"], defaultModel: "sonnet", source: "test fixture" },
       claude: { ...provider("Claude", "sonnet"), native: true },
     },
   };

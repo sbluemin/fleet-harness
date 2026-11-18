@@ -53,10 +53,14 @@ export function modelRosterGroupId(provider: GatewayProvider): string {
   return `gateway:${provider}`;
 }
 
-/** Claude 공급자를 맨 앞에, 나머지는 GATEWAY_PROVIDERS 순서로 — AI Gateway 로스터 화면과 같은 규칙. */
+/**
+ * Claude 공급자를 맨 앞에, 같은 Claude 가족을 API 키로 서빙하는 Anthropic을 그 바로 뒤에, 나머지는 GATEWAY_PROVIDERS
+ * 순서로 — 클라이언트의 공급자 순서(글리프·라우팅 풀·Quota)와 같은 규칙. 같은 모델의 두 경로가 나란히 보인다.
+ */
 const ROSTER_PROVIDER_ORDER: readonly GatewayProvider[] = [
   "claude",
-  ...GATEWAY_PROVIDERS.filter((provider) => provider !== "claude"),
+  "anthropic",
+  ...GATEWAY_PROVIDERS.filter((provider) => provider !== "claude" && provider !== "anthropic"),
 ];
 
 /**
@@ -250,7 +254,8 @@ export function registerModelRosterRoutes(ctx: ModelRosterRouteContext, models: 
     if (!isModelRosterTarget(target)) { ctx.host.http.writeJson(res, 400, { error: "invalid_target" }); return true; }
     const roster = models.roster(target);
     // Claude 행이 있으면 버전 이름을 채우러 간다 — 응답은 기다리지 않고, 표가 바뀌면 변경 알림이 다시 읽게 한다.
-    if (roster.some((group) => group.id === modelRosterGroupId("claude"))) models.warmClaudeVersions?.();
+    // Anthropic API 키 행도 같은 동기화에서 버전을 받는다.
+    if (roster.some((group) => group.id === modelRosterGroupId("claude") || group.id === modelRosterGroupId("anthropic"))) models.warmClaudeVersions?.();
     ctx.host.http.writeJson(res, 200, { target, roster });
     return true;
   }, [{ method: "GET", path: "", summary: "Read the model roster every Console model picker shares.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);

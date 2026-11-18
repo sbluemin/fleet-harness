@@ -18,10 +18,10 @@ export const QUOTA_CACHE_TTL_MS = 5 * 60_000;
  */
 const STALE_TTL_MS = 1_800_000;
 
-type ProviderId = QuotaLastGoodProviderId | "gemini";
+type ProviderId = QuotaLastGoodProviderId | "gemini" | "anthropic";
 
 /** status 서명에 세는 공급자 — 마지막 성공값을 저장하지 않는 Gemini도 키 저장·삭제가 메뉴에 닿아야 한다. */
-const STATUS_SIGNATURE_PROVIDERS: readonly ProviderId[] = [...QUOTA_LAST_GOOD_PROVIDERS, "gemini"];
+const STATUS_SIGNATURE_PROVIDERS: readonly ProviderId[] = [...QUOTA_LAST_GOOD_PROVIDERS, "gemini", "anthropic"];
 
 /**
  * 사용량 조회가 rate limit이 걸린 key endpoint인 공급자(Muse Code). 실패 뒤에는
@@ -65,6 +65,11 @@ export interface QuotaServiceDeps {
    * 없으면 미로그인(`signed_out`)으로 둔다. 지출은 `windows`가 아닌 `spend`에 실린다.
    */
   readonly fetchGemini?: () => Promise<ProviderResult>;
+  /**
+   * Anthropic API 키 — Gemini와 같은 이유로 upstream 조회가 아니라 키 보관 여부와 플릿이 센 지출 원장,
+   * 마지막 응답 헤더의 분당 한도로 답한다. 없으면 미로그인(`signed_out`)이다.
+   */
+  readonly fetchAnthropic?: () => Promise<ProviderResult>;
   /**
    * 마지막 성공 사용량. 호스트가 파일 자리를 정해 넘긴다. 없으면 이 프로세스 메모리만 쓴다.
    * 읽기에 실패하거나 파일이 깨져 있으면 빈 값으로 시작한다.
@@ -152,6 +157,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     "muse-code": deps.fetchMuseCode ?? (async () => ({ status: "signed_out" })),
     opencode: deps.fetchOpencode ?? (async () => ({ status: "signed_out" })),
     gemini: deps.fetchGemini ?? (async () => ({ status: "signed_out" })),
+    anthropic: deps.fetchAnthropic ?? (async () => ({ status: "signed_out" })),
   };
   const cache = new Map<ProviderId, CacheEntry>();
   const lastGood = new Map<ProviderId, ProviderSuccess>();
@@ -442,6 +448,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
         claude: read("claude"), codex: read("codex"),
         xai: read("xai"),
         "muse-code": read("muse-code"), opencode: read("opencode"), gemini: read("gemini"),
+        anthropic: read("anthropic"),
       } };
     },
     readCachedSummary() {
@@ -464,20 +471,22 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
       const museCode = read("muse-code");
       const opencode = read("opencode");
       const gemini = read("gemini");
-      if (!claude || !codex || !xai || !museCode || !opencode || !gemini) return undefined;
+      const anthropic = read("anthropic");
+      if (!claude || !codex || !xai || !museCode || !opencode || !gemini || !anthropic) return undefined;
       return {
-        summary: { providers: { claude, codex, xai, "muse-code": museCode, opencode, gemini } },
+        summary: { providers: { claude, codex, xai, "muse-code": museCode, opencode, gemini, anthropic } },
         expired,
       };
     },
     async getSummary(options = {}) {
-      const [claude, codex, xai, museCode, opencode, gemini] = await Promise.all([
+      const [claude, codex, xai, museCode, opencode, gemini, anthropic] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
         load("xai", options.force === true || options.forceProvider === "xai"),
         load("muse-code", options.force === true || options.forceProvider === "muse-code"),
         load("opencode", options.force === true || options.forceProvider === "opencode"),
         load("gemini", options.force === true || options.forceProvider === "gemini"),
+        load("anthropic", options.force === true || options.forceProvider === "anthropic"),
       ]);
       const summary = {
         providers: {
@@ -487,6 +496,7 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
           "muse-code": withRisk(museCode),
           opencode: withRisk(opencode),
           gemini: withRisk(gemini),
+          anthropic: withRisk(anthropic),
         },
       };
       notifyStatus();

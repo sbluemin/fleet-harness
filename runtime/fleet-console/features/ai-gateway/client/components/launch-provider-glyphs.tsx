@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 // Shared provider marks for launch menus and model coordinates. Host chrome and
 // plugins both import this module so the bands cannot restyle apart.
 
-export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "muse-code" | "opencode" | "gemini";
+export type LaunchProviderGlyphId = "claude" | "anthropic" | "codex" | "xai" | "muse-code" | "opencode" | "gemini";
 
 /**
  * Optional intrinsic size for a provider mark.
@@ -19,10 +19,11 @@ export type LaunchProviderGlyphSize = {
 
 type LaunchProviderGlyphProps = { readonly size?: LaunchProviderGlyphSize };
 
-const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "muse-code", "opencode", "gemini"] as const;
-const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "muse-code", "opencode", "gemini"];
+const LAUNCH_PROVIDER_IDS = ["claude", "anthropic", "codex", "xai", "muse-code", "opencode", "gemini"] as const;
+const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "anthropic", "codex", "xai", "muse-code", "opencode", "gemini"];
 const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> = {
   claude: "Claude",
+  anthropic: "Anthropic",
   codex: "Codex",
   xai: "xAI",
   "muse-code": "Muse Code",
@@ -117,6 +118,16 @@ function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
   );
 }
 
+function AnthropicGlyph({ size }: LaunchProviderGlyphProps) {
+  // Anthropic "A\" 워드마크. simple-icons 15.0.0 icons/anthropic.svg(CC0-1.0)의 경로 그대로다.
+  // 구독 Claude의 별 모양과 구분된다.
+  return (
+    <svg viewBox="0 0 24 24" {...size} aria-hidden="true">
+      <path d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 function GeminiGlyph({ size }: LaunchProviderGlyphProps) {
   // 공식 로고가 아닌 공급자 식별용 네 갈래 별.
   return (
@@ -128,6 +139,7 @@ function GeminiGlyph({ size }: LaunchProviderGlyphProps) {
 
 export function launchProviderGlyph(provider: LaunchProviderGlyphId, size?: LaunchProviderGlyphSize): ReactNode {
   if (provider === "claude") return <ClaudeGlyph size={size} />;
+  if (provider === "anthropic") return <AnthropicGlyph size={size} />;
   if (provider === "xai") return <GrokGlyph size={size} />;
   if (provider === "muse-code") return <MuseCodeGlyph size={size} />;
   if (provider === "opencode") return <OpencodeGlyph size={size} />;

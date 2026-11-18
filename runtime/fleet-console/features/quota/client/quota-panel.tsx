@@ -7,7 +7,8 @@ import { useStoreSnapshot } from "@fleet-console/ui/store";
 import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@fleet-console/ai-gateway";
 import { isLoginProvider, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
-import { GeminiSpendSection } from "./gemini-spend.js";
+import { isSpendProvider, SpendSection, type SpendProvider } from "./spend-section.js";
+import { RateLimitSection } from "./rate-limit.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import {
   cancelLogin,
@@ -27,6 +28,7 @@ type T = Translate<QuotaMessageKey>;
 type ConnectableProviderId = "claude";
 
 export const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
+  anthropic: "Anthropic",
   claude: "Claude Code",
   codex: "Codex",
   gemini: "Gemini",
@@ -65,6 +67,7 @@ export function displayPlanName(id: ProviderId, plan: string): string {
 }
 
 export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
+  anthropic: "quota.anthropic.signedOut",
   claude: "quota.claude.signedOut",
   codex: "quota.codex.signedOut",
   gemini: "quota.gemini.signedOut",
@@ -73,7 +76,8 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   xai: "quota.xai.signedOut",
 };
 
-export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "gemini">, QuotaMessageKey>> = {
+/** 만료를 말하는 공급자 — API 키 두 곳은 만료 개념이 없어 이 표에 없다. */
+export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "gemini" | "anthropic">, QuotaMessageKey>> = {
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
   "muse-code": "quota.expired.museCode",
@@ -82,14 +86,15 @@ export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "gemini">, QuotaMe
 };
 
 export function expiredMessageKey(id: ProviderId): QuotaMessageKey | undefined {
-  // Gemini는 API 키(만료 개념 없음)라 이 줄을 쓰지 않는다.
-  if (id === "gemini") return undefined;
+  // Gemini·Anthropic은 API 키(만료 개념 없음)라 이 줄을 쓰지 않는다.
+  if (id === "gemini" || id === "anthropic") return undefined;
   return EXPIRED_KEY[id];
 }
 
 // 구독이 없는 상태는 공급자에 관계없이 같은 안내를 쓴다. OpenCode Go만 키는 유효한데 구독이
 // 없는 경우(403)라, 다시 로그인하라는 대신 그 키에 구독이 없다고 말한다.
 export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
+  anthropic: "quota.noSubscription",
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
   gemini: "quota.noSubscription",
@@ -581,7 +586,7 @@ function ProviderCard({
   readonly api: ClientApiCapability;
   readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
   readonly logout: (provider: LoginProvider) => void;
-  readonly saveBudget: (usd: string | null) => Promise<boolean>;
+  readonly saveBudget: (provider: SpendProvider, usd: string | null) => Promise<boolean>;
 }) {
   const name = providerName(id, mobile);
   // Claude의 로그인은 Console 소유가 아니다. 가짜 로그인 문 대신 기존 CLI 경로를 한 줄로 안내한다.
@@ -625,15 +630,19 @@ function ProviderCard({
         }
         return <div className="quota-error">{t("quota.error", { provider: name })}</div>;
       })() : null}
-      {(provider.status === "ok" || provider.status === "stale") && id === "gemini" && provider.spend !== undefined ? (
-        <GeminiSpendSection
+      {(provider.status === "ok" || provider.status === "stale") && isSpendProvider(id) && provider.spend !== undefined ? (
+        <SpendSection
+          provider={id}
           spend={provider.spend}
           {...(provider.block !== undefined ? { block: provider.block } : {})}
           locale={locale}
           t={t}
           resetText={resetCaption(provider.spend.resetsAt, now, locale, t)}
-          saveBudget={saveBudget}
+          saveBudget={(usd) => saveBudget(id, usd)}
         />
+      ) : null}
+      {(provider.status === "ok" || provider.status === "stale") && provider.rateLimit !== undefined ? (
+        <RateLimitSection rateLimit={provider.rateLimit} now={now} locale={locale} t={t} />
       ) : null}
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
         <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} locale={locale} t={t} />
@@ -734,13 +743,14 @@ export function useQuotaData(api: ClientApiCapability) {
   }, [postForSummary]);
 
   /**
-   * Gemini 월 예산 저장·삭제(`usd: null`). 성공하면 Gateway가 저장된 예산이 반영된 요약을
-   * 돌려주므로 곧바로 그린다 — 막대가 서고, 지우면 금액만 남는다. 실패는 입력 자리가 말한다.
+   * 지출 원장의 월 예산 저장·삭제(`usd: null`). 공급자마다 라우트가 하나이고(`quota/<provider>-budget`),
+   * 성공하면 Gateway가 저장된 예산이 반영된 요약을 돌려주므로 곧바로 그린다 — 막대가 서고, 지우면
+   * 금액만 남는다. 실패는 입력 자리가 말한다.
    */
-  const saveGeminiBudget = useCallback((usd: string | null): Promise<boolean> => {
+  const saveBudget = useCallback((provider: SpendProvider, usd: string | null): Promise<boolean> => {
     const generation = beginRequestGeneration(requestGenerationRef);
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(null);
-    return api.fetch("quota/gemini-budget", {
+    return api.fetch(`quota/${provider}-budget`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ usd }),
@@ -839,7 +849,7 @@ export function useQuotaData(api: ClientApiCapability) {
     };
   }, [refresh]);
 
-  return { data, checkedAt, now, requestError, refresh, connect, logout, saveBudget: saveGeminiBudget };
+  return { data, checkedAt, now, requestError, refresh, connect, logout, saveBudget };
 }
 
 /**

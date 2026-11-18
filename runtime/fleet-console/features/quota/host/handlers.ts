@@ -3,7 +3,7 @@ import type http from "node:http";
 import type { QuotaRouteContext } from "./index.js";
 import type { QuotaService, QuotaSummaryDto } from "@fleet-console/ai-gateway";
 
-import { isProviderId, type LoginProvider } from "../shared/provider-order.js";
+import { isProviderId, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
 
 export { LOGIN_PROVIDERS, type LoginProvider } from "../shared/provider-order.js";
 
@@ -133,23 +133,36 @@ export async function handleConnect(
 export type LoginAction = "start" | "status" | "cancel" | "logout";
 
 /**
- * Gemini 월 예산 라우트(`/api/v1/ai-gateway/quota/gemini-budget`)로 가는 창구. 예산은 지출 원장과
- * 같은 파일에 살고 원장은 Gateway가 소유하므로, 플러그인은 저장하지 않고 Gateway의 판정만 옮긴다.
+ * 지출 원장의 월 예산을 가진 공급자 — Quota 화면에서 지출 카드를 그리는 둘뿐이다. 플러그인 라우트
+ * 이름(`<id>-budget`)과 게이트웨이 라우트 이름이 이 id로 함께 세워지므로 표가 아니라 타입으로 묶는다.
  */
-export interface GeminiBudgetGateway {
+export type BudgetProvider = Extract<ProviderId, "gemini" | "anthropic">;
+
+export const BUDGET_PROVIDERS = ["gemini", "anthropic"] as const satisfies readonly BudgetProvider[];
+
+/**
+ * 공급자 지출 원장의 예산 라우트(`/api/v1/ai-gateway/quota/<provider>-budget`)로 가는 창구. 예산은
+ * 지출 원장과 같은 파일에 살고 원장은 Gateway가 소유하므로, 플러그인은 저장하지 않고 Gateway의
+ * 판정만 옮긴다.
+ */
+export interface SpendBudgetGateway {
   /** `usd: null`은 삭제다. */
-  setBudget(request: { readonly usd: string | null }): Promise<{ readonly status: number; readonly payload: unknown }>;
+  setBudget(
+    provider: BudgetProvider,
+    request: { readonly usd: string | null },
+  ): Promise<{ readonly status: number; readonly payload: unknown }>;
 }
 
 /**
- * Gemini 카드의 월 예산 저장·삭제. 성공하면 갱신된 요약을 함께 돌려줘 카드가 곧바로 막대를 세운다.
+ * 지출 카드의 월 예산 저장·삭제. 성공하면 갱신된 요약을 함께 돌려줘 카드가 곧바로 막대를 세운다.
  * 값 검증(양수·숫자)은 원장과 입력 UI가 각자 하고, 여기서는 모양만 본다.
  */
-export async function handleGeminiBudget(
+export async function handleSpendBudget(
   req: http.IncomingMessage,
   res: http.ServerResponse,
   ctx: QuotaRouteContext,
-  gateway: GeminiBudgetGateway,
+  provider: BudgetProvider,
+  gateway: SpendBudgetGateway,
   service: QuotaSummarySource,
 ): Promise<void> {
   if (rejectUnlessJsonPost(req, res, ctx)) return;
@@ -175,7 +188,7 @@ export async function handleGeminiBudget(
   }
   let result: { readonly status: number; readonly payload: unknown };
   try {
-    result = await gateway.setBudget({ usd });
+    result = await gateway.setBudget(provider, { usd });
   } catch {
     ctx.host.http.writeJson(res, 502, { error: "budget_unavailable" });
     return;

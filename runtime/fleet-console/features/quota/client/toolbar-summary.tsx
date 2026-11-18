@@ -14,7 +14,7 @@ import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@fleet-console/a
 import { PROVIDER_ORDER_DEFAULT, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT } from "./i18n/index.js";
-import { spendSeverity } from "./gemini-spend.js";
+import { spendSeverity } from "./spend-section.js";
 import { meterSeverity, mostUrgentWindow, providerName, QuotaPanel, windowLabel } from "./quota-panel.js";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";

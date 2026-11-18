@@ -5,7 +5,8 @@ import type { SettingsSectionDescriptor } from "../../settings/shared/types.js";
 
 import { PROVIDER_ORDER_DEFAULT } from "../shared/provider-order.js";
 import { getT } from "./i18n/index.js";
-import { GeminiSpendRows } from "./gemini-spend.js";
+import { isSpendProvider, SpendRows } from "./spend-section.js";
+import { RateLimitRows } from "./rate-limit.js";
 import type { QuotaWindow } from "@fleet-console/ai-gateway";
 import { expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, providerName, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel } from "./quota-panel.js";
 import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subscribeLogins } from "./provider-login.js";
@@ -51,15 +52,19 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
                 </button>
               ) : null}
               {needsConsoleLogin(id, provider.status) ? <LoginRows api={api} provider={id} expired={provider.status === "expired"} now={now} locale={locale} t={t} logout={logout} /> : null}
-              {readable && provider.spend !== undefined ? (
-                <GeminiSpendRows
+              {readable && isSpendProvider(id) && provider.spend !== undefined ? (
+                <SpendRows
+                  provider={id}
                   spend={provider.spend}
                   {...(provider.block !== undefined ? { block: provider.block } : {})}
                   locale={locale}
                   t={t}
                   resetText={t("mobile.usage.reset", { t: countdownText(provider.spend.resetsAt - now, locale) })}
-                  saveBudget={saveBudget}
+                  saveBudget={(usd) => saveBudget(id, usd)}
                 />
+              ) : null}
+              {readable && provider.rateLimit !== undefined ? (
+                <RateLimitRows rateLimit={provider.rateLimit} now={now} locale={locale} t={t} />
               ) : null}
               {windows.map((window, index) => {
                 const severity = meterSeverity(window);

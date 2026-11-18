@@ -5,6 +5,9 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 
 import { createQuotaLastGoodStore } from "../../src/quota/last-good.js";
+import { createAnthropicSpendLedger } from "../../src/quota/anthropic-ledger.js";
+import { priceAnthropicTurn } from "../../src/quota/anthropic-pricing.js";
+import { classifyAnthropicBlock } from "../../src/upstream/anthropic/observe.js";
 import { createGeminiSpendLedger } from "../../src/quota/gemini-ledger.js";
 import { budgetUsedPercent, geminiMonthBounds, geminiTokenPrice } from "../../src/quota/gemini-pricing.js";
 import { normalizeRoutingQuota } from "../../src/fleet/routing-quota.js";
@@ -553,6 +556,92 @@ describe("gemini spend ledger", () => {
       ledger.clearBudget();
       expect(ledger.read(december).spend.budget).toBeUndefined();
       expect(ledger.read(december).spend.usedPercent).toBeUndefined();
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("anthropic spend ledger", () => {
+  const cost = (observation: Parameters<typeof priceAnthropicTurn>[0]) => priceAnthropicTurn(observation)?.costPicoUsd;
+  const turn = { at: Date.UTC(2026, 10, 18, 12), inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, webSearchRequests: 0 } as const;
+
+  it("prices every token class, splits Haiku at 100k, keeps the month and budget on disk, and tells credit exhaustion from other refusals", () => {
+    // Sonnet 5.5: 1000×2 + 500×10 + 200×0.10 + 100×2.5 + 100×4 = 7,670 µ$ → 0.00767 USD.
+    expect(cost({ ...turn, model: "claude-sonnet-5-5", inputTokens: 1000, outputTokens: 500, cacheReadTokens: 200, cacheWrite5mTokens: 100, cacheWrite1hTokens: 100 })).toBe(7_670_000_000n);
+    // Haiku 5.5는 요청의 모든 입력(캐시 포함)이 100,000을 넘어야 높은 단가다 — 입력 50k + 캐시 읽기 50,001.
+    expect(cost({ ...turn, model: "claude-haiku-5-5", inputTokens: 50_000, cacheReadTokens: 50_000, outputTokens: 1 })).toBe(50_000n * 100_000n + 50_000n * 10_000n + 500_000n);
+    expect(cost({ ...turn, model: "claude-haiku-5-5", inputTokens: 50_000, cacheReadTokens: 50_001, outputTokens: 1 })).toBe(50_000n * 500_000n + 50_001n * 50_000n + 2_500_000n);
+    // 웹 검색은 1회 $0.01이고 미국 한정 추론은 토큰에만 ×1.1이다.
+    expect(cost({ ...turn, model: "claude-opus-5-5", outputTokens: 10, webSearchRequests: 2, inferenceGeo: "us" })).toBe(220_000_000n + 20_000_000_000n);
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "anthropic-spend-"));
+    const filePath = path.join(directory, "anthropic-spend.json");
+    const november = Date.UTC(2026, 10, 18, 12);
+    const december = Date.UTC(2026, 11, 1, 9);
+    try {
+      const ledger = createAnthropicSpendLedger({ filePath });
+      ledger.observeUsage({ ...turn, model: "claude-opus-5-5", at: november, inputTokens: 1000, outputTokens: 100 });
+      // 4×1000 + 20×100 = 6,000 µ$.
+      expect(ledger.read(november).spend).toMatchObject({ currency: "USD", spent: "0.006", basis: "fleet_measured" });
+      expect(ledger.read(december).spend.spent).toBe("0");
+      expect(ledger.setBudget("10")).toBe(true);
+      expect(ledger.setBudget("0")).toBe(false);
+      expect(ledger.setBudget("abc")).toBe(false);
+      // 재시작해도 누적·예산이 남고, 파일에는 키·본문이 없다.
+      expect(createAnthropicSpendLedger({ filePath }).read(november).spend).toMatchObject({ spent: "0.006", budget: "10" });
+      expect(fs.readFileSync(filePath, "utf8")).not.toMatch(/sk-ant|authorization/i);
+
+      // 잔액 소진은 400·402 어느 쪽으로 와도 같은 사유다. 모델 제약 400·인증 401은 차단이 아니다.
+      const depleted400 = classifyAnthropicBlock(400, { type: "error", error: { type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API." } });
+      const depleted402 = classifyAnthropicBlock(402, { type: "error", error: { type: "billing_error", message: "Credit balance is too low" } });
+      expect(depleted400).toMatchObject({ httpStatus: 400, reason: "balance_depleted" });
+      expect(depleted402).toMatchObject({ httpStatus: 402, reason: "balance_depleted", code: "billing_error" });
+      expect(classifyAnthropicBlock(400, { error: { type: "invalid_request_error", message: "You have reached your specified API usage limits." } })).toMatchObject({ reason: "spend_limit" });
+      expect(classifyAnthropicBlock(429, { error: { type: "rate_limit_error", message: "slow down", details: { error_code: "ramp_limit_exceeded" } } })).toMatchObject({ httpStatus: 429, reason: "rate_limited", code: "ramp_limit_exceeded" });
+      expect(classifyAnthropicBlock(400, { error: { type: "invalid_request_error", message: "max_tokens: too large" } })).toBeUndefined();
+      expect(classifyAnthropicBlock(401, { error: { type: "authentication_error", message: "invalid x-api-key" } })).toBeUndefined();
+
+      ledger.observeBlock({ model: "claude-opus-5-5", at: november, ...depleted402! });
+      ledger.observeRateLimit({ observedAt: november, requests: { limit: 50, remaining: 0, resetsAt: november + 30_000 } });
+      expect(ledger.read(november)).toMatchObject({ block: { httpStatus: 402, reason: "balance_depleted" }, rateLimit: { requests: { remaining: 0 } } });
+      // 지난달 차단은 이번 달 카드에 서지 않고, 다음 성공 사용량이 걷는다.
+      expect(ledger.read(december).block).toBeUndefined();
+      ledger.observeUsage({ ...turn, model: "claude-opus-5-5", at: november, inputTokens: 1, outputTokens: 1 });
+      expect(ledger.read(november).block).toBeUndefined();
+    } finally {
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("anthropic pricing for versions and families the table does not list", () => {
+  const base = { at: Date.UTC(2026, 10, 18, 12), inputTokens: 1000, outputTokens: 100, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0, webSearchRequests: 0 } as const;
+
+  it("estimates a newer version at the latest priced version of its family and records it, and never invents a cost for an unknown family", () => {
+    // 같은 가족의 가장 최근 표 버전(5.5)으로 추정하고, 날짜 접미가 붙어도 같은 가족·버전으로 읽는다.
+    expect(priceAnthropicTurn({ ...base, model: "claude-opus-5-5" })).toMatchObject({ pricedAs: "claude-opus-5-5", estimated: false });
+    const estimated = priceAnthropicTurn({ ...base, model: "claude-opus-5-6-20261201" });
+    expect(estimated).toMatchObject({ pricedAs: "claude-opus-5-5", estimated: true, costPicoUsd: 6_000_000_000n });
+    // 가족이 표에 없으면 단가가 없다 — 0원으로 두지도 않는다.
+    expect(priceAnthropicTurn({ ...base, model: "claude-ember-1-0" })).toBeUndefined();
+    expect(priceAnthropicTurn({ ...base, model: "not-a-claude-id" })).toBeUndefined();
+
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "anthropic-estimate-"));
+    const filePath = path.join(directory, "anthropic-spend.json");
+    try {
+      const ledger = createAnthropicSpendLedger({ filePath });
+      ledger.observeUsage({ ...base, model: "claude-opus-5-5" });
+      ledger.observeUsage({ ...base, model: "claude-opus-5-6" });
+      ledger.observeUsage({ ...base, model: "claude-opus-5-6" });
+      ledger.observeUsage({ ...base, model: "claude-ember-1-0" });
+      // 4×1000 + 20×100 = 6,000 µ$ 가 세 번(정확 1 + 추정 2). 모르는 가족은 합계에 들어가지 않는다.
+      expect(ledger.read(base.at).spend.spent).toBe("0.018");
+      const stored = JSON.parse(fs.readFileSync(filePath, "utf8")) as { estimates: unknown; unpriced: unknown };
+      // 어떤 버전을 어느 단가로 셌는지, 못 센 턴이 몇 번인지 파일에 남고 재시작해도 읽힌다.
+      expect(stored.estimates).toEqual({ "2026-11": { "claude-opus-5-6": { pricedAs: "claude-opus-5-5", turns: 2, costPicoUsd: "12000000000", lastAt: base.at } } });
+      expect(stored.unpriced).toEqual({ "2026-11": { "claude-ember-1-0": { turns: 1, lastAt: base.at } } });
+      expect(createAnthropicSpendLedger({ filePath }).read(base.at).spend.spent).toBe("0.018");
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }
