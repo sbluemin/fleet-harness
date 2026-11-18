@@ -452,33 +452,28 @@ const SELECT_OBSERVER = `(() => {
  * Chrome 이 모든 문서의 메인 월드에 두는 `window.chrome.loadTimes`·`csi`·`app` 을 셸 Chromium 에도 둔다.
  * 이 뷰는 Chrome 브랜드로 자신을 밝히는데 이 셋이 없으면 Chrome 과 다르게 보인다. 실측(2026-11-18)에서는 그 차이 때문에
  * 구글 로그인이 식별자 제출 직후 "브라우저가 안전하지 않음"으로 거부됐고, 셋을 모두 두면 Chrome 과 같은 다음 단계로 넘어갔다.
- * 값의 모양·속성 서술자·`toString` 은 Chrome 157 실측에 맞췄다. 이미 있는 속성은 덮지 않고 사이트마다 다르게 하지 않는다.
+ * 값의 모양과 속성 서술자는 Chrome 157 실측에 맞췄다. `Function.prototype.toString` 은 바꾸지 않는다 — 실측의 통과 조건에 없었다.
+ * 이미 있는 속성은 덮지 않고 사이트마다 다르게 하지 않는다.
  */
 const CHROME_SURFACE = `(() => {
   "use strict";
-  const chrome =window.chrome !== null && typeof window.chrome === "object" ? window.chrome : {};
+  const chrome = window.chrome !== null && typeof window.chrome === "object" ? window.chrome : {};
   if ("loadTimes" in chrome && "csi" in chrome && "app" in chrome) return;
-  const sources = new WeakMap();
-  const native = (fn, name) => { sources.set(fn, "function " + name + "() { [native code] }"); return fn; };
-  const toString = Function.prototype.toString;
-  const nativeToString = new Proxy(toString, { apply: (target, self, args) => sources.has(self) ? sources.get(self) : Reflect.apply(target, self, args) });
-  sources.set(nativeToString, "function toString() { [native code] }");
-  Object.defineProperty(Function.prototype, "toString", { value: nativeToString, writable: true, enumerable: false, configurable: true });
   const origin = performance.timeOrigin;
   const navigation = () => performance.getEntriesByType("navigation")[0];
   const seconds = (ms) => ms > 0 ? (origin + ms) / 1000 : 0;
   const protocol = () => (navigation() && navigation().nextHopProtocol) || "";
   const multiplexed = () => /^(h2|h3|quic)/.test(protocol());
   const type = () => (navigation() && navigation().type) || "navigate";
-  if (!("loadTimes" in chrome)) chrome.loadTimes = native(function () {
+  if (!("loadTimes" in chrome)) chrome.loadTimes = (() => function () {
     const entry = navigation();
     const paint = performance.getEntriesByName("first-paint")[0];
     return { requestTime: origin / 1000, startLoadTime: origin / 1000, commitLoadTime: seconds(entry ? entry.responseStart : 0), finishDocumentLoadTime: seconds(entry ? entry.domContentLoadedEventEnd : 0), finishLoadTime: seconds(entry ? entry.loadEventEnd : 0), firstPaintTime: seconds(paint ? paint.startTime : 0), firstPaintAfterLoadTime: 0, navigationType: type() === "reload" ? "Reload" : type() === "back_forward" ? "BackForward" : "Other", wasFetchedViaSpdy: multiplexed(), wasNpnNegotiated: multiplexed(), npnNegotiatedProtocol: multiplexed() ? protocol() : "", wasAlternateProtocolAvailable: false, connectionInfo: protocol() || "unknown" };
-  }, "");
-  if (!("csi" in chrome)) chrome.csi = native(function () {
+  })();
+  if (!("csi" in chrome)) chrome.csi = (() => function () {
     const entry = navigation();
     return { startE: Math.round(origin), onloadT: Math.round(origin + (entry ? entry.domContentLoadedEventEnd : 0)), pageT: performance.now(), tran: type() === "reload" ? 16 : type() === "back_forward" ? 6 : 15 };
-  }, "");
+  })();
   if (!("app" in chrome)) {
     const invalid = (name, signature) => new TypeError("Error in invocation of app." + name + "(" + signature + "): ");
     const app = {
@@ -494,7 +489,6 @@ const CHROME_SURFACE = `(() => {
       InstallState: { DISABLED: "disabled", INSTALLED: "installed", NOT_INSTALLED: "not_installed" },
       RunningState: { CANNOT_RUN: "cannot_run", READY_TO_RUN: "ready_to_run", RUNNING: "running" },
     };
-    for (const name of ["getDetails", "getIsInstalled", "installState", "runningState"]) native(app[name], name);
     chrome.app = app;
   }
   if (window.chrome !== chrome) window.chrome = chrome;
