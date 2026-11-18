@@ -5,6 +5,40 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.311.0] - 2026-11-18
+
+### fleet-console
+
+#### Added
+- Use Claude Opus, Sonnet, and Haiku with your own Anthropic API key, including the monthly API credit that comes with a Claude subscription, added under Settings > AI Gateway. They are listed separately from your subscription Claude models and marked Anthropic. Anthropic applies the credit to Console agent sessions, not to the interactive terminal.
+- Quota shows this week's Anthropic API spend as Fleet counts it from response usage, with a weekly progress bar once you set a budget, says why Anthropic stopped a request, and shows the API key's request and token limits as their last response reported them.
+- Use Gemini 4 Argon, Carbon, and Hydrogen with your own Google AI Studio API key, added under Settings > AI Gateway.
+- Quota shows this week's Gemini spend as Fleet counts it from token usage, with a weekly progress bar once you set a budget on the Gemini card, and says when Gemini stops requests because your balance ran out or a limit was hit.
+- Reorder usage-limit providers by dragging the icons under the panel, or with the Left and Right arrow keys. The panel, those icons, the summary above the composer, and the phone usage list follow that order and keep it after a refresh.
+- Run GPT-6.2-Sol at Ultrafast speed. The Commodore and Commander model settings offer a speed list (Standard, Fast, Ultrafast), and the routing pool lets each model pick Standard, Fast, or Ultrafast separately.
+
+#### Changed
+- The commodore's menu in the left sidebar now offers Commodore settings, which opens the same avatar editor as the right panel right under that commodore's avatar. Rename a commodore with F2 or by double-clicking its name.
+- Closing the tab you are viewing now brings up the tab that page opened, then a tab opened from the same page, then the page that opened it, and otherwise the neighboring tab instead of jumping to the end of the tab strip.
+- A tab opened from a link or `window.open` now appears right next to the page that opened it, and Cmd/middle-click opens stack up after that page instead of landing at the far end of the tab strip.
+- The commodore neural map keeps the chat's top bar and puts search and fit-to-view inside the map; pressing a kind chip now shows only that kind instead of hiding it, and left-drag rotates the map freely all the way around.
+
+#### Fixed
+- Sign-in popups such as "Continue with Google" in Fleet Browser now open in a new tab and return you to the original page signed in when they close.
+- Links that open in a new tab and `window.open` calls in Fleet Browser now open as new tabs next to the page instead of replacing it, so pages that wait for their opener keep working; Cmd/middle-click opens a background tab. `data:` addresses opened from a page no longer open.
+- Signing in to Google in Fleet Browser no longer stops with a "This browser or app may not be secure" page after you enter your email.
+
+#### Removed
+- Antigravity is no longer offered in Settings > AI Gateway. Models you had chosen through it read as removed, so pick another model there; your other providers and saved sign-ins stay as they are.
+- GPT-6-Astra and GPT-6.1-Sol are no longer offered. A saved selection of them keeps working through the existing model fallback.
+- Removed the goal, crew, and results shortcut buttons on other Consoles' commander rows. Open that Console to see its details.
+
+### fleet-desktop
+
+#### Fixed
+- Tabs opened in the background with Cmd-click or middle-click, and tabs opened by an agent, no longer sometimes stay blank when you first switch to them.
+- Fleet Desktop no longer shows "A JavaScript error occurred in the main process" when a page you are viewing in Fleet Browser closes itself.
+
 ## [1.310.0] - 2026-11-18
 
 ### fleet-console
