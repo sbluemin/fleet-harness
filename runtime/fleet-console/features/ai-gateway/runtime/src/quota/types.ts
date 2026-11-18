@@ -74,6 +74,45 @@ export interface ResetCredits {
   readonly nextExpiresAt?: number;
 }
 
+/**
+ * Money a provider is billed in, as far as Fleet can measure it.
+ *
+ * 금액은 부동소수 누적을 하지 않는다 — 원장이 정수(pico-USD)로 세고, 경계를 넘을 때만
+ * 십진 문자열로 바꾼다. 이 DTO는 그 문자열을 그대로 나른다. `budget`이 없으면 금액만
+ * 보이고, 있으면 이번 달 사용률 막대를 세운다. 이 값은 `QuotaWindow`가 아니다: routing은
+ * `windows`로 압박도를 계산하므로, 지출을 창으로 만들면 사람이 요청한 적 없는 라우팅 제외가 생긴다.
+ */
+export interface ProviderSpend {
+  readonly currency: "USD";
+  /** 이번 달 누적 지출. USD 십진 문자열(최대 12자리 소수). */
+  readonly spent: string;
+  /** 사람이 정한 월 예산. 모든 달에 적용된다. 없으면 금액만 보인다. */
+  readonly budget?: string;
+  /** `spent / budget` 백분율(소수 한 자리). 예산을 넘으면 100을 넘는다. */
+  readonly usedPercent?: number;
+  /** 이번 달 시작 — America/Los_Angeles 자정(epoch ms). */
+  readonly periodStart: number;
+  /** 다음 달 시작 = 이번 달 리셋 시각(epoch ms). */
+  readonly resetsAt: number;
+  /**
+   * 값의 출처. Gemini API는 잔액·지출을 주지 않으므로 플릿이 응답 usageMetadata의 토큰에
+   * 단가를 곱해 센 추정치다(Paid 티어 단가, 플릿은 프로젝트 티어를 모른다).
+   */
+  readonly basis: "fleet_measured";
+}
+
+/** 업스트림이 402·429로 거절한 마지막 사실. 다음 성공 사용량이 오면 원장이 걷는다. */
+export interface ProviderBlock {
+  readonly httpStatus: 402 | 429;
+  readonly reason: "balance_depleted" | "rate_limited";
+  readonly at: number;
+  readonly model?: string;
+  /** 오류 본문의 기계 코드(예: "RESOURCE_EXHAUSTED", "payment_required"). */
+  readonly code?: string;
+  /** 오류 본문 `error.message` 원문. 키·요청 본문은 담지 않는다. */
+  readonly message?: string;
+}
+
 export interface ProviderDto {
   readonly status: ProviderStatus;
   readonly method?: CredentialMethod;
@@ -81,6 +120,10 @@ export interface ProviderDto {
   readonly cycleDays?: number;
   readonly windows?: readonly QuotaWindow[];
   readonly credits?: ResetCredits;
+  /** 지출을 금액으로만 아는 공급자(Gemini)의 이번 달 누적. 창이 아니다. */
+  readonly spend?: ProviderSpend;
+  /** 마지막 402·429. 성공 사용량이 오면 사라진다. */
+  readonly block?: ProviderBlock;
   readonly fetchedAt?: number;
   readonly message?: string;
 }
@@ -90,6 +133,11 @@ export interface QuotaSummaryDto {
     readonly antigravity: ProviderDto;
     readonly claude: ProviderDto;
     readonly codex: ProviderDto;
+    /**
+     * Gemini Developer API 키 — 플릿이 응답 토큰으로 센 이번 달 지출을 싣는다.
+     * Antigravity 경로의 같은 모델과 별도 항목이다.
+     */
+    readonly gemini: ProviderDto;
     readonly "muse-code": ProviderDto;
     readonly opencode: ProviderDto;
     readonly xai: ProviderDto;

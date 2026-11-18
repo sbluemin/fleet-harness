@@ -16,3 +16,8 @@
 .quota-m-bar i.is-critical { background: var(--coral); }
 /* Muse Code 로그인 코드 — 승인 페이지의 코드와 눈으로 맞춰 보는 값이라 고정폭으로 크게 둔다. */
 .quota-m-code { font-family: var(--font-code); font-size: var(--t-lg); font-weight: var(--weight-medium); letter-spacing: 0.12em; user-select: all; }
+/* Gemini 지출·예산 — 데스크톱 카드와 같은 폼을 묶음 카드의 행 안에서 쓴다. */
+.quota-m-row .quota-budget { flex: 1; margin-top: 0; }
+.quota-m-row .quota-budget__input { min-height: 38px; }
+.quota-m-row .quota-budget__label { font-size: var(--t-md); }
+.quota-m-amount { font-variant-numeric: tabular-nums; }

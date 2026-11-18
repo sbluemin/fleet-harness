@@ -221,8 +221,7 @@ export function useRoutingPoolData(launchRoster: ModelRoster | null, t: T): Rout
       const fastSupported = found?.model.fast === true || rosterRow?.fastSupported === true;
       const status = modelQuotaStatus(
         providerVisible(provider),
-        // Gemini는 아직 Quota 요약의 키가 아니다(지출 원장이 그 항목을 들일 때 이 단언이 필요 없어진다).
-        quotaSnapshot.data?.providers[provider as keyof NonNullable<typeof quotaSnapshot.data>["providers"]],
+        quotaSnapshot.data?.providers[provider],
         rosterRow?.quotaScopes,
         locale,
       );

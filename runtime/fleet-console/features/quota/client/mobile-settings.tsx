@@ -5,6 +5,7 @@ import type { SettingsSectionDescriptor } from "../../settings/shared/types.js";
 
 import { PROVIDER_ORDER_DEFAULT } from "../shared/provider-order.js";
 import { getT } from "./i18n/index.js";
+import { GeminiSpendRows } from "./gemini-spend.js";
 import type { QuotaWindow } from "@fleet-console/ai-gateway";
 import { expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, providerName, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useAntigravityEnabled, useQuotaData, windowLabel } from "./quota-panel.js";
 import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subscribeLogins } from "./provider-login.js";
@@ -28,7 +29,7 @@ function UsageBody() {
 function UsageList({ api }: { readonly api: ClientApiCapability }) {
   const locale: ConsoleLocale = document.documentElement.lang === "ko" ? "ko" : "en";
   const t = getT(locale, true);
-  const { data, now, requestError, connect, logout } = useQuotaData(api);
+  const { data, now, requestError, connect, logout, saveBudget } = useQuotaData(api);
   const antigravityEnabled = useAntigravityEnabled();
   if (requestError && data === null) return <p className="quota-m-note">{t(requestError)}</p>;
   if (data === null) return <p className="quota-m-note" role="status">{t("quota.loading.title")}</p>;
@@ -51,6 +52,16 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
                 </button>
               ) : null}
               {needsConsoleLogin(id, provider.status) ? <LoginRows api={api} provider={id} expired={provider.status === "expired"} now={now} locale={locale} t={t} logout={logout} /> : null}
+              {readable && provider.spend !== undefined ? (
+                <GeminiSpendRows
+                  spend={provider.spend}
+                  {...(provider.block !== undefined ? { block: provider.block } : {})}
+                  locale={locale}
+                  t={t}
+                  resetText={t("mobile.usage.reset", { t: countdownText(provider.spend.resetsAt - now, locale) })}
+                  saveBudget={saveBudget}
+                />
+              ) : null}
               {windows.map((window, index) => {
                 const severity = meterSeverity(window);
                 const label = mobileWindowLabel(window, t);

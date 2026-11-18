@@ -133,6 +133,63 @@ export async function handleConnect(
 export type LoginAction = "start" | "status" | "cancel" | "logout";
 
 /**
+ * Gemini 월 예산 라우트(`/api/v1/ai-gateway/quota/gemini-budget`)로 가는 창구. 예산은 지출 원장과
+ * 같은 파일에 살고 원장은 Gateway가 소유하므로, 플러그인은 저장하지 않고 Gateway의 판정만 옮긴다.
+ */
+export interface GeminiBudgetGateway {
+  /** `usd: null`은 삭제다. */
+  setBudget(request: { readonly usd: string | null }): Promise<{ readonly status: number; readonly payload: unknown }>;
+}
+
+/**
+ * Gemini 카드의 월 예산 저장·삭제. 성공하면 갱신된 요약을 함께 돌려줘 카드가 곧바로 막대를 세운다.
+ * 값 검증(양수·숫자)은 원장과 입력 UI가 각자 하고, 여기서는 모양만 본다.
+ */
+export async function handleGeminiBudget(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: QuotaRouteContext,
+  gateway: GeminiBudgetGateway,
+  service: QuotaSummarySource,
+): Promise<void> {
+  if (rejectUnlessJsonPost(req, res, ctx)) return;
+  let body: unknown;
+  try {
+    body = await ctx.host.http.readJsonBody(req);
+  } catch {
+    body = null;
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_budget_request" });
+    return;
+  }
+  const fields = Object.keys(body);
+  if (fields.length !== 1 || !("usd" in body)) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_budget_request" });
+    return;
+  }
+  const usd = (body as { readonly usd?: unknown }).usd;
+  if (usd !== null && typeof usd !== "string") {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_budget_request" });
+    return;
+  }
+  let result: { readonly status: number; readonly payload: unknown };
+  try {
+    result = await gateway.setBudget({ usd });
+  } catch {
+    ctx.host.http.writeJson(res, 502, { error: "budget_unavailable" });
+    return;
+  }
+  if (result.status !== 200) {
+    ctx.host.http.writeJson(res, result.status, result.payload);
+    return;
+  }
+  ctx.host.http.writeJson(res, 200, await service.getSummary());
+}
+
+const LOGIN_ID_MAX = 128;
+
+/**
  * Console이 소유하는 로그인 라우트(`/api/v1/ai-gateway/oauth/<provider>/*`)로 가는 창구.
  * 플러그인은 자격·device code·폴링을 갖지 않고 Gateway의 응답(상태 코드와 공개 DTO)을 그대로 옮긴다.
  */
@@ -143,8 +200,6 @@ export interface LoginGateway {
     request: { readonly loginId?: string; readonly body?: Record<string, unknown> },
   ): Promise<{ readonly status: number; readonly payload: unknown }>;
 }
-
-const LOGIN_ID_MAX = 128;
 
 function isLoginId(value: unknown): value is string {
   return typeof value === "string" && value.length > 0 && value.length <= LOGIN_ID_MAX;
