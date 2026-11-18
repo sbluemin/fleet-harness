@@ -7,7 +7,7 @@ import { getT } from "../../../objectives/client/i18n/index.js";
 import { useConsoleLocale } from "../../../../core/client/src/i18n/index.js";
 import { sidebarJson, sidebarRequest } from "../../../remote-access/client/sidebar-transport.js";
 import type { CommanderRowGlyphTab } from "../commander-tab/commander-row-glyphs.js";
-import "../../../objectives/client/remote-objective-popup.css";
+import "./remote-sidebar-popup.css";
 
 type FileView = { readonly url: string; readonly name: string; readonly type: string; readonly text: string | null };
 /** 다른 Console의 파일은 byte blob으로만 연다. 상대 shared 경로는 대상의 containment 검사를 지난다. */
@@ -69,7 +69,7 @@ export function RemoteSidebarPopup({ console, objectiveId, machine, tab: initial
           {t(value === "goal" ? "objectives.tabs.goal" : value === "crew" ? "objectives.missions.title" : "objectives.results.title")}</button>)}
       </nav>
       {error ? <p role="alert">{error}</p> : null}
-      {!objective ? <p role="status">{t("objectives.peek.loading")}</p> : tab === "goal" ? <>
+      {!objective ? <p role="status">{t("objectives.results.loading")}</p> : tab === "goal" ? <>
         <section><h3>{t("objectives.objective.memo")}</h3><p className="objectives-remote-peek-prose">{objective.note}</p></section>
         <section><h3>{t("objectives.criteria.title")}</h3><ol>{objective.criteria.map((criterion) => <li key={criterion.id}>{criterion.met ? "✓" : "○"} {criterion.text}{criterion.met ? <p className="objectives-remote-peek-prose">{criterion.met}</p> : null}</li>)}</ol></section>
         {objective.decisions.length ? <section><h3>{t("objectives.decisions.title")}</h3><ol>{objective.decisions.map((decision) => <li key={decision.id}>
@@ -92,7 +92,7 @@ export function RemoteSidebarPopup({ console, objectiveId, machine, tab: initial
             : /^https:\/\//.test(result.url) ? <a className="objectives-link" href={result.url} target="_blank" rel="noopener noreferrer">{result.label ?? result.url}</a> : <span>{result.label}</span>}
           {result.note ? <p>{result.note}</p> : null}
         </li>)}</ul></section>
-        <section><h3>{t("objectives.shared.title")}</h3>{shared?.truncated ? <p>{t("objectives.peek.truncated")}</p> : null}
+        <section><h3>{t("objectives.shared.title")}</h3>{shared?.truncated ? <p>{t("objectives.shared.truncated")}</p> : null}
           <ul>{shared?.entries.map((entry) => <li key={entry.path}><button type="button" className="objectives-popup-text-button" onClick={() => { void openFile(entry.path, "sharedFile", { path: entry.path }); }}>{entry.path}</button> · {entry.bytes} B</li>)}</ul>
         </section>
       </>}

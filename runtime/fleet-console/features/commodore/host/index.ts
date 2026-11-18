@@ -86,11 +86,6 @@ export interface CommodoreFeatureDeps {
    */
   readonly rosterCommandersOf?: (commodoreId: string) => { readonly commanders: readonly ConsoleRosterCommander[]; readonly moreCommanders: number };
   /**
-   * 진행 중 목표 하나의 표시 전용 스냅샷. 목표 저장은 조립부가 읽고, 계약 모양으로 접은 것만 온다.
-   * 명부에 실릴 자격이 있는 목표만 답한다 — 상한에 잘려 목록에 없어도 된다(완료·보관·없음은 null).
-   */
-  readonly objectivePeekOf?: (objectiveId: string) => import("../../../protocol/desktop/console-section.js").ConsoleObjectivePeek | null;
-  /**
    * Console의 로컬 오류 로그(`errors.jsonl`) 포트 — 조립부(core)가 건넨다. 사령관 세션이 턴 실패 원문을 여기 남기고,
    * feature는 core를 직접 import하지 않는다.
    */
@@ -337,7 +332,6 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, globalPluginReachChanged, deletion, assertWritable: ownership.assertWritable,
     theaterIds, summary, list: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map(summary),
     order: orderedIds,
-    objectivePeekOf: deps.objectivePeekOf,
     roster: () => {
       const layout = sidebar.read();
       const ids = orderedIds().filter((id) => entities.dirOf(id) !== null);

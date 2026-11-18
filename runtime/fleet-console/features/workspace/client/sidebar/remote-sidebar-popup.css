@@ -1,4 +1,4 @@
-/* 원격 팝업은 기존 목표 창의 프레임을 쓰고, 읽기 전용 글과 목록만 담는다. */
+/* 다른 Console 행의 팝업은 기존 목표 창의 프레임을 쓰고, 읽기 전용 글과 목록만 담는다. */
 .objectives-remote-peek { font-size: var(--t-sm); color: var(--text-primary); }
 .objectives-remote-peek-source { display: inline-flex; align-items: center; flex-wrap: wrap; gap: var(--space-2); min-width: 0; font-size: var(--t-xs); color: var(--text-secondary); }
 .objectives-remote-peek-source b { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 2px 6px; border-radius: var(--radius-xs); background: var(--wash-hover); font-weight: var(--weight-medium); }
