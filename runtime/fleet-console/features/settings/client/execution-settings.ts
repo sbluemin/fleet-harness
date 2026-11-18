@@ -63,8 +63,7 @@ export type SystemPromptSettingsUpdate =
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly wireLogEnabled: boolean }
   | { readonly compactCeiling: CompactCeiling | null }
-  | { readonly xaiEndpoint: XaiEndpointPreference }
-  | { readonly antigravityEnabled: boolean };
+  | { readonly xaiEndpoint: XaiEndpointPreference };
 
 class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -158,7 +157,7 @@ import * as React from "react";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "aiGateway" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint" | "antigravityEnabled";
+export type SystemPromptSettingsField = "aiGateway" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -278,9 +277,6 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   }
   if (field === "xaiEndpoint") {
     return { xaiEndpoint: state.xaiEndpoint };
-  }
-  if (field === "antigravityEnabled") {
-    return { antigravityEnabled: state.antigravityEnabled };
   }
   // 후미에 아무 필드나 저장하는 폴백을 두면, 분기를 빠뜨린 새 필드가 조용히 **다른 설정**을
   // 저장한다. 필드를 더하고 분기를 빠뜨리면 이 줄이 컴파일에서 막는다.
