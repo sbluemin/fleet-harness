@@ -63,6 +63,16 @@ export const DEFAULT_GEMINI_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
 export const DEFAULT_GEMINI_FLEX_IDLE_TIMEOUT_MS = 900_000;
 
 /**
+ * Flex 요청의 응답 헤더(첫 응답)를 기다리는 한도. **지금은 한도가 없다**(`undefined`) — 값 하나만 넣으면 켜지는 자리다.
+ *
+ * 값이 있으면 Flex 요청의 HTTP 응답 헤더가 이 시간 안에 오지 않을 때 그 요청을 끊고 같은 요청을 한 번 Standard로 다시
+ * 보낸다(503 대체와 같은 경로·같은 한 번). 배경: 2026-11-18 사령관 측정에서 Argon Flex가 476초를 기다린 뒤 503으로 끝났고,
+ * 그러면 Standard 대체가 8분 늦게 시작된다. 이 한도는 헤더까지만 잰다 — 헤더가 온 뒤의 첫 프레임 대기에는 걸지 않으며, 하류로
+ * 나간 프레임이 없을 때만 대체한다는 경계도 그대로다. 끊은 Flex 요청이 과금되는지는 **미확인**이다.
+ */
+export const GEMINI_FLEX_FIRST_RESPONSE_LIMIT_MS = undefined as number | undefined;
+
+/**
  * 원장은 어댑터 인스턴스보다 오래 산다. 라우터가 요청마다 어댑터를 만들기 때문에, 인스턴스마다
  * 원장을 두면 도구 왕복 사이에 사라진다. 프로세스당 하나이고 크기가 묶여 있다.
  */
@@ -146,7 +156,7 @@ export class GeminiGenerateContentAdapter implements AiGatewayAdapter {
       generationConfig: body.generationConfig,
     });
 
-    const post = (payload: typeof body): Promise<Response> => this.fetchImpl(url, {
+    const post = (payload: typeof body, signal: AbortSignal = controller.signal): Promise<Response> => this.fetchImpl(url, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -154,7 +164,7 @@ export class GeminiGenerateContentAdapter implements AiGatewayAdapter {
         "x-goog-api-key": options.apiKey,
       },
       body: JSON.stringify(payload),
-      signal: controller.signal,
+      signal,
     });
     const readOptionsFor = (tier: string | undefined): UpstreamReadOptions => ({
       controller,
@@ -167,14 +177,39 @@ export class GeminiGenerateContentAdapter implements AiGatewayAdapter {
     // 대체 요청에는 대기를 넣지 않는다: 2026-11-18 사령관 측정에서 Flex 503은 1~8초 만에 왔고, 그것은 Flex
     // 용량 거절이지 Standard 풀의 일시 과부하가 아니다. 기다려도 Standard 쪽 사정은 달라지지 않는다.
     const standardBody = { ...body, serviceTier: "standard" as const };
-    const fellBack = (via: "http" | "frame"): void => wireLog("gemini.wire.tier_fallback", { from: "flex", to: "standard", via });
+    const fellBack = (via: "http" | "frame" | "timeout"): void => wireLog("gemini.wire.tier_fallback", { from: "flex", to: "standard", via });
     const canFallBack = body.serviceTier === "flex";
+
+    // 첫 응답 한도(위 상수)가 있으면 Flex 시도만 따로 끊을 수 있게 시도 전용 abort를 둔다. 호출자 abort는 그대로 이어 주고
+    // (연결은 응답 본문이 끝날 때까지 유지), 타이머는 헤더가 오는 순간 멈춘다. 시간 초과면 `undefined`를 돌려준다.
+    const postFlexWithin = async (limitMs: number): Promise<Response | undefined> => {
+      const attempt = new AbortController();
+      controller.signal.addEventListener("abort", () => attempt.abort(controller.signal.reason), { once: true });
+      let timedOut = false;
+      const timer = setTimeout(() => { timedOut = true; attempt.abort(new Error(`Gemini Flex gave no response within ${limitMs}ms`)); }, limitMs);
+      try {
+        return await post(body, attempt.signal);
+      } catch (error) {
+        if (timedOut && !controller.signal.aborted) return undefined;
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+    };
 
     let response: Response;
     let activeTier = body.serviceTier;
     try {
-      response = await post(body);
-      if (canFallBack && response.status === 503) {
+      const flexLimit = GEMINI_FLEX_FIRST_RESPONSE_LIMIT_MS;
+      const first = canFallBack && flexLimit !== undefined ? await postFlexWithin(flexLimit) : await post(body);
+      if (first === undefined) {
+        fellBack("timeout");
+        activeTier = "standard";
+        response = await post(standardBody);
+      } else {
+        response = first;
+      }
+      if (canFallBack && activeTier === "flex" && response.status === 503) {
         // 읽지 않을 응답은 놓아 준다. 업스트림 게이트는 본문이 끝날 때까지 출처별 허가를 쥔다.
         await response.body?.cancel().catch(() => undefined);
         fellBack("http");
