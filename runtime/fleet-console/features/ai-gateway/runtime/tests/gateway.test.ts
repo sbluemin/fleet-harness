@@ -375,6 +375,7 @@ function minimalRegistry() {
       "muse-code": provider("Muse Code", "muse-spark-1.3"),
       opencode: provider("OpenCode Go", "deepseek-v4.1-flash"),
       gemini: provider("Gemini", "gemini-4-hydrogen"),
+      anthropic: provider("Anthropic", "claude-sonnet-5-5"),
       claude: { ...provider("Claude", "sonnet"), native: true },
     },
   };

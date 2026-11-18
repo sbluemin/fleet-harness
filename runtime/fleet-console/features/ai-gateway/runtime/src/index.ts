@@ -23,6 +23,8 @@ export type {
   ResetCredits,
   ProviderSpend,
   ProviderBlock,
+  ProviderRateLimit,
+  ProviderRateLimitWindow,
   ProviderDto,
   QuotaSummaryDto,
   ProviderSuccess,
@@ -38,7 +40,11 @@ export * from "./upstream/codex/quota.js";
 export * from "./upstream/xai/index.js";
 export * from "./upstream/muse-code/index.js";
 export * from "./upstream/opencode-go/quota.js";
+export * from "./upstream/anthropic/index.js";
 export * from "./upstream/gemini/index.js";
+export * from "./quota/anthropic-usage.js";
+export * from "./quota/anthropic-pricing.js";
+export * from "./quota/anthropic-ledger.js";
 export * from "./quota/gemini-usage.js";
 export * from "./quota/gemini-pricing.js";
 export * from "./quota/gemini-ledger.js";
@@ -143,6 +149,7 @@ export {
   OPENCODE_GO_API_BASE_URL,
   TYPESAFE_API_BASE_URL,
   TYPESAFE_AUTH_PROVIDER_ID,
+  validateAnthropicAuthKey,
   validateGeminiAuthKey,
   validateOpencodeGoAuthKey,
   validateTypesafeAuthKey,

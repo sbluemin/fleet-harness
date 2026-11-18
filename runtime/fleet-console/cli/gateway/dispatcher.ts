@@ -5,6 +5,7 @@ import {
   defaultCredentialDeps,
   isSubscriptionSignedOutEntry,
   xaiCliSubscriptionPresent,
+  ANTHROPIC_AUTH_PROVIDER_ID,
   CODEX_AUTH_PROVIDER_ID,
   GEMINI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
@@ -156,6 +157,11 @@ async function collectCredentials(deps: GatewayCommandDeps): Promise<readonly Ga
       provider: "gemini",
       source: "api-key",
       state: await probe(async () => (await resolveAuthService(deps).getApiKey(GEMINI_AUTH_PROVIDER_ID)) ?? null),
+    },
+    {
+      provider: "anthropic",
+      source: "api-key",
+      state: await probe(async () => (await resolveAuthService(deps).getApiKey(ANTHROPIC_AUTH_PROVIDER_ID)) ?? null),
     },
   ];
 }

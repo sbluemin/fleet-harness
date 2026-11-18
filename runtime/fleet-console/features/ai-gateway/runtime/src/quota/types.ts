@@ -101,16 +101,47 @@ export interface ProviderSpend {
   readonly basis: "fleet_measured";
 }
 
-/** 업스트림이 402·429로 거절한 마지막 사실. 다음 성공 사용량이 오면 원장이 걷는다. */
+/**
+ * 업스트림이 거절한 마지막 사실. 다음 성공 사용량이 오면 원장이 걷는다.
+ *
+ * Gemini는 402·429만 쓴다. Anthropic은 잔액 소진이 HTTP 400 `invalid_request_error`로도 오므로
+ * 400이 더해졌고, 그래서 **상태 코드만으로 사유를 정하지 않는다** — 모델 제약 400과 섞인다.
+ * 사유는 `error.type`·`error.message`로 가린 값이다.
+ */
 export interface ProviderBlock {
-  readonly httpStatus: 402 | 429;
-  readonly reason: "balance_depleted" | "rate_limited";
+  readonly httpStatus: 400 | 402 | 429;
+  /**
+   * - `balance_depleted`: 크레딧·선불 잔액 소진.
+   * - `rate_limited`: 속도 한도.
+   * - `spend_limit`: 사람이 정했거나 티어가 정한 월 지출 한도(Anthropic).
+   */
+  readonly reason: "balance_depleted" | "rate_limited" | "spend_limit";
   readonly at: number;
   readonly model?: string;
   /** 오류 본문의 기계 코드(예: "RESOURCE_EXHAUSTED", "payment_required"). */
   readonly code?: string;
   /** 오류 본문 `error.message` 원문. 키·요청 본문은 담지 않는다. */
   readonly message?: string;
+}
+
+/** `anthropic-ratelimit-*` 헤더 한 묶음(limit·remaining·reset). */
+export interface ProviderRateLimitWindow {
+  readonly limit: number;
+  readonly remaining: number;
+  /** epoch ms */
+  readonly resetsAt: number;
+}
+
+/**
+ * 마지막 상류 응답의 `anthropic-ratelimit-*` 헤더. 창(`QuotaWindow`)이 아니다 — 라우팅에 쓰지 않는다.
+ * 크레딧 잔액이 아니라 API 키의 분당 한도 정보다.
+ */
+export interface ProviderRateLimit {
+  /** epoch ms, 헤더를 본 시각 */
+  readonly observedAt: number;
+  readonly requests?: ProviderRateLimitWindow;
+  readonly inputTokens?: ProviderRateLimitWindow;
+  readonly outputTokens?: ProviderRateLimitWindow;
 }
 
 export interface ProviderDto {
@@ -122,14 +153,21 @@ export interface ProviderDto {
   readonly credits?: ResetCredits;
   /** 지출을 금액으로만 아는 공급자(Gemini)의 이번 달 누적. 창이 아니다. */
   readonly spend?: ProviderSpend;
-  /** 마지막 402·429. 성공 사용량이 오면 사라진다. */
+  /** 마지막 거절(402·429, Anthropic은 400 포함). 성공 사용량이 오면 사라진다. */
   readonly block?: ProviderBlock;
+  /** API 키 공급자(Anthropic)가 마지막 응답 헤더에서 읽은 분당 한도. `windows`가 아니다. */
+  readonly rateLimit?: ProviderRateLimit;
   readonly fetchedAt?: number;
   readonly message?: string;
 }
 
 export interface QuotaSummaryDto {
   readonly providers: {
+    /**
+     * Anthropic API 키(크레딧) — 플릿이 응답 usage로 센 이번 달 지출과 마지막 한도 헤더를 싣는다.
+     * 구독 `claude`와 별도 항목이다.
+     */
+    readonly anthropic: ProviderDto;
     readonly antigravity: ProviderDto;
     readonly claude: ProviderDto;
     readonly codex: ProviderDto;

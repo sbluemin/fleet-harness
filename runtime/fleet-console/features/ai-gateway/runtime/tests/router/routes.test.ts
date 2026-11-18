@@ -1824,6 +1824,120 @@ describe("Gemini routing", () => {
   });
 });
 
+describe("Anthropic API key routing", () => {
+  const CREDIT_MODEL = "claude-gateway--anthropic--claude-sonnet-5-5";
+  const sse = (events: ReadonlyArray<Record<string, unknown>>): string =>
+    events.map((event) => `event: ${String(event.type)}\ndata: ${JSON.stringify(event)}\n\n`).join("");
+  const completedTurn = sse([
+    { type: "message_start", message: { id: "msg_1", type: "message", role: "assistant", model: "claude-sonnet-5-5", content: [], usage: { input_tokens: 100, output_tokens: 1, cache_read_input_tokens: 40 } } },
+    { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 20 } },
+    { type: "message_stop" },
+  ]);
+
+  it("sends the stored key as x-api-key only, never the caller's subscription credential, and refuses without a key", async () => {
+    const calls: Array<{ url: string; headers: Headers; body: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      calls.push({ url: String(url), headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) });
+      return new Response(completedTurn, {
+        status: 200,
+        headers: {
+          "content-type": "text/event-stream",
+          "anthropic-ratelimit-requests-limit": "50",
+          "anthropic-ratelimit-requests-remaining": "49",
+          "anthropic-ratelimit-requests-reset": "2026-11-18T10:00:30Z",
+        },
+      });
+    });
+    const anthropicUsage = { observeUsage: vi.fn(), observeBlock: vi.fn(), observeRateLimit: vi.fn() };
+
+    const signedOut = createAiGatewayRouter({ fetch: fetchMock, readAnthropicApiKey: () => undefined, anthropicUsage });
+    const refused = response();
+    await signedOut.handle(ctx({ res: refused, token: ANTHROPIC_CRED, model: CREDIT_MODEL }));
+    expect(refused.status).toBe(403);
+    expect(refused.body).toContain("Anthropic");
+    expect(fetchMock).not.toHaveBeenCalled();
+    signedOut.dispose();
+
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAnthropicApiKey: async () => "sk-ant-api03-stored", anthropicUsage });
+    try {
+      const res = response();
+      await router.handle(ctx({
+        res,
+        token: ANTHROPIC_CRED,
+        model: CREDIT_MODEL,
+        headers: { "anthropic-beta": "oauth-2025-04-20,context-management-2025-06-27", "user-agent": "claude-cli/9.9.9 (external, sdk-ts)" },
+        rawBody: { model: CREDIT_MODEL, speed: "fast", max_tokens: 128, stream: true, messages: [{ role: "user", content: "hi" }] },
+      }));
+      expect(res.status).toBe(200);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]?.url).toBe("https://api.anthropic.com/v1/messages");
+      // 보안 경계: 크레딧 모델은 저장된 키만 싣고 호출자의 구독 토큰은 상류로 나가지 않는다.
+      expect(calls[0]?.headers.get("x-api-key")).toBe("sk-ant-api03-stored");
+      expect(calls[0]?.headers.get("authorization")).toBeNull();
+      expect([...calls[0]!.headers.values()].join("\n")).not.toContain(ANTHROPIC_CRED);
+      // OAuth 전용 베타는 빠지고, 나머지 베타·진입점 표식(user-agent)은 호출자 값 그대로다.
+      expect(calls[0]?.headers.get("anthropic-beta")).toBe("context-management-2025-06-27");
+      expect(calls[0]?.headers.get("user-agent")).toBe("claude-cli/9.9.9 (external, sdk-ts)");
+      // 가상 id는 상류 id로 바뀌고 Fast(`speed`)는 지워진다.
+      expect(calls[0]?.body.model).toBe("claude-sonnet-5-5");
+      expect(calls[0]?.body).not.toHaveProperty("speed");
+      // 응답은 그대로 흘러가고, 옆에서 지출·한도 헤더를 읽는다.
+      expect(res.body).toBe(completedTurn);
+      expect(anthropicUsage.observeRateLimit).toHaveBeenCalledWith(expect.objectContaining({
+        requests: { limit: 50, remaining: 49, resetsAt: Date.parse("2026-11-18T10:00:30Z") },
+      }));
+      expect(anthropicUsage.observeUsage).toHaveBeenCalledTimes(1);
+      expect(anthropicUsage.observeUsage).toHaveBeenCalledWith(expect.objectContaining({
+        model: "claude-sonnet-5-5", inputTokens: 100, outputTokens: 20, cacheReadTokens: 40,
+      }));
+      expect(anthropicUsage.observeBlock).not.toHaveBeenCalled();
+
+      // 구독 모델(네이티브 claude)은 키를 모른다 — 저장된 키가 있어도 호출자 자격만 간다.
+      const native = new Headers();
+      const nativeRouter = createAiGatewayRouter({
+        resolveExecutionModel: async () => ({ modelId: "claude-opus-5-5" }),
+        readAnthropicApiKey: async () => "sk-ant-api03-stored",
+        fetch: vi.fn<typeof fetch>(async (_url, init) => {
+          new Headers(init?.headers).forEach((value, key) => native.set(key, value));
+          return new Response("{}", { status: 200 });
+        }),
+      });
+      try {
+        await nativeRouter.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model: "claude-gateway--fleet--execute", headers: { "x-claude-code-session-id": "parent", "x-claude-code-agent-id": "child" } }));
+        expect(native.get("authorization")).toBe(`Bearer ${ANTHROPIC_CRED}`);
+        expect(native.get("x-api-key")).toBeNull();
+      } finally {
+        nativeRouter.dispose();
+      }
+    } finally {
+      router.dispose();
+    }
+  });
+
+  it("reports a depleted credit balance and does not count spend for a turn that did not complete", async () => {
+    const anthropicUsage = { observeUsage: vi.fn(), observeBlock: vi.fn(), observeRateLimit: vi.fn() };
+    const bodies = [
+      new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API." } }), { status: 400, headers: { "content-type": "application/json" } }),
+      new Response(sse([
+        { type: "message_start", message: { id: "msg_2", usage: { input_tokens: 9, output_tokens: 1 } } },
+        { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { output_tokens: 5 } },
+      ]), { status: 200, headers: { "content-type": "text/event-stream" } }),
+    ];
+    const router = createAiGatewayRouter({ fetch: vi.fn<typeof fetch>(async () => bodies.shift()!), readAnthropicApiKey: async () => "sk-ant-api03-stored", anthropicUsage });
+    try {
+      const depleted = response();
+      await router.handle(ctx({ res: depleted, token: ANTHROPIC_CRED, model: CREDIT_MODEL }));
+      expect(depleted.body).toContain("credit balance is too low");
+      expect(anthropicUsage.observeBlock).toHaveBeenCalledWith(expect.objectContaining({ model: "claude-sonnet-5-5", httpStatus: 400, reason: "balance_depleted" }));
+      // 스트림이 message_stop 없이 끝났다 — 0이나 부분값으로 지어내지 않는다.
+      await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model: CREDIT_MODEL }));
+      expect(anthropicUsage.observeUsage).not.toHaveBeenCalled();
+    } finally {
+      router.dispose();
+    }
+  });
+});
+
 describe("request body limit", () => {
   it("refuses a body past the limit with a 413 that does not arm reactive compaction", async () => {
     // "context window"가 들어간 413만 Claude Code의 압축을 무장시킨다(canonical/index.ts).

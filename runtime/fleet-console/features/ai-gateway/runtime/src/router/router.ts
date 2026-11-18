@@ -4,6 +4,13 @@ import {
   AnthropicMessagesGateway,
   ContextWindowExceededError,
 } from "../downstream/wire/anthropic-messages/inbound.js";
+import { anthropicApiKeyBody, anthropicApiKeyHeaders } from "../upstream/anthropic/api-key.js";
+import {
+  createAnthropicApiObserver,
+  requestUsesOneHourCache,
+  type AnthropicPassthroughObserver,
+} from "../upstream/anthropic/observe.js";
+import type { AnthropicUsagePort } from "../quota/anthropic-usage.js";
 import {
   anthropicNativeHeaders,
   ANTHROPIC_MESSAGES_URL,
@@ -175,6 +182,13 @@ export interface AiGatewayRouteDeps {
   readonly readGeminiApiKey?: () => string | undefined | Promise<string | undefined>;
   /** Gemini 턴의 사용량·402/429 차단을 받는 지출 원장. 미주입이면 플릿은 Gemini 지출을 세지 않는다. */
   readonly geminiUsage?: GeminiUsagePort;
+  /** Console이 저장한 Anthropic API 키. 미주입이거나 비어 있으면 Anthropic 모델은 미로그인으로 거절된다. */
+  readonly readAnthropicApiKey?: () => string | undefined | Promise<string | undefined>;
+  /**
+   * Anthropic 턴의 usage·거절·`anthropic-ratelimit-*` 헤더를 받는 지출 원장. 미주입이면 플릿은 Anthropic
+   * 지출을 세지 않는다(응답은 그대로 중계된다).
+   */
+  readonly anthropicUsage?: AnthropicUsagePort;
   readonly readModelOverride?: () => string | undefined;
   /** Host-owned durable state for Claude Code -> Codex compaction. Absent keeps legacy behavior. */
   readonly compactionStore?: ClaudeCodexCompactionStore;
@@ -573,6 +587,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       credential = apiKey;
+    } else if (target?.provider === "anthropic") {
+      const apiKey = await deps.readAnthropicApiKey?.();
+      if (!apiKey) {
+        refuseProviderSignIn("No Anthropic API key was found. Sign in to Anthropic in Console settings first.");
+        return true;
+      }
+      credential = apiKey;
     }
     clock?.markCredential();
 
@@ -585,6 +606,26 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     const requestFetch = clock ? clock.wrapFetch(fetchImpl) : fetchImpl;
 
     try {
+      if (target?.provider === "anthropic") {
+        // 호출자의 구독 자격은 상류로 가지 않는다. 저장된 키가 x-api-key로 가고, 청구는 API 크레딧이다.
+        // 상류가 그 키를 401로 거절하면 호출자의 구독 로그인이 풀린 것으로 읽히지 않도록, 하네스가 정한
+        // 로그인 거절 상태(401 → 403)로 내보낸다 — 공급자 로그인 거절과 같은 규칙이다.
+        clock?.setRoute("passthrough");
+        const observe = deps.anthropicUsage === undefined
+          ? undefined
+          : createAnthropicApiObserver({
+              model: upstreamModelId(target),
+              port: deps.anthropicUsage,
+              oneHourCache: requestUsesOneHourCache(body),
+            });
+        await proxyToAnthropicApiKey(req.headers, res,
+          anthropicApiKeyBody(body, upstreamModelId(target)) as AnthropicMessagesRequest,
+          credential, requestFetch, controller.signal,
+          (status) => (harness.decisiveRefusalStatus ?? ((value: number) => value))(harness.retryableStatus?.(status) ?? status),
+          sessionId, harness.decisiveRefusalHeaders, observe);
+        clock?.finish("ok");
+        return true;
+      }
       if (!target || target.provider === "claude") {
         // 네이티브 모델의 전송 ID는 설치된 Claude Code가 alias를 푼 값이다. 아직 못 물었으면
         // alias를 API로 흘리지 않고 여기서 멈춘다. 호출자 인증과 기존 beta는 보존한다.
@@ -927,6 +968,33 @@ async function proxyToAnthropic(
     signal,
     url: ANTHROPIC_MESSAGES_URL,
     wireEventLabel: "anthropic.wire.event",
+    ...(sessionId === undefined ? {} : { wireSessionId: sessionId }),
+  });
+}
+
+/** Anthropic API 키(크레딧) 모델: 같은 passthrough, 자격만 저장된 키로 바꾼다. */
+async function proxyToAnthropicApiKey(
+  requestHeaders: Record<string, unknown>,
+  res: GatewayProxyResponse,
+  body: AnthropicMessagesRequest,
+  apiKey: string,
+  fetchImpl: typeof fetch,
+  signal: AbortSignal,
+  retryableStatus: ((status: number) => number) | undefined,
+  sessionId?: string,
+  decisiveRefusalHeaders?: (status: number) => Readonly<Record<string, string>> | undefined,
+  observe?: AnthropicPassthroughObserver,
+): Promise<void> {
+  await proxyAnthropicMessages(res, body, {
+    ...(retryableStatus ? { retryableStatus } : {}),
+    ...(decisiveRefusalHeaders ? { decisiveRefusalHeaders } : {}),
+    ...(observe ? { observe } : {}),
+    keepAlive: true,
+    fetchImpl,
+    headers: anthropicApiKeyHeaders(requestHeaders, apiKey),
+    signal,
+    url: ANTHROPIC_MESSAGES_URL,
+    wireEventLabel: "anthropic.api-key.wire.event",
     ...(sessionId === undefined ? {} : { wireSessionId: sessionId }),
   });
 }

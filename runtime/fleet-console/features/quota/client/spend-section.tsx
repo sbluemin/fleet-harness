@@ -7,6 +7,78 @@ import type { QuotaMessageKey } from "./i18n/index.js";
 
 type T = Translate<QuotaMessageKey>;
 
+/**
+ * 지출·예산을 금액으로 아는 공급자. 이 둘은 같은 표면(금액·예산 폼·사용률 막대·차단 띠)을
+ * 쓰고 문구만 다르다 — 공급자마다 컴포넌트를 복제하면 예산 저장 규칙과 오류 문구가 표면마다
+ * 갈린다. 새 공급자가 같은 표면을 얻으면 이 표에 한 줄을 더한다.
+ */
+const SPEND_LABELS = {
+  gemini: {
+    spent: "quota.gemini.spent",
+    noBudget: "quota.gemini.noBudget",
+    summary: "quota.gemini.budget.summary",
+    used: "quota.gemini.budget.used",
+    set: "quota.gemini.budget.set",
+    edit: "quota.gemini.budget.edit",
+    label: "quota.gemini.budget.label",
+    save: "quota.gemini.budget.save",
+    cancel: "quota.gemini.budget.cancel",
+    remove: "quota.gemini.budget.remove",
+    invalid: "quota.gemini.budget.invalid",
+    failed: "quota.gemini.budget.failed",
+    basis: "quota.gemini.basis",
+    blocks: {
+      balance_depleted: "quota.gemini.block.balance",
+      // Gemini는 지출 한도 사유를 보내지 않는다. 사유가 늘어도 차단 띠가 빈 채로 서지 않게
+      // 같은 거절 문구로 접는다.
+      spend_limit: "quota.gemini.block.rate",
+      rate_limited: "quota.gemini.block.rate",
+    },
+  },
+  anthropic: {
+    spent: "quota.anthropic.spent",
+    noBudget: "quota.anthropic.noBudget",
+    summary: "quota.anthropic.budget.summary",
+    used: "quota.anthropic.budget.used",
+    set: "quota.anthropic.budget.set",
+    edit: "quota.anthropic.budget.edit",
+    label: "quota.anthropic.budget.label",
+    save: "quota.anthropic.budget.save",
+    cancel: "quota.anthropic.budget.cancel",
+    remove: "quota.anthropic.budget.remove",
+    invalid: "quota.anthropic.budget.invalid",
+    failed: "quota.anthropic.budget.failed",
+    basis: "quota.anthropic.basis",
+    blocks: {
+      balance_depleted: "quota.anthropic.block.balance",
+      spend_limit: "quota.anthropic.block.spendLimit",
+      rate_limited: "quota.anthropic.block.rate",
+    },
+  },
+} as const satisfies Record<string, {
+  readonly spent: QuotaMessageKey;
+  readonly noBudget: QuotaMessageKey;
+  readonly summary: QuotaMessageKey;
+  readonly used: QuotaMessageKey;
+  readonly set: QuotaMessageKey;
+  readonly edit: QuotaMessageKey;
+  readonly label: QuotaMessageKey;
+  readonly save: QuotaMessageKey;
+  readonly cancel: QuotaMessageKey;
+  readonly remove: QuotaMessageKey;
+  readonly invalid: QuotaMessageKey;
+  readonly failed: QuotaMessageKey;
+  readonly basis: QuotaMessageKey;
+  readonly blocks: Readonly<Record<ProviderBlock["reason"], QuotaMessageKey>>;
+}>;
+
+/** 예산·지출 표면을 가진 공급자. Quota 카드와 폰 행이 이 표를 보고 그린다. */
+export type SpendProvider = keyof typeof SPEND_LABELS;
+
+export function isSpendProvider(id: string): id is SpendProvider {
+  return Object.prototype.hasOwnProperty.call(SPEND_LABELS, id);
+}
+
 /** 지출·예산의 심각도 — 미터의 로컬 밴드와 같은 기준(90/70)이다. 라우팅 판정은 창에만 붙는다. */
 export function spendSeverity(percent: number): "normal" | "warning" | "critical" {
   return percent >= 90 ? "critical" : percent >= 70 ? "warning" : "normal";
@@ -40,8 +112,8 @@ export function parseBudgetInput(raw: string): string | undefined {
   return Number.isFinite(amount) && amount > 0 ? text : undefined;
 }
 
-export function blockMessage(block: ProviderBlock, t: T): string {
-  return t(block.reason === "balance_depleted" ? "quota.gemini.block.balance" : "quota.gemini.block.rate");
+export function blockMessage(provider: SpendProvider, block: ProviderBlock, t: T): string {
+  return t(SPEND_LABELS[provider].blocks[block.reason]);
 }
 
 interface BudgetEditor {
@@ -101,7 +173,13 @@ function useBudgetEditor(budget: string | undefined, saveBudget: (usd: string | 
 }
 
 /** 데스크톱 카드와 폰 행이 같은 폼을 쓴다 — 저장 규칙과 오류 문구가 표면마다 갈리지 않게. */
-function GeminiBudgetForm({ editor, hasBudget, t }: { readonly editor: BudgetEditor; readonly hasBudget: boolean; readonly t: T }) {
+function BudgetForm({ provider, editor, hasBudget, t }: {
+  readonly provider: SpendProvider;
+  readonly editor: BudgetEditor;
+  readonly hasBudget: boolean;
+  readonly t: T;
+}) {
+  const labels = SPEND_LABELS[provider];
   const inputId = useId();
   return (
     <form
@@ -111,7 +189,7 @@ function GeminiBudgetForm({ editor, hasBudget, t }: { readonly editor: BudgetEdi
         editor.save();
       }}
     >
-      <label className="quota-budget__label" htmlFor={inputId}>{t("quota.gemini.budget.label")}</label>
+      <label className="quota-budget__label" htmlFor={inputId}>{t(labels.label)}</label>
       <input
         id={inputId}
         className="quota-budget__input"
@@ -125,17 +203,18 @@ function GeminiBudgetForm({ editor, hasBudget, t }: { readonly editor: BudgetEdi
         value={editor.draft}
         onChange={(event) => editor.change(event.target.value)}
       />
-      <button type="submit" className="quota-button quota-button--primary" disabled={editor.saving}>{t("quota.gemini.budget.save")}</button>
-      <button type="button" className="quota-button" onClick={editor.cancel} disabled={editor.saving}>{t("quota.gemini.budget.cancel")}</button>
-      {hasBudget ? <button type="button" className="quota-disconnect" onClick={editor.clear} disabled={editor.saving}>{t("quota.gemini.budget.remove")}</button> : null}
+      <button type="submit" className="quota-button quota-button--primary" disabled={editor.saving}>{t(labels.save)}</button>
+      <button type="button" className="quota-button" onClick={editor.cancel} disabled={editor.saving}>{t(labels.cancel)}</button>
+      {hasBudget ? <button type="button" className="quota-disconnect" onClick={editor.clear} disabled={editor.saving}>{t(labels.remove)}</button> : null}
       {editor.error !== null ? (
-        <p className="quota-budget__error" role="alert">{t(editor.error === "invalid" ? "quota.gemini.budget.invalid" : "quota.gemini.budget.failed")}</p>
+        <p className="quota-budget__error" role="alert">{t(editor.error === "invalid" ? labels.invalid : labels.failed)}</p>
       ) : null}
     </form>
   );
 }
 
-export interface GeminiSpendProps {
+export interface SpendProps {
+  readonly provider: SpendProvider;
   readonly spend: ProviderSpend;
   readonly block?: ProviderBlock;
   readonly locale: ConsoleLocale;
@@ -145,10 +224,11 @@ export interface GeminiSpendProps {
   readonly saveBudget: (usd: string | null) => Promise<boolean>;
 }
 
-function budgetSummary(props: GeminiSpendProps, percent: number | undefined): string {
-  const { spend, locale, t } = props;
-  if (spend.budget === undefined) return t("quota.gemini.noBudget");
-  return t("quota.gemini.budget.summary", {
+function budgetSummary(props: SpendProps, percent: number | undefined): string {
+  const { provider, spend, locale, t } = props;
+  const labels = SPEND_LABELS[provider];
+  if (spend.budget === undefined) return t(labels.noBudget);
+  return t(labels.summary, {
     spent: formatSpendUsd(locale, spend.spent),
     budget: formatSpendUsd(locale, spend.budget),
     pct: Math.round(percent ?? 0),
@@ -156,22 +236,23 @@ function budgetSummary(props: GeminiSpendProps, percent: number | undefined): st
 }
 
 /**
- * Gemini 카드의 지출 구역 — 이번 달 지출 금액, 예산이 있으면 사용률 막대, 없으면 금액만.
- * 402·429는 차단 사유로, 값의 근거(플릿 측정)는 한 줄로 남긴다.
+ * 지출 카드의 지출 구역 — 이번 달 지출 금액, 예산이 있으면 사용률 막대, 없으면 금액만.
+ * 차단은 사유 문구로, 값의 근거(플릿 측정)는 한 줄로 남긴다.
  */
-export function GeminiSpendSection(props: GeminiSpendProps) {
-  const { spend, block, t, resetText, saveBudget } = props;
+export function SpendSection(props: SpendProps) {
+  const { provider, spend, block, t, resetText, saveBudget } = props;
+  const labels = SPEND_LABELS[provider];
   const editor = useBudgetEditor(spend.budget, saveBudget);
   const percent = spend.usedPercent;
   const severity = percent === undefined ? "normal" : spendSeverity(percent);
   return (
     <div className="quota-spend">
       <div className="quota-spend__head">
-        <span className="quota-spend__label">{t("quota.gemini.spent")}</span>
+        <span className="quota-spend__label">{t(labels.spent)}</span>
         <strong className="quota-spend__amount">{formatSpendUsd(props.locale, spend.spent)}</strong>
         {editor.editing ? null : (
           <button type="button" className="quota-spend__edit" onClick={editor.begin}>
-            {t(spend.budget === undefined ? "quota.gemini.budget.set" : "quota.gemini.budget.edit")}
+            {t(spend.budget === undefined ? labels.set : labels.edit)}
           </button>
         )}
       </div>
@@ -179,7 +260,7 @@ export function GeminiSpendSection(props: GeminiSpendProps) {
         <div
           className="quota-spend__bar"
           role="progressbar"
-          aria-label={t("quota.gemini.budget.used", { pct: Math.round(percent) })}
+          aria-label={t(labels.used, { pct: Math.round(percent) })}
           aria-valuemin={0}
           aria-valuemax={100}
           aria-valuenow={Math.min(100, Math.round(percent))}
@@ -194,16 +275,17 @@ export function GeminiSpendSection(props: GeminiSpendProps) {
         <span>{budgetSummary(props, percent)}</span>
         <span>{resetText}</span>
       </div>
-      {editor.editing ? <GeminiBudgetForm editor={editor} hasBudget={spend.budget !== undefined} t={t} /> : null}
-      {block !== undefined ? <div className="quota-strip quota-strip--error">{blockMessage(block, t)}</div> : null}
-      <p className="quota-spend__basis">{t("quota.gemini.basis")}</p>
+      {editor.editing ? <BudgetForm provider={provider} editor={editor} hasBudget={spend.budget !== undefined} t={t} /> : null}
+      {block !== undefined ? <div className="quota-strip quota-strip--error">{blockMessage(provider, block, t)}</div> : null}
+      <p className="quota-spend__basis">{t(labels.basis)}</p>
     </div>
   );
 }
 
 /** 폰의 「설정 › 사용량」 행 문법 — 같은 값·같은 폼을 묶음 카드의 행으로 그린다. */
-export function GeminiSpendRows(props: GeminiSpendProps) {
-  const { spend, block, locale, t, resetText, saveBudget } = props;
+export function SpendRows(props: SpendProps) {
+  const { provider, spend, block, locale, t, resetText, saveBudget } = props;
+  const labels = SPEND_LABELS[provider];
   const editor = useBudgetEditor(spend.budget, saveBudget);
   const percent = spend.usedPercent;
   const severity = percent === undefined ? "normal" : spendSeverity(percent);
@@ -211,13 +293,13 @@ export function GeminiSpendRows(props: GeminiSpendProps) {
     <>
       <div className="quota-m-row">
         <span className="quota-m-copy">
-          {t("quota.gemini.spent")} <span className="quota-m-amount">{formatSpendUsd(locale, spend.spent)}</span>
+          {t(labels.spent)} <span className="quota-m-amount">{formatSpendUsd(locale, spend.spent)}</span>
           <small>{[budgetSummary(props, percent), resetText].filter(Boolean).join(" · ")}</small>
           {percent !== undefined ? (
             <span
               className="quota-m-bar"
               role="progressbar"
-              aria-label={t("quota.gemini.budget.used", { pct: Math.round(percent) })}
+              aria-label={t(labels.used, { pct: Math.round(percent) })}
               aria-valuemin={0}
               aria-valuemax={100}
               aria-valuenow={Math.min(100, Math.round(percent))}
@@ -229,15 +311,15 @@ export function GeminiSpendRows(props: GeminiSpendProps) {
       </div>
       {editor.editing ? (
         <div className="quota-m-row">
-          <GeminiBudgetForm editor={editor} hasBudget={spend.budget !== undefined} t={t} />
+          <BudgetForm provider={provider} editor={editor} hasBudget={spend.budget !== undefined} t={t} />
         </div>
       ) : (
         <button type="button" className="quota-m-row quota-m-action" onClick={editor.begin}>
-          <span className="quota-m-copy">{t(spend.budget === undefined ? "quota.gemini.budget.set" : "quota.gemini.budget.edit")}</span>
+          <span className="quota-m-copy">{t(spend.budget === undefined ? labels.set : labels.edit)}</span>
         </button>
       )}
       {block !== undefined ? (
-        <div className="quota-m-row" role="alert"><span className="quota-m-copy">{blockMessage(block, t)}</span></div>
+        <div className="quota-m-row" role="alert"><span className="quota-m-copy">{blockMessage(provider, block, t)}</span></div>
       ) : null}
     </>
   );

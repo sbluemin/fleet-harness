@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 // Shared provider marks for launch menus and model coordinates. Host chrome and
 // plugins both import this module so the bands cannot restyle apart.
 
-export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "antigravity" | "muse-code" | "opencode" | "gemini";
+export type LaunchProviderGlyphId = "claude" | "anthropic" | "codex" | "xai" | "antigravity" | "muse-code" | "opencode" | "gemini";
 
 /**
  * Optional intrinsic size for a provider mark.
@@ -19,10 +19,11 @@ export type LaunchProviderGlyphSize = {
 
 type LaunchProviderGlyphProps = { readonly size?: LaunchProviderGlyphSize };
 
-const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"] as const;
-const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
+const LAUNCH_PROVIDER_IDS = ["claude", "anthropic", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"] as const;
+const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "anthropic", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
 const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> = {
   claude: "Claude",
+  anthropic: "Anthropic",
   codex: "Codex",
   xai: "xAI",
   antigravity: "Antigravity",
@@ -127,6 +128,16 @@ function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
   );
 }
 
+function AnthropicGlyph({ size }: LaunchProviderGlyphProps) {
+  // 공식 로고가 아닌 공급자 식별용 열린 고리와 중심점. 구독 Claude의 별 윤곽과 겹치지 않는다.
+  return (
+    <svg viewBox="0 0 24 24" {...size} aria-hidden="true">
+      <path d="M12 3.5a8.5 8.5 0 1 1-6.4 2.9" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="2.4" fill="currentColor" />
+    </svg>
+  );
+}
+
 function GeminiGlyph({ size }: LaunchProviderGlyphProps) {
   // 공식 로고가 아닌 공급자 식별용 네 갈래 별. Antigravity 마크와 겹치지 않는 윤곽이다.
   return (
@@ -138,6 +149,7 @@ function GeminiGlyph({ size }: LaunchProviderGlyphProps) {
 
 export function launchProviderGlyph(provider: LaunchProviderGlyphId, size?: LaunchProviderGlyphSize): ReactNode {
   if (provider === "claude") return <ClaudeGlyph size={size} />;
+  if (provider === "anthropic") return <AnthropicGlyph size={size} />;
   if (provider === "xai") return <GrokGlyph size={size} />;
   if (provider === "antigravity") return <AntigravityGlyph size={size} />;
   if (provider === "muse-code") return <MuseCodeGlyph size={size} />;

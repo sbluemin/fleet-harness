@@ -14,6 +14,7 @@ import {
   createClaudeNativeModelSync,
   createQuotaLastGoodStore,
   createQuotaService,
+  createAnthropicSpendLedger,
   createGeminiSpendLedger,
   createMuseCodeOAuth,
   createCodexOAuth,
@@ -35,6 +36,7 @@ import {
   createProviderAuthService,
   defaultCredentialDeps,
   DEFAULT_ROSTER_SEED_MODEL_IDS,
+  ANTHROPIC_AUTH_PROVIDER_ID,
   GEMINI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
   setWireLogTarget,
@@ -146,6 +148,12 @@ export function startAiGateway(ctx: GatewayStartContext) {
         else quota.record("gemini", { status: "signed_out" });
         return;
       }
+      // Anthropic 키도 같은 규칙이다 — 저장·삭제 직후 메뉴 노출이 바뀐다.
+      if (provider === "anthropic") {
+        if (signedIn) void quota.getSummary({ forceProvider: "anthropic" }).catch(() => undefined);
+        else quota.record("anthropic", { status: "signed_out" });
+        return;
+      }
       if (provider !== "opencode") return;
       if (signedIn) void quota.getSummary({ forceProvider: "opencode" }).catch(() => undefined);
       else quota.record("opencode", { status: "signed_out" });
@@ -184,6 +192,13 @@ export function startAiGateway(ctx: GatewayStartContext) {
     filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "gemini-spend.json"),
     onChange: () => expireGeminiQuota?.(),
   });
+  // Anthropic 지출 원장 — 같은 달력 월(태평양시)로 응답 usage 토큰 × 단가를 누적하고, 월 예산·마지막 거절·
+  // 마지막 한도 헤더를 싣는다. Gemini 원장과 같은 분업이고 같은 이유로 값이 바뀌면 사용량 캐시를 만료시킨다.
+  let expireAnthropicQuota: (() => void) | undefined;
+  const anthropicLedger = createAnthropicSpendLedger({
+    filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "anthropic-spend.json"),
+    onChange: () => expireAnthropicQuota?.(),
+  });
   const quota = createQuotaService({
     isClaudeConnected: () => isConnected("claude"),
     onProviderStatusChanged: () => {
@@ -215,36 +230,61 @@ export function startAiGateway(ctx: GatewayStartContext) {
         ...(reading.block !== undefined ? { block: reading.block } : {}),
       };
     },
+    // Anthropic도 크레딧 잔액을 읽을 API가 없다(2026-11-18 실측: 워크스페이스 키 401, 조직 범위 키 403). 키가
+    // 저장돼 있는지만 보고, 지출·예산·거절·분당 한도는 원장이 답한다 — 키가 없으면 미로그인(signed_out)이라
+    // 모델 메뉴에서 빠지고 지출도 싣지 않는다.
+    fetchAnthropic: async () => {
+      const apiKey = await authService.getApiKey(ANTHROPIC_AUTH_PROVIDER_ID);
+      if (apiKey === undefined || apiKey.trim().length === 0) return { status: "signed_out" };
+      const at = Date.now();
+      const reading = anthropicLedger.read(at);
+      return {
+        status: "ok",
+        fetchedAt: at,
+        spend: reading.spend,
+        ...(reading.block !== undefined ? { block: reading.block } : {}),
+        ...(reading.rateLimit !== undefined ? { rateLimit: reading.rateLimit } : {}),
+      };
+    },
   });
   expireGeminiQuota = () => quota.expire("gemini");
-  // Gemini 월 예산 — Quota 패널의 Gemini 카드가 지출 금액 옆에서 넣고 지운다. `usd: null`은 삭제다.
-  // 저장 자리는 원장과 같은 파일이라 지출과 예산이 한 잠금 아래에서 함께 읽힌다.
-  ctx.registerRouter("ai-gateway/quota/gemini-budget", async ({ req, res }) => {
-    if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
-    if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
-    let body: unknown;
-    try {
-      body = await ctx.host.http.readJsonBody<unknown>(req);
-    } catch {
-      body = null;
-    }
-    if (typeof body !== "object" || body === null || Array.isArray(body)) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_budget_request" }); return true;
-    }
-    const fields = Object.keys(body);
-    if (fields.length !== 1 || !("usd" in body)) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_budget_request" }); return true;
-    }
-    const usd = (body as { readonly usd?: unknown }).usd;
-    if (usd === null) {
-      geminiLedger.clearBudget();
-    } else if (!geminiLedger.setBudget(usd)) {
-      ctx.host.http.writeJson(res, 400, { error: "invalid_budget" }); return true;
-    }
-    ctx.host.http.writeJson(res, 200, { ok: true });
-    return true;
-  }, [{ method: "POST", path: "", summary: "Set or clear the Gemini monthly spend budget.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  expireAnthropicQuota = () => quota.expire("anthropic");
+  // 월 예산 — Quota 패널의 카드가 지출 금액 옆에서 넣고 지운다. `usd: null`은 삭제다. 저장 자리는 원장과 같은
+  // 파일이라 지출과 예산이 한 잠금 아래에서 함께 읽힌다. Gemini와 Anthropic이 같은 모양의 라우트를 쓴다.
+  const registerSpendBudgetRoute = (
+    route: string,
+    label: string,
+    ledger: { setBudget(value: unknown): boolean; clearBudget(): void },
+  ): void => {
+    ctx.registerRouter(route, async ({ req, res }) => {
+      if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+      if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+      if (!req.headers["content-type"]?.includes("application/json")) { ctx.host.http.writeJson(res, 415, { error: "json_required" }); return true; }
+      let body: unknown;
+      try {
+        body = await ctx.host.http.readJsonBody<unknown>(req);
+      } catch {
+        body = null;
+      }
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        ctx.host.http.writeJson(res, 400, { error: "invalid_budget_request" }); return true;
+      }
+      const fields = Object.keys(body);
+      if (fields.length !== 1 || !("usd" in body)) {
+        ctx.host.http.writeJson(res, 400, { error: "invalid_budget_request" }); return true;
+      }
+      const usd = (body as { readonly usd?: unknown }).usd;
+      if (usd === null) {
+        ledger.clearBudget();
+      } else if (!ledger.setBudget(usd)) {
+        ctx.host.http.writeJson(res, 400, { error: "invalid_budget" }); return true;
+      }
+      ctx.host.http.writeJson(res, 200, { ok: true });
+      return true;
+    }, [{ method: "POST", path: "", summary: `Set or clear the ${label} monthly spend budget.`, category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  };
+  registerSpendBudgetRoute("ai-gateway/quota/gemini-budget", "Gemini", geminiLedger);
+  registerSpendBudgetRoute("ai-gateway/quota/anthropic-budget", "Anthropic", anthropicLedger);
 
   ctx.registerRouter("ai-gateway/quota", async ({ req, res }) => {
     if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
@@ -302,6 +342,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
       opencode: summary.providers.opencode.status,
       // Gemini 키의 유무가 모델 메뉴와 설정의 로그인 표시를 가른다.
       gemini: summary.providers.gemini.status,
+      // Anthropic 키의 유무가 크레딧 모델의 메뉴 노출을 가른다.
+      anthropic: summary.providers.anthropic.status,
     } satisfies ProviderStatusMap;
   };
   function assign(request: unknown) {
@@ -445,6 +487,9 @@ export function startAiGateway(ctx: GatewayStartContext) {
     renewMuseCodeAuth: museCode.renew,
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     readGeminiApiKey: () => authService.getApiKey(GEMINI_AUTH_PROVIDER_ID),
+    readAnthropicApiKey: () => authService.getApiKey(ANTHROPIC_AUTH_PROVIDER_ID),
+    // Anthropic 턴이 끝나거나 크레딧·한도로 거절될 때, 그리고 응답 헤더를 볼 때마다 부르는 지출 원장.
+    anthropicUsage: anthropicLedger,
     // Gemini 턴이 끝나거나 402·429로 거절될 때 업스트림이 부르는 지출 원장.
     geminiUsage: geminiLedger,
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.

@@ -12,6 +12,7 @@
 .ai-gateway-provider.is-codex { --ai-gateway-provider-tone: var(--provider-codex); }
 .ai-gateway-provider.is-opencode { --ai-gateway-provider-tone: var(--provider-opencode); }
 .ai-gateway-provider.is-gemini { --ai-gateway-provider-tone: var(--provider-gemini); }
+.ai-gateway-provider.is-anthropic { --ai-gateway-provider-tone: var(--provider-anthropic); }
 .ai-gateway-provider.is-typesafe { --ai-gateway-provider-tone: var(--provider-typesafe); }
 .ai-gateway-provider.is-xai { --ai-gateway-provider-tone: var(--provider-xai); }
 
