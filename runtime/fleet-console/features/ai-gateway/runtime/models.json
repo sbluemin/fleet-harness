@@ -522,7 +522,7 @@
       "models": [
         {
           "modelId": "gemini-4-argon",
-          "name": "4-Argon",
+          "name": "Gemini-4-Argon",
           "contextWindow": 1048576,
           "effort": {
             "supported": true,
@@ -531,11 +531,19 @@
               "medium",
               "high"
             ]
+          },
+          "intelligence": {
+            "source": "https://artificialanalysis.ai/models/gemini-4-argon",
+            "observedAt": "2026-11-18",
+            "scores": {
+              "medium": 48,
+              "high": 50
+            }
           }
         },
         {
           "modelId": "gemini-4-carbon",
-          "name": "4-Carbon",
+          "name": "Gemini-4-Carbon",
           "contextWindow": 1048576,
           "effort": {
             "supported": true,
@@ -544,11 +552,20 @@
               "medium",
               "high"
             ]
+          },
+          "intelligence": {
+            "source": "https://artificialanalysis.ai/models/gemini-4-carbon",
+            "observedAt": "2026-11-18",
+            "scores": {
+              "low": 54,
+              "medium": 58,
+              "high": 60
+            }
           }
         },
         {
           "modelId": "gemini-4-hydrogen",
-          "name": "4-Hydrogen",
+          "name": "Gemini-4-Hydrogen",
           "contextWindow": 1048576,
           "effort": {
             "supported": true,
@@ -558,6 +575,16 @@
               "high",
               "xhigh"
             ]
+          },
+          "intelligence": {
+            "source": "https://artificialanalysis.ai/models/gemini-4-hydrogen",
+            "observedAt": "2026-11-18",
+            "scores": {
+              "low": 27,
+              "medium": 41,
+              "high": 51,
+              "xhigh": 54
+            }
           }
         }
       ]
