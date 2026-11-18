@@ -146,7 +146,7 @@ describe("model catalog", () => {
       providerModelId: "grok-4.6",
       fastSupported: true,
     };
-    expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex and xAI/);
+    expect(() => parseGatewayModelsRegistry(invalidTier)).toThrow(/only supported by Codex, xAI and Gemini/);
 
     const legacyAutoCompactThreshold = minimalRegistry();
     legacyAutoCompactThreshold.providers.codex.models[0] = {

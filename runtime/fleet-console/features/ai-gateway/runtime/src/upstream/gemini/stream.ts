@@ -105,6 +105,15 @@ export function geminiBlock(
   };
 }
 
+/**
+ * 503 UNAVAILABLE(용량 거절). 402·429와 달리 차단이 아니다 — 원장에 알리지 않는다. 숫자 `code`, google.rpc
+ * `status`, 문서의 문자열 코드(`service_unavailable`)를 모두 읽는다.
+ */
+export function isUnavailableError(value: unknown): boolean {
+  const error = errorRecord(value);
+  return error?.code === 503 || error?.status === "UNAVAILABLE" || error?.code === "service_unavailable";
+}
+
 /** `{error:{code,message,status}}`. 본문과 스트림 프레임이 같은 모양을 쓴다. */
 export function geminiError(value: unknown): CanonicalError | undefined {
   const error = errorRecord(value);

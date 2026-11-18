@@ -6,6 +6,10 @@
  * CLI와 Agent SDK 자식 모두 이 env를 요청 헤더로 옮긴다(2.1.319·SDK 0.3.306 무료 실측). 한 세션의 다른
  * 모델 요청(위임·압축)에는 새지 않도록 라우터는 요청 모델이 헤더의 모델과 같을 때만 따른다. 명시가 없는
  * 세션은 AI Gateway 설정의 Fast 토글을 따른다.
+ *
+ * `fast`는 「그 모델의 기본이 아닌 등급을 골랐다」는 뜻이다. Codex·xAI는 기본이 일반이라 Fast이고, Gemini는 기본이
+ * Flex라 Standard다(헤더 값 `fast`=Standard, `standard`=기본인 Flex). 모양을 하나로 두어 설정·헤더·좌표 어느 층도
+ * 공급자를 알지 않는다. 등급 이름으로 바꾸는 곳은 `withGatewayModelFast`(models.ts) 하나다.
  */
 
 export const FLEET_MODEL_SPEED_HEADER = "x-fleet-model-speed";

@@ -1824,6 +1824,28 @@ describe("Gemini routing", () => {
   });
 });
 
+describe("Gemini service tier", () => {
+  it("defaults to Flex, lets the stored toggle or the session header pick Standard, and ignores another model's header", async () => {
+    const tiers: Array<string | undefined> = [];
+    const send = async (standardToggle: boolean, speed?: string) => {
+      const router = createAiGatewayRouter({
+        gateway: stubGateway((request) => tiers.push(request.service_tier)),
+        readAuth,
+        readGeminiApiKey: () => "gemini-key",
+        readAiGatewaySettings: aiGatewaySettingsStub({ version: 1, models: [{ id: "gemini--gemini-4-argon", ...(standardToggle ? { fast: true } : {}) }] }),
+      });
+      await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model: "claude-gateway--gemini--gemini-4-argon", ...(speed ? { headers: { [FLEET_MODEL_SPEED_HEADER]: speed } } : {}) }));
+    };
+    await send(false);
+    // For Gemini the stored `fast` flag is the non-default tier: Standard.
+    await send(true);
+    await send(true, "gemini--gemini-4-argon=standard");
+    await send(false, "gemini--gemini-4-argon=fast");
+    await send(true, "gemini--gemini-4-carbon=standard");
+    expect(tiers).toEqual(["flex", "standard", "flex", "standard", "standard"]);
+  });
+});
+
 describe("request body limit", () => {
   it("refuses a body past the limit with a 413 that does not arm reactive compaction", async () => {
     // "context window"가 들어간 413만 Claude Code의 압축을 무장시킨다(canonical/index.ts).

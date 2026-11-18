@@ -523,6 +523,7 @@
         {
           "modelId": "gemini-4-argon",
           "name": "4-Argon",
+          "fastSupported": true,
           "contextWindow": 1048576,
           "effort": {
             "supported": true,
@@ -536,6 +537,7 @@
         {
           "modelId": "gemini-4-carbon",
           "name": "4-Carbon",
+          "fastSupported": true,
           "contextWindow": 1048576,
           "effort": {
             "supported": true,
@@ -549,6 +551,7 @@
         {
           "modelId": "gemini-4-hydrogen",
           "name": "4-Hydrogen",
+          "fastSupported": true,
           "contextWindow": 1048576,
           "effort": {
             "supported": true,

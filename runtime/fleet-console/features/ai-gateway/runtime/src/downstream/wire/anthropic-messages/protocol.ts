@@ -239,7 +239,7 @@ export interface TranslateAnthropicRequestOptions {
    */
   findModel?: GatewayModelLookup;
   /** Provider-specific service tier selected by a catalog alias. */
-  serviceTier?: "priority";
+  serviceTier?: "priority" | "flex" | "standard";
   /** Reasoning ladder supported by the selected upstream model. */
   reasoningEfforts?: readonly ReasoningEffort[];
   /** Provider-owned tools supported by the selected adapter. */
