@@ -265,12 +265,16 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
         depth: 0,
         // 칩은 세부, 오른쪽은 지금 칩이 열던 지휘관 시트. 세부의 ⋮(Theater·삭제)는 깊이 1에 그대로 둔다.
         pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
-        // 대화 머리 줄의 지도 전환 — 데스크톱 머리 줄 꼬리 단추와 같은 동작.
+        // 지휘관 시트와 지도 전환(데스크톱 머리 줄 꼬리 단추와 같은 동작)은 ⋮ 하나에 묶는다 — 375px 막대에서 단추 하나만큼 사령관 이름 자리를 둔다.
         ...(commodoreId ? {
-          actions: [
-            ...(actions ? [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] : []),
-            { id: "map", label: t(mapMode === "map" ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph size={22} />, pressed: mapMode === "map", run: () => setCommodoreMapMode(commodoreId, mapMode === "map" ? "chat" : "map") },
-          ],
+          menu: {
+            label: t("commodore.mobile.more"),
+            caption: title,
+            items: [
+              ...(actions ? [{ id: "commanders", label: t("commodore.mobile.commanders"), icon: <CommandersIcon />, run: () => actions.commanders(commodoreId) }] : []),
+              { id: "map", label: t(mapMode === "map" ? "commodore.map.toggle.chat" : "commodore.map.toggle.map"), icon: <CommodoreMapGlyph size={22} />, run: () => setCommodoreMapMode(commodoreId, mapMode === "map" ? "chat" : "map") },
+            ],
+          },
         } : {}),
       });
       return;
