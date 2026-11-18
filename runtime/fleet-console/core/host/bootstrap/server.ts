@@ -19,7 +19,7 @@ import { createObjectiveArchiveCoordinator } from "../../../features/workspace/h
 import { createObjectiveArchiveRouter, OBJECTIVE_ARCHIVE_API_CATALOG } from "../../../features/workspace/host/objective-archive-routes.js";
 import { createAvatarRouter, createAvatarStore } from "../../../features/workspace/host/avatars.js";
 import { createSidebarMotionJournal } from "../../../features/workspace/host/sidebar-motion.js";
-import { sidebarRemotePage, sidebarSafeObjective, parseSidebarPreferences } from "../../../features/workspace/host/sidebar-remote.js";
+import { sidebarRemotePage, parseSidebarPreferences } from "../../../features/workspace/host/sidebar-remote.js";
 import type { SidebarRemoteCommodore, SidebarRemoteFace } from "../../../features/workspace/shared/sidebar-remote.js";
 import { commodoreAvatarKey, commodoreIdOfAvatarKey, mongleStateOf, mongleVoiceOf, objectiveRecordAvatarKey } from "../../../features/workspace/shared/avatars.js";
 import { createConversationWorkbenchRouter, createConversationWorkbenchStore } from "../../../features/workspace/host/conversation-workbench.js";
@@ -417,14 +417,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     method: "GET",
     path: "/api/v1/console-roster/changes",
     summary: "Long-poll extended Desktop sidebar turn and state transition motions after a journal cursor.",
-    category: "Desktop",
-    gate: "origin-write",
-    transport: "http",
-  },
-  {
-    method: "GET",
-    path: "/api/v1/console-roster/objective-full",
-    summary: "Read one unredacted sidebar objective record for the extended Desktop sidebar without joining a session.",
     category: "Desktop",
     gate: "origin-write",
     transport: "http",
@@ -1735,13 +1727,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (sidebarMotions.read(after).motions.length > 0) finish();
     }
     return true;
-  });
-  routeRegistry.register("/api/v1/console-roster/objective-full", ({ req, res }) => {
-    if (req.method !== "GET" || !isTerminalAuthorized(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
-    const id = readUrl(req).searchParams.get("objectiveId");
-    const objective = objectives?.listAll().find((entry) => entry.id === id && !entry.removed);
-    if (!objective) { writeJson(res, 404, { error: "not_found" }); return true; }
-    res.setHeader("Cache-Control", "no-store"); writeJson(res, 200, { objective: sidebarSafeObjective(objective) }); return true;
   });
   routeRegistry.register("/api/v1/console-roster/preferences", async ({ req, res }) => {
     if (req.method !== "POST" || !isTerminalAuthorized(req)) { writeJson(res, 403, { error: "unauthorized" }); return true; }
