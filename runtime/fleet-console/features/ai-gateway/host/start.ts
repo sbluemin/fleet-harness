@@ -269,7 +269,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     }
     const summary = await quota.getSummary({
       force,
-      ...(provider === null ? {} : { forceProvider: provider }),
+      ...(provider === null ? {} : { forceProvider: provider as typeof GATEWAY_PROVIDERS[number] }),
     });
     ctx.host.http.writeJson(res, 200, summary);
     return true;
