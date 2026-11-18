@@ -192,7 +192,6 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(aiGateway.xaiEndpoint !== undefined
             ? { xaiEndpoint: aiGateway.xaiEndpoint }
             : {}),
-          ...(aiGateway.antigravityEnabled === true ? { antigravityEnabled: true } : {}),
           models: [],
           ...(value ?? {}),
         });

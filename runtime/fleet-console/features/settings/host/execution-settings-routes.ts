@@ -63,7 +63,6 @@ export interface TerminalSettingsState {
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
   /** 퇴역한 공급자 키. 서버가 더 이상 내보내지 않으며, 읽힘은 꺼짐과 같다. */
-  readonly antigravityEnabled?: boolean;
   /** 공급자별 로그인 상태. null은 아직 모름(숨기지 않음). */
   readonly aiGatewayLogin: Readonly<Record<string, string | null>>;
 }

@@ -18,9 +18,6 @@ import {
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
 import { launchProviderFromModelId, launchProviderGlyph, serviceGlyph, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
 
-/** 퇴역한 공급자는 카탈로그에서 빠지면 이 화면에도 뜨지 않는다. 아래 표는 보이는 공급자만 싣는다. */
-type VisibleGatewayProvider = AiGatewayCatalogProvider & { readonly id: Exclude<AiGatewayProviderId, "antigravity"> };
-
 const PROVIDER_LABEL = {
   claude: "terminal.settings.aiGatewayProviderClaude",
   codex: "terminal.settings.aiGatewayProviderCodex",
@@ -124,9 +121,7 @@ export function AiGatewayCompactCard(): React.ReactElement {
     );
   }
 
-  const providers = orderAiGatewayProviders(state.aiGatewayCatalog.providers).filter(
-    (provider): provider is VisibleGatewayProvider => provider.id !== "antigravity",
-  );
+  const providers = orderAiGatewayProviders(state.aiGatewayCatalog.providers);
   const services = auth.state?.providers.filter((entry) => entry.kind === "service") ?? [];
   // 카탈로그 공급자 중 API 키로 로그인하는 것. 그 공급자 줄이 키 입력을 진다.
   const keyAuthOf = (providerId: string): ModelAuthProviderState | undefined =>
@@ -168,7 +163,7 @@ export function AiGatewayCompactCard(): React.ReactElement {
 }
 
 function ProviderLoginRow({ provider, status, keyAuth, busy }: {
-  readonly provider: VisibleGatewayProvider;
+  readonly provider: AiGatewayCatalogProvider;
   readonly status: string | null;
   /** API 키로 로그인하는 공급자의 키 상태. 있으면 사용량 패널 대신 이 줄이 키를 받는다. */
   readonly keyAuth: ModelAuthProviderState | undefined;
