@@ -129,11 +129,11 @@ function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
 }
 
 function AnthropicGlyph({ size }: LaunchProviderGlyphProps) {
-  // 공식 로고가 아닌 공급자 식별용 열린 고리와 중심점. 구독 Claude의 별 윤곽과 겹치지 않는다.
+  // Anthropic "A\" 워드마크. simple-icons 15.0.0 icons/anthropic.svg(CC0-1.0)의 경로 그대로다.
+  // 구독 Claude의 별 모양과 구분된다.
   return (
     <svg viewBox="0 0 24 24" {...size} aria-hidden="true">
-      <path d="M12 3.5a8.5 8.5 0 1 1-6.4 2.9" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" />
-      <circle cx="12" cy="12" r="2.4" fill="currentColor" />
+      <path d="M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z" fill="currentColor" />
     </svg>
   );
 }
