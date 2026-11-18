@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 // Shared provider marks for launch menus and model coordinates. Host chrome and
 // plugins both import this module so the bands cannot restyle apart.
 
-export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "antigravity" | "muse-code" | "opencode";
+export type LaunchProviderGlyphId = "claude" | "codex" | "xai" | "antigravity" | "muse-code" | "opencode" | "gemini";
 
 /**
  * Optional intrinsic size for a provider mark.
@@ -19,8 +19,8 @@ export type LaunchProviderGlyphSize = {
 
 type LaunchProviderGlyphProps = { readonly size?: LaunchProviderGlyphSize };
 
-const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"] as const;
-const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode"];
+const LAUNCH_PROVIDER_IDS = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"] as const;
+const LAUNCH_PROVIDER_ORDER: readonly LaunchProviderGlyphId[] = ["claude", "codex", "xai", "antigravity", "muse-code", "opencode", "gemini"];
 const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> = {
   claude: "Claude",
   codex: "Codex",
@@ -28,6 +28,7 @@ const LAUNCH_PROVIDER_CAPTIONS: Readonly<Record<LaunchProviderGlyphId, string>> 
   antigravity: "Antigravity",
   "muse-code": "Muse Code",
   opencode: "OpenCode Go",
+  gemini: "Gemini",
 };
 const CLAUDE_GATEWAY_MODEL_PREFIX = "claude-gateway--";
 
@@ -126,12 +127,22 @@ function OpencodeGlyph({ size }: LaunchProviderGlyphProps) {
   );
 }
 
+function GeminiGlyph({ size }: LaunchProviderGlyphProps) {
+  // 공식 로고가 아닌 공급자 식별용 네 갈래 별. Antigravity 마크와 겹치지 않는 윤곽이다.
+  return (
+    <svg viewBox="0 0 24 24" {...size} aria-hidden="true">
+      <path d="M12 2c.5 5.6 4.4 9.5 10 10-5.6.5-9.5 4.4-10 10-.5-5.6-4.4-9.5-10-10 5.6-.5 9.5-4.4 10-10Z" fill="currentColor" />
+    </svg>
+  );
+}
+
 export function launchProviderGlyph(provider: LaunchProviderGlyphId, size?: LaunchProviderGlyphSize): ReactNode {
   if (provider === "claude") return <ClaudeGlyph size={size} />;
   if (provider === "xai") return <GrokGlyph size={size} />;
   if (provider === "antigravity") return <AntigravityGlyph size={size} />;
   if (provider === "muse-code") return <MuseCodeGlyph size={size} />;
   if (provider === "opencode") return <OpencodeGlyph size={size} />;
+  if (provider === "gemini") return <GeminiGlyph size={size} />;
   return <CodexGlyph size={size} />;
 }
 

@@ -30,6 +30,7 @@ describe("terminal model auth routes", () => {
           // 카탈로그 공급자의 키와 라우팅되는 모델이 없는 서비스 자격증명이 같은 상태에 실린다.
           // `kind`가 그 차이를 나르므로 브라우저는 공급자 id를 외워 두고 갈라 볼 필요가 없다.
           { provider: "opencode", kind: "model-provider", displayName: "OpenCode Go", signedIn: false },
+          { provider: "gemini", kind: "model-provider", displayName: "Gemini", signedIn: false },
           { provider: "typesafe", kind: "service", displayName: "TypeSafe", signedIn: true },
         ],
       },

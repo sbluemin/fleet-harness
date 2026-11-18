@@ -34,6 +34,7 @@ import {
   createProviderAuthService,
   defaultCredentialDeps,
   DEFAULT_ROSTER_SEED_MODEL_IDS,
+  GEMINI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
   setWireLogTarget,
   wireLogEnabled,
@@ -208,7 +209,8 @@ export function startAiGateway(ctx: GatewayStartContext) {
     }
     const summary = await quota.getSummary({
       force,
-      ...(provider === null ? {} : { forceProvider: provider as typeof GATEWAY_PROVIDERS[number] }),
+      // 요약 서비스가 아는 공급자 id로 읽는다. 지출 원장이 Gemini를 들이기 전에는 서비스가 모르는 id를 무시한다.
+      ...(provider === null ? {} : { forceProvider: provider as NonNullable<NonNullable<Parameters<typeof quota.getSummary>[0]>["forceProvider"]> }),
     });
     ctx.host.http.writeJson(res, 200, summary);
     return true;
@@ -381,6 +383,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     readMuseCodeAuth: museCode.readAuth,
     renewMuseCodeAuth: museCode.renew,
     readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
+    readGeminiApiKey: () => authService.getApiKey(GEMINI_AUTH_PROVIDER_ID),
     // 추론 스트림이 알려 준 Muse Code 사용량을 같은 사용량 캐시에 기록한다.
     observeMuseCodeUsage: (windows, apiKey) => { void museCode.observeUsage(windows, apiKey); },
   });

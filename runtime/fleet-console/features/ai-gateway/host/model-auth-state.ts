@@ -1,7 +1,7 @@
-import { OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
+import { GEMINI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID, TYPESAFE_AUTH_PROVIDER_ID } from "@fleet-console/ai-gateway";
 import type { AuthService } from "@fleet-console/ai-gateway";
 
-export type TerminalModelAuthProviderId = "opencode" | "typesafe";
+export type TerminalModelAuthProviderId = "opencode" | "gemini" | "typesafe";
 
 /**
  * 자격증명이 무엇에 쓰이는지. `model-provider`는 모델 카탈로그에 좌석을 가진 공급자라 그
@@ -24,16 +24,19 @@ export interface TerminalModelAuthState {
 /** Route provider id → persisted auth-store provider id. */
 export const MODEL_AUTH_STORE_IDS: Readonly<Record<TerminalModelAuthProviderId, string>> = Object.freeze({
   opencode: OPENCODE_AUTH_PROVIDER_ID,
+  gemini: GEMINI_AUTH_PROVIDER_ID,
   typesafe: TYPESAFE_AUTH_PROVIDER_ID,
 });
 
 const MODEL_AUTH_KINDS: Readonly<Record<TerminalModelAuthProviderId, TerminalModelAuthProviderKind>> = Object.freeze({
   opencode: "model-provider",
+  gemini: "model-provider",
   typesafe: "service",
 });
 
 const MODEL_AUTH_DISPLAY_NAMES: Readonly<Record<TerminalModelAuthProviderId, string>> = Object.freeze({
   opencode: "OpenCode Go",
+  gemini: "Gemini",
   typesafe: "TypeSafe",
 });
 
