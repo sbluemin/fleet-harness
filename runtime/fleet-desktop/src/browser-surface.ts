@@ -144,9 +144,19 @@ interface ChromeDoc { readonly role: ChromeRole; readonly view: WebContentsView;
 
 const escapeScript = (value: string): string => value.replace(/[<>&\u2028\u2029]/g, (character) => ({ "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" })[character] ?? character);
 
+/**
+ * 창마다 같은 PageHost 객체를 돌려준다. `deps.shell()` 은 스냅샷마다 불리므로, 호출마다 새 객체를 만들면
+ * browser-views 의 `place()` 가 `entry.parent !== host` 로 판단해 parking 뷰를 매번 창에서 떼었다 다시 붙인다
+ * (churn). 칸 표면의 host 도 같은 창에 대해 이 객체여야 전환에서 remove 가 일어나지 않는다. scale 함수는 두
+ * 호출부가 같은 계산이라 처음 받은 것을 쓴다.
+ */
+const mainPageHosts = new WeakMap<DesktopShellWindow, PageHost>();
+
 /** 메인 창을 페이지 뷰의 집으로 보이는 어댑터 — Console 뒤에 주차하고, 표면이 칸이면 Console 앞(레일 아래)에 세운다. */
 export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base: BaseWindow) => number): PageHost {
-  return {
+  const cached = mainPageHosts.get(shell);
+  if (cached) return cached;
+  const host: PageHost = {
     isDestroyed: () => shell.isDestroyed(),
     contentBounds: () => shell.stack.layoutConsole(),
     park: (view) => shell.stack.parkBrowser(view),
@@ -155,6 +165,8 @@ export function createMainPageHost(shell: DesktopShellWindow, scaleFactor: (base
     scale: () => scaleFactor(shell.base),
     reclaimFocus: () => shell.consoleContents.focus(),
   };
+  mainPageHosts.set(shell, host);
+  return host;
 }
 
 /**
