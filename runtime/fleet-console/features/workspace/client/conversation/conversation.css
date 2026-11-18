@@ -1422,6 +1422,23 @@
   cursor: pointer;
 }
 .avatar-editor-undo-button:hover { text-decoration: underline; }
+/* 사이드바 「사령관 설정」 — 고치는 아바타가 행의 아바타 칸을 그대로 채운다(칸 크기는 행이 정한다). 판과 「되돌리기」는 body 로 옮겨 띄운다. */
+.avatar-editor-anchor {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+}
+/* 사이드바 행에는 「되돌리기」 줄이 설 자리가 없어 아바타 아래 작은 판으로 띄운다 — 편집기 판과 같은 면이다. */
+.avatar-editor-undo-float {
+  position: fixed;
+  z-index: 40;
+  max-width: min(300px, 100vw - 16px);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--popover-radius);
+  background: var(--popover-face);
+  box-shadow: var(--popover-surface-shadow);
+}
 
 .conversation-panel-identity-name {
   max-width: 100%;

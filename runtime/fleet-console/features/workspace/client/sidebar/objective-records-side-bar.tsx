@@ -35,7 +35,7 @@ import { saveCommodoreOrder } from "../../../commodore/client/theaters-api.js";
 import { commodoreSidebarBuckets } from "../../../commodore/client/sidebar-sections.js";
 import { setCommodoreAlias } from "../../../../core/client/src/integration/api.js";
 import { commodoreAvatarKey } from "../../shared/avatars.js";
-import { KeyedAvatar } from "../avatars.js";
+import { AnchoredAvatarEditor, KeyedAvatar } from "../avatars.js";
 import { consumeSideBarAddTheater, openOnboarding } from "../../../../core/client/src/integration/store.js";
 import { useFeatureRegistry } from "../../../../core/client/src/integration/feature-registry.js";
 import { resolveTheaterInboxLanding, TheaterContributionMenuItems, useTheaterContributionMark, useTheaterHeaderLive, useTheaterHeaderSelected } from "../theater-contributions.js";
@@ -113,7 +113,13 @@ interface TheaterAliasEditing {
   readonly onFinishAliasEdit: (theaterId: string, alias: string | null | undefined) => void;
 }
 
-interface TheaterSectionHeaderProps extends TheaterAliasEditing {
+/** 「사령관 설정」 — 머리의 아바타 자리에 우측 패널 머리와 같은 아바타 편집기를 띄운다. 사령관 행만 받는다. */
+interface TheaterAvatarEditing {
+  readonly editingAvatar?: boolean;
+  readonly onFinishAvatarEdit?: (theaterId: string) => void;
+}
+
+interface TheaterSectionHeaderProps extends TheaterAliasEditing, TheaterAvatarEditing {
   readonly accessory?: ReactNode;
   /** 원격 사실은 지역 기여/도구 스토어를 사용하지 않는다. 행 문법과 입력 처리는 공유한다. */
   readonly presentation?: { readonly live: boolean; readonly mark: ReactNode; readonly browsing: boolean; readonly dock: ReactNode };
@@ -158,7 +164,7 @@ interface TheaterActionsMenuProps {
   readonly focusFirst?: boolean;
   readonly onDeleteCommodore?: (() => void) | undefined;
   readonly onAddTheater: () => void;
-  readonly onEditAlias: () => void;
+  readonly onEditSettings: () => void;
   readonly onClose: () => void;
 }
 
@@ -225,6 +231,7 @@ export function ObjectiveRecordsSideBar({
   const [browserCommodoreId, setBrowserCommodoreId] = useState<string | null>(null);
   const [addFailure, setAddFailure] = useState<string | null>(null);
   const [aliasEditingTheaterId, setAliasEditingTheaterId] = useState<string | null>(null);
+  const [avatarEditingTheaterId, setAvatarEditingTheaterId] = useState<string | null>(null);
   const [aliasError, setAliasError] = useState<string | null>(null);
   const [orderError, setOrderError] = useState<string | null>(null);
   const [pendingOrder, setPendingOrder] = useState<readonly string[] | null>(null);
@@ -640,7 +647,17 @@ export function ObjectiveRecordsSideBar({
 
   const startAliasEdit = (theaterId: string) => {
     setActiveContextMenu(null);
+    setAvatarEditingTheaterId(null);
     setAliasEditingTheaterId(theaterId);
+  };
+  // 「사령관 설정」 — 이름은 F2·이름 더블클릭이 맡고, 메뉴는 우측 패널 머리와 같은 아바타 편집기를 행의 아바타 자리에 연다.
+  const startAvatarEdit = (theaterId: string) => {
+    setActiveContextMenu(null);
+    setAliasEditingTheaterId(null);
+    setAvatarEditingTheaterId(theaterId);
+  };
+  const finishAvatarEdit = (theaterId: string) => {
+    setAvatarEditingTheaterId((current) => (current === theaterId ? null : current));
   };
   const finishAliasEdit = (theaterId: string, alias: string | null | undefined) => {
     setAliasEditingTheaterId((current) => (current === theaterId ? null : current));
@@ -649,11 +666,13 @@ export function ObjectiveRecordsSideBar({
       void setCommodoreAlias(theaterId, alias).then(() => refreshCommodoreList()).catch(() => setAliasError(t("sidebar.commodore.aliasFailed")));
     }
   };
-  const aliasEditingFor = (theaterId: string): TheaterAliasEditing => ({
+  const aliasEditingFor = (theaterId: string): TheaterAliasEditing & TheaterAvatarEditing => ({
     clampAlias,
     editingAlias: aliasEditingTheaterId === theaterId,
     onStartAliasEdit: startAliasEdit,
     onFinishAliasEdit: finishAliasEdit,
+    editingAvatar: avatarEditingTheaterId === theaterId,
+    onFinishAvatarEdit: finishAvatarEdit,
   });
 
   // 통합 행의 서 있는 콘솔 동작 — 항목과 조건은 비통합 분기의 TheaterActionsMenu와 같고, 로컬 섹션 옮기기만
@@ -705,9 +724,9 @@ export function ObjectiveRecordsSideBar({
       const theater = standingTheaterFor(row);
       return <>
         <div className="theater-menu-divider" aria-hidden="true" />
-        <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={() => { onClose(); startAliasEdit(row.commodoreId); }}>
+        <button type="button" role="menuitem" className="theater-menu-item theater-menu-settings" onClick={() => { onClose(); startAvatarEdit(row.commodoreId); }}>
           <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
-          <span className="theater-menu-label">{t("sidebar.commodore.rename")}</span>
+          <span className="theater-menu-label">{t("sidebar.commodore.settings")}</span>
         </button>
         <div className="theater-menu-divider" aria-hidden="true" />
         {taskforceExperiment.enabled ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(row.commodoreId); }}>
@@ -892,7 +911,7 @@ export function ObjectiveRecordsSideBar({
             requestCommodoreDelete(id, opener);
           }}
           onAddTheater={() => openTheaterBrowser(contextMenuFace.section.commodoreId)}
-          onEditAlias={() => startAliasEdit(contextMenuFace.section.commodoreId)}
+          onEditSettings={() => startAvatarEdit(contextMenuFace.section.commodoreId)}
           onClose={closeActiveContextMenu}
         />
       ) : null}
@@ -1032,6 +1051,8 @@ export function TheaterSectionHeader({
   onFinishAliasEdit,
   onPointerDragStart,
   avatarOverride,
+  editingAvatar = false,
+  onFinishAvatarEdit,
 }: TheaterSectionHeaderProps) {
   const t = useT();
   // 사령관 카드 — 아바타와 이름 아래에 사령관의 마지막 응답만 싣는다.
@@ -1042,7 +1063,8 @@ export function TheaterSectionHeader({
   const contributionSummary = useMemo(() => ({ id: contributionId, label: theater.label }), [contributionId, theater.label]);
   const contributedMark = useTheaterContributionMark(contributionSummary);
   // 자기 아바타를 가진 행(TaskForce)은 사령관 표식을 받지 않는다 — 표식이 TF id를 사령관으로 그리지 않게 한다.
-  const mark = presentation ? presentation.mark : avatarOverride ? null : contributedMark;
+  // 「사령관 설정」 중에는 표식 자리에도 고치는 아바타가 선다 — 미리보기가 보일 자리가 있어야 한다.
+  const mark = presentation ? presentation.mark : avatarOverride || editingAvatar ? null : contributedMark;
   const contributedLive = useTheaterHeaderLive(contributionId);
   const live = presentation?.live ?? liveOverride ?? contributedLive;
   const contributedSelected = useTheaterHeaderSelected(contributionId);
@@ -1136,7 +1158,10 @@ export function TheaterSectionHeader({
   const avatarAnchor = (tick: boolean) => (
     <span className="side-bar-theater-anchor is-avatar" aria-hidden="true">
       {/* 표식이 없을 때의 사령관 머리 — 사람에게 넘긴 항목이 남아 있으면 답하기 전까지 결정 얼굴로 선다(열람으로 지워지지 않는다). */}
-      <KeyedAvatar avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"} size={32} label="" decorative />
+      {editingAvatar && onFinishAvatarEdit ? (
+        <AnchoredAvatarEditor avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"} size={32}
+          onReturnFocus={() => activateRef.current?.focus({ preventScroll: true })} onDone={() => onFinishAvatarEdit(theater.id)} />
+      ) : <KeyedAvatar avatarKey={commodoreAvatarKey(theater.id)} role="commodore" state={hasPersonDecision ? "decision" : "idle"} size={32} label="" decorative />}
       {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
           얹으면 어느 Theater인지가 지워진다. */}
       {tick && showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
@@ -1259,7 +1284,7 @@ function TheaterAliasInput({ theater, clampAlias, onDone }: { readonly clampAlia
   );
 }
 
-function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDeleteCommodore, onAddTheater, onEditAlias, onClose }: TheaterActionsMenuProps) {
+function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDeleteCommodore, onAddTheater, onEditSettings, onClose }: TheaterActionsMenuProps) {
   const t = useT();
   const tf = taskforceT(useConsoleLocale());
   const { enabled: taskforceEnabled } = useTaskforceExperiment();
@@ -1321,10 +1346,10 @@ function TheaterActionsMenu({ sections, theater, anchor, atCursor = false, onDel
       >
         <CommodoreSectionMoveMenu rowId={theater.id} controller={sections} onClose={onClose} />
         <div className="theater-menu-divider" aria-hidden="true" />
-        {/* 사령관 별칭 — 사이드바 줄 자리에서 바로 편집한다(F2·이름 더블클릭도 같다). */}
-        <button type="button" role="menuitem" className="theater-menu-item theater-menu-alias" onClick={onEditAlias}>
+        {/* 사령관 설정 — 행의 아바타 자리에 아바타 편집기를 연다. 이름은 F2·이름 더블클릭으로 바꾼다. */}
+        <button type="button" role="menuitem" className="theater-menu-item theater-menu-settings" onClick={onEditSettings}>
           <span className="theater-menu-check" aria-hidden="true"><PencilIcon /></span>
-          <span className="theater-menu-label">{t("sidebar.commodore.rename")}</span>
+          <span className="theater-menu-label">{t("sidebar.commodore.settings")}</span>
         </button>
         <div className="theater-menu-divider" aria-hidden="true" />
         {taskforceEnabled ? <button type="button" role="menuitem" className="theater-menu-item" onClick={() => { onClose(); requestTaskforceCreate(theater.id); }}>

@@ -1,4 +1,5 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { createPortal } from "react-dom";
 
 import { useViewportFit } from "@fleet-console/ui/react";
 
@@ -196,11 +197,197 @@ function usePickerLabels(): MongleAvatarPickerLabels {
   };
 }
 
+
 interface Draft {
   readonly base: number;
   readonly tone: IdentityTone | null;
   readonly dirty: boolean;
   readonly previewState: MongleAvatarPreviewState;
+}
+
+interface Undo {
+  readonly base: number;
+  readonly tone: IdentityTone | null;
+  readonly voiceChanged: boolean;
+}
+
+/**
+ * 편집 한 번의 상태 — 고르는 동안의 미리보기(draft), 적용 중(busy), 적용 뒤 한동안의 「되돌리기」(undo).
+ * 오른쪽 패널 머리·구성원 탭의 `AvatarEditor` 와 사이드바 「사령관 설정」의 `AnchoredAvatarEditor` 가 같은 것을 쓴다.
+ */
+interface AvatarEditorSession {
+  readonly avatarKey: string;
+  readonly role: MongleRole;
+  readonly look: ReturnType<typeof resolveMongleLook>;
+  readonly draft: Draft | null;
+  readonly busy: boolean;
+  readonly undo: Undo | null;
+  readonly begin: () => void;
+  readonly discard: () => void;
+  readonly update: (next: Draft) => void;
+  readonly reroll: () => void;
+  /** 저장에 성공하면 true — 판을 닫고 「되돌리기」를 세운다. */
+  readonly apply: () => Promise<boolean>;
+  readonly revert: () => Promise<void>;
+}
+
+function useAvatarEditorSession(avatarKey: string, role: MongleRole, state: MongleState): AvatarEditorSession {
+  const consoleState = useConsoleState();
+  const book = useAvatarBook();
+  const look = resolveMongleLook(book, avatarKey);
+  const [draft, setDraft] = useState<Draft | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [undo, setUndo] = useState<Undo | null>(null);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
+  // 다른 대상으로 옮겨 가면 고르던 것은 버린다.
+  useEffect(() => { setDraft(null); setUndo(null); }, [avatarKey]);
+  return {
+    avatarKey,
+    role,
+    look,
+    draft,
+    busy,
+    undo,
+    begin: () => setDraft({ base: look.base, tone: look.tone, dirty: false, previewState: state === "running" || state === "awaiting" || state === "unseen" || state === "ended" ? state : "idle" }),
+    discard: () => setDraft(null),
+    update: setDraft,
+    reroll: () => { if (draft) setDraft({ ...draft, base: drawMongleBase(book, siblingKeysOf(consoleState, avatarKey), draft.base), tone: null, dirty: true }); },
+    apply: async () => {
+      if (!draft) return false;
+      const previous = { base: look.base, tone: look.tone };
+      setBusy(true);
+      const ok = await setMongleLook(avatarKey, draft.base, draft.tone);
+      setBusy(false);
+      if (!ok) return false;
+      setDraft(null);
+      // 사령관의 응답 말투(진급 캐릭터)가 바뀌면 다음 턴부터 새 세션이 답한다 — 서버가 세션을 바꾸고, 여기서는 그것을 알린다.
+      setUndo({ ...previous, voiceChanged: role === "commodore" && mongleVoiceOf(previous.base) !== mongleVoiceOf(draft.base) });
+      if (undoTimer.current) clearTimeout(undoTimer.current);
+      undoTimer.current = setTimeout(() => setUndo(null), 8000);
+      return true;
+    },
+    revert: async () => {
+      if (!undo) return;
+      const target = undo;
+      setUndo(null);
+      await setMongleLook(avatarKey, target.base, target.tone);
+    },
+  };
+}
+
+/**
+ * 아바타 자리에 붙어 떠 있는 판 — 좌표만 앵커에 맞춘다. 레일 칸이 overflow: hidden 이라 absolute 는 잘리므로 position: fixed 로 띄운다.
+ * 세로: 앵커 아래 --space-2(8px) 간격. 가로: stack 은 앵커 가운데, inline 은 앵커 왼쪽 끝. 창 밖으로 나가는 몫은 뒤이은
+ * useViewportFit 이 밀어 넣는다(같은 컴포넌트의 layout effect 는 선언 순서로 돈다).
+ */
+function useAnchoredPlacement(panelRef: RefObject<HTMLElement | null>, anchorRef: RefObject<HTMLElement | null>, open: boolean, layout: "stack" | "inline"): void {
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    const anchor = anchorRef.current;
+    if (!open || !panel || !anchor) return;
+    const place = () => {
+      const rect = anchor.getBoundingClientRect();
+      panel.style.top = `${Math.round(rect.bottom + 8)}px`;
+      panel.style.left = `${Math.round(layout === "inline" ? rect.left : rect.left + rect.width / 2)}px`;
+    };
+    place();
+    window.addEventListener("resize", place);
+    window.addEventListener("scroll", place, true);
+    return () => {
+      window.removeEventListener("resize", place);
+      window.removeEventListener("scroll", place, true);
+    };
+  }, [open, layout]);
+  useViewportFit(panelRef, open);
+}
+
+/** 편집기 판 — 피커와 그 판의 자리·바깥 누름·Esc. 판을 여닫는 일과 앵커의 미리보기는 부르는 쪽이 한다. */
+function AvatarEditorPopover({ session, anchorRef, layout, portal = false, autoFocus = false, onClose }: {
+  readonly session: AvatarEditorSession;
+  readonly anchorRef: RefObject<HTMLElement | null>;
+  readonly layout: "stack" | "inline";
+  /** 판을 body 로 옮긴다 — 앵커가 쌓임 맥락에 갇힌 자리(사이드바)에서 판이 다른 칸 아래로 들어가지 않게. */
+  readonly portal?: boolean;
+  /** 열리자마자 판에 포커스를 둔다 — 메뉴에서 연 판은 앵커가 단추가 아니라 Tab 으로 닿을 수 없다. */
+  readonly autoFocus?: boolean;
+  /** 취소·Esc·적용으로 닫을 때 — 포커스를 돌려줄 자리는 부르는 쪽이 안다. 바깥 누름은 포커스를 끌어오지 않으므로 부르지 않는다. */
+  readonly onClose: () => void;
+}) {
+  const locale = useConsoleLocale() === "ko" ? "ko" : "en";
+  const labels = usePickerLabels();
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const { draft, look } = session;
+  const open = draft !== null;
+  useAnchoredPlacement(panelRef, anchorRef, open, layout);
+  useEffect(() => { if (open && autoFocus) panelRef.current?.focus({ preventScroll: true }); }, [open, autoFocus]);
+  // 바깥 누름 — 판과 앵커 밖을 pointerdown 하면 고르던 것을 버리고 닫는다. 닫은 뒤 포커스는 끌어오지 않는다(누른 곳의 동작을 방해하지 않게).
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (target !== null) {
+        if (anchorRef.current?.contains(target)) return;
+        if (panelRef.current?.contains(target)) return;
+      }
+      session.discard();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [open]);
+  if (!draft) return null;
+  const cancel = () => { session.discard(); onClose(); };
+  // 포털로 옮긴 판에서도 React 이벤트는 컴포넌트 부모로 번진다 — 사이드바 행의 드래그·우클릭·더블클릭이 판의 누름을 받지 않게 여기서 멈춘다.
+  const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
+  const panel = (
+    <div
+      data-covers-native-view=""
+      ref={panelRef}
+      className={`avatar-editor-popover is-${layout}`}
+      role="dialog"
+      aria-label={labels.heading}
+      tabIndex={-1}
+      onKeyDown={(event) => {
+        if (portal || event.key === "Escape") event.stopPropagation();
+        if (event.key === "Escape") cancel();
+      }}
+      {...(portal ? { onPointerDown: stop, onClick: stop, onDoubleClick: stop, onContextMenu: stop } : {})}
+    >
+      <MongleAvatarPicker
+        className="avatar-editor-picker"
+        role={session.role}
+        base={draft.base}
+        tone={draft.tone}
+        previewState={draft.previewState}
+        locale={locale}
+        labels={labels}
+        dirty={draft.dirty && (draft.base !== look.base || draft.tone !== look.tone)}
+        busy={session.busy}
+        // 진급 캐릭터는 색이 시그니처로 잠긴다 — 고르던 색은 버린다.
+        onBase={(base) => session.update({ ...draft, base, tone: isPromotedBaseId(base) ? null : draft.tone, dirty: true })}
+        onTone={(tone) => session.update({ ...draft, tone, dirty: true })}
+        onPreviewState={(previewState) => session.update({ ...draft, previewState })}
+        onReroll={session.reroll}
+        onReset={() => session.update({ ...draft, base: look.origin, tone: null, dirty: true })}
+        onCancel={cancel}
+        onApply={() => { void session.apply().then((ok) => { if (ok) onClose(); }); }}
+      />
+    </div>
+  );
+  return portal ? createPortal(panel, document.body) : panel;
+}
+
+/** 적용 뒤 한동안 서는 줄 — 「적용했어요 · 되돌리기」, 사령관 말투가 바뀌었으면 다음 턴부터라는 안내. */
+function AvatarEditorUndo({ session, className }: { readonly session: AvatarEditorSession; readonly className?: string }) {
+  const t = useT();
+  if (!session.undo || session.draft) return null;
+  return (
+    <div className={`avatar-editor-undo${className ? ` ${className}` : ""}`} role="status">
+      <span>{t("avatar.editor.applied")}</span>
+      {session.undo.voiceChanged ? <span className="avatar-editor-undo-note">{t("avatar.editor.voiceNextTurn")}</span> : null}
+      <button type="button" className="avatar-editor-undo-button" onClick={() => { void session.revert(); }}>{t("avatar.editor.undo")}</button>
+    </div>
+  );
 }
 
 /**
@@ -225,90 +412,16 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
   readonly children?: ReactNode;
 }) {
   const t = useT();
-  const locale = useConsoleLocale() === "ko" ? "ko" : "en";
-  const labels = usePickerLabels();
-  const consoleState = useConsoleState();
-  const book = useAvatarBook();
-  const look = resolveMongleLook(book, avatarKey);
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const session = useAvatarEditorSession(avatarKey, role, state);
+  const { draft, look } = session;
   const objectiveActivity = useObjectiveMongleActivity(state === "running" && draft === null ? activityObjectiveId : null);
   // 사령관은 Objective이 아니라 키에서 UUID를 꺼내 턴의 계열을 읽는다 — `CommodoreAvatar`와 같은 연기다.
   const commodoreActivity = useCommodoreMongleActivity(state === "running" && draft === null && role === "commodore" ? commodoreIdOfAvatarKey(avatarKey) : null);
   const activity = objectiveActivity ?? commodoreActivity;
-  const [busy, setBusy] = useState(false);
-  const [undo, setUndo] = useState<{ readonly base: number; readonly tone: IdentityTone | null; readonly voiceChanged: boolean } | null>(null);
-  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const pickerWrapRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => () => { if (undoTimer.current) clearTimeout(undoTimer.current); }, []);
-  // 다른 대상으로 옮겨 가면 고르던 것은 버린다.
-  useEffect(() => { setDraft(null); setUndo(null); }, [avatarKey]);
-
   const open = draft !== null;
-  // 떠 있는 판 — DOM 자리는 .avatar-editor 안에 그대로 두고 좌표만 아바타 단추에 맞춘다. 레일 칸이
-  // overflow: hidden 이라 absolute 는 잘리므로, 같은 머리의 「더보기」 메뉴처럼 position: fixed 로 띄운다.
-  // 세로: 단추 아래 --space-2(8px) 간격. 가로: stack 은 아바타 가운데, inline 은 아바타 왼쪽 끝. 창 밖으로
-  // 나가는 몫은 뒤이은 useViewportFit 이 밀어 넣는다(같은 컴포넌트의 layout effect 는 선언 순서로 돈다).
-  useLayoutEffect(() => {
-    const panel = pickerWrapRef.current;
-    const anchor = triggerRef.current;
-    if (!open || !panel || !anchor) return;
-    const place = () => {
-      const rect = anchor.getBoundingClientRect();
-      panel.style.top = `${Math.round(rect.bottom + 8)}px`;
-      if (layout === "inline") {
-        panel.style.left = `${Math.round(rect.left)}px`;
-      } else {
-        panel.style.left = `${Math.round(rect.left + rect.width / 2)}px`;
-      }
-    };
-    place();
-    window.addEventListener("resize", place);
-    window.addEventListener("scroll", place, true);
-    return () => {
-      window.removeEventListener("resize", place);
-      window.removeEventListener("scroll", place, true);
-    };
-  }, [open, layout]);
-  useViewportFit(pickerWrapRef, open);
-  // 바깥 누름 — 판과 아바타 단추 밖을 pointerdown 하면 고르던 것을 버리고 닫는다. 닫은 뒤 포커스는
-  // 끌어오지 않는다(누른 곳의 동작을 방해하지 않게). Esc·취소는 기존 close 가 단추로 포커스를 돌린다.
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (event: PointerEvent) => {
-      const target = event.target as Node | null;
-      if (target !== null) {
-        if (triggerRef.current?.contains(target)) return;
-        if (pickerWrapRef.current?.contains(target)) return;
-      }
-      setDraft(null);
-    };
-    document.addEventListener("pointerdown", onPointerDown, true);
-    return () => document.removeEventListener("pointerdown", onPointerDown, true);
-  }, [open]);
   const shown = draft ?? { base: look.base, tone: look.tone };
-  const toggle = () => setDraft(open ? null : { base: look.base, tone: look.tone, dirty: false, previewState: state === "running" || state === "awaiting" || state === "unseen" || state === "ended" ? state : "idle" });
-  const close = () => { setDraft(null); triggerRef.current?.focus(); };
-  const apply = async () => {
-    if (!draft) return;
-    const previous = { base: look.base, tone: look.tone };
-    setBusy(true);
-    const ok = await setMongleLook(avatarKey, draft.base, draft.tone);
-    setBusy(false);
-    if (!ok) return;
-    setDraft(null);
-    // 사령관의 응답 말투(진급 캐릭터)가 바뀌면 다음 턴부터 새 세션이 답한다 — 서버가 세션을 바꾸고, 여기서는 그것을 알린다.
-    setUndo({ ...previous, voiceChanged: role === "commodore" && mongleVoiceOf(previous.base) !== mongleVoiceOf(draft.base) });
-    if (undoTimer.current) clearTimeout(undoTimer.current);
-    undoTimer.current = setTimeout(() => setUndo(null), 8000);
-    triggerRef.current?.focus();
-  };
-  const revert = async () => {
-    if (!undo) return;
-    const target = undo;
-    setUndo(null);
-    await setMongleLook(avatarKey, target.base, target.tone);
-  };
+  const close = () => { session.discard(); triggerRef.current?.focus(); };
 
   const avatarButton = (
     <button
@@ -319,7 +432,7 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
       aria-expanded={open}
       aria-label={t("avatar.editor.open", { name: label })}
       title={t("avatar.editor.open", { name: label })}
-      onClick={toggle}
+      onClick={() => { if (open) session.discard(); else session.begin(); }}
     >
       {/* 대상이 바뀌면 새 얼굴로 다시 선다 — 이전 대상의 활동 교체 시계(최소 머무름·경계 대기)를 이어받지 않는다. */}
       <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative figure={figure} />
@@ -331,36 +444,42 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
   return (
     <div className={`avatar-editor is-${layout}${open ? " is-open" : ""}`} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); close(); } }}>
       {layout === "inline" ? <div className="avatar-editor-row">{avatarButton}{children}</div> : avatarButton}
-      {undo && !open ? (
-        <div className="avatar-editor-undo" role="status">
-          <span>{t("avatar.editor.applied")}</span>
-          {undo.voiceChanged ? <span className="avatar-editor-undo-note">{t("avatar.editor.voiceNextTurn")}</span> : null}
-          <button type="button" className="avatar-editor-undo-button" onClick={() => { void revert(); }}>{t("avatar.editor.undo")}</button>
-        </div>
-      ) : null}
-      {draft ? (
-        <div data-covers-native-view="" ref={pickerWrapRef} className={`avatar-editor-popover is-${layout}`} role="dialog" aria-label={labels.heading}>
-          <MongleAvatarPicker
-            className="avatar-editor-picker"
-            role={role}
-            base={draft.base}
-            tone={draft.tone}
-            previewState={draft.previewState}
-            locale={locale}
-            labels={labels}
-            dirty={draft.dirty && (draft.base !== look.base || draft.tone !== look.tone)}
-            busy={busy}
-            // 진급 캐릭터는 색이 시그니처로 잠긴다 — 고르던 색은 버린다.
-            onBase={(base) => setDraft({ ...draft, base, tone: isPromotedBaseId(base) ? null : draft.tone, dirty: true })}
-            onTone={(tone) => setDraft({ ...draft, tone, dirty: true })}
-            onPreviewState={(previewState) => setDraft({ ...draft, previewState })}
-            onReroll={() => setDraft({ ...draft, base: drawMongleBase(book, siblingKeysOf(consoleState, avatarKey), draft.base), tone: null, dirty: true })}
-            onReset={() => setDraft({ ...draft, base: look.origin, tone: null, dirty: true })}
-            onCancel={close}
-            onApply={() => { void apply(); }}
-          />
-        </div>
-      ) : null}
+      <AvatarEditorUndo session={session} />
+      <AvatarEditorPopover session={session} anchorRef={triggerRef} layout={layout} onClose={() => triggerRef.current?.focus()} />
     </div>
+  );
+}
+
+/**
+ * 메뉴에서 여는 같은 편집기 — 사이드바 사령관 행의 「사령관 설정」. 행의 아바타 자리를 대신 그려 미리보기를 싣고, 판은 그 아바타
+ * 왼쪽 끝 아래에 body 로 옮겨 띄운다. 올라오자마자 판이 열리며, 판이 닫히고 「되돌리기」 줄까지 사라지면 `onDone` 을 부른다.
+ */
+export function AnchoredAvatarEditor({ avatarKey, role, state, size, onReturnFocus, onDone }: {
+  readonly avatarKey: string;
+  readonly role: MongleRole;
+  readonly state: MongleState;
+  readonly size: number;
+  /** 취소·Esc·적용으로 판을 닫았을 때 포커스를 돌려줄 자리 — 앵커인 아바타는 단추가 아니다. */
+  readonly onReturnFocus: () => void;
+  readonly onDone: () => void;
+}) {
+  const session = useAvatarEditorSession(avatarKey, role, state);
+  const anchorRef = useRef<HTMLSpanElement | null>(null);
+  const undoRef = useRef<HTMLDivElement | null>(null);
+  const startedRef = useRef(false);
+  const { draft, look, undo } = session;
+  useEffect(() => { session.begin(); }, []);
+  useEffect(() => {
+    if (draft) startedRef.current = true;
+    else if (startedRef.current && !undo) onDone();
+  }, [draft, undo]);
+  useAnchoredPlacement(undoRef, anchorRef, undo !== null && draft === null, "inline");
+  const shown = draft ?? { base: look.base, tone: look.tone };
+  return (
+    <span ref={anchorRef} className="avatar-editor-anchor">
+      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} size={size} label="" decorative />
+      <AvatarEditorPopover session={session} anchorRef={anchorRef} layout="inline" portal autoFocus onClose={onReturnFocus} />
+      {undo && !draft ? createPortal(<div ref={undoRef} className="avatar-editor-undo-float"><AvatarEditorUndo session={session} /></div>, document.body) : null}
+    </span>
   );
 }
