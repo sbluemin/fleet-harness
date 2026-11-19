@@ -80,6 +80,66 @@
           }
         },
         {
+          "modelId": "gpt-6-astra",
+          "name": "GPT-6-Astra",
+          "description": "Flagship coding and reasoning model.",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-6-astra"
+          ],
+          "fastSupported": true,
+          "intelligence": {
+            "source": "https://artificialanalysis.ai/models/gpt-6-astra",
+            "scores": {
+              "low": 43,
+              "medium": 52,
+              "high": 55,
+              "xhigh": 55,
+              "max": 57
+            }
+          }
+        },
+        {
+          "modelId": "gpt-6.1-sol",
+          "name": "GPT-6.1-Sol",
+          "description": "Deep reasoning and architecture model.",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-6.1-sol"
+          ],
+          "fastSupported": true,
+          "intelligence": {
+            "source": "https://artificialanalysis.ai/models/gpt-6-1-sol",
+            "scores": {
+              "low": 35,
+              "medium": 46,
+              "high": 50,
+              "xhigh": 52,
+              "max": 55
+            }
+          }
+        },
+        {
           "modelId": "gpt-6-luna",
           "name": "GPT-6-Luna",
           "description": "Lightweight, fast coding model.",
