@@ -72,4 +72,6 @@ export interface CommodoreBoardClient {
    * 그 밖은 `renderInboxDetail`의 펼친 카드가 맡는다. 실패는 `onFailed`로 돌려준다.
    */
   renderInboxQuick(objectiveId: string, kind: Exclude<CommodoreInboxKind, "followup">, options: { readonly language: "en" | "ko"; readonly phone: boolean; readonly onFailed: (error: unknown) => void }): ReactNode;
+  /** 검토 대기 목표를 한마디(`context`)와 함께 넓힌다 — 넘긴 검토는 「사람이 답함」으로 끝나고 새 계획 회차가 열린다. 실패는 서버 코드를 던진다. */
+  extend(objectiveId: string, language: "en" | "ko", context: string): Promise<void>;
 }

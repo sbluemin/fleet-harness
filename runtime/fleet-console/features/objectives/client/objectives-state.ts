@@ -468,6 +468,17 @@ export async function returnPersonHold(objectiveId: string, target: PersonHoldTa
   if (result?.objective) applyObjectiveResponse(result.objective);
 }
 
+/**
+ * 검토 대기(또는 완료)한 목표를 한마디와 함께 넓힌다 — 사람이 넘겨받은 검토 항목이면 서버가 그 넘김을 「사람이 답함」으로 끝내고
+ * 새 계획 회차를 연다. 응답의 목표(정산 뒤)로 화면을 바로 고치고, 실패는 서버 코드를 던진다.
+ */
+export async function extendObjective(objectiveId: string, language: string, context: string): Promise<void> {
+  const api = objectivesApi();
+  if (!api) throw new Error("objectives_unavailable");
+  const result = await post<{ objective?: Objective }>(api, "/objective/extend", { objectiveId, language, context });
+  if (result?.objective) applyObjectiveResponse(result.objective);
+}
+
 export async function post<T>(api: ClientApiCapability, path: string, body: unknown): Promise<T> {
   let response: Response;
   try {

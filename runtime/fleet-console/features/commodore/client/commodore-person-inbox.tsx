@@ -14,8 +14,9 @@ import { ChevronGlyph } from "@fleet-console/ui/react";
 
 import type { CommodoreInboxKind } from "../../objectives/shared/commodore-board-client.js";
 import type { CommodoreAsk } from "../shared/contracts/types.js";
-import { finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, openObjectiveFromCluster, openObjectiveOnPhone, renderHandedFollowup, renderInboxDetail, renderInboxQuick, renderObjectiveAvatar, subscribeFinishedObjectivesStore, useObjectiveTheater } from "./board.js";
+import { extendObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, openObjectiveFromCluster, openObjectiveOnPhone, renderHandedFollowup, renderInboxDetail, renderInboxQuick, renderObjectiveAvatar, subscribeFinishedObjectivesStore, useObjectiveTheater } from "./board.js";
 import { CommodoreAskCard } from "./commodore-ask.js";
+import { sendComposerText } from "./commodore-composer-bridge.js";
 import type { CommodoreDecisionTarget } from "./commodore-decision-target.js";
 import { useCommodoreName } from "./commodore-name.js";
 import { getT } from "./i18n/index.js";
@@ -206,6 +207,7 @@ export function useCommodoreDecisionDock({ theaterId, contextTheaterId = "", lan
         <ChevronGlyph direction="down" className="commodore-decision-title-chev" />
       </button>
       <QuickAnswer key={current.id} item={current} theaterId={theaterId} language={language} phone={phone} onAnswered={markAnswered} onFailed={(error) => onEndedRef.current?.(error)} />
+      <ExtendAction key={`extend:${current.id}`} item={current} theaterId={theaterId} language={language} onFailed={(error) => onEndedRef.current?.(error)} />
       <button type="button" className="commodore-decision-fold" aria-label={t("commodore.decision.fold")} onClick={fold}>✕</button>
     </div>
   );
@@ -265,6 +267,28 @@ function QuickAnswer({ item, theaterId, language, phone, onAnswered, onFailed }:
   }
   if (!item.objectiveId || item.kind === "followup") return null;
   return <>{renderInboxQuick(item.objectiveId, item.kind, { language, phone, onFailed })}</>;
+}
+
+/**
+ * 넘긴 검토의 「범위 넓히기」 — 입력창(답 칸)에 쓴 글을 한마디로 목표를 넓히고 계속 진행을 전한다. 글이 비어 있으면 아무것도 보내지 않고
+ * 입력창으로 초점만 옮긴다. 보내기가 끝나면 입력창을 비우고, 실패는 빠른 답과 같은 길(`onFailed`)로 알린다. 한 줄의 높이는 그대로다.
+ */
+export function ExtendAction({ item, theaterId, language, onFailed }: {
+  readonly item: Pick<InboxItem, "kind" | "objectiveId">;
+  readonly theaterId: string;
+  readonly language: "en" | "ko";
+  readonly onFailed: (error: unknown) => void;
+}) {
+  const t = getT(language);
+  const [busy, setBusy] = useState(false);
+  if (item.kind !== "review" || !item.objectiveId) return null;
+  const objectiveId = item.objectiveId;
+  const run = () => {
+    if (busy) return;
+    setBusy(true);
+    void sendComposerText(theaterId, (context) => extendObjective(objectiveId, language, context)).catch(onFailed).finally(() => setBusy(false));
+  };
+  return <button type="button" className="commodore-decision-quick" disabled={busy} aria-busy={busy || undefined} title={t("commodore.decision.extendHint")} onClick={run}>{t("commodore.decision.extend")}</button>;
 }
 
 /** 제목을 눌러 펼친 내용 — 머리(목표·대기 시간·목표 열기)와 그 결정의 처리 카드. 대화 영역 높이의 40%까지 자라고 그 안에서 스크롤한다. */
