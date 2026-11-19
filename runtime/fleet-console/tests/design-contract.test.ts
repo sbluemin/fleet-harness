@@ -842,7 +842,7 @@ describe("Console core design contract", () => {
   });
 
   // 유채색 raw 리터럴은 두 규칙을 한 번에 깬다 — 스켈레톤의 채도 봉투를 넘고, 테마별 재조율을 받지 못한다.
-  // 깊이를 나르는 근사 무채색(그림자·스크림·시트)은 console CLAUDE.md가 명시한 예외라 통과시킨다.
+  // 깊이를 나르는 근사 무채색(그림자·스크림·시트)은 console AGENTS.md가 명시한 예외라 통과시킨다.
   // 문법은 oklch 하나가 아니다 — hex·rgb·hsl로 적은 유채색도 같은 두 규칙을 깨므로 함께 막고,
   // 채널을 해석할 수 없는 함수형(color()/lab()/lch())은 통과시키지 않는다.
   it("keeps chromatic color literals inside theme.css", () => {

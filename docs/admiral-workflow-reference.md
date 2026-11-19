@@ -4,7 +4,7 @@ This document is the operational doctrine for agents working inside this reposit
 
 ## 1. Ownership
 
-Package ownership and dependency boundaries live in the root `CLAUDE.md` and in the child `CLAUDE.md` along each path (`runtime/fleet-console/`, its `features/` and `foundation/` packages, `runtime/fleet-desktop/`). This reference does not restate them; read the owner file for the path you change.
+Package ownership and dependency boundaries live in the root `AGENTS.md` and in the child `AGENTS.md` along each path (`runtime/fleet-console/`, its `features/` and `foundation/` packages, `runtime/fleet-desktop/`). This reference does not restate them; read the owner file for the path you change.
 
 One launcher boundary is easy to miss: the `fleet` launcher under `runtime/fleet-console/cli` keeps argv dispatch, process lifecycle, and host adapters, and must not own PTY, TUI, terminal I/O interception, host-agnostic infrastructure internals, or generic MCP transport internals.
 
@@ -65,4 +65,4 @@ Fleet Console UI and `fleet update` update only the sole published package `@dot
 
 ### Desktop supervision
 
-Desktop ownership metadata is provenance, not a Console channel. `POST /api/v1/updates/apply` retains the global-package worker; managed `console/latest` updates stay in Desktop's hardened relaunch installer until a recoverable same-window handoff exists. Remote access and pairing are owned by the Console; Desktop keeps only the headless plumbing described in `runtime/fleet-desktop/CLAUDE.md`. Release automation keeps the GitHub Release draft until supported assets and required verification/signing gates pass. macOS requires the configured Developer ID/notarization path, Windows requires the configured Authenticode path, and Linux AppImage integrity is checksum/GPG material when release credentials provide it; do not claim an unavailable local signing identity as a signed release.
+Desktop ownership metadata is provenance, not a Console channel. `POST /api/v1/updates/apply` retains the global-package worker; managed `console/latest` updates stay in Desktop's hardened relaunch installer until a recoverable same-window handoff exists. Remote access and pairing are owned by the Console; Desktop keeps only the headless plumbing described in `runtime/fleet-desktop/AGENTS.md`. Release automation keeps the GitHub Release draft until supported assets and required verification/signing gates pass. macOS requires the configured Developer ID/notarization path, Windows requires the configured Authenticode path, and Linux AppImage integrity is checksum/GPG material when release credentials provide it; do not claim an unavailable local signing identity as a signed release.

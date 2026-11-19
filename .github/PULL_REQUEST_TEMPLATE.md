@@ -26,7 +26,7 @@
 - [ ] `runtime/fleet-desktop/`
 - [ ] `runtime/fleet-mobile/`
 - [ ] `scripts/` or root tooling
-- [ ] `.claude/skills/`, `docs/`, or `CLAUDE.md`
+- [ ] `.claude/skills/`, `docs/`, or `AGENTS.md`
 
 ## Test Plan
 

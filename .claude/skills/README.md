@@ -7,7 +7,7 @@ This directory owns repository-work skills. It is separate from what Fleet embed
 - Preserve directory names and `name` unless an explicitly requested merge or rename requires updating their callers; keep `SKILL.md` as the entrypoint. Use a short, single-line description stating **when to select it** and neighboring exclusions. Avoid YAML `>`/`|` block scalars, quoted or continued values, and descriptions longer than 500 characters.
 - Keep inputs, execution decisions, authority boundaries, and completion/stop conditions in the entrypoint. Leave judgment-dependent ordering flexible; retain order required by dependencies or side effects.
 - Put long commands and platform/mode-specific procedures once in `references/`. Link them with **when and why to read**, not a requirement to preload everything.
-- Do not duplicate procedures owned by another skill or `CLAUDE.md`. Do not copy harness or MCP tool contracts; name the destination and the boundaries those contracts do not state. Add a skill only for a distinct recurring task.
+- Do not duplicate procedures owned by another skill or `AGENTS.md`. Do not copy harness or MCP tool contracts; name the destination and the boundaries those contracts do not state. Add a skill only for a distinct recurring task.
 - Continue reversible local checks within authorized scope. Automatic selection does not authorize commits, external publication, deployment the task did not request. Model-performance claims do not relax product-direction, deletion-ownership, credential, or required-check boundaries.
 
 ## Validation
@@ -43,7 +43,7 @@ Review semantic changes by assembling an entrypoint with **only references selec
 | Resume Codex review on an open PR | pr-workflow; recover pushed head/frozen context, ignore stale +1, bounded passes and final audit |
 | Synchronize only / range is docs-only | release-version-update; no main deployment push, no fake product change to trigger CI |
 | Capture recurring learning from this task | learning-harvest; recurrence/cost/generality, no encoding before candidate approval |
-| Implement an approved single CSS fix or edit docs only | Keep implementation scoped; pr-workflow follows root CLAUDE.md standing delivery authorization unless local-only or otherwise narrowed; no unrelated proposal/sweep/release |
+| Implement an approved single CSS fix or edit docs only | Keep implementation scoped; pr-workflow follows root AGENTS.md standing delivery authorization unless local-only or otherwise narrowed; no unrelated proposal/sweep/release |
 
 ## Limits
 

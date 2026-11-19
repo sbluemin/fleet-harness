@@ -36,7 +36,7 @@
   "files": [
     "dist",
     "postinstall.mjs",
-    "CLAUDE.md",
+    "AGENTS.md",
     "README.md"
   ],
   "engines": {

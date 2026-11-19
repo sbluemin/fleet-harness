@@ -12,7 +12,7 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "CLAUDE.md"
+    "AGENTS.md"
   ],
   "engines": {
     "node": ">=18.0.0"

@@ -22,7 +22,7 @@ Neither a passing preflight nor a remote window capture establishes what someone
 
 ## Execution
 
-1. Apply `runtime/fleet-desktop/CLAUDE.md` and build Console/Desktop from the target checkout. Inspect existing user apps and locks without modifying them.
+1. Apply `runtime/fleet-desktop/AGENTS.md` and build Console/Desktop from the target checkout. Inspect existing user apps and locks without modifying them.
 2. Before browser commands, load `agent-browser` and the installed CLI's core/electron/dogfood contract. Use a unique session and loopback CDP port. Record owned app PID, Console directory/lock, logs, and evidence paths.
 3. Exercise the chosen lane. Shell/CDP verifies loopback `/console/` handoff, empty query/fragment, unavailable renderer `process`/`require`, allowed/blocked navigation, and reload. Avoid unnecessary valid popups: they open the user's external browser.
 4. Verify native menus/windows/tray/dialogs through headed observation, not CDP DOM inference or another OS's fixtures. Verify packages against actual artifacts and their verifier; unsigned success is not release-signing evidence.
