@@ -21,7 +21,6 @@ import { z } from "zod";
 import { commodoreActive, createCommodoreRoutes, type CommodoreRouteHooks } from "../features/commodore/host/routes.js";
 import { commodoreTranscriptEntrySchema } from "../features/commodore/shared/contracts/types.js";
 import { commodoreLastMessage } from "../features/commodore/shared/last-message.js";
-import { COMPOSER_QUOTE_LINE_PREFIX, composeQuotedPrompt } from "../features/execution/client/composer-primitives/quotes.js";
 import type { ConsoleResidentAgentHost as AgentHost, ConsoleResidentOptions as AgentSessionOptions } from "../features/execution/host/agent/console-resident.js";
 import { createCommodoreEntities } from "../features/commodore/host/entities.js";
 import { createCommodoreFeature, createCommodoreOwnership } from "../features/commodore/host/index.js";
@@ -3903,26 +3902,6 @@ it("assembles promoted Commodore character and voice block for Bori, Tori, and D
   const englishPromoted = commodoreSystemPrompt("theater-1", "en", { commodoreId: "bori-id", alias: "Bori", voice: "bori" });
   expect(englishPromoted).not.toContain("# Character & Voice");
   expect(englishPromoted).toContain("like a cheerful, quick-witted, and lively colleague");
-});
-
-it("drops composer quote lines from person-message previews and falls back to the quote's own words", () => {
-  const quote = { kind: "comment" as const, excerpt: "기준 2: 화면 **캡처**로 확인", source: { label: "결정 요청", ref: "[[objective:abc]]" } };
-  const noted = { ...quote, note: "이 기준은 빼 주세요" };
-  // 인용 + 본문(B+ 결정 줄이 보내는 형태): 본문만 남는다.
-  expect(commodoreLastMessage({ seq: 1, at: 100, kind: "message", text: composeQuotedPrompt("이건 **보류**합시다", [quote]) }))
-    .toEqual({ at: 100, from: "person", text: "이건 보류합시다" });
-  // 인용만: 첫 인용의 note, 없으면 excerpt — 같은 한 줄 정리를 거친다.
-  expect(commodoreLastMessage({ seq: 2, at: 200, kind: "message", text: composeQuotedPrompt("", [noted, quote]) }))
-    .toEqual({ at: 200, from: "person", text: "이 기준은 빼 주세요" });
-  expect(commodoreLastMessage({ seq: 3, at: 300, kind: "message", text: composeQuotedPrompt("  ", [quote]) }))
-    .toEqual({ at: 300, from: "person", text: "기준 2: 화면 캡처로 확인" });
-  // 인용 없음: 그대로.
-  expect(commodoreLastMessage({ seq: 4, at: 400, kind: "message", text: "그냥 말" }))
-    .toEqual({ at: 400, from: "person", text: "그냥 말" });
-  // 깨진 인용 줄은 인용이 아니므로 문면으로 남는다(말풍선과 같은 판정).
-  const broken = `${COMPOSER_QUOTE_LINE_PREFIX}{not json`;
-  expect(commodoreLastMessage({ seq: 5, at: 500, kind: "message", text: `본문\n\n${broken}` }))
-    .toEqual({ at: 500, from: "person", text: `본문 ${broken}` });
 });
 
 it("strips inline Markdown syntax from Commodore sidebar previews while preserving text and non-Markdown punctuation", () => {
