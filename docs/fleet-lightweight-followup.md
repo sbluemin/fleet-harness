@@ -18,7 +18,7 @@ The follow-up keeps lower packages host-agnostic while preserving a clear home f
 ## Current State
 
 - **Logical ownership:** Final package homes are split by domain.
-- **Dependency direction:** Console composition -> features -> foundation, with `fleet-desktop` consuming only the Console public protocol. The root `CLAUDE.md` owns this rule.
+- **Dependency direction:** Console composition -> features -> foundation, with `fleet-desktop` consuming only the Console public protocol. The root `AGENTS.md` owns this rule.
 
 ## Goals
 

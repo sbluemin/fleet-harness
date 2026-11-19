@@ -4,7 +4,7 @@ Fleet is a multi-LLM orchestration kit spanning Agent CLI backends and gateway m
 
 ## Select task context
 
-This file defines repository-wide boundaries. Apply child `CLAUDE.md` files along the paths you work in; read other instructions, documents, and skills only when relevant to the task. Do not preload every instruction file or a documentation bundle.
+This file defines repository-wide boundaries. Apply child `AGENTS.md` files along the paths you work in; read other instructions, documents, and skills only when relevant to the task. Do not preload every instruction file or a documentation bundle.
 
 | Owner | Path |
 |---|---|
@@ -62,6 +62,6 @@ The permanent suite is a **minimal product-acceptance suite**, not a catalog of 
 
 ## Instruction maintenance
 
-- Keep all `CLAUDE.md` files in English. Retain stable ownership, security, and operational boundaries that must be known before work begins; do not accumulate implementation walkthroughs, one-off lessons, or inventories discoverable through normal exploration.
+- Keep all `AGENTS.md` files in English. Retain stable ownership, security, and operational boundaries that must be known before work begins; do not accumulate implementation walkthroughs, one-off lessons, or inventories discoverable through normal exploration.
 - State each fact once at the nearest scope. Put procedures in task-specific skills, detailed rationale in on-demand references, and mechanically decidable constraints in checks. Never delete a still-required constraint without a reliable replacement.
 - When revising instructions or skills, or writing a delegation that asks for a judgment about them, consult `docs/instruction-maintenance.md`. Do not relax safety boundaries based on presumed model capability.

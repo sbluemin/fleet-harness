@@ -218,4 +218,4 @@ pnpm --filter @dotobokuri/fleet-console build
 
 `build` emits `dist/fleet.mjs`, `dist/cli.mjs`, `dist/client/`, and the other `tsup.config.ts` entries. There is no external embed step.
 
-See `CLAUDE.md` for ownership, token-boundary, and streaming invariants.
+See `AGENTS.md` for ownership, token-boundary, and streaming invariants.

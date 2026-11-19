@@ -2,18 +2,18 @@
 
 ## Changelog Fragment (autonomous)
 
-Decide autonomously whether the change is a product-visible feature-level delta a user would notice in a shipped runtime. `.changelog.d/CLAUDE.md` owns the inclusion criterion and authoring contract.
+Decide autonomously whether the change is a product-visible feature-level delta a user would notice in a shipped runtime. `.changelog.d/AGENTS.md` owns the inclusion criterion and authoring contract.
 
 When a fragment is warranted, use one of two mutually exclusive paths. A new feature-level change adds exactly one fragment named after its own branch. A correction to behavior whose fragment is still unreleased in `.changelog.d/` rewrites that existing fragment instead, applies the `changelog-amend` label, and adds one exact `Changelog-Amend: <file-name>.md` line to the PR body per rewritten fragment; it adds no branch fragment. Withdrawing an unreleased feature deletes its pending fragment the same way, declared with `Changelog-Remove: <file-name>.md`. Inspect pending fragments and the public release baseline before choosing the path. Stage and commit a new fragment **together with the change it describes**. Read a new fragment's filename from `node scripts/compile-changelog-fragments.mjs --name-for-branch`; never derive it by hand.
 
-Only when authoring, read `.changelog.d/CLAUDE.md` for the current filename, frontmatter, bilingual syntax, and runtime/section contract. Validate with `node scripts/compile-changelog-fragments.mjs --check`; never use `canary.md` for a PR.
+Only when authoring, read `.changelog.d/AGENTS.md` for the current filename, frontmatter, bilingual syntax, and runtime/section contract. Validate with `node scripts/compile-changelog-fragments.mjs --check`; never use `canary.md` for a PR.
 
 When the change is not a feature-level product delta — refactors, boundary gates, doctrine and prompt edits, test repairs, release tooling, and similar — write no fragment and no `no-changelog` declaration.
 
 ### Phase 0 — Environment & doctrine (always first)
 
 1. Confirm the absolute worktree path/current branch, acting account through `gh auth status`, and `sbluemin/fleet-harness` through `gh repo view --json nameWithOwner`. Query OS/shell only when needed for command selection.
-2. Read applicable root/child `CLAUDE.md` instructions not already loaded. Do not preload unrelated documents.
+2. Read applicable root/child `AGENTS.md` instructions not already loaded. Do not preload unrelated documents.
 3. Choose the changelog path above — none, new note, or amendment — and record which runtimes a user notices it in.
 
 ### Phase 1 — Commit
@@ -33,7 +33,7 @@ When the change is not a feature-level product delta — refactors, boundary gat
    - When a new release note was committed, the fragment itself is the record; no PR-body ceremony is required.
    - For an amendment or removal, apply the `changelog-amend` label after creating the PR and add one `Changelog-Amend:` or `Changelog-Remove: <file-name>.md` line per fragment to the body; do not add a branch fragment.
    - When no fragment was warranted, leave the PR body without changelog declarations.
-4. Show the final title/body/base/head/draft. Create without another confirmation when the root `CLAUDE.md` standing authorization applies, or the user requested this PR lifecycle or authorized publication. Automatic skill invocation or file reading alone grants no publishing authority. Ask when authority is missing, metadata is genuinely ambiguous, or a safety guard trips. Declare shell variables within the same call that uses them.
+4. Show the final title/body/base/head/draft. Create without another confirmation when the root `AGENTS.md` standing authorization applies, or the user requested this PR lifecycle or authorized publication. Automatic skill invocation or file reading alone grants no publishing authority. Ask when authority is missing, metadata is genuinely ambiguous, or a safety guard trips. Declare shell variables within the same call that uses them.
    ```bash
    gh pr create --repo sbluemin/fleet-harness --base "$base" --head "$head" \
      --title "$title" --body "$(cat <<'EOF'
