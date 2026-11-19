@@ -1,5 +1,6 @@
 import type { CommodoreLastMessage } from "./contracts/theaters.js";
 import type { CommodoreTranscriptEntry } from "./contracts/types.js";
+import { splitQuotedPrompt } from "../../execution/client/composer-primitives/quotes.js";
 
 /** 미리보기 한 줄의 상한 — 행이 말줄임으로 자르므로 넉넉하면 된다. */
 const PREVIEW_CHARS = 160;
@@ -84,12 +85,23 @@ function stripPreviewMarkdown(raw: string): string {
 }
 
 /**
+ * 사람의 말 끝에 합성된 인용 줄(`[Fleet quote] {json}`)은 말풍선처럼 문면에서 걷는다. 본문 없이 인용만 보냈으면
+ * 첫 인용에 붙인 한 줄(note), 없으면 고른 문장(excerpt)을 그대로 보인다 — 새 문구를 짓지 않는다.
+ */
+function personPreviewWords(text: string): string {
+  const split = splitQuotedPrompt(text);
+  if (split.quotes.length === 0 || split.text.trim()) return split.text;
+  const first = split.quotes[0]!;
+  return first.note ?? first.excerpt;
+}
+
+/**
  * 기록 한 줄이 대화의 마지막 말이 되는가 — 사람의 메시지(`message`)와 사령관의 답(`text`)만 그렇다.
  * 도구·깨움·세션 같은 운영 줄은 미리보기가 되지 않는다. 코드 울타리(OpenUI 블록 포함)와 인라인 마크다운 기호는 빼고 글자는 유지한 채 공백을 한 칸으로 접는다.
  */
 export function commodoreLastMessage(entry: CommodoreTranscriptEntry): CommodoreLastMessage | null {
   if (entry.kind !== "message" && entry.kind !== "text") return null;
-  const text = stripPreviewMarkdown(entry.text);
+  const text = stripPreviewMarkdown(entry.kind === "message" ? personPreviewWords(entry.text) : entry.text);
   if (!text) return null;
   return { at: entry.at, text, from: entry.kind === "message" ? "person" : "commodore" };
 }
