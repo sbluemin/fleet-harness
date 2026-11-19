@@ -752,6 +752,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
     read: () => { const current = draft.read(); return { text: referencePlainText(current.text, current.references.map(({ id, title }) => ({ id, label: title }))), revision: current.textRevision, sending: current.sending }; },
     clear: (revision) => { if (draft.read().textRevision === revision) draft.update({ text: "", references: [] }); },
     focus: () => inputRef.current?.focus({ preventScroll: true }),
+    reserve: (on) => draft.update({ sending: on }),
   }), [theaterId, draft]);
   const clear = useClearConfirmation(theaterId, onFail, onClear);
   const clearKey = useReleasedKey();

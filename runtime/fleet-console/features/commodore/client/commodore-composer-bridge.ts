@@ -9,6 +9,8 @@ export interface ComposerDraftHandle {
   /** `revision`의 글이 아직 그대로일 때만 비운다 — 보내는 동안 이어 쓴 글은 지키지 않는 일이 없다. */
   readonly clear: (revision: number) => void;
   readonly focus: () => void;
+  /** 보내는 동안 입력창을 예약한다 — 같은 글이 일반 메시지로도 나가지 않게 입력창의 보내기 길(`sending`)을 잠그고, 끝나면 푼다. */
+  readonly reserve: (on: boolean) => void;
 }
 
 const handles = new Map<string, ComposerDraftHandle>();
@@ -21,7 +23,8 @@ export function registerComposerDraft(theaterId: string, handle: ComposerDraftHa
 
 /**
  * 입력창에 쓴 글로 `send`를 한 번 부른다. 글이 비어 있으면 아무것도 보내지 않고 입력창으로 초점만 옮긴다(`"empty"`).
- * 앞선 글이 보내지는 중이면 겹쳐 보내지 않는다(`"busy"`). 보내기가 성공해야 글을 비우고, 실패하면 글은 그대로 남는다.
+ * 앞선 글이 보내지는 중이면 겹쳐 보내지 않는다(`"busy"`). 보내는 동안 입력창을 예약해 같은 글이 일반 메시지로 겹쳐 나가지 않게 하고,
+ * 보내기가 성공해야 글을 비우며 실패하면 글은 그대로 남는다. 예약은 어느 쪽이든 끝나면 푼다.
  */
 export async function sendComposerText(theaterId: string, send: (text: string) => Promise<void>): Promise<"sent" | "empty" | "busy"> {
   const handle = handles.get(theaterId);
@@ -29,7 +32,12 @@ export async function sendComposerText(theaterId: string, send: (text: string) =
   const text = draft?.text.trim() ?? "";
   if (!handle || !draft || !text) { handle?.focus(); return "empty"; }
   if (draft.sending) return "busy";
-  await send(text);
-  handle.clear(draft.revision);
+  handle.reserve(true);
+  try {
+    await send(text);
+    handle.clear(draft.revision);
+  } finally {
+    handle.reserve(false);
+  }
   return "sent";
 }
