@@ -526,20 +526,29 @@ describe("gemini spend ledger", () => {
         periodStart: Date.UTC(2026, 2, 2, 8),
         resetsAt: Date.UTC(2026, 2, 9, 7),
       });
-      // 단가 전환은 태평양시 12-01 00:00 정각부터다.
+      // 단가 전환은 태평양시 12-01 00:00 정각부터다. Neon은 고정 단가다.
       expect(geminiTokenPrice("gemini-4-argon", "standard", Date.UTC(2026, 11, 1, 8) - 1).input).toBe(2_000_000n);
       expect(geminiTokenPrice("gemini-4-argon", "standard", Date.UTC(2026, 11, 1, 8)).input).toBe(4_000_000n);
+      expect(geminiTokenPrice("gemini-4-neon", "standard", Date.UTC(2026, 11, 1, 8))).toEqual({
+        input: 3_000_000n,
+        output: 15_000_000n,
+        cached: 150_000n,
+      });
+      expect(geminiTokenPrice("gemini-4-neon", "flex", firstWeek).output).toBe(7_500_000n);
+      expect(geminiTokenPrice("gemini-4-neon", "priority", firstWeek).output).toBe(27_000_000n);
 
       // Hydrogen: (100−40)×1.5 + 40×0.075(캐시) + (10+10)×7.5 = 0.000243 USD.
       ledger.observeUsage({ model: "gemini-4-hydrogen", at: firstWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 40, candidatesTokens: 10, thoughtsTokens: 10 });
       // Argon(11월): 100×2 + 20×10 = 0.0004 USD.
       ledger.observeUsage({ model: "gemini-4-argon", at: firstWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
+      // Neon: (100−20)×3 + 20×0.15(캐시) + (10+10)×15 = 0.000543 USD.
+      ledger.observeUsage({ model: "gemini-4-neon", at: firstWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 20, candidatesTokens: 10, thoughtsTokens: 10 });
       // 레거시 달 누적(US$5)은 이번 주 지출에 더하지 않는다.
-      expect(ledger.read(firstWeek).spend).toMatchObject({ currency: "USD", spent: "0.000643", basis: "fleet_measured" });
+      expect(ledger.read(firstWeek).spend).toMatchObject({ currency: "USD", spent: "0.001186", basis: "fleet_measured" });
       // 다음 주 Argon은 2배다: 100×4 + 20×20 = 0.0008 USD. 첫 주 누적은 그대로 남는다.
       ledger.observeUsage({ model: "gemini-4-argon", at: laterWeek, serviceTier: "standard", promptTokens: 100, cachedTokens: 0, candidatesTokens: 10, thoughtsTokens: 10 });
       expect(ledger.read(laterWeek).spend.spent).toBe("0.0008");
-      expect(ledger.read(firstWeek).spend.spent).toBe("0.000643");
+      expect(ledger.read(firstWeek).spend.spent).toBe("0.001186");
 
       // 예산은 주를 넘어 유지되고, 사용률은 이번 주 누적에만 걸린다.
       expect(budgetUsedPercent(5n * 10n ** 12n, 10n * 10n ** 12n)).toBe(50);

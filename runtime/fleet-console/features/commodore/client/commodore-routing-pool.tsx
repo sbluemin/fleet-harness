@@ -47,6 +47,7 @@ const MODEL_SUBTITLE_KEYS: Readonly<Record<string, CommodoreMessageKey>> = {
   "gemini-4-argon": "commodore.pool.sub.gemini-4-argon",
   "gemini-4-carbon": "commodore.pool.sub.gemini-4-carbon",
   "gemini-4-hydrogen": "commodore.pool.sub.gemini-4-hydrogen",
+  "gemini-4-neon": "commodore.pool.sub.gemini-4-neon",
   "muse-spark-1.3": "commodore.pool.sub.muse-spark-1.3",
   "muse-spark-1.3-contributor": "commodore.pool.sub.muse-spark-1.3-contributor",
 };

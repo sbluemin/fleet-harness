@@ -1,10 +1,10 @@
 /**
  * Gemini 4 단가표와 지출 계산. 이 파일이 플릿이 아는 단가의 원본이다.
  *
- * 출처: https://ai.google.dev/gemini-api/docs/pricing — **2026-11-18 확인**.
+ * 출처: https://ai.google.dev/gemini-api/docs/pricing — **2026-11-18 확인, 2026-11-19 Neon 추가 재확인**.
  * 아래 표의 모든 값은 그 문서의 Paid tier 표(USD / 1M tokens)에서 읽었다. 문서는 API가
  * 단가를 주지 않으므로 플릿이 직접 싣는다. thinking 토큰은 "Output price (including thinking
- * tokens)"라 출력 단가로 센다. 세 모델 모두 프롬프트 길이 구간별 단가가 없다(표에 구간 행 없음).
+ * tokens)"라 출력 단가로 센다. 네 모델 모두 프롬프트 길이 구간별 단가가 없다(표에 구간 행 없음).
  *
  * 값의 단위는 **토큰당 pico-USD** 정수다(= USD/1M 단가 × 1e6). 예: $2.00 / 1M tokens
  * → 2_000_000 pico-USD/token. 지출은 이 정수로만 누적하고, 저장·표시 경계에서 십진 문자열로
@@ -16,8 +16,9 @@
  * (rate-limits의 RPD "midnight Pacific time")과도 같다.
  *
  * Contributor(초대제 private preview) 단가는 초대받은 계정에만 적용되어 플릿이 티어를 알 수
- * 없으므로 표에 넣지 않는다. Hydrogen은 Free tier가 있지만 무료 프로젝트인지 알 수 없어
- * Paid 단가로 센다 — 플릿 측정값은 Paid 단가 기준 추정임을 DTO의 `basis`가 밝힌다.
+ * 없으므로 표에 넣지 않는다(Neon은 Contributor 표가 없다). Hydrogen은 Free tier가 있지만
+ * 무료 프로젝트인지 알 수 없어 Paid 단가로 센다 — 플릿 측정값은 Paid 단가 기준 추정임을
+ * DTO의 `basis`가 밝힌다(Argon·Carbon·Neon은 Free tier 미제공).
  */
 
 import type { GeminiModelId } from "../upstream/gemini/coordinates.js";
@@ -28,7 +29,7 @@ export const GEMINI_PRICING_SOURCE = {
   /** 위 주석의 공식 가격 문서. 표의 모든 값의 출처다. */
   url: "https://ai.google.dev/gemini-api/docs/pricing",
   /** 표를 직접 읽어 확인한 날짜. */
-  checkedAt: "2026-11-18",
+  checkedAt: "2026-11-19",
 } as const;
 
 export const GEMINI_PRICING_TIME_ZONE = "America/Los_Angeles";
@@ -94,15 +95,30 @@ const HYDROGEN_PRICES: Readonly<Record<GeminiPriceTier, GeminiTokenPrice>> = {
   priority: { input: 2_700_000n, output: 13_500_000n, cached: 135_000n },
 };
 
+/** Neon도 날짜별 변동이 없다(2026-11-19 공식 가격 문서 확인). */
+const NEON_PRICES: Readonly<Record<GeminiPriceTier, GeminiTokenPrice>> = {
+  standard: { input: 3_000_000n, output: 15_000_000n, cached: 150_000n },
+  flex: { input: 1_500_000n, output: 7_500_000n, cached: 75_000n },
+  priority: { input: 5_400_000n, output: 27_000_000n, cached: 270_000n },
+};
+
 /**
  * (model, serviceTier, 요청 시각)으로 고른 단가. 전환일 시각은 태평양시 2026-12-01 00:00이다.
- * Argon·Carbon만 날짜에 따라 오르고, Hydrogen은 표에 기간이 없어 고정이다.
+ * Argon·Carbon만 날짜에 따라 오르고, Hydrogen·Neon은 표에 기간이 없어 고정이다.
  */
 export function geminiTokenPrice(model: GeminiModelId, serviceTier: string | undefined, at: number): GeminiTokenPrice {
   const tier = geminiPriceTier(serviceTier);
-  if (model === "gemini-4-hydrogen") return HYDROGEN_PRICES[tier];
-  const schedule = ARGON_CARBON_PRICES[tier];
-  return at >= GEMINI_PRICE_DOUBLING_AT ? schedule.fromDecember2026 : schedule.throughNovember2026;
+  switch (model) {
+    case "gemini-4-hydrogen":
+      return HYDROGEN_PRICES[tier];
+    case "gemini-4-neon":
+      return NEON_PRICES[tier];
+    case "gemini-4-argon":
+    case "gemini-4-carbon": {
+      const schedule = ARGON_CARBON_PRICES[tier];
+      return at >= GEMINI_PRICE_DOUBLING_AT ? schedule.fromDecember2026 : schedule.throughNovember2026;
+    }
+  }
 }
 
 /**
