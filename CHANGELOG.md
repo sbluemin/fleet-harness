@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.312.0] - 2026-11-19
+
+### fleet-console
+
+#### Added
+- Use Gemini 4 Neon (`gemini-4-neon`) through the Gemini API key provider in the model picker and routing pool.
+- Extend a review the Commodore handed to you with one sentence: write it in the message box and press Extend scope, and the Commander plans the next round; the phone objective screen has the same action.
+
+#### Changed
+- Pending decisions in the Commodore chat no longer cover the conversation: they wait as a one-line chip above the composer, open into a single decision with quick answers when pressed, and expand their details in place only when you choose to read them.
+
 ## [1.311.1] - 2026-11-19
 
 ### fleet-console
