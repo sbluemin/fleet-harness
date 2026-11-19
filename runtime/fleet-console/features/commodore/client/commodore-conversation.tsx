@@ -1,4 +1,3 @@
-import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
 import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
@@ -14,7 +13,7 @@ import type { ClientTheaterInboxCapability } from "../../workspace/shared/theate
 
 import { commodoreChatEntries, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
-import { CommodorePersonInbox } from "./commodore-person-inbox.js";
+import { useCommodoreDecisionDock } from "./commodore-person-inbox.js";
 import { CommodoreTasks } from "./commodore-tasks.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo } from "./commodore-inbox-section.js";
 import { CommodoreComposerSettings, requestCommodoreComposerSettings, type CommodoreComposerSettingsSection } from "./commodore-composer-settings.js";
@@ -353,10 +352,8 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   const working = useMemo<readonly ConversationSpeaker[]>(() => (turning ? [speaker] : []), [speaker, turning]);
   // 진행 줄의 이름 뒤 낱말 — 아바타가 연기하는 것과 같은 턴의 계열이다.
   const activity = useCommodoreMongleActivity(turning ? commodoreId : null);
-  const conversationRef = useRef<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLElement | null>(null);
   useConversationDockHeight(dockRef);
-  useChromeHeightProperty(dockRef, conversationRef, "--commodore-foot-h");
 
   const [loadingOlder, setLoadingOlder] = useState(false);
   const readOlder = () => {
@@ -434,18 +431,21 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
   // 답 단추는 기존 사령관 메시지 API로 보낸다. 초안은 건드리지 않으며 읽기 전용이면 전송 포트를 주지 않는다.
   const sendOpenUI = useCallback((text: string) => { void messageCommodore(commodoreId, text).catch(() => {}); }, [commodoreId]);
   // 사령관의 지금 상태는 빈 입력의 자리표가 말한다. 읽기 전용이면 입력 대신 돌아가기가 선다.
+  // 결정 대기함(B+) — 칩·한 줄·펼친 내용은 대화 독 안에 서고(`decision`), 입력창은 한 줄이 열리면 그 결정의 답 칸이 된다. 읽기 전용에는 없다.
+  const decision = useCommodoreDecisionDock({ theaterId: commodoreId, language, onEnded: fail });
+  const dock = readOnly ? null : decision;
   const renderComposer = (trailing?: ReactNode) => (
     <footer ref={dockRef} className="objectives-commodore-foot">
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} trailing={trailing} onFail={fail} onClear={() => setFailure(null)} />}
+        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} trailing={trailing} decisionTarget={dock?.target ?? null} onFail={fail} onClear={() => setFailure(null)} />}
     </footer>
   );
   const topSettings = !readOnly && view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} onOpenChange={setSettingsOpen} /> : null;
   const mapMode = useCommodoreMapMode(commodoreId);
   return (
-    <div ref={conversationRef} className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
+    <div className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
       {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
           밑으로 흘러 올라간다. */}
       {(run?.phase === "retrying" || run?.phase === "error") ? (
@@ -502,7 +502,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
             openBoardAction={openBoardAction}
             openLedger={openLedger}
             references={references} openUIOpen={openUIOpen}
-            overlay={readOnly ? null : <CommodorePersonInbox theaterId={commodoreId} language={language} onEnded={fail} />}
+            decision={dock}
             composer={readOnly ? renderComposer(null) : ({ trailing }) => renderComposer(trailing)}
             composerTopEnd={topSettings}
             composerTopEntries={!readOnly}

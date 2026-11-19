@@ -7,7 +7,7 @@ import { PERSON_HOLD_TARGETS, type Objective, type ObjectivePersonHold } from ".
 import { commanderMongleState, ObjectiveAvatar } from "./objective-avatar.js";
 import { goToObjective } from "./fresh-conversation.js";
 import { HandedFollowupCard } from "./handed-followups.js";
-import { HandedInboxDetail } from "./handed-inbox.js";
+import { HandedInboxDetail, HandedInboxQuick } from "./handed-inbox.js";
 import { consultDelivery } from "./conversation.js";
 import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readBoard, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
 
@@ -137,4 +137,5 @@ export const commodoreBoard: CommodoreBoardClient = {
   renderObjectiveAvatar: (commodoreId, objectiveId, size) => <ObjectiveMark commodoreId={commodoreId} objectiveId={objectiveId} size={size} />,
   renderHandedFollowup: (objectiveId, { language, phone, open }) => <HandedFollowupCard objectiveId={objectiveId} language={language} phone={phone} open={open} />,
   renderInboxDetail: (objectiveId, kind, { language, phone }) => <HandedInboxDetail objectiveId={objectiveId} kind={kind} language={language} phone={phone} />,
+  renderInboxQuick: (objectiveId, kind, { language, phone, onFailed }) => <HandedInboxQuick objectiveId={objectiveId} kind={kind} language={language} phone={phone} onFailed={onFailed} />,
 };

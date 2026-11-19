@@ -30,16 +30,58 @@ export function HandedInboxDetail({ objectiveId, kind, language, phone }: {
     : <ReviewDetail objective={objective} language={language} phone={phone} />;
 }
 
+async function holdPost(objectiveId: string, language: ConsoleLocale, path: string, body: Record<string, unknown>): Promise<void> {
+  const api = objectivesApi();
+  if (!api) throw new Error("objectives_unavailable");
+  const result = await post<{ objective?: Objective }>(api, path, { objectiveId, language, ...body });
+  if (result?.objective) applyObjectiveResponse(result.objective);
+}
+
+/**
+ * 한 줄 결정의 빠른 답 — 한 번에 끝나는 경우만 단추를 세운다. 기준은 모두 승인(제안이 하나면 그 승인), 검토는 후속 후보가 없고
+ * 막힘이 없을 때의 완료다. 개별 승인·거절·메모·돌려주기와 후속 고르기는 펼친 카드(`HandedInboxDetail`)가 맡는다.
+ */
+export function HandedInboxQuick({ objectiveId, kind, language, phone, onFailed }: {
+  readonly objectiveId: string;
+  readonly kind: Exclude<PersonHoldTarget, "followup">;
+  readonly language: ConsoleLocale;
+  readonly phone: boolean;
+  readonly onFailed: (error: unknown) => void;
+}) {
+  const read = () => findAnyObjective(objectiveId);
+  const objective = useSyncExternalStore(subscribeObjectiveOrFinished, read, read);
+  const t = getT(language, phone);
+  const [busy, setBusy] = useState(false);
+  if (!objective || objective.removed || !livePersonHold(objective, kind)) return null;
+  let label: string;
+  let path: string;
+  let body: Record<string, unknown> = {};
+  if (kind === "criteria") {
+    const proposals = objective.criteriaProposals;
+    if (objective.done || proposals.length === 0) return null;
+    if (proposals.length === 1) { label = t("objectives.proposal.approve"); path = "/criterion/approve"; body = { proposalId: proposals[0]!.id }; }
+    else { label = t("objectives.criteria.approveAll"); path = "/criterion/approve-all"; }
+  } else {
+    const hasCandidates = isFollowupSelectable(objective) && openFollowups(objective).length > 0;
+    if (hasCandidates || objective.criteriaProposals.length > 0 || steeredEdits(objective)) return null;
+    label = t("objectives.review.complete");
+    path = "/objective/complete";
+  }
+  const run = () => {
+    if (busy) return;
+    setBusy(true);
+    void holdPost(objectiveId, language, path, body).catch(onFailed).finally(() => setBusy(false));
+  };
+  return <button type="button" className="commodore-decision-quick is-primary" disabled={busy} aria-busy={busy || undefined} onClick={run}>{label}</button>;
+}
+
 function useHoldActions(objectiveId: string, language: ConsoleLocale, phone: boolean, target: Exclude<PersonHoldTarget, "followup">) {
   const t = getT(language, phone);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => { setError(null); }, [objectiveId, target]);
   const run = async (path: string, body: Record<string, unknown>) => {
-    const api = objectivesApi();
-    if (!api) throw new Error("objectives_unavailable");
-    const result = await post<{ objective?: Objective }>(api, path, { objectiveId, language, ...body });
-    if (result?.objective) applyObjectiveResponse(result.objective);
+    await holdPost(objectiveId, language, path, body);
   };
   const guarded = (work: () => Promise<void>) => {
     if (busy) return;

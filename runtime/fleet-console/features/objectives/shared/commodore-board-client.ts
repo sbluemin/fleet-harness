@@ -67,4 +67,9 @@ export interface CommodoreBoardClient {
   renderHandedFollowup(objectiveId: string, options: { readonly language: "en" | "ko"; readonly phone: boolean; readonly open: () => void }): ReactNode;
   /** 넘긴 기준·검토를 그 자리에서 처리한다. 후속은 `renderHandedFollowup`. */
   renderInboxDetail(objectiveId: string, kind: Exclude<CommodoreInboxKind, "followup">, options: { readonly language: "en" | "ko"; readonly phone: boolean }): ReactNode;
+  /**
+   * 한 줄 결정에 놓는 빠른 답 — 한 번에 끝나는 경우에만 단추를 세우고(기준: 모두 승인, 검토: 후속 후보가 없을 때의 완료) 아니면 아무것도 그리지 않는다.
+   * 그 밖은 `renderInboxDetail`의 펼친 카드가 맡는다. 실패는 `onFailed`로 돌려준다.
+   */
+  renderInboxQuick(objectiveId: string, kind: Exclude<CommodoreInboxKind, "followup">, options: { readonly language: "en" | "ko"; readonly phone: boolean; readonly onFailed: (error: unknown) => void }): ReactNode;
 }
