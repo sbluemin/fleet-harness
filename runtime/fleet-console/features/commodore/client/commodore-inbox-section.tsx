@@ -20,6 +20,7 @@ import { isComposerAttachmentCandidate } from "../../execution/client/composer-p
 import { useComposerAttachmentSnapshot } from "../../execution/client/composer-primitives/attachment-input.js";
 import { SyncedTextarea } from "../../execution/client/composer-primitives/input.js";
 import { referencePlainText } from "../../execution/shared/conversation/references.js";
+import { registerComposerDraft } from "./commodore-composer-bridge.js";
 import type { Translate } from "@fleet-console/i18n";
 import { SettingsRow, SettingsToggle } from "../../settings/client/preferences-context.js";
 import { CommanderSubagentsSection, CommodoreBasePromptSection, useCommanderSubagents, useCommodoreBasePrompt } from "../../settings/client/commodore-session-settings.js";
@@ -746,6 +747,13 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
   const setBudgetNotice = (value: string | null) => draft.update({ budgetNotice: value });
   const composing = useRef(false);
   const inputRef = useRef<CommodoreReferenceInputHandle | null>(null);
+  // 결정 한 줄의 「범위 넓히기」가 이 입력창의 글을 한마디로 가져간다 — 읽기·비우기·초점의 손잡이만 맡긴다.
+  useEffect(() => registerComposerDraft(theaterId, {
+    read: () => { const current = draft.read(); return { text: referencePlainText(current.text, current.references.map(({ id, title }) => ({ id, label: title }))), revision: current.textRevision, sending: current.sending }; },
+    clear: (revision) => { if (draft.read().textRevision === revision) draft.update({ text: "", references: [] }); },
+    focus: () => inputRef.current?.focus({ preventScroll: true }),
+    reserve: (on) => draft.update({ sending: on }),
+  }), [theaterId, draft]);
   const clear = useClearConfirmation(theaterId, onFail, onClear);
   const clearKey = useReleasedKey();
   const mounted = useRef(false);

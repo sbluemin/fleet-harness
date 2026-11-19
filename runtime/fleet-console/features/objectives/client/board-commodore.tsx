@@ -9,7 +9,7 @@ import { goToObjective } from "./fresh-conversation.js";
 import { HandedFollowupCard } from "./handed-followups.js";
 import { HandedInboxDetail, HandedInboxQuick } from "./handed-inbox.js";
 import { consultDelivery } from "./conversation.js";
-import { findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readBoard, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
+import { extendObjective, findFinishedObjective, finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, noteAlive, openObjectiveFromCluster, openObjectiveOnPhone, readBoard, revealObjective, subscribeFinishedObjectivesStore, subscribeObjective, useObjectiveSummaries } from "./objectives-state.js";
 
 /** 지휘관이 돌고 있는 목표 — 개시했고, 끝나지 않았고, 사람의 검토·인계를 기다리지 않는다. */
 export function isRunningObjective(objective: Objective): boolean {
@@ -138,4 +138,5 @@ export const commodoreBoard: CommodoreBoardClient = {
   renderHandedFollowup: (objectiveId, { language, phone, open }) => <HandedFollowupCard objectiveId={objectiveId} language={language} phone={phone} open={open} />,
   renderInboxDetail: (objectiveId, kind, { language, phone }) => <HandedInboxDetail objectiveId={objectiveId} kind={kind} language={language} phone={phone} />,
   renderInboxQuick: (objectiveId, kind, { language, phone, onFailed }) => <HandedInboxQuick objectiveId={objectiveId} kind={kind} language={language} phone={phone} onFailed={onFailed} />,
+  extend: extendObjective,
 };

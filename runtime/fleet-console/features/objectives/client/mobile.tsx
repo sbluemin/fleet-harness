@@ -9,7 +9,7 @@ import type { RailEntryAttentionItem, RailEntryFinishedItem } from "../../worksp
 import { SettingsCard, SettingsRow, SettingsToggle } from "../../settings/client/preferences-context.js";
 import { useMobileSettingsHost } from "../../settings/client/mobile-host.js";
 
-import { unseenRecords, type Decision, type Objective, type ObjectiveMember } from "../shared/types.js";
+import { MAX_CONTEXT, unseenRecords, type Decision, type Objective, type ObjectiveMember } from "../shared/types.js";
 import { bandChoices, bandFailure } from "./board-actions.js";
 import { commodoreBoardOf, livePersonHolds, openAsks, openCommodoreMobile, personTurnAt, subscribeCommodore } from "./board-commodore.js";
 import type { CommodoreAsk } from "../../commodore/shared/contracts/types.js";
@@ -51,6 +51,7 @@ const Icon = ({ children, size = 20 }: { readonly children: ReactNode; readonly 
 const Chevron = ({ open, size }: { readonly open: boolean; readonly size?: number }) => <Icon size={size ?? 22}><path d={open ? "M6 9l6 6 6-6" : "M9 6l6 6-6 6"} /></Icon>;
 const MessageIcon = () => <Icon><path d="M5 4h14a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-8l-5 4v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" /><path d="M12 7.5v6M9 10.5h6" /></Icon>;
 const CheckIcon = ({ size }: { readonly size?: number }) => <MenuCheckGlyph size={size ?? 20} strokeWidth={1.7 / 1.5} />;
+const ExtendIcon = () => <Icon><path d="M12 5v14M5 12h14" /><path d="M4 4h4M4 4v4M20 20h-4M20 20v-4" /></Icon>;
 const SendIcon = () => <Icon><path d="M12 19V5M6 11l6-6 6 6" /></Icon>;
 /** 호스트 모바일 ⋮의 보관·이름 변경 아이콘과 같은 모양. */
 const ArchiveIcon = () => <Icon><rect x="3" y="4" width="18" height="5" rx="1" /><path d="M5 9v10h14V9M10 13h4" /></Icon>;
@@ -304,6 +305,8 @@ type FinishBlock = "awaiting" | "working" | "gated" | "steer" | "notInReview";
 interface ObjectiveActions {
   readonly recipients: readonly Recipient[];
   readonly message: boolean;
+  /** 범위 넓히기 — 데스크톱 띠(`choose`)와 같은 판정: 검토 대기이거나 완료한 목표에서 고를 수 있다. 한마디(필수)는 시트가 받는다. */
+  readonly extend: boolean;
   readonly complete: boolean;
   readonly handOff: boolean;
   readonly stop: boolean;
@@ -317,7 +320,7 @@ interface ObjectiveActions {
 }
 
 /**
- * ⋮ 의 사람 동작 — 데스크톱 하단 띠와 같은 판정에서, 폰에서 의미 있는 넷(메시지·완료·검토로 넘기기·중단)만 고른다.
+ * ⋮ 의 사람 동작 — 데스크톱 하단 띠와 같은 판정에서, 폰에서 의미 있는 다섯(메시지·범위 넓히기·완료·검토로 넘기기·중단)만 고른다.
  * 개시는 ⋮ 가 아니라 본문 카드로 세운다(누름 한 번). 덧붙일 말 칸은 폰에 없으므로 바로 `/commander/start` 를 보낸다.
  * 제안 대기(띠가 잠김)·작업 중에는 카드가 막힌 채 서서 이유를 말하고, 그 밖의 다른 할 일이 먼저인 상태에서는 서지 않는다.
  */
@@ -357,10 +360,10 @@ function objectiveActions(objective: Objective, objectiveRecords: ObjectiveIndex
     followups: choices.followupAvailable,
   };
   // 후속 후보가 있으면 완료는 띠처럼 곧바로 하지 않고 후보 고르기 시트를 거친다(finish.followups).
-  return { recipients, message: has("message"), complete: has("complete"), handOff: has("handOff"), stop: has("stop"), commence, finish };
+  return { recipients, message: has("message"), extend: has("extend"), complete: has("complete"), handOff: has("handOff"), stop: has("stop"), commence, finish };
 }
 
-/** 폰 상세가 직접 세우는 띠의 걸음 — 결정 답(본문 카드)과 동작 줄의 메시지·완료·검토로 넘기기·중단. 구상·스티어링·확장은 폰에 없다. */
+/** 폰 상세가 직접 세우는 띠의 걸음 — 결정 답(본문 카드)과 동작 줄의 메시지·완료·검토로 넘기기·중단. 구상·스티어링은 폰에 없다(범위 넓히기는 ⋮ 의 시트로 받는다). */
 const PHONE_STEPS: ReadonlySet<string> = new Set(["decide", "decideMember", "message", "complete", "handOff", "stop"]);
 
 /** 가려진 입력을 끌어올린 뒤 키보드 윗변과 남기는 틈. */
@@ -438,6 +441,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const embedded = !mobileBar;
   const title = objective?.title ?? t("objectives.panel.title");
   const [sheet, setSheet] = useState(false);
+  const [extendSheet, setExtendSheet] = useState(false);
   // 단독 목표 화면의 구역. null이면 프로필(행 목록)이고, 고르면 그 구역 본문이다. 대화 정보 화면은 호스트가 구역을 고른다.
   const [section, setSection] = useState<DetailTab | null>(null);
   const [followupSheet, setFollowupSheet] = useState(false);
@@ -475,6 +479,8 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
     items.push({ id: "message", label: t("objectives.message"), icon: <MessageIcon />, disabled: !current.message, run: () => setSheet(true) });
     // 후속 후보가 남아 있으면 띠처럼 곧바로 완료하지 않고 고르기 시트를 연다 — 누르는 순간의 판정을 쓴다.
     if (current.complete) items.push({ id: "complete", label: t("objectives.review.complete"), icon: <CheckIcon />, run: () => { if (latest.current.actions?.finish?.followups) setFollowupSheet(true); else act("/objective/complete"); } });
+    // 범위 넓히기 — 한마디(필수)를 받는 시트를 연다. 검토 대기이거나 완료한 목표에서만 선다.
+    if (current.extend) items.push({ id: "extend", label: t("objectives.extend.action"), icon: <ExtendIcon />, run: () => setExtendSheet(true) });
     if (current.handOff) items.push({ id: "handOff", label: t("objectives.handoff.send"), icon: <SendIcon />, run: () => act("/objective/hand-off") });
     // 중단은 다시 개시할 수 있어 파괴 동작이 아니다 — 일반 색.
     if (current.stop) items.push({ id: "stop", label: t("objectives.stop"), icon: <StopIcon />, run: () => act("/commander/stop") });
@@ -512,7 +518,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
       })
       .catch((error: unknown) => speak(bandFailure(translate, error, { message: false, talk: false })));
   }, [api, rail]);
-  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${tidy ? 1 : 0}${archivable ? 1 : 0}` : "";
+  const menuKey = actions ? `${actions.message ? 1 : 0}${actions.extend ? 1 : 0}${actions.complete ? 1 : 0}${actions.handOff ? 1 : 0}${actions.stop ? 1 : 0}${tidy ? 1 : 0}${archivable ? 1 : 0}` : "";
   useEffect(() => {
     if (!visible || !mobileBar) return;
     const items: MobileBarMenuItem[] = [
@@ -550,6 +556,7 @@ export function MobileObjectiveDetail({ ctx, objectiveId }: { readonly ctx: Pane
   const overlays = (
     <>
       {followupSheet && followupCount > 0 ? <FollowupSheet objective={objective} finish={actions.finish} t={t} api={api} language={language} onClose={() => setFollowupSheet(false)} /> : null}
+      {extendSheet ? <ExtendSheet t={t} objectiveId={objective.id} api={api} language={language} say={say} onClose={() => setExtendSheet(false)} /> : null}
       {sheet ? <MessageSheet t={t} objectiveId={objective.id} recipients={actions.recipients} api={api} language={language} say={say} onClose={() => setSheet(false)} /> : null}
       {toast ? createPortal(<div key={toast.at} className="objectives-m-toast" role="status">{toast.text}</div>, document.body) : null}
     </>
@@ -1217,6 +1224,58 @@ const HOW_KEYS: Readonly<Record<string, ObjectiveMessageKey>> = {
   ended: "objectives.band.message.how.dormant",
   awaiting: "objectives.band.message.how.awaiting",
 };
+
+/**
+ * 「범위 넓히기」 하단 시트 — 한마디(필수)를 받아 `/objective/extend`로 보낸다. 보드 띠의 범위 넓히기와 같은 길이라, 사령관이 넘긴 검토면
+ * 그 넘김이 「사람이 답함」으로 끝나고 새 계획 회차가 열린다. 실패하면 시트가 열린 채 사유를 말하고 글은 남는다.
+ */
+function ExtendSheet({ t, objectiveId, api, language, say, onClose }: {
+  readonly t: T;
+  readonly objectiveId: string;
+  readonly api: PaneContext["api"];
+  readonly language: ConsoleLocale;
+  readonly say: (text: string) => void;
+  readonly onClose: () => void;
+}) {
+  const [text, setText] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const sheet = useBottomSheet(onClose);
+  const fieldRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { fieldRef.current?.focus({ preventScroll: true }); }, []);
+  const send = async () => {
+    if (sending || !text.trim()) return;
+    setSending(true);
+    setError(null);
+    try {
+      await post(api, "/objective/extend", { objectiveId, context: text.trim(), language });
+      say(t("objectives.mobile.extend.sent"));
+      sheet.close();
+    } catch (failure) {
+      setError(bandFailure(t, failure, { message: false, talk: true }));
+    } finally { setSending(false); }
+  };
+  return (
+    <BottomSheet sheet={sheet} t={t} title={t("objectives.extend.action")}
+      foot={(
+        <button type="button" data-press="r3" className="objectives-m-pill2 is-inv" disabled={sending || !text.trim()} onClick={() => void send()}>
+          {t(sending ? "objectives.decision.sending" : "objectives.extend.action")}
+        </button>
+      )}>
+      <textarea
+        ref={fieldRef}
+        className="objectives-m-field"
+        maxLength={MAX_CONTEXT}
+        disabled={sending}
+        value={text}
+        aria-label={t("objectives.extend.placeholder")}
+        placeholder={t("objectives.extend.placeholder")}
+        onChange={(event) => { setText(event.target.value); setError(null); }}
+      />
+      {error ? <p className="objectives-m-fault" role="status">{error}</p> : null}
+    </BottomSheet>
+  );
+}
 
 /**
  * 「메시지」 하단 시트 — 받는 사람 칩 줄 + 여러 줄 입력칸 + 「보내기」. 보드 띠의 메시지와 같은 `/commander/message`다.
