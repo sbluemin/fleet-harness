@@ -153,12 +153,14 @@ const GEMINI_SCHEMA_KEYS: ReadonlySet<string> = new Set([
  * 거절보다 상한으로 줄이는 쪽이 맞다 — 공급자가 그 이상은 어차피 내지 않는다.
  *
  * 값 출처: 2026-11-18 사령관 실측 `GET /v1beta/models`의 outputTokenLimit
- * (argon 32768, carbon 32768, hydrogen 65536). 입력 창 1048576은 카탈로그(models.json)가 가진다.
+ * (argon 32768, carbon 32768, hydrogen 65536), 2026-11-19 실측 `GET /v1beta/models/gemini-4-neon`
+ * (neon 65536). 입력 창 1048576은 카탈로그(models.json)가 가진다.
  */
 const GEMINI_OUTPUT_TOKEN_LIMITS: Readonly<Record<GeminiModelId, number>> = {
   "gemini-4-argon": 32_768,
   "gemini-4-carbon": 32_768,
   "gemini-4-hydrogen": 65_536,
+  "gemini-4-neon": 65_536,
 };
 
 function clampGeminiOutputTokens(model: string, requested: number): number {
@@ -556,7 +558,7 @@ export function linkFunctionResponseNames(contents: GeminiContent[]): GeminiCont
  * `minimal`을 지원하지 않는다: 공식 thinking 문서, 2026-11-18).
  *
  * effort가 없으면 싣지 않는다: Gemini 4는 thinking을 끌 수 없고 모델 기본값(argon·carbon medium,
- * hydrogen high)이 이미 켜져 있다. 값은 소문자다 — 2026-11-18 사령관 실측 요청(`thinkingLevel low`).
+ * hydrogen·neon high)이 이미 켜져 있다. 값은 소문자다 — 2026-11-18 사령관 실측 요청(`thinkingLevel low`).
  */
 function geminiThinkingLevel(model: string, effort: ReasoningEffort | undefined): string | undefined {
   if (effort === undefined) return undefined;

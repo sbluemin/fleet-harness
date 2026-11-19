@@ -1702,6 +1702,12 @@ describe("Gemini routing", () => {
       expect(calls[0]?.headers.get("x-goog-api-key")).toBe("gemini-key");
       expect(geminiUsage.observeUsage).toHaveBeenCalledTimes(1);
       expect(geminiUsage.observeUsage).toHaveBeenCalledWith(expect.objectContaining({ model: "gemini-4-argon", promptTokens: 3, serviceTier: "standard" }));
+
+      const neonRes = response();
+      await router.handle(ctx({ res: neonRes, token: ANTHROPIC_CRED, model: "claude-gateway--gemini--gemini-4-neon" }));
+      expect(neonRes.status).toBe(200);
+      expect(calls[1]?.url).toBe("https://generativelanguage.googleapis.com/v1beta/models/gemini-4-neon:streamGenerateContent?alt=sse");
+      expect(geminiUsage.observeUsage).toHaveBeenLastCalledWith(expect.objectContaining({ model: "gemini-4-neon", promptTokens: 3, serviceTier: "standard" }));
     } finally {
       router.dispose();
     }
