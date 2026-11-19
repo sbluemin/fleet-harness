@@ -1,4 +1,3 @@
-import { useChromeHeightProperty } from "@fleet-console/ui/react";
 import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
 import { ContextRailInlineChip } from "../../workspace/client/conversation/context-rail/inline.js";
 import { COMMODORE_SURFACE_ID } from "./commodore-conversation.js";
@@ -31,7 +30,9 @@ import type { CommodoreLiveEvent, CommodoreState, CommodoreTranscriptEntry } fro
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
 import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
-import { CommodorePersonInbox } from "./commodore-person-inbox.js";
+import { useCommodoreDecisionDock, type CommodoreDecisionDock } from "./commodore-person-inbox.js";
+import type { CommodoreDecisionTarget } from "./commodore-decision-target.js";
+import { MAX_DECISION_ANSWER_INPUT } from "../shared/contracts/questions.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
 import { CommodoreMemory } from "./commodore-memory.js";
@@ -171,7 +172,6 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   const rootRef = useRef<HTMLDivElement | null>(null);
   const dockRef = useRef<HTMLElement | null>(null);
   useConversationDockHeight(dockRef);
-  useChromeHeightProperty(dockRef, rootRef, "--commodore-foot-h");
   const [failure, setFailure] = useState<string | null>(null);
   // 곁 칸에서 고른 시각 — 기록 칸이 그 시각의 턴을 드러낸다. 같은 줄을 다시 눌러도 다시 드러나게 nonce 가 오른다.
   const [reveal, setReveal] = useState<{ readonly at: number; readonly nonce: number } | null>(null);
@@ -233,13 +233,15 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
     if (ENDED_ASK_CODES.has(code)) { setFailure(errorWord(t, code)); return; }
     setFailure(code === "commodore_disabled" ? t("commodore.failed.disabled") : code === "commodore_inactive" ? t("commodore.failed.inactive") : t("commodore.failed", { code }));
   };
+  // 결정 한 줄(B+) — 기록 탭의 입력 푸터 안에 선다. 사령관을 가리키는 Inbox가 아니면 대기함이 없다.
+  const decision = useCommodoreDecisionDock({ theaterId: commodoreId ?? "", contextTheaterId: theaterId, language, onEnded: fail });
   const totals = !view ? "" : [
     run && run.totals.session > 0 ? t("commodore.drawer.session", { n: run.totals.session }) : null,
     t("commodore.drawer.cost", { cost: (run?.totals.costUsd ?? 0).toFixed(2) }),
   ].filter(Boolean).join(" · ");
 
   return (
-    <div ref={rootRef} className={`objectives-commodore-inbox${compact ? " is-compact" : ""}`}>
+    <div ref={rootRef} data-decision-host="" className={`objectives-commodore-inbox${compact ? " is-compact" : ""}`}>
       {(run?.phase === "retrying" || run?.phase === "error") ? (
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
@@ -277,9 +279,8 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
         {tab === "settings" && view && visible ? <CommodoreSettings t={t} language={language} theaterId={commodoreId ?? ""} view={view} onFail={(error) => { fail(error); }} onClear={() => setFailure(null)} /> : null}
       </div>
-      {tab === "log" && commodoreId ? <CommodorePersonInbox theaterId={commodoreId} contextTheaterId={theaterId} language={language} anchor onEnded={fail} /> : null}
       {tab !== "log" && (failure || transcriptError) ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}
-      {tab === "log" ? <footer ref={dockRef} className="objectives-commodore-foot">{failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
+      {tab === "log" ? <footer ref={dockRef} className="objectives-commodore-foot">{failure || transcriptError ? <p className="objectives-commodore-failure" role="alert">{failure ?? t("commodore.failed", { code: transcriptError ?? "failed" })}</p> : null}{commodoreId ? <ContextRailInlineChip scope={{ kind: "surface", surfaceId: COMMODORE_SURFACE_ID, params: { commodoreId } }} /> : null}<CommodoreComposer t={t} theaterId={commodoreId ?? ""} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} decisionDock={commodoreId ? decision : null} decisionTarget={commodoreId ? decision?.target ?? null : null} onFail={fail} onClear={() => setFailure(null)} /></footer> : null}
     </div>
   );
 }
@@ -692,6 +693,13 @@ interface CommodoreComposerProps {
   readonly running?: boolean;
   readonly phone?: CommodoreComposerPhone;
   readonly topEntries?: ReactNode;
+  /**
+   * 결정 한 줄(B+)의 조각 — 대화 독(`GroupConversation`)이 아닌 표면(기록 탭·폰 기록)이 입력창과 함께 세운다. 칩은 위 줄 안에,
+   * 한 줄은 그 줄 자리에, 펼친 내용은 그 위에 선다. 대화 독이 조각을 세우는 표면은 이 값을 주지 않고 `target`만 넘긴다.
+   */
+  readonly decisionDock?: CommodoreDecisionDock | null;
+  /** 한 줄 결정이 열려 있을 때 그 결정 — 입력창이 그 결정의 답 칸이 된다(머리표·자리표·보내는 길). */
+  readonly decisionTarget?: CommodoreDecisionTarget | null;
   readonly placeholder?: string;
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
@@ -722,7 +730,7 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`Execution composer primitives`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, running = false, phone, topEntries, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel, trailing }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, running = false, phone, topEntries, decisionDock, decisionTarget, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel, trailing }: CommodoreComposerProps) {
   const accent = useAvatarAccent(commodoreAvatarKey(theaterId));
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId, attachmentPort, attachmentLimits);
@@ -730,6 +738,8 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
   const attachments = attachmentSnap.items;
   const quotes = useComposerQuotes(draft.quotes);
+  // 결정 한 줄이 열려 있으면 입력창은 그 결정의 답 칸이다.
+  const target = decisionTarget ?? null;
   const value = useMemo(() => ({ text, references }), [text, references]);
   const setValue = (next: { readonly text: string; readonly references: readonly CommodoreReference[] }) => draft.update({ text: next.text, references: next.references, textRevision: draft.read().textRevision + 1 });
   const setSending = (value: boolean) => draft.update({ sending: value });
@@ -839,6 +849,12 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
       return;
     }
     if (!usable || !message) return;
+    // 질문 하나의 직접 답은 글만 실을 수 있다 — 그 밖의 첨부·참조·인용과 섞이면 보내지 않고 이유를 말한다.
+    const direct = target?.answer && typed ? target.answer : null;
+    if (direct) {
+      if (typed.length > MAX_DECISION_ANSWER_INPUT) { setBudgetNotice(t("commodore.decision.tooLong")); return; }
+      if (draft.attachments.ids().length > 0 || sent.references.length > 0 || sentQuotes.length > 0) { setBudgetNotice(t("commodore.decision.textOnly")); return; }
+    }
     onClear(); setBudgetNotice(null); setMenuOpen(false);
     setSending(true);
     // 보내는 동안의 말풍선은 토큰 대신 「@제목」 평문이다 — 확정 줄이 오면 기록이 같은 자리에 토큰을 세운다.
@@ -851,7 +867,10 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
     const ids = draft.attachments.ids();
     const references = sent.references.map((reference) => reference.kind === "commodore" ? { kind: "commodore" as const, id: reference.id } : reference.id);
     // 실패하면 쓴 말과 이미지는 남는다 — 입력창 위 안내 줄이 이유를 말한다. 만료만 칩을 걷는다.
-    const deliver = sender ? sender({ text: message, attachmentIds: ids, references }) : messageCommodore(theaterId, message, ids, references);
+    // 질문 하나면 글이 그 질문의 직접 답이다. 기준·검토·후속과 문항이 여럿인 질문은 그 결정을 인용한 일반 메시지다 — 결정 상태는 바뀌지 않는다.
+    const deliver = direct ? direct(typed)
+      : target ? messageCommodore(theaterId, composeQuotedPrompt(message, [target.quote]), ids, references)
+        : sender ? sender({ text: message, attachmentIds: ids, references }) : messageCommodore(theaterId, message, ids, references);
     void deliver.then(() => finishSentDraft(sentKeys, sent.textRevision, false, sentQuotes.map((quote) => quote.key))).catch((error) => {
       if (draft.attachments.noteSendFailure(error, ids) === "expired") return;
       if (error instanceof Error && error.message === "attachment_budget_exceeded") setBudgetNotice(ct("composer.attach.commodoreBudget"));
@@ -878,6 +897,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
       </div>
       {/* 본문 속 지휘관 참조('@')를 품는 입력 — 높이는 CSS 가 내용만큼 자라게 하고(max-height 에서 멈춤), 맞춤법 밑줄은 채팅·새 세션
           입력처럼 끈다. 한글 조합 중 Enter 는 보내지 않는다(조합 상태는 이 컴포저도 따로 센다). */}
+      {target ? <span className="commodore-decision-tag">{target.kindLabel}</span> : null}
       <CommodoreReferenceInput
         ref={inputRef}
         t={t}
@@ -890,7 +910,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
         onFiles={addFiles}
         isFile={isComposerAttachmentCandidate}
         ariaDescribedBy={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
-        placeholder={placeholder ?? composerQuotePlaceholder(quotes.length, ct) ?? t("commodore.composer.placeholder")}
+        placeholder={target?.placeholder ?? placeholder ?? composerQuotePlaceholder(quotes.length, ct) ?? t("commodore.composer.placeholder")}
         ariaLabel={ariaLabel ?? t("commodore.composer.aria")}
         onChange={(next) => { setValue(next); clear.disarm(); if (draft.read().budgetNotice) setBudgetNotice(null); if (draft.attachments.read().notice) draft.attachments.clearNotice(); }}
         onCompositionStart={() => { composing.current = true; }}
@@ -922,7 +942,8 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
     <>
     {failure ? <ComposerNotice tone="danger" text={failure} dismissLabel={ct("composer.notice.dismiss")} onDismiss={onClear} />
       : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
-    {topEntries}
+    {decisionDock?.card}
+    {decisionDock?.engaged ? decisionDock.line : decisionDock?.chip ? <div className="commodore-decision-toprow">{decisionDock.chip}{topEntries}</div> : topEntries}
     {capsule}
     {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("commodore.clear.enterConfirm")}</p> : null}
     {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("commodore.composer.idle")}</p>}

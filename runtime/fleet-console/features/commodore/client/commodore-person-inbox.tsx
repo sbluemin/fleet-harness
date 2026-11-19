@@ -1,18 +1,25 @@
 /**
- * 사람 대기함 — 넘긴 기준·검토·후속과 사령관 질문을 입력창 위에 겹쳐 둔다.
- * 로그 안에도, 높이를 재는 독 안에도 두지 않는다. 나타나거나 펼쳐져도 대화의 scrollTop은 그대로다.
- * 항목이 없으면 아무것도 그리지 않는다.
+ * 사람 대기함 — 넘긴 기준·검토·후속과 사령관 질문을 입력창 위 독 안에 세운다(B+).
+ *
+ * 평소에는 입력창 위 한 줄(쿼터·진행 줄 자리)에 「결정 N · 가장 오래된 목표 · 종류」 칩만 보인다. 칩을 누르면 그 줄이 결정 한 줄이 되고
+ * 입력창이 답 칸이 된다 — 한 번에 한 건, ‹ ›로 넘긴다. 제목(⌄)을 누를 때만 그 결정의 내용이 입력창 위 독 흐름 안에서 펼쳐져 독이 그만큼
+ * 자라고 대화가 밀린다(대화 칸이 독 높이를 읽는 기존 길 그대로). 결정 요청이 도착하거나 칩·한 줄이 나타날 때는 아무것도 저절로 열리거나 밀리지 않는다.
+ *
+ * 이 파일은 상태와 조각(칩·줄·카드)을 만들어 주는 훅이다. 조각을 독의 어느 자리에 세울지는 표면이 정한다 — 그룹 대화 독
+ * (`GroupConversation`의 `decision`)과 사령관 입력창(`CommodoreComposer`의 `decision`).
  */
 
-import { Fragment, useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
+import { ChevronGlyph } from "@fleet-console/ui/react";
 
 import type { CommodoreInboxKind } from "../../objectives/shared/commodore-board-client.js";
 import type { CommodoreAsk } from "../shared/contracts/types.js";
-import { finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, openObjectiveFromCluster, openObjectiveOnPhone, renderHandedFollowup, renderInboxDetail, renderObjectiveAvatar, subscribeFinishedObjectivesStore, useObjectiveTheater } from "./board.js";
+import { finishedObjectives, finishedObjectivesLoaded, loadFinishedObjectives, openObjectiveFromCluster, openObjectiveOnPhone, renderHandedFollowup, renderInboxDetail, renderInboxQuick, renderObjectiveAvatar, subscribeFinishedObjectivesStore, useObjectiveTheater } from "./board.js";
 import { CommodoreAskCard } from "./commodore-ask.js";
+import type { CommodoreDecisionTarget } from "./commodore-decision-target.js";
 import { useCommodoreName } from "./commodore-name.js";
 import { getT } from "./i18n/index.js";
-import { openAsks } from "./commodore-state.js";
+import { answerCommodoreAsk, openAsks } from "./commodore-state.js";
 
 type Kind = CommodoreInboxKind | "ask";
 const KIND_ORDER: Record<Kind, number> = { criteria: 0, review: 1, followup: 2, ask: 3 };
@@ -22,6 +29,14 @@ const KIND_KEY = {
   followup: "commodore.inbox.kind.followup",
   ask: "commodore.inbox.kind.ask",
 } as const;
+/** 펼친 내용이 자라는 상한 — 대화 영역 높이의 몫. */
+const CARD_CAP_RATIO = 0.4;
+/** 접힘 전환(CSS `--duration-slow`)이 끝나기를 기다려 내용을 내린다. */
+const FOLD_MS = 320;
+/** 한 줄에 선택지 칩으로 두는 질문의 상한 — 그보다 많으면 펼친 카드에서 고른다. */
+const QUICK_OPTION_MAX = 3;
+/** 대화 영역을 이루는 칸 — 펼친 내용의 높이 상한은 이 칸의 몫이다. */
+const HOST_SELECTOR = ".group-chat, .objectives-cm-fill, [data-decision-host]";
 
 interface InboxItem {
   readonly id: string;
@@ -34,15 +49,25 @@ interface InboxItem {
   readonly ask?: CommodoreAsk;
 }
 
-export function CommodorePersonInbox({ theaterId, contextTheaterId = "", language, phone = false, anchor = false, leave, onEnded }: {
+/** 표면이 독 안에 세울 조각. `engaged`면 `line`이 쿼터·진행 줄 자리를 차지하고, 아니면 `chip`이 그 줄 안에 선다. */
+export interface CommodoreDecisionDock {
+  readonly chip: ReactNode;
+  readonly line: ReactNode;
+  /** 제목을 눌러 펼친 내용 — 입력창 위 독 흐름 안. 접혀 있으면 null이다. */
+  readonly card: ReactNode;
+  readonly engaged: boolean;
+  /** 입력창이 답 칸일 때 그 대상 — 한 줄이 열려 있는 동안만 있다. 같은 표면의 입력창에 넘긴다. */
+  readonly target: CommodoreDecisionTarget | null;
+}
+
+export function useCommodoreDecisionDock({ theaterId, contextTheaterId = "", language, phone = false, leave, onEnded }: {
   readonly theaterId: string;
   readonly contextTheaterId?: string;
   readonly language: "en" | "ko";
   readonly phone?: boolean;
-  readonly anchor?: boolean;
   readonly leave?: (run: () => void) => void;
   readonly onEnded?: (error: unknown) => void;
-}) {
+}): CommodoreDecisionDock | null {
   const t = getT(language);
   const name = useCommodoreName(theaterId, t);
   const board = useObjectiveTheater(theaterId);
@@ -50,11 +75,11 @@ export function CommodorePersonInbox({ theaterId, contextTheaterId = "", languag
   const finished = useSyncExternalStore(subscribeFinishedObjectivesStore, () => finishedObjectives(theaterId), () => finishedObjectives(theaterId));
   useEffect(() => { if (theaterId && !finishedObjectivesLoaded(theaterId)) loadFinishedObjectives(theaterId); }, [theaterId]);
   const [answered, setAnswered] = useState<readonly string[]>([]);
-  const [filter, setFilter] = useState<Kind | "all">("all");
-  const [sheet, setSheet] = useState(false);
-  const [openId, setOpenId] = useState<string | null>(null);
-  const [heldSole, setHeldSole] = useState<string | null>(null);
-  useEffect(() => { setAnswered([]); setFilter("all"); setSheet(false); setOpenId(null); setHeldSole(null); }, [theaterId]);
+  // 기본은 칩이다. 사람이 눌러야 한 줄 결정이 되고, 항목이 하나뿐이어도 저절로 열지 않는다.
+  const [engaged, setEngaged] = useState(false);
+  const [detail, setDetail] = useState(false);
+  const [focus, setFocus] = useState<{ readonly id: string | null; readonly index: number }>({ id: null, index: 0 });
+  useEffect(() => { setAnswered([]); setEngaged(false); setDetail(false); setFocus({ id: null, index: 0 }); }, [theaterId]);
 
   const objectives = useMemo(() => {
     const seen = new Set(board.objectives.map((objective) => objective.id));
@@ -84,26 +109,60 @@ export function CommodorePersonInbox({ theaterId, contextTheaterId = "", languag
     rows.sort((a, b) => a.at - b.at || KIND_ORDER[a.kind] - KIND_ORDER[b.kind] || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
     return rows;
   }, [objectives, asks, answered, name, contextTheaterId]);
-  const counts = useMemo(() => {
-    const tally: Record<Kind, number> = { criteria: 0, review: 0, followup: 0, ask: 0 };
-    for (const item of items) tally[item.kind] += 1;
-    return tally;
-  }, [items]);
-  const filtered = filter === "all" ? items : items.filter((item) => item.kind === filter);
-  useEffect(() => {
-    if (filter !== "all" && counts[filter] === 0) setFilter("all");
-  }, [filter, counts]);
-  const soleId = filtered.length === 1 ? filtered[0]!.id : null;
-  useEffect(() => {
-    if (!soleId) { setHeldSole(null); return; }
-    if (heldSole === soleId) return;
-    setSheet(true);
-    setOpenId(soleId);
-    setHeldSole(soleId);
-  }, [soleId, heldSole]);
-  if (items.length === 0) return null;
 
-  const oldest = items[0]!;
+  // 지금 보는 결정 — 같은 결정을 id로 따라가고, 사라졌으면(답함) 있던 자리의 다음 결정으로 간다. 새 결정이 도착해도 보던 결정은 그대로다.
+  const found = items.findIndex((item) => item.id === focus.id);
+  const index = items.length === 0 ? 0 : found >= 0 ? found : Math.min(focus.index, items.length - 1);
+  const current = items[index] ?? null;
+  const currentId = current?.id ?? null;
+  useEffect(() => {
+    if (currentId !== null && (focus.id !== currentId || focus.index !== index)) setFocus({ id: currentId, index });
+  }, [currentId, index, focus.id, focus.index]);
+  const empty = items.length === 0;
+  useEffect(() => { if (empty) { setEngaged(false); setDetail(false); } }, [empty]);
+
+  const onEndedRef = useRef(onEnded);
+  onEndedRef.current = onEnded;
+  const markAnswered = useCallback((id: string) => setAnswered((list) => list.includes(id) ? list : [...list, id]), []);
+
+  // 입력창이 답 칸이 된다 — 보는 결정이 입력창의 대상이다. 질문 하나면 보낸 글이 그 직접 답, 그 밖은 결정을 인용한 일반 메시지다.
+  const live = engaged && current ? current : null;
+  const liveAsk = live?.ask ?? null;
+  const liveId = live?.id ?? null;
+  const liveKind = live?.kind ?? null;
+  const liveTitle = live?.title ?? "";
+  const liveReason = live?.reason ?? "";
+  const liveObjectiveId = live?.objectiveId ?? null;
+  const target = useMemo<CommodoreDecisionTarget | null>(() => {
+    if (!liveId || !liveKind) return null;
+    const kindLabel = t(KIND_KEY[liveKind]);
+    // 입력창 글의 뜻은 여기 한 곳이 정한다 — 질문 하나면 직접 답, 그 밖은 결정을 인용한 일반 메시지(결정 상태는 그대로).
+    const direct = liveAsk ? directAnswer(theaterId, liveAsk, markAnswered) : null;
+    return {
+      kindLabel,
+      quote: {
+        kind: "comment",
+        excerpt: liveAsk ? liveAsk.questions.map((question) => question.text).join(" / ") : liveReason,
+        source: { label: `${liveTitle} · ${kindLabel}`, ref: liveObjectiveId ? `objective:${liveObjectiveId}` : `ask:${liveAsk?.id ?? liveId}` },
+      },
+      answer: direct,
+      placeholder: t(direct ? "commodore.decision.answerPlaceholder" : "commodore.decision.notePlaceholder"),
+    };
+  }, [theaterId, liveId, liveKind, liveAsk, liveTitle, liveReason, liveObjectiveId, markAnswered, t]);
+
+  // 펼친 내용은 접힘 전환이 끝날 때까지 남겨 독이 부드럽게 줄어든다.
+  const open = engaged && detail && current !== null;
+  const [shown, setShown] = useState(false);
+  useEffect(() => {
+    if (open) { setShown(true); return; }
+    const timer = window.setTimeout(() => setShown(false), FOLD_MS);
+    return () => window.clearTimeout(timer);
+  }, [open]);
+  const foldTimer = useRef<number | null>(null);
+  useEffect(() => () => { if (foldTimer.current !== null) window.clearTimeout(foldTimer.current); }, []);
+
+  if (!current) return null;
+
   const openObjective = (item: InboxItem) => {
     if (!item.objectiveId) return;
     const run = () => {
@@ -113,64 +172,137 @@ export function CommodorePersonInbox({ theaterId, contextTheaterId = "", languag
     if (phone && leave) leave(run);
     else run();
   };
-  const kinds = (["criteria", "review", "followup", "ask"] as const).filter((kind) => counts[kind] > 0);
+  const go = (step: number) => {
+    const next = items[(index + step + items.length) % items.length];
+    if (next) setFocus({ id: next.id, index: items.indexOf(next) });
+  };
+  const fold = () => {
+    if (foldTimer.current !== null) window.clearTimeout(foldTimer.current);
+    if (!detail) { setEngaged(false); return; }
+    // 펼친 내용을 먼저 접어 독이 줄어든 뒤에 칩이 된다.
+    setDetail(false);
+    foldTimer.current = window.setTimeout(() => { foldTimer.current = null; setEngaged(false); }, FOLD_MS);
+  };
 
-  return (
-    <div className={`commodore-person-inbox${phone ? " is-phone" : ""}${anchor ? " is-anchored" : ""}${sheet ? " is-open" : ""}`}>
-      <div className="commodore-person-inbox-panel">
-        <button
-          type="button"
-          className="commodore-person-inbox-bar"
-          aria-expanded={sheet}
-          onClick={() => setSheet((open) => !open)}
-        >
-          <span className="commodore-person-inbox-count">{t("commodore.inbox.waiting", { n: items.length })}</span>
-          {!sheet ? (
-            <>
-              <span className="commodore-person-inbox-oldest">{`${oldest.title} · ${t(KIND_KEY[oldest.kind])} · ${oldest.reason}`}</span>
-              <span className="commodore-person-inbox-age">{waitLabel(t, oldest.at)}</span>
-            </>
-          ) : null}
-        </button>
-        {sheet ? (
-          <>
-            <div className="commodore-person-inbox-filters" role="toolbar" aria-label={t("commodore.inbox.filter")}>
-              <FilterChip label={t("commodore.inbox.kind.all", { n: items.length })} pressed={filter === "all"} onClick={() => setFilter("all")} />
-              {kinds.map((kind) => <FilterChip key={kind} label={t("commodore.inbox.kind.count", { kind: t(KIND_KEY[kind]), n: counts[kind] })} pressed={filter === kind} onClick={() => setFilter(kind)} />)}
-            </div>
-            <div className="commodore-person-inbox-list">
-              {filtered.map((item) => {
-                const open = openId === item.id;
-                return (
-                  <Fragment key={item.id}>
-                    <div className={`commodore-person-inbox-row${open ? " is-open" : ""}`}>
-                      <button type="button" className="commodore-person-inbox-row-main" aria-expanded={open} onClick={() => setOpenId(open ? null : item.id)}>
-                        <span className="commodore-person-inbox-lead">
-                          {item.objectiveId ? <span className="commodore-person-inbox-avatar">{renderObjectiveAvatar(theaterId, item.objectiveId, 18)}</span> : null}
-                          <span className="commodore-person-inbox-title">{item.title}</span>
-                          <span className="commodore-person-inbox-age">{waitLabel(t, item.at)}</span>
-                        </span>
-                        <span className="commodore-person-inbox-meta">
-                          <span className={`commodore-person-inbox-kind is-${item.kind}`}>{t(KIND_KEY[item.kind])}</span>
-                          <span className="commodore-person-inbox-reason">{item.reason}</span>
-                        </span>
-                      </button>
-                      {item.objectiveId ? <button type="button" className="group-chat-link commodore-person-inbox-open" onClick={() => openObjective(item)}>{t("commodore.inbox.open")}</button> : null}
-                    </div>
-                    {open ? <InboxBody item={item} theaterId={theaterId} contextTheaterId={contextTheaterId} language={language} phone={phone} leave={leave} onEnded={onEnded} onAnswered={(id) => setAnswered((current) => current.includes(id) ? current : [...current, id])} openObjective={() => openObjective(item)} /> : null}
-                  </Fragment>
-                );
-              })}
-            </div>
-          </>
+  const oldest = items[0]!;
+  const chip = engaged ? null : (
+    <button type="button" className="commodore-decision-chip" onClick={() => { setEngaged(true); setDetail(false); }}>
+      <span className="commodore-decision-chip-n">{t("commodore.decision.chip", { n: items.length })}</span>
+      <span className="commodore-decision-chip-text">{`${oldest.title} · ${t(KIND_KEY[oldest.kind])}`}</span>
+    </button>
+  );
+
+  const title = current.kind === "ask" && !current.objectiveId ? current.reason : `${current.title} · ${current.reason}`;
+  const line = !engaged ? null : (
+    <div className="commodore-decision-line">
+      <span className="commodore-decision-nav">
+        <button type="button" disabled={items.length < 2} aria-label={t("commodore.decision.prev")} onClick={() => go(-1)}>‹</button>
+        <span>{`${index + 1}/${items.length}`}</span>
+        <button type="button" disabled={items.length < 2} aria-label={t("commodore.decision.next")} onClick={() => go(1)}>›</button>
+      </span>
+      <span className={`commodore-decision-kind is-${current.kind}`}>{t(KIND_KEY[current.kind])}</span>
+      <button type="button" className="commodore-decision-title" aria-expanded={open} onClick={() => setDetail((value) => !value)}>
+        <span className="commodore-decision-title-text">{title}</span>
+        <ChevronGlyph direction="down" className="commodore-decision-title-chev" />
+      </button>
+      <QuickAnswer key={current.id} item={current} theaterId={theaterId} language={language} phone={phone} onAnswered={markAnswered} onFailed={(error) => onEndedRef.current?.(error)} />
+      <button type="button" className="commodore-decision-fold" aria-label={t("commodore.decision.fold")} onClick={fold}>✕</button>
+    </div>
+  );
+
+  const card = !engaged ? null : (
+    <div className={`commodore-decision-detail${open ? " is-open" : ""}`}>
+      <div className="commodore-decision-detail-in">
+        {shown ? (
+          <DecisionCard item={current} theaterId={theaterId} contextTheaterId={contextTheaterId} language={language} phone={phone} leave={leave} onEnded={onEnded} onAnswered={markAnswered} openObjective={() => openObjective(current)} />
         ) : null}
       </div>
     </div>
   );
+
+  return { chip, line, card, engaged, target };
 }
 
-function FilterChip({ label, pressed, onClick }: { readonly label: string; readonly pressed: boolean; readonly onClick: () => void }) {
-  return <button type="button" className={`commodore-person-inbox-chip${pressed ? " is-on" : ""}`} aria-pressed={pressed} onClick={onClick}>{label}</button>;
+/** 입력창 글이 질문의 직접 답이 되는 경우 — 문항이 하나인 질문뿐이다(서버가 모든 문항을 한 번에 받으므로 여럿이면 글로 답할 문항을 가를 수 없다). */
+function directAnswer(theaterId: string, ask: CommodoreAsk, onAnswered: (id: string) => void): ((text: string) => Promise<void>) | null {
+  const only = ask.questions.length === 1 ? ask.questions[0]! : null;
+  if (!only) return null;
+  return async (text) => {
+    await answerCommodoreAsk(theaterId, ask.id, [{ questionId: only.id, selectedOptionIds: [], text }]);
+    onAnswered(ask.id);
+  };
+}
+
+/** 한 줄에 두는 빠른 답 — 한 번에 끝나는 경우에만. 그 밖은 아무것도 그리지 않고, 제목을 눌러 펼친 카드에서 지금 동작 그대로 답한다. */
+function QuickAnswer({ item, theaterId, language, phone, onAnswered, onFailed }: {
+  readonly item: InboxItem;
+  readonly theaterId: string;
+  readonly language: "en" | "ko";
+  readonly phone: boolean;
+  readonly onAnswered: (id: string) => void;
+  readonly onFailed: (error: unknown) => void;
+}) {
+  const [busy, setBusy] = useState(false);
+  if (item.kind === "ask") {
+    const ask = item.ask;
+    const question = ask && ask.questions.length === 1 ? ask.questions[0]! : null;
+    if (!ask || !question || question.multiSelect || question.options.length < 2 || question.options.length > QUICK_OPTION_MAX) return null;
+    const pick = (optionId: string) => {
+      if (busy) return;
+      setBusy(true);
+      void answerCommodoreAsk(theaterId, ask.id, [{ questionId: question.id, selectedOptionIds: [optionId], text: "" }])
+        .then(() => onAnswered(ask.id))
+        .catch(onFailed)
+        .finally(() => setBusy(false));
+    };
+    return (
+      <>
+        {question.options.map((option, position) => (
+          <button key={option.id} type="button" className={`commodore-decision-quick${position === 0 ? " is-primary" : ""}`} disabled={busy} onClick={() => pick(option.id)}>{option.label}</button>
+        ))}
+      </>
+    );
+  }
+  if (!item.objectiveId || item.kind === "followup") return null;
+  return <>{renderInboxQuick(item.objectiveId, item.kind, { language, phone, onFailed })}</>;
+}
+
+/** 제목을 눌러 펼친 내용 — 머리(목표·대기 시간·목표 열기)와 그 결정의 처리 카드. 대화 영역 높이의 40%까지 자라고 그 안에서 스크롤한다. */
+function DecisionCard({ item, theaterId, contextTheaterId, language, phone, leave, onEnded, onAnswered, openObjective }: {
+  readonly item: InboxItem;
+  readonly theaterId: string;
+  readonly contextTheaterId: string;
+  readonly language: "en" | "ko";
+  readonly phone: boolean;
+  readonly leave: ((run: () => void) => void) | undefined;
+  readonly onEnded: ((error: unknown) => void) | undefined;
+  readonly onAnswered: (id: string) => void;
+  readonly openObjective: () => void;
+}) {
+  const t = getT(language);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    const card = ref.current;
+    const host = card?.closest<HTMLElement>(HOST_SELECTOR);
+    if (!card || !host) return;
+    const measure = () => card.style.setProperty("--decision-cap", `${Math.round(host.clientHeight * CARD_CAP_RATIO)}px`);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(host);
+    return () => observer.disconnect();
+  }, []);
+  return (
+    <div ref={ref} className="commodore-decision-card">
+      <div className="commodore-decision-card-head">
+        {item.objectiveId ? <span className="commodore-person-inbox-avatar">{renderObjectiveAvatar(theaterId, item.objectiveId, 18)}</span> : null}
+        <span className="commodore-decision-card-title">{item.title}</span>
+        <span className="commodore-person-inbox-age">{waitLabel(t, item.at)}</span>
+        {item.objectiveId ? <button type="button" className="group-chat-link commodore-person-inbox-open" onClick={openObjective}>{t("commodore.inbox.open")}</button> : null}
+      </div>
+      <InboxBody item={item} theaterId={theaterId} contextTheaterId={contextTheaterId} language={language} phone={phone} leave={leave} onEnded={onEnded} onAnswered={onAnswered} openObjective={openObjective} />
+    </div>
+  );
 }
 
 function InboxBody({ item, theaterId, contextTheaterId, language, phone, leave, onEnded, onAnswered, openObjective }: {

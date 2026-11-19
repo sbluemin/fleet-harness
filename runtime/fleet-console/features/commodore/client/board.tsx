@@ -33,6 +33,7 @@ export const openObjectiveOnPhone = (objectiveId: string, theaterId?: string) =>
 export const renderObjectiveAvatar = (commodoreId: string, objectiveId: string, size: number) => board?.renderObjectiveAvatar(commodoreId, objectiveId, size) ?? null;
 export const renderHandedFollowup = (objectiveId: string, options: Parameters<CommodoreBoardClient["renderHandedFollowup"]>[1]) => board?.renderHandedFollowup(objectiveId, options) ?? null;
 export const renderInboxDetail = (objectiveId: string, kind: Parameters<CommodoreBoardClient["renderInboxDetail"]>[1], options: Parameters<CommodoreBoardClient["renderInboxDetail"]>[2]) => board?.renderInboxDetail(objectiveId, kind, options) ?? null;
+export const renderInboxQuick = (objectiveId: string, kind: Parameters<CommodoreBoardClient["renderInboxQuick"]>[1], options: Parameters<CommodoreBoardClient["renderInboxQuick"]>[2]) => board?.renderInboxQuick(objectiveId, kind, options) ?? null;
 export const isRunningObjective = (objective: CommodoreBoardObjective) => objective.running;
 export const isCommodoreWaiting = (objective: CommodoreBoardObjective) => objective.waiting;
 

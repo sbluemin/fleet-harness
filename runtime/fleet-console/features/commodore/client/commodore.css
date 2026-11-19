@@ -1151,106 +1151,127 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .fc-coord-trigger.is-mobile .objectives-commodore-judgment { vertical-align: -2px; margin-right: 6px; }
 .mobile-choice-icon .objectives-commodore-judgment, .mobile-choice-icon .objectives-commodore-judgment svg { width: 22px; height: 22px; }
 
-/* 사람 대기함 — 입력 독 위에 겹친다. 흐름 밖이라 대화 스크롤을 밀지 않는다. */
-.commodore-person-inbox {
-  position: absolute;
-  z-index: 2;
-  left: 0;
-  right: 0;
-  bottom: var(--m-dock-h, 0px);
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  max-height: min(70%, calc(100% - var(--m-dock-h, 0px) - 48px));
-  padding: 0 clamp(16px, 4cqi, 48px) 8px;
-  pointer-events: none;
-}
-.commodore-person-inbox.is-anchored { bottom: var(--commodore-foot-h, 0px); max-height: min(70%, calc(100% - var(--commodore-foot-h, 0px) - 48px)); }
-/* 사령관 대화에서 결정 요청 박스가 열리면 쿼터·진행 줄 위에 얹히지 않고 입력 푸터(--commodore-foot-h) 바로 위까지 쓴다.
-   박스가 열려 있는 동안 가려지는 쿼터 줄은 숨겨 8px 빈틈으로 비치거나 초점을 받지 않게 하고, 답하거나 닫으면 원래대로 돌아온다. */
-.objectives-commodore-conversation .commodore-person-inbox.is-open {
-  bottom: var(--commodore-foot-h, var(--m-dock-h, 0px));
-  max-height: min(70%, calc(100% - var(--commodore-foot-h, var(--m-dock-h, 0px)) - 48px));
-}
-.objectives-commodore-conversation:not([data-settings-open="true"]):has(.commodore-person-inbox.is-open) .group-chat-dock > :is(.conversation-composer-top, .group-chat-working) {
-  opacity: 0;
-  visibility: hidden;
-  pointer-events: none;
-}
-.objectives-commodore-conversation:not([data-settings-open="true"]):has(.commodore-person-inbox.is-open) .group-chat-dock > :is(.conversation-composer-top, .group-chat-working) * {
-  pointer-events: none;
-}
-.commodore-person-inbox-panel {
-  pointer-events: auto;
-  display: flex;
-  flex-direction: column;
+/* 결정 대기함(B+) — 입력창 위 독 흐름 안에 선다. 평소는 쿼터·진행 줄 안의 칩 하나, 누르면 그 줄이 결정 한 줄, 제목(⌄)을 누를 때만
+   내용이 그 위에서 펼쳐진다. 독이 자라는 만큼만 대화가 밀리고(대화 칸이 독 높이를 읽는다) 저절로 밀리는 일은 없다. */
+.commodore-decision-chip {
+  flex: 0 1 auto;
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
   min-width: 0;
-  min-height: 0;
-  max-height: 100%;
-  padding: 8px;
-  overflow-x: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-floating);
+  max-width: 70%;
+  height: 24px;
+  padding: 0 9px 0 3px;
+  border: 1px solid color-mix(in oklch, var(--aurora) 55%, transparent);
+  border-radius: var(--radius-pill);
+  background: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-xs);
+  cursor: pointer;
 }
-.commodore-person-inbox-bar,
-.commodore-person-inbox-row-main {
+.commodore-decision-chip:hover { background: var(--control-wash-hover); }
+.commodore-decision-chip:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.commodore-decision-chip-n { flex: none; padding: 0 7px; border-radius: var(--radius-pill); background: var(--aurora); color: var(--ink-abyss); font-size: var(--t-2xs); font-weight: var(--weight-bold); line-height: 18px; white-space: nowrap; }
+.commodore-decision-chip-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+/* 쿼터 줄과 칩이 한 줄을 나눠 쓰는 표면(폰 기록·기록 탭) — 칩은 줄어들 수 있고 쿼터 요약은 오른쪽 끝이다. */
+.commodore-decision-toprow { flex: none; display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: 36px; }
+.commodore-decision-toprow > .conversation-composer-top { flex: 1 1 auto; min-width: 0; padding: 0; }
+.conversation-composer-top.has-chip { gap: var(--space-2); }
+.conversation-composer-top.has-chip > .commodore-decision-chip { margin-right: auto; }
+.commodore-decision-line {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
+  gap: 6px;
   min-width: 0;
-  padding: 4px 2px;
+  min-height: 36px;
+  padding: 0 clamp(16px, 4cqi, 48px);
+  box-sizing: border-box;
+  font-size: var(--t-xs);
+  color: var(--text-secondary);
+}
+.objectives-cm-dock .commodore-decision-line,
+.objectives-commodore-foot .commodore-decision-line,
+.objectives-commodore-foot .commodore-decision-detail-in { padding-inline: 0; }
+.objectives-cm-dock .commodore-decision-detail-in { padding-inline: 0; }
+:root:not([data-view-mode="mobile"]) .group-chat-dock > .commodore-decision-line {
+  background: linear-gradient(to top, var(--conversation-surface, var(--canvas-abyss)) 55%, color-mix(in oklch, var(--conversation-surface, var(--canvas-abyss)) 0%, transparent));
+}
+.commodore-decision-nav { flex: none; display: inline-flex; align-items: center; gap: 2px; color: var(--text-tertiary); font-variant-numeric: tabular-nums; }
+.commodore-decision-nav button { width: 20px; height: 20px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--text-secondary); font: inherit; line-height: 1; cursor: pointer; }
+.commodore-decision-nav button:hover:not(:disabled) { background: var(--control-wash-hover); }
+.commodore-decision-nav button:disabled { opacity: 0.4; cursor: default; }
+.commodore-decision-nav button:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.commodore-decision-kind { flex: none; padding: 0 6px; border-radius: var(--radius-xs); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-2xs); line-height: 18px; white-space: nowrap; }
+.commodore-decision-kind.is-ask { color: var(--aurora-ink); }
+.commodore-decision-title {
+  flex: 1 1 0;
+  min-width: 3em;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: -4px;
+  padding: 1px 4px;
   border: 0;
+  border-radius: var(--radius-xs);
   background: none;
-  color: inherit;
+  color: var(--text-primary);
   font: inherit;
+  font-weight: var(--weight-bold);
   text-align: start;
   cursor: pointer;
 }
-.commodore-person-inbox-bar:focus-visible,
-.commodore-person-inbox-row-main:focus-visible,
-.commodore-person-inbox-chip:focus-visible { box-shadow: var(--focus-face); outline: none; }
-.commodore-person-inbox-count { flex: none; font-size: var(--t-xs); font-weight: var(--weight-bold); color: var(--text-primary); }
-.commodore-person-inbox-oldest,
-.commodore-person-inbox-reason,
-.commodore-person-inbox-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.commodore-person-inbox-oldest,
-.commodore-person-inbox-reason { flex: 1 1 auto; color: var(--text-secondary); font-size: var(--t-xs); }
-.commodore-person-inbox-age { flex: none; order: 5; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
-.commodore-person-inbox-filters { display: flex; flex-wrap: wrap; gap: 4px; }
-.commodore-person-inbox-chip {
-  padding: 2px 8px;
-  border: 1px solid var(--hairline);
+.commodore-decision-title:hover { background: var(--control-wash-hover); }
+.commodore-decision-title:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.commodore-decision-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.commodore-decision-title-chev { flex: none; width: 12px; height: 12px; color: var(--aurora-ink); transition: transform var(--duration-slow) var(--ease-glide); }
+.commodore-decision-title[aria-expanded="true"] .commodore-decision-title-chev { transform: rotate(180deg); }
+.commodore-decision-quick {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 9em;
+  padding: 1px 9px;
+  border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-pill);
   background: none;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   font: inherit;
-  font-size: var(--t-2xs);
+  font-size: var(--t-xs);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
-.commodore-person-inbox-chip.is-on { border-color: var(--brass); color: var(--text-primary); background: var(--control-wash); }
-.commodore-person-inbox-list { display: flex; flex-direction: column; gap: 4px; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; }
-.commodore-person-inbox-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.commodore-person-inbox-row-main { flex: 1 1 auto; }
-.commodore-person-inbox-lead,
-.commodore-person-inbox-meta { display: contents; }
-.commodore-person-inbox-open { flex: none; white-space: nowrap; }
-.commodore-person-inbox-avatar { flex: none; order: 1; display: inline-flex; }
-.commodore-person-inbox-title { flex: 0 1 auto; order: 2; font-weight: var(--weight-bold); color: var(--text-primary); font-size: var(--t-sm); }
-.commodore-person-inbox-reason { order: 4; }
-.commodore-person-inbox-kind {
-  flex: none;
-  order: 3;
-  padding: 0 6px;
-  border-radius: var(--radius-xs);
-  background: var(--control-wash);
+.commodore-decision-quick.is-primary { border-color: transparent; background: var(--text-primary); color: var(--text-on-brass); font-weight: var(--weight-bold); }
+.commodore-decision-quick:disabled { opacity: 0.5; cursor: default; }
+.commodore-decision-quick:focus-visible { box-shadow: var(--focus-face); outline: none; }
+.commodore-decision-fold { flex: none; width: 22px; height: 22px; padding: 0; border: 1px solid var(--hairline-strong); border-radius: var(--radius-pill); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-2xs); line-height: 1; cursor: pointer; }
+.commodore-decision-fold:hover { background: var(--control-wash-hover); }
+.commodore-decision-fold:focus-visible { box-shadow: var(--focus-face); outline: none; }
+/* 제목을 눌러 펼친 내용 — 줄 위 독 흐름 안. 0fr → 1fr 전환으로 독이 부드럽게 자라고, 내용은 대화 영역 높이의 40%(--decision-cap)까지 자라 그 안에서 스크롤한다. */
+.commodore-decision-detail { flex: none; display: grid; grid-template-rows: 0fr; transition: grid-template-rows var(--duration-slow) var(--ease-glide); }
+.commodore-decision-detail.is-open { grid-template-rows: 1fr; }
+.commodore-decision-detail-in { min-height: 0; overflow: hidden; padding: 0 clamp(16px, 4cqi, 48px); }
+.commodore-decision-card {
+  box-sizing: border-box;
+  max-height: var(--decision-cap, 40vh);
+  margin-bottom: 6px;
+  padding: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
   color: var(--text-secondary);
-  font-size: var(--t-2xs);
-  line-height: 18px;
 }
+.commodore-decision-card-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 2px 6px; }
+.commodore-decision-card-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-primary); font-size: var(--t-sm); font-weight: var(--weight-bold); }
+.commodore-decision-tag { flex: none; align-self: center; padding: 0 6px; border-radius: var(--radius-xs); background: var(--control-wash); color: var(--text-secondary); font-size: var(--t-2xs); line-height: 18px; white-space: nowrap; }
+.commodore-person-inbox-age { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
+.commodore-person-inbox-avatar { flex: none; display: inline-flex; }
+.commodore-person-inbox-open { flex: none; white-space: nowrap; }
 .commodore-person-inbox-detail { display: flex; flex-direction: column; gap: 8px; padding: 4px 2px 2px; }
 .commodore-person-inbox-proposal { display: flex; flex-direction: column; gap: 4px; }
 .commodore-person-inbox-proposal + .commodore-person-inbox-proposal { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--hairline); }
@@ -1268,18 +1289,17 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   font: inherit;
   font-size: var(--t-sm);
 }
-.commodore-person-inbox .group-card-head,
-.commodore-person-inbox .group-card-handed { display: none; }
-.commodore-person-inbox .objectives-handed-followup,
-.commodore-person-inbox .group-card.is-decision { margin-left: 0; width: 100%; max-width: 100%; border: 0; background: none; padding: 0; box-shadow: none; }
-.commodore-person-inbox.is-phone .commodore-person-inbox-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; column-gap: 8px; }
-.commodore-person-inbox.is-phone .commodore-person-inbox-row-main { display: flex; flex-direction: column; align-items: stretch; gap: 2px; grid-column: 1; grid-row: 1; min-width: 0; }
-.commodore-person-inbox.is-phone .commodore-person-inbox-lead,
-.commodore-person-inbox.is-phone .commodore-person-inbox-meta { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.commodore-person-inbox.is-phone .commodore-person-inbox-title { flex: 1 1 auto; }
-.commodore-person-inbox.is-phone .commodore-person-inbox-age { margin-left: auto; }
-.commodore-person-inbox.is-phone .commodore-person-inbox-reason { flex: 1 1 auto; }
-.commodore-person-inbox.is-phone .commodore-person-inbox-open { grid-column: 2; grid-row: 1; align-self: center; }
+.commodore-decision-card .group-card-head,
+.commodore-decision-card .group-card-handed { display: none; }
+.commodore-decision-card .objectives-handed-followup,
+.commodore-decision-card .group-card.is-decision { margin-left: 0; width: 100%; max-width: 100%; border: 0; background: none; padding: 0; box-shadow: none; }
+/* 위로 읽는 중에는 진행·쿼터 줄이 캡슐 뒤로 비켜나지만, 칩은 남아 눌린다 — 줄 안의 나머지만 비켜난다. */
+.group-chat[data-reading] .group-chat-dock > .conversation-composer-top.has-chip:not(:focus-within) { transform: none; opacity: 1; }
+.group-chat[data-reading] .group-chat-dock > .conversation-composer-top.has-chip:not(:focus-within) > :not(.commodore-decision-chip) { opacity: 0; }
+.group-chat[data-reading] .group-chat-dock > .conversation-composer-top.has-chip:not(:focus-within) > .commodore-decision-chip { pointer-events: auto; }
+@media (prefers-reduced-motion: reduce) {
+  .commodore-decision-detail, .commodore-decision-title-chev { transition: none; }
+}
 
 /* ── 데스크톱 사령관·그룹 입력창 · 캡슐 안 설정 칩 · 칩 앵커 팝오버 ─────────
    입력 캡슐은 「+」 · 입력 · 디바이더 · 설정 칩 · 보내기 순서다. 쿼터는 위 줄에 선다.
@@ -1755,10 +1775,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-composer-panel-advanced .fc-settings-row__label { margin: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-sm); font-weight: var(--weight-medium); }
 .commodore-composer-panel-advanced .fc-settings-row__hint { color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
 .commodore-composer-panel-advanced .fc-settings-row__copy { max-width: 60ch; }
-/* 팝오버가 열린 동안 — 대기함은 비켜 서고, 위로 읽는 중이어도 칩 줄은 붙잡아 둔다. */
-.objectives-commodore-conversation .commodore-person-inbox { transition: opacity var(--duration-base) var(--ease-glide), transform var(--duration-slow) var(--ease-spring), bottom var(--duration-base) var(--ease-glide); }
-.objectives-commodore-conversation[data-settings-open="true"] .commodore-person-inbox { opacity: 0; transform: translateY(8px); }
-.objectives-commodore-conversation[data-settings-open="true"] .commodore-person-inbox-panel { pointer-events: none; }
+/* 팝오버가 열린 동안 — 위로 읽는 중이어도 칩 줄은 붙잡아 둔다. */
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top { transform: none; opacity: 1; }
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top,
 .objectives-commodore-conversation[data-settings-open="true"] .group-chat[data-reading] .group-chat-dock > .conversation-composer-top * { pointer-events: auto; }
@@ -1779,8 +1796,7 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
   .commodore-pool-st, .commodore-pool-st.is-pop, .commodore-pool-help-btn::after, .commodore-pool-toast,
   .commodore-pool-ex-gate, .commodore-pool-ex-judge, .commodore-pool-ex-card, .commodore-pool-ex-tile,
   .commodore-pool-ex-tile .face, .commodore-pool-ex-tile .face::after, .commodore-pool-ex-lines path.is-on,
-  .commodore-pool-ex-caption, .commodore-pool-ex-steps button .bar.run,
-  .objectives-commodore-conversation .commodore-person-inbox { transition: none; animation: none; }
+  .commodore-pool-ex-caption, .commodore-pool-ex-steps button .bar.run { transition: none; animation: none; }
 }
 
 /* ── 지능 점수 안내(표시 전용) — 사령관·지휘관 선택기와 라우팅 풀. 추천은 색이 아니라 셰브런과 명도로 말하는 제안이다.
