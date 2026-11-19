@@ -18,6 +18,7 @@ import { clustersOf } from "../client/clusters.js";
 import { imageInfo } from "../host/attachments.js";
 import { criteriaSettleAdvice, inboxReasons } from "../shared/board-state.js";
 import { createCommodoreBoardTools, createObjectiveConsoleTools, MAX_REMARK, MAX_TOOL_TITLE } from "../host/console-tools.js";
+import { createCommodoreBoardWatch } from "../host/commodore-board.js";
 import { createLaunchService, recipientReplyTool } from "../host/launch.js";
 import { createCommanderMcpTools, createMemberMcpTools, createObjectiveMcpTools, COMMANDER_TOOL_RENAMES, MEMBER_TOOL_RENAMES, FLEET_COMMANDER_TOOL_NAMES, FLEET_MEMBER_TOOL_NAMES } from "../host/objective-tools.js";
 import { createObjectiveRoutes } from "../host/routes.js";
@@ -565,6 +566,63 @@ describe("Objectives contract", () => {
     expect(criteriaSettleAdvice(withMember, (key) => (key === "m1" ? null : quiet()))).toMatchObject({ group: "unknown", next: null });
     expect(criteriaSettleAdvice({ ...replanned, removed: { at: 1 } as never }, quiet)).toMatchObject({ next: null, state: "removed" });
     launch.dispose(); h.launch.dispose();
+  });
+
+  // 사령관이 검토를 사람에게 넘기면 사람은 한마디와 함께 확장해 계속 진행을 전달한다 — 새 API 없이 /objective/extend 가 그 경로다.
+  it("lets the person extend an objective the commodore handed over for review, with one sentence", async () => {
+    const h = harness();
+    const { store, launch, route, ctx, sent, events } = h;
+    const objective = await launch.create({ commodoreId: "c1", theaterId: "t1", title: "Handed review", groupId: null, missions: [{ text: "ship" }], criteria: ["ships"] });
+    const id = objective.id;
+    store.missionDone(id, store.find(id)!.missions[0]!.id, ["shipped"]);
+    store.criterionMet(id, store.find(id)!.criteria[0]!.id, "evidence");
+    store.handOff(id, { by: "commander", retrospective: { wentWell: [{ point: "p", because: "b" }], fellShort: [{ point: "p", ifOnly: "i" }] } });
+    expect(store.find(id)).toMatchObject({ awaitingReview: true, planning: false });
+    const board = createCommodoreBoardTools(ctx, store, launch, "c1")[0]!;
+    const asBoard = async (args: Record<string, unknown>) => (await board.execute(args, { cwd: h.workspace }) as { structuredContent: Record<string, unknown> }).structuredContent;
+    // 보드 감시는 사람이 답한 넘김과 새 계획의 개시 대기를 같은 보드에서 듣는다.
+    const wakes: { code: string; input?: { detail?: string; objectiveId?: string } }[] = [];
+    const listeners = new Set<(event: ObjectiveEvent) => void>();
+    const push = events.push.bind(events);
+    events.push = (...added: ObjectiveEvent[]) => { for (const event of added) for (const listener of listeners) listener(event); return push(...added); };
+    const watch = createCommodoreBoardWatch({ objectives: (commodoreId) => store.list(commodoreId), subscribeObjectives: (listener) => { listeners.add(listener); return () => listeners.delete(listener); } }, "c1",
+      { automatic: () => true, wake: (code, input) => { wakes.push({ code, input }); }, forget: () => {}, stalledChanged: () => {} });
+    try {
+      expect(await asBoard({ action: "hand_to_person", objectiveId: id, target: "review", reason: "Pick the direction" })).toMatchObject({ ok: true });
+      expect(store.find(id)!.personHolds).toEqual([expect.objectContaining({ target: "review", reason: "Pick the direction", settled: null })]);
+      // 넘긴 동안 사령관은 확장하지 못한다 — 사람의 몫이다.
+      expect(await asBoard({ action: "extend", objectiveId: id, context: "Go ahead" })).toMatchObject({ error: "held_for_person", target: "review" });
+      expect((await route("objective/extend", { objectiveId: id, context: " " })).status).toBe(400);
+      expect(store.find(id)!.personHolds[0]!.settled).toBeNull();
+      const turnsBefore = sent.length;
+      const extended = await route("objective/extend", { objectiveId: id, context: "Expand with this design and carry it into development" });
+      expect(extended.status).toBe(200);
+      // 넘김은 돌려준 것이 아니라 사람이 답한 것으로 닫히고, 응답이 닫힌 넘김을 이미 싣는다.
+      const settled = { target: "review", settled: { by: "human", outcome: "answered" } };
+      expect(extended.value.objective).toMatchObject({ personHolds: [settled] });
+      expect(store.find(id)!.personHolds).toMatchObject([settled]);
+      // 새 계획 회차 — 한마디가 회차의 맥락이자 구상 요청이다.
+      expect(store.find(id)).toMatchObject({ planning: true, criteriaOpen: true, awaitingReview: false, extensionActive: true,
+        planRequest: "Expand with this design and carry it into development", extensions: [{ n: 1, by: "human", context: "Expand with this design and carry it into development", previousHandoff: { by: "commander" } }] });
+      // 지휘관에게 계획 턴이 가고, 한마디는 사람의 말로 인용된다.
+      expect(sent).toHaveLength(turnsBefore + 1);
+      expect(sent.at(-1)).toMatchObject({ objectiveId: id });
+      expect(sent.at(-1)!.text).toContain("extension 1");
+      expect(sent.at(-1)!.text).toContain("> Expand with this design and carry it into development");
+      // 사람이 답한 넘김은 한 번 깨운다.
+      expect(wakes).toContainEqual({ code: "answered", input: expect.objectContaining({ objectiveId: id, detail: expect.stringContaining("Handed review") }) });
+      expect(wakes.filter((wake) => wake.code === "returned")).toEqual([]);
+      // 지휘관이 계획을 마치면 개시 대기로 서서 사령관 보드를 "planned" 로 깨운다.
+      launch.planApplied(id, { missions: [{ text: "develop" }], criteria: [{ text: "developed" }] });
+      store.proposalsApproveAll(id);
+      expect(inboxReasons(store.find(id)!)).toContain("planned");
+      expect(wakes).toContainEqual({ code: "planned", input: expect.objectContaining({ count: 1 }) });
+      // 새 회차가 열린 목표는 더 이상 검토 대기가 아니라서 같은 항목으로 다시 확장되지 않는다.
+      expect((await route("objective/extend", { objectiveId: id, context: "again" })).value.error).toBe("not_in_review");
+    } finally {
+      watch.dispose();
+      launch.dispose();
+    }
   });
 
   // 재시작 이어가기 — 진행 중 목표는 지휘관에게 이어 가라는 턴이 가고, 사람이 멈춘 목표는 그대로다. 잇지 못한 목표만 사령관 몫으로 남는다.
