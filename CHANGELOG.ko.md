@@ -5,6 +5,17 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.312.0] - 2026-11-19
+
+### fleet-console
+
+#### Added
+- 모델 선택기와 라우팅 풀에서 Gemini API 키 공급자로 Gemini 4 Neon(`gemini-4-neon`)을 사용할 수 있습니다.
+- 사령관이 넘긴 검토 항목에서 한마디를 입력창에 쓰고 '범위 넓히기'를 누르면 지휘관이 다음 계획을 세웁니다. 폰의 목표 화면에서도 같은 동작을 쓸 수 있습니다.
+
+#### Changed
+- 사령관 채팅의 결정 요청이 더 이상 대화를 가리지 않습니다. 입력창 위 한 줄 칩으로 기다리다가 누르면 한 건씩 빠른 답과 함께 열리고, 내용은 직접 펼칠 때만 그 자리에서 보입니다.
+
 ## [1.311.1] - 2026-11-19
 
 ### fleet-console

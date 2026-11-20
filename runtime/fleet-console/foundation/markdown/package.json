@@ -1,6 +1,6 @@
 {
   "name": "@fleet-console/markdown",
-  "version": "1.311.1",
+  "version": "1.312.0",
   "private": true,
   "type": "module",
   "exports": {
