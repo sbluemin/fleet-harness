@@ -345,13 +345,13 @@ const DESKTOP_CONVERSATION_OVERLAYS: Readonly<Record<ConsoleThemeId, DesktopThem
 const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalette>> = {
   dark: {
     scheme: "dark",
-    canvas: "#010204",
+    canvas: "#121212",
     tokens: {
-      "ink-abyss": "oklch(13% 0.014 245)", "ink-deep": "oklch(16.5% 0.016 245)", "ink-veil": "oklch(23.5% 0.02 245)",
-      "ink-rim": "oklch(29% 0.018 245)", "ink-fog": "oklch(52% 0.012 245)", "ink-muted": "oklch(64% 0.012 245)",
-      "ink-spectral": "oklch(70% 0.012 245)", "ink-pearl": "oklch(94% 0.008 90)", brass: "oklch(80% 0.085 78)",
-      aurora: "oklch(77% 0.085 200)", positive: "oklch(76% 0.11 160)", coral: "oklch(68% 0.13 25)",
-      hairline: "oklch(29% 0.018 245)", "hairline-strong": "oklch(37% 0.02 245)",
+      "ink-abyss": "oklch(18.2% 0 0)", "ink-deep": "oklch(21.8% 0 0)", "ink-veil": "oklch(34.9% 0 0)",
+      "ink-rim": "oklch(45% 0 0)", "ink-fog": "oklch(58% 0 0)", "ink-muted": "oklch(72.8% 0 0)",
+      "ink-spectral": "oklch(80% 0 0)", "ink-pearl": "oklch(97% 0 0)", brass: "oklch(80% 0.085 78)",
+      aurora: "oklch(79% 0.08 205)", positive: "oklch(77% 0.095 158)", coral: "oklch(69% 0.12 25)",
+      hairline: "oklch(28.5% 0 0)", "hairline-strong": "oklch(37% 0 0)",
     },
     browser: {
       "ink-abyss": "oklch(15% 0 0)", "canvas-abyss": "oklch(18.2% 0 0)", "ink-deep": "oklch(17.8% 0 0)", "ink-veil": "oklch(34.9% 0 0)",
@@ -366,7 +366,7 @@ const DESKTOP_ENTRY_PALETTES: Readonly<Record<ConsoleThemeId, DesktopEntryPalett
     scheme: "light",
     canvas: "#fcfcfc",
     tokens: {
-      "ink-abyss": "oklch(97% 0 0)", "ink-deep": "oklch(95.5% 0 0)", "ink-veil": "oklch(90.5% 0 0)",
+      "ink-abyss": "oklch(99.1% 0 0)", "ink-deep": "oklch(95.5% 0 0)", "ink-veil": "oklch(90.5% 0 0)",
       "ink-rim": "oklch(80% 0 0)", "ink-fog": "oklch(53% 0 0)", "ink-muted": "oklch(52% 0 0)",
       "ink-spectral": "oklch(50.7% 0 0)", "ink-pearl": "oklch(22.6% 0 0)", brass: "oklch(56% 0.125 82)",
       aurora: "oklch(50% 0.1 210)", positive: "oklch(50% 0.12 160)", coral: "oklch(52% 0.16 25)",

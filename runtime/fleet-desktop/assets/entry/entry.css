@@ -45,26 +45,26 @@
 
 :root {
   color-scheme: dark;
-  --ink-abyss: oklch(13% 0.014 245);
-  --ink-deep: oklch(16.5% 0.016 245);
-  --ink-veil: oklch(23.5% 0.02 245);
-  --ink-rim: oklch(29% 0.018 245);
-  --ink-fog: oklch(52% 0.012 245);
-  --ink-muted: oklch(64% 0.012 245);
-  --ink-spectral: oklch(70% 0.012 245);
-  --ink-pearl: oklch(94% 0.008 90);
+  --ink-abyss: oklch(18.2% 0 0);
+  --ink-deep: oklch(21.8% 0 0);
+  --ink-veil: oklch(34.9% 0 0);
+  --ink-rim: oklch(45% 0 0);
+  --ink-fog: oklch(58% 0 0);
+  --ink-muted: oklch(72.8% 0 0);
+  --ink-spectral: oklch(80% 0 0);
+  --ink-pearl: oklch(97% 0 0);
   /* 개발 빌드 워드마크 전용 잉크와 DEV가 물러서는 3차 잉크 — Console theme.css의 --ink-brand-dev·--text-tertiary(다크). */
   --ink-brand-dev: oklch(84% 0.045 255);
-  --text-tertiary: var(--ink-muted);
+  --text-tertiary: var(--ink-fog);
   --brass: oklch(80% 0.085 78);
   --brass-glow: color-mix(in oklch, var(--brass) 16%, transparent);
-  --aurora: oklch(77% 0.085 200);
-  --positive: oklch(76% 0.11 160);
+  --aurora: oklch(79% 0.08 205);
+  --positive: oklch(77% 0.095 158);
   --positive-glow: color-mix(in oklch, var(--positive) 16%, transparent);
-  --coral: oklch(68% 0.13 25);
+  --coral: oklch(69% 0.12 25);
   --coral-glow: color-mix(in oklch, var(--coral) 16%, transparent);
-  --hairline: oklch(29% 0.018 245);
-  --hairline-strong: oklch(37% 0.02 245);
+  --hairline: oklch(28.5% 0 0);
+  --hairline-strong: oklch(37% 0 0);
   --radius-xs: 6px;
   --chrome-band-height: 52px;
   --font-ui: "Manrope Variable", "Manrope", "Pretendard Variable", system-ui, sans-serif;

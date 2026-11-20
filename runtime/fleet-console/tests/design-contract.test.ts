@@ -1586,9 +1586,13 @@ describe("Console core design contract", () => {
       return value;
     };
     for (const [id, env] of [["dark", dark], ["light", light]] as const) {
-      const browser = desktopThemeSnapshot(id).entry.browser;
+      const snapshot = desktopThemeSnapshot(id);
+      const browser = snapshot.entry.browser;
       expect(browser, id).toBeDefined();
       for (const [token, value] of Object.entries(browser!)) expect(value, `${id} --${token}`).toBe(resolve(env, token));
+      // 진입 화면 바탕과 창 배경은 Windows 캡션 버튼 오버레이(대화 바탕 --canvas-abyss)와 같은 색이어야 경계가 뜨지 않는다.
+      expect(snapshot.entry.canvas, `${id} entry.canvas`).toBe(snapshot.titleBarOverlay.color);
+      expect(snapshot.entry.tokens["ink-abyss"], `${id} entry --ink-abyss`).toBe(resolve(env, "canvas-abyss"));
     }
   });
 

@@ -68,8 +68,8 @@ export function localFontsConsentDialog(origin: string): { type: "question"; tit
 
 const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
-/** 다크 테마의 `--canvas-sea-far`. 사용자 테마를 모를 때의 창 바탕이다. */
-export const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
+/** 대화 다크의 `--canvas-abyss`(#121212). 사용자 테마를 모를 때의 창 바탕이며 Windows 캡션 버튼 오버레이와 같은 색이다. */
+export const CANVAS_FAR_BACKGROUND_COLOR = "#121212";
 /**
  * Console 맨 위 줄의 높이 — Console 이 테마 스냅샷 `chrome.band`·`titleBarOverlay.height` 로 보내는 값
  * (Console desktop-contract.ts `CONVERSATION_TOP_ROW`)과 같다. Desktop 은 Console 내부를 가져오지 않으므로 값을 맞춰 둔다.
