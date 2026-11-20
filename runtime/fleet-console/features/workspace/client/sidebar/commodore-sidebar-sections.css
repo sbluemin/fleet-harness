@@ -2,14 +2,32 @@
 .workspace-commodore-section:first-child { margin-top: 4px; }
 .workspace-commodore-section-rows { display: flex; flex-direction: column; gap: 2px; list-style: none; padding: 0; margin: 0; }
 .objective-records-side-bar.is-compact .workspace-commodore-section-rows { gap: calc(12px / var(--compact-layout-zoom, 1)); }
-/* 좁은 열 — 섹션은 이름 없이 가는 구분선으로만 갈린다. 빈 섹션은 안내 문구 대신 끌어 놓을 얇은 자리만 남긴다. */
-.objective-records-side-bar.is-compact .workspace-commodore-section + .workspace-commodore-section {
-  margin-top: 0; padding-top: 12px; position: relative;
+/* 좁은 열 — 섹션은 이름 없이 가는 구분선으로만 갈리고, 그 선이 곧 접기 단추다. 빈 섹션은 안내 문구 대신 끌어 놓을 얇은 자리만 남긴다.
+   첫 섹션 위에는 선을 긋지 않고, 호버·포커스·접힘일 때만 드러낸다. 접힌 섹션은 선 가운데 행 수만 남는다. */
+.objective-records-side-bar.is-compact .workspace-commodore-section { position: relative; }
+.objective-records-side-bar.is-compact .workspace-commodore-section + .workspace-commodore-section { margin-top: 0; padding-top: 12px; }
+.workspace-commodore-section-rule {
+  position: absolute; top: -6px; right: 8px; left: 8px; z-index: 1;
+  display: flex; align-items: center; height: 12px; padding: 0 6px;
+  border: 0; border-radius: var(--radius-xs); background: transparent;
+  color: var(--text-tertiary); cursor: pointer;
 }
-.objective-records-side-bar.is-compact .workspace-commodore-section + .workspace-commodore-section::before {
-  content: ""; position: absolute; top: 0; right: 14px; left: 14px; height: 0;
-  border-top: 1px solid var(--surface-rim);
-}
+/* 첫 섹션은 머리 위 빈자리에 선을 두어 첫 행을 덮지 않는다. */
+.workspace-commodore-section:first-child > .workspace-commodore-section-rule { top: -14px; }
+.workspace-commodore-section-rule::before,
+.workspace-commodore-section-rule::after { content: ""; flex: 1; border-top: 1px solid var(--surface-rim); }
+.workspace-commodore-section:first-child > .workspace-commodore-section-rule[aria-expanded="true"]:not(:hover, :focus-visible)::before,
+.workspace-commodore-section:first-child > .workspace-commodore-section-rule[aria-expanded="true"]:not(:hover, :focus-visible)::after { border-top-color: transparent; }
+.workspace-commodore-section-rule-mark { display: flex; align-items: center; }
+.workspace-commodore-section-rule .workspace-commodore-section-count { padding: 0 4px; line-height: 12px; }
+.workspace-commodore-section-rule .workspace-commodore-section-chevron { width: 12px; height: 12px; margin: 0 2px; }
+.workspace-commodore-section-rule:hover,
+.workspace-commodore-section-rule:focus-visible,
+.workspace-commodore-section.is-drop-target > .workspace-commodore-section-rule { background: var(--wash-hover); color: var(--text-primary); outline: none; }
+.workspace-commodore-section-rule:hover .workspace-commodore-section-chevron,
+.workspace-commodore-section-rule:focus-visible .workspace-commodore-section-chevron { display: block; }
+.workspace-commodore-section-rule:hover .workspace-commodore-section-count,
+.workspace-commodore-section-rule:focus-visible .workspace-commodore-section-count { display: none; }
 .objective-records-side-bar.is-compact .workspace-commodore-section-empty { height: 12px; margin: 0; padding: 0; border-radius: var(--radius-xs); }
 .workspace-commodore-section-head {
   display: flex; align-items: center; gap: 6px; width: calc(100% - 8px); height: 28px;
@@ -49,5 +67,6 @@
 .workspace-commodore-section-move > .theater-menu-item > .theater-menu-label { flex: 1; }
 @media (forced-colors: active) {
   .workspace-commodore-section-head:focus-visible,
+  .workspace-commodore-section-rule:focus-visible,
   .workspace-commodore-section-name:focus { outline: 2px solid Highlight; }
 }
