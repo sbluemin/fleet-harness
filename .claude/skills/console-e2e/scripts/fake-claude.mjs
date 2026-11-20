@@ -43,14 +43,58 @@
 //   --json-schema leaves the field absent; this is not a fake failure. Synthetic output is not model judgment and not
 //   evidence of real CLI schema handling.
 //
-// Modes: `--version`; chat/SDK when `--input-format stream-json`; otherwise an interactive terminal
+// Sign-in fixture (`auth` argv). Opt-in: it is active only when FAKE_CLAUDE_AUTH_MODE is set (success|fail|unconfirmed|no-url).
+//   Without it `auth ...` keeps its earlier behavior, so a CLAUDE_BIN-only fixture is never turned into a signed-out CLI.
+//   Active, the only accepted forms are exactly `auth login` and `auth status --json`; anything else exits 2 and only its
+//   reason is logged, never the raw argv or mode. Synthetic state only: no child process, network, browser, Keychain, model or account.
+//   Each FAKE_CLAUDE_DIR owns its own state, so two directories never share a sign-in, and removing the directory
+//   removes the state. It starts signed out. Success here means "the fake received a code-shaped input and its own
+//   auth status now answers loggedIn"; it is not a real sign-in and not equivalence with the real CLI.
+//   auth-state.json  {loggedIn: boolean}; absent = signed out. `auth status --json` prints {loggedIn, authMethod} and
+//                    exits 0 when signed in, 1 when not (like the real CLI; read loggedIn, not the exit code).
+//   mode             FAKE_CLAUDE_AUTH_MODE (required to opt in); a one-word <FAKE_CLAUDE_DIR>/auth-mode file overrides it per run:
+//                      success     a code-shaped input signs the fake in and `auth login` exits 0
+//                      fail        a code-shaped input exits 1 and the state stays signed out
+//                      unconfirmed a code-shaped input exits 0 but the state stays signed out (status says loggedIn false)
+//                      no-url      `auth login` never prints a login page (start failure) and waits until signalled
+//   `auth login` prints a synthetic login page URL after "visit:" and waits. Before any input it is pending and the
+//   state is unchanged. A line is code-shaped when it matches `<non-space, no #>#<non-space, no #>`; other lines get a
+//   message on stderr and keep waiting. The input value is never stored or logged (log.jsonl records only
+//   {event:"auth-input", shape:"ok"}). SIGINT/SIGTERM is a cancel: log {event:"auth-signal"}, exit 0, state unchanged
+//   (a piped SIGINT exits 0 on the real CLI too, so a cancel must never be read as a sign-in). stdin EOF before input exits 1.
+//   The login page is the fixed value below. It passes the product's Anthropic https allowlist and is only printed, never
+//   opened or fetched. log.jsonl gets {event:"auth-launch", argv}, auth-rejected {reason}, auth-status, auth-input, auth-signal, auth-exit.
+//   Owned state only: FAKE_CLAUDE_DIR must be an absolute path that is not the user's home, an ancestor of it, or inside
+//   a `~/.claude*` or `~/.config` tree, or the branch exits 2 before reading or writing anything. The lexical path and the
+//   realpath of its nearest existing ancestor are both checked, so a symlink in the middle of the path does not hide a protected
+//   location (best effort; a path swapped after the check is not covered). The only file it writes
+//   is <FAKE_CLAUDE_DIR>/auth-state.json (plus log.jsonl). Use a per-objective directory or the isolated Console's own;
+//   this is an owned slot, not a sandbox: a symlinked directory or state/log/mode file is refused (exit 2), nothing more is claimed.
+//   Without FAKE_CLAUDE_AUTH_MODE, none of the auth state, guard or modes above exist.
+//   Reuse scope: the argv, code shape, URL line and exit-code semantics mirror the unit-test fake
+//   runtime/fleet-console/features/ai-gateway/runtime/tests/fixtures/fake-claude-cli.mjs, which stays unchanged and
+//   keeps owning product unit tests. This branch only adds directory-owned state, modes and the argv guard.
+//   Safe check (runs the product adapter against this file with a guarded executor, no real CLI/Keychain/browser/network):
+//     pnpm --filter @dotobokuri/fleet-console exec vitest run tests/execution/claude-auth-fixture.test.ts
+//   Not executed or verified here, so never claim them from this fixture: the deployed host's executable fallback to the
+//   bundled CLI when no CLI is found (start.ts), its post-sign-in Quota refresh (any provider, outside this fixture), the
+//   real credential store/Keychain, the host browser opener, external URLs, and any model or account call. With CLAUDE_BIN
+//   absent, observe the UI state only: pressing Sign in there can launch the bundled CLI. An injected resolver returning
+//   undefined (spawn 0 times) is covered only by the unit test above, not by the deployed host.
+//
+// Modes: `--version`; `auth ...` (above); chat/SDK when `--input-format stream-json`; otherwise an interactive terminal
 // that prints a banner and echoes input until SIGTERM/SIGHUP.
-import { appendFileSync, chmodSync, existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, unlinkSync, writeFileSync } from "node:fs";
+import { homedir, userInfo } from "node:os";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
+import { createInterface } from "node:readline";
 
 const args = process.argv.slice(2);
-if (args.includes("--version")) {
+// The sign-in fixture is opt-in: only an explicit FAKE_CLAUDE_AUTH_MODE turns `auth ...` into it. Without it `auth` argv
+// behaves exactly as before (no auth state, nothing answered as signed out), so existing CLAUDE_BIN-only fixtures keep working.
+const authFixture = args[0] === "auth" && Boolean(process.env.FAKE_CLAUDE_AUTH_MODE);
+if (!authFixture && args.includes("--version")) {
   process.stdout.write(`${process.env.FAKE_CLAUDE_VERSION || "2.1.999 (Claude Code)"}\n`);
   process.exit(0);
 }
@@ -59,6 +103,115 @@ const dir = process.env.FAKE_CLAUDE_DIR;
 if (!dir) {
   process.stderr.write("fake-claude: FAKE_CLAUDE_DIR is required\n");
   process.exit(2);
+}
+if (authFixture) {
+  const AUTH_LOGIN_URL = "https://claude.com/cai/oauth/authorize?code=true&client_id=synthetic-fixture&state=synthetic-fixture";
+  // Owned-directory guard first: nothing is created, read or logged in a directory that fails it. Both the process HOME
+  // (an isolated Console overrides it) and the account's real home count.
+  // Best effort, not OS isolation: the lexical path and the realpath of its nearest existing ancestor (so a symlink in the
+  // middle of the path cannot hide a protected location) are both checked against each home and its realpath. A path swapped
+  // after this check is not covered.
+  const realish = (target) => {
+    const rest = [];
+    let current = resolve(target);
+    for (;;) {
+      try {
+        return join(realpathSync(current), ...rest.reverse());
+      } catch {
+        const up = dirname(current);
+        if (up === current) return resolve(target);
+        rest.push(basename(current));
+        current = up;
+      }
+    }
+  };
+  const homes = [...new Set([homedir(), userInfo().homedir].flatMap((home) => [resolve(home), realish(home)]))];
+  const candidates = [...new Set([resolve(dir), realish(dir)])];
+  const owned = isAbsolute(dir) && candidates.every((candidate) => homes.every((home) => {
+    const to = relative(candidate, home);
+    const from = relative(home, candidate).split(sep).join("/");
+    const isHomeOrAncestor = !to.startsWith("..") && !isAbsolute(to);
+    const inTree = !from.startsWith("..") && !isAbsolute(from) && (from.startsWith(".claude") || /^\.config(\/|$)/.test(from));
+    return !isHomeOrAncestor && !inTree;
+  }));
+  if (!owned) {
+    process.stderr.write("fake-claude: FAKE_CLAUDE_DIR must be an owned directory outside the home and its Claude/config trees\n");
+    process.exit(2);
+  }
+  // Owned slot, not a sandbox: refuse a directory or state/log/mode file that is a symlink, so the fixture never follows one out.
+  const isLink = (file) => { try { return lstatSync(file).isSymbolicLink(); } catch { return false; } };
+  const refuse = (what) => {
+    process.stderr.write(`fake-claude: ${what} must not be a symlink\n`);
+    process.exit(2);
+  };
+  if (isLink(dir)) refuse("FAKE_CLAUDE_DIR");
+  mkdirSync(dir, { recursive: true });
+  for (const name of ["log.jsonl", "auth-state.json", "auth-mode"]) if (isLink(join(dir, name))) refuse(name);
+  const authLog = (entry) => appendFileSync(join(dir, "log.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...entry })}\n`);
+  const authExit = (code, reason) => {
+    authLog({ event: "auth-exit", code, reason });
+    process.exit(code);
+  };
+  const stateFile = join(dir, "auth-state.json");
+  const loggedIn = () => {
+    try {
+      return JSON.parse(readFileSync(stateFile, "utf8"))?.loggedIn === true;
+    } catch {
+      return false;
+    }
+  };
+  const mode = (() => {
+    try {
+      const fromFile = readFileSync(join(dir, "auth-mode"), "utf8").trim();
+      if (fromFile) return fromFile;
+    } catch {}
+    return process.env.FAKE_CLAUDE_AUTH_MODE;
+  })();
+  const isLogin = args.length === 2 && args[1] === "login";
+  const isStatus = args.length === 3 && args[1] === "status" && args[2] === "--json";
+  if (!isLogin && !isStatus) {
+    authLog({ event: "auth-rejected", reason: "argv" });
+    process.stderr.write("fake-claude: only `auth login` and `auth status --json` are accepted\n");
+    process.exit(2);
+  }
+  if (!["success", "fail", "unconfirmed", "no-url"].includes(mode)) {
+    authLog({ event: "auth-rejected", reason: "mode" });
+    process.stderr.write("fake-claude: unknown auth mode\n");
+    process.exit(2);
+  }
+  authLog({ event: "auth-launch", argv: isLogin ? "auth login" : "auth status --json" });
+  if (isStatus) {
+    const signedIn = loggedIn();
+    authLog({ event: "auth-status", loggedIn: signedIn });
+    process.stdout.write(`${JSON.stringify({ loggedIn: signedIn, authMethod: signedIn ? "claude.ai" : "none" })}\n`);
+    authExit(signedIn ? 0 : 1, "status");
+  }
+  const cancel = (signal) => {
+    authLog({ event: "auth-signal", signal });
+    authExit(0, signal);
+  };
+  process.on("SIGINT", () => cancel("SIGINT"));
+  process.on("SIGTERM", () => cancel("SIGTERM"));
+  process.stdout.write("Opening browser to sign in…\n");
+  if (mode === "no-url") {
+    setInterval(() => {}, 1 << 30);
+  } else {
+    process.stdout.write(`If the browser didn't open, visit: \u001b]8;;${AUTH_LOGIN_URL}\u001b\\${AUTH_LOGIN_URL}\u001b]8;;\u001b\\\n`);
+    process.stdout.write("Paste code here if prompted > ");
+    const lines = createInterface({ input: process.stdin });
+    lines.on("line", (line) => {
+      if (!/^[^\s#]+#[^\s#]+$/.test(line)) {
+        process.stderr.write("That doesn't look like the full code.\n");
+        return;
+      }
+      authLog({ event: "auth-input", shape: "ok" });
+      if (mode === "success") writeFileSync(stateFile, `${JSON.stringify({ loggedIn: true })}\n`);
+      authExit(mode === "fail" ? 1 : 0, mode);
+    });
+    lines.on("close", () => authExit(1, "stdin-closed"));
+  }
+  // Only signals, a code-shaped input or stdin EOF leave this branch; keep the module from falling into the chat/terminal paths.
+  await new Promise(() => {});
 }
 mkdirSync(join(dir, "mcp"), { recursive: true });
 const log = (entry) => appendFileSync(join(dir, "log.jsonl"), `${JSON.stringify({ at: new Date().toISOString(), pid: process.pid, ...entry })}\n`);
