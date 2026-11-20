@@ -646,7 +646,7 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
           {topEntries ? <div className="group-composer-top-summary">{topEntries}</div> : null}
         </div>
       ) : null}
-      {cli.status ? <CommodoreCliGate t={cliT} status={cli.status} checking={cli.checking} recheck={cli.recheck} /> : null}
+      {cli.status ? <CommodoreCliGate t={cliT} status={cli.status} checking={cli.checking} recheck={cli.recheck} subject="commander" /> : null}
       <div
         className={`fc-composer-capsule group-composer${!actions ? " is-disabled" : ""}${cliBlocked ? " is-cli-blocked" : ""}${attachments.length > 0 ? " has-attachments" : ""}${attachmentInput.dragOver ? " is-dragover" : ""}`}
         onDragOver={attachmentInput.onDragOver}

@@ -137,4 +137,15 @@ describe("commodore CLI status gate", () => {
     expect(seen).toBe("ready");
     expect(reader).toHaveBeenCalledTimes(2);
   });
+
+  it("uses Commander subject copy in CommodoreCliGate when subject is commander", () => {
+    const t = getT("ko");
+    root = mount(createElement(CommodoreCliGate, { t, status: "signedout", checking: false, recheck: () => undefined, subject: "commander" }));
+    expect(document.body.textContent).toContain("로그인하면 지휘관이 바로 답할 수 있어요");
+    expect(document.body.textContent).not.toContain("사령관이 바로 답할 수 있어요");
+
+    act(() => root!.unmount());
+    root = mount(createElement(CommodoreCliGate, { t, status: "missing", checking: false, recheck: () => undefined, subject: "commander" }));
+    expect(document.body.textContent).toContain("지휘관이 답하려면 이 컴퓨터에 claude가 있어야 해요");
+  });
 });
