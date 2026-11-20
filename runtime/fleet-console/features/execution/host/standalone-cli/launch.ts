@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { createChildEnv, resolveBinary, resolvePathBinary } from "@fleet-console/process";
+import { createChildEnv, resolveBinary, resolvePathBinary, type OwnedProcessPort } from "@fleet-console/process";
 import { prepareAiGatewayLaunchProfile, resolveAiGatewaySelection, visibleGatewayModels } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings, ProviderStatusMap } from "@fleet-console/ai-gateway";
 
@@ -12,6 +12,7 @@ import type { AiGatewayLaunchBinding } from "../agent/launch.js";
 import { applyAgentCliPathEnvOverlay, resolveAgentCliBinary } from "../agent/agent-cli-paths.js";
 import { stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "../terminal/launch-env.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../terminal/terminal-types.js";
+import { mergeStandaloneCliPluginEnv, prepareAntigravityPlugins, readStandaloneCliPlugins, type StandaloneCliPlugin } from "./global-plugins.js";
 
 export const STANDALONE_CLI_KINDS = ["claude", "antigravity"] as const;
 export type StandaloneCliKind = (typeof STANDALONE_CLI_KINDS)[number];
@@ -49,6 +50,10 @@ export interface StandaloneCliBrowserMcpBinding {
  * 사용자가 고른 CLI가 현재 보고 있는 사령관의 Fleet Browser를 바로 쓸 수 있게 `fleet-browser` HTTP MCP만
  * 임시 0600 설정 파일/디렉터리로 주입한다(argv에 Bearer 토큰을 싣지 않는다).
  *
+ * 사람이 전역으로 설치한 플러그인(`commodore-plugins/global.json`)은 두 CLI에 함께 싣는다 — 목표 세션 토글
+ * (`objectiveExcluded`)은 이 CLI에 해당하지 않는다. Claude Code는 설치본을 `--plugin-dir`로, 키는 자식 환경으로 받고,
+ * Antigravity는 세션 범위로 변환한 사본을 받는다(`prepareAntigravityPlugins`).
+ *
  * Claude Code는 AI Gateway 변수와 압축 창 `--settings`를 받고, Antigravity(`agy`)는 자체 인증 스택을 그대로 쓴다.
  * 두 CLI 모두 부모 세션 표식과 Fleet 내부 환경 변수는 걷는다.
  */
@@ -56,6 +61,12 @@ export interface StandaloneCliLaunchDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly aiGateway: AiGatewayLaunchBinding;
   readonly browserMcp?: StandaloneCliBrowserMcpBinding;
+  /** 전역 설치 플러그인을 런치마다 설치본 경로로 푼다. 생략하면 플러그인 없이 뜬다. */
+  readonly globalPlugins?: () => readonly StandaloneCliPlugin[];
+  /** Antigravity 플러그인 변환 자식을 Console과 함께 끝나게 띄우는 소유 포트. */
+  readonly processes?: OwnedProcessPort;
+  /** Console 종료 신호 — 진행 중인 변환을 끝내 종료가 런치를 기다리지 않게 한다. */
+  readonly shutdown?: AbortSignal;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
@@ -206,16 +217,32 @@ export function createStandaloneCliLaunchResolver(
         PWD: cwd,
         ...(context?.colorScheme ? { COLORFGBG: context.colorScheme === "light" ? "0;15" : "15;0" } : {}),
       });
-      const mcp = deps.browserMcp
-        ? await prepareBrowserMcpInjection("antigravity", deps.browserMcp, cwd, context?.commodoreId ?? null)
-        : undefined;
+      const plugins = await prepareAntigravityPlugins({
+        plugins: readStandaloneCliPlugins(deps.globalPlugins),
+        bin,
+        prefixArgs,
+        env,
+        reservedNames: deps.browserMcp ? [FLEET_BROWSER_MCP_SERVER] : [],
+        ...(deps.processes ? { processes: deps.processes } : {}),
+        ...(deps.shutdown ? { signal: deps.shutdown } : {}),
+      });
+      let mcp: Awaited<ReturnType<typeof prepareBrowserMcpInjection>> | undefined;
+      try {
+        mcp = deps.browserMcp
+          ? await prepareBrowserMcpInjection("antigravity", deps.browserMcp, cwd, context?.commodoreId ?? null)
+          : undefined;
+      } catch (error) {
+        await plugins?.cleanup().catch(() => undefined);
+        throw error;
+      }
+      const cleanups = [plugins?.cleanup, mcp?.cleanup].filter((cleanup) => cleanup !== undefined);
       return {
         bin,
-        args: [...prefixArgs, "--dangerously-skip-permissions", ...additionalDirArgs, ...(mcp?.args ?? [])],
+        args: [...prefixArgs, "--dangerously-skip-permissions", ...additionalDirArgs, ...(plugins?.args ?? []), ...(mcp?.args ?? [])],
         cwd,
         env: createChildEnv(baseEnv, {}),
         terminalName: TERMINAL_TERM,
-        ...(mcp ? { cleanup: mcp.cleanup } : {}),
+        ...(cleanups.length > 0 ? { cleanup: () => runCleanups(cleanups) } : {}),
       };
     }
 
@@ -247,7 +274,9 @@ export function createStandaloneCliLaunchResolver(
       compactCeiling: gatewaySettings?.compactCeiling ?? null,
       ...(deps.homeDir ? { homeDir: deps.homeDir } : {}),
     });
-    const launchEnv: Record<string, string> = { ...profile.env };
+    // 전역 플러그인 MCP 선언의 `${VAR}` 키 — 자식이 플러그인을 읽으며 이 환경으로 펼친다. 키는 argv에 싣지 않는다.
+    const plugins = readStandaloneCliPlugins(deps.globalPlugins);
+    const launchEnv: Record<string, string> = { ...profile.env, ...mergeStandaloneCliPluginEnv(plugins) };
     if (!inherited[FUNCTION_HOOKS_ENV_KEY]) delete launchEnv[FUNCTION_HOOKS_ENV_KEY];
     if (additionalDirectories.length > 0 && !launchEnv.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD) {
       launchEnv.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD = "1";
@@ -257,13 +286,26 @@ export function createStandaloneCliLaunchResolver(
       : undefined;
     return {
       bin: profile.bin,
-      args: [...profile.args, "--dangerously-skip-permissions", ...additionalDirArgs, ...(mcp?.args ?? [])],
+      args: [
+        ...profile.args,
+        "--dangerously-skip-permissions",
+        ...additionalDirArgs,
+        ...plugins.flatMap((plugin) => ["--plugin-dir", plugin.path]),
+        ...(mcp?.args ?? []),
+      ],
       cwd,
       env: launchEnv,
       terminalName: TERMINAL_TERM,
       ...(mcp ? { cleanup: mcp.cleanup } : {}),
     };
   };
+}
+
+/** 하나가 실패해도 나머지 정리는 끝까지 한다. */
+async function runCleanups(cleanups: readonly (() => Promise<void>)[]): Promise<void> {
+  const results = await Promise.allSettled(cleanups.map((cleanup) => cleanup()));
+  const failed = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+  if (failed) throw failed.reason;
 }
 
 function normalizeAdditionalDirectories(cwd: string, directories: readonly string[] | undefined): readonly string[] {

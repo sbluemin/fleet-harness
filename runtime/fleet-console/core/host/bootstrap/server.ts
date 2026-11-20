@@ -2954,6 +2954,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         commodorePluginDirs: (commodoreId) => commodore?.pluginDirs(commodoreId) ?? [],
         commodorePluginEnv: (commodoreId) => commodore?.pluginEnv(commodoreId) ?? {},
         commodoreAutoMemoryEnabled: (commodoreId) => commodore?.commanderAutoMemoryEnabled(commodoreId) ?? true,
+        globalPlugins: () => commodore?.globalPlugins() ?? [],
+        standaloneCliProcesses: { spawnOwned: (request) => {
+          const child = ownedProcesses.spawn({
+            command: request.command, args: request.args,
+            ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
+            env: request.env ?? process.env, stdin: request.stdin ?? "pipe", owner: "feature:standalone-cli",
+          });
+          return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
+        } },
       });
       readSidebarSteps = () => new Map(execution.listSessions().map((session) => [session.sessionId, session.step ?? null]));
       readSidebarOwnWorking = () => new Set(execution.listSessions().filter((session) => !session.attentionPending && (session.modelActivity === "working" || session.backgroundPending)).map((session) => session.sessionId));

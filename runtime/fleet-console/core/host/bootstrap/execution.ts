@@ -20,6 +20,8 @@ import { probeClaudeAuth } from "../../../features/execution/host/agent/claude-a
 import { createTerminalRuntime } from "../../../features/execution/host/terminal/index.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
 import type { CommodoreSystemPromptService } from "../../../features/settings/host/agent-options.js";
+import type { StandaloneCliPlugin } from "../../../features/execution/host/standalone-cli/global-plugins.js";
+import type { OwnedProcessPort } from "@fleet-console/process";
 
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
@@ -33,9 +35,13 @@ export async function startConsoleExecution(
     readonly commodorePluginDirs?: (commodoreId: string) => readonly string[];
     readonly commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>;
     readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean;
+    /** 사람이 전역으로 설치한 플러그인 — 독립 CLI(Claude Code·Antigravity)가 런치마다 읽는다. */
+    readonly globalPlugins?: () => readonly StandaloneCliPlugin[];
+    /** 독립 CLI가 Antigravity 플러그인 변환 자식을 Console과 함께 끝나게 띄우는 소유 포트. */
+    readonly standaloneCliProcesses?: OwnedProcessPort;
   },
 ) {
-  const { commodoreSystemPrompts, commodorePluginDirs, commodorePluginEnv, commodoreAutoMemoryEnabled } = commodoreLaunch;
+  const { commodoreSystemPrompts, commodorePluginDirs, commodorePluginEnv, commodoreAutoMemoryEnabled, globalPlugins, standaloneCliProcesses } = commodoreLaunch;
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir);
   // 런치·채팅·플러그인 에이전트가 같은 실행 파일을 쓰도록 한 자리에서 푼다. Windows cmd shim은 SDK가 직접 못 띄운다.
   const resolveClaudeExecutable = async (): Promise<string | undefined> => {
@@ -105,9 +111,12 @@ export async function startConsoleExecution(
   ctx.host.lifecycle.registerCleanup(unsubscribeControl);
   registerExperimentRoutes(ctx);
   const aiGatewayRoutePath = `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`;
-  // 사령관·지휘관과 무관한 독립 Claude Code CLI(Ctrl+₩). Gateway 주소만 받고 Fleet MCP·플러그인·훅 자격은 받지 않는다.
+  // 사령관·지휘관과 무관한 독립 CLI(Ctrl+₩). Gateway 주소와 사람이 전역으로 설치한 플러그인만 받고, Fleet MCP·사령관별 플러그인·훅
+  // 자격은 받지 않는다.
   registerStandaloneCliRoutes(ctx, runtime, {
     aiGateway: { routePath: aiGatewayRoutePath, origin: () => ctx.host.server.origin() },
+    ...(globalPlugins ? { globalPlugins } : {}),
+    ...(standaloneCliProcesses ? { processes: standaloneCliProcesses } : {}),
     readAgentCliPaths: async () => (await agentCliPaths.read()).paths,
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,

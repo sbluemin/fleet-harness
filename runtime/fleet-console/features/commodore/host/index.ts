@@ -38,7 +38,7 @@ import { createTaskforceFeature } from "./taskforce/index.js";
 import { createCommodoreMessenger } from "./messaging.js";
 import { createCommodoreCreator } from "./creation.js";
 import { createCommodoreManagementTools } from "./console-tools.js";
-import { createCommodorePlugins } from "./plugins.js";
+import { createCommodorePlugins, type ResolvedPlugin } from "./plugins.js";
 import type { ClaudeHomeLocation } from "./home-overlay.js";
 export { userClaudeHome, type ClaudeHomeLocation } from "./home-overlay.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
@@ -440,6 +440,11 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
     pluginDirs: (commodoreId: string): readonly string[] => plugins.resolve(objectiveIds(commodoreId)).map((plugin) => plugin.path),
     /** 그 플러그인 MCP 선언의 `${VAR}` 키 — 목표 세션에 실리는 id만. 같은 세션의 자식 환경에 얹는다. */
     pluginEnv: (commodoreId: string): Readonly<Record<string, string>> => plugins.pluginEnv(objectiveIds(commodoreId)),
+    /**
+     * 전역 설치 목록 전부를 설치본 경로·MCP 선언·키로 — 사령관·목표와 무관한 독립 CLI(Claude Code·Antigravity)가 런치마다 싣는다.
+     * 목표 세션 토글(`objectiveExcluded`)은 거르지 않는다. 받지 않았거나 사라진 것은 `resolve`가 건너뛴다.
+     */
+    globalPlugins: (): readonly ResolvedPlugin[] => plugins.resolve(plugins.listGlobal()),
     async dispose() {
       if (disposed) return;
       disposed = true;
