@@ -20,7 +20,9 @@ import { useMenuButtonKeyboard } from "../../../../../../core/client/src/chrome/
 import { getState, subscribe as subscribeConsole } from "../../../../../../core/client/src/integration/store.js";
 import { useViewMode } from "../../../../../../core/client/src/integration/view-mode-store.js";
 import { claimComposerKeyboardFocus } from "../composer-keyboard-focus.js";
-import { discardLaunchAttachment, uploadLaunchAttachment } from "../../api.js";
+import { discardLaunchAttachment, fetchAgentCliStatus, uploadLaunchAttachment } from "../../api.js";
+import { CommodoreCliGate, cliGateBlocks, useCliStatusProbe } from "../../../../../commodore/client/commodore-cli-status.js";
+import { getT as getCommodoreT } from "../../../../../commodore/client/i18n/index.js";
 import { getComposerDraft } from "../../../objective-view-state.js";
 import { claimComposerInbox } from "../composer-inbox.js";
 import { getGroupT } from "./group-chat-i18n.js";
@@ -68,6 +70,8 @@ export interface GroupComposerProps {
   readonly renderControls?: ObjectiveClusterConversation["renderComposerControls"];
   /** 통합 줄에서만 받는 기존 진행 표시. 쉼이면 내용 없이 같은 요약 줄을 유지한다. */
   readonly workingLine?: React.ReactNode;
+  /** 최신 실패가 CLI 원인이면 그 원인 — 새로 바뀔 때 C1 상태 줄을 다시 읽는다. */
+  readonly cliFailure?: "missing" | "signedout" | null;
   /** 한 명만 멈춘다 — 기존 실행 중 중지 경로. */
   readonly onStopOne: (speaker: ConversationSpeaker) => Promise<void>;
 }
@@ -132,12 +136,15 @@ function groupDraft(rootObjectiveId: string) {
   return draft;
 }
 
-export function GroupComposer({ rootObjectiveId, snapshot, actions, language, topEntries, renderControls, workingLine, onStopOne }: GroupComposerProps) {
+export function GroupComposer({ rootObjectiveId, snapshot, actions, language, topEntries, renderControls, workingLine, cliFailure = null, onStopOne }: GroupComposerProps) {
   const phone = useViewMode().effective === "mobile";
   const accent = useAvatarAccent(objectiveRecordAvatarKey(rootObjectiveId));
   const t = getGroupT(language);
+  const cliT = getCommodoreT(language);
   // 첨부·「+」 메뉴 문구는 사령관 입력창과 한 벌이다(SDK).
   const ct = composerT(language);
+  const cli = useCliStatusProbe(rootObjectiveId, Boolean(actions), cliFailure, fetchAgentCliStatus);
+  const cliBlocked = Boolean(actions) && cliGateBlocks(cli.status);
   const draft = groupDraft(rootObjectiveId);
   const { text, target, busy, notice, mode } = React.useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
@@ -405,6 +412,7 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
   const submit = async () => {
     if (seated) { submitBoard(seated); return; }
     if (board?.actionsOnly) { setNotice({ tone: "info", text: t("group.board.pick") }); return; }
+    if (cliBlocked) return;
     if (draft.read().busy || !actions || blank || uploading) return;
     const sentTo = target;
     const sentText = text;
@@ -498,7 +506,8 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
   };
 
   const placeholder = !actions ? t("group.composer.unavailable")
-    : seated?.context ? local(seated.context.placeholder)
+    : cliBlocked ? cliT("commodore.cli.gate.placeholder")
+      : seated?.context ? local(seated.context.placeholder)
       : board?.actionsOnly ? t("group.board.placeholder")
         : composerQuotePlaceholder(quotes.length, ct) ?? (target ? t("group.composer.placeholderTo", { name: targetName(target) })
           // 지휘관에게만 말하는 입력창(완료한 목표)은 구성원을 고르라고 권하지 않는다.
@@ -637,8 +646,9 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
           {topEntries ? <div className="group-composer-top-summary">{topEntries}</div> : null}
         </div>
       ) : null}
+      {cli.status ? <CommodoreCliGate t={cliT} status={cli.status} checking={cli.checking} recheck={cli.recheck} /> : null}
       <div
-        className={`fc-composer-capsule group-composer${!actions ? " is-disabled" : ""}${attachments.length > 0 ? " has-attachments" : ""}${attachmentInput.dragOver ? " is-dragover" : ""}`}
+        className={`fc-composer-capsule group-composer${!actions ? " is-disabled" : ""}${cliBlocked ? " is-cli-blocked" : ""}${attachments.length > 0 ? " has-attachments" : ""}${attachmentInput.dragOver ? " is-dragover" : ""}`}
         onDragOver={attachmentInput.onDragOver}
         onDragLeave={attachmentInput.onDragLeave}
         onDrop={attachmentInput.onDrop}
@@ -706,9 +716,9 @@ export function GroupComposer({ rootObjectiveId, snapshot, actions, language, to
         ) : (
           <ComposerSendButton
             className={seated ? "group-composer-send-action" : undefined}
-            aria-label={seated ? local(seated.label) : t("group.composer.send")}
-            title={seated ? local(seated.label) : t("group.composer.send")}
-            disabled={!actions || busy || uploading || (seated ? !!seated.unavailable : blank || !!board?.actionsOnly)}
+            aria-label={cliBlocked ? cliT("commodore.cli.gate.sendBlocked") : seated ? local(seated.label) : t("group.composer.send")}
+            title={cliBlocked ? cliT("commodore.cli.gate.sendBlocked") : seated ? local(seated.label) : t("group.composer.send")}
+            disabled={!actions || busy || uploading || (seated ? !!seated.unavailable : cliBlocked || blank || !!board?.actionsOnly)}
             onClick={() => { void submit(); }}
           />
         )}

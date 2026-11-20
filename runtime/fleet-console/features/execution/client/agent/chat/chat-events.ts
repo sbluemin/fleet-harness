@@ -1045,6 +1045,19 @@ const MIN_THOUGHT_MS = 1_000;
  */
 export type AgentChatClockedEvent = AgentChatStreamEvent & { readonly receivedAt?: number };
 
+const TRANSIENT_TURN_ERROR_CODES: ReadonlySet<string> = new Set([
+  "chat_cli_unavailable",
+  "chat_cli_signed_out",
+  "chat_turn_failed",
+]);
+
+/** 지휘관 채팅의 CLI 원인 오류 코드 → C2 원인 카드가 읽는 원인. */
+export function agentChatCliFailure(errorCode: string | null): "missing" | "signedout" | null {
+  if (errorCode === "chat_cli_unavailable") return "missing";
+  if (errorCode === "chat_cli_signed_out") return "signedout";
+  return null;
+}
+
 export const initialAgentChatLogState: AgentChatLogState = {
   turns: [],
   replaying: false,
@@ -1142,7 +1155,8 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         toolCount: 0,
         draft: "",
       };
-      return { ...state, turns: [...settleLastTurn(state), turn] };
+      const clearedError = state.errorCode !== null && TRANSIENT_TURN_ERROR_CODES.has(state.errorCode) ? null : state.errorCode;
+      return { ...state, errorCode: clearedError, turns: [...settleLastTurn(state), turn] };
     }
     case "turn-inject": {
       // 새 턴을 열지 않는다 — 이 말은 도는 턴이 도중에 읽은 것이고, 그 사실이 이 아이템의 전부다.
@@ -1377,9 +1391,13 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatClo
         ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
         ...(event.answer !== undefined ? { answer: event.answer } : {}),
       }));
+      const nextErrorCode = event.ok
+        ? (state.errorCode !== null && TRANSIENT_TURN_ERROR_CODES.has(state.errorCode) ? null : state.errorCode)
+        : state.errorCode;
+      const settled = nextErrorCode === closed.errorCode ? closed : { ...closed, errorCode: nextErrorCode };
       return moved.length > 0
-        ? { ...closed, turns: [...closed.turns, { dispatch: null, items: moved, state: "done" as const, toolCount: 0, draft: "" }] }
-        : closed;
+        ? { ...settled, turns: [...settled.turns, { dispatch: null, items: moved, state: "done" as const, toolCount: 0, draft: "" }] }
+        : settled;
     }
     case "job": {
       const existing = state.jobs.find((job) => job.id === event.id);

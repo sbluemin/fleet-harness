@@ -22,6 +22,7 @@ import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
 import {
   AGENT_CHAT_JOB_FAMILY,
   AGENT_CHAT_THINK_FAMILY,
+  agentChatCliFailure,
   agentChatMcpCall,
   agentChatToolFamily,
   agentChatToolLabel,
@@ -55,6 +56,8 @@ import type { ClientModelsCapability } from "../../../../ai-gateway/shared/model
 import { readAgentChatSessionCoordinates, readSpeakerSessionCoordinate, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { CoordinateFace, SessionCoordinateMenu, type CoordinateMenuOpenRequest, type CoordinateMenuStage } from "./coordinate-menu.js";
 import { AgentChatComposer, HistoryFoldButton, READING_WIDTH_LABEL_KEY, useDistinctChatWidths, type AgentChatQueueCancelOutcome } from "./composer.js";
+import { CliFailureCard } from "../../../../commodore/client/commodore-cli-status.js";
+import { getT as getCommodoreT } from "../../../../commodore/client/i18n/index.js";
 import { useCommanderLedgerFramed } from "./group/commander-ledger.js";
 import { useLedgerSplitPaneSpeaker } from "./group/ledger-split-panes.js";
 import { LiveSpeakerMark, SpeakerMark, SpeakerName } from "./group/speaker-mark.js";
@@ -237,6 +240,7 @@ export function AgentChatView({
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
   // 있음"은 아직 모른다는 뜻이고, 그것을 초대로 읽으면 과거가 있는 세션에도 초대가 잠깐 스친다.
   const blockedError = state.errorCode === "chat_transcript_missing" || state.errorCode === "session_id_conflict";
+  const cliFailure = agentChatCliFailure(state.errorCode);
   const awaitingFirstTurn = state.turns.length === 0 && !state.replaying && state.connection === "open" && !blockedError;
   // 모바일 「다시 시도」는 마지막 턴에 사람이 보낸 지시를 같은 길로 한 번 더 보낸다 — 새 턴이 서고, 지난 턴은
   // 기록에 남는다. 플러그인·다른 Objective가 보낸 지시는 사람이 쓴 문면이 아니므로 대상이 아니다.
@@ -796,9 +800,11 @@ export function AgentChatView({
       {state.errorCode === "session_id_conflict" && turns.length > 0
         ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.sessionIdConflict")}</div>
         : null}
-      {state.errorCode === "chat_turn_failed"
-        ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
-        : null}
+      {cliFailure !== null
+        ? <CliFailureCard t={getCommodoreT(language)} cause={cliFailure} canResend={retryText !== null} onResend={retry} />
+        : state.errorCode === "chat_turn_failed"
+          ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
+          : null}
       {fileLinkError !== null
         ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div>
         : null}
@@ -892,6 +898,7 @@ export function AgentChatView({
             queue={state.queue}
             onStop={handleStop}
             onCancelQueued={handleCancelQueued}
+            cliFailure={cliFailure}
             disabled={blockedError}
           />
         )}

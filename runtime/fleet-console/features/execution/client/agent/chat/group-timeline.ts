@@ -23,8 +23,12 @@ export interface ConversationJournal {
   readonly queueSeen: ReadonlyMap<string, number>;
   /** 이 참여자의 지금 문맥 창. 한 턴도 측정되지 않았으면 없다 — 컨텍스트 레일이 읽는다. */
   readonly context: AgentChatContext | null;
+  /** 이 참여자의 최신 CLI 원인 실패(없음·미로그인). 새 지시나 성공 결말에서 지워진다. */
+  readonly cliFailure?: "missing" | "signedout" | null;
+  /** 이 참여자에게 사람이 마지막으로 보낸 말 — C2 원인 카드의 「다시 보내기」가 쓴다. */
+  readonly lastHumanPrompt?: string | null;
 }
-export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, queue: [], queueSeen: new Map(), context: null };
+export const EMPTY_CONVERSATION_JOURNAL: ConversationJournal = { entries: [], draftId: null, truncated: false, turn: null, queue: [], queueSeen: new Map(), context: null, cliFailure: null, lastHumanPrompt: null };
 const objectiveRecordSpeaker = (id: string): ConversationSpeaker => ({ kind: "objectiveRecord", objectiveId: id, name: id });
 /** 「> 」 인용 한 겹을 걷는다 — 플러그인이 덧붙인 말을 지시 아래 인용으로 실어 보낸 모양이다. */
 const unquote = (text: string): string => text.split("\n").map((line) => line.replace(/^>\s?/, "")).join("\n").trim();
@@ -40,6 +44,8 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
   let entries = [...state.entries];
   let draftId = state.draftId;
   let turn = state.turn ?? null;
+  let cliFailure = state.cliFailure ?? null;
+  let lastHumanPrompt = state.lastHumanPrompt ?? null;
   const id = `message:${objectiveId}:${row.seq}`;
   // 턴 좌표는 그 턴을 연 사건의 seq 다. 여는 사건 없이 말이 먼저 오면(중간부터 읽은 기록) 그 말이 턴을 연다.
   const turnOf = () => turn ?? (turn = `turn:${objectiveId}:${row.seq}`);
@@ -49,7 +55,11 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
     case "dispatch":
     case "turn-inject": {
       // 지시는 새 턴을 연다. 도는 턴에 끼워 넣은 말(turn-inject)은 그 턴 안이다.
-      if (event.kind === "dispatch") turn = `turn:${objectiveId}:${row.seq}`;
+      if (event.kind === "dispatch") {
+        turn = `turn:${objectiveId}:${row.seq}`;
+        cliFailure = null;
+        lastHumanPrompt = null;
+      }
       const origin = event.by;
       // 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시는 발화자가 아니라 출처다 — 말풍선이 아닌 가운데 알림 줄로 선다.
       if (origin?.kind === "plugin" && !origin.humanInput) {
@@ -64,6 +74,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
           : { kind: "human", name: "Human" };
       // 보드 행위에 덧붙인 말은 프롬프트 속 인용 그대로 표시 문면이 된다 — 다시 연 뒤에도 같은 구간이 서도록 인용은 호스트에 두고 여기서 걷는다.
       const text = via ? unquote(event.text) : event.text;
+      if (event.kind === "dispatch" && by.kind === "human" && text.trim().length > 0) lastHumanPrompt = text;
       // 로스터가 넣은 말은 그룹 말풍선이 아니다. 전언은 보낸 쪽 message 도구 줄이 지고, 받는 쪽 원장은 「받은 메시지」로 읽는다.
       if (origin?.kind === "objectiveRecord" && origin.roster === true && origin.objectiveId !== objectiveId) break;
       const recipient = human?.targetObjectiveId ? objectiveRecordSpeaker(human.targetObjectiveId) : via ? speaker : undefined;
@@ -129,7 +140,12 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       entries = entries.map((entry) => entry.kind === "message" && entry.streaming ? { ...entry, streaming: false } : entry);
       draftId = null;
       turn = null;
+      if (event.ok) cliFailure = null;
       break;
+    case "error":
+      if (event.code === "chat_cli_unavailable") return { ...state, cliFailure: "missing" };
+      if (event.code === "chat_cli_signed_out") return { ...state, cliFailure: "signedout" };
+      return state;
     case "queue": {
       // 예약 전량 교체. 저널 줄은 건드리지 않는다 — 대기 말은 이 스냅샷에서만 서고, 확정 말과 섞어 세지 않는다.
       const seen = new Map<string, number>();
@@ -146,7 +162,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
   // 수신/재생의 동일 좌표는 한 번만 세운다. 결과 갱신은 기존 자리를 유지한다.
   const byId = new Map(entries.map((entry) => [entry.id, entry]));
   const unique = [...byId.values()];
-  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn, queue: state.queue, queueSeen: state.queueSeen, context: state.context };
+  return { entries: unique.slice(-ENTRY_CAP), draftId, truncated: state.truncated || unique.length > ENTRY_CAP, turn, queue: state.queue, queueSeen: state.queueSeen, context: state.context, cliFailure, lastHumanPrompt };
 }
 
 const oneLine = (text: string): string => text.replace(/\s+/gu, " ").trim().slice(0, 240);
@@ -300,7 +316,11 @@ export function composeGroupTimeline(input: {
   const preview: ConversationPreview | null = decision
     ? { kind: "decision", text: oneLine(decision.title), at: decision.createdAt }
     : last?.kind === "message" ? { kind: "message", text: oneLine(last.text), at: last.at, speaker: last.speaker } : null;
+  const rootJournal = input.rootObjectiveId ? input.journals.get(input.rootObjectiveId) : undefined;
+  const cliFailure = rootJournal?.cliFailure ?? null;
+  const cliFailurePrompt = cliFailure ? (rootJournal?.lastHumanPrompt ?? null) : null;
   return { rootObjectiveId: input.rootObjectiveId, entries: ordered, participants: input.participants,
     working: input.participants.filter((participant) => participant.activity === "running").map((participant) => participant.speaker),
-    decision, holds: input.board?.holds ?? [], preview, loading: input.loading ?? false, truncated, unavailableObjectiveIds: input.unavailableObjectiveIds ?? [] };
+    decision, holds: input.board?.holds ?? [], preview, loading: input.loading ?? false, truncated, unavailableObjectiveIds: input.unavailableObjectiveIds ?? [],
+    ...(cliFailure ? { cliFailure, ...(cliFailurePrompt ? { cliFailurePrompt } : {}) } : {}) };
 }

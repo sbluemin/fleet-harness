@@ -27,7 +27,7 @@ vi.mock("../../quota/client/provider-login.js", () => ({
   subscribeLogins: (listener: () => void) => { login.listeners.add(listener); return () => { login.listeners.delete(listener); }; },
 }));
 
-const { CommodoreCliGate, useCommodoreCliStatus } = await import("./commodore-cli-status.js");
+const { CliFailureCard, CommodoreCliGate, useCliStatusProbe, useCommodoreCliStatus } = await import("./commodore-cli-status.js");
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -99,5 +99,42 @@ describe("commodore CLI status gate", () => {
     act(() => signIn!.click());
     expect(beginLogin).toHaveBeenCalledTimes(1);
     expect(openPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the shared CliFailureCard for missing and signedout causes without a CLI path picker", () => {
+    const t = getT("ko");
+    const onResend = vi.fn();
+    root = mount(createElement(CliFailureCard, { t, cause: "missing", onResend }));
+    const missingButtons = [...document.querySelectorAll("button")].map((b) => b.textContent);
+    expect(missingButtons).toEqual(["설치 방법", "다시 보내기"]);
+    expect(document.body.textContent).not.toContain("CLI 경로 지정");
+    act(() => { document.querySelectorAll("button")[1]!.click(); });
+    expect(onResend).toHaveBeenCalledTimes(1);
+
+    act(() => root!.unmount());
+    root = mount(createElement(CliFailureCard, { t, cause: "signedout", onResend }));
+    const signedOutButtons = [...document.querySelectorAll("button")].map((b) => b.textContent);
+    expect(signedOutButtons).toEqual(["로그인", "다시 보내기"]);
+    act(() => { document.querySelectorAll("button")[0]!.click(); });
+    expect(beginLogin).toHaveBeenCalledTimes(1);
+    expect(openPanel).toHaveBeenCalledTimes(1);
+  });
+
+  it("supports custom status readers via useCliStatusProbe for commander chat", async () => {
+    const reader = vi.fn().mockResolvedValueOnce("missing").mockResolvedValueOnce("ready");
+    let seen: string | null = null;
+    let recheck!: () => void;
+    const Probe = () => {
+      const state = useCliStatusProbe("obj-1", true, null, reader);
+      seen = state.status;
+      recheck = state.recheck;
+      return null;
+    };
+    root = mount(createElement(Probe));
+    await act(async () => { await Promise.resolve(); });
+    expect(seen).toBe("missing");
+    await act(async () => { recheck(); await Promise.resolve(); });
+    expect(seen).toBe("ready");
+    expect(reader).toHaveBeenCalledTimes(2);
   });
 });

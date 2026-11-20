@@ -43,6 +43,18 @@ export async function fetchAgentState(signal?: AbortSignal): Promise<readonly Ag
   return payload.agentClis.map((cli) => assertAgentCliMetadata(cli, response.status));
 }
 
+export type AgentCliStatus = "missing" | "signedout" | "ready";
+
+/** 지휘관 채팅의 CLI 문 — 사령관 채팅과 같은 읽기 전용 판정. 판정 실패는 `ready`로 접어 막지 않는다. */
+export async function fetchAgentCliStatus(signal?: AbortSignal): Promise<AgentCliStatus> {
+  const response = await fetch("/api/v1/agent/cli-status", { signal });
+  if (!response.ok) return "ready";
+  const payload = await response.json().catch(() => null) as { readonly status?: unknown } | null;
+  return payload?.status === "missing" || payload?.status === "signedout" || payload?.status === "ready"
+    ? payload.status
+    : "ready";
+}
+
 export async function fetchSessions(signal?: AbortSignal): Promise<readonly SessionInfo[]> {
   const response = await fetch("/api/v1/agent/sessions", { signal });
   await assertOk(response);

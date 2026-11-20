@@ -24,7 +24,9 @@ import type { AgentChatCatalog, AgentChatQueueEntry } from "./chat-events.js";
 import { ChatComposerDeck, renderComposerSpans } from "./composer-deck-view.js";
 import { applyDeckPick, buildDeckSections, flattenDeckRows, readConsoleCommand, readDeckToken, readResolvedTokenRanges } from "./composer-deck.js";
 import type { ChatConsoleCommand } from "./composer-deck.js";
-import { readAgentChatCatalog } from "../api.js";
+import { fetchAgentCliStatus, readAgentChatCatalog } from "../api.js";
+import { CommodoreCliGate, cliGateBlocks, useCliStatusProbe } from "../../../../commodore/client/commodore-cli-status.js";
+import { getT as getCommodoreT } from "../../../../commodore/client/i18n/index.js";
 import { getComposerDraft } from "../../objective-view-state.js";
 import { claimComposerKeyboardFocus } from "./composer-keyboard-focus.js";
 import { drainComposerInbox, subscribeComposerInbox } from "./composer-inbox.js";
@@ -170,6 +172,7 @@ export function AgentChatComposer({
   onCancelQueued,
   onOpenCoordinates,
   catalogEpoch,
+  cliFailure = null,
   disabled = false,
 }: {
   readonly context: ObjectiveRenderContext;
@@ -199,11 +202,15 @@ export function AgentChatComposer({
   readonly onOpenCoordinates: (stage: "models" | "effort") => void;
   /** 자식의 능력 목록 판본. 오르면 이 컴포저가 들고 있던 카탈로그 사본이 만료한다. */
   readonly catalogEpoch: number;
+  readonly cliFailure?: "missing" | "signedout" | null;
   readonly disabled?: boolean;
 }) {
   const language = context.language ?? "en";
   const t = getT(language);
+  const cliT = getCommodoreT(language);
   const ct = composerT(language);
+  const cli = useCliStatusProbe(context.objectiveId, !disabled, cliFailure, fetchAgentCliStatus);
+  const cliBlocked = !disabled && cliGateBlocks(cli.status);
   /* 채팅 폭 — 대화 컬럼과 입력창이 함께 따르는 하나의 값이고, 이 글리프가 그 유일한 문이다
      (설정에도 같은 값을 고르는 Select가 선다). 글리프가 현재 값을 그리고, 누르면 다음 단으로
      간다 — 이 폭에서 같은 폭이 되는 단은 건너뛴다. */
@@ -378,7 +385,7 @@ export function AgentChatComposer({
   // 그냥 보내면 이 클로저가 **직전** 초안을 읽는다 — 보낼 문면을 인자로 받아야 그 한 틱이 안전하다.
   const send = React.useCallback((override?: string) => {
     const text = (override ?? draft).trim();
-    if (disabled || sending) return;
+    if (disabled || cliBlocked || sending) return;
     // 문면이 비어도 첨부가 있으면 나간다 — 자식은 첨부 지시 줄만 받고, 말풍선은 첨부만 선다.
     // 업로드가 끝나지 않은 첨부는 아직 보낼 것이 아니므로 둘 다 없을 때와 같이 멈춘다.
     if (text.length === 0) {
@@ -405,7 +412,7 @@ export function AgentChatComposer({
     // 초안 저장소가 중복 발사·첨부 준비·성공/실패를 판정한다. 레이아웃 전환으로 이 입력창이
     // 내려가도 요청은 한 번만 끝나고, 돌아온 입력창이 같은 결말을 구독한다.
     void draftState.send(text);
-  }, [disabled, draft, attachments, quotes, sending, catalog, clearArmed, runConsoleCommand, t, draftState, setDraft]);
+  }, [disabled, cliBlocked, draft, attachments, quotes, sending, catalog, clearArmed, runConsoleCommand, t, draftState, setDraft]);
 
   /**
    * 덱의 행 하나를 확정한다.
@@ -481,11 +488,11 @@ export function AgentChatComposer({
   // 발사 조건은 전송 경로와 같아야 한다 — 서버는 문면이나 첨부 중 하나라도 있으면 받으므로 버튼도
   // 같은 규칙으로 켠다. 둘 다 없으면(또는 첨부가 아직 올라가는 중이면) 눌러도 나갈 것이 없다.
   const uploading = attachments.some((attachment) => attachment.uploading);
-  const canSend = !disabled && (draft.trim().length > 0 || attachments.length > 0 || quotes.length > 0) && !sending && !uploading;
+  const canSend = !disabled && !cliBlocked && (draft.trim().length > 0 || attachments.length > 0 || quotes.length > 0) && !sending && !uploading;
   // 안내는 고정 문구다 — 세션 제목을 넣으면 긴 제목이 두 줄로 접혀 한 줄 상자에서 잘린다.
   // 실제 제목은 캡션이 이미 온전히 보여 준다.
   // 인용이 붙어 있으면 그 사실과 다음 할 일(지시 쓰기)을 빈 칸이 말한다.
-  const placeholder = composerQuotePlaceholder(quotes.length, ct) ?? t("terminal.chat.composerPlaceholder");
+  const placeholder = cliBlocked ? cliT("commodore.cli.gate.placeholder") : (composerQuotePlaceholder(quotes.length, ct) ?? t("terminal.chat.composerPlaceholder"));
   const notice = consoleNotice !== null
     ? consoleNotice
     : failed
@@ -571,8 +578,9 @@ export function AgentChatComposer({
       </div>
       </>
       )}
+      {cli.status ? <CommodoreCliGate t={cliT} status={cli.status} checking={cli.checking} recheck={cli.recheck} /> : null}
       <div
-        className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${highlightSpans.length > 0 ? " is-mirrored" : ""}`}
+        className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${cliBlocked ? " is-cli-blocked" : ""}${highlightSpans.length > 0 ? " is-mirrored" : ""}`}
         onKeyDown={(event) => {
           // 도는 턴을 끊는 키. 프레임 안에서만 듣는다 — 문서 전역에 걸면 한 화면에 열린 다른
           // 채팅 패널의 턴까지 함께 끊는다. 안내(`Esc 중지`)가 서는 구간과 정확히 같은 구간이다.
@@ -717,8 +725,8 @@ export function AgentChatComposer({
                     className={`agent-chat-composer-send is-queue${canSend ? " is-armed" : ""}`}
                     disabled={!canSend}
                     onClick={() => { void send(); }}
-                    aria-label={t("terminal.chat.composerQueue")}
-                    title={hint}
+                    aria-label={cliBlocked ? cliT("commodore.cli.gate.sendBlocked") : t("terminal.chat.composerQueue")}
+                    title={cliBlocked ? cliT("commodore.cli.gate.sendBlocked") : hint}
                   />
                 </>
               ) : (
@@ -726,8 +734,8 @@ export function AgentChatComposer({
                   className={`agent-chat-composer-send${canSend ? " is-armed" : ""}`}
                   disabled={!canSend}
                   onClick={() => { void send(); }}
-                  aria-label={t("terminal.chat.composerSend")}
-                  title={hint}
+                  aria-label={cliBlocked ? cliT("commodore.cli.gate.sendBlocked") : t("terminal.chat.composerSend")}
+                  title={cliBlocked ? cliT("commodore.cli.gate.sendBlocked") : hint}
                 />
               )}
             </span>
@@ -759,7 +767,7 @@ export function AgentChatComposer({
                   aria-disabled={!canSend || undefined}
                   onClick={() => { if (canSend) void send(); else inputRef.current?.focus(); }}
                   // 폰에는 Enter 키 안내가 뜻이 없다 — 명세 이름(「보내기」·「멈춤」)만 싣는다(FD-30 ①).
-                  aria-label={t(turnRunning ? "terminal.mobile.queue" : "terminal.mobile.send")}
+                  aria-label={cliBlocked ? cliT("commodore.cli.gate.sendBlocked") : t(turnRunning ? "terminal.mobile.queue" : "terminal.mobile.send")}
                 >
                   <MobileGlyph name="send" strokeWidth={2.2} />
                 </ComposerSubmitButton>

@@ -1,3 +1,6 @@
+import os from "node:os";
+import path from "node:path";
+
 import { startAiGateway } from "../../../features/ai-gateway/host/start.js";
 import { createDelegationIntentLedger } from "@fleet-console/ai-gateway";
 
@@ -47,6 +50,17 @@ export async function startConsoleExecution(
     const executable = await resolveClaudeExecutable();
     if (!executable) return { status: "missing" };
     return { status: await probeClaudeAuth(executable) };
+  };
+  /**
+   * 지휘관(Objective) 채팅의 CLI 문 — 지휘관 채팅 자식이 쓰는 공유 Claude 홈(`CLAUDE_CONFIG_DIR` 또는 `~/.claude`)에서
+   * 읽기 전용으로 확인한다. Linux/WSL처럼 `.credentials.json`에 로그인을 두는 환경에서도 빈 임시 홈으로 오판하지 않는다.
+   */
+  const readAgentCliStatus = async (): Promise<{ readonly status: "missing" | "signedout" | "ready" }> => {
+    const executable = await resolveClaudeExecutable();
+    if (!executable) return { status: "missing" };
+    const configured = process.env.CLAUDE_CONFIG_DIR;
+    const configDir = configured && configured.length > 0 ? configured : path.join(os.homedir(), ".claude");
+    return { status: await probeClaudeAuth(executable, { configDir }) };
   };
   const delegationIntents = createDelegationIntentLedger();
   const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, releaseExecutionSession, canRouteDelegation } = startAiGateway({
@@ -107,6 +121,7 @@ export async function startConsoleExecution(
     ...(commodoreAutoMemoryEnabled ? { commodoreAutoMemoryEnabled } : {}),
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,
+    readCliStatus: readAgentCliStatus,
     // 지휘관 채팅은 사령관과 같은 별칭 고정을 쓴다.
     ...(models.pinClaudeVersion ? { pinClaudeVersion: models.pinClaudeVersion } : {}),
     aiGateway: {

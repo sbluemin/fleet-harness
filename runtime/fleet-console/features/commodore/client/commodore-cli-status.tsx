@@ -19,7 +19,8 @@ const claudeLoginPhase = () => getLoginStates().claude.phase;
 const CLAUDE_CODE_INSTALL_URL = "https://docs.claude.com/en/docs/claude-code/setup";
 
 /**
- * 사령관 채팅의 CLI 문 — 호스트에 묻고, 「다시 확인」은 같은 경로를 다시 부른다.
+ * 채팅의 CLI 문 — 호스트에 묻고, 「다시 확인」은 같은 경로를 다시 부른다.
+ * 사령관 채팅과 지휘관 채팅이 같은 상태 기계를 공유한다.
  *
  * 처음 응답 전에는 `null`이다. 그동안 보내기를 막지 않는다 — 판정을 읽지 못한 것과 CLI가 없는 것은 다르고,
  * 실제로 없으면 보낸 뒤 원인 카드가 받는다. 호스트 판정 실패도 `ready`로 접어 같은 규율을 지킨다.
@@ -27,21 +28,28 @@ const CLAUDE_CODE_INSTALL_URL = "https://docs.claude.com/en/docs/claude-code/set
  * 대화의 최신 실패가 CLI 원인으로 새로 바뀌면(보내는 동안 CLI가 사라지거나 로그인이 풀린 경우) 같은 경로를 다시 읽어
  * C1 상태 줄을 세우고 보내기를 막는다 — 보낸 뒤 카드만 있고 다시 보낼 수 있던 두 원인의 차이를 없앤다.
  */
-export function useCommodoreCliStatus(commodoreId: string, enabled: boolean, failure: "missing" | "signedout" | null = null) {
+export function useCliStatusProbe(
+  scopeKey: string,
+  enabled: boolean,
+  failure: "missing" | "signedout" | null,
+  readStatus: () => Promise<CommodoreCliStatus>,
+) {
   const [status, setStatus] = useState<CommodoreCliStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const generation = useRef(0);
+  const readRef = useRef(readStatus);
+  readRef.current = readStatus;
   const check = useCallback(() => {
-    if (!enabled || !commodoreId) return;
+    if (!enabled || !scopeKey) return;
     const current = ++generation.current;
     setChecking(true);
-    void readCommodoreCliStatus(commodoreId)
+    void readRef.current()
       .then((next) => { if (generation.current === current) setStatus(next); })
       .catch(() => { if (generation.current === current) setStatus("ready"); })
       .finally(() => { if (generation.current === current) setChecking(false); });
-  }, [commodoreId, enabled]);
-  // Theater가 바뀌면 이전 판정을 버리고 다시 묻는다 — 남의 상태로 새 대화를 막지 않는다.
-  useEffect(() => { generation.current += 1; setStatus(null); setChecking(false); check(); }, [commodoreId, enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- check는 같은 두 값의 함수다.
+  }, [scopeKey, enabled]);
+  // 대상이 바뀌면 이전 판정을 버리고 다시 묻는다 — 남의 상태로 새 대화를 막지 않는다.
+  useEffect(() => { generation.current += 1; setStatus(null); setChecking(false); check(); }, [scopeKey, enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- check는 같은 두 값의 함수다.
   // 최신 실패가 CLI 원인으로 새로 바뀌면 다시 읽는다 — 처음 실패로 화면이 설 때는 위의 첫 읽기가 이미 맡는다.
   const previousFailure = useRef(failure);
   useEffect(() => {
@@ -49,7 +57,7 @@ export function useCommodoreCliStatus(commodoreId: string, enabled: boolean, fai
     previousFailure.current = failure;
     if (failure !== null && failure !== previous) check();
   }, [failure, check]);
-  // 로그인 카드가 성공하면 사령관이 쓰는 CLI 로그인도 그 자리에서 바뀐다 — 상태를 다시 읽어 막힌 입력을 푼다(C1-2).
+  // 로그인 카드가 성공하면 채팅이 쓰는 CLI 로그인도 그 자리에서 바뀐다 — 상태를 다시 읽어 막힌 입력을 푼다(C1-2).
   const loginPhase = useSyncExternalStore(subscribeLogins, claudeLoginPhase, claudeLoginPhase);
   const previousLoginPhase = useRef(loginPhase);
   useEffect(() => {
@@ -58,6 +66,10 @@ export function useCommodoreCliStatus(commodoreId: string, enabled: boolean, fai
     if (previous !== "signed_in" && loginPhase === "signed_in") check();
   }, [loginPhase, check]);
   return { status, checking, recheck: check };
+}
+
+export function useCommodoreCliStatus(commodoreId: string, enabled: boolean, failure: "missing" | "signedout" | null = null) {
+  return useCliStatusProbe(commodoreId, enabled, failure, () => readCommodoreCliStatus(commodoreId));
 }
 
 /** 막힌 상태의 입력창 — 초안은 쓰되 보내지 못한다. */
@@ -97,6 +109,33 @@ export function CommodoreCliGate({ t, status, checking, recheck }: {
 }
 
 /**
+ * C2 — 보낸 뒤 CLI 원인으로 실패했을 때의 원인 카드 본체. 사령관 채팅과 지휘관 채팅이 같은 문구·단추·동작을 공유한다.
+ */
+export function CliFailureCard({ t, cause, onResend, canResend = true }: {
+  readonly t: T;
+  readonly cause: "missing" | "signedout";
+  readonly onResend?: () => void;
+  readonly canResend?: boolean;
+}) {
+  return (
+    <div className="objectives-commodore-cli-card" role="status">
+      <b>{t(`commodore.cli.fail.${cause}.title` as CommodoreMessageKey)}</b>
+      <p>{t(`commodore.cli.fail.${cause}.body` as CommodoreMessageKey)}</p>
+      <div className="objectives-commodore-cli-card-actions">
+        {cause === "missing" ? (
+          <button type="button" className="objectives-btn is-small" onClick={openClaudeInstallGuide}>{t("commodore.cli.action.install")}</button>
+        ) : (
+          <button type="button" className="objectives-btn is-small" onClick={openCommodoreLoginCard}>{t("commodore.cli.action.login")}</button>
+        )}
+        {onResend && canResend ? (
+          <button type="button" className="objectives-commodore-text-button" onClick={onResend}>{t("commodore.cli.action.resend")}</button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
  * C2 — 보낸 뒤 CLI 원인으로 실패했을 때의 원인 카드. 「오류 · …」 줄 대신 서고,
  * 「다시 보내기」는 같은 대기 말을 다시 턴에 싣는다(자동 재시도는 없다).
  */
@@ -108,20 +147,7 @@ export function CommodoreCliFailureCard({ t, commodoreId, entries, onFail }: {
 }) {
   const cause = commodoreCliFailure(entries);
   if (!cause) return null;
-  return (
-    <div className="objectives-commodore-cli-card" role="status">
-      <b>{t(`commodore.cli.fail.${cause}.title` as CommodoreMessageKey)}</b>
-      <p>{t(`commodore.cli.fail.${cause}.body` as CommodoreMessageKey)}</p>
-      <div className="objectives-commodore-cli-card-actions">
-        {cause === "missing" ? (
-          <button type="button" className="objectives-btn is-small" onClick={openClaudeInstallGuide}>{t("commodore.cli.action.install")}</button>
-        ) : (
-          <button type="button" className="objectives-btn is-small" onClick={openCommodoreLoginCard}>{t("commodore.cli.action.login")}</button>
-        )}
-        <button type="button" className="objectives-commodore-text-button" onClick={() => { void retryCommodore(commodoreId).catch(onFail); }}>{t("commodore.cli.action.resend")}</button>
-      </div>
-    </div>
-  );
+  return <CliFailureCard t={t} cause={cause} onResend={() => { void retryCommodore(commodoreId).catch(onFail); }} />;
 }
 
 export function openClaudeInstallGuide(): void {
@@ -130,11 +156,11 @@ export function openClaudeInstallGuide(): void {
 }
 
 /**
- * Quota의 Claude 로그인 카드 — 사령관 채팅의 C1·C2 「로그인」이 같은 자리에 닿는다. 터미널 claude와 같은 로그인을
+ * Quota의 Claude 로그인 카드 — 사령관·지휘관 채팅의 C1·C2 「로그인」이 같은 자리에 닿는다. 터미널 claude와 같은 로그인을
  * 찾고(CLI 기본 로그인) 없으면 `claude auth login` 카드를 시작한 뒤, 그 카드가 서는 Quota 패널을 연다. 번들 스토어라
- * 패널이 늦게 열려도 같은 카드가 선다. 성공(signed_in)은 `useCommodoreCliStatus`가 보고 cli-status를 다시 읽는다.
+ * 패널이 늦게 열려도 같은 카드가 선다. 성공(signed_in)은 `useCliStatusProbe`가 보고 cli-status를 다시 읽는다.
  */
-function openCommodoreLoginCard(): void {
+export function openCommodoreLoginCard(): void {
   const api = getQuotaApi();
   if (api) void beginClaudeLogin(api);
   requestQuotaPanelOpen();
