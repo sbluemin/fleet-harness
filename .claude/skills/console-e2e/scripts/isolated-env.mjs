@@ -388,7 +388,7 @@ function main() {
   try { writeFileSync(activePath, `${process.pid}\n`, { flag: 'wx', mode: 0o600 }); }
   catch (error) { fail(`could not claim this wrapper invocation (${error.code ?? 'error'}); nothing started`); }
   const dropActive = () => rmSync(activePath, { force: true });
-  process.on('exit', dropActive);
+  // Only a known pre-spawn refusal or an observed child outcome clears the active marker.
   if (reclaimInProgress(runDir)) {
     dropActive();
     fail('this --run-dir is being reclaimed (e2e-resources.mjs reclaim holds .e2e-reclaiming); do not start anything in it, choose another run directory name');
@@ -405,9 +405,13 @@ function main() {
   }
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => child.kill(signal));
   const dropCallBin = () => rmSync(callBin, { recursive: true, force: true });
-  child.on('error', (error) => { dropCallBin(); fail(`cannot start ${plan.command}: ${error.message}`); });
+  child.on('error', (error) => {
+    if (child.pid === undefined) { dropCallBin(); dropActive(); }
+    fail(`cannot start ${plan.command}: ${error.message}`);
+  });
   child.on('exit', (code, signal) => {
     dropCallBin();
+    dropActive();
     const appeared = readdirSync(owned.home).filter((entry) => !before.has(entry));
     process.stderr.write(`isolated-env: ${plan.command} exited ${signal ?? code}; new entries in owned home: [${appeared.join(', ')}]\n`);
     process.exit(code ?? 128 + (constants.signals[signal] ?? 0));

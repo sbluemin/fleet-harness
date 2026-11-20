@@ -616,12 +616,17 @@ describe('mutual exclusion between reclaim and a starting run', () => {
     }
   });
 
-  test('a stale active record from a killed wrapper is removed with the run', async () => {
+  test('a missing wrapper process is not proof that its command or descendants stopped', () => {
     const run = newRun();
     const dead = deadPid();
-    writeFileSync(path.join(run.runDir, `.e2e-active.${dead}`), `${dead}\n`);
-    assert.equal(resource(reclaimAll(run)).status, 'reclaimed');
-    assert.equal(existsSync(run.runDir), false);
+    const active = path.join(run.runDir, `.e2e-active.${dead}`);
+    writeFileSync(active, `${dead}\n`);
+    writeFileSync(path.join(run.runDir, 'serve.log'), 'must remain while process ownership is uncertain\n');
+    const result = reclaimApply(run);
+    assert.equal(result.status, 1);
+    assert.equal(resource(result).reason, 'wrapper_exit_unverified');
+    assert.equal(existsSync(active), true);
+    assert.equal(existsSync(path.join(run.runDir, 'serve.log')), true);
   });
 });
 

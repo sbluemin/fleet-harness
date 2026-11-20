@@ -399,7 +399,7 @@ const PATHBIN_CHILD = /^call-/;
  */
 function inventory(runDir, runDev, { flagNonce, runId }) {
   const budget = { count: 0 };
-  const out = { control: [], stale: [], attributed: [], state: [], unrecognized: [], unsafe: [], emptyDirs: [], activeWrappers: 0, flagBusy: false, canonicalSlot: false, stateDigest: null, truncated: false };
+  const out = { control: [], stale: [], attributed: [], state: [], unrecognized: [], unsafe: [], emptyDirs: [], activeWrappers: 0, unverifiedWrappers: [], flagBusy: false, canonicalSlot: false, stateDigest: null, truncated: false };
   let names;
   try {
     names = fs.readdirSync(runDir).sort();
@@ -441,8 +441,8 @@ function inventory(runDir, runDev, { flagNonce, runId }) {
       else out.unrecognized.push(full);
     } else if (ACTIVE.test(name)) {
       const pid = Number(ACTIVE.exec(name)[1]);
-      if (!plainFile) out.unrecognized.push(full);
-      else if (pidState(pid) === 'dead') out.stale.push(full);
+      // The wrapper clears this marker after observing its child exit. An absent wrapper can leave an orphaned child.
+      if (!plainFile || pidState(pid) === 'dead') out.unverifiedWrappers.push(full);
       else out.activeWrappers += 1;
     } else if (name === 'canonical-console.pid') {
       out.canonicalSlot = true;
@@ -586,6 +586,7 @@ function observeRun(receipt, { deep, accept = null, flagNonce = null }) {
   }
   if (items.flagBusy) return state('blocked', 'reclaim_in_progress', 'another reclaim holds this run; wait for it to finish', { reclaimable: false, ...common });
   if (items.activeWrappers > 0) return state('blocked', 'wrapper_active', 'a wrapper-run command is still active in this run directory; let it end (or stop it through its own session), then run again', { reclaimable: false, ...common });
+  if (items.unverifiedWrappers.length) return state('blocked', 'wrapper_exit_unverified', 'a wrapper marker remains without a verified command exit; the owning session must confirm its command and descendants have stopped before resolving the marker', { reclaimable: false, remaining: items.unverifiedWrappers, ...common });
   if (lock.block) {
     const hint = lock.block === 'live_lock'
       ? 'a Console lock names a live or unverifiable process; stop it through the isolated-environment wrapper (cli.mjs stop with the same --run-dir) from the session that started it, then run again. If that pid was reused by another program, a person must confirm it.'
@@ -694,7 +695,7 @@ function recheck(receipt, lockDigest, flagNonce) {
   try { names = fs.readdirSync(runDir); } catch { return 'unreadable'; }
   for (const name of names) {
     const match = ACTIVE.exec(name);
-    if (match && pidState(Number(match[1])) !== 'dead') return 'wrapper_active';
+    if (match) return pidState(Number(match[1])) === 'dead' ? 'wrapper_exit_unverified' : 'wrapper_active';
   }
   const lock = observeLock(runDir);
   if (lock.block) return lock.block;
