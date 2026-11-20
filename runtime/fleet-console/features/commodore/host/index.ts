@@ -41,6 +41,7 @@ import { createCommodoreManagementTools } from "./console-tools.js";
 import { createCommodorePlugins, type ResolvedPlugin } from "./plugins.js";
 import type { ClaudeHomeLocation } from "./home-overlay.js";
 export { userClaudeHome, type ClaudeHomeLocation } from "./home-overlay.js";
+export { readMcpAuthSignal } from "./plugin-auth.js";
 import type { OwnedProcessPort } from "@fleet-console/process";
 import { createCommodoreSupervisor } from "./supervisor.js";
 import { COMMODORE_CHANNEL } from "../shared/contracts/types.js";
