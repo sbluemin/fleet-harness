@@ -7,7 +7,7 @@ export interface DesktopResourcePaths {
   readonly serviceRoot: string;
   readonly cliPath: string;
   readonly iconPath: string;
-  readonly trayTemplateIconPath: string;
+  readonly trayIconPath: string;
   readonly entryPagePath: string;
   /** 호스트를 갈아타는 동안 옛 화면을 붙잡아 두는 판(switch-hold). 진입 화면과 같은 폴더·글꼴을 쓴다. */
   readonly switchPagePath: string;
@@ -27,7 +27,7 @@ export function resolveDesktopResourcePaths(isPackaged: boolean, resourcesPath?:
     serviceRoot,
     cliPath: path.join(serviceRoot, "dist", "cli.mjs"),
     iconPath: path.join(sourceDir, "build", "icon.png"),
-    trayTemplateIconPath: path.join(sourceDir, "build", "trayTemplate.png"),
+    trayIconPath: path.join(sourceDir, "build", "tray.png"),
     entryPagePath: path.join(sourceDir, "assets", "entry", "index.html"),
     switchPagePath: path.join(sourceDir, "assets", "entry", "switch.html"),
     browserChromeDir: path.join(sourceDir, "assets", "browser-chrome"),

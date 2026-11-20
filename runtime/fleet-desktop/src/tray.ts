@@ -21,7 +21,7 @@ export interface TrayConstructor {
 }
 
 export function createDesktopTray(platform: NodeJS.Platform, TrayCtor: TrayConstructor, resources: DesktopResourcePaths, actions: TrayActions): Tray {
-  const tray = new TrayCtor(platform === "darwin" ? resources.trayTemplateIconPath : resources.iconPath);
+  const tray = new TrayCtor(platform === "darwin" ? resources.trayIconPath : resources.iconPath);
   tray.on("click", actions.show);
   return tray;
 }
