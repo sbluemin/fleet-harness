@@ -5,6 +5,27 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.314.0] - 2026-11-20
+
+### fleet-console
+
+#### Added
+- In the collapsed sidebar, click a section divider to fold or unfold that section without showing its name; folding stays in sync with the expanded sidebar.
+- Commodores can now attach images you shared in a TaskForce directly to objective briefs while they are members of that room.
+- Commodores can now check the TaskForces they belong to, including topics, members, and turn limits, from their 1:1 chats before posting or planning follow-up work.
+
+#### Changed
+- The Commodore's right sidebar now shows its objectives and routines directly, without Activity and Info tabs; edit the description and intel from the neural network's detail panel instead.
+- Redesigned the Commodore neural map across Desktop and Mobile dark and light themes so branches, intel, objectives, and freshness signals stay clear and distinct even in large memory graphs.
+
+#### Fixed
+- Show the Commodore's name in TaskForce join and leave notes instead of leaving it blank.
+- Removing a Commodore from a TaskForce while it is responding now clears its working indicator right away without delaying other members' replies.
+
+#### Removed
+- Removed the Antigravity standalone CLI. Press Ctrl+` to open Claude Code only.
+- Quota and mobile settings no longer show Anthropic API key request and token limits. Weekly spending and budget controls remain available.
+
 ## [1.313.0] - 2026-11-20
 
 ### fleet-console
