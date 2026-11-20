@@ -23,6 +23,14 @@ import type { SettingsSectionDescriptor } from "../../../../features/settings/sh
 import type { TheaterInboxSectionDescriptor } from "../../../../features/workspace/shared/theater-inbox.js";
 import { quotaClient, installQuotaClient } from "../../../../features/quota/client/index.js";
 import { TasksCommanderList } from "../../../../features/workspace/client/commander-tab/commander-tasks-list.js";
+import { openCommanderConversation } from "../../../../features/workspace/client/commander-tab/commander-navigation.js";
+import { currentAvatarFuzz } from "../../../../features/workspace/client/components/mongle-3d-renderer.js";
+import { readCommodoreList, subscribeCommodoreList } from "../../../../features/commodore/client/commodore-list.js";
+import { getGlobalSettingsStoreState } from "../../../../features/settings/client/global-settings-store.js";
+import { createTheWorldClient, type TheWorldClient } from "../../../../features/the-world/client/index.js";
+import { getState, subscribe } from "./store.js";
+import { getViewedCommodoreId } from "./viewed-theater.js";
+import { getViewModeSnapshot } from "./view-mode-store.js";
 const builtInPlugins = [quotaClient];
 import { expandedPaneSurface } from "../chrome/pane/expanded-pane-surface.js";
 
@@ -44,6 +52,7 @@ export function conversationSurfaceInboxSectionId(surface: ResolvedConversationS
 
 export interface FeatureRegistry {
   readonly objectives: ReturnType<typeof createObjectivesClient>;
+  readonly theWorld: TheWorldClient;
   install(deps: ConsoleClientCapabilities): () => void;
   readonly commodore: CommodoreClientHost;
   readonly providers: readonly ClientFeatureDescriptor[];
@@ -94,7 +103,41 @@ export function useFeatureRegistry(): FeatureRegistry {
 function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): FeatureRegistry {
   const commodore = createCommodoreClient(objectivesCommodoreBoard);
   const objectives = createObjectivesClient(commodore.host);
-  const providers: readonly ClientFeatureDescriptor[] = [consoleExecution, commodore.plugin, ...plugins, objectives.surface];
+  const baseProviders: readonly ClientFeatureDescriptor[] = [consoleExecution, commodore.plugin, ...plugins, objectives.surface];
+  const objectiveRecordClusters = combineClusterSources(
+    baseProviders.flatMap((plugin) => (plugin.objectiveRecordClusters ? [{ pluginId: plugin.id ?? "core", source: plugin.objectiveRecordClusters }] : [])),
+  );
+  const theWorld = createTheWorldClient({
+    commodore: commodore.host,
+    readCommodores: readCommodoreList,
+    subscribeCommodores: subscribeCommodoreList,
+    clusters: objectiveRecordClusters,
+    readObjectiveRecords: () => getState().objectiveRecords,
+    subscribeObjectiveRecords: subscribe,
+    getViewedCommodoreId,
+    getActiveObjectiveId: () => getState().activeObjectiveId,
+    isMobileLayout: () => getViewModeSnapshot().effective === "mobile",
+    isReducedMotion: () => getGlobalSettingsStoreState().state?.reduceMotion === true,
+    isLowerUnfocusedFrameRate: () => getGlobalSettingsStoreState().state?.lowerUnfocusedFrameRate !== false,
+    getAvatarFuzz: currentAvatarFuzz,
+    openCommodoreInConsole: (commodoreId) => {
+      commodore.host.open(commodoreId);
+    },
+    openObjectiveInConsole: (commodoreId, objectiveId) => {
+      openCommanderConversation(commodoreId, objectiveId);
+    },
+    sendMessageToCommodore: async (commodoreId, text) => {
+      if (!commodore.plugin.messageMentionTarget) return false;
+      await commodore.plugin.messageMentionTarget(`commodore:${commodoreId}`, text);
+      return true;
+    },
+    sendMessageToObjective: async (objectiveId, text) => {
+      if (!consoleExecution.messageObjective) return false;
+      await consoleExecution.messageObjective(objectiveId, text);
+      return true;
+    },
+  });
+  const providers: readonly ClientFeatureDescriptor[] = [...baseProviders, theWorld.descriptor];
   const railPanelIds = new Set<string>();
   const railPanels: RailPanelDescriptor[] = [];
   // 표면 id는 페인 저장소가 쓰는 주소다. rail 패널과 같은 규칙으로 접두 없이 두고
@@ -153,6 +196,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
       return () => { for (const cleanup of cleanups.reverse()) cleanup(); };
     },
     objectives,
+    theWorld,
     commodore: commodore.host,
     providers,
     persistentComponents: providers.flatMap((plugin) => plugin.persistentComponents ?? []),
@@ -190,7 +234,7 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
       ...descriptor,
       id: `${plugin.id}:${descriptor.id}`,
     }))),
-    objectiveRecordClusters: combineClusterSources(providers.flatMap((plugin) => (plugin.objectiveRecordClusters ? [{ pluginId: plugin.id ?? "core", source: plugin.objectiveRecordClusters }] : []))),
+    objectiveRecordClusters,
   };
 }
 /**
