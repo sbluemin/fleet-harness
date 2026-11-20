@@ -618,6 +618,24 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-composer { position: relative; }
 .objectives-commodore-ref-input { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; cursor: text; outline: none; }
 .objectives-commodore-ref-input.is-empty::before { content: attr(data-placeholder); float: left; height: 0; color: var(--text-tertiary); pointer-events: none; }
+/* CLI 안내 자리표는 길어서 폰 폭에서 두 줄로 넘치고, 캡슐의 한 줄 높이 밖으로 아래가 잘린다 — 문구는 그대로 두고
+   입력 높이에 영향을 주지 않는 절대 자리의 한 줄 말줄임으로 보인다. */
+.objectives-commodore-composer.is-cli-blocked .objectives-commodore-ref-input.is-empty { position: relative; }
+.objectives-commodore-composer.is-cli-blocked .objectives-commodore-ref-input.is-empty::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  float: none;
+  height: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
 .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
 /* '@' 멘션 덱만 패널 폭에 상한을 둔다 — 입력 왼쪽에 맞춰 내용 480px, 좁은 화면에서는 100%. */
 .fc-composer-deck.objectives-commodore-ref-list { left: 0; right: auto; width: var(--fc-mention-deck-width, 100%); z-index: 5; }

@@ -903,7 +903,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
   };
   const failure = phone?.failure ?? null;
   const capsule = (
-    <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}${trailing ? " has-trailing" : ""}`} style={accent} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+    <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}${trailing ? " has-trailing" : ""}${cliBlocked ? " is-cli-blocked" : ""}`} style={accent} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
       <ComposerQuoteTray store={draft.quotes} t={ct} disabled={sending || clear.busy} onDone={() => inputRef.current?.focus()} />
       <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={sending || clear.busy} />
       <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">
