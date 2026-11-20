@@ -15,7 +15,6 @@ import {
   beginClaudeLogin,
   cancelLogin,
   getLoginStates,
-  onConsoleComputer,
   openExternal,
   resetLogin,
   startLogin,
@@ -552,7 +551,7 @@ function LoginCard({
             <button type="button" className="quota-button quota-button--primary" onClick={() => openExternal(login.url)}>{t("quota.login.open")}</button>
             <button type="button" className="quota-button" onClick={() => cancelLogin(api, provider)}>{t("quota.login.cancel")}</button>
           </div>
-          {provider === "claude" && !onConsoleComputer() ? <LoginPasteForm api={api} provider={provider} t={t} /> : null}
+          {provider === "claude" ? <LoginPasteForm api={api} provider={provider} t={t} /> : null}
         </>
       ) : null}
       {login.phase === "failed" ? (
@@ -571,25 +570,35 @@ function LoginCard({
   );
 }
 
-/**
- * 원격 접속에서만 서는 코드 칸. 승인하면 이 브라우저에 코드가 보이고, CLI는 Console 컴퓨터에서 그 코드를 기다린다.
- * 칸의 안내는 키 하나(`quota.login.paste.hint`)다.
- */
-export function LoginPasteForm({ api, provider, t }: { readonly api: ClientApiCapability; readonly provider: LoginProvider; readonly t: T }) {
+/** 코드 칸의 상태. 거절되면 안내가 서고, 다시 입력하면 사라진다. */
+export function useLoginCodeField(api: ClientApiCapability, provider: LoginProvider) {
   const [value, setValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const [invalid, setInvalid] = useState(false);
+  const change = (next: string) => { setValue(next); setInvalid(false); };
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const code = value.trim();
     if (code === "" || busy) return;
     setBusy(true);
-    void submitLoginCode(api, provider, code).then((accepted) => {
+    setInvalid(false);
+    void submitLoginCode(api, provider, code).then((result) => {
       setBusy(false);
-      if (accepted) setValue("");
+      if (result === "accepted") setValue("");
+      else if (result === "invalid") setInvalid(true);
     });
   };
+  return { value, busy, invalid, change, submit };
+}
+
+/**
+ * 대기 중인 Claude 로그인의 코드 칸. 승인하면 브라우저에 코드가 보이고, CLI는 Console 컴퓨터에서 그 코드를 기다린다.
+ * 칸의 안내는 키 하나(`quota.login.paste.hint`)다.
+ */
+export function LoginPasteForm({ api, provider, t }: { readonly api: ClientApiCapability; readonly provider: LoginProvider; readonly t: T }) {
+  const field = useLoginCodeField(api, provider);
   return (
-    <form onSubmit={submit}>
+    <form onSubmit={field.submit}>
       <p className="quota-connect-card__hint">{t("quota.login.paste.hint")}</p>
       <div className="quota-connect-card__actions">
         <input
@@ -599,12 +608,14 @@ export function LoginPasteForm({ api, provider, t }: { readonly api: ClientApiCa
           autoCapitalize="off"
           spellCheck={false}
           aria-label={t("quota.login.code")}
-          value={value}
-          disabled={busy}
-          onChange={(event) => setValue(event.target.value)}
+          aria-invalid={field.invalid}
+          value={field.value}
+          disabled={field.busy}
+          onChange={(event) => field.change(event.target.value)}
         />
-        <button type="submit" className="quota-button" disabled={busy || value.trim() === ""}>{t("quota.login.paste.submit")}</button>
+        <button type="submit" className="quota-button" disabled={field.busy || field.value.trim() === ""}>{t("quota.login.paste.submit")}</button>
       </div>
+      {field.invalid ? <p className="quota-budget__error" role="alert">{t("quota.login.paste.invalid")}</p> : null}
     </form>
   );
 }

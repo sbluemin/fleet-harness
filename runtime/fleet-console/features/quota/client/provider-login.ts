@@ -86,14 +86,6 @@ export function safeExternalUrl(value: unknown): string | null {
   }
 }
 
-/**
- * 이 화면이 Console이 도는 컴퓨터에서 열렸는가 — 루프백 주소로 열었으면 그렇다. 원격 접속(다른 기기·폰)은 루프백이
- * 아니다. 사령관 플러그인의 MCP 인증 화면이 같은 규칙으로 「반환 주소 붙여넣기」를 가른다.
- */
-export function onConsoleComputer(): boolean {
-  return ["localhost", "127.0.0.1", "[::1]", "::1"].includes(window.location.hostname);
-}
-
 /** 새 탭(브라우저) 또는 시스템 브라우저(Desktop)로 연다. */
 export function openExternal(url: string): void {
   window.open(url, "_blank", "noopener,noreferrer");
@@ -206,19 +198,23 @@ export async function beginClaudeLogin(api: ClientApiCapability): Promise<void> 
   }
 }
 
-/** 원격 기기에서 받은 코드를 진행 중인 로그인에 전한다. 받아들여졌으면 true — 승인 확인은 계속 서버가 한다. */
-export async function submitLoginCode(api: ClientApiCapability, provider: LoginProvider, code: string): Promise<boolean> {
+/** 코드 전달의 결과. `invalid`는 서버가 코드 모양을 거절한 것(400 invalid_code)이다. */
+export type LoginCodeResult = "accepted" | "invalid" | "failed";
+
+/** 승인 페이지에서 받은 코드를 진행 중인 로그인에 전한다. 받아들여져도 승인 확인은 계속 서버가 한다. */
+export async function submitLoginCode(api: ClientApiCapability, provider: LoginProvider, code: string): Promise<LoginCodeResult> {
   const current = states[provider];
-  if (current.phase !== "pending") return false;
+  if (current.phase !== "pending") return "failed";
   try {
     const response = await api.fetch(`quota/${provider}/paste`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ loginId: current.loginId, code: code.trim() }),
     });
-    return response.ok;
-  } catch {
-    return false;
+    return response.ok ? "accepted" : response.status === 400 ? "invalid" : "failed";
+  } catch (error) {
+    // 호스트 포트는 비정상 응답을 ApiError로 거절한다 — 공개된 상태 코드만 읽는다.
+    return (error as { status?: unknown } | null)?.status === 400 ? "invalid" : "failed";
   }
 }
 

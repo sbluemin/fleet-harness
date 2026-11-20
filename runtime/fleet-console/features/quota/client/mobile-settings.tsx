@@ -1,5 +1,3 @@
-import { useState, type FormEvent } from "react";
-
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import { useStoreSnapshot } from "@fleet-console/ui/store";
@@ -10,8 +8,8 @@ import { getT } from "./i18n/index.js";
 import { isSpendProvider, SpendRows } from "./spend-section.js";
 import { RateLimitRows } from "./rate-limit.js";
 import type { QuotaWindow } from "@fleet-console/ai-gateway";
-import { beginLogin, expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, loginExpiredBody, NO_SUBSCRIPTION_KEY, providerName, signedOutMessageKey, UNREPORTED_PROVIDER, displayPlanName, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel, type LogoutProvider } from "./quota-panel.js";
-import { cancelLogin, getLoginStates, onConsoleComputer, openExternal, resetLogin, startLogin, submitLoginCode, subscribeLogins } from "./provider-login.js";
+import { beginLogin, expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, loginExpiredBody, NO_SUBSCRIPTION_KEY, providerName, signedOutMessageKey, UNREPORTED_PROVIDER, displayPlanName, loginPendingKey, meterSeverity, needsConsoleLogin, useLoginCodeField, useQuotaData, windowLabel, type LogoutProvider } from "./quota-panel.js";
+import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subscribeLogins } from "./provider-login.js";
 import type { LoginProvider, ProviderId } from "../shared/provider-order.js";
 import "./mobile.css";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
@@ -160,7 +158,7 @@ function LoginRows({
           <button type="button" className="quota-m-row quota-m-action" onClick={() => cancelLogin(api, provider)}>
             <span className="quota-m-copy">{t("quota.login.cancel")}</span>
           </button>
-          {provider === "claude" && !onConsoleComputer() ? <LoginPasteRow api={api} provider={provider} t={t} /> : null}
+          {provider === "claude" ? <LoginPasteRow api={api} provider={provider} t={t} /> : null}
         </>
       );
     case "failed":
@@ -182,22 +180,11 @@ function LoginRows({
   }
 }
 
-/** 원격 접속(폰)에서만 서는 코드 칸 — 데스크톱 카드와 같은 안내 키 하나를 쓴다. */
+/** 폰의 코드 칸 — 데스크톱 카드와 같은 안내·거절 키를 쓴다. */
 function LoginPasteRow({ api, provider, t }: { readonly api: ClientApiCapability; readonly provider: LoginProvider; readonly t: ReturnType<typeof getT> }) {
-  const [value, setValue] = useState("");
-  const [busy, setBusy] = useState(false);
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const code = value.trim();
-    if (code === "" || busy) return;
-    setBusy(true);
-    void submitLoginCode(api, provider, code).then((accepted) => {
-      setBusy(false);
-      if (accepted) setValue("");
-    });
-  };
+  const field = useLoginCodeField(api, provider);
   return (
-    <form className="quota-m-row" onSubmit={submit}>
+    <form className="quota-m-row" onSubmit={field.submit}>
       <span className="quota-m-copy">
         <small>{t("quota.login.paste.hint")}</small>
         <span className="quota-budget">
@@ -208,12 +195,14 @@ function LoginPasteRow({ api, provider, t }: { readonly api: ClientApiCapability
             autoCapitalize="off"
             spellCheck={false}
             aria-label={t("quota.login.code")}
-            value={value}
-            disabled={busy}
-            onChange={(event) => setValue(event.target.value)}
+            aria-invalid={field.invalid}
+            value={field.value}
+            disabled={field.busy}
+            onChange={(event) => field.change(event.target.value)}
           />
-          <button type="submit" className="quota-button" disabled={busy || value.trim() === ""}>{t("quota.login.paste.submit")}</button>
+          <button type="submit" className="quota-button" disabled={field.busy || field.value.trim() === ""}>{t("quota.login.paste.submit")}</button>
         </span>
+        {field.invalid ? <small role="alert">{t("quota.login.paste.invalid")}</small> : null}
       </span>
     </form>
   );
