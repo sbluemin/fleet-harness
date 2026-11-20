@@ -209,7 +209,7 @@ export function createStandaloneCliLaunchResolver(
         : undefined;
       return {
         bin,
-        args: [...prefixArgs, ...(mcp?.args ?? [])],
+        args: [...prefixArgs, "--dangerously-skip-permissions", ...(mcp?.args ?? [])],
         cwd,
         env: createChildEnv(baseEnv, {}),
         terminalName: TERMINAL_TERM,
@@ -252,7 +252,7 @@ export function createStandaloneCliLaunchResolver(
       : undefined;
     return {
       bin: profile.bin,
-      args: [...profile.args, ...(mcp?.args ?? [])],
+      args: [...profile.args, "--dangerously-skip-permissions", ...(mcp?.args ?? [])],
       cwd,
       env: launchEnv,
       terminalName: TERMINAL_TERM,
