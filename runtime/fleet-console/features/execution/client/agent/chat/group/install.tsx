@@ -24,6 +24,8 @@ import {
 import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
 import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
 import { stopAgentChatTurn } from "../../api.js";
+import { CliFailureCard } from "../../../../../commodore/client/commodore-cli-status.js";
+import { getT as getCommodoreT } from "../../../../../commodore/client/i18n/index.js";
 import { ComputerScreenShare, useComputerActor } from "../../../../../computer-use/client/computer-screen-share.js";
 import { BrowserActivityLines } from "../../../../../browser/client/browser-activity.js";
 import { getT } from "../../i18n/index.js";
@@ -269,8 +271,13 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
   const actorId = useComputerActor(root.id);
   const computerActor = shared ? actorId : null;
   const t = getGroupT(language);
+  const cliT = getCommodoreT(language);
   const commander = snapshot.participants.find((participant) => participant.speaker.kind === "commander")?.speaker ?? null;
   const decision = snapshot.decision && !answered.includes(snapshot.decision.id) ? snapshot.decision : null;
+  const resendCliFailure = React.useCallback(() => {
+    if (!actions || !snapshot.cliFailurePrompt) return;
+    void actions.send({ kind: "commander" }, snapshot.cliFailurePrompt).catch(() => {});
+  }, [actions, snapshot.cliFailurePrompt]);
   const cards = (
     <>
       {decision ? (
@@ -285,6 +292,14 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       ) : null}
       {useRequests.map((request) => <UseRequestGroupCard key={request.id} request={request} />)}
       <BrowserActivityLines objectiveId={root.id} />
+      {snapshot.cliFailure ? (
+        <CliFailureCard
+          t={cliT}
+          cause={snapshot.cliFailure}
+          canResend={Boolean(actions && snapshot.cliFailurePrompt)}
+          onResend={resendCliFailure}
+        />
+      ) : null}
       {fileLinkError !== null ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{fileLinkError}</div> : null}
     </>
   );
@@ -302,6 +317,7 @@ function RootConversation({ root, language, phone = false, fileLinkError = null 
       topEntries={recordedObjective ? <ComposerTopEntries /> : null}
       renderControls={!phone ? clusters.find((cluster) => cluster.conversation?.objectiveId === root.id)?.conversation?.renderComposerControls : undefined}
       workingLine={workingLine}
+      cliFailure={snapshot.cliFailure ?? null}
       onStopOne={stopOne}
     />
   );

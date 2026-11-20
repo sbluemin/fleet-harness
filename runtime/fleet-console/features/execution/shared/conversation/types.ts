@@ -307,4 +307,8 @@ export interface GroupTimelineSnapshot {
   readonly loading: boolean;
   readonly truncated: boolean;
   readonly unavailableObjectiveIds: readonly string[];
+  /** 루트(지휘관) 채팅이 CLI 없음·미로그인 원인으로 실패했을 때의 최신 원인 — C2 원인 카드와 C1 재확인이 읽는다. */
+  readonly cliFailure?: "missing" | "signedout" | null;
+  /** 위 실패 직전 사람이 보낸 말 — C2 카드의 「다시 보내기」가 같은 말을 다시 보낸다. */
+  readonly cliFailurePrompt?: string | null;
 }

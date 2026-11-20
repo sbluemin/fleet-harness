@@ -3193,6 +3193,9 @@ class AgentChatSession {
         this.openTurn({ dispatched: false });
         this.closeTurn({ ok: false, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }), ...(event.failure ? { failure: event.failure } : {}) });
       }
+      if (event.ok === false && event.failure?.error === "authentication_failed") {
+        this.push({ kind: "error", code: "chat_cli_signed_out" });
+      }
       return;
     }
     if (event.kind === "request-start") {
@@ -3552,12 +3555,14 @@ class AgentChatSession {
       // 문맥을 바꾼 명령의 결과는 계기에 곧바로 실린다 — 압축이 얼마를 되찾았는지, 초기화 뒤
       // 창이 얼마나 비었는지는 지금 물어야 알 수 있다.
       if (lane !== null && this.session === session) this.requestContextSnapshot(session, "end");
-    } catch {
+    } catch (error) {
       // 중지는 실패가 아니다 — 오류 줄을 세우면 사용자가 스스로 한 일을 고장으로 읽는다.
       this.endCommandLane({ ok: !stopped() ? false : true });
       if (stopped()) this.closeTurn({ stopped: true });
       else {
-        this.push({ kind: "error", code: "chat_turn_failed" });
+        // ensureSdk()가 이미 CLI 없음 오류(chat_cli_unavailable)를 push했다면 일반 실패 코드로 덮어쓰지 않는다.
+        const alreadyClassified = error instanceof Error && error.message === "chat_cli_unavailable";
+        if (!alreadyClassified) this.push({ kind: "error", code: "chat_turn_failed" });
         this.closeTurn({ ok: false });
       }
     }

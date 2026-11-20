@@ -82,6 +82,8 @@ interface AgentRouteDeps {
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /** 공급자 로그인 상태. 없으면 미상으로 보아 카탈로그 전체를 고를 수 있다. */
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
+  /** 지휘관 채팅의 CLI 문 — 사령관 채팅과 같은 리졸버·자식 환경으로 읽기 전용 판정한다. */
+  readonly readCliStatus?: () => Promise<{ readonly status: "missing" | "signedout" | "ready" }>;
   /**
    * Claude 별칭을 설치된 Claude Code가 푸는 정식 id로 고정한다(`opus[1m]` → `claude-opus-5-5[1m]`). 사령관 세션과 같은
    * 통로(ModelRosterHost.pinClaudeVersion)이며, 지휘관 채팅만 이 값으로 연다. 저장 좌표는 별칭 그대로 둔다.
@@ -131,6 +133,7 @@ export async function registerAgentRoutes(
   ctx.host.lifecycle.registerCleanup(api.cleanup);
   registerRouter(ctx, "agent", api.handle, [
     { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Console Execution", gate: "loopback", transport: "http" },
+    { method: "GET", path: "/cli-status", summary: "Read whether Agent chat can answer: the Claude Code CLI is missing, signed out, or ready. Read-only.", category: "Console Execution", gate: "loopback", transport: "http" },
     { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Console Execution", gate: "loopback", transport: "sse" },
     { method: "GET", path: "/sessions", summary: "List Agent sessions.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId", summary: "Delete an Agent session.", category: "Console Execution", gate: "origin-write", transport: "http" },
@@ -792,6 +795,14 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     if (path === "/state") {
       if (req.method !== "GET") return methodNotAllowed(res);
       ctx.host.http.writeJson(res, 200, { agentClis: await buildAgentCliLaunchMetadata() });
+      return true;
+    }
+    if (path === "/cli-status") {
+      if (req.method !== "GET") return methodNotAllowed(res);
+      const status = deps.readCliStatus
+        ? await deps.readCliStatus().catch(() => ({ status: "ready" as const }))
+        : { status: "ready" as const };
+      ctx.host.http.writeJson(res, 200, status);
       return true;
     }
     if (path === "/events") {

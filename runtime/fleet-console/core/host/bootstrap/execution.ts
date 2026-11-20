@@ -107,6 +107,7 @@ export async function startConsoleExecution(
     ...(commodoreAutoMemoryEnabled ? { commodoreAutoMemoryEnabled } : {}),
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,
+    readCliStatus,
     // 지휘관 채팅은 사령관과 같은 별칭 고정을 쓴다.
     ...(models.pinClaudeVersion ? { pinClaudeVersion: models.pinClaudeVersion } : {}),
     aiGateway: {
