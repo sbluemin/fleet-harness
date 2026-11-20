@@ -127,13 +127,26 @@ describe("standalone Claude Code CLI launch", () => {
     }
   });
 
-  it("injects fleet-browser MCP into both Claude Code and Antigravity CLI without putting bearer tokens in argv, and cleans up on exit", async () => {
+  it("injects fleet-browser MCP and global plugins into both Claude Code and Antigravity CLI without putting secrets in argv, and cleans up on exit", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-standalone-cli-mcp-"));
     try {
       const claudeBin = path.join(root, "claude");
       const agyBin = path.join(root, "agy");
       fs.writeFileSync(claudeBin, "#!/bin/sh\n", { mode: 0o755 });
-      fs.writeFileSync(agyBin, "#!/bin/sh\n", { mode: 0o755 });
+      // agy 변환기 대역: 받은 HOME 아래에 변환본을 만들고 `${CLAUDE_PLUGIN_ROOT}`를 그 설치 위치로 펼친다. broken 은 실패한다.
+      fs.writeFileSync(agyBin, [
+        "#!/bin/sh",
+        "[ \"$1\" = plugin ] && [ \"$2\" = install ] || exit 0",
+        "name=$(basename \"$3\")",
+        "[ \"$name\" = broken ] && { echo 'boom' >&2; exit 1; }",
+        "dest=\"$HOME/.gemini/config/plugins/$name\"",
+        "mkdir -p \"$dest/skills/tips\"",
+        "printf '{\"name\":\"%s\"}' \"$name\" > \"$dest/plugin.json\"",
+        "printf -- '---\\nname: tips\\n---\\n' > \"$dest/skills/tips/SKILL.md\"",
+        "printf '{\"mcpServers\":{\"remote\":{\"serverUrl\":\"https://mcp.example/mcp\",\"headers\":{\"Authorization\":\"Bearer ${ALPHA_KEY}\"}},\"dynamic\":{\"serverUrl\":\"https://mcp.example/dyn\"},\"local\":{\"command\":\"%s/run.sh\"}}}' \"$dest\" > \"$dest/mcp_config.json\"",
+        "echo '  ⚠ MCP server \"legacy\" skipped: the legacy SSE transport isn'\"'\"'t supported'",
+        "",
+      ].join("\n"), { mode: 0o755 });
       const home = path.join(root, "home");
       const theater = path.join(root, "theater");
       const preparedCalls: Array<{ cli: string; cwd: string; commodoreId: string | null }> = [];
@@ -148,10 +161,29 @@ describe("standalone Claude Code CLI launch", () => {
           };
         },
       };
+      const alphaDir = path.join(root, "plugins", "alpha");
+      const brokenDir = path.join(root, "plugins", "broken");
+      fs.mkdirSync(path.join(alphaDir, ".claude-plugin"), { recursive: true });
+      fs.mkdirSync(brokenDir, { recursive: true });
+      fs.writeFileSync(path.join(alphaDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "alpha", lspServers: { ts: { command: "tsserver" } } }));
+      const globalPlugins = () => [
+        {
+          id: "alpha@market",
+          name: "alpha",
+          path: alphaDir,
+          mcpServers: {
+            "plugin:alpha:remote": { type: "http" as const, url: "https://mcp.example/mcp", headers: { Authorization: "Bearer ${ALPHA_KEY}" } },
+            "plugin:alpha:dynamic": { type: "http" as const, url: "https://mcp.example/dyn", headersHelper: "print-headers" },
+          },
+          env: { ALPHA_KEY: "alpha-secret" },
+        },
+        { id: "broken@market", name: "broken", path: brokenDir, mcpServers: {}, env: {} },
+      ];
       const baseDeps = {
-        env: { PATH: "/usr/bin", HOME: home, CLAUDE_BIN: claudeBin, AGY_BIN: agyBin, FLEET_CONSOLE_SESSION_ID: "parent" },
+        env: { PATH: "/usr/bin:/bin", HOME: home, CLAUDE_BIN: claudeBin, AGY_BIN: agyBin, FLEET_CONSOLE_SESSION_ID: "parent" },
         aiGateway: { routePath: "/api/v1/ai-gateway", origin: () => "http://127.0.0.1:4100" },
         browserMcp,
+        globalPlugins,
         homeDir: home,
       };
 
@@ -173,6 +205,10 @@ describe("standalone Claude Code CLI launch", () => {
       expect(claudeSpec.args).toContain("--dangerously-skip-permissions");
       expect(readAddDirs(claudeSpec.args)).toEqual([extraTheaterA, extraTheaterB]);
       expect(claudeSpec.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD).toBe("1");
+      // 전역 플러그인은 설치본 그대로 `--plugin-dir`로, MCP 키는 자식 환경으로만 간다.
+      expect(claudeSpec.args.flatMap((arg, index) => (arg === "--plugin-dir" ? [claudeSpec.args[index + 1]] : []))).toEqual([alphaDir, brokenDir]);
+      expect(claudeSpec.env.ALPHA_KEY).toBe("alpha-secret");
+      expect(claudeSpec.args.join(" ")).not.toContain("alpha-secret");
       const mcpIdx = claudeSpec.args.indexOf("--mcp-config");
       expect(mcpIdx).toBeGreaterThanOrEqual(0);
       const claudeConfigPath = claudeSpec.args[mcpIdx + 1]!;
@@ -201,9 +237,22 @@ describe("standalone Claude Code CLI launch", () => {
       expect(agySpec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
       const agyAddDirs = readAddDirs(agySpec.args);
       expect(agyAddDirs.slice(0, 2)).toEqual([extraTheaterA, extraTheaterB]);
-      expect(agyAddDirs).toHaveLength(3);
-      const addDir = agyAddDirs[2]!;
+      expect(agyAddDirs).toHaveLength(4);
+      const pluginDir = agyAddDirs[2]!;
+      const addDir = agyAddDirs[3]!;
       expect(agySpec.args.join(" ")).not.toContain("tok-antigravity-secret");
+      expect(agySpec.args.join(" ")).not.toContain("alpha-secret");
+      // 변환은 임시 HOME에서 한다 — 사용자 홈의 agy 설정은 생기지 않는다. 실패한 플러그인만 빠진다.
+      expect(fs.existsSync(path.join(home, ".gemini"))).toBe(false);
+      expect(fs.readdirSync(path.join(pluginDir, ".agents/plugins"))).toEqual(["alpha"]);
+      const alphaConfigPath = path.join(pluginDir, ".agents/plugins/alpha/mcp_config.json");
+      expect(fs.statSync(alphaConfigPath).mode & 0o777).toBe(0o600);
+      const alphaMcp = JSON.parse(fs.readFileSync(alphaConfigPath, "utf8")) as { mcpServers: Record<string, { serverUrl?: string; command?: string; headers?: Record<string, string> }> };
+      // agy MCP 설정은 환경 변수를 펼치지 않으므로 키를 채워 둔다. 동적 헤더 서버는 실을 수 없어 뺀다. 경로는 옮긴 자리를 가리킨다.
+      expect(alphaMcp.mcpServers).toEqual({
+        remote: { serverUrl: "https://mcp.example/mcp", headers: { Authorization: "Bearer alpha-secret" } },
+        local: { command: path.join(fs.realpathSync(pluginDir), ".agents/plugins/alpha/run.sh") },
+      });
       const agyPlugin = JSON.parse(fs.readFileSync(path.join(addDir, ".agents/plugins/fleet-browser/plugin.json"), "utf8")) as { name: string };
       const agyMcp = JSON.parse(fs.readFileSync(path.join(addDir, ".agents/plugins/fleet-browser/mcp_config.json"), "utf8")) as { mcpServers: Record<string, { serverUrl: string; headers: { Authorization: string } }> };
       expect(agyPlugin.name).toBe("fleet-browser");
@@ -213,6 +262,7 @@ describe("standalone Claude Code CLI launch", () => {
       });
       await agySpec.cleanup?.();
       expect(fs.existsSync(addDir)).toBe(false);
+      expect(fs.existsSync(pluginDir)).toBe(false);
       expect(fs.existsSync(extraTheaterA)).toBe(true);
       expect(fs.existsSync(extraTheaterB)).toBe(true);
 

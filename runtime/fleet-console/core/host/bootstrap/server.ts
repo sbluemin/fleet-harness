@@ -2954,6 +2954,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         commodorePluginDirs: (commodoreId) => commodore?.pluginDirs(commodoreId) ?? [],
         commodorePluginEnv: (commodoreId) => commodore?.pluginEnv(commodoreId) ?? {},
         commodoreAutoMemoryEnabled: (commodoreId) => commodore?.commanderAutoMemoryEnabled(commodoreId) ?? true,
+        globalPlugins: () => commodore?.globalPlugins() ?? [],
       });
       readSidebarSteps = () => new Map(execution.listSessions().map((session) => [session.sessionId, session.step ?? null]));
       readSidebarOwnWorking = () => new Set(execution.listSessions().filter((session) => !session.attentionPending && (session.modelActivity === "working" || session.backgroundPending)).map((session) => session.sessionId));
