@@ -578,7 +578,7 @@ export function AgentChatComposer({
       </div>
       </>
       )}
-      {cli.status ? <CommodoreCliGate t={cliT} status={cli.status} checking={cli.checking} recheck={cli.recheck} /> : null}
+      {cli.status ? <CommodoreCliGate t={cliT} status={cli.status} checking={cli.checking} recheck={cli.recheck} subject="commander" /> : null}
       <div
         className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${cliBlocked ? " is-cli-blocked" : ""}${highlightSpans.length > 0 ? " is-mirrored" : ""}`}
         onKeyDown={(event) => {

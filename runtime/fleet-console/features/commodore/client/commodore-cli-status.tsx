@@ -81,20 +81,24 @@ export function cliGateBlocks(status: CommodoreCliStatus | null): status is "mis
  * C1 — 입력창 위 상태 줄. CLI가 없거나 로그인이 없으면 제목·설명·해결 단추를 세운다.
  * 단추 문구와 문장은 승인된 시안 그대로다.
  */
-export function CommodoreCliGate({ t, status, checking, recheck }: {
+export function CommodoreCliGate({ t, status, checking, recheck, subject = "commodore" }: {
   readonly t: T;
   readonly status: CommodoreCliStatus;
   readonly checking: boolean;
   readonly recheck: () => void;
+  readonly subject?: "commodore" | "commander";
 }) {
   const cause = cliGateBlocks(status) ? status : null;
   if (!cause) return null;
+  const bodyKey = (subject === "commander"
+    ? `commodore.cli.gate.commander.${cause}.body`
+    : `commodore.cli.gate.${cause}.body`) as CommodoreMessageKey;
   return (
     <div className="objectives-commodore-cli-gate" role="status">
       <span className="objectives-commodore-cli-gate-dot" aria-hidden="true" />
       <div className="objectives-commodore-cli-gate-copy">
         <b>{t(`commodore.cli.gate.${cause}.title` as CommodoreMessageKey)}</b>
-        <span>{t(`commodore.cli.gate.${cause}.body` as CommodoreMessageKey)}</span>
+        <span>{t(bodyKey)}</span>
         <div className="objectives-commodore-cli-gate-actions">
           {cause === "missing" ? (
             <button type="button" className="objectives-btn is-small" onClick={openClaudeInstallGuide}>{t("commodore.cli.action.install")}</button>

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
+import { chatReplayFromTranscriptLine } from "../../features/execution/host/agent/chat-events.js";
 import { probeClaudeAuth } from "../../features/execution/host/agent/claude-auth-status.js";
 import type { AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
 import { agentChatCliFailure, initialAgentChatLogState, reduceAgentChatLog } from "../../features/execution/client/agent/chat/chat-events.js";
@@ -124,9 +125,23 @@ describe("commander chat CLI failure classification", () => {
       expect.objectContaining({ kind: "turn-end", ok: false }),
       { kind: "error", code: "chat_cli_signed_out" },
     ]);
+    // 합성 원문 "Not logged in · Please run /login"은 지휘관 말풍선(text)으로 방출되지 않는다.
+    expect(events.filter((event) => event.kind === "text")).toEqual([]);
 
     unsub();
     await registry.disposeAll();
+  });
+
+  it("replays synthetic authentication_failed assistant lines as chat_cli_signed_out instead of raw text", () => {
+    const line = JSON.stringify({
+      type: "assistant",
+      error: "authentication_failed",
+      message: {
+        role: "assistant",
+        content: [{ type: "text", text: "Not logged in · Please run /login" }],
+      },
+    });
+    expect(chatReplayFromTranscriptLine(line).events).toEqual([{ kind: "error", code: "chat_cli_signed_out" }]);
   });
 });
 

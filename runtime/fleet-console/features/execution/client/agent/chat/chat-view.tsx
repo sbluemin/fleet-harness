@@ -242,10 +242,14 @@ export function AgentChatView({
   const blockedError = state.errorCode === "chat_transcript_missing" || state.errorCode === "session_id_conflict";
   const cliFailure = agentChatCliFailure(state.errorCode);
   const awaitingFirstTurn = state.turns.length === 0 && !state.replaying && state.connection === "open" && !blockedError;
-  // 모바일 「다시 시도」는 마지막 턴에 사람이 보낸 지시를 같은 길로 한 번 더 보낸다 — 새 턴이 서고, 지난 턴은
-  // 기록에 남는다. 플러그인·다른 Objective가 보낸 지시는 사람이 쓴 문면이 아니므로 대상이 아니다.
+  // 모바일 「다시 시도」와 C2 원인 카드 「다시 보내기」는 마지막 턴에 사람이 보낸 지시를 같은 길로 한 번 더 보낸다 — 새 턴이 서고, 지난 턴은
+  // 기록에 남는다. 그룹 대화를 거쳐 온 사람 말(plugin origin + humanInput, 사령관 제외)도 사람 발화다.
   const lastDispatch = state.turns[state.turns.length - 1]?.dispatch;
-  const retryText = lastDispatch && !lastDispatch.by && lastDispatch.text ? lastDispatch.text : null;
+  const isHumanDispatch = lastDispatch !== undefined && lastDispatch !== null && (
+    !lastDispatch.by
+    || (lastDispatch.by.kind === "plugin" && lastDispatch.by.humanInput !== undefined && lastDispatch.by.humanInput.author !== "commodore")
+  );
+  const retryText = isHumanDispatch && lastDispatch.text.trim().length > 0 ? lastDispatch.text : null;
   const retry = React.useCallback(() => {
     if (retryText === null) return;
     void messageAgentSession(context.objectiveId, retryText).catch(() => undefined);
