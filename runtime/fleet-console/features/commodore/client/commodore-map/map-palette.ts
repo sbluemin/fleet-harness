@@ -1,12 +1,14 @@
+import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
+
 /**
  * 토큰→RGB 다리 — theme 토큰을 `getComputedStyle`로 읽어 셰이더·Canvas에 RGB로 넘긴다.
  * CSS에는 raw 색을 두지 않는다(불변식). 이 다리는 작게 둔다 — onboarding의
  * `readGlancePalette`·`makeGlanceKit`이 foundation으로 승격되면 그 키트와 합칠 자리다.
  */
 
-/** 렌더러가 읽는 지도 팔레트 — 신호 토큰은 상태(fresh·stale)에만 쓴다. 시안 mind 값을 읽는다. */
+/** 렌더러가 읽는 지도 팔레트 — 신호 토큰은 상태(fresh·stale)에만 쓴다. */
 export interface MapPalette {
-  /** 핵 — 정체성 색(`--mongle-teal`). */
+  /** 핵 — 사령관 아바타 정체성 톤(없으면 `--map-core`). */
   readonly core: string;
   readonly description: string;
   readonly intel: string;
@@ -21,6 +23,9 @@ export interface MapPalette {
   readonly ink: string;
   readonly inkDim: string;
   readonly hair: string;
+  /** 무대 중심·외곽 바탕색 — 셰이더·중공 링 채움·라벨 보호가 읽는다. */
+  readonly stageCore: string;
+  readonly stageEdge: string;
   /** 최근 갱신 발광 — 상태라 `aurora`가 맞다. */
   readonly fresh: string;
   /** 30일 미검증 — 상태라 `warn`이 맞다. */
@@ -42,36 +47,64 @@ export const MAP_TOKENS: Record<keyof MapPalette, string> = {
   ink: "--text-primary",
   inkDim: "--text-secondary",
   hair: "--hairline-strong",
+  stageCore: "--map-stage-core",
+  stageEdge: "--map-stage-edge",
   fresh: "--aurora",
   stale: "--warn",
 };
 
-/** 토큰이 없을 때 쓰는 대체값(다크 시안 mind와 같은 값). */
+/** 토큰이 없을 때 쓰는 대체값(다크 기본값). */
 const MAP_FALLBACKS: Record<keyof MapPalette, string> = {
   core: "oklch(82% 0.07 190)",
   description: "oklch(82% 0.07 190)",
-  intel: "oklch(70% 0.012 245)",
-  source: "oklch(70% 0.012 245)",
-  objective: "oklch(64% 0.012 245)",
-  link: "oklch(70% 0.012 245)",
-  person: "oklch(80% 0.11 75)",
-  theater: "oklch(74% 0.11 250)",
-  lessons: "oklch(75% 0.12 318)",
-  crew: "oklch(82% 0.1 115)",
+  intel: "oklch(72% 0.035 230)",
+  source: "oklch(69% 0.032 230)",
+  objective: "oklch(68% 0.018 245)",
+  link: "oklch(78% 0.02 240)",
+  person: "oklch(81% 0.125 74)",
+  theater: "oklch(75% 0.125 248)",
+  lessons: "oklch(76% 0.135 316)",
+  crew: "oklch(82% 0.115 118)",
   ink: "oklch(94% 0.008 90)",
   inkDim: "oklch(70% 0.012 245)",
   hair: "oklch(37% 0.02 245)",
+  stageCore: "oklch(19.5% 0.014 245)",
+  stageEdge: "oklch(11.5% 0.01 245)",
   fresh: "oklch(77% 0.085 200)",
   stale: "oklch(75% 0.08 88)",
 };
 
-export function readMapPalette(root: Element | null = typeof document === "undefined" ? null : document.documentElement): MapPalette {
+function isLightRoot(root: Element | null, inkCss: string): boolean {
+  if (root instanceof HTMLElement) {
+    if (root.dataset.viewMode === "mobile") return root.dataset.mobileScheme === "light";
+    if (root.dataset.theme === "light") return true;
+    if (root.dataset.theme === "dark") return false;
+  }
+  const rgb = cssColorToRgb(inkCss);
+  if (!rgb) return false;
+  return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255 < 0.45;
+}
+
+export function readMapPalette(
+  root: Element | null = typeof document === "undefined" ? null : document.documentElement,
+  coreTone: IdentityTone | null = null,
+): MapPalette {
   const cs = root ? getComputedStyle(root) : null;
   const out = {} as Record<keyof MapPalette, string>;
   for (const key of Object.keys(MAP_TOKENS) as (keyof MapPalette)[]) {
     const token = MAP_TOKENS[key];
     const value = cs?.getPropertyValue(token).trim() ?? "";
     out[key] = value || MAP_FALLBACKS[key];
+  }
+  // 사령관 정체성 톤 연동 — 다크는 발광 파스텔(--mongle-*), 라이트는 밝은 바탕 대비(--id-*)를 읽는다.
+  if (coreTone && cs) {
+    const light = isLightRoot(root, out.ink);
+    const toneToken = light ? `--id-${coreTone}` : `--mongle-${coreTone}`;
+    const resolved = cs.getPropertyValue(toneToken).trim();
+    if (resolved) {
+      out.core = resolved;
+      out.description = resolved;
+    }
   }
   return out;
 }

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
 
-import { useMongleLook } from "../../../workspace/client/avatar-events.js";
+import { useAvatarToneOf } from "../../../workspace/client/avatar-accent.js";
 import { commodoreAvatarKey } from "../../../workspace/shared/avatars.js";
 import { useGlobalSettingsStore, getGlobalSettingsStoreState } from "../../../settings/client/global-settings-store.js";
 import type { CommodoreState } from "../../shared/contracts/types.js";
@@ -108,7 +108,8 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   readonly showPanel?: boolean;
 }) {
   const memory = useCommodoreMemory(commodoreId);
-  const look = useMongleLook(commodoreAvatarKey(commodoreId));
+  const toneOf = useAvatarToneOf();
+  const coreTone = toneOf(commodoreAvatarKey(commodoreId));
   const settings = useGlobalSettingsStore();
   const osReduced = useOsReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -150,19 +151,22 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   }), [t, branchName]);
   // 배치는 링크까지 든 전체 그래프로 한 번만 잡는다 — 종류를 골라 링크가 빠져도 점이 튀어 옮겨 가지 않는다.
   const fullGraph = useMemo(
-    () => buildMapGraph({ state, memories: memory.entries, tone: look.tone ?? null, labels }),
-    [state, memory.entries, look.tone, labels],
+    () => buildMapGraph({ state, memories: memory.entries, tone: coreTone, labels }),
+    [state, memory.entries, coreTone, labels],
   );
   const showLinks = picks.size === 0 || picks.has("link");
   const graph = useMemo(
-    () => (showLinks ? fullGraph : buildMapGraph({ state, memories: memory.entries, tone: look.tone ?? null, labels, links: false })),
-    [showLinks, fullGraph, state, memory.entries, look.tone, labels],
+    () => (showLinks ? fullGraph : buildMapGraph({ state, memories: memory.entries, tone: coreTone, labels, links: false })),
+    [showLinks, fullGraph, state, memory.entries, coreTone, labels],
   );
   const layout = useMemo(() => layoutMapGraph(fullGraph), [fullGraph]);
   const model = useMemo(() => ({ graph, layout }), [graph, layout]);
   const hits = useMemo(() => matchMapQuery(graph, query), [graph, query]);
   const visible = useMemo(() => visibleMapIds(graph, picks, hits), [graph, picks, hits]);
-  const palette = useMemo(() => readMapPalette(), [paletteTick]);
+  const palette = useMemo(
+    () => readMapPalette(typeof document === "undefined" ? null : document.documentElement, coreTone),
+    [paletteTick, coreTone],
+  );
   // 칩 숫자는 노드 수가 아니라 기억·정보 개수다. 목표·링크는 그래프 개수.
   const chipCounts = useMemo(() => {
     const counts: Record<MapBranchKey, number> = { description: 0, intel: 0, person: 0, theater: 0, lessons: 0, crew: 0 };
@@ -642,7 +646,15 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                     aria-pressed={picks.has(branch)}
                     onClick={() => togglePick(branch)}
                   >
-                    <span className="commodore-map-sw" style={{ "--c": `var(--map-${branch === "description" ? "description" : branch === "intel" ? "intel" : `branch-${branch}`})` } as React.CSSProperties} aria-hidden="true" />
+                    <span
+                      className={`commodore-map-sw${branch === "intel" ? " is-diamond" : ""}`}
+                      style={{
+                        "--c": branch === "description"
+                          ? palette.core
+                          : `var(--map-${branch === "intel" ? "intel" : `branch-${branch}`})`,
+                      } as React.CSSProperties}
+                      aria-hidden="true"
+                    />
                     {branchChipLabel(t, branch)} <span className="commodore-map-n">{chipCounts[branch] ?? 0}</span>
                   </button>
                 ))}
@@ -691,7 +703,11 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                       { sw: "is-stale", text: t("commodore.map.legend.stale") },
                     ].map((row) => (
                       <li key={row.text}>
-                        <span className={`commodore-map-sw ${row.sw}`} aria-hidden="true" />
+                        <span
+                          className={`commodore-map-sw ${row.sw}`}
+                          style={row.sw === "is-core" ? { "--c": palette.core } as React.CSSProperties : undefined}
+                          aria-hidden="true"
+                        />
                         <span>{row.text}</span>
                       </li>
                     ))}

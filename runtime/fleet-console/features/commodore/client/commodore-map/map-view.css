@@ -113,7 +113,11 @@
   margin: 0 12px 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
-  background: radial-gradient(ellipse at 50% 45%, var(--map-stage-core), var(--map-stage-edge) 72%);
+  background:
+    radial-gradient(circle, var(--map-stage-grid) 1px, transparent 1px),
+    radial-gradient(ellipse at 50% 48%, var(--map-stage-core), var(--map-stage-edge) 74%);
+  background-size: 28px 28px, 100% 100%;
+  background-position: center, center;
 }
 
 .commodore-map-canvas-host {
@@ -158,14 +162,20 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  text-shadow: 0 0 6px var(--canvas-abyss), 0 0 2px var(--canvas-abyss);
+  text-shadow:
+    0 0 2px var(--map-stage-edge),
+    0 0 5px var(--map-stage-edge),
+    0 1px 8px var(--map-stage-edge);
 }
 
 .commodore-map-tag[data-hub="true"] {
   color: var(--text-primary);
   font-size: var(--t-sm);
-  /* 허브 라벨은 무리 한가운데의 가장 밝은 발광 위에 선다 — 바탕 그림자를 넓혀 200개에서도 읽히게 한다. */
-  text-shadow: 0 0 2px var(--canvas-abyss), 0 0 6px var(--canvas-abyss), 0 0 12px var(--canvas-abyss);
+  /* 허브 라벨은 밝은 광학과 선 위에서도 판독 대비를 유지한다. */
+  text-shadow:
+    0 0 2px var(--map-stage-edge),
+    0 0 6px var(--map-stage-edge),
+    0 1px 12px var(--map-stage-edge);
 }
 
 /* 접근성·선택 링 전용 투명 버튼 — 색 채움은 캔버스 몫이라 불투명 원을 뒤에 찍지 않는다. */
@@ -198,10 +208,6 @@
 .commodore-map-node:focus-visible {
   outline: none;
   box-shadow: var(--focus-face);
-}
-
-.commodore-map-nodes[data-renderer="webgl"] .commodore-map-node[data-selected="true"] {
-  box-shadow: 0 0 0 2px var(--dialog-face), 0 0 0 3.5px var(--text-primary);
 }
 
 /* 무대 위 겹침 층 — 위쪽 줄(칩·안내)과 오른쪽 아래 범례. 칩 줄 아래에 안내가 흘러 겹치지 않는다. */
@@ -282,6 +288,13 @@
   border-radius: 2px;
 }
 
+.commodore-map-sw.is-diamond {
+  width: 7px;
+  height: 7px;
+  border-radius: 1.5px;
+  transform: rotate(45deg);
+}
+
 .commodore-map-sw.is-ring {
   background: transparent;
   border: 1.5px solid var(--c, var(--text-secondary));
@@ -356,13 +369,13 @@
   align-items: center;
 }
 
-.commodore-map-legend .commodore-map-sw.is-core { background: var(--map-core); }
+.commodore-map-legend .commodore-map-sw.is-core { background: var(--c, var(--map-core)); }
 .commodore-map-legend .commodore-map-sw.is-entry { background: var(--map-branch-lessons); }
-.commodore-map-legend .commodore-map-sw.is-intel { background: var(--map-intel); border-radius: 2px; }
+.commodore-map-legend .commodore-map-sw.is-intel { background: var(--map-intel); width: 7px; height: 7px; border-radius: 1.5px; transform: rotate(45deg); }
 .commodore-map-legend .commodore-map-sw.is-objective { background: transparent; border: 1.5px solid var(--map-objective); }
 .commodore-map-legend .commodore-map-sw.is-link { background: var(--map-link); width: 14px; height: 2px; border-radius: 1px; }
 .commodore-map-legend .commodore-map-sw.is-shared { background: transparent; border-top: 2px dashed var(--text-tertiary); height: 0; border-radius: 0; width: 14px; }
-.commodore-map-legend .commodore-map-sw.is-fresh { background: var(--aurora); opacity: 0.3; }
+.commodore-map-legend .commodore-map-sw.is-fresh { background: transparent; border: 1.5px solid var(--aurora); }
 .commodore-map-legend .commodore-map-sw.is-stale { background: transparent; border: 1.4px dashed var(--warn); }
 
 .commodore-map-panel {
