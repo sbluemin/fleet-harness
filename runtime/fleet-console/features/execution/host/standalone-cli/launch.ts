@@ -195,6 +195,8 @@ export function createStandaloneCliLaunchResolver(
     if (!cwd) throw new Error("standalone_cli_cwd_required");
     const inherited = deps.env ?? process.env;
     let env = standaloneCliBaseEnv(inherited);
+    const additionalDirectories = normalizeAdditionalDirectories(cwd, context?.additionalDirectories);
+    const additionalDirArgs = additionalDirectories.flatMap((dir) => ["--add-dir", dir]);
 
     if (cli === "antigravity") {
       const { bin, prefixArgs } = resolveBinary("agy", "AGY_BIN", env);
@@ -209,7 +211,7 @@ export function createStandaloneCliLaunchResolver(
         : undefined;
       return {
         bin,
-        args: [...prefixArgs, "--dangerously-skip-permissions", ...(mcp?.args ?? [])],
+        args: [...prefixArgs, "--dangerously-skip-permissions", ...additionalDirArgs, ...(mcp?.args ?? [])],
         cwd,
         env: createChildEnv(baseEnv, {}),
         terminalName: TERMINAL_TERM,
@@ -247,18 +249,35 @@ export function createStandaloneCliLaunchResolver(
     });
     const launchEnv: Record<string, string> = { ...profile.env };
     if (!inherited[FUNCTION_HOOKS_ENV_KEY]) delete launchEnv[FUNCTION_HOOKS_ENV_KEY];
+    if (additionalDirectories.length > 0 && !launchEnv.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD) {
+      launchEnv.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD = "1";
+    }
     const mcp = deps.browserMcp
       ? await prepareBrowserMcpInjection("claude", deps.browserMcp, cwd, context?.commodoreId ?? null)
       : undefined;
     return {
       bin: profile.bin,
-      args: [...profile.args, "--dangerously-skip-permissions", ...(mcp?.args ?? [])],
+      args: [...profile.args, "--dangerously-skip-permissions", ...additionalDirArgs, ...(mcp?.args ?? [])],
       cwd,
       env: launchEnv,
       terminalName: TERMINAL_TERM,
       ...(mcp ? { cleanup: mcp.cleanup } : {}),
     };
   };
+}
+
+function normalizeAdditionalDirectories(cwd: string, directories: readonly string[] | undefined): readonly string[] {
+  if (!directories?.length) return [];
+  const seen = new Set<string>([path.resolve(cwd)]);
+  const normalized: string[] = [];
+  for (const dir of directories) {
+    if (typeof dir !== "string" || !dir || !path.isAbsolute(dir) || dir.includes("\0")) continue;
+    const key = path.resolve(dir);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(dir);
+  }
+  return normalized;
 }
 
 function readStatuses(read: (() => ProviderStatusMap | undefined) | undefined): ProviderStatusMap | undefined {

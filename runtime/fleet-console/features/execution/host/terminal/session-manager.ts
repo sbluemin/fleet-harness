@@ -340,6 +340,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
     }
     const launch = await deps.launch(context.cwd, {
       ...(context.commodoreId ? { commodoreId: context.commodoreId } : {}),
+      ...(context.additionalDirectories?.length ? { additionalDirectories: context.additionalDirectories } : {}),
       sessionId: context.sessionId,
       ...(context.objectiveId ? { objectiveId: context.objectiveId } : {}),
       ...(context.objectiveRecordType ? { objectiveRecordType: context.objectiveRecordType } : {}),
