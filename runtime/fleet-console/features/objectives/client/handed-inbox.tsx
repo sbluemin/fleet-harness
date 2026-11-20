@@ -40,6 +40,7 @@ async function holdPost(objectiveId: string, language: ConsoleLocale, path: stri
 /**
  * 한 줄 결정의 빠른 답 — 한 번에 끝나는 경우만 단추를 세운다. 기준은 모두 승인(제안이 하나면 그 승인), 검토는 후속 후보가 없고
  * 막힘이 없을 때의 완료다. 개별 승인·거절·메모·돌려주기와 후속 고르기는 펼친 카드(`HandedInboxDetail`)가 맡는다.
+ * 좁은 폭에서는 제목이 읽히도록 체크 아이콘만 남는다(이름은 `aria-label`·`title`).
  */
 export function HandedInboxQuick({ objectiveId, kind, language, phone, onFailed }: {
   readonly objectiveId: string;
@@ -72,7 +73,12 @@ export function HandedInboxQuick({ objectiveId, kind, language, phone, onFailed 
     setBusy(true);
     void holdPost(objectiveId, language, path, body).catch(onFailed).finally(() => setBusy(false));
   };
-  return <button type="button" className="commodore-decision-quick is-primary" disabled={busy} aria-busy={busy || undefined} onClick={run}>{label}</button>;
+  return (
+    <button type="button" className="commodore-decision-quick is-primary has-icon" disabled={busy} aria-busy={busy || undefined} aria-label={label} title={label} onClick={run}>
+      <svg className="commodore-decision-quick-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" /></svg>
+      <span className="commodore-decision-quick-label">{label}</span>
+    </button>
+  );
 }
 
 function useHoldActions(objectiveId: string, language: ConsoleLocale, phone: boolean, target: Exclude<PersonHoldTarget, "followup">) {
