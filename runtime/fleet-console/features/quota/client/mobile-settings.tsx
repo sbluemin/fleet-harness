@@ -1,3 +1,5 @@
+import { useState, type FormEvent } from "react";
+
 import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 import { useStoreSnapshot } from "@fleet-console/ui/store";
@@ -8,8 +10,8 @@ import { getT } from "./i18n/index.js";
 import { isSpendProvider, SpendRows } from "./spend-section.js";
 import { RateLimitRows } from "./rate-limit.js";
 import type { QuotaWindow } from "@fleet-console/ai-gateway";
-import { expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, NO_SUBSCRIPTION_KEY, providerName, SIGNED_OUT_KEY, UNREPORTED_PROVIDER, displayPlanName, isConnectable, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel } from "./quota-panel.js";
-import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subscribeLogins } from "./provider-login.js";
+import { beginLogin, expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, loginExpiredBody, NO_SUBSCRIPTION_KEY, providerName, signedOutMessageKey, UNREPORTED_PROVIDER, displayPlanName, loginPendingKey, meterSeverity, needsConsoleLogin, useQuotaData, windowLabel, type LogoutProvider } from "./quota-panel.js";
+import { cancelLogin, getLoginStates, onConsoleComputer, openExternal, resetLogin, startLogin, submitLoginCode, subscribeLogins } from "./provider-login.js";
 import type { LoginProvider, ProviderId } from "../shared/provider-order.js";
 import "./mobile.css";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
@@ -47,12 +49,7 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
           <section className="quota-m-provider" key={id} data-provider={id}>
             <h3 className="quota-m-head">{name}{provider.plan ? <small>{displayPlanName(id, provider.plan)}</small> : null}</h3>
             <div className="quota-m-group">
-              {isConnectable(id) && provider.status === "not_connected" ? (
-                <button type="button" className="quota-m-row quota-m-action" onClick={() => connect(id, true)}>
-                  <span className="quota-m-copy">{t("mobile.usage.connect")}<small>{t("quota.connect.body")}</small></span>
-                </button>
-              ) : null}
-              {needsConsoleLogin(id, provider.status) ? <LoginRows api={api} provider={id} expired={provider.status === "expired"} now={now} locale={locale} t={t} logout={logout} /> : null}
+              {needsConsoleLogin(id, provider.status) ? <LoginRows api={api} provider={id} expired={provider.status === "expired"} now={now} locale={locale} t={t} logout={logout} disconnect={() => connect("claude", false)} /> : null}
               {readable && isSpendProvider(id) && provider.spend !== undefined ? (
                 <SpendRows
                   provider={id}
@@ -84,7 +81,7 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
                   </div>
                 );
               })}
-              {!readable && !login && !(isConnectable(id) && provider.status === "not_connected") ? (
+              {!readable && !login ? (
                 <div className="quota-m-row">
                   <span className="quota-m-copy">{statusLine(id, provider.status, t)}</span>
                 </div>
@@ -109,6 +106,7 @@ function LoginRows({
   locale,
   t,
   logout,
+  disconnect,
 }: {
   readonly api: ClientApiCapability;
   readonly provider: LoginProvider;
@@ -116,7 +114,8 @@ function LoginRows({
   readonly now: number;
   readonly locale: ConsoleLocale;
   readonly t: ReturnType<typeof getT>;
-  readonly logout: (provider: LoginProvider) => void;
+  readonly logout: (provider: LogoutProvider) => void;
+  readonly disconnect: () => void;
 }) {
   const login = useStoreSnapshot(subscribeLogins, getLoginStates)[provider];
   const name = providerName(provider, true);
@@ -124,19 +123,26 @@ function LoginRows({
     case "idle":
       return (
         <>
-          <button type="button" className="quota-m-row quota-m-action" onClick={() => { void startLogin(api, provider); }}>
+          <button type="button" className="quota-m-row quota-m-action" onClick={() => beginLogin(api, provider, expired)}>
             <span className="quota-m-copy">
               {t(expired ? "quota.login.action.again" : "quota.login.action")}
-              <small>{expired ? t("quota.login.body.expired", { provider: name }) : t(LOGIN_BODY_KEY[provider])}</small>
+              <small>{expired ? loginExpiredBody(provider, t) : t(LOGIN_BODY_KEY[provider])}</small>
             </span>
           </button>
-          {expired ? (
+          {expired && provider === "claude" ? (
+            <button type="button" className="quota-m-row quota-m-action" onClick={disconnect}>
+              <span className="quota-m-copy">{t("quota.disconnect.action")}</span>
+            </button>
+          ) : null}
+          {expired && provider !== "claude" ? (
             <button type="button" className="quota-m-row quota-m-action" onClick={() => logout(provider)}>
               <span className="quota-m-copy">{t("quota.login.logout")}</span>
             </button>
           ) : null}
         </>
       );
+    case "finding":
+      return <div className="quota-m-row" role="status"><span className="quota-m-copy">{t("quota.login.finding")}</span></div>;
     case "starting":
       return <div className="quota-m-row" role="status"><span className="quota-m-copy">{t("quota.login.starting")}</span></div>;
     case "pending":
@@ -154,6 +160,7 @@ function LoginRows({
           <button type="button" className="quota-m-row quota-m-action" onClick={() => cancelLogin(api, provider)}>
             <span className="quota-m-copy">{t("quota.login.cancel")}</span>
           </button>
+          {provider === "claude" && !onConsoleComputer() ? <LoginPasteRow api={api} provider={provider} t={t} /> : null}
         </>
       );
     case "failed":
@@ -175,6 +182,43 @@ function LoginRows({
   }
 }
 
+/** 원격 접속(폰)에서만 서는 코드 칸 — 데스크톱 카드와 같은 안내 키 하나를 쓴다. */
+function LoginPasteRow({ api, provider, t }: { readonly api: ClientApiCapability; readonly provider: LoginProvider; readonly t: ReturnType<typeof getT> }) {
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const code = value.trim();
+    if (code === "" || busy) return;
+    setBusy(true);
+    void submitLoginCode(api, provider, code).then((accepted) => {
+      setBusy(false);
+      if (accepted) setValue("");
+    });
+  };
+  return (
+    <form className="quota-m-row" onSubmit={submit}>
+      <span className="quota-m-copy">
+        <small>{t("quota.login.paste.hint")}</small>
+        <span className="quota-budget">
+          <input
+            className="quota-budget__input"
+            type="text"
+            autoComplete="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            aria-label={t("quota.login.code")}
+            value={value}
+            disabled={busy}
+            onChange={(event) => setValue(event.target.value)}
+          />
+          <button type="submit" className="quota-button" disabled={busy || value.trim() === ""}>{t("quota.login.paste.submit")}</button>
+        </span>
+      </span>
+    </form>
+  );
+}
+
 /** 시안의 창 이름 — 이름이 없는 세션·주간 창은 「5시간 한도」·「주간 한도」로 부른다(공급자가 이름을 준 창은 그대로). */
 function mobileWindowLabel(window: QuotaWindow, t: ReturnType<typeof getT>): string {
   if (window.label === undefined && window.id === "session") return t("mobile.usage.session");
@@ -194,7 +238,10 @@ function countdownText(ms: number, locale: ConsoleLocale): string {
 
 /** 읽을 수 있는 한도가 없는 공급자의 한 줄 — 팝업과 같은 문구 키를 쓴다. */
 function statusLine(id: ProviderId, status: string, t: ReturnType<typeof getT>): string {
-  if (status === "signed_out") return t(SIGNED_OUT_KEY[id]);
+  if (status === "signed_out") {
+    const key = signedOutMessageKey(id);
+    if (key !== undefined) return t(key);
+  }
   if (status === "no_subscription") return t(NO_SUBSCRIPTION_KEY[id]);
   if (status === "expired") {
     const key = expiredMessageKey(id);

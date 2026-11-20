@@ -2,11 +2,20 @@ export const PROVIDER_ORDER_DEFAULT = ["claude", "anthropic", "codex", "xai", "m
 export type ProviderId = (typeof PROVIDER_ORDER_DEFAULT)[number];
 
 /**
- * Console이 로그인을 소유하는 공급자 — 키가 없거나 만료되면 한도 대신 로그인 카드가 선다.
+ * Console이 로그인 카드를 세우는 공급자 — 키가 없거나 만료되면 한도 대신 로그인 카드가 선다.
  * 플러그인 경로와 Gateway 마운트(`ai-gateway/oauth/<id>`)의 조각이기도 하다.
+ * Claude는 Console이 아니라 CLI(`claude auth login`)가 로그인을 소유한다. 같은 카드를 쓰되 로그아웃은 없고
+ * (터미널 로그인까지 끊기므로) 코드 붙여넣기 경로가 있다.
  */
-export const LOGIN_PROVIDERS = ["codex", "xai", "muse-code"] as const satisfies readonly ProviderId[];
+export const LOGIN_PROVIDERS = ["claude", "codex", "xai", "muse-code"] as const satisfies readonly ProviderId[];
 export type LoginProvider = (typeof LOGIN_PROVIDERS)[number];
+
+/** 로그인 라우트의 동작. 공급자마다 가진 것이 다르다 — Claude만 `paste`가 있고 `logout`이 없다. */
+export type LoginAction = "start" | "status" | "cancel" | "logout" | "paste";
+
+export function loginActionsOf(provider: LoginProvider): readonly LoginAction[] {
+  return provider === "claude" ? ["start", "status", "cancel", "paste"] : ["start", "status", "cancel", "logout"];
+}
 
 export function isLoginProvider(value: unknown): value is LoginProvider {
   return (LOGIN_PROVIDERS as readonly unknown[]).includes(value);

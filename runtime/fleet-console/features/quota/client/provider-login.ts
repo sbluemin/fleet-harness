@@ -1,7 +1,8 @@
-import type { LoginStart, LoginStatus } from "@fleet-console/ai-gateway";
+import type { LoginStart, LoginStatus, QuotaSummaryDto } from "@fleet-console/ai-gateway";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 
 import { LOGIN_PROVIDERS, type LoginProvider } from "../shared/provider-order.js";
+import { publishQuotaSummary } from "./summary-store.js";
 
 /** 로그인이 멈춘 이유. 「취소」는 실패가 아니라 처음 카드로 돌아가는 것이라 여기에 없다. */
 export type LoginFailure = "denied" | "expired" | "failed" | "entitlement_required";
@@ -12,6 +13,8 @@ export type LoginFailure = "denied" | "expired" | "failed" | "entitlement_requir
  */
 export type LoginState =
   | { readonly phase: "idle" }
+  /** Claude만: 연결 동의를 켜고 CLI의 기본 로그인을 찾는 중. 없으면 곧 `starting`으로 이어진다. */
+  | { readonly phase: "finding" }
   | { readonly phase: "starting" }
   | {
     readonly phase: "pending";
@@ -81,6 +84,14 @@ export function safeExternalUrl(value: unknown): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * 이 화면이 Console이 도는 컴퓨터에서 열렸는가 — 루프백 주소로 열었으면 그렇다. 원격 접속(다른 기기·폰)은 루프백이
+ * 아니다. 사령관 플러그인의 MCP 인증 화면이 같은 규칙으로 「반환 주소 붙여넣기」를 가른다.
+ */
+export function onConsoleComputer(): boolean {
+  return ["localhost", "127.0.0.1", "[::1]", "::1"].includes(window.location.hostname);
 }
 
 /** 새 탭(브라우저) 또는 시스템 브라우저(Desktop)로 연다. */
@@ -161,6 +172,53 @@ export async function startLogin(api: ClientApiCapability, provider: LoginProvid
     schedulePoll(api, provider, captured);
   } catch {
     if (captured === generation(provider)) setState(provider, { phase: "failed", reason: "failed" });
+  }
+}
+
+const NEEDS_LOGIN = new Set<string>(["not_connected", "signed_out", "expired"]);
+
+/**
+ * Claude 로그인 단추. 연결 동의를 켜 CLI의 기본 로그인(터미널 claude와 같은 것)을 먼저 찾고, 있으면 그대로 연결돼
+ * 사용량이 보인다. 없을 때만 로그인 카드가 열린다(`startLogin`). 이 상태는 번들에 있으므로 사령관 채팅의 상태 줄처럼
+ * 패널 밖에서 불러도 패널이 열릴 때 같은 카드가 선다.
+ */
+export async function beginClaudeLogin(api: ClientApiCapability): Promise<void> {
+  const current = states.claude;
+  if (current.phase === "finding" || current.phase === "starting" || current.phase === "pending") return;
+  stopPolling("claude");
+  const captured = bump("claude");
+  setState("claude", { phase: "finding" });
+  try {
+    const response = await api.fetch("quota/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "claude", connected: true }),
+    });
+    if (!response.ok) throw new Error("connect_failed");
+    const summary = await response.json() as QuotaSummaryDto;
+    if (captured !== generation("claude")) return;
+    // 패널이 같은 요약을 그린다 — 찾은 결과가 카드가 사라지기 전에 먼저 선다.
+    publishQuotaSummary(summary, Date.now());
+    setState("claude", IDLE);
+    if (NEEDS_LOGIN.has(summary.providers.claude?.status ?? "")) await startLogin(api, "claude");
+  } catch {
+    if (captured === generation("claude")) setState("claude", { phase: "failed", reason: "failed" });
+  }
+}
+
+/** 원격 기기에서 받은 코드를 진행 중인 로그인에 전한다. 받아들여졌으면 true — 승인 확인은 계속 서버가 한다. */
+export async function submitLoginCode(api: ClientApiCapability, provider: LoginProvider, code: string): Promise<boolean> {
+  const current = states[provider];
+  if (current.phase !== "pending") return false;
+  try {
+    const response = await api.fetch(`quota/${provider}/paste`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ loginId: current.loginId, code: code.trim() }),
+    });
+    return response.ok;
+  } catch {
+    return false;
   }
 }
 

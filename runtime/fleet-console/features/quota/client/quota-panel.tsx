@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type PointerEvent as ReactPointerEvent } from "react";
 
 import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
@@ -12,21 +12,26 @@ import { UsageMeter } from "./meter.js";
 import { RateLimitSection } from "./rate-limit.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import {
+  beginClaudeLogin,
   cancelLogin,
   getLoginStates,
+  onConsoleComputer,
   openExternal,
   resetLogin,
   startLogin,
+  submitLoginCode,
   subscribeLogins,
   type LoginFailure,
   type LoginState,
 } from "./provider-login.js";
-import { getQuotaSummarySnapshot, holdQuotaPanel, publishQuotaSummary } from "./summary-store.js";
+import { getQuotaSummarySnapshot, holdQuotaPanel, publishQuotaSummary, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, moveQuotaProvider, setQuotaProviderOrder, subscribeQuotaToolbarSetting, toggleQuotaToolbarProvider } from "./toolbar-setting.js";
 
 type T = Translate<QuotaMessageKey>;
 /** Providers whose credential read is gated behind an explicit connect. */
 type ConnectableProviderId = "claude";
+/** 로그아웃을 가진 로그인 공급자. Claude는 없다 — 로그아웃하면 터미널 로그인까지 끊긴다. */
+export type LogoutProvider = Exclude<LoginProvider, "claude">;
 
 export const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   anthropic: "Anthropic",
@@ -67,9 +72,9 @@ export function displayPlanName(id: ProviderId, plan: string): string {
   return stripped.length > 0 ? stripped : plan;
 }
 
-export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
+/** Claude는 이 표에 없다 — 로그인 카드가 그 자리를 맡는다. */
+export const SIGNED_OUT_KEY: Readonly<Record<Exclude<ProviderId, "claude">, QuotaMessageKey>> = {
   anthropic: "quota.anthropic.signedOut",
-  claude: "quota.claude.signedOut",
   codex: "quota.codex.signedOut",
   gemini: "quota.gemini.signedOut",
   "muse-code": "quota.museCode.signedOut",
@@ -78,8 +83,7 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
 };
 
 /** 만료를 말하는 공급자 — API 키 두 곳은 만료 개념이 없어 이 표에 없다. */
-export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "gemini" | "anthropic">, QuotaMessageKey>> = {
-  claude: "quota.expired.claude",
+export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "gemini" | "anthropic" | "claude">, QuotaMessageKey>> = {
   codex: "quota.expired.codex",
   "muse-code": "quota.expired.museCode",
   opencode: "quota.expired.opencode",
@@ -87,9 +91,13 @@ export const EXPIRED_KEY: Readonly<Record<Exclude<ProviderId, "gemini" | "anthro
 };
 
 export function expiredMessageKey(id: ProviderId): QuotaMessageKey | undefined {
-  // Gemini·Anthropic은 API 키(만료 개념 없음)라 이 줄을 쓰지 않는다.
-  if (id === "gemini" || id === "anthropic") return undefined;
+  // Gemini·Anthropic은 API 키(만료 개념 없음)라 이 줄을 쓰지 않는다. Claude는 로그인 카드가 말한다.
+  if (id === "gemini" || id === "anthropic" || id === "claude") return undefined;
   return EXPIRED_KEY[id];
+}
+
+export function signedOutMessageKey(id: ProviderId): QuotaMessageKey | undefined {
+  return id === "claude" ? undefined : SIGNED_OUT_KEY[id];
 }
 
 // 구독이 없는 상태는 공급자에 관계없이 같은 안내를 쓴다. OpenCode Go만 키는 유효한데 구독이
@@ -112,8 +120,8 @@ export function isConnectable(id: ProviderId): id is ConnectableProviderId {
 }
 
 /**
- * Codex·xAI·Muse Code는 Console이 로그인을 소유한다 — 로그인이 없거나 만료되면 한도 대신 로그인 카드가 선다.
- * (`signed_out`은 옛 Gateway가 보내던 미로그인 상태라 같은 카드로 받는다.)
+ * Claude·Codex·xAI·Muse Code는 로그인 카드를 세운다 — 로그인이 없거나 만료되면 한도 대신 로그인 카드가 선다.
+ * (`signed_out`은 옛 Gateway가 보내던 미로그인 상태라 같은 카드로 받는다. Claude는 연결 동의 전의 `not_connected`도 같은 카드다.)
  */
 export function needsConsoleLogin(id: ProviderId, status: ProviderStatus | undefined): id is LoginProvider {
   return isLoginProvider(id) && (status === "not_connected" || status === "signed_out" || status === "expired");
@@ -128,10 +136,21 @@ export const LOGIN_FAILURE_KEY: Readonly<Record<LoginFailure, QuotaMessageKey>> 
 
 /** 로그인 카드의 설명. 어느 계정으로 로그인하는지는 공급자마다 다르다. */
 export const LOGIN_BODY_KEY: Readonly<Record<LoginProvider, QuotaMessageKey>> = {
+  claude: "quota.login.body.claude",
   codex: "quota.login.body.codex",
   "muse-code": "quota.login.body.museCode",
   xai: "quota.login.body.xai",
 };
+
+/** 만료된 로그인 단추의 설명. Claude는 문구가 따로다. */
+export function loginExpiredBody(provider: LoginProvider, t: T): string {
+  return provider === "claude" ? t("quota.login.body.claude.expired") : t("quota.login.body.expired", { provider: PROVIDER_NAME[provider] });
+}
+
+/** 로그인 단추. Claude는 CLI 기본 로그인을 먼저 찾고(`beginClaudeLogin`), 만료면 곧바로 카드를 연다. */
+export function beginLogin(api: ClientApiCapability, provider: LoginProvider, expired: boolean): void {
+  void (provider === "claude" && !expired ? beginClaudeLogin(api) : startLogin(api, provider));
+}
 
 /** 진행 중 안내: 링크에 코드가 실려 있으면 확인, 아니면 입력, 코드가 없으면 승인만. */
 export function loginPendingKey(login: Extract<LoginState, { phase: "pending" }>): QuotaMessageKey {
@@ -486,13 +505,16 @@ function LoginCard({
   now,
   t,
   logout,
+  disconnect,
 }: {
   readonly api: ClientApiCapability;
   readonly provider: LoginProvider;
   readonly expired: boolean;
   readonly now: number;
   readonly t: T;
-  readonly logout: (provider: LoginProvider) => void;
+  readonly logout: (provider: LogoutProvider) => void;
+  /** Claude의 「연결 해제」 — 동의만 거둔다. Claude에는 로그아웃이 없다(터미널 로그인까지 끊기므로). */
+  readonly disconnect: () => void;
 }) {
   const login = useStoreSnapshot(subscribeLogins, getLoginStates)[provider];
   const name = PROVIDER_NAME[provider];
@@ -505,8 +527,13 @@ function LoginCard({
       <header className="quota-provider__header">
         <span className={`quota-provider__mark quota-provider__mark--${provider}`}>{providerGlyph(provider)}</span>
         <h3>{name}</h3>
-        {expired && login.phase === "idle" ? <button type="button" className="quota-disconnect" onClick={() => logout(provider)}>{t("quota.login.logout")}</button> : null}
-        {login.phase === "idle" ? <button type="button" className="quota-button quota-button--primary" title={expired ? t("quota.login.body.expired", { provider: name }) : t(LOGIN_BODY_KEY[provider])} onClick={() => { void startLogin(api, provider); }}>{t(expired ? "quota.login.action.again" : "quota.login.action")}</button> : null}
+        {login.phase === "finding" ? <span className="quota-connect-hint" role="status">{t("quota.login.finding")}</span> : null}
+        {expired && login.phase === "idle" ? (
+          provider === "claude"
+            ? <button type="button" className="quota-disconnect" onClick={disconnect}>{t("quota.disconnect.action")}</button>
+            : <button type="button" className="quota-disconnect" onClick={() => logout(provider)}>{t("quota.login.logout")}</button>
+        ) : null}
+        {login.phase === "idle" ? <button type="button" className="quota-button quota-button--primary" title={expired ? loginExpiredBody(provider, t) : t(LOGIN_BODY_KEY[provider])} onClick={() => beginLogin(api, provider, expired)}>{t(expired ? "quota.login.action.again" : "quota.login.action")}</button> : null}
       </header>
       {login.phase === "starting" ? <p role="status">{t("quota.login.starting")}</p> : null}
       {login.phase === "pending" ? (
@@ -525,6 +552,7 @@ function LoginCard({
             <button type="button" className="quota-button quota-button--primary" onClick={() => openExternal(login.url)}>{t("quota.login.open")}</button>
             <button type="button" className="quota-button" onClick={() => cancelLogin(api, provider)}>{t("quota.login.cancel")}</button>
           </div>
+          {provider === "claude" && !onConsoleComputer() ? <LoginPasteForm api={api} provider={provider} t={t} /> : null}
         </>
       ) : null}
       {login.phase === "failed" ? (
@@ -540,6 +568,44 @@ function LoginCard({
       ) : null}
       {login.phase === "signed_in" ? <p role="status">{t("quota.login.signedIn")}</p> : null}
     </section>
+  );
+}
+
+/**
+ * 원격 접속에서만 서는 코드 칸. 승인하면 이 브라우저에 코드가 보이고, CLI는 Console 컴퓨터에서 그 코드를 기다린다.
+ * 칸의 안내는 키 하나(`quota.login.paste.hint`)다.
+ */
+export function LoginPasteForm({ api, provider, t }: { readonly api: ClientApiCapability; readonly provider: LoginProvider; readonly t: T }) {
+  const [value, setValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    const code = value.trim();
+    if (code === "" || busy) return;
+    setBusy(true);
+    void submitLoginCode(api, provider, code).then((accepted) => {
+      setBusy(false);
+      if (accepted) setValue("");
+    });
+  };
+  return (
+    <form onSubmit={submit}>
+      <p className="quota-connect-card__hint">{t("quota.login.paste.hint")}</p>
+      <div className="quota-connect-card__actions">
+        <input
+          className="quota-budget__input"
+          type="text"
+          autoComplete="off"
+          autoCapitalize="off"
+          spellCheck={false}
+          aria-label={t("quota.login.code")}
+          value={value}
+          disabled={busy}
+          onChange={(event) => setValue(event.target.value)}
+        />
+        <button type="submit" className="quota-button" disabled={busy || value.trim() === ""}>{t("quota.login.paste.submit")}</button>
+      </div>
+    </form>
   );
 }
 
@@ -563,7 +629,7 @@ function ProviderCard({
   readonly t: T;
   readonly api: ClientApiCapability;
   readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
-  readonly logout: (provider: LoginProvider) => void;
+  readonly logout: (provider: LogoutProvider) => void;
   readonly saveBudget: (provider: SpendProvider, usd: string | null) => Promise<boolean>;
 }) {
   const name = providerName(id, mobile);
@@ -572,24 +638,8 @@ function ProviderCard({
     (provider.status === "ok" || provider.status === "stale") && isSpendProvider(id) && provider.spend !== undefined ? id : undefined;
   const budgetEditor = useBudgetEditor(provider.spend?.budget, (usd) =>
     spendProvider === undefined ? Promise.resolve(false) : saveBudget(spendProvider, usd));
-  // Claude의 로그인은 Console 소유가 아니다. 가짜 로그인 문 대신 기존 CLI 경로를 한 줄로 안내한다.
-  if (id === "claude" && (provider.status === "signed_out" || provider.status === "expired")) {
-    return <section className="quota-connect-card" data-provider={id}><header className="quota-provider__header"><span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span><h3>{name}</h3><span className="quota-connect-hint" title={t(provider.status === "expired" ? EXPIRED_KEY.claude : SIGNED_OUT_KEY[id])}>{t("quota.login.external", { cli: "claude" })}</span><button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button></header></section>;
-  }
   if (needsConsoleLogin(id, provider.status)) {
-    return <LoginCard api={api} provider={id} expired={provider.status === "expired"} now={now} t={t} logout={logout} />;
-  }
-  if (isConnectable(id) && provider.status === "not_connected") {
-    return (
-      <section className="quota-connect-card" data-provider={id}>
-        <header className="quota-provider__header">
-          <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
-          <h3>{name}</h3>
-          {/* Claude 는 로그인 실행이 아니라 명시적 로컬 자격 읽기 동의다 — 기존 연결 동작과 설명을 유지한다. */}
-          <button type="button" className="quota-button quota-button--primary" title={`${t("quota.connect.body")}${provider.method === "keychain" ? ` ${t("quota.connect.keychain")}` : ""}`} onClick={() => connect(id, true)}>{t("quota.connect.action")}</button>
-        </header>
-      </section>
-    );
+    return <LoginCard api={api} provider={id} expired={provider.status === "expired"} now={now} t={t} logout={logout} disconnect={() => connect("claude", false)} />;
   }
   return (
     <section className="quota-provider" data-provider={id}>
@@ -597,12 +647,12 @@ function ProviderCard({
         <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
         {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
-        {isLoginProvider(id) ? <button type="button" className="quota-disconnect" onClick={() => logout(id)}>{t("quota.login.logout")}</button> : null}
+        {isLoginProvider(id) && id !== "claude" ? <button type="button" className="quota-disconnect" onClick={() => logout(id)}>{t("quota.login.logout")}</button> : null}
         {/* 로그아웃과 같은 머리줄 자리 — 예산 유무와 관계없이 같은 단추 문구 하나로 연다. */}
         {spendProvider !== undefined && !budgetEditor.editing ? <button type="button" className="quota-disconnect" onClick={budgetEditor.begin}>{t(spendSetLabel(spendProvider))}</button> : null}
         {provider.plan ? <span className="quota-plan" title={provider.plan}>{displayPlanName(id, provider.plan)}</span> : null}
       </header>
-      {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
+      {provider.status === "signed_out" && signedOutMessageKey(id) !== undefined ? <div className="quota-signed-out">{t(signedOutMessageKey(id)!)}</div> : null}
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
       {provider.status === "expired" && expiredMessageKey(id) !== undefined ? <StatusStrip kind="expired">{t(expiredMessageKey(id)!)}</StatusStrip> : null}
       {provider.status === "stale" ? (
@@ -723,7 +773,7 @@ export function useQuotaData(api: ClientApiCapability) {
     postForSummary("connect", { provider, connected });
   }, [postForSummary]);
 
-  const logout = useCallback((provider: LoginProvider) => {
+  const logout = useCallback((provider: LogoutProvider) => {
     resetLogin(provider);
     postForSummary(`${provider}/logout`, {});
   }, [postForSummary]);
@@ -807,6 +857,17 @@ export function useQuotaData(api: ClientApiCapability) {
 
   // 팝업이 서 있는 동안은 폴링이 패널 몫이다 — 도구모음 요약은 그동안 따로 묻지 않는다.
   useEffect(() => holdQuotaPanel(), []);
+
+  // 패널 밖(로그인 단추의 CLI 로그인 찾기)이 새 요약을 실으면 이 화면도 그것을 그린다.
+  const shownRef = useRef({ data, checkedAt });
+  shownRef.current = { data, checkedAt };
+  useEffect(() => subscribeQuotaSummary(() => {
+    const published = getQuotaSummarySnapshot();
+    if (published.data === null || published.data === shownRef.current.data || published.checkedAt <= shownRef.current.checkedAt) return;
+    setData(published.data);
+    setCheckedAt(published.checkedAt);
+    setNow(published.checkedAt);
+  }), []);
 
   // 로그인이 끝나면 그 공급자만 다시 읽는다. 로그인 직후의 캐시는 아직 미로그인일 수 있다.
   const logins = useStoreSnapshot(subscribeLogins, getLoginStates);
