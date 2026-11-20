@@ -39,7 +39,7 @@ import { createTaskforceStore } from "../features/commodore/host/taskforce/store
 import { createCommodoreStore as createHostStore, type CommodoreStoreOptions } from "../features/commodore/host/store.js";
 import { createObjectiveStore } from "../features/objectives/host/store.js";
 import { createCommodoreBoardTools } from "../features/objectives/host/console-tools.js";
-import { COALESCE_MS, COMMODORE_IDLE_ROTATE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
+import { COALESCE_MS, COMMODORE_IDLE_ROTATE_MS, createCommodoreSupervisor as createHostSupervisor, RETRY_DELAYS_MS, RETRY_STEADY_MS, type CommodoreSupervisorDeps } from "../features/commodore/host/supervisor.js";
 import { COMMANDER_REST_MS, restClock } from "../features/objectives/shared/board-state.js";
 import { commodoreCompactAt, MAX_TRANSCRIPT_TEXT, type CommodoreEvent, type CommodoreTranscriptEntry } from "../features/commodore/shared/contracts/types.js";
 import type { Objective, ObjectiveEvent } from "../features/objectives/shared/types.js";
@@ -956,6 +956,17 @@ function harness(now?: () => number, maxRetainedImageBytes?: number) {
   };
   return { ctx, store, events, route, objectivesDir, experiments: () => experiments, setExperiments: (next: Partial<typeof experiments>) => { experiments = resolveExperimentSettings({ ...experiments, ...next }); }, setAuthorized: (next: boolean) => { authorized = next; } };
 }
+
+describe("commodore cli gate", () => {
+  it("reports the host CLI status and stays open when no probe is wired", async () => {
+    const h = harness();
+    expect((await h.route("commodore/cli-status", { commodoreId: "t1" }, { cliStatus: async () => ({ status: "missing" }) })).value).toMatchObject({ status: "missing" });
+    expect((await h.route("commodore/cli-status", { commodoreId: "t1" }, { cliStatus: async () => ({ status: "signedout" }) })).value).toMatchObject({ status: "signedout" });
+    // 옛 호스트·테스트에는 판정 훅이 없다 — 근거 없이 보내기를 막지 않는다.
+    expect((await h.route("commodore/cli-status", { commodoreId: "t1" })).value).toMatchObject({ status: "ready" });
+    expect((await h.route("commodore/cli-status", { commodoreId: "unknown" })).status).toBe(404);
+  });
+});
 
 describe("commodore theater state", () => {
   it("persists UUID entities with canonical non-exclusive Theater scopes and isolated routines, description and intel", async () => {
@@ -2356,6 +2367,35 @@ describe("commodore session", () => {
     } finally { warn.mockRestore(); }
   });
 
+  it("turns a CLI failure into a card instead of an error line and marks its bubble not sent", async () => {
+    const { commodoreChatEntries, commodoreConversationEntries, commodoreCliFailure } = await import("../features/commodore/client/commodore-chat.js");
+    const { getT } = await import("../features/commodore/client/i18n/index.js");
+    const t = getT("ko");
+    const entries: CommodoreTranscriptEntry[] = [
+      { seq: 1, at: 1_000, kind: "message", text: "CLI 없이 보낸 말" },
+      { seq: 2, at: 1_050, kind: "wake", reasons: ["message"] },
+      { seq: 3, at: 1_080, kind: "result", outcome: "error", error: "agent_signed_out", detail: "Not logged in · Please run /login" },
+      { seq: 4, at: 1_090, kind: "undelivered", seqs: [1] },
+      { seq: 5, at: 1_100, kind: "error", code: "agent_signed_out" },
+    ];
+    const conversation = commodoreConversationEntries(t, "t1", entries, [], []);
+    // 말풍선은 「보내지 못함」 하나를 달고, 「오류 · …」 경고 줄은 서지 않는다 — 카드가 원인과 해결을 말한다.
+    expect(conversation.find((entry) => entry.kind === "message")).toMatchObject({ deliveryNote: "보내지 못함" });
+    expect(conversation.find((entry) => entry.kind === "message")).not.toHaveProperty("undelivered");
+    expect(conversation.flatMap((entry) => (entry.kind === "note" ? [entry.text] : []))).toEqual([]);
+    expect(commodoreCliFailure(entries)).toBe("signedout");
+    // 성공한 턴이 뒤에 서면 지난 실패의 카드는 내린다.
+    expect(commodoreCliFailure([...entries, { seq: 6, at: 1_200, kind: "result", outcome: "ok" }])).toBeNull();
+    // 새 말이 서도 지난 실패의 카드는 내린다.
+    expect(commodoreCliFailure([...entries, { seq: 6, at: 1_200, kind: "message", text: "다시" }])).toBeNull();
+    // 원장(펼친 기록)은 코드를 정규화한 낱말로 남긴다 — 「오류 · 오류」가 아니다.
+    const chatNotes = commodoreChatEntries(t, "t1", entries, []).flatMap((entry) => (entry.event.kind === "note" ? [entry.event.text] : []));
+    expect(chatNotes).toHaveLength(1);
+    expect(chatNotes[0]).toContain("Claude에 로그인되지 않았어요");
+    // CLI가 없어 실패한 경우도 같은 카드다.
+    expect(commodoreCliFailure([{ seq: 1, at: 1, kind: "error", code: "agent_cli_unavailable" }])).toBe("missing");
+  });
+
   it("classifies a turn failure, masks the cause in the local error log, and records one safe detail line", async () => {
     const h = harness();
     const stub = agentStub();
@@ -2390,6 +2430,11 @@ describe("commodore session", () => {
     expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "error", error: "cli_exited", detail: "Claude Code process exited with code 1" });
     expect(logged.at(-1)).toMatchObject({ kind: "commodore_turn_failed" });
     expect(logged.at(-1)!.stack).toContain("commodore-contract.test.ts");
+
+    // 미로그인은 자식이 끝나지 않고 결과로 온다(2.1.329 실측) — cli_exited·turn_failed가 아니라 전용 코드다.
+    stub.setScript(async () => { stub.emit({ kind: "result", isError: true, source: "message", detail: "Not logged in · Please run /login" }); });
+    expect(await session.turn({ reasons: ["message"] })).toMatchObject({ outcome: "error", error: "agent_signed_out", detail: "Not logged in · Please run /login" });
+    expect(h.store.transcriptRead("t1").entries.at(-1)).toMatchObject({ kind: "result", outcome: "error", error: "agent_signed_out" });
     await session.dispose();
   });
 });
@@ -2456,6 +2501,40 @@ describe("commodore failure display", () => {
 });
 
 describe("commodore supervisor", () => {
+  it("stops retrying a turn whose CLI is missing and marks the sent message not sent", async () => {
+    vi.useFakeTimers();
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-cli-")); dirs.push(dir);
+    const ownership = createCommodoreOwnership({ consoleDataDir: dir, workspaceHash } as never);
+    const { entities } = ownership;
+    const id = ownership.create();
+    const store = createHostStore({ dirOf: entities.dirOf, commodoreIds: entities.ids, theatersOf: entities.theatersOf, theaterIdsOf: ownership.theaterIds, emit: () => {} });
+    // 사령관이 세션을 열 때 CLI가 없다 — supervisor의 개설 실패 경로다.
+    const createSession = vi.fn(async () => { throw new Error("agent_cli_unavailable"); });
+    const supervisor = createHostSupervisor({
+      store, agent: { createSession } as unknown as AgentHost, theaterIds: () => [], cwd: entities.dirOf, theater: () => null,
+      experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true }),
+      board: () => ({ tools: () => [], watch: () => ({ dispose: () => undefined, recount: () => new Map(), empty: () => false, scope: () => null, brief: () => null, attribute: (tool) => tool }), objective: () => null }),
+      emit: () => {},
+    });
+    try {
+      supervisor.sync("restart");
+      store.transcriptAppend(id, { kind: "message", text: "CLI 없이 보낸 말" });
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
+      expect(createSession).toHaveBeenCalledTimes(1);
+      const entries = store.transcriptRead(id).entries;
+      const message = entries.find((entry) => entry.kind === "message")!;
+      // 말 → 미배달(숨김) → 오류 순서다. 화면은 이 순서로 「보내지 못함」과 카드를 세운다.
+      expect(entries).toContainEqual(expect.objectContaining({ kind: "undelivered", seqs: [message.seq] }));
+      expect(entries.at(-1)).toMatchObject({ kind: "error", code: "agent_cli_unavailable" });
+      expect(entries.at(-1)).not.toHaveProperty("retryAt");
+      expect(supervisor.status(id)?.phase).toBe("error");
+      // 같은 원인으로 자동 재시도하지 않는다 — 재시도 타이머가 세우는 시간이 지나도 세션이 다시 열리지 않는다.
+      await vi.advanceTimersByTimeAsync(RETRY_STEADY_MS * 3);
+      expect(createSession).toHaveBeenCalledTimes(1);
+      expect(store.transcriptRead(id).entries.at(-1)).toMatchObject({ kind: "error", code: "agent_cli_unavailable" });
+    } finally { await supervisor.dispose(); vi.useRealTimers(); }
+  });
+
   it("owns accepted images beyond the draft TTL, delivers blocks and releases success, clear and undelivered messages", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-10-11T12:00:00Z"));

@@ -16,6 +16,8 @@ import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { useCommodoreDecisionDock } from "./commodore-person-inbox.js";
 import { CommodoreTasks } from "./commodore-tasks.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo } from "./commodore-inbox-section.js";
+import { CommodoreCliFailureCard } from "./commodore-cli-status.js";
+import { commodoreCliCause } from "../shared/contracts/cli-status.js";
 import { CommodoreComposerSettings, requestCommodoreComposerSettings, type CommodoreComposerSettingsSection } from "./commodore-composer-settings.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
@@ -439,7 +441,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} trailing={trailing} decisionTarget={dock?.target ?? null} onFail={fail} onClear={() => setFailure(null)} />}
+        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} trailing={trailing} decisionTarget={dock?.target ?? null} onFail={fail} onClear={() => setFailure(null)} cliGate />}
     </footer>
   );
   const topSettings = !readOnly && view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} onOpenChange={setSettingsOpen} /> : null;
@@ -448,7 +450,8 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
     <div className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
       {/* 맨 위 줄은 가운데 칸의 투명 오버레이다(머리 pill 과 그 옆 기록 비우기 단추가 떠 있다 — descriptor 의 actions) — 대화는 그
           밑으로 흘러 올라간다. */}
-      {(run?.phase === "retrying" || run?.phase === "error") ? (
+      {/* CLI 원인 실패는 「오류 · …」 대신 원인·해결 카드가 받는다. C1 상태 줄과 같은 문구를 쓴다. */}
+      {(run?.phase === "retrying" || run?.phase === "error") && commodoreCliCause(run.reason) === null ? (
         <div className="objectives-commodore-retry">
           <span>{run.reason ? errorWord(t, run.reason) : t("commodore.meta.error")}</span>
           <button type="button" className="objectives-commodore-text-button" onClick={() => { setFailure(null); void retryCommodore(commodoreId).catch(fail); }}>{t("commodore.drawer.retryNow")}</button>
@@ -502,6 +505,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
             openBoardAction={openBoardAction}
             openLedger={openLedger}
             references={references} openUIOpen={openUIOpen}
+            cards={readOnly ? null : <CommodoreCliFailureCard t={t} commodoreId={commodoreId} entries={entries} onFail={fail} />}
             decision={dock}
             composer={readOnly ? renderComposer(null) : ({ trailing }) => renderComposer(trailing)}
             composerTopEnd={topSettings}

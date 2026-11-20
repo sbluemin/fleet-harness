@@ -26,6 +26,8 @@ import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreMobileSessions } from "./deps.js";
 import { commodoreChatEntries, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
+import { CommodoreCliFailureCard } from "./commodore-cli-status.js";
+import { commodoreCliCause } from "../shared/contracts/cli-status.js";
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { useCommodoreDecisionDock } from "./commodore-person-inbox.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
@@ -321,11 +323,12 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   const editLook = actions && commodoreId ? () => actions.editLook({ commodoreId, label: title, alias }) : null;
 
   // 화면은 호스트 상단 막대 뒤로 흐른다 — 대화는 호스트 대화 화면이, 세부와 하위 화면은 제 스크롤 영역이 막대 몫(--m-chrome-top)을 위에 비운다.
-  // 재시도·오류 띠는 알림 띠라 그것이 서면 호스트가 막대 아래에서 화면을 시작한다.
-  const flow = !(run?.phase === "retrying" || run?.phase === "error");
+  // 재시도·오류 띠는 알림 띠라 그것이 서면 호스트가 막대 아래에서 화면을 시작한다. CLI 원인은 카드가 받으므로 띠를 세우지 않는다.
+  const retryBand = (run?.phase === "retrying" || run?.phase === "error") && commodoreCliCause(run.reason) === null;
+  const flow = !retryBand;
   return (
     <div className="objectives-cm" {...(flow ? { "data-mobile-chrome": "flow" } : {})}>
-      {(run?.phase === "retrying" || run?.phase === "error") ? (
+      {retryBand ? (
         <div className="objectives-cm-band">
           {run.phase === "retrying" ? (
             <span className="objectives-cm-band-text">{[run.reason ? errorWord(t, run.reason) : null, run.nextWakeAt ? t("commodore.drawer.retryAt", { time: clockTime(run.nextWakeAt) }) : null].filter(Boolean).join(" · ")}</span>
@@ -533,7 +536,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, cleare
   const decision = useCommodoreDecisionDock({ theaterId: commodoreId, contextTheaterId: theaterId, language, phone: true, onEnded: onFail });
   const composer = (
     <div className="objectives-cm-dock">
-      <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} decisionDock={Conversation ? null : decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} />
+      <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} decisionDock={Conversation ? null : decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} cliGate />
     </div>
   );
   return (
@@ -554,6 +557,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, cleare
           openBoardAction={openBoardAction}
           openLedger={openLedger}
           references={references} openUIOpen={openUIOpen}
+          cards={<CommodoreCliFailureCard t={t} commodoreId={commodoreId} entries={entries} onFail={onFail} />}
           decision={decision}
           composer={composer}
           composerTopEntries
@@ -689,7 +693,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
       </div>
       {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
       <div ref={dockRef} className="objectives-cm-dock">
-        <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} decisionDock={decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} />
+        <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} decisionDock={decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} cliGate />
       </div>
     </div>
   );

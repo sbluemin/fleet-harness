@@ -13,6 +13,7 @@ import { registerExperimentRoutes } from "../../../features/execution/host/agent
 import { registerAgentRoutes } from "../../../features/execution/host/agent/routes.js";
 import { registerStandaloneCliRoutes } from "../../../features/execution/host/standalone-cli/routes.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "../../../features/execution/host/agent/agent-cli-paths.js";
+import { probeClaudeAuth } from "../../../features/execution/host/agent/claude-auth-status.js";
 import { createTerminalRuntime } from "../../../features/execution/host/terminal/index.js";
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
 import type { CommodoreSystemPromptService } from "../../../features/settings/host/agent-options.js";
@@ -37,6 +38,15 @@ export async function startConsoleExecution(
   const resolveClaudeExecutable = async (): Promise<string | undefined> => {
     const resolution = resolveAgentCliBinary({ cliCommand: "claude", env: process.env, userPaths: (await agentCliPaths.read()).paths });
     return resolution.resolved && resolution.resolved.prefixArgs.length === 0 ? resolution.resolved.bin : undefined;
+  };
+  /**
+   * 사령관 채팅의 CLI 문 — 세션을 여는 바로 그 실행 파일과 같은 자식 환경에서 `claude auth status --json`을 읽는다.
+   * 자격 증명은 읽기만 한다. 판정 자체를 읽지 못하면 `ready`다(근거 없이 보내기를 막지 않는다).
+   */
+  const readCliStatus = async (): Promise<{ readonly status: "missing" | "signedout" | "ready" }> => {
+    const executable = await resolveClaudeExecutable();
+    if (!executable) return { status: "missing" };
+    return { status: await probeClaudeAuth(executable) };
   };
   const delegationIntents = createDelegationIntentLedger();
   const { store: aiGatewayStore, wireLog, runtime: aiGatewayRuntime, ensureClaudeNativeModels, onClaudeNativeModelsChanged, readProviderStatuses, subscribeProviderStatus, readEnabledModels, releaseExecutionSession, canRouteDelegation } = startAiGateway({
@@ -124,6 +134,8 @@ export async function startConsoleExecution(
     attachmentsForPlugin: agent.attachmentsForPlugin,
     /** 설치된 Claude Code 실행 파일. 풀 수 없으면 `undefined`다. 플러그인 에이전트가 SDK 동봉본 대신 이것을 쓴다. */
     resolveClaudeExecutable,
+    /** 사령관 채팅이 답할 수 있는가 — 사령관이 쓰는 리졸버·자식 환경으로 읽기 전용 판정한다. */
+    readCliStatus,
     /** Gateway의 compact 정책. 플러그인 에이전트가 Gateway 모델 세션의 문맥을 실제 공급자 창으로 되돌릴 때 읽는다. */
     readGatewayCompactCeiling: () => aiGatewayStore.read().compactCeiling ?? null,
     /** Gateway 저장 설정. 플러그인 로스터 포트가 사람이 켠 모델 목록을 실행 쪽과 같은 파일에서 읽는다. */

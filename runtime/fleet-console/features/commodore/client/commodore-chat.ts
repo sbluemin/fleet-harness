@@ -4,7 +4,8 @@ import { CONVERSATION_REFERENCE_MARK, referencePlainText, type ConversationRefer
 import { type ConversationSpeaker } from "../../execution/shared/conversation/types.js";
 import type { Translate } from "@fleet-console/i18n";
 
-import { skippedMessageReasons, undeliveredMessageSeqs } from "../shared/contracts/delivery.js";
+import { skippedMessageReasons, undeliveredMessageSeqs, cliBlockedMessageSeqs } from "../shared/contracts/delivery.js";
+import { commodoreCliCause } from "../shared/contracts/cli-status.js";
 import { BOARD_TOOL_NAMES, COMMODORES_TOOL_NAMES } from "../shared/tool-names.js";
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
@@ -205,6 +206,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
   const human: ConversationSpeaker = { kind: "human", name: "Human" };
   const undelivered = undeliveredMessageSeqs(entries);
   const skipped = skippedMessageReasons(entries);
+  // CLI가 없거나 로그인이 없어 처리되지 못한 말 — 말풍선 아래 「보내지 못함」과 원인 카드가 함께 선다.
+  const cliBlocked = cliBlockedMessageSeqs(entries);
   const hiddenFailures = supersededFailureIndices(entries);
   // 이 말 뒤에 깨움이 없으면 아직 다음 턴이 집어가지 않았다. 깨움이 뒤에 서면 그 말이 처리되기 시작한 것이다.
   // 도는 턴이 집은 말(delivered)은 이미 읽혔고, 다시 실린 말(requeued)은 그 뒤의 깨움이 집을 때까지 기다린다.
@@ -222,10 +225,11 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         const attachments = [...messageImages(theaterId, entry), ...quotes.map((quote) => ({ quote }))];
         const unrelayed = mentionResults.get(entry.seq);
         const skippedReason = skipped.get(entry.seq);
+        const blocked = cliBlocked.has(entry.seq);
         out.push({ kind: "message", id: `c${entry.seq}`, at: entry.at, objectiveId: "", speaker: human, text, streaming: false, ...(references ? { references } : {}),
-          ...(skippedReason ? { deliveryNote: t("commodore.message.skipped") } : unrelayed?.length ? { deliveryNote: t("commodore.message.unrelayed", { names: unrelayed.map((peer) => peer.alias).join(", ") }) } : {}),
-          ...(attachments?.length ? { attachments } : {}), ...(undelivered.has(entry.seq) && !skippedReason ? { undelivered: true as const } : {}),
-          ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !skippedReason && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
+          ...(skippedReason ? { deliveryNote: t("commodore.message.skipped") } : unrelayed?.length ? { deliveryNote: t("commodore.message.unrelayed", { names: unrelayed.map((peer) => peer.alias).join(", ") }) } : blocked ? { deliveryNote: t("commodore.cli.notSent") } : {}),
+          ...(attachments?.length ? { attachments } : {}), ...(!blocked && undelivered.has(entry.seq) && !skippedReason ? { undelivered: true as const } : {}),
+          ...((entry.seq > lastWakeSeq || requeuedWaiting.has(entry.seq)) && !undelivered.has(entry.seq) && !skippedReason && !blocked && !delivered.has(entry.seq) ? { pending: true as const } : {}) });
         break;
       }
       case "sent":
@@ -274,6 +278,8 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
         const detail = failureDetail ?? entry.detail;
         failureDetail = undefined;
         if (hiddenFailures.has(position)) break;
+        // CLI 원인은 대화 카드가 원인·해결·다시 보내기를 말한다 — 「오류 · …」 줄을 겹쳐 세우지 않는다.
+        if (commodoreCliCause(entry.code)) break;
         const code = failureWord(t, entry.code, detail);
         out.push({ kind: "note", id: `c${entry.seq}`, at: entry.at, tone: "warn", text: entry.retryAt ? t("commodore.log.errorRetry", { code, time: clockTime(entry.retryAt) }) : t("commodore.log.error", { code }) });
         break;
@@ -307,6 +313,20 @@ export function commodoreConversationEntries(t: T, theaterId: string, entries: r
     }
   }
   return commodoreConversationLiveEntries(t, entries, live, withConsultations(t, out, commodore, objectives, finished, clearedAt), name, theaterId);
+}
+
+/**
+ * 대화의 마지막 사건이 CLI 원인(없음·미로그인) 실패인가 — 그때만 원인 카드를 세운다. 뒤에 새 턴·새 말·성공 결말이
+ * 서면 지난 실패이므로 카드를 내린다. 기록 자체는 남으므로 원장에서 다시 볼 수 있다.
+ */
+export function commodoreCliFailure(entries: readonly CommodoreTranscriptEntry[]): "missing" | "signedout" | null {
+  for (let at = entries.length - 1; at >= 0; at -= 1) {
+    const entry = entries[at]!;
+    if (entry.kind === "error") return commodoreCliCause(entry.code);
+    if (entry.kind === "result" || entry.kind === "wake" || entry.kind === "message" || entry.kind === "text" || entry.kind === "tool"
+      || entry.kind === "session" || entry.kind === "ask" || entry.kind === "ask-answered" || entry.kind === "skipped" || entry.kind === "compacted") return null;
+  }
+  return null;
 }
 
 /**

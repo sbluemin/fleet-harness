@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createClaudeExecutionEventDecoder,
   createClaudeExecutionLoop,
   type ClaudeExecutionContinuation,
   type ClaudeExecutionEvent,
@@ -20,6 +21,21 @@ describe("public boundary", () => {
   it("exports the loop and decoder only from the claude subpath", () => {
     expect("createClaudeExecutionLoop" in root).toBe(false);
     expect("createClaudeExecutionEventDecoder" in root).toBe(false);
+  });
+});
+
+describe("execution event decoder", () => {
+  it("carries the assistant API error code to the result when the result has no text", () => {
+    // 2.1.329 실측: 미로그인은 assistant `error: "authentication_failed"` 뒤 결과가 원문을 싣지 않을 수 있다.
+    const decoder = createClaudeExecutionEventDecoder();
+    expect(decoder.decode({ type: "assistant", message: { content: [] }, error: "authentication_failed" })).toEqual([]);
+    expect(decoder.decode({ type: "result", is_error: true, session_id: "child-session" })).toEqual([
+      { kind: "result", isError: true, detail: "authentication_failed", source: "message" },
+    ]);
+    // 다음 턴에는 이전 assistant 오류가 따라가지 않는다.
+    expect(decoder.decode({ type: "result", is_error: false, session_id: "child-session" })).toEqual([
+      { kind: "result", isError: false, source: "message" },
+    ]);
   });
 });
 

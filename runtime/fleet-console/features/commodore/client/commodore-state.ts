@@ -11,6 +11,7 @@ import { useModelRoster } from "../../ai-gateway/client/use-model-roster.js";
 import type { MemoryEntry } from "../shared/contracts/memory.js";
 import type { CommodoreStateView } from "../shared/contracts/types.js";
 import type { CommodoreAsk, CommodoreEvent, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
+import type { CommodoreCliStatus } from "../shared/contracts/cli-status.js";
 import { post } from "./request.js";
 import { publishCommodoreLifecycle, wasCommodoreRemoved } from "./commodore-delete-events.js";
 import { readCommodoreList, refreshCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
@@ -531,6 +532,17 @@ export function openCommodoreMobile(tab: CommodoreMobileTab, commodoreId: string
 }
 
 /* ── 사람의 행위 ─────────────────────────────────────────────────────── */
+
+/**
+ * 사령관 채팅이 답할 수 있는가 — 호스트가 사령관 세션과 같은 리졸버·실행 환경으로 읽기 전용 판정한다.
+ * 「다시 확인」은 이 경로를 다시 부른다. 판정을 읽지 못하면 보내기를 막지 않는다(`ready`).
+ */
+export async function readCommodoreCliStatus(commodoreId: string): Promise<CommodoreCliStatus> {
+  const client = api();
+  if (!client || !commodoreId) throw new Error("not_installed");
+  const result = await post<{ readonly status?: unknown }>(client, "/commodore/cli-status", { commodoreId });
+  return result.status === "missing" || result.status === "signedout" ? result.status : "ready";
+}
 
 async function write(commodoreId: string, path: string, body: Record<string, unknown>): Promise<void> {
   const client = api();

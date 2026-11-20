@@ -18,6 +18,7 @@ import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
 import { messagePromptText } from "./prompt.js";
 import { undeliveredMessageSeqs, unheardWakes, type CommodoreUnheardWakes } from "../shared/contracts/delivery.js";
+import { COMMODORE_CLI_FAILURE_CODES } from "../shared/contracts/cli-status.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES, MAX_COMMODORE_TURN_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BYTES, MAX_COMMODORE_SESSION_IMAGE_BASE64_BYTES, MAX_COMMODORE_TURN_MESSAGE_CHARS } from "../shared/contracts/attachment-budget.js";
 import type { TaskforceAction, TaskforceEvent, TaskforceJudgingStatus, TaskforceLedgerEntry, TaskforceState } from "../shared/contracts/taskforce.js";
 import type { TaskforceStore } from "./taskforce/store.js";
@@ -37,6 +38,11 @@ export const RETRY_STEADY_MS = 60 * 60_000;
 const TRANSIENT_TURN_FAILURES: ReadonlySet<string> = new Set(["rate_limited", "upstream_error", "network"]);
 /** 다시 보내도 성공할 수 없는 입력 오류 — 재시도 큐에 돌려보내지 않고 그 메시지만 건너뛴다. */
 const INPUT_POISON_FAILURES: ReadonlySet<string> = new Set(["attachment_not_found", "invalid_request", "image_too_large"]);
+/**
+ * 화면이 해결 동선을 말해야 하는 원인 — CLI가 없거나 로그인이 없다. 같은 원인으로 자동 재시도하지 않는다
+ * (사람이 설치·로그인한 뒤 카드의 「다시 보내기」나 채팅의 「다시 확인」으로 잇는다).
+ */
+const CLI_CAUSE_FAILURES: ReadonlySet<string> = new Set(COMMODORE_CLI_FAILURE_CODES);
 /**
  * 메시지 자체가 원인일 수 있는 턴 실패 — 새 세션으로 폴백한 턴에서 같은 배치가 또 실패하면 그 메시지를 격리한다.
  * 일시적 업스트림 오류(429·5xx·네트워크)와 세션 개설 실패는 메시지 탓이 아니므로 넣지 않는다(메시지를 잃지 않는다).
@@ -472,6 +478,17 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   const record = (runner: Runner, entry: Parameters<CommodoreStore["transcriptAppend"]>[1]) => {
     try { deps.store.transcriptAppend(runner.commodoreId, entry); }
     catch (error) { console.warn(`[objectives] commodore log failed: ${error instanceof Error ? error.message : String(error)}`); }
+  };
+  /**
+   * CLI 원인(없음·미로그인)으로 끝난 턴 — 보낸 말은 「보내지 못함」으로 남기고 재시도 타이머를 세우지 않는다.
+   * 기록 순서는 말 → undelivered(숨김) → error(카드)라 화면이 실패한 말풍선 아래에서 원인을 읽는다.
+   */
+  const settleCliFailure = (runner: Runner, code: string, detail: string | undefined, seqs: readonly number[]) => {
+    runner.retryAttempt = 0;
+    runner.nextWakeAt = undefined;
+    for (let at = 0; at < seqs.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "undelivered", seqs: seqs.slice(at, at + MAX_TRANSCRIPT_PAGE) });
+    record(runner, { kind: "error", code, ...(detail ? { detail } : {}) });
+    setPhase(runner, "error", code);
   };
   const clearTimer = (runner: Runner, key: "coalesce" | "routineTimer" | "retry") => {
     const timer = runner[key];
@@ -1121,6 +1138,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         // 첨부를 잃은 말은 다시 보내도 성공할 수 없다 — 같은 배치를 재시도하지 않고 실제로 실패한 그 메시지만 건너뛴다.
         const target = failingMessage ?? selected[0];
         if (code === "attachment_not_found" && target) { isolateMessage(runner, target, code, classifyFailure(error).detail); return; }
+        if (CLI_CAUSE_FAILURES.has(code)) { settleCliFailure(runner, code, classifyFailure(error).detail, selected.map((message) => message.seq)); return; }
         scheduleRetry(runner, code);
         return;
       }
@@ -1310,6 +1328,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
           // 첫 실패 뒤 재시도는 바로 새 세션으로 연다.
           else { runner.rotateNext ??= "replaced"; runner.transientFailures = 0; }
         }
+        if (CLI_CAUSE_FAILURES.has(code)) { settleCliFailure(runner, code, outcome.detail, messages.map((message) => message.seq)); return; }
         scheduleRetry(runner, code, outcome.detail);
         return;
       }
