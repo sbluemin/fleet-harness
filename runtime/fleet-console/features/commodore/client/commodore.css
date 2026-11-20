@@ -173,7 +173,7 @@ html[data-desktop-shell="true"] .objectives-cal { -webkit-app-region: no-drag; }
 /* 스크롤바는 Objective 패널과 같은 전역 문법을 그대로 입는다(자체 규칙 없음). 가로로는 흐르지 않는다 — 내용이 줄을 바꾼다. */
 .objectives-commodore-body { flex: 1 1 auto; min-height: 0; min-width: 0; overflow-x: hidden; overflow-y: auto; padding: 16px 28px 24px; display: grid; grid-template-columns: minmax(0, 880px); gap: 14px; align-content: start; overflow-wrap: anywhere; }
 .objectives-commodore-inbox.is-compact .objectives-commodore-body { padding-inline: 20px; }
-/* 기록 밖의 칸(루틴·정보·설정)과 대화 중심 화면의 같은 탭은 호스트 오른쪽 패널 틀의 읽기 열에 선다 — 폭·여백·스크롤은 틀이 진다.
+/* 기록 밖의 칸(루틴·설정)과 대화 중심 화면의 사이드바 칸은 호스트 오른쪽 패널 틀의 읽기 열에 선다 — 폭·여백·스크롤은 틀이 진다.
    여기서 다시 880 열·좌우 여백·자체 스크롤을 세우면 넓은 패널에서 본문만 머리 축을 벗어나 왼쪽에 붙는다. */
 .objectives-commodore-inbox > .objectives-commodore-body:not(.is-log),
 .objectives-commodore-conversation-tab.objectives-commodore-body { flex: none; overflow: visible; padding: 0; grid-template-columns: minmax(0, 1fr); }
@@ -279,7 +279,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 }
 .objectives-commodore-trail-fresh:focus-visible { box-shadow: var(--focus-face); }
 
-/* 정보 탭 「목표 기록」 — 기억 아래 섹션. 목표마다 한 줄(마지막 행위·시각)이고, 행을 누르면 그 목표의 최근 행위가 펼쳐진다.
+/* 목표별 로그(폰 정보 화면의 「목표 기록」·TaskForce 활동) — 목표마다 한 줄(마지막 행위·시각)이고, 행을 누르면 그 목표의 최근 행위가 펼쳐진다.
    줄 모양은 위 흔적 줄을 그대로 쓴다. 「더 보기」는 상자 높이를 미끄러지듯 바꾸고, 새로 드러난 행은 차례로 떠오른다. */
 .objectives-commodore-trail-box { overflow: hidden; transition: height .32s cubic-bezier(.2, .7, .2, 1); }
 .objectives-commodore-trail-rows { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; min-width: 0; }
@@ -381,11 +381,10 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   margin: 0; color: var(--text-primary); font-family: var(--font-ui); font-size: var(--t-md); font-weight: var(--weight-medium); letter-spacing: -0.01em;
 }
 .objectives-commodore-panel-section { display: grid; min-width: 0; gap: 8px; padding-block: 18px; }
-/* 대화 탭(작업·정보) 본문 맨 첫 섹션 — 탭 줄과 첫 머리 사이만 붙인다. 「루틴」 머리 아래 두 번째 섹션은 그대로 둔다. */
+/* 사이드바 칸 본문 맨 첫 섹션 — 이름 머리와 첫 머리 사이만 붙인다. 「루틴」 머리 아래 두 번째 섹션은 그대로 둔다. */
 .objectives-commodore-conversation-tab > .objectives-commodore-panel-section:first-child { padding-top: 0; }
 .objectives-commodore-panel-section + .objectives-commodore-panel-section,
 .objectives-cm-pad-head + .objectives-commodore-panel-section { border-top: 1px solid var(--commodore-settings-line); }
-.objectives-commodore-body.is-info { gap: 0; }
 .objectives-commodore-panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; min-width: 0; }
 .objectives-commodore-panel-meta { flex: none; color: var(--text-tertiary); font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
 .objectives-commodore-description-preview {
@@ -466,85 +465,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-intel-add textarea::placeholder { color: var(--brass-ink); opacity: 1; }
 .objectives-commodore-intel-add:focus-within textarea::placeholder { color: var(--text-tertiary); }
 .objectives-commodore-intel-add textarea[readonly] { opacity: 0.6; }
-
-/* 기억 칸 — 사령관의 fleet-memory, 읽기 전용. 갈래는 정보 칸의 다른 섹션과 같은 구분선 섹션이고, 주제 아래 항목 줄은 행위 칸 줄과 같은 호버 잉크를 쓴다.
-   색은 검증 경과(warn 점) 하나만 상태를 말하고, 나머지는 글자 층위로만 나눈다.
-   머리(기억 · 개수 · 갱신 · 검색)와 첫 갈래 사이의 선만 뺀다. 갈래와 갈래 사이 선은 그대로다. */
-.objectives-commodore-memory { display: grid; gap: 14px; min-width: 0; }
-.objectives-commodore-memory > .objectives-commodore-section:first-child + .objectives-commodore-memory-branch {
-  border-top: 0;
-  padding-top: 0;
-}
-/* 머리 줄은 찾기를 접든 펼치든 22px 그대로다 — 펼치고 접을 때 아래 갈래가 움직이지 않는다. */
-.objectives-commodore-memory-head { display: flex; align-items: center; gap: 8px; min-width: 0; min-height: 22px; }
-.objectives-commodore-memory-meta { margin-left: auto; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
-/* 찾기 글리프 — 루틴·플러그인·기억 줄과 같은 호버 면(ink-spectral 8%)으로만 누를 수 있다고 말한다. */
-.objectives-commodore-memory-search-glyph {
-  flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; margin-right: -5px; padding: 0; border: 0; border-radius: var(--radius-xs);
-  background: transparent; color: var(--text-tertiary); cursor: pointer;
-}
-.objectives-commodore-memory-meta + .objectives-commodore-memory-search-glyph { margin-left: -2px; }
-.objectives-commodore-memory-search-glyph:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-secondary); }
-.objectives-commodore-memory-search-glyph:focus-visible { box-shadow: var(--focus-face); }
-.objectives-commodore-memory-search-glyph svg, .objectives-commodore-memory-search svg { flex: none; width: 12px; height: 12px; }
-/* 펼친 찾기 — 상자 없이 머리 줄 오른쪽을 채우는 밑줄 한 줄. 포커스는 밑줄 잉크로만 말한다. */
-.objectives-commodore-memory-search {
-  flex: 1 1 auto; display: flex; align-items: center; gap: 6px; box-sizing: border-box; min-width: 0; height: 22px; margin-left: 4px;
-  border-bottom: 1px solid var(--surface-rim-strong); color: var(--text-tertiary);
-}
-.objectives-commodore-memory-search:focus-within { border-bottom-color: var(--brass-ink); }
-.objectives-commodore-memory-search input { flex: 1; min-width: 0; padding: 0; border: 0; outline: none; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--t-xs); }
-.objectives-commodore-memory-search input::placeholder { color: var(--text-tertiary); }
-.objectives-commodore-memory-search input::-webkit-search-cancel-button { display: none; }
-@media (prefers-reduced-motion: no-preference) {
-  .objectives-commodore-memory-search-glyph { transition: background-color 120ms ease, color 120ms ease; }
-  .objectives-commodore-memory-search { animation: objectives-commodore-memory-search-in var(--duration-fast) var(--ease-glide); }
-}
-@keyframes objectives-commodore-memory-search-in { from { opacity: 0; clip-path: inset(0 0 0 100%); } to { opacity: 1; clip-path: inset(0); } }
-.objectives-commodore-memory-branch { gap: 6px; }
-.objectives-commodore-memory-branch-head {
-  display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 2px 0; border: 0; border-radius: var(--radius-xs);
-  background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
-}
-.objectives-commodore-memory-branch-head:focus-visible { box-shadow: var(--focus-face); }
-.objectives-commodore-memory-branch-head .objectives-commodore-section-title { flex: none; }
-.objectives-commodore-memory-hint { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-tertiary); font-size: var(--t-xs); }
-.objectives-commodore-memory-count { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
-.objectives-commodore-memory-chevron { flex: none; width: 10px; height: 10px; color: var(--text-tertiary); transition: transform var(--duration-fast) var(--ease-glide); }
-.objectives-commodore-memory-chevron.is-open { transform: rotate(90deg); }
-.objectives-commodore-memory-topic { display: grid; gap: 2px; min-width: 0; }
-.objectives-commodore-memory-topic-name { padding: 2px 0 1px; color: var(--text-tertiary); font-size: var(--t-xs); font-weight: var(--weight-medium); overflow-wrap: anywhere; }
-.objectives-commodore-memory-entries { margin: 0; padding: 0 0 0 9px; border-left: 1px solid var(--surface-rim); list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1px; min-width: 0; }
-.objectives-commodore-memory-entries.is-flat { padding-left: 0; border-left: 0; margin-left: -8px; }
-.objectives-commodore-memory-entry {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; width: 100%; min-width: 0; padding: 5px 8px; border: 0; border-radius: var(--radius-xs);
-  background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--t-sm); line-height: 1.5; text-align: left; cursor: pointer;
-}
-.objectives-commodore-memory-entry:hover { background: color-mix(in oklch, var(--ink-spectral) 8%, transparent); color: var(--text-primary); }
-.objectives-commodore-memory-entry:focus-visible { box-shadow: var(--focus-face); }
-.objectives-commodore-memory-entry-title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-commodore-memory-date { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
-/* 제목 밖에서 맞은 자리 — 제목 줄 아래 한 줄로 접는다. */
-.objectives-commodore-memory-excerpt { flex: 1 0 100%; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--t-xs); }
-.objectives-commodore-memory-excerpt-field { color: var(--text-tertiary); }
-/* 찾은 낱말 — 목표 검색 결과와 같은 중립 면이다. */
-.objectives-commodore-memory mark { padding: 0 0.16em; border-radius: var(--radius-xs); background: color-mix(in oklch, var(--text-primary) 14%, transparent); color: var(--text-primary); }
-.objectives-commodore-memory-glyph { flex: none; width: 10px; height: 10px; color: var(--text-tertiary); }
-.objectives-commodore-memory-stale { flex: none; display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--warn); }
-.objectives-commodore-memory-due { display: inline-flex; align-items: center; gap: 6px; }
-.objectives-commodore-memory-due { color: var(--warn-ink); }
-.objectives-commodore-memory-crumbs { display: flex; align-items: center; gap: 4px; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); }
-.objectives-commodore-memory-back { display: inline-flex; align-items: center; gap: 3px; padding-left: 0; }
-.objectives-commodore-memory-back svg { width: 10px; height: 10px; }
-.objectives-commodore-memory-crumb-topic { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.objectives-commodore-memory-title { margin: 4px 0 0; color: var(--text-primary); font-size: var(--t-md); font-weight: var(--weight-bold); line-height: 1.5; overflow-wrap: anywhere; }
-.objectives-commodore-memory-description { margin: 0; color: var(--text-secondary); font-size: var(--t-sm); line-height: 1.5; overflow-wrap: anywhere; }
-.objectives-commodore-memory-stamps { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; color: var(--text-tertiary); font-size: var(--t-2xs); font-variant-numeric: tabular-nums; }
-.objectives-commodore-memory-body { margin: 0; color: var(--text-primary); font-size: var(--t-sm); line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.objectives-commodore-memory-path { margin: 0; color: var(--text-tertiary); font-family: var(--font-code); font-size: var(--t-2xs); line-height: 1.5; overflow-wrap: anywhere; }
-@media (prefers-reduced-motion: reduce) {
-  .objectives-commodore-memory-chevron { transition-duration: .01ms; }
-}
 
 .objectives-commodore-text-button {
   padding: 2px 4px; border: 0; border-radius: var(--radius-xs); background: transparent;
@@ -797,7 +717,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .is-sheet .commodore-create-foot { padding: 10px 16px calc(16px + var(--m-safe-bottom, 0px)); border-top: 0; }
 .is-sheet .commodore-create-button { flex: 1; height: 56px; font-size: var(--m-fs-body); font-weight: var(--weight-bold); }
 @media (prefers-reduced-motion: reduce) { .is-sheet .commodore-create { animation: none; } }
-/* 설정 맨 위의 Theater·플러그인 — 정보 탭 정보 목록과 같은 줄 문법. 아래와는 형제 .objectives-commodore-settings-divider(1px, --commodore-settings-line)로만 나눈다.
+/* 설정 맨 위의 Theater·플러그인 — 정보 목록과 같은 줄 문법. 아래와는 형제 .objectives-commodore-settings-divider(1px, --commodore-settings-line)로만 나눈다.
    Theater 제목은 이 칸의 SettingsRow(.fc-settings-row__label + 위 font-size 재정의)와 같은 크기·색·굵기. 플러그인 제목은 그 클래스를 그대로 쓴다.
    폰·Theater Inbox 제목에는 닿지 않는다. */
 .objectives-commodore-settings > :is(.commodore-theaters, .commodore-plugins) { padding-bottom: 18px; }

@@ -112,7 +112,8 @@ export interface TheaterInboxSectionDescriptor {
    * The conversation layout shows a Theater in the side panel instead of the sheet. When a request opens this page
    * there, a section that has its own conversation for it may put that conversation in the center column and
    * return true; the side panel then shows the conversation's tabs in this section's place. Return false to keep
-   * the page in the side panel.
+   * the page in the side panel. A request for a page id the section no longer lists in `pages` (an old address)
+   * also comes here; returning false sends it to the host's fallback page.
    */
   openConversation?(context: { readonly theater: ConsoleTheaterSummary; readonly pageId: string }): boolean;
   /**

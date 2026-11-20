@@ -80,7 +80,7 @@
 .taskforce-paused small { display: block; color: var(--text-secondary); margin-top: 2px; font-size: var(--t-sm); }
 .taskforce-paused > span:last-child { display: flex; gap: 6px; flex-wrap: wrap; }
 .taskforce-details { display: grid; gap: 16px; align-content: start; color: var(--text-primary); font-size: var(--t-md); }
-/* 「세부 정보」 탭 — 주제와 멤버 두 섹션을 사령관 정보 탭처럼 선 하나로 나눈다. 첫 섹션은 탭 줄 바로 아래에 붙인다. */
+/* 「세부 정보」 탭 — 주제와 멤버 두 섹션을 사령관 패널 섹션처럼 선 하나로 나눈다. 첫 섹션은 탭 줄 바로 아래에 붙인다. */
 .taskforce-overview { display: grid; min-width: 0; }
 .taskforce-overview > .objectives-commodore-panel-section:first-child { padding-top: 0; }
 /* 멤버 행은 참고 앱처럼 촘촘하게 — 아바타 사이가 행 높이의 절반을 넘지 않는다. */

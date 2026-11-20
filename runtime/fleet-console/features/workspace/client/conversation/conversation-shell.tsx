@@ -189,7 +189,7 @@ function nextScreenKeepsCommodoreTabs(clusterIndex: ClusterIndex): boolean {
 }
 
 /**
- * 가운데 대화(지휘관·구성원·시작 전 목표)의 사령관 — 우측 사이드바는 목표 대화에서도 이 사령관의 탭(작업·정보·설정)과 머리만 싣는다.
+ * 가운데 대화(지휘관·구성원·시작 전 목표)의 사령관 — 우측 사이드바는 목표 대화에서도 이 사령관의 칸(활동)과 머리만 싣는다.
  * 목표·구성원·증거는 채팅 머리의 목표 창과 작업 탭 행 글리프가 보인다. 증거는 뷰어를 연다. 사령관 묶음의 지휘관이 아니면 null 이다.
  */
 function useKeptCommodoreOwner(): string | null {
@@ -202,8 +202,8 @@ function useKeptCommodoreOwner(): string | null {
 /**
  * 가운데 칸의 대상이 Objective(아직 서지 않은 Objective 을 대신하는 시작 전 목표 포함)으로 바뀌면(Objective 을 고르거나 사령관 같은
  * 플러그인 대화가 걷히면) 오른쪽 패널의 열림/닫힘을 잇는다. 닫혀 있었으면 열지 않는다.
- * 사령관의 지휘관이 가운데로 오면 목표는 우측 사이드바의 맥락을 바꾸지 않는다 — 그 사령관의 탭(작업·정보·설정)이 서 있고, 보던 사령관 탭이면
- * 그 탭에 머문다. 앞 대상의 탭(구성원·Theater 설정)을 보이던 중이었으면 사령관 대화에서 마지막으로 선 탭(없으면 작업 탭)으로 돌린다.
+ * 사령관의 지휘관이 가운데로 오면 목표는 우측 사이드바의 맥락을 바꾸지 않는다 — 그 사령관의 칸(활동)이 서 있고, 보던 사령관 칸이면
+ * 그 칸에 머문다. 앞 대상의 탭(구성원·Theater 설정)을 보이던 중이었으면 사령관 대화에서 마지막으로 선 칸(없으면 활동 칸)으로 돌린다.
  * 사령관 묶음이 아닌 Objective 과 설정·도구 패널은 그대로 둔다.
  * 유지 조건이 깨진 보관 등록(다른 사령관·새 세션)은 여기서 걷는다.
  */
@@ -340,7 +340,7 @@ function SideBarBrowserButton() {
 }
 
 /**
- * 오른쪽 패널 머리 — 대상의 글자 탭(구성원, 사령관의 기록·루틴·정보·설정)만 선다. 작전구역 도구 글리프는 이 머리가 아니라
+ * 오른쪽 패널 머리 — 대상의 글자 탭(구성원 등)만 선다. 칸이 하나인 사령관은 탭 줄 없이 선다(hidePanelTabs). 작전구역 도구 글리프는 이 머리가 아니라
  * 가운데 대화 머리 줄의 공통 도구모음(ConversationToolbar)에 선다.
  */
 export function ConversationRightRail(props: ComponentProps<typeof RightRail>) {
@@ -373,10 +373,15 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
   const descriptor = surface === null ? null : conversationSurfaces.find((candidate) => candidate.id === surface.surfaceId) ?? null;
   // descriptor 가 바뀌면 머리 값을 다시 읽는다 — 사령관 대화는 지도 모드 전환도 여기서 알린다.
   useConversationSurfaceHead(descriptor);
+  // 지휘관을 가운데 두고 사령관 사이드바를 유지하는 동안은 머리(ConversationPanelIdentity)처럼 그 사령관 대화의 값을 읽는다.
+  const keepOwner = useKeptCommodoreOwner();
   const hidePanelTabs = (() => {
-    if (!descriptor?.hidePanelTabs || !surface) return false;
+    const head = keepOwner !== null
+      ? { descriptor: conversationSurfaces.find((candidate) => candidate.id === COMMODORE_SURFACE_ID) ?? null, params: { commodoreId: keepOwner } }
+      : { descriptor, params: surface?.params ?? null };
+    if (!head.descriptor?.hidePanelTabs || head.params === null) return false;
     try {
-      return descriptor.hidePanelTabs({ params: surface.params, language, theme: state.activeTheme, close: () => { if (descriptor) closeConversationSurface(descriptor.id); } });
+      return head.descriptor.hidePanelTabs({ params: head.params, language, theme: state.activeTheme, close: () => { if (descriptor) closeConversationSurface(descriptor.id); } });
     } catch {
       return false;
     }
@@ -476,7 +481,7 @@ export function ConversationPanelHeader({ context }: { readonly context: RailToo
           ))}
         </div>
       ) : null}
-      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원, 사령관의 기록·루틴·정보·설정)이 한 줄에 선다.
+      {/* 이름 아래 한 줄 — 대상의 글자 탭(구성원 등)이 한 줄에 선다.
           켜진 것은 둥근 면 하나로 말한다. 넘치는 탭은 줄 끝 「⋯」 메뉴에 모인다. */}
       {!hidePanelTabs ? (
       <div className="conversation-panel-segments">
@@ -1357,7 +1362,7 @@ function registerSurfaceTabs(descriptor: ResolvedConversationSurface, context: C
 }
 
 /**
- * 목표 대화(지휘관·구성원·시작 전 목표)의 오른쪽 사이드바 — 그 사령관의 탭(작업·정보·설정)을 사령관 대화와 같은 자리에 세운다.
+ * 목표 대화(지휘관·구성원·시작 전 목표)의 오른쪽 사이드바 — 그 사령관의 칸(활동)을 사령관 대화와 같은 자리에 세운다.
  * 앞 화면에서 사이드바가 열려 있었으면 이어서 연다: 보던 사령관 탭이면 그 탭, 아니면 사령관 대화의 마지막 탭(없으면 기본 탭)이다.
  * 닫혀 있었으면 닫힌 채 둔다. 여닫음은 사령관 대화의 기억에 함께 남는다 — 여기서 닫고 사령관으로 돌아가도 닫힌 채다.
  * 앞 화면이 남긴 도구·설정 패널은 그대로 둔다.
@@ -1414,7 +1419,7 @@ function CommodoreRailTabs({ descriptor, commodoreId, language, theme }: {
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
       if (binding !== undefined && !isConversationTab(binding.entry)) return;
     }
-    const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
+    const fallback = descriptor.defaultTab;
     const target = tabIdsRef.current.includes(before) ? before : fallback === undefined ? null : conversationRailTab(descriptor.id, tabIdsRef.current, fallback);
     if (target !== null) openRailPanel(target);
     // 화면에 들어설 때(사령관이 바뀔 때)만 잇는다 — 이 화면에서 사람이 여닫은 것은 그대로 둔다.
@@ -1509,11 +1514,11 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
   useEffect(() => {
     const previous = previousSurface.current;
     previousSurface.current = { id: descriptor.id, group: descriptor.railContinuityGroup, tabs: tabIdsRef.current };
-    if (descriptor.defaultTab === undefined && descriptor.resolveDefaultTab === undefined) return;
+    if (descriptor.defaultTab === undefined) return;
     if (previous && previous.id !== descriptor.id && previous.group !== undefined && previous.group === descriptor.railContinuityGroup) {
       // 앞 탭의 등록이 걷히기 전 렌더에서 읽은 열림을 잇는다. 다른 도구 패널은 그대로 둔다.
       if (activeBeforeTransition !== null && previous.tabs.includes(activeBeforeTransition)) {
-        const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
+        const fallback = descriptor.defaultTab;
         if (fallback !== undefined) openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
       }
       return;
@@ -1524,10 +1529,10 @@ function ConversationSurfaceColumn({ descriptor, selection, language, theme, onT
       const binding = bindingsRef.current.find((candidate) => candidate.entry.id === active && candidate.panes.length > 0);
       if (binding !== undefined && !isConversationTab(binding.entry)) return;
     } else if (active !== null || !mayAutoOpenConversationRail(descriptor.id) || (descriptor.id === COMMODORE_SURFACE_ID && readLastPanel() === "objectives")) return;
-    const fallback = descriptor.resolveDefaultTab?.(context) ?? descriptor.defaultTab;
+    const fallback = descriptor.defaultTab;
     if (fallback === undefined) return;
     openRailPanel(conversationRailTab(descriptor.id, tabIdsRef.current, fallback));
-  }, [descriptor.defaultTab, descriptor.resolveDefaultTab, descriptor.railContinuityGroup, descriptor.id, selection.nonce]);
+  }, [descriptor.defaultTab, descriptor.railContinuityGroup, descriptor.id, selection.nonce]);
   const title = descriptor.title(context);
   const subtitle = descriptor.subtitle?.(context) ?? null;
   // 대화의 동작은 Objective 대화처럼 머리 pill 안에 선다 — 제목 문과 갈라 중첩 버튼을 만들지 않는다.

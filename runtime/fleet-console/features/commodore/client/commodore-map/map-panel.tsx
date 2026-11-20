@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
 
@@ -43,6 +43,16 @@ export interface MapPanelProps {
   readonly onClose: () => void;
   /** 레일 안에서는 공용 머리(아바타·이름)가 있으니 요약 머리를 뺀다. */
   readonly compactSummary?: boolean;
+  /**
+   * 사람이 고치는 설명·정보 — 데스크톱 오른쪽 사이드바가 옛 「정보」 탭의 편집 조각을 그대로 넘긴다. 있으면 설명 노드는 설명 편집을,
+   * 정보 노드는 정보 추가·수정·삭제 목록을 읽기 전용 글 대신 세우고, 요약은 비어 있는 쪽으로 가는 입구를 둔다. 없으면(폰) 읽기 전용이다.
+   */
+  readonly editors?: MapPanelEditors;
+}
+
+export interface MapPanelEditors {
+  readonly description: ReactNode;
+  readonly intel: ReactNode;
 }
 
 function sourceLabelOf(t: T, state: CommodoreState, sourceId: string): string {
@@ -92,7 +102,7 @@ function useStaleCount(entries: readonly MemoryEntry[]): number {
   return entries.filter((entry) => now - entry.verified > MEMORY_STALE_MS).length;
 }
 
-function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branchName, onSelect, compact }: Omit<MapPanelProps, "node" | "onClose"> & { readonly compact?: boolean }) {
+function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branchName, onSelect, compact, editors }: Omit<MapPanelProps, "node" | "onClose"> & { readonly compact?: boolean }) {
   const stale = useStaleCount(entries);
   const links = graph.edges.filter((edge) => edge.kind === "link").length;
   const objectives = graph.nodes.filter((node) => node.kind === "objective").length;
@@ -126,6 +136,14 @@ function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branch
       </div>
       )}
       {state.description.text ? <p>{state.description.text.split("\n")[0]}</p> : null}
+      {/* 비어 있는 설명·정보는 지도에 그릴 노드가 없다 — 그 노드의 편집으로 가는 입구를 둔다. */}
+      {editors && (!state.description.text || state.intel.length === 0) ? (
+        <div className="commodore-map-crumb">
+          {!state.description.text ? <button type="button" className="commodore-map-crumb-link" onClick={() => onSelect("desc")}>{t("commodore.description.add")}</button> : null}
+          {!state.description.text && state.intel.length === 0 ? <span aria-hidden="true"> · </span> : null}
+          {state.intel.length === 0 ? <button type="button" className="commodore-map-crumb-link" onClick={() => onSelect("intel")}>{t("commodore.intel.add")}</button> : null}
+        </div>
+      ) : null}
       <div className="commodore-map-stats">
         {stats.map((stat) => (
           <div key={stat.label} className="commodore-map-stat"><b>{stat.value}</b><span>{stat.label}</span></div>
@@ -226,7 +244,7 @@ function MemoryDetail({ t, node, entry, entries, crumbTop, branchName, onSelect 
  * 시안 모양의 상세 패널 — 고르면 그 항목, 고르지 않으면 사령관 요약.
  * 없는 값은 항목째 뺀다(`없음` 문구 금지).
  */
-export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, branchName, onSelect, onClose, compactSummary }: MapPanelProps) {
+export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, branchName, onSelect, onClose, compactSummary, editors }: MapPanelProps) {
   const closeRef = useRef<HTMLButtonElement>(null);
   useEffect(() => { closeRef.current?.focus(); }, [node?.id]);
   const name = (state.alias ?? "").trim() || "commodore";
@@ -234,7 +252,7 @@ export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, b
 
   let title = name;
   let body: React.ReactNode = (
-    <CommanderSummary t={t} commodoreId={commodoreId} state={state} entries={entries} graph={graph} facts={facts} branchName={branchName} onSelect={onSelect} compact={compactSummary} />
+    <CommanderSummary t={t} commodoreId={commodoreId} state={state} entries={entries} graph={graph} facts={facts} branchName={branchName} onSelect={onSelect} compact={compactSummary} {...(editors ? { editors } : {})} />
   );
   const entry = node?.ref ? entries.find((candidate) => candidate.ref === node.ref) ?? null : null;
   if (node && entry && node.kind === "memory") {
@@ -295,17 +313,26 @@ export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, b
     const items = [...state.intel].sort((a, b) => b.at - a.at || (a.id < b.id ? -1 : 1));
     const current = node.kind === "intel" ? state.intel.find((item) => item.id === node.intelId) ?? null : null;
     title = t("commodore.map.allIntelCount", { n: items.length });
-    body = (
+    const picked = current ? (
+      <section className="commodore-map-sec" aria-label={current.text}>
+        <h3>{t("commodore.map.detail.intelPicked", { date: memoryDay(current.at), source: sourceLabelOf(t, state, current.source) })}</h3>
+        <p>{current.text}</p>
+      </section>
+    ) : null;
+    // 편집 조각이 있으면 옛 「정보」 탭의 정보 목록(수정·삭제·「+ 정보 추가」)이 읽기 전용 목록을 대신한다 — 제목은 그 목록 머리가 진다.
+    body = editors ? (
+      <>
+        <Crumb trail={[crumbTop, { label: t("commodore.intel.label") }]} onSelect={onSelect} />
+        {picked}
+        {editors.intel}
+        <p>{t("commodore.map.detail.intelLead", { n: items.length })}</p>
+      </>
+    ) : (
       <>
         <Crumb trail={[crumbTop, { label: node.kind === "intel" ? t("commodore.intel.label") : t("commodore.intel.label") }]} onSelect={onSelect} />
         <h2>{t("commodore.intel.label")}</h2>
         <p>{t("commodore.map.detail.intelLead", { n: items.length })}</p>
-        {current ? (
-          <section className="commodore-map-sec" aria-label={current.text}>
-            <h3>{t("commodore.map.detail.intelPicked", { date: memoryDay(current.at), source: sourceLabelOf(t, state, current.source) })}</h3>
-            <p>{current.text}</p>
-          </section>
-        ) : null}
+        {picked}
         <section className="commodore-map-sec" aria-label={t("commodore.map.allIntelCount", { n: items.length })}>
           <h3>{t("commodore.map.allIntelCount", { n: items.length })}</h3>
           {items.length === 0 ? <p>{t("commodore.intel.empty")}</p> : (
@@ -336,7 +363,14 @@ export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, b
     );
   } else if (node?.kind === "description") {
     title = t("commodore.description.label");
-    body = (
+    // 편집 조각이 있으면 옛 「정보」 탭의 설명 섹션(개정·눌러 고치기·저장)이 읽기 전용 글을 대신한다 — 제목은 그 섹션 머리가 진다.
+    body = editors ? (
+      <>
+        <Crumb trail={[crumbTop, { label: t("commodore.description.label") }]} onSelect={onSelect} />
+        {editors.description}
+        <p>{t("commodore.map.detail.descNote")}</p>
+      </>
+    ) : (
       <>
         <Crumb trail={[crumbTop, { label: t("commodore.description.label") }]} onSelect={onSelect} />
         <h2>{t("commodore.description.label")}</h2>

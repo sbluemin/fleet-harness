@@ -388,7 +388,9 @@
   margin-bottom: -8px;
 }
 
-.commodore-map-panel p {
+/* 패널 자신의 글만 — 데스크톱 사이드바가 넘긴 설명·정보 편집 조각(.objectives-commodore-*)의 안내·오류 글은 제 잉크를 지킨다. */
+.commodore-map-panel > p,
+.commodore-map-sec p {
   margin: 0;
   white-space: pre-wrap;
   word-break: break-word;

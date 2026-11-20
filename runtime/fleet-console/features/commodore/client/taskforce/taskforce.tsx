@@ -396,7 +396,7 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
   return <div className="taskforce-conversation">{Conversation ? <Conversation entries={items} participants={participants} working={working} language={language} speakerSection={speakerSection} accessibleNames={{ log: t("taskforce.aria.log"), composer: t("taskforce.aria.composer") }} loading={!snapshot.loaded && !snapshot.error} empty={snapshot.error ? t("taskforce.failed") : t("taskforce.empty")} messageContent={messageContent} openBoardAction={{ label: t("taskforce.openNotice"), open: (entry) => { if (entry.speaker.commodoreId) openReferencedObjective(entry.speaker.commodoreId, entry.objectiveId); } }} older={snapshot.hasMore ? { label: t("taskforce.older"), loading: older, load: () => { setOlder(true); void loadTaskforce(id, true).finally(() => setOlder(false)); } } : null} cards={cards} composer={({ trailing }) => renderComposer(trailing)} composerTopEntries /> : <>{t("taskforce.loading")}{renderComposer(null)}</>}</div>;
 }
 
-// TF 원장의 도구 action 이름을 정보 탭의 보드 행위 분류에 맞춘다. 모르는 행위는 중립 편집으로 남는다.
+// TF 원장의 도구 action 이름을 목표 기록의 보드 행위 분류에 맞춘다. 모르는 행위는 중립 편집으로 남는다.
 const ACTION_TRAIL_KINDS: Readonly<Record<string, string>> = { add: "added", answer: "decision", hand_off: "hand-off", criteria_approve: "criteria-approved", criteria_reject: "criteria-rejected", followup_discard: "followup-discarded" };
 
 /** 원장의 전체 활동을 사령관·목표별로 묶는다. 대화의 paging 범위나 기록 자체는 바꾸지 않는다. */

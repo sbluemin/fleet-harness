@@ -37,11 +37,10 @@ import type { CommodoreDecisionTarget } from "./commodore-decision-target.js";
 import { MAX_DECISION_ANSWER_INPUT } from "../shared/contracts/questions.js";
 import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
-import { CommodoreMemory } from "./commodore-memory.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
 import { clockTime, nextRoutineWord } from "./commodore-header.js";
-import { openCommodoreConversation, openCommodoreTheaterSettings } from "./commodore-conversation.js";
+import { openCommodoreConversation, openCommodoreMap, openCommodoreTheaterSettings } from "./commodore-conversation.js";
 import { CommodoreRoutines } from "./commodore-routines.js";
 import {
   addCommodoreIntel,
@@ -121,7 +120,12 @@ function commodoreStatusLine(t: T, commodoreId: string): string {
 }
 
 /**
- * Theater Inbox 의 「사령관」 섹션 — 기록·루틴·정보(설명·정보·기억)·설정. 시트 틀과 칸 목록은 호스트가, 본문은 여기가 그린다.
+ * 없어진 「정보」 칸(옛 지시·기억 칸 포함) 주소가 가는 신경망 노드 — null 은 고르지 않은 요약이다. 설명·정보·기억은 신경망이 맡는다.
+ */
+const RETIRED_INFO_PAGES: ReadonlyMap<string, string | null> = new Map([["info", "intel"], ["directive", "desc"], ["memory", null]]);
+
+/**
+ * Theater Inbox 의 「사령관」 섹션 — 기록·루틴·설정. 시트 틀과 칸 목록은 호스트가, 본문은 여기가 그린다.
  * 실험 기능 「자율 운영」이 꺼져 있으면 섹션은 제목과 안내 한 줄만 남고 본문을 마운트하지 않는다(읽기·쓰기 없음).
  */
 export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
@@ -132,8 +136,6 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
     // 기록은 툴바·질문을 고정하고 기록 칸이 스스로 스크롤한다(바닥 붙기) — 칸 전체를 받는다. 나머지 칸은 호스트 읽기 열에 선다.
     { id: "log", title: (language) => getT(language)("commodore.tabs.log"), layout: "fill" },
     { id: "routines", title: (language) => getT(language)("commodore.tabs.routines") },
-    // 정보 칸은 옛 지시·기억 칸을 합쳤다(설명 · 정보 · 기억) — 옛 `directive`·`memory` 주소도 이 칸이 받는다.
-    { id: "info", title: (language) => getT(language)("commodore.tabs.info") },
     { id: "settings", title: (language) => getT(language)("commodore.tabs.settings"), applies: (language) => getT(language)("commodore.inbox.applies.settings") },
   ],
   read: (theater, language) => {
@@ -152,13 +154,16 @@ export const commodoreInboxSection: TheaterInboxSectionDescriptor = {
     const commodoreId = inboxCommodore(theater.id);
     if (commodoreId) openCommodoreMobile(commodoreTabOf(pageId) ?? "log", commodoreId, true);
   },
-  // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 나머지 칸은 그 대화의 오른쪽 탭이 대신한다.
+  // 대화 중심 화면에서 기록을 여는 요청은 가운데 칸의 사령관 대화가 받는다 — 「활동」 칸은 그 대화의 오른쪽 사이드바가 대신한다.
   // 사령관 머리 착지는 이 칸을 연다. 주소가 사령관 UUID 가 아니면(Theater 해시) 대화를 세우지 않는다.
-  // 「설정」 칸 요청은 대화 입력창의 설정 칸(작전 구역)이 받는다 — 대화 중심 화면의 오른쪽 탭에는 설정이 없다.
+  // 「설정」 칸 요청은 대화 입력창의 설정 칸(작전 구역)이 받는다 — 대화 중심 화면의 오른쪽 사이드바에는 설정이 없다.
+  // 없어진 「정보」 칸(옛 지시·기억 칸 포함) 주소는 그 대화의 신경망에서 해당 노드를 고른다.
   openConversation: ({ theater, pageId }) => {
-    if (pageId !== "log" && pageId !== "settings") return false;
+    const retired = RETIRED_INFO_PAGES.get(pageId);
+    if (pageId !== "log" && pageId !== "settings" && retired === undefined) return false;
     const commodoreId = inboxCommodore(theater.id);
     if (!commodoreId) return false;
+    if (retired !== undefined) return openCommodoreMap(commodoreId, retired);
     return pageId === "settings" ? openCommodoreTheaterSettings(commodoreId) : openCommodoreConversation(commodoreId);
   },
 };
@@ -211,7 +216,7 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
   };
   const run = view?.run;
 
-  // 입구가 맡긴 기록 포커스는 입력란으로 간다. 정보는 접힌 설명이 따로 받으며 명시적인 「입력 끝」만 편집기를 연다.
+  // 입구가 맡긴 기록 포커스는 입력란으로 간다.
   // 그 밖의 칸은 호스트가 준 칸 제목 포커스를 그대로 둔다.
   const handledFocus = useRef(0);
   useEffect(() => {
@@ -275,7 +280,6 @@ function CommodoreInboxSection({ context }: { readonly context: TheaterInboxBody
             <CommodoreTrail t={t} language={language} theaterId={commodoreId ?? ""} width={compact || !measured ? undefined : trailWidth} onReveal={(at) => setReveal((current) => ({ at, nonce: (current?.nonce ?? 0) + 1 }))} />
           </>
         ) : null}
-        {tab === "info" && view ? <CommodoreInfo t={t} commodoreId={commodoreId ?? ""} view={view} focusRequest={visible ? focusRequest : null} onFail={fail} onClear={() => setFailure(null)} /> : null}
         {tab === "routines" && visible ? <CommodoreRoutines commodoreId={commodoreId ?? ""} language={language} /> : null}
         {/* 설정 칸의 메뉴(모델 좌표)는 body 포털이라 숨김이 닿지 않는다 — 섹션이 가려지면 칸째 내려 메뉴를 닫는다.
             설정은 누르는 즉시 저장이라 내려도 잃는 입력이 없다. */}
@@ -1001,42 +1005,16 @@ function saveDescriptionBoxHeight(height: number): void {
 }
 
 /**
- * 「정보」 칸 — 설명 · 정보 · 기억이 한 칸에 위에서 아래로 선다(오른쪽 패널 탭과 Theater Inbox 칸이 함께 쓴다).
- * 기억 항목을 여는 동안은 그 읽기 화면이 칸을 받는다 — 위 두 섹션은 내리고, 쓰던 설명 초안은 시트 초안에 남는다.
+ * 사람이 적는 이 사령관 소개 — 데스크톱 신경망의 설명 노드 상세와 폰 정보 화면 맨 위가 함께 쓴다. 사령관은 읽기만 하고, 저장하면 개정이
+ * 오르며 사령관을 깨운다.
  */
-/** `after` 는 기억 아래 섹션(대화 중심 화면의 「목표 기록」)이다 — 기억 항목을 읽는 동안에는 설명·정보처럼 내린다. */
-export function CommodoreInfo({ t, commodoreId, view, onFail, onClear, focusRequest, after }: { readonly t: T; readonly commodoreId: string; readonly view: CommodoreView; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly focusRequest?: TheaterInboxBodyContext["focusRequest"]; readonly after?: ReactNode }) {
-  const [reading, setReading] = useState(false);
-  return (
-    <>
-      {reading ? null : (
-        <>
-          <CommodoreDescription key={commodoreId} t={t} commodoreId={commodoreId} description={view.state.description} focusRequest={focusRequest} onFail={onFail} onClear={onClear} />
-          <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={onFail} onClear={onClear} />
-        </>
-      )}
-      <CommodoreMemory t={t} theaterId={commodoreId} onReading={setReading} />
-      {reading ? null : after}
-    </>
-  );
-}
-
-/** 사람이 적는 이 사령관 소개 — 정보 칸 맨 위. 사령관은 읽기만 하고, 저장하면 개정이 오르며 사령관을 깨운다. */
-export function CommodoreDescription({ t, commodoreId, description, onFail, onClear, phone = false, online = true, focusRequest }: { readonly t: T; readonly commodoreId: string; readonly description: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly phone?: boolean; readonly online?: boolean; readonly focusRequest?: TheaterInboxBodyContext["focusRequest"] }) {
+export function CommodoreDescription({ t, commodoreId, description, onFail, onClear, phone = false, online = true }: { readonly t: T; readonly commodoreId: string; readonly description: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly phone?: boolean; readonly online?: boolean }) {
   const [draft, setDraft] = useState(() => sheetDraft(commodoreId).description ?? description.text);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLButtonElement | null>(null);
   const fieldId = useId();
-  const handledFocus = useRef(0);
-  useEffect(() => {
-    if (!focusRequest || handledFocus.current === focusRequest.nonce) return;
-    handledFocus.current = focusRequest.nonce;
-    if (focusRequest.kind === "editor-end") {
-      if (fieldRef.current) focusAtEnd(fieldRef.current); else setEditing(true);
-    } else (previewRef.current ?? fieldRef.current)?.focus({ preventScroll: true });
-  }, [focusRequest]);
   // 편집을 열 때만 저장한 높이와 입력 끝 포커스를 되살린다.
   useLayoutEffect(() => {
     const node = fieldRef.current;
@@ -1103,7 +1081,7 @@ export function focusAtEnd(element: HTMLTextAreaElement | null): void {
 }
 
 /**
- * 「+ 정보 추가」 한 줄의 입력 — 데스크톱 정보 칸과 폰 정보 화면이 함께 쓴다. 초안은 시트를 닫아도 남는다. Enter 는 추가, Shift+Enter 는
+ * 「+ 정보 추가」 한 줄의 입력 — 데스크톱 신경망의 정보 노드와 폰 정보 화면이 함께 쓴다. 초안은 시트를 닫아도 남는다. Enter 는 추가, Shift+Enter 는
  * 줄바꿈이고 한글 조합 중의 Enter 는 넘긴다. 폰의 화면 키보드(굵은 포인터)에서는 Enter 가 줄바꿈이라 추가는 곁의 단추로 한다.
  * 추가하는 동안 고쳐 쓴 글은 지우지 않는다.
  */
@@ -1154,7 +1132,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
   const hintId = `objectives-commodore-intel-add-hint-${theaterId}`;
   const sourceLabel = (source: string) => source === "person" ? t("commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
   const day = (at: number) => { const date = new Date(at); return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
-  // 정보 칸 안에서 설명 섹션 아래 구분선(앞 섹션과의 경계) 하나 밑에 정보 목록과 「+ 정보 추가」가 한 덩어리로 선다.
+  // 구분선(앞 섹션과의 경계) 하나 밑에 정보 목록과 「+ 정보 추가」가 한 덩어리로 선다.
   // 정보 출처 목록은 보이지 않는다(아직 없는 기능) — 출처가 단 항목의 이름표에만 `sources` 를 쓴다.
   return (
     <div className="objectives-commodore-section objectives-commodore-panel-section">

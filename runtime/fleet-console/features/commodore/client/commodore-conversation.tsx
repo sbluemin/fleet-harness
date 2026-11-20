@@ -15,14 +15,13 @@ import { commodoreChatEntries, commodoreCliFailure, commodoreConsultationCutoff,
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { useCommodoreDecisionDock } from "./commodore-person-inbox.js";
 import { CommodoreTasks } from "./commodore-tasks.js";
-import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreInfo } from "./commodore-inbox-section.js";
+import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDescription, CommodoreIntel } from "./commodore-inbox-section.js";
 import { CommodoreCliFailureCard } from "./commodore-cli-status.js";
 import { commodoreCliCause } from "../shared/contracts/cli-status.js";
 import { CommodoreComposerSettings, requestCommodoreComposerSettings, type CommodoreComposerSettingsSection } from "./commodore-composer-settings.js";
 import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreMongleActivity } from "./commodore-avatar.js";
-import { CommodoreTrailSection } from "./commodore-trail.js";
 import { CommodoreMapScreen } from "./commodore-map/map-view.js";
 import { CommodoreMapToggle } from "./commodore-map-toggle.js";
 import { MapPanel, mapPanelFacts } from "./commodore-map/map-panel.js";
@@ -46,18 +45,27 @@ import { readTheater, subscribeObjective, useObjectiveTheater } from "./board.js
 type T = Translate<CommodoreMessageKey>;
 
 /**
- * 대화 중심 화면(Console 실험 기능)의 사령관 — 가운데 칸에 기록과 입력이, 오른쪽 패널 앞 묶음에 작업(목표·루틴)·정보(설명·정보·기억·목표 기록)·
- * 기억·설정이 선다(Theater 설정 곁의 「사령관」 섹션). 데이터·쓰기 경로는 Inbox 시트와 같은 사령관 상태이고, 여닫기는 SDK 능력
- * (`ctx.conversation`)만 쓴다. 대화 중심 화면에서 Theater 머리나 Inbox 요청이 사령관 기록을 열면 Inbox 섹션의 `openConversation` 이
- * 이 대화를 세운다. 대화 중심 화면이 꺼져 있으면 이 모듈은 아무것도 열지 않고, 머리는 Inbox 시트를 연다.
+ * 대화 중심 화면(Console 실험 기능)의 사령관 — 가운데 칸에 기록과 입력이, 오른쪽 사이드바에 활동(목표·루틴)이 탭 줄 없이 곧장 선다.
+ * 설명·정보·기억은 신경망(지도)이 맡고, 지도일 때 같은 사이드바 칸이 신경망의 상세 패널이 된다(설명 편집·정보 추가·수정·삭제 포함).
+ * 데이터·쓰기 경로는 Inbox 시트와 같은 사령관 상태이고, 여닫기는 SDK 능력(`ctx.conversation`)만 쓴다. 대화 중심 화면에서 Theater
+ * 머리나 Inbox 요청이 사령관 기록을 열면 Inbox 섹션의 `openConversation` 이 이 대화를 세운다. 대화 중심 화면이 꺼져 있으면 이 모듈은
+ * 아무것도 열지 않고, 머리는 Inbox 시트를 연다.
  */
 
 export const COMMODORE_SURFACE_ID = "commodore";
-// 설정은 오른쪽 탭이 아니라 가운데 입력창 안에 선다(`CommodoreComposerSettings`) — 오른쪽에는 활동·정보만 남는다.
-const TAB_IDS = { routines: "commodore-routines", info: "commodore-info" } as const;
-type ConversationTab = keyof typeof TAB_IDS;
-/** 우측 배치에서 지휘관 가운데를 두는 동안 레일이 머무는 작업 탭 id. */
-export const COMMODORE_ROUTINES_TAB_ID = TAB_IDS.routines;
+/**
+ * 사령관의 오른쪽 사이드바 칸 id — 칸은 활동 하나다. 설정은 가운데 입력창 안에 선다(`CommodoreComposerSettings`).
+ * id 는 옛 「활동」 탭 그대로라 기억된 마지막 탭과 다른 Console 이 넘긴 사이드바 상태가 그대로 이어진다.
+ * 우측 배치에서 지휘관을 가운데 두는 동안에도 레일이 이 칸에 머문다.
+ */
+export const COMMODORE_ROUTINES_TAB_ID = "commodore-routines";
+/** 없어진 「정보」 탭 id — 옛 Console 이 넘긴 사이드바 상태처럼 이 id 로 오는 열림은 활동 칸으로 잇는다. */
+const RETIRED_INFO_TAB_ID = "commodore-info";
+
+/** 사이드바를 열 칸 id 를 지금 칸으로 고친다 — 없어진 「정보」 탭이면 활동 칸, 그 밖에는 그대로다. */
+export function commodoreRailTab(tabId: string): string {
+  return tabId === RETIRED_INFO_TAB_ID ? COMMODORE_ROUTINES_TAB_ID : tabId;
+}
 
 let port: ClientConversationCapability | null = null;
 let inbox: ClientTheaterInboxCapability | null = null;
@@ -83,6 +91,8 @@ export interface CommodoreConversationOptions {
   /** 목표 대화에서 행위 기록을 보러 온 것 — 입력 대신 돌아가기만 선다. */
   readonly readOnly?: boolean;
   readonly objectiveId?: string;
+  /** 채팅 대신 신경망(지도)으로 시작한다 — `node` 는 고를 노드 id, null 이면 고르지 않은 요약이다. */
+  readonly map?: { readonly node: string | null };
 }
 
 /** 호스트의 대화 배치 여부 — Theater 머리의 첫 칸 판정도 같은 능력을 읽는다. */
@@ -158,16 +168,28 @@ export function openCommodoreConversation(commodoreId: string, options: Commodor
 }
 
 /**
- * 목록을 오른쪽으로 옮긴 뒤 옮겨 간 쪽을 보이게 한다 — 그 사령관 대화를 세우고 오른쪽 패널을 작업 탭으로 연다.
- * 대화가 이미 서 있으면 작업 탭을 곧장 열고, 새로 세우면 저절로 열림이 작업 탭을 고른다. 대화 중심 화면이
+ * 목록을 오른쪽으로 옮긴 뒤 옮겨 간 쪽을 보이게 한다 — 그 사령관 대화를 세우고 오른쪽 패널을 활동 칸으로 연다.
+ * 대화가 이미 서 있으면 활동 칸을 곧장 열고, 새로 세우면 저절로 열림이 활동 칸을 고른다. 대화 중심 화면이
  * 꺼져 있으면 아무것도 하지 않는다.
  */
 export function openCommodoreTasksPanel(commodoreId: string): void {
   if (isCommodoreConversationOpen(commodoreId)) {
-    openRailPanel(TAB_IDS.routines);
+    openRailPanel(COMMODORE_ROUTINES_TAB_ID);
     return;
   }
   openCommodoreConversation(commodoreId);
+}
+
+/**
+ * 사령관 대화를 세우고 신경망(지도)으로 바꿔 `nodeId` 노드를 고른다 — null 이면 고르지 않은 요약이다. 없어진 「정보」 칸 주소(설명·정보·기억)가
+ * 이리로 온다. 대화 중심 화면이 꺼져 있으면 false 다.
+ */
+export function openCommodoreMap(commodoreId: string, nodeId: string | null): boolean {
+  // 새로 서는 대화는 본문이 마운트하며 이 값으로 시작하고, 이미 선 대화는 아래에서 곧장 바꾼다.
+  if (!openCommodoreConversation(commodoreId, { map: { node: nodeId } })) return false;
+  setCommodoreMapMode(commodoreId, "map");
+  setCommodoreMapSelection(commodoreId, nodeId);
+  return true;
 }
 
 /**
@@ -289,9 +311,15 @@ function useConversationFailure(theaterId: string): string | null {
 
 /* ── 가운데 칸 ─────────────────────────────────────────────────────────── */
 
-function readParams(params: Readonly<Record<string, unknown>>): { readonly commodoreId: string; readonly theaterId: string | null; readonly readOnly: boolean } | null {
+function readParams(params: Readonly<Record<string, unknown>>): { readonly commodoreId: string; readonly theaterId: string | null; readonly readOnly: boolean; readonly map: { readonly node: string | null } | null } | null {
   if (typeof params.commodoreId !== "string") return null;
-  return { commodoreId: params.commodoreId, theaterId: typeof params.theaterId === "string" ? params.theaterId : null, readOnly: params.readOnly === true };
+  const map = typeof params.map === "object" && params.map !== null ? params.map as { readonly node?: unknown } : null;
+  return {
+    commodoreId: params.commodoreId,
+    theaterId: typeof params.theaterId === "string" ? params.theaterId : null,
+    readOnly: params.readOnly === true,
+    map: map ? { node: typeof map.node === "string" ? map.node : null } : null,
+  };
 }
 
 function failureWord(t: T, error: unknown): string {
@@ -320,7 +348,7 @@ const REVEAL_PAGE_LIMIT = 10;
  * 보드에 쓴 행위는 가운데 행위 줄(펼치면 이유, 누르면 그 목표), 세션 교대·실패는 노트 줄이다. 입력·지우기·읽기 전용 돌아가기는
  * 이 플러그인의 것을 그 화면의 입력 자리에 세운다. 접힌 턴 줄과 곁 칸 이음매는 Inbox 시트의 기록(`CommodoreLog`)에만 남는다.
  */
-function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language, onBack }: { readonly commodoreId: string; readonly theaterId: string | null; readonly readOnly: boolean; readonly language: "en" | "ko"; readonly onBack: () => void }) {
+function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap, language, onBack }: { readonly commodoreId: string; readonly theaterId: string | null; readonly readOnly: boolean; readonly startMap: { readonly node: string | null } | null; readonly language: "en" | "ko"; readonly onBack: () => void }) {
   const t = getT(language);
   noteCommodoreLanguage(language);
   const { view, entries, live, hasMore, transcriptLoaded, transcriptError, clearedAt } = useCommodore(commodoreId);
@@ -332,8 +360,15 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
     void loadCommodore(commodoreId);
     if (transcriptNeeded(commodoreId)) void loadTranscript(commodoreId);
   }, [commodoreId]);
-  // 다시 들어오면 항상 채팅으로 시작한다.
-  useEffect(() => { setCommodoreMapMode(commodoreId, "chat"); }, [commodoreId]);
+  // 다시 들어오면 채팅으로 시작한다 — 신경망으로 연 대화(없어진 「정보」 칸 주소)만 신경망에서 그 노드를 고른 채 시작한다.
+  const startMapRef = useRef(startMap);
+  startMapRef.current = startMap;
+  useEffect(() => {
+    const landing = startMapRef.current;
+    if (!landing) { setCommodoreMapMode(commodoreId, "chat"); return; }
+    setCommodoreMapMode(commodoreId, "map");
+    setCommodoreMapSelection(commodoreId, landing.node);
+  }, [commodoreId]);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const run = view?.run;
   const { meta, routine } = commodoreSummary(t, view, board.objectives);
@@ -534,20 +569,23 @@ function CommodoreConversationActions({ commodoreId, language }: { readonly comm
   );
 }
 
-/* ── 오른쪽 패널 탭 ────────────────────────────────────────────────────── */
+/* ── 오른쪽 사이드바 칸 ─────────────────────────────────────────────────── */
 
-function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab: ConversationTab; readonly commodoreId: string; readonly language: "en" | "ko" }) {
+/**
+ * 사령관의 오른쪽 사이드바 — 채팅일 때는 활동(목표·루틴), 지도일 때는 신경망의 상세 패널이다. 칸은 하나라 탭 줄 없이 곧장 선다.
+ * 상세 패널의 설명·정보 노드에서는 옛 「정보」 탭의 설명 편집과 정보 추가·수정·삭제가 같은 모양 그대로 선다.
+ */
+function CommodoreConversationTab({ commodoreId, language }: { readonly commodoreId: string; readonly language: "en" | "ko" }) {
   const t = getT(language);
   const { view } = useCommodore(commodoreId);
   const memory = useCommodoreMemory(commodoreId);
   const mapMode = useCommodoreMapMode(commodoreId);
-  // 지도일 때 우측 레일 전체가 시안 상세 패널이다 — 탭(작업·정보)은 그대로 두고 내용만 바꾼다.
   // 선택은 가운데 칸과 함께 읽는다.
   const railSelectionId = useCommodoreMapSelection(commodoreId);
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
-  // 작업 탭 목표 섹션이 가리키는 지휘관 — 왼쪽 목록·좁은 창 팝오버가 같은 선택을 말한다.
+  // 목표 섹션이 가리키는 지휘관 — 왼쪽 목록·좁은 창 팝오버가 같은 선택을 말한다.
   const surface = useConversationSurface();
   const { activeObjectiveId, objectiveRecords } = useConsoleState();
   const objectiveOwner = objectiveRecords.find((record) => record.id === activeObjectiveId)?.commodoreId ?? null;
@@ -555,6 +593,7 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
     ? surface.params.objectiveId
     : objectiveOwner === commodoreId ? activeObjectiveId : null;
   if (!view) return null;
+  const failureLine = failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null;
   if (mapMode === "map") {
     const railGraph = buildMapGraph({ state: view.state, memories: memory.entries, tone: null });
     const railNode = railSelectionId ? resolveMapDetailNode(railGraph, railSelectionId, view.state, memory.entries) : null;
@@ -569,39 +608,25 @@ function CommodoreConversationTab({ tab, commodoreId, language }: { readonly tab
           graph={railGraph}
           facts={mapPanelFacts(view.run, view.defaults.model)}
           branchName={(branch: MemoryBranch) => t(MEMORY_BRANCH_LABEL[branch])}
-          onSelect={(id) => setCommodoreMapSelection(commodoreId, id)}
-          onClose={() => setCommodoreMapSelection(commodoreId, null)}
+          onSelect={(id) => { clear(); setCommodoreMapSelection(commodoreId, id); }}
+          onClose={() => { clear(); setCommodoreMapSelection(commodoreId, null); }}
           compactSummary
+          editors={{
+            description: <CommodoreDescription key={commodoreId} t={t} commodoreId={commodoreId} description={view.state.description} onFail={fail} onClear={clear} />,
+            intel: <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} />,
+          }}
         />
+        {failureLine}
       </div>
     );
   }
   return (
     <div className="objectives-commodore-body objectives-commodore-conversation-tab">
-      {tab === "info" ? (
-        <CommodoreInfo
-          t={t}
-          commodoreId={commodoreId}
-          view={view}
-          onFail={fail}
-          onClear={clear}
-          // 사령관이 목표에서 한 일 — 줄은 채팅의 그 턴으로, 목표 제목은 그 목표로 간다.
-          after={<CommodoreTrailSection t={t} language={language} theaterId={commodoreId} onReveal={(at) => revealCommodoreTurn(commodoreId, at)} onOpenObjective={(objectiveId) => openReferencedObjective(commodoreId, objectiveId)} />}
-        />
-      ) : null}
-      {tab === "routines" ? <CommodoreTasks commodoreId={commodoreId} language={language} selectedId={selectedId} /> : null}
-      {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
+      <CommodoreTasks commodoreId={commodoreId} language={language} selectedId={selectedId} />
+      {failureLine}
     </div>
   );
 }
-
-/** 탭이 대신하는 Theater Inbox 사령관 칸 — 그 칸을 여는 요청이 대화 중심 화면에서 이 탭을 연다. */
-const TAB_INBOX_PAGES = { routines: "routines", info: "info" } as const;
-
-const TAB_TITLES: Record<ConversationTab, CommodoreMessageKey> = {
-  routines: "commodore.tabs.routines",
-  info: "commodore.tabs.info",
-};
 
 /** Console 이 가운데 칸·오른쪽 패널에 세우는 사령관 대화. */
 export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
@@ -649,11 +674,9 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     const params = readParams(ctx.params);
     return params ? <CommodoreMapToggle commodoreId={params.commodoreId} language={ctx.language} /> : null;
   },
-  // 지도 모드에서는 레일 탭 줄을 걷고 패널 본문만 둔다. 탭·열림 상태는 그대로다.
-  hidePanelTabs: (ctx) => {
-    const params = readParams(ctx.params);
-    return params ? readCommodoreMapMode(params.commodoreId) === "map" : false;
-  },
+  // 칸이 하나(활동, 지도일 때는 신경망 상세)라 탭 줄을 세우지 않는다 — 이름 아래 곧장 본문이 서고, 탭 줄 높이는 본문이 쓴다.
+  // 지휘관을 가운데 두고 이 사령관의 사이드바를 유지할 때도 호스트가 같은 값을 읽는다.
+  hidePanelTabs: () => true,
   // 지도 모드에서는 본문 위 컨텍스트 창 칩을 걷는다 — 채팅 복귀 시 그대로 다시 선다.
   hideContextRail: (ctx) => {
     const params = readParams(ctx.params);
@@ -661,7 +684,7 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
   },
   render: (ctx) => {
     const params = readParams(ctx.params);
-    return params ? <CommodoreConversationBody commodoreId={params.commodoreId} theaterId={params.theaterId} readOnly={params.readOnly} language={ctx.language} onBack={ctx.close} /> : null;
+    return params ? <CommodoreConversationBody commodoreId={params.commodoreId} theaterId={params.theaterId} readOnly={params.readOnly} startMap={params.map} language={ctx.language} onBack={ctx.close} /> : null;
   },
   // 등록 Theater가 0개여도 이 대화의 탭은 오른쪽 패널에 선다. 레일 범위는 Theater 그대로다.
   opensWithoutTheater: true,
@@ -670,28 +693,28 @@ export const commodoreConversationSurface: ConversationSurfaceDescriptor = {
     const params = readParams(ctx.params);
     return params && !params.readOnly ? params.commodoreId : null;
   },
-  // 이 대화는 그 Theater 의 Inbox 「사령관」 섹션을 대신한다 — 오른쪽 패널이 이 탭들을 Theater 설정 곁의 「사령관」 섹션으로 묶는다.
+  // 이 대화는 그 Theater 의 Inbox 「사령관」 섹션을 대신한다 — 오른쪽 패널이 이 칸을 그 섹션 자리에 세운다.
   theater: (ctx) => {
     const params = readParams(ctx.params);
     return params ? { theaterId: params.commodoreId, inboxSection: COMMODORE_INBOX_SECTION_ID } : null;
   },
-  tabs: (Object.keys(TAB_IDS) as ConversationTab[]).map((tab) => ({
-    id: TAB_IDS[tab],
-    inboxPage: TAB_INBOX_PAGES[tab],
-    title: (locale) => getT(locale === "ko" ? "ko" : "en")(TAB_TITLES[tab]),
+  tabs: [{
+    id: COMMODORE_ROUTINES_TAB_ID,
+    // 이 칸을 여는 Inbox 「활동」 칸 요청이 대화 중심 화면에서 이 칸을 연다.
+    inboxPage: "routines",
+    title: (locale) => getT(locale === "ko" ? "ko" : "en")("commodore.tabs.routines"),
     render: (ctx) => {
       const params = readParams(ctx.params);
-      return params ? <CommodoreConversationTab tab={tab} commodoreId={params.commodoreId} language={ctx.language} /> : null;
+      return params ? <CommodoreConversationTab commodoreId={params.commodoreId} language={ctx.language} /> : null;
     },
-  })),
-  // 사령관 대화의 기본 문맥은 정보다. 작업 탭이 목표 목록을 함께 두므로 작업 탭이 기본이다 — 사람이 고른 탭 기억이 있으면 그 기억이 먼저다.
-  defaultTab: TAB_IDS.info,
+  }],
+  // 사이드바를 저절로 열 때 서는 칸 — 사람이 닫아 두었으면 열지 않는다.
+  defaultTab: COMMODORE_ROUTINES_TAB_ID,
   railContinuityGroup: "commodore-taskforce",
-  resolveDefaultTab: () => TAB_IDS.routines,
   onLeaveDesktop: ({ params, tabId }) => {
     const target = readParams(params);
     if (!target || target.readOnly) return;
-    const tab = (Object.keys(TAB_IDS) as ConversationTab[]).find((candidate) => TAB_IDS[candidate] === tabId);
-    openCommodoreMobile(tab ? TAB_INBOX_PAGES[tab] : "log", target.commodoreId, tab !== undefined);
+    const panel = tabId === COMMODORE_ROUTINES_TAB_ID;
+    openCommodoreMobile(panel ? "routines" : "log", target.commodoreId, panel);
   },
 };

@@ -133,11 +133,29 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
       if (open.address.sectionId === fallback.sectionId && open.address.pageId === fallback.pageId) return;
       navigation.open({ theaterId: theater.id, ...fallback });
     };
-    if (!section || !page) {
+    if (!section) {
       openFallback();
       return;
     }
     if (states[index]?.availability === "loading") return;
+    if (!page) {
+      // 섹션이 걷은 칸의 옛 주소 — 섹션의 대화가 받으면(가운데 칸에 대화를 세우면) 그 대화가 자리를 맡고, 아니면 폴백 칸으로 간다.
+      // 옛 칸을 고른 진입도 사람이 그 칸을 보려는 것이라 대화의 기본 탭을 연다(닫아 둔 사이드바도). 남길 도구 패널이면 그대로 둔다.
+      let taken = false;
+      if (available(index) && section.descriptor.openConversation) {
+        try { taken = section.descriptor.openConversation({ theater, pageId: open.address.pageId }); } catch { taken = false; }
+      }
+      if (!taken) {
+        openFallback();
+        return;
+      }
+      opened.current = true;
+      const selection = getConversationSurface();
+      const surface = center?.surface ?? conversationSurfaces.find((candidate) => candidate.id === selection?.surfaceId) ?? null;
+      const kept = keptToolPanel(getRailStoreSnapshot().activePanelId, railRef.current, section.descriptor.omitsRailEntries);
+      if (surface?.defaultTab !== undefined && !kept) presentRailPanel(surface.defaultTab);
+      return;
+    }
     if (!available(index)) {
       openFallback();
       return;
@@ -164,7 +182,9 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
         return;
       }
       tabId = surfaceTabId;
-      if (surfaceTabId === surface?.defaultTab) {
+      // 이 칸을 대신하는 탭이 없어 기본 탭으로 떨어진 진입(기록 등)만 자동 열림이다 — 탭이 대신하는 칸을 고른 진입은 그 탭이 기본
+      // 탭이어도 아래에서 연다.
+      if (tab === null) {
         opened.current = true;
         if (!kept && surface !== null && mayAutoOpenConversationRail(surface.id)) openRailPanel(tabId);
         return;

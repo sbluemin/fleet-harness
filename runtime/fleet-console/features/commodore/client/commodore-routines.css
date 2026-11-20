@@ -13,7 +13,7 @@
 .commodore-routines-when { font-size: var(--t-sm); color: var(--text-secondary); }
 .commodore-routines-row.is-off .commodore-routines-main, .commodore-routines-row.is-off .commodore-routines-when { color: var(--text-tertiary); }
 .commodore-routines-empty { padding: 28px 16px; text-align: center; color: var(--text-secondary); }
-/* 작업 탭 본문 맨 처음의 빈 상태 — 탭 줄과 첫 글자 사이만 붙인다. 「루틴」 머리 아래 빈 상태는 그대로 둔다. */
+/* 활동 칸 본문 맨 처음의 빈 상태 — 이름 머리와 첫 글자 사이만 붙인다. 「루틴」 머리 아래 빈 상태는 그대로 둔다. */
 .objectives-commodore-conversation-tab > .commodore-routines:first-child > .commodore-routines-empty { padding-top: 0; }
 .objectives-commodore-conversation-tab > .commodore-routines:first-child > .commodore-routines-empty > p:first-child { margin-top: 0; }
 .commodore-routines-error { color: var(--coral-ink); font-size: var(--t-sm); }
