@@ -172,7 +172,7 @@ export interface AiGatewayRouteDeps {
   /** Console이 저장한 Anthropic API 키. 미주입이거나 비어 있으면 Anthropic 모델은 미로그인으로 거절된다. */
   readonly readAnthropicApiKey?: () => string | undefined | Promise<string | undefined>;
   /**
-   * Anthropic 턴의 usage·거절·`anthropic-ratelimit-*` 헤더를 받는 지출 원장. 미주입이면 플릿은 Anthropic
+   * Anthropic 턴의 usage·거절를 받는 지출 원장. 미주입이면 플릿은 Anthropic
    * 지출을 세지 않는다(응답은 그대로 중계된다).
    */
   readonly anthropicUsage?: AnthropicUsagePort;

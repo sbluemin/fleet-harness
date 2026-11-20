@@ -124,26 +124,6 @@ export interface ProviderBlock {
   readonly message?: string;
 }
 
-/** `anthropic-ratelimit-*` 헤더 한 묶음(limit·remaining·reset). */
-export interface ProviderRateLimitWindow {
-  readonly limit: number;
-  readonly remaining: number;
-  /** epoch ms */
-  readonly resetsAt: number;
-}
-
-/**
- * 마지막 상류 응답의 `anthropic-ratelimit-*` 헤더. 창(`QuotaWindow`)이 아니다 — 라우팅에 쓰지 않는다.
- * 크레딧 잔액이 아니라 API 키의 분당 한도 정보다.
- */
-export interface ProviderRateLimit {
-  /** epoch ms, 헤더를 본 시각 */
-  readonly observedAt: number;
-  readonly requests?: ProviderRateLimitWindow;
-  readonly inputTokens?: ProviderRateLimitWindow;
-  readonly outputTokens?: ProviderRateLimitWindow;
-}
-
 export interface ProviderDto {
   readonly status: ProviderStatus;
   readonly method?: CredentialMethod;
@@ -155,8 +135,6 @@ export interface ProviderDto {
   readonly spend?: ProviderSpend;
   /** 마지막 거절(402·429, Anthropic은 400 포함). 성공 사용량이 오면 사라진다. */
   readonly block?: ProviderBlock;
-  /** API 키 공급자(Anthropic)가 마지막 응답 헤더에서 읽은 분당 한도. `windows`가 아니다. */
-  readonly rateLimit?: ProviderRateLimit;
   readonly fetchedAt?: number;
   readonly message?: string;
 }
@@ -164,7 +142,7 @@ export interface ProviderDto {
 export interface QuotaSummaryDto {
   readonly providers: {
     /**
-     * Anthropic API 키(크레딧) — 플릿이 응답 usage로 센 이번 주 지출과 마지막 한도 헤더를 싣는다.
+     * Anthropic API 키(크레딧) — 플릿이 응답 usage로 센 이번 주 지출과 마지막 거절 사유를 싣는다.
      * 구독 `claude`와 별도 항목이다.
      */
     readonly anthropic: ProviderDto;

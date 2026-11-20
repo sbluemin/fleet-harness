@@ -6,7 +6,6 @@ import type { SettingsSectionDescriptor } from "../../settings/shared/types.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 import { getT } from "./i18n/index.js";
 import { isSpendProvider, SpendRows } from "./spend-section.js";
-import { RateLimitRows } from "./rate-limit.js";
 import type { QuotaWindow } from "@fleet-console/ai-gateway";
 import { beginLogin, expiredMessageKey, LOGIN_BODY_KEY, LOGIN_FAILURE_KEY, loginExpiredBody, NO_SUBSCRIPTION_KEY, providerName, signedOutMessageKey, UNREPORTED_PROVIDER, displayPlanName, loginPendingKey, meterSeverity, needsConsoleLogin, useLoginCodeField, useQuotaData, windowLabel, type LogoutProvider } from "./quota-panel.js";
 import { cancelLogin, getLoginStates, openExternal, resetLogin, startLogin, subscribeLogins } from "./provider-login.js";
@@ -58,9 +57,6 @@ function UsageList({ api }: { readonly api: ClientApiCapability }) {
                   resetText={t("mobile.usage.reset", { t: countdownText(provider.spend.resetsAt - now, locale) })}
                   saveBudget={(usd) => saveBudget(id, usd)}
                 />
-              ) : null}
-              {readable && provider.rateLimit !== undefined ? (
-                <RateLimitRows rateLimit={provider.rateLimit} now={now} locale={locale} t={t} />
               ) : null}
               {windows.map((window, index) => {
                 const severity = meterSeverity(window);
