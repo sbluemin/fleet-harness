@@ -3,8 +3,7 @@ import type { MapLayout } from "./map-layout.js";
 import type { MapPalette } from "./map-palette.js";
 
 /**
- * 렌더러 계약 — three.js(안 D)·Canvas 2D(안 B)·궤도(안 C)가 함께 지킨다.
- * 임무 3·4가 이 파일만 보고 각 렌더러를 붙인다.
+ * 렌더러 계약 — three.js(WebGL)·궤도(휴대폰)가 함께 지킨다.
  */
 
 export interface PositionedMapModel {
@@ -15,7 +14,7 @@ export interface PositionedMapModel {
 export interface MapRenderer {
   /**
    * 용기에 그리기 시작. WebGL 컨텍스트는 1개만 만들고, 터미널 WebGL 코드는 건드리지 않는다.
-   * 실패하면 throw하고 용기를 빈 채로 둔다 — 상위가 Canvas로 넘어간다.
+   * 실패하면 throw하고 용기를 빈 채로 둔다.
    */
   mount(container: HTMLElement, model: PositionedMapModel, palette: MapPalette): void;
   /** 모델·팔레트(테마 전환) 갈아끼우기 — 다시 mount하지 않는다. */
@@ -43,56 +42,33 @@ export interface MapRenderer {
    * 계약 밖 선택 사항이라 없어도 된다. 변마다 20%가 상한이다.
    */
   setFitInsets?(insets: { readonly top: number; readonly right: number; readonly bottom: number; readonly left: number }): void;
+  /** 동작 줄이기 전환 — 맥동과 맞춤 트윈을 멈춘다. */
+  setReducedMotion?(reduced: boolean): void;
   /** 닫을 때 — rAF·리스너를 걷고 WebGL 컨텍스트를 `loseContext`로 반납한다. */
   dispose(): void;
 }
 
-export type MapRendererKind = "webgl" | "canvas" | "orbit";
+export type MapRendererKind = "webgl" | "orbit";
 
 export interface MapRendererEnv {
-  readonly webgl2: boolean;
-  /** Console 설정의 동작 줄이기와 `prefers-reduced-motion`을 합친 값. */
-  readonly reducedMotion: boolean;
   readonly mobile: boolean;
 }
 
 /**
- * 렌더러 고르기 — WebGL2 없음·동작 줄이기→B(Canvas), 휴대폰→C(궤도), 그 외 D(WebGL).
- * 렌더러를 import하지 않는 순수 함수라 임무 3·4와 무관하게 검사된다.
+ * 렌더러 고르기 — 휴대폰→궤도, 그 외 WebGL.
+ * 렌더러를 import하지 않는 순수 함수다.
  */
 export function chooseMapRendererKind(env: MapRendererEnv): MapRendererKind {
-  if (env.mobile) return "orbit";
-  if (!env.webgl2 || env.reducedMotion) return "canvas";
-  return "webgl";
+  return env.mobile ? "orbit" : "webgl";
 }
 
 /**
- * WebGL2 판정 — 컨텍스트를 만들지 않는다. 탐색용 생성이 터미널 컨텍스트를
- * 밀어낼 수 있으므로 생성자 존재만 본다. 실제 실패(블록리스트 등)는
- * WebGL 렌더러의 `mount`가 throw하고, 상위에서 Canvas로 넘어간다.
+ * 지금 환경 읽기 — 휴대폰은 루트 `data-view-mode="mobile"`로만 본다(폭·포인터로 추측하지 않음).
  */
-export function probeWebgl2(): boolean {
-  try {
-    return typeof window !== "undefined" && typeof window.WebGL2RenderingContext !== "undefined";
-  } catch {
-    return false;
-  }
-}
-
-/**
- * 지금 환경 읽기 — `reducedMotion`은 Console 전역 설정값을 `overrides`로 합친다.
- * 휴대폰은 루트 `data-view-mode="mobile"`로만 본다(폭·포인터로 추측하지 않음).
- */
-export function detectMapRendererEnv(overrides: { readonly reducedMotion?: boolean } = {}): MapRendererEnv {
-  const media = typeof window !== "undefined" && typeof window.matchMedia === "function"
-    && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+export function detectMapRendererEnv(): MapRendererEnv {
   const mobile = typeof document !== "undefined"
     && document.documentElement.getAttribute("data-view-mode") === "mobile";
-  return {
-    webgl2: probeWebgl2(),
-    reducedMotion: media || overrides.reducedMotion === true,
-    mobile,
-  };
+  return { mobile };
 }
 
 export interface MapRendererModule {
@@ -101,19 +77,16 @@ export interface MapRendererModule {
 
 /**
  * 고른 렌더러를 지연 청크로 받아 만든다. 리터럴 경로라 각 렌더러가 자기 청크에 실린다.
- * mount가 throw하면 상위는 Canvas로 넘어간다(map-webgl도 mount 실패는 throw).
  */
 export async function loadMapRenderer(kind: MapRendererKind): Promise<MapRenderer> {
   switch (kind) {
     case "webgl": return (await import("./webgl/map-webgl-renderer.js") as MapRendererModule).createMapRenderer();
-    case "canvas": return (await import("./canvas/map-canvas-renderer.js") as MapRendererModule).createMapRenderer();
     case "orbit": return (await import("./orbit/map-orbit-renderer.js") as MapRendererModule).createMapRenderer();
   }
 }
 
 /**
- * 생성+mount를 묶은 진입점 — 로드·mount 실패는 Canvas로 넘어간다.
- * Canvas마저 실패하면 throw한다(그때 화면은 안내만 둔다).
+ * 생성+mount를 묶은 진입점 — mount가 실패하면 뒷정리 후 throw한다(화면은 안내만 둔다).
  */
 export async function mountMapRenderer(
   kind: MapRendererKind,
@@ -121,23 +94,12 @@ export async function mountMapRenderer(
   model: PositionedMapModel,
   palette: MapPalette,
 ): Promise<{ readonly renderer: MapRenderer; readonly kind: MapRendererKind }> {
-  if (kind === "canvas") {
-    const only = await loadMapRenderer("canvas");
-    only.mount(container, model, palette);
-    return { renderer: only, kind };
-  }
+  const renderer = await loadMapRenderer(kind);
   try {
-    const first = await loadMapRenderer(kind);
-    try {
-      first.mount(container, model, palette);
-    } catch (mountError) {
-      try { first.dispose(); } catch { /* 실패한 mount의 뒷정리도 실패하면 버린다 */ }
-      throw mountError;
-    }
-    return { renderer: first, kind };
-  } catch {
-    const fallback = await loadMapRenderer("canvas");
-    fallback.mount(container, model, palette);
-    return { renderer: fallback, kind: "canvas" };
+    renderer.mount(container, model, palette);
+  } catch (mountError) {
+    try { renderer.dispose(); } catch { /* 실패한 mount의 뒷정리도 실패하면 버린다 */ }
+    throw mountError;
   }
+  return { renderer, kind };
 }

@@ -5,7 +5,7 @@ import type { CommodoreState } from "../../shared/contracts/types.js";
 
 /**
  * 지도 그래프 모델 — 순수 TS. `commodore/state` 한 건과 `commodore/memory` 목록을
- * 노드·연결로 펼친다. 렌더러(three.js·Canvas 2D·궤도)가 함께 읽는 계약이다.
+ * 노드·연결로 펼친다. 렌더러(three.js·궤도)가 함께 읽는 계약이다.
  *
  * 보드 결정 반영:
  * - 499e8035: 정보는 최근 12개만 점, 나머지는 `intel-overflow` 1개(`+N`).

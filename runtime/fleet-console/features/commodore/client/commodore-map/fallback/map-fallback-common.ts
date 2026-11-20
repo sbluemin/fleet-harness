@@ -4,7 +4,7 @@ import type { MapEdge, MapGraph, MapNode } from "../map-graph.js";
 import { cssColorToRgb, mapPaletteToRgb, type MapPalette } from "../map-palette.js";
 
 /**
- * 대체 렌더러(안 B Canvas 2D·안 C 궤도)가 함께 쓰는 작은 도구 상자.
+ * 궤도 지도(휴대폰) 렌더러가 쓰는 작은 도구 상자.
  * 색은 `mapPaletteToRgb`가 토큰에서 읽은 값으로만 만들고, 여기서 raw 색을 새로 두지 않는다.
  * 크기·선·라벨 규칙은 시안 `commodore-mindmap.local.html`의 radius()·colorOf·render()·placeLabels(),
  * CSS `.gl-labels`를 그대로 옮긴 것이다(evidence `m9-mockup-gap.md` G3·G4·G5·G8).
