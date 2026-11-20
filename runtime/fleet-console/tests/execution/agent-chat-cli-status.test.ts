@@ -203,25 +203,30 @@ describe("commander chat client CLI failure state", () => {
     expect(snap.cliFailurePrompt).toBeUndefined();
   });
 
-  it("probes the shared CLAUDE_CONFIG_DIR without creating or deleting a temp dir when configDir is passed", async () => {
+  // 지휘관 채팅 자식(공유 홈)은 두 변수를 상속 그대로 둔다. 판정이 기본 홈 경로라도 명시로 세우면 macOS keychain 항목이
+  // 갈려 로그인된 사람을 미로그인으로 본다 — 상속이 없으면 없는 대로, 있으면(Linux/WSL 사용자 지정 홈) 있는 그대로 둔다.
+  it("probes the inherited shared home like the Commander chat child, without a temp dir or config-dir overrides", async () => {
     const createConfigDir = vi.fn();
     const removeConfigDir = vi.fn();
-    let seenEnv: NodeJS.ProcessEnv | undefined;
-    const result = await probeClaudeAuth("/fake/claude", {
-      configDir: "/shared/claude-home",
-      env: { PATH: "/usr/bin", ANTHROPIC_API_KEY: "secret" },
+    const seen: NodeJS.ProcessEnv[] = [];
+    const probe = (env: NodeJS.ProcessEnv) => probeClaudeAuth("/fake/claude", {
+      home: "shared",
+      env,
       createConfigDir,
       removeConfigDir,
-      run: async (_bin, _args, env) => {
-        seenEnv = env;
+      run: async (_bin, _args, childEnv) => {
+        seen.push(childEnv);
         return { stdout: JSON.stringify({ loggedIn: true }) };
       },
     });
-    expect(result).toBe("ready");
+    expect(await probe({ PATH: "/usr/bin", ANTHROPIC_API_KEY: "secret" })).toBe("ready");
+    expect(await probe({ PATH: "/usr/bin", CLAUDE_CONFIG_DIR: "/home/u/.claude-work" })).toBe("ready");
     expect(createConfigDir).not.toHaveBeenCalled();
     expect(removeConfigDir).not.toHaveBeenCalled();
-    expect(seenEnv?.CLAUDE_CONFIG_DIR).toBe("/shared/claude-home");
-    expect(seenEnv?.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBeUndefined();
-    expect(seenEnv?.ANTHROPIC_API_KEY).toBeUndefined();
+    expect("CLAUDE_CONFIG_DIR" in seen[0]!).toBe(false);
+    expect("CLAUDE_SECURESTORAGE_CONFIG_DIR" in seen[0]!).toBe(false);
+    expect(seen[0]?.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(seen[1]?.CLAUDE_CONFIG_DIR).toBe("/home/u/.claude-work");
+    expect("CLAUDE_SECURESTORAGE_CONFIG_DIR" in seen[1]!).toBe(false);
   });
 });
