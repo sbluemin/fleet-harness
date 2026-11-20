@@ -12,7 +12,7 @@
       "versionCode": 18,
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
-        "backgroundColor": "#F6F8FB"
+        "backgroundColor": "#F6F5F2"
       }
     },
     "ios": {
