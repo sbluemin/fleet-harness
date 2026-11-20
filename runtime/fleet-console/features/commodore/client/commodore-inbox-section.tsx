@@ -1008,13 +1008,20 @@ function saveDescriptionBoxHeight(height: number): void {
  * 사람이 적는 이 사령관 소개 — 데스크톱 신경망의 설명 노드 상세와 폰 정보 화면 맨 위가 함께 쓴다. 사령관은 읽기만 하고, 저장하면 개정이
  * 오르며 사령관을 깨운다.
  */
-export function CommodoreDescription({ t, commodoreId, description, onFail, onClear, phone = false, online = true }: { readonly t: T; readonly commodoreId: string; readonly description: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly phone?: boolean; readonly online?: boolean }) {
+export function CommodoreDescription({ t, commodoreId, description, onFail, onClear, phone = false, online = true, autoEditKey }: { readonly t: T; readonly commodoreId: string; readonly description: { readonly text: string; readonly rev: number; readonly updatedAt: number }; readonly onFail: (error: unknown) => void; readonly onClear: () => void; readonly phone?: boolean; readonly online?: boolean; readonly autoEditKey?: number }) {
   const [draft, setDraft] = useState(() => sheetDraft(commodoreId).description ?? description.text);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const fieldRef = useRef<HTMLTextAreaElement | null>(null);
   const previewRef = useRef<HTMLButtonElement | null>(null);
+  const lastAutoEditKey = useRef(0);
   const fieldId = useId();
+  useEffect(() => {
+    if (!autoEditKey || autoEditKey === lastAutoEditKey.current || !online) return;
+    lastAutoEditKey.current = autoEditKey;
+    onClear();
+    setEditing(true);
+  }, [autoEditKey, online]); // eslint-disable-line react-hooks/exhaustive-deps -- 요청 nonce가 증가할 때만 편집을 연다.
   // 편집을 열 때만 저장한 높이와 입력 끝 포커스를 되살린다.
   useLayoutEffect(() => {
     const node = fieldRef.current;
@@ -1119,16 +1126,28 @@ export function useCommodoreIntelAdd(theaterId: string, { phone = false, online 
   };
 }
 
-export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }: {
+export function CommodoreIntel({ t, theaterId, intel, sources, selectedId, focusAddKey, onFail, onClear }: {
   readonly t: T;
   readonly theaterId: string;
   readonly intel: readonly { readonly id: string; readonly at: number; readonly source: string; readonly text: string; readonly editedAt?: number | undefined }[];
   readonly sources: readonly { readonly id: string; readonly kind: string; readonly label: string; readonly locator: string }[];
+  /** 신경망에서 고른 정보 항목 — 목록에서 같은 줄을 은은히 짚어 편집·삭제 대상을 바로 찾게 한다. */
+  readonly selectedId?: string | null;
+  /** 요약·빈 상태에서 「+ 정보 추가」를 눌렀을 때 입력창으로 바로 초점을 옮긴다. */
+  readonly focusAddKey?: number;
   readonly onFail: (error: unknown) => void;
   readonly onClear: () => void;
 }) {
   const editing = useCommodoreIntelEdits(theaterId, intel, { onClear });
   const adder = useCommodoreIntelAdd(theaterId, { onFail, onClear });
+  const addInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastFocusAddKey = useRef(0);
+  useEffect(() => {
+    if (!focusAddKey || focusAddKey === lastFocusAddKey.current) return;
+    lastFocusAddKey.current = focusAddKey;
+    const frame = window.requestAnimationFrame(() => addInputRef.current?.focus({ preventScroll: true }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusAddKey]);
   const hintId = `objectives-commodore-intel-add-hint-${theaterId}`;
   const sourceLabel = (source: string) => source === "person" ? t("commodore.intel.fromYou") : sources.find((candidate) => candidate.id === source)?.label ?? source;
   const day = (at: number) => { const date = new Date(at); return `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`; };
@@ -1146,7 +1165,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
             if (edit) {
               const unchanged = edit.draft.trim() === item.text;
               return (
-                <li key={item.id} className="is-editing">
+                <li key={item.id} className={`is-editing${selectedId === item.id ? " is-picked" : ""}`}>
                   <span className="objectives-commodore-intel-when">{day(item.at)}</span>
                   <div className="objectives-commodore-intel-edit">
                     <textarea
@@ -1176,7 +1195,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
               );
             }
             return (
-              <li key={item.id}>
+              <li key={item.id} className={selectedId === item.id ? "is-picked" : undefined}>
                 <span className="objectives-commodore-intel-when">{day(item.at)}</span>
                 {/* 본문을 누르면 그 자리에서 고친다 — 글을 끌어 고른 뒤의 클릭은 복사하려는 것이라 열지 않는다. */}
                 <span className="objectives-commodore-intel-text is-editable" onClick={() => { if (!window.getSelection()?.toString()) editing.open(item.id); }}>{item.text}{meta}</span>
@@ -1194,6 +1213,7 @@ export function CommodoreIntel({ t, theaterId, intel, sources, onFail, onClear }
         <span className="objectives-row-ic objectives-plus" aria-hidden="true"><PlusGlyph /></span>
         <div className="objectives-commodore-intel-add-body">
           <textarea
+            ref={addInputRef}
             {...adder.field}
             aria-label={t("commodore.intel.add")}
             placeholder={t("commodore.intel.add")}

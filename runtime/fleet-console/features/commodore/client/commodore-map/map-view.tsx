@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
+import { PlusGlyph } from "@fleet-console/ui/react";
 
 import { useAvatarToneOf } from "../../../workspace/client/avatar-accent.js";
 import { commodoreAvatarKey } from "../../../workspace/shared/avatars.js";
@@ -19,7 +20,7 @@ import {
   type MapChipKey,
   type MapNode,
 } from "./map-graph.js";
-import { MapPanel, type MapPanelFacts } from "./map-panel.js";
+import { MapPanel, mapDisplayLabels, type MapPanelFacts } from "./map-panel.js";
 import { setCommodoreMapSelection, useCommodoreMapSelection } from "../commodore-map-mode.js";
 import { layoutMapGraph } from "./map-layout.js";
 import {
@@ -85,7 +86,13 @@ function FitGlyph() {
 }
 
 /** 무대 위에 겹친 조작 층 — 여기서 난 클릭은 지도 고르기로 넘기지 않는다. */
-const STAGE_OVERLAY = ".commodore-map-node, .commodore-map-top, .commodore-map-legend";
+const STAGE_OVERLAY = ".commodore-map-node, .commodore-map-top, .commodore-map-legend, .commodore-map-notice";
+/** 이 거리(px) 이상 움직인 포인터는 회전·이동 끌기라 release 클릭에서 선택을 바꾸지 않는다. */
+const STAGE_DRAG_THRESHOLD_PX = 4;
+
+function isHubKind(kind: MapNode["kind"]): boolean {
+  return kind === "core" || kind === "description" || kind === "intel-hub" || kind === "intel-overflow" || kind === "branch" || kind === "source";
+}
 
 function branchChipLabel(t: T, branch: MapBranchKey): string {
   if (branch === "description") return t("commodore.description.label");
@@ -96,14 +103,18 @@ function branchChipLabel(t: T, branch: MapBranchKey): string {
 /**
  * 사령관 지도 화면 — 대화 영역 전체를 차지한다. 그리기·고르기·화면 좌표는
  * MapRenderer 계약에만 기대고, 종류는 환경(모바일·동작 줄이기·WebGL2)으로 고른다.
- * 렌더러 로드·mount 실패는 Canvas로 넘어간다. 닫히면 dispose로 반납한다.
+ * 렌더러 로드·mount 실패는 안내를 둔다. 닫히면 dispose로 반납한다.
  */
-export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showPanel }: {
+export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNodeActivate, onQuickEdit, showPanel }: {
   readonly t: T;
   readonly commodoreId: string;
   readonly state: CommodoreState;
   readonly facts: MapPanelFacts;
   readonly onExit: () => void;
+  /** 점을 골랐을 때 상세를 보여 줄 수 있도록 호출한다(데스크톱에서 닫힌 우측 사이드바 열기). */
+  readonly onNodeActivate?: () => void;
+  /** 빈 상태 안내의 「+ 설명 추가 / + 정보 추가」에서 한 번에 편집까지 연다. */
+  readonly onQuickEdit?: (target: "desc" | "intel") => void;
   /** 모바일처럼 레일이 없으면 상세 패널을 무대 아래에 둔다. 기본은 두지 않는다(레일이 맡는다). */
   readonly showPanel?: boolean;
 }) {
@@ -114,10 +125,14 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   const osReduced = useOsReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasHostRef = useRef<HTMLDivElement>(null);
+  const topRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
   const tagRefs = useRef(new Map<string, HTMLDivElement>());
   const rovingRef = useRef<string | null>(null);
+  const hoverRafRef = useRef(0);
+  const dragRef = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
+  const suppressClickRef = useRef(false);
   // 종류 단추는 고르기다 — 비어 있으면 전부, 고르면 고른 종류만 선다.
   const [picks, setPicks] = useState<ReadonlySet<MapChipKey>>(() => new Set());
   const [query, setQuery] = useState("");
@@ -127,6 +142,11 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   // 선택은 가운데 칸과 레일이 함께 읽는다(사령관별 저장소).
   const selectedId = useCommodoreMapSelection(commodoreId);
   const setSelectedId = useCallback((next: string | null) => setCommodoreMapSelection(commodoreId, next), [commodoreId]);
+  const selectNode = useCallback((next: string | null) => {
+    setCommodoreMapSelection(commodoreId, next);
+    if (next !== null) onNodeActivate?.();
+  }, [commodoreId, onNodeActivate]);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
   // (a) D4 DOM 라벨 층은 WebGL일 때만 — 궤도는 캔버스에 직접 그린다.
@@ -142,13 +162,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   reducedRef.current = reduced;
 
   const branchName = useCallback((branch: MemoryBranch): string => t(MEMORY_BRANCH_LABEL[branch]), [t]);
-  const labels = useMemo(() => ({
-    description: t("commodore.description.label"),
-    intelHub: t("commodore.intel.label"),
-    branch: branchName,
-    personSource: t("commodore.intel.fromYou"),
-    source: (label: string): string => t("commodore.map.node.source", { label }),
-  }), [t, branchName]);
+  const labels = useMemo(() => mapDisplayLabels(t, branchName), [t, branchName]);
   // 배치는 링크까지 든 전체 그래프로 한 번만 잡는다 — 종류를 골라 링크가 빠져도 점이 튀어 옮겨 가지 않는다.
   const fullGraph = useMemo(
     () => buildMapGraph({ state, memories: memory.entries, tone: coreTone, labels }),
@@ -180,6 +194,25 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   const isEmpty = state.description.text === "" && graph.intelTotal === 0 && memory.entries.length === 0;
   const selectedNode = selectedId ? resolveMapDetailNode(graph, selectedId, state, memory.entries) : null;
   const selected: { readonly node: MapNode } | null = selectedNode ? { node: selectedNode } : null;
+  // 오래된 정보(+N 묶음 안)를 고르면 캔버스에서는 `+N` 묶음 점을 강조한다.
+  const canvasSelectionId = useMemo((): string | null => {
+    if (selectedId === null) return null;
+    if (graph.byId.has(selectedId)) return selectedId;
+    if (selectedId.startsWith("intel:") && graph.byId.has("intel-overflow")) return "intel-overflow";
+    return selectedId;
+  }, [selectedId, graph]);
+  // 캔버스 초점 — 호버 우선, 없으면 선택. 가려진 점은 초점으로 삼지 않는다.
+  const activeFocusId = useMemo((): string | null => {
+    if (hoveredId !== null && visible.has(hoveredId)) return hoveredId;
+    if (canvasSelectionId !== null && visible.has(canvasSelectionId)) return canvasSelectionId;
+    return null;
+  }, [hoveredId, canvasSelectionId, visible]);
+  const focusSet = useMemo((): ReadonlySet<string> | null => {
+    if (activeFocusId === null) return null;
+    const set = new Set<string>([activeFocusId]);
+    for (const neighbor of graph.adjacent.get(activeFocusId) ?? []) set.add(neighbor);
+    return set;
+  }, [activeFocusId, graph]);
   // D6 — 노드 층의 Tab 정지점은 하나로, 방향키로 옮겨 다닌다.
   const orderedIds = useMemo(() => [...visible], [visible]);
   const [roving, setRoving] = useState<string | null>(null);
@@ -200,6 +233,27 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     return out;
   }, [hits, orderedIds, graph]);
   const hitLabelSet = useMemo(() => new Set(hitLabelIds), [hitLabelIds]);
+  // 호버·선택 점은 잎이어도 이름표를 띄운다. 이웃은 뼈대(허브·주제·출처·묶음)를 우선 띄우고,
+  // 잎끼리 직접 연결된 경우에만 잎 이웃 이름표를 함께 띄워 허브 선택 시 잎 라벨 난립을 막는다.
+  const focusLabelSet = useMemo((): ReadonlySet<string> => {
+    if (!focusSet || activeFocusId === null) return new Set();
+    const out = new Set<string>();
+    if (visible.has(activeFocusId)) out.add(activeFocusId);
+    const activeKind = graph.byId.get(activeFocusId)?.kind;
+    const activeIsLeaf = activeKind === "memory" || activeKind === "intel" || activeKind === "objective";
+    let extra = 0;
+    for (const id of focusSet) {
+      if (id === activeFocusId || !visible.has(id)) continue;
+      const kind = graph.byId.get(id)?.kind;
+      if (!kind) continue;
+      const isLeaf = kind === "memory" || kind === "intel" || kind === "objective";
+      if (isLeaf && !activeIsLeaf) continue;
+      if (extra >= 16) break;
+      out.add(id);
+      extra += 1;
+    }
+    return out;
+  }, [focusSet, activeFocusId, visible, graph]);
 
   const modelRef = useRef(model);
   modelRef.current = model;
@@ -207,18 +261,27 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   visibleRef.current = visible;
   const selectedRef = useRef(selectedId);
   selectedRef.current = selectedId;
+  const canvasSelectionRef = useRef(canvasSelectionId);
+  canvasSelectionRef.current = canvasSelectionId;
+  const activeFocusRef = useRef(activeFocusId);
+  activeFocusRef.current = activeFocusId;
+  const focusSetRef = useRef(focusSet);
+  focusSetRef.current = focusSet;
   const hitLabelsRef = useRef<readonly string[]>([]);
   hitLabelsRef.current = hitLabelIds;
+  const focusLabelSetRef = useRef<ReadonlySet<string>>(focusLabelSet);
+  focusLabelSetRef.current = focusLabelSet;
   const paletteRef = useRef(palette);
   paletteRef.current = palette;
 
-  // D4 — 핵·허브 라벨은 항상, 주제 라벨은 겹치지 않을 때만 DOM 층에 띠운다.
+  // D4 — 핵·허브 라벨은 항상, 호버·선택 점은 최우선, 이웃·주제·검색 일치는 겹치지 않을 때만 DOM 층에 띄운다.
   // 렌더러를 고치지 않고 project 좌표를 읽으므로 끌기·확대 때 따라 움직인다.
   const syncPositions = useCallback((): void => {
     const renderer = rendererRef.current;
     if (!renderer) return;
     try {
       const spots = new Map<string, { x: number; y: number }>();
+      const hubSpots: { id: string; x: number; y: number }[] = [];
       for (const [id, element] of buttonRefs.current) {
         if (!visibleRef.current.has(id)) {
           element.style.display = "none";
@@ -236,11 +299,15 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
           element.removeAttribute("aria-hidden");
           element.style.transform = `translate(${point.x.toFixed(1)}px, ${point.y.toFixed(1)}px) translate(-50%, -50%)`;
           spots.set(id, point);
+          const kind = modelRef.current.graph.byId.get(id)?.kind;
+          if (kind && isHubKind(kind)) hubSpots.push({ id, x: point.x, y: point.y });
         }
       }
-      // 라벨 자리 — 핵·가지 허브부터 잡고, 주제·검색 일치는 겹치지 않을 때만 선다.
-      // 시안대로 점 오른쪽에 둔다.
+      const focusIdNow = activeFocusRef.current;
+      const focusNow = focusSetRef.current;
+      const stageW = containerRef.current?.clientWidth ?? 0;
       const shown: { x0: number; y0: number; x1: number; y1: number }[] = [];
+      const placed = new Set<string>();
       const rectOf = (x: number, y: number, w: number): { x0: number; y0: number; x1: number; y1: number } => ({ x0: x, y0: y - 10, x1: x + w, y1: y + 10 });
       const near = (rect: { x0: number; y0: number; x1: number; y1: number }): boolean => shown.some((spot) => rect.x0 < spot.x1 && spot.x0 < rect.x1 && rect.y0 < spot.y1 && spot.y0 < rect.y1);
       // 점 무리에 묻힌 이름표는 읽히지 않으니 세우지 않는다.
@@ -251,37 +318,75 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
         }
         return false;
       };
-      const place = (id: string, node: MapNode, lift: number, always: boolean): void => {
+      const hitsHub = (id: string, rect: { x0: number; y0: number; x1: number; y1: number }, pad = 14): boolean =>
+        hubSpots.some((spot) => spot.id !== id && spot.x > rect.x0 - pad && spot.x < rect.x1 + pad && spot.y > rect.y0 - pad && spot.y < rect.y1 + pad);
+      const place = (id: string, node: MapNode, lift: number, always: boolean, allowCrowded = false): void => {
+        if (placed.has(id)) return;
         const element = tagRefs.current.get(id);
         const point = spots.get(id);
         if (!element || !point) return;
-        const w = Math.min(220, node.label.length * 6.5 + 8);
-        // 무대 오른쪽에서 잘리지 않게 안쪽으로 민다.
-        const maxX = Math.max(4, (containerRef.current?.clientWidth ?? 0) - w - 4);
-        const x = Math.max(4, Math.min(point.x + lift, maxX));
-        const y = point.y;
-        const rect = rectOf(x, y, w);
-        if (!always && (near(rect) || crowded(id, x, y))) {
+        const w = Math.min(220, node.label.length * 7.5 + 10);
+        const maxX = Math.max(4, stageW - w - 4);
+        let x = Math.max(4, Math.min(point.x + lift, maxX));
+        let y = point.y;
+        let rect = rectOf(x, y, w);
+        // 출처 이름표는 바로 오른쪽의 허브(설명 등)나 줄기를 덮기 쉬우므로, 닿으면 구슬 위쪽 빈 자리에 얹는다.
+        if (node.kind === "source" && hitsHub(id, rect, 32)) {
+          const aboveX = Math.max(4, Math.min(point.x - w / 2, maxX));
+          const aboveY = point.y - 22;
+          const aboveRect = rectOf(aboveX, aboveY, w);
+          if (aboveY >= 20 && !hitsHub(id, aboveRect, 18)) {
+            x = aboveX;
+            y = aboveY;
+            rect = aboveRect;
+          } else {
+            const leftX = point.x - lift - w;
+            if (leftX >= 4) {
+              const leftRect = rectOf(leftX, y, w);
+              if (!hitsHub(id, leftRect, 18)) {
+                x = leftX;
+                rect = leftRect;
+              }
+            }
+          }
+        }
+        if (!always && (near(rect) || (!allowCrowded && crowded(id, x, y)))) {
           element.style.display = "none";
           return;
         }
         element.style.display = "";
         element.style.transform = `translate(${x.toFixed(1)}px, ${y.toFixed(1)}px) translate(0, -50%)`;
+        if (focusNow !== null && !focusNow.has(id)) element.dataset.dim = "true";
+        else delete element.dataset.dim;
+        if (id === focusIdNow) element.dataset.focus = "true";
+        else delete element.dataset.focus;
         shown.push(rect);
+        placed.add(id);
       };
-      for (const [id] of tagRefs.current) {
-        if (!spots.has(id)) {
-          const element = tagRefs.current.get(id);
-          if (element) element.style.display = "none";
-        }
+      for (const [id, element] of tagRefs.current) {
+        if (!spots.has(id)) element.style.display = "none";
       }
+      // 1) 지금 가리키거나 고른 점의 이름표를 가장 먼저 세운다(가려지지 않음).
+      if (focusIdNow !== null && visibleRef.current.has(focusIdNow)) {
+        const focusNode = modelRef.current.graph.byId.get(focusIdNow);
+        if (focusNode) place(focusIdNow, focusNode, focusNode.kind === "core" ? 22 : isHubKind(focusNode.kind) ? 18 : 14, true, true);
+      }
+      // 2) 핵·갈래 허브 이름표.
       for (const id of visibleRef.current) {
         const node = modelRef.current.graph.byId.get(id);
-        if (!node) continue;
-        if (node.kind !== "core" && node.kind !== "description" && node.kind !== "intel-hub" && node.kind !== "intel-overflow" && node.kind !== "branch" && node.kind !== "source") continue;
+        if (!node || !isHubKind(node.kind)) continue;
         place(id, node, node.kind === "core" ? 20 : 16, true);
       }
+      // 3) 초점 점과 직접 연결된 이웃(목표·기억·주제·정보) 이름표 — 겹치지 않을 때만.
+      for (const id of focusLabelSetRef.current) {
+        if (placed.has(id) || !visibleRef.current.has(id)) continue;
+        const node = modelRef.current.graph.byId.get(id);
+        if (!node) continue;
+        place(id, node, 12, false, true);
+      }
+      // 4) 주제·검색 일치 이름표.
       for (const id of visibleRef.current) {
+        if (placed.has(id)) continue;
         const node = modelRef.current.graph.byId.get(id);
         if (!node) continue;
         if (node.kind !== "topic" && !hitLabelsRef.current.includes(id)) continue;
@@ -319,24 +424,24 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     return () => observer.disconnect();
   }, []);
 
-  // (b) setFitInsets는 렌더러가 맞춤 보기를 다시 돌리므로 마운트·크기 변경 때만 부른다.
-  // 선택·검색·테마로는 바꾸지 않는다 — 확대·회전해 둔 보기가 튀어 돌아가지 않게.
-  // 칩이 무대 안에 겹치므로 위쪽 여백은 칩 줄 높이 정도만 둔다.
+  // (b) setFitInsets는 마운트·크기 변경 때만 부른다. 상세 패널은 우측 레일(또는 모바일 하단)에 있으므로
+  // 무대 오른쪽에 340px 여백을 남기지 않고 좌우 대칭으로 두며, 위쪽 여백은 실제 칩 줄 높이를 따른다.
   const applyInsets = useCallback((): void => {
+    const topH = topRef.current?.offsetHeight ?? 52;
     rendererRef.current?.setFitInsets?.({
-      top: 64,
-      right: selectedRef.current ? 340 : 16,
-      bottom: 24,
+      top: topH + 20,
+      right: 24,
+      bottom: 56,
       left: 24,
     });
   }, []);
 
-  // 생성·반납 — 실패하면 안내만 둔다.
+  // 생성·반납 — 비어 있어도 핵심·갈래 허브 뼈대는 그려 설명·정보를 바로 눌러 편집할 수 있게 한다.
   // 보기 변화 알림(onViewChange)이 오면 DOM 층을 다시 읽는다. 첫 그림·맞춤 트윈이
   // 비동기라 마운트 직후에는 짧게 따라가며 동기화한다(수정 4 D1).
   useEffect(() => {
     const host = canvasHostRef.current;
-    if (!host || isEmpty) return;
+    if (!host || !memory.loaded || memory.failed) return;
     let cancelled = false;
     let owned: MapRenderer | null = null;
     let offView: (() => void) | null = null;
@@ -359,7 +464,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
         }
         renderer.setReducedMotion?.(reducedRef.current);
         renderer.setFilter(visibleRef.current);
-        renderer.setSelection(selectedRef.current);
+        renderer.setSelection(canvasSelectionRef.current);
         applyInsets();
         renderer.fit();
         offView = renderer.onViewChange?.(() => syncPositions()) ?? null;
@@ -372,6 +477,8 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     return () => {
       cancelled = true;
       stopTracking();
+      cancelAnimationFrame(hoverRafRef.current);
+      hoverRafRef.current = 0;
       offView?.();
       setRendererKind(null);
       const ownedNow = owned ?? rendererRef.current;
@@ -382,7 +489,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
       tagRefs.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMobile, retryToken, isEmpty]);
+  }, [isMobile, retryToken, memory.loaded, memory.failed]);
 
   useEffect(() => {
     rendererRef.current?.setReducedMotion?.(reduced);
@@ -405,16 +512,43 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     }
   }, [model, palette, visible, rovingId, syncPositions]);
 
+  // 호버·선택 변화로 새 이름표가 마운트되거나 흐림 상태가 바뀌면 DOM 위치를 다시 맞춘다.
   useEffect(() => {
-    rendererRef.current?.setSelection(selectedId);
-  }, [selectedId]);
+    syncPositions();
+  }, [activeFocusId, focusSet, focusLabelSet, syncPositions]);
 
-  // Esc — 고른 점을 먼저 풀고, 없으면 채팅으로 돌아간다.
+  useEffect(() => {
+    rendererRef.current?.setSelection(canvasSelectionId);
+    // 패널·경로·키보드로 다른 점을 고르면 커서가 전에 머물던 호버 초점을 비워 새 선택으로 곧장 옮긴다.
+    setHoveredId((prev) => (prev !== null && prev !== canvasSelectionId ? null : prev));
+  }, [canvasSelectionId]);
+
+  // 칩 필터가 지금 고른 점을 가리면 선택을 비워 보이지 않는 점 때문에 화면 전체가 흐려지지 않게 한다.
+  useEffect(() => {
+    if (picks.size === 0 || selectedId === null) return;
+    const kept = graph.byId.has(selectedId)
+      ? visible.has(selectedId)
+      : selectedId.startsWith("intel:")
+        ? visible.has("intel-overflow") || visible.has("intel")
+        : selectedId.startsWith("obj:")
+          ? picks.has("objective")
+          : false;
+    if (!kept) setSelectedId(null);
+  }, [picks, selectedId, graph, visible, setSelectedId]);
+
+  // Esc — 모달·메뉴·범례가 열려 있으면 건드리지 않고, 고른 점을 먼저 풀며 없으면 채팅으로 돌아간다.
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
-      if (event.key !== "Escape") return;
+      if (event.key !== "Escape" || event.defaultPrevented) return;
       const target = event.target as HTMLElement | null;
       if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      if (document.querySelector('[aria-modal="true"], [role="dialog"], [role="menu"], [role="listbox"]')) return;
+      const openLegend = containerRef.current?.querySelector<HTMLDetailsElement>(".commodore-map-legend details[open]");
+      if (openLegend) {
+        event.preventDefault();
+        openLegend.open = false;
+        return;
+      }
       event.preventDefault();
       const picked = selectedRef.current;
       if (!picked) { onExit(); return; }
@@ -427,7 +561,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     };
     window.addEventListener("keydown", handleKeyDown, true);
     return () => window.removeEventListener("keydown", handleKeyDown, true);
-  }, [onExit]);
+  }, [onExit, setSelectedId]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -437,8 +571,9 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
       syncPositions();
     });
     observer.observe(container);
+    if (topRef.current) observer.observe(topRef.current);
     return () => observer.disconnect();
-  }, [syncPositions, applyInsets]);
+  }, [syncPositions, applyInsets, memory.loaded, memory.failed, loadError]);
 
   const togglePick = (key: MapChipKey): void => {
     setPicks((current) => {
@@ -492,29 +627,43 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     }
   };
 
-  let hoverRaf = 0;
+  const applyHover = useCallback((id: string | null): void => {
+    rendererRef.current?.setHover(id);
+    setHoveredId((current) => (current === id ? current : id));
+  }, []);
+
   const handleMouseMove = (event: React.MouseEvent): void => {
-    if (hoverRaf) return;
+    if (dragRef.current?.moved) return;
+    if (hoverRafRef.current) return;
     const { clientX, clientY } = event;
-    hoverRaf = requestAnimationFrame(() => {
-      hoverRaf = 0;
+    hoverRafRef.current = requestAnimationFrame(() => {
+      hoverRafRef.current = 0;
       const renderer = rendererRef.current;
       if (!renderer) return;
       try {
         const id = pickAt(clientX, clientY);
-        renderer.setHover(id);
-        const container = containerRef.current;
-        if (container) container.style.cursor = id ? "pointer" : "";
+        applyHover(id);
       } catch {
         /* hover 실패는 무시한다 */
       }
     });
   };
 
+  const handleMouseLeave = (): void => {
+    cancelAnimationFrame(hoverRafRef.current);
+    hoverRafRef.current = 0;
+    applyHover(null);
+  };
+
   const searching = query.trim().length > 0;
   // 휴대폰 폭에서 접힌 검색은 돋보기만 보인다 — 그때는 돋보기가 키보드 정지점이다. 보기 방식 바뀜은 위 관찰자가 다시 그리게 한다.
   const searchCollapsed = document.documentElement.dataset.viewMode === "mobile" && !searchOpen && !searching;
-  const matchCount = hits?.size ?? 0;
+  const visibleMatchCount = useMemo((): number => {
+    if (!hits) return 0;
+    let count = 0;
+    for (const id of hits) if (visible.has(id)) count += 1;
+    return count;
+  }, [hits, visible]);
 
   return (
     <div className="commodore-map-screen" role="group" aria-label={t("commodore.map.title")}>
@@ -522,11 +671,17 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
           <div
             ref={containerRef}
             className="commodore-map-stage"
+            data-renderer={rendererKind ?? undefined}
+            data-hover={hoveredId !== null ? "true" : undefined}
             onClick={(event) => {
-              // 점·위쪽 줄(검색·칩·맞춤 보기)·범례를 누른 것은 지도 고르기가 아니다 — 그 아래 점을 고르거나 선택을 풀지 않는다.
+              if (suppressClickRef.current) {
+                suppressClickRef.current = false;
+                return;
+              }
+              // 점·위쪽 줄(검색·칩·맞춤 보기)·범례·안내를 누른 것은 지도 고르기가 아니다 — 그 아래 점을 고르거나 선택을 풀지 않는다.
               if ((event.target as HTMLElement).closest(STAGE_OVERLAY)) return;
               const id = pickAt(event.clientX, event.clientY);
-              setSelectedId(id === selectedId ? null : id);
+              selectNode(id === selectedId ? null : id);
               if (id !== null) setRoving(id);
             }}
             onDoubleClick={(event) => {
@@ -535,10 +690,34 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
               trackMotion(600);
             }}
             onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
             onKeyDown={handleStageKeyDown}
-            onPointerDown={() => trackMotion(Infinity)}
-            onPointerUp={() => trackMotion(800)}
-            onPointerCancel={() => stopTracking()}
+            onPointerDown={(event) => {
+              suppressClickRef.current = false;
+              dragRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: event.button !== 0 };
+              trackMotion(Infinity);
+            }}
+            onPointerMove={(event) => {
+              const drag = dragRef.current;
+              if (!drag || drag.id !== event.pointerId || drag.moved) return;
+              if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) >= STAGE_DRAG_THRESHOLD_PX) {
+                drag.moved = true;
+                applyHover(null);
+              }
+            }}
+            onPointerUp={(event) => {
+              const drag = dragRef.current;
+              if (drag && drag.id === event.pointerId) {
+                if (drag.moved) suppressClickRef.current = true;
+                dragRef.current = null;
+              }
+              trackMotion(800);
+            }}
+            onPointerCancel={() => {
+              dragRef.current = null;
+              suppressClickRef.current = false;
+              stopTracking();
+            }}
           >
             <div ref={canvasHostRef} className="commodore-map-canvas-host" aria-hidden="true" />
             {!memory.loaded ? (
@@ -548,8 +727,6 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                 {t("commodore.memory.failed")}{" "}
                 <button type="button" className="commodore-map-icon-btn" onClick={() => void loadCommodoreMemory(commodoreId)}>{t("commodore.map.retry")}</button>
               </div>
-            ) : isEmpty ? (
-              <div className="commodore-map-state">{t("commodore.map.empty")}</div>
             ) : loadError ? (
               <div className="commodore-map-state">
                 {t("commodore.map.failed", { code: loadError })}{" "}
@@ -574,16 +751,16 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                       data-branch={node.branch ?? ""}
                       data-fresh={node.fresh}
                       data-stale={node.stale}
-                      data-selected={selectedId === id}
+                      data-selected={canvasSelectionId === id}
                       aria-label={nodeAria(t, node, branchName, graph.intelTotal)}
                       tabIndex={rovingId === id ? 0 : -1}
                       onClick={(event) => {
                         event.stopPropagation();
-                        setSelectedId(selectedId === id ? null : id);
+                        selectNode(selectedId === id ? null : id);
                         setRoving(id);
                       }}
-                      onFocus={() => { setRoving(id); rendererRef.current?.setHover(id); }}
-                      onBlur={() => rendererRef.current?.setHover(null)}
+                      onFocus={() => { setRoving(id); applyHover(id); }}
+                      onBlur={() => applyHover(null)}
                     />
                   );
                 })}
@@ -592,8 +769,8 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                 {rendererKind === "webgl" ? [...visible].map((id) => {
                   const node = graph.byId.get(id);
                   if (!node) return null;
-                  const hub = node.kind === "core" || node.kind === "description" || node.kind === "intel-hub" || node.kind === "intel-overflow" || node.kind === "branch" || node.kind === "source";
-                  if (!hub && node.kind !== "topic" && !hitLabelSet.has(id)) return null;
+                  const hub = isHubKind(node.kind);
+                  if (!hub && node.kind !== "topic" && !hitLabelSet.has(id) && !focusLabelSet.has(id)) return null;
                   return (
                     <div
                       key={id}
@@ -609,7 +786,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                   );
                 }) : null}
               </div>
-              <div className="commodore-map-top">
+              <div ref={topRef} className="commodore-map-top">
               <div className="commodore-map-top-row">
               <div className="commodore-map-chips" role="group" aria-label={t("commodore.map.chips")}>
                 <div className="commodore-map-search" role="search" data-open={searchOpen || searching ? "true" : undefined}>
@@ -625,10 +802,21 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                     ref={searchRef}
                     value={query}
                     onChange={(event) => setQuery(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== "Escape") return;
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (query !== "") { setQuery(""); return; }
+                      searchRef.current?.blur();
+                      setSearchOpen(false);
+                    }}
                     onBlur={() => { if (query.trim() === "") setSearchOpen(false); }}
                     placeholder={t("commodore.map.search")}
                     aria-label={t("commodore.map.search")}
                   />
+                  {searching && visibleMatchCount > 0 ? (
+                    <span className="commodore-map-search-count" aria-live="polite">{t("commodore.map.matches", { n: visibleMatchCount })}</span>
+                  ) : null}
                   <button
                     type="button"
                     className="commodore-map-icon-btn commodore-map-search-clear"
@@ -688,6 +876,25 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
               {/* 끌기·휠 조작은 WebGL만 받는다 — 휴대폰 궤도는 좁은 화면이라 시안대로 숨긴다. */}
               {rendererKind === "webgl" ? <div className="commodore-map-hint" aria-hidden="true">{t("commodore.map.hint")}</div> : null}
               </div>
+              {searching && visibleMatchCount === 0 ? (
+                <div className="commodore-map-notice" role="status">{t("commodore.map.noMatch")}</div>
+              ) : isEmpty ? (
+                <div className="commodore-map-notice" role="status">
+                  <span>{t("commodore.map.empty")}</span>
+                  {!showPanel ? (
+                    <span className="commodore-map-notice-actions">
+                      <button type="button" className="commodore-map-notice-btn" onClick={() => (onQuickEdit ? onQuickEdit("desc") : selectNode("desc"))}>
+                        <span className="commodore-map-quick-plus" aria-hidden="true"><PlusGlyph /></span>
+                        <span>{t("commodore.description.add")}</span>
+                      </button>
+                      <button type="button" className="commodore-map-notice-btn" onClick={() => (onQuickEdit ? onQuickEdit("intel") : selectNode("intel"))}>
+                        <span className="commodore-map-quick-plus" aria-hidden="true"><PlusGlyph /></span>
+                        <span>{t("commodore.intel.add")}</span>
+                      </button>
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="commodore-map-legend">
                 <details>
                   <summary>{t("commodore.map.legend.title")}</summary>
@@ -735,7 +942,6 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
           />
           ) : null}
         </div>
-        {searching && matchCount === 0 ? <div className="commodore-map-state">{t("commodore.map.noMatch")}</div> : null}
     </div>
   );
 }

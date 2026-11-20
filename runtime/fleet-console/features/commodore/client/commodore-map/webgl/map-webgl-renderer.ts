@@ -834,6 +834,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   setSelection(id: string | null): void {
     if (this.selection === id) return;
     this.selection = id;
+    if (this.hover !== null && this.hover !== id) this.hover = null;
     this.updateFocus();
     this.dataDirty = true;
     this.schedule();
@@ -849,6 +850,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
 
   setFilter(visible: ReadonlySet<string>): void {
     this.filter = visible;
+    this.updateFocus();
     this.dataDirty = true;
     this.schedule();
   }
@@ -1312,7 +1314,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   }
 
   private updateFocus(): void {
-    const id = this.hover ?? this.selection;
+    const hover = this.hover !== null && this.isVisible(this.hover) ? this.hover : null;
+    const selection = this.selection !== null && this.isVisible(this.selection) ? this.selection : null;
+    const id = hover ?? selection;
     const i = id !== null ? this.index.get(id) : undefined;
     if (i === undefined || id === null) { this.focus = null; this.focusId = null; return; }
     this.focusId = id;
@@ -1735,7 +1739,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       if (node.kind === "topic") a *= 0.78;
       if (node.kind === "objective" && focus === null) a *= 0.82;
       if (node.stale) a *= 0.62;
-      if (isDim) a *= 0.14;
+      // 다른 점에 호버 중이어도 선택 링이 둘린 점 자체는 어둠 속에 묻히지 않게 유지한다.
+      if (isDim) a *= node.id === this.selection ? 0.55 : 0.14;
       alpha.setX(i, visible ? a : 0);
       fresh.setX(i, visible && node.fresh && !isDim ? 1 : 0);
       stale.setX(i, visible && node.stale && !isDim ? 1 : 0);

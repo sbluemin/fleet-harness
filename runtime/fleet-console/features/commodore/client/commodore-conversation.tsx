@@ -24,8 +24,8 @@ import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreMongleActivity } from "./commodore-avatar.js";
 import { CommodoreMapScreen } from "./commodore-map/map-view.js";
 import { CommodoreMapToggle } from "./commodore-map-toggle.js";
-import { MapPanel, mapPanelFacts } from "./commodore-map/map-panel.js";
-import { readCommodoreMapMode, setCommodoreMapMode, setCommodoreMapSelection, subscribeCommodoreMapMode, useCommodoreMapMode, useCommodoreMapSelection } from "./commodore-map-mode.js";
+import { MapPanel, mapDisplayLabels, mapPanelFacts } from "./commodore-map/map-panel.js";
+import { readCommodoreMapMode, requestCommodoreMapEdit, setCommodoreMapMode, setCommodoreMapSelection, subscribeCommodoreMapMode, useCommodoreMapEditRequest, useCommodoreMapMode, useCommodoreMapSelection } from "./commodore-map-mode.js";
 import type { MemoryBranch } from "../shared/contracts/memory.js";
 import { MEMORY_BRANCH_LABEL } from "./commodore-memory.js";
 import { buildMapGraph, resolveMapDetailNode } from "./commodore-map/map-graph.js";
@@ -501,6 +501,8 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap,
           commodoreId={commodoreId}
           state={view.state}
           facts={mapPanelFacts(view.run, view.defaults.model)}
+          onNodeActivate={() => openRailPanel(COMMODORE_ROUTINES_TAB_ID)}
+          onQuickEdit={(target) => { requestCommodoreMapEdit(commodoreId, target); openRailPanel(COMMODORE_ROUTINES_TAB_ID); }}
           onExit={() => setCommodoreMapMode(commodoreId, "chat")}
         />
       ) : null}
@@ -582,6 +584,7 @@ function CommodoreConversationTab({ commodoreId, language }: { readonly commodor
   const mapMode = useCommodoreMapMode(commodoreId);
   // 선택은 가운데 칸과 함께 읽는다.
   const railSelectionId = useCommodoreMapSelection(commodoreId);
+  const editRequest = useCommodoreMapEditRequest(commodoreId);
   const [failure, setFailure] = useState<string | null>(null);
   const fail = (error: unknown) => setFailure(failureWord(t, error));
   const clear = () => setFailure(null);
@@ -592,11 +595,25 @@ function CommodoreConversationTab({ commodoreId, language }: { readonly commodor
   const selectedId = typeof surface?.params.objectiveId === "string" && surface.params.commodoreId === commodoreId
     ? surface.params.objectiveId
     : objectiveOwner === commodoreId ? activeObjectiveId : null;
+  const branchName = useCallback((branch: MemoryBranch): string => t(MEMORY_BRANCH_LABEL[branch]), [t]);
+  const mapLabels = useMemo(() => mapDisplayLabels(t, branchName), [t, branchName]);
+  const railGraph = useMemo(
+    () => (mapMode === "map" && view ? buildMapGraph({ state: view.state, memories: memory.entries, tone: null, labels: mapLabels }) : null),
+    [mapMode, view, memory.entries, mapLabels],
+  );
+  // 고른 정보 항목을 지웠으면 요약으로 튕기지 않고 정보 허브에 머문다.
+  const missingPickedIntel = mapMode === "map" && view !== null && railSelectionId !== null
+    && railSelectionId.startsWith("intel:")
+    && !view.state.intel.some((item) => `intel:${item.id}` === railSelectionId);
+  useEffect(() => {
+    if (missingPickedIntel) setCommodoreMapSelection(commodoreId, "intel");
+  }, [missingPickedIntel, commodoreId]);
   if (!view) return null;
   const failureLine = failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null;
-  if (mapMode === "map") {
-    const railGraph = buildMapGraph({ state: view.state, memories: memory.entries, tone: null });
-    const railNode = railSelectionId ? resolveMapDetailNode(railGraph, railSelectionId, view.state, memory.entries) : null;
+  if (mapMode === "map" && railGraph) {
+    const effectiveSelection = missingPickedIntel ? "intel" : railSelectionId;
+    const railNode = effectiveSelection ? resolveMapDetailNode(railGraph, effectiveSelection, view.state, memory.entries) : null;
+    const pickedIntelId = railNode?.kind === "intel" ? (railNode.intelId ?? null) : null;
     return (
       <div className="objectives-commodore-body objectives-commodore-conversation-tab">
         <MapPanel
@@ -607,13 +624,14 @@ function CommodoreConversationTab({ commodoreId, language }: { readonly commodor
           entries={memory.entries}
           graph={railGraph}
           facts={mapPanelFacts(view.run, view.defaults.model)}
-          branchName={(branch: MemoryBranch) => t(MEMORY_BRANCH_LABEL[branch])}
+          branchName={branchName}
           onSelect={(id) => { clear(); setCommodoreMapSelection(commodoreId, id); }}
           onClose={() => { clear(); setCommodoreMapSelection(commodoreId, null); }}
+          onQuickEdit={(target) => { clear(); requestCommodoreMapEdit(commodoreId, target); }}
           compactSummary
           editors={{
-            description: <CommodoreDescription key={commodoreId} t={t} commodoreId={commodoreId} description={view.state.description} onFail={fail} onClear={clear} />,
-            intel: <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} onFail={fail} onClear={clear} />,
+            description: <CommodoreDescription key={commodoreId} t={t} commodoreId={commodoreId} description={view.state.description} {...(editRequest?.target === "desc" ? { autoEditKey: editRequest.nonce } : {})} onFail={fail} onClear={clear} />,
+            intel: <CommodoreIntel t={t} theaterId={commodoreId} intel={view.state.intel} sources={view.state.sources} selectedId={pickedIntelId} {...(editRequest?.target === "intel" ? { focusAddKey: editRequest.nonce } : {})} onFail={fail} onClear={clear} />,
           }}
         />
         {failureLine}

@@ -376,7 +376,9 @@ export function createMapRenderer(): MapRenderer {
   };
 
   const focusSet = (): ReadonlySet<string> | null => {
-    const focus = state.hover ?? state.selection;
+    const hover = state.hover !== null && isVisible(state.hover) ? state.hover : null;
+    const selection = state.selection !== null && isVisible(state.selection) ? state.selection : null;
+    const focus = hover ?? selection;
     const model = state.model;
     if (!focus || !model || !model.graph.byId.has(focus)) return null;
     return new Set([focus, ...(model.graph.adjacent.get(focus) ?? [])]);
@@ -840,6 +842,7 @@ export function createMapRenderer(): MapRenderer {
     setSelection(id) {
       if (state.selection === id) return;
       state.selection = id;
+      if (state.hover !== null && state.hover !== id) state.hover = null;
       draw();
     },
     setHover(id) {
