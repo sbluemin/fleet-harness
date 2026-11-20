@@ -15,8 +15,6 @@ import { commodoreName } from "./commodore-name.js";
 import { useCommodoreList } from "./commodore-list.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { loadGlobalPlugins, setGlobalPlugin, setGlobalPluginReach, useGlobalPlugins } from "./global-plugins.js";
-import { refreshStandaloneCliState, useAntigravityPluginNotes } from "../../execution/client/standalone-cli/store.js";
-import type { AntigravityPluginNote } from "../../execution/shared/standalone-cli.js";
 import { useMongleLook } from "../../workspace/client/avatar-events.js";
 import { commodoreAvatarKey, mongleBase } from "../../workspace/shared/avatars.js";
 import { getT, type CommodoreMessageKey } from "./i18n/index.js";
@@ -617,25 +615,6 @@ function authMark(t: T, servers: readonly ServerAuth[] | undefined) {
 }
 
 /**
- * 독립 Antigravity(Ctrl+`)에서 이 전역 플러그인에 대해 사람이 알아야 할 줄 — 최근 agy 실행의 보고에서만 온다.
- * 변환하지 못했으면 그 한 줄만, 아니면 로그인 안내와 일부만 실린 몫을 차례로. 알릴 것이 없으면 빈 목록이다.
- */
-function agyNoteLines(t: T, note: AntigravityPluginNote | undefined): readonly string[] {
-  if (!note) return [];
-  if (note.retry) return [t("commodore.plugins.agy.retry")];
-  const lines: string[] = [];
-  if (note.signIn?.length) lines.push(t("commodore.plugins.agy.signIn"));
-  if (note.skipped?.length) {
-    const parts = note.skipped.flatMap((skip) => skip.kind === "lsp" ? [t("commodore.plugins.agy.part.lsp")]
-      : skip.kind === "output-styles" ? [t("commodore.plugins.agy.part.outputStyles")]
-        : skip.kind === "mcp-server" ? [t("commodore.plugins.agy.part.mcp", { name: skip.name })]
-          : skip.kind === "hook" ? [t("commodore.plugins.agy.part.hook", { event: skip.event })] : []);
-    lines.push(parts.length ? t("commodore.plugins.agy.partial", { parts: parts.join(", ") }) : t("commodore.plugins.agy.partialPlain"));
-  }
-  return lines;
-}
-
-/**
  * 브라우저는 응답을 기다린 뒤의 `window.open`을 팝업으로 막는다 — 누른 순간 빈 탭을 먼저 열어 두고 주소가 오면 그리로 보낸다.
  * Desktop·Mobile 셸은 http(s) 가 아닌 창을 거절하므로(null) 받은 주소를 외부 열기 헬퍼로 넘긴다(셸이 기본 브라우저로 연다).
  */
@@ -1099,9 +1078,6 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
   const commodoreId = globalScope || marketScope ? undefined : scope;
   const scopeCommodore = useCommodore(commodoreId ?? null);
   const installed = globalScope ? (global.view?.plugins ?? []) : (scopeCommodore.view?.state.plugins ?? []);
-  const agyNotes = useAntigravityPluginNotes();
-  // 전역 줄의 Antigravity 안내는 최근 agy 실행의 보고다 — 화면을 열 때 한 번 다시 읽는다.
-  useEffect(() => { if (globalScope) void refreshStandaloneCliState(); }, [globalScope]);
   const [reachByCommodore, setReachByCommodore] = useState<ReadonlyMap<string, { readonly plugins: readonly string[]; readonly excluded: readonly string[] }>>(() => new Map());
   const reportReach = useCallback((id: string, plugins: readonly string[], excluded: readonly string[]) => {
     setReachByCommodore((current) => {
@@ -1387,7 +1363,7 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
                         <ObjectiveReachButton t={t} on={on} locked={false} label={label} onToggle={() => { void setGlobalPluginReach(pluginId, !on).catch((reason) => setRow({ pluginId, phase: "failed", code: codeOf(reason) })); }} />
                         {names.length ? <span className="commodore-plugin-reach-note">{t("commodore.plugins.reach.effectException", { names: names.join(", ") })}</span> : null}
                       </>;
-                      return <PaletteRow key={pluginId} card={!phone} t={t} entry={entry} installed globalScope showMarketplace disabled={busy} notes={agyNoteLines(t, agyNotes.find((note) => note.pluginId === pluginId))} reach={reach} update={renderUpdate(entry, openedId === null)} row={row?.pluginId === pluginId ? row : null} showTrust onOpen={() => openDetail(pluginId)} onInstall={() => {}} onTrust={(fresh) => save(pluginId, true, fresh)} onCancel={() => setRow(null)} onRemove={() => { if (armed === pluginId) removeInstalled(pluginId); else setArmed(pluginId); }} removeArmed={armed === pluginId} />;
+                      return <PaletteRow key={pluginId} card={!phone} t={t} entry={entry} installed globalScope showMarketplace disabled={busy} reach={reach} update={renderUpdate(entry, openedId === null)} row={row?.pluginId === pluginId ? row : null} showTrust onOpen={() => openDetail(pluginId)} onInstall={() => {}} onTrust={(fresh) => save(pluginId, true, fresh)} onCancel={() => setRow(null)} onRemove={() => { if (armed === pluginId) removeInstalled(pluginId); else setArmed(pluginId); }} removeArmed={armed === pluginId} />;
                     }) : <p className="commodore-plugins-empty">{t("commodore.plugins.empty")}</p> : <p className="commodore-plugins-empty" role="status">{t("commodore.plugins.loading")}</p>}
                   </SettingsGroup> : commodoreId ? <PluginScopeRows t={t} commodoreId={commodoreId} phone={phone} onOpenGlobal={() => selectScope("global")} /> : null}
                   {marketScope ? null : body}
@@ -1431,7 +1407,7 @@ function TrustPanel({ t, entry, onTrust, onCancel, trustRef }: {
  * 팔레트 행 — 마켓플레이스 묶음의 둥근 카드 안에 한 줄씩 선다. 설치 단추를 제외한 행은 상세를 연다. Enter 는 그 단추의 기본 동작이다.
  * 둘째 줄은 설명 한 줄(없으면 버전·만든 이)이고, 나머지 사실은 상세의 정보 카드가 맡는다. 신뢰 확인이 필요하면 행 아래로 펼친다.
  */
-function PaletteRow({ t, entry, installed, installedGlobally = false, globalScope = false, disabled = false, hint, notes, showMarketplace = false, card = false, onRemove, removeArmed = false, update, reach, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
+function PaletteRow({ t, entry, installed, installedGlobally = false, globalScope = false, disabled = false, hint, showMarketplace = false, card = false, onRemove, removeArmed = false, update, reach, row, showTrust, onOpen, onInstall, onTrust, onCancel }: {
   readonly t: T;
   readonly entry: PluginCatalogEntry;
   readonly installed: boolean;
@@ -1439,8 +1415,6 @@ function PaletteRow({ t, entry, installed, installedGlobally = false, globalScop
   readonly globalScope?: boolean;
   readonly disabled?: boolean;
   readonly hint?: string | undefined;
-  /** 설명 아래 작은 줄들 — 전역 줄의 Antigravity 안내. 열기 단추의 설명으로도 읽힌다. */
-  readonly notes?: readonly string[];
   readonly showMarketplace?: boolean;
   readonly card?: boolean;
   readonly update?: ReactNode;
@@ -1462,16 +1436,14 @@ function PaletteRow({ t, entry, installed, installedGlobally = false, globalScop
   const title = titleOf(shown, entry.name);
   const byline = [shown.version ? `v${shown.version}` : null, shown.author ? t("commodore.plugins.byAuthor", { name: shown.author }) : null].filter(Boolean).join(" · ");
   const sub = shown.description ?? (byline || null);
-  const notesId = useId();
   return (
     <article className={`${card ? "global-settings-row " : ""}commodore-palette-row${reach ? " is-reach" : ""}${trusting ? " is-open" : ""}`}>
-      <button type="button" className="commodore-palette-open" data-plugin-id={entry.id} aria-label={t("commodore.plugins.detail.openAria", { plugin: title })} aria-describedby={notes?.length ? notesId : undefined} onClick={() => { if (!working && row?.phase !== "trust") onOpen(); }}>
+      <button type="button" className="commodore-palette-open" data-plugin-id={entry.id} aria-label={t("commodore.plugins.detail.openAria", { plugin: title })} onClick={() => { if (!working && row?.phase !== "trust") onOpen(); }}>
         <PluginTile name={title} iconId={shown.icon ? entry.id : undefined} size="card" />
         <span className="commodore-palette-row-main">
           <span className="commodore-palette-name">{title}{showMarketplace ? <span className="commodore-plugins-at">@{shown.marketplace}</span> : null}</span>
           {sub ? <span className={`commodore-palette-desc${trusting ? "" : " is-clamped"}`}>{sub}</span> : null}
           {hint ? <span className="commodore-global-own-hint">{hint}</span> : null}
-          {notes?.length ? <span id={notesId} className="commodore-palette-agy-notes">{notes.map((line) => <span key={line} className="commodore-palette-agy-note">{line}</span>)}</span> : null}
         </span>
       </button>
       <span className="commodore-palette-action">

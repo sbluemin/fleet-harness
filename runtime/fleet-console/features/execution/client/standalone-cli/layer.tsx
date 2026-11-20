@@ -28,15 +28,6 @@ function standaloneCliSessionId(cli: StandaloneCliKind): string {
   return `standalone-cli:${cli}`;
 }
 
-/** Antigravity 공식 제품 마크(단일 currentColor 경로, 커밋 1f7a0ab1b 기준). */
-function AntigravityGlyph() {
-  return (
-    <svg viewBox="0 0 100 100" aria-hidden="true">
-      <path d="M85.2843 88.0301C90.1329 91.6664 97.4057 89.2422 90.7389 82.5755C70.7389 63.1816 74.9813 9.84827 50.1329 9.84827C25.2843 9.84827 29.5267 63.1816 9.52673 82.5755C2.25402 89.8483 10.1328 91.6664 14.9813 88.0301C33.7692 75.3028 32.5571 52.8786 50.1329 52.8786C67.7086 52.8786 66.4965 75.3028 85.2843 88.0301Z" fill="currentColor" />
-    </svg>
-  );
-}
-
 interface StandaloneCliTerminalPaneProps {
   readonly cli: StandaloneCliKind;
   readonly open: boolean;
@@ -138,7 +129,7 @@ function StandaloneCliTheaterSelect({
 }
 
 /**
- * 가운데 칸 위에 서는 독립 CLI(Claude Code · Antigravity) 층과 미니멀 선택 팔레트.
+ * 가운데 칸 위에 서는 독립 CLI(Claude Code) 층과 미니멀 선택 팔레트.
  * 상단 칩 없이 칸 전체를 채운 터미널이다(#2562). 닫아도 표면을 걷지 않아 PTY·스크롤백이 유지된다.
  */
 export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
@@ -187,8 +178,7 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
 
   React.useEffect(() => {
     if (!view.paletteOpen) return;
-    const focusCli = view.activeCli ?? view.lastCli ?? "claude";
-    setActiveIndex(focusCli === "antigravity" ? 1 : 0);
+    setActiveIndex(0);
     paletteCardRef.current?.focus({ preventScroll: true });
   }, [view.paletteOpen, view.activeCli, view.lastCli]);
 
@@ -226,11 +216,6 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
       void selectStandaloneCli("claude", fallbackPlacement);
       return;
     }
-    if (event.key === "2") {
-      event.preventDefault();
-      void selectStandaloneCli("antigravity", fallbackPlacement);
-      return;
-    }
     if (event.key === "Enter") {
       const target = event.target as HTMLElement | null;
       if (target?.closest(".fc-select, .fc-select__listbox, [data-standalone-cli-stop]")) return;
@@ -239,12 +224,6 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
       void selectStandaloneCli(cli, fallbackPlacement);
     }
   }, [activeIndex, fallbackPlacement]);
-
-  // 사람이 손쓸 수 있는 몫만 — 로그인이 필요한 원격 MCP가 실린 전역 플러그인. 건너뛴 몫·변환은 전역 플러그인 화면이 보인다.
-  const signInPlugins = view.antigravityPluginNotes.filter((note) => note.signIn?.length).map((note) => note.pluginId.slice(0, note.pluginId.lastIndexOf("@")));
-  const agySignInNote = signInPlugins.length === 1
-    ? t("terminal.standaloneCli.agySignInOne", { plugin: signInPlugins[0]! })
-    : signInPlugins.length > 1 ? t("terminal.standaloneCli.agySignInMany", { n: signInPlugins.length }) : null;
 
   const hasMountedPane = STANDALONE_CLI_KINDS.some((cli) => view.slots[cli].placement !== null);
   const showFallbackTheater = view.viewed.theaterId === null && theaterChoices.length > 0;
@@ -312,10 +291,9 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
           >
             {STANDALONE_CLI_KINDS.map((cli, index) => {
               const slot = view.slots[cli];
-              const name = cli === "claude" ? t("terminal.standaloneCli.claude") : t("terminal.standaloneCli.antigravity");
-              const keyLabel = cli === "claude" ? "1" : "2";
+              const name = t("terminal.standaloneCli.claude");
+              const keyLabel = "1";
               const isSelected = activeIndex === index;
-              const note = cli === "antigravity" && slot.installed ? agySignInNote : null;
               return (
                 <button
                   key={cli}
@@ -330,11 +308,10 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
                 >
                   <span className="standalone-cli-palette-row-left">
                     <span className={`standalone-cli-palette-glyph is-${cli}`} aria-hidden="true">
-                      {cli === "claude" ? launchProviderGlyph("claude") : <AntigravityGlyph />}
+                      {launchProviderGlyph("claude")}
                     </span>
                     <span className="standalone-cli-palette-label">
                       <span className="standalone-cli-palette-name">{name}</span>
-                      {note ? <span className="standalone-cli-palette-note" data-standalone-cli-note={cli}>{note}</span> : null}
                     </span>
                   </span>
                   <span className="standalone-cli-palette-row-right">

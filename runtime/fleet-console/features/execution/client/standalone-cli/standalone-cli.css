@@ -1,4 +1,4 @@
-/* 독립 CLI(Claude Code · Antigravity) — 가운데 칸 전체를 덮는 층.
+/* 독립 CLI(Claude Code) — 가운데 칸 전체를 덮는 층.
    닫힌 동안에도 걷지 않고 크기를 유지한 채 숨긴다 — 터미널 격자가 0으로 접히면 다시 열 때 PTY가 리사이즈되고
    전체 화면 TUI가 다시 그려진다. 밑의 대화는 그대로 남아 닫으면 다시 보인다. */
 .standalone-cli-layer {
@@ -120,10 +120,6 @@
   color: var(--provider-claude);
 }
 
-.standalone-cli-palette-glyph.is-antigravity {
-  color: var(--provider-antigravity);
-}
-
 .standalone-cli-palette-glyph svg {
   width: 15px;
   height: 15px;
@@ -135,18 +131,10 @@
   white-space: nowrap;
 }
 
-/* 이름 아래 한 줄 — 알릴 것이 있을 때만 선다(Antigravity 로그인 안내). */
 .standalone-cli-palette-label {
   display: grid;
   gap: 1px;
   min-width: 0;
-}
-
-.standalone-cli-palette-note {
-  color: var(--text-tertiary);
-  font-size: var(--t-xs);
-  line-height: 1.4;
-  overflow-wrap: anywhere;
 }
 
 .standalone-cli-palette-row-right {
