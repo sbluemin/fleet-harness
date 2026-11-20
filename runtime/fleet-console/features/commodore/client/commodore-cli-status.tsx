@@ -6,7 +6,6 @@ import type { CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreCliStatus } from "../shared/contracts/cli-status.js";
 import { readCommodoreCliStatus, retryCommodore } from "./commodore-state.js";
 import { commodoreCliFailure } from "./commodore-chat.js";
-import { openSettingsSurface } from "../../settings/client/settings-door.js";
 import { beginClaudeLogin, getLoginStates, subscribeLogins } from "../../quota/client/provider-login.js";
 import { getQuotaApi } from "../../quota/client/summary-store.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
@@ -76,10 +75,7 @@ export function CommodoreCliGate({ t, status, checking, recheck }: {
         <span>{t(`commodore.cli.gate.${cause}.body` as CommodoreMessageKey)}</span>
         <div className="objectives-commodore-cli-gate-actions">
           {cause === "missing" ? (
-            <>
-              <button type="button" className="objectives-btn is-small" onClick={openClaudeInstallGuide}>{t("commodore.cli.action.install")}</button>
-              <button type="button" className="objectives-btn is-small" onClick={openAgentCliSettings}>{t("commodore.cli.action.path")}</button>
-            </>
+            <button type="button" className="objectives-btn is-small" onClick={openClaudeInstallGuide}>{t("commodore.cli.action.install")}</button>
           ) : (
             <button type="button" className="objectives-btn is-small" onClick={openCommodoreLoginCard}>{t("commodore.cli.action.login")}</button>
           )}
@@ -108,10 +104,7 @@ export function CommodoreCliFailureCard({ t, commodoreId, entries, onFail }: {
       <p>{t(`commodore.cli.fail.${cause}.body` as CommodoreMessageKey)}</p>
       <div className="objectives-commodore-cli-card-actions">
         {cause === "missing" ? (
-          <>
-            <button type="button" className="objectives-btn is-small" onClick={openClaudeInstallGuide}>{t("commodore.cli.action.install")}</button>
-            <button type="button" className="objectives-btn is-small" onClick={openAgentCliSettings}>{t("commodore.cli.action.path")}</button>
-          </>
+          <button type="button" className="objectives-btn is-small" onClick={openClaudeInstallGuide}>{t("commodore.cli.action.install")}</button>
         ) : (
           <button type="button" className="objectives-btn is-small" onClick={openCommodoreLoginCard}>{t("commodore.cli.action.login")}</button>
         )}
@@ -124,11 +117,6 @@ export function CommodoreCliFailureCard({ t, commodoreId, entries, onFail }: {
 export function openClaudeInstallGuide(): void {
   // 다른 외부 링크와 같은 문법 — 새 창, opener 없음.
   window.open(CLAUDE_CODE_INSTALL_URL, "_blank", "noopener,noreferrer");
-}
-
-/** 설정의 Agent CLI 경로 화면 — 기존 설정 문을 그대로 쓴다(모바일은 /settings?section=). */
-export function openAgentCliSettings(): void {
-  openSettingsSurface("agent-cli");
 }
 
 /**

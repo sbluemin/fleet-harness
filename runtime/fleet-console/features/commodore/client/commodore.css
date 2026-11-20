@@ -626,10 +626,11 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
   position: absolute;
   left: 0;
   right: 0;
-  top: 50%;
-  transform: translateY(-50%);
+  /* 원래 float 자리표와 같은 첫 줄 상자 — 캡슐이 세우는 줄 높이·패딩을 그대로 쓴다. */
+  top: var(--fc-composer-line-pad, 4px);
+  height: var(--fc-composer-line, 20px);
+  line-height: var(--fc-composer-line, 20px);
   float: none;
-  height: auto;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
