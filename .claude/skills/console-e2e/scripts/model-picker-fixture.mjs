@@ -7,8 +7,9 @@
  *   node model-picker-fixture.mjs --out <absolute-path.js>
  *
  * The groups come from the product catalog via buildModelRoster — host source,
- * loaded through the worktree's tsx, not a product change. Muse Code is marked
- * signed_out only so an omitted status is not treated as unknown and kept visible.
+ * loaded through the worktree's tsx, not a product change. @fleet-console/ai-gateway is
+ * redirected to its src, so a stale built dist cannot supply an old model list.
+ * Muse Code is marked signed_out only so an omitted status is not treated as unknown and kept visible.
  * The generated wrapper still forwards every roster request to the real host and
  * appends only missing fixture groups.
  *
@@ -18,12 +19,13 @@
  * say the same thing.
  */
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const ROSTER_SOURCE = 'runtime/fleet-console/features/ai-gateway/host/model-roster.ts';
 const TSX_REGISTER = 'runtime/fleet-console/node_modules/tsx/dist/esm/index.mjs';
+const GATEWAY_SRC = 'runtime/fleet-console/features/ai-gateway/runtime/src';
 const SYNTHETIC_IDS = ['gateway:codex', 'gateway:xai'];
 
 function fail(message) {
@@ -53,11 +55,31 @@ function worktreeRoot() {
   return fail('could not resolve the worktree from this script');
 }
 
+// @fleet-console/ai-gateway normally resolves to its built dist, which can be older than
+// the checkout's src (a stale catalog). Redirect the bare specifier to src so the
+// catalog always comes from the checkout under verification; no build is needed.
+function gatewaySrcHook(root) {
+  const entry = path.join(root, GATEWAY_SRC, 'index.ts');
+  const subpaths = { '@fleet-console/ai-gateway/model-family': path.join(root, GATEWAY_SRC, 'model-family.ts') };
+  if (!existsSync(entry)) fail(`ai-gateway src entry missing: ${entry}`);
+  const hook = `
+    const MAP = ${JSON.stringify({ '@fleet-console/ai-gateway': entry, ...subpaths })};
+    export async function resolve(specifier, context, next) {
+      if (Object.hasOwn(MAP, specifier)) return next('file://' + MAP[specifier], context);
+      return next(specifier, context);
+    }
+  `;
+  return 'data:text/javascript,' + encodeURIComponent(hook);
+}
+
 function catalogGroups(root) {
   const rosterFile = path.join(root, ROSTER_SOURCE);
   const tsx = path.join(root, TSX_REGISTER);
+  const hookUrl = gatewaySrcHook(root);
   const loader = `
-    import { buildModelRoster } from ${JSON.stringify(pathToFileURL(rosterFile).href)};
+    import { register } from 'node:module';
+    register(${JSON.stringify(hookUrl)});
+    const { buildModelRoster } = await import(${JSON.stringify(pathToFileURL(rosterFile).href)});
     const statuses = { claude: 'ok', codex: 'ok', xai: 'ok', 'muse-code': 'signed_out' };
     const want = new Set(${JSON.stringify(SYNTHETIC_IDS)});
     const pick = (target) => buildModelRoster(target, statuses).filter((group) => want.has(group.id));
