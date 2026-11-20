@@ -1,9 +1,11 @@
 import {
-  AdditiveBlending,
   BufferAttribute,
   BufferGeometry,
+  DoubleSide,
   DynamicDrawUsage,
   LineSegments,
+  Mesh,
+  NormalBlending,
   PerspectiveCamera,
   Points,
   Quaternion,
@@ -13,21 +15,20 @@ import {
   Vector3,
   WebGLRenderer,
 } from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
-import type { MapNode } from "../map-graph.js";
+import type { MapBranchKey, MapNode } from "../map-graph.js";
 import { mapPaletteToRgb, type MapPalette } from "../map-palette.js";
 import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
 
 /**
- * three.js 렌더러 — 이 파일과 three는 지도를 열 때만 받는 지연 청크다.
- * 다크 테마는 가산 혼합 + UnrealBloom(0.55, 0.35, 0.3) + 선형→sRGB 변환으로 발광하고,
- * 라이트 테마는 보색 흡수(-ln C) 공간에서 블룸을 확산한 뒤 Beer-Lambert 투과율로 합성한다.
- * 좌표는 시안 단위(배치 반지름 ≈ 380)로 옮겨 시안의 반경·z 폭·초점 범위 상수를 그대로 쓴다.
- * 카메라는 정면이 기본이고 자동 회전은 없다(결정 ff40284e) — 끌 때만 돌고, 손을 떼면 그 각도로 머문다.
- * WebGL2 컨텍스트 1개. CSP 때문에 blob 워커·WASM·eval은 쓰지 않는다.
+ * three.js WebGL2 렌더러 — 생체 시냅스 광학 + 절제된 성도 극좌표(A+B 절충안).
+ * 이 파일과 three는 지도를 열 때만 받는 지연 청크다.
+ *
+ * - 후처리 블룸 없이 네이티브 MSAA + 분석 SDF 셰이더로 그려 다크의 백색 포화·배경 안개와
+ *   라이트의 Beer-Lambert 수채화 얼룩을 모두 제거한다.
+ * - z=0 평면에 절제된 극좌표 눈금·6갈래 구역 틴트·사령관 톤 코어 광원을 두어 360° 회전 시
+ *   공간 지형이 함께 기울어지며, 연결선은 화면 공간 폭을 가진 2차 베지에 시냅스 리본으로 그린다.
+ * - 카메라는 정면이 기본이고 자동 회전은 없다(결정 ff40284e) — 끌 때만 돌고 손을 떼면 머문다.
+ * - WebGL2 컨텍스트 1개. CSP 때문에 blob 워커·WASM·eval은 쓰지 않는다.
  */
 
 /** 맞춤 보기 여백(CSS px) — 라벨·패널이 덮는 폭. */
@@ -45,50 +46,288 @@ export interface MapWebglRenderer extends MapRenderer {
 
 const DEFAULT_INSETS: MapFitInsets = { top: 36, right: 36, bottom: 36, left: 36 };
 
-/** 배치(반지름 ≈1.8) → 시안 단위(반지름 ≈380). */
+/** 배치(반지름 ≈1.8) → 무대 단위(반지름 ≈380). */
 const WORLD_SCALE = 200;
 const FOV_DEG = 42;
-const FIT_MARGIN = 1.04;
-/** 좁은 무대에서 z를 키우는 상한. */
-const Z_SCALE_MAX = 3;
-/** 무대 비율에 맞춰 한 축을 펼치는 상한 — 극단 비율에서도 지도가 일그러지지 않게. */
-const STRETCH_MAX = 2;
-/** 시안 `uScale` 계수와 스프라이트 상한(CSS px 기준 110, 장치 px로는 ×dpr). */
+const FIT_MARGIN = 1.05;
+const Z_SCALE_MAX = 2.4;
+const STRETCH_MAX = 1.85;
+/** 점 스프라이트 반지름 배율 — 0..0.42가 본체, 0.42..1.0이 고리·레티클·광환 몫이다. */
 const SPRITE_K = 4.6;
-const MAX_SPRITE_CSS = 110;
-const COC_GROW = 1.3;
-const FOCUS_RANGE_MIN = 120;
-const FOCUS_RANGE_RATIO = 0.24;
-const MIN_HIT_PX = 4;
-const MAX_PIXEL_RATIO = 1.5;
-const ZOOM_MIN = 0.15;
-const ZOOM_MAX = 2.5;
-/** 끌기 감도(rad/px) — 각도 제한 없이 360도 돈다. 무대 폭 절반쯤 끌면 반 바퀴. */
+const BODY_NORM_R = 0.42;
+const MAX_SPRITE_CSS = 84;
+const FOCUS_RANGE_MIN = 160;
+const FOCUS_RANGE_RATIO = 0.36;
+const MIN_HIT_PX = 6;
+const MAX_PIXEL_RATIO = 1.75;
+const ZOOM_MIN = 0.2;
+const ZOOM_MAX = 2.6;
+/** 끌기 감도(rad/px) — 각도 제한 없이 360도 돈다. */
 const DRAG_RAD_PER_PX = 0.0045;
 const DRAG_THRESHOLD_PX = 3;
 const FIT_TWEEN_MS = 450;
-/** 핵 맥동은 느려 30fps로 충분하다 — 움직임이 없을 때 그리는 간격. */
+/** 맥동·시냅스 펄스 간격 — 움직임이 없을 때는 30fps로 절약한다. */
 const PULSE_FRAME_MS = 33;
-/** 밀도 보정이 서는 구간 — 시안 값은 21개 쪽, 200개에서만 살짝 낮춘다. */
+/** 밀도 보정 구간 — 규모 40~200 사이에서 반경·알파를 완만하게 조절한다. */
 const CROWD_FROM = 40;
 const CROWD_TO = 200;
+/** 곡선 시냅스 리본의 세그먼트 수(엣지 1개당 12구간 = 24삼각형). */
+const EDGE_SEGMENTS = 12;
 
+// ── 셰이더 ───────────────────────────────────────────────────────────────────
+
+/** Layer 0a: 6갈래 구역 틴트 웨지 + 사령관 정체성 톤 중앙 광원(z=0 평면). */
+const BACKDROP_PLANE_VERTEX = /* glsl */ `
+varying vec2 vLocal;
+void main() {
+  vLocal = position.xy;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const BACKDROP_PLANE_FRAGMENT = /* glsl */ `
+uniform float uRadius;
+uniform float uLight;
+uniform float uFocusDim;
+uniform float uTime;
+uniform float uMotion;
+uniform vec3 uCoreRgb;
+uniform vec3 uBranchRgb[6];
+uniform float uBranchAngle[6];
+uniform float uBranchActive[6];
+varying vec2 vLocal;
+
+float angleDiff(float a, float b) {
+  float d = mod(a - b + 3.14159265, 6.2831853) - 3.14159265;
+  return abs(d);
+}
+
+void main() {
+  float r = length(vLocal) / max(uRadius, 1.0);
+  if (r > 1.25) discard;
+  float ang = atan(vLocal.y, vLocal.x);
+
+  // 1) 사령관 정체성 톤 중심 스포트라이트 광원(미세 호흡)
+  float breath = 1.0 + (uMotion > 0.5 ? 0.035 * sin(uTime * 1.15) : 0.0);
+  float coreFalloff = exp(-r * r * (3.1 / breath));
+  float coreAlpha = coreFalloff * mix(0.145, 0.075, uLight) * mix(1.0, 0.55, uFocusDim);
+  vec3 col = uCoreRgb * coreAlpha;
+  float alpha = coreAlpha;
+
+  // 2) 절제된 6갈래 구역 웨지 틴트(성도 B 요소)
+  float radialEnv = smoothstep(0.08, 0.36, r) * (1.0 - smoothstep(0.62, 1.12, r));
+  float wedgePeak = mix(0.075, 0.068, uLight) * mix(1.0, 0.35, uFocusDim);
+  for (int i = 0; i < 6; i++) {
+    if (uBranchActive[i] < 0.5) continue;
+    float da = angleDiff(ang, uBranchAngle[i]);
+    float angularEnv = smoothstep(0.47, 0.04, da);
+    float wa = radialEnv * angularEnv * wedgePeak;
+    col += uBranchRgb[i] * wa;
+    alpha += wa;
+  }
+
+  if (alpha <= 0.001) discard;
+  vec3 outCol = col / max(alpha, 0.0001);
+  gl_FragColor = vec4(outCol, clamp(alpha, 0.0, 0.32));
+}`;
+
+/** Layer 0b: 보정된 극좌표 링·나침반 틱·십자선. */
+const GUIDE_VERTEX = /* glsl */ `
+attribute float aAlpha;
+varying float vAlpha;
+void main() {
+  vAlpha = aAlpha;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}`;
+
+const GUIDE_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform float uFocusDim;
+varying float vAlpha;
+void main() {
+  float a = vAlpha * mix(1.0, 0.45, uFocusDim);
+  if (a <= 0.002) discard;
+  gl_FragColor = vec4(uColor, a);
+}`;
+
+/** Layer 0c: 다크 전용 미세 심도 성진(드래그 회전 시 3D 시차). */
+const DUST_VERTEX = /* glsl */ `
+attribute float aPhase;
+attribute float aSize;
+uniform float uPixelRatio;
+uniform float uTime;
+uniform float uMotion;
+varying float vAlpha;
+void main() {
+  vec4 mv = modelViewMatrix * vec4(position, 1.0);
+  float tw = uMotion > 0.5 ? (0.5 + 0.5 * sin(uTime * 0.9 + aPhase)) : 0.5;
+  vAlpha = 0.05 + 0.09 * tw;
+  gl_PointSize = aSize * uPixelRatio;
+  gl_Position = projectionMatrix * mv;
+}`;
+
+const DUST_FRAGMENT = /* glsl */ `
+uniform vec3 uColor;
+uniform float uLight;
+varying float vAlpha;
+void main() {
+  if (uLight > 0.5) discard;
+  float d = length(gl_PointCoord * 2.0 - 1.0);
+  if (d > 1.0) discard;
+  float core = smoothstep(1.0, 0.2, d);
+  gl_FragColor = vec4(uColor, core * vAlpha);
+}`;
+
+/** Layer 1: 화면 공간 두께·곡률·점선·시냅스 펄스를 갖는 2차 베지에 축삭 리본. */
+const RIBBON_VERTEX = /* glsl */ `
+attribute vec3 aTangent;
+attribute float aSide;
+attribute float aU;
+attribute float aDist;
+attribute float aWidth;
+attribute float aAlpha;
+attribute float aDash;
+attribute float aPulse;
+attribute float aPhase;
+attribute vec3 aColorA;
+attribute vec3 aColorB;
+
+uniform vec2 uResolution;
+uniform float uLight;
+
+varying float vSide;
+varying float vU;
+varying float vDist;
+varying float vWidth;
+varying float vAlpha;
+varying float vDash;
+varying float vPulse;
+varying float vPhase;
+varying vec3 vColorA;
+varying vec3 vColorB;
+varying float vSheath;
+
+void main() {
+  vSide = aSide;
+  vU = aU;
+  vDist = aDist;
+  vWidth = aWidth;
+  vAlpha = aAlpha;
+  vDash = aDash;
+  vPulse = aPulse;
+  vPhase = aPhase;
+  vColorA = aColorA;
+  vColorB = aColorB;
+
+  if (aAlpha <= 0.001 || aWidth <= 0.01) {
+    vSheath = 0.0;
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+
+  vec4 clipPos = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  vec4 clipNext = projectionMatrix * modelViewMatrix * vec4(position + aTangent, 1.0);
+  vec2 ndcPos = clipPos.xy / max(abs(clipPos.w), 0.0001);
+  vec2 ndcNext = clipNext.xy / max(abs(clipNext.w), 0.0001);
+  vec2 dirPx = (ndcNext - ndcPos) * uResolution * 0.5;
+  float dirLen = length(dirPx);
+  vec2 normalPx = dirLen > 0.0001 ? vec2(-dirPx.y, dirPx.x) / dirLen : vec2(0.0, 1.0);
+
+  // 다크 줄기·링크·강조 선은 은은한 발광 피복(sheath)을 얹는다.
+  float sheathPx = (uLight < 0.5 && (aWidth >= 1.35 || aPulse > 0.5)) ? 2.6 : 0.0;
+  vSheath = sheathPx;
+  float halfPx = aWidth * 0.5 + 0.9 + sheathPx;
+  vec2 offsetNdc = normalPx * aSide * halfPx * (2.0 / uResolution);
+  clipPos.xy += offsetNdc * clipPos.w;
+  gl_Position = clipPos;
+}`;
+
+const RIBBON_FRAGMENT = /* glsl */ `
+uniform float uTime;
+uniform float uMotion;
+uniform float uLight;
+uniform vec3 uFreshRgb;
+
+varying float vSide;
+varying float vU;
+varying float vDist;
+varying float vWidth;
+varying float vAlpha;
+varying float vDash;
+varying float vPulse;
+varying float vPhase;
+varying vec3 vColorA;
+varying vec3 vColorB;
+varying float vSheath;
+
+void main() {
+  if (vAlpha <= 0.001) discard;
+
+  float halfTotal = vWidth * 0.5 + 0.9 + vSheath;
+  float distPx = abs(vSide) * halfTotal;
+  float halfCore = vWidth * 0.5;
+
+  // 중심 섬유 안티앨리어싱
+  float coreMask = 1.0 - smoothstep(max(0.0, halfCore - 0.35), halfCore + 0.65, distPx);
+  // 다크 발광 피복(가산 포화 없이 제어된 알파)
+  float sheathMask = vSheath > 0.01
+    ? exp(-pow(max(0.0, distPx - halfCore) / max(vSheath * 0.65, 0.5), 2.0)) * 0.28
+    : 0.0;
+
+  // 목표·출처 점선 처리
+  float dashMask = 1.0;
+  if (vDash > 0.5) {
+    float cyc = mod(vDist, 14.0);
+    dashMask = smoothstep(0.0, 1.0, cyc) * (1.0 - smoothstep(5.5, 6.8, cyc));
+  }
+
+  vec3 baseCol = mix(vColorA, vColorB, vU);
+  float outAlpha = (coreMask * vAlpha + sheathMask * vAlpha) * dashMask;
+  vec3 outCol = baseCol;
+
+  // 시냅스 펄스 — 줄기·명시 링크·호버 경로를 따라 흐르는 부드러운 신호 패킷
+  if (vPulse > 0.5 && uMotion > 0.5) {
+    float speed = vPulse > 1.5 ? 0.56 : 0.30;
+    float head = fract(uTime * speed + vPhase);
+    float dU = abs(vU - head);
+    dU = min(dU, 1.0 - dU);
+    float packet = exp(-dU * dU * 190.0);
+    float radial = exp(-pow(distPx / max(vWidth * 1.15 + 1.4, 1.6), 2.0));
+    float pIntensity = packet * radial * dashMask;
+    vec3 sparkCol = vPulse > 1.5
+      ? mix(uFreshRgb, vec3(1.0), uLight > 0.5 ? 0.0 : 0.45)
+      : mix(baseCol, vec3(1.0), uLight > 0.5 ? 0.05 : 0.55);
+    outCol = mix(outCol, sparkCol, clamp(pIntensity * 0.9, 0.0, 1.0));
+    outAlpha = max(outAlpha, pIntensity * mix(0.92, 0.78, uLight));
+  }
+
+  if (outAlpha <= 0.002) discard;
+  gl_FragColor = vec4(outCol, clamp(outAlpha, 0.0, 0.98));
+}`;
+
+/** Layer 2: 다중 도형 SDF 광학 노드(구슬 · 사령관 핵 · 허브 · 마름모 정보 · 중공 목표 · +N 묶음). */
 const POINT_VERTEX = /* glsl */ `
 attribute vec3 aColor;
 attribute float aSize;
 attribute float aAlpha;
 attribute float aShape;
 attribute float aFresh;
+attribute float aStale;
+attribute float aActive;
+
 uniform float uScale;
 uniform float uFocus;
 uniform float uRange;
 uniform float uMaxPx;
 uniform float uLight;
+
 varying vec3 vColor;
 varying float vAlpha;
 varying float vCoc;
 varying float vShape;
 varying float vFresh;
+varying float vStale;
+varying float vActive;
+
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   float depth = max(-mv.z, 1.0);
@@ -97,112 +336,208 @@ void main() {
   vShape = aShape;
   vColor = aColor;
   vFresh = aFresh;
-  float cocAtten = mix(
-    (1.0 - coc * 0.55) / (1.0 + coc * 2.2),
-    (1.0 - coc * 0.52) / (1.0 + coc * 2.05),
-    uLight
-  );
-  vAlpha = aAlpha * cocAtten;
-  gl_PointSize = min(aSize * uScale / depth * (1.0 + coc * ${COC_GROW.toFixed(1)}), uMaxPx);
+  vStale = aStale;
+  vActive = aActive;
+
+  // 제어된 심도 감쇠 — 멀어져도 흐릿한 비눗방울로 번지지 않고 대비만 부드럽게 물러난다.
+  float depthFade = mix(1.0, mix(0.68, 0.74, uLight), coc);
+  vAlpha = aAlpha * depthFade;
+  float spritePx = (aSize * uScale / depth) * (1.0 + coc * 0.14);
+  gl_PointSize = min(spritePx, uMaxPx);
   gl_Position = projectionMatrix * mv;
 }`;
 
 const POINT_FRAGMENT = /* glsl */ `
-uniform float uGain;
 uniform float uLight;
+uniform float uTime;
+uniform float uMotion;
 uniform vec3 uFreshRgb;
+uniform vec3 uStaleRgb;
+uniform vec3 uInkRgb;
+uniform vec3 uStageRgb;
+
 varying vec3 vColor;
 varying float vAlpha;
 varying float vCoc;
 varying float vShape;
 varying float vFresh;
+varying float vStale;
+varying float vActive;
+
+// 직선 점선 고리 마스크
+float ringMask(float d, float r, float halfW) {
+  return smoothstep(r + halfW + 0.025, r + halfW - 0.015, d)
+       * smoothstep(r - halfW - 0.025, r - halfW + 0.015, d);
+}
+
+// 3D 광학 구슬(다크=생체 발광 핵, 라이트=광학 법랑 비드)
+vec4 shadeBead(vec2 p, float r, vec3 baseCol, float isMajor) {
+  float d = length(p);
+  float mask = smoothstep(r + 0.025, r - 0.025, d);
+  if (mask <= 0.001) return vec4(0.0);
+  vec2 nxy = clamp(p / max(r, 0.001), -1.0, 1.0);
+  float nz = sqrt(max(0.0, 1.0 - dot(nxy, nxy)));
+  vec3 N = normalize(vec3(nxy, nz));
+  vec3 L = normalize(vec3(-0.42, -0.45, 0.78));
+  float ndl = max(dot(N, L), 0.0);
+  float spec = pow(ndl, 5.5);
+  float rim = pow(1.0 - nz, 2.2);
+
+  // 소프트니 스페큘러 — 하이라이트는 선명하되 순백으로 타지 않는다.
+  vec3 lit = mix(baseCol * mix(0.66, 0.72, uLight), baseCol * 1.06, ndl);
+  lit = mix(lit, vec3(1.0), spec * mix(isMajor > 0.5 ? 0.56 : 0.44, isMajor > 0.5 ? 0.52 : 0.40, uLight));
+
+  // 외곽 미세 림 — 200개 밀집에서도 겹친 구슬 경계가 분리된다.
+  vec3 rimCol = uLight > 0.5
+    ? vec3(1.0)
+    : mix(baseCol, vec3(1.0), 0.38);
+  lit = mix(lit, rimCol, rim * mix(isMajor > 0.5 ? 0.52 : 0.30, 0.62, uLight));
+  return vec4(lit, mask);
+}
+
 void main() {
-  float d = length(gl_PointCoord * 2.0 - 1.0);
+  if (vAlpha <= 0.002) discard;
+  vec2 p = gl_PointCoord * 2.0 - 1.0;
+  float d = length(p);
   if (d > 1.0) discard;
-  float disc = smoothstep(0.42, 0.3, d);
-  // 묶음 노드(vShape=1)는 속이 빈 고리 + 작은 중심점 — 일반 정보 점과 한눈에 갈린다.
-  float ring = smoothstep(0.42, 0.37, d) * smoothstep(0.2, 0.27, d) + smoothstep(0.09, 0.05, d) * 0.7;
-  float body = mix(disc, ring, vShape);
-  float halo = exp(-d * d * 7.0) * 0.45 * smoothstep(1.0, 0.6, d) * mix(1.0, 0.45, vShape);
-  float bokeh = smoothstep(1.0, 0.84, d) * (0.42 + 0.58 * smoothstep(0.5, 0.95, d));
-  vec3 col = mix(vColor, uFreshRgb, vFresh * (1.0 - body * 0.65) * 0.85);
-  if (uLight > 0.5) {
-    float sat = clamp((max(col.r, max(col.g, col.b)) - min(col.r, min(col.g, col.b))) / 0.22, 0.0, 1.0);
-    float haloLight = exp(-d * d * 5.0) * 0.34 * smoothstep(1.0, 0.48, d) * mix(1.0, 0.45, vShape) * mix(0.45, 1.0, sat);
-    float bokehLight = bokeh * 0.50 * mix(0.52, 1.0, sat);
-    float w = mix(body * 1.05 + haloLight, bokehLight, vCoc) * vAlpha;
-    vec3 absDens = -log(max(col, vec3(0.065)));
-    gl_FragColor = vec4(absDens * uGain, w);
-    return;
-  }
-  gl_FragColor = vec4(col * uGain, mix(body + halo, bokeh, vCoc) * vAlpha);
-}`;
 
-const LINE_VERTEX = /* glsl */ `
-attribute vec4 aRgba;
-varying vec4 vC;
-void main() {
-  vC = aRgba;
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-}`;
+  float R = ${BODY_NORM_R.toFixed(2)};
+  float angle = atan(p.y, p.x);
+  int shape = int(vShape + 0.5);
 
-const LINE_FRAGMENT = /* glsl */ `
-uniform float uLight;
-varying vec4 vC;
-void main() {
-  if (uLight > 0.5) {
-    vec3 absDens = -log(max(vC.rgb, vec3(0.12)));
-    gl_FragColor = vec4(absDens * 0.52, vC.a);
-    return;
-  }
-  gl_FragColor = vC;
-}`;
+  vec3 accCol = vec3(0.0);
+  float accA = 0.0;
 
-/**
- * 마지막 패스 — 다크는 선형→sRGB 변환 + 밝기 알파(곱셈 알파), 라이트는 누적된 보색 흡수 밀도를
- * Beer-Lambert 투과율로 풀어 투명 캔버스 위에서도 흰 포화 없이 색채가 번지게 한다.
- * 어두운 발광 꼬리가 8비트에서 동심원 띠로 끊기지 않게 삼각 분포 잡음(±1/255)을 더한다.
- */
-const FINAL_SHADER = {
-  uniforms: { tDiffuse: { value: null as unknown }, uLight: { value: 0 } },
-  vertexShader: /* glsl */ `
-    varying vec2 vUv;
-    void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
-  fragmentShader: /* glsl */ `
-    uniform sampler2D tDiffuse;
-    uniform float uLight;
-    varying vec2 vUv;
-    float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
-    vec3 encode(vec3 c) {
-      c = clamp(c, 0.0, 1.0);
-      return mix(c * 12.92, 1.055 * pow(c, vec3(1.0 / 2.4)) - 0.055, step(vec3(0.0031308), c));
+  // 헬퍼: premultiplied-like source-over 누적
+  // 1) 배경 광환(다크) 또는 미세 접지 그림자(라이트)
+  if (uLight < 0.5) {
+    float isBig = (shape == 1 || shape == 2) ? 1.0 : 0.0;
+    float coronaK = shape == 1 ? 3.4 : (isBig > 0.5 ? 4.4 : 6.2);
+    float corona = exp(-d * d * coronaK) * smoothstep(1.0, 0.45, d);
+    float coronaA = corona * (shape == 1 ? 0.52 : isBig > 0.5 ? 0.36 : 0.24) * vAlpha;
+    if (coronaA > 0.001) {
+      accCol = vColor;
+      accA = coronaA;
     }
-    void main() {
-      vec3 c = max(texture2D(tDiffuse, vUv).rgb, vec3(0.0));
-      float m = max(c.r, max(c.g, c.b));
-      if (m <= 0.0002) { gl_FragColor = vec4(0.0); return; }
-      float noise = (ign(gl_FragCoord.xy) + ign(gl_FragCoord.xy + vec2(5.588238, 5.588238)) - 1.0) / 255.0;
-      if (uLight > 0.5) {
-        float floorDens = min(c.r, min(c.g, c.b));
-        vec3 chromaDens = c - vec3(floorDens);
-        float greyCompressed = floorDens / (1.0 + max(0.0, floorDens - 0.45) * 1.15);
-        float cMax = max(chromaDens.r, max(chromaDens.g, chromaDens.b));
-        vec3 chromaCompressed = chromaDens * inversesqrt(1.0 + cMax * cMax * 0.16);
-        vec3 d = vec3(greyCompressed) + chromaCompressed;
-        vec3 t = exp(-d);
-        vec3 absorb = clamp(1.0 - t, 0.0, 1.0);
-        float a = max(absorb.r, max(absorb.g, absorb.b));
-        if (a <= 0.0005) { gl_FragColor = vec4(0.0); return; }
-        float outA = clamp(a + noise * 0.5, 0.0, 1.0);
-        vec3 premult = clamp(vec3(a) - absorb + noise * 0.5, vec3(0.0), vec3(outA));
-        gl_FragColor = vec4(premult, outA);
-        return;
-      }
-      vec3 e = encode(c);
-      float a = max(e.r, max(e.g, e.b));
-      gl_FragColor = vec4(max(e + noise, vec3(0.0)), max(a + noise, 0.0));
-    }`,
-};
+  } else {
+    // 라이트: 탁한 수채화 번짐 대신 선명한 접지 그림자 + 주요 허브의 맑은 틴트 링
+    float shadowD = length(p - vec2(0.0, 0.065));
+    float shadow = smoothstep(R * 1.18, R * 0.55, shadowD) * 0.14 * vAlpha;
+    if (shadow > 0.001) {
+      accCol = vec3(0.08, 0.11, 0.16);
+      accA = shadow;
+    }
+    if (shape == 1 || shape == 2) {
+      float tintGlow = exp(-pow((d - R * 0.7) / 0.34, 2.0)) * smoothstep(1.0, 0.5, d) * 0.16 * vAlpha;
+      accCol = mix(accCol, vColor, tintGlow / max(accA + tintGlow, 0.0001));
+      accA = accA + tintGlow * (1.0 - accA);
+    }
+  }
+
+  // 2) 본체 SDF (shape: 0=기억 구슬, 1=사령관 핵, 2=갈래 허브, 3=정보 마름모, 4=목표 중공 링, 5=+N 묶음)
+  vec4 body = vec4(0.0);
+  if (shape == 3) {
+    // 정보: 45도 회전 둥근 마름모 크리스탈
+    vec2 q = abs(p);
+    float diam = (q.x + q.y) * 0.78;
+    float s = R * 1.04;
+    float mask = smoothstep(s + 0.03, s - 0.025, diam);
+    float facet = clamp(0.5 - (p.x + p.y) * 0.65, 0.0, 1.0);
+    vec3 dCol = mix(vColor * 0.78, mix(vColor, vec3(1.0), 0.36), facet);
+    float edge = smoothstep(s - 0.08, s - 0.01, diam) * mask;
+    vec3 rimC = uLight > 0.5 ? vec3(1.0) : mix(vColor, vec3(1.0), 0.45);
+    body = vec4(mix(dCol, rimC, edge * 0.65), mask * 0.96);
+  } else if (shape == 4) {
+    // 목표: 얇고 정교한 중공 링 + 미세 중앙 핀(밀집 시 중심 시야를 막지 않게 절제)
+    float outerDisc = smoothstep(R * 0.96 + 0.02, R * 0.96 - 0.02, d);
+    float ring = ringMask(d, R * 0.86, 0.046);
+    float pin = smoothstep(R * 0.23 + 0.02, R * 0.23 - 0.02, d);
+    vec3 fillBg = mix(uStageRgb, vColor, 0.04);
+    float strokeMask = clamp(ring + pin, 0.0, 1.0);
+    body = vec4(mix(fillBg, vColor, strokeMask), outerDisc * 0.92);
+  } else if (shape == 5) {
+    // +N 묶음: 외곽 링 + 내부 공전 3점
+    float ring = ringMask(d, R * 0.98, 0.062);
+    float dots = 0.0;
+    float rot = uMotion > 0.5 ? uTime * 0.4 : 0.0;
+    for (int k = 0; k < 3; k++) {
+      float ka = float(k) * 2.0943951 + rot;
+      vec2 c = vec2(cos(ka), sin(ka)) * (R * 0.44);
+      dots = max(dots, smoothstep(0.11, 0.06, length(p - c)));
+    }
+    float mask = clamp(ring + dots, 0.0, 1.0);
+    body = vec4(mix(vColor, vec3(1.0), dots * 0.25), mask * 0.94);
+  } else {
+    // 0(기억·주제·출처), 1(사령관 핵), 2(갈래 허브)
+    float isMajor = (shape == 1 || shape == 2) ? 1.0 : 0.0;
+    body = shadeBead(p, R, vColor, isMajor);
+  }
+
+  // 본체 합성
+  float bodyA = body.a * vAlpha;
+  if (bodyA > 0.001) {
+    accCol = mix(accCol, body.rgb, bodyA / max(bodyA + accA * (1.0 - bodyA), 0.0001));
+    accA = bodyA + accA * (1.0 - bodyA);
+  }
+
+  // 3) 핵·허브 구조 링 + 성도 나침반 눈금(A+B 핵심 정체성)
+  if (shape == 1) {
+    float pulse = uMotion > 0.5 ? (0.5 + 0.5 * sin(uTime * 2.1)) : 0.5;
+    float innerRing = ringMask(d, R * (1.36 + pulse * 0.11), 0.026);
+    float dashOuter = step(0.0, sin(angle * 12.0));
+    float outerRing = ringMask(d, R * 1.82, 0.020) * dashOuter;
+    // 4방위 미세 나침반 틱
+    float axisAlign = max(smoothstep(0.032, 0.008, abs(p.x)), smoothstep(0.032, 0.008, abs(p.y)));
+    float tickBand = smoothstep(R * 1.28, R * 1.32, d) * (1.0 - smoothstep(R * 1.98, R * 2.04, d));
+    float ticks = axisAlign * tickBand * 0.55;
+    float ringA = clamp(innerRing * 0.55 + outerRing * 0.26 + ticks * 0.45, 0.0, 1.0) * vAlpha;
+    if (ringA > 0.001) {
+      accCol = mix(accCol, vColor, ringA / max(ringA + accA * (1.0 - ringA), 0.0001));
+      accA = ringA + accA * (1.0 - ringA);
+    }
+  } else if (shape == 2) {
+    float collar = ringMask(d, R * 1.38, 0.028) * 0.48 * vAlpha;
+    if (collar > 0.001) {
+      accCol = mix(accCol, vColor, collar / max(collar + accA * (1.0 - collar), 0.0001));
+      accA = collar + accA * (1.0 - collar);
+    }
+  }
+
+  // 4) 상태 신호(카테고리 색과 완전 분리) — fresh: 회전 청록 아크, stale: 점선 호박 고리
+  if (vFresh > 0.5 && shape != 1) {
+    float shift = uMotion > 0.5 ? uTime * 0.9 : 0.0;
+    float aRel = mod(angle - shift + 6.2831853, 6.2831853);
+    float arc = smoothstep(0.0, 0.25, aRel) * (1.0 - smoothstep(3.6, 3.9, aRel));
+    float fRing = ringMask(d, R * 1.36, 0.038) * arc * mix(0.92, 0.85, uLight) * vAlpha;
+    if (fRing > 0.001) {
+      accCol = mix(accCol, uFreshRgb, fRing / max(fRing + accA * (1.0 - fRing), 0.0001));
+      accA = fRing + accA * (1.0 - fRing);
+    }
+  }
+
+  if (vStale > 0.5) {
+    float dashes = smoothstep(-0.15, 0.15, sin(angle * 10.0));
+    float sRing = ringMask(d, R * 1.48, 0.034) * dashes * 0.90 * vAlpha;
+    if (sRing > 0.001) {
+      accCol = mix(accCol, uStaleRgb, sRing / max(sRing + accA * (1.0 - sRing), 0.0001));
+      accA = sRing + accA * (1.0 - sRing);
+    }
+  }
+
+  // 5) 호버·선택 정밀 4분할 조준 레티클(성도 B 요소)
+  if (vActive > 0.5) {
+    float quadGap = smoothstep(0.18, 0.30, abs(sin(angle * 2.0)));
+    float ret = ringMask(d, R * 1.72, 0.036) * quadGap * 0.94;
+    if (ret > 0.001) {
+      vec3 retCol = vActive > 1.5 ? uInkRgb : mix(vColor, uInkRgb, 0.45);
+      accCol = mix(accCol, retCol, ret / max(ret + accA * (1.0 - ret), 0.0001));
+      accA = ret + accA * (1.0 - ret);
+    }
+  }
+
+  if (accA <= 0.003) discard;
+  gl_FragColor = vec4(accCol, clamp(accA, 0.0, 1.0));
+}`;
 
 const clamp = (value: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, value));
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
@@ -212,33 +547,42 @@ const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2,
 type Rgb = readonly [number, number, number];
 type PaletteRgb = ReturnType<typeof mapPaletteToRgb>;
 
-/** 시안 `zOf` — 노드 id 해시로 정해지는 고정 깊이. 정면에서는 구조가 읽히고 빛망울로 깊이가 보인다. */
 const Z_SPAN: Partial<Record<MapNode["kind"], number>> = {
-  core: 0, "intel-hub": 50, branch: 50, description: 40, topic: 110,
-  memory: 300, intel: 180, "intel-overflow": 180, objective: 420, source: 420,
+  core: 0, "intel-hub": 45, branch: 45, description: 35, topic: 105,
+  memory: 270, intel: 170, "intel-overflow": 170, objective: 360, source: 340,
 };
+
 function depthOf(node: MapNode): number {
   let h = 2166136261;
   for (let i = 0; i < node.id.length; i += 1) h = Math.imul(h ^ node.id.charCodeAt(i), 16777619);
   const u = ((h >>> 0) % 10007) / 10007 - 0.5;
-  return u * (Z_SPAN[node.kind] ?? 140);
+  return u * (Z_SPAN[node.kind] ?? 130);
 }
 
-/** 시안 `radius` — 연결이 많을수록 큰 점. */
 function radiusOf(node: MapNode, degree: number): number {
   switch (node.kind) {
-    case "core": return 22;
-    case "branch": case "intel-hub": case "description": return 10;
-    case "topic": return 4.5;
-    case "objective": case "source": return 5 + Math.min(5, degree * 0.6);
-    case "intel": return 4.5;
-    case "intel-overflow": return 4.5 * 1.9;
-    // 시안은 기억마다 목표 노드로 가는 선이 있어 연결 수가 하나 더 많다 — 혼자뿐인 목표는 노드가 서지 않으니 그만큼 더한다.
-    case "memory": return 3.6 + Math.min(5, degree * 0.9);
+    case "core": return 20;
+    case "branch": case "intel-hub": case "description": return 10.5;
+    case "topic": return 5.2;
+    case "objective": return 4.4 + Math.min(2.6, degree * 0.32);
+    case "source": return 5.4 + Math.min(3.4, degree * 0.42);
+    case "intel": return 5.4;
+    case "intel-overflow": return 8.2;
+    case "memory": return 4.2 + Math.min(4.8, degree * 0.78);
   }
 }
 
-/** 팔레트 키 — 신호 토큰(fresh·stale)은 범주색에 쓰지 않는다. */
+function shapeCodeOf(node: MapNode): number {
+  switch (node.kind) {
+    case "core": return 1;
+    case "branch": case "intel-hub": case "description": return 2;
+    case "intel": return 3;
+    case "objective": return 4;
+    case "intel-overflow": return 5;
+    default: return 0;
+  }
+}
+
 function paletteKeyOf(node: MapNode): keyof MapPalette {
   switch (node.kind) {
     case "core": return "core";
@@ -257,22 +601,66 @@ function relativeLuminance(rgb: Rgb): number {
   return (0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]) / 255;
 }
 
+const SECTOR_BRANCHES: readonly MapBranchKey[] = ["description", "theater", "lessons", "crew", "person", "intel"];
+const FALLBACK_BRANCH_ANGLE: Record<MapBranchKey, number> = {
+  description: Math.PI / 2,
+  theater: Math.PI / 6,
+  lessons: -Math.PI / 6,
+  crew: -Math.PI / 2,
+  person: (-5 * Math.PI) / 6,
+  intel: (5 * Math.PI) / 6,
+};
+
+function rng32(seed: number): () => number {
+  let s = seed | 0;
+  return () => {
+    s = (s + 0x6d2b79f5) | 0;
+    let x = Math.imul(s ^ (s >>> 15), 1 | s);
+    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+interface EdgeRecord {
+  readonly a: number;
+  readonly b: number;
+  readonly baseAlpha: number;
+  readonly baseWidth: number;
+  readonly kind: "tree" | "link" | "objective" | "source";
+  readonly isTrunk: boolean;
+  readonly isBranch: boolean;
+}
+
 class MapWebglRendererImpl implements MapWebglRenderer {
   private container: HTMLElement | null = null;
   private canvas: HTMLCanvasElement | null = null;
   private renderer: WebGLRenderer | null = null;
-  private composer: EffectComposer | null = null;
-  private bloom: UnrealBloomPass | null = null;
-  private finalPass: ShaderPass | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(FOV_DEG, 1, 1, 20000);
+
+  private backdropGeo = new BufferGeometry();
+  private backdropMat: ShaderMaterial | null = null;
+  private backdropMesh: Mesh | null = null;
+
+  private guideGeo = new BufferGeometry();
+  private guideMat: ShaderMaterial | null = null;
+  private guideLines: LineSegments | null = null;
+
+  private dustGeo = new BufferGeometry();
+  private dustMat: ShaderMaterial | null = null;
+  private dustPoints: Points | null = null;
+
+  private ribbonGeo = new BufferGeometry();
+  private ribbonMat: ShaderMaterial | null = null;
+  private ribbonMesh: Mesh | null = null;
+
   private pointGeo = new BufferGeometry();
-  private lineGeo = new BufferGeometry();
   private pointMat: ShaderMaterial | null = null;
-  private lineMat: ShaderMaterial | null = null;
   private points: Points | null = null;
-  private lines: LineSegments | null = null;
+  private sortedIndices: Uint32Array = new Uint32Array(0);
+  private depthScratch: Float32Array = new Float32Array(0);
+  private indexBuf: BufferAttribute | null = null;
 
   private model: PositionedMapModel | null = null;
   private rgb: PaletteRgb | null = null;
@@ -283,23 +671,19 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private nodes: MapNode[] = [];
   private wx = new Float32Array(0);
   private wy = new Float32Array(0);
-  /** 펼치기 전 배치(시안 단위) — 무대 비율에 따라 축마다 `stretchX/Y`배로 펼친다. */
   private bx = new Float32Array(0);
   private by = new Float32Array(0);
   private stretchX = 1;
   private stretchY = 1;
-  /** GPU 버퍼에 올라가 있는 펼침·z 배율 — 좌표 배열과 따로 추적해 일부만 갱신되는 일이 없게 한다. */
   private uploaded = { sx: NaN, sy: NaN, sz: NaN };
   private baseCenter = new Vector3();
   private wz = new Float32Array(0);
-  /** 시안 z(스케일 전) — 무대가 좁으면 `zScale`배로 키워 깊이감이 무대 모양과 무관하게 같다. */
   private z0 = new Float32Array(0);
   private zScale = 1;
   private radius = new Float32Array(0);
-  /** 그려지는 크기(시안 단위 반경 × 호버·선택 배율) — 셰이더와 고르기가 같은 값을 읽는다. */
   private size = new Float32Array(0);
   private degree = new Int32Array(0);
-  private edgeIdx: { a: number; b: number; base: number; kind: "tree" | "link" | "objective" | "source" }[] = [];
+  private edgeList: EdgeRecord[] = [];
   private coreIndex = -1;
   private center = new Vector3();
   private extent = 400;
@@ -307,7 +691,6 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private filter: ReadonlySet<string> | null = null;
   private selection: string | null = null;
   private hover: string | null = null;
-  /** 호버·선택한 점과 그 이웃 — 시안 `focusSet`. */
   private focus: Uint8Array | null = null;
   private focusId: string | null = null;
 
@@ -317,9 +700,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private insets: MapFitInsets = DEFAULT_INSETS;
   private fitDist = 1200;
   private zoom = 1;
-  /** 카메라 자세 — 트랙볼처럼 화면 축 기준으로 쌓는다. 극을 넘어도 뒤집히지 않는다. 항등이면 정면. */
   private readonly orient = new Quaternion();
-  /** 바라보는 점의 이동(세계 좌표) — 오른쪽 끌기는 화면 평면을 따라 옮긴다. */
   private readonly pan = new Vector3();
   private tween: { t0: number; dur: number; orient0: Quaternion; zoom0: number; pan0: Vector3 } | null = null;
   private drag: { id: number; x: number; y: number; active: boolean; pan: boolean } | null = null;
@@ -327,6 +708,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private raf = 0;
   private dataDirty = true;
   private viewDirty = true;
+  private depthDirty = true;
   private lastDraw = 0;
   private reducedMotion = false;
   private pulse = true;
@@ -334,10 +716,11 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private readonly tmp = new Vector3();
   private readonly viewListeners = new Set<() => void>();
   private lastView = "";
+  private startTime = typeof performance !== "undefined" ? performance.now() : 0;
 
   private readonly onResize = () => this.resize();
   private readonly onContextLost = (event: Event) => { event.preventDefault(); };
-  private readonly onContextRestored = () => { this.dataDirty = true; this.viewDirty = true; this.schedule(); };
+  private readonly onContextRestored = () => { this.dataDirty = true; this.viewDirty = true; this.depthDirty = true; this.schedule(); };
   private readonly onContextMenu = (event: Event) => { event.preventDefault(); };
   private readonly onVisibility = () => {
     if (document.hidden) {
@@ -367,7 +750,6 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     drag.x = event.clientX;
     drag.y = event.clientY;
     if (drag.pan) {
-      // 끈 만큼 내용이 따라오게 — 초점 거리에서 1px이 가리키는 세계 길이. 돌려 둔 화면의 가로·세로 축을 따른다.
       const perPx = (this.fitDist * this.zoom) / this.focalPx();
       const right = this.tmp.set(1, 0, 0).applyQuaternion(this.orient).multiplyScalar(-dx * perPx);
       this.pan.add(right);
@@ -376,8 +758,8 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       const limit = this.extent;
       this.pan.set(clamp(this.pan.x, -limit, limit), clamp(this.pan.y, -limit, limit), clamp(this.pan.z, -limit, limit));
     } else {
-      // 화면 세로축(가로 끌기)·가로축(세로 끌기)으로 돌린다 — 각도 제한이 없어 어느 방향으로든 360도 이어진다.
       this.rotateBy(-dx * DRAG_RAD_PER_PX, -dy * DRAG_RAD_PER_PX);
+      this.depthDirty = true;
     }
     this.viewDirty = true;
     this.schedule();
@@ -403,13 +785,12 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   mount(container: HTMLElement, model: PositionedMapModel, palette: MapPalette): void {
     if (this.container) throw new Error("map-webgl: already mounted");
     const canvas = document.createElement("canvas");
-    // 컨텍스트는 여기서 한 번만 만든다 — 실패하면 throw해 화면에 안내만 둔다.
     const gl = canvas.getContext("webgl2", {
       alpha: true, antialias: true, depth: false, stencil: false, powerPreference: "high-performance",
     });
     if (!gl) throw new Error("map-webgl: webgl2 unavailable");
     try {
-      const renderer = new WebGLRenderer({ canvas, context: gl, alpha: true, antialias: true });
+      const renderer = new WebGLRenderer({ canvas, context: gl, alpha: true, antialias: true, premultipliedAlpha: true });
       this.renderer = renderer;
       this.canvas = canvas;
       this.container = container;
@@ -433,17 +814,6 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       container.append(canvas);
 
       this.buildMaterials(renderer);
-      const composer = new EffectComposer(renderer);
-      composer.setPixelRatio(this.pixelRatio);
-      composer.addPass(new RenderPass(this.scene, this.camera));
-      const bloom = new UnrealBloomPass(new Vector2(256, 256), 0.55, 0.35, 0.3);
-      composer.addPass(bloom);
-      const finalPass = new ShaderPass(FINAL_SHADER);
-      composer.addPass(finalPass);
-      this.composer = composer;
-      this.bloom = bloom;
-      this.finalPass = finalPass;
-
       this.applyModel(model, palette, true);
       this.resize();
       this.resizeObserver = new ResizeObserver(this.onResize);
@@ -498,6 +868,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.zoom = 1;
       this.pan.set(0, 0, 0);
       this.tween = null;
+      this.depthDirty = true;
     }
     this.viewDirty = true;
     this.schedule();
@@ -512,10 +883,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       const projected = this.screenOf(i);
       if (!projected) continue;
       const radius = this.visibleRadiusPx(i, projected.depth);
-      const hit = Math.max(radius, MIN_HIT_PX);
+      const hit = Math.max(radius + 2, MIN_HIT_PX);
       const distance = Math.hypot(projected.x - x, projected.y - y);
       if (distance > hit) continue;
-      // 가장 가까운 중심 — 큰 빛망울이 그 안의 작은 점을 가리지 않게 한다. 같으면 작은 쪽.
       const score = distance + radius * 0.001;
       if (score < bestScore) { bestScore = score; best = this.ids[i]!; }
     }
@@ -543,13 +913,13 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.pan.set(0, 0, 0);
       this.tween = null;
       this.viewDirty = true;
+      this.depthDirty = true;
     } else {
       this.tween = {
         t0: performance.now(), dur: FIT_TWEEN_MS,
         orient0: this.orient.clone(), zoom0: this.zoom, pan0: this.pan.clone(),
       };
     }
-    // 첫 그리기 전에도 project가 맞는 답을 내놓게 카메라를 곧바로 둔다.
     this.placeCamera();
     this.schedule();
   }
@@ -580,13 +950,16 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       canvas.removeEventListener("wheel", this.onWheel);
     }
     this.drag = null;
+    this.backdropGeo.dispose();
+    this.backdropMat?.dispose();
+    this.guideGeo.dispose();
+    this.guideMat?.dispose();
+    this.dustGeo.dispose();
+    this.dustMat?.dispose();
+    this.ribbonGeo.dispose();
+    this.ribbonMat?.dispose();
     this.pointGeo.dispose();
-    this.lineGeo.dispose();
     this.pointMat?.dispose();
-    this.lineMat?.dispose();
-    this.bloom?.dispose();
-    this.finalPass?.dispose();
-    this.composer?.dispose();
     const renderer = this.renderer;
     if (renderer) {
       renderer.dispose();
@@ -594,48 +967,83 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     }
     canvas?.remove();
     this.renderer = null;
-    this.composer = null;
-    this.bloom = null;
-    this.finalPass = null;
     this.canvas = null;
     this.container = null;
     this.model = null;
     this.filter = null;
   }
 
-  // ── 모델·팔레트 ───────────────────────────────────────────────────────
+  // ── 머티리얼 & 모델 ──────────────────────────────────────────────────────────
 
   private buildMaterials(renderer: WebGLRenderer): void {
     const maxPoint = (renderer.getContext().getParameter(renderer.getContext().ALIASED_POINT_SIZE_RANGE) as Float32Array)[1] ?? 64;
-    this.pointMat = new ShaderMaterial({
+    this.backdropMat = new ShaderMaterial({
       uniforms: {
-        uScale: { value: 1 }, uFocus: { value: 1200 }, uRange: { value: 260 }, uGain: { value: 0.95 },
-        uMaxPx: { value: Math.min(MAX_SPRITE_CSS * this.pixelRatio, maxPoint) },
+        uRadius: { value: 420 },
+        uLight: { value: 0 },
+        uFocusDim: { value: 0 },
+        uTime: { value: 0 },
+        uMotion: { value: 1 },
+        uCoreRgb: { value: new Vector3(0.55, 0.83, 0.81) },
+        uBranchRgb: { value: Array.from({ length: 6 }, () => new Vector3(0.6, 0.7, 0.8)) },
+        uBranchAngle: { value: new Float32Array(6) },
+        uBranchActive: { value: new Float32Array(6) },
+      },
+      vertexShader: BACKDROP_PLANE_VERTEX,
+      fragmentShader: BACKDROP_PLANE_FRAGMENT,
+      transparent: true, depthTest: false, depthWrite: false, side: DoubleSide, blending: NormalBlending,
+    });
+    this.guideMat = new ShaderMaterial({
+      uniforms: {
+        uColor: { value: new Vector3(0.5, 0.54, 0.6) },
+        uFocusDim: { value: 0 },
+      },
+      vertexShader: GUIDE_VERTEX,
+      fragmentShader: GUIDE_FRAGMENT,
+      transparent: true, depthTest: false, depthWrite: false, blending: NormalBlending,
+    });
+    this.dustMat = new ShaderMaterial({
+      uniforms: {
+        uColor: { value: new Vector3(0.84, 0.90, 0.96) },
+        uLight: { value: 0 },
+        uPixelRatio: { value: this.pixelRatio },
+        uTime: { value: 0 },
+        uMotion: { value: 1 },
+      },
+      vertexShader: DUST_VERTEX,
+      fragmentShader: DUST_FRAGMENT,
+      transparent: true, depthTest: false, depthWrite: false, blending: NormalBlending,
+    });
+    this.ribbonMat = new ShaderMaterial({
+      uniforms: {
+        uResolution: { value: new Vector2(800, 600) },
+        uTime: { value: 0 },
+        uMotion: { value: 1 },
         uLight: { value: 0 },
         uFreshRgb: { value: new Vector3(0.47, 0.79, 0.83) },
       },
+      vertexShader: RIBBON_VERTEX,
+      fragmentShader: RIBBON_FRAGMENT,
+      transparent: true, depthTest: false, depthWrite: false, side: DoubleSide, blending: NormalBlending,
+    });
+    this.pointMat = new ShaderMaterial({
+      uniforms: {
+        uScale: { value: 1 },
+        uFocus: { value: 1200 },
+        uRange: { value: 360 },
+        uMaxPx: { value: Math.min(MAX_SPRITE_CSS * this.pixelRatio, maxPoint) },
+        uLight: { value: 0 },
+        uTime: { value: 0 },
+        uMotion: { value: 1 },
+        uFreshRgb: { value: new Vector3(0.47, 0.79, 0.83) },
+        uStaleRgb: { value: new Vector3(0.86, 0.70, 0.36) },
+        uInkRgb: { value: new Vector3(0.95, 0.95, 0.95) },
+        uStageRgb: { value: new Vector3(0.08, 0.09, 0.11) },
+      },
       vertexShader: POINT_VERTEX,
       fragmentShader: POINT_FRAGMENT,
-      transparent: true, depthTest: false, depthWrite: false, blending: AdditiveBlending,
+      transparent: true, depthTest: false, depthWrite: false, blending: NormalBlending,
     });
-    this.lineMat = new ShaderMaterial({
-      uniforms: { uLight: { value: 0 } },
-      vertexShader: LINE_VERTEX,
-      fragmentShader: LINE_FRAGMENT,
-      transparent: true, depthTest: false, depthWrite: false, blending: AdditiveBlending,
-    });
-  }
-
-  /** 다크·라이트 모두 Additive + UnrealBloom을 쓰되, 라이트는 보색 흡수 밀도·Beer-Lambert 투과 패스로 전환한다. */
-  private applyLightMode(): void {
-    const lightFlag = this.light ? 1 : 0;
-    if (this.pointMat) {
-      this.pointMat.uniforms.uLight!.value = lightFlag;
-      this.pointMat.uniforms.uGain!.value = this.light ? 0.82 : 0.95;
-    }
-    if (this.lineMat) this.lineMat.uniforms.uLight!.value = lightFlag;
-    const finalUniforms = this.finalPass?.uniforms as { uLight?: { value: number } } | undefined;
-    if (finalUniforms?.uLight) finalUniforms.uLight.value = lightFlag;
   }
 
   private applyModel(model: PositionedMapModel, palette: MapPalette, first: boolean): void {
@@ -643,12 +1051,10 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.model = model;
     this.rgb = mapPaletteToRgb(palette);
     const light = relativeLuminance(this.rgb.ink) < 0.45;
-    if (light !== this.light || first) {
-      this.light = light;
-      this.applyLightMode();
-    }
+    if (light !== this.light || first) this.light = light;
     if (!previous || previous.graph !== model.graph || previous.layout !== model.layout) this.rebuild(model);
     this.dataDirty = true;
+    this.depthDirty = true;
   }
 
   private rebuild(model: PositionedMapModel): void {
@@ -671,31 +1077,35 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     nodes.forEach((node, i) => {
       const p = layout.positions.get(node.id)!;
       this.bx[i] = p.x * WORLD_SCALE;
-      this.by[i] = -p.y * WORLD_SCALE; // 화면 y는 아래로 자란다.
+      this.by[i] = -p.y * WORLD_SCALE;
       this.z0[i] = depthOf(node);
       this.wz[i] = this.z0[i]! * this.zScale;
     });
-    this.edgeIdx = [];
+
+    this.edgeList = [];
     for (const edge of graph.edges) {
       const a = this.index.get(edge.from);
       const b = this.index.get(edge.to);
       if (a === undefined || b === undefined) continue;
       this.degree[a]! += 1;
       this.degree[b]! += 1;
-      // 시안 선 알파: trunk .55 · branch .4 · twig/intel .26 · 목표·출처 .11 · link .6(색은 text-2)
-      let base = 0.26;
-      if (edge.kind === "link") base = 0.6;
-      else if (edge.kind === "objective" || edge.kind === "source") base = 0.11;
-      else if (nodes[a]!.kind === "core") base = 0.55;
-      else if (nodes[b]!.kind === "topic") base = 0.4;
-      this.edgeIdx.push({ a, b, base, kind: edge.kind });
+      const isTrunk = nodes[a]!.kind === "core";
+      const isBranch = nodes[b]!.kind === "topic" || nodes[b]!.kind === "source";
+      let baseAlpha = 0.28;
+      let baseWidth = 0.9;
+      if (edge.kind === "link") { baseAlpha = 0.56; baseWidth = 1.4; }
+      else if (edge.kind === "objective" || edge.kind === "source") { baseAlpha = 0.18; baseWidth = 0.9; }
+      else if (isTrunk) { baseAlpha = 0.64; baseWidth = 2.25; }
+      else if (isBranch) { baseAlpha = 0.44; baseWidth = 1.3; }
+      this.edgeList.push({ a, b, baseAlpha, baseWidth, kind: edge.kind, isTrunk, isBranch });
     }
     nodes.forEach((node, i) => { this.radius[i] = radiusOf(node, this.degree[i]!); });
     const { minX, maxX, minY, maxY } = layout.bounds;
     this.baseCenter.set(((minX + maxX) / 2) * WORLD_SCALE, -((minY + maxY) / 2) * WORLD_SCALE, 0);
     this.applyShape(this.stretchX, this.stretchY, this.zScale, false);
 
-    const dynamic = (array: Float32Array, size: number) => new BufferAttribute(array, size).setUsage(DynamicDrawUsage);
+    // 1) Point geometry (depth-sorted index buffer)
+    const dynamic = (array: Float32Array, itemSize: number) => new BufferAttribute(array, itemSize).setUsage(DynamicDrawUsage);
     const pointGeo = new BufferGeometry();
     const position = new Float32Array(n * 3);
     for (let i = 0; i < n; i += 1) { position[i * 3] = this.wx[i]!; position[i * 3 + 1] = this.wy[i]!; position[i * 3 + 2] = this.wz[i]!; }
@@ -704,44 +1114,203 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     pointGeo.setAttribute("aSize", dynamic(new Float32Array(n), 1));
     pointGeo.setAttribute("aAlpha", dynamic(new Float32Array(n), 1));
     const shape = new Float32Array(n);
-    nodes.forEach((node, i) => { shape[i] = node.kind === "intel-overflow" ? 1 : 0; });
+    nodes.forEach((node, i) => { shape[i] = shapeCodeOf(node); });
     pointGeo.setAttribute("aShape", new BufferAttribute(shape, 1));
     pointGeo.setAttribute("aFresh", dynamic(new Float32Array(n), 1));
-    const lineGeo = new BufferGeometry();
-    const m = this.edgeIdx.length;
-    const linePos = new Float32Array(m * 6);
-    this.edgeIdx.forEach(({ a, b }, e) => {
-      linePos.set([this.wx[a]!, this.wy[a]!, this.wz[a]!, this.wx[b]!, this.wy[b]!, this.wz[b]!], e * 6);
-    });
-    lineGeo.setAttribute("position", new BufferAttribute(linePos, 3));
-    lineGeo.setAttribute("aRgba", dynamic(new Float32Array(m * 8), 4));
+    pointGeo.setAttribute("aStale", dynamic(new Float32Array(n), 1));
+    pointGeo.setAttribute("aActive", dynamic(new Float32Array(n), 1));
+    this.sortedIndices = new Uint32Array(n);
+    this.depthScratch = new Float32Array(n);
+    for (let i = 0; i < n; i += 1) this.sortedIndices[i] = i;
+    this.indexBuf = new BufferAttribute(this.sortedIndices, 1).setUsage(DynamicDrawUsage);
+    pointGeo.setIndex(this.indexBuf);
 
+    // 2) Curved synaptic ribbon geometry (1 draw call for every edge)
+    const m = this.edgeList.length;
+    const vertsPerEdge = (EDGE_SEGMENTS + 1) * 2;
+    const trisPerEdge = EDGE_SEGMENTS * 6;
+    const totalVerts = m * vertsPerEdge;
+    const ribbonGeo = new BufferGeometry();
+    ribbonGeo.setAttribute("position", dynamic(new Float32Array(totalVerts * 3), 3));
+    ribbonGeo.setAttribute("aTangent", dynamic(new Float32Array(totalVerts * 3), 3));
+    const rSide = new Float32Array(totalVerts);
+    const rU = new Float32Array(totalVerts);
+    const rPhase = new Float32Array(totalVerts);
+    const rDash = new Float32Array(totalVerts);
+    for (let e = 0; e < m; e += 1) {
+      const edge = this.edgeList[e]!;
+      const dash = (edge.kind === "objective" || edge.kind === "source") ? 1 : 0;
+      const phase = ((e * 0.371) % 1);
+      const vBase = e * vertsPerEdge;
+      for (let s = 0; s <= EDGE_SEGMENTS; s += 1) {
+        const u = s / EDGE_SEGMENTS;
+        const v0 = vBase + s * 2;
+        rSide[v0] = -1; rSide[v0 + 1] = 1;
+        rU[v0] = u; rU[v0 + 1] = u;
+        rPhase[v0] = phase; rPhase[v0 + 1] = phase;
+        rDash[v0] = dash; rDash[v0 + 1] = dash;
+      }
+    }
+    ribbonGeo.setAttribute("aSide", new BufferAttribute(rSide, 1));
+    ribbonGeo.setAttribute("aU", new BufferAttribute(rU, 1));
+    ribbonGeo.setAttribute("aDist", dynamic(new Float32Array(totalVerts), 1));
+    ribbonGeo.setAttribute("aWidth", dynamic(new Float32Array(totalVerts), 1));
+    ribbonGeo.setAttribute("aAlpha", dynamic(new Float32Array(totalVerts), 1));
+    ribbonGeo.setAttribute("aDash", new BufferAttribute(rDash, 1));
+    ribbonGeo.setAttribute("aPulse", dynamic(new Float32Array(totalVerts), 1));
+    ribbonGeo.setAttribute("aPhase", new BufferAttribute(rPhase, 1));
+    ribbonGeo.setAttribute("aColorA", dynamic(new Float32Array(totalVerts * 3), 3));
+    ribbonGeo.setAttribute("aColorB", dynamic(new Float32Array(totalVerts * 3), 3));
+
+    const rIdx = new Uint32Array(m * trisPerEdge);
+    for (let e = 0; e < m; e += 1) {
+      const vBase = e * vertsPerEdge;
+      const iBase = e * trisPerEdge;
+      for (let s = 0; s < EDGE_SEGMENTS; s += 1) {
+        const a = vBase + s * 2;
+        const b = a + 1;
+        const c = a + 2;
+        const d = a + 3;
+        const o = iBase + s * 6;
+        rIdx[o] = a; rIdx[o + 1] = b; rIdx[o + 2] = c;
+        rIdx[o + 3] = b; rIdx[o + 4] = d; rIdx[o + 5] = c;
+      }
+    }
+    ribbonGeo.setIndex(new BufferAttribute(rIdx, 1));
+
+    // Swap scene meshes
     if (this.points) this.scene.remove(this.points);
-    if (this.lines) this.scene.remove(this.lines);
+    if (this.ribbonMesh) this.scene.remove(this.ribbonMesh);
     this.pointGeo.dispose();
-    this.lineGeo.dispose();
+    this.ribbonGeo.dispose();
     this.pointGeo = pointGeo;
-    this.lineGeo = lineGeo;
-    this.lines = new LineSegments(lineGeo, this.lineMat!);
+    this.ribbonGeo = ribbonGeo;
+    this.ribbonMesh = new Mesh(ribbonGeo, this.ribbonMat!);
     this.points = new Points(pointGeo, this.pointMat!);
-    this.lines.frustumCulled = false;
+    this.ribbonMesh.frustumCulled = false;
     this.points.frustumCulled = false;
-    this.lines.renderOrder = 0;
-    this.points.renderOrder = 1;
-    this.scene.add(this.lines, this.points);
-    this.uploaded = { sx: this.stretchX, sy: this.stretchY, sz: this.zScale };
+    this.ribbonMesh.renderOrder = 2;
+    this.points.renderOrder = 3;
+    this.scene.add(this.ribbonMesh, this.points);
+    this.uploaded = { sx: NaN, sy: NaN, sz: NaN };
 
     this.updateFocus();
-    // 노드 구성이 바뀌었을 때만 정면으로 되돌린다 — 테마 전환 등 같은 지도는 카메라를 지킨다.
     const signature = this.ids.join("\n");
     if (signature !== this.signature) {
       this.signature = signature;
       this.orient.identity(); this.zoom = 1; this.pan.set(0, 0, 0); this.tween = null;
     }
     this.computeFit();
+    this.rebuildSpatialGuides();
   }
 
-  /** 시안 `computeFocus` — 호버(없으면 선택)한 점과 이웃. */
+  /** Layer 0 (성도 극좌표 눈금 · 6갈래 구역 틴트 평면 · 다크 심도 성진)을 현재 extent 기준으로 생성. */
+  private rebuildSpatialGuides(): void {
+    const coreX = this.coreIndex >= 0 ? this.wx[this.coreIndex]! : this.center.x;
+    const coreY = this.coreIndex >= 0 ? this.wy[this.coreIndex]! : this.center.y;
+    const guideR = Math.max(180, this.extent * 1.02);
+
+    // 1) Sector + core aura plane at z = -4
+    const half = guideR * 1.3;
+    const planePos = new Float32Array([
+      -half, -half, 0, half, -half, 0, half, half, 0,
+      -half, -half, 0, half, half, 0, -half, half, 0,
+    ]);
+    const backdropGeo = new BufferGeometry();
+    backdropGeo.setAttribute("position", new BufferAttribute(planePos, 3));
+    if (this.backdropMesh) this.scene.remove(this.backdropMesh);
+    this.backdropGeo.dispose();
+    this.backdropGeo = backdropGeo;
+    this.backdropMesh = new Mesh(backdropGeo, this.backdropMat!);
+    this.backdropMesh.position.set(coreX, coreY, -4);
+    this.backdropMesh.frustumCulled = false;
+    this.backdropMesh.renderOrder = 0;
+    this.scene.add(this.backdropMesh);
+    if (this.backdropMat) this.backdropMat.uniforms.uRadius!.value = guideR;
+
+    // 2) Calibrated polar rings + 36 compass ticks + subtle crosshairs
+    const segPos: number[] = [];
+    const segAlpha: number[] = [];
+    const pushSeg = (x0: number, y0: number, x1: number, y1: number, a: number) => {
+      segPos.push(x0, y0, -2, x1, y1, -2);
+      segAlpha.push(a, a);
+    };
+    const ringSpecs = [
+      { frac: 0.32, steps: 72, dashed: false, alpha: 0.14 },
+      { frac: 0.64, steps: 96, dashed: true, alpha: 0.13 },
+      { frac: 0.94, steps: 120, dashed: false, alpha: 0.20 },
+    ];
+    for (const ring of ringSpecs) {
+      const rr = guideR * ring.frac;
+      for (let i = 0; i < ring.steps; i += 1) {
+        if (ring.dashed && i % 2 === 1) continue;
+        const a0 = (i / ring.steps) * Math.PI * 2;
+        const a1 = ((i + 1) / ring.steps) * Math.PI * 2;
+        pushSeg(
+          coreX + Math.cos(a0) * rr, coreY + Math.sin(a0) * rr,
+          coreX + Math.cos(a1) * rr, coreY + Math.sin(a1) * rr,
+          ring.alpha,
+        );
+      }
+    }
+    // 36 compass ticks along outer calibrated ring
+    const tickOuter = guideR * 0.965;
+    for (let i = 0; i < 36; i += 1) {
+      const a = (i / 36) * Math.PI * 2;
+      const major = i % 3 === 0;
+      const rIn = guideR * (major ? 0.90 : 0.922);
+      pushSeg(
+        coreX + Math.cos(a) * rIn, coreY + Math.sin(a) * rIn,
+        coreX + Math.cos(a) * tickOuter, coreY + Math.sin(a) * tickOuter,
+        major ? 0.28 : 0.15,
+      );
+    }
+    // Delicate orthogonal crosshairs
+    const axisSpan = guideR * 1.04;
+    pushSeg(coreX - axisSpan, coreY, coreX + axisSpan, coreY, 0.085);
+    pushSeg(coreX, coreY - axisSpan, coreX, coreY + axisSpan, 0.085);
+
+    const guideGeo = new BufferGeometry();
+    guideGeo.setAttribute("position", new BufferAttribute(new Float32Array(segPos), 3));
+    guideGeo.setAttribute("aAlpha", new BufferAttribute(new Float32Array(segAlpha), 1));
+    if (this.guideLines) this.scene.remove(this.guideLines);
+    this.guideGeo.dispose();
+    this.guideGeo = guideGeo;
+    this.guideLines = new LineSegments(guideGeo, this.guideMat!);
+    this.guideLines.frustumCulled = false;
+    this.guideLines.renderOrder = 1;
+    this.scene.add(this.guideLines);
+
+    // 3) Subtle 3D dust cloud for dark parallax
+    const dustCount = 64;
+    const rand = rng32(20261121);
+    const dustPos = new Float32Array(dustCount * 3);
+    const dustPhase = new Float32Array(dustCount);
+    const dustSize = new Float32Array(dustCount);
+    const dustR = guideR * 1.45;
+    for (let i = 0; i < dustCount; i += 1) {
+      const theta = rand() * Math.PI * 2;
+      const phi = Math.acos(2 * rand() - 1);
+      const rad = dustR * (0.45 + 0.65 * Math.cbrt(rand()));
+      dustPos[i * 3] = coreX + rad * Math.sin(phi) * Math.cos(theta);
+      dustPos[i * 3 + 1] = coreY + rad * Math.sin(phi) * Math.sin(theta);
+      dustPos[i * 3 + 2] = rad * Math.cos(phi) * 0.65;
+      dustPhase[i] = rand() * Math.PI * 2;
+      dustSize[i] = 1.6 + rand() * 1.5;
+    }
+    const dustGeo = new BufferGeometry();
+    dustGeo.setAttribute("position", new BufferAttribute(dustPos, 3));
+    dustGeo.setAttribute("aPhase", new BufferAttribute(dustPhase, 1));
+    dustGeo.setAttribute("aSize", new BufferAttribute(dustSize, 1));
+    if (this.dustPoints) this.scene.remove(this.dustPoints);
+    this.dustGeo.dispose();
+    this.dustGeo = dustGeo;
+    this.dustPoints = new Points(dustGeo, this.dustMat!);
+    this.dustPoints.frustumCulled = false;
+    this.dustPoints.renderOrder = 1;
+    this.scene.add(this.dustPoints);
+  }
+
   private updateFocus(): void {
     const id = this.hover ?? this.selection;
     const i = id !== null ? this.index.get(id) : undefined;
@@ -760,7 +1329,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     return this.filter === null || this.filter.has(id) || id === "core";
   }
 
-  // ── 크기·카메라 ───────────────────────────────────────────────────────
+  // ── 크기·카메라 ────────────────────────────────────────────────────────────
 
   private focalPx(): number {
     return (this.height / 2) / Math.tan((FOV_DEG * Math.PI) / 360);
@@ -776,22 +1345,19 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.width = w;
     this.height = h;
     renderer.setSize(w, h, false);
-    this.composer?.setSize(w, h);
     this.camera.aspect = w / h;
+    if (this.ribbonMat) (this.ribbonMat.uniforms.uResolution!.value as Vector2).set(w, h);
     this.computeFit();
+    this.rebuildSpatialGuides();
     this.dataDirty = true;
     this.viewDirty = true;
+    this.depthDirty = true;
     this.schedule();
   }
 
-  /**
-   * 맞춤 보기 — 정면에서 보이는 점 반경 최대의 1.04배가 여백 안쪽을 채우는 가장 가까운 거리.
-   * 여백이 비대칭이면 view offset으로 중심을 옮긴다.
-   */
   private computeFit(): void {
     const { width, height } = this;
     if (width === 0 || height === 0 || this.nodes.length === 0) return;
-    // 좁은 용기에서 여백이 지도를 삼키지 않게 한 변당 20%까지만 쓴다.
     const capX = (value: number) => Math.min(value, width * 0.2);
     const capY = (value: number) => Math.min(value, height * 0.2);
     const insets = {
@@ -801,8 +1367,6 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const availW = Math.max(40, width - insets.left - insets.right);
     const availH = Math.max(40, height - insets.top - insets.bottom);
     const f = this.focalPx();
-    // 1) 무대 비율에 맞춰 축마다 펼친다 — 지도가 한 축에만 몰려 무대가 비는 것을 막는다.
-    //    펼침 = (무대 비율 ÷ 지도 비율)을 긴 쪽 축에 곱하고, 한 축 STRETCH_MAX배까지만(극단 비율에서 일그러지지 않게).
     let halfW = 1;
     let halfH = 1;
     for (let i = 0; i < this.nodes.length; i += 1) {
@@ -813,8 +1377,6 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const sx = want > 1 ? Math.min(want, STRETCH_MAX) : 1;
     const sy = want < 1 ? Math.min(1 / want, STRETCH_MAX) : 1;
     this.applyShape(sx, sy, this.zScale, false);
-    // 2) 시안은 거리 ≈ 반경/tan(fov/2)(≈1200)에서 z 폭 ±150이 초점 범위(거리×0.24)의 절반쯤이라 빛망울이 된다.
-    //    세로로 긴 무대에서는 거리가 길어져 같은 z 폭이 초점 안에 들어가 평평해지므로, 거리 비율만큼 z를 키운다.
     let reach = 1;
     let flat = 1;
     for (let i = 0; i < this.nodes.length; i += 1) {
@@ -847,7 +1409,6 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.placeCamera();
   }
 
-  /** 펼침(x·y)과 z 배율을 적용해 좌표·지오메트리를 갱신한다 — project·pick이 같은 좌표를 읽는다. */
   private applyShape(sx: number, sy: number, sz: number, upload: boolean): void {
     this.stretchX = sx;
     this.stretchY = sy;
@@ -863,22 +1424,92 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const up = this.uploaded;
     if (Math.abs(sx - up.sx) < 1e-3 && Math.abs(sy - up.sy) < 1e-3 && Math.abs(sz - up.sz) < 1e-3) return;
     this.uploaded = { sx, sy, sz };
+
     const position = this.pointGeo.getAttribute("position") as BufferAttribute | undefined;
     if (position) {
       for (let i = 0; i < n; i += 1) position.setXYZ(i, this.wx[i]!, this.wy[i]!, this.wz[i]!);
       position.needsUpdate = true;
     }
-    const lines = this.lineGeo.getAttribute("position") as BufferAttribute | undefined;
-    if (lines) {
-      this.edgeIdx.forEach(({ a, b }, e) => {
-        lines.setXYZ(e * 2, this.wx[a]!, this.wy[a]!, this.wz[a]!);
-        lines.setXYZ(e * 2 + 1, this.wx[b]!, this.wy[b]!, this.wz[b]!);
-      });
-      lines.needsUpdate = true;
-    }
+    this.uploadRibbonGeometry();
+    this.depthDirty = true;
   }
 
-  /** 화면 축 기준 회전 — yaw는 화면 세로축, pitch는 화면 가로축. 자세에 오른쪽으로 곱해 지금 보이는 화면을 기준으로 돈다. */
+  /** 모든 엣지의 2차 베지에 곡선 정점·접선·누적 거리를 업로드한다. */
+  private uploadRibbonGeometry(): void {
+    const posAttr = this.ribbonGeo.getAttribute("position") as BufferAttribute | undefined;
+    const tanAttr = this.ribbonGeo.getAttribute("aTangent") as BufferAttribute | undefined;
+    const distAttr = this.ribbonGeo.getAttribute("aDist") as BufferAttribute | undefined;
+    if (!posAttr || !tanAttr || !distAttr) return;
+
+    const coreX = this.coreIndex >= 0 ? this.wx[this.coreIndex]! : this.center.x;
+    const coreY = this.coreIndex >= 0 ? this.wy[this.coreIndex]! : this.center.y;
+    const vertsPerEdge = (EDGE_SEGMENTS + 1) * 2;
+
+    for (let e = 0; e < this.edgeList.length; e += 1) {
+      const edge = this.edgeList[e]!;
+      const x0 = this.wx[edge.a]!, y0 = this.wy[edge.a]!, z0 = this.wz[edge.a]!;
+      const x1 = this.wx[edge.b]!, y1 = this.wy[edge.b]!, z1 = this.wz[edge.b]!;
+      const mx = (x0 + x1) * 0.5;
+      const my = (y0 + y1) * 0.5;
+      const mz = (z0 + z1) * 0.5;
+      const dx = x1 - x0;
+      const dy = y1 - y0;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      const dir = (e % 2 === 0) ? 1 : -1;
+
+      let cx = mx;
+      let cy = my;
+      let cz = mz;
+      if (edge.kind === "link") {
+        const bend = Math.min(82, len * 0.22) * dir;
+        cx = mx + nx * bend;
+        cy = my + ny * bend;
+        cz = mz + Math.min(95, len * 0.2);
+      } else if (edge.isTrunk) {
+        const bend = Math.min(28, len * 0.10) * dir;
+        cx = mx + nx * bend;
+        cy = my + ny * bend;
+      } else if (edge.kind === "objective" || edge.kind === "source") {
+        const bend = Math.min(24, len * 0.06) * dir;
+        cx = mx + nx * bend;
+        cy = my + ny * bend;
+      } else {
+        cx = mx + (coreX - mx) * 0.12 + nx * 9 * dir;
+        cy = my + (coreY - my) * 0.12 + ny * 9 * dir;
+      }
+
+      const vBase = e * vertsPerEdge;
+      let prevX = x0;
+      let prevY = y0;
+      let prevZ = z0;
+      let cumDist = 0;
+      for (let s = 0; s <= EDGE_SEGMENTS; s += 1) {
+        const u = s / EDGE_SEGMENTS;
+        const iu = 1 - u;
+        const px = iu * iu * x0 + 2 * iu * u * cx + u * u * x1;
+        const py = iu * iu * y0 + 2 * iu * u * cy + u * u * y1;
+        const pz = iu * iu * z0 + 2 * iu * u * cz + u * u * z1;
+        const tx = 2 * iu * (cx - x0) + 2 * u * (x1 - cx);
+        const ty = 2 * iu * (cy - y0) + 2 * u * (y1 - cy);
+        const tz = 2 * iu * (cz - z0) + 2 * u * (z1 - cz);
+        if (s > 0) cumDist += Math.hypot(px - prevX, py - prevY, pz - prevZ);
+        prevX = px; prevY = py; prevZ = pz;
+        const v0 = vBase + s * 2;
+        posAttr.setXYZ(v0, px, py, pz);
+        posAttr.setXYZ(v0 + 1, px, py, pz);
+        tanAttr.setXYZ(v0, tx, ty, tz);
+        tanAttr.setXYZ(v0 + 1, tx, ty, tz);
+        distAttr.setX(v0, cumDist);
+        distAttr.setX(v0 + 1, cumDist);
+      }
+    }
+    posAttr.needsUpdate = true;
+    tanAttr.needsUpdate = true;
+    distAttr.needsUpdate = true;
+  }
+
   private rotateBy(yaw: number, pitch: number): void {
     const step = new Quaternion().setFromAxisAngle(this.tmp.set(0, 1, 0), yaw);
     this.orient.multiply(step);
@@ -888,7 +1519,6 @@ class MapWebglRendererImpl implements MapWebglRenderer {
 
   private placeCamera(): void {
     const dist = this.fitDist * this.zoom;
-    // 자세가 항등이면 +z 정면에서 바라본다. 카메라는 자기 -z를 보므로 자세를 그대로 쓰면 늘 중심을 향한다.
     const target = this.tmp.set(this.center.x + this.pan.x, this.center.y + this.pan.y, this.pan.z);
     this.camera.quaternion.copy(this.orient);
     this.camera.position.set(0, 0, dist).applyQuaternion(this.orient).add(target);
@@ -896,7 +1526,22 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.camera.updateMatrixWorld();
   }
 
-  // ── 점 크기·고르기 ───────────────────────────────────────────────────
+  /** NormalBlending에서 가까운 점이 뒤에 가리지 않게 카메라 깊이 순으로 인덱스만 정렬한다. */
+  private sortPointsByDepth(): void {
+    const n = this.nodes.length;
+    if (n <= 1 || !this.indexBuf) return;
+    const e = this.camera.matrixWorldInverse.elements;
+    const m2 = e[2]!, m6 = e[6]!, m10 = e[10]!, m14 = e[14]!;
+    const depths = this.depthScratch;
+    for (let i = 0; i < n; i += 1) {
+      depths[i] = -(m2 * this.wx[i]! + m6 * this.wy[i]! + m10 * this.wz[i]! + m14);
+    }
+    // 깊은(큰 depth) 점부터 먼저 그린다.
+    this.sortedIndices.sort((a, b) => depths[b]! - depths[a]!);
+    this.indexBuf.needsUpdate = true;
+  }
+
+  // ── 점 크기·고르기 ─────────────────────────────────────────────────────────
 
   private screenOf(i: number): { x: number; y: number; depth: number } | null {
     if (!this.isVisible(this.ids[i]!)) return null;
@@ -911,22 +1556,22 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     return Math.max(FOCUS_RANGE_MIN, this.fitDist * this.zoom * FOCUS_RANGE_RATIO);
   }
 
-  /** 보이는 점 반경(CSS px) — 스프라이트 상한·초점 흐림까지 셰이더와 같은 식이다. */
   private visibleRadiusPx(i: number, depth: number): number {
     const coc = clamp(Math.abs(depth - this.fitDist * this.zoom) / this.focusRange(), 0, 1);
-    const sprite = Math.min(this.size[i]! * SPRITE_K * this.focalPx() / depth * (1 + coc * COC_GROW), MAX_SPRITE_CSS);
-    return (sprite / 2) * lerp(0.36, 0.9, coc);
+    const sprite = Math.min(this.size[i]! * SPRITE_K * this.focalPx() / depth * (1 + coc * 0.14), MAX_SPRITE_CSS);
+    return (sprite * 0.5) * BODY_NORM_R;
   }
 
-  /** 시안 반경 × (주제 0.8) × (호버·선택 1.4) — 핵 맥동은 그릴 때 따로 곱한다. */
   private baseSize(i: number): number {
     const node = this.nodes[i]!;
-    let s = this.radius[i]! * (node.kind === "topic" ? 0.8 : 1);
-    if (node.id === this.hover || node.id === this.selection) s *= 1.4;
+    const crowd = clamp((this.nodes.length - CROWD_FROM) / (CROWD_TO - CROWD_FROM), 0, 1);
+    const crowdScale = node.kind === "core" ? 1 : lerp(1, 0.84, crowd);
+    let s = this.radius[i]! * crowdScale * (node.kind === "topic" ? 0.84 : 1);
+    if (node.id === this.hover || node.id === this.selection) s *= 1.32;
     return s;
   }
 
-  // ── 그리기 ─────────────────────────────────────────────────────────────
+  // ── 그리기 ─────────────────────────────────────────────────────────────────
 
   private schedule(): void {
     if (this.raf || this.disposed || !this.renderer || (typeof document !== "undefined" && document.hidden)) return;
@@ -947,9 +1592,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.pan.copy(tween.pan0).multiplyScalar(1 - e);
       if (t >= 1) this.tween = null;
       this.viewDirty = true;
+      this.depthDirty = true;
     }
 
-    // 맥동만 있을 때는 30fps로 줄인다 — 끌기·트윈·데이터 변화는 즉시 그린다.
     const changed = this.dataDirty || this.viewDirty;
     if (changed || (this.pulse && now - this.lastDraw >= PULSE_FRAME_MS)) {
       this.lastDraw = now;
@@ -957,15 +1602,14 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.writePulse(now);
       this.viewDirty = false;
       this.placeCamera();
-      this.writeUniforms();
-      if (this.composer) this.composer.render();
-      else renderer.render(this.scene, this.camera);
+      if (this.depthDirty) { this.sortPointsByDepth(); this.depthDirty = false; }
+      this.writeUniforms(now);
+      renderer.render(this.scene, this.camera);
       this.notifyView();
     }
     if (this.pulse || this.tween) this.schedule();
   }
 
-  /** 카메라·크기가 바뀐 그림에서만 DOM 층에 알린다(맥동 그림에서는 알리지 않는다). */
   private notifyView(): void {
     const o = this.orient;
     const signature = [o.x, o.y, o.z, o.w, this.zoom, this.pan.x, this.pan.y, this.pan.z, this.width, this.height, this.fitDist]
@@ -977,51 +1621,93 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     }
   }
 
-  private writeUniforms(): void {
-    const material = this.pointMat;
-    if (!material) return;
-    const crowd = clamp((this.nodes.length - CROWD_FROM) / (CROWD_TO - CROWD_FROM), 0, 1);
-    material.uniforms.uFocus!.value = this.fitDist * this.zoom;
-    material.uniforms.uRange!.value = this.focusRange();
-    material.uniforms.uScale!.value = SPRITE_K * this.focalPx() * this.pixelRatio;
-    if (this.rgb) {
-      const fresh = this.rgb.fresh;
-      (material.uniforms.uFreshRgb!.value as Vector3).set(fresh[0] / 255, fresh[1] / 255, fresh[2] / 255);
+  private writeUniforms(now: number): void {
+    const rgb = this.rgb;
+    if (!rgb) return;
+    const tSec = (now - this.startTime) * 0.001;
+    const lightFlag = this.light ? 1 : 0;
+    const motionFlag = this.pulse ? 1 : 0;
+    const focusDim = this.focus ? 1 : 0;
+
+    if (this.backdropMat) {
+      const u = this.backdropMat.uniforms;
+      u.uLight!.value = lightFlag;
+      u.uFocusDim!.value = focusDim;
+      u.uTime!.value = tSec;
+      u.uMotion!.value = motionFlag;
+      (u.uCoreRgb!.value as Vector3).set(rgb.core[0] / 255, rgb.core[1] / 255, rgb.core[2] / 255);
+      const bRgb = u.uBranchRgb!.value as Vector3[];
+      const bAng = u.uBranchAngle!.value as Float32Array;
+      const bAct = u.uBranchActive!.value as Float32Array;
+      const coreX = this.coreIndex >= 0 ? this.wx[this.coreIndex]! : this.center.x;
+      const coreY = this.coreIndex >= 0 ? this.wy[this.coreIndex]! : this.center.y;
+      SECTOR_BRANCHES.forEach((branch, idx) => {
+        const hubId = branch === "description" ? "desc" : branch === "intel" ? "intel" : `mem:${branch}`;
+        const hi = this.index.get(hubId);
+        const c = branch === "description" ? rgb.core : rgb[branch];
+        bRgb[idx]!.set(c[0] / 255, c[1] / 255, c[2] / 255);
+        if (hi !== undefined && this.isVisible(hubId)) {
+          bAng[idx] = Math.atan2(this.wy[hi]! - coreY, this.wx[hi]! - coreX);
+          bAct[idx] = 1;
+        } else {
+          bAng[idx] = FALLBACK_BRANCH_ANGLE[branch];
+          bAct[idx] = 0;
+        }
+      });
     }
-    const bloom = this.bloom;
-    if (bloom) {
-      if (this.light) {
-        bloom.strength = lerp(0.34, 0.22, crowd);
-        bloom.radius = 0.38;
-        bloom.threshold = lerp(0.42, 0.58, crowd);
-      } else {
-        // 시안 값(0.55, 0.35, 0.3) — 노드가 많을 때만 겹친 발광이 하얗게 뭉치지 않게 조금 낮춘다.
-        bloom.strength = lerp(0.55, 0.4, crowd);
-        bloom.radius = 0.35;
-        bloom.threshold = lerp(0.3, 0.45, crowd);
-      }
+
+    if (this.guideMat) {
+      const c = this.light ? rgb.inkDim : rgb.inkDim;
+      (this.guideMat.uniforms.uColor!.value as Vector3).set(c[0] / 255, c[1] / 255, c[2] / 255);
+      this.guideMat.uniforms.uFocusDim!.value = focusDim;
+    }
+
+    if (this.dustMat) {
+      this.dustMat.uniforms.uLight!.value = lightFlag;
+      this.dustMat.uniforms.uTime!.value = tSec;
+      this.dustMat.uniforms.uMotion!.value = motionFlag;
+    }
+
+    if (this.ribbonMat) {
+      const u = this.ribbonMat.uniforms;
+      u.uTime!.value = tSec;
+      u.uMotion!.value = motionFlag;
+      u.uLight!.value = lightFlag;
+      (u.uFreshRgb!.value as Vector3).set(rgb.fresh[0] / 255, rgb.fresh[1] / 255, rgb.fresh[2] / 255);
+    }
+
+    if (this.pointMat) {
+      const u = this.pointMat.uniforms;
+      u.uFocus!.value = this.fitDist * this.zoom;
+      u.uRange!.value = this.focusRange();
+      u.uScale!.value = SPRITE_K * this.focalPx() * this.pixelRatio;
+      u.uLight!.value = lightFlag;
+      u.uTime!.value = tSec;
+      u.uMotion!.value = motionFlag;
+      (u.uFreshRgb!.value as Vector3).set(rgb.fresh[0] / 255, rgb.fresh[1] / 255, rgb.fresh[2] / 255);
+      (u.uStaleRgb!.value as Vector3).set(rgb.stale[0] / 255, rgb.stale[1] / 255, rgb.stale[2] / 255);
+      (u.uInkRgb!.value as Vector3).set(rgb.ink[0] / 255, rgb.ink[1] / 255, rgb.ink[2] / 255);
+      (u.uStageRgb!.value as Vector3).set(rgb.stageCore[0] / 255, rgb.stageCore[1] / 255, rgb.stageCore[2] / 255);
     }
   }
 
-  /** 핵 맥동 — 시안 `somaPulse`: 1 + 0.35 · (0.25 + 0.25 sin(t/900)). */
   private writePulse(now: number): void {
     const size = this.pointGeo.getAttribute("aSize") as BufferAttribute | undefined;
     if (!size || this.coreIndex < 0) return;
-    const pulse = this.pulse ? 0.25 + 0.25 * Math.sin(now / 900) : 0;
-    size.setX(this.coreIndex, this.isVisible("core") ? this.size[this.coreIndex]! * (1 + pulse * 0.35) : 0);
+    const pulse = this.pulse ? 0.5 + 0.5 * Math.sin(now / 900) : 0;
+    size.setX(this.coreIndex, this.isVisible("core") ? this.size[this.coreIndex]! * (1 + pulse * 0.08) : 0);
     size.needsUpdate = true;
   }
 
   private nodeRgb(i: number): Rgb {
-    const rgb = this.rgb!;
-    return rgb[paletteKeyOf(this.nodes[i]!)];
+    return this.rgb![paletteKeyOf(this.nodes[i]!)];
   }
 
   private writeBuffers(): void {
     const rgb = this.rgb;
     if (!rgb) return;
     const crowd = clamp((this.nodes.length - CROWD_FROM) / (CROWD_TO - CROWD_FROM), 0, 1);
-    const alphaScale = lerp(1, 0.8, crowd);
+    const alphaScale = lerp(1, 0.88, crowd);
     const focus = this.focus;
     const linkRgb = rgb.link;
     const objectiveRgb = rgb.objective;
@@ -1030,8 +1716,11 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const size = this.pointGeo.getAttribute("aSize") as BufferAttribute;
     const alpha = this.pointGeo.getAttribute("aAlpha") as BufferAttribute;
     const fresh = this.pointGeo.getAttribute("aFresh") as BufferAttribute;
+    const stale = this.pointGeo.getAttribute("aStale") as BufferAttribute;
+    const active = this.pointGeo.getAttribute("aActive") as BufferAttribute;
     const colors: Rgb[] = [];
     const shown: boolean[] = [];
+
     for (let i = 0; i < this.nodes.length; i += 1) {
       const node = this.nodes[i]!;
       const visible = this.isVisible(node.id);
@@ -1041,34 +1730,73 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       color.setXYZ(i, c[0] / 255, c[1] / 255, c[2] / 255);
       this.size[i] = this.baseSize(i);
       size.setX(i, visible ? this.size[i]! : 0);
-      // 시안: 알파 0.9 · 주제 ×0.6 · 다시 확인할 때 ×0.5 · 초점 밖 ×0.13
-      let a = 0.9 * alphaScale;
-      if (node.kind === "topic") a *= 0.6;
-      if (node.stale) a *= 0.5;
-      if (focus && focus[i] !== 1) a *= 0.13;
+      const isDim = focus !== null && focus[i] !== 1;
+      let a = 0.96 * alphaScale;
+      if (node.kind === "topic") a *= 0.78;
+      if (node.kind === "objective" && focus === null) a *= 0.82;
+      if (node.stale) a *= 0.62;
+      if (isDim) a *= 0.14;
       alpha.setX(i, visible ? a : 0);
-      fresh.setX(i, visible && node.fresh && !(focus && focus[i] !== 1) ? 1 : 0);
+      fresh.setX(i, visible && node.fresh && !isDim ? 1 : 0);
+      stale.setX(i, visible && node.stale && !isDim ? 1 : 0);
+      const act = !visible ? 0 : node.id === this.selection ? 2 : node.id === this.hover ? 1 : 0;
+      active.setX(i, act);
     }
     color.needsUpdate = true;
     size.needsUpdate = true;
     alpha.needsUpdate = true;
     fresh.needsUpdate = true;
+    stale.needsUpdate = true;
+    active.needsUpdate = true;
 
-    const edgeColor = this.lineGeo.getAttribute("aRgba") as BufferAttribute;
+    const rWidth = this.ribbonGeo.getAttribute("aWidth") as BufferAttribute;
+    const rAlpha = this.ribbonGeo.getAttribute("aAlpha") as BufferAttribute;
+    const rPulse = this.ribbonGeo.getAttribute("aPulse") as BufferAttribute;
+    const rColA = this.ribbonGeo.getAttribute("aColorA") as BufferAttribute;
+    const rColB = this.ribbonGeo.getAttribute("aColorB") as BufferAttribute;
     const focusIndex = this.focusId !== null ? this.index.get(this.focusId) : undefined;
-    this.edgeIdx.forEach(({ a, b, base, kind }, e) => {
-      const live = shown[a]! && shown[b]!;
-      let alphaEdge = live ? base : 0;
-      const touches = focusIndex !== undefined && (a === focusIndex || b === focusIndex);
-      if (live && focusIndex !== undefined) alphaEdge = touches ? Math.min(1, alphaEdge * 2.6 + 0.25) : alphaEdge * 0.12;
-      // 색: 자식 노드 색. 연결(link)은 text-2, 목표·출처는 text-3 — 닿은 점이 고른 점이면 연결 색으로 밝힌다.
-      let c: Rgb = colors[b]!;
-      if (kind === "link") c = linkRgb;
-      else if (kind === "objective" || kind === "source") c = touches ? linkRgb : objectiveRgb;
-      edgeColor.setXYZW(e * 2, c[0] / 255, c[1] / 255, c[2] / 255, alphaEdge);
-      edgeColor.setXYZW(e * 2 + 1, c[0] / 255, c[1] / 255, c[2] / 255, alphaEdge);
-    });
-    edgeColor.needsUpdate = true;
+    const vertsPerEdge = (EDGE_SEGMENTS + 1) * 2;
+    const lightMul = this.light ? 0.88 : 1.0;
+
+    for (let e = 0; e < this.edgeList.length; e += 1) {
+      const edge = this.edgeList[e]!;
+      const live = shown[edge.a]! && shown[edge.b]!;
+      const touches = focusIndex !== undefined && (edge.a === focusIndex || edge.b === focusIndex);
+      let ea = live ? edge.baseAlpha * lightMul : 0;
+      if (live && focusIndex !== undefined) {
+        ea = touches ? Math.min(0.95, edge.baseAlpha * 1.9 + 0.30) : edge.baseAlpha * 0.11;
+      }
+      const ew = !live ? 0 : touches ? Math.max(edge.baseWidth * 1.45, 2.2) : edge.baseWidth;
+      const ep = !live ? 0
+        : touches ? 2
+          : (edge.isTrunk || (edge.kind === "link" && e % 2 === 0)) && focusIndex === undefined ? 1
+            : 0;
+
+      let colA: Rgb = colors[edge.a]!;
+      let colB: Rgb = colors[edge.b]!;
+      if (edge.kind === "link") { colA = linkRgb; colB = linkRgb; }
+      else if (edge.kind === "objective" || edge.kind === "source") {
+        const c = touches ? linkRgb : objectiveRgb;
+        colA = c; colB = c;
+      } else if (!edge.isTrunk) {
+        colA = colB;
+      }
+
+      const vBase = e * vertsPerEdge;
+      for (let k = 0; k < vertsPerEdge; k += 1) {
+        const v = vBase + k;
+        rWidth.setX(v, ew);
+        rAlpha.setX(v, ea);
+        rPulse.setX(v, ep);
+        rColA.setXYZ(v, colA[0] / 255, colA[1] / 255, colA[2] / 255);
+        rColB.setXYZ(v, colB[0] / 255, colB[1] / 255, colB[2] / 255);
+      }
+    }
+    rWidth.needsUpdate = true;
+    rAlpha.needsUpdate = true;
+    rPulse.needsUpdate = true;
+    rColA.needsUpdate = true;
+    rColB.needsUpdate = true;
   }
 }
 

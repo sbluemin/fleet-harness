@@ -106,21 +106,22 @@
   /* 칩 hover·열림의 청록. aurora(상태)와 갈라 이 창만 쓴다. */
   --context-rail-accent: oklch(82% 0.07 190);
 
-  /* 사령관 지도 갈래 범주 — 시안 mind 값(판단 기준은 시안 원본 코드).
-     핵·설명은 정체성(mongle-teal), 목표는 text-3, 명시 링크는 text-2, 정보·출처는 neutral.
-     신호 토큰(aurora·warn·coral·positive)을 쓰지 않는다. */
+  /* 사령관 지도 갈래 범주 — 생체 시냅스 광학 + 절제된 성도 극좌표(A+B 절충).
+     핵·설명은 기본 정체성(mongle-teal)이며 렌더러가 사령관 아바타 톤(--mongle-<tone>/--id-<tone>)을 우선 읽는다.
+     신호 토큰(aurora·warn·coral·positive)을 범주색에 쓰지 않는다. */
   --map-core: var(--mongle-teal);
   --map-description: var(--mongle-teal);
-  --map-intel: oklch(70% 0.012 245);
-  --map-source: oklch(70% 0.012 245);
-  --map-objective: var(--text-tertiary);
-  --map-link: var(--text-secondary);
-  --map-branch-person: oklch(80% 0.11 75);
-  --map-branch-theater: oklch(74% 0.11 250);
-  --map-branch-lessons: oklch(75% 0.12 318);
-  --map-branch-crew: oklch(82% 0.1 115);
-  --map-stage-core: var(--ink-deep);
-  --map-stage-edge: var(--canvas-abyss);
+  --map-intel: oklch(72% 0.035 230);
+  --map-source: oklch(69% 0.032 230);
+  --map-objective: oklch(68% 0.018 245);
+  --map-link: oklch(78% 0.02 240);
+  --map-branch-person: oklch(81% 0.125 74);
+  --map-branch-theater: oklch(75% 0.125 248);
+  --map-branch-lessons: oklch(76% 0.135 316);
+  --map-branch-crew: oklch(82% 0.115 118);
+  --map-stage-core: oklch(19.5% 0.014 245);
+  --map-stage-edge: oklch(11.5% 0.01 245);
+  --map-stage-grid: oklch(78% 0.02 245 / 7%);
 
   /* 신호 ink 티어 — 텍스트로 쓰이는 신호색 전용 채널. 다크은 base 신호색을 그대로 별칭하고,
      라이트만 L 42~46% 리터럴로 오버라이드해 자기 glow 틴트 위에서도 AA(4.5:1)를 지킨다.
@@ -627,17 +628,20 @@
   --warn-glow: oklch(55% 0.11 82 / 16%);
   /* 도움말 '플릿 한눈에 보기' 무대의 사람 점 — 승인 시안의 주황. 다른 신호 대신 쓰지 않는다. */
   --glance-person: oklch(66% 0.13 60);
-  /* 사령관 지도 갈래 범주 — 밝은 바탕에서 읽히는 명도로만 분화하고 hue는 시안과 같다. */
-  --map-core: oklch(53% 0.105 190);
-  --map-description: oklch(53% 0.105 190);
-  --map-branch-person: oklch(60% 0.13 70);
-  --map-intel: oklch(50% 0 0);
-  --map-branch-theater: oklch(52% 0.14 250);
-  --map-branch-lessons: oklch(52% 0.15 318);
-  --map-branch-crew: oklch(56% 0.12 125);
-  --map-source: oklch(50% 0 0);
-  --map-stage-core: var(--canvas-abyss);
-  --map-stage-edge: var(--ink-deep);
+  /* 사령관 지도 갈래 범주 — 밝은 제도판 위 광학 법랑 비드 대비. 신호 채널과 분리 유지. */
+  --map-core: oklch(52% 0.115 190);
+  --map-description: oklch(52% 0.115 190);
+  --map-branch-person: oklch(58% 0.14 68);
+  --map-intel: oklch(48% 0.038 232);
+  --map-branch-theater: oklch(50% 0.145 250);
+  --map-branch-lessons: oklch(50% 0.155 316);
+  --map-branch-crew: oklch(54% 0.13 128);
+  --map-source: oklch(48% 0.038 232);
+  --map-objective: oklch(52% 0.018 245);
+  --map-link: oklch(48% 0.02 240);
+  --map-stage-core: oklch(99.2% 0.003 90);
+  --map-stage-edge: oklch(94.2% 0.007 240);
+  --map-stage-grid: oklch(32% 0.02 245 / 7%);
   --positive: oklch(50% 0.12 160);
   --positive-glow: oklch(50% 0.12 160 / 15%);
 
@@ -890,6 +894,10 @@
   --text-primary: var(--ink-pearl);
   --text-secondary: var(--ink-muted);
   --text-tertiary: var(--ink-fog);
+  /* 대화 다크의 무채 바탕(#121212) 안에서 중앙 스포트라이트가 역전되지 않게 무대 깊이를 명시한다. */
+  --map-stage-core: oklch(20% 0.012 245);
+  --map-stage-edge: oklch(13% 0.008 245);
+  --map-stage-grid: oklch(78% 0.016 245 / 6.5%);
 }
 
 /* ── 반투명 유리 게이트 ────────────────────────────────────────────────
@@ -1109,8 +1117,7 @@
   --crest-ink: var(--crest);
   /* 모바일에서는 이 팝업을 열지 않지만, Console 테마 값이 새지 않게 덮는다. */
   --glance-person: var(--m-running);
-  /* 사령관 지도 갈래 범주 — 모바일 극성별 --m-map-* 값을 가리킨다.
-     목표는 base 별칭(text-tertiary)을 그대로 잇는다. */
+  /* 사령관 지도 갈래 범주 — 모바일 극성별 --m-map-* 값을 가리킨다. */
   --map-core: var(--m-map-core);
   --map-description: var(--m-map-description);
   --map-intel: var(--m-map-intel);
@@ -1119,9 +1126,11 @@
   --map-branch-lessons: var(--m-map-branch-lessons);
   --map-branch-crew: var(--m-map-branch-crew);
   --map-source: var(--m-map-source);
-  --map-link: var(--m-text-nav);
+  --map-objective: var(--m-map-objective);
+  --map-link: var(--m-map-link);
   --map-stage-core: var(--m-map-stage-core);
   --map-stage-edge: var(--m-map-stage-edge);
+  --map-stage-grid: var(--m-map-stage-grid);
 
   /* 계기 — 채움은 읽기 단계 회색(시안의 진행 막대), 손잡이는 면, 경고 단만 신호를 빌린다. */
   --gauge-face: var(--m-surface);
@@ -1297,17 +1306,20 @@
   --provider-gemini: oklch(72% 0.09 255);
   --provider-anthropic: oklch(71% 0.085 310);
   --popover-icon-ink: rgb(245 245 245 / 64%);
-  /* 사령관 지도 갈래 범주 — 시안 mind 값(다크). */
+  /* 사령관 지도 갈래 범주 — 생체 시냅스 광학 + 극좌표(모바일 다크). */
   --m-map-core: var(--mongle-teal);
   --m-map-description: var(--mongle-teal);
-  --m-map-intel: oklch(70% 0.012 245);
-  --m-map-branch-person: oklch(80% 0.11 75);
-  --m-map-branch-theater: oklch(74% 0.11 250);
-  --m-map-branch-lessons: oklch(75% 0.12 318);
-  --m-map-branch-crew: oklch(82% 0.1 115);
-  --m-map-source: oklch(70% 0.012 245);
-  --m-map-stage-core: var(--m-bg);
-  --m-map-stage-edge: var(--m-bg-deep);
+  --m-map-intel: oklch(72% 0.035 230);
+  --m-map-branch-person: oklch(81% 0.125 74);
+  --m-map-branch-theater: oklch(75% 0.125 248);
+  --m-map-branch-lessons: oklch(76% 0.135 316);
+  --m-map-branch-crew: oklch(82% 0.115 118);
+  --m-map-source: oklch(69% 0.032 230);
+  --m-map-objective: oklch(68% 0.018 245);
+  --m-map-link: oklch(78% 0.02 240);
+  --m-map-stage-core: oklch(19.5% 0.012 245);
+  --m-map-stage-edge: oklch(12.5% 0.008 245);
+  --m-map-stage-grid: oklch(78% 0.016 245 / 6.5%);
 }
 
 :root[data-view-mode="mobile"][data-mobile-scheme="light"] {
@@ -1369,17 +1381,20 @@
   --provider-gemini: oklch(48% 0.1 255);
   --provider-anthropic: oklch(47% 0.095 310);
   --popover-icon-ink: rgb(28 28 28 / 66%);
-  /* 사령관 지도 갈래 범주 — 시안 mind 값(라이트). */
-  --m-map-core: oklch(53% 0.105 190);
-  --m-map-description: oklch(53% 0.105 190);
-  --m-map-intel: oklch(50% 0 0);
-  --m-map-branch-person: oklch(60% 0.13 70);
-  --m-map-branch-theater: oklch(52% 0.14 250);
-  --m-map-branch-lessons: oklch(52% 0.15 318);
-  --m-map-branch-crew: oklch(56% 0.12 125);
-  --m-map-source: oklch(50% 0 0);
-  --m-map-stage-core: var(--m-surface);
-  --m-map-stage-edge: var(--m-bg-deep);
+  /* 사령관 지도 갈래 범주 — 생체 시냅스 광학 + 극좌표(모바일 라이트). */
+  --m-map-core: oklch(52% 0.115 190);
+  --m-map-description: oklch(52% 0.115 190);
+  --m-map-intel: oklch(48% 0.038 232);
+  --m-map-branch-person: oklch(58% 0.14 68);
+  --m-map-branch-theater: oklch(50% 0.145 250);
+  --m-map-branch-lessons: oklch(50% 0.155 316);
+  --m-map-branch-crew: oklch(54% 0.13 128);
+  --m-map-source: oklch(48% 0.038 232);
+  --m-map-objective: oklch(52% 0.018 245);
+  --m-map-link: oklch(48% 0.02 240);
+  --m-map-stage-core: oklch(99.2% 0.003 90);
+  --m-map-stage-edge: oklch(94.2% 0.007 240);
+  --m-map-stage-grid: oklch(32% 0.02 245 / 7%);
 }
 
 /* 글자 배율 세 단(브리지 계약 fontScale) — 기본은 위 블록의 1. */

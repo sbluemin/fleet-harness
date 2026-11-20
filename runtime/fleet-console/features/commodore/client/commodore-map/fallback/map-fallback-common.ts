@@ -34,7 +34,8 @@ export function readMapFont(): string {
  */
 export function readMapBackdrop(): MapRgb {
   if (typeof document === "undefined") return [13, 15, 19];
-  const value = getComputedStyle(document.documentElement).getPropertyValue("--canvas-abyss").trim();
+  const cs = getComputedStyle(document.documentElement);
+  const value = cs.getPropertyValue("--map-stage-edge").trim() || cs.getPropertyValue("--canvas-abyss").trim();
   return (value ? cssColorToRgb(value) : null) ?? [13, 15, 19];
 }
 
@@ -210,16 +211,20 @@ export function drawMapLabels(
   maxTextWidth: number,
 ): void {
   const placed: { x0: number; y0: number; x1: number; y1: number }[] = [];
-  const shadow = rgbCss(backdrop);
+  const halo = rgbCss(backdrop, 0.9);
   const sorted = [...candidates].sort((a, b) => a.priority - b.priority);
   for (const candidate of sorted) {
     const size = candidate.strong ? MAP_LABEL_STRONG_SIZE : MAP_LABEL_SIZE;
     ctx.font = `600 ${size}px ${font}`;
     const text = truncateLabel(ctx, candidate.text, maxTextWidth);
     if (!text) continue;
-    const x = candidate.x + candidate.radius + MAP_LABEL_OFFSET_X;
-    const y = candidate.y - MAP_LABEL_OFFSET_Y;
     const textWidth = ctx.measureText(text).width;
+    // 오른쪽 가장자리에서 잘리지 않게 점 왼쪽으로 자연스럽게 넘긴다.
+    let x = candidate.x + candidate.radius + MAP_LABEL_OFFSET_X;
+    if (x + textWidth + 6 > width) {
+      x = Math.max(6, candidate.x - candidate.radius - MAP_LABEL_OFFSET_X - textWidth);
+    }
+    const y = Math.max(6, Math.min(height - size * 1.35, candidate.y - MAP_LABEL_OFFSET_Y));
     if (x < 2 || y < 0 || y > height || x > width - 2) continue;
     const rect = { x0: x - 1.5, y0: y - 1, x1: x + textWidth + 1.5, y1: y + size * 1.25 };
     const overlaps = placed.some((other) => rect.x0 < other.x1 && other.x0 < rect.x1 && rect.y0 < other.y1 && other.y0 < rect.y1);
@@ -227,13 +232,13 @@ export function drawMapLabels(
     placed.push(rect);
     ctx.save();
     ctx.globalAlpha = Math.max(0, Math.min(1, candidate.alpha));
-    ctx.fillStyle = candidate.color;
     ctx.textAlign = "left";
     ctx.textBaseline = "top";
-    ctx.shadowColor = shadow;
-    ctx.shadowBlur = 6;
-    ctx.fillText(text, x, y);
-    ctx.shadowBlur = 2;
+    ctx.lineJoin = "round";
+    ctx.strokeStyle = halo;
+    ctx.lineWidth = 3.2;
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = candidate.color;
     ctx.fillText(text, x, y);
     ctx.restore();
   }

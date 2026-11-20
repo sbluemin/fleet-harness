@@ -403,16 +403,104 @@ export function createMapRenderer(): MapRenderer {
     const focus = focusSet();
     const search = searchActive();
     const radii = orbitRadii();
-
-    // 궤도 안내 고리 — 방사형 읽기를 돕는다. 중심은 핵.
-    if (core) {
-      for (const radius of [HUB_RADIUS, TOPIC_RADIUS, LEAF_RADII[1], SOURCE_RADIUS, OBJECTIVE_RADIUS]) {
-        kit.ring(core.x, core.y, radius * state.view.k, radius * state.view.k, rgbCss(rgb.hair, 0.16), 1, 1, [3, 6]);
+    const light = (0.2126 * rgb.ink[0] + 0.7152 * rgb.ink[1] + 0.0722 * rgb.ink[2]) / 255 < 0.45;
+    const mixRgb = (a: MapRgb, b: MapRgb, t: number): MapRgb => [
+      Math.round(a[0] + (b[0] - a[0]) * t),
+      Math.round(a[1] + (b[1] - a[1]) * t),
+      Math.round(a[2] + (b[2] - a[2]) * t),
+    ];
+    const drawOpticalBead = (x: number, y: number, r: number, color: MapRgb, a: number, major: boolean): void => {
+      if (r <= 0.1 || a <= 0.005) return;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, a);
+      if (major || r >= 3.8) {
+        const g = ctx.createRadialGradient(x - r * 0.32, y - r * 0.34, r * 0.06, x, y, r);
+        g.addColorStop(0, rgbCss(mixRgb(color, [255, 255, 255], major ? 0.56 : 0.44)));
+        g.addColorStop(0.48, rgbCss(color));
+        g.addColorStop(1, rgbCss(mixRgb(color, [14, 18, 26], light ? 0.28 : 0.34)));
+        ctx.fillStyle = g;
+      } else {
+        ctx.fillStyle = rgbCss(color);
       }
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = light
+        ? `rgba(255, 255, 255, ${(0.72 * a).toFixed(3)})`
+        : rgbCss(mixRgb(color, [255, 255, 255], 0.36), major ? 0.54 : 0.32);
+      ctx.lineWidth = major ? 1.15 : 0.75;
+      ctx.stroke();
+      ctx.restore();
+    };
+
+    // 1) A+B 공간 안내층 — 사령관 톤 중앙 광원 · 6갈래 구역 웨지 틴트 · 보정된 극좌표 링 + 나침반 틱.
+    if (core) {
+      const outerR = Math.max(24, OBJECTIVE_RADIUS * state.view.k);
+      const focusFade = focus !== null ? 0.4 : 1;
+      // 사령관 톤 중심 광원
+      const auraR = outerR * 0.86;
+      const ag = ctx.createRadialGradient(core.x, core.y, 0, core.x, core.y, auraR);
+      ag.addColorStop(0, rgbCss(rgb.core, (light ? 0.08 : 0.14) * focusFade));
+      ag.addColorStop(0.55, rgbCss(rgb.core, (light ? 0.025 : 0.04) * focusFade));
+      ag.addColorStop(1, rgbCss(rgb.core, 0));
+      ctx.fillStyle = ag;
+      ctx.beginPath();
+      ctx.arc(core.x, core.y, auraR, 0, Math.PI * 2);
+      ctx.fill();
+
+      // 갈래별 부채꼴 구역 틴트
+      const sectors = sectorAllocation(graph);
+      for (const branch of MAP_BRANCH_ORDER) {
+        const sector = sectors.get(branch);
+        if (!sector) continue;
+        const bCol = branch === "description" ? rgb.core : rgb[branch];
+        const wg = ctx.createRadialGradient(core.x, core.y, outerR * 0.08, core.x, core.y, outerR * 1.06);
+        wg.addColorStop(0, rgbCss(bCol, 0));
+        wg.addColorStop(0.55, rgbCss(bCol, (light ? 0.068 : 0.075) * focusFade));
+        wg.addColorStop(1, rgbCss(bCol, 0));
+        ctx.fillStyle = wg;
+        ctx.beginPath();
+        ctx.moveTo(core.x, core.y);
+        ctx.arc(core.x, core.y, outerR * 1.06, sector.start + 0.03, sector.end - 0.03);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // 극좌표 안내 고리 + 36개 나침반 틱 + 미세 십자선
+      const ringSpecs: readonly { readonly r: number; readonly dash?: readonly number[]; readonly a: number }[] = [
+        { r: HUB_RADIUS, a: 0.16 },
+        { r: TOPIC_RADIUS, dash: [3, 5], a: 0.14 },
+        { r: LEAF_RADII[1], a: 0.15 },
+        { r: SOURCE_RADIUS, dash: [2, 5], a: 0.12 },
+        { r: OBJECTIVE_RADIUS, a: 0.22 },
+      ];
+      for (const spec of ringSpecs) {
+        kit.ring(core.x, core.y, spec.r * state.view.k, spec.r * state.view.k, rgbCss(rgb.hair, spec.a * focusFade), 1, 1, spec.dash);
+      }
+      ctx.save();
+      ctx.strokeStyle = rgbCss(rgb.inkDim, (light ? 0.18 : 0.18) * focusFade);
+      ctx.lineWidth = 0.85;
+      for (let i = 0; i < 36; i += 1) {
+        const a = (i / 36) * Math.PI * 2;
+        const major = i % 3 === 0;
+        const r0 = outerR * (major ? 0.945 : 0.968);
+        const r1 = outerR * 1.01;
+        ctx.beginPath();
+        ctx.moveTo(core.x + Math.cos(a) * r0, core.y + Math.sin(a) * r0);
+        ctx.lineTo(core.x + Math.cos(a) * r1, core.y + Math.sin(a) * r1);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = rgbCss(rgb.inkDim, 0.07 * focusFade);
+      ctx.beginPath();
+      ctx.moveTo(core.x - outerR * 1.04, core.y);
+      ctx.lineTo(core.x + outerR * 1.04, core.y);
+      ctx.moveTo(core.x, core.y - outerR * 1.04);
+      ctx.lineTo(core.x, core.y + outerR * 1.04);
+      ctx.stroke();
+      ctx.restore();
     }
 
-    // 연결선 — 시안 알파(trunk .55/branch .4/twig .26/intel .26/link .6/목표 .11).
-    // 초점과 이어진 선은 a×2.6+0.25, 나머지 ×0.12. 검색 중엔 남은 선 ×2.
+    // 2) 곡선 시냅스 연결선 — 줄기→가지→잔가지 두께 위계 + 줄기 색 전이 + 다크 발광 피복.
     for (const edge of graph.edges) {
       if (!isVisible(edge.from) || !isVisible(edge.to)) continue;
       const a = points.get(edge.from);
@@ -424,18 +512,33 @@ export function createMapRenderer(): MapRenderer {
       const alpha = search
         ? Math.min(1, base * 2)
         : focus !== null
-          ? touches ? Math.min(1, base * 2.6 + 0.25) : base * 0.12
+          ? touches ? Math.min(0.95, base * 2.4 + 0.28) : base * 0.11
           : base;
       const color = mapEdgeRgb(rgb, graph, edge);
       const mx = (a.x + b.x) / 2;
       const my = (a.y + b.y) / 2;
-      const cx = core ? mx + (core.x - mx) * 0.1 : mx;
-      const cy = core ? my + (core.y - my) * 0.1 : my;
+      const cx = core ? mx + (core.x - mx) * 0.14 : mx;
+      const cy = core ? my + (core.y - my) * 0.14 : my;
+      const lw = touches ? 2.0 : role === "trunk" ? 1.9 : role === "link" ? 1.3 : role === "branch" ? 1.2 : 0.85;
       ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.strokeStyle = rgbCss(color);
-      ctx.lineWidth = touches ? 1.6 : role === "trunk" ? 1.2 : 1;
-      if (edge.kind === "link" || edge.kind === "objective" || edge.kind === "source") ctx.setLineDash([2, 3]);
+      if (edge.kind === "objective" || edge.kind === "source") ctx.setLineDash([2.5, 3.5]);
+      if (!light && (role === "trunk" || touches || role === "link")) {
+        ctx.strokeStyle = rgbCss(color, alpha * 0.28);
+        ctx.lineWidth = lw + 2.8;
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        ctx.quadraticCurveTo(cx, cy, b.x, b.y);
+        ctx.stroke();
+      }
+      if (role === "trunk") {
+        const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+        grad.addColorStop(0, rgbCss(rgb.core, Math.min(1, alpha * 1.1)));
+        grad.addColorStop(1, rgbCss(color, Math.min(1, alpha)));
+        ctx.strokeStyle = grad;
+      } else {
+        ctx.strokeStyle = rgbCss(color, light ? alpha * 0.88 : alpha);
+      }
+      ctx.lineWidth = lw;
       ctx.beginPath();
       ctx.moveTo(a.x, a.y);
       ctx.quadraticCurveTo(cx, cy, b.x, b.y);
@@ -443,7 +546,7 @@ export function createMapRenderer(): MapRenderer {
       ctx.restore();
     }
 
-    // 노드 — 시안 알파(0.9 · 초점 밖 0.13 · stale ×0.5 · 주제 ×0.6), 호버·선택은 ×1.4.
+    // 3) 광학 노드 — 다크 생체 발광 구슬 / 라이트 광학 법랑 비드 + 범례 도형 100% 일치.
     for (const node of graph.nodes) {
       if (!isVisible(node.id)) continue;
       const point = points.get(node.id);
@@ -451,27 +554,113 @@ export function createMapRenderer(): MapRenderer {
       const r = nodeRadius(node, radii);
       const dim = focus !== null && !focus.has(node.id);
       const color = mapNodeRgb(rgb, node);
-      const alpha = 0.9 * (dim ? 0.13 : 1) * (node.stale ? 0.5 : 1) * (node.kind === "topic" ? 0.6 : 1);
-      const glowColor = node.fresh && !dim ? rgb.fresh : color;
-      kit.glow(point.x, point.y, Math.max(0.01, r * 3), rgbCss(glowColor), dim ? 0.08 : node.kind === "core" ? 0.95 : node.fresh ? 0.7 : 0.4);
+      const alpha = 0.96 * (dim ? 0.14 : 1) * (node.stale ? 0.6 : 1) * (node.kind === "topic" ? 0.78 : 1);
+      const isMajor = node.kind === "core" || node.kind === "description" || node.kind === "branch" || node.kind === "intel-hub";
 
-      if (node.kind === "intel") {
+      if (!light) {
+        if (isMajor || r >= 3.5) {
+          const haloR = Math.max(2, r * (node.kind === "core" ? 3.4 : isMajor ? 2.8 : 2.1));
+          const hg = ctx.createRadialGradient(point.x, point.y, r * 0.2, point.x, point.y, haloR);
+          hg.addColorStop(0, rgbCss(color, (node.kind === "core" ? 0.48 : isMajor ? 0.34 : 0.22) * alpha));
+          hg.addColorStop(0.45, rgbCss(color, 0.12 * alpha));
+          hg.addColorStop(1, rgbCss(color, 0));
+          ctx.fillStyle = hg;
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, haloR, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        // 라이트: 미세 접지 그림자
+        ctx.fillStyle = `rgba(22, 30, 44, ${(0.12 * alpha).toFixed(3)})`;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y + Math.max(0.8, r * 0.2), r * 1.06, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      if (node.kind === "core") {
+        // 사령관 핵: 동심 시냅스 고리 + 4방위 나침반 틱 + 광학 구슬
+        kit.ring(point.x, point.y, r * 1.38, r * 1.38, rgbCss(color, (light ? 0.42 : 0.48) * alpha), 1, 1.3);
+        kit.ring(point.x, point.y, r * 1.82, r * 1.82, rgbCss(color, (light ? 0.22 : 0.24) * alpha), 1, 1, [3, 4]);
         ctx.save();
+        ctx.strokeStyle = rgbCss(color, 0.5 * alpha);
+        ctx.lineWidth = 1;
+        for (let k = 0; k < 4; k += 1) {
+          const ka = (k * Math.PI) / 2;
+          ctx.beginPath();
+          ctx.moveTo(point.x + Math.cos(ka) * r * 1.25, point.y + Math.sin(ka) * r * 1.25);
+          ctx.lineTo(point.x + Math.cos(ka) * r * 1.98, point.y + Math.sin(ka) * r * 1.98);
+          ctx.stroke();
+        }
+        ctx.restore();
+        drawOpticalBead(point.x, point.y, r, color, alpha, true);
+      } else if (node.kind === "intel") {
+        // 정보: 45도 회전 둥근 마름모 크리스탈
+        ctx.save();
+        ctx.translate(point.x, point.y);
+        ctx.rotate(Math.PI / 4);
+        const s = r * 1.48;
         ctx.globalAlpha = alpha;
         ctx.fillStyle = rgbCss(color);
-        ctx.fillRect(point.x - r, point.y - r, r * 2, r * 2);
+        ctx.beginPath();
+        ctx.roundRect(-s / 2, -s / 2, s, s, Math.max(1.2, s * 0.22));
+        ctx.fill();
+        ctx.strokeStyle = light ? "rgba(255,255,255,0.78)" : rgbCss(mixRgb(color, [255, 255, 255], 0.42), 0.85);
+        ctx.lineWidth = 0.9;
+        ctx.stroke();
         ctx.restore();
+      } else if (node.kind === "objective") {
+        // 목표: 바탕 채움 + 또렷한 외곽 링 + 중앙 점
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = rgbCss(rgb.stageCore, 0.94);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = rgbCss(color, 0.92);
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.fillStyle = rgbCss(color, 0.92);
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, Math.max(1.4, r * 0.34), 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      } else if (node.kind === "intel-overflow") {
+        // +N 묶음: 외곽 고리 + 내부 3점
+        kit.ring(point.x, point.y, r * 1.15, r * 1.15, rgbCss(color, 0.92), alpha, 1.5);
+        for (let k = 0; k < 3; k += 1) {
+          const ka = k * 2.0943951;
+          kit.dot(point.x + Math.cos(ka) * r * 0.44, point.y + Math.sin(ka) * r * 0.44, Math.max(1.3, r * 0.25), rgbCss(color), alpha);
+        }
       } else {
-        kit.dot(point.x, point.y, Math.max(0.01, node.kind === "objective" ? r * 0.55 : r), rgbCss(color), alpha);
+        if (isMajor) kit.ring(point.x, point.y, r * 1.38, r * 1.38, rgbCss(color, 0.46), alpha, 1.15);
+        drawOpticalBead(point.x, point.y, r, color, alpha, isMajor);
       }
-      if (node.kind === "objective") kit.ring(point.x, point.y, r, r, rgbCss(color, 0.8), dim ? 0.13 : 0.8, 1.2);
-      if (node.kind === "intel-overflow") {
-        // 정보 점과 구별되는 큰 점 + 고리(수정 8-1).
-        kit.ring(point.x, point.y, r + 3, r + 3, rgbCss(color, 0.9), dim ? 0.13 : 0.85, 1.8);
+
+      // 상태 신호: fresh = 청록 외곽 아크(범주 색을 오염시키지 않음), stale = 점선 호박 고리
+      if (node.fresh && !dim && node.kind !== "core") {
+        ctx.save();
+        ctx.strokeStyle = rgbCss(rgb.fresh, light ? 0.86 : 0.92);
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.arc(point.x, point.y, r + 2.8, -Math.PI * 0.65, Math.PI * 0.6);
+        ctx.stroke();
+        ctx.restore();
       }
-      if (node.stale && !dim) kit.ring(point.x, point.y, r + 3.5, r + 3.5, rgbCss(rgb.stale, 0.85), 0.5, 1.2, [2.5, 2]);
+      if (node.stale && !dim) {
+        kit.ring(point.x, point.y, r + 3.4, r + 3.4, rgbCss(rgb.stale, 0.9), 0.9, 1.3, [2.5, 2.2]);
+      }
       if (node.id === state.selection || node.id === state.hover) {
-        kit.ring(point.x, point.y, r + 5, r + 5, rgbCss(node.id === state.selection ? rgb.ink : rgb.inkDim), 1, node.id === state.selection ? 2 : 1.2);
+        const rr = r + 5.2;
+        ctx.save();
+        ctx.strokeStyle = rgbCss(node.id === state.selection ? rgb.ink : color, 0.94);
+        ctx.lineWidth = node.id === state.selection ? 1.8 : 1.3;
+        for (let k = 0; k < 4; k += 1) {
+          const sa = (k * Math.PI) / 2 + 0.24;
+          ctx.beginPath();
+          ctx.arc(point.x, point.y, rr, sa, sa + Math.PI / 2 - 0.48);
+          ctx.stroke();
+        }
+        ctx.restore();
       }
     }
 
