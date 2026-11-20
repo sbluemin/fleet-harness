@@ -113,16 +113,13 @@ body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-a
   transition: opacity var(--duration-fade) ease;
 }
 .brand-mark-tile { fill: var(--ink-deep); stroke: var(--hairline-strong); stroke-width: 2; }
-.brand-mark-ring { fill: none; stroke: var(--brass); stroke-width: 3.5; }
-/* 개발 빌드는 바깥 링을 열고 신호점을 뺀다(옛 Console 브랜드 마크의 개발 채널 표기와 같은 조형). */
-.brand-mark-ring-open { display: none; fill: none; stroke: var(--brass); stroke-width: 3.5; stroke-linecap: round; }
-.is-dev .brand-mark-ring, .is-dev .brand-mark-beacon { display: none; }
-.is-dev .brand-mark-ring-open { display: inline; }
-.brand-mark-inner { fill: none; stroke: var(--brass); stroke-width: 1.8; opacity: 0.55; }
-.brand-mark-ticks { fill: none; stroke: var(--brass); stroke-width: 3; stroke-linecap: round; }
-.brand-mark-pip { fill: var(--brass); }
-.brand-mark-beacon { fill: var(--aurora); transform-box: fill-box; transform-origin: center; }
-:root[data-tone="busy"] .brand-mark-beacon { animation: beacon 1.8s ease-in-out infinite; }
+.brand-mark-pennant { fill: var(--ink-pearl); }
+.brand-mark-blade { fill: #d4b476; transform-box: fill-box; transform-origin: center; }
+:root[data-scheme="light"] .brand-mark-blade { fill: #a07a36; }
+/* 개발 빌드는 기함기를 외곽선으로 열고 보조 블레이드를 개발 잉크로 낮춰 출하 빌드와 구분한다. */
+.is-dev .brand-mark-pennant { fill: none; stroke: var(--ink-brand-dev); stroke-width: 2.5; stroke-linejoin: round; }
+.is-dev .brand-mark-blade { fill: var(--ink-brand-dev); opacity: 0.72; }
+:root[data-tone="busy"] .brand-mark-blade { animation: beacon 1.8s ease-in-out infinite; }
 
 .wordmark {
   position: fixed;
@@ -172,7 +169,7 @@ body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-a
 .is-handoff:not(.is-farewell) .wordmark { animation: handoff var(--handoff-duration) ease-in-out forwards; }
 .wordmark { --handoff-offset: -50%; }
 .is-handoff .entry-stage, .is-handoff .versions, .is-handoff .dev-tag { opacity: 0; }
-.is-handoff .brand-mark-beacon { animation: none; }
+.is-handoff .brand-mark-blade { animation: none; }
 
 /* 종료 인사: 바탕과 브랜드가 중앙에서 바로 나타난다. 아래의 Console은 판이 차오를 때까지 비친다. */
 .is-farewell body { transition: background-color var(--duration-fade) ease; }
