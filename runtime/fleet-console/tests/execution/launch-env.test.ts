@@ -105,8 +105,8 @@ describe("standalone Claude Code CLI launch", () => {
       const spec = await launch(theater, { sessionId: "standalone-cli", objectiveRecordType: "standalone-cli" });
 
       expect(spec.bin).toBe(bin);
-      // Fleet MCP·플러그인·프롬프트·세션 좌표는 없다. 인자는 압축 창 --settings뿐이다.
-      expect(spec.args.filter((arg) => arg !== "--settings" && !arg.startsWith("{"))).toEqual([]);
+      // Fleet MCP·플러그인·프롬프트·세션 좌표는 없다. 인자는 압축 창 --settings와 승인 우회 플래그뿐이다.
+      expect(spec.args.filter((arg) => arg !== "--settings" && !arg.startsWith("{"))).toEqual(["--dangerously-skip-permissions"]);
       const settings = JSON.parse(spec.args[spec.args.indexOf("--settings") + 1] ?? "{}") as {
         modelSettings: Record<string, { autoCompactWindow: number }>;
       };
@@ -157,6 +157,7 @@ describe("standalone Claude Code CLI launch", () => {
         sessionId: "standalone-cli:claude",
         objectiveRecordType: "standalone-cli:claude",
       });
+      expect(claudeSpec.args).toContain("--dangerously-skip-permissions");
       const mcpIdx = claudeSpec.args.indexOf("--mcp-config");
       expect(mcpIdx).toBeGreaterThanOrEqual(0);
       const claudeConfigPath = claudeSpec.args[mcpIdx + 1]!;
@@ -176,6 +177,8 @@ describe("standalone Claude Code CLI launch", () => {
         objectiveRecordType: "standalone-cli:antigravity",
       });
       expect(agySpec.bin).toBe(agyBin);
+      expect(agySpec.args).toContain("--dangerously-skip-permissions");
+      expect(agySpec.args).not.toContain("--mode");
       expect(agySpec.env.ANTHROPIC_BASE_URL).toBeUndefined();
       expect(agySpec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
       const addDirIdx = agySpec.args.indexOf("--add-dir");
