@@ -8,8 +8,8 @@ const distDirectory = join(desktopDirectory, "dist");
 const entryDestination = join(distDirectory, "assets", "entry");
 const nodeManifestDestination = join(distDirectory, "build", "node-runtime.json");
 const iconDestination = join(distDirectory, "build", "icon.png");
-const trayTemplateIconDestination = join(distDirectory, "build", "trayTemplate.png");
-const trayTemplateIcon2xDestination = join(distDirectory, "build", "trayTemplate@2x.png");
+const trayIconDestination = join(distDirectory, "build", "tray.png");
+const trayIcon2xDestination = join(distDirectory, "build", "tray@2x.png");
 
 const chromeDestination = join(distDirectory, "assets", "browser-chrome");
 
@@ -39,5 +39,5 @@ await cp(join(codingRoot, "LICENSE"), join(fontDestination, "nanum-gothic-coding
 await cp(join(desktopDirectory, "build", "node-runtime.json"), nodeManifestDestination);
 // 창/트레이 아이콘도 dist 앵커로 동반한다 — packaged에서 resources/ 밖 경로는 존재하지 않는다.
 await cp(join(desktopDirectory, "build", "icon.png"), iconDestination);
-await cp(join(desktopDirectory, "build", "trayTemplate.png"), trayTemplateIconDestination);
-await cp(join(desktopDirectory, "build", "trayTemplate@2x.png"), trayTemplateIcon2xDestination);
+await cp(join(desktopDirectory, "build", "tray.png"), trayIconDestination);
+await cp(join(desktopDirectory, "build", "tray@2x.png"), trayIcon2xDestination);
