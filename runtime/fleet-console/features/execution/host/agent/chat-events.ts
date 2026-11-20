@@ -693,8 +693,9 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     return [{ kind: "dispatch", text: quoted.text, attachments, ...atField }];
   }
   if (line.type === "assistant") {
-    // 미로그인 합성 오류 메시지("Not logged in · Please run /login")는 C2 원인 카드가 대신 설명하므로 말풍선으로 재생하지 않는다.
-    if (line.error === "authentication_failed") return [];
+    // 미로그인 합성 오류 메시지("Not logged in · Please run /login")는 말풍선 대신 C2 원인 카드 오류 코드로 재생해
+    // 콘솔 재기동 뒤에도 원인 카드와 「다시 보내기」가 유지되게 한다(후속 턴이 있으면 dispatch·성공 turn-end가 지운다).
+    if (line.error === "authentication_failed") return [{ kind: "error", code: "chat_cli_signed_out" }];
     return eventsFromAssistantContent(line.message?.content, options);
   }
   // 압축 경계. 세션을 다시 열어도 "어디서부터 요약된 기억인가"는 라이브에서 본 것과 같은 사실이다.

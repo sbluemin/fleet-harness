@@ -132,7 +132,7 @@ describe("commander chat CLI failure classification", () => {
     await registry.disposeAll();
   });
 
-  it("suppresses synthetic authentication_failed assistant bubbles during transcript replay", () => {
+  it("replays synthetic authentication_failed assistant lines as chat_cli_signed_out instead of raw text", () => {
     const line = JSON.stringify({
       type: "assistant",
       error: "authentication_failed",
@@ -141,7 +141,7 @@ describe("commander chat CLI failure classification", () => {
         content: [{ type: "text", text: "Not logged in · Please run /login" }],
       },
     });
-    expect(chatReplayFromTranscriptLine(line).events).toEqual([]);
+    expect(chatReplayFromTranscriptLine(line).events).toEqual([{ kind: "error", code: "chat_cli_signed_out" }]);
   });
 });
 
