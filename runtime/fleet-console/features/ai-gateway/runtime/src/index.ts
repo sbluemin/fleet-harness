@@ -21,8 +21,6 @@ export type {
   ResetCredits,
   ProviderSpend,
   ProviderBlock,
-  ProviderRateLimit,
-  ProviderRateLimitWindow,
   ProviderDto,
   QuotaSummaryDto,
   ProviderSuccess,

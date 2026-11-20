@@ -620,8 +620,7 @@ describe("anthropic spend ledger", () => {
       expect(classifyAnthropicBlock(401, { error: { type: "authentication_error", message: "invalid x-api-key" } })).toBeUndefined();
 
       ledger.observeBlock({ model: "claude-opus-5-5", at: firstWeek, ...depleted402! });
-      ledger.observeRateLimit({ observedAt: firstWeek, requests: { limit: 50, remaining: 0, resetsAt: firstWeek + 30_000 } });
-      expect(ledger.read(firstWeek)).toMatchObject({ block: { httpStatus: 402, reason: "balance_depleted" }, rateLimit: { requests: { remaining: 0 } } });
+      expect(ledger.read(firstWeek)).toMatchObject({ block: { httpStatus: 402, reason: "balance_depleted" } });
       // 지난주 차단은 이번 주 카드에 서지 않고, 다음 성공 사용량이 걷는다.
       expect(ledger.read(laterWeek).block).toBeUndefined();
       ledger.observeUsage({ ...turn, model: "claude-opus-5-5", at: firstWeek, inputTokens: 1, outputTokens: 1 });

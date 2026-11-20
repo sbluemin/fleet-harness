@@ -202,8 +202,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "gemini-spend.json"),
     onChange: () => expireGeminiQuota?.(),
   });
-  // Anthropic 지출 원장 — 같은 달력 월(태평양시)로 응답 usage 토큰 × 단가를 누적하고, 월 예산·마지막 거절·
-  // 마지막 한도 헤더를 싣는다. Gemini 원장과 같은 분업이고 같은 이유로 값이 바뀌면 사용량 캐시를 만료시킨다.
+  // Anthropic 지출 원장 — 태평양시 기준 주별로 응답 usage 토큰 × 단가를 누적하고, 주 예산과 마지막 거절 사유를 싣는다. Gemini 원장과 같은 분업이고 같은 이유로 값이 바뀌면 사용량 캐시를 만료시킨다.
   let expireAnthropicQuota: (() => void) | undefined;
   const anthropicLedger = createAnthropicSpendLedger({
     filePath: path.join(ctx.host.paths.consoleDataDir, "ai-gateway", "anthropic-spend.json"),
@@ -246,7 +245,6 @@ export function startAiGateway(ctx: GatewayStartContext) {
         fetchedAt: at,
         spend: reading.spend,
         ...(reading.block !== undefined ? { block: reading.block } : {}),
-        ...(reading.rateLimit !== undefined ? { rateLimit: reading.rateLimit } : {}),
       };
     },
   });

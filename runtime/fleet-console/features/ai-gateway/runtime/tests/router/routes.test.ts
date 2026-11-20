@@ -1738,13 +1738,10 @@ describe("Anthropic API key routing", () => {
         status: 200,
         headers: {
           "content-type": "text/event-stream",
-          "anthropic-ratelimit-requests-limit": "50",
-          "anthropic-ratelimit-requests-remaining": "49",
-          "anthropic-ratelimit-requests-reset": "2026-11-18T10:00:30Z",
         },
       });
     });
-    const anthropicUsage = { observeUsage: vi.fn(), observeBlock: vi.fn(), observeRateLimit: vi.fn() };
+    const anthropicUsage = { observeUsage: vi.fn(), observeBlock: vi.fn() };
 
     const ensureClaudeNativeModels = vi.fn(syncClaudeLineup("5-5"));
     const signedOut = createAiGatewayRouter({ fetch: fetchMock, ensureClaudeNativeModels, readAnthropicApiKey: () => undefined, anthropicUsage });
@@ -1778,11 +1775,8 @@ describe("Anthropic API key routing", () => {
       // 가상 id는 동기화가 알려 준 상류 id로 바뀌고 Fast(`speed`)는 지워진다.
       expect(calls[0]?.body.model).toBe("claude-sonnet-5-5");
       expect(calls[0]?.body).not.toHaveProperty("speed");
-      // 응답은 그대로 흘러가고, 옆에서 지출·한도 헤더를 읽는다.
+      // 응답은 그대로 흘러가고, 옆에서 지출을 집계한다.
       expect(res.body).toBe(completedTurn);
-      expect(anthropicUsage.observeRateLimit).toHaveBeenCalledWith(expect.objectContaining({
-        requests: { limit: 50, remaining: 49, resetsAt: Date.parse("2026-11-18T10:00:30Z") },
-      }));
       expect(anthropicUsage.observeUsage).toHaveBeenCalledTimes(1);
       expect(anthropicUsage.observeUsage).toHaveBeenCalledWith(expect.objectContaining({
         model: "claude-sonnet-5-5", inputTokens: 100, outputTokens: 20, cacheReadTokens: 40,
@@ -1812,7 +1806,7 @@ describe("Anthropic API key routing", () => {
   });
 
   it("reports a depleted credit balance and does not count spend for a turn that did not complete", async () => {
-    const anthropicUsage = { observeUsage: vi.fn(), observeBlock: vi.fn(), observeRateLimit: vi.fn() };
+    const anthropicUsage = { observeUsage: vi.fn(), observeBlock: vi.fn() };
     const bodies = [
       new Response(JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "Your credit balance is too low to access the Anthropic API." } }), { status: 400, headers: { "content-type": "application/json" } }),
       new Response(sse([

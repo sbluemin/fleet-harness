@@ -9,7 +9,6 @@ import { isLoginProvider, isProviderId, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT,
 import { providerGlyph } from "./cli-glyphs.js";
 import { isSpendProvider, SpendSection, spendSetLabel, useBudgetEditor, type SpendProvider } from "./spend-section.js";
 import { UsageMeter } from "./meter.js";
-import { RateLimitSection } from "./rate-limit.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import {
   beginClaudeLogin,
@@ -687,9 +686,6 @@ function ProviderCard({
           resetTitle={resetCaption(provider.spend.resetsAt, now, locale, t)}
           editor={budgetEditor}
         />
-      ) : null}
-      {(provider.status === "ok" || provider.status === "stale") && provider.rateLimit !== undefined ? (
-        <RateLimitSection rateLimit={provider.rateLimit} now={now} locale={locale} t={t} />
       ) : null}
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
         <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} locale={locale} t={t} />

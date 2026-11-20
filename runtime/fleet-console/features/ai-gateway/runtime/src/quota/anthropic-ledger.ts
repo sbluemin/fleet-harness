@@ -13,7 +13,7 @@ import {
   spendWeekBounds,
   usdFromPicoUsd,
 } from "./gemini-pricing.js";
-import type { ProviderBlock, ProviderRateLimit, ProviderSpend } from "./types.js";
+import type { ProviderBlock, ProviderSpend } from "./types.js";
 
 /**
  * Anthropic 지출 원장.
@@ -25,13 +25,11 @@ import type { ProviderBlock, ProviderRateLimit, ProviderSpend } from "./types.js
  *
  * 자리는 호스트가 넘긴다. 저장 파일은 주별 누적과 주 예산, 마지막 차단뿐이고 키·요청 본문은 담지 않는다.
  * 주 단위로 바뀌기 전의 달별 누적은 지우지 않고 남긴다 — 화면과 계산은 이번 주만 본다(A3).
- * 마지막 `anthropic-ratelimit-*` 관측은 **메모리에만** 둔다 — 분 단위 한도라 재시작 뒤에 의미가 없고,
- * 응답마다 파일을 쓸 이유도 없다.
  *
  * 금액은 pico-USD 정수(bigint)로만 더하고, 파일에는 십진 정수 문자열로 쓴다.
  */
 export interface AnthropicSpendLedger extends AnthropicUsagePort {
-  /** 그 시각이 속한 주의 누적과, 아직 유효한 마지막 차단·한도 관측. `at` 생략 시 지금. */
+  /** 그 시각이 속한 주의 누적과, 아직 유효한 마지막 차단. `at` 생략 시 지금. */
   read(at?: number): AnthropicSpendReading;
   /** 주 예산(USD) 설정. 모든 주에 적용된다. 0 이하·숫자 아님·형식 오류면 저장하지 않고 false. */
   setBudget(value: unknown): boolean;
@@ -42,8 +40,6 @@ export interface AnthropicSpendReading {
   readonly spend: ProviderSpend;
   /** 마지막 거절. 다음 `observeUsage`나 다음 주가 걷는다. */
   readonly block?: ProviderBlock;
-  /** 마지막 응답 헤더의 분당 한도(이 프로세스가 본 것). */
-  readonly rateLimit?: ProviderRateLimit;
 }
 
 export interface AnthropicSpendLedgerDeps {
@@ -112,7 +108,6 @@ export function createAnthropicSpendLedger(deps: AnthropicSpendLedgerDeps): Anth
     tempCleanupPrefix: "anthropic-spend.json.",
   });
   let document: AnthropicSpendDocument = loadDocument();
-  let rateLimit: ProviderRateLimit | undefined;
 
   function loadDocument(): AnthropicSpendDocument {
     try {
@@ -174,7 +169,6 @@ export function createAnthropicSpendLedger(deps: AnthropicSpendLedgerDeps): Anth
       return {
         spend,
         ...(block !== undefined ? { block } : {}),
-        ...(rateLimit !== undefined ? { rateLimit } : {}),
       };
     },
 
@@ -232,15 +226,6 @@ export function createAnthropicSpendLedger(deps: AnthropicSpendLedgerDeps): Anth
             ...(observation.message !== undefined ? { message: clampText(observation.message) } : {}),
           },
         });
-      } catch {
-        // 원장 실패는 추론을 막지 않는다.
-      }
-    },
-
-    observeRateLimit(observed) {
-      try {
-        rateLimit = observed;
-        notify();
       } catch {
         // 원장 실패는 추론을 막지 않는다.
       }

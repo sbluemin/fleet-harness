@@ -3,14 +3,12 @@ import type {
   AnthropicUsageObservation,
   AnthropicUsagePort,
 } from "../../quota/anthropic-usage.js";
-import type { ProviderRateLimit, ProviderRateLimitWindow } from "../../quota/types.js";
 
 /**
  * Anthropic API 키 passthrough의 관찰 tap.
  *
- * 응답 바이트는 한 글자도 바꾸지 않고 흘려 보내면서, 옆에서 세 가지를 읽는다: ① `anthropic-ratelimit-*`
- * 헤더, ② SSE `message_start`·`message_delta`의 usage(턴이 끝나면 지출 원장으로), ③ 크레딧·지출 한도·
- * 속도 한도 거절. 이 모듈은 어떤 값도 꾸며 내지 않는다 — 정상 종료하지 않았거나 usage가 없으면 지출을 보고하지
+ * 응답 바이트는 한 글자도 바꾸지 않고 흘려 보내면서, SSE `message_start`·`message_delta`의 usage(턴이 끝나면 지출 원장으로)와 크레딧·지출 한도·
+ * 속도 한도 거절을 읽는다. 이 모듈은 어떤 값도 꾸며 내지 않는다 — 정상 종료하지 않았거나 usage가 없으면 지출을 보고하지
  * 않는다.
  */
 export interface AnthropicPassthroughObserver {
@@ -64,39 +62,6 @@ export function requestUsesOneHourCache(body: unknown): boolean {
     }
   }
   return false;
-}
-
-const RATE_LIMIT_GROUPS = [
-  ["requests", "requests"],
-  ["input-tokens", "inputTokens"],
-  ["output-tokens", "outputTokens"],
-] as const;
-
-function rateLimitWindow(headers: Headers, group: string): ProviderRateLimitWindow | undefined {
-  const rawLimit = headers.get(`anthropic-ratelimit-${group}-limit`);
-  const rawRemaining = headers.get(`anthropic-ratelimit-${group}-remaining`);
-  const rawReset = headers.get(`anthropic-ratelimit-${group}-reset`);
-  if (rawLimit === null || rawRemaining === null || rawReset === null) return undefined;
-  const limit = Number(rawLimit);
-  const remaining = Number(rawRemaining);
-  const reset = Date.parse(rawReset);
-  if (!Number.isFinite(limit) || !Number.isFinite(remaining) || !Number.isFinite(reset)) return undefined;
-  return { limit, remaining, resetsAt: reset };
-}
-
-/**
- * `anthropic-ratelimit-{requests,input-tokens,output-tokens}-{limit,remaining,reset}`
- * (https://platform.claude.com/docs/en/api/rate-limits, 2026-11-18). 리셋은 RFC 3339다. 세 값이 다 읽히는
- * 묶음만 싣고, 하나도 없으면 undefined다. `anthropic-ratelimit-tokens-*`(입력+출력 합산)는 쓰지 않는다.
- */
-export function parseAnthropicRateLimit(headers: Headers, observedAt: number): ProviderRateLimit | undefined {
-  const windows: Partial<Record<"requests" | "inputTokens" | "outputTokens", ProviderRateLimitWindow>> = {};
-  for (const [group, key] of RATE_LIMIT_GROUPS) {
-    const window = rateLimitWindow(headers, group);
-    if (window !== undefined) windows[key] = window;
-  }
-  if (Object.keys(windows).length === 0) return undefined;
-  return { observedAt, ...windows };
 }
 
 const CREDIT_BALANCE = /credit balance (?:is )?too low/i;
@@ -276,8 +241,6 @@ export function createAnthropicApiObserver(options: AnthropicObserverOptions): A
       safe(() => {
         status = responseStatus;
         isEventStream = (headers.get("content-type") ?? "").split(";", 1)[0]?.trim().toLowerCase() === "text/event-stream";
-        const rateLimit = parseAnthropicRateLimit(headers, now());
-        if (rateLimit !== undefined) options.port.observeRateLimit(rateLimit);
       });
     },
 

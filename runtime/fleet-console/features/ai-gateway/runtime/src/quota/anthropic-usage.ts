@@ -1,5 +1,3 @@
-import type { ProviderRateLimit } from "./types.js";
-
 /**
  * Anthropic 상류 → 지출 원장 포트.
  *
@@ -13,15 +11,12 @@ import type { ProviderRateLimit } from "./types.js";
  *   도중 끊은 요청의 부분 청구는 세지 않는다(플릿 집계가 Console 잔액보다 작을 수 있는 이유 중 하나).
  * - `observeBlock`은 상류가 크레딧·지출 한도·속도 한도로 거절했을 때만 부른다(분류는 호출 쪽이 `error.type`·
  *   `message`로 한다). 다른 거절(모델 제약 400, 인증 401·403)은 차단이 아니다.
- * - `observeRateLimit`은 `anthropic-ratelimit-*` 헤더가 한 묶음이라도 온 응답마다(오류 응답 포함) 부른다.
- *   마지막 값만 의미가 있다.
  * - 원장은 같은 공급자의 `observeUsage`가 다시 오면 이전 차단 표시를 걷는다.
- * - 세 함수 모두 동기·무예외여야 한다. 저장이 비동기라도 원장이 안에서 삼키고, 추론 경로를 막지 않는다.
+ * - 두 함수 모두 동기·무예외여야 한다. 저장이 비동기라도 원장이 안에서 삼키고, 추론 경로를 막지 않는다.
  */
 export interface AnthropicUsagePort {
   readonly observeUsage: (observation: AnthropicUsageObservation) => void;
   readonly observeBlock: (observation: AnthropicBlockObservation) => void;
-  readonly observeRateLimit: (rateLimit: ProviderRateLimit) => void;
 }
 
 export interface AnthropicUsageObservation {
