@@ -1,15 +1,13 @@
 import { useSyncExternalStore } from "react";
 
-import { parseAntigravityPluginNotes, type AntigravityPluginNote } from "../../shared/standalone-cli.js";
-
 /**
- * 독립 CLI(Claude Code · Antigravity) 패널과 선택 팔레트의 화면 상태. Console 하나에 CLI 종류별 1슬롯이다.
+ * 독립 CLI(Claude Code) 패널과 선택 팔레트의 화면 상태. Console 하나에 1슬롯이다.
  *
  * 패널을 닫는 것은 숨기는 것이다 — 표면(터미널)은 마운트된 채 남아 PTY와 화면·스크롤·입력 줄을 그대로 쥐고,
  * 다시 열면 같은 화면이 선다. PTY가 끝났을 때(`/exit` 또는 팔레트 종료)만 그 CLI의 표면을 걷고,
  * 다음 열기가 그때 보는 Theater에서 새로 띄운다.
  */
-export const STANDALONE_CLI_KINDS = ["claude", "antigravity"] as const;
+export const STANDALONE_CLI_KINDS = ["claude"] as const;
 export type StandaloneCliKind = (typeof STANDALONE_CLI_KINDS)[number];
 
 export interface StandaloneCliPlacement {
@@ -26,7 +24,7 @@ export interface StandaloneCliSlotViewState {
   readonly live: boolean;
   /** 서버가 쥔 자리(새로고침 뒤에도 살아 있는 CLI에 다시 붙기 위한 스냅샷). */
   readonly serverPlacement: StandaloneCliPlacement | null;
-  /** 새 CLI를 붙일 때마다 오른다 — 끝난 CLI의 표면을 새 표면으로 갈아 끼우는 key다. */
+  /** 새 CLI를 붙일 때마다 하나씩 오른다 — 끝난 CLI의 표면을 새 표면으로 갈아 끼우는 key다. */
   readonly generation: number;
   /** 이 세대의 CLI를 띄우지 못했다. 열린 동안 실패 화면을 보이고, 다음 선택 시 새 세대로 다시 띄운다. */
   readonly failed: boolean;
@@ -46,8 +44,6 @@ export interface StandaloneCliViewState {
   /** 열 때마다 하나씩 오른다 — 터미널이 키보드 포커스를 다시 잡는 신호다. */
   readonly focusRequest: number;
   readonly slots: Readonly<Record<StandaloneCliKind, StandaloneCliSlotViewState>>;
-  /** 최근 agy 실행의 전역 플러그인 보고(알릴 것이 있는 플러그인만). agy를 아직 띄우지 않았으면 비어 있다. */
-  readonly antigravityPluginNotes: readonly AntigravityPluginNote[];
 }
 
 const STATE_PATH = "/api/v1/standalone-cli/state";
@@ -66,9 +62,7 @@ let state: StandaloneCliViewState = {
   focusRequest: 0,
   slots: {
     claude: emptySlot(),
-    antigravity: emptySlot(),
   },
-  antigravityPluginNotes: [],
 };
 
 const listeners = new Set<() => void>();
@@ -120,7 +114,6 @@ interface ServerSlotPayload {
   readonly installed?: unknown;
   readonly commodoreId?: unknown;
   readonly theaterId?: unknown;
-  readonly pluginNotes?: unknown;
 }
 
 function parseServerSlot(raw: unknown): { readonly live: boolean; readonly installed: boolean; readonly placement: StandaloneCliPlacement | null } | null {
@@ -136,59 +129,40 @@ function parseServerSlot(raw: unknown): { readonly live: boolean; readonly insta
   };
 }
 
-async function fetchServerSlots(): Promise<(Readonly<Record<StandaloneCliKind, { readonly live: boolean; readonly installed: boolean; readonly placement: StandaloneCliPlacement | null }>> & { readonly notes: readonly AntigravityPluginNote[] }) | null> {
+async function fetchServerSlots(): Promise<{ readonly live: boolean; readonly installed: boolean; readonly placement: StandaloneCliPlacement | null } | null> {
   try {
     const response = await fetch(STATE_PATH);
     if (!response.ok) return null;
     const payload = await response.json() as { readonly slots?: Readonly<Record<string, unknown>> };
     if (!payload.slots || typeof payload.slots !== "object") return null;
-    const claude = parseServerSlot(payload.slots.claude);
-    const antigravity = parseServerSlot(payload.slots.antigravity);
-    if (!claude || !antigravity) return null;
-    return { claude, antigravity, notes: parseAntigravityPluginNotes((payload.slots.antigravity as ServerSlotPayload).pluginNotes) };
+    return parseServerSlot(payload.slots["claude"]);
   } catch {
     return null;
   }
 }
 
-/** 서버의 자리 상태와 agy 플러그인 보고를 다시 읽는다. 팔레트와 전역 플러그인 화면이 열릴 때 부른다. */
+/** 서버의 자리 상태를 다시 읽는다. 팔레트와 전역 플러그인 화면이 열릴 때 부른다. */
 export async function refreshStandaloneCliState(): Promise<void> {
   await refreshServerState();
-}
-
-/** 최근 agy 실행의 전역 플러그인 보고. */
-export function useAntigravityPluginNotes(): readonly AntigravityPluginNote[] {
-  return useSyncExternalStore(subscribeStandaloneCli, () => state.antigravityPluginNotes, () => state.antigravityPluginNotes);
 }
 
 async function refreshServerState(): Promise<void> {
   const seq = ++refreshSeq;
   const remote = await fetchServerSlots();
   if (!remote || seq !== refreshSeq) return;
-  const mergeSlot = (cli: StandaloneCliKind): StandaloneCliSlotViewState => {
-    const prev = state.slots[cli];
-    const next = remote[cli];
-    const mountedLive = prev.placement !== null && !prev.failed;
-    return {
-      ...prev,
-      installed: next.installed,
-      live: next.live || mountedLive,
-      serverPlacement: next.placement,
-    };
-  };
+  const prev = state.slots["claude"];
+  const mountedLive = prev.placement !== null && !prev.failed;
   write({
     ...state,
     slots: {
-      claude: mergeSlot("claude"),
-      antigravity: mergeSlot("antigravity"),
+      claude: {
+        ...prev,
+        installed: remote.installed,
+        live: remote.live || mountedLive,
+        serverPlacement: remote.placement,
+      },
     },
-    antigravityPluginNotes: sameNotes(state.antigravityPluginNotes, remote.notes) ? state.antigravityPluginNotes : remote.notes,
   });
-}
-
-/** 같은 보고면 이전 배열을 그대로 둔다 — 보고를 읽는 화면이 매번 다시 그리지 않게. */
-function sameNotes(a: readonly AntigravityPluginNote[], b: readonly AntigravityPluginNote[]): boolean {
-  return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
 /**
@@ -313,9 +287,7 @@ export async function stopStandaloneCli(cli: StandaloneCliKind): Promise<void> {
   }
   const slot = state.slots[cli];
   const nextActive = state.activeCli === cli ? null : state.activeCli;
-  const nextLast = state.lastCli === cli
-    ? (STANDALONE_CLI_KINDS.find((kind) => kind !== cli && state.slots[kind].live) ?? null)
-    : state.lastCli;
+  const nextLast = state.lastCli === cli ? null : state.lastCli;
   write({
     ...state,
     activeCli: nextActive,
@@ -351,9 +323,7 @@ export function endStandaloneCli(cli: StandaloneCliKind, generation: number): vo
   const slot = state.slots[cli];
   if (slot.generation !== generation || slot.placement === null) return;
   const nextActive = state.activeCli === cli ? null : state.activeCli;
-  const nextLast = state.lastCli === cli
-    ? (STANDALONE_CLI_KINDS.find((kind) => kind !== cli && state.slots[kind].live) ?? null)
-    : state.lastCli;
+  const nextLast = state.lastCli === cli ? null : state.lastCli;
   write({
     ...state,
     activeCli: nextActive,

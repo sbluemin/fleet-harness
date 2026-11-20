@@ -21,8 +21,6 @@ import { createTerminalRuntime } from "../../../features/execution/host/terminal
 import { registerTerminalSettingsRoutes } from "../../../features/settings/host/execution-settings-routes.js";
 import type { CommodoreSystemPromptService } from "../../../features/settings/host/agent-options.js";
 import type { StandaloneCliPlugin } from "../../../features/execution/host/standalone-cli/global-plugins.js";
-import type { OwnedProcessPort } from "@fleet-console/process";
-import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 
 export const CORE_AGENT_SENSITIVE_FIELDS = ["cwd", "canonicalCwd", "providerTitle", "transcriptPath", "token", "ticket", "prompt", "persona", "toolAllowlist"] as const;
 const OBJECTIVE_DELETED_EVENT_CHANNEL = "objective:deleted";
@@ -36,15 +34,11 @@ export async function startConsoleExecution(
     readonly commodorePluginDirs?: (commodoreId: string) => readonly string[];
     readonly commodorePluginEnv?: (commodoreId: string) => Readonly<Record<string, string>>;
     readonly commodoreAutoMemoryEnabled?: (commodoreId: string) => boolean;
-    /** 사람이 전역으로 설치한 플러그인 — 독립 CLI(Claude Code·Antigravity)가 런치마다 읽는다. */
+    /** 사람이 전역으로 설치한 플러그인 — 독립 CLI(Claude Code)가 런치마다 읽는다. */
     readonly globalPlugins?: () => readonly StandaloneCliPlugin[];
-    /** 독립 CLI가 Antigravity 플러그인 변환 자식을 Console과 함께 끝나게 띄우는 소유 포트. */
-    readonly standaloneCliProcesses?: OwnedProcessPort;
-    /** 원격 MCP 서버가 로그인을 요구하는가 — 독립 Antigravity의 로그인 안내가 쓴다. */
-    readonly mcpSignInRequired?: (config: ClaudeGatewayExternalMcpServer) => Promise<boolean>;
   },
 ) {
-  const { commodoreSystemPrompts, commodorePluginDirs, commodorePluginEnv, commodoreAutoMemoryEnabled, globalPlugins, standaloneCliProcesses, mcpSignInRequired } = commodoreLaunch;
+  const { commodoreSystemPrompts, commodorePluginDirs, commodorePluginEnv, commodoreAutoMemoryEnabled, globalPlugins } = commodoreLaunch;
   const agentCliPaths = createAgentCliPathStore(ctx.dataDir);
   // 런치·채팅·플러그인 에이전트가 같은 실행 파일을 쓰도록 한 자리에서 푼다. Windows cmd shim은 SDK가 직접 못 띄운다.
   const resolveClaudeExecutable = async (): Promise<string | undefined> => {
@@ -119,8 +113,6 @@ export async function startConsoleExecution(
   registerStandaloneCliRoutes(ctx, runtime, {
     aiGateway: { routePath: aiGatewayRoutePath, origin: () => ctx.host.server.origin() },
     ...(globalPlugins ? { globalPlugins } : {}),
-    ...(standaloneCliProcesses ? { processes: standaloneCliProcesses } : {}),
-    ...(mcpSignInRequired ? { mcpSignInRequired } : {}),
     readAgentCliPaths: async () => (await agentCliPaths.read()).paths,
     readAiGatewaySettings: aiGatewayStore.read,
     readProviderStatuses,

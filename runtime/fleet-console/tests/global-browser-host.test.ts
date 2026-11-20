@@ -1109,7 +1109,7 @@ describe("session browser host contract", () => {
     });
     const conn = browser.connect();
     try {
-      const label = "standalone-cli:antigravity:test-1";
+      const label = "standalone-cli:claude:test-1";
       browser.registerStandaloneSession(label, { commodoreId });
       expect(browser.isSessionOwner(label)).toBe(true);
       const endpoint = await conn.getEndpoint();

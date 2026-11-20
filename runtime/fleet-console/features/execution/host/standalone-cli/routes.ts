@@ -3,8 +3,6 @@ import { randomUUID } from "node:crypto";
 import { FLEET_BROWSER_MCP_SERVER, STANDALONE_BROWSER_OWNER_PREFIX } from "../../../browser/host/mcp.js";
 import { registerRouter, type ConsoleRuntimeContext } from "../context.js";
 import { readSocketRole, type TerminalRuntime } from "../terminal/index.js";
-import type { AntigravityPluginNote } from "../../shared/standalone-cli.js";
-import { readStandaloneCliPlugins } from "./global-plugins.js";
 import {
   createStandaloneCliLaunchResolver,
   isStandaloneCliInstalled,
@@ -18,7 +16,7 @@ import {
 } from "./launch.js";
 
 /**
- * 독립 CLI(Claude Code · Antigravity) — Console 하나에 CLI 종류별 1슬롯(최대 2슬롯)이다.
+ * 독립 CLI(Claude Code) — Console 하나에 1슬롯이다.
  *
  * 세션은 Objective이 아니다: 기록도 저널도 휴면도 없고, Console이 켜져 있는 동안만 산다. 패널을 숨겨도 PTY는
  * 그대로 돌고, 다시 붙는 소켓은 터미널 런타임의 scrollback 재생을 받는다. PTY가 끝나면(`/exit` 또는 팔레트 종료)
@@ -38,8 +36,6 @@ export interface StandaloneCliSlotServerState {
   readonly installed: boolean;
   readonly commodoreId: string | null;
   readonly theaterId: string | null;
-  /** Antigravity 자리만 — 최근 agy 실행의 전역 플러그인 보고 중 지금도 전역에 있는 플러그인. 알릴 것이 없으면 빠진다. */
-  readonly pluginNotes?: readonly AntigravityPluginNote[];
 }
 
 export interface StandaloneCliState {
@@ -49,21 +45,9 @@ export interface StandaloneCliState {
 export function registerStandaloneCliRoutes(
   ctx: ConsoleRuntimeContext,
   terminalRuntime: TerminalRuntime,
-  deps: Omit<StandaloneCliLaunchDeps, "env" | "browserMcp" | "shutdown" | "antigravityPluginNotes">,
+  deps: Omit<StandaloneCliLaunchDeps, "env" | "browserMcp">,
 ): void {
   const placements = new Map<StandaloneCliKind, StandaloneCliPlacement>();
-  // 최근 agy 실행의 플러그인 보고 — Console이 사는 동안만 쥔다. 더 늦게 시작한 런치가 있으면 앞선 런치의 늦은 보고는 버린다.
-  let notesRound = 0;
-  let pluginNotes: readonly AntigravityPluginNote[] = [];
-  const antigravityPluginNotes = () => {
-    const round = ++notesRound;
-    return (notes: readonly AntigravityPluginNote[]) => {
-      if (round === notesRound) pluginNotes = notes;
-    };
-  };
-  // 정리 콜백은 등록의 역순으로 돈다 — 이 취소가 터미널 런타임의 stop(진행 중 런치를 기다린다)보다 먼저 온다.
-  const shutdown = new AbortController();
-  ctx.host.lifecycle.registerCleanup(() => shutdown.abort());
   const browserMcpConn = ctx.host.browserMcp?.connect();
   if (browserMcpConn) ctx.host.lifecycle.registerCleanup(() => browserMcpConn.dispose());
 
@@ -97,8 +81,6 @@ export function registerStandaloneCliRoutes(
 
   const launchDeps: Omit<StandaloneCliLaunchDeps, "env"> = {
     ...deps,
-    shutdown: shutdown.signal,
-    antigravityPluginNotes,
     ...(browserMcp ? { browserMcp } : {}),
   };
 
@@ -119,21 +101,10 @@ export function registerStandaloneCliRoutes(
     unsubscribeExit();
     for (const unregister of unregisters) unregister();
     placements.clear();
-    pluginNotes = [];
   });
 
-  /** 보고 중 지금도 전역에 설치된 플러그인만 — 지운 플러그인의 줄은 다음 실행을 기다리지 않고 사라진다. */
-  const currentPluginNotes = (): readonly AntigravityPluginNote[] => {
-    if (pluginNotes.length === 0) return pluginNotes;
-    const installed = new Set(readStandaloneCliPlugins(deps.globalPlugins).map((plugin) => plugin.id));
-    return pluginNotes.filter((row) => installed.has(row.pluginId));
-  };
-
   const readState = async (): Promise<StandaloneCliState> => {
-    const [claudeInstalled, antigravityInstalled] = await Promise.all([
-      isStandaloneCliInstalled("claude", deps),
-      isStandaloneCliInstalled("antigravity", deps),
-    ]);
+    const claudeInstalled = await isStandaloneCliInstalled("claude", deps);
     const slotOf = (cli: StandaloneCliKind, installed: boolean): StandaloneCliSlotServerState => {
       const live = terminalRuntime.isLive(standaloneCliSessionId(cli));
       const placement = placements.get(cli);
@@ -144,11 +115,9 @@ export function registerStandaloneCliRoutes(
         theaterId: placement?.theaterId ?? null,
       };
     };
-    const notes = currentPluginNotes();
     return {
       slots: {
         claude: slotOf("claude", claudeInstalled),
-        antigravity: { ...slotOf("antigravity", antigravityInstalled), ...(notes.length ? { pluginNotes: notes } : {}) },
       },
     };
   };

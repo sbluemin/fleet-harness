@@ -177,7 +177,6 @@
   --provider-xai: oklch(76% 0.055 258);
   --provider-opencode: oklch(72% 0.07 165);
   --provider-gemini: oklch(72% 0.09 255);
-  --provider-antigravity: oklch(73% 0.085 288);
   --provider-anthropic: oklch(71% 0.085 310);
   /* 정체성 톤(--id-*) — Objective accent·그룹색·captain 식별이 공유하는 8톤.
      각 테마의 채도 봉투를 따라 재조율된다(다크 C≈0.06). 신호색(brass/aurora/warn/coral)과
@@ -703,7 +702,6 @@
   --provider-xai: oklch(46% 0.06 258);
   --provider-opencode: oklch(48% 0.08 165);
   --provider-gemini: oklch(48% 0.1 255);
-  --provider-antigravity: oklch(51% 0.1 288);
   --provider-anthropic: oklch(47% 0.095 310);
 
   --id-crimson: oklch(54% 0.1 25);
@@ -878,7 +876,6 @@
 
   --provider-claude: oklch(76% 0.085 62);
   --provider-typesafe: oklch(73% 0.085 339);
-  --provider-antigravity: oklch(73% 0.08 288);
 
   --quiet-choice-fill: color-mix(in oklab, var(--brass) 6%, transparent);
 
@@ -1298,7 +1295,6 @@
   --provider-xai: oklch(76% 0.055 258);
   --provider-opencode: oklch(72% 0.07 165);
   --provider-gemini: oklch(72% 0.09 255);
-  --provider-antigravity: oklch(73% 0.085 288);
   --provider-anthropic: oklch(71% 0.085 310);
   --popover-icon-ink: rgb(245 245 245 / 64%);
   /* 사령관 지도 갈래 범주 — 시안 mind 값(다크). */
@@ -1371,7 +1367,6 @@
   --provider-xai: oklch(46% 0.06 258);
   --provider-opencode: oklch(48% 0.08 165);
   --provider-gemini: oklch(48% 0.1 255);
-  --provider-antigravity: oklch(51% 0.1 288);
   --provider-anthropic: oklch(47% 0.095 310);
   --popover-icon-ink: rgb(28 28 28 / 66%);
   /* 사령관 지도 갈래 범주 — 시안 mind 값(라이트). */

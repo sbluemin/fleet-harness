@@ -1,14 +1,10 @@
-import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
-import type { OwnedProcessPort } from "@fleet-console/process";
-import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 
 import type { StandaloneCliPlugin } from "../../features/execution/host/standalone-cli/global-plugins.js";
-import type { AntigravityPluginNote } from "../../features/execution/shared/standalone-cli.js";
 import { createStandaloneCliLaunchResolver } from "../../features/execution/host/standalone-cli/launch.js";
 import { registerStandaloneCliRoutes } from "../../features/execution/host/standalone-cli/routes.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
@@ -132,35 +128,17 @@ describe("standalone Claude Code CLI launch", () => {
     }
   });
 
-  it("injects fleet-browser MCP and global plugins into both Claude Code and Antigravity CLI without putting secrets in argv, and cleans up on exit", async () => {
+  it("injects fleet-browser MCP and global plugins into Claude Code without putting secrets in argv, and cleans up on exit", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-standalone-cli-mcp-"));
     try {
       const claudeBin = path.join(root, "claude");
-      const agyBin = path.join(root, "agy");
       fs.writeFileSync(claudeBin, "#!/bin/sh\n", { mode: 0o755 });
-      // agy 대역: 사람의 agy에는 gamma 가 이미 있다. 변환기는 받은 HOME 아래에 변환본을 만들고 `${CLAUDE_PLUGIN_ROOT}`를
-      // 그 설치 위치로 펼친다. broken 은 실패한다.
-      fs.writeFileSync(agyBin, [
-        "#!/bin/sh",
-        "[ \"$1\" = plugin ] && [ \"$2\" = list ] && { echo '[{\"name\":\"gamma\",\"enabled\":true}]'; exit 0; }",
-        "[ \"$1\" = plugin ] && [ \"$2\" = install ] || exit 0",
-        "name=$(basename \"$3\")",
-        "[ \"$name\" = broken ] && { echo 'boom' >&2; exit 1; }",
-        "dest=\"$HOME/.gemini/config/plugins/$name\"",
-        "mkdir -p \"$dest/skills/tips\"",
-        "printf '{\"name\":\"%s\"}' \"$name\" > \"$dest/plugin.json\"",
-        "printf -- '---\\nname: tips\\n---\\n' > \"$dest/skills/tips/SKILL.md\"",
-        "printf '{\"mcpServers\":{\"remote\":{\"serverUrl\":\"https://mcp.example/mcp\",\"headers\":{\"Authorization\":\"Bearer ${ALPHA_KEY}\"}},\"dynamic\":{\"serverUrl\":\"https://mcp.example/dyn\"},\"docs\":{\"serverUrl\":\"https://mcp.example/docs\"},\"local\":{\"command\":\"%s/run.sh\"}}}' \"$dest\" > \"$dest/mcp_config.json\"",
-        "echo '  ⚠ MCP server \"legacy\" skipped: the legacy SSE transport isn'\"'\"'t supported'",
-        "echo '  ⚠ Notification hooks skipped: there is no Notification event'",
-        "",
-      ].join("\n"), { mode: 0o755 });
       const home = path.join(root, "home");
       const theater = path.join(root, "theater");
       const preparedCalls: Array<{ cli: string; cwd: string; commodoreId: string | null }> = [];
       let releases = 0;
       const browserMcp = {
-        prepare: async (options: { readonly cli: "claude" | "antigravity"; readonly cwd: string; readonly commodoreId: string | null }) => {
+        prepare: async (options: { readonly cli: "claude"; readonly cwd: string; readonly commodoreId: string | null }) => {
           preparedCalls.push({ cli: options.cli, cwd: options.cwd, commodoreId: options.commodoreId });
           return {
             endpointUrl: "http://127.0.0.1:4199/mcp/fleet-browser",
@@ -170,12 +148,10 @@ describe("standalone Claude Code CLI launch", () => {
         },
       };
       const alphaDir = path.join(root, "plugins", "alpha");
-      const brokenDir = path.join(root, "plugins", "broken");
-      const gammaDir = path.join(root, "plugins", "gamma");
+      const betaDir = path.join(root, "plugins", "beta");
       fs.mkdirSync(path.join(alphaDir, ".claude-plugin"), { recursive: true });
-      fs.mkdirSync(brokenDir, { recursive: true });
-      fs.mkdirSync(gammaDir, { recursive: true });
-      fs.writeFileSync(path.join(alphaDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "alpha", lspServers: { ts: { command: "tsserver" } } }));
+      fs.mkdirSync(betaDir, { recursive: true });
+      fs.writeFileSync(path.join(alphaDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "alpha" }));
       const globalPlugins = (): StandaloneCliPlugin[] => [
         {
           id: "alpha@market",
@@ -183,39 +159,18 @@ describe("standalone Claude Code CLI launch", () => {
           path: alphaDir,
           mcpServers: {
             "plugin:alpha:remote": { type: "http", url: "https://mcp.example/mcp", headers: { Authorization: "Bearer ${ALPHA_KEY}" } },
-            "plugin:alpha:dynamic": { type: "http", url: "https://mcp.example/dyn", headersHelper: "print-headers" },
             "plugin:alpha:docs": { type: "http", url: "https://mcp.example/docs" },
           },
           env: { ALPHA_KEY: "alpha-secret" },
         },
-        { id: "broken@market", name: "broken", path: brokenDir, mcpServers: {}, env: {} },
-        { id: "gamma@market", name: "gamma", path: gammaDir, mcpServers: {}, env: {} },
+        { id: "beta@market", name: "beta", path: betaDir, mcpServers: {}, env: {} },
       ];
-      // agy 보조 자식은 Console이 끝낼 수 있는 소유 포트로만 뜬다.
-      const ownedCalls: string[] = [];
-      const processes: OwnedProcessPort = {
-        spawnOwned: (request) => {
-          ownedCalls.push(request.args.map((arg) => path.basename(arg)).join(" "));
-          const child = spawn(request.command, [...request.args], { cwd: request.cwd, env: request.env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
-          return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => child.kill(signal) });
-        },
-      };
-      // 로그인 확인은 MCP 표준 신호 포트로만 한다 — 고정 자격 헤더 서버와 동적 헤더 서버는 묻지 않는다.
-      const probed: string[] = [];
-      const reports: AntigravityPluginNote[][] = [];
-      let reported: () => void = () => undefined;
       const baseDeps = {
-        env: { PATH: "/usr/bin:/bin", HOME: home, CLAUDE_BIN: claudeBin, AGY_BIN: agyBin, FLEET_CONSOLE_SESSION_ID: "parent" },
+        env: { PATH: "/usr/bin:/bin", HOME: home, CLAUDE_BIN: claudeBin, FLEET_CONSOLE_SESSION_ID: "parent" },
         aiGateway: { routePath: "/api/v1/ai-gateway", origin: () => "http://127.0.0.1:4100" },
         browserMcp,
         globalPlugins,
-        processes,
         homeDir: home,
-        mcpSignInRequired: async (config: ClaudeGatewayExternalMcpServer) => {
-          if (config.type !== "stdio") probed.push(config.url);
-          return true;
-        },
-        antigravityPluginNotes: () => (notes: readonly AntigravityPluginNote[]) => { reports.push([...notes]); reported(); },
       };
 
       const extraTheaterA = path.join(root, "theater-a");
@@ -237,7 +192,7 @@ describe("standalone Claude Code CLI launch", () => {
       expect(readAddDirs(claudeSpec.args)).toEqual([extraTheaterA, extraTheaterB]);
       expect(claudeSpec.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD).toBe("1");
       // 전역 플러그인은 설치본 그대로 `--plugin-dir`로, MCP 키는 자식 환경으로만 간다.
-      expect(claudeSpec.args.flatMap((arg, index) => (arg === "--plugin-dir" ? [claudeSpec.args[index + 1]] : []))).toEqual([alphaDir, brokenDir, gammaDir]);
+      expect(claudeSpec.args.flatMap((arg, index) => (arg === "--plugin-dir" ? [claudeSpec.args[index + 1]] : []))).toEqual([alphaDir, betaDir]);
       expect(claudeSpec.env.ALPHA_KEY).toBe("alpha-secret");
       expect(claudeSpec.args.join(" ")).not.toContain("alpha-secret");
       const mcpIdx = claudeSpec.args.indexOf("--mcp-config");
@@ -255,77 +210,10 @@ describe("standalone Claude Code CLI launch", () => {
       expect(fs.existsSync(extraTheaterA)).toBe(true);
       expect(fs.existsSync(extraTheaterB)).toBe(true);
 
-      const agySpec = await createStandaloneCliLaunchResolver(baseDeps, "antigravity")(theater, {
-        commodoreId: "comm-1",
-        additionalDirectories,
-        sessionId: "standalone-cli:antigravity",
-        objectiveRecordType: "standalone-cli:antigravity",
-      });
-      expect(agySpec.bin).toBe(agyBin);
-      expect(agySpec.args).toContain("--dangerously-skip-permissions");
-      expect(agySpec.args).not.toContain("--mode");
-      expect(agySpec.env.ANTHROPIC_BASE_URL).toBeUndefined();
-      expect(agySpec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
-      const agyAddDirs = readAddDirs(agySpec.args);
-      expect(agyAddDirs.slice(0, 2)).toEqual([extraTheaterA, extraTheaterB]);
-      expect(agyAddDirs).toHaveLength(4);
-      const pluginDir = agyAddDirs[2]!;
-      const addDir = agyAddDirs[3]!;
-      expect(agySpec.args.join(" ")).not.toContain("tok-antigravity-secret");
-      expect(agySpec.args.join(" ")).not.toContain("alpha-secret");
-      // 변환은 임시 HOME에서 한다 — 사용자 홈의 agy 설정은 생기지 않는다. 실패한 것과 사람의 agy에 이미 있는 이름은 빠진다.
-      expect(fs.existsSync(path.join(home, ".gemini"))).toBe(false);
-      expect(fs.readdirSync(path.join(pluginDir, ".agents/plugins"))).toEqual(["alpha"]);
-      expect(ownedCalls).toEqual(["plugin list --json", "plugin install alpha", "plugin install broken"]);
-      const alphaConfigPath = path.join(pluginDir, ".agents/plugins/alpha/mcp_config.json");
-      expect(fs.statSync(alphaConfigPath).mode & 0o777).toBe(0o600);
-      const alphaMcp = JSON.parse(fs.readFileSync(alphaConfigPath, "utf8")) as { mcpServers: Record<string, { serverUrl?: string; command?: string; headers?: Record<string, string> }> };
-      // agy MCP 설정은 환경 변수를 펼치지 않으므로 키를 채워 둔다. 동적 헤더 서버는 실을 수 없어 뺀다. 경로는 옮긴 자리를 가리킨다.
-      expect(alphaMcp.mcpServers).toEqual({
-        remote: { serverUrl: "https://mcp.example/mcp", headers: { Authorization: "Bearer alpha-secret" } },
-        docs: { serverUrl: "https://mcp.example/docs" },
-        local: { command: path.join(fs.realpathSync(pluginDir), ".agents/plugins/alpha/run.sh") },
-      });
-      const agyPlugin = JSON.parse(fs.readFileSync(path.join(addDir, ".agents/plugins/fleet-browser/plugin.json"), "utf8")) as { name: string };
-      const agyMcp = JSON.parse(fs.readFileSync(path.join(addDir, ".agents/plugins/fleet-browser/mcp_config.json"), "utf8")) as { mcpServers: Record<string, { serverUrl: string; headers: { Authorization: string } }> };
-      expect(agyPlugin.name).toBe("fleet-browser");
-      expect(agyMcp.mcpServers["fleet-browser"]).toEqual({
-        serverUrl: "http://127.0.0.1:4199/mcp/fleet-browser",
-        headers: { Authorization: "Bearer tok-antigravity-secret" },
-      });
-      // 사람에게 보일 보고: 건너뛴 몫·로그인이 필요한 서버·변환 실패. 사람의 agy 설치본을 쓰는 gamma 는 알릴 것이 없다.
-      if (reports.length === 0) await new Promise<void>((resolve) => { reported = resolve; });
-      expect(probed).toEqual(["https://mcp.example/docs"]);
-      expect(reports).toEqual([[
-        {
-          pluginId: "alpha@market",
-          signIn: ["docs"],
-          skipped: [{ kind: "lsp" }, { kind: "mcp-server", name: "legacy" }, { kind: "hook", event: "Notification" }, { kind: "mcp-server", name: "dynamic" }],
-        },
-        { pluginId: "broken@market", retry: true },
-      ]]);
-      await agySpec.cleanup?.();
-      expect(fs.existsSync(addDir)).toBe(false);
-      expect(fs.existsSync(pluginDir)).toBe(false);
-
-      // Console이 멈추는 중이면 변환 자식을 띄우지 않고, CLI는 플러그인 없이 뜬다.
-      const stopping = await createStandaloneCliLaunchResolver({ ...baseDeps, shutdown: AbortSignal.abort() }, "antigravity")(theater, {
-        commodoreId: "comm-1",
-        sessionId: "standalone-cli:antigravity",
-        objectiveRecordType: "standalone-cli:antigravity",
-      });
-      expect(readAddDirs(stopping.args)).toHaveLength(1);
-      expect(ownedCalls).toHaveLength(3);
-      await stopping.cleanup?.();
-      expect(fs.existsSync(extraTheaterA)).toBe(true);
-      expect(fs.existsSync(extraTheaterB)).toBe(true);
-
       expect(preparedCalls).toEqual([
         { cli: "claude", cwd: theater, commodoreId: "comm-1" },
-        { cli: "antigravity", cwd: theater, commodoreId: "comm-1" },
-        { cli: "antigravity", cwd: theater, commodoreId: "comm-1" },
       ]);
-      expect(releases).toBe(3);
+      expect(releases).toBe(1);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
@@ -350,7 +238,7 @@ describe("standalone Claude Code CLI launch", () => {
           resolveTerminalSocketRole: () => "control",
         },
         http: {
-          readJsonBody: async () => ({ cli: "antigravity", commodoreId: "comm-1", theaterId: "t-main" }),
+          readJsonBody: async () => ({ cli: "claude", commodoreId: "comm-1", theaterId: "t-main" }),
           writeJson: (_res: unknown, status: number, body: unknown) => { responses.push({ status, body }); },
         },
         paths: {
