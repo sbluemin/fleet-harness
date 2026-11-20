@@ -22,8 +22,10 @@ export interface ConsoleGlobalShortcutDependencies {
   /** 열려 있으면 그 모드, 닫혀 있으면 null. */
   readonly getObjectiveSearchMode: () => "objectiveRecords" | "commands" | null;
   readonly openTaskforce?: () => boolean;
-  /** 독립 Claude Code CLI 패널을 여닫는다. 그릴 자리가 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
+  /** 독립 CLI 패널·팔레트를 여닫는다. 그릴 자리가 없는 문서(모바일)에서는 false — 키를 소비하지 않는다. */
   readonly toggleStandaloneCli?: () => boolean;
+  /** 독립 CLI 선택 팔레트를 바로 여닫는다(열린 CLI 안에서 다른 CLI로 전환). 모바일에서는 false. */
+  readonly switchStandaloneCli?: () => boolean;
   readonly toggleRailSurface: (entryId: string) => boolean;
   readonly canUndoLastClose?: () => boolean;
   readonly undoLastClose?: () => void;
@@ -56,17 +58,26 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       else dependencies.openObjectiveSearch();
       return;
     }
-    if (isBlockingDialogOpen(windowFor.document)) return;
-    if (matches("console.new-taskforce")) {
-      if (event.repeat || dependencies.openTaskforce?.()) {
+    // 독립 CLI: 터미널 포커스 가드를 두지 않고, 자기 팔레트 모달 위에서도 같은 키로 닫히게 자기 모달 가드보다 먼저 본다.
+    if (matches("console.standalone-cli-switch")) {
+      if (isForeignBlockingDialogOpen(windowFor.document, ".standalone-cli-palette-overlay")) return;
+      if (event.repeat || dependencies.switchStandaloneCli?.()) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }
       return;
     }
-    // 독립 CLI: 터미널 포커스 가드를 두지 않는다 — 그 CLI 안에서 같은 키로 닫는 것이 이 단축키의 절반이다.
     if (matches("console.standalone-cli")) {
+      if (isForeignBlockingDialogOpen(windowFor.document, ".standalone-cli-palette-overlay")) return;
       if (event.repeat || dependencies.toggleStandaloneCli?.()) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      }
+      return;
+    }
+    if (isBlockingDialogOpen(windowFor.document)) return;
+    if (matches("console.new-taskforce")) {
+      if (event.repeat || dependencies.openTaskforce?.()) {
         event.preventDefault();
         event.stopImmediatePropagation();
       }

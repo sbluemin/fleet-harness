@@ -24,7 +24,7 @@ import { FloatingWidgetLayer } from "../integration/floating-widget-layer.js";
 import { PersistentPluginComponents } from "../integration/persistent-components.js";
 import { ComputerScreenShareProvider } from "../../../../features/computer-use/client/computer-screen-share.js";
 import { ApprovalHost } from "../../../../features/execution/client/approval/panel.js";
-import { getStandaloneCliState, toggleStandaloneCli } from "../../../../features/execution/client/standalone-cli/store.js";
+import { getStandaloneCliState, switchStandaloneCli, toggleStandaloneCli } from "../../../../features/execution/client/standalone-cli/store.js";
 import { bindExpandedSurfaceCloseNotifier, closeExpandedSurfacesOf, getExpandedSurfaceState, openExpandedSurface } from "../chrome/expanded-surface/store.js";
 import { getGlobalSettingsStoreState, useGlobalSettingsStore } from "../../../../features/settings/client/global-settings-store.js";
 import { hydrateUpdateProgress, useUpdateProgress } from "../../../../features/updates/client/update-progress-store.js";
@@ -395,11 +395,19 @@ function ConnectedApp() {
         requestTaskforceCreate();
         return true;
       },
-      // 독립 CLI 패널은 데스크톱 대화 배치의 가운데 칸 위에 선다 — 모바일 셸에는 그릴 자리가 없다.
+      // 독립 CLI 패널과 팔레트는 데스크톱 대화 배치의 가운데 칸 위에 선다 — 모바일 셸에는 그릴 자리가 없다.
       toggleStandaloneCli: () => {
         if (getViewModeSnapshot().effective === "mobile") return false;
-        if (!getStandaloneCliState().open && !objectiveRecordsViewVisibleRef.current) navigate("/objectives");
+        const current = getStandaloneCliState();
+        if (current.activeCli === null && !current.paletteOpen && !objectiveRecordsViewVisibleRef.current) navigate("/objectives");
         void toggleStandaloneCli({ commodoreId: getViewedCommodoreId(), theaterId: getViewedTheaterId() });
+        return true;
+      },
+      switchStandaloneCli: () => {
+        if (getViewModeSnapshot().effective === "mobile") return false;
+        const current = getStandaloneCliState();
+        if (!current.paletteOpen && !objectiveRecordsViewVisibleRef.current) navigate("/objectives");
+        void switchStandaloneCli({ commodoreId: getViewedCommodoreId(), theaterId: getViewedTheaterId() });
         return true;
       },
       toggleRailSurface: (entryId) => {

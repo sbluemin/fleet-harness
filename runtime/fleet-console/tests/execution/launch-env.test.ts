@@ -123,4 +123,82 @@ describe("standalone Claude Code CLI launch", () => {
       fs.rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("injects fleet-browser MCP into both Claude Code and Antigravity CLI without putting bearer tokens in argv, and cleans up on exit", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-standalone-cli-mcp-"));
+    try {
+      const claudeBin = path.join(root, "claude");
+      const agyBin = path.join(root, "agy");
+      fs.writeFileSync(claudeBin, "#!/bin/sh\n", { mode: 0o755 });
+      fs.writeFileSync(agyBin, "#!/bin/sh\n", { mode: 0o755 });
+      const home = path.join(root, "home");
+      const theater = path.join(root, "theater");
+      const preparedCalls: Array<{ cli: string; cwd: string; commodoreId: string | null }> = [];
+      let releases = 0;
+      const browserMcp = {
+        prepare: async (options: { readonly cli: "claude" | "antigravity"; readonly cwd: string; readonly commodoreId: string | null }) => {
+          preparedCalls.push({ cli: options.cli, cwd: options.cwd, commodoreId: options.commodoreId });
+          return {
+            endpointUrl: "http://127.0.0.1:4199/mcp/fleet-browser",
+            bearerToken: `tok-${options.cli}-secret`,
+            release: async () => { releases += 1; },
+          };
+        },
+      };
+      const baseDeps = {
+        env: { PATH: "/usr/bin", HOME: home, CLAUDE_BIN: claudeBin, AGY_BIN: agyBin, FLEET_CONSOLE_SESSION_ID: "parent" },
+        aiGateway: { routePath: "/api/v1/ai-gateway", origin: () => "http://127.0.0.1:4100" },
+        browserMcp,
+        homeDir: home,
+      };
+
+      const claudeSpec = await createStandaloneCliLaunchResolver(baseDeps, "claude")(theater, {
+        commodoreId: "comm-1",
+        sessionId: "standalone-cli:claude",
+        objectiveRecordType: "standalone-cli:claude",
+      });
+      const mcpIdx = claudeSpec.args.indexOf("--mcp-config");
+      expect(mcpIdx).toBeGreaterThanOrEqual(0);
+      const claudeConfigPath = claudeSpec.args[mcpIdx + 1]!;
+      expect(claudeSpec.args.join(" ")).not.toContain("tok-claude-secret");
+      const claudeMcp = JSON.parse(fs.readFileSync(claudeConfigPath, "utf8")) as { mcpServers: Record<string, { type: string; url: string; headers: { Authorization: string } }> };
+      expect(claudeMcp.mcpServers["fleet-browser"]).toEqual({
+        type: "http",
+        url: "http://127.0.0.1:4199/mcp/fleet-browser",
+        headers: { Authorization: "Bearer tok-claude-secret" },
+      });
+      await claudeSpec.cleanup?.();
+      expect(fs.existsSync(claudeConfigPath)).toBe(false);
+
+      const agySpec = await createStandaloneCliLaunchResolver(baseDeps, "antigravity")(theater, {
+        commodoreId: "comm-1",
+        sessionId: "standalone-cli:antigravity",
+        objectiveRecordType: "standalone-cli:antigravity",
+      });
+      expect(agySpec.bin).toBe(agyBin);
+      expect(agySpec.env.ANTHROPIC_BASE_URL).toBeUndefined();
+      expect(agySpec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
+      const addDirIdx = agySpec.args.indexOf("--add-dir");
+      expect(addDirIdx).toBeGreaterThanOrEqual(0);
+      const addDir = agySpec.args[addDirIdx + 1]!;
+      expect(agySpec.args.join(" ")).not.toContain("tok-antigravity-secret");
+      const agyPlugin = JSON.parse(fs.readFileSync(path.join(addDir, ".agents/plugins/fleet-browser/plugin.json"), "utf8")) as { name: string };
+      const agyMcp = JSON.parse(fs.readFileSync(path.join(addDir, ".agents/plugins/fleet-browser/mcp_config.json"), "utf8")) as { mcpServers: Record<string, { serverUrl: string; headers: { Authorization: string } }> };
+      expect(agyPlugin.name).toBe("fleet-browser");
+      expect(agyMcp.mcpServers["fleet-browser"]).toEqual({
+        serverUrl: "http://127.0.0.1:4199/mcp/fleet-browser",
+        headers: { Authorization: "Bearer tok-antigravity-secret" },
+      });
+      await agySpec.cleanup?.();
+      expect(fs.existsSync(addDir)).toBe(false);
+
+      expect(preparedCalls).toEqual([
+        { cli: "claude", cwd: theater, commodoreId: "comm-1" },
+        { cli: "antigravity", cwd: theater, commodoreId: "comm-1" },
+      ]);
+      expect(releases).toBe(2);
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
 });

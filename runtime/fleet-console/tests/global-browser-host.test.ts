@@ -1070,4 +1070,85 @@ describe("session browser host contract", () => {
       expect(fetched).not.toContain("https://www.example.co.uk/favicon.ico");
     } finally { iconFetch.mockRestore(); }
   });
+
+  it("scopes standalone CLI HTTP MCP sessions to the viewed Commodore space and closes only that CLI's tabs on release", async () => {
+    const attached = new Set<string>();
+    const answered = new Set<number>();
+    const engine = new DesktopEngine({
+      publish: (snapshot) => queueMicrotask(() => {
+        const attaching = snapshot.views.filter((view) => !attached.has(view.id));
+        for (const view of attaching) attached.add(view.id);
+        const commands = snapshot.commands.filter((command) => !answered.has(command.id));
+        const results = commands.map((command) => {
+          answered.add(command.id);
+          return { id: command.id, result: {} };
+        });
+        if (attaching.length || results.length) engine.relay("local", { attached: attaching.map((view) => view.id), results });
+      }),
+      log: () => {},
+    });
+    engine.subscriberOpened("local");
+    engine.setHost("local");
+    const service = new BrowserService({
+      enabled: () => true,
+      availability: () => ({ available: true, reason: null, host: "local" }),
+      desktop: engine,
+      log: () => {},
+      defaultProfile: { read: () => null, write: () => {} },
+    });
+    const commodoreId = "00000000-0000-0000-0000-000000000009";
+    const spaceId = commodoreBrowserSpaceId(commodoreId);
+    const commodoreTab = await service.createTab(BROWSER_GLOBAL_ID, "https://example.com/commodore", "agent", {
+      caller: { participantId: `commodore-session:${spaceId}`, spaceId, ownerId: spaceId },
+    });
+    const browser = createBrowserMcpHost({
+      service,
+      screenshots: { save: () => "/tmp/shot.png", release: () => {}, cleanup: () => {} },
+      objectiveRecords: () => [],
+      commodoreExists: (id) => id === commodoreId,
+    });
+    const conn = browser.connect();
+    try {
+      const label = "standalone-cli:antigravity:test-1";
+      browser.registerStandaloneSession(label, { commodoreId });
+      expect(browser.isSessionOwner(label)).toBe(true);
+      const endpoint = await conn.getEndpoint();
+      const [issued] = conn.issueSessionToken({ label, cwd: "/tmp" });
+      const url = endpoint.servers[0]!.url;
+      const callMcp = async (method: string, params: Record<string, unknown>, sessionId?: string) => {
+        const res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json, text/event-stream",
+            Authorization: `Bearer ${issued!.token}`,
+            Connection: "close",
+            ...(sessionId ? { "mcp-session-id": sessionId } : {}),
+          },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+        });
+        const text = await res.text();
+        return { status: res.status, text, sessionId: res.headers.get("mcp-session-id") ?? undefined };
+      };
+      const init = await callMcp("initialize", { protocolVersion: "2025-03-26", capabilities: {}, clientInfo: { name: "standalone-cli-test", version: "1.0.0" } });
+      expect(init.status).toBe(200);
+      const created = await callMcp("tools/call", { name: "tabs_create", arguments: {} }, init.sessionId);
+      expect(created.status).toBe(200);
+      expect(created.text).not.toContain("browser_not_authorized");
+      expect(created.text).not.toContain('"isError":true');
+      const tabsAfterCreate = service.state(BROWSER_GLOBAL_ID).tabs;
+      const cliTab = tabsAfterCreate.find((tab) => tab.id !== commodoreTab.id);
+      expect(cliTab?.spaceId).toBe(spaceId);
+
+      // PTY 종료 회수: 독립 CLI 가 연 탭만 닫히고, 같은 스페이스의 사령관 탭은 유지된다.
+      await browser.releaseStandaloneSession(label);
+      expect(browser.isSessionOwner(label)).toBe(false);
+      expect(service.state(BROWSER_GLOBAL_ID).tabs.map((tab) => tab.id)).toEqual([commodoreTab.id]);
+      const afterRelease = await callMcp("tools/call", { name: "tabs_create", arguments: {} }, init.sessionId);
+      expect(afterRelease.text).toContain("caller_unresolved");
+    } finally {
+      await conn.dispose();
+      await browser.dispose();
+    }
+  });
 });
