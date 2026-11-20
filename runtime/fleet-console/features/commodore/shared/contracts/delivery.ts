@@ -10,7 +10,8 @@ export function undeliveredMessageSeqs(entries: readonly CommodoreTranscriptEntr
   const waiting = new Map<number, boolean>();
   for (const entry of entries) {
     if (entry.kind === "undelivered") for (const seq of entry.seqs) waiting.set(seq, true);
-    else if (entry.kind === "requeued" || entry.kind === "delivered") for (const seq of entry.seqs) waiting.set(seq, false);
+    // 건너뛴(격리된) 말은 큐를 떠났다 — 다음 기동이 다시 싣지 않는다.
+    else if (entry.kind === "requeued" || entry.kind === "delivered" || entry.kind === "skipped") for (const seq of entry.seqs) waiting.set(seq, false);
   }
   return new Set([...waiting].flatMap(([seq, open]) => (open ? [seq] : [])));
 }
@@ -23,6 +24,8 @@ export function cliBlockedMessageSeqs(entries: readonly CommodoreTranscriptEntry
   const blocked = new Set<number>();
   for (let at = 0; at < entries.length; at += 1) {
     const entry = entries[at]!;
+    // 나중에 다시 실리거나 전달된 말은 더 이상 막힌 것이 아니다 — 기록은 덧붙이기만 하므로 나중 줄이 앞의 판정을 덮는다.
+    if (entry.kind === "requeued" || entry.kind === "delivered") { for (const seq of entry.seqs) blocked.delete(seq); continue; }
     if (entry.kind !== "undelivered" || !entry.seqs.length) continue;
     for (let next = at + 1; next < entries.length; next += 1) {
       const candidate = entries[next]!;

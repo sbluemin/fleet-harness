@@ -274,6 +274,8 @@ interface Runner {
    * 격리하거나 성공하면 비운다.
    */
   failedBatch: number | null;
+  /** CLI 원인으로 「미배달」을 남긴 말 — 다시 보내기가 전달하면 그 표시를 닫는다. */
+  cliUndelivered: Set<number>;
   /** 격리 뒤 후속 메시지를 재시도 간격 없이 바로 다음 턴으로 넘긴다 — 턴이 도는 중이면 그 턴이 끝난 뒤. */
   immediateNext: boolean;
   coalesce: ReturnType<typeof setTimeout> | null;
@@ -487,6 +489,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     runner.retryAttempt = 0;
     runner.nextWakeAt = undefined;
     for (let at = 0; at < seqs.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "undelivered", seqs: seqs.slice(at, at + MAX_TRANSCRIPT_PAGE) });
+    for (const seq of seqs) runner.cliUndelivered.add(seq);
     record(runner, { kind: "error", code, ...(detail ? { detail } : {}) });
     setPhase(runner, "error", code);
   };
@@ -511,6 +514,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     const at = runner.messages.findIndex((queued) => queued.seq === message.seq);
     if (at >= 0) runner.messages.splice(at, 1);
     releaseMessages(runner, [message]);
+    runner.cliUndelivered.delete(message.seq);
     if (message.messageId) { try { deps.store.images.trim(runner.commodoreId); } catch { /* 다음 정리가 다시 거둔다. */ } }
     record(runner, { kind: "skipped", seqs: [message.seq], code, ...(detail ? { detail } : {}) });
     // 격리는 실패 재시도가 아니다 — 다음 시도를 다시 재우지 않는다.
@@ -1230,7 +1234,12 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
         if (mail.length) { try { deps.store.images.trim(runner.commodoreId); } catch { /* 다음 정리에 다시 거둔다. */ } }
       } else runner.mail.unshift(...mail);
       // 사람이 멈춘 턴의 초기 입력도 소비한다. 첨부 원본 보관만 풀고 기록 사본·세션 이미지 예산은 유지한다.
-      if (outcome.outcome === "ok" || stoppedByPerson) releaseMessages(runner, messages);
+      if (outcome.outcome === "ok" || stoppedByPerson) {
+        releaseMessages(runner, messages);
+        // 이 말이 CLI 원인으로 「미배달」이 된 적이 있으면 이제 소비됐다 — 닫지 않으면 다음 기동이 같은 말을 다시 싣는다.
+        const consumed = messages.map((message) => message.seq).filter((seq) => runner.cliUndelivered.delete(seq));
+        for (let at = 0; at < consumed.length; at += MAX_TRANSCRIPT_PAGE) record(runner, { kind: "delivered", seqs: consumed.slice(at, at + MAX_TRANSCRIPT_PAGE) });
+      }
       if (stoppedByPerson && !runner.messages.length) runner.pending.delete("message");
       if (outcome.outcome === "ok") {
         // 알림 확인 저장 실패는 성공한 작업을 재실행하지 않는다. 남은 알림은 다음 턴에 다시 실린다.
@@ -1422,7 +1431,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (runner && !runner.stopping) return;
     // 기동 자체는 깨움이 아니다 — 지난 종료가 듣지 못했다고 남긴 보드 깨움만 다시 본다. Clear 는 지우기 전에 읽어 건넨다.
     const unheard = carried !== undefined ? carried : unheardOf(commodoreId);
-    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, transientFailures: 0, failedBatch: null, immediateNext: false, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, turning: false, stopping: false, turnStopRequested: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
+    runner = { commodoreId, contextDetail: null, session: null, sessionFirstTurn: false, phase: "idle", step: null, pending: new Map(), messages: [], mail: [], tfPosts: [], turnSent: new Set(), hosted: new Map(), turnMessages: [], turnMail: [], sessionImageBytes: 0, sessionImageBase64Bytes: 0, transientFailures: 0, failedBatch: null, cliUndelivered: new Set(), immediateNext: false, coalesce: null, routineTimer: null, routineTimes: new Map(), retry: null, retryAttempt: 0, inflight: null, turning: false, stopping: false, turnStopRequested: false, lastTurnAt: null, lastInputTokens: 0, contextWindow: 0, compactAt: 0, coordinates: null, language: "en", rotateNext: reason === "restart" ? "restarted" : null, recentActions: restoreRecentActions(commodoreId), board: null, stalledReported: new Set(), unheard: { codes: new Set(), ids: new Set(), all: false } };
     const current = runner;
     current.board = deps.board()?.watch(commodoreId, {
       automatic: () => !current.stopping && canRun(commodoreId),
