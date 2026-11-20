@@ -378,12 +378,28 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     },
   }, caller));
 
-  // TaskForce — 판단 턴의 말하기는 이 도구로만 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
+  // TaskForce — 판단 턴의 말하기와 현재 소속 TF·성원 조회는 이 도구로 한다. 침묵(호출 없음)은 흔적을 남기지 않는다.
   // 말은 공유 원장에만 닿고 1:1 기록에는 절대 쓰지 않는다.
+  const taskforceMemberView = (id: string) => {
+    const alias = options.store.read(id)?.alias;
+    return { commodoreId: id, ...(alias ? { alias } : {}), ...(id === options.commodoreId ? { self: true as const } : {}) };
+  };
   const taskforceSpec = defineConsoleTool({
     name: "console_taskforce",
-    description: "Post only when useful in a TaskForce you belong to. In text, refer to speakers and gist, not ledger seqs.",
+    description: "Inspect or post in TaskForces you belong to. Post only when useful; in text, refer to speakers and gist, not ledger seqs.",
     actions: {
+      list: {
+        kind: "read",
+        callers: ["commodore"],
+        input: z.object({}),
+      },
+      read: {
+        kind: "read",
+        callers: ["commodore"],
+        input: z.object({
+          taskforceId: z.string().regex(TASKFORCE_ID, "unknown_taskforce").describe("Exact TaskForce id from context or tools; never guess."),
+        }),
+      },
       post: {
         kind: "write",
         callers: ["commodore"],
@@ -404,15 +420,47 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       const parsed = taskforceSpec.parse(raw, caller);
       if (!parsed.ok) return parseFail(parsed);
       const call = parsed.call;
+      const unknownHint = "Check the exact TaskForce id against the TaskForce context or tools; never guess or shorten it.";
       const toHint = 'Use "none" or an array of exact fellow member ids from the TaskForce context or tools.';
       try {
         const ledger = options.taskforce;
         if (!ledger) throw new Error("taskforce_unavailable");
+        if (call.action === "list") {
+          const joined = ledger.list().filter((entry) => entry.members.includes(options.commodoreId));
+          return text({
+            taskforces: joined.map((entry) => {
+              const current = typeof ledger.read === "function" ? ledger.read(entry.id) : null;
+              return {
+                taskforceId: entry.id,
+                name: entry.name,
+                topic: current?.topic ?? entry.topic,
+                members: (current?.members ?? entry.members).map(taskforceMemberView),
+                lastSeq: current?.lastSeq ?? entry.lastSeq,
+                ...(current ? { chain: current.chain, readThrough: current.readSeq[options.commodoreId] ?? 0 } : {}),
+              };
+            }),
+          });
+        }
+        if (call.action === "read") {
+          const current = ledger.read(call.taskforceId);
+          if (!current || !current.members.includes(options.commodoreId)) {
+            throw new TaskforceStoreError("unknown_taskforce", undefined, { hint: unknownHint });
+          }
+          return text({
+            taskforceId: current.id,
+            name: current.name,
+            topic: current.topic,
+            members: current.members.map(taskforceMemberView),
+            chain: current.chain,
+            lastSeq: current.lastSeq,
+            readThrough: current.readSeq[options.commodoreId] ?? 0,
+          });
+        }
         if (call.text.length > MAX_TASKFORCE_POST_TEXT) throw new TaskforceStoreError("taskforce_post_too_long", undefined, { limit: MAX_TASKFORCE_POST_TEXT, length: call.text.length, hint: `Shorten to the conclusion and what the others must judge (about ${RECOMMENDED_TASKFORCE_POST_TEXT} characters); move long reasoning to the objective brief or a document and link it.` });
         const rawTo = call.to === "none" ? [] : [...new Set(call.to)];
         if (typeof ledger.read === "function") {
           const state = ledger.read(call.taskforceId);
-          if (!state) throw new TaskforceStoreError("unknown_taskforce", undefined, { hint: "Check the exact TaskForce id against the TaskForce context or tools; never guess or shorten it." });
+          if (!state) throw new TaskforceStoreError("unknown_taskforce", undefined, { hint: unknownHint });
           if (rawTo.some((id) => !state.members.includes(id))) {
             throw new TaskforceStoreError("invalid_request", undefined, { hint: toHint });
           }
@@ -431,7 +479,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
           return text({ taskforceId: call.taskforceId, seq: entry.seq });
         } catch (error) {
           // 원래 TF 깨움이 아닌 목표 후속 턴도 같은 도구를 쓴다 — 좌표를 확인하되 현재 권한 검사를 우회하지 않는다.
-          if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: "Check the exact TaskForce id against the TaskForce context or tools; never guess or shorten it." });
+          if (error instanceof TaskforceStoreError && error.code === "unknown_taskforce") throw new TaskforceStoreError(error.code, undefined, { hint: unknownHint });
           if (error instanceof TaskforceStoreError && error.code === "invalid_request" && call.replyTo === undefined) {
             throw new TaskforceStoreError(error.code, undefined, { hint: toHint });
           }

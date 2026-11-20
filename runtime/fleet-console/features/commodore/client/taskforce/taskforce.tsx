@@ -349,7 +349,13 @@ function TaskforceBody({ id, language }: { readonly id: string; readonly languag
       const owner = speaker(entry.speaker.commodoreId);
       return entry.actions.map((action, index) => ({ kind: "board-action", id: `${entry.seq}:${index}`, at: entry.at, speaker: owner, objectiveId: action.objectiveId, action: actionWord(getCommodoreT(language), action.kind), text: "", target: { id: action.objectiveId, ...actionTarget(entry.speaker.kind === "commodore" ? entry.speaker.commodoreId : undefined, action) } }));
     }
-    if (entry.speaker.kind === "system") return [{ kind: "note", id: String(entry.seq), at: entry.at, text: t(`taskforce.system.${entry.speaker.code}`, { text: entry.text.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, (id) => memberName(id, language)) }), ...(entry.speaker.code === "chain-paused" ? { tone: "warn" as const } : {}) }];
+    if (entry.speaker.kind === "system") {
+      // 참여·나감 항목은 본문을 비우고 대상 UUID를 mentions에 둔다 — 지금 별칭으로 옮겨 적는다.
+      const subject = entry.text.trim()
+        ? entry.text.replace(/[0-9a-f]{8}-[0-9a-f-]{27}/g, (id) => memberName(id, language))
+        : entry.mentions.map((id) => memberName(id, language)).join(", ");
+      return [{ kind: "note", id: String(entry.seq), at: entry.at, text: t(`taskforce.system.${entry.speaker.code}`, { text: subject }), ...(entry.speaker.code === "chain-paused" ? { tone: "warn" as const } : {}) }];
+    }
     return [{ kind: "message", id: String(entry.seq), at: entry.at, objectiveId: id, speaker: entry.speaker.kind === "person" ? { kind: "human", name: "" } : speaker(entry.speaker.commodoreId), text: entry.text || (entry.actions?.length ? " " : ""), streaming: false,
       ...(entry.images?.length ? { attachments: entry.images.map((image) => ({ preview: { id: image.id, url: `/api/v1/${TASKFORCE_ROUTE_NAMES.image}?${new URLSearchParams({ taskforceId: id, seq: String(entry.seq), imageId: image.id })}` } })) } : {}) }];
   }), [entries, id, language, book, commodores, bySeq, actionTarget]);

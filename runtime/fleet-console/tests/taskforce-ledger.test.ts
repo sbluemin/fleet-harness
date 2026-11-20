@@ -1097,6 +1097,43 @@ describe("taskforce mention wake", () => {
       expect(dedupTurn).not.toContain(`Reply context only: [seq ${p1.seq}]`);
       sessionOf("Beta").finish();
       await vi.advanceTimersByTimeAsync(10);
+
+      // 5) taskforce list/read — 소속 TF와 성원 UUID·별칭을 돌려주고, 비성원(탈퇴 포함)의 read는 unknown_taskforce로 거절한다.
+      const c = randomUUID();
+      const listed = await sessionOf("Alpha").tools.get("taskforce")!.execute({ action: "list" }, { cwd: h.theaterRoot, toolCallId: "tf-list" } as never) as { isError: boolean; structuredContent: { taskforces: any[] } };
+      expect(listed.isError).toBe(false);
+      expect(listed.structuredContent.taskforces).toMatchObject([{
+        taskforceId,
+        name: "수신자 TF",
+        topic: "수신자 주제",
+        members: [{ commodoreId: a, alias: "Alpha", self: true }, { commodoreId: b, alias: "Beta" }],
+      }]);
+      const readRes = await sessionOf("Alpha").tools.get("taskforce")!.execute({ action: "read", taskforceId }, { cwd: h.theaterRoot, toolCallId: "tf-read" } as never) as { isError: boolean; structuredContent: Record<string, any> };
+      expect(readRes.isError).toBe(false);
+      expect(readRes.structuredContent).toMatchObject({ taskforceId, topic: "수신자 주제", chain: { limit: 15, paused: false } });
+      const outsiderTools = Object.fromEntries(createCommodoreTools({ commodoreId: c, theaterRoot: h.theaterRoot, store: h.store, taskforce: h.taskforce }).map((tool) => [tool.name, tool]));
+      expect(await outsiderTools.taskforce!.execute({ action: "read", taskforceId }, { cwd: h.theaterRoot } as never)).toMatchObject({ isError: true, structuredContent: { error: "unknown_taskforce" } });
+
+      // 6) 판단 중(judging)인 성원이 제거되면 유령 판단 상태와 90초 동료 대기(TF_COMMODORE_MAX_MS)를 즉시 해제한다.
+      h.taskforce.addMembers(taskforceId, [c]);
+      h.taskforce.append(taskforceId, { speaker: { kind: "person" }, text: "전원 검토" });
+      expect(h.tfEvents.filter((event) => event.op === "taskforce-judging").at(-1)).toMatchObject({ taskforceId, judging: [a, b, c].sort() });
+      h.taskforce.removeMember(taskforceId, c);
+      expect(h.tfEvents.filter((event) => event.op === "taskforce-judging").at(-1)).toMatchObject({ taskforceId, judging: [a, b].sort() });
+      expect(h.taskforce.read(taskforceId)?.judging?.judging).toEqual([a, b].sort());
+      await vi.advanceTimersByTimeAsync(TF_PERSON_QUIET_MS + 10);
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(10);
+      const betaCountBefore = sentOf("Beta").length;
+      const afterRemovePost = await sessionOf("Alpha").tools.get("taskforce")!.execute({ action: "post", taskforceId, text: "제거 후 즉시 전달 확인", to: [b] }, { cwd: h.theaterRoot, toolCallId: "tf-after-remove" } as never);
+      expect(afterRemovePost).not.toMatchObject({ isError: true });
+      sessionOf("Alpha").finish();
+      // 제거된 c가 유령 blocker로 남지 않았으므로 90초가 아니라 기본 묶음 시간(COALESCE_MS) 안에 곧바로 Beta 턴이 선다.
+      await vi.advanceTimersByTimeAsync(COALESCE_MS + 50);
+      expect(sentOf("Beta")).toHaveLength(betaCountBefore + 1);
+      expect(sentOf("Beta").at(-1)).toContain("제거 후 즉시 전달 확인");
+      sessionOf("Beta").finish();
+      await vi.advanceTimersByTimeAsync(10);
       await h.supervisor.dispose();
     } finally { vi.useRealTimers(); }
   });

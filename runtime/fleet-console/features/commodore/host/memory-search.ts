@@ -561,7 +561,7 @@ function scanTaskforce(
   try {
     // 최신 상태에서 뒤로 걷는다 — 읽은 구간 안에서만 가린다. 이어읽기도 매번
     // 지금 상태에서 다시 걷기 때문에 토큰이 권한을 대신하지 않는다.
-    const items: { readonly seq: number; readonly at: number; readonly speaker: { readonly kind: string }; readonly mentions: readonly string[]; readonly text: string; readonly images: boolean }[] = [];
+    const items: { readonly seq: number; readonly at: number; readonly speaker: { readonly kind: string }; readonly mentions: readonly string[]; readonly text: string; readonly images: boolean; readonly attachmentIds?: readonly string[] }[] = [];
     const ceil = prevFloor ?? Number.POSITIVE_INFINITY;
     let before: number | undefined;
     let readTotal = 0;
@@ -572,12 +572,14 @@ function scanTaskforce(
       readTotal += page.entries.length;
       for (const entry of page.entries) {
         // 걷기 검증에는 읽은 전부가 필요하고, 일치 판정은 이어읽기 바닥 아래만 새로 한다.
+        const attachmentIds = entry.speaker.kind === "person" && entry.images?.length ? entry.images.map((image) => image.id) : undefined;
         items.push({
           seq: entry.seq, at: entry.at,
           speaker: entry.speaker,
           mentions: entry.mentions,
           text: entry.text,
           images: (entry.images?.length ?? 0) > 0,
+          ...(attachmentIds ? { attachmentIds } : {}),
         });
         if (entry.seq < ceil) evaluated += 1;
       }
@@ -606,7 +608,9 @@ function scanTaskforce(
       matched += 1;
       scanned.push({
         at: item.at, src: state.id, seq: item.seq, kind: speaker.kind, role: speaker.role, text: item.text,
-        hasImages: item.images, speaker: speaker.view, source,
+        hasImages: item.images,
+        ...(item.attachmentIds ? { attachmentIds: item.attachmentIds } : {}),
+        speaker: speaker.view, source,
       });
     }
     pushSource({
@@ -699,7 +703,7 @@ function anchorRead(
   const hi = anchor.seq + afterN;
   // 권한은 읽은 전체(최신→anchor)의 전이로 가리고 출력만 window로 좁힌다.
   // window 밖 전이를 버리면 비참여 구간이 보이게 되므로 walk에는 전부 싣는다.
-  const read: { readonly seq: number; readonly at: number; readonly speaker: { readonly kind: string }; readonly mentions: readonly string[]; readonly text: string; readonly images: boolean }[] = [];
+  const read: { readonly seq: number; readonly at: number; readonly speaker: { readonly kind: string }; readonly mentions: readonly string[]; readonly text: string; readonly images: boolean; readonly attachmentIds?: readonly string[] }[] = [];
   let before: number | undefined;
   let readTotal = 0;
   let minRead: number | null = null;
@@ -709,7 +713,8 @@ function anchorRead(
     readTotal += page.entries.length;
     for (const entry of page.entries) {
       if (entry.seq < (minRead ?? Number.POSITIVE_INFINITY)) minRead = entry.seq;
-      read.push({ seq: entry.seq, at: entry.at, speaker: entry.speaker, mentions: entry.mentions, text: entry.text, images: (entry.images?.length ?? 0) > 0 });
+      const attachmentIds = entry.speaker.kind === "person" && entry.images?.length ? entry.images.map((image) => image.id) : undefined;
+      read.push({ seq: entry.seq, at: entry.at, speaker: entry.speaker, mentions: entry.mentions, text: entry.text, images: (entry.images?.length ?? 0) > 0, ...(attachmentIds ? { attachmentIds } : {}) });
     }
     if (!page.hasMore) { reachedStart = true; break; }
     if ((minRead ?? Number.POSITIVE_INFINITY) <= lo || readTotal >= MEMORY_SEARCH_READ_BUDGET_PER_SOURCE) break;
@@ -739,7 +744,8 @@ function anchorRead(
       source, seq: entry.seq, at: stamp(entry.at), kind: speaker.kind, speaker: speaker.view,
       text: entry.text,
       ...(entry.images ? { hasImages: true as const } : {}),
-      ...(qLower ? { matched: entry.text.toLowerCase().includes(qLower) } : {}),
+      ...(entry.attachmentIds ? { attachmentIds: entry.attachmentIds } : {}),
+      ...(qLower ? { matched: hitMatches(entry.text, qLower) } : {}),
       readable: true as const,
     };
   });
@@ -762,4 +768,63 @@ function anchorRead(
       ...(!verified ? { participationUncertain: true as const } : {}),
     }],
   };
+}
+
+const hitMatches = (text: string, qLower: string): boolean => text.toLowerCase().includes(qLower);
+
+/**
+ * 사령관이 목표 브리핑에 붙일 수 있는 TaskForce 사람 이미지 — 최신 상태부터 이어 읽은
+ * 참여 검증(`verifyCoverage`) 구간 안에 사람이 올린 이미지만 허용한다. 비참여·검증 밖은 제외한다.
+ */
+export function findCoveredTaskforcePersonImages(
+  callerId: string,
+  needed: ReadonlySet<string>,
+  taskforce: Pick<TaskforceStore, "list" | "read" | "readLedger">,
+): ReadonlyMap<string, { readonly taskforceId: string; readonly seq: number }> {
+  const found = new Map<string, { readonly taskforceId: string; readonly seq: number }>();
+  if (!needed.size) return found;
+  let ordered: readonly TaskforceSummary[];
+  try {
+    ordered = [...taskforce.list()].sort((a, b) =>
+      (b.members.includes(callerId) ? 1 : 0) - (a.members.includes(callerId) ? 1 : 0) || b.lastSeq - a.lastSeq,
+    ).slice(0, MEMORY_SEARCH_MAX_TASKFORCES);
+  } catch { return found; }
+  for (const summary of ordered) {
+    if (found.size >= needed.size) break;
+    let state: TaskforceState | null = null;
+    try { state = taskforce.read(summary.id); } catch { continue; }
+    if (!state) continue;
+    const items: { readonly seq: number; readonly speaker: { readonly kind: string; readonly commodoreId?: string }; readonly mentions: readonly string[]; readonly imageIds: readonly string[] }[] = [];
+    const pendingIds = new Set([...needed].filter((id) => !found.has(id)));
+    const hitInTf = new Set<string>();
+    let before: number | undefined;
+    let readTotal = 0;
+    let failed = false;
+    for (;;) {
+      let page;
+      try { page = taskforce.readLedger(state.id, { limit: 500, ...(before === undefined ? {} : { before }) }); }
+      catch { failed = true; break; }
+      readTotal += page.entries.length;
+      for (const entry of page.entries) {
+        const imageIds = entry.speaker.kind === "person" && entry.images?.length ? entry.images.map((image) => image.id) : [];
+        for (const id of imageIds) if (pendingIds.has(id)) hitInTf.add(id);
+        items.push({ seq: entry.seq, speaker: entry.speaker, mentions: entry.mentions, imageIds });
+      }
+      // 찾는 이미지가 이 구간에 모두 들어왔으면 그 위(최신 상태→해당 seq) 전이는 전부 실렸으므로 더 거슬러 읽지 않는다.
+      if (hitInTf.size >= pendingIds.size || !page.hasMore || readTotal >= MEMORY_SEARCH_READ_BUDGET_PER_SOURCE) break;
+      const oldest = page.entries[0]?.seq;
+      if (oldest === undefined) break;
+      before = oldest;
+    }
+    if (failed || !hitInTf.size) continue;
+    items.sort((a, b) => a.seq - b.seq);
+    const walk = verifyCoverage(items, state.members, callerId);
+    for (const item of items) {
+      if (!item.imageIds.length || !walk.covered.get(item.seq)) continue;
+      for (const id of item.imageIds) {
+        if (needed.has(id) && !found.has(id)) found.set(id, { taskforceId: state.id, seq: item.seq });
+      }
+    }
+  }
+  return found;
 }

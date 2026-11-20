@@ -16,6 +16,7 @@ import { CommodoreStoreError } from "./errors.js";
 import { classifyFailure, createCommodoreSession, type CommodoreSession, type CommodoreSessionCoordinates, type CommodoreTurnInput, type CommodoreTurnOutcome } from "./session.js";
 import type { CommodoreStore } from "./store.js";
 import type { CommandExecute } from "./tools.js";
+import { findCoveredTaskforcePersonImages } from "./memory-search.js";
 import { messagePromptText } from "./prompt.js";
 import { undeliveredMessageSeqs, unheardWakes, type CommodoreUnheardWakes } from "../shared/contracts/delivery.js";
 import { COMMODORE_CLI_FAILURE_CODES } from "../shared/contracts/cli-status.js";
@@ -345,7 +346,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     }
     return found;
   };
-  const turnAttachments = (runner: Runner): CommodoreAttachmentReader => (ids) => {
+  const turnAttachments = (runner: Runner, options: { readonly allowTaskforce?: boolean } = {}): CommodoreAttachmentReader => (ids) => {
     const unavailable = () => new CommodoreStoreError("attachment_not_available", undefined, { hint: "Use image IDs allowed by this tool. If an image is unavailable, ask the person to resend it." });
     if (!inTurn(runner)) throw unavailable();
     const missing = new Set<string>();
@@ -358,74 +359,107 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       return { id, messageId: "", kind: "retained" as const };
     });
     const retainedMessages = findRetainedHumanMessages(runner.commodoreId, missing);
-    const selected = preliminary.map((item) => {
+    const stillMissing = new Set([...missing].filter((id) => !retainedMessages.has(id)));
+    // 보드 도구는 참여 검증된 구간의 TaskForce 사람 이미지도 브리핑으로 복사할 수 있다. 사령관 간 1:1 연락에는 열지 않는다.
+    const retainedTaskforce = options.allowTaskforce && stillMissing.size > 0 && tfEnabled() && deps.taskforce
+      ? findCoveredTaskforcePersonImages(runner.commodoreId, stillMissing, deps.taskforce)
+      : new Map<string, { readonly taskforceId: string; readonly seq: number }>();
+    type SelectedAttachment =
+      | { readonly id: string; readonly messageId: string; readonly kind: "human" }
+      | { readonly id: string; readonly messageId: string; readonly kind: "mail" }
+      | { readonly id: string; readonly messageId: string; readonly kind: "retained" }
+      | { readonly id: string; readonly taskforceId: string; readonly seq: number; readonly kind: "taskforce" };
+    const selected = preliminary.map((item): SelectedAttachment => {
       if (item.kind !== "retained") return item;
       const messageId = retainedMessages.get(item.id);
-      if (!messageId) throw unavailable();
-      return { id: item.id, messageId, kind: "retained" as const };
+      if (messageId) return { id: item.id, messageId, kind: "retained" as const };
+      const tfRef = retainedTaskforce.get(item.id);
+      if (tfRef) return { id: item.id, taskforceId: tfRef.taskforceId, seq: tfRef.seq, kind: "taskforce" as const };
+      throw unavailable();
     });
     const humanMessages = new Map<string, ReturnType<AttachmentHost["read"]>>();
     const mailImages = new Map<string, { id: string; mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; bytes: Uint8Array }>();
     const retainedImages = new Map<string, { id: string; mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; bytes: Uint8Array }>();
-    for (const { id, messageId, kind } of selected) {
-      if (kind === "human") {
-        if (!deps.attachments || humanMessages.has(messageId)) continue;
-        try { humanMessages.set(messageId, deps.attachments.read(runner.commodoreId, messageId)); }
+    const taskforceImages = new Map<string, { id: string; mime: "image/png" | "image/jpeg" | "image/gif" | "image/webp"; bytes: Uint8Array }>();
+    for (const item of selected) {
+      if (item.kind === "human") {
+        if (!deps.attachments || humanMessages.has(item.messageId)) continue;
+        try { humanMessages.set(item.messageId, deps.attachments.read(runner.commodoreId, item.messageId)); }
         catch { throw unavailable(); }
-      } else if (kind === "mail") {
-        if (mailImages.has(messageId)) continue;
+      } else if (item.kind === "mail") {
+        if (mailImages.has(item.messageId)) continue;
         try {
-          const entry = runner.turnMail.find((mail) => mail.messageId === messageId);
+          const entry = runner.turnMail.find((mail) => mail.messageId === item.messageId);
           const images = (entry?.attachments ?? []).map((attachment) => {
-            const image = deps.store.images.read(runner.commodoreId, messageId, attachment.id);
+            const image = deps.store.images.read(runner.commodoreId, item.messageId, attachment.id);
             if (!image) throw unavailable();
             return image;
           });
-          for (const image of images) mailImages.set(`${messageId}:${image.id}`, image);
+          for (const image of images) mailImages.set(`${item.messageId}:${image.id}`, image);
         } catch (error) {
           if (error instanceof CommodoreStoreError) throw error;
           throw unavailable();
         }
-      } else {
-        const key = `${messageId}:${id}`;
+      } else if (item.kind === "retained") {
+        const key = `${item.messageId}:${item.id}`;
         if (retainedImages.has(key)) continue;
-        const image = deps.store.images.read(runner.commodoreId, messageId, id);
+        const image = deps.store.images.read(runner.commodoreId, item.messageId, item.id);
         if (!image) throw unavailable();
         retainedImages.set(key, image);
+      } else {
+        const key = `${item.taskforceId}:${item.seq}:${item.id}`;
+        if (taskforceImages.has(key)) continue;
+        if (!tfEnabled() || !deps.taskforce) throw unavailable();
+        const image = deps.taskforce.readImage(item.taskforceId, item.seq, item.id);
+        if (!image) throw unavailable();
+        taskforceImages.set(key, { id: item.id, mime: image.mime, bytes: image.bytes });
       }
     }
-    return selected.map(({ id, messageId, kind }) => {
-      if (kind === "human") {
-        const image = humanMessages.get(messageId)!.find((entry) => entry.id === id);
+    return selected.map((item) => {
+      if (item.kind === "human") {
+        const image = humanMessages.get(item.messageId)!.find((entry) => entry.id === item.id);
         if (!image) throw unavailable();
         return image;
       }
-      if (kind === "mail") {
-        const image = mailImages.get(`${messageId}:${id}`);
+      if (item.kind === "mail") {
+        const image = mailImages.get(`${item.messageId}:${item.id}`);
         if (!image) throw unavailable();
         return image;
       }
-      const image = retainedImages.get(`${messageId}:${id}`);
+      if (item.kind === "retained") {
+        const image = retainedImages.get(`${item.messageId}:${item.id}`);
+        if (!image) throw unavailable();
+        return image;
+      }
+      const image = taskforceImages.get(`${item.taskforceId}:${item.seq}:${item.id}`);
       if (!image) throw unavailable();
       return image;
     });
   };
   const hasPersonMessage = (runner: Runner) => () => inTurn(runner) && runner.turnMessages.length > 0;
   const boardTools = (runner: Runner): readonly ConsoleMcpTool[] => {
-    const turn: CommodoreTurnBindings = {
-      readAttachments: turnAttachments(runner),
-      readBriefImages: (ids) => {
-        const board = deps.board();
-        const reader = board?.briefImages?.(runner.commodoreId);
-        if (!reader) throw new CommodoreStoreError("attachment_not_available", undefined, { hint: "Use image IDs allowed by this tool. If an image is unavailable, ask the person to resend it." });
-        return reader(ids);
-      },
+    const readBriefImages: CommodoreAttachmentReader = (ids) => {
+      const board = deps.board();
+      const reader = board?.briefImages?.(runner.commodoreId);
+      if (!reader) throw new CommodoreStoreError("attachment_not_available", undefined, { hint: "Use image IDs allowed by this tool. If an image is unavailable, ask the person to resend it." });
+      return reader(ids);
+    };
+    const stopping = () => disposed || runner.stopping || runner.turnStopRequested;
+    const boardTurn: CommodoreTurnBindings = {
+      readAttachments: turnAttachments(runner, { allowTaskforce: true }),
+      readBriefImages,
       hasPersonMessage: hasPersonMessage(runner),
-      stopping: () => disposed || runner.stopping || runner.turnStopRequested,
+      stopping,
+    };
+    const managementTurn: CommodoreTurnBindings = {
+      readAttachments: turnAttachments(runner),
+      readBriefImages,
+      hasPersonMessage: hasPersonMessage(runner),
+      stopping,
     };
     return [
-      ...(deps.board()?.tools(runner.commodoreId, turn) ?? []).map((tool) => runner.board?.attribute(tool, turn) ?? tool),
-      ...(deps.managementTools?.(runner.commodoreId, turn) ?? []),
+      ...(deps.board()?.tools(runner.commodoreId, boardTurn) ?? []).map((tool) => runner.board?.attribute(tool, boardTurn) ?? tool),
+      ...(deps.managementTools?.(runner.commodoreId, managementTurn) ?? []),
     ];
   };
 
@@ -731,7 +765,13 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     try { deps.onTaskforceEvent?.(event); }
     catch (error) { console.warn(`[objectives] taskforce event failed: ${error instanceof Error ? error.message : String(error)}`); }
   };
+  const isTfMember = (taskforceId: string, commodoreId: string): boolean => {
+    if (!deps.taskforce) return false;
+    try { return deps.taskforce.read(taskforceId)?.members.includes(commodoreId) === true; }
+    catch { return false; }
+  };
   const judgingAdd = (taskforceId: string, member: string) => {
+    if (!isTfMember(taskforceId, member)) return;
     let set = tfJudging.get(taskforceId);
     if (!set) { set = new Set(); tfJudging.set(taskforceId, set); }
     if (set.has(member)) return;
@@ -746,7 +786,11 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     persistTfJudging(taskforceId);
   };
   const recordTfOutcome = (taskforceId: string, member: string, outcome: "spoke" | "silent") => {
-    if (tfJudging.get(taskforceId)?.delete(member)) { /* 판단에서 빠진다 */ }
+    const removed = tfJudging.get(taskforceId)?.delete(member) === true;
+    if (!isTfMember(taskforceId, member)) {
+      if (removed) { emitTf({ ...tfSnapshot(taskforceId), op: "taskforce-judging" }); persistTfJudging(taskforceId); }
+      return;
+    }
     let outcomes = tfOutcomes.get(taskforceId);
     if (!outcomes) { outcomes = new Map(); tfOutcomes.set(taskforceId, outcomes); }
     // 끝난 판단마다 시각을 새긴다 — 같은 결과의 되풀이도 최근 시각으로 남는다.
@@ -756,6 +800,10 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
   };
   /** 실패·취소된 턴 — 항목은 다시 줄을 서고(pending 복원), 판단 중에는 남기고 결과만 failed로 둔다. */
   const recordTfFailed = (taskforceId: string, member: string) => {
+    if (!isTfMember(taskforceId, member)) {
+      if (tfJudging.get(taskforceId)?.delete(member)) { emitTf({ ...tfSnapshot(taskforceId), op: "taskforce-judging" }); persistTfJudging(taskforceId); }
+      return;
+    }
     let set = tfJudging.get(taskforceId);
     if (!set) { set = new Set(); tfJudging.set(taskforceId, set); }
     set.add(member);
@@ -764,6 +812,41 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     outcomes.set(member, { outcome: "failed", at: now() });
     emitTf({ ...tfSnapshot(taskforceId), op: "taskforce-judging" });
     persistTfJudging(taskforceId);
+  };
+  /** 성원에서 빠진 사령관은 판단 중·결과·동료 대기 blocker에서 즉시 걷는다. */
+  const pruneTfJudging = (taskforceId: string, members: readonly string[]) => {
+    const allowed = new Set(members);
+    const set = tfJudging.get(taskforceId);
+    const outcomes = tfOutcomes.get(taskforceId);
+    const dropped: string[] = [];
+    let changed = false;
+    if (set) {
+      for (const member of [...set]) {
+        if (!allowed.has(member)) { set.delete(member); dropped.push(member); changed = true; }
+      }
+    }
+    if (outcomes) {
+      for (const member of [...outcomes.keys()]) {
+        if (!allowed.has(member)) { outcomes.delete(member); changed = true; }
+      }
+    }
+    for (const wait of tfWaits.values()) {
+      const blockers = wait.blockers.get(taskforceId);
+      if (blockers) for (const member of [...blockers]) if (!allowed.has(member)) blockers.delete(member);
+    }
+    for (const member of dropped) {
+      tfWaits.get(member)?.blockers.delete(taskforceId);
+      const runner = runners.get(member);
+      if (runner && !runner.inflight && !runner.turning && runner.pending.has("taskforce") && !tfWakeable(member)) {
+        runner.pending.delete("taskforce");
+        tfWaits.delete(member);
+        if (!runner.pending.size) clearTimer(runner, "coalesce");
+      }
+    }
+    if (changed) {
+      emitTf({ ...tfSnapshot(taskforceId), op: "taskforce-judging" });
+      persistTfJudging(taskforceId);
+    }
   };
   /** 판단 스냅샷을 읽을 때의 모습으로 남긴다 — 판단 사건 방송이 아니라 state.json이다. */
   const persistTfJudging = (taskforceId: string) => {
@@ -905,24 +988,25 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
               return page.entries.find((candidate) => candidate.seq === seq) ?? null;
             } catch { return null; }
           };
-          const loadEntryImages = (entry: TaskforceLedgerEntry, throwOnMissing: boolean): { readonly images: Extract<AgentInputBlock, { type: "image" }>[]; readonly bytes: number; readonly overBudget: boolean; readonly tooLarge: boolean } => {
+          const loadEntryImages = (entry: TaskforceLedgerEntry, throwOnMissing: boolean): { readonly images: Extract<AgentInputBlock, { type: "image" }>[]; readonly imageIds: readonly string[]; readonly bytes: number; readonly overBudget: boolean; readonly tooLarge: boolean } => {
             let entryBytes = (entry.images ?? []).reduce((bytes, image) => bytes + image.size, 0);
-            if (!entry.images?.length) return { images: [], bytes: 0, overBudget: false, tooLarge: false };
-            if (entryBytes > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) return { images: [], bytes: 0, overBudget: false, tooLarge: true };
-            if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) return { images: [], bytes: 0, overBudget: true, tooLarge: false };
+            if (!entry.images?.length) return { images: [], imageIds: [], bytes: 0, overBudget: false, tooLarge: false };
+            if (entryBytes > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) return { images: [], imageIds: [], bytes: 0, overBudget: false, tooLarge: true };
+            if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) return { images: [], imageIds: [], bytes: 0, overBudget: true, tooLarge: false };
             const loaded = entry.images.flatMap((image) => {
               const found = taskforce.readImage(tf.id, entry.seq, image.id);
               if (!found) {
                 if (throwOnMissing) throw new Error("attachment_not_found");
                 return [];
               }
-              return [found];
+              return [{ id: image.id, ...found }];
             });
             entryBytes = loaded.reduce((bytes, image) => bytes + image.bytes.byteLength, 0);
-            if (entryBytes > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) return { images: [], bytes: 0, overBudget: false, tooLarge: true };
-            if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) return { images: [], bytes: 0, overBudget: true, tooLarge: false };
+            if (entryBytes > MAX_COMMODORE_MESSAGE_IMAGE_BYTES) return { images: [], imageIds: [], bytes: 0, overBudget: false, tooLarge: true };
+            if (messageImageBytes + tfImageBytes + entryBytes > MAX_COMMODORE_TURN_IMAGE_BYTES) return { images: [], imageIds: [], bytes: 0, overBudget: true, tooLarge: false };
             const images = loaded.map((image) => ({ type: "image" as const, source: { type: "base64" as const, media_type: image.mime, data: image.bytes.toString("base64") } }));
-            return { images, bytes: entryBytes, overBudget: false, tooLarge: false };
+            const imageIds = entry.speaker.kind === "person" ? loaded.map((image) => image.id) : [];
+            return { images, imageIds, bytes: entryBytes, overBudget: false, tooLarge: false };
           };
           for (const entry of pendingEntries) {
             if (!tfNeedsJudgment(entry, commodoreId)) {
@@ -945,7 +1029,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
             tfImageBase64Bytes += mainImg.images.reduce((bytes, image) => bytes + image.source.data.length, 0);
             if (mainImg.images.length) {
               loadedImageSeqs.add(entry.seq);
-              tfImages.push({ taskforceId: tf.id, seq: entry.seq, images: mainImg.images });
+              tfImages.push({ taskforceId: tf.id, seq: entry.seq, ...(mainImg.imageIds.length ? { imageIds: mainImg.imageIds } : {}), images: mainImg.images });
             }
             if (refEntry && refLine) {
               if (refEntry.images?.length && !loadedImageSeqs.has(refEntry.seq)) {
@@ -955,7 +1039,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
                   loadedImageSeqs.add(refEntry.seq);
                   tfImageBytes += refImg.bytes;
                   tfImageBase64Bytes += refImg.images.reduce((bytes, image) => bytes + image.source.data.length, 0);
-                  tfImages.push({ taskforceId: tf.id, seq: refEntry.seq, images: refImg.images });
+                  tfImages.push({ taskforceId: tf.id, seq: refEntry.seq, ...(refImg.imageIds.length ? { imageIds: refImg.imageIds } : {}), images: refImg.images });
                 }
               }
               tfChars += refLine.length + 1;
@@ -1041,7 +1125,9 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
       runner.pending.delete("taskforce");
       let memberIds: readonly string[] = [];
       try { memberIds = deps.taskforce.list().filter((tf) => tf.members.includes(runner.commodoreId)).map((tf) => tf.id); } catch { /* 읽을 수 없으면 다음 기회에 */ }
-      for (const tfId of memberIds) {
+      const candidates = new Set([...memberIds, ...[...tfJudging.entries()].flatMap(([tfId, set]) => set.has(runner.commodoreId) ? [tfId] : [])]);
+      for (const tfId of candidates) {
+        if (!isTfMember(tfId, runner.commodoreId)) { judgingDropQuiet(tfId, runner.commodoreId); continue; }
         let left = 0;
         try { left = deps.taskforce.pending(tfId, runner.commodoreId).filter((entry) => tfNeedsJudgment(entry, runner.commodoreId)).length; } catch { continue; }
         if (!left) judgingDropQuiet(tfId, runner.commodoreId);
@@ -1253,7 +1339,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
             const included = [...(tfTakeSeqs.get(tfId) ?? []), ...(tfContextSeqs.get(tfId) ?? [])].sort((a, b) => a - b);
             let through = watermark;
             for (const seq of included) { if (seq === through + 1) through = seq; else if (seq > through + 1) break; }
-            if (through > watermark) {
+            if (through > watermark && isTfMember(tfId, runner.commodoreId)) {
               try { deps.taskforce.advanceReadSeq(tfId, runner.commodoreId, through); }
               catch (error) { console.warn(`[objectives] taskforce read advance failed: ${error instanceof Error ? error.message : String(error)}`); }
             }
@@ -1614,6 +1700,7 @@ export function createCommodoreSupervisor(deps: CommodoreSupervisorDeps): Commod
     if (disposed) return;
     const taskforce = deps.taskforce!;
     if (event.op === "taskforce-removed") { tfJudging.delete(event.taskforceId); tfOutcomes.delete(event.taskforceId); return; }
+    if (event.op === "taskforce-state") { pruneTfJudging(event.taskforceId, event.state.members); return; }
     if (event.op !== "taskforce-ledger") return;
     const { entry } = event;
     // 보드 쓰기 묶음은 렌더용 — 깨우지도 chain에 세지도 않는다.
