@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import type { StandaloneCliPlugin } from "../../features/execution/host/standalone-cli/global-plugins.js";
 import { createStandaloneCliLaunchResolver } from "../../features/execution/host/standalone-cli/launch.js";
 import { registerStandaloneCliRoutes } from "../../features/execution/host/standalone-cli/routes.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
@@ -133,9 +134,11 @@ describe("standalone Claude Code CLI launch", () => {
       const claudeBin = path.join(root, "claude");
       const agyBin = path.join(root, "agy");
       fs.writeFileSync(claudeBin, "#!/bin/sh\n", { mode: 0o755 });
-      // agy 변환기 대역: 받은 HOME 아래에 변환본을 만들고 `${CLAUDE_PLUGIN_ROOT}`를 그 설치 위치로 펼친다. broken 은 실패한다.
+      // agy 대역: 사람의 agy에는 gamma 가 이미 있다. 변환기는 받은 HOME 아래에 변환본을 만들고 `${CLAUDE_PLUGIN_ROOT}`를
+      // 그 설치 위치로 펼친다. broken 은 실패한다.
       fs.writeFileSync(agyBin, [
         "#!/bin/sh",
+        "[ \"$1\" = plugin ] && [ \"$2\" = list ] && { echo '[{\"name\":\"gamma\",\"enabled\":true}]'; exit 0; }",
         "[ \"$1\" = plugin ] && [ \"$2\" = install ] || exit 0",
         "name=$(basename \"$3\")",
         "[ \"$name\" = broken ] && { echo 'boom' >&2; exit 1; }",
@@ -163,21 +166,24 @@ describe("standalone Claude Code CLI launch", () => {
       };
       const alphaDir = path.join(root, "plugins", "alpha");
       const brokenDir = path.join(root, "plugins", "broken");
+      const gammaDir = path.join(root, "plugins", "gamma");
       fs.mkdirSync(path.join(alphaDir, ".claude-plugin"), { recursive: true });
       fs.mkdirSync(brokenDir, { recursive: true });
+      fs.mkdirSync(gammaDir, { recursive: true });
       fs.writeFileSync(path.join(alphaDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "alpha", lspServers: { ts: { command: "tsserver" } } }));
-      const globalPlugins = () => [
+      const globalPlugins = (): StandaloneCliPlugin[] => [
         {
           id: "alpha@market",
           name: "alpha",
           path: alphaDir,
           mcpServers: {
-            "plugin:alpha:remote": { type: "http" as const, url: "https://mcp.example/mcp", headers: { Authorization: "Bearer ${ALPHA_KEY}" } },
-            "plugin:alpha:dynamic": { type: "http" as const, url: "https://mcp.example/dyn", headersHelper: "print-headers" },
+            "plugin:alpha:remote": { type: "http", url: "https://mcp.example/mcp", headers: { Authorization: "Bearer ${ALPHA_KEY}" } },
+            "plugin:alpha:dynamic": { type: "http", url: "https://mcp.example/dyn", headersHelper: "print-headers" },
           },
           env: { ALPHA_KEY: "alpha-secret" },
         },
         { id: "broken@market", name: "broken", path: brokenDir, mcpServers: {}, env: {} },
+        { id: "gamma@market", name: "gamma", path: gammaDir, mcpServers: {}, env: {} },
       ];
       const baseDeps = {
         env: { PATH: "/usr/bin:/bin", HOME: home, CLAUDE_BIN: claudeBin, AGY_BIN: agyBin, FLEET_CONSOLE_SESSION_ID: "parent" },
@@ -206,7 +212,7 @@ describe("standalone Claude Code CLI launch", () => {
       expect(readAddDirs(claudeSpec.args)).toEqual([extraTheaterA, extraTheaterB]);
       expect(claudeSpec.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD).toBe("1");
       // 전역 플러그인은 설치본 그대로 `--plugin-dir`로, MCP 키는 자식 환경으로만 간다.
-      expect(claudeSpec.args.flatMap((arg, index) => (arg === "--plugin-dir" ? [claudeSpec.args[index + 1]] : []))).toEqual([alphaDir, brokenDir]);
+      expect(claudeSpec.args.flatMap((arg, index) => (arg === "--plugin-dir" ? [claudeSpec.args[index + 1]] : []))).toEqual([alphaDir, brokenDir, gammaDir]);
       expect(claudeSpec.env.ALPHA_KEY).toBe("alpha-secret");
       expect(claudeSpec.args.join(" ")).not.toContain("alpha-secret");
       const mcpIdx = claudeSpec.args.indexOf("--mcp-config");
@@ -242,7 +248,7 @@ describe("standalone Claude Code CLI launch", () => {
       const addDir = agyAddDirs[3]!;
       expect(agySpec.args.join(" ")).not.toContain("tok-antigravity-secret");
       expect(agySpec.args.join(" ")).not.toContain("alpha-secret");
-      // 변환은 임시 HOME에서 한다 — 사용자 홈의 agy 설정은 생기지 않는다. 실패한 플러그인만 빠진다.
+      // 변환은 임시 HOME에서 한다 — 사용자 홈의 agy 설정은 생기지 않는다. 실패한 것과 사람의 agy에 이미 있는 이름은 빠진다.
       expect(fs.existsSync(path.join(home, ".gemini"))).toBe(false);
       expect(fs.readdirSync(path.join(pluginDir, ".agents/plugins"))).toEqual(["alpha"]);
       const alphaConfigPath = path.join(pluginDir, ".agents/plugins/alpha/mcp_config.json");

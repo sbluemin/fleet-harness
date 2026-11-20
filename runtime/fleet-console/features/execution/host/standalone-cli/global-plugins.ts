@@ -38,7 +38,7 @@ export function mergeStandaloneCliPluginEnv(plugins: readonly StandaloneCliPlugi
   return env;
 }
 
-const AGY_PLUGIN_INSTALL_TIMEOUT_MS = 30_000;
+const AGY_PLUGIN_CLI_TIMEOUT_MS = 30_000;
 const PLACEHOLDER = /\$\{([A-Za-z_][A-Za-z0-9_]{0,127})(?::-([^}]*))?\}/g;
 // agy 변환기가 설치본 루트에 남기는 JSON 중 절대 경로(`${CLAUDE_PLUGIN_ROOT}`를 펼친 값)를 품을 수 있는 것.
 const ROOT_JSON_FILES = ["mcp_config.json", "hooks.json"] as const;
@@ -69,6 +69,8 @@ export interface AntigravityPluginOptions {
  * - 변환기는 `${CLAUDE_PLUGIN_ROOT}`를 설치 위치의 절대 경로로 펼치므로 옮긴 위치로 고쳐 쓴다.
  * - agy MCP 설정은 환경 변수를 펼치지 않는다. 그래서 `${VAR}`는 사람이 넣은 키(없으면 기반 환경, 그다음 기본값)로 채워
  *   0600 파일에 쓴다 — `fleet-browser` Bearer 토큰과 같은 방식이며 argv에는 싣지 않는다.
+ * - 사람이 agy에 직접 설치한 플러그인과 이름이 같으면 싣지 않는다. 세션 범위 사본이 같은 이름의 설치본을 가리기 때문이다
+ *   (agy 1.5.13 실측) — 사람이 agy에서 로그인해 둔 MCP 서버를 로그인할 길이 없는 사본으로 덮지 않고, 그 사람의 것을 쓴다.
  * - agy에 대응물이 없는 몫(LSP 서버·출력 스타일·`headersHelper` 서버, 변환기가 경고하는 SSE 서버·훅 이벤트)과 변환에 실패한
  *   플러그인은 건너뛰고 서버 로그에 남긴다. 어떤 실패도 CLI 실행을 막지 않는다.
  *
@@ -96,14 +98,19 @@ export async function prepareAntigravityPlugins(options: AntigravityPluginOption
     await fs.mkdir(target, { recursive: true });
     const env = conversionEnv(options.env, home);
     const taken = new Set(options.reservedNames);
+    const own = await userPluginNames(options, base);
     let loaded = 0;
     for (const plugin of options.plugins) {
+      if (own.has(plugin.name)) {
+        note(plugin, `skipped: Antigravity already has its own "${plugin.name}" plugin installed, which this session uses`);
+        continue;
+      }
       if (taken.has(plugin.name)) {
         note(plugin, `skipped: another plugin in this session already uses the name "${plugin.name}"`);
         continue;
       }
       for (const line of unsupportedParts(plugin)) note(plugin, line);
-      const result = await runInstall(options.bin, [...options.prefixArgs, "plugin", "install", plugin.path], env, home);
+      const result = await runAgy(options.bin, [...options.prefixArgs, "plugin", "install", plugin.path], env, home);
       for (const line of converterWarnings(result.output)) note(plugin, line);
       const produced = await fs.readdir(installed);
       if (!result.ok || produced.length !== 1 || taken.has(produced[0]!)) {
@@ -140,17 +147,30 @@ function conversionEnv(base: NodeJS.ProcessEnv, home: string): NodeJS.ProcessEnv
   return env;
 }
 
-function runInstall(bin: string, args: readonly string[], env: NodeJS.ProcessEnv, cwd: string): Promise<{ readonly ok: boolean; readonly output: string; readonly reason: string }> {
+/** 사람의 agy에 설치된 플러그인 이름(켜짐 여부와 무관) — 사람의 HOME 그대로 `agy plugin list --json`으로 읽기만 한다. 못 읽으면 빈 목록. */
+async function userPluginNames(options: AntigravityPluginOptions, cwd: string): Promise<ReadonlySet<string>> {
+  const result = await runAgy(options.bin, [...options.prefixArgs, "plugin", "list", "--json"], options.env, cwd);
+  if (!result.ok) return new Set();
+  try {
+    const parsed: unknown = JSON.parse(result.stdout);
+    if (!Array.isArray(parsed)) return new Set();
+    return new Set(parsed.flatMap((row) => (isRecord(row) && typeof row.name === "string" ? [row.name] : [])));
+  } catch {
+    return new Set();
+  }
+}
+
+function runAgy(bin: string, args: readonly string[], env: NodeJS.ProcessEnv, cwd: string): Promise<{ readonly ok: boolean; readonly stdout: string; readonly output: string; readonly reason: string }> {
   return new Promise((resolve) => {
-    execFile(bin, [...args], withHidden({ env, cwd, encoding: "utf-8" as const, timeout: AGY_PLUGIN_INSTALL_TIMEOUT_MS, maxBuffer: 1 << 20 }), (error, stdout, stderr) => {
+    execFile(bin, [...args], withHidden({ env, cwd, encoding: "utf-8" as const, timeout: AGY_PLUGIN_CLI_TIMEOUT_MS, maxBuffer: 1 << 20 }), (error, stdout, stderr) => {
       const output = `${stdout ?? ""}\n${stderr ?? ""}`;
       if (!error) {
-        resolve({ ok: true, output, reason: "" });
+        resolve({ ok: true, stdout: stdout ?? "", output, reason: "" });
         return;
       }
       const code = (error as { code?: unknown }).code;
       const reason = (error as { killed?: boolean }).killed ? "timed out" : typeof code === "number" ? `exit ${code}` : String(code ?? error.message);
-      resolve({ ok: false, output, reason });
+      resolve({ ok: false, stdout: stdout ?? "", output, reason });
     });
   });
 }
