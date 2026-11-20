@@ -5,7 +5,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { requestCommodoreCreate } from "../../commodore/client/commodore-create-modal.js";
 import { useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
-import { QuakerFigure } from "../../workspace/client/components/quaker-figure.js";
+import { MongleAvatar } from "../../workspace/client/components/mongle-avatar.js";
 import type { FeatureCardContentProps, FeatureCardLinkProps } from "./feature-cards.js";
 import "./quaker-promotion-card.css";
 
@@ -78,7 +78,7 @@ function useOsReducedMotion(): boolean {
 function StarBadge({ className }: { readonly className: string }) {
   return (
     <svg className={className} viewBox="0 0 40 40" aria-hidden="true">
-      {/* 몽글 사령관 배지(`mongle-avatar-star`)와 같은 색 출처 — 황동 원판에 어두운 별. */}
+      {/* 사령관 별 배지 색 출처 — 황동 원판에 어두운 별. */}
       <circle cx="20" cy="20" r="16" fill="var(--role-commodore)" stroke="var(--surface-panel)" strokeWidth="2.4" />
       <path
         d="M20 10.5 L22.6 16.6 L29 17.1 L24.1 21.3 L25.7 27.6 L20 24.2 L14.3 27.6 L15.9 21.3 L11 17.1 L17.4 16.6 Z"
@@ -127,7 +127,7 @@ export function QuakerPromotionCard({ titleId }: FeatureCardContentProps): React
             {/* 도리 */}
             <div className="qpc-bird-slot">
               <div className="qpc-bird qpc-b1">
-                <QuakerFigure morph="dori" size={120} />
+                <MongleAvatar base={18} role="commodore" state="running" size={120} label={copy.dori} decorative />
                 <span className="qpc-ringfx qpc-r1" />
                 <StarBadge className="qpc-star qpc-s1" />
               </div>
@@ -137,7 +137,7 @@ export function QuakerPromotionCard({ titleId }: FeatureCardContentProps): React
             {/* 토리 */}
             <div className="qpc-bird-slot">
               <div className="qpc-bird qpc-b2">
-                <QuakerFigure morph="tori" size={132} />
+                <MongleAvatar base={16} role="commodore" state="running" size={132} label={copy.tori} decorative />
                 <span className="qpc-ringfx qpc-r2" />
                 <StarBadge className="qpc-star qpc-s2" />
               </div>
@@ -147,7 +147,7 @@ export function QuakerPromotionCard({ titleId }: FeatureCardContentProps): React
             {/* 보리 */}
             <div className="qpc-bird-slot">
               <div className="qpc-bird qpc-b3">
-                <QuakerFigure morph="bori" size={120} />
+                <MongleAvatar base={17} role="commodore" state="running" size={120} label={copy.bori} decorative />
                 <span className="qpc-ringfx qpc-r3" />
                 <StarBadge className="qpc-star qpc-s3" />
               </div>

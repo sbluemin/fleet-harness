@@ -66,8 +66,7 @@
 .group-chat-mark.is-lg { width: 32px; height: 32px; border-radius: var(--radius-md); font-size: var(--t-md); }
 .group-chat-mark svg { width: 13px; height: 13px; }
 .group-chat-mark.is-sm svg { width: 10px; height: 10px; }
-/* 대화 속 아바타는 말한 사람을 가리킬 뿐이다 — 말풍선마다 눈을 깜빡이면 기록이 산만해지므로 대기 얼굴의 깜빡임만 거둔다. */
-.mongle-avatar.group-chat-mark.is-idle .mongle-avatar-eyes { animation: none; }
+/* 대화 속 대기 아바타의 정지는 3D 렌더러(`mongle-avatar.tsx`)가 `group-chat-mark` 클래스를 읽어 처리한다. */
 .cluster-member-glyph.is-neutral {
   border-color: var(--hairline-strong);
   background: var(--control-rest);

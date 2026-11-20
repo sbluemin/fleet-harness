@@ -1,12 +1,10 @@
 .taskforce-menu-shortcut { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-ui); font-size: var(--t-xs); }
 .taskforce-stack { --taskforce-avatar-size: 60%; display: block; position: relative; flex: 0 0 32px; width: 32px; height: 32px; overflow: hidden; }
 .taskforce-stack[data-count="1"] { --taskforce-avatar-size: 100%; }
-.taskforce-stack > svg,
-.conversation-pill-surface-mark > .taskforce-stack > svg,
-.conversation-panel-identity-mark.is-surface > .taskforce-stack > svg,
+.taskforce-stack > .mongle-avatar,
+.conversation-pill-surface-mark > .taskforce-stack > .mongle-avatar,
+.conversation-panel-identity-mark.is-surface > .taskforce-stack > .mongle-avatar,
 .console-shell.is-objective-records-view .side-bar-theater-header.is-card .side-bar-theater-anchor .taskforce-stack > .mongle-avatar { position: absolute; width: var(--taskforce-avatar-size); height: var(--taskforce-avatar-size); }
-.taskforce-stack .mongle-avatar-star { display: none; }
-.taskforce-stack:not([data-count="1"]) .mongle-avatar-big { transform: translateY(-2px) scale(1.2); }
 .taskforce-stack > :nth-child(1) { top: 5%; left: 5%; z-index: 1; }
 .taskforce-stack > :nth-child(2) { top: 5%; right: 5%; z-index: 2; }
 .taskforce-stack > :nth-child(3) { bottom: 5%; left: 5%; z-index: 3; }

@@ -1,5 +1,5 @@
 /* 퀘이커 부관단 진급 피처카드 무대 및 모션.
-   셀렉터는 .qpc- 로 한정하고 색은 Console 토큰 및 quaker-head.css 변수를 사용한다. */
+   셀렉터는 .qpc- 로 한정하고 색은 Console 토큰을 사용한다. */
 
 .qpc-stage {
   position: relative;

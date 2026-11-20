@@ -88,6 +88,7 @@
 .settings-font-size > output { min-width: 42px; text-align: center; font: var(--t-md)/1.45 var(--font-ui); }
 .settings-font-size > button:is(:disabled, [aria-disabled="true"]) { opacity: var(--control-disabled-opacity); cursor: not-allowed; }
 .settings-group-reset { margin-left: auto; padding: 0; border: 0; background: none; color: var(--text-tertiary); font: var(--t-sm)/1.45 var(--font-ui); cursor: pointer; }
+.settings-avatar-preview { display: flex; align-items: center; justify-content: center; gap: 18px; padding: 12px 14px; border-top: 1px solid var(--hairline); }
 .settings-font-preview { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(176px, 100%), 1fr)); min-width: 0; border-top: 1px solid var(--hairline); }
 .settings-font-preview > div { padding: 12px 14px; min-width: 0; }
 .settings-font-preview > div + div { border-left: 1px solid var(--hairline); }

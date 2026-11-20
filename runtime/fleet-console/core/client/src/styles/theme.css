@@ -211,13 +211,9 @@
   --identity-bubble-indigo: color-mix(in oklab, var(--mongle-indigo) 70%, var(--mongle-face));
   --identity-bubble-plum: color-mix(in oklab, var(--mongle-plum) 70%, var(--mongle-face));
   --identity-bubble-rose: color-mix(in oklab, var(--mongle-rose) 70%, var(--mongle-face));
-  --mongle-blush: oklch(72% 0.11 15 / 45%);
-  --mongle-blush-ink: oklch(66% 0.12 15);
-  --mongle-bulb: oklch(95% 0.07 95);
-  /* 역할 표식은 중립 행동 잉크와 독립적이다 — 별·위임은 기존 금색, 안테나는 기존 전구색을 지킨다. */
+  /* 역할 표식은 중립 행동 잉크와 독립적이다 — 별·위임은 기존 금색을 지킨다. */
   --role-commodore: oklch(80% 0.085 78);
   --role-commodore-ink: var(--role-commodore);
-  --mongle-tooth: oklch(98% 0 0);
   /* 정체성 색 말풍선은 모든 테마에서 짙은 면과 밝은 글자를 짝으로 쓴다. */
   --text-on-identity: oklch(98% 0 0);
 
