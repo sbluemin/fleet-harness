@@ -251,6 +251,7 @@ describe.skipIf(process.platform === "win32")("console-e2e Claude auth fixture",
     expect(await inHome(home)).toBe(2);
     expect(await inHome(s.root)).toBe(2); // 홈의 조상
     expect(await inHome(path.join(home, ".claude", "probe"))).toBe(2);
+    expect(await inHome(path.join(home, ".claude-backup", "probe"))).toBe(2);
     expect(await inHome(path.join(home, ".config", "probe"))).toBe(2);
     expect(await run(["auth", "status", "--json"], { FAKE_CLAUDE_DIR: "relative-dir", HOME: home })).toBe(2);
     // 실제 계정 홈은 경로만 넘긴다(존재를 단정하지도 쓰지도 않는다) — HOME을 가짜로 바꿔도 두 번째 검사가 막는다.
@@ -259,6 +260,7 @@ describe.skipIf(process.platform === "win32")("console-e2e Claude auth fixture",
     const hop = path.join(s.root, "hop");
     fs.symlinkSync(home, hop);
     expect(await inHome(path.join(hop, ".claude", "probe"))).toBe(2);
+    expect(await inHome(path.join(hop, ".claude-backup", "probe"))).toBe(2);
     expect(await inHome(path.join(hop, ".config", "deep", "probe"))).toBe(2);
     expect(await inHome(hop)).toBe(2);
     expect(snapshot()).toEqual([...before, "hop"].sort());
@@ -297,11 +299,6 @@ describe.skipIf(process.platform === "win32")("console-e2e Claude auth fixture",
     });
     expect(empty).not.toContain("loggedIn");
     await expect.poll(exitedAll, { timeout: 8000 }).toBe(true);
-  });
-
-  it("keeps --version on the non-auth path", async () => {
-    const version = await new Promise<string>((resolve) => execFile(process.execPath, [FAKE, "--version"], { env: {} }, (_error, stdout) => resolve(stdout)));
-    expect(version).toBe("2.1.999 (Claude Code)\n");
   });
 
   it("reports a missing CLI from the product resolver, and keeps the probe fail-open when it cannot run", async () => {

@@ -131,7 +131,7 @@ if (authFixture) {
     const to = relative(candidate, home);
     const from = relative(home, candidate).split(sep).join("/");
     const isHomeOrAncestor = !to.startsWith("..") && !isAbsolute(to);
-    const inTree = !from.startsWith("..") && !isAbsolute(from) && /^(\.claude|\.config)(\/|$)/.test(from);
+    const inTree = !from.startsWith("..") && !isAbsolute(from) && (from.startsWith(".claude") || /^\.config(\/|$)/.test(from));
     return !isHomeOrAncestor && !inTree;
   }));
   if (!owned) {
