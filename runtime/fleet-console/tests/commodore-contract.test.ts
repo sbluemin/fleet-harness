@@ -546,7 +546,7 @@ it("delivers later mail when an earlier mail image expired", async () => {
   } finally { await supervisor.dispose(); vi.useRealTimers(); }
 });
 
-it("attaches retained prior-turn person images via objective add and commodores message while rejecting foreign, prior-turn mail, taskforce and evicted images", async () => {
+it("attaches retained prior-turn person and covered taskforce images via objective add while rejecting taskforce mail relay, outside-participation taskforce, foreign, prior-turn mail and evicted images", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date("2026-11-14T12:00:00Z"));
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-commodore-prior-turn-images-")); dirs.push(dir);
@@ -607,18 +607,23 @@ it("attaches retained prior-turn person images via objective add and commodores 
   supervisor = createHostSupervisor({
     store, agent, attachments, taskforce, theaterIds: () => ["t1"], cwd: entities.dirOf, theater: () => ({ label: "test", root: dir }),
     experiments: () => ({ ...DEFAULT_EXPERIMENT_SETTINGS, commodore: true, taskforce: true }),
+    managementTools: (commodoreId, mgmtTurn) => {
+      const mgmtTools = createCommodoreManagementTools({
+        hasPersonMessage: mgmtTurn.hasPersonMessage, stopping: mgmtTurn.stopping, list: entities.ids,
+        create: () => { throw new Error("unexpected_create"); },
+        message: (input) => send(commodoreId, input, mgmtTurn),
+      });
+      toolsForTurn = { ...toolsByOwner.get(commodoreId), ...Object.fromEntries(mgmtTools.map((tool) => [tool.name, tool])) };
+      toolsByOwner.set(commodoreId, toolsForTurn);
+      return mgmtTools;
+    },
     board: () => ({
       tools: (commodoreId, turn) => {
         capturedTurn = turn;
         turnsByOwner.set(commodoreId, turn);
         const boardTools = createCommodoreBoardTools(boardCtx, objectiveStore, objectiveLaunch, commodoreId, turn.readAttachments);
         const coreTools = createCommodoreTools({ commodoreId, theaterRoot: dir, store, taskforce });
-        const mgmtTools = createCommodoreManagementTools({
-          hasPersonMessage: turn.hasPersonMessage, stopping: turn.stopping, list: entities.ids,
-          create: () => { throw new Error("unexpected_create"); },
-          message: (input) => send(commodoreId, input, turn),
-        });
-        toolsForTurn = Object.fromEntries([...boardTools, ...coreTools, ...mgmtTools].map((tool) => [tool.name, tool]));
+        toolsForTurn = { ...toolsByOwner.get(commodoreId), ...Object.fromEntries([...boardTools, ...coreTools].map((tool) => [tool.name, tool])) };
         toolsByOwner.set(commodoreId, toolsForTurn);
         return boardTools;
       },
@@ -676,19 +681,28 @@ it("attaches retained prior-turn person images via objective add and commodores 
     expect(turn1Text).toContain("Attached images from the person (copy with attachmentIds; do not reconstruct them as text):");
     expect(turn1Text).toContain("Attached mail images (copy with attachmentIds before the turn ends; do not reconstruct them as text):");
     expect(turn1Text).toContain(`Attached Commodore images for message ${mailSent.messageId}:`);
+    expect(turn1Text).toContain(`1. ${tfImageId}`);
     finish(); await vi.advanceTimersByTimeAsync(1);
     expect(attachments.read(to, kept.entry.messageId)).toEqual([]);
     expect(() => turnsByOwner.get(to)?.readAttachments([kept.id!])).toThrow("attachment_not_available");
     store.images.remove(to, evicted.entry.messageId);
+    // 탈퇴 뒤 올라온 TF 사람 이미지는 참여 구간 밖이므로 브리핑 복사가 거절되어야 한다.
+    taskforce.removeMember(tf.state.id, to);
+    const afterLeaveDraftSeq = taskforce.read(tf.state.id)!.lastSeq + 1;
+    const savedAfterLeave = taskforce.saveImages(tf.state.id, afterLeaveDraftSeq, [{ name: "outside.png", mime: "image/png", bytes: png }]);
+    const afterLeaveEntry = taskforce.append(tf.state.id, { speaker: { kind: "person" }, text: "탈퇴 뒤 TF 사진", images: savedAfterLeave });
+    taskforce.moveImages(tf.state.id, afterLeaveDraftSeq, afterLeaveEntry.entry.seq);
+    const outsideTfImageId = afterLeaveEntry.entry.images![0]!.id;
 
-    // 2턴(텍스트만 깨움): conversation 노출, 이전 턴 사람 이미지 첨부, 타 사령관·이전 턴 mail·TF·회수 이미지 거절을 검증한다.
+    // 2턴(텍스트만 깨움): conversation 노출, 이전 턴 사람·참여 구간 TF 이미지의 목표 브리핑 첨부, 1:1 연락·비참여 구간·타 사령관·이전 턴 mail·회수 이미지 거절을 검증한다.
     let turn2Checks: Record<string, any> = {};
     onTurn = async () => {
       const ownTools = toolsByOwner.get(to)!;
       const searchRes = await ownTools.conversation!.execute({ action: "search", target: "own", query: "사람 사진 1" }, { cwd: dir }) as any;
       const aroundRes = await ownTools.conversation!.execute({ action: "around", anchor: { source: "own", seq: kept.entry.seq }, before: 0, after: 0 }, { cwd: dir }) as any;
       const mailSearch = await ownTools.conversation!.execute({ action: "search", target: "own", speaker: "other" }, { cwd: dir }) as any;
-      const tfSearch = await ownTools.conversation!.execute({ action: "search", target: "taskforce", taskforceId: tf.state.id }, { cwd: dir }) as any;
+      const tfSearch = await ownTools.conversation!.execute({ action: "search", target: "taskforce", taskforceId: tf.state.id, query: "TF 사진" }, { cwd: dir }) as any;
+      const tfAround = await ownTools.conversation!.execute({ action: "around", anchor: { source: tf.state.id, seq: tfEntry.entry.seq }, before: 0, after: 0 }, { cwd: dir }) as any;
       const objAdd = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "이전 사진 목표", note: "비교", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
       const objEdit = await ownTools.objective!.execute({ action: "edit", objectiveId: objAdd.structuredContent?.objectiveId, brief: "수정 브리핑", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
       const msgOk = await ownTools.commodores!.execute({ action: "message", to: from, text: "이전 사람 사진 전달", attachmentIds: [kept.id!] }, { cwd: dir }) as any;
@@ -696,9 +710,11 @@ it("attaches retained prior-turn person images via objective add and commodores 
       const foreignMsg = await ownTools.commodores!.execute({ action: "message", to: from, text: "타 사령관", attachmentIds: [foreignId] }, { cwd: dir }) as any;
       const staleMailObj = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "지난 메일", attachmentIds: [mailId] }, { cwd: dir }) as any;
       const staleMailMsg = await ownTools.commodores!.execute({ action: "message", to: from, text: "지난 메일", attachmentIds: [mailId] }, { cwd: dir }) as any;
+      const tfMsg = await ownTools.commodores!.execute({ action: "message", to: from, text: "TF 사진 메일 전달 시도", attachmentIds: [tfImageId] }, { cwd: dir }) as any;
       const tfObj = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "TF", attachmentIds: [tfImageId] }, { cwd: dir }) as any;
+      const outsideTfObj = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "비참여 TF", attachmentIds: [outsideTfImageId] }, { cwd: dir }) as any;
       const evictedObj = await ownTools.objective!.execute({ action: "add", theaterId: "t1", title: "회수", attachmentIds: [evicted.id!] }, { cwd: dir }) as any;
-      turn2Checks = { searchRes, aroundRes, mailSearch, tfSearch, objAdd, objEdit, msgOk, foreignObj, foreignMsg, staleMailObj, staleMailMsg, tfObj, evictedObj };
+      turn2Checks = { searchRes, aroundRes, mailSearch, tfSearch, tfAround, objAdd, objEdit, msgOk, foreignObj, foreignMsg, staleMailObj, staleMailMsg, tfObj, tfMsg, outsideTfObj, evictedObj };
     };
     await postHumanMessage(to, "이전 턴 사진으로 목표 만들고 전달해줘");
     await vi.advanceTimersByTimeAsync(COALESCE_MS + 1);
@@ -707,8 +723,8 @@ it("attaches retained prior-turn person images via objective add and commodores 
     expect(turn2Checks.aroundRes.structuredContent.items[0]).toMatchObject({ hasImages: true, attachmentIds: [kept.id] });
     expect(turn2Checks.mailSearch.structuredContent.results[0]).toMatchObject({ hasImages: true });
     expect(turn2Checks.mailSearch.structuredContent.results[0]).not.toHaveProperty("attachmentIds");
-    expect(turn2Checks.tfSearch.structuredContent.results[0]).toMatchObject({ hasImages: true });
-    expect(turn2Checks.tfSearch.structuredContent.results[0]).not.toHaveProperty("attachmentIds");
+    expect(turn2Checks.tfSearch.structuredContent.results[0]).toMatchObject({ hasImages: true, attachmentIds: [tfImageId] });
+    expect(turn2Checks.tfAround.structuredContent.items[0]).toMatchObject({ hasImages: true, attachmentIds: [tfImageId] });
     expect(turn2Checks.objAdd).toMatchObject({ isError: false, structuredContent: { ok: true } });
     expect(turn2Checks.objEdit).toMatchObject({ isError: false, structuredContent: { ok: true } });
     const createdObj = objectiveStore.find(turn2Checks.objAdd.structuredContent.objectiveId as string)!;
@@ -716,6 +732,12 @@ it("attaches retained prior-turn person images via objective add and commodores 
     for (const attachment of createdObj.attachments) {
       expect(fs.readFileSync(objectiveStore.attachmentPath(createdObj, attachment))).toEqual(png);
     }
+    expect(turn2Checks.tfObj).toMatchObject({ isError: false, structuredContent: { ok: true } });
+    const createdTfObj = objectiveStore.find(turn2Checks.tfObj.structuredContent.objectiveId as string)!;
+    expect(createdTfObj.attachments).toHaveLength(1);
+    expect(fs.readFileSync(objectiveStore.attachmentPath(createdTfObj, createdTfObj.attachments[0]!))).toEqual(png);
+    expect(turn2Checks.tfMsg).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
+    expect(turn2Checks.outsideTfObj).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
     expect(turn2Checks.msgOk).toMatchObject({ isError: false, structuredContent: { delivered: true } });
     expect(store.images.read(from, turn2Checks.msgOk.structuredContent.messageId as string, kept.id!)?.bytes).toEqual(png);
     expect(turn2Checks.foreignObj).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
@@ -723,7 +745,6 @@ it("attaches retained prior-turn person images via objective add and commodores 
     expect(store.images.read(to, mailSent.messageId, mailId)?.bytes).toEqual(png);
     expect(turn2Checks.staleMailObj).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
     expect(turn2Checks.staleMailMsg).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
-    expect(turn2Checks.tfObj).toMatchObject({ isError: true, structuredContent: { error: "attachment_not_available" } });
     expect(turn2Checks.evictedObj).toMatchObject({
       isError: true,
       structuredContent: { error: "attachment_not_available", hint: "Use image IDs allowed by this tool. If an image is unavailable, ask the person to resend it." },

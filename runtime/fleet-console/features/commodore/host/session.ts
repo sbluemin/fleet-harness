@@ -106,8 +106,8 @@ export interface CommodoreTurnInput {
    * 1:1 기록·기억·연락은 절대 섞지 않는다(격리). 이력은 새 판단 요청이 아니다.
    */
   readonly taskforce?: readonly string[];
-  /** 새 TF 항목의 이미지 — 읽은 이력에는 다시 싣지 않고 1:1 메시지와도 구분한다. */
-  readonly taskforceImages?: readonly { readonly taskforceId: string; readonly seq: number; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] }[];
+  /** 새 TF 항목의 이미지 — 읽은 이력에는 다시 싣지 않고 1:1 메시지와도 구분한다. 사람 발언은 브리핑 복사용 id를 함께 싣는다. */
+  readonly taskforceImages?: readonly { readonly taskforceId: string; readonly seq: number; readonly imageIds?: readonly string[]; readonly images: readonly Extract<AgentInputBlock, { type: "image" }>[] }[];
   /**
    * TF로만 깬 턴 — 모델의 자유 텍스트를 1:1 기록에 남기지 않는다(도구 호출만 남는다).
    * 사람 메시지가 함께 실린 턴은 평소대로 기록한다.
@@ -425,8 +425,10 @@ export function createCommodoreSession(options: CommodoreSessionOptions): Commod
       const hasImages = (input.messages?.some((message) => typeof message !== "string" && message.images.length) ?? false) || !!input.taskforceImages?.length || !!input.mailImages?.length;
       const prompt = hasImages ? [
         { type: "text" as const, text: note },
-        ...(input.taskforceImages ?? []).flatMap(({ taskforceId, seq, images }): AgentInputBlock[] => [
-          { type: "text", text: `Attached TaskForce images — id: ${taskforceId}, seq ${seq} (image ×${images.length}); these belong to the shared ledger, not the person's 1:1 message:` },
+        ...(input.taskforceImages ?? []).flatMap(({ taskforceId, seq, imageIds, images }): AgentInputBlock[] => [
+          { type: "text", text: imageIds?.length
+            ? `Attached TaskForce images — id: ${taskforceId}, seq ${seq} (image ×${images.length}); copy to objective briefs with attachmentIds (do not reconstruct them as text):\n${imageIds.map((id, index) => `${index + 1}. ${id}`).join("\n")}`
+            : `Attached TaskForce images — id: ${taskforceId}, seq ${seq} (image ×${images.length}); these belong to the shared ledger, not the person's 1:1 message:` },
           ...images,
         ]),
         ...(input.mailImages ?? []).flatMap(({ messageId, images }): AgentInputBlock[] => [
