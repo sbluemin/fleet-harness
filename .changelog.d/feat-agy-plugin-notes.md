@@ -1,5 +1,5 @@
 ---
-branch: feat/remove-agy-cli
+branch: feat/agy-plugin-notes
 ---
 
 ### fleet-console
