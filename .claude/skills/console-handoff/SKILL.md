@@ -5,7 +5,7 @@ description: Prepare and seed an isolated Fleet Console and open it in this Obje
 
 # Console Handoff
 
-Deliver a Console a person can immediately exercise: this Objective's Fleet Browser already showing the requested state, not an empty server. Unlike `console-e2e`, **leave the handed-over instance and its Fleet Browser tab running**.
+Deliver a Console a person can immediately exercise: this Objective's Fleet Browser already showing the requested state, not an empty server. Unlike `console-e2e`, **keep the handed-over instance and its Fleet Browser tab running for the handoff**; the Objective's Commander reclaims them before it completes unless the person asked to preserve them ([Run lifetime](../console-e2e/references/setup.md#run-lifetime-and-reclamation)).
 
 ## Inputs
 
@@ -18,14 +18,14 @@ Resolve values from the request and task context. Live turns spend real quota; c
 ## Procedure
 
 1. Read [Build and seeding](references/setup-and-seeding.md), then build changed dependencies before Console.
-2. Boot from an absolute binary path with a fresh runtime directory placed per console-e2e's [run-directory rule](../console-e2e/references/setup.md#isolate-the-console). Confirm the PID command points inside `<worktree>` and read the lock's port with its [fixed read](../console-e2e/references/setup.md#read-the-lock-without-the-token).
+2. Boot from an absolute binary path with a fresh runtime directory placed per console-e2e's [run-directory rule](../console-e2e/references/setup.md#isolate-the-console). Register and start it from the same session that will stop it after its last use: this session, kept addressable for that stop, or the Objective's Commander if it starts the instance instead. Register through the public entry in [Run lifetime](../console-e2e/references/setup.md#run-lifetime-and-reclamation) before the wrapper starts it, from that session; the entry creates it, so do not boot until it reports success, and keep the receipt outside `<main checkout>/.fleet` for this Objective's Commander. Then confirm the PID command points inside `<worktree>` and read the lock's port with its [fixed read](../console-e2e/references/setup.md#read-the-lock-without-the-token).
 3. Create a small throwaway Theater in the scratchpad that the agent may read and edit. Never use the user's checkout or the worktree as the scenario Theater.
 4. Use `scripts/seed-console.mjs` to prepare only the required state. Distinguish requested state from actual seed results; adjust the prompt/fixture when they differ. Do not report a failed setup as ready.
-5. Read [Handoff format](references/handoff.md), open the seeded URL in this Objective's Fleet Browser, leave that tab, then deliver the URL, seeded Objectives/states, interactions, recreation prompt, build branch/SHA, data path, model/quota use, and PID concisely. Explain first-run dialogs and Escape behavior.
+5. Read [Handoff format](references/handoff.md), open the seeded URL in this Objective's Fleet Browser, leave that tab, then deliver the URL, seeded Objectives/states, interactions, recreation prompt, build branch/SHA, data path, model/quota use, and the instance's owner and reclaim timing concisely. Explain first-run dialogs and Escape behavior.
 
 ## Boundaries and completion
 
 - Never stop/restart the user's Console or an unknown runtime.
 - Open the seeded URL in this Objective's Fleet Browser. Do not drive that instance as `console-e2e` or open it with agent-browser. Use the OS opener only when Fleet Browser is unavailable.
-- Do not stop the instance later for cleanup. Do not close the handoff tab or the user's other tabs. The user decides when it ends. If a requested rebuild requires restart, re-read the lock, open the new URL in Fleet Browser, and send it.
-- Finish once seed state, PID, URL, and the Fleet Browser open (or the documented fallback) are verified and the handoff is delivered. Handoff is not proof that usability verification passed.
+- Keep the instance and its handoff tab running while the person is trying it; do not close the handoff tab or the user's other tabs. Unless the person asked to preserve the instance, after its last use the recorded session stops it through the existing route, and the Objective's Commander reclaims its confirmed consumables and records any remaining state before that Objective completes, under [Run lifetime](../console-e2e/references/setup.md#run-lifetime-and-reclamation). If no session can stop it, report completion as blocked. If a requested rebuild requires restart, re-read the lock, open the new URL in Fleet Browser, and send it.
+- Finish once seed state, PID, URL, the recorded stop session, and the Fleet Browser open (or the documented fallback) are verified and the handoff is delivered. Handoff is not proof that usability verification passed. Delivery does not end the instance's lifetime: report its owning objective, recorded stop session, and reclaim or preservation path to the Commander.
