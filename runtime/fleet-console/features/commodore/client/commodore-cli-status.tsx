@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import type { Translate } from "@fleet-console/i18n";
 
 import type { CommodoreMessageKey } from "./i18n/index.js";
@@ -7,8 +7,14 @@ import type { CommodoreCliStatus } from "../shared/contracts/cli-status.js";
 import { readCommodoreCliStatus, retryCommodore } from "./commodore-state.js";
 import { commodoreCliFailure } from "./commodore-chat.js";
 import { openSettingsSurface } from "../../settings/client/settings-door.js";
+import { beginClaudeLogin, getLoginStates, subscribeLogins } from "../../quota/client/provider-login.js";
+import { getQuotaApi } from "../../quota/client/summary-store.js";
+import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 
 type T = Translate<CommodoreMessageKey>;
+
+/** Claude 로그인 카드의 지금 — 번들 스토어의 Claude 칸. 값이 바뀔 때만 새 상태다. */
+const claudeLoginPhase = () => getLoginStates().claude.phase;
 
 /** Claude Code 설치 안내 — 「설치 방법」이 여는 공식 문서. */
 const CLAUDE_CODE_INSTALL_URL = "https://docs.claude.com/en/docs/claude-code/setup";
@@ -34,6 +40,14 @@ export function useCommodoreCliStatus(commodoreId: string, enabled: boolean) {
   }, [commodoreId, enabled]);
   // Theater가 바뀌면 이전 판정을 버리고 다시 묻는다 — 남의 상태로 새 대화를 막지 않는다.
   useEffect(() => { generation.current += 1; setStatus(null); setChecking(false); check(); }, [commodoreId, enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- check는 같은 두 값의 함수다.
+  // 로그인 카드가 성공하면 사령관이 쓰는 CLI 로그인도 그 자리에서 바뀐다 — 상태를 다시 읽어 막힌 입력을 푼다(C1-2).
+  const loginPhase = useSyncExternalStore(subscribeLogins, claudeLoginPhase, claudeLoginPhase);
+  const previousLoginPhase = useRef(loginPhase);
+  useEffect(() => {
+    const previous = previousLoginPhase.current;
+    previousLoginPhase.current = loginPhase;
+    if (previous !== "signed_in" && loginPhase === "signed_in") check();
+  }, [loginPhase, check]);
   return { status, checking, recheck: check };
 }
 
@@ -118,9 +132,12 @@ export function openAgentCliSettings(): void {
 }
 
 /**
- * 로그인 카드의 자리 — 다음 미션 「로그인 연결·통합」에서 Quota의 `claude auth login` 카드에 연결한다.
- * 이번 미션은 단추의 위치와 click 이벤트만 둔다.
+ * Quota의 Claude 로그인 카드 — 사령관 채팅의 C1·C2 「로그인」이 같은 자리에 닿는다. 터미널 claude와 같은 로그인을
+ * 찾고(CLI 기본 로그인) 없으면 `claude auth login` 카드를 시작한 뒤, 그 카드가 서는 Quota 패널을 연다. 번들 스토어라
+ * 패널이 늦게 열려도 같은 카드가 선다. 성공(signed_in)은 `useCommodoreCliStatus`가 보고 cli-status를 다시 읽는다.
  */
 function openCommodoreLoginCard(): void {
-  // 연결은 다음 미션의 몫이다.
+  const api = getQuotaApi();
+  if (api) void beginClaudeLogin(api);
+  requestQuotaPanelOpen();
 }
