@@ -25,7 +25,7 @@ import type { SidebarRemotePage } from "../../shared/sidebar-remote.js";
 import { useSideBarState } from "./objective-records-side-bar-store.js";
 import { useLongPress } from "../long-press.js";
 import { CommanderRosterRow, currentRightPanel } from "./console-roster.js";
-import { CommodoreSectionMoveMenu, MenuItem, SectionMenu, SectionNameInput } from "./commodore-sidebar-sections.js";
+import { CommodoreSectionMoveMenu, CompactSectionRule, MenuItem, SectionMenu, SectionNameInput } from "./commodore-sidebar-sections.js";
 import { PlusIcon, TrashIcon, PencilIcon } from "./sidebar-menu-icons.js";
 import { commodoreSectionDropFromPoint, theaterDropIndexFromPoint, type CommodoreSectionDrop } from "./objective-records-side-bar-hit-test.js";
 import type { UnifiedSidebarController } from "./unified-sidebar.js";
@@ -313,7 +313,7 @@ export function UnifiedSidebarList({ consoles, list, unified, standingCommodores
   return <>
     {sections.map((section, index) => {
       const keys = bucket(section.id);
-      const collapsed = compact ? false : section.collapsed;
+      const collapsed = section.collapsed;
       const dropTarget = !!drag?.dragging && !!drag.sectionDrop && !drag.sectionDrop.targetId && drag.sectionDrop.sectionId === section.id;
       return <UnifiedSection key={section.id} sectionId={section.id} name={section.name} collapsed={collapsed}
         count={keys.length} dropTarget={dropTarget} unified={unified} index={index} total={sections.length}>
@@ -323,7 +323,7 @@ export function UnifiedSidebarList({ consoles, list, unified, standingCommodores
     {/* 섹션이 없으면 평평한 한 줄, 있으면 「섹션 없음」 머리로 둔다 — 로컬 목록과 같은 자리다. */}
     {sections.length === 0
       ? bucket(null).map((key) => renderRow(key, true))
-      : <UnifiedSection sectionId={null} name={t("sidebar.commodoreSection.none")} collapsed={compact ? false : layout.unsectionedCollapsed}
+      : <UnifiedSection sectionId={null} name={t("sidebar.commodoreSection.none")} collapsed={layout.unsectionedCollapsed}
           count={bucket(null).length} dropTarget={!!drag?.dragging && !!drag.sectionDrop && !drag.sectionDrop.targetId && drag.sectionDrop.sectionId === null}
           unified={unified} index={-1} total={sections.length}>
           {bucket(null).map((key) => renderRow(key, false))}
@@ -367,7 +367,8 @@ function UnifiedSection({ sectionId, name, collapsed, count, dropTarget, unified
   const run = (command: UnifiedSidebarCommand) => { closeMenu(); unified.run(command); };
 
   return <li className={`workspace-commodore-section${dropTarget ? " is-drop-target" : ""}`} data-sidebar-section={sectionId ?? ""}>
-    {compact ? null : editing && sectionId !== null ? <SectionNameInput name={name} onDone={(value, viaKey) => {
+    {compact ? <CompactSectionRule name={name} collapsed={collapsed} count={count} dropId={sectionId ?? ""} onToggle={() => { unified.run({ op: "collapse", sectionId, collapsed: !collapsed }); }} />
+      : editing && sectionId !== null ? <SectionNameInput name={name} onDone={(value, viaKey) => {
       restoreNameFocus.current = viaKey;
       setEditing(false);
       if (sectionId !== null && value && value !== name) unified.run({ op: "rename", sectionId, name: value });

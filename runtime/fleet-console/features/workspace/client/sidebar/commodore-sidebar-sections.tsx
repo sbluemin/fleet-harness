@@ -31,11 +31,12 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
   readonly dropTarget: boolean;
 }) {
   const t = useT();
-  // 좁은 열은 섹션 이름·안내 문구 없이 가는 구분선으로만 섹션을 가른다. 이름 머리가 없으니 접힘도 풀어 두고 행은 늘 보인다.
+  // 좁은 열은 섹션 이름·안내 문구 없이 가는 구분선으로만 섹션을 가르고, 그 구분선이 펼친 열과 같은 접힘을 켜고 끈다.
   const compact = useSideBarState().compact;
   const section = controller.layout.sections.find((row) => row.id === id);
   const name = section?.name ?? t("sidebar.commodoreSection.none");
-  const collapsed = compact ? false : section?.collapsed ?? controller.layout.unsectionedCollapsed;
+  const collapsed = section?.collapsed ?? controller.layout.unsectionedCollapsed;
+  const toggle = () => { void controller.run({ op: "collapse", sectionId: id, collapsed: !collapsed }); };
   const header = useRef<HTMLButtonElement>(null);
   const restoreNameFocus = useRef(false);
   useLayoutEffect(() => {
@@ -53,13 +54,14 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
   const index = controller.layout.sections.findIndex((row) => row.id === id);
   const action = (command: CommodoreSidebarCommand) => { closeMenu(); void controller.run(command); };
   return <li className={`workspace-commodore-section${dropTarget ? " is-drop-target" : ""}`} data-sidebar-section={id ?? ""}>
-    {compact ? null : section && controller.editing === id ? <SectionNameInput name={name} onDone={(value, viaKey) => {
+    {compact ? <CompactSectionRule name={name} collapsed={collapsed} count={count} dropId={id ?? ""} busy={controller.busy} onToggle={toggle} />
+      : section && controller.editing === id ? <SectionNameInput name={name} onDone={(value, viaKey) => {
       restoreNameFocus.current = viaKey;
       controller.setEditing(null);
       if (value && value !== name) void controller.run({ op: "rename", sectionId: section.id, name: value });
     }} /> : <button ref={header} type="button" className={`workspace-commodore-section-head${menu && section ? " is-menu-target" : ""}`} data-sidebar-section-drop={id ?? ""}
       data-keep-objective-active="" aria-expanded={!collapsed} aria-disabled={controller.busy} title={name}
-      onClick={() => { void controller.run({ op: "collapse", sectionId: id, collapsed: !collapsed }); }}
+      onClick={toggle}
       onContextMenu={(event) => { event.preventDefault(); event.stopPropagation(); if (!longPress.claimContextMenu(event)) openMenu(new DOMRect(event.clientX, event.clientY, 0, 0)); }}
       onPointerDown={longPress.onPointerDown} onPointerMove={longPress.onPointerMove} onPointerUp={longPress.onPointerUp} onPointerCancel={longPress.onPointerCancel}
       onKeyDown={(event) => {
@@ -89,6 +91,27 @@ export function CommodoreSidebarSection({ id, controller, count, children, dropT
       });
     }} /> : null}
   </li>;
+}
+
+/**
+ * 좁은 열의 섹션 구분선 — 이름은 그리지 않고(보조 기술에만 이름을 알린다) 누르면 펼친 열의 머리와 같은 접힘을 바꾼다.
+ * 접힌 섹션은 선 가운데 행 수만 남기고, 호버·포커스에서 펼친 머리처럼 수 대신 셰브런을 보인다. 통합 사이드바의 섹션도 같은 선을 쓴다.
+ */
+export function CompactSectionRule({ name, collapsed, count, dropId, busy, onToggle }: {
+  readonly name: string;
+  readonly collapsed: boolean;
+  readonly count: number;
+  readonly dropId: string;
+  readonly busy?: boolean;
+  readonly onToggle: () => void;
+}) {
+  return <button type="button" className="workspace-commodore-section-rule" data-sidebar-section-drop={dropId} data-keep-objective-active=""
+    aria-label={name} aria-expanded={!collapsed} aria-disabled={busy || undefined} onClick={onToggle}>
+    <span className="workspace-commodore-section-rule-mark" aria-hidden="true">
+      {collapsed ? <span className="workspace-commodore-section-count">{count}</span> : null}
+      <ChevronGlyph direction={collapsed ? "right" : "down"} className="workspace-commodore-section-chevron" />
+    </span>
+  </button>;
 }
 
 /** 통합 사이드바의 섹션 머리에서도 같은 이름 입력을 쓴다. */
