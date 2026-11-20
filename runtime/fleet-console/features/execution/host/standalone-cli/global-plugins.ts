@@ -1,11 +1,11 @@
-import { execFile } from "node:child_process";
+import { execFile, type ChildProcess } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
-import { withHidden } from "@fleet-console/process";
+import { withHidden, type OwnedChild, type OwnedProcessPort } from "@fleet-console/process";
 
 /**
  * 독립 CLI에 함께 싣는 전역 플러그인 하나 — 사령관 플러그인 홈(`<consoleDataDir>/commodore-plugins`)에 받아 둔 설치본.
@@ -57,6 +57,10 @@ export interface AntigravityPluginOptions {
   readonly env: NodeJS.ProcessEnv;
   /** 이미 다른 주입이 쓰는 플러그인 이름(예: `fleet-browser`). 같은 이름의 전역 플러그인은 싣지 않는다. */
   readonly reservedNames: readonly string[];
+  /** 변환·목록 자식을 Console이 끝낼 수 있게 띄우는 소유 포트. 없으면(테스트·포트 없는 호스트) 평범한 자식이다. */
+  readonly processes?: OwnedProcessPort;
+  /** Console 종료 — 걸리면 진행 중인 변환 자식을 끝내고 남은 플러그인은 싣지 않는다. */
+  readonly signal?: AbortSignal;
 }
 
 /**
@@ -101,6 +105,7 @@ export async function prepareAntigravityPlugins(options: AntigravityPluginOption
     const own = await userPluginNames(options, base);
     let loaded = 0;
     for (const plugin of options.plugins) {
+      if (options.signal?.aborted) break;
       if (own.has(plugin.name)) {
         note(plugin, `skipped: Antigravity already has its own "${plugin.name}" plugin installed, which this session uses`);
         continue;
@@ -110,7 +115,7 @@ export async function prepareAntigravityPlugins(options: AntigravityPluginOption
         continue;
       }
       for (const line of unsupportedParts(plugin)) note(plugin, line);
-      const result = await runAgy(options.bin, [...options.prefixArgs, "plugin", "install", plugin.path], env, home);
+      const result = await runAgy(options, [...options.prefixArgs, "plugin", "install", plugin.path], env, home);
       for (const line of converterWarnings(result.output)) note(plugin, line);
       const produced = await fs.readdir(installed);
       if (!result.ok || produced.length !== 1 || taken.has(produced[0]!)) {
@@ -149,7 +154,7 @@ function conversionEnv(base: NodeJS.ProcessEnv, home: string): NodeJS.ProcessEnv
 
 /** 사람의 agy에 설치된 플러그인 이름(켜짐 여부와 무관) — 사람의 HOME 그대로 `agy plugin list --json`으로 읽기만 한다. 못 읽으면 빈 목록. */
 async function userPluginNames(options: AntigravityPluginOptions, cwd: string): Promise<ReadonlySet<string>> {
-  const result = await runAgy(options.bin, [...options.prefixArgs, "plugin", "list", "--json"], options.env, cwd);
+  const result = await runAgy(options, [...options.prefixArgs, "plugin", "list", "--json"], options.env, cwd);
   if (!result.ok) return new Set();
   try {
     const parsed: unknown = JSON.parse(result.stdout);
@@ -160,17 +165,46 @@ async function userPluginNames(options: AntigravityPluginOptions, cwd: string): 
   }
 }
 
-function runAgy(bin: string, args: readonly string[], env: NodeJS.ProcessEnv, cwd: string): Promise<{ readonly ok: boolean; readonly stdout: string; readonly output: string; readonly reason: string }> {
+/**
+ * agy 보조 명령 하나. 소유 포트가 있으면 그 그룹으로 띄워 Console이 어떻게 끝나든 함께 끝나게 하고(수명 계약 I2),
+ * 시간 초과·Console 종료(`signal`)에는 그룹째 끝낸다. 실패는 던지지 않고 결과로 돌려준다.
+ */
+function runAgy(options: AntigravityPluginOptions, args: readonly string[], env: NodeJS.ProcessEnv, cwd: string): Promise<{ readonly ok: boolean; readonly stdout: string; readonly output: string; readonly reason: string }> {
   return new Promise((resolve) => {
-    execFile(bin, [...args], withHidden({ env, cwd, encoding: "utf-8" as const, timeout: AGY_PLUGIN_CLI_TIMEOUT_MS, maxBuffer: 1 << 20 }), (error, stdout, stderr) => {
-      const output = `${stdout ?? ""}\n${stderr ?? ""}`;
-      if (!error) {
-        resolve({ ok: true, stdout: stdout ?? "", output, reason: "" });
-        return;
-      }
-      const code = (error as { code?: unknown }).code;
-      const reason = (error as { killed?: boolean }).killed ? "timed out" : typeof code === "number" ? `exit ${code}` : String(code ?? error.message);
-      resolve({ ok: false, stdout: stdout ?? "", output, reason });
+    if (options.signal?.aborted) {
+      resolve({ ok: false, stdout: "", output: "", reason: "console stopping" });
+      return;
+    }
+    const owned = options.processes?.spawnOwned({ command: options.bin, args, cwd, env, stdin: "ignore" });
+    const child: ChildProcess | OwnedChild = owned
+      ?? execFile(options.bin, [...args], withHidden({ env, cwd, encoding: "utf-8" as const, maxBuffer: 1 << 20 }));
+    let stdout = "";
+    let stderr = "";
+    let ended: string | null = null;
+    const end = (reason: string) => {
+      if (ended) return;
+      ended = reason;
+      if (owned) owned.killGroup("SIGTERM");
+      else child.kill("SIGTERM");
+    };
+    child.stdout?.on("data", (chunk: Buffer | string) => { if (stdout.length < 1 << 20) stdout += chunk.toString(); });
+    child.stderr?.on("data", (chunk: Buffer | string) => { if (stderr.length < 64_000) stderr += chunk.toString(); });
+    const timer = setTimeout(() => end("timed out"), AGY_PLUGIN_CLI_TIMEOUT_MS);
+    const onAbort = () => end("console stopping");
+    options.signal?.addEventListener("abort", onAbort, { once: true });
+    let settled = false;
+    const settle = (ok: boolean, reason: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onAbort);
+      resolve({ ok, stdout, output: `${stdout}\n${stderr}`, reason });
+    };
+    child.on("error", (error: Error) => settle(false, error.message));
+    child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
+      if (ended) settle(false, ended);
+      else if (code === 0) settle(true, "");
+      else settle(false, code === null ? `signal ${signal ?? "unknown"}` : `exit ${code}`);
     });
   });
 }

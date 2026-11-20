@@ -45,9 +45,12 @@ export interface StandaloneCliState {
 export function registerStandaloneCliRoutes(
   ctx: ConsoleRuntimeContext,
   terminalRuntime: TerminalRuntime,
-  deps: Omit<StandaloneCliLaunchDeps, "env" | "browserMcp">,
+  deps: Omit<StandaloneCliLaunchDeps, "env" | "browserMcp" | "shutdown">,
 ): void {
   const placements = new Map<StandaloneCliKind, StandaloneCliPlacement>();
+  // 정리 콜백은 등록의 역순으로 돈다 — 이 취소가 터미널 런타임의 stop(진행 중 런치를 기다린다)보다 먼저 온다.
+  const shutdown = new AbortController();
+  ctx.host.lifecycle.registerCleanup(() => shutdown.abort());
   const browserMcpConn = ctx.host.browserMcp?.connect();
   if (browserMcpConn) ctx.host.lifecycle.registerCleanup(() => browserMcpConn.dispose());
 
@@ -81,6 +84,7 @@ export function registerStandaloneCliRoutes(
 
   const launchDeps: Omit<StandaloneCliLaunchDeps, "env"> = {
     ...deps,
+    shutdown: shutdown.signal,
     ...(browserMcp ? { browserMcp } : {}),
   };
 

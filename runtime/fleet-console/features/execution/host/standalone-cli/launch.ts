@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { createChildEnv, resolveBinary, resolvePathBinary } from "@fleet-console/process";
+import { createChildEnv, resolveBinary, resolvePathBinary, type OwnedProcessPort } from "@fleet-console/process";
 import { prepareAiGatewayLaunchProfile, resolveAiGatewaySelection, visibleGatewayModels } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings, ProviderStatusMap } from "@fleet-console/ai-gateway";
 
@@ -63,6 +63,10 @@ export interface StandaloneCliLaunchDeps {
   readonly browserMcp?: StandaloneCliBrowserMcpBinding;
   /** 전역 설치 플러그인을 런치마다 설치본 경로로 푼다. 생략하면 플러그인 없이 뜬다. */
   readonly globalPlugins?: () => readonly StandaloneCliPlugin[];
+  /** Antigravity 플러그인 변환 자식을 Console과 함께 끝나게 띄우는 소유 포트. */
+  readonly processes?: OwnedProcessPort;
+  /** Console 종료 신호 — 진행 중인 변환을 끝내 종료가 런치를 기다리지 않게 한다. */
+  readonly shutdown?: AbortSignal;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
@@ -219,6 +223,8 @@ export function createStandaloneCliLaunchResolver(
         prefixArgs,
         env,
         reservedNames: deps.browserMcp ? [FLEET_BROWSER_MCP_SERVER] : [],
+        ...(deps.processes ? { processes: deps.processes } : {}),
+        ...(deps.shutdown ? { signal: deps.shutdown } : {}),
       });
       let mcp: Awaited<ReturnType<typeof prepareBrowserMcpInjection>> | undefined;
       try {

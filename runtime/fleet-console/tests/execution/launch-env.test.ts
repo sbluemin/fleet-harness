@@ -1,8 +1,10 @@
+import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
+import type { OwnedProcessPort } from "@fleet-console/process";
 
 import type { StandaloneCliPlugin } from "../../features/execution/host/standalone-cli/global-plugins.js";
 import { createStandaloneCliLaunchResolver } from "../../features/execution/host/standalone-cli/launch.js";
@@ -185,11 +187,21 @@ describe("standalone Claude Code CLI launch", () => {
         { id: "broken@market", name: "broken", path: brokenDir, mcpServers: {}, env: {} },
         { id: "gamma@market", name: "gamma", path: gammaDir, mcpServers: {}, env: {} },
       ];
+      // agy 보조 자식은 Console이 끝낼 수 있는 소유 포트로만 뜬다.
+      const ownedCalls: string[] = [];
+      const processes: OwnedProcessPort = {
+        spawnOwned: (request) => {
+          ownedCalls.push(request.args.map((arg) => path.basename(arg)).join(" "));
+          const child = spawn(request.command, [...request.args], { cwd: request.cwd, env: request.env as NodeJS.ProcessEnv, stdio: ["ignore", "pipe", "pipe"] });
+          return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => child.kill(signal) });
+        },
+      };
       const baseDeps = {
         env: { PATH: "/usr/bin:/bin", HOME: home, CLAUDE_BIN: claudeBin, AGY_BIN: agyBin, FLEET_CONSOLE_SESSION_ID: "parent" },
         aiGateway: { routePath: "/api/v1/ai-gateway", origin: () => "http://127.0.0.1:4100" },
         browserMcp,
         globalPlugins,
+        processes,
         homeDir: home,
       };
 
@@ -251,6 +263,7 @@ describe("standalone Claude Code CLI launch", () => {
       // 변환은 임시 HOME에서 한다 — 사용자 홈의 agy 설정은 생기지 않는다. 실패한 것과 사람의 agy에 이미 있는 이름은 빠진다.
       expect(fs.existsSync(path.join(home, ".gemini"))).toBe(false);
       expect(fs.readdirSync(path.join(pluginDir, ".agents/plugins"))).toEqual(["alpha"]);
+      expect(ownedCalls).toEqual(["plugin list --json", "plugin install alpha", "plugin install broken"]);
       const alphaConfigPath = path.join(pluginDir, ".agents/plugins/alpha/mcp_config.json");
       expect(fs.statSync(alphaConfigPath).mode & 0o777).toBe(0o600);
       const alphaMcp = JSON.parse(fs.readFileSync(alphaConfigPath, "utf8")) as { mcpServers: Record<string, { serverUrl?: string; command?: string; headers?: Record<string, string> }> };
@@ -269,14 +282,25 @@ describe("standalone Claude Code CLI launch", () => {
       await agySpec.cleanup?.();
       expect(fs.existsSync(addDir)).toBe(false);
       expect(fs.existsSync(pluginDir)).toBe(false);
+
+      // Console이 멈추는 중이면 변환 자식을 띄우지 않고, CLI는 플러그인 없이 뜬다.
+      const stopping = await createStandaloneCliLaunchResolver({ ...baseDeps, shutdown: AbortSignal.abort() }, "antigravity")(theater, {
+        commodoreId: "comm-1",
+        sessionId: "standalone-cli:antigravity",
+        objectiveRecordType: "standalone-cli:antigravity",
+      });
+      expect(readAddDirs(stopping.args)).toHaveLength(1);
+      expect(ownedCalls).toHaveLength(3);
+      await stopping.cleanup?.();
       expect(fs.existsSync(extraTheaterA)).toBe(true);
       expect(fs.existsSync(extraTheaterB)).toBe(true);
 
       expect(preparedCalls).toEqual([
         { cli: "claude", cwd: theater, commodoreId: "comm-1" },
         { cli: "antigravity", cwd: theater, commodoreId: "comm-1" },
+        { cli: "antigravity", cwd: theater, commodoreId: "comm-1" },
       ]);
-      expect(releases).toBe(2);
+      expect(releases).toBe(3);
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
