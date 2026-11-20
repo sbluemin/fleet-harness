@@ -273,16 +273,21 @@ export async function selectStandaloneCli(
   });
 }
 
-/** 팔레트에서 살아 있는 CLI 세션을 종료한다. */
+/** 팔레트에서 살아 있는 CLI 세션을 종료한다. 서버가 종료를 확인한 경우에만 슬롯과 터미널을 걷는다. */
 export async function stopStandaloneCli(cli: StandaloneCliKind): Promise<void> {
   try {
-    await fetch(STOP_PATH, {
+    const response = await fetch(STOP_PATH, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cli }),
     });
+    if (!response.ok) {
+      await refreshServerState();
+      return;
+    }
   } catch {
-    // 네트워크 오류가 나더라도 화면 슬롯을 정리해 멈추지 않게 한다.
+    await refreshServerState();
+    return;
   }
   const slot = state.slots[cli];
   const nextActive = state.activeCli === cli ? null : state.activeCli;
