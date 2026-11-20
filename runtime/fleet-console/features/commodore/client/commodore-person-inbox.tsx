@@ -271,7 +271,8 @@ function QuickAnswer({ item, theaterId, language, phone, onAnswered, onFailed }:
 
 /**
  * 넘긴 검토의 「범위 넓히기」 — 입력창(답 칸)에 쓴 글을 한마디로 목표를 넓히고 계속 진행을 전한다. 글이 비어 있으면 아무것도 보내지 않고
- * 입력창으로 초점만 옮긴다. 보내기가 끝나면 입력창을 비우고, 실패는 빠른 답과 같은 길(`onFailed`)로 알린다. 한 줄의 높이는 그대로다.
+ * 입력창으로 초점만 옮긴다. 보내기가 끝나면 입력창을 비우고, 실패는 빠른 답과 같은 길(`onFailed`)로 알린다. 한 줄의 높이는 그대로고,
+ * 좁은 폭에서는 제목이 읽히도록 아이콘만 남는다(이름은 `aria-label`·`title`).
  */
 export function ExtendAction({ item, theaterId, language, onFailed }: {
   readonly item: Pick<InboxItem, "kind" | "objectiveId">;
@@ -288,7 +289,13 @@ export function ExtendAction({ item, theaterId, language, onFailed }: {
     setBusy(true);
     void sendComposerText(theaterId, (context) => extendObjective(objectiveId, language, context)).catch(onFailed).finally(() => setBusy(false));
   };
-  return <button type="button" className="commodore-decision-quick" disabled={busy} aria-busy={busy || undefined} title={t("commodore.decision.extendHint")} onClick={run}>{t("commodore.decision.extend")}</button>;
+  const label = t("commodore.decision.extend");
+  return (
+    <button type="button" className="commodore-decision-quick has-icon" disabled={busy} aria-busy={busy || undefined} aria-label={label} title={`${label} — ${t("commodore.decision.extendHint")}`} onClick={run}>
+      <svg className="commodore-decision-quick-icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M2.5 8h11M5 5.5 2.5 8 5 10.5M11 5.5 13.5 8 11 10.5" /></svg>
+      <span className="commodore-decision-quick-label">{label}</span>
+    </button>
+  );
 }
 
 /** 제목을 눌러 펼친 내용 — 머리(목표·대기 시간·목표 열기)와 그 결정의 처리 카드. 대화 영역 높이의 40%까지 자라고 그 안에서 스크롤한다. */

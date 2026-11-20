@@ -82,7 +82,8 @@ describe("ExtendAction", () => {
   };
 
   it("stands only on a handed review", () => {
-    expect(mount("review")).not.toBeNull();
+    // 좁은 폭에서 글자가 숨어도 이름은 남는다.
+    expect(mount("review")?.getAttribute("aria-label")).toBe("범위 넓히기");
     for (const kind of ["criteria", "followup", "ask"] as const) expect(mount(kind)).toBeNull();
   });
 
