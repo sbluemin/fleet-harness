@@ -41,11 +41,9 @@
     "@types/node": "^24.10.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "jsdom": "^27.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^6.0.2",
-    "vitest": "^4.0.13"
+    "typescript": "^6.0.2"
   },
   "scripts": {
     "typecheck": "tsc --noEmit --incremental -p tsconfig.json"

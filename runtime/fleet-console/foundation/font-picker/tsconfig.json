@@ -6,7 +6,7 @@
     "strict": true,
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM", "DOM.Iterable"],
-    "types": ["node", "vitest/globals"],
+    "types": ["node"],
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
