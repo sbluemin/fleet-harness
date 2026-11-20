@@ -276,6 +276,8 @@ function normalizeStoredPanelId(stored: string): string | null {
     stored === "diff" || stored === "history" || stored === "repository" || stored === "alerts" || stored === "codex" ||
     stored === "file-explorer" || stored === "files" || stored === "global-shell" || stored === "skills"
   ) return null;
+  // 사령관 사이드바의 「정보」 탭은 걷혔다(신경망이 맡는다) — 열어 둔 사이드바는 남은 칸(활동)으로 이어 연다.
+  if (stored === "commodore-info") return "commodore-routines";
   return stored;
 }
 

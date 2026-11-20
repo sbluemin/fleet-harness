@@ -5,7 +5,7 @@ import type { CommodoreTasksList as TasksList } from "./deps.js";
 import { commodoreTasksList } from "./commodore-state.js";
 
 /**
- * 사령관 오른쪽 패널의 「작업」 탭 — 위 「목표」 섹션(지휘관 목록 카드)에 아래 「루틴」 섹션을 둔다.
+ * 사령관 오른쪽 사이드바의 활동 칸(탭 줄 없이 곧장 선다) — 위 「목표」 섹션(지휘관 목록 카드)에 아래 「루틴」 섹션을 둔다.
  * 목표 목록 렌더러는 조립이 넘긴다.
  */
 export function CommodoreTasks({ commodoreId, language, selectedId }: {

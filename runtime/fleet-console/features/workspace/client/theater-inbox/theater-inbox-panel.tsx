@@ -133,11 +133,21 @@ export function TheaterInboxPanel({ open, theater, sections, language, navigatio
       if (open.address.sectionId === fallback.sectionId && open.address.pageId === fallback.pageId) return;
       navigation.open({ theaterId: theater.id, ...fallback });
     };
-    if (!section || !page) {
+    if (!section) {
       openFallback();
       return;
     }
     if (states[index]?.availability === "loading") return;
+    if (!page) {
+      // 섹션이 걷은 칸의 옛 주소 — 섹션의 대화가 받으면(가운데 칸에 대화를 세우면) 그 대화가 자리를 맡고, 아니면 폴백 칸으로 간다.
+      let taken = false;
+      if (available(index) && section.descriptor.openConversation) {
+        try { taken = section.descriptor.openConversation({ theater, pageId: open.address.pageId }); } catch { taken = false; }
+      }
+      if (taken) opened.current = true;
+      else openFallback();
+      return;
+    }
     if (!available(index)) {
       openFallback();
       return;

@@ -26,7 +26,7 @@ import type { ObjectiveRecord, TheaterInfo } from "../../../../core/client/src/i
 import { useSearchShortcutLabel } from "../../../../core/client/src/integration/shortcuts.js";
 import { DirectoryBrowserModal } from "../../../../core/client/src/chrome/components/directory-browser-modal.js";
 import { useConsoleState } from "../../../../core/client/src/hooks/use-store.js";
-import { isCommodoreConversationActive, isCommodoreConversationOpen, openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
+import { commodoreRailTab, isCommodoreConversationActive, isCommodoreConversationOpen, openCommodoreConversation } from "../../../commodore/client/commodore-conversation.js";
 import { requestCommodoreDelete } from "../../../commodore/client/commodore-delete-modal.js";
 import { requestCommodoreCreate } from "../../../commodore/client/commodore-create-modal.js";
 import { refreshCommodoreList, replaceCommodoreList, replaceSidebarOrder, setZoneCommodore, useCommodoreListLoaded, useSidebarCommodores, useSidebarOrder, type SidebarCommodore } from "../../../commodore/client/commodore-list.js";
@@ -348,7 +348,8 @@ export function ObjectiveRecordsSideBar({
         arrivalPanelApplied.current = openKey;
         const current = getRailStoreSnapshot().activePanelId;
         if (!arrival.rightPanel.open) { if (current !== null) closeRailPanel(current); }
-        else if (arrival.rightPanel.tab) openRailPanel(arrival.rightPanel.tab);
+        // 옛 Console 이 넘긴 없어진 사령관 「정보」 탭은 활동 칸으로 연다.
+        else if (arrival.rightPanel.tab) openRailPanel(commodoreRailTab(arrival.rightPanel.tab));
       }
       consoleArrived.current();
     };

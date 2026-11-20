@@ -274,7 +274,7 @@ export function CommodoreTrail({
   );
 }
 
-/** 정보 탭 「목표 기록」이 처음 보이는 목표 수 — 나머지는 「더 보기」로 같은 자리에 펼친다. */
+/** 목표별 로그가 처음 보이는 목표 수 — 나머지는 「더 보기」로 같은 자리에 펼친다. */
 const SECTION_ROWS = 5;
 /** 펼침 높이 전환과 같은 길이 — 전환이 끝났다는 이벤트가 오지 않아도 이 뒤에 높이를 풀어 준다. */
 const SECTION_MOTION_MS = 320;
@@ -305,13 +305,12 @@ function slideHeight(box: HTMLElement, from: number, to: number, done?: () => vo
   window.setTimeout(finish, SECTION_MOTION_MS + 80);
 }
 
-function TrailSectionRow({ t, language, group, open, onToggle, onReveal, onOpenObjective, rowRef, style }: {
+function TrailSectionRow({ t, language, group, open, onToggle, onOpenObjective, rowRef, style }: {
   readonly t: T;
   readonly language: "en" | "ko";
   readonly group: CommodoreTrailGroup;
   readonly open: boolean;
   readonly onToggle: () => void;
-  readonly onReveal?: (at: number) => void;
   readonly onOpenObjective?: (objectiveId: string) => void;
   readonly rowRef?: (node: HTMLButtonElement | null) => void;
   readonly style?: CSSProperties;
@@ -350,9 +349,7 @@ function TrailSectionRow({ t, language, group, open, onToggle, onReveal, onOpenO
               );
               return (
                 <li key={entry.key}>
-                  {onReveal
-                    ? <button type="button" className={`objectives-commodore-trail-entry is-${entry.family}`} title={entry.title} onClick={() => onReveal(entry.at)}>{body}</button>
-                    : <div className={`objectives-commodore-trail-entry is-${entry.family}`} title={entry.title}>{body}</div>}
+                  <div className={`objectives-commodore-trail-entry is-${entry.family}`} title={entry.title}>{body}</div>
                 </li>
               );
             })}
@@ -365,30 +362,28 @@ function TrailSectionRow({ t, language, group, open, onToggle, onReveal, onOpenO
 }
 
 /**
- * 정보 탭의 「목표 기록」 — 기억 아래 섹션. 최근에 움직인 목표가 위로, 목표마다 한 줄(마지막 행위·시각)이고, 행을 누르면 그 목표의
- * 최근 행위가 펼쳐진다(줄 = 채팅의 그 턴, 「목표 열기」 = 그 목표). 처음엔 최근 목표 몇 개만 서고 「더 보기」가 나머지를 같은 자리에
- * 펼친다. 높이는 미끄러지듯 바뀌고, 동작 줄이기면 바로 바뀐다. 폰 정보 화면도 같은 섹션을 쓴다(`phone`).
+ * 폰 정보 화면의 「목표 기록」 — 기억 아래 섹션. 최근에 움직인 목표가 위로, 목표마다 한 줄(마지막 행위·시각)이고, 행을 누르면 그 목표의
+ * 최근 행위가 펼쳐진다(「목표 열기」 = 그 목표). 처음엔 최근 목표 몇 개만 서고 「더 보기」가 나머지를 같은 자리에 펼친다.
+ * 높이는 미끄러지듯 바뀌고, 동작 줄이기면 바로 바뀐다.
  */
-export function CommodoreTrailSection({ t, language, theaterId, phone = false, onReveal, onOpenObjective }: {
+export function CommodoreTrailSection({ t, language, theaterId, phone = false, onOpenObjective }: {
   readonly t: T;
   readonly language: "en" | "ko";
   readonly theaterId: string;
   readonly phone?: boolean;
-  readonly onReveal?: (at: number) => void;
   readonly onOpenObjective?: (objectiveId: string) => void;
 }) {
   const { objectives } = useObjectiveTheater(theaterId);
   const groups = useMemo(() => [...commodoreTrail(t, theaterId, objectives)].reverse(), [t, theaterId, objectives]);
-  return <ObjectiveTrailSection t={t} language={language} groups={groups} phone={phone} onReveal={onReveal} onOpenObjective={onOpenObjective} />;
+  return <ObjectiveTrailSection t={t} language={language} groups={groups} phone={phone} onOpenObjective={onOpenObjective} />;
 }
 
-/** 사령관 정보와 TaskForce 활동이 공유하는 목표별 로그. 원천 데이터와 목표 이동은 호출자가 소유한다. */
-export function ObjectiveTrailSection({ t, language, groups, phone = false, onReveal, onOpenObjective, emptyMessage }: {
+/** 폰 사령관 정보 화면과 TaskForce 활동이 공유하는 목표별 로그. 원천 데이터와 목표 이동은 호출자가 소유한다. */
+export function ObjectiveTrailSection({ t, language, groups, phone = false, onOpenObjective, emptyMessage }: {
   readonly t: T;
   readonly language: "en" | "ko";
   readonly groups: readonly CommodoreTrailGroup[];
   readonly phone?: boolean;
-  readonly onReveal?: (at: number) => void;
   readonly onOpenObjective?: (objectiveId: string) => void;
   readonly emptyMessage?: string;
 }) {
@@ -464,7 +459,6 @@ export function ObjectiveTrailSection({ t, language, groups, phone = false, onRe
                   group={group}
                   open={openIds.has(group.objectiveId)}
                   onToggle={() => toggle(group.objectiveId)}
-                  onReveal={onReveal}
                   onOpenObjective={onOpenObjective}
                   rowRef={(node) => { if (node) rowRefs.current.set(group.objectiveId, node); else rowRefs.current.delete(group.objectiveId); }}
                   style={revealFrom !== null && index >= revealFrom ? { animationDelay: `${Math.min(index - revealFrom, 8) * 30}ms` } : undefined}

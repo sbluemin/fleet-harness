@@ -42,7 +42,7 @@ export function isCommanderObjective(clusters: readonly ObjectiveCluster[], comm
 
 /**
  * objectiveId 가 지휘관인 사령관 — 시작 전·완료 포함. 사령관 묶음이 아니거나 지휘관이 아니면 null 이다.
- * 목표 대화의 우측 사이드바가 이 사령관의 탭(작업·정보·설정)을 싣는다.
+ * 목표 대화의 우측 사이드바가 이 사령관의 사이드바(활동)를 싣는다.
  */
 export function commanderOwnerOf(clusters: readonly ObjectiveCluster[], objectiveId: string): string | null {
   for (const layout of indexClusters(clusters).rows) {
