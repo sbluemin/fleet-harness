@@ -58,6 +58,7 @@ export function reduceConversationJournal(state: ConversationJournal, row: Agent
       if (event.kind === "dispatch") {
         turn = `turn:${objectiveId}:${row.seq}`;
         cliFailure = null;
+        lastHumanPrompt = null;
       }
       const origin = event.by;
       // 사람·사령관의 말 없이 플러그인이 혼자 보낸 지시는 발화자가 아니라 출처다 — 말풍선이 아닌 가운데 알림 줄로 선다.

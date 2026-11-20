@@ -22,6 +22,11 @@ export type ClaudeAuthProbeResult = "ready" | "signedout";
 export interface ClaudeAuthProbeDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly timeoutMs?: number;
+  /**
+   * 이미 있는 공유 `CLAUDE_CONFIG_DIR`을 그대로 읽기 전용으로 확인한다(지휘관 채팅 경로).
+   * 주면 임시 폴더를 만들거나 지우지 않고, 자식 환경의 secure-storage 선택도 그대로 둔다.
+   */
+  readonly configDir?: string;
   /** 판정용 빈 config dir. 테스트가 실제 임시 폴더를 피하려고 갈아 끼운다. */
   readonly createConfigDir?: () => Promise<string>;
   readonly removeConfigDir?: (dir: string) => Promise<void>;
@@ -35,23 +40,26 @@ export async function probeClaudeAuth(binary: string, deps: ClaudeAuthProbeDeps 
   const createConfigDir = deps.createConfigDir ?? (() => fs.mkdtemp(path.join(os.tmpdir(), "fleet-claude-auth-")));
   const removeConfigDir = deps.removeConfigDir ?? ((dir) => fs.rm(dir, { recursive: true, force: true }));
   const run = deps.run ?? ((bin, args, env) => runAuthStatus(bin, args, env, deps.timeoutMs ?? AUTH_PROBE_TIMEOUT_MS));
-  let configDir: string | undefined;
+  const shared = deps.configDir !== undefined;
+  let tempConfigDir: string | undefined;
   try {
-    configDir = await createConfigDir();
-    const env = authProbeEnv(deps.env ?? process.env, configDir);
+    const configDir = shared ? deps.configDir! : (tempConfigDir = await createConfigDir());
+    const env = authProbeEnv(deps.env ?? process.env, configDir, shared);
     const { stdout } = await run(binary, ["auth", "status", "--json"], env);
     const loggedIn = loggedInOf(stdout);
     return loggedIn === false ? "signedout" : "ready";
   } catch {
     return "ready";
   } finally {
-    if (configDir !== undefined) await removeConfigDir(configDir).catch(() => undefined);
+    if (tempConfigDir !== undefined) await removeConfigDir(tempConfigDir).catch(() => undefined);
   }
 }
 
-/** 채팅 자식과 같은 상속 정리 + 빈 config dir + 기본 keychain(접미사 없음). */
-export function authProbeEnv(inherited: NodeJS.ProcessEnv, configDir: string): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = { ...chatChildEnv(inherited), CLAUDE_CONFIG_DIR: configDir, CLAUDE_SECURESTORAGE_CONFIG_DIR: "" };
+/** 채팅 자식과 같은 상속 정리. 사령관(격리)은 빈 config dir + 기본 keychain, 지휘관(공유)은 공유 config dir을 그대로 쓴다. */
+export function authProbeEnv(inherited: NodeJS.ProcessEnv, configDir: string, shared = false): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = shared
+    ? { ...chatChildEnv(inherited), CLAUDE_CONFIG_DIR: configDir }
+    : { ...chatChildEnv(inherited), CLAUDE_CONFIG_DIR: configDir, CLAUDE_SECURESTORAGE_CONFIG_DIR: "" };
   // 채팅 자식의 launch env도 이 셋을 지운다 — 상속된 키·모델이 로그인 판정을 바꾸지 않게 같은 자리를 비운다.
   delete env.ANTHROPIC_AUTH_TOKEN;
   delete env.ANTHROPIC_API_KEY;

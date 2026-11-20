@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../../features/execution/host/agent/chat-session.js";
+import { probeClaudeAuth } from "../../features/execution/host/agent/claude-auth-status.js";
 import type { AgentChatStreamEvent } from "../../features/execution/host/agent/chat-events.js";
 import { agentChatCliFailure, initialAgentChatLogState, reduceAgentChatLog } from "../../features/execution/client/agent/chat/chat-events.js";
 import { composeGroupTimeline, EMPTY_CONVERSATION_JOURNAL, reduceConversationJournal } from "../../features/execution/client/agent/chat/group-timeline.js";
@@ -166,5 +167,46 @@ describe("commander chat client CLI failure state", () => {
     });
     expect(recovered.cliFailure).toBeUndefined();
     expect(recovered.cliFailurePrompt).toBeUndefined();
+  });
+
+  it("clears cliFailurePrompt when a non-human turn fails after an earlier human turn", () => {
+    const id = "obj-root";
+    let journal = reduceConversationJournal(EMPTY_CONVERSATION_JOURNAL, { seq: 1, at: 1000, event: { kind: "dispatch", text: "old human instruction" } }, id);
+    journal = reduceConversationJournal(journal, { seq: 2, at: 1500, event: { kind: "turn-end", ok: true } }, id);
+    journal = reduceConversationJournal(journal, {
+      seq: 3,
+      at: 2000,
+      event: { kind: "dispatch", text: "automated plugin wake", by: { kind: "plugin", pluginId: "objectives" } },
+    }, id);
+    journal = reduceConversationJournal(journal, { seq: 4, at: 2005, event: { kind: "error", code: "chat_cli_signed_out" } }, id);
+    const snap = composeGroupTimeline({
+      rootObjectiveId: id,
+      participants: [{ speaker: { kind: "commander", name: "Commander", objectiveId: id }, activity: "idle" }],
+      journals: new Map([[id, journal]]),
+    });
+    expect(snap.cliFailure).toBe("signedout");
+    expect(snap.cliFailurePrompt).toBeUndefined();
+  });
+
+  it("probes the shared CLAUDE_CONFIG_DIR without creating or deleting a temp dir when configDir is passed", async () => {
+    const createConfigDir = vi.fn();
+    const removeConfigDir = vi.fn();
+    let seenEnv: NodeJS.ProcessEnv | undefined;
+    const result = await probeClaudeAuth("/fake/claude", {
+      configDir: "/shared/claude-home",
+      env: { PATH: "/usr/bin", ANTHROPIC_API_KEY: "secret" },
+      createConfigDir,
+      removeConfigDir,
+      run: async (_bin, _args, env) => {
+        seenEnv = env;
+        return { stdout: JSON.stringify({ loggedIn: true }) };
+      },
+    });
+    expect(result).toBe("ready");
+    expect(createConfigDir).not.toHaveBeenCalled();
+    expect(removeConfigDir).not.toHaveBeenCalled();
+    expect(seenEnv?.CLAUDE_CONFIG_DIR).toBe("/shared/claude-home");
+    expect(seenEnv?.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBeUndefined();
+    expect(seenEnv?.ANTHROPIC_API_KEY).toBeUndefined();
   });
 });
