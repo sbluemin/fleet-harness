@@ -1,5 +1,7 @@
 import { useSyncExternalStore } from "react";
 
+import { parseAntigravityPluginNotes, type AntigravityPluginNote } from "../../shared/standalone-cli.js";
+
 /**
  * 독립 CLI(Claude Code · Antigravity) 패널과 선택 팔레트의 화면 상태. Console 하나에 CLI 종류별 1슬롯이다.
  *
@@ -44,6 +46,8 @@ export interface StandaloneCliViewState {
   /** 열 때마다 하나씩 오른다 — 터미널이 키보드 포커스를 다시 잡는 신호다. */
   readonly focusRequest: number;
   readonly slots: Readonly<Record<StandaloneCliKind, StandaloneCliSlotViewState>>;
+  /** 최근 agy 실행의 전역 플러그인 보고(알릴 것이 있는 플러그인만). agy를 아직 띄우지 않았으면 비어 있다. */
+  readonly antigravityPluginNotes: readonly AntigravityPluginNote[];
 }
 
 const STATE_PATH = "/api/v1/standalone-cli/state";
@@ -64,6 +68,7 @@ let state: StandaloneCliViewState = {
     claude: emptySlot(),
     antigravity: emptySlot(),
   },
+  antigravityPluginNotes: [],
 };
 
 const listeners = new Set<() => void>();
@@ -115,6 +120,7 @@ interface ServerSlotPayload {
   readonly installed?: unknown;
   readonly commodoreId?: unknown;
   readonly theaterId?: unknown;
+  readonly pluginNotes?: unknown;
 }
 
 function parseServerSlot(raw: unknown): { readonly live: boolean; readonly installed: boolean; readonly placement: StandaloneCliPlacement | null } | null {
@@ -130,7 +136,7 @@ function parseServerSlot(raw: unknown): { readonly live: boolean; readonly insta
   };
 }
 
-async function fetchServerSlots(): Promise<Readonly<Record<StandaloneCliKind, { readonly live: boolean; readonly installed: boolean; readonly placement: StandaloneCliPlacement | null }>> | null> {
+async function fetchServerSlots(): Promise<(Readonly<Record<StandaloneCliKind, { readonly live: boolean; readonly installed: boolean; readonly placement: StandaloneCliPlacement | null }>> & { readonly notes: readonly AntigravityPluginNote[] }) | null> {
   try {
     const response = await fetch(STATE_PATH);
     if (!response.ok) return null;
@@ -139,10 +145,20 @@ async function fetchServerSlots(): Promise<Readonly<Record<StandaloneCliKind, { 
     const claude = parseServerSlot(payload.slots.claude);
     const antigravity = parseServerSlot(payload.slots.antigravity);
     if (!claude || !antigravity) return null;
-    return { claude, antigravity };
+    return { claude, antigravity, notes: parseAntigravityPluginNotes((payload.slots.antigravity as ServerSlotPayload).pluginNotes) };
   } catch {
     return null;
   }
+}
+
+/** 서버의 자리 상태와 agy 플러그인 보고를 다시 읽는다. 팔레트와 전역 플러그인 화면이 열릴 때 부른다. */
+export async function refreshStandaloneCliState(): Promise<void> {
+  await refreshServerState();
+}
+
+/** 최근 agy 실행의 전역 플러그인 보고. */
+export function useAntigravityPluginNotes(): readonly AntigravityPluginNote[] {
+  return useSyncExternalStore(subscribeStandaloneCli, () => state.antigravityPluginNotes, () => state.antigravityPluginNotes);
 }
 
 async function refreshServerState(): Promise<void> {
@@ -166,7 +182,13 @@ async function refreshServerState(): Promise<void> {
       claude: mergeSlot("claude"),
       antigravity: mergeSlot("antigravity"),
     },
+    antigravityPluginNotes: sameNotes(state.antigravityPluginNotes, remote.notes) ? state.antigravityPluginNotes : remote.notes,
   });
+}
+
+/** 같은 보고면 이전 배열을 그대로 둔다 — 보고를 읽는 화면이 매번 다시 그리지 않게. */
+function sameNotes(a: readonly AntigravityPluginNote[], b: readonly AntigravityPluginNote[]): boolean {
+  return a === b || JSON.stringify(a) === JSON.stringify(b);
 }
 
 /**

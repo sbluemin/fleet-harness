@@ -240,6 +240,12 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
     }
   }, [activeIndex, fallbackPlacement]);
 
+  // 사람이 손쓸 수 있는 몫만 — 로그인이 필요한 원격 MCP가 실린 전역 플러그인. 건너뛴 몫·변환은 전역 플러그인 화면이 보인다.
+  const signInPlugins = view.antigravityPluginNotes.filter((note) => note.signIn?.length).map((note) => note.pluginId.slice(0, note.pluginId.lastIndexOf("@")));
+  const agySignInNote = signInPlugins.length === 1
+    ? t("terminal.standaloneCli.agySignInOne", { plugin: signInPlugins[0]! })
+    : signInPlugins.length > 1 ? t("terminal.standaloneCli.agySignInMany", { n: signInPlugins.length }) : null;
+
   const hasMountedPane = STANDALONE_CLI_KINDS.some((cli) => view.slots[cli].placement !== null);
   const showFallbackTheater = view.viewed.theaterId === null && theaterChoices.length > 0;
 
@@ -309,6 +315,7 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
               const name = cli === "claude" ? t("terminal.standaloneCli.claude") : t("terminal.standaloneCli.antigravity");
               const keyLabel = cli === "claude" ? "1" : "2";
               const isSelected = activeIndex === index;
+              const note = cli === "antigravity" && slot.installed ? agySignInNote : null;
               return (
                 <button
                   key={cli}
@@ -325,7 +332,10 @@ export function StandaloneCliLayer({ language, theme, shortcutLabel }: {
                     <span className={`standalone-cli-palette-glyph is-${cli}`} aria-hidden="true">
                       {cli === "claude" ? launchProviderGlyph("claude") : <AntigravityGlyph />}
                     </span>
-                    <span className="standalone-cli-palette-name">{name}</span>
+                    <span className="standalone-cli-palette-label">
+                      <span className="standalone-cli-palette-name">{name}</span>
+                      {note ? <span className="standalone-cli-palette-note" data-standalone-cli-note={cli}>{note}</span> : null}
+                    </span>
                   </span>
                   <span className="standalone-cli-palette-row-right">
                     {!slot.installed ? (
