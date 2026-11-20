@@ -721,6 +721,8 @@ interface CommodoreComposerProps {
    * TaskForce·Theater Inbox의 같은 캡슐은 넘기지 않는다(그 표면은 이번 범위 밖).
    */
   readonly cliGate?: boolean;
+  /** 대화의 최신 실패가 CLI 원인이면 그 원인 — 새로 바뀔 때 C1 상태 줄을 다시 읽는다. */
+  readonly cliFailure?: "missing" | "signedout" | null;
   readonly sender?: (input: { readonly text: string; readonly attachmentIds: readonly string[]; readonly references: readonly (string | { readonly kind: "commodore"; readonly id: string })[] }) => Promise<void>;
 }
 
@@ -737,13 +739,13 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`Execution composer primitives`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, running = false, phone, topEntries, decisionDock, decisionTarget, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel, trailing, cliGate = false }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, running = false, phone, topEntries, decisionDock, decisionTarget, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel, trailing, cliGate = false, cliFailure = null }: CommodoreComposerProps) {
   const accent = useAvatarAccent(commodoreAvatarKey(theaterId));
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId, attachmentPort, attachmentLimits);
   const { text, references, sending, budgetNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
   // CLI 문은 사령관 1:1 대화만 세운다 — TaskForce·Inbox의 같은 캡슐은 이번 범위 밖이다.
-  const cli = useCommodoreCliStatus(theaterId, cliGate);
+  const cli = useCommodoreCliStatus(theaterId, cliGate, cliFailure);
   const cliBlocked = cliGate && cliGateBlocks(cli.status);
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
   const attachments = attachmentSnap.items;

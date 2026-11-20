@@ -23,8 +23,11 @@ const CLAUDE_CODE_INSTALL_URL = "https://docs.claude.com/en/docs/claude-code/set
  *
  * 처음 응답 전에는 `null`이다. 그동안 보내기를 막지 않는다 — 판정을 읽지 못한 것과 CLI가 없는 것은 다르고,
  * 실제로 없으면 보낸 뒤 원인 카드가 받는다. 호스트 판정 실패도 `ready`로 접어 같은 규율을 지킨다.
+ *
+ * 대화의 최신 실패가 CLI 원인으로 새로 바뀌면(보내는 동안 CLI가 사라지거나 로그인이 풀린 경우) 같은 경로를 다시 읽어
+ * C1 상태 줄을 세우고 보내기를 막는다 — 보낸 뒤 카드만 있고 다시 보낼 수 있던 두 원인의 차이를 없앤다.
  */
-export function useCommodoreCliStatus(commodoreId: string, enabled: boolean) {
+export function useCommodoreCliStatus(commodoreId: string, enabled: boolean, failure: "missing" | "signedout" | null = null) {
   const [status, setStatus] = useState<CommodoreCliStatus | null>(null);
   const [checking, setChecking] = useState(false);
   const generation = useRef(0);
@@ -39,6 +42,13 @@ export function useCommodoreCliStatus(commodoreId: string, enabled: boolean) {
   }, [commodoreId, enabled]);
   // Theater가 바뀌면 이전 판정을 버리고 다시 묻는다 — 남의 상태로 새 대화를 막지 않는다.
   useEffect(() => { generation.current += 1; setStatus(null); setChecking(false); check(); }, [commodoreId, enabled]); // eslint-disable-line react-hooks/exhaustive-deps -- check는 같은 두 값의 함수다.
+  // 최신 실패가 CLI 원인으로 새로 바뀌면 다시 읽는다 — 처음 실패로 화면이 설 때는 위의 첫 읽기가 이미 맡는다.
+  const previousFailure = useRef(failure);
+  useEffect(() => {
+    const previous = previousFailure.current;
+    previousFailure.current = failure;
+    if (failure !== null && failure !== previous) check();
+  }, [failure, check]);
   // 로그인 카드가 성공하면 사령관이 쓰는 CLI 로그인도 그 자리에서 바뀐다 — 상태를 다시 읽어 막힌 입력을 푼다(C1-2).
   const loginPhase = useSyncExternalStore(subscribeLogins, claudeLoginPhase, claudeLoginPhase);
   const previousLoginPhase = useRef(loginPhase);

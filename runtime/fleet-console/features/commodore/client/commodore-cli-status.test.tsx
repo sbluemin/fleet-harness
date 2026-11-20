@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, createElement, type ReactNode } from "react";
+import { act, createElement, useState, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -61,6 +61,34 @@ describe("commodore CLI status gate", () => {
     await act(async () => { setLoginPhase("signed_in"); await Promise.resolve(); });
     expect(readStatus).toHaveBeenCalledTimes(1);
     expect(seen).toBe("ready");
+  });
+
+  it("re-reads the CLI status when a CLI failure newly appears, for both causes", async () => {
+    readStatus.mockResolvedValue("ready");
+    let setFailure!: (value: "missing" | "signedout" | null) => void;
+    let seen: string | null = null;
+    const Probe = () => {
+      const [failure, update] = useState<"missing" | "signedout" | null>(null);
+      setFailure = update;
+      seen = useCommodoreCliStatus("t1", true, failure).status;
+      return null;
+    };
+    root = mount(createElement(Probe));
+    await act(async () => { await Promise.resolve(); });
+    expect(readStatus).toHaveBeenCalledTimes(1);
+    expect(seen).toBe("ready");
+    // ready에서 보낸 턴이 CLI 없음으로 실패하면 다시 읽어 C1 상태 줄이 선다.
+    readStatus.mockResolvedValueOnce("missing");
+    await act(async () => { setFailure("missing"); await Promise.resolve(); });
+    expect(readStatus).toHaveBeenCalledTimes(2);
+    expect(seen).toBe("missing");
+    // 성공한 턴이 카드를 내리고, 그 뒤 미로그인으로 실패해도 같은 경로를 다시 읽는다.
+    readStatus.mockResolvedValueOnce("signedout");
+    await act(async () => { setFailure(null); await Promise.resolve(); });
+    expect(readStatus).toHaveBeenCalledTimes(2);
+    await act(async () => { setFailure("signedout"); await Promise.resolve(); });
+    expect(readStatus).toHaveBeenCalledTimes(3);
+    expect(seen).toBe("signedout");
   });
 
   it("starts the shared Claude login and opens the Quota panel from the status line", async () => {

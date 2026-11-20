@@ -25,7 +25,7 @@ import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 
 import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreMobileSessions } from "./deps.js";
-import { commodoreChatEntries, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
+import { commodoreChatEntries, commodoreCliFailure, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreCliFailureCard } from "./commodore-cli-status.js";
 import { commodoreCliCause } from "../shared/contracts/cli-status.js";
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
@@ -536,7 +536,7 @@ function CommodoreMobileChat({ t, language, commodoreId, theaterId, view, cleare
   const decision = useCommodoreDecisionDock({ theaterId: commodoreId, contextTheaterId: theaterId, language, phone: true, onEnded: onFail });
   const composer = (
     <div className="objectives-cm-dock">
-      <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} decisionDock={Conversation ? null : decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} cliGate />
+      <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={!Conversation && TopEntries ? <TopEntries /> : null} decisionDock={Conversation ? null : decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} cliGate cliFailure={commodoreCliFailure(entries)} />
     </div>
   );
   return (
@@ -693,7 +693,7 @@ function CommodoreMobileLog({ t, language, theaterId, view, entries, live, hasMo
       </div>
       {/* 입력 독 — 데스크톱 사령관·지휘관 대화와 같은 캡슐 입력창이다(첨부·「+」 메뉴·안내 줄). 폰에서 달라지는 것만 phone 으로 넘긴다. */}
       <div ref={dockRef} className="objectives-cm-dock">
-        <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} decisionDock={decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} cliGate />
+        <CommodoreComposer t={t} theaterId={theaterId} active={view?.boardReady === true && view.enabled} running={view?.run.phase === "turn"} phone={{ online, failure, onPending: setPending }} topEntries={TopEntries ? <TopEntries /> : null} decisionDock={decision} decisionTarget={decision?.target ?? null} onFail={onFail} onClear={onClear} cliGate cliFailure={commodoreCliFailure(entries)} />
       </div>
     </div>
   );

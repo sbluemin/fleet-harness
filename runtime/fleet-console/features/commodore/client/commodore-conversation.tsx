@@ -11,7 +11,7 @@ import type { Translate } from "@fleet-console/i18n";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "../../workspace/shared/conversation-surfaces.js";
 import type { ClientTheaterInboxCapability } from "../../workspace/shared/theater-inbox.js";
 
-import { commodoreChatEntries, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
+import { commodoreChatEntries, commodoreCliFailure, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { useCommodoreDecisionDock } from "./commodore-person-inbox.js";
 import { CommodoreTasks } from "./commodore-tasks.js";
@@ -441,7 +441,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, language,
       {failure ? <p className="objectives-commodore-failure" role="alert">{failure}</p> : null}
       {readOnly
         ? <button type="button" className="objectives-commodore-conversation-back" onClick={onBack}>{t("commodore.conversation.back")}</button>
-        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} trailing={trailing} decisionTarget={dock?.target ?? null} onFail={fail} onClear={() => setFailure(null)} cliGate />}
+        : <CommodoreComposer t={t} theaterId={commodoreId} active={view?.boardReady === true && view.enabled} running={run?.phase === "turn"} placeholder={[...meta.map((part) => part.text), routine].filter(Boolean).join(" · ")} trailing={trailing} decisionTarget={dock?.target ?? null} onFail={fail} onClear={() => setFailure(null)} cliGate cliFailure={commodoreCliFailure(entries)} />}
     </footer>
   );
   const topSettings = !readOnly && view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={fail} onClear={() => setFailure(null)} onOpenChange={setSettingsOpen} /> : null;
