@@ -1,29 +1,61 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
 import process from "node:process";
 
-import { createChildEnv, resolveBinary } from "@fleet-console/process";
+import { createChildEnv, resolveBinary, resolvePathBinary } from "@fleet-console/process";
 import { prepareAiGatewayLaunchProfile, resolveAiGatewaySelection, visibleGatewayModels } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings, ProviderStatusMap } from "@fleet-console/ai-gateway";
 
+import { FLEET_BROWSER_MCP_SERVER } from "../../../browser/host/mcp.js";
 import type { AiGatewayLaunchBinding } from "../agent/launch.js";
-import { applyAgentCliPathEnvOverlay } from "../agent/agent-cli-paths.js";
+import { applyAgentCliPathEnvOverlay, resolveAgentCliBinary } from "../agent/agent-cli-paths.js";
 import { stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "../terminal/launch-env.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../terminal/terminal-types.js";
 
+export const STANDALONE_CLI_KINDS = ["claude", "antigravity"] as const;
+export type StandaloneCliKind = (typeof STANDALONE_CLI_KINDS)[number];
+
+export function isStandaloneCliKind(value: unknown): value is StandaloneCliKind {
+  return value === "claude" || value === "antigravity";
+}
+
+export function standaloneCliSessionId(cli: StandaloneCliKind): string {
+  return `standalone-cli:${cli}`;
+}
+
+export function standaloneCliRecordType(cli: StandaloneCliKind): string {
+  return `standalone-cli:${cli}`;
+}
+
+export interface StandaloneCliBrowserMcpPrepared {
+  readonly endpointUrl: string;
+  readonly bearerToken: string;
+  release(): Promise<void>;
+}
+
+export interface StandaloneCliBrowserMcpBinding {
+  prepare(options: {
+    readonly cli: StandaloneCliKind;
+    readonly cwd: string;
+    readonly commodoreId: string | null;
+  }): Promise<StandaloneCliBrowserMcpPrepared>;
+}
+
 /**
- * 독립 Claude Code CLI의 런치.
+ * 독립 CLI(Claude Code · Antigravity)의 런치.
  *
- * 사령관도 지휘관도 아닌, AI Gateway만 바라보는 평범한 `claude`다. 그래서 Agent 런치(`agent/launch.ts`)가
- * 싣는 것 — Fleet MCP(`--mcp-config`)·Fleet 플러그인 트리·시스템 프롬프트·세션 훅·세션 좌표 —
- * 을 싣지 않는다. 인자는 압축 창 `--settings`뿐이다. 사용자 `~/.claude`의 설정·CLAUDE.md·스킬·
- * 플러그인·MCP와 Theater의 `.mcp.json`은 Claude Code가 평소대로 읽는다.
+ * 사령관·지휘관과 무관한 독립 세션이다. Fleet 플러그인 트리·시스템 프롬프트·세션 훅·세션 좌표는 싣지 않고,
+ * 사용자가 고른 CLI가 현재 보고 있는 사령관의 Fleet Browser를 바로 쓸 수 있게 `fleet-browser` HTTP MCP만
+ * 임시 0600 설정 파일/디렉터리로 주입한다(argv에 Bearer 토큰을 싣지 않는다).
  *
- * 환경만 다르다: Gateway로 향하는 변수를 얹고, Console이 다른 Claude 세션 안에서 떴을 때 상속했을
- * Fleet·부모 세션의 표식과 자격은 걷는다. 그것을 남기면 이 CLI가 그 세션의 메시지 소켓·라우팅 Mod·
- * compact 훅 자격을 들고 Fleet의 일부처럼 행동한다.
+ * Claude Code는 AI Gateway 변수와 압축 창 `--settings`를 받고, Antigravity(`agy`)는 자체 인증 스택을 그대로 쓴다.
+ * 두 CLI 모두 부모 세션 표식과 Fleet 내부 환경 변수는 걷는다.
  */
 export interface StandaloneCliLaunchDeps {
   readonly env?: NodeJS.ProcessEnv;
   readonly aiGateway: AiGatewayLaunchBinding;
+  readonly browserMcp?: StandaloneCliBrowserMcpBinding;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
@@ -67,11 +99,124 @@ export function standaloneCliBaseEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv 
   return next;
 }
 
-export function createStandaloneCliLaunchResolver(deps: StandaloneCliLaunchDeps) {
+export async function isStandaloneCliInstalled(
+  cli: StandaloneCliKind,
+  deps: Pick<StandaloneCliLaunchDeps, "env" | "readAgentCliPaths">,
+): Promise<boolean> {
+  const inherited = deps.env ?? process.env;
+  const env = standaloneCliBaseEnv(inherited);
+  if (cli === "claude") {
+    const userPaths = deps.readAgentCliPaths ? await deps.readAgentCliPaths() : {};
+    const resolution = resolveAgentCliBinary({ cliCommand: "claude", env, userPaths });
+    return resolution.resolved !== undefined;
+  }
+  const override = env.AGY_BIN?.trim();
+  try {
+    return resolvePathBinary(override || "agy", env) !== undefined;
+  } catch {
+    return false;
+  }
+}
+
+async function prepareBrowserMcpInjection(
+  cli: StandaloneCliKind,
+  binding: StandaloneCliBrowserMcpBinding,
+  cwd: string,
+  commodoreId: string | null,
+): Promise<{ readonly args: readonly string[]; readonly cleanup: () => Promise<void> }> {
+  const prepared = await binding.prepare({ cli, cwd, commodoreId });
+  let tmpDir: string | null = null;
+  let cleaned = false;
+  const cleanup = async () => {
+    if (cleaned) return;
+    cleaned = true;
+    const dir = tmpDir;
+    tmpDir = null;
+    try {
+      if (dir) await fs.rm(dir, { recursive: true, force: true });
+    } finally {
+      await prepared.release();
+    }
+  };
+  try {
+    tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), `fleet-standalone-${cli}-mcp-`));
+    await fs.chmod(tmpDir, 0o700);
+    if (cli === "claude") {
+      const configPath = path.join(tmpDir, "mcp-config.json");
+      const payload = JSON.stringify({
+        mcpServers: {
+          [FLEET_BROWSER_MCP_SERVER]: {
+            type: "http",
+            url: prepared.endpointUrl,
+            headers: {
+              Authorization: `Bearer ${prepared.bearerToken}`,
+            },
+          },
+        },
+      });
+      await fs.writeFile(configPath, payload, { mode: 0o600 });
+      return { args: ["--mcp-config", configPath], cleanup };
+    }
+    // Antigravity CLI(`agy`)는 `--add-dir`로 추가한 폴더의 `.agents/plugins/<name>/mcp_config.json`을
+    // 세션 범위로 자동 발견한다. 사용자 `~/.gemini/config/mcp_config.json`이나 작전 구역 트리를 건드리지 않는다.
+    const pluginDir = path.join(tmpDir, ".agents", "plugins", FLEET_BROWSER_MCP_SERVER);
+    await fs.mkdir(pluginDir, { recursive: true });
+    await fs.writeFile(
+      path.join(pluginDir, "plugin.json"),
+      JSON.stringify({ name: FLEET_BROWSER_MCP_SERVER, version: "1.0.0" }),
+      { mode: 0o600 },
+    );
+    await fs.writeFile(
+      path.join(pluginDir, "mcp_config.json"),
+      JSON.stringify({
+        mcpServers: {
+          [FLEET_BROWSER_MCP_SERVER]: {
+            serverUrl: prepared.endpointUrl,
+            headers: {
+              Authorization: `Bearer ${prepared.bearerToken}`,
+            },
+          },
+        },
+      }),
+      { mode: 0o600 },
+    );
+    return { args: ["--add-dir", tmpDir], cleanup };
+  } catch (error) {
+    await cleanup();
+    throw error;
+  }
+}
+
+export function createStandaloneCliLaunchResolver(
+  deps: StandaloneCliLaunchDeps,
+  cli: StandaloneCliKind = "claude",
+) {
   return async (cwd: string | undefined, context: TerminalLaunchContext | undefined): Promise<TerminalLaunchSpec> => {
     if (!cwd) throw new Error("standalone_cli_cwd_required");
     const inherited = deps.env ?? process.env;
     let env = standaloneCliBaseEnv(inherited);
+
+    if (cli === "antigravity") {
+      const { bin, prefixArgs } = resolveBinary("agy", "AGY_BIN", env);
+      const baseEnv = withTerminalCapabilities({
+        ...env,
+        INIT_CWD: cwd,
+        PWD: cwd,
+        ...(context?.colorScheme ? { COLORFGBG: context.colorScheme === "light" ? "0;15" : "15;0" } : {}),
+      });
+      const mcp = deps.browserMcp
+        ? await prepareBrowserMcpInjection("antigravity", deps.browserMcp, cwd, context?.commodoreId ?? null)
+        : undefined;
+      return {
+        bin,
+        args: [...prefixArgs, ...(mcp?.args ?? [])],
+        cwd,
+        env: createChildEnv(baseEnv, {}),
+        terminalName: TERMINAL_TERM,
+        ...(mcp ? { cleanup: mcp.cleanup } : {}),
+      };
+    }
+
     if (deps.readAgentCliPaths) env = applyAgentCliPathEnvOverlay(env, "claude", await deps.readAgentCliPaths());
     const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", env);
     const origin = deps.aiGateway.origin();
@@ -102,7 +247,17 @@ export function createStandaloneCliLaunchResolver(deps: StandaloneCliLaunchDeps)
     });
     const launchEnv: Record<string, string> = { ...profile.env };
     if (!inherited[FUNCTION_HOOKS_ENV_KEY]) delete launchEnv[FUNCTION_HOOKS_ENV_KEY];
-    return { bin: profile.bin, args: [...profile.args], cwd, env: launchEnv, terminalName: TERMINAL_TERM };
+    const mcp = deps.browserMcp
+      ? await prepareBrowserMcpInjection("claude", deps.browserMcp, cwd, context?.commodoreId ?? null)
+      : undefined;
+    return {
+      bin: profile.bin,
+      args: [...profile.args, ...(mcp?.args ?? [])],
+      cwd,
+      env: launchEnv,
+      terminalName: TERMINAL_TERM,
+      ...(mcp ? { cleanup: mcp.cleanup } : {}),
+    };
   };
 }
 

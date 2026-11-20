@@ -55,6 +55,7 @@ export interface TerminalTicket {
 }
 
 export interface TerminalTicketContext {
+  readonly commodoreId?: string;
   readonly cwd: string;
   readonly sessionId: string;
   readonly objectiveId?: string;

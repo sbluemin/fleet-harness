@@ -13,6 +13,7 @@ import { objectiveIdFromSessionLabel } from "../../computer-use/host/mcp.js";
 
 export const FLEET_BROWSER_MCP_SERVER = "fleet-browser";
 export const SESSION_BROWSER_OWNER_PREFIX = "plugin-browser:";
+export const STANDALONE_BROWSER_OWNER_PREFIX = "standalone-cli:";
 
 export interface BrowserMcpDeps extends BrowserToolDeps {
   readonly transport?: McpHttpTransport;
@@ -84,11 +85,27 @@ function refusalForAvailability(availability: { readonly available: boolean; rea
   return "desktop_required";
 }
 
-function deny(deps: BrowserMcpDeps, sessionLabel: string | undefined) {
+function deny(
+  deps: BrowserMcpDeps,
+  sessionLabel: string | undefined,
+  standalonePlaces?: ReadonlyMap<string, BrowserCaller & { readonly browserId: string }>,
+) {
   const id = objectiveIdFromSessionLabel(sessionLabel);
   const fallback = deps.language?.() ?? "en";
-  // 전역 브라우저 id 와 일반 세션 별칭은 Objective 호출자로 풀지 않는다.
-  const objectiveRecord = id === GLOBAL_BROWSER_OWNER_ID || id.startsWith(SESSION_BROWSER_OWNER_PREFIX) ? null : deps.resolveObjective?.(id) ?? deps.objectiveRecords().find((op) => op.id === id);
+  // 독립 CLI 세션은 등록된 자리로만 풀며, 미등록·해제된 독립 라벨은 Objective 로 떨어지지 않는다.
+  const standalonePlace = standalonePlaces?.get(id);
+  if (standalonePlace) {
+    const availability = deps.service.availability();
+    const refusal = refusalForAvailability(availability);
+    if (refusal) return { denied: refuse(refusal, standalonePlace.browserId, fallback), place: standalonePlace };
+    return { denied: null, place: standalonePlace };
+  }
+  // 전역 브라우저 id 와 일반·독립 세션 별칭은 Objective 호출자로 풀지 않는다.
+  const objectiveRecord = id === GLOBAL_BROWSER_OWNER_ID
+    || id.startsWith(SESSION_BROWSER_OWNER_PREFIX)
+    || id.startsWith(STANDALONE_BROWSER_OWNER_PREFIX)
+    ? null
+    : deps.resolveObjective?.(id) ?? deps.objectiveRecords().find((op) => op.id === id);
   if (!objectiveRecord) return { denied: refuse("caller_unresolved", null, fallback), place: null };
   // 자식 세션은 루트와 같은 스페이스·같은 묶음에 선다 — 같은 탭 집합, 작업 탭은 각자.
   const scope = scopeOf(deps, objectiveRecord.id);
@@ -143,6 +160,8 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
   // 일반 세션의 공간 별칭은 Console 실행 동안 유지하되, 그 연결과 탭은 세션이 끝날 때 회수한다.
   const pluginOwners = new Map<string, string>();
   const pluginConnections = new Map<string, BrowserPluginConnection>();
+  // 독립 CLI 세션의 브라우저 자리. PTY 가 살아 있는 동안 사령관 스페이스에 자기 묶음으로 서고, 종료 시 자기 탭만 회수한다.
+  const standalonePlaces = new Map<string, BrowserCaller & { readonly browserId: string }>();
   const ownerKey = (pluginId: string, scopeId: string) => JSON.stringify([pluginId, scopeId]);
   /** 사령관 세션의 scope(`commodore:<id>`)는 곧 그 사령관의 공간 id 다. 없는 사령관이면 null. */
   const commodoreScope = (pluginId: string, scopeId: string): string | null => {
@@ -163,7 +182,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
         registry.registerAgentTool({ ...spec, execute: (args, context) => {
           const parsed = schema.safeParse(args);
           if (!parsed.success || !context.sessionLabel || controller.signal.aborted) return Promise.resolve({ content: [{ type: "text", text: JSON.stringify({ error: "browser_arguments_invalid", issues: parsed.success ? [] : parsed.error.issues.map((issue) => describeArgumentIssue(args, issue)) }) }], isError: true });
-          const { denied, place } = deny(deps, context.sessionLabel);
+          const { denied, place } = deny(deps, context.sessionLabel, standalonePlaces);
           if (denied || !place) return Promise.resolve(denied ?? refuse("caller_unresolved", null, "en"));
           const signals = [controller.signal, ...(context.signal ? [context.signal] : [])];
           // 세션 라벨 자리에 전역 브라우저 id 를 실어 보낸다. 부른 참가자와 그 스페이스·묶음은 따로 싣는다.
@@ -179,8 +198,17 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
         getEndpoint: async () => { if (closed) throw new Error("Browser MCP disposed"); return manager.getEndpoint(); },
         issueSessionToken: (request) => { if (closed) throw new Error("Browser MCP disposed"); return manager.issueSessionToken(request); },
         // 이 세션(참가자)의 턴이 끝났다 — 그 참가자의 호출만 끊는다. 같은 브라우저를 쓰는 다른 참가자의 호출은 그대로 간다.
-        cancelSession: (label) => { const scope = scopeOf(deps, objectiveIdFromSessionLabel(label)); deps.service.interruptParticipant(scope.participantId); },
-        releaseSessionToken: (label) => { const scope = scopeOf(deps, objectiveIdFromSessionLabel(label)); deps.service.interruptParticipant(scope.participantId); manager.releaseSessionToken(label); },
+        cancelSession: (label) => {
+          const id = objectiveIdFromSessionLabel(label);
+          const participantId = standalonePlaces.get(id)?.participantId ?? scopeOf(deps, id).participantId;
+          deps.service.interruptParticipant(participantId);
+        },
+        releaseSessionToken: (label) => {
+          const id = objectiveIdFromSessionLabel(label);
+          const participantId = standalonePlaces.get(id)?.participantId ?? scopeOf(deps, id).participantId;
+          deps.service.interruptParticipant(participantId);
+          manager.releaseSessionToken(label);
+        },
         cleanup: () => { manager.cleanup(); },
         dispose: () => {
           if (closing) return closing;
@@ -195,12 +223,36 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
       connections.add(connection);
       return connection;
     },
-    /** 라우트의 `:id` 가 세션 문맥 별칭인가 — 사령관 scope 이거나, 연결된 적 있는 일반 세션의 별칭이다. */
+    /** 라우트의 `:id` 가 세션 문맥 별칭인가 — 사령관 scope 이거나, 연결된 적 있는 일반·독립 세션의 별칭이다. */
     isSessionOwner(id: string): boolean {
       if (id === GLOBAL_BROWSER_OWNER_ID) return false;
       const commodoreId = commodoreOfBrowserSpace(id);
       if (commodoreId) return deps.commodoreExists?.(commodoreId) === true;
+      if ([...standalonePlaces.values()].some((place) => place.ownerId === id)) return true;
       return [...pluginOwners.values()].includes(id);
+    },
+    /** 독립 CLI PTY 에 fleet-browser HTTP MCP 자리를 배정한다 — 사령관이 있으면 그 사령관의 스페이스에 자기 묶음으로 선다. */
+    registerStandaloneSession(sessionLabel: string, options: { readonly commodoreId: string | null }): void {
+      if (disposed) throw new Error("Browser MCP host is disposed");
+      const commodoreId = typeof options.commodoreId === "string" && options.commodoreId ? options.commodoreId : null;
+      const spaceId = commodoreId && deps.commodoreExists?.(commodoreId) !== false
+        ? commodoreBrowserSpaceId(commodoreId)
+        : DESKTOP_BROWSER_DEFAULT_SPACE_ID;
+      const ownerId = sessionLabel.startsWith(STANDALONE_BROWSER_OWNER_PREFIX)
+        ? sessionLabel
+        : `${STANDALONE_BROWSER_OWNER_PREFIX}${sessionLabel}`;
+      standalonePlaces.set(sessionLabel, { browserId: BROWSER_GLOBAL_ID, spaceId, ownerId, participantId: ownerId });
+    },
+    /** 독립 CLI PTY 가 끝났다 — 진행 중 호출을 끊고 그 CLI 가 연 탭과 스크린샷만 거둔다. 같은 스페이스의 사령관과 다른 CLI 탭은 보존한다. */
+    async releaseStandaloneSession(sessionLabel: string): Promise<void> {
+      const place = standalonePlaces.get(sessionLabel);
+      if (!place) return;
+      standalonePlaces.delete(sessionLabel);
+      deps.service.interrupt(BROWSER_GLOBAL_ID, place.participantId);
+      deps.service.endAgentSession(BROWSER_GLOBAL_ID, "turn", place.participantId);
+      deps.service.forgetParticipant(place.participantId);
+      deps.screenshots?.release(place.ownerId);
+      await deps.service.closeOwner(place.ownerId);
     },
     connectPlugin(options: BrowserPluginOptions): BrowserPluginConnection {
       if (disposed) throw new Error("Browser MCP host is disposed");
@@ -278,6 +330,7 @@ export function createBrowserMcpHost(deps: BrowserMcpDeps) {
     async dispose(): Promise<void> {
       disposed = true;
       await Promise.all([...connections, ...pluginConnections.values()].map((connection) => connection.dispose()));
+      standalonePlaces.clear();
       pluginOwners.clear();
       await deps.service.dispose();
       deps.screenshots?.cleanup();

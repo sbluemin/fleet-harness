@@ -339,6 +339,7 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       if (guard.cancelled) throw new Error("terminal_launch_cancelled");
     }
     const launch = await deps.launch(context.cwd, {
+      ...(context.commodoreId ? { commodoreId: context.commodoreId } : {}),
       sessionId: context.sessionId,
       ...(context.objectiveId ? { objectiveId: context.objectiveId } : {}),
       ...(context.objectiveRecordType ? { objectiveRecordType: context.objectiveRecordType } : {}),
