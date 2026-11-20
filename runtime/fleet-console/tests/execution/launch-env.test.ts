@@ -5,8 +5,10 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 import type { OwnedProcessPort } from "@fleet-console/process";
+import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 
 import type { StandaloneCliPlugin } from "../../features/execution/host/standalone-cli/global-plugins.js";
+import type { AntigravityPluginNote } from "../../features/execution/shared/standalone-cli.js";
 import { createStandaloneCliLaunchResolver } from "../../features/execution/host/standalone-cli/launch.js";
 import { registerStandaloneCliRoutes } from "../../features/execution/host/standalone-cli/routes.js";
 import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
@@ -148,8 +150,9 @@ describe("standalone Claude Code CLI launch", () => {
         "mkdir -p \"$dest/skills/tips\"",
         "printf '{\"name\":\"%s\"}' \"$name\" > \"$dest/plugin.json\"",
         "printf -- '---\\nname: tips\\n---\\n' > \"$dest/skills/tips/SKILL.md\"",
-        "printf '{\"mcpServers\":{\"remote\":{\"serverUrl\":\"https://mcp.example/mcp\",\"headers\":{\"Authorization\":\"Bearer ${ALPHA_KEY}\"}},\"dynamic\":{\"serverUrl\":\"https://mcp.example/dyn\"},\"local\":{\"command\":\"%s/run.sh\"}}}' \"$dest\" > \"$dest/mcp_config.json\"",
+        "printf '{\"mcpServers\":{\"remote\":{\"serverUrl\":\"https://mcp.example/mcp\",\"headers\":{\"Authorization\":\"Bearer ${ALPHA_KEY}\"}},\"dynamic\":{\"serverUrl\":\"https://mcp.example/dyn\"},\"docs\":{\"serverUrl\":\"https://mcp.example/docs\"},\"local\":{\"command\":\"%s/run.sh\"}}}' \"$dest\" > \"$dest/mcp_config.json\"",
         "echo '  ⚠ MCP server \"legacy\" skipped: the legacy SSE transport isn'\"'\"'t supported'",
+        "echo '  ⚠ Notification hooks skipped: there is no Notification event'",
         "",
       ].join("\n"), { mode: 0o755 });
       const home = path.join(root, "home");
@@ -181,6 +184,7 @@ describe("standalone Claude Code CLI launch", () => {
           mcpServers: {
             "plugin:alpha:remote": { type: "http", url: "https://mcp.example/mcp", headers: { Authorization: "Bearer ${ALPHA_KEY}" } },
             "plugin:alpha:dynamic": { type: "http", url: "https://mcp.example/dyn", headersHelper: "print-headers" },
+            "plugin:alpha:docs": { type: "http", url: "https://mcp.example/docs" },
           },
           env: { ALPHA_KEY: "alpha-secret" },
         },
@@ -196,6 +200,10 @@ describe("standalone Claude Code CLI launch", () => {
           return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => child.kill(signal) });
         },
       };
+      // 로그인 확인은 MCP 표준 신호 포트로만 한다 — 고정 자격 헤더 서버와 동적 헤더 서버는 묻지 않는다.
+      const probed: string[] = [];
+      const reports: AntigravityPluginNote[][] = [];
+      let reported: () => void = () => undefined;
       const baseDeps = {
         env: { PATH: "/usr/bin:/bin", HOME: home, CLAUDE_BIN: claudeBin, AGY_BIN: agyBin, FLEET_CONSOLE_SESSION_ID: "parent" },
         aiGateway: { routePath: "/api/v1/ai-gateway", origin: () => "http://127.0.0.1:4100" },
@@ -203,6 +211,11 @@ describe("standalone Claude Code CLI launch", () => {
         globalPlugins,
         processes,
         homeDir: home,
+        mcpSignInRequired: async (config: ClaudeGatewayExternalMcpServer) => {
+          if (config.type !== "stdio") probed.push(config.url);
+          return true;
+        },
+        antigravityPluginNotes: () => (notes: readonly AntigravityPluginNote[]) => { reports.push([...notes]); reported(); },
       };
 
       const extraTheaterA = path.join(root, "theater-a");
@@ -270,6 +283,7 @@ describe("standalone Claude Code CLI launch", () => {
       // agy MCP 설정은 환경 변수를 펼치지 않으므로 키를 채워 둔다. 동적 헤더 서버는 실을 수 없어 뺀다. 경로는 옮긴 자리를 가리킨다.
       expect(alphaMcp.mcpServers).toEqual({
         remote: { serverUrl: "https://mcp.example/mcp", headers: { Authorization: "Bearer alpha-secret" } },
+        docs: { serverUrl: "https://mcp.example/docs" },
         local: { command: path.join(fs.realpathSync(pluginDir), ".agents/plugins/alpha/run.sh") },
       });
       const agyPlugin = JSON.parse(fs.readFileSync(path.join(addDir, ".agents/plugins/fleet-browser/plugin.json"), "utf8")) as { name: string };
@@ -279,6 +293,17 @@ describe("standalone Claude Code CLI launch", () => {
         serverUrl: "http://127.0.0.1:4199/mcp/fleet-browser",
         headers: { Authorization: "Bearer tok-antigravity-secret" },
       });
+      // 사람에게 보일 보고: 건너뛴 몫·로그인이 필요한 서버·변환 실패. 사람의 agy 설치본을 쓰는 gamma 는 알릴 것이 없다.
+      if (reports.length === 0) await new Promise<void>((resolve) => { reported = resolve; });
+      expect(probed).toEqual(["https://mcp.example/docs"]);
+      expect(reports).toEqual([[
+        {
+          pluginId: "alpha@market",
+          signIn: ["docs"],
+          skipped: [{ kind: "lsp" }, { kind: "mcp-server", name: "legacy" }, { kind: "hook", event: "Notification" }, { kind: "mcp-server", name: "dynamic" }],
+        },
+        { pluginId: "broken@market", retry: true },
+      ]]);
       await agySpec.cleanup?.();
       expect(fs.existsSync(addDir)).toBe(false);
       expect(fs.existsSync(pluginDir)).toBe(false);

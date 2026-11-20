@@ -7,6 +7,8 @@ import path from "node:path";
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 import { withHidden, type OwnedChild, type OwnedProcessPort } from "@fleet-console/process";
 
+import type { AntigravityPluginNote, AntigravityPluginSkip } from "../../shared/standalone-cli.js";
+
 /**
  * 독립 CLI에 함께 싣는 전역 플러그인 하나 — 사령관 플러그인 홈(`<consoleDataDir>/commodore-plugins`)에 받아 둔 설치본.
  * `name`은 Claude Code가 붙이는 플러그인 이름, `mcpServers`는 세션 MCP 선언(`plugin:<플러그인>:<서버>`),
@@ -61,6 +63,13 @@ export interface AntigravityPluginOptions {
   readonly processes?: OwnedProcessPort;
   /** Console 종료 — 걸리면 진행 중인 변환 자식을 끝내고 남은 플러그인은 싣지 않는다. */
   readonly signal?: AbortSignal;
+  /** 원격 MCP 서버가 로그인을 요구하는가(MCP 표준 신호). 생략하면 로그인 안내를 만들지 않는다. */
+  readonly signInRequired?: (config: ClaudeGatewayExternalMcpServer) => Promise<boolean>;
+  /**
+   * 이번 실행의 플러그인별 보고(알릴 것이 있는 플러그인만). 한 번 온다. 로그인 확인은 CLI 실행을 기다리게 하지 않으므로
+   * 이 함수가 돌아온 뒤에 올 수 있다.
+   */
+  readonly report?: (notes: readonly AntigravityPluginNote[]) => void;
 }
 
 /**
@@ -77,10 +86,21 @@ export interface AntigravityPluginOptions {
  *   (agy 1.5.13 실측) — 사람이 agy에서 로그인해 둔 MCP 서버를 로그인할 길이 없는 사본으로 덮지 않고, 그 사람의 것을 쓴다.
  * - agy에 대응물이 없는 몫(LSP 서버·출력 스타일·`headersHelper` 서버, 변환기가 경고하는 SSE 서버·훅 이벤트)과 변환에 실패한
  *   플러그인은 건너뛰고 서버 로그에 남긴다. 어떤 실패도 CLI 실행을 막지 않는다.
+ * - 사람이 알아야 할 몫(건너뛴 몫·변환 실패·로그인이 필요한 원격 MCP)은 `report`로 구조화해 넘긴다. 세션 범위 사본에는
+ *   agy의 로그인 수단이 붙지 않으므로, 로그인을 요구하는 서버는 실려도 연결되지 않는다 — agy에 직접 설치하면 그쪽에서 로그인한다.
  *
  * 실을 것이 하나도 없으면 `undefined`. 돌려준 `cleanup`이 임시 폴더를 걷는다.
  */
 export async function prepareAntigravityPlugins(options: AntigravityPluginOptions): Promise<AntigravityPluginInjection | undefined> {
+  const notes = createNotes();
+  try {
+    return await prepare(options, notes);
+  } finally {
+    notes.deliver(options.report);
+  }
+}
+
+async function prepare(options: AntigravityPluginOptions, notes: Notes): Promise<AntigravityPluginInjection | undefined> {
   if (options.plugins.length === 0) return undefined;
   let root: string | null = null;
   let cleaned = false;
@@ -114,20 +134,30 @@ export async function prepareAntigravityPlugins(options: AntigravityPluginOption
         note(plugin, `skipped: another plugin in this session already uses the name "${plugin.name}"`);
         continue;
       }
-      for (const line of unsupportedParts(plugin)) note(plugin, line);
+      const entry = notes.of(plugin);
+      for (const part of unsupportedParts(plugin)) {
+        note(plugin, UNSUPPORTED_LINES[part]);
+        entry.skipped.push({ kind: part });
+      }
       const result = await runAgy(options, [...options.prefixArgs, "plugin", "install", plugin.path], env, home);
-      for (const line of converterWarnings(result.output)) note(plugin, line);
+      for (const line of converterWarnings(result.output)) {
+        note(plugin, line);
+        entry.skipped.push(classifyWarning(line));
+      }
       const produced = await fs.readdir(installed);
       if (!result.ok || produced.length !== 1 || taken.has(produced[0]!)) {
         note(plugin, result.ok ? "skipped: the agy converter produced no usable plugin folder" : `skipped: agy plugin conversion failed (${result.reason})`);
         await Promise.all(produced.map((name) => fs.rm(path.join(installed, name), { recursive: true, force: true })));
+        entry.retry = true;
         continue;
       }
       const folder = produced[0]!;
       const from = path.join(installed, folder);
       const to = path.join(target, folder);
       await fs.rename(from, to);
-      await rewriteRootJson(plugin, from, to, options.env);
+      const carried = await rewriteRootJson(plugin, from, to, options.env);
+      for (const name of carried.dropped) entry.skipped.push({ kind: "mcp-server", name });
+      if (options.signInRequired) entry.signIn = signInServers(plugin, carried.servers, options.signInRequired);
       taken.add(plugin.name);
       taken.add(folder);
       loaded += 1;
@@ -219,13 +249,95 @@ function converterWarnings(output: string): string[] {
     .map((line) => line.replace(/^⚠\s*/, "").slice(0, 300));
 }
 
+const UNSUPPORTED_LINES = {
+  lsp: "LSP servers skipped: agy has no LSP server component",
+  "output-styles": "output styles skipped: agy has no output style component",
+} as const;
+
 /** 변환기가 말없이 버리는, agy에 대응물이 없는 구성 요소(agy 1.5.13 실측). */
-function unsupportedParts(plugin: StandaloneCliPlugin): string[] {
+function unsupportedParts(plugin: StandaloneCliPlugin): ("lsp" | "output-styles")[] {
   const manifest = readManifest(plugin.path);
-  const lines: string[] = [];
-  if (manifest.lspServers !== undefined || existsSync(path.join(plugin.path, ".lsp.json"))) lines.push("LSP servers skipped: agy has no LSP server component");
-  if (manifest.outputStyles !== undefined || existsSync(path.join(plugin.path, "output-styles"))) lines.push("output styles skipped: agy has no output style component");
-  return lines;
+  const parts: ("lsp" | "output-styles")[] = [];
+  if (manifest.lspServers !== undefined || existsSync(path.join(plugin.path, ".lsp.json"))) parts.push("lsp");
+  if (manifest.outputStyles !== undefined || existsSync(path.join(plugin.path, "output-styles"))) parts.push("output-styles");
+  return parts;
+}
+
+/**
+ * 변환기 경고 한 줄을 화면이 옮길 몫으로(agy 1.5.13 문장: `MCP server "x" skipped: …`, `Notification hooks skipped: …`).
+ * 모르는 문장은 `other` — 이름 없이 「일부만 실림」으로만 보인다.
+ */
+function classifyWarning(line: string): AntigravityPluginSkip {
+  const server = /^MCP server "([^"]{1,128})" skipped\b/.exec(line);
+  if (server) return { kind: "mcp-server", name: server[1]! };
+  const hook = /^([A-Za-z][A-Za-z0-9_]{0,63}) hooks skipped\b/.exec(line);
+  if (hook) return { kind: "hook", event: hook[1]! };
+  return { kind: "other" };
+}
+
+/**
+ * 변환본에 실린 원격 서버 중 로그인을 요구하는 것. 고정 자격 헤더가 있거나 키(`${VAR}`)를 받는 서버는 로그인 대상이 아니다.
+ * 확인은 기다리지 않는 약속으로 돌려준다 — 보고가 모아서 기다린다.
+ */
+function signInServers(plugin: StandaloneCliPlugin, carried: ReadonlySet<string>, required: (config: ClaudeGatewayExternalMcpServer) => Promise<boolean>): Promise<string[]> {
+  const prefix = `plugin:${plugin.name}:`;
+  const checks: Promise<string | null>[] = [];
+  for (const [key, config] of Object.entries(plugin.mcpServers)) {
+    if (!key.startsWith(prefix) || config.type !== "http" || config.headersHelper !== undefined) continue;
+    const name = key.slice(prefix.length);
+    if (!carried.has(name)) continue;
+    if (config.url.includes("${") || Object.entries(config.headers ?? {}).some(([header, value]) => header.toLowerCase() === "authorization" || value.includes("${"))) continue;
+    checks.push(required(config).then((yes) => (yes ? name : null), () => null));
+  }
+  return Promise.all(checks).then((names) => names.filter((name): name is string => name !== null));
+}
+
+interface NoteEntry {
+  readonly plugin: StandaloneCliPlugin;
+  readonly skipped: AntigravityPluginSkip[];
+  signIn: Promise<string[]> | null;
+  retry: boolean;
+}
+
+interface Notes {
+  of(plugin: StandaloneCliPlugin): NoteEntry;
+  deliver(report: AntigravityPluginOptions["report"]): void;
+}
+
+function createNotes(): Notes {
+  const entries: NoteEntry[] = [];
+  return {
+    of(plugin) {
+      const entry: NoteEntry = { plugin, skipped: [], signIn: null, retry: false };
+      entries.push(entry);
+      return entry;
+    },
+    deliver(report) {
+      if (!report) return;
+      void Promise.all(entries.map(async (entry): Promise<AntigravityPluginNote | null> => {
+        const signIn = entry.signIn ? await entry.signIn : [];
+        const skipped = uniqueSkips(entry.skipped);
+        if (!signIn.length && !skipped.length && !entry.retry) return null;
+        return { pluginId: entry.plugin.id, ...(signIn.length ? { signIn } : {}), ...(skipped.length ? { skipped } : {}), ...(entry.retry ? { retry: true as const } : {}) };
+      })).then((rows) => {
+        try {
+          report(rows.filter((row): row is AntigravityPluginNote => row !== null));
+        } catch (error) {
+          console.warn(`[standalone-cli] antigravity plugin report failed: ${messageOf(error)}`);
+        }
+      });
+    },
+  };
+}
+
+function uniqueSkips(skips: readonly AntigravityPluginSkip[]): AntigravityPluginSkip[] {
+  const seen = new Set<string>();
+  return skips.filter((skip) => {
+    const key = JSON.stringify(skip);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 /** 이 플러그인 선언 중 동적 헤더(`headersHelper`)를 쓰는 서버의 선언 키. agy 변환기는 헬퍼를 버리고 서버만 남긴다. */
@@ -238,7 +350,10 @@ function headersHelperServers(plugin: StandaloneCliPlugin): Set<string> {
   return keys;
 }
 
-async function rewriteRootJson(plugin: StandaloneCliPlugin, from: string, to: string, env: NodeJS.ProcessEnv): Promise<void> {
+/** 변환본의 루트 JSON을 고쳐 쓴다. 돌려주는 것은 실린 MCP 서버 이름과, 여기서 뺀 서버 이름이다. */
+async function rewriteRootJson(plugin: StandaloneCliPlugin, from: string, to: string, env: NodeJS.ProcessEnv): Promise<{ readonly servers: ReadonlySet<string>; readonly dropped: readonly string[] }> {
+  const servers = new Set<string>();
+  const dropped: string[] = [];
   for (const file of ROOT_JSON_FILES) {
     const full = path.join(to, file);
     let parsed: unknown;
@@ -267,18 +382,21 @@ async function rewriteRootJson(plugin: StandaloneCliPlugin, from: string, to: st
       return value;
     };
     if (isMcp && isRecord(parsed) && isRecord(parsed.mcpServers)) {
-      const servers = { ...parsed.mcpServers };
+      const kept = { ...parsed.mcpServers };
       for (const key of headersHelperServers(plugin)) {
-        if (!(key in servers)) continue;
-        delete servers[key];
+        if (!(key in kept)) continue;
+        delete kept[key];
+        dropped.push(key);
         note(plugin, `MCP server "${key}" skipped: its headersHelper can't be carried to agy`);
       }
-      parsed = { ...parsed, mcpServers: servers };
+      for (const key of Object.keys(kept)) servers.add(key);
+      parsed = { ...parsed, mcpServers: kept };
     }
     await fs.writeFile(full, `${JSON.stringify(rewrite(parsed), null, 2)}\n`, { mode: 0o600 });
     await fs.chmod(full, 0o600);
     if (unresolved.size > 0) note(plugin, `MCP values left unfilled (no key set): ${[...unresolved].join(", ")}`);
   }
+  return { servers, dropped };
 }
 
 function readManifest(dir: string): Record<string, unknown> {

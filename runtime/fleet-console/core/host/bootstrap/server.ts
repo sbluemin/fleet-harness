@@ -4,7 +4,7 @@ import type { ConsoleControlHost } from "../../../features/execution/shared/cont
 import type { ConsoleHostPorts } from "./host-ports.js";
 import { createObjectiveStorage, createObjectivesFeature, type ObjectivesFeature } from "../../../features/objectives/host/index.js";
 import { createQuotaFeature } from "../../../features/quota/host/index.js";
-import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
+import { migrateCommodoreAliases, prepareTheaterRegistryRetirement, createCommodoreOwnership, createCommodoreFeature, readMcpAuthSignal, userClaudeHome, type CommodoreFeature } from "../../../features/commodore/host/index.js";
 import { resolveConsoleFonts } from "../../../features/settings/host/settings-domain.js";
 import { withoutSidebarCommodore } from "../../../features/commodore/shared/contracts/sidebar-layout.js";
 import { CONSOLE_SIDEBAR_PATH, sidebarTarget, CONSOLE_ROSTER_PATH, UNIFIED_SIDEBAR_PATH, isUnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
@@ -2963,6 +2963,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           });
           return Object.assign(child, { killGroup: (signal?: NodeJS.Signals) => ownedProcesses.killGroup(child, signal) });
         } },
+        mcpSignInRequired: async (config) => (await readMcpAuthSignal(config)) === "needs-auth",
       });
       readSidebarSteps = () => new Map(execution.listSessions().map((session) => [session.sessionId, session.step ?? null]));
       readSidebarOwnWorking = () => new Set(execution.listSessions().filter((session) => !session.attentionPending && (session.modelActivity === "working" || session.backgroundPending)).map((session) => session.sessionId));

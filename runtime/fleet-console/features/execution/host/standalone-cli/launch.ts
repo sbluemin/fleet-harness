@@ -6,12 +6,14 @@ import process from "node:process";
 import { createChildEnv, resolveBinary, resolvePathBinary, type OwnedProcessPort } from "@fleet-console/process";
 import { prepareAiGatewayLaunchProfile, resolveAiGatewaySelection, visibleGatewayModels } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings, ProviderStatusMap } from "@fleet-console/ai-gateway";
+import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 
 import { FLEET_BROWSER_MCP_SERVER } from "../../../browser/host/mcp.js";
 import type { AiGatewayLaunchBinding } from "../agent/launch.js";
 import { applyAgentCliPathEnvOverlay, resolveAgentCliBinary } from "../agent/agent-cli-paths.js";
 import { stripConsoleInternalEnv, TERMINAL_TERM, withTerminalCapabilities } from "../terminal/launch-env.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../terminal/terminal-types.js";
+import type { AntigravityPluginNote } from "../../shared/standalone-cli.js";
 import { mergeStandaloneCliPluginEnv, prepareAntigravityPlugins, readStandaloneCliPlugins, type StandaloneCliPlugin } from "./global-plugins.js";
 
 export const STANDALONE_CLI_KINDS = ["claude", "antigravity"] as const;
@@ -67,6 +69,10 @@ export interface StandaloneCliLaunchDeps {
   readonly processes?: OwnedProcessPort;
   /** Console 종료 신호 — 진행 중인 변환을 끝내 종료가 런치를 기다리지 않게 한다. */
   readonly shutdown?: AbortSignal;
+  /** 원격 MCP 서버가 로그인을 요구하는가(MCP 표준 신호). Antigravity 로그인 안내에 쓴다. 생략하면 안내를 만들지 않는다. */
+  readonly mcpSignInRequired?: (config: ClaudeGatewayExternalMcpServer) => Promise<boolean>;
+  /** Antigravity 런치 하나의 플러그인 보고를 받을 자리를 연다. 런치마다 한 번 부르고, 돌려준 함수로 보고를 넘긴다. */
+  readonly antigravityPluginNotes?: () => (notes: readonly AntigravityPluginNote[]) => void;
   readonly readAgentCliPaths?: () => Promise<Readonly<Record<string, string>>>;
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   readonly readProviderStatuses?: () => ProviderStatusMap | undefined;
@@ -225,6 +231,8 @@ export function createStandaloneCliLaunchResolver(
         reservedNames: deps.browserMcp ? [FLEET_BROWSER_MCP_SERVER] : [],
         ...(deps.processes ? { processes: deps.processes } : {}),
         ...(deps.shutdown ? { signal: deps.shutdown } : {}),
+        ...(deps.mcpSignInRequired ? { signInRequired: deps.mcpSignInRequired } : {}),
+        ...(deps.antigravityPluginNotes ? { report: deps.antigravityPluginNotes() } : {}),
       });
       let mcp: Awaited<ReturnType<typeof prepareBrowserMcpInjection>> | undefined;
       try {
