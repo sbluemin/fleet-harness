@@ -5,6 +5,35 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.313.0] - 2026-11-20
+
+### fleet-console
+
+#### Added
+- Sign in to Claude from the usage panel with one Sign in button: it picks up your existing terminal `claude` login, or opens a sign-in card with a code field for the code the sign-in page shows.
+- The Commodore and Commander chats now show when the Claude Code CLI is missing or signed out, block sending until it is ready, and keep your draft.
+- When a message cannot be processed for that reason, the chat shows the cause with install or sign-in steps and no longer retries on its own.
+- Plugins you install globally for Commodores now also load in the Claude Code and Antigravity CLIs opened with Ctrl+`. In Claude Code they replace a plugin of the same name you installed there. Antigravity gets them for that session only, without changing your own Antigravity setup, keeps using a plugin of the same name you installed in Antigravity, and skips parts it cannot run, such as LSP servers. Antigravity cannot sign in to a plugin MCP server loaded this way, so install a plugin that needs sign-in in Antigravity itself.
+- Let Ctrl+` open a quick selector for Claude Code and Antigravity CLIs, launching each without interactive permission prompts (Turbo / bypass permissions), mounting the current Commodore's other Theaters as additional directories, keeping both sessions ready in parallel, and connecting each to Fleet Browser in the current Commodore's space.
+
+#### Changed
+- Claude's usage connection no longer needs a separate "connect" step or a trip to the terminal to sign in again after it expires.
+- Replace 2D Commodore, Commander, and member avatars with animated 3D plush avatars across Console, including promoted Quaker Commodores and a fuzziness control in Settings > Appearance.
+- Switch the Fleet Console browser favicon to the light-tile Commodore Pennant F symbol.
+
+### fleet-desktop
+
+#### Changed
+- Switch the Fleet Desktop app icon, menu bar tray icon, and launch mark to the light-tile Commodore Pennant F symbol.
+
+#### Fixed
+- Match the Desktop launch screen background to the current Console dark and light themes so Windows title-bar controls no longer appear in a contrasting box during startup.
+
+### fleet-mobile
+
+#### Changed
+- Switch the Fleet Mobile app icon and Android adaptive icon background to the light-tile Commodore Pennant F symbol.
+
 ## [1.312.0] - 2026-11-19
 
 ### fleet-console

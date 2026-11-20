@@ -5,6 +5,35 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.313.0] - 2026-11-20
+
+### fleet-console
+
+#### Added
+- 사용량 패널에서 '로그인' 단추 하나로 Claude에 로그인합니다. 터미널 `claude`의 기존 로그인이 있으면 그대로 쓰고, 없으면 로그인 카드가 열려 로그인 페이지에 뜬 코드를 붙여 넣을 수 있습니다.
+- 사령관과 지휘관 채팅이 Claude Code CLI가 없거나 로그인되지 않은 상태를 알리고, 준비될 때까지 보내기를 막으며 초안을 남깁니다.
+- 그 이유로 메시지를 처리하지 못하면 채팅이 설치·로그인 방법과 함께 원인을 보여 주고, 저절로 다시 시도하지 않습니다.
+- 사령관용으로 전역 설치한 플러그인이 이제 Ctrl+`로 여는 Claude Code와 Antigravity CLI에도 함께 실립니다. Claude Code에서는 같은 이름으로 직접 설치한 플러그인을 대신합니다. Antigravity에는 그 세션에만 실려 내 Antigravity 설정은 바뀌지 않고, Antigravity에 같은 이름으로 직접 설치한 플러그인이 있으면 그쪽을 그대로 쓰며, LSP 서버처럼 실행할 수 없는 부분은 건너뜁니다. 이렇게 실린 플러그인의 MCP 서버에는 Antigravity에서 로그인할 수 없으므로, 로그인이 필요한 플러그인은 Antigravity에 직접 설치하세요.
+- Ctrl+`로 Claude Code와 Antigravity CLI를 고를 수 있는 빠른 선택 팝업을 추가했습니다. 두 CLI 모두 권한 확인 없이 바로 실행(Turbo / 승인 우회)되고 현재 사령관의 다른 작전 구역도 추가 디렉터리로 함께 열리며, 세션을 병렬로 유지하면서 현재 사령관의 Fleet Browser 스페이스에 자동으로 연결됩니다.
+
+#### Changed
+- Claude 사용량 연결에 별도의 '연결' 단계가 없어지고, 만료된 뒤에도 터미널로 가지 않고 다시 로그인할 수 있습니다.
+- 콘솔 전반의 사령관·지휘관·구성원 아바타(진급 퀘이커 사령관 포함)를 애니메이션이 적용된 3D 플러시 아바타로 전환하고, 설정 > 모양에 솜결 조절 옵션을 추가했습니다.
+- Fleet Console 웹 파비콘을 라이트 타일 Commodore Pennant F 디자인으로 변경했습니다.
+
+### fleet-desktop
+
+#### Changed
+- Fleet Desktop 앱 아이콘, 메뉴바 트레이 아이콘, 시작 화면 심볼을 라이트 타일 Commodore Pennant F 디자인으로 변경했습니다.
+
+#### Fixed
+- 데스크톱 실행 화면 배경을 현재 콘솔의 다크·라이트 테마에 맞춰 시작 중 Windows 창 버튼 영역만 다른 색 사각형으로 떠 보이지 않도록 고쳤습니다.
+
+### fleet-mobile
+
+#### Changed
+- Fleet Mobile 앱 아이콘과 Android 적응형 아이콘 배경을 라이트 타일 Commodore Pennant F 디자인으로 변경했습니다.
+
 ## [1.312.0] - 2026-11-19
 
 ### fleet-console
