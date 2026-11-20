@@ -5,6 +5,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createStandaloneCliLaunchResolver } from "../../features/execution/host/standalone-cli/launch.js";
+import { registerStandaloneCliRoutes } from "../../features/execution/host/standalone-cli/routes.js";
+import type { ConsoleRuntimeContext } from "../../features/execution/host/context.js";
+import type { TerminalRuntime, TerminalTicketContext } from "../../features/execution/host/terminal/index.js";
 import { chatChildEnv, stripConsoleInternalEnv } from "../../features/execution/host/terminal/launch-env.js";
 
 describe("stripConsoleInternalEnv", () => {
@@ -152,12 +155,24 @@ describe("standalone Claude Code CLI launch", () => {
         homeDir: home,
       };
 
+      const extraTheaterA = path.join(root, "theater-a");
+      const extraTheaterB = path.join(root, "theater-b");
+      fs.mkdirSync(theater, { recursive: true });
+      fs.mkdirSync(extraTheaterA, { recursive: true });
+      fs.mkdirSync(extraTheaterB, { recursive: true });
+      const readAddDirs = (args: readonly string[]): string[] =>
+        args.flatMap((arg, index) => (arg === "--add-dir" && args[index + 1] ? [args[index + 1]!] : []));
+      const additionalDirectories = [theater, extraTheaterA, extraTheaterB, extraTheaterA];
+
       const claudeSpec = await createStandaloneCliLaunchResolver(baseDeps, "claude")(theater, {
         commodoreId: "comm-1",
+        additionalDirectories,
         sessionId: "standalone-cli:claude",
         objectiveRecordType: "standalone-cli:claude",
       });
       expect(claudeSpec.args).toContain("--dangerously-skip-permissions");
+      expect(readAddDirs(claudeSpec.args)).toEqual([extraTheaterA, extraTheaterB]);
+      expect(claudeSpec.env.CLAUDE_CODE_ADDITIONAL_DIRECTORIES_CLAUDE_MD).toBe("1");
       const mcpIdx = claudeSpec.args.indexOf("--mcp-config");
       expect(mcpIdx).toBeGreaterThanOrEqual(0);
       const claudeConfigPath = claudeSpec.args[mcpIdx + 1]!;
@@ -170,9 +185,12 @@ describe("standalone Claude Code CLI launch", () => {
       });
       await claudeSpec.cleanup?.();
       expect(fs.existsSync(claudeConfigPath)).toBe(false);
+      expect(fs.existsSync(extraTheaterA)).toBe(true);
+      expect(fs.existsSync(extraTheaterB)).toBe(true);
 
       const agySpec = await createStandaloneCliLaunchResolver(baseDeps, "antigravity")(theater, {
         commodoreId: "comm-1",
+        additionalDirectories,
         sessionId: "standalone-cli:antigravity",
         objectiveRecordType: "standalone-cli:antigravity",
       });
@@ -181,9 +199,10 @@ describe("standalone Claude Code CLI launch", () => {
       expect(agySpec.args).not.toContain("--mode");
       expect(agySpec.env.ANTHROPIC_BASE_URL).toBeUndefined();
       expect(agySpec.env.FLEET_CONSOLE_SESSION_ID).toBeUndefined();
-      const addDirIdx = agySpec.args.indexOf("--add-dir");
-      expect(addDirIdx).toBeGreaterThanOrEqual(0);
-      const addDir = agySpec.args[addDirIdx + 1]!;
+      const agyAddDirs = readAddDirs(agySpec.args);
+      expect(agyAddDirs.slice(0, 2)).toEqual([extraTheaterA, extraTheaterB]);
+      expect(agyAddDirs).toHaveLength(3);
+      const addDir = agyAddDirs[2]!;
       expect(agySpec.args.join(" ")).not.toContain("tok-antigravity-secret");
       const agyPlugin = JSON.parse(fs.readFileSync(path.join(addDir, ".agents/plugins/fleet-browser/plugin.json"), "utf8")) as { name: string };
       const agyMcp = JSON.parse(fs.readFileSync(path.join(addDir, ".agents/plugins/fleet-browser/mcp_config.json"), "utf8")) as { mcpServers: Record<string, { serverUrl: string; headers: { Authorization: string } }> };
@@ -194,6 +213,8 @@ describe("standalone Claude Code CLI launch", () => {
       });
       await agySpec.cleanup?.();
       expect(fs.existsSync(addDir)).toBe(false);
+      expect(fs.existsSync(extraTheaterA)).toBe(true);
+      expect(fs.existsSync(extraTheaterB)).toBe(true);
 
       expect(preparedCalls).toEqual([
         { cli: "claude", cwd: theater, commodoreId: "comm-1" },
@@ -203,5 +224,60 @@ describe("standalone Claude Code CLI launch", () => {
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  it("issues standalone CLI tickets with the commodore's other available theaters as additionalDirectories", async () => {
+    const issued: TerminalTicketContext[] = [];
+    let routeHandler: ((input: { req: { method: string }; res: unknown; pathname: string }) => Promise<boolean>) | null = null;
+    const responses: Array<{ status: number; body: unknown }> = [];
+    const theaters: Record<string, string | null> = {
+      "t-main": "/work/main",
+      "t-extra": "/work/extra",
+      "t-missing": null,
+      "t-dup": "/work/extra",
+    };
+    const ctx = {
+      basePath: "/api/v1",
+      host: {
+        lifecycle: { registerCleanup: () => {} },
+        security: {
+          isTerminalAuthorized: () => true,
+          resolveTerminalSocketRole: () => "control",
+        },
+        http: {
+          readJsonBody: async () => ({ cli: "antigravity", commodoreId: "comm-1", theaterId: "t-main" }),
+          writeJson: (_res: unknown, status: number, body: unknown) => { responses.push({ status, body }); },
+        },
+        paths: {
+          listCommodoreTheaters: (commodoreId: string) => (commodoreId === "comm-1"
+            ? Object.keys(theaters).map((id) => ({ id, label: id }))
+            : []),
+          resolveCommodoreTheaterPath: (_commodoreId: string, theaterId: string) => theaters[theaterId] ?? null,
+        },
+      },
+      registerRouter: (_path: string, handler: typeof routeHandler) => { routeHandler = handler; },
+    } as unknown as ConsoleRuntimeContext;
+    const terminalRuntime = {
+      registerLaunchResolver: () => () => {},
+      onExit: () => () => {},
+      isLive: () => false,
+      issueTicket: (context: TerminalTicketContext) => {
+        issued.push(context);
+        return { ticket: "tok-1", ttlMs: 10_000, role: "control" as const };
+      },
+      invalidateTicketsForSession: () => {},
+      terminate: () => {},
+    } as unknown as TerminalRuntime;
+
+    registerStandaloneCliRoutes(ctx, terminalRuntime, {
+      aiGateway: { routePath: "/api/v1/ai-gateway", origin: () => "http://127.0.0.1:4100" },
+    });
+
+    const handled = await routeHandler!({ req: { method: "POST" }, res: {}, pathname: "/api/v1/standalone-cli/ticket" });
+    expect(handled).toBe(true);
+    expect(responses[0]?.status).toBe(200);
+    expect(issued).toHaveLength(1);
+    expect(issued[0]?.cwd).toBe("/work/main");
+    expect(issued[0]?.additionalDirectories).toEqual(["/work/extra"]);
   });
 });

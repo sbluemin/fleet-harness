@@ -174,8 +174,12 @@ export function registerStandaloneCliRoutes(
       }
       const colorScheme = body?.colorScheme === "light" || body?.colorScheme === "dark" ? body.colorScheme : undefined;
       const role = ctx.host.security.resolveTerminalSocketRole(req) === "viewer" ? "viewer" : readSocketRole(body?.role);
+      const additionalDirectories = !terminalRuntime.isLive(sessionId)
+        ? resolveAdditionalTheaterDirectories(ctx.host.paths, current.commodoreId, current.cwd)
+        : undefined;
       const ticket = terminalRuntime.issueTicket({
         commodoreId: current.commodoreId,
+        ...(additionalDirectories?.length ? { additionalDirectories } : {}),
         cwd: current.cwd,
         sessionId,
         objectiveRecordType: standaloneCliRecordType(cli),
@@ -211,6 +215,22 @@ export function registerStandaloneCliRoutes(
     { method: "POST", path: "/ticket", summary: "Issue a standalone CLI Terminal WebSocket ticket.", category: "Console Execution", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/stop", summary: "Stop a running standalone CLI session.", category: "Console Execution", gate: "origin-write", transport: "http" },
   ]);
+}
+
+function resolveAdditionalTheaterDirectories(
+  paths: ConsoleRuntimeContext["host"]["paths"],
+  commodoreId: string,
+  cwd: string,
+): readonly string[] {
+  const seen = new Set<string>([cwd]);
+  const extra: string[] = [];
+  for (const theater of paths.listCommodoreTheaters(commodoreId)) {
+    const dir = paths.resolveCommodoreTheaterPath(commodoreId, theater.id);
+    if (!dir || seen.has(dir)) continue;
+    seen.add(dir);
+    extra.push(dir);
+  }
+  return extra;
 }
 
 function methodNotAllowed(ctx: ConsoleRuntimeContext, res: Parameters<ConsoleRuntimeContext["host"]["http"]["writeJson"]>[0]): true {
