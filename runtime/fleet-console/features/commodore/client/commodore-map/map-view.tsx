@@ -112,7 +112,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   const settings = useGlobalSettingsStore();
   const osReduced = useOsReducedMotion();
   const containerRef = useRef<HTMLDivElement>(null);
-  const nodesRef = useRef<HTMLDivElement>(null);
+  const canvasHostRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
   const tagRefs = useRef(new Map<string, HTMLDivElement>());
@@ -128,11 +128,17 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
   const setSelectedId = useCallback((next: string | null) => setCommodoreMapSelection(commodoreId, next), [commodoreId]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
-  // (a) D4 DOM 라벨 층은 WebGL일 때만 — Canvas·궤도는 캔버스에 직접 그린다.
+  // (a) D4 DOM 라벨 층은 WebGL일 때만 — 궤도는 캔버스에 직접 그린다.
   const [rendererKind, setRendererKind] = useState<MapRendererKind | null>(null);
   const [paletteTick, setPaletteTick] = useState(0);
+  const [isMobile, setIsMobile] = useState(
+    () => typeof document !== "undefined" && document.documentElement.dataset.viewMode === "mobile",
+  );
   const trackRaf = useRef(0);
   const trackTail = useRef(0);
+  const reduced = osReduced || getGlobalSettingsStoreState().state?.reduceMotion === true || settings.state?.reduceMotion === true;
+  const reducedRef = useRef(reduced);
+  reducedRef.current = reduced;
 
   const branchName = useCallback((branch: MemoryBranch): string => t(MEMORY_BRANCH_LABEL[branch]), [t]);
   const labels = useMemo(() => ({
@@ -298,10 +304,13 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     if (tailMs < Infinity) trackTail.current = window.setTimeout(stopTracking, tailMs);
   }, [stopTracking, syncPositions]);
 
-  // 테마 전환 — 토큰을 다시 읽어 렌더러에 갈아끼운다.
+  // 테마·보기 방식 전환 — 토큰을 다시 읽어 렌더러에 갈아끼우고, 모바일 전환 시 렌더러를 바꾼다.
   useEffect(() => {
     const root = document.documentElement;
-    const observer = new MutationObserver(() => setPaletteTick((tick) => tick + 1));
+    const observer = new MutationObserver(() => {
+      setPaletteTick((tick) => tick + 1);
+      setIsMobile(root.dataset.viewMode === "mobile");
+    });
     observer.observe(root, { attributes: true, attributeFilter: ["data-theme", "data-mobile-scheme", "data-view-mode"] });
     return () => observer.disconnect();
   }, []);
@@ -318,21 +327,20 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
     });
   }, []);
 
-  // 생성·반납 — 실패하면 Canvas로 넘어가고, 그것마저 실패하면 안내만 둔다.
+  // 생성·반납 — 실패하면 안내만 둔다.
   // 보기 변화 알림(onViewChange)이 오면 DOM 층을 다시 읽는다. 첫 그림·맞춤 트윈이
   // 비동기라 마운트 직후에는 짧게 따라가며 동기화한다(수정 4 D1).
   useEffect(() => {
-    const container = containerRef.current;
-    if (!container || isEmpty) return;
+    const host = canvasHostRef.current;
+    if (!host || isEmpty) return;
     let cancelled = false;
     let owned: MapRenderer | null = null;
     let offView: (() => void) | null = null;
-    const reduced = osReduced || getGlobalSettingsStoreState().state?.reduceMotion === true || settings.state?.reduceMotion === true;
-    const want = chooseMapRendererKind(detectMapRendererEnv({ reducedMotion: reduced }));
+    const want = chooseMapRendererKind(detectMapRendererEnv());
     setLoadError(null);
     const mountedModel = modelRef.current;
     const mountedPalette = paletteRef.current;
-    mountMapRenderer(want, container, mountedModel, mountedPalette)
+    mountMapRenderer(want, host, mountedModel, mountedPalette)
       .then(({ renderer, kind }) => {
         if (cancelled) {
           try { renderer.dispose(); } catch { /* 버려진 마운트는 조용히 걷는다 */ }
@@ -345,6 +353,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
         if (modelRef.current !== mountedModel || paletteRef.current !== mountedPalette) {
           renderer.update(modelRef.current, paletteRef.current);
         }
+        renderer.setReducedMotion?.(reducedRef.current);
         renderer.setFilter(visibleRef.current);
         renderer.setSelection(selectedRef.current);
         applyInsets();
@@ -369,7 +378,11 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
       tagRefs.current.clear();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [osReduced, retryToken, isEmpty]);
+  }, [isMobile, retryToken, isEmpty]);
+
+  useEffect(() => {
+    rendererRef.current?.setReducedMotion?.(reduced);
+  }, [reduced]);
 
   // 모델·팔레트·필터 — 다시 mount하지 않고 갈아끼운다.
   useEffect(() => {
@@ -523,7 +536,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
             onPointerUp={() => trackMotion(800)}
             onPointerCancel={() => stopTracking()}
           >
-            <div ref={nodesRef} className="commodore-map-canvas-host" aria-hidden="true" />
+            <div ref={canvasHostRef} className="commodore-map-canvas-host" aria-hidden="true" />
             {!memory.loaded ? (
               <div className="commodore-map-state">{t("commodore.map.loading")}</div>
             ) : memory.failed ? (
@@ -540,7 +553,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
               </div>
             ) : (
               <>
-              <div className="commodore-map-nodes">
+              <div className="commodore-map-nodes" data-renderer={rendererKind ?? undefined}>
                 {[...visible].map((id) => {
                   const node = graph.byId.get(id);
                   if (!node) return null;
@@ -660,7 +673,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, showP
                 onClick={() => { rendererRef.current?.fit(); trackMotion(600); }}
               ><FitGlyph /></button>
               </div>
-              {/* 끌기·휠 조작은 WebGL만 받는다 — Canvas는 조작이 없고, 휴대폰 궤도는 좁은 화면이라 시안대로 숨긴다. */}
+              {/* 끌기·휠 조작은 WebGL만 받는다 — 휴대폰 궤도는 좁은 화면이라 시안대로 숨긴다. */}
               {rendererKind === "webgl" ? <div className="commodore-map-hint" aria-hidden="true">{t("commodore.map.hint")}</div> : null}
               </div>
               <div className="commodore-map-legend">

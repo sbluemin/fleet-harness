@@ -4,7 +4,6 @@ import {
   BufferGeometry,
   DynamicDrawUsage,
   LineSegments,
-  NormalBlending,
   PerspectiveCamera,
   Points,
   Quaternion,
@@ -23,9 +22,9 @@ import { mapPaletteToRgb, type MapPalette } from "../map-palette.js";
 import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
 
 /**
- * three.js 렌더러(안 D) — 이 파일과 three는 지도를 열 때만 받는 지연 청크다.
- * 겉모습은 시안 안 D(`makeD`)의 값을 그대로 따른다: 점마다 고정 z, 초점=카메라 거리의 빛망울(bokeh),
- * 점 셰이더 1개·1px 선 1개(가산 혼합)·UnrealBloom(0.55, 0.35, 0.3)·sRGB 출력.
+ * three.js 렌더러 — 이 파일과 three는 지도를 열 때만 받는 지연 청크다.
+ * 다크 테마는 가산 혼합 + UnrealBloom(0.55, 0.35, 0.3) + 선형→sRGB 변환으로 발광하고,
+ * 라이트 테마는 보색 흡수(-ln C) 공간에서 블룸을 확산한 뒤 Beer-Lambert 투과율로 합성한다.
  * 좌표는 시안 단위(배치 반지름 ≈ 380)로 옮겨 시안의 반경·z 폭·초점 범위 상수를 그대로 쓴다.
  * 카메라는 정면이 기본이고 자동 회전은 없다(결정 ff40284e) — 끌 때만 돌고, 손을 떼면 그 각도로 머문다.
  * WebGL2 컨텍스트 1개. CSP 때문에 blob 워커·WASM·eval은 쓰지 않는다.
@@ -79,14 +78,17 @@ attribute vec3 aColor;
 attribute float aSize;
 attribute float aAlpha;
 attribute float aShape;
+attribute float aFresh;
 uniform float uScale;
 uniform float uFocus;
 uniform float uRange;
 uniform float uMaxPx;
+uniform float uLight;
 varying vec3 vColor;
 varying float vAlpha;
 varying float vCoc;
 varying float vShape;
+varying float vFresh;
 void main() {
   vec4 mv = modelViewMatrix * vec4(position, 1.0);
   float depth = max(-mv.z, 1.0);
@@ -94,26 +96,46 @@ void main() {
   vCoc = coc;
   vShape = aShape;
   vColor = aColor;
-  vAlpha = aAlpha * (1.0 - coc * 0.55) / (1.0 + coc * 2.2);
+  vFresh = aFresh;
+  float cocAtten = mix(
+    (1.0 - coc * 0.55) / (1.0 + coc * 2.2),
+    (1.0 - coc * 0.52) / (1.0 + coc * 2.05),
+    uLight
+  );
+  vAlpha = aAlpha * cocAtten;
   gl_PointSize = min(aSize * uScale / depth * (1.0 + coc * ${COC_GROW.toFixed(1)}), uMaxPx);
   gl_Position = projectionMatrix * mv;
 }`;
 
 const POINT_FRAGMENT = /* glsl */ `
 uniform float uGain;
+uniform float uLight;
+uniform vec3 uFreshRgb;
 varying vec3 vColor;
 varying float vAlpha;
 varying float vCoc;
 varying float vShape;
+varying float vFresh;
 void main() {
   float d = length(gl_PointCoord * 2.0 - 1.0);
   if (d > 1.0) discard;
   float disc = smoothstep(0.42, 0.3, d);
   // 묶음 노드(vShape=1)는 속이 빈 고리 + 작은 중심점 — 일반 정보 점과 한눈에 갈린다.
   float ring = smoothstep(0.42, 0.37, d) * smoothstep(0.2, 0.27, d) + smoothstep(0.09, 0.05, d) * 0.7;
-  float sharp = mix(disc, ring, vShape) + exp(-d * d * 7.0) * 0.45 * smoothstep(1.0, 0.6, d) * mix(1.0, 0.45, vShape);
+  float body = mix(disc, ring, vShape);
+  float halo = exp(-d * d * 7.0) * 0.45 * smoothstep(1.0, 0.6, d) * mix(1.0, 0.45, vShape);
   float bokeh = smoothstep(1.0, 0.84, d) * (0.42 + 0.58 * smoothstep(0.5, 0.95, d));
-  gl_FragColor = vec4(vColor * uGain, mix(sharp, bokeh, vCoc) * vAlpha);
+  vec3 col = mix(vColor, uFreshRgb, vFresh * (1.0 - body * 0.65) * 0.85);
+  if (uLight > 0.5) {
+    float sat = clamp((max(col.r, max(col.g, col.b)) - min(col.r, min(col.g, col.b))) / 0.22, 0.0, 1.0);
+    float haloLight = exp(-d * d * 5.0) * 0.34 * smoothstep(1.0, 0.48, d) * mix(1.0, 0.45, vShape) * mix(0.45, 1.0, sat);
+    float bokehLight = bokeh * 0.50 * mix(0.52, 1.0, sat);
+    float w = mix(body * 1.05 + haloLight, bokehLight, vCoc) * vAlpha;
+    vec3 absDens = -log(max(col, vec3(0.065)));
+    gl_FragColor = vec4(absDens * uGain, w);
+    return;
+  }
+  gl_FragColor = vec4(col * uGain, mix(body + halo, bokeh, vCoc) * vAlpha);
 }`;
 
 const LINE_VERTEX = /* glsl */ `
@@ -125,21 +147,30 @@ void main() {
 }`;
 
 const LINE_FRAGMENT = /* glsl */ `
+uniform float uLight;
 varying vec4 vC;
-void main() { gl_FragColor = vC; }`;
+void main() {
+  if (uLight > 0.5) {
+    vec3 absDens = -log(max(vC.rgb, vec3(0.12)));
+    gl_FragColor = vec4(absDens * 0.52, vC.a);
+    return;
+  }
+  gl_FragColor = vC;
+}`;
 
 /**
- * 마지막 패스 — 시안의 OutputPass(선형→sRGB)와 같은 변환을 하고, 투명 캔버스 위 합성을 위해
- * 알파를 밝기(최대 채널)로 둔다(곱셈 알파). 어두운 발광 꼬리가 8비트에서 동심원 띠로 끊기지 않게
- * 화면 위치 기반 삼각 분포 잡음(±1/255)을 더한다.
+ * 마지막 패스 — 다크는 선형→sRGB 변환 + 밝기 알파(곱셈 알파), 라이트는 누적된 보색 흡수 밀도를
+ * Beer-Lambert 투과율로 풀어 투명 캔버스 위에서도 흰 포화 없이 색채가 번지게 한다.
+ * 어두운 발광 꼬리가 8비트에서 동심원 띠로 끊기지 않게 삼각 분포 잡음(±1/255)을 더한다.
  */
 const FINAL_SHADER = {
-  uniforms: { tDiffuse: { value: null as unknown } },
+  uniforms: { tDiffuse: { value: null as unknown }, uLight: { value: 0 } },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
     void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
   fragmentShader: /* glsl */ `
     uniform sampler2D tDiffuse;
+    uniform float uLight;
     varying vec2 vUv;
     float ign(vec2 p) { return fract(52.9829189 * fract(dot(p, vec2(0.06711056, 0.00583715)))); }
     vec3 encode(vec3 c) {
@@ -149,10 +180,26 @@ const FINAL_SHADER = {
     void main() {
       vec3 c = max(texture2D(tDiffuse, vUv).rgb, vec3(0.0));
       float m = max(c.r, max(c.g, c.b));
-      if (m <= 0.0) { gl_FragColor = vec4(0.0); return; }
+      if (m <= 0.0002) { gl_FragColor = vec4(0.0); return; }
+      float noise = (ign(gl_FragCoord.xy) + ign(gl_FragCoord.xy + vec2(5.588238, 5.588238)) - 1.0) / 255.0;
+      if (uLight > 0.5) {
+        float floorDens = min(c.r, min(c.g, c.b));
+        vec3 chromaDens = c - vec3(floorDens);
+        float greyCompressed = floorDens / (1.0 + max(0.0, floorDens - 0.45) * 1.15);
+        float cMax = max(chromaDens.r, max(chromaDens.g, chromaDens.b));
+        vec3 chromaCompressed = chromaDens * inversesqrt(1.0 + cMax * cMax * 0.16);
+        vec3 d = vec3(greyCompressed) + chromaCompressed;
+        vec3 t = exp(-d);
+        vec3 absorb = clamp(1.0 - t, 0.0, 1.0);
+        float a = max(absorb.r, max(absorb.g, absorb.b));
+        if (a <= 0.0005) { gl_FragColor = vec4(0.0); return; }
+        float outA = clamp(a + noise * 0.5, 0.0, 1.0);
+        vec3 premult = clamp(vec3(a) - absorb + noise * 0.5, vec3(0.0), vec3(outA));
+        gl_FragColor = vec4(premult, outA);
+        return;
+      }
       vec3 e = encode(c);
       float a = max(e.r, max(e.g, e.b));
-      float noise = (ign(gl_FragCoord.xy) + ign(gl_FragCoord.xy + vec2(5.588238, 5.588238)) - 1.0) / 255.0;
       gl_FragColor = vec4(max(e + noise, vec3(0.0)), max(a + noise, 0.0));
     }`,
 };
@@ -216,6 +263,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private renderer: WebGLRenderer | null = null;
   private composer: EffectComposer | null = null;
   private bloom: UnrealBloomPass | null = null;
+  private finalPass: ShaderPass | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(FOV_DEG, 1, 1, 20000);
@@ -280,6 +328,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private dataDirty = true;
   private viewDirty = true;
   private lastDraw = 0;
+  private reducedMotion = false;
   private pulse = true;
   private disposed = false;
   private readonly tmp = new Vector3();
@@ -354,7 +403,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   mount(container: HTMLElement, model: PositionedMapModel, palette: MapPalette): void {
     if (this.container) throw new Error("map-webgl: already mounted");
     const canvas = document.createElement("canvas");
-    // 컨텍스트는 여기서 한 번만 만든다 — 실패하면 throw해 상위가 Canvas 렌더러로 넘어간다.
+    // 컨텍스트는 여기서 한 번만 만든다 — 실패하면 throw해 화면에 안내만 둔다.
     const gl = canvas.getContext("webgl2", {
       alpha: true, antialias: true, depth: false, stencil: false, powerPreference: "high-performance",
     });
@@ -365,8 +414,9 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.canvas = canvas;
       this.container = container;
       this.pixelRatio = Math.min(typeof devicePixelRatio === "number" ? devicePixelRatio : 1, MAX_PIXEL_RATIO);
-      this.pulse = !(typeof window !== "undefined" && typeof window.matchMedia === "function"
-        && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+      this.reducedMotion = typeof window !== "undefined" && typeof window.matchMedia === "function"
+        && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      this.pulse = !this.reducedMotion;
       renderer.setPixelRatio(this.pixelRatio);
       renderer.setClearColor(0x000000, 0);
 
@@ -388,9 +438,11 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       composer.addPass(new RenderPass(this.scene, this.camera));
       const bloom = new UnrealBloomPass(new Vector2(256, 256), 0.55, 0.35, 0.3);
       composer.addPass(bloom);
-      composer.addPass(new ShaderPass(FINAL_SHADER));
+      const finalPass = new ShaderPass(FINAL_SHADER);
+      composer.addPass(finalPass);
       this.composer = composer;
       this.bloom = bloom;
+      this.finalPass = finalPass;
 
       this.applyModel(model, palette, true);
       this.resize();
@@ -437,6 +489,20 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.schedule();
   }
 
+  setReducedMotion(reduced: boolean): void {
+    if (this.reducedMotion === reduced) return;
+    this.reducedMotion = reduced;
+    this.pulse = !reduced;
+    if (reduced && this.tween) {
+      this.orient.identity();
+      this.zoom = 1;
+      this.pan.set(0, 0, 0);
+      this.tween = null;
+    }
+    this.viewDirty = true;
+    this.schedule();
+  }
+
   pick(x: number, y: number): string | null {
     if (!this.renderer || this.width === 0) return null;
     this.camera.updateMatrixWorld();
@@ -471,10 +537,18 @@ class MapWebglRendererImpl implements MapWebglRenderer {
 
   fit(): void {
     if (!this.renderer) return;
-    this.tween = {
-      t0: performance.now(), dur: FIT_TWEEN_MS,
-      orient0: this.orient.clone(), zoom0: this.zoom, pan0: this.pan.clone(),
-    };
+    if (this.reducedMotion) {
+      this.orient.identity();
+      this.zoom = 1;
+      this.pan.set(0, 0, 0);
+      this.tween = null;
+      this.viewDirty = true;
+    } else {
+      this.tween = {
+        t0: performance.now(), dur: FIT_TWEEN_MS,
+        orient0: this.orient.clone(), zoom0: this.zoom, pan0: this.pan.clone(),
+      };
+    }
     // 첫 그리기 전에도 project가 맞는 답을 내놓게 카메라를 곧바로 둔다.
     this.placeCamera();
     this.schedule();
@@ -511,6 +585,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.pointMat?.dispose();
     this.lineMat?.dispose();
     this.bloom?.dispose();
+    this.finalPass?.dispose();
     this.composer?.dispose();
     const renderer = this.renderer;
     if (renderer) {
@@ -521,6 +596,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     this.renderer = null;
     this.composer = null;
     this.bloom = null;
+    this.finalPass = null;
     this.canvas = null;
     this.container = null;
     this.model = null;
@@ -535,27 +611,31 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       uniforms: {
         uScale: { value: 1 }, uFocus: { value: 1200 }, uRange: { value: 260 }, uGain: { value: 0.95 },
         uMaxPx: { value: Math.min(MAX_SPRITE_CSS * this.pixelRatio, maxPoint) },
+        uLight: { value: 0 },
+        uFreshRgb: { value: new Vector3(0.47, 0.79, 0.83) },
       },
       vertexShader: POINT_VERTEX,
       fragmentShader: POINT_FRAGMENT,
       transparent: true, depthTest: false, depthWrite: false, blending: AdditiveBlending,
     });
     this.lineMat = new ShaderMaterial({
+      uniforms: { uLight: { value: 0 } },
       vertexShader: LINE_VERTEX,
       fragmentShader: LINE_FRAGMENT,
       transparent: true, depthTest: false, depthWrite: false, blending: AdditiveBlending,
     });
   }
 
-  /** 어두운 테마는 가산 혼합 + Bloom, 밝은 테마는 일반 혼합 · Bloom 없음(시안과 같다). */
-  private applyBlending(): void {
-    const blending = this.light ? NormalBlending : AdditiveBlending;
-    for (const material of [this.pointMat, this.lineMat]) {
-      if (!material) continue;
-      material.blending = blending;
-      material.needsUpdate = true;
+  /** 다크·라이트 모두 Additive + UnrealBloom을 쓰되, 라이트는 보색 흡수 밀도·Beer-Lambert 투과 패스로 전환한다. */
+  private applyLightMode(): void {
+    const lightFlag = this.light ? 1 : 0;
+    if (this.pointMat) {
+      this.pointMat.uniforms.uLight!.value = lightFlag;
+      this.pointMat.uniforms.uGain!.value = this.light ? 0.82 : 0.95;
     }
-    if (this.pointMat) this.pointMat.uniforms.uGain!.value = this.light ? 0.92 : 0.95;
+    if (this.lineMat) this.lineMat.uniforms.uLight!.value = lightFlag;
+    const finalUniforms = this.finalPass?.uniforms as { uLight?: { value: number } } | undefined;
+    if (finalUniforms?.uLight) finalUniforms.uLight.value = lightFlag;
   }
 
   private applyModel(model: PositionedMapModel, palette: MapPalette, first: boolean): void {
@@ -565,7 +645,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const light = relativeLuminance(this.rgb.ink) < 0.45;
     if (light !== this.light || first) {
       this.light = light;
-      this.applyBlending();
+      this.applyLightMode();
     }
     if (!previous || previous.graph !== model.graph || previous.layout !== model.layout) this.rebuild(model);
     this.dataDirty = true;
@@ -626,6 +706,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const shape = new Float32Array(n);
     nodes.forEach((node, i) => { shape[i] = node.kind === "intel-overflow" ? 1 : 0; });
     pointGeo.setAttribute("aShape", new BufferAttribute(shape, 1));
+    pointGeo.setAttribute("aFresh", dynamic(new Float32Array(n), 1));
     const lineGeo = new BufferGeometry();
     const m = this.edgeIdx.length;
     const linePos = new Float32Array(m * 6);
@@ -877,7 +958,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.viewDirty = false;
       this.placeCamera();
       this.writeUniforms();
-      if (!this.light && this.composer) this.composer.render();
+      if (this.composer) this.composer.render();
       else renderer.render(this.scene, this.camera);
       this.notifyView();
     }
@@ -903,11 +984,22 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     material.uniforms.uFocus!.value = this.fitDist * this.zoom;
     material.uniforms.uRange!.value = this.focusRange();
     material.uniforms.uScale!.value = SPRITE_K * this.focalPx() * this.pixelRatio;
+    if (this.rgb) {
+      const fresh = this.rgb.fresh;
+      (material.uniforms.uFreshRgb!.value as Vector3).set(fresh[0] / 255, fresh[1] / 255, fresh[2] / 255);
+    }
     const bloom = this.bloom;
     if (bloom) {
-      // 시안 값(0.55, 0.35, 0.3) — 노드가 많을 때만 겹친 발광이 하얗게 뭉치지 않게 조금 낮춘다.
-      bloom.strength = lerp(0.55, 0.4, crowd);
-      bloom.threshold = lerp(0.3, 0.45, crowd);
+      if (this.light) {
+        bloom.strength = lerp(0.34, 0.22, crowd);
+        bloom.radius = 0.38;
+        bloom.threshold = lerp(0.42, 0.58, crowd);
+      } else {
+        // 시안 값(0.55, 0.35, 0.3) — 노드가 많을 때만 겹친 발광이 하얗게 뭉치지 않게 조금 낮춘다.
+        bloom.strength = lerp(0.55, 0.4, crowd);
+        bloom.radius = 0.35;
+        bloom.threshold = lerp(0.3, 0.45, crowd);
+      }
     }
   }
 
@@ -937,6 +1029,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
     const color = this.pointGeo.getAttribute("aColor") as BufferAttribute;
     const size = this.pointGeo.getAttribute("aSize") as BufferAttribute;
     const alpha = this.pointGeo.getAttribute("aAlpha") as BufferAttribute;
+    const fresh = this.pointGeo.getAttribute("aFresh") as BufferAttribute;
     const colors: Rgb[] = [];
     const shown: boolean[] = [];
     for (let i = 0; i < this.nodes.length; i += 1) {
@@ -954,10 +1047,12 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       if (node.stale) a *= 0.5;
       if (focus && focus[i] !== 1) a *= 0.13;
       alpha.setX(i, visible ? a : 0);
+      fresh.setX(i, visible && node.fresh && !(focus && focus[i] !== 1) ? 1 : 0);
     }
     color.needsUpdate = true;
     size.needsUpdate = true;
     alpha.needsUpdate = true;
+    fresh.needsUpdate = true;
 
     const edgeColor = this.lineGeo.getAttribute("aRgba") as BufferAttribute;
     const focusIndex = this.focusId !== null ? this.index.get(this.focusId) : undefined;

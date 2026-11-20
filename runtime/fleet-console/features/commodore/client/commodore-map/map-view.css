@@ -113,7 +113,7 @@
   margin: 0 12px 12px;
   border: 1px solid var(--hairline);
   border-radius: var(--radius-lg);
-  background: radial-gradient(ellipse at 50% 45%, var(--ink-deep), var(--canvas-abyss) 70%);
+  background: radial-gradient(ellipse at 50% 45%, var(--map-stage-core), var(--map-stage-edge) 72%);
 }
 
 .commodore-map-canvas-host {
@@ -131,6 +131,7 @@
 
 .commodore-map-nodes {
   position: absolute;
+  z-index: 2;
   inset: 0;
   overflow: hidden;
   pointer-events: none;
@@ -167,6 +168,7 @@
   text-shadow: 0 0 2px var(--canvas-abyss), 0 0 6px var(--canvas-abyss), 0 0 12px var(--canvas-abyss);
 }
 
+/* 접근성·선택 링 전용 투명 버튼 — 색 채움은 캔버스 몫이라 불투명 원을 뒤에 찍지 않는다. */
 .commodore-map-node {
   position: absolute;
   top: 0;
@@ -176,43 +178,30 @@
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);
-  background: var(--map-objective);
-  pointer-events: auto;
-  cursor: pointer;
+  background: transparent;
+  pointer-events: none;
 }
 
-.commodore-map-node[data-kind="core"] { background: var(--map-core); }
-.commodore-map-node[data-kind="description"] { background: var(--map-description); }
+.commodore-map-node[data-kind="core"] {
+  width: 34px;
+  height: 34px;
+}
+
+.commodore-map-node[data-kind="description"],
 .commodore-map-node[data-kind="intel-hub"],
-.commodore-map-node[data-kind="intel"] { background: var(--map-intel); }
-.commodore-map-node[data-kind="intel-overflow"] { background: var(--map-intel); }
-.commodore-map-node[data-kind="source"] { background: var(--map-source); }
-.commodore-map-node[data-kind="objective"] { background: var(--map-objective); }
-.commodore-map-node[data-kind="branch"][data-branch="person"],
-.commodore-map-node[data-kind="topic"][data-branch="person"],
-.commodore-map-node[data-kind="memory"][data-branch="person"] { background: var(--map-branch-person); }
-.commodore-map-node[data-kind="branch"][data-branch="theater"],
-.commodore-map-node[data-kind="topic"][data-branch="theater"],
-.commodore-map-node[data-kind="memory"][data-branch="theater"] { background: var(--map-branch-theater); }
-.commodore-map-node[data-kind="branch"][data-branch="lessons"],
-.commodore-map-node[data-kind="topic"][data-branch="lessons"],
-.commodore-map-node[data-kind="memory"][data-branch="lessons"] { background: var(--map-branch-lessons); }
-.commodore-map-node[data-kind="branch"][data-branch="crew"],
-.commodore-map-node[data-kind="topic"][data-branch="crew"],
-.commodore-map-node[data-kind="memory"][data-branch="crew"] { background: var(--map-branch-crew); }
-
-.commodore-map-node[data-stale="true"] { opacity: 0.45; }
-.commodore-map-node[data-fresh="true"] { box-shadow: 0 0 8px var(--aurora); }
-
-.commodore-map-node:hover { filter: brightness(1.2); }
+.commodore-map-node[data-kind="intel-overflow"],
+.commodore-map-node[data-kind="branch"] {
+  width: 22px;
+  height: 22px;
+}
 
 .commodore-map-node:focus-visible {
   outline: none;
   box-shadow: var(--focus-face);
 }
 
-.commodore-map-node[data-selected="true"] {
-  box-shadow: 0 0 0 2px var(--dialog-face), 0 0 0 4px var(--text-primary);
+.commodore-map-nodes[data-renderer="webgl"] .commodore-map-node[data-selected="true"] {
+  box-shadow: 0 0 0 2px var(--dialog-face), 0 0 0 3.5px var(--text-primary);
 }
 
 /* 무대 위 겹침 층 — 위쪽 줄(칩·안내)과 오른쪽 아래 범례. 칩 줄 아래에 안내가 흘러 겹치지 않는다. */
