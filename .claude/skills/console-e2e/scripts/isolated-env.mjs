@@ -6,6 +6,7 @@
  *
  * --fresh refuses a run dir that already exists with any entry, so a measurement pass that must start from an empty
  * slot cannot silently reuse an earlier pass's state; pass it on the pass's first call (its --check and its serve).
+ * The two records a fresh `e2e-resources.mjs init` writes (this caller's `owner` and the `.e2e-run.json` marker) are not state.
  * It vouches only for the default <run-dir>/console slot, so it is refused together with --canonical-console-dir.
  *
  * --canonical-console-dir sets only FLEET_CONSOLE_DATA_DIR, to that checkout's local slot
@@ -45,7 +46,7 @@
 
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { accessSync, constants as fsConstants, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { accessSync, constants as fsConstants, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { constants, userInfo } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -137,6 +138,65 @@ function lockState(lockPath) {
     return { state: 'live', pid };
   } catch (error) {
     return error.code === 'ESRCH' ? { state: 'dead', pid } : { state: 'live', pid };
+  }
+}
+
+/**
+ * An empty run dir, or one holding only the two records `e2e-resources.mjs init` writes: a regular `owner` file naming this
+ * caller and the `.e2e-run.json` marker with its fixed shape. Any other entry, a symlink, another caller's owner, or a
+ * malformed marker still means an earlier run, so --fresh keeps refusing it. An empty `serve.log` (the handoff's shell
+ * redirect, opened before this wrapper runs) is the one other entry allowed.
+ */
+function holdsOnlyInitRecords(runDir, caller) {
+  let names;
+  try { names = readdirSync(runDir); } catch { return false; }
+  for (const name of names) {
+    if (name !== 'owner' && name !== '.e2e-run.json' && name !== 'serve.log') return false;
+    let stat;
+    try { stat = lstatSync(path.join(runDir, name)); } catch { return false; }
+    if (!stat.isFile() || stat.isSymbolicLink() || stat.uid !== userInfo().uid || stat.size > 4096) return false;
+    if (name === 'serve.log') {
+      // The shell creates the handoff's redirect target before this wrapper starts; it is state only once it holds output.
+      if (stat.size !== 0) return false;
+      continue;
+    }
+    let body;
+    try { body = readFileSync(path.join(runDir, name), 'utf8'); } catch { return false; }
+    if (name === 'owner') {
+      if (body.trim() !== caller) return false;
+    } else {
+      try {
+        const marker = JSON.parse(body);
+        if (marker.schema !== 1 || !/^[0-9a-f]{32}$/.test(marker.runId) || !/^[0-9a-f]{64}$/.test(marker.nonce) || Object.keys(marker).length !== 3) return false;
+      } catch { return false; }
+    }
+  }
+  return true;
+}
+
+const RECLAIM_FLAG = '.e2e-reclaiming';
+
+/**
+ * `e2e-resources.mjs reclaim --apply` writes <run-dir>/.e2e-reclaiming (its pid and a nonce) before it judges the run. A run
+ * dir under an active reclaim, or one whose claim cannot be read, refuses every command, and so does the re-read after this
+ * call records its own `.e2e-active.<pid>`: one of the two writers always sees the other. A claim whose process is gone is stale.
+ */
+function reclaimInProgress(runDir) {
+  const file = path.join(runDir, RECLAIM_FLAG);
+  let stat;
+  try { stat = lstatSync(file); } catch (error) { return error.code !== 'ENOENT'; }
+  if (!stat.isFile() || stat.uid !== userInfo().uid || stat.size > 4096) return true;
+  try {
+    const pid = JSON.parse(readFileSync(file, 'utf8')).pid;
+    if (!Number.isInteger(pid) || pid <= 0) return true;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (error) {
+      return error.code !== 'ESRCH';
+    }
+  } catch {
+    return true;
   }
 }
 
@@ -290,7 +350,7 @@ function main() {
     return fail(`this --run-dir belongs to another session${lock.state === 'live' ? ` whose Console is running (pid ${lock.pid})` : ''}. Choose a different run directory name, e.g. <repo-root>/.fleet/e2e-<role>-<short-id>; do not stop that Console or delete its directory (references/setup.md#isolate-the-console)`);
   };
   let verdict = judge();
-  if (options.fresh && existsSync(runDir) && readdirSync(runDir).length > 0) {
+  if (options.fresh && existsSync(runDir) && !holdsOnlyInitRecords(runDir, caller)) {
     fail('--fresh: this --run-dir already holds an earlier run; choose a new run directory name for this pass instead of reusing or emptying it (references/setup.md#isolate-the-console)');
   }
 
@@ -309,6 +369,7 @@ function main() {
     return;
   }
 
+  if (reclaimInProgress(runDir)) fail('this --run-dir is being reclaimed (e2e-resources.mjs reclaim holds .e2e-reclaiming); do not start anything in it, choose another run directory name');
   for (const dir of Object.values(owned)) mkdirSync(dir, { recursive: true, mode: 0o700 });
   if (consoleDataDir !== owned.console) mkdirSync(consoleDataDir, { recursive: true, mode: 0o700 });
   // Claim exclusively, so of two sessions entering an ownerless run dir together exactly one owns it; the loser
@@ -322,6 +383,16 @@ function main() {
       if (judge() !== 'own') fail('this --run-dir lost its owner record while being claimed; choose a different run directory name (references/setup.md#isolate-the-console)');
     }
   }
+  // Record this call as active so a reclaim sees it, then re-read the reclaim claim: whichever wrote second sees the other.
+  const activePath = path.join(runDir, `.e2e-active.${process.pid}`);
+  try { writeFileSync(activePath, `${process.pid}\n`, { flag: 'wx', mode: 0o600 }); }
+  catch (error) { fail(`could not claim this wrapper invocation (${error.code ?? 'error'}); nothing started`); }
+  const dropActive = () => rmSync(activePath, { force: true });
+  // Only a known pre-spawn refusal or an observed child outcome clears the active marker.
+  if (reclaimInProgress(runDir)) {
+    dropActive();
+    fail('this --run-dir is being reclaimed (e2e-resources.mjs reclaim holds .e2e-reclaiming); do not start anything in it, choose another run directory name');
+  }
   // Per call: a shared pathbin would let one call's --bin claude reach a fake-only host started earlier on this run.
   const callBin = mkdtempSync(path.join(owned.pathbin, 'call-'));
   for (const [name, source] of Object.entries(links)) symlinkSync(source, path.join(callBin, name));
@@ -334,9 +405,13 @@ function main() {
   }
   for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => child.kill(signal));
   const dropCallBin = () => rmSync(callBin, { recursive: true, force: true });
-  child.on('error', (error) => { dropCallBin(); fail(`cannot start ${plan.command}: ${error.message}`); });
+  child.on('error', (error) => {
+    if (child.pid === undefined) { dropCallBin(); dropActive(); }
+    fail(`cannot start ${plan.command}: ${error.message}`);
+  });
   child.on('exit', (code, signal) => {
     dropCallBin();
+    dropActive();
     const appeared = readdirSync(owned.home).filter((entry) => !before.has(entry));
     process.stderr.write(`isolated-env: ${plan.command} exited ${signal ?? code}; new entries in owned home: [${appeared.join(', ')}]\n`);
     process.exit(code ?? 128 + (constants.signals[signal] ?? 0));

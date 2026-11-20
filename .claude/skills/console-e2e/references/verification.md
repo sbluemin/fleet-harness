@@ -159,6 +159,8 @@ node <worktree>/.claude/skills/console-e2e/scripts/close-owned-session.mjs fleet
 node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir '<owned-run>' -- node <worktree>/runtime/fleet-console/dist/cli.mjs stop
 ```
 
+The `stop` above ends the runtime, not the run directory. After the last use, preserve the evidence and run its reclaim as [Run lifetime](setup.md#run-lifetime-and-reclamation) describes, recording what remains.
+
 For Desktop CDP, close the recorded session with the same `close-owned-session.mjs`, then stop the app through [Desktop cleanup](desktop.md) instead of the standalone Console `stop`.
 
 ### Fleet Browser fallback

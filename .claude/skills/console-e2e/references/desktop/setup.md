@@ -30,7 +30,7 @@ Development Desktop derives its userData and Console directory from the source c
 
 On macOS that target hands the bundle to `open`, which passes the calling shell's entire environment to the app; the target's `--env` values only overlay it. Desktop forwards that environment, minus Electron and its own control keys, to the Console child. A launch from an agent session therefore gives the child the real `HOME`, any `claude` on `PATH`, and the session's markers and access tokens. Launch under a clean allowlist, and only through the launch gate. `--console-dir` is the same directory as `FLEET_CONSOLE_DATA_DIR`. The command after `--` is the allowlisted launch; do not start that command yourself when the gate refuses.
 
-For Desktop runs that need `pnpm` or `tsx` helpers, [claim the run directory](../setup.md#isolate-the-console) before the launch below with `node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir <owned-run> -- true` (`--check` does not record ownership). After boot, follow [First-load commissioning state](../setup.md#first-load-commissioning-state), using its isolated-environment wrapper and the same run and Console directories.
+For Desktop runs that need `pnpm` or `tsx` helpers, [claim the run directory](../setup.md#isolate-the-console) before the launch below with `node <worktree>/.claude/skills/console-e2e/scripts/isolated-env.mjs --run-dir <owned-run> -- true` (`--check` does not record ownership); register that directory through [Run lifetime](../setup.md#run-lifetime-and-reclamation) before the claim. After boot, follow [First-load commissioning state](../setup.md#first-load-commissioning-state), using its isolated-environment wrapper and the same run and Console directories.
 
 ```bash
 cd <worktree>

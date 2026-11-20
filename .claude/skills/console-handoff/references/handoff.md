@@ -2,7 +2,7 @@
 
 ### 5. Hand it over
 
-After verifying the seeded state, PID, and token-free URL, open that URL in this Objective's Fleet Browser. Do not click through the scenario. First-run dialogs stay for the user; explain them. Leave the tab; do not stop the isolated Console.
+After verifying the seeded state, PID, and token-free URL, open that URL in this Objective's Fleet Browser. Do not click through the scenario. First-run dialogs stay for the user; explain them. Leave the tab and keep the isolated Console running for the handoff; after its last use the recorded session stops it, and [Run lifetime](../../console-e2e/references/setup.md#run-lifetime-and-reclamation) decides when it is reclaimed.
 
 If Fleet Browser is unavailable, keep the Console running and report the reason with the clickable URL. Only then use the platform opener (`open <url>` on macOS, `xdg-open <url>` on Linux, or `Start-Process <url>` in Windows PowerShell), preserving tool permission gates. Do not launch agent-browser for this action. A successful opener command confirms dispatch, not that the user saw the page.
 
@@ -28,9 +28,10 @@ Opened in this Objective's Fleet Browser.
 - Model: <pinned id> — spends real quota
 - Data: <handoff-dir>, isolated from your usual console
 - Build: <branch> (<commit>)
-
-Stop it with PID <pid> when you are done.
+- Lifetime: kept for this handoff; the objective reclaims it before completing unless you ask to keep it.
 ```
+
+Send the person the lifetime line in these words: "이 콘솔은 지금 사용하실 수 있어요. 보존을 요청하지 않으면 이 목표가 끝나기 전에 정리해요." A preservation request is recorded through the reclaim entry with its reference, keeper, and release condition. Do not tell the person to stop the process by PID: a reused PID is not ownership ([restart after a forced kill](../../console-e2e/references/setup.md#restart-after-a-forced-kill)).
 
 Say which dialogs greet a fresh runtime directory (the commissioning guide, then the "Fleet at a glance" popup) and that `Escape` clears them, or the user's first impression of the change is a modal.
 
