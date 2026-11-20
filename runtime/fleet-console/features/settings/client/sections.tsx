@@ -10,7 +10,10 @@ import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 import { MenuCheckGlyph, FeatureErrorBoundary, SegmentedThumb } from "@fleet-console/ui/react";
 import type { SettingsSectionDescriptor, SettingsSectionGroup, SettingsSectionMobile } from "../shared/types.js";
-import { SettingsGroup, SettingsInputRow, SettingsItem, SettingsSegments, SettingsToggle } from "./preferences-context.js";
+import { SettingsGroup, SettingsInputRow, SettingsItem, SettingsSegments, SettingsSlider, SettingsToggle } from "./preferences-context.js";
+import { AVATAR_FUZZ_STEP, DEFAULT_AVATAR_FUZZ, MAX_AVATAR_FUZZ, MIN_AVATAR_FUZZ } from "../../workspace/shared/avatars.js";
+import { MongleAvatar } from "../../workspace/client/components/mongle-avatar.js";
+import { setAvatarFuzzPreview } from "../../workspace/client/components/mongle-3d-renderer.js";
 import { useMobileSettingsHost } from "./mobile-host.js";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { RemoteAccessSection } from "../../remote-access/client/settings-section.js";
@@ -173,7 +176,7 @@ export function buildCoreSettingsSections(t: T, state: GlobalSettingsState | nul
       id: "appearance",
       group: "setup",
       label: t("settings.core.appearance.label"),
-      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.fonts.title"), t("settings.fonts.ui"), t("settings.fonts.content"), t("settings.fonts.code"), t("settings.fonts.advanced"), t("settings.motion.reduce"), t("settings.motion.unfocused"), t("settings.motion.taskforceBubbleColor"), t("settings.core.appearance.keywords")],
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.avatar.title"), t("settings.avatar.fuzz"), t("settings.fonts.title"), t("settings.fonts.ui"), t("settings.fonts.content"), t("settings.fonts.code"), t("settings.fonts.advanced"), t("settings.motion.reduce"), t("settings.motion.unfocused"), t("settings.motion.taskforceBubbleColor"), t("settings.core.appearance.keywords")],
     },
     {
       id: "language",
@@ -267,6 +270,7 @@ export function renderSettingsSection(sectionId: SettingsSectionId, state: Globa
         <>
           {state === null ? null : <LanguageCard state={state} saving={saving.has("language")} />}
           <ThemeCard state={state} saving={saving} />
+          <AvatarCard state={state} saving={saving} />
           <TypographyCard state={state} saving={saving.has("fonts")} />
         </>
       );
@@ -437,6 +441,73 @@ export function ThemeCard({
             </div>
             <SettingsToggle checked={state?.taskforceBubbleColor === true} disabled={state === null} busy={saving.has("taskforceBubbleColor")} ariaLabel={t("settings.motion.taskforceBubbleColor")} onChange={(value) => { void setGlobalSettingsField("taskforceBubbleColor", value); }} />
           </div>
+      </div>
+    </section>
+  );
+}
+
+export function AvatarCard({
+  state,
+  saving,
+}: {
+  readonly state: GlobalSettingsState | null;
+  readonly saving: ReadonlySet<GlobalSettingsField>;
+}) {
+  const t = useT();
+  const storedFuzz = state?.avatarFuzz ?? DEFAULT_AVATAR_FUZZ;
+  const [draftFuzz, setDraftFuzz] = useState<number | null>(null);
+  const shownFuzz = draftFuzz ?? storedFuzz;
+
+  useEffect(() => () => {
+    setAvatarFuzzPreview(null);
+  }, []);
+
+  const handlePreview = (next: number) => {
+    const rounded = Math.round(next * 100) / 100;
+    setDraftFuzz(rounded);
+    setAvatarFuzzPreview(rounded);
+  };
+
+  const handleCommit = (next: number) => {
+    const rounded = Math.round(next * 100) / 100;
+    setDraftFuzz(null);
+    setAvatarFuzzPreview(rounded);
+    void setGlobalSettingsField("avatarFuzz", rounded).finally(() => {
+      setAvatarFuzzPreview(null);
+    });
+  };
+
+  return (
+    <section className="global-settings-card appearance-card" aria-label={t("settings.avatar.aria")}>
+      <h3 className="global-settings-card-title">{t("settings.avatar.title")}</h3>
+      <div className="appearance-controls">
+        <div className="global-settings-row">
+          <div className="global-settings-row-text">
+            <p className="global-settings-resp-title">
+              {t("settings.avatar.fuzz")}
+              <SettingsHelp title={t("settings.avatar.fuzz")}>{t("settings.avatar.fuzzHelp")}</SettingsHelp>
+            </p>
+          </div>
+          <SettingsSlider
+            value={shownFuzz}
+            min={MIN_AVATAR_FUZZ}
+            max={MAX_AVATAR_FUZZ}
+            step={AVATAR_FUZZ_STEP}
+            disabled={state === null || saving.has("avatarFuzz")}
+            label={t("settings.avatar.fuzz")}
+            formatValue={(v) => `${Math.round(v * 100)}%`}
+            defaultValue={DEFAULT_AVATAR_FUZZ}
+            resetLabel={t("settings.slider.reset")}
+            onPreview={handlePreview}
+            onCommit={handleCommit}
+          />
+        </div>
+        <div className="settings-avatar-preview" aria-hidden="true">
+          <MongleAvatar base={1} role="commodore" state="idle" size={48} label="" decorative />
+          <MongleAvatar base={6} role="commodore" state="idle" size={48} label="" decorative />
+          <MongleAvatar base={16} role="commodore" state="idle" size={48} label="" decorative />
+          <MongleAvatar base={17} role="commodore" state="idle" size={48} label="" decorative />
+        </div>
       </div>
     </section>
   );

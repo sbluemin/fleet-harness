@@ -25,6 +25,7 @@ const BASE: GlobalSettingsState = {
   sideBarDoubleClickOpen: false,
   reduceMotion: false,
   calmAvatars: false,
+  avatarFuzz: 1.05,
   commodoreComposerChipsExpanded: false,
   commanderSort: null,
   commanderFolds: null,

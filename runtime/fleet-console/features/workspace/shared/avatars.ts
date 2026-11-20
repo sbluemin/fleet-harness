@@ -11,6 +11,19 @@ import { isIdentityTone, type IdentityTone } from "./identity-tones.js";
  * `origin` 은 그때 뽑힌 베이스라 「처음 값으로」가 돌아갈 자리다. 서버·브라우저가 같은 정제기로 읽는다.
  */
 
+/** 3D 플러시 아바타 솜결 기본값·허용 범위. */
+export const DEFAULT_AVATAR_FUZZ = 1.05;
+export const MIN_AVATAR_FUZZ = 0;
+export const MAX_AVATAR_FUZZ = 1.5;
+export const AVATAR_FUZZ_STEP = 0.05;
+
+/** 솜결 입력 정제 — 허용 범위(0–1.5)의 유한한 수만 소수 둘째 자리로 받는다. */
+export function sanitizeAvatarFuzz(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
+  if (value < MIN_AVATAR_FUZZ || value > MAX_AVATAR_FUZZ) return undefined;
+  return Math.round(value * 100) / 100;
+}
+
 export const MONGLE_SHAPES = ["bang", "gureum", "tteok", "kong", "mul", "kkot", "dol", "sat", "egg", "mandu"] as const;
 export type MongleShape = (typeof MONGLE_SHAPES)[number];
 

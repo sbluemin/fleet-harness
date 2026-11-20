@@ -105,7 +105,7 @@ const memberName = (id: string, language: string) => {
 
 export function TaskforceStack({ members }: { readonly members: readonly string[]; readonly judging?: readonly string[] }) {
   const shown = members.slice(0, 4);
-  return <span className="taskforce-stack" data-count={shown.length} aria-hidden="true">{shown.map((id) => <CommodoreAvatar key={id} commodoreId={id} state="idle" size={18} label="" decorative />)}</span>;
+  return <span className="taskforce-stack" data-count={shown.length} aria-hidden="true">{shown.map((id) => <CommodoreAvatar key={id} commodoreId={id} state="idle" size={18} label="" decorative hideBadge />)}</span>;
 }
 
 /**

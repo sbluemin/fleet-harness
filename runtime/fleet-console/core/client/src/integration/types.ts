@@ -186,6 +186,8 @@ export interface GlobalSettingsState {
   readonly reduceMotion: boolean;
   /** 몽글 아바타를 차분하게 — 사람을 부르는 상태만 움직인다. 구서버 응답에는 없고, 그때는 꺼짐이다. */
   readonly calmAvatars: boolean;
+  /** 3D 플러시 아바타 솜결 강도(0–1.5). 구서버 응답에는 없고, 그때는 기본값(1.05)이다. */
+  readonly avatarFuzz: number;
   /** 입력 캡슐의 사령관·지휘관 설정 칩 줄을 펼쳐 둘지. 구서버 응답에는 없고, 그때는 접힘(false)이다. */
   readonly commodoreComposerChipsExpanded: boolean;
   /** 지휘관 목록 정렬. null은 settings.json에 키 없음(구서버 응답 포함)이다. */

@@ -241,6 +241,22 @@ describe("global settings routes", () => {
     expect(harness.writes[1]?.body).toMatchObject({ state: { commodoreComposerChipsExpanded: false } });
   });
 
+  it("round-trips avatarFuzz with 1.05 as the absent default and rejects out-of-range inputs", async () => {
+    const absent = createRouterHarness();
+    await absent.router({ req: jsonReq("GET"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(absent.writes[0]?.body).toMatchObject({ avatarFuzz: 1.05 });
+
+    const rejected = createRouterHarness({ general: { avatarFuzz: 0.75 }, body: { avatarFuzz: 2 } });
+    await rejected.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(rejected.writes[0]).toEqual({ status: 400, body: { error: "invalid_avatar_fuzz" } });
+    expect(rejected.currentGeneral()?.avatarFuzz).toBe(0.75);
+
+    const harness = createRouterHarness({ body: { avatarFuzz: 0.35 } });
+    await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
+    expect(harness.currentGeneral()?.avatarFuzz).toBe(0.35);
+    expect(harness.writes[0]?.body).toMatchObject({ state: { avatarFuzz: 0.35 } });
+  });
+
   it("PUT /global-settings rejects unauthorized requests with 401", async () => {
     const harness = createRouterHarness({ authorized: false, body: { theme: "dark" } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });

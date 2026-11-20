@@ -1466,7 +1466,7 @@ html[data-view-mode="mobile"] .app-toast-action {
 .mobile-cluster-mark { box-sizing: border-box; width: 12px; height: 12px; background: var(--brass); border-radius: 3px; }
 .mobile-cluster-mark.is-hollow, .mobile-cluster-mark.is-off { background: transparent; border: 1.3px solid var(--m-text-muted); }
 .mobile-cluster-mark.has-glyph { display: grid; place-items: center; width: 20px; height: 20px; color: var(--brass-ink); background: transparent; border: 0; }
-.mobile-cluster-mark.has-glyph > svg { display: block; width: 100%; height: 100%; }
+.mobile-cluster-mark.has-glyph > :is(svg, .mongle-avatar) { display: block; width: 100%; height: 100%; }
 .mobile-cluster-mark.is-hollow { color: var(--m-text-muted); opacity: 0.75; }
 .mobile-cluster-mark.is-off { color: var(--m-text-muted); opacity: 0.55; }
 .mobile-cluster-mark.is-emphasized { opacity: 1; box-shadow: 0 0 0 3px var(--brass-glow); }

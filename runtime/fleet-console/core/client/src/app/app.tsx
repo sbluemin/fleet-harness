@@ -61,6 +61,8 @@ import { MobileSettingsPage } from "../chrome/mobile/mobile-settings-page.js";
 import { getViewModeSnapshot, useViewMode } from "../integration/view-mode-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveReleaseNotesLocale } from "../../../../features/updates/client/whatsnew-i18n.js";
+import { DEFAULT_AVATAR_FUZZ } from "../../../../features/workspace/shared/avatars.js";
+import { setAvatarFuzzSetting } from "../../../../features/workspace/client/components/mongle-3d-renderer.js";
 import { observeStateMotion } from "../integration/state-motion.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다
@@ -75,13 +77,18 @@ export function App() {
   const reduceMotion = settings.state?.reduceMotion === true;
   const lowerUnfocusedFrameRate = settings.state?.lowerUnfocusedFrameRate !== false;
   useEffect(() => observeStateMotion({ reduceMotion, lowerUnfocusedFrameRate }), [reduceMotion, lowerUnfocusedFrameRate]);
-  // 몽글 아바타의 「차분」 — 문서 뿌리 한 곳에 싣고, 규칙은 components.css 의 .mongle-avatar 가 읽는다.
+  // 몽글 아바타의 「차분」 — 문서 뿌리 한 곳에 싣고, 3D 렌더러가 읽는다.
   const calmAvatars = settings.state?.calmAvatars === true;
   useEffect(() => {
     const root = document.documentElement;
     if (calmAvatars) root.dataset.avatarMotion = "calm";
     else delete root.dataset.avatarMotion;
   }, [calmAvatars]);
+  // 3D 아바타 솜결 강도 — 서버 설정이 바뀌면 공용 3D 렌더러에 즉시 반영한다.
+  const avatarFuzz = settings.state?.avatarFuzz ?? DEFAULT_AVATAR_FUZZ;
+  useEffect(() => {
+    setAvatarFuzzSetting(avatarFuzz);
+  }, [avatarFuzz]);
   // TaskForce 사령관 말풍선 컬러 — 기본은 꺼짐이고, 켜면 문서 뿌리에 실어 taskforce.css의 테두리 규칙을 켠다.
   const taskforceBubbleColor = settings.state?.taskforceBubbleColor === true;
   useEffect(() => {

@@ -123,7 +123,7 @@ export function RemoteSidebarRow({ row, console, summary, directory, compact, fr
     settled: true as const, freshCount: settled.filter(({ item }) => isNotStartedRow(item.row)).length, doneCount: settled.filter(({ item }) => item.row.glyph === "done").length }] : [])];
   const header = useRef<HTMLDivElement | null>(null);
   const taskforceAvatar = summary.taskforce ? <span className="side-bar-theater-anchor is-avatar" aria-hidden="true"><span className="taskforce-stack" data-count={Math.min(4, summary.taskforce.members.length)}>
-    {summary.taskforce.members.slice(0, 4).map((id) => { const member = directory.commodores.find((row) => row.id === id); return <MongleAvatar key={id} role="commodore" base={member?.look?.base ?? fallbackMongleBase(commodoreAvatarKey(id))} tone={member?.look?.tone} state="idle" size={18} label="" decorative />; })}
+    {summary.taskforce.members.slice(0, 4).map((id) => { const member = directory.commodores.find((row) => row.id === id); return <MongleAvatar key={id} role="commodore" base={member?.look?.base ?? fallbackMongleBase(commodoreAvatarKey(id))} tone={member?.look?.tone} state="idle" size={18} label="" decorative hideBadge />; })}
   </span></span> : undefined;
   const activate = () => {
     if (header.current) openFromClick(null, header.current);

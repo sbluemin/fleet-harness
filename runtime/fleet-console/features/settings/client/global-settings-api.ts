@@ -1,6 +1,7 @@
 import { DEFAULT_FONTS, readFontSettings, migrateTerminalFont } from "../shared/fonts.js";
 import { resolveExperimentSettings } from "../shared/experiments.js";
 import { sanitizeShortcutBindings } from "../shared/shortcuts.js";
+import { DEFAULT_AVATAR_FUZZ, sanitizeAvatarFuzz } from "../../workspace/shared/avatars.js";
 import { ApiError } from "../../../core/client/src/integration/api.js";
 import { normalizeUiFont } from "./ui-font.js";
 import { type ConsoleLanguagePreference, type CommanderFolds, type CommanderSortKey, type CommanderSortPreference, type GlobalSettingsMutationResult, type GlobalSettingsState } from "../../../core/client/src/integration/types.js";
@@ -184,6 +185,7 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     sideBarDoubleClickOpen: payload.sideBarDoubleClickOpen === true,
     reduceMotion: payload.reduceMotion === true,
     calmAvatars: payload.calmAvatars === true,
+    avatarFuzz: sanitizeAvatarFuzz(payload.avatarFuzz) ?? DEFAULT_AVATAR_FUZZ,
     // 구서버 응답에는 없다 — 칩 줄의 기본은 접힘이다.
     commodoreComposerChipsExpanded: payload.commodoreComposerChipsExpanded === true,
     // 키 없음·손상값은 null이다 — "저장된 적 없음"과 명시 저장을 구분한다.
