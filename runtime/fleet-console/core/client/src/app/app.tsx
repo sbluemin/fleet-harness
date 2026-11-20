@@ -8,7 +8,8 @@ import { fetchGroups, fetchObjectiveRecords, restoreDeletion, type DeferredDelet
 import { afterBootLane, bootLanePending, openBootLane, startBootSnapshots } from "../integration/boot-schedule.js";
 import { CommissioningOverlay } from "../chrome/components/commissioning-overlay.js";
 import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../../../../features/remote-access/client/control-handover.js";
-import { KeyboardShortcutsDialog } from "../chrome/components/keyboard-shortcuts-dialog.js";
+import { KeyboardShortcutsDialog, isKeyboardShortcutsModalOpen } from "../chrome/components/keyboard-shortcuts-dialog.js";
+import { isShortcutRecording } from "../integration/shortcut-bindings.js";
 import { ObjectiveSearch } from "../chrome/components/objective-search.js";
 import { ReconnectButton } from "../chrome/components/reconnect-button.js";
 import { Toast, ToastHost } from "../chrome/components/toast.js";
@@ -450,6 +451,21 @@ function ConnectedApp() {
     });
   }, [canUndoLastClose, consoleLocale, navigate, railBindings, registry.providers, resolvePanelShortcut, undoLastClose]);
 
+  // 데스크톱 전용 「더 월드」 포털 단축키(⌘⇧W / Ctrl+Shift+W). 모바일 배치에서는 비활성.
+  useEffect(() => {
+    if (mobileLayout) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (isKeyboardShortcutsModalOpen() || isShortcutRecording(document)) return;
+      if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.altKey || event.code !== "KeyW") return;
+      if (document.querySelector('[aria-modal="true"]:not([hidden])')) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      if (!event.repeat) registry.theWorld.toggleShortcut();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [mobileLayout, registry.theWorld]);
+
   const undoTitle = activeUndo === null
     ? ""
     : activeUndo.kind === "deletion"
@@ -548,6 +564,7 @@ function ConnectedApp() {
           // so a frame that unmounted with the objectiveRecords route would strand the way back.
           return mobileLayout ? <MobileArchiveOutcomeContext.Provider value={enqueueArchive}><MobileFrame state={state} bands={shellBars}>{routeContent}</MobileFrame></MobileArchiveOutcomeContext.Provider> : routeContent;
         })()}
+        {mobileLayout ? null : <registry.theWorld.Layer />}
         <ObjectiveSearch
           state={state}
           railPanels={paletteRailPanels}
