@@ -1,7 +1,8 @@
-import type { LoginStart, LoginStatus } from "@fleet-console/ai-gateway";
+import type { LoginStart, LoginStatus, QuotaSummaryDto } from "@fleet-console/ai-gateway";
 import type { ClientApiCapability } from "@fleet-console/infra/http/client-ports";
 
 import { LOGIN_PROVIDERS, type LoginProvider } from "../shared/provider-order.js";
+import { publishQuotaSummary } from "./summary-store.js";
 
 /** 로그인이 멈춘 이유. 「취소」는 실패가 아니라 처음 카드로 돌아가는 것이라 여기에 없다. */
 export type LoginFailure = "denied" | "expired" | "failed" | "entitlement_required";
@@ -12,6 +13,8 @@ export type LoginFailure = "denied" | "expired" | "failed" | "entitlement_requir
  */
 export type LoginState =
   | { readonly phase: "idle" }
+  /** Claude만: 연결 동의를 켜고 CLI의 기본 로그인을 찾는 중. 없으면 곧 `starting`으로 이어진다. */
+  | { readonly phase: "finding" }
   | { readonly phase: "starting" }
   | {
     readonly phase: "pending";
@@ -161,6 +164,57 @@ export async function startLogin(api: ClientApiCapability, provider: LoginProvid
     schedulePoll(api, provider, captured);
   } catch {
     if (captured === generation(provider)) setState(provider, { phase: "failed", reason: "failed" });
+  }
+}
+
+const NEEDS_LOGIN = new Set<string>(["not_connected", "signed_out", "expired"]);
+
+/**
+ * Claude 로그인 단추. 연결 동의를 켜 CLI의 기본 로그인(터미널 claude와 같은 것)을 먼저 찾고, 있으면 그대로 연결돼
+ * 사용량이 보인다. 없을 때만 로그인 카드가 열린다(`startLogin`). 이 상태는 번들에 있으므로 사령관 채팅의 상태 줄처럼
+ * 패널 밖에서 불러도 패널이 열릴 때 같은 카드가 선다.
+ */
+export async function beginClaudeLogin(api: ClientApiCapability): Promise<void> {
+  const current = states.claude;
+  if (current.phase === "finding" || current.phase === "starting" || current.phase === "pending") return;
+  stopPolling("claude");
+  const captured = bump("claude");
+  setState("claude", { phase: "finding" });
+  try {
+    const response = await api.fetch("quota/connect", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ provider: "claude", connected: true }),
+    });
+    if (!response.ok) throw new Error("connect_failed");
+    const summary = await response.json() as QuotaSummaryDto;
+    if (captured !== generation("claude")) return;
+    // 패널이 같은 요약을 그린다 — 찾은 결과가 카드가 사라지기 전에 먼저 선다.
+    publishQuotaSummary(summary, Date.now());
+    setState("claude", IDLE);
+    if (NEEDS_LOGIN.has(summary.providers.claude?.status ?? "")) await startLogin(api, "claude");
+  } catch {
+    if (captured === generation("claude")) setState("claude", { phase: "failed", reason: "failed" });
+  }
+}
+
+/** 코드 전달의 결과. `invalid`는 서버가 코드 모양을 거절한 것(400 invalid_code)이다. */
+export type LoginCodeResult = "accepted" | "invalid" | "failed";
+
+/** 승인 페이지에서 받은 코드를 진행 중인 로그인에 전한다. 받아들여져도 승인 확인은 계속 서버가 한다. */
+export async function submitLoginCode(api: ClientApiCapability, provider: LoginProvider, code: string): Promise<LoginCodeResult> {
+  const current = states[provider];
+  if (current.phase !== "pending") return "failed";
+  try {
+    const response = await api.fetch(`quota/${provider}/paste`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ loginId: current.loginId, code: code.trim() }),
+    });
+    return response.ok ? "accepted" : response.status === 400 ? "invalid" : "failed";
+  } catch (error) {
+    // 호스트 포트는 비정상 응답을 ApiError로 거절한다 — 공개된 상태 코드만 읽는다.
+    return (error as { status?: unknown } | null)?.status === 400 ? "invalid" : "failed";
   }
 }
 

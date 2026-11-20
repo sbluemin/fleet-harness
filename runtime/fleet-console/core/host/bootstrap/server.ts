@@ -3123,6 +3123,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         beforeTheatersChange: (id) => archiveStorage.assertTheatersMutable(id),
         // 사령관 턴 실패의 원문은 Console의 로컬 오류 로그(errors.jsonl)에 남는다 — feature는 이 포트로만 닿는다.
         recordFailure,
+        // 사령관 채팅의 CLI 문 — 세션을 여는 리졸버·자식 환경과 같은 자리에서 읽기 전용으로 판정한다.
+        readCliStatus: () => execution.readCliStatus(),
         paths: consoleFeaturePorts.paths, events: consoleFeaturePorts.events,
         experiments: consoleFeaturePorts.experiments, models: consoleFeaturePorts.models,
         attachments: attachmentsForPlugin?.("commodore"),

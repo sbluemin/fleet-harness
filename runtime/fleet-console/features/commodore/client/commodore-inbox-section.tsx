@@ -29,6 +29,7 @@ import type { TheaterInboxBodyContext, TheaterInboxSectionDescriptor, TheaterInb
 
 import type { CommodoreLiveEvent, CommodoreState, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import { commodoreLogBlocks, commodoreTurnCovering, errorWord, type CommodoreLogTurn } from "./commodore-chat.js";
+import { CommodoreCliGate, cliGateBlocks, useCommodoreCliStatus } from "./commodore-cli-status.js";
 import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
 import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { useCommodoreDecisionDock, type CommodoreDecisionDock } from "./commodore-person-inbox.js";
@@ -715,6 +716,13 @@ interface CommodoreComposerProps {
   readonly trailing?: ReactNode;
   /** 입력란의 접근성 이름 — 없으면 사령관에게 보내는 말로 읽힌다(TaskForce처럼 다른 대상에 쓸 때 넘긴다). */
   readonly ariaLabel?: string;
+  /**
+   * 사령관 1:1 대화의 CLI 문(C1) — 입력창 위 상태 줄을 세우고, CLI가 없거나 로그인이 없으면 보내기를 막는다.
+   * TaskForce·Theater Inbox의 같은 캡슐은 넘기지 않는다(그 표면은 이번 범위 밖).
+   */
+  readonly cliGate?: boolean;
+  /** 대화의 최신 실패가 CLI 원인이면 그 원인 — 새로 바뀔 때 C1 상태 줄을 다시 읽는다. */
+  readonly cliFailure?: "missing" | "signedout" | null;
   readonly sender?: (input: { readonly text: string; readonly attachmentIds: readonly string[]; readonly references: readonly (string | { readonly kind: "commodore"; readonly id: string })[] }) => Promise<void>;
 }
 
@@ -731,11 +739,14 @@ export function CommodoreComposer(props: CommodoreComposerProps) {
  * 입력창 위 한 줄 안내. 외형·첨부 문구는 SDK(`Execution composer primitives`)가 한 벌로 가진다. 「+」 메뉴의 둘째 행만 사령관의 것
  * (「지휘관 참조」)이다.
  */
-function CommodoreComposerBody({ t, theaterId, active, running = false, phone, topEntries, decisionDock, decisionTarget, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel, trailing }: CommodoreComposerProps) {
+function CommodoreComposerBody({ t, theaterId, active, running = false, phone, topEntries, decisionDock, decisionTarget, placeholder, onFail, onClear, allowedCommodoreIds, attachmentPort, attachmentLimits, sender, ariaLabel, trailing, cliGate = false, cliFailure = null }: CommodoreComposerProps) {
   const accent = useAvatarAccent(commodoreAvatarKey(theaterId));
   const ct = composerT(commodoreLanguage());
   const draft = commodoreDraft(theaterId, attachmentPort, attachmentLimits);
   const { text, references, sending, budgetNotice } = useSyncExternalStore(draft.subscribe, draft.read, draft.read);
+  // CLI 문은 사령관 1:1 대화만 세운다 — TaskForce·Inbox의 같은 캡슐은 이번 범위 밖이다.
+  const cli = useCommodoreCliStatus(theaterId, cliGate, cliFailure);
+  const cliBlocked = cliGate && cliGateBlocks(cli.status);
   const attachmentSnap = useComposerAttachmentSnapshot(draft.attachments);
   const attachments = attachmentSnap.items;
   const quotes = useComposerQuotes(draft.quotes);
@@ -837,7 +848,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
   const uploading = attachments.some((item) => item.uploading);
   // /clear 는 데스크톱 입력창의 길이다 — 폰에서는 두 번 눌러 확정하는 안내를 둘 자리가 없어 보통 말로 보낸다(지금과 같다).
   const isClear = !phone && text.trim() === "/clear";
-  const armed = (usable || isClear) && (!!text.trim() || (!isClear && quotes.length > 0)) && !sending && !clear.busy && !uploading;
+  const armed = (usable || isClear) && (!!text.trim() || (!isClear && quotes.length > 0)) && !sending && !clear.busy && !uploading && !cliBlocked;
   // 그룹 채팅 입력창(`group-composer.tsx`)처럼 턴 진행 중이고 보낼 내용(글·첨부·인용)이 없을 때만 한 자리 버튼을 정지로 바꾼다.
   const stopMode = running && !text.trim() && attachments.length === 0 && quotes.length === 0 && !sending && !clear.busy;
   const send = () => {
@@ -857,6 +868,8 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
       return;
     }
     if (!usable || !message) return;
+    // CLI가 없거나 로그인이 없으면 초안만 남긴다 — 상태 줄이 이유와 해결 동선을 이미 말한다.
+    if (cliBlocked) return;
     // 질문 하나의 직접 답은 글만 실을 수 있다 — 그 밖의 첨부·참조·인용과 섞이면 보내지 않고 이유를 말한다.
     const direct = target?.answer && typed ? target.answer : null;
     if (direct) {
@@ -892,7 +905,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
   };
   const failure = phone?.failure ?? null;
   const capsule = (
-    <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}${trailing ? " has-trailing" : ""}`} style={accent} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
+    <div className={`fc-composer-capsule objectives-commodore-composer${active ? "" : " is-inactive"}${phone && !usable ? " is-disabled" : ""}${attachments.length ? " has-attachments" : ""}${trailing ? " has-trailing" : ""}${cliBlocked ? " is-cli-blocked" : ""}`} style={accent} onClick={(event) => { if (event.target === event.currentTarget) inputRef.current?.focus(); }}>
       <ComposerQuoteTray store={draft.quotes} t={ct} disabled={sending || clear.busy} onDone={() => inputRef.current?.focus()} />
       <ComposerAttachmentTray store={draft.attachments} t={ct} disabled={sending || clear.busy} />
       <div ref={plusRootRef} className="objectives-commodore-composer-plus-root">
@@ -918,7 +931,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
         onFiles={addFiles}
         isFile={isComposerAttachmentCandidate}
         ariaDescribedBy={active ? undefined : `objectives-commodore-composer-idle-${theaterId}`}
-        placeholder={target?.placeholder ?? placeholder ?? composerQuotePlaceholder(quotes.length, ct) ?? t("commodore.composer.placeholder")}
+        placeholder={cliBlocked ? t("commodore.cli.gate.placeholder") : target?.placeholder ?? placeholder ?? composerQuotePlaceholder(quotes.length, ct) ?? t("commodore.composer.placeholder")}
         ariaLabel={ariaLabel ?? t("commodore.composer.aria")}
         onChange={(next) => { setValue(next); clear.disarm(); if (draft.read().budgetNotice) setBudgetNotice(null); if (draft.attachments.read().notice) draft.attachments.clearNotice(); }}
         onCompositionStart={() => { composing.current = true; }}
@@ -936,9 +949,9 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
         /* 폰의 빈 원은 흐리지만 눌린다 — 누르면 입력칸으로 초점만 간다(FD-19). 올리는 중·보내는 중에는 잠긴다. */
         <ComposerSendButton
           className={armed ? undefined : "is-idle"}
-          aria-label={t("commodore.composer.send")}
-          title={t("commodore.composer.send")}
-          disabled={phone ? !usable || sending || uploading || clear.busy : !armed}
+          aria-label={cliBlocked ? t("commodore.cli.gate.sendBlocked") : t("commodore.composer.send")}
+          title={cliBlocked ? t("commodore.cli.gate.sendBlocked") : t("commodore.composer.send")}
+          disabled={cliBlocked || (phone ? !usable || sending || uploading || clear.busy : !armed)}
           onKeyDown={(event) => { if (isClear) clearKey.down(event); }}
           onKeyUp={clearKey.up}
           onClick={send}
@@ -952,6 +965,7 @@ function CommodoreComposerBody({ t, theaterId, active, running = false, phone, t
       : (budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct)) ? <ComposerNotice tone="warn" text={budgetNotice ?? composerAttachmentNoticeText(attachmentSnap.notice, ct) ?? ""} dismissLabel={ct("composer.notice.dismiss")} onDismiss={() => { setBudgetNotice(null); draft.attachments.clearNotice(); inputRef.current?.focus(); }} /> : null}
     {decisionDock?.card}
     {decisionDock?.engaged ? decisionDock.line : decisionDock?.chip ? <div className="commodore-decision-toprow">{decisionDock.chip}{topEntries}</div> : topEntries}
+    {cliGate && cli.status ? <CommodoreCliGate t={t} status={cli.status} checking={cli.checking} recheck={cli.recheck} /> : null}
     {capsule}
     {clear.armed ? <p className="objectives-commodore-clear-confirm" role="status">{t("commodore.clear.enterConfirm")}</p> : null}
     {active ? null : <p id={`objectives-commodore-composer-idle-${theaterId}`} className="objectives-commodore-hint objectives-commodore-composer-idle">{t("commodore.composer.idle")}</p>}

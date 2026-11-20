@@ -29,6 +29,7 @@ import type { EffectiveCommodorePluginsView, GlobalPluginsView } from "../shared
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
 import { COMMODORE_EFFORTS, EMPTY_RUN_TOTALS, MAX_COMMODORE_REFERENCES, MAX_DESCRIPTION, MAX_INTEL_TEXT, MAX_TRANSCRIPT_PAGE, MAX_TRANSCRIPT_TEXT, type CommodoreRunStatus, type CommodoreState } from "../shared/contracts/types.js";
+import type { CommodoreCliStatusView } from "../shared/contracts/cli-status.js";
 
 /**
  * 「사령관 기록」 서랍이 부르는 라우트 — 이미지 사본 읽기만 GET이고 나머지는 POST + JSON, 같은 origin 의 Console 만 지난다. 화면은 응답이 아니라
@@ -88,6 +89,11 @@ export interface CommodoreRouteHooks {
   readonly objective?: (objectiveId: string) => { readonly id: string; readonly commodoreId: string; readonly title: string; readonly removed?: unknown } | null;
   /** 보드 어댑터가 등록돼 있는가 — 없으면 감독자가 runner를 세우지 않으므로 사령관은 꺼진 것으로 보이고 켜지지 않는다. */
   readonly boardReady?: () => boolean;
+  /**
+   * 사령관 채팅이 답할 수 있는가 — 사령관이 쓰는 것과 같은 CLI 리졸버·실행 환경으로 읽기 전용 판정한다.
+   * 없으면(옛 호스트·테스트) `ready`다 — 근거 없이 보내기를 막지 않는다.
+   */
+  readonly cliStatus?: () => Promise<CommodoreCliStatusView>;
 }
 
 const ids = z.string().min(1).max(128);
@@ -357,6 +363,11 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/plugins/icon", method: "GET", summary: "Read a plugin's icon image declared in its plugin.json; only image files inside the plugin folder are served.", handler: pluginIcon },
     { name: "commodore/state", method: "POST", summary: "Read a Commodore's state: routines, description, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
+    { name: "commodore/cli-status", method: "POST", summary: "Read whether this Commodore's chat can answer: the Claude Code CLI is missing, signed out, or ready. Read-only; credentials are checked, never written.", handler: json(commodoreRef.strict(), async ({ commodoreId }) => {
+      read(commodoreId);
+      if (!hooks.cliStatus) return { status: "ready" } satisfies CommodoreCliStatusView;
+      return hooks.cliStatus();
+    }, false) },
     { name: "commodore/auto-memory", method: "POST", summary: "Set Claude Code auto memory for future Commanders under this Commodore; new members inherit their Commander's creation-time policy. Existing sessions and Fleet memory are unchanged.", handler: json(commodoreRef.extend({ autoMemoryEnabled: z.boolean() }).strict(), ({ commodoreId, autoMemoryEnabled }) => {
       read(commodoreId);
       return view(commodoreId, store.setAutoMemoryEnabled(commodoreId, autoMemoryEnabled));

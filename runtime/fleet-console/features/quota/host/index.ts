@@ -11,6 +11,7 @@ import {
   handleSpendBudget,
   handleSummary,
   LOGIN_PROVIDERS,
+  loginActionsOf,
   type GatewayQuotaSummary,
   type LoginAction,
   type LoginGateway,
@@ -20,6 +21,7 @@ import {
 } from "./handlers.js";
 
 const LOGIN_LABEL: Readonly<Record<LoginProvider, string>> = {
+  claude: "Claude",
   "muse-code": "Muse Code",
   codex: "Codex",
   xai: "xAI",
@@ -30,6 +32,7 @@ const LOGIN_ROUTES: readonly { readonly action: LoginAction; readonly method: "G
   { action: "status", method: "GET", summary: (label) => `Read ${label} sign-in progress for the quota panel.` },
   { action: "cancel", method: "POST", summary: (label) => `Cancel ${label} sign-in from the quota panel.` },
   { action: "logout", method: "POST", summary: (label) => `Remove the local ${label} sign-in from the quota panel.` },
+  { action: "paste", method: "POST", summary: (label) => `Pass the code copied from the ${label} sign-in page from the quota panel.` },
 ];
 
 export type QuotaFeatureDeps = { readonly server: ServerOriginPort; readonly storage: QuotaSettingsHost; readonly http: HttpPort; readonly security: HttpSecurityPort; };
@@ -118,7 +121,7 @@ export function createQuotaFeature(deps: QuotaFeatureDeps) {
     }, { method: "POST", path: "", summary: `Set or clear the ${provider} weekly spend budget.`, category: "Quota", gate: "origin-write", transport: "http" });
   }
   for (const provider of LOGIN_PROVIDERS) {
-    for (const route of LOGIN_ROUTES) {
+    for (const route of LOGIN_ROUTES.filter((entry) => loginActionsOf(provider).includes(entry.action))) {
       addRoute(`${provider}/${route.action}`, async ({ req, res }) => {
         await handleProviderLogin(req, res, ctx, provider, route.action, login, service);
         return true;

@@ -3,9 +3,9 @@ import type http from "node:http";
 import type { QuotaRouteContext } from "./index.js";
 import type { QuotaService, QuotaSummaryDto } from "@fleet-console/ai-gateway";
 
-import { isProviderId, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
+import { isProviderId, loginActionsOf, type LoginAction, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
 
-export { LOGIN_PROVIDERS, type LoginProvider } from "../shared/provider-order.js";
+export { LOGIN_PROVIDERS, loginActionsOf, type LoginProvider } from "../shared/provider-order.js";
 
 export type SettingsSerializer = <T>(objectiveRecord: () => Promise<T>) => Promise<T>;
 
@@ -130,7 +130,7 @@ export async function handleConnect(
   ctx.host.http.writeJson(res, 200, summary);
 }
 
-export type LoginAction = "start" | "status" | "cancel" | "logout";
+export type { LoginAction } from "../shared/provider-order.js";
 
 /**
  * 지출 원장의 주 예산을 가진 공급자 — Quota 화면에서 지출 카드를 그리는 둘뿐이다. 플러그인 라우트
@@ -231,6 +231,11 @@ export async function handleProviderLogin(
   gateway: LoginGateway,
   service: QuotaSummarySource,
 ): Promise<void> {
+  // 로그아웃이 없는 공급자(Claude)와 붙여넣기가 없는 공급자는 그 동작의 라우트가 서지 않는다 — 직접 부른 요청도 같은 답이다.
+  if (!loginActionsOf(provider).includes(action)) {
+    ctx.host.http.writeJson(res, 404, { error: "not_found" });
+    return;
+  }
   let request: { readonly loginId?: string; readonly body?: Record<string, unknown> };
   if (action === "status") {
     if (req.method !== "GET") {
@@ -260,7 +265,14 @@ export async function handleProviderLogin(
       return;
     }
     const fields = Object.keys(body);
-    if (action === "cancel") {
+    if (action === "paste") {
+      // 코드는 응답·오류에 되돌려 싣지 않는다. 모양은 Gateway가 판정한다.
+      if (fields.length !== 2 || !isLoginId(body.loginId) || typeof body.code !== "string") {
+        ctx.host.http.writeJson(res, 400, { error: "invalid_login_request" });
+        return;
+      }
+      request = { body: { loginId: body.loginId, code: body.code } };
+    } else if (action === "cancel") {
       if (fields.length !== 1 || !isLoginId(body.loginId)) {
         ctx.host.http.writeJson(res, 400, { error: "invalid_login_id" });
         return;

@@ -145,6 +145,11 @@ function claudeExecutablePath(): string | null {
   return resolvedExecutable;
 }
 
+/** SDK가 동봉한 Claude Code 바이너리 경로. 동봉본이 없으면 null이다. 사용자 CLI가 없을 때의 폴백이다. */
+export function bundledClaudeExecutablePath(): string | null {
+  return claudeExecutablePath();
+}
+
 function probeClaudeExecutable(): string | null {
   try {
     const requireFromHere = createRequire(import.meta.url);

@@ -604,6 +604,8 @@ export function maskSensitiveInfo(text: string): string {
 function failureCode(message: string): string {
   const text = message.trim();
   if (!text) return "turn_failed";
+  // 자식이 assistant에 실은 API 오류 코드 — 미로그인의 정확한 이름이다.
+  if (text === "authentication_failed") return "agent_signed_out";
   // 내부 코드 한 낱말은 그대로 쓴다(session_disposed·gateway_unavailable 등).
   if (/^[a-z][a-z0-9_]{0,63}$/u.test(text)) return text;
   if (/disposed/iu.test(text)) return "session_disposed";
@@ -615,6 +617,9 @@ function failureCode(message: string): string {
   if (/\b5\d\d\b|internal server error|bad gateway|service unavailable|server_error/iu.test(text)) return "upstream_error";
   if (/ECONN|ENOTFOUND|EAI_AGAIN|ETIMEDOUT|ECONNRESET|network error|fetch failed|socket hang|timeout|connection error/iu.test(text)) return "network";
   if (/\b400\b|invalid[ _-]?request|malformed|message required|base64 image blocks/iu.test(text)) return "invalid_request";
+  // 로그인이 없다 — 자식은 끝나지 않고 `Not logged in · Please run /login` 결과를 낸다(2.1.329 실측). cli_exited·turn_failed와
+  // 구별해야 화면이 로그인 동선을 말하고 같은 원인으로 자동 재시도하지 않는다.
+  if (/not logged in|authentication[_ ]failed|please run \/login/iu.test(text)) return "agent_signed_out";
   // 턴이 끝나기 전에 자식 프로세스가 끝났다 — 세션이 아니라 프로세스 사건이다.
   if (/exited with code|exited with signal|was ended by SIG|process (exited|terminated)/iu.test(text)) return "cli_exited";
   return "turn_failed";

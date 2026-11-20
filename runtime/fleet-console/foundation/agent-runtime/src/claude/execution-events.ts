@@ -68,11 +68,20 @@ export function createClaudeExecutionEventDecoder(): ClaudeExecutionEventDecoder
   const toolNames = new Map<string, string>();
   // 마지막 주 루프 호출의 입력. 서브에이전트(`parent_tool_use_id`)의 호출은 이 대화의 크기가 아니다.
   let contextTokens: number | null = null;
+  /**
+   * 자식이 assistant 메시지에 실은 API 오류 코드 — 결과 메시지는 이 코드를 싣지 않는다(2.1.329 실측:
+   * 미로그인은 `error: "authentication_failed"` assistant 뒤 `is_error: true` result). 결과가 같은 사실을
+   * 말할 수 있게 다음 result까지 들고 간다.
+   */
+  let assistantError: string | null = null;
   return {
     decode(message: ClaudeGatewayMessage): readonly ClaudeExecutionEvent[] {
       if (!isRecord(message)) return [];
       if (message.type === "stream_event") return decodeStreamEvent(message);
       if (message.type === "assistant") {
+        // 오류 코드는 stream-json 봉투 최상위에 실린다 — 자식 판본에 따라 안쪽 message에도 실릴 수 있어 둘 다 본다.
+        const envelope = typeof message.error === "string" ? message.error : record(message.message).error;
+        if (typeof envelope === "string" && envelope.trim().length > 0) assistantError = envelope.trim();
         if (message.parent_tool_use_id == null) contextTokens = callInputTokens(record(message.message).usage) ?? contextTokens;
         return decodeAssistant(message, toolNames);
       }
@@ -84,7 +93,11 @@ export function createClaudeExecutionEventDecoder(): ClaudeExecutionEventDecoder
         return event ? [event] : [];
       }
       if (message.type === "system" && message.subtype === "status" && message.compact_result === "failed") return [{ kind: "compact-failed" }];
-      if (message.type === "result") return decodeResult(message, contextTokens);
+      if (message.type === "result") {
+        const events = decodeResult(message, contextTokens, assistantError);
+        assistantError = null;
+        return events;
+      }
       return [];
     },
   };
@@ -160,13 +173,15 @@ function decodeUser(
   return events;
 }
 
-function decodeResult(message: Record<string, unknown>, contextTokens: number | null): readonly ClaudeExecutionEvent[] {
+function decodeResult(message: Record<string, unknown>, contextTokens: number | null, assistantError: string | null): readonly ClaudeExecutionEvent[] {
   const decoded = decodeUsage(message);
   const usage = decoded === null || contextTokens === null ? decoded : { ...decoded, contextTokens };
+  // 결과가 원문을 싣지 않아도 assistant가 실은 오류 코드로 원인을 말한다(미로그인은 이 자리뿐일 수 있다).
+  const detail = typeof message.result === "string" ? message.result : assistantError ?? undefined;
   return [{
     kind: "result",
     isError: message.is_error === true,
-    ...(typeof message.result === "string" ? { detail: message.result } : {}),
+    ...(detail !== undefined ? { detail } : {}),
     source: "message",
     ...(usage === null ? {} : { usage }),
   }];

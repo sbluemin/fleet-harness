@@ -570,6 +570,25 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 }
 
 .objectives-commodore-failure { margin: 0 28px 8px; color: var(--coral); font-size: var(--t-xs); }
+
+/* CLI 문 — C1 입력창 위 상태 줄과 C2 보낸 뒤 원인 카드. 승인된 시안의 면·문장·단추 순서를 그대로 쓴다. */
+.objectives-commodore-cli-gate,
+.objectives-commodore-cli-card {
+  display: grid; gap: 8px; padding: 10px 12px; border-radius: var(--radius-md);
+  background: var(--surface-panel-raised); box-shadow: inset 0 0 0 1px var(--surface-rim);
+  color: var(--text-primary); font-size: var(--t-sm);
+}
+.objectives-commodore-cli-gate { grid-template-columns: 8px minmax(0, 1fr); align-items: start; column-gap: 10px; margin-bottom: 8px; }
+.objectives-commodore-cli-gate-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--warn); margin-top: 6px; }
+.objectives-commodore-cli-gate-copy { display: grid; gap: 2px; min-width: 0; }
+.objectives-commodore-cli-gate-copy b,
+.objectives-commodore-cli-card b { font-size: var(--t-sm); font-weight: var(--weight-medium); }
+.objectives-commodore-cli-gate-copy span,
+.objectives-commodore-cli-card p { margin: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.5; }
+.objectives-commodore-cli-gate-actions,
+.objectives-commodore-cli-card-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; padding-top: 2px; }
+.objectives-commodore-cli-gate-actions .objectives-commodore-text-button,
+.objectives-commodore-cli-card-actions .objectives-commodore-text-button { padding: 0; }
 /* 입력 — 캡슐·원·첨부 줄·안내 줄·「+」 메뉴의 외양은 지휘관 대화 입력창과 한 벌이다(SDK `fc-composer-*`, 호스트 components.css).
    여기에는 사령관 입력창의 자리만 둔다: 폭은 기록 칸과 같은 선, 「+」 메뉴는 캡슐 왼쪽 끝에 맞춰 캡슐 위로 뜬다. */
 .objectives-commodore-foot { flex: none; padding: 12px 28px 16px; border-top: 1px solid var(--hairline); }
@@ -599,6 +618,25 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .objectives-commodore-composer { position: relative; }
 .objectives-commodore-ref-input { overflow-y: auto; white-space: pre-wrap; overflow-wrap: anywhere; word-break: keep-all; cursor: text; outline: none; }
 .objectives-commodore-ref-input.is-empty::before { content: attr(data-placeholder); float: left; height: 0; color: var(--text-tertiary); pointer-events: none; }
+/* CLI 안내 자리표는 길어서 폰 폭에서 두 줄로 넘치고, 캡슐의 한 줄 높이 밖으로 아래가 잘린다 — 문구는 그대로 두고
+   입력 높이에 영향을 주지 않는 절대 자리의 한 줄 말줄임으로 보인다. */
+.objectives-commodore-composer.is-cli-blocked .objectives-commodore-ref-input.is-empty { position: relative; }
+.objectives-commodore-composer.is-cli-blocked .objectives-commodore-ref-input.is-empty::before {
+  content: attr(data-placeholder);
+  position: absolute;
+  left: 0;
+  right: 0;
+  /* 원래 float 자리표와 같은 첫 줄 상자 — 캡슐이 세우는 줄 높이·패딩을 그대로 쓴다. */
+  top: var(--fc-composer-line-pad, 4px);
+  height: var(--fc-composer-line, 20px);
+  line-height: var(--fc-composer-line, 20px);
+  float: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  pointer-events: none;
+}
 .objectives-commodore-ref-input[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; }
 /* '@' 멘션 덱만 패널 폭에 상한을 둔다 — 입력 왼쪽에 맞춰 내용 480px, 좁은 화면에서는 100%. */
 .fc-composer-deck.objectives-commodore-ref-list { left: 0; right: auto; width: var(--fc-mention-deck-width, 100%); z-index: 5; }

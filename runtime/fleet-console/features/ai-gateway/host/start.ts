@@ -7,7 +7,7 @@ import type { WorkspacePaths } from "../../workspace/host/path-port.js";
 import type { ClaudeProcessSpawner } from "@fleet-console/agent-runtime/claude";
 import { createExecutionAssignmentCache, type DelegationIntentLedger } from "@fleet-console/ai-gateway";
 import path from "node:path";
-import { readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
+import { bundledClaudeExecutablePath, readClaudeSupportedModels } from "@fleet-console/agent-runtime/claude";
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
   DEFAULT_WIRE_TOOL_INPUT_LOG_MAX_BYTES,
@@ -19,6 +19,7 @@ import {
   createMuseCodeOAuth,
   createCodexOAuth,
   createXaiOAuth,
+  createClaudeCliLogin,
   createAiGatewayQuotaCollectors,
   parseGatewayQuotaSnapshot,
   GATEWAY_PROVIDERS,
@@ -183,6 +184,15 @@ export function startAiGateway(ctx: GatewayStartContext) {
   const xai = createXaiOAuth({ authService, cliCredentials: defaultCredentialDeps, onQuota: (value) => quota.record("xai", value) });
   ctx.host.lifecycle.registerCleanup(() => xai.dispose());
   registerConsoleOAuthRoutes(ctx, "xai", "xAI", xai);
+  // Claude는 CLI가 로그인을 소유한다 — `claude auth login`을 사용자 기본 환경에서 돌릴 뿐 Console이 자격을 쓰지 않는다.
+  // 사령관이 쓰는 CLI를 먼저 쓰고, 없으면 SDK 동봉 바이너리다. 끝나면 그 공급자만 사용량을 다시 읽는다.
+  const claudeLogin = createClaudeCliLogin({
+    resolveExecutable: async () => (await ctx.resolveClaudeExecutable?.()) ?? bundledClaudeExecutablePath() ?? undefined,
+    spawn: ctx.spawnAgentProcess,
+    onSignedIn: () => { void quota.getSummary({ forceProvider: "claude" }).catch(() => undefined); },
+  });
+  ctx.host.lifecycle.registerCleanup(() => claudeLogin.dispose());
+  registerConsoleOAuthRoutes(ctx, "claude", "Claude", claudeLogin);
   const providerStatusListeners = new Set<() => void>();
   // Gemini 지출 원장 — 응답 usageMetadata 토큰 × 확인 단가를 태평양시 달 경계로 누적하고,
   // 월 예산과 마지막 402·429를 같은 파일에 둔다. 값이 바뀌면 사용량 캐시를 만료시켜 다음 조회가

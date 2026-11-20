@@ -114,6 +114,23 @@ describe("quota route handlers", () => {
   });
 });
 
+describe("Claude sign-in through the quota routes", () => {
+  it("passes a pasted code to Console, and has no logout for Claude", async () => {
+    // Claude 로그아웃은 터미널 로그인까지 끊는다 — 직접 부른 요청도 Gateway까지 가지 않는다.
+    const gateway = { call: vi.fn(async () => ({ status: 200, payload: { accepted: true } })) } satisfies LoginGateway;
+    const logout = harness("POST", "/api/v1/quota/claude/logout", {});
+    await handleProviderLogin(logout.req, logout.res, logout.ctx, "claude", "logout", gateway, logout.service);
+    expect(logout.writes).toEqual([{ status: 404, payload: { error: "not_found" } }]);
+    const paste = harness("POST", "/api/v1/quota/claude/paste", { loginId: "id", code: "abc#def" });
+    await handleProviderLogin(paste.req, paste.res, paste.ctx, "claude", "paste", gateway, paste.service);
+    expect(gateway.call).toHaveBeenCalledWith("claude", "paste", { body: { loginId: "id", code: "abc#def" } });
+    const other = harness("POST", "/api/v1/quota/codex/paste", { loginId: "id", code: "abc#def" });
+    await handleProviderLogin(other.req, other.res, other.ctx, "codex", "paste", gateway, other.service);
+    expect(other.writes[0]?.status).toBe(404);
+    expect(gateway.call).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe("provider order", () => {
   it("drops unknown ids, keeps the saved sequence, and appends missing providers in the default order", () => {
     expect(sanitizeProviderOrder(["gemini", "retired", "gemini", "claude"])).toEqual([

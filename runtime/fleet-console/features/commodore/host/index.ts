@@ -90,6 +90,11 @@ export interface CommodoreFeatureDeps {
    * feature는 core를 직접 import하지 않는다.
    */
   readonly recordFailure?: (kind: string, error: unknown) => void;
+  /**
+   * 사령관 채팅이 답할 수 있는가 — 사령관 세션을 여는 것과 같은 CLI 리졸버·실행 환경으로 읽기 전용 판정한다.
+   * 자격 증명은 읽기만 한다. 없으면 라우트는 `ready`다.
+   */
+  readonly readCliStatus?: () => Promise<import("../shared/contracts/cli-status.js").CommodoreCliStatusView>;
 }
 
 /** Console 조합이 소유하는 UUID 엔티티와 비영속 상주 실행. */
@@ -330,6 +335,7 @@ export function createCommodoreFeature(deps: CommodoreFeatureDeps) {
   });
   const commodoreRoutes = createCommodoreRoutes(context, store, {
     sidebar, plugins, pluginAuth, pluginsChanged, globalPluginsChanged, globalPluginReachChanged, deletion, assertWritable: ownership.assertWritable,
+    ...(deps.readCliStatus ? { cliStatus: deps.readCliStatus } : {}),
     theaterIds, summary, list: () => orderedIds().filter((id) => entities.dirOf(id) !== null).map(summary),
     order: orderedIds,
     roster: () => {
