@@ -1247,8 +1247,10 @@ button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
 .commodore-decision-quick:disabled { opacity: 0.5; cursor: default; }
 .commodore-decision-quick:focus-visible { box-shadow: var(--focus-face); outline: none; }
 .commodore-decision-quick-icon { display: none; }
-/* 좁은 폭(폰)에서는 완료·승인·범위 넓히기가 아이콘만 남아 제목 칸을 돌려준다. 한 줄 높이(36px)는 그대로다. */
+/* 좁은 폭(폰)에서는 완료·승인·범위 넓히기가 아이콘만 남고, 질문 선택지는 접혀(제목을 눌러 펼친 카드에서 답한다) 제목 칸을 돌려준다.
+   한 줄 높이(36px)는 그대로다. */
 @container (max-width: 560px) {
+  .commodore-decision-quick.is-option { display: none; }
   .commodore-decision-quick.has-icon { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; padding: 0; }
   .commodore-decision-quick.has-icon .commodore-decision-quick-label { display: none; }
   .commodore-decision-quick.has-icon .commodore-decision-quick-icon { display: block; width: 12px; height: 12px; }
