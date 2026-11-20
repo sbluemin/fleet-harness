@@ -235,7 +235,10 @@ function directAnswer(theaterId: string, ask: CommodoreAsk, onAnswered: (id: str
   };
 }
 
-/** 한 줄에 두는 빠른 답 — 한 번에 끝나는 경우에만. 그 밖은 아무것도 그리지 않고, 제목을 눌러 펼친 카드에서 지금 동작 그대로 답한다. */
+/**
+ * 한 줄에 두는 빠른 답 — 한 번에 끝나는 경우에만. 그 밖은 아무것도 그리지 않고, 제목을 눌러 펼친 카드에서 지금 동작 그대로 답한다.
+ * 질문 선택지는 임의 문구라 아이콘으로 줄일 수 없어, 좁은 폭에서는 접혀(`is-option`) 제목 칸을 돌려주고 펼친 카드에서 답한다.
+ */
 function QuickAnswer({ item, theaterId, language, phone, onAnswered, onFailed }: {
   readonly item: InboxItem;
   readonly theaterId: string;
@@ -260,7 +263,7 @@ function QuickAnswer({ item, theaterId, language, phone, onAnswered, onFailed }:
     return (
       <>
         {question.options.map((option, position) => (
-          <button key={option.id} type="button" className={`commodore-decision-quick${position === 0 ? " is-primary" : ""}`} disabled={busy} onClick={() => pick(option.id)}>{option.label}</button>
+          <button key={option.id} type="button" className={`commodore-decision-quick is-option${position === 0 ? " is-primary" : ""}`} disabled={busy} onClick={() => pick(option.id)}>{option.label}</button>
         ))}
       </>
     );
