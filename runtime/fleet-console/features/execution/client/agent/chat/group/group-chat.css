@@ -39,6 +39,20 @@
   color: var(--text-primary);
 }
 
+/* 긴 그룹 대화의 지난 말은 DOM과 텍스트를 남기고 화면 밖 배치·칠만 미룬다. 한 번 그린 줄은 마지막 높이를 기억한다.
+   OpenUI 팝오버와 포커스·호버·강조는 행 바깥에 그릴 수 있다. 거친 포인터의 넓힌 터치 영역과 인쇄도 종전 배치를 쓴다. */
+@media screen and (pointer: fine) {
+  @supports (content-visibility: auto) and (contain-intrinsic-block-size: auto 100px) and (overflow-clip-margin: 6px) {
+    .group-chat-column > :is(.group-chat-agent, .group-chat-human)[data-defer-layout] {
+      contain-intrinsic-block-size: auto 100px;
+    }
+    .group-chat-column > :is(.group-chat-agent, .group-chat-human)[data-defer-layout]:not(:focus-within, :hover, .is-revealed, :has(.openui-block)) {
+      content-visibility: auto;
+      overflow-clip-margin: 6px;
+    }
+  }
+}
+
 .group-chat-empty,
 .group-chat-notice {
   margin: 0;
