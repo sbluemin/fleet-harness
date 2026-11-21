@@ -9,7 +9,7 @@ import { isExperimentModelId } from "../../settings/shared/experiments.js";
 import { MAX_MEMORY_ENTRIES, memoryRefSchema } from "./memory.js";
 import type { CommodoreCreateInput } from "./creation.js";
 import { commodoreSessionToolName } from "../shared/tool-names.js";
-import { refuse, text } from "./tool-results.js";
+import { parseFail, refuse, text } from "./tool-results.js";
 import { CommodoreStoreError, safeErrorCode } from "./errors.js";
 
 /** 생성 성공 응답에만 싣는 안내 — 상시 프롬프트가 아니라 그 상황에서만 필요하다. */
@@ -51,7 +51,7 @@ export function createCommodoreManagementTools(options: {
   const tool = commodores.plugin({
     async execute(raw) {
       const parsed = commodores.parse(raw, { caller: "commodore" });
-      if (!parsed.ok) return refuse(parsed.error, { issues: parsed.issues });
+      if (!parsed.ok) return parseFail(parsed);
       const call = parsed.call;
       try {
         if (call.action === "list") return text({ commodores: options.list() });
