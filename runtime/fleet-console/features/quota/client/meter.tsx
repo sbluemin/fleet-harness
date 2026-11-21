@@ -18,8 +18,13 @@ export interface UsageMeterProps {
   readonly resetTitle?: string;
 }
 
-function clampPercent(value: number): number {
+export function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, value));
+}
+
+/** Local percentage bands, for spend and quota windows without a gateway verdict. */
+export function localPercentSeverity(percent: number): MeterSeverity {
+  return percent >= 90 ? "critical" : percent >= 70 ? "warning" : "normal";
 }
 
 /**

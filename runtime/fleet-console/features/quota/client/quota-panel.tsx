@@ -8,7 +8,7 @@ import type { ProviderDto, ProviderStatus, QuotaSummaryDto, QuotaWindow, ResetCr
 import { isLoginProvider, isProviderId, LOGIN_PROVIDERS, PROVIDER_ORDER_DEFAULT, sameProviderOrder, type LoginProvider, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { isSpendProvider, SpendSection, spendSetLabel, useBudgetEditor, type SpendProvider } from "./spend-section.js";
-import { UsageMeter } from "./meter.js";
+import { clampPercent, localPercentSeverity, UsageMeter, type MeterSeverity } from "./meter.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import {
   beginClaudeLogin,
@@ -251,7 +251,7 @@ export function visibleCredits(credits: ResetCredits | undefined): ResetCredits 
   return credits !== undefined && credits.available > 0 ? credits : null;
 }
 
-const SEVERITY_RANK: Readonly<Record<"normal" | "warning" | "critical", number>> = {
+const SEVERITY_RANK: Readonly<Record<MeterSeverity, number>> = {
   critical: 2,
   normal: 0,
   warning: 1,
@@ -264,12 +264,12 @@ const SEVERITY_RANK: Readonly<Record<"normal" | "warning" | "critical", number>>
  * its cycle is in trouble, and no percentage band can see that. The local bands
  * survive only as a fallback for a reading that arrived without a verdict.
  */
-export function meterSeverity(window: QuotaWindow): "normal" | "warning" | "critical" {
+export function meterSeverity(window: QuotaWindow): MeterSeverity {
   switch (window.risk?.pressure) {
     case "critical": return "critical";
     case "elevated": return "warning";
     case "ok": return "normal";
-    default: return window.usedPercent >= 90 ? "critical" : window.usedPercent >= 70 ? "warning" : "normal";
+    default: return localPercentSeverity(window.usedPercent);
   }
 }
 
@@ -289,10 +289,6 @@ export function mostUrgentWindow(windows: readonly QuotaWindow[] | undefined): Q
     if (rank !== 0) return rank > 0 ? window : worst;
     return window.usedPercent > worst.usedPercent ? window : worst;
   });
-}
-
-function clampPercent(value: number): number {
-  return Math.min(100, Math.max(0, value));
 }
 
 /**
