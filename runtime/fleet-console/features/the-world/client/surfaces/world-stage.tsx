@@ -440,9 +440,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     if (!store.choreography) return;
     const ran = runtimeRef.current?.runChoreography(store.choreography);
     if (ran === false) {
-      pushToast("이 연출을 재생하려면 진행 중인 Objective 캠프 또는 구성원이 필요합니다.");
+      const tNow = getWorldT(deps.commodore.language());
+      pushToast(tNow("theWorld.stage.simNeedsObjectiveToast"));
     }
-  }, [pushToast, store.choreography]);
+  }, [deps, pushToast, store.choreography]);
 
   const lastEmoteNonceRef = useRef(0);
   useEffect(() => {
@@ -649,7 +650,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         const landX = hitVillage.x + Math.cos(hitVillage.gateAngle) * Math.max(2.0, hitVillage.radius * 0.45);
         const landZ = hitVillage.z + Math.sin(hitVillage.gateAngle) * Math.max(2.0, hitVillage.radius * 0.45);
         requestWorldTeleport(landX, landZ);
-        pushToast(`${hitVillage.label} 마을로 이동했습니다.`);
+        const tNow = getWorldT(deps.commodore.language());
+        pushToast(tNow("theWorld.stage.warpVillageToast", { name: hitVillage.label }));
         return;
       }
     }
@@ -663,7 +665,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       closeActorInteraction();
       return;
     }
-  }, [pushToast]);
+  }, [deps, pushToast]);
 
   // 모달 & HUD & 미니맵 콜백 (React.memo 안정성 유지)
   const handleCloseQuestBoard = useCallback(() => {
@@ -693,8 +695,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     const landX = village.x + Math.cos(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
     const landZ = village.z + Math.sin(village.gateAngle) * Math.max(2.0, village.radius * 0.45);
     requestWorldTeleport(landX, landZ);
-    pushToast(`${village.label} 마을로 이동했습니다.`);
-  }, [pushToast]);
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(tNow("theWorld.stage.warpVillageToast", { name: village.label }));
+  }, [deps, pushToast]);
 
   const handleVillageSignClick = useCallback((village: WorldVillageSpec) => {
     if (suppressVillageClickRef.current) return;
@@ -703,8 +706,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   const handleMinimapSelectPlaza = useCallback(() => {
     requestWorldTeleport(0, 1.5);
-    pushToast("중앙 길드 광장으로 이동했습니다.");
-  }, [pushToast]);
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(tNow("theWorld.stage.warpPlazaToast"));
+  }, [deps, pushToast]);
 
   const handleMinimapToggleOverview = useCallback(() => {
     const next = !getWorldStoreSnapshot().overviewMode;
@@ -730,8 +734,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   const handleTeleportToDistrict = useCallback((x: number, z: number, label: string) => {
     requestWorldTeleport(x, z);
-    pushToast(`${label} 구역으로 이동했습니다.`);
-  }, [pushToast]);
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(tNow("theWorld.district.teleportAria", { name: label }));
+  }, [deps, pushToast]);
 
   const handleOpenDistrictDialogue = useCallback((actorId: string) => {
     openActorDialogue(actorId);
@@ -787,8 +792,13 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
 
   const handleJumpToDistrict = useCallback((item: WorldMinimapJumpItem) => {
     requestWorldTeleport(item.x, item.z);
-    pushToast(`${item.label}(으)로 이동했습니다.`);
-  }, [pushToast]);
+    const tNow = getWorldT(deps.commodore.language());
+    if (item.id === "plaza-main") {
+      pushToast(tNow("theWorld.stage.warpPlazaToast"));
+    } else {
+      pushToast(tNow("theWorld.stage.warpVillageToast", { name: item.label }));
+    }
+  }, [deps, pushToast]);
 
   const selectedActor = useMemo(
     () => (store.selectedActorId ? snapshot.actors.find((a) => a.id === store.selectedActorId) ?? null : null),
@@ -806,11 +816,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       if (match) {
         closeActorInteraction();
         requestWorldTeleport(match.x, match.z);
-        pushToast(`${match.label} 구역으로 이동했습니다.`);
+        const tNow = getWorldT(deps.commodore.language());
+        pushToast(tNow("theWorld.district.teleportAria", { name: match.label }));
         return;
       }
     }
-  }, [pushToast]);
+  }, [deps, pushToast]);
   const selectedAnchorLabel = store.interactionMode === "radial" && selectedActor
     ? (runtimeRef.current?.getActorScreenAnchor(selectedActor.id) ?? null)
     : null;
@@ -865,8 +876,14 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, [deps, pushToast]);
 
   const handleClearDispatchFlag = useCallback((districtId: string) => {
+    const hadFlag = Boolean(getWorldStoreSnapshot().dispatchFlags[districtId]);
     clearDispatchFlag(districtId);
-  }, []);
+    if (hadFlag) {
+      const tNow = getWorldT(deps.commodore.language());
+      const districtName = findDistrictInVillages(villagesRef.current, districtId)?.district.label ?? "";
+      pushToast(tNow("theWorld.district.flagClearedToast", { name: districtName }));
+    }
+  }, [deps, pushToast]);
 
   const handleSelectVillageBiome = useCallback((commodoreId: string, biome: WorldVillageBiome) => {
     setVillageBiome(commodoreId, biome);
@@ -973,7 +990,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       const res = await deps.sendMessageToCommodore(actor.commodoreId, trimmed);
       if (res.ok) {
         delivered += 1;
-        pushActorSpeech(actor.id, `[chat] "${trimmed.slice(0, 22)}" 접수!`);
+        pushActorSpeech(actor.id, tNow("theWorld.chat.receivedSpeech", { text: trimmed.slice(0, 22) }));
       }
     }
     if (delivered > 0) {
@@ -1008,11 +1025,14 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, [deps, pushCelebrationToast]);
 
   const handleChangeDistrictNote = useCallback((districtId: string, note: string) => {
+    const hadNote = Boolean(getWorldStoreSnapshot().districtNotes[districtId]?.trim());
     setDistrictNote(districtId, note);
+    const tNow = getWorldT(deps.commodore.language());
+    const districtName = findDistrictInVillages(villagesRef.current, districtId)?.district.label ?? "";
     if (note.trim().length > 0) {
-      const tNow = getWorldT(deps.commodore.language());
-      const districtName = findDistrictInVillages(villagesRef.current, districtId)?.district.label ?? "";
       pushToast(tNow("theWorld.district.noteSavedToast", { name: districtName }));
+    } else if (hadNote) {
+      pushToast(tNow("theWorld.district.noteClearedToast", { name: districtName }));
     }
   }, [deps, pushToast]);
 
@@ -1215,7 +1235,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             reducedMotion={deps.isReducedMotion()}
             toastMessage={celebrationToast ?? toastMessage}
             toastKind={celebrationToast ? "celebration" : "info"}
-            hideBottom={dialogueOpen || panelMode !== null || anyModalOpen || store.sittingAtCampfire}
+            hideBottom={dialogueOpen || panelMode !== null || anyModalOpen || store.sittingAtCampfire || (store.overviewMode && !store.chatActive)}
             urgentQuestCount={questBoardData.totalUrgentCount}
             weatherMode={store.weatherMode}
             onSelectWeather={handleSelectWeather}
@@ -1232,6 +1252,29 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             onToggleControlsGuide={handleToggleControlsGuide}
             debugPanelVisible={debugPanelVisible}
           />
+          {snapshot.villages.length === 0 && !store.photoMode && !anyModalOpen && !store.overviewMode && store.interactionMode === "closed" ? (
+            <section
+              className="the-world-empty-welcome"
+              aria-label={t("theWorld.emptyWorld.title")}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="the-world-empty-welcome-icon" aria-hidden="true">
+                <WorldIcon name="sparkle" size={20} tone="amber" />
+              </div>
+              <div className="the-world-empty-welcome-copy">
+                <h3 className="the-world-empty-welcome-title">{t("theWorld.emptyWorld.title")}</h3>
+                <p className="the-world-empty-welcome-desc">{t("theWorld.emptyWorld.desc")}</p>
+              </div>
+              <button
+                type="button"
+                className="the-world-primary-action"
+                onClick={deps.openCreateCommodore}
+              >
+                <WorldIcon name="recruit" size={14} tone="inherit" />
+                <span>{t("theWorld.emptyWorld.cta")}</span>
+              </button>
+            </section>
+          ) : null}
           {!dialogueOpen && panelMode === null && !anyModalOpen && !store.admiralCustomizerOpen ? (
             <WorldMinimap
               ref={minimapRef}
@@ -1258,7 +1301,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             <WorldChatLog
               actors={snapshot.actors}
               deps={deps}
-              hidden={dialogueOpen}
+              hidden={dialogueOpen || (store.overviewMode && !store.chatActive)}
               onStatusBanner={pushToast}
             />
           ) : null}

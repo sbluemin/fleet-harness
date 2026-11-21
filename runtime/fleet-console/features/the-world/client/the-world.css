@@ -426,6 +426,13 @@
   color: oklch(99% 0 0);
 }
 
+@media (max-width: 1200px) {
+  .the-world-quick-btn {
+    padding: 0 6px;
+    gap: 4px;
+  }
+}
+
 @media (max-width: 960px) {
   .the-world-quick-btn > span {
     display: none;
@@ -1795,6 +1802,13 @@
 
 .the-world-chat.is-expanded {
   height: 396px;
+}
+
+@media (max-width: 1200px) and (min-width: 961px) {
+  .the-world-chat-shell.is-ambient {
+    width: min(380px, calc(100vw - 650px));
+    min-width: min(210px, calc(100vw - 24px));
+  }
 }
 
 @media (max-width: 960px) {
@@ -3207,11 +3221,11 @@
 .the-world-district-card {
   --district-tone: var(--mongle-cerulean);
   position: absolute;
-  top: 62px;
+  top: 56px;
   right: var(--space-3);
   z-index: 6;
-  width: min(338px, calc(100vw - 24px));
-  max-height: min(512px, calc(100vh - 266px));
+  width: min(344px, calc(100vw - 24px));
+  max-height: min(580px, calc(100vh - 320px));
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
@@ -3263,8 +3277,9 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-2);
-  padding: var(--space-3) var(--space-3) var(--space-2);
+  padding: 10px var(--space-3) 8px;
   border-bottom: 1px solid oklch(100% 0 0 / 10%);
+  flex-shrink: 0;
 }
 
 .the-world-district-title-col {
@@ -3368,9 +3383,11 @@
 .the-world-district-body {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
-  padding: var(--space-3);
+  gap: 9px;
+  padding: 10px var(--space-3);
   overflow-y: auto;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .the-world-district-owner {
@@ -3590,12 +3607,12 @@
 }
 
 .the-world-district-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 5px;
-  padding: var(--space-2) var(--space-3) var(--space-3);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: var(--space-2) var(--space-3) 10px;
   border-top: 1px solid oklch(100% 0 0 / 10%);
+  flex-shrink: 0;
 }
 
 .the-world-district-action.is-active {
@@ -3611,6 +3628,8 @@
   align-items: center;
   justify-content: center;
   gap: 5px;
+  width: 100%;
+  min-width: 0;
   height: 30px;
   padding: 0 9px;
   border: 1px solid oklch(100% 0 0 / 14%);
@@ -3621,8 +3640,19 @@
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   white-space: nowrap;
+  overflow: hidden;
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-district-action > svg {
+  flex-shrink: 0;
+}
+
+.the-world-district-action > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .the-world-district-action:hover {
@@ -3632,8 +3662,6 @@
 }
 
 .the-world-district-action.is-primary {
-  flex: 1 1 auto;
-  min-width: 0;
   background: color-mix(in oklch, var(--district-tone) 22%, oklch(16% 0.014 255 / 94%));
   border-color: color-mix(in oklch, var(--district-tone) 60%, transparent);
   color: oklch(99% 0 0);
@@ -4519,10 +4547,88 @@
   box-shadow: var(--focus-face);
 }
 
+/* 0-사령관 첫 방문 환영 카드 (글래스 플로팅 온보딩) */
+.the-world-empty-welcome {
+  position: absolute;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  z-index: 6;
+  width: min(500px, calc(100vw - 32px));
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 14px 16px;
+  border-radius: var(--radius-lg);
+  background: oklch(13% 0.014 255 / 84%);
+  backdrop-filter: blur(22px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 34%, oklch(100% 0 0 / 16%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 9%);
+  color: oklch(95% 0.005 255);
+  pointer-events: auto;
+  animation: the-world-dialogue-rise var(--duration-base) var(--ease-spring) both;
+}
+
+.the-world-empty-welcome-icon {
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 92%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 48%, transparent);
+}
+
+.the-world-empty-welcome-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.the-world-empty-welcome-title {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: oklch(98% 0.004 255);
+}
+
+.the-world-empty-welcome-desc {
+  margin: 0;
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  line-height: 1.45;
+  color: oklch(82% 0.008 255);
+}
+
+.the-world-empty-welcome .the-world-primary-action {
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .the-world-empty-welcome {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-2);
+    bottom: 64px;
+  }
+
+  .the-world-empty-welcome .the-world-primary-action {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 /* 포토 모드(P): 모든 HUD·채팅·미니맵·푯말·대화 바·드로어 부드럽게 숨김 + 우하단 은은한 복원 필 */
 .the-world-root.is-photo-mode .the-world-hud-top,
 .the-world-root.is-photo-mode .the-world-quick-bar,
 .the-world-root.is-photo-mode .the-world-chat-shell,
+.the-world-root.is-photo-mode .the-world-empty-welcome,
 .the-world-root.is-photo-mode .the-world-rpg-dialogue,
 .the-world-root.is-photo-mode .the-world-drawer,
 .the-world-root.is-photo-mode .the-world-customizer-sheet,
@@ -5202,6 +5308,7 @@
   .the-world-customizer-sheet,
   .the-world-panel,
   .the-world-district-card,
+  .the-world-empty-welcome,
   .the-world-quick-menu,
   .the-world-minimap-warp-menu,
   .the-world-minimap-node.is-working,

@@ -26,6 +26,7 @@ import type {
   WorldZoneSpec,
 } from "../shared/world-types.js";
 import type { TheWorldClientDeps } from "./deps.js";
+import { getWorldT } from "./i18n/index.js";
 import { useVillageBiomes, useWorldActive } from "./world-store.js";
 
 /**
@@ -242,6 +243,7 @@ function resolveLookDetails(book: AvatarBook | null, key: string) {
     tone: spec.quaker ? spec.tone : (resolved.tone ?? spec.tone),
     quaker: spec.quaker ?? null,
     defaultNameKo: spec.name.ko,
+    defaultNameEn: spec.name.en,
   };
 }
 
@@ -254,6 +256,9 @@ export function buildWorldSnapshot(
   book: AvatarBook | null,
   villageBiomes: Readonly<Record<string, WorldVillageBiome>> = {},
 ): WorldSnapshot {
+  const locale = deps.commodore.language();
+  const t = getWorldT(locale);
+  const isEn = locale === "en";
   const commodores = deps.readCommodores();
   const metricsByTheaterId = deps.readTheaterMetrics();
   const allClusters = deps.clusters.get().filter((cluster) => !cluster.row?.commodore);
@@ -265,7 +270,7 @@ export function buildWorldSnapshot(
     {
       id: "plaza-main",
       kind: "plaza",
-      label: "중앙 길드 광장",
+      label: t("theWorld.projection.plazaLabel"),
       x: PLAZA_X,
       z: PLAZA_Z,
       radius: 10.5,
@@ -290,7 +295,7 @@ export function buildWorldSnapshot(
     const state: MongleState = hasAsk ? "decision" : isRunning ? "running" : isError ? "error" : "idle";
     const activity: MongleActivity | null = isRunning ? (run.step ?? "delegate") : null;
     const look = resolveLookDetails(book, commodoreAvatarKey(row.commodoreId));
-    const commodoreName = row.alias ?? row.label ?? look.defaultNameKo;
+    const commodoreName = row.alias ?? row.label ?? (isEn ? look.defaultNameEn : look.defaultNameKo);
     const rawModel = view?.run.session?.model ?? view?.state.model ?? view?.defaults.model ?? null;
     const rawEffort = view?.run.session?.effort ?? view?.state.effort ?? view?.defaults.effort ?? null;
     const effortChip = rawEffort === "medium" ? "MED" : rawEffort ? rawEffort.toUpperCase() : null;
@@ -445,11 +450,18 @@ export function buildWorldSnapshot(
     const npcX = roundCoord(village.x + Math.cos(gateAngle) * npcOffset);
     const npcZ = roundCoord(village.z + Math.sin(gateAngle) * npcOffset);
 
+    const roleCommodore = t("theWorld.role.commodore");
+    const statusText = isRunning
+      ? t("theWorld.bridge.phaseTurn")
+      : hasAsk
+        ? `${t("theWorld.state.decision")} (${snap.asks.length})`
+        : t("theWorld.bridge.phaseIdle");
+
     actors.push({
       id: `commodore:${row.commodoreId}`,
       role: "commodore",
       name: commodoreName,
-      subtitle: theaterLabels.length > 0 ? `사령관 · ${theaterLabels[0]}` : "사령관",
+      subtitle: theaterLabels.length > 0 ? `${roleCommodore} · ${theaterLabels[0]}` : roleCommodore,
       zoneId: villageId,
       homeX: npcX,
       homeZ: npcZ,
@@ -460,16 +472,18 @@ export function buildWorldSnapshot(
       state,
       activity,
       needsAttention: hasAsk,
-      initialSpeech: idx === 0 ? "[greet] 넓은 초원 본부에 오신 걸 환영해요!" : undefined,
+      initialSpeech: idx === 0 ? `[greet] ${t("theWorld.projection.welcomeSpeech")}` : undefined,
       commodoreId: row.commodoreId,
       modelLabel,
       theaterLabels,
       askCount: snap.asks.length,
       summaryLines: [
-        `상태: ${isRunning ? "턴 실행 중" : hasAsk ? `질문 응답 대기 (${snap.asks.length}건)` : "대기 중"}`,
-        ...(modelLabel ? [`모델: ${modelLabel}`] : []),
-        `소속 폴더: ${theaterLabels.join(", ") || "미연결"}`,
-        `마을 발전도: Tier ${village.overallTier} (${districts.length}개 구역 · ${totalEntries.toLocaleString()}개)`,
+        `${t("theWorld.bridge.statPhase")}: ${statusText}`,
+        ...(modelLabel ? [isEn ? `Model: ${modelLabel}` : `모델: ${modelLabel}`] : []),
+        isEn
+          ? `Districts: ${theaterLabels.join(", ") || "Unlinked"}`
+          : `소속 폴더: ${theaterLabels.join(", ") || "미연결"}`,
+        `${t("theWorld.district.progressLabel")}: ${t("theWorld.village.signSubtitle", { tier: village.overallTier, count: districts.length })} · ${totalEntries.toLocaleString()}`,
       ],
     });
   });
@@ -540,8 +554,8 @@ export function buildWorldSnapshot(
     actors.push({
       id: `commander:${cmdrObjId}`,
       role: "commander",
-      name: cmdrLook.defaultNameKo,
-      subtitle: `지휘관 · ${cluster.title}`,
+      name: isEn ? cmdrLook.defaultNameEn : cmdrLook.defaultNameKo,
+      subtitle: `${t("theWorld.role.commander")} · ${cluster.title}`,
       zoneId,
       homeX: roundCoord(slotX + 0.55),
       homeZ: roundCoord(slotZ + 1.15),
@@ -557,8 +571,10 @@ export function buildWorldSnapshot(
       rootObjectiveId: cluster.root,
       missions,
       summaryLines: [
-        `목표: ${cluster.title}`,
-        `구성원: ${cluster.members.filter((m) => !m.pending).length}명 / 전체 단계 ${cluster.members.length}`,
+        `${t("theWorld.bridge.goalsHeading")}: ${cluster.title}`,
+        isEn
+          ? `Crew: ${cluster.members.filter((m) => !m.pending).length} / ${cluster.members.length} steps`
+          : `구성원: ${cluster.members.filter((m) => !m.pending).length}명 / 전체 단계 ${cluster.members.length}`,
       ],
     });
 
@@ -575,8 +591,8 @@ export function buildWorldSnapshot(
       actors.push({
         id: `member:${member.objectiveId}`,
         role: "member",
-        name: member.name ?? memLook.defaultNameKo,
-        subtitle: `구성원 · ${member.label}`,
+        name: member.name ?? (isEn ? memLook.defaultNameEn : memLook.defaultNameKo),
+        subtitle: `${t("theWorld.role.member")} · ${member.label}`,
         zoneId,
         homeX: roundCoord(slotX + offset.dx),
         homeZ: roundCoord(slotZ + offset.dz),
@@ -591,8 +607,10 @@ export function buildWorldSnapshot(
         objectiveId: member.objectiveId,
         rootObjectiveId: cluster.root,
         summaryLines: [
-          `임무: ${member.label}`,
-          ...(member.result ? [`산출: ${member.result}`] : [`진행: ${member.progress}`]),
+          isEn ? `Mission: ${member.label}` : `임무: ${member.label}`,
+          ...(member.result
+            ? [isEn ? `Output: ${member.result}` : `산출: ${member.result}`]
+            : [isEn ? `Progress: ${member.progress}` : `진행: ${member.progress}`]),
         ],
       });
     });
@@ -628,7 +646,7 @@ export function useWorldSnapshot(deps: TheWorldClientDeps): WorldSnapshot {
   // 월드 스냅샷에 실제로 영향을 주는 굵은 상태(phase·step·asks·routines·model·effort)가 바뀔 때만 재투영한다.
   const readCoarseCommodoreKey = useCallback((): string => {
     const list = deps.readCommodores();
-    let key = "";
+    let key = `${deps.commodore.language() ?? ""}|`;
     for (let i = 0; i < list.length; i += 1) {
       const row = list[i]!;
       const id = row.commodoreId;

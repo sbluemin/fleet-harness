@@ -5,7 +5,7 @@ import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar
 import type { WorldActorSpec, WorldChatFeedEntry } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
 import { playMongleChirp } from "../engine/world-audio.js";
-import { getWorldT } from "../i18n/index.js";
+import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   closeActorInteraction,
   openActorPanel,
@@ -13,23 +13,23 @@ import {
 } from "../world-store.js";
 import { WorldIcon } from "./world-icons.js";
 
-const STATE_LABEL: Record<WorldActorSpec["state"], string> = {
-  idle: "대기 중",
-  fresh: "준비됨",
-  unseen: "새 소식",
-  running: "작업 중",
-  awaiting: "승인 대기",
-  decision: "확인 필요",
-  review: "검토 대기",
-  done: "완료",
-  ended: "종료됨",
-  error: "오류",
+const STATE_LABEL_KEY: Record<WorldActorSpec["state"], TheWorldMessageKey> = {
+  idle: "theWorld.state.idle",
+  fresh: "theWorld.state.fresh",
+  unseen: "theWorld.state.unseen",
+  running: "theWorld.state.running",
+  awaiting: "theWorld.state.awaiting",
+  decision: "theWorld.state.decision",
+  review: "theWorld.state.review",
+  done: "theWorld.state.done",
+  ended: "theWorld.state.ended",
+  error: "theWorld.state.error",
 };
 
-const QUICK_PROMPTS: Record<WorldActorSpec["role"], readonly string[]> = {
-  commodore: ["현재 상태 요약해줘", "진행 중인 작업 확인해줘"],
-  commander: ["진행 현황 보고해줘", "다음 단계 우선순위 알려줘"],
-  member: ["현재 진행 상황 알려줘", "막힌 부분이 있으면 보고해줘"],
+const QUICK_PROMPT_KEYS: Record<WorldActorSpec["role"], readonly TheWorldMessageKey[]> = {
+  commodore: ["theWorld.rpg.promptCommodore1", "theWorld.rpg.promptCommodore2"],
+  commander: ["theWorld.rpg.promptCommander1", "theWorld.rpg.promptCommander2"],
+  member: ["theWorld.rpg.promptMember1", "theWorld.rpg.promptMember2"],
 };
 
 const MAX_MARKDOWN_CACHE = 256;
@@ -170,15 +170,15 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
           : { ok: false, error: "no_target" };
 
       if (result.ok) {
-        pushActorSpeech(actor.id, `[chat] "${trimmed.slice(0, 24)}" 접수!`);
-        onStatusBanner(`${actor.name}에게 메시지를 전송했습니다.`);
+        pushActorSpeech(actor.id, t("theWorld.chat.receivedSpeech", { text: trimmed.slice(0, 24) }));
+        onStatusBanner(t("theWorld.rpg.sentToast", { name: actor.name }));
         setDraft("");
       } else {
         const reason = result.error === "mention_target_gone"
-          ? "사령관 보드가 아직 준비 중입니다. 잠시 후 다시 시도하거나 [설정]에서 상태를 확인해 주세요."
-          : `전송 실패 (${result.error ?? "unknown"})`;
+          ? t("theWorld.rpg.boardNotReady")
+          : t("theWorld.rpg.sendFailed", { error: result.error ?? "unknown" });
         setFeedback({ tone: "error", text: reason });
-        onStatusBanner(`${actor.name} 전송 실패: ${reason}`);
+        onStatusBanner(t("theWorld.rpg.sendFailedBanner", { name: actor.name, reason }));
       }
     } finally {
       setSending(false);
@@ -208,8 +208,8 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
         ? "working"
         : "idle";
   const statusText = conversation.working
-    ? (conversation.stepLabel ?? STATE_LABEL.running)
-    : STATE_LABEL[actor.state];
+    ? (conversation.stepLabel ?? t(STATE_LABEL_KEY.running))
+    : t(STATE_LABEL_KEY[actor.state]);
   const objectiveTargetId = actor.rootObjectiveId ?? actor.objectiveId;
   const showQuickChips = !conversation.working && draft.trim().length === 0;
   const showHistoryLink = historyCount >= 2 || conversation.hasOlder;
@@ -369,7 +369,7 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
                   type="button"
                   className="the-world-dialogue-chip is-danger"
                   disabled={actionBusy}
-                  onClick={() => runControl(conversation.stopTurn, `${actor.name} 턴 중지를 요청했습니다.`)}
+                  onClick={() => runControl(conversation.stopTurn, t("theWorld.rpg.stopRequested", { name: actor.name }))}
                 >
                   <WorldIcon name="stop" size={11} tone="warn" />
                   <span>{t("theWorld.rpg.stop")}</span>
@@ -380,7 +380,7 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
                   type="button"
                   className="the-world-dialogue-chip is-warn"
                   disabled={actionBusy}
-                  onClick={() => runControl(conversation.retryTurn, `${actor.name} 재시도를 요청했습니다.`)}
+                  onClick={() => runControl(conversation.retryTurn, t("theWorld.rpg.retryRequested", { name: actor.name }))}
                 >
                   <WorldIcon name="retry" size={11} tone="amber" />
                   <span>{t("theWorld.rpg.retry")}</span>
@@ -412,20 +412,23 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
       <div className="the-world-rpg-foot">
         {showQuickChips ? (
           <div className="the-world-dialogue-chips">
-            {QUICK_PROMPTS[actor.role].map((prompt) => (
-              <button
-                key={prompt}
-                type="button"
-                className="the-world-dialogue-chip"
-                disabled={sending}
-                onClick={() => {
-                  setDraft(prompt);
-                  inputRef.current?.focus();
-                }}
-              >
-                {prompt}
-              </button>
-            ))}
+            {QUICK_PROMPT_KEYS[actor.role].map((promptKey) => {
+              const prompt = t(promptKey);
+              return (
+                <button
+                  key={promptKey}
+                  type="button"
+                  className="the-world-dialogue-chip"
+                  disabled={sending}
+                  onClick={() => {
+                    setDraft(prompt);
+                    inputRef.current?.focus();
+                  }}
+                >
+                  {prompt}
+                </button>
+              );
+            })}
           </div>
         ) : null}
 

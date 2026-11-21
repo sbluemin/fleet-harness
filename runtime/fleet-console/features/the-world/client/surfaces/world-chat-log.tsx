@@ -1,9 +1,10 @@
+import type { Translate } from "@fleet-console/i18n";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import type { WorldActorSpec, WorldChatChannel, WorldChatFeedEntry } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
-import { getWorldT } from "../i18n/index.js";
+import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   activateChat,
   consumeChatMention,
@@ -41,56 +42,56 @@ const PREFS_STORAGE_KEY = "fleet.theWorld.chatPrefs.v2";
 
 const CHANNELS: readonly {
   readonly id: WorldChatChannel;
-  readonly label: string;
+  readonly labelKey: TheWorldMessageKey;
   readonly icon: WorldIconName;
 }[] = [
-  { id: "all", label: "일반", icon: "chat" },
-  { id: "chat", label: "대화", icon: "crew" },
-  { id: "system", label: "시스템", icon: "systemWake" },
-  { id: "action", label: "활동", icon: "tool" },
+  { id: "all", labelKey: "theWorld.chat.channelAll", icon: "chat" },
+  { id: "chat", labelKey: "theWorld.chat.channelChat", icon: "crew" },
+  { id: "system", labelKey: "theWorld.chat.channelSystem", icon: "systemWake" },
+  { id: "action", labelKey: "theWorld.chat.channelAction", icon: "tool" },
 ];
 
-const ROLE_LABEL: Record<WorldActorSpec["role"], string> = {
-  commodore: "사령관",
-  commander: "지휘관",
-  member: "구성원",
+const ROLE_LABEL_KEY: Record<WorldActorSpec["role"], TheWorldMessageKey> = {
+  commodore: "theWorld.role.commodore",
+  commander: "theWorld.role.commander",
+  member: "theWorld.role.member",
 };
 
 interface FilterItemMeta {
   readonly key: ChatFilterKey;
-  readonly label: string;
+  readonly labelKey: TheWorldMessageKey;
   readonly tone: "plain" | "teal" | "cerulean" | "plum" | "amber" | "moss" | "warn";
 }
 
 const FILTER_GROUPS: readonly {
   readonly id: string;
-  readonly title: string;
+  readonly titleKey: TheWorldMessageKey;
   readonly items: readonly FilterItemMeta[];
 }[] = [
   {
     id: "dialogue",
-    title: "대화",
+    titleKey: "theWorld.chat.groupDialogue",
     items: [
-      { key: "commodoreSpeech", label: "사령관 대화", tone: "plain" },
-      { key: "playerWhisper", label: "제독 귓속말", tone: "teal" },
-      { key: "crewSpeech", label: "지휘관·구성원", tone: "cerulean" },
-      { key: "peerMail", label: "전언·위임", tone: "plum" },
-      { key: "asks", label: "확인 필요", tone: "amber" },
+      { key: "commodoreSpeech", labelKey: "theWorld.chat.filterCommodore", tone: "plain" },
+      { key: "playerWhisper", labelKey: "theWorld.chat.filterWhisper", tone: "teal" },
+      { key: "crewSpeech", labelKey: "theWorld.chat.filterCrew", tone: "cerulean" },
+      { key: "peerMail", labelKey: "theWorld.chat.filterPeer", tone: "plum" },
+      { key: "asks", labelKey: "theWorld.chat.filterAsks", tone: "amber" },
     ],
   },
   {
     id: "activity",
-    title: "활동",
+    titleKey: "theWorld.chat.groupActivity",
     items: [
-      { key: "tools", label: "도구·보드", tone: "moss" },
+      { key: "tools", labelKey: "theWorld.chat.filterTools", tone: "moss" },
     ],
   },
   {
     id: "system",
-    title: "시스템 알림",
+    titleKey: "theWorld.chat.groupSystem",
     items: [
-      { key: "systemWake", label: "감시자·알림", tone: "amber" },
-      { key: "systemError", label: "오류·경고", tone: "warn" },
+      { key: "systemWake", labelKey: "theWorld.chat.filterWake", tone: "amber" },
+      { key: "systemError", labelKey: "theWorld.chat.filterError", tone: "warn" },
     ],
   },
 ];
@@ -302,10 +303,12 @@ export const WorldSpeechSync = memo(function WorldSpeechSync({
 const ChatLogLine = memo(function ChatLogLine({
   entry,
   showTime,
+  t,
   onFocusActor,
 }: {
   readonly entry: WorldChatFeedEntry;
   readonly showTime: boolean;
+  readonly t: Translate<TheWorldMessageKey>;
   readonly onFocusActor: (actorId: string) => void;
 }) {
   const timeNode = showTime ? (
@@ -316,7 +319,7 @@ const ChatLogLine = memo(function ChatLogLine({
     return (
       <div className="the-world-chat-line is-wake">
         {timeNode}
-        <span className="the-world-chat-tag-wake">[감시자]</span>{" "}
+        <span className="the-world-chat-tag-wake">{t("theWorld.chat.tagWatcher")}</span>{" "}
         <button
           type="button"
           className="the-world-chat-actor-link"
@@ -326,7 +329,7 @@ const ChatLogLine = memo(function ChatLogLine({
           {entry.actorName}
         </button>
         {" — "}
-        {entry.badge && entry.badge !== "감시자 깨우기" ? `${entry.badge} · ` : ""}
+        {entry.badge && entry.badge !== t("theWorld.chat.watcherWakeBadge") ? `${entry.badge} · ` : ""}
         {compactLine(entry.text, 160)}
       </div>
     );
@@ -344,7 +347,7 @@ const ChatLogLine = memo(function ChatLogLine({
           {entry.actorName}
         </button>
         {" · "}
-        {entry.badge ?? "오류"}: {compactLine(entry.text, 160)}
+        {entry.badge ?? t("theWorld.chat.fallbackError")}: {compactLine(entry.text, 160)}
       </div>
     );
   }
@@ -362,7 +365,7 @@ const ChatLogLine = memo(function ChatLogLine({
           {entry.actorName}
         </button>
         {" "}
-        {entry.badge ?? "알림"} · {compactLine(entry.text, 150)}
+        {entry.badge ?? t("theWorld.chat.fallbackInfo")} · {compactLine(entry.text, 150)}
       </div>
     );
   }
@@ -380,7 +383,7 @@ const ChatLogLine = memo(function ChatLogLine({
           {entry.actorName}
         </button>
         {" · "}
-        <span className="the-world-chat-action-verb">{entry.badge ?? "도구"}</span>
+        <span className="the-world-chat-action-verb">{entry.badge ?? t("theWorld.chat.fallbackTool")}</span>
         {entry.text && entry.text !== entry.badge ? ` (${compactLine(entry.text, 120)})` : ""}
         {entry.streaming ? " ⋯" : ""}
       </div>
@@ -392,7 +395,7 @@ const ChatLogLine = memo(function ChatLogLine({
       <div className="the-world-chat-line is-player">
         {timeNode}
         <span className="the-world-chat-player-name">
-          제독{entry.targetName ? ` → ${entry.targetName}` : ""}
+          {t("theWorld.chat.admiralSender")}{entry.targetName ? ` → ${entry.targetName}` : ""}
         </span>
         {": "}
         {entry.badge ? `[${entry.badge}] ` : ""}
@@ -410,7 +413,7 @@ const ChatLogLine = memo(function ChatLogLine({
           className="the-world-chat-ask-inline"
           onClick={() => onFocusActor(entry.actorId)}
         >
-          [확인 필요] {entry.actorName}: {compactLine(entry.text, 160)}
+          {t("theWorld.chat.tagAsk")} {entry.actorName}: {compactLine(entry.text, 160)}
         </button>
       </div>
     );
@@ -780,7 +783,7 @@ export const WorldChatLog = memo(function WorldChatLog({
         recipients.push(nearActor);
       } else {
         triggerMentionPicker();
-        onStatusBanner("@이름으로 대화할 사령관이나 구성원을 멘션해 주세요.");
+        onStatusBanner(t("theWorld.chat.mentionRequiredToast"));
         return;
       }
     }
@@ -796,7 +799,7 @@ export const WorldChatLog = memo(function WorldChatLog({
             ? await deps.sendMessageToObjective(recipient.objectiveId, body)
             : { ok: false, error: "no_target" };
         if (result.ok) {
-          pushActorSpeech(recipient.id, `[chat] "${body.slice(0, 24)}" 접수!`);
+          pushActorSpeech(recipient.id, t("theWorld.chat.receivedSpeech", { text: body.slice(0, 24) }));
           delivered.push(recipient.name);
         } else {
           failed.push(`${recipient.name} (${result.error ?? "unknown"})`);
@@ -809,10 +812,10 @@ export const WorldChatLog = memo(function WorldChatLog({
         setMentionIds([]);
         setMentionDismissedAt(null);
         setAmbientActivityNonce((n) => n + 1);
-        onStatusBanner(`${delivered.join(", ")}에게 전송했습니다.`);
+        onStatusBanner(t("theWorld.chat.sentToast", { names: delivered.join(", ") }));
       }
       if (failed.length > 0) {
-        onStatusBanner(`전송 실패: ${failed.join(", ")}`);
+        onStatusBanner(t("theWorld.chat.sendFailedToast", { errors: failed.join(", ") }));
       }
     } finally {
       setSending(false);
@@ -847,6 +850,7 @@ export const WorldChatLog = memo(function WorldChatLog({
                 key={entry.id}
                 entry={entry}
                 showTime={false}
+                t={t}
                 onFocusActor={handleFocusActor}
               />
             ))}
@@ -880,6 +884,7 @@ export const WorldChatLog = memo(function WorldChatLog({
             <nav className="the-world-chat-rail" role="tablist" aria-label={t("theWorld.chat.tabsAria")}>
               {CHANNELS.map((ch) => {
                 const active = channel === ch.id;
+                const chLabel = t(ch.labelKey);
                 return (
                   <button
                     key={ch.id}
@@ -887,8 +892,8 @@ export const WorldChatLog = memo(function WorldChatLog({
                     role="tab"
                     tabIndex={chatActive ? 0 : -1}
                     aria-selected={active}
-                    aria-label={ch.label}
-                    title={ch.label}
+                    aria-label={chLabel}
+                    title={chLabel}
                     className={`the-world-chat-rail-btn${active ? " is-active" : ""}`}
                     onClick={() => {
                       setChannel(ch.id);
@@ -904,7 +909,7 @@ export const WorldChatLog = memo(function WorldChatLog({
             {/* 우측 보더리스 반투명 채팅 본문 */}
             <div className="the-world-chat-main">
               <header className="the-world-chat-head">
-                <span className="the-world-chat-title">{activeChannelMeta.label}</span>
+                <span className="the-world-chat-title">{t(activeChannelMeta.labelKey)}</span>
                 <div className="the-world-chat-tools">
                   <button
                     type="button"
@@ -943,7 +948,7 @@ export const WorldChatLog = memo(function WorldChatLog({
               >
                 {filtered.length === 0 ? (
                   <div className="the-world-chat-empty">
-                    표시할 로그가 없습니다. `@이름`으로 멘션해 말을 걸거나 우측 톱니바퀴에서 필터를 조정해 보세요.
+                    {t("theWorld.chat.emptyLog")}
                   </div>
                 ) : (
                   filtered.map((entry) => (
@@ -951,6 +956,7 @@ export const WorldChatLog = memo(function WorldChatLog({
                       key={entry.id}
                       entry={entry}
                       showTime={prefs.showTime}
+                      t={t}
                       onFocusActor={handleFocusActor}
                     />
                   ))
@@ -994,7 +1000,7 @@ export const WorldChatLog = memo(function WorldChatLog({
                                 decorative
                               />
                               <span className="the-world-chat-mention-name">{actor.name}</span>
-                              <span className="the-world-chat-mention-role">{ROLE_LABEL[actor.role]}</span>
+                              <span className="the-world-chat-mention-role">{t(ROLE_LABEL_KEY[actor.role])}</span>
                             </button>
                           );
                         })}
@@ -1104,7 +1110,7 @@ export const WorldChatLog = memo(function WorldChatLog({
                       disabled={sending || draft.trim().length === 0}
                       onClick={() => void handleSend()}
                     >
-                      전송
+                      {t("theWorld.chat.sendBtn")}
                     </button>
                   </div>
                 </div>
@@ -1123,7 +1129,7 @@ export const WorldChatLog = memo(function WorldChatLog({
         >
           <div className="the-world-chat-settings-crest" aria-hidden="true" />
           <header className="the-world-chat-settings-head">
-            <h3 className="the-world-chat-settings-title">채팅 설정</h3>
+            <h3 className="the-world-chat-settings-title">{t("theWorld.chat.settingsTitle")}</h3>
             <button
               type="button"
               className="the-world-chat-icon-btn"
@@ -1137,7 +1143,7 @@ export const WorldChatLog = memo(function WorldChatLog({
           <div className="the-world-chat-settings-subhead">
             <span className="the-world-chat-settings-kicker">
               <WorldIcon name="systemInfo" size={12} tone="cerulean" />
-              <span>탭 설정</span>
+              <span>{t("theWorld.chat.tabSettings")}</span>
             </span>
             <button
               type="button"
@@ -1151,7 +1157,7 @@ export const WorldChatLog = memo(function WorldChatLog({
           </div>
 
           <div className="the-world-chat-settings-tabrow">
-            <span className="the-world-chat-settings-label">탭 선택</span>
+            <span className="the-world-chat-settings-label">{t("theWorld.chat.selectTab")}</span>
             <div className="the-world-chat-settings-tabpills">
               {CHANNELS.map((ch) => (
                 <button
@@ -1163,7 +1169,7 @@ export const WorldChatLog = memo(function WorldChatLog({
                     setChannel(ch.id);
                   }}
                 >
-                  {ch.label}
+                  {t(ch.labelKey)}
                 </button>
               ))}
             </div>
@@ -1182,7 +1188,7 @@ export const WorldChatLog = memo(function WorldChatLog({
                       onChange={() => toggleGroupFilters(settingsTab, keys)}
                     />
                     <span className="the-world-chat-check-box" aria-hidden="true" />
-                    <span className="the-world-chat-check-label">{group.title}</span>
+                    <span className="the-world-chat-check-label">{t(group.titleKey)}</span>
                   </label>
                   <div className="the-world-chat-filter-grid">
                     {group.items.map((item) => (
@@ -1193,7 +1199,7 @@ export const WorldChatLog = memo(function WorldChatLog({
                           onChange={() => toggleFilter(settingsTab, item.key)}
                         />
                         <span className="the-world-chat-check-box" aria-hidden="true" />
-                        <span className="the-world-chat-check-label">{item.label}</span>
+                        <span className="the-world-chat-check-label">{t(item.labelKey)}</span>
                       </label>
                     ))}
                   </div>
@@ -1211,14 +1217,14 @@ export const WorldChatLog = memo(function WorldChatLog({
                   onChange={() => setPrefs((prev) => ({ ...prev, showTime: !prev.showTime }))}
                 />
                 <span className="the-world-chat-check-box" aria-hidden="true" />
-                <span className="the-world-chat-check-label">시각 표시</span>
+                <span className="the-world-chat-check-label">{t("theWorld.chat.showTime")}</span>
               </label>
 
               <div className="the-world-chat-settings-tabpills">
                 {([
-                  { id: "ghost", label: "투명" },
-                  { id: "soft", label: "은은함" },
-                  { id: "solid", label: "선명함" },
+                  { id: "ghost", labelKey: "theWorld.chat.backdropGhost" as TheWorldMessageKey },
+                  { id: "soft", labelKey: "theWorld.chat.backdropSoft" as TheWorldMessageKey },
+                  { id: "solid", labelKey: "theWorld.chat.backdropSolid" as TheWorldMessageKey },
                 ] as const).map((mode) => (
                   <button
                     key={mode.id}
@@ -1226,7 +1232,7 @@ export const WorldChatLog = memo(function WorldChatLog({
                     className={`the-world-chat-settings-pill${prefs.backdrop === mode.id ? " is-active" : ""}`}
                     onClick={() => setPrefs((prev) => ({ ...prev, backdrop: mode.id }))}
                   >
-                    {mode.label}
+                    {t(mode.labelKey)}
                   </button>
                 ))}
                 <button
@@ -1235,7 +1241,7 @@ export const WorldChatLog = memo(function WorldChatLog({
                   aria-label={t("theWorld.chat.sizeAria")}
                   onClick={() => setPrefs((prev) => ({ ...prev, expanded: !prev.expanded }))}
                 >
-                  {prefs.expanded ? "기본 크기" : "크게"}
+                  {prefs.expanded ? t("theWorld.chat.sizeCompact") : t("theWorld.chat.sizeExpanded")}
                 </button>
               </div>
             </div>

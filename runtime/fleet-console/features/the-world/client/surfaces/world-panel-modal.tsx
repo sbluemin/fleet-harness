@@ -16,17 +16,17 @@ import {
 } from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
-const STATE_LABEL: Record<WorldActorSpec["state"], string> = {
-  idle: "대기 중",
-  fresh: "준비됨",
-  unseen: "새 소식",
-  running: "작업 중",
-  awaiting: "승인 대기",
-  decision: "확인 필요",
-  review: "검토 대기",
-  done: "완료",
-  ended: "종료됨",
-  error: "오류",
+const STATE_LABEL_KEY: Record<WorldActorSpec["state"], TheWorldMessageKey> = {
+  idle: "theWorld.state.idle",
+  fresh: "theWorld.state.fresh",
+  unseen: "theWorld.state.unseen",
+  running: "theWorld.state.running",
+  awaiting: "theWorld.state.awaiting",
+  decision: "theWorld.state.decision",
+  review: "theWorld.state.review",
+  done: "theWorld.state.done",
+  ended: "theWorld.state.ended",
+  error: "theWorld.state.error",
 };
 
 interface DrawerTabSpec {
@@ -127,7 +127,7 @@ export const WorldPanelModal = memo(function WorldPanelModal({
               <span className="the-world-drawer-name">{actor.name}</span>
               <span className={`the-world-rpg-status is-${statusKind}`}>
                 <span className="the-world-rpg-status-dot" aria-hidden="true" />
-                <span>{STATE_LABEL[actor.state]}</span>
+                <span>{t(STATE_LABEL_KEY[actor.state])}</span>
               </span>
             </div>
             {actor.modelLabel ? (

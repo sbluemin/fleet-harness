@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import type { WorldActorSpec, WorldScreenLabel } from "../../shared/world-types.js";
 import type { TheWorldClientDeps } from "../deps.js";
-import { getWorldT } from "../i18n/index.js";
+import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   closeActorInteraction,
   openActorDialogue,
@@ -23,23 +23,23 @@ interface RadialAction {
   readonly run: () => void;
 }
 
-const ROLE_LABEL: Record<WorldActorSpec["role"], string> = {
-  commodore: "사령관",
-  commander: "지휘관",
-  member: "구성원",
+const ROLE_LABEL_KEY: Record<WorldActorSpec["role"], TheWorldMessageKey> = {
+  commodore: "theWorld.role.commodore",
+  commander: "theWorld.role.commander",
+  member: "theWorld.role.member",
 };
 
-const STATE_LABEL: Record<WorldActorSpec["state"], string> = {
-  idle: "대기 중",
-  fresh: "준비됨",
-  unseen: "새 소식",
-  running: "작업 중",
-  awaiting: "승인 대기",
-  decision: "확인 필요",
-  review: "검토 대기",
-  done: "완료",
-  ended: "종료됨",
-  error: "오류",
+const STATE_LABEL_KEY: Record<WorldActorSpec["state"], TheWorldMessageKey> = {
+  idle: "theWorld.state.idle",
+  fresh: "theWorld.state.fresh",
+  unseen: "theWorld.state.unseen",
+  running: "theWorld.state.running",
+  awaiting: "theWorld.state.awaiting",
+  decision: "theWorld.state.decision",
+  review: "theWorld.state.review",
+  done: "theWorld.state.done",
+  ended: "theWorld.state.ended",
+  error: "theWorld.state.error",
 };
 
 /**
@@ -69,10 +69,10 @@ export function WorldRadialMenu({
       id: "approach",
       icon: "approach",
       iconTone: "teal",
-      label: "다가가기",
+      label: t("theWorld.radial.approach"),
       run: () => {
         requestApproachActor(actor.id);
-        onStatusBanner(`${actor.name} 앞으로 다가갔습니다.`);
+        onStatusBanner(t("theWorld.radial.approachToast", { name: actor.name }));
       },
     };
 
@@ -82,7 +82,7 @@ export function WorldRadialMenu({
           id: "talk",
           icon: "chat",
           iconTone: "amber",
-          label: "말 걸기",
+          label: t("theWorld.radial.talk"),
           tone: "primary",
           run: () => openActorDialogue(actor.id),
         },
@@ -90,21 +90,21 @@ export function WorldRadialMenu({
           id: "goals",
           icon: "questMap",
           iconTone: "moss",
-          label: "목표",
+          label: t("theWorld.radial.goals"),
           run: () => openActorPanel(actor.id, "goals"),
         },
         {
           id: "info",
           icon: "inspect",
           iconTone: "cerulean",
-          label: "프로필",
+          label: t("theWorld.radial.profile"),
           run: () => openActorPanel(actor.id, "info"),
         },
         {
           id: "settings",
           icon: "settings",
           iconTone: "indigo",
-          label: "설정",
+          label: t("theWorld.radial.settings"),
           run: () => openActorPanel(actor.id, "settings"),
         },
         isNear
@@ -112,11 +112,11 @@ export function WorldRadialMenu({
             id: "greet",
             icon: "greet",
             iconTone: "rose",
-            label: "인사하기",
+            label: t("theWorld.radial.greet"),
             run: () => {
               requestActorEmote(actor.id, "greet");
               closeActorInteraction();
-              onStatusBanner(`${actor.name} 사령관에게 반갑게 인사했습니다.`);
+              onStatusBanner(t("theWorld.radial.greetToast", { name: actor.name }));
             },
           }
           : approachAction,
@@ -129,7 +129,7 @@ export function WorldRadialMenu({
           id: "talk",
           icon: "chat",
           iconTone: "amber",
-          label: "말 걸기",
+          label: t("theWorld.radial.talk"),
           tone: "primary",
           run: () => openActorDialogue(actor.id),
         },
@@ -137,25 +137,25 @@ export function WorldRadialMenu({
           id: "goals",
           icon: "questMap",
           iconTone: "moss",
-          label: "목표",
+          label: t("theWorld.radial.goals"),
           run: () => openActorPanel(actor.id, "goals", actor.rootObjectiveId ?? actor.objectiveId),
         },
         {
           id: "crew",
           icon: "crew",
           iconTone: "cerulean",
-          label: "구성원",
+          label: t("theWorld.radial.crew"),
           run: () => openActorPanel(actor.id, "info", actor.rootObjectiveId ?? actor.objectiveId),
         },
         {
           id: "rally",
           icon: "rally",
           iconTone: "amber",
-          label: "구성원 소집",
+          label: t("theWorld.radial.rally"),
           run: () => {
             triggerWorldChoreography("delegate", actor.zoneId);
             closeActorInteraction();
-            onStatusBanner(`${actor.name} 지휘관이 캠프 구성원을 브리핑 테이블로 소집합니다.`);
+            onStatusBanner(t("theWorld.radial.rallyToast", { name: actor.name }));
           },
         },
         isNear
@@ -163,11 +163,11 @@ export function WorldRadialMenu({
             id: "cheer",
             icon: "cheer",
             iconTone: "rose",
-            label: "격려하기",
+            label: t("theWorld.radial.cheer"),
             run: () => {
               requestActorEmote(actor.id, "cheer");
               closeActorInteraction();
-              onStatusBanner(`${actor.name} 지휘관에게 힘찬 격려를 보냈습니다.`);
+              onStatusBanner(t("theWorld.radial.cheerToast", { name: actor.name }));
             },
           }
           : approachAction,
@@ -179,7 +179,7 @@ export function WorldRadialMenu({
         id: "talk",
         icon: "chat",
         iconTone: "amber",
-        label: "말 걸기",
+        label: t("theWorld.radial.talk"),
         tone: "primary",
         run: () => openActorDialogue(actor.id),
       },
@@ -187,14 +187,14 @@ export function WorldRadialMenu({
         id: "crew",
         icon: "inspect",
         iconTone: "cerulean",
-        label: "구성원",
+        label: t("theWorld.radial.crew"),
         run: () => openActorPanel(actor.id, "info", actor.rootObjectiveId ?? actor.objectiveId),
       },
       {
         id: "goals",
         icon: "questMap",
         iconTone: "moss",
-        label: "목표",
+        label: t("theWorld.radial.goals"),
         run: () => openActorPanel(actor.id, "goals", actor.rootObjectiveId ?? actor.objectiveId),
       },
       isNear
@@ -202,16 +202,16 @@ export function WorldRadialMenu({
           id: "highfive",
           icon: "highfive",
           iconTone: "rose",
-          label: "하이파이브",
+          label: t("theWorld.radial.highfive"),
           run: () => {
             requestActorEmote(actor.id, "highfive");
             closeActorInteraction();
-            onStatusBanner(`${actor.name}와(과) 하이파이브를 나눴습니다.`);
+            onStatusBanner(t("theWorld.radial.highfiveToast", { name: actor.name }));
           },
         }
         : approachAction,
     ];
-  }, [actor, isNear, onStatusBanner]);
+  }, [actor, isNear, onStatusBanner, t]);
 
   useEffect(() => {
     setActiveIndex(0);
@@ -322,7 +322,7 @@ export function WorldRadialMenu({
             />
             <span className="the-world-radial-hub-name">{actor.name}</span>
             <span className="the-world-radial-hub-meta">
-              {ROLE_LABEL[actor.role]} · {STATE_LABEL[actor.state]}
+              {t(ROLE_LABEL_KEY[actor.role])} · {t(STATE_LABEL_KEY[actor.state])}
             </span>
           </span>
         </button>
@@ -354,7 +354,7 @@ export function WorldRadialMenu({
         })}
 
         <div className="the-world-radial-footnote" aria-hidden="true">
-          1–{actions.length} 빠른 선택 · E / Esc 닫기
+          {t("theWorld.radial.footnote", { count: actions.length })}
         </div>
       </div>
     </div>

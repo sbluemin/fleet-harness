@@ -55,7 +55,7 @@ import type {
   WorldQuestBoardData,
   WorldQuestMissionSummary,
 } from "../../../../features/the-world/shared/world-types.js";
-import { getWorldT } from "../../../../features/the-world/client/i18n/index.js";
+import { getWorldT, type TheWorldMessageKey } from "../../../../features/the-world/client/i18n/index.js";
 import { WorldIcon } from "../../../../features/the-world/client/surfaces/world-icons.js";
 import { useCommanderRows } from "../../../../features/workspace/client/commander-tab/commander-rows.js";
 import { TasksCommanderList } from "../../../../features/workspace/client/commander-tab/commander-tasks-list.js";
@@ -67,15 +67,15 @@ import { TasksCommanderList } from "../../../../features/workspace/client/comman
  * 목표(Objective) 그룹 타임라인·보드 패널을 더 월드 안에서 콘솔 이탈 없이 직접 소비할 수 있게 투영한다.
  */
 
-const STEP_LABEL_KO: Record<CommodoreRunStep, string> = {
-  think: "생각하는 중...",
-  read: "자료 읽는 중...",
-  edit: "수정하는 중...",
-  run: "명령 실행 중...",
-  fetch: "외부 조회 중...",
-  delegate: "임무 조율 중...",
-  text: "답변 작성 중...",
-  compact: "기억 정리 중...",
+const STEP_LABEL_KEYS: Record<CommodoreRunStep, TheWorldMessageKey> = {
+  think: "theWorld.bridge.stepThink",
+  read: "theWorld.bridge.stepRead",
+  edit: "theWorld.bridge.stepEdit",
+  run: "theWorld.bridge.stepRun",
+  fetch: "theWorld.bridge.stepFetch",
+  delegate: "theWorld.bridge.stepDelegate",
+  text: "theWorld.bridge.stepText",
+  compact: "theWorld.bridge.stepCompact",
 };
 
 const MAX_GLOBAL_FEED = 180;
@@ -101,6 +101,8 @@ function projectCommodoreEntries(
   locale: ConsoleLocale,
 ): readonly WorldChatFeedEntry[] {
   const t = getCommodoreT(locale);
+  const wt = getWorldT(locale);
+  const isEn = locale === "en";
   const out: WorldChatFeedEntry[] = [];
   const baseActor = {
     actorId: actor.id,
@@ -119,8 +121,8 @@ function projectCommodoreEntries(
           channel: "system",
           kind: "system-wake",
           ...baseActor,
-          badge: "감시자 깨우기",
-          text: reasons || "자율 턴 시작",
+          badge: isEn ? "Watcher Wake" : "감시자 깨우기",
+          text: reasons || (isEn ? "Autonomous turn started" : "자율 턴 시작"),
         });
         break;
       }
@@ -157,7 +159,7 @@ function projectCommodoreEntries(
           kind: "peer",
           ...baseActor,
           targetName: entry.to.alias,
-          badge: "사령관 연락",
+          badge: isEn ? "Commodore Relay" : "사령관 연락",
           text: entry.text,
           failed: !entry.ok,
           ...(entry.error ? { detail: errorWord(t, entry.error) } : {}),
@@ -173,7 +175,7 @@ function projectCommodoreEntries(
           ...baseActor,
           actorName: entry.from.alias,
           targetName: actor.name,
-          badge: "수신 전언",
+          badge: isEn ? "Incoming Relay" : "수신 전언",
           text: entry.text,
         });
         break;
@@ -203,7 +205,7 @@ function projectCommodoreEntries(
           channel: "chat",
           kind: "ask",
           ...baseActor,
-          badge: "확인 필요",
+          badge: wt("theWorld.state.decision"),
           text: firstQ ? `${entry.reason} — ${firstQ}` : entry.reason,
           askId: entry.askId,
         });
@@ -221,8 +223,8 @@ function projectCommodoreEntries(
           kind: "player",
           ...baseActor,
           targetName: actor.name,
-          badge: "질문 답변",
-          text: summary || "답변 완료",
+          badge: isEn ? "Answer Sent" : "질문 답변",
+          text: summary || (isEn ? "Answered" : "답변 완료"),
         });
         break;
       }
@@ -234,7 +236,7 @@ function projectCommodoreEntries(
             channel: "system",
             kind: "system-error",
             ...baseActor,
-            badge: "턴 오류",
+            badge: isEn ? "Turn Error" : "턴 오류",
             text: failureWord(t, entry.error, entry.detail),
             failed: true,
           });
@@ -253,7 +255,7 @@ function projectCommodoreEntries(
           channel: "system",
           kind: "system-error",
           ...baseActor,
-          badge: "시스템 오류",
+          badge: isEn ? "System Error" : "시스템 오류",
           text: failureWord(t, entry.code, entry.detail),
           failed: true,
         });
@@ -266,7 +268,7 @@ function projectCommodoreEntries(
           channel: "system",
           kind: "system-error",
           ...baseActor,
-          badge: "전달 보류",
+          badge: isEn ? "Delivery Deferred" : "전달 보류",
           text: failureWord(t, entry.code, entry.detail),
           failed: true,
         });
@@ -298,7 +300,7 @@ function projectCommodoreEntries(
         channel: "action",
         kind: "action",
         ...baseActor,
-        badge: "실행 중",
+        badge: wt("theWorld.bridge.phaseTurn"),
         text: ev.name,
         streaming: true,
       });
@@ -318,6 +320,9 @@ function projectGroupEntries(
   entries: readonly GroupTimelineEntry[],
   locale: ConsoleLocale,
 ): readonly WorldChatFeedEntry[] {
+  const wt = getWorldT(locale);
+  const isEn = locale === "en";
+  const admiralName = wt("theWorld.chat.admiralSender");
   const out: WorldChatFeedEntry[] = [];
   let fallbackClock = Date.now() - entries.length * 1000;
   for (const entry of entries) {
@@ -336,7 +341,7 @@ function projectGroupEntries(
           channel: "chat",
           kind: isHuman ? "player" : "speech",
           actorId: matched.id,
-          actorName: isHuman ? "제독" : (entry.speaker.name || matched.name),
+          actorName: isHuman ? admiralName : (entry.speaker.name || matched.name),
           actorRole: matched.role,
           actorTone: matched.tone,
           ...(isHuman ? { targetName: entry.recipient?.name ?? matched.name } : {}),
@@ -358,7 +363,9 @@ function projectGroupEntries(
           actorRole: senderActor.role,
           actorTone: senderActor.tone,
           targetName: recipientNames || undefined,
-          badge: entry.received ? "보고 수신" : "임무 전달",
+          badge: entry.received
+            ? (isEn ? "Report Received" : "보고 수신")
+            : (isEn ? "Mission Delegated" : "임무 전달"),
           text: entry.text.trim() || entry.result,
           failed: entry.ok === false,
         });
@@ -394,7 +401,7 @@ function projectGroupEntries(
           actorName: recActor.name,
           actorRole: recActor.role,
           actorTone: recActor.tone,
-          badge: "감시자 알림",
+          badge: isEn ? "Watcher Notice" : "감시자 알림",
           text: entry.text.trim(),
         });
         break;
@@ -411,26 +418,30 @@ function projectGroupEntries(
           actorName: entry.speaker.name || memActor.name,
           actorRole: "member",
           actorTone: memActor.tone,
-          badge: entry.kind === "member-joined" ? "구성원 합류" : "구성원 퇴장",
+          badge: entry.kind === "member-joined"
+            ? (isEn ? "Member Joined" : "구성원 합류")
+            : (isEn ? "Member Left" : "구성원 퇴장"),
           text: entry.kind === "member-joined"
-            ? `${entry.speaker.name} 구성원이 캠프에 합류했습니다.`
-            : `${entry.speaker.name} 구성원이 임무를 마치고 자리를 비웠습니다.`,
+            ? (isEn ? `${entry.speaker.name} joined the camp.` : `${entry.speaker.name} 구성원이 캠프에 합류했습니다.`)
+            : (isEn ? `${entry.speaker.name} completed the mission and departed.` : `${entry.speaker.name} 구성원이 임무를 마치고 자리를 비웠습니다.`),
         });
         break;
       }
       case "decision-answer": {
-        const text = entry.answers.map((a) => `${a.question} → ${a.declined ? "보류" : a.answer}`).join(" / ");
+        const text = entry.answers
+          .map((a) => `${a.question} → ${a.declined ? (isEn ? "Deferred" : "보류") : a.answer}`)
+          .join(" / ");
         out.push({
           id: `obj:${fallbackActor.rootObjectiveId ?? fallbackActor.id}:${entry.id}`,
           at,
           channel: "chat",
           kind: "player",
           actorId: fallbackActor.id,
-          actorName: "제독",
+          actorName: admiralName,
           actorRole: fallbackActor.role,
           actorTone: fallbackActor.tone,
           targetName: fallbackActor.name,
-          badge: "결정 응답",
+          badge: isEn ? "Decision Reply" : "결정 응답",
           text,
         });
         break;
@@ -722,11 +733,12 @@ export function useActorConversation(actor: WorldActorSpec): WorldActorConversat
   );
 
   return useMemo<WorldActorConversationState>(() => {
+    const wt = getWorldT(locale);
     if (isCommodore && commodoreId) {
       const entries = projectCommodoreEntries(actor, comm.entries, comm.live, locale);
       const working = comm.view?.run.phase === "turn";
       const step = comm.view?.run.step;
-      const stepLabel = working ? (step ? STEP_LABEL_KO[step] : "응답 준비 중...") : null;
+      const stepLabel = working ? (step ? wt(STEP_LABEL_KEYS[step]) : wt("theWorld.rpg.thinking")) : null;
       return {
         entries,
         loading: !comm.transcriptLoaded,
@@ -753,7 +765,9 @@ export function useActorConversation(actor: WorldActorSpec): WorldActorConversat
       entries: filtered,
       loading: group.loading,
       working,
-      stepLabel: working ? `${group.working.map((w) => w.name).join(", ")} 작업 중...` : null,
+      stepLabel: working
+        ? `${group.working.map((w) => w.name).join(", ")} · ${wt("theWorld.state.running")}`
+        : null,
       hasOlder: false,
       loadOlder: () => undefined,
       openAsksCount: 0,
@@ -962,7 +976,7 @@ function WorldCommodoreMemorySection({ commodoreId }: { readonly commodoreId: st
       <div className="the-world-panel-card-head">
         <h4 className="the-world-panel-title-row">
           <WorldIcon name="memory" size={15} tone="plum" />
-          <span>{locale === "en" ? `Commodore Memory (${memory.entries.length})` : `사령관 기억 (${memory.entries.length})`}</span>
+          <span>{wt("theWorld.bridge.memoryHeading", { count: memory.entries.length })}</span>
         </h4>
         {memory.entries.length > 0 ? (
           <input
@@ -976,7 +990,7 @@ function WorldCommodoreMemorySection({ commodoreId }: { readonly commodoreId: st
       </div>
       {branches.length === 0 ? (
         <p className="the-world-panel-empty">
-          {locale === "en" ? "No recorded memory yet." : "기록된 기억이 아직 없습니다."}
+          {wt("theWorld.bridge.memoryEmpty")}
         </p>
       ) : (
         <div className="the-world-memory-list">
@@ -1016,6 +1030,7 @@ function WorldCommodoreGoalsCard({
   readonly onOpenObjective: (objectiveId: string) => void;
   readonly onAssignInChat?: (() => void) | undefined;
 }) {
+  const wt = getWorldT(locale);
   const { sorted } = useCommanderRows(commodoreId, null);
 
   if (sorted.length === 0) {
@@ -1033,14 +1048,12 @@ function WorldCommodoreGoalsCard({
               onClick={onAssignInChat}
             >
               <WorldIcon name="chat" size={12} tone="amber" />
-              <span>{locale === "en" ? "Assign in Chat" : "대화에서 맡기기"}</span>
+              <span>{wt("theWorld.bridge.assignInChat")}</span>
             </button>
           ) : null}
         </div>
         <p className="the-world-panel-empty">
-          {locale === "en"
-            ? "No active goals · Ask in chat to assign new work."
-            : "진행 중인 목표가 없습니다 · 대화에서 새 작업을 맡겨보세요."}
+          {wt("theWorld.bridge.goalsEmpty")}
         </p>
       </section>
     );
@@ -1099,7 +1112,7 @@ function WorldCommodorePanelBody({
   if (!view) {
     return (
       <div className="the-world-panel-empty">
-        {locale === "en" ? "Loading Commodore details..." : "사령관 정보를 불러오는 중입니다..."}
+        {wt("theWorld.bridge.loading")}
       </div>
     );
   }
@@ -1143,7 +1156,7 @@ function WorldCommodorePanelBody({
                   onClick={onRequestRoutine}
                 >
                   <WorldIcon name="chat" size={12} tone="amber" />
-                  <span>{locale === "en" ? "Set up in Chat" : "대화에서 루틴 설정"}</span>
+                  <span>{wt("theWorld.bridge.setupRoutineInChat")}</span>
                 </button>
               ) : null}
             </div>
@@ -1156,28 +1169,28 @@ function WorldCommodorePanelBody({
         <div className="the-world-panel-stack">
           <section className="the-world-drawer-stats">
             <span className="the-world-drawer-stat">
-              <span className="the-world-drawer-stat-label">{locale === "en" ? "Status" : "상태"}</span>
+              <span className="the-world-drawer-stat-label">{wt("theWorld.bridge.statPhase")}</span>
               <strong className="the-world-drawer-stat-value">
                 {run.phase === "turn"
-                  ? (locale === "en" ? "Running" : "턴 실행")
+                  ? wt("theWorld.bridge.phaseTurn")
                   : run.phase === "error"
-                    ? (locale === "en" ? "Error" : "오류")
+                    ? wt("theWorld.bridge.phaseError")
                     : run.phase === "retrying"
-                      ? (locale === "en" ? "Retrying" : "재시도")
-                      : (locale === "en" ? "Idle" : "대기")}
+                      ? wt("theWorld.bridge.phaseRetrying")
+                      : wt("theWorld.bridge.phaseIdle")}
               </strong>
             </span>
             <span className="the-world-drawer-stat">
-              <span className="the-world-drawer-stat-label">{locale === "en" ? "Sessions" : "세션·행위"}</span>
+              <span className="the-world-drawer-stat-label">{wt("theWorld.bridge.statSessions")}</span>
               <strong className="the-world-drawer-stat-value">{run.totals.session} · {run.totals.actions}</strong>
             </span>
             <span className="the-world-drawer-stat">
-              <span className="the-world-drawer-stat-label">{locale === "en" ? "Cost" : "비용"}</span>
+              <span className="the-world-drawer-stat-label">{wt("theWorld.bridge.statCost")}</span>
               <strong className="the-world-drawer-stat-value">${run.totals.costUsd.toFixed(3)}</strong>
             </span>
             {ctxPct !== null ? (
               <span className="the-world-drawer-stat">
-                <span className="the-world-drawer-stat-label">{locale === "en" ? "Context" : "문맥"}</span>
+                <span className="the-world-drawer-stat-label">{wt("theWorld.bridge.statContext")}</span>
                 <strong className="the-world-drawer-stat-value">{ctxPct}%</strong>
               </span>
             ) : null}
@@ -1220,7 +1233,7 @@ function WorldCommodorePanelBody({
           <section className="the-world-panel-card">
             <div className="the-world-alias-row">
               <label className="the-world-stat-label" htmlFor={`world-alias-${commodoreId}`}>
-                {locale === "en" ? "Commodore Name (Alias)" : "사령관 이름 (별칭)"}
+                {wt("theWorld.bridge.aliasLabel")}
               </label>
               <div className="the-world-dialogue-composer">
                 <input
@@ -1243,7 +1256,7 @@ function WorldCommodorePanelBody({
                       .finally(() => setAliasBusy(false));
                   }}
                 >
-                  {locale === "en" ? "Save" : "저장"}
+                  {wt("theWorld.bridge.saveBtn")}
                 </button>
               </div>
             </div>
@@ -1254,14 +1267,10 @@ function WorldCommodorePanelBody({
               <div className="the-world-panel-card-head">
                 <h4 className="the-world-panel-subtitle the-world-panel-title-row">
                   <WorldIcon name="mapOverview" size={14} tone="teal" />
-                  <span>
-                    {locale === "en"
-                      ? `Theater Districts (${districts.length})`
-                      : `관할 Theater 구역 (${districts.length})`}
-                  </span>
+                  <span>{wt("theWorld.bridge.districtsHeading", { count: districts.length })}</span>
                 </h4>
                 <span className="the-world-stat-label">
-                  {locale === "en" ? "Click to warp" : "클릭해 3D 이동"}
+                  {wt("theWorld.bridge.clickToWarp")}
                 </span>
               </div>
               <div className="the-world-drawer-districts">

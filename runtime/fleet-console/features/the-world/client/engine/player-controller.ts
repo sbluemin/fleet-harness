@@ -150,9 +150,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   } | null = null;
 
   let overviewMode = false;
-  const overviewAnchor = new Vector3(0, 1.0, 0);
-  let overviewDist = 74;
-  let overviewPitch = 1.15;
+  const overviewAnchor = new Vector3(0, 1.0, 4.0);
+  let overviewDist = 86;
+  let overviewPitch = 1.20;
 
   const onKeyDown = (event: KeyboardEvent) => {
     if (isEditableTarget(event.target)) return;
@@ -266,9 +266,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       if (enabled) {
         districtFocus = null;
         sittingAtCampfire = false;
-        overviewAnchor.set(0, 1.0, 0);
-        overviewDist = 74;
-        overviewPitch = 1.15;
+        overviewAnchor.set(0, 1.0, 4.0);
+        overviewDist = 86;
+        overviewPitch = 1.20;
       }
     },
     isOverviewMode() {
@@ -317,7 +317,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     onWheelZoom(deltaY) {
       const clamped = Math.max(-180, Math.min(180, deltaY));
       if (overviewMode) {
-        overviewDist = Math.max(42.0, Math.min(96.0, overviewDist * Math.exp(clamped * 0.0012)));
+        overviewDist = Math.max(46.0, Math.min(112.0, overviewDist * Math.exp(clamped * 0.0012)));
       } else if (districtFocus) {
         districtFocus.dist = Math.max(7.2, Math.min(34.0, districtFocus.dist * Math.exp(clamped * 0.0012)));
       } else {

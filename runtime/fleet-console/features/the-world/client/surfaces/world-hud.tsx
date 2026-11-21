@@ -49,12 +49,12 @@ const TIME_MODES: readonly {
 
 const CAMERA_MODES: readonly {
   readonly id: WorldCameraMode;
-  readonly label: string;
+  readonly key: TheWorldMessageKey;
   readonly icon: WorldIconName;
   readonly tone: WorldIconTone;
 }[] = [
-  { id: "follow", label: "3인칭 추적", icon: "cameraFollow", tone: "teal" },
-  { id: "orbit", label: "초원 조망", icon: "cameraOrbit", tone: "moss" },
+  { id: "follow", key: "theWorld.hud.cameraFollow", icon: "cameraFollow", tone: "teal" },
+  { id: "orbit", key: "theWorld.hud.cameraOrbit", icon: "cameraOrbit", tone: "moss" },
 ];
 
 const WEATHER_MODES: readonly {
@@ -200,7 +200,7 @@ export const WorldHud = memo(function WorldHud({
                 <WorldIcon name="bell" size={14} tone="amber" />
                 <span>
                   {attentionActor
-                    ? `확인 필요 · ${attentionActor.name}`
+                    ? t("theWorld.hud.attentionActor", { name: attentionActor.name })
                     : t("theWorld.noticeBoard.urgentBadge", { count: effectiveUrgentCount })}
                 </span>
                 <span className="the-world-hud-badge">{effectiveUrgentCount}</span>
@@ -382,7 +382,7 @@ export const WorldHud = memo(function WorldHud({
               onClick={() => exitTheWorld({ reducedMotion })}
             >
               <WorldIcon name="portalExit" size={14} tone="cerulean" />
-              <span>콘솔</span>
+              <span>{t("theWorld.hud.consoleLabel")}</span>
             </button>
           </div>
         </div>
@@ -471,7 +471,7 @@ export const WorldHud = memo(function WorldHud({
             <header className="the-world-debug-head">
               <span className="the-world-debug-title">
                 <WorldIcon name="tool" size={13} tone="cerulean" />
-                <span>월드 디버그 · 도구</span>
+                <span>{t("theWorld.hud.debugPanelTitle")}</span>
               </span>
               <button
                 type="button"
@@ -485,7 +485,7 @@ export const WorldHud = memo(function WorldHud({
 
             <div className="the-world-debug-body">
               <div className="the-world-debug-section">
-                <span className="the-world-debug-label">카메라 시점</span>
+                <span className="the-world-debug-label">{t("theWorld.hud.cameraLabel")}</span>
                 <div className="the-world-debug-pills" role="group" aria-label={t("theWorld.hud.cameraGroupAria")}>
                   {CAMERA_MODES.map((item) => {
                     const active = store.cameraMode === item.id;
@@ -497,7 +497,7 @@ export const WorldHud = memo(function WorldHud({
                         onClick={() => setWorldCameraMode(item.id)}
                       >
                         <WorldIcon name={item.icon} size={13} tone={active ? "amber" : item.tone} />
-                        <span>{item.label}</span>
+                        <span>{t(item.key)}</span>
                       </button>
                     );
                   })}
@@ -505,51 +505,51 @@ export const WorldHud = memo(function WorldHud({
               </div>
 
               <div className="the-world-debug-section">
-                <span className="the-world-debug-label">협동 연출 테스트</span>
+                <span className="the-world-debug-label">{t("theWorld.hud.simLabel")}</span>
                 <div className="the-world-debug-grid" role="group" aria-label={t("theWorld.hud.simGroupAria")}>
                   <button
                     type="button"
                     className="the-world-debug-pill"
                     onClick={() => {
                       triggerWorldChoreography("delegate");
-                      onStatusBanner("사령관이 청사진을 발송하고 지휘관이 구성원을 소집합니다.");
+                      onStatusBanner(t("theWorld.hud.simDelegateToast"));
                     }}
                   >
                     <WorldIcon name="scroll" size={13} tone="amber" />
-                    <span>목표 하달</span>
+                    <span>{t("theWorld.hud.simDelegate")}</span>
                   </button>
                   <button
                     type="button"
                     className="the-world-debug-pill"
                     onClick={() => {
                       triggerWorldChoreography("report");
-                      onStatusBanner("구성원이 결과물을 들고 지휘관에게 보고합니다.");
+                      onStatusBanner(t("theWorld.hud.simReportToast"));
                     }}
                   >
                     <WorldIcon name="crate" size={13} tone="rose" />
-                    <span>보고·하이파이브</span>
+                    <span>{t("theWorld.hud.simReport")}</span>
                   </button>
                   <button
                     type="button"
                     className="the-world-debug-pill"
                     onClick={() => {
                       triggerWorldChoreography("handoff");
-                      onStatusBanner("선행·후속 구성원이 커밋 바통을 인수인계합니다.");
+                      onStatusBanner(t("theWorld.hud.simHandoffToast"));
                     }}
                   >
                     <WorldIcon name="baton" size={13} tone="cerulean" />
-                    <span>바통 터치</span>
+                    <span>{t("theWorld.hud.simHandoff")}</span>
                   </button>
                   <button
                     type="button"
                     className="the-world-debug-pill"
                     onClick={() => {
                       triggerWorldChoreography("celebrate");
-                      onStatusBanner("초원 전 구역이 목표 완수 축포를 터뜨립니다.");
+                      onStatusBanner(t("theWorld.hud.simCelebrateToast"));
                     }}
                   >
                     <WorldIcon name="confetti" size={13} tone="amber" />
-                    <span>완수 축포</span>
+                    <span>{t("theWorld.hud.simCelebrate")}</span>
                   </button>
                   <button
                     type="button"

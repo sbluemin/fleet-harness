@@ -41,10 +41,11 @@ import type { WorldAdmiralHat } from "../../shared/world-types.js";
 const ACTOR_VERTEX = /* glsl */ `
 uniform vec3 uCharCenter;
 uniform float uCharScale;
+uniform float uBoundRad;
 out vec3 vWorldPos;
 
 void main() {
-  vec3 wp = uCharCenter + position * (1.46 * uCharScale);
+  vec3 wp = uCharCenter + position * (uBoundRad * uCharScale);
   vWorldPos = wp;
   gl_Position = projectionMatrix * viewMatrix * vec4(wp, 1.0);
 }
@@ -57,12 +58,14 @@ out vec4 fragColor;
 uniform mat4 uViewProj;
 uniform vec3 uCharCenter;
 uniform float uCharScale;
+uniform float uBoundRad;
 uniform float uCharYaw;
 uniform float uTime;
 uniform float uPhase;
 uniform float uFuzz;
 uniform int uShape;
 uniform int uQuaker;
+uniform float uStarlight;
 uniform int uState;
 uniform int uActivity;
 uniform int uRole;
@@ -127,7 +130,7 @@ AnimRig computeAnim() {
   r.exprMode = uExpression;
 
   float t = uTime + uPhase;
-  if (uQuaker > 0) {
+  if (uQuaker > 0 || uStarlight > 0.5) {
     float wAmp = (uState == 1 || uState == 2) ? 0.30 : 0.14;
     float wSpd = (uState == 1 || uState == 2) ? 7.0 : 3.2;
     float wf = sin(t * wSpd) * wAmp;
@@ -360,7 +363,102 @@ vec3 toLocal(vec3 p, AnimRig rig) {
   return q;
 }
 
+float sdMarioStar(vec3 q, AnimRig rig) {
+  // 각진 능선 없이 말랑·몽글몽글한 마시멜로 쿠션 5각 별 (둥근 쿠션 코어 + 5개 둥근 별 꼭짓점 큰 반경 smin 융합)
+  vec3 sp = q - vec3(0.0, 0.01, 0.0);
+  float core = sdEllipsoid(sp, vec3(0.45, 0.43, 0.38));
+
+  // 1) 위쪽 꼭짓점 (모자 없음일 땐 통통하게 톡, 모자 착용 시 모자 안쪽으로 부드럽게 안착)
+  float topY = (uHat == 3) ? 0.56 : 0.39;
+  float topPt = sdRoundCone(sp, vec3(0.0, 0.08, 0.0), vec3(0.0, topY, 0.0), 0.255, 0.155);
+
+  // 2~3) 좌우 별 꼭짓점 (은은한 모션 바운스 연동, 5각 별 실루엣 유지)
+  vec3 al = sp - vec3(-0.14, 0.03, 0.0);
+  al.xy = rot2(-rig.wingFlapL * 0.26) * al.xy;
+  float armL = sdRoundCone(al, vec3(0.0, 0.0, 0.0), vec3(-0.42, 0.14, 0.0), 0.245, 0.152);
+
+  vec3 ar = sp - vec3(0.14, 0.03, 0.0);
+  ar.xy = rot2(rig.wingFlapR * 0.26) * ar.xy;
+  float armR = sdRoundCone(ar, vec3(0.0, 0.0, 0.0), vec3(0.42, 0.14, 0.0), 0.245, 0.152);
+
+  // 4~5) 하단 좌우 별 꼭짓점 (안정적인 5각 대칭)
+  float legL = sdRoundCone(sp, vec3(-0.08, -0.10, 0.0), vec3(-0.35, -0.47, 0.0), 0.245, 0.158);
+  float legR = sdRoundCone(sp, vec3( 0.08, -0.10, 0.0), vec3( 0.35, -0.47, 0.0), 0.245, 0.158);
+
+  float d = smin(core, topPt, 0.23);
+  d = smin(d, armL, 0.23);
+  d = smin(d, armR, 0.23);
+  d = smin(d, legL, 0.22);
+  d = smin(d, legR, 0.22);
+  return d;
+}
+
+float sdStarlightCape(vec3 q, float t) {
+  // 몽글 노란 별의 앞면은 깨끗하게 비우고 등 뒤에서만 아담하게 펄럭이는 미니 별빛 망토
+  float u = clamp((-0.09 - q.y) / 0.48, 0.0, 1.0);
+  float spd = clamp(uMoveSpeed, 0.0, 7.0);
+  float billow = (0.10 + spd * 0.044 + max(0.0, -uJumpVel) * 0.048) * (u * u);
+  float flutter = sin(t * (4.1 + spd * 1.4) - u * 4.5 + q.x * 3.8) * (0.018 + spd * 0.0085) * (u * u);
+  float hemY = -0.56 + billow * 0.22;
+  float midY = 0.5 * (-0.09 + hemY);
+  float halfH = max(0.08, 0.5 * (-0.09 - hemY));
+  float halfW = mix(0.24, 0.39, u);
+  float curveZ = -0.37 - 0.11 * u - billow + flutter + 0.34 * q.x * q.x;
+  vec3 cp = vec3(q.x, q.y - midY, q.z - curveZ);
+  return sdRoundBox(cp, vec3(halfW, halfH, 0.015), 0.022) * 0.65;
+}
+
+vec2 mapAdmiralHats(vec2 res, vec3 hatOrigin, float hb, float sMin) {
+  if (uHat == 0) {
+    vec3 cp = hatOrigin - vec3(0.0, hb, 0.0); cp.yz = rot2(-0.14 - hb * 0.65) * cp.yz;
+    float crown = smin(sdEllipsoid(cp - vec3(0.0, 0.17, -0.02), vec3(0.55, 0.165, 0.49)),
+                       sdEllipsoid(cp - vec3(0.0, 0.22,  0.22), vec3(0.26, 0.12,  0.22)), 0.10);
+    res = opU(res, vec2(crown * sMin, 3.0));
+    res = opU(res, vec2(sdEllipsoid(cp - vec3(0.0, -0.015, 0.0), vec3(0.45, 0.092, 0.42)) * sMin, 5.0));
+
+    vec3 vp = cp - vec3(0.0, -0.095, 0.30); vp.yz = rot2(0.24) * vp.yz;
+    res = opU(res, vec2(sdEllipsoid(vp, vec3(0.30, 0.040, 0.185)) * sMin, 2.0));
+
+    vec3 ap = cp - vec3(0.0, 0.055, 0.435);
+    float anc = min(sdCapsule(ap, vec3(0.0,-0.055,0.0), vec3(0.0,0.055,0.0), 0.017),
+                    sdCapsule(ap, vec3(-0.044,0.02,0.0), vec3(0.044,0.02,0.0), 0.014));
+    float cord = sdCapsule(cp - vec3(0.0, -0.058, 0.41), vec3(-0.24, 0.018, -0.06), vec3(0.24, 0.018, -0.06), 0.017);
+    res = opU(res, vec2(min(anc, cord) * sMin, 4.0));
+  } else if (uHat == 1) {
+    // 황금 왕관 (Crown + 2차 바운스)
+    vec3 crp = hatOrigin - vec3(0.0, 0.02 + hb, 0.0);
+    crp.yz = rot2(-0.10 - hb * 0.65) * crp.yz;
+    float band = sdEllipsoid(crp - vec3(0.0, 0.03, 0.0), vec3(0.36, 0.11, 0.34));
+    float rim = sdEllipsoid(crp - vec3(0.0, -0.05, 0.0), vec3(0.39, 0.055, 0.37));
+    float aCrown = atan(crp.z, crp.x);
+    float seg = mod(aCrown + 3.1415926, 1.256637) - 0.6283185;
+    float rXZ = length(crp.xz);
+    vec3 sp = vec3(cos(seg) * rXZ, crp.y, sin(seg) * rXZ);
+    float spike = sdRoundCone(sp, vec3(0.30, 0.05, 0.0), vec3(0.34, 0.27, 0.0), 0.075, 0.022);
+    float orb = sdSphere(sp - vec3(0.34, 0.30, 0.0), 0.042);
+    res = opU(res, vec2(min(min(band, rim), spike) * sMin, 4.0));
+    res = opU(res, vec2(orb * sMin, 6.0));
+  } else if (uHat == 2) {
+    // 탐험가 챙모자 (Explorer Hat + 2차 바운스)
+    vec3 epHat = hatOrigin - vec3(0.0, 0.01 + hb, 0.0);
+    epHat.yz = rot2(-0.12 - hb * 0.65) * epHat.yz;
+    float brim = sdEllipsoid(epHat - vec3(0.0, -0.04, 0.02), vec3(0.68, 0.055, 0.64));
+    float dome = sdEllipsoid(epHat - vec3(0.0, 0.14, 0.0), vec3(0.39, 0.23, 0.37));
+    float leather = smin(brim, dome, 0.045);
+    res = opU(res, vec2(leather * sMin, 8.0));
+    float hatBand = sdEllipsoid(epHat - vec3(0.0, 0.025, 0.0), vec3(0.415, 0.052, 0.395));
+    res = opU(res, vec2(hatBand * sMin, 4.0));
+    vec3 fp = epHat - vec3(0.36, 0.21, -0.04);
+    fp.xy = rot2(-0.48 - hb * 1.1) * fp.xy;
+    float feather = sdEllipsoid(fp, vec3(0.045, 0.19, 0.085));
+    res = opU(res, vec2(feather * sMin, 3.0));
+  }
+  return res;
+}
+
 float sdPlushOnly(vec3 p, AnimRig rig) {
+  // 슈퍼마리오 스타 주인공은 털뭉치(퍼 쉘) 완전 비활성 — 매끈한 광택 3D 재질 유지
+  if (uStarlight > 0.5) return 99.0;
   vec3 q = toLocal(p, rig);
   float sMin = min(rig.scale.x, min(rig.scale.y, rig.scale.z));
   float d = sdMongleBody(q, uShape) * sMin;
@@ -381,6 +479,29 @@ vec2 mapScene(vec3 p, AnimRig rig) {
   vec3 q = toLocal(p, rig);
   float sMin = min(rig.scale.x, min(rig.scale.y, rig.scale.z));
   float t = uTime + uPhase;
+
+  if (uStarlight > 0.5) {
+    // mId == 11: 몽글몽글 소프트 새틴 쿠션 마리오 스타
+    vec2 res = vec2(sdMarioStar(q, rig) * sMin, 11.0);
+
+    // 등 뒤에서만 펄럭이는 딥 인디고 미니 별빛 망토 (앞면은 깨끗한 노란 별 유지)
+    res = opU(res, vec2(sdStarlightCape(q, t) * sMin, 9.0));
+
+    // 4종 모자 100% 호환 + 모자 없음 전용: 별 꼭짓점 주변을 은은히 맴도는 작은 별빛 반짝임 2기
+    float hb = rig.hatBounce;
+    if (uHat == 3) {
+      vec3 sp = q - vec3(0.0, 0.68 + hb * 0.5, 0.0);
+      vec3 m1 = vec3(cos(t * 2.2) * 0.29, sin(t * 3.1) * 0.052 + 0.03, sin(t * 2.2) * 0.29);
+      vec3 m2 = vec3(cos(t * 2.2 + 3.14159) * 0.25, -sin(t * 2.7) * 0.042 - 0.02, sin(t * 2.2 + 3.14159) * 0.25);
+      float motes = min(sdSphere(sp - m1, 0.033), sdSphere(sp - m2, 0.024));
+      res = opU(res, vec2(motes * sMin, 10.0));
+    } else {
+      float hatY = (uHat == 1) ? 0.52 : 0.49;
+      res = mapAdmiralHats(res, q - vec3(0.0, hatY, 0.0), hb, sMin);
+    }
+    return res;
+  }
+
   vec2 res = vec2(sdMongleBody(q, uShape) * sMin, 0.0);
 
   if (uQuaker > 0) {
@@ -400,51 +521,7 @@ vec2 mapScene(vec3 p, AnimRig rig) {
     vec3 bp = pq - vec3(0.0, -0.16, 0.47);
     res = opU(res, vec2(sdRoundCone(bp, vec3(0.0, 0.048, -0.02), vec3(0.0, -0.082, 0.105), 0.090, 0.030) * sMin, 6.0));
 
-    float hb = rig.hatBounce;
-    if (uHat == 0) {
-      vec3 cp = pq - vec3(0.0, 0.41 + hb, 0.0); cp.yz = rot2(-0.14 - hb * 0.65) * cp.yz;
-      float crown = smin(sdEllipsoid(cp - vec3(0.0, 0.17, -0.02), vec3(0.55, 0.165, 0.49)),
-                         sdEllipsoid(cp - vec3(0.0, 0.22,  0.22), vec3(0.26, 0.12,  0.22)), 0.10);
-      res = opU(res, vec2(crown * sMin, 3.0));
-      res = opU(res, vec2(sdEllipsoid(cp - vec3(0.0, -0.015, 0.0), vec3(0.45, 0.092, 0.42)) * sMin, 5.0));
-
-      vec3 vp = cp - vec3(0.0, -0.095, 0.30); vp.yz = rot2(0.24) * vp.yz;
-      res = opU(res, vec2(sdEllipsoid(vp, vec3(0.30, 0.040, 0.185)) * sMin, 2.0));
-
-      vec3 ap = cp - vec3(0.0, 0.055, 0.435);
-      float anc = min(sdCapsule(ap, vec3(0.0,-0.055,0.0), vec3(0.0,0.055,0.0), 0.017),
-                      sdCapsule(ap, vec3(-0.044,0.02,0.0), vec3(0.044,0.02,0.0), 0.014));
-      float cord = sdCapsule(cp - vec3(0.0, -0.058, 0.41), vec3(-0.24, 0.018, -0.06), vec3(0.24, 0.018, -0.06), 0.017);
-      res = opU(res, vec2(min(anc, cord) * sMin, 4.0));
-    } else if (uHat == 1) {
-      // 황금 왕관 (Crown + 2차 바운스)
-      vec3 crp = pq - vec3(0.0, 0.43 + hb, 0.0);
-      crp.yz = rot2(-0.10 - hb * 0.65) * crp.yz;
-      float band = sdEllipsoid(crp - vec3(0.0, 0.03, 0.0), vec3(0.36, 0.11, 0.34));
-      float rim = sdEllipsoid(crp - vec3(0.0, -0.05, 0.0), vec3(0.39, 0.055, 0.37));
-      float aCrown = atan(crp.z, crp.x);
-      float seg = mod(aCrown + 3.1415926, 1.256637) - 0.6283185;
-      float rXZ = length(crp.xz);
-      vec3 sp = vec3(cos(seg) * rXZ, crp.y, sin(seg) * rXZ);
-      float spike = sdRoundCone(sp, vec3(0.30, 0.05, 0.0), vec3(0.34, 0.27, 0.0), 0.075, 0.022);
-      float orb = sdSphere(sp - vec3(0.34, 0.30, 0.0), 0.042);
-      res = opU(res, vec2(min(min(band, rim), spike) * sMin, 4.0));
-      res = opU(res, vec2(orb * sMin, 6.0));
-    } else if (uHat == 2) {
-      // 탐험가 챙모자 (Explorer Hat + 2차 바운스)
-      vec3 epHat = pq - vec3(0.0, 0.42 + hb, 0.0);
-      epHat.yz = rot2(-0.12 - hb * 0.65) * epHat.yz;
-      float brim = sdEllipsoid(epHat - vec3(0.0, -0.04, 0.02), vec3(0.68, 0.055, 0.64));
-      float dome = sdEllipsoid(epHat - vec3(0.0, 0.14, 0.0), vec3(0.39, 0.23, 0.37));
-      float leather = smin(brim, dome, 0.045);
-      res = opU(res, vec2(leather * sMin, 8.0));
-      float hatBand = sdEllipsoid(epHat - vec3(0.0, 0.025, 0.0), vec3(0.415, 0.052, 0.395));
-      res = opU(res, vec2(hatBand * sMin, 4.0));
-      vec3 fp = epHat - vec3(0.36, 0.21, -0.04);
-      fp.xy = rot2(-0.48 - hb * 1.1) * fp.xy;
-      float feather = sdEllipsoid(fp, vec3(0.045, 0.19, 0.085));
-      res = opU(res, vec2(feather * sMin, 3.0));
-    }
+    res = mapAdmiralHats(res, pq - vec3(0.0, 0.41, 0.0), rig.hatBounce, sMin);
   } else {
     if (uRole == 0) {
       vec3 sp = q - vec3(-0.56, 0.54 + rig.hatBounce * 0.6, 0.22);
@@ -558,17 +635,19 @@ void main() {
   vec3 pFrag = worldToLocalPos(vWorldPos);
   vec3 rd = normalize(pFrag - ro);
 
+  float sphereR = uBoundRad - 0.02;
   float b = dot(ro, rd);
-  float c = dot(ro, ro) - 1.44 * 1.44;
+  float c = dot(ro, ro) - sphereR * sphereR;
   float disc = b * b - c;
   if (disc < 0.0) discard;
 
   float tStart = max(0.0, -b - sqrt(disc));
   float tEnd = -b + sqrt(disc);
   float camDist = length(ro) * uCharScale;
-  int maxSteps = (camDist > 26.0) ? 28 : 48;
+  int maxSteps = (camDist > 26.0) ? 28 : 52;
   float minStep = (camDist > 26.0) ? 0.014 : 0.008;
   AnimRig rig = computeAnim();
+  float tAnim = uTime + uPhase;
 
   float t = tStart;
   float hitMat = -1.0;
@@ -576,7 +655,7 @@ void main() {
   float minPlushD = 9.9;
   float minPlushT = tStart;
 
-  for (int i = 0; i < 48; i++) {
+  for (int i = 0; i < 52; i++) {
     if (i >= maxSteps) break;
     vec3 p = ro + rd * t;
     vec2 h = mapScene(p, rig);
@@ -605,7 +684,93 @@ void main() {
     vec3 N = calcNormal(p, rig);
     int mId = int(hitMat + 0.5);
 
-    if (mId == 0 || mId == 7) {
+    if (mId == 11) {
+      // 슈퍼마리오 스타 (Power Star) 전용 매끈·광택·반짝이는 3D 플라스틱/세라믹 재질 (털 노이즈 0!)
+      grazeMask = 0.0;
+
+      vec3 nLoc = N;
+      nLoc.xz = rot2(-rig.yawAdd) * nLoc.xz;
+      nLoc.yz = rot2(-rig.pitchAdd) * nLoc.yz;
+      nLoc.xy = rot2(-rig.roll) * nLoc.xy;
+      nLoc = normalize(nLoc);
+
+      vec3 starAlbedo = uBaseCol;
+      float tipBright = smoothstep(0.30, 0.74, length(q.xy));
+      starAlbedo = mix(starAlbedo, mix(starAlbedo, vec3(1.0, 0.98, 0.78), 0.35), tipBright * 0.50);
+
+      // 슈퍼마리오 스타 시그니처 세로로 길쭉한 검은 타원 눈(| |) + 5종 표정 + 복숭아 볼터치
+      float eyeMask = 0.0;
+      float eyeGlint = 0.0;
+      if (q.z > 0.08 && nLoc.z > 0.16) {
+        float frontFade = smoothstep(0.16, 0.36, nLoc.z);
+        int expr = rig.exprMode;
+        float blushAmt = clamp(max(uBlush, (expr == 1) ? 0.78 : 0.0), 0.0, 1.0);
+        float eyeY = 0.04;
+        vec2 ep = q.xy - vec2(0.0, eyeY) - rig.eyeShift * 0.58;
+        vec2 eL = ep - vec2(-0.132, 0.0);
+        vec2 eR = ep - vec2( 0.132, 0.0);
+        if (expr == 1) {
+          // happy (^ ^ 반달 웃는 눈)
+          float dArc = min(sdHappyEyeArc(eL), sdHappyEyeArc(eR));
+          eyeMask = (1.0 - smoothstep(-0.007, 0.008, dArc)) * frontFade;
+        } else if (expr == 2) {
+          // sleepy (- - 감은 눈)
+          float dSlp = min(sdSleepyEyeLine(eL), sdSleepyEyeLine(eR));
+          eyeMask = (1.0 - smoothstep(-0.007, 0.008, dSlp)) * frontFade;
+        } else if (expr == 3) {
+          // surprised (◉ ◉ 크게 뜬 반짝 눈)
+          float dEye = min(length(eL), length(eR)) - 0.096;
+          eyeMask = (1.0 - smoothstep(-0.007, 0.008, dEye)) * frontFade;
+          vec2 nearE = (length(eL) < length(eR)) ? eL : eR;
+          float g1 = 1.0 - smoothstep(0.022, 0.036, length(nearE - vec2(-0.022, 0.032)));
+          float g2 = 1.0 - smoothstep(0.011, 0.020, length(nearE - vec2(0.024, -0.024)));
+          eyeGlint = clamp(g1 + g2 * 0.85, 0.0, 1.0) * eyeMask;
+        } else if (expr == 4) {
+          // focused (집중 눈)
+          float dEyeL = max(sdRoundedBox2(eL, vec2(0.046, 0.112), 0.044), eL.y - (0.042 - eL.x * 0.30));
+          float dEyeR = max(sdRoundedBox2(eR, vec2(0.046, 0.112), 0.044), eR.y - (0.042 + eR.x * 0.30));
+          eyeMask = (1.0 - smoothstep(-0.007, 0.008, min(dEyeL, dEyeR))) * frontFade;
+          vec2 nearE = (length(eL) < length(eR)) ? eL : eR;
+          eyeGlint = (1.0 - smoothstep(0.014, 0.024, length(nearE - vec2(-0.010, 0.012)))) * eyeMask;
+        } else {
+          // normal (슈퍼마리오 스타 시그니처 세로 길쭉 검은 타원 눈 | | + 상단 하얀 하이라이트)
+          float hE = max(0.015, 0.128 * rig.eyeBlink);
+          float dEye = min(sdRoundedBox2(eL, vec2(0.044, hE), 0.042),
+                           sdRoundedBox2(eR, vec2(0.044, hE), 0.042));
+          eyeMask = (1.0 - smoothstep(-0.007, 0.008, dEye)) * frontFade;
+          vec2 nearE = (length(eL) < length(eR)) ? eL : eR;
+          float gTop = 1.0 - smoothstep(0.015, 0.027, length(nearE - vec2(-0.009, 0.056 * rig.eyeBlink)));
+          eyeGlint = gTop * eyeMask;
+        }
+        float finalBlush = max(0.28, blushAmt * 0.68);
+        float bM = min(
+          length((q.xy - vec2(-0.240, eyeY - 0.105)) / vec2(0.092, 0.052)),
+          length((q.xy - vec2( 0.240, eyeY - 0.105)) / vec2(0.092, 0.052))
+        );
+        starAlbedo = mix(starAlbedo, vec3(0.99, 0.56, 0.54), (1.0 - smoothstep(0.20, 1.0, bM)) * finalBlush * frontFade);
+      }
+
+      vec3 baseLin = toLinear(starAlbedo);
+      float diff = clamp((dot(N, L1) + 0.48) / 1.48, 0.0, 1.0);
+      vec3 H1 = normalize(L1 + V);
+      // 딱딱한 플라스틱이나 털뭉치가 아닌 보송한 소프트 새틴·말랑 실리콘 광택
+      float specSoft = pow(max(dot(N, H1), 0.0), 22.0);
+      float specBroad = pow(max(dot(N, H1), 0.0), 8.5);
+      float rim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.1);
+
+      vec3 shadowCol = baseLin * vec3(0.62, 0.49, 0.38);
+      vec3 litCol = baseLin * 1.08 + vec3(0.02);
+      coreCol = mix(shadowCol, litCol, pow(diff, 0.88));
+      coreCol += baseLin * 0.14;
+      coreCol += vec3(1.0, 0.97, 0.84) * (specSoft * 0.22 + specBroad * 0.24);
+      coreCol += mix(baseLin, vec3(1.0, 0.96, 0.72), 0.60) * rim * 0.54;
+
+      if (eyeMask > 0.001) {
+        vec3 eyeGloss = vec3(0.012, 0.012, 0.022) + vec3(0.30) * specSoft * 0.30;
+        eyeGloss = mix(eyeGloss, vec3(1.12, 1.11, 1.08), eyeGlint);
+        coreCol = mix(coreCol, eyeGloss, eyeMask);
+      }
+    } else if (mId == 0 || mId == 7) {
       bool isWing = (mId == 7);
       vec3 pCol = plushColorAt(q, isWing);
       grazeMask = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.5) * 0.78;
@@ -761,7 +926,7 @@ void main() {
       }
       else if (mId == 4) {
         vec3 gold = mix(toLinear(vec3(0.38, 0.24, 0.06)), toLinear(vec3(0.94, 0.72, 0.25)), 0.25 + 0.78 * wrap) + vec3(0.95, 0.84, 0.50) * spec * 0.55;
-        if (uQuaker == 0 && uRole == 0) {
+        if (uQuaker == 0 && uStarlight < 0.5 && uRole == 0) {
           vec3 sp = q - vec3(-0.56, 0.54 + rig.hatBounce * 0.6, 0.22); sp.yz = rot2(0.08)*sp.yz; sp.xz = rot2(-0.18)*sp.xz;
           if (sp.z > 0.02) {
             float sm = 1.0 - smoothstep(-0.008, 0.008, sdStar5_2D(vec2(sp.x, -sp.y), 0.132, 0.45));
@@ -778,13 +943,44 @@ void main() {
       else if (mId == 8) {
         coreCol = toLinear(vec3(0.54, 0.33, 0.17)) * (0.36 + 0.80 * wrap) + vec3(0.35, 0.22, 0.10) * spec * 0.18;
       }
+      else if (mId == 9) {
+        // 딥 인디고 벨벳 미니 별빛 망토 + 하단 황금 테두리 트림 + 등 중앙 5각 황금 별 문양 & 성좌 점 4개
+        float capeRim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.4);
+        vec3 capeVelvet = toLinear(vec3(0.11, 0.14, 0.34)) * (0.42 + 0.72 * wrap)
+          + toLinear(vec3(0.38, 0.48, 0.92)) * capeRim * 0.28;
+        float spd = clamp(uMoveSpeed, 0.0, 7.0);
+        float uCape = clamp((-0.09 - q.y) / 0.48, 0.0, 1.0);
+        float billow = (0.10 + spd * 0.044 + max(0.0, -uJumpVel) * 0.048) * (uCape * uCape);
+        float hemY = -0.56 + billow * 0.22;
+        float hemDist = q.y - hemY;
+        float goldTrim = (1.0 - smoothstep(0.034, 0.058, hemDist)) * smoothstep(-0.18, -0.32, q.z);
+        float backFace = smoothstep(-0.12, -0.32, q.z);
+        float dBackStar = sdStar5_2D(vec2(q.x, q.y + 0.33), 0.118, 0.45);
+        float backStarMask = (1.0 - smoothstep(-0.008, 0.010, dBackStar)) * backFace;
+        float starHalo = (1.0 - smoothstep(0.0, 0.095, max(dBackStar, 0.0))) * backFace * 0.30;
+        float tw1 = 0.65 + 0.35 * sin(tAnim * 4.2 + 0.5);
+        float tw2 = 0.65 + 0.35 * sin(tAnim * 3.7 + 2.4);
+        float dots = (1.0 - smoothstep(0.013, 0.022, length(vec2(abs(q.x) - 0.18, q.y + 0.24)))) * tw1
+                   + (1.0 - smoothstep(0.011, 0.020, length(vec2(abs(q.x) - 0.20, q.y + 0.42)))) * tw2;
+        dots *= backFace;
+        vec3 goldGlow = toLinear(vec3(0.98, 0.80, 0.28)) * (0.58 + 0.55 * wrap) + vec3(0.95, 0.86, 0.52) * spec * 0.50;
+        coreCol = capeVelvet + toLinear(vec3(0.98, 0.84, 0.40)) * (starHalo + dots * 0.72);
+        coreCol = mix(coreCol, goldGlow, clamp(max(goldTrim, backStarMask), 0.0, 1.0));
+      }
+      else if (mId == 10) {
+        // 모자 없음 전용: 별 머리 주변을 은은히 맴도는 작은 별빛 반짝임 입자
+        float pulse = 0.92 + 0.14 * sin(tAnim * 3.6);
+        vec3 starGold = toLinear(vec3(1.0, 0.90, 0.42)) * (0.82 + 0.38 * wrap) * pulse
+          + vec3(1.0, 0.96, 0.74) * spec * 0.65;
+        coreCol = starGold;
+      }
       else coreCol = toLinear(uBaseCol) * (0.35 + 0.80 * wrap);
     }
     coreAlpha = 1.0;
   }
 
   float furLod = 1.0 - smoothstep(16.0, 22.0, camDist);
-  float furLen = 0.082 * uFuzz * furLod;
+  float furLen = (uStarlight > 0.5) ? 0.0 : 0.082 * uFuzz * furLod;
   vec3 furAccum = vec3(0.0);
   float furAlpha = 0.0;
   if (furLen > 0.004 && minPlushD < furLen && grazeMask > 0.02) {
@@ -799,8 +995,10 @@ void main() {
       float dp = sdPlushOnly(ps, rig);
       if (dp > 0.0 && dp < furLen) {
         vec3 qs = toLocal(ps, rig);
-        // 퀘이커 모자 챙 위쪽으로는 몸통 솜결이 새어 나오지 않도록 마스킹 (모자 없음일 때는 전체 솜결 허용, 2차 바운스 연동)
-        float capMask = (uQuaker > 0 && uHat != 3) ? smoothstep(0.44 + rig.hatBounce, 0.30 + rig.hatBounce, qs.y) : 1.0;
+        // 모자 챙 위쪽으로는 몸통 솜결이 새어 나오지 않도록 마스킹 (모자 없음일 때는 별 꼭짓점 솜결까지 전체 허용)
+        float capMask = ((uQuaker > 0 || uStarlight > 0.5) && uHat != 3)
+          ? smoothstep(0.42 + rig.hatBounce, 0.28 + rig.hatBounce, qs.y)
+          : 1.0;
         float strand = smoothstep(0.24, 0.84, noise3(qs * 78.0));
         float tipLen = furLen * (0.25 + 0.75 * strand);
         float h = dp / max(tipLen, 0.001);
@@ -854,6 +1052,8 @@ export interface MongleActorRigParams {
   readonly shape: MongleShape;
   readonly tone: IdentityTone;
   readonly quaker: QuakerMorph | null;
+  /** true이면 주인공 전용 「⭐ 별빛 요정 몽글이 (Starlight Spirit)」 SDF 외형으로 렌더링한다. */
+  readonly starlight?: boolean | undefined;
   readonly role: MongleRole;
   readonly scale: number;
 }
@@ -968,9 +1168,31 @@ const WORLD_EXPRESSION_CODE: Readonly<Record<WorldExpression, number>> = {
   focused: 4,
 };
 
+function resolveStarlightRgb(tone: IdentityTone): readonly [number, number, number] {
+  if (tone === "amber") {
+    // 맑고 선명한 슈퍼마리오 스타 골드-옐로우
+    return [1.0, 0.86, 0.22];
+  }
+  const rgb = PLUSH_VIVID_TONES[tone];
+  return [
+    rgb[0] * 0.82 + 0.18,
+    rgb[1] * 0.82 + 0.18,
+    rgb[2] * 0.82 + 0.18,
+  ];
+}
+
 export function createMongleActorRig(params: MongleActorRigParams): MongleActorRig {
   const group = new Group();
-  const baseRgb = params.quaker ? QUAKER_PASTEL_TONES[params.quaker] : PLUSH_VIVID_TONES[params.tone];
+  const isStarlight = params.starlight === true;
+  const boundRad = isStarlight ? 1.62 : 1.46;
+  const initRgb = isStarlight
+    ? resolveStarlightRgb(params.tone)
+    : params.quaker
+      ? QUAKER_PASTEL_TONES[params.quaker]
+      : PLUSH_VIVID_TONES[params.tone];
+  const initR = initRgb[0];
+  const initG = initRgb[1];
+  const initB = initRgb[2];
 
   const charCenter = new Vector3();
   const mat = new ShaderMaterial({
@@ -982,12 +1204,14 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       uViewProj: { value: new Matrix4() },
       uCharCenter: { value: charCenter },
       uCharScale: { value: params.scale },
+      uBoundRad: { value: boundRad },
       uCharYaw: { value: 0 },
       uTime: { value: 0 },
       uPhase: { value: params.baseId * 1.73 },
       uFuzz: { value: 1.05 },
       uShape: { value: params.quaker ? 10 : MONGLE_SHAPE_CODE[params.shape] },
       uQuaker: { value: params.quaker ? QUAKER_MORPH_CODE[params.quaker] : 0 },
+      uStarlight: { value: isStarlight ? 1.0 : 0.0 },
       uState: { value: 0 },
       uActivity: { value: 0 },
       uRole: { value: MONGLE_ROLE_CODE[params.role] },
@@ -1002,7 +1226,7 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       uLookPitch: { value: 0 },
       uBlush: { value: 0 },
       uHatBounce: { value: 0 },
-      uBaseCol: { value: new Vector3(baseRgb[0], baseRgb[1], baseRgb[2]) },
+      uBaseCol: { value: new Vector3(initR, initG, initB) },
       uWorldLightDir: { value: new Vector3(0.5, 0.85, 0.4) },
       uWorldTint: { value: new Vector3(1, 1, 1) },
     },
@@ -1010,9 +1234,9 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
     fragmentShader: ACTOR_FRAGMENT,
   });
 
-  // 실제 바운딩 큐브 크기(1.46 * scale)와 일치시켜 카메라 프러스텀 컬링을 정확히 활성화한다.
+  // 실제 바운딩 큐브 크기(boundRad * scale)와 일치시켜 카메라 프러스텀 컬링을 정확히 활성화한다.
   const volumeMesh = new Mesh(sharedCubeGeo, mat);
-  volumeMesh.scale.setScalar(1.46 * params.scale);
+  volumeMesh.scale.setScalar(boundRad * params.scale);
   volumeMesh.frustumCulled = true;
   volumeMesh.renderOrder = 10;
   group.add(volumeMesh);
@@ -1054,14 +1278,19 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
   return {
     group,
     setAdmiralStyle(tone, hat) {
-      const rgb = PLUSH_VIVID_TONES[tone];
       const baseCol = mat.uniforms["uBaseCol"]!.value as Vector3;
-      // 퀘이커 솜결의 포근한 파스텔 감을 살리면서 8색 톤을 또렷하게 반영
-      baseCol.set(
-        rgb[0] * 0.80 + 0.20,
-        rgb[1] * 0.80 + 0.20,
-        rgb[2] * 0.80 + 0.20,
-      );
+      if (isStarlight) {
+        const [r, g, b] = resolveStarlightRgb(tone);
+        baseCol.set(r, g, b);
+      } else {
+        const rgb = PLUSH_VIVID_TONES[tone];
+        // 퀘이커 솜결의 포근한 파스텔 감을 살리면서 8색 톤을 또렷하게 반영
+        baseCol.set(
+          rgb[0] * 0.80 + 0.20,
+          rgb[1] * 0.80 + 0.20,
+          rgb[2] * 0.80 + 0.20,
+        );
+      }
       mat.uniforms["uHat"]!.value = ADMIRAL_HAT_CODE[hat];
     },
     updatePose(opts) {

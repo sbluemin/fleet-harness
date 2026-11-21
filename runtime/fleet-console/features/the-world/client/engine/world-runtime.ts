@@ -377,14 +377,15 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const aoQuat = new Quaternion();
   const aoScale = new Vector3();
 
-  // 플레이어 제독 3D 아바타 (진급 퀘이커 도리 Dori)
+  // 플레이어 제독 3D 아바타 (⭐ 노란 통통 별빛 몽글이 — 도리는 사령관으로 자유 배정 가능)
   const playerRig = createMongleActorRig({
-    baseId: 18,
+    baseId: 0,
     shape: "egg",
-    tone: "cerulean",
-    quaker: "dori",
+    tone: "amber",
+    quaker: null,
+    starlight: true,
     role: "commodore",
-    scale: 0.92,
+    scale: 0.94,
   });
   scene.add(playerRig.group);
 
@@ -519,6 +520,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let elapsed = 0;
   let workshopFxAccum = 0;
   let sprintDustAccum = 0;
+  let stardustAccum = 0;
+  let stardustStep = 0;
   let playerEmoteHop = 0;
   let playerEmoteKind: "wave" | "cheer" | "spin" | null = null;
   let customizerOpen = false;
@@ -604,6 +607,12 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       onOverviewAutoExit: config.onOverviewAutoExit,
       onJump: () => {
         playJump();
+        // 별빛 요정 제독 도약 시 발끝·망토 뒤 작은 별무리 방출 (기존 InstancedMesh 풀 재사용, Draw Call +0)
+        const pCur = playerCtrl.player;
+        const bx = -Math.sin(pCur.yaw) * 0.24;
+        const bz = -Math.cos(pCur.yaw) * 0.24;
+        director.spawnBurst(pCur.x + bx, pCur.y + 0.26, pCur.z + bz, 0xc4b5fd, 5);
+        director.emitWorkshopFx(pCur.x + bx, pCur.y + 0.44, pCur.z + bz, "ask");
       },
       onLand: () => {
         const px = playerCtrl.player.x;
@@ -618,6 +627,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           director.spawnDust(px + 0.16, py + 0.06, pz - 0.12);
           director.spawnDust(px - 0.16, py + 0.06, pz + 0.12);
         }
+        // 착지 별빛 스파클(금빛·하늘빛)
+        director.spawnBurst(px, py + 0.18, pz, 0xffe57f, 3);
+        director.emitWorkshopFx(px, py + 0.28, pz, "pulse");
       },
       onStandUp: config.onCampfireStandUp,
     });
@@ -651,6 +663,58 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       }
     } else {
       sprintDustAccum = 0;
+    }
+
+    // ⭐ 별빛 요정 제독 미세 별가루 궤적 (기존 파티클 풀 재사용, Draw Call +0)
+    // 걷기 ~3.5/s · 질주 ~12/s · 체공 ~7/s — 금빛(0xffe57f)·라벤더(0xc4b5fd)·하늘(0x7dd3fc) 은은한 흩날림
+    if (currentLifecycle === "open" && !playerCtrl.isOverviewMode() && !config.isReducedMotion()) {
+      const pCur = playerCtrl.player;
+      const isAirborne = !pCur.onGround && pCur.playerJumpY > 0.12;
+      const isSprintingNow = playerCtrl.isSprinting() && pCur.onGround;
+      const isWalkingNow = pCur.walking && pCur.onGround && !isSprintingNow;
+      if (isSprintingNow || isWalkingNow || isAirborne) {
+        const interval = isSprintingNow ? 0.083 : isAirborne ? 0.14 : 0.285;
+        stardustAccum += dt;
+        if (stardustAccum >= interval) {
+          stardustAccum -= interval;
+          if (stardustAccum > interval) stardustAccum = 0;
+          const backX = -Math.sin(pCur.yaw);
+          const backZ = -Math.cos(pCur.yaw);
+          const sideX = Math.cos(pCur.yaw);
+          const sideZ = -Math.sin(pCur.yaw);
+          const jitter = ((stardustStep % 5) - 2) * 0.11;
+          const trailDist = isSprintingNow ? 0.44 : 0.30;
+          const sx = pCur.x + backX * trailDist + sideX * jitter;
+          const sz = pCur.z + backZ * trailDist + sideZ * jitter;
+          const sy = pCur.y + (isAirborne ? 0.38 : isSprintingNow ? 0.32 + (stardustStep % 2) * 0.22 : 0.26);
+          const phase = stardustStep % 3;
+          stardustStep = (stardustStep + 1) % 30;
+          if (isSprintingNow) {
+            if (phase === 0) {
+              director.emitWorkshopFx(sx, sy, sz, "ask");
+            } else if (phase === 1) {
+              director.spawnBurst(sx, sy, sz, 0xc4b5fd, 2);
+            } else {
+              director.emitWorkshopFx(sx, sy, sz, "pulse");
+            }
+          } else if (isAirborne) {
+            director.emitWorkshopFx(sx, sy, sz, phase === 1 ? "pulse" : "ask");
+          } else {
+            // 일반 보행: 은은한 금빛·하늘빛 부유 입자 위주 + 매 3번째 발걸음 라벤더 별빛
+            if (phase === 0) {
+              director.emitWorkshopFx(sx, sy, sz, "ask");
+            } else if (phase === 1) {
+              director.emitWorkshopFx(sx, sy, sz, "pulse");
+            } else {
+              director.spawnBurst(sx, sy + 0.08, sz, 0xc4b5fd, 2);
+            }
+          }
+        }
+      } else {
+        stardustAccum = 0;
+      }
+    } else {
+      stardustAccum = 0;
     }
 
     playerPosVec.set(playerCtrl.player.x, playerCtrl.player.y, playerCtrl.player.z);
@@ -1400,13 +1464,18 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       customizerOpen = open;
     },
     triggerCustomizerPreviewBounce() {
-      // 색상·모자 변경 시 0.95초간 기분 좋은 cheer 바운스 + happy 표정 + 볼터치 + 모자 2차 스프링 튕김 연출
+      // 색상·모자 변경 시 0.95초간 기분 좋은 cheer 바운스 + happy 표정 + 볼터치 + 모자 2차 스프링 튕김 + 별빛 스파클 연출
       playerEmoteKind = "cheer";
       playerEmoteTimer = 0.95;
       playerEmotePhase = 0;
       playerEmoteHop = 0.85;
       playerHatVel -= 1.65;
-      director.spawnBurst(playerCtrl.player.x, playerCtrl.player.y + 1.05, playerCtrl.player.z, 0xfde047, 8);
+      const px = playerCtrl.player.x;
+      const py = playerCtrl.player.y;
+      const pz = playerCtrl.player.z;
+      director.spawnBurst(px, py + 1.05, pz, 0xc4b5fd, 6);
+      director.spawnBurst(px, py + 0.92, pz, 0xffe57f, 4);
+      director.emitWorkshopFx(px, py + 1.18, pz, "pulse");
     },
     setCampfireSit(sitting) {
       playerCtrl.setCampfireSit(sitting);

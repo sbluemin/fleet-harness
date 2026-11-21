@@ -424,7 +424,7 @@ export const WorldLabelsOverlay = memo(
               aria-label={t("theWorld.hud.admiralStyleAria")}
               onClick={onOpenAdmiralCustomizer}
             >
-              <span>나 (제독)</span>
+              <span>{t("theWorld.labels.playerSelf")}</span>
             </button>
           </div>
         ) : null}
@@ -561,7 +561,7 @@ export const WorldLabelsOverlay = memo(
                   onClick={() => onInteractActor(lbl.actorId)}
                 >
                   <span className="the-world-keycap">E</span>
-                  <span>상호작용</span>
+                  <span>{t("theWorld.labels.interact")}</span>
                 </button>
               ) : null}
               <button

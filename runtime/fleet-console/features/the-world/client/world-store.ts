@@ -31,12 +31,12 @@ const REDUCED_TRANSITION_MS = 180;
 const SOUND_MUTED_STORAGE_KEY = "fleet.theWorld.soundMuted.v1";
 const VILLAGE_BIOMES_STORAGE_KEY = "fleet.theWorld.villageBiomes.v1";
 const WEATHER_MODE_STORAGE_KEY = "fleet.theWorld.weatherMode.v1";
-const ADMIRAL_STYLE_STORAGE_KEY = "fleet.theWorld.admiralStyle.v1";
+const ADMIRAL_STYLE_STORAGE_KEY = "fleet.theWorld.admiralStyle.v2";
 const DISTRICT_NOTES_STORAGE_KEY = "fleet.theWorld.districtNotes.v1";
 const MAX_DISTRICT_NOTE_LEN = 240;
 
 const DEFAULT_ADMIRAL_STYLE: WorldAdmiralStyle = {
-  tone: "cerulean",
+  tone: "amber",
   hat: "admiral",
 };
 
