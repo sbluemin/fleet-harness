@@ -19,7 +19,7 @@ import type { MapBranchKey, MapNode } from "../map-graph.js";
 import { mapPaletteToRgb, type MapPalette } from "../map-palette.js";
 import { rng32 } from "../map-random.js";
 import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
-import { prefersReducedMotion } from "../../../../../core/client/src/integration/reduced-motion.js";
+import { prefersReducedMotion } from "../../motion.js";
 
 /**
  * three.js WebGL2 렌더러 — 생체 시냅스 광학 + 절제된 성도 극좌표(A+B 절충안).

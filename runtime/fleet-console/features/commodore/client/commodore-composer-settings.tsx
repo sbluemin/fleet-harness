@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/i18n";
 import { useT as useConsoleT } from "../../../core/client/src/i18n/index.js";
-import { prefersReducedMotion } from "../../../core/client/src/integration/reduced-motion.js";
+import { prefersReducedMotion } from "./motion.js";
 import { modelCoordinateDisplay, prettyModelId, type ModelCoordinateValue } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import { launchProviderFromGroupId, launchProviderFromModelId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { findRosterRow, type ModelRoster } from "../../ai-gateway/shared/models.js";

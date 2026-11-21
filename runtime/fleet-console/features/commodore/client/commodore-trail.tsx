@@ -2,7 +2,7 @@ import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { useId, useMemo, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
-import { prefersReducedMotion } from "../../../core/client/src/integration/reduced-motion.js";
+import { prefersReducedMotion } from "./motion.js";
 
 import type { CommodoreBoardObjective as Objective, CommodoreBoardActor as ObjectiveActor } from "../../objectives/shared/commodore-board-client.js";
 import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";

@@ -6,7 +6,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
-import { prefersReducedMotion } from "../../../core/client/src/integration/reduced-motion.js";
+import { prefersReducedMotion } from "./motion.js";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { prettyModelId } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import { canonicalModelId, findRosterRow, type ModelRoster } from "../../ai-gateway/shared/models.js";
