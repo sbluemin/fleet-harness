@@ -67,8 +67,7 @@ import { theaterLabelOf as theaterLabelFromOwner } from "../../../commodore/clie
 import { ConversationWorkbench } from "./workbench/conversation-workbench.js";
 import type { WorkbenchTile } from "../../shared/conversation-workbench.js";
 import { computeWorkbenchGeometry } from "./workbench/workbench-geometry.js";
-import { useConversationWorkbenchHost } from "./workbench/workbench-host.js";
-import { useConversationWorkLocation } from "./workbench/work-location.js";
+import { useConversationWorkbenchHost, useConversationWorkLocation } from "./workbench/workbench-host.js";
 import { getWorkbenchKey, isWorkbenchEntryShown, subscribeWorkbench, isWorkbenchSurfaceShown, useWorkbenchFocusedTileId, useWorkbenchLayout, workbenchLayoutKeeping } from "./workbench/workbench-store.js";
 import { ContextRailHost } from "./context-rail/rail.js";
 import { setContextFlyout, useContextRailState } from "./context-rail/store.js";
