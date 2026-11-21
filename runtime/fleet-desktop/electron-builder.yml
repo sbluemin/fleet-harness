@@ -9,6 +9,7 @@ directories:
   output: release
 files:
   - dist/**
+  - "!dist/helpers/**"
   - package.json
 asar: true
 asarUnpack:
@@ -28,6 +29,9 @@ protocols:
     schemes:
       - fleet
 mac:
+  extraFiles:
+    - from: dist/helpers/Fleet Computer Use.app
+      to: Helpers/Fleet Computer Use.app
   category: public.app-category.developer-tools
   icon: build/icon.icns
   hardenedRuntime: true

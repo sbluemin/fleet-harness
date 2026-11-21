@@ -38,7 +38,7 @@ function run() {
   if (!replacement.setStringForType($(payload.text),$('public.utf8-plain-text'))) throw Error('clipboard_encode_failed');
   if (payload.html!==undefined && !replacement.setStringForType($(payload.html),$('public.html'))) throw Error('clipboard_encode_failed');
   if (Number(board.changeCount)!==originalCount) throw Error('clipboard_changed');
-  if (payload.allowActivation!==true) {
+  if (payload.allowActivation!==true && payload.backgroundWindowVerified!==true) {
     var front=$.NSWorkspace.sharedWorkspace.frontmostApplication;
     if (!(ObjC.unwrap(front.bundleIdentifier)===payload.app || ObjC.unwrap(front.bundleURL.path)===payload.app || ObjC.unwrap(front.localizedName)===payload.app)) {
       emit({activationBlocked:true});
@@ -63,11 +63,11 @@ function run() {
   }
 }`;
 
-export async function prepareMacPaste(app: string, text: string, format: "text" | "md" | "html", allowActivation: boolean): Promise<{ finish(): Promise<ClipboardRestoration> }> {
+export async function prepareMacPaste(app: string, text: string, format: "text" | "md" | "html", allowActivation: boolean, options?: { readonly backgroundWindowVerified: true }): Promise<{ finish(): Promise<ClipboardRestoration> }> {
   const markup = format === "md" ? await marked.parse(text, { async: false }) : format === "html" ? text : undefined;
   // NSPasteboard HTML otherwise defaults to a legacy encoding in some Mac apps.
   const html = markup === undefined ? undefined : `<meta charset="utf-8">${markup}`;
-  const payload = Buffer.from(JSON.stringify({ app, allowActivation, text, ...(html === undefined ? {} : { html }) }));
+  const payload = Buffer.from(JSON.stringify({ app, allowActivation, backgroundWindowVerified: options?.backgroundWindowVerified, text, ...(html === undefined ? {} : { html }) }));
   const child = spawn("/usr/bin/osascript", ["-l", "JavaScript", "-e", PASTEBOARD], { stdio: ["pipe", "pipe", "pipe"], windowsHide: true });
   child.stderr.resume(); // Never forward errors that might contain clipboard content.
   let restoration: ClipboardRestoration = "failed";
