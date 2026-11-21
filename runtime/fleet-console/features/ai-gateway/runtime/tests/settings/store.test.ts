@@ -18,6 +18,7 @@ import { buildGatewayCandidates } from "../../src/fleet/model-loadout.js";
 import { decideGatewayRoutingAssignment } from "../../src/fleet/routing-decision.js";
 import { createAiGatewaySettingsStore } from "../../src/settings/store.js";
 import { applyClaudeNativeModels } from "../../src/models.js";
+import { findGatewayModel } from "../../src/index.js";
 
 const temporaryDirectories: string[] = [];
 
@@ -176,6 +177,27 @@ describe("ai-gateway settings store", () => {
 
     expect(existsSync(store.path)).toBe(true);
     expect(store.read().models).toEqual([{ id: "codex--gpt-6.2-sol" }]);
+  });
+
+  it("carries a retired model's stored choice forward to the model that replaced it", () => {
+    // 카탈로그에서 뺀 모델을 켜 둔 풀이 업데이트 뒤 조용히 비지 않는다. 강도·속도 선택은 그대로 이어지고,
+    // 다음 저장은 후속 id로 쓴다. 실행 경로의 Claude 표기도 같은 후속 모델로 풀린다.
+    const dataDir = createDataDir();
+    writeFileSync(path.join(dataDir, "ai-gateway.json"), JSON.stringify({
+      version: 1,
+      rosterSeedVersion: 5,
+      effortSelectionVersion: 1,
+      models: [{ id: "codex--gpt-6.1-sol", efforts: ["low", "medium", "high"] }, { id: "gpt-6-astra", fast: true }],
+    }), "utf-8");
+
+    const store = createAiGatewaySettingsStore({ dataDir });
+    const carried = [{ id: "codex--gpt-6.2-sol", efforts: ["low", "medium", "high"] }, { id: "codex--gpt-6.2-astra", speed: "fast" }];
+    expect(store.read().models).toEqual(carried);
+    store.writeWireLogEnabled(true);
+    expect(JSON.parse(readFileSync(store.path, "utf-8")).models).toEqual(carried);
+
+    expect(findGatewayModel("claude-gateway--codex--gpt-6.1-sol[1m]")?.id).toBe("codex--gpt-6.2-sol");
+    expect(findGatewayModel("gpt-6-astra")?.id).toBe("codex--gpt-6.2-astra");
   });
 
   it("performs no adoption when no host directory is given", () => {

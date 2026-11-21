@@ -136,10 +136,11 @@ it("persists UUID section order through the public route without rewriting entit
     const a = (await route("create", { alias: "A" })).value.commodoreId;
     const b = (await route("create", { alias: "B" })).value.commodoreId;
     const c = (await route("create", { alias: "C" })).value.commodoreId;
-    // 저장된 지휘관 모델이 제거된 모델이면 로스터의 기존 폴백으로 서고, 그 모델에 저장된 속도는 싣지 않는다. 저장값은 고쳐 쓰지 않는다.
-    expect((await route("commander", { commodoreId: a, model: "codex--gpt-6-astra", effort: "high", speed: "fast" })).status).toBe(200);
+    // 저장된 지휘관 모델이 로스터 밖이면 로스터의 기존 폴백으로 서고, 그 모델에 저장된 속도는 싣지 않는다. 저장값은 고쳐 쓰지 않는다.
+    const stateFileA = path.join(dir, "commodore", a, "state.json");
+    expect((await route("commander", { commodoreId: a, model: "codex--gpt-6-luna", effort: "high", speed: "fast" })).status).toBe(200);
     expect(feature.host.commander(a)).toEqual({ model: "codex--gpt-6.2-sol" });
-    expect(JSON.parse(fs.readFileSync(path.join(dir, "commodore", a, "state.json"), "utf8"))).toMatchObject({ commanderModel: "codex--gpt-6-astra", commanderSpeed: "fast" });
+    expect(JSON.parse(fs.readFileSync(stateFileA, "utf8"))).toMatchObject({ commanderModel: "codex--gpt-6-luna", commanderSpeed: "fast" });
     // 살아 있는 모델은 지금처럼 저장값 그대로다.
     expect((await route("commander", { commodoreId: a, model: "codex--gpt-6.2-sol", effort: "high", speed: "fast" })).status).toBe(200);
     expect(feature.host.commander(a)).toEqual({ model: "codex--gpt-6.2-sol", effort: "high", speed: "fast" });
@@ -201,6 +202,12 @@ it("persists UUID section order through the public route without rewriting entit
     expect((await route("list")).value.sidebarLayout).toEqual({ sections: [{ id: emptySection, name: "Work", collapsed: false }], membership: {}, unsectionedCollapsed: true });
     expect(await ids()).toEqual([c, b, a]);
     expect(entityFiles.map((file) => fs.readFileSync(file, "utf8"))).toEqual(before);
+    // 카탈로그에서 뺀 모델을 고른 이전 판의 저장값(정준·맨 id)은 업데이트 뒤 로스터 폴백(첫 행 Sol, 속도 없음)이 아니라
+    // 후속 모델로 서고, 지휘관의 강도·속도도 그대로 잇는다.
+    fs.writeFileSync(stateFileA, JSON.stringify({ ...JSON.parse(fs.readFileSync(stateFileA, "utf8")), model: "gpt-6-astra", effort: "medium", commanderModel: "codex--gpt-6.1-sol" }));
+    await feature.dispose(); feature = create();
+    expect(feature.host.commander(a)).toEqual({ model: "codex--gpt-6.2-sol", effort: "high", speed: "fast" });
+    expect(feature.host.coordinates(a)).toMatchObject({ model: "codex--gpt-6.2-astra" });
   } finally { await feature.dispose(); }
 });
 
