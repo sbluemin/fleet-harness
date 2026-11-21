@@ -1,7 +1,7 @@
 import type { ChromeImportSources, ChromeSuggestion, ChromeUiState, ChromeViewOnly } from "../contract.js";
 import { chromeViewLocked, passwordPromptIdentity, passwordRevealText, type ChromeOverlay } from "../contract.js";
 import { mountAnnotate, type Annotator } from "./annotate.js";
-import { agentGlyph, clear, G, glyph, h, hostOf, moreGlyph } from "./dom.js";
+import { agentGlyph, appendTabFavicon, clear, G, glyph, h, hostOf, moreGlyph } from "./dom.js";
 import { paintColors, post, shownSpace, spaceHue, spaceName, syncShellMotion, tabCount, tr, type T } from "./shared.js";
 
 const SUGGEST_DELAY_MS = 200;
@@ -276,11 +276,7 @@ export function mountBar(): { render(state: ChromeUiState): void; inspected(seq:
       const icons = h("span", { class: "tile-icons" });
       for (const tab of tabs.slice(0, TILE_ICONS)) {
         const icon = h("span", { class: "tab-icon" });
-        if (tab.favicon) {
-          const image = h("img", { src: tab.favicon, alt: "", draggable: false });
-          image.addEventListener("error", () => { clear(icon); icon.append(glyph(G.globe)); });
-          icon.append(image);
-        } else icon.append(glyph(G.globe));
+        appendTabFavicon(icon, tab.favicon);
         icons.append(icon);
       }
       if (tabs.length > TILE_ICONS) icons.append(h("span", { class: "tile-more", text: `+${tabs.length - TILE_ICONS}` }));

@@ -11,6 +11,7 @@ import {
 } from "@fleet-console/protocol/desktop";
 
 import { createBrowserActions } from "./browser-actions.js";
+import { browserJsonHeaders } from "./browser-connection.js";
 import type { SurfaceControl } from "./browser-surface.js";
 import { createRemoteBrowserViewerStream } from "./browser-viewer-stream.js";
 import type { ChromeAction, ChromeRole, ChromeViewOnly } from "./chrome/contract.js";
@@ -29,6 +30,10 @@ import { createDesktopEventStream } from "./desktop-event-stream.js";
 
 const MAX_VIEWER_SSE_BUFFER_CHARS = 16 * 1024 * 1024;
 const VIEWER_BROWSER_ID = "global";
+
+function browserIdFor(control: SurfaceControl): string {
+  return control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
+}
 
 /** 보기 전용 셸이 쓰는 표면의 좁은 면. 관리 세션이 쓰는 표면과 같은 객체다. */
 export interface BrowserViewerDisplay {
@@ -120,6 +125,13 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
   /** 실행 호스트가 붙어 있고 스냅샷이 원격 조작을 말할 때만. 옛 Console 은 필드가 없어 보기 전용이다. */
   const controllable = (): boolean => open && snapshot?.remoteControl === true && snapshot.executionHost.status === "connected";
 
+  const postFileChoice = (at: string, browserId: string, chooserId: string, tabId: string, files?: readonly RemoteBrowserUploadFile[]): Promise<Response> =>
+    deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/file-chooser`, {
+      method: "POST",
+      headers: browserJsonHeaders(at),
+      body: JSON.stringify({ chooserId, tabId, action: files ? "choose" : "cancel", ...(files ? { files } : {}) }),
+    });
+
   /**
    * 시청 셸이 닫히면 전이 맞춤을 곧바로 걷는다 — Console 의 맞춤 리스 만료를 기다리지 않는다.
    * 스페이스의 뷰포트·프리셋은 건드리지 않으므로 실행 측이 보던 크기로 그대로 돌아간다.
@@ -133,7 +145,7 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
     void deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/viewport`, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json", Origin: at },
+      headers: browserJsonHeaders(at),
       body: JSON.stringify({ clearRemoteFit: true, ...(spaceId ? { spaceId } : {}) }),
     }).catch(() => undefined);
   };
@@ -252,28 +264,18 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
           case "file-chooser-open": {
             if (!origin || !deps.pickFiles) return;
             const at = origin;
-            const browserId = control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
+            const browserId = browserIdFor(control);
             void (async () => {
               control.patch({ busy: true });
               try {
                 const picked = await deps.pickFiles!({ multiple: action.multiple });
                 if (picked.error) {
                   control.notify(t(picked.error), "error");
-                  await deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/file-chooser`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Origin: at },
-                    body: JSON.stringify({ chooserId: action.chooserId, tabId: action.tabId, action: "cancel" }),
-                  }).catch(() => undefined);
+                  await postFileChoice(at, browserId, action.chooserId, action.tabId).catch(() => undefined);
                   return;
                 }
-                const payload = picked.cancelled || !picked.files || picked.files.length === 0
-                  ? { chooserId: action.chooserId, tabId: action.tabId, action: "cancel" }
-                  : { chooserId: action.chooserId, tabId: action.tabId, action: "choose", files: picked.files };
-                const response = await deps.fetch(`${at}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/file-chooser`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", Origin: at },
-                  body: JSON.stringify(payload),
-                });
+                const files = picked.cancelled || !picked.files || picked.files.length === 0 ? undefined : picked.files;
+                const response = await postFileChoice(at, browserId, action.chooserId, action.tabId, files);
                 if (!response.ok) control.notify(t("requestFailed"), "error");
               } catch {
                 control.notify(t("requestFailed"), "error");
@@ -285,12 +287,8 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
           }
           case "file-chooser-cancel": {
             if (!origin) return;
-            const browserId = control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
-            void deps.fetch(`${origin}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/file-chooser`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", Origin: origin },
-              body: JSON.stringify({ chooserId: action.chooserId, tabId: action.tabId, action: "cancel" }),
-            }).catch(() => undefined);
+            const browserId = browserIdFor(control);
+            void postFileChoice(origin, browserId, action.chooserId, action.tabId).catch(() => undefined);
             return;
           }
           case "dialog-close": {
@@ -298,8 +296,8 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
             const view = place();
             if (view.passwordPrompt) { remoteActions(control, role, { action: "password-dismiss", promptId: view.passwordPrompt.id, tabId: view.passwordPrompt.tabId }); return; }
             if (view.fileChooser) {
-              const browserId = control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
-              if (origin) void deps.fetch(`${origin}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/file-chooser`, { method: "POST", headers: { "Content-Type": "application/json", Origin: origin }, body: JSON.stringify({ chooserId: view.fileChooser.id, tabId: view.fileChooser.tabId, action: "cancel" }) }).catch(() => undefined);
+              const browserId = browserIdFor(control);
+              if (origin) void postFileChoice(origin, browserId, view.fileChooser.id, view.fileChooser.tabId).catch(() => undefined);
               return;
             }
             if (view.selectPopup) { remoteActions(control, role, { action: "select-popup", popupId: view.selectPopup.id, tabId: view.selectPopup.tabId, choice: "cancel" }); return; }
@@ -311,14 +309,14 @@ export function createRemoteBrowserViewer(deps: RemoteBrowserViewerDeps): Remote
           case "remote-input": {
             if (!origin || control.control()?.holder === "agent") return;
             const targetOrigin = origin;
-            const browserId = control.surface()?.browserId ?? control.chrome()?.browserId ?? VIEWER_BROWSER_ID;
+            const browserId = browserIdFor(control);
             const payload = JSON.stringify({ tabId: action.tabId, seq: action.seq, events: action.events });
             remoteInputQueue = remoteInputQueue
               .then(async () => {
                 if (!open || origin !== targetOrigin || control.control()?.holder === "agent") return;
                 await deps.fetch(`${targetOrigin}/api/v1/browser/objectives/${encodeURIComponent(browserId)}/input`, {
                   method: "POST",
-                  headers: { "Content-Type": "application/json", Origin: targetOrigin },
+                  headers: browserJsonHeaders(targetOrigin),
                   body: payload,
                 });
               })

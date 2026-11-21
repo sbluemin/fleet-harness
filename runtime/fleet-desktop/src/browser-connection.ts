@@ -19,12 +19,17 @@ export function managedBrowserHeaders(connection: ManagedBrowserConnection): Rec
   };
 }
 
+/** JSON 요청의 기본 헤더만 만든다. 인증은 붙이지 않는다. */
+export function browserJsonHeaders(origin: string): Record<string, string> {
+  return { "Content-Type": "application/json", Origin: origin };
+}
+
 /**
  * `PUT /api/v1/desktop/shell` 헤더. 증명이 이 origin 의 매니지드 콘솔일 때만 자격을 싣는다.
  * origin 이 다르면 헤더를 빼서 다른 콘솔로 토큰이 나가지 않게 한다.
  */
 export function shellPublishHeaders(origin: string, managed: ManagedBrowserConnection | null): Record<string, string> {
-  const headers: Record<string, string> = { "Content-Type": "application/json", Origin: origin };
+  const headers = browserJsonHeaders(origin);
   if (managed !== null && managed.origin === origin) Object.assign(headers, managedBrowserHeaders(managed));
   return headers;
 }

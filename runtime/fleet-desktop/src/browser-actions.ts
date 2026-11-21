@@ -1,3 +1,4 @@
+import { browserJsonHeaders } from "./browser-connection.js";
 import type { ChromeAction, ChromeImportSources, ChromeRole, ChromeSuggestion } from "./chrome/contract.js";
 import { translator } from "./chrome/messages.js";
 import { BROWSER_STRIP_PX, type SurfaceControl } from "./browser-surface.js";
@@ -44,7 +45,7 @@ export function createBrowserActions(deps: BrowserActionDeps): (control: Surface
     if (!origin) throw new Error("console_unavailable");
     return deps.fetch(`${origin}${path}`, {
       method: init.method ?? (init.body === undefined ? "GET" : "POST"),
-      headers: { "Content-Type": "application/json", Origin: origin, ...(deps.cookieSession ? {} : (deps.headers?.() ?? {})) },
+      headers: { ...browserJsonHeaders(origin), ...(deps.cookieSession ? {} : (deps.headers?.() ?? {})) },
       ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
       ...(init.signal ? { signal: init.signal } : {}),
     });

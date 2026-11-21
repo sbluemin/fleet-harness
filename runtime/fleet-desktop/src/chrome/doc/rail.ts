@@ -1,6 +1,6 @@
 import type { DesktopBrowserChromeTab } from "@fleet-console/protocol/desktop";
 import { chromeViewLocked, type ChromeUiState } from "../contract.js";
-import { agentGlyph, clear, G, glyph, h, hostOf, keyed } from "./dom.js";
+import { agentGlyph, appendTabFavicon, clear, G, glyph, h, hostOf, keyed } from "./dom.js";
 import { paintColors, post, shownSpace, spaceName, syncShellMotion, tr, type T } from "./shared.js";
 
 const LEAVE_MS = 160;
@@ -122,11 +122,7 @@ export function mountRail(): (state: ChromeUiState) => void {
     if (iconBox.dataset.favicon !== (favicon ?? "")) {
       iconBox.dataset.favicon = favicon ?? "";
       clear(iconBox);
-      if (favicon) {
-        const image = h("img", { src: favicon, alt: "", draggable: false });
-        image.addEventListener("error", () => { clear(iconBox); iconBox.append(glyph(G.globe)); });
-        iconBox.append(image);
-      } else iconBox.append(glyph(G.globe));
+      appendTabFavicon(iconBox, favicon);
     }
     element.classList.toggle("is-agent", agent);
     (element.querySelector(".tab-agent") as HTMLElement).hidden = !agent;

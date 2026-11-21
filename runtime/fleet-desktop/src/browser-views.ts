@@ -29,6 +29,7 @@ import {
   type ViewerCaptureQuality,
 } from "@fleet-console/protocol/desktop";
 
+import { browserJsonHeaders } from "./browser-connection.js";
 import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import { createDesktopEventStream, type DesktopEventStream } from "./desktop-event-stream.js";
 import { installRequestGuard, setRequestGuardExtra } from "./request-guard.js";
@@ -887,7 +888,7 @@ export function createDesktopBrowserViews(deps: DesktopBrowserViewsDeps): Deskto
 
   const send = async (target: string, body: DesktopBrowserRelay): Promise<boolean> => {
     try {
-      const response = await fetchFor(`${target}${DESKTOP_BROWSER_RELAY_PATH}`, { method: "POST", headers: { "Content-Type": "application/json", Origin: target, ...authHeaders() }, body: JSON.stringify(body) });
+      const response = await fetchFor(`${target}${DESKTOP_BROWSER_RELAY_PATH}`, { method: "POST", headers: { ...browserJsonHeaders(target), ...authHeaders() }, body: JSON.stringify(body) });
       if (response.ok) return true;
       log(`browser relay rejected status=${response.status}`);
       // 콘솔이 몸을 거절한 것(400)은 다시 보내도 같다 — 버린다. 나머지는 잠시 뒤 다시.

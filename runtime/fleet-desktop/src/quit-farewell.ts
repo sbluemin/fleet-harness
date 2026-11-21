@@ -1,9 +1,8 @@
 import type { WebContentsView } from "electron";
 
-import type { EntryFarewell, EntryPageSnapshot, EntryPageWebContents, EntryPalette, EntryZoom } from "./entry-page.js";
+import { measureBrandTarget, type EntryFarewell, type EntryPageSnapshot, type EntryPageWebContents, type EntryPalette, type EntryZoom } from "./entry-page.js";
 import type { EntryLanguage } from "./launch-controller.js";
 import type { DesktopShellWindow } from "./shell-window.js";
-import { measureBrandTarget } from "./brand-target.js";
 
 /**
  * 종료 인사 — 진입 화면의 넘겨주기를 거꾸로 돌린다.
