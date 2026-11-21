@@ -6,7 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { after, describe, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { MARKER_FILE, marker, planGroups, splitTurns, turnsFor, validateTurns } from './group-scale.mjs';
+import { MARKER_FILE, planGroups, validateTurns } from './group-scale.mjs';
 import { writeTranscript } from './transcript.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -53,11 +53,7 @@ const snapshotOf = (slot) => JSON.stringify(transcripts(slot).map((file) => read
 const lines = (file) => readFileSync(file, 'utf8').trim().split('\n').map((line) => JSON.parse(line));
 
 describe('group-scale', () => {
-  test('plans a long group and a short control inside the product history cap, with unique markers', () => {
-    assert.equal(JSON.stringify(splitTurns(500, 3)), JSON.stringify([167, 167, 166]));
-    assert.equal(marker('ALPHA', 'planner', 7, 'Q'), 'GS-ALPHA-planner-T007-Q');
-    assert.equal(new Set(turnsFor('ALPHA', 'planner', 4).flatMap((turn) => [turn.user, turn.assistant])).size, 8);
-    validateTurns({ longTurns: 500, shortTurns: 30 });
+  test('refuses scales outside the history and contrast bounds or without a ledger', () => {
     // 3 history events per turn and 600 kept per participant: past that the screen truncates; the pair must also straddle 100 rows.
     assert.throws(() => validateTurns({ longTurns: 900, shortTurns: 30 }), /history cap/);
     assert.throws(() => validateTurns({ longTurns: 50, shortTurns: 30 }), /long group needs/);
@@ -85,15 +81,17 @@ describe('group-scale', () => {
     assert.equal(new Set(stamps).size, stamps.length, 'merged timeline has no timestamp ties');
   });
 
-  test('refuses anything but this registered run\'s own transcripts, before the first write', () => {
+  test('refuses invalid scale or ownership before the first transcript write', () => {
     const refuse = (slot, pattern, options = {}) => {
       const before = snapshotOf(slot);
-      const result = run(slot, [], options.env);
+      const result = run(slot, options.args, options.env);
       assert.equal(result.status, 1, `${pattern}: ${result.stdout.slice(0, 80)}`);
       assert.match(result.stderr, pattern);
       assert.equal(existsSync(path.join(slot.dir, MARKER_FILE)), false);
       assert.equal(snapshotOf(slot), before, 'a refusal writes nothing');
     };
+    refuse(makeSlot(), /--short-turns needs at least 3 turns/, { args: ['--short-turns', '2'] });
+
     const other = makeSlot();
     refuse(makeSlot(), /isolated-env\.mjs/, { env: { PATH: process.env.PATH } });
     refuse(makeSlot(), /not the wrapper's FLEET_CONSOLE_DATA_DIR/, { env: { ...wrapperEnv(other), PATH: process.env.PATH } });

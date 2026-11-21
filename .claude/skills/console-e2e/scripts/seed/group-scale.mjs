@@ -86,7 +86,9 @@ export function planGroups(ledger, { longTurns, shortTurns }) {
     const found = (ledger.objectives ?? []).find((objective) => objective.title === spec.title);
     if (!found) throw new Error(`seed-ids.json has no objective "${spec.title}"; seed the ledger profile first`);
     const people = [{ objectiveId: found.objectiveId, role: "commander", kind: "commander" }, ...found.members.map((member) => ({ objectiveId: member.id, role: member.role, kind: "member" }))];
-    const counts = splitTurns(totals[spec.kind], people.length);
+    const total = totals[spec.kind];
+    if (total < people.length) throw new Error(`--${spec.flag} needs at least ${people.length} turns (one per participant)`);
+    const counts = splitTurns(total, people.length);
     return { spec, rootObjectiveId: found.objectiveId, participants: people.map((person, index) => ({ ...person, turns: counts[index] })) };
   });
 }
