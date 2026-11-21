@@ -136,13 +136,16 @@ export function renderAction(args: ActionArgs, reply: HelperAction, windowChange
   const code = verified ? "verified" : reply.observation === "changes" ? "changes" : reply.observation === "none" ? "no_visible_change" : "effect_unknown";
   const verdict = verified ? `verified: ${verified}` : code === "changes" ? "sent; changes:" : code === "no_visible_change" ? "sent; no visible change" : "sent; effect unknown";
   const lines = [`${actionTarget(args)}${reply.via ? ` via ${reply.via}` : ""}: ${verdict}`];
-  const changes = [...reply.changes.filter(({ op }) => op === "+" || op === "-" || op === "~").map(({ op, element }) => `${op} ${elementLine(element)}`), ...windowChanges];
-  lines.push(...changes.slice(0, 30));
+  const elementChanges = reply.changes.filter(({ op }) => op === "+" || op === "-" || op === "~");
+  const changes = [...elementChanges.map(({ op, element }) => `${op} ${elementLine(element)}`), ...windowChanges];
+  const shown = changes.slice(0, 30);
+  lines.push(...shown);
+  const exposed = elementChanges.slice(0, shown.length).filter(({ op }) => op !== "-").map(({ element }) => element);
   const more = Math.max(0, changes.length - 30) + (reply.changesMore ?? 0);
   if (more) lines.push(`… ${more} more changes; call computer_state`);
   if (args.action === "set_value" || reply.notes.includes("ax_value_set")) lines.push("note: Setting an AX value may not fire app change events.");
   if (reply.via === "event+focus" || reply.notes.includes("focus_record_used")) lines.push("note: Focus signal sent only to the target; the app may treat its window as active. No foreground switch requested.");
-  return { result: textResult(lines.join("\n") + clipboardLine(clipboard)), code };
+  return { result: textResult(lines.join("\n") + clipboardLine(clipboard)), code, exposed };
 }
 
 const verifyReasons: Record<string, string> = { ambiguous: "matches multiple elements", incomplete: "cannot be determined from an incomplete tree", window_unavailable: "window is unavailable", unobservable: "cannot be observed" };

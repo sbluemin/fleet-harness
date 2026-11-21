@@ -12,7 +12,8 @@ import { gateResult, nativeRole, offeredAction, renderAction, renderApps, render
 const IDLE_TIMEOUT_MS = 5 * 60_000;
 const ACTION_NAMES = new Set<string>(computerUseTools[3].inputSchema.properties.action.enum);
 interface Caller { actor?: string; canDeliver?: () => boolean }
-interface KnownWindow { id: string; identity: string; latest: Map<string, HelperElement>; closed: boolean }
+type IssuedElement = Pick<HelperElement, "role" | "actions" | "settable">;
+interface KnownWindow { id: string; identity: string; issued: Map<string, IssuedElement>; closed: boolean }
 interface View { id: string; frame: Frame; width: number; height: number }
 interface DeviceOutput { result: ComputerUseResult; code: string }
 export interface ComputerUseRecentCall { tool: DeviceTool; action?: Action; code: string }
@@ -316,7 +317,7 @@ export class ComputerUseService {
     const identity = identityOf(w);
     let known = this.liveWindows.get(identity);
     if (!known) {
-      known = { id: `w${++this.windowSequence}`, identity, latest: new Map(), closed: false };
+      known = { id: `w${++this.windowSequence}`, identity, issued: new Map(), closed: false };
       this.liveWindows.set(identity, known);
       this.windows.set(known.id, known);
     }
@@ -325,7 +326,7 @@ export class ComputerUseService {
   private closeWindow(known: KnownWindow) {
     this.liveWindows.delete(known.identity);
     known.closed = true;
-    known.latest.clear();
+    known.issued.clear();
     for (const views of this.views.values()) views.delete(known.id);
   }
   private async windowsNow(client: FleetHelperClient, lifetime: AbortController) {
@@ -376,21 +377,29 @@ export class ComputerUseService {
     return { result, code: result.isError ? opened.requestDispatched ? "dispatch_unknown" : "not_sent:open_failed" : "ok" };
   }
 
-  private currentElement(known: KnownWindow, ref: string) {
-    const element = known.latest.get(ref);
+  private rememberElements(known: KnownWindow, elements: HelperElement[]): void {
+    if (known.closed) return;
+    for (const { ref, role, actions, settable } of elements) {
+      if (isElementId(ref)) known.issued.set(ref, { role, actions, settable });
+    }
+  }
+
+  private issuedElement(known: KnownWindow, ref: string) {
+    const element = known.issued.get(ref);
     if (!element) throw new FleetHelperError("stale_element");
     return element;
   }
 
   private async observe(client: FleetHelperClient, args: StateArgs, actor: string, lifetime: AbortController, caller?: Caller) {
     const { known, window } = await this.resolveWindow(client, args.window, lifetime);
-    if (args.expand) this.currentElement(known, args.expand);
+    if (args.expand) this.issuedElement(known, args.expand);
     const { elements, image, omitted, window: observed } = await client.request("snapshot", {
       ...address(window), find: args.find, expand: args.expand, limit: args.limit ?? 200, valueLimit: 80, image: args.image ?? false,
     });
     this.assertActive(lifetime);
     if (identityOf(observed) !== known.identity) { this.closeWindow(known); throw unavailable("closed"); }
-    known.latest = new Map(elements.filter((e) => isElementId(e.ref)).map((e) => [e.ref, e]));
+    // 필터에 보이지 않는다고 요소가 사라진 것은 아니다. 현재 동일성은 헬퍼가 확인한다.
+    if (!args.expand) this.rememberElements(known, elements);
     this.apps.add(window.app);
     if (client.hello?.permissions.accessibility === false) this.publishCapture(undefined, "accessibility_permission_required");
     else this.publishCapture(window.startedAtSource === "kernel" ? undefined : observed);
@@ -408,7 +417,7 @@ export class ComputerUseService {
   private async act(client: FleetHelperClient, args: ActionArgs, actor: string, lifetime: AbortController, onClipboard: (value: ClipboardRestoration) => void, didSend: () => void): Promise<DeviceOutput> {
     client.assertInputAllowed();
     const { window, known } = await this.resolveWindow(client, args.window, lifetime);
-    const element = args.target ? this.currentElement(known, args.target) : undefined;
+    const element = args.target ? this.issuedElement(known, args.target) : undefined;
     const end = dragPoint(args.to);
     const point = args.x !== undefined && args.y !== undefined ? { x: args.x, y: args.y } : undefined;
     const view = point || end ? this.views.get(actor)?.get(args.window) : undefined;
@@ -419,10 +428,8 @@ export class ComputerUseService {
       }
       if ((point && !pointInView(point, view)) || (end && !pointInView(end, view))) throw new InvalidComputerUseParameters("Coordinates must be inside the image.");
     }
-    if (args.to && !end) this.currentElement(known, args.to);
+    if (args.to && !end) this.issuedElement(known, args.to);
     if (args.action === "drag" && ["chromium", "electron", "catalyst"].includes(window.engine)) throw new FleetHelperError("drag_unsupported", false, { settableSlider: element?.role === "AXSlider" && element.settable === true });
-    if (args.action === "set_value" && !element?.settable) throw new FleetHelperError("not_settable");
-    if ((args.action === "type" || args.action === "paste") && element && (!element.editable || element.enabled === false)) throw new FleetHelperError("no_editable_focus");
     const name = args.action === "ax_action" ? element?.actions?.find((raw) => offeredAction(raw) === args.name) : undefined;
     if (args.action === "ax_action" && !name) throw new FleetHelperError("invalid_name");
     this.assertActive(lifetime);
@@ -456,7 +463,9 @@ export class ComputerUseService {
     this.assertActive(lifetime);
     const changes: string[] = [];
     for (const change of reply.windowsChanged ?? []) {
-      if (change.op === "+" && change.window.processStartedAt > 0) changes.push(`+ ${windowLine(this.registerWindow(change.window).id, change.window)}`);
+      if (change.op === "+" && change.window.processStartedAt > 0 && change.window.onCurrentSpace && change.window.title.trim()) {
+        changes.push(`+ ${windowLine(this.registerWindow(change.window).id, change.window)}`);
+      }
       if (change.op === "-") {
         const closed = this.liveWindows.get(identityOf(change.window));
         if (closed) {
@@ -466,14 +475,18 @@ export class ComputerUseService {
         }
       }
     }
-    return renderAction(args, reply, changes, clipboard);
+    // 헬퍼가 보조 창 변경만 보고 관측을 끝냈다면, 변화 없음으로 단정할 수 없다.
+    const onlyWindowNoise = reply.observation === "changes" && reply.windowsChanged?.length && !changes.length && !reply.changes.length && !reply.changesMore;
+    const { result, code, exposed } = renderAction(args, onlyWindowNoise ? { ...reply, observation: "unobservable" } : reply, changes, clipboard);
+    this.rememberElements(known, exposed);
+    return { result, code };
   }
 
   private async verify(client: FleetHelperClient, args: VerifyArgs, lifetime: AbortController): Promise<DeviceOutput> {
     const unknown = (reason: string, index = 0) => ({ result: renderVerify({ status: "unknown", reason, index, waitedMs: 0 }, args.expect), code: "unknown" });
     try {
       const { window, known } = await this.resolveWindow(client, args.window, lifetime);
-      const stale = args.expect.findIndex((condition) => condition.target && !known.latest.has(condition.target));
+      const stale = args.expect.findIndex((condition) => condition.target && !known.issued.has(condition.target));
       if (stale >= 0) return unknown("stale_element", stale);
       this.publishCapture(window.startedAtSource === "kernel" ? undefined : window);
       const expect = args.expect.map(({ target, role, ...rest }) => ({ ...rest, ref: target, role: role ? nativeRole(role) : undefined }));

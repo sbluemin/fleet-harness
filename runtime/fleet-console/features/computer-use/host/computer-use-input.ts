@@ -32,7 +32,7 @@ const POINTER = ["target", "x", "y", "view"] as const;
 const ACTION_FIELDS = {
   click: POINTER, double_click: POINTER, right_click: POINTER,
   type: ["target", "text"], set_value: ["target", "text"], paste: ["target", "text", "format"],
-  key: ["key"], scroll: [...POINTER, "direction", "pages"], drag: [...POINTER, "to"],
+  key: ["target", "key"], scroll: [...POINTER, "direction", "pages"], drag: [...POINTER, "to"],
   select: ["target", "text"], ax_action: ["target", "name"],
 } satisfies Record<Action, readonly (keyof ActionArgs)[]>;
 const NAMED_KEYS = /^(?:return|enter|tab|escape|esc|backspace|delete|forwarddelete|(?:arrow)?(?:up|down|left|right)|home|end|pageup|pagedown|space|f(?:[1-9]|1[0-2]))$/u;

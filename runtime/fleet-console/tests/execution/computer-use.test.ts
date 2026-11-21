@@ -175,7 +175,7 @@ describe("Fleet Computer Use", () => {
       [{ action: "paste", text: "x", key: "cmd+v" }, "key is not allowed"],
       [{ action: "key", key: "a" }, "text_via_key"],
       [{ action: "key", key: "cmd+DoesNotExist" }, "invalid_key"],
-      [{ action: "key", key: "Tab", target: "e2" }, "target is not allowed"],
+      [{ action: "key", key: "Tab", target: "e2", text: "unused" }, "text is not allowed"],
       [{ action: "scroll", target: "e1" }, "direction is required"],
       [{ action: "drag", target: "e1", to: "2,4" }, "coordinates_need_image"],
       [{ action: "drag", target: "e1" }, "to is required"],
@@ -202,11 +202,54 @@ describe("Fleet Computer Use", () => {
     expect(text(await f.action({ ...point, view: "v2" }, "actor-a"))).toContain("coordinates_need_image");
     f.elements = f.elements.slice(1).map((e) => ({ ...e, ref: "e3" }));
     await f.invoke("computer_state", { window: "w1" });
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ error: { code: "stale_element", dispatch: "not_sent" } });
     expect(text(await f.action({ action: "click", target: "e2" }))).toContain("stale_element");
+    expect(f.calls("act").at(-1)).toMatchObject({ ref: "e2" });
     f.rows = [{ ...sample, processStartedAt: 101 }];
     expect(text(await f.action({ action: "click", target: "e3" }))).toContain("This window is closed.");
     expect(text(await f.invoke("computer_apps", {}))).toContain("w2");
+    expect(f.calls("act")).toHaveLength(2);
+  });
+
+  it("keeps an exposed ref through a filtered state and passes it through expand, verify, and targeted key", async () => {
+    const f = setup();
+    await f.invoke("computer_apps", {});
+    await f.invoke("computer_state", { window: "w1" });
+    const everything = f.elements;
+    f.elements = everything.slice(0, 1);
+    const filtered = await f.invoke("computer_state", { window: "w1", find: "Line 1" });
+    expect(text(filtered)).not.toContain(' e2 textfield');
+    expect(text(await f.action({ action: "key", key: "a", target: "e2" }))).toContain("text_via_key");
+    expect(f.calls("act")).toHaveLength(0);
+    expect((await f.action({ action: "key", key: "Return", target: "e2" })).isError).toBe(false);
     expect(f.calls("act")).toHaveLength(1);
+    expect(f.calls("act")[0]).toMatchObject({ action: "key", key: "Return", ref: "e2" });
+    expect(text(await f.invoke("computer_verify", { window: "w1", expect: [{ target: "e2", value: "hello" }] }))).toBe("satisfied (1/1)");
+    expect(f.calls("verify")[0]).toMatchObject({ expect: [{ ref: "e2", value: "hello" }] });
+    f.elements = everything;
+    expect(text(await f.invoke("computer_state", { window: "w1", expand: "e2" }))).toContain('e2 value="hello"');
+    expect(f.calls("snapshot").at(-1)).toMatchObject({ expand: "e2" });
+  });
+
+  it("exposes new elements but not off-Space or untitled auxiliary windows in action changes", async () => {
+    const f = setup();
+    await f.invoke("computer_apps", {});
+    await f.invoke("computer_state", { window: "w1" });
+    const noise = [
+      { op: "+", window: { ...sample, windowId: 11, onCurrentSpace: false, title: "Other Space" } },
+      { op: "+", window: { ...sample, windowId: 12, title: "" } },
+    ];
+    const dialog = { op: "+", window: { ...sample, windowId: 13, title: "Dialog" } };
+    const reply = { sent: true, via: "event+focus", observation: "changes", changes: [], notes: [] };
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ ...reply, windowsChanged: noise });
+    expect(text(await f.action({ action: "click", target: "e1" }))).toContain("sent; effect unknown");
+    const added = { op: "+", element: { ref: "e3", role: "AXButton", label: "New button", depth: 0 } };
+    f.replies.mockResolvedValueOnce({ windows: f.rows }).mockResolvedValueOnce({ ...reply, changes: [added], windowsChanged: [...noise, dialog] });
+    const visible = text(await f.action({ action: "click", target: "e1" }));
+    expect(visible).toContain('+ e3 button "New button"');
+    expect(visible.split("\n").filter((line) => line.startsWith("+ w"))).toEqual(['+ w2 "Dialog" — "Test" 100×100']);
+    expect((await f.action({ action: "click", target: "e3" })).isError).toBe(false);
+    expect(f.calls("act").at(-1)).toMatchObject({ ref: "e3" });
   });
 
   it("checks editable focus before touching the clipboard, always restores after dispatch, and never turns uncertain input into not-sent", async () => {
