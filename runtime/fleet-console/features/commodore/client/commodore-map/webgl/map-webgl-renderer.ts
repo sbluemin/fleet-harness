@@ -18,6 +18,7 @@ import {
 import type { MapBranchKey, MapNode } from "../map-graph.js";
 import { mapPaletteToRgb, type MapPalette } from "../map-palette.js";
 import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
+import { prefersReducedMotion } from "../../../../../core/client/src/integration/reduced-motion.js";
 
 /**
  * three.js WebGL2 렌더러 — 생체 시냅스 광학 + 절제된 성도 극좌표(A+B 절충안).
@@ -795,8 +796,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.canvas = canvas;
       this.container = container;
       this.pixelRatio = Math.min(typeof devicePixelRatio === "number" ? devicePixelRatio : 1, MAX_PIXEL_RATIO);
-      this.reducedMotion = typeof window !== "undefined" && typeof window.matchMedia === "function"
-        && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      this.reducedMotion = prefersReducedMotion();
       this.pulse = !this.reducedMotion;
       renderer.setPixelRatio(this.pixelRatio);
       renderer.setClearColor(0x000000, 0);

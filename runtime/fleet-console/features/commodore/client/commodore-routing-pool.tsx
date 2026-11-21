@@ -6,6 +6,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { useStoreSnapshot } from "@fleet-console/ui/store";
 
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
+import { prefersReducedMotion } from "../../../core/client/src/integration/reduced-motion.js";
 import { launchProviderCaption, launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { prettyModelId } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import { canonicalModelId, findRosterRow, type ModelRoster } from "../../ai-gateway/shared/models.js";
@@ -84,7 +85,6 @@ export interface PoolEntryView {
   readonly lead: { readonly effort: string; readonly score: number } | null;
 }
 
-const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 
 /** 사령관·지휘관 칩과 동일한 박스 없는 순수 공급자 마크(`ProviderMark` 문법). */
 export function ProviderMark({ provider }: { readonly provider: LaunchProviderGlyphId | null }) {
@@ -485,7 +485,7 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
   }, []);
 
   const handleAdd = (provider: AiGatewayCatalogProvider, model: AiGatewayCatalogModel, sourceEl: HTMLElement | null) => {
-    const fromRect = !reducedMotion() && sourceEl ? sourceEl.getBoundingClientRect() : null;
+    const fromRect = !prefersReducedMotion() && sourceEl ? sourceEl.getBoundingClientRect() : null;
     pool.addModel(provider, model);
     if (!fromRect) return;
     requestAnimationFrame(() => {
@@ -504,7 +504,7 @@ export function RoutingPoolPanel({ t, pool, showHelp, onCloseHelp, onOpenQuota, 
 
   const handleRemove = (modelId: string) => {
     const chip = stripRef.current?.querySelector<HTMLElement>(`[data-pool-id="${CSS.escape(modelId)}"]`);
-    if (chip && !reducedMotion() && typeof chip.animate === "function") {
+    if (chip && !prefersReducedMotion() && typeof chip.animate === "function") {
       const anim = chip.animate(
         [{ transform: "none", opacity: 1 }, { transform: "scale(0.6)", opacity: 0 }],
         { duration: 180, easing: "cubic-bezier(0.4, 0.14, 0.2, 1)", fill: "forwards" },
@@ -927,7 +927,7 @@ function RoutingPoolExplainer({ t, entries }: {
   const overflow = isSample ? 0 : Math.max(0, entries.length - 6);
 
   const [step, setStep] = useState(0);
-  const [playing, setPlaying] = useState(() => !reducedMotion());
+  const [playing, setPlaying] = useState(() => !prefersReducedMotion());
   const stageRef = useRef<HTMLDivElement | null>(null);
   const [stageSize, setStageSize] = useState({ width: 460, height: 276 });
 

@@ -10,8 +10,7 @@ import type { Translate } from "@fleet-console/i18n";
 import type { ClientConversationCapability, ConversationSurfaceDescriptor } from "../../workspace/shared/conversation-surfaces.js";
 import type { ClientTheaterInboxCapability } from "../../workspace/shared/theater-inbox.js";
 
-import { commodoreChatEntries, commodoreCliFailure, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
-import { ENDED_ASK_CODES } from "./commodore-ask.js";
+import { actionFailureWord, commodoreChatEntries, commodoreCliFailure, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, commodoreConversationTarget, errorWord } from "./commodore-chat.js";
 import { useCommodoreDecisionDock } from "./commodore-person-inbox.js";
 import { attachToCommodoreComposer, CommodoreClearButton, CommodoreComposer, CommodoreDescription, CommodoreIntel } from "./commodore-inbox-section.js";
 import { CommodoreCliFailureCard } from "./commodore-cli-status.js";
@@ -303,12 +302,6 @@ function readParams(params: Readonly<Record<string, unknown>>): { readonly commo
   };
 }
 
-function failureWord(t: T, error: unknown): string {
-  const code = error instanceof Error ? error.message : "failed";
-  if (ENDED_ASK_CODES.has(code)) return errorWord(t, code);
-  return code === "commodore_disabled" ? t("commodore.failed.disabled") : code === "commodore_inactive" ? t("commodore.failed.inactive") : t("commodore.failed", { code });
-}
-
 /** 목표의 그룹 대화도 소유 사령관의 설정을 편집한다. 실행 중인 지휘관 세션의 좌표와는 별개다. */
 export function CommodoreGroupComposerSettings({ commodoreId, language, onFailure }: {
   readonly commodoreId: string;
@@ -318,7 +311,7 @@ export function CommodoreGroupComposerSettings({ commodoreId, language, onFailur
   const { view } = useCommodore(commodoreId);
   const t = getT(language);
   useEffect(() => { void loadCommodore(commodoreId); }, [commodoreId]);
-  return view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={(error) => onFailure(failureWord(t, error))} onClear={() => onFailure(null)} /> : null;
+  return view ? <CommodoreComposerSettings t={t} commodoreId={commodoreId} view={view} onFail={(error) => onFailure(actionFailureWord(t, error))} onClear={() => onFailure(null)} /> : null;
 }
 
 /** 드러낼 시각이 읽은 기록 창보다 앞이면 이전 쪽을 이만큼까지 더 읽는다 — 한 요청이 기록 전체를 끌어오지 않게. */
@@ -335,7 +328,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap,
   const { view, entries, live, hasMore, transcriptLoaded, transcriptError, clearedAt } = useCommodore(commodoreId);
   const board = useObjectiveTheater(commodoreId);
   const reveal = useCommodoreReveal(commodoreId);
-  const failure = useConversationFailure(commodoreId) ?? (transcriptError ? failureWord(t, new Error(transcriptError)) : null);
+  const failure = useConversationFailure(commodoreId) ?? (transcriptError ? actionFailureWord(t, new Error(transcriptError)) : null);
   const setFailure = (next: string | null) => setConversationFailure(commodoreId, next);
   useEffect(() => {
     void loadCommodore(commodoreId);
@@ -350,7 +343,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap,
     setCommodoreMapMode(commodoreId, "map");
     setCommodoreMapSelection(commodoreId, landing.node);
   }, [commodoreId]);
-  const fail = (error: unknown) => setFailure(failureWord(t, error));
+  const fail = (error: unknown) => setFailure(actionFailureWord(t, error));
   const run = view?.run;
   const { meta, routine } = commodoreSummary(t, view, board.objectives);
   const Conversation = commodoreConversationRenderer();
@@ -465,7 +458,7 @@ function CommodoreConversationBody({ commodoreId, theaterId, readOnly, startMap,
   const editRequest = useCommodoreMapEditRequest(commodoreId);
   const [mapFailure, setMapFailure] = useState<string | null>(null);
   useEffect(() => { setMapFailure(null); }, [commodoreId]);
-  const failMap = useCallback((error: unknown) => setMapFailure(failureWord(t, error)), [t]);
+  const failMap = useCallback((error: unknown) => setMapFailure(actionFailureWord(t, error)), [t]);
   const clearMapFailure = useCallback(() => setMapFailure(null), []);
   return (
     <div className="objectives-commodore-conversation" data-settings-open={settingsOpen ? "true" : undefined}>
@@ -557,7 +550,7 @@ function CommodoreConversationActions({ commodoreId, language }: { readonly comm
       t={t}
       theaterId={commodoreId}
       variant="caption"
-      onFail={(error) => setConversationFailure(commodoreId, failureWord(t, error))}
+      onFail={(error) => setConversationFailure(commodoreId, actionFailureWord(t, error))}
       onClear={() => setConversationFailure(commodoreId, null)}
     />
   );
