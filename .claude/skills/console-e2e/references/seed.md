@@ -32,6 +32,7 @@ Counts override with the flags, except profiles whose row says the counts are fi
 - For `taskforce`, start the Console with the same owned fake-agent setup as `objectives`/`inbox`; `--fake-claude-dir` neither sets nor checks the running Console's `CLAUDE_BIN`. Use only this run's seed-output IDs: `commodores[].commodoreId` and `taskforce.taskforceId`.
 - Marking first-run layers as seen is a separate step: [`seed-onboarding.mts`](../scripts/seed-onboarding.mts).
 - Composition lives in [`scripts/seed/lib.mjs`](../scripts/seed/lib.mjs) (API calls, ownership order) and [`fixtures.mjs`](../scripts/seed/fixtures.mjs) (profiles). Use a shared profile as the baseline; keep scenario-specific additions in the objective’s fixture, reusing the helpers.
+- **Members.** The `objectives` roster is one default `worker` with no model chosen. An exact roster is not a profile option: on a fresh slot, have the Commodore `add` a new objective as [`ledger.mjs`](../scripts/seed/ledger.mjs) does, then `make.member(found.id, { role, launch: { mode: "model", model } })` for each intended member, with `model` an ID the target build offers (`make.model()`). This is the call pattern, not the `ledger` profile. For a board-only check, stop after the members: no Plan or Commence. Read back with `make.objectives`: `members[].launch` is the saved selection, while `members[].model` and `effort` are the running session's values, absent until it starts.
 
 ## Memory and intel scale
 
