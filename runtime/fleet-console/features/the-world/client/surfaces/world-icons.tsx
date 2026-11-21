@@ -63,7 +63,12 @@ export type WorldIconName =
   | "fire"
   | "rainbow"
   | "hat"
-  | "spin";
+  | "spin"
+  | "gazette"
+  | "cinema"
+  | "music"
+  | "cape"
+  | "gift";
 
 export type WorldIconTone =
   | "inherit"
@@ -475,6 +480,40 @@ const ICON_PATHS: Record<WorldIconName, () => ReactElement> = {
       <path d="M19.5 10.5A7.5 7.5 0 1 0 18.2 16.5" />
       <path d="M19.8 6.4v4.2h-4.2" />
       <path d="M12 8.8l.9 2.3 2.3.9-2.3.9-.9 2.3-.9-2.3-2.3-.9 2.3-.9.9-2.3Z" fill="currentColor" fillOpacity="0.34" />
+    </>
+  ),
+  gazette: () => (
+    <>
+      <path d="M4.5 5.2h12.5v13.6a1.4 1.4 0 0 1-1.4 1.4H5.9a1.4 1.4 0 0 1-1.4-1.4V5.2Z" fill="currentColor" fillOpacity="0.22" />
+      <path d="M17 8.4h2.5v9.8a2 2 0 0 1-2.5 1.9" />
+      <path d="M7.5 8.8h6.5M7.5 12.2h6.5M7.5 15.6h4.2" />
+    </>
+  ),
+  cinema: () => (
+    <>
+      <rect x="3.5" y="6.2" width="13" height="11.6" rx="2.2" fill="currentColor" fillOpacity="0.22" />
+      <path d="M16.5 10.2l4.2-2.4v8.4l-4.2-2.4v-3.6Z" fill="currentColor" fillOpacity="0.3" />
+      <circle cx="8.2" cy="10.2" r="1.1" fill="currentColor" />
+    </>
+  ),
+  music: () => (
+    <>
+      <path d="M9.5 17.5V6.8l9-2v10.2" />
+      <circle cx="7.2" cy="17.6" r="2.4" fill="currentColor" fillOpacity="0.32" />
+      <circle cx="16.2" cy="15.2" r="2.4" fill="currentColor" fillOpacity="0.32" />
+    </>
+  ),
+  cape: () => (
+    <>
+      <path d="M8.4 5.2c1.8 1.4 5.4 1.4 7.2 0l3.4 13.4c-3.8 1.5-10.2 1.5-14 0L8.4 5.2Z" fill="currentColor" fillOpacity="0.26" />
+      <path d="M9.5 5.8c1.5 1.4 3.5 1.4 5 0M12 10.2l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2Z" />
+    </>
+  ),
+  gift: () => (
+    <>
+      <rect x="4.2" y="9.8" width="15.6" height="10" rx="1.6" fill="currentColor" fillOpacity="0.22" />
+      <path d="M3.4 9.8h17.2v-2.4a1 1 0 0 0-1-1H4.4a1 1 0 0 0-1 1v2.4ZM12 6.4v13.4" />
+      <path d="M12 6.4c-.6-1.8-2.4-2.8-3.6-1.8-1 .9-.2 2.2 1.2 1.8H12Zm0 0c.6-1.8 2.4-2.8 3.6-1.8 1 .9.2 2.2-1.2 1.8H12Z" fill="currentColor" fillOpacity="0.32" />
     </>
   ),
 };

@@ -26,6 +26,9 @@ import {
   setWeatherMode,
   setWorldCameraMode,
   setWorldTimeMode,
+  toggleBgm,
+  toggleCinemaMode,
+  toggleGazette,
   toggleOverviewMode,
   togglePhotoMode,
   toggleSoundMuted,
@@ -90,6 +93,9 @@ export interface WorldHudProps {
   readonly onOpenCustomizer?: (() => void) | undefined;
   readonly onTriggerEmote?: ((emote: WorldPlayerEmote) => void) | undefined;
   readonly onToggleControlsGuide?: (() => void) | undefined;
+  readonly onOpenGazette?: (() => void) | undefined;
+  readonly onToggleCinemaMode?: (() => void) | undefined;
+  readonly onToggleBgm?: (() => void) | undefined;
   readonly debugPanelVisible?: boolean | undefined;
 }
 
@@ -121,6 +127,9 @@ export const WorldHud = memo(function WorldHud({
   onOpenCustomizer,
   onTriggerEmote,
   onToggleControlsGuide,
+  onOpenGazette,
+  onToggleCinemaMode,
+  onToggleBgm,
   debugPanelVisible = false,
 }: WorldHudProps) {
   const store = useWorldStore();
@@ -267,6 +276,40 @@ export const WorldHud = memo(function WorldHud({
             >
               <WorldIcon name="mapOverview" size={14} tone={store.overviewMode ? "amber" : "moss"} />
               <span>{t("theWorld.hud.overviewLabel")}</span>
+            </button>
+
+            <button
+              type="button"
+              className={`the-world-btn is-icon-only${store.gazetteOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.hud.gazetteAria")}
+              aria-pressed={store.gazetteOpen}
+              title={t("theWorld.hud.gazetteTitle")}
+              onClick={() => {
+                setEnvOpen(false);
+                setDebugOpen(false);
+                playDistrictSelect();
+                if (onOpenGazette) onOpenGazette();
+                else toggleGazette();
+              }}
+            >
+              <WorldIcon name="gazette" size={14} tone={store.gazetteOpen ? "amber" : "amber"} />
+            </button>
+
+            <button
+              type="button"
+              className={`the-world-btn is-icon-only${store.cinemaMode ? " is-active" : ""}`}
+              aria-label={t("theWorld.hud.cinemaAria")}
+              aria-pressed={store.cinemaMode}
+              title={t("theWorld.hud.cinemaTitle")}
+              onClick={() => {
+                setEnvOpen(false);
+                setDebugOpen(false);
+                playDistrictSelect();
+                if (onToggleCinemaMode) onToggleCinemaMode();
+                else toggleCinemaMode();
+              }}
+            >
+              <WorldIcon name="cinema" size={14} tone={store.cinemaMode ? "amber" : "teal"} />
             </button>
 
             <button
@@ -454,6 +497,27 @@ export const WorldHud = memo(function WorldHud({
                   })}
                 </div>
               </div>
+
+              <div className="the-world-debug-section">
+                <span className="the-world-debug-label">{t("theWorld.hud.bgmLabel")}</span>
+                <div className="the-world-bgm-row">
+                  <button
+                    type="button"
+                    className={`the-world-debug-pill the-world-bgm-toggle${store.bgmEnabled ? " is-active" : ""}`}
+                    aria-label={t("theWorld.hud.bgmAria")}
+                    aria-pressed={store.bgmEnabled}
+                    onClick={() => {
+                      playDistrictHover();
+                      if (onToggleBgm) onToggleBgm();
+                      else toggleBgm();
+                    }}
+                  >
+                    <WorldIcon name="music" size={13} tone={store.bgmEnabled ? "amber" : "teal"} />
+                    <span>{store.bgmEnabled ? t("theWorld.hud.bgmToggleOn") : t("theWorld.hud.bgmToggleOff")}</span>
+                  </button>
+                  <span className="the-world-bgm-hint">{t("theWorld.hud.bgmHint")}</span>
+                </div>
+              </div>
             </div>
           </section>
         ) : null}
@@ -587,8 +651,40 @@ export const WorldHud = memo(function WorldHud({
         ) : null}
       </div>
 
+      {/* 관전 / 작업 동반자 모드 하단 중앙 미니 종료 필 */}
+      {store.cinemaMode ? (
+        <div
+          className="the-world-cinema-pill"
+          role="status"
+          aria-live="polite"
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <span className="the-world-cinema-badge">
+            <span className="the-world-cinema-dot" aria-hidden="true" />
+            <WorldIcon name="cinema" size={13} tone="amber" />
+            <span>{t("theWorld.cinema.badge")}</span>
+          </span>
+          <span className="the-world-cinema-spotlight">
+            {store.cinemaSpotlight || t("theWorld.cinema.defaultSpotlight")}
+          </span>
+          <button
+            type="button"
+            className="the-world-cinema-exit-btn"
+            aria-label={t("theWorld.cinema.exitAria")}
+            onClick={() => {
+              playDistrictSelect();
+              if (onToggleCinemaMode) onToggleCinemaMode();
+              else toggleCinemaMode();
+            }}
+          >
+            <span>{t("theWorld.cinema.exit")}</span>
+            <kbd className="the-world-keycap">C</kbd>
+          </button>
+        </div>
+      ) : null}
+
       {/* 하단 좌측 미니 액션 필: 이모트(1·2·3) + 제독 외형 꾸미기 */}
-      {!hideBottom && !store.photoMode && !store.chatActive ? (
+      {!hideBottom && !store.photoMode && !store.cinemaMode && !store.chatActive ? (
         <div
           className="the-world-quick-bar"
           role="toolbar"

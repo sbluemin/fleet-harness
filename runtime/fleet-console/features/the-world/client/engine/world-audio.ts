@@ -1,7 +1,10 @@
+import type { WorldWeatherMode } from "../../shared/world-types.js";
+
 /**
- * 「더 월드 (The World)」 프로시저럴 Web Audio API 게임 사운드스케이프 (SFX).
+ * 「더 월드 (The World)」 프로시저럴 Web Audio API 게임 사운드스케이프 (SFX + 힐링 BGM).
  *
- * 외부 오디오 파일·네트워크 요청 없이 순수 신시사이저 노드로 경쾌한 UI·월드 효과음을 합성한다.
+ * 외부 오디오 파일·네트워크 요청 없이 순수 신시사이저 노드로 경쾌한 UI·월드 효과음과
+ * 시간·날씨 반응형 힐링 배경음(기본 OFF)을 합성한다.
  * - 첫 사용자 제스처 시 안전하게 AudioContext를 초기화/재개하며, headless/SSR/차단 환경에서는 무에러 폴백한다.
  * - 마스터 볼륨을 은은하게(0.16) 유지하고, 호버/종소리에는 쿨다운을 두어 연속 입력 시 귀 피로를 방지한다.
  */
@@ -23,6 +26,18 @@ let rainDesired = false;
 let rainSource: AudioBufferSourceNode | null = null;
 let rainFilter: BiquadFilterNode | null = null;
 let rainGain: GainNode | null = null;
+
+let bgmDesired = false;
+let bgmNightFactor = 0;
+let bgmWeather: WorldWeatherMode = "clear";
+let bgmIntervalId: number | null = null;
+let bgmStep = 0;
+let bgmGain: GainNode | null = null;
+let bgmGainCtx: AudioContext | null = null;
+let bgmRainSource: AudioBufferSourceNode | null = null;
+let bgmRainFilter: BiquadFilterNode | null = null;
+let bgmRainGain: GainNode | null = null;
+let bgmVisBound = false;
 
 const MASTER_VOLUME = 0.16;
 const HOVER_COOLDOWN_MS = 90;
@@ -106,8 +121,14 @@ export function setWorldAudioMuted(nextMuted: boolean): void {
   }
   if (muted) {
     stopRainAmbienceInternal();
-  } else if (rainDesired) {
-    startRainAmbienceInternal();
+    stopBgmInternal();
+  } else {
+    if (rainDesired) {
+      startRainAmbienceInternal();
+    }
+    if (bgmDesired) {
+      startBgmInternal();
+    }
   }
 }
 
@@ -779,4 +800,297 @@ export function setRainAmbience(active: boolean): void {
     return;
   }
   startRainAmbienceInternal();
+}
+
+// --- 시간·날씨 반응형 프로시저럴 힐링 BGM (외부 음원 0, 기본 OFF) ---
+
+// 낮 맑음/벚꽃: 지브리풍 펜타토닉 오르골 아르페지오 패턴 (C5·D5·E5·G5·A5·C6·D6·E6)
+const DAY_ARPEGGIO_NOTES = [
+  523.25, 659.25, 783.99, 659.25, 880.0, 783.99, 659.25, 587.33,
+  440.0, 523.25, 659.25, 783.99, 659.25, 523.25, 587.33, 659.25,
+  349.23, 523.25, 659.25, 880.0, 783.99, 659.25, 523.25, 440.0,
+  392.0, 493.88, 587.33, 783.99, 659.25, 587.33, 493.88, 587.33,
+] as const;
+
+const DAY_BASS_NOTES = [261.63, 220.0, 174.61, 196.0] as const; // C4, A3, F3, G3
+
+// 밤: 몽환적 패드 화음 (Cmaj9 -> Am9 -> Fmaj7 -> G6)
+const NIGHT_PAD_CHORDS: readonly (readonly number[])[] = [
+  [261.63, 329.63, 392.0, 493.88, 587.33],
+  [220.0, 261.63, 329.63, 392.0, 493.88],
+  [174.61, 220.0, 261.63, 329.63, 392.0],
+  [196.0, 246.94, 293.66, 329.63, 392.0],
+];
+
+// 비: 잔잔한 로파이 화음 (Fmaj7 -> Em7 -> Dm7 -> Cmaj7)
+const RAIN_LOFI_CHORDS: readonly (readonly number[])[] = [
+  [174.61, 220.0, 261.63, 329.63],
+  [164.81, 196.0, 246.94, 293.66],
+  [146.83, 174.61, 220.0, 261.63],
+  [130.81, 164.81, 196.0, 246.94],
+];
+
+function ensureBgmGain(eng: { readonly ctx: AudioContext; readonly out: GainNode }): GainNode | null {
+  try {
+    if (bgmGain && bgmGainCtx === eng.ctx) {
+      return bgmGain;
+    }
+    const g = eng.ctx.createGain();
+    g.gain.setValueAtTime(0.52, eng.ctx.currentTime);
+    g.connect(eng.out);
+    bgmGain = g;
+    bgmGainCtx = eng.ctx;
+    return g;
+  } catch {
+    return null;
+  }
+}
+
+function stopBgmRainBed(): void {
+  const src = bgmRainSource;
+  const flt = bgmRainFilter;
+  const g = bgmRainGain;
+  bgmRainSource = null;
+  bgmRainFilter = null;
+  bgmRainGain = null;
+  if (src) {
+    try {
+      src.stop();
+    } catch {
+      // ignore
+    }
+    try {
+      src.disconnect();
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    flt?.disconnect();
+    g?.disconnect();
+  } catch {
+    // ignore
+  }
+}
+
+function syncBgmRainBed(eng: { readonly ctx: AudioContext; readonly out: GainNode }, bgmOut: GainNode): void {
+  // 월드 자체 rain 앰비언스가 꺼져 있을 때만 BGM 로파이용 초미세 빗결 레이어를 겹친다
+  const needBed = bgmDesired && !muted && bgmWeather === "rain" && !rainSource;
+  if (!needBed) {
+    stopBgmRainBed();
+    return;
+  }
+  if (bgmRainSource) return;
+  const buf = getRainNoiseBuffer(eng.ctx);
+  if (!buf) return;
+  try {
+    const src = eng.ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+
+    const filter = eng.ctx.createBiquadFilter();
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(1400, eng.ctx.currentTime);
+    filter.Q.setValueAtTime(0.6, eng.ctx.currentTime);
+
+    const gain = eng.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, eng.ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.11, eng.ctx.currentTime + 0.5);
+
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(bgmOut);
+    src.start();
+
+    bgmRainSource = src;
+    bgmRainFilter = filter;
+    bgmRainGain = gain;
+  } catch {
+    stopBgmRainBed();
+  }
+}
+
+function scheduleBgmStep(): void {
+  if (!bgmDesired || muted) return;
+  if (typeof document !== "undefined" && document.hidden) return;
+  const eng = getAudioEngine();
+  if (!eng || eng.ctx.state !== "running") return;
+  const bgmOut = ensureBgmGain(eng);
+  if (!bgmOut) return;
+
+  syncBgmRainBed(eng, bgmOut);
+
+  const step = bgmStep;
+  bgmStep = (bgmStep + 1) % 64;
+
+  if (bgmWeather === "rain") {
+    // 비: 4스텝(2.6초)마다 따뜻한 로파이 Rhodes 스타일 화음 + 간헐적 높은 빗방울 멜로디
+    if (step % 4 === 0) {
+      const chord = RAIN_LOFI_CHORDS[Math.floor(step / 4) % RAIN_LOFI_CHORDS.length]!;
+      for (let i = 0; i < chord.length; i += 1) {
+        scheduleTone(eng.ctx, bgmOut, {
+          type: i === 0 ? "sine" : "triangle",
+          freqStart: chord[i]!,
+          delay: i * 0.035,
+          duration: 2.35,
+          peakGain: i === 0 ? 0.085 : 0.052,
+          attack: 0.16,
+        });
+      }
+    } else if (step % 4 === 2) {
+      const melody = DAY_ARPEGGIO_NOTES[step % DAY_ARPEGGIO_NOTES.length]!;
+      scheduleTone(eng.ctx, bgmOut, {
+        type: "sine",
+        freqStart: melody * 0.5,
+        duration: 0.72,
+        peakGain: 0.06,
+        attack: 0.04,
+      });
+    }
+    return;
+  }
+
+  if (bgmNightFactor >= 0.55) {
+    // 밤: 몽환적 패드 화음 + 따뜻한 모닥불 미세 타닥임 + 은은한 풀벌레
+    if (step % 6 === 0) {
+      const chord = NIGHT_PAD_CHORDS[Math.floor(step / 6) % NIGHT_PAD_CHORDS.length]!;
+      for (let i = 0; i < chord.length; i += 1) {
+        scheduleTone(eng.ctx, bgmOut, {
+          type: "sine",
+          freqStart: chord[i]!,
+          delay: i * 0.06,
+          duration: 3.4,
+          peakGain: i < 2 ? 0.068 : 0.042,
+          attack: 0.45,
+        });
+      }
+    }
+    // 따뜻한 모닥불 미세 타닥임 (가볍고 랜덤하게)
+    if (step % 2 === 1 && Math.random() < 0.65) {
+      scheduleFilteredNoise(eng.ctx, bgmOut, {
+        delay: Math.random() * 0.25,
+        duration: 0.022 + Math.random() * 0.018,
+        centerFreq: 2400 + Math.random() * 1600,
+        q: 2.4,
+        peakGain: 0.065,
+        attack: 0.002,
+      });
+    }
+    // 은은한 풀벌레 이중 펄스 (매 5스텝 중 1회)
+    if (step % 5 === 2) {
+      const cricketFreq = 4150 + (step % 3) * 140;
+      scheduleTone(eng.ctx, bgmOut, {
+        type: "sine",
+        freqStart: cricketFreq,
+        freqEnd: cricketFreq + 60,
+        delay: 0.08,
+        duration: 0.075,
+        peakGain: 0.022,
+        attack: 0.012,
+      });
+      scheduleTone(eng.ctx, bgmOut, {
+        type: "sine",
+        freqStart: cricketFreq,
+        freqEnd: cricketFreq + 40,
+        delay: 0.21,
+        duration: 0.085,
+        peakGain: 0.020,
+        attack: 0.012,
+      });
+    }
+    return;
+  }
+
+  // 낮 맑음 / 벚꽃 / 눈: 지브리풍 잔잔한 펜타토닉 오르골·어쿠스틱 아르페지오
+  const note = DAY_ARPEGGIO_NOTES[step % DAY_ARPEGGIO_NOTES.length]!;
+  const isAiry = bgmWeather === "sakura" || bgmWeather === "snow";
+  scheduleTone(eng.ctx, bgmOut, {
+    type: isAiry ? "sine" : "triangle",
+    freqStart: isAiry ? note * 1.0 : note,
+    duration: isAiry ? 0.85 : 0.68,
+    peakGain: isAiry ? 0.085 : 0.095,
+    attack: 0.016,
+  });
+  if (isAiry && step % 2 === 0) {
+    // 벚꽃/눈 날씨에는 한 옥타브 위 유리 오르골 배음을 살짝 얹는다
+    scheduleTone(eng.ctx, bgmOut, {
+      type: "sine",
+      freqStart: note * 2.0,
+      delay: 0.04,
+      duration: 0.55,
+      peakGain: 0.028,
+      attack: 0.012,
+    });
+  }
+  if (step % 8 === 0) {
+    const bass = DAY_BASS_NOTES[Math.floor(step / 8) % DAY_BASS_NOTES.length]!;
+    scheduleTone(eng.ctx, bgmOut, {
+      type: "sine",
+      freqStart: bass,
+      duration: 2.4,
+      peakGain: 0.09,
+      attack: 0.09,
+    });
+  }
+}
+
+function stopBgmInternal(): void {
+  if (bgmIntervalId !== null && typeof window !== "undefined") {
+    window.clearInterval(bgmIntervalId);
+    bgmIntervalId = null;
+  }
+  stopBgmRainBed();
+}
+
+function bindBgmVisibilityOnce(): void {
+  if (bgmVisBound || typeof document === "undefined") return;
+  bgmVisBound = true;
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) {
+      stopBgmInternal();
+    } else if (bgmDesired && !muted) {
+      startBgmInternal();
+    }
+  });
+}
+
+function startBgmInternal(): void {
+  if (!bgmDesired || muted || typeof window === "undefined") return;
+  if (typeof document !== "undefined" && document.hidden) return;
+  bindBgmVisibilityOnce();
+  // AudioContext 활성화 시도 (사용자 클릭 직후 resume)
+  const eng = getAudioEngine();
+  if (!eng) return;
+  if (bgmIntervalId !== null) return;
+  scheduleBgmStep();
+  bgmIntervalId = window.setInterval(scheduleBgmStep, 650);
+}
+
+/** 시간·날씨 반응형 프로시저럴 힐링 배경음(BGM) 켜기/끄기 (기본 OFF, 음소거·탭 비활성화 안전). */
+export function setBgmEnabled(enabled: boolean): void {
+  bgmDesired = enabled;
+  if (!enabled || muted) {
+    stopBgmInternal();
+    return;
+  }
+  startBgmInternal();
+}
+
+/** 현재 힐링 배경음(BGM) 활성화 여부. */
+export function isBgmEnabled(): boolean {
+  return bgmDesired;
+}
+
+/** 현재 월드의 야간 계수(`0..1`)와 날씨(`clear|sakura|rain|snow`)를 BGM 신스에 반영한다. */
+export function updateBgmEnvironment(night: number, weather: WorldWeatherMode): void {
+  bgmNightFactor = Math.max(0, Math.min(1, night));
+  const weatherChanged = bgmWeather !== weather;
+  bgmWeather = weather;
+  if (weatherChanged && bgmDesired && !muted) {
+    const eng = getAudioEngine();
+    const bgmOut = eng ? ensureBgmGain(eng) : null;
+    if (eng && bgmOut) {
+      syncBgmRainBed(eng, bgmOut);
+    }
+  }
 }

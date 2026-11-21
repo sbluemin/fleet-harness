@@ -4,8 +4,10 @@ import { isIdentityTone } from "../../workspace/shared/identity-tones.js";
 import type {
   WorldActorEmote,
   WorldActorPanelMode,
+  WorldAdmiralCape,
   WorldAdmiralHat,
   WorldAdmiralStyle,
+  WorldAdmiralTrail,
   WorldCameraMode,
   WorldChoreographyCommand,
   WorldChoreographyKind,
@@ -29,15 +31,19 @@ const DIVE_DURATION_MS = 1_120;
 const ESCAPE_DURATION_MS = 820;
 const REDUCED_TRANSITION_MS = 180;
 const SOUND_MUTED_STORAGE_KEY = "fleet.theWorld.soundMuted.v1";
+const BGM_ENABLED_STORAGE_KEY = "fleet.theWorld.bgmEnabled.v1";
 const VILLAGE_BIOMES_STORAGE_KEY = "fleet.theWorld.villageBiomes.v1";
 const WEATHER_MODE_STORAGE_KEY = "fleet.theWorld.weatherMode.v1";
 const ADMIRAL_STYLE_STORAGE_KEY = "fleet.theWorld.admiralStyle.v2";
+const COMMODORE_GIFTS_STORAGE_KEY = "fleet.theWorld.commodoreGifts.v1";
 const DISTRICT_NOTES_STORAGE_KEY = "fleet.theWorld.districtNotes.v1";
 const MAX_DISTRICT_NOTE_LEN = 240;
 
 const DEFAULT_ADMIRAL_STYLE: WorldAdmiralStyle = {
   tone: "amber",
   hat: "admiral",
+  cape: "starlight",
+  trail: "stardust",
 };
 
 function isVillageBiome(value: unknown): value is WorldVillageBiome {
@@ -50,6 +56,60 @@ function isWeatherMode(value: unknown): value is WorldWeatherMode {
 
 function isAdmiralHat(value: unknown): value is WorldAdmiralHat {
   return value === "admiral" || value === "crown" || value === "explorer" || value === "none";
+}
+
+function isAdmiralCape(value: unknown): value is WorldAdmiralCape {
+  return value === "starlight" || value === "hero" || value === "forest" || value === "none";
+}
+
+function isAdmiralTrail(value: unknown): value is WorldAdmiralTrail {
+  return value === "stardust" || value === "sakura" || value === "rainbow" || value === "none";
+}
+
+function readInitialBgmEnabled(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(BGM_ENABLED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function persistBgmEnabled(enabled: boolean): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(BGM_ENABLED_STORAGE_KEY, enabled ? "1" : "0");
+  } catch {
+    // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
+  }
+}
+
+function readInitialCommodoreGifts(): Readonly<Record<string, WorldAdmiralHat>> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(COMMODORE_GIFTS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    const sanitized: Record<string, WorldAdmiralHat> = {};
+    for (const [key, val] of Object.entries(parsed as Record<string, unknown>)) {
+      if (key.length > 0 && key.length <= 128 && isAdmiralHat(val)) {
+        sanitized[key] = val;
+      }
+    }
+    return sanitized;
+  } catch {
+    return {};
+  }
+}
+
+function persistCommodoreGifts(gifts: Readonly<Record<string, WorldAdmiralHat>>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(COMMODORE_GIFTS_STORAGE_KEY, JSON.stringify(gifts));
+  } catch {
+    // 저장소 접근 불가 환경에서는 메모리 상태만 유지한다.
+  }
 }
 
 function readInitialSoundMuted(): boolean {
@@ -127,6 +187,8 @@ function readInitialAdmiralStyle(): WorldAdmiralStyle {
     return {
       tone: isIdentityTone(parsed.tone) ? parsed.tone : DEFAULT_ADMIRAL_STYLE.tone,
       hat: isAdmiralHat(parsed.hat) ? parsed.hat : DEFAULT_ADMIRAL_STYLE.hat,
+      cape: isAdmiralCape(parsed.cape) ? parsed.cape : DEFAULT_ADMIRAL_STYLE.cape,
+      trail: isAdmiralTrail(parsed.trail) ? parsed.trail : DEFAULT_ADMIRAL_STYLE.trail,
     };
   } catch {
     return DEFAULT_ADMIRAL_STYLE;
@@ -195,6 +257,11 @@ export interface WorldStoreSnapshot {
   readonly questBoardOpen: boolean;
   readonly warRoomOpen: boolean;
   readonly admiralCustomizerOpen: boolean;
+  readonly gazetteOpen: boolean;
+  readonly cinemaMode: boolean;
+  readonly cinemaSpotlight: string;
+  readonly bgmEnabled: boolean;
+  readonly commodoreGifts: Readonly<Record<string, WorldAdmiralHat>>;
   readonly chatActive: boolean;
   readonly photoMode: boolean;
   readonly sittingAtCampfire: boolean;
@@ -229,6 +296,11 @@ let state: WorldStoreSnapshot = {
   questBoardOpen: false,
   warRoomOpen: false,
   admiralCustomizerOpen: false,
+  gazetteOpen: false,
+  cinemaMode: false,
+  cinemaSpotlight: "",
+  bgmEnabled: readInitialBgmEnabled(),
+  commodoreGifts: readInitialCommodoreGifts(),
   chatActive: false,
   photoMode: false,
   sittingAtCampfire: false,
@@ -312,6 +384,9 @@ export function enterTheWorld(options?: { readonly reducedMotion?: boolean; read
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     chatActive: false,
     photoMode: false,
     sittingAtCampfire: false,
@@ -344,6 +419,9 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     chatActive: false,
     photoMode: false,
     sittingAtCampfire: false,
@@ -366,6 +444,9 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
         questBoardOpen: false,
         warRoomOpen: false,
         admiralCustomizerOpen: false,
+        gazetteOpen: false,
+        cinemaMode: false,
+        cinemaSpotlight: "",
         chatActive: false,
         photoMode: false,
         sittingAtCampfire: false,
@@ -388,6 +469,9 @@ export function openActorRadialMenu(actorId: string): void {
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     photoMode: false,
     overviewMode: false,
   };
@@ -406,6 +490,9 @@ export function openActorDialogue(actorId: string): void {
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     photoMode: false,
     overviewMode: false,
   };
@@ -424,6 +511,9 @@ export function openActorPanel(actorId: string, mode: WorldActorPanelMode, objec
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     photoMode: false,
     overviewMode: false,
   };
@@ -466,6 +556,9 @@ export function selectDistrict(districtId: string | null): void {
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     photoMode: false,
     overviewMode: false,
   };
@@ -551,6 +644,9 @@ export function setPhotoMode(enabled: boolean): void {
           questBoardOpen: false,
           warRoomOpen: false,
           admiralCustomizerOpen: false,
+          gazetteOpen: false,
+          cinemaMode: false,
+          cinemaSpotlight: "",
           chatActive: false,
         }
       : {}),
@@ -593,6 +689,9 @@ export function openWarRoom(): void {
     districtContextMenu: null,
     questBoardOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     photoMode: false,
     overviewMode: false,
   };
@@ -613,10 +712,135 @@ export function toggleWarRoom(): void {
 export function setAdmiralStyle(patch: Partial<WorldAdmiralStyle>): void {
   const nextTone = patch.tone !== undefined && isIdentityTone(patch.tone) ? patch.tone : state.admiralStyle.tone;
   const nextHat = patch.hat !== undefined && isAdmiralHat(patch.hat) ? patch.hat : state.admiralStyle.hat;
-  if (nextTone === state.admiralStyle.tone && nextHat === state.admiralStyle.hat) return;
-  const nextStyle: WorldAdmiralStyle = { tone: nextTone, hat: nextHat };
+  const nextCape = patch.cape !== undefined && isAdmiralCape(patch.cape) ? patch.cape : state.admiralStyle.cape;
+  const nextTrail = patch.trail !== undefined && isAdmiralTrail(patch.trail) ? patch.trail : state.admiralStyle.trail;
+  if (
+    nextTone === state.admiralStyle.tone
+    && nextHat === state.admiralStyle.hat
+    && nextCape === state.admiralStyle.cape
+    && nextTrail === state.admiralStyle.trail
+  ) {
+    return;
+  }
+  const nextStyle: WorldAdmiralStyle = {
+    tone: nextTone,
+    hat: nextHat,
+    cape: nextCape,
+    trail: nextTrail,
+  };
   persistAdmiralStyle(nextStyle);
   state = { ...state, admiralStyle: nextStyle };
+  emit();
+}
+
+export function openGazette(): void {
+  if (
+    state.gazetteOpen
+    && state.selectedActorId === null
+    && state.interactionMode === "closed"
+    && state.selectedDistrictId === null
+    && state.districtContextMenu === null
+    && !state.questBoardOpen
+    && !state.warRoomOpen
+    && !state.admiralCustomizerOpen
+    && !state.cinemaMode
+    && !state.photoMode
+    && !state.overviewMode
+  ) {
+    return;
+  }
+  state = {
+    ...state,
+    gazetteOpen: true,
+    selectedActorId: null,
+    interactionMode: "closed",
+    inspectedObjectiveId: null,
+    selectedDistrictId: null,
+    districtContextMenu: null,
+    questBoardOpen: false,
+    warRoomOpen: false,
+    admiralCustomizerOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
+    photoMode: false,
+    overviewMode: false,
+  };
+  emit();
+}
+
+export function closeGazette(): void {
+  if (!state.gazetteOpen) return;
+  state = { ...state, gazetteOpen: false };
+  emit();
+}
+
+export function toggleGazette(): void {
+  if (state.gazetteOpen) closeGazette();
+  else openGazette();
+}
+
+export function setCinemaMode(enabled: boolean): void {
+  if (state.cinemaMode === enabled) return;
+  state = {
+    ...state,
+    cinemaMode: enabled,
+    ...(enabled
+      ? {
+          selectedActorId: null,
+          interactionMode: "closed" as const,
+          inspectedObjectiveId: null,
+          selectedDistrictId: null,
+          districtContextMenu: null,
+          questBoardOpen: false,
+          warRoomOpen: false,
+          admiralCustomizerOpen: false,
+          gazetteOpen: false,
+          chatActive: false,
+          photoMode: false,
+          overviewMode: false,
+          sittingAtCampfire: false,
+        }
+      : {
+          cinemaSpotlight: "",
+        }),
+  };
+  emit();
+}
+
+export function toggleCinemaMode(): void {
+  setCinemaMode(!state.cinemaMode);
+}
+
+export function setCinemaSpotlight(label: string): void {
+  if (state.cinemaSpotlight === label) return;
+  state = { ...state, cinemaSpotlight: label };
+  emit();
+}
+
+export function setBgmEnabled(enabled: boolean): void {
+  if (state.bgmEnabled === enabled) return;
+  persistBgmEnabled(enabled);
+  state = { ...state, bgmEnabled: enabled };
+  emit();
+}
+
+export function toggleBgm(): void {
+  setBgmEnabled(!state.bgmEnabled);
+}
+
+export function setCommodoreGift(commodoreId: string, hat: WorldAdmiralHat | null): void {
+  if (!commodoreId) return;
+  if (hat !== null && !isAdmiralHat(hat)) return;
+  const current = state.commodoreGifts[commodoreId] ?? null;
+  if (current === hat) return;
+  const next: Record<string, WorldAdmiralHat> = { ...state.commodoreGifts };
+  if (hat === null) {
+    delete next[commodoreId];
+  } else {
+    next[commodoreId] = hat;
+  }
+  persistCommodoreGifts(next);
+  state = { ...state, commodoreGifts: next };
   emit();
 }
 
@@ -644,6 +868,9 @@ export function openAdmiralCustomizer(): void {
     districtContextMenu: null,
     questBoardOpen: false,
     warRoomOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     photoMode: false,
     overviewMode: false,
   };
@@ -696,6 +923,9 @@ export function requestRallyAll(): void {
     warRoomOpen: false,
     questBoardOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     photoMode: false,
     sittingAtCampfire: false,
   };
@@ -772,6 +1002,9 @@ export function openQuestBoard(): void {
     districtContextMenu: null,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
+    cinemaMode: false,
+    cinemaSpotlight: "",
     photoMode: false,
     overviewMode: false,
   };
@@ -821,6 +1054,9 @@ export function setOverviewMode(enabled: boolean): void {
           questBoardOpen: false,
           warRoomOpen: false,
           admiralCustomizerOpen: false,
+          gazetteOpen: false,
+          cinemaMode: false,
+          cinemaSpotlight: "",
           sittingAtCampfire: false,
         }
       : {}),
@@ -852,6 +1088,7 @@ export function closeActorInteraction(): void {
     && !state.questBoardOpen
     && !state.warRoomOpen
     && !state.admiralCustomizerOpen
+    && !state.gazetteOpen
   ) {
     return;
   }
@@ -865,6 +1102,7 @@ export function closeActorInteraction(): void {
     questBoardOpen: false,
     warRoomOpen: false,
     admiralCustomizerOpen: false,
+    gazetteOpen: false,
   };
   emit();
 }

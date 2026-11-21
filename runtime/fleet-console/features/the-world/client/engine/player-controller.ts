@@ -37,7 +37,15 @@ export interface CameraOccluder {
   readonly height: number;
 }
 
-export type CameraFocusFraming = "none" | "dialogue" | "drawer" | "customizer";
+export type CameraFocusFraming = "none" | "dialogue" | "drawer" | "customizer" | "cinema";
+
+export interface CinemaCameraTarget {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly dist: number;
+  readonly pitch: number;
+}
 
 export interface PlayerAndCameraController {
   readonly player: PlayerState;
@@ -50,6 +58,7 @@ export interface PlayerAndCameraController {
     readonly inputLocked: boolean;
     readonly focusActorPos: { readonly x: number; readonly z: number } | null;
     readonly focusFraming?: CameraFocusFraming | undefined;
+    readonly cinemaTarget?: CinemaCameraTarget | null | undefined;
     readonly camera: PerspectiveCamera;
     readonly getGroundHeight: (x: number, z: number) => number;
     readonly resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number };
@@ -497,13 +506,14 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         player.landSquash = Math.max(0, player.landSquash - opts.dt * 4.6);
       }
 
-      // 카메라 주시점 보간 (제독 드레스업 클로즈업 > RTS 하늘 조망 > 구역 포커스 > RPG 2샷 대화 / 우측 드로어 좌측 삼분할 > 모닥불 불멍 > 방사형 근접 > 일반 추적/조망)
+      // 카메라 주시점 보간 (제독 드레스업 클로즈업 > 관전 시네마 > RTS 하늘 조망 > 구역 포커스 > RPG 2샷 대화 / 우측 드로어 좌측 삼분할 > 모닥불 불멍 > 방사형 근접 > 일반 추적/조망)
       let desiredTargetX = opts.cameraMode === "orbit" ? orbitAnchor.x : player.x;
       let desiredTargetY = opts.cameraMode === "orbit" ? orbitAnchor.y : player.y + 1.12;
       let desiredTargetZ = opts.cameraMode === "orbit" ? orbitAnchor.z : player.z;
       const focusFraming = opts.focusFraming ?? "none";
       const customizerFraming = focusFraming === "customizer";
-      const hasFocusActor = !customizerFraming && !overviewMode && !districtFocus && !sittingAtCampfire && opts.focusActorPos !== null;
+      const cinemaFraming = focusFraming === "cinema" && opts.cinemaTarget != null;
+      const hasFocusActor = !customizerFraming && !cinemaFraming && !overviewMode && !districtFocus && !sittingAtCampfire && opts.focusActorPos !== null;
       const focusDistToPlayer = hasFocusActor && opts.focusActorPos
         ? Math.hypot(opts.focusActorPos.x - player.x, opts.focusActorPos.z - player.z)
         : Infinity;
@@ -532,6 +542,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         } else {
           camYaw += yawDiff * (1 - Math.exp(-opts.dt * 6.5));
         }
+      } else if (cinemaFraming && !opts.reducedMotion) {
+        // 관전 / 작업 동반자 모드: 스포트라이트 대상을 중심으로 잔잔하고 영화적인 느린 오빗
+        camYaw += opts.dt * 0.11;
       }
       const interactingClose =
         hasFocusActor
@@ -545,6 +558,10 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetX = player.x + Math.cos(camYaw) * 0.95;
         desiredTargetY = player.y + 0.72;
         desiredTargetZ = player.z - Math.sin(camYaw) * 0.95;
+      } else if (cinemaFraming && opts.cinemaTarget) {
+        desiredTargetX = opts.cinemaTarget.x;
+        desiredTargetY = opts.cinemaTarget.y;
+        desiredTargetZ = opts.cinemaTarget.z;
       } else if (overviewMode && !opts.inputLocked) {
         desiredTargetX = overviewAnchor.x;
         desiredTargetY = overviewAnchor.y;
@@ -581,12 +598,14 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetZ = player.z + (opts.focusActorPos.z - player.z) * 0.42;
       }
       const inFocusFraming = dialogueFraming || drawerFraming || customizerFraming;
-      const targetLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 8.5));
+      const targetLerp = opts.reducedMotion
+        ? 1
+        : 1 - Math.exp(-opts.dt * (cinemaFraming ? 2.2 : overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 8.5));
       cameraTarget.x += (desiredTargetX - cameraTarget.x) * targetLerp;
       cameraTarget.y += (desiredTargetY - cameraTarget.y) * targetLerp;
       cameraTarget.z += (desiredTargetZ - cameraTarget.z) * targetLerp;
 
-      // 줌 거리 및 추적↔조망↔하늘 조망↔구역 포커스↔RPG/드로어/드레스업↔불멍 전환을 프레임 레이트 독립 지수 감쇠로 부드럽게 보간
+      // 줌 거리 및 추적↔조망↔하늘 조망↔구역 포커스↔RPG/드로어/드레스업/시네마↔불멍 전환을 프레임 레이트 독립 지수 감쇠로 부드럽게 보간
       const zoomLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 10.0);
       camDist += (targetCamDist - camDist) * zoomLerp;
 
@@ -594,48 +613,56 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       const desiredEffDist =
         customizerFraming
           ? 4.35
-          : overviewMode && !opts.inputLocked
-            ? overviewDist
-            : districtFocus && !opts.inputLocked
-              ? districtFocus.dist
-              : dialogueFraming
-                ? 6.1
-                : drawerFraming
-                  ? 7.2
-                  : sittingAtCampfire && !opts.inputLocked
-                    ? 4.45
-                    : opts.cameraMode === "orbit"
-                      ? Math.max(28, camDist * 2.65)
-                      : focusDist;
+          : cinemaFraming && opts.cinemaTarget
+            ? opts.cinemaTarget.dist
+            : overviewMode && !opts.inputLocked
+              ? overviewDist
+              : districtFocus && !opts.inputLocked
+                ? districtFocus.dist
+                : dialogueFraming
+                  ? 6.1
+                  : drawerFraming
+                    ? 7.2
+                    : sittingAtCampfire && !opts.inputLocked
+                      ? 4.45
+                      : opts.cameraMode === "orbit"
+                        ? Math.max(28, camDist * 2.65)
+                        : focusDist;
       const desiredEffPitch =
         customizerFraming
           ? 0.18
-          : overviewMode && !opts.inputLocked
-            ? overviewPitch
-            : districtFocus && !opts.inputLocked
-              ? districtFocus.pitch
-              : dialogueFraming
-                ? 0.21
-                : drawerFraming
-                  ? 0.25
-                  : sittingAtCampfire && !opts.inputLocked
-                    ? 0.26
-                    : opts.cameraMode === "orbit"
-                      ? Math.max(0.54, camPitch)
-                      : camPitch;
-      const modeLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
+          : cinemaFraming && opts.cinemaTarget
+            ? opts.cinemaTarget.pitch
+            : overviewMode && !opts.inputLocked
+              ? overviewPitch
+              : districtFocus && !opts.inputLocked
+                ? districtFocus.pitch
+                : dialogueFraming
+                  ? 0.21
+                  : drawerFraming
+                    ? 0.25
+                    : sittingAtCampfire && !opts.inputLocked
+                      ? 0.26
+                      : opts.cameraMode === "orbit"
+                        ? Math.max(0.54, camPitch)
+                        : camPitch;
+      const modeLerp = opts.reducedMotion
+        ? 1
+        : 1 - Math.exp(-opts.dt * (cinemaFraming ? 2.2 : overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : inFocusFraming ? 7.2 : 9.0));
       smoothedEffDist += (desiredEffDist - smoothedEffDist) * modeLerp;
       smoothedEffPitch += (desiredEffPitch - smoothedEffPitch) * modeLerp;
 
       // 질주(`Shift`) 동적 FOV 44→49 부드러운 보간
       const desiredFov =
-        overviewMode && !opts.inputLocked
-          ? 50
-          : sittingAtCampfire && !opts.inputLocked
-            ? 42
-            : player.sprinting && player.walking
-              ? 49
-              : 44;
+        cinemaFraming
+          ? 42
+          : overviewMode && !opts.inputLocked
+            ? 50
+            : sittingAtCampfire && !opts.inputLocked
+              ? 42
+              : player.sprinting && player.walking
+                ? 49
+                : 44;
       const fovLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 7.5);
       smoothedFov += (desiredFov - smoothedFov) * fovLerp;
 

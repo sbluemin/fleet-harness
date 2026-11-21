@@ -221,8 +221,12 @@ export interface ChoreographyDirector {
   handleCommand(cmd: WorldChoreographyCommand): boolean;
   spawnBurst(x: number, y: number, z: number, colorHex: number, count?: number): void;
   spawnDust(x: number, y: number, z: number): void;
+  /** 제독 4종 이동 궤적(별가루·벚꽃·무지개)용 부드러운 단색 부유 입자 (기존 InstancedMesh 풀 재사용). */
+  spawnTrailSparkle(x: number, y: number, z: number, colorHex: number, scale?: number, driftUp?: boolean): void;
   /** 구역/마을 레벨업 축하 황금 다중 불꽃 + 상승 빛입자 축포 (기존 InstancedMesh 풀 재사용). */
   spawnLevelUpCelebration(x: number, z: number, colorHex?: number): void;
+  /** Objective `done` 신규 전환 시 마을 상공 축하 불꽃놀이 + 주변 사령관 `cheer` 환호. */
+  celebrateObjectiveDone(x: number, z: number, colorHex?: number): void;
   /** 전 사령관 긴급 소집 — 목교·정문을 거쳐 중앙 길드 광장 앞 반원 대형으로 신속 집결(4.2 m/s). */
   rallyAllToPlaza(): void;
   /** 제독 감정표현(손흔들기·환호·점프)에 반경 9.5m 내 사령관들이 돌아보고 따라 반응한다. */
@@ -381,6 +385,32 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       maxLife: 0.40,
       colorHex: 0xf1f5f9,
       glowBoost: 1.0,
+    });
+  }
+
+  function spawnTrailSparkle(
+    x: number,
+    y: number,
+    z: number,
+    colorHex: number,
+    scale = 0.68,
+    driftUp = true,
+  ) {
+    const ang = Math.random() * Math.PI * 2;
+    const horiz = 0.16 + Math.random() * 0.28;
+    pushParticle({
+      x,
+      y,
+      z,
+      vx: Math.cos(ang) * horiz,
+      vy: driftUp ? 0.68 + Math.random() * 0.55 : 0.22 + Math.random() * 0.28,
+      vz: Math.sin(ang) * horiz,
+      gravity: driftUp ? -0.12 : 0.65,
+      scale: scale * (0.82 + Math.random() * 0.36),
+      life: 0.78 + Math.random() * 0.32,
+      maxLife: 1.1,
+      colorHex,
+      glowBoost: 1.48,
     });
   }
 
@@ -919,6 +949,16 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     }
   }
 
+  function celebrateObjectiveDone(x: number, z: number, colorHex = 0xfbbf24) {
+    spawnLevelUpCelebration(x, z, colorHex);
+    for (const m of motionList) {
+      if (Math.hypot(m.x - x, m.z - z) <= 18.0) {
+        m.hopBoost = Math.max(m.hopBoost, 1.55);
+        triggerActorEmote(m.spec.id, "cheer", 2.8);
+      }
+    }
+  }
+
   let lastCommandNonce = 0;
 
   const director: ChoreographyDirector = {
@@ -1008,7 +1048,9 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     },
     spawnBurst,
     spawnDust,
+    spawnTrailSparkle,
     spawnLevelUpCelebration,
+    celebrateObjectiveDone,
     rallyAllToPlaza,
     reactToPlayerEmote,
     setWeather(mode) {
@@ -1221,6 +1263,33 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             moveSpeed = 0;
             patrolFaceX = ps.chatFaceX ?? ps.faceX;
             patrolFaceZ = ps.chatFaceZ ?? ps.faceZ;
+          } else if (!isWorking && m.spec.needsAttention && distToPlayer < 18.0) {
+            // 긴급 확인이 필요한 유휴 사령관이 18m 이내에 있으면 제독에게 직접 다가가 손을 흔들며 주의를 끈다
+            ps.route.length = 0;
+            ps.workingCommute = false;
+            patrolFaceX = playerPos.x;
+            patrolFaceZ = playerPos.z;
+            if (distToPlayer > 2.85) {
+              const nx = (m.x - playerPos.x) / distToPlayer;
+              const nz = (m.z - playerPos.z) / distToPlayer;
+              const desiredX = playerPos.x + nx * 2.35;
+              const desiredZ = playerPos.z + nz * 2.35;
+              if (isWalkable(desiredX, desiredZ)) {
+                m.tx = desiredX;
+                m.tz = desiredZ;
+              } else {
+                m.tx = playerPos.x;
+                m.tz = playerPos.z;
+              }
+              moveSpeed = 3.15;
+            } else {
+              m.tx = m.x;
+              m.tz = m.z;
+              moveSpeed = 0;
+              if (m.hopBoost <= 0.02 && Math.sin(elapsed * 2.4 + idx) > 0.96) {
+                m.hopBoost = 0.55;
+              }
+            }
           } else if (!isWorking && distToPlayer < 2.15) {
             // 제독이 [E] 상호작용 거리(2.15m 이내)로 바짝 다가오면 잠시 멈춰 응대한다
             m.tx = m.x;
@@ -1578,9 +1647,24 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           }
         }
 
+        const attentionBeckon =
+          !isFocused
+          && !m.moving
+          && !actorWorking
+          && m.spec.needsAttention
+          && distToPlayer < 18.0;
+
         // 최종 애니메이션 모드 · 표정 · 볼터치 · 시선 타깃 결정
-        m.gazeTargetX = anim.banterTimer > 0 ? anim.banterPartnerX : null;
-        m.gazeTargetZ = anim.banterTimer > 0 ? anim.banterPartnerZ : null;
+        m.gazeTargetX = attentionBeckon
+          ? playerPos.x
+          : anim.banterTimer > 0
+            ? anim.banterPartnerX
+            : null;
+        m.gazeTargetZ = attentionBeckon
+          ? playerPos.z
+          : anim.banterTimer > 0
+            ? anim.banterPartnerZ
+            : null;
         m.animPhase = anim.emoteTimer > 0 ? anim.emoteElapsed : 0;
 
         if (director.celebratingTimer > 0) {
@@ -1603,6 +1687,11 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           m.worldAnim = actualSpeed > 3.35 ? "sprint" : "walk";
           m.expression = actualSpeed > 3.35 ? "focused" : "normal";
           m.blush = 0.08;
+        } else if (attentionBeckon) {
+          // 긴급 확인 필요 사령관이 제독 근처에서 손을 흔들며(`wave` + `surprised`) 주의 끌기
+          m.worldAnim = "wave";
+          m.expression = "surprised";
+          m.blush = 0.44;
         } else if (anim.banterTimer > 0 || (m.speechTimer > 0.35 && m.speechTimer < 900)) {
           m.worldAnim = "talk";
           m.expression = "happy";

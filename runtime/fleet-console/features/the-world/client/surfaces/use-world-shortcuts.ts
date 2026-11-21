@@ -12,16 +12,20 @@ import {
   closeActorInteraction,
   closeAdmiralCustomizer,
   closeDistrictContextMenu,
+  closeGazette,
   closeQuestBoard,
   closeWarRoom,
   deactivateChat,
   exitTheWorld,
   getWorldStoreSnapshot,
   openActorRadialMenu,
+  openGazette,
   requestPlayerEmote,
+  setCinemaMode,
   setOverviewMode,
   setPhotoMode,
   setSittingAtCampfire,
+  toggleCinemaMode,
   toggleOverviewMode,
   togglePhotoMode,
 } from "../world-store.js";
@@ -30,14 +34,17 @@ import {
  * 「더 월드」 전역 키보드 단축키 훅.
  *
  * - `Enter`: 채팅창 활성화
+ * - `Tab`: 확인 필요(`needsAttention`) 사령관에게 즉시 이동 · 대화창 오픈 (순환)
  * - `E`: 근접 캐릭터 방사형 메뉴 열기/닫기
  * - `M`: RTS 하늘 조망 모드 토글
+ * - `C`: 시네마 관전(작업 동반자) 모드 토글
+ * - `G`: 오늘의 초원 일보 모달 토글
  * - `P`: 포토 모드(UI 숨김) 토글
  * - `F`: 모닥불 벤치 불멍 착석/기상
  * - `1` / `2` / `3`: 제독 퀵 감정표현(`wave` / `cheer` / `jump`)
  * - `?` / `H`: 조작 가이드 모달 토글
  * - `Shift+D`: 디버그 패널 노출 토글
- * - `Escape`: 모달 → 포토 → 불멍 → 채팅 → 상호작용 → 하늘 조망 → 월드 탈출 우선순위 해제
+ * - `Escape`: 포토 → 시네마 → 모달 → 불멍 → 채팅 → 상호작용 → 하늘 조망 → 월드 탈출 우선순위 해제
  */
 
 export interface UseWorldShortcutsOptions {
@@ -47,6 +54,7 @@ export interface UseWorldShortcutsOptions {
   readonly onToggleControlsGuide: () => void;
   readonly onCloseControlsGuide: () => void;
   readonly onToggleDebugPanel: () => void;
+  readonly onFocusNextUrgentActor: () => void;
   readonly isReducedMotion: () => boolean;
 }
 
@@ -57,6 +65,7 @@ export function useWorldShortcuts({
   onToggleControlsGuide,
   onCloseControlsGuide,
   onToggleDebugPanel,
+  onFocusNextUrgentActor,
   isReducedMotion,
 }: UseWorldShortcutsOptions): void {
   useEffect(() => {
@@ -78,6 +87,8 @@ export function useWorldShortcuts({
               closeAdmiralCustomizer();
             } else if (current.questBoardOpen) {
               closeQuestBoard();
+            } else if (current.gazetteOpen) {
+              closeGazette();
             } else if (current.interactionMode !== "closed" || current.selectedDistrictId !== null) {
               closeActorInteraction();
             }
@@ -90,7 +101,26 @@ export function useWorldShortcuts({
       if (snap.lifecycle !== "open") return;
 
       const guideOpen = controlsGuideOpenRef.current;
-      const anyModalOpen = snap.questBoardOpen || snap.warRoomOpen || snap.admiralCustomizerOpen || guideOpen;
+      const anyModalOpen = snap.questBoardOpen
+        || snap.warRoomOpen
+        || snap.admiralCustomizerOpen
+        || snap.gazetteOpen
+        || guideOpen;
+
+      // Tab: 긴급 확인 필요 사령관 즉시 이동 · 대화창 오픈 (순환)
+      if (
+        event.key === "Tab"
+        && !event.isComposing
+        && !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+      ) {
+        if (!anyModalOpen && !snap.chatActive && !snap.photoMode) {
+          event.preventDefault();
+          onFocusNextUrgentActor();
+          return;
+        }
+      }
 
       // Shift+D: 디버그 도구 버튼 노출 토글
       if (
@@ -106,6 +136,51 @@ export function useWorldShortcuts({
         return;
       }
 
+      // C: 시네마 관전(작업 동반자) 모드 토글
+      if (
+        event.code === "KeyC"
+        && !event.isComposing
+        && !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+        && !event.shiftKey
+      ) {
+        if (snap.cinemaMode) {
+          event.preventDefault();
+          playOverviewToggle(false);
+          setCinemaMode(false);
+          return;
+        }
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode) {
+          event.preventDefault();
+          playOverviewToggle(true);
+          toggleCinemaMode();
+          return;
+        }
+      }
+
+      // G: 오늘의 초원 일보 모달 토글
+      if (
+        event.code === "KeyG"
+        && !event.isComposing
+        && !event.metaKey
+        && !event.ctrlKey
+        && !event.altKey
+        && !event.shiftKey
+      ) {
+        if (snap.gazetteOpen) {
+          event.preventDefault();
+          closeGazette();
+          return;
+        }
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.cinemaMode) {
+          event.preventDefault();
+          playDistrictSelect();
+          openGazette();
+          return;
+        }
+      }
+
       // ? 또는 H: 조작 가이드 모달 토글
       if (
         !event.isComposing
@@ -119,7 +194,7 @@ export function useWorldShortcuts({
           onCloseControlsGuide();
           return;
         }
-        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode) {
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.cinemaMode) {
           event.preventDefault();
           onToggleControlsGuide();
           return;
@@ -134,7 +209,7 @@ export function useWorldShortcuts({
         && !event.altKey
         && !event.shiftKey
       ) {
-        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive) {
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.cinemaMode) {
           event.preventDefault();
           playPhotoShutter();
           togglePhotoMode();
@@ -155,7 +230,7 @@ export function useWorldShortcuts({
           targetEl !== null
           && Boolean(targetEl.closest(".the-world-root"))
           && (targetEl.tagName === "BUTTON" || targetEl.tagName === "A");
-        if (!isWorldInteractive && !snap.photoMode && snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive) {
+        if (!isWorldInteractive && !snap.photoMode && !snap.cinemaMode && snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive) {
           event.preventDefault();
           activateChat();
           return;
@@ -163,7 +238,7 @@ export function useWorldShortcuts({
       }
 
       if (event.code === "KeyM" && !event.metaKey && !event.ctrlKey && !event.altKey) {
-        if (snap.interactionMode === "closed" && !anyModalOpen) {
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.cinemaMode) {
           event.preventDefault();
           playOverviewToggle(!snap.overviewMode);
           toggleOverviewMode();
@@ -172,7 +247,7 @@ export function useWorldShortcuts({
       }
 
       if (event.code === "KeyF" && !event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey) {
-        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode) {
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.cinemaMode) {
           if (snap.sittingAtCampfire) {
             event.preventDefault();
             setSittingAtCampfire(false);
@@ -197,7 +272,7 @@ export function useWorldShortcuts({
         && !event.altKey
         && !event.shiftKey
       ) {
-        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.overviewMode) {
+        if (snap.interactionMode === "closed" && !anyModalOpen && !snap.chatActive && !snap.photoMode && !snap.overviewMode && !snap.cinemaMode) {
           event.preventDefault();
           const emote = event.code === "Digit1" ? "wave" : event.code === "Digit2" ? "cheer" : "jump";
           requestPlayerEmote(emote);
@@ -205,7 +280,7 @@ export function useWorldShortcuts({
         }
       }
 
-      if (event.code === "KeyE" && !anyModalOpen && !snap.photoMode) {
+      if (event.code === "KeyE" && !anyModalOpen && !snap.photoMode && !snap.cinemaMode) {
         if (snap.interactionMode === "radial") {
           event.preventDefault();
           closeActorInteraction();
@@ -230,6 +305,11 @@ export function useWorldShortcuts({
           setPhotoMode(false);
           return;
         }
+        if (snap.cinemaMode) {
+          playOverviewToggle(false);
+          setCinemaMode(false);
+          return;
+        }
         if (guideOpen) {
           onCloseControlsGuide();
           return;
@@ -240,6 +320,10 @@ export function useWorldShortcuts({
         }
         if (snap.districtContextMenu) {
           closeDistrictContextMenu();
+          return;
+        }
+        if (snap.gazetteOpen) {
+          closeGazette();
           return;
         }
         if (snap.warRoomOpen) {
@@ -278,6 +362,7 @@ export function useWorldShortcuts({
     isReducedMotion,
     lastPlayerPoseRef,
     onCloseControlsGuide,
+    onFocusNextUrgentActor,
     onToggleControlsGuide,
     onToggleDebugPanel,
     rootRef,

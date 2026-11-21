@@ -38,6 +38,7 @@ const GUIDE_GROUPS: readonly {
     titleKey: "theWorld.guide.groupInteract",
     items: [
       { keys: "E", descKey: "theWorld.guide.interactDesc", icon: "greet", tone: "amber" },
+      { keys: "Tab", descKey: "theWorld.guide.urgentDesc", icon: "bell", tone: "amber" },
       { keys: "F", descKey: "theWorld.guide.campfireDesc", icon: "fire", tone: "rose" },
       { keys: "1 · 2 · 3", descKey: "theWorld.guide.emoteDesc", icon: "cheer", tone: "amber" },
       { keysKey: "theWorld.guide.quickMenuKeys", descKey: "theWorld.guide.quickMenuDesc", icon: "flag", tone: "moss" },
@@ -48,6 +49,8 @@ const GUIDE_GROUPS: readonly {
     titleKey: "theWorld.guide.groupView",
     items: [
       { keys: "M", descKey: "theWorld.guide.overviewDesc", icon: "mapOverview", tone: "moss" },
+      { keys: "C", descKey: "theWorld.guide.cinemaDesc", icon: "cinema", tone: "teal" },
+      { keys: "G", descKey: "theWorld.guide.gazetteDesc", icon: "gazette", tone: "amber" },
       { keys: "P", descKey: "theWorld.guide.photoDesc", icon: "camera", tone: "cerulean" },
       { keys: "Enter", descKey: "theWorld.guide.chatDesc", icon: "chat", tone: "teal" },
       { keys: "? / H", descKey: "theWorld.guide.guideDesc", icon: "question", tone: "amber" },

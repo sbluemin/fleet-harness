@@ -3,6 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 
 import {
   type WorldActorPanelMode,
+  type WorldActorSpec,
+  type WorldAdmiralHat,
   type WorldAdmiralStyle,
   type WorldDevelopmentTier,
   type WorldDistrictSpec,
@@ -29,6 +31,7 @@ import {
   playPhotoShutter,
   playSend,
   playWarp,
+  setBgmEnabled,
   setWorldAudioMuted,
 } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
@@ -38,6 +41,7 @@ import {
   closeActorInteraction,
   closeAdmiralCustomizer,
   closeDistrictContextMenu,
+  closeGazette,
   closeQuestBoard,
   closeWarRoom,
   deactivateChat,
@@ -47,6 +51,7 @@ import {
   openActorRadialMenu,
   openAdmiralCustomizer,
   openDistrictContextMenu,
+  openGazette,
   openQuestBoard,
   openWarRoom,
   placeDispatchFlag,
@@ -59,6 +64,9 @@ import {
   requestWorldTeleport,
   selectDistrict,
   setAdmiralStyle,
+  setCinemaMode,
+  setCinemaSpotlight,
+  setCommodoreGift,
   setDistrictNote,
   setHoveredDistrict,
   setNearWorldActor,
@@ -68,6 +76,8 @@ import {
   setVillageBiome,
   setWeatherMode,
   setWorldTimeMode,
+  toggleBgm,
+  toggleCinemaMode,
   toggleOverviewMode,
   useWorldStore,
 } from "../world-store.js";
@@ -78,6 +88,7 @@ import { WorldControlsGuide } from "./world-controls-guide.js";
 import { WorldDialogueBox } from "./world-dialogue-box.js";
 import { WorldDistrictInspector, type WorldDistrictLinkedObjective } from "./world-district-inspector.js";
 import { WorldDistrictQuickMenu } from "./world-district-quick-menu.js";
+import { WorldGazette } from "./world-gazette.js";
 import { WorldHud } from "./world-hud.js";
 import { WorldIcon } from "./world-icons.js";
 import { WorldLabelsOverlay, type WorldLabelsOverlayHandle } from "./world-labels-overlay.js";
@@ -104,6 +115,13 @@ const TIER_NAME_KEYS: Readonly<Record<WorldDevelopmentTier, TheWorldMessageKey>>
   3: "theWorld.tier.3.name",
   4: "theWorld.tier.4.name",
   5: "theWorld.tier.5.name",
+};
+
+const HAT_LABEL_KEYS: Readonly<Record<WorldAdmiralHat, TheWorldMessageKey>> = {
+  admiral: "theWorld.admiral.hat.admiral",
+  crown: "theWorld.admiral.hat.crown",
+  explorer: "theWorld.admiral.hat.explorer",
+  none: "theWorld.admiral.hat.none",
 };
 
 function isPanelMode(mode: string): mode is WorldActorPanelMode {
@@ -170,6 +188,9 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   const suppressVillageClickRef = useRef(false);
   const villagesRef = useRef<readonly WorldVillageSpec[]>(snapshot.villages);
   villagesRef.current = snapshot.villages;
+  const actorsRef = useRef<readonly WorldActorSpec[]>(snapshot.actors);
+  actorsRef.current = snapshot.actors;
+  const urgentCursorRef = useRef(-1);
 
   const handleFramePositions = useCallback((positions: WorldFrameOverlayPositions) => {
     labelsOverlayRef.current?.applyFramePositions(positions);
@@ -234,12 +255,17 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtimeRef.current?.spawnCourierBetweenActors(fromActorId, targetName);
   }, []);
 
-  // 프로시저럴 오디오 음소거 상태 동기화
+  // 프로시저럴 오디오 음소거 · 힐링 BGM 상태 동기화
   useEffect(() => {
     setWorldAudioMuted(store.soundMuted);
   }, [store.soundMuted]);
 
+  useEffect(() => {
+    setBgmEnabled(store.bgmEnabled);
+  }, [store.bgmEnabled]);
+
   useEffect(() => () => {
+    setBgmEnabled(false);
     if (toastTimerRef.current !== null) window.clearTimeout(toastTimerRef.current);
     if (celebrationTimerRef.current !== null) window.clearTimeout(celebrationTimerRef.current);
   }, []);
@@ -267,12 +293,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       onNearActorChanged: (id) => setNearWorldActor(id),
       onOverviewAutoExit: () => setOverviewMode(false),
       onCampfireStandUp: () => setSittingAtCampfire(false),
+      onCinemaSpotlight: (label) => setCinemaSpotlight(label),
       onLabelsStructureChanged: setLabelMetas,
       onFramePositions: handleFramePositions,
     });
     const initial = getWorldStoreSnapshot();
     runtime.setWeather(initial.weatherMode);
-    runtime.setAdmiralStyle(initial.admiralStyle.tone, initial.admiralStyle.hat);
+    runtime.setAdmiralStyle(initial.admiralStyle);
+    runtime.setCommodoreGifts(initial.commodoreGifts);
+    runtime.setCinemaMode(initial.cinemaMode);
     runtimeRef.current = runtime;
     return () => {
       runtime.dispose();
@@ -305,8 +334,16 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   }, [store.weatherMode]);
 
   useEffect(() => {
-    runtimeRef.current?.setAdmiralStyle(store.admiralStyle.tone, store.admiralStyle.hat);
+    runtimeRef.current?.setAdmiralStyle(store.admiralStyle);
   }, [store.admiralStyle]);
+
+  useEffect(() => {
+    runtimeRef.current?.setCommodoreGifts(store.commodoreGifts);
+  }, [store.commodoreGifts]);
+
+  useEffect(() => {
+    runtimeRef.current?.setCinemaMode(store.cinemaMode);
+  }, [store.cinemaMode]);
 
   useEffect(() => {
     runtimeRef.current?.setCampfireSit(store.sittingAtCampfire);
@@ -495,6 +532,33 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }
   }, [store.lifecycle]);
 
+  const handleOpenUrgentActor = useCallback((actorId: string) => {
+    if (getWorldStoreSnapshot().cinemaMode) {
+      setCinemaMode(false);
+    }
+    playMongleChirp();
+    requestApproachActor(actorId);
+    openActorDialogue(actorId);
+  }, []);
+
+  const handleFocusNextUrgentActor = useCallback(() => {
+    const tNow = getWorldT(deps.commodore.language());
+    const all = actorsRef.current;
+    const urgent = [
+      ...all.filter((a) => a.needsAttention && a.role === "commodore"),
+      ...all.filter((a) => a.needsAttention && a.role !== "commodore"),
+    ];
+    if (urgent.length === 0) {
+      pushToast(tNow("theWorld.urgent.noneToast"));
+      return;
+    }
+    const nextIdx = (urgentCursorRef.current + 1) % urgent.length;
+    urgentCursorRef.current = nextIdx;
+    const target = urgent[nextIdx]!;
+    handleOpenUrgentActor(target.id);
+    pushToast(tNow("theWorld.urgent.focusedToast", { name: target.name }));
+  }, [deps, handleOpenUrgentActor, pushToast]);
+
   // 전역 키보드 단축키 (`use-world-shortcuts.ts`)
   useWorldShortcuts({
     rootRef,
@@ -503,6 +567,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     onToggleControlsGuide: handleToggleControlsGuide,
     onCloseControlsGuide: handleCloseControlsGuide,
     onToggleDebugPanel: handleToggleDebugPanel,
+    onFocusNextUrgentActor: handleFocusNextUrgentActor,
     isReducedMotion: deps.isReducedMotion,
   });
 
@@ -526,8 +591,10 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       || snap.questBoardOpen
       || snap.warRoomOpen
       || snap.admiralCustomizerOpen
+      || snap.gazetteOpen
       || controlsGuideOpenRef.current
       || snap.photoMode
+      || snap.cinemaMode
     ) {
       return;
     }
@@ -558,6 +625,8 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       || snap.questBoardOpen
       || snap.warRoomOpen
       || snap.admiralCustomizerOpen
+      || snap.gazetteOpen
+      || snap.cinemaMode
       || controlsGuideOpenRef.current
     ) {
       if (snap.hoveredDistrictId !== null) setHoveredDistrict(null);
@@ -607,7 +676,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       deactivateChat();
     }
 
-    if (snap.admiralCustomizerOpen) {
+    if (snap.admiralCustomizerOpen || snap.gazetteOpen || snap.cinemaMode) {
       return;
     }
 
@@ -1017,6 +1086,63 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtimeRef.current?.triggerCustomizerPreviewBounce?.();
   }, []);
 
+  const handleOpenGazette = useCallback(() => {
+    playDistrictSelect();
+    openGazette();
+  }, []);
+
+  const handleCloseGazette = useCallback(() => {
+    closeGazette();
+  }, []);
+
+  const handleWarpFromGazette = useCallback((village: WorldVillageSpec) => {
+    closeGazette();
+    handleMinimapSelectVillage(village);
+  }, [handleMinimapSelectVillage]);
+
+  const handleTalkFromGazette = useCallback((actorId: string) => {
+    closeGazette();
+    handleOpenUrgentActor(actorId);
+  }, [handleOpenUrgentActor]);
+
+  const handleToggleCinemaMode = useCallback(() => {
+    const next = !getWorldStoreSnapshot().cinemaMode;
+    playOverviewToggle(next);
+    toggleCinemaMode();
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(tNow(next ? "theWorld.cinema.enteredToast" : "theWorld.cinema.exitedToast"));
+  }, [deps, pushToast]);
+
+  const handleToggleBgm = useCallback(() => {
+    const next = !getWorldStoreSnapshot().bgmEnabled;
+    toggleBgm();
+    const tNow = getWorldT(deps.commodore.language());
+    pushToast(tNow(next ? "theWorld.hud.bgmOnToast" : "theWorld.hud.bgmOffToast"));
+  }, [deps, pushToast]);
+
+  const handleGiftHat = useCallback((
+    commodoreId: string,
+    hat: WorldAdmiralHat | null,
+    commodoreName: string,
+  ) => {
+    setCommodoreGift(commodoreId, hat);
+    playDistrictSelect();
+    const tNow = getWorldT(deps.commodore.language());
+    if (hat === null) {
+      pushToast(tNow("theWorld.admiral.giftClearedToast", { name: commodoreName }));
+    } else {
+      pushToast(tNow("theWorld.admiral.giftGivenToast", {
+        name: commodoreName,
+        hat: tNow(HAT_LABEL_KEYS[hat]),
+      }));
+    }
+  }, [deps, pushToast]);
+
+  const commodoreActors = useMemo(
+    () => snapshot.actors.filter((a) => a.role === "commodore" && Boolean(a.commodoreId)),
+    [snapshot.actors],
+  );
+
   const handleTestRainbow = useCallback(() => {
     const tNow = getWorldT(deps.commodore.language());
     runtimeRef.current?.triggerRainbow(18);
@@ -1114,7 +1240,11 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     window.addEventListener("pointercancel", onCancel);
   }, [deps, pushToast]);
 
-  const anyModalOpen = store.questBoardOpen || store.warRoomOpen || store.admiralCustomizerOpen || controlsGuideOpen;
+  const anyModalOpen = store.questBoardOpen
+    || store.warRoomOpen
+    || store.admiralCustomizerOpen
+    || store.gazetteOpen
+    || controlsGuideOpen;
   const dialogueOpen = selectedActor !== null && store.interactionMode === "dialogue";
   const panelMode = selectedActor !== null && isPanelMode(store.interactionMode) ? store.interactionMode : null;
   const playerLabelRevealed = playerHovered || store.admiralCustomizerOpen;
@@ -1122,7 +1252,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
   return (
     <div
       ref={rootRef}
-      className={`the-world-root${store.lifecycle === "diving" ? " is-diving" : ""}${store.lifecycle === "escaping" ? " is-escaping" : ""}${store.photoMode ? " is-photo-mode" : ""}`}
+      className={`the-world-root${store.lifecycle === "diving" ? " is-diving" : ""}${store.lifecycle === "escaping" ? " is-escaping" : ""}${store.photoMode ? " is-photo-mode" : ""}${store.cinemaMode ? " is-cinema-mode" : ""}`}
       role="region"
       aria-label={t("theWorld.stage.aria")}
       onContextMenu={handleRootContextMenu}
@@ -1150,6 +1280,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         interactionMode={store.interactionMode}
         anyModalOpen={anyModalOpen}
         photoMode={store.photoMode}
+        cinemaMode={store.cinemaMode}
         sittingAtCampfire={store.sittingAtCampfire}
         playerLabelRevealed={playerLabelRevealed}
         villages={snapshot.villages}
@@ -1166,6 +1297,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         onSitAtCampfire={handleSitAtCampfireFromSign}
         onOpenQuestBoard={handleOpenQuestBoardFromSign}
         onInteractActor={handleInteractActorFromLabel}
+        onOpenUrgentActor={handleOpenUrgentActor}
       />
 
       {store.lifecycle === "open" ? (
@@ -1235,7 +1367,14 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             reducedMotion={deps.isReducedMotion()}
             toastMessage={celebrationToast ?? toastMessage}
             toastKind={celebrationToast ? "celebration" : "info"}
-            hideBottom={dialogueOpen || panelMode !== null || anyModalOpen || store.sittingAtCampfire || (store.overviewMode && !store.chatActive)}
+            hideBottom={
+              dialogueOpen
+              || panelMode !== null
+              || anyModalOpen
+              || store.sittingAtCampfire
+              || store.cinemaMode
+              || (store.overviewMode && !store.chatActive)
+            }
             urgentQuestCount={questBoardData.totalUrgentCount}
             weatherMode={store.weatherMode}
             onSelectWeather={handleSelectWeather}
@@ -1246,13 +1385,16 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             onTestLevelUp={handleTestLevelUp}
             onTestRainbow={handleTestRainbow}
             onOpenWarRoom={handleOpenWarRoom}
+            onOpenGazette={handleOpenGazette}
+            onToggleCinemaMode={handleToggleCinemaMode}
+            onToggleBgm={handleToggleBgm}
             onOpenAdmiralCustomizer={handleOpenAdmiralCustomizer}
             onOpenCustomizer={handleOpenAdmiralCustomizer}
             onTriggerEmote={handleTriggerEmote}
             onToggleControlsGuide={handleToggleControlsGuide}
             debugPanelVisible={debugPanelVisible}
           />
-          {snapshot.villages.length === 0 && !store.photoMode && !anyModalOpen && !store.overviewMode && store.interactionMode === "closed" ? (
+          {snapshot.villages.length === 0 && !store.photoMode && !store.cinemaMode && !anyModalOpen && !store.overviewMode && store.interactionMode === "closed" ? (
             <section
               className="the-world-empty-welcome"
               aria-label={t("theWorld.emptyWorld.title")}
@@ -1275,7 +1417,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               </button>
             </section>
           ) : null}
-          {!dialogueOpen && panelMode === null && !anyModalOpen && !store.admiralCustomizerOpen ? (
+          {!dialogueOpen && panelMode === null && !anyModalOpen && !store.admiralCustomizerOpen && !store.cinemaMode ? (
             <WorldMinimap
               ref={minimapRef}
               villages={snapshot.villages}
@@ -1297,12 +1439,25 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             onClose={handleCloseControlsGuide}
             locale={locale}
           />
-          {panelMode === null && !anyModalOpen ? (
+          {panelMode === null && !anyModalOpen && !store.cinemaMode ? (
             <WorldChatLog
               actors={snapshot.actors}
               deps={deps}
               hidden={dialogueOpen || (store.overviewMode && !store.chatActive)}
               onStatusBanner={pushToast}
+            />
+          ) : null}
+          {store.gazetteOpen ? (
+            <WorldGazette
+              open
+              snapshot={snapshot}
+              questData={questBoardData}
+              weatherMode={store.weatherMode}
+              timeMode={store.timeMode}
+              locale={locale}
+              onWarpToVillage={handleWarpFromGazette}
+              onTalkToCommodore={handleTalkFromGazette}
+              onClose={handleCloseGazette}
             />
           ) : null}
           {store.questBoardOpen ? (
@@ -1330,12 +1485,15 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             <WorldAdmiralCustomizer
               style={store.admiralStyle}
               locale={locale}
+              commodores={commodoreActors}
+              commodoreGifts={store.commodoreGifts}
               onChangeStyle={handleChangeAdmiralStyle}
+              onGiftHat={handleGiftHat}
               onPreviewChange={handlePreviewAdmiralChange}
               onClose={handleCloseAdmiralCustomizer}
             />
           ) : null}
-          {selectedDistrict && store.interactionMode === "closed" && !anyModalOpen ? (
+          {selectedDistrict && store.interactionMode === "closed" && !anyModalOpen && !store.cinemaMode ? (
             <WorldDistrictInspector
               district={selectedDistrict}
               village={selectedVillage}
@@ -1358,7 +1516,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
               onChangeNote={handleChangeDistrictNote}
             />
           ) : null}
-          {store.districtContextMenu && contextMenuDistrict && !store.photoMode && !anyModalOpen ? (
+          {store.districtContextMenu && contextMenuDistrict && !store.photoMode && !store.cinemaMode && !anyModalOpen ? (
             <WorldDistrictQuickMenu
               district={contextMenuDistrict}
               clientX={store.districtContextMenu.clientX}

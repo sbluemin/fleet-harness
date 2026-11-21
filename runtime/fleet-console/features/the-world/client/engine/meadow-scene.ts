@@ -51,6 +51,8 @@ import {
   FOUNTAIN_WATER_VERTEX,
   HIGHLIGHT_FRAGMENT,
   HIGHLIGHT_VERTEX,
+  HOLO_TABLE_RING_FRAGMENT,
+  HOLO_TABLE_RING_VERTEX,
 } from "./meadow-shaders.js";
 import { createMeadowTexturePack } from "./meadow-textures.js";
 import {
@@ -779,6 +781,61 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     readonly phase: number;
   }[] = [];
 
+  // 활성 작업 구역 3D 현장 시각화: 회전 홀로그램 작전 테이블/도면 링 + 지붕 굴뚝 연기 입자 (단일 InstancedMesh 재사용)
+  const MAX_HOLO_TABLES = 24;
+  const SMOKE_PUFFS_PER_ROOF = 4;
+  const MAX_ACTIVE_SMOKE = MAX_HOLO_TABLES * SMOKE_PUFFS_PER_ROOF;
+
+  const holoTableBaseGeo = markSharedGeometry(new CylinderGeometry(0.46, 0.56, 0.54, 8));
+  holoTableBaseGeo.translate(0, 0.27, 0);
+  const holoRingGeo = markSharedGeometry(new PlaneGeometry(1.75, 1.75));
+  holoRingGeo.rotateX(-Math.PI * 0.5);
+  const matHoloRing = markSharedMaterial(new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: {
+      uTime: { value: 0 },
+      uNight: { value: 0 },
+    },
+    vertexShader: HOLO_TABLE_RING_VERTEX,
+    fragmentShader: HOLO_TABLE_RING_FRAGMENT,
+  }));
+
+  const holoTableInst = new InstancedMesh(holoTableBaseGeo, matStoneDark, MAX_HOLO_TABLES);
+  holoTableInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  holoTableInst.frustumCulled = false;
+  holoTableInst.count = 0;
+
+  const holoRingInst = new InstancedMesh(holoRingGeo, matHoloRing, MAX_HOLO_TABLES);
+  holoRingInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  holoRingInst.frustumCulled = false;
+  holoRingInst.renderOrder = 4;
+  holoRingInst.count = 0;
+
+  const activeSmokeInst = new InstancedMesh(smokeGeo, matSmoke, MAX_ACTIVE_SMOKE);
+  activeSmokeInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  activeSmokeInst.frustumCulled = false;
+  activeSmokeInst.count = 0;
+  root.add(holoTableInst, holoRingInst, activeSmokeInst);
+
+  let activeHoloTables: {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+    readonly colorHex: number;
+    readonly phase: number;
+  }[] = [];
+
+  let activeChimneySmokes: {
+    readonly x: number;
+    readonly y: number;
+    readonly z: number;
+    readonly phase: number;
+  }[] = [];
+
   // 살아있는 초원 생태계: 파스텔 나비 16마리(butterfly.glb) + 시냇물 비단잉어 10마리(koi-fish.glb)
   let currentWeather: WorldWeatherMode = "clear";
   let rainStrength = 0;
@@ -1433,6 +1490,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     reeds: 1.12,
     lilypad: 0.19,
     flowerbed: 0.62,
+    "lantern-arch": 3.15,
+    "trophy-statue": 2.45,
   };
   let instancedSlotQueues = new Map<WorldModelSlot, InstancedSlotTransform[]>();
 
@@ -2670,6 +2729,59 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       addContactShadow(b, tx, tz, 0.46 * monumentScale, 0.46 * monumentScale);
     }
 
+    // 3d. 업적 해금 3D 마을 랜드마크 (lantern-arch.glb / trophy-statue.glb)
+    if ((v.overallTier >= 3 || trophyCount >= 1) && assetRegistry.hasCustomModel("lantern-arch")) {
+      const archCandidates: readonly [number, number][] = [
+        [v.x + gateCos * (gateDist * 0.46), v.z + gateSin * (gateDist * 0.46)],
+        [v.x + gateCos * (gateDist * 0.60), v.z + gateSin * (gateDist * 0.60)],
+        [v.x + gateCos * (gateDist + 1.85), v.z + gateSin * (gateDist + 1.85)],
+      ];
+      for (const [ax, az] of archCandidates) {
+        const ay = getTerrainBaseHeight(ax, az);
+        if (ay < 0.05) continue;
+        const hitsDistrict = v.districts.some((d) => Math.hypot(ax - d.x, az - d.z) < d.radius * 0.72 + 1.15);
+        if (hitsDistrict) continue;
+        queueInstancedSlot("lantern-arch", {
+          x: ax,
+          y: ay,
+          z: az,
+          rotationY: gateFaceYaw,
+          scale: 1.0,
+        });
+        addContactShadow(b, ax, az, 1.55, 0.72, gateFaceYaw);
+        addGrassClearZone(ax, az, 1.85);
+        streetlampAnchors.push(new Vector3(ax, ay + 2.35, az));
+        break;
+      }
+    }
+
+    if ((v.overallTier >= 5 || trophyCount >= 2) && assetRegistry.hasCustomModel("trophy-statue")) {
+      const statueCandidates: readonly [number, number][] = [
+        [v.x - perpX * 2.35 - gateCos * 0.85, v.z - perpZ * 2.35 - gateSin * 0.85],
+        [v.x + perpX * 2.35 - gateCos * 0.85, v.z + perpZ * 2.35 - gateSin * 0.85],
+        [v.x - gateCos * 2.45, v.z - gateSin * 2.45],
+        [v.x + perpX * (gateHalfW + 1.65) + gateCos * (gateDist * 0.72), v.z + perpZ * (gateHalfW + 1.65) + gateSin * (gateDist * 0.72)],
+      ];
+      for (const [sx, sz] of statueCandidates) {
+        const sy = getTerrainBaseHeight(sx, sz);
+        if (sy < 0.05) continue;
+        const hitsDistrict = v.districts.some((d) => Math.hypot(sx - d.x, sz - d.z) < d.radius * 0.75 + 1.05);
+        if (hitsDistrict) continue;
+        queueInstancedSlot("trophy-statue", {
+          x: sx,
+          y: sy,
+          z: sz,
+          rotationY: gateFaceYaw,
+          scale: 1.0,
+        });
+        addContactShadow(b, sx, sz, 0.96, 0.96);
+        addGrassClearZone(sx, sz, 1.25);
+        colliders.push({ x: sx, z: sz, r: 0.72 });
+        addCameraOccluder(sx, sz, 0.72, 2.45);
+        break;
+      }
+    }
+
     // 4. 내부 Theater 구역(District) 건축물 배치
     if (v.districts.length === 0) {
       // 미배정 사령관 마을: 개척 대기 아늑한 벤치 & 모닥불 쉼터
@@ -3269,6 +3381,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   function syncLiveVillageStates(villages: readonly WorldVillageSpec[]): void {
     const nextEmitters: LiveWorkshopEmitter[] = [];
     const nextBeacons: AnimatedStatusBeacon[] = [];
+    const nextHoloTables: typeof activeHoloTables = [];
+    const nextChimneySmokes: typeof activeChimneySmokes = [];
     workingVillageIds.clear();
 
     const pushBeacon = (
@@ -3293,9 +3407,38 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       });
     };
 
+    const pushHoloAndSmoke = (
+      yardX: number,
+      yardZ: number,
+      roofX: number,
+      roofY: number,
+      roofZ: number,
+      colorHex: number,
+    ) => {
+      if (nextHoloTables.length < MAX_HOLO_TABLES) {
+        const ygy = Math.max(0.08, getTerrainBaseHeight(yardX, yardZ));
+        nextHoloTables.push({
+          x: yardX,
+          y: ygy,
+          z: yardZ,
+          colorHex,
+          phase: yardX * 0.31 + yardZ * 0.27,
+        });
+      }
+      if (nextChimneySmokes.length < MAX_HOLO_TABLES) {
+        nextChimneySmokes.push({
+          x: roofX,
+          y: roofY,
+          z: roofZ,
+          phase: roofX * 0.23 + roofZ * 0.19,
+        });
+      }
+    };
+
     for (const v of villages) {
       const gy = Math.max(0.1, getTerrainBaseHeight(v.x, v.z));
-      if (v.workStep) {
+      const isVillageWorking = Boolean(v.workStep) || v.activeObjectiveCount > 0;
+      if (isVillageWorking) {
         workingVillageIds.add(v.id);
       }
 
@@ -3310,6 +3453,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       }
 
       let emittedOnDistrict = false;
+      let addedDistrictHolo = false;
       for (const d of v.districts) {
         const dgy = Math.max(0.1, getTerrainBaseHeight(d.x, d.z));
         const roofY = dgy + districtRoofHeight(d.tier);
@@ -3329,16 +3473,38 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
           }
           emittedOnDistrict = true;
         }
+
+        if (d.activeWorkStep || (d.linkedObjectiveIds.length > 0 && v.activeObjectiveCount > 0)) {
+          // 구역 건물 정면 마당에 회전 홀로그램 작전 테이블 + 지붕 굴뚝 연기 활성화
+          const frontDist = Math.max(1.35, d.radius * 0.58);
+          const yardX = d.x + Math.sin(d.rotationY) * frontDist;
+          const yardZ = d.z + Math.cos(d.rotationY) * frontDist;
+          pushHoloAndSmoke(yardX, yardZ, d.x - 0.35, roofY + 0.18, d.z - 0.25, TONE_CRYSTAL_HEX[d.tone]);
+          addedDistrictHolo = true;
+        }
       }
 
       if (v.workStep && !emittedOnDistrict) {
         const kind = classifyWorkStepFx(v.workStep);
         nextEmitters.push({ x: v.x, y: gy + 2.2, z: v.z, kind });
       }
+      if (isVillageWorking && !addedDistrictHolo) {
+        // 활성 목표/작업이 있는 마을 중앙 마당에 홀로그램 작전 테이블 + 대표 건물 지붕 연기 표시
+        const primaryD = v.districts[0];
+        const roofX = primaryD ? primaryD.x - 0.3 : v.x;
+        const roofZ = primaryD ? primaryD.z - 0.2 : v.z;
+        const roofY = primaryD
+          ? Math.max(0.1, getTerrainBaseHeight(primaryD.x, primaryD.z)) + districtRoofHeight(primaryD.tier) + 0.18
+          : gy + 1.85;
+        pushHoloAndSmoke(v.x, v.z, roofX, roofY, roofZ, TONE_CRYSTAL_HEX[v.tone]);
+      }
     }
 
     liveWorkshopEmitters = nextEmitters;
     animatedStatusBeacons = nextBeacons;
+    activeHoloTables = nextHoloTables;
+    activeChimneySmokes = nextChimneySmokes;
+
     statusBeaconInst.count = nextBeacons.length;
     statusRingInst.count = nextBeacons.length;
     for (let i = 0; i < nextBeacons.length; i += 1) {
@@ -3348,6 +3514,16 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
     if (statusBeaconInst.instanceColor) statusBeaconInst.instanceColor.needsUpdate = true;
     if (statusRingInst.instanceColor) statusRingInst.instanceColor.needsUpdate = true;
+
+    holoTableInst.count = nextHoloTables.length;
+    holoRingInst.count = nextHoloTables.length;
+    for (let i = 0; i < nextHoloTables.length; i += 1) {
+      statusColorScratch.setHex(nextHoloTables[i]!.colorHex);
+      holoRingInst.setColorAt(i, statusColorScratch);
+    }
+    if (holoRingInst.instanceColor) holoRingInst.instanceColor.needsUpdate = true;
+
+    activeSmokeInst.count = nextChimneySmokes.length * SMOKE_PUFFS_PER_ROOF;
   }
 
   // rAF 제로 할당 스크래치 변수
@@ -3678,6 +3854,53 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         notePinInst.instanceMatrix.needsUpdate = true;
       }
 
+      // 활성 작업 구역 회전 홀로그램 작전 테이블 & 도면 링 (2 draw calls, 비활성 시 0)
+      if (activeHoloTables.length > 0) {
+        matHoloRing.uniforms["uTime"]!.value = elapsed;
+        matHoloRing.uniforms["uNight"]!.value = nightFactor;
+        for (let i = 0; i < activeHoloTables.length; i += 1) {
+          const ht = activeHoloTables[i]!;
+          animPos.set(ht.x, ht.y, ht.z);
+          animQuat.identity();
+          animScale.set(1, 1, 1);
+          animMat.compose(animPos, animQuat, animScale);
+          holoTableInst.setMatrixAt(i, animMat);
+
+          const bob = Math.sin(elapsed * 2.2 + ht.phase) * 0.06;
+          animPos.set(ht.x, ht.y + 0.72 + bob, ht.z);
+          animEuler.set(0, elapsed * 0.75 + ht.phase, 0);
+          animQuat.setFromEuler(animEuler);
+          animScale.set(1, 1, 1);
+          animMat.compose(animPos, animQuat, animScale);
+          holoRingInst.setMatrixAt(i, animMat);
+        }
+        holoTableInst.instanceMatrix.needsUpdate = true;
+        holoRingInst.instanceMatrix.needsUpdate = true;
+      }
+
+      // 활성 작업 구역 지붕 굴뚝 연기 입자 (단일 InstancedMesh 1 draw call, 비활성 시 0)
+      if (activeChimneySmokes.length > 0) {
+        animQuat.identity();
+        let smokeIdx = 0;
+        for (let i = 0; i < activeChimneySmokes.length; i += 1) {
+          const cs = activeChimneySmokes[i]!;
+          for (let p = 0; p < SMOKE_PUFFS_PER_ROOF; p += 1) {
+            const life = ((elapsed * 0.30 + cs.phase * 0.37 + p / SMOKE_PUFFS_PER_ROOF) % 1 + 1) % 1;
+            const driftX = life * 0.58 + Math.sin(elapsed * 1.5 + cs.phase + p * 1.7) * 0.10;
+            const driftZ = -life * 0.24 + Math.cos(elapsed * 1.2 + cs.phase + p) * 0.08;
+            const sy = cs.y + life * 2.15;
+            const envelope = Math.sin(life * Math.PI);
+            const sc = (0.38 + life * 1.05) * envelope;
+            animPos.set(cs.x + driftX, sy, cs.z + driftZ);
+            animScale.setScalar(Math.max(0.01, sc));
+            animMat.compose(animPos, animQuat, animScale);
+            activeSmokeInst.setMatrixAt(smokeIdx, animMat);
+            smokeIdx += 1;
+          }
+        }
+        activeSmokeInst.instanceMatrix.needsUpdate = true;
+      }
+
       // 살아있는 생태계 1: 파스텔 나비 16마리 (비/눈/야간 자동 숨김)
       const butterfliesVisible =
         currentWeather !== "rain" && currentWeather !== "snow" && nightFactor <= 0.45 && butterflyLayers.length > 0;
@@ -3836,6 +4059,12 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       dispatchPennantGeo.dispose();
       notePinInst.dispose();
       notePinGeo.dispose();
+      holoTableInst.dispose();
+      holoRingInst.dispose();
+      activeSmokeInst.dispose();
+      holoTableBaseGeo.dispose();
+      holoRingGeo.dispose();
+      matHoloRing.dispose();
       bladeHubGeo.dispose();
       bladeSparGeo.dispose();
       bladeSailGeo.dispose();

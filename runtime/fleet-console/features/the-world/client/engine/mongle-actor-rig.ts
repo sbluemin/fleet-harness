@@ -29,7 +29,7 @@ import {
 } from "../../../workspace/shared/mongle-3d-glsl.js";
 import type { MongleActivity, MongleRole, MongleShape, MongleState, QuakerMorph } from "../../../workspace/shared/avatars.js";
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
-import type { WorldAdmiralHat } from "../../shared/world-types.js";
+import type { WorldAdmiralCape, WorldAdmiralHat } from "../../shared/world-types.js";
 
 /**
  * `mongle-3d-glsl.ts` (현행 2D 사이드바 아바타와 동일 SSOT) 기반 360° 3D 월드 볼류메트릭 캐릭터 메쉬.
@@ -70,6 +70,8 @@ uniform int uState;
 uniform int uActivity;
 uniform int uRole;
 uniform int uHat;
+uniform int uGiftHat;
+uniform int uCape;
 uniform int uWorldAnim;
 uniform int uExpression;
 uniform float uAnimPhase;
@@ -408,8 +410,8 @@ float sdStarlightCape(vec3 q, float t) {
   return sdRoundBox(cp, vec3(halfW, halfH, 0.015), 0.022) * 0.65;
 }
 
-vec2 mapAdmiralHats(vec2 res, vec3 hatOrigin, float hb, float sMin) {
-  if (uHat == 0) {
+vec2 mapAdmiralHats(vec2 res, vec3 hatOrigin, float hb, float sMin, int hatCode) {
+  if (hatCode == 0) {
     vec3 cp = hatOrigin - vec3(0.0, hb, 0.0); cp.yz = rot2(-0.14 - hb * 0.65) * cp.yz;
     float crown = smin(sdEllipsoid(cp - vec3(0.0, 0.17, -0.02), vec3(0.55, 0.165, 0.49)),
                        sdEllipsoid(cp - vec3(0.0, 0.22,  0.22), vec3(0.26, 0.12,  0.22)), 0.10);
@@ -424,7 +426,7 @@ vec2 mapAdmiralHats(vec2 res, vec3 hatOrigin, float hb, float sMin) {
                     sdCapsule(ap, vec3(-0.044,0.02,0.0), vec3(0.044,0.02,0.0), 0.014));
     float cord = sdCapsule(cp - vec3(0.0, -0.058, 0.41), vec3(-0.24, 0.018, -0.06), vec3(0.24, 0.018, -0.06), 0.017);
     res = opU(res, vec2(min(anc, cord) * sMin, 4.0));
-  } else if (uHat == 1) {
+  } else if (hatCode == 1) {
     // 황금 왕관 (Crown + 2차 바운스)
     vec3 crp = hatOrigin - vec3(0.0, 0.02 + hb, 0.0);
     crp.yz = rot2(-0.10 - hb * 0.65) * crp.yz;
@@ -438,7 +440,7 @@ vec2 mapAdmiralHats(vec2 res, vec3 hatOrigin, float hb, float sMin) {
     float orb = sdSphere(sp - vec3(0.34, 0.30, 0.0), 0.042);
     res = opU(res, vec2(min(min(band, rim), spike) * sMin, 4.0));
     res = opU(res, vec2(orb * sMin, 6.0));
-  } else if (uHat == 2) {
+  } else if (hatCode == 2) {
     // 탐험가 챙모자 (Explorer Hat + 2차 바운스)
     vec3 epHat = hatOrigin - vec3(0.0, 0.01 + hb, 0.0);
     epHat.yz = rot2(-0.12 - hb * 0.65) * epHat.yz;
@@ -484,8 +486,10 @@ vec2 mapScene(vec3 p, AnimRig rig) {
     // mId == 11: 몽글몽글 소프트 새틴 쿠션 마리오 스타
     vec2 res = vec2(sdMarioStar(q, rig) * sMin, 11.0);
 
-    // 등 뒤에서만 펄럭이는 딥 인디고 미니 별빛 망토 (앞면은 깨끗한 노란 별 유지)
-    res = opU(res, vec2(sdStarlightCape(q, t) * sMin, 9.0));
+    // 등 뒤에서만 펄럭이는 3종 미니 망토 (uCape == 3이면 망토 없음)
+    if (uCape != 3) {
+      res = opU(res, vec2(sdStarlightCape(q, t) * sMin, 9.0));
+    }
 
     // 4종 모자 100% 호환 + 모자 없음 전용: 별 꼭짓점 주변을 은은히 맴도는 작은 별빛 반짝임 2기
     float hb = rig.hatBounce;
@@ -497,7 +501,7 @@ vec2 mapScene(vec3 p, AnimRig rig) {
       res = opU(res, vec2(motes * sMin, 10.0));
     } else {
       float hatY = (uHat == 1) ? 0.52 : 0.49;
-      res = mapAdmiralHats(res, q - vec3(0.0, hatY, 0.0), hb, sMin);
+      res = mapAdmiralHats(res, q - vec3(0.0, hatY, 0.0), hb, sMin, uHat);
     }
     return res;
   }
@@ -521,9 +525,14 @@ vec2 mapScene(vec3 p, AnimRig rig) {
     vec3 bp = pq - vec3(0.0, -0.16, 0.47);
     res = opU(res, vec2(sdRoundCone(bp, vec3(0.0, 0.048, -0.02), vec3(0.0, -0.082, 0.105), 0.090, 0.030) * sMin, 6.0));
 
-    res = mapAdmiralHats(res, pq - vec3(0.0, 0.41, 0.0), rig.hatBounce, sMin);
+    res = mapAdmiralHats(res, pq - vec3(0.0, 0.41, 0.0), rig.hatBounce, sMin, uHat);
   } else {
-    if (uRole == 0) {
+    if (uGiftHat >= 0 && uGiftHat < 3) {
+      // 사령관 선물 모자 착용 (제독모·황금 왕관·탐험가 모자)
+      float topY = shapeCrownY(uShape);
+      float giftY = (uGiftHat == 1) ? (topY + 0.01) : (topY - 0.03);
+      res = mapAdmiralHats(res, q - vec3(0.0, giftY, 0.0), rig.hatBounce, sMin, uGiftHat);
+    } else if (uRole == 0) {
       vec3 sp = q - vec3(-0.56, 0.54 + rig.hatBounce * 0.6, 0.22);
       sp.yz = rot2(0.08) * sp.yz; sp.xz = rot2(-0.18) * sp.xz;
       res = opU(res, vec2(sdEllipsoid(sp, vec3(0.185, 0.185, 0.068)) * sMin, 4.0));
@@ -926,7 +935,7 @@ void main() {
       }
       else if (mId == 4) {
         vec3 gold = mix(toLinear(vec3(0.38, 0.24, 0.06)), toLinear(vec3(0.94, 0.72, 0.25)), 0.25 + 0.78 * wrap) + vec3(0.95, 0.84, 0.50) * spec * 0.55;
-        if (uQuaker == 0 && uStarlight < 0.5 && uRole == 0) {
+        if (uQuaker == 0 && uStarlight < 0.5 && uRole == 0 && (uGiftHat < 0 || uGiftHat >= 3)) {
           vec3 sp = q - vec3(-0.56, 0.54 + rig.hatBounce * 0.6, 0.22); sp.yz = rot2(0.08)*sp.yz; sp.xz = rot2(-0.18)*sp.xz;
           if (sp.z > 0.02) {
             float sm = 1.0 - smoothstep(-0.008, 0.008, sdStar5_2D(vec2(sp.x, -sp.y), 0.132, 0.45));
@@ -937,34 +946,42 @@ void main() {
       }
       else if (mId == 5) coreCol = toLinear(vec3(0.16, 0.20, 0.32)) * (0.35 + 0.82 * wrap);
       else if (mId == 6) {
-        float antennaBoost = (uQuaker == 0 && uRole == 1) ? 1.25 : 1.0;
+        float antennaBoost = (uQuaker == 0 && uRole == 1 && (uGiftHat < 0 || uGiftHat >= 3)) ? 1.25 : 1.0;
         coreCol = toLinear((uQuaker > 0) ? vec3(0.97, 0.67, 0.30) : vec3(1.0, 0.88, 0.34)) * (0.45 + 0.70 * wrap) * antennaBoost;
       }
       else if (mId == 8) {
         coreCol = toLinear(vec3(0.54, 0.33, 0.17)) * (0.36 + 0.80 * wrap) + vec3(0.35, 0.22, 0.10) * spec * 0.18;
       }
       else if (mId == 9) {
-        // 딥 인디고 벨벳 미니 별빛 망토 + 하단 황금 테두리 트림 + 등 중앙 5각 황금 별 문양 & 성좌 점 4개
+        // 3종 벨벳 미니 망토 (0=별빛 딥네이비 · 1=영웅 진홍 · 2=숲 에메랄드) + 황금 트림 + 등 중앙 황금 문양
         float capeRim = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 2.4);
-        vec3 capeVelvet = toLinear(vec3(0.11, 0.14, 0.34)) * (0.42 + 0.72 * wrap)
-          + toLinear(vec3(0.38, 0.48, 0.92)) * capeRim * 0.28;
+        vec3 baseCloth = (uCape == 1)
+          ? vec3(0.68, 0.11, 0.16)
+          : (uCape == 2 ? vec3(0.11, 0.38, 0.22) : vec3(0.11, 0.14, 0.34));
+        vec3 rimTint = (uCape == 1)
+          ? vec3(0.98, 0.46, 0.34)
+          : (uCape == 2 ? vec3(0.42, 0.84, 0.54) : vec3(0.38, 0.48, 0.92));
+        vec3 capeVelvet = toLinear(baseCloth) * (0.42 + 0.72 * wrap)
+          + toLinear(rimTint) * capeRim * 0.30;
         float spd = clamp(uMoveSpeed, 0.0, 7.0);
-        float uCape = clamp((-0.09 - q.y) / 0.48, 0.0, 1.0);
-        float billow = (0.10 + spd * 0.044 + max(0.0, -uJumpVel) * 0.048) * (uCape * uCape);
+        float capeU = clamp((-0.09 - q.y) / 0.48, 0.0, 1.0);
+        float billow = (0.10 + spd * 0.044 + max(0.0, -uJumpVel) * 0.048) * (capeU * capeU);
         float hemY = -0.56 + billow * 0.22;
         float hemDist = q.y - hemY;
-        float goldTrim = (1.0 - smoothstep(0.034, 0.058, hemDist)) * smoothstep(-0.18, -0.32, q.z);
+        float trimBand = (uCape == 1) ? 0.046 : 0.036;
+        float goldTrim = (1.0 - smoothstep(trimBand, trimBand + 0.024, hemDist)) * smoothstep(-0.18, -0.32, q.z);
         float backFace = smoothstep(-0.12, -0.32, q.z);
-        float dBackStar = sdStar5_2D(vec2(q.x, q.y + 0.33), 0.118, 0.45);
+        float dBackStar = sdStar5_2D(vec2(q.x, q.y + 0.33), (uCape == 1) ? 0.132 : 0.118, (uCape == 2) ? 0.52 : 0.45);
         float backStarMask = (1.0 - smoothstep(-0.008, 0.010, dBackStar)) * backFace;
         float starHalo = (1.0 - smoothstep(0.0, 0.095, max(dBackStar, 0.0))) * backFace * 0.30;
         float tw1 = 0.65 + 0.35 * sin(tAnim * 4.2 + 0.5);
         float tw2 = 0.65 + 0.35 * sin(tAnim * 3.7 + 2.4);
         float dots = (1.0 - smoothstep(0.013, 0.022, length(vec2(abs(q.x) - 0.18, q.y + 0.24)))) * tw1
                    + (1.0 - smoothstep(0.011, 0.020, length(vec2(abs(q.x) - 0.20, q.y + 0.42)))) * tw2;
-        dots *= backFace;
+        dots *= backFace * ((uCape == 1) ? 0.35 : 1.0);
         vec3 goldGlow = toLinear(vec3(0.98, 0.80, 0.28)) * (0.58 + 0.55 * wrap) + vec3(0.95, 0.86, 0.52) * spec * 0.50;
-        coreCol = capeVelvet + toLinear(vec3(0.98, 0.84, 0.40)) * (starHalo + dots * 0.72);
+        vec3 sparkTint = (uCape == 2) ? vec3(0.76, 0.98, 0.56) : vec3(0.98, 0.84, 0.40);
+        coreCol = capeVelvet + toLinear(sparkTint) * (starHalo + dots * 0.72);
         coreCol = mix(coreCol, goldGlow, clamp(max(goldTrim, backStarMask), 0.0, 1.0));
       }
       else if (mId == 10) {
@@ -995,10 +1012,12 @@ void main() {
       float dp = sdPlushOnly(ps, rig);
       if (dp > 0.0 && dp < furLen) {
         vec3 qs = toLocal(ps, rig);
-        // 모자 챙 위쪽으로는 몸통 솜결이 새어 나오지 않도록 마스킹 (모자 없음일 때는 별 꼭짓점 솜결까지 전체 허용)
+        // 모자 챙 위쪽으로는 몸통 솜결이 새어 나오지 않도록 마스킹 (선물 모자 착용 일반 몽글이 포함)
         float capMask = ((uQuaker > 0 || uStarlight > 0.5) && uHat != 3)
           ? smoothstep(0.42 + rig.hatBounce, 0.28 + rig.hatBounce, qs.y)
-          : 1.0;
+          : ((uGiftHat >= 0 && uGiftHat < 3)
+            ? smoothstep(shapeCrownY(uShape) + 0.04 + rig.hatBounce, shapeCrownY(uShape) - 0.10 + rig.hatBounce, qs.y)
+            : 1.0);
         float strand = smoothstep(0.24, 0.84, noise3(qs * 78.0));
         float tipLen = furLen * (0.25 + 0.75 * strand);
         float h = dp / max(tipLen, 0.001);
@@ -1060,8 +1079,12 @@ export interface MongleActorRigParams {
 
 export interface MongleActorRig {
   readonly group: Group;
-  /** 제독 아바타 바디 톤 및 모자(`admiral` / `crown` / `explorer` / `none`)를 실시간 변경한다. */
-  setAdmiralStyle(tone: IdentityTone, hat: WorldAdmiralHat): void;
+  /** 제독 아바타 바디 톤 · 모자 · 망토를 실시간 변경한다. */
+  setAdmiralStyle(tone: IdentityTone, hat: WorldAdmiralHat, cape?: WorldAdmiralCape): void;
+  /** 제독 망토(`starlight` / `hero` / `forest` / `none`)를 실시간 변경한다. */
+  setCape(cape: WorldAdmiralCape): void;
+  /** 사령관/제독 선물 모자(`admiral` / `crown` / `explorer` / `none`, `null`이면 기본 외형 복원)를 실시간 적용한다. */
+  setHat(hat: WorldAdmiralHat | null): void;
   updatePose(options: {
     readonly x: number;
     readonly groundY: number;
@@ -1141,6 +1164,13 @@ const ADMIRAL_HAT_CODE: Readonly<Record<WorldAdmiralHat, number>> = {
   none: 3,
 };
 
+const ADMIRAL_CAPE_CODE: Readonly<Record<WorldAdmiralCape, number>> = {
+  starlight: 0,
+  hero: 1,
+  forest: 2,
+  none: 3,
+};
+
 const WORLD_ANIM_CODE: Readonly<Record<WorldAnimMode, number>> = {
   idle: 0,
   walk: 1,
@@ -1184,7 +1214,7 @@ function resolveStarlightRgb(tone: IdentityTone): readonly [number, number, numb
 export function createMongleActorRig(params: MongleActorRigParams): MongleActorRig {
   const group = new Group();
   const isStarlight = params.starlight === true;
-  const boundRad = isStarlight ? 1.62 : 1.46;
+  const boundRad = isStarlight ? 1.62 : 1.56;
   const initRgb = isStarlight
     ? resolveStarlightRgb(params.tone)
     : params.quaker
@@ -1216,6 +1246,8 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       uActivity: { value: 0 },
       uRole: { value: MONGLE_ROLE_CODE[params.role] },
       uHat: { value: 0 },
+      uGiftHat: { value: -1 },
+      uCape: { value: 0 },
       uWorldAnim: { value: 0 },
       uExpression: { value: 0 },
       uAnimPhase: { value: 0 },
@@ -1277,7 +1309,7 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
 
   return {
     group,
-    setAdmiralStyle(tone, hat) {
+    setAdmiralStyle(tone, hat, cape) {
       const baseCol = mat.uniforms["uBaseCol"]!.value as Vector3;
       if (isStarlight) {
         const [r, g, b] = resolveStarlightRgb(tone);
@@ -1292,6 +1324,24 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
         );
       }
       mat.uniforms["uHat"]!.value = ADMIRAL_HAT_CODE[hat];
+      if (cape !== undefined) {
+        mat.uniforms["uCape"]!.value = ADMIRAL_CAPE_CODE[cape];
+      }
+    },
+    setCape(cape) {
+      mat.uniforms["uCape"]!.value = ADMIRAL_CAPE_CODE[cape];
+    },
+    setHat(hat) {
+      if (isStarlight || params.quaker) {
+        mat.uniforms["uHat"]!.value = hat === null ? 0 : ADMIRAL_HAT_CODE[hat];
+        mat.uniforms["uGiftHat"]!.value = -1;
+      } else {
+        const code = hat === null || hat === "none" ? -1 : ADMIRAL_HAT_CODE[hat];
+        mat.uniforms["uGiftHat"]!.value = code;
+        if (code >= 0) {
+          mat.uniforms["uHat"]!.value = code;
+        }
+      }
     },
     updatePose(opts) {
       const centerY = opts.groundY + opts.liftY + 0.62 * params.scale;

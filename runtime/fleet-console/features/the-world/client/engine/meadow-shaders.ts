@@ -390,3 +390,70 @@ void main() {
   fragColor = vec4(col, alpha);
 }
 `;
+
+/**
+ * 활성 작업 구역 마당용 회전 홀로그램 작전 도면 링 셰이더 (InstancedMesh 1 draw call, AdditiveBlending).
+ */
+export const HOLO_TABLE_RING_VERTEX = /* glsl */ `
+out vec2 vUv;
+out vec3 vColor;
+out float vSeed;
+
+void main() {
+  vUv = uv;
+  #ifdef USE_INSTANCING_COLOR
+    vColor = instanceColor;
+  #else
+    vColor = vec3(0.32, 0.86, 1.0);
+  #endif
+  vec3 instOrigin = vec3(0.0);
+  #ifdef USE_INSTANCING
+    instOrigin = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
+    vec4 wp = modelMatrix * instanceMatrix * vec4(position, 1.0);
+  #else
+    vec4 wp = modelMatrix * vec4(position, 1.0);
+  #endif
+  vSeed = fract(sin(dot(instOrigin.xz, vec2(17.3, 41.9))) * 43758.5453) * 6.2831;
+  gl_Position = projectionMatrix * viewMatrix * wp;
+}
+`;
+
+export const HOLO_TABLE_RING_FRAGMENT = /* glsl */ `
+in vec2 vUv;
+in vec3 vColor;
+in float vSeed;
+out vec4 fragColor;
+
+uniform float uTime;
+uniform float uNight;
+
+void main() {
+  vec2 p = vUv * 2.0 - 1.0;
+  float r = length(p);
+  if (r > 1.0) discard;
+
+  float ang = atan(p.y, p.x);
+  float outerRing = smoothstep(0.98, 0.92, r) * smoothstep(0.78, 0.86, r);
+  float ticks = smoothstep(0.15, 0.55, sin(ang * 12.0 - uTime * 2.2 + vSeed));
+  float innerRing = smoothstep(0.58, 0.54, r) * smoothstep(0.45, 0.50, r);
+  float innerDash = smoothstep(-0.2, 0.35, sin(ang * 6.0 + uTime * 3.1 + vSeed));
+
+  // 회전 레이더 스캔선 + 중앙 좌표 십자
+  float scan = smoothstep(0.84, 0.99, cos(ang - uTime * 2.6 - vSeed)) * smoothstep(0.90, 0.14, r) * 0.42;
+  float crossH = smoothstep(0.045, 0.012, abs(p.y)) * smoothstep(0.62, 0.08, abs(p.x)) * 0.45;
+  float crossV = smoothstep(0.045, 0.012, abs(p.x)) * smoothstep(0.62, 0.08, abs(p.y)) * 0.45;
+  float coreDot = smoothstep(0.16, 0.04, r) * (0.72 + 0.28 * sin(uTime * 4.5 + vSeed));
+
+  float pattern = outerRing * (0.55 + ticks * 0.45)
+    + innerRing * (0.45 + innerDash * 0.55) * 0.85
+    + scan + crossH + crossV + coreDot;
+  float baseWash = smoothstep(0.92, 0.10, r) * 0.16;
+
+  float alpha = clamp(pattern * 0.78 + baseWash, 0.0, 0.92) * (0.85 + uNight * 0.25);
+  if (alpha < 0.02) discard;
+
+  vec3 col = mix(vColor, vec3(0.94, 0.99, 1.0), clamp(coreDot * 0.65 + outerRing * 0.35, 0.0, 0.85));
+  col *= 1.05 + uNight * 0.35;
+  fragColor = vec4(col, alpha);
+}
+`;

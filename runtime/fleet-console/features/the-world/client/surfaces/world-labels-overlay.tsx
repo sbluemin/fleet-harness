@@ -82,6 +82,7 @@ export interface WorldLabelsOverlayProps {
   readonly interactionMode: WorldInteractionMode;
   readonly anyModalOpen: boolean;
   readonly photoMode: boolean;
+  readonly cinemaMode?: boolean | undefined;
   readonly sittingAtCampfire: boolean;
   readonly playerLabelRevealed: boolean;
   readonly villages: readonly WorldVillageSpec[];
@@ -101,6 +102,7 @@ export interface WorldLabelsOverlayProps {
   readonly onSitAtCampfire: () => void;
   readonly onOpenQuestBoard: () => void;
   readonly onInteractActor: (actorId: string) => void;
+  readonly onOpenUrgentActor?: ((actorId: string) => void) | undefined;
 }
 
 export const WorldLabelsOverlay = memo(
@@ -111,6 +113,7 @@ export const WorldLabelsOverlay = memo(
       interactionMode,
       anyModalOpen,
       photoMode,
+      cinemaMode = false,
       sittingAtCampfire,
       playerLabelRevealed,
       villages,
@@ -127,6 +130,7 @@ export const WorldLabelsOverlay = memo(
       onSitAtCampfire,
       onOpenQuestBoard,
       onInteractActor,
+      onOpenUrgentActor,
     },
     ref,
   ) {
@@ -397,13 +401,14 @@ export const WorldLabelsOverlay = memo(
       },
     }), [applyAnchorPosition]);
 
-    const showWorldSigns = lifecycle === "open" && interactionMode === "closed" && !anyModalOpen;
+    const showWorldSigns = lifecycle === "open" && interactionMode === "closed" && !anyModalOpen && !cinemaMode;
     const showPlayerLabel =
       lifecycle === "open"
       && cameraMode === "follow"
       && interactionMode === "closed"
       && !anyModalOpen
       && !photoMode
+      && !cinemaMode
       && playerLabelRevealed;
     const showDistrictTooltip =
       showWorldSigns
@@ -553,7 +558,17 @@ export const WorldLabelsOverlay = memo(
                   </span>
                 );
               })() : null}
-              {lbl.isNearPlayer && interactionMode === "closed" ? (
+              {lbl.needsAttention && !cinemaMode && !photoMode && !anyModalOpen ? (
+                <button
+                  type="button"
+                  className="the-world-urgent-beacon"
+                  aria-label={t("theWorld.urgent.beaconAria", { name: lbl.name })}
+                  onClick={() => (onOpenUrgentActor ?? onInteractActor)(lbl.actorId)}
+                >
+                  <span aria-hidden="true">{lbl.role === "commodore" ? "?" : "!"}</span>
+                </button>
+              ) : null}
+              {lbl.isNearPlayer && interactionMode === "closed" && !cinemaMode ? (
                 <button
                   type="button"
                   className="the-world-interact-prompt"

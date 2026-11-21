@@ -31,7 +31,10 @@ import {
   WORLD_GUILD_HALL_POS,
   WORLD_NOTICE_BOARD_POS,
   type WorldActorEmote,
+  type WorldAdmiralCape,
   type WorldAdmiralHat,
+  type WorldAdmiralStyle,
+  type WorldAdmiralTrail,
   type WorldCameraMode,
   type WorldChoreographyCommand,
   type WorldDistrictSpec,
@@ -58,14 +61,18 @@ import {
   createPlayerAndCameraController,
   type CameraFocusFraming,
   type CameraOccluder,
+  type CinemaCameraTarget,
 } from "./player-controller.js";
 import { createSkyAndLighting } from "./sky-and-lighting.js";
 import {
   playFootstep,
   playJump,
+  playLevelUpFanfare,
   playMongleChirp,
   playRallyHorn,
+  setBgmEnabled,
   setRainAmbience,
+  updateBgmEnvironment,
   type WorldFootstepSurface,
 } from "./world-audio.js";
 
@@ -166,6 +173,8 @@ export interface WorldRuntimeConfig {
   readonly onOverviewAutoExit?: (() => void) | undefined;
   /** 모닥불 벤치 불멍 중 WASD/Space로 자동 기상할 때 스토어와 동기화한다. */
   readonly onCampfireStandUp?: (() => void) | undefined;
+  /** 관전/작업 동반자 시네마 모드의 현재 스포트라이트 대상이 바뀔 때 라벨을 전달한다. */
+  readonly onCinemaSpotlight?: ((label: string) => void) | undefined;
   /** 액터 라벨의 구조적 변화(목록·말풍선·근접·선택·주의 상태)가 있을 때만 호출된다(평시 0Hz). */
   readonly onLabelsStructureChanged: (labels: readonly WorldActorLabelMeta[]) => void;
   /** 매 프레임 DOM `style.transform` 직접 갱신용 스크래치 좌표 콜백(React 리렌더 0). */
@@ -182,9 +191,17 @@ export interface WorldRuntimeHandle {
     readonly selectedActorId: string | null;
   }): void;
   setOverviewMode(enabled: boolean): void;
+  setCinemaMode(enabled: boolean): void;
   setWeather(mode: WorldWeatherMode): void;
   triggerRainbow(durationSec?: number): void;
-  setAdmiralStyle(tone: IdentityTone, hat: WorldAdmiralHat): void;
+  setAdmiralStyle(style: WorldAdmiralStyle): void;
+  setAdmiralStyle(
+    tone: IdentityTone,
+    hat: WorldAdmiralHat,
+    cape?: WorldAdmiralCape,
+    trail?: WorldAdmiralTrail,
+  ): void;
+  setCommodoreGifts(gifts: Readonly<Record<string, WorldAdmiralHat>>): void;
   setCustomizerMode(open: boolean): void;
   triggerCustomizerPreviewBounce(): void;
   setCampfireSit(sitting: boolean): void;
@@ -294,6 +311,17 @@ type MeadowSceneS8 = ReturnType<typeof createMeadowScene> & {
   getSurfaceType?: ((x: number, z: number) => WorldFootstepSurface) | undefined;
   getCameraOccluders?: (() => readonly CameraOccluder[]) | undefined;
 };
+
+type MongleActorRigS13 = MongleActorRig & {
+  setCape?: ((cape: WorldAdmiralCape) => void) | undefined;
+  setHat?: ((hat: WorldAdmiralHat | null) => void) | undefined;
+};
+
+const TRAIL_STARDUST_COLORS = [0xffe57f, 0xc4b5fd, 0x7dd3fc] as const;
+const TRAIL_SAKURA_COLORS = [0xf9a8d4, 0xfbcfe8, 0xf472b6] as const;
+const TRAIL_RAINBOW_COLORS = [0xfca5a5, 0xfdba74, 0xfde047, 0x86efac, 0x7dd3fc, 0xa5b4fc, 0xd8b4fe] as const;
+const CINEMA_CYCLE_SEC = 11.0;
+const STREAM_BRIDGE_SPOTLIGHT = { x: 8.6, z: 12.35 } as const;
 
 function isInsideViewport(x: number, y: number, cssW: number, cssH: number): boolean {
   return x >= -VIEWPORT_MARGIN_X
@@ -525,6 +553,23 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let playerEmoteHop = 0;
   let playerEmoteKind: "wave" | "cheer" | "spin" | null = null;
   let customizerOpen = false;
+  let cinemaMode = false;
+  let cinemaTimer = 0;
+  let cinemaStopIndex = 0;
+  let lastCinemaSpotlight = "";
+  let currentAdmiralTrail: WorldAdmiralTrail = "stardust";
+  let currentCommodoreGifts: Record<string, WorldAdmiralHat> = {};
+  let snapshotPrimed = false;
+  const prevVillageDoneCounts = new Map<string, number>();
+  let lastBgmNight = -1;
+  let lastBgmWeather: WorldWeatherMode | null = null;
+  const cinemaTargetScratch: { x: number; y: number; z: number; dist: number; pitch: number } = {
+    x: 0,
+    y: 1.0,
+    z: 0,
+    dist: 9.0,
+    pitch: 0.30,
+  };
   let playerEmoteTimer = 0;
   let playerEmotePhase = 0;
   let playerLookYaw = 0;
@@ -555,6 +600,101 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     while (d < -Math.PI) d += Math.PI * 2;
     return d;
   };
+  const isEnglishDoc = () =>
+    typeof document !== "undefined" && document.documentElement.lang.toLowerCase().startsWith("en");
+
+  const resolveTrailColor = (trail: WorldAdmiralTrail, step: number): number | null => {
+    if (trail === "none") return null;
+    if (trail === "sakura") return TRAIL_SAKURA_COLORS[step % TRAIL_SAKURA_COLORS.length]!;
+    if (trail === "rainbow") return TRAIL_RAINBOW_COLORS[step % TRAIL_RAINBOW_COLORS.length]!;
+    return TRAIL_STARDUST_COLORS[step % TRAIL_STARDUST_COLORS.length]!;
+  };
+
+  const resolveToneHex = (tone: IdentityTone | undefined): number => {
+    if (!tone) return 0xfbbf24;
+    const rgb = PLUSH_VIVID_TONES[tone];
+    return (Math.round(rgb[0] * 255) << 16)
+      | (Math.round(rgb[1] * 255) << 8)
+      | Math.round(rgb[2] * 255);
+  };
+
+  const applyGiftHatForSpec = (
+    spec: { readonly id: string; readonly role: string; readonly commodoreId?: string | undefined },
+    rig: MongleActorRig,
+  ): void => {
+    if (spec.role !== "commodore") return;
+    const gift = (spec.commodoreId ? currentCommodoreGifts[spec.commodoreId] : undefined)
+      ?? currentCommodoreGifts[spec.id]
+      ?? null;
+    (rig as MongleActorRigS13).setHat?.(gift);
+  };
+
+  const resolveCinemaSpotlight = (index: number): { readonly target: CinemaCameraTarget; readonly label: string } => {
+    // 순회 후보: (1) 작업 중인 사령관들 → (2) 중앙 모닥불 → (3) 시냇물 목교 → (4) 최고 Tier 마을
+    const stops: { x: number; y: number; z: number; dist: number; pitch: number; label: string }[] = [];
+    for (const m of director.motions.values()) {
+      if (m.spec.role !== "commodore") continue;
+      const village = currentVillages.find((v) => v.commodoreId === m.spec.commodoreId);
+      const working = m.spec.state === "running" || m.spec.activity !== null || (village?.workStep ?? null) !== null;
+      if (working) {
+        const gy = meadow.getGroundHeight(m.x, m.z);
+        stops.push({
+          x: m.x,
+          y: gy + 0.92,
+          z: m.z,
+          dist: 7.4,
+          pitch: 0.28,
+          label: m.spec.name,
+        });
+      }
+    }
+    const en = isEnglishDoc();
+    // 중앙 모닥불 광장
+    const cfGy = meadow.getGroundHeight(WORLD_CAMPFIRE_BENCH_POS.faceX, WORLD_CAMPFIRE_BENCH_POS.faceZ);
+    stops.push({
+      x: WORLD_CAMPFIRE_BENCH_POS.faceX,
+      y: cfGy + 0.85,
+      z: WORLD_CAMPFIRE_BENCH_POS.faceZ,
+      dist: 8.6,
+      pitch: 0.30,
+      label: en ? "Central Campfire" : "중앙 모닥불",
+    });
+    // 동쪽 시냇물 아치 목교
+    const brGy = meadow.getGroundHeight(STREAM_BRIDGE_SPOTLIGHT.x, STREAM_BRIDGE_SPOTLIGHT.z);
+    stops.push({
+      x: STREAM_BRIDGE_SPOTLIGHT.x,
+      y: brGy + 0.95,
+      z: STREAM_BRIDGE_SPOTLIGHT.z,
+      dist: 10.4,
+      pitch: 0.34,
+      label: en ? "Stream Bridge" : "시냇물 목교",
+    });
+    // 최고 발전 Tier 마을
+    let topVillage: WorldVillageSpec | null = null;
+    for (const v of currentVillages) {
+      if (!topVillage || v.overallTier > topVillage.overallTier || (v.overallTier === topVillage.overallTier && v.totalEntries > topVillage.totalEntries)) {
+        topVillage = v;
+      }
+    }
+    if (topVillage) {
+      const vGy = meadow.getGroundHeight(topVillage.x, topVillage.z);
+      stops.push({
+        x: topVillage.x,
+        y: vGy + 1.35,
+        z: topVillage.z,
+        dist: 13.6,
+        pitch: 0.42,
+        label: `${topVillage.label} · ${topVillage.overallTierCode}`,
+      });
+    }
+    const chosen = stops[Math.abs(index) % stops.length]!;
+    cinemaTargetScratch.x = chosen.x;
+    cinemaTargetScratch.y = chosen.y;
+    cinemaTargetScratch.z = chosen.z;
+    cinemaTargetScratch.dist = chosen.dist;
+    cinemaTargetScratch.pitch = chosen.pitch;
+    return { target: cinemaTargetScratch, label: chosen.label };
+  };
 
   const tick = (now: number) => {
     if (disposed) return;
@@ -577,6 +717,22 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     const focusedMotion = focusedActorId ? director.motions.get(focusedActorId) ?? null : null;
     const interactionKey = currentInteractionMode as string;
     const isConversing = interactionKey === "dialogue" || interactionKey === "chat";
+    const cinemaActiveNow = cinemaMode && !interacting && !customizerOpen && currentLifecycle === "open";
+    let activeCinemaTarget: CinemaCameraTarget | null = null;
+    if (cinemaActiveNow) {
+      cinemaTimer += dt;
+      if (cinemaTimer >= CINEMA_CYCLE_SEC) {
+        cinemaTimer -= CINEMA_CYCLE_SEC;
+        cinemaStopIndex += 1;
+      }
+      const spot = resolveCinemaSpotlight(cinemaStopIndex);
+      activeCinemaTarget = spot.target;
+      if (spot.label !== lastCinemaSpotlight) {
+        lastCinemaSpotlight = spot.label;
+        config.onCinemaSpotlight?.(spot.label);
+      }
+    }
+
     const focusFraming: CameraFocusFraming =
       focusedMotion !== null
         ? interactionKey === "dialogue"
@@ -586,7 +742,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
             : "none"
         : customizerOpen
           ? "customizer"
-          : "none";
+          : cinemaActiveNow
+            ? "cinema"
+            : "none";
 
     const resolveSurface = (x: number, z: number): WorldFootstepSurface =>
       meadow.getSurfaceType?.(x, z) ?? (meadow.isOnBridge(x, z) ? "wood" : "grass");
@@ -596,9 +754,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       lifecycle: currentLifecycle,
       cameraMode: currentCameraMode,
       reducedMotion: config.isReducedMotion(),
-      inputLocked: interacting || customizerOpen,
+      inputLocked: interacting || customizerOpen || cinemaActiveNow,
       focusActorPos: focusedMotion ? { x: focusedMotion.x, z: focusedMotion.z } : null,
       focusFraming,
+      cinemaTarget: activeCinemaTarget,
       camera,
       getGroundHeight: meadow.getGroundHeight,
       resolveMovement: meadow.resolveMovement,
@@ -607,12 +766,24 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       onOverviewAutoExit: config.onOverviewAutoExit,
       onJump: () => {
         playJump();
-        // 별빛 요정 제독 도약 시 발끝·망토 뒤 작은 별무리 방출 (기존 InstancedMesh 풀 재사용, Draw Call +0)
+        if (currentAdmiralTrail === "none") return;
+        // 제독 도약 시 선택한 궤적 테마(별가루·벚꽃·무지개)로 발끝·망토 뒤 작은 스파클 방출 (Draw Call +0)
         const pCur = playerCtrl.player;
         const bx = -Math.sin(pCur.yaw) * 0.24;
         const bz = -Math.cos(pCur.yaw) * 0.24;
-        director.spawnBurst(pCur.x + bx, pCur.y + 0.26, pCur.z + bz, 0xc4b5fd, 5);
-        director.emitWorkshopFx(pCur.x + bx, pCur.y + 0.44, pCur.z + bz, "ask");
+        for (let k = 0; k < 5; k += 1) {
+          const c = resolveTrailColor(currentAdmiralTrail, k);
+          if (c !== null) {
+            director.spawnTrailSparkle(
+              pCur.x + bx + (Math.random() - 0.5) * 0.36,
+              pCur.y + 0.24 + k * 0.05,
+              pCur.z + bz + (Math.random() - 0.5) * 0.36,
+              c,
+              0.78,
+              currentAdmiralTrail !== "sakura",
+            );
+          }
+        }
       },
       onLand: () => {
         const px = playerCtrl.player.x;
@@ -627,9 +798,21 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           director.spawnDust(px + 0.16, py + 0.06, pz - 0.12);
           director.spawnDust(px - 0.16, py + 0.06, pz + 0.12);
         }
-        // 착지 별빛 스파클(금빛·하늘빛)
-        director.spawnBurst(px, py + 0.18, pz, 0xffe57f, 3);
-        director.emitWorkshopFx(px, py + 0.28, pz, "pulse");
+        if (currentAdmiralTrail !== "none") {
+          for (let k = 0; k < 3; k += 1) {
+            const c = resolveTrailColor(currentAdmiralTrail, k);
+            if (c !== null) {
+              director.spawnTrailSparkle(
+                px + (Math.random() - 0.5) * 0.42,
+                py + 0.18 + k * 0.05,
+                pz + (Math.random() - 0.5) * 0.42,
+                c,
+                0.72,
+                currentAdmiralTrail !== "sakura",
+              );
+            }
+          }
+        }
       },
       onStandUp: config.onCampfireStandUp,
     });
@@ -665,9 +848,13 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       sprintDustAccum = 0;
     }
 
-    // ⭐ 별빛 요정 제독 미세 별가루 궤적 (기존 파티클 풀 재사용, Draw Call +0)
-    // 걷기 ~3.5/s · 질주 ~12/s · 체공 ~7/s — 금빛(0xffe57f)·라벤더(0xc4b5fd)·하늘(0x7dd3fc) 은은한 흩날림
-    if (currentLifecycle === "open" && !playerCtrl.isOverviewMode() && !config.isReducedMotion()) {
+    // ⭐ 드레스업 시즌2 제독 4종 이동 궤적(`stardust`/`sakura`/`rainbow`/`none`, 기존 단일 파티클 풀 재사용, Draw Call +0)
+    if (
+      currentAdmiralTrail !== "none"
+      && currentLifecycle === "open"
+      && !playerCtrl.isOverviewMode()
+      && !config.isReducedMotion()
+    ) {
       const pCur = playerCtrl.player;
       const isAirborne = !pCur.onGround && pCur.playerJumpY > 0.12;
       const isSprintingNow = playerCtrl.isSprinting() && pCur.onGround;
@@ -687,26 +874,17 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           const sx = pCur.x + backX * trailDist + sideX * jitter;
           const sz = pCur.z + backZ * trailDist + sideZ * jitter;
           const sy = pCur.y + (isAirborne ? 0.38 : isSprintingNow ? 0.32 + (stardustStep % 2) * 0.22 : 0.26);
-          const phase = stardustStep % 3;
-          stardustStep = (stardustStep + 1) % 30;
-          if (isSprintingNow) {
-            if (phase === 0) {
-              director.emitWorkshopFx(sx, sy, sz, "ask");
-            } else if (phase === 1) {
-              director.spawnBurst(sx, sy, sz, 0xc4b5fd, 2);
-            } else {
-              director.emitWorkshopFx(sx, sy, sz, "pulse");
-            }
-          } else if (isAirborne) {
-            director.emitWorkshopFx(sx, sy, sz, phase === 1 ? "pulse" : "ask");
-          } else {
-            // 일반 보행: 은은한 금빛·하늘빛 부유 입자 위주 + 매 3번째 발걸음 라벤더 별빛
-            if (phase === 0) {
-              director.emitWorkshopFx(sx, sy, sz, "ask");
-            } else if (phase === 1) {
-              director.emitWorkshopFx(sx, sy, sz, "pulse");
-            } else {
-              director.spawnBurst(sx, sy + 0.08, sz, 0xc4b5fd, 2);
+          const colorHex = resolveTrailColor(currentAdmiralTrail, stardustStep);
+          stardustStep = (stardustStep + 1) % 42;
+          if (colorHex !== null) {
+            const driftUp = currentAdmiralTrail !== "sakura";
+            const scale = isSprintingNow ? 0.78 : isAirborne ? 0.72 : 0.64;
+            director.spawnTrailSparkle(sx, sy, sz, colorHex, scale, driftUp);
+            if (isSprintingNow && stardustStep % 2 === 0) {
+              const color2 = resolveTrailColor(currentAdmiralTrail, stardustStep + 1);
+              if (color2 !== null) {
+                director.spawnTrailSparkle(sx - sideX * 0.16, sy + 0.12, sz - sideZ * 0.16, color2, 0.58, driftUp);
+              }
             }
           }
         }
@@ -779,6 +957,11 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     // 56m 확장 심시티 마을 전역에서 그림자가 끊기지 않도록 카메라 주시점으로 텍셀 스냅 추적한다.
     skyLighting.updateShadowFocus(playerCtrl.cameraTarget.x, playerCtrl.cameraTarget.z);
     skyLighting.update(dt, elapsed, currentTimeMode, playerPosVec, commanderPositions);
+    if (Math.abs(skyLighting.nightFactor - lastBgmNight) > 0.05 || currentWeather !== lastBgmWeather) {
+      lastBgmNight = skyLighting.nightFactor;
+      lastBgmWeather = currentWeather;
+      updateBgmEnvironment(skyLighting.nightFactor, currentWeather);
+    }
     scene.environmentIntensity = 0.42 * (1 - skyLighting.nightFactor * 0.65);
     meadow.update(dt, elapsed, skyLighting.nightFactor, skyLighting.sunDir);
 
@@ -1213,9 +1396,9 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       config.onLabelsStructureChanged(nextMetas);
     }
 
-    // 플레이어 라벨 투영 (하늘 조망·제독 드레스업 클로즈업 중에는 숨김)
+    // 플레이어 라벨 투영 (하늘 조망·제독 드레스업 클로즈업·시네마 관전 중에는 숨김)
     const inOverview = playerCtrl.isOverviewMode();
-    if (isOpen && !inOverview && !customizerOpen && currentCameraMode === "follow" && currentInteractionMode === "closed") {
+    if (isOpen && !inOverview && !customizerOpen && !cinemaMode && currentCameraMode === "follow" && currentInteractionMode === "closed") {
       tempPos.set(p.x, p.y + pHop + 1.54, p.z);
       if (
         projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
@@ -1398,6 +1581,23 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       director.syncActors(snapshot.actors);
       director.syncVillagePatrols(snapshot.villages);
 
+      // Objective `done` 신규 전환 감지 → 해당 마을 상공 축하 불꽃놀이 + 주변 사령관 환호 + 팡파르 자동 발동
+      let celebratedAny = false;
+      for (const v of snapshot.villages) {
+        const prevDone = prevVillageDoneCounts.get(v.id);
+        if (snapshotPrimed && prevDone !== undefined && v.completedObjectiveCount > prevDone) {
+          director.celebrateObjectiveDone(v.x, v.z, resolveToneHex(v.tone));
+          celebratedAny = true;
+        }
+        prevVillageDoneCounts.set(v.id, v.completedObjectiveCount);
+      }
+      if (celebratedAny) {
+        playLevelUpFanfare();
+        rainbowLookTimer = Math.max(rainbowLookTimer, 10);
+        skyLighting.triggerRainbow(10);
+      }
+      snapshotPrimed = true;
+
       const validIds = new Set(snapshot.actors.map((a) => a.id));
       for (const [id, entry] of [...actorRigs.entries()]) {
         if (!validIds.has(id)) {
@@ -1412,7 +1612,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         const roleScale = spec.role === "commodore" ? 0.96 : spec.role === "commander" ? 0.82 : 0.70;
         const sig = `${spec.baseId}:${spec.shape}:${spec.tone}:${spec.quaker ?? ""}:${spec.role}`;
         const existing = actorRigs.get(spec.id);
-        if (existing && existing.sig === sig) continue;
+        if (existing && existing.sig === sig) {
+          applyGiftHatForSpec(spec, existing.rig);
+          continue;
+        }
         if (existing) {
           scene.remove(existing.rig.group);
           existing.rig.dispose();
@@ -1425,6 +1628,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           role: spec.role,
           scale: roleScale,
         });
+        applyGiftHatForSpec(spec, rig);
         scene.add(rig.group);
         actorRigs.set(spec.id, { sig, rig });
       }
@@ -1446,25 +1650,78 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     setOverviewMode(enabled) {
       playerCtrl.setOverviewMode(enabled);
     },
+    setCinemaMode(enabled) {
+      if (enabled === cinemaMode) return;
+      cinemaMode = enabled;
+      cinemaTimer = 0;
+      if (enabled) {
+        playerCtrl.setOverviewMode(false);
+        playerCtrl.clearDistrictFocus();
+        cinemaStopIndex = 0;
+        const spot = resolveCinemaSpotlight(0);
+        lastCinemaSpotlight = spot.label;
+        config.onCinemaSpotlight?.(spot.label);
+      } else {
+        lastCinemaSpotlight = "";
+        config.onCinemaSpotlight?.("");
+      }
+    },
     setWeather(mode) {
       currentWeather = mode;
       skyLighting.setWeather(mode);
       meadow.setWeather(mode);
       director.setWeather(mode);
       setRainAmbience(mode === "rain");
+      updateBgmEnvironment(skyLighting.nightFactor, mode);
     },
     triggerRainbow(durationSec = 16) {
       rainbowLookTimer = Math.max(rainbowLookTimer, durationSec);
       skyLighting.triggerRainbow(durationSec);
     },
-    setAdmiralStyle(tone, hat) {
-      playerRig.setAdmiralStyle(tone, hat);
+    setAdmiralStyle(
+      toneOrStyle: IdentityTone | WorldAdmiralStyle,
+      hat?: WorldAdmiralHat,
+      cape?: WorldAdmiralCape,
+      trail?: WorldAdmiralTrail,
+    ) {
+      if (typeof toneOrStyle === "object") {
+        playerRig.setAdmiralStyle(toneOrStyle.tone, toneOrStyle.hat);
+        (playerRig as MongleActorRigS13).setCape?.(toneOrStyle.cape);
+        currentAdmiralTrail = toneOrStyle.trail;
+      } else {
+        playerRig.setAdmiralStyle(toneOrStyle, hat ?? "admiral");
+        if (cape !== undefined) {
+          (playerRig as MongleActorRigS13).setCape?.(cape);
+        }
+        if (trail !== undefined) {
+          currentAdmiralTrail = trail;
+        }
+      }
+    },
+    setCommodoreGifts(gifts) {
+      const prevGifts = currentCommodoreGifts;
+      currentCommodoreGifts = { ...gifts };
+      for (const m of director.motions.values()) {
+        if (m.spec.role !== "commodore") continue;
+        const entry = actorRigs.get(m.spec.id);
+        if (!entry) continue;
+        const key = m.spec.commodoreId ?? m.spec.id;
+        const prevHat = prevGifts[key] ?? prevGifts[m.spec.id];
+        const nextHat = currentCommodoreGifts[key] ?? currentCommodoreGifts[m.spec.id];
+        (entry.rig as MongleActorRigS13).setHat?.(nextHat ?? null);
+        if (nextHat && nextHat !== prevHat && nextHat !== "none") {
+          playerPosVec.set(playerCtrl.player.x, playerCtrl.player.y, playerCtrl.player.z);
+          director.playEmote(m.spec.id, "cheer", playerPosVec);
+          director.spawnBurst(m.x, meadow.getGroundHeight(m.x, m.z) + 1.35, m.z, 0xfde047, 14);
+          playMongleChirp(4);
+        }
+      }
     },
     setCustomizerMode(open) {
       customizerOpen = open;
     },
     triggerCustomizerPreviewBounce() {
-      // 색상·모자 변경 시 0.95초간 기분 좋은 cheer 바운스 + happy 표정 + 볼터치 + 모자 2차 스프링 튕김 + 별빛 스파클 연출
+      // 색상·모자·망토·궤적 변경 시 0.95초간 기분 좋은 cheer 바운스 + happy 표정 + 볼터치 + 모자 2차 스프링 튕김 + 테마 스파클 연출
       playerEmoteKind = "cheer";
       playerEmoteTimer = 0.95;
       playerEmotePhase = 0;
@@ -1473,9 +1730,19 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       const px = playerCtrl.player.x;
       const py = playerCtrl.player.y;
       const pz = playerCtrl.player.z;
-      director.spawnBurst(px, py + 1.05, pz, 0xc4b5fd, 6);
-      director.spawnBurst(px, py + 0.92, pz, 0xffe57f, 4);
-      director.emitWorkshopFx(px, py + 1.18, pz, "pulse");
+      const burstTheme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+      for (let k = 0; k < 8; k += 1) {
+        const c = resolveTrailColor(burstTheme, k) ?? 0xffe57f;
+        const ang = (k / 8) * Math.PI * 2;
+        director.spawnTrailSparkle(
+          px + Math.cos(ang) * 0.34,
+          py + 0.92 + (k % 3) * 0.14,
+          pz + Math.sin(ang) * 0.34,
+          c,
+          0.86,
+          burstTheme !== "sakura",
+        );
+      }
     },
     setCampfireSit(sitting) {
       playerCtrl.setCampfireSit(sitting);
@@ -1788,6 +2055,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       disposed = true;
       cancelAnimationFrame(rafId);
       setRainAmbience(false);
+      setBgmEnabled(false);
       if (typeof window !== "undefined" && window.__fleetWorldPerf === getRenderStats) {
         delete window.__fleetWorldPerf;
       }

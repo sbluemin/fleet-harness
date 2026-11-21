@@ -4566,7 +4566,7 @@
   box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 9%);
   color: oklch(95% 0.005 255);
   pointer-events: auto;
-  animation: the-world-dialogue-rise var(--duration-base) var(--ease-spring) both;
+  animation: the-world-cinema-rise var(--duration-base) var(--ease-spring) both;
 }
 
 .the-world-empty-welcome-icon {
@@ -4639,7 +4639,17 @@
 .the-world-root.is-photo-mode .the-world-overview-banner,
 .the-world-root.is-photo-mode .the-world-campfire-banner,
 .the-world-root.is-photo-mode .the-world-overview-drag-svg,
-.the-world-root.is-photo-mode .the-world-quick-menu {
+.the-world-root.is-photo-mode .the-world-quick-menu,
+.the-world-root.is-cinema-mode .the-world-hud-top,
+.the-world-root.is-cinema-mode .the-world-quick-bar,
+.the-world-root.is-cinema-mode .the-world-chat-shell,
+.the-world-root.is-cinema-mode .the-world-empty-welcome,
+.the-world-root.is-cinema-mode .the-world-minimap,
+.the-world-root.is-cinema-mode .the-world-minimap-collapsed,
+.the-world-root.is-cinema-mode .the-world-district-card,
+.the-world-root.is-cinema-mode .the-world-overview-banner,
+.the-world-root.is-cinema-mode .the-world-campfire-banner,
+.the-world-root.is-cinema-mode .the-world-quick-menu {
   opacity: 0;
   pointer-events: none;
   visibility: hidden;
@@ -5293,12 +5303,678 @@
   white-space: nowrap;
 }
 
+/* ── Sprint 13: 관전 시네마 필 · BGM 토글 · 긴급 비콘 · 초원 일보 · 드레스업 시즌2 ── */
+
+@keyframes the-world-urgent-bob {
+  0%, 100% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 0 0 0 color-mix(in oklch, var(--mongle-amber) 52%, transparent), var(--shadow-soft);
+  }
+  50% {
+    transform: translateY(-5px) scale(1.06);
+    box-shadow: 0 0 16px 3px color-mix(in oklch, var(--mongle-amber) 42%, transparent), var(--shadow-soft);
+  }
+}
+
+@keyframes the-world-cinema-pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.45;
+    transform: scale(0.84);
+  }
+}
+
+.the-world-urgent-beacon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin-bottom: 3px;
+  border-radius: 50%;
+  border: 1.5px solid color-mix(in oklch, var(--mongle-amber) 86%, oklch(100% 0 0 / 45%));
+  background: color-mix(in oklch, var(--mongle-amber) 88%, oklch(16% 0.014 255));
+  color: oklch(14% 0.014 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  line-height: 1;
+  pointer-events: auto;
+  cursor: pointer;
+  animation: the-world-urgent-bob 1.5s var(--ease-soft) infinite;
+  transition: transform var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-urgent-beacon:hover {
+  transform: translateY(-3px) scale(1.12);
+  border-color: oklch(99% 0 0);
+}
+
+.the-world-urgent-beacon:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-bgm-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.the-world-bgm-toggle {
+  justify-content: center;
+  width: 100%;
+}
+
+.the-world-bgm-hint {
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  color: oklch(76% 0.01 255);
+  line-height: 1.35;
+}
+
+.the-world-cinema-pill {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-4);
+  transform: translateX(-50%);
+  z-index: 10;
+  max-width: calc(100vw - 32px);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px 6px 12px;
+  border-radius: var(--radius-pill);
+  background: oklch(12% 0.014 255 / 82%);
+  backdrop-filter: blur(20px) saturate(135%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 42%, oklch(100% 0 0 / 16%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
+  color: oklch(95% 0.005 255);
+  pointer-events: auto;
+  animation: the-world-cinema-rise var(--duration-base) var(--ease-spring) both;
+}
+
+@keyframes the-world-cinema-rise {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 10px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+}
+
+.the-world-cinema-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: oklch(97% 0.004 255);
+  white-space: nowrap;
+}
+
+.the-world-cinema-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--mongle-amber);
+  animation: the-world-cinema-pulse 1.8s var(--ease-soft) infinite;
+}
+
+.the-world-cinema-spotlight {
+  min-width: 0;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  color: oklch(84% 0.008 255);
+}
+
+.the-world-cinema-exit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: var(--radius-pill);
+  border: 1px solid oklch(100% 0 0 / 18%);
+  background: oklch(19% 0.014 255 / 86%);
+  color: oklch(96% 0.004 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-cinema-exit-btn:hover {
+  background: color-mix(in oklch, var(--mongle-amber) 22%, oklch(18% 0.014 255 / 94%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 62%, transparent);
+}
+
+.the-world-cinema-exit-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+/* 「오늘의 초원 일보 (Fleet Daily Gazette)」 프로스트 글래스 신문형 모달 */
+.the-world-gazette-modal {
+  width: min(820px, calc(100vw - 32px));
+  max-height: min(640px, calc(100vh - 48px));
+}
+
+.the-world-gazette-head {
+  gap: var(--space-3);
+}
+
+.the-world-gazette-masthead-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.the-world-gazette-date-pill {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: oklch(18% 0.014 255 / 84%);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(84% 0.008 255);
+}
+
+.the-world-gazette-head-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.the-world-gazette-mood-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: oklch(17% 0.014 255 / 80%);
+  border: 1px solid oklch(100% 0 0 / 12%);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  color: oklch(90% 0.006 255);
+  white-space: nowrap;
+}
+
+.the-world-gazette-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.the-world-gazette-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.the-world-gazette-kpi {
+  --gazette-tone: var(--mongle-amber);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: oklch(16% 0.014 255 / 76%);
+  border: 1px solid oklch(100% 0 0 / 11%);
+  text-align: left;
+  color: oklch(95% 0.005 255);
+  font-family: var(--font-ui);
+}
+
+.the-world-gazette-kpi.is-mvp {
+  cursor: pointer;
+  background: color-mix(in oklch, var(--gazette-tone) 14%, oklch(16% 0.014 255 / 86%));
+  border-color: color-mix(in oklch, var(--gazette-tone) 46%, oklch(100% 0 0 / 14%));
+  transition: transform var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), background var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-gazette-kpi.is-mvp:hover {
+  transform: translateY(-1px);
+  background: color-mix(in oklch, var(--gazette-tone) 22%, oklch(18% 0.014 255 / 92%));
+  border-color: color-mix(in oklch, var(--gazette-tone) 72%, transparent);
+}
+
+.the-world-gazette-kpi.is-mvp:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-gazette-kpi[data-tone="crimson"],
+.the-world-gazette-row[data-tone="crimson"],
+.the-world-gazette-tone-dot[data-tone="crimson"],
+.the-world-gift-card[data-tone="crimson"] { --gazette-tone: var(--mongle-crimson); }
+.the-world-gazette-kpi[data-tone="amber"],
+.the-world-gazette-row[data-tone="amber"],
+.the-world-gazette-tone-dot[data-tone="amber"],
+.the-world-gift-card[data-tone="amber"] { --gazette-tone: var(--mongle-amber); }
+.the-world-gazette-kpi[data-tone="moss"],
+.the-world-gazette-row[data-tone="moss"],
+.the-world-gazette-tone-dot[data-tone="moss"],
+.the-world-gift-card[data-tone="moss"] { --gazette-tone: var(--mongle-moss); }
+.the-world-gazette-kpi[data-tone="teal"],
+.the-world-gazette-row[data-tone="teal"],
+.the-world-gazette-tone-dot[data-tone="teal"],
+.the-world-gift-card[data-tone="teal"] { --gazette-tone: var(--mongle-teal); }
+.the-world-gazette-kpi[data-tone="cerulean"],
+.the-world-gazette-row[data-tone="cerulean"],
+.the-world-gazette-tone-dot[data-tone="cerulean"],
+.the-world-gift-card[data-tone="cerulean"] { --gazette-tone: var(--mongle-cerulean); }
+.the-world-gazette-kpi[data-tone="indigo"],
+.the-world-gazette-row[data-tone="indigo"],
+.the-world-gazette-tone-dot[data-tone="indigo"],
+.the-world-gift-card[data-tone="indigo"] { --gazette-tone: var(--mongle-indigo); }
+.the-world-gazette-kpi[data-tone="plum"],
+.the-world-gazette-row[data-tone="plum"],
+.the-world-gazette-tone-dot[data-tone="plum"],
+.the-world-gift-card[data-tone="plum"] { --gazette-tone: var(--mongle-plum); }
+.the-world-gazette-kpi[data-tone="rose"],
+.the-world-gazette-row[data-tone="rose"],
+.the-world-gazette-tone-dot[data-tone="rose"],
+.the-world-gift-card[data-tone="rose"] { --gazette-tone: var(--mongle-rose); }
+
+.the-world-gazette-kpi-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(76% 0.01 255);
+}
+
+.the-world-gazette-kpi-value {
+  font-family: var(--font-code);
+  font-size: var(--t-lg);
+  font-weight: var(--weight-bold);
+  font-variant-numeric: tabular-nums;
+  color: oklch(98% 0.004 255);
+}
+
+.the-world-gazette-kpi-mvp-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: oklch(98% 0.004 255);
+}
+
+.the-world-gazette-kpi-mvp-name > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-gazette-tier-chip {
+  flex-shrink: 0;
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--gazette-tone) 26%, oklch(15% 0.014 255));
+  border: 1px solid color-mix(in oklch, var(--gazette-tone) 60%, transparent);
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-gazette-kpi-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  color: oklch(84% 0.008 255);
+}
+
+.the-world-gazette-kpi-empty {
+  font-size: var(--t-xs);
+  color: oklch(70% 0.01 255);
+}
+
+.the-world-gazette-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+  min-height: 0;
+}
+
+.the-world-gazette-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.the-world-gazette-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.the-world-gazette-section-head .the-world-qb-section-title {
+  margin: 0;
+  flex: 1 1 auto;
+}
+
+.the-world-gazette-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.the-world-gazette-row {
+  --gazette-tone: var(--mongle-cerulean);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid oklch(100% 0 0 / 11%);
+  background: oklch(16% 0.014 255 / 72%);
+  color: oklch(95% 0.005 255);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-gazette-row:hover:not(:disabled) {
+  background: oklch(21% 0.014 255 / 88%);
+  border-color: color-mix(in oklch, var(--gazette-tone) 54%, oklch(100% 0 0 / 18%));
+  transform: translateY(-1px);
+}
+
+.the-world-gazette-row:disabled {
+  cursor: default;
+  opacity: 0.82;
+}
+
+.the-world-gazette-row.is-attention {
+  border-color: color-mix(in oklch, var(--mongle-amber) 56%, oklch(100% 0 0 / 14%));
+  background: color-mix(in oklch, var(--mongle-amber) 12%, oklch(16% 0.014 255 / 82%));
+}
+
+.the-world-gazette-row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-gazette-tone-dot {
+  --gazette-tone: var(--mongle-cerulean);
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--gazette-tone);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--gazette-tone) 60%, transparent);
+}
+
+.the-world-gazette-row-copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.the-world-gazette-row-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.the-world-gazette-row-title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: oklch(97% 0.004 255);
+}
+
+.the-world-gazette-row-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.the-world-gazette-mini-chip {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-teal) 20%, oklch(15% 0.014 255));
+  border: 1px solid color-mix(in oklch, var(--mongle-teal) 46%, transparent);
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(93% 0.005 255);
+}
+
+.the-world-gazette-mini-chip.is-done {
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(15% 0.014 255));
+  border-color: color-mix(in oklch, var(--mongle-amber) 46%, transparent);
+}
+
+.the-world-gazette-row-meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-2xs);
+  color: oklch(76% 0.01 255);
+}
+
+.the-world-gazette-talk-pill {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  background: oklch(20% 0.014 255 / 86%);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(92% 0.005 255);
+}
+
+.the-world-gazette-empty {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--radius-md);
+  background: oklch(15% 0.014 255 / 62%);
+  border: 1px dashed oklch(100% 0 0 / 13%);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  color: oklch(72% 0.01 255);
+  line-height: 1.45;
+}
+
+/* 드레스업 시즌2 탭 & 사령관 모자 선물 목록 */
+.the-world-customizer-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 8px var(--space-3) 0;
+  flex-shrink: 0;
+}
+
+.the-world-customizer-tab {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid oklch(100% 0 0 / 12%);
+  background: oklch(16% 0.014 255 / 68%);
+  color: oklch(82% 0.008 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-customizer-tab:hover {
+  background: oklch(21% 0.014 255 / 84%);
+  color: oklch(97% 0.004 255);
+}
+
+.the-world-customizer-tab.is-active {
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 92%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 58%, transparent);
+  color: oklch(99% 0 0);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-customizer-tab:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-customizer-tab-count {
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: oklch(22% 0.014 255 / 90%);
+  font-family: var(--font-code);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  color: oklch(88% 0.008 255);
+}
+
+.the-world-gift-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.the-world-gift-card {
+  --gazette-tone: var(--mongle-cerulean);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 9px 10px;
+  border-radius: var(--radius-md);
+  background: oklch(16% 0.014 255 / 74%);
+  border: 1px solid color-mix(in oklch, var(--gazette-tone) 26%, oklch(100% 0 0 / 12%));
+}
+
+.the-world-gift-card-head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.the-world-gift-card-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: oklch(97% 0.004 255);
+}
+
+.the-world-gift-pills {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.the-world-gift-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 27px;
+  padding: 0 7px;
+  border-radius: var(--radius-xs);
+  border: 1px solid oklch(100% 0 0 / 12%);
+  background: oklch(19% 0.014 255 / 76%);
+  color: oklch(88% 0.008 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-gift-pill:hover {
+  background: oklch(24% 0.014 255 / 92%);
+  color: oklch(99% 0 0);
+}
+
+.the-world-gift-pill.is-active {
+  background: color-mix(in oklch, var(--mongle-amber) 20%, oklch(16% 0.014 255 / 94%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 64%, transparent);
+  color: oklch(99% 0 0);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-gift-pill:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+@media (max-width: 720px) {
+  .the-world-gazette-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .the-world-gazette-columns {
+    grid-template-columns: 1fr;
+  }
+
+  .the-world-gazette-mood-pill {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .the-world-chat-shell,
   .the-world-chat-ambient,
   .the-world-chat-ambient-lines,
   .the-world-chat-panel-wrap,
   .the-world-interact-prompt,
+  .the-world-urgent-beacon,
+  .the-world-cinema-pill,
+  .the-world-cinema-dot,
   .the-world-radial-aperture,
   .the-world-radial-petal,
   .the-world-rpg-dialogue,
@@ -5325,6 +6001,12 @@
   .the-world-btn:focus-visible,
   .the-world-quick-btn:focus-visible,
   .the-world-nametag:focus-visible,
+  .the-world-urgent-beacon:focus-visible,
+  .the-world-cinema-exit-btn:focus-visible,
+  .the-world-gazette-kpi.is-mvp:focus-visible,
+  .the-world-gazette-row:focus-visible,
+  .the-world-customizer-tab:focus-visible,
+  .the-world-gift-pill:focus-visible,
   .the-world-village-sign:focus-visible,
   .the-world-notice-sign:focus-visible,
   .the-world-guild-sign:focus-visible,

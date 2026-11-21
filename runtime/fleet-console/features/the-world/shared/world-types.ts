@@ -33,9 +33,15 @@ export type WorldPlayerEmote = "wave" | "cheer" | "jump";
 
 export type WorldAdmiralHat = "admiral" | "crown" | "explorer" | "none";
 
+export type WorldAdmiralCape = "starlight" | "hero" | "forest" | "none";
+
+export type WorldAdmiralTrail = "stardust" | "sakura" | "rainbow" | "none";
+
 export interface WorldAdmiralStyle {
   readonly tone: IdentityTone;
   readonly hat: WorldAdmiralHat;
+  readonly cape: WorldAdmiralCape;
+  readonly trail: WorldAdmiralTrail;
 }
 
 export type WorldCameraMode = "follow" | "orbit";
