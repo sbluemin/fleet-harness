@@ -5,8 +5,7 @@ import qrcode from "qrcode-generator";
 import { fetchRemoteAccessStatus } from "../../settings/client/global-settings-api.js";
 import { renderMessage, useT } from "../../../core/client/src/i18n/index.js";
 import type { RemoteAccessLink } from "./contracts.js";
-
-const FOCUSABLE_SELECTOR = 'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])';
+import { useModalCardKeys } from "./modal-card-keys.js";
 
 /** 붙었는지 보려고 설정 화면을 다시 읽게 하지 않으려면 이 창이 스스로 확인해야 한다. */
 const POLL_INTERVAL_MS = 2_000;
@@ -57,33 +56,8 @@ export function PairDeviceDialog({ link, onClose, openerRef }: {
     };
   }, [openerRef]);
 
-  /**
-   * 키는 document에서 받는다. 카드에 건 리스너는 포커스가 카드 안에 있을 때만 불리는데,
-   * 성사 후 버튼이 바뀌는 순간 브라우저가 포커스를 body로 옮기면 Escape가 죽는다.
-   */
-  useEffect(() => {
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        onClose();
-        return;
-      }
-      if (event.key !== "Tab") return;
-      const card = cardRef.current;
-      if (card === null) return;
-      const focusable = [...card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)];
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (!card.contains(active) || (event.shiftKey ? active === first : active === last)) {
-        event.preventDefault();
-        (event.shiftKey ? last : first)?.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey, true);
-    return () => document.removeEventListener("keydown", onKey, true);
-  }, [onClose]);
+  // 키는 document에서 받는다 — 성사 후 버튼이 바뀌는 순간 포커스가 body로 옮겨도 Escape가 살아 있어야 한다.
+  useModalCardKeys(cardRef, onClose);
 
   // 남은 시간은 만료 시각에서 다시 계산한다 — 흘려보낸 초를 세면 탭이 잠든 사이 시계가 어긋난다.
   useEffect(() => {
