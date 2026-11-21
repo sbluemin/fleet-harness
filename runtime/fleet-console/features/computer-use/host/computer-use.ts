@@ -385,7 +385,7 @@ export class ComputerUseService {
   private async observe(client: FleetHelperClient, args: StateArgs, actor: string, lifetime: AbortController, caller?: Caller) {
     const { known, window } = await this.resolveWindow(client, args.window, lifetime);
     if (args.expand) this.currentElement(known, args.expand);
-    const { elements, image, omitted, window: observed, omittedOutside } = await client.request("snapshot", {
+    const { elements, image, omitted, window: observed } = await client.request("snapshot", {
       ...address(window), find: args.find, expand: args.expand, limit: args.limit ?? 200, valueLimit: 80, image: args.image ?? false,
     });
     this.assertActive(lifetime);
@@ -393,7 +393,7 @@ export class ComputerUseService {
     known.latest = new Map(elements.filter((e) => isElementId(e.ref)).map((e) => [e.ref, e]));
     this.apps.add(window.app);
     if (client.hello?.permissions.accessibility === false) this.publishCapture(undefined, "accessibility_permission_required");
-    else this.publishCapture(observed);
+    else this.publishCapture(window.startedAtSource === "kernel" ? undefined : observed);
     let view: string | undefined;
     if (args.image && image && caller?.canDeliver?.() !== false && image.width > 0 && image.height > 0 && ["image/png", "image/jpeg"].includes(image.mime) && image.data) {
       view = `v${++this.viewSequence}`;
@@ -401,7 +401,7 @@ export class ComputerUseService {
       views.set(args.window, { id: view, frame: { ...observed.frame }, width: image.width, height: image.height });
       this.views.set(actor, views);
     }
-    const result = renderState(args.window, observed, elements, omitted, args.expand, view, omittedOutside);
+    const result = renderState(args.window, observed, elements, omitted, args.expand, view);
     return view && image ? { ...result, content: [...result.content, { type: "image", data: image.data, mimeType: image.mime }] } : result;
   }
 
@@ -426,7 +426,7 @@ export class ComputerUseService {
     const name = args.action === "ax_action" ? element?.actions?.find((raw) => offeredAction(raw) === args.name) : undefined;
     if (args.action === "ax_action" && !name) throw new FleetHelperError("invalid_name");
     this.assertActive(lifetime);
-    this.publishCapture(window);
+    this.publishCapture(window.startedAtSource === "kernel" ? undefined : window);
     const target = { ...address(window), ref: args.target };
     let clipboard: ClipboardRestoration | undefined;
     let lease: Awaited<ReturnType<typeof prepareMacPaste>> | undefined;
@@ -475,7 +475,7 @@ export class ComputerUseService {
       const { window, known } = await this.resolveWindow(client, args.window, lifetime);
       const stale = args.expect.findIndex((condition) => condition.target && !known.latest.has(condition.target));
       if (stale >= 0) return unknown("stale_element", stale);
-      this.publishCapture(window);
+      this.publishCapture(window.startedAtSource === "kernel" ? undefined : window);
       const expect = args.expect.map(({ target, role, ...rest }) => ({ ...rest, ref: target, role: role ? nativeRole(role) : undefined }));
       const reply = await client.request("verify", { ...address(window), expect, timeoutMs: args.timeoutMs ?? 0 });
       this.assertActive(lifetime);

@@ -60,14 +60,14 @@ function validateKey(value: string) {
 function validateAction(input: ActionArgs): void {
   const allowed = new Set<string>(["window", "action", "reason", ...ACTION_FIELDS[input.action]]);
   for (const key of Object.keys(input)) if (!allowed.has(key)) invalid(`${key} is not allowed for ${input.action}.`);
-  const require = (...keys: (keyof ActionArgs)[]) => { for (const key of keys) if (input[key] === undefined) invalid(`${key} is required for ${input.action}.`); };
-  if (input.action === "scroll") require("direction");
-  if (input.action === "drag") require("to");
-  if (input.action === "ax_action") require("target", "name");
-  if (input.action === "set_value" || input.action === "select") require("target", "text");
-  if (input.action === "type" || input.action === "paste") require("text");
+  const need = (...keys: (keyof ActionArgs)[]) => { for (const key of keys) if (input[key] === undefined) invalid(`${key} is required for ${input.action}.`); };
+  if (input.action === "scroll") need("direction");
+  if (input.action === "drag") need("to");
+  if (input.action === "ax_action") need("target", "name");
+  if (input.action === "set_value" || input.action === "select") need("target", "text");
+  if (input.action === "type" || input.action === "paste") need("text");
   if ((input.action === "type" || input.action === "paste" || input.action === "select") && input.text === "") invalid(`text must not be empty for ${input.action}.`);
-  if (input.action === "key") { require("key"); validateKey(input.key!); }
+  if (input.action === "key") { need("key"); validateKey(input.key!); }
   if (!(ACTION_FIELDS[input.action] as readonly string[]).includes("x")) return;
   const hasCoordinates = input.x !== undefined || input.y !== undefined;
   const end = dragPoint(input.to);

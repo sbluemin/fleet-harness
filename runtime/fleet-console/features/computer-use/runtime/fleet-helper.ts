@@ -5,19 +5,19 @@ import { isRecord, type ComputerUseRuntimeDependencies } from "./platform.js";
 
 export interface Frame { x: number; y: number; w: number; h: number }
 export interface HelperWindow {
-  pid: number; windowId: number; processStartedAt: number;
+  pid: number; windowId: number; processStartedAt: number; startedAtSource?: "launchDate" | "kernel";
   app: string; bundleId: string; bundlePath: string; title: string; frame: Frame;
   front: boolean; hidden: boolean; minimized: boolean; onCurrentSpace: boolean;
   engine: "appkit" | "webkit" | "chromium" | "electron" | "catalyst";
 }
 export interface HelperElement {
   ref: string; depth: number; role: string; label?: string;
-  value?: string | number | boolean; valueMore?: number; actions?: string[];
+  value?: string | number | boolean; valueMore?: number; moreOutside?: number; actions?: string[];
   settable?: boolean; editable?: boolean; focused?: boolean; enabled?: boolean; selected?: boolean;
 }
 export interface HelperImage { mime: string; data: string; width: number; height: number }
 export type SnapshotWindow = Pick<HelperWindow, "pid" | "windowId" | "processStartedAt" | "title" | "frame">;
-export interface HelperSnapshot { window: SnapshotWindow; elements: HelperElement[]; omitted: number; omittedOutside?: number; complete: boolean; image?: HelperImage }
+export interface HelperSnapshot { window: SnapshotWindow; elements: HelperElement[]; omitted: number; complete: boolean; image?: HelperImage }
 export interface HelperWindows { windows: HelperWindow[]; installed?: { name: string; path: string; bundleId: string }[] }
 export interface HelperAction {
   sent: boolean; via?: "ax" | "event" | "event+focus";

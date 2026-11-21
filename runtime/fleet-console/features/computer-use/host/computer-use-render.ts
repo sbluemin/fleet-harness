@@ -100,15 +100,27 @@ export function windowLine(id: string, window: HelperWindow): string {
 export function renderApps(lines: readonly string[], installed: HelperWindows["installed"]): ComputerUseResult {
   return textResult([...lines, ...(installed ?? []).map((app) => `installed: ${quoteApp(app.name)} ${quoteApp(app.path)}${app.bundleId ? ` ${quoteApp(app.bundleId)}` : ""}`)].join("\n") || "No matching apps or windows.");
 }
-export function renderState(id: string, window: SnapshotWindow, elements: HelperElement[], more: number, expand?: string, view?: string, omittedOutside?: number) {
+export function renderState(id: string, window: SnapshotWindow, elements: HelperElement[], more: number, expand?: string, view?: string) {
   const lines = [`${id} ${quoteApp(window.title)} ${size(window.frame)}`];
   if (view) lines.push(`view ${view} ${size(window.frame)}`);
   if (expand) {
     const element = elements.find((item) => item.ref === expand);
     if (element) lines.push(elementLine(element, true));
   } else {
-    for (const item of elements) lines.push(`${" ".repeat(Math.min(100, Math.max(0, item.depth)))}${elementLine(item)}`);
-    if (omittedOutside) lines.push(`… ${omittedOutside} more`);
+    const outside: { depth: number; count: number }[] = [];
+    const flushOutside = (depth: number) => {
+      while (outside.length && outside.at(-1)!.depth >= depth) {
+        const item = outside.pop()!;
+        lines.push(`${" ".repeat(item.depth + 1)}… ${item.count} more`);
+      }
+    };
+    for (const item of elements) {
+      const depth = Math.min(100, Math.max(0, item.depth));
+      flushOutside(depth);
+      lines.push(`${" ".repeat(depth)}${elementLine(item)}`);
+      if (item.moreOutside) outside.push({ depth, count: item.moreOutside });
+    }
+    flushOutside(0);
     if (more > 0) lines.push(`truncated: ${more} more elements (use find or a larger limit)`);
   }
   return textResult(lines.join("\n"));

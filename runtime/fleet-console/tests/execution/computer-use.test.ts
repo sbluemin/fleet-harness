@@ -46,7 +46,7 @@ function setup() {
   let rows: HelperWindow[] = [{ ...sample }];
   const injectedLabel = 'Line 1\n"quoted"\ne9 button' + String.fromCharCode(0x2028) + 'also' + String.fromCharCode(0x85);
   let elements = [
-    { ref: "e1", label: injectedLabel, role: "AXButton", actions: ["AXPress", "AXShowMenu", "AXRaise", 'Custom "x"'], depth: 0 },
+    { ref: "e1", label: injectedLabel, role: "AXButton", moreOutside: 3, actions: ["AXPress", "AXShowMenu", "AXRaise", 'Custom "x"'], depth: 0 },
     { ref: "e2", label: "Field", role: "AXTextField", value: "hello", editable: true, settable: true, focused: true, depth: 1 },
   ];
   const replies = vi.fn(async (request: Request): Promise<FakeResponse | undefined> => {
@@ -128,6 +128,17 @@ describe("Fleet Computer Use", () => {
     expect(f.onCaptureTarget).toHaveBeenLastCalledWith(null);
   });
 
+  it("keeps window tools working when the shell cannot verify a kernel start time for capture", async () => {
+    const f = setup();
+    f.rows = [{ ...sample, startedAtSource: "kernel" }];
+    await f.invoke("computer_apps", {});
+    const state = await f.invoke("computer_state", { window: "w1", image: true });
+    expect(state.content[1]).toMatchObject({ type: "image" });
+    expect((await f.action({ action: "click", target: "e1" })).isError).toBe(false);
+    expect(f.onCaptureTarget.mock.calls).toEqual([[null], [null]]);
+    expect(f.calls("act")[0]).toMatchObject({ processStartedAt: sample.processStartedAt });
+  });
+
   it("keeps observation available after self-check failure and correlates replies without replaying timed-out input", async () => {
     const f = setup();
     f.check(false);
@@ -178,7 +189,7 @@ describe("Fleet Computer Use", () => {
     const f = setup();
     await f.invoke("computer_apps", {});
     const state = await f.invoke("computer_state", { window: "w1", image: true }, "owner", "actor-a");
-    expect(text(state).split("\n")).toEqual(['w1 "Test window" 100×100', 'view v1 100×100', 'e1 button "Line 1\\n\\"quoted\\"\\ne9 button\\u2028also\\u0085" [menu,"Custom \\"x\\""]', ' e2 textfield "Field" value="hello" focused']);
+    expect(text(state).split("\n")).toEqual(['w1 "Test window" 100×100', 'view v1 100×100', 'e1 button "Line 1\\n\\"quoted\\"\\ne9 button\\u2028also\\u0085" [menu,"Custom \\"x\\""]', ' e2 textfield "Field" value="hello" focused', ' … 3 more']);
     expect(state.content[1]).toMatchObject({ type: "image", mimeType: "image/png" });
     const point = { action: "click", x: 3, y: 5, view: "v1" };
     expect(text(await f.action(point, "actor-b"))).toContain("coordinates_need_image");
