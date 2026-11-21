@@ -13,7 +13,7 @@ import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_S
 import { memorySearchInputSchema, searchCommodoreLedger, type MemorySearchTaskforce } from "./memory-search.js";
 
 export type { MemorySearchTaskforce as CommodoreTaskforceLedger };
-import { TaskforceStoreError } from "./taskforce/errors.js";
+import { TaskforceStoreError } from "./errors.js";
 import { MAX_TASKFORCE_MEMBERS, MAX_TASKFORCE_POST_TEXT, MAX_TASKFORCE_TEXT, RECOMMENDED_TASKFORCE_POST_TEXT, TASKFORCE_ID } from "../shared/contracts/taskforce.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
 import type { CommodoreDescriptionProposals } from "./description-proposals.js";

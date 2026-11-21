@@ -25,7 +25,7 @@ import {
   type TaskforceSummary,
   type TaskforceSystemCode,
 } from "../../shared/contracts/taskforce.js";
-import { TaskforceStoreError } from "./errors.js";
+import { TaskforceStoreError } from "../errors.js";
 import { MAX_COMMODORE_MESSAGE_IMAGE_BYTES } from "../../shared/contracts/attachment-budget.js";
 
 /**

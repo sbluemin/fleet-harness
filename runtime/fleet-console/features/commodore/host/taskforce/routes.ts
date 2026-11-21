@@ -17,7 +17,7 @@ import {
   type TaskforceJudgingStatus,
   type TaskforceState,
 } from "../../shared/contracts/taskforce.js";
-import { TaskforceStoreError } from "./errors.js";
+import { TaskforceStoreError } from "../errors.js";
 import type { TaskforceStore } from "./store.js";
 
 /**

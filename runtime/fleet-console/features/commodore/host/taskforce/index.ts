@@ -9,7 +9,7 @@ import { createTaskforceStore, type TaskforceStore } from "./store.js";
 
 export type { TaskforceStore } from "./store.js";
 export type { TaskforceRoute, TaskforceRouteHooks } from "./routes.js";
-export { TaskforceStoreError } from "./errors.js";
+export { TaskforceStoreError } from "../errors.js";
 
 export interface TaskforceFeatureDeps {
   readonly consoleDataDir: string;
