@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react";
 
-import { getT, type CommodoreMessageKey } from "./i18n/index.js";
-import { setCommodoreMapMode, useCommodoreMapMode } from "./commodore-map-mode.js";
+import { getT, type CommodoreMessageKey } from "../i18n/index.js";
+import { setCommodoreMapMode, useCommodoreMapMode } from "./map-mode.js";
 
 /**
  * 신경망 글리프 — 머리 줄 전환 단추와 휴대폰 막대 동작이 함께 쓴다.

@@ -1,6 +1,6 @@
 import { ApprovalError, type ApprovalCore, type ApprovalDecision, type ApprovalEndReason, type ApprovalRequestView, type ApprovalStatus } from "@fleet-console/approval";
 
-import { DESCRIPTION_PROPOSAL_TYPE, type DescriptionProposalPayload } from "../shared/contracts/description-proposal.js";
+import { DESCRIPTION_PROPOSAL_TYPE, type DescriptionProposalPayload } from "../shared/contracts/proposals.js";
 import { MAX_DESCRIPTION } from "../shared/contracts/types.js";
 import type { CommodoreStore } from "./store.js";
 

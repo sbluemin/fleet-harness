@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/i18n";
 import { useT as useConsoleT } from "../../../core/client/src/i18n/index.js";
+import { prefersReducedMotion } from "./motion.js";
 import { modelCoordinateDisplay, prettyModelId, type ModelCoordinateValue } from "../../ai-gateway/client/components/model-coordinate-picker.js";
 import { launchProviderFromGroupId, launchProviderFromModelId } from "../../ai-gateway/client/components/launch-provider-glyphs.js";
 import { findRosterRow, type ModelRoster } from "../../ai-gateway/shared/models.js";
@@ -11,14 +12,13 @@ import type { ObjectiveLaunchVariantRow } from "../../objectives/shared/records/
 import { COMMANDER_PRESET } from "../../objectives/shared/types.js";
 
 import { commanderByJudgment, commanderCoordinates, commanderValue, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
-import { CommodoreJudgmentMark } from "./commodore-judgment-glyph.js";
+import { CommodoreJudgmentMark } from "./commodore-glyphs.js";
 import { CommodoreSessionSettings } from "./commodore-inbox-section.js";
 import { ProviderMark, RoutingPoolGlyphStack, RoutingPoolHelpButton, RoutingPoolPanel, useRoutingPoolData, type RoutingPoolData } from "./commodore-routing-pool.js";
 import { effortWord, qualifying, RankMark, roleGuide, RowIntelligence, rowLadder, rowScores, ScoreReadout, type RoleGuide } from "./commodore-intelligence.js";
-import { setCommodoreCommander, setCommodoreCoordinates, useCommodoreRoster, type useCommodore } from "./commodore-state.js";
+import { setCommodoreCommander, setCommodoreCoordinates, useCommodoreName, useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { useCommodoreList } from "./commodore-list.js";
-import { useCommodoreName } from "./commodore-name.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import { isSavingGlobalSettingsField, setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { Select } from "../../settings/client/mobile-host.js";
@@ -61,7 +61,6 @@ function consumeRequest(requestNonce: number): void {
   pending = null;
 }
 
-const reducedMotion = () => typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
 /** 열림·칸 전환·높이 흐름의 이징(--ease-spring)과 닫힘·페이드 이징(--ease-glide) — 승인 시안 v2 수치 그대로다. */
 const OPEN_EASE = "cubic-bezier(0.16, 1, 0.3, 1)";
 const CLOSE_EASE = "cubic-bezier(0.4, 0.14, 0.2, 1)";
@@ -168,7 +167,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     wrapper.classList.remove("is-morphing");
     if (!(target > 0)) return;
     wrapper.style.width = `${target}px`;
-    if (from <= 0 || reducedMotion() || typeof wrapper.animate !== "function" || Math.abs(from - target) < 1) return;
+    if (from <= 0 || prefersReducedMotion() || typeof wrapper.animate !== "function" || Math.abs(from - target) < 1) return;
     // 폭이 흐르는 동안만 넘치는 쪽을 자른다. 끝나면 overflow를 풀어 말풍선이 클리핑되지 않는다.
     wrapper.classList.add("is-morphing");
     const anim = wrapper.animate([{ width: `${from}px` }, { width: `${target}px` }], { duration: CHIPS_MORPH_MS, easing: OPEN_EASE });
@@ -216,7 +215,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     m.anim = null;
     const to = panel.getBoundingClientRect().height;
     m.natural = to;
-    if (reducedMotion() || typeof panel.animate !== "function" || from <= 0 || Math.abs(from - to) < 1) {
+    if (prefersReducedMotion() || typeof panel.animate !== "function" || from <= 0 || Math.abs(from - to) < 1) {
       panel.classList.remove("is-flowing");
       return;
     }
@@ -270,7 +269,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
       if (refocus) toggleFocusRef.current = "summary";
     };
     const panel = panelRef.current;
-    if (!panel || reducedMotion() || typeof panel.animate !== "function") {
+    if (!panel || prefersReducedMotion() || typeof panel.animate !== "function") {
       motion.current.anim?.cancel();
       motion.current.anim = null;
       panel?.classList.remove("is-flowing");
@@ -345,7 +344,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
     if (!panel) return;
     if (change === "open") {
       m.natural = panel.getBoundingClientRect().height;
-      if (reducedMotion()) return;
+      if (prefersReducedMotion()) return;
       panel.animate?.([{ transform: "translateY(8px) scale(0.96)" }, { transform: "none" }], { duration: MOTION_MS.open, easing: OPEN_EASE });
       panel.animate?.([{ opacity: 0 }, { opacity: 1 }], { duration: MOTION_MS.openFade, easing: CLOSE_EASE });
       const head = panel.querySelector(".commodore-settings-popover-head");
@@ -359,7 +358,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
       return;
     }
     flowHeight(change);
-    if (change === "section" && !reducedMotion()) {
+    if (change === "section" && !prefersReducedMotion()) {
       const direction = previous !== null && SECTIONS.indexOf(open) < SECTIONS.indexOf(previous) ? -1 : 1;
       panel.querySelector(".commodore-composer-panel-body > *")?.animate?.(
         [{ opacity: 0, transform: `translateX(${direction * 18}px)` }, { opacity: 1, transform: "none" }],
@@ -558,7 +557,7 @@ export function CommodoreComposerSettings({ t, commodoreId, view, disabled = fal
   const coordinateTitle = (display: ReturnType<typeof modelCoordinateDisplay>) => display.title;
   const togglePoolHelp = (next: boolean) => {
     setPoolHelp(next);
-    if (!reducedMotion()) {
+    if (!prefersReducedMotion()) {
       panelRef.current?.querySelector(".commodore-composer-panel-body > *")?.animate?.(
         [{ opacity: 0, transform: `translateX(${next ? 18 : -18}px)` }, { opacity: 1, transform: "none" }],
         { duration: MOTION_MS.sectionContent, easing: OPEN_EASE },

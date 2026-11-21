@@ -1,5 +1,4 @@
 import { subscribeCommodoreLifecycle } from "./commodore-delete-events.js";
-import { commodoreName } from "./commodore-name.js";
 import type { CommodoreClientDeps } from "./deps.js";
 import type { ClientFeatureDescriptor } from "../../workspace/shared/feature-surfaces.js";
 import type { CommodoreBoardClient } from "../../objectives/shared/commodore-board-client.js";
@@ -13,7 +12,7 @@ import { COMMODORE_MOBILE_PANE, commodoreDestinationTrailing, MobileCommodore, P
 import { commodoreTheaterContribution } from "./commodore-header.js";
 import { commodoreMentionTargets, messageCommodoreMention } from "./commodore-mention.js";
 import { installCommodoreList, readCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
-import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreRevision, commodoreTabOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
+import { COMMODORE_ENTRY_ID, commodoreBoardOf, commodoreDestinationShown, commodoreLanguage, commodoreName, commodoreRevision, commodoreTabOf, installCommodoreState, loadCommodore, noteCommodoreLanguage, openAsks, openCommodoreMobile, readCommodore, subscribeCommodore, subscribeCommodoreMentions } from "./commodore-state.js";
 import { registerCommodoreContextRail } from "./commodore-context-rail.js";
 import { CommodoreZoneHost, commodoreConversationSurface, commodoreHomeTheater, connectCommodoreConversation, isCommodoreConversationActive, openCommodoreConversation, openCommodoreLog, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
 import { installCommodoreBoard } from "./board.js";

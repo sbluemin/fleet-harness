@@ -10,6 +10,7 @@ import { BOARD_TOOL_NAMES, COMMODORES_TOOL_NAMES } from "../shared/tool-names.js
 import type { CommodoreAsk, CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreBoardObjective as Objective } from "../../objectives/shared/commodore-board-client.js";
 import { readCommodore } from "./commodore-state.js";
+import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { clockTime } from "./commodore-header.js";
 import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";
 
@@ -641,6 +642,16 @@ function answeredText(entry: AnsweredEntry): string {
 export function errorWord(t: T, code: string): string {
   const key = `commodore.errorCode.${code}`;
   return Object.hasOwn(commodoreEn, key) ? t(key as CommodoreMessageKey) : t("commodore.errorCode.failed");
+}
+
+/**
+ * 화면 동작(보내기·이름 바꾸기·세션)이 던진 오류의 한 낱말 — 이미 끝난 질문의 거절은 그 사유 낱말로, 꺼짐·비활성은 그 문구로 보인다.
+ * 기록의 실패 줄을 옮기는 `failureWord` 와 달리 원문을 요약하지 않는다 — 동작 실패는 코드가 곧 사유다.
+ */
+export function actionFailureWord(t: T, error: unknown): string {
+  const code = error instanceof Error ? error.message : "failed";
+  if (ENDED_ASK_CODES.has(code)) return errorWord(t, code);
+  return code === "commodore_disabled" ? t("commodore.failed.disabled") : code === "commodore_inactive" ? t("commodore.failed.inactive") : t("commodore.failed", { code });
 }
 
 /**

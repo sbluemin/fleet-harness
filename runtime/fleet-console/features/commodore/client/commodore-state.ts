@@ -16,6 +16,7 @@ import { post } from "./request.js";
 import { publishCommodoreLifecycle, wasCommodoreRemoved } from "./commodore-delete-events.js";
 import { readCommodoreList, refreshCommodoreList, subscribeCommodoreList } from "./commodore-list.js";
 import { clampCommodoreAlias } from "../shared/alias.js";
+import type { getT } from "./i18n/index.js";
 export { askObjectiveTitle } from "../shared/contracts/client-helpers.js";
 
 /**
@@ -482,6 +483,16 @@ export function subscribeCommodoreMapInsets(listener: () => void): () => void {
 export function commodoreOwnerAlias(commodoreId: string): string | null {
   const view = theaters.get(commodoreId)?.view;
   return view ? view.state.alias ?? null : readCommodoreList().find((row) => row.commodoreId === commodoreId)?.alias ?? null;
+}
+
+/** 사령관(UUID)의 이름 — 별칭, 없으면 「사령관」. Theater 에서 찾지 않는다. */
+export function commodoreName(commodoreId: string, t: ReturnType<typeof getT>): string {
+  return commodoreOwnerAlias(commodoreId) ?? t("commodore.name");
+}
+
+/** 이름만 바뀌어도 대화 상태 객체와 무관하게 표시를 갱신한다. */
+export function useCommodoreName(commodoreId: string, t: ReturnType<typeof getT>): string {
+  return useSyncExternalStore(subscribeCommodore, () => commodoreName(commodoreId, t), () => commodoreName(commodoreId, t));
 }
 
 /* ── 폰 사령관 화면 ──────────────────────────────────────────────────── */

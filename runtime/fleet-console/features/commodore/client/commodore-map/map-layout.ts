@@ -1,4 +1,5 @@
 import type { MapBranchKey, MapGraph, MapNodeKind } from "./map-graph.js";
+import { rng32 } from "./map-random.js";
 
 /**
  * 시드 고정 갈래 물리 — d3 없이 자체 구현. 시안(안 D)의 힘 배치 비율을 따른다.
@@ -94,17 +95,6 @@ function anchorOf(kind: MapNodeKind, branch: MapBranchKey | null): readonly [num
     case "source": return [angle("intel"), 190, 0.012];
     case "objective": return null;
   }
-}
-
-/** mulberry32 — 시드 고정 난수. */
-function rng32(seed: number): () => number {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let x = Math.imul(s ^ (s >>> 15), 1 | s);
-    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
 }
 
 /** 지름 ≈ 무대 폭 35~40%까지 퍼지는 시안 힘 배치. */

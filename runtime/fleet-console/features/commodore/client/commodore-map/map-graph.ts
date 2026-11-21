@@ -1,6 +1,5 @@
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
-import { MEMORY_BRANCHES, type MemoryBranch, type MemoryEntry } from "../../shared/contracts/memory.js";
-import { MEMORY_STALE_MS } from "../../shared/contracts/memory-stale.js";
+import { MEMORY_BRANCHES, MEMORY_STALE_MS, type MemoryBranch, type MemoryEntry } from "../../shared/contracts/memory.js";
 import type { CommodoreState } from "../../shared/contracts/types.js";
 
 /**

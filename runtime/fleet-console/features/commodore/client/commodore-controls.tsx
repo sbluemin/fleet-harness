@@ -5,7 +5,7 @@ import { isAgentEffort, type ModelRosterRow, type ModelRosterTarget } from "../.
 import { useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 import { COMMANDER_PRESET } from "../../objectives/shared/types.js";
-import { CommodoreJudgmentMark } from "./commodore-judgment-glyph.js";
+import { CommodoreJudgmentMark } from "./commodore-glyphs.js";
 
 /**
  * 사령관 설정의 값과 선택기 — 데스크톱 Theater Inbox 의 사령관 「설정」 칸과 폰 사령관 화면이 함께 쓴다.

@@ -21,7 +21,7 @@ import {
   type MapNode,
 } from "./map-graph.js";
 import { MapPanel, mapDisplayLabels, type MapPanelEditors, type MapPanelFacts } from "./map-panel.js";
-import { setCommodoreMapSelection, useCommodoreMapSelection } from "../commodore-map-mode.js";
+import { setCommodoreMapSelection, useCommodoreMapSelection } from "./map-mode.js";
 import { layoutMapGraph } from "./map-layout.js";
 import {
   chooseMapRendererKind,

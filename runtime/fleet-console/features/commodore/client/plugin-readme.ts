@@ -1,18 +1,13 @@
 import { decodeMermaidSource, renderMarkdown } from "@fleet-console/markdown/core";
 
+import { httpUrl } from "../shared/url.js";
+
+export { httpUrl };
+
 /**
  * 플러그인 README 정화. 공유 markdown 렌더러는 채팅 등에서 `<style>` 을 허용하므로, 신뢰할 수 없는 README 만 여기서 한 번 더 거른다.
  * 문서 밖으로 새는 요소·속성은 빼고, 코드 하이라이트 class 만 남긴다.
  */
-
-/** http(s) 만. 사용자·비밀번호가 섞인 주소와 상대 경로는 거절한다. */
-export function httpUrl(value: string): string | null {
-  try {
-    const url = new URL(value);
-    if ((url.protocol !== "http:" && url.protocol !== "https:") || url.username || url.password) return null;
-    return url.href;
-  } catch { return null; }
-}
 
 /** 내용까지 버린다 — CSS·스크립트·문서 머리·미디어 플레이어·폼 컨트롤. */
 const DROP = new Set([

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import type { ClaudeGatewayExternalMcpServer, ClaudeGatewayLocalPlugin } from "@fleet-console/agent-runtime/claude";
 
+import { inside, staysInside } from "./contained-path.js";
 import { COMPONENT_KEYS, externalMcpServerOf, manifestOf, pluginMcpServers, pluginNameOf, type ResolvedPlugin } from "./plugins.js";
 
 /**
@@ -105,22 +106,6 @@ function isDirectory(file: string): boolean {
 
 function isFile(file: string): boolean {
   try { return fs.statSync(file).isFile(); } catch { return false; }
-}
-
-/** 어휘로 그 폴더 안에 머무는 상대 경로만. */
-function inside(root: string, relative: unknown): string | null {
-  if (typeof relative !== "string" || !relative.trim()) return null;
-  const resolved = path.resolve(root, relative);
-  return resolved === root || resolved.startsWith(root + path.sep) ? resolved : null;
-}
-
-/** 링크를 푼 실제 경로도 그 폴더 안인가. 없는 파일은 밖과 같다. */
-function staysInside(root: string, candidate: string): boolean {
-  try {
-    const realRoot = fs.realpathSync(root);
-    const real = fs.realpathSync(candidate);
-    return real === realRoot || real.startsWith(realRoot + path.sep);
-  } catch { return false; }
 }
 
 /**

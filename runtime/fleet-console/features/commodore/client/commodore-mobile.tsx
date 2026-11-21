@@ -4,9 +4,8 @@ import { PlusGlyph } from "@fleet-console/ui/react";
 import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
 import { CommodoreRoutines } from "./commodore-routines.js";
 import { openOwnedObjectiveOnPhone } from "./board.js";
-import { useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
-import { messageCommodore } from "./commodore-state.js";
+import { messageCommodore, useCommodoreName } from "./commodore-state.js";
 import { ConversationPillContext, useConversationPillHost } from "../../workspace/client/conversation/pill-takeover.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -25,10 +24,9 @@ import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 
 import type { CommodoreLiveEvent, CommodoreTranscriptEntry } from "../shared/contracts/types.js";
 import type { CommodoreMobileSessions } from "./deps.js";
-import { commodoreChatEntries, commodoreCliFailure, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
+import { actionFailureWord, commodoreChatEntries, commodoreCliFailure, commodoreConsultationCutoff, commodoreConversationEntries, commodoreConversationLiveEntries, errorWord } from "./commodore-chat.js";
 import { CommodoreCliFailureCard } from "./commodore-cli-status.js";
 import { commodoreCliCause } from "../shared/contracts/cli-status.js";
-import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { useCommodoreDecisionDock } from "./commodore-person-inbox.js";
 import { CommodoreTrailSection } from "./commodore-trail.js";
 import { commanderByJudgment, commanderCoordinates, commanderValue, CommodoreCoordinateField, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
@@ -37,8 +35,8 @@ import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { CommodoreMobileMemory } from "./commodore-mobile-memory.js";
 import { CommodoreMapScreen } from "./commodore-map/map-view.js";
 import { mapPanelFacts } from "./commodore-map/map-panel.js";
-import { CommodoreMapGlyph } from "./commodore-map-toggle.js";
-import { setCommodoreMapMode, useCommodoreMapMode } from "./commodore-map-mode.js";
+import { CommodoreMapGlyph } from "./commodore-map/map-toggle.js";
+import { setCommodoreMapMode, useCommodoreMapMode } from "./commodore-map/map-mode.js";
 import { useCommodoreObjectiveIndex, useCommodoreReferenceHost } from "./commodore-reference-input.js";
 import { clockTime, nextRoutineWord, commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreList, useMobileCommodoreSelection } from "./commodore-list.js";
@@ -114,12 +112,6 @@ const TheaterIcon = () => <Icon><path d="M5 5h14M4 9h16v10H4z" /></Icon>;
 /** 지휘관 목록 시트 — 호스트 `MobileIcon` `commanders`와 같은 경로. */
 const CommandersIcon = () => <Icon><circle cx="9" cy="8" r="2.2" /><path d="M4.2 18.2v-.6a3.4 3.4 0 0 1 3.4-3.4h2.8a3.4 3.4 0 0 1 3.4 3.4v.6" /><circle cx="16.2" cy="9" r="1.8" /><path d="M15.2 14.2a3.2 3.2 0 0 1 3.1 2.4" /></Icon>;
 const ChevronIcon = () => <Icon size={16}><path d="m9 5 7 7-7 7" /></Icon>;
-
-function failWord(t: T, error: unknown): string {
-  const code = error instanceof Error ? error.message : "failed";
-  if (ENDED_ASK_CODES.has(code)) return errorWord(t, code);
-  return code === "commodore_disabled" ? t("commodore.failed.disabled") : code === "commodore_inactive" ? t("commodore.failed.inactive") : t("commodore.failed", { code });
-}
 
 /* ── 칩 오른쪽 상태(S-53 CM-1c) ─────────────────────────────── */
 
@@ -242,7 +234,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   const trimMemory = useCallback((length: number) => setMemoryTrail((trail) => trail.slice(0, length)), []);
   useEffect(() => { if (!panel || section !== "info") setMemoryTrail([]); }, [panel, section]);
   const [failure, setFailure] = useState<string | null>(null);
-  const shownFailure = failure ?? (transcriptError ? failWord(t, new Error(transcriptError)) : null);
+  const shownFailure = failure ?? (transcriptError ? actionFailureWord(t, new Error(transcriptError)) : null);
   const mongle = commodoreMongleState(view, board.objectives);
   const mapMode = useCommodoreMapMode(commodoreId);
   // 사령관 대화 화면(세부가 아닌 동안)의 대화 머리에 컨텍스트 칩이 선다.
@@ -316,7 +308,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   }, [commodoreId, enabled]);
   useEffect(() => { setFailure(null); }, [section, panel]);
 
-  const fail = useCallback((error: unknown) => setFailure(failWord(t, error)), [t]);
+  const fail = useCallback((error: unknown) => setFailure(actionFailureWord(t, error)), [t]);
   const clear = useCallback(() => setFailure(null), []);
   const openLog = useCallback(() => openSection("log"), [openSection]);
   const run = view?.run;

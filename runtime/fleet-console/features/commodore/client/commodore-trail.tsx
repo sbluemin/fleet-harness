@@ -2,6 +2,7 @@ import { MenuCheckGlyph } from "@fleet-console/ui/react";
 import { useId, useMemo, useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
+import { prefersReducedMotion } from "./motion.js";
 
 import type { CommodoreBoardObjective as Objective, CommodoreBoardActor as ObjectiveActor } from "../../objectives/shared/commodore-board-client.js";
 import { commodoreEn, type CommodoreMessageKey } from "./i18n/index.js";
@@ -279,16 +280,12 @@ const SECTION_ROWS = 5;
 /** 펼침 높이 전환과 같은 길이 — 전환이 끝났다는 이벤트가 오지 않아도 이 뒤에 높이를 풀어 준다. */
 const SECTION_MOTION_MS = 320;
 
-function reducedMotion(): boolean {
-  return typeof window !== "undefined" && typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 /**
  * 높이를 고정한 상자를 목표 높이로 옮긴 뒤 풀어 준다. 동작 줄이기면 바로 끝낸다. `hold` 면 끝나도 높이를 쥔 채 `done` 만 부른다 —
  * 접기처럼 행을 줄인 렌더가 커밋된 뒤에 풀어야 펼친 높이가 한 프레임 튀지 않는다.
  */
 function slideHeight(box: HTMLElement, from: number, to: number, done?: () => void, hold = false): void {
-  if (reducedMotion() || from === to) { if (hold) box.style.height = `${to}px`; else box.style.height = ""; done?.(); return; }
+  if (prefersReducedMotion() || from === to) { if (hold) box.style.height = `${to}px`; else box.style.height = ""; done?.(); return; }
   box.style.height = `${from}px`;
   void box.offsetHeight;
   box.style.height = `${to}px`;
@@ -429,7 +426,7 @@ export function ObjectiveTrailSection({ t, language, groups, phone = false, onOp
       // 펼친 행 가운데 접혀 사라지는 것은 닫는다 — 다시 펼쳤을 때 열린 채로 튀어나오지 않는다.
       setOpenIds((current) => new Set([...current].filter((id) => groups.slice(0, SECTION_ROWS).some((group) => group.objectiveId === id))));
       const section = sectionRef.current;
-      if (section) section.scrollIntoView({ block: "nearest", behavior: reducedMotion() ? "auto" : "smooth" });
+      if (section) section.scrollIntoView({ block: "nearest", behavior: prefersReducedMotion() ? "auto" : "smooth" });
     };
     if (!box || !list || !cut) { end(); return; }
     collapsing.current = true;

@@ -18,9 +18,8 @@ import { extendObjective, finishedObjectives, finishedObjectivesLoaded, loadFini
 import { CommodoreAskCard } from "./commodore-ask.js";
 import { sendComposerText } from "./commodore-composer-bridge.js";
 import type { CommodoreDecisionTarget } from "./commodore-decision-target.js";
-import { useCommodoreName } from "./commodore-name.js";
 import { getT } from "./i18n/index.js";
-import { answerCommodoreAsk, openAsks } from "./commodore-state.js";
+import { answerCommodoreAsk, openAsks, useCommodoreName } from "./commodore-state.js";
 
 type Kind = CommodoreInboxKind | "ask";
 const KIND_ORDER: Record<Kind, number> = { criteria: 0, review: 1, followup: 2, ask: 3 };

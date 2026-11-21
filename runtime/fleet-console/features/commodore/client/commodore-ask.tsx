@@ -1,4 +1,3 @@
-import { useCommodoreName } from "./commodore-name.js";
 import { useMemo } from "react";
 
 import type { ConversationDecision, ConversationSpeaker } from "../../execution/shared/conversation/types.js";
@@ -6,7 +5,7 @@ import type { Translate } from "@fleet-console/i18n";
 
 import type { CommodoreAsk } from "../shared/contracts/types.js";
 import { MAX_DECISION_ANSWER_INPUT } from "../shared/contracts/questions.js";
-import { answerCommodoreAsk, askObjectiveTitle, commodoreDecisionCardRenderer, useCommodore } from "./commodore-state.js";
+import { answerCommodoreAsk, askObjectiveTitle, commodoreDecisionCardRenderer, useCommodore, useCommodoreName } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 import { openObjectiveFromCluster, openObjectiveOnPhone, useObjectiveTheater } from "./board.js";
 

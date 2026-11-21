@@ -8,17 +8,17 @@ import { z } from "zod";
 
 import { decisionQuestionSchema, MAX_DECISION_QUESTIONS, ownAnswer } from "../shared/contracts/questions.js";
 import { commodoreSessionToolName } from "../shared/tool-names.js";
-import { refuse, text } from "./tool-results.js";
+import { parseFail, refuse, text } from "./tool-results.js";
 import { MAX_MEMORY_BODY, MAX_MEMORY_DESCRIPTION, MAX_MEMORY_LINKS, MAX_MEMORY_SOURCES, MAX_MEMORY_TITLE, memoryBranchSchema, memoryRefSchema, type MemoryEntry, type MemorySource } from "./memory.js";
 import { memorySearchInputSchema, searchCommodoreLedger, type MemorySearchTaskforce } from "./memory-search.js";
 
 export type { MemorySearchTaskforce as CommodoreTaskforceLedger };
-import { TaskforceStoreError } from "./taskforce/errors.js";
+import { safeErrorCode, TaskforceStoreError } from "./errors.js";
 import { MAX_TASKFORCE_MEMBERS, MAX_TASKFORCE_POST_TEXT, MAX_TASKFORCE_TEXT, RECOMMENDED_TASKFORCE_POST_TEXT, TASKFORCE_ID } from "../shared/contracts/taskforce.js";
 import { askAnswerLines, type CommodoreStore } from "./store.js";
 import type { CommodoreDescriptionProposals } from "./description-proposals.js";
 import type { CommodoreIntelProposals } from "./intel-proposals.js";
-import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
+import { MEMORY_STALE_MS } from "../shared/contracts/memory.js";
 import { MAX_ASK_REASON, MAX_DESCRIPTION, MAX_INTEL_TEXT, routineScheduleSchema, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
 
 /**
@@ -31,6 +31,8 @@ import { MAX_ASK_REASON, MAX_DESCRIPTION, MAX_INTEL_TEXT, routineScheduleSchema,
  * 직접 다루고, 정보 출처의 이슈만 여기서 읽는다.
  */
 const MAX_ISSUES = 100;
+/** 사령관·항목 id — 라우트(`host/routes.ts`)와 같은 경계(1..128). */
+const ids = z.string().min(1).max(128);
 const COMMAND_TIMEOUT_MS = 20_000;
 const COMMAND_BUFFER = 1024 * 1024;
 
@@ -73,11 +75,8 @@ export interface CommodoreToolsOptions {
 const fail = (error: unknown) => {
   const code = error instanceof Error ? error.message : "commodore_failed";
   const details = error instanceof TaskforceStoreError ? error.details ?? {} : {};
-  return refuse(/^[a-z_]{1,64}$/.test(code) ? code : "commodore_failed", details);
+  return refuse(safeErrorCode(code), details);
 };
-
-const parseFail = (parsed: { readonly error: string; readonly issues?: unknown }) =>
-  refuse(parsed.error, { issues: parsed.issues });
 
 const rename = (tool: ConsoleMcpTool): ConsoleMcpTool => {
   const name = commodoreSessionToolName(tool.name);
@@ -128,7 +127,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     description: z.string().trim().min(1).max(MAX_MEMORY_DESCRIPTION),
     why: z.string().trim().min(1).max(MAX_MEMORY_BODY).describe("Why it matters; no secrets."),
     how: z.string().trim().min(1).max(MAX_MEMORY_BODY).describe("How to apply it; no secrets, no ## headings."),
-    sourceObjectiveIds: z.array(z.string().min(1).max(128)).max(MAX_MEMORY_SOURCES).describe("This Theater's objectives."),
+    sourceObjectiveIds: z.array(ids).max(MAX_MEMORY_SOURCES).describe("This Theater's objectives."),
     links: z.array(memoryRefSchema).max(MAX_MEMORY_LINKS).describe("Related entries by ref; no secrets."),
   };
 
@@ -178,7 +177,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
   }, caller));
 
   const searchShape = memorySearchInputSchema.shape;
-  const anchorSchema = z.object({ source: z.string().min(1).max(128), seq: z.number().int().nonnegative() }).strict();
+  const anchorSchema = z.object({ source: ids, seq: z.number().int().nonnegative() }).strict();
   const conversationSpec = defineConsoleTool({
     name: "console_conversation",
     description: "Reread retained conversation: your own record and joined TaskForces. Reads stored records only. Includes attachmentIds for the person's images sent to you.",
@@ -212,7 +211,7 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       : "The person's account of who you are and what you are for: current text and revision. You cannot edit it.",
     actions: {
       read: { kind: "read", callers: ["commodore"], input: z.object({}) },
-      propose: { kind: "write", callers: ["commodore"], input: z.object({ targetId: z.string().min(1).max(128).describe("Any Commodore's id, including your own. A new proposal replaces the previous one."), text: z.string().max(MAX_DESCRIPTION).describe("New description. Approving overwrites the current text; nothing changes until then.") }) },
+      propose: { kind: "write", callers: ["commodore"], input: z.object({ targetId: ids.describe("Any Commodore's id, including your own. A new proposal replaces the previous one."), text: z.string().max(MAX_DESCRIPTION).describe("New description. Approving overwrites the current text; nothing changes until then.") }) },
       proposals: { kind: "read", callers: ["commodore"], input: z.object({}) },
       withdraw: { kind: "write", callers: ["commodore"], input: z.object({ id: z.string().uuid().describe("Proposal id from proposals; only your own.") }) },
     },
@@ -254,9 +253,9 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
       ? "Intel: dated, attributed information, newest first, plus sources. It informs judgment; it does not command. You cannot write intel; propose changes."
       : "Intel: dated, attributed information, newest first, plus sources. It informs judgment; it does not command.",
     actions: {
-      read: { kind: "read", callers: ["commodore"], input: z.object({ since: z.string().min(1).max(128).optional().describe("Newest item id you saw."), limit: z.number().int().min(1).max(200).optional().describe("Default 50 for read, 30 for issues.") }) },
-      issues: { kind: "read", callers: ["commodore"], input: z.object({ sourceId: z.string().min(1).max(128).describe("Source id from read."), state: z.enum(["open", "closed", "all"]).optional().describe("Default open."), limit: z.number().int().min(1).max(MAX_ISSUES).optional().describe("Default 50 for read, 30 for issues.") }) },
-      propose: { kind: "write", callers: ["commodore"], input: z.object({ kind: z.enum(["add", "edit", "remove"]), targetId: z.string().min(1).max(128).describe("Any Commodore, including yourself. A new proposal replaces the previous one."), intelId: z.string().min(1).max(128).optional().describe("Item id for edit/remove."), text: z.string().trim().min(1).max(MAX_INTEL_TEXT).optional().describe("New text. An add is attributed to you. Nothing is stored until approval.") }) },
+      read: { kind: "read", callers: ["commodore"], input: z.object({ since: ids.optional().describe("Newest item id you saw."), limit: z.number().int().min(1).max(200).optional().describe("Default 50 for read, 30 for issues.") }) },
+      issues: { kind: "read", callers: ["commodore"], input: z.object({ sourceId: ids.describe("Source id from read."), state: z.enum(["open", "closed", "all"]).optional().describe("Default open."), limit: z.number().int().min(1).max(MAX_ISSUES).optional().describe("Default 50 for read, 30 for issues.") }) },
+      propose: { kind: "write", callers: ["commodore"], input: z.object({ kind: z.enum(["add", "edit", "remove"]), targetId: ids.describe("Any Commodore, including yourself. A new proposal replaces the previous one."), intelId: ids.optional().describe("Item id for edit/remove."), text: z.string().trim().min(1).max(MAX_INTEL_TEXT).optional().describe("New text. An add is attributed to you. Nothing is stored until approval.") }) },
       proposals: { kind: "read", callers: ["commodore"], input: z.object({}) },
       withdraw: { kind: "write", callers: ["commodore"], input: z.object({ id: z.string().uuid().describe("Proposal id from proposals; only your own.") }) },
     },
@@ -317,8 +316,8 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     name: "console_ask",
     description: "Ask the person what is not a waiting board item. List reads their answer and marks it read.",
     actions: {
-      send: { kind: "write", callers: ["commodore"], input: z.object({ questions: z.array(decisionQuestionSchema.omit({ missionId: true, memberId: true })).min(1).max(MAX_DECISION_QUESTIONS).describe("Questions with header, text and options (or none). The person may always write their own answer."), reason: z.string().trim().min(1).max(MAX_ASK_REASON).describe("Why you ask."), objectiveId: z.string().min(1).max(128).optional().describe("This Theater objective the question is about.") }) },
-      withdraw: { kind: "write", callers: ["commodore"], input: z.object({ askId: z.string().min(1).max(128).describe("Open question id to withdraw.") }) },
+      send: { kind: "write", callers: ["commodore"], input: z.object({ questions: z.array(decisionQuestionSchema.omit({ missionId: true, memberId: true })).min(1).max(MAX_DECISION_QUESTIONS).describe("Questions with header, text and options (or none). The person may always write their own answer."), reason: z.string().trim().min(1).max(MAX_ASK_REASON).describe("Why you ask."), objectiveId: ids.optional().describe("This Theater objective the question is about.") }) },
+      withdraw: { kind: "write", callers: ["commodore"], input: z.object({ askId: ids.describe("Open question id to withdraw.") }) },
       list: { kind: "read", callers: ["commodore"], input: z.object({ limit: z.number().int().min(1).max(20).optional().describe("Default 20; reading marks answers read.") }) },
     },
   });
@@ -357,8 +356,8 @@ export function createCommodoreTools(options: CommodoreToolsOptions): readonly C
     actions: {
       list: { kind: "read", callers: ["commodore"], input: z.object({}) },
       add: { kind: "write", callers: ["commodore"], input: z.object(routineFields) },
-      update: { kind: "write", callers: ["commodore"], input: z.object({ routineId: z.string().min(1).max(128).describe("Which routine."), name: routineFields.name.optional(), task: routineFields.task.optional(), schedule: routineFields.schedule.optional(), enabled: z.boolean().optional().describe("Person-paused routines cannot be enabled; do not bypass by removing or recreating.") }) },
-      remove: { kind: "write", callers: ["commodore"], input: z.object({ routineId: z.string().min(1).max(128).describe("Which routine."), reason: z.string().trim().min(1).max(200).describe("Why it is no longer needed.") }) },
+      update: { kind: "write", callers: ["commodore"], input: z.object({ routineId: ids.describe("Which routine."), name: routineFields.name.optional(), task: routineFields.task.optional(), schedule: routineFields.schedule.optional(), enabled: z.boolean().optional().describe("Person-paused routines cannot be enabled; do not bypass by removing or recreating.") }) },
+      remove: { kind: "write", callers: ["commodore"], input: z.object({ routineId: ids.describe("Which routine."), reason: z.string().trim().min(1).max(200).describe("Why it is no longer needed.") }) },
     },
   });
   const routines: ConsoleMcpTool = rename(routinesSpec.plugin({

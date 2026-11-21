@@ -17,7 +17,9 @@ import {
 } from "three";
 import type { MapBranchKey, MapNode } from "../map-graph.js";
 import { mapPaletteToRgb, type MapPalette } from "../map-palette.js";
+import { rng32 } from "../map-random.js";
 import type { MapRenderer, PositionedMapModel } from "../map-renderers.js";
+import { prefersReducedMotion } from "../../motion.js";
 
 /**
  * three.js WebGL2 렌더러 — 생체 시냅스 광학 + 절제된 성도 극좌표(A+B 절충안).
@@ -611,16 +613,6 @@ const FALLBACK_BRANCH_ANGLE: Record<MapBranchKey, number> = {
   intel: (5 * Math.PI) / 6,
 };
 
-function rng32(seed: number): () => number {
-  let s = seed | 0;
-  return () => {
-    s = (s + 0x6d2b79f5) | 0;
-    let x = Math.imul(s ^ (s >>> 15), 1 | s);
-    x = (x + Math.imul(x ^ (x >>> 7), 61 | x)) ^ x;
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
 interface EdgeRecord {
   readonly a: number;
   readonly b: number;
@@ -795,8 +787,7 @@ class MapWebglRendererImpl implements MapWebglRenderer {
       this.canvas = canvas;
       this.container = container;
       this.pixelRatio = Math.min(typeof devicePixelRatio === "number" ? devicePixelRatio : 1, MAX_PIXEL_RATIO);
-      this.reducedMotion = typeof window !== "undefined" && typeof window.matchMedia === "function"
-        && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      this.reducedMotion = prefersReducedMotion();
       this.pulse = !this.reducedMotion;
       renderer.setPixelRatio(this.pixelRatio);
       renderer.setClearColor(0x000000, 0);

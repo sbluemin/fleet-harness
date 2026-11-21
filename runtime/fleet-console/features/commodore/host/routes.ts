@@ -23,7 +23,7 @@ import { DEFAULT_EXPERIMENT_SETTINGS, experimentAideSelection, isExperimentModel
 import { z } from "zod";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 
-import { CommodoreStoreError } from "./errors.js";
+import { CommodoreStoreError, safeErrorCode } from "./errors.js";
 import { commodorePluginSetSchema, effectiveCommodorePlugins, effectivePluginsQuerySchema, globalPluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema, pluginUpdateSchema } from "../shared/contracts/plugins.js";
 import type { EffectiveCommodorePluginsView, GlobalPluginsView } from "../shared/contracts/plugins.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
@@ -159,7 +159,7 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       return;
     }
     const code = error instanceof Error ? error.message : "commodore_failed";
-    ctx.host.http.writeJson(res, 500, { error: code.length <= 64 && /^[a-z_]+$/.test(code) ? code : "commodore_failed" });
+    ctx.host.http.writeJson(res, 500, { error: safeErrorCode(code) });
   };
   const plugins = () => { if (!hooks.plugins) throw new CommodoreStoreError("commodore_unavailable"); return hooks.plugins; };
   const pluginAuth = () => { if (!hooks.pluginAuth) throw new CommodoreStoreError("commodore_unavailable"); return hooks.pluginAuth; };
