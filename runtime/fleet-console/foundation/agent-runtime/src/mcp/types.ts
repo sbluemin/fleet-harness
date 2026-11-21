@@ -1,3 +1,11 @@
+export interface McpResource {
+  readonly uri: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly mimeType?: string;
+  read(context?: { readonly sessionToken?: string }): Promise<string> | string;
+}
+
 /**
  * 실행기가 자식에게 물려주는 외부 MCP 서버 기술자.
  *

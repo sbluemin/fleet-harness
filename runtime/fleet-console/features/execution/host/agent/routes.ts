@@ -21,25 +21,22 @@ import { PRIOR_WRITER_EXIT_WAIT_MS, readTicketChannel } from "../terminal/index.
 import type { TerminalRuntime } from "../terminal/index.js";
 
 import { createDefaultAgentCliDetector, type AgentCliDetector } from "./agent-cli-detect.js";
-import { buildAgentCliLaunchKinds } from "./agent-cli-launch-kinds.js";
-import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
+import { buildAgentCliLaunchKinds, combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./agent-cli-launch-kinds.js";
 import { createAgentCliPathStore, resolveAgentCliBinary } from "./agent-cli-paths.js";
 import { findGatewayModel, visibleGatewayModels, type ProviderStatusMap } from "@fleet-console/ai-gateway";
 import type { AiGatewayStoredSettings } from "@fleet-console/ai-gateway";
 import type { AiGatewayLaunchBinding } from "./launch.js";
 import { deriveObjectiveLabel } from "./auto-name.js";
-import { isGatewayLaunchEffortAllowed, prepareChatClaudeSession } from "./launch.js";
+import { isGatewayLaunchEffortAllowed, prepareChatClaudeSession, resolveChatLaunchEffort } from "./launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./launch-attachments.js";
 import { createConsoleObservabilityStore } from "./observability-store.js";
 import { writeAgentSessionEvents } from "./observability-routes.js";
-import { mergeCapturedAgentSession, readAgentSession, readCapturedProviderSession, readProviderSession, type CapturedProviderSession } from "./provider-session.js";
-import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
+import { mergeCapturedAgentSession, readAgentSession, readCapturedProviderSession, readProviderSession, resolveTranscriptPath, type CapturedProviderSession } from "./provider-session.js";
 import { createMessageRecipientResolver } from "./message-recipient.js";
 import { AgentChatRegistry, createChatSdkFactory, readTranscriptHistory, type AgentChatCoordinatesResult, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./chat-session.js";
 import { maskChatText, neutralizeChatOriginTag, splitDisplayQuotes, type ChatOrigin } from "./chat-events.js";
 import { attachAgentChatSocket } from "./chat-ws.js";
 import { resolveConsoleAiGatewayBaseUrl } from "../../../ai-gateway/host/gateway-url.js";
-import { resolveTranscriptPath } from "./transcript-path.js";
 import { createWorkspaceContextTracker } from "./workspace-context.js";
 import { type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./types.js";
 import type { CommodoreSystemPromptService } from "../../../settings/host/agent-options.js";
@@ -152,6 +149,10 @@ export async function registerAgentRoutes(
   ]);
   return { launchKinds: api.launchKinds, actions: api.actions, listSessions: api.listSessions, subscribeSessionChanged: api.subscribeSessionChanged, stopForArchive: api.stopForArchive, purgeObjective: api.purgeObjective, reclaimAttachmentLeftovers: api.reclaimAttachmentLeftovers, attachmentsForPlugin: api.attachmentsForPlugin };
 }
+
+type AgentRouteArgs = Parameters<ConsoleRuntimeContext["registerRouter"]>[1] extends (arg: infer T) => unknown ? T : never;
+type AgentRequest = AgentRouteArgs["req"];
+type AgentResponse = AgentRouteArgs["res"];
 
 async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: TerminalRuntime, deps: AgentRouteDeps) {
   const readProviderStatuses = (): ProviderStatusMap | undefined => {
@@ -312,7 +313,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const sessionId = context.sessionId;
     attachAgentChatSocket(socket, lifetime, async () => {
       const node = ctx.host.objectiveRecords.get(sessionId);
-      if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
+      if (!node) {
         return { error: "session_not_found" };
       }
       // 소켓은 저널·transcript만 준비한다. SDK 자식은 send나 명시적인 준비 포트만 연다.
@@ -380,7 +381,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     const id = (payload as { readonly objectiveId?: unknown } | null)?.objectiveId;
     if (typeof id !== "string") return;
     const node = ctx.host.objectiveRecords.get(id);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) return;
+    if (!node) return;
     const session = observability.getTerminalSessionInfo(id);
     if (!session) observability.notifySessionUpdated(injectObjective(node));
     else {
@@ -456,7 +457,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     },
     catalog: async (objectiveId) => {
       const node = ctx.host.objectiveRecords.get(objectiveId);
-      if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) return { error: "unknown_objectiveRecord" };
+      if (!node) return { error: "unknown_objectiveRecord" };
       const seed = await resolveChatSeed(node);
       if (!seed.ok) return { error: seed.error };
       let chat;
@@ -467,7 +468,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     },
     transcript: async (objectiveId, cursor, limit, signal, options) => {
       const node = ctx.host.objectiveRecords.get(objectiveId);
-      if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) return { error: "unknown_objectiveRecord" };
+      if (!node) return { error: "unknown_objectiveRecord" };
       // 꼬리 읽기 — 커서 없이 마지막 limit 줄. 그 앞으로 이어 읽을 커서는 없다(처음부터 읽으려면 tail 없이).
       const tail = options?.tail === true && !cursor;
       const chat = chatRegistry.get(objectiveId);
@@ -757,7 +758,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     // 채팅 화면의 모델 메뉴와 같은 길 — 자식이 없으면 다음 기동의 좌표(payload)만 바꾼다.
     async coordinates(objectiveId, input) {
       const node = ctx.host.objectiveRecords.get(objectiveId);
-      if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) return { ok: false, error: "unknown_objectiveRecord" };
+      if (!node) return { ok: false, error: "unknown_objectiveRecord" };
       if (ctx.host.objectiveRecords.isTransitioning?.(objectiveId)) return { ok: false, error: "chat_not_active" };
       return applyObjectiveChatCoordinates(objectiveId, input.model, input.effort);
     },
@@ -790,7 +791,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
   rehydrateDormantAgentObjectiveRecords();
 
-  async function handle({ req, res, pathname }: Parameters<ConsoleRuntimeContext["registerRouter"]>[1] extends (arg: infer T) => unknown ? T : never): Promise<boolean> {
+  async function handle({ req, res, pathname }: AgentRouteArgs): Promise<boolean> {
     const path = pathname.slice(`${ctx.basePath}/agent`.length) || "/";
     if (path === "/state") {
       if (req.method !== "GET") return methodNotAllowed(res);
@@ -862,7 +863,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return false;
   }
 
-  async function handleAttachmentUpload(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"]): Promise<boolean> {
+  async function handleAttachmentUpload(req: AgentRequest, res: AgentResponse): Promise<boolean> {
     if (req.method !== "POST") return methodNotAllowed(res);
     if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
     try {
@@ -884,7 +885,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return true;
   }
 
-  async function handleAttachmentDiscard(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], attachmentId: string): Promise<boolean> {
+  async function handleAttachmentDiscard(req: AgentRequest, res: AgentResponse, attachmentId: string): Promise<boolean> {
     if (req.method !== "DELETE") return methodNotAllowed(res);
     if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
     // 발사된 첨부는 지울 수 없고, 이미 사라진 id는 이미 원하는 상태다 — 둘 다 200으로 답한다.
@@ -900,7 +901,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 풀어 주므로 경로 조립·정규화가 라우트에 없다. 실행에 묶이지 않은 업로드는 열지 않는다(스토어
    * 계약): 그 바이트는 아직 컴포저의 것이고, 올린 브라우저가 자기 사본을 이미 들고 있다.
    */
-  async function handleAttachmentPreview(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], attachmentId: string): Promise<boolean> {
+  async function handleAttachmentPreview(req: AgentRequest, res: AgentResponse, attachmentId: string): Promise<boolean> {
     if (req.method !== "GET") return methodNotAllowed(res);
     if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
     const preview = launchAttachments.readPreview(attachmentId);
@@ -928,7 +929,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return true;
   }
 
-  async function handleSessions(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"]): Promise<boolean> {
+  async function handleSessions(req: AgentRequest, res: AgentResponse): Promise<boolean> {
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
@@ -940,7 +941,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return methodNotAllowed(res);
   }
 
-  function readAttachmentIds(value: unknown, res: Parameters<typeof handle>[0]["res"]): readonly string[] | false {
+  function readAttachmentIds(value: unknown, res: AgentResponse): readonly string[] | false {
     if (value === undefined) return [];
     if (!Array.isArray(value) || value.some((id) => typeof id !== "string" || id.length === 0)) {
       ctx.host.http.writeJson(res, 400, { error: "attachment_not_found" });
@@ -949,7 +950,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return value as readonly string[];
   }
 
-  function readOptionalGeometry(value: unknown, res: Parameters<typeof handle>[0]["res"]): ObjectiveGeometry | undefined | false {
+  function readOptionalGeometry(value: unknown, res: AgentResponse): ObjectiveGeometry | undefined | false {
     if (value === undefined) return undefined;
     if (typeof value !== "object" || value === null || Array.isArray(value)) {
       ctx.host.http.writeJson(res, 400, { error: "invalid_geometry" });
@@ -1013,7 +1014,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return { model: gatewayModel.id, ...(effort === undefined ? {} : { effort }) };
   }
 
-  async function handleSessionItem(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string, action: string): Promise<boolean> {
+  async function handleSessionItem(req: AgentRequest, res: AgentResponse, sessionId: string, action: string): Promise<boolean> {
     // 읽기 전용 이력은 전이 중에도 파일만 읽는다 — 재개·좌표 변경과 경합하지 않으므로 전이 가드 앞에 둔다.
     if (action === "chat-history") return handleChatHistory(req, res, sessionId);
     if (ctx.host.objectiveRecords.isTransitioning?.(sessionId)) { ctx.host.http.writeJson(res, 409, { error: "objectiveRecord_busy" }); return true; }
@@ -1202,7 +1203,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
   // 모든 Objective 입력은 채팅으로 전달한다. 첫 메시지가 필요할 때 SDK 자식을 연다.
   // 응답에는 프롬프트 원문·providerSession·경로를 싣지 않는다.
-  async function handleMessage(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+  async function handleMessage(req: AgentRequest, res: AgentResponse, sessionId: string): Promise<boolean> {
     if (req.method !== "POST") return methodNotAllowed(res);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
@@ -1234,7 +1235,7 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return true;
     }
     const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
+    if (!node) {
       reply(404, { error: "session_not_found" });
       return true;
     }
@@ -1338,19 +1339,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 기존 message 라우트를 쓰지 않는 이유는 그쪽이 **새 턴을 큐에 넣는** 자리이기 때문이다.
    * 이 답은 진행 중 턴 안으로 들어가야 하므로, 붙들려 있는 권한 응답을 푸는 별도의 문이 필요하다.
    */
-  async function handleChatAnswer(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
-    if (req.method !== "POST") return methodNotAllowed(res);
-    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
-    const chat = chatRegistry.get(sessionId);
-    if (!chat) {
-      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
-      return true;
-    }
+  async function handleChatAnswer(req: AgentRequest, res: AgentResponse, sessionId: string): Promise<boolean> {
+    if (!openChatSession(req, res, ["POST"], sessionId)) return true;
+    const chat = activeChat(res, sessionId);
+    if (!chat) return true;
     const body = await ctx.host.http.readJsonBody<{
       readonly askId?: unknown;
       readonly answers?: unknown;
@@ -1392,19 +1384,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 멈추지 않는다. 이 문은 턴만 닫는다: 이미 태어난 백그라운드 작업은 계속 살고, 그 사실은
    * 잡 표면이 그대로 말한다.
    */
-  async function handleChatStop(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
-    if (req.method !== "POST") return methodNotAllowed(res);
-    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
-    const chat = chatRegistry.get(sessionId);
-    if (!chat) {
-      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
-      return true;
-    }
+  async function handleChatStop(req: AgentRequest, res: AgentResponse, sessionId: string): Promise<boolean> {
+    if (!openChatSession(req, res, ["POST"], sessionId)) return true;
+    const chat = activeChat(res, sessionId);
+    if (!chat) return true;
     if (!chat.stopTurn()) {
       ctx.host.http.writeJson(res, 409, { error: "chat_idle" });
       return true;
@@ -1420,14 +1403,8 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 200의 `applied`가 결말을 말한다: `now`는 자식에 적용됐고 payload도 고쳐졌다, `scheduled`는
    * 도는 턴이 닫히면 적용된다. DELETE는 예약을 거둔다.
    */
-  async function handleChatCoordinates(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
-    if (req.method !== "POST" && req.method !== "DELETE") return methodNotAllowed(res);
-    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
+  async function handleChatCoordinates(req: AgentRequest, res: AgentResponse, sessionId: string): Promise<boolean> {
+    if (!openChatSession(req, res, ["POST", "DELETE"], sessionId)) return true;
     const chat = chatRegistry.get(sessionId);
     if (req.method === "DELETE") {
       if (!chat?.cancelPendingCoordinates()) {
@@ -1497,19 +1474,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 200은 "자식이 중단 요청을 받았다"까지다. 실제 결말은 자식이 내는 `stopped` 알림이 말하며,
    * 그 알림이 원장의 잡 줄을 닫는다 — 여기서 미리 닫으면 멈추지 않은 작업을 멈췄다고 그린다.
    */
-  async function handleChatJobStop(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
-    if (req.method !== "POST") return methodNotAllowed(res);
-    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
-    const chat = chatRegistry.get(sessionId);
-    if (!chat) {
-      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
-      return true;
-    }
+  async function handleChatJobStop(req: AgentRequest, res: AgentResponse, sessionId: string): Promise<boolean> {
+    if (!openChatSession(req, res, ["POST"], sessionId)) return true;
+    const chat = activeChat(res, sessionId);
+    if (!chat) return true;
     const body = await ctx.host.http.readJsonBody<{ readonly jobId?: unknown }>(req);
     const jobId = typeof body?.jobId === "string" ? body.jobId : "";
     if (jobId.length === 0) {
@@ -1531,19 +1499,10 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * KB까지 자라고(실측 438KB), 그것을 저널에 넣으면 재접속마다 전량이 다시 흐른다. 여기서는
    * 사용자가 그 잡을 열어 본 그때만, 잘라서 한 번 읽는다.
    */
-  async function handleChatJob(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
-    if (req.method !== "GET") return methodNotAllowed(res);
-    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
-    const chat = chatRegistry.get(sessionId);
-    if (!chat) {
-      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
-      return true;
-    }
+  async function handleChatJob(req: AgentRequest, res: AgentResponse, sessionId: string): Promise<boolean> {
+    if (!openChatSession(req, res, ["GET"], sessionId)) return true;
+    const chat = activeChat(res, sessionId);
+    if (!chat) return true;
     const jobId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("jobId");
     if (jobId === null || jobId.length === 0) {
       ctx.host.http.writeJson(res, 400, { error: "invalid_job_id" });
@@ -1575,14 +1534,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
    * 그래서 휴면 세션을 읽어도 휴면은 그대로이고 모델 호출이 생기지 않는다. 언제 부를지는 클라이언트가 정한다.
    * 저장된 Claude 트랜스크립트를 재생한다. 응답에는 경로·세션 id가 없다.
    */
-  async function handleChatHistory(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
-    if (req.method !== "GET") return methodNotAllowed(res);
-    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
+  async function handleChatHistory(req: AgentRequest, res: AgentResponse, sessionId: string): Promise<boolean> {
+    const node = openChatSession(req, res, ["GET"], sessionId);
+    if (!node) return true;
     if (!readAgentSession(node)) {
       ctx.host.http.writeJson(res, 409, { error: "history_unsupported" });
       return true;
@@ -1608,14 +1562,9 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
     return true;
   }
 
-  async function handleChatCatalog(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
-    if (req.method !== "GET") return methodNotAllowed(res);
-    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
-    const node = ctx.host.objectiveRecords.get(sessionId);
-    if (!node || false || "agent" !== AGENT_OBJECTIVE_TYPE) {
-      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
-      return true;
-    }
+  async function handleChatCatalog(req: AgentRequest, res: AgentResponse, sessionId: string): Promise<boolean> {
+    const node = openChatSession(req, res, ["GET"], sessionId);
+    if (!node) return true;
     // `get`이 아니라 `ensure`다 — 이 문은 세션을 **열 수 있어야** 한다. 사용자가 `/`를 친 것이
     // 곧 능력을 묻는 행위이고, 이미 도는 세션만 답하면 갓 연 채팅의 첫 덱은 반드시 빈다.
     // 잡 상세(`chat-job`)가 `get`을 쓰는 것은 그쪽이 이미 존재하는 잡의 좌표를 받기 때문이다.
@@ -2060,7 +2009,6 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
       return objectiveRecord ? [objectiveRecord] : [];
     })]);
     for (const objectiveRecord of sessions) {
-      if ("agent" !== AGENT_OBJECTIVE_TYPE) continue;
       if (observability.getTerminalSessionInfo(objectiveRecord.id)) continue;
       observability.notifySessionUpdated(injectObjective(objectiveRecord));
     }
@@ -2068,12 +2016,31 @@ async function createAgentApi(ctx: ConsoleRuntimeContext, terminalRuntime: Termi
 
   return { cleanup, handle, launchKinds: buildLaunchKinds, actions, listSessions: () => observability.listTerminalSessions(), subscribeSessionChanged: (notify: (id: string) => void) => observability.subscribeAll((event) => { if ((event.type === "session:updated" || event.type === "session:attention") && "session" in event) notify(event.session.sessionId); }), stopForArchive, purgeObjective, reclaimAttachmentLeftovers: launchAttachments.reclaimLeftovers, attachmentsForPlugin: launchAttachments.forPlugin };
 
-  function methodNotAllowed(res: Parameters<typeof handle>[0]["res"]): true {
+  /**
+   * 세션 범위 채팅 문의 공통 관문 — 메서드(405) → Host·터미널 인증(401) → 세션 레코드(404) 순서다.
+   * 거절하면 응답을 이미 썼으므로 undefined를 돌려주고, 호출자는 `true`(처리됨)로 끝낸다.
+   */
+  function openChatSession(req: AgentRequest, res: AgentResponse, methods: readonly string[], sessionId: string): ObjectiveRecord | undefined {
+    if (!methods.includes(req.method ?? "")) { methodNotAllowed(res); return undefined; }
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) { unauthorized(res); return undefined; }
+    const node = ctx.host.objectiveRecords.get(sessionId);
+    if (!node) ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+    return node ?? undefined;
+  }
+
+  /** 도는 채팅 어댑터. 없으면 409 `chat_not_active`를 쓰고 undefined를 돌려준다. */
+  function activeChat(res: AgentResponse, sessionId: string): NonNullable<ReturnType<AgentChatRegistry["get"]>> | undefined {
+    const chat = chatRegistry.get(sessionId);
+    if (!chat) ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+    return chat;
+  }
+
+  function methodNotAllowed(res: AgentResponse): true {
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
     return true;
   }
 
-  function unauthorized(res: Parameters<typeof handle>[0]["res"]): true {
+  function unauthorized(res: AgentResponse): true {
     ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
     return true;
   }

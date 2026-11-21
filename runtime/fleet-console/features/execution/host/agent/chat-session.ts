@@ -71,7 +71,7 @@ import { createChatStepReporter, type ChatStepReporter } from "./chat-step.js";
 import { FLEET_EXECUTION_AGENT_TYPE, FLEET_EXECUTION_CONTRACT, FLEET_HARNESS_VERSION, type ClaudeSessionHandle } from "@fleet-console/agent-runtime/fleet";
 
 import { classifyChatCommand, isClassifiedChatCommand } from "./chat-command-policy.js";
-import { resolveChatLaunchEffort } from "./chat-launch-effort.js";
+import { resolveChatLaunchEffort } from "./launch.js";
 import { chatChildEnv } from "../terminal/launch-env.js";
 import type { CapturedAgentSession } from "./types.js";
 

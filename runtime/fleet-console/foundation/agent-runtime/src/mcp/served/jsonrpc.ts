@@ -16,7 +16,7 @@ export interface ServedMcpEndpointInfo {
 export interface CreateServedMcpEndpointDeps {
   readonly serverInfo?: ServedMcpEndpointInfo;
   readonly instructions?: string;
-  readonly resources?: readonly import("../resources.js").McpResource[];
+  readonly resources?: readonly import("../types.js").McpResource[];
   readonly toolSnapshotStore?: McpToolSnapshotStore;
   readonly transport?: McpHttpTransport;
   readonly host?: string;

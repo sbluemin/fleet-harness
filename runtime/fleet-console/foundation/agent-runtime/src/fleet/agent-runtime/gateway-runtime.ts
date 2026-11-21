@@ -1,6 +1,28 @@
-import { createExecutorSessionManager, type ExecutorSessionManager, type McpToolRegistry } from "../../index.js";
+import { createExecutorSessionManager, createServedMcpEndpoint, createMcpToolRegistry, createMcpToolSnapshotStore, type ExecutorSessionManager, type McpToolRegistry, type McpToolSnapshotStore, type ServedMcpEndpoint } from "../../index.js";
 
-import { createFleetAgentRuntimeMcpServices } from "./mcp-services.js";
+import { FLEET_MCP_SERVER_NAME } from "../tools.js";
+
+interface FleetAgentRuntimeMcpServices {
+	readonly name: string;
+	readonly mcpServer: ServedMcpEndpoint;
+	readonly mcpRegistry: McpToolRegistry;
+	readonly mcpToolSnapshotStore: McpToolSnapshotStore;
+}
+
+function createFleetAgentRuntimeMcpServices(): FleetAgentRuntimeMcpServices {
+	const mcpRegistry = createMcpToolRegistry();
+	const mcpToolSnapshotStore = createMcpToolSnapshotStore();
+	const mcpServer = createServedMcpEndpoint({
+		serverInfo: { name: FLEET_MCP_SERVER_NAME },
+		toolSnapshotStore: mcpToolSnapshotStore,
+	});
+	return {
+		name: FLEET_MCP_SERVER_NAME,
+		mcpRegistry,
+		mcpServer,
+		mcpToolSnapshotStore,
+	};
+}
 
 type AdditionalMcpSession = Pick<ExecutorSessionManager, "getEndpoint" | "issueSessionToken" | "releaseSessionToken" | "cleanup">;
 
