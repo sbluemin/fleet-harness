@@ -1,8 +1,8 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import { createPortal } from "react-dom";
 
-import type { ConsoleLocale } from "@fleet-console/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 import { getViewModeSnapshot } from "../../../core/client/src/integration/view-mode-store.js";
 import { openSettingsSurface, closeSettingsModal } from "../../settings/client/settings-door.js";
 import { pluginSettingsSectionId } from "../../settings/client/settings-entry.js";
@@ -13,27 +13,69 @@ import { useStoreSnapshot } from "@fleet-console/ui/store";
 import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@fleet-console/ai-gateway";
 import { sanitizeProviderOrder, type ProviderId } from "../shared/provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
-import { getT } from "./i18n/index.js";
-import { spendSeverity } from "./spend-section.js";
-import { meterSeverity, mostUrgentWindow, providerName, QuotaPanel, windowLabel } from "./quota-panel.js";
+import { getT, type QuotaMessageKey } from "./i18n/index.js";
+import { blockMessage, formatSpendUsd, isSpendProvider, spendSeverity } from "./spend-section.js";
+import {
+  displayPlanName,
+  elapsed,
+  elapsedMarkPercent,
+  formatCountdown,
+  meterSeverity,
+  mostUrgentWindow,
+  NO_SUBSCRIPTION_KEY,
+  projectedSpan,
+  providerName,
+  QuotaPanel,
+  riskNote,
+  windowLabel,
+} from "./quota-panel.js";
 import { getQuotaApi, getQuotaSummarySnapshot, holdQuotaSummary, subscribeQuotaApi, subscribeQuotaSummary } from "./summary-store.js";
 import { getQuotaToolbarSetting, subscribeQuotaToolbarSetting } from "./toolbar-setting.js";
 
-/** 컴포저 오른쪽 위의 사용량 요약. 공급자마다 글리프 옆에 창별 사용 %를 두 줄로 쌓는다.
- * 짧은 창·남은 창 중 가장 급한 창을 고르는 정책과 신호 채널은 상세 팝업과 같다. */
+/** 컴포저 오른쪽 위의 사용량 요약. 공급자 글리프를 정밀 원형 링으로 감싸 공간을 줄이고,
+ * 호버 시 공유 글라이딩 카드로 해당 공급자의 전 창·리셋·지출을, 클릭 시 전체 사용 한도 팝업을 연다. */
 
 /** Claude의 세션 창(5시간) — 기간을 싣지 않은 세션 창을 짧은 쪽에 세우는 기준. */
 const SESSION_FALLBACK_MS = 5 * 3_600_000;
 
+/** 원형 링 기하(viewBox 0 0 24 24) — 1~4% 미세 사용량도 12시 방향 최소 호(4%)로 존재감을 지킨다. */
+const RING_RADIUS = 10.3;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+const RING_MIN_VISIBLE_PERCENT = 4;
+
+/** 호버 프리뷰 의도 지연과 이웃 링 간 글라이드 유예(ToolbarTipLayer와 같은 리듬). */
+const HOVER_SHOW_DELAY_MS = 80;
+const HOVER_HANDOFF_GRACE_MS = 260;
+const HOVER_EXIT_UNMOUNT_MS = 180;
+const HOVER_GAP = 10;
+const HOVER_ARROW_INSET = 14;
+
+type T = Translate<QuotaMessageKey>;
+type RingSeverity = "normal" | "warning" | "critical";
+
 export interface QuotaToolbarReading {
   readonly id: ProviderId;
-  /** 비어 있으면 아직 읽지 못했거나 읽을 수 없는 공급자다 — 칸은 남기고 숫자 자리에 「–」를 둔다. */
+  /** 비어 있으면 아직 읽지 못했거나 읽을 수 없는 공급자다 — 칸은 남기고 점선 링으로 상태를 알린다. */
   readonly lines: readonly QuotaWindow[];
   /**
-   * 창이 아니라 금액으로만 아는 공급자(Gemini)의 예산 사용률. 창을 만들지 않고 이 칸에만 싣는다 —
+   * 창이 아니라 금액으로만 아는 공급자(Gemini·Anthropic)의 예산 사용률. 창을 만들지 않고 이 칸에만 싣는다 —
    * 지출을 QuotaWindow로 만들면 routing이 그것으로 압박도를 계산한다.
    */
   readonly spendPercent?: number;
+}
+
+interface RingPresentation {
+  readonly id: ProviderId;
+  readonly provider: ProviderDto | undefined;
+  readonly windows: readonly QuotaWindow[];
+  readonly loading: boolean;
+  readonly disconnected: boolean;
+  readonly stale: boolean;
+  readonly exhausted: boolean;
+  readonly percent: number | null;
+  readonly severity: RingSeverity;
+  /** 2창 이상인 공급자에서 대표 창 외의 보조 창도 경고·위험 압박에 닿았을 때 우상단 미세 점으로 알린다. */
+  readonly secondaryAlert: "warning" | "critical" | null;
 }
 
 function readableWindows(provider: ProviderDto | undefined): readonly QuotaWindow[] {
@@ -81,21 +123,82 @@ export function summaryLines(windows: readonly QuotaWindow[]): readonly QuotaWin
   return long === null ? [short] : [short, long];
 }
 
+function ringPresentationOf(
+  reading: QuotaToolbarReading,
+  data: QuotaSummaryDto | null,
+): RingPresentation {
+  const provider = data?.providers[reading.id];
+  const loading = data === null;
+  const status = provider?.status;
+  const readable = !loading && (status === "ok" || status === "stale");
+  const windows = readable ? readableWindows(provider) : [];
+  const primary = mostUrgentWindow(windows);
+  const secondary = primary !== null && windows.length > 1
+    ? mostUrgentWindow(windows.filter((window) => window !== primary))
+    : null;
+  const secondarySeverity = secondary !== null ? meterSeverity(secondary) : "normal";
+  const secondaryAlert = secondarySeverity === "normal" ? null : secondarySeverity;
+
+  const percent = primary !== null
+    ? primary.usedPercent
+    : (readable && reading.spendPercent !== undefined ? reading.spendPercent : null);
+  const severity: RingSeverity = primary !== null
+    ? meterSeverity(primary)
+    : (percent !== null ? spendSeverity(percent) : "normal");
+
+  return {
+    id: reading.id,
+    provider,
+    windows,
+    loading,
+    disconnected: !loading && !readable,
+    stale: !loading && status === "stale",
+    exhausted: readable && percent !== null && percent >= 100,
+    percent,
+    severity,
+    secondaryAlert,
+  };
+}
+
+function ringArcOffset(percent: number): number {
+  const clamped = Math.min(100, Math.max(0, percent));
+  if (clamped <= 0) return RING_CIRCUMFERENCE;
+  const visual = Math.max(clamped, RING_MIN_VISIBLE_PERCENT);
+  return RING_CIRCUMFERENCE * (1 - visual / 100);
+}
+
+function readingAriaLabel(
+  reading: QuotaToolbarReading,
+  data: QuotaSummaryDto | null,
+  mobile: boolean,
+  t: T,
+): string {
+  const name = providerName(reading.id, mobile);
+  if (data === null) return `${name} · ${t("quota.toolbar.empty")}`;
+  const windowsText = reading.lines.length === 0
+    ? (reading.spendPercent !== undefined
+      ? t("quota.gemini.budget.used", { pct: Math.round(reading.spendPercent) })
+      : "–")
+    : reading.lines.map((window) => `${windowLabel(window, t)} ${t("quota.meter.used", { pct: Math.round(window.usedPercent) })}`).join(" · ");
+  return t("quota.toolbar.reading", { provider: name, windows: windowsText });
+}
+
 function currentLocale(): ConsoleLocale {
   return document.documentElement.lang === "ko" ? "ko" : "en";
 }
 
 /**
  * 대화 컴포저가 없을 때 설정이 로그인 패널을 대신 연다.
- * 툴바 버튼이 있으면 그 버튼이 소유한 팝오버를 연다.
+ * 툴바 요약이 있으면 그 요약이 소유한 팝오버를 연다.
  */
 export const QUOTA_PANEL_OPEN_EVENT = "fleet:quota-panel-open";
+const QUOTA_TOOLBAR_OPEN_EVENT = "fleet:quota-toolbar-open";
 
 /**
  * 어떤 화면에서 눌러도 로그인 자리에 닿게 한다.
  *
  * 폰은 설정 › 사용량이 로그인 자리다. 데스크톱은 설정 모달이 컴포저를 덮으므로 모달을 닫고,
- * 대화 위 사용량 단추가 있으면 그 팝오버를 연다. 대화가 없어 단추가 없으면 상주 호스트가
+ * 대화 위 사용량 요약이 있으면 그 팝오버를 연다. 대화가 없어 요약이 없으면 상주 호스트가
  * 같은 패널을 화면 가운데 연다.
  */
 export function requestQuotaPanelOpen(): void {
@@ -105,9 +208,9 @@ export function requestQuotaPanelOpen(): void {
   }
   closeSettingsModal();
   window.setTimeout(() => {
-    const button = document.querySelector<HTMLButtonElement>(".quota-toolbar-summary");
-    if (button) {
-      if (button.getAttribute("aria-expanded") !== "true") button.click();
+    const summary = document.querySelector<HTMLElement>(".quota-toolbar-summary");
+    if (summary) {
+      summary.dispatchEvent(new CustomEvent(QUOTA_TOOLBAR_OPEN_EVENT));
       return;
     }
     window.dispatchEvent(new Event(QUOTA_PANEL_OPEN_EVENT));
@@ -120,8 +223,111 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
   const { toolbarProviders: shown, providerOrder, loaded } = useStoreSnapshot(subscribeQuotaToolbarSetting, getQuotaToolbarSetting);
   const snapshot = useStoreSnapshot(subscribeQuotaSummary, getQuotaSummarySnapshot);
   const [open, setOpen] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement | null>(null);
+  const [spotlightProvider, setSpotlightProvider] = useState<ProviderId | null>(null);
+  const [hoveredId, setHoveredId] = useState<ProviderId | null>(null);
+  const [cardState, setCardState] = useState<{
+    readonly providerId: ProviderId;
+    readonly anchor: HTMLButtonElement;
+    readonly visible: boolean;
+    readonly gliding: boolean;
+  } | null>(null);
+
+  const summaryRef = useRef<HTMLElement | null>(null);
+  const lastTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const showTimerRef = useRef<number | null>(null);
+  const exitTimerRef = useRef<number | null>(null);
+  const hiddenAtRef = useRef(0);
+  const visibleRef = useRef(false);
+  visibleRef.current = cardState?.visible === true;
+
   const popoverId = useId();
+  const hoverCardId = useId();
+
+  const clearHoverTimers = useCallback(() => {
+    if (showTimerRef.current !== null) {
+      window.clearTimeout(showTimerRef.current);
+      showTimerRef.current = null;
+    }
+    if (exitTimerRef.current !== null) {
+      window.clearTimeout(exitTimerRef.current);
+      exitTimerRef.current = null;
+    }
+  }, []);
+
+  const hideHover = useCallback((immediate = false) => {
+    clearHoverTimers();
+    if (visibleRef.current) hiddenAtRef.current = performance.now();
+    setHoveredId(null);
+    if (immediate) {
+      setCardState(null);
+      return;
+    }
+    setCardState((current) => (current === null ? null : { ...current, visible: false, gliding: false }));
+    exitTimerRef.current = window.setTimeout(() => {
+      exitTimerRef.current = null;
+      setCardState((current) => (current?.visible === false ? null : current));
+    }, HOVER_EXIT_UNMOUNT_MS);
+  }, [clearHoverTimers]);
+
+  const requestHover = useCallback((id: ProviderId, anchor: HTMLButtonElement, immediate = false) => {
+    if (open) return;
+    clearHoverTimers();
+    setHoveredId(id);
+    const alreadyVisible = visibleRef.current;
+    const withinGrace = performance.now() - hiddenAtRef.current < HOVER_HANDOFF_GRACE_MS;
+    const showNow = () => {
+      setCardState((current) => ({
+        providerId: id,
+        anchor,
+        visible: true,
+        gliding: current !== null && current.visible && current.providerId !== id,
+      }));
+    };
+    if (immediate || alreadyVisible || withinGrace) {
+      showNow();
+      return;
+    }
+    showTimerRef.current = window.setTimeout(() => {
+      showTimerRef.current = null;
+      showNow();
+    }, HOVER_SHOW_DELAY_MS);
+  }, [open, clearHoverTimers]);
+
+  // 외부 요청(`requestQuotaPanelOpen`)으로 팝오버를 열 때는 특정 공급자 강조 없이 전체 목록을 연다.
+  useEffect(() => {
+    const element = summaryRef.current;
+    if (element === null) return;
+    const onHostOpen = () => {
+      hideHover(true);
+      setSpotlightProvider(null);
+      setOpen(true);
+    };
+    element.addEventListener(QUOTA_TOOLBAR_OPEN_EVENT, onHostOpen);
+    return () => element.removeEventListener(QUOTA_TOOLBAR_OPEN_EVENT, onHostOpen);
+  }, [loaded, shown.length, hideHover]);
+
+  // 뷰포트 변화·창 블러·Escape에서는 떠 있는 호버 카드를 즉시 거둔다.
+  useEffect(() => {
+    if (cardState === null) return;
+    const onDismiss = () => hideHover(true);
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      hideHover(false);
+    };
+    window.addEventListener("blur", onDismiss);
+    window.addEventListener("resize", onDismiss);
+    window.addEventListener("scroll", onDismiss, true);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      window.removeEventListener("blur", onDismiss);
+      window.removeEventListener("resize", onDismiss);
+      window.removeEventListener("scroll", onDismiss, true);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [cardState !== null, hideHover]);
+
+  useEffect(() => () => clearHoverTimers(), [clearHoverTimers]);
+
   // 저장값을 읽기 전에는 그리지 않는다 — 전부(기본)로 그렸다가 저장된 선택으로 줄어드는 깜빡임을 막는다.
   if (!loaded) return null;
   const locale = currentLocale();
@@ -129,69 +335,172 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
   // 저장된 선호는 그대로 두고, 지원하는 공급자만 표시한다.
   const glyphOnly = shown.length === 0;
   const readings = toolbarReadings(snapshot.data, shown, providerOrder);
-  const label = glyphOnly
+
+  const togglePopoverFor = (providerId: ProviderId | null, trigger: HTMLButtonElement | null) => {
+    hideHover(true);
+    lastTriggerRef.current = trigger;
+    setOpen((wasOpen) => {
+      if (wasOpen) {
+        setSpotlightProvider(null);
+        return false;
+      }
+      setSpotlightProvider(providerId);
+      return true;
+    });
+  };
+
+  const fullSummaryLabel = glyphOnly
     ? t("quota.panel.title")
     : snapshot.data === null
       ? t("quota.toolbar.empty")
-      : readings.map((reading) => t("quota.toolbar.reading", {
-        provider: providerName(reading.id, mobile),
-        windows: reading.lines.length === 0
-          ? (reading.spendPercent !== undefined
-            ? t("quota.gemini.budget.used", { pct: Math.round(reading.spendPercent) })
-            : "–")
-          : reading.lines.map((window) => `${windowLabel(window, t)} ${t("quota.meter.used", { pct: Math.round(window.usedPercent) })}`).join(" · "),
-      })).join(" / ");
+      : readings.map((reading) => readingAriaLabel(reading, snapshot.data, mobile, t)).join(" / ");
+
+  const activeHoverReading = cardState !== null
+    ? readings.find((reading) => reading.id === cardState.providerId) ?? null
+    : null;
+
   return (
     <>
       {glyphOnly ? null : <QuotaSummaryHold />}
-      <button
-        ref={buttonRef}
-        type="button"
-        className={`quota-toolbar-summary${glyphOnly ? " quota-toolbar-summary--glyph" : ""}${inCapsule ? " quota-toolbar-summary--capsule" : ""}`}
-        aria-haspopup="dialog"
-        aria-expanded={open}
-        aria-controls={open ? popoverId : undefined}
-        aria-label={label}
-        // 열려 있는 동안은 말풍선을 띄우지 않는다 — 버튼 바로 아래의 팝업을 가린다.
-        data-tip={open ? undefined : label}
-        title={open ? undefined : label}
-        onClick={() => setOpen((value) => !value)}
-      >
-        {glyphOnly ? <QuotaBarsGlyph /> : (
-          <>
-            {readings.map((reading) => (
-              <span key={reading.id} className="quota-toolbar-summary__cell" aria-hidden="true">
-                <span className={snapshot.data === null ? "quota-toolbar-summary__mark" : `quota-toolbar-summary__mark quota-provider__mark quota-provider__mark--${reading.id}`}>
-                  {snapshot.data === null ? <QuotaBarsGlyph /> : providerGlyph(reading.id)}
+      {glyphOnly ? (
+        <button
+          ref={(node) => { summaryRef.current = node; }}
+          type="button"
+          className={`quota-toolbar-summary quota-toolbar-summary--glyph${inCapsule ? " quota-toolbar-summary--capsule" : ""}`}
+          aria-haspopup="dialog"
+          aria-expanded={open}
+          aria-controls={open ? popoverId : undefined}
+          aria-label={fullSummaryLabel}
+          data-tip={open ? undefined : fullSummaryLabel}
+          title={open ? undefined : fullSummaryLabel}
+          onClick={(event) => togglePopoverFor(null, event.currentTarget)}
+        >
+          <QuotaBarsGlyph />
+        </button>
+      ) : (
+        <div
+          ref={(node) => { summaryRef.current = node; }}
+          className={`quota-toolbar-summary${inCapsule ? " quota-toolbar-summary--capsule" : ""}${hoveredId !== null ? " is-hovering" : ""}${open ? " is-open" : ""}`}
+          role="group"
+          aria-label={t("quota.toolbar.group")}
+          onPointerLeave={() => {
+            if (hoveredId !== null || cardState !== null) hideHover(false);
+          }}
+        >
+          {readings.map((reading) => {
+            const ring = ringPresentationOf(reading, snapshot.data);
+            const ariaLabel = readingAriaLabel(reading, snapshot.data, mobile, t);
+            const hovered = hoveredId === reading.id;
+            const showArc = !ring.disconnected && !ring.loading && ring.percent !== null && ring.percent > 0;
+            const ringClassName = [
+              "quota-toolbar-summary__ring",
+              ring.disconnected || ring.loading ? "quota-toolbar-summary__ring--muted" : "",
+              ring.stale ? "quota-toolbar-summary__ring--stale" : "",
+              hovered ? "is-hovered" : "",
+            ].filter(Boolean).join(" ");
+            return (
+              <button
+                key={reading.id}
+                type="button"
+                data-provider={reading.id}
+                className={ringClassName}
+                aria-haspopup="dialog"
+                aria-expanded={open}
+                aria-controls={open ? popoverId : undefined}
+                aria-describedby={cardState?.visible && cardState.providerId === reading.id ? hoverCardId : undefined}
+                aria-label={ariaLabel}
+                onPointerEnter={(event) => {
+                  if (event.pointerType === "touch") return;
+                  requestHover(reading.id, event.currentTarget, false);
+                }}
+                onPointerDown={() => hideHover(true)}
+                onFocus={(event) => {
+                  if (!event.currentTarget.matches(":focus-visible")) return;
+                  requestHover(reading.id, event.currentTarget, true);
+                }}
+                onBlur={() => {
+                  if (hoveredId === reading.id) hideHover(false);
+                }}
+                onClick={(event) => togglePopoverFor(reading.id, event.currentTarget)}
+              >
+                <span className="quota-toolbar-summary__dial" aria-hidden="true">
+                  <svg className="quota-toolbar-summary__svg" viewBox="0 0 24 24">
+                    {ring.exhausted ? <circle className="quota-toolbar-summary__exhaust" cx="12" cy="12" r="9.3" /> : null}
+                    <circle
+                      className={`quota-toolbar-summary__track${ring.disconnected || ring.loading ? " quota-toolbar-summary__track--dotted" : ""}`}
+                      cx="12"
+                      cy="12"
+                      r={RING_RADIUS}
+                      strokeWidth="1.5"
+                    />
+                    {showArc && ring.percent !== null ? (
+                      <circle
+                        className={`quota-toolbar-summary__arc quota-toolbar-summary__arc--${ring.severity}`}
+                        cx="12"
+                        cy="12"
+                        r={RING_RADIUS}
+                        strokeWidth="1.7"
+                        strokeDasharray={RING_CIRCUMFERENCE.toFixed(2)}
+                        strokeDashoffset={ringArcOffset(ring.percent).toFixed(2)}
+                      />
+                    ) : null}
+                  </svg>
+                  <span className={`quota-toolbar-summary__glyph quota-provider__mark quota-provider__mark--${reading.id}`}>
+                    {providerGlyph(reading.id)}
+                  </span>
+                  {ring.stale ? (
+                    <span className="quota-toolbar-summary__pip quota-toolbar-summary__pip--stale" />
+                  ) : ring.secondaryAlert !== null ? (
+                    <span className={`quota-toolbar-summary__pip quota-toolbar-summary__pip--secondary quota-toolbar-summary__pip--${ring.secondaryAlert}`} />
+                  ) : null}
                 </span>
-                <span className="quota-toolbar-summary__lines">
-                  {reading.lines.length === 0
-                    ? (reading.spendPercent === undefined
-                      ? <span className="quota-toolbar-summary__pct">–</span>
-                      : <span className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${spendSeverity(reading.spendPercent)}`}>{Math.round(reading.spendPercent)}%</span>)
-                    : reading.lines.map((window, index) => (
-                      <span key={`${window.id}-${window.label ?? index}`} className={`quota-toolbar-summary__pct quota-toolbar-summary__pct--${meterSeverity(window)}`}>
-                        {Math.round(window.usedPercent)}%
-                      </span>
-                    ))}
-                </span>
-              </span>
-            ))}
-            {inCapsule ? <span className="quota-toolbar-summary__compact-glyph" aria-hidden="true"><QuotaBarsGlyph /></span> : null}
-          </>
-        )}
-      </button>
+              </button>
+            );
+          })}
+          {inCapsule ? (
+            <button
+              type="button"
+              className="quota-toolbar-summary__compact-glyph"
+              aria-haspopup="dialog"
+              aria-expanded={open}
+              aria-controls={open ? popoverId : undefined}
+              aria-label={fullSummaryLabel}
+              onClick={(event) => togglePopoverFor(null, event.currentTarget)}
+            >
+              <QuotaBarsGlyph />
+            </button>
+          ) : null}
+        </div>
+      )}
+      {!open && cardState !== null && activeHoverReading !== null ? (
+        <QuotaHoverCard
+          id={hoverCardId}
+          anchor={cardState.anchor}
+          visible={cardState.visible}
+          gliding={cardState.gliding}
+          reading={activeHoverReading}
+          data={snapshot.data}
+          locale={locale}
+          mobile={mobile}
+          t={t}
+        />
+      ) : null}
       {open ? (
         <QuotaPopover
           id={popoverId}
-          anchorRef={buttonRef}
+          anchorRef={summaryRef}
           placementAnchorRef={popoverAnchorRef}
           inCapsule={inCapsule}
           locale={locale}
           mobile={mobile}
+          spotlightProvider={spotlightProvider}
           onClose={(restoreFocus) => {
             setOpen(false);
-            if (restoreFocus) buttonRef.current?.focus();
+            setSpotlightProvider(null);
+            if (restoreFocus) {
+              const target = lastTriggerRef.current?.isConnected ? lastTriggerRef.current : summaryRef.current;
+              target?.focus();
+            }
           }}
         />
       ) : null}
@@ -199,7 +508,204 @@ export function QuotaToolbarSummary({ popoverAnchorRef, layout, placement = "top
   );
 }
 
-/** 숫자 칸이 서 있는 동안 요약 폴링을 쥔다. 글리프만 선 상태에서는 읽을 숫자가 없으니 묻지 않는다. */
+/**
+ * 개별 공급자 링 위에 부드럽게 떠오르는 공유 호버 카드.
+ * 이웃 링으로 커서를 옮겨도 노드를 재마운트하지 않고 transform으로 수평 글라이드한다.
+ */
+function QuotaHoverCard({
+  id,
+  anchor,
+  visible,
+  gliding,
+  reading,
+  data,
+  locale,
+  mobile,
+  t,
+}: {
+  readonly id: string;
+  readonly anchor: HTMLButtonElement;
+  readonly visible: boolean;
+  readonly gliding: boolean;
+  readonly reading: QuotaToolbarReading;
+  readonly data: QuotaSummaryDto | null;
+  readonly locale: ConsoleLocale;
+  readonly mobile: boolean;
+  readonly t: T;
+}) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [entered, setEntered] = useState(false);
+  const [placement, setPlacement] = useState<"above" | "below">("above");
+  const now = Date.now();
+  const ring = ringPresentationOf(reading, data);
+  const provider = ring.provider;
+  const name = providerName(reading.id, mobile);
+
+  useLayoutEffect(() => {
+    const element = cardRef.current;
+    if (element === null || !anchor.isConnected) return;
+    const rect = anchor.getBoundingClientRect();
+    const width = element.offsetWidth;
+    const height = element.offsetHeight;
+    const center = rect.left + rect.width / 2;
+    const left = Math.max(VIEWPORT_MARGIN, Math.min(center - width / 2, window.innerWidth - width - VIEWPORT_MARGIN));
+    const aboveTop = rect.top - HOVER_GAP - height;
+    const below = aboveTop < VIEWPORT_MARGIN;
+    const top = below
+      ? Math.min(rect.bottom + HOVER_GAP, window.innerHeight - height - VIEWPORT_MARGIN)
+      : aboveTop;
+    const arrowX = Math.max(HOVER_ARROW_INSET, Math.min(center - left, width - HOVER_ARROW_INSET));
+    element.style.setProperty("--quota-hover-x", `${Math.round(left)}px`);
+    element.style.setProperty("--quota-hover-y", `${Math.round(top)}px`);
+    element.style.setProperty("--quota-hover-arrow-x", `${Math.round(arrowX)}px`);
+    setPlacement(below ? "below" : "above");
+  }, [anchor, reading.id, data, visible]);
+
+  // 첫 등장은 (0,0)에서 날아오지 않도록 위치를 잡은 다음 프레임에 부드럽게 떠오른다.
+  useEffect(() => {
+    if (!visible) {
+      setEntered(false);
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => setEntered(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, [visible]);
+
+  const statusNote = (): string => {
+    if (ring.loading) return t("quota.hover.loading");
+    switch (provider?.status) {
+      case "expired": return t("quota.hover.expired");
+      case "no_subscription": return t(NO_SUBSCRIPTION_KEY[reading.id]);
+      case "error": return t("quota.hover.error");
+      default: return t("quota.hover.disconnected");
+    }
+  };
+
+  const spendProvider = !ring.loading && !ring.disconnected && isSpendProvider(reading.id) && provider?.spend !== undefined
+    ? reading.id
+    : undefined;
+  const spend = spendProvider !== undefined ? provider?.spend : undefined;
+  const spendPct = spend?.budget !== undefined ? spend.usedPercent : undefined;
+  const spendSev: RingSeverity = spendPct !== undefined ? spendSeverity(spendPct) : "normal";
+  const spendText = spendProvider !== undefined && spend !== undefined
+    ? (spend.budget !== undefined
+      ? t(spendProvider === "gemini" ? "quota.gemini.spend.withBudget" : "quota.anthropic.spend.withBudget", {
+        spent: formatSpendUsd(locale, spend.spent),
+        budget: formatSpendUsd(locale, spend.budget),
+      })
+      : t(spendProvider === "gemini" ? "quota.gemini.spend.withoutBudget" : "quota.anthropic.spend.withoutBudget", {
+        spent: formatSpendUsd(locale, spend.spent),
+      }))
+    : null;
+
+  const isShown = visible && entered;
+
+  return createPortal(
+    <div
+      {...(isShown ? { "data-covers-native-view": "" } : {})}
+      ref={cardRef}
+      id={id}
+      role="tooltip"
+      data-placement={placement}
+      aria-hidden={!isShown || undefined}
+      className={`quota-hover-card${isShown ? " is-visible" : ""}${gliding ? " is-gliding" : ""}`}
+    >
+      <div className="quota-hover-card__head">
+        <span className={`quota-hover-card__mark quota-provider__mark quota-provider__mark--${reading.id}${ring.disconnected || ring.loading ? " is-muted" : ""}`}>
+          {providerGlyph(reading.id)}
+        </span>
+        <strong className="quota-hover-card__name">{name}</strong>
+        {provider?.plan ? (
+          <span className="quota-plan">{displayPlanName(reading.id, provider.plan)}</span>
+        ) : null}
+      </div>
+
+      {ring.loading || ring.disconnected ? (
+        <p className="quota-hover-card__status">{statusNote()}</p>
+      ) : (
+        <div className="quota-hover-card__rows">
+          {spend !== undefined ? (
+            <div className={`quota-hover-card__row quota-hover-card__row--${spendSev}`}>
+              <div className="quota-hover-card__row-top">
+                <span className="quota-hover-card__label">{t("quota.meter.weekly")}</span>
+                {spendPct !== undefined ? (
+                  <span className="quota-hover-card__val">{Math.round(spendPct)}%</span>
+                ) : null}
+              </div>
+              {spendPct !== undefined ? (
+                <div className="quota-hover-card__bar">
+                  <span className="quota-hover-card__fill" style={{ width: `${Math.min(100, Math.max(0, spendPct))}%` }} />
+                </div>
+              ) : null}
+              <div className="quota-hover-card__meta">
+                <span>{spendText}</span>
+                <span>{t("quota.meter.resets", { t: formatCountdown(spend.resetsAt, now) })}</span>
+              </div>
+            </div>
+          ) : null}
+
+          {ring.windows.map((window, index) => {
+            const severity = meterSeverity(window);
+            const label = windowLabel(window, t);
+            const note = riskNote(window, now, t);
+            const projection = projectedSpan(window, now);
+            const elapsedMark = elapsedMarkPercent(window);
+            const reset = window.resetsAt !== undefined
+              ? t("quota.meter.resets", { t: formatCountdown(window.resetsAt, now) })
+              : null;
+            return (
+              <div key={`${window.id}-${window.label ?? index}`} className={`quota-hover-card__row quota-hover-card__row--${severity}`}>
+                <div className="quota-hover-card__row-top">
+                  <span className="quota-hover-card__label">{label}</span>
+                  <span className="quota-hover-card__val">{Math.round(window.usedPercent)}%</span>
+                </div>
+                <div className="quota-hover-card__bar">
+                  {projection !== null ? (
+                    <span
+                      className="quota-hover-card__projection"
+                      style={{ left: `${projection.left}%`, width: `${projection.width}%` }}
+                    />
+                  ) : null}
+                  <span className="quota-hover-card__fill" style={{ width: `${Math.min(100, Math.max(0, window.usedPercent))}%` }} />
+                  {elapsedMark !== null ? (
+                    <span className="quota-hover-card__elapsed" style={{ left: `${elapsedMark}%` }} />
+                  ) : null}
+                </div>
+                <div className="quota-hover-card__meta">
+                  <span className={note !== null ? "quota-hover-card__alert" : undefined}>
+                    {note ?? (elapsedMark !== null ? t("quota.meter.elapsed", { pct: elapsedMark }) : "")}
+                  </span>
+                  {reset !== null ? <span>{reset}</span> : null}
+                </div>
+              </div>
+            );
+          })}
+
+          {spendProvider !== undefined && provider?.block !== undefined ? (
+            <p className="quota-hover-card__notice quota-hover-card__notice--error">
+              {blockMessage(spendProvider, provider.block, t)}
+            </p>
+          ) : null}
+
+          {ring.stale ? (
+            <p className="quota-hover-card__notice quota-hover-card__notice--stale">
+              {t("quota.hover.stale", { t: elapsed(provider?.fetchedAt, now) })}
+            </p>
+          ) : null}
+        </div>
+      )}
+
+      <div className="quota-hover-card__foot">
+        <span>{t("quota.hover.openAll")}</span>
+        <span className="quota-hover-card__enter" aria-hidden="true">↵</span>
+      </div>
+      <span className="quota-hover-card__arrow" aria-hidden="true" />
+    </div>,
+    document.body,
+  );
+}
+
+/** 링 요약이 서 있는 동안 요약 폴링을 쥔다. 글리프만 선 상태에서는 읽을 숫자가 없으니 묻지 않는다. */
 function QuotaSummaryHold() {
   useEffect(() => holdQuotaSummary(), []);
   return null;
@@ -245,15 +751,16 @@ function measurePopoverAnchor(anchor: HTMLElement, inCapsule: boolean): { readon
 /**
  * 사용 한도 팝업 — document.body로 포털해 컴포저의 덱·스크롤 경계에서 잘리지 않게 한다.
  * 자리는 호스트가 준 요약 줄의 화면 좌표로 잡고, 창 크기나 닻 상자가 바뀌면 다시 잡는다.
- * Console 어디든(팝업과 버튼 자신은 빼고) 누르면 닫히고, Esc로 닫으면 포커스가 버튼으로 돌아간다.
+ * Console 어디든(팝업과 요약 자신은 빼고) 누르면 닫히고, Esc로 닫으면 포커스가 버튼으로 돌아간다.
  */
-function QuotaPopover({ id, anchorRef, placementAnchorRef, inCapsule, locale, mobile, onClose }: {
+function QuotaPopover({ id, anchorRef, placementAnchorRef, inCapsule, locale, mobile, spotlightProvider, onClose }: {
   readonly id: string;
-  readonly anchorRef: RefObject<HTMLButtonElement | null>;
+  readonly anchorRef: RefObject<HTMLElement | null>;
   readonly placementAnchorRef: RefObject<HTMLElement | null>;
   readonly inCapsule: boolean;
   readonly locale: ConsoleLocale;
   readonly mobile: boolean;
+  readonly spotlightProvider: ProviderId | null;
   readonly onClose: (restoreFocus: boolean) => void;
 }) {
   const api = useStoreSnapshot(subscribeQuotaApi, getQuotaApi);
@@ -261,7 +768,7 @@ function QuotaPopover({ id, anchorRef, placementAnchorRef, inCapsule, locale, mo
   // 첫 렌더부터 자리를 갖고 선다 — 숨은 채로 한 번 그리면 열자마자 주는 포커스가 그 상자에 앉지 못한다.
   const [placement, setPlacement] = useState<PopoverPlacement | null>(() => {
     const anchor = placementAnchorRef.current ?? anchorRef.current;
-    return anchor === null ? null : placePopover(measurePopoverAnchor(anchor, inCapsule), { width: window.innerWidth, height: window.innerHeight }, inCapsule ? "end" : "start");
+    return anchor === null ? null : placePopover(measurePopoverAnchor(anchor, inCapsule), { width: window.innerWidth, height: window.innerHeight }, "end");
   });
   const labelId = `${id}-title`;
   const closeRef = useRef(onClose);
@@ -270,9 +777,8 @@ function QuotaPopover({ id, anchorRef, placementAnchorRef, inCapsule, locale, mo
   useLayoutEffect(() => {
     const anchor = placementAnchorRef.current ?? anchorRef.current;
     if (!anchor) return;
-    // 버튼은 크기가 그대로인 채 자리만 옮겨 갈 수 있다. 창 크기·버튼 크기 신호로는 그 이동을 듣지 못하므로,
-    // 열려 있는 동안만 프레임마다
-    // 버튼 상자와 뷰포트를 비교해 달라졌을 때만 다시 잡는다.
+    // 요약은 크기가 그대로인 채 자리만 옮겨 갈 수 있다. 창 크기·요약 크기 신호로는 그 이동을 듣지 못하므로,
+    // 열려 있는 동안만 프레임마다 닻 상자와 뷰포트를 비교해 달라졌을 때만 다시 잡는다.
     let last = "";
     let frame = 0;
     const track = () => {
@@ -280,7 +786,7 @@ function QuotaPopover({ id, anchorRef, placementAnchorRef, inCapsule, locale, mo
       const key = `${rect.left},${rect.top},${rect.width},${rect.height},${window.innerWidth},${window.innerHeight}`;
       if (key !== last) {
         last = key;
-        setPlacement(placePopover(rect, { width: window.innerWidth, height: window.innerHeight }, inCapsule ? "end" : "start"));
+        setPlacement(placePopover(rect, { width: window.innerWidth, height: window.innerHeight }, "end"));
       }
       frame = window.requestAnimationFrame(track);
     };
@@ -332,13 +838,13 @@ function QuotaPopover({ id, anchorRef, placementAnchorRef, inCapsule, locale, mo
           ...(placement.top !== undefined ? { top: placement.top } : { bottom: placement.bottom }),
         }}
     >
-      <QuotaPanel api={api} locale={locale} labelId={labelId} mobile={mobile} />
+      <QuotaPanel api={api} locale={locale} labelId={labelId} mobile={mobile} spotlightProvider={spotlightProvider} />
     </div>,
     document.body,
   );
 }
 
-/** 아직 읽은 값이 없을 때, 그리고 고른 공급자가 없을 때의 표식 — 막대 글리프. */
+/** 고른 공급자가 없을 때와 좁은 캡슐 폴백의 표식 — 막대 글리프. */
 function QuotaBarsGlyph() {
   return (
     <svg viewBox="0 0 18 18" stroke="currentColor" fill="none" strokeWidth="1.2" aria-hidden="true">
