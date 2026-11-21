@@ -1,7 +1,7 @@
 import { exposableEffortLadder, GATEWAY_REASONING_EFFORTS } from "@fleet-console/ai-gateway";
 import type { GatewayModel, GatewayReasoningEffort } from "@fleet-console/ai-gateway";
 import type { ClaudeGatewayEffort } from "@fleet-console/agent-runtime/claude";
-import { OBJECTIVE_PEER_TOOLS, prepareClaudeSession, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "@fleet-console/agent-runtime/fleet";
+import { NATIVE_CLAUDE_EFFORTS, OBJECTIVE_PEER_TOOLS, prepareClaudeSession, type ClaudeSessionHandle, type PrepareClaudeSessionOptions } from "@fleet-console/agent-runtime/fleet";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
 export interface AiGatewayLaunchBinding {
@@ -11,24 +11,11 @@ export interface AiGatewayLaunchBinding {
   origin(): string | null;
 }
 
-/** Chat Mode 세션을 열 때 넘기는 좌표 — PTY 런치와 공유하던 필드 가운데 채팅이 실제로 읽는 것만 남긴다. */
-export interface ChatSessionPreparationDeps {
-  readonly cwd: string;
-  readonly entryPath?: string;
-  readonly execPath?: string;
-  readonly tsxLoaderPath?: string;
-  /** 사령관이 고른 플러그인의 로컬 디렉터리 — 그 사령관 목표의 세션이 새로 열릴 때 싣는다. */
-  readonly pluginDirs?: readonly string[];
-  /** 그 플러그인 MCP 선언의 `${VAR}`에 채울 키 — 같은 세션의 자식 환경에 얹는다. */
-  readonly pluginEnv?: Readonly<Record<string, string>>;
-  readonly origin: ClaudeSessionOrigin;
-  readonly claudeCodeSystemPrompt?: "on" | "off";
-  readonly claudeCodeDisabledAgents?: readonly string[];
-  readonly disableAutoMemory?: boolean;
+/** Chat Mode 세션을 열 때 넘기는 좌표 — admiral의 세션 옵션에서 CLI 식별자와 도구 목록(여기서 정책으로 채운다)을 뺀 것이다. */
+export type ChatSessionPreparationDeps = Omit<PrepareClaudeSessionOptions, "cliId" | "claudeCodeDisabledTools"> & {
+  /** 목표 세션(지휘관·구성원)이면 피어 도구를 더 뺀다. */
   readonly objectiveMessaging?: boolean;
-}
-
-const WIRE_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+};
 
 /**
  * 새 세션 트랙의 launch 설정을 Chat Mode SDK 시드로 옮긴다.
@@ -39,7 +26,7 @@ export type ChatLaunchEffortResolution = {
 
 export function resolveChatLaunchEffort(value: string): ChatLaunchEffortResolution | undefined {
   if (value.length === 0) return undefined;
-  return (WIRE_EFFORTS as readonly string[]).includes(value)
+  return (NATIVE_CLAUDE_EFFORTS as readonly string[]).includes(value)
     ? { effort: value as ClaudeGatewayEffort }
     : undefined;
 }
