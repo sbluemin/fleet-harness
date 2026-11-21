@@ -89,6 +89,42 @@ enum AXReader {
     return (output, incomplete)
   }
 
+  // 원격 웹 프로세스가 아직 붙지 않았으면 bulk 응답의 AXChildren이 비어 있을 수 있다.
+  static func children(_ el: AXUIElement, role: String, batched: CFTypeRef?) -> [AXUIElement] {
+    let children = batched as? [AXUIElement] ?? []
+    let containers = [kAXWindowRole, kAXGroupRole, kAXScrollAreaRole, kAXSplitGroupRole, "AXWebArea"]
+    if !children.isEmpty || !containers.contains(role) { return children }
+    return attribute(el, kAXChildrenAttribute) as? [AXUIElement] ?? []
+  }
+
+  static let nodeAttributes = [kAXRoleAttribute, kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXChildrenAttribute,
+                               kAXPositionAttribute, kAXSizeAttribute, kAXFocusedAttribute, kAXEnabledAttribute, kAXSelectedAttribute,
+                               "AXPlaceholderValue", "AXTitleUIElement"]
+
+  static func node(_ identity: AXIdentity, ref: String, attributes a: [String: CFTypeRef], win: WindowInfo,
+                   parentIndex: Int?, depth: Int, clip: CGRect, inWeb: Bool) -> AXNode? {
+    let el = identity.element
+    guard let role = a[kAXRoleAttribute] as? String else { return nil }
+    let frame = self.frame(position: a[kAXPositionAttribute], size: a[kAXSizeAttribute])?.offsetBy(dx: -win.frame.minX, dy: -win.frame.minY)
+    let value = axJSONValue(a[kAXValueAttribute])
+    let label = [a[kAXTitleAttribute], a[kAXDescriptionAttribute], a["AXPlaceholderValue"]]
+      .compactMap { $0 as? String }.first { !$0.isEmpty } ?? asAX(a["AXTitleUIElement"]).flatMap {
+        attribute($0, kAXValueAttribute) as? String ?? attribute($0, kAXTitleAttribute) as? String
+      }
+    let settable = value != nil && self.settable(el, kAXValueAttribute)
+    let editable = ["AXTextField", "AXTextArea", "AXSearchField", "AXComboBox", "AXWebArea"].contains(role) && self.editable(el, role: role)
+    return AXNode(ref: ref, identity: identity, parentIndex: parentIndex, depth: depth, role: role, label: label,
+                  value: value, actions: actions(el).filter { $0 != kAXRaiseAction }, settable: settable, editable: editable,
+                  focused: a[kAXFocusedAttribute] as? Bool, enabled: a[kAXEnabledAttribute] as? Bool,
+                  selected: a[kAXSelectedAttribute] as? Bool, frame: frame,
+                  visible: frame.map { !$0.isEmpty && clip.intersects($0) } ?? true, web: inWeb || role == "AXWebArea")
+  }
+
+  static func matchesLive(_ identity: AXIdentity, in win: WindowInfo, root: AXUIElement?) -> Bool {
+    belongs(identity.element, win, root: root) &&
+      asAX(attribute(identity.element, kAXParentAttribute)).map { CFEqual($0, identity.parent) } == true
+  }
+
   static func frame(position: CFTypeRef?, size: CFTypeRef?) -> CGRect? {
     guard let position, let size, CFGetTypeID(position) == AXValueGetTypeID(), CFGetTypeID(size) == AXValueGetTypeID() else { return nil }
     var p = CGPoint.zero, s = CGSize.zero
@@ -231,21 +267,25 @@ struct AXTree {
   var observable: Bool { nodes.contains { $0.visible && ($0.value != nil || $0.label != nil || $0.editable || !$0.actions.isEmpty) } }
   var web: Bool { nodes.contains(where: \.web) }
 
-  func resolve(_ ref: String, latest: [String: AXNode]) throws -> AXNode {
-    guard let old = latest[ref], let current = nodes.first(where: { $0.ref == ref }), current.identity == old.identity else {
-      throw HelperError("stale_element")
+  var hasWebContents: Bool { nodes.contains { $0.web && $0.role != "AXWebArea" } }
+
+  func hasEmptyContentGroup(in frame: CGRect) -> Bool {
+    let parents = Set(nodes.compactMap(\.parentIndex))
+    return nodes.enumerated().contains { index, node in
+      guard node.role == kAXGroupRole, let rect = node.frame, node.visible, !parents.contains(index) else { return false }
+      return rect.width >= frame.width * 0.75 && rect.height >= frame.height * 0.75
     }
-    return current
   }
 
-  func snapshot(find: String?, expand: String?, limit: Int, valueLimit: Int) -> (elements: [Object], shown: [String: AXNode], omitted: Int, rootOutside: Int, hasOutside: Bool) {
+  func snapshot(find: String?, expand: AXNode?, limit: Int, valueLimit: Int) -> (elements: [Object], shown: [String: AXNode], omitted: Int, rootOutside: Int, hasOutside: Bool) {
     var include: Set<Int> = []
     for (i, node) in nodes.enumerated() where node.visible {
       if let find, ![node.role, node.label, valueText(node.value)].compactMap({ $0 }).contains(where: { $0.localizedCaseInsensitiveContains(find) }) { continue }
       var index: Int? = i
       while let j = index, include.insert(j).inserted { index = nodes[j].parentIndex }
     }
-    if let expand, let i = nodes.firstIndex(where: { $0.ref == expand }) {
+    let expandIndex = expand.flatMap { wanted in nodes.firstIndex { $0.ref == wanted.ref } }
+    if let i = expandIndex {
       var index: Int? = i
       while let j = index, include.insert(j).inserted { index = nodes[j].parentIndex }
     }
@@ -257,26 +297,87 @@ struct AXTree {
       } else if find == nil { rootOutside += 1 }
     }
     let ordered = include.sorted()
+    let first = Array(ordered.prefix(limit - (expand != nil && expandIndex == nil ? 1 : 0)))
+    var selected = first
+    if let expandIndex, !selected.contains(expandIndex) { selected[selected.count - 1] = expandIndex }
     var shown: [String: AXNode] = [:]
-    let items = ordered.prefix(limit).map { i in
+    var items = selected.map { i in
       let node = nodes[i]
       shown[node.ref] = node
-      return node.json(valueLimit: node.ref == expand ? 20_000 : valueLimit, moreOutside: outside[i] ?? 0)
+      return node.json(valueLimit: node.ref == expand?.ref ? 20_000 : valueLimit, moreOutside: outside[i] ?? 0)
     }
-    return (items, shown, max(0, ordered.count - limit), rootOutside, rootOutside != 0 || !outside.isEmpty)
+    if let expand, expandIndex == nil {
+      items.append(expand.json(valueLimit: 20_000))
+      shown[expand.ref] = expand
+    }
+    return (items, shown, max(0, ordered.count - selected.count), rootOutside, rootOutside != 0 || !outside.isEmpty)
   }
 }
 
 @MainActor final class AXSession {
+  private struct Exposure {
+    let identity: AXIdentity
+    var actions: Set<String>
+  }
+
   private var counter: UInt64 = 0
   private var identities: [WindowKey: [AXIdentity: String]] = [:]
-  private(set) var latest: [WindowKey: [String: AXNode]] = [:]
+  private var exposed: [WindowKey: [String: Exposure]] = [:]
+  private var webEnabledAt: [pid_t: Date] = [:]
+  private var probedWeb: Set<WindowKey> = []
 
-  func publish(_ nodes: [String: AXNode], for key: WindowKey) { latest[key] = nodes }
+  func publish(_ nodes: some Sequence<AXNode>, for key: WindowKey) {
+    for node in nodes {
+      if exposed[key]?[node.ref] != nil {
+        exposed[key]?[node.ref]?.actions.formUnion(node.actions)
+      } else {
+        exposed[key, default: [:]][node.ref] = Exposure(identity: node.identity, actions: Set(node.actions))
+      }
+    }
+  }
+
+  func offered(_ name: String, for ref: String, in key: WindowKey) -> Bool {
+    exposed[key]?[ref]?.actions.contains(name) == true
+  }
+
+  func resolve(_ ref: String, tree: AXTree, window win: WindowInfo) throws -> AXNode {
+    guard let prior = exposed[win.key]?[ref], let root = tree.root else { throw HelperError("stale_element") }
+    if let current = tree.nodes.first(where: { $0.ref == ref && $0.identity == prior.identity }), AXReader.belongs(current.el, win, root: root) {
+      return current
+    }
+    // 스냅숏에서 보이지 않아도 실제 부모의 현재 자식으로 남아 있으면 같은 핸들이다.
+    let el = prior.identity.element
+    guard AXReader.matchesLive(prior.identity, in: win, root: root),
+          let siblings = AXReader.attribute(prior.identity.parent, kAXChildrenAttribute) as? [AXUIElement],
+          siblings.contains(where: { CFEqual(el, $0) }),
+          let current = AXReader.node(prior.identity, ref: ref, attributes: AXReader.members(el, AXReader.nodeAttributes).values,
+                                      win: win, parentIndex: nil, depth: 0, clip: win.localFrame,
+                                      inWeb: AXReader.insideWebArea(el)) else { throw HelperError("stale_element") }
+    return current
+  }
+
+  func canProbeWeb(_ key: WindowKey) -> Bool { probedWeb.insert(key).inserted }
+
+  // Chromium의 렌더러 트리는 대상 앱에 보조 기술을 알리기 전까지 비어 있을 수 있다.
+  func attemptWebAccessibility(_ win: WindowInfo) -> Bool {
+    let pid = win.key.pid
+    guard (win.engine == .chromium || win.engine == .electron), AXIsProcessTrusted(),
+          let kernel = kernelLaunchDate(pid), webEnabledAt[pid] != kernel else { return false }
+    webEnabledAt[pid] = kernel
+    let app = AXReader.application(pid)
+    let manual = AXReader.set(app, "AXManualAccessibility", kCFBooleanTrue)
+    if manual == .attributeUnsupported {
+      // Chrome은 상위 AX setter가 NotImplemented를 돌려줘도 내부 전환은 예약할 수 있다.
+      _ = AXReader.set(app, "AXEnhancedUserInterface", kCFBooleanTrue)
+    }
+    return true
+  }
 
   func prune(to alive: Set<WindowKey>) {
     identities = identities.filter { alive.contains($0.key) }
-    latest = latest.filter { alive.contains($0.key) }
+    exposed = exposed.filter { alive.contains($0.key) }
+    probedWeb.formIntersection(alive)
+    webEnabledAt = webEnabledAt.filter { kernelLaunchDate($0.key) == $0.value }
   }
 
   func read(_ win: WindowInfo, budgetMs: Int = 250) -> AXTree {
@@ -285,9 +386,6 @@ struct AXTree {
       return AXTree(root: nil, nodes: [], complete: false, windowTitle: nil)
     }
     let start = clockNow()
-    let attrs = [kAXRoleAttribute, kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute, kAXChildrenAttribute,
-                 kAXPositionAttribute, kAXSizeAttribute, kAXFocusedAttribute, kAXEnabledAttribute, kAXSelectedAttribute,
-                 "AXPlaceholderValue", "AXTitleUIElement"]
     var old = identities[win.key] ?? [:]
     var next: [AXIdentity: String] = [:]
     var visited: Set<AXIdentity> = []
@@ -301,42 +399,33 @@ struct AXTree {
       guard depth < 64, nodes.count < 4_000, millis(since: start) < budgetMs else { complete = false; return }
       let identity = AXIdentity(element: el, parent: parent)
       guard visited.insert(identity).inserted else { return }
-      let a = AXReader.members(el, attrs)
+      let a = AXReader.members(el, AXReader.nodeAttributes)
       if a.incomplete { complete = false }
-      guard let role = a.values[kAXRoleAttribute] as? String else { complete = false; return }
-      let isWeb = web || role == "AXWebArea"
-      let frame = AXReader.frame(position: a.values[kAXPositionAttribute], size: a.values[kAXSizeAttribute])?
-        .offsetBy(dx: -win.frame.minX, dy: -win.frame.minY)
-      let visible = frame.map { !$0.isEmpty && clip.intersects($0) } ?? true
-      let actions = AXReader.actions(el).filter { $0 != kAXRaiseAction }
-      let value = axJSONValue(a.values[kAXValueAttribute])
-      let label = ([a.values[kAXTitleAttribute], a.values[kAXDescriptionAttribute], a.values["AXPlaceholderValue"]]
-        .compactMap { $0 as? String }.first { !$0.isEmpty }) ?? asAX(a.values["AXTitleUIElement"]).flatMap {
-          AXReader.attribute($0, kAXValueAttribute) as? String ?? AXReader.attribute($0, kAXTitleAttribute) as? String
-        }
-      let settable = value != nil && AXReader.settable(el, kAXValueAttribute)
-      let editable = ["AXTextField", "AXTextArea", "AXSearchField", "AXComboBox", "AXWebArea"].contains(role) && AXReader.editable(el, role: role)
       let ref: String
       if let existing = old[identity] { ref = existing } else { counter += 1; ref = "e\(counter)" }
+      guard let node = AXReader.node(identity, ref: ref, attributes: a.values, win: win, parentIndex: parentIndex,
+                                    depth: depth, clip: clip, inWeb: web) else { complete = false; return }
       next[identity] = ref
       let index = nodes.count
-      nodes.append(AXNode(ref: ref, identity: identity, parentIndex: parentIndex, depth: depth, role: role, label: label,
-                          value: value, actions: actions, settable: settable, editable: editable,
-                          focused: a.values[kAXFocusedAttribute] as? Bool, enabled: a.values[kAXEnabledAttribute] as? Bool,
-                          selected: a.values[kAXSelectedAttribute] as? Bool, frame: frame, visible: visible, web: isWeb))
+      nodes.append(node)
       let nextClip: CGRect
-      if role == kAXScrollAreaRole, let frame { nextClip = clip.intersection(frame) } else { nextClip = clip }
-      for child in (a.values[kAXChildrenAttribute] as? [AXUIElement] ?? []) {
+      if node.role == kAXScrollAreaRole, let frame = node.frame { nextClip = clip.intersection(frame) } else { nextClip = clip }
+      for child in AXReader.children(el, role: node.role, batched: a.values[kAXChildrenAttribute]) {
         if nodes.count >= 4_000 || millis(since: start) >= budgetMs { complete = false; break }
-        walk(child, parent: el, parentIndex: index, depth: depth + 1, clip: nextClip, web: isWeb)
+        walk(child, parent: el, parentIndex: index, depth: depth + 1, clip: nextClip, web: node.web)
       }
     }
-    for child in (top.values[kAXChildrenAttribute] as? [AXUIElement] ?? []) {
+    for child in AXReader.children(root, role: kAXWindowRole, batched: top.values[kAXChildrenAttribute]) {
       if nodes.count >= 4_000 || millis(since: start) >= budgetMs { complete = false; break }
       walk(child, parent: root, parentIndex: nil, depth: 0, clip: win.localFrame, web: false)
     }
-    if complete { identities[win.key] = next }
-    else { old.merge(next) { _, new in new }; identities[win.key] = old }
+    if complete {
+      // 발급한 핸들은 누락된 한 번의 읽기 때문에 새 ID를 받지 않는다.
+      let issued = exposed[win.key] ?? [:]
+      old = old.filter { issued[$0.value] != nil }
+    }
+    old.merge(next) { _, new in new }
+    identities[win.key] = old
     return AXTree(root: root, nodes: nodes, complete: complete, windowTitle: title)
   }
 }

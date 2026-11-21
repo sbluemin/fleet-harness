@@ -52,8 +52,8 @@ private struct ActionRequest {
     }
     let requireEditableFocus = jsonBool(p["requireEditableFocus"]) ?? false
     if (p["requireEditableFocus"] != nil && jsonBool(p["requireEditableFocus"]) == nil) ||
-       (action == .key && (ref != nil || requireEditableFocus) && (stroke?.paste != true || !requireEditableFocus)) {
-      throw HelperError("invalid_params", "ref and requireEditableFocus apply to cmd+v only")
+       (action == .key && requireEditableFocus && stroke?.paste != true) {
+      throw HelperError("invalid_params", "requireEditableFocus applies to cmd+v only")
     }
     var direction: AICursorPulse.Direction?
     if action == .scroll {
@@ -170,11 +170,11 @@ private struct Expectation {
   }
 
   // actual.reason은 관측할 수 없는 상태이고 actual.field는 관측된 불일치다.
-  func mismatch(tree: AXTree, latest: [String: AXNode]) -> Object? {
+  func mismatch(tree: AXTree, resolve: (String) throws -> AXNode) -> Object? {
     let node: AXNode
     if tree.root == nil { return ["reason": "incomplete"] }
     if let ref {
-      guard let found = try? tree.resolve(ref, latest: latest) else { return ["reason": "stale_element"] }
+      guard let found = try? resolve(ref) else { return ["reason": "stale_element"] }
       node = found
     } else {
       let matches = tree.nodes.filter { (role == nil || $0.role.caseInsensitiveCompare(role!) == .orderedSame) && (label == nil || $0.label == label) }
@@ -327,6 +327,33 @@ private struct Expectation {
     return tree
   }
 
+  private func readPrepared(_ win: inout WindowInfo) async throws -> AXTree {
+    let start = clockNow()
+    var tree = read(&win)
+    let webEngine = [.chromium, .electron, .webkit].contains(win.engine)
+    let firstEnablement = !tree.hasWebContents && ax.attemptWebAccessibility(win)
+    if firstEnablement {
+      try await pause(500)
+      tree = read(&win)
+    }
+    // Chromium/Electron의 보조 기술 전환은 엔진 내부에서 약 2초 디바운스된다.
+    // WebKit의 첫 자식 조회도 원격 AX 트리가 준비되기 전에는 내용 그룹만 반환할 수 있다.
+    let deadline = firstEnablement ? 2_500 : 1_000
+    let shouldRetry = webEngine || (tree.hasEmptyContentGroup(in: win.localFrame) && ax.canProbeWeb(win.key))
+    if shouldRetry && !tree.hasWebContents && AXIsProcessTrusted() {
+      while !tree.hasWebContents && millis(since: start) < deadline - 50 {
+        try await pause(65)
+        let remaining = deadline - millis(since: start)
+        if remaining <= 0 { break }
+        tree = read(&win, budgetMs: min(250, remaining))
+      }
+    }
+    if (webEngine || tree.hasEmptyContentGroup(in: win.localFrame)) && !tree.hasWebContents {
+      return AXTree(root: tree.root, nodes: tree.nodes, complete: false, windowTitle: tree.windowTitle)
+    }
+    return tree
+  }
+
   private func snapshot(_ p: Object) async throws -> Object {
     try validateKeys(p, allowed: ["pid", "windowId", "processStartedAt", "find", "expand", "limit", "valueLimit", "image"])
     let (pid, id, started) = try windowAddress(p)
@@ -336,9 +363,9 @@ private struct Expectation {
     let valueLimit = try boundedInt(p["valueLimit"], name: "valueLimit", default: 80, range: 0...20_000)
     if p["image"] != nil && jsonBool(p["image"]) == nil { throw HelperError("invalid_params", "image") }
     var win = try window(pid, id, started: started)
-    let tree = read(&win)
-    if let expand { _ = try tree.resolve(expand, latest: ax.latest[win.key] ?? [:]) }
-    let output = tree.snapshot(find: find, expand: expand, limit: limit, valueLimit: valueLimit)
+    let tree = try await readPrepared(&win)
+    let expanded = try expand.map { try ax.resolve($0, tree: tree, window: win) }
+    let output = tree.snapshot(find: find, expand: expanded, limit: limit, valueLimit: valueLimit)
     var result: Object = ["window": win.snapshotJSON(), "elements": output.elements, "omitted": output.omitted,
                           "complete": tree.complete && find == nil && output.omitted == 0 && !output.hasOutside]
     if output.rootOutside > 0 { result["omittedOutside"] = output.rootOutside }
@@ -349,7 +376,7 @@ private struct Expectation {
     try Task.checkCancellation()
     let fresh = try window(pid, id, started: started)
     guard fresh.key == win.key, fresh.frame == win.frame else { throw HelperError.unavailable() }
-    ax.publish(output.shown, for: win.key)
+    ax.publish(output.shown.values, for: win.key)
     return result
   }
 
@@ -374,11 +401,12 @@ private struct Expectation {
         if let started, !matchesStart(catalog.launchDate(pid), started) { throw error }
         return result(index: 0, actual: ["reason": "window_unavailable"])
       }
-      let tree = read(&win)
-      let latest = ax.latest[win.key] ?? [:]
+      let tree = try await readPrepared(&win)
       var mismatch: (Int, Object)?
       for (i, condition) in expect.enumerated() {
-        if let actual = condition.mismatch(tree: tree, latest: latest) { mismatch = (i, actual); break }
+        if let actual = condition.mismatch(tree: tree, resolve: { try self.ax.resolve($0, tree: tree, window: win) }) {
+          mismatch = (i, actual); break
+        }
       }
       guard let (index, actual) = mismatch else { return ["status": "satisfied", "waitedMs": millis(since: start)] }
       if actual["reason"] as? String == "stale_element" || millis(since: start) >= timeout { return result(index: index, actual: actual) }
@@ -406,18 +434,36 @@ private struct Expectation {
     return .appkit
   }
 
-  private func focusEditable(_ node: AXNode?, in win: WindowInfo, root: AXUIElement?, mayFocus: Bool) throws -> AXUIElement {
-    let current = AXReader.focused(win, root: root)
-    if let node {
-      guard node.editable, node.enabled != false, AXReader.belongs(node.el, win, root: root) else { throw HelperError("no_editable_focus") }
-      if current.map({ CFEqual($0, node.el) }) != true {
-        guard mayFocus else { throw HelperError("no_editable_focus") }
-        if AXReader.settable(node.el, kAXFocusedAttribute) { _ = AXReader.set(node.el, kAXFocusedAttribute, kCFBooleanTrue) }
+  private func focusTarget(_ node: AXNode, in win: WindowInfo, root: AXUIElement?, mayFocus: Bool) throws -> AXUIElement {
+    func confirmed() -> Bool {
+      if let focused = AXReader.focused(win, root: root) {
+        if CFEqual(focused, node.el) { return true }
+        if let role = AXReader.attribute(focused, kAXRoleAttribute) as? String, AXReader.editable(focused, role: role) { return false }
       }
+      // Catalyst의 앱 루트는 포커스된 UIKit 자식 대신 컨테이너를 반환할 수 있다.
+      return win.engine == .catalyst && AXReader.attribute(node.el, kAXFocusedAttribute) as? Bool == true &&
+        AXReader.focusedWindow(win, root: root)
     }
-    guard let focused = AXReader.focused(win, root: root), node.map({ CFEqual($0.el, focused) }) != false,
-          let role = AXReader.attribute(focused, kAXRoleAttribute) as? String, AXReader.editable(focused, role: role),
-          AXReader.attribute(focused, kAXEnabledAttribute) as? Bool != false else { throw HelperError("no_editable_focus") }
+    guard AXReader.belongs(node.el, win, root: root), AXReader.attribute(node.el, kAXEnabledAttribute) as? Bool != false else {
+      throw HelperError("no_editable_focus", "target_focus_unconfirmed")
+    }
+    if confirmed() { return node.el }
+    if mayFocus, AXReader.settable(node.el, kAXFocusedAttribute) { _ = AXReader.set(node.el, kAXFocusedAttribute, kCFBooleanTrue) }
+    // setter의 반환값이 아니라 대상이 실제로 포커스됐는지 확인한다.
+    guard confirmed() else { throw HelperError("no_editable_focus", "target_focus_unconfirmed") }
+    return node.el
+  }
+
+  private func focusEditable(_ node: AXNode?, in win: WindowInfo, root: AXUIElement?, mayFocus: Bool) throws -> AXUIElement {
+    let candidate: AXUIElement?
+    if let node {
+      guard AXReader.editable(node.el, role: node.role) else { throw HelperError("no_editable_focus") }
+      candidate = try focusTarget(node, in: win, root: root, mayFocus: mayFocus)
+    } else { candidate = AXReader.focused(win, root: root) }
+    guard let focused = candidate, let role = AXReader.attribute(focused, kAXRoleAttribute) as? String,
+          AXReader.editable(focused, role: role), AXReader.attribute(focused, kAXEnabledAttribute) as? Bool != false else {
+      throw HelperError("no_editable_focus")
+    }
     return focused
   }
 
@@ -428,14 +474,15 @@ private struct Expectation {
     let permissions = HelperPermissions()
     guard permissions.allowed else { throw permissions.error }
     let tree = read(&win)
-    let latest = ax.latest[win.key] ?? [:]
-    let node = try optionalRef(p["ref"]).map { try tree.resolve($0, latest: latest) }
+    let node = try optionalRef(p["ref"]).map { try ax.resolve($0, tree: tree, window: win) }
     try Task.checkCancellation()
     let current = try window(pid, id, started: started)
     guard current.key == win.key else { throw HelperError.unavailable("closed") }
     guard let focused = try? focusEditable(node, in: win, root: tree.root, mayFocus: true) else { return ["editable": false] }
     var result: Object = ["editable": true]
-    if let ref = latest.values.first(where: { CFEqual($0.el, focused) })?.ref { result["focusedRef"] = ref }
+    if let node { result["focusedRef"] = node.ref }
+    else if let ref = tree.nodes.first(where: { CFEqual($0.el, focused) })?.ref,
+            (try? ax.resolve(ref, tree: tree, window: win)) != nil { result["focusedRef"] = ref }
     if let role = AXReader.attribute(focused, kAXRoleAttribute) as? String { result["role"] = role }
     return result
   }
@@ -450,10 +497,9 @@ private struct Expectation {
     guard permissions.allowed else { throw permissions.error }
     guard check["ok"] as? Bool == true else { throw HelperError("self_check_failed", check["reason"] as? String ?? "") }
     guard win.key.launched != nil else { throw HelperError.unavailable() }
-    let before = read(&win)
-    let latest = ax.latest[win.key] ?? [:]
-    let node = try request.ref.map { try before.resolve($0, latest: latest) }
-    let beforeWindows = catalog.all(pid: pid)
+    let before = try await readPrepared(&win)
+    let node = try request.ref.map { try ax.resolve($0, tree: before, window: win) }
+    let beforeWindows = catalog.all(pid: pid, visibleOnly: true)
     let factory = EventFactory(symbols: symbols)
     var point: CGPoint?
     var end: CGPoint?
@@ -466,6 +512,7 @@ private struct Expectation {
     var notes: [String] = []
     var typingElement: AXUIElement?
     var requiresKeyWindow = false
+    var needsTargetFocus = false
 
     func revalidate() throws {
       try Task.checkCancellation()
@@ -480,8 +527,7 @@ private struct Expectation {
       if requiredFrame == nil && current.frame != win.frame { throw HelperError.unavailable() }
       if let root = before.root, AXReader.attribute(root, kAXMinimizedAttribute) as? Bool == true { throw HelperError.unavailable("minimized") }
       for node in [node, endNode].compactMap({ $0 }) {
-        guard AXReader.belongs(node.el, win, root: before.root),
-              asAX(AXReader.attribute(node.el, kAXParentAttribute)).map({ CFEqual($0, node.identity.parent) }) == true else {
+        guard AXReader.matchesLive(node.identity, in: win, root: before.root) else {
           throw HelperError("stale_element")
         }
       }
@@ -489,6 +535,7 @@ private struct Expectation {
         let currentFocus = try focusEditable(node, in: win, root: before.root, mayFocus: false)
         guard CFEqual(currentFocus, typingElement) else { throw HelperError("no_editable_focus") }
       }
+      if needsTargetFocus, let node { _ = try focusTarget(node, in: win, root: before.root, mayFocus: false) }
       if requiresKeyWindow, !AXReader.focusedWindow(win, root: before.root) { throw HelperError.unavailable(message: "target_not_key_window") }
     }
 
@@ -536,7 +583,7 @@ private struct Expectation {
       let destination: CGPoint
       if let ref = try optionalRef(target["ref"]) {
         try validateKeys(target, allowed: ["ref"])
-        let to = try before.resolve(ref, latest: latest)
+        let to = try ax.resolve(ref, tree: before, window: win)
         endNode = to
         destination = try localPoint(node: to, explicit: nil, in: win)
       } else {
@@ -563,7 +610,12 @@ private struct Expectation {
       requiresKeyWindow = !focus
       if request.requireEditableFocus {
         typingElement = try focusEditable(node, in: win, root: before.root, mayFocus: false)
-        point = try? localPoint(node: before.nodes.first { CFEqual($0.el, typingElement!) }, explicit: nil, in: win)
+        point = try? localPoint(node: node ?? before.nodes.first { CFEqual($0.el, typingElement!) }, explicit: nil, in: win)
+      } else if let node {
+        try revalidate()
+        _ = try focusTarget(node, in: win, root: before.root, mayFocus: true)
+        needsTargetFocus = true
+        point = try? localPoint(node: node, explicit: nil, in: win)
       }
     case .setValue:
       guard let node, AXReader.settable(node.el, kAXValueAttribute) else { throw HelperError("not_settable") }
@@ -591,7 +643,7 @@ private struct Expectation {
       verification = .selection(node.el, text, cfRange)
       point = try? localPoint(node: node, explicit: nil, in: win)
     case .axAction:
-      guard let node, let name = request.axName, latest[node.ref]?.actions.contains(name) == true, node.actions.contains(name) else {
+      guard let node, let name = request.axName, ax.offered(name, for: node.ref, in: win.key), node.actions.contains(name) else {
         throw HelperError("invalid_name")
       }
       axAction = name
@@ -656,12 +708,19 @@ private struct Expectation {
     let old = Dictionary(uniqueKeysWithValues: before.nodes.filter(\.visible).map { ($0.ref, $0) })
     let oldWindows = Dictionary(uniqueKeysWithValues: windows.map { ($0.key, $0) })
     var result: Object = ["sent": true, "via": via, "observation": "unobservable", "changes": [], "notes": notes]
+    var reportedNodes: [AXNode] = []
+    defer { ax.publish(reportedNodes, for: win.key) }
     while true {
       try await pause(min(80, max(1, maxObservation - millis(since: start))))
-      let currentWindows = catalog.all(pid: win.key.pid)
+      let currentWindows = catalog.all(pid: win.key.pid, visibleOnly: true)
       let currentKeys = Set(currentWindows.map(\.key))
       var windowsChanged = currentWindows.filter { oldWindows[$0.key] == nil }.map { ["op": "+", "window": $0.json()] as Object }
-      windowsChanged += windows.filter { !currentKeys.contains($0.key) }.map { ["op": "-", "window": $0.json()] as Object }
+      windowsChanged += windows.filter { window in
+        guard !currentKeys.contains(window.key) else { return false }
+        do { return try catalog.available(window.key.pid, window.key.id).key != window.key }
+        catch let error as HelperError { return error.details?["reason"] as? String == "closed" }
+        catch { return false }
+      }.map { ["op": "-", "window": $0.json()] as Object }
       if !windowsChanged.isEmpty { result["windowsChanged"] = windowsChanged; result["observation"] = "changes" }
       guard var fresh = try? window(win.key.pid, win.key.id), fresh.key == win.key else { return result }
       let tree = read(&fresh, budgetMs: max(20, min(180, maxObservation - millis(since: start))))
@@ -678,7 +737,12 @@ private struct Expectation {
         }
       }
       if !changes.isEmpty {
-        result["changes"] = Array(changes.prefix(30))
+        let shown = Array(changes.prefix(30))
+        result["changes"] = shown
+        reportedNodes = shown.compactMap { change in
+          guard change["op"] as? String != "-", let element = change["element"] as? Object, let ref = element["ref"] as? String else { return nil }
+          return current[ref]
+        }
         result["changesMore"] = changes.count > 30 ? changes.count - 30 : nil
       }
       if !changes.isEmpty || !windowsChanged.isEmpty { result["observation"] = "changes" }

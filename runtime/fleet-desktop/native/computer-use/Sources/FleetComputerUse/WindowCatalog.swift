@@ -41,7 +41,7 @@ func millis(since start: Double) -> Int { Int((clockNow() - start) * 1_000) }
 func pause(_ ms: Int) async throws { try await Task.sleep(nanoseconds: UInt64(ms) * 1_000_000) }
 
 // LaunchServices에 등록되지 않은 직접 실행도 PID 재사용을 구별해야 한다.
-private func kernelLaunchDate(_ pid: pid_t) -> Date? {
+func kernelLaunchDate(_ pid: pid_t) -> Date? {
   var info = proc_bsdinfo()
   let size = Int32(MemoryLayout<proc_bsdinfo>.size)
   guard proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, size) == size, info.pbi_start_tvsec > 0 else { return nil }
@@ -163,24 +163,33 @@ struct WindowInfo {
     return window
   }
 
-  func all(pid: pid_t? = nil, describeWithAX: Bool = false) -> [WindowInfo] {
-    let list = CGWindowListCopyWindowInfo([.optionAll, .excludeDesktopElements], kCGNullWindowID) as? [Object] ?? []
+  func all(pid: pid_t? = nil, describeWithAX: Bool = false, visibleOnly: Bool = false) -> [WindowInfo] {
+    let options: CGWindowListOption = [visibleOnly ? .optionOnScreenOnly : .optionAll, .excludeDesktopElements]
+    let list = CGWindowListCopyWindowInfo(options, kCGNullWindowID) as? [Object] ?? []
     let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
     let spaces = symbols.activeSpaces()
     var axWindows: [pid_t: [AXUIElement]] = [:]
     return list.compactMap { item in
       if let pid, item[kCGWindowOwnerPID as String] as? pid_t != pid { return nil }
       guard var window = decode(item, front: front, activeSpaces: spaces) else { return nil }
+      if visibleOnly {
+        guard window.usable, (item[kCGWindowAlpha as String] as? NSNumber)?.doubleValue != 0 else { return nil }
+        return window
+      }
+      var hasAXWindow = false
       if describeWithAX && (!window.onCurrentSpace || window.title.isEmpty) {
         let pid = window.key.pid
         if axWindows[pid] == nil { axWindows[pid] = AXReader.windows(pid) }
-        if let ax = AXReader.window(window, candidates: axWindows[pid]), let attrs = AXReader.attributeNames(ax) {
-          if attrs.contains(kAXMinimizedAttribute) {
+        if let ax = AXReader.window(window, candidates: axWindows[pid]) {
+          hasAXWindow = true
+          if AXReader.attributeNames(ax)?.contains(kAXMinimizedAttribute) == true {
             window.minimized = AXReader.attribute(ax, kAXMinimizedAttribute) as? Bool == true
           }
           if window.title.isEmpty { window.title = AXReader.attribute(ax, kAXTitleAttribute) as? String ?? "" }
         }
       }
+      // 현재 화면 밖의 빈 제목 보조 표면은 실제 AX 창일 때만 목록에 남긴다.
+      if !window.onCurrentSpace && window.title.isEmpty && !hasAXWindow { return nil }
       return window
     }
   }
@@ -279,13 +288,33 @@ private func hasUIKitPlatform(_ url: URL) -> Bool {
     guard let match = content.windows.first(where: { $0.windowID == window.key.id && $0.owningApplication?.processID == window.key.pid }),
           match.frame == window.frame else { throw HelperError.unavailable() }
     let filter = SCContentFilter(desktopIndependentWindow: match)
-    let configuration = SCStreamConfiguration()
-    configuration.width = max(1, Int(window.frame.width.rounded()))
-    configuration.height = max(1, Int(window.frame.height.rounded()))
-    configuration.showsCursor = false
-    configuration.ignoreShadowsSingleWindow = true
-    configuration.ignoreGlobalClipSingleWindow = true
-    let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+    let width = max(1, Int(window.frame.width.rounded()))
+    let height = max(1, Int(window.frame.height.rounded()))
+    let image: CGImage
+    if #available(macOS 26.0, *) {
+      // 스트림 대신 오디오 설정이 없는 정지 화면 API를 사용한다.
+      let configuration = SCScreenshotConfiguration()
+      configuration.width = width
+      configuration.height = height
+      configuration.showsCursor = false
+      configuration.ignoreShadows = true
+      configuration.ignoreClipping = true
+      configuration.includeChildWindows = false
+      configuration.dynamicRange = .sdr
+      let frame = try await SCScreenshotManager.captureScreenshot(contentFilter: filter, configuration: configuration)
+      guard let sdr = frame.sdrImage else { throw HelperError("internal", "screenshot_image_missing") }
+      image = sdr
+    } else {
+      let configuration = SCStreamConfiguration()
+      configuration.width = width
+      configuration.height = height
+      configuration.capturesAudio = false
+      if #available(macOS 15.0, *) { configuration.captureMicrophone = false }
+      configuration.showsCursor = false
+      configuration.ignoreShadowsSingleWindow = true
+      configuration.ignoreGlobalClipSingleWindow = true
+      image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
+    }
     let data = NSMutableData()
     guard let dest = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else { throw HelperError("internal") }
     CGImageDestinationAddImage(dest, image, nil)
