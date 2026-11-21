@@ -3,6 +3,7 @@ import { parseAccessLink } from "./access-link.js";
 import { probeRemoteIdentity } from "./remote-discovery.js";
 import type { createRemoteHostStore, RemoteHostRecord } from "./remote-hosts.js";
 import type { ListenerIdentity } from "./auth.js";
+import { decodeHandle, isPlainObject } from "./route-input.js";
 const REMOTE_HOSTS_PATH = "/api/v1/remote-hosts";
 interface RemoteHostsRouteDeps {
   readonly remoteHostStore: ReturnType<typeof createRemoteHostStore>;
@@ -167,15 +168,4 @@ export function createRemoteHostsRoutes(deps: RemoteHostsRouteDeps) {
   }
 
   return { handleRemoteHosts, handleLocalConsoles, handleRemoteHostHandoff };
-}
-function decodeHandle(raw: string): string {
-  if (raw.includes("/")) return "";
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return "";
-  }
-}
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
