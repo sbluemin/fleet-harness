@@ -1,9 +1,21 @@
 import { useSyncExternalStore } from "react";
-import { applyFontSettingsToDocument } from "./font-settings.js";
+import { fontFamilyForAxis, type ConsoleFontSettings } from "../shared/fonts.js";
 
 import { fetchGlobalSettingsState, updateGlobalSettings } from "./global-settings-api.js";
 import { getShortcutOverrides, setShortcutOverrides } from "../../../core/client/src/integration/shortcut-bindings.js";
 import type { GlobalSettingsState } from "../../../core/client/src/integration/types.js";
+
+/** 저장된 글꼴 설정을 문서에 반영한다 — 설정 스토어가 서버 값을 확정·되돌릴 때마다 호출된다. */
+function applyFontSettingsToDocument(fonts: ConsoleFontSettings): void {
+  if (typeof document === "undefined") return;
+  const style = document.documentElement.style;
+  for (const axis of ["ui", "content", "code"] as const) {
+    style.setProperty(`--font-${axis}`, fontFamilyForAxis(fonts, axis));
+    style.setProperty(`--font-${axis}-size`, `${fonts[axis].size}px`);
+  }
+  style.setProperty("--font-ui-scale", String(fonts.ui.size / 14));
+  document.documentElement.setAttribute("data-ui-font", fonts.ui.font.source);
+}
 
 export type GlobalSettingsField = keyof GlobalSettingsState;
 

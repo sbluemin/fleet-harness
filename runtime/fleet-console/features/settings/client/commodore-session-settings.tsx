@@ -2,8 +2,24 @@ import { useEffect, useRef, useState } from "react";
 import { SettingsRow, SettingsToggle } from "./preferences-context.js";
 
 import { useT } from "../../../core/client/src/i18n/index.js";
-import { fetchCommodoreBasePrompt, fetchCommodoreSubagents, saveCommodoreBasePrompt, saveCommodoreSubagents } from "./commodore-settings.js";
 import "./commodore-session-settings.css";
+
+export interface CommodoreBasePromptState { readonly commodoreId: string; readonly basePromptEnabled: boolean }
+export interface CommodoreSubagentsState { readonly commodoreId: string; readonly subagentsKept: boolean }
+
+async function requestCommodoreSetting<T>(route: string, commodoreId: string, body: unknown, signal?: AbortSignal): Promise<T> {
+  const response = await fetch(`/api/v1/agent/${route}?commodoreId=${encodeURIComponent(commodoreId)}`, {
+    ...(body === undefined ? {} : { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }), signal,
+  });
+  const result = await response.json();
+  if (!response.ok) throw Object.assign(new Error(result?.error ?? "commodore_settings_failed"), { status: response.status });
+  if (result?.commodoreId !== commodoreId) throw new Error("invalid_commodore_settings");
+  return result as T;
+}
+const fetchCommodoreBasePrompt = (commodoreId: string, signal?: AbortSignal): Promise<CommodoreBasePromptState> => requestCommodoreSetting("commodore-system-prompt", commodoreId, undefined, signal);
+const saveCommodoreBasePrompt = (commodoreId: string, basePromptEnabled: boolean, signal?: AbortSignal): Promise<CommodoreBasePromptState> => requestCommodoreSetting("commodore-system-prompt", commodoreId, { basePromptEnabled }, signal);
+const fetchCommodoreSubagents = (commodoreId: string, signal?: AbortSignal): Promise<CommodoreSubagentsState> => requestCommodoreSetting("commodore-subagents", commodoreId, undefined, signal);
+const saveCommodoreSubagents = (commodoreId: string, subagentsKept: boolean, signal?: AbortSignal): Promise<CommodoreSubagentsState> => requestCommodoreSetting("commodore-subagents", commodoreId, { subagentsKept }, signal);
 
 type CommodoreToggleState = "loading" | "ready" | "saving" | "loadFailed" | "saveFailed";
 
