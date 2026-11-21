@@ -1,7 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 
-import type { MemoryBranch, MemoryEntry } from "../shared/contracts/memory.js";
-import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
+import { MEMORY_STALE_MS, type MemoryBranch, type MemoryEntry } from "../shared/contracts/memory.js";
 import { useCommodoreMemory } from "./commodore-state.js";
 import type { CommodoreMessageKey } from "./i18n/index.js";
 

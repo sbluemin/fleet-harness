@@ -18,7 +18,7 @@ import { MAX_TASKFORCE_MEMBERS, MAX_TASKFORCE_POST_TEXT, MAX_TASKFORCE_TEXT, REC
 import { askAnswerLines, type CommodoreStore } from "./store.js";
 import type { CommodoreDescriptionProposals } from "./description-proposals.js";
 import type { CommodoreIntelProposals } from "./intel-proposals.js";
-import { MEMORY_STALE_MS } from "../shared/contracts/memory-stale.js";
+import { MEMORY_STALE_MS } from "../shared/contracts/memory.js";
 import { MAX_ASK_REASON, MAX_DESCRIPTION, MAX_INTEL_TEXT, routineScheduleSchema, type CommodoreAsk, type CommodoreSource } from "../shared/contracts/types.js";
 
 /**

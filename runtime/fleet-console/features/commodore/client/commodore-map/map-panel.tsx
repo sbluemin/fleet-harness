@@ -3,8 +3,7 @@ import type { ReactNode } from "react";
 import type { Translate } from "@fleet-console/i18n";
 import { PlusGlyph } from "@fleet-console/ui/react";
 
-import { MEMORY_STALE_MS } from "../../shared/contracts/memory-stale.js";
-import { MEMORY_BRANCHES, type MemoryBranch, type MemoryEntry } from "../../shared/contracts/memory.js";
+import { MEMORY_BRANCHES, MEMORY_STALE_MS, type MemoryBranch, type MemoryEntry } from "../../shared/contracts/memory.js";
 import type { CommodoreRunStatus, CommodoreState } from "../../shared/contracts/types.js";
 import type { MapDisplayLabels, MapGraph, MapNode } from "./map-graph.js";
 import { MEMORY_BRANCH_HINT, MEMORY_BRANCH_LABEL, memoryDay, memoryLinks } from "../commodore-memory.js";
