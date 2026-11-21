@@ -960,7 +960,13 @@ button.commodore-market-glyph[aria-pressed="true"] { background: var(--brass-glo
 button.commodore-market-glyph:hover { box-shadow: inset 0 0 0 1px var(--control-hover-rim); }
 button.commodore-market-glyph[aria-pressed="true"]:hover { box-shadow: inset 0 0 0 1px var(--brass); }
 button.commodore-market-glyph:focus-visible { box-shadow: var(--focus-face); }
-@media (prefers-reduced-motion: no-preference) { button.commodore-market-glyph { transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease; } }
+button.commodore-market-glyph.has-icon { background: none; box-shadow: none; }
+button.commodore-market-glyph.has-icon[aria-pressed="true"]::after { box-shadow: inset 0 0 0 1.5px color-mix(in oklch, var(--brass) 65%, transparent); }
+button.commodore-market-glyph.has-icon:hover::after { box-shadow: inset 0 0 0 1px var(--control-hover-rim); }
+button.commodore-market-glyph.has-icon[aria-pressed="true"]:hover::after { box-shadow: inset 0 0 0 1.5px var(--brass); }
+button.commodore-market-glyph.has-icon:focus-visible::after { box-shadow: var(--focus-face); }
+button.commodore-market-glyph.has-icon[aria-pressed="false"] img { opacity: 0.45; filter: grayscale(1); }
+@media (prefers-reduced-motion: no-preference) { button.commodore-market-glyph, button.commodore-market-glyph.has-icon::after, button.commodore-market-glyph.has-icon img { transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease, opacity 120ms ease, filter 120ms ease; } }
 .commodore-market-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--hairline); }
 .commodore-market-card-status { flex: 1 1 auto; min-width: 0; color: var(--text-tertiary); font-size: var(--t-xs); line-height: 1.45; }
 .commodore-marketplaces-add { display: grid; gap: 6px; padding-top: 10px; }

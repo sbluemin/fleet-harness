@@ -9,7 +9,7 @@ import { httpUrl, pluginReadmeHtml } from "./plugin-readme.js";
 import { useConsoleLocale } from "../../../core/client/src/i18n/index.js";
 import { useViewMode } from "../../../core/client/src/integration/view-mode-store.js";
 import { SettingsGroup, SettingsItem, SettingsToggle } from "../../settings/client/preferences-context.js";
-import { effectiveCommodorePlugins, pluginIconPath, splitPluginId, type GlobalPluginReplacement, type CommodorePluginAuthView, type PluginServerAuthView, type MarketplaceErrorCode, type MarketplaceView, type PluginCatalogEntry, type PluginCatalogView, type PluginComponents, type PluginContents, type PluginDetail } from "../shared/contracts/plugins.js";
+import { effectiveCommodorePlugins, marketplaceIconPath, pluginIconPath, splitPluginId, type GlobalPluginReplacement, type CommodorePluginAuthView, type PluginServerAuthView, type MarketplaceErrorCode, type MarketplaceView, type PluginCatalogEntry, type PluginCatalogView, type PluginComponents, type PluginContents, type PluginDetail } from "../shared/contracts/plugins.js";
 import { commodoreName, loadCommodore, postCommodorePlugins, setCommodorePlugin, setCommodorePluginReach, useCommodore, useCommodoreEnabled } from "./commodore-state.js";
 import { useCommodoreList } from "./commodore-list.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
@@ -355,19 +355,23 @@ function GlobalPluginGroup({ t, plugins, entries, phone, authOf, updateMark, get
 }
 
 /**
- * 마켓플레이스 타일은 켜기/끄기 단추다 — 켜지면 brass, 꺼지면 무채색. 이름은 「{이름} 켜기」로 고정하고 상태는 aria-pressed 가 말한다.
- * 카드·폰 행이 같은 단추를 쓰고, 상태 글자(「꺼짐」)는 따로 두지 않는다.
+ * 마켓플레이스 타일은 켜기/끄기 단추다 — 켜지면 brass(아이콘이 있으면 테두리, 없으면 면), 꺼지면 무채색. 이름은 「{이름} 켜기」로 고정하고
+ * 상태는 aria-pressed 가 말한다. 카드·폰 행이 같은 단추를 쓰고, 상태 글자(「꺼짐」)는 따로 두지 않는다.
  */
 function MarketplaceGlyph({ t, marketplace, act, size }: { readonly t: T; readonly marketplace: MarketplaceView; readonly act: Act; readonly size: "market" | "phone" }) {
+  const [broken, setBroken] = useState<string | null>(null);
+  const showIcon = Boolean(marketplace.icon) && broken !== marketplace.name;
   return (
     <button
       type="button"
-      className={`commodore-tile is-${size} commodore-market-glyph`}
+      className={`commodore-tile is-${size} commodore-market-glyph${showIcon ? " has-icon" : ""}`}
       aria-pressed={marketplace.enabled}
       aria-label={t("commodore.marketplaces.enableAria", { name: marketplace.name })}
       title={t(marketplace.enabled ? "commodore.marketplaces.turnOff" : "commodore.marketplaces.turnOn")}
       onClick={() => enableMarketplace(marketplace, act)(!marketplace.enabled)}
-    >{initialsOf(marketplace.name)}</button>
+    >{showIcon
+      ? <img src={marketplaceIconPath(marketplace.name)} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setBroken(marketplace.name)} />
+      : initialsOf(marketplace.name)}</button>
   );
 }
 
@@ -458,8 +462,8 @@ function useMarketplaceControls(t: T, marketplace: MarketplaceView, act: Act, re
 }
 
 /**
- * 데스크톱 마켓플레이스 카드 — 머리(타일·이름·출처), 설명 한 줄, 아래 칸(수·상태·행동). 마켓플레이스에는 아이콘 필드가 없어
- * 타일은 언제나 이니셜이고 켜기/끄기 단추를 겸한다(`MarketplaceGlyph`). 꺼진 카드는 타일 색과 글자 옅어짐으로 말한다.
+ * 데스크톱 마켓플레이스 카드 — 머리(타일·이름·출처), 설명 한 줄, 아래 칸(수·상태·행동). 타일은 켜기/끄기 단추를
+ * 겸한다(`MarketplaceGlyph`) — 아이콘이 있으면 그림, 없으면 이니셜이고 꺼진 카드는 타일과 글자 옅어짐으로 말한다.
  */
 function MarketplaceCard({ t, marketplace, act, refreshing, onRefresh }: { readonly t: T; readonly marketplace: MarketplaceView; readonly act: Act; readonly refreshing: readonly string[]; readonly onRefresh: (name?: string) => Promise<void> }) {
   const { cardSummary, failure, confirm, actions, locator } = useMarketplaceControls(t, marketplace, act, refreshing, onRefresh);

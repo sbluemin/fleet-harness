@@ -24,7 +24,7 @@ import { z } from "zod";
 import { normalizeCommodoreAlias } from "../shared/alias.js";
 
 import { CommodoreStoreError, safeErrorCode } from "./errors.js";
-import { commodorePluginSetSchema, effectiveCommodorePlugins, effectivePluginsQuerySchema, globalPluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema, pluginUpdateSchema } from "../shared/contracts/plugins.js";
+import { commodorePluginSetSchema, effectiveCommodorePlugins, effectivePluginsQuerySchema, globalPluginSetSchema, pluginAuthActionSchema, pluginAuthCallbackSchema, pluginAuthStatusSchema, pluginKeySetSchema, marketplaceAddSchema, marketplaceEnableSchema, marketplaceIconQuerySchema, marketplaceNameRefSchema, marketplaceUpdateSchema, MAX_COMMODORE_PLUGINS, pluginIconQuerySchema, pluginInspectSchema, pluginUpdateSchema } from "../shared/contracts/plugins.js";
 import type { EffectiveCommodorePluginsView, GlobalPluginsView } from "../shared/contracts/plugins.js";
 import { decisionAnswersSchema } from "../shared/contracts/questions.js";
 import type { CommodoreStore } from "./store.js";
@@ -203,17 +203,8 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
     res.end(found.bytes);
     return true;
   };
-  /**
-   * 플러그인 아이콘 — 제3자 저장소의 파일이다. 화면은 `<img>` 로만 읽고, 주소를 문서로 직접 열어도 svg 안의 스크립트·외부 읽기가
-   * 돌지 않게 CSP sandbox 를 함께 보낸다.
-   */
-  const pluginIcon: RouteHandler = ({ req, res }) => {
-    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
-    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
-    const parsed = pluginIconQuerySchema.safeParse(Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams));
-    if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
-    const found = hooks.plugins?.icon(parsed.data.pluginId) ?? null;
-    if (!found) { ctx.host.http.writeJson(res, 404, { error: "icon_not_found" }); return true; }
+  const sendSandboxedIcon = (res: http.ServerResponse, found: { readonly bytes: Buffer; readonly mime: string } | null) => {
+    if (!found) { ctx.host.http.writeJson(res, 404, { error: "icon_not_found" }); return; }
     res.writeHead(200, {
       "Content-Type": found.mime,
       "Content-Length": found.bytes.byteLength,
@@ -222,6 +213,25 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; sandbox",
     });
     res.end(found.bytes);
+  };
+  /**
+   * 플러그인 아이콘 — 제3자 저장소의 파일 또는 캐시된 GitHub owner 아바타다. 화면은 `<img>` 로만 읽고,
+   * 주소를 문서로 직접 열어도 svg 안의 스크립트·외부 읽기가 돌지 않게 CSP sandbox 를 함께 보낸다.
+   */
+  const pluginIcon: RouteHandler = async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const parsed = pluginIconQuerySchema.safeParse(Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams));
+    if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    sendSandboxedIcon(res, (await hooks.plugins?.icon(parsed.data.pluginId)) ?? null);
+    return true;
+  };
+  const marketplaceIcon: RouteHandler = async ({ req, res }) => {
+    if (req.method !== "GET") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
+    if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
+    const parsed = marketplaceIconQuerySchema.safeParse(Object.fromEntries(new URL(req.url ?? "/", "http://localhost").searchParams));
+    if (!parsed.success) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return true; }
+    sendSandboxedIcon(res, (await hooks.plugins?.marketplaceIcon(parsed.data.name)) ?? null);
     return true;
   };
 
@@ -361,7 +371,8 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       return { view: await pluginAuth().status(commodoreId, effectiveIds(commodoreId), true) };
     }, false) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
-    { name: "commodore/plugins/icon", method: "GET", summary: "Read a plugin's icon image declared in its plugin.json; only image files inside the plugin folder are served.", handler: pluginIcon },
+    { name: "commodore/plugins/icon", method: "GET", summary: "Read a plugin's icon image from inside the plugin folder or its cached external GitHub owner avatar.", handler: pluginIcon },
+    { name: "commodore/marketplaces/icon", method: "GET", summary: "Read a marketplace's icon image from its local manifest folder or its cached GitHub owner avatar.", handler: marketplaceIcon },
     { name: "commodore/state", method: "POST", summary: "Read a Commodore's state: routines, description, intel, sources and model coordinates.", handler: json(commodoreRef, ({ commodoreId }) => view(commodoreId, read(commodoreId))) },
     { name: "commodore/cli-status", method: "POST", summary: "Read whether this Commodore's chat can answer: the Claude Code CLI is missing, signed out, or ready. Read-only; credentials are checked, never written.", handler: json(commodoreRef.strict(), async ({ commodoreId }) => {
       read(commodoreId);

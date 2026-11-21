@@ -156,8 +156,10 @@ export interface MarketplaceView {
   readonly pluginCount: number;
   /** marketplace.json 의 `description`(또는 `metadata.description`) — 카드 설명 한 줄. */
   readonly description?: string;
-  /** marketplace.json 의 `owner.name` — 직접 추가한 마켓플레이스 카드의 「만든 이」. 마켓플레이스에는 아이콘 필드가 없다. */
+  /** marketplace.json 의 `owner.name` — 직접 추가한 마켓플레이스 카드의 「만든 이」. */
   readonly owner?: string;
+  /** 마켓플레이스 아이콘(로컬 아이콘 또는 GitHub owner 아바타)이 있다 — 그림은 `marketplaceIconPath(name)` 로 읽는다. */
+  readonly icon?: true;
 }
 
 /** 플러그인이 싣는 구성 요소 수. 아직 받지 않아 모르면 카탈로그 항목의 `components` 가 없다. */
@@ -211,7 +213,7 @@ export interface PluginCatalogEntry {
   /** http(s) 저장소 주소만. 그 외 표기는 싣지 않는다. */
   readonly repository?: string;
   readonly keywords?: readonly string[];
-  /** plugin.json `icon` 이 플러그인 폴더 안 이미지를 가리킨다 — 그림은 `pluginIconPath(id)` 로 읽는다. 경로는 싣지 않는다. */
+  /** 로컬 플러그인 아이콘 또는 외부 GitHub 출처의 owner 아바타가 있다 — 그림은 `pluginIconPath(id)` 로 읽는다. 경로·외부 주소는 싣지 않는다. */
   readonly icon?: true;
   readonly components?: PluginComponents;
   /**
@@ -301,13 +303,19 @@ export type MarketplaceErrorCode =
  *   `claude plugin update <id> --json` 으로 올린다. 새 버전에 실행 명령이 있고 그 버전을 신뢰한 적이 없으면
  *   trust_required 로 거절한다(details: { version, runs }). 확인은 trusted 와 그때 본 version·runs 를 함께 보내야 하고,
  *   받은 버전이나 명령이 다르면 다시 거절한다. -y·--accept-command 는 쓰지 않는다.
- * - GET `commodore/plugins/icon?pluginId=` → 그 플러그인 아이콘 그림(png·jpeg·gif·webp·svg). 카탈로그 항목에 `icon` 이 있을 때만 있다.
+ * - GET `commodore/plugins/icon?pluginId=` → 그 플러그인 아이콘 그림(로컬 png·jpeg·gif·webp·svg 또는 캐시한 GitHub owner 아바타). 카탈로그 항목에 `icon` 이 있을 때만 있다.
+ * - GET `commodore/marketplaces/icon?name=` → 그 마켓플레이스 아이콘 그림(로컬 아이콘 또는 캐시한 GitHub owner 아바타). 마켓플레이스 항목에 `icon` 이 있을 때만 있다.
  */
 export const MAX_PLUGIN_ICON_BYTES = 512 * 1024;
 export const pluginIconQuerySchema = z.object({ pluginId: pluginIdSchema }).strict();
+export const marketplaceIconQuerySchema = z.object({ name: marketplaceNameSchema }).strict();
 /** 브라우저가 `<img>` 로만 읽는 아이콘 주소 — svg 도 문서가 아니라 그림으로 그려 스크립트가 돌지 않는다. */
 export function pluginIconPath(pluginId: string): string {
   return `/api/v1/commodore/plugins/icon?${new URLSearchParams({ pluginId })}`;
+}
+/** 브라우저가 `<img>` 로만 읽는 마켓플레이스 아이콘 주소. */
+export function marketplaceIconPath(name: string): string {
+  return `/api/v1/commodore/marketplaces/icon?${new URLSearchParams({ name })}`;
 }
 export const marketplaceAddSchema = z.object({
   source: z.string().trim().min(1).max(MAX_MARKETPLACE_SOURCE),
