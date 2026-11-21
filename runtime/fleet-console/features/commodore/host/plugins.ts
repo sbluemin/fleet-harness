@@ -28,6 +28,7 @@ import {
   type PluginContents,
   type PluginDetail,
 } from "../shared/contracts/plugins.js";
+import { httpUrl } from "../shared/url.js";
 
 /**
  * 사령관 플러그인 등록부 — Console 데이터의 Fleet 전용 Claude 홈 하나를 소유한다.
@@ -326,8 +327,7 @@ const text = (value: unknown, max: number): string | undefined => (typeof value 
 const personName = (value: unknown): string | undefined => text(typeof value === "string" ? value : isRecord(value) ? value.name : undefined, 120);
 const webAddress = (value: unknown): string | undefined => {
   const raw = text(value, 2048);
-  if (!raw) return undefined;
-  try { const url = new URL(raw); return (url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password ? url.href : undefined; } catch { return undefined; }
+  return raw ? httpUrl(raw) ?? undefined : undefined;
 };
 const licenseOf = (value: unknown): string | undefined => text(typeof value === "string" ? value : isRecord(value) ? value.type ?? value.name : undefined, 80);
 const repositoryOf = (value: unknown): string | undefined => webAddress(typeof value === "string" ? value : isRecord(value) ? value.url : undefined);
