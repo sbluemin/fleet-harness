@@ -5,7 +5,7 @@ import type { MobileBarAction, MobileBarMenuItem } from "../../../../../features
 
 import type { ConversationPillTakeover } from "../../../../../features/workspace/shared/conversation-pill.js";
 import { getViewedCommodoreId } from "../../integration/viewed-theater.js";
-
+import { createListenerSet } from "../../integration/listener-set.js";
 
 /**
  * 모바일 셸의 클라이언트 상태. 라우트(/objectives·/settings)가 큰 자리를 정하고, 이 스토어는
@@ -13,13 +13,7 @@ import { getViewedCommodoreId } from "../../integration/viewed-theater.js";
  * 기존 페인/표면 소유자가 지킨다.
  */
 
-type Listener = () => void;
-const listeners = new Set<Listener>();
-function emit(): void { for (const listener of listeners) listener(); }
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+const { emit, subscribe } = createListenerSet();
 
 /** 모바일 대화 목록의 Theater 필터 — 사령관 + Theater 쌍으로만 기억한다. 데스크톱 동작·Objective 수명과 무관하며 영속화하지 않는다. */
 export interface MobileListTheater { readonly commodoreId: string; readonly theaterId: string }

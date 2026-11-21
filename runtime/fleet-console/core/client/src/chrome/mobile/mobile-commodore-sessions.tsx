@@ -4,7 +4,7 @@ import { useCommanderRows } from "../../../../../features/workspace/client/comma
 import { useConsoleState } from "../../hooks/use-store.js";
 import { useT } from "../../i18n/index.js";
 import { useRailEntries } from "../pane/pane-registry.js";
-import { AttentionReason } from "./mobile-attention-reason.js";
+import { AttentionReason } from "./mobile-attention.js";
 import { MobileArchivedFinished } from "./mobile-archived-finished.js";
 import { MobileCommanderList } from "./mobile-commander-list.js";
 import { attentionMovesFirst, entryIconOf, useMobileAttention } from "./mobile-destinations.js";

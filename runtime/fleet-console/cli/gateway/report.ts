@@ -8,7 +8,7 @@ import {
 } from "@fleet-console/ai-gateway";
 
 import { GATEWAY_SET_KEYS, describeGatewayPolicy, type GatewaySetKey } from "./policy.js";
-import { command, dim, optionRow, resolveColorEnabled, section, stripAnsi } from "../styles/tokens.js";
+import { command, dim, optionRow, resolveColorEnabled, section, stripAnsi, type ResolveColorEnabledOptions } from "../styles/tokens.js";
 
 /** 자격증명 축은 공급자마다 조달 경로가 달라 하나의 판정으로 합쳐진다. */
 export type GatewayCredentialState = "present" | "absent";
@@ -28,10 +28,7 @@ export interface GatewayModelReport {
   readonly efforts: readonly string[];
 }
 
-export interface GatewayRenderOptions {
-  readonly env?: NodeJS.ProcessEnv;
-  readonly isTTY?: boolean;
-}
+export type GatewayRenderOptions = ResolveColorEnabledOptions;
 
 export function collectGatewayModels(settings: AiGatewayStoredSettings): readonly GatewayModelReport[] {
   const catalog = buildAiGatewayCatalog();

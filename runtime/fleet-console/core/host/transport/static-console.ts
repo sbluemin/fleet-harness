@@ -24,6 +24,11 @@ export function createStaticConsoleHandler(
   return (req, res, pathname) => tryServeStaticConsole(req, res, pathname, consoleRoot, deps?.getActiveTheme);
 }
 
+function sendJsonError(res: http.ServerResponse, status: number, error: string, headers: Record<string, string> = {}): void {
+  res.writeHead(status, withSecurityHeaders({ ...headers, "Content-Type": "application/json" }));
+  res.end(JSON.stringify({ error }));
+}
+
 function tryServeStaticConsole(
   req: http.IncomingMessage,
   res: http.ServerResponse,
@@ -33,20 +38,17 @@ function tryServeStaticConsole(
 ): boolean {
   if (pathname !== "/console" && !pathname.startsWith("/console/")) return false;
   if (req.method !== "GET" && req.method !== "HEAD") {
-    res.writeHead(405, withSecurityHeaders({ Allow: "GET, HEAD", "Content-Type": "application/json" }));
-    res.end(JSON.stringify({ error: "Method not allowed" }));
+    sendJsonError(res, 405, "Method not allowed", { Allow: "GET, HEAD" });
     return true;
   }
   const relativePath = resolveConsolePath(pathname);
   if (!relativePath) {
-    res.writeHead(404, withSecurityHeaders({ "Content-Type": "application/json" }));
-    res.end(JSON.stringify({ error: "Not found" }));
+    sendJsonError(res, 404, "Not found");
     return true;
   }
   const absolutePath = path.resolve(consoleRoot, relativePath);
   if (!absolutePath.startsWith(consoleRoot)) {
-    res.writeHead(404, withSecurityHeaders({ "Content-Type": "application/json" }));
-    res.end(JSON.stringify({ error: "Not found" }));
+    sendJsonError(res, 404, "Not found");
     return true;
   }
   try {
@@ -64,8 +66,7 @@ function tryServeStaticConsole(
     if (pathname.startsWith("/console/")) {
       return serveFallbackIndex(req, res, consoleRoot, getActiveTheme);
     }
-    res.writeHead(404, withSecurityHeaders({ "Content-Type": "application/json" }));
-    res.end(JSON.stringify({ error: "Not found" }));
+    sendJsonError(res, 404, "Not found");
     return true;
   }
 }
@@ -87,8 +88,7 @@ function serveFallbackIndex(
     return true;
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err;
-    res.writeHead(404, withSecurityHeaders({ "Content-Type": "application/json" }));
-    res.end(JSON.stringify({ error: "Not found" }));
+    sendJsonError(res, 404, "Not found");
     return true;
   }
 }

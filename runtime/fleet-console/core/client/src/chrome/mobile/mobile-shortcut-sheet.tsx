@@ -5,7 +5,7 @@ import { resolveLocalizedText } from "@fleet-console/i18n/translate";
 
 import { useConsoleLocale, useT } from "../../i18n/index.js";
 import { useRailEntries } from "../pane/pane-registry.js";
-import { useMobileAttentionRows } from "./mobile-attention-context.js";
+import { useMobileAttentionRows } from "./mobile-attention.js";
 import { featuredDestinationBinding, isChipDestination, mobileHomeCommodoreId, mobilePluginRows, renderEntryIcon, useMobileDestinationBindings, useMobileDestinationTrailing } from "./mobile-destinations.js";
 import { MobileIcon, type MobileIconName } from "./mobile-icons.js";
 import { MobileSheet } from "./mobile-sheet.js";

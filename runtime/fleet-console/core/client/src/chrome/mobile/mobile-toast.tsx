@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { createListenerSet } from "../../integration/listener-set.js";
 
 /**
  * 모바일 토스트(S-33). 문구 하나와 선택적 글자 버튼 하나, 6초 뒤 사라진다. 앱 루트의 토스트 호스트(보관 되돌리기 등
@@ -11,24 +12,19 @@ export interface MobileToast {
 }
 
 const SHOW_MS = 6000;
-const listeners = new Set<() => void>();
+const { emit, subscribe } = createListenerSet();
 let current: MobileToast | null = null;
 let nextId = 1;
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
-
 export function showMobileToast(text: string, action?: MobileToast["action"]): void {
   current = { id: nextId++, text, ...(action ? { action } : {}) };
-  for (const listener of listeners) listener();
+  emit();
 }
 
 function dismiss(id: number): void {
   if (current?.id !== id) return;
   current = null;
-  for (const listener of listeners) listener();
+  emit();
 }
 
 export function MobileToastHost() {

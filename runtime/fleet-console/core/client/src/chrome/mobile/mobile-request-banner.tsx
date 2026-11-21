@@ -7,7 +7,7 @@ import { resolveObjectiveActivity, resolveObjectiveMarkVisual } from "../../../.
 import { getIdleArrivalIds } from "../../../../../features/execution/client/objective-marks.js";
 import { useT } from "../../i18n/index.js";
 import type { ConsoleState } from "../../integration/types.js";
-import { formatRemaining } from "./mobile-attention-reason.js";
+import { formatRemaining } from "./mobile-attention.js";
 
 const SHOW_MS = 6000;
 

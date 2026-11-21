@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import type { FloatingWidgetArrival, FloatingWidgetArrivalsCapability, FloatingWidgetAwaiting, FloatingWidgetAwaitingsCapability, FloatingWidgetComposerCapability, FloatingWidgetContext, FloatingWidgetDeparture, FloatingWidgetDeparturesCapability, FloatingWidgetDescriptor, FloatingWidgetFleetSignals, FloatingWidgetKeepOutCapability, FloatingWidgetObjectiveRecordsCapability, FloatingWidgetRect, FloatingWidgetSignalsCapability } from "../../../../features/workspace/shared/floating.js";
 import { FeatureErrorBoundary } from "@fleet-console/ui/react";
 
-import { prefersReducedMotion } from "./reduced-motion.js";
 import { useConsoleLocale } from "../i18n/index.js";
 import { resolveObjectiveActivity } from "../../../../features/execution/client/objective-activity.js";
 import { getDepartureIds, getIdleArrivalIds, subscribeDeparture, subscribeIdleArrival } from "../../../../features/execution/client/objective-marks.js";
@@ -334,6 +333,20 @@ interface ManagedSignalsCapability {
   readonly dispose: () => void;
 }
 
+let reducedMotionQuery: { readonly source: Window["matchMedia"]; readonly query: MediaQueryList } | null = null;
+
+function reducedMotionMediaQuery(): MediaQueryList | null {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return null;
+  if (reducedMotionQuery?.source !== window.matchMedia) {
+    reducedMotionQuery = { source: window.matchMedia, query: window.matchMedia("(prefers-reduced-motion: reduce)") };
+  }
+  return reducedMotionQuery.query;
+}
+
+function prefersReducedMotion(): boolean {
+  return reducedMotionMediaQuery()?.matches ?? false;
+}
+
 function readFleetSignals(): FloatingWidgetFleetSignals {
   const state = getState();
   let running = 0;
@@ -376,9 +389,7 @@ function createManagedSignalsCapability(): ManagedSignalsCapability {
       listener(next);
     };
 
-    const motionQuery = typeof window !== "undefined" && typeof window.matchMedia === "function"
-      ? window.matchMedia("(prefers-reduced-motion: reduce)")
-      : null;
+    const motionQuery = reducedMotionMediaQuery();
     motionQuery?.addEventListener("change", notifyIfChanged);
     const unsubscribeStore = subscribeStore(notifyIfChanged);
     const unsubscribe = () => {

@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { createListenerSet } from "./listener-set.js";
 
 /** Desktop 셸이 가로채는 목록 항해. 셸은 Console 내부를 import하지 않아 같은 리터럴을 갖는다. */
 export const PICKER_SURFACE_PARAM = "desktop-surface";
@@ -85,24 +86,19 @@ export interface DesktopShellHome {
   readonly capabilities: readonly string[];
 }
 
-type Listener = () => void;
-
 /**
  * "아직 모른다"와 "집이 없다"는 다르다. 둘을 하나의 null로 합치면, 답이 오기 전 잠깐 동안
  * 손님 콘솔이 자기가 집인 것처럼 보인다 — 그 사이 사용자가 칩을 누르면 남의 목록이 펼쳐진다.
  */
 let snapshot: DesktopShellHome = { origin: null, pending: true, desktopVersion: null, capabilities: [] };
-const listeners = new Set<Listener>();
+const listeners = createListenerSet();
 
 function publish(next: DesktopShellHome): void {
   snapshot = next;
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
+const subscribe = listeners.subscribe;
 
 function getSnapshot(): DesktopShellHome {
   return snapshot;

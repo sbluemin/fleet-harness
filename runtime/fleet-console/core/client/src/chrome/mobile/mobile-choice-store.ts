@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { MobileChoiceOption, MobileChoiceSpec } from "../../../../../features/settings/client/mobile-host.js";
+import { createListenerSet } from "../../integration/listener-set.js";
 
 /**
  * 설정의 선택 팝업 상태(P-1). 한 번에 하나만 열린다 — 열린 동안 다시 열면 앞의 것을 바꾼다.
@@ -23,15 +24,8 @@ export interface MobileChoiceState {
   readonly opener: HTMLElement | null;
 }
 
-type Listener = () => void;
-const listeners = new Set<Listener>();
+const { emit, subscribe } = createListenerSet();
 let current: MobileChoiceState | null = null;
-
-function emit(): void { for (const listener of listeners) listener(); }
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
 
 export function isMobileChoiceOpen(): boolean { return current !== null; }
 

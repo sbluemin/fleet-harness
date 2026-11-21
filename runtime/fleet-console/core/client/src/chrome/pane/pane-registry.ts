@@ -6,9 +6,12 @@ import type { PaneContext, PaneDescriptor } from "../../../../../features/worksp
 import type { RailEntryDescriptor, RailPanelDescriptor } from "../../../../../features/workspace/shared/rail.js";
 
 import { useFeatureRegistry, type ResolvedRailEntry } from "../../integration/feature-registry.js";
-import { BUILT_IN_RAIL_PANELS } from "../rail/built-in-panels.js";
 import { useConversationObjectiveTabPanels } from "../rail/objective-tabs.js";
 import { settingsPanes, settingsRailEntry } from "../../../../../features/settings/client/settings-pane.js";
+
+// 코어가 소유한 rail 패널은 없다. 목록은 남긴다 —
+// 코어가 다시 패널을 갖게 될 때 합성 순서(코어 먼저)가 이미 자리를 잡고 있어야 한다.
+const BUILT_IN_RAIL_PANELS: readonly RailPanelDescriptor[] = [];
 
 /**
  * 레일 엔트리와 페인의 합성 레지스트리.

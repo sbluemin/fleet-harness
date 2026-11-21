@@ -17,8 +17,8 @@ import { usePaneIndex } from "./pane-registry.js";
  * 페인 머리는 호스트가 이미 제목과 닫기를 그린다. 그래서 확대된 페인은 자기 캡션을 세우지
  * 않는다 — 세우면 같은 문장이 두 줄에 겹쳐 선다.
  */
-import { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-id.js";
-export { EXPANDED_PANE_SURFACE_ID } from "./expanded-pane-id.js";
+import { EXPANDED_PANE_SURFACE_ID } from "./pane-target.js";
+export { EXPANDED_PANE_SURFACE_ID } from "./pane-target.js";
 
 /**
  * 이 페인이 지금 확대 표면에 서 있는가.

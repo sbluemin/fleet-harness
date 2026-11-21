@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from "react";
 import type { ApiCatalogEntry } from "./types.js";
 import { ApiError } from "./api.js";
+import { createListenerSet } from "./listener-set.js";
 
 // ─── fetch ─────────────────────────────────────────────────────────────────────
 
@@ -82,9 +83,7 @@ interface ApiCatalogStoreState {
   readonly error: string | null;
 }
 
-type Listener = () => void;
-
-const listeners = new Set<Listener>();
+const listeners = createListenerSet();
 let snapshot: ApiCatalogStoreState = {
   loading: false,
   state: null,
@@ -99,12 +98,7 @@ function getApiCatalogStoreState(): ApiCatalogStoreState {
   return snapshot;
 }
 
-export function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+export const subscribe = listeners.subscribe;
 
 export async function loadApiCatalog(signal?: AbortSignal): Promise<void> {
   setSnapshot({ loading: true, error: null });
@@ -119,7 +113,7 @@ export async function loadApiCatalog(signal?: AbortSignal): Promise<void> {
 
 function setSnapshot(patch: Partial<ApiCatalogStoreState>): void {
   snapshot = { ...snapshot, ...patch };
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
 function toErrorMessage(error: unknown): string {

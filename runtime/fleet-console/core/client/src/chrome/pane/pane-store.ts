@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { PaneCloseContext, PaneMount, PaneOpenRequest, PaneRole } from "../../../../../features/workspace/shared/pane.js";
+import { createListenerSet } from "../../integration/listener-set.js";
 
 /**
  * 표면에 서 있는 페인 인스턴스들.
@@ -28,10 +29,8 @@ interface PaneStoreState {
   readonly focusedPaneId: string | null;
 }
 
-type Listener = () => void;
-
 let state: PaneStoreState = { rail: [], focusedPaneId: null };
-const listeners = new Set<Listener>();
+const listeners = createListenerSet();
 
 // instanceId는 안정적이어야 한다 — 리렌더마다 새 값이면 React가 본문을 통째로 다시 마운트해
 // keepAlive의 목적이 사라진다. 단조 증가 카운터면 충분하고, 시각에 의존하지 않아 테스트에서도
@@ -40,13 +39,10 @@ let instanceSeq = 0;
 
 function emit(next: PaneStoreState): void {
   state = next;
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
-export function subscribePaneStore(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
+export const subscribePaneStore = listeners.subscribe;
 
 export function getPaneStoreSnapshot(): PaneStoreState {
   return state;
