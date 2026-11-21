@@ -13,7 +13,7 @@ import { EvidenceError, readSharedEvidence } from "./evidence.js";
 import { ObjectiveStoreError, type ObjectiveStore } from "./store.js";
 import { searchInputShape, searchObjectives } from "./search.js";
 import { CONSULT_ASK_DESCRIPTION } from "../shared/consultations.js";
-import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TEXT, MAX_MISSION_TITLE, missionTitleSchema, MAX_SHORT_INPUT, followupBodySchema, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, MAX_OBJECTIVE_MESSAGE_TEXT, MAX_CONSULTATION_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
+import { criterionProposalSchema, MAX_MISSIONS, MAX_MISSION_TITLE, missionTextSchema, missionTitleSchema, MAX_SHORT_INPUT, followupBodySchema, followupReviseSchema, withoutLegacyCriteria, MAX_FOLLOWUPS, MAX_CRITERIA, MAX_RECORD_LINE, MAX_RECORD_LINES, MAX_RETRO_PAIRS, MAX_RETRO_TEXT, MAX_OBJECTIVE_MESSAGE_TEXT, MAX_CONSULTATION_TEXT, recordLines, missionReady, retrospectiveSchema, type Objective, type ObjectiveMission } from "../shared/types.js";
 import { createBoardViews, refuse, roleIn, storedText, text } from "./views.js";
 
 /**
@@ -255,7 +255,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
 
   // 임무가 있으면 편성이다. 기준만이면 임무·명단을 받지 않는다. 둘 다 없거나 명단만이면 거절한다.
   const planArgs = z.object({
-    missions: z.array(z.object({ title: missionTitleSchema, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40).optional(),
+    missions: z.array(z.object({ title: missionTitleSchema, text: missionTextSchema, prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(MAX_SHORT_INPUT).optional() })).optional(), member: memberReference.optional() }).strict()).min(1).max(40).optional(),
     members: z.array(rosterMember).max(40).optional(),
     criteria: z.array(criterionProposalSchema).max(MAX_CRITERIA).optional(),
   }).strict().check((ctx) => {
@@ -336,7 +336,7 @@ export function createObjectiveMcpTools(ctx: ObjectivesFeatureDeps, store: Objec
           } } : {}) });
       }),
     commanderTool("add_mission", `Add a mission — title, text, prerequisites (each an n or missionId on the board, with optional why), and optionally its member by roster id or role; none means the Commander. A mission added without prerequisites is ready at once. The returned n is its number until the Commander's next read. ${BOARD_REFERENCES}`,
-      z.object({ title: missionTitleSchema, text: z.string().trim().min(1).max(MAX_MISSION_TEXT), prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
+      z.object({ title: missionTitleSchema, text: missionTextSchema, prerequisites: z.array(prerequisiteRef).max(40).optional(), member: memberReference.optional() }).strict(),
       (args, objective) => {
         const prerequisites = prerequisitesOf(objective, args.prerequisites ?? []);
         const known = numbered.get(objective.id);

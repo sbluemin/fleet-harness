@@ -106,11 +106,15 @@ export function withSubagentSpawn(payload: Record<string, unknown>, policy: Suba
  * 지금 payload에 정책이 없으면 스냅샷이 가지고 있던 정책도 되살리지 않는다.
  */
 export function retainSubagentSpawn(written: Record<string, unknown>, live: Record<string, unknown> | null | undefined): Record<string, unknown> {
-  const policy = readSubagentSpawn(live);
-  if (policy) return written.subagentSpawn === policy ? written : { ...written, subagentSpawn: policy };
-  if (!("subagentSpawn" in written)) return written;
+  return retainLaunchPolicy(written, live, "subagentSpawn");
+}
+
+function retainLaunchPolicy(written: Record<string, unknown>, live: Record<string, unknown> | null | undefined, key: "subagentSpawn" | "userQuestions"): Record<string, unknown> {
+  const policy = live?.[key];
+  if (policy === "blocked" || policy === "default") return written[key] === policy ? written : { ...written, [key]: policy };
+  if (!(key in written)) return written;
   const next = { ...written };
-  delete next.subagentSpawn;
+  delete next[key];
   return next;
 }
 
@@ -133,12 +137,7 @@ export function withUserQuestions(payload: Record<string, unknown>, policy: User
 
 /** @deprecated `UserQuestions` 참고. `retainSubagentSpawn`과 같은 규칙으로 그 값을 옮긴다. */
 export function retainUserQuestions(written: Record<string, unknown>, live: Record<string, unknown> | null | undefined): Record<string, unknown> {
-  const policy = live?.userQuestions;
-  if (policy === "blocked" || policy === "default") return written.userQuestions === policy ? written : { ...written, userQuestions: policy };
-  if (!("userQuestions" in written)) return written;
-  const next = { ...written };
-  delete next.userQuestions;
-  return next;
+  return retainLaunchPolicy(written, live, "userQuestions");
 }
 
 /** 기존 세션 좌표·이름·실행 정책을 유지하며 프리셋을 바꾼다. */

@@ -1147,7 +1147,7 @@ export const objectiveActionSchema = z.object({
 }).strict();
 const title = z.string().trim().min(1).max(MAX_TITLE);
 const note = z.string().max(MAX_NOTE);
-const missionText = z.string().trim().min(1).max(MAX_MISSION_TEXT);
+export const missionTextSchema = z.string().trim().min(1).max(MAX_MISSION_TEXT);
 export const missionTitleSchema = z.string().trim().min(1).max(MAX_MISSION_TITLE);
 const dueDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable();
 
@@ -1178,11 +1178,11 @@ export const criterionProposalSchema = z.union([
 ]);
 export type CriterionProposalInput = z.output<typeof criterionProposalSchema>;
 
-export const missionAddSchema = z.object({ title: missionTitleSchema.optional(), text: missionText, prerequisites: z.array(ids).max(MAX_MISSIONS).optional(), why: z.record(ids, z.string().max(300)).optional(), member: ids.nullable().optional() }).strict();
+export const missionAddSchema = z.object({ title: missionTitleSchema.optional(), text: missionTextSchema, prerequisites: z.array(ids).max(MAX_MISSIONS).optional(), why: z.record(ids, z.string().max(300)).optional(), member: ids.nullable().optional() }).strict();
 export const missionPatchSchema = z.object({
   /** null 이면 이름을 지워 상세 앞부분으로 돌아간다. */
   title: missionTitleSchema.nullable().optional(),
-  text: missionText.optional(),
+  text: missionTextSchema.optional(),
   done: z.boolean().optional(),
   prerequisites: z.array(ids).max(MAX_MISSIONS).optional(),
   why: z.record(ids, z.string().max(300)).optional(),
@@ -1194,7 +1194,7 @@ export const planSchema = z.object({
   // 생략하면 기준만 제출한다. 빈 배열은 편성이 아니다.
   missions: z.array(z.object({
     title: missionTitleSchema.optional(),
-    text: missionText,
+    text: missionTextSchema,
     // n 은 이 plan 의 missions 안 1-based 번호, missionId 는 이미 있는(완료·배정된) 임무 — 새 임무가 기존 임무 뒤에 설 수 있다.
     prerequisites: z.array(z.object({ n: z.number().int().min(1).optional(), missionId: ids.optional(), why: z.string().max(300).optional() })).max(MAX_MISSIONS).optional(),
     /** 구성원 id 또는 역할 이름. 없으면 지휘관 직접. */
