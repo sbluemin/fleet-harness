@@ -102,6 +102,11 @@ struct AnimRig {
   float wingFlapL;
   float wingFlapR;
   float hatBounce;
+  float supermanPose;
+  float fightPose;
+  float legStride;
+  float auraBoost;
+  float blushAdd;
   int exprMode;
 };
 
@@ -131,6 +136,11 @@ AnimRig computeAnim() {
   r.wingFlapL = 0.0;
   r.wingFlapR = 0.0;
   r.hatBounce = clamp(uHatBounce, -0.18, 0.18);
+  r.supermanPose = 0.0;
+  r.fightPose = 0.0;
+  r.legStride = 0.0;
+  r.auraBoost = 0.0;
+  r.blushAdd = 0.0;
   r.exprMode = uExpression;
 
   float t = uTime + uPhase;
@@ -196,16 +206,17 @@ AnimRig computeAnim() {
     r.wingFlapL = sin(g) * 0.34;
     r.wingFlapR = -sin(g) * 0.34;
   } else if (uWorldAnim == 2) {
-    // sprint: 앞으로 숙인 경쾌한 질주 + 빠른 날개 파닥임
-    float g = t * 14.5;
+    // sprint: 상체 전방 기울임(+0.26 rad) + 하단 별 발 경쾌한 교차 발구름 + 망토 펼침
+    float g = t * 15.2;
     float sb = abs(sin(g));
     float st = (sb - 0.45) * 0.13;
-    r.pitchAdd = 0.19;
-    r.roll = sin(g) * 0.14;
+    r.pitchAdd = 0.26;
+    r.roll = sin(g) * 0.13;
     r.offset.y += sb * 0.095;
-    r.scale = vec3(1.0 - st * 0.72, 1.0 + st, 1.0 + 0.04 - st * 0.45);
-    r.wingFlapL = 0.16 + sin(g * 1.15) * 0.44;
-    r.wingFlapR = r.wingFlapL;
+    r.scale = vec3(1.0 - st * 0.70, 1.0 + st, 1.0 + 0.05 - st * 0.45);
+    r.wingFlapL = 0.18 + sin(g * 1.15) * 0.42;
+    r.wingFlapR = -0.18 - sin(g * 1.15) * 0.42;
+    r.legStride = sin(g);
   } else if (uWorldAnim == 3) {
     // jump: 상승 세로 스트레치 + 공중 날개 펼침
     float jv = clamp(uJumpVel * 0.13, -0.22, 0.24);
@@ -276,15 +287,26 @@ AnimRig computeAnim() {
     r.wingFlapR = 0.54 + wv * 0.34;
     r.wingFlapL = -0.06 + sin(ph * 4.0) * 0.06;
   } else if (uWorldAnim == 9) {
-    // cheer: 신나는 2단 바운스 + 양 날개 파닥파닥
+    // cheer: 예비 웅크림 → 신나는 2단 화이팅 점프 + 양 팔/날개 번쩍
     float ph = uAnimPhase;
-    float hop = abs(sin(ph * 7.2));
-    float st = (hop - 0.35) * 0.15;
-    r.offset.y += hop * 0.16;
-    r.scale = vec3(1.0 - st * 0.60, 1.0 + st, 1.0 - st * 0.60);
-    r.roll = sin(ph * 7.2) * 0.14;
-    r.wingFlapL = 0.42 + sin(ph * 16.0) * 0.36;
-    r.wingFlapR = r.wingFlapL;
+    if (ph < 0.18) {
+      float dip = sin((ph / 0.18) * 3.1415926);
+      r.offset.y -= dip * 0.09;
+      r.scale = vec3(1.0 + dip * 0.14, 1.0 - dip * 0.16, 1.0 + dip * 0.14);
+      r.fightPose = -0.22 * dip;
+    } else {
+      float hp = ph - 0.18;
+      float hop = abs(sin(hp * 7.6));
+      float st = (hop - 0.32) * 0.16;
+      r.offset.y += hop * 0.19;
+      r.scale = vec3(1.0 - st * 0.62, 1.0 + st, 1.0 - st * 0.62);
+      r.roll = sin(hp * 7.6) * 0.14;
+      r.wingFlapL = 0.50 + sin(hp * 16.0) * 0.34;
+      r.wingFlapR = r.wingFlapL;
+      r.fightPose = 0.68 + hop * 0.32;
+      r.blushAdd = 0.55;
+      r.exprMode = 1;
+    }
   } else if (uWorldAnim == 10) {
     // spin: 360도 공중 회전 + 탄성 스트레치
     float u = clamp(uAnimPhase / 0.85, 0.0, 1.0);
@@ -334,48 +356,129 @@ AnimRig computeAnim() {
     r.wingFlapL = p * 0.25;
     r.wingFlapR = p * 0.25;
   } else if (uWorldAnim == 16) {
-    // fly: 별빛 상공 자유 비행 — 슈퍼히어로 전방 글라이드 + 우아한 부유 호버
-    float spd = clamp(uMoveSpeed / 18.0, 0.0, 1.85);
-    float hover = sin(t * 3.4);
-    r.offset.y += hover * 0.085;
-    r.pitchAdd = 0.24 + spd * 0.22;
-    r.roll = sin(t * 2.1) * 0.06;
-    r.scale = vec3(1.0 - spd * 0.035, 1.0 + spd * 0.045, 1.0 + spd * 0.06);
-    r.wingFlapL = 0.34 + sin(t * (5.2 + spd * 2.6)) * 0.14;
-    r.wingFlapR = r.wingFlapL;
-    if (spd > 1.15 && r.exprMode == 0) r.exprMode = 1;
+    // fly: 정지 호버(똑바로 선 귀여운 별) ↔ 이동/부스트 슈퍼맨 비행 자세 부드러운 전환
+    float superman = smoothstep(0.8, 5.5, uMoveSpeed);
+    float boost = smoothstep(20.0, 32.0, uMoveSpeed);
+    float hover = sin(t * 3.3);
+    r.offset.y += hover * mix(0.095, 0.035, superman);
+    r.pitchAdd = mix(0.0, 1.15 + boost * 0.13, superman);
+    r.roll = sin(t * 2.1) * mix(0.055, 0.025, superman);
+    r.scale = mix(
+      vec3(1.0 + hover * 0.015, 1.0 - hover * 0.015, 1.0 + hover * 0.012),
+      vec3(0.95, 1.08 + boost * 0.06, 0.96),
+      superman
+    );
+    r.wingFlapL = mix(0.16 + sin(t * 4.4) * 0.12, 0.06, superman);
+    r.wingFlapR = mix(0.16 + sin(t * 4.4) * 0.12, 0.06, superman);
+    r.supermanPose = superman;
+    r.auraBoost = 0.42 + superman * 0.24 + boost * 0.24;
+    if (boost > 0.35 && r.exprMode == 0) r.exprMode = 1;
   } else if (uWorldAnim == 17) {
-    // dive: 별똥별 유성 급강하 — 빠른 360° 코멧 회전 + 유선형 스트레치
+    // dive: 별똥별 유성 급강하 — 빠른 360° 코멧 회전 + 강렬한 황금 오라
     float ph = (uAnimPhase > 0.001) ? uAnimPhase : t;
-    r.yawAdd = ph * 12.0;
-    r.pitchAdd = 0.56;
+    r.yawAdd = ph * 12.6;
+    r.pitchAdd = 0.88;
     r.roll = sin(ph * 9.0) * 0.10;
-    r.scale = vec3(0.90, 1.16, 0.92);
+    r.scale = vec3(0.88, 1.18, 0.90);
     r.wingFlapL = 0.58;
     r.wingFlapR = 0.58;
+    r.supermanPose = 0.55;
+    r.auraBoost = 1.0;
     r.exprMode = 1;
+  } else if (uWorldAnim == 20) {
+    // takeoff-charge: 1단계 제자리 줌인 화이팅 자세 (0..0.34 예비 웅크림 → 0.34..1.0 힘찬 만세/화이팅!)
+    float ph = clamp(uAnimPhase, 0.0, 1.0);
+    if (ph < 0.34) {
+      float u = smoothstep(0.0, 0.34, ph);
+      r.offset.y -= u * 0.11;
+      r.scale = mix(vec3(1.0), vec3(1.16, 0.82, 1.16), u);
+      r.pitchAdd = 0.14 * u;
+      r.fightPose = -0.28 * u;
+      r.auraBoost = u * 0.25;
+      r.exprMode = 4;
+    } else {
+      float u = smoothstep(0.34, 0.62, ph);
+      float hold = smoothstep(0.34, 1.0, ph);
+      float pulse = sin(ph * 26.0) * 0.022 * u;
+      r.offset.y += mix(-0.11, 0.11, u) + pulse;
+      r.scale = mix(vec3(1.16, 0.82, 1.16), vec3(0.95, 1.15, 0.95), u);
+      r.pitchAdd = mix(0.14, -0.06, u);
+      r.roll = sin(ph * 18.0) * 0.045 * u;
+      r.hatBounce += sin(u * 3.1415926) * 0.07;
+      r.wingFlapL = 0.65 * u;
+      r.wingFlapR = 0.65 * u;
+      r.fightPose = u;
+      r.auraBoost = mix(0.28, 0.86, hold);
+      r.blushAdd = 0.82 * u;
+      r.exprMode = 1;
+    }
+  } else if (uWorldAnim == 21) {
+    // takeoff-ascend: 2단계 빙글빙글 회오리 수직 상승 (360°×2.5 회전 + 세로 스트레치 + 강렬한 별빛 오라)
+    float ph = (uAnimPhase > 0.001) ? clamp(uAnimPhase, 0.0, 1.0) : fract(t * 1.4);
+    float ease = smoothstep(0.0, 0.18, ph);
+    r.yawAdd = ph * 15.707963;
+    r.pitchAdd = -0.06 * ease;
+    r.scale = mix(vec3(0.96, 1.12, 0.96), vec3(0.86, 1.24, 0.86), ease);
+    r.wingFlapL = 0.72;
+    r.wingFlapR = 0.72;
+    r.fightPose = 0.88;
+    r.auraBoost = 1.0;
+    r.blushAdd = 0.65;
+    r.exprMode = 1;
+  } else if (uWorldAnim == 22) {
+    // hero-land: 유성 착지 히어로 폼(0..0.44 탄성 스쿼시) → 화이팅 피니시(0.44..1.0 뿌듯한 착지 포즈)
+    float ph = clamp(uAnimPhase, 0.0, 1.0);
+    if (ph < 0.44) {
+      float u = sin((ph / 0.44) * 3.1415926);
+      r.offset.y -= u * 0.16;
+      r.scale = mix(vec3(1.0), vec3(1.22, 0.72, 1.22), u);
+      r.pitchAdd = 0.22 * u;
+      r.fightPose = -0.24 * u;
+      r.auraBoost = (1.0 - ph / 0.44) * 0.65;
+      r.exprMode = 4;
+    } else {
+      float u = smoothstep(0.44, 0.72, ph);
+      float tail = 1.0 - smoothstep(0.85, 1.0, ph);
+      float pop = sin(u * 3.1415926);
+      r.offset.y += pop * 0.15 * tail;
+      r.scale = mix(vec3(1.0), vec3(0.94, 1.13, 0.94), pop * 0.75 * tail);
+      r.pitchAdd = -0.05 * u * tail;
+      r.hatBounce += pop * 0.06 * tail;
+      r.wingFlapL = 0.62 * u * tail;
+      r.wingFlapR = 0.62 * u * tail;
+      r.fightPose = u * tail;
+      r.auraBoost = 0.32 * tail;
+      r.blushAdd = 0.72 * tail;
+      r.exprMode = 1;
+    }
   }
 
-  // 비행 뱅킹/피치 기울기 (player-controller 물리 연동)
-  r.roll += clamp(uFlightRoll, -0.75, 0.75);
-  r.pitchAdd += clamp(uFlightPitch, -0.75, 0.85);
+  // 비행 뱅킹/배럴롤(±2π 전체 지원) · 피치 기울기 (player-controller 물리 연동)
+  r.roll += uFlightRoll;
+  if (uWorldAnim == 16) {
+    r.pitchAdd = clamp(r.pitchAdd + uFlightPitch * 0.18, -0.45, 1.32);
+  } else if (uWorldAnim == 17) {
+    r.pitchAdd = clamp(r.pitchAdd + uFlightPitch * 0.22, -0.45, 1.32);
+  } else if (uWorldAnim != 20 && uWorldAnim != 21 && uWorldAnim != 22) {
+    r.pitchAdd += clamp(uFlightPitch, -0.75, 0.85);
+  }
 
-  // 착지 스쿼시-앤-스트레치 (모든 모드 공통 오버레이)
-  float ls = clamp(uLandSquash, 0.0, 1.0);
+  // 착지 스쿼시-앤-스트레치 (히어로 착지 자체 스쿼시와 이중 중첩 방지)
+  float ls = (uWorldAnim == 22) ? 0.0 : clamp(uLandSquash, 0.0, 1.0);
   if (ls > 0.001) {
     r.scale *= vec3(1.0 + ls * 0.18, 1.0 - ls * 0.22, 1.0 + ls * 0.18);
     r.offset.y -= ls * 0.09;
   }
-  if (uWorldAnim != 3 && abs(uJumpVel) > 0.05) {
+  if (uWorldAnim != 3 && uWorldAnim != 16 && uWorldAnim != 17 && uWorldAnim != 21 && abs(uJumpVel) > 0.05) {
     float jv = clamp(uJumpVel * 0.09, -0.16, 0.18);
     r.scale *= vec3(1.0 - abs(jv) * 0.34, 1.0 + abs(jv) * 0.48, 1.0 - abs(jv) * 0.34);
   }
 
-  // 부드러운 시선 추적 (눈동자 + 은은한 고개 회선)
+  // 부드러운 시선 추적 (눈동자 + 은은한 고개 회선 — 회오리·화이팅·스핀 중엔 고정 유지)
   float ly = clamp(uLookYaw, -1.0, 1.0);
   float lp = clamp(uLookPitch, -1.0, 1.0);
   r.eyeShift += vec2(ly * 0.058, lp * 0.048);
-  if (uWorldAnim != 10 && uWorldAnim != 11) {
+  if (uWorldAnim != 10 && uWorldAnim != 11 && uWorldAnim != 17 && uWorldAnim != 20 && uWorldAnim != 21 && uWorldAnim != 22) {
     r.yawAdd += ly * 0.14;
     r.pitchAdd -= lp * 0.09;
   }
@@ -386,14 +489,15 @@ AnimRig computeAnim() {
 vec3 toLocal(vec3 p, AnimRig rig) {
   vec3 q = p - rig.offset;
   q.xz = rot2(-rig.yawAdd) * q.xz;
-  q.yz = rot2(-rig.pitchAdd) * q.yz;
+  // roll을 pitch 이전에 적용해 수평 슈퍼맨 비행 중 360° 에일러론 배럴롤이 진행 축(+Z) 기준으로 회전하도록 정렬
   q.xy = rot2(-rig.roll) * q.xy;
+  q.yz = rot2(rig.pitchAdd) * q.yz;
   q /= rig.scale;
   return q;
 }
 
 float sdMarioStar(vec3 q, AnimRig rig) {
-  // 각진 능선 없이 말랑·몽글몽글한 마시멜로 쿠션 5각 별 (둥근 쿠션 코어 + 5개 둥근 별 꼭짓점 큰 반경 smin 융합)
+  // 각진 능선 없이 말랑·몽글몽글한 마시멜로 쿠션 5각 별 (호버 · 슈퍼맨 비행 · 화이팅 포즈 · 질주 발구름 부드러운 블렌딩)
   vec3 sp = q - vec3(0.0, 0.01, 0.0);
   float core = sdEllipsoid(sp, vec3(0.45, 0.43, 0.38));
 
@@ -401,18 +505,49 @@ float sdMarioStar(vec3 q, AnimRig rig) {
   float topY = (uHat == 3) ? 0.56 : 0.39;
   float topPt = sdRoundCone(sp, vec3(0.0, 0.08, 0.0), vec3(0.0, topY, 0.0), 0.255, 0.155);
 
-  // 2~3) 좌우 별 꼭짓점 (은은한 모션 바운스 연동, 5각 별 실루엣 유지)
-  vec3 al = sp - vec3(-0.14, 0.03, 0.0);
-  al.xy = rot2(-rig.wingFlapL * 0.26) * al.xy;
-  float armL = sdRoundCone(al, vec3(0.0, 0.0, 0.0), vec3(-0.42, 0.14, 0.0), 0.245, 0.152);
+  // 2~3) 좌우 별 팔 꼭짓점: 기본 5각 별 ↔ 화이팅 만세 ↔ 슈퍼맨 비행 포즈
+  float sm = clamp(rig.supermanPose, 0.0, 1.0);
+  float fp = clamp(rig.fightPose, -0.35, 1.0);
 
-  vec3 ar = sp - vec3(0.14, 0.03, 0.0);
-  ar.xy = rot2(rig.wingFlapR * 0.26) * ar.xy;
-  float armR = sdRoundCone(ar, vec3(0.0, 0.0, 0.0), vec3(0.42, 0.14, 0.0), 0.245, 0.152);
+  vec3 armLStart = mix(vec3(-0.14, 0.03, 0.0), vec3(-0.14, 0.02, -0.02), sm);
+  vec3 armLBase = vec3(-0.56, 0.17, 0.0);
+  vec2 alOff = armLBase.xy - armLStart.xy;
+  alOff = rot2(rig.wingFlapL * 0.26) * alOff;
+  vec3 armLTip = vec3(armLStart.xy + alOff, 0.0);
+  if (fp > 0.001) {
+    // 양 별 팔을 바깥쪽 V자로 경쾌하게 번쩍 들어 모자와 실루엣이 겹치지 않는 5각 별 화이팅 자세 유지
+    armLTip = mix(armLTip, vec3(-0.48, 0.45, 0.12), fp);
+  } else if (fp < -0.001) {
+    armLTip = mix(armLTip, vec3(-0.52, -0.02, 0.06), -fp);
+  }
+  armLTip = mix(armLTip, vec3(-0.38, -0.08, -0.05), sm);
+  float armL = sdRoundCone(sp, armLStart, armLTip, 0.245, 0.152);
 
-  // 4~5) 하단 좌우 별 꼭짓점 (안정적인 5각 대칭)
-  float legL = sdRoundCone(sp, vec3(-0.08, -0.10, 0.0), vec3(-0.35, -0.47, 0.0), 0.245, 0.158);
-  float legR = sdRoundCone(sp, vec3( 0.08, -0.10, 0.0), vec3( 0.35, -0.47, 0.0), 0.245, 0.158);
+  vec3 armRStart = mix(vec3(0.14, 0.03, 0.0), vec3(0.12, 0.14, 0.03), sm);
+  vec3 armRBase = vec3(0.56, 0.17, 0.0);
+  vec2 arOff = armRBase.xy - armRStart.xy;
+  arOff = rot2(-rig.wingFlapR * 0.26) * arOff;
+  vec3 armRTip = vec3(armRStart.xy + arOff, 0.0);
+  if (fp > 0.001) {
+    armRTip = mix(armRTip, vec3(0.48, 0.45, 0.12), fp);
+  } else if (fp < -0.001) {
+    armRTip = mix(armRTip, vec3(0.52, -0.02, 0.06), -fp);
+  }
+  // 슈퍼맨 시그니처: 오른 별 팔을 앞으로 쭉 뻗어 히어로 비행 실루엣 완성!
+  armRTip = mix(armRTip, vec3(0.22, 0.66, 0.06), sm);
+  float armR = sdRoundCone(sp, armRStart, armRTip, 0.245, 0.152);
+
+  // 4~5) 하단 좌우 별 다리: 기본 5각 대칭 ↔ 질주 교차 발구름 ↔ 슈퍼맨 뒤로 쭉 뻗은 다리
+  vec3 legLTip = vec3(-0.35, -0.47, 0.0);
+  vec3 legRTip = vec3( 0.35, -0.47, 0.0);
+  if (abs(rig.legStride) > 0.001) {
+    legLTip += vec3(0.0, max(0.0, rig.legStride) * 0.08, rig.legStride * 0.16);
+    legRTip += vec3(0.0, max(0.0, -rig.legStride) * 0.08, -rig.legStride * 0.16);
+  }
+  legLTip = mix(legLTip, vec3(-0.19, -0.58, -0.04), sm);
+  legRTip = mix(legRTip, vec3( 0.19, -0.58, -0.04), sm);
+  float legL = sdRoundCone(sp, vec3(-0.08, -0.10, 0.0), legLTip, 0.245, 0.158);
+  float legR = sdRoundCone(sp, vec3( 0.08, -0.10, 0.0), legRTip, 0.245, 0.158);
 
   float d = smin(core, topPt, 0.23);
   d = smin(d, armL, 0.23);
@@ -422,18 +557,24 @@ float sdMarioStar(vec3 q, AnimRig rig) {
   return d;
 }
 
-float sdStarlightCape(vec3 q, float t) {
-  // 몽글 노란 별의 앞면은 깨끗하게 비우고 등 뒤에서만 아담하게 펄럭이는 미니 별빛 망토
-  float u = clamp((-0.09 - q.y) / 0.48, 0.0, 1.0);
-  float flightWind = (uWorldAnim == 17) ? 5.2 : (uWorldAnim == 16 ? 3.2 : 0.0);
-  float spd = clamp(uMoveSpeed + flightWind, 0.0, 10.0);
+float sdStarlightCape(vec3 q, float t, AnimRig rig) {
+  // 몽글 노란 별의 앞면은 깨끗하게 비우고 등 뒤에서만 펄럭이는 미니 별빛 망토 (슈퍼맨 비행 시 수평 강풍 · 회오리 상승 시 나선 휘날림)
+  float sm = clamp(rig.supermanPose, 0.0, 1.0);
+  float lenSpan = mix(0.48, 0.62, sm);
+  float u = clamp((-0.09 - q.y) / lenSpan, 0.0, 1.0);
+  float flightWind = (uWorldAnim == 21) ? 6.2
+    : ((uWorldAnim == 17) ? 5.6
+    : ((uWorldAnim == 16) ? mix(2.4, 5.4, sm)
+    : ((uWorldAnim == 2) ? 2.6 : 0.0)));
+  float spd = clamp(uMoveSpeed + flightWind, 0.0, 11.0);
   float billow = (0.10 + spd * 0.046 + max(0.0, -uJumpVel) * 0.048) * (u * u);
-  float flutter = sin(t * (4.1 + spd * 1.5) - u * 4.8 + q.x * 3.8) * (0.018 + spd * 0.009) * (u * u);
-  float hemY = -0.56 + billow * 0.22;
+  float spiralWave = (uWorldAnim == 21) ? (sin(t * 14.0 - u * 7.5 + q.x * 5.0) * 0.055 * u) : 0.0;
+  float flutter = sin(t * (4.1 + spd * 1.55) - u * 5.0 + q.x * 3.8) * (0.018 + spd * 0.009) * (u * u) + spiralWave;
+  float hemY = mix(-0.56, -0.68, sm) + billow * mix(0.22, 0.08, sm);
   float midY = 0.5 * (-0.09 + hemY);
   float halfH = max(0.08, 0.5 * (-0.09 - hemY));
-  float halfW = mix(0.24, 0.39, u);
-  float curveZ = -0.37 - 0.11 * u - billow + flutter + 0.34 * q.x * q.x;
+  float halfW = mix(0.24, mix(0.39, 0.43, sm), u);
+  float curveZ = -0.37 - mix(0.11, 0.05, sm) * u - billow * mix(1.0, 0.42, sm) + flutter + 0.34 * q.x * q.x;
   vec3 cp = vec3(q.x, q.y - midY, q.z - curveZ);
   return sdRoundBox(cp, vec3(halfW, halfH, 0.015), 0.022) * 0.65;
 }
@@ -516,7 +657,7 @@ vec2 mapScene(vec3 p, AnimRig rig) {
 
     // 등 뒤에서만 펄럭이는 3종 미니 망토 (uCape == 3이면 망토 없음)
     if (uCape != 3) {
-      res = opU(res, vec2(sdStarlightCape(q, t) * sMin, 9.0));
+      res = opU(res, vec2(sdStarlightCape(q, t, rig) * sMin, 9.0));
     }
 
     // 4종 모자 100% 호환 + 모자 없음 전용: 별 꼭짓점 주변을 은은히 맴도는 작은 별빛 반짝임 2기
@@ -727,8 +868,8 @@ void main() {
 
       vec3 nLoc = N;
       nLoc.xz = rot2(-rig.yawAdd) * nLoc.xz;
-      nLoc.yz = rot2(-rig.pitchAdd) * nLoc.yz;
       nLoc.xy = rot2(-rig.roll) * nLoc.xy;
+      nLoc.yz = rot2(rig.pitchAdd) * nLoc.yz;
       nLoc = normalize(nLoc);
 
       vec3 starAlbedo = uBaseCol;
@@ -741,7 +882,7 @@ void main() {
       if (q.z > 0.08 && nLoc.z > 0.16) {
         float frontFade = smoothstep(0.16, 0.36, nLoc.z);
         int expr = rig.exprMode;
-        float blushAmt = clamp(max(uBlush, (expr == 1) ? 0.78 : 0.0), 0.0, 1.0);
+        float blushAmt = clamp(max(max(uBlush, rig.blushAdd), (expr == 1) ? 0.78 : 0.0), 0.0, 1.0);
         float eyeY = 0.04;
         vec2 ep = q.xy - vec2(0.0, eyeY) - rig.eyeShift * 0.58;
         vec2 eL = ep - vec2(-0.132, 0.0);
@@ -801,14 +942,11 @@ void main() {
       coreCol += baseLin * 0.14;
       coreCol += vec3(1.0, 0.97, 0.84) * (specSoft * 0.22 + specBroad * 0.24);
       coreCol += mix(baseLin, vec3(1.0, 0.96, 0.72), 0.60) * rim * 0.54;
-      if (uWorldAnim == 16) {
-        // 별빛 비행 시 따뜻한 황금 별빛 림 글로우 부스트
-        float flyPulse = 0.86 + 0.14 * sin(tAnim * 5.2);
-        coreCol += vec3(1.0, 0.90, 0.42) * (rim * 0.52 + 0.08) * flyPulse;
-      } else if (uWorldAnim == 17) {
-        // 유성 급강하 코멧 발광 오라 부스트
-        float divePulse = 0.90 + 0.15 * sin(tAnim * 14.0);
-        coreCol += vec3(1.0, 0.88, 0.36) * (0.26 + rim * 0.98) * divePulse;
+      if (rig.auraBoost > 0.001) {
+        // 별빛 비행 · 화이팅 충전 · 회오리 상승 · 유성 급강하 황금 에너지 림/오라 글로우
+        float pulseSpd = (uWorldAnim == 17 || uWorldAnim == 21) ? 14.0 : 6.2;
+        float auraPulse = 0.88 + 0.14 * sin(tAnim * pulseSpd);
+        coreCol += vec3(1.0, 0.89, 0.38) * (0.24 * rig.auraBoost + rim * (0.96 * rig.auraBoost)) * auraPulse;
       }
 
       if (eyeMask > 0.001) {
@@ -823,8 +961,8 @@ void main() {
 
       vec3 nLoc = N;
       nLoc.xz = rot2(-rig.yawAdd) * nLoc.xz;
-      nLoc.yz = rot2(-rig.pitchAdd) * nLoc.yz;
       nLoc.xy = rot2(-rig.roll) * nLoc.xy;
+      nLoc.yz = rot2(rig.pitchAdd) * nLoc.yz;
       nLoc = normalize(nLoc);
 
       float eyeMask = 0.0;
@@ -832,7 +970,7 @@ void main() {
       if (!isWing && q.z > 0.08 && nLoc.z > 0.14) {
         float frontFade = smoothstep(0.14, 0.34, nLoc.z);
         int expr = rig.exprMode;
-        float blushAmt = clamp(max(uBlush, (expr == 1) ? 0.78 : 0.0), 0.0, 1.0);
+        float blushAmt = clamp(max(max(uBlush, rig.blushAdd), (expr == 1) ? 0.78 : 0.0), 0.0, 1.0);
         if (uQuaker > 0) {
           vec3 pq = q - vec3(0.0, 0.08, 0.0);
           vec2 ep = pq.xy - vec2(0.0, -0.015) - rig.eyeShift * 0.55;
@@ -1000,11 +1138,16 @@ void main() {
           : (uCape == 2 ? vec3(0.42, 0.84, 0.54) : vec3(0.38, 0.48, 0.92));
         vec3 capeVelvet = toLinear(baseCloth) * (0.42 + 0.72 * wrap)
           + toLinear(rimTint) * capeRim * 0.30;
-        float flightWind = (uWorldAnim == 17) ? 5.2 : (uWorldAnim == 16 ? 3.2 : 0.0);
-        float spd = clamp(uMoveSpeed + flightWind, 0.0, 10.0);
-        float capeU = clamp((-0.09 - q.y) / 0.48, 0.0, 1.0);
+        float smCape = clamp(rig.supermanPose, 0.0, 1.0);
+        float lenSpan = mix(0.48, 0.62, smCape);
+        float flightWind = (uWorldAnim == 21) ? 6.2
+          : ((uWorldAnim == 17) ? 5.6
+          : ((uWorldAnim == 16) ? mix(2.4, 5.4, smCape)
+          : ((uWorldAnim == 2) ? 2.6 : 0.0)));
+        float spd = clamp(uMoveSpeed + flightWind, 0.0, 11.0);
+        float capeU = clamp((-0.09 - q.y) / lenSpan, 0.0, 1.0);
         float billow = (0.10 + spd * 0.046 + max(0.0, -uJumpVel) * 0.048) * (capeU * capeU);
-        float hemY = -0.56 + billow * 0.22;
+        float hemY = mix(-0.56, -0.68, smCape) + billow * mix(0.22, 0.08, smCape);
         float hemDist = q.y - hemY;
         float trimBand = (uCape == 1) ? 0.046 : 0.036;
         float goldTrim = (1.0 - smoothstep(trimBand, trimBand + 0.024, hemDist)) * smoothstep(-0.18, -0.32, q.z);
@@ -1102,7 +1245,10 @@ export type WorldAnimMode =
   | "work-think"
   | "work-run"
   | "fly"
-  | "dive";
+  | "dive"
+  | "takeoff-charge"
+  | "takeoff-ascend"
+  | "hero-land";
 
 export type WorldExpression = "normal" | "happy" | "sleepy" | "surprised" | "focused";
 
@@ -1232,6 +1378,9 @@ const WORLD_ANIM_CODE: Readonly<Record<WorldAnimMode, number>> = {
   "work-run": 15,
   fly: 16,
   dive: 17,
+  "takeoff-charge": 20,
+  "takeoff-ascend": 21,
+  "hero-land": 22,
 };
 
 const WORLD_EXPRESSION_CODE: Readonly<Record<WorldExpression, number>> = {

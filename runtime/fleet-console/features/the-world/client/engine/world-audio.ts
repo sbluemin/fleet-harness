@@ -1099,21 +1099,70 @@ export function updateBgmEnvironment(night: number, weather: WorldWeatherMode): 
 
 // --- Sprint 14: 별빛 상공 비행 & 유성 급강하 착지 효과음 4종 ---
 
-/** `M` 별빛 비행 이륙 시 영롱하게 솟아오르는 상승 하프 글리산도. */
+/** `M` 별빛 비행 이륙 시 영롱하게 솟아오르는 상승 하프 글리산도 (하위 호환). */
 export function playStarTakeoff(): void {
+  playStarTakeoffAscend();
+}
+
+/** `M` 이륙 1단계(`charge`): 귀엽고 힘찬 제자리 화이팅 상승 차임. */
+export function playStarTakeoffCharge(): void {
   const eng = getAudioEngine();
   if (!eng) return;
 
-  const notes = [523.25, 659.25, 783.99, 987.77, 1174.66, 1567.98] as const; // C5 E5 G5 B5 D6 G6
+  const notes = [392.0, 493.88, 587.33, 783.99] as const; // G4 B4 D5 G5
+  for (let i = 0; i < notes.length; i += 1) {
+    scheduleTone(eng.ctx, eng.out, {
+      type: i < 2 ? "triangle" : "sine",
+      freqStart: notes[i]!,
+      freqEnd: notes[i]! * 1.03,
+      delay: i * 0.055,
+      duration: 0.16,
+      peakGain: 0.24 + i * 0.025,
+      attack: 0.007,
+    });
+  }
+}
+
+/** `M` 이륙 2단계(`ascend`): 빙글빙글 회오리 수직 급상승 별빛 글리산도 + 상승 바람. */
+export function playStarTakeoffAscend(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  const notes = [523.25, 659.25, 783.99, 987.77, 1174.66, 1567.98, 1975.53] as const; // C5..B6
   for (let i = 0; i < notes.length; i += 1) {
     scheduleTone(eng.ctx, eng.out, {
       type: i % 2 === 0 ? "sine" : "triangle",
       freqStart: notes[i]!,
-      freqEnd: notes[i]! * 1.015,
-      delay: i * 0.042,
-      duration: 0.24,
-      peakGain: 0.24 - i * 0.018,
+      freqEnd: notes[i]! * 1.02,
+      delay: i * 0.044,
+      duration: 0.26,
+      peakGain: Math.max(0.11, 0.25 - i * 0.018),
       attack: 0.008,
+    });
+  }
+  scheduleFilteredNoise(eng.ctx, eng.out, {
+    duration: 0.42,
+    centerFreq: 1420,
+    q: 1.6,
+    peakGain: 0.16,
+    attack: 0.04,
+  });
+}
+
+/** 비행 중 `Space` 360° 에일러론 배럴롤 시 경쾌한 공중 회전 트윙클. */
+export function playBarrelRoll(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  const notes = [783.99, 987.77, 1174.66, 1567.98, 1174.66] as const; // G5 B5 D6 G6 D6
+  for (let i = 0; i < notes.length; i += 1) {
+    scheduleTone(eng.ctx, eng.out, {
+      type: i % 2 === 0 ? "sine" : "triangle",
+      freqStart: notes[i]!,
+      delay: i * 0.036,
+      duration: 0.14,
+      peakGain: 0.20,
+      attack: 0.006,
     });
   }
 }

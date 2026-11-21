@@ -71,6 +71,7 @@ import {
 } from "./player-controller.js";
 import { createSkyAndLighting } from "./sky-and-lighting.js";
 import {
+  playBarrelRoll,
   playFootstep,
   playJump,
   playLevelUpFanfare,
@@ -79,7 +80,8 @@ import {
   playMongleChirp,
   playRallyHorn,
   playStarBoost,
-  playStarTakeoff,
+  playStarTakeoffAscend,
+  playStarTakeoffCharge,
   setBgmEnabled,
   setRainAmbience,
   updateBgmEnvironment,
@@ -1016,20 +1018,40 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         }
       },
       onStandUp: config.onCampfireStandUp,
-      onStarTakeoff: () => {
-        playStarTakeoff();
+      onStarTakeoffCharge: () => {
+        playStarTakeoffCharge();
+        ribbonPrimed = false;
+        const pCur = playerCtrl.player;
+        director.reactToStarTakeoff(pCur.x, pCur.z);
+        const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+        for (let k = 0; k < 8; k += 1) {
+          const c = resolveTrailColor(theme, k) ?? 0xffe57f;
+          const ang = (k / 8) * Math.PI * 2;
+          director.spawnTrailSparkle(
+            pCur.x + Math.cos(ang) * 0.95,
+            pCur.y + 0.32 + (k % 3) * 0.14,
+            pCur.z + Math.sin(ang) * 0.95,
+            c,
+            0.84,
+            true,
+          );
+        }
+      },
+      onStarTakeoffAscend: () => {
+        playStarTakeoffAscend();
         ribbonPrimed = false;
         const pCur = playerCtrl.player;
         const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
+        director.spawnBurst(pCur.x, pCur.y + 0.45, pCur.z, resolveTrailColor(theme, 0) ?? 0xffe57f, 14);
         for (let k = 0; k < 10; k += 1) {
           const c = resolveTrailColor(theme, k) ?? 0xffe57f;
           const ang = (k / 10) * Math.PI * 2;
           director.spawnTrailSparkle(
-            pCur.x + Math.cos(ang) * 0.55,
-            pCur.y + 0.45 + (k % 3) * 0.16,
-            pCur.z + Math.sin(ang) * 0.55,
+            pCur.x + Math.cos(ang) * 0.65,
+            pCur.y + 0.28 + (k % 3) * 0.18,
+            pCur.z + Math.sin(ang) * 0.65,
             c,
-            0.92,
+            0.94,
             true,
           );
         }
@@ -1041,19 +1063,23 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       onStarBoost: () => {
         playStarBoost();
       },
-      onFlightSpin: () => {
-        playMongleChirp(6);
+      onBarrelRoll: () => {
+        playBarrelRoll();
         const pCur = playerCtrl.player;
         const theme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
-        for (let k = 0; k < 8; k += 1) {
+        const sideX = Math.cos(pCur.yaw);
+        const sideZ = -Math.sin(pCur.yaw);
+        for (let k = 0; k < 12; k += 1) {
           const c = resolveTrailColor(theme, k) ?? 0xffe57f;
-          const ang = (k / 8) * Math.PI * 2;
+          const ang = (k / 12) * Math.PI * 2;
+          const rX = Math.cos(ang) * 0.82;
+          const rY = Math.sin(ang) * 0.82;
           director.spawnTrailSparkle(
-            pCur.x + Math.cos(ang) * 0.65,
-            pCur.y + 0.55,
-            pCur.z + Math.sin(ang) * 0.65,
+            pCur.x + sideX * rX,
+            pCur.y + 0.56 + rY,
+            pCur.z + sideZ * rX,
             c,
-            0.88,
+            0.90,
             true,
           );
         }
@@ -1123,46 +1149,89 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       && (currentAdmiralTrail !== "none" || playerCtrl.player.flying || playerCtrl.player.diving)
     ) {
       const pCur = playerCtrl.player;
+      const isChargeNow = pCur.takeoffPhase === "charge";
+      const isAscendNow = pCur.takeoffPhase === "ascend";
       const isDivingNow = pCur.diving;
-      const isFlyingNow = pCur.flying;
-      const isAirborne = !isFlyingNow && !isDivingNow && !pCur.onGround && pCur.playerJumpY > 0.12;
-      const isSprintingNow = !isFlyingNow && !isDivingNow && playerCtrl.isSprinting() && pCur.onGround;
-      const isWalkingNow = !isFlyingNow && !isDivingNow && pCur.walking && pCur.onGround && !isSprintingNow;
+      const isFlyingNow = pCur.flying && !isChargeNow && !isAscendNow;
+      const isAirborne = !isChargeNow && !isAscendNow && !isFlyingNow && !isDivingNow && !pCur.onGround && pCur.playerJumpY > 0.12;
+      const isSprintingNow = !isChargeNow && !isAscendNow && !isFlyingNow && !isDivingNow && playerCtrl.isSprinting() && pCur.onGround;
+      const isWalkingNow = !isChargeNow && !isAscendNow && !isFlyingNow && !isDivingNow && pCur.walking && pCur.onGround && !isSprintingNow;
       const trailTheme = currentAdmiralTrail === "none" ? "stardust" : currentAdmiralTrail;
 
-      if (isDivingNow || isFlyingNow || isSprintingNow || isWalkingNow || isAirborne) {
-        const interval = isDivingNow
-          ? 0.032
-          : isFlyingNow
-            ? (pCur.boosting ? 0.055 : 0.11)
-            : isSprintingNow
-              ? 0.083
-              : isAirborne
-                ? 0.14
-                : 0.285;
+      if (isChargeNow || isAscendNow || isDivingNow || isFlyingNow || isSprintingNow || isWalkingNow || isAirborne) {
+        const interval = isAscendNow
+          ? 0.028
+          : isChargeNow
+            ? 0.055
+            : isDivingNow
+              ? 0.032
+              : isFlyingNow
+                ? (pCur.boosting ? 0.055 : 0.11)
+                : isSprintingNow
+                  ? 0.083
+                  : isAirborne
+                    ? 0.14
+                    : 0.285;
         stardustAccum += dt;
         if (stardustAccum >= interval) {
           stardustAccum -= interval;
           if (stardustAccum > interval) stardustAccum = 0;
-          const backX = -Math.sin(pCur.yaw);
-          const backZ = -Math.cos(pCur.yaw);
-          const sideX = Math.cos(pCur.yaw);
-          const sideZ = -Math.sin(pCur.yaw);
-          const jitter = ((stardustStep % 5) - 2) * (isFlyingNow || isDivingNow ? 0.16 : 0.11);
-          const trailDist = isDivingNow ? 0.55 : isFlyingNow ? 0.52 : isSprintingNow ? 0.44 : 0.30;
-          const sx = pCur.x + backX * trailDist + sideX * jitter;
-          const sz = pCur.z + backZ * trailDist + sideZ * jitter;
-          const sy = pCur.y + (isDivingNow ? 0.62 : isFlyingNow ? 0.48 : isAirborne ? 0.38 : isSprintingNow ? 0.32 + (stardustStep % 2) * 0.22 : 0.26);
           const colorHex = resolveTrailColor(trailTheme, stardustStep);
           stardustStep = (stardustStep + 1) % 42;
-          if (colorHex !== null) {
-            const driftUp = trailTheme !== "sakura";
-            const scale = isDivingNow ? 0.94 : isFlyingNow ? (pCur.boosting ? 0.88 : 0.74) : isSprintingNow ? 0.78 : isAirborne ? 0.72 : 0.64;
-            director.spawnTrailSparkle(sx, sy, sz, colorHex, scale, driftUp);
-            if ((isSprintingNow || isDivingNow || (isFlyingNow && pCur.boosting)) && stardustStep % 2 === 0) {
-              const color2 = resolveTrailColor(trailTheme, stardustStep + 1);
-              if (color2 !== null) {
-                director.spawnTrailSparkle(sx - sideX * 0.18, sy + 0.12, sz - sideZ * 0.18, color2, scale * 0.82, driftUp);
+          if (isChargeNow) {
+            // 1단계 화이팅 충전: 제독 주변에서 안쪽으로 모여들며 솟아오르는 황금 에너지 스파클
+            const ang = elapsed * 7.5 + stardustStep * 1.15;
+            const rad = Math.max(0.28, (1 - pCur.takeoffProgress) * 1.15 + 0.25);
+            director.spawnTrailSparkle(
+              pCur.x + Math.cos(ang) * rad,
+              pCur.y + 0.25 + pCur.takeoffProgress * 0.55,
+              pCur.z + Math.sin(ang) * rad,
+              colorHex ?? 0xffe57f,
+              0.78,
+              true,
+            );
+          } else if (isAscendNow) {
+            // 2단계 회오리 급상승: 아래로 뿜어지는 이중 나선 별가루 소용돌이
+            const ang = elapsed * 18.0 + stardustStep * 0.9;
+            const rad = 0.52 + (1 - pCur.takeoffProgress) * 0.35;
+            director.spawnTrailSparkle(
+              pCur.x + Math.cos(ang) * rad,
+              Math.max(0.15, pCur.y - 0.18),
+              pCur.z + Math.sin(ang) * rad,
+              colorHex ?? 0xffe57f,
+              0.92,
+              false,
+            );
+            const color2 = resolveTrailColor(trailTheme, stardustStep + 1);
+            if (color2 !== null) {
+              director.spawnTrailSparkle(
+                pCur.x - Math.cos(ang) * rad,
+                Math.max(0.15, pCur.y - 0.32),
+                pCur.z - Math.sin(ang) * rad,
+                color2,
+                0.76,
+                false,
+              );
+            }
+          } else {
+            const backX = -Math.sin(pCur.yaw);
+            const backZ = -Math.cos(pCur.yaw);
+            const sideX = Math.cos(pCur.yaw);
+            const sideZ = -Math.sin(pCur.yaw);
+            const jitter = ((stardustStep % 5) - 2) * (isFlyingNow || isDivingNow ? 0.16 : 0.11);
+            const trailDist = isDivingNow ? 0.55 : isFlyingNow ? 0.52 : isSprintingNow ? 0.44 : 0.30;
+            const sx = pCur.x + backX * trailDist + sideX * jitter;
+            const sz = pCur.z + backZ * trailDist + sideZ * jitter;
+            const sy = pCur.y + (isDivingNow ? 0.62 : isFlyingNow ? 0.48 : isAirborne ? 0.38 : isSprintingNow ? 0.32 + (stardustStep % 2) * 0.22 : 0.26);
+            if (colorHex !== null) {
+              const driftUp = trailTheme !== "sakura";
+              const scale = isDivingNow ? 0.94 : isFlyingNow ? (pCur.boosting ? 0.88 : 0.74) : isSprintingNow ? 0.78 : isAirborne ? 0.72 : 0.64;
+              director.spawnTrailSparkle(sx, sy, sz, colorHex, scale, driftUp);
+              if ((isSprintingNow || isDivingNow || (isFlyingNow && pCur.boosting)) && stardustStep % 2 === 0) {
+                const color2 = resolveTrailColor(trailTheme, stardustStep + 1);
+                if (color2 !== null) {
+                  director.spawnTrailSparkle(sx - sideX * 0.18, sy + 0.12, sz - sideZ * 0.18, color2, scale * 0.82, driftUp);
+                }
               }
             }
           }
@@ -1271,8 +1340,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       : 0;
     const pTotalLift = p.playerJumpY + pHop + pEmoteLift;
 
-    // 🌠 3D 유성 꼬리 리본 갱신 (28세그먼트 0-GC 링버퍼, 비행·급강하 중 +1 Draw Call, 지상 visible=false로 +0)
-    const ribbonActive = currentLifecycle === "open" && (p.flying || p.diving);
+    // 🌠 3D 유성 꼬리 리본 갱신 (28세그먼트 0-GC 링버퍼, 회오리 상승·비행·급강하 중 +1 Draw Call, 지상·충전 중 visible=false로 +0)
+    const ribbonActive = currentLifecycle === "open" && (p.diving || (p.flying && p.takeoffPhase !== "charge"));
     ribbonFade = ribbonActive
       ? Math.min(1, ribbonFade + dt * 6.5)
       : Math.max(0, ribbonFade - dt * 3.8);
@@ -1298,8 +1367,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         ribbonPtsZ[0] = headZ;
       }
 
-      const boostAmt = p.diving ? 1.0 : p.boosting ? 0.85 : Math.min(0.4, p.moveSpeed / 30);
-      const baseHalfW = p.diving ? 0.62 : p.boosting ? 0.56 : 0.36;
+      const boostAmt = p.diving || p.takeoffPhase === "ascend" ? 1.0 : p.boosting ? 0.85 : Math.min(0.4, p.moveSpeed / 30);
+      const baseHalfW = p.diving || p.takeoffPhase === "ascend" ? 0.62 : p.boosting ? 0.56 : 0.36;
       const camX = camera.position.x;
       const camY = camera.position.y;
       const camZ = camera.position.z;
@@ -1400,7 +1469,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       groundRingMat.uniforms["uMode"]!.value = 1.0;
       groundRingMat.uniforms["uProgress"]!.value = progress;
       groundRingMesh.visible = shockwaveTimer > 0;
-    } else if (currentLifecycle === "open" && p.flying && p.flightAlt > 1.0) {
+    } else if (currentLifecycle === "open" && p.flying && (p.flightAlt > 1.0 || p.takeoffPhase === "charge")) {
       if (currentAdmiralTrail === "sakura") {
         groundRingColor.set(1.0, 0.68, 0.86);
       } else if (currentAdmiralTrail === "rainbow") {
@@ -1408,7 +1477,11 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       } else {
         groundRingColor.set(1.0, 0.86, 0.38);
       }
-      const spotRadius = p.boosting ? 2.65 : 2.15;
+      const spotRadius = p.takeoffPhase === "charge"
+        ? 1.15 + p.takeoffProgress * 0.85
+        : p.boosting
+          ? 2.65
+          : 2.15;
       groundRingMesh.position.set(p.x, pGround + 0.07, p.z);
       groundRingMesh.scale.set(spotRadius, 1, spotRadius);
       groundRingMat.uniforms["uTime"]!.value = elapsed;
@@ -1431,14 +1504,30 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     let playerAnim: WorldAnimMode = "idle";
     let playerExpr: WorldExpression = "normal";
     let playerBlush = 0;
+    let playerAnimPhase = playerEmotePhase;
     if (p.diving) {
       playerAnim = "dive";
       playerExpr = "happy";
       playerBlush = 0.72;
+    } else if (p.takeoffPhase === "charge") {
+      playerAnim = "takeoff-charge";
+      playerAnimPhase = p.takeoffProgress;
+      playerExpr = "happy";
+      playerBlush = 0.65;
+    } else if (p.takeoffPhase === "ascend") {
+      playerAnim = "takeoff-ascend";
+      playerAnimPhase = p.takeoffProgress;
+      playerExpr = "happy";
+      playerBlush = 0.78;
     } else if (p.flying) {
       playerAnim = "fly";
-      playerExpr = p.boosting ? "happy" : "focused";
+      playerExpr = p.boosting ? "happy" : p.moveSpeed > 2.0 ? "focused" : "happy";
       playerBlush = p.boosting ? 0.58 : 0.30;
+    } else if (p.heroLandTimer > 0) {
+      playerAnim = "hero-land";
+      playerAnimPhase = Math.max(0, Math.min(1, 1 - p.heroLandTimer / 0.56));
+      playerExpr = "happy";
+      playerBlush = 0.62;
     } else if (playerEmoteTimer > 0 && playerEmoteKind) {
       playerAnim = playerEmoteKind;
       playerExpr = "happy";
@@ -1483,10 +1572,10 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     let targetPLookYaw = 0;
     let targetPLookPitch = 0;
     const glanceActor = focusedMotion ?? (nearId ? director.motions.get(nearId) ?? null : null);
-    if (customizerOpen) {
+    if (customizerOpen || p.takeoffPhase === "charge") {
       const rel = angleDelta(Math.atan2(camera.position.x - p.x, camera.position.z - p.z), p.yaw);
       targetPLookYaw = clampSigned(rel / 1.35, 0.85);
-      targetPLookPitch = 0.08;
+      targetPLookPitch = p.takeoffPhase === "charge" ? 0.18 : 0.08;
     } else if (p.flying || p.diving) {
       targetPLookYaw = clampSigned(-p.flightRoll * 1.1, 0.6);
       targetPLookPitch = p.diving ? -0.35 : -0.18;
@@ -1527,7 +1616,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       viewProj,
       worldAnim: playerAnim,
       expression: playerExpr,
-      animPhase: playerEmotePhase,
+      animPhase: playerAnimPhase,
       moveSpeed: p.moveSpeed,
       jumpVel: p.jumpVel,
       landSquash: p.landSquash,

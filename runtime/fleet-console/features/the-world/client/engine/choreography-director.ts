@@ -233,6 +233,8 @@ export interface ChoreographyDirector {
   reactToPlayerEmote(emote: WorldPlayerEmote, playerPos: Vector3): void;
   /** 유성 급강하 착지 시 반경 16m 이내 사령관들이 놀람(`surprised`) → 환호(`cheer`) + 축포 환영. */
   reactToMeteorLanding(impactX: number, impactZ: number): void;
+  /** 별빛 이륙 시 반경 14m 이내 사령관들이 깜짝(`surprised`) 쳐다본 뒤 손 흔들며(`wave` + `happy`) 배웅. */
+  reactToStarTakeoff(x: number, z: number): void;
   /** 날씨 모드 동기화 (`rain` 시 가끔 빗물 털기 `shake` 모션 + 물방울 입자 발동). */
   setWeather(mode: WorldWeatherMode): void;
   /** 사령관/구역 실시간 작업 단계별 공방 파티클 FX (단일 InstancedMesh 풀, 0 할당). */
@@ -976,6 +978,30 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     }
   }
 
+  function reactToStarTakeoff(x: number, z: number): void {
+    for (const m of motionList) {
+      const d = Math.hypot(m.x - x, m.z - z);
+      if (d > 14.0) continue;
+      m.yaw = Math.atan2(x - m.x, z - m.z);
+      m.hopBoost = Math.max(m.hopBoost, 0.85);
+      const anim = getOrCreateAnimState(m.spec.id);
+      anim.surprisedTimer = 0.45;
+      const ps = patrolStates.get(m.spec.id);
+      if (ps && !ps.rallying) {
+        ps.chatPauseTimer = Math.max(ps.chatPauseTimer, 2.35);
+        ps.chatFaceX = x;
+        ps.chatFaceZ = z;
+      }
+      const actorId = m.spec.id;
+      scheduleTimeout(() => {
+        const cur = motions.get(actorId);
+        if (!cur) return;
+        cur.hopBoost = Math.max(cur.hopBoost, 0.72);
+        triggerActorEmote(actorId, "wave", 1.85);
+      }, 450);
+    }
+  }
+
   function celebrateObjectiveDone(x: number, z: number, colorHex = 0xfbbf24) {
     spawnLevelUpCelebration(x, z, colorHex);
     for (const m of motionList) {
@@ -1081,6 +1107,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     rallyAllToPlaza,
     reactToPlayerEmote,
     reactToMeteorLanding,
+    reactToStarTakeoff,
     setWeather(mode) {
       currentWeather = mode;
     },
