@@ -1,5 +1,5 @@
 // Read-only readiness gate for a Console group conversation, judged in the page just before a measurement starts.
-// Installs `window.__fleetGroupReady` = { judge, confirm, settle }. Procedure: references/seed.md (group-scale) — expectations come from `seed/group-scale.mjs`.
+// Installs `window.__fleetGroupReady` = { judge, confirm, settle }. The expectation is one group's `expect` object from `seed/group-scale.mjs`.
 // Load it with agent-browser `--init-script` (or `eval --stdin < this-file`), then call `judge(<one group's "expect" object>)`.
 //
 // Contract. A verdict is `{ ok, reason, detail, docId, at, ... }`; `reason` is null only when ok.
@@ -8,13 +8,15 @@
 //   no-active-group    the sidebar does not name exactly one active objective
 //   short-control      the active objective is one of `expect.shortControlIds` (the short comparison group)
 //   wrong-group        another objective is active, or the log carries messages of a participant outside this group
-//   partial            the right group is active but its records are not all drawn: fewer rows, a missing first/last marker,
-//                      aria-busy, or a truncation/unavailable notice. Row counts are floors, never exact counts.
-//   viewport-unrendered  the rows at the current viewport are empty, skipped or have no height, or no expected marker is in view
+//   partial            the right group is active but its records are not all drawn: an expected marker is missing, aria-busy, or a
+//                      truncation/unavailable notice. Only each participant's own expected markers (group, role, turns 1..n, Q and A)
+//                      count, once each, so unrelated rows never make up for a missing one; extra rows are allowed.
+//   viewport-unrendered  nothing of this group is actually showing at the viewport: the rows on top at the sample points are empty,
+//                      skipped, transparent, hidden or have no height, none is on top (covered), or none carries an expected marker
 //   stale-token        confirm() was handed a verdict from another document, an older moment, another viewport or another group
 // Identification of the active screen (sidebar) and the row evidence (log) are separate checks; both must agree.
 // Safety: it only reads. It never scrolls, clicks, types, fetches, or measures rows outside the viewport. Text is read from
-// every row (no layout), but geometry only from the log box and from rows hit by points inside the viewport. CSS deferral
+// every row (no layout), but geometry only from the log box and from the topmost row at points inside the viewport. CSS deferral
 // values (data-defer-layout, content-visibility) appear in `diag` and never decide the verdict.
 (() => {
   const ROUTE = /^\/(console\/)?objectives(\/|$)/;
@@ -22,6 +24,8 @@
   const ROW = ".group-chat-column > [data-entry-id]";
   const SAMPLE_FRACTIONS = [0.08, 0.2, 0.32, 0.44, 0.56, 0.68, 0.8, 0.9];
   const DEFAULT_MAX_AGE_MS = 5000;
+  const FIRST = /^(GS-[A-Z]+-[a-z]+)-T001-Q$/;
+  const LAST = /^(GS-[A-Z]+-[a-z]+)-T(\d{3})-A$/;
   const docId = `${performance.timeOrigin}:${Math.random().toString(36).slice(2, 10)}`;
 
   /** Gather facts. Reads text of all rows, geometry of the log and of the few rows under sample points only. */
@@ -54,25 +58,35 @@
     }
     snapshot.diag.deferRows = log.querySelectorAll(".group-chat-column > [data-defer-layout]").length;
     for (const notice of log.querySelectorAll(".group-chat-notice")) snapshot.notices.push((notice.textContent ?? "").slice(0, 80));
-    // Only the rows under points inside the log's visible box: the dock and header may cover some, which then yield no row.
+    // Only what is on top at points inside the log's visible box: if the dock, a dialog or the header is on top at a point, that
+    // point yields no row, and the stack is never searched below it. A row counts only if it is really shown (not skipped by
+    // content-visibility, not transparent, not visibility:hidden), so checkVisibility is asked for those three.
     const seen = new Set();
     const x = box.left + box.width / 2;
     for (const fraction of SAMPLE_FRACTIONS) {
-      for (const element of document.elementsFromPoint(x, box.top + box.height * fraction)) {
-        const row = element.closest(ROW);
-        if (!row || !log.contains(row)) continue;
-        if (!seen.has(row)) {
-          seen.add(row);
-          const rect = row.getBoundingClientRect();
-          const hit = MARKER.exec(row.textContent ?? "");
-          const skipped = typeof row.checkVisibility === "function" && row.checkVisibility({ contentVisibilityAuto: true }) === false;
-          snapshot.sample.push({ id: row.getAttribute("data-entry-id"), height: rect.height, textLength: (row.textContent ?? "").trim().length, marker: hit ? hit[0] : null, skipped });
-          if (skipped) snapshot.diag.skippedSample += 1;
-        }
-        break;
-      }
+      const top = document.elementsFromPoint(x, box.top + box.height * fraction)[0];
+      const row = top ? top.closest(ROW) : null;
+      if (!row || !log.contains(row) || seen.has(row)) continue;
+      seen.add(row);
+      const rect = row.getBoundingClientRect();
+      const id = row.getAttribute("data-entry-id") ?? "";
+      const hit = MARKER.exec(row.textContent ?? "");
+      const shown = typeof row.checkVisibility === "function" && row.checkVisibility({ contentVisibilityAuto: true, opacityProperty: true, visibilityProperty: true, checkOpacity: true, checkVisibilityCSS: true });
+      snapshot.sample.push({ id, objectiveId: id.startsWith("message:") ? id.split(":")[1] : null, height: rect.height, textLength: (row.textContent ?? "").trim().length, marker: hit ? hit[0] : null, skipped: !shown });
+      if (!shown) snapshot.diag.skippedSample += 1;
     }
     return snapshot;
+  }
+
+  /** The exact markers one participant must show: its group and role prefix, turns 1..n, a question and a reply each. */
+  function expectedMarkers(person) {
+    const first = FIRST.exec(person.firstMarker ?? "");
+    const last = LAST.exec(person.lastMarker ?? "");
+    if (!first || !last || first[1] !== last[1]) throw new Error(`participant ${person.role}: firstMarker/lastMarker are not one participant's GS markers`);
+    const turns = Number(last[2]);
+    const set = new Set();
+    for (let turn = 1; turn <= turns; turn += 1) for (const side of ["Q", "A"]) set.add(`${first[1]}-T${String(turn).padStart(3, "0")}-${side}`);
+    return set;
   }
 
   function reject(reason, detail, extra) {
@@ -99,11 +113,13 @@
     const foreign = messages.filter((row) => !members.has(row.objectiveId));
     if (foreign.length > 0) return reject("wrong-group", `${foreign.length} message rows from outside this group`, base);
 
+    const wanted = new Map(expect.participants.map((person) => [person.objectiveId, expectedMarkers(person)]));
     const evidence = expect.participants.map((person) => {
-      const own = new Set(messages.filter((row) => row.objectiveId === person.objectiveId && row.marker !== null).map((row) => row.marker));
-      return { role: person.role, have: own.size, need: person.rows, first: own.has(person.firstMarker), last: own.has(person.lastMarker) };
+      const set = wanted.get(person.objectiveId);
+      const own = new Set(messages.filter((row) => row.objectiveId === person.objectiveId && set.has(row.marker)).map((row) => row.marker));
+      return { role: person.role, have: own.size, need: set.size, first: own.has(person.firstMarker), last: own.has(person.lastMarker) };
     });
-    const missing = evidence.filter((item) => item.have < item.need || !item.first || !item.last);
+    const missing = evidence.filter((item) => item.have < item.need);
     const waiting = [];
     if (snapshot.log.busy === "true") waiting.push("aria-busy");
     if (snapshot.notices.length > 0) waiting.push(`notice: ${snapshot.notices.join(" | ")}`);
@@ -118,9 +134,9 @@
     const flawed = snapshot.sample.filter((row) => row.skipped || !(row.height > 0) || row.textLength === 0);
     if (snapshot.sample.length === 0) return reject("viewport-unrendered", "no row under the viewport sample points", { ...base, evidence });
     if (flawed.length > 0) return reject("viewport-unrendered", `${flawed.length}/${snapshot.sample.length} sampled rows empty, skipped or without height`, { ...base, evidence });
-    // At least one row in view must carry a record of this group (the marker names its participant role), not only chrome rows.
-    if (!snapshot.sample.some((row) => row.marker !== null && expect.participants.some((person) => row.marker.includes(`-${person.role}-`)))) {
-      return reject("viewport-unrendered", "no expected-group marker row in view", { ...base, evidence });
+    // At least one row on top must be one of this group's own records, not only chrome rows or another group's.
+    if (!snapshot.sample.some((row) => row.objectiveId !== null && wanted.has(row.objectiveId) && wanted.get(row.objectiveId).has(row.marker))) {
+      return reject("viewport-unrendered", "no expected record of this group on top at the viewport", { ...base, evidence });
     }
     return { ok: true, reason: null, detail: "", ...base, evidence, rows: { total: snapshot.rows.length, messages: messages.length }, sampled: snapshot.sample.length };
   }

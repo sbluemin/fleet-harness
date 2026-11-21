@@ -1,12 +1,18 @@
 #!/usr/bin/env node
 /**
  * Rewrite the `ledger` profile's synthetic transcripts to group-conversation scale: one long group and one short control.
- * Procedure: ../../references/seed.md. No model call, no Console API call; it only writes the owned CLAUDE_CONFIG_DIR.
+ * No model call and no Console API call; it writes only the transcripts the ledger seed bound inside an owned run.
  *
- *   node group-scale.mjs --dir <FLEET_CONSOLE_DATA_DIR> --claude-config-dir <owned claude dir> [--long-turns 500] [--short-turns 30]
+ *   node isolated-env.mjs --run-dir <run> -- node group-scale.mjs --dir <run>/console --claude-config-dir <run>/claude [--long-turns 500] [--short-turns 30]
+ *
+ * Ownership. It must run inside the isolated-env wrapper: `--dir` and `--claude-config-dir` have to be the same real paths as the
+ * wrapper's FLEET_CONSOLE_DATA_DIR and CLAUDE_CONFIG_DIR, be that run's `console` and `claude` directories, and the run directory
+ * must carry the registration records (`.e2e-run.json`, `owner`). Before the first write, every transcript it will replace is
+ * checked: the objective record binds it, it is a regular file (not a link), and its real path is exactly the path the product
+ * derives from the config dir, the session's working directory and its id, below the real config dir. Any refusal writes nothing.
  *
  * Run it on a slot that `seed.mjs --profile ledger` already filled, with that Console STOPPED (a live host can rewrite the same
- * files), then start the same slot again so the group screen reads the transcripts through the product's normal history path.
+ * files), then start the same slot again: the restored sessions replay these transcripts onto the group screen.
  * "Ledger Alpha" becomes the long group, "Ledger Beta" the short control. One turn = one human dispatch + one reply (two rows).
  * A turn count is split over the commander and its members, so no participant nears the product's per-participant history cap
  * (600 events, 3 per turn) and the screen carries no truncation notice. The default long group is 500 turns = 1000 rows (>= the
@@ -15,13 +21,12 @@
  * Every user/reply text carries a marker `GS-<ALPHA|BETA>-<role>-T<nnn>-<Q|A>`, so a screen check can name the participant and
  * the turn it expects. stdout is one JSON object, also saved as <dir>/group-scale.json: per group its root objective id, the
  * participants with turn and row counts and first/last markers, and the `expect` object that group-ready-gate.js judges.
- * An existing group-scale.json stops the run; a transcript that is not the path bound to its objective record stops it too.
+ * An existing group-scale.json stops the run.
  */
-import { existsSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
-import os from "node:os";
+import { existsSync, lstatSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { parseArgs } from "./lib.mjs";
-import { writeTranscript } from "./transcript.mjs";
+import { transcriptFile, writeTranscript } from "./transcript.mjs";
 
 export const MARKER_FILE = "group-scale.json";
 const GROUPS = [
@@ -95,17 +100,42 @@ export function validateTurns({ longTurns, shortTurns }) {
   if (Math.ceil(longTurns / 3) > MAX_TURNS_PER_PARTICIPANT) throw new Error(`--long-turns ${longTurns} puts more than ${MAX_TURNS_PER_PARTICIPANT} turns on one participant, past the product's 600-event history cap; the screen would truncate`);
 }
 
+const sameReal = (left, right) => { try { return realpathSync(left) === realpathSync(right); } catch { return false; } };
+const isFile = (file) => { try { const stat = lstatSync(file); return stat.isFile() && !stat.isSymbolicLink(); } catch { return false; } };
+
+/** The inputs must be this wrapper run's own registered console and claude directories; returns their real paths. */
+export function ownedRun(dir, configDir, env) {
+  const wrapperConsole = env.FLEET_CONSOLE_DATA_DIR;
+  const wrapperClaude = env.CLAUDE_CONFIG_DIR;
+  if (!wrapperConsole || !wrapperClaude) throw new Error("run this through isolated-env.mjs: FLEET_CONSOLE_DATA_DIR and CLAUDE_CONFIG_DIR are not set");
+  if (!sameReal(dir, wrapperConsole)) throw new Error("--dir is not the wrapper's FLEET_CONSOLE_DATA_DIR");
+  if (!sameReal(configDir, wrapperClaude)) throw new Error("--claude-config-dir is not the wrapper's CLAUDE_CONFIG_DIR");
+  const resolvedDir = realpathSync(dir);
+  const resolvedConfig = realpathSync(configDir);
+  const runDir = path.dirname(resolvedDir);
+  if (resolvedDir !== path.join(runDir, "console") || resolvedConfig !== path.join(runDir, "claude")) throw new Error("--dir and --claude-config-dir must be the console and claude directories of one run directory");
+  if (!isFile(path.join(runDir, ".e2e-run.json")) || !isFile(path.join(runDir, "owner"))) throw new Error("the run directory has no registration records (.e2e-run.json, owner): register it with e2e-resources.mjs init first");
+  return { resolvedDir, resolvedConfig };
+}
+
+/** One transcript to replace: bound by its record, a plain file, at exactly the product-derived path under the real config dir. */
+export function checkedTarget(bound, sessionId, resolvedConfig) {
+  if (!bound || !isFile(bound)) throw new Error(`no bound transcript (regular file) for ${sessionId}; the ledger seed did not finish`);
+  const cwd = transcriptCwd(bound);
+  const planned = transcriptFile({ configDir: resolvedConfig, cwd, sessionId });
+  if (realpathSync(bound) !== planned || !planned.startsWith(resolvedConfig + path.sep)) throw new Error(`the record binds ${bound} for ${sessionId}, whose real path is not the expected ${planned} under the owned claude directory`);
+  return { cwd, planned };
+}
+
 function main() {
   const args = parseArgs(process.argv.slice(2));
   const dir = args.get("dir");
   const configDir = args.get("claude-config-dir");
   if (typeof dir !== "string") fail("--dir <console-data-dir> is required");
   if (typeof configDir !== "string") fail("--claude-config-dir <owned claude dir> is required");
-  const resolvedDir = realpathSync(dir);
-  const resolvedConfig = realpathSync(configDir);
-  const homeFleet = path.join(os.homedir(), ".fleet");
-  if (resolvedDir === homeFleet || resolvedDir.startsWith(homeFleet + path.sep)) fail(`refusing the real Fleet root under ${homeFleet}`);
-  if (resolvedConfig === path.join(os.homedir(), ".claude")) fail("refusing the real ~/.claude; pass the owned isolated-env claude directory");
+  let owned;
+  try { owned = ownedRun(dir, configDir, process.env); } catch (error) { fail(error.message); }
+  const { resolvedDir, resolvedConfig } = owned;
   const marked = path.join(resolvedDir, MARKER_FILE);
   if (existsSync(marked)) fail(`${MARKER_FILE} already exists; take a fresh slot`);
   if (existsSync(path.join(resolvedDir, "console.lock"))) fail("console.lock exists: stop the owned Console first (a live host can rewrite these transcripts), then run this and start the slot again");
@@ -123,22 +153,21 @@ function main() {
     const groupsStaged = [];
     for (const plan of planGroups(entry, counts)) {
       const doc = objectiveRecord(resolvedDir, entry.commodoreId, plan.rootObjectiveId);
-      // Check every participant before the first write, so a refusal never leaves a half-rewritten group.
+      // Check every participant of every group before the first write, so a refusal never leaves a half-rewritten slot.
       const staged = plan.participants.map((person) => {
         const bound = boundTranscript(doc, person.objectiveId);
-        if (!bound || !existsSync(bound)) throw new Error(`${plan.spec.title}/${person.role}: no bound transcript on the objective record; the ledger seed did not finish`);
-        if (!bound.startsWith(resolvedConfig + path.sep) || path.basename(bound) !== `${person.objectiveId}.jsonl`) throw new Error(`${plan.spec.title}/${person.role}: the record binds ${bound}, which is not ${person.objectiveId}.jsonl under ${resolvedConfig}`);
-        return { person, bound, cwd: transcriptCwd(bound) };
+        try { return { person, bound, ...checkedTarget(bound, person.objectiveId, resolvedConfig) }; }
+        catch (error) { throw new Error(`${plan.spec.title}/${person.role}: ${error.message}`); }
       });
       groupsStaged.push({ plan, staged });
     }
     for (const { plan, staged } of groupsStaged) {
       const participants = [];
       let lane = 0;
-      for (const { person, bound, cwd } of staged) {
+      for (const { person, bound, cwd, planned } of staged) {
         const turns = turnsFor(plan.spec.key, person.role, person.turns);
         const written = writeTranscript({ configDir: resolvedConfig, cwd, sessionId: person.objectiveId, turns, at: BASE_AT + lane * 300 });
-        if (written.path !== bound) throw new Error(`${plan.spec.title}/${person.role}: wrote ${written.path} but the record binds ${bound}`);
+        if (written.path !== planned) throw new Error(`${plan.spec.title}/${person.role}: wrote ${written.path}, not ${planned}`);
         lane += 1;
         participants.push({
           objectiveId: person.objectiveId,

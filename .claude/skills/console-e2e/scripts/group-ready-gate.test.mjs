@@ -44,6 +44,7 @@ function makePage(overrides = {}) {
     rows: fullRows(),
     visible: [0, 1, 2],
     deferRows: 0,
+    covered: false,
     timeOrigin: 1000,
     ...overrides,
   };
@@ -53,7 +54,7 @@ function makePage(overrides = {}) {
     getAttribute: (name) => (name === 'data-entry-id' ? row.id : null),
     get textContent() { return row.text; },
     getBoundingClientRect: () => { reads.set(index, (reads.get(index) ?? 0) + 1); return { height: row.height, width: 700, top: 0, left: 0 }; },
-    checkVisibility: () => row.skipped !== true,
+    checkVisibility: (options) => row.skipped !== true && !(row.faded && (options?.opacityProperty || options?.checkOpacity)),
     closest() { return this; },
   });
   const elements = () => page.rows.map(wrap);
@@ -89,7 +90,8 @@ function makePage(overrides = {}) {
     elementsFromPoint: () => {
       const index = page.visible.length === 0 ? null : page.visible[tick++ % page.visible.length];
       const element = index === null ? undefined : current.list[index];
-      return element ? [element] : [];
+      // A covering element (dock, dialog) is first in the stack; the row it covers is still in the stack, below it.
+      return element ? (page.covered ? [{ closest: () => null }, element] : [element]) : [];
     },
   };
   const context = {
@@ -139,6 +141,11 @@ describe('group-ready-gate', () => {
     assert.equal(reasonOf({ rows: [] }), 'partial');
     assert.equal(reasonOf({ rows: fullRows().slice(0, 7) }), 'partial');
     assert.equal(reasonOf({ rows: fullRows().filter((row) => !row.text.includes(marker('planner', 2, 'A'))) }), 'partial');
+    // Unrelated records never make up for a missing one: another group's marker, an out-of-range turn, or a row of another participant.
+    const swap = (patch) => fullRows().map((row, index) => (index === 5 ? { ...row, ...patch } : row));
+    assert.equal(reasonOf({ rows: swap({ text: `${marker('commander', 99, 'A')} text` }) }), 'partial');
+    assert.equal(reasonOf({ rows: swap({ text: 'GS-BETA-commander-T003-A text' }) }), 'partial');
+    assert.equal(reasonOf({ rows: swap({ id: `message:${MEMBER}:77` }) }), 'partial');
     assert.equal(reasonOf({ busy: 'true' }), 'partial');
     assert.equal(reasonOf({ notices: ['unavailable'] }), 'partial');
   });
@@ -148,7 +155,13 @@ describe('group-ready-gate', () => {
     assert.equal(reasonOf({ rows: rows({ skipped: true }) }), 'viewport-unrendered');
     assert.equal(reasonOf({ rows: rows({ height: 0 }) }), 'viewport-unrendered');
     assert.equal(reasonOf({ visible: [] }), 'viewport-unrendered');
+    assert.equal(reasonOf({ rows: fullRows().map((row) => ({ ...row, faded: true })) }), 'viewport-unrendered', 'a transparent row is not showing');
     assert.equal(reasonOf({}, { ...expectLong, viewport: { width: 1440, height: 900 } }), 'viewport-unrendered');
+  });
+
+  test('a row covered by something on top is not counted, even though it is in the hit-test stack', () => {
+    assert.equal(reasonOf({ covered: true }), 'viewport-unrendered');
+    assert.equal(reasonOf({ covered: false }), null);
   });
 
   test('a verdict from before a reload is stale-token, even when the reloaded group is fully drawn; a fresh verdict passes', () => {
