@@ -643,7 +643,7 @@ export function createVendorMcpServer(options: {
   readonly version?: string;
   readonly instructions?: string;
   readonly tools?: readonly unknown[];
-  readonly resources?: readonly import("../mcp/resources.js").McpResource[];
+  readonly resources?: readonly import("../mcp/types.js").McpResource[];
   readonly alwaysLoad?: boolean;
 }): ClaudeGatewayMcpServer {
   const server = vendorCreateSdkMcpServer(options as never);

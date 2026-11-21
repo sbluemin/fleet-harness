@@ -16,7 +16,7 @@ export interface McpRouterServer {
 }
 
 export interface McpRouterRuntime {
-  readonly resources?: readonly import("../resources.js").McpResource[];
+  readonly resources?: readonly import("../types.js").McpResource[];
   registry: McpToolRegistry;
   server: McpRouterServer;
   snapshotStore: McpToolSnapshotStore;

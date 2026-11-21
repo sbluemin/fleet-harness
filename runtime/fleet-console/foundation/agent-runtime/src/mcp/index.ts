@@ -1,9 +1,9 @@
-export type { McpResource } from "../mcp/resources.js";
 export type {
   JsonRpcPayload,
   JsonRpcRequest,
   JsonRpcResponse,
   JsonRpcResultPayload,
+  McpResource,
   McpServerConfig,
   TrackStatus,
 } from "../mcp/types.js";
