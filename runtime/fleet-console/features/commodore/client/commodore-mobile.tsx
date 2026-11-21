@@ -252,12 +252,13 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   useEffect(() => { if (commodoreId) setCommodoreMapMode(commodoreId, "chat"); }, [commodoreId]);
   useEffect(() => {
     if (!bar) return;
+    const inMap = mapMode === "map";
+    const depthBase = inMap ? 1 : 0;
     if (!panel) {
-      const inMap = mapMode === "map";
       bar.set({
         title,
         ...(pillStatus ? { subtitle: pillStatus } : {}),
-        depth: inMap ? 1 : 0,
+        depth: depthBase,
         ...(inMap && commodoreId ? { onBack: () => setCommodoreMapMode(commodoreId, "chat") } : {}),
         // 칩은 세부, 오른쪽은 지휘관 시트와 신경망 보기 직행 단추 — 상단 막대 컨텍스트 칩을 내려 확보한 공간에 핵심 전환을 올린다.
         pill: { takeover: pill.takeover, label: t("commodore.mobile.openPanel"), avatar: commodoreId ? <CommodoreAvatar commodoreId={commodoreId} state={mongle} size={36} label="" decorative /> : null, avatarKey: mongle, onPress: () => { setSection(null); setPanel(true); } },
@@ -275,7 +276,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       bar.set({
         title: "",
         round: true,
-        depth: 1,
+        depth: depthBase + 1,
         onBack: () => setPanel(false),
         menu: {
           label: t("commodore.mobile.more"),
@@ -292,7 +293,7 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
       title: sectionTitle(t, section),
       subtitle: title,
       round: true,
-      depth: 2 + (section === "info" ? memoryTrail.length : 0),
+      depth: depthBase + 2 + (section === "info" ? memoryTrail.length : 0),
       onBack: () => { if (section === "info" && memoryTrail.length) setMemoryTrail((trail) => trail.slice(0, -1)); else setSection(null); },
     });
   }, [bar, panel, section, memoryTrail, title, pillStatus, mongle, theaterId, commodoreId, online, t, actions, pill.takeover, mapMode]);

@@ -46,16 +46,30 @@ interface HomeObjectiveChip {
 function clusterTone(cluster: ObjectiveCluster, state: ConsoleState): ChipTone {
   const row = cluster.row;
   if (row?.personTurnAt !== undefined || row?.glyph === "review") return "awaiting";
+  let hasRunning = false;
+  for (const member of cluster.members) {
+    if (member.awaitingInput || member.progress === "awaiting") return "awaiting";
+    if (member.progress === "running") hasRunning = true;
+    if (!member.pending) {
+      const memberRecord = state.nestedObjectiveRecords.find((item) => item.id === member.objectiveId)
+        ?? state.objectiveRecords.find((item) => item.id === member.objectiveId);
+      if (memberRecord) {
+        const memberActivity = resolveObjectiveActivity(memberRecord, state.objectiveRecordRuntime);
+        if (memberActivity === "awaiting") return "awaiting";
+        if (memberActivity === "running") hasRunning = true;
+      }
+    }
+  }
   if (cluster.root) {
     const record = state.objectiveRecords.find((item) => item.id === cluster.root);
     if (record) {
       const act = resolveObjectiveActivity(record, state.objectiveRecordRuntime);
       if (act === "awaiting") return "awaiting";
-      if (act === "running") return "running";
+      if (act === "running") hasRunning = true;
     }
-    return "idle";
+    return hasRunning ? "running" : "idle";
   }
-  return "fresh";
+  return hasRunning ? "running" : "fresh";
 }
 
 function chipRank(tone: ChipTone): number {
