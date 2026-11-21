@@ -43,6 +43,12 @@ export const DEFAULT_FONTS: ConsoleFontSettings = {
   terminal: null,
 };
 
+/**
+ * 일반 UI 서체(`general.uiFont`) 크기 한계 — client `ui-font`와 host `settings-domain`이 공유하는 단일 정의.
+ * 축 서체 범위(`FONT_SIZE_RANGES.ui`)와 같은 수치에서 한 벌로 묶는다. 서버는 거부 판정에, 클라이언트는 정규화 폴백에 쓴다.
+ */
+export const UI_FONT_SIZE_RANGE = { ...FONT_SIZE_RANGES.ui, step: 1 } as const;
+
 function record(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
