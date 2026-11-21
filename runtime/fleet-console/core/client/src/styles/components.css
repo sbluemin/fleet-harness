@@ -1200,9 +1200,17 @@
   .pair-expiry-fill { transition: none; }
 }
 
-/* Remote access 섹션 — 설정의 묶음 문법(소제목 + 둥근 카드)을 그대로 따른다: 한 줄 소개, 전제·위험 고지 카드,
-   그 아래 다른 콘솔 · 접속 허용 · 신원 · 링크와 기기가 각자 소제목과 카드로 선다. 카드 안에 카드를 겹치지 않는다. */
-.remote-section { display: flex; flex-direction: column; gap: var(--space-5); }
+/* Remote access 섹션 — 이 Console 공유(3단계 가이드 → 수신 중 대시보드)와 다른 Console 접속을
+   세그먼트 탭으로 나누고, 포트·직접 IP·인증서 신원은 하단 고급 드로어에 접어 둔다. */
+.remote-section { display: flex; flex-direction: column; gap: var(--space-4); }
+
+.remote-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
 
 .remote-section-head p {
   margin: 0;
@@ -1212,16 +1220,325 @@
   line-height: 1.55;
 }
 
-/* 전제와 위험 고지는 한 카드의 두 행 — 채널은 글리프 색만 진다(positive 는 갖출 것, coral 은 켜면 열리는 것).
-   색 띠 배너를 두 장 세우면 설정 화면 맨 위가 경보판이 된다. */
-.remote-notes {
+.remote-subtabs {
+  display: inline-flex;
+  align-self: flex-start;
+  flex-wrap: wrap;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--text-primary) 4%, transparent);
+}
+
+.remote-subtab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 30px;
+  padding: 0 var(--space-3);
+  border: 0;
+  border-radius: calc(var(--radius-md) - 2px);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+}
+
+.remote-subtab:hover:not(.is-active) { color: var(--text-primary); }
+.remote-subtab:focus-visible { box-shadow: var(--focus-face); }
+.remote-subtab.is-active {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+}
+.remote-subtab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--positive);
+}
+.remote-subtab-count {
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--text-primary) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-regular);
+}
+
+.remote-share-flow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+/* 3단계 인라인 가이드 */
+.remote-stepper {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
-  padding: var(--space-4) 18px;
+  min-width: 0;
+}
+
+.remote-editing-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--warn-glow);
+  color: var(--warn-ink);
+  font-size: var(--t-sm);
+}
+
+.remote-step-alert {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--coral) 40%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--coral) 9%, transparent);
+  color: var(--coral-ink);
+}
+
+.remote-step { gap: var(--space-3); }
+.remote-step.is-idle { opacity: 0.62; }
+
+.remote-step-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+button.remote-step-head { cursor: pointer; border-radius: var(--radius-xs); }
+button.remote-step-head:focus-visible { box-shadow: var(--focus-face); }
+
+.remote-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+}
+.remote-step-index.is-active { background: var(--brass); color: var(--text-on-brass); }
+.remote-step-index.is-done { background: color-mix(in oklch, var(--positive) 16%, transparent); color: var(--positive-ink); }
+.remote-step-index.is-idle { background: color-mix(in oklch, var(--text-primary) 8%, transparent); color: var(--text-tertiary); }
+
+.remote-step-titles {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.remote-step-title {
+  color: var(--text-primary);
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
+}
+.remote-step-summary {
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.remote-step-change {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+button.remote-step-head:hover .remote-step-change { color: var(--text-primary); }
+
+.remote-step-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-1);
+}
+
+.remote-choice-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  width: 100%;
+}
+.remote-choice-name {
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+.remote-choice-badge {
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--text-primary) 7%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+.remote-choice-badge.is-recommended {
+  background: color-mix(in oklch, var(--positive) 14%, transparent);
+  color: var(--positive-ink);
+}
+.remote-choice-desc {
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+
+.remote-public-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+}
+
+.remote-step-danger {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid color-mix(in oklch, var(--coral) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--coral) 8%, transparent);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1.55;
+}
+.remote-step-danger svg { flex: none; margin-top: 2px; color: var(--coral-ink); }
+.remote-step-danger strong { color: var(--text-primary); font-weight: var(--weight-medium); }
+
+.remote-step-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--hairline);
+}
+.remote-step-hint {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
+/* 수신 중 대시보드 */
+.remote-live-card { gap: var(--space-4); }
+.remote-live-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+.remote-live-info {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.remote-live-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-base);
+  font-weight: var(--weight-medium);
+}
+.remote-live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--positive);
+  flex: none;
+}
+.remote-live-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.remote-live-link {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.remote-live-option-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--hairline);
+}
+
+/* 고급 네트워크 · 포트 · 신원 접기 */
+.remote-advanced {
   border: 1px solid var(--hairline);
   border-radius: var(--radius-md);
   background: var(--surface-panel);
+  overflow: hidden;
+}
+.remote-advanced-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-3) 18px;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  text-align: left;
+  cursor: pointer;
+}
+.remote-advanced-toggle:hover { color: var(--text-primary); background: var(--control-hover-fill); }
+.remote-advanced-toggle:focus-visible { box-shadow: var(--focus-face); }
+.remote-advanced-chevron { color: var(--text-tertiary); font-size: var(--t-xs); }
+.remote-advanced-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding: var(--space-4) 18px 18px;
+  border-top: 1px solid var(--hairline);
+}
+.remote-identity-block {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--hairline);
+}
+.remote-identity-info {
+  display: flex;
+  flex: 1 1 220px;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
 }
 
 .remote-positive,
@@ -1434,9 +1751,12 @@
 .remote-requirements { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.6; }
 /* 트랙 폭이 같아야 인터페이스 이름 길이에 따라 줄이 들쭉날쭉해지지 않는다. */
 .remote-interface-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); gap: var(--space-2); }
-.remote-interface-preset { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; padding: 10px var(--space-3); border: 1px solid var(--hairline); border-radius: 10px; background: transparent; color: var(--text-secondary); text-align: left; }
+.remote-interface-presets.remote-mode-choices { display: flex; flex-direction: column; gap: var(--space-2); }
+.remote-interface-preset { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; padding: 10px var(--space-3); border: 1px solid var(--hairline); border-radius: 10px; background: transparent; color: var(--text-secondary); text-align: left; cursor: pointer; }
+.remote-mode-choices .remote-interface-preset { width: 100%; padding: var(--space-3) var(--space-4); }
 .remote-interface-preset > span { font-size: var(--t-sm); }
 .remote-interface-preset code { color: var(--text-primary); font-family: var(--font-code); font-size: var(--font-code-size); overflow-wrap: anywhere; }
+.remote-mode-choices .remote-interface-preset code { margin-top: 2px; color: var(--text-tertiary); font-size: var(--t-xs); }
 .remote-interface-preset:hover:not(:disabled):not(.is-selected) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
 /* 고른 주소는 테마 카드와 같은 조용한 선택 면이다 — 왼쪽 강조 띠는 쓰지 않는다. */
 .remote-interface-preset.is-selected { border-color: var(--quiet-choice-rim); background: var(--quiet-choice-fill); color: var(--text-primary); }
@@ -1513,6 +1833,8 @@
 .remote-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-4); border-top: 1px solid var(--hairline); }
 .remote-actions-note { min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); }
 .remote-actions-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.remote-create.is-primary { border-color: transparent; background: var(--brass); color: var(--text-on-brass); }
+.remote-create.is-primary:hover:not(:disabled) { background: color-mix(in oklch, var(--brass) 86%, transparent); }
 .remote-create.is-quiet { border-color: var(--surface-rim-strong); background: transparent; color: var(--text-secondary); }
 .remote-create.is-quiet:hover:not(:disabled) { border-color: var(--surface-rim-strong); background: color-mix(in oklch, var(--text-primary) 6%, transparent); color: var(--text-primary); }
 .remote-create.is-danger { border-color: transparent; background: color-mix(in oklab, var(--coral) 12%, transparent); color: var(--coral-ink); }
@@ -1544,7 +1866,7 @@
   font-weight: var(--weight-medium);
 }
 
-.remote-create:hover:not(:disabled):not(.is-quiet):not(.is-danger) { background: color-mix(in oklch, var(--text-primary) 12%, transparent); }
+.remote-create:hover:not(:disabled):not(.is-primary):not(.is-quiet):not(.is-danger) { background: color-mix(in oklch, var(--text-primary) 12%, transparent); }
 .remote-rotate.is-armed { border-color: color-mix(in oklch, var(--warn) 55%, transparent); background: var(--warn-glow); color: var(--warn-ink); }
 .remote-rotate:hover:not(:disabled):not(.is-armed) { background: color-mix(in oklch, var(--text-primary) 12%, transparent); }
 .remote-rotate:active:not(:disabled), .remote-create:active:not(:disabled) { transform: translateY(1px); }
@@ -2090,6 +2412,7 @@
 .fleet-caption-action[aria-pressed="true"],
 .fc-select__option[aria-selected="true"],
 .console-section-row.is-current,
+.remote-subtab.is-active,
 .remote-interface-preset.is-selected,
 .theme-card.is-active,
 .fc-settings-toggle__input:checked + .settings-switch {
