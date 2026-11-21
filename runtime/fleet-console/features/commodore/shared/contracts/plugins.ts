@@ -17,10 +17,6 @@ import { z } from "zod";
 export const PRESET_MARKETPLACES = Object.freeze([
   { name: "claude-plugins-official", repo: "anthropics/claude-plugins-official", enabled: true },
   { name: "claude-community", repo: "anthropics/claude-plugins-community", enabled: true },
-  { name: "knowledge-work-plugins", repo: "anthropics/knowledge-work-plugins", enabled: false },
-  { name: "claude-for-financial-services", repo: "anthropics/financial-services", enabled: false },
-  { name: "claude-for-legal", repo: "anthropics/claude-for-legal", enabled: false },
-  { name: "life-sciences", repo: "anthropics/life-sciences", enabled: false },
 ] as const);
 
 /** 사령관 하나가 설치할 수 있는 플러그인 수. */
@@ -391,7 +387,8 @@ const pluginServerSchema = z.string().regex(segment);
 /** 플러그인 키 이름 — `${NAME}`의 NAME. */
 export const pluginKeyNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]{0,127}$/);
 export const MAX_PLUGIN_KEY_LENGTH = 8_192;
-export const pluginAuthStatusSchema = z.object({ commodoreId: commodoreIdSchema, refresh: z.boolean().optional() }).strict();
-export const pluginAuthActionSchema = z.object({ commodoreId: commodoreIdSchema, pluginId: pluginIdSchema, server: pluginServerSchema, action: z.enum(["start", "cancel", "clear"]) }).strict();
-export const pluginAuthCallbackSchema = z.object({ commodoreId: commodoreIdSchema, pluginId: pluginIdSchema, server: pluginServerSchema, callbackUrl: z.string().min(1).max(4_096) }).strict();
-export const pluginKeySetSchema = z.object({ commodoreId: commodoreIdSchema, pluginId: pluginIdSchema, name: pluginKeyNameSchema, value: z.string().max(MAX_PLUGIN_KEY_LENGTH).nullable() }).strict();
+/** `commodoreId`를 생략하면 전역 설치 목록을 대상으로 인증·키를 읽고 조작한다. */
+export const pluginAuthStatusSchema = z.object({ commodoreId: commodoreIdSchema.optional(), refresh: z.boolean().optional() }).strict();
+export const pluginAuthActionSchema = z.object({ commodoreId: commodoreIdSchema.optional(), pluginId: pluginIdSchema, server: pluginServerSchema, action: z.enum(["start", "cancel", "clear"]) }).strict();
+export const pluginAuthCallbackSchema = z.object({ commodoreId: commodoreIdSchema.optional(), pluginId: pluginIdSchema, server: pluginServerSchema, callbackUrl: z.string().min(1).max(4_096) }).strict();
+export const pluginKeySetSchema = z.object({ commodoreId: commodoreIdSchema.optional(), pluginId: pluginIdSchema, name: pluginKeyNameSchema, value: z.string().max(MAX_PLUGIN_KEY_LENGTH).nullable() }).strict();

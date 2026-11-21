@@ -1776,32 +1776,27 @@ setTimeout(() => console.log(JSON.stringify({ command: "update", outcome: "ok", 
     expect(JSON.parse(fs.readFileSync(path.join(root, "registry.json"), "utf8"))).toMatchObject({ trusted: { "nover@team": "b8394fda9111" } });
     expect(changed).toHaveBeenCalledWith(["nover@team"]);
   });
-  it("enables only the official and community presets on an empty registry, and keeps a default-off preset when a commodore already chose its plugin", async () => {
+  it("registers only official and community presets on a fresh registry, and reconciles retired presets without breaking selected plugins", async () => {
     const h = harness();
     const unavailable = async () => { throw new Error("agent_cli_unavailable"); };
-    const presetEnabled = (root: string): Record<string, boolean> => {
+    const registryMarketplaces = (root: string) => {
       const raw = JSON.parse(fs.readFileSync(path.join(root, "registry.json"), "utf8")) as { version: number; marketplaces: { name: string; preset?: boolean; enabled: boolean }[] };
       expect(raw.version).toBe(1);
-      return Object.fromEntries(raw.marketplaces.filter((row) => row.preset).map((row) => [row.name, row.enabled]));
+      return raw.marketplaces;
     };
     const freshRoot = path.join(h.objectivesDir, "plugins-fresh");
     const fresh = createCommodorePlugins({ root: freshRoot, executable: unavailable });
     const first = fresh.catalog();
-    expect(presetEnabled(freshRoot)).toEqual({
-      "claude-plugins-official": true,
-      "claude-community": true,
-      "knowledge-work-plugins": false,
-      "claude-for-financial-services": false,
-      "claude-for-legal": false,
-      "life-sciences": false,
-    });
+    expect(registryMarketplaces(freshRoot).map((row) => ({ name: row.name, preset: row.preset, enabled: row.enabled }))).toEqual([
+      { name: "claude-plugins-official", preset: true, enabled: true },
+      { name: "claude-community", preset: true, enabled: true },
+    ]);
     expect(first.marketplaces.find((row) => row.name === "claude-community")).toMatchObject({ preset: true, enabled: true, status: "syncing" });
-    expect(first.marketplaces.find((row) => row.name === "life-sciences")).toMatchObject({ preset: true, enabled: false, status: "ready" });
     await expect(fresh.remove("claude-community")).rejects.toMatchObject({ code: "preset_locked" });
     expect(fresh.catalog().marketplaces.some((row) => row.name === "claude-community" && row.preset)).toBe(true);
     await fresh.refresh("claude-plugins-official");
 
-    // 옛 등록부: 기본 제공이 모두 켜져 있다. knowledge-work 만 사령관이 골랐고, legal 은 미리보기로 홈에 받아 둔 것이다.
+    // 옛 등록부: 퇴역한 기본 제공 4종이 남아 있다. knowledge-work 만 사령관이 골랐고 나머지는 미설치다.
     const legacyRoot = path.join(h.objectivesDir, "plugins-legacy");
     const chosen = ["brief@knowledge-work-plugins", "tool@team", "not a plugin"];
     fs.mkdirSync(path.join(legacyRoot, "claude", "plugins"), { recursive: true });
@@ -1814,32 +1809,48 @@ setTimeout(() => console.log(JSON.stringify({ command: "update", outcome: "ok", 
     }));
     const legacy = createCommodorePlugins({ root: legacyRoot, executable: unavailable, selectedPlugins: () => chosen });
     legacy.catalog();
-    const migrated = {
-      "claude-plugins-official": true,
-      "claude-community": true,
-      "knowledge-work-plugins": true,
-      "claude-for-financial-services": false,
-      "claude-for-legal": false,
-      "life-sciences": false,
-    };
-    expect(presetEnabled(legacyRoot)).toEqual(migrated);
-    legacy.enable("life-sciences", true);
+    // 사용하지 않는 퇴역 프리셋 3종은 정리되고, 사용 중인 knowledge-work-plugins 는 일반 마켓(preset: false)으로 내려 계속 쓰고 제거도 가능하다.
+    expect(registryMarketplaces(legacyRoot).map((row) => ({ name: row.name, preset: row.preset, enabled: row.enabled }))).toEqual([
+      { name: "claude-plugins-official", preset: true, enabled: true },
+      { name: "knowledge-work-plugins", preset: false, enabled: true },
+      { name: "claude-community", preset: true, enabled: true },
+    ]);
+    // 퇴역 후 일반 마켓으로 내려간 행은 preset_locked 가 아니라 CLI 단계까지 진행한다(여기서는 cli_unavailable).
+    await expect(legacy.remove("knowledge-work-plugins")).rejects.toMatchObject({ code: "cli_unavailable" });
     await legacy.refresh("claude-plugins-official");
-    expect(presetEnabled(legacyRoot)["life-sciences"]).toBe(true);
+  });
 
-    // 옛 빌드가 registry 를 version·marketplaces·trusted 만 다시 써도 켜짐은 유지된다. 버전은 올리지 않는다.
-    const file = path.join(legacyRoot, "registry.json");
-    const raw = JSON.parse(fs.readFileSync(file, "utf8")) as { version: number; marketplaces: unknown; trusted: unknown };
-    fs.writeFileSync(file, JSON.stringify({ version: raw.version, marketplaces: raw.marketplaces, trusted: raw.trusted }));
-    const reopened = createCommodorePlugins({ root: legacyRoot, executable: unavailable, selectedPlugins: () => chosen });
-    reopened.catalog();
-    expect(presetEnabled(legacyRoot)).toEqual({ ...migrated, "life-sciences": true });
-    reopened.enable("knowledge-work-plugins", false);
-    await reopened.refresh("knowledge-work-plugins");
-    const afterToggle = createCommodorePlugins({ root: legacyRoot, executable: unavailable, selectedPlugins: () => chosen });
-    afterToggle.catalog();
-    expect(presetEnabled(legacyRoot)).toEqual({ ...migrated, "life-sciences": true, "knowledge-work-plugins": false });
-    await afterToggle.refresh("claude-plugins-official");
+  it("supports global plugin MCP auth and key routes when commodoreId is omitted", async () => {
+    const h = harness();
+    const calls: string[] = [];
+    const setKey = vi.fn();
+    const invalidate = vi.fn();
+    const changed = vi.fn();
+    const authView = { checked: true, plugins: [{ pluginId: "linear@claude-plugins-official", servers: [{ server: "linear", mode: "oauth" as const, state: "needs-auth" as const }] }] };
+    const plugins = {
+      listGlobal: () => ["linear@claude-plugins-official"],
+      setKey,
+    } as never;
+    const pluginAuth = {
+      status: vi.fn(async (key: string, ids: readonly string[]) => { calls.push(`status:${key}:${ids.join(",")}`); return authView; }),
+      start: vi.fn(async (key: string, ids: readonly string[], pluginId: string, server: string) => { calls.push(`start:${key}:${pluginId}:${server}:${ids.length}`); return { authUrl: "https://auth.example/start", view: authView }; }),
+      cancel: vi.fn(async (key: string) => { calls.push(`cancel:${key}`); return authView; }),
+      clear: vi.fn(async (key: string) => { calls.push(`clear:${key}`); return authView; }),
+      callback: vi.fn(async (key: string, _ids: readonly string[], pluginId: string, server: string, url: string) => { calls.push(`callback:${key}:${pluginId}:${server}:${url}`); return authView; }),
+      invalidate,
+    } as never;
+    const hooks = { plugins, pluginAuth, pluginsChanged: changed };
+
+    expect((await h.route("commodore/plugins/auth/status", {}, hooks)).status).toBe(200);
+    expect((await h.route("commodore/plugins/auth/action", { pluginId: "linear@claude-plugins-official", server: "linear", action: "start" }, hooks)).value).toMatchObject({ authUrl: "https://auth.example/start" });
+    expect((await h.route("commodore/plugins/auth/callback", { pluginId: "linear@claude-plugins-official", server: "linear", callbackUrl: "http://localhost:9/callback?state=1" }, hooks)).status).toBe(200);
+    expect((await h.route("commodore/plugins/key", { pluginId: "linear@claude-plugins-official", name: "LINEAR_TOKEN", value: "secret" }, hooks)).status).toBe(200);
+    expect((await h.route("commodore/plugins/key", { pluginId: "other@claude-plugins-official", name: "OTHER_KEY", value: "x" }, hooks)).status).toBe(409);
+    expect(setKey).toHaveBeenCalledWith("linear@claude-plugins-official", "LINEAR_TOKEN", "secret");
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    expect(changed).toHaveBeenCalledWith(["linear@claude-plugins-official"]);
+    expect(calls[0]).toBe("status:global:linear@claude-plugins-official");
+    expect(calls[1]).toBe("start:global:linear@claude-plugins-official:linear:1");
   });
 });
 

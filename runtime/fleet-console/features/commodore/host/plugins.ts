@@ -717,16 +717,42 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     fs.writeFileSync(tmp, `${JSON.stringify({ settled: true })}\n`, { mode: 0o600 });
     fs.renameSync(tmp, activationFile);
   };
+  /** 전역·사령관이 고른 플러그인이 가리키는 마켓플레이스 이름. 형식이 아닌 값은 건너뛴다. */
+  const selectedMarketplaceNames = (): ReadonlySet<string> => {
+    const names = new Set<string>();
+    for (const id of [...readGlobalRecord().plugins, ...(options.selectedPlugins?.() ?? [])]) {
+      if (!pluginIdSchema.safeParse(id).success) continue;
+      names.add(splitPluginId(id).marketplace);
+    }
+    return names;
+  };
   /** 고른 플러그인이 가리키는 기본 제공 이름. 형식이 아닌 값과 기본 제공이 아닌 마켓은 설치로 치지 않는다. */
   const selectedPresetNames = (): ReadonlySet<string> => {
     const names = new Set<string>();
     // 전역 설치도 기본 켜짐을 한 번 정할 때 본다 — 어느 사령관도 고르지 않은 기본 제공을 전역이 가리키면 그대로 둔다.
-    for (const id of [...readGlobalRecord().plugins, ...(options.selectedPlugins?.() ?? [])]) {
-      if (!pluginIdSchema.safeParse(id).success) continue;
-      const marketplace = splitPluginId(id).marketplace;
+    for (const marketplace of selectedMarketplaceNames()) {
       if (PRESET_MARKETPLACES.some((preset) => preset.name === marketplace)) names.add(marketplace);
     }
     return names;
+  };
+  /**
+   * 기본 제공에서 빠진 옛 행을 정리한다. 어느 사령관·전역도 쓰지 않으면 등록부에서 걷고,
+   * 이미 플러그인을 설치해 쓰는 중이면 일반 마켓(`preset: false`)으로 내려 계속 쓰고 제거도 가능하게 둔다.
+   */
+  const reconcileRetiredPresets = (): void => {
+    const presetNames = new Set<string>(PRESET_MARKETPLACES.map((preset) => preset.name));
+    const current = readRegistry();
+    if (!current.marketplaces.some((row) => row.preset && !presetNames.has(row.name))) return;
+    let keep: ReadonlySet<string>;
+    try { keep = selectedMarketplaceNames(); }
+    catch { return; }
+    update((registry) => {
+      const marketplaces = registry.marketplaces.flatMap((row): RegistryMarketplace[] => {
+        if (!row.preset || presetNames.has(row.name)) return [row];
+        return keep.has(row.name) ? [{ ...row, preset: false }] : [];
+      });
+      return { ...registry, marketplaces };
+    });
   };
   /**
    * 이미 있는 기본 제공 행의 켜짐을 한 번만 맞춘다. 기본으로 꺼 둘 마켓은, 어느 사령관이든 그 마켓 플러그인을 골랐으면
@@ -1328,6 +1354,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
      * Console 기동에서 하지 않는 이유: 화면을 열지 않는 Console(테스트·원격 전용 등)까지 네트워크로 저장소를 받게 되기 때문이다.
      */
     catalog(): PluginCatalogView {
+      reconcileRetiredPresets();
       settlePresetActivation();
       const missing = PRESET_MARKETPLACES.filter((preset) => !readRegistry().marketplaces.some((row) => row.name === preset.name));
       if (missing.length) update((registry) => ({ ...registry, marketplaces: [...registry.marketplaces, ...missing.map((preset): RegistryMarketplace => ({ name: preset.name, kind: "github", locator: preset.repo, preset: true, enabled: preset.enabled, status: preset.enabled ? "syncing" : "ready" }))] }));
