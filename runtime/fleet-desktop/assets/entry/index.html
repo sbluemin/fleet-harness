@@ -10,24 +10,53 @@
 </head>
 <body>
   <header class="drag-strip" aria-hidden="true"></header>
-  <!-- Console 파비콘과 같은 조형(Commodore Pennant F)이다 — 넘겨줄 때 대화 중심 화면 맨 위 줄(52px)의 세로 중심(entry.css --brand-glyph-left)으로 줄어든다. -->
-  <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true">
-    <rect class="brand-mark-tile" x="2" y="2" width="60" height="60" rx="14" />
-    <path class="brand-mark-pennant" d="M19.25 15.25H47.5L42.75 20.25L47.5 25.25H26.5V45L19.25 49Z" />
-    <path class="brand-mark-blade" d="M29.25 29.5H43.5L39.75 37.25H29.25Z" />
-  </svg>
-  <!-- 개발 빌드는 Console 워드마크와 같은 「Fleet·DEV」다(is-dev일 때만 점과 DEV가 선다). -->
-  <h1 class="wordmark">Fleet<span class="wordmark-sep" aria-hidden="true">·</span><span class="wordmark-tag">DEV</span></h1>
-  <main class="entry-stage">
-    <p class="tagline" id="tagline"></p>
-    <section class="status" aria-live="polite">
-      <span class="status-dot" aria-hidden="true"></span>
-      <span class="status-title" id="status-title"></span>
+  <main class="entry-core">
+    <!-- Commodore Pennant F 조형 — 타일 없이 캔버스 중앙에 세우고 블레이드에만 스페큘러 광택을 흘린다. -->
+    <svg class="brand-mark" viewBox="11.25 8 44 48" aria-hidden="true">
+      <defs>
+        <linearGradient id="brand-mast-g" x1="0" y1="0" x2="0.25" y2="1">
+          <stop offset="0%" stop-color="var(--mark-mast-top)" />
+          <stop offset="100%" stop-color="var(--mark-mast-body)" />
+        </linearGradient>
+        <linearGradient id="brand-blade-g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stop-color="var(--mark-blade-top)" />
+          <stop offset="55%" stop-color="var(--mark-blade-body)" />
+          <stop offset="100%" stop-color="var(--mark-blade-edge)" />
+        </linearGradient>
+        <clipPath id="brand-blade-clip">
+          <path d="M29 29.5H44.5L40.5 38H29Z" />
+        </clipPath>
+        <linearGradient id="brand-sheen-g" x1="0" y1="0" x2="1" y2="0.35">
+          <stop offset="0%" stop-color="transparent" />
+          <stop offset="48%" stop-color="var(--mark-sheen)" />
+          <stop offset="100%" stop-color="transparent" />
+        </linearGradient>
+      </defs>
+      <g class="brand-mark-mast">
+        <path class="brand-mark-pennant" d="M18.25 14.5H48.25L43.25 20L48.25 25.5H26V45.75L18.25 50Z" fill="url(#brand-mast-g)" />
+        <path class="brand-mark-fold" d="M18.25 14.5H48.25L43.25 20H24.2Z" />
+      </g>
+      <g class="brand-mark-blade">
+        <path class="brand-mark-blade-main" d="M29 29.5H44.5L40.5 38H29Z" fill="url(#brand-blade-g)" />
+        <path class="brand-mark-blade-rim" d="M29 29.5H44.5L43.7 31.2H29Z" />
+        <g clip-path="url(#brand-blade-clip)">
+          <polygon class="brand-mark-sheen" points="22,27 32,27 25,41 15,41" fill="url(#brand-sheen-g)" />
+        </g>
+      </g>
+    </svg>
+    <section class="entry-stage" aria-live="polite">
+      <div class="status">
+        <span class="status-signal" aria-hidden="true"></span>
+        <span class="status-title" id="status-title"></span>
+        <span class="status-pct" id="status-pct"></span>
+      </div>
+      <div class="bar" id="bar" aria-hidden="true"><span class="bar-fill" id="bar-fill"></span></div>
+      <p class="detail" id="detail"></p>
     </section>
-    <div class="bar" id="bar" aria-hidden="true"><span class="bar-fill" id="bar-fill"></span></div>
-    <p class="detail" id="detail"></p>
   </main>
-  <footer class="versions" id="versions"></footer>
-  <span class="dev-tag" id="dev-tag">LOCAL BUILD</span>
+  <footer class="entry-footer">
+    <span class="versions" id="versions"></span>
+    <span class="dev-tag" id="dev-tag">DEV</span>
+  </footer>
 </body>
 </html>

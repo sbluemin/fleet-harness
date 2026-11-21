@@ -2,9 +2,9 @@
    bundled font files next to this sheet, allowed by CSP font-src 'self'). The mini palette mirrors
    the current dark theme charter in theme.css and is the default surface until the Console's theme
    snapshot supplies the user's palette (desktop-contract.ts); when the charter moves, re-sync values here by hand.
-   Channel rules apply as in the Console: signal tokens carry state only (positive=done, coral=danger,
-   brass=progress), identity/environment badges stay on neutral ink. Korean glyphs fall back to
-   Pretendard when installed, then to the system face — the bundled faces are Latin subsets. */
+   Channel rules apply as in the Console: signal tokens carry semantic state only (positive=done,
+   coral=warning/failed), progress stays on neutral ink, and burnished brass lives solely on the
+   Commodore Pennant F command blade. */
 @font-face {
   font-family: "Manrope Variable";
   src: url("fonts/manrope-latin-wght-normal.woff2") format("woff2");
@@ -53,19 +53,26 @@
   --ink-muted: oklch(72.8% 0 0);
   --ink-spectral: oklch(80% 0 0);
   --ink-pearl: oklch(97% 0 0);
-  /* 개발 빌드 워드마크 전용 잉크와 DEV가 물러서는 3차 잉크 — Console theme.css의 --ink-brand-dev·--text-tertiary(다크). */
+  /* 개발 빌드 마크·배지 전용 잉크 — Console theme.css의 --ink-brand-dev(다크). */
   --ink-brand-dev: oklch(84% 0.045 255);
-  --text-tertiary: var(--ink-fog);
   --brass: oklch(80% 0.085 78);
-  --brass-glow: color-mix(in oklch, var(--brass) 16%, transparent);
   --aurora: oklch(79% 0.08 205);
   --positive: oklch(77% 0.095 158);
-  --positive-glow: color-mix(in oklch, var(--positive) 16%, transparent);
+  --positive-glow: color-mix(in oklch, var(--positive) 18%, transparent);
   --coral: oklch(69% 0.12 25);
-  --coral-glow: color-mix(in oklch, var(--coral) 16%, transparent);
+  --coral-glow: color-mix(in oklch, var(--coral) 18%, transparent);
   --hairline: oklch(28.5% 0 0);
   --hairline-strong: oklch(37% 0 0);
-  --radius-xs: 6px;
+  /* Commodore Pennant F 조형 톤 — 다크 캔버스 위 백금 마스트 + 번니시드 황동 블레이드. */
+  --mark-mast-top: #f2f2f0;
+  --mark-mast-body: #e6e5e0;
+  --mark-mast-fold: #ffffff;
+  --mark-blade-top: #dcbe80;
+  --mark-blade-body: #c09b52;
+  --mark-blade-edge: #9d7835;
+  --mark-sheen: rgba(255, 255, 255, 0.65);
+  --track-bg: color-mix(in oklch, var(--ink-pearl) 12%, transparent);
+  --track-fill: var(--ink-pearl);
   --chrome-band-height: 52px;
   --font-ui: "Manrope Variable", "Manrope", "Pretendard Variable", system-ui, sans-serif;
   --font-content: var(--font-ui);
@@ -73,120 +80,294 @@
   --font-ui-size: 14px;
   --font-content-size: 14px;
   --font-code-size: 13px;
-  --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-handoff: cubic-bezier(0.4, 0, 0.2, 1);
   --duration-fade: 200ms;
   /* launch-controller.ts HANDOFF_SETTLE_MS와 짝 — 이 전환이 끝난 뒤에 Console 문서로 바뀐다. */
   --handoff-duration: 420ms;
-  /* 넘겨줄 때 마크·워드마크가 도착하는 자리. 대화 중심 화면 맨 위 줄(52px)의 세로 중심에 맞춘다.
-     그 줄에는 브랜드가 없으므로 빈 자리에 내려앉는다. 기본 왼쪽은 space-3(12px). macOS는 Console이
-     비우는 신호등 76 DIP에 space-3 12px를 더한 자리(배율 1에서 88px)에서 시작한다.
-     배율: main이 스냅샷 zoom으로 알린다(entry-page.ts EntryZoom). --handoff-scale은 Console 문서 배율 ÷ 이 문서 배율이라
-     Console CSS px 값(맨 위 줄·글리프·space-3·간격)에 곱한다. 신호등 예약은 네이티브 DIP라 이 문서 배율(--entry-page-zoom)로만
-     나눈다 — Console의 calc(76px / var(--desktop-zoom) + var(--space-3))와 같은 DIP에 내려앉는다. 모르면 둘 다 1이다. */
   --handoff-scale: 1;
   --entry-page-zoom: 1;
-  --native-inset-left: 0px;
-  --brand-glyph-left: calc(var(--native-inset-left) / var(--entry-page-zoom) + 12px * var(--handoff-scale));
-  --brand-mark-size: 72px;
 }
-:root[data-platform="darwin"] { --native-inset-left: 76px; }
+
 /* 위 팔레트는 기본 판이다. main이 사용자의 Console 테마 색을 알면 같은 이름의 변수를 덮고 밝기를 알린다. */
-:root[data-scheme="light"] { color-scheme: light; }
-/* 개발 잉크는 팔레트로 건너오지 않는다 — 밝은 판에서는 Console 라이트 테마의 값으로 바꿔 판독성을 지킨다. */
-:root[data-scheme="light"] { --ink-brand-dev: oklch(42% 0.075 255); --text-tertiary: var(--ink-fog); }
+:root[data-scheme="light"] {
+  color-scheme: light;
+  --ink-brand-dev: oklch(42% 0.075 255);
+  --mark-mast-top: #262a33;
+  --mark-mast-body: #12151b;
+  --mark-mast-fold: #313640;
+  --mark-blade-top: #b8904a;
+  --mark-blade-body: #9e7733;
+  --mark-blade-edge: #7d5b20;
+  --mark-sheen: rgba(255, 255, 255, 0.78);
+  --track-bg: color-mix(in oklch, var(--ink-pearl) 11%, transparent);
+  --track-fill: var(--ink-pearl);
+}
 
 * { box-sizing: border-box; }
 html, body { height: 100%; margin: 0; }
-body { font-size: var(--font-ui-size); overflow: hidden; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-ui); -webkit-font-smoothing: antialiased; }
+body {
+  display: grid;
+  place-items: center;
+  padding: 48px 24px;
+  font-size: var(--font-ui-size);
+  overflow: hidden;
+  background: var(--ink-abyss);
+  color: var(--ink-spectral);
+  font-family: var(--font-ui);
+  user-select: none;
+  cursor: default;
+  -webkit-font-smoothing: antialiased;
+}
 
-/* 창을 끌 수 있는 자리. 높이는 대화 중심 화면 맨 위 줄(52px)과 같다. 그 줄(사이드바 컴팩트 줄)은 투명 오버레이라 아랫선이 없다. */
-.drag-strip { position: fixed; inset: 0 0 auto; height: calc(var(--chrome-band-height) * var(--handoff-scale)); -webkit-app-region: drag; }
+/* 창을 끌 수 있는 자리. 높이는 대화 중심 화면 맨 위 줄(52px)과 같다. */
+.drag-strip {
+  position: fixed;
+  inset: 0 0 auto;
+  height: calc(var(--chrome-band-height) * var(--handoff-scale));
+  -webkit-app-region: drag;
+}
+
+.entry-core {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transform: translateY(-10px);
+  transition:
+    transform var(--handoff-duration) var(--ease-handoff),
+    opacity 360ms var(--ease-handoff),
+    filter 360ms var(--ease-handoff);
+}
 
 .brand-mark {
-  position: fixed;
-  top: calc(50% - 116px);
-  left: calc(50% - var(--brand-mark-size) / 2);
-  width: var(--brand-mark-size);
-  height: var(--brand-mark-size);
-  border-radius: var(--radius-xs);
-  transform-origin: center;
+  width: 68px;
+  height: 68px;
+  overflow: visible;
+}
+
+.brand-mark-mast {
+  transform-origin: 18px 32px;
+  animation: mark-mast-in 520ms var(--ease-out) both;
+}
+
+.brand-mark-fold {
+  fill: var(--mark-mast-fold);
+  opacity: 0.16;
+}
+
+.brand-mark-blade {
+  transform-origin: 29px 34px;
+  animation: mark-blade-in 480ms var(--ease-out) 110ms both;
+}
+
+.brand-mark-blade-rim {
+  fill: #ffffff;
+  opacity: 0.22;
+}
+
+.brand-mark-sheen {
+  opacity: 0;
+  transform: translateX(-30px);
+}
+
+:root[data-tone="busy"]:not(.is-handoff) .brand-mark-sheen {
+  opacity: 1;
+  animation: mark-sheen 2.6s cubic-bezier(0.45, 0, 0.2, 1) 600ms infinite;
+}
+
+/* 개발 빌드는 기함기를 외곽선으로 열고 블레이드를 개발 잉크로 낮춰 출하 빌드와 구분한다. */
+.is-dev .brand-mark-pennant {
+  fill: none;
+  stroke: var(--ink-brand-dev);
+  stroke-width: 2.2;
+  stroke-linejoin: round;
+}
+.is-dev .brand-mark-fold { opacity: 0; }
+.is-dev .brand-mark-blade-main { fill: var(--ink-brand-dev); opacity: 0.85; }
+.is-dev .brand-mark-blade-rim { opacity: 0.25; }
+
+.entry-stage {
+  margin-top: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  min-height: 54px;
+  text-align: center;
+  animation: stage-in 440ms var(--ease-out) 180ms both;
   transition: opacity var(--duration-fade) ease;
 }
-.brand-mark-tile { fill: var(--ink-deep); stroke: var(--hairline-strong); stroke-width: 2; }
-.brand-mark-pennant { fill: var(--ink-pearl); }
-.brand-mark-blade { fill: #d4b476; transform-box: fill-box; transform-origin: center; }
-:root[data-scheme="light"] .brand-mark-blade { fill: #a07a36; }
-/* 개발 빌드는 기함기를 외곽선으로 열고 보조 블레이드를 개발 잉크로 낮춰 출하 빌드와 구분한다. */
-.is-dev .brand-mark-pennant { fill: none; stroke: var(--ink-brand-dev); stroke-width: 2.5; stroke-linejoin: round; }
-.is-dev .brand-mark-blade { fill: var(--ink-brand-dev); opacity: 0.72; }
-:root[data-tone="busy"] .brand-mark-blade { animation: beacon 1.8s ease-in-out infinite; }
 
-.wordmark {
-  position: fixed;
-  top: calc(50% - 26px);
-  left: 50%;
-  margin: 0;
-  transform: translateX(-50%);
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   color: var(--ink-pearl);
-  font-family: var(--font-content);
-  font-size: calc(var(--font-content-size) * 2.857143);
-  font-weight: 600;
-  line-height: 1;
+  font-size: calc(var(--font-ui-size) * 13 / 14);
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+
+.status-pct {
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+.status-pct:empty { display: none; }
+
+/* 신호 점은 완료·경고·실패 같은 의미 상태에만 켠다 — 정상 진행은 로고 광택과 헤어라인 트랙이 말한다. */
+.status-signal {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex: none;
+}
+:root[data-tone="done"] .status-signal {
+  display: inline-block;
+  background: var(--positive);
+  box-shadow: 0 0 0 3px var(--positive-glow);
+}
+:root[data-tone="warning"] .status-signal,
+:root[data-tone="failed"] .status-signal {
+  display: inline-block;
+  background: var(--coral);
+  box-shadow: 0 0 0 3px var(--coral-glow);
+}
+
+.bar {
+  position: relative;
+  width: min(148px, 60vw);
+  height: 1.5px;
+  border-radius: 99px;
+  overflow: hidden;
+  background: var(--track-bg);
+  opacity: 0;
+  transition: opacity 220ms ease;
+}
+.bar.is-visible { opacity: 1; }
+
+.bar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  border-radius: 99px;
+  background: var(--track-fill);
+  transition: width 260ms var(--ease-out), background-color 220ms ease;
+}
+
+.bar.is-indeterminate .bar-fill {
+  width: 46%;
+  background: linear-gradient(90deg, transparent 0%, var(--track-fill) 50%, transparent 100%);
+  animation: track-stream 1.75s var(--ease-handoff) infinite;
+}
+
+:root[data-tone="done"] .bar-fill {
+  width: 100%;
+  animation: none;
+  background: var(--positive);
+}
+
+:root[data-tone="warning"] .bar-fill,
+:root[data-tone="failed"] .bar-fill {
+  animation: none;
+  background: var(--coral);
+}
+
+.detail {
+  margin: 0;
+  min-height: 1.4em;
+  color: var(--ink-muted);
+  font-size: calc(var(--font-ui-size) * 11.5 / 14);
   letter-spacing: -0.005em;
-  white-space: nowrap;
-  transform-origin: center;
+}
+
+.entry-footer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--ink-fog);
+  opacity: 0.72;
+  font-size: calc(var(--font-ui-size) * 11 / 14);
+  letter-spacing: 0.01em;
+  animation: stage-in 440ms var(--ease-out) 260ms both;
   transition: opacity var(--duration-fade) ease;
 }
 
-/* 개발 빌드의 「Fleet·DEV」 — 옛 Console 워드마크와 같은 조형·같은 em이라 넘겨주기에서 크기가 줄어도
-   함께 줄어든다. 워드마크는 개발 잉크, 점은 황동, DEV는 개발 잉크를 3차 잉크 쪽으로 누른다. */
-.wordmark-sep, .wordmark-tag { display: none; }
-.is-dev .wordmark { color: var(--ink-brand-dev); }
-.is-dev .wordmark-sep { display: inline; margin: 0 0.34em; color: var(--brass); font-family: var(--font-ui); font-weight: 700; }
-.is-dev .wordmark-tag { display: inline-block; margin-inline-end: -0.16em; color: color-mix(in oklab, var(--ink-brand-dev) 72%, var(--text-tertiary)); font: 700 0.62em/1 var(--font-ui); letter-spacing: 0.16em; transform: translateY(-0.08em); }
+.versions:empty { display: none; }
 
-.entry-stage { position: fixed; top: calc(50% + 30px); left: 24px; right: 24px; display: grid; justify-items: center; gap: 10px; text-align: center; transition: opacity var(--duration-fade) ease; }
-.tagline { margin: 0 0 14px; color: var(--ink-spectral); font-size: var(--font-ui-size); }
-.status { display: inline-flex; align-items: center; gap: 9px; color: var(--ink-pearl); font-size: calc(var(--font-ui-size) * 13.5 / 14); font-weight: 500; }
-.status-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--brass); box-shadow: 0 0 0 3px var(--brass-glow); }
-:root[data-tone="busy"] .status-dot { animation: pulse 1.6s ease-in-out infinite; }
-:root[data-tone="done"] .status-dot { background: var(--positive); box-shadow: 0 0 0 3px var(--positive-glow); }
-:root[data-tone="warning"] .status-dot, :root[data-tone="failed"] .status-dot { background: var(--coral); box-shadow: 0 0 0 3px var(--coral-glow); }
-.bar { display: none; position: relative; width: min(240px, 70vw); height: 2px; overflow: hidden; border-radius: 2px; background: var(--ink-veil); }
-.bar.is-visible { display: block; }
-.bar-fill { position: absolute; inset: 0 auto 0 0; width: 0; background: var(--brass); transition: width 240ms linear; }
-.bar.is-indeterminate .bar-fill { width: 34%; animation: sweep 1.3s var(--ease-spring) infinite; }
-.detail { margin: 0; min-height: 1.4em; color: var(--ink-muted); font-size: calc(var(--font-ui-size) * 12 / 14); }
+/* 개발 빌드 배지 — 버전 줄 옆의 단일 소형 칩으로 정리해 중복 표기를 없앤다. */
+.dev-tag {
+  display: none;
+  align-items: center;
+  padding: 1px 6px;
+  border: 1px solid color-mix(in oklch, var(--ink-brand-dev) 34%, transparent);
+  border-radius: 4px;
+  color: var(--ink-brand-dev);
+  font-size: calc(var(--font-ui-size) * 10 / 14);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+}
+.dev-tag.is-visible { display: inline-flex; }
 
-.versions { position: fixed; left: 0; right: 0; bottom: 22px; color: var(--ink-fog); font-family: var(--font-ui); font-size: calc(var(--font-ui-size) * 11 / 14); text-align: center; letter-spacing: 0.02em; transition: opacity var(--duration-fade) ease; }
-/* 개발 빌드 배지 — 정체성이지 상태가 아니므로 신호색 없이 중립 잉크 칩. Windows 캡션 버튼과
-   겹치지 않도록 위가 아니라 오른쪽 아래에 둔다. */
-.dev-tag { display: none; position: fixed; right: 16px; bottom: 18px; padding: 2px 9px; border: 1px solid var(--ink-rim); border-radius: var(--radius-xs); color: var(--ink-spectral); font-family: var(--font-ui); font-size: calc(var(--font-ui-size) * 10 / 14); letter-spacing: 0.1em; }
-.dev-tag.is-visible { display: inline-block; }
+/* 넘겨주기: 단일 중심축이 미세하게 떠오르며 흐려져 아래 Console로 자연스럽게 이어진다. */
+.is-handoff:not(.is-farewell) .entry-core {
+  transform: translateY(-16px) scale(1.04);
+  opacity: 0;
+  filter: blur(3px);
+}
+.is-handoff .entry-footer { opacity: 0; }
 
-/* 넘겨주기: 중앙 자리를 유지한 채 살짝 커졌다가 작아지며 사라진다. */
-.is-handoff:not(.is-farewell) .brand-mark,
-.is-handoff:not(.is-farewell) .wordmark { animation: handoff var(--handoff-duration) ease-in-out forwards; }
-.wordmark { --handoff-offset: -50%; }
-.is-handoff .entry-stage, .is-handoff .versions, .is-handoff .dev-tag { opacity: 0; }
-.is-handoff .brand-mark-blade { animation: none; }
-
-/* 종료 인사: 바탕과 브랜드가 중앙에서 바로 나타난다. 아래의 Console은 판이 차오를 때까지 비친다. */
+/* 종료 인사: 바탕이 차오르며 중앙 코어가 안착한다. 시작 등장 클립은 건너뛰어 역전환이 매끄럽다. */
 .is-farewell body { transition: background-color var(--duration-fade) ease; }
 .is-veiled body { background-color: transparent; }
-.is-farewell .tagline, .is-farewell .dev-tag { display: none; }
-.is-farewell.is-veiled .brand-mark, .is-farewell.is-veiled .wordmark { opacity: 0; }
-@keyframes handoff {
-  0% { transform: translateX(var(--handoff-offset, 0%)) scale(1); opacity: 1; }
-  35% { transform: translateX(var(--handoff-offset, 0%)) scale(1.08); opacity: 1; }
-  100% { transform: translateX(var(--handoff-offset, 0%)) scale(0.88); opacity: 0; }
+.is-farewell .entry-footer { display: none; }
+.is-farewell .brand-mark-mast,
+.is-farewell .brand-mark-blade,
+.is-farewell .entry-stage { animation: none; }
+.is-farewell.is-veiled .entry-core {
+  transform: translateY(-4px) scale(0.95);
+  opacity: 0;
+  filter: blur(2px);
 }
+
 .is-instant, .is-instant * { transition: none !important; }
 
-@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 3px var(--brass-glow); } 50% { box-shadow: 0 0 0 6px transparent; } }
-@keyframes beacon { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
-@keyframes sweep { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+@keyframes mark-mast-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.96); clip-path: inset(0 0 100% 0); }
+  to   { opacity: 1; transform: translateY(0) scale(1); clip-path: inset(0 0 0% 0); }
+}
+
+@keyframes mark-blade-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes mark-sheen {
+  0%   { transform: translateX(-30px); opacity: 0; }
+  18%  { opacity: 0.85; }
+  45%  { transform: translateX(36px); opacity: 0; }
+  100% { transform: translateX(36px); opacity: 0; }
+}
+
+@keyframes stage-in {
+  from { opacity: 0; transform: translateY(5px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes track-stream {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(240%); }
+}
 
 @media (prefers-reduced-motion: reduce) {
-  * { transition-duration: .01ms !important; animation: none !important; }
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation: none !important;
+  }
+  .brand-mark-sheen { opacity: 0 !important; }
 }

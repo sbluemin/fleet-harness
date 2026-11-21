@@ -165,5 +165,5 @@ const FAREWELL_TITLE: Record<EntryLanguage, string> = { ko: "Fleet 종료 중…
  * 개발 빌드의 앰블럼(열린 링 · 「Fleet·DEV」)이 떠나는 Console의 앰블럼 자리에서 출발한다.
  */
 export function farewellSnapshot(lang: EntryLanguage, dev: boolean, phase: EntryFarewell, palette?: EntryPalette): EntryPageSnapshot {
-  return { platform: process.platform, lang, dev, tagline: "", tone: "busy", title: FAREWELL_TITLE[lang], versions: "", farewell: phase, ...(palette ? { palette } : {}) };
+  return { platform: process.platform, lang, dev, tagline: "", tone: "busy", title: FAREWELL_TITLE[lang], progress: "indeterminate", versions: "", farewell: phase, ...(palette ? { palette } : {}) };
 }
