@@ -20,28 +20,28 @@ vi.mock("@fleet-console/ai-gateway", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@fleet-console/ai-gateway")>();
   return {
     ...actual,
-    validateTypesafeAuthKey: mocks.validate,
+    validateOpencodeGoAuthKey: mocks.validate,
   };
 });
 
-describe("TypeSafe auth login flow", () => {
+describe("auth login flow", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.password.mockResolvedValue("typesafe-secret");
-    mocks.validate.mockResolvedValue({ providerId: "Fleet Console with TypeSafe System One", status: "success" });
+    mocks.password.mockResolvedValue("opencode-secret");
+    mocks.validate.mockResolvedValue({ providerId: "Claude Code with OpenCode Go", status: "success" });
   });
 
-  it("validates before saving the TypeSafe API key", async () => {
+  it("validates before saving the API key", async () => {
     const io = createIo();
-    await expect(runAuthLoginFlow(["typesafe"], io, createDeps())).resolves.toBe(0);
-    expect(mocks.validate).toHaveBeenCalledWith("typesafe-secret");
-    expect(mocks.setApiKey).toHaveBeenCalledWith("Fleet Console with TypeSafe System One", "typesafe-secret");
+    await expect(runAuthLoginFlow(["opencode"], io, createDeps())).resolves.toBe(0);
+    expect(mocks.validate).toHaveBeenCalledWith("opencode-secret");
+    expect(mocks.setApiKey).toHaveBeenCalledWith("Claude Code with OpenCode Go", "opencode-secret");
   });
 
   it("does not save a rejected key", async () => {
     const io = createIo();
-    mocks.validate.mockResolvedValue({ providerId: "Fleet Console with TypeSafe System One", status: "unauthorized" });
-    await expect(runAuthLoginFlow(["typesafe"], io, createDeps())).resolves.toBe(1);
+    mocks.validate.mockResolvedValue({ providerId: "Claude Code with OpenCode Go", status: "unauthorized" });
+    await expect(runAuthLoginFlow(["opencode"], io, createDeps())).resolves.toBe(1);
     expect(mocks.setApiKey).not.toHaveBeenCalled();
     expect(io.stderr.output).toContain("rejected");
   });
@@ -51,7 +51,7 @@ describe("TypeSafe auth login flow", () => {
     await expect(runAuthLoginFlow(["bogus"], io, createDeps())).resolves.toBe(1);
     expect(mocks.password).not.toHaveBeenCalled();
     expect(mocks.setApiKey).not.toHaveBeenCalled();
-    expect(io.stderr.output).toBe("Unknown provider: bogus\nUse one of: opencode, gemini, anthropic, typesafe.\n");
+    expect(io.stderr.output).toBe("Unknown provider: bogus\nUse one of: opencode, gemini, anthropic.\n");
   });
 });
 

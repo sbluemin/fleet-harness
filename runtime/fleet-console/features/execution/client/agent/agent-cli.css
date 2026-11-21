@@ -12,7 +12,6 @@
 .ai-gateway-provider.is-opencode { --ai-gateway-provider-tone: var(--provider-opencode); }
 .ai-gateway-provider.is-gemini { --ai-gateway-provider-tone: var(--provider-gemini); }
 .ai-gateway-provider.is-anthropic { --ai-gateway-provider-tone: var(--provider-anthropic); }
-.ai-gateway-provider.is-typesafe { --ai-gateway-provider-tone: var(--provider-typesafe); }
 .ai-gateway-provider.is-xai { --ai-gateway-provider-tone: var(--provider-xai); }
 
 .ai-gateway-provider-glyph {
@@ -1004,9 +1003,6 @@ button.ai-gateway-login:hover { color: var(--text-primary); }
 .ai-gateway-login.is-unknown { color: var(--text-tertiary); }
 /* xAI 엔드포인트 토글은 xAI 행 안, 로그인 상태 앞에 선다 — 하위 행을 따로 두지 않는다. */
 .ai-gateway-endpoint { display: inline-flex; align-items: center; margin-right: 8px; }
-/* 서비스 자격증명 마크 — 박스 없는 순수 마크 14px. 위임 후보가 아니라서 launch 유니온과 섞지 않는다. */
-.ai-gateway-service-mark { display: inline-grid; place-items: center; flex: none; width: 14px; height: 14px; border: 0; background: none; color: var(--provider-typesafe); }
-.ai-gateway-service-mark svg { width: 14px; height: 14px; }
 /* 라우팅 풀 안내 행 — [겹친 글리프] 제목·설명 … 대화에서 열기. */
 .ai-gateway-pool-row { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; min-width: 0; min-height: 56px; padding: 10px 2px; }
 .ai-gateway-pool-text { flex: 1 1 180px; display: grid; gap: 2px; min-width: 0; }

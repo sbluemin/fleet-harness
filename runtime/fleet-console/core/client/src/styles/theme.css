@@ -173,7 +173,6 @@
   /* 캐리어 시그니처 색 — 콘솔 팔레트에서 재정의한 provider 정체성 축. 정체성이라 테마의 채도
      봉투를 따라 재조율된다(다크 C ≤ 0.10) — 한 값으로 고정하면 다크 외피의 2.5배로 튄다. */
   --provider-claude: oklch(76% 0.09 62);
-  --provider-typesafe: oklch(73% 0.09 339);
   --provider-codex: oklch(78% 0.035 248);
   --provider-xai: oklch(76% 0.055 258);
   --provider-opencode: oklch(72% 0.07 165);
@@ -701,7 +700,6 @@
   --canvas-sea-far: oklch(97.6% 0 0);
 
   --provider-claude: oklch(54% 0.135 62);
-  --provider-typesafe: oklch(52% 0.135 339);
   --provider-codex: oklch(43% 0.035 255);
   --provider-xai: oklch(46% 0.06 258);
   --provider-opencode: oklch(48% 0.08 165);
@@ -879,7 +877,6 @@
   --control-wash-hover: oklch(95% 0 0 / 4%);
 
   --provider-claude: oklch(76% 0.085 62);
-  --provider-typesafe: oklch(73% 0.085 339);
 
   --quiet-choice-fill: color-mix(in oklab, var(--brass) 6%, transparent);
 
@@ -1299,7 +1296,6 @@
   --agent-control-badge: oklch(57% 0.16 285);
   --id-space-ink: oklch(80% 0.01 245);
   --provider-claude: oklch(76% 0.09 62);
-  --provider-typesafe: oklch(73% 0.09 339);
   --provider-codex: oklch(78% 0.035 248);
   --provider-xai: oklch(76% 0.055 258);
   --provider-opencode: oklch(72% 0.07 165);
@@ -1374,7 +1370,6 @@
   --agent-control-badge: oklch(57% 0.24 285);
   --id-space-ink: oklch(45% 0.012 245);
   --provider-claude: oklch(54% 0.135 62);
-  --provider-typesafe: oklch(52% 0.135 339);
   --provider-codex: oklch(43% 0.035 255);
   --provider-xai: oklch(46% 0.06 258);
   --provider-opencode: oklch(48% 0.08 165);

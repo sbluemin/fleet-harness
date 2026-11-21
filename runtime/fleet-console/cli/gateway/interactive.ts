@@ -34,7 +34,7 @@ import {
   toStoredModels,
   withModelEfforts,
 } from "./selection.js";
-import type { AuthCommandDeps, AuthCommandIo } from "../auth/login-flow.js";
+import { AUTH_CLI_DEFINITIONS, type AuthCommandDeps, type AuthCommandIo } from "../auth/login-flow.js";
 
 export interface GatewayInteractiveIo {
   readonly stdout: { write(chunk: string): boolean; isTTY?: boolean };
@@ -158,7 +158,7 @@ async function editProviders(io: GatewayInteractiveIo, deps: GatewayInteractiveD
   const action = await select<"login" | "logout" | "back">({
     message: "Provider authentication",
     options: [
-      { value: "login", label: "Sign in", hint: "OpenCode Go, Gemini, Anthropic or TypeSafe API key" },
+      { value: "login", label: "Sign in", hint: "OpenCode Go, Gemini or Anthropic API key" },
       { value: "logout", label: "Sign out" },
       { value: "back", label: "Back" },
     ],
@@ -247,7 +247,9 @@ function summarizeModels(settings: AiGatewayStoredSettings): string {
 
 async function summarizeProviders(deps: GatewayInteractiveDeps): Promise<string> {
   try {
-    const signedIn = await deps.authService.listProviderIds();
+    // 지금 로그인할 수 있는 공급자만 센다. 없앤 공급자의 키는 저장소에 남아도 여기 잡히지 않는다.
+    const known = new Set(Object.values(AUTH_CLI_DEFINITIONS).map((definition) => definition.providerId));
+    const signedIn = (await deps.authService.listProviderIds()).filter((providerId) => known.has(providerId));
     return signedIn.length === 0 ? "none signed in" : `${signedIn.length} signed in`;
   } catch {
     return "unavailable";
