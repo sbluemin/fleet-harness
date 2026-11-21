@@ -139,6 +139,29 @@ export function chromeViewLocked(viewOnly: ChromeViewOnly | null | undefined): b
   return viewOnly != null && viewOnly.control !== true;
 }
 
+const NO_PAGE: ChromeUiState["page"] = { x: 0, y: 0, width: 0, height: 0 };
+
+/** 문서가 `page` 를 얼마나 읽는가 — 안 읽음, 너비만, 전부. */
+export type ChromePageReading = "none" | "width" | "all";
+
+/**
+ * `page`(페이지 자리·크기)는 구분선을 끄는 동안 매 틱 바뀌지만 읽는 문서는 정해져 있다 — 레일·스테이지는 읽지 않고,
+ * 가드는 제어권이 걸린 동안 너비만 읽고, 주소줄은 오버레이·알림·페이지 대화상자·원격 카드·주석을 그릴 때만 읽는다.
+ * 새 소비처를 문서에 더하면 이 함수도 함께 고친다(주소줄은 보수적으로 넓게 잡는다).
+ */
+export function chromePageReading(role: ChromeRole, state: ChromeUiState): ChromePageReading {
+  if (role === "guard") return state.control === null ? "none" : "width";
+  if (role !== "bar") return "none";
+  const tab = state.chrome?.tabs.find((candidate) => candidate.id === state.chrome?.activeTabId);
+  return state.overlay !== null || state.notice !== null || state.info !== null || Boolean(tab?.dialog) || state.viewOnly?.control === true ? "all" : "none";
+}
+
+/** 문서가 읽지 않는 `page` 는 고정값으로 바꾼다 — 페이지 크기만 바뀐 틱에 그 문서로 가는 상태가 변하지 않아 갱신이 없다. */
+export function chromeStateWithReading(state: ChromeUiState, reading: ChromePageReading): ChromeUiState {
+  if (reading === "all") return state;
+  return { ...state, page: reading === "width" ? { ...NO_PAGE, width: state.page.width } : NO_PAGE };
+}
+
 export type ChromeAction =
   | { readonly action: "navigate"; readonly url: string }
   | { readonly action: "new-tab" }

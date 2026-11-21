@@ -5,7 +5,7 @@ import type { DesktopBrowserChrome, DesktopBrowserSurface, DesktopBrowserSurface
 
 import { createBrowserSpaceView, type BrowserSpaceRequest } from "./browser-spaces.js";
 import type { BrowserSurfaceHost, PageHost } from "./browser-views.js";
-import { readChromeMessage, type ChromeAction, type ChromeColors, type ChromeControl, type ChromeOverlay, type ChromeRole, type ChromeTabsOrientation, type ChromeUiState, type ChromeViewOnly } from "./chrome/contract.js";
+import { chromePageReading, chromeStateWithReading, readChromeMessage, type ChromeAction, type ChromeColors, type ChromeControl, type ChromeOverlay, type ChromeRole, type ChromeTabsOrientation, type ChromeUiState, type ChromeViewOnly } from "./chrome/contract.js";
 import type { BrowserStripPrefs } from "./desktop-state.js";
 import type { DesktopShellWindow } from "./shell-window.js";
 
@@ -370,9 +370,15 @@ export function createBrowserSurface(deps: BrowserSurfaceDeps): BrowserSurfaceHo
     // 손잡이 문서는 상태를 받지 않는다 — 색 구성표만 Console 테마에 맞춘다(그 문서의 light-dark() 가 이 값을 읽는다).
     const scheme = deps.colors()?.scheme ?? "";
     if (divider && scheme && scheme !== dividerScheme && !divider.webContents.isDestroyed()) { dividerScheme = scheme; void divider.webContents.executeJavaScript(`document.documentElement.style.colorScheme = ${JSON.stringify(scheme)}`).catch(() => undefined); }
-    const json = escapeScript(JSON.stringify(state()));
+    const full = state();
+    // 문서마다 읽는 상태만 보낸다 — 같은 모양이 된 문서는 갱신하지 않는다. 같은 모양은 한 번만 직렬화한다.
+    const serialized = new Map<string, string>();
     for (const doc of allDocs(docs)) {
-      if (!doc.ready || doc.view.webContents.isDestroyed() || doc.lastJson === json) continue;
+      if (!doc.ready || doc.view.webContents.isDestroyed()) continue;
+      const reading = chromePageReading(doc.role, full);
+      let json = serialized.get(reading);
+      if (json === undefined) { json = escapeScript(JSON.stringify(chromeStateWithReading(full, reading))); serialized.set(reading, json); }
+      if (doc.lastJson === json) continue;
       doc.lastJson = json;
       void doc.view.webContents.executeJavaScript(`window.__fleetChrome && window.__fleetChrome.apply(${json})`).catch(() => undefined);
     }
