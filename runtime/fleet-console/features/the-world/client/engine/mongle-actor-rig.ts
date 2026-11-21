@@ -68,11 +68,15 @@ uniform int uQuaker;
 uniform float uStarlight;
 uniform int uState;
 uniform int uActivity;
+uniform int uPrevState;
+uniform int uPrevActivity;
 uniform int uRole;
 uniform int uHat;
 uniform int uGiftHat;
 uniform int uCape;
 uniform int uWorldAnim;
+uniform int uPrevWorldAnim;
+uniform float uAnimBlend;
 uniform int uExpression;
 uniform float uAnimPhase;
 uniform float uMoveSpeed;
@@ -124,7 +128,28 @@ float sdSleepyEyeLine(vec2 p) {
   return length(q - vec2(xC, yC)) - 0.017;
 }
 
-AnimRig computeAnim() {
+AnimRig mixAnimRig(AnimRig a, AnimRig b, float k) {
+  AnimRig r;
+  r.offset = mix(a.offset, b.offset, k);
+  r.scale = mix(a.scale, b.scale, k);
+  r.roll = mix(a.roll, b.roll, k);
+  r.yawAdd = mix(a.yawAdd, b.yawAdd, k);
+  r.pitchAdd = mix(a.pitchAdd, b.pitchAdd, k);
+  r.eyeShift = mix(a.eyeShift, b.eyeShift, k);
+  r.eyeBlink = mix(a.eyeBlink, b.eyeBlink, k);
+  r.wingFlapL = mix(a.wingFlapL, b.wingFlapL, k);
+  r.wingFlapR = mix(a.wingFlapR, b.wingFlapR, k);
+  r.hatBounce = mix(a.hatBounce, b.hatBounce, k);
+  r.supermanPose = mix(a.supermanPose, b.supermanPose, k);
+  r.fightPose = mix(a.fightPose, b.fightPose, k);
+  r.legStride = mix(a.legStride, b.legStride, k);
+  r.auraBoost = mix(a.auraBoost, b.auraBoost, k);
+  r.blushAdd = mix(a.blushAdd, b.blushAdd, k);
+  r.exprMode = (k < 0.5) ? a.exprMode : b.exprMode;
+  return r;
+}
+
+AnimRig computeAnimRigFor(int worldAnim, int state, int activity, float t) {
   AnimRig r;
   r.offset = vec3(0.0);
   r.scale = vec3(1.0);
@@ -143,10 +168,9 @@ AnimRig computeAnim() {
   r.blushAdd = 0.0;
   r.exprMode = uExpression;
 
-  float t = uTime + uPhase;
   if (uQuaker > 0 || uStarlight > 0.5) {
-    float wAmp = (uState == 1 || uState == 2) ? 0.30 : 0.14;
-    float wSpd = (uState == 1 || uState == 2) ? 7.0 : 3.2;
+    float wAmp = (state == 1 || state == 2) ? 0.30 : 0.14;
+    float wSpd = (state == 1 || state == 2) ? 7.0 : 3.2;
     float wf = sin(t * wSpd) * wAmp;
     r.wingFlapL = wf;
     r.wingFlapR = wf;
@@ -157,43 +181,43 @@ AnimRig computeAnim() {
     r.eyeBlink = mix(1.0, 0.12, sin((bt - 0.92) / 0.06 * 3.14159));
   }
 
-  if (uWorldAnim == 0) {
+  if (worldAnim == 0) {
     // 기본 대기/상태 모션 (하위 호환)
-    if (uState == 0) {
+    if (state == 0) {
       float breath = sin(t * 2.2);
       r.scale = vec3(1.0 + breath * 0.025, 1.0 - breath * 0.026, 1.0 + breath * 0.018);
       r.roll = sin(t * 1.2) * 0.04;
-    } else if (uState == 1) {
+    } else if (state == 1) {
       r.roll = sin(t * 1.8) * 0.06;
-      if (uActivity == 1) {
+      if (activity == 1) {
         float w = sin(t * 2.2);
         r.roll = -0.12 + w * 0.05;
         r.eyeShift = vec2(sin(t * 1.5) * 0.04, 0.04);
-      } else if (uActivity == 2) {
+      } else if (activity == 2) {
         r.pitchAdd = 0.07;
         r.eyeShift = vec2(sin(t * 2.6) * 0.05, -0.04);
-      } else if (uActivity == 3) {
+      } else if (activity == 3) {
         float w = sin(t * 7.8);
         r.scale = vec3(1.0 + w * 0.06, 1.0 - w * 0.07, 1.0 + w * 0.03);
         r.eyeShift = vec2(-0.02, -0.035);
-      } else if (uActivity == 4) {
+      } else if (activity == 4) {
         float p = fract(t * 0.9);
         float sq = sin(p * 6.28318);
         r.scale = vec3(1.0 - sq * 0.08, 1.0 + sq * 0.09, 1.0 - sq * 0.05);
-      } else if (uActivity == 5) {
+      } else if (activity == 5) {
         float sc = sin(t * 2.6);
         r.yawAdd = sc * 0.18;
         r.eyeShift = vec2(sc * 0.05, 0.025);
-      } else if (uActivity == 6) {
+      } else if (activity == 6) {
         float w = sin(t * 4.2);
         r.scale = vec3(1.0 - w * 0.04, 1.0 + w * 0.05, 1.0);
       }
-    } else if (uState == 2 || uState == 3) {
+    } else if (state == 2 || state == 3) {
       float sw = sin(t * 2.4);
       r.roll = sw * 0.16;
       r.eyeShift = vec2(0.0, 0.035);
     }
-  } else if (uWorldAnim == 1) {
+  } else if (worldAnim == 1) {
     // walk: 동물의숲/펭귄식 좌우 뒤뚱 + 통통 발걸음 바운스
     float spd = clamp(uMoveSpeed / 3.4, 0.40, 1.50);
     float g = t * (7.2 + spd * 3.6);
@@ -205,7 +229,7 @@ AnimRig computeAnim() {
     r.scale = vec3(1.0 - st * 0.65, 1.0 + st, 1.0 - st * 0.65);
     r.wingFlapL = sin(g) * 0.34;
     r.wingFlapR = -sin(g) * 0.34;
-  } else if (uWorldAnim == 2) {
+  } else if (worldAnim == 2) {
     // sprint: 상체 전방 기울임(+0.26 rad) + 하단 별 발 경쾌한 교차 발구름 + 망토 펼침
     float g = t * 15.2;
     float sb = abs(sin(g));
@@ -217,7 +241,7 @@ AnimRig computeAnim() {
     r.wingFlapL = 0.18 + sin(g * 1.15) * 0.42;
     r.wingFlapR = -0.18 - sin(g * 1.15) * 0.42;
     r.legStride = sin(g);
-  } else if (uWorldAnim == 3) {
+  } else if (worldAnim == 3) {
     // jump: 상승 세로 스트레치 + 공중 날개 펼침
     float jv = clamp(uJumpVel * 0.13, -0.22, 0.24);
     float stretch = abs(jv);
@@ -225,7 +249,7 @@ AnimRig computeAnim() {
     r.pitchAdd = -jv * 0.42;
     r.wingFlapL = 0.44 + sin(t * 14.0) * 0.16;
     r.wingFlapR = r.wingFlapL;
-  } else if (uWorldAnim == 4) {
+  } else if (worldAnim == 4) {
     // sit: 푹신한 착석 스쿼시 + 은은한 불멍 살랑임
     float br = sin(t * 1.8);
     r.offset.y = -0.10;
@@ -234,7 +258,7 @@ AnimRig computeAnim() {
     r.pitchAdd = -0.04;
     r.wingFlapL = -0.10;
     r.wingFlapR = -0.10;
-  } else if (uWorldAnim == 5) {
+  } else if (worldAnim == 5) {
     // doze: 서서히 고개가 숙여졌다 깜짝 놀라며 드는 졸음 루프
     float cyc = fract(t / 3.6);
     float br = sin(t * 1.5);
@@ -255,7 +279,7 @@ AnimRig computeAnim() {
       float settle = (cyc - 0.90) / 0.10;
       r.pitchAdd = mix(-0.06, 0.02, settle);
     }
-  } else if (uWorldAnim == 6) {
+  } else if (worldAnim == 6) {
     // sleep: 깊은 호흡 + 옆으로 기댄 평온한 잠
     float br = sin(t * 1.25);
     r.offset.y = -0.12;
@@ -265,7 +289,7 @@ AnimRig computeAnim() {
     r.wingFlapL = -0.14;
     r.wingFlapR = -0.14;
     r.exprMode = 2;
-  } else if (uWorldAnim == 7) {
+  } else if (worldAnim == 7) {
     // talk: 길 위 수다 리듬 끄덕임 + 고개 갸웃
     float nod = sin(t * 6.8);
     r.pitchAdd = nod * 0.10;
@@ -275,7 +299,7 @@ AnimRig computeAnim() {
     r.scale = vec3(1.0 - nod * 0.03, 1.0 + nod * 0.04, 1.0 - nod * 0.03);
     r.wingFlapL = sin(t * 6.8) * 0.26;
     r.wingFlapR = -sin(t * 6.8 + 0.6) * 0.26;
-  } else if (uWorldAnim == 8) {
+  } else if (worldAnim == 8) {
     // wave: 고개 갸웃 + 오른 날개/손 신나게 인사 흔들기
     float ph = uAnimPhase;
     float wv = sin(ph * 11.5);
@@ -286,7 +310,7 @@ AnimRig computeAnim() {
     r.scale = vec3(1.0 - sq, 1.0 + sq, 1.0 - sq);
     r.wingFlapR = 0.54 + wv * 0.34;
     r.wingFlapL = -0.06 + sin(ph * 4.0) * 0.06;
-  } else if (uWorldAnim == 9) {
+  } else if (worldAnim == 9) {
     // cheer: 예비 웅크림 → 신나는 2단 화이팅 점프 + 양 팔/날개 번쩍
     float ph = uAnimPhase;
     if (ph < 0.18) {
@@ -307,7 +331,7 @@ AnimRig computeAnim() {
       r.blushAdd = 0.55;
       r.exprMode = 1;
     }
-  } else if (uWorldAnim == 10) {
+  } else if (worldAnim == 10) {
     // spin: 360도 공중 회전 + 탄성 스트레치
     float u = clamp(uAnimPhase / 0.85, 0.0, 1.0);
     float easeU = u * u * (3.0 - 2.0 * u);
@@ -317,7 +341,7 @@ AnimRig computeAnim() {
     r.scale = vec3(1.0 - arc * 0.12, 1.0 + arc * 0.18, 1.0 - arc * 0.12);
     r.wingFlapL = arc * 0.56;
     r.wingFlapR = arc * 0.56;
-  } else if (uWorldAnim == 11) {
+  } else if (worldAnim == 11) {
     // shake: 빗물 털어내기 고속 부르르 진동
     float ph = uAnimPhase;
     float env = sin(clamp(ph / 0.85, 0.0, 1.0) * 3.1415926);
@@ -328,7 +352,7 @@ AnimRig computeAnim() {
     r.wingFlapL = sh * 0.44;
     r.wingFlapR = -sh * 0.44;
     r.exprMode = 2;
-  } else if (uWorldAnim == 12) {
+  } else if (worldAnim == 12) {
     // work-edit: 리드미컬한 망치/코딩 끄덕임
     float w = sin(t * 8.4);
     float hit = pow(max(0.0, w), 2.0);
@@ -336,26 +360,26 @@ AnimRig computeAnim() {
     r.scale = vec3(1.0 + hit * 0.08, 1.0 - hit * 0.09, 1.0 + hit * 0.05);
     r.eyeShift = vec2(-0.02, -0.04);
     r.wingFlapR = 0.18 + hit * 0.38;
-  } else if (uWorldAnim == 13) {
+  } else if (worldAnim == 13) {
     // work-read: 좌우 훑기 + 아래 시선
     float sc = sin(t * 2.8);
     r.pitchAdd = 0.12;
     r.yawAdd = sc * 0.12;
     r.eyeShift = vec2(sc * 0.065, -0.055);
-  } else if (uWorldAnim == 14) {
+  } else if (worldAnim == 14) {
     // work-think: 고개 갸웃 사색
     float w = sin(t * 2.1);
     r.roll = -0.15 + w * 0.06;
     r.pitchAdd = -0.05;
     r.eyeShift = vec2(sin(t * 1.4) * 0.05, 0.055);
-  } else if (uWorldAnim == 15) {
+  } else if (worldAnim == 15) {
     // work-run: 신속 집중 펄스
     float p = sin(t * 6.4);
     r.scale = vec3(1.0 - p * 0.07, 1.0 + p * 0.08, 1.0 - p * 0.05);
     r.offset.y += max(0.0, p) * 0.045;
     r.wingFlapL = p * 0.25;
     r.wingFlapR = p * 0.25;
-  } else if (uWorldAnim == 16) {
+  } else if (worldAnim == 16) {
     // fly: 정지 호버(똑바로 선 귀여운 별) ↔ 이동/부스트 슈퍼맨 비행 자세 부드러운 전환
     float superman = smoothstep(0.8, 5.5, uMoveSpeed);
     float boost = smoothstep(20.0, 32.0, uMoveSpeed);
@@ -373,7 +397,7 @@ AnimRig computeAnim() {
     r.supermanPose = superman;
     r.auraBoost = 0.42 + superman * 0.24 + boost * 0.24;
     if (boost > 0.35 && r.exprMode == 0) r.exprMode = 1;
-  } else if (uWorldAnim == 17) {
+  } else if (worldAnim == 17) {
     // dive: 별똥별 유성 급강하 — 빠른 360° 코멧 회전 + 강렬한 황금 오라
     float ph = (uAnimPhase > 0.001) ? uAnimPhase : t;
     r.yawAdd = ph * 12.6;
@@ -385,7 +409,7 @@ AnimRig computeAnim() {
     r.supermanPose = 0.55;
     r.auraBoost = 1.0;
     r.exprMode = 1;
-  } else if (uWorldAnim == 20) {
+  } else if (worldAnim == 20) {
     // takeoff-charge: 1단계 제자리 줌인 화이팅 자세 (0..0.34 예비 웅크림 → 0.34..1.0 힘찬 만세/화이팅!)
     float ph = clamp(uAnimPhase, 0.0, 1.0);
     if (ph < 0.34) {
@@ -412,7 +436,7 @@ AnimRig computeAnim() {
       r.blushAdd = 0.82 * u;
       r.exprMode = 1;
     }
-  } else if (uWorldAnim == 21) {
+  } else if (worldAnim == 21) {
     // takeoff-ascend: 2단계 빙글빙글 회오리 수직 상승 (360°×2.5 회전 + 세로 스트레치 + 강렬한 별빛 오라)
     float ph = (uAnimPhase > 0.001) ? clamp(uAnimPhase, 0.0, 1.0) : fract(t * 1.4);
     float ease = smoothstep(0.0, 0.18, ph);
@@ -425,7 +449,7 @@ AnimRig computeAnim() {
     r.auraBoost = 1.0;
     r.blushAdd = 0.65;
     r.exprMode = 1;
-  } else if (uWorldAnim == 22) {
+  } else if (worldAnim == 22) {
     // hero-land: 유성 착지 히어로 폼(0..0.44 탄성 스쿼시) → 화이팅 피니시(0.44..1.0 뿌듯한 착지 포즈)
     float ph = clamp(uAnimPhase, 0.0, 1.0);
     if (ph < 0.44) {
@@ -451,6 +475,20 @@ AnimRig computeAnim() {
       r.blushAdd = 0.72 * tail;
       r.exprMode = 1;
     }
+  }
+
+  return r;
+}
+
+AnimRig computeAnim() {
+  float t = uTime + uPhase;
+  AnimRig r = computeAnimRigFor(uWorldAnim, uState, uActivity, t);
+  if (
+    uAnimBlend < 0.999
+    && (uPrevWorldAnim != uWorldAnim || uPrevState != uState || uPrevActivity != uActivity)
+  ) {
+    AnimRig prevRig = computeAnimRigFor(uPrevWorldAnim, uPrevState, uPrevActivity, t);
+    r = mixAnimRig(prevRig, r, smoothstep(0.0, 1.0, clamp(uAnimBlend, 0.0, 1.0)));
   }
 
   // 비행 뱅킹/배럴롤(±2π 전체 지원) · 피치 기울기 (player-controller 물리 연동)
@@ -646,6 +684,74 @@ float sdPlushOnly(vec3 p, AnimRig rig) {
   return d;
 }
 
+float thoughtBubbleScale(float cyc, float inA, float inB, float outA, float outB, float bounceAmp) {
+  if (cyc < inA || cyc > outB) return 0.0;
+  float popIn = smoothstep(inA, inB, cyc);
+  float elastic = popIn + sin(popIn * 3.1415926) * bounceAmp * (1.0 - smoothstep(inB, inB + 0.09, cyc));
+  float shrinkOut = 1.0 - smoothstep(outA, outB, cyc);
+  return max(0.0, elastic * shrinkOut);
+}
+
+vec2 mapWorldActivityProps(vec2 res, vec3 q, float sMin, float t, int worldAnim, int state, int activity, float propScale) {
+  if (propScale <= 0.02) return res;
+  float ps = clamp(propScale, 0.02, 1.2);
+
+  // 월드 전용 이모트(wave/cheer/spin) 시 일반 몽글이도 귀여운 솜손 제스처 표현
+  if (worldAnim == 8) {
+    vec3 wp = (q - vec3(0.64, 0.26, 0.24)) / ps;
+    wp.xy = rot2(sin(uAnimPhase * 11.5) * 0.42) * wp.xy;
+    res = opU(res, vec2(sdSphere(wp - vec3(0.06, 0.10, 0.0), 0.13) * ps * sMin, 7.0));
+  } else if (worldAnim == 9 || worldAnim == 10) {
+    float lift = abs(sin(uAnimPhase * 7.2)) * 0.16;
+    float paws = min(
+      sdSphere(q - vec3(-0.68, 0.18 + lift, 0.22), 0.125 * ps),
+      sdSphere(q - vec3( 0.68, 0.18 + lift, 0.22), 0.125 * ps)
+    );
+    res = opU(res, vec2(paws * sMin, 7.0));
+  } else if (state == 1) {
+    if (activity == 1) {
+      // 생각 중 말풍선 1→2→3 점진적 생성 루프 (약 2.4초 주기)
+      float cyc = fract(t * 0.42);
+      float s1 = thoughtBubbleScale(cyc, 0.02, 0.15, 0.80, 0.92, 0.22) * ps;
+      float s2 = thoughtBubbleScale(cyc, 0.20, 0.34, 0.83, 0.95, 0.24) * ps;
+      float s3 = thoughtBubbleScale(cyc, 0.38, 0.54, 0.86, 0.98, 0.28) * ps;
+      float pulse = sin(t * 3.8) * 0.022;
+      float cloudBounce = sin(clamp((cyc - 0.38) / 0.16, 0.0, 1.0) * 3.1415926) * 0.032;
+      float dB = 1e5;
+      if (s1 > 0.02) dB = min(dB, sdSphere(q - vec3(0.46, 0.42 + pulse, 0.24), 0.048 * s1));
+      if (s2 > 0.02) dB = min(dB, sdSphere(q - vec3(0.58, 0.56 + pulse * 1.4, 0.22), 0.072 * s2));
+      if (s3 > 0.02) dB = min(dB, sdSphere(q - vec3(0.74, 0.72 + pulse * 1.8 + cloudBounce, 0.20), 0.105 * s3));
+      if (dB < 1e4) res = opU(res, vec2(dB * sMin, 3.0));
+      res = opU(res, vec2(sdSphere(q - vec3(-0.22, -0.34 + abs(sin(t * 4.5)) * 0.04, 0.48), 0.11 * ps) * sMin, 7.0));
+    } else if (activity == 2) {
+      vec3 bp = (q - vec3(0.0, -0.38, 0.56)) / ps; bp.yz = rot2(0.32) * bp.yz;
+      vec3 pL = bp - vec3(-0.18, 0.0, 0.02); pL.xz = rot2(-0.28) * pL.xz;
+      vec3 pR = bp - vec3( 0.18, 0.0, 0.02); pR.xz = rot2( 0.28) * pR.xz;
+      res = opU(res, vec2(min(sdRoundBox(pL, vec3(0.17, 0.135, 0.02), 0.015), sdRoundBox(pR, vec3(0.17, 0.135, 0.02), 0.015)) * ps * sMin, 3.0));
+      res = opU(res, vec2(min(sdSphere(q - vec3(-0.35, -0.42, 0.56), 0.10 * ps), sdSphere(q - vec3(0.35, -0.42 + max(0.0, sin(t * 2.8)) * 0.08, 0.56), 0.10 * ps)) * sMin, 7.0));
+    } else if (activity == 3) {
+      vec3 np = (q - vec3(-0.30, -0.42, 0.54)) / ps; np.yz = rot2(0.22) * np.yz;
+      res = opU(res, vec2(sdRoundBox(np, vec3(0.19, 0.135, 0.022), 0.016) * ps * sMin, 3.0));
+      vec3 sc = vec3(sin(t * 14.0) * 0.05, cos(t * 11.0) * 0.035, 0.0);
+      vec3 pp = (q - (vec3(0.18, -0.30, 0.58) + sc)) / ps; pp.xy = rot2(-0.72) * pp.xy;
+      res = opU(res, vec2(sdCapsule(pp, vec3(-0.23, 0.0, 0.0), vec3(0.23, 0.0, 0.0), 0.046) * ps * sMin, 6.0));
+      res = opU(res, vec2(sdSphere(q - (vec3(0.26, -0.25, 0.56) + sc * 0.8), 0.10 * ps) * sMin, 7.0));
+    } else if (activity == 4) {
+      float lift = sin(t * 5.2) * 0.12;
+      res = opU(res, vec2(min(sdSphere(q - vec3(-0.74, 0.08 + lift, 0.18), 0.12 * ps), sdSphere(q - vec3(0.74, 0.08 + lift, 0.18), 0.12 * ps)) * sMin, 7.0));
+    } else if (activity == 5) {
+      vec3 tp = (q - vec3(0.46, 0.04, 0.44)) / ps; tp.xy = rot2(0.32 + sin(t * 2.6) * 0.25) * tp.xy;
+      res = opU(res, vec2(sdRoundCone(tp, vec3(-0.18, 0.0, 0.0), vec3(0.28, 0.0, 0.0), 0.055, 0.095) * ps * sMin, 5.0));
+      res = opU(res, vec2(sdEllipsoid(tp - vec3(0.29, 0.0, 0.0), vec3(0.03, 0.09, 0.09)) * ps * sMin, 3.0));
+      res = opU(res, vec2(sdSphere(q - vec3(0.44, -0.10, 0.45), 0.105 * ps) * sMin, 7.0));
+    } else if (activity == 6) {
+      vec3 wp = (q - vec3(0.66, 0.26, 0.22)) / ps; wp.xy = rot2(sin(t * 6.5) * 0.35) * wp.xy;
+      res = opU(res, vec2(sdSphere(wp - vec3(0.05, 0.08, 0.0), 0.125) * ps * sMin, 7.0));
+    }
+  }
+  return res;
+}
+
 vec2 mapScene(vec3 p, AnimRig rig) {
   vec3 q = toLocal(p, rig);
   float sMin = min(rig.scale.x, min(rig.scale.y, rig.scale.z));
@@ -712,51 +818,17 @@ vec2 mapScene(vec3 p, AnimRig rig) {
       res = opU(res, vec2(sdSphere(q - tip, 0.115) * sMin, 6.0));
     }
 
-    // 월드 전용 이모트(wave/cheer/spin) 시 일반 몽글이도 귀여운 솜손 제스처 표현
-    if (uWorldAnim == 8) {
-      vec3 wp = q - vec3(0.64, 0.26, 0.24);
-      wp.xy = rot2(sin(uAnimPhase * 11.5) * 0.42) * wp.xy;
-      res = opU(res, vec2(sdSphere(wp - vec3(0.06, 0.10, 0.0), 0.13) * sMin, 7.0));
-    } else if (uWorldAnim == 9 || uWorldAnim == 10) {
-      float lift = abs(sin(uAnimPhase * 7.2)) * 0.16;
-      float paws = min(
-        sdSphere(q - vec3(-0.68, 0.18 + lift, 0.22), 0.125),
-        sdSphere(q - vec3( 0.68, 0.18 + lift, 0.22), 0.125)
-      );
-      res = opU(res, vec2(paws * sMin, 7.0));
-    } else if (uState == 1) {
-      if (uActivity == 1) {
-        float pulse = sin(t * 3.8) * 0.025;
-        float dB = min(sdSphere(q - vec3(0.46, 0.42 + pulse, 0.24), 0.048),
-                   min(sdSphere(q - vec3(0.58, 0.56 + pulse * 1.4, 0.22), 0.072),
-                       sdSphere(q - vec3(0.74, 0.72 + pulse * 1.8, 0.20), 0.105)));
-        res = opU(res, vec2(dB * sMin, 3.0));
-        res = opU(res, vec2(sdSphere(q - vec3(-0.22, -0.34 + abs(sin(t*4.5))*0.04, 0.48), 0.11) * sMin, 7.0));
-      } else if (uActivity == 2) {
-        vec3 bp = q - vec3(0.0, -0.38, 0.56); bp.yz = rot2(0.32) * bp.yz;
-        vec3 pL = bp - vec3(-0.18, 0.0, 0.02); pL.xz = rot2(-0.28) * pL.xz;
-        vec3 pR = bp - vec3( 0.18, 0.0, 0.02); pR.xz = rot2( 0.28) * pR.xz;
-        res = opU(res, vec2(min(sdRoundBox(pL, vec3(0.17,0.135,0.02), 0.015), sdRoundBox(pR, vec3(0.17,0.135,0.02), 0.015)) * sMin, 3.0));
-        res = opU(res, vec2(min(sdSphere(q - vec3(-0.35,-0.42,0.56), 0.10), sdSphere(q - vec3(0.35,-0.42+max(0.0,sin(t*2.8))*0.08,0.56), 0.10)) * sMin, 7.0));
-      } else if (uActivity == 3) {
-        vec3 np = q - vec3(-0.30, -0.42, 0.54); np.yz = rot2(0.22) * np.yz;
-        res = opU(res, vec2(sdRoundBox(np, vec3(0.19, 0.135, 0.022), 0.016) * sMin, 3.0));
-        vec3 sc = vec3(sin(t * 14.0) * 0.05, cos(t * 11.0) * 0.035, 0.0);
-        vec3 pp = q - (vec3(0.18, -0.30, 0.58) + sc); pp.xy = rot2(-0.72) * pp.xy;
-        res = opU(res, vec2(sdCapsule(pp, vec3(-0.23,0.0,0.0), vec3(0.23,0.0,0.0), 0.046) * sMin, 6.0));
-        res = opU(res, vec2(sdSphere(q - (vec3(0.26,-0.25,0.56) + sc*0.8), 0.10) * sMin, 7.0));
-      } else if (uActivity == 4) {
-        float lift = sin(t * 5.2) * 0.12;
-        res = opU(res, vec2(min(sdSphere(q - vec3(-0.74,0.08+lift,0.18), 0.12), sdSphere(q - vec3(0.74,0.08+lift,0.18), 0.12)) * sMin, 7.0));
-      } else if (uActivity == 5) {
-        vec3 tp = q - vec3(0.46, 0.04, 0.44); tp.xy = rot2(0.32 + sin(t * 2.6) * 0.25) * tp.xy;
-        res = opU(res, vec2(sdRoundCone(tp, vec3(-0.18,0.0,0.0), vec3(0.28,0.0,0.0), 0.055, 0.095) * sMin, 5.0));
-        res = opU(res, vec2(sdEllipsoid(tp - vec3(0.29,0.0,0.0), vec3(0.03,0.09,0.09)) * sMin, 3.0));
-        res = opU(res, vec2(sdSphere(q - vec3(0.44,-0.10,0.45), 0.105) * sMin, 7.0));
-      } else if (uActivity == 6) {
-        vec3 wp = q - vec3(0.66, 0.26, 0.22); wp.xy = rot2(sin(t * 6.5) * 0.35) * wp.xy;
-        res = opU(res, vec2(sdSphere(wp - vec3(0.05,0.08,0.0), 0.125) * sMin, 7.0));
-      }
+    if (
+      uAnimBlend >= 0.999
+      || (uPrevWorldAnim == uWorldAnim && uPrevState == uState && uPrevActivity == uActivity)
+    ) {
+      res = mapWorldActivityProps(res, q, sMin, t, uWorldAnim, uState, uActivity, 1.0);
+    } else {
+      float tb = smoothstep(0.0, 1.0, clamp(uAnimBlend, 0.0, 1.0));
+      float scaleOut = 1.0 - smoothstep(0.0, 0.65, tb);
+      float scaleIn = smoothstep(0.25, 1.0, tb);
+      res = mapWorldActivityProps(res, q, sMin, t, uPrevWorldAnim, uPrevState, uPrevActivity, scaleOut);
+      res = mapWorldActivityProps(res, q, sMin, t, uWorldAnim, uState, uActivity, scaleIn);
     }
   }
   return res;
@@ -1404,6 +1476,41 @@ function resolveStarlightRgb(tone: IdentityTone): readonly [number, number, numb
   ];
 }
 
+let rigReducedMotionBound = false;
+let rigReducedMotion = false;
+
+function isRigReducedMotion(): boolean {
+  if (!rigReducedMotionBound && typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    rigReducedMotionBound = true;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    rigReducedMotion = mq.matches;
+    mq.addEventListener("change", (ev) => {
+      rigReducedMotion = ev.matches;
+    });
+  }
+  return rigReducedMotion;
+}
+
+function resolveRigTransitionDuration(prevAnim: number, nextAnim: number): number {
+  if (isRigReducedMotion()) return 0;
+  // 시네마틱 이륙·급강하·히어로 착지 시퀀스는 타이밍 정확도를 위해 즉시/초단기 전이
+  if (
+    (prevAnim === 20 && nextAnim === 21)
+    || (prevAnim === 21 && nextAnim === 16)
+    || nextAnim === 20
+    || nextAnim === 17
+    || nextAnim === 22
+  ) {
+    return 0.06;
+  }
+  // 플레이어 지상 이동·질주·점프 전이는 민첩하게(0.16초)
+  if (prevAnim <= 3 && nextAnim <= 3 && (prevAnim !== 0 || nextAnim !== 0)) {
+    return 0.16;
+  }
+  // 작업 활동·상태·감정표현 전이는 부드럽게(0.34초)
+  return 0.34;
+}
+
 export function createMongleActorRig(params: MongleActorRigParams): MongleActorRig {
   const group = new Group();
   const isStarlight = params.starlight === true;
@@ -1437,11 +1544,15 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       uStarlight: { value: isStarlight ? 1.0 : 0.0 },
       uState: { value: 0 },
       uActivity: { value: 0 },
+      uPrevState: { value: 0 },
+      uPrevActivity: { value: 0 },
       uRole: { value: MONGLE_ROLE_CODE[params.role] },
       uHat: { value: 0 },
       uGiftHat: { value: -1 },
       uCape: { value: 0 },
       uWorldAnim: { value: 0 },
+      uPrevWorldAnim: { value: 0 },
+      uAnimBlend: { value: 1.0 },
       uExpression: { value: 0 },
       uAnimPhase: { value: 0 },
       uMoveSpeed: { value: 0 },
@@ -1501,6 +1612,17 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
   const beaconMesh = new Mesh(sharedBeaconGemGeo, sharedBeaconMat);
   beaconMesh.visible = false;
   group.add(beaconMesh);
+
+  let poseInitialized = false;
+  let currWorldAnimCode = 0;
+  let currStateCode = 0;
+  let currActivityCode = 0;
+  let prevWorldAnimCode = 0;
+  let prevStateCode = 0;
+  let prevActivityCode = 0;
+  let animBlend = 1.0;
+  let animBlendDur = 0.34;
+  let lastPoseElapsed = -1;
 
   return {
     group,
@@ -1562,13 +1684,64 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
         ringMat.opacity = opts.isSelected ? 0.88 : 0.62;
       }
 
+      const nextStateCode = MONGLE_STATE_CODE[opts.state];
+      const nextActivityCode = opts.activity ? MONGLE_ACTIVITY_CODE[opts.activity] : 0;
+      const nextWorldAnimCode = opts.worldAnim ? WORLD_ANIM_CODE[opts.worldAnim] : 0;
+
+      if (!poseInitialized) {
+        poseInitialized = true;
+        currWorldAnimCode = nextWorldAnimCode;
+        currStateCode = nextStateCode;
+        currActivityCode = nextActivityCode;
+        prevWorldAnimCode = nextWorldAnimCode;
+        prevStateCode = nextStateCode;
+        prevActivityCode = nextActivityCode;
+        animBlend = 1.0;
+      } else if (
+        nextWorldAnimCode !== currWorldAnimCode
+        || nextStateCode !== currStateCode
+        || nextActivityCode !== currActivityCode
+      ) {
+        const dur = resolveRigTransitionDuration(currWorldAnimCode, nextWorldAnimCode);
+        if (dur <= 0.001) {
+          prevWorldAnimCode = nextWorldAnimCode;
+          prevStateCode = nextStateCode;
+          prevActivityCode = nextActivityCode;
+          animBlend = 1.0;
+        } else {
+          prevWorldAnimCode = currWorldAnimCode;
+          prevStateCode = currStateCode;
+          prevActivityCode = currActivityCode;
+          animBlend = 0.0;
+          animBlendDur = dur;
+        }
+        currWorldAnimCode = nextWorldAnimCode;
+        currStateCode = nextStateCode;
+        currActivityCode = nextActivityCode;
+      }
+
+      const poseDt = lastPoseElapsed >= 0 ? Math.max(0, Math.min(0.1, opts.elapsed - lastPoseElapsed)) : 0;
+      lastPoseElapsed = opts.elapsed;
+      if (animBlend < 1.0) {
+        animBlend = Math.min(1.0, animBlend + poseDt / Math.max(0.01, animBlendDur));
+        if (animBlend >= 1.0) {
+          prevWorldAnimCode = currWorldAnimCode;
+          prevStateCode = currStateCode;
+          prevActivityCode = currActivityCode;
+        }
+      }
+
       mat.uniforms["uViewProj"]!.value = opts.viewProj;
       mat.uniforms["uCharYaw"]!.value = opts.yaw;
       mat.uniforms["uTime"]!.value = opts.elapsed;
       mat.uniforms["uFuzz"]!.value = opts.fuzz;
-      mat.uniforms["uState"]!.value = MONGLE_STATE_CODE[opts.state];
-      mat.uniforms["uActivity"]!.value = opts.activity ? MONGLE_ACTIVITY_CODE[opts.activity] : 0;
-      mat.uniforms["uWorldAnim"]!.value = opts.worldAnim ? WORLD_ANIM_CODE[opts.worldAnim] : 0;
+      mat.uniforms["uState"]!.value = nextStateCode;
+      mat.uniforms["uActivity"]!.value = nextActivityCode;
+      mat.uniforms["uPrevState"]!.value = prevStateCode;
+      mat.uniforms["uPrevActivity"]!.value = prevActivityCode;
+      mat.uniforms["uWorldAnim"]!.value = nextWorldAnimCode;
+      mat.uniforms["uPrevWorldAnim"]!.value = prevWorldAnimCode;
+      mat.uniforms["uAnimBlend"]!.value = animBlend;
       mat.uniforms["uExpression"]!.value = opts.expression ? WORLD_EXPRESSION_CODE[opts.expression] : 0;
       mat.uniforms["uAnimPhase"]!.value = opts.animPhase ?? 0;
       mat.uniforms["uMoveSpeed"]!.value = opts.moveSpeed ?? 0;

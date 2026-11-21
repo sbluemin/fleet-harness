@@ -671,7 +671,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     pointerDownRef.current = null;
     const snap = getWorldStoreSnapshot();
     if (!start || snap.lifecycle !== "open") return;
-    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
+    if (Math.hypot(e.clientX - start.x, e.clientY - start.y) >= 6) return;
 
     if (snap.chatActive) {
       deactivateChat();
@@ -681,8 +681,20 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
       return;
     }
 
-    // 별빛 비행(`overviewMode`) 중에는 마을/구역 클릭이 별똥별 급강하 착지로 우선 연결된다.
+    // 별빛 비행(`overviewMode`) 중 클릭 우선순위:
+    // 1. 액터 · 퀘스트 게시판 → 2. 마을/구역 유성 급강하 → 3. 일반 초원 땅 어디든 클릭 유성 착지
     if (snap.overviewMode) {
+      const hitFlightActorId = runtimeRef.current?.pickActorAt(e.clientX, e.clientY) ?? null;
+      if (hitFlightActorId) {
+        playMongleChirp();
+        openActorRadialMenu(hitFlightActorId);
+        return;
+      }
+      if (runtimeRef.current?.pickNoticeBoardAt(e.clientX, e.clientY)) {
+        playDistrictSelect();
+        openQuestBoard();
+        return;
+      }
       const hitVillage = runtimeRef.current?.pickVillageAt(e.clientX, e.clientY) ?? null;
       if (hitVillage) {
         const landX = hitVillage.x + Math.cos(hitVillage.gateAngle) * Math.max(2.0, hitVillage.radius * 0.45);
@@ -699,6 +711,13 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         pushToast(tNow("theWorld.flight.diveToast", { label: hitFlightDistrict.label }));
         return;
       }
+      const groundPt = runtimeRef.current?.pickGroundPointAt(e.clientX, e.clientY) ?? null;
+      if (groundPt) {
+        runtimeRef.current?.diveToPoint(groundPt.x, groundPt.z);
+        setOverviewMode(false);
+        return;
+      }
+      return;
     }
 
     // 클릭 우선순위: 1. 캐릭터 → 2. 3D 퀘스트 게시판 → 3. 모닥불 벤치 → 4. 길드 회관(상황실) → 5. Theater 구역 → 6. 빈 땅 해제/이동
@@ -1283,6 +1302,7 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     <div
       ref={rootRef}
       className={`the-world-root${store.lifecycle === "diving" ? " is-diving" : ""}${store.lifecycle === "escaping" ? " is-escaping" : ""}${store.photoMode ? " is-photo-mode" : ""}${store.cinemaMode ? " is-cinema-mode" : ""}`}
+      data-flying={store.overviewMode ? "true" : undefined}
       role="region"
       aria-label={t("theWorld.stage.aria")}
       onContextMenu={handleRootContextMenu}

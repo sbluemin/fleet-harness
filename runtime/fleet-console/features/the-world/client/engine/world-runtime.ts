@@ -231,10 +231,12 @@ export interface WorldRuntimeHandle {
   playEmote(actorId: string, emote: WorldActorEmote): void;
   approachActor(actorId: string): void;
   teleport(x: number, z: number): void;
+  diveToPoint(x: number, z: number): void;
   pushSpeech(actorId: string, text: string): void;
   pickActorAt(clientX: number, clientY: number): string | null;
   pickDistrictAt(clientX: number, clientY: number): WorldDistrictSpec | null;
   pickVillageAt(clientX: number, clientY: number): WorldVillageSpec | null;
+  pickGroundPointAt(clientX: number, clientY: number): { readonly x: number; readonly z: number } | null;
   pickNoticeBoardAt(clientX: number, clientY: number): boolean;
   pickGuildHallAt(clientX: number, clientY: number): boolean;
   pickCampfireBenchAt(clientX: number, clientY: number): boolean;
@@ -2410,6 +2412,16 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         14,
       );
     },
+    diveToPoint(x, z) {
+      playerCtrl.startMeteorDive(x, z, meadow.getGroundHeight, meadow.resolveMovement);
+      director.spawnBurst(
+        playerCtrl.player.x,
+        playerCtrl.player.y + 0.55,
+        playerCtrl.player.z,
+        0xfde047,
+        10,
+      );
+    },
     pushSpeech(actorId, text) {
       director.applySpeech(actorId, text);
     },
@@ -2497,6 +2509,41 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         }
       }
       return best;
+    },
+    pickGroundPointAt(clientX, clientY) {
+      const rect = config.canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return null;
+
+      pickNdc.set(
+        ((clientX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - rect.top) / rect.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pickNdc, camera);
+      const { origin, direction } = raycaster.ray;
+      // 아래쪽 지면을 향한 광선만 허용 (하늘 클릭 제외)
+      if (direction.y >= -1e-4) return null;
+
+      const GROUND_CLAMP = 48;
+      const t0 = -origin.y / direction.y;
+      if (t0 <= 0 || t0 > 260) return null;
+      const wx0 = Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, origin.x + direction.x * t0));
+      const wz0 = Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, origin.z + direction.z * t0));
+
+      // 2차 실제 지형 높이 보정
+      const gy = meadow.getGroundHeight(wx0, wz0);
+      const t1 = (gy - origin.y) / direction.y;
+      const wx = t1 > 0 && t1 <= 260
+        ? Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, origin.x + direction.x * t1))
+        : wx0;
+      const wz = t1 > 0 && t1 <= 260
+        ? Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, origin.z + direction.z * t1))
+        : wz0;
+
+      const safe = meadow.resolveMovement(wx, wz, wx, wz, 0.55);
+      return {
+        x: Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, safe.x)),
+        z: Math.max(-GROUND_CLAMP, Math.min(GROUND_CLAMP, safe.z)),
+      };
     },
     pickNoticeBoardAt(clientX, clientY) {
       const rect = config.canvas.getBoundingClientRect();

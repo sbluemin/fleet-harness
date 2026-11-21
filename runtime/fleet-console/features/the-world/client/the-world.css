@@ -91,12 +91,18 @@
 }
 
 .the-world-root {
+  --tw-cursor-default: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fffaf0'/%3E%3Cstop offset='100%25' stop-color='%23f2cc7a'/%3E%3C/linearGradient%3E%3C/defs%3E%3Cpath d='M3.2 2.2 L16.2 12.1 L10.7 13.0 L8.0 18.8 Z' fill='url(%23g)' stroke='%23161b33' stroke-width='1.55' stroke-linejoin='round'/%3E%3Cpath d='M18.2 15.2 L19.0 17.4 L21.2 18.2 L19.0 19.0 L18.2 21.2 L17.4 19.0 L15.2 18.2 L17.4 17.4 Z' fill='%23ffe699' stroke='%23161b33' stroke-width='0.95' stroke-linejoin='round'/%3E%3C/svg%3E") 3 2, auto;
+  --tw-cursor-pointer: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='p' x1='0' y1='0' x2='1' y2='1'%3E%3Cstop offset='0%25' stop-color='%23fff6c9'/%3E%3Cstop offset='100%25' stop-color='%23f5b841'/%3E%3C/linearGradient%3E%3C/defs%3E%3Ccircle cx='18.2' cy='6.2' r='4.4' fill='%23ffd86b' fill-opacity='0.34'/%3E%3Cpath d='M3.2 2.2 L16.2 12.1 L10.7 13.0 L8.0 18.8 Z' fill='url(%23p)' stroke='%23161b33' stroke-width='1.55' stroke-linejoin='round'/%3E%3Cpath d='M18.2 2.4 L19.1 5.3 L22.0 6.2 L19.1 7.1 L18.2 10.0 L17.3 7.1 L14.4 6.2 L17.3 5.3 Z' fill='%23fff6d6' stroke='%23161b33' stroke-width='0.9' stroke-linejoin='round'/%3E%3Cpath d='M17.2 15.8 L17.8 17.4 L19.4 18.0 L17.8 18.6 L17.2 20.2 L16.6 18.6 L15.0 18.0 L16.6 17.4 Z' fill='%23ffe28a' stroke='%23161b33' stroke-width='0.8' stroke-linejoin='round'/%3E%3C/svg%3E") 3 2, pointer;
+  --tw-cursor-grab: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M8.6 11.2 V6.2 a1.35 1.35 0 0 1 2.7 0 v3.5 V5.2 a1.35 1.35 0 0 1 2.7 0 v4.5 V6.4 a1.35 1.35 0 0 1 2.7 0 v4.2 V8.3 a1.25 1.25 0 0 1 2.5 0 v5.5 c0 3.7-2.4 6.4-6.0 6.4 h-1.7 c-2.5 0-4.3-1.4-5.5-3.9 l-1.9-3.6 a1.35 1.35 0 0 1 2.3-1.4 l2.2 2.3 z' fill='%23fff5dc' stroke='%23161b33' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M13.0 14.3 L13.6 15.8 L15.1 16.4 L13.6 17.0 L13.0 18.5 L12.4 17.0 L10.9 16.4 L12.4 15.8 Z' fill='%23f5b841'/%3E%3C/svg%3E") 12 12, grab;
+  --tw-cursor-grabbing: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Cpath d='M8.2 12.0 V9.0 a1.4 1.4 0 0 1 2.8 0 v1.5 V8.2 a1.4 1.4 0 0 1 2.8 0 v2.3 V8.9 a1.4 1.4 0 0 1 2.8 0 v1.8 V10.2 a1.3 1.3 0 0 1 2.6 0 v3.8 c0 3.5-2.3 6.0-5.8 6.0 h-1.9 c-2.5 0-4.3-1.4-5.3-3.7 l-1.4-2.8 a1.35 1.35 0 0 1 2.3-1.3 l1.1 1.4 z' fill='%23ffe699' stroke='%23161b33' stroke-width='1.55' stroke-linecap='round' stroke-linejoin='round'/%3E%3Cpath d='M12.9 14.2 L13.5 15.7 L15.0 16.3 L13.5 16.9 L12.9 18.4 L12.3 16.9 L10.8 16.3 L12.3 15.7 Z' fill='%23fffaf0'/%3E%3C/svg%3E") 12 12, grabbing;
+  --tw-cursor-fly: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'%3E%3Ccircle cx='12' cy='12' r='8.2' fill='none' stroke='%23161b33' stroke-width='3.2'/%3E%3Cpath d='M12 1.5 V6.0 M12 18.0 V22.5 M1.5 12 H6.0 M18.0 12 H22.5' stroke='%23161b33' stroke-width='3.2' stroke-linecap='round'/%3E%3Ccircle cx='12' cy='12' r='8.2' fill='none' stroke='%23ffd86b' stroke-width='1.45'/%3E%3Cpath d='M12 1.5 V6.0 M12 18.0 V22.5 M1.5 12 H6.0 M18.0 12 H22.5' stroke='%23ffd86b' stroke-width='1.45' stroke-linecap='round'/%3E%3Cpath d='M12 7.6 L13.1 10.9 L16.4 12 L13.1 13.1 L12 16.4 L10.9 13.1 L7.6 12 L10.9 10.9 Z' fill='%23fff7d6' stroke='%23161b33' stroke-width='0.95' stroke-linejoin='round'/%3E%3C/svg%3E") 12 12, crosshair;
   position: fixed;
   inset: 0;
   z-index: 96;
   overflow: clip;
   background: var(--canvas-abyss);
   color: var(--text-primary);
+  cursor: var(--tw-cursor-default);
   user-select: none;
 }
 
@@ -123,15 +129,24 @@
   display: block;
   width: 100%;
   height: 100%;
-  cursor: grab;
+  cursor: var(--tw-cursor-grab);
 }
 
 .the-world-canvas.is-hovering-district {
-  cursor: pointer;
+  cursor: var(--tw-cursor-pointer);
 }
 
 .the-world-canvas:active {
-  cursor: grabbing;
+  cursor: var(--tw-cursor-grabbing);
+}
+
+.the-world-root[data-flying="true"] .the-world-canvas,
+.the-world-root[data-flying="true"] .the-world-canvas.is-hovering-district {
+  cursor: var(--tw-cursor-fly);
+}
+
+.the-world-root[data-flying="true"] .the-world-canvas:active {
+  cursor: var(--tw-cursor-grabbing);
 }
 
 .the-world-warp-veil {
@@ -966,6 +981,17 @@
 
 .the-world-rpg-dialogue {
   --rpg-tone: var(--mongle-cerulean);
+  --text-primary: oklch(97% 0.006 85);
+  --text-secondary: oklch(88% 0.012 255);
+  --text-tertiary: oklch(82% 0.012 255);
+  --surface-panel: oklch(19% 0.022 258 / 92%);
+  --surface-panel-raised: oklch(23% 0.022 258 / 94%);
+  --surface-rim: oklch(100% 0 0 / 16%);
+  --surface-rim-strong: oklch(100% 0 0 / 26%);
+  --hairline: oklch(100% 0 0 / 15%);
+  --hairline-strong: oklch(100% 0 0 / 25%);
+  --control-wash: oklch(25% 0.022 258 / 86%);
+  --control-wash-hover: oklch(31% 0.024 258 / 94%);
   position: absolute;
   left: 50%;
   bottom: 20px;
@@ -976,10 +1002,10 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
-  background: oklch(13% 0.014 255 / 86%);
+  background: oklch(16% 0.022 258 / 94%);
   backdrop-filter: blur(22px) saturate(135%);
-  border: 1px solid color-mix(in oklch, var(--rpg-tone) 42%, oklch(100% 0 0 / 16%));
-  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
+  border: 1px solid color-mix(in oklch, var(--rpg-tone) 44%, oklch(100% 0 0 / 18%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(98% 0.01 85 / 16%);
   overflow: visible;
   pointer-events: auto;
   animation: the-world-rpg-rise var(--duration-base) var(--ease-spring) both;
@@ -1183,21 +1209,29 @@
 
 .the-world-rpg-player-quote {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: var(--radius-xs);
-  background: oklch(16% 0.014 255 / 60%);
-  border-left: 2px solid color-mix(in oklch, var(--mongle-teal) 70%, transparent);
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--mongle-teal) 10%, oklch(21% 0.022 258 / 88%));
+  border: 1px solid color-mix(in oklch, var(--mongle-teal) 36%, oklch(100% 0 0 / 14%));
   font-size: var(--t-xs);
-  color: oklch(78% 0.01 255);
+  color: oklch(91% 0.008 85);
   min-width: 0;
 }
 
 .the-world-rpg-player-label {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-teal) 20%, oklch(17% 0.022 258 / 92%));
+  border: 1px solid color-mix(in oklch, var(--mongle-teal) 48%, transparent);
   color: var(--mongle-teal);
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
+  line-height: 1.4;
 }
 
 .the-world-rpg-player-text {
@@ -1601,17 +1635,28 @@
 }
 
 .the-world-asks-stack .group-card.is-decision .group-card-handed {
-  padding: 5px 10px;
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--mongle-amber) 10%, oklch(18% 0.014 255 / 72%));
-  border-left: 2px solid color-mix(in oklch, var(--mongle-amber) 68%, transparent);
-  color: oklch(88% 0.01 255);
+  padding: 7px 11px;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--mongle-amber) 11%, oklch(21% 0.022 258 / 90%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 38%, oklch(100% 0 0 / 14%));
+  color: oklch(93% 0.008 85);
   font-size: var(--t-xs);
-  line-height: 1.4;
+  line-height: 1.48;
 }
 
 .the-world-asks-stack .group-card.is-decision .group-card-handed-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  margin-right: 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-amber) 22%, oklch(18% 0.022 258 / 94%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 54%, transparent);
   color: var(--mongle-amber);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1.4;
+  vertical-align: baseline;
 }
 
 .the-world-asks-stack .group-card.is-decision .group-card-header {
@@ -2686,15 +2731,32 @@
 }
 
 .the-world-panel {
+  --text-primary: oklch(97% 0.006 85);
+  --text-secondary: oklch(88% 0.012 255);
+  --text-tertiary: oklch(82% 0.012 255);
+  --surface-panel: oklch(19% 0.022 258 / 92%);
+  --surface-panel-raised: oklch(23% 0.022 258 / 94%);
+  --surface-rim: oklch(100% 0 0 / 16%);
+  --surface-rim-strong: oklch(100% 0 0 / 26%);
+  --hairline: oklch(100% 0 0 / 15%);
+  --hairline-strong: oklch(100% 0 0 / 25%);
+  --control-wash: oklch(25% 0.022 258 / 86%);
+  --control-wash-hover: oklch(31% 0.024 258 / 94%);
+  --control-rest: oklch(24% 0.022 258 / 90%);
+  --control-rest-hover: oklch(30% 0.024 258 / 96%);
+  --control-field: oklch(18% 0.022 258 / 94%);
+  --wash-hover: oklch(100% 0 0 / 10%);
+  --wash-selected: color-mix(in oklch, var(--mongle-amber) 20%, oklch(24% 0.022 258 / 92%));
+  --commodore-settings-line: oklch(100% 0 0 / 14%);
   width: min(820px, calc(100vw - 32px));
   max-height: min(720px, calc(100vh - 80px));
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
-  background: oklch(13% 0.014 255 / 86%);
+  background: oklch(16% 0.022 258 / 94%);
   backdrop-filter: blur(22px) saturate(135%);
-  border: 1px solid oklch(100% 0 0 / 15%);
-  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
+  border: 1px solid oklch(100% 0 0 / 18%);
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(98% 0.01 85 / 16%);
   overflow: hidden;
   animation: the-world-dialogue-rise var(--duration-base) var(--ease-spring) both;
 }
@@ -2705,7 +2767,7 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: 10px var(--space-4);
-  border-bottom: 1px solid oklch(100% 0 0 / 10%);
+  border-bottom: 1px solid oklch(100% 0 0 / 14%);
   flex-shrink: 0;
 }
 
@@ -2715,8 +2777,8 @@
   align-items: center;
   gap: var(--space-1);
   padding: 6px var(--space-4);
-  border-bottom: 1px solid oklch(100% 0 0 / 10%);
-  background: oklch(10% 0.012 255 / 50%);
+  border-bottom: 1px solid oklch(100% 0 0 / 14%);
+  background: oklch(13% 0.02 258 / 64%);
   flex-shrink: 0;
 }
 
@@ -2729,7 +2791,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
-  color: oklch(78% 0.01 255);
+  color: oklch(84% 0.012 255);
   font-family: var(--font-ui);
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);
@@ -2738,15 +2800,16 @@
 }
 
 .the-world-panel-tab:hover {
-  background: oklch(100% 0 0 / 8%);
-  color: oklch(98% 0 0);
+  background: oklch(100% 0 0 / 10%);
+  color: oklch(98% 0.006 85);
 }
 
 .the-world-panel-tab.is-active {
-  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 92%));
-  border-color: color-mix(in oklch, var(--mongle-amber) 58%, transparent);
-  color: oklch(99% 0 0);
+  background: color-mix(in oklch, var(--mongle-amber) 24%, oklch(22% 0.022 258 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 66%, transparent);
+  color: oklch(98% 0.006 85);
   font-weight: var(--weight-bold);
+  box-shadow: inset 0 1px 0 oklch(98% 0.012 85 / 22%);
 }
 
 .the-world-panel-body {
@@ -2754,14 +2817,30 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-3) var(--space-4) var(--space-4);
-  background: oklch(11% 0.012 255 / 44%);
+  background: oklch(14% 0.02 258 / 48%);
   user-select: text;
 }
 
 .the-world-console-host {
+  --text-primary: oklch(97% 0.006 85);
+  --text-secondary: oklch(88% 0.012 255);
+  --text-tertiary: oklch(82% 0.012 255);
+  --surface-panel: oklch(19% 0.022 258 / 92%);
+  --surface-panel-raised: oklch(23% 0.022 258 / 94%);
+  --surface-rim: oklch(100% 0 0 / 16%);
+  --surface-rim-strong: oklch(100% 0 0 / 26%);
+  --hairline: oklch(100% 0 0 / 15%);
+  --hairline-strong: oklch(100% 0 0 / 25%);
+  --control-wash: oklch(25% 0.022 258 / 86%);
+  --control-wash-hover: oklch(31% 0.024 258 / 94%);
+  --control-rest: oklch(24% 0.022 258 / 90%);
+  --control-rest-hover: oklch(30% 0.024 258 / 96%);
+  --control-field: oklch(18% 0.022 258 / 94%);
+  --commodore-settings-line: oklch(100% 0 0 / 14%);
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
+  color: var(--text-primary);
 }
 
 .the-world-panel-stack {
@@ -2782,15 +2861,15 @@
   gap: 2px;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  background: var(--surface-panel-raised);
-  border: 1px solid var(--surface-rim);
+  background: oklch(22% 0.022 258 / 92%);
+  border: 1px solid oklch(100% 0 0 / 16%);
   font-size: var(--t-sm);
-  color: var(--text-primary);
+  color: oklch(97% 0.006 85);
 }
 
 .the-world-stat-label {
   font-size: var(--t-xs);
-  color: var(--text-tertiary);
+  color: oklch(83% 0.012 255);
   font-weight: var(--weight-medium);
 }
 
@@ -2800,14 +2879,16 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg);
-  background: oklch(16% 0.014 255 / 72%);
-  border: 1px solid oklch(100% 0 0 / 10%);
+  background: oklch(22% 0.022 258 / 92%);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 7%);
 }
 
 .the-world-panel-card[data-empty="true"] {
   padding: 10px var(--space-3);
   gap: 4px;
-  background: oklch(14% 0.014 255 / 52%);
+  background: oklch(20% 0.022 258 / 84%);
+  border-color: oklch(100% 0 0 / 14%);
 }
 
 .the-world-panel-card[data-empty="true"] .the-world-panel-empty,
@@ -2860,6 +2941,24 @@
 
 .the-world-drawer {
   --drawer-tone: var(--mongle-cerulean);
+  --text-primary: oklch(97% 0.006 85);
+  --text-secondary: oklch(88% 0.012 255);
+  --text-tertiary: oklch(82% 0.012 255);
+  --surface-panel: oklch(19% 0.022 258 / 92%);
+  --surface-panel-raised: oklch(23% 0.022 258 / 94%);
+  --surface-rim: oklch(100% 0 0 / 16%);
+  --surface-rim-strong: oklch(100% 0 0 / 26%);
+  --hairline: oklch(100% 0 0 / 15%);
+  --hairline-strong: oklch(100% 0 0 / 25%);
+  --control-wash: oklch(25% 0.022 258 / 86%);
+  --control-wash-hover: oklch(31% 0.024 258 / 94%);
+  --control-rest: oklch(24% 0.022 258 / 90%);
+  --control-rest-hover: oklch(30% 0.024 258 / 96%);
+  --control-field: oklch(18% 0.022 258 / 94%);
+  --wash-hover: oklch(100% 0 0 / 10%);
+  --wash-selected: color-mix(in oklch, var(--mongle-amber) 20%, oklch(24% 0.022 258 / 92%));
+  --commodore-settings-line: oklch(100% 0 0 / 14%);
+  --conversation-surface: transparent;
   position: absolute;
   top: 56px;
   right: 16px;
@@ -2872,12 +2971,13 @@
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
-  background: oklch(13% 0.014 255 / 84%);
+  background: oklch(16% 0.022 258 / 94%);
   backdrop-filter: blur(22px) saturate(135%);
-  border: 1px solid color-mix(in oklch, var(--drawer-tone) 34%, oklch(100% 0 0 / 15%));
-  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(100% 0 0 / 8%);
+  border: 1px solid color-mix(in oklch, var(--drawer-tone) 38%, oklch(100% 0 0 / 18%));
+  box-shadow: var(--shadow-floating), inset 0 1px 0 oklch(98% 0.01 85 / 16%);
   overflow: hidden;
   pointer-events: auto;
+  color: var(--text-primary);
   animation: the-world-drawer-in var(--duration-base) var(--ease-spring) both;
 }
 
@@ -2885,7 +2985,7 @@
   bottom: 16px;
   height: auto;
   max-height: none;
-  background: oklch(13% 0.014 255 / 88%);
+  background: oklch(16% 0.022 258 / 95%);
 }
 
 .the-world-drawer[data-tone="crimson"],
@@ -2918,7 +3018,7 @@
   justify-content: space-between;
   gap: var(--space-2);
   padding: 10px var(--space-3);
-  border-bottom: 1px solid oklch(100% 0 0 / 10%);
+  border-bottom: 1px solid oklch(100% 0 0 / 14%);
   flex-shrink: 0;
 }
 
@@ -2936,8 +3036,8 @@
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  border: 2px solid color-mix(in oklch, var(--drawer-tone) 80%, oklch(100% 0 0 / 20%));
-  background: oklch(17% 0.014 255 / 92%);
+  border: 2px solid color-mix(in oklch, var(--drawer-tone) 82%, oklch(100% 0 0 / 22%));
+  background: oklch(21% 0.022 258 / 94%);
   flex-shrink: 0;
 }
 
@@ -2959,7 +3059,7 @@
   font-family: var(--font-ui);
   font-size: var(--t-md);
   font-weight: var(--weight-bold);
-  color: oklch(98% 0.004 255);
+  color: oklch(98% 0.006 85);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2968,7 +3068,7 @@
 .the-world-drawer-model {
   font-family: var(--font-code);
   font-size: var(--t-2xs);
-  color: oklch(72% 0.01 255);
+  color: oklch(83% 0.012 255);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2987,8 +3087,8 @@
   grid-auto-columns: 1fr;
   gap: 4px;
   padding: 6px var(--space-3);
-  border-bottom: 1px solid oklch(100% 0 0 / 10%);
-  background: oklch(10% 0.012 255 / 54%);
+  border-bottom: 1px solid oklch(100% 0 0 / 14%);
+  background: oklch(13% 0.02 258 / 64%);
   flex-shrink: 0;
 }
 
@@ -3002,7 +3102,7 @@
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
-  color: oklch(76% 0.01 255);
+  color: oklch(84% 0.012 255);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
@@ -3012,15 +3112,16 @@
 }
 
 .the-world-drawer-tab:hover {
-  background: oklch(100% 0 0 / 8%);
-  color: oklch(98% 0 0);
+  background: oklch(100% 0 0 / 10%);
+  color: oklch(98% 0.006 85);
 }
 
 .the-world-drawer-tab.is-active {
-  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 94%));
-  border-color: color-mix(in oklch, var(--mongle-amber) 56%, transparent);
-  color: oklch(99% 0.004 255);
+  background: color-mix(in oklch, var(--mongle-amber) 24%, oklch(22% 0.022 258 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 66%, transparent);
+  color: oklch(98% 0.006 85);
   font-weight: var(--weight-bold);
+  box-shadow: inset 0 1px 0 oklch(98% 0.012 85 / 22%);
 }
 
 .the-world-drawer-tab:focus-visible {
@@ -3032,8 +3133,8 @@
   display: flex;
   align-items: center;
   padding: 6px var(--space-3);
-  border-bottom: 1px solid oklch(100% 0 0 / 8%);
-  background: oklch(11% 0.012 255 / 58%);
+  border-bottom: 1px solid oklch(100% 0 0 / 12%);
+  background: oklch(14% 0.02 258 / 66%);
   flex-shrink: 0;
 }
 
@@ -3043,10 +3144,10 @@
   gap: 5px;
   height: 26px;
   padding: 0 9px;
-  border: 1px solid oklch(100% 0 0 / 14%);
+  border: 1px solid oklch(100% 0 0 / 18%);
   border-radius: var(--radius-xs);
-  background: oklch(18% 0.014 255 / 76%);
-  color: oklch(92% 0.006 255);
+  background: oklch(23% 0.022 258 / 88%);
+  color: oklch(96% 0.006 85);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
@@ -3054,8 +3155,9 @@
 }
 
 .the-world-drawer-back-btn:hover {
-  background: oklch(24% 0.014 255 / 92%);
-  color: oklch(99% 0 0);
+  background: oklch(29% 0.024 258 / 96%);
+  border-color: color-mix(in oklch, var(--mongle-amber) 56%, transparent);
+  color: oklch(99% 0.004 85);
 }
 
 .the-world-drawer-back-btn:focus-visible {
@@ -3068,7 +3170,7 @@
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-3);
-  background: oklch(11% 0.012 255 / 38%);
+  background: oklch(14% 0.02 258 / 44%);
   user-select: text;
 }
 
@@ -3086,12 +3188,29 @@
 
 /* 실제 Fleet Console 사령관/지휘관 채팅 컴포넌트 임베드 호스트 */
 .the-world-real-chat-host {
+  --text-primary: oklch(97% 0.006 85);
+  --text-secondary: oklch(88% 0.012 255);
+  --text-tertiary: oklch(82% 0.012 255);
+  --surface-panel: oklch(19% 0.022 258 / 92%);
+  --surface-panel-raised: oklch(23% 0.022 258 / 94%);
+  --surface-rim: oklch(100% 0 0 / 16%);
+  --surface-rim-strong: oklch(100% 0 0 / 26%);
+  --hairline: oklch(100% 0 0 / 15%);
+  --hairline-strong: oklch(100% 0 0 / 25%);
+  --control-wash: oklch(25% 0.022 258 / 86%);
+  --control-wash-hover: oklch(31% 0.024 258 / 94%);
+  --control-rest: oklch(24% 0.022 258 / 90%);
+  --control-rest-hover: oklch(30% 0.024 258 / 96%);
+  --control-field: oklch(18% 0.022 258 / 94%);
+  --conversation-surface: transparent;
+  --conversation-human-ink: oklch(98% 0.006 85);
   flex: 1 1 auto;
   min-height: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
   position: relative;
+  color: var(--text-primary);
   --conversation-overlay-top: 12px;
 }
 
@@ -3119,6 +3238,222 @@
 
 .the-world-real-chat-host .group-chat-column {
   padding-top: 4px;
+  color: oklch(97% 0.006 85);
+}
+
+/* 사령관/에이전트 말풍선: 또렷한 별빛 슬레이트 카드 + 1px 림 + 밝은 아이보리 본문 */
+.the-world-root .the-world-real-chat-host .group-chat-bubble.is-agent {
+  background: oklch(23% 0.022 258 / 94%);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  color: oklch(97% 0.006 85);
+  box-shadow: 0 4px 14px oklch(5% 0.02 258 / 26%), inset 0 1px 0 oklch(100% 0 0 / 8%);
+}
+
+.the-world-root .the-world-real-chat-host .group-chat-bubble.is-agent.is-capped {
+  --group-chat-bubble-face: oklch(23% 0.022 258 / 96%);
+}
+
+/* 사람(제독) 말풍선: 탁한 보라 대신 따뜻한 별빛 인디고-골드 고대비 말풍선 */
+.the-world-root .the-world-real-chat-host .group-chat-bubble.is-human {
+  background: linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--mongle-indigo) 46%, oklch(24% 0.024 258 / 96%)) 0%,
+    color-mix(in oklch, var(--mongle-amber) 18%, color-mix(in oklch, var(--mongle-indigo) 32%, oklch(24% 0.024 258 / 96%))) 100%
+  );
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 42%, color-mix(in oklch, var(--mongle-indigo) 56%, oklch(100% 0 0 / 24%)));
+  color: oklch(98% 0.006 85);
+  box-shadow: 0 4px 16px oklch(5% 0.02 258 / 30%), inset 0 1px 0 oklch(98% 0.012 85 / 18%);
+}
+
+.the-world-root .the-world-real-chat-host .group-chat-bubble.is-commodore {
+  background: color-mix(in oklch, var(--drawer-tone, var(--mongle-amber)) 18%, oklch(22% 0.022 258 / 94%));
+  border: 1px solid color-mix(in oklch, var(--drawer-tone, var(--mongle-amber)) 54%, oklch(100% 0 0 / 20%));
+  color: oklch(97% 0.006 85);
+}
+
+.the-world-real-chat-host .group-chat-agent-name,
+.the-world-real-chat-host .group-chat-name {
+  color: oklch(96% 0.006 85);
+}
+
+.the-world-real-chat-host .group-chat-time {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: oklch(21% 0.022 258 / 80%);
+  border: 1px solid oklch(100% 0 0 / 12%);
+  color: oklch(84% 0.012 255);
+}
+
+/* 시스템·결정 이벤트 구분선(사람 · 사람이 답함, 사령관 1 · 사람에게 물음 등) */
+.the-world-real-chat-host .group-chat-line {
+  color: oklch(86% 0.012 255);
+}
+
+.the-world-real-chat-host :is(.group-chat-membership, .group-chat-board, .group-chat-line-summary, .group-chat-note) {
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  background: oklch(23% 0.022 258 / 86%);
+  border: 1px solid oklch(100% 0 0 / 15%);
+  color: oklch(89% 0.01 255);
+}
+
+.the-world-real-chat-host :is(.group-chat-line-summary:hover, button.group-chat-board:hover) {
+  background: oklch(29% 0.024 258 / 94%);
+  border-color: color-mix(in oklch, var(--mongle-amber) 48%, oklch(100% 0 0 / 20%));
+  color: oklch(97% 0.006 85);
+}
+
+.the-world-real-chat-host .group-chat-line-who {
+  color: oklch(97% 0.006 85);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-real-chat-host :is(.group-chat-line-sep, .group-chat-line-arrow) {
+  color: oklch(78% 0.012 255);
+}
+
+.the-world-real-chat-host .group-chat-line-time {
+  color: oklch(83% 0.012 255);
+}
+
+/* 임베드 채팅 내부 결정 카드 & 왼쪽 세로 띠 제거(둥근 테두리 카드 + 인라인 칩) */
+.the-world-real-chat-host .group-card {
+  background: oklch(22% 0.022 258 / 94%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 34%, oklch(100% 0 0 / 16%));
+  box-shadow: 0 6px 20px oklch(5% 0.02 258 / 30%), inset 0 1px 0 oklch(100% 0 0 / 9%);
+}
+
+.the-world-real-chat-host .group-card-handed {
+  padding: 7px 11px;
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--mongle-amber) 11%, oklch(20% 0.022 258 / 92%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 36%, oklch(100% 0 0 / 14%));
+  color: oklch(93% 0.008 85);
+  line-height: 1.48;
+}
+
+.the-world-real-chat-host .group-card-handed-label {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  margin-right: 7px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-amber) 22%, oklch(18% 0.022 258 / 94%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 54%, transparent);
+  color: var(--mongle-amber);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  line-height: 1.4;
+}
+
+.the-world-real-chat-host .group-chat-notes-list {
+  padding: 8px 11px;
+  border: 1px solid oklch(100% 0 0 / 14%);
+  border-radius: var(--radius-md);
+  background: oklch(20% 0.022 258 / 84%);
+  color: oklch(89% 0.01 255);
+}
+
+.the-world-drawer .markdown-body blockquote,
+.the-world-rpg-dialogue .markdown-body blockquote,
+.the-world-panel .markdown-body blockquote {
+  margin-inline: 0;
+  padding: 8px 12px;
+  border: 1px solid oklch(100% 0 0 / 16%);
+  border-radius: var(--radius-md);
+  background: oklch(21% 0.022 258 / 82%);
+  color: oklch(92% 0.008 85);
+}
+
+/* 임베드 컴포저 입력창 & 전송 버튼 고대비 테두리 */
+.the-world-real-chat-host .fc-composer-capsule {
+  background: oklch(20% 0.022 258 / 95%);
+  border: 1px solid oklch(100% 0 0 / 20%);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 8%);
+}
+
+.the-world-real-chat-host .fc-composer-capsule:focus-within {
+  border-color: color-mix(in oklch, var(--mongle-amber) 68%, oklch(100% 0 0 / 24%));
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--mongle-amber) 18%, transparent);
+}
+
+.the-world-real-chat-host .fc-composer-input,
+.the-world-real-chat-host .objectives-commodore-ref-input {
+  color: oklch(97% 0.006 85);
+}
+
+.the-world-real-chat-host .fc-composer-input::placeholder,
+.the-world-real-chat-host .objectives-commodore-ref-input.is-empty::before {
+  color: oklch(80% 0.012 255);
+}
+
+.the-world-real-chat-host .fc-composer-send:not(:disabled):not(.is-idle) {
+  background: var(--mongle-amber);
+  color: oklch(14% 0.018 258);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 72%, oklch(100% 0 0 / 35%));
+}
+
+.the-world-real-chat-host .fc-composer-send.is-idle {
+  background: oklch(26% 0.022 258 / 92%);
+  color: oklch(84% 0.012 255);
+  border: 1px solid oklch(100% 0 0 / 16%);
+}
+
+/* 사령관 수첩(프로필·기억·루틴·설정) 내부 콘솔 행·드롭다운·Theater 행·제거 버튼 고대비 업그레이드 */
+.the-world-console-host .objectives-commodore-commander-options {
+  margin: 6px 0 12px;
+  padding: 8px 12px;
+  border: 1px solid oklch(100% 0 0 / 15%);
+  border-radius: var(--radius-md);
+  background: oklch(18% 0.022 258 / 82%);
+}
+
+.the-world-console-host :is(.objectives-commodore-panel-title, .fc-settings-row__label) {
+  color: oklch(97% 0.006 85);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-console-host :is(.objectives-commodore-hint, .fc-settings-row__hint, .objectives-commodore-panel-meta, .objectives-commodore-intel-when, .objectives-commodore-intel-source, .commodore-theaters-missing) {
+  color: oklch(82% 0.012 255);
+}
+
+.the-world-console-host .commodore-theaters-list {
+  gap: 6px;
+}
+
+.the-world-console-host .commodore-theaters-list li {
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  background: oklch(18% 0.022 258 / 88%);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  color: oklch(94% 0.008 85);
+}
+
+.the-world-console-host .objectives-commodore-text-button {
+  padding: 3px 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  background: oklch(25% 0.022 258 / 86%);
+  color: oklch(88% 0.012 255);
+  font-weight: var(--weight-medium);
+}
+
+.the-world-console-host .objectives-commodore-text-button:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--mongle-amber) 58%, transparent);
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(26% 0.022 258 / 94%));
+  color: oklch(98% 0.006 85);
+}
+
+.the-world-console-host :is(.fc-select__trigger, .fc-coord-trigger.is-field, .objectives-commodore-input) {
+  border: 1px solid oklch(100% 0 0 / 20%);
+  background: oklch(18% 0.022 258 / 94%);
+  color: oklch(96% 0.006 85);
+}
+
+.the-world-console-host :is(.fc-select__trigger, .fc-coord-trigger.is-field):hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--mongle-amber) 54%, oklch(100% 0 0 / 24%));
+  background: oklch(24% 0.022 258 / 96%);
 }
 
 .the-world-real-chat-host .objectives-commodore-conversation .objectives-commodore-foot {
@@ -3130,8 +3465,8 @@
   align-items: center;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3);
-  border-top: 1px solid oklch(100% 0 0 / 10%);
-  background: oklch(11% 0.012 255 / 72%);
+  border-top: 1px solid oklch(100% 0 0 / 14%);
+  background: oklch(14% 0.02 258 / 78%);
   flex-shrink: 0;
 }
 
@@ -3143,25 +3478,25 @@
   gap: 6px;
   padding: 8px 10px;
   border-radius: var(--radius-md);
-  background: oklch(16% 0.014 255 / 76%);
-  border: 1px solid oklch(100% 0 0 / 10%);
+  background: oklch(22% 0.022 258 / 92%);
+  border: 1px solid oklch(100% 0 0 / 16%);
 }
 
 .the-world-drawer-stat {
   display: inline-flex;
   align-items: baseline;
   gap: 5px;
-  padding: 3px 8px;
+  padding: 4px 9px;
   border-radius: var(--radius-xs);
-  background: oklch(12% 0.012 255 / 74%);
-  border: 1px solid oklch(100% 0 0 / 8%);
+  background: oklch(17% 0.022 258 / 90%);
+  border: 1px solid oklch(100% 0 0 / 14%);
   font-size: var(--t-xs);
-  color: oklch(95% 0.005 255);
+  color: oklch(96% 0.006 85);
 }
 
 .the-world-drawer-stat-label {
   font-size: var(--t-2xs);
-  color: oklch(72% 0.01 255);
+  color: oklch(83% 0.012 255);
   font-weight: var(--weight-medium);
 }
 
@@ -3169,7 +3504,7 @@
   font-family: var(--font-code);
   font-size: var(--t-xs);
   font-weight: var(--weight-bold);
-  color: oklch(97% 0.004 255);
+  color: oklch(98% 0.006 85);
 }
 
 /* 사령관 설정 내 작전 구역 3D 바로 이동 칩 */
@@ -3185,10 +3520,10 @@
   gap: 6px;
   height: 28px;
   padding: 0 10px;
-  border: 1px solid oklch(100% 0 0 / 14%);
+  border: 1px solid oklch(100% 0 0 / 18%);
   border-radius: var(--radius-pill);
-  background: oklch(18% 0.014 255 / 78%);
-  color: oklch(92% 0.006 255);
+  background: oklch(23% 0.022 258 / 88%);
+  color: oklch(95% 0.006 85);
   font-family: var(--font-ui);
   font-size: var(--t-xs);
   font-weight: var(--weight-medium);
@@ -3197,9 +3532,9 @@
 }
 
 .the-world-drawer-district-chip:hover {
-  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(18% 0.014 255 / 94%));
-  border-color: color-mix(in oklch, var(--mongle-amber) 56%, transparent);
-  color: oklch(99% 0 0);
+  background: color-mix(in oklch, var(--mongle-amber) 22%, oklch(23% 0.022 258 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 62%, transparent);
+  color: oklch(99% 0.004 85);
 }
 
 .the-world-drawer-district-chip:focus-visible {
@@ -3217,7 +3552,7 @@
   font-family: var(--font-code);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
-  color: oklch(74% 0.01 255);
+  color: oklch(84% 0.012 255);
 }
 
 .the-world-panel-card-head {
@@ -3955,7 +4290,7 @@
   width: 164px;
   height: 164px;
   margin: 6px auto;
-  cursor: crosshair;
+  cursor: var(--tw-cursor-fly);
 }
 
 .the-world-minimap-svg {
@@ -4380,6 +4715,16 @@
 }
 
 .the-world-quest-board {
+  --text-primary: oklch(97% 0.006 85);
+  --text-secondary: oklch(88% 0.012 255);
+  --text-tertiary: oklch(82% 0.012 255);
+  --surface-panel: oklch(19% 0.022 258 / 92%);
+  --surface-panel-raised: oklch(23% 0.022 258 / 94%);
+  --surface-rim: oklch(100% 0 0 / 16%);
+  --hairline: oklch(100% 0 0 / 15%);
+  --hairline-strong: oklch(100% 0 0 / 25%);
+  --control-wash: oklch(25% 0.022 258 / 86%);
+  --control-wash-hover: oklch(31% 0.024 258 / 94%);
   width: min(720px, calc(100vw - 32px));
 }
 
@@ -4464,8 +4809,9 @@
   gap: var(--space-2);
   padding: var(--space-3);
   border-radius: var(--radius-md);
-  background: oklch(16% 0.014 255 / 86%);
-  border: 1px solid color-mix(in oklch, var(--mongle-amber) 34%, oklch(100% 0 0 / 12%));
+  background: oklch(22% 0.022 258 / 92%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 38%, oklch(100% 0 0 / 16%));
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 7%);
 }
 
 .the-world-qb-ask-head {
@@ -4484,12 +4830,12 @@
 .the-world-qb-ask-name {
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
-  color: oklch(97% 0.004 255);
+  color: oklch(97% 0.006 85);
 }
 
 .the-world-qb-ask-inline {
   padding-top: var(--space-1);
-  border-top: 1px solid oklch(100% 0 0 / 10%);
+  border-top: 1px solid oklch(100% 0 0 / 14%);
 }
 
 .the-world-qb-card {
@@ -4499,12 +4845,13 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-md);
-  background: oklch(16% 0.014 255 / 82%);
-  border: 1px solid oklch(100% 0 0 / 12%);
+  background: oklch(22% 0.022 258 / 92%);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  box-shadow: inset 0 1px 0 oklch(100% 0 0 / 7%);
 }
 
 .the-world-qb-card.is-review {
-  border-color: color-mix(in oklch, var(--mongle-cerulean) 44%, oklch(100% 0 0 / 12%));
+  border-color: color-mix(in oklch, var(--mongle-cerulean) 48%, oklch(100% 0 0 / 16%));
 }
 
 .the-world-qb-card-main {
@@ -4525,7 +4872,7 @@
 .the-world-qb-card-title {
   font-size: var(--t-sm);
   font-weight: var(--weight-bold);
-  color: oklch(97% 0.004 255);
+  color: oklch(97% 0.006 85);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4536,16 +4883,17 @@
   align-items: center;
   gap: 8px;
   font-size: var(--t-xs);
-  color: oklch(76% 0.01 255);
+  color: oklch(83% 0.012 255);
 }
 
 .the-world-qb-progress-pill {
   padding: 1px 6px;
   border-radius: var(--radius-pill);
-  background: oklch(22% 0.014 255 / 88%);
+  background: oklch(17% 0.022 258 / 92%);
+  border: 1px solid oklch(100% 0 0 / 14%);
   font-family: var(--font-code);
   font-size: var(--t-2xs);
-  color: oklch(88% 0.008 255);
+  color: oklch(92% 0.008 85);
 }
 
 .the-world-qb-card-actions {
@@ -4562,7 +4910,7 @@
   justify-content: center;
   gap: var(--space-2);
   padding: var(--space-5) var(--space-3);
-  color: oklch(76% 0.01 255);
+  color: oklch(83% 0.012 255);
   font-size: var(--t-sm);
   text-align: center;
 }
@@ -6144,6 +6492,55 @@
   .the-world-gazette-mood-pill {
     display: none;
   }
+}
+
+/* ── Sprint 16: 「더 월드」 전용 커스텀 SVG 포인터 커서 캐스케이드 ───────────── */
+
+.the-world-root :is(
+  a[href],
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  summary,
+  label[for],
+  select:not(:disabled),
+  .the-world-world-label,
+  .the-world-village-sign,
+  .the-world-notice-sign,
+  .the-world-guild-sign,
+  .the-world-campfire-sign,
+  .the-world-nametag,
+  .the-world-player-anchor,
+  .the-world-interact-prompt,
+  .the-world-quick-menu-item,
+  .the-world-warp-item,
+  .the-world-minimap-node,
+  .the-world-minimap-plaza,
+  .group-card-choice:not(.is-disabled),
+  .group-chat-line-summary,
+  .group-chat-speaker-hit,
+  .fc-select__trigger:not(:disabled),
+  .fc-coord-trigger:not(:disabled)
+) {
+  cursor: var(--tw-cursor-pointer);
+}
+
+.the-world-root :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="button"]):not([type="submit"]):not([type="reset"]),
+  textarea,
+  [contenteditable="true"],
+  .objectives-commodore-ref-input:not([aria-disabled="true"]),
+  .objectives-commodore-description-preview:not(:disabled),
+  .objectives-commodore-intel-text.is-editable
+) {
+  cursor: text;
+}
+
+.the-world-root :is(
+  button:disabled,
+  [aria-disabled="true"],
+  .group-card-choice.is-disabled
+) {
+  cursor: var(--tw-cursor-default);
 }
 
 @media (prefers-reduced-motion: reduce) {

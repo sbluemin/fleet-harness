@@ -35,6 +35,7 @@ import {
 const MAX_GL_SIZE = 320;
 const STEPPED_FRAME_INTERVAL_MS = 100;
 const SMALL_IDLE_FRAME_INTERVAL_MS = 34;
+const POSE_TRANSITION_MS = 380;
 
 /** 일반 몽글 지휘관·구성원(1–15) 및 진급 퀘이커(토리·보리·도리) — Fleet Pastel 팔레트. */
 const FLEET_PASTEL_TONES: Readonly<Record<IdentityTone, Rgb>> = {
@@ -76,6 +77,9 @@ uniform int   uShape;     // 0..9 mongle shapes, 10 = quaker
 uniform int   uQuaker;    // 0=none, 1=tori, 2=bori, 3=dori
 uniform int   uState;     // 0=idle,1=run,2=await,3=dec,4=rev,5=unseen,6=done,7=ended,8=err,9=fresh
 uniform int   uActivity;  // 0=def,1=think,2=read,3=edit,4=run,5=fetch,6=delegate,7=text,8=compact,9=background
+uniform int   uPrevState;
+uniform int   uPrevActivity;
+uniform float uTransBlend; // 0..1 상태/활동 전이 보간 진행도
 uniform int   uRole;      // 0=commodore, 1=commander, 2=member
 uniform int   uMini;      // 1 = mini tier (<=12px, simple squish without props/badges)
 uniform int   uStatic;    // 1 = frozen resting pose (reduced-motion / calm / static idle)
@@ -98,7 +102,23 @@ struct AnimRig {
   float wingFlap;
 };
 
-AnimRig computeAnim() {
+AnimRig mixAnimRig(AnimRig a, AnimRig b, float k) {
+  AnimRig r;
+  r.offset = mix(a.offset, b.offset, k);
+  r.scale = mix(a.scale, b.scale, k);
+  r.roll = mix(a.roll, b.roll, k);
+  r.yawAdd = mix(a.yawAdd, b.yawAdd, k);
+  r.pitchAdd = mix(a.pitchAdd, b.pitchAdd, k);
+  r.eyeShift = mix(a.eyeShift, b.eyeShift, k);
+  r.eyeBlink = mix(a.eyeBlink, b.eyeBlink, k);
+  r.floorGlow = mix(a.floorGlow, b.floorGlow, k);
+  r.floorScale = mix(a.floorScale, b.floorScale, k);
+  r.floorShiftX = mix(a.floorShiftX, b.floorShiftX, k);
+  r.wingFlap = mix(a.wingFlap, b.wingFlap, k);
+  return r;
+}
+
+AnimRig computeAnimFor(int state, int activity, float t) {
   AnimRig r;
   r.offset = vec3(0.0);
   r.scale = vec3(1.0);
@@ -114,53 +134,51 @@ AnimRig computeAnim() {
 
   if (uStatic == 1) {
     // 정지 자세 — 움직임을 꺼도 상태와 활동의 실루엣은 읽힌다.
-    if (uState == 1) {
-      if (uActivity == 1) r.eyeShift = vec2(-0.04, 0.04);
-      else if (uActivity == 2) r.eyeShift = vec2(0.0, -0.04);
-      else if (uActivity == 3) { r.eyeShift = vec2(-0.03, -0.04); r.eyeBlink = 0.8; }
-      else if (uActivity == 4) r.scale = vec3(1.05, 0.93, 1.02);
-      else if (uActivity == 5) r.eyeShift = vec2(0.04, 0.025);
-      else if (uActivity == 6) r.eyeShift = vec2(0.045, 0.0);
-      else if (uActivity == 7) r.eyeBlink = 0.76;
-      else if (uActivity == 8) { r.scale = vec3(0.90, 1.08, 0.94); r.eyeBlink = 0.36; }
-      else if (uActivity == 9) r.eyeBlink = 0.56;
-    } else if (uState == 2) {
+    if (state == 1) {
+      if (activity == 1) r.eyeShift = vec2(-0.04, 0.04);
+      else if (activity == 2) r.eyeShift = vec2(0.0, -0.04);
+      else if (activity == 3) { r.eyeShift = vec2(-0.03, -0.04); r.eyeBlink = 0.8; }
+      else if (activity == 4) r.scale = vec3(1.05, 0.93, 1.02);
+      else if (activity == 5) r.eyeShift = vec2(0.04, 0.025);
+      else if (activity == 6) r.eyeShift = vec2(0.045, 0.0);
+      else if (activity == 7) r.eyeBlink = 0.76;
+      else if (activity == 8) { r.scale = vec3(0.90, 1.08, 0.94); r.eyeBlink = 0.36; }
+      else if (activity == 9) r.eyeBlink = 0.56;
+    } else if (state == 2) {
       r.eyeShift = vec2(0.0, 0.04);
       r.floorGlow = 0.85;
-    } else if (uState == 3) {
+    } else if (state == 3) {
       r.roll = -0.14;
       r.eyeShift = vec2(-0.04, 0.0);
       r.floorGlow = 0.85;
       r.floorShiftX = -0.10;
-    } else if (uState == 4) {
+    } else if (state == 4) {
       r.scale = vec3(0.95, 1.07, 1.0);
       r.offset.y = 0.04;
       r.floorGlow = 0.92;
       r.floorScale = 1.15;
-    } else if (uState == 6 || uState == 7) {
+    } else if (state == 6 || state == 7) {
       r.scale = vec3(1.06, 0.92, 1.03);
       r.offset.y = -0.05;
     }
     return r;
   }
 
-  float t = (uTime + uPhase) / max(uTempo, 0.5);
-
   if (uQuaker > 0) {
-    float wAmp = (uState == 1 || uState == 2) ? 0.30 : (uState == 7 || uState == 9 ? 0.03 : 0.14);
-    float wSpd = (uState == 1 || uState == 2) ? 6.8 : 3.2;
+    float wAmp = (state == 1 || state == 2) ? 0.30 : (state == 7 || state == 9 ? 0.03 : 0.14);
+    float wSpd = (state == 1 || state == 2) ? 6.8 : 3.2;
     r.wingFlap = sin(t * wSpd) * wAmp;
   }
 
   if (uMini == 1) {
-    if (uState == 1) {
+    if (state == 1) {
       float b = sin(t * 4.4);
       r.scale = vec3(1.0 + b * 0.06, 1.0 - b * 0.07, 1.0 + b * 0.04);
     }
     return r;
   }
 
-  if (uState == 0) {
+  if (state == 0) {
     float breath = sin(t * 2.1);
     r.scale = vec3(1.0 + breath * 0.022, 1.0 - breath * 0.024, 1.0 + breath * 0.015);
     r.offset.y = sin(t * 1.45) * 0.030;
@@ -171,9 +189,9 @@ AnimRig computeAnim() {
       float bp = sin((bt - 0.92) / 0.06 * 3.14159);
       r.eyeBlink = mix(1.0, 0.10, bp);
     }
-  } else if (uState == 1) {
+  } else if (state == 1) {
     r.roll = sin(t * 1.65) * 0.065;
-    if (uActivity == 0) {
+    if (activity == 0) {
       float cyc = fract(t / 3.8);
       if (cyc < 0.72) {
         float b = sin(cyc / 0.72 * 3.14159 * 4.0);
@@ -188,48 +206,48 @@ AnimRig computeAnim() {
       r.eyeShift = vec2(sin(t * 1.7) * 0.045, cos(t * 1.1) * 0.015);
       float bt = fract(t / 4.2);
       if (bt > 0.92 && bt < 0.98) r.eyeBlink = 0.12;
-    } else if (uActivity == 1) {
+    } else if (activity == 1) {
       float w = sin(t * 2.2);
       r.roll = -0.14 + w * 0.06;
       r.pitchAdd = -0.06;
       r.scale = vec3(1.0 + w * 0.025, 1.0 - w * 0.025, 1.0);
       r.eyeShift = vec2(sin(t * 1.5) * 0.045, 0.045);
-    } else if (uActivity == 2) {
+    } else if (activity == 2) {
       float scan = sin(t * 2.6);
       r.pitchAdd = 0.08 + sin(t * 5.2) * 0.025;
       r.scale = vec3(1.02, 0.98, 1.0);
       r.eyeShift = vec2(scan * 0.055, -0.04);
-    } else if (uActivity == 3) {
+    } else if (activity == 3) {
       float w = sin(t * 7.8);
       r.scale = vec3(1.0 + w * 0.075, 1.0 - w * 0.085, 1.0 + w * 0.04);
       r.offset.y = max(0.0, -w) * 0.045;
       r.eyeShift = vec2(-0.02, -0.035);
       r.eyeBlink = 0.82;
-    } else if (uActivity == 4) {
+    } else if (activity == 4) {
       float p = fract(t * 0.85);
       float j = sin(p * 3.14159);
       float sq = sin(p * 6.28318);
       r.offset.y = pow(j, 0.85) * 0.22;
       r.scale = vec3(1.0 - sq * 0.09, 1.0 + sq * 0.10, 1.0 - sq * 0.06);
       r.eyeBlink = (p < 0.18 || p > 0.82) ? 0.45 : 1.0;
-    } else if (uActivity == 5) {
+    } else if (activity == 5) {
       float sc = sin(t * 2.6);
       r.offset.x = sc * 0.11;
       r.yawAdd = sc * 0.22;
       r.scale = vec3(0.97, 1.04, 1.0);
       r.eyeShift = vec2(sc * 0.055, 0.025);
-    } else if (uActivity == 6) {
+    } else if (activity == 6) {
       float w = sin(t * 4.2);
       r.offset.y = max(0.0, w) * 0.09;
       r.scale = vec3(1.0 - w * 0.05, 1.0 + w * 0.06, 1.0);
       r.yawAdd = 0.14;
       r.eyeShift = vec2(0.045, 0.01);
-    } else if (uActivity == 7) {
+    } else if (activity == 7) {
       float talk = abs(sin(t * 5.8));
       r.offset.y = talk * 0.065;
       r.scale = vec3(1.0 - talk * 0.035, 1.0 + talk * 0.045, 1.0);
       r.eyeBlink = 0.78;
-    } else if (uActivity == 8) {
+    } else if (activity == 8) {
       float sq = 0.5 + 0.5 * sin(t * 3.8);
       r.scale = vec3(mix(1.05, 0.84, sq), mix(0.95, 1.12, sq), mix(1.02, 0.90, sq));
       r.roll = sin(t * 1.9) * 0.16;
@@ -240,7 +258,7 @@ AnimRig computeAnim() {
       r.scale = vec3(1.0 + bg * 0.045, 1.0 - bg * 0.05, 1.0 + bg * 0.02);
       r.eyeBlink = 0.56;
     }
-  } else if (uState == 2) {
+  } else if (state == 2) {
     float cyc = fract(t / 2.2);
     float hop = 0.0;
     if (cyc < 0.22) hop = sin(cyc / 0.22 * 3.14159);
@@ -250,34 +268,34 @@ AnimRig computeAnim() {
     r.eyeShift = vec2(0.0, 0.04);
     r.floorGlow = 0.95 - hop * 0.45;
     r.floorScale = 1.05 - hop * 0.30;
-  } else if (uState == 3) {
+  } else if (state == 3) {
     float sw = sin(t * 2.0);
     r.roll = sw * 0.19;
     r.yawAdd = sw * 0.12;
     r.eyeShift = vec2(sw * 0.04, 0.01);
     r.floorGlow = 0.85;
     r.floorShiftX = -sw * 0.12;
-  } else if (uState == 4) {
+  } else if (state == 4) {
     float pr = 0.5 + 0.5 * sin(t * 2.1);
     r.scale = vec3(mix(1.03, 0.93, pr), mix(0.96, 1.09, pr), 1.0);
     r.offset.y = pr * 0.07;
     r.floorGlow = mix(0.65, 1.0, pr);
     r.floorScale = mix(0.95, 1.22, pr);
-  } else if (uState == 5) {
+  } else if (state == 5) {
     float b = sin(t * 2.5);
     r.offset.y = b * 0.045 + 0.02;
     r.scale = vec3(1.0 - b * 0.025, 1.0 + b * 0.03, 1.0);
     r.roll = sin(t * 1.4) * 0.05;
-  } else if (uState == 6) {
+  } else if (state == 6) {
     float b = sin(t * 1.5);
     r.scale = vec3(1.07 + b * 0.015, 0.91 - b * 0.015, 1.04);
     r.offset.y = -0.05;
-  } else if (uState == 7) {
+  } else if (state == 7) {
     float sl = sin(t * 1.15);
     r.scale = vec3(1.05 + sl * 0.03, 0.92 - sl * 0.03, 1.03);
     r.offset.y = -0.06;
     r.pitchAdd = 0.08;
-  } else if (uState == 8) {
+  } else if (state == 8) {
     float cyc = fract(t / 2.6);
     if (cyc < 0.22) {
       r.offset.x = sin(cyc * 95.0) * 0.055 * (1.0 - cyc / 0.22);
@@ -287,6 +305,16 @@ AnimRig computeAnim() {
   }
 
   return r;
+}
+
+AnimRig computeAnim() {
+  float t = (uTime + uPhase) / max(uTempo, 0.5);
+  AnimRig currRig = computeAnimFor(uState, uActivity, t);
+  if (uStatic == 1 || uTransBlend >= 0.999 || (uPrevState == uState && uPrevActivity == uActivity)) {
+    return currRig;
+  }
+  AnimRig prevRig = computeAnimFor(uPrevState, uPrevActivity, t);
+  return mixAnimRig(prevRig, currRig, smoothstep(0.0, 1.0, clamp(uTransBlend, 0.0, 1.0)));
 }
 
 ${MONGLE_BODY_GLSL}
@@ -315,6 +343,125 @@ float sdPlushOnly(vec3 p, AnimRig rig) {
     d = min(d, min(dwL, dwR));
   }
   return d;
+}
+
+float thoughtBubbleScale(float cyc, float inA, float inB, float outA, float outB, float bounceAmp) {
+  if (cyc < inA || cyc > outB) return 0.0;
+  float popIn = smoothstep(inA, inB, cyc);
+  float elastic = popIn + sin(popIn * 3.1415926) * bounceAmp * (1.0 - smoothstep(inB, inB + 0.09, cyc));
+  float shrinkOut = 1.0 - smoothstep(outA, outB, cyc);
+  return max(0.0, elastic * shrinkOut);
+}
+
+vec2 mapActivityProps(vec2 res, vec3 q, float sMin, float t, int state, int activity, float propScale) {
+  if (state != 1 || activity == 0 || propScale <= 0.02) return res;
+  float ps = clamp(propScale, 0.02, 1.2);
+  if (activity == 1) {
+    // 생각 중 말풍선 1→2→3 점진적 생성 루프 (약 2.4초 주기, uStatic==1일 땐 3개 정지 표시)
+    float cyc = fract(t * 0.42);
+    float b1 = (uStatic == 1) ? 1.0 : thoughtBubbleScale(cyc, 0.02, 0.15, 0.80, 0.92, 0.22);
+    float b2 = (uStatic == 1) ? 1.0 : thoughtBubbleScale(cyc, 0.20, 0.34, 0.83, 0.95, 0.24);
+    float b3 = (uStatic == 1) ? 1.0 : thoughtBubbleScale(cyc, 0.38, 0.54, 0.86, 0.98, 0.28);
+    float s1 = b1 * ps;
+    float s2 = b2 * ps;
+    float s3 = b3 * ps;
+    float pulse = (uStatic == 1) ? 0.0 : sin(t * 3.8) * 0.022;
+    float cloudBounce = (uStatic == 1) ? 0.0 : sin(clamp((cyc - 0.38) / 0.16, 0.0, 1.0) * 3.1415926) * 0.032;
+    float dBub = 1e5;
+    if (s1 > 0.02) dBub = min(dBub, sdSphere(q - vec3(0.46, 0.42 + pulse, 0.24), 0.048 * s1));
+    if (s2 > 0.02) dBub = min(dBub, sdSphere(q - vec3(0.58, 0.56 + pulse * 1.4, 0.22), 0.072 * s2));
+    if (s3 > 0.02) dBub = min(dBub, sdSphere(q - vec3(0.74, 0.72 + pulse * 1.8 + cloudBounce, 0.20), 0.105 * s3));
+    if (dBub < 1e4) res = opU(res, vec2(dBub * sMin, 3.0));
+    float tap = (uStatic == 1) ? 0.0 : abs(sin(t * 4.5)) * 0.045;
+    float hand = sdSphere(q - vec3(-0.22, -0.34 + tap, 0.48), 0.11 * ps);
+    res = opU(res, vec2(hand * sMin, 7.0));
+  } else if (activity == 2) {
+    vec3 bp = (q - vec3(0.0, -0.38, 0.56)) / ps;
+    bp.yz = rot2(0.32) * bp.yz;
+    vec3 pL = bp - vec3(-0.18, 0.0, 0.02); pL.xz = rot2(-0.28) * pL.xz;
+    vec3 pR = bp - vec3( 0.18, 0.0, 0.02); pR.xz = rot2( 0.28) * pR.xz;
+    float book = min(sdRoundBox(pL, vec3(0.17, 0.135, 0.02), 0.015),
+                     sdRoundBox(pR, vec3(0.17, 0.135, 0.02), 0.015)) * ps;
+    res = opU(res, vec2(book * sMin, 3.0));
+    float hL = sdSphere(q - vec3(-0.35, -0.42, 0.56), 0.10 * ps);
+    float flip = (uStatic == 1) ? 0.0 : max(0.0, sin(t * 2.8)) * 0.09;
+    float hR = sdSphere(q - vec3( 0.35, -0.42 + flip, 0.56), 0.10 * ps);
+    res = opU(res, vec2(min(hL, hR) * sMin, 7.0));
+  } else if (activity == 3) {
+    vec3 np = (q - vec3(-0.30, -0.42, 0.54)) / ps;
+    np.yz = rot2(0.22) * np.yz;
+    float pad = sdRoundBox(np, vec3(0.19, 0.135, 0.022), 0.016) * ps;
+    res = opU(res, vec2(pad * sMin, 3.0));
+    vec3 sc = (uStatic == 1) ? vec3(0.0) : vec3(sin(t * 14.0) * 0.05, cos(t * 11.0) * 0.035, 0.0);
+    vec3 pp = (q - (vec3(0.18, -0.30, 0.58) + sc)) / ps;
+    pp.xy = rot2(-0.72) * pp.xy;
+    float pencil = sdCapsule(pp, vec3(-0.23, 0.0, 0.0), vec3(0.23, 0.0, 0.0), 0.046) * ps;
+    res = opU(res, vec2(pencil * sMin, 6.0));
+    float hand = sdSphere(q - (vec3(0.26, -0.25, 0.56) + sc * 0.8), 0.10 * ps);
+    res = opU(res, vec2(hand * sMin, 7.0));
+  } else if (activity == 4) {
+    float lift = (uStatic == 1) ? 0.04 : sin(t * 5.2) * 0.12;
+    float hL = sdSphere(q - vec3(-0.74, 0.08 + lift, 0.18), 0.12 * ps);
+    float hR = sdSphere(q - vec3( 0.74, 0.08 + lift, 0.18), 0.12 * ps);
+    res = opU(res, vec2(min(hL, hR) * sMin, 7.0));
+  } else if (activity == 5) {
+    vec3 tp = (q - vec3(0.46, 0.04, 0.44)) / ps;
+    tp.xy = rot2(0.32 + ((uStatic == 1) ? 0.0 : sin(t * 2.6) * 0.25)) * tp.xy;
+    float tube = sdRoundCone(tp, vec3(-0.18, 0.0, 0.0), vec3(0.28, 0.0, 0.0), 0.055, 0.095) * ps;
+    float lens = sdEllipsoid(tp - vec3(0.29, 0.0, 0.0), vec3(0.03, 0.09, 0.09)) * ps;
+    res = opU(res, vec2(tube * sMin, 5.0));
+    res = opU(res, vec2(lens * sMin, 3.0));
+    float hand = sdSphere(q - vec3(0.44, -0.10, 0.45), 0.105 * ps);
+    res = opU(res, vec2(hand * sMin, 7.0));
+  } else if (activity == 6) {
+    vec3 wp = (q - vec3(0.66, 0.26, 0.22)) / ps;
+    wp.xy = rot2((uStatic == 1) ? 0.18 : sin(t * 6.5) * 0.35) * wp.xy;
+    float hand = sdSphere(wp - vec3(0.05, 0.08, 0.0), 0.125) * ps;
+    res = opU(res, vec2(hand * sMin, 7.0));
+  } else if (activity == 7) {
+    vec3 sp = (q - vec3(0.56, 0.62 + ((uStatic == 1) ? 0.0 : sin(t * 4.2) * 0.03), 0.24)) / ps;
+    float bub = sdRoundBox(sp, vec3(0.18, 0.10, 0.04), 0.09);
+    float tail = sdSphere(sp - vec3(-0.12, -0.14, 0.0), 0.055);
+    res = opU(res, vec2(smin(bub, tail, 0.05) * ps * sMin, 3.0));
+    float gL = (uStatic == 1) ? 0.0 : max(0.0, sin(t * 5.8)) * 0.14;
+    float gR = (uStatic == 1) ? 0.0 : max(0.0, -sin(t * 5.8)) * 0.14;
+    float hL = sdSphere(q - vec3(-0.62, -0.22 + gL, 0.32), 0.11 * ps);
+    float hR = sdSphere(q - vec3( 0.62, -0.22 + gR, 0.32), 0.11 * ps);
+    res = opU(res, vec2(min(hL, hR) * sMin, 7.0));
+  } else if (activity == 8) {
+    float sq = (uStatic == 1) ? 0.65 : (0.5 + 0.5 * sin(t * 3.8));
+    float hx = mix(0.76, 0.58, sq);
+    float hL = sdSphere(q - vec3(-hx, -0.05, 0.22), 0.12 * ps);
+    float hR = sdSphere(q - vec3( hx, -0.05, 0.22), 0.12 * ps);
+    res = opU(res, vec2(min(hL, hR) * sMin, 7.0));
+  }
+  return res;
+}
+
+vec2 mapStateBadge(vec2 res, vec3 p, float t, int state, float propScale) {
+  if (propScale <= 0.02) return res;
+  float ps = clamp(propScale, 0.02, 1.2);
+  if (state == 5) {
+    vec3 sp = (p - vec3(0.68, 0.62 + ((uStatic == 1) ? 0.0 : sin(t * 3.0) * 0.04), 0.25)) / ps;
+    sp.xz = rot2((uStatic == 1) ? 0.2 : t * 1.4) * sp.xz;
+    float pulse = (uStatic == 1) ? 1.0 : (0.85 + 0.20 * sin(t * 3.6));
+    sp /= pulse;
+    float s1 = sdEllipsoid(sp, vec3(0.16, 0.048, 0.055));
+    float s2 = sdEllipsoid(sp, vec3(0.048, 0.16, 0.055));
+    float s3 = sdEllipsoid(sp, vec3(0.055, 0.055, 0.12));
+    res = opU(res, vec2(smin(min(s1, s2), s3, 0.03) * pulse * ps, 8.0));
+  } else if (state == 8) {
+    vec3 dp = (p - vec3(0.66, 0.56 - ((uStatic == 1) ? 0.0 : abs(sin(t * 2.5)) * 0.07), 0.26)) / ps;
+    float drop = sdRoundCone(dp, vec3(0.0, -0.06, 0.0), vec3(0.0, 0.14, 0.0), 0.095, 0.018) * ps;
+    res = opU(res, vec2(drop, 9.0));
+  } else if (state == 7) {
+    vec3 zp = (p - vec3(0.64, 0.56 + ((uStatic == 1) ? 0.0 : sin(t * 1.4) * 0.05), 0.25)) / ps;
+    float z1 = sdCapsule(zp, vec3(-0.09,  0.09, 0.0), vec3( 0.09,  0.09, 0.0), 0.028);
+    float z2 = sdCapsule(zp, vec3( 0.09,  0.09, 0.0), vec3(-0.09, -0.09, 0.0), 0.028);
+    float z3 = sdCapsule(zp, vec3(-0.09, -0.09, 0.0), vec3( 0.09, -0.09, 0.0), 0.028);
+    res = opU(res, vec2(min(z1, min(z2, z3)) * ps, 10.0));
+  }
+  return res;
 }
 
 vec2 mapScene(vec3 p, AnimRig rig) {
@@ -390,99 +537,24 @@ vec2 mapScene(vec3 p, AnimRig rig) {
       res = opU(res, vec2(bulb * sMin, 6.0));
     }
 
-    if (uState == 1) {
-      if (uActivity == 1) {
-        float pulse = (uStatic == 1) ? 0.0 : sin(t * 3.8) * 0.025;
-        float d1 = sdSphere(q - vec3(0.46, 0.42 + pulse, 0.24), 0.048);
-        float d2 = sdSphere(q - vec3(0.58, 0.56 + pulse * 1.4, 0.22), 0.072);
-        float d3 = sdSphere(q - vec3(0.74, 0.72 + pulse * 1.8, 0.20), 0.105);
-        res = opU(res, vec2(min(d1, min(d2, d3)) * sMin, 3.0));
-        float tap = (uStatic == 1) ? 0.0 : abs(sin(t * 4.5)) * 0.045;
-        float hand = sdSphere(q - vec3(-0.22, -0.34 + tap, 0.48), 0.11);
-        res = opU(res, vec2(hand * sMin, 7.0));
-      } else if (uActivity == 2) {
-        vec3 bp = q - vec3(0.0, -0.38, 0.56);
-        bp.yz = rot2(0.32) * bp.yz;
-        vec3 pL = bp - vec3(-0.18, 0.0, 0.02); pL.xz = rot2(-0.28) * pL.xz;
-        vec3 pR = bp - vec3( 0.18, 0.0, 0.02); pR.xz = rot2( 0.28) * pR.xz;
-        float book = min(sdRoundBox(pL, vec3(0.17, 0.135, 0.02), 0.015),
-                         sdRoundBox(pR, vec3(0.17, 0.135, 0.02), 0.015));
-        res = opU(res, vec2(book * sMin, 3.0));
-        float hL = sdSphere(q - vec3(-0.35, -0.42, 0.56), 0.10);
-        float flip = (uStatic == 1) ? 0.0 : max(0.0, sin(t * 2.8)) * 0.09;
-        float hR = sdSphere(q - vec3( 0.35, -0.42 + flip, 0.56), 0.10);
-        res = opU(res, vec2(min(hL, hR) * sMin, 7.0));
-      } else if (uActivity == 3) {
-        vec3 np = q - vec3(-0.30, -0.42, 0.54);
-        np.yz = rot2(0.22) * np.yz;
-        float pad = sdRoundBox(np, vec3(0.19, 0.135, 0.022), 0.016);
-        res = opU(res, vec2(pad * sMin, 3.0));
-        vec3 sc = (uStatic == 1) ? vec3(0.0) : vec3(sin(t * 14.0) * 0.05, cos(t * 11.0) * 0.035, 0.0);
-        vec3 pp = q - (vec3(0.18, -0.30, 0.58) + sc);
-        pp.xy = rot2(-0.72) * pp.xy;
-        float pencil = sdCapsule(pp, vec3(-0.23, 0.0, 0.0), vec3(0.23, 0.0, 0.0), 0.046);
-        res = opU(res, vec2(pencil * sMin, 6.0));
-        float hand = sdSphere(q - (vec3(0.26, -0.25, 0.56) + sc * 0.8), 0.10);
-        res = opU(res, vec2(hand * sMin, 7.0));
-      } else if (uActivity == 4) {
-        float lift = (uStatic == 1) ? 0.04 : sin(t * 5.2) * 0.12;
-        float hL = sdSphere(q - vec3(-0.74, 0.08 + lift, 0.18), 0.12);
-        float hR = sdSphere(q - vec3( 0.74, 0.08 + lift, 0.18), 0.12);
-        res = opU(res, vec2(min(hL, hR) * sMin, 7.0));
-      } else if (uActivity == 5) {
-        vec3 tp = q - vec3(0.46, 0.04, 0.44);
-        tp.xy = rot2(0.32 + ((uStatic == 1) ? 0.0 : sin(t * 2.6) * 0.25)) * tp.xy;
-        float tube = sdRoundCone(tp, vec3(-0.18, 0.0, 0.0), vec3(0.28, 0.0, 0.0), 0.055, 0.095);
-        float lens = sdEllipsoid(tp - vec3(0.29, 0.0, 0.0), vec3(0.03, 0.09, 0.09));
-        res = opU(res, vec2(tube * sMin, 5.0));
-        res = opU(res, vec2(lens * sMin, 3.0));
-        float hand = sdSphere(q - vec3(0.44, -0.10, 0.45), 0.105);
-        res = opU(res, vec2(hand * sMin, 7.0));
-      } else if (uActivity == 6) {
-        vec3 wp = q - vec3(0.66, 0.26, 0.22);
-        wp.xy = rot2((uStatic == 1) ? 0.18 : sin(t * 6.5) * 0.35) * wp.xy;
-        float hand = sdSphere(wp - vec3(0.05, 0.08, 0.0), 0.125);
-        res = opU(res, vec2(hand * sMin, 7.0));
-      } else if (uActivity == 7) {
-        vec3 sp = q - vec3(0.56, 0.62 + ((uStatic == 1) ? 0.0 : sin(t * 4.2) * 0.03), 0.24);
-        float bub = sdRoundBox(sp, vec3(0.18, 0.10, 0.04), 0.09);
-        float tail = sdSphere(sp - vec3(-0.12, -0.14, 0.0), 0.055);
-        res = opU(res, vec2(smin(bub, tail, 0.05) * sMin, 3.0));
-        float gL = (uStatic == 1) ? 0.0 : max(0.0, sin(t * 5.8)) * 0.14;
-        float gR = (uStatic == 1) ? 0.0 : max(0.0, -sin(t * 5.8)) * 0.14;
-        float hL = sdSphere(q - vec3(-0.62, -0.22 + gL, 0.32), 0.11);
-        float hR = sdSphere(q - vec3( 0.62, -0.22 + gR, 0.32), 0.11);
-        res = opU(res, vec2(min(hL, hR) * sMin, 7.0));
-      } else if (uActivity == 8) {
-        float sq = (uStatic == 1) ? 0.65 : (0.5 + 0.5 * sin(t * 3.8));
-        float hx = mix(0.76, 0.58, sq);
-        float hL = sdSphere(q - vec3(-hx, -0.05, 0.22), 0.12);
-        float hR = sdSphere(q - vec3( hx, -0.05, 0.22), 0.12);
-        res = opU(res, vec2(min(hL, hR) * sMin, 7.0));
-      }
+    if (uStatic == 1 || uTransBlend >= 0.999 || (uPrevState == uState && uPrevActivity == uActivity)) {
+      res = mapActivityProps(res, q, sMin, t, uState, uActivity, 1.0);
+    } else {
+      float tb = smoothstep(0.0, 1.0, clamp(uTransBlend, 0.0, 1.0));
+      float scaleOut = 1.0 - smoothstep(0.0, 0.65, tb);
+      float scaleIn = smoothstep(0.25, 1.0, tb);
+      res = mapActivityProps(res, q, sMin, t, uPrevState, uPrevActivity, scaleOut);
+      res = mapActivityProps(res, q, sMin, t, uState, uActivity, scaleIn);
     }
   }
 
   if (uMini == 0) {
-    if (uState == 5) {
-      vec3 sp = p - vec3(0.68, 0.62 + ((uStatic == 1) ? 0.0 : sin(t * 3.0) * 0.04), 0.25);
-      sp.xz = rot2((uStatic == 1) ? 0.2 : t * 1.4) * sp.xz;
-      float pulse = (uStatic == 1) ? 1.0 : (0.85 + 0.20 * sin(t * 3.6));
-      sp /= pulse;
-      float s1 = sdEllipsoid(sp, vec3(0.16, 0.048, 0.055));
-      float s2 = sdEllipsoid(sp, vec3(0.048, 0.16, 0.055));
-      float s3 = sdEllipsoid(sp, vec3(0.055, 0.055, 0.12));
-      res = opU(res, vec2(smin(min(s1, s2), s3, 0.03) * pulse, 8.0));
-    } else if (uState == 8) {
-      vec3 dp = p - vec3(0.66, 0.56 - ((uStatic == 1) ? 0.0 : abs(sin(t * 2.5)) * 0.07), 0.26);
-      float drop = sdRoundCone(dp, vec3(0.0, -0.06, 0.0), vec3(0.0, 0.14, 0.0), 0.095, 0.018);
-      res = opU(res, vec2(drop, 9.0));
-    } else if (uState == 7) {
-      vec3 zp = p - vec3(0.64, 0.56 + ((uStatic == 1) ? 0.0 : sin(t * 1.4) * 0.05), 0.25);
-      float z1 = sdCapsule(zp, vec3(-0.09,  0.09, 0.0), vec3( 0.09,  0.09, 0.0), 0.028);
-      float z2 = sdCapsule(zp, vec3( 0.09,  0.09, 0.0), vec3(-0.09, -0.09, 0.0), 0.028);
-      float z3 = sdCapsule(zp, vec3(-0.09, -0.09, 0.0), vec3( 0.09, -0.09, 0.0), 0.028);
-      res = opU(res, vec2(min(z1, min(z2, z3)), 10.0));
+    if (uStatic == 1 || uTransBlend >= 0.999 || uPrevState == uState) {
+      res = mapStateBadge(res, p, t, uState, 1.0);
+    } else {
+      float tb = smoothstep(0.0, 1.0, clamp(uTransBlend, 0.0, 1.0));
+      res = mapStateBadge(res, p, t, uPrevState, 1.0 - smoothstep(0.0, 0.65, tb));
+      res = mapStateBadge(res, p, t, uState, smoothstep(0.25, 1.0, tb));
     }
   }
 
@@ -1000,6 +1072,9 @@ interface Uniforms {
   readonly uQuaker: WebGLUniformLocation | null;
   readonly uState: WebGLUniformLocation | null;
   readonly uActivity: WebGLUniformLocation | null;
+  readonly uPrevState: WebGLUniformLocation | null;
+  readonly uPrevActivity: WebGLUniformLocation | null;
+  readonly uTransBlend: WebGLUniformLocation | null;
   readonly uRole: WebGLUniformLocation | null;
   readonly uMini: WebGLUniformLocation | null;
   readonly uStatic: WebGLUniformLocation | null;
@@ -1013,6 +1088,10 @@ interface MountedAvatar {
   visible: boolean;
   lastRenderedAt: number;
   staticKey: string | null;
+  prevState: MongleState;
+  prevActivity: MongleActivity | null;
+  transProgress: number;
+  transStartedAt: number;
 }
 
 interface SharedEngine {
@@ -1212,6 +1291,9 @@ function initEngine(): SharedEngine | null {
     uQuaker: gl.getUniformLocation(program, "uQuaker"),
     uState: gl.getUniformLocation(program, "uState"),
     uActivity: gl.getUniformLocation(program, "uActivity"),
+    uPrevState: gl.getUniformLocation(program, "uPrevState"),
+    uPrevActivity: gl.getUniformLocation(program, "uPrevActivity"),
+    uTransBlend: gl.getUniformLocation(program, "uTransBlend"),
     uRole: gl.getUniformLocation(program, "uRole"),
     uMini: gl.getUniformLocation(program, "uMini"),
     uStatic: gl.getUniformLocation(program, "uStatic"),
@@ -1265,6 +1347,9 @@ function drawEntry(activeEngine: SharedEngine, entry: MountedAvatar, elapsedSec:
   gl.uniform1i(uniforms.uQuaker, spec.quaker ? QUAKER_CODE[spec.quaker] : 0);
   gl.uniform1i(uniforms.uState, STATE_CODE[spec.state]);
   gl.uniform1i(uniforms.uActivity, spec.activity ? ACTIVITY_CODE[spec.activity] : 0);
+  gl.uniform1i(uniforms.uPrevState, STATE_CODE[entry.prevState]);
+  gl.uniform1i(uniforms.uPrevActivity, entry.prevActivity ? ACTIVITY_CODE[entry.prevActivity] : 0);
+  gl.uniform1f(uniforms.uTransBlend, frozen ? 1.0 : entry.transProgress);
   gl.uniform1i(uniforms.uRole, effectiveRole);
   gl.uniform1i(uniforms.uMini, spec.mini ? 1 : 0);
   gl.uniform1i(uniforms.uStatic, frozen ? 1 : 0);
@@ -1309,6 +1394,9 @@ function tick(now: number): void {
     if (!entry.visible) continue;
     const frozen = isMotionFrozenFor(entry.spec);
     if (frozen) {
+      entry.prevState = entry.spec.state;
+      entry.prevActivity = entry.spec.activity;
+      entry.transProgress = 1;
       const key = staticSignature(entry.spec, lightBg, fuzz);
       if (entry.staticKey !== key) {
         drawEntry(activeEngine, entry, 0, lightBg, fuzz);
@@ -1318,10 +1406,20 @@ function tick(now: number): void {
       continue;
     }
 
+    if (entry.transProgress < 1) {
+      const nextProgress = Math.min(1, Math.max(0, (now - entry.transStartedAt) / POSE_TRANSITION_MS));
+      entry.transProgress = nextProgress;
+      if (nextProgress >= 1) {
+        entry.prevState = entry.spec.state;
+        entry.prevActivity = entry.spec.activity;
+      }
+    }
+
     needsNextFrame = true;
+    const transitioning = entry.transProgress < 1;
     const interval = stepped
       ? STEPPED_FRAME_INTERVAL_MS
-      : (entry.spec.state === "idle" && entry.spec.size < 36 ? SMALL_IDLE_FRAME_INTERVAL_MS : 0);
+      : (!transitioning && entry.spec.state === "idle" && entry.spec.size < 36 ? SMALL_IDLE_FRAME_INTERVAL_MS : 0);
 
     if (interval > 0 && now - entry.lastRenderedAt < interval) continue;
     drawEntry(activeEngine, entry, elapsedSec, lightBg, fuzz);
@@ -1351,6 +1449,10 @@ export function mountMongle3DCanvas(canvas: HTMLCanvasElement, spec: Mongle3DSpe
     visible: true,
     lastRenderedAt: 0,
     staticKey: null,
+    prevState: spec.state,
+    prevActivity: spec.activity,
+    transProgress: 1,
+    transStartedAt: 0,
   };
   mounted.set(canvas, entry);
   intersectionObserver?.observe(canvas);
@@ -1365,6 +1467,19 @@ export function mountMongle3DCanvas(canvas: HTMLCanvasElement, spec: Mongle3DSpe
 export function updateMongle3DCanvas(canvas: HTMLCanvasElement, spec: Mongle3DSpec): void {
   const entry = mounted.get(canvas);
   if (!entry) return;
+  const poseChanged = entry.spec.state !== spec.state || entry.spec.activity !== spec.activity;
+  if (poseChanged) {
+    if (isMotionFrozenFor(spec)) {
+      entry.prevState = spec.state;
+      entry.prevActivity = spec.activity;
+      entry.transProgress = 1;
+    } else {
+      entry.prevState = entry.spec.state;
+      entry.prevActivity = entry.spec.activity;
+      entry.transProgress = 0;
+      entry.transStartedAt = typeof performance !== "undefined" ? performance.now() : Date.now();
+    }
+  }
   entry.spec = spec;
   entry.staticKey = null;
   scheduleLoop();

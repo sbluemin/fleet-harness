@@ -214,7 +214,7 @@ export const theWorldEn = {
   "theWorld.emote.waveToast": "You waved to nearby Commodores!",
   "theWorld.emote.cheerToast": "You cheered on the fleet!",
   "theWorld.emote.jumpToast": "You hopped with joy!",
-  "theWorld.overview.dragLinkHint": "WASD fly · Shift boost · Click village to meteor dive · Drag village→village joint order",
+  "theWorld.overview.dragLinkHint": "WASD fly · Shift boost · Click ground/village to meteor land · Drag village→village joint order",
   "theWorld.overview.dragLinkLabel": "{from} ↔ {to}",
   "theWorld.overview.dragLinkPrefill": "[Joint: {from} ↔ {to}] ",
   "theWorld.overview.dragLinkToast": "Joint dispatch ready: @{from} & @{to}",
@@ -496,7 +496,7 @@ export const theWorldEn = {
   "theWorld.guide.cinemaDesc": "Companion Cinema Mode",
   "theWorld.guide.gazetteDesc": "Fleet Daily Gazette",
   // Sprint 14: Shooting Star Flight & Meteor Dive
-  "theWorld.flight.banner": "Starlight Flight · WASD fly · Shift boost · Click village to meteor dive · Drag village→village · M land",
+  "theWorld.flight.banner": "Starlight Flight · WASD fly · Shift boost · Click ground/village to meteor land · Drag village→village · M land",
   "theWorld.flight.diveToast": "Meteor diving to {label}!",
   "theWorld.flight.landToast": "Landing back on the meadow!",
 };
@@ -714,7 +714,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.emote.waveToast": "주변 사령관들에게 손을 흔들었습니다!",
   "theWorld.emote.cheerToast": "함대 사령관들에게 환호를 보냈습니다!",
   "theWorld.emote.jumpToast": "기분 좋게 깡충 뛰었습니다!",
-  "theWorld.overview.dragLinkHint": "WASD 비행 · Shift 별똥별 부스트 · 마을 클릭 급강하 · 마을→마을 드래그 합동",
+  "theWorld.overview.dragLinkHint": "WASD 비행 · Shift 부스트 · 땅/마을 클릭 유성 착지 · 마을→마을 드래그 합동",
   "theWorld.overview.dragLinkLabel": "{from} ↔ {to}",
   "theWorld.overview.dragLinkPrefill": "[합동: {from} ↔ {to}] ",
   "theWorld.overview.dragLinkToast": "합동 연락 준비 완료: @{from} & @{to}",
@@ -996,7 +996,7 @@ export const theWorldKo: Record<keyof typeof theWorldEn, string> = {
   "theWorld.guide.cinemaDesc": "관전 / 작업 동반자 모드",
   "theWorld.guide.gazetteDesc": "오늘의 초원 일보",
   // Sprint 14: 별똥별 자유 비행 & 유성 급강하 착지
-  "theWorld.flight.banner": "별빛 비행 · WASD 이동 · Shift 별똥별 부스트 · 마을 클릭 급강하 · 마을→마을 합동 · M 착지",
+  "theWorld.flight.banner": "별빛 비행 · WASD 이동 · Shift 부스트 · 땅/마을 클릭 유성 착지 · 마을→마을 합동 · M 착지",
   "theWorld.flight.diveToast": "{label}(으)로 별똥별 급강하!",
   "theWorld.flight.landToast": "초원으로 별똥별 착지!",
 };
