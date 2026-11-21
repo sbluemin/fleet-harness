@@ -7,7 +7,7 @@ import type { Translate } from "@fleet-console/i18n";
 import type { ObjectiveAttachment, Objective } from "../shared/types.js";
 import type { ObjectiveMessageKey } from "./i18n/index.js";
 import { openAttachmentWindow } from "./result-window.js";
-import { attachmentFileUrl } from "./attachment-file-url.js";
+import { attachmentFileUrl } from "./file-urls.js";
 
 /**
  * 브리핑 첨부 — 붙이는 입구는 브리핑 머리의 첨부 글리프 하나다(채팅 컴포저와 같은 그림). 형식·크기 안내는 그 글리프의 말풍선이 진다.
