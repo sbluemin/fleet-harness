@@ -189,6 +189,9 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
   /** 그 사령관의 실제 로드 id — 전역 먼저, 대체된 사령관 항목은 뺀다. 모든 적재 지점이 같은 계산을 쓴다. */
   const effectiveIds = (commodoreId: string): readonly string[] =>
     effectiveCommodorePlugins(plugins().listGlobal(), read(commodoreId).plugins ?? []).effective;
+  /** 플러그인 MCP 인증·키 범위 — 사령관 id 가 있으면 그 사령관의 실제 로드 목록, 없으면 전역 설치 목록이다. */
+  const authScope = (commodoreId: string | undefined): { readonly key: string; readonly ids: readonly string[] } =>
+    commodoreId ? { key: `c:${commodoreId}`, ids: effectiveIds(commodoreId) } : { key: "global", ids: plugins().listGlobal() };
 
   const imageQuery = z.object({ commodoreId: ids, messageId: z.string().refine(validCommodoreImageId), attachmentId: z.string().refine(validCommodoreImageId) }).strict();
   const image: RouteHandler = ({ req, res }) => {
@@ -356,19 +359,26 @@ export function createCommodoreRoutes(ctx: CommodoreRouteContext, store: Commodo
       hooks.pluginsChanged?.([pluginId]);
       return result;
     }, false) },
-    { name: "commodore/plugins/auth/status", method: "POST", summary: "Read whether this Commodore's plugin MCP servers need a sign-in or a key; checks through a Claude Code child that sends no model turn.", handler: json(pluginAuthStatusSchema, ({ commodoreId, refresh }) => pluginAuth().status(commodoreId, effectiveIds(commodoreId), refresh === true), false) },
-    { name: "commodore/plugins/auth/action", method: "POST", summary: "Start, cancel or clear Claude Code's MCP OAuth sign-in for one plugin server; start returns the address to open in a browser.", handler: json(pluginAuthActionSchema, async ({ commodoreId, pluginId, server, action }) => {
-      const selected = effectiveIds(commodoreId);
-      if (action === "start") return await pluginAuth().start(commodoreId, selected, pluginId, server);
-      return { view: action === "cancel" ? await pluginAuth().cancel(commodoreId, selected, pluginId, server) : await pluginAuth().clear(commodoreId, selected, pluginId, server) };
+    { name: "commodore/plugins/auth/status", method: "POST", summary: "Read whether global or Commodore plugin MCP servers need a sign-in or a key; checks through a Claude Code child that sends no model turn.", handler: json(pluginAuthStatusSchema, ({ commodoreId, refresh }) => {
+      const { key, ids } = authScope(commodoreId);
+      return pluginAuth().status(key, ids, refresh === true);
     }, false) },
-    { name: "commodore/plugins/auth/callback", method: "POST", summary: "Hand an OAuth callback address copied from another device's browser to the sign-in waiting on this computer.", handler: json(pluginAuthCallbackSchema, async ({ commodoreId, pluginId, server, callbackUrl }) => ({ view: await pluginAuth().callback(commodoreId, effectiveIds(commodoreId), pluginId, server, callbackUrl) }), false) },
+    { name: "commodore/plugins/auth/action", method: "POST", summary: "Start, cancel or clear Claude Code's MCP OAuth sign-in for one global or Commodore plugin server; start returns the address to open in a browser.", handler: json(pluginAuthActionSchema, async ({ commodoreId, pluginId, server, action }) => {
+      const { key, ids } = authScope(commodoreId);
+      if (action === "start") return await pluginAuth().start(key, ids, pluginId, server);
+      return { view: action === "cancel" ? await pluginAuth().cancel(key, ids, pluginId, server) : await pluginAuth().clear(key, ids, pluginId, server) };
+    }, false) },
+    { name: "commodore/plugins/auth/callback", method: "POST", summary: "Hand an OAuth callback address copied from another device's browser to the sign-in waiting on this computer.", handler: json(pluginAuthCallbackSchema, async ({ commodoreId, pluginId, server, callbackUrl }) => {
+      const { key, ids } = authScope(commodoreId);
+      return { view: await pluginAuth().callback(key, ids, pluginId, server, callbackUrl) };
+    }, false) },
     { name: "commodore/plugins/key", method: "POST", summary: "Store or clear a key a plugin's MCP declaration asks for with ${VAR}; the value is never returned.", handler: json(pluginKeySetSchema, async ({ commodoreId, pluginId, name, value }) => {
-      if (!effectiveIds(commodoreId).includes(pluginId)) throw new CommodoreStoreError("plugin_not_found");
+      const { key, ids } = authScope(commodoreId);
+      if (!ids.includes(pluginId)) throw new CommodoreStoreError("plugin_not_found");
       plugins().setKey(pluginId, name, value);
       pluginAuth().invalidate();
       hooks.pluginsChanged?.([pluginId]);
-      return { view: await pluginAuth().status(commodoreId, effectiveIds(commodoreId), true) };
+      return { view: await pluginAuth().status(key, ids, true) };
     }, false) },
     { name: "commodore/attachment", method: "GET", summary: "Read a preserved Commodore message image by Theater, message and attachment id.", handler: image },
     { name: "commodore/plugins/icon", method: "GET", summary: "Read a plugin's icon image from inside the plugin folder or its cached external GitHub owner avatar.", handler: pluginIcon },
