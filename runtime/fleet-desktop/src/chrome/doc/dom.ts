@@ -28,6 +28,14 @@ export function h<K extends keyof HTMLElementTagNameMap>(tag: K, props: Props = 
 
 export function clear(element: Element): void { element.textContent = ""; }
 
+export function appendTabFavicon(host: HTMLElement, favicon: string | null | undefined): void {
+  if (favicon) {
+    const image = h("img", { src: favicon, alt: "", draggable: false });
+    image.addEventListener("error", () => { clear(host); host.append(glyph(G.globe)); });
+    host.append(image);
+  } else host.append(glyph(G.globe));
+}
+
 /** 같은 키는 같은 요소를 다시 쓴다 — 탭 줄이 상태가 바뀔 때마다 아이콘을 다시 그려 깜빡이지 않게. */
 export function keyed<T, E extends HTMLElement>(parent: HTMLElement, items: readonly T[], key: (item: T) => string, make: (item: T) => E, update: (element: E, item: T) => void, cache: Map<string, E>): void {
   const wanted = new Set<string>();
