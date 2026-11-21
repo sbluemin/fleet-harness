@@ -14,7 +14,9 @@ export type WorldTimeMode = "realtime" | "day" | "sunset" | "night" | "cycle";
 
 export type WorldCameraMode = "follow" | "orbit";
 
-export type WorldDemoPopulateMode = "auto" | "on" | "off";
+export type WorldInteractionMode = "closed" | "radial" | "dialogue" | "inspect";
+
+export type WorldActorEmote = "greet" | "cheer" | "highfive";
 
 export type WorldChoreographyKind = "delegate" | "report" | "handoff" | "celebrate";
 
@@ -64,8 +66,10 @@ export interface WorldActorSpec {
   readonly objectiveId?: string | undefined;
   readonly rootObjectiveId?: string | undefined;
   readonly missions?: readonly WorldMissionItem[] | undefined;
+  readonly modelLabel?: string | undefined;
+  readonly theaterLabels?: readonly string[] | undefined;
+  readonly askCount?: number | undefined;
   readonly summaryLines: readonly string[];
-  readonly isDemo?: boolean | undefined;
 }
 
 export interface WorldScreenLabel {
@@ -98,5 +102,4 @@ export interface WorldSnapshot {
   readonly activeCount: number;
   readonly totalPopulation: number;
   readonly attentionCount: number;
-  readonly usingDemoActors: boolean;
 }

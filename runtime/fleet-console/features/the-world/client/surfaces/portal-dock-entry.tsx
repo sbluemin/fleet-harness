@@ -3,7 +3,7 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import type { TheWorldClientDeps } from "../deps.js";
 import { getWorldT } from "../i18n/index.js";
 import { useWorldSnapshot } from "../world-projection.js";
-import { enterTheWorld, useWorldStore } from "../world-store.js";
+import { enterTheWorld } from "../world-store.js";
 
 /**
  * 데스크톱 사이드바 하단 시스템 독(`ConversationSideBarBottom`)에 장착되는 「더 월드」 특수 진입 포털.
@@ -15,8 +15,7 @@ export function PortalDockEntry({
   readonly deps: TheWorldClientDeps;
   readonly locale?: ConsoleLocale | undefined;
 }) {
-  const store = useWorldStore();
-  const snapshot = useWorldSnapshot(deps, store.demoMode, store.extraDemoOutposts);
+  const snapshot = useWorldSnapshot(deps);
   if (deps.isMobileLayout()) return null;
   const t = getWorldT(locale ?? deps.commodore.language());
 

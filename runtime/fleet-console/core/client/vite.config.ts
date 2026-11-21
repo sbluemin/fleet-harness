@@ -7,6 +7,7 @@ import { defineConfig } from "vite";
 export default defineConfig({
   root: path.resolve(__dirname),
   base: "/console/",
+  assetsInclude: ["**/*.glb", "**/*.gltf"],
   plugins: [react()],
   resolve: {
     dedupe: ["react", "react-dom"],

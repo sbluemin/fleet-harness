@@ -1,19 +1,20 @@
 import { useSyncExternalStore } from "react";
 
 import type {
+  WorldActorEmote,
   WorldCameraMode,
   WorldChoreographyCommand,
   WorldChoreographyKind,
-  WorldDemoPopulateMode,
+  WorldInteractionMode,
   WorldLifecycleState,
   WorldTimeMode,
 } from "../shared/world-types.js";
 
 /**
- * 「더 월드」 전환 상태 머신 및 UI 선호 스토어.
+ * 「더 월드」 전환 상태 머신 및 UI 선호·상호작용 스토어.
  *
  * 진입(`closed → diving → open`)과 탈출(`open → escaping → closed`) 타이밍을 단일 원천으로 관리하며,
- * OS/콘솔 감속 모션(`reducedMotion`)이 켜져 있으면 비행 시퀀스 없이 즉시 전환한다.
+ * 심즈/MMORPG 스타일 방사형 상호작용 메뉴(`radial`) · 하단 RPG 대화창(`dialogue`) · 상태 살피기(`inspect`) 흐름을 소유한다.
  */
 
 const DIVE_DURATION_MS = 1_120;
@@ -24,12 +25,12 @@ export interface WorldStoreSnapshot {
   readonly lifecycle: WorldLifecycleState;
   readonly selectedActorId: string | null;
   readonly nearActorId: string | null;
-  readonly drawerOpen: boolean;
+  readonly interactionMode: WorldInteractionMode;
   readonly timeMode: WorldTimeMode;
   readonly cameraMode: WorldCameraMode;
-  readonly demoMode: WorldDemoPopulateMode;
-  readonly extraDemoOutposts: number;
   readonly choreography: WorldChoreographyCommand | null;
+  readonly emoteCommand: { readonly nonce: number; readonly actorId: string; readonly emote: WorldActorEmote } | null;
+  readonly approachRequest: { readonly nonce: number; readonly actorId: string } | null;
   readonly teleportRequest: { readonly nonce: number; readonly x: number; readonly z: number } | null;
   readonly localSpeeches: Readonly<Record<string, { readonly text: string; readonly nonce: number }>>;
 }
@@ -38,12 +39,12 @@ let state: WorldStoreSnapshot = {
   lifecycle: "closed",
   selectedActorId: null,
   nearActorId: null,
-  drawerOpen: false,
+  interactionMode: "closed",
   timeMode: "day",
   cameraMode: "follow",
-  demoMode: "auto",
-  extraDemoOutposts: 0,
   choreography: null,
+  emoteCommand: null,
+  approachRequest: null,
   teleportRequest: null,
   localSpeeches: {},
 };
@@ -85,8 +86,8 @@ export function enterTheWorld(options?: { readonly reducedMotion?: boolean; read
   state = {
     ...state,
     lifecycle: "diving",
-    drawerOpen: false,
-    ...(options?.initialActorId !== undefined ? { selectedActorId: options.initialActorId } : {}),
+    interactionMode: "closed",
+    selectedActorId: null,
   };
   emit();
   if (typeof window !== "undefined") {
@@ -106,31 +107,54 @@ export function exitTheWorld(options?: { readonly reducedMotion?: boolean; reado
   state = {
     ...state,
     lifecycle: "escaping",
-    drawerOpen: false,
+    interactionMode: "closed",
+    selectedActorId: null,
   };
   emit();
   if (typeof window !== "undefined") {
     transitionTimer = window.setTimeout(() => {
       transitionTimer = null;
-      state = { ...state, lifecycle: "closed", nearActorId: null };
+      state = { ...state, lifecycle: "closed", nearActorId: null, selectedActorId: null, interactionMode: "closed" };
       emit();
       options?.onExited?.();
     }, duration);
   }
 }
 
-export function selectWorldActor(actorId: string | null, openDrawer = true): void {
+export function openActorRadialMenu(actorId: string): void {
   state = {
     ...state,
     selectedActorId: actorId,
-    drawerOpen: actorId !== null && openDrawer,
+    interactionMode: "radial",
   };
   emit();
 }
 
-export function closeWorldDrawer(): void {
-  if (!state.drawerOpen) return;
-  state = { ...state, drawerOpen: false };
+export function openActorDialogue(actorId: string): void {
+  state = {
+    ...state,
+    selectedActorId: actorId,
+    interactionMode: "dialogue",
+  };
+  emit();
+}
+
+export function openActorInspect(actorId: string): void {
+  state = {
+    ...state,
+    selectedActorId: actorId,
+    interactionMode: "inspect",
+  };
+  emit();
+}
+
+export function closeActorInteraction(): void {
+  if (state.interactionMode === "closed" && state.selectedActorId === null) return;
+  state = {
+    ...state,
+    interactionMode: "closed",
+    selectedActorId: null,
+  };
   emit();
 }
 
@@ -152,23 +176,29 @@ export function setWorldCameraMode(cameraMode: WorldCameraMode): void {
   emit();
 }
 
-export function cycleWorldDemoMode(): void {
-  const next: WorldDemoPopulateMode = state.demoMode === "auto" ? "on" : state.demoMode === "on" ? "off" : "auto";
-  state = { ...state, demoMode: next };
-  emit();
-}
-
-export function spawnExtraDemoOutpost(): void {
-  if (state.extraDemoOutposts >= 3) return;
-  state = { ...state, extraDemoOutposts: state.extraDemoOutposts + 1 };
-  emit();
-}
-
 export function triggerWorldChoreography(kind: WorldChoreographyKind, outpostId?: string): void {
   nonceCounter += 1;
   state = {
     ...state,
     choreography: { nonce: nonceCounter, kind, outpostId },
+  };
+  emit();
+}
+
+export function requestActorEmote(actorId: string, emote: WorldActorEmote): void {
+  nonceCounter += 1;
+  state = {
+    ...state,
+    emoteCommand: { nonce: nonceCounter, actorId, emote },
+  };
+  emit();
+}
+
+export function requestApproachActor(actorId: string): void {
+  nonceCounter += 1;
+  state = {
+    ...state,
+    approachRequest: { nonce: nonceCounter, actorId },
   };
   emit();
 }

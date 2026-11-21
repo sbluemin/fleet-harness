@@ -120,21 +120,32 @@ function createFeatureRegistry(plugins: readonly ClientFeatureDescriptor[]): Fea
     isReducedMotion: () => getGlobalSettingsStoreState().state?.reduceMotion === true,
     isLowerUnfocusedFrameRate: () => getGlobalSettingsStoreState().state?.lowerUnfocusedFrameRate !== false,
     getAvatarFuzz: currentAvatarFuzz,
-    openCommodoreInConsole: (commodoreId) => {
-      commodore.host.open(commodoreId);
+    openCommodoreInConsole: (commodoreId, options) => {
+      commodore.host.open(commodoreId, options);
     },
     openObjectiveInConsole: (commodoreId, objectiveId) => {
       openCommanderConversation(commodoreId, objectiveId);
     },
     sendMessageToCommodore: async (commodoreId, text) => {
-      if (!commodore.plugin.messageMentionTarget) return false;
-      await commodore.plugin.messageMentionTarget(`commodore:${commodoreId}`, text);
-      return true;
+      if (!commodore.plugin.messageMentionTarget) return { ok: false, error: "unavailable" };
+      try {
+        if (commodore.host.read(commodoreId).view === null) {
+          await commodore.host.load(commodoreId);
+        }
+        await commodore.plugin.messageMentionTarget(`commodore:${commodoreId}`, text);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     },
     sendMessageToObjective: async (objectiveId, text) => {
-      if (!consoleExecution.messageObjective) return false;
-      await consoleExecution.messageObjective(objectiveId, text);
-      return true;
+      if (!consoleExecution.messageObjective) return { ok: false, error: "unavailable" };
+      try {
+        await consoleExecution.messageObjective(objectiveId, text);
+        return { ok: true };
+      } catch (err) {
+        return { ok: false, error: err instanceof Error ? err.message : String(err) };
+      }
     },
   });
   const providers: readonly ClientFeatureDescriptor[] = [...baseProviders, theWorld.descriptor];

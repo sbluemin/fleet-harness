@@ -7,28 +7,38 @@ import { createWorldRuntime, type WorldRuntimeHandle } from "../engine/world-run
 import { getWorldT } from "../i18n/index.js";
 import { useWorldSnapshot } from "../world-projection.js";
 import {
-  closeWorldDrawer,
+  closeActorInteraction,
   exitTheWorld,
   getWorldStoreSnapshot,
-  selectWorldActor,
+  openActorRadialMenu,
   setNearWorldActor,
   useWorldStore,
 } from "../world-store.js";
+import { WorldDialogueBox } from "./world-dialogue-box.js";
 import { WorldHud } from "./world-hud.js";
-import { WorldTacticalSheet } from "./world-tactical-sheet.js";
+import { WorldRadialMenu } from "./world-radial-menu.js";
 
 const DEFAULT_HINT =
-  "🌿 WASD/방향키 초원 이동(조망 모드에서는 시점 패닝) · Shift 질주 · Space 점프 · 마우스 드래그/휠 360° 회전/줌 · E 또는 클릭으로 플릿 제어";
+  "🌿 WASD/방향키 이동 · Shift 질주 · Space 점프 · 드래그/휠 회전·줌 · E 또는 클릭으로 상호작용 휠 열기";
 
 export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps }) {
   const store = useWorldStore();
-  const snapshot = useWorldSnapshot(deps, store.demoMode, store.extraDemoOutposts);
+  const snapshot = useWorldSnapshot(deps);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const runtimeRef = useRef<WorldRuntimeHandle | null>(null);
 
   const [labels, setLabels] = useState<readonly WorldScreenLabel[]>([]);
   const [playerLabel, setPlayerLabel] = useState<WorldPlayerScreenLabel | null>(null);
   const [statusBanner, setStatusBanner] = useState(DEFAULT_HINT);
+
+  // 월드에 표시되는 사령관들의 모델·상태·보드 준비 정보를 미리 불러와 상호작용·메시지 전송이 즉시 동작하게 한다.
+  useEffect(() => {
+    for (const actor of snapshot.actors) {
+      if (actor.role === "commodore" && actor.commodoreId && deps.commodore.read(actor.commodoreId).view === null) {
+        void deps.commodore.load(actor.commodoreId);
+      }
+    }
+  }, [deps, snapshot.actors]);
 
   // Three.js 엔진 초기화 (마운트 시 1회)
   useEffect(() => {
@@ -61,22 +71,43 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     runtimeRef.current?.applySnapshot(snapshot);
   }, [snapshot]);
 
-  // 전환/시간/카메라/선택 상태 동기화
+  // 전환/시간/카메라/상호작용 상태 동기화
   useEffect(() => {
     runtimeRef.current?.setMode({
       lifecycle: store.lifecycle,
       timeMode: store.timeMode,
       cameraMode: store.cameraMode,
+      interactionMode: store.interactionMode,
       selectedActorId: store.selectedActorId,
     });
-  }, [store.lifecycle, store.timeMode, store.cameraMode, store.selectedActorId]);
+  }, [store.lifecycle, store.timeMode, store.cameraMode, store.interactionMode, store.selectedActorId]);
 
-  // 협동 시뮬레이션 명령 전달
+  // 협동 연출 명령 전달
   useEffect(() => {
-    if (store.choreography) {
-      runtimeRef.current?.runChoreography(store.choreography);
+    if (!store.choreography) return;
+    const ran = runtimeRef.current?.runChoreography(store.choreography);
+    if (ran === false) {
+      setStatusBanner("ℹ️ 이 연출을 재생하려면 진행 중인 Objective 캠프 또는 대상 구성원이 필요합니다.");
     }
   }, [store.choreography]);
+
+  // 심즈 스타일 감정표현/인사 이모트 전달
+  const lastEmoteNonceRef = useRef(0);
+  useEffect(() => {
+    const cmd = store.emoteCommand;
+    if (!cmd || cmd.nonce === lastEmoteNonceRef.current) return;
+    lastEmoteNonceRef.current = cmd.nonce;
+    runtimeRef.current?.playEmote(cmd.actorId, cmd.emote);
+  }, [store.emoteCommand]);
+
+  // 대상에게 다가가기 요청 전달
+  const lastApproachNonceRef = useRef(0);
+  useEffect(() => {
+    const req = store.approachRequest;
+    if (!req || req.nonce === lastApproachNonceRef.current) return;
+    lastApproachNonceRef.current = req.nonce;
+    runtimeRef.current?.approachActor(req.actorId);
+  }, [store.approachRequest]);
 
   // 텔레포트 요청 전달
   useEffect(() => {
@@ -95,52 +126,67 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
     }
   }, [store.localSpeeches]);
 
-  // 키보드 E(근접 대화) · Escape(드로어 닫기 → 월드 탈출 + 콘솔 맥락 복귀)
+  // 선택 대상이 스냅샷에서 사라지면 상호작용 상태를 정리한다.
+  useEffect(() => {
+    if (store.selectedActorId && !snapshot.actors.some((a) => a.id === store.selectedActorId)) {
+      closeActorInteraction();
+    }
+  }, [snapshot.actors, store.selectedActorId]);
+
+  // 키보드 E(방사형 상호작용 메뉴 토글) · Escape(상호작용 닫기 → 월드 탈출)
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement) {
         const tag = event.target.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || event.target.isContentEditable) return;
+        if (tag === "INPUT" || tag === "TEXTAREA" || event.target.isContentEditable) {
+          if (event.key === "Escape") {
+            event.preventDefault();
+            closeActorInteraction();
+          }
+          return;
+        }
       }
       const snap = getWorldStoreSnapshot();
       if (snap.lifecycle !== "open") return;
 
-      if (event.code === "KeyE" && snap.nearActorId) {
-        event.preventDefault();
-        selectWorldActor(snap.nearActorId, true);
-        return;
+      if (event.code === "KeyE") {
+        if (snap.interactionMode === "radial") {
+          event.preventDefault();
+          closeActorInteraction();
+          return;
+        }
+        if (snap.interactionMode === "closed" && snap.nearActorId) {
+          event.preventDefault();
+          openActorRadialMenu(snap.nearActorId);
+          return;
+        }
       }
 
       if (event.key === "Escape") {
         // 다른 전역 모달(승인 목록·검색 팔레트 등)이 열려 있으면 양보한다.
         if (document.querySelector('[aria-modal="true"]:not([hidden])')) return;
         event.preventDefault();
-        if (snap.drawerOpen) {
-          closeWorldDrawer();
+        if (snap.interactionMode !== "closed") {
+          closeActorInteraction();
           return;
         }
-        const selected = snapshot.actors.find((a) => a.id === snap.selectedActorId);
-        exitTheWorld({
-          reducedMotion: deps.isReducedMotion(),
-          onExited: () => {
-            if (!selected || selected.isDemo) return;
-            if (selected.role === "commodore" && selected.commodoreId) {
-              deps.openCommodoreInConsole(selected.commodoreId);
-            } else if (selected.commodoreId && (selected.rootObjectiveId ?? selected.objectiveId)) {
-              deps.openObjectiveInConsole(selected.commodoreId, (selected.rootObjectiveId ?? selected.objectiveId)!);
-            }
-          },
-        });
+        exitTheWorld({ reducedMotion: deps.isReducedMotion() });
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [deps, snapshot.actors]);
+  }, [deps]);
 
   // 캔버스 클릭 피킹 (드래그 회전과 구분)
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
   const selectedActor = snapshot.actors.find((a) => a.id === store.selectedActorId) ?? null;
-  const t = getWorldT(deps.commodore.language());
+  const selectedAnchorLabel = selectedActor
+    ? (labels.find((l) => l.actorId === selectedActor.id) ?? null)
+    : null;
+  const locale = deps.commodore.language();
+  const t = getWorldT(locale);
+  const bottomDialogueOpen =
+    selectedActor !== null && (store.interactionMode === "dialogue" || store.interactionMode === "inspect");
 
   return (
     <div
@@ -161,7 +207,11 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
           if (!start || store.lifecycle !== "open") return;
           if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > 4) return;
           const hitId = runtimeRef.current?.pickActorAt(e.clientX, e.clientY) ?? null;
-          if (hitId) selectWorldActor(hitId, true);
+          if (hitId) {
+            openActorRadialMenu(hitId);
+          } else if (store.interactionMode !== "closed") {
+            closeActorInteraction();
+          }
         }}
       />
 
@@ -170,11 +220,12 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         aria-hidden="true"
       />
 
-      <div className="the-world-labels" aria-hidden="true">
-        {playerLabel ? (
+      <div className="the-world-labels">
+        {playerLabel && store.interactionMode === "closed" ? (
           <div
             className="the-world-actor-anchor"
             style={{ left: `${playerLabel.x.toFixed(1)}px`, top: `${playerLabel.y.toFixed(1)}px` }}
+            aria-hidden="true"
           >
             <span className="the-world-nametag is-player">{playerLabel.label}</span>
           </div>
@@ -187,21 +238,39 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
             && !lbl.isNearPlayer
             && !lbl.needsAttention
             && !lbl.speech;
+          const hideForRadial = store.interactionMode === "radial" && lbl.isSelected;
+          const isBackground = store.interactionMode === "radial" && !lbl.isSelected;
+          if (hideForRadial) return null;
           return (
             <div
               key={lbl.actorId}
-              className={`the-world-actor-anchor${isDistant ? " is-distant" : ""}`}
+              className={`the-world-actor-anchor${isDistant ? " is-distant" : ""}${isBackground ? " is-background" : ""}`}
               style={{ left: `${lbl.x.toFixed(1)}px`, top: `${lbl.y.toFixed(1)}px` }}
             >
               {lbl.speech ? <span className="the-world-speech">{lbl.speech}</span> : null}
-              {lbl.isNearPlayer ? <span className="the-world-interact-prompt">[E] 대화 · 플릿 제어</span> : null}
-              <span className={`the-world-nametag${lbl.isSelected ? " is-selected" : ""}`}>
+              {lbl.isNearPlayer && store.interactionMode === "closed" ? (
+                <button
+                  type="button"
+                  className="the-world-interact-prompt"
+                  aria-label={t("theWorld.actor.interactAria", { name: lbl.name })}
+                  onClick={() => openActorRadialMenu(lbl.actorId)}
+                >
+                  <span className="the-world-keycap">E</span>
+                  <span>상호작용</span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                className={`the-world-nametag${lbl.isSelected ? " is-selected" : ""}`}
+                aria-label={t("theWorld.actor.interactAria", { name: lbl.name })}
+                onClick={() => openActorRadialMenu(lbl.actorId)}
+              >
                 <span className="the-world-tone-dot" data-tone={lbl.tone} />
                 <span>
                   {lbl.quaker ? "🦜 " : lbl.role === "commodore" ? "★ " : lbl.role === "commander" ? "📡 " : ""}
                   {lbl.name}
                 </span>
-              </span>
+              </button>
             </div>
           );
         })}
@@ -211,12 +280,28 @@ export default function WorldStage({ deps }: { readonly deps: TheWorldClientDeps
         <>
           <WorldHud
             snapshot={snapshot}
+            locale={locale}
             reducedMotion={deps.isReducedMotion()}
             statusBanner={statusBanner}
+            hideBottom={bottomDialogueOpen}
             onStatusBanner={setStatusBanner}
           />
-          {store.drawerOpen && selectedActor ? (
-            <WorldTacticalSheet actor={selectedActor} deps={deps} onStatusBanner={setStatusBanner} />
+          {store.interactionMode === "radial" && selectedActor ? (
+            <WorldRadialMenu
+              actor={selectedActor}
+              anchorLabel={selectedAnchorLabel}
+              isNear={store.nearActorId === selectedActor.id}
+              deps={deps}
+              onStatusBanner={setStatusBanner}
+            />
+          ) : null}
+          {bottomDialogueOpen && selectedActor ? (
+            <WorldDialogueBox
+              actor={selectedActor}
+              mode={store.interactionMode === "inspect" ? "inspect" : "dialogue"}
+              deps={deps}
+              onStatusBanner={setStatusBanner}
+            />
           ) : null}
         </>
       ) : null}

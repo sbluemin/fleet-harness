@@ -5,6 +5,7 @@ import {
   Color,
   ConeGeometry,
   CylinderGeometry,
+  DodecahedronGeometry,
   DoubleSide,
   DynamicDrawUsage,
   GLSL3,
@@ -27,6 +28,8 @@ import {
 
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import type { WorldZoneSpec } from "../../shared/world-types.js";
+import { createMeadowTexturePack } from "./meadow-textures.js";
+import { createWorldAssetRegistry, type WorldModelSlot } from "./world-asset-registry.js";
 
 /**
  * 넓게 펼쳐진 초원 마을(Meadow Village) 3D 지형 · 시냇물/연못 · 하프팀버 건축물 · 고디테일 공방 오브젝트 ·
@@ -111,7 +114,7 @@ export interface MeadowSceneHandle {
   getGroundHeight(x: number, z: number): number;
   isWalkable(x: number, z: number): boolean;
   resolveMovement(curX: number, curZ: number, nextX: number, nextZ: number, actorRadius?: number): { x: number; z: number };
-  update(elapsed: number, nightFactor: number, sunDir: Vector3): void;
+  update(dt: number, elapsed: number, nightFactor: number, sunDir: Vector3): void;
   dispose(): void;
 }
 
@@ -139,36 +142,185 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   const dynamicWorldGroup = new Group();
   root.add(dynamicWorldGroup);
 
-  // 공통 PBR 머티리얼 팔레트
-  const matPlaster = new MeshStandardMaterial({ color: 0xf7efe1, roughness: 0.84 });
-  const matPlasterWarm = new MeshStandardMaterial({ color: 0xf2e4cc, roughness: 0.86 });
-  const matTimber = new MeshStandardMaterial({ color: 0x5c3a24, roughness: 0.88 });
-  const matWood = new MeshStandardMaterial({ color: 0x8f5b38, roughness: 0.84 });
-  const matWoodLight = new MeshStandardMaterial({ color: 0xc89d6c, roughness: 0.82 });
-  const matStone = new MeshStandardMaterial({ color: 0xb7c2cf, roughness: 0.86 });
-  const matStoneDark = new MeshStandardMaterial({ color: 0x8492a2, roughness: 0.88 });
-  const matIron = new MeshStandardMaterial({ color: 0x2f3b4c, roughness: 0.5, metalness: 0.42 });
-  const matBrass = new MeshStandardMaterial({ color: 0xeab308, roughness: 0.36, metalness: 0.62 });
-  const matCanvas = new MeshStandardMaterial({ color: 0xfcf8ee, roughness: 0.78, side: DoubleSide });
-  const matParchment = new MeshStandardMaterial({ color: 0xf3e5c0, roughness: 0.88 });
+  const textures = createMeadowTexturePack();
+  const assetRegistry = createWorldAssetRegistry();
+  const customBladePivots: Object3D[] = [];
 
-  const matLeafBright = new MeshStandardMaterial({ color: 0x58c45a, roughness: 0.86 });
-  const matLeafRich = new MeshStandardMaterial({ color: 0x41a64c, roughness: 0.88 });
-  const matLeafPine = new MeshStandardMaterial({ color: 0x2f8548, roughness: 0.88 });
-  const matLeafBlossom = new MeshStandardMaterial({ color: 0xf9a8c9, roughness: 0.84 });
-  const matBush = new MeshStandardMaterial({ color: 0x4db556, roughness: 0.86 });
+  // 공통 PBR 머티리얼 팔레트 (절차적 Albedo + Bump 텍스처로 회화풍 디오라마 표면 질감 부여)
+  const matPlaster = new MeshStandardMaterial({
+    color: 0xfbf4e8,
+    map: textures.plasterMap,
+    bumpMap: textures.plasterBump,
+    bumpScale: 0.045,
+    roughness: 0.86,
+  });
+  const matPlasterWarm = new MeshStandardMaterial({
+    color: 0xf4e4c9,
+    map: textures.plasterMap,
+    bumpMap: textures.plasterBump,
+    bumpScale: 0.045,
+    roughness: 0.88,
+  });
+  const matTimber = new MeshStandardMaterial({
+    color: 0x6b452a,
+    map: textures.woodMap,
+    bumpMap: textures.woodBump,
+    bumpScale: 0.055,
+    roughness: 0.86,
+  });
+  const matWood = new MeshStandardMaterial({
+    color: 0xa16a43,
+    map: textures.woodMap,
+    bumpMap: textures.woodBump,
+    bumpScale: 0.05,
+    roughness: 0.82,
+  });
+  const matWoodLight = new MeshStandardMaterial({
+    color: 0xd9af7e,
+    map: textures.woodMap,
+    bumpMap: textures.woodBump,
+    bumpScale: 0.042,
+    roughness: 0.80,
+  });
+  const matBark = new MeshStandardMaterial({
+    color: 0x734d33,
+    map: textures.barkMap,
+    bumpMap: textures.barkBump,
+    bumpScale: 0.09,
+    roughness: 0.92,
+  });
+  const matStone = new MeshStandardMaterial({
+    color: 0xc2ccd7,
+    map: textures.stoneMap,
+    bumpMap: textures.stoneBump,
+    bumpScale: 0.075,
+    roughness: 0.86,
+  });
+  const matStoneDark = new MeshStandardMaterial({
+    color: 0x8e9cab,
+    map: textures.stoneMap,
+    bumpMap: textures.stoneBump,
+    bumpScale: 0.08,
+    roughness: 0.88,
+  });
+  const matIron = new MeshStandardMaterial({ color: 0x2f3b4c, roughness: 0.44, metalness: 0.56 });
+  const matBrass = new MeshStandardMaterial({ color: 0xeab308, roughness: 0.30, metalness: 0.72 });
+  const matCanvas = new MeshStandardMaterial({
+    color: 0xfdf9f0,
+    map: textures.plasterMap,
+    roughness: 0.80,
+    side: DoubleSide,
+  });
+  const matParchment = new MeshStandardMaterial({ color: 0xf3e5c0, map: textures.plasterMap, roughness: 0.88 });
+
+  const matLeafSun = new MeshStandardMaterial({
+    color: 0x79d464,
+    map: textures.foliageMap,
+    bumpMap: textures.foliageBump,
+    bumpScale: 0.075,
+    roughness: 0.82,
+  });
+  const matLeafBright = new MeshStandardMaterial({
+    color: 0x5cc458,
+    map: textures.foliageMap,
+    bumpMap: textures.foliageBump,
+    bumpScale: 0.075,
+    roughness: 0.85,
+  });
+  const matLeafRich = new MeshStandardMaterial({
+    color: 0x3e9e4c,
+    map: textures.foliageMap,
+    bumpMap: textures.foliageBump,
+    bumpScale: 0.075,
+    roughness: 0.88,
+  });
+  const matLeafPine = new MeshStandardMaterial({
+    color: 0x2f854b,
+    map: textures.foliageMap,
+    bumpMap: textures.foliageBump,
+    bumpScale: 0.08,
+    roughness: 0.88,
+  });
+  const matLeafPineTip = new MeshStandardMaterial({
+    color: 0x45a05a,
+    map: textures.foliageMap,
+    bumpMap: textures.foliageBump,
+    bumpScale: 0.075,
+    roughness: 0.84,
+  });
+  const matLeafBlossom = new MeshStandardMaterial({
+    color: 0xfba9cd,
+    map: textures.foliageMap,
+    bumpMap: textures.foliageBump,
+    bumpScale: 0.065,
+    roughness: 0.82,
+  });
+  const matLeafBlossomLight = new MeshStandardMaterial({
+    color: 0xffcce2,
+    map: textures.foliageMap,
+    bumpMap: textures.foliageBump,
+    bumpScale: 0.06,
+    roughness: 0.80,
+  });
+  const matBush = new MeshStandardMaterial({
+    color: 0x4db556,
+    map: textures.foliageMap,
+    bumpMap: textures.foliageBump,
+    bumpScale: 0.07,
+    roughness: 0.86,
+  });
+
+  const roofMaterialCache = new Map<number, MeshStandardMaterial>();
+  function getRoofMaterial(roofHex: number): MeshStandardMaterial {
+    const existing = roofMaterialCache.get(roofHex);
+    if (existing) return existing;
+    const mat = new MeshStandardMaterial({
+      color: roofHex,
+      map: textures.roofMap,
+      bumpMap: textures.roofBump,
+      bumpScale: 0.068,
+      roughness: 0.74,
+    });
+    roofMaterialCache.set(roofHex, mat);
+    return mat;
+  }
+
+  const contactShadowGeo = new PlaneGeometry(2, 2);
+  contactShadowGeo.rotateX(-Math.PI * 0.5);
+  const contactShadowMat = new MeshBasicMaterial({
+    map: textures.contactShadowMap,
+    transparent: true,
+    depthWrite: false,
+    opacity: 0.78,
+  });
+
+  /** 건물·나무·바위 밑동에 부드러운 접지 AO 그림자 디스크를 깔아 지면에 단단히 밀착시킨다. */
+  function addContactShadow(parent: Group, x: number, z: number, radiusX: number, radiusZ = radiusX, opacity = 1): void {
+    const gy = getTerrainBaseHeight(x, z);
+    if (gy < 0.02) return;
+    const disc = new Mesh(
+      contactShadowGeo,
+      opacity < 0.99 ? contactShadowMat.clone() : contactShadowMat,
+    );
+    if (opacity < 0.99) (disc.material as MeshBasicMaterial).opacity = 0.78 * opacity;
+    disc.position.set(x, gy + 0.03, z);
+    disc.scale.set(radiusX, 1, radiusZ);
+    disc.renderOrder = 1;
+    parent.add(disc);
+  }
 
   const matWindow = new MeshStandardMaterial({
     color: 0xfff3ba,
     emissive: 0xffb830,
     emissiveIntensity: 0.14,
-    roughness: 0.35,
+    roughness: 0.26,
+    metalness: 0.12,
   });
   const matLanternGlass = new MeshStandardMaterial({
     color: 0xfff5c0,
     emissive: 0xffc43d,
     emissiveIntensity: 0.22,
-    roughness: 0.28,
+    roughness: 0.24,
   });
   const matScreen = new MeshStandardMaterial({
     color: 0x67e8f9,
@@ -189,7 +341,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     roughness: 0.2,
   });
 
-  // 1. 초원 지형 메쉬 (220m x 220m 연속 지형 + 정점 컬러 포장도로/언덕/원경 산맥)
+  // 1. 초원 지형 메쉬 (220m x 220m 연속 지형 + 정점 컬러 포장도로/언덕/원경 산맥 + 절차적 디테일/범프 맵)
   const TERRAIN_SIZE = 220;
   const TERRAIN_SEG = 148;
   const terrainGeo = new PlaneGeometry(TERRAIN_SIZE, TERRAIN_SIZE, TERRAIN_SEG, TERRAIN_SEG);
@@ -198,8 +350,11 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   terrainGeo.setAttribute("color", terrainColorAttr);
   const terrainMat = new MeshStandardMaterial({
     vertexColors: true,
-    roughness: 0.92,
-    metalness: 0.01,
+    map: textures.terrainMap,
+    bumpMap: textures.terrainBump,
+    bumpScale: 0.085,
+    roughness: 0.90,
+    metalness: 0.02,
   });
   const terrainMesh = new Mesh(terrainGeo, terrainMat);
   terrainMesh.receiveShadow = true;
@@ -292,68 +447,84 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   // 캠프 깃발 애니메이션 목록
   const bannerMeshes: { mesh: Mesh; baseRotY: number; phase: number }[] = [];
 
-  // 5. GPU 바람 스웨이 인스탄싱 풀잎(2,800개 — 상향 법선 3엽 풀포기) & 줄기 들꽃(520개) & 야간 반딧불이(56개)
-  const MAX_GRASS = 2800;
-  const MAX_FLOWERS = 520;
+  // 5. GPU 바람 스웨이 인스탄싱 풀잎(6,800개 — 상향 법선 5엽 부채꼴 풀포기 + 뿌리→끝 그라데이션) & 줄기 들꽃(900개) & 야간 반딧불이(56개)
+  const MAX_GRASS = 6800;
+  const MAX_FLOWERS = 900;
   const MAX_FIREFLIES = 56;
   const windTimeUniform = { value: 0 };
 
   function createGrassTuftGeometry(): BufferGeometry {
-    // 3장의 가늘고 부드러운 풀잎 리본이 부채꼴로 퍼진 한 포기 지오메트리.
-    // 법선을 (0, 1, 0) 상향으로 고정해 지면 잔디와 동일한 조명을 받아 주간 음영 줄무늬와 야간 검은 삼각형을 없앤다!
+    // 5장의 가늘고 풍성한 풀잎 리본이 부채꼴로 퍼진 한 포기 지오메트리.
+    // 법선을 (0, 1, 0) 상향으로 고정하고, 뿌리→잎끝 높이 비율을 aBladeH에 담아 자연스러운 햇살 그라데이션을 준다.
     const positions: number[] = [];
     const normals: number[] = [];
+    const heights: number[] = [];
     const blades: readonly [number, number, number, number][] = [
-      [-0.08, 0.30, -0.05, 0.036],
-      [0.01, 0.36, 0.02, 0.038],
-      [0.09, 0.28, -0.04, 0.034],
+      [-0.12, 0.28, -0.06, 0.036],
+      [-0.04, 0.37, 0.05, 0.038],
+      [0.02, 0.42, -0.02, 0.040],
+      [0.09, 0.34, 0.06, 0.036],
+      [0.14, 0.26, -0.05, 0.032],
     ];
     for (const [tipX, tipY, tipZ, halfW] of blades) {
-      const baseX = tipX * 0.22;
-      const baseZ = tipZ * 0.22;
+      const baseX = tipX * 0.25;
+      const baseZ = tipZ * 0.25;
       positions.push(
         baseX - halfW, 0, baseZ,
         baseX + halfW, 0, baseZ,
         tipX, tipY, tipZ,
       );
       normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0);
+      heights.push(0, 0, 1);
     }
     const geo = new BufferGeometry();
     geo.setAttribute("position", new BufferAttribute(new Float32Array(positions), 3));
     geo.setAttribute("normal", new BufferAttribute(new Float32Array(normals), 3));
+    geo.setAttribute("aBladeH", new BufferAttribute(new Float32Array(heights), 1));
     return geo;
   }
 
   const grassBladeGeo = createGrassTuftGeometry();
   const grassMat = new MeshStandardMaterial({
     color: 0xffffff,
-    roughness: 0.90,
+    roughness: 0.86,
     metalness: 0.0,
     side: DoubleSide,
   });
   grassMat.onBeforeCompile = (shader) => {
     shader.uniforms["uWindTime"] = windTimeUniform;
-    shader.vertexShader = `uniform float uWindTime;\n` + shader.vertexShader.replace(
+    shader.vertexShader = `uniform float uWindTime;\nattribute float aBladeH;\nvarying float vBladeH;\n` + shader.vertexShader.replace(
       "#include <begin_vertex>",
       /* glsl */ `
       #include <begin_vertex>
+      vBladeH = aBladeH;
       #ifdef USE_INSTANCING
         vec3 instPos = vec3(instanceMatrix[3][0], instanceMatrix[3][1], instanceMatrix[3][2]);
-        float sway = sin(uWindTime * 2.2 + instPos.x * 0.38 + instPos.z * 0.29) * 0.12
-                   + cos(uWindTime * 3.4 + instPos.x * 0.7) * 0.04;
-        float bend = clamp(position.y / 0.36, 0.0, 1.0);
+        float sway = sin(uWindTime * 2.1 + instPos.x * 0.34 + instPos.z * 0.28) * 0.14
+                   + cos(uWindTime * 3.3 + instPos.x * 0.65) * 0.045;
+        float bend = clamp(position.y / 0.42, 0.0, 1.0);
         transformed.x += sway * bend * bend;
         transformed.z += sway * 0.55 * bend * bend;
       #endif
       `,
     );
-    shader.fragmentShader = shader.fragmentShader.replace(
-      "#include <normal_fragment_begin>",
-      /* glsl */ `
-      #include <normal_fragment_begin>
-      normal = normalize(vNormal);
-      `,
-    );
+    shader.fragmentShader = `varying float vBladeH;\n` + shader.fragmentShader
+      .replace(
+        "#include <color_fragment>",
+        /* glsl */ `
+        #include <color_fragment>
+        // 뿌리는 지면에 녹아드는 깊은 초록, 잎 끝은 햇살을 머금은 연두빛으로 부드럽게 그라데이션
+        vec3 bladeGrad = mix(vec3(0.76, 0.84, 0.72), vec3(1.14, 1.18, 0.94), smoothstep(0.0, 1.0, vBladeH));
+        diffuseColor.rgb *= bladeGrad;
+        `,
+      )
+      .replace(
+        "#include <normal_fragment_begin>",
+        /* glsl */ `
+        #include <normal_fragment_begin>
+        normal = normalize(vNormal);
+        `,
+      );
   };
   const grassInstanced = new InstancedMesh(grassBladeGeo, grassMat, MAX_GRASS);
   grassInstanced.receiveShadow = true;
@@ -476,11 +647,14 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     };
   });
 
-  // 다리(시냇물 횡단 아치교) 좌표: 광장(0,0) → 사령관 정원 언덕(14.5, 14.5) 연결선 위
-  const BRIDGE_X = 7.8;
+  // 다리(시냇물 횡단 아치교) 좌표: 광장(0,0) → 사령관 정원 언덕(12.5, 19.6) 연결선 위
+  const BRIDGE_X = 8.6;
   const BRIDGE_BROOK = brookProfile(BRIDGE_X);
   const BRIDGE_Z = BRIDGE_BROOK.centerZ;
-  const BRIDGE_YAW = 0.56; // 북서↔남동 대각선 방향
+  const BRIDGE_YAW = 0.34;
+  const BRIDGE_HALF_SPAN = BRIDGE_BROOK.halfWidth + 2.25;
+  const BRIDGE_DECK_HALF_WIDTH = 1.34;
+  const BRIDGE_WALK_HALF_WIDTH = 1.14;
 
   let currentSignature = "";
   let currentZones: readonly WorldZoneSpec[] = [];
@@ -517,17 +691,32 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     return { dist: bestDist, halfWidth: bestW };
   }
 
-  /** 시냇물 다리 위 판정 */
-  function getBridgeDeckHeight(x: number, z: number): number | null {
+  /** 월드 좌표 ↔ 다리 로컬 좌표 변환 (`bridge.rotation.y = BRIDGE_YAW`와 정확히 역변환 일치) */
+  function toBridgeLocal(x: number, z: number): { localX: number; localZ: number } {
     const dx = x - BRIDGE_X;
     const dz = z - BRIDGE_Z;
-    const c = Math.cos(-BRIDGE_YAW);
-    const s = Math.sin(-BRIDGE_YAW);
-    const localX = dx * c - dz * s;
-    const localZ = dx * s + dz * c;
-    const halfSpan = BRIDGE_BROOK.halfWidth + 1.55;
-    if (Math.abs(localX) <= 1.32 && Math.abs(localZ) <= halfSpan) {
-      const arch = Math.cos((localZ / halfSpan) * Math.PI * 0.5);
+    const c = Math.cos(BRIDGE_YAW);
+    const s = Math.sin(BRIDGE_YAW);
+    return {
+      localX: dx * c - dz * s,
+      localZ: dx * s + dz * c,
+    };
+  }
+
+  function fromBridgeLocal(localX: number, localZ: number): { x: number; z: number } {
+    const c = Math.cos(BRIDGE_YAW);
+    const s = Math.sin(BRIDGE_YAW);
+    return {
+      x: BRIDGE_X + localX * c + localZ * s,
+      z: BRIDGE_Z - localX * s + localZ * c,
+    };
+  }
+
+  /** 시냇물 다리 위 판정 */
+  function getBridgeDeckHeight(x: number, z: number): number | null {
+    const { localX, localZ } = toBridgeLocal(x, z);
+    if (Math.abs(localX) <= BRIDGE_DECK_HALF_WIDTH && Math.abs(localZ) <= BRIDGE_HALF_SPAN) {
+      const arch = Math.cos((localZ / BRIDGE_HALF_SPAN) * Math.PI * 0.5);
       return 0.34 + arch * 0.44;
     }
     return null;
@@ -623,15 +812,30 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       }
     }
 
-    // 3. 시냇물 침수 방지 (다리 위는 통과, 물가에서는 강변을 따라 슬라이딩)
+    // 3. 시냇물 침수 방지 (다리 위에서는 난간을 따라 부드럽게 슬라이딩, 물가에서는 강변 슬라이딩)
     if (isWaterBlocked(rx, rz)) {
-      if (!isWaterBlocked(rx, curZ)) {
-        rz = curZ;
-      } else if (!isWaterBlocked(curX, rz)) {
-        rx = curX;
-      } else {
-        rx = curX;
-        rz = curZ;
+      let resolvedOnBridge = false;
+      const curBridge = toBridgeLocal(curX, curZ);
+      if (Math.abs(curBridge.localX) <= BRIDGE_DECK_HALF_WIDTH && Math.abs(curBridge.localZ) <= BRIDGE_HALF_SPAN + 0.5) {
+        const nextBridge = toBridgeLocal(rx, rz);
+        const clampedLocalX = Math.max(-BRIDGE_WALK_HALF_WIDTH, Math.min(BRIDGE_WALK_HALF_WIDTH, nextBridge.localX));
+        const clampedLocalZ = Math.max(-BRIDGE_HALF_SPAN, Math.min(BRIDGE_HALF_SPAN, nextBridge.localZ));
+        const slid = fromBridgeLocal(clampedLocalX, clampedLocalZ);
+        if (!isWaterBlocked(slid.x, slid.z)) {
+          rx = slid.x;
+          rz = slid.z;
+          resolvedOnBridge = true;
+        }
+      }
+      if (!resolvedOnBridge) {
+        if (!isWaterBlocked(rx, curZ)) {
+          rz = curZ;
+        } else if (!isWaterBlocked(curX, rz)) {
+          rx = curX;
+        } else {
+          rx = curX;
+          rz = curZ;
+        }
       }
     }
 
@@ -645,56 +849,90 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     if (gy < 0.08) return;
     const tg = new Group();
     tg.position.set(tx, gy, tz);
+    tg.rotation.y = hash2(tx, tz) * Math.PI * 2;
+    const slot: WorldModelSlot = kind === "pine" ? "tree-pine" : kind === "blossom" ? "tree-blossom" : "tree-oak";
 
-    if (kind === "pine") {
-      const trunk = new Mesh(new CylinderGeometry(0.14 * scale, 0.24 * scale, 1.3 * scale, 8), matTimber);
-      trunk.position.y = 0.62 * scale;
-      trunk.castShadow = true;
-      trunk.receiveShadow = true;
-      tg.add(trunk);
+    assetRegistry.mountSlot({
+      slot,
+      container: tg,
+      targetHeight: kind === "pine" ? 3.55 : 3.05,
+      scale,
+      mountFallback: (fb) => {
+        if (kind === "pine") {
+          const rootFlare = new Mesh(new CylinderGeometry(0.20 * scale, 0.34 * scale, 0.42 * scale, 8), matBark);
+          rootFlare.position.y = 0.18 * scale;
+          rootFlare.castShadow = true;
+          rootFlare.receiveShadow = true;
+          const trunk = new Mesh(new CylinderGeometry(0.13 * scale, 0.22 * scale, 1.35 * scale, 8), matBark);
+          trunk.position.y = 0.68 * scale;
+          trunk.castShadow = true;
+          trunk.receiveShadow = true;
+          fb.add(rootFlare, trunk);
 
-      const tiers: readonly [number, number, number][] = [
-        [1.15, 1.45, 1.45],
-        [0.92, 1.30, 2.25],
-        [0.64, 1.12, 2.95],
-      ];
-      tiers.forEach(([rad, h, py]) => {
-        const cone = new Mesh(new ConeGeometry(rad * scale, h * scale, 10), matLeafPine);
-        cone.position.y = py * scale;
-        cone.castShadow = true;
-        cone.receiveShadow = true;
-        tg.add(cone);
-      });
-    } else {
-      const trunk = new Mesh(new CylinderGeometry(0.17 * scale, 0.28 * scale, 1.45 * scale, 9), matTimber);
-      trunk.position.y = 0.70 * scale;
-      trunk.castShadow = true;
-      trunk.receiveShadow = true;
+          const tiers: readonly [number, number, number, boolean][] = [
+            [1.24, 1.35, 1.36, false],
+            [1.04, 1.24, 2.02, false],
+            [0.80, 1.15, 2.66, true],
+            [0.50, 0.98, 3.24, true],
+          ];
+          tiers.forEach(([rad, h, py, sunlit], tierIdx) => {
+            const cone = new Mesh(new ConeGeometry(rad * scale, h * scale, 9), sunlit ? matLeafPineTip : matLeafPine);
+            cone.position.y = py * scale;
+            cone.rotation.y = tierIdx * 0.42;
+            cone.castShadow = true;
+            cone.receiveShadow = true;
+            fb.add(cone);
+          });
+        } else {
+          const rootFlare = new Mesh(new CylinderGeometry(0.24 * scale, 0.40 * scale, 0.44 * scale, 9), matBark);
+          rootFlare.position.y = 0.18 * scale;
+          rootFlare.castShadow = true;
+          rootFlare.receiveShadow = true;
 
-      const branch = new Mesh(new CylinderGeometry(0.07 * scale, 0.11 * scale, 0.65 * scale, 7), matTimber);
-      branch.position.set(0.24 * scale, 1.18 * scale, 0.08 * scale);
-      branch.rotation.z = -0.68;
-      tg.add(trunk, branch);
+          const trunk = new Mesh(new CylinderGeometry(0.17 * scale, 0.27 * scale, 1.48 * scale, 9), matBark);
+          trunk.position.y = 0.72 * scale;
+          trunk.castShadow = true;
+          trunk.receiveShadow = true;
 
-      const leafMat = kind === "blossom" ? matLeafBlossom : (Math.abs(Math.round(tx + tz)) % 2 === 0 ? matLeafBright : matLeafRich);
-      const puffs: readonly [number, number, number, number][] = [
-        [0, 1.88, 0, 0.98],
-        [0.52, 1.56, 0.28, 0.68],
-        [-0.48, 1.58, -0.24, 0.66],
-        [0.14, 1.62, -0.48, 0.62],
-        [-0.22, 1.54, 0.44, 0.58],
-      ];
-      puffs.forEach(([px, py, pz, r]) => {
-        const sp = new Mesh(new SphereGeometry(r * scale, 12, 10), leafMat);
-        sp.position.set(px * scale, py * scale, pz * scale);
-        sp.scale.set(1.04, 0.88, 1.04);
-        sp.castShadow = true;
-        sp.receiveShadow = true;
-        tg.add(sp);
-      });
-    }
+          const branch1 = new Mesh(new CylinderGeometry(0.065 * scale, 0.11 * scale, 0.72 * scale, 7), matBark);
+          branch1.position.set(0.26 * scale, 1.22 * scale, 0.08 * scale);
+          branch1.rotation.z = -0.68;
+          const branch2 = new Mesh(new CylinderGeometry(0.06 * scale, 0.10 * scale, 0.62 * scale, 7), matBark);
+          branch2.position.set(-0.24 * scale, 1.15 * scale, -0.10 * scale);
+          branch2.rotation.z = 0.62;
+          fb.add(rootFlare, trunk, branch1, branch2);
+
+          const baseMat = kind === "blossom" ? matLeafBlossom : matLeafRich;
+          const midMat = kind === "blossom" ? matLeafBlossom : matLeafBright;
+          const topMat = kind === "blossom" ? matLeafBlossomLight : matLeafSun;
+
+          // 다층 수관 클러스터(어두운 하부 → 밝은 햇살 상부)로 입체적 회화 수관 표현
+          const puffs: readonly [number, number, number, number, MeshStandardMaterial][] = [
+            [0.0, 2.12, 0.0, 0.92, topMat],
+            [0.34, 1.98, 0.28, 0.68, topMat],
+            [-0.36, 1.96, -0.22, 0.66, topMat],
+            [0.60, 1.58, 0.24, 0.66, midMat],
+            [-0.56, 1.62, -0.28, 0.68, midMat],
+            [0.16, 1.64, -0.56, 0.64, midMat],
+            [-0.24, 1.56, 0.54, 0.62, midMat],
+            [0.42, 1.44, -0.34, 0.54, baseMat],
+            [-0.44, 1.42, 0.34, 0.54, baseMat],
+          ];
+          puffs.forEach(([px, py, pz, r, mat]) => {
+            const sp = new Mesh(new DodecahedronGeometry(r * scale, 1), mat);
+            sp.position.set(px * scale, py * scale, pz * scale);
+            sp.scale.set(1.08, 0.86, 1.06);
+            sp.rotation.set(px * 1.4, pz * 1.7, py * 0.6);
+            sp.castShadow = true;
+            sp.receiveShadow = true;
+            fb.add(sp);
+          });
+        }
+      },
+    });
 
     parent.add(tg);
+    addContactShadow(parent, tx, tz, 1.48 * scale, 1.48 * scale, 0.95);
     colliders.push({ x: tx, z: tz, r: 0.42 * scale });
   }
 
@@ -704,23 +942,45 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const g = new Group();
     g.position.set(bx, gy, bz);
 
-    const b1 = new Mesh(new SphereGeometry(0.42 * scale, 9, 8), matBush);
-    b1.position.set(0, 0.26 * scale, 0);
-    b1.scale.set(1.15, 0.78, 1.05);
-    b1.castShadow = true;
-    const b2 = new Mesh(new SphereGeometry(0.30 * scale, 8, 7), matLeafBright);
-    b2.position.set(0.32 * scale, 0.20 * scale, 0.14 * scale);
-    b2.castShadow = true;
+    assetRegistry.mountSlot({
+      slot: "bush",
+      container: g,
+      targetHeight: 0.85,
+      scale,
+      mountFallback: (fb) => {
+        const b1 = new Mesh(new DodecahedronGeometry(0.44 * scale, 1), matBush);
+        b1.position.set(0, 0.26 * scale, 0);
+        b1.scale.set(1.18, 0.78, 1.08);
+        b1.castShadow = true;
+        b1.receiveShadow = true;
 
-    const rock = new Mesh(new SphereGeometry(0.28 * scale, 7, 6), matStone);
-    rock.position.set(-0.34 * scale, 0.14 * scale, 0.18 * scale);
-    rock.scale.set(1.25, 0.72, 0.95);
-    rock.rotation.y = 0.8;
-    rock.castShadow = true;
-    rock.receiveShadow = true;
+        const b2 = new Mesh(new DodecahedronGeometry(0.32 * scale, 1), matLeafSun);
+        b2.position.set(0.34 * scale, 0.22 * scale, 0.14 * scale);
+        b2.castShadow = true;
+        b2.receiveShadow = true;
 
-    g.add(b1, b2, rock);
+        const b3 = new Mesh(new DodecahedronGeometry(0.24 * scale, 1), matLeafRich);
+        b3.position.set(-0.18 * scale, 0.16 * scale, -0.26 * scale);
+        b3.castShadow = true;
+
+        const rock = new Mesh(new DodecahedronGeometry(0.30 * scale, 0), matStone);
+        rock.position.set(-0.36 * scale, 0.14 * scale, 0.18 * scale);
+        rock.scale.set(1.28, 0.72, 0.96);
+        rock.rotation.set(0.22, 0.8, 0.14);
+        rock.castShadow = true;
+        rock.receiveShadow = true;
+
+        const pebble = new Mesh(new DodecahedronGeometry(0.14 * scale, 0), matStoneDark);
+        pebble.position.set(-0.56 * scale, 0.07 * scale, 0.32 * scale);
+        pebble.scale.set(1.2, 0.65, 1.0);
+        pebble.castShadow = true;
+
+        fb.add(b1, b2, b3, rock, pebble);
+      },
+    });
+
     parent.add(g);
+    addContactShadow(parent, bx, bz, 0.92 * scale, 0.82 * scale, 0.82);
   }
 
   function addFenceRun(parent: Group, ax: number, az: number, bx: number, bz: number, posts: number) {
@@ -764,33 +1024,51 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     g.position.set(lx, gy, lz);
     g.rotation.y = armYaw;
 
-    const plinth = new Mesh(new CylinderGeometry(0.15, 0.20, 0.24, 8), matIron);
-    plinth.position.y = 0.12;
-    const pole = new Mesh(new CylinderGeometry(0.055, 0.085, 2.25, 8), matIron);
-    pole.position.y = 1.24;
-    pole.castShadow = true;
-
-    const arm = new Mesh(new BoxGeometry(0.06, 0.06, 0.58), matIron);
-    arm.position.set(0, 2.34, 0.24);
-    arm.rotation.x = -0.14;
-
-    const brace = new Mesh(new BoxGeometry(0.045, 0.36, 0.045), matIron);
-    brace.position.set(0, 2.15, 0.14);
-    brace.rotation.x = 0.65;
-
-    const lanternCap = new Mesh(new ConeGeometry(0.19, 0.16, 6), matIron);
-    lanternCap.position.set(0, 2.24, 0.48);
-    const lanternGlass = new Mesh(new CylinderGeometry(0.13, 0.10, 0.24, 6), matLanternGlass);
-    lanternGlass.position.set(0, 2.08, 0.48);
-    const lanternBase = new Mesh(new CylinderGeometry(0.11, 0.06, 0.06, 6), matIron);
-    lanternBase.position.set(0, 1.94, 0.48);
-
-    g.add(plinth, pole, arm, brace, lanternCap, lanternGlass, lanternBase);
-    parent.add(g);
-
+    const anchorIdx = streetlampAnchors.length;
     const worldBulbX = lx + Math.sin(armYaw) * 0.48;
     const worldBulbZ = lz + Math.cos(armYaw) * 0.48;
     streetlampAnchors.push(new Vector3(worldBulbX, gy + 0.18, worldBulbZ));
+
+    assetRegistry.mountSlot({
+      slot: "streetlamp",
+      container: g,
+      targetHeight: 2.75,
+      mountFallback: (fb) => {
+        const plinth = new Mesh(new CylinderGeometry(0.15, 0.20, 0.24, 8), matIron);
+        plinth.position.y = 0.12;
+        const pole = new Mesh(new CylinderGeometry(0.055, 0.085, 2.25, 8), matIron);
+        pole.position.y = 1.24;
+        pole.castShadow = true;
+
+        const arm = new Mesh(new BoxGeometry(0.06, 0.06, 0.58), matIron);
+        arm.position.set(0, 2.34, 0.24);
+        arm.rotation.x = -0.14;
+
+        const brace = new Mesh(new BoxGeometry(0.045, 0.36, 0.045), matIron);
+        brace.position.set(0, 2.15, 0.14);
+        brace.rotation.x = 0.65;
+
+        const lanternCap = new Mesh(new ConeGeometry(0.19, 0.16, 6), matIron);
+        lanternCap.position.set(0, 2.24, 0.48);
+        const lanternGlass = new Mesh(new CylinderGeometry(0.13, 0.10, 0.24, 6), matLanternGlass);
+        lanternGlass.position.set(0, 2.08, 0.48);
+        const lanternBase = new Mesh(new CylinderGeometry(0.11, 0.06, 0.06, 6), matIron);
+        lanternBase.position.set(0, 1.94, 0.48);
+
+        fb.add(plinth, pole, arm, brace, lanternCap, lanternGlass, lanternBase);
+      },
+      onMounted: (inst) => {
+        const anchor = inst.anchors["lamp_anchor"];
+        if (anchor && streetlampAnchors[anchorIdx]) {
+          g.updateMatrixWorld(true);
+          const worldPos = anchor.clone().applyMatrix4(g.matrixWorld);
+          streetlampAnchors[anchorIdx]!.set(worldPos.x, gy + 0.18, worldPos.z);
+        }
+      },
+    });
+
+    parent.add(g);
+    addContactShadow(parent, lx, lz, 0.42, 0.42, 0.72);
   }
 
   /** 다리가 제대로 달린 통나무 벤치 */
@@ -800,26 +1078,35 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     g.position.set(bx, gy, bz);
     g.rotation.y = yaw;
 
-    const seat = new Mesh(new BoxGeometry(1.38, 0.09, 0.42), matWoodLight);
-    seat.position.y = 0.34;
-    seat.castShadow = true;
-    seat.receiveShadow = true;
+    assetRegistry.mountSlot({
+      slot: "bench",
+      container: g,
+      targetHeight: 0.68,
+      mountFallback: (fb) => {
+        const seat = new Mesh(new BoxGeometry(1.38, 0.09, 0.42), matWoodLight);
+        seat.position.y = 0.34;
+        seat.castShadow = true;
+        seat.receiveShadow = true;
 
-    const back = new Mesh(new BoxGeometry(1.34, 0.24, 0.07), matWoodLight);
-    back.position.set(0, 0.54, -0.18);
-    back.rotation.x = -0.14;
-    back.castShadow = true;
+        const back = new Mesh(new BoxGeometry(1.34, 0.24, 0.07), matWoodLight);
+        back.position.set(0, 0.54, -0.18);
+        back.rotation.x = -0.14;
+        back.castShadow = true;
 
-    for (const lx of [-0.52, 0.52]) {
-      const legF = new Mesh(new BoxGeometry(0.10, 0.34, 0.10), matTimber);
-      legF.position.set(lx, 0.17, 0.13);
-      const legB = new Mesh(new BoxGeometry(0.10, 0.58, 0.10), matTimber);
-      legB.position.set(lx, 0.29, -0.15);
-      g.add(legF, legB);
-    }
+        for (const lx of [-0.52, 0.52]) {
+          const legF = new Mesh(new BoxGeometry(0.10, 0.34, 0.10), matTimber);
+          legF.position.set(lx, 0.17, 0.13);
+          const legB = new Mesh(new BoxGeometry(0.10, 0.58, 0.10), matTimber);
+          legB.position.set(lx, 0.29, -0.15);
+          fb.add(legF, legB);
+        }
 
-    g.add(seat, back);
+        fb.add(seat, back);
+      },
+    });
+
     parent.add(g);
+    addContactShadow(parent, bx, bz, 0.88, 0.52, 0.68);
   }
 
   /** 틀·덧창·꽃화분이 갖춰진 창문 조립체 */
@@ -851,7 +1138,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
   /** 박공지붕(Gable Roof) 조립체 — 처마 오버행 + 용마루 보 + 수직 삼각 박공벽(우물 등 개방형은 생략 가능) */
   function createPitchedRoof(width: number, height: number, depth: number, roofHex: number, includeGableWall = true): Group {
     const rg = new Group();
-    const roofMat = new MeshStandardMaterial({ color: roofHex, roughness: 0.76 });
+    const roofMat = getRoofMaterial(roofHex);
     const slopeLen = Math.hypot(width * 0.5 + 0.28, height);
     const slopeAngle = Math.atan2(height, width * 0.5 + 0.28);
 
@@ -907,79 +1194,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const hall = new Group();
     hall.position.set(hx, gy, hz);
 
-    // 석조 기단 + 전면 나무 계단
-    const plinth = new Mesh(new BoxGeometry(5.4, 0.36, 3.8), matStone);
-    plinth.position.y = 0.18;
-    plinth.receiveShadow = true;
-    plinth.castShadow = true;
-    const step1 = new Mesh(new BoxGeometry(1.75, 0.18, 0.55), matStoneDark);
-    step1.position.set(0, 0.09, 2.12);
-    step1.receiveShadow = true;
-
-    // 본관 회벽 + 하프팀버 목재 골조
-    const walls = new Mesh(new BoxGeometry(4.8, 2.45, 3.3), matPlaster);
-    walls.position.y = 1.58;
-    walls.castShadow = true;
-    walls.receiveShadow = true;
-    hall.add(plinth, step1, walls);
-
-    for (const cx of [-2.38, -0.82, 0.82, 2.38]) {
-      for (const cz of [-1.64, 1.64]) {
-        const post = new Mesh(new BoxGeometry(0.13, 2.48, 0.13), matTimber);
-        post.position.set(cx, 1.58, cz);
-        hall.add(post);
-      }
-    }
-    for (const by of [0.42, 1.55, 2.76]) {
-      const beamF = new Mesh(new BoxGeometry(4.92, 0.11, 0.10), matTimber);
-      beamF.position.set(0, by, 1.65);
-      const beamB = new Mesh(new BoxGeometry(4.92, 0.11, 0.10), matTimber);
-      beamB.position.set(0, by, -1.65);
-      hall.add(beamF, beamB);
-    }
-
-    // 아치형 오크 정문 + 현관 캐노피 포치
-    const doorFrame = new Mesh(new BoxGeometry(1.16, 1.58, 0.12), matTimber);
-    doorFrame.position.set(0, 1.15, 1.66);
-    const doorLeaf = new Mesh(new BoxGeometry(0.96, 1.44, 0.14), matWood);
-    doorLeaf.position.set(0, 1.12, 1.67);
-    const handleL = new Mesh(new SphereGeometry(0.045, 7, 7), matBrass);
-    handleL.position.set(-0.10, 1.08, 1.76);
-    const handleR = new Mesh(new SphereGeometry(0.045, 7, 7), matBrass);
-    handleR.position.set(0.10, 1.08, 1.76);
-
-    const canopy = new Mesh(new BoxGeometry(1.88, 0.12, 0.92), new MeshStandardMaterial({ color: TONE_ROOF_HEX.amber, roughness: 0.75 }));
-    canopy.position.set(0, 2.08, 2.04);
-    canopy.rotation.x = 0.22;
-    canopy.castShadow = true;
-    for (const px of [-0.78, 0.78]) {
-      const pCol = new Mesh(new CylinderGeometry(0.065, 0.075, 1.68, 8), matTimber);
-      pCol.position.set(px, 1.18, 2.36);
-      pCol.castShadow = true;
-      hall.add(pCol);
-    }
-
-    // 좌우 격자 창문 + 꽃화분
-    const winL = createFramedWindow(true);
-    winL.position.set(-1.58, 1.68, 1.66);
-    const winR = createFramedWindow(true);
-    winR.position.set(1.58, 1.68, 1.66);
-
-    // 박공지붕 + 돌 굴뚝 + 연기
-    const roof = createPitchedRoof(4.9, 1.65, 3.45, TONE_ROOF_HEX.moss);
-    roof.position.y = 2.80;
-
-    const chimney = new Mesh(new BoxGeometry(0.56, 1.85, 0.56), matStoneDark);
-    chimney.position.set(-1.85, 3.55, -0.65);
-    chimney.castShadow = true;
-    const chimneyRim = new Mesh(new BoxGeometry(0.68, 0.14, 0.68), matStone);
-    chimneyRim.position.set(-1.85, 4.50, -0.65);
-
-    hall.add(doorFrame, doorLeaf, handleL, handleR, canopy, winL, winR, roof, chimney, chimneyRim);
-    parent.add(hall);
-    colliders.push({ x: hx, z: hz + 0.15, r: 2.95 });
-
-    // 굴뚝 연기 입자 4개 등록
+    // 굴뚝 연기 입자 4개 등록 (커스텀 GLB에 smoke_anchor가 있으면 좌표 자동 갱신)
     smokePuffs.length = 0;
     for (let s = 0; s < 4; s += 1) {
       const sm = new Mesh(new SphereGeometry(0.22, 8, 7), matSmoke);
@@ -993,6 +1208,99 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       });
     }
 
+    assetRegistry.mountSlot({
+      slot: "guild-hall",
+      container: hall,
+      targetHeight: 4.75,
+      mountFallback: (fb) => {
+        // 석조 기단 + 전면 나무 계단
+        const plinth = new Mesh(new BoxGeometry(5.4, 0.36, 3.8), matStone);
+        plinth.position.y = 0.18;
+        plinth.receiveShadow = true;
+        plinth.castShadow = true;
+        const step1 = new Mesh(new BoxGeometry(1.75, 0.18, 0.55), matStoneDark);
+        step1.position.set(0, 0.09, 2.12);
+        step1.receiveShadow = true;
+
+        // 본관 회벽 + 하프팀버 목재 골조
+        const walls = new Mesh(new BoxGeometry(4.8, 2.45, 3.3), matPlaster);
+        walls.position.y = 1.58;
+        walls.castShadow = true;
+        walls.receiveShadow = true;
+        fb.add(plinth, step1, walls);
+
+        for (const cx of [-2.38, -0.82, 0.82, 2.38]) {
+          for (const cz of [-1.64, 1.64]) {
+            const post = new Mesh(new BoxGeometry(0.13, 2.48, 0.13), matTimber);
+            post.position.set(cx, 1.58, cz);
+            fb.add(post);
+          }
+        }
+        for (const by of [0.42, 1.55, 2.76]) {
+          const beamF = new Mesh(new BoxGeometry(4.92, 0.11, 0.10), matTimber);
+          beamF.position.set(0, by, 1.65);
+          const beamB = new Mesh(new BoxGeometry(4.92, 0.11, 0.10), matTimber);
+          beamB.position.set(0, by, -1.65);
+          fb.add(beamF, beamB);
+        }
+
+        // 아치형 오크 정문 + 현관 캐노피 포치
+        const doorFrame = new Mesh(new BoxGeometry(1.16, 1.58, 0.12), matTimber);
+        doorFrame.position.set(0, 1.15, 1.66);
+        const doorLeaf = new Mesh(new BoxGeometry(0.96, 1.44, 0.14), matWood);
+        doorLeaf.position.set(0, 1.12, 1.67);
+        const handleL = new Mesh(new SphereGeometry(0.045, 7, 7), matBrass);
+        handleL.position.set(-0.10, 1.08, 1.76);
+        const handleR = new Mesh(new SphereGeometry(0.045, 7, 7), matBrass);
+        handleR.position.set(0.10, 1.08, 1.76);
+
+        const canopy = new Mesh(new BoxGeometry(1.88, 0.12, 0.92), getRoofMaterial(TONE_ROOF_HEX.amber));
+        canopy.position.set(0, 2.08, 2.04);
+        canopy.rotation.x = 0.22;
+        canopy.castShadow = true;
+        for (const px of [-0.78, 0.78]) {
+          const pCol = new Mesh(new CylinderGeometry(0.065, 0.075, 1.68, 8), matTimber);
+          pCol.position.set(px, 1.18, 2.36);
+          pCol.castShadow = true;
+          fb.add(pCol);
+        }
+
+        // 좌우 격자 창문 + 꽃화분
+        const winL = createFramedWindow(true);
+        winL.position.set(-1.58, 1.68, 1.66);
+        const winR = createFramedWindow(true);
+        winR.position.set(1.58, 1.68, 1.66);
+
+        // 박공지붕 + 돌 굴뚝
+        const roof = createPitchedRoof(4.9, 1.65, 3.45, TONE_ROOF_HEX.moss);
+        roof.position.y = 2.80;
+
+        const chimney = new Mesh(new BoxGeometry(0.56, 1.85, 0.56), matStoneDark);
+        chimney.position.set(-1.85, 3.55, -0.65);
+        chimney.castShadow = true;
+        const chimneyRim = new Mesh(new BoxGeometry(0.68, 0.14, 0.68), matStone);
+        chimneyRim.position.set(-1.85, 4.50, -0.65);
+
+        fb.add(doorFrame, doorLeaf, handleL, handleR, canopy, winL, winR, roof, chimney, chimneyRim);
+      },
+      onMounted: (inst) => {
+        const anchor = inst.anchors["smoke_anchor"];
+        if (anchor) {
+          hall.updateMatrixWorld(true);
+          const world = anchor.clone().applyMatrix4(hall.matrixWorld);
+          for (const puff of smokePuffs) {
+            puff.baseX = world.x;
+            puff.baseY = world.y;
+            puff.baseZ = world.z;
+          }
+        }
+      },
+    });
+
+    parent.add(hall);
+    addContactShadow(parent, hx, hz + 0.15, 3.55, 2.75, 1.0);
+    colliders.push({ x: hx, z: hz + 0.15, r: 2.95 });
+
     // 우측 풍차 시계탑 (회관과 넉넉히 간격 분리)
     const mx = 4.45;
     const mz = -6.7;
@@ -1000,38 +1308,52 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const mill = new Group();
     mill.position.set(mx, mgy, mz);
 
-    const mBase = new Mesh(new CylinderGeometry(1.22, 1.38, 0.95, 12), matStone);
-    mBase.position.y = 0.47;
-    mBase.castShadow = true;
-    mBase.receiveShadow = true;
-
-    const mTower = new Mesh(new CylinderGeometry(0.84, 1.16, 3.05, 14), matPlaster);
-    mTower.position.y = 2.42;
-    mTower.castShadow = true;
-    mTower.receiveShadow = true;
-
-    const mBalcony = new Mesh(new CylinderGeometry(1.26, 1.22, 0.12, 14), matWood);
-    mBalcony.position.y = 1.15;
-    mBalcony.castShadow = true;
-
-    const mCap = new Mesh(new ConeGeometry(1.08, 1.28, 14), new MeshStandardMaterial({ color: TONE_ROOF_HEX.cerulean, roughness: 0.74 }));
-    mCap.position.y = 4.55;
-    mCap.castShadow = true;
-    const mFinial = new Mesh(new SphereGeometry(0.12, 8, 8), matBrass);
-    mFinial.position.y = 5.24;
-
-    const mWin = createFramedWindow(false);
-    mWin.scale.setScalar(0.76);
-    mWin.position.set(0, 2.35, 1.02);
-
-    const axle = new Mesh(new CylinderGeometry(0.10, 0.10, 0.65, 8), matTimber);
-    axle.rotation.x = Math.PI * 0.5;
-    axle.position.set(0, 3.55, 0.96);
-
+    windmillBlades.visible = true;
     windmillBlades.position.set(mx, mgy + 3.55, mz + 1.25);
 
-    mill.add(mBase, mTower, mBalcony, mCap, mFinial, mWin, axle);
+    assetRegistry.mountSlot({
+      slot: "windmill",
+      container: mill,
+      targetHeight: 5.35,
+      mountFallback: (fb) => {
+        const mBase = new Mesh(new CylinderGeometry(1.22, 1.38, 0.95, 12), matStone);
+        mBase.position.y = 0.47;
+        mBase.castShadow = true;
+        mBase.receiveShadow = true;
+
+        const mTower = new Mesh(new CylinderGeometry(0.84, 1.16, 3.05, 14), matPlaster);
+        mTower.position.y = 2.42;
+        mTower.castShadow = true;
+        mTower.receiveShadow = true;
+
+        const mBalcony = new Mesh(new CylinderGeometry(1.26, 1.22, 0.12, 14), matWood);
+        mBalcony.position.y = 1.15;
+        mBalcony.castShadow = true;
+
+        const mCap = new Mesh(new ConeGeometry(1.08, 1.28, 14), getRoofMaterial(TONE_ROOF_HEX.cerulean));
+        mCap.position.y = 4.55;
+        mCap.castShadow = true;
+        const mFinial = new Mesh(new SphereGeometry(0.12, 8, 8), matBrass);
+        mFinial.position.y = 5.24;
+
+        const mWin = createFramedWindow(false);
+        mWin.scale.setScalar(0.76);
+        mWin.position.set(0, 2.35, 1.02);
+
+        const axle = new Mesh(new CylinderGeometry(0.10, 0.10, 0.65, 8), matTimber);
+        axle.rotation.x = Math.PI * 0.5;
+        axle.position.set(0, 3.55, 0.96);
+
+        fb.add(mBase, mTower, mBalcony, mCap, mFinial, mWin, axle);
+      },
+      onMounted: (inst) => {
+        windmillBlades.visible = false;
+        if (inst.bladePivot) customBladePivots.push(inst.bladePivot);
+      },
+    });
+
     parent.add(mill, windmillBlades);
+    addContactShadow(parent, mx, mz, 2.05, 2.05, 1.0);
     colliders.push({ x: mx, z: mz, r: 1.55 });
   }
 
@@ -1054,37 +1376,45 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const well = new Group();
     well.position.set(wx, wy, wz);
 
-    const wellBase = new Mesh(new CylinderGeometry(0.86, 0.94, 0.18, 14), matStoneDark);
-    wellBase.position.y = 0.09;
-    const wellWall = new Mesh(new CylinderGeometry(0.72, 0.76, 0.68, 14), matStone);
-    wellWall.position.y = 0.44;
-    wellWall.castShadow = true;
-    wellWall.receiveShadow = true;
-    const wellRim = new Mesh(new TorusGeometry(0.70, 0.09, 8, 16), matStoneDark);
-    wellRim.rotation.x = Math.PI * 0.5;
-    wellRim.position.y = 0.78;
-    const wellWater = new Mesh(
-      new CylinderGeometry(0.60, 0.60, 0.05, 12),
-      new MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.2, metalness: 0.1 }),
-    );
-    wellWater.position.y = 0.66;
+    assetRegistry.mountSlot({
+      slot: "well",
+      container: well,
+      targetHeight: 2.38,
+      mountFallback: (fb) => {
+        const wellBase = new Mesh(new CylinderGeometry(0.86, 0.94, 0.18, 14), matStoneDark);
+        wellBase.position.y = 0.09;
+        const wellWall = new Mesh(new CylinderGeometry(0.72, 0.76, 0.68, 14), matStone);
+        wellWall.position.y = 0.44;
+        wellWall.castShadow = true;
+        wellWall.receiveShadow = true;
+        const wellRim = new Mesh(new TorusGeometry(0.70, 0.09, 8, 16), matStoneDark);
+        wellRim.rotation.x = Math.PI * 0.5;
+        wellRim.position.y = 0.78;
+        const wellWater = new Mesh(
+          new CylinderGeometry(0.60, 0.60, 0.05, 12),
+          new MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.16, metalness: 0.18 }),
+        );
+        wellWater.position.y = 0.66;
 
-    for (const px of [-0.66, 0.66]) {
-      const post = new Mesh(new BoxGeometry(0.11, 1.35, 0.11), matTimber);
-      post.position.set(px, 1.12, 0);
-      post.castShadow = true;
-      well.add(post);
-    }
-    const winch = new Mesh(new CylinderGeometry(0.07, 0.07, 1.32, 8), matWood);
-    winch.rotation.z = Math.PI * 0.5;
-    winch.position.y = 1.46;
-    const bucket = new Mesh(new CylinderGeometry(0.14, 0.11, 0.22, 8), matWood);
-    bucket.position.set(0, 1.08, 0);
-    const wellRoof = createPitchedRoof(1.62, 0.62, 1.24, TONE_ROOF_HEX.cerulean, false);
-    wellRoof.position.y = 1.76;
+        for (const px of [-0.66, 0.66]) {
+          const post = new Mesh(new BoxGeometry(0.11, 1.35, 0.11), matTimber);
+          post.position.set(px, 1.12, 0);
+          post.castShadow = true;
+          fb.add(post);
+        }
+        const winch = new Mesh(new CylinderGeometry(0.07, 0.07, 1.32, 8), matWood);
+        winch.rotation.z = Math.PI * 0.5;
+        winch.position.y = 1.46;
+        const bucket = new Mesh(new CylinderGeometry(0.14, 0.11, 0.22, 8), matWood);
+        bucket.position.set(0, 1.08, 0);
+        const wellRoof = createPitchedRoof(1.62, 0.62, 1.24, TONE_ROOF_HEX.cerulean, false);
+        wellRoof.position.y = 1.76;
 
-    well.add(wellBase, wellWall, wellRim, wellWater, winch, bucket, wellRoof);
+        fb.add(wellBase, wellWall, wellRim, wellWater, winch, bucket, wellRoof);
+      },
+    });
     parent.add(well);
+    addContactShadow(parent, wx, wz, 1.35, 1.35, 0.92);
     colliders.push({ x: wx, z: wz, r: 1.02 });
 
     // 3. 광장 모닥불 & 삼각대 & 다리 달린 벤치 (2.8, 1.0)
@@ -1093,14 +1423,16 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const fy = getTerrainBaseHeight(fx, fz);
     for (let i = 0; i < 10; i += 1) {
       const a = (i / 10) * Math.PI * 2;
-      const rock = new Mesh(new SphereGeometry(0.18, 8, 6), i % 2 === 0 ? matStone : matStoneDark);
+      const rock = new Mesh(new DodecahedronGeometry(0.19, 0), i % 2 === 0 ? matStone : matStoneDark);
       rock.position.set(fx + Math.cos(a) * 0.74, fy + 0.08, fz + Math.sin(a) * 0.74);
-      rock.scale.set(1.1, 0.68, 0.95);
+      rock.scale.set(1.12, 0.68, 0.95);
+      rock.rotation.set(a, a * 0.7, 0.2);
       rock.castShadow = true;
+      rock.receiveShadow = true;
       parent.add(rock);
     }
     for (let l = 0; l < 3; l += 1) {
-      const log = new Mesh(new CylinderGeometry(0.085, 0.095, 0.96, 7), matTimber);
+      const log = new Mesh(new CylinderGeometry(0.085, 0.095, 0.96, 7), matBark);
       log.position.set(fx, fy + 0.12, fz);
       log.rotation.z = Math.PI * 0.5;
       log.rotation.y = (l * Math.PI) / 3 + 0.2;
@@ -1108,6 +1440,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     }
     flameGroup.position.set(fx, fy + 0.12, fz);
     parent.add(flameGroup);
+    addContactShadow(parent, fx, fz, 1.15, 1.15, 0.75);
     colliders.push({ x: fx, z: fz, r: 0.92 });
 
     addWoodenBench(parent, fx + 1.95, fz - 0.15, -Math.PI * 0.45);
@@ -1119,19 +1452,27 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const sy = getTerrainBaseHeight(sx, sz);
     const signGroup = new Group();
     signGroup.position.set(sx, sy, sz);
-    const sPost = new Mesh(new CylinderGeometry(0.08, 0.10, 1.75, 8), matTimber);
-    sPost.position.y = 0.86;
-    sPost.castShadow = true;
-    const board1 = new Mesh(new BoxGeometry(0.92, 0.20, 0.06), matWoodLight);
-    board1.position.set(0.22, 1.48, 0);
-    board1.rotation.y = 0.35;
-    board1.castShadow = true;
-    const board2 = new Mesh(new BoxGeometry(0.86, 0.20, 0.06), matWood);
-    board2.position.set(-0.20, 1.20, 0);
-    board2.rotation.y = -0.45;
-    board2.castShadow = true;
-    signGroup.add(sPost, board1, board2);
+    assetRegistry.mountSlot({
+      slot: "signpost",
+      container: signGroup,
+      targetHeight: 1.78,
+      mountFallback: (fb) => {
+        const sPost = new Mesh(new CylinderGeometry(0.08, 0.10, 1.75, 8), matBark);
+        sPost.position.y = 0.86;
+        sPost.castShadow = true;
+        const board1 = new Mesh(new BoxGeometry(0.92, 0.20, 0.06), matWoodLight);
+        board1.position.set(0.22, 1.48, 0);
+        board1.rotation.y = 0.35;
+        board1.castShadow = true;
+        const board2 = new Mesh(new BoxGeometry(0.86, 0.20, 0.06), matWood);
+        board2.position.set(-0.20, 1.20, 0);
+        board2.rotation.y = -0.45;
+        board2.castShadow = true;
+        fb.add(sPost, board1, board2);
+      },
+    });
     parent.add(signGroup);
+    addContactShadow(parent, sx, sz, 0.55, 0.55, 0.75);
     colliders.push({ x: sx, z: sz, r: 0.38 });
   }
 
@@ -1141,43 +1482,49 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     bridge.position.set(BRIDGE_X, 0, BRIDGE_Z);
     bridge.rotation.y = BRIDGE_YAW;
 
-    const halfSpan = BRIDGE_BROOK.halfWidth + 1.55;
-    const steps = 12;
-    for (let i = 0; i <= steps; i += 1) {
-      const u = (i / steps) * 2 - 1; // -1..1
-      const lz = u * halfSpan;
-      const archY = 0.32 + Math.cos(u * Math.PI * 0.5) * 0.44;
-      const plank = new Mesh(new BoxGeometry(2.45, 0.12, 0.46), i % 2 === 0 ? matWood : matWoodLight);
-      plank.position.set(0, archY, lz);
-      plank.castShadow = true;
-      plank.receiveShadow = true;
-      bridge.add(plank);
+    assetRegistry.mountSlot({
+      slot: "bridge",
+      container: bridge,
+      mountFallback: (fb) => {
+        const halfSpan = BRIDGE_HALF_SPAN;
+        const steps = 14;
+        for (let i = 0; i <= steps; i += 1) {
+          const u = (i / steps) * 2 - 1; // -1..1
+          const lz = u * halfSpan;
+          const archY = 0.32 + Math.cos(u * Math.PI * 0.5) * 0.44;
+          const plank = new Mesh(new BoxGeometry(2.45, 0.12, 0.46), i % 2 === 0 ? matWood : matWoodLight);
+          plank.position.set(0, archY, lz);
+          plank.castShadow = true;
+          plank.receiveShadow = true;
+          fb.add(plank);
 
-      if (i % 3 === 0) {
-        for (const side of [-1.14, 1.14]) {
-          const post = new Mesh(new BoxGeometry(0.11, 0.78, 0.11), matTimber);
-          post.position.set(side, archY + 0.38, lz);
-          post.castShadow = true;
-          bridge.add(post);
+          if (i % 3 === 0) {
+            for (const side of [-1.14, 1.14]) {
+              const post = new Mesh(new BoxGeometry(0.11, 0.78, 0.11), matTimber);
+              post.position.set(side, archY + 0.38, lz);
+              post.castShadow = true;
+              fb.add(post);
+            }
+          }
         }
-      }
-    }
-    // 아치 난간 손잡이 줄
-    for (const side of [-1.14, 1.14]) {
-      for (let i = 0; i < steps; i += 1) {
-        const u0 = (i / steps) * 2 - 1;
-        const u1 = ((i + 1) / steps) * 2 - 1;
-        const z0 = u0 * halfSpan;
-        const z1 = u1 * halfSpan;
-        const y0 = 0.74 + Math.cos(u0 * Math.PI * 0.5) * 0.44;
-        const y1 = 0.74 + Math.cos(u1 * Math.PI * 0.5) * 0.44;
-        const segLen = Math.hypot(z1 - z0, y1 - y0);
-        const rail = new Mesh(new BoxGeometry(0.08, 0.08, segLen + 0.04), matWood);
-        rail.position.set(side, (y0 + y1) * 0.5, (z0 + z1) * 0.5);
-        rail.rotation.x = -Math.atan2(y1 - y0, z1 - z0);
-        bridge.add(rail);
-      }
-    }
+        // 아치 난간 손잡이 줄
+        for (const side of [-1.14, 1.14]) {
+          for (let i = 0; i < steps; i += 1) {
+            const u0 = (i / steps) * 2 - 1;
+            const u1 = ((i + 1) / steps) * 2 - 1;
+            const z0 = u0 * halfSpan;
+            const z1 = u1 * halfSpan;
+            const y0 = 0.74 + Math.cos(u0 * Math.PI * 0.5) * 0.44;
+            const y1 = 0.74 + Math.cos(u1 * Math.PI * 0.5) * 0.44;
+            const segLen = Math.hypot(z1 - z0, y1 - y0);
+            const rail = new Mesh(new BoxGeometry(0.08, 0.08, segLen + 0.04), matWood);
+            rail.position.set(side, (y0 + y1) * 0.5, (z0 + z1) * 0.5);
+            rail.rotation.x = -Math.atan2(y1 - y0, z1 - z0);
+            fb.add(rail);
+          }
+        }
+      },
+    });
     parent.add(bridge);
 
     // 연못 수련잎 & 연꽃 & 부들 갈대
@@ -1221,40 +1568,48 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       const g = new Group();
       g.position.set(zone.x, gy, zone.z);
 
-      const stepOuter = new Mesh(new CylinderGeometry(2.45, 2.65, 0.18, 8), matStoneDark);
-      stepOuter.position.y = 0.09;
-      stepOuter.receiveShadow = true;
-      const deck = new Mesh(new CylinderGeometry(2.15, 2.30, 0.24, 8), matStone);
-      deck.position.y = 0.26;
-      deck.receiveShadow = true;
-      g.add(stepOuter, deck);
+      assetRegistry.mountSlot({
+        slot: "pavilion",
+        container: g,
+        targetHeight: 3.85,
+        mountFallback: (fb) => {
+          const stepOuter = new Mesh(new CylinderGeometry(2.45, 2.65, 0.18, 8), matStoneDark);
+          stepOuter.position.y = 0.09;
+          stepOuter.receiveShadow = true;
+          const deck = new Mesh(new CylinderGeometry(2.15, 2.30, 0.24, 8), matStone);
+          deck.position.y = 0.26;
+          deck.receiveShadow = true;
+          fb.add(stepOuter, deck);
 
-      for (let k = 0; k < 6; k += 1) {
-        const a = (k / 6) * Math.PI * 2 + 0.26;
-        const col = new Mesh(new CylinderGeometry(0.11, 0.13, 1.85, 10), matPlaster);
-        col.position.set(Math.cos(a) * 1.72, 1.28, Math.sin(a) * 1.72);
-        col.castShadow = true;
-        g.add(col);
-      }
-      const frieze = new Mesh(new CylinderGeometry(1.96, 1.96, 0.16, 8), matWood);
-      frieze.position.y = 2.24;
-      const pRoof1 = new Mesh(new ConeGeometry(2.42, 0.92, 8), new MeshStandardMaterial({ color: TONE_ROOF_HEX.cerulean, roughness: 0.74 }));
-      pRoof1.position.y = 2.75;
-      pRoof1.castShadow = true;
-      const pRoof2 = new Mesh(new ConeGeometry(1.38, 0.72, 8), new MeshStandardMaterial({ color: TONE_ROOF_HEX.cerulean, roughness: 0.74 }));
-      pRoof2.position.y = 3.32;
-      pRoof2.castShadow = true;
-      const finial = new Mesh(new SphereGeometry(0.13, 8, 8), matBrass);
-      finial.position.y = 3.74;
+          for (let k = 0; k < 6; k += 1) {
+            const a = (k / 6) * Math.PI * 2 + 0.26;
+            const col = new Mesh(new CylinderGeometry(0.11, 0.13, 1.85, 10), matPlaster);
+            col.position.set(Math.cos(a) * 1.72, 1.28, Math.sin(a) * 1.72);
+            col.castShadow = true;
+            fb.add(col);
+          }
+          const frieze = new Mesh(new CylinderGeometry(1.96, 1.96, 0.16, 8), matWood);
+          frieze.position.y = 2.24;
+          const pRoof1 = new Mesh(new ConeGeometry(2.42, 0.92, 8), getRoofMaterial(TONE_ROOF_HEX.cerulean));
+          pRoof1.position.y = 2.75;
+          pRoof1.castShadow = true;
+          const pRoof2 = new Mesh(new ConeGeometry(1.38, 0.72, 8), getRoofMaterial(TONE_ROOF_HEX.cerulean));
+          pRoof2.position.y = 3.32;
+          pRoof2.castShadow = true;
+          const finial = new Mesh(new SphereGeometry(0.13, 8, 8), matBrass);
+          finial.position.y = 3.74;
 
-      g.add(frieze, pRoof1, pRoof2, finial);
+          fb.add(frieze, pRoof1, pRoof2, finial);
+        },
+      });
       parent.add(g);
+      addContactShadow(parent, zone.x, zone.z, 3.05, 3.05, 0.92);
       // 파빌리온 언덕 양옆으로 화사한 분홍 벚나무 3그루와 벤치·가로등 배치
       addWoodenBench(parent, zone.x - 3.1, zone.z + 0.6, 0.65);
       addTree(parent, zone.x + 3.6, zone.z + 1.2, 1.12, "blossom");
       addTree(parent, zone.x - 3.6, zone.z + 2.0, 1.02, "blossom");
       addTree(parent, zone.x + 2.8, zone.z - 2.6, 0.95, "blossom");
-      addHangingStreetlamp(parent, zone.x - 2.3, zone.z - 2.4, 0.4);
+      addHangingStreetlamp(parent, zone.x - 3.6, zone.z - 1.6, 0.4);
       return;
     }
 
@@ -1269,45 +1624,53 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     const faceYaw = Math.atan2(-cx, -cz) * 0.25 + 0.22;
     cottage.rotation.y = faceYaw;
 
-    const cPlinth = new Mesh(new BoxGeometry(2.95, 0.24, 2.45), matStone);
-    cPlinth.position.y = 0.12;
-    cPlinth.receiveShadow = true;
+    assetRegistry.mountSlot({
+      slot: "cottage",
+      container: cottage,
+      targetHeight: 3.35,
+      mountFallback: (fb) => {
+        const cPlinth = new Mesh(new BoxGeometry(2.95, 0.24, 2.45), matStone);
+        cPlinth.position.y = 0.12;
+        cPlinth.receiveShadow = true;
 
-    const cBody = new Mesh(new BoxGeometry(2.68, 1.75, 2.18), matPlaster);
-    cBody.position.y = 1.10;
-    cBody.castShadow = true;
-    cBody.receiveShadow = true;
+        const cBody = new Mesh(new BoxGeometry(2.68, 1.75, 2.18), matPlaster);
+        cBody.position.y = 1.10;
+        cBody.castShadow = true;
+        cBody.receiveShadow = true;
 
-    for (const px of [-1.33, 1.33]) {
-      for (const pz of [-1.08, 1.08]) {
-        const post = new Mesh(new BoxGeometry(0.11, 1.78, 0.11), matTimber);
-        post.position.set(px, 1.10, pz);
-        cottage.add(post);
-      }
-    }
-    const topBeam = new Mesh(new BoxGeometry(2.74, 0.10, 2.24), matTimber);
-    topBeam.position.y = 1.96;
+        for (const px of [-1.33, 1.33]) {
+          for (const pz of [-1.08, 1.08]) {
+            const post = new Mesh(new BoxGeometry(0.11, 1.78, 0.11), matTimber);
+            post.position.set(px, 1.10, pz);
+            fb.add(post);
+          }
+        }
+        const topBeam = new Mesh(new BoxGeometry(2.74, 0.10, 2.24), matTimber);
+        topBeam.position.y = 1.96;
 
-    const cDoor = new Mesh(new BoxGeometry(0.68, 1.22, 0.10), matWood);
-    cDoor.position.set(-0.48, 0.84, 1.10);
-    const cKnob = new Mesh(new SphereGeometry(0.04, 6, 6), matBrass);
-    cKnob.position.set(-0.24, 0.82, 1.17);
-    const cStep = new Mesh(new BoxGeometry(0.88, 0.14, 0.42), matStoneDark);
-    cStep.position.set(-0.48, 0.07, 1.32);
+        const cDoor = new Mesh(new BoxGeometry(0.68, 1.22, 0.10), matWood);
+        cDoor.position.set(-0.48, 0.84, 1.10);
+        const cKnob = new Mesh(new SphereGeometry(0.04, 6, 6), matBrass);
+        cKnob.position.set(-0.24, 0.82, 1.17);
+        const cStep = new Mesh(new BoxGeometry(0.88, 0.14, 0.42), matStoneDark);
+        cStep.position.set(-0.48, 0.07, 1.32);
 
-    const cWin = createFramedWindow(true);
-    cWin.scale.setScalar(0.82);
-    cWin.position.set(0.56, 1.16, 1.10);
+        const cWin = createFramedWindow(true);
+        cWin.scale.setScalar(0.82);
+        cWin.position.set(0.56, 1.16, 1.10);
 
-    const cRoof = createPitchedRoof(2.82, 1.18, 2.32, TONE_ROOF_HEX[zone.roofTone]);
-    cRoof.position.y = 1.98;
+        const cRoof = createPitchedRoof(2.82, 1.18, 2.32, TONE_ROOF_HEX[zone.roofTone]);
+        cRoof.position.y = 1.98;
 
-    const cChimney = new Mesh(new BoxGeometry(0.42, 1.25, 0.42), matStoneDark);
-    cChimney.position.set(0.85, 2.55, -0.45);
-    cChimney.castShadow = true;
+        const cChimney = new Mesh(new BoxGeometry(0.42, 1.25, 0.42), matStoneDark);
+        cChimney.position.set(0.85, 2.55, -0.45);
+        cChimney.castShadow = true;
 
-    cottage.add(cPlinth, cBody, topBeam, cDoor, cKnob, cStep, cWin, cRoof, cChimney);
+        fb.add(cPlinth, cBody, topBeam, cDoor, cKnob, cStep, cWin, cRoof, cChimney);
+      },
+    });
     parent.add(cottage);
+    addContactShadow(parent, cx, cz, 2.05, 1.85, 0.95);
     colliders.push({ x: cx, z: cz, r: 1.78 });
 
     // 2. 캠프 상징 컬러 깃발 폴대
@@ -1477,6 +1840,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     streetlampAnchors.length = 0;
     colliders = [];
     bannerMeshes.length = 0;
+    customBladePivots.length = 0;
+    assetRegistry.clearActiveMixers();
     currentZones = zones;
 
     // 1. 광장(0,0) ↔ 각 구역 간 자연스러운 초원 오솔길 세그먼트 생성
@@ -1590,29 +1955,35 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
     // 5. 풀잎(InstancedMesh) & 들꽃(InstancedMesh) 배치 — 도로·수면·건물 내부는 자동 회피!
     const dummy = new Object3D();
-    const grassColors = [new Color(0x52c258), new Color(0x67d25f), new Color(0x44ad50), new Color(0x78d966)];
+    const grassColors = [
+      new Color(0x52c258),
+      new Color(0x6bd460),
+      new Color(0x42aa4e),
+      new Color(0x80dc67),
+      new Color(0x5db954),
+    ];
     let gCount = 0;
     for (let attempt = 0; attempt < MAX_GRASS * 2 && gCount < MAX_GRASS; attempt += 1) {
       const u1 = hash2(attempt * 1.13, 7.31);
       const u2 = hash2(attempt * 2.71, 19.4);
-      const rad = Math.sqrt(u1) * 44.0;
+      const rad = Math.pow(u1, 0.65) * 42.0;
       const ang = u2 * Math.PI * 2;
       const gx = Math.cos(ang) * rad;
       const gz = Math.sin(ang) * rad;
       const gy = getTerrainBaseHeight(gx, gz);
       if (gy < 0.14) continue;
       const rd = minRoadDistance(gx, gz);
-      if (rd.dist < rd.halfWidth + 0.35) continue;
+      if (rd.dist < rd.halfWidth + 0.28) continue;
       if (colliders.some((c) => Math.hypot(gx - c.x, gz - c.z) < c.r + 0.25)) continue;
 
       dummy.position.set(gx, gy - 0.02, gz);
       dummy.rotation.set(
-        (hash2(gx, gz) - 0.5) * 0.22,
+        (hash2(gx, gz) - 0.5) * 0.24,
         hash2(gz, gx) * Math.PI * 2,
-        (hash2(gx + 3, gz) - 0.5) * 0.22,
+        (hash2(gx + 3, gz) - 0.5) * 0.24,
       );
-      const sc = 0.72 + hash2(gx * 2, gz * 2) * 0.75;
-      dummy.scale.set(sc, sc * (0.85 + hash2(attempt, 3.1) * 0.55), sc);
+      const sc = 0.86 + hash2(gx * 2, gz * 2) * 0.82;
+      dummy.scale.set(sc, sc * (0.88 + hash2(attempt, 3.1) * 0.58), sc);
       dummy.updateMatrix();
       grassInstanced.setMatrixAt(gCount, dummy.matrix);
       grassInstanced.setColorAt(gCount, grassColors[attempt % grassColors.length]!);
@@ -1676,9 +2047,13 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     getGroundHeight,
     isWalkable,
     resolveMovement,
-    update(elapsed, nightFactor, sunDir) {
+    update(dt, elapsed, nightFactor, sunDir) {
       windTimeUniform.value = elapsed;
       windmillBlades.rotation.z = -elapsed * 0.95;
+      for (const pivot of customBladePivots) {
+        pivot.rotation.z = -elapsed * 0.95;
+      }
+      assetRegistry.update(dt);
 
       const flick1 = 0.88 + Math.sin(elapsed * 13.5) * 0.16;
       const flick2 = 0.92 + Math.cos(elapsed * 17.0) * 0.14;
@@ -1730,6 +2105,12 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       }
     },
     dispose() {
+      assetRegistry.dispose();
+      textures.dispose();
+      contactShadowGeo.dispose();
+      contactShadowMat.dispose();
+      for (const rMat of roofMaterialCache.values()) rMat.dispose();
+      roofMaterialCache.clear();
       terrainGeo.dispose();
       terrainMat.dispose();
       brookGeo.dispose();

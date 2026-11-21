@@ -4,6 +4,7 @@ import {
   Matrix4,
   PCFSoftShadowMap,
   PerspectiveCamera,
+  PMREMGenerator,
   Scene,
   SRGBColorSpace,
   Vector2,
@@ -11,14 +12,17 @@ import {
   WebGLRenderer,
   WebGLRenderTarget,
 } from "three";
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
 import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 import type {
+  WorldActorEmote,
   WorldCameraMode,
   WorldChoreographyCommand,
+  WorldInteractionMode,
   WorldLifecycleState,
   WorldPlayerScreenLabel,
   WorldScreenLabel,
@@ -56,9 +60,12 @@ export interface WorldRuntimeHandle {
     readonly lifecycle: WorldLifecycleState;
     readonly timeMode: WorldTimeMode;
     readonly cameraMode: WorldCameraMode;
+    readonly interactionMode: WorldInteractionMode;
     readonly selectedActorId: string | null;
   }): void;
-  runChoreography(cmd: WorldChoreographyCommand): void;
+  runChoreography(cmd: WorldChoreographyCommand): boolean;
+  playEmote(actorId: string, emote: WorldActorEmote): void;
+  approachActor(actorId: string): void;
   teleport(x: number, z: number): void;
   pushSpeech(actorId: string, text: string): void;
   pickActorAt(clientX: number, clientY: number): string | null;
@@ -96,6 +103,14 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   const scene = new Scene();
   const camera = new PerspectiveCamera(46, 16 / 9, 0.4, 220);
 
+  // PMREM 기반 IBL 환경맵: 돌·목재·기와·금속 PBR 재질에 은은한 하늘 반사와 깊이감을 부여한다.
+  const pmremGenerator = new PMREMGenerator(renderer);
+  const envRoom = new RoomEnvironment();
+  const envRT = pmremGenerator.fromScene(envRoom, 0.04);
+  envRoom.dispose();
+  scene.environment = envRT.texture;
+  scene.environmentIntensity = 0.42;
+
   const msaaTarget = new WebGLRenderTarget(800, 600, {
     type: HalfFloatType,
     samples: 4,
@@ -129,6 +144,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let currentLifecycle: WorldLifecycleState = "diving";
   let currentTimeMode: WorldTimeMode = "day";
   let currentCameraMode: WorldCameraMode = "follow";
+  let currentInteractionMode: WorldInteractionMode = "closed";
   let selectedActorId: string | null = null;
   let prevSelectedActorId: string | null = null;
   let latestLabels: WorldScreenLabel[] = [];
@@ -173,7 +189,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   };
   const onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    playerCtrl.onWheelZoom(e.deltaY);
+    const normalizedDelta = e.deltaMode === 1 ? e.deltaY * 18 : e.deltaMode === 2 ? e.deltaY * 120 : e.deltaY;
+    playerCtrl.onWheelZoom(normalizedDelta);
   };
 
   config.canvas.addEventListener("pointerdown", onPointerDown);
@@ -209,11 +226,17 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     prevNow = now;
     elapsed += dt;
 
+    const interacting = currentInteractionMode !== "closed";
+    const focusedActorId = interacting ? selectedActorId : null;
+    const focusedMotion = focusedActorId ? director.motions.get(focusedActorId) ?? null : null;
+
     playerCtrl.update({
       dt,
       lifecycle: currentLifecycle,
       cameraMode: currentCameraMode,
       reducedMotion: config.isReducedMotion(),
+      inputLocked: interacting,
+      focusActorPos: focusedMotion ? { x: focusedMotion.x, z: focusedMotion.z } : null,
       camera,
       getGroundHeight: meadow.getGroundHeight,
       resolveMovement: meadow.resolveMovement,
@@ -226,6 +249,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       elapsed,
       skyLighting.nightFactor,
       playerPosVec,
+      focusedActorId,
       meadow.isWalkable,
       meadow.resolveMovement,
     );
@@ -239,7 +263,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     }
 
     skyLighting.update(dt, elapsed, currentTimeMode, playerPosVec, commanderPositions);
-    meadow.update(elapsed, skyLighting.nightFactor, skyLighting.sunDir);
+    scene.environmentIntensity = 0.42 * (1 - skyLighting.nightFactor * 0.65);
+    meadow.update(dt, elapsed, skyLighting.nightFactor, skyLighting.sunDir);
     bloomPass.threshold = 1.12 - skyLighting.nightFactor * 0.22;
     bloomPass.strength = 0.08 + skyLighting.nightFactor * 0.26;
 
@@ -401,6 +426,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       currentLifecycle = opts.lifecycle;
       currentTimeMode = opts.timeMode;
       currentCameraMode = opts.cameraMode;
+      currentInteractionMode = opts.interactionMode;
       selectedActorId = opts.selectedActorId;
       if (opts.selectedActorId && opts.selectedActorId !== prevSelectedActorId) {
         const targetMotion = director.motions.get(opts.selectedActorId);
@@ -411,7 +437,23 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       prevSelectedActorId = opts.selectedActorId;
     },
     runChoreography(cmd) {
-      director.handleCommand(cmd);
+      return director.handleCommand(cmd);
+    },
+    playEmote(actorId, emote) {
+      playerPosVec.set(playerCtrl.player.x, playerCtrl.player.y, playerCtrl.player.z);
+      director.playEmote(actorId, emote, playerPosVec);
+    },
+    approachActor(actorId) {
+      const targetMotion = director.motions.get(actorId);
+      if (!targetMotion) return;
+      playerCtrl.approachPoint(targetMotion.x, targetMotion.z, meadow.getGroundHeight, meadow.resolveMovement);
+      director.spawnBurst(
+        playerCtrl.player.x,
+        meadow.getGroundHeight(playerCtrl.player.x, playerCtrl.player.z) + 0.9,
+        playerCtrl.player.z,
+        0x38bdf8,
+        12,
+      );
     },
     teleport(x, z) {
       playerCtrl.teleportTo(x, z, meadow.getGroundHeight, meadow.resolveMovement);
@@ -455,6 +497,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       playerCtrl.dispose();
       meadow.dispose();
       skyLighting.dispose();
+      envRT.dispose();
+      pmremGenerator.dispose();
       msaaTarget.dispose();
       composer.dispose();
       renderer.dispose();

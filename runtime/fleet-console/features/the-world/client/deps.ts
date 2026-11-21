@@ -8,6 +8,11 @@ import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
  *
  * 타 피처의 내부 구현 경로를 직접 import하지 않고 공개 계약과 주입 포트만 소비한다.
  */
+export interface WorldMessageResult {
+  readonly ok: boolean;
+  readonly error?: string | undefined;
+}
+
 export interface TheWorldClientDeps {
   readonly commodore: CommodoreClientHost;
   readonly readCommodores: () => readonly ConsoleCommodoreSummary[];
@@ -21,8 +26,11 @@ export interface TheWorldClientDeps {
   readonly isReducedMotion: () => boolean;
   readonly isLowerUnfocusedFrameRate: () => boolean;
   readonly getAvatarFuzz: () => number;
-  readonly openCommodoreInConsole: (commodoreId: string) => void;
+  readonly openCommodoreInConsole: (
+    commodoreId: string,
+    options?: { readonly tab?: "log" | "info" | "memory" | "settings" | "goals" },
+  ) => void;
   readonly openObjectiveInConsole: (commodoreId: string, objectiveId: string) => void;
-  readonly sendMessageToCommodore: (commodoreId: string, text: string) => Promise<boolean>;
-  readonly sendMessageToObjective: (objectiveId: string, text: string) => Promise<boolean>;
+  readonly sendMessageToCommodore: (commodoreId: string, text: string) => Promise<WorldMessageResult>;
+  readonly sendMessageToObjective: (objectiveId: string, text: string) => Promise<WorldMessageResult>;
 }

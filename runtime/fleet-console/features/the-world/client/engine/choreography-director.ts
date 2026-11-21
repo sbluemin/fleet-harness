@@ -10,7 +10,7 @@ import {
 } from "three";
 
 import { PLUSH_VIVID_TONES } from "../../../workspace/shared/mongle-3d-glsl.js";
-import type { WorldActorSpec, WorldChoreographyCommand } from "../../shared/world-types.js";
+import type { WorldActorEmote, WorldActorSpec, WorldChoreographyCommand } from "../../shared/world-types.js";
 
 /**
  * 사령관 · 지휘관 · 구성원 자율 생활 생태계 및 합동 연출 디렉터.
@@ -61,7 +61,8 @@ export interface ChoreographyDirector {
   celebratingTimer: number;
   syncActors(specs: readonly WorldActorSpec[]): void;
   applySpeech(actorId: string, text: string): void;
-  handleCommand(cmd: WorldChoreographyCommand): void;
+  playEmote(actorId: string, emote: WorldActorEmote, playerPos: Vector3): void;
+  handleCommand(cmd: WorldChoreographyCommand): boolean;
   spawnBurst(x: number, y: number, z: number, colorHex: number, count?: number): void;
   spawnDust(x: number, y: number, z: number): void;
   update(
@@ -69,6 +70,7 @@ export interface ChoreographyDirector {
     elapsed: number,
     nightFactor: number,
     playerPos: Vector3,
+    focusedActorId: string | null,
     isWalkable: (x: number, z: number) => boolean,
     resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number },
   ): string | null;
@@ -191,10 +193,37 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       m.speechTimer = 4.2;
       m.hopBoost = 1.35;
     },
+    playEmote(actorId, emote, playerPos) {
+      const m = motions.get(actorId);
+      if (!m) return;
+      m.tx = m.x;
+      m.tz = m.z;
+      m.yaw = Math.atan2(playerPos.x - m.x, playerPos.z - m.z);
+      if (emote === "greet") {
+        m.hopBoost = 1.45;
+        m.speech = m.spec.role === "commodore"
+          ? "반가워요 제독님! 오늘 작전은 무엇인가요? ✦"
+          : m.spec.role === "commander"
+            ? "충성! 작전 구역 이상 없습니다! 📡"
+            : "안녕하세요! 맡은 임무 진행 중이에요! ✨";
+        m.speechTimer = 3.8;
+        spawnBurst(m.x, 1.55, m.z, 0x38bdf8, 16);
+      } else if (emote === "cheer") {
+        m.hopBoost = 1.8;
+        m.speech = "힘이 불끈 나네요! 맡겨만 주세요! 🔥";
+        m.speechTimer = 3.8;
+        spawnBurst(m.x, 1.65, m.z, 0xfbbf24, 22);
+      } else {
+        m.hopBoost = 1.75;
+        m.speech = "점프 하이파이브! 🙌 최고의 호흡이에요!";
+        m.speechTimer = 3.8;
+        spawnBurst((m.x + playerPos.x) * 0.5, 1.6, (m.z + playerPos.z) * 0.5, 0xe879f9, 22);
+      }
+    },
     spawnBurst,
     spawnDust,
     handleCommand(cmd) {
-      if (cmd.nonce === lastCommandNonce) return;
+      if (cmd.nonce === lastCommandNonce) return false;
       lastCommandNonce = cmd.nonce;
 
       const all = [...motions.values()];
@@ -204,7 +233,8 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         (m) => m.spec.role === "commander"
           && (!cmd.outpostId || m.spec.zoneId === cmd.outpostId)
           && all.some((sub) => sub.spec.role === "member" && sub.spec.zoneId === m.spec.zoneId),
-      ) ?? all.find((m) => m.spec.role === "commander");
+      ) ?? all.find((m) => m.spec.role === "commander" && (!cmd.outpostId || m.spec.zoneId === cmd.outpostId))
+        ?? all.find((m) => m.spec.role === "commander");
       const campMembers = commander
         ? all.filter((m) => m.spec.role === "member" && m.spec.zoneId === commander.spec.zoneId)
         : [];
@@ -239,9 +269,10 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             });
           }, 1_600);
         });
+        return true;
       } else if (cmd.kind === "report" && commander) {
         const runner = campMembers[0] ?? all.find((m) => m.spec.id !== commander.spec.id);
-        if (!runner) return;
+        if (!runner) return false;
         runner.carrying = true;
         runner.speech = "🎁 결과물 보고 갑니다!";
         runner.speechTimer = 3.5;
@@ -262,9 +293,10 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             runner.tz = runner.spec.homeZ;
           }, 1_400);
         }, 1_650);
+        return true;
       } else if (cmd.kind === "handoff") {
         const pair = campMembers.length >= 2 ? campMembers : all.slice(0, 2);
-        if (pair.length < 2) return;
+        if (pair.length < 2) return false;
         const m1 = pair[0]!;
         const m2 = pair[1]!;
         const midX = (m1.spec.homeX + m2.spec.homeX) * 0.5;
@@ -291,7 +323,9 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             m2.tz = m2.spec.homeZ;
           }, 1_350);
         }, 1_450);
+        return true;
       } else if (cmd.kind === "celebrate") {
+        if (all.length === 0) return false;
         director.celebratingTimer = 4.0;
         for (const m of all) {
           m.hopBoost = 1.7;
@@ -300,16 +334,18 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         }
         spawnBurst(0, 2.4, -1.5, 0x74cc6e, 28);
         if (commander) spawnBurst(commander.x, 2.3, commander.z, 0xf59e0b, 26);
+        return true;
       }
+      return false;
     },
-    update(dt, elapsed, nightFactor, playerPos, isWalkable, resolveMovement) {
+    update(dt, elapsed, nightFactor, playerPos, focusedActorId, isWalkable, resolveMovement) {
       if (director.celebratingTimer > 0) {
         director.celebratingTimer = Math.max(0, director.celebratingTimer - dt);
       }
 
       const isNight = nightFactor > 0.72;
       let nearestId: string | null = null;
-      let nearestDist = 3.5;
+      let nearestDist = 4.6;
 
       const motionList = [...motions.values()];
       motionList.forEach((m, idx) => {
@@ -325,8 +361,13 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           nearestId = m.spec.id;
         }
 
-        // 밤이 되면 광장 인근의 유휴(idle) 에이전트들이 모닥불(2.8, 1.0) 둘레에 여유 있는 간격으로 둘러앉음
-        if (m.spec.state === "idle" && isNight && Math.hypot(m.spec.homeX - 2.8, m.spec.homeZ - 1.0) < 22) {
+        const isFocused = m.spec.id === focusedActorId;
+        // 상호작용 중인 대상은 제자리에 멈춰 서서 제독을 바라본다
+        if (isFocused) {
+          m.tx = m.x;
+          m.tz = m.z;
+        } else if (m.spec.state === "idle" && isNight && Math.hypot(m.spec.homeX - 2.8, m.spec.homeZ - 1.0) < 22) {
+          // 밤이 되면 광장 인근의 유휴(idle) 에이전트들이 모닥불(2.8, 1.0) 둘레에 여유 있는 간격으로 둘러앉음
           const seatAngle = idx * 0.95 + 0.4;
           m.tx = 2.8 + Math.cos(seatAngle) * 2.15;
           m.tz = 1.0 + Math.sin(seatAngle) * 2.15;
@@ -357,12 +398,12 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           m.moving = true;
         } else {
           m.moving = false;
-          // 평상시에는 카메라/플레이어가 있는 남쪽(+Z) 또는 가까운 플레이어를 자연스럽게 바라봄
-          const desiredYaw = distToPlayer < 4.2 ? Math.atan2(playerPos.x - m.x, playerPos.z - m.z) : 0.15;
+          // 상호작용 중이거나 가까이 오면 플레이어를, 평상시에는 남쪽(+Z)을 자연스럽게 바라봄
+          const desiredYaw = isFocused || distToPlayer < 4.5 ? Math.atan2(playerPos.x - m.x, playerPos.z - m.z) : 0.15;
           let df = desiredYaw - m.yaw;
           while (df > Math.PI) df -= Math.PI * 2;
           while (df < -Math.PI) df += Math.PI * 2;
-          m.yaw += df * Math.min(1, dt * 5.5);
+          m.yaw += df * Math.min(1, dt * (isFocused ? 9.0 : 5.5));
         }
       });
 

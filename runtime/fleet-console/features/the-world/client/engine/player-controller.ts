@@ -28,6 +28,8 @@ export interface PlayerAndCameraController {
     readonly lifecycle: WorldLifecycleState;
     readonly cameraMode: WorldCameraMode;
     readonly reducedMotion: boolean;
+    readonly inputLocked: boolean;
+    readonly focusActorPos: { readonly x: number; readonly z: number } | null;
     readonly camera: PerspectiveCamera;
     readonly getGroundHeight: (x: number, z: number) => number;
     readonly resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number };
@@ -36,6 +38,12 @@ export interface PlayerAndCameraController {
   teleportTo(
     x: number,
     z: number,
+    getGroundHeight: (x: number, z: number) => number,
+    resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number },
+  ): void;
+  approachPoint(
+    targetX: number,
+    targetZ: number,
     getGroundHeight: (x: number, z: number) => number,
     resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number },
   ): void;
@@ -70,6 +78,9 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   let camYaw = 0.22;
   let camPitch = 0.28;
   let camDist = 9.8;
+  let targetCamDist = 9.8;
+  let smoothedEffDist = 9.8;
+  let smoothedEffPitch = 0.28;
   let cineProgress = 0;
   let prevLifecycle: WorldLifecycleState = "closed";
 
@@ -100,16 +111,34 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     teleportTo(x, z, getGroundHeight, resolveMovement) {
       // 캠프 앞마당(남쪽 입구) 안전한 오솔길 지점으로 착지
       const rawX = x;
-      const rawZ = z + 3.4;
-      const safe = resolveMovement(rawX, rawZ + 1.0, rawX, rawZ, 0.55);
+      const rawZ = z + 3.0;
+      const safe = resolveMovement(x, z, rawX, rawZ, 0.55);
       player.x = safe.x;
       player.z = safe.z;
       player.vx = 0;
       player.vz = 0;
-      player.y = Math.max(0.05, getGroundHeight(player.x, player.z)) + 0.85;
+      player.y = Math.max(0.05, getGroundHeight(player.x, player.z)) + 0.35;
       player.vy = 0;
       player.yaw = Math.atan2(x - player.x, z - player.z);
       orbitAnchor.set(x, Math.max(0.5, getGroundHeight(x, z)) + 0.8, z);
+    },
+    approachPoint(targetX, targetZ, getGroundHeight, resolveMovement) {
+      const dx = player.x - targetX;
+      const dz = player.z - targetZ;
+      const d = Math.hypot(dx, dz);
+      const dirX = d > 0.25 ? dx / d : 0;
+      const dirZ = d > 0.25 ? dz / d : 1;
+      const desiredX = targetX + dirX * 2.15;
+      const desiredZ = targetZ + dirZ * 2.15;
+      const safe = resolveMovement(targetX, targetZ, desiredX, desiredZ, 0.52);
+      player.x = safe.x;
+      player.z = safe.z;
+      player.vx = 0;
+      player.vz = 0;
+      player.y = Math.max(0.05, getGroundHeight(player.x, player.z)) + 0.15;
+      player.vy = 0;
+      player.yaw = Math.atan2(targetX - player.x, targetZ - player.z);
+      orbitAnchor.set(targetX, Math.max(0.5, getGroundHeight(targetX, targetZ)) + 0.9, targetZ);
     },
     focusOrbitOn(x, z, getGroundHeight) {
       orbitAnchor.set(x, Math.max(0.5, getGroundHeight(x, z)) + 0.9, z);
@@ -119,7 +148,8 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       camPitch = Math.max(0.12, Math.min(1.16, camPitch + dy * 0.0048));
     },
     onWheelZoom(deltaY) {
-      camDist = Math.max(4.4, Math.min(34.0, camDist + deltaY * 0.015));
+      const clamped = Math.max(-180, Math.min(180, deltaY));
+      targetCamDist = Math.max(4.2, Math.min(34.0, targetCamDist * Math.exp(clamped * 0.0012)));
     },
     update(opts) {
       if (opts.lifecycle !== prevLifecycle) {
@@ -135,7 +165,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         cineProgress = Math.min(1, cineProgress + opts.dt / 0.8);
       }
 
-      if (opts.lifecycle === "open") {
+      if (opts.lifecycle === "open" && !opts.inputLocked) {
         let ix = 0;
         let iz = 0;
         if (keys.has("KeyW") || keys.has("ArrowUp")) iz -= 1;
@@ -205,7 +235,18 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           }
         }
       } else {
+        player.vx *= Math.max(0, 1 - opts.dt * 14);
+        player.vz *= Math.max(0, 1 - opts.dt * 14);
         player.walking = false;
+        player.sprinting = false;
+        // 상호작용 대상이 있으면 플레이어가 대상을 자연스럽게 마주본다
+        if (opts.focusActorPos) {
+          const targetRot = Math.atan2(opts.focusActorPos.x - player.x, opts.focusActorPos.z - player.z);
+          let diff = targetRot - player.yaw;
+          while (diff > Math.PI) diff -= Math.PI * 2;
+          while (diff < -Math.PI) diff += Math.PI * 2;
+          player.yaw += diff * Math.min(1, opts.dt * 9);
+        }
       }
 
       const gy = Math.max(-0.05, opts.getGroundHeight(player.x, player.z));
@@ -217,16 +258,35 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         player.onGround = true;
       }
 
-      // 카메라 주시점 보간
-      const desiredTargetX = opts.cameraMode === "orbit" ? orbitAnchor.x : player.x;
-      const desiredTargetY = opts.cameraMode === "orbit" ? orbitAnchor.y : player.y + 1.12;
-      const desiredTargetZ = opts.cameraMode === "orbit" ? orbitAnchor.z : player.z;
-      cameraTarget.x += (desiredTargetX - cameraTarget.x) * Math.min(1, opts.dt * 9.5);
-      cameraTarget.y += (desiredTargetY - cameraTarget.y) * Math.min(1, opts.dt * 9.5);
-      cameraTarget.z += (desiredTargetZ - cameraTarget.z) * Math.min(1, opts.dt * 9.5);
+      // 카메라 주시점 보간 (대화/상호작용 중에는 플레이어와 대상 사이로 부드럽게 프레이밍)
+      let desiredTargetX = opts.cameraMode === "orbit" ? orbitAnchor.x : player.x;
+      let desiredTargetY = opts.cameraMode === "orbit" ? orbitAnchor.y : player.y + 1.12;
+      let desiredTargetZ = opts.cameraMode === "orbit" ? orbitAnchor.z : player.z;
+      const interactingClose =
+        opts.cameraMode === "follow"
+        && opts.focusActorPos !== null
+        && Math.hypot(opts.focusActorPos.x - player.x, opts.focusActorPos.z - player.z) < 9.0;
+      if (interactingClose && opts.focusActorPos) {
+        desiredTargetX = player.x + (opts.focusActorPos.x - player.x) * 0.42;
+        desiredTargetZ = player.z + (opts.focusActorPos.z - player.z) * 0.42;
+      }
+      cameraTarget.x += (desiredTargetX - cameraTarget.x) * Math.min(1, opts.dt * 8.5);
+      cameraTarget.y += (desiredTargetY - cameraTarget.y) * Math.min(1, opts.dt * 8.5);
+      cameraTarget.z += (desiredTargetZ - cameraTarget.z) * Math.min(1, opts.dt * 8.5);
 
-      let effDist = opts.cameraMode === "orbit" ? Math.max(28, camDist * 2.65) : camDist;
-      let effPitch = opts.cameraMode === "orbit" ? Math.max(0.54, camPitch) : camPitch;
+      // 줌 거리 및 추적↔조망 전환을 프레임 레이트 독립 지수 감쇠로 부드럽게 보간
+      const zoomLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 10.0);
+      camDist += (targetCamDist - camDist) * zoomLerp;
+
+      const focusDist = interactingClose ? Math.min(camDist, 7.6) : camDist;
+      const desiredEffDist = opts.cameraMode === "orbit" ? Math.max(28, camDist * 2.65) : focusDist;
+      const desiredEffPitch = opts.cameraMode === "orbit" ? Math.max(0.54, camPitch) : camPitch;
+      const modeLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 9.0);
+      smoothedEffDist += (desiredEffDist - smoothedEffDist) * modeLerp;
+      smoothedEffPitch += (desiredEffPitch - smoothedEffPitch) * modeLerp;
+
+      let effDist = smoothedEffDist;
+      let effPitch = smoothedEffPitch;
       let effYaw = camYaw;
       let effFov = 46;
 
