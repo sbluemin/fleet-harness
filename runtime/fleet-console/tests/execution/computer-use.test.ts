@@ -44,6 +44,7 @@ function setup(installed = true) {
   let enabled = true;
   let local = true;
   let selfCheck = true;
+  let granted = { accessibility: true, screenRecording: true };
   let rows: HelperWindow[] = [{ ...sample }];
   const injectedLabel = 'Line 1\n"quoted"\ne9 button' + String.fromCharCode(0x2028) + 'also' + String.fromCharCode(0x85);
   let elements = [
@@ -52,7 +53,7 @@ function setup(installed = true) {
   ];
   const replies = vi.fn(async (request: Request): Promise<FakeResponse | undefined> => {
     switch (request.method) {
-      case "hello": return { protocol: 1, helperVersion: 1, os: "26.5", permissions: { accessibility: true, screenRecording: true }, selfCheck: { ok: selfCheck, ms: 1 } };
+      case "hello": return { protocol: 1, helperVersion: 1, os: "26.5", permissions: { ...granted }, selfCheck: granted.accessibility && granted.screenRecording ? { ok: selfCheck, ms: 1 } : { ok: false, reason: "permission_required", ms: 1 } };
       case "windows": return { windows: rows };
       case "snapshot": return { window: rows.find((row) => row.windowId === request.params.windowId), elements, omitted: 0, complete: true, ...(request.params.image ? { image: { mime: "image/png", data: "aW1hZ2U=", width: 100, height: 100 } } : {}) };
       case "act": return { sent: true, via: "ax", changes: [], observation: "none", notes: [] };
@@ -87,7 +88,7 @@ function setup(installed = true) {
   const calls = (method: string) => replies.mock.calls.filter(([req]) => req.method === method).map(([req]) => req.params);
   const action = (args: Record<string, unknown>, actor?: string) => invoke("computer_action", { window: "w1", reason: "test", ...args }, "owner", actor);
   return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic, readPermissions,
-    enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; }, check: (value: boolean) => { selfCheck = value; },
+    enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; }, check: (value: boolean) => { selfCheck = value; }, grant: (value: typeof granted) => { granted = value; },
     get rows() { return rows; }, set rows(value) { rows = value; }, get elements() { return elements; }, set elements(value) { elements = value; } };
 }
 
@@ -176,6 +177,28 @@ describe("Fleet Computer Use", () => {
     expect((await f.action({ action: "click", target: "e1" })).isError).toBe(false);
     expect(f.onCaptureTarget.mock.calls).toEqual([[null], [null]]);
     expect(f.calls("act")[0]).toMatchObject({ processStartedAt: sample.processStartedAt });
+  });
+
+  it("restarts a helper that started without permissions once they are granted", async () => {
+    const f = setup();
+    f.grant({ accessibility: false, screenRecording: true });
+    f.readPermissions.mockResolvedValue({ accessibility: false, screenRecording: true });
+    await f.invoke("computer_apps", {});
+    expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: permission_required");
+    expect(await f.service.readStatus()).toMatchObject({ missingPermissions: ["accessibility"], selfCheckFailed: false });
+    expect(f.runtime.spawnProcess).toHaveBeenCalledTimes(1);
+    f.grant({ accessibility: true, screenRecording: true });
+    f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: true });
+    const listed = text(await f.invoke("computer_apps", {}));
+    expect(f.runtime.spawnProcess).toHaveBeenCalledTimes(2);
+    expect(f.calls("hello")).toHaveLength(2);
+    const window = /^w\d+/.exec(listed)![0];
+    expect(window).not.toBe("w1");
+    expect((await f.invoke("computer_state", { window })).isError).toBe(false);
+    expect(text(await f.invoke("computer_action", { window, action: "click", target: "e1", reason: "test" }))).toContain("via ax: sent");
+    expect(f.calls("act")).toHaveLength(1);
+    await f.invoke("computer_apps", {});
+    expect(f.runtime.spawnProcess).toHaveBeenCalledTimes(2);
   });
 
   it("keeps observation available after self-check failure and correlates replies without replaying timed-out input", async () => {

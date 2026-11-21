@@ -1,7 +1,7 @@
 import { extractFile, listPackage } from "@electron/asar";
 import { flipFuses, FuseState, FuseV1Options, FuseVersion, getCurrentFuseWire } from "@electron/fuses";
 import { existsSync } from "node:fs";
-import { access, readdir, readFile } from "node:fs/promises";
+import { access, readdir, readFile, stat } from "node:fs/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
@@ -12,6 +12,8 @@ const desktopDirectory = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const invokedAsCli = process.argv[1] === fileURLToPath(import.meta.url);
 const cliArguments = invokedAsCli ? parseCliArguments(process.argv.slice(2)) : { preflight: false, release: false, releaseDirectory: undefined };
 const requiresReleaseSignature = process.env.FLEET_DESKTOP_RELEASE === "1" || cliArguments.release;
+// CLI 실행은 모듈 평가 도중 검증을 돌리므로 검증이 쓰는 상수는 그보다 위에 둔다.
+const MAC_COMPUTER_USE_HELPER_APP = ["Contents", "Helpers", "Fleet Computer Use.app"];
 
 export default async function verifyAfterPack(context) {
   const platform = context?.electronPlatformName ?? process.platform;
@@ -44,6 +46,7 @@ async function verifyApplication(application, platform) {
   const expectedArchitecture = expectedArchitectureForApplication(application.resourcesDirectory, platform);
   await assertElectronArchitecture(application.fuseBinary, platform, expectedArchitecture);
   await assertFuses(application.fuseBinary);
+  if (platform === "darwin") await assertMacComputerUseHelper(application.appBundle);
   await assertMacSignature(application, platform);
   if (platform === "win32" && requiresReleaseSignature) await assertWindowsSignature(application.electronBinary);
 }
@@ -127,9 +130,25 @@ async function assertMacSignature(application, platform) {
   if (requiresReleaseSignature && !stderr.includes("Authority=Developer ID Application")) throw new Error("Release Electron binary is not Developer ID signed");
   if (!requiresReleaseSignature && !stderr.includes("Signature=adhoc") && !stderr.includes("Authority=Developer ID Application")) throw new Error("Local Electron binary has no valid signature");
   if (requiresReleaseSignature) {
+    // 헬퍼는 본체와 같은 Developer ID 팀으로 서명돼야 TCC가 Fleet Console 권한으로 판정한다.
+    const { stderr: helperSignature } = await execFileAsync("codesign", ["-dvvv", join(application.appBundle, ...MAC_COMPUTER_USE_HELPER_APP)]);
+    const team = macSigningTeam(stderr);
+    if (!helperSignature.includes("Authority=Developer ID Application") || team === null || macSigningTeam(helperSignature) !== team) throw new Error("Computer Use helper is not signed by the app's Developer ID team");
     await execFileAsync("xcrun", ["stapler", "validate", application.appBundle]);
     await execFileAsync("spctl", ["--assess", "--type", "execute", "--verbose=4", application.appBundle]);
   }
+}
+
+/** macOS 패키지에 Computer Use 헬퍼 실행 파일이 빠지면 기능이 꺼진 설치본이 조용히 나간다. */
+export async function assertMacComputerUseHelper(appBundle) {
+  const helper = join(appBundle, ...MAC_COMPUTER_USE_HELPER_APP, "Contents", "MacOS", "fleet-computer-use");
+  const info = await stat(helper).catch(() => null);
+  if (!info?.isFile() || (info.mode & 0o111) === 0) throw new Error(`Computer Use helper is missing or not executable: ${helper}`);
+}
+
+export function macSigningTeam(codesignInfo) {
+  const team = /^TeamIdentifier=(.+)$/m.exec(codesignInfo)?.[1]?.trim();
+  return team && team !== "not set" ? team : null;
 }
 
 async function assertWindowsSignature(filePath) {

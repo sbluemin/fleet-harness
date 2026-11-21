@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -21,6 +21,30 @@ describe("release package verification", () => {
     expect(verifier).toContain('"Electron Framework.framework", "Versions", "A", "Electron Framework"');
     expect(verifier).toContain("await flipFuses(application.fuseBinary,");
     expect(verifier).toContain("await assertFuses(application.fuseBinary);");
+  });
+
+  it("requires an executable Computer Use helper in the macOS bundle and the app's signing team for it", async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "fleet-cu-helper-"));
+    const appBundle = path.join(directory, "Fleet Console.app");
+    const macos = path.join(appBundle, "Contents", "Helpers", "Fleet Computer Use.app", "Contents", "MacOS");
+    const helper = path.join(macos, "fleet-computer-use");
+    try {
+      const verifier = await import(pathToFileURL(path.join(desktopRoot, "scripts", "verify-packaged-app.mjs")).href);
+      await expect(verifier.assertMacComputerUseHelper(appBundle)).rejects.toThrow("Computer Use helper is missing or not executable");
+      await mkdir(macos, { recursive: true });
+      await writeFile(helper, "#!/bin/sh\n");
+      await chmod(helper, 0o644);
+      await expect(verifier.assertMacComputerUseHelper(appBundle)).rejects.toThrow("Computer Use helper is missing or not executable");
+      await chmod(helper, 0o755);
+      await expect(verifier.assertMacComputerUseHelper(appBundle)).resolves.toBeUndefined();
+      expect(verifier.macSigningTeam("Authority=Developer ID Application: Fleet (ABCDE12345)\nTeamIdentifier=ABCDE12345\n")).toBe("ABCDE12345");
+      expect(verifier.macSigningTeam("Signature=adhoc\nTeamIdentifier=not set\n")).toBeNull();
+      const source = await readFile(path.join(desktopRoot, "scripts", "verify-packaged-app.mjs"), "utf8");
+      expect(source).toContain('if (platform === "darwin") await assertMacComputerUseHelper(application.appBundle);');
+      expect(source).toContain("macSigningTeam(helperSignature) !== team");
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
   });
 
   it("accepts the expected PE architecture and rejects a mismatched Electron binary", async () => {

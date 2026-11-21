@@ -1,3 +1,5 @@
+// 디버그 빌드 전용(main.swift `--cursor-demo`). 릴리스 헬퍼에는 컴파일되지 않는다.
+#if DEBUG
 // `fleet-computer-use --cursor-demo [--out-dir DIR] [--target-app PATH] [--person-app PATH] [--no-capture]`
 // AI 커서 독립 시험. 시험 대상 창(Fleet Spike Target)과 사람 대역 창(Fleet Spike Person)을 직접 exec해 띄우고,
 // 여러 지점 이동 → 각 pulse → 대상 창 위 정렬 → 사람 창에 가려진 지점 → 다크/라이트 배경 → hide 순서로 보인 뒤
@@ -437,3 +439,4 @@ private struct WinInfo { let id: Int; let pid: Int32; let bounds: CGRect }
     return Double(u.ru_utime.tv_sec) + Double(u.ru_utime.tv_usec) / 1e6 + Double(u.ru_stime.tv_sec) + Double(u.ru_stime.tv_usec) / 1e6
   }
 }
+#endif

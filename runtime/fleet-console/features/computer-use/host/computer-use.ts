@@ -309,7 +309,7 @@ export class ComputerUseService {
   }
 
   private async startHelper(lifetime: AbortController) {
-    if (this.client?.live) return this.client;
+    if (this.client?.live && !(await this.permissionsGrantedSince(this.client))) return this.client;
     const old = this.client;
     if (old) {
       await old.stop();
@@ -327,6 +327,18 @@ export class ComputerUseService {
     }
     catch (error) { await client.stop(); if (this.client === client) this.client = null; throw error; }
     return client;
+  }
+
+  /**
+   * hello의 권한과 자가 점검은 그 헬퍼 프로세스가 사는 동안 고정이다. 시작 때 빠졌던 권한을 사용자가
+   * 준 뒤에는 헬퍼를 새로 띄워야 새 hello가 그 권한으로 판정된다. 화면 기록 허용은 이미 떠 있는
+   * 프로세스에 반영되지 않을 수 있으므로 다시 읽기보다 재시작한다.
+   */
+  private async permissionsGrantedSince(client: FleetHelperClient): Promise<boolean> {
+    const started = client.hello?.permissions;
+    if (!started || COMPUTER_USE_PERMISSIONS.every((permission) => started[permission])) return false;
+    const now = await (this.deps.readPermissions ?? readMacPermissions)();
+    return now !== null && COMPUTER_USE_PERMISSIONS.some((permission) => !started[permission] && now[permission]);
   }
 
   private resetReferences() {
