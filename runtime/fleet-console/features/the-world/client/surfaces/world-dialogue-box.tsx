@@ -211,13 +211,15 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
     ? (conversation.stepLabel ?? t(STATE_LABEL_KEY.running))
     : t(STATE_LABEL_KEY[actor.state]);
   const objectiveTargetId = actor.rootObjectiveId ?? actor.objectiveId;
-  const showQuickChips = !conversation.working && draft.trim().length === 0;
+  const hasOpenAsks = actor.role === "commodore" && Boolean(actor.commodoreId) && conversation.openAsksCount > 0;
+  const showQuickChips = !conversation.working && !hasOpenAsks && draft.trim().length === 0;
   const showHistoryLink = historyCount >= 2 || conversation.hasOlder;
 
   return (
     <section
       className="the-world-rpg-dialogue"
       data-tone={actor.tone}
+      data-has-asks={hasOpenAsks ? "true" : undefined}
       role="dialog"
       aria-label={t("theWorld.dialogue.aria", { name: actor.name })}
       onPointerDown={(e) => e.stopPropagation()}
@@ -401,8 +403,8 @@ export const WorldDialogueBox = memo(function WorldDialogueBox({
         ) : null}
       </div>
 
-      {/* 사령관 대기 질문 (Ask) 인라인 도크 */}
-      {actor.role === "commodore" && actor.commodoreId && conversation.openAsksCount > 0 ? (
+      {/* 사령관 대기 질문 (Ask) 인라인 RPG 선택지 도크 */}
+      {hasOpenAsks && actor.commodoreId ? (
         <div className="the-world-dialogue-asks">
           {deps.renderCommodoreAsks(actor.commodoreId)}
         </div>

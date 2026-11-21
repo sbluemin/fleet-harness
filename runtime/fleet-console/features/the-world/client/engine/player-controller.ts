@@ -1050,13 +1050,13 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetY = districtFocus.y;
         desiredTargetZ = districtFocus.z;
       } else if (dialogueFraming && opts.focusActorPos) {
-        // 1단계 RPG 대화: 제독·사령관 중간점을 겨냥하고 높이를 살짝 낮춰 하단 중앙 RPG 바 위쪽 65% 중앙에 2샷 프레이밍
+        // 1단계 RPG 대화: 제독·사령관 중간점을 겨냥하고 주시 높이를 낮춰 하단 중앙 RPG 바 위쪽 열린 상단 화면에 2샷이 온전히 보이도록 프레이밍
         const blendT = focusDistToPlayer < 12.0 ? 0.48 : 1.0;
         const midX = player.x + (opts.focusActorPos.x - player.x) * blendT;
         const midZ = player.z + (opts.focusActorPos.z - player.z) * blendT;
         const midGy = Math.max(-0.05, opts.getGroundHeight(midX, midZ));
         desiredTargetX = midX;
-        desiredTargetY = midGy + 0.78;
+        desiredTargetY = midGy + 0.42;
         desiredTargetZ = midZ;
       } else if (drawerFraming && opts.focusActorPos) {
         // 2단계 우측 사령관 수첩 드로어: 타깃을 카메라 우측 벡터(+cos(camYaw)*1.45, -sin(camYaw)*1.45)로 밀어

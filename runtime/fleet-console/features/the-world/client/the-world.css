@@ -972,6 +972,7 @@
   transform: translateX(-50%);
   z-index: 7;
   width: min(700px, calc(100vw - 32px));
+  max-height: calc(100vh - 130px);
   display: flex;
   flex-direction: column;
   border-radius: var(--radius-lg);
@@ -982,6 +983,15 @@
   overflow: visible;
   pointer-events: auto;
   animation: the-world-rpg-rise var(--duration-base) var(--ease-spring) both;
+}
+
+.the-world-rpg-dialogue[data-has-asks="true"] .the-world-rpg-stage {
+  gap: 6px;
+  padding: 4px var(--space-4) var(--space-2);
+}
+
+.the-world-rpg-dialogue[data-has-asks="true"] .the-world-rpg-speech-wrap {
+  max-height: 96px;
 }
 
 @keyframes the-world-rpg-line-in {
@@ -1558,17 +1568,162 @@
 }
 
 .the-world-dialogue-asks {
-  max-height: 220px;
+  flex: 0 1 auto;
+  max-height: min(320px, 42vh);
   overflow-y: auto;
-  padding: var(--space-2) var(--space-4);
-  border-top: 1px solid oklch(100% 0 0 / 10%);
-  background: oklch(14% 0.014 255 / 72%);
+  padding: var(--space-2) var(--space-4) var(--space-3);
+  border-top: 1px solid color-mix(in oklch, var(--mongle-amber) 24%, oklch(100% 0 0 / 10%));
+  background: oklch(11% 0.014 255 / 66%);
 }
 
 .the-world-asks-stack {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+/* RPG 대화창·퀘스트 게시판 내부 사령관 결정 카드 — 채팅용 좌측 30px 들여쓰기·이중 카드 틀 제거 및 RPG 선택지 UI 통합 */
+.the-world-asks-stack .group-card {
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  margin-left: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  gap: 8px;
+}
+
+.the-world-asks-stack .group-card-head {
+  display: none;
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-handed {
+  padding: 5px 10px;
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--mongle-amber) 10%, oklch(18% 0.014 255 / 72%));
+  border-left: 2px solid color-mix(in oklch, var(--mongle-amber) 68%, transparent);
+  color: oklch(88% 0.01 255);
+  font-size: var(--t-xs);
+  line-height: 1.4;
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-handed-label {
+  color: var(--mongle-amber);
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-header {
+  padding: 1px 8px;
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--mongle-amber) 16%, oklch(18% 0.014 255 / 88%));
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 42%, transparent);
+  color: var(--mongle-amber);
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-title {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  color: oklch(98% 0.004 255);
+}
+
+/* RPG 대화창 안에서는 선택지를 2열 그리드로 배치해 A~D 전체가 스크롤 잘림 없이 한눈에 보이도록 구성 */
+.the-world-dialogue-asks .group-card-question {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 8px;
+}
+
+.the-world-dialogue-asks .group-card-question > :not(.group-card-choice) {
+  grid-column: 1 / -1;
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-choice {
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid oklch(100% 0 0 / 13%);
+  background: oklch(18% 0.014 255 / 74%);
+  transition: border-color var(--duration-fast) var(--ease-soft), background var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-choice:hover:not(.is-disabled) {
+  border-color: color-mix(in oklch, var(--mongle-amber) 52%, oklch(100% 0 0 / 18%));
+  background: oklch(22% 0.016 255 / 88%);
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-choice.is-on {
+  border-color: var(--mongle-amber);
+  background: color-mix(in oklch, var(--mongle-amber) 16%, oklch(17% 0.014 255 / 92%));
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--mongle-amber) 42%, transparent);
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-choice-pick {
+  color: oklch(97% 0.004 255);
+  font-size: var(--t-sm);
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-key {
+  background: oklch(100% 0 0 / 8%);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  color: oklch(88% 0.01 255);
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-choice.is-on .group-card-key {
+  background: var(--mongle-amber);
+  border-color: var(--mongle-amber);
+  color: oklch(14% 0.015 255);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-asks-stack .group-card.is-decision .group-card-choice-sub {
+  color: oklch(76% 0.01 255);
+  font-size: var(--t-xs);
+  line-height: 1.35;
+}
+
+.the-world-asks-stack .group-card-own {
+  padding: 6px 10px;
+  border-radius: var(--radius-xs);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  background: oklch(10% 0.012 255 / 72%);
+  color: oklch(96% 0.005 255);
+  font-size: var(--t-xs);
+}
+
+.the-world-asks-stack .group-card-own::placeholder {
+  color: oklch(64% 0.01 255);
+}
+
+.the-world-asks-stack .group-card-foot {
+  padding-top: 2px;
+}
+
+.the-world-asks-stack .group-card-route {
+  color: oklch(70% 0.01 255);
+}
+
+.the-world-asks-stack .group-card-send {
+  padding: 6px 16px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--mongle-amber);
+  background: var(--mongle-amber);
+  color: oklch(14% 0.015 255);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-asks-stack .group-card-send.is-quiet {
+  border-color: oklch(100% 0 0 / 20%);
+  background: oklch(18% 0.014 255 / 76%);
+  color: oklch(90% 0.008 255);
+  font-weight: var(--weight-medium);
+}
+
+@media (max-width: 640px) {
+  .the-world-dialogue-asks .group-card-question {
+    grid-template-columns: 1fr;
+  }
 }
 
 .the-world-dialogue-chip.is-danger {
