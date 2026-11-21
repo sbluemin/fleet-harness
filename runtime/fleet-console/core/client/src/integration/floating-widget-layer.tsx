@@ -335,12 +335,16 @@ interface ManagedSignalsCapability {
 
 let reducedMotionQuery: { readonly source: Window["matchMedia"]; readonly query: MediaQueryList } | null = null;
 
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false;
+function reducedMotionMediaQuery(): MediaQueryList | null {
+  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return null;
   if (reducedMotionQuery?.source !== window.matchMedia) {
     reducedMotionQuery = { source: window.matchMedia, query: window.matchMedia("(prefers-reduced-motion: reduce)") };
   }
-  return reducedMotionQuery.query.matches;
+  return reducedMotionQuery.query;
+}
+
+function prefersReducedMotion(): boolean {
+  return reducedMotionMediaQuery()?.matches ?? false;
 }
 
 function readFleetSignals(): FloatingWidgetFleetSignals {
@@ -385,9 +389,7 @@ function createManagedSignalsCapability(): ManagedSignalsCapability {
       listener(next);
     };
 
-    const motionQuery = typeof window !== "undefined" && typeof window.matchMedia === "function"
-      ? window.matchMedia("(prefers-reduced-motion: reduce)")
-      : null;
+    const motionQuery = reducedMotionMediaQuery();
     motionQuery?.addEventListener("change", notifyIfChanged);
     const unsubscribeStore = subscribeStore(notifyIfChanged);
     const unsubscribe = () => {
