@@ -11,9 +11,8 @@ import { finishedObjectives, isRunningObjective, useObjectiveTheater } from "./b
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { COMMODORE_SURFACE_ID } from "./commodore-conversation.js";
 import { nextRoutineWord } from "./commodore-header.js";
-import { useCommodoreName, commodoreName } from "./commodore-name.js";
 import { CommodoreRoutines } from "./commodore-routines.js";
-import { commodoreTasksList, loadCommodore, readCommodore, subscribeCommodore, useCommodore } from "./commodore-state.js";
+import { commodoreName, commodoreTasksList, loadCommodore, readCommodore, subscribeCommodore, useCommodore, useCommodoreName } from "./commodore-state.js";
 import { TASKFORCE_SURFACE_ID } from "./taskforce/taskforce.js";
 import { useTaskforce } from "./taskforce/state.js";
 import { getT } from "./i18n/index.js";

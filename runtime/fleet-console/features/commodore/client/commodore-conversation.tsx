@@ -1,7 +1,6 @@
 import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
-import { commodoreName, useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
-import { messageCommodore, renameCommodore } from "./commodore-state.js";
+import { commodoreName, messageCommodore, renameCommodore, useCommodoreName } from "./commodore-state.js";
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 
 import { commodoreAvatarKey } from "../../workspace/shared/avatars.js";

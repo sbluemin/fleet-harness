@@ -4,9 +4,8 @@ import { PlusGlyph } from "@fleet-console/ui/react";
 import { CommodorePeerLedger, commodoreParticipants } from "./commodore-peer-ledger.js";
 import { CommodoreRoutines } from "./commodore-routines.js";
 import { openOwnedObjectiveOnPhone } from "./board.js";
-import { useCommodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
-import { messageCommodore } from "./commodore-state.js";
+import { messageCommodore, useCommodoreName } from "./commodore-state.js";
 import { ConversationPillContext, useConversationPillHost } from "../../workspace/client/conversation/pill-takeover.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 

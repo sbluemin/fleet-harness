@@ -11,14 +11,13 @@ import type { ObjectiveLaunchVariantRow } from "../../objectives/shared/records/
 import { COMMANDER_PRESET } from "../../objectives/shared/types.js";
 
 import { commanderByJudgment, commanderCoordinates, commanderValue, commodoreCoordinates, commodoreValue } from "./commodore-controls.js";
-import { CommodoreJudgmentMark } from "./commodore-judgment-glyph.js";
+import { CommodoreJudgmentMark } from "./commodore-glyphs.js";
 import { CommodoreSessionSettings } from "./commodore-inbox-section.js";
 import { ProviderMark, RoutingPoolGlyphStack, RoutingPoolHelpButton, RoutingPoolPanel, useRoutingPoolData, type RoutingPoolData } from "./commodore-routing-pool.js";
 import { effortWord, qualifying, RankMark, roleGuide, RowIntelligence, rowLadder, rowScores, ScoreReadout, type RoleGuide } from "./commodore-intelligence.js";
-import { setCommodoreCommander, setCommodoreCoordinates, useCommodoreRoster, type useCommodore } from "./commodore-state.js";
+import { setCommodoreCommander, setCommodoreCoordinates, useCommodoreName, useCommodoreRoster, type useCommodore } from "./commodore-state.js";
 import { CommodoreTheaters } from "./commodore-theater-tab.js";
 import { useCommodoreList } from "./commodore-list.js";
-import { useCommodoreName } from "./commodore-name.js";
 import { requestQuotaPanelOpen } from "../../quota/client/toolbar-summary.js";
 import { isSavingGlobalSettingsField, setGlobalSettingsField, useGlobalSettingsStore } from "../../settings/client/global-settings-store.js";
 import { Select } from "../../settings/client/mobile-host.js";

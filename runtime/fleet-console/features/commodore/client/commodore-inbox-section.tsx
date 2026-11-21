@@ -2,7 +2,6 @@ import { useConversationDockHeight } from "../../workspace/client/conversation/c
 import { ContextRailInlineChip } from "../../workspace/client/conversation/context-rail/inline.js";
 import { COMMODORE_SURFACE_ID } from "./commodore-conversation.js";
 import { ChevronGlyph, PlusGlyph } from "@fleet-console/ui/react";
-import { commodoreName } from "./commodore-name.js";
 import { useCommodoreOpenUIPort } from "./openui-ports.js";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type ReactNode } from "react";
 
@@ -35,7 +34,7 @@ import { ENDED_ASK_CODES } from "./commodore-ask.js";
 import { useCommodoreDecisionDock, type CommodoreDecisionDock } from "./commodore-person-inbox.js";
 import type { CommodoreDecisionTarget } from "./commodore-decision-target.js";
 import { MAX_DECISION_ANSWER_INPUT } from "../shared/contracts/questions.js";
-import { CommodoreMentionGlyph } from "./commodore-mention-glyph.js";
+import { CommodoreMentionGlyph } from "./commodore-glyphs.js";
 import { CommodoreReferenceInput, useCommodoreObjectiveIndex, useCommodoreReferenceHost, type CommodoreReference, type CommodoreReferenceInputHandle } from "./commodore-reference-input.js";
 import { CommodoreTrail } from "./commodore-trail.js";
 import { clampTrailWidth, CommodoreTrailSeam, readTrailWidth, TRAIL_WIDTH_DEFAULT, writeTrailWidth } from "./commodore-trail-seam.js";
@@ -47,6 +46,7 @@ import {
   clearCommodore,
   commodoreLanguage,
   COMMODORE_INBOX_SECTION_ID,
+  commodoreName,
   commodoreTranscriptRenderer,
   loadCommodore,
   loadTranscript,

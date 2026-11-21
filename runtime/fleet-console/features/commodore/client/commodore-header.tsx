@@ -1,4 +1,3 @@
-import { useCommodoreName } from "./commodore-name.js";
 import { useEffect, useMemo, useSyncExternalStore } from "react";
 
 import { mongleStateOf, type MongleState } from "../../workspace/shared/avatars.js";
@@ -14,6 +13,7 @@ import {
   setCommodorePeek,
   subscribeCommodore,
   useCommodore,
+  useCommodoreName,
 } from "./commodore-state.js";
 import { CommodoreAvatar } from "./commodore-avatar.js";
 import { openCommodoreConversation, isCommodoreConversationSelected, subscribeCommodoreConversationActive } from "./commodore-conversation.js";
