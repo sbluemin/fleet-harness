@@ -1,7 +1,8 @@
 import { access, stat } from "node:fs/promises";
 import { constants } from "node:fs";
 import { isAbsolute } from "node:path";
-import { isRecord, type ComputerUseRuntimeDependencies } from "./platform.js";
+import { isRecord } from "./platform.js";
+import type { ChildProcess } from "node:child_process";
 
 export interface Frame { x: number; y: number; w: number; h: number }
 export interface HelperWindow {
@@ -36,7 +37,10 @@ interface Replies { focus: HelperFocus; hello: HelperHello; windows: HelperWindo
 export class FleetHelperError extends Error {
   constructor(readonly code: string, readonly uncertain = false, readonly details?: Record<string, unknown>) { super(code); }
 }
-type Runtime = Pick<ComputerUseRuntimeDependencies, "childEnv" | "spawnProcess">;
+interface Runtime {
+  childEnv(): NodeJS.ProcessEnv;
+  spawnProcess(request: { command: string; args: readonly string[]; env: NodeJS.ProcessEnv }): ChildProcess;
+}
 
 export function createFleetComputerUsePlatform(runtime: Runtime, command: string | undefined, platform = process.platform) {
   const executable = command && isAbsolute(command) ? command : undefined;

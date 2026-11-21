@@ -55,7 +55,7 @@ export interface SettingsSectionMobile {
   readonly subscribe?: (listener: () => void) => () => void;
 }
 
-export type { ConsoleExperimentSettings, ComputerUseBackendId, ExperimentAideId, ExperimentAideSelection, ExperimentEffort, ExperimentModelOption } from "./experiments.js";
-export { DEFAULT_EXPERIMENT_AIDE_SELECTION, DEFAULT_EXPERIMENT_SETTINGS, EXPERIMENT_AIDES, EXPERIMENT_EFFORTS, experimentAideSelection, isComputerUseBackendId, isExperimentEffort, isExperimentModelId, resolveExperimentSettings } from "./experiments.js";
+export type { ConsoleExperimentSettings, ExperimentAideId, ExperimentAideSelection, ExperimentEffort, ExperimentModelOption } from "./experiments.js";
+export { DEFAULT_EXPERIMENT_AIDE_SELECTION, DEFAULT_EXPERIMENT_SETTINGS, EXPERIMENT_AIDES, EXPERIMENT_EFFORTS, experimentAideSelection, isExperimentEffort, isExperimentModelId, resolveExperimentSettings } from "./experiments.js";
 export type { ShortcutBindings } from "./shortcuts.js";
 export { SHORTCUT_CHORD_PATTERN, SHORTCUT_CHORDS_PER_COMMAND_MAX, isShortcutBindingsInput, isShortcutChord, sanitizeShortcutBindings } from "./shortcuts.js";

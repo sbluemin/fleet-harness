@@ -2,9 +2,10 @@ import { realpath, stat } from "node:fs/promises";
 import { isAbsolute } from "node:path";
 import type { AgentToolSpec } from "@fleet-console/agent-runtime/tools";
 import { FleetHelperError, type createFleetComputerUsePlatform, type FleetHelperClient, type Frame, type HelperElement, type HelperWindow, type SnapshotWindow } from "../runtime/fleet-helper.js";
-import { openMacApp, verifyMacWindowIdentity } from "../runtime/macos-window.js";
+import { openMacApp, readMacPermissions, verifyMacWindowIdentity } from "../runtime/macos-window.js";
 import { prepareMacPaste, type ClipboardRestoration } from "../runtime/macos-paste.js";
 import type { ComputerUseCaptureFailure, ComputerUseResult, ComputerUseWindowIdentity } from "../runtime/platform.js";
+import { COMPUTER_USE_PERMISSIONS, type ComputerUseSettingsStatus } from "../shared/status.js";
 import { computerUseTools } from "./computer-use-tools.js";
 import { dragPoint, InvalidComputerUseParameters, isElementId, parseDeviceInput, type Action, type ActionArgs, type DeviceTool, type OpenArgs, type Point, type StateArgs, type VerifyArgs } from "./computer-use-input.js";
 import { gateResult, nativeRole, offeredAction, renderAction, renderApps, renderError, renderOpen, renderSessionEnd, renderSessionStatus, renderState, renderVerify, windowLine } from "./computer-use-render.js";
@@ -80,6 +81,8 @@ export class ComputerUseService {
   private readonly liveWindows = new Map<string, KnownWindow>();
   private readonly apps = new Set<string>();
   private readonly views = new Map<string, Map<string, View>>();
+  private selfCheckFailed = false;
+  private permissionsRead: { at: number; result: ReturnType<typeof readMacPermissions> } | null = null;
   private readonly recent = new Map<string, ComputerUseRecentCall[]>();
 
   constructor(private readonly deps: {
@@ -89,6 +92,7 @@ export class ComputerUseService {
     readonly openApp?: typeof openMacApp;
     readonly preparePaste?: typeof prepareMacPaste;
     readonly verifyWindow?: typeof verifyMacWindowIdentity;
+    readonly readPermissions?: typeof readMacPermissions;
     readonly diagnostic?: (event: ComputerUseDiagnostic) => void;
     readonly onFailure?: (kind: string, error: unknown) => void;
     readonly onCaptureTarget?: (target: (ComputerUseWindowIdentity & { owner: string }) | null) => void;
@@ -96,10 +100,11 @@ export class ComputerUseService {
   }) {}
 
   status(): ComputerUseStatus {
-    const enabled = this.deps.enabled();
+    const supported = this.deps.platform.supported();
+    const enabled = supported && this.deps.enabled();
     const failed = this.cleanupStatus === "failed";
     return {
-      enabled, supported: this.deps.platform.supported(), installation: this.installation,
+      enabled, supported, installation: this.installation,
       warning: failed ? "computer_use_cleanup_unconfirmed" : null,
       state: enabled ? this.state : "off", activeTool: this.activeTool,
       elapsedMs: this.startedAt === null ? 0 : Math.max(0, Date.now() - this.startedAt), stage: this.stage,
@@ -112,7 +117,21 @@ export class ComputerUseService {
     if (!this.deps.platform.supported()) return this.installation = "unsupported";
     return this.installation = await this.deps.platform.inspectInstallation() ? "available" : "missing";
   }
-  async readStatus(): Promise<ComputerUseStatus> { await this.inspectInstallation(); return this.status(); }
+  async readStatus(): Promise<ComputerUseSettingsStatus> {
+    const helperAvailable = await this.inspectInstallation() === "available";
+    const { enabled, supported } = this.status();
+    const hello = this.helperInfo();
+    let permissions: Awaited<ReturnType<typeof readMacPermissions>> = null;
+    if (helperAvailable) {
+      const now = Date.now();
+      if (!this.permissionsRead || now - this.permissionsRead.at >= 5000) {
+        this.permissionsRead = { at: now, result: (this.deps.readPermissions ?? readMacPermissions)() };
+      }
+      permissions = (await this.permissionsRead.result) ?? hello?.permissions ?? null;
+    }
+    const missingPermissions = permissions ? COMPUTER_USE_PERMISSIONS.filter((permission) => !permissions[permission]) : null;
+    return { enabled, supported, helperAvailable, missingPermissions, selfCheckFailed: enabled && helperAvailable && this.selfCheckFailed };
+  }
   async verifyCaptureTarget(target: ComputerUseWindowIdentity): Promise<boolean> {
     return this.deps.enabled() && this.deps.localControl() && await (this.deps.verifyWindow ?? verifyMacWindowIdentity)(target);
   }
@@ -204,6 +223,7 @@ export class ComputerUseService {
 
   private async run(tool: DeviceTool, input: unknown, owner?: string, signal?: AbortSignal, caller?: Caller): Promise<DeviceOutput> {
     const reject = (code: string, hint?: string) => ({ result: gateResult(code, hint), code });
+    if (!this.deps.platform.supported()) return reject("computer_use_platform_unsupported");
     if (!this.deps.enabled()) return reject("computer_use_disabled");
     if (!this.deps.localControl()) return reject("computer_use_local_only");
     if (!owner || signal?.aborted) return reject("computer_use_session_unavailable");
@@ -225,7 +245,6 @@ export class ComputerUseService {
       await this.stop();
       return withOk(renderSessionEnd(true));
     }
-    if (!this.deps.platform.supported()) return reject("computer_use_platform_unsupported");
     if (this.busy || this.stopping || (this.owner && this.owner !== owner)) return reject("computer_use_busy", "Another session owns Computer Use. Stop it in Settings before switching.");
     this.busy = true;
     this.activeTool = tool;
@@ -302,7 +321,10 @@ export class ComputerUseService {
     this.assertActive(lifetime);
     this.stage = "hello";
     const client = this.client = this.deps.platform.createClient();
-    try { await client.start(); }
+    try {
+      const hello = await client.start();
+      if (this.client === client) this.selfCheckFailed = !hello.selfCheck.ok && hello.selfCheck.reason !== "permission_required";
+    }
     catch (error) { await client.stop(); if (this.client === client) this.client = null; throw error; }
     return client;
   }
@@ -442,7 +464,7 @@ export class ComputerUseService {
       const focus = await client.request("focus", target);
       if (!focus.editable) throw new FleetHelperError("no_editable_focus");
       this.assertActive(lifetime);
-      try { lease = await (this.deps.preparePaste ?? prepareMacPaste)(window.bundlePath || window.bundleId, args.text!, args.format ?? "text", false, { backgroundWindowVerified: true }); }
+      try { lease = await (this.deps.preparePaste ?? prepareMacPaste)(args.text!, args.format ?? "text"); }
       catch { throw new FleetHelperError("clipboard_prepare_failed"); }
       params = { ...target, ref: args.target ?? focus.focusedRef, action: "key", key: "cmd+v", requireEditableFocus: true };
     } else {

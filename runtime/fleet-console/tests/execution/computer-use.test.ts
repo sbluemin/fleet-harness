@@ -3,14 +3,14 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { MACOS_COMPUTER_USE_TRANSPORT } from "@fleet-console/computer-use/codex-transport";
 import { ComputerUseService } from "../../features/computer-use/host/computer-use.js";
 import type { DeviceTool } from "../../features/computer-use/host/computer-use-input.js";
 import { computerUseFeedbackTool, computerUseTools } from "../../features/computer-use/host/computer-use-tools.js";
-import { FleetHelperClient, type HelperWindow } from "../../features/computer-use/runtime/fleet-helper.js";
+import { FleetHelperClient, createFleetComputerUsePlatform, type HelperWindow } from "../../features/computer-use/runtime/fleet-helper.js";
+import { createComputerUseRouter } from "../../features/computer-use/host/routes.js";
 import { createComputerUseMcpHost } from "../../features/computer-use/host/mcp.js";
 import { bindComputerUseApprovals } from "../../features/computer-use/host/approval.js";
 import { createApprovalCore } from "@fleet-console/approval";
@@ -40,7 +40,7 @@ afterEach(async () => {
   for (const child of children.splice(0)) { if (child.exitCode === null && child.signalCode === null) child.kill(); }
 });
 
-function setup() {
+function setup(installed = true) {
   let enabled = true;
   let local = true;
   let selfCheck = true;
@@ -77,15 +77,16 @@ function setup() {
   const finish = vi.fn(async () => "preserved_newer_contents" as const);
   const preparePaste = vi.fn(async () => ({ finish }));
   const diagnostic = vi.fn();
+  const readPermissions = vi.fn(async () => ({ accessibility: true, screenRecording: true }));
   const service = new ComputerUseService({
-    enabled: () => enabled, localControl: () => local, onCaptureTarget, preparePaste, diagnostic,
-    platform: { supported: () => true, inspectInstallation: async () => true, createClient: () => new FleetHelperClient(runtime, "/signed/fleet-computer-use") },
+    enabled: () => enabled, localControl: () => local, onCaptureTarget, preparePaste, diagnostic, readPermissions,
+    platform: { supported: () => true, inspectInstallation: async () => installed, createClient: () => new FleetHelperClient(runtime, "/signed/fleet-computer-use") },
   });
   services.push(service);
   const invoke = (tool: DeviceTool, args: unknown, owner = "owner", actor?: string) => service.execute(tool, args, owner, undefined, { actor });
   const calls = (method: string) => replies.mock.calls.filter(([req]) => req.method === method).map(([req]) => req.params);
   const action = (args: Record<string, unknown>, actor?: string) => invoke("computer_action", { window: "w1", reason: "test", ...args }, "owner", actor);
-  return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic,
+  return { service, invoke, action, runtime, calls, replies, onCaptureTarget, preparePaste, finish, diagnostic, readPermissions,
     enable: (value: boolean) => { enabled = value; }, local: (value: boolean) => { local = value; }, check: (value: boolean) => { selfCheck = value; },
     get rows() { return rows; }, set rows(value) { rows = value; }, get elements() { return elements; }, set elements(value) { elements = value; } };
 }
@@ -129,6 +130,43 @@ describe("Fleet Computer Use", () => {
     expect(f.onCaptureTarget).toHaveBeenLastCalledWith(null);
   });
 
+  it.each(["win32", "linux"] as const)("keeps a saved opt-in but exposes no Computer Use MCP on %s", async (platform) => {
+    const spawnProcess = vi.fn(() => { throw new Error("must not spawn"); });
+    const service = new ComputerUseService({ enabled: () => true, localControl: () => true, platform: createFleetComputerUsePlatform({ childEnv: () => ({}), spawnProcess }, "/not/used", platform) });
+    services.push(service);
+    const host = createComputerUseMcpHost({ service, experimentEnabled: () => true });
+    try {
+      expect(await service.readStatus()).toEqual({ supported: false, enabled: false, helperAvailable: false, missingPermissions: null, selfCheckFailed: false });
+      expect(host.connect().issueSessionToken({ label: "objective", cwd: process.cwd() })).toEqual([]);
+      expect(host.connectPlugin({ enabled: () => true })).toBeNull();
+      expect(text(await service.execute("computer_session", { op: "status" }, "objective"))).toContain("computer_use_platform_unsupported");
+      expect(spawnProcess).not.toHaveBeenCalled();
+    } finally { await host.dispose(); }
+  });
+
+  it("reports helper availability without starting it and opens only the missing permission pane on local same-origin POST", async () => {
+    const absent = setup(false);
+    const f = setup();
+    f.readPermissions.mockResolvedValue({ accessibility: true, screenRecording: false });
+    const openPrivacySettings = vi.fn(async () => true);
+    let exact = false;
+    const request = async (service: ComputerUseService, method: string, pathname: string) => {
+      const writeJson = vi.fn();
+      const router = createComputerUseRouter({ computerUse: service, writeJson, openPrivacySettings, isLoopbackListener: () => true, isExactConsoleOrigin: () => exact });
+      await router({ req: { method } as never, res: {} as never, pathname });
+      return writeJson.mock.calls[0]?.slice(1);
+    };
+    expect(await request(absent.service, "GET", "/api/v1/computer-use")).toEqual([200, { supported: true, enabled: true, helperAvailable: false, missingPermissions: null, selfCheckFailed: false }]);
+    expect(await request(f.service, "GET", "/api/v1/computer-use")).toEqual([200, { supported: true, enabled: true, helperAvailable: true, missingPermissions: ["screenRecording"], selfCheckFailed: false }]);
+    expect((await request(f.service, "POST", "/api/v1/computer-use/privacy-settings"))?.[0]).toBe(403);
+    expect(openPrivacySettings).not.toHaveBeenCalled();
+    exact = true;
+    expect(await request(f.service, "POST", "/api/v1/computer-use/privacy-settings")).toEqual([200, { opened: true }]);
+    expect(openPrivacySettings).toHaveBeenCalledExactlyOnceWith(["screenRecording"]);
+    expect(absent.runtime.spawnProcess).not.toHaveBeenCalled();
+    expect(f.runtime.spawnProcess).not.toHaveBeenCalled();
+  });
+
   it("keeps window tools working when the shell cannot verify a kernel start time for capture", async () => {
     const f = setup();
     f.rows = [{ ...sample, startedAtSource: "kernel" }];
@@ -147,7 +185,9 @@ describe("Fleet Computer Use", () => {
     expect((await f.invoke("computer_state", { window: "w1" })).isError).toBe(false);
     expect(text(await f.action({ action: "key", key: "Tab" }))).toContain("not sent: self_check_failed");
     expect(f.calls("act")).toHaveLength(0);
+    expect(await f.service.readStatus()).toMatchObject({ enabled: true, selfCheckFailed: true });
     await f.service.stop();
+    expect(await f.service.readStatus()).toMatchObject({ enabled: true, selfCheckFailed: true });
     f.check(true);
     const client = new FleetHelperClient(f.runtime, "/signed/fleet-computer-use", 200);
     await client.start();
@@ -435,33 +475,6 @@ describe("Fleet Computer Use", () => {
       binding.dispose();
       approvals.dispose();
       await rm(dir, { recursive: true, force: true });
-    }
-  });
-  it.skipIf(process.platform === "win32")("preserves MCP frames and approvals across the native compatibility transport", async () => {
-    // 서비스 mock으로는 실제 자식의 UTF-8 프레임·승인 전달·EOF 회수 계약을 검증할 수 없다.
-    const directory = await mkdtemp(path.join(os.tmpdir(), "fleet-native-transport-"));
-    const native = path.join(directory, "native-client");
-    await writeFile(native, `#!${process.execPath}\nprocess.stdin.pipe(process.stdout);`, { mode: 0o700 });
-    const child = spawn(process.execPath, ["-e", MACOS_COMPUTER_USE_TRANSPORT, native], { stdio: ["pipe", "pipe", "pipe"] });
-    let output = "";
-    child.stdout.setEncoding("utf8");
-    child.stdout.on("data", (chunk) => { output += chunk; });
-    const exited = new Promise<number | null>((resolve, reject) => { child.once("exit", resolve); child.once("error", reject); });
-    try {
-      const initialize = { jsonrpc: "2.0", id: 1, method: "initialize", params: { capabilities: { experimental: { "codex/auth-change": {}, retained: {} }, elicitation: { form: {} } }, clientInfo: { name: "codex", version: "0.154.0" } } };
-      const input = JSON.stringify(initialize) + '\n' + JSON.stringify({ id: 2, result: { action: "decline", content: null } }) + '\n' + JSON.stringify({ method: "tools/call", params: { text: "한글 🚀", "codex/auth-change": "unchanged" } }) + '\n';
-      const bytes = Buffer.from(input);
-      const split = bytes.indexOf(Buffer.from("한글")) + 1;
-      child.stdin.write(bytes.subarray(0, split));
-      child.stdin.end(bytes.subarray(split));
-      expect(await exited).toBe(0);
-      const frames = output.trim().split('\n').map((line) => JSON.parse(line));
-      expect(frames[0]).toEqual({ ...initialize, params: { ...initialize.params, capabilities: { experimental: { retained: {} }, elicitation: { form: {} } } } });
-      expect(frames[1]).toEqual({ id: 2, result: { action: "decline", content: null } });
-      expect(frames[2]).toEqual({ method: "tools/call", params: { text: "한글 🚀", "codex/auth-change": "unchanged" } });
-    } finally {
-      if (child.exitCode === null && child.signalCode === null) child.kill("SIGTERM");
-      await rm(directory, { recursive: true, force: true });
     }
   });
 

@@ -430,6 +430,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     transport: "http",
   },
   { method: "GET", path: "/api/v1/computer-use", summary: "Read local Computer Use status.", category: "Settings", gate: "loopback", transport: "http" },
+  { method: "POST", path: "/api/v1/computer-use/privacy-settings", summary: "Open macOS Privacy & Security for missing Computer Use permissions.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "POST", path: "/api/v1/computer-use/stop", summary: "Stop Computer Use and revoke session access.", category: "Settings", gate: "origin-strict", transport: "http" },
   { method: "GET", path: "/api/v1/desktop/computer-capture", summary: "Read the window Computer Use is capturing.", category: "Desktop", gate: "loopback", transport: "http" },
   { method: "GET", path: "/api/v1/objective-use", summary: "List the Objectives currently using the computer or the browser.", category: "Observer", gate: "loopback", transport: "http" },
@@ -1352,7 +1353,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       broadcastDesktopThemeChanged(consoleSettingsStore.load().general?.theme ?? "dark");
       if (!next.computerUse) await computerUse.stop();
       for (const listener of experimentListeners) listener(next);
-      // computerUse 실험 토글·백엔드는 listObjectiveUse 의 computer 배열을 바꾼다. 끄면 기다리던 허용 요청은
+      // computerUse 실험 토글은 listObjectiveUse 의 computer 배열을 바꾼다. 끄면 기다리던 허용 요청은
       // 브로커 순찰이 거둔다. 런치 주입은 다음 자식 런치부터 이 값을 따른다(computer-use/host/mcp.ts).
       scheduleObjectiveUseBroadcast();
     },
@@ -1677,7 +1678,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
     isWriteAdmitted, isExactConsoleOrigin, writeJson, readJsonBody, readUrl, withSecurityHeaders,
   }));
-  routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, readBackend: () => readExperimentSettings(consoleSettingsStore).computerUseBackend, isLoopbackListener, isExactConsoleOrigin, writeJson }));
+  routeRegistry.register("/api/v1/computer-use", createComputerUseRouter({ computerUse, isLoopbackListener, isExactConsoleOrigin, writeJson }));
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopBrowserRouter(context)) return true;
     if (await desktopShellUpdateRouter(context)) return true;

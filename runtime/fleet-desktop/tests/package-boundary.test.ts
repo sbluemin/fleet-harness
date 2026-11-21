@@ -16,13 +16,14 @@ describe("desktop package boundary", () => {
     const plist = createInfoPlist(source, "/isolated/Electron.app");
     expect(plist).toContain("<string>com.dotobokuri.fleet-console.dev</string>");
     expect(plist).not.toContain("<string>com.dotobokuri.fleet-console</string>");
+    expect(plist).not.toContain("NSAppleEventsUsageDescription");
     const setName = vi.fn();
     applyDesktopIdentity({ setName, isPackaged: false }, "darwin");
     expect(setName).toHaveBeenLastCalledWith("Fleet Console Dev");
     applyDesktopIdentity({ setName, isPackaged: true }, "darwin");
     expect(setName).toHaveBeenLastCalledWith("Fleet Console");
-    expect(createMacDevLaunchArguments("/dev/Fleet Console Dev.app", "/checkout/desktop", [], { FLEET_CONSOLE_DATA_DIR: "/isolated/console", OTHER_SECRET: "not-forwarded" }))
-      .toEqual(["-W", "-n", "--env", "FLEET_CONSOLE_DATA_DIR=/isolated/console", "/dev/Fleet Console Dev.app", "--args", "/checkout/desktop"]);
+    expect(createMacDevLaunchArguments("/dev/Fleet Console Dev.app", "/checkout/desktop", [], { FLEET_CONSOLE_DATA_DIR: "/isolated/console", FLEET_COMPUTER_USE_FAULT: "self_check", OTHER_SECRET: "not-forwarded" }))
+      .toEqual(["-W", "-n", "--env", "FLEET_CONSOLE_DATA_DIR=/isolated/console", "--env", "FLEET_COMPUTER_USE_FAULT=self_check", "/dev/Fleet Console Dev.app", "--args", "/checkout/desktop"]);
   });
 
   it("has no copied renderer, HTTP server, PTY, preload, or raw IPC surface", () => {

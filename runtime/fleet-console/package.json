@@ -61,7 +61,6 @@
     "@fleet-console/agent-runtime": "workspace:*",
     "@fleet-console/ai-gateway": "workspace:*",
     "@fleet-console/approval": "workspace:*",
-    "@fleet-console/computer-use": "workspace:*",
     "@fleet-console/font-picker": "workspace:*",
     "@fleet-console/i18n": "workspace:*",
     "@fleet-console/infra": "workspace:*",

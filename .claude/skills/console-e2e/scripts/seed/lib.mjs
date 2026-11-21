@@ -95,7 +95,7 @@ export function assemble(api) {
     },
     /**
      * Turn on only the taskforce experiment of this owned slot, then create one taskforce from the commodores just made.
-     * GET experiments are sent back with `taskforce: true` so computerUse and its backend stay as stored. This makes no provider call itself, but creating the taskforce wakes its members: the caller must run the Console on the owned fake agent.
+     * GET experiments are sent back with `taskforce: true` so computerUse stays as stored. This makes no provider call itself, but creating the taskforce wakes its members: the caller must run the Console on the owned fake agent.
      */
     async taskforce({ name, topic, members }) {
       const current = await api("GET", "/api/v1/settings/global");
@@ -104,9 +104,6 @@ export function assemble(api) {
       const after = saved?.state?.experiments;
       if (after?.taskforce !== true) throw new Error("taskforce experiment was not enabled");
       if ((after.computerUse === true) !== (before.computerUse === true)) throw new Error("taskforce seed changed computerUse");
-      if ((before.computerUseBackend === "sky-computer-use" || before.computerUseBackend === "cua-driver") && after.computerUseBackend !== before.computerUseBackend) {
-        throw new Error("taskforce seed changed computerUseBackend");
-      }
       const created = await api("POST", "/api/v1/taskforce/create", { name, topic, members });
       const taskforceId = created?.taskforce?.id;
       if (typeof taskforceId !== "string") throw new Error("taskforce was not created");

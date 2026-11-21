@@ -56,7 +56,7 @@ function errorHint(error: FleetHelperError): string {
 export function textResult(text: string, isError = false) {
   return { content: [{ type: "text" as const, text }], isError };
 }
-export function gateResult(error: string, hintText?: string): ComputerUseResult {
+export function gateResult(error: string, hintText?: string) {
   return textResult(JSON.stringify({ error, ...(hintText ? { hint: hintText } : {}) }), true);
 }
 export function renderError(error: FleetHelperError, action?: ActionArgs, clipboard?: ClipboardRestoration): ComputerUseResult {

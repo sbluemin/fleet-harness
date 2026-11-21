@@ -7,7 +7,7 @@ import type { AdmiralMcpSession } from "../../execution/shared/admiral-mcp.js";
 import { z } from "zod";
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
 import type { ComputerUseService } from "./computer-use.js";
-import { renderSessionEnd, textResult } from "./computer-use-render.js";
+import { gateResult, renderSessionEnd, textResult } from "./computer-use-render.js";
 import { computerUseFeedbackTool } from "./computer-use-tools.js";
 import type { createFeedbackStore, FeedbackFields } from "../../feedback/store.js";
 
@@ -339,6 +339,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       for (const spec of deps.service.specs()) {
         registry.registerAgentTool({ ...spec, ...(deps.requests ? { description: spec.description + OBJECTIVE_REQUEST_NOTE } : {}), execute: async (args, context) => {
           if (!context.sessionLabel || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session or arguments unavailable" }], isError: true };
+          if (!deps.service.status().supported) return gateResult("computer_use_platform_unsupported");
           // 허용은 도구 호출마다 다시 읽는다 — Objective 토글과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
           // Objective의 허용을 받지 않았으면 패널에서 사람의 답을 기다린다.
           const denied = await holdComputerUse(deps, context.sessionLabel, spec.id, AbortSignal.any([controller.signal, ...(context.signal ? [context.signal] : [])]));
@@ -438,6 +439,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
         const schema = z.fromJSONSchema(spec.parameters as Parameters<typeof z.fromJSONSchema>[0]);
         return defineTool(spec.id, spec.description, schema as unknown as Record<string, unknown>, async (args) => {
           if (closed || controller.signal.aborted) return { content: [{ type: "text", text: "Computer Use session unavailable" }], isError: true };
+          if (!deps.service.status().supported) return gateResult("computer_use_platform_unsupported");
           // 허용은 도구 호출마다 다시 읽는다 — 플러그인 소유자의 허용과 실험 끄기는 재연결 없이 다음 호출부터 듣는다.
           if (deps.experimentEnabled?.() !== true) return refuse("experiment_disabled", null, language());
           if (!options.enabled()) return refuse("plugin_not_authorized", null, language());

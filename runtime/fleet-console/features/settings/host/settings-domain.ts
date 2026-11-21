@@ -15,7 +15,7 @@ import {
 } from "@fleet-console/infra";
 
 import type { ApiCatalogEntry } from "@fleet-console/infra/http/catalog";
-import { DEFAULT_EXPERIMENT_SETTINGS, isComputerUseBackendId, isExperimentEffort, isExperimentModelId, resolveExperimentSettings, type ConsoleExperimentSettings, type ComputerUseBackendId } from "../shared/experiments.js";
+import { DEFAULT_EXPERIMENT_SETTINGS, isExperimentEffort, isExperimentModelId, resolveExperimentSettings, type ConsoleExperimentSettings } from "../shared/experiments.js";
 import { isShortcutBindingsInput, sanitizeShortcutBindings, type ShortcutBindings } from "../shared/shortcuts.js";
 import { DEFAULT_AVATAR_FUZZ, sanitizeAvatarFuzz } from "../../workspace/shared/avatars.js";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "../../../core/host/transport/console-contract-types.js";
@@ -565,7 +565,7 @@ interface GlobalSettingsRouteDeps {
   readonly isRemoteAccessOwner?: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
-  readonly computerUseAvailability?: (backend: ComputerUseBackendId) => Promise<"unchecked" | "available" | "missing" | "unsupported">;
+  readonly computerUseAvailability?: () => Promise<"unchecked" | "available" | "missing" | "unsupported">;
   readonly onThemeChanged?: (theme: ConsoleThemeId) => void;
   /**
    * 저장 직후 살아 있는 리스너를 설정에 맞춘다 — 켜자마자 링크를 만들 수 있어야 한다.
@@ -789,15 +789,18 @@ async function mutateGlobalSettings(
     return;
   }
   const previousExperiments = readExperimentSettings(deps.consoleSettingsStore);
-  const nextExperiments = body.experiments === undefined ? previousExperiments : resolveExperimentSettings(body.experiments);
-  const computerUseChanged = nextExperiments.computerUse !== previousExperiments.computerUse
-    || nextExperiments.computerUseBackend !== previousExperiments.computerUseBackend;
+  const nextExperiments = body.experiments === undefined ? previousExperiments : resolveExperimentSettings({
+    ...body.experiments,
+    computerUse: body.experiments.computerUse ?? previousExperiments.computerUse,
+  });
+  const computerUseChanged = nextExperiments.computerUse !== previousExperiments.computerUse;
+
   if (computerUseChanged && deps.isRemoteAccessOwner?.(req) === false) {
     deps.writeJson(res, 403, { error: "computer_use_local_only" });
     return;
   }
   if (computerUseChanged && nextExperiments.computerUse && deps.computerUseAvailability) {
-    const availability = await deps.computerUseAvailability(nextExperiments.computerUseBackend);
+    const availability = await deps.computerUseAvailability();
     if (availability !== "available") {
       deps.writeJson(res, 409, { error: availability === "unsupported" ? "computer_use_platform_unsupported" : "computer_use_install_required" });
       return;
@@ -841,7 +844,7 @@ async function mutateGlobalSettings(
       ...(typeof body.taskforceBubbleColor === "boolean" ? { taskforceBubbleColor: body.taskforceBubbleColor } : {}),
       // uiFont는 한 릴리스 읽기 전용으로 남긴다. 새 쓰기는 세 축만 바꾼다.
       ...(body.fonts !== undefined ? { fonts: readFontSettings(body.fonts)! } : {}),
-      ...(body.experiments !== undefined ? { experiments: resolveExperimentSettings(body.experiments) } : {}),
+      ...(body.experiments !== undefined ? { experiments: nextExperiments } : {}),
       ...(isShortcutBindingsInput(body.shortcuts) ? { shortcuts: body.shortcuts } : {}),
       ...(body.archiveRetentionDays === null || body.archiveRetentionDays === 7 || body.archiveRetentionDays === 30 || body.archiveRetentionDays === 90 ? { archiveRetentionDays: body.archiveRetentionDays } : {}),
     },
@@ -945,9 +948,8 @@ export function readExperimentSettings(store: Pick<DurableJsonStore<ConsoleSetti
  * 실어 보냈다면 그것은 400이지 조용한 기본값 대체가 아니다 — 화면이 저장됐다고 믿는 값과 저장된
  * 값이 갈라지면 안 된다.
  */
-function isExperimentSettingsInput(value: unknown): boolean {
+function isExperimentSettingsInput(value: unknown): value is Record<string, unknown> {
   if (!isRecord(value)) return false;
-  if ("computerUseBackend" in value && !isComputerUseBackendId(value.computerUseBackend)) return false;
   for (const key of ["computerUse", "commodore", "taskforce"]) {
     if (key in value && typeof value[key] !== "boolean") return false;
   }

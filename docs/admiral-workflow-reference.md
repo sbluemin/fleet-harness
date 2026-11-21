@@ -13,7 +13,7 @@ One launcher boundary is easy to miss: the `fleet` launcher under `runtime/fleet
 ```text
 @dotobokuri/fleet-console
   (package-local: cli/ launcher + core/ composition + features/)
-  -> @fleet-console/ai-gateway, @fleet-console/updates, @fleet-console/computer-use
+  -> @fleet-console/ai-gateway, @fleet-console/updates
   -> @fleet-console/agent-runtime, @fleet-console/infra, @fleet-console/process,
      @fleet-console/markdown, @fleet-console/font-picker,
      @fleet-console/i18n, @fleet-console/ui
