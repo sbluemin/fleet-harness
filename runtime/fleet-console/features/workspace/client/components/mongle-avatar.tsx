@@ -7,8 +7,8 @@ import { mountMongle3DCanvas, updateMongle3DCanvas, type Mongle3DSpec } from "./
 /**
  * 몽글 아바타 — 사령관·지휘관·구성원·Objective 을 3D 플러시 볼류메트릭 셰이더로 그린다.
  *
- * 일반 몽글(1–15)은 Plush Vivid 색감과 미니멀 눈으로, 진급 퀘이커 사령관(16–18: 토리·보리·도리)은
- * Fleet Pastel 색감과 제독 모자·견장·날개짓으로 렌더링한다. 역할 특징(사령관 브래스 별 배지·지휘관 안테나),
+ * 일반 몽글(1–15)은 사령관에게 Plush Vivid, 지휘관·구성원에게 Fleet Pastel 색감과 미니멀 눈으로,
+ * 진급 퀘이커 사령관(16–18: 토리·보리·도리)은 Fleet Pastel 색감과 제독 모자·견장·날개짓으로 렌더링한다. 역할 특징(사령관 브래스 별 배지·지휘관 안테나),
  * 10가지 상태, 작업 중 9가지 활동 소품 연기를 공용 WebGL2 렌더러(`mongle-3d-renderer.ts`)가 수행한다.
  */
 

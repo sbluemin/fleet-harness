@@ -504,7 +504,7 @@ export function AvatarCard({
         </div>
         <div className="settings-avatar-preview" aria-hidden="true">
           <MongleAvatar base={1} role="commodore" state="idle" size={48} label="" decorative />
-          <MongleAvatar base={6} role="commodore" state="idle" size={48} label="" decorative />
+          <MongleAvatar base={6} role="member" state="idle" size={48} label="" decorative />
           <MongleAvatar base={16} role="commodore" state="idle" size={48} label="" decorative />
           <MongleAvatar base={17} role="commodore" state="idle" size={48} label="" decorative />
         </div>

@@ -13,8 +13,9 @@ import type { IdentityTone } from "../../shared/identity-tones.js";
 /**
  * 3D 플러시 아바타 공용 WebGL2 렌더러.
  *
- * 일반 몽글(1–15)은 Plush Vivid 팔레트 + 미니멀 눈 스타일을, 진급 퀘이커 사령관(토리·보리·도리)은 Fleet Pastel
- * 팔레트 + 제독 모자·견장·날개짓을 하나의 공유 오프스크린 WebGL2 컨텍스트로 렌더링해 각 아바타 캔버스에 복사한다.
+ * 일반 몽글(1–15)은 사령관에게 Plush Vivid, 지휘관·구성원에게 Fleet Pastel 팔레트를 역할에 따라 자동 적용하고
+ * 미니멀 눈으로 그리며, 진급 퀘이커 사령관(토리·보리·도리)은 Fleet Pastel 팔레트 + 제독 모자·견장·날개짓을
+ * 하나의 공유 오프스크린 WebGL2 컨텍스트로 렌더링해 각 아바타 캔버스에 복사한다.
  * 뷰포트 밖(IntersectionObserver)·숨은 탭·OS 감속 모션·「아바타 차분하게」·비포커스 감속을 모두 존중해
  * 목록에 아바타가 수십 개 서 있어도 GPU 비용을 낮게 유지한다.
  */
@@ -25,7 +26,7 @@ const SMALL_IDLE_FRAME_INTERVAL_MS = 34;
 
 type Rgb = readonly [number, number, number];
 
-/** 일반 몽글(1–15) — Plush Vivid 팔레트. */
+/** 일반 몽글 사령관(1–15) — Plush Vivid 팔레트. */
 const PLUSH_VIVID_TONES: Readonly<Record<IdentityTone, Rgb>> = {
   crimson:  [0.96, 0.24, 0.30],
   amber:    [0.99, 0.67, 0.14],
@@ -37,11 +38,23 @@ const PLUSH_VIVID_TONES: Readonly<Record<IdentityTone, Rgb>> = {
   rose:     [0.99, 0.36, 0.64],
 };
 
-/** 진급 퀘이커(토리·보리·도리) — Fleet Pastel 팔레트. */
+/** 일반 몽글 지휘관·구성원(1–15) 및 진급 퀘이커(토리·보리·도리) — Fleet Pastel 팔레트. */
+const FLEET_PASTEL_TONES: Readonly<Record<IdentityTone, Rgb>> = {
+  crimson:  [0.89, 0.60, 0.57],
+  amber:    [0.94, 0.78, 0.55],
+  moss:     [0.67, 0.84, 0.61],
+  teal:     [0.58, 0.84, 0.81],
+  cerulean: [0.58, 0.78, 0.93],
+  indigo:   [0.68, 0.69, 0.92],
+  plum:     [0.84, 0.68, 0.87],
+  rose:     [0.92, 0.66, 0.76],
+};
+
+/** 진급 퀘이커(토리·보리·도리) 시그니처 색 — Fleet Pastel 유지. */
 const QUAKER_PASTEL_TONES: Readonly<Record<QuakerMorph, Rgb>> = {
-  tori: [0.67, 0.84, 0.61],
-  bori: [0.89, 0.60, 0.57],
-  dori: [0.58, 0.78, 0.93],
+  tori: FLEET_PASTEL_TONES.moss,
+  bori: FLEET_PASTEL_TONES.crimson,
+  dori: FLEET_PASTEL_TONES.cerulean,
 };
 
 const SHAPE_CODE: Readonly<Record<MongleShape, number>> = {
@@ -1444,7 +1457,11 @@ function drawEntry(activeEngine: SharedEngine, entry: MountedAvatar, elapsedSec:
   gl.scissor(0, vpY, res, res);
   gl.clear(gl.COLOR_BUFFER_BIT);
 
-  const color: Rgb = spec.quaker ? QUAKER_PASTEL_TONES[spec.quaker] : PLUSH_VIVID_TONES[spec.tone];
+  const color: Rgb = spec.quaker
+    ? QUAKER_PASTEL_TONES[spec.quaker]
+    : spec.role === "commodore"
+      ? PLUSH_VIVID_TONES[spec.tone]
+      : FLEET_PASTEL_TONES[spec.tone];
   const frozen = isMotionFrozenFor(spec);
   const effectiveRole = spec.hideBadge && spec.role === "commodore" ? 2 : ROLE_CODE[spec.role];
 
