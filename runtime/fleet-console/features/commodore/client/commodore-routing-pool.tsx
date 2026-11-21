@@ -39,8 +39,6 @@ const MODEL_SUBTITLE_KEYS: Readonly<Record<string, CommodoreMessageKey>> = {
   haiku: "commodore.pool.sub.haiku",
   "gpt-6.2-astra": "commodore.pool.sub.gpt-6.2-astra",
   "gpt-6.2-sol": "commodore.pool.sub.gpt-6.2-sol",
-  "gpt-6-astra": "commodore.pool.sub.gpt-6-astra",
-  "gpt-6.1-sol": "commodore.pool.sub.gpt-6.1-sol",
   "gpt-6-luna": "commodore.pool.sub.gpt-6-luna",
   "gpt-6.1-terra": "commodore.pool.sub.gpt-6.1-terra",
   "grok-4.7": "commodore.pool.sub.grok-4.7",
