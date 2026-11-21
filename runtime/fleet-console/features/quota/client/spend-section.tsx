@@ -4,7 +4,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/i18n";
 
 import type { ProviderBlock, ProviderSpend } from "@fleet-console/ai-gateway";
 import type { QuotaMessageKey } from "./i18n/index.js";
-import { UsageMeter } from "./meter.js";
+import { clampPercent, localPercentSeverity, UsageMeter, type MeterSeverity } from "./meter.js";
 
 type T = Translate<QuotaMessageKey>;
 
@@ -86,8 +86,8 @@ export function spendSetLabel(provider: SpendProvider): QuotaMessageKey {
 }
 
 /** 지출·예산의 심각도 — 미터의 로컬 밴드와 같은 기준(90/70)이다. 라우팅 판정은 창에만 붙는다. */
-export function spendSeverity(percent: number): "normal" | "warning" | "critical" {
-  return percent >= 90 ? "critical" : percent >= 70 ? "warning" : "normal";
+export function spendSeverity(percent: number): MeterSeverity {
+  return localPercentSeverity(percent);
 }
 
 /**
@@ -312,7 +312,7 @@ export function SpendRows(props: SpendRowProps) {
               aria-valuemax={100}
               aria-valuenow={Math.min(100, Math.round(percent))}
             >
-              <i className={`is-${severity}`} style={{ width: `${Math.min(100, Math.max(0, percent))}%` }} />
+              <i className={`is-${severity}`} style={{ width: `${clampPercent(percent)}%` }} />
             </span>
           ) : null}
         </span>
