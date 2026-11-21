@@ -19,8 +19,11 @@ import type {
   WorldActorEmote,
   WorldActorSpec,
   WorldChoreographyCommand,
+  WorldPlayerEmote,
   WorldVillageSpec,
+  WorldWeatherMode,
 } from "../../shared/world-types.js";
+import type { WorldAnimMode, WorldExpression } from "./mongle-actor-rig.js";
 
 /**
  * 사령관 · 지휘관 · 구성원 자율 생활 생태계 및 합동 연출 디렉터.
@@ -38,10 +41,33 @@ export interface LiveActorMotion {
   tz: number;
   yaw: number;
   moving: boolean;
+  moveSpeed: number;
   carrying: boolean;
   hopBoost: number;
   speech: string;
   speechTimer: number;
+  worldAnim: WorldAnimMode;
+  expression: WorldExpression;
+  animPhase: number;
+  blush: number;
+  gazeTargetX: number | null;
+  gazeTargetZ: number | null;
+}
+
+interface ActorAnimState {
+  emoteKind: "wave" | "cheer" | "spin" | null;
+  emoteTimer: number;
+  emoteElapsed: number;
+  surprisedTimer: number;
+  banterTimer: number;
+  banterPartnerX: number | null;
+  banterPartnerZ: number | null;
+  sleepyTimer: number;
+  wasSleeping: boolean;
+  sleepFxAccum: number;
+  shakeTimer: number;
+  shakeCooldown: number;
+  shakeFxAccum: number;
 }
 
 interface FlyingProjectile {
@@ -84,6 +110,13 @@ interface PatrolWaypoint {
 
 interface VillagePatrolPlan {
   readonly commodoreId: string;
+  readonly label: string;
+  readonly overallTier: number;
+  readonly totalEntries: number;
+  readonly topDistrictLabel: string | null;
+  readonly topDistrictTier: number;
+  readonly activeObjectiveCount: number;
+  readonly completedObjectiveCount: number;
   readonly centerX: number;
   readonly centerZ: number;
   readonly radius: number;
@@ -106,6 +139,12 @@ interface ActorPatrolState {
   lastZ: number;
   stuckTimer: number;
   greetCooldown: number;
+  chatPauseTimer: number;
+  chatFaceX: number | null;
+  chatFaceZ: number | null;
+  rallying: boolean;
+  rallyArrived: boolean;
+  rallyHoldTimer: number;
   workingCommute: boolean;
   lastWorkDistrictId: string | null;
 }
@@ -184,6 +223,12 @@ export interface ChoreographyDirector {
   spawnDust(x: number, y: number, z: number): void;
   /** 구역/마을 레벨업 축하 황금 다중 불꽃 + 상승 빛입자 축포 (기존 InstancedMesh 풀 재사용). */
   spawnLevelUpCelebration(x: number, z: number, colorHex?: number): void;
+  /** 전 사령관 긴급 소집 — 목교·정문을 거쳐 중앙 길드 광장 앞 반원 대형으로 신속 집결(4.2 m/s). */
+  rallyAllToPlaza(): void;
+  /** 제독 감정표현(손흔들기·환호·점프)에 반경 9.5m 내 사령관들이 돌아보고 따라 반응한다. */
+  reactToPlayerEmote(emote: WorldPlayerEmote, playerPos: Vector3): void;
+  /** 날씨 모드 동기화 (`rain` 시 가끔 빗물 털기 `shake` 모션 + 물방울 입자 발동). */
+  setWeather(mode: WorldWeatherMode): void;
   /** 사령관/구역 실시간 작업 단계별 공방 파티클 FX (단일 InstancedMesh 풀, 0 할당). */
   emitWorkshopFx(x: number, y: number, z: number, kind: WorkshopFxKind): void;
   /** 두 마을/구역 사이로 빛나는 전령 비행 아크를 발사한다 (단일 캐시 머티리얼 + 트레일 입자). */
@@ -210,9 +255,51 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
   let motionList: LiveActorMotion[] = [];
   const villagePatrolPlans = new Map<string, VillagePatrolPlan>();
   const patrolStates = new Map<string, ActorPatrolState>();
+  const animStates = new Map<string, ActorAnimState>();
   const projectiles: FlyingProjectile[] = [];
   const particles: BurstParticle[] = [];
   const pendingTimers = new Set<number>();
+  let currentWeather: WorldWeatherMode = "clear";
+
+  function getOrCreateAnimState(actorId: string): ActorAnimState {
+    let st = animStates.get(actorId);
+    if (!st) {
+      st = {
+        emoteKind: null,
+        emoteTimer: 0,
+        emoteElapsed: 0,
+        surprisedTimer: 0,
+        banterTimer: 0,
+        banterPartnerX: null,
+        banterPartnerZ: null,
+        sleepyTimer: 0,
+        wasSleeping: false,
+        sleepFxAccum: 0,
+        shakeTimer: 0,
+        shakeCooldown: 7 + Math.random() * 11,
+        shakeFxAccum: 0,
+      };
+      animStates.set(actorId, st);
+    }
+    return st;
+  }
+
+  function triggerActorEmote(actorId: string, kind: "wave" | "cheer" | "spin", durationSec: number): void {
+    const st = getOrCreateAnimState(actorId);
+    st.emoteKind = kind;
+    st.emoteTimer = Math.max(st.emoteTimer, durationSec);
+    st.emoteElapsed = 0;
+    st.sleepyTimer = 0;
+    st.wasSleeping = false;
+  }
+
+  function mapWorkStepToAnim(workStep: string | null, activity: WorldActorSpec["activity"]): WorldAnimMode {
+    const raw = (workStep ?? activity ?? "").toLowerCase();
+    if (raw.includes("edit") || raw.includes("write")) return "work-edit";
+    if (raw.includes("read") || raw.includes("search")) return "work-read";
+    if (raw.includes("think") || raw.includes("plan")) return "work-think";
+    return "work-run";
+  }
 
   const projGeo = new BoxGeometry(0.36, 0.14, 0.52);
   const partGeo = new SphereGeometry(0.11, 8, 6);
@@ -485,10 +572,11 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       });
     }
 
-    // 인근 사령관/구성원 기쁨 점프
+    // 인근 사령관/구성원 기쁨 점프 + 환호 모션
     for (const m of motionList) {
       if (Math.hypot(m.x - x, m.z - z) < 9.5) {
         m.hopBoost = Math.max(m.hopBoost, 1.65);
+        triggerActorEmote(m.spec.id, "cheer", 2.2);
       }
     }
 
@@ -585,6 +673,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       let highestTierPoint: PatrolWaypoint | null = null;
       let bestTier = -1;
       let bestEntries = -1;
+      let topDistrictLabel: string | null = null;
 
       for (const d of v.districts) {
         const toCenterX = v.x - d.x;
@@ -610,6 +699,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           bestTier = d.tier;
           bestEntries = d.totalEntries;
           highestTierPoint = wp;
+          topDistrictLabel = d.label;
         }
       }
 
@@ -641,6 +731,13 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
 
       villagePatrolPlans.set(v.commodoreId, {
         commodoreId: v.commodoreId,
+        label: v.label,
+        overallTier: v.overallTier,
+        totalEntries: v.totalEntries,
+        topDistrictLabel,
+        topDistrictTier: Math.max(0, bestTier),
+        activeObjectiveCount: v.activeObjectiveCount,
+        completedObjectiveCount: v.completedObjectiveCount,
         centerX: v.x,
         centerZ: v.z,
         radius: v.radius,
@@ -651,6 +748,50 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         villageWorkStep: v.workStep,
       });
     }
+  }
+
+  let roadsideChatTurn = 0;
+
+  function buildRoadsideChatPair(
+    planA: VillagePatrolPlan,
+    planB: VillagePatrolPlan,
+    nameA: string,
+    nameB: string,
+  ): readonly [string, string] {
+    const turn = roadsideChatTurn++ % 4;
+    const shortA = planA.topDistrictLabel
+      ? (planA.topDistrictLabel.length > 14 ? `${planA.topDistrictLabel.slice(0, 13)}…` : planA.topDistrictLabel)
+      : planA.label;
+    const shortB = planB.topDistrictLabel
+      ? (planB.topDistrictLabel.length > 14 ? `${planB.topDistrictLabel.slice(0, 13)}…` : planB.topDistrictLabel)
+      : planB.label;
+
+    if (turn === 0) {
+      return [
+        `[greet] ${nameB}님! 우리 ${shortA} 벌써 T${planA.topDistrictTier}예요!`,
+        `[cheer] 우와! 여긴 총 ${planB.totalEntries.toLocaleString()}항목 정리 중이에요!`,
+      ];
+    }
+    if (turn === 1) {
+      return [
+        planA.activeObjectiveCount > 0
+          ? `[quest] 지금 목표 ${planA.activeObjectiveCount}건 진행 중이에요!`
+          : `[greet] ${nameB}님 마을(T${planB.overallTier}) 산책 왔어요!`,
+        planB.completedObjectiveCount > 0
+          ? `[party] 여긴 벌써 목표 ${planB.completedObjectiveCount}건 완수했죠!`
+          : `[greet] ${nameA}님 반가워요! ${shortB}도 들러보세요!`,
+      ];
+    }
+    if (turn === 2) {
+      return [
+        `[chat] ${shortA} 쪽 ${planA.totalEntries.toLocaleString()}항목이 쑥쑥 자라네요!`,
+        `[cheer] ${nameA}님 마을 T${planA.overallTier} 진짜 멋져요! 화이팅!`,
+      ];
+    }
+    return [
+      `[greet] 오늘 초원 바람 좋죠, ${nameB}님?`,
+      `[greet] 네! ${shortB}(T${planB.topDistrictTier}) 돌보고 잠깐 나왔어요!`,
+    ];
   }
 
   function getOrCreatePatrolState(m: LiveActorMotion): ActorPatrolState {
@@ -670,12 +811,112 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         lastZ: m.z,
         stuckTimer: 0,
         greetCooldown: 0,
+        chatPauseTimer: 0,
+        chatFaceX: null,
+        chatFaceZ: null,
+        rallying: false,
+        rallyArrived: false,
+        rallyHoldTimer: 0,
         workingCommute: false,
         lastWorkDistrictId: null,
       };
       patrolStates.set(m.spec.id, st);
     }
     return st;
+  }
+
+  function rallyAllToPlaza(): void {
+    const commodores = motionList.filter((m) => m.spec.role === "commodore");
+    if (commodores.length === 0) return;
+
+    const count = commodores.length;
+    const centerX = 0;
+    const centerZ = -0.8;
+    const arcRadius = Math.min(4.6, 3.2 + count * 0.18);
+
+    spawnBurst(0, 2.2, -1.6, 0xfbbf24, 24);
+
+    for (let i = 0; i < count; i += 1) {
+      const m = commodores[i]!;
+      const t = count === 1 ? 0.5 : i / (count - 1);
+      // 중앙 길드 회관(-Z) 앞 남쪽 반원 대형으로 정돈 배치
+      const ang = -0.18 + t * (Math.PI + 0.36);
+      const slotX = centerX + Math.cos(ang) * arcRadius;
+      const slotZ = centerZ + Math.sin(ang) * (arcRadius * 0.82);
+      const slotWp: PatrolWaypoint = {
+        x: slotX,
+        z: slotZ,
+        faceX: 0,
+        faceZ: -3.2,
+      };
+
+      const plan = m.spec.commodoreId ? villagePatrolPlans.get(m.spec.commodoreId) : undefined;
+      const ps = getOrCreatePatrolState(m);
+      ps.chatPauseTimer = 0;
+      ps.workingCommute = false;
+      ps.rallying = true;
+      ps.rallyArrived = false;
+      ps.rallyHoldTimer = 9.0;
+      ps.awayFromHome = true;
+      ps.stuckTimer = 0;
+
+      if (plan) {
+        const route = buildWorldRoute(m.x, m.z, slotWp, plan, null);
+        const firstHop = route.shift();
+        if (firstHop) {
+          m.tx = firstHop.x;
+          m.tz = firstHop.z;
+          ps.faceX = firstHop.faceX;
+          ps.faceZ = firstHop.faceZ;
+          ps.route = route;
+        }
+      } else {
+        m.tx = slotX;
+        m.tz = slotZ;
+        ps.faceX = 0;
+        ps.faceZ = -3.2;
+        ps.route = [];
+      }
+
+      m.hopBoost = Math.max(m.hopBoost, 1.3);
+      if (m.speechTimer < 900) {
+        m.speech = "[rally] 긴급 소집! 중앙 광장으로 집결합니다!";
+        m.speechTimer = 3.2;
+      }
+    }
+  }
+
+  function reactToPlayerEmote(emote: WorldPlayerEmote, playerPos: Vector3): void {
+    const burstColor = emote === "wave" ? 0x38bdf8 : emote === "cheer" ? 0xfbbf24 : 0xe879f9;
+    spawnBurst(playerPos.x, playerPos.y + 1.35, playerPos.z, burstColor, 16);
+
+    const waveLines = ["[greet] 안녕하세요 제독님!", "[greet] 반가워요! 오늘도 화이팅!"] as const;
+    const cheerLines = ["[cheer] 함대 파이팅! 최고예요!", "[cheer] 기운이 불끈 나네요!"] as const;
+    const jumpLines = ["[highfive] 같이 점프!! 얏호!", "[party] 껑충! 신난다!"] as const;
+    const lines = emote === "wave" ? waveLines : emote === "cheer" ? cheerLines : jumpLines;
+
+    let reacted = 0;
+    for (const m of motionList) {
+      if (Math.hypot(m.x - playerPos.x, m.z - playerPos.z) > 9.5) continue;
+      m.hopBoost = Math.max(m.hopBoost, emote === "jump" ? 1.85 : emote === "cheer" ? 1.65 : 1.35);
+      m.yaw = Math.atan2(playerPos.x - m.x, playerPos.z - m.z);
+      triggerActorEmote(
+        m.spec.id,
+        emote === "wave" ? "wave" : emote === "cheer" ? "cheer" : "spin",
+        emote === "jump" ? 1.6 : 1.9,
+      );
+      if (m.speechTimer < 900) {
+        m.speech = lines[reacted % lines.length]!;
+        m.speechTimer = 3.2;
+      }
+      const ps = patrolStates.get(m.spec.id);
+      if (ps && !ps.rallying && !ps.workingCommute) {
+        ps.chatPauseTimer = Math.max(ps.chatPauseTimer, 2.2);
+        ps.chatFaceX = playerPos.x;
+        ps.chatFaceZ = playerPos.z;
+      }
+      reacted += 1;
+    }
   }
 
   let lastCommandNonce = 0;
@@ -692,6 +933,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         if (!nextIds.has(id)) {
           motions.delete(id);
           patrolStates.delete(id);
+          animStates.delete(id);
         }
       }
       for (const spec of specs) {
@@ -707,10 +949,17 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             tz: spec.homeZ,
             yaw: 0.15,
             moving: false,
+            moveSpeed: 0,
             carrying: false,
             hopBoost: 0.8,
             speech: spec.initialSpeech ?? "",
             speechTimer: spec.initialSpeech ? (spec.needsAttention ? 999 : 5.5) : 0,
+            worldAnim: "idle",
+            expression: "normal",
+            animPhase: 0,
+            blush: 0,
+            gazeTargetX: null,
+            gazeTargetZ: null,
           });
         }
       }
@@ -735,6 +984,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       m.yaw = Math.atan2(playerPos.x - m.x, playerPos.z - m.z);
       if (emote === "greet") {
         m.hopBoost = 1.45;
+        triggerActorEmote(actorId, "wave", 1.85);
         m.speech = m.spec.role === "commodore"
           ? "[greet] 반가워요 제독님! 오늘 작전은 무엇인가요?"
           : m.spec.role === "commander"
@@ -744,11 +994,13 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         spawnBurst(m.x, 1.55, m.z, 0x38bdf8, 16);
       } else if (emote === "cheer") {
         m.hopBoost = 1.8;
+        triggerActorEmote(actorId, "cheer", 1.95);
         m.speech = "[cheer] 힘이 불끈 나네요! 맡겨만 주세요!";
         m.speechTimer = 3.8;
         spawnBurst(m.x, 1.65, m.z, 0xfbbf24, 22);
       } else {
         m.hopBoost = 1.75;
+        triggerActorEmote(actorId, "spin", 1.65);
         m.speech = "[highfive] 점프 하이파이브! 최고의 호흡이에요!";
         m.speechTimer = 3.8;
         spawnBurst((m.x + playerPos.x) * 0.5, 1.6, (m.z + playerPos.z) * 0.5, 0xe879f9, 22);
@@ -757,6 +1009,11 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
     spawnBurst,
     spawnDust,
     spawnLevelUpCelebration,
+    rallyAllToPlaza,
+    reactToPlayerEmote,
+    setWeather(mode) {
+      currentWeather = mode;
+    },
     emitWorkshopFx,
     spawnCourierArc,
     handleCommand(cmd) {
@@ -916,7 +1173,43 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             m.tx = m.x;
             m.tz = m.z;
             ps.route.length = 0;
+            ps.chatPauseTimer = 0;
+            ps.rallying = false;
             ps.workingCommute = false;
+          } else if (ps.rallying) {
+            // 함대 상황실 긴급 소집: 목교·정문을 거쳐 중앙 길드 광장 앞 반원 대형으로 4.2 m/s 신속 집결
+            const distToTarget = Math.hypot(m.tx - m.x, m.tz - m.z);
+            if (distToTarget < 0.38 && ps.route.length > 0) {
+              const nextHop = ps.route.shift()!;
+              m.tx = nextHop.x;
+              m.tz = nextHop.z;
+              ps.faceX = nextHop.faceX;
+              ps.faceZ = nextHop.faceZ;
+              ps.stuckTimer = 0;
+            } else if (distToTarget < 0.36 && ps.route.length === 0) {
+              if (!ps.rallyArrived) {
+                ps.rallyArrived = true;
+                m.hopBoost = Math.max(m.hopBoost, 1.68);
+                triggerActorEmote(m.spec.id, "cheer", 2.2);
+                if (m.speechTimer < 900) {
+                  m.speech = "[cheer] 집결 완료! 명령을 기다립니다!";
+                  m.speechTimer = 3.5;
+                }
+                spawnBurst(m.x, 1.5, m.z, 0xfbbf24, 10);
+              }
+              ps.rallyHoldTimer -= dt;
+              if (ps.rallyHoldTimer <= 0) {
+                ps.rallying = false;
+                ps.waitTimer = 1.6 + Math.random() * 2.0;
+              }
+            }
+            moveSpeed = 4.2;
+          } else if (ps.chatPauseTimer > 0) {
+            // 길 위 사령관 수다 / 제독 감정표현 반응 중: 2.5초간 상대를 마주 보고 멈춰 서서 대화
+            ps.chatPauseTimer = Math.max(0, ps.chatPauseTimer - dt);
+            moveSpeed = 0;
+            patrolFaceX = ps.chatFaceX ?? ps.faceX;
+            patrolFaceZ = ps.chatFaceZ ?? ps.faceZ;
           } else if (!isWorking && distToPlayer < 2.15) {
             // 제독이 [E] 상호작용 거리(2.15m 이내)로 바짝 다가오면 잠시 멈춰 응대한다
             m.tx = m.x;
@@ -1047,22 +1340,56 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
             }
             moveSpeed = ps.awayFromHome ? 2.45 : 2.15;
 
-            // 산책 중 다른 사령관과 길 위에서 마주치면 반갑게 살짝 점프 인사!
+            // 마실 중인 두 사령관이 3.2m 이내에서 마주치면(쿨다운 18초) 2.5초간 마주 보고 서서 실제 Fleet 상태 수다!
             if (m.moving && ps.greetCooldown <= 0) {
               for (let oi = 0; oi < motionList.length; oi += 1) {
                 const other = motionList[oi]!;
-                if (other === m || other.spec.role !== "commodore") continue;
-                if (Math.hypot(other.x - m.x, other.z - m.z) < 2.5) {
-                  m.hopBoost = Math.max(m.hopBoost, 0.55);
-                  ps.greetCooldown = 14;
+                if (other === m || other.spec.role !== "commodore" || other.spec.id === focusedActorId) continue;
+                const otherPlan = other.spec.commodoreId ? villagePatrolPlans.get(other.spec.commodoreId) : undefined;
+                if (!otherPlan) continue;
+                const ops = getOrCreatePatrolState(other);
+                if (ops.greetCooldown > 0 || ops.chatPauseTimer > 0 || ops.rallying || ops.workingCommute) continue;
+                if (Math.hypot(other.x - m.x, other.z - m.z) < 3.2) {
+                  const [lineA, lineB] = buildRoadsideChatPair(patrolPlan, otherPlan, m.spec.name, other.spec.name);
+                  const animA = getOrCreateAnimState(m.spec.id);
+                  const animB = getOrCreateAnimState(other.spec.id);
+                  animA.banterTimer = 2.6;
+                  animA.banterPartnerX = other.x;
+                  animA.banterPartnerZ = other.z;
+                  animB.banterTimer = 2.6;
+                  animB.banterPartnerX = m.x;
+                  animB.banterPartnerZ = m.z;
+                  ps.greetCooldown = 18;
+                  ops.greetCooldown = 18;
+                  ps.chatPauseTimer = 2.5;
+                  ops.chatPauseTimer = 2.5;
+                  ps.chatFaceX = other.x;
+                  ps.chatFaceZ = other.z;
+                  ops.chatFaceX = m.x;
+                  ops.chatFaceZ = m.z;
+                  m.hopBoost = Math.max(m.hopBoost, 0.72);
+                  other.hopBoost = Math.max(other.hopBoost, 0.72);
+                  if (m.speechTimer < 900) {
+                    m.speech = lineA;
+                    m.speechTimer = 3.4;
+                  }
+                  if (other.speechTimer < 900) {
+                    other.speech = lineB;
+                    other.speechTimer = 3.6;
+                  }
+                  moveSpeed = 0;
+                  patrolFaceX = other.x;
+                  patrolFaceZ = other.z;
                   break;
                 }
               }
             }
           }
 
-          patrolFaceX = ps.faceX;
-          patrolFaceZ = ps.faceZ;
+          if (patrolFaceX === null) {
+            patrolFaceX = ps.faceX;
+            patrolFaceZ = ps.faceZ;
+          }
         } else if (isFocused) {
           // 상호작용 중인 대상은 제자리에 멈춰 서서 제독을 바라본다
           m.tx = m.x;
@@ -1088,7 +1415,8 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
         const dx = m.tx - m.x;
         const dz = m.tz - m.z;
         const dist = Math.hypot(dx, dz);
-        if (dist > 0.08) {
+        let actualSpeed = 0;
+        if (moveSpeed > 0.01 && dist > 0.08) {
           const step = Math.min(dist, moveSpeed * dt);
           const nx = m.x + (dx / dist) * step;
           const nz = m.z + (dz / dist) * step;
@@ -1098,6 +1426,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           m.z = resolved.z;
           m.yaw = Math.atan2(dx, dz);
           m.moving = moved > 0.002;
+          actualSpeed = dt > 0.0001 ? moved / dt : 0;
 
           // 산책/출근 중 장애물에 막혀 제자리걸음하면 부드럽게 도착 처리한다
           if (patrolPlan) {
@@ -1115,6 +1444,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
                   m.tx = m.x;
                   m.tz = m.z;
                   m.moving = false;
+                  actualSpeed = 0;
                   ps.waitTimer = 1.2 + Math.random() * 1.4;
                 }
                 ps.stuckTimer = 0;
@@ -1127,6 +1457,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           }
         } else {
           m.moving = false;
+          actualSpeed = 0;
           // 상호작용 중이거나 가까이 오면 플레이어를, 현장/산책 중이면 대상 건물을, 평상시에는 남쪽(+Z)을 자연스럽게 바라봄
           let desiredYaw = 0.15;
           if (isFocused || distToPlayer < 4.5) {
@@ -1138,6 +1469,145 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
           while (df > Math.PI) df -= Math.PI * 2;
           while (df < -Math.PI) df += Math.PI * 2;
           m.yaw += df * Math.min(1, dt * (isFocused ? 9.0 : 5.5));
+        }
+
+        // Sprint 7: 전용 애니메이션 모드 · 표정 · 볼터치 · 시선 · 수면/빗물털기 입자 상태 갱신
+        m.moveSpeed = actualSpeed;
+        const anim = getOrCreateAnimState(m.spec.id);
+        if (anim.emoteTimer > 0) {
+          anim.emoteTimer = Math.max(0, anim.emoteTimer - dt);
+          anim.emoteElapsed += dt;
+          if (anim.emoteTimer === 0) anim.emoteKind = null;
+        }
+        if (anim.surprisedTimer > 0) {
+          anim.surprisedTimer = Math.max(0, anim.surprisedTimer - dt);
+        }
+        if (anim.banterTimer > 0) {
+          anim.banterTimer = Math.max(0, anim.banterTimer - dt);
+          if (anim.banterTimer === 0) {
+            anim.banterPartnerX = null;
+            anim.banterPartnerZ = null;
+          }
+        }
+
+        const actorWorking =
+          m.spec.state === "running"
+          || m.spec.activity !== null
+          || (patrolPlan?.villageWorkStep ?? null) !== null;
+
+        // 비 올 때 가끔 부르르 빗물 털어내기(`shake`) + 물방울 스플래시 입자
+        if (currentWeather === "rain") {
+          if (anim.shakeTimer > 0) {
+            anim.shakeTimer = Math.max(0, anim.shakeTimer - dt);
+            anim.shakeFxAccum += dt;
+            if (anim.shakeFxAccum >= 0.085) {
+              anim.shakeFxAccum = 0;
+              const ang = Math.random() * Math.PI * 2;
+              const spd = 1.4 + Math.random() * 1.4;
+              pushParticle({
+                x: m.x + Math.cos(ang) * 0.35,
+                y: 0.95 + Math.random() * 0.35,
+                z: m.z + Math.sin(ang) * 0.35,
+                vx: Math.cos(ang) * spd,
+                vy: 1.5 + Math.random() * 1.1,
+                vz: Math.sin(ang) * spd,
+                gravity: 6.2,
+                scale: 0.42 + Math.random() * 0.2,
+                life: 0.42,
+                maxLife: 0.42,
+                colorHex: 0xbae6fd,
+                glowBoost: 1.25,
+              });
+            }
+          } else {
+            anim.shakeCooldown -= dt;
+            if (anim.shakeCooldown <= 0 && !isFocused && !actorWorking && anim.emoteTimer <= 0) {
+              anim.shakeTimer = 1.05;
+              anim.shakeFxAccum = 0;
+              anim.shakeCooldown = 11 + Math.random() * 12;
+            }
+          }
+        } else {
+          anim.shakeTimer = 0;
+        }
+
+        // 야간 유휴 수면(`sleep`) 진입 + 제독 근접/작업 시작 시 깜짝 기상(`surprised`)
+        const canSleep = isNight && !actorWorking && !m.moving && !isFocused && distToPlayer > 4.2 && anim.emoteTimer <= 0 && anim.banterTimer <= 0;
+        if (canSleep) {
+          anim.sleepyTimer += dt;
+        } else {
+          if (anim.wasSleeping && (distToPlayer <= 4.2 || isFocused || actorWorking)) {
+            anim.surprisedTimer = 0.85;
+            m.hopBoost = Math.max(m.hopBoost, 0.92);
+          }
+          anim.sleepyTimer = 0;
+          anim.wasSleeping = false;
+        }
+
+        const isSleeping = canSleep && anim.sleepyTimer > 4.5;
+        if (isSleeping) {
+          anim.wasSleeping = true;
+          anim.sleepFxAccum += dt;
+          if (anim.sleepFxAccum >= 1.15) {
+            anim.sleepFxAccum = 0;
+            pushParticle({
+              x: m.x + (Math.random() - 0.5) * 0.25,
+              y: 1.45,
+              z: m.z + (Math.random() - 0.5) * 0.25,
+              vx: 0.14 + (Math.random() - 0.5) * 0.15,
+              vy: 0.72 + Math.random() * 0.25,
+              vz: -0.08 + (Math.random() - 0.5) * 0.15,
+              gravity: -0.18,
+              scale: 0.52 + Math.random() * 0.22,
+              life: 1.35,
+              maxLife: 1.35,
+              colorHex: 0xc4b5fd,
+              glowBoost: 1.35,
+            });
+          }
+        }
+
+        // 최종 애니메이션 모드 · 표정 · 볼터치 · 시선 타깃 결정
+        m.gazeTargetX = anim.banterTimer > 0 ? anim.banterPartnerX : null;
+        m.gazeTargetZ = anim.banterTimer > 0 ? anim.banterPartnerZ : null;
+        m.animPhase = anim.emoteTimer > 0 ? anim.emoteElapsed : 0;
+
+        if (director.celebratingTimer > 0) {
+          m.worldAnim = "cheer";
+          m.expression = "happy";
+          m.blush = 0.88;
+        } else if (anim.emoteTimer > 0 && anim.emoteKind) {
+          m.worldAnim = anim.emoteKind;
+          m.expression = "happy";
+          m.blush = anim.emoteKind === "spin" ? 0.92 : 0.80;
+        } else if (anim.surprisedTimer > 0) {
+          m.worldAnim = "idle";
+          m.expression = "surprised";
+          m.blush = 0.35;
+        } else if (anim.shakeTimer > 0) {
+          m.worldAnim = "shake";
+          m.expression = "surprised";
+          m.blush = 0.18;
+        } else if (m.moving) {
+          m.worldAnim = actualSpeed > 3.35 ? "sprint" : "walk";
+          m.expression = actualSpeed > 3.35 ? "focused" : "normal";
+          m.blush = 0.08;
+        } else if (anim.banterTimer > 0 || (m.speechTimer > 0.35 && m.speechTimer < 900)) {
+          m.worldAnim = "talk";
+          m.expression = "happy";
+          m.blush = anim.banterTimer > 0 ? 0.52 : 0.35;
+        } else if (actorWorking) {
+          m.worldAnim = mapWorkStepToAnim(patrolPlan?.villageWorkStep ?? null, m.spec.activity);
+          m.expression = "focused";
+          m.blush = 0.0;
+        } else if (isSleeping) {
+          m.worldAnim = "sleep";
+          m.expression = "sleepy";
+          m.blush = 0.22;
+        } else {
+          m.worldAnim = "idle";
+          m.expression = isFocused ? "happy" : "normal";
+          m.blush = isFocused ? 0.42 : 0.0;
         }
       }
 
@@ -1256,6 +1726,7 @@ export function createChoreographyDirector(scene: Scene): ChoreographyDirector {
       pendingTimers.clear();
       villagePatrolPlans.clear();
       patrolStates.clear();
+      animStates.clear();
       projectiles.length = 0;
       particles.length = 0;
       particleInstanced.dispose();

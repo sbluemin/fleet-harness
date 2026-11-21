@@ -274,11 +274,23 @@
 }
 
 .the-world-nametag.is-player {
-  background: oklch(10% 0.012 255 / 58%);
-  border-color: oklch(100% 0 0 / 10%);
-  color: oklch(86% 0.008 255);
-  pointer-events: none;
-  cursor: default;
+  background: oklch(10% 0.012 255 / 66%);
+  border-color: oklch(100% 0 0 / 14%);
+  color: oklch(90% 0.008 255);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.the-world-nametag.is-player:hover,
+.the-world-player-anchor:hover .the-world-nametag.is-player {
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(13% 0.014 255 / 88%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 56%, transparent);
+  color: oklch(99% 0 0);
+  transform: translateY(-1px);
+}
+
+.the-world-player-anchor {
+  cursor: pointer;
 }
 
 .the-world-tone-dot {
@@ -301,7 +313,7 @@
 
 .the-world-toast {
   position: absolute;
-  top: var(--space-3);
+  top: 56px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 7;
@@ -3468,7 +3480,7 @@
 /* 하늘 조망(M) 모드 상단 중앙 안내 필 */
 .the-world-overview-banner {
   position: absolute;
-  top: var(--space-3);
+  top: 56px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 6;
@@ -3907,6 +3919,8 @@
 .the-world-root.is-photo-mode .the-world-labels,
 .the-world-root.is-photo-mode .the-world-district-card,
 .the-world-root.is-photo-mode .the-world-overview-banner,
+.the-world-root.is-photo-mode .the-world-campfire-banner,
+.the-world-root.is-photo-mode .the-world-overview-drag-svg,
 .the-world-root.is-photo-mode .the-world-quick-menu {
   opacity: 0;
   pointer-events: none;
@@ -3952,6 +3966,514 @@
   box-shadow: var(--focus-face);
 }
 
+/* ── Sprint 6: 함대 상황실 · 제독 꾸미기 · 구역 메모 · 불멍 · 합동 드래그 ─────── */
+
+.the-world-war-room {
+  width: min(680px, calc(100vw - 32px));
+}
+
+.the-world-wr-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.the-world-wr-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.the-world-wr-kpi {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  background: oklch(16% 0.014 255 / 86%);
+  border: 1px solid oklch(100% 0 0 / 12%);
+}
+
+.the-world-wr-kpi.is-emphasis {
+  background: color-mix(in oklch, var(--mongle-amber) 14%, oklch(15% 0.014 255 / 92%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 48%, transparent);
+}
+
+.the-world-wr-kpi-label {
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  color: oklch(76% 0.01 255);
+}
+
+.the-world-wr-kpi-val {
+  font-family: var(--font-code);
+  font-size: var(--t-md);
+  font-weight: var(--weight-bold);
+  color: oklch(98% 0.004 255);
+}
+
+.the-world-wr-rally-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 38px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 64%, transparent);
+  background: color-mix(in oklch, var(--mongle-amber) 22%, oklch(16% 0.014 255 / 94%));
+  color: oklch(99% 0.004 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+  box-shadow: 0 0 18px color-mix(in oklch, var(--mongle-amber) 20%, transparent);
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-wr-rally-btn:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--mongle-amber) 32%, oklch(18% 0.014 255 / 96%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 84%, transparent);
+  transform: translateY(-1px);
+}
+
+.the-world-wr-rally-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.the-world-wr-rally-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-wr-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-height: 228px;
+  overflow-y: auto;
+}
+
+.the-world-wr-rank-row {
+  --rank-tone: var(--mongle-cerulean);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid oklch(100% 0 0 / 12%);
+  background: oklch(16% 0.014 255 / 82%);
+  color: oklch(95% 0.005 255);
+  font-family: var(--font-ui);
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), transform var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-wr-rank-row[data-tone="crimson"] { --rank-tone: var(--mongle-crimson); }
+.the-world-wr-rank-row[data-tone="amber"] { --rank-tone: var(--mongle-amber); }
+.the-world-wr-rank-row[data-tone="moss"] { --rank-tone: var(--mongle-moss); }
+.the-world-wr-rank-row[data-tone="teal"] { --rank-tone: var(--mongle-teal); }
+.the-world-wr-rank-row[data-tone="cerulean"] { --rank-tone: var(--mongle-cerulean); }
+.the-world-wr-rank-row[data-tone="indigo"] { --rank-tone: var(--mongle-indigo); }
+.the-world-wr-rank-row[data-tone="plum"] { --rank-tone: var(--mongle-plum); }
+.the-world-wr-rank-row[data-tone="rose"] { --rank-tone: var(--mongle-rose); }
+
+.the-world-wr-rank-row:hover {
+  background: oklch(21% 0.014 255 / 92%);
+  border-color: color-mix(in oklch, var(--rank-tone) 62%, transparent);
+  transform: translateY(-1px);
+}
+
+.the-world-wr-rank-row:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-wr-rank-num {
+  min-width: 24px;
+  font-family: var(--font-code);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  color: oklch(76% 0.01 255);
+}
+
+.the-world-wr-rank-num.is-first {
+  color: var(--mongle-amber);
+}
+
+.the-world-wr-rank-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.the-world-wr-rank-name {
+  font-size: var(--t-sm);
+  font-weight: var(--weight-bold);
+  color: oklch(98% 0.004 255);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.the-world-wr-rank-meta {
+  font-size: var(--t-2xs);
+  color: oklch(76% 0.01 255);
+}
+
+.the-world-wr-broadcast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.the-world-wr-broadcast-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 34px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-xs);
+  border: 1px solid oklch(100% 0 0 / 16%);
+  background: oklch(11% 0.012 255 / 88%);
+  color: oklch(97% 0.004 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+}
+
+.the-world-wr-broadcast-input:focus {
+  outline: none;
+  border-color: color-mix(in oklch, var(--mongle-amber) 64%, transparent);
+  box-shadow: var(--focus-face);
+}
+
+/* 제독 몽글이 꾸미기 모달 */
+.the-world-admiral-modal,
+.the-world-admiral-customizer {
+  width: min(440px, calc(100vw - 32px));
+}
+
+.the-world-admiral-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.the-world-admiral-preview {
+  --admiral-tone: var(--mongle-cerulean);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-3);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--admiral-tone) 24%, transparent) 0%, transparent 72%),
+    oklch(15% 0.014 255 / 86%);
+  border: 1px solid color-mix(in oklch, var(--admiral-tone) 42%, oklch(100% 0 0 / 12%));
+}
+
+.the-world-admiral-preview[data-tone="crimson"] { --admiral-tone: var(--mongle-crimson); }
+.the-world-admiral-preview[data-tone="amber"] { --admiral-tone: var(--mongle-amber); }
+.the-world-admiral-preview[data-tone="moss"] { --admiral-tone: var(--mongle-moss); }
+.the-world-admiral-preview[data-tone="teal"] { --admiral-tone: var(--mongle-teal); }
+.the-world-admiral-preview[data-tone="cerulean"] { --admiral-tone: var(--mongle-cerulean); }
+.the-world-admiral-preview[data-tone="indigo"] { --admiral-tone: var(--mongle-indigo); }
+.the-world-admiral-preview[data-tone="plum"] { --admiral-tone: var(--mongle-plum); }
+.the-world-admiral-preview[data-tone="rose"] { --admiral-tone: var(--mongle-rose); }
+
+.the-world-admiral-avatar-stage {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.the-world-admiral-preview-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: oklch(11% 0.014 255 / 86%);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  color: oklch(94% 0.005 255);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-admiral-section {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.the-world-admiral-swatches {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.the-world-admiral-swatch {
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-md);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  background: oklch(18% 0.014 255 / 78%);
+  cursor: pointer;
+  transition: transform var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), background var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-admiral-swatch:hover {
+  transform: translateY(-1px);
+  border-color: oklch(100% 0 0 / 36%);
+}
+
+.the-world-admiral-swatch.is-active {
+  background: oklch(24% 0.014 255 / 96%);
+  border-color: oklch(98% 0 0);
+  box-shadow: 0 0 0 2px color-mix(in oklch, var(--mongle-amber) 56%, transparent);
+}
+
+.the-world-admiral-swatch:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-admiral-swatch-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--mongle-cerulean);
+}
+
+.the-world-admiral-swatch-dot[data-tone="crimson"] { background: var(--mongle-crimson); }
+.the-world-admiral-swatch-dot[data-tone="amber"] { background: var(--mongle-amber); }
+.the-world-admiral-swatch-dot[data-tone="moss"] { background: var(--mongle-moss); }
+.the-world-admiral-swatch-dot[data-tone="teal"] { background: var(--mongle-teal); }
+.the-world-admiral-swatch-dot[data-tone="cerulean"] { background: var(--mongle-cerulean); }
+.the-world-admiral-swatch-dot[data-tone="indigo"] { background: var(--mongle-indigo); }
+.the-world-admiral-swatch-dot[data-tone="plum"] { background: var(--mongle-plum); }
+.the-world-admiral-swatch-dot[data-tone="rose"] { background: var(--mongle-rose); }
+
+.the-world-admiral-hats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.the-world-admiral-hat-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-xs);
+  border: 1px solid oklch(100% 0 0 / 13%);
+  background: oklch(18% 0.014 255 / 78%);
+  color: oklch(86% 0.008 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft), color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-admiral-hat-pill:hover {
+  background: oklch(24% 0.014 255 / 92%);
+  border-color: oklch(100% 0 0 / 26%);
+  color: oklch(98% 0 0);
+}
+
+.the-world-admiral-hat-pill.is-active {
+  background: color-mix(in oklch, var(--mongle-amber) 18%, oklch(16% 0.014 255 / 94%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 64%, transparent);
+  color: oklch(99% 0 0);
+  font-weight: var(--weight-bold);
+}
+
+.the-world-admiral-hat-pill:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+/* Inspector 인라인 제독 메모 */
+.the-world-district-note-block {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.the-world-district-note-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.the-world-district-note-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.the-world-district-note-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  background: oklch(11% 0.012 255 / 86%);
+  color: oklch(96% 0.005 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+}
+
+.the-world-district-note-input:focus {
+  outline: none;
+  border-color: color-mix(in oklch, var(--mongle-amber) 60%, transparent);
+  box-shadow: var(--focus-face);
+}
+
+.the-world-district-note-btn {
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-xs);
+  border: 1px solid oklch(100% 0 0 / 14%);
+  background: oklch(19% 0.014 255 / 82%);
+  color: oklch(88% 0.008 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.the-world-district-note-btn.is-save:not(:disabled) {
+  background: color-mix(in oklch, var(--mongle-amber) 20%, oklch(16% 0.014 255 / 92%));
+  border-color: color-mix(in oklch, var(--mongle-amber) 60%, transparent);
+  color: oklch(99% 0 0);
+}
+
+.the-world-district-note-btn:disabled {
+  opacity: 0.42;
+  cursor: default;
+}
+
+.the-world-district-note-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+/* 3D 길드 회관 상황실 & 모닥불 불멍 푯말 + 하단 불멍 배너 */
+.the-world-guild-sign,
+.the-world-campfire-sign {
+  position: absolute;
+  left: 0;
+  top: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 46%, oklch(100% 0 0 / 16%));
+  border-radius: var(--radius-pill);
+  background: oklch(11% 0.014 255 / 86%);
+  color: oklch(97% 0.004 255);
+  box-shadow: var(--shadow-soft);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  will-change: transform;
+  contain: layout style;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-soft), border-color var(--duration-fast) var(--ease-soft);
+}
+
+.the-world-guild-sign:hover,
+.the-world-campfire-sign:hover {
+  background: oklch(16% 0.014 255 / 94%);
+  border-color: var(--mongle-amber);
+}
+
+.the-world-guild-sign:focus-visible,
+.the-world-campfire-sign:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-face);
+}
+
+.the-world-campfire-banner {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-pill);
+  background: oklch(12% 0.014 255 / 88%);
+  backdrop-filter: blur(12px);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 56%, oklch(100% 0 0 / 14%));
+  box-shadow: var(--shadow-floating);
+  color: oklch(96% 0.005 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  pointer-events: auto;
+}
+
+/* 하늘 조망(M) 마을→마을 드래그 합동 연락 조준선 SVG */
+.the-world-overview-drag-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 9;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.the-world-overview-drag-line {
+  fill: none;
+  stroke: var(--mongle-amber);
+  stroke-width: 2.5;
+  stroke-dasharray: 8 6;
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 6px color-mix(in oklch, var(--mongle-amber) 65%, transparent));
+}
+
+.the-world-overview-drag-dot {
+  fill: var(--mongle-amber);
+  stroke: oklch(99% 0 0);
+  stroke-width: 2;
+}
+
+.the-world-overview-drag-label {
+  position: absolute;
+  z-index: 10;
+  transform: translate(-50%, -140%);
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  background: oklch(12% 0.014 255 / 92%);
+  border: 1px solid color-mix(in oklch, var(--mongle-amber) 64%, transparent);
+  color: oklch(99% 0.004 255);
+  font-family: var(--font-ui);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: var(--shadow-floating);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .the-world-chat-shell,
   .the-world-chat-ambient,
@@ -3978,6 +4500,8 @@
   .the-world-nametag:focus-visible,
   .the-world-village-sign:focus-visible,
   .the-world-notice-sign:focus-visible,
+  .the-world-guild-sign:focus-visible,
+  .the-world-campfire-sign:focus-visible,
   .the-world-interact-prompt:focus-visible,
   .the-world-radial-aperture:focus-visible,
   .the-world-radial-petal:focus-visible,
@@ -3993,8 +4517,15 @@
   .the-world-district-objective-chip:focus-visible,
   .the-world-district-biome-pill:focus-visible,
   .the-world-biome-pill:focus-visible,
+  .the-world-district-note-input:focus-visible,
+  .the-world-district-note-btn:focus-visible,
   .the-world-district-action:focus-visible,
   .the-world-quick-menu-item:focus-visible,
+  .the-world-wr-rally-btn:focus-visible,
+  .the-world-wr-rank-row:focus-visible,
+  .the-world-wr-broadcast-input:focus-visible,
+  .the-world-admiral-swatch:focus-visible,
+  .the-world-admiral-hat-pill:focus-visible,
   .the-world-photo-exit:focus-visible,
   .the-world-minimap-keybtn:focus-visible,
   .the-world-minimap-plaza:focus-visible,

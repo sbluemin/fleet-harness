@@ -14,6 +14,16 @@ export interface PlayerState {
   vx: number;
   vz: number;
   vy: number;
+  /** 지면 대비 현재 점프 높이(m). */
+  playerJumpY: number;
+  /** 수직 점프 속도 (+상승 / -하강, 접지 시 0). */
+  jumpVel: number;
+  /** 착지 스쿼시 강도 (착지 순간 1.0 → 부드럽게 0으로 감쇠). */
+  landSquash: number;
+  /** 실제 수평 이동 속도 (m/s). */
+  moveSpeed: number;
+  /** 모닥불 벤치 착석 경과 초 (8초 초과 시 sit → doze 전환). */
+  campfireSitSec: number;
   yaw: number;
   walking: boolean;
   sprinting: boolean;
@@ -35,6 +45,9 @@ export interface PlayerAndCameraController {
     readonly resolveMovement: (curX: number, curZ: number, nextX: number, nextZ: number, radius?: number) => { x: number; z: number };
     readonly onDustParticle: (x: number, y: number, z: number) => void;
     readonly onOverviewAutoExit?: (() => void) | undefined;
+    readonly onJump?: (() => void) | undefined;
+    readonly onLand?: (() => void) | undefined;
+    readonly onStandUp?: (() => void) | undefined;
   }): void;
   teleportTo(
     x: number,
@@ -55,6 +68,11 @@ export interface PlayerAndCameraController {
   /** RTS 하늘 조망 모드 (`M` 키) — 56m 초원 전체를 상공 쿼터뷰로 내려다보며 해제/구역 선택 시 급강하한다. */
   setOverviewMode(enabled: boolean): void;
   isOverviewMode(): boolean;
+  /** `Shift` 대시 질주 상태 여부. */
+  isSprinting(): boolean;
+  /** 광장 모닥불 벤치 불멍 모드 — 벤치 `(2.8, 2.55)`에 앉아 모닥불 `(2.8, 1.0)`을 바라보는 슬로우 오빗 카메라 가동. */
+  setCampfireSit(sitting: boolean): void;
+  isSittingAtCampfire(): boolean;
   onPointerRotate(dx: number, dy: number): void;
   onWheelZoom(deltaY: number): void;
   dispose(): void;
@@ -75,6 +93,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     vx: 0,
     vz: 0,
     vy: 0,
+    playerJumpY: 0,
+    jumpVel: 0,
+    landSquash: 0,
+    moveSpeed: 0,
+    campfireSitSec: 0,
     yaw: Math.PI, // 정면의 길드 회관(-Z)을 바라보며 시작
     walking: false,
     sprinting: false,
@@ -88,8 +111,16 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
   let targetCamDist = 9.8;
   let smoothedEffDist = 9.8;
   let smoothedEffPitch = 0.28;
+  let smoothedFov = 44;
   let cineProgress = 0;
   let prevLifecycle: WorldLifecycleState = "closed";
+  let sittingAtCampfire = false;
+  let jumpedFromGround = false;
+
+  const CAMPFIRE_BENCH_X = 2.8;
+  const CAMPFIRE_BENCH_Z = 2.55;
+  const CAMPFIRE_FIRE_X = 2.8;
+  const CAMPFIRE_FIRE_Z = 1.0;
 
   const orbitAnchor = new Vector3(0, 1.0, 1.5);
   const cameraTarget = new Vector3(0.4, 1.45, 2.2);
@@ -133,6 +164,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     teleportTo(x, z, getGroundHeight, resolveMovement) {
       districtFocus = null;
       overviewMode = false;
+      sittingAtCampfire = false;
       // 캠프·마을 앞마당(남쪽 입구) 안전한 오솔길 지점으로 착지
       const rawX = x;
       const rawZ = z + 3.0;
@@ -143,6 +175,12 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       player.vz = 0;
       player.y = Math.max(0.05, getGroundHeight(player.x, player.z)) + 0.35;
       player.vy = 0;
+      player.playerJumpY = 0;
+      player.jumpVel = 0;
+      player.landSquash = 0;
+      player.moveSpeed = 0;
+      player.campfireSitSec = 0;
+      jumpedFromGround = false;
       player.yaw = Math.atan2(x - player.x, z - player.z);
       orbitAnchor.set(
         Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, x)),
@@ -153,6 +191,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     approachPoint(targetX, targetZ, getGroundHeight, resolveMovement) {
       districtFocus = null;
       overviewMode = false;
+      sittingAtCampfire = false;
       const dx = player.x - targetX;
       const dz = player.z - targetZ;
       const d = Math.hypot(dx, dz);
@@ -167,6 +206,12 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       player.vz = 0;
       player.y = Math.max(0.05, getGroundHeight(player.x, player.z)) + 0.15;
       player.vy = 0;
+      player.playerJumpY = 0;
+      player.jumpVel = 0;
+      player.landSquash = 0;
+      player.moveSpeed = 0;
+      player.campfireSitSec = 0;
+      jumpedFromGround = false;
       player.yaw = Math.atan2(targetX - player.x, targetZ - player.z);
       orbitAnchor.set(
         Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, targetX)),
@@ -183,6 +228,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     },
     focusDistrict(x, z, radius, getGroundHeight) {
       overviewMode = false;
+      sittingAtCampfire = false;
       const clampedX = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, x));
       const clampedZ = Math.max(-ORBIT_CLAMP, Math.min(ORBIT_CLAMP, z));
       const gy = Math.max(0.25, getGroundHeight(clampedX, clampedZ));
@@ -205,6 +251,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       overviewMode = enabled;
       if (enabled) {
         districtFocus = null;
+        sittingAtCampfire = false;
         overviewAnchor.set(0, 1.0, 0);
         overviewDist = 74;
         overviewPitch = 1.15;
@@ -212,6 +259,35 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
     },
     isOverviewMode() {
       return overviewMode;
+    },
+    isSprinting() {
+      return player.sprinting && player.walking;
+    },
+    setCampfireSit(sitting) {
+      if (sitting === sittingAtCampfire) return;
+      sittingAtCampfire = sitting;
+      player.campfireSitSec = 0;
+      if (sitting) {
+        districtFocus = null;
+        overviewMode = false;
+        player.x = CAMPFIRE_BENCH_X;
+        player.z = CAMPFIRE_BENCH_Z;
+        player.vx = 0;
+        player.vz = 0;
+        player.vy = 0;
+        player.playerJumpY = 0;
+        player.jumpVel = 0;
+        player.landSquash = 0;
+        player.moveSpeed = 0;
+        player.walking = false;
+        player.sprinting = false;
+        player.onGround = true;
+        jumpedFromGround = false;
+        player.yaw = Math.atan2(CAMPFIRE_FIRE_X - CAMPFIRE_BENCH_X, CAMPFIRE_FIRE_Z - CAMPFIRE_BENCH_Z);
+      }
+    },
+    isSittingAtCampfire() {
+      return sittingAtCampfire;
     },
     onPointerRotate(dx, dy) {
       camYaw -= dx * 0.0062;
@@ -254,7 +330,15 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         if (keys.has("KeyS") || keys.has("ArrowDown")) iz += 1;
         if (keys.has("KeyA") || keys.has("ArrowLeft")) ix -= 1;
         if (keys.has("KeyD") || keys.has("ArrowRight")) ix += 1;
+        const spacePressed = keys.has("Space");
         player.sprinting = keys.has("ShiftLeft") || keys.has("ShiftRight");
+
+        // 불멍 중 WASD/방향키 또는 Space 입력 시 자동 기상!
+        if (sittingAtCampfire && (ix !== 0 || iz !== 0 || spacePressed)) {
+          sittingAtCampfire = false;
+          player.campfireSitSec = 0;
+          opts.onStandUp?.();
+        }
 
         if (ix !== 0 || iz !== 0) {
           // WASD/방향키 이동 시작 시 구역 포커스를 해제하고, 추적 모드에서 하늘 조망 중이면 부드럽게 급강하 복귀
@@ -268,11 +352,27 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         const cy = Math.cos(camYaw);
         const sy = Math.sin(camYaw);
 
-        if (overviewMode) {
+        if (sittingAtCampfire) {
+          // 모닥불 벤치 불멍 상태: 벤치에 앉아 모닥불을 바라보며 천천히 시네마틱 오빗
+          player.campfireSitSec += opts.dt;
+          player.x = CAMPFIRE_BENCH_X;
+          player.z = CAMPFIRE_BENCH_Z;
+          player.vx = 0;
+          player.vz = 0;
+          player.moveSpeed = 0;
+          player.walking = false;
+          player.sprinting = false;
+          player.yaw = Math.atan2(CAMPFIRE_FIRE_X - CAMPFIRE_BENCH_X, CAMPFIRE_FIRE_Z - CAMPFIRE_BENCH_Z);
+          if (!opts.reducedMotion) {
+            camYaw += opts.dt * 0.14;
+          }
+        } else if (overviewMode) {
           // RTS 하늘 조망(orbit 조합)에서는 WASD로 상공 주시점 패닝
+          player.campfireSitSec = 0;
           player.walking = false;
           player.vx = 0;
           player.vz = 0;
+          player.moveSpeed = 0;
           if (ix !== 0 || iz !== 0) {
             const len = Math.hypot(ix, iz);
             const mx = cy * (ix / len) + sy * (iz / len);
@@ -283,9 +383,11 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           }
         } else if (opts.cameraMode === "orbit") {
           // 초원 조망 모드에서는 WASD로 카메라 주시점을 넓은 초원(±50m) 위로 부드럽게 패닝!
+          player.campfireSitSec = 0;
           player.walking = false;
           player.vx = 0;
           player.vz = 0;
+          player.moveSpeed = 0;
           if (ix !== 0 || iz !== 0) {
             const len = Math.hypot(ix, iz);
             const mx = cy * (ix / len) + sy * (iz / len);
@@ -296,14 +398,15 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             orbitAnchor.y = Math.max(0.5, opts.getGroundHeight(orbitAnchor.x, orbitAnchor.z)) + 0.9;
           }
         } else {
-          // 3인칭 추적 모드: 부드러운 가감속 물리 이동 + 슬라이딩 장애물 충돌
+          // 3인칭 추적 모드: 부드러운 가감속 물리 이동(`Shift` 1.65x 대시 질주) + 슬라이딩 장애물 충돌
+          player.campfireSitSec = 0;
           let targetVx = 0;
           let targetVz = 0;
           if (ix !== 0 || iz !== 0) {
             const len = Math.hypot(ix, iz);
             const mx = cy * (ix / len) + sy * (iz / len);
             const mz = -sy * (ix / len) + cy * (iz / len);
-            const maxSpd = player.sprinting ? 9.2 : 5.6;
+            const maxSpd = player.sprinting ? 5.6 * 1.65 : 5.6;
             targetVx = mx * maxSpd;
             targetVz = mz * maxSpd;
 
@@ -319,6 +422,7 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           player.vz += (targetVz - player.vz) * Math.min(1, opts.dt * accel);
 
           const speedMag = Math.hypot(player.vx, player.vz);
+          player.moveSpeed = speedMag;
           player.walking = speedMag > 0.35;
 
           if (speedMag > 0.02) {
@@ -328,19 +432,23 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
             player.x = resolved.x;
             player.z = resolved.z;
 
-            if (player.onGround && player.walking && Math.random() < opts.dt * (player.sprinting ? 14 : 6)) {
+            if (player.onGround && player.walking && Math.random() < opts.dt * (player.sprinting ? 16 : 6)) {
               opts.onDustParticle(player.x, player.y + 0.08, player.z);
             }
           }
 
-          if (keys.has("Space") && player.onGround) {
-            player.vy = 6.8;
+          if (spacePressed && player.onGround) {
+            player.vy = 7.1;
             player.onGround = false;
+            player.landSquash = 0;
+            jumpedFromGround = true;
+            opts.onJump?.();
           }
         }
       } else {
         player.vx *= Math.max(0, 1 - opts.dt * 14);
         player.vz *= Math.max(0, 1 - opts.dt * 14);
+        player.moveSpeed = Math.hypot(player.vx, player.vz);
         player.walking = false;
         player.sprinting = false;
         // 상호작용 대상이 있으면 플레이어가 대상을 자연스럽게 마주본다
@@ -354,21 +462,34 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
       }
 
       const gy = Math.max(-0.05, opts.getGroundHeight(player.x, player.z));
-      player.vy -= 17.5 * opts.dt;
+      const wasOnGround = player.onGround;
+      player.vy -= 17.8 * opts.dt;
       player.y += player.vy * opts.dt;
       if (player.y <= gy) {
         player.y = gy;
         player.vy = 0;
         player.onGround = true;
+        if (!wasOnGround && jumpedFromGround) {
+          jumpedFromGround = false;
+          player.landSquash = 1.0;
+          opts.onDustParticle(player.x, gy + 0.06, player.z);
+          opts.onLand?.();
+        }
+      }
+      player.playerJumpY = Math.max(0, player.y - gy);
+      player.jumpVel = player.onGround ? 0 : player.vy;
+      if (player.landSquash > 0) {
+        player.landSquash = Math.max(0, player.landSquash - opts.dt * 4.6);
       }
 
-      // 카메라 주시점 보간 (RTS 하늘 조망 > 구역 포커스 > 대화/상호작용 > 일반 추적/조망)
+      // 카메라 주시점 보간 (RTS 하늘 조망 > 구역 포커스 > 모닥불 불멍 > 대화/상호작용 > 일반 추적/조망)
       let desiredTargetX = opts.cameraMode === "orbit" ? orbitAnchor.x : player.x;
       let desiredTargetY = opts.cameraMode === "orbit" ? orbitAnchor.y : player.y + 1.12;
       let desiredTargetZ = opts.cameraMode === "orbit" ? orbitAnchor.z : player.z;
       const interactingClose =
         !overviewMode
         && !districtFocus
+        && !sittingAtCampfire
         && opts.cameraMode === "follow"
         && opts.focusActorPos !== null
         && Math.hypot(opts.focusActorPos.x - player.x, opts.focusActorPos.z - player.z) < 9.0;
@@ -380,16 +501,20 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
         desiredTargetX = districtFocus.x;
         desiredTargetY = districtFocus.y;
         desiredTargetZ = districtFocus.z;
+      } else if (sittingAtCampfire && !opts.inputLocked) {
+        desiredTargetX = (CAMPFIRE_BENCH_X + CAMPFIRE_FIRE_X) * 0.5;
+        desiredTargetY = gy + 0.92;
+        desiredTargetZ = (CAMPFIRE_BENCH_Z + CAMPFIRE_FIRE_Z) * 0.5;
       } else if (interactingClose && opts.focusActorPos) {
         desiredTargetX = player.x + (opts.focusActorPos.x - player.x) * 0.42;
         desiredTargetZ = player.z + (opts.focusActorPos.z - player.z) * 0.42;
       }
-      const targetLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : 8.5));
+      const targetLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : 8.5));
       cameraTarget.x += (desiredTargetX - cameraTarget.x) * targetLerp;
       cameraTarget.y += (desiredTargetY - cameraTarget.y) * targetLerp;
       cameraTarget.z += (desiredTargetZ - cameraTarget.z) * targetLerp;
 
-      // 줌 거리 및 추적↔조망↔하늘 조망↔구역 포커스 전환을 프레임 레이트 독립 지수 감쇠로 부드럽게 보간
+      // 줌 거리 및 추적↔조망↔하늘 조망↔구역 포커스↔불멍 전환을 프레임 레이트 독립 지수 감쇠로 부드럽게 보간
       const zoomLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 10.0);
       camDist += (targetCamDist - camDist) * zoomLerp;
 
@@ -399,25 +524,41 @@ export function createPlayerAndCameraController(): PlayerAndCameraController {
           ? overviewDist
           : districtFocus && !opts.inputLocked
             ? districtFocus.dist
-            : opts.cameraMode === "orbit"
-              ? Math.max(28, camDist * 2.65)
-              : focusDist;
+            : sittingAtCampfire && !opts.inputLocked
+              ? 4.45
+              : opts.cameraMode === "orbit"
+                ? Math.max(28, camDist * 2.65)
+                : focusDist;
       const desiredEffPitch =
         overviewMode && !opts.inputLocked
           ? overviewPitch
           : districtFocus && !opts.inputLocked
             ? districtFocus.pitch
-            : opts.cameraMode === "orbit"
-              ? Math.max(0.54, camPitch)
-              : camPitch;
-      const modeLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : 9.0));
+            : sittingAtCampfire && !opts.inputLocked
+              ? 0.26
+              : opts.cameraMode === "orbit"
+                ? Math.max(0.54, camPitch)
+                : camPitch;
+      const modeLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * (overviewMode ? 6.5 : sittingAtCampfire ? 4.5 : 9.0));
       smoothedEffDist += (desiredEffDist - smoothedEffDist) * modeLerp;
       smoothedEffPitch += (desiredEffPitch - smoothedEffPitch) * modeLerp;
+
+      // 질주(`Shift`) 동적 FOV 44→49 부드러운 보간
+      const desiredFov =
+        overviewMode && !opts.inputLocked
+          ? 50
+          : sittingAtCampfire && !opts.inputLocked
+            ? 42
+            : player.sprinting && player.walking
+              ? 49
+              : 44;
+      const fovLerp = opts.reducedMotion ? 1 : 1 - Math.exp(-opts.dt * 7.5);
+      smoothedFov += (desiredFov - smoothedFov) * fovLerp;
 
       let effDist = smoothedEffDist;
       let effPitch = smoothedEffPitch;
       let effYaw = camYaw;
-      let effFov = overviewMode && !opts.inputLocked ? 50 : 46;
+      let effFov = smoothedFov;
 
       if (!opts.reducedMotion) {
         if (opts.lifecycle === "diving") {

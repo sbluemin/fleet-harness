@@ -29,6 +29,7 @@ import {
 } from "../../../workspace/shared/mongle-3d-glsl.js";
 import type { MongleActivity, MongleRole, MongleShape, MongleState, QuakerMorph } from "../../../workspace/shared/avatars.js";
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
+import type { WorldAdmiralHat } from "../../shared/world-types.js";
 
 /**
  * `mongle-3d-glsl.ts` (현행 2D 사이드바 아바타와 동일 SSOT) 기반 360° 3D 월드 볼류메트릭 캐릭터 메쉬.
@@ -65,6 +66,17 @@ uniform int uQuaker;
 uniform int uState;
 uniform int uActivity;
 uniform int uRole;
+uniform int uHat;
+uniform int uWorldAnim;
+uniform int uExpression;
+uniform float uAnimPhase;
+uniform float uMoveSpeed;
+uniform float uJumpVel;
+uniform float uLandSquash;
+uniform float uLookYaw;
+uniform float uLookPitch;
+uniform float uBlush;
+uniform float uHatBounce;
 uniform vec3 uBaseCol;
 uniform vec3 uWorldLightDir;
 uniform vec3 uWorldTint;
@@ -80,8 +92,25 @@ struct AnimRig {
   float pitchAdd;
   vec2 eyeShift;
   float eyeBlink;
-  float wingFlap;
+  float wingFlapL;
+  float wingFlapR;
+  float hatBounce;
+  int exprMode;
 };
+
+float sdHappyEyeArc(vec2 p) {
+  vec2 q = vec2(abs(p.x), p.y);
+  float xC = clamp(q.x, 0.0, 0.084);
+  float yC = 0.040 - (xC * xC) * 6.8;
+  return length(q - vec2(xC, yC)) - 0.022;
+}
+
+float sdSleepyEyeLine(vec2 p) {
+  vec2 q = vec2(abs(p.x), p.y);
+  float xC = clamp(q.x, 0.0, 0.084);
+  float yC = -0.015 + (xC * xC) * 2.8;
+  return length(q - vec2(xC, yC)) - 0.017;
+}
 
 AnimRig computeAnim() {
   AnimRig r;
@@ -92,13 +121,18 @@ AnimRig computeAnim() {
   r.pitchAdd = 0.0;
   r.eyeShift = vec2(0.0);
   r.eyeBlink = 1.0;
-  r.wingFlap = 0.0;
+  r.wingFlapL = 0.0;
+  r.wingFlapR = 0.0;
+  r.hatBounce = clamp(uHatBounce, -0.18, 0.18);
+  r.exprMode = uExpression;
 
   float t = uTime + uPhase;
   if (uQuaker > 0) {
-    float wAmp = (uState == 1 || uState == 2) ? 0.32 : 0.15;
-    float wSpd = (uState == 1 || uState == 2) ? 7.2 : 3.4;
-    r.wingFlap = sin(t * wSpd) * wAmp;
+    float wAmp = (uState == 1 || uState == 2) ? 0.30 : 0.14;
+    float wSpd = (uState == 1 || uState == 2) ? 7.0 : 3.2;
+    float wf = sin(t * wSpd) * wAmp;
+    r.wingFlapL = wf;
+    r.wingFlapR = wf;
   }
 
   float bt = fract(t / 4.4);
@@ -106,40 +140,214 @@ AnimRig computeAnim() {
     r.eyeBlink = mix(1.0, 0.12, sin((bt - 0.92) / 0.06 * 3.14159));
   }
 
-  if (uState == 0) {
-    float breath = sin(t * 2.2);
-    r.scale = vec3(1.0 + breath * 0.025, 1.0 - breath * 0.026, 1.0 + breath * 0.018);
-    r.roll = sin(t * 1.2) * 0.04;
-  } else if (uState == 1) {
-    r.roll = sin(t * 1.8) * 0.06;
-    if (uActivity == 1) {
-      float w = sin(t * 2.2);
-      r.roll = -0.12 + w * 0.05;
-      r.eyeShift = vec2(sin(t * 1.5) * 0.04, 0.04);
-    } else if (uActivity == 2) {
-      r.pitchAdd = 0.07;
-      r.eyeShift = vec2(sin(t * 2.6) * 0.05, -0.04);
-    } else if (uActivity == 3) {
-      float w = sin(t * 7.8);
-      r.scale = vec3(1.0 + w * 0.06, 1.0 - w * 0.07, 1.0 + w * 0.03);
-      r.eyeShift = vec2(-0.02, -0.035);
-    } else if (uActivity == 4) {
-      float p = fract(t * 0.9);
-      float sq = sin(p * 6.28318);
-      r.scale = vec3(1.0 - sq * 0.08, 1.0 + sq * 0.09, 1.0 - sq * 0.05);
-    } else if (uActivity == 5) {
-      float sc = sin(t * 2.6);
-      r.yawAdd = sc * 0.18;
-      r.eyeShift = vec2(sc * 0.05, 0.025);
-    } else if (uActivity == 6) {
-      float w = sin(t * 4.2);
-      r.scale = vec3(1.0 - w * 0.04, 1.0 + w * 0.05, 1.0);
+  if (uWorldAnim == 0) {
+    // 기본 대기/상태 모션 (하위 호환)
+    if (uState == 0) {
+      float breath = sin(t * 2.2);
+      r.scale = vec3(1.0 + breath * 0.025, 1.0 - breath * 0.026, 1.0 + breath * 0.018);
+      r.roll = sin(t * 1.2) * 0.04;
+    } else if (uState == 1) {
+      r.roll = sin(t * 1.8) * 0.06;
+      if (uActivity == 1) {
+        float w = sin(t * 2.2);
+        r.roll = -0.12 + w * 0.05;
+        r.eyeShift = vec2(sin(t * 1.5) * 0.04, 0.04);
+      } else if (uActivity == 2) {
+        r.pitchAdd = 0.07;
+        r.eyeShift = vec2(sin(t * 2.6) * 0.05, -0.04);
+      } else if (uActivity == 3) {
+        float w = sin(t * 7.8);
+        r.scale = vec3(1.0 + w * 0.06, 1.0 - w * 0.07, 1.0 + w * 0.03);
+        r.eyeShift = vec2(-0.02, -0.035);
+      } else if (uActivity == 4) {
+        float p = fract(t * 0.9);
+        float sq = sin(p * 6.28318);
+        r.scale = vec3(1.0 - sq * 0.08, 1.0 + sq * 0.09, 1.0 - sq * 0.05);
+      } else if (uActivity == 5) {
+        float sc = sin(t * 2.6);
+        r.yawAdd = sc * 0.18;
+        r.eyeShift = vec2(sc * 0.05, 0.025);
+      } else if (uActivity == 6) {
+        float w = sin(t * 4.2);
+        r.scale = vec3(1.0 - w * 0.04, 1.0 + w * 0.05, 1.0);
+      }
+    } else if (uState == 2 || uState == 3) {
+      float sw = sin(t * 2.4);
+      r.roll = sw * 0.16;
+      r.eyeShift = vec2(0.0, 0.035);
     }
-  } else if (uState == 2 || uState == 3) {
-    float sw = sin(t * 2.4);
-    r.roll = sw * 0.16;
-    r.eyeShift = vec2(0.0, 0.035);
+  } else if (uWorldAnim == 1) {
+    // walk: 동물의숲/펭귄식 좌우 뒤뚱 + 통통 발걸음 바운스
+    float spd = clamp(uMoveSpeed / 3.4, 0.40, 1.50);
+    float g = t * (7.2 + spd * 3.6);
+    float stepBounce = abs(sin(g));
+    float st = (stepBounce - 0.5) * 0.075 * spd;
+    r.roll = sin(g) * (0.11 + 0.05 * spd);
+    r.pitchAdd = 0.055 * spd;
+    r.offset.y += stepBounce * 0.068 * spd;
+    r.scale = vec3(1.0 - st * 0.65, 1.0 + st, 1.0 - st * 0.65);
+    r.wingFlapL = sin(g) * 0.34;
+    r.wingFlapR = -sin(g) * 0.34;
+  } else if (uWorldAnim == 2) {
+    // sprint: 앞으로 숙인 경쾌한 질주 + 빠른 날개 파닥임
+    float g = t * 14.5;
+    float sb = abs(sin(g));
+    float st = (sb - 0.45) * 0.13;
+    r.pitchAdd = 0.19;
+    r.roll = sin(g) * 0.14;
+    r.offset.y += sb * 0.095;
+    r.scale = vec3(1.0 - st * 0.72, 1.0 + st, 1.0 + 0.04 - st * 0.45);
+    r.wingFlapL = 0.16 + sin(g * 1.15) * 0.44;
+    r.wingFlapR = r.wingFlapL;
+  } else if (uWorldAnim == 3) {
+    // jump: 상승 세로 스트레치 + 공중 날개 펼침
+    float jv = clamp(uJumpVel * 0.13, -0.22, 0.24);
+    float stretch = abs(jv);
+    r.scale = vec3(1.0 - stretch * 0.42, 1.0 + stretch * 0.64, 1.0 - stretch * 0.42);
+    r.pitchAdd = -jv * 0.42;
+    r.wingFlapL = 0.44 + sin(t * 14.0) * 0.16;
+    r.wingFlapR = r.wingFlapL;
+  } else if (uWorldAnim == 4) {
+    // sit: 푹신한 착석 스쿼시 + 은은한 불멍 살랑임
+    float br = sin(t * 1.8);
+    r.offset.y = -0.10;
+    r.scale = vec3(1.10 + br * 0.022, 0.87 - br * 0.020, 1.10 + br * 0.018);
+    r.roll = sin(t * 1.3) * 0.055;
+    r.pitchAdd = -0.04;
+    r.wingFlapL = -0.10;
+    r.wingFlapR = -0.10;
+  } else if (uWorldAnim == 5) {
+    // doze: 서서히 고개가 숙여졌다 깜짝 놀라며 드는 졸음 루프
+    float cyc = fract(t / 3.6);
+    float br = sin(t * 1.5);
+    r.offset.y = -0.09;
+    r.scale = vec3(1.08 + br * 0.025, 0.88 - br * 0.022, 1.08);
+    if (cyc < 0.78) {
+      float droop = smoothstep(0.05, 0.76, cyc);
+      r.pitchAdd = droop * 0.30;
+      r.roll = sin(t * 1.1) * 0.06 + droop * 0.08;
+      if (droop > 0.28) r.exprMode = 2;
+    } else if (cyc < 0.90) {
+      float jolt = sin(((cyc - 0.78) / 0.12) * 3.14159);
+      r.pitchAdd = mix(0.28, -0.09, jolt);
+      r.offset.y += jolt * 0.06;
+      r.scale *= vec3(1.0 - jolt * 0.06, 1.0 + jolt * 0.08, 1.0 - jolt * 0.06);
+      r.exprMode = 3;
+    } else {
+      float settle = (cyc - 0.90) / 0.10;
+      r.pitchAdd = mix(-0.06, 0.02, settle);
+    }
+  } else if (uWorldAnim == 6) {
+    // sleep: 깊은 호흡 + 옆으로 기댄 평온한 잠
+    float br = sin(t * 1.25);
+    r.offset.y = -0.12;
+    r.roll = 0.23 + br * 0.025;
+    r.pitchAdd = 0.10;
+    r.scale = vec3(1.11 + br * 0.045, 0.84 - br * 0.038, 1.09 + br * 0.032);
+    r.wingFlapL = -0.14;
+    r.wingFlapR = -0.14;
+    r.exprMode = 2;
+  } else if (uWorldAnim == 7) {
+    // talk: 길 위 수다 리듬 끄덕임 + 고개 갸웃
+    float nod = sin(t * 6.8);
+    r.pitchAdd = nod * 0.10;
+    r.roll = sin(t * 3.1) * 0.13;
+    r.yawAdd = sin(t * 2.4) * 0.10;
+    r.offset.y += max(0.0, nod) * 0.038;
+    r.scale = vec3(1.0 - nod * 0.03, 1.0 + nod * 0.04, 1.0 - nod * 0.03);
+    r.wingFlapL = sin(t * 6.8) * 0.26;
+    r.wingFlapR = -sin(t * 6.8 + 0.6) * 0.26;
+  } else if (uWorldAnim == 8) {
+    // wave: 고개 갸웃 + 오른 날개/손 신나게 인사 흔들기
+    float ph = uAnimPhase;
+    float wv = sin(ph * 11.5);
+    float sq = sin(ph * 5.8) * 0.05;
+    r.roll = -0.14 + wv * 0.10;
+    r.yawAdd = 0.08 + sin(ph * 5.5) * 0.07;
+    r.offset.y += abs(sin(ph * 5.8)) * 0.055;
+    r.scale = vec3(1.0 - sq, 1.0 + sq, 1.0 - sq);
+    r.wingFlapR = 0.54 + wv * 0.34;
+    r.wingFlapL = -0.06 + sin(ph * 4.0) * 0.06;
+  } else if (uWorldAnim == 9) {
+    // cheer: 신나는 2단 바운스 + 양 날개 파닥파닥
+    float ph = uAnimPhase;
+    float hop = abs(sin(ph * 7.2));
+    float st = (hop - 0.35) * 0.15;
+    r.offset.y += hop * 0.16;
+    r.scale = vec3(1.0 - st * 0.60, 1.0 + st, 1.0 - st * 0.60);
+    r.roll = sin(ph * 7.2) * 0.14;
+    r.wingFlapL = 0.42 + sin(ph * 16.0) * 0.36;
+    r.wingFlapR = r.wingFlapL;
+  } else if (uWorldAnim == 10) {
+    // spin: 360도 공중 회전 + 탄성 스트레치
+    float u = clamp(uAnimPhase / 0.85, 0.0, 1.0);
+    float easeU = u * u * (3.0 - 2.0 * u);
+    float arc = sin(u * 3.1415926);
+    r.yawAdd = easeU * 6.2831853;
+    r.offset.y += arc * 0.18;
+    r.scale = vec3(1.0 - arc * 0.12, 1.0 + arc * 0.18, 1.0 - arc * 0.12);
+    r.wingFlapL = arc * 0.56;
+    r.wingFlapR = arc * 0.56;
+  } else if (uWorldAnim == 11) {
+    // shake: 빗물 털어내기 고속 부르르 진동
+    float ph = uAnimPhase;
+    float env = sin(clamp(ph / 0.85, 0.0, 1.0) * 3.1415926);
+    float sh = sin(ph * 36.0) * env;
+    r.roll = sh * 0.24;
+    r.yawAdd = cos(ph * 36.0) * env * 0.20;
+    r.scale = vec3(1.0 + abs(sh) * 0.08, 1.0 - abs(sh) * 0.07, 1.0 + abs(sh) * 0.06);
+    r.wingFlapL = sh * 0.44;
+    r.wingFlapR = -sh * 0.44;
+    r.exprMode = 2;
+  } else if (uWorldAnim == 12) {
+    // work-edit: 리드미컬한 망치/코딩 끄덕임
+    float w = sin(t * 8.4);
+    float hit = pow(max(0.0, w), 2.0);
+    r.pitchAdd = 0.06 + hit * 0.16;
+    r.scale = vec3(1.0 + hit * 0.08, 1.0 - hit * 0.09, 1.0 + hit * 0.05);
+    r.eyeShift = vec2(-0.02, -0.04);
+    r.wingFlapR = 0.18 + hit * 0.38;
+  } else if (uWorldAnim == 13) {
+    // work-read: 좌우 훑기 + 아래 시선
+    float sc = sin(t * 2.8);
+    r.pitchAdd = 0.12;
+    r.yawAdd = sc * 0.12;
+    r.eyeShift = vec2(sc * 0.065, -0.055);
+  } else if (uWorldAnim == 14) {
+    // work-think: 고개 갸웃 사색
+    float w = sin(t * 2.1);
+    r.roll = -0.15 + w * 0.06;
+    r.pitchAdd = -0.05;
+    r.eyeShift = vec2(sin(t * 1.4) * 0.05, 0.055);
+  } else if (uWorldAnim == 15) {
+    // work-run: 신속 집중 펄스
+    float p = sin(t * 6.4);
+    r.scale = vec3(1.0 - p * 0.07, 1.0 + p * 0.08, 1.0 - p * 0.05);
+    r.offset.y += max(0.0, p) * 0.045;
+    r.wingFlapL = p * 0.25;
+    r.wingFlapR = p * 0.25;
   }
+
+  // 착지 스쿼시-앤-스트레치 (모든 모드 공통 오버레이)
+  float ls = clamp(uLandSquash, 0.0, 1.0);
+  if (ls > 0.001) {
+    r.scale *= vec3(1.0 + ls * 0.18, 1.0 - ls * 0.22, 1.0 + ls * 0.18);
+    r.offset.y -= ls * 0.09;
+  }
+  if (uWorldAnim != 3 && abs(uJumpVel) > 0.05) {
+    float jv = clamp(uJumpVel * 0.09, -0.16, 0.18);
+    r.scale *= vec3(1.0 - abs(jv) * 0.34, 1.0 + abs(jv) * 0.48, 1.0 - abs(jv) * 0.34);
+  }
+
+  // 부드러운 시선 추적 (눈동자 + 은은한 고개 회선)
+  float ly = clamp(uLookYaw, -1.0, 1.0);
+  float lp = clamp(uLookPitch, -1.0, 1.0);
+  r.eyeShift += vec2(ly * 0.058, lp * 0.048);
+  if (uWorldAnim != 10 && uWorldAnim != 11) {
+    r.yawAdd += ly * 0.14;
+    r.pitchAdd -= lp * 0.09;
+  }
+
   return r;
 }
 
@@ -159,10 +367,10 @@ float sdPlushOnly(vec3 p, AnimRig rig) {
   if (uQuaker > 0) {
     vec3 pq = q - vec3(0.0, 0.08, 0.0);
     vec3 wl = pq - vec3(-0.44, -0.43, -0.03);
-    wl.xy = rot2(0.28 + rig.wingFlap) * wl.xy;
+    wl.xy = rot2(0.28 + rig.wingFlapL) * wl.xy;
     float dwL = sdEllipsoid(wl - vec3(-0.14, -0.06, 0.0), vec3(0.20, 0.125, 0.13)) * sMin;
     vec3 wr = pq - vec3(0.44, -0.43, -0.03);
-    wr.xy = rot2(-0.28 - rig.wingFlap) * wr.xy;
+    wr.xy = rot2(-0.28 - rig.wingFlapR) * wr.xy;
     float dwR = sdEllipsoid(wr - vec3(0.14, -0.06, 0.0), vec3(0.20, 0.125, 0.13)) * sMin;
     d = min(d, min(dwL, dwR));
   }
@@ -178,10 +386,10 @@ vec2 mapScene(vec3 p, AnimRig rig) {
   if (uQuaker > 0) {
     vec3 pq = q - vec3(0.0, 0.08, 0.0);
     vec3 wl = pq - vec3(-0.44, -0.43, -0.03);
-    wl.xy = rot2(0.28 + rig.wingFlap) * wl.xy;
+    wl.xy = rot2(0.28 + rig.wingFlapL) * wl.xy;
     float dwL = sdEllipsoid(wl - vec3(-0.14, -0.06, 0.0), vec3(0.20, 0.125, 0.13)) * sMin;
     vec3 wr = pq - vec3(0.44, -0.43, -0.03);
-    wr.xy = rot2(-0.28 - rig.wingFlap) * wr.xy;
+    wr.xy = rot2(-0.28 - rig.wingFlapR) * wr.xy;
     float dwR = sdEllipsoid(wr - vec3(0.14, -0.06, 0.0), vec3(0.20, 0.125, 0.13)) * sMin;
     res = opU(res, vec2(min(dwL, dwR), 7.0));
 
@@ -192,33 +400,76 @@ vec2 mapScene(vec3 p, AnimRig rig) {
     vec3 bp = pq - vec3(0.0, -0.16, 0.47);
     res = opU(res, vec2(sdRoundCone(bp, vec3(0.0, 0.048, -0.02), vec3(0.0, -0.082, 0.105), 0.090, 0.030) * sMin, 6.0));
 
-    vec3 cp = pq - vec3(0.0, 0.41, 0.0); cp.yz = rot2(-0.14) * cp.yz;
-    float crown = smin(sdEllipsoid(cp - vec3(0.0, 0.17, -0.02), vec3(0.55, 0.165, 0.49)),
-                       sdEllipsoid(cp - vec3(0.0, 0.22,  0.22), vec3(0.26, 0.12,  0.22)), 0.10);
-    res = opU(res, vec2(crown * sMin, 3.0));
-    res = opU(res, vec2(sdEllipsoid(cp - vec3(0.0, -0.015, 0.0), vec3(0.45, 0.092, 0.42)) * sMin, 5.0));
+    float hb = rig.hatBounce;
+    if (uHat == 0) {
+      vec3 cp = pq - vec3(0.0, 0.41 + hb, 0.0); cp.yz = rot2(-0.14 - hb * 0.65) * cp.yz;
+      float crown = smin(sdEllipsoid(cp - vec3(0.0, 0.17, -0.02), vec3(0.55, 0.165, 0.49)),
+                         sdEllipsoid(cp - vec3(0.0, 0.22,  0.22), vec3(0.26, 0.12,  0.22)), 0.10);
+      res = opU(res, vec2(crown * sMin, 3.0));
+      res = opU(res, vec2(sdEllipsoid(cp - vec3(0.0, -0.015, 0.0), vec3(0.45, 0.092, 0.42)) * sMin, 5.0));
 
-    vec3 vp = cp - vec3(0.0, -0.095, 0.30); vp.yz = rot2(0.24) * vp.yz;
-    res = opU(res, vec2(sdEllipsoid(vp, vec3(0.30, 0.040, 0.185)) * sMin, 2.0));
+      vec3 vp = cp - vec3(0.0, -0.095, 0.30); vp.yz = rot2(0.24) * vp.yz;
+      res = opU(res, vec2(sdEllipsoid(vp, vec3(0.30, 0.040, 0.185)) * sMin, 2.0));
 
-    vec3 ap = cp - vec3(0.0, 0.055, 0.435);
-    float anc = min(sdCapsule(ap, vec3(0.0,-0.055,0.0), vec3(0.0,0.055,0.0), 0.017),
-                    sdCapsule(ap, vec3(-0.044,0.02,0.0), vec3(0.044,0.02,0.0), 0.014));
-    float cord = sdCapsule(cp - vec3(0.0, -0.058, 0.41), vec3(-0.24, 0.018, -0.06), vec3(0.24, 0.018, -0.06), 0.017);
-    res = opU(res, vec2(min(anc, cord) * sMin, 4.0));
+      vec3 ap = cp - vec3(0.0, 0.055, 0.435);
+      float anc = min(sdCapsule(ap, vec3(0.0,-0.055,0.0), vec3(0.0,0.055,0.0), 0.017),
+                      sdCapsule(ap, vec3(-0.044,0.02,0.0), vec3(0.044,0.02,0.0), 0.014));
+      float cord = sdCapsule(cp - vec3(0.0, -0.058, 0.41), vec3(-0.24, 0.018, -0.06), vec3(0.24, 0.018, -0.06), 0.017);
+      res = opU(res, vec2(min(anc, cord) * sMin, 4.0));
+    } else if (uHat == 1) {
+      // 황금 왕관 (Crown + 2차 바운스)
+      vec3 crp = pq - vec3(0.0, 0.43 + hb, 0.0);
+      crp.yz = rot2(-0.10 - hb * 0.65) * crp.yz;
+      float band = sdEllipsoid(crp - vec3(0.0, 0.03, 0.0), vec3(0.36, 0.11, 0.34));
+      float rim = sdEllipsoid(crp - vec3(0.0, -0.05, 0.0), vec3(0.39, 0.055, 0.37));
+      float aCrown = atan(crp.z, crp.x);
+      float seg = mod(aCrown + 3.1415926, 1.256637) - 0.6283185;
+      float rXZ = length(crp.xz);
+      vec3 sp = vec3(cos(seg) * rXZ, crp.y, sin(seg) * rXZ);
+      float spike = sdRoundCone(sp, vec3(0.30, 0.05, 0.0), vec3(0.34, 0.27, 0.0), 0.075, 0.022);
+      float orb = sdSphere(sp - vec3(0.34, 0.30, 0.0), 0.042);
+      res = opU(res, vec2(min(min(band, rim), spike) * sMin, 4.0));
+      res = opU(res, vec2(orb * sMin, 6.0));
+    } else if (uHat == 2) {
+      // 탐험가 챙모자 (Explorer Hat + 2차 바운스)
+      vec3 epHat = pq - vec3(0.0, 0.42 + hb, 0.0);
+      epHat.yz = rot2(-0.12 - hb * 0.65) * epHat.yz;
+      float brim = sdEllipsoid(epHat - vec3(0.0, -0.04, 0.02), vec3(0.68, 0.055, 0.64));
+      float dome = sdEllipsoid(epHat - vec3(0.0, 0.14, 0.0), vec3(0.39, 0.23, 0.37));
+      float leather = smin(brim, dome, 0.045);
+      res = opU(res, vec2(leather * sMin, 8.0));
+      float hatBand = sdEllipsoid(epHat - vec3(0.0, 0.025, 0.0), vec3(0.415, 0.052, 0.395));
+      res = opU(res, vec2(hatBand * sMin, 4.0));
+      vec3 fp = epHat - vec3(0.36, 0.21, -0.04);
+      fp.xy = rot2(-0.48 - hb * 1.1) * fp.xy;
+      float feather = sdEllipsoid(fp, vec3(0.045, 0.19, 0.085));
+      res = opU(res, vec2(feather * sMin, 3.0));
+    }
   } else {
     if (uRole == 0) {
-      vec3 sp = q - vec3(-0.56, 0.54, 0.22);
+      vec3 sp = q - vec3(-0.56, 0.54 + rig.hatBounce * 0.6, 0.22);
       sp.yz = rot2(0.08) * sp.yz; sp.xz = rot2(-0.18) * sp.xz;
       res = opU(res, vec2(sdEllipsoid(sp, vec3(0.185, 0.185, 0.068)) * sMin, 4.0));
     } else if (uRole == 1) {
       float topY = shapeCrownY(uShape);
-      vec3 tip = vec3(sin(t * 3.0) * 0.04, topY + 0.27, 0.0);
+      vec3 tip = vec3(sin(t * 3.0) * 0.04, topY + 0.27 + rig.hatBounce * 0.5, 0.0);
       res = opU(res, vec2(sdCapsule(q, vec3(0.0, topY - 0.06, 0.0), tip, 0.032) * sMin, 5.0));
       res = opU(res, vec2(sdSphere(q - tip, 0.115) * sMin, 6.0));
     }
 
-    if (uState == 1) {
+    // 월드 전용 이모트(wave/cheer/spin) 시 일반 몽글이도 귀여운 솜손 제스처 표현
+    if (uWorldAnim == 8) {
+      vec3 wp = q - vec3(0.64, 0.26, 0.24);
+      wp.xy = rot2(sin(uAnimPhase * 11.5) * 0.42) * wp.xy;
+      res = opU(res, vec2(sdSphere(wp - vec3(0.06, 0.10, 0.0), 0.13) * sMin, 7.0));
+    } else if (uWorldAnim == 9 || uWorldAnim == 10) {
+      float lift = abs(sin(uAnimPhase * 7.2)) * 0.16;
+      float paws = min(
+        sdSphere(q - vec3(-0.68, 0.18 + lift, 0.22), 0.125),
+        sdSphere(q - vec3( 0.68, 0.18 + lift, 0.22), 0.125)
+      );
+      res = opU(res, vec2(paws * sMin, 7.0));
+    } else if (uState == 1) {
       if (uActivity == 1) {
         float pulse = sin(t * 3.8) * 0.025;
         float dB = min(sdSphere(q - vec3(0.46, 0.42 + pulse, 0.24), 0.048),
@@ -369,28 +620,107 @@ void main() {
       float eyeGlint = 0.0;
       if (!isWing && q.z > 0.08 && nLoc.z > 0.14) {
         float frontFade = smoothstep(0.14, 0.34, nLoc.z);
+        int expr = rig.exprMode;
+        float blushAmt = clamp(max(uBlush, (expr == 1) ? 0.78 : 0.0), 0.0, 1.0);
         if (uQuaker > 0) {
           vec3 pq = q - vec3(0.0, 0.08, 0.0);
           vec2 ep = pq.xy - vec2(0.0, -0.015) - rig.eyeShift * 0.55;
-          vec2 eLb = vec2(ep.x + 0.185, ep.y / max(rig.eyeBlink, 0.10));
-          vec2 eRb = vec2(ep.x - 0.185, ep.y / max(rig.eyeBlink, 0.10));
-          float dRing = min(length(eLb), length(eRb)) - 0.112;
-          float dPupil = min(length(eLb), length(eRb)) - 0.090;
-          pCol = mix(pCol, vec3(0.97, 0.97, 0.95), (1.0 - smoothstep(-0.008, 0.008, dRing)) * frontFade);
-          eyeMask = (1.0 - smoothstep(-0.008, 0.008, dPupil)) * frontFade;
-          vec2 nearE = (length(eLb) < length(eRb)) ? eLb : eRb;
-          eyeGlint = (1.0 - smoothstep(0.022, 0.034, length(nearE - vec2(-0.028, 0.028)))) * eyeMask;
-          if (uQuaker != 2) {
-            float bM = min(length((pq.xy - vec2(-0.29,-0.18))/vec2(0.095,0.058)), length((pq.xy - vec2(0.29,-0.18))/vec2(0.095,0.058)));
-            pCol = mix(pCol, vec3(0.95, 0.56, 0.64), (1.0 - smoothstep(0.30, 1.0, bM)) * 0.48 * frontFade);
+          vec2 eL = vec2(ep.x + 0.185, ep.y);
+          vec2 eR = vec2(ep.x - 0.185, ep.y);
+          if (expr == 1) {
+            // happy (^ ^ 반달 웃는 눈)
+            float dArc = min(sdHappyEyeArc(eL), sdHappyEyeArc(eR));
+            eyeMask = (1.0 - smoothstep(-0.008, 0.009, dArc)) * frontFade;
+          } else if (expr == 2) {
+            // sleepy (- - 평온히 감은 눈)
+            float dSlp = min(sdSleepyEyeLine(eL), sdSleepyEyeLine(eR));
+            eyeMask = (1.0 - smoothstep(-0.008, 0.009, dSlp)) * frontFade;
+          } else if (expr == 3) {
+            // surprised (◉ ◉ 크게 뜬 반짝 눈)
+            float dRing = min(length(eL), length(eR)) - 0.128;
+            float dPupil = min(length(eL), length(eR)) - 0.104;
+            pCol = mix(pCol, vec3(0.98, 0.98, 0.96), (1.0 - smoothstep(-0.008, 0.008, dRing)) * frontFade);
+            eyeMask = (1.0 - smoothstep(-0.008, 0.008, dPupil)) * frontFade;
+            vec2 nearE = (length(eL) < length(eR)) ? eL : eR;
+            float g1 = 1.0 - smoothstep(0.026, 0.040, length(nearE - vec2(-0.032, 0.034)));
+            float g2 = 1.0 - smoothstep(0.012, 0.022, length(nearE - vec2(0.034, -0.028)));
+            eyeGlint = clamp(g1 + g2 * 0.85, 0.0, 1.0) * eyeMask;
+          } else if (expr == 4) {
+            // focused (작업 집중 눈 — 살짝 내린 윗눈꺼풀)
+            float dRing = min(length(eL), length(eR)) - 0.108;
+            float dPupil = min(length(eL), length(eR)) - 0.088;
+            float browCutL = eL.y - (0.026 - eL.x * 0.24);
+            float browCutR = eR.y - (0.026 + eR.x * 0.24);
+            float browCut = (length(eL) < length(eR)) ? browCutL : browCutR;
+            dRing = max(dRing, browCut);
+            dPupil = max(dPupil, browCut);
+            pCol = mix(pCol, vec3(0.97, 0.97, 0.95), (1.0 - smoothstep(-0.008, 0.008, dRing)) * frontFade);
+            eyeMask = (1.0 - smoothstep(-0.008, 0.008, dPupil)) * frontFade;
+            vec2 nearE = (length(eL) < length(eR)) ? eL : eR;
+            eyeGlint = (1.0 - smoothstep(0.018, 0.030, length(nearE - vec2(-0.024, 0.006)))) * eyeMask;
+          } else {
+            // normal (기본 둥근 눈 + 자연 깜빡임)
+            vec2 eLb = vec2(eL.x, eL.y / max(rig.eyeBlink, 0.10));
+            vec2 eRb = vec2(eR.x, eR.y / max(rig.eyeBlink, 0.10));
+            float dRing = min(length(eLb), length(eRb)) - 0.112;
+            float dPupil = min(length(eLb), length(eRb)) - 0.090;
+            pCol = mix(pCol, vec3(0.97, 0.97, 0.95), (1.0 - smoothstep(-0.008, 0.008, dRing)) * frontFade);
+            eyeMask = (1.0 - smoothstep(-0.008, 0.008, dPupil)) * frontFade;
+            vec2 nearE = (length(eLb) < length(eRb)) ? eLb : eRb;
+            eyeGlint = (1.0 - smoothstep(0.022, 0.034, length(nearE - vec2(-0.028, 0.028)))) * eyeMask;
+          }
+          float baseBlush = (uQuaker != 2) ? 0.44 : 0.0;
+          float finalBlush = max(baseBlush, blushAmt * 0.68);
+          if (finalBlush > 0.02) {
+            float bM = min(
+              length((pq.xy - vec2(-0.29, -0.18)) / vec2(0.105, 0.064)),
+              length((pq.xy - vec2( 0.29, -0.18)) / vec2(0.105, 0.064))
+            );
+            pCol = mix(pCol, vec3(0.97, 0.52, 0.62), (1.0 - smoothstep(0.25, 1.0, bM)) * finalBlush * frontFade);
           }
         } else {
           float eyeY = (uShape == 4) ? -0.10 : (uShape == 9 ? -0.04 : 0.01);
           vec2 ep = q.xy - vec2(0.0, eyeY) - rig.eyeShift;
-          float hE = max(0.018, 0.122 * rig.eyeBlink);
-          float dEye = min(sdRoundedBox2(ep - vec2(-0.182, 0.0), vec2(0.078, hE), 0.074),
-                           sdRoundedBox2(ep - vec2( 0.182, 0.0), vec2(0.078, hE), 0.074));
-          eyeMask = (1.0 - smoothstep(-0.008, 0.009, dEye)) * frontFade;
+          vec2 eL = ep - vec2(-0.182, 0.0);
+          vec2 eR = ep - vec2( 0.182, 0.0);
+          if (expr == 1) {
+            // happy (^ ^ 반달 웃는 눈)
+            float dArc = min(sdHappyEyeArc(eL), sdHappyEyeArc(eR));
+            eyeMask = (1.0 - smoothstep(-0.008, 0.009, dArc)) * frontFade;
+          } else if (expr == 2) {
+            // sleepy (- - 감은 눈)
+            float dSlp = min(sdSleepyEyeLine(eL), sdSleepyEyeLine(eR));
+            eyeMask = (1.0 - smoothstep(-0.008, 0.009, dSlp)) * frontFade;
+          } else if (expr == 3) {
+            // surprised (◉ ◉ 크게 뜬 반짝 눈)
+            float dEye = min(length(eL), length(eR)) - 0.106;
+            eyeMask = (1.0 - smoothstep(-0.008, 0.009, dEye)) * frontFade;
+            vec2 nearE = (length(eL) < length(eR)) ? eL : eR;
+            float g1 = 1.0 - smoothstep(0.024, 0.038, length(nearE - vec2(-0.030, 0.032)));
+            float g2 = 1.0 - smoothstep(0.012, 0.020, length(nearE - vec2(0.032, -0.026)));
+            eyeGlint = clamp(g1 + g2 * 0.80, 0.0, 1.0) * eyeMask;
+          } else if (expr == 4) {
+            // focused (집중 눈)
+            float dEyeL = max(sdRoundedBox2(eL, vec2(0.080, 0.084), 0.068), eL.y - (0.036 - eL.x * 0.22));
+            float dEyeR = max(sdRoundedBox2(eR, vec2(0.080, 0.084), 0.068), eR.y - (0.036 + eR.x * 0.22));
+            float dEye = min(dEyeL, dEyeR);
+            eyeMask = (1.0 - smoothstep(-0.008, 0.009, dEye)) * frontFade;
+          } else {
+            // normal (기본 알약형 눈 + 자연 깜빡임)
+            float hE = max(0.018, 0.122 * rig.eyeBlink);
+            float dEye = min(sdRoundedBox2(eL, vec2(0.078, hE), 0.074),
+                             sdRoundedBox2(eR, vec2(0.078, hE), 0.074));
+            eyeMask = (1.0 - smoothstep(-0.008, 0.009, dEye)) * frontFade;
+            vec2 nearE = (length(eL) < length(eR)) ? eL : eR;
+            eyeGlint = (1.0 - smoothstep(0.016, 0.028, length(nearE - vec2(-0.024, 0.040 * rig.eyeBlink)))) * eyeMask * 0.72;
+          }
+          if (blushAmt > 0.02) {
+            float bM = min(
+              length((q.xy - vec2(-0.285, eyeY - 0.135)) / vec2(0.112, 0.066)),
+              length((q.xy - vec2( 0.285, eyeY - 0.135)) / vec2(0.112, 0.066))
+            );
+            pCol = mix(pCol, vec3(0.98, 0.50, 0.62), (1.0 - smoothstep(0.22, 1.0, bM)) * blushAmt * 0.58 * frontFade);
+          }
         }
       }
       grazeMask *= (1.0 - eyeMask);
@@ -432,7 +762,7 @@ void main() {
       else if (mId == 4) {
         vec3 gold = mix(toLinear(vec3(0.38, 0.24, 0.06)), toLinear(vec3(0.94, 0.72, 0.25)), 0.25 + 0.78 * wrap) + vec3(0.95, 0.84, 0.50) * spec * 0.55;
         if (uQuaker == 0 && uRole == 0) {
-          vec3 sp = q - vec3(-0.56, 0.54, 0.22); sp.yz = rot2(0.08)*sp.yz; sp.xz = rot2(-0.18)*sp.xz;
+          vec3 sp = q - vec3(-0.56, 0.54 + rig.hatBounce * 0.6, 0.22); sp.yz = rot2(0.08)*sp.yz; sp.xz = rot2(-0.18)*sp.xz;
           if (sp.z > 0.02) {
             float sm = 1.0 - smoothstep(-0.008, 0.008, sdStar5_2D(vec2(sp.x, -sp.y), 0.132, 0.45));
             gold = mix(gold, vec3(0.015, 0.012, 0.022), sm * 0.95);
@@ -444,6 +774,9 @@ void main() {
       else if (mId == 6) {
         float antennaBoost = (uQuaker == 0 && uRole == 1) ? 1.25 : 1.0;
         coreCol = toLinear((uQuaker > 0) ? vec3(0.97, 0.67, 0.30) : vec3(1.0, 0.88, 0.34)) * (0.45 + 0.70 * wrap) * antennaBoost;
+      }
+      else if (mId == 8) {
+        coreCol = toLinear(vec3(0.54, 0.33, 0.17)) * (0.36 + 0.80 * wrap) + vec3(0.35, 0.22, 0.10) * spec * 0.18;
       }
       else coreCol = toLinear(uBaseCol) * (0.35 + 0.80 * wrap);
     }
@@ -466,8 +799,8 @@ void main() {
       float dp = sdPlushOnly(ps, rig);
       if (dp > 0.0 && dp < furLen) {
         vec3 qs = toLocal(ps, rig);
-        // 퀘이커 제독모 챙 위쪽으로는 몸통 솜결이 새어 나오지 않도록 마스킹
-        float capMask = (uQuaker > 0) ? smoothstep(0.44, 0.30, qs.y) : 1.0;
+        // 퀘이커 모자 챙 위쪽으로는 몸통 솜결이 새어 나오지 않도록 마스킹 (모자 없음일 때는 전체 솜결 허용, 2차 바운스 연동)
+        float capMask = (uQuaker > 0 && uHat != 3) ? smoothstep(0.44 + rig.hatBounce, 0.30 + rig.hatBounce, qs.y) : 1.0;
         float strand = smoothstep(0.24, 0.84, noise3(qs * 78.0));
         float tipLen = furLen * (0.25 + 0.75 * strand);
         float h = dp / max(tipLen, 0.001);
@@ -496,6 +829,26 @@ void main() {
 }
 `;
 
+export type WorldAnimMode =
+  | "idle"
+  | "walk"
+  | "sprint"
+  | "jump"
+  | "sit"
+  | "doze"
+  | "sleep"
+  | "talk"
+  | "wave"
+  | "cheer"
+  | "spin"
+  | "shake"
+  | "work-edit"
+  | "work-read"
+  | "work-think"
+  | "work-run";
+
+export type WorldExpression = "normal" | "happy" | "sleepy" | "surprised" | "focused";
+
 export interface MongleActorRigParams {
   readonly baseId: number;
   readonly shape: MongleShape;
@@ -507,6 +860,8 @@ export interface MongleActorRigParams {
 
 export interface MongleActorRig {
   readonly group: Group;
+  /** 제독 아바타 바디 톤 및 모자(`admiral` / `crown` / `explorer` / `none`)를 실시간 변경한다. */
+  setAdmiralStyle(tone: IdentityTone, hat: WorldAdmiralHat): void;
   updatePose(options: {
     readonly x: number;
     readonly groundY: number;
@@ -524,6 +879,16 @@ export interface MongleActorRig {
     readonly sunDir: Vector3;
     readonly worldTint: Vector3;
     readonly viewProj: import("three").Matrix4;
+    readonly worldAnim?: WorldAnimMode | undefined;
+    readonly expression?: WorldExpression | undefined;
+    readonly animPhase?: number | undefined;
+    readonly moveSpeed?: number | undefined;
+    readonly jumpVel?: number | undefined;
+    readonly landSquash?: number | undefined;
+    readonly lookYaw?: number | undefined;
+    readonly lookPitch?: number | undefined;
+    readonly blush?: number | undefined;
+    readonly hatBounce?: number | undefined;
   }): void;
   dispose(): void;
 }
@@ -569,6 +934,40 @@ const sharedContactMat = new ShaderMaterial({
 const sharedCrateMat = new MeshStandardMaterial({ color: 0xfbbf24, emissive: 0xf59e0b, emissiveIntensity: 0.55, roughness: 0.35 });
 const sharedBeaconMat = new MeshStandardMaterial({ color: 0xfde047, emissive: 0xfacc15, emissiveIntensity: 1.45, roughness: 0.22 });
 
+const ADMIRAL_HAT_CODE: Readonly<Record<WorldAdmiralHat, number>> = {
+  admiral: 0,
+  crown: 1,
+  explorer: 2,
+  none: 3,
+};
+
+const WORLD_ANIM_CODE: Readonly<Record<WorldAnimMode, number>> = {
+  idle: 0,
+  walk: 1,
+  sprint: 2,
+  jump: 3,
+  sit: 4,
+  doze: 5,
+  sleep: 6,
+  talk: 7,
+  wave: 8,
+  cheer: 9,
+  spin: 10,
+  shake: 11,
+  "work-edit": 12,
+  "work-read": 13,
+  "work-think": 14,
+  "work-run": 15,
+};
+
+const WORLD_EXPRESSION_CODE: Readonly<Record<WorldExpression, number>> = {
+  normal: 0,
+  happy: 1,
+  sleepy: 2,
+  surprised: 3,
+  focused: 4,
+};
+
 export function createMongleActorRig(params: MongleActorRigParams): MongleActorRig {
   const group = new Group();
   const baseRgb = params.quaker ? QUAKER_PASTEL_TONES[params.quaker] : PLUSH_VIVID_TONES[params.tone];
@@ -592,6 +991,17 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       uState: { value: 0 },
       uActivity: { value: 0 },
       uRole: { value: MONGLE_ROLE_CODE[params.role] },
+      uHat: { value: 0 },
+      uWorldAnim: { value: 0 },
+      uExpression: { value: 0 },
+      uAnimPhase: { value: 0 },
+      uMoveSpeed: { value: 0 },
+      uJumpVel: { value: 0 },
+      uLandSquash: { value: 0 },
+      uLookYaw: { value: 0 },
+      uLookPitch: { value: 0 },
+      uBlush: { value: 0 },
+      uHatBounce: { value: 0 },
       uBaseCol: { value: new Vector3(baseRgb[0], baseRgb[1], baseRgb[2]) },
       uWorldLightDir: { value: new Vector3(0.5, 0.85, 0.4) },
       uWorldTint: { value: new Vector3(1, 1, 1) },
@@ -643,6 +1053,17 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
 
   return {
     group,
+    setAdmiralStyle(tone, hat) {
+      const rgb = PLUSH_VIVID_TONES[tone];
+      const baseCol = mat.uniforms["uBaseCol"]!.value as Vector3;
+      // 퀘이커 솜결의 포근한 파스텔 감을 살리면서 8색 톤을 또렷하게 반영
+      baseCol.set(
+        rgb[0] * 0.80 + 0.20,
+        rgb[1] * 0.80 + 0.20,
+        rgb[2] * 0.80 + 0.20,
+      );
+      mat.uniforms["uHat"]!.value = ADMIRAL_HAT_CODE[hat];
+    },
     updatePose(opts) {
       const centerY = opts.groundY + opts.liftY + 0.62 * params.scale;
       charCenter.set(opts.x, centerY, opts.z);
@@ -670,6 +1091,16 @@ export function createMongleActorRig(params: MongleActorRigParams): MongleActorR
       mat.uniforms["uFuzz"]!.value = opts.fuzz;
       mat.uniforms["uState"]!.value = MONGLE_STATE_CODE[opts.state];
       mat.uniforms["uActivity"]!.value = opts.activity ? MONGLE_ACTIVITY_CODE[opts.activity] : 0;
+      mat.uniforms["uWorldAnim"]!.value = opts.worldAnim ? WORLD_ANIM_CODE[opts.worldAnim] : 0;
+      mat.uniforms["uExpression"]!.value = opts.expression ? WORLD_EXPRESSION_CODE[opts.expression] : 0;
+      mat.uniforms["uAnimPhase"]!.value = opts.animPhase ?? 0;
+      mat.uniforms["uMoveSpeed"]!.value = opts.moveSpeed ?? 0;
+      mat.uniforms["uJumpVel"]!.value = opts.jumpVel ?? 0;
+      mat.uniforms["uLandSquash"]!.value = opts.landSquash ?? 0;
+      mat.uniforms["uLookYaw"]!.value = opts.lookYaw ?? 0;
+      mat.uniforms["uLookPitch"]!.value = opts.lookPitch ?? 0;
+      mat.uniforms["uBlush"]!.value = opts.blush ?? 0;
+      mat.uniforms["uHatBounce"]!.value = opts.hatBounce ?? 0;
       (mat.uniforms["uWorldLightDir"]!.value as Vector3).copy(opts.sunDir);
       (mat.uniforms["uWorldTint"]!.value as Vector3).copy(opts.worldTint);
 

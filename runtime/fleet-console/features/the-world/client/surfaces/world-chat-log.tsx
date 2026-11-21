@@ -562,13 +562,20 @@ export const WorldChatLog = memo(function WorldChatLog({
   const actorsRef = useRef(actors);
   actorsRef.current = actors;
 
-  // SimCity 구역 Inspector·우클릭 퀵메뉴 등의 `@사령관에게 바로 지시하기` 요청을 수신해 칩 삽입 + 프리필 + 자동 활성화 + 포커스한다.
+  // SimCity 구역 Inspector·우클릭 퀵메뉴·하늘 조망 합동 드래그 등의 `@사령관` 멘션 요청을 수신해 칩 삽입 + 프리필 + 자동 활성화 + 포커스한다.
   useEffect(() => {
     const req = store.pendingChatMention;
     if (!req) return;
     consumeChatMention(req.nonce);
     setMentionDismissedAt(null);
-    setMentionIds((prev) => (prev.includes(req.actorId) ? prev : [...prev, req.actorId]));
+    const nextIds = req.actorIds && req.actorIds.length > 0 ? req.actorIds : [req.actorId];
+    setMentionIds((prev) => {
+      const merged = [...prev];
+      for (const id of nextIds) {
+        if (id && !merged.includes(id)) merged.push(id);
+      }
+      return merged;
+    });
     if (req.prefillText && req.prefillText.trim().length > 0) {
       const formatted = req.prefillText.endsWith(" ") ? req.prefillText : `${req.prefillText} `;
       setDraft((prev) => (prev.trim().length === 0 ? formatted : prev));

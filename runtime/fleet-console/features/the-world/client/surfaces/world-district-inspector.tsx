@@ -1,5 +1,5 @@
 import type { ConsoleLocale } from "@fleet-console/i18n";
-import { memo } from "react";
+import { memo, useEffect, useState, type FormEvent } from "react";
 
 import { MongleAvatar } from "../../../workspace/client/components/mongle-avatar.js";
 import type {
@@ -12,7 +12,7 @@ import type {
 } from "../../shared/world-types.js";
 import { playDistrictHover, playFlagPlant } from "../engine/world-audio.js";
 import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
-import { clearDispatchFlag, placeDispatchFlag, setVillageBiome } from "../world-store.js";
+import { clearDispatchFlag, placeDispatchFlag, setDistrictNote, setVillageBiome } from "../world-store.js";
 import { WorldIcon, type WorldIconName, type WorldIconTone } from "./world-icons.js";
 
 export interface WorldDistrictLinkedObjective {
@@ -29,6 +29,7 @@ export interface WorldDistrictInspectorProps {
   readonly locale: ConsoleLocale | undefined;
   readonly refreshing?: boolean | undefined;
   readonly hasDispatchFlag?: boolean | undefined;
+  readonly districtNote?: string | undefined;
   readonly onClose: () => void;
   readonly onRefreshMetrics: () => void;
   readonly onMentionCommodore: (actorId: string) => void;
@@ -39,6 +40,7 @@ export interface WorldDistrictInspectorProps {
   readonly onPlantDispatchFlag?: ((district: WorldDistrictSpec) => void) | undefined;
   readonly onClearDispatchFlag?: ((districtId: string) => void) | undefined;
   readonly onSelectVillageBiome?: ((commodoreId: string, biome: WorldVillageBiome) => void) | undefined;
+  readonly onChangeNote?: ((districtId: string, note: string) => void) | undefined;
 }
 
 const VILLAGE_BIOMES: readonly {
@@ -87,6 +89,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
   locale,
   refreshing = false,
   hasDispatchFlag = false,
+  districtNote = "",
   onClose,
   onRefreshMetrics,
   onMentionCommodore,
@@ -97,6 +100,7 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
   onPlantDispatchFlag,
   onClearDispatchFlag,
   onSelectVillageBiome,
+  onChangeNote,
 }: WorldDistrictInspectorProps) {
   const t = getWorldT(locale);
   const commodoreActorId = commodoreActor?.id ?? `commodore:${district.commodoreId}`;
@@ -108,6 +112,25 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
   const progressPct = Math.round(Math.max(0, Math.min(1, district.progress01)) * 100);
   const isScanning = refreshing || (!district.metricsLoaded && district.status === "available");
   const activeBiome: WorldVillageBiome = village?.biome ?? "meadow";
+  const [noteDraft, setNoteDraft] = useState(districtNote);
+
+  useEffect(() => {
+    setNoteDraft(districtNote);
+  }, [district.id, districtNote]);
+
+  const commitNote = (nextValue: string) => {
+    const trimmed = nextValue.trim();
+    if (onChangeNote) {
+      onChangeNote(district.id, trimmed);
+    } else {
+      setDistrictNote(district.id, trimmed);
+    }
+  };
+
+  const handleNoteSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    commitNote(noteDraft);
+  };
 
   const handleSelectBiome = (biome: WorldVillageBiome) => {
     playDistrictHover();
@@ -322,6 +345,50 @@ export const WorldDistrictInspector = memo(function WorldDistrictInspector({
             </div>
           ) : null}
         </div>
+
+        {/* 제독 메모 (인라인 저장 — localStorage 영속 + 3D 노란 메모핀 연동) */}
+        <form className="the-world-district-note-block" onSubmit={handleNoteSubmit}>
+          <span className="the-world-district-note-head">
+            <WorldIcon name="note" size={11} tone="amber" />
+            <span className="the-world-district-section-label">{t("theWorld.district.noteLabel")}</span>
+          </span>
+          <div className="the-world-district-note-row">
+            <input
+              type="text"
+              className="the-world-district-note-input"
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Escape") {
+                  (e.currentTarget as HTMLInputElement).blur();
+                }
+              }}
+              placeholder={t("theWorld.district.notePlaceholder")}
+              aria-label={t("theWorld.district.noteInputAria", { name: district.label })}
+              maxLength={240}
+            />
+            <button
+              type="submit"
+              className="the-world-district-note-btn is-save"
+              disabled={noteDraft.trim() === districtNote.trim()}
+            >
+              {t("theWorld.district.noteSave")}
+            </button>
+            {districtNote || noteDraft ? (
+              <button
+                type="button"
+                className="the-world-district-note-btn"
+                onClick={() => {
+                  setNoteDraft("");
+                  commitNote("");
+                }}
+              >
+                {t("theWorld.district.noteClear")}
+              </button>
+            ) : null}
+          </div>
+        </form>
 
         {/* 연결된 목표 목록 */}
         <div className="the-world-district-objectives">

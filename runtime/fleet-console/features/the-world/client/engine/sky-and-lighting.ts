@@ -1,8 +1,11 @@
 import {
+  AdditiveBlending,
   BackSide,
   Color,
   DirectionalLight,
+  DoubleSide,
   DynamicDrawUsage,
+  Euler,
   FogExp2,
   GLSL3,
   Group,
@@ -11,15 +14,17 @@ import {
   Matrix4,
   Mesh,
   MeshBasicMaterial,
+  OctahedronGeometry,
   PointLight,
   Quaternion,
+  RingGeometry,
   Scene,
   ShaderMaterial,
   SphereGeometry,
   Vector3,
 } from "three";
 
-import type { WorldTimeMode } from "../../shared/world-types.js";
+import type { WorldTimeMode, WorldWeatherMode } from "../../shared/world-types.js";
 
 /**
  * 넓은 초원 마을 전용 낮 · 노을 · 밤 스카이돔 + 태양/달 광역 그림자 광원(2048px PCF) + 야간 동적 PointLight 풀.
@@ -200,6 +205,53 @@ void main() {
 }
 `;
 
+const RAINBOW_VERTEX = /* glsl */ `
+out vec2 vLocalPos;
+void main() {
+  vLocalPos = position.xy;
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+}
+`;
+
+const RAINBOW_FRAGMENT = /* glsl */ `
+in vec2 vLocalPos;
+out vec4 fragColor;
+
+uniform float uAlpha;
+uniform float uTime;
+
+vec3 rainbowSpectrum(float t) {
+  // 안쪽(보라) → 바깥쪽(분홍/빨강) 7색 동화풍 파스텔 스펙트럼
+  vec3 c0 = vec3(0.76, 0.60, 0.98); // 라벤더
+  vec3 c1 = vec3(0.56, 0.68, 0.99); // 남색 파스텔
+  vec3 c2 = vec3(0.50, 0.88, 0.99); // 하늘
+  vec3 c3 = vec3(0.56, 0.94, 0.72); // 민트
+  vec3 c4 = vec3(0.99, 0.95, 0.56); // 레몬
+  vec3 c5 = vec3(1.00, 0.76, 0.50); // 살구
+  vec3 c6 = vec3(0.99, 0.58, 0.66); // 파스텔 코랄 레드
+  float x = clamp(t, 0.0, 1.0) * 6.0;
+  if (x < 1.0) return mix(c0, c1, x);
+  if (x < 2.0) return mix(c1, c2, x - 1.0);
+  if (x < 3.0) return mix(c2, c3, x - 2.0);
+  if (x < 4.0) return mix(c3, c4, x - 3.0);
+  if (x < 5.0) return mix(c4, c5, x - 4.0);
+  return mix(c5, c6, x - 5.0);
+}
+
+void main() {
+  // 픽셀 단위 반경·호각 계산 + 메시 경계 이전 완전 0 페더링으로 에일리어싱/어두운 테두리 0
+  float r = length(vLocalPos);
+  float r01 = clamp((r - 25.0) / 9.0, 0.0, 1.0);
+  float arc01 = clamp(atan(vLocalPos.y, vLocalPos.x) / 3.14159265, 0.0, 1.0);
+  float radialFade = smoothstep(0.08, 0.30, r01) * smoothstep(0.92, 0.70, r01);
+  float arcFade = smoothstep(0.06, 0.24, arc01) * smoothstep(0.94, 0.76, arc01);
+  float shimmer = 0.93 + 0.07 * sin(uTime * 1.4 + arc01 * 12.0);
+  float alpha = radialFade * arcFade * uAlpha * 0.48 * shimmer;
+  vec3 col = rainbowSpectrum(smoothstep(0.08, 0.92, r01));
+  fragColor = vec4(col, alpha);
+}
+`;
+
 export interface SkyAndLightingRig {
   readonly group: Group;
   readonly sunDir: Vector3;
@@ -207,6 +259,10 @@ export interface SkyAndLightingRig {
   nightFactor: number;
   /** 그림자 카메라·야간 가로등 풀 중심을 플레이어/주시점으로 텍셀 스냅 추적한다. */
   updateShadowFocus(x: number, z: number): void;
+  /** 날씨 파티클 모드(`clear` / `sakura` / `rain` / `snow`) 전환. `clear` 시 draw call 0. */
+  setWeather(mode: WorldWeatherMode): void;
+  /** 길드 회관 너머 하늘에 반투명 7색 파스텔 무지개 아치를 띄운다 (1 draw call). */
+  triggerRainbow(durationSec?: number): void;
   update(
     dt: number,
     elapsed: number,
@@ -242,6 +298,7 @@ function resolveTargetBlend(mode: WorldTimeMode, elapsed: number): number {
 const MAX_NIGHT_LAMP_LIGHTS = 6;
 const MAX_ANTENNA_LIGHTS = 4;
 const MAX_GOLDEN_FIREFLIES = 96;
+const MAX_WEATHER_PARTICLES = 320;
 const SHADOW_BOUNDS = 36;
 const SHADOW_MAP_SIZE = 2048;
 const SHADOW_TEXEL_WORLD = (SHADOW_BOUNDS * 2) / SHADOW_MAP_SIZE;
@@ -357,6 +414,78 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
   if (fireflyInstanced.instanceColor) fireflyInstanced.instanceColor.needsUpdate = true;
   group.add(fireflyInstanced);
 
+  // 날씨 파티클 풀 (단일 InstancedMesh 320기 — sakura/rain/snow 공용, clear 시 visible=false로 비용 0)
+  const weatherGeo = new OctahedronGeometry(0.5, 0);
+  const weatherMat = new MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.86,
+    depthWrite: false,
+  });
+  const weatherInstanced = new InstancedMesh(weatherGeo, weatherMat, MAX_WEATHER_PARTICLES);
+  weatherInstanced.instanceMatrix.setUsage(DynamicDrawUsage);
+  weatherInstanced.frustumCulled = false;
+  weatherInstanced.visible = false;
+  group.add(weatherInstanced);
+
+  const weatherSeeds = Array.from({ length: MAX_WEATHER_PARTICLES }, (_, i) => ({
+    ox: (((i * 73) % 1000) / 1000 - 0.5) * 54,
+    oy: (((i * 41) % 1000) / 1000) * 22,
+    oz: (((i * 97) % 1000) / 1000 - 0.5) * 54,
+    phase: i * 1.37,
+    speed: 0.78 + ((i * 29) % 10) * 0.055,
+    sway: 0.55 + ((i * 17) % 8) * 0.12,
+    size: 0.8 + ((i * 13) % 7) * 0.08,
+  }));
+
+  const wMat4 = new Matrix4();
+  const wPos = new Vector3();
+  const wEuler = new Euler();
+  const wQuat = new Quaternion();
+  const wScale = new Vector3();
+  const wColor = new Color();
+  let currentWeather: WorldWeatherMode = "clear";
+
+  const applyWeatherPalette = (mode: WorldWeatherMode) => {
+    if (mode === "clear") return;
+    const sakuraCols = [0xffb7d5, 0xffd1e6, 0xffe4f0, 0xf9a8d4] as const;
+    const rainCols = [0xbfe3ff, 0x93c5fd, 0xdbeafe, 0xa5d8ff] as const;
+    const snowCols = [0xffffff, 0xf0f9ff, 0xe0f2fe, 0xf8fafc] as const;
+    const palette = mode === "sakura" ? sakuraCols : mode === "rain" ? rainCols : snowCols;
+    weatherMat.opacity = mode === "rain" ? 0.62 : mode === "sakura" ? 0.90 : 0.92;
+    for (let i = 0; i < MAX_WEATHER_PARTICLES; i += 1) {
+      wColor.setHex(palette[i % palette.length]!);
+      weatherInstanced.setColorAt(i, wColor);
+    }
+    if (weatherInstanced.instanceColor) weatherInstanced.instanceColor.needsUpdate = true;
+  };
+
+  // 길드 회관 너머 하늘 3D 파스텔 무지개 아치 (1 draw call, 비활성 시 visible=false)
+  const rainbowGeo = new RingGeometry(25, 34, 64, 1, 0, Math.PI);
+  const rainbowMat = new ShaderMaterial({
+    glslVersion: GLSL3,
+    transparent: true,
+    depthWrite: false,
+    fog: false,
+    blending: AdditiveBlending,
+    side: DoubleSide,
+    uniforms: {
+      uAlpha: { value: 0 },
+      uTime: { value: 0 },
+    },
+    vertexShader: RAINBOW_VERTEX,
+    fragmentShader: RAINBOW_FRAGMENT,
+  });
+  const rainbowMesh = new Mesh(rainbowGeo, rainbowMat);
+  rainbowMesh.position.set(0, -2.5, -34);
+  rainbowMesh.rotation.y = 0.06;
+  rainbowMesh.renderOrder = 1;
+  rainbowMesh.visible = false;
+  group.add(rainbowMesh);
+
+  let rainbowAge = 0;
+  let rainbowDuration = 0;
+
   scene.add(group);
 
   let shadowFocusX = 0;
@@ -445,6 +574,22 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
     setStreetlampAnchors(anchors) {
       allLampAnchors = anchors;
       lampsDirty = true;
+    },
+    setWeather(mode) {
+      const prev = currentWeather;
+      currentWeather = mode;
+      weatherInstanced.visible = mode !== "clear";
+      if (mode !== "clear") {
+        applyWeatherPalette(mode);
+      } else if (prev === "rain") {
+        // 비가 맑게 개면 하늘에 깜짝 파스텔 무지개 선물!
+        rainbowAge = 0;
+        rainbowDuration = 18;
+      }
+    },
+    triggerRainbow(durationSec = 16) {
+      rainbowAge = 0;
+      rainbowDuration = Math.max(4, durationSec);
     },
     update(dt, elapsed, timeMode, playerPos, commanderPositions) {
       const target = resolveTargetBlend(timeMode, elapsed);
@@ -554,6 +699,78 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
         }
         fireflyInstanced.instanceMatrix.needsUpdate = true;
       }
+
+      // 날씨 파티클 갱신 (단일 InstancedMesh 320기, clear 시 0 비용)
+      if (currentWeather !== "clear") {
+        weatherInstanced.visible = true;
+        const wrapSpan = 54;
+        const halfSpan = 27;
+        const heightSpan = 22;
+        const cx = playerPos.x;
+        const cz = playerPos.z;
+
+        for (let i = 0; i < MAX_WEATHER_PARTICLES; i += 1) {
+          const s = weatherSeeds[i]!;
+          let wx: number;
+          let wy: number;
+          let wz: number;
+          if (currentWeather === "rain") {
+            const fall = elapsed * 18.5 * s.speed;
+            wy = ((s.oy - fall) % heightSpan + heightSpan) % heightSpan + 0.35;
+            wx = cx + ((((s.ox + elapsed * 2.6 * s.speed) % wrapSpan) + wrapSpan + halfSpan) % wrapSpan) - halfSpan;
+            wz = cz + ((((s.oz + elapsed * 0.9 * s.speed) % wrapSpan) + wrapSpan + halfSpan) % wrapSpan) - halfSpan;
+            wEuler.set(0.05, 0, -0.14);
+            wQuat.setFromEuler(wEuler);
+            wScale.set(0.024 * s.size, 0.95 * s.size, 0.024 * s.size);
+          } else if (currentWeather === "sakura") {
+            const fall = elapsed * 1.45 * s.speed;
+            wy = ((s.oy - fall) % heightSpan + heightSpan) % heightSpan + 0.25;
+            const driftX = s.ox + elapsed * 1.35 * s.speed + Math.sin(elapsed * 1.6 + s.phase) * s.sway;
+            const driftZ = s.oz + elapsed * 0.65 * s.speed + Math.cos(elapsed * 1.3 + s.phase) * s.sway;
+            wx = cx + (((driftX % wrapSpan) + wrapSpan + halfSpan) % wrapSpan) - halfSpan;
+            wz = cz + (((driftZ % wrapSpan) + wrapSpan + halfSpan) % wrapSpan) - halfSpan;
+            wEuler.set(
+              elapsed * 1.9 * s.speed + s.phase,
+              elapsed * 1.4 + s.phase * 0.7,
+              Math.sin(elapsed * 2.2 + s.phase) * 0.9,
+            );
+            wQuat.setFromEuler(wEuler);
+            wScale.set(0.145 * s.size, 0.032 * s.size, 0.095 * s.size);
+          } else {
+            // snow
+            const fall = elapsed * 2.25 * s.speed;
+            wy = ((s.oy - fall) % heightSpan + heightSpan) % heightSpan + 0.25;
+            const driftX = s.ox + Math.sin(elapsed * 0.95 + s.phase) * (s.sway * 1.15);
+            const driftZ = s.oz + Math.cos(elapsed * 0.85 + s.phase * 1.3) * (s.sway * 1.15);
+            wx = cx + (((driftX % wrapSpan) + wrapSpan + halfSpan) % wrapSpan) - halfSpan;
+            wz = cz + (((driftZ % wrapSpan) + wrapSpan + halfSpan) % wrapSpan) - halfSpan;
+            wEuler.set(elapsed * 0.7 + s.phase, elapsed * 0.9, 0);
+            wQuat.setFromEuler(wEuler);
+            wScale.set(0.105 * s.size, 0.105 * s.size, 0.105 * s.size);
+          }
+          wPos.set(wx, wy, wz);
+          wMat4.compose(wPos, wQuat, wScale);
+          weatherInstanced.setMatrixAt(i, wMat4);
+        }
+        weatherInstanced.instanceMatrix.needsUpdate = true;
+      }
+
+      // 3D 파스텔 무지개 아치 페이드 인/아웃 갱신
+      if (rainbowDuration > 0) {
+        rainbowAge += dt;
+        if (rainbowAge >= rainbowDuration) {
+          rainbowDuration = 0;
+          rainbowMesh.visible = false;
+          rainbowMat.uniforms["uAlpha"]!.value = 0;
+        } else {
+          const fadeIn = Math.min(1, rainbowAge / 1.4);
+          const fadeOut = Math.min(1, (rainbowDuration - rainbowAge) / 2.2);
+          const alpha = Math.min(fadeIn, fadeOut) * (1.0 - night * 0.45);
+          rainbowMesh.visible = alpha > 0.01;
+          rainbowMat.uniforms["uAlpha"]!.value = alpha;
+          rainbowMat.uniforms["uTime"]!.value = elapsed;
+        }
+      }
     },
     dispose() {
       skyGeo.dispose();
@@ -561,6 +778,11 @@ export function createSkyAndLighting(scene: Scene): SkyAndLightingRig {
       fireflyInstanced.dispose();
       fireflyGeo.dispose();
       fireflyMat.dispose();
+      weatherInstanced.dispose();
+      weatherGeo.dispose();
+      weatherMat.dispose();
+      rainbowGeo.dispose();
+      rainbowMat.dispose();
       scene.remove(group);
     },
   };

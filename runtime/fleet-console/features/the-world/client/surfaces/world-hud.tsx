@@ -2,12 +2,15 @@ import type { ConsoleLocale } from "@fleet-console/i18n";
 import { memo, useState } from "react";
 
 import { ApprovalCapsule } from "../../../execution/client/approval/panel.js";
-import type { WorldCameraMode, WorldSnapshot, WorldTimeMode } from "../../shared/world-types.js";
-import { getWorldT } from "../i18n/index.js";
+import type { WorldCameraMode, WorldSnapshot, WorldTimeMode, WorldWeatherMode } from "../../shared/world-types.js";
+import { getWorldT, type TheWorldMessageKey } from "../i18n/index.js";
 import {
   exitTheWorld,
+  openAdmiralCustomizer,
   openQuestBoard,
+  openWarRoom,
   requestWorldTeleport,
+  setWeatherMode,
   setWorldCameraMode,
   setWorldTimeMode,
   toggleOverviewMode,
@@ -48,10 +51,22 @@ const CAMERA_MODES: readonly {
   { id: "orbit", label: "초원 조망", icon: "cameraOrbit", tone: "moss" },
 ];
 
+const WEATHER_MODES: readonly {
+  readonly id: WorldWeatherMode;
+  readonly key: TheWorldMessageKey;
+  readonly icon: WorldIconName;
+  readonly tone: WorldIconTone;
+}[] = [
+  { id: "clear", key: "theWorld.weather.clear", icon: "sun", tone: "amber" },
+  { id: "sakura", key: "theWorld.weather.sakura", icon: "sakura", tone: "rose" },
+  { id: "rain", key: "theWorld.weather.rain", icon: "rain", tone: "cerulean" },
+  { id: "snow", key: "theWorld.weather.snow", icon: "snow", tone: "teal" },
+];
+
 /**
  * 미니멀 게임 HUD.
  *
- * 화면을 가리는 테스트·환경 버튼(시간대·카메라·협동 연출 테스트)을 우측 상단의
+ * 화면을 가리는 테스트·환경 버튼(시간대·날씨·카메라·협동 연출 테스트)을 우측 상단의
  * 단일 「디버그·도구」 크리스탈 팝오버 안으로 통합해, 평소 초원 시야를 최대한 넓게 비워 둔다.
  */
 export const WorldHud = memo(function WorldHud({
@@ -59,21 +74,29 @@ export const WorldHud = memo(function WorldHud({
   locale,
   reducedMotion,
   toastMessage,
+  toastKind = "info",
   hideBottom,
   urgentQuestCount,
   onCreateCommodore,
   onStatusBanner,
   onTestLevelUp,
+  onTestRainbow,
+  onOpenWarRoom,
+  onOpenAdmiralCustomizer,
 }: {
   readonly snapshot: WorldSnapshot;
   readonly locale: ConsoleLocale | undefined;
   readonly reducedMotion: boolean;
   readonly toastMessage: string | null;
+  readonly toastKind?: "info" | "celebration" | undefined;
   readonly hideBottom: boolean;
   readonly urgentQuestCount?: number | undefined;
   readonly onCreateCommodore: () => void;
   readonly onStatusBanner: (msg: string) => void;
   readonly onTestLevelUp?: (() => void) | undefined;
+  readonly onTestRainbow?: (() => void) | undefined;
+  readonly onOpenWarRoom?: (() => void) | undefined;
+  readonly onOpenAdmiralCustomizer?: (() => void) | undefined;
 }) {
   const store = useWorldStore();
   const [debugOpen, setDebugOpen] = useState(false);
@@ -85,10 +108,14 @@ export const WorldHud = memo(function WorldHud({
   return (
     <>
       {toastMessage ? (
-        <div className="the-world-toast" role="status" aria-live="polite">
+        <div
+          className={`the-world-toast${toastKind === "celebration" ? " is-celebration" : ""}`}
+          role="status"
+          aria-live="polite"
+        >
           <div className="the-world-crest" aria-hidden="true" />
           <div className="the-world-toast-inner">
-            <WorldIcon name="systemInfo" size={13} tone="amber" />
+            <WorldIcon name={toastKind === "celebration" ? "sparkle" : "systemInfo"} size={13} tone="amber" />
             <span>{toastMessage}</span>
           </div>
         </div>
@@ -143,6 +170,26 @@ export const WorldHud = memo(function WorldHud({
               {effectiveUrgentCount > 0 ? (
                 <span className="the-world-hud-badge">{effectiveUrgentCount}</span>
               ) : null}
+            </button>
+
+            <span className="the-world-bar-sep" aria-hidden="true" />
+
+            <button
+              type="button"
+              className={`the-world-btn${store.warRoomOpen ? " is-active" : ""}`}
+              aria-label={t("theWorld.hud.warRoomAria")}
+              aria-pressed={store.warRoomOpen}
+              title={t("theWorld.hud.warRoomTitle")}
+              onClick={() => {
+                setDebugOpen(false);
+                setWarpOpen(false);
+                playDistrictSelect();
+                if (onOpenWarRoom) onOpenWarRoom();
+                else openWarRoom();
+              }}
+            >
+              <WorldIcon name="warRoom" size={14} tone={store.warRoomOpen ? "amber" : "teal"} />
+              <span>{t("theWorld.hud.warRoomLabel")}</span>
             </button>
 
             <span className="the-world-bar-sep" aria-hidden="true" />
@@ -296,6 +343,43 @@ export const WorldHud = memo(function WorldHud({
               </div>
 
               <div className="the-world-debug-section">
+                <span className="the-world-debug-label">{t("theWorld.weather.label")}</span>
+                <div className="the-world-debug-pills" role="group" aria-label={t("theWorld.weather.groupAria")}>
+                  {WEATHER_MODES.map((item) => {
+                    const active = store.weatherMode === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={`the-world-debug-pill${active ? " is-active" : ""}`}
+                        aria-pressed={active}
+                        onClick={() => {
+                          playDistrictHover();
+                          setWeatherMode(item.id);
+                        }}
+                      >
+                        <WorldIcon name={item.icon} size={13} tone={active ? "amber" : item.tone} />
+                        <span>{t(item.key)}</span>
+                      </button>
+                    );
+                  })}
+                  <button
+                    type="button"
+                    className="the-world-debug-pill"
+                    aria-label={t("theWorld.debug.rainbowTestAria")}
+                    onClick={() => {
+                      playDistrictSelect();
+                      onTestRainbow?.();
+                      onStatusBanner(t("theWorld.rainbow.toast"));
+                    }}
+                  >
+                    <WorldIcon name="rainbow" size={13} tone="rose" />
+                    <span>{t("theWorld.debug.rainbowTest")}</span>
+                  </button>
+                </div>
+              </div>
+
+              <div className="the-world-debug-section">
                 <span className="the-world-debug-label">카메라 시점</span>
                 <div className="the-world-debug-pills" role="group" aria-label={t("theWorld.hud.cameraGroupAria")}>
                   {CAMERA_MODES.map((item) => {
@@ -364,7 +448,7 @@ export const WorldHud = memo(function WorldHud({
                   </button>
                   <button
                     type="button"
-                    className="the-world-debug-pill is-span-2"
+                    className="the-world-debug-pill"
                     aria-label={t("theWorld.debug.levelUpTestAria")}
                     onClick={() => {
                       if (onTestLevelUp) {
@@ -378,11 +462,25 @@ export const WorldHud = memo(function WorldHud({
                     <WorldIcon name="sparkle" size={13} tone="amber" />
                     <span>{t("theWorld.debug.levelUpTest")}</span>
                   </button>
+                  <button
+                    type="button"
+                    className="the-world-debug-pill"
+                    aria-label={t("theWorld.hud.admiralStyleAria")}
+                    onClick={() => {
+                      playDistrictSelect();
+                      setDebugOpen(false);
+                      if (onOpenAdmiralCustomizer) onOpenAdmiralCustomizer();
+                      else openAdmiralCustomizer();
+                    }}
+                  >
+                    <WorldIcon name="hat" size={13} tone="amber" />
+                    <span>{t("theWorld.hud.admiralStyleBtn")}</span>
+                  </button>
                 </div>
               </div>
 
               <div className="the-world-debug-footnote">
-                WASD 이동 · Shift 질주 · Space 점프 · M 하늘 조망 · P 포토 · E 상호작용 · Esc 닫기
+                WASD 이동 · Shift 질주 · Space 점프 · 1·2·3 감정표현 · M 하늘 조망 · P 포토 · E 상호작용
               </div>
             </div>
           </section>

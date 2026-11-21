@@ -53,7 +53,16 @@ export type WorldIconName =
   | "questBoard"
   | "camera"
   | "flag"
-  | "sparkle";
+  | "sparkle"
+  | "warRoom"
+  | "weather"
+  | "rain"
+  | "snow"
+  | "sakura"
+  | "note"
+  | "fire"
+  | "rainbow"
+  | "hat";
 
 export type WorldIconTone =
   | "inherit"
@@ -402,6 +411,62 @@ const ICON_PATHS: Record<WorldIconName, () => ReactElement> = {
     <>
       <path d="M12 3.2l2.1 5.9 5.9 2.1-5.9 2.1L12 19.2l-2.1-5.9L4 11.2l5.9-2.1L12 3.2Z" fill="currentColor" fillOpacity="0.28" />
       <path d="M18.6 4.4v2.6M17.3 5.7h2.6M5.4 16.8v2.2M4.3 17.9h2.2" />
+    </>
+  ),
+  warRoom: () => (
+    <>
+      <path d="M3.8 19.5h16.4M5.4 19.5V10.5L12 4.8l6.6 5.7v9H5.4Z" fill="currentColor" fillOpacity="0.22" />
+      <path d="M9.6 19.5v-4.8a2.4 2.4 0 0 1 4.8 0v4.8M12 8.2v2.4M10.8 9.4h2.4" />
+    </>
+  ),
+  weather: () => (
+    <>
+      <circle cx="9" cy="8.5" r="3" fill="currentColor" fillOpacity="0.26" />
+      <path d="M9 3.6v1.2M4.4 8.5H3.2M5.7 5.2l.9.9M12.3 5.2l-.9.9" />
+      <path d="M8.5 18.2h9.2a3.3 3.3 0 0 0 .4-6.6 4.6 4.6 0 0 0-8.9-1.2 3.2 3.2 0 0 0-.7 6.3Z" fill="currentColor" fillOpacity="0.22" />
+    </>
+  ),
+  rain: () => (
+    <>
+      <path d="M6.8 14.2h10.8a3.2 3.2 0 0 0 .3-6.4 4.8 4.8 0 0 0-9.3-1.1 3.4 3.4 0 0 0-1.8 6.5Z" fill="currentColor" fillOpacity="0.22" />
+      <path d="M8.6 17.2l-1 2.4M12.6 17.2l-1 2.4M16.6 17.2l-1 2.4" />
+    </>
+  ),
+  snow: () => (
+    <>
+      <path d="M12 3.6v16.8M4.7 7.8l14.6 8.4M19.3 7.8L4.7 16.2" />
+      <circle cx="12" cy="12" r="2.2" fill="currentColor" fillOpacity="0.28" />
+    </>
+  ),
+  sakura: () => (
+    <>
+      <path d="M12 4.2c1.8 1.5 2.4 3.7 1.2 5.4 2-.6 4.2.1 5.2 2-1.8 1.4-4 1.6-5.5.2.9 1.9.4 4.1-1.3 5.4-1.7-1.3-2.2-3.5-1.3-5.4-1.5 1.4-3.7 1.2-5.5-.2 1-1.9 3.2-2.6 5.2-2-1.2-1.7-.6-3.9 1.2-5.4Z" fill="currentColor" fillOpacity="0.26" />
+      <circle cx="12" cy="11.6" r="1.4" fill="currentColor" />
+    </>
+  ),
+  note: () => (
+    <>
+      <path d="M5.5 4.5h13v10.5l-4.5 4.5h-8.5V4.5Z" fill="currentColor" fillOpacity="0.2" />
+      <path d="M14 19.5V15h4.5M8.5 9h7M8.5 12.5h4.5" />
+    </>
+  ),
+  fire: () => (
+    <>
+      <path d="M12 3.8c2.4 2.8 5.2 5.6 5.2 9.2a5.2 5.2 0 0 1-10.4 0c0-2.1 1-3.8 2.2-5.3.2 1.4 1.1 2.2 2 2.4-.5-2.1 0-4.4 1-6.3Z" fill="currentColor" fillOpacity="0.28" />
+      <path d="M6.2 19.8l11.6-2.4M17.8 19.8L6.2 17.4" />
+    </>
+  ),
+  rainbow: () => (
+    <>
+      <path d="M3.5 17.5a8.5 8.5 0 0 1 17 0" />
+      <path d="M6.5 17.5a5.5 5.5 0 0 1 11 0" fill="currentColor" fillOpacity="0.2" />
+      <path d="M9.5 17.5a2.5 2.5 0 0 1 5 0" />
+    </>
+  ),
+  hat: () => (
+    <>
+      <path d="M5.5 14.5c1.5-5.2 3.4-7.5 6.5-7.5s5 2.3 6.5 7.5H5.5Z" fill="currentColor" fillOpacity="0.24" />
+      <path d="M3.2 14.8c2.8 1.5 14.8 1.5 17.6 0M12 10.2v2.2M10.9 11.3h2.2" />
     </>
   ),
 };

@@ -27,6 +27,17 @@ export type WorldLifecycleState = "closed" | "diving" | "open" | "escaping";
 
 export type WorldTimeMode = "realtime" | "day" | "sunset" | "night" | "cycle";
 
+export type WorldWeatherMode = "clear" | "sakura" | "rain" | "snow";
+
+export type WorldPlayerEmote = "wave" | "cheer" | "jump";
+
+export type WorldAdmiralHat = "admiral" | "crown" | "explorer" | "none";
+
+export interface WorldAdmiralStyle {
+  readonly tone: IdentityTone;
+  readonly hat: WorldAdmiralHat;
+}
+
 export type WorldCameraMode = "follow" | "orbit";
 
 export type WorldActorPanelMode = "goals" | "info" | "settings";
@@ -188,6 +199,22 @@ export const WORLD_NOTICE_BOARD_POS = {
   x: 4.8,
   z: -3.4,
   radius: 1.8,
+} as const;
+
+/** 중앙 길드 회관(함대 통합 상황실 진입점) 좌표 및 피킹 반경. */
+export const WORLD_GUILD_HALL_POS = {
+  x: 0,
+  z: -5.4,
+  radius: 3.1,
+} as const;
+
+/** 중앙 광장 모닥불 벤치(불멍 착석 시점) 좌표 및 시선 목표. */
+export const WORLD_CAMPFIRE_BENCH_POS = {
+  x: 2.8,
+  z: 2.55,
+  faceX: 2.8,
+  faceZ: 1.0,
+  radius: 2.1,
 } as const;
 
 export interface WorldQuestAskSummary {

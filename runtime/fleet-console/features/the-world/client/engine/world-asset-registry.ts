@@ -62,7 +62,9 @@ export type WorldModelSlot =
   | "river-rock"
   | "reeds"
   | "lilypad"
-  | "flowerbed";
+  | "flowerbed"
+  | "butterfly"
+  | "koi-fish";
 
 export interface WorldModelInstance {
   readonly root: Group;

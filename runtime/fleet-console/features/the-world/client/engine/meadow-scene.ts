@@ -29,6 +29,7 @@ import {
   WORLD_NOTICE_BOARD_POS,
   type WorldDistrictSpec,
   type WorldVillageSpec,
+  type WorldWeatherMode,
   type WorldZoneSpec,
 } from "../../shared/world-types.js";
 import {
@@ -126,6 +127,7 @@ out vec4 fragColor;
 
 uniform float uTime;
 uniform float uNight;
+uniform float uRain;
 uniform vec3 uSunDir;
 
 vec2 hash22(vec2 p) {
@@ -207,6 +209,27 @@ void main() {
   float glint = smoothstep(0.62, 0.96, sparkleNoise) * (0.35 + specBase * 2.2) * (1.0 - foamMask * 0.7);
   vec3 glintCol = mix(vec3(1.0, 0.98, 0.88), vec3(0.84, 0.92, 1.0), uNight);
   col += glintCol * (specBase * 0.85 + glint * 0.55) * (1.0 - uNight * 0.35);
+
+  // 비 날씨(uRain > 0)일 때 시냇물 수면 위 동심원 빗방울 파문(ripple)
+  if (uRain > 0.01) {
+    vec2 rp1 = vWorldPos.xz * 1.45;
+    vec2 c1Cell = floor(rp1);
+    vec2 c1Loc = fract(rp1) - 0.5;
+    vec2 rnd1 = hash22(c1Cell);
+    float ph1 = fract(uTime * 1.35 + rnd1.x * 3.7 + rnd1.y * 5.3);
+    float ring1 = smoothstep(0.048, 0.0, abs(length(c1Loc - (rnd1 - 0.5) * 0.52) - ph1 * 0.44)) * (1.0 - ph1) * (1.0 - ph1);
+
+    vec2 rp2 = vWorldPos.xz * 2.15 + vec2(4.3, 2.7);
+    vec2 c2Cell = floor(rp2);
+    vec2 c2Loc = fract(rp2) - 0.5;
+    vec2 rnd2 = hash22(c2Cell);
+    float ph2 = fract(uTime * 1.65 + rnd2.x * 4.1 + rnd2.y * 2.9);
+    float ring2 = smoothstep(0.042, 0.0, abs(length(c2Loc - (rnd2 - 0.5) * 0.50) - ph2 * 0.42)) * (1.0 - ph2) * (1.0 - ph2);
+
+    float rainRipple = clamp((ring1 + ring2 * 0.78) * uRain * (1.0 - foamMask * 0.65), 0.0, 0.85);
+    vec3 rippleCol = mix(vec3(0.92, 0.98, 1.0), vec3(0.62, 0.78, 0.94), uNight);
+    col = mix(col, rippleCol, rainRipple * 0.62);
+  }
 
   float bankAlpha = 1.0 - smoothstep(0.94, 1.10, vShore);
   float channelFade = 1.0 - smoothstep(43.0, 53.0, abs(vWorldPos.x));
@@ -320,6 +343,10 @@ export interface MeadowSceneHandle {
   setQuestBoardAlert(urgentCount: number): void;
   /** 우클릭/인스펙터로 꽂힌 RTS 홀로그램 작전 깃발을 씬 리빌드 없이 동기화한다. */
   setDispatchFlags(flags: readonly { readonly x: number; readonly z: number; readonly tone: IdentityTone }[]): void;
+  /** 날씨 모드를 시냇물 빗방울 파문과 나비 생태계 가시성에 반영한다. */
+  setWeather(mode: WorldWeatherMode): void;
+  /** 제독 메모가 저장된 Theater 구역 상단에 황금 메모 핀을 씬 리빌드 없이 동기화한다. */
+  setDistrictNotePins(pins: readonly { readonly x: number; readonly z: number }[]): void;
   /** 좌표가 동/서 아치 목교 데크 위인지 판별한다 (발소리 SFX 구분용). */
   isOnBridge(x: number, z: number): boolean;
   /** 실시간 작업/경보/질문 상태인 마을·구역의 3D 공방 FX 에미터 좌표를 반환한다. */
@@ -622,6 +649,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     uniforms: {
       uTime: { value: 0 },
       uNight: { value: 0 },
+      uRain: { value: 0 },
       uSunDir: { value: new Vector3(0.5, 0.85, 0.4) },
     },
     vertexShader: BROOK_VERTEX,
@@ -844,6 +872,153 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     readonly colorHex: number;
     readonly phase: number;
   }[] = [];
+
+  // 제독 구역 메모 핀 풀 (메모가 있는 Theater 구역 상단에 은은하게 회전 부유, 씬 리빌드 0)
+  const MAX_NOTE_PINS = 48;
+  const notePinGeo = markSharedGeometry(new BoxGeometry(0.42, 0.48, 0.09));
+  const matNotePin = ownMat(new MeshStandardMaterial({
+    color: 0xfef08a,
+    emissive: 0xf59e0b,
+    emissiveIntensity: 0.92,
+    roughness: 0.24,
+    metalness: 0.16,
+  }));
+  const notePinInst = new InstancedMesh(notePinGeo, matNotePin, MAX_NOTE_PINS);
+  notePinInst.instanceMatrix.setUsage(DynamicDrawUsage);
+  notePinInst.frustumCulled = false;
+  notePinInst.count = 0;
+  root.add(notePinInst);
+
+  let activeNotePins: {
+    readonly x: number;
+    readonly z: number;
+    readonly groundY: number;
+    readonly phase: number;
+  }[] = [];
+
+  // 살아있는 초원 생태계: 파스텔 나비 16마리(butterfly.glb) + 시냇물 비단잉어 10마리(koi-fish.glb)
+  let currentWeather: WorldWeatherMode = "clear";
+  let rainStrength = 0;
+
+  const ecosystemButterflyGroup = new Group();
+  const ecosystemKoiGroup = new Group();
+  root.add(ecosystemButterflyGroup, ecosystemKoiGroup);
+
+  interface ButterflySeed {
+    readonly anchorX: number;
+    readonly anchorZ: number;
+    readonly radiusX: number;
+    readonly radiusZ: number;
+    readonly baseAlt: number;
+    readonly speed: number;
+    readonly flapSpeed: number;
+    readonly phase: number;
+    readonly scale: number;
+    readonly tintHex: number;
+  }
+
+  interface KoiSeed {
+    readonly centerX: number;
+    readonly spanX: number;
+    readonly lateral: number;
+    readonly speed: number;
+    readonly phase: number;
+    readonly scale: number;
+  }
+
+  const BUTTERFLY_PALETTE = [
+    0xfef08a, 0xf9a8d4, 0x7dd3fc, 0xfdba74,
+    0xc4b5fd, 0x86efac, 0xfda4af, 0xfde047,
+  ] as const;
+
+  const BUTTERFLY_ANCHORS: readonly [number, number][] = [
+    [-4.9, -4.6], [6.6, -4.5], [-4.8, 1.5], [4.8, 3.6],
+    [-3.8, -1.4], [1.6, 2.2], [-6.8, 5.2], [5.8, 7.6],
+    [11.2, 6.2], [-10.5, 5.8], [14.5, 14.8], [-15.2, 13.5],
+    [8.2, -2.6], [-8.4, -4.2], [2.4, 14.5], [-2.8, 13.8],
+  ];
+
+  const butterflySeeds: readonly ButterflySeed[] = BUTTERFLY_ANCHORS.map(([ax, az], i) => ({
+    anchorX: ax,
+    anchorZ: az,
+    radiusX: 1.5 + (i % 4) * 0.48,
+    radiusZ: 1.3 + ((i + 2) % 4) * 0.44,
+    baseAlt: 0.78 + (i % 3) * 0.34,
+    speed: 0.44 + (i % 5) * 0.08,
+    flapSpeed: 13.5 + (i % 4) * 2.2,
+    phase: i * 1.43,
+    scale: 0.85 + (i % 3) * 0.18,
+    tintHex: BUTTERFLY_PALETTE[i % BUTTERFLY_PALETTE.length]!,
+  }));
+
+  const koiSeeds: readonly KoiSeed[] = [
+    { centerX: 5.6, spanX: 3.6, lateral: -0.35, speed: 0.28, phase: 0.2, scale: 0.96 },
+    { centerX: 6.2, spanX: 3.2, lateral: 0.38, speed: 0.24, phase: 2.1, scale: 1.08 },
+    { centerX: 4.5, spanX: 2.9, lateral: 0.05, speed: 0.31, phase: 4.0, scale: 0.88 },
+    { centerX: -2.4, spanX: 4.2, lateral: -0.22, speed: 0.26, phase: 1.1, scale: 1.00 },
+    { centerX: -6.8, spanX: 3.8, lateral: 0.26, speed: 0.29, phase: 3.3, scale: 0.92 },
+    { centerX: -14.8, spanX: 4.4, lateral: -0.18, speed: 0.25, phase: 5.2, scale: 1.04 },
+    { centerX: -20.5, spanX: 3.6, lateral: 0.20, speed: 0.27, phase: 2.7, scale: 0.90 },
+    { centerX: 13.2, spanX: 4.0, lateral: -0.24, speed: 0.30, phase: 0.8, scale: 1.02 },
+    { centerX: 18.6, spanX: 3.8, lateral: 0.22, speed: 0.24, phase: 4.6, scale: 0.94 },
+    { centerX: 0.8, spanX: 3.4, lateral: 0.30, speed: 0.32, phase: 1.8, scale: 0.86 },
+  ];
+
+  interface DynamicGlbInstancedLayer {
+    readonly mesh: InstancedMesh;
+    readonly baseLocalMat: Matrix4;
+  }
+  const butterflyLayers: DynamicGlbInstancedLayer[] = [];
+  const koiLayers: DynamicGlbInstancedLayer[] = [];
+
+  if (assetRegistry.hasCustomModel("butterfly")) {
+    assetRegistry.mountInstancedSlot({
+      slot: "butterfly",
+      container: ecosystemButterflyGroup,
+      transforms: butterflySeeds.map((seed, idx) => ({
+        x: idx === 0 ? 0 : seed.anchorX,
+        y: idx === 0 ? 0 : 1.0,
+        z: idx === 0 ? 0 : seed.anchorZ,
+        scale: 1,
+        roofTintHex: seed.tintHex,
+      })),
+      castShadow: false,
+      receiveShadow: false,
+      onMounted: (meshes) => {
+        for (const m of meshes) {
+          const baseLocalMat = new Matrix4();
+          m.getMatrixAt(0, baseLocalMat);
+          m.instanceMatrix.setUsage(DynamicDrawUsage);
+          m.frustumCulled = false;
+          butterflyLayers.push({ mesh: m, baseLocalMat });
+        }
+      },
+    });
+  }
+
+  if (assetRegistry.hasCustomModel("koi-fish")) {
+    assetRegistry.mountInstancedSlot({
+      slot: "koi-fish",
+      container: ecosystemKoiGroup,
+      transforms: koiSeeds.map((seed, idx) => ({
+        x: idx === 0 ? 0 : seed.centerX,
+        y: idx === 0 ? 0 : -0.22,
+        z: idx === 0 ? 0 : brookProfile(seed.centerX).centerZ,
+        scale: 1,
+      })),
+      castShadow: false,
+      receiveShadow: false,
+      onMounted: (meshes) => {
+        for (const m of meshes) {
+          const baseLocalMat = new Matrix4();
+          m.getMatrixAt(0, baseLocalMat);
+          m.instanceMatrix.setUsage(DynamicDrawUsage);
+          m.frustumCulled = false;
+          koiLayers.push({ mesh: m, baseLocalMat });
+        }
+      },
+    });
+  }
 
   let animatedBanners: AnimatedBanner[] = [];
   let animatedFlames: AnimatedFlame[] = [];
@@ -3223,6 +3398,7 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
 
   // rAF 제로 할당 스크래치 변수
   const animMat = new Matrix4();
+  const animFinalMat = new Matrix4();
   const animPos = new Vector3();
   const animEuler = new Euler();
   const animQuat = new Quaternion();
@@ -3292,6 +3468,24 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       }
       if (dispatchPennantInst.instanceColor) dispatchPennantInst.instanceColor.needsUpdate = true;
       if (dispatchHaloInst.instanceColor) dispatchHaloInst.instanceColor.needsUpdate = true;
+    },
+    setWeather(mode) {
+      currentWeather = mode;
+    },
+    setDistrictNotePins(pins) {
+      const next: typeof activeNotePins = [];
+      const limit = Math.min(pins.length, MAX_NOTE_PINS);
+      for (let i = 0; i < limit; i += 1) {
+        const p = pins[i]!;
+        next.push({
+          x: p.x,
+          z: p.z,
+          groundY: Math.max(0.1, getTerrainBaseHeight(p.x, p.z)),
+          phase: p.x * 0.31 + p.z * 0.23,
+        });
+      }
+      activeNotePins = next;
+      notePinInst.count = next.length;
     },
     isOnBridge(x, z) {
       return getBridgeDeckHeight(x, z) !== null;
@@ -3452,6 +3646,88 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
         dispatchHaloInst.instanceMatrix.needsUpdate = true;
       }
 
+      // 제독 메모 핀 부유 · 회전 애니메이션 (InstancedMesh 1 draw call)
+      if (activeNotePins.length > 0) {
+        matNotePin.emissiveIntensity = 0.85 + nightFactor * 1.15;
+        for (let i = 0; i < activeNotePins.length; i += 1) {
+          const pin = activeNotePins[i]!;
+          const bob = Math.sin(elapsed * 2.4 + pin.phase) * 0.14;
+          animPos.set(pin.x + 0.65, pin.groundY + 3.45 + bob, pin.z + 0.55);
+          animEuler.set(0.14 * Math.sin(elapsed * 1.6 + pin.phase), elapsed * 1.4 + pin.phase, 0.08);
+          animQuat.setFromEuler(animEuler);
+          animScale.set(1, 1, 1);
+          animMat.compose(animPos, animQuat, animScale);
+          notePinInst.setMatrixAt(i, animMat);
+        }
+        notePinInst.instanceMatrix.needsUpdate = true;
+      }
+
+      // 살아있는 생태계 1: 파스텔 나비 16마리 (비/눈/야간 자동 숨김)
+      const butterfliesVisible =
+        currentWeather !== "rain" && currentWeather !== "snow" && nightFactor <= 0.45 && butterflyLayers.length > 0;
+      ecosystemButterflyGroup.visible = butterfliesVisible;
+      if (butterfliesVisible) {
+        for (let i = 0; i < butterflySeeds.length; i += 1) {
+          const b = butterflySeeds[i]!;
+          const t = elapsed * b.speed + b.phase;
+          const bx = b.anchorX + Math.sin(t) * b.radiusX;
+          const bz = b.anchorZ + Math.sin(t * 2.0 + 0.4) * b.radiusZ * 0.55;
+          const vx = Math.cos(t) * b.radiusX * b.speed;
+          const vz = Math.cos(t * 2.0 + 0.4) * b.radiusZ * 1.1 * b.speed;
+          const groundY = Math.max(0.2, getTerrainBaseHeight(bx, bz));
+          const by = groundY + b.baseAlt + Math.sin(elapsed * 2.8 + b.phase) * 0.24;
+          const yaw = Math.atan2(vx, vz);
+          const flap = Math.abs(Math.sin(elapsed * b.flapSpeed + b.phase));
+          const roll = Math.sin(elapsed * b.flapSpeed + b.phase) * 0.18;
+
+          animPos.set(bx, by, bz);
+          animEuler.set(0.12 * Math.sin(t * 1.7), yaw, roll);
+          animQuat.setFromEuler(animEuler);
+          animScale.set(b.scale * (0.46 + 0.54 * flap), b.scale, b.scale);
+          animMat.compose(animPos, animQuat, animScale);
+
+          for (let l = 0; l < butterflyLayers.length; l += 1) {
+            const layer = butterflyLayers[l]!;
+            animFinalMat.multiplyMatrices(animMat, layer.baseLocalMat);
+            layer.mesh.setMatrixAt(i, animFinalMat);
+          }
+        }
+        for (let l = 0; l < butterflyLayers.length; l += 1) {
+          butterflyLayers[l]!.mesh.instanceMatrix.needsUpdate = true;
+        }
+      }
+
+      // 살아있는 생태계 2: 시냇물 비단잉어 10마리 (수면 아래 우아한 유영)
+      if (koiLayers.length > 0) {
+        for (let i = 0; i < koiSeeds.length; i += 1) {
+          const k = koiSeeds[i]!;
+          const t = elapsed * k.speed + k.phase;
+          const kx = k.centerX + Math.sin(t) * k.spanX;
+          const dx = Math.cos(t) * k.spanX * k.speed;
+          const bp = brookProfile(kx);
+          const bpNext = brookProfile(kx + (dx >= 0 ? 0.15 : -0.15));
+          const kz = bp.centerZ + k.lateral * bp.halfWidth * 0.56 + Math.sin(t * 2.3) * 0.16;
+          const dz = (bpNext.centerZ - bp.centerZ) * (dx >= 0 ? 6.6 : -6.6) * Math.abs(dx);
+          const swimWiggle = Math.sin(elapsed * 7.2 + k.phase * 1.9);
+          const yaw = Math.atan2(dx, dz) + swimWiggle * 0.14;
+
+          animPos.set(kx, -0.22 + Math.sin(elapsed * 1.8 + k.phase) * 0.02, kz);
+          animEuler.set(0, yaw, swimWiggle * 0.06);
+          animQuat.setFromEuler(animEuler);
+          animScale.set(k.scale * (1.0 + swimWiggle * 0.05), k.scale, k.scale);
+          animMat.compose(animPos, animQuat, animScale);
+
+          for (let l = 0; l < koiLayers.length; l += 1) {
+            const layer = koiLayers[l]!;
+            animFinalMat.multiplyMatrices(animMat, layer.baseLocalMat);
+            layer.mesh.setMatrixAt(i, animFinalMat);
+          }
+        }
+        for (let l = 0; l < koiLayers.length; l += 1) {
+          koiLayers[l]!.mesh.instanceMatrix.needsUpdate = true;
+        }
+      }
+
       // 중앙 퀘스트 게시판 긴급 알림 크리스탈/링 부유 애니메이션
       if (questAlertGroup.visible) {
         const bob = Math.sin(elapsed * 3.4) * 0.14;
@@ -3478,8 +3754,11 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       matLanternGlass.emissiveIntensity = 0.18 + nightFactor * 1.85;
       cloudGroup.rotation.y = elapsed * 0.012;
 
+      const targetRain = currentWeather === "rain" ? 1 : 0;
+      rainStrength += (targetRain - rainStrength) * Math.min(1, dt * 3.2);
       brookMat.uniforms["uTime"]!.value = elapsed;
       brookMat.uniforms["uNight"]!.value = nightFactor;
+      brookMat.uniforms["uRain"]!.value = rainStrength;
       (brookMat.uniforms["uSunDir"]!.value as Vector3).copy(sunDir);
 
       matWaterTile.uniforms["uTime"]!.value = elapsed;
@@ -3508,6 +3787,10 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
     dispose() {
       disposed = true;
       disposeObjectTree(dynamicWorldGroup);
+      disposeObjectTree(ecosystemButterflyGroup);
+      disposeObjectTree(ecosystemKoiGroup);
+      butterflyLayers.length = 0;
+      koiLayers.length = 0;
       assetRegistry.dispose();
       textures.dispose();
       cloudInst.dispose();
@@ -3528,6 +3811,8 @@ export function createMeadowScene(scene: Scene): MeadowSceneHandle {
       dispatchHaloInst.dispose();
       dispatchPoleGeo.dispose();
       dispatchPennantGeo.dispose();
+      notePinInst.dispose();
+      notePinGeo.dispose();
       bladeHubGeo.dispose();
       bladeSparGeo.dispose();
       bladeSailGeo.dispose();

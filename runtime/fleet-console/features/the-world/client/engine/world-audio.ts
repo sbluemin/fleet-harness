@@ -16,6 +16,13 @@ let lastChirpAt = 0;
 let lastFootstepAt = 0;
 let cachedNoiseCtx: AudioContext | null = null;
 let cachedNoiseBuf: AudioBuffer | null = null;
+let cachedRainCtx: AudioContext | null = null;
+let cachedRainBuf: AudioBuffer | null = null;
+
+let rainDesired = false;
+let rainSource: AudioBufferSourceNode | null = null;
+let rainFilter: BiquadFilterNode | null = null;
+let rainGain: GainNode | null = null;
 
 const MASTER_VOLUME = 0.16;
 const HOVER_COOLDOWN_MS = 90;
@@ -96,6 +103,11 @@ export function setWorldAudioMuted(nextMuted: boolean): void {
     } catch {
       masterGain.gain.value = muted ? 0 : MASTER_VOLUME;
     }
+  }
+  if (muted) {
+    stopRainAmbienceInternal();
+  } else if (rainDesired) {
+    startRainAmbienceInternal();
   }
 }
 
@@ -507,4 +519,189 @@ export function playFootstep(onBridge: boolean): void {
     peakGain: 0.07,
     attack: 0.005,
   });
+}
+
+function getRainNoiseBuffer(ctx: AudioContext): AudioBuffer | null {
+  if (cachedRainCtx === ctx && cachedRainBuf) return cachedRainBuf;
+  try {
+    const length = Math.max(1, Math.floor(ctx.sampleRate * 2.0));
+    const buf = ctx.createBuffer(1, length, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    // 부드러운 핑크 톤 빗소리 (1차 저역 누적으로 치찰음 완화)
+    let b0 = 0;
+    let b1 = 0;
+    let b2 = 0;
+    for (let i = 0; i < length; i += 1) {
+      const white = Math.random() * 2 - 1;
+      b0 = 0.997 * b0 + white * 0.029;
+      b1 = 0.985 * b1 + white * 0.032;
+      b2 = 0.950 * b2 + white * 0.048;
+      data[i] = Math.max(-1, Math.min(1, (b0 + b1 + b2 + white * 0.08) * 1.4));
+    }
+    cachedRainCtx = ctx;
+    cachedRainBuf = buf;
+    return buf;
+  } catch {
+    return null;
+  }
+}
+
+function stopRainAmbienceInternal(): void {
+  if (rainGain && audioCtx && audioCtx.state !== "closed") {
+    try {
+      rainGain.gain.setTargetAtTime(0.0001, audioCtx.currentTime, 0.03);
+    } catch {
+      rainGain.gain.value = 0;
+    }
+  }
+  const src = rainSource;
+  const flt = rainFilter;
+  const g = rainGain;
+  rainSource = null;
+  rainFilter = null;
+  rainGain = null;
+  if (src) {
+    try {
+      src.stop();
+    } catch {
+      // 이미 정지된 소스는 무시
+    }
+    try {
+      src.disconnect();
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    flt?.disconnect();
+    g?.disconnect();
+  } catch {
+    // ignore
+  }
+}
+
+function startRainAmbienceInternal(): void {
+  if (rainSource || muted) return;
+  const eng = getAudioEngine();
+  if (!eng) return;
+  const buf = getRainNoiseBuffer(eng.ctx);
+  if (!buf) return;
+  try {
+    const src = eng.ctx.createBufferSource();
+    src.buffer = buf;
+    src.loop = true;
+
+    const filter = eng.ctx.createBiquadFilter();
+    filter.type = "bandpass";
+    filter.frequency.setValueAtTime(1150, eng.ctx.currentTime);
+    filter.Q.setValueAtTime(0.75, eng.ctx.currentTime);
+
+    const gain = eng.ctx.createGain();
+    gain.gain.setValueAtTime(0.0001, eng.ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.20, eng.ctx.currentTime + 0.45);
+
+    src.connect(filter);
+    filter.connect(gain);
+    gain.connect(eng.out);
+    src.start();
+
+    rainSource = src;
+    rainFilter = filter;
+    rainGain = gain;
+  } catch {
+    stopRainAmbienceInternal();
+  }
+}
+
+/** `Space` 점프 시 경쾌한 탄성 팝음. */
+export function playJump(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 250,
+    freqEnd: 540,
+    duration: 0.115,
+    peakGain: 0.34,
+    attack: 0.006,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: 380,
+    freqEnd: 720,
+    delay: 0.022,
+    duration: 0.095,
+    peakGain: 0.22,
+    attack: 0.006,
+  });
+}
+
+/** 함대 상황실 「전 사령관 긴급 소집」 시 장엄한 3음 나팔 팡파르. */
+export function playRallyHorn(): void {
+  const eng = getAudioEngine();
+  if (!eng) return;
+
+  const scheduleBrass = (freq: number, delay: number, duration: number, peakGain: number) => {
+    const t0 = eng.ctx.currentTime + delay;
+    const tEnd = t0 + duration;
+
+    const osc = eng.ctx.createOscillator();
+    const filter = eng.ctx.createBiquadFilter();
+    const env = eng.ctx.createGain();
+
+    osc.type = "sawtooth";
+    osc.frequency.setValueAtTime(freq, t0);
+
+    filter.type = "lowpass";
+    filter.frequency.setValueAtTime(920, t0);
+    filter.frequency.exponentialRampToValueAtTime(1850, t0 + Math.min(0.08, duration * 0.4));
+    filter.frequency.exponentialRampToValueAtTime(1050, tEnd);
+
+    env.gain.setValueAtTime(0.0001, t0);
+    env.gain.linearRampToValueAtTime(peakGain, t0 + 0.022);
+    env.gain.exponentialRampToValueAtTime(0.0001, tEnd);
+
+    osc.connect(filter);
+    filter.connect(env);
+    env.connect(eng.out);
+    osc.onended = () => {
+      osc.disconnect();
+      filter.disconnect();
+      env.disconnect();
+    };
+    osc.start(t0);
+    osc.stop(tEnd + 0.02);
+  };
+
+  // G4 -> C5 -> G5 장엄한 3음 함대 나팔 + 따뜻한 C5 화음
+  scheduleBrass(392.0, 0.0, 0.17, 0.26);
+  scheduleBrass(523.25, 0.17, 0.19, 0.30);
+  scheduleBrass(783.99, 0.36, 0.58, 0.34);
+  scheduleTone(eng.ctx, eng.out, {
+    type: "triangle",
+    freqStart: 523.25,
+    delay: 0.36,
+    duration: 0.54,
+    peakGain: 0.20,
+    attack: 0.02,
+  });
+  scheduleTone(eng.ctx, eng.out, {
+    type: "sine",
+    freqStart: 659.25, // E5
+    delay: 0.39,
+    duration: 0.48,
+    peakGain: 0.16,
+    attack: 0.025,
+  });
+}
+
+/** 비 날씨(`rain`) 은은한 필터드 빗소리 앰비언스 제어 (음소거 시 즉시 정지). */
+export function setRainAmbience(active: boolean): void {
+  rainDesired = active;
+  if (!active || muted) {
+    stopRainAmbienceInternal();
+    return;
+  }
+  startRainAmbienceInternal();
 }

@@ -20,26 +20,42 @@ import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
 import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
 
 import {
+  WORLD_CAMPFIRE_BENCH_POS,
+  WORLD_GUILD_HALL_POS,
   WORLD_NOTICE_BOARD_POS,
   type WorldActorEmote,
+  type WorldAdmiralHat,
   type WorldCameraMode,
   type WorldChoreographyCommand,
   type WorldDistrictSpec,
   type WorldInteractionMode,
   type WorldLifecycleState,
+  type WorldPlayerEmote,
   type WorldScreenLabel,
   type WorldSnapshot,
   type WorldTimeMode,
   type WorldVillageSpec,
+  type WorldWeatherMode,
 } from "../../shared/world-types.js";
 import type { IdentityTone } from "../../../workspace/shared/identity-tones.js";
 import { PLUSH_VIVID_TONES } from "../../../workspace/shared/mongle-3d-glsl.js";
 import { createChoreographyDirector } from "./choreography-director.js";
 import { createMeadowScene } from "./meadow-scene.js";
-import { createMongleActorRig, type MongleActorRig } from "./mongle-actor-rig.js";
+import {
+  createMongleActorRig,
+  type MongleActorRig,
+  type WorldAnimMode,
+  type WorldExpression,
+} from "./mongle-actor-rig.js";
 import { createPlayerAndCameraController } from "./player-controller.js";
 import { createSkyAndLighting } from "./sky-and-lighting.js";
-import { playFootstep } from "./world-audio.js";
+import {
+  playFootstep,
+  playJump,
+  playMongleChirp,
+  playRallyHorn,
+  setRainAmbience,
+} from "./world-audio.js";
 
 /**
  * Three.js 0.187 메인 초원 월드 런타임 (성능 최적화 + 심시티 마을·구역 연동).
@@ -109,6 +125,8 @@ export interface WorldFrameOverlayPositions {
   readonly villageCount: number;
   readonly hoveredDistrict: WorldFramePointPosition;
   readonly noticeBoard: WorldFramePointPosition;
+  readonly guildHall: WorldFramePointPosition;
+  readonly campfireBench: WorldFramePointPosition;
 }
 
 export interface WorldRuntimeConfig {
@@ -119,6 +137,8 @@ export interface WorldRuntimeConfig {
   readonly onNearActorChanged: (actorId: string | null) => void;
   /** WASD 입력 등으로 하늘 조망 모드가 자동 해제될 때 스토어와 동기화한다. */
   readonly onOverviewAutoExit?: (() => void) | undefined;
+  /** 모닥불 벤치 불멍 중 WASD/Space로 자동 기상할 때 스토어와 동기화한다. */
+  readonly onCampfireStandUp?: (() => void) | undefined;
   /** 액터 라벨의 구조적 변화(목록·말풍선·근접·선택·주의 상태)가 있을 때만 호출된다(평시 0Hz). */
   readonly onLabelsStructureChanged: (labels: readonly WorldActorLabelMeta[]) => void;
   /** 매 프레임 DOM `style.transform` 직접 갱신용 스크래치 좌표 콜백(React 리렌더 0). */
@@ -135,12 +155,20 @@ export interface WorldRuntimeHandle {
     readonly selectedActorId: string | null;
   }): void;
   setOverviewMode(enabled: boolean): void;
+  setWeather(mode: WorldWeatherMode): void;
+  triggerRainbow(durationSec?: number): void;
+  setAdmiralStyle(tone: IdentityTone, hat: WorldAdmiralHat): void;
+  setCampfireSit(sitting: boolean): void;
+  rallyAllToPlaza(): void;
+  playPlayerEmote(emote: WorldPlayerEmote): void;
   setDistrictHighlight(hovered: WorldDistrictSpec | null, selected: WorldDistrictSpec | null): void;
   setDispatchFlags(flags: readonly { readonly x: number; readonly z: number; readonly tone: IdentityTone }[]): void;
+  setDistrictNotePins(pins: readonly { readonly x: number; readonly z: number }[]): void;
   triggerLevelUpCelebration(x: number, z: number, tone?: IdentityTone): void;
   setQuestBoardAlert(urgentCount: number): void;
   focusDistrict(district: WorldDistrictSpec | null): void;
   spawnCourierBetweenActors(fromActorId: string, targetName: string): void;
+  spawnCourierBetweenVillages(fromVillage: WorldVillageSpec, toVillage: WorldVillageSpec): void;
   runChoreography(cmd: WorldChoreographyCommand): boolean;
   playEmote(actorId: string, emote: WorldActorEmote): void;
   approachActor(actorId: string): void;
@@ -150,6 +178,8 @@ export interface WorldRuntimeHandle {
   pickDistrictAt(clientX: number, clientY: number): WorldDistrictSpec | null;
   pickVillageAt(clientX: number, clientY: number): WorldVillageSpec | null;
   pickNoticeBoardAt(clientX: number, clientY: number): boolean;
+  pickGuildHallAt(clientX: number, clientY: number): boolean;
+  pickCampfireBenchAt(clientX: number, clientY: number): boolean;
   getActorScreenAnchor(actorId: string): WorldScreenLabel | null;
   getRenderStats(): WorldRenderStats;
   dispose(): void;
@@ -346,6 +376,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     villageCount: number;
     hoveredDistrict: WorldFramePointPosition;
     noticeBoard: WorldFramePointPosition;
+    guildHall: WorldFramePointPosition;
+    campfireBench: WorldFramePointPosition;
   } = {
     actors: actorPosPool,
     actorCount: 0,
@@ -357,6 +389,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     villageCount: 0,
     hoveredDistrict: { x: 0, y: 0, visible: false },
     noticeBoard: { x: 0, y: 0, visible: false },
+    guildHall: { x: 0, y: 0, visible: false },
+    campfireBench: { x: 0, y: 0, visible: false },
   };
 
   let lastStructSig = "";
@@ -378,10 +412,39 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
   let disposed = false;
   let elapsed = 0;
   let workshopFxAccum = 0;
+  let sprintDustAccum = 0;
+  let playerEmoteHop = 0;
+  let playerEmoteKind: "wave" | "cheer" | "spin" | null = null;
+  let playerEmoteTimer = 0;
+  let playerEmotePhase = 0;
+  let playerLookYaw = 0;
+  let playerLookPitch = 0;
+  let playerHatPos = 0;
+  let playerHatVel = 0;
+  let prevPlayerLiftY = 0;
+  let currentWeather: WorldWeatherMode = "clear";
+  let rainbowLookTimer = 0;
   let prevPlayerX = playerCtrl.player.x;
   let prevPlayerZ = playerCtrl.player.z;
   let prevNow = performance.now();
   let lastRenderNow = 0;
+
+  interface ActorPoseSpring {
+    lookYaw: number;
+    lookPitch: number;
+    prevLift: number;
+    hatPos: number;
+    hatVel: number;
+  }
+  const actorPoseSprings = new Map<string, ActorPoseSpring>();
+
+  const clampSigned = (v: number, limit: number) => Math.max(-limit, Math.min(limit, v));
+  const angleDelta = (target: number, current: number) => {
+    let d = target - current;
+    while (d > Math.PI) d -= Math.PI * 2;
+    while (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  };
 
   const tick = (now: number) => {
     if (disposed) return;
@@ -415,7 +478,40 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       resolveMovement: meadow.resolveMovement,
       onDustParticle: director.spawnDust,
       onOverviewAutoExit: config.onOverviewAutoExit,
+      onJump: () => {
+        playJump();
+      },
+      onLand: () => {
+        director.spawnDust(playerCtrl.player.x, playerCtrl.player.y + 0.06, playerCtrl.player.z);
+      },
+      onStandUp: config.onCampfireStandUp,
     });
+
+    if (playerEmoteHop > 0) {
+      playerEmoteHop = Math.max(0, playerEmoteHop - dt * 1.9);
+    }
+    if (playerEmoteTimer > 0) {
+      playerEmoteTimer = Math.max(0, playerEmoteTimer - dt);
+      playerEmotePhase += dt;
+      if (playerEmoteTimer === 0) {
+        playerEmoteKind = null;
+        playerEmotePhase = 0;
+      }
+    }
+    if (rainbowLookTimer > 0) {
+      rainbowLookTimer = Math.max(0, rainbowLookTimer - dt);
+    }
+
+    // `Shift` 대시 질주 시 주기적 흙먼지 파티클 방출
+    if (currentLifecycle === "open" && playerCtrl.isSprinting() && playerCtrl.player.onGround) {
+      sprintDustAccum += dt;
+      if (sprintDustAccum >= 0.11) {
+        sprintDustAccum = 0;
+        director.spawnDust(playerCtrl.player.x, playerCtrl.player.y + 0.08, playerCtrl.player.z);
+      }
+    } else {
+      sprintDustAccum = 0;
+    }
 
     playerPosVec.set(playerCtrl.player.x, playerCtrl.player.y, playerCtrl.player.z);
     framePositions.playerWorldX = playerCtrl.player.x;
@@ -494,10 +590,76 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
 
     const fuzz = config.getFuzz();
 
-    // 플레이어 아바타 포즈 갱신
+    // 플레이어 아바타 포즈 · 전용 애니메이션 · 표정 · 2차 모자 스프링 · 시선 추적 갱신
     const p = playerCtrl.player;
     const pGround = Math.max(-0.05, meadow.getGroundHeight(p.x, p.z));
-    const pHop = p.walking ? Math.abs(Math.sin(elapsed * (p.sprinting ? 15 : 10))) * 0.16 : 0;
+    const pHop = p.walking && p.onGround ? Math.abs(Math.sin(elapsed * (p.sprinting ? 15 : 10))) * 0.14 : 0;
+    const pEmoteLift = playerEmoteHop > 0
+      ? Math.sin(Math.min(1, playerEmoteHop) * Math.PI) * (playerEmoteKind === "spin" ? 0.68 : 0.42)
+      : 0;
+    const pTotalLift = p.playerJumpY + pHop + pEmoteLift;
+
+    // 2차 물리 모자/왕관 스프링 (점프·착지·발걸음 수직 변화에 살짝 늦게 반응)
+    const pLiftVel = dt > 0.0005 ? (pTotalLift - prevPlayerLiftY) / dt : 0;
+    prevPlayerLiftY = pTotalLift;
+    const hatTarget = clampSigned(-pLiftVel * 0.018 - p.landSquash * 0.11, 0.16);
+    playerHatVel += ((hatTarget - playerHatPos) * 140 - playerHatVel * 14) * dt;
+    playerHatPos = clampSigned(playerHatPos + playerHatVel * dt, 0.18);
+
+    // 플레이어 전용 애니메이션 모드 & 표정 결정
+    const sittingCampfire = playerCtrl.isSittingAtCampfire();
+    let playerAnim: WorldAnimMode = "idle";
+    let playerExpr: WorldExpression = "normal";
+    let playerBlush = 0;
+    if (playerEmoteTimer > 0 && playerEmoteKind) {
+      playerAnim = playerEmoteKind;
+      playerExpr = "happy";
+      playerBlush = playerEmoteKind === "spin" ? 0.92 : 0.82;
+    } else if (sittingCampfire) {
+      if (p.campfireSitSec > 8.0) {
+        playerAnim = "doze";
+        playerExpr = "sleepy";
+        playerBlush = 0.25;
+      } else {
+        playerAnim = "sit";
+        playerExpr = "happy";
+        playerBlush = 0.35;
+      }
+    } else if (!p.onGround || p.playerJumpY > 0.06) {
+      playerAnim = "jump";
+      playerExpr = p.jumpVel > 0.5 ? "happy" : "normal";
+      playerBlush = 0.28;
+    } else if (p.sprinting && p.walking) {
+      playerAnim = "sprint";
+      playerExpr = "focused";
+    } else if (p.walking) {
+      playerAnim = "walk";
+      playerExpr = "normal";
+    } else if (focusedMotion) {
+      playerAnim = "talk";
+      playerExpr = "happy";
+      playerBlush = 0.3;
+    }
+
+    // 플레이어 부드러운 시선 추적 (포커스 상대 → 근접 NPC → 벚꽃/눈/무지개 하늘)
+    const skyAdmire = currentWeather === "sakura" || currentWeather === "snow" || rainbowLookTimer > 0;
+    let targetPLookYaw = 0;
+    let targetPLookPitch = 0;
+    const glanceActor = focusedMotion ?? (nearId ? director.motions.get(nearId) ?? null : null);
+    if (glanceActor) {
+      const distG = Math.hypot(glanceActor.x - p.x, glanceActor.z - p.z);
+      if (distG < 7.0 && distG > 0.2) {
+        const rel = angleDelta(Math.atan2(glanceActor.x - p.x, glanceActor.z - p.z), p.yaw);
+        targetPLookYaw = clampSigned(rel / 1.15, 1);
+      }
+    } else if (skyAdmire && !p.walking) {
+      targetPLookPitch = 0.42;
+      targetPLookYaw = Math.sin(elapsed * 0.65) * 0.35;
+    }
+    const lookLerp = Math.min(1, dt * 6.5);
+    playerLookYaw += (targetPLookYaw - playerLookYaw) * lookLerp;
+    playerLookPitch += (targetPLookPitch - playerLookPitch) * lookLerp;
+
     const fireWarmP = Math.max(0, 1 - Math.hypot(p.x - 2.8, p.z - 1.0) / 8.0) * skyLighting.nightFactor * 0.55;
     tempTint.set(
       skyLighting.avatarWorldTint.x + fireWarmP * 0.65,
@@ -507,7 +669,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     playerRig.updatePose({
       x: p.x,
       groundY: pGround,
-      liftY: (p.y - pGround) + pHop,
+      liftY: pTotalLift,
       z: p.z,
       yaw: p.yaw,
       state: p.walking ? "running" : "idle",
@@ -519,6 +681,16 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       sunDir: skyLighting.sunDir,
       worldTint: tempTint,
       viewProj,
+      worldAnim: playerAnim,
+      expression: playerExpr,
+      animPhase: playerEmotePhase,
+      moveSpeed: p.moveSpeed,
+      jumpVel: p.jumpVel,
+      landSquash: p.landSquash,
+      lookYaw: playerLookYaw,
+      lookPitch: playerLookPitch,
+      blush: playerBlush,
+      hatBounce: playerHatPos,
     });
 
     // 사령관·지휘관·구성원 포즈 갱신 & Direct-DOM 투영 좌표 계산
@@ -533,9 +705,43 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       if (!entry) continue;
       const gy = Math.max(-0.05, meadow.getGroundHeight(m.x, m.z));
       const roleScale = m.spec.role === "commodore" ? 0.96 : m.spec.role === "commander" ? 0.82 : 0.70;
-      const waddle = m.moving ? Math.abs(Math.sin(elapsed * 11 + idx)) * 0.14 : 0;
+      const waddle = m.moving ? Math.abs(Math.sin(elapsed * 11 + idx)) * 0.11 : 0;
       const hop = m.hopBoost * Math.abs(Math.sin(elapsed * 10)) * 0.48
         + (director.celebratingTimer > 0 ? Math.abs(Math.sin(elapsed * 9 + idx)) * 0.40 : 0);
+      const totalLift = waddle + hop;
+
+      let sp = actorPoseSprings.get(m.spec.id);
+      if (!sp) {
+        sp = { lookYaw: 0, lookPitch: 0, prevLift: totalLift, hatPos: 0, hatVel: 0 };
+        actorPoseSprings.set(m.spec.id, sp);
+      }
+
+      // NPC 2차 모자/왕관 바운스 스프링
+      const liftVel = dt > 0.0005 ? (totalLift - sp.prevLift) / dt : 0;
+      sp.prevLift = totalLift;
+      const npcHatTarget = clampSigned(-liftVel * 0.016, 0.15);
+      sp.hatVel += ((npcHatTarget - sp.hatPos) * 135 - sp.hatVel * 14) * dt;
+      sp.hatPos = clampSigned(sp.hatPos + sp.hatVel * dt, 0.18);
+
+      // NPC 부드러운 시선 추적 (수다 상대 → 7m 이내 지나가는 제독 → 벚꽃/눈/무지개 하늘)
+      let targetLookYaw = 0;
+      let targetLookPitch = 0;
+      const distPlayer = Math.hypot(p.x - m.x, p.z - m.z);
+      if (m.worldAnim !== "sleep") {
+        if (m.gazeTargetX !== null && m.gazeTargetZ !== null) {
+          const rel = angleDelta(Math.atan2(m.gazeTargetX - m.x, m.gazeTargetZ - m.z), m.yaw);
+          targetLookYaw = clampSigned(rel / 1.15, 1);
+        } else if (distPlayer < 7.0 && distPlayer > 0.25) {
+          const rel = angleDelta(Math.atan2(p.x - m.x, p.z - m.z), m.yaw);
+          targetLookYaw = clampSigned(rel / 1.15, 1);
+          targetLookPitch = clampSigned((p.playerJumpY) * 0.35, 0.55);
+        } else if (skyAdmire && !m.moving) {
+          targetLookPitch = 0.44;
+          targetLookYaw = Math.sin(elapsed * 0.55 + idx) * 0.32;
+        }
+      }
+      sp.lookYaw += (targetLookYaw - sp.lookYaw) * lookLerp;
+      sp.lookPitch += (targetLookPitch - sp.lookPitch) * lookLerp;
 
       const fireWarm = Math.max(0, 1 - Math.hypot(m.x - 2.8, m.z - 1.0) / 8.0) * skyLighting.nightFactor * 0.55;
       tempTint.set(
@@ -550,7 +756,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       entry.rig.updatePose({
         x: m.x,
         groundY: gy,
-        liftY: waddle + hop,
+        liftY: totalLift,
         z: m.z,
         yaw: m.yaw + (director.celebratingTimer > 0 ? elapsed * 4.5 : 0),
         state: m.spec.state,
@@ -564,6 +770,16 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         sunDir: skyLighting.sunDir,
         worldTint: tempTint,
         viewProj,
+        worldAnim: m.worldAnim,
+        expression: m.expression,
+        animPhase: m.animPhase,
+        moveSpeed: m.moveSpeed,
+        jumpVel: m.hopBoost > 0.2 ? Math.cos(elapsed * 10) * m.hopBoost * 2.2 : 0,
+        landSquash: 0,
+        lookYaw: sp.lookYaw,
+        lookPitch: sp.lookPitch,
+        blush: m.blush,
+        hatBounce: sp.hatPos,
       });
 
       if (isOpen) {
@@ -756,8 +972,49 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       } else {
         framePositions.noticeBoard.visible = false;
       }
+
+      // 중앙 길드 회관 「함대 상황실」 푯말 투영 (Direct-DOM 0Hz)
+      const ghX = WORLD_GUILD_HALL_POS.x;
+      const ghZ = WORLD_GUILD_HALL_POS.z;
+      const ghY = meadow.getGroundHeight(ghX, ghZ) + 5.75;
+      tempPos.set(ghX, ghY, ghZ);
+      if (
+        projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
+        && projTop.w < (inOverview ? 165 : 54)
+        && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
+      ) {
+        framePositions.guildHall.x = projTop.x;
+        framePositions.guildHall.y = projTop.y;
+        framePositions.guildHall.visible = true;
+      } else {
+        framePositions.guildHall.visible = false;
+      }
+
+      // 광장 모닥불 벤치 불멍 힌트 투영 (Direct-DOM 0Hz, 불멍 중이 아닐 때 근접 시 표시)
+      const cbX = WORLD_CAMPFIRE_BENCH_POS.x;
+      const cbZ = WORLD_CAMPFIRE_BENCH_POS.z;
+      const distToBench = Math.hypot(p.x - cbX, p.z - cbZ);
+      if (!inOverview && !playerCtrl.isSittingAtCampfire() && distToBench < 11.5) {
+        const cbY = meadow.getGroundHeight(cbX, cbZ) + 1.35;
+        tempPos.set(cbX, cbY, cbZ);
+        if (
+          projectPointInto(tempPos, viewProj, cssWidth, cssHeight, projTop)
+          && projTop.w < 26
+          && isInsideViewport(projTop.x, projTop.y, cssWidth, cssHeight)
+        ) {
+          framePositions.campfireBench.x = projTop.x;
+          framePositions.campfireBench.y = projTop.y;
+          framePositions.campfireBench.visible = true;
+        } else {
+          framePositions.campfireBench.visible = false;
+        }
+      } else {
+        framePositions.campfireBench.visible = false;
+      }
     } else {
       framePositions.noticeBoard.visible = false;
+      framePositions.guildHall.visible = false;
+      framePositions.campfireBench.visible = false;
     }
 
     renderer.info.reset();
@@ -787,6 +1044,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           scene.remove(entry.rig.group);
           entry.rig.dispose();
           actorRigs.delete(id);
+          actorPoseSprings.delete(id);
         }
       }
 
@@ -828,12 +1086,45 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     setOverviewMode(enabled) {
       playerCtrl.setOverviewMode(enabled);
     },
+    setWeather(mode) {
+      currentWeather = mode;
+      skyLighting.setWeather(mode);
+      meadow.setWeather(mode);
+      director.setWeather(mode);
+      setRainAmbience(mode === "rain");
+    },
+    triggerRainbow(durationSec = 16) {
+      rainbowLookTimer = Math.max(rainbowLookTimer, durationSec);
+      skyLighting.triggerRainbow(durationSec);
+    },
+    setAdmiralStyle(tone, hat) {
+      playerRig.setAdmiralStyle(tone, hat);
+    },
+    setCampfireSit(sitting) {
+      playerCtrl.setCampfireSit(sitting);
+    },
+    rallyAllToPlaza() {
+      director.rallyAllToPlaza();
+      playRallyHorn();
+    },
+    playPlayerEmote(emote) {
+      playerEmoteKind = emote === "wave" ? "wave" : emote === "cheer" ? "cheer" : "spin";
+      playerEmoteTimer = 1.8;
+      playerEmotePhase = 0;
+      playerEmoteHop = emote === "jump" ? 1.15 : 0.72;
+      playerPosVec.set(playerCtrl.player.x, playerCtrl.player.y, playerCtrl.player.z);
+      director.reactToPlayerEmote(emote, playerPosVec);
+      playMongleChirp(emote === "cheer" ? 3 : emote === "jump" ? 5 : 0);
+    },
     setDistrictHighlight(hovered, selected) {
       currentHoveredDistrict = hovered;
       meadow.setDistrictHighlight(hovered, selected);
     },
     setDispatchFlags(flags) {
       meadow.setDispatchFlags(flags);
+    },
+    setDistrictNotePins(pins) {
+      meadow.setDistrictNotePins(pins);
     },
     triggerLevelUpCelebration(x, z, tone) {
       let colorHex = 0xfbbf24;
@@ -844,6 +1135,8 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
           | Math.round(rgb[2] * 255);
       }
       director.spawnLevelUpCelebration(x, z, colorHex);
+      rainbowLookTimer = Math.max(rainbowLookTimer, 14);
+      skyLighting.triggerRainbow(14);
     },
     setQuestBoardAlert(urgentCount) {
       meadow.setQuestBoardAlert(urgentCount);
@@ -854,6 +1147,13 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       } else {
         playerCtrl.clearDistrictFocus();
       }
+    },
+    spawnCourierBetweenVillages(fromVillage, toVillage) {
+      const rgb = PLUSH_VIVID_TONES[fromVillage.tone];
+      const colorHex = (Math.round(rgb[0] * 255) << 16)
+        | (Math.round(rgb[1] * 255) << 8)
+        | Math.round(rgb[2] * 255);
+      director.spawnCourierArc(fromVillage.x, fromVillage.z, toVillage.x, toVillage.z, colorHex);
     },
     spawnCourierBetweenActors(fromActorId, targetName) {
       const trimmedTarget = targetName.trim().toLowerCase();
@@ -1041,6 +1341,52 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
       const wz = origin.z + direction.z * t;
       return Math.hypot(wx - WORLD_NOTICE_BOARD_POS.x, wz - WORLD_NOTICE_BOARD_POS.z) <= WORLD_NOTICE_BOARD_POS.radius + 0.4;
     },
+    pickGuildHallAt(clientX, clientY) {
+      const rect = config.canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      const mx = clientX - rect.left;
+      const my = clientY - rect.top;
+
+      if (framePositions.guildHall.visible) {
+        if (Math.hypot(mx - framePositions.guildHall.x, my - (framePositions.guildHall.y + 42)) <= 64) {
+          return true;
+        }
+      }
+
+      pickNdc.set((mx / rect.width) * 2 - 1, -(my / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pickNdc, camera);
+      const { origin, direction } = raycaster.ray;
+      if (Math.abs(direction.y) < 1e-4) return false;
+      const ghY = meadow.getGroundHeight(WORLD_GUILD_HALL_POS.x, WORLD_GUILD_HALL_POS.z) + 1.8;
+      const t = (ghY - origin.y) / direction.y;
+      if (t <= 0 || t > 220) return false;
+      const wx = origin.x + direction.x * t;
+      const wz = origin.z + direction.z * t;
+      return Math.hypot(wx - WORLD_GUILD_HALL_POS.x, wz - WORLD_GUILD_HALL_POS.z) <= WORLD_GUILD_HALL_POS.radius;
+    },
+    pickCampfireBenchAt(clientX, clientY) {
+      const rect = config.canvas.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return false;
+      const mx = clientX - rect.left;
+      const my = clientY - rect.top;
+
+      if (framePositions.campfireBench.visible) {
+        if (Math.hypot(mx - framePositions.campfireBench.x, my - framePositions.campfireBench.y) <= 52) {
+          return true;
+        }
+      }
+
+      pickNdc.set((mx / rect.width) * 2 - 1, -(my / rect.height) * 2 + 1);
+      raycaster.setFromCamera(pickNdc, camera);
+      const { origin, direction } = raycaster.ray;
+      if (Math.abs(direction.y) < 1e-4) return false;
+      const cbY = meadow.getGroundHeight(WORLD_CAMPFIRE_BENCH_POS.x, WORLD_CAMPFIRE_BENCH_POS.z) + 0.55;
+      const t = (cbY - origin.y) / direction.y;
+      if (t <= 0 || t > 180) return false;
+      const wx = origin.x + direction.x * t;
+      const wz = origin.z + direction.z * t;
+      return Math.hypot(wx - WORLD_CAMPFIRE_BENCH_POS.x, wz - WORLD_CAMPFIRE_BENCH_POS.z) <= WORLD_CAMPFIRE_BENCH_POS.radius;
+    },
     getActorScreenAnchor(actorId) {
       const meta = latestLabelMetas.find((m) => m.actorId === actorId);
       if (!meta) return null;
@@ -1064,6 +1410,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
     dispose() {
       disposed = true;
       cancelAnimationFrame(rafId);
+      setRainAmbience(false);
       if (typeof window !== "undefined" && window.__fleetWorldPerf === getRenderStats) {
         delete window.__fleetWorldPerf;
       }
@@ -1077,6 +1424,7 @@ export function createWorldRuntime(config: WorldRuntimeConfig): WorldRuntimeHand
         entry.rig.dispose();
       }
       actorRigs.clear();
+      actorPoseSprings.clear();
       playerRig.dispose();
       director.dispose();
       playerCtrl.dispose();
