@@ -10,7 +10,8 @@
  */
 
 /** core-ai-gateway 카탈로그가 노출하는 추론 강도 사다리. */
-export type ClaudeGatewayEffort = "low" | "medium" | "high" | "xhigh" | "max";
+export const CLAUDE_GATEWAY_EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type ClaudeGatewayEffort = (typeof CLAUDE_GATEWAY_EFFORTS)[number];
 
 export type ClaudeGatewayPermissionMode =
   | "default"

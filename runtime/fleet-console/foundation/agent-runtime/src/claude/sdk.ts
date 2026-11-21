@@ -4,13 +4,13 @@ import { assertClaudeGatewayInput } from "./input.js";
 import { withLoopbackProxyBypass } from "@fleet-console/process";
 
 import {
+  CLAUDE_GATEWAY_EFFORTS,
   CLAUDE_GATEWAY_SESSION_KEYS,
   CLAUDE_GATEWAY_TURN_KEYS,
   type ClaudeGatewayAgentDefinition,
   type ClaudeGatewayCanUseTool,
   type ClaudeGatewayCompactEvent,
   type ClaudeGatewayCwdObservation,
-  type ClaudeGatewayEffort,
   type ClaudeGatewayHookContext,
   type ClaudeGatewayHostHooks,
   type ClaudeModelResolution,
@@ -532,8 +532,6 @@ function observeTaskEvents(
   };
 }
 
-/** `Agent` 도구 입력의 `effort`가 받는 값. 훅이 다른 값을 돌려주면 그 필드를 건드리지 않는다. */
-const HOOK_EFFORT_VALUES: readonly ClaudeGatewayEffort[] = ["low", "medium", "high", "xhigh", "max"];
 
 /** 판정하지 못한 위임 호출의 거절 사유. 침묵이 곧 서브에이전트 실행이 되면 안 된다. */
 const DELEGATION_UNDECIDED_REASON = "Fleet could not decide this delegated call. Continue the work in this session.";
@@ -651,7 +649,8 @@ async function decidePreToolUse(
     return denyPreToolUse(decision.denyReason.length > 0 ? decision.denyReason : DELEGATION_UNDECIDED_REASON);
   }
   const updated: Record<string, unknown> = {};
-  if (decision?.effort !== undefined && HOOK_EFFORT_VALUES.includes(decision.effort)) updated.effort = decision.effort;
+  // `Agent` 도구 입력의 `effort`가 받는 값만 싣는다. 훅이 다른 값을 돌려주면 그 필드를 건드리지 않는다.
+  if (decision?.effort !== undefined && CLAUDE_GATEWAY_EFFORTS.includes(decision.effort)) updated.effort = decision.effort;
   if (decision?.subagentType !== undefined && decision.subagentType.length > 0) updated.subagent_type = decision.subagentType;
   const stripModel = decision?.stripModel === true;
   const merged: Record<string, unknown> = { ...toolInput, ...updated };
