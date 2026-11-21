@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { createPortal } from "react-dom";
 
 import { useViewportFit } from "@fleet-console/ui/react";
@@ -391,12 +391,12 @@ function AvatarEditorUndo({ session, className }: { readonly session: AvatarEdit
 }
 
 /**
- * 아바타를 고치는 자리 — 대화 중심 화면의 오른쪽 패널 머리와 구성원 탭만 쓴다(일반 화면에는 편집 진입이 없다).
+ * 아바타를 고치는 자리 — 대화 중심 화면의 프로필 팝오버·패널 머리가 쓴다(일반 화면에는 편집 진입이 없다).
  *
  * 아바타를 누르면 편집기가 열리고, 고르는 동안은 미리보기만 바뀐다. 「적용」해야 저장되며, 적용 뒤 한동안 「되돌리기」가 선다.
  * 「다시 뽑기」는 형제와 겹치지 않는 캐릭터를 원래 색으로, 「처음 값으로」는 처음 뽑힌 캐릭터를 원래 색으로 미리보기에 세운다.
  */
-export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size, label, layout = "stack", figure, children }: {
+export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size, label, figure }: {
   readonly avatarKey: string;
   readonly role: MongleRole;
   readonly state: MongleState;
@@ -404,12 +404,8 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
   readonly activityObjectiveId?: string | null;
   readonly size: number;
   readonly label: string;
-  /** stack: 아바타 아래에 떠 있는 판으로 편집기가 뜬다(패널 머리). inline: 아바타 왼쪽 끝에 맞춘 같은 판으로 뜬다(구성원 탭). */
-  readonly layout?: "stack" | "inline";
-  /** 진급 사령관을 견장·날개 윗부분과 날개짓까지 그린다 — 패널 머리의 큰 얼굴 전용. */
+  /** 진급 사령관을 견장·날개 윗부분과 날개짓까지 그린다 — 큰 얼굴 전용. */
   readonly figure?: boolean;
-  /** inline 일 때 아바타 오른쪽에 서는 줄 본문. */
-  readonly children?: ReactNode;
 }) {
   const t = useT();
   const session = useAvatarEditorSession(avatarKey, role, state);
@@ -423,29 +419,26 @@ export function AvatarEditor({ avatarKey, role, state, activityObjectiveId, size
   const shown = draft ?? { base: look.base, tone: look.tone };
   const close = () => { session.discard(); triggerRef.current?.focus(); };
 
-  const avatarButton = (
-    <button
-      ref={triggerRef}
-      type="button"
-      className="avatar-editor-trigger"
-      aria-haspopup="dialog"
-      aria-expanded={open}
-      aria-label={t("avatar.editor.open", { name: label })}
-      title={t("avatar.editor.open", { name: label })}
-      onClick={() => { if (open) session.discard(); else session.begin(); }}
-    >
-      {/* 대상이 바뀌면 새 얼굴로 다시 선다 — 이전 대상의 활동 교체 시계(최소 머무름·경계 대기)를 이어받지 않는다. */}
-      <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative figure={figure} />
-      <span className="avatar-editor-pen" aria-hidden="true">
-        <svg viewBox="0 0 16 16"><path d="M3 13l.7-2.8L10.6 3.3l2.1 2.1-6.9 6.9z" fill="currentColor" /></svg>
-      </span>
-    </button>
-  );
   return (
-    <div className={`avatar-editor is-${layout}${open ? " is-open" : ""}`} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); close(); } }}>
-      {layout === "inline" ? <div className="avatar-editor-row">{avatarButton}{children}</div> : avatarButton}
+    <div className={`avatar-editor is-stack${open ? " is-open" : ""}`} onKeyDown={(event) => { if (event.key === "Escape" && open) { event.stopPropagation(); close(); } }}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="avatar-editor-trigger"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-label={t("avatar.editor.open", { name: label })}
+        title={t("avatar.editor.open", { name: label })}
+        onClick={() => { if (open) session.discard(); else session.begin(); }}
+      >
+        {/* 대상이 바뀌면 새 얼굴로 다시 선다 — 이전 대상의 활동 교체 시계(최소 머무름·경계 대기)를 이어받지 않는다. */}
+        <MongleAvatar key={avatarKey} base={shown.base} tone={shown.tone} role={role} state={draft ? draft.previewState : state} activity={activity} size={size} label={label} decorative figure={figure} />
+        <span className="avatar-editor-pen" aria-hidden="true">
+          <svg viewBox="0 0 16 16"><path d="M3 13l.7-2.8L10.6 3.3l2.1 2.1-6.9 6.9z" fill="currentColor" /></svg>
+        </span>
+      </button>
       <AvatarEditorUndo session={session} />
-      <AvatarEditorPopover session={session} anchorRef={triggerRef} layout={layout} onClose={() => triggerRef.current?.focus()} />
+      <AvatarEditorPopover session={session} anchorRef={triggerRef} layout="stack" onClose={() => triggerRef.current?.focus()} />
     </div>
   );
 }

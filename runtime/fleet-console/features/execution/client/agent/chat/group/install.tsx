@@ -1,28 +1,19 @@
 import { useConversationDockHeight } from "../../../../../workspace/client/conversation/conversation-dock-height.js";
 import { OpenUINavigationContext } from "../../openui-boundary.js";
-import type { ConversationParticipant, ConversationSpeaker } from "../../../../shared/conversation/types.js";
-import type { RailPanelContext } from "../../../../../workspace/shared/rail.js";
+import type { ConversationSpeaker } from "../../../../shared/conversation/types.js";
 import * as React from "react";
 
 import { getState, selectNestedBody, subscribe as subscribeConsole } from "../../../../../../core/client/src/integration/store.js";
 import { useConsoleState } from "../../../../../../core/client/src/hooks/use-store.js";
 import type { ObjectiveRecord } from "../../../../../../core/client/src/integration/types.js";
 import {
-  getConversationStandIn,
-  getConversationSubject,
-  registerConversationObjectiveTab,
   setConversationBodyRenderer,
   setConversationStandInComposer,
   setConversationToolbarTail,
-  subscribeConversationStandIn,
-  subscribeConversationSubject,
-  useConversationStandIn,
-  useConversationSubject,
   type ConversationBodyContext,
   type ConversationToolbarTailContext,
 } from "../../../../../workspace/client/conversation/conversation-slots.js";
 import { useOpenBoardActionRecord } from "../../../../../workspace/client/conversation/board-action-record.js";
-import { getConversationSurface, subscribeConversationSurface } from "../../../../../workspace/client/conversation/conversation-surface-store.js";
 import { stopAgentChatTurn } from "../../api.js";
 import { CliFailureCard } from "../../../../../commodore/client/commodore-cli-status.js";
 import { getT as getCommodoreT } from "../../../../../commodore/client/i18n/index.js";
@@ -32,37 +23,35 @@ import { getT } from "../../i18n/index.js";
 import { MarkdownLinkBoundary } from "../../markdown-link-boundary.js";
 import { useObjectiveLinks } from "../../objective-links.js";
 import { useGroupConversationActions, useGroupUseRequests } from "../group-write.js";
-import { isGroupConversationRoot, subscribeGroupClusters, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
+import { isGroupConversationRoot, useGroupClusters, useGroupTimeline } from "../group-timeline-store.js";
 import { frameCommanderLedger, isCommanderLedgerChosen, setCommanderLedger, subscribeCommanderLedger, useCommanderLedgerChosen } from "./commander-ledger.js";
 import { DecisionCard, UseRequestGroupCard } from "./group-cards.js";
 import { GroupComposer } from "./group-composer.js";
 import { ComposerTopEntries } from "../composer-top-entries.js";
 import { GroupConversation, GroupLedgerFrame } from "./group-conversation.js";
 import { getGroupT } from "./group-chat-i18n.js";
-import { GroupMembersPanel } from "./group-members-panel.js";
 import { SpeakerMark, useLocalizedSnapshot } from "./speaker-mark.js";
 import { registerObjectiveContextRail } from "./context-rail.js";
 import { ConversationViewToggle, setGroupConversationView, useGroupConversationView } from "./conversation-view.js";
 import { GroupLedgerSplit, type GroupLedgerSplitPane } from "./ledger-split.js";
 
 /**
- * 그룹 대화를 대화 중심 화면에 끼운다 — 가운데 칸 본문 렌더러와 오른쪽 「구성원」 탭.
+ * 그룹 대화를 대화 중심 화면에 끼운다 — 가운데 칸 본문 렌더러·컨텍스트 레일·원장 전환 단추.
  *
  * 실행 기능의 설치 수명이 등록하고 걷는다(호스트 번들 안의 슬롯이라 플러그인 번들에서 부르지 않는다).
- * 두 표면 모두 `useGroupTimeline` 의 구독자일 뿐이고, 연결은 같은 설치 수명의 전역 관측이 쥔다.
+ * 본문은 `useGroupTimeline` 의 구독자일 뿐이고, 연결은 같은 설치 수명의 전역 관측이 쥔다.
  *
  * 가운데 칸 규칙:
  * - 목표 대화의 뿌리(지휘관)이거나 구성원을 가진 채팅 루트를 보고 있으면 그룹 대화가 선다 — 구성원이 아직 없는 지휘관도
  *   같은 화면이다. 루트의 기존 본문은 칸에 붙지 않으므로 본문 풀에서 주차되고(bodyLive=false) 자기 소켓을 열지 않는다.
  * - 데스크톱 그룹채팅의 말풍선 머리 표식·이름(네임플레이트)만 참여자와 무관하게 화면 전환 설정을 원장으로 바꾼다(`conversation-view`).
  *   알림 종 오른쪽의 전환 단추도 같은 설정을 고친다.
- * - 오른쪽 「구성원」 탭의 줄, 작업 줄·진행 메모 링크·전언 화면(폰은 네임플레이트도)을 누르면 그 참여자의 기존 본문을 읽기 전용 틀에 넣어 세운다.
+ * - 작업 줄·진행 메모 링크·전언 화면·목표 팝업(폰은 네임플레이트도)을 누르면 그 참여자의 기존 본문을 읽기 전용 틀에 넣어 세운다.
  *   구성원은 셸의 구성원 본문 선택이, 지휘관은 `commander-ledger` 가 고른다(셸의 선택은 루트 자신을 고를 수 없다). 원장에는
  *   사람 입력 틀이 없고, 틀 머리의 「대화로 돌아가기」가 대화로 데려온다.
  * - 목표가 아닌 1:1 채팅이거나 루트가 터미널(CLI)로 열려 있으면 기본 본문을 그대로 둔다.
  */
 export function installGroupConversationSurface(): () => void {
-  ensureMembersTab();
   const disposeBody = setConversationBodyRenderer(renderConversationBody);
   const disposeComposer = setConversationStandInComposer((objectiveId, language) => <StandInComposer key={objectiveId} rootId={objectiveId} language={language} />);
   const disposeRail = registerObjectiveContextRail();
@@ -76,58 +65,9 @@ function renderToolbarTail(context: ConversationToolbarTailContext): React.React
   return <ConversationViewToggle root={context.objectiveRecord} language={context.language} onLeaveLedger={leaveLedger} />;
 }
 
-/** 개별 원장(「구성원」 탭에서 고른 참여자)을 내린다 — 화면 전환 단추가 고른 화면이 바로 서게. */
+/** 개별 원장(작업 줄·목표 팝업에서 고른 참여자)을 내린다 — 화면 전환 단추가 고른 화면이 바로 서게. */
 function leaveLedger(rootId: string): void {
   if (ledgerObjectiveId(rootId) !== null) openLedger(rootId, null);
-}
-
-/**
- * 「구성원」 탭은 설치 수명에 묶지 않고 페이지 수명 동안 한 번 준비한다. 탭은 대화 중심 화면이 서 있을 때만 레일 목록에 실리므로
- * 실험이 꺼진 Console 에는 보이지 않는다.
- *
- * 설치 수명에 묶으면 안 되는 이유: 레일 목록이 바뀌면 앱이 provider 설치를 다시 돌린다(레일 바인딩이 그 effect 의 의존).
- * 설치마다 탭을 걷고 다시 등록하면 목록 스냅숏이 매번 새로 나고, 그것이 다시 설치를 부르는 무한 갱신이 된다.
- *
- * 가운데 칸에 플러그인 대화(사령관 기록 등)가 서 있는 동안에는 탭을 걷는다 — 그 화면의 구성원이 아니다. 걷고 다시 다는 일은
- * 대화 표면이 바뀔 때만 일어나고, 레일 목록 변화가 그 표면을 바꾸지 않으므로 위의 고리는 생기지 않는다.
- */
-let membersTabPrepared = false;
-let releaseMembersTab: (() => void) | null = null;
-/** 「구성원」 탭의 등록 id — 이 탭을 다른 표면(모바일 대화 정보)이 명부가 있는 대화에서만 세우려고 가려낼 때 쓴다. */
-export const CONVERSATION_MEMBERS_TAB_ID = "conversation.members";
-const MEMBERS_TAB = {
-  id: CONVERSATION_MEMBERS_TAB_ID,
-  title: (locale: "en" | "ko") => getGroupT(locale)("group.members.tab"),
-  icon: MembersGlyph,
-  order: 10,
-  defaultWidth: 320,
-  render: (ctx: RailPanelContext) => <MembersTab ctx={ctx} />,
-};
-function syncMembersTab(): void {
-  // 목표가 아닌 1:1 채팅에는 명부가 없다 — 탭을 세우지 않는다. 지휘관은 구성원이 아직 없어도 자기 줄이 있다.
-  // 플러그인 대화는 아직 서지 않은 Objective 을 대신할 때만(시작 전 목표) 그 명부로 탭을 세운다.
-  const subject = getConversationSubject();
-  const standIn = getConversationStandIn();
-  const rootId = standIn ?? (subject ? subject.parentObjectiveId ?? subject.id : null);
-  const hidden = (getConversationSurface() !== null && standIn === null) || rootId === null || !hasRoster(rootId);
-  if (hidden && releaseMembersTab) { releaseMembersTab(); releaseMembersTab = null; }
-  if (!hidden && !releaseMembersTab) releaseMembersTab = registerConversationObjectiveTab(MEMBERS_TAB);
-}
-function ensureMembersTab(): void {
-  if (membersTabPrepared) return;
-  membersTabPrepared = true;
-  syncMembersTab();
-  // 대화 표면·가운데 칸의 주인·명부가 바뀔 때만 다시 고른다. 레일 목록 변화는 이 셋을 바꾸지 않으므로 설치 재실행 고리가 없다.
-  subscribeConversationSurface(syncMembersTab);
-  subscribeConversationSubject(syncMembersTab);
-  subscribeConversationStandIn(syncMembersTab);
-  subscribeConsole(syncMembersTab);
-  subscribeGroupClusters(syncMembersTab);
-}
-
-/** 명부가 서는 루트 — 구성원이 있거나 목표 대화의 뿌리(지휘관)다. */
-function hasRoster(rootId: string): boolean {
-  return isGroupConversationRoot(rootId) || getState().nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === rootId);
 }
 
 /** 원장을 연다 — 루트 id 면 지휘관 원장, 구성원 id 면 그 구성원 원장, null 이면 대화로 돌아간다. 둘은 동시에 서지 않는다. */
@@ -137,7 +77,7 @@ export function openLedger(rootId: string, objectiveId: string | null): void {
   selectNestedBody(rootId, commander ? null : objectiveId);
 }
 
-/** 지금 연 원장의 참여자 — 지휘관이면 루트 id, 구성원이면 그 id, 대화를 보고 있으면 null. 「구성원」 탭의 켜짐과 같은 판정이다. */
+/** 지금 연 원장의 참여자 — 지휘관이면 루트 id, 구성원이면 그 id, 대화를 보고 있으면 null. */
 export function ledgerObjectiveId(rootId: string): string | null {
   return getState().nestedBodySelection[rootId] ?? (isCommanderLedgerChosen(rootId) ? rootId : null);
 }
@@ -395,61 +335,5 @@ function MemberLedger({ root, member, language, children }: {
     <GroupLedgerFrame speaker={speaker} language={language} notice={notice} onBack={() => openLedger(root.id, null)}>
       {children}
     </GroupLedgerFrame>
-  );
-}
-
-function MembersTab({ ctx }: { readonly ctx: RailPanelContext }) {
-  const standIn = useConversationStandIn();
-  const language = ctx.language ?? "en";
-  return standIn !== null ? <StandInMembersTab rootId={standIn} language={language} /> : <ObjectiveMembersTab language={language} />;
-}
-
-/**
- * 아직 서지 않은 Objective(시작 전 목표의 지휘관 자리)을 대신하는 대화의 명부 — 같은 구성원 패널에 지휘관과 명부의 구성원이 시작 전으로
- * 선다. 원장이 없으므로 줄은 단추가 아니다. 지휘관은 개시하면 이 id 로 서므로 그 자리의 얼굴(아바타 키)이 그대로 이어진다.
- */
-function StandInMembersTab({ rootId, language }: { readonly rootId: string; readonly language: "en" | "ko" }) {
-  const snapshot = useLocalizedSnapshot(useGroupTimeline(rootId), language);
-  const clusters = useGroupClusters();
-  const t = getGroupT(language);
-  // 지휘관 줄은 Objective 이 없어 여기서 세운다 — 보드 사실(지휘관 모델 줄)은 명부의 commander profile 에서 그대로 붙인다.
-  const commander = clusters.find((cluster) => cluster.conversation?.objectiveId === rootId)?.conversation?.commander;
-  const participants = React.useMemo<readonly ConversationParticipant[]>(() => (
-    snapshot.participants.some((participant) => participant.speaker.kind === "commander")
-      ? snapshot.participants
-      : [{ speaker: { kind: "commander", name: t("group.commander"), objectiveId: rootId }, activity: "unknown", ...(commander ? { profile: commander } : {}) }, ...snapshot.participants]
-  ), [rootId, snapshot.participants, t, commander]);
-  if (!clusters.some((cluster) => cluster.conversation?.objectiveId === rootId)) return <p className="group-members-empty">{t("group.members.none")}</p>;
-  return <GroupMembersPanel snapshot={{ ...snapshot, participants }} language={language} ledgerObjectiveId={null} notStarted />;
-}
-
-function ObjectiveMembersTab({ language }: { readonly language: "en" | "ko" }) {
-  const subject = useConversationSubject();
-  const state = useConsoleState();
-  // 구성원의 본문을 보고 있어도 탭은 그 루트의 명부를 보인다.
-  const root = subject ? (subject.parentObjectiveId ? state.objectiveRecords.find((objectiveRecord) => objectiveRecord.id === subject.parentObjectiveId) ?? subject : subject) : null;
-  const snapshot = useLocalizedSnapshot(useGroupTimeline(root?.id ?? null), language);
-  const clusters = useGroupClusters();
-  const commanderLedger = useCommanderLedgerChosen(root?.id ?? null);
-  const hasRoster = root !== null && (clusters.some((cluster) => cluster.conversation?.objectiveId === root.id)
-    || state.nestedObjectiveRecords.some((objectiveRecord) => objectiveRecord.parentObjectiveId === root.id));
-  if (!root || !hasRoster) return <p className="group-members-empty">{getGroupT(language)("group.members.none")}</p>;
-  return (
-    <GroupMembersPanel
-      snapshot={snapshot}
-      language={language}
-      ledgerObjectiveId={state.nestedBodySelection[root.id] ?? (commanderLedger ? root.id : null)}
-      onOpenLedger={(objectiveId) => openLedger(root.id, objectiveId)}
-    />
-  );
-}
-
-function MembersGlyph() {
-  return (
-    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth={1.4} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      <circle cx="6" cy="5.5" r="2.2" />
-      <path d="M2 13c.5-2.3 2.1-3.5 4-3.5s3.5 1.2 4 3.5" />
-      <path d="M10.5 3.6a2.1 2.1 0 0 1 0 3.9M12 9.9c1 .5 1.7 1.5 2 3.1" />
-    </svg>
   );
 }

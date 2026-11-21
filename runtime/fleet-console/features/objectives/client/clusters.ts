@@ -1,8 +1,7 @@
 import { followupGate, isFollowupSelectable, requestFollowupFocus, setFollowupOpen } from "./followups.js";
 import { openObjectivePopup } from "./objectives-panel.js";
-import type { ConversationMemberProfile, GroupBoardActions } from "../../execution/shared/conversation/types.js";
+import type { GroupBoardActions } from "../../execution/shared/conversation/types.js";
 import type { LocalizedText } from "@fleet-console/i18n";
-import type { ModelRoster } from "../../ai-gateway/shared/models.js";
 import type { ConsoleObjectiveSummary } from "../../execution/shared/client-contract.js";
 import type { ObjectiveCluster, ObjectiveClusterMember, ObjectiveClusterProgress, ObjectiveClusterRow, ObjectiveClusterRowNote, ObjectiveClusterRowProvenance, ObjectiveClusterSource } from "../shared/objective-clusters.js";
 
@@ -17,7 +16,6 @@ import { freshConversationObjectiveId, openFreshConversation, subscribeFreshConv
 import { commodoreAliasOf, commodoreBoardOf, commodoreRevision, livePersonHolds, personTurnAt, subscribeCommodore } from "./board-commodore.js";
 import { openFollowups } from "./followups.js";
 import { getT } from "./i18n/index.js";
-import { readLaunchRoster, subscribeLaunchRoster } from "./launch-control.js";
 import { viewedCommodoreId, findFinishedObjective, finishedObjectivesRevision, focusObjective, listedObjectiveSummaries, objectivesApi, openObjectiveFromCluster, objectiveRecordSummaries, post, readAllTheaters, runtimeHydration, subscribeFinishedObjectivesStore, subscribeObjective, subscribeObjectiveView, upsertObjectiveLocally } from "./objectives-state.js";
 
 /**
@@ -236,7 +234,7 @@ function moveObjective(objective: Objective, groupId: string | null): void {
   if (api && groupId !== objective.groupId) void post(api, "/objective/patch", { objectiveId: objective.id, patch: { groupId } }).catch(() => undefined);
 }
 
-export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE, observe: BoardObserver = () => null, now = Date.now(), roster: ModelRoster | null = null): ObjectiveCluster[] {
+export function clustersOf(objectives: readonly Objective[], activity: Map<string, string>, selectedOf: (objective: Objective) => boolean = () => false, boardOf: (theaterId: string) => CommodoreBoard = () => NO_COMMODORE, observe: BoardObserver = () => null, now = Date.now()): ObjectiveCluster[] {
   const out: ObjectiveCluster[] = [];
   const stalled = new Set(stalledObjectives(objectives, observe, now));
   const orderIn = new Map<string, number>();
@@ -255,8 +253,7 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
       // 대화 중심 화면 — 시작 전 목표는 가운데 칸에 시작 화면으로 선다(활성 Objective 이 비고 세 영역이 이 목표를 가리킨다).
       if (row?.glyph === "fresh") openFreshConversation(objective.id);
     };
-    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
-      { state: (objectiveId) => shownActivity(activity.get(objectiveId) ?? "closed"), roster });
+    const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective));
     const structured = (objective.missions.length > 0 || liveMembers.length > 0) && activity.has(commander);
     if (!structured) {
       // 완료한 목표도 줄이 있다 — 보관하기 전까지 줄에서 대화(지휘관과의 메시지·범위 넓히기)를 다시 연다. 보관된 완료 목표는 아래 doneStandInCluster 가 맡는다.
@@ -330,21 +327,14 @@ export function clustersOf(objectives: readonly Objective[], activity: Map<strin
 const rowSignature = (row: ObjectiveClusterRow | undefined) => (row ? [row.groupId, row.order, row.fold, row.glyph ?? "", row.today === true, row.due ?? null, row.personTurnAt ?? 0, row.personItems ?? 0, row.personNote ? resolveText(row.personNote) : "", row.commodore === true, row.progress ?? null, row.followup ?? null, row.notes?.map((note) => NOTE_KEYS.get(note) ?? "") ?? [], row.selected === true,
   // 출처 글은 영어로 풀어 비교한다 — 손·행위·경과 칸이 바뀌면 글이 바뀐다(로케일 전환은 호스트가 다시 그린다).
   row.provenance?.map((part) => [resolveText(part.text), part.tone ?? ""]) ?? [], row.mark ? [row.mark.square, row.mark.emphasized === true, resolveText(row.mark.label), row.mark.toggle?.pressed ?? null, row.mark.toggle ? resolveText(row.mark.toggle.label) : ""] : null] : null);
-/** 화면 활동 — 보드와 같게 턴 뒤 백그라운드 작업은 작업 중으로 접는다. */
-const shownActivity = (activity: string): string => (activity === "background" ? "running" : activity);
 const resolveText = (text: LocalizedText): string => (typeof text === "string" ? text : text("en"));
-// 명부 줄의 글은 함수라 JSON 이 버린다 — 영어로 풀어 비교한다(모델·상태·로스터가 바뀌면 글이 바뀐다).
-const profileSignature = (profile: ConversationMemberProfile | undefined) => (profile ? [profile.badge ? resolveText(profile.badge) : "", profile.brief ?? "",
-  profile.launch ? [resolveText(profile.launch.label), profile.launch.effort ? resolveText(profile.launch.effort) : "", profile.launch.title ? resolveText(profile.launch.title) : "", profile.launch.provider ?? "", profile.launch.providerName ?? "", profile.launch.struck === true, profile.launch.badge ? resolveText(profile.launch.badge) : ""] : null,
-  profile.status ? [resolveText(profile.status.text), profile.status.tone ?? ""] : null,
-  profile.notes?.map((note) => [resolveText(note.text), note.title ?? "", note.tone ?? ""]) ?? []] : null);
 // 보드 동작의 글도 함수다 — 칩·안내·자리표시를 영어로 풀어 비교한다(상태 사다리가 바뀌면 글이나 칩이 바뀐다).
 const boardSignature = (board: GroupBoardActions | undefined) => (board ? [
   board.suggestions.map((action) => [action.id, resolveText(action.label), action.detail ? resolveText(action.detail) : "", action.context ? resolveText(action.context.placeholder) : "", action.unavailable ? resolveText(action.unavailable) : ""]),
   board.note ? [resolveText(board.note.text), board.note.reveal ? resolveText(board.note.reveal.label) : ""] : null, board.hint ? resolveText(board.hint) : "",
   board.commanderOnly === true, board.actionsOnly === true,
 ] : null);
-const signature = (clusters: readonly ObjectiveCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.commodoreId ?? null, cluster.root ?? null, cluster.title, cluster.conversation ?? null, boardSignature(cluster.conversation?.actions?.board), cluster.conversation?.members.map((member) => profileSignature(member.profile)) ?? [], profileSignature(cluster.conversation?.commander), rowSignature(cluster.row), cluster.members.map((member) => [member.objectiveId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
+const signature = (clusters: readonly ObjectiveCluster[]) => JSON.stringify(clusters.map((cluster) => [cluster.id, cluster.commodoreId ?? null, cluster.root ?? null, cluster.title, cluster.conversation ?? null, boardSignature(cluster.conversation?.actions?.board), rowSignature(cluster.row), cluster.members.map((member) => [member.objectiveId, member.pending ?? false, member.name ?? "", member.tone ?? "", member.order ?? -1, member.label, member.missionNumber ?? null, member.after, member.progress, member.awaitingInput ?? null, member.result ?? ""])]));
 
 /**
  * 보드 줄의 관측 — 호스트 런타임 맵에서 온 요약 활동. 휴면(ended)은 수명주기 dormant 로 넘기고, 목록에 없는 Objective 은
@@ -366,9 +356,8 @@ let cachedInputs: readonly unknown[] = [];
  * 보관된 완료 목표의 대화 서술자 — 줄·뿌리 없이 대화(명부·보드 동작)만 싣는다. 지휘관 Objective 이 보관돼 활동이 없으므로 명부는 모두 닫힌
  * 것으로 센다. 가운데 칸의 완료 화면 입력창이 이 서술자의 보드 동작(지휘관에게만 가는 메시지·범위 넓히기 칩)을 읽는다.
  */
-function doneStandInCluster(objective: Objective, roster: ModelRoster | null): ObjectiveCluster {
-  const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective),
-    { state: () => "closed", roster });
+function doneStandInCluster(objective: Objective): ObjectiveCluster {
+  const conversation = objectiveConversation(objective, (index) => MEMBER_TONE_KEYS[index % MEMBER_TONE_KEYS.length]!, (at) => { openCommodoreConversation(objective.commodoreId, { revealAt: at, readOnly: true, objectiveId: objective.id }); }, objectiveConversationActions(objective));
   return { id: objective.id, theaterId: objective.theaterId, commodoreId: objective.commodoreId, title: objective.title, avatarObjectiveId: objective.id, members: [], conversation };
 }
 
@@ -378,12 +367,10 @@ export const objectivesClusterSource: ObjectiveClusterSource = {
     const offView = subscribeObjectiveView(listener);
     const offCommodore = subscribeCommodore(listener);
     const offFresh = subscribeFreshConversation(listener);
-    // 대화 명부의 모델 낱말은 보드와 같은 로스터로 짓는다 — 로스터가 오기 전에는 id 를 다듬은 낱말이 잠깐 선다.
-    const offRoster = subscribeLaunchRoster(listener);
     // 가운데 칸의 완료 화면이 보는 보관된 목표 — 끝난 목표를 읽어 오면 그 입력창의 대화를 세운다.
     const offFinished = subscribeFinishedObjectivesStore(listener);
     const stallTick = setInterval(listener, STALL_TICK_MS);
-    return () => { offObjective(); offView(); offCommodore(); offFresh(); offRoster(); offFinished(); clearInterval(stallTick); };
+    return () => { offObjective(); offView(); offCommodore(); offFresh(); offFinished(); clearInterval(stallTick); };
   },
   get: () => {
     const summaries = objectiveRecordSummaries();
@@ -395,8 +382,7 @@ export const objectivesClusterSource: ObjectiveClusterSource = {
     // 런타임 축이 수화되기 전(pending)과 끊긴 동안(degraded)의 요약 활동은 관측이 아니라 폴백(ended·idle)이다 — 「모름」을
     // 휴면·유휴로 접어 정체를 세우지 않도록, 축을 신뢰할 수 있을 때만 보드가 직접 센다. 전이는 호스트 상태 통지로 깨어난다.
     const runtimeReady = runtimeHydration() === "ready";
-    const roster = readLaunchRoster();
-    const inputs = [summaries, commodoreId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), roster, finishedObjectivesRevision(), ...theaterStates];
+    const inputs = [summaries, commodoreId, selected, todayIso(), Math.floor(now / STALL_TICK_MS), runtimeReady, commodoreRevision(), finishedObjectivesRevision(), ...theaterStates];
     if (inputs.length === cachedInputs.length && inputs.every((input, index) => input === cachedInputs[index])) return cached;
     const activity = new Map(summaries.map((summary) => [summary.id, summary.activity]));
     // 보관(describe) 요약은 화면에선 휴면으로 서지만 관측이 아니다 — 서버처럼 관측 없음(null)으로 두어 정체로 세지 않는다.
@@ -406,8 +392,8 @@ export const objectivesClusterSource: ObjectiveClusterSource = {
     // 보관된 완료 목표는 살아 있는 목록에 없다 — 완료 화면이 보는 동안만 읽어 둔 끝난 목표로 그 입력창의 대화(지휘관과의 메시지·범위 넓히기)를 세운다.
     const archivedShown = showing && !live.some((objective) => objective.id === showing) ? findFinishedObjective(showing) : null;
     const next = [
-      ...clustersOf(live, activity, (objective) => objective.commodoreId === commodoreId && selected === objective.id, commodoreBoardOf, runtimeReady ? (objectiveId) => observations.get(objectiveId) ?? null : () => null, now, roster),
-      ...(archivedShown?.done ? [doneStandInCluster(archivedShown, roster)] : []),
+      ...clustersOf(live, activity, (objective) => objective.commodoreId === commodoreId && selected === objective.id, commodoreBoardOf, runtimeReady ? (objectiveId) => observations.get(objectiveId) ?? null : () => null, now),
+      ...(archivedShown?.done ? [doneStandInCluster(archivedShown)] : []),
     ];
     const nextSignature = signature(next);
     cachedInputs = inputs;

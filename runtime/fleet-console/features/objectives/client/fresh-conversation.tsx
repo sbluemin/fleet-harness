@@ -5,6 +5,7 @@ import type { ClientConversationCapability, ConversationSurfaceDescriptor } from
 
 import type { Objective } from "../shared/types.js";
 import { getT } from "./i18n/index.js";
+import { openObjectivePopup } from "./objectives-panel.js";
 import { FRESH_SURFACE_ID, loadObjective, findAnyObjective, findFinishedObjective, subscribeFinishedObjectivesStore, finishedObjectivesFailed, finishedObjectivesLoaded, finishedObjectivesLoading, loadFinishedObjectives, focusObjective, listedObjectiveSummaries, subscribeObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
 
 /**
@@ -147,7 +148,7 @@ function FreshObjectiveBody({ objectiveId, theaterId, language, onClose, compose
   );
 }
 
-/** Console 이 가운데 칸에 세우는 시작 전 목표. 상세·편집은 목표 팝업이, 우측 사이드바는 사령관 패널이 맡는다. */
+/** Console 이 가운데 칸에 세우는 시작 전 목표. 상세·편집은 목표 팝업이, 프로필 편집은 상단 이름 pill 팝오버가 맡는다. */
 export const freshConversationSurface: ConversationSurfaceDescriptor = {
   id: FRESH_SURFACE_ID,
   title: (ctx) => findObjective(objectiveIdOf(ctx.params))?.title ?? getT(ctx.language)("objectives.state.fresh"),
@@ -158,8 +159,26 @@ export const freshConversationSurface: ConversationSurfaceDescriptor = {
     const objective = findObjective(objectiveId);
     return objectiveId && objective ? { key: objectiveRecordAvatarKey(objectiveId), role: "commander", label: objective.title, state: objective.done ? "done" : "fresh" } : null;
   },
+  profileFooter: (ctx, close) => {
+    const objectiveId = objectiveIdOf(ctx.params);
+    const objective = findObjective(objectiveId);
+    if (!objectiveId || !objective) return null;
+    const t = getT(ctx.language);
+    return (
+      <div className="conversation-profile-meta">
+        {objective.members.length > 0 ? <span>{t("objectives.composer.members", { count: objective.members.length })}</span> : null}
+        <button
+          type="button"
+          className="conversation-profile-link"
+          onClick={() => { close(); openObjectivePopup(objectiveId, "goal"); }}
+        >
+          {t("objectives.tabs.goal")} · {t("objectives.tabs.crew")}
+        </button>
+      </div>
+    );
+  },
   subscribe: (listener) => subscribeObjectiveOrFinished(listener),
-  // 개시하면 이 목표 id 로 지휘관 Objective 이 선다 — 오른쪽 패널은 같은 사령관의 탭을 유지한다.
+  // 개시하면 이 목표 id 로 지휘관 Objective 이 선다 — 입력창과 작업대는 같은 목표 문맥을 유지한다.
   standInObjectiveId: (ctx) => objectiveIdOf(ctx.params),
   commodoreId: (ctx) => findObjective(objectiveIdOf(ctx.params))?.commodoreId ?? null,
   render: (ctx) => {

@@ -1,4 +1,4 @@
-/* 그룹 대화 — 가운데 칸의 한 줄기 대화와 오른쪽 「구성원」 탭.
+/* 그룹 대화 — 가운데 칸의 한 줄기 대화.
    색 채널: 구성원 정체성은 표식(cluster-member-glyph)과 이름 잉크만 --id-* 톤을 쓴다. 상태는 신호 토큰, 초점은 brass.
    선택·보는 중 표시는 테두리 전체와 배경 워시로 말한다 — 왼쪽 띠를 쓰지 않는다. */
 
@@ -702,96 +702,6 @@ button.group-relay-pill-party:focus-visible { box-shadow: var(--focus-face); }
 .group-chat-working-part.is-rest { flex-shrink: 1000; }
 .group-chat-working-part.group-chat-working-hit { color: inherit; }
 
-/* 오른쪽 「구성원」 탭 */
-.group-members { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3) var(--space-4); font-family: var(--font-ui); }
-.group-members-heading {
-  margin: 0;
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-tertiary);
-}
-.group-members-list { display: flex; flex-direction: column; gap: 2px; margin: 0; padding: 0; list-style: none; }
-/* 구성원 줄 — 줄 자체(.group-members-main)가 원장으로 가는 단추다. 정지·제거는 그 단추 밖, 이름 열 아래에 형제로 선다.
-   선택(지금 원장을 보는 줄)은 테두리 전체와 면 워시로 말한다 — 왼쪽 띠를 두지 않는다. */
-.group-members-row {
-  display: flex;
-  flex-direction: column;
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-}
-.group-members-row.is-openable:hover,
-.group-members-row.is-openable:focus-within { background: var(--control-wash-hover); }
-.group-members-row.is-openable.is-showing { border-color: var(--brass); background: var(--control-wash); }
-.group-members-main {
-  display: grid;
-  grid-template-columns: 22px minmax(0, 1fr) auto;
-  align-items: start;
-  gap: var(--space-2);
-  width: 100%;
-  min-width: 0;
-  box-sizing: border-box;
-  padding: var(--space-2);
-  border: 0;
-  border-radius: inherit;
-  background: none;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-}
-button.group-members-main { cursor: pointer; }
-/* 아바타가 따로 선 줄(편집할 수 있는 참여자) — 아바타는 줄 단추 밖 형제라 단추 안의 첫 칸을 비운다. */
-.group-members-main.has-avatar { grid-template-columns: minmax(0, 1fr) auto; }
-.group-members-row .avatar-editor-row { padding-left: var(--space-2); }
-.group-members-row .avatar-editor-row > .group-members-main { flex: 1; min-width: 0; padding-left: 0; }
-button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
-.group-members-text { display: flex; flex-direction: column; min-width: 0; }
-.group-members-name { font-size: var(--t-sm); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 보드 사실(플러그인이 보낸 profile) — 이름 곁 제안 표식, 역할 아래 모델·강도 줄, 브리프, 사유 줄. 좁은 칸에서는 이름·모델 낱말·표식이
-   줄임표로 접히고(전문은 title), 이름과 표식이 한 줄에 서지 못하면 표식이 다음 줄로 내려간다 — 어느 언어·폭에서도 이름이 남는다.
-   브리프는 세 줄, 사유는 두 줄까지 접어 보이고 전문은 title 이다. */
-.group-members-title { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-1); min-width: 0; }
-.group-members-title > .group-members-name { flex: 0 1 auto; min-width: 0; max-width: 100%; }
-.group-members-badge { flex: 0 1 auto; min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; padding: 2px 5px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 12%, transparent); color: var(--aurora); font: var(--weight-bold) var(--t-2xs)/1 var(--font-ui); white-space: nowrap; }
-.group-members-role { font-size: var(--t-xs); color: var(--text-tertiary); }
-.group-members-launch { display: flex; flex-wrap: wrap; align-items: center; gap: 2px var(--space-1); min-width: 0; margin-top: 2px; font-size: var(--t-xs); color: var(--text-secondary); white-space: nowrap; }
-/* 모델 줄은 제 폭 전체로 줄을 고른다 — 표식과 한 줄에 다 서지 못하면 다음 줄로 내려가 낱말이 짓눌리지 않고, 그 줄에서도 넘치면
-   모델 낱말만 줄임표로 접는다. */
-.group-members-launch-coord { display: inline-flex; align-items: center; gap: var(--space-1); flex: 1 1 auto; min-width: 0; }
-.group-members-launch-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-.group-members-launch-dot,
-.group-members-launch-effort { flex: none; }
-.group-members-launch-label.is-off { color: var(--text-tertiary); text-decoration: line-through; text-decoration-color: color-mix(in oklch, var(--text-tertiary) 60%, transparent); }
-.group-members-launch-badge { flex: none; max-width: 100%; box-sizing: border-box; overflow: hidden; text-overflow: ellipsis; padding: 0 5px; border: 1px solid color-mix(in oklch, var(--warn) 40%, transparent); border-radius: var(--radius-pill); color: var(--warn-ink); font-size: var(--t-2xs); letter-spacing: 0.06em; text-transform: uppercase; }
-.group-members-brief { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; margin-top: 2px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); white-space: pre-wrap; overflow-wrap: anywhere; }
-.group-members-note { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; margin-top: 2px; font-size: var(--t-xs); line-height: 1.45; color: var(--text-tertiary); overflow-wrap: anywhere; }
-.group-members-note.is-warn { color: var(--warn-ink); }
-.group-members-note.is-danger { color: var(--coral); }
-.group-members-actions { display: flex; flex-wrap: wrap; gap: var(--space-3); padding: 0 var(--space-2) var(--space-2) calc(var(--space-2) + 22px + var(--space-2)); }
-.group-members-state { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; font-size: var(--t-xs); color: var(--text-secondary); padding-top: 2px; }
-.group-members-state.is-danger { color: var(--coral); }
-.group-members-add {
-  align-self: flex-start;
-  padding: var(--space-2);
-  border: 0;
-  background: none;
-  font: inherit;
-  font-size: var(--t-sm);
-  color: var(--text-secondary);
-  cursor: pointer;
-}
-.group-members-add:hover { color: var(--text-primary); }
-.group-members-add:focus-visible { border-radius: var(--radius-xs); box-shadow: var(--focus-face); }
-
-/* 활동 점 — 노드 줄 상태 점과 같은 어휘(작업 warn 채움, 백그라운드 warn 고리, 대기 positive, 끝남 빈 고리, 답 기다림 aurora 마름모). */
-.group-members-dot { flex: none; width: 7px; height: 7px; border-radius: 50%; box-sizing: border-box; }
-.group-members-dot.is-running { background: var(--warn); }
-.group-members-dot.is-idle { background: var(--positive); }
-.group-members-dot.is-ended,
-.group-members-dot.is-unknown { box-shadow: inset 0 0 0 1px var(--hairline-strong); }
-.group-members-dot.is-awaiting { border-radius: 1.5px; transform: rotate(45deg); background: var(--aurora); }
-
 @media (prefers-reduced-motion: reduce) {
   .group-chat-line-chev,
   .group-chat-line-summary { transition: none; }
@@ -822,8 +732,6 @@ button.group-members-main:focus-visible { box-shadow: var(--focus-face); }
 .group-ledger-back:active { background: var(--control-wash); }
 .group-ledger-body { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
 .group-ledger-body > * { flex: 1 1 auto; min-height: 0; }
-
-.group-members-empty { margin: 0; padding: var(--space-4); font-family: var(--font-ui); font-size: var(--t-sm); color: var(--text-tertiary); }
 
 /* 입력창 — 가운데 칸 바닥의 캡슐. 진행 줄 바로 아래, 대화 열과 같은 폭. */
 .group-composer-wrap {

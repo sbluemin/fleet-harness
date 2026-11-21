@@ -364,11 +364,6 @@ export interface RailEntryConversationTab {
   readonly external?: boolean;
   /** 낱말 곁 점 — `attention` 은 사람이 답할 일, `unseen` 은 안 읽은 것. `label` 은 스크린 리더가 읽는다. */
   readonly dot?: { readonly tone: "attention" | "unseen"; readonly label: LocalizedText };
-  /**
-   * 이 탭이 대상의 「구성원」 탭을 대신한다 — 호스트는 자기 구성원 탭을 걷고, 그 탭이 켜져 있었으면 이 탭으로 옮긴다.
-   * 한 머리에 「구성원」이 둘 서지 않게 한다.
-   */
-  readonly replacesMembers?: boolean;
 }
 
 /** 하위 탭 줄의 지금 모습. 호스트는 `useSyncExternalStore` 로 읽으므로 같은 상태에는 같은 객체를 돌려준다. */

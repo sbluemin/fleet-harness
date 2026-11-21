@@ -35,7 +35,6 @@ function readTabs(slot: string | undefined, objective: Objective | null, selecte
       title: TAB_TITLES[id],
       // 결정 내역은 목표 탭 맨 아래, 임무 그래프는 구성원 탭 맨 아래에 산다 — 점도 그 탭에 선다.
       ...(id === "crew" && unseen ? { dot: UNSEEN_DOT } : {}),
-      ...(id === "crew" ? { replacesMembers: true } : {}),
     })),
     // 증거는 상세 탭이 아니다 — 누르면 뷰어만 연다.
     { id: "evidence", title: T("objectives.results.title"), external: true },

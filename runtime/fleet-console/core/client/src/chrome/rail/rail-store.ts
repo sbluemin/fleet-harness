@@ -276,8 +276,8 @@ function normalizeStoredPanelId(stored: string): string | null {
     stored === "diff" || stored === "history" || stored === "repository" || stored === "alerts" || stored === "codex" ||
     stored === "file-explorer" || stored === "files" || stored === "global-shell" || stored === "skills"
   ) return null;
-  // 사령관 우측 사이드바 탭(정보·활동)은 채팅창 내부 통합으로 퇴역했다.
-  if (stored === "commodore-info" || stored === "commodore-routines") return null;
+  // 사령관·지휘관 우측 사이드바 탭(정보·활동·구성원)은 퇴역했다.
+  if (stored === "commodore-info" || stored === "commodore-routines" || stored === "conversation.members") return null;
   return stored;
 }
 
