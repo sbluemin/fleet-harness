@@ -2,6 +2,7 @@ import type * as http from "node:http";
 import { expirePairingCookie, formatPairingCookie, formatSessionCookie, readPairingCookie, type AccessSession, type ListenerIdentity, type createAccessRegistry } from "./auth.js";
 import { PAIRED_DEVICE_LIMIT, type createPairedDeviceStore } from "./paired-devices.js";
 import { normalizeRemoteJoinSource, type createRemoteJoinGuard } from "./remote-join-guard.js";
+import { isPlainObject } from "./route-input.js";
 interface PairingRouteDeps {
   readonly access: ReturnType<typeof createAccessRegistry>;
   readonly pairedDeviceStore: ReturnType<typeof createPairedDeviceStore>;
@@ -177,9 +178,6 @@ export function createPairingRoutes(deps: PairingRouteDeps) {
   }
 
   return { handleAccessJoin };
-}
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 function sanitizeDeviceName(value: unknown): string | null {
   if (typeof value !== "string") return null;

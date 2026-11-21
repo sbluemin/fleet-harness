@@ -217,7 +217,8 @@ export function assertTrustedConsoleLock(input: ConsoleLockTrustInput): void {
   }
 }
 
-function currentUid(): number | null {
+/** This process's uid, or null where `process.getuid` does not exist. Lock ownership is judged against it. */
+export function currentUid(): number | null {
   return typeof process.getuid === "function" ? process.getuid() : null;
 }
 

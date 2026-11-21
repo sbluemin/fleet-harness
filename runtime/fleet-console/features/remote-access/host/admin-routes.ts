@@ -7,6 +7,7 @@ import type { createPairedDeviceStore } from "./paired-devices.js";
 import type { createRemoteJoinGuard } from "./remote-join-guard.js";
 import type { createRemoteIdentityStore } from "./remote-identity.js";
 import type { createRemoteEndpointStore } from "./remote-endpoint.js";
+import { decodeHandle } from "./route-input.js";
 interface RemoteAdminDeps {
   readonly access: ReturnType<typeof createAccessRegistry>;
   readonly pairedDeviceStore: ReturnType<typeof createPairedDeviceStore>;
@@ -227,14 +228,6 @@ export function createRemoteAdminRoutes(deps: RemoteAdminDeps) {
   }
 
   return { handleRemoteAccessStatus, handleAccessLinkRevoke, handleAccessSessionRevoke, handlePairedDeviceRevoke, handleRemoteIdentityRotation, handleAccessLinkIssue };
-}
-function decodeHandle(raw: string): string {
-  if (raw.includes("/")) return "";
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return "";
-  }
 }
 function readAccessClass(req: http.IncomingMessage): AccessClass | null {
   const requested = new URL(req.url ?? "/", "http://localhost").searchParams.get("access");

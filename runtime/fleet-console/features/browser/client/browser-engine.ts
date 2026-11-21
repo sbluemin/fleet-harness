@@ -1,3 +1,4 @@
+import type { BrowserExecutionHost, BrowserSurfaceModeKind } from "@fleet-console/protocol/desktop";
 import * as React from "react";
 
 /**
@@ -39,15 +40,10 @@ export function useBrowserPluginAttach(): ((files: readonly File[]) => void) | n
  * `viewer` 는 보기 전용이다. 웹·모바일에는 브라우저 뷰가 없다.
  */
 export type BrowserUnavailableReason = "desktop_required";
-export type BrowserSurfaceMode = "native" | "remote" | "viewer";
-export interface BrowserExecutionHost {
-  readonly managed: boolean;
-  readonly connected: boolean;
-  readonly status: "connected" | "manager_disconnected" | "unmanaged";
-  readonly hostLabel: string | null;
-  readonly platform: "darwin" | "win32" | "linux" | null;
-  readonly accessPath: "loopback" | "wsl" | null;
-}
+/** 표면 종류는 Desktop 프로토콜이 선언한 값을 그대로 쓴다 — Console 화면은 자기 사본을 두지 않는다. */
+export type BrowserSurfaceMode = BrowserSurfaceModeKind;
+/** 실행 호스트도 Desktop 프로토콜의 계약 하나뿐이다. */
+export type { BrowserExecutionHost } from "@fleet-console/protocol/desktop";
 /** 아직 묻지 않았거나 답을 못 받았으면 null — 그때는 문을 닫지 않는다(모르는 것을 못 쓰는 것으로 보이지 않게). */
 export type BrowserEngineState = {
   readonly available: boolean;

@@ -1,3 +1,23 @@
+/**
+ * 자식 프로세스에 건네는 환경의 호스트별 조정 — Fleet 자식이 실제로 만나는 두 함정을 한자리에 둔다.
+ *
+ * 둘 다 부모의 env를 고치지 않고 새 값을 돌려준다. 자식마다 필요한 조정이 다르므로 호출부가
+ * 고른 것만 겹쳐 쓰고, 겹치지 않은 실행은 env를 그대로 쓴다.
+ */
+
+// Node v22.19.0+/v24.6.0+는 NODE_USE_SYSTEM_CA=1로 OS 신뢰 저장소의 CA를 추가 신뢰한다
+// (TLS 검사 프록시 환경 대응, issue #531). 미지원 버전은 알 수 없는 env를 무시하므로 무조건 주입해도 안전하다.
+const NODE_USE_SYSTEM_CA_ENV = "NODE_USE_SYSTEM_CA";
+
+export function withNodeSystemCa(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const next: NodeJS.ProcessEnv = { ...env };
+  // 사용자가 명시한 값(0 포함)은 존중한다. Windows는 env 키가 대소문자 무시라 `node_use_system_ca=0` 같은
+  // 변형이 있는데 대문자 키를 추가하면 child env 구성 시 명시값을 덮을 수 있어, 존재 여부는 대소문자 무관하게 본다.
+  const hasExplicitValue = Object.keys(next).some((key) => key.toUpperCase() === NODE_USE_SYSTEM_CA_ENV);
+  if (!hasExplicitValue) next[NODE_USE_SYSTEM_CA_ENV] = "1";
+  return next;
+}
+
 const PROXY_ENV_KEYS = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"] as const;
 const NO_PROXY_ENV_KEY = "NO_PROXY";
 const LOOPBACK_HOSTS = ["127.0.0.1", "localhost", "::1"] as const;

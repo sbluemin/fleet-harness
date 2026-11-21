@@ -105,7 +105,7 @@ export function isImeKeyEvent(input: { readonly keyCode?: number; readonly isCom
   return input.isComposing === true || input.keyCode === 229 || input.key === "Process";
 }
 
-/** macOS 편집 단축키(cmd 단독 조합) → Chromium 편집 명령. service.ts 의 `editCommand` 와 같은 표다. */
+/** macOS 편집 단축키(cmd 단독 조합) → Chromium 편집 명령. 원격 입력과 서비스 디스패치가 이 표 하나를 쓴다. */
 export function macEditCommand(key: string, mods: Modifiers): string | undefined {
   if (!mods.meta || mods.ctrl || mods.alt) return undefined;
   return { a: "selectAll", c: "copy", v: "paste", x: "cut", z: mods.shift ? "redo" : "undo" }[key.toLowerCase()];
