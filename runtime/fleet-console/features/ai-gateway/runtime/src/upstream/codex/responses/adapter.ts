@@ -28,6 +28,13 @@ import {
   readBoundedBody,
   type FetchLike,
   type UpstreamReadOptions,
+  isRecord,
+  record,
+  optionalRecord,
+  string,
+  number,
+  optionalNonNegativeNumber,
+  isUndiciSocketTermination,
 } from "../../../transport/upstream-sse.js";
 import { logRawWireEvent, wireLog } from "../../../transport/wire-log.js";
 
@@ -657,22 +664,6 @@ function isRetryableCodexFetchSocketTermination(
   return signal?.aborted !== true
     && isMarkedFailure(error)
     && isUndiciSocketTermination(error);
-}
-
-function isUndiciSocketTermination(error: unknown): boolean {
-  const seen = new Set<object>();
-  let current: unknown = error;
-  for (let depth = 0; depth <= 4; depth += 1) {
-    if (current === null || typeof current !== "object" || seen.has(current)) {
-      return false;
-    }
-    seen.add(current);
-    if ((current as { code?: unknown }).code === "UND_ERR_SOCKET") {
-      return true;
-    }
-    current = (current as { cause?: unknown }).cause;
-  }
-  return false;
 }
 
 async function abortableDelay(delayMs: number, signal?: AbortSignal): Promise<void> {
@@ -1605,46 +1596,3 @@ function canonicalError(value: unknown): CanonicalError {
   return { type, message };
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function record(value: unknown, name: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new UpstreamProtocolError(`${name} must be an object`);
-  }
-  return value;
-}
-
-/** Optional nested detail object. Absent or null means the field was never reported. */
-function optionalRecord(value: unknown, name: string): Record<string, unknown> | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  return record(value, name);
-}
-
-function string(value: unknown, name: string): string {
-  if (typeof value !== "string") {
-    throw new UpstreamProtocolError(`${name} must be a string`);
-  }
-  return value;
-}
-
-function number(value: unknown, name: string): number {
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new UpstreamProtocolError(`${name} must be a number`);
-  }
-  return value;
-}
-
-/** Optional finite nonnegative detail count. Absent or null means the field was never reported. */
-function optionalNonNegativeNumber(value: unknown, name: string): number | undefined {
-  if (value === undefined || value === null) {
-    return undefined;
-  }
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    throw new UpstreamProtocolError(`${name} must be a finite nonnegative number`);
-  }
-  return value;
-}
