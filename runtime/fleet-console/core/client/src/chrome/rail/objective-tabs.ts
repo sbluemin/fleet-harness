@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { RailPanelDescriptor } from "../../../../../features/workspace/shared/rail.js";
+import { createListenerSet } from "../../integration/listener-set.js";
 
 /**
  * 대화 중심 화면의 오른쪽 패널 앞 묶음 — 지금 가운데 칸에 선 Objective 의 탭(구성원 등).
@@ -30,7 +31,7 @@ export interface ConversationTabSection {
 let tabs: readonly ConversationObjectiveTab[] = [];
 let hostCount = 0;
 let snapshot: readonly ConversationObjectiveTab[] = [];
-const listeners = new Set<() => void>();
+const { emit, subscribe } = createListenerSet();
 
 function sameTabs(left: readonly ConversationObjectiveTab[], right: readonly ConversationObjectiveTab[]): boolean {
   return left.length === right.length && left.every((tab, index) => tab === right[index]);
@@ -41,12 +42,7 @@ function publish(): void {
   const next = hostCount > 0 ? sorted : [];
   if (sameTabs(next, snapshot)) return;
   snapshot = next;
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  emit();
 }
 
 /** 탭 하나를 등록한다. 같은 id 는 새 등록이 이긴다. 돌려준 함수로 걷는다. */

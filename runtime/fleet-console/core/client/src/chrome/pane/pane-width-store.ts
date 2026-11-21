@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { createListenerSet } from "../../integration/listener-set.js";
 
 /**
  * 페인 열의 폭 — 표면이 소유한다.
@@ -9,19 +10,13 @@ import { useSyncExternalStore } from "react";
  */
 
 const PREFS_PREFIX = "fleet-console.pane.width.";
-type Listener = () => void;
 
-const listeners = new Set<Listener>();
+const { emit: notify, subscribe } = createListenerSet();
 let widths: Readonly<Record<string, number>> = readStoredWidths();
 
 function emit(next: Readonly<Record<string, number>>): void {
   widths = next;
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
+  notify();
 }
 
 function getSnapshot(): Readonly<Record<string, number>> {

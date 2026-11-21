@@ -10,6 +10,7 @@ import { closeConversationSurface } from "../../../../features/workspace/client/
 
 import { OBJECTIVE_ARCHIVE_CHANGED_EVENT, OBJECTIVE_CLUSTER_CHANGED_EVENT, type ObjectiveArchiveSnapshot } from "../../../../features/objectives/shared/records/archive.js";
 import { fetchObjectiveArchive } from "../../../../features/execution/client/objective-records.js";
+import { createListenerSet } from "./listener-set.js";
 
 interface ArchiveState {
   readonly total: number;
@@ -21,21 +22,17 @@ interface ArchiveState {
   readonly sheetOpen: boolean;
 }
 
-type Listener = () => void;
-const listeners = new Set<Listener>();
+const listeners = createListenerSet();
 let state: ArchiveState = { total: 0, revision: -1, snapshot: null, loading: false, error: false, sheetOpen: false };
 let inflight: Promise<void> | null = null;
 let refetchAfterInflight = false;
 
 function setState(next: Partial<ArchiveState>): void {
   state = { ...state, ...next };
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
-export function subscribeObjectiveArchive(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
+export const subscribeObjectiveArchive = listeners.subscribe;
 
 export function getObjectiveArchiveState(): ArchiveState {
   return state;

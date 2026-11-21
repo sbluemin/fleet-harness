@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { isFleetMobileShell } from "@fleet-console/link/core";
+import { createListenerSet } from "./listener-set.js";
 
 export type ResolvedViewMode = "mobile" | "desktop";
 
@@ -8,9 +9,7 @@ export type ViewModeSnapshot = {
   readonly effective: ResolvedViewMode;
 };
 
-type Listener = () => void;
-
-const listeners = new Set<Listener>();
+const listeners = createListenerSet();
 let narrowViewportQuery: MediaQueryList | null = null;
 let wideViewportQuery: MediaQueryList | null = null;
 
@@ -29,10 +28,7 @@ export function getViewModeSnapshot(): ViewModeSnapshot {
   return store;
 }
 
-export function subscribeViewMode(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
+export const subscribeViewMode = listeners.subscribe;
 
 export function useViewMode(): ViewModeSnapshot {
   return useSyncExternalStore(subscribeViewMode, getViewModeSnapshot);
@@ -70,7 +66,7 @@ function createSnapshot(viewportNarrow: boolean): ViewModeSnapshot {
 
 function setStore(next: ViewModeSnapshot): void {
   store = next;
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
 /** 좌측 사이드바가 지금 화면에 보이는가 — 사이드바는 접히지 않으므로 모바일 셸에서만 없다. */

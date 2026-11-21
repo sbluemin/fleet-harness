@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { createListenerSet } from "../../integration/listener-set.js";
 
 /* 레일은 다중 고정(pin) 스택에서 단일 독점 슬롯으로 회귀했다 — 카드에는 패널이 하나만 상주한다.
    - activePanelId: 카드에 상주하는 유일한 패널. localStorage에 영속.
@@ -22,12 +23,11 @@ interface RailStore {
   readonly detailOverlayLeft: number | null;
 }
 
-type Listener = () => void;
 const PREFS_ACTIVE_PANEL = "fleet-console.rail.activePanelId";
 const LEGACY_PREFS_PINNED_PANELS = "fleet-console.rail.pinnedPanels";
 // 옛 아이콘 열의 접힘 선호 — 열이 도구모음으로 옮겨 가며 퇴역했다. 남은 값은 첫 로드에 걷는다.
 const LEGACY_PREFS_CHROME_EXPANDED = "fleet-console.rail.chromeExpanded";
-const listeners = new Set<Listener>();
+const listeners = createListenerSet();
 const personListeners = new Set<(open: boolean) => void>();
 let store: RailStore = {
   activePanelId: readStoredActivePanelId(),
@@ -42,10 +42,7 @@ let store: RailStore = {
 };
 try { localStorage.removeItem(LEGACY_PREFS_CHROME_EXPANDED); } catch { /* ignore */ }
 
-export function subscribeRailStore(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
+export const subscribeRailStore = listeners.subscribe;
 
 export function reportDetailOverlayLeft(left: number | null): void {
   const next = left !== null && Number.isFinite(left) ? Math.floor(left) : null;
@@ -290,7 +287,7 @@ function saveStoredActivePanelId(id: string | null): void {
 
 function setStore(next: RailStore): void {
   store = next;
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
 export function reportExpandedMinWidth(px: number): void {

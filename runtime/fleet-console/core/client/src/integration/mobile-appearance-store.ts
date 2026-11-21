@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from "react";
 import type { MobileScheme } from "../../../../features/settings/shared/mobile-scheme.js";
+import { createListenerSet } from "./listener-set.js";
 
 /*
  * 모바일 겉모습(색상 모드·글자 배율) — 기기 단위 모바일 선호다. Console 서버 설정
@@ -85,7 +86,7 @@ const CONSOLE_ADDRESS_MAX = 120;
 
 type NativeMessageTarget = { postMessage(body: string): void };
 
-const listeners = new Set<() => void>();
+const listeners = createListenerSet();
 let systemQuery: MediaQueryList | null = null;
 let installed = false;
 let lastChrome = "";
@@ -224,7 +225,7 @@ function setSnapshot(next: MobileAppearanceSnapshot): void {
   applyToDocument(next);
   if (same) return;
   snapshot = next;
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
 function nativeMessageTarget(): NativeMessageTarget | null {
@@ -289,10 +290,7 @@ export function getMobileAppearanceSnapshot(): MobileAppearanceSnapshot {
   return snapshot;
 }
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
+const subscribe = listeners.subscribe;
 
 export function useMobileAppearance(): MobileAppearanceSnapshot {
   return useSyncExternalStore(subscribe, getMobileAppearanceSnapshot);

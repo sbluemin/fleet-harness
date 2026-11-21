@@ -30,8 +30,7 @@ import type {
   ReleaseNotesResponse,
   ThemeId,
 } from "./types.js";
-
-type Listener = () => void;
+import { createListenerSet } from "./listener-set.js";
 
 const THEME_HINT_STORAGE_KEY = "fleet-console.theme-hint";
 // 다크 테마가 여럿이던 시절 모드 전환이 돌아갈 다크를 기억하던 키다. 다크가 하나뿐이라 지우기만 한다.
@@ -50,7 +49,7 @@ const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   mutedTheaterIds: {},
 };
 
-const listeners = new Set<Listener>();
+const listeners = createListenerSet();
 // 플러그인의 관측값은 원천으로 보존한다. 공개 축만 부모가 대표하는 구성원의 살아 있는 활동을 반영한다.
 let rawObjectiveRuntime: Readonly<Record<string, ObjectiveRuntimeState>> = {};
 let nestedMembersByParent: ReadonlyMap<string, readonly string[]> = new Map();
@@ -124,12 +123,7 @@ export function getState(): ConsoleState {
   return state;
 }
 
-export function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+export const subscribe = listeners.subscribe;
 
 export function setState(patch: Partial<ConsoleState>): void {
   state = withLiveSelection({ ...state, ...partitionObjectiveRecordsPatch(patch) });
@@ -381,13 +375,10 @@ export function applyDesktopShellMarker(): void {
  * 캡션 스트립 높이를 줌만큼 키워 맡는다(window-policy.ts·title-bar-overlay-refresh.ts).
  */
 let desktopZoomFactor = 1;
-const desktopZoomListeners = new Set<() => void>();
+const desktopZoomListeners = createListenerSet();
 
 export function getDesktopZoomFactor(): number { return desktopZoomFactor; }
-export function subscribeDesktopZoomFactor(listener: () => void): () => void {
-  desktopZoomListeners.add(listener);
-  return () => { desktopZoomListeners.delete(listener); };
-}
+export const subscribeDesktopZoomFactor = desktopZoomListeners.subscribe;
 
 function trackDesktopZoomFactor(): void {
   let pendingMeasurement = false;
@@ -422,7 +413,7 @@ function trackDesktopZoomFactor(): void {
     const lights = MACOS_TRAFFIC_LIGHTS;
     // 셸의 52px 줄 가운데 배치와 같은 DIP 반올림을 적용한다.
     style.setProperty("--desktop-traffic-bottom", `${(Math.round((52 * factor - lights.height) / 2) + lights.height) / factor}px`);
-    for (const listener of desktopZoomListeners) listener();
+    desktopZoomListeners.emit();
   };
   /**
    * 다시 재는 신호는 resize가 아니라 devicePixelRatio의 변화다. 줌이 바뀌면 둘 다 오지만,
@@ -442,7 +433,6 @@ function trackDesktopZoomFactor(): void {
   apply();
   watch();
 }
-
 
 export function hydrateObjectiveRecords(objectiveRecords: readonly ObjectiveRecord[]): void {
   setState({ objectiveRecords: objectiveRecords, objectiveRecordsHydrated: true });
@@ -1002,7 +992,7 @@ export function objectiveRecordSearchEntries(current: ConsoleState) {
 }
 
 function emit(): void {
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
 function removeNotificationForObjective(

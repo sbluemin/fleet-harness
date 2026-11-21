@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { createListenerSet } from "./listener-set.js";
 
 /**
  * 창을 들고 있는 셸이 자기 자신의 갱신에 대해 알려 주는 것. 수행자는 셸이고 화면은 읽기만 한다 —
@@ -22,20 +23,15 @@ const STAGES: readonly DesktopShellUpdateStage[] = ["idle", "available", "downlo
 
 const idle: DesktopShellUpdate = { stage: "idle", version: null, percent: null, failure: null };
 
-type Listener = () => void;
-
 let snapshot: DesktopShellUpdate = idle;
-const listeners = new Set<Listener>();
+const listeners = createListenerSet();
 
 function publish(next: DesktopShellUpdate): void {
   snapshot = next;
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
-function subscribe(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => { listeners.delete(listener); };
-}
+const subscribe = listeners.subscribe;
 
 function getSnapshot(): DesktopShellUpdate {
   return snapshot;

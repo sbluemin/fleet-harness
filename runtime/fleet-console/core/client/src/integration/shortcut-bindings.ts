@@ -10,6 +10,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { CoreMessageKey } from "../i18n/index.js";
+import { createListenerSet } from "./listener-set.js";
 
 export type ShortcutBindings = Readonly<Record<string, readonly string[]>>;
 
@@ -50,7 +51,7 @@ export function companionDefaultChord(code: string): string {
 
 // ─── 저장값(사용자 재배정) 스토어 ─────────────────────────────────────────────
 
-const listeners = new Set<() => void>();
+const listeners = createListenerSet();
 let overrides: ShortcutBindings = {};
 
 export function getShortcutOverrides(): ShortcutBindings {
@@ -59,13 +60,10 @@ export function getShortcutOverrides(): ShortcutBindings {
 
 export function setShortcutOverrides(next: ShortcutBindings): void {
   overrides = next;
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+const subscribe = listeners.subscribe;
 
 /** 조합이 바뀌면 다시 그려야 하는 표시 표면이 구독한다. */
 export function useShortcutOverrides(): ShortcutBindings {

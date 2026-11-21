@@ -1,6 +1,7 @@
 import { useSyncExternalStore } from "react";
 
 import type { ExpandedSurfaceCloseContext, ExpandedSurfaceOpenRequest } from "../../../../../features/workspace/shared/expanded-surface.js";
+import { createListenerSet } from "../../integration/listener-set.js";
 
 /**
  * 확대 표면 스토어 — 열린 페인의 순서 있는 목록과 폭 가중치를 소유한다.
@@ -35,7 +36,7 @@ type Listener = () => void;
 const EMPTY: ExpandedSurfaceState = { instances: [], focusedInstanceId: null };
 
 const SESSION_KEY = "fleet.console.expanded-surfaces.v1";
-const listeners = new Set<Listener>();
+const listeners = createListenerSet();
 let state: ExpandedSurfaceState = readSession();
 let instanceSeq = 0;
 
@@ -123,7 +124,7 @@ let host: ExpandedSurfaceHost | null = null;
 let releaseHost: (() => void) | null = null;
 
 function notifyListeners(): void {
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
 /** 호스트를 묶는다. 돌려준 함수로 푼다 — 푼 뒤에는 이 모듈의 목록이 다시 주인이다. */
@@ -164,12 +165,7 @@ export function announceExpandedSurfacesClosed(instances: readonly ExpandedSurfa
   }
 }
 
-export function subscribeExpandedSurfaces(listener: Listener): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+export const subscribeExpandedSurfaces = listeners.subscribe;
 
 export function getExpandedSurfaceState(): ExpandedSurfaceState {
   return host ? host.state() : state;
@@ -183,7 +179,7 @@ function setState(next: ExpandedSurfaceState): void {
   if (next === state) return;
   state = next;
   writeSession();
-  for (const listener of listeners) listener();
+  listeners.emit();
 }
 
 /**
