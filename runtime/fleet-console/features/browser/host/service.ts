@@ -6,7 +6,7 @@ import { BrowserHistory, type HistoryScope, type HistorySuggestion } from "./his
 import { DESKTOP_BROWSER_CHROME_HISTORY, type BrowserHistoryVisit } from "@fleet-console/protocol/desktop/browser-history";
 import { DESKTOP_BROWSER_PASSWORDS, type BrowserPasswordShellCommand } from "@fleet-console/protocol/desktop/browser-passwords";
 import { acceptBrowserPasswordResult, browserPasswordDispatchError, BrowserPasswordRequestError, type BrowserPasswordDispatchResult } from "./passwords.js";
-import { modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
+import { macEditCommand, modifierBits, parseKeyChord, type Modifiers } from "./keys.js";
 import { applyRemoteInputBatch, applySelectChoice, createRemoteSelectRegistry, probeSelectPresence, probeSelectTarget, RemoteInputError, type RemoteBatchResult, type RemoteInputCommand, type RemotePointerState } from "./remote-input.js";
 import { DESKTOP_BROWSER_POPUP_EVENT, type BrowserPageDialog, type DesktopEngine } from "./desktop-engine.js";
 import { DESKTOP_BROWSER_ANSWER_PERMISSION, DESKTOP_BROWSER_CHROME_PROFILES, DESKTOP_BROWSER_CLEANUP_FILES, DESKTOP_BROWSER_CLEAR_PROFILE, DESKTOP_BROWSER_DEFAULT_PROFILE, DESKTOP_BROWSER_DEFAULT_SPACE_ID, DESKTOP_BROWSER_IMPORT_COOKIES, DESKTOP_BROWSER_PASSWORD_ACTION, DESKTOP_BROWSER_SELECT_POPUP, DESKTOP_BROWSER_STAGE_FILES, DESKTOP_BROWSER_TAB_LIMITS, browserSpaceKindOf, browserSpaceTabLimit, commodoreBrowserSpaceId, commodoreOfBrowserSpace, isRemoteBrowserFileChooserAction, isRemoteBrowserInputBatch, isRemoteBrowserPasswordAction, isRemoteBrowserPermissionAction, isRemoteBrowserSelectPopupAction, type BrowserExecutionHost, type DesktopBrowserChrome, type DesktopBrowserChromeSpace, type DesktopBrowserControl, type DesktopBrowserViewerSnapshot, type DesktopBrowserPointer, type RemoteBrowserFileChooserPrompt, type RemoteBrowserInputBatch, type RemoteBrowserPasswordAction, type RemoteBrowserPasswordPrompt, type RemoteBrowserPermissionAction, type RemoteBrowserPermissionPrompt, type RemoteBrowserSelectPopup, type RemoteBrowserSelectPopupAction } from "@fleet-console/protocol/desktop";
@@ -512,11 +512,7 @@ const CHROME_SURFACE = `(() => {
   if (window.chrome !== chrome) window.chrome = chrome;
 })()`;
 
-/** macOS 편집 단축키 → Chromium 편집 명령. cmd 단독 조합만 해당한다. */
-function editCommand(key: string, mods: Modifiers): string | undefined {
-  if (!mods.meta || mods.ctrl || mods.alt) return undefined;
-  return { a: "selectAll", c: "copy", v: "paste", x: "cut", z: mods.shift ? "redo" : "undo" }[key.toLowerCase()];
-}
+/** macOS 편집 단축키 → Chromium 편집 명령 표는 `keys.ts`의 `macEditCommand` 하나뿐이다. */
 
 /** 마지막 도구 호출 뒤 이만큼 조용하면 세션을 닫는다 — computer-use 와 같은 값. */
 const AGENT_SESSION_IDLE_MS = 5 * 60_000;
@@ -2786,7 +2782,7 @@ export class BrowserService {
     this.notePointer(op, tab, "type");
     const common = { key: descriptor.key, code: descriptor.code, windowsVirtualKeyCode: descriptor.keyCode, nativeVirtualKeyCode: descriptor.keyCode, modifiers };
     // macOS 편집 단축키(cmd+a·c·v·x·z)는 Chromium이 commands 로 받아야 실제 편집이 일어난다.
-    const command = editCommand(descriptor.key, mods);
+    const command = macEditCommand(descriptor.key, mods);
     await client.send("Input.dispatchKeyEvent", { ...common, type: descriptor.text ? "keyDown" : "rawKeyDown", ...(descriptor.text ? { text: descriptor.text, unmodifiedText: descriptor.text } : {}), ...(command ? { commands: [command] } : {}) }, tab.sessionId);
     await client.send("Input.dispatchKeyEvent", { ...common, type: "keyUp" }, tab.sessionId);
   }
