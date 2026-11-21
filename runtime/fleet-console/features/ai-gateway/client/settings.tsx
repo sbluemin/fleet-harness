@@ -36,8 +36,8 @@ export const aiGatewaySettingsSection = defineSettingsSection({
       getT(locale)("terminal.settings.aiGatewayDiagnostics"),
       getT(locale)("terminal.settings.aiGatewayWireLog"),
     ].join(" "),
-    "gateway provider model api key codex xai opencode gemini anthropic delegation routing pool subagent workflow diagnostics wire log compact",
-    "게이트웨이 공급자 모델 키 배정 위임 라우팅 풀 서브에이전트 워크플로 진단 와이어 로그 압축",
+    "model gateway ai gateway provider model api key codex xai opencode gemini anthropic delegation routing pool subagent workflow diagnostics wire log compact",
+    "모델 게이트웨이 게이트웨이 공급자 모델 키 배정 위임 라우팅 풀 서브에이전트 워크플로 진단 와이어 로그 압축",
   ],
   render: () => <AiGatewaySection />,
   // 폰의 설정 목록 보조 줄 — 풀에 담긴 모델 수를 말한다(데스크톱은 이 필드를 읽지 않는다).

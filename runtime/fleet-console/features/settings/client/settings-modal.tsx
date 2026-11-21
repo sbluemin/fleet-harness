@@ -244,7 +244,10 @@ const GLYPHS: Readonly<Record<string, ReactNode>> = {
     <svg viewBox="0 0 16 16"><circle cx="3.6" cy="8" r="1.6" {...stroke} /><circle cx="12.4" cy="3.8" r="1.6" {...stroke} /><circle cx="12.4" cy="12.2" r="1.6" {...stroke} /><path d="M5.2 8h2.4l3.2-3.4M7.6 8l3.2 3.4" {...stroke} /></svg>
   ),
   connectivity: (
-    <svg viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.8" {...stroke} /><path d="M2.4 8h11.2M8 2.2c1.7 1.6 2.5 3.5 2.5 5.8S9.7 12.2 8 13.8M8 2.2C6.3 3.8 5.5 5.7 5.5 8s.8 4.2 2.5 5.8" {...stroke} /></svg>
+    <svg viewBox="0 0 16 16">
+      <circle cx="8" cy="8" r="1.4" fill="currentColor" />
+      <path d="M5.6 5.6a3.4 3.4 0 0 0 0 4.8M10.4 5.6a3.4 3.4 0 0 1 0 4.8M3.4 3.6a6.4 6.4 0 0 0 0 8.8M12.6 3.6a6.4 6.4 0 0 1 0 8.8" {...stroke} />
+    </svg>
   ),
   advanced: (
     <svg viewBox="0 0 16 16"><path d="M5.6 3C4 3 4 4 4 5.2v.9c0 .9-.6 1.6-1.6 1.9.9.3 1.6 1 1.6 1.9v.9C4 12 4 13 5.6 13M10.4 3C12 3 12 4 12 5.2v.9c0 .9.6 1.6 1.6 1.9-.9.3-1.6 1-1.6 1.9v.9c0 1.2 0 2.2-1.6 2.2" {...stroke} /></svg>

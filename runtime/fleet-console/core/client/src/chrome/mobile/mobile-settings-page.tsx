@@ -375,7 +375,7 @@ function buildMobileSettingsGroups({ state, savingFields, appearance, version, u
   use.push(
     // 원격 접속은 실험 기능에서 승격되어 자기 행으로 선다 — 데스크톱의 「원격 접속」 범주와 같은 섹션(connectivity)을 연다.
     // 원격이 실리지 않은 콘솔(원격 세션)에는 포트만 남으므로 이름도 「연결」이다.
-    { id: "connectivity", title: state?.remoteAccess === undefined ? t("settings.core.connectivity.label") : t("settings.remote.title"), value: null, icon: <MobileIcon name="globe" /> },
+    { id: "connectivity", title: state?.remoteAccess === undefined ? t("settings.core.connectivity.label") : t("settings.remote.title"), value: null, icon: <MobileIcon name="remote" /> },
     { id: "experiments", title: t("settings.core.experiments.label"), value: describeExperiments(state, t), icon: <MobileIcon name="flask" /> },
   );
   const appVersion = appearance.appVersion;

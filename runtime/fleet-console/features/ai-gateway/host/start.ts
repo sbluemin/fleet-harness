@@ -282,7 +282,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
       }
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
-    }, [{ method: "POST", path: "", summary: `Set or clear the ${label} monthly spend budget.`, category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+    }, [{ method: "POST", path: "", summary: `Set or clear the ${label} monthly spend budget.`, category: "Model Gateway", gate: "origin-write", transport: "http" }]);
   };
   registerSpendBudgetRoute("ai-gateway/quota/gemini-budget", "Gemini", geminiLedger);
   registerSpendBudgetRoute("ai-gateway/quota/anthropic-budget", "Anthropic", anthropicLedger);
@@ -314,7 +314,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     });
     ctx.host.http.writeJson(res, 200, summary);
     return true;
-  }, [{ method: "GET", path: "", summary: "Read or explicitly refresh the shared Gateway quota cache.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "GET", path: "", summary: "Read or explicitly refresh the shared Gateway quota cache.", category: "Model Gateway", gate: "origin-write", transport: "http" }]);
   function currentExposure(): GatewayAssignmentExposure {
     const settings = aiGatewayStore.read();
     const selection = resolveAiGatewaySelection(settings);
@@ -394,7 +394,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
     ctx.host.http.writeJson(res, 200, readCandidates());
     return true;
-  }, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "GET", path: "", summary: "Read eligible candidate models ordered by quota headroom.", category: "Model Gateway", gate: "origin-write", transport: "http" }]);
   /** `enabled-models` 라우트와 `fleet-ai-gateway` models 도구가 같은 본문을 읽는다. 로그인 상태가 목록을 가르므로 갱신도 같이 건다. */
   const readEnabledModels = () => {
     void quota.getSummary().catch(() => undefined);
@@ -405,7 +405,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
     ctx.host.http.writeJson(res, 200, readEnabledModels());
     return true;
-  }, [{ method: "GET", path: "", summary: "Read enabled models in settings order, without quota pressure.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "GET", path: "", summary: "Read enabled models in settings order, without quota pressure.", category: "Model Gateway", gate: "origin-write", transport: "http" }]);
   ctx.registerRouter("ai-gateway/routing-assign", async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -434,7 +434,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
       else throw error;
     } finally { res.off("close", abort); }
     return true;
-  }, [{ method: "POST", path: "", summary: "Route tasks with the commodore judge, then deterministic fallbacks.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "POST", path: "", summary: "Route tasks with the commodore judge, then deterministic fallbacks.", category: "Model Gateway", gate: "origin-write", transport: "http" }]);
   ctx.registerRouter("ai-gateway/routing-session/dispose", async ({ req, res }) => {
     if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "method_not_allowed" }); return true; }
     if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return true; }
@@ -445,7 +445,7 @@ export function startAiGateway(ctx: GatewayStartContext) {
     await releaseRoutingSession(objectiveId);
     if (!res.destroyed) ctx.host.http.writeJson(res, 200, { ok: true });
     return true;
-  }, [{ method: "POST", path: "", summary: "Discard one objective's routing judgment session.", category: "AI Gateway", gate: "origin-write", transport: "http" }]);
+  }, [{ method: "POST", path: "", summary: "Discard one objective's routing judgment session.", category: "Model Gateway", gate: "origin-write", transport: "http" }]);
   const resolveClaudeExecutable = ctx.resolveClaudeExecutable;
   // Claude alias가 가리키는 버전은 Console이 띄우는 그 CLI가 정한다. 필요한 순간에만 묻는다.
   const claudeNativeListeners = new Set<() => void>();

@@ -87,9 +87,9 @@ export function registerAiGatewayRoutes(
     await ownedRequestTiming?.flush();
   });
   ctx.registerRouter(AI_GATEWAY_ROUTE_SEGMENT, router.handle, [
-    { method: "*", path: "/api/hello", summary: "Read the AI Gateway health response.", category: "Console Execution", gate: "loopback", transport: "http" },
-    { method: "*", path: "/v1/models", summary: "Proxy the AI Gateway model listing.", category: "Console Execution", gate: "anthropic-credential", transport: "proxy" },
-    { method: "POST", path: "/v1/messages", summary: "Proxy an Anthropic Messages request through the AI Gateway.", category: "Console Execution", gate: "anthropic-credential", transport: "proxy" },
+    { method: "*", path: "/api/hello", summary: "Read the Model Gateway health response.", category: "Console Execution", gate: "loopback", transport: "http" },
+    { method: "*", path: "/v1/models", summary: "Proxy the Model Gateway model listing.", category: "Console Execution", gate: "anthropic-credential", transport: "proxy" },
+    { method: "POST", path: "/v1/messages", summary: "Proxy an Anthropic Messages request through the Model Gateway.", category: "Console Execution", gate: "anthropic-credential", transport: "proxy" },
   ]);
   return {
     recordCompactEvent: (event) => {
