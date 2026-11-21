@@ -626,6 +626,80 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 /* 재시도 안내가 서면 기록 위의 고정 줄이다 — 투명 맨 위 줄 아래로 내리고, 기록은 그 밑에서 바로 시작한다. */
 .objectives-commodore-conversation > .objectives-commodore-retry { margin-top: var(--conversation-overlay-top, 0px); }
 .objectives-commodore-conversation:has(> .objectives-commodore-retry) .objectives-commodore-conversation-log { --conversation-overlay-top: 0px; }
+/* 데스크톱 사령관 채팅 — 우측 부유 엣지 스택(58px + 12px 여백)과 사람 말풍선이 겹치지 않도록 오른쪽 안쪽 여백을 확보한다. */
+:root:not([data-view-mode="mobile"]) .objectives-commodore-conversation .group-chat-log {
+  padding-right: max(84px, clamp(var(--space-4), 4cqi, 48px));
+}
+
+/* 우측 부유 엣지 스택 플라이아웃 안의 목표·루틴 본문 */
+.commodore-edge-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.commodore-edge-panel .commander-tab-bar {
+  justify-content: flex-end;
+}
+.commodore-edge-panel .commodore-routines-empty {
+  padding: var(--space-4) var(--space-2);
+}
+.commodore-edge-empty {
+  margin: 0;
+  padding: var(--space-4) var(--space-2);
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  line-height: 1.55;
+}
+
+/* 상단 이름 pill 프로필 팝오버 하단 — 설명 미리보기와 신경망 바로가기 */
+.commodore-profile-footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.commodore-profile-desc {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: keep-all;
+}
+.commodore-profile-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+.commodore-profile-map-link {
+  padding: 2px 6px;
+  margin-right: -6px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.commodore-profile-map-link:hover {
+  background: var(--wash-hover);
+}
+.commodore-profile-map-link:focus-visible {
+  box-shadow: var(--focus-face);
+  outline: none;
+}
 
 .commodore-create-scrim { position: fixed; inset: 0; z-index: 40; display: grid; place-items: center; padding: 16px; background: var(--dialog-scrim); }
 /* 새 사령관 — 머리·본문·발이 머리카락 선으로 나뉘는 창. 본문은 가운데 정렬 한 열이다. */

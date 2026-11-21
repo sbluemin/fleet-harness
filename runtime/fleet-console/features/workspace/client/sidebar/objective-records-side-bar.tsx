@@ -348,8 +348,11 @@ export function ObjectiveRecordsSideBar({
         arrivalPanelApplied.current = openKey;
         const current = getRailStoreSnapshot().activePanelId;
         if (!arrival.rightPanel.open) { if (current !== null) closeRailPanel(current); }
-        // 옛 Console 이 넘긴 없어진 사령관 「정보」 탭은 활동 칸으로 연다.
-        else if (arrival.rightPanel.tab) openRailPanel(commodoreRailTab(arrival.rightPanel.tab));
+        // 옛 Console 이 넘긴 퇴역 사령관 사이드바 탭은 무시한다.
+        else if (arrival.rightPanel.tab) {
+          const nextTab = commodoreRailTab(arrival.rightPanel.tab);
+          if (nextTab !== null) openRailPanel(nextTab);
+        }
       }
       consoleArrived.current();
     };

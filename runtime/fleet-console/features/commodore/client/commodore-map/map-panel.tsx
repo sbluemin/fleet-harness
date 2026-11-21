@@ -55,6 +55,8 @@ export interface MapPanelProps {
   readonly onClose: () => void;
   /** 요약의 「+ 설명 추가 / + 정보 추가」에서 한 번에 편집까지 연다. 없으면 `onSelect`로 대신한다. */
   readonly onQuickEdit?: (target: "desc" | "intel") => void;
+  /** 요약 상태에서 패널 자체를 접는다(데스크톱 부유 인스펙터 전용). */
+  readonly onDismiss?: () => void;
   /** 레일 안에서는 공용 머리(아바타·이름)가 있으니 요약 머리를 뺀다. */
   readonly compactSummary?: boolean;
   /**
@@ -132,7 +134,7 @@ function useStaleCount(entries: readonly MemoryEntry[]): number {
   return entries.filter((entry) => now - entry.verified > MEMORY_STALE_MS).length;
 }
 
-function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branchName, onSelect, onQuickEdit, compact, editors }: Omit<MapPanelProps, "node" | "onClose"> & { readonly compact?: boolean }) {
+function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branchName, onSelect, onQuickEdit, onDismiss, compact, editors }: Omit<MapPanelProps, "node" | "onClose"> & { readonly compact?: boolean }) {
   const stale = useStaleCount(entries);
   const links = graph.edges.filter((edge) => edge.kind === "link").length;
   const objectives = graph.nodes.filter((node) => node.kind === "objective").length;
@@ -155,14 +157,20 @@ function CommanderSummary({ t, commodoreId, state, entries, graph, facts, branch
   return (
     <>
       {compact ? (
-        metaLine ? <div className="commodore-map-panel-meta">{metaLine}</div> : null
+        metaLine || onDismiss ? (
+          <div className="commodore-map-panel-nav">
+            {metaLine ? <div className="commodore-map-panel-meta">{metaLine}</div> : <span />}
+            {onDismiss ? <button type="button" className="commodore-map-icon-btn commodore-map-panel-close" aria-label={t("commodore.map.closePanel")} title={t("commodore.map.closePanel")} onClick={onDismiss}>✕</button> : null}
+          </div>
+        ) : null
       ) : (
       <div className="commodore-map-soma">
         <CommodoreAvatar commodoreId={commodoreId} state="idle" size={52} label="" decorative />
-        <div>
+        <div className="commodore-map-soma-copy">
           <h2>{name}</h2>
           {metaLine ? <div className="commodore-map-panel-meta">{metaLine}</div> : null}
         </div>
+        {onDismiss ? <button type="button" className="commodore-map-icon-btn commodore-map-panel-close" aria-label={t("commodore.map.closePanel")} title={t("commodore.map.closePanel")} onClick={onDismiss}>✕</button> : null}
       </div>
       )}
       {firstDescLine ? (
@@ -296,14 +304,14 @@ function MemoryDetail({ t, entry, entries, crumbTop, branchName, onSelect, onClo
  * 시안 모양의 상세 패널 — 고르면 그 항목, 고르지 않으면 사령관 요약.
  * 없는 값은 항목째 뺀다(`없음` 문구 금지).
  */
-export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, branchName, onSelect, onClose, onQuickEdit, compactSummary, editors }: MapPanelProps) {
+export function MapPanel({ t, commodoreId, node, state, entries, graph, facts, branchName, onSelect, onClose, onQuickEdit, onDismiss, compactSummary, editors }: MapPanelProps) {
   const name = (state.alias ?? "").trim() || "commodore";
   const crumbTop: CrumbItem = { label: name, id: null };
   const closeLabel = t("commodore.map.closePanel");
 
   let title = name;
   let body: React.ReactNode = (
-    <CommanderSummary t={t} commodoreId={commodoreId} state={state} entries={entries} graph={graph} facts={facts} branchName={branchName} onSelect={onSelect} {...(onQuickEdit ? { onQuickEdit } : {})} compact={compactSummary} {...(editors ? { editors } : {})} />
+    <CommanderSummary t={t} commodoreId={commodoreId} state={state} entries={entries} graph={graph} facts={facts} branchName={branchName} onSelect={onSelect} {...(onQuickEdit ? { onQuickEdit } : {})} {...(onDismiss ? { onDismiss } : {})} compact={compactSummary} {...(editors ? { editors } : {})} />
   );
   const entry = node?.ref ? entries.find((candidate) => candidate.ref === node.ref) ?? null : null;
   if (node && entry && node.kind === "memory") {

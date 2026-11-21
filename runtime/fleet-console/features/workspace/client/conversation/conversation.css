@@ -330,6 +330,34 @@
   color: var(--brass-ink);
 }
 
+/* 오른쪽 패널 탭이 없는 대화(사령관)의 상단 이름 pill 아래 프로필 팝오버 — 아바타·이름 편집과 보조 설명을 싣는다. */
+.conversation-profile-popover {
+  position: absolute;
+  top: calc(var(--conversation-top-row) + var(--space-1));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 7;
+  width: min(320px, calc(100% - 32px));
+  border-radius: var(--popover-radius);
+  background: var(--popover-face);
+  box-shadow: var(--popover-surface-shadow);
+  color: var(--text-primary);
+  overflow: visible;
+}
+
+html[data-desktop-shell="true"] .conversation-profile-popover {
+  -webkit-app-region: no-drag;
+}
+
+.conversation-profile-identity {
+  padding: var(--space-4) var(--space-4) var(--space-3);
+}
+
+.conversation-profile-extra {
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--popover-divider);
+}
+
 .conversation-pill-surface-mark svg { width: 100%; height: 100%; }
 
 /* 부제는 줄이 모자랄 때 가장 먼저 말줄임으로 줄어든다(하한은 대화 열의 도구모음 측정이 min-width 로 건다). */

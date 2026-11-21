@@ -1,5 +1,3 @@
-import { useConversationPanelOwner } from "../../../../../features/workspace/client/conversation/conversation-panel-owner.js";
-import { CONVERSATION_MEMBERS_TAB_ID } from "../../../../../features/execution/client/agent/chat/group/index.js";
 import { useMemo } from "react";
 
 import type { ClientExpandedSurfacesCapability } from "../../../../../features/workspace/shared/navigation-ports.js";
@@ -196,8 +194,7 @@ export function useRailEntries(side: "right" = "right"): readonly RailEntryBindi
  */
 export function useDesktopRailEntries(side: "right" = "right"): readonly RailEntryBinding[] {
   const bindings = useRailEntries(side);
-  const owner = useConversationPanelOwner();
-  return useMemo(() => bindings.filter((binding) => binding.entry.mobile?.desktop !== false && !(owner !== null && binding.entry.id === CONVERSATION_MEMBERS_TAB_ID)), [bindings, owner]);
+  return useMemo(() => bindings.filter((binding) => binding.entry.mobile?.desktop !== false), [bindings]);
 }
 
 /**

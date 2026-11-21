@@ -1,15 +1,15 @@
 import type { ComponentType, ReactNode } from "react";
 import { useSyncExternalStore } from "react";
 
-import type { ContextRailScope, ContextRailSession } from "../../../shared/context-rail.js";
+import type { ContextRailExtraItem, ContextRailScope, ContextRailSession } from "../../../shared/context-rail.js";
 
 /**
- * 컨텍스트 레일의 데이터 제공자. 대화 칸의 범위(scope)를 보고 자기 것이면 세션 목록으로 `children`을 부르고, 아니면 아무것도 그리지
- * 않는다. 제공자는 훅을 쓰므로 함수가 아니라 컴포넌트다 — 세션 목록은 그 기능의 상태에서 나온다.
+ * 컨텍스트 레일의 데이터 제공자. 대화 칸의 범위(scope)를 보고 자기 것이면 세션 목록(필요 시 보조 엣지 칩 포함)으로 `children`을 부르고,
+ * 아니면 아무것도 그리지 않는다. 제공자는 훅을 쓰므로 함수가 아니라 컴포넌트다 — 세션 목록은 그 기능의 상태에서 나온다.
  */
 export type ContextRailProvider = ComponentType<{
   readonly scope: ContextRailScope;
-  readonly children: (sessions: readonly ContextRailSession[]) => ReactNode;
+  readonly children: (sessions: readonly ContextRailSession[], extras?: readonly ContextRailExtraItem[]) => ReactNode;
 }>;
 
 let providers: readonly ContextRailProvider[] = [];

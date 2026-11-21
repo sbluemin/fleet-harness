@@ -90,6 +90,18 @@ export function toggleContextDetail(key: string): void {
   publish({ ...state, details });
 }
 
+export const CONTEXT_RAIL_EXTRA_PREFIX = "extra:";
+
+export function contextRailExtraFlyoutId(id: string): string {
+  return `${CONTEXT_RAIL_EXTRA_PREFIX}${id}`;
+}
+
+/** 보조 엣지 칩(목표·루틴 등)의 좌향 플라이아웃을 연다. 컨텍스트 창 켜짐 여부와 무관하게 열린다. */
+export function revealContextExtra(id: string): void {
+  const flyoutId = contextRailExtraFlyoutId(id);
+  publish({ ...state, flyout: flyoutId, reveal: { id: flyoutId, nonce: (state.reveal?.nonce ?? 0) + 1 } });
+}
+
 /**
  * 한 세션의 카드를 펼쳐 보인다(`/context`). 레일이 꺼져 있으면 켠다. 오버레이는 그 세션의 상세 카드를 띄운다.
  */

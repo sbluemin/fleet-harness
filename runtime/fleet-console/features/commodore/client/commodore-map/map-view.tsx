@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { Translate } from "@fleet-console/i18n";
 import { PlusGlyph } from "@fleet-console/ui/react";
@@ -20,7 +20,7 @@ import {
   type MapChipKey,
   type MapNode,
 } from "./map-graph.js";
-import { MapPanel, mapDisplayLabels, type MapPanelFacts } from "./map-panel.js";
+import { MapPanel, mapDisplayLabels, type MapPanelEditors, type MapPanelFacts } from "./map-panel.js";
 import { setCommodoreMapSelection, useCommodoreMapSelection } from "../commodore-map-mode.js";
 import { layoutMapGraph } from "./map-layout.js";
 import {
@@ -86,7 +86,7 @@ function FitGlyph() {
 }
 
 /** 무대 위에 겹친 조작 층 — 여기서 난 클릭은 지도 고르기로 넘기지 않는다. */
-const STAGE_OVERLAY = ".commodore-map-node, .commodore-map-top, .commodore-map-legend, .commodore-map-notice";
+const STAGE_OVERLAY = ".commodore-map-node, .commodore-map-top, .commodore-map-legend, .commodore-map-notice, .commodore-map-stage-panel";
 /** 이 거리(px) 이상 움직인 포인터는 회전·이동 끌기라 release 클릭에서 선택을 바꾸지 않는다. */
 const STAGE_DRAG_THRESHOLD_PX = 4;
 
@@ -105,18 +105,26 @@ function branchChipLabel(t: T, branch: MapBranchKey): string {
  * MapRenderer 계약에만 기대고, 종류는 환경(모바일·동작 줄이기·WebGL2)으로 고른다.
  * 렌더러 로드·mount 실패는 안내를 둔다. 닫히면 dispose로 반납한다.
  */
-export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNodeActivate, onQuickEdit, showPanel }: {
+export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNodeActivate, onQuickEdit, showPanel, floatingPanel, editors, onPanelClear, failureLine }: {
   readonly t: T;
   readonly commodoreId: string;
   readonly state: CommodoreState;
   readonly facts: MapPanelFacts;
   readonly onExit: () => void;
-  /** 점을 골랐을 때 상세를 보여 줄 수 있도록 호출한다(데스크톱에서 닫힌 우측 사이드바 열기). */
+  /** 점을 골랐을 때 상세를 보여 줄 수 있도록 호출한다. */
   readonly onNodeActivate?: () => void;
   /** 빈 상태 안내의 「+ 설명 추가 / + 정보 추가」에서 한 번에 편집까지 연다. */
   readonly onQuickEdit?: (target: "desc" | "intel") => void;
-  /** 모바일처럼 레일이 없으면 상세 패널을 무대 아래에 둔다. 기본은 두지 않는다(레일이 맡는다). */
+  /** 모바일처럼 레일이 없으면 상세 패널을 무대 아래에 둔다. 기본은 두지 않는다. */
   readonly showPanel?: boolean;
+  /** 데스크톱 대화 화면 — 상세·편집 패널을 무대 우측 안쪽에 접기 가능한 글래스 시트로 띄운다. */
+  readonly floatingPanel?: boolean;
+  /** 데스크톱 부유 인스펙터에 넘기는 설명·정보 편집기. */
+  readonly editors?: (pickedIntelId: string | null) => MapPanelEditors;
+  /** 패널 선택·닫기 시 상위 오류 줄을 비운다. */
+  readonly onPanelClear?: () => void;
+  /** 편집 오류 줄. */
+  readonly failureLine?: ReactNode;
 }) {
   const memory = useCommodoreMemory(commodoreId);
   const toneOf = useAvatarToneOf();
@@ -126,6 +134,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
+  const floatingPanelRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
   const tagRefs = useRef(new Map<string, HTMLDivElement>());
@@ -139,13 +148,28 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
   // 휴대폰 폭에서는 돋보기만 두고 누르면 입력을 편다(질의가 있으면 늘 펴 둔다).
   const [searchOpen, setSearchOpen] = useState(false);
   const searchRef = useRef<HTMLInputElement>(null);
-  // 선택은 가운데 칸과 레일이 함께 읽는다(사령관별 저장소).
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  useEffect(() => { setInspectorOpen(true); }, [commodoreId]);
+  // 선택은 사령관별 저장소와 동기화한다.
   const selectedId = useCommodoreMapSelection(commodoreId);
-  const setSelectedId = useCallback((next: string | null) => setCommodoreMapSelection(commodoreId, next), [commodoreId]);
-  const selectNode = useCallback((next: string | null) => {
+  const setSelectedId = useCallback((next: string | null) => {
+    onPanelClear?.();
     setCommodoreMapSelection(commodoreId, next);
-    if (next !== null) onNodeActivate?.();
-  }, [commodoreId, onNodeActivate]);
+  }, [commodoreId, onPanelClear]);
+  const selectNode = useCallback((next: string | null) => {
+    onPanelClear?.();
+    setCommodoreMapSelection(commodoreId, next);
+    if (next !== null) {
+      if (floatingPanel) setInspectorOpen(true);
+      onNodeActivate?.();
+    }
+  }, [commodoreId, floatingPanel, onNodeActivate, onPanelClear]);
+  const triggerQuickEdit = useCallback((target: "desc" | "intel") => {
+    onPanelClear?.();
+    if (floatingPanel) setInspectorOpen(true);
+    if (onQuickEdit) onQuickEdit(target);
+    else selectNode(target);
+  }, [floatingPanel, onPanelClear, onQuickEdit, selectNode]);
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryToken, setRetryToken] = useState(0);
@@ -192,8 +216,18 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
   const objectiveCount = useMemo(() => graph.nodes.filter((node) => node.kind === "objective").length, [graph]);
   const linkCount = useMemo(() => fullGraph.edges.filter((edge) => edge.kind === "link").length, [fullGraph]);
   const isEmpty = state.description.text === "" && graph.intelTotal === 0 && memory.entries.length === 0;
-  const selectedNode = selectedId ? resolveMapDetailNode(graph, selectedId, state, memory.entries) : null;
+  // 고른 정보 항목을 지웠으면 요약으로 튕기지 않고 정보 허브에 머문다.
+  const missingPickedIntel = selectedId !== null
+    && selectedId.startsWith("intel:")
+    && !state.intel.some((item) => `intel:${item.id}` === selectedId);
+  useEffect(() => {
+    if (missingPickedIntel) setCommodoreMapSelection(commodoreId, "intel");
+  }, [missingPickedIntel, commodoreId]);
+  const effectiveSelectedId = missingPickedIntel ? "intel" : selectedId;
+  const selectedNode = effectiveSelectedId ? resolveMapDetailNode(graph, effectiveSelectedId, state, memory.entries) : null;
   const selected: { readonly node: MapNode } | null = selectedNode ? { node: selectedNode } : null;
+  const pickedIntelId = selectedNode?.kind === "intel" ? (selectedNode.intelId ?? null) : null;
+  const floatingVisible = floatingPanel === true && inspectorOpen;
   // 오래된 정보(+N 묶음 안)를 고르면 캔버스에서는 `+N` 묶음 점을 강조한다.
   const canvasSelectionId = useMemo((): string | null => {
     if (selectedId === null) return null;
@@ -424,17 +458,21 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
     return () => observer.disconnect();
   }, []);
 
-  // (b) setFitInsets는 마운트·크기 변경 때만 부른다. 상세 패널은 우측 레일(또는 모바일 하단)에 있으므로
-  // 무대 오른쪽에 340px 여백을 남기지 않고 좌우 대칭으로 두며, 위쪽 여백은 실제 칩 줄 높이를 따른다.
+  // (b) setFitInsets는 마운트·크기·부유 인스펙터 열림/닫힘 변경 때 갱신한다.
+  // 데스크톱 부유 인스펙터가 열려 있으면 패널 폭(+우측 12px·숨구멍 24px)만큼 오른쪽 여백을 비워
+  // 그래프와 맞춤 보기(Fit)가 인스펙터 아래로 가려지지 않게 한다.
   const applyInsets = useCallback((): void => {
     const topH = topRef.current?.offsetHeight ?? 52;
+    const panelW = floatingVisible ? (floatingPanelRef.current?.offsetWidth ?? 316) : 0;
     rendererRef.current?.setFitInsets?.({
       top: topH + 20,
-      right: 24,
+      right: panelW > 0 ? panelW + 36 : 24,
       bottom: 56,
       left: 24,
     });
-  }, []);
+  }, [floatingVisible]);
+  const applyInsetsRef = useRef(applyInsets);
+  applyInsetsRef.current = applyInsets;
 
   // 생성·반납 — 비어 있어도 핵심·갈래 허브 뼈대는 그려 설명·정보를 바로 눌러 편집할 수 있게 한다.
   // 보기 변화 알림(onViewChange)이 오면 DOM 층을 다시 읽는다. 첫 그림·맞춤 트윈이
@@ -465,7 +503,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
         renderer.setReducedMotion?.(reducedRef.current);
         renderer.setFilter(visibleRef.current);
         renderer.setSelection(canvasSelectionRef.current);
-        applyInsets();
+        applyInsetsRef.current();
         renderer.fit();
         offView = renderer.onViewChange?.(() => syncPositions()) ?? null;
         syncPositions();
@@ -565,15 +603,19 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || typeof ResizeObserver === "undefined") return;
+    if (!container) return;
+    applyInsets();
+    syncPositions();
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
       applyInsets();
       syncPositions();
     });
     observer.observe(container);
     if (topRef.current) observer.observe(topRef.current);
+    if (floatingPanelRef.current) observer.observe(floatingPanelRef.current);
     return () => observer.disconnect();
-  }, [syncPositions, applyInsets, memory.loaded, memory.failed, loadError]);
+  }, [syncPositions, applyInsets, floatingVisible, memory.loaded, memory.failed, loadError]);
 
   const togglePick = (key: MapChipKey): void => {
     setPicks((current) => {
@@ -633,6 +675,10 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
   }, []);
 
   const handleMouseMove = (event: React.MouseEvent): void => {
+    if ((event.target as HTMLElement | null)?.closest(STAGE_OVERLAY)) {
+      if (hoveredId !== null) applyHover(null);
+      return;
+    }
     if (dragRef.current?.moved) return;
     if (hoverRafRef.current) return;
     const { clientX, clientY } = event;
@@ -673,12 +719,13 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
             className="commodore-map-stage"
             data-renderer={rendererKind ?? undefined}
             data-hover={hoveredId !== null ? "true" : undefined}
+            data-panel-open={floatingVisible ? "true" : undefined}
             onClick={(event) => {
               if (suppressClickRef.current) {
                 suppressClickRef.current = false;
                 return;
               }
-              // 점·위쪽 줄(검색·칩·맞춤 보기)·범례·안내를 누른 것은 지도 고르기가 아니다 — 그 아래 점을 고르거나 선택을 풀지 않는다.
+              // 점·위쪽 줄(검색·칩·맞춤 보기)·범례·안내·부유 인스펙터를 누른 것은 지도 고르기가 아니다 — 그 아래 점을 고르거나 선택을 풀지 않는다.
               if ((event.target as HTMLElement).closest(STAGE_OVERLAY)) return;
               const id = pickAt(event.clientX, event.clientY);
               selectNode(id === selectedId ? null : id);
@@ -693,6 +740,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
             onMouseLeave={handleMouseLeave}
             onKeyDown={handleStageKeyDown}
             onPointerDown={(event) => {
+              if ((event.target as HTMLElement).closest(STAGE_OVERLAY)) return;
               suppressClickRef.current = false;
               dragRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: event.button !== 0 };
               trackMotion(Infinity);
@@ -865,13 +913,22 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
                   {t("commodore.map.chip.link")} <span className="commodore-map-n">{linkCount}</span>
                 </button>
               </div>
-              <button
-                type="button"
-                className="commodore-map-icon-btn commodore-map-fit"
-                title={t("commodore.map.fitHint")}
-                aria-label={t("commodore.map.fit")}
-                onClick={() => { rendererRef.current?.fit(); trackMotion(600); }}
-              ><FitGlyph /></button>
+              <div className="commodore-map-top-actions">
+                {floatingPanel && !inspectorOpen ? (
+                  <button
+                    type="button"
+                    className="commodore-map-panel-open"
+                    onClick={() => setInspectorOpen(true)}
+                  >{t("commodore.map.openPanel")}</button>
+                ) : null}
+                <button
+                  type="button"
+                  className="commodore-map-icon-btn commodore-map-fit"
+                  title={t("commodore.map.fitHint")}
+                  aria-label={t("commodore.map.fit")}
+                  onClick={() => { rendererRef.current?.fit(); trackMotion(600); }}
+                ><FitGlyph /></button>
+              </div>
               </div>
               {/* 끌기·휠 조작은 WebGL만 받는다 — 휴대폰 궤도는 좁은 화면이라 시안대로 숨긴다. */}
               {rendererKind === "webgl" ? <div className="commodore-map-hint" aria-hidden="true">{t("commodore.map.hint")}</div> : null}
@@ -883,11 +940,11 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
                   <span>{t("commodore.map.empty")}</span>
                   {!showPanel ? (
                     <span className="commodore-map-notice-actions">
-                      <button type="button" className="commodore-map-notice-btn" onClick={() => (onQuickEdit ? onQuickEdit("desc") : selectNode("desc"))}>
+                      <button type="button" className="commodore-map-notice-btn" onClick={() => triggerQuickEdit("desc")}>
                         <span className="commodore-map-quick-plus" aria-hidden="true"><PlusGlyph /></span>
                         <span>{t("commodore.description.add")}</span>
                       </button>
-                      <button type="button" className="commodore-map-notice-btn" onClick={() => (onQuickEdit ? onQuickEdit("intel") : selectNode("intel"))}>
+                      <button type="button" className="commodore-map-notice-btn" onClick={() => triggerQuickEdit("intel")}>
                         <span className="commodore-map-quick-plus" aria-hidden="true"><PlusGlyph /></span>
                         <span>{t("commodore.intel.add")}</span>
                       </button>
@@ -923,8 +980,31 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
               </div>
               </>
             )}
+            {floatingVisible ? (
+              <div ref={floatingPanelRef} className="commodore-map-stage-panel" data-covers-native-view="">
+                <MapPanel
+                  t={t}
+                  commodoreId={commodoreId}
+                  node={selected?.node ?? null}
+                  state={state}
+                  entries={memory.entries}
+                  graph={graph}
+                  facts={facts}
+                  branchName={branchName}
+                  onSelect={(id) => { setSelectedId(id); }}
+                  onClose={() => {
+                    setSelectedId(null);
+                    if (selectedId) buttonRefs.current.get(selectedId)?.focus();
+                  }}
+                  onQuickEdit={triggerQuickEdit}
+                  onDismiss={() => setInspectorOpen(false)}
+                  editors={editors?.(pickedIntelId)}
+                />
+                {failureLine}
+              </div>
+            ) : null}
           </div>
-          {showPanel ? (
+          {showPanel && !floatingPanel ? (
           <MapPanel
             t={t}
             commodoreId={commodoreId}

@@ -3,21 +3,25 @@ import { createPortal } from "react-dom";
 
 import { useT } from "../../../../../core/client/src/i18n/index.js";
 import { ChevronGlyph } from "../../../../../foundation/ui/react.js";
-import type { ContextRailMeasure, ContextRailRow, ContextRailScope, ContextRailSession } from "../../../shared/context-rail.js";
+import type { ContextRailExtraItem, ContextRailMeasure, ContextRailRow, ContextRailScope, ContextRailSession } from "../../../shared/context-rail.js";
 import { useContextRailProviders } from "./registry.js";
 import {
-  setContextFlyout, setContextRailEnabled, toggleContextCard, toggleContextDetail, useContextRailState,
+  CONTEXT_RAIL_EXTRA_PREFIX, contextRailExtraFlyoutId, setContextFlyout, setContextRailEnabled, toggleContextCard, toggleContextDetail, useContextRailState,
   type ContextRailState,
 } from "./store.js";
 import "./context-rail.css";
 
 export type Translate = ReturnType<typeof useT>;
 
+const EMPTY_EXTRAS: readonly ContextRailExtraItem[] = [];
+const CHILD_MENU_SELECTOR = ".commodore-routines-menu, .commodore-routines-scrim, .commander-tab-menu, .objectives-menu, .avatar-editor-popover";
+const NESTED_OVERLAY_SELECTOR = `${CHILD_MENU_SELECTOR}, [role='menu'], [role='dialog']`;
+
 /**
- * 대화 칸 본문 위에 컨텍스트 창을 띄운다. 폭으로 단계를 나누지 않는다 — 어느 폭에서나 같은 칩이 채팅 우측 위(머리 아래)에
- * 세로로 쌓이고, 본문을 밀지 않는다. 레일은 오른쪽 패널을 열거나 닫지 않는다.
+ * 대화 칸 본문 위에 컨텍스트 창과 보조 엣지 칩(목표·루틴 등)을 띄운다. 폭으로 단계를 나누지 않는다 — 어느 폭에서나 같은 칩이
+ * 채팅 우측 위(머리 아래)에 세로로 쌓이고, 본문을 밀지 않는다. 레일은 오른쪽 패널을 열거나 닫지 않는다.
  *
- * `slot`은 대화 머리 오른쪽 끝의 자리다. 창을 켜고 끄는 단추만 거기에 선다.
+ * `slot`은 대화 머리 오른쪽 끝의 자리다. 컨텍스트 창을 켜고 끄는 단추만 거기에 선다.
  */
 export function ContextRailHost({ scope, slot, hidden, children }: {
   readonly scope: ContextRailScope;
@@ -35,15 +39,18 @@ export function ContextRailHost({ scope, slot, hidden, children }: {
       {children}
       {providers.map((Provider, index) => (
         <Provider key={index} scope={scope}>
-          {(sessions) => sessions.length > 0 ? <ContextRail sessions={sessions} slot={slot} hidden={hidden === true} /> : null}
+          {(sessions, extras = EMPTY_EXTRAS) => (sessions.length > 0 || extras.length > 0)
+            ? <ContextRail sessions={sessions} extras={extras} slot={slot} hidden={hidden === true} />
+            : null}
         </Provider>
       ))}
     </div>
   );
 }
 
-function ContextRail({ sessions, slot, hidden }: {
+function ContextRail({ sessions, extras, slot, hidden }: {
   readonly sessions: readonly ContextRailSession[];
+  readonly extras: readonly ContextRailExtraItem[];
   readonly slot: HTMLElement | null;
   readonly hidden: boolean;
 }) {
@@ -51,6 +58,7 @@ function ContextRail({ sessions, slot, hidden }: {
   const state = useContextRailState();
   // 보는 세션이 맨 위에 선다. 나머지는 제공자가 준 순서(지휘관, 구성원)를 지킨다.
   const ordered = React.useMemo(() => [...sessions.filter((session) => session.focus), ...sessions.filter((session) => !session.focus)], [sessions]);
+  const overlayRef = React.useRef<HTMLDivElement | null>(null);
   const stackRef = React.useRef<HTMLDivElement | null>(null);
   const chipRefs = React.useRef(new Map<string, HTMLDivElement>());
   const [flyTop, setFlyTop] = React.useState(0);
@@ -60,31 +68,44 @@ function ContextRail({ sessions, slot, hidden }: {
   const focusId = React.useRef<string | null>(null);
   const [bubbleId, setBubbleId] = React.useState<string | null>(null);
   const broughtIntoView = React.useRef<string | null>(null);
-  const open = ordered.find((session) => session.id === state.flyout) ?? null;
-  const bubble = ordered.find((session) => session.id === bubbleId && session.id !== state.flyout) ?? null;
+  const showSessions = state.enabled && ordered.length > 0;
+  const showOverlay = !hidden && (showSessions || extras.length > 0);
+  const openSession = showSessions ? ordered.find((session) => session.id === state.flyout) ?? null : null;
+  const openExtra = extras.find((item) => contextRailExtraFlyoutId(item.id) === state.flyout) ?? null;
+  const bubbleSession = showSessions ? ordered.find((session) => session.id === bubbleId && session.id !== state.flyout) ?? null : null;
+  const bubbleExtra = extras.find((item) => contextRailExtraFlyoutId(item.id) === bubbleId && contextRailExtraFlyoutId(item.id) !== state.flyout) ?? null;
   // 마우스가 칩 위에 있으면 그 칩이 이긴다. 포커스는 키보드(:focus-visible)일 때만 말풍선을 연다.
   const syncBubble = () => setBubbleId(overId.current ?? focusId.current);
 
-  // `/context`는 그 세션의 상세 카드를 띄운다.
+  // `/context` 또는 보조 칩 열기 요청이 해당 플라이아웃을 띄운다.
   const handled = React.useRef(state.reveal?.nonce ?? 0);
   React.useEffect(() => {
     const reveal = state.reveal;
     if (!reveal || reveal.nonce === handled.current) return;
     handled.current = reveal.nonce;
-    if (ordered.some((session) => session.id === reveal.id)) setContextFlyout(reveal.id);
-  }, [state.reveal, ordered]);
+    if (ordered.some((session) => session.id === reveal.id) || extras.some((item) => contextRailExtraFlyoutId(item.id) === reveal.id)) {
+      setContextFlyout(reveal.id);
+    }
+  }, [state.reveal, ordered, extras]);
 
-  // 떠 있는 카드는 밖을 누르거나 Esc로 닫는다. 떠 있을 때만 문서에 손을 댄다.
+  // 떠 있는 카드는 밖을 누르거나 Esc로 닫는다. 포털로 body에 띄운 하위 메뉴·대화상자 클릭과 Esc는 먼저 그쪽이 처리한다.
   const flyoutId = state.flyout;
   React.useEffect(() => {
     if (flyoutId === null) return;
     const onPointerDown = (event: PointerEvent) => {
       const target = event.target as Element | null;
       if (target?.closest("[data-context-rail-keep]")) return;
+      const nested = target?.closest(NESTED_OVERLAY_SELECTOR) ?? null;
+      if (nested !== null && !overlayRef.current?.contains(nested)) return;
       setContextFlyout(null);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (document.querySelector(CHILD_MENU_SELECTOR)) return;
+      const nestedNodes = document.querySelectorAll(NESTED_OVERLAY_SELECTOR);
+      for (const node of nestedNodes) {
+        if (!overlayRef.current?.contains(node)) return;
+      }
       event.stopPropagation();
       setContextFlyout(null);
     };
@@ -97,8 +118,11 @@ function ContextRail({ sessions, slot, hidden }: {
   }, [flyoutId]);
 
   React.useEffect(() => {
-    if (state.flyout !== null && !ordered.some((session) => session.id === state.flyout)) setContextFlyout(null);
-  }, [ordered, state.flyout]);
+    if (state.flyout === null) return;
+    const validSession = showSessions && ordered.some((session) => session.id === state.flyout);
+    const validExtra = extras.some((item) => contextRailExtraFlyoutId(item.id) === state.flyout);
+    if (!validSession && !validExtra) setContextFlyout(null);
+  }, [ordered, extras, showSessions, state.flyout]);
 
   const placeFloating = React.useCallback((scrollIntoView: boolean) => {
     const stack = stackRef.current;
@@ -118,12 +142,16 @@ function ContextRail({ sessions, slot, hidden }: {
     }
     if (state.flyout === null) broughtIntoView.current = null;
     const flyNode = state.flyout === null ? null : chipRefs.current.get(state.flyout) ?? null;
-    if (flyNode) setFlyTop(Math.max(0, flyNode.offsetTop - stack.scrollTop));
+    if (flyNode) {
+      const rawTop = Math.max(0, flyNode.offsetTop - stack.scrollTop);
+      const minPanelHeight = state.flyout !== null && state.flyout.startsWith(CONTEXT_RAIL_EXTRA_PREFIX) ? Math.min(360, stack.clientHeight) : 0;
+      setFlyTop(minPanelHeight > 0 ? Math.max(0, Math.min(rawTop, stack.clientHeight - minPanelHeight)) : rawTop);
+    }
     const bubbleNode = bubbleId === null ? null : chipRefs.current.get(bubbleId) ?? null;
-    if (bubbleNode) setBubbleTop(Math.max(0, bubbleNode.offsetTop - stack.scrollTop + 8));
+    if (bubbleNode) setBubbleTop(Math.max(0, bubbleNode.offsetTop - stack.scrollTop + 6));
   }, [state.flyout, bubbleId]);
 
-  React.useLayoutEffect(() => { placeFloating(true); }, [placeFloating, ordered]);
+  React.useLayoutEffect(() => { placeFloating(true); }, [placeFloating, ordered, extras, showSessions]);
   // 독이 자라면 오버레이 높이가 CSS 변수로 줄고, 칩 줄의 넘침·페이드도 따라 갱신한다.
   React.useLayoutEffect(() => {
     const stack = stackRef.current;
@@ -134,7 +162,7 @@ function ContextRail({ sessions, slot, hidden }: {
   }, [placeFloating]);
 
   const toggleLabel = t(state.enabled ? "conversation.rail.hide" : "conversation.rail.show");
-  const toggle = (
+  const toggle = ordered.length > 0 ? (
     <button
       type="button"
       className="context-rail-toggle"
@@ -146,13 +174,14 @@ function ContextRail({ sessions, slot, hidden }: {
     >
       <RailGlyph />
     </button>
-  );
+  ) : null;
 
   return (
     <>
-      {slot ? createPortal(toggle, slot) : null}
-      {state.enabled && !hidden ? (
+      {slot && toggle ? createPortal(toggle, slot) : null}
+      {showOverlay ? (
         <div
+          ref={overlayRef}
           className="context-rail-overlay"
           role="group"
           aria-label={t("conversation.rail.title")}
@@ -160,7 +189,7 @@ function ContextRail({ sessions, slot, hidden }: {
           {...(fade.bottom ? { "data-fade-bottom": "" } : {})}
         >
           <div ref={stackRef} className="context-rail-stack" onScroll={() => placeFloating(false)}>
-            {ordered.map((session) => (
+            {showSessions ? ordered.map((session) => (
               <div
                 key={session.id}
                 className="context-rail-chip-slot"
@@ -178,24 +207,99 @@ function ContextRail({ sessions, slot, hidden }: {
                   onFocusChange={(focused) => { focusId.current = focused ? session.id : focusId.current === session.id ? null : focusId.current; syncBubble(); }}
                 />
               </div>
-            ))}
+            )) : null}
+            {extras.map((item) => {
+              const key = contextRailExtraFlyoutId(item.id);
+              return (
+                <div
+                  key={key}
+                  className="context-rail-chip-slot"
+                  ref={(node) => {
+                    if (node) chipRefs.current.set(key, node);
+                    else chipRefs.current.delete(key);
+                  }}
+                >
+                  <ContextExtraChip
+                    item={item}
+                    open={state.flyout === key}
+                    onToggle={() => setContextFlyout(state.flyout === key ? null : key)}
+                    onHover={(hover) => { overId.current = hover ? key : overId.current === key ? null : overId.current; syncBubble(); }}
+                    onFocusChange={(focused) => { focusId.current = focused ? key : focusId.current === key ? null : focusId.current; syncBubble(); }}
+                  />
+                </div>
+              );
+            })}
           </div>
-          {bubble ? (
+          {bubbleSession ? (
             <div className="context-rail-bubble" style={{ top: bubbleTop }} aria-hidden="true">
-              <strong>{bubble.name}</strong>
-              {bubble.measure
-                ? <span className="context-rail-bubble-usage">{`${summaryOf(bubble.measure)} · ${percentOf(bubble.measure)}%`}</span>
+              <strong>{bubbleSession.name}</strong>
+              {bubbleSession.measure
+                ? <span className="context-rail-bubble-usage">{`${summaryOf(bubbleSession.measure)} · ${percentOf(bubbleSession.measure)}%`}</span>
                 : <span className="context-rail-bubble-plain">{t("conversation.rail.unmeasuredShort")}</span>}
             </div>
+          ) : bubbleExtra ? (
+            <div className="context-rail-bubble" style={{ top: bubbleTop }} aria-hidden="true">
+              <strong>{bubbleExtra.bubbleTitle}</strong>
+              {bubbleExtra.bubbleDetail ? <span className="context-rail-bubble-plain">{bubbleExtra.bubbleDetail}</span> : null}
+            </div>
           ) : null}
-          {open ? (
+          {openSession ? (
             <div data-covers-native-view="" className="context-rail-fly" style={{ top: flyTop, maxHeight: `calc(100% - ${flyTop}px)` }} data-context-rail-keep>
-              <ContextCard session={open} open forced state={state} t={t} />
+              <ContextCard session={openSession} open forced state={state} t={t} />
+            </div>
+          ) : openExtra ? (
+            <div data-covers-native-view="" className="context-rail-fly is-panel" style={{ top: flyTop, maxHeight: `calc(100% - ${flyTop}px)` }} data-context-rail-keep>
+              <section className="context-rail-panel" aria-label={openExtra.panelTitle}>
+                <header className="context-rail-panel-head">
+                  <div className="context-rail-panel-title-group">
+                    <strong className="context-rail-panel-title">{openExtra.panelTitle}</strong>
+                    {openExtra.panelSubtitle ? <span className="context-rail-panel-sub">{openExtra.panelSubtitle}</span> : null}
+                  </div>
+                  <button
+                    type="button"
+                    className="context-rail-panel-close"
+                    aria-label={t("conversation.rail.closePanel")}
+                    title={t("conversation.rail.closePanel")}
+                    onClick={() => setContextFlyout(null)}
+                  >✕</button>
+                </header>
+                <div className="context-rail-panel-body">
+                  {openExtra.render(() => setContextFlyout(null))}
+                </div>
+              </section>
             </div>
           ) : null}
         </div>
       ) : null}
     </>
+  );
+}
+
+function ContextExtraChip({ item, open, onToggle, onHover, onFocusChange }: {
+  readonly item: ContextRailExtraItem;
+  readonly open: boolean;
+  readonly onToggle: () => void;
+  readonly onHover: (hover: boolean) => void;
+  readonly onFocusChange: (focused: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="context-rail-chip is-extra"
+      data-context-rail-keep
+      data-edge-chip={item.id}
+      aria-expanded={open}
+      aria-label={item.label}
+      onClick={onToggle}
+      onPointerEnter={() => onHover(true)}
+      onPointerLeave={() => onHover(false)}
+      onFocus={(event) => { if (event.currentTarget.matches(":focus-visible")) onFocusChange(true); }}
+      onBlur={() => onFocusChange(false)}
+    >
+      {item.dot ? <span className="context-rail-extra-dot" aria-hidden="true" /> : null}
+      <span className="context-rail-extra-icon" aria-hidden="true">{item.icon}</span>
+      <span className="context-rail-extra-val">{item.value}</span>
+    </button>
   );
 }
 

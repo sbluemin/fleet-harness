@@ -122,7 +122,7 @@ export function CommodoreRoutines({ commodoreId, language, phone = false }: { re
     </>}
     {notice ? <p role="status" className="commodore-routines-hint">{notice}</p> : null}
     {failure ? <p role="alert" className="commodore-routines-error">{failure}</p> : null}
-    {menu && selected ? createPortal(<div className={phone ? "commodore-routines-scrim" : "commodore-routines-menu-host"}>
+    {menu && selected ? createPortal(<div data-context-rail-keep="" className={phone ? "commodore-routines-scrim" : "commodore-routines-menu-host"}>
       <div ref={menuRef} className={`commodore-routines-menu${phone ? " is-sheet" : ""}`} role={phone ? "dialog" : "menu"} aria-modal={phone ? true : undefined} aria-label={selected.name} onKeyDown={onMenuKey}>
         {/* 데스크톱 우클릭 메뉴는 사령관 메뉴처럼 머리 없이 항목만 선다. 휴대폰 시트는 줄이 가려지므로 대상 머리를 남긴다. */}
         {phone ? <div className="commodore-routines-menu-head">
