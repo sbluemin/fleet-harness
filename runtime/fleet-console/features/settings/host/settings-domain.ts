@@ -1,4 +1,4 @@
-import { readFontSettings, migrateFontSettings, migrateTerminalFont, type ConsoleFontSettings } from "../shared/fonts.js";
+import { readFontSettings, migrateFontSettings, migrateTerminalFont, UI_FONT_SIZE_RANGE, type ConsoleFontSettings } from "../shared/fonts.js";
 import crypto from "node:crypto";
 import { sanitizeCommodoreSidebarLayout, type CommodoreSidebarLayout } from "../../commodore/shared/contracts/sidebar-layout.js";
 import { isUnifiedSidebarLayout, type UnifiedSidebarLayout } from "../../../protocol/desktop/console-section.js";
@@ -261,7 +261,6 @@ export interface CreateConsoleSettingsStoreDeps {
   readonly now?: () => number;
 }
 
-export const UI_FONT_SIZE_RANGE = { min: 12, max: 18, step: 1 } as const;
 const DEFAULT_UI_FONT_SETTINGS: UiFontSettings = { source: "builtin", id: "manrope", size: 14 };
 
 const SETTINGS_VERSION = 1;
