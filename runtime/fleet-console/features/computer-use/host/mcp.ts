@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { release as systemRelease } from "node:os";
 import { createExecutorSessionManager, createServedMcpEndpoint, type McpHttpTransport } from "@fleet-console/agent-runtime/mcp";
 import { createMcpToolRegistry, createMcpToolSnapshotStore } from "@fleet-console/agent-runtime/tools";
 import { createEmbeddedMcpServer, defineTool, type ClaudeGatewayMcpServer } from "@fleet-console/agent-runtime/claude";
@@ -6,13 +7,16 @@ import type { AdmiralMcpSession } from "../../execution/shared/admiral-mcp.js";
 import { z } from "zod";
 import type { ObjectiveRecord } from "../../objectives/shared/records/types.js";
 import type { ComputerUseService } from "./computer-use.js";
-import { renderSessionEnd } from "./computer-use-render.js";
+import { renderSessionEnd, textResult } from "./computer-use-render.js";
+import { computerUseFeedbackTool } from "./computer-use-tools.js";
+import type { createFeedbackStore, FeedbackFields } from "../../feedback/store.js";
 
 export const FLEET_COMPUTER_USE_MCP_SERVER = "fleet-computer-use";
 
 export interface ComputerUseMcpDeps {
   readonly transport?: McpHttpTransport;
   readonly service: ComputerUseService;
+  readonly feedback?: { readonly store: ReturnType<typeof createFeedbackStore>; readonly fleetVersion: string };
   readonly onFailure?: (kind: string, error: unknown) => void;
   /**
    * 호출자 Objective 단위 판정의 재료. 주어지면 조회·정리를 포함한 **모든** 도구가 실험 플래그와
@@ -216,6 +220,27 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
   // 연결마다 공유 묶음을 가진다 — 턴 종료·허용 회수가 모든 연결의 묶음에 닿도록 호스트가 이 고리를 돈다.
   const groupHooks = new Set<{ leave(contextId: string, participantId: string): boolean; revoke(contextId: string): void }>();
   let disposed = false;
+  const feedbackEnabled = () => deps.feedback !== undefined && deps.service.status().enabled && (deps.experimentEnabled?.() ?? true);
+  const feedbackSchema = z.fromJSONSchema(computerUseFeedbackTool.inputSchema);
+  const fileFeedback = async (input: unknown, actor: string, sessionKey: string, objectiveId?: string) => {
+    if (!deps.feedback || !feedbackEnabled()) return refuse("experiment_disabled", objectiveId ?? null, deps.language?.() ?? "en");
+    const parsed = feedbackSchema.safeParse(input);
+    if (!parsed.success || !(parsed.data as FeedbackFields).summary.trim()) return textResult("error invalid_params: Check the documented feedback fields.", true);
+    const helper = deps.service.helperInfo();
+    try {
+      const { id, occurrences } = await deps.feedback.store.submit(parsed.data as FeedbackFields, {
+        actor, sessionKey, objectiveId, fleetVersion: deps.feedback.fleetVersion,
+        helperVersion: helper?.helperVersion, os: helper?.os ? `macOS ${helper.os}` : `${process.platform} ${systemRelease()}`,
+        recentCalls: deps.service.recentCalls(sessionKey),
+      });
+      return textResult(occurrences === 1 ? `filed ${id}` : `updated ${id} (occurrences ${occurrences})`);
+    } catch (error) {
+      if (error instanceof Error && error.message === "invalid_feedback_fields") return textResult("error invalid_params: Check the documented feedback fields.", true);
+      // 파일 경로나 사용자 텍스트는 모델과 진단 로그에 싣지 않는다.
+      deps.onFailure?.("computer_use_feedback_write_failed", new Error("feedback_write_failed"));
+      return textResult("error feedback_write_failed: The feedback could not be saved.", true);
+    }
+  };
   return {
     objectiveIdForOwner: (owner: string) => objectiveRecordOwners.get(owner) ?? null,
     /** 그 소유자의 기기를 지금 쓰는 참가자(호출한 세션). 공유 묶음이 아니면 소유 Objective 자신이다. */
@@ -228,7 +253,12 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       const actors = new Set<string>();
       const controller = new AbortController();
       const registry = createMcpToolRegistry();
-      const snapshotStore = createMcpToolSnapshotStore();
+      const sessions = createMcpToolSnapshotStore();
+      const snapshotStore = {
+        ...sessions,
+        getToolsForSession: (token: string) => sessions.getToolsForSession(token).filter(({ name }) => name !== computerUseFeedbackTool.name || feedbackEnabled()),
+        getToolNamesForSession: (token: string) => new Set([...sessions.getToolNamesForSession(token)].filter((name) => name !== computerUseFeedbackTool.name || feedbackEnabled())),
+      };
       /**
        * 공유 묶음 — 자식 세션이 있는 컨텍스트의 참가자들이 기기 하나를 나눠 쓴다. 소유자 라벨은 루트 하나(`${prefix}:${contextId}`)라
        * 서비스의 단일 점유 규칙은 묶음 밖과의 경계로만 남는다. 묶음 안에서는:
@@ -330,6 +360,18 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
             .finally(() => { calls.delete(call); if (calls.size === 0) inFlight.delete(objectiveId); });
         } });
       }
+      if (deps.feedback) {
+        const { name, description, inputSchema } = computerUseFeedbackTool;
+        registry.registerAgentTool({
+          id: name, tag: name, title: name, promptSnippet: "", whenToUse: [], whenNotToUse: [], usageGuidelines: [], description, parameters: inputSchema,
+          execute: async (args, context) => {
+            if (!context.sessionLabel || controller.signal.aborted || context.signal?.aborted) return refuse("caller_unresolved", null, deps.language?.() ?? "en");
+            const objectiveId = objectiveIdFromSessionLabel(context.sessionLabel);
+            const scope = scopeOf(deps, objectiveId);
+            return fileFeedback(args, scope.participantId, owner(scope.shared ? scope.participantId : context.sessionLabel), scope.contextId);
+          },
+        });
+      }
       const server = createServedMcpEndpoint({ transport: deps.transport, serverInfo: { name: FLEET_COMPUTER_USE_MCP_SERVER }, toolSnapshotStore: snapshotStore });
       const manager = createExecutorSessionManager({ runtimes: [{ name: FLEET_COMPUTER_USE_MCP_SERVER, runtime: { registry, snapshotStore, server, onFailure: deps.onFailure } }] });
       let closed = false;
@@ -413,6 +455,14 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
           }
         });
       });
+      const includeFeedback = feedbackEnabled();
+      if (includeFeedback) {
+        const { name, description } = computerUseFeedbackTool;
+        tools.push(defineTool(name, description, feedbackSchema as unknown as Record<string, unknown>, async (args) => {
+          if (closed || controller.signal.aborted) return refuse("caller_unresolved", null, language());
+          return fileFeedback(args, owner, owner);
+        }));
+      }
       const embeddedServer = createEmbeddedMcpServer({ name: FLEET_COMPUTER_USE_MCP_SERVER, tools });
       const revoke = () => {
         for (const call of calls) call.abort();
@@ -421,7 +471,7 @@ export function createComputerUseMcpHost(deps: ComputerUseMcpDeps) {
       };
       const connection: ComputerUsePluginConnection = {
         embeddedServer,
-        toolNames: deps.service.specs().map((spec) => spec.id),
+        toolNames: [...deps.service.specs().map((spec) => spec.id), ...(includeFeedback ? [computerUseFeedbackTool.name] : [])],
         revoke,
         dispose: async () => {
           if (closed) return;

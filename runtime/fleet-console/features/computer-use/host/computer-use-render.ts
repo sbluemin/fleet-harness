@@ -53,8 +53,8 @@ function errorHint(error: FleetHelperError): string {
   return error instanceof InvalidComputerUseParameters ? error.detail : (Object.hasOwn(hint, code) ? hint[code]! : hint.internal!);
 }
 
-export function textResult(text: string, isError = false): ComputerUseResult {
-  return { content: [{ type: "text", text }], isError };
+export function textResult(text: string, isError = false) {
+  return { content: [{ type: "text" as const, text }], isError };
 }
 export function gateResult(error: string, hintText?: string): ComputerUseResult {
   return textResult(JSON.stringify({ error, ...(hintText ? { hint: hintText } : {}) }), true);

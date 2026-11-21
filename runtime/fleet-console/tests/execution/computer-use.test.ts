@@ -3,19 +3,20 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawn, type ChildProcess } from "node:child_process";
-import { mkdtemp, writeFile, rm } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { MACOS_COMPUTER_USE_TRANSPORT } from "@fleet-console/computer-use/codex-transport";
 import { ComputerUseService } from "../../features/computer-use/host/computer-use.js";
 import type { DeviceTool } from "../../features/computer-use/host/computer-use-input.js";
-import { computerUseTools } from "../../features/computer-use/host/computer-use-tools.js";
+import { computerUseFeedbackTool, computerUseTools } from "../../features/computer-use/host/computer-use-tools.js";
 import { FleetHelperClient, type HelperWindow } from "../../features/computer-use/runtime/fleet-helper.js";
 import { createComputerUseMcpHost } from "../../features/computer-use/host/mcp.js";
 import { bindComputerUseApprovals } from "../../features/computer-use/host/approval.js";
 import { createApprovalCore } from "@fleet-console/approval";
 import { createApprovalRouter, APPROVAL_ANSWER_PATH } from "../../core/host/bootstrap/approval-routes.js";
 import { createUseRequestBroker, type ComputerUseLedger } from "../../features/computer-use/host/use-requests.js";
+import { createFeedbackStore } from "../../features/feedback/store.js";
 import type { ObjectiveRecord } from "../../features/objectives/shared/records/types.js";
 
 const fixture = String.raw`
@@ -264,6 +265,41 @@ describe("Fleet Computer Use", () => {
       await f.service.stop();
       expect(f.calls("shutdown")).toHaveLength(1);
     } finally { await host.dispose(); }
+  });
+
+  it("files computer feedback without desktop authorization, omits the hold note, and hides it when switched off", async () => {
+    const f = setup();
+    const root = await mkdtemp(path.join(os.tmpdir(), "fleet-feedback-mcp-"));
+    const record = objective("a");
+    const requests = { hold: vi.fn(async () => "declined" as const) };
+    let experiment = true;
+    const host = createComputerUseMcpHost({ service: f.service, objectiveRecords: () => [record], requests, experimentEnabled: () => experiment, feedback: {
+      store: createFeedbackStore({ root, toolset: "computer-use", prefix: "CU", now: () => new Date("2026-11-22T07:40:00Z") }), fleetVersion: "1.315.0",
+    } });
+    try {
+      const { createToken, rpc, call } = await connect(host);
+      const { token } = createToken("a")[0]!;
+      const list = (await rpc(token, "tools/list")).result.tools;
+      expect(list).toHaveLength(7);
+      expect(list.at(-1)).toEqual(computerUseFeedbackTool);
+      const fields = { tool: "computer_action", kind: "failure", summary: "Separate device issue" };
+      expect(text(await call(token, "report_feedback", fields))).toBe("filed CU-20261122-0001");
+      expect(f.runtime.spawnProcess).not.toHaveBeenCalled();
+      expect(requests.hold).not.toHaveBeenCalled();
+      record.computerUse = allowed;
+      await call(token, "computer_session", { op: "status" });
+      expect(text(await call(token, "report_feedback", { ...fields, summary: "Other issue" }))).toBe("filed CU-20261122-0002");
+      const ticket = await readFile(path.join(root, "feedback", "computer-use", "CU-20261122-0002.md"), "utf8");
+      expect(ticket).toContain('recentCalls:\n  - "computer_session ok"');
+      expect(ticket).toContain("objectiveId: a\nactor: a");
+      experiment = false;
+      expect((await rpc(token, "tools/list")).result.tools.map((tool: { name: string }) => tool.name)).not.toContain("report_feedback");
+      const disabled = await rpc(token, "tools/call", { name: "report_feedback", arguments: fields });
+      expect(disabled.result?.isError || disabled.error !== undefined).toBe(true);
+    } finally {
+      await host.dispose();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it("keeps the plugin gate and sends the unmodified device descriptions and schemas without a hold note", async () => {

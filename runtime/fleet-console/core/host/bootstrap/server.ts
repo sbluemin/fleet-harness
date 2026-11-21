@@ -69,6 +69,7 @@ import { createBrowserScreenshotStore } from "../../../features/browser/host/scr
 import { BrowserService, GLOBAL_BROWSER_OWNER_ID, type BrowserAvailability } from "../../../features/browser/host/service.js";
 import { ComputerUseService } from "../../../features/computer-use/host/computer-use.js";
 import { createComputerUseMcpHost } from "../../../features/computer-use/host/mcp.js";
+import { createFeedbackStore } from "../../../features/feedback/store.js";
 import { createUseRequestBroker, type ComputerUseLedger } from "../../../features/computer-use/host/use-requests.js";
 import { bindComputerUseApprovals } from "../../../features/computer-use/host/approval.js";
 import { createUseContext } from "../../../features/execution/host/use-context.js";
@@ -914,6 +915,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     transport: mcpHttp.transport,
     onFailure: recordFailure,
     service: computerUse,
+    feedback: { store: createFeedbackStore({ root: durablePaths.dir, toolset: "computer-use", prefix: "CU" }), fleetVersion: version },
     requests: useRequests,
     objectiveRecords: () => objectiveRecords.list(),
     resolveObjective: objectiveRecords.get,
