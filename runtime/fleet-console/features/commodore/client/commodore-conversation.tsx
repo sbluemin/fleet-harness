@@ -21,9 +21,9 @@ import { openReferencedObjective, useCommodoreObjectiveIndex, useCommodoreRefere
 import { commodoreMongleState, commodoreSummary } from "./commodore-header.js";
 import { useCommodoreMongleActivity } from "./commodore-avatar.js";
 import { CommodoreMapScreen } from "./commodore-map/map-view.js";
-import { CommodoreMapToggle } from "./commodore-map-toggle.js";
+import { CommodoreMapToggle } from "./commodore-map/map-toggle.js";
 import { mapPanelFacts } from "./commodore-map/map-panel.js";
-import { readCommodoreMapMode, requestCommodoreMapEdit, setCommodoreMapMode, setCommodoreMapSelection, subscribeCommodoreMapMode, useCommodoreMapEditRequest, useCommodoreMapMode } from "./commodore-map-mode.js";
+import { readCommodoreMapMode, requestCommodoreMapEdit, setCommodoreMapMode, setCommodoreMapSelection, subscribeCommodoreMapMode, useCommodoreMapEditRequest, useCommodoreMapMode } from "./commodore-map/map-mode.js";
 import { COMMODORE_INBOX_SECTION_ID, commodoreConversationRenderer, commodoreLedgerRenderer, loadCommodore, loadTranscript, noteCommodoreLanguage, openCommodoreMobile, readCommodore, retryCommodore, retryCommodoreNewSession, skipCommodoreFailed, subscribeCommodore, transcriptNeeded, useCommodore, useCommodoreMemory } from "./commodore-state.js";
 import { getConversationSurface, useConversationSurface } from "../../workspace/client/conversation/conversation-surface-store.js";
 import { useConversationDockHeight } from "../../workspace/client/conversation/conversation-dock-height.js";
