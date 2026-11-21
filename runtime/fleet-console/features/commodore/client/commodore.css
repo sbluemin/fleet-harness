@@ -1009,6 +1009,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-search-clear:focus-visible { box-shadow: var(--focus-face); }
 .commodore-palette-head-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .commodore-palette-subtabs { display: inline-flex; flex: none; align-items: center; gap: 2px; padding: 3px; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: color-mix(in oklch, var(--text-primary) 4%, transparent); }
+.commodore-palette-subtabs.is-phone { align-self: flex-start; max-width: calc(100% - 32px); margin: 0 16px 8px; overflow-x: auto; }
 .commodore-palette-subtabs > button { padding: 4px 10px; border: 0; border-radius: var(--radius-xs); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); font-weight: var(--weight-medium); cursor: pointer; white-space: nowrap; }
 .commodore-palette-subtabs > button:hover { color: var(--text-primary); }
 .commodore-palette-subtabs > button[aria-selected="true"] { background: var(--control-wash); color: var(--text-primary); }
@@ -1016,7 +1017,6 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-catalog-toolbar { position: sticky; top: 0; z-index: 2; display: grid; gap: 10px; padding: 10px 0 12px; border-bottom: 1px solid var(--hairline); background: var(--dialog-face); }
 .commodore-catalog-toolbar.is-phone { position: static; padding: 4px 0 10px; background: transparent; }
 .commodore-catalog-toolbar-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-.commodore-palette-caps { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .commodore-palette-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .commodore-palette-manage-link { margin-left: auto; }
 .commodore-palette-chip { padding: 3px 10px; border: 1px solid var(--surface-rim); border-radius: var(--radius-pill); background: none; color: var(--text-secondary); font: inherit; font-size: var(--t-xs); cursor: pointer; white-space: nowrap; }
@@ -1035,7 +1035,7 @@ button.objectives-commodore-trail-entry { cursor: pointer; }
 .commodore-auth-controls { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .commodore-auth-btn { padding: 3px 10px; font-size: var(--t-xs); }
 .commodore-auth-btn.is-warn { border-color: color-mix(in oklab, var(--warn) 45%, transparent); background: var(--warn-glow); color: var(--warn-ink); }
-.commodore-auth-btn.is-warn:hover:not(:disabled) { background: color-mix(in oklab, var(--warn) 22%, transparent); }
+.commodore-auth-btn.is-warn:hover:not(:disabled) { background: var(--control-hover-fill); }
 .commodore-auth-pill { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: var(--radius-pill); font-size: var(--t-2xs); font-weight: var(--weight-medium); white-space: nowrap; }
 .commodore-auth-pill.is-done { background: var(--positive-glow); color: var(--positive-ink); }
 .commodore-palette-install.is-danger { border-color: color-mix(in oklab, var(--coral) 45%, transparent); background: var(--coral-glow); color: var(--coral-ink); }

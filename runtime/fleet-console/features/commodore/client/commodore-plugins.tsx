@@ -1051,17 +1051,9 @@ function MarketplaceMark() {
 }
 
 type PaletteViewTab = "all" | "installed" | "catalog";
-type CapabilityFilter = keyof PluginComponents | null;
-
-const CAPABILITY_FILTERS: readonly (readonly [keyof PluginComponents, CommodoreMessageKey])[] = [
-  ["mcp", "commodore.plugins.palette.capMcp"],
-  ["skills", "commodore.plugins.palette.capSkills"],
-  ["agents", "commodore.plugins.palette.capAgents"],
-  ["hooks", "commodore.plugins.palette.capHooks"],
-];
 
 /**
- * 플러그인 관리 창 — 좌측 레일은 범위·마켓플레이스 전환만 맡고, 검색·유형·마켓 필터는 우측 본문의
+ * 플러그인 관리 창 — 좌측 레일은 범위·마켓플레이스 전환만 맡고, 검색·마켓 필터는 우측 본문의
  * 카탈로그(또는 마켓플레이스) 바로 위에 붙는다. 전역·사령관 공통으로 인라인 MCP OAuth·API 키 인증과
  * 상세 보기, 마켓별 점진 확장(더 보기)을 제공한다.
  */
@@ -1098,7 +1090,6 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
   const mutate = (pluginId: string, selected: boolean, trusted = false) => commodoreId ? setCommodorePlugin(commodoreId, pluginId, selected, trusted) : setGlobalPlugin(pluginId, selected, trusted);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<string | null>(null);
-  const [capFilter, setCapFilter] = useState<CapabilityFilter>(null);
   const [expandedCounts, setExpandedCounts] = useState<Readonly<Record<string, number>>>({});
   const [row, setRow] = useState<RowState | null>(null);
   const pluginUpdates = usePluginUpdates();
@@ -1163,7 +1154,6 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
   const effectiveSet = new Set(effectiveForScope);
   const needle = query.trim().toLowerCase();
   const matches = (entry: PluginCatalogEntry) => !needle || [entry.name, entry.displayName, entry.description, entry.category, entry.author, entry.marketplace, entry.license, entry.keywords?.join(" ")].some((value) => value?.toLowerCase().includes(needle) ?? false);
-  const hasAnyComponents = useMemo(() => (view?.plugins ?? []).some((entry) => entry.components && Object.values(entry.components).some((count) => count > 0)), [view]);
   const openDetail = (id: string) => {
     scrollTop.current = listRef.current?.scrollTop ?? 0;
     returnFocusId.current = id;
@@ -1172,10 +1162,9 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
     setOpenedId(id);
   };
   const backToList = () => setOpenedId(null);
-  const filtering = Boolean(needle) || filter !== null || capFilter !== null;
+  const filtering = Boolean(needle) || filter !== null;
   const pool = (view?.plugins ?? []).filter((entry) =>
     (filter === null || entry.marketplace === filter)
-    && (capFilter === null || (entry.components?.[capFilter] ?? 0) > 0)
     && matches(entry),
   );
   const hideInstalledInPreview = viewTab === "all" && !filtering;
@@ -1193,7 +1182,7 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
       return { ...current, [marketplaceName]: Math.min(fullCount, prev + EXPAND_STEP) };
     });
   };
-  const resetCatalogFilters = () => { setQuery(""); setFilter(null); setCapFilter(null); };
+  const resetCatalogFilters = () => { setQuery(""); setFilter(null); };
 
   const save = (pluginId: string, trusted: boolean, entry?: PluginCatalogEntry) => {
     setRow({ pluginId, phase: "saving", ...(entry ? { entry } : {}) });
@@ -1304,13 +1293,12 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
           : <SettingsGroup key={marketplace.name} ariaLabel={marketplace.name} title={title}>{rows}</SettingsGroup>;
       });
 
-  const selectScope = (next: string) => { setScope(next); setScopeOpen(false); setArmed(null); };
+  const selectScope = (next: string) => { setScope(next); setViewTab("all"); setScopeOpen(false); setArmed(null); };
   const browseFromMarketplace = (marketplaceName: string) => {
     setScope("global");
     setViewTab("catalog");
     setFilter(marketplaceName);
     setQuery("");
-    setCapFilter(null);
   };
   const marketCount = view?.marketplaces.length ?? 0;
   const scopeChoices = (nav: boolean) => <>
@@ -1330,6 +1318,13 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
   </>;
   const currentScopeName = marketScope ? t("commodore.marketplaces.title") : globalScope ? t("commodore.plugins.scope.global") : name;
   const lede = marketScope ? t("commodore.plugins.scope.ledeMarket") : globalScope ? t("commodore.plugins.scope.ledeGlobal") : t("commodore.plugins.scope.ledeCommodore", { name });
+  const subtabs = !marketScope ? (
+    <div className={`commodore-palette-subtabs${phone ? " is-phone" : ""}`} role="tablist" aria-label={currentScopeName}>
+      <button type="button" role="tab" aria-selected={viewTab === "all"} onClick={() => setViewTab("all")}>{t("commodore.plugins.palette.viewAll")}</button>
+      <button type="button" role="tab" aria-selected={viewTab === "installed"} onClick={() => setViewTab("installed")}>{t("commodore.plugins.palette.viewInstalled", { n: effectiveForScope.length })}</button>
+      <button type="button" role="tab" aria-selected={viewTab === "catalog"} onClick={() => setViewTab("catalog")}>{t("commodore.plugins.palette.viewCatalog", { n: total })}</button>
+    </div>
+  ) : null;
   const catalogToolbar = (
     <div className={`commodore-catalog-toolbar${phone ? " is-phone" : ""}`}>
       <div className="commodore-catalog-toolbar-row">
@@ -1348,14 +1343,6 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
           />
           {query ? <button type="button" className="commodore-search-clear" aria-label={t("commodore.plugins.palette.clearSearch")} onClick={() => setQuery("")}><CloseGlyph /></button> : null}
         </div>
-        {hasAnyComponents ? (
-          <div className="commodore-palette-caps" role="group" aria-label={t("commodore.plugins.palette.capFilterAria")}>
-            <button type="button" className="commodore-palette-chip" aria-pressed={capFilter === null} onClick={() => setCapFilter(null)}>{t("commodore.plugins.palette.capAll")}</button>
-            {CAPABILITY_FILTERS.map(([key, label]) => (
-              <button key={key} type="button" className="commodore-palette-chip" aria-pressed={capFilter === key} onClick={() => setCapFilter(capFilter === key ? null : key)}>{t(label)}</button>
-            ))}
-          </div>
-        ) : null}
       </div>
       {enabled.length > 0 ? (
         <div className="commodore-palette-filters" role="group" aria-label={t("commodore.plugins.palette.filterAria")}>
@@ -1434,17 +1421,16 @@ function PluginPalette({ t, phone = false, onClose }: { readonly t: T; readonly 
                   <header className="settings-modal-head">
                     <div className="commodore-palette-head-row">
                       <h2 id={titleId} className="settings-modal-title">{currentScopeName}</h2>
-                      {!marketScope ? (
-                        <div className="commodore-palette-subtabs" role="tablist" aria-label={currentScopeName}>
-                          <button type="button" role="tab" aria-selected={viewTab === "all"} onClick={() => setViewTab("all")}>{t("commodore.plugins.palette.viewAll")}</button>
-                          <button type="button" role="tab" aria-selected={viewTab === "installed"} onClick={() => setViewTab("installed")}>{t("commodore.plugins.palette.viewInstalled", { n: effectiveForScope.length })}</button>
-                          <button type="button" role="tab" aria-selected={viewTab === "catalog"} onClick={() => setViewTab("catalog")}>{t("commodore.plugins.palette.viewCatalog", { n: total })}</button>
-                        </div>
-                      ) : null}
+                      {subtabs}
                     </div>
                     <p className="commodore-global-lede">{lede}</p>
                   </header>
-                ) : <p className="commodore-global-lede">{lede}</p>}
+                ) : (
+                  <>
+                    <p className="commodore-global-lede">{lede}</p>
+                    {subtabs}
+                  </>
+                )}
                 <div className={phone ? "commodore-palette-list" : "settings-pane settings-modal-sections"} ref={listRef}>
                   {!marketScope && activeAuth.pendingCount > 0 ? (
                     <div className="commodore-auth-banner" role="status">{t("commodore.plugins.auth.banner", { n: activeAuth.pendingCount })}</div>
