@@ -8,6 +8,7 @@ node .claude/skills/console-e2e/scripts/seed/seed.mjs --dir "$E2E_DIR/console" -
 ```
 
 The `ledger` profile's synthetic turns prepare a ledger or replay check; creating them does not prove that replay works or that an agent survived.
+For long-group measurements, stop the owned Console after seeding `ledger`, run [`group-scale.mjs`](../scripts/seed/group-scale.mjs) through its isolated wrapper, then restart the same slot. Immediately before each measurement (including after reload), pass the intended group’s `expect` from `group-scale.json` to [`window.__fleetGroupReady.judge`](../scripts/group-ready-gate.js); proceed only on `ok: true`.
 
 `--dir` is the owned `FLEET_CONSOLE_DATA_DIR` of a running Console (its `console.lock` names the port). For `--profile advanced --offline`, seed a new slot before its first boot through the [isolated-environment wrapper](setup.md#keep-the-real-home-out) with `--bin pnpm` (the helper starts pnpm/tsx), then boot it. stdout is one JSON object with the ids of what was created, also saved as `<dir>/seed-ids.json`; progress goes to stderr. A slot is seeded once: a run that finds `seed-ids.json` stops before creating anything, so take a fresh slot.
 

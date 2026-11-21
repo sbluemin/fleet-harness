@@ -57,6 +57,11 @@ function text(value, label) {
   return value;
 }
 
+/** Where writeTranscript puts the jsonl for this config dir, working directory and session. Pure: touches nothing. */
+export function transcriptFile({ configDir, cwd, sessionId }) {
+  return path.join(path.resolve(configDir), "projects", projectDirName(cwd), `${sessionId}.jsonl`);
+}
+
 /**
  * @param {{ configDir: string, cwd: string, sessionId: string, turns: { user: string, assistant: string }[], at?: number | string }} input
  * @returns {{ path: string }}
@@ -92,9 +97,9 @@ export function writeTranscript({ configDir, cwd, sessionId, turns, at } = {}) {
       message: { role: "assistant", content: [{ type: "text", text: assistant }] },
     }));
   }
-  const dir = path.join(path.resolve(configDir), "projects", projectDirName(cwd));
+  const file = transcriptFile({ configDir, cwd, sessionId });
+  const dir = path.dirname(file);
   mkdirSync(dir, { recursive: true });
-  const file = path.join(dir, `${sessionId}.jsonl`);
   const temporary = path.join(dir, `.${sessionId}.${randomBytes(6).toString("hex")}.jsonl`);
   writeFileSync(temporary, `${lines.join("\n")}\n`, "utf8");
   renameSync(temporary, file);
