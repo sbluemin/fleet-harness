@@ -438,10 +438,14 @@ private struct Expectation {
     func confirmed() -> Bool {
       if let focused = AXReader.focused(win, root: root) {
         if CFEqual(focused, node.el) { return true }
-        if let role = AXReader.attribute(focused, kAXRoleAttribute) as? String, AXReader.editable(focused, role: role) { return false }
+        let containerRoles = [kAXApplicationRole, kAXWindowRole, kAXGroupRole, kAXScrollAreaRole, "AXWebArea"]
+        guard let role = AXReader.attribute(focused, kAXRoleAttribute) as? String,
+              containerRoles.contains(role), !AXReader.editable(focused, role: role) else { return false }
       }
-      // Catalyst의 앱 루트는 포커스된 UIKit 자식 대신 컨테이너를 반환할 수 있다.
-      return win.engine == .catalyst && AXReader.attribute(node.el, kAXFocusedAttribute) as? Bool == true &&
+      // 원격 웹 콘텐츠와 UIKit은 앱 루트에 포커스 자식을 반환하지 않기도 한다.
+      // 정확한 자식의 AXFocused와 같은 대상 창이 모두 확인될 때만 이를 보완한다.
+      let remoteWeb = node.web && [.electron, .webkit].contains(win.engine)
+      return (remoteWeb || win.engine == .catalyst) && AXReader.attribute(node.el, kAXFocusedAttribute) as? Bool == true &&
         AXReader.focusedWindow(win, root: root)
     }
     guard AXReader.belongs(node.el, win, root: root), AXReader.attribute(node.el, kAXEnabledAttribute) as? Bool != false else {
