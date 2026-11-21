@@ -5,6 +5,7 @@ import path from "node:path";
 import type { OwnedProcessPort } from "@fleet-console/process";
 import type { ClaudeGatewayExternalMcpServer } from "@fleet-console/agent-runtime/claude";
 
+import { inside, staysInside } from "./contained-path.js";
 import { CommodoreStoreError } from "./errors.js";
 import {
   MAX_CUSTOM_MARKETPLACES,
@@ -213,21 +214,6 @@ const readJson = (file: string): unknown => {
   try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return undefined; }
 };
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
-
-/** 그 디렉터리 안에 머무는 상대 경로만 푼다. */
-function inside(root: string, relative: unknown): string | null {
-  if (typeof relative !== "string" || !relative.trim()) return null;
-  const resolved = path.resolve(root, relative);
-  return resolved === root || resolved.startsWith(root + path.sep) ? resolved : null;
-}
-
-/** 어휘로 안이어도, 링크를 푼 실제 경로가 폴더 밖이면 아니다. 없는 파일은 밖과 같다. */
-function staysInside(root: string, candidate: string): boolean {
-  let realRoot: string;
-  let realCandidate: string;
-  try { realRoot = fs.realpathSync(root); realCandidate = fs.realpathSync(candidate); } catch { return false; }
-  return realCandidate === realRoot || realCandidate.startsWith(realRoot + path.sep);
-}
 
 /**
  * 플러그인 폴더 안의 텍스트만 상한까지 읽는다. 링크가 폴더 밖을 가리키거나 널 바이트가 있으면 없는 파일로 친다.
