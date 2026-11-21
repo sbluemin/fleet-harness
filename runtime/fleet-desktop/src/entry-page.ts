@@ -157,14 +157,14 @@ const ENTRY_RENDERER = String.raw`(() => {
   const snapshot = __ENTRY_SNAPSHOT__;
   const root = document.documentElement;
   const byId = (id) => document.getElementById(id);
-  const tagline = byId("tagline");
   const title = byId("status-title");
+  const pct = byId("status-pct");
   const detail = byId("detail");
   const bar = byId("bar");
   const fill = byId("bar-fill");
   const versions = byId("versions");
   const devTag = byId("dev-tag");
-  if (!tagline || !title || !detail || !bar || !fill || !versions || !devTag) return;
+  if (!title || !detail || !bar || !fill || !versions || !devTag) return;
   root.setAttribute("lang", snapshot.lang);
   root.setAttribute("data-platform", snapshot.platform);
   root.setAttribute("data-tone", snapshot.tone);
@@ -180,7 +180,7 @@ const ENTRY_RENDERER = String.raw`(() => {
       root.style.setProperty("--font-" + axis + "-size", font.size + "px");
     }
   }
-  // 배율도 앞의 style 초기화로 함께 걷힌다 — 모르면 entry.css 기본값(1)이 PR #1901의 배율 1 좌표를 그린다.
+  // 배율도 앞의 style 초기화로 함께 걷힌다 — 모르면 entry.css 기본값(1)이 배율 1 좌표를 그린다.
   if (snapshot.zoom) {
     root.style.setProperty("--entry-page-zoom", String(snapshot.zoom.page));
     root.style.setProperty("--handoff-scale", String(snapshot.zoom.console / snapshot.zoom.page));
@@ -195,16 +195,17 @@ const ENTRY_RENDERER = String.raw`(() => {
       if (name === "word") root.style.setProperty("--target-word-font-size", box.fontSize * factor + "px");
     }
   }
-  tagline.textContent = snapshot.tagline;
   title.textContent = snapshot.title;
+  const progress = snapshot.progress;
+  if (pct) pct.textContent = typeof progress === "number" && progress > 0 && progress < 100 ? "· " + Math.round(progress) + "%" : "";
   detail.textContent = snapshot.detail || "";
   versions.textContent = snapshot.versions;
   devTag.classList.toggle("is-visible", snapshot.dev);
   root.classList.toggle("is-dev", snapshot.dev);
-  const progress = snapshot.progress;
   bar.classList.toggle("is-visible", progress !== undefined);
   bar.classList.toggle("is-indeterminate", progress === "indeterminate");
-  fill.setAttribute("style", typeof progress === "number" ? "width: " + progress + "%" : "");
+  // CSSOM으로 폭을 지정해 CSP style-src 'self' 아래에서도 인라인 style 속성 위반이 나지 않게 한다.
+  fill.style.width = typeof progress === "number" ? progress + "%" : "";
   if (snapshot.handoff) root.classList.add("is-handoff");
   if (snapshot.farewell === "veiled") {
     // 중앙 브랜드와 바탕을 숨긴 상태로 확정한 뒤 페이드 전환을 되살린다.

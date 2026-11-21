@@ -243,21 +243,21 @@ function lineFor(copy: (typeof COPY)[EntryLanguage], state: RuntimeEntryState, d
   // 조달 경로는 진행률을 0으로만 알린다 — 0은 "얼마나 남았는지 모른다"로 읽고 흐르는 막대를 쓴다.
   const bar = typeof progress === "number" && progress > 0 ? progress : "indeterminate";
   switch (state) {
-    case "dev": return { tone: "busy", title: copy.starting, detail: copy.devDetail };
+    case "dev": return { tone: "busy", title: copy.starting, detail: copy.devDetail, progress: "indeterminate" };
     case "node": return { tone: "busy", title: copy.node, detail: copy.nodeDetail, progress: bar };
     case "installing": return { tone: "busy", title: detail ? copy.installing(detail) : copy.installingFallback, progress: bar };
     case "offline": return { tone: "warning", title: detail === "install-failed" ? copy.offlineInstallFailed : copy.offlineUnreachable, detail: copy.offlineDetail };
     case "firstfail": return { tone: "failed", title: copy.firstfail, detail: copy.firstfailDetail };
-    case "starting": return detail === "ready" ? { tone: "done", title: copy.ready, handoff: true } : { tone: "busy", title: copy.starting };
+    case "starting": return detail === "ready" ? { tone: "done", title: copy.ready, progress: 100, handoff: true } : { tone: "busy", title: copy.starting, progress: "indeterminate" };
     case "waiting": return waitingLine(copy, detail);
-    default: return { tone: "busy", title: copy.checking };
+    default: return { tone: "busy", title: copy.checking, progress: "indeterminate" };
   }
 }
 
 function waitingLine(copy: (typeof COPY)[EntryLanguage], detail: string | undefined): EntryLine {
   const wait = parseConsoleLifecycleWait(detail);
-  if (wait === null || wait === "update-preflight") return { tone: "busy", title: copy.checking };
-  return { tone: "busy", title: copy.wait[wait], detail: describeConsoleLifecycleWait(wait) };
+  if (wait === null || wait === "update-preflight") return { tone: "busy", title: copy.checking, progress: "indeterminate" };
+  return { tone: "busy", title: copy.wait[wait], detail: describeConsoleLifecycleWait(wait), progress: "indeterminate" };
 }
 
 function versionLine(context: EntryContext): string {
