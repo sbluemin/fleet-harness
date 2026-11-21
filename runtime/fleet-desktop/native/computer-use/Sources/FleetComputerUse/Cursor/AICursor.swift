@@ -1,4 +1,4 @@
-// ai-cursor 미션이 채운다. 인터페이스는 설계 계약 §5 그대로이며 mac-helper가 이 프로토콜만 호출한다.
+// AI 전용 커서 인터페이스. 설계 계약 §5 그대로이며 mac-helper가 이 프로토콜만 호출한다. 원래 문구: 인터페이스는 설계 계약 §5 그대로이며 mac-helper가 이 프로토콜만 호출한다.
 import AppKit
 
 public enum AICursorPulse {
@@ -20,21 +20,4 @@ public enum AICursorPulse {
   var isVisible: Bool { get }
 }
 
-/// 헬퍼가 쓰는 기본 커서. ai-cursor가 실제 구현으로 바꾼다.
-@MainActor public func makeAICursor() -> AICursorControlling { PlaceholderCursor() }
-
-@MainActor final class PlaceholderCursor: AICursorControlling {
-  func show(at point: CGPoint, above window: CGWindowID) {}
-  func move(to point: CGPoint, above window: CGWindowID) async {}
-  func pulse(_ kind: AICursorPulse) async {}
-  func reorder(above window: CGWindowID) {}
-  func hide(animated: Bool) {}
-  var isVisible: Bool { false }
-}
-
-enum CursorDemo {
-  @MainActor static func run(arguments: [String]) {
-    FileHandle.standardError.write("fleet-computer-use: cursor demo not implemented yet\n".data(using: .utf8)!)
-    exit(2)
-  }
-}
+// 구현은 같은 폴더의 CursorOverlay.swift(FleetAICursor·makeAICursor), CursorArt.swift(모습), CursorTokens.swift(토큰), CursorDemo.swift(--cursor-demo).
