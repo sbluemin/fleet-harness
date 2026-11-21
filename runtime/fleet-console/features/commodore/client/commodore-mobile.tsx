@@ -245,8 +245,13 @@ function CommodoreScreen({ t, theaterId, commodoreId, enabled, bar, title, alias
   // 접기 전에 옮기면 그 항목이 history에 남아, 다음 뒤로가 그것을 걷으며 주소만 사령관으로 돌아가고 화면은 남는다(홈 시트의 「닫고 나서 연다」와 같은 규칙).
   const leave = useCallback((run: () => void) => {
     if (!bar) { run(); return; }
-    bar.leave(() => { setSection(null); setMemoryTrail([]); setPanel(false); }, run);
-  }, [bar]);
+    bar.leave(() => {
+      setSection(null);
+      setMemoryTrail([]);
+      setPanel(false);
+      if (commodoreId) setCommodoreMapMode(commodoreId, "chat");
+    }, run);
+  }, [bar, commodoreId]);
   useEffect(() => commodoreId ? registerCommodoreDeparture(commodoreId, leave) : undefined, [commodoreId, leave]);
   // 다른 사령관으로 옮기면 채팅으로 시작한다.
   useEffect(() => { if (commodoreId) setCommodoreMapMode(commodoreId, "chat"); }, [commodoreId]);
