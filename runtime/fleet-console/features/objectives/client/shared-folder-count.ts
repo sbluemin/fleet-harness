@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 
 import type { SharedFolderList } from "../shared/shared-folder.js";
 import type { Objective } from "../shared/types.js";
-import { sharedListUrl } from "./shared-folder-url.js";
+import { sharedListUrl } from "./file-urls.js";
 
 /**
  * 공유 폴더의 파일 수 — 증거 글리프가 「보여 줄 것이 있는가」를 가를 때 읽는다.

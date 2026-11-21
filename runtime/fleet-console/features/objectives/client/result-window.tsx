@@ -9,11 +9,10 @@ import { missionTitle, type Objective, type ObjectiveResult } from "../shared/ty
 import type { SharedFolderEntry } from "../shared/shared-folder.js";
 import { getT } from "./i18n/index.js";
 import { findAnyObjective, subscribeObjectiveOrFinished } from "./objectives-state.js";
-import { absolute, bytesLabel, EvidenceTextContent, groupSharedFolderEntries, PrRow, resultFileUrl, sharedFolderPreviewable, useNow } from "./result-content.js";
+import { absolute, bytesLabel, EvidenceTextContent, groupSharedFolderEntries, PrRow, sharedFolderPreviewable, useNow } from "./result-content.js";
 import { LinkText } from "./link-text.js";
 import { useSharedFolder } from "./shared-folder-count.js";
-import { sharedFileUrl } from "./shared-folder-url.js";
-import { attachmentFileUrl } from "./attachment-file-url.js";
+import { attachmentFileUrl, resultFileUrl, sharedFileUrl } from "./file-urls.js";
 import "./result-window.css";
 
 // 레일·탭의 수명 밖에 둔다. 선택한 목표가 아니라 창을 연 목표의 현재 보드를 계속 읽는다.

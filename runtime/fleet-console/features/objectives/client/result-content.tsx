@@ -10,7 +10,6 @@ import { LinkText } from "./link-text.js";
 
 type T = Translate<ObjectiveMessageKey>;
 type PrResult = Extract<ObjectiveResult, { kind: "pr" }>;
-type EvidenceResult = Extract<ObjectiveResult, { kind: "evidence" }>;
 type PrState = PrObservation["state"];
 type PrErrorCode = Extract<PrObservation, { state: "error" }>["error"]["code"];
 
@@ -32,10 +31,6 @@ const ERROR_KEYS: Readonly<Record<PrErrorCode, ObjectiveMessageKey>> = {
   invalid_response: "objectives.results.err.invalid_response",
   lookup_failed: "objectives.results.err.lookup_failed",
 };
-
-/** 파일은 목표·결과물 id 로 받는다. 같은 결과물의 증거가 새 복사본으로 교체되면 evidenceId 가 바뀌므로 그 값을 버전으로 붙여
- *  이미 그려진 썸네일·열린 보기가 옛 파일을 붙들지 않게 한다(서버는 v 를 권한에 쓰지 않고 그 결과물의 현재 파일만 준다). */
-export const resultFileUrl = (objectiveId: string, result: Pick<EvidenceResult, "id" | "evidenceId">) => `/api/v1/objectives/result/file?objectiveId=${encodeURIComponent(objectiveId)}&resultId=${encodeURIComponent(result.id)}&v=${encodeURIComponent(result.evidenceId)}`;
 
 /** 상대 시각이 낡지 않게 — 30초마다 다시 그린다. */
 export function useNow(intervalMs = 30_000): number {
