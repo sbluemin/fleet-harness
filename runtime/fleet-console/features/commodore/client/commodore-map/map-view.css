@@ -412,6 +412,8 @@
   padding: 18px 18px 24px;
   font-size: var(--t-sm);
   display: grid;
+  /* 열을 패널 폭에 묶는다 — 암시적 auto 열은 한 줄 말줄임 행(출처·관련)의 전체 글 폭만큼 늘어나 우측 사이드바에 가로 스크롤을 만들었다. */
+  grid-template-columns: minmax(0, 1fr);
   align-content: start;
   gap: 14px;
   word-break: keep-all;
@@ -637,6 +639,7 @@
   padding: 0;
   list-style: none;
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 4px;
 }
 
