@@ -50,7 +50,7 @@ export interface GatewayAssignmentExposure {
   readonly providerPriority?: readonly GatewayProvider[];
   readonly quota?: GatewayQuotaSnapshot;
   readonly providerLoad?: Map<string, number>;
-  readonly distribution?: import("./routing-distribution.js").GatewayRoutingDistribution;
+  readonly distribution?: GatewayRoutingDistribution;
 }
 export interface GatewayRoutingCandidate {
   readonly model: string;
@@ -66,6 +66,31 @@ export function unassigned(because: string): GatewayAssignmentDecision {
 export function visibleDelegationModels(exposure: Pick<GatewayAssignmentExposure, "delegationModels" | "quota">): readonly GatewayModel[] {
   return exposure.delegationModels.filter((model) =>
     isProviderCatalogVisible(exposure.quota?.[model.provider]?.status, model.provider));
+}
+
+/** 쿼터 관측 이후 확정된 배정을 보완한다. 병렬 판단은 같은 스냅샷을 읽을 수 있다. */
+export class GatewayRoutingDistribution {
+  private readonly providers = new Map<GatewayProvider, { observedAt?: number; assignments: number }>();
+
+  snapshot(exposure: GatewayAssignmentExposure) {
+    const providers: Partial<Record<GatewayProvider, { observedAt?: number; assignments: number }>> = {};
+    for (const provider of new Set(visibleDelegationModels(exposure).map(model => model.provider))) {
+      const observedAt = exposure.quota?.[provider]?.fetchedAt;
+      const previous = this.providers.get(provider);
+      // 캐시 재조회나 stale 반환이 아니라 더 새로운 관측이 들어온 경우에만 집계를 초기화한다.
+      if (!previous || (observedAt !== undefined && (previous.observedAt === undefined || observedAt > previous.observedAt))) {
+        this.providers.set(provider, { observedAt, assignments: 0 });
+      }
+      providers[provider] = { ...this.providers.get(provider)! };
+    }
+    return { providers };
+  }
+
+  record(provider: GatewayProvider, exposure: GatewayAssignmentExposure) {
+    this.snapshot(exposure);
+    const entry = this.providers.get(provider);
+    if (entry) entry.assignments += 1;
+  }
 }
 
 /**

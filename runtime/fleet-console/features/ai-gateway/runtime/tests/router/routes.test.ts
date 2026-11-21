@@ -1,6 +1,6 @@
 import { decideGatewayRoutingBatch, NoEnabledGatewayModelsError } from "../../src/fleet/routing-batch.js";
 import { routingBatchInstructions, routingDifficulty } from "../../src/fleet/routing-decision.js";
-import { GatewayRoutingDistribution } from "../../src/fleet/routing-distribution.js";
+import { GatewayRoutingDistribution } from "../../src/fleet/routing-assignment.js";
 import {
   AnthropicMessagesGateway,
   createClaudeCodexCompactionStore,

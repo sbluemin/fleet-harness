@@ -204,7 +204,7 @@ export {
 } from "./fleet/routing-decision.js";
 export { claudeGatewayModelPolicy } from "./claude-model-policy.js";
 
-export { GatewayRoutingDistribution } from "./fleet/routing-distribution.js";
+export { GatewayRoutingDistribution } from "./fleet/routing-assignment.js";
 export { fallbackGatewayRoutingAssignment, routingTierFor, requestTierEffort } from "./fleet/routing-fallback.js";
 export { TIER_EFFORT as GATEWAY_TIER_EFFORT } from "./fleet/routing-table.js";
 export {
