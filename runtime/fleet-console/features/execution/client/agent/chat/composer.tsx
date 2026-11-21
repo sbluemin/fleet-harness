@@ -6,10 +6,9 @@ import { AttachImageIcon } from "../../composer-primitives/icons.js";
 import { ComposerAttachmentTray, ComposerMenu, ComposerMenuItem, ComposerPlusButton } from "../../composer-primitives/attachment-surface.js";
 import { ComposerField, ComposerSubmitButton } from "../../composer-primitives/primitives.js";
 import { ComposerQuoteTray, composerQuotePlaceholder } from "../../composer-primitives/quote-tray.js";
-import { ComposerInput } from "../../composer-primitives/input.js";
+import { ComposerInput, syncComposerHighlight } from "../../composer-primitives/input.js";
 import { composerAttachmentNoticeText, composerT } from "../../composer-primitives/messages.js";
 import { composerDeckKeyDown } from "../../composer-primitives/deck.js";
-import { syncComposerHighlight } from "../../composer-primitives/composer-mirror.js";
 import { useComposerAttachmentInput } from "../../composer-primitives/attachment-input.js";
 
 import { CaptionHistoryFoldGlyph, CaptionReadingWidthGlyph } from "../../../../workspace/client/components/caption-actions.js";
