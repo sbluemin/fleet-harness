@@ -134,6 +134,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasHostRef = useRef<HTMLDivElement>(null);
   const topRef = useRef<HTMLDivElement>(null);
+  const floatingPanelRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<MapRenderer | null>(null);
   const buttonRefs = useRef(new Map<string, HTMLButtonElement>());
   const tagRefs = useRef(new Map<string, HTMLDivElement>());
@@ -457,17 +458,21 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
     return () => observer.disconnect();
   }, []);
 
-  // (b) setFitInsets는 마운트·크기 변경 때만 부른다. 상세 패널은 우측 레일(또는 모바일 하단)에 있으므로
-  // 무대 오른쪽에 340px 여백을 남기지 않고 좌우 대칭으로 두며, 위쪽 여백은 실제 칩 줄 높이를 따른다.
+  // (b) setFitInsets는 마운트·크기·부유 인스펙터 열림/닫힘 변경 때 갱신한다.
+  // 데스크톱 부유 인스펙터가 열려 있으면 패널 폭(+우측 12px·숨구멍 24px)만큼 오른쪽 여백을 비워
+  // 그래프와 맞춤 보기(Fit)가 인스펙터 아래로 가려지지 않게 한다.
   const applyInsets = useCallback((): void => {
     const topH = topRef.current?.offsetHeight ?? 52;
+    const panelW = floatingVisible ? (floatingPanelRef.current?.offsetWidth ?? 316) : 0;
     rendererRef.current?.setFitInsets?.({
       top: topH + 20,
-      right: 24,
+      right: panelW > 0 ? panelW + 36 : 24,
       bottom: 56,
       left: 24,
     });
-  }, []);
+  }, [floatingVisible]);
+  const applyInsetsRef = useRef(applyInsets);
+  applyInsetsRef.current = applyInsets;
 
   // 생성·반납 — 비어 있어도 핵심·갈래 허브 뼈대는 그려 설명·정보를 바로 눌러 편집할 수 있게 한다.
   // 보기 변화 알림(onViewChange)이 오면 DOM 층을 다시 읽는다. 첫 그림·맞춤 트윈이
@@ -498,7 +503,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
         renderer.setReducedMotion?.(reducedRef.current);
         renderer.setFilter(visibleRef.current);
         renderer.setSelection(canvasSelectionRef.current);
-        applyInsets();
+        applyInsetsRef.current();
         renderer.fit();
         offView = renderer.onViewChange?.(() => syncPositions()) ?? null;
         syncPositions();
@@ -598,15 +603,19 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
 
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || typeof ResizeObserver === "undefined") return;
+    if (!container) return;
+    applyInsets();
+    syncPositions();
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
       applyInsets();
       syncPositions();
     });
     observer.observe(container);
     if (topRef.current) observer.observe(topRef.current);
+    if (floatingPanelRef.current) observer.observe(floatingPanelRef.current);
     return () => observer.disconnect();
-  }, [syncPositions, applyInsets, memory.loaded, memory.failed, loadError]);
+  }, [syncPositions, applyInsets, floatingVisible, memory.loaded, memory.failed, loadError]);
 
   const togglePick = (key: MapChipKey): void => {
     setPicks((current) => {
@@ -972,7 +981,7 @@ export function CommodoreMapScreen({ t, commodoreId, state, facts, onExit, onNod
               </>
             )}
             {floatingVisible ? (
-              <div className="commodore-map-stage-panel" data-covers-native-view="">
+              <div ref={floatingPanelRef} className="commodore-map-stage-panel" data-covers-native-view="">
                 <MapPanel
                   t={t}
                   commodoreId={commodoreId}

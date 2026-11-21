@@ -856,6 +856,13 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   }
 
   setFitInsets(insets: MapFitInsets): void {
+    const current = this.insets;
+    if (
+      insets.top === current.top
+      && insets.right === current.right
+      && insets.bottom === current.bottom
+      && insets.left === current.left
+    ) return;
     this.insets = insets;
     this.resize(true);
     this.schedule();
@@ -1362,11 +1369,17 @@ class MapWebglRendererImpl implements MapWebglRenderer {
   private computeFit(): void {
     const { width, height } = this;
     if (width === 0 || height === 0 || this.nodes.length === 0) return;
-    const capX = (value: number) => Math.min(value, width * 0.2);
-    const capY = (value: number) => Math.min(value, height * 0.2);
+    // 부유 인스펙터가 한쪽을 넓게 차지해도(예: 640px 무대의 316px 패널) 최소 160px 가용 폭만 보장하고
+    // 우측 여백을 그대로 반영해 그래프 중심·맞춤 보기가 패널 아래로 숨지 않게 한다.
+    const rawLeft = Math.max(0, this.insets.left);
+    const rawRight = Math.max(0, this.insets.right);
+    const maxSumX = Math.max(0, width - Math.min(width, 160));
+    const sumX = rawLeft + rawRight;
+    const scaleX = sumX > maxSumX && sumX > 0 ? maxSumX / sumX : 1;
+    const capY = (value: number) => Math.max(0, Math.min(value, height * 0.2));
     const insets = {
       top: capY(this.insets.top), bottom: capY(this.insets.bottom),
-      left: capX(this.insets.left), right: capX(this.insets.right),
+      left: rawLeft * scaleX, right: rawRight * scaleX,
     };
     const availW = Math.max(40, width - insets.left - insets.right);
     const availH = Math.max(40, height - insets.top - insets.bottom);

@@ -265,15 +265,19 @@ export interface MapFitInsets {
 /** `setFitInsets`를 주지 않는 쪽을 위한 기본 여백 — 칩·패널이 없는 무대. */
 export const DEFAULT_MAP_INSETS: MapFitInsets = { top: 32, right: 32, bottom: 32, left: 32 };
 
-/** 계약: 변마다 20%가 상한. 음수는 0으로 본다. */
+/** 계약: 상하 여백은 각 20% 상한, 좌우 여백은 최소 160px 가용 폭을 남기도록 비례 축소한다. 음수는 0으로 본다. */
 export function clampMapInsets(insets: MapFitInsets, width: number, height: number): MapFitInsets {
-  const capX = width * 0.2;
+  const rawLeft = Math.max(0, insets.left);
+  const rawRight = Math.max(0, insets.right);
+  const maxSumX = Math.max(0, width - Math.min(width, 160));
+  const sumX = rawLeft + rawRight;
+  const scaleX = sumX > maxSumX && sumX > 0 ? maxSumX / sumX : 1;
   const capY = height * 0.2;
   return {
     top: Math.max(0, Math.min(insets.top, capY)),
     bottom: Math.max(0, Math.min(insets.bottom, capY)),
-    left: Math.max(0, Math.min(insets.left, capX)),
-    right: Math.max(0, Math.min(insets.right, capX)),
+    left: rawLeft * scaleX,
+    right: rawRight * scaleX,
   };
 }
 
