@@ -58,6 +58,11 @@ export interface CommodorePluginsOptions {
    * 미리보기(inspect)로 Fleet 홈에 받아 둔 플러그인은 여기 없다. 생략하면 고른 플러그인이 없는 것으로 친다.
    */
   readonly selectedPlugins?: () => readonly string[];
+  /**
+   * GitHub owner 아바타를 가져오는 함수(테스트 주입용). 생략하면 고정 호스트(`github.com`·`avatars.githubusercontent.com`)에서만
+   * 안전하게 읽는다.
+   */
+  readonly fetchAvatar?: (owner: string) => Promise<{ readonly bytes: Buffer; readonly mime: string } | null>;
 }
 
 /** 플러그인 단위 업데이트 결과 — 성공한 CLI 가 알린 이전·새 버전과 바뀐 카탈로그. */
@@ -289,6 +294,27 @@ function partNames(root: string, dirs: readonly string[], accept: (name: string,
 }
 
 const ICON_TYPES: Readonly<Record<string, string>> = { ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".svg": "image/svg+xml" };
+const ICON_EXTS = [".png", ".svg", ".webp", ".jpg", ".jpeg", ".gif"] as const;
+const PLUGIN_CONVENTION_ICONS = [
+  ...ICON_EXTS.map((ext) => `.claude-plugin/icon${ext}`),
+  ...ICON_EXTS.map((ext) => `icon${ext}`),
+  ".svg", ".png", ".webp", ".jpg", ".jpeg", ".gif",
+].map((item, index) => (index >= ICON_EXTS.length * 2 ? `logo${item}` : item));
+const MARKETPLACE_CONVENTION_ICONS = ICON_EXTS.map((ext) => `.claude-plugin/icon${ext}`);
+const GITHUB_OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
+const GITHUB_RESERVED = new Set([
+  "about", "account", "apps", "collections", "contact", "enterprise", "events", "explore", "features",
+  "issues", "login", "logout", "marketplace", "new", "notifications", "orgs", "pricing", "pulls",
+  "resources", "search", "security", "settings", "signup", "solutions", "sponsors", "topics", "trending", "users",
+]);
+const ALLOWED_AVATAR_HOSTS = new Set(["github.com", "avatars.githubusercontent.com"]);
+const AVATAR_CACHE_DIR = "avatar-cache";
+const AVATAR_CACHE_TTL_MS = 7 * 24 * 60 * 60_000;
+const AVATAR_FAILURE_TTL_MS = 5 * 60_000;
+const AVATAR_FETCH_TIMEOUT_MS = 8_000;
+const MAX_AVATAR_REDIRECTS = 3;
+const MAX_AVATAR_CONCURRENCY = 6;
+const MAX_AVATAR_CACHE_ENTRIES = 500;
 
 /** 확장자가 말하는 형식과 실제 바이트가 맞는가 — 이름만 그림인 파일을 그림으로 내주지 않는다. */
 function looksLike(mime: string, bytes: Buffer): boolean {
@@ -301,6 +327,14 @@ function looksLike(mime: string, bytes: Buffer): boolean {
     case "image/svg+xml": return /^\s*(?:<\?xml[^>]*>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(bytes.subarray(0, 4096).toString("utf8").replace(/^﻿/, ""));
     default: return false;
   }
+}
+
+/** 원격 아바타 바이트의 실제 래스터 그림 형식 — SVG 등 능동 문서는 원격에서 받지 않는다. */
+function detectRasterMime(bytes: Buffer): string | null {
+  for (const mime of ["image/png", "image/jpeg", "image/webp", "image/gif"] as const) {
+    if (looksLike(mime, bytes)) return mime;
+  }
+  return null;
 }
 
 /**
@@ -321,6 +355,165 @@ function iconFileOf(dir: string, declared: unknown): { readonly file: string; re
     if (!stat.isFile() || stat.size === 0 || stat.size > MAX_PLUGIN_ICON_BYTES) return null;
   } catch { return null; }
   return { file: realFile, mime };
+}
+
+/** 폴더 안의 보조 매니페스트 JSON — 심볼릭 링크가 폴더 밖을 가리키면 읽지 않는다. */
+function readContainedJson(dir: string, relative: string): Record<string, unknown> | null {
+  const lexical = inside(dir, relative);
+  if (!lexical || !staysInside(dir, lexical)) return null;
+  const raw = readJson(lexical);
+  return isRecord(raw) ? raw : null;
+}
+
+const hasExplicitIcon = (manifest: Record<string, unknown>): boolean => manifest.icon !== undefined || manifest.logo !== undefined;
+
+/**
+ * 플러그인 폴더 안 아이콘 후보 목록.
+ * `.claude-plugin/plugin.json` 이 `icon`·`logo` 를 명시했으면 그 선언만 신뢰한다(잘못된 경로·가짜 그림을 관례 파일로 덮지 않는다).
+ * 선언이 없으면 같은 저장소의 다른 에이전트 매니페스트(`.antigravity-plugin`·`.cursor-plugin`·`.codex-plugin`·루트 `plugin.json`)와
+ * 관례 경로(`.claude-plugin/icon.*`, `icon.*`, `logo.*`)를 차례로 찾는다.
+ */
+function pluginLocalIconCandidates(dir: string, manifest: Record<string, unknown>): readonly unknown[] {
+  if (hasExplicitIcon(manifest)) {
+    const declared: unknown[] = [];
+    if (manifest.icon !== undefined) declared.push(manifest.icon);
+    if (manifest.logo !== undefined) declared.push(manifest.logo);
+    return declared;
+  }
+  const candidates: unknown[] = [];
+  const push = (value: unknown) => {
+    if (typeof value === "string" && value.trim() && !candidates.includes(value)) candidates.push(value);
+  };
+  const antigravity = readContainedJson(dir, ".antigravity-plugin/plugin.json");
+  if (antigravity) { push(antigravity.logo); push(antigravity.icon); }
+  const cursor = readContainedJson(dir, ".cursor-plugin/plugin.json");
+  if (cursor) { push(cursor.logo); push(cursor.icon); }
+  const codex = readContainedJson(dir, ".codex-plugin/plugin.json");
+  if (codex) {
+    if (isRecord(codex.interface)) { push(codex.interface.logo); push(codex.interface.composerIcon); }
+    push(codex.logo); push(codex.icon);
+  }
+  const rootManifest = readContainedJson(dir, "plugin.json");
+  if (rootManifest) { push(rootManifest.icon); push(rootManifest.logo); }
+  for (const name of PLUGIN_CONVENTION_ICONS) push(name);
+  return candidates;
+}
+
+function readVerifiedIconFile(dir: string, candidates: readonly unknown[]): { readonly bytes: Buffer; readonly mime: string } | null {
+  for (const candidate of candidates) {
+    const found = iconFileOf(dir, candidate);
+    if (!found) continue;
+    let bytes: Buffer;
+    try { bytes = fs.readFileSync(found.file); } catch { continue; }
+    if (bytes.byteLength > 0 && bytes.byteLength <= MAX_PLUGIN_ICON_BYTES && looksLike(found.mime, bytes)) {
+      return { bytes, mime: found.mime };
+    }
+  }
+  return null;
+}
+
+function normalizeGitHubOwner(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!GITHUB_OWNER.test(trimmed)) return null;
+  const lower = trimmed.toLowerCase();
+  return GITHUB_RESERVED.has(lower) ? null : lower;
+}
+
+/** GitHub 저장소 주소(HTTPS·SSH·raw)에서 조직/사용자 이름만 뽑는다. */
+export function githubOwnerFromUrl(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const value = raw.trim();
+  if (!value) return null;
+  const scp = /^git@github\.com:([A-Za-z0-9-]+)\/[A-Za-z0-9._-]+(?:\.git)?\/?$/i.exec(value);
+  if (scp) return normalizeGitHubOwner(scp[1]);
+  let url: URL;
+  try { url = new URL(value); } catch { return null; }
+  if (url.protocol !== "https:" && url.protocol !== "http:" && url.protocol !== "ssh:") return null;
+  const host = url.hostname.toLowerCase();
+  if (host !== "github.com" && host !== "raw.githubusercontent.com") return null;
+  const segments = url.pathname.split("/").filter(Boolean);
+  if (segments.length < 2) return null;
+  return normalizeGitHubOwner(segments[0]);
+}
+
+/** 외부 GitHub 출처를 가진 플러그인 항목의 owner. 마켓 안 상대 경로 출처는 다른 벤더 플러그인일 수 있어 상속하지 않는다. */
+function githubOwnerOfPlugin(entry: MarketplaceEntry): string | null {
+  if (!isRecord(entry.source)) return null;
+  if (entry.source.source === "github" && typeof entry.source.repo === "string") {
+    const [owner, repo, extra] = entry.source.repo.trim().split("/");
+    return owner && repo && extra === undefined ? normalizeGitHubOwner(owner) : null;
+  }
+  if ((entry.source.source === "url" || entry.source.source === "git-subdir") && typeof entry.source.url === "string") {
+    return githubOwnerFromUrl(entry.source.url);
+  }
+  return null;
+}
+
+function githubOwnerOfMarketplace(row: Pick<RegistryMarketplace, "kind" | "locator">): string | null {
+  if (row.kind === "github") {
+    const [owner, repo, extra] = row.locator.trim().split("/");
+    return owner && repo && extra === undefined ? normalizeGitHubOwner(owner) : null;
+  }
+  return githubOwnerFromUrl(row.locator);
+}
+
+/** GitHub owner 공개 아바타를 고정 호스트 allowlist·크기 상한·래스터 매직 바이트 검사로 읽는다. */
+async function fetchGitHubOwnerAvatar(owner: string): Promise<{ readonly bytes: Buffer; readonly mime: string } | null> {
+  const safeOwner = normalizeGitHubOwner(owner);
+  if (!safeOwner) return null;
+  let current = `https://github.com/${encodeURIComponent(safeOwner)}.png?size=128`;
+  for (let hop = 0; hop <= MAX_AVATAR_REDIRECTS; hop += 1) {
+    let response: Response;
+    try {
+      response = await fetch(current, {
+        redirect: "manual",
+        signal: AbortSignal.timeout(AVATAR_FETCH_TIMEOUT_MS),
+        headers: { Accept: "image/png,image/jpeg,image/webp,image/gif,*/*;q=0.1", "User-Agent": "fleet-console" },
+      });
+    } catch { return null; }
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get("location");
+      void response.body?.cancel().catch(() => undefined);
+      if (!location || hop === MAX_AVATAR_REDIRECTS) return null;
+      let next: URL;
+      try { next = new URL(location, current); } catch { return null; }
+      if (next.protocol !== "https:" || !ALLOWED_AVATAR_HOSTS.has(next.hostname.toLowerCase())) return null;
+      current = next.href;
+      continue;
+    }
+    if (!response.ok) {
+      void response.body?.cancel().catch(() => undefined);
+      return null;
+    }
+    const contentLength = Number(response.headers.get("content-length"));
+    if (Number.isFinite(contentLength) && contentLength > MAX_PLUGIN_ICON_BYTES) {
+      void response.body?.cancel().catch(() => undefined);
+      return null;
+    }
+    let bytes: Buffer;
+    try {
+      if (!response.body) return null;
+      const chunks: Buffer[] = [];
+      let total = 0;
+      const reader = response.body.getReader();
+      try {
+        for (;;) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (!value) continue;
+          total += value.byteLength;
+          if (total > MAX_PLUGIN_ICON_BYTES) { void reader.cancel().catch(() => undefined); return null; }
+          chunks.push(Buffer.from(value));
+        }
+      } finally { reader.releaseLock(); }
+      bytes = Buffer.concat(chunks, total);
+    } catch { return null; }
+    if (bytes.byteLength === 0 || bytes.byteLength > MAX_PLUGIN_ICON_BYTES) return null;
+    const mime = detectRasterMime(bytes);
+    return mime ? { bytes, mime } : null;
+  }
+  return null;
 }
 
 const text = (value: unknown, max: number): string | undefined => (typeof value === "string" && value.trim() ? value.trim().slice(0, max) : undefined);
@@ -347,9 +540,106 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   const now = options.now ?? Date.now;
   const home = path.join(options.root, "claude");
   const loadedRoot = path.join(options.root, "loaded");
+  const avatarCacheDir = path.join(options.root, AVATAR_CACHE_DIR);
   const registryFile = path.join(options.root, "registry.json");
+  const fetchAvatar = options.fetchAvatar ?? fetchGitHubOwnerAvatar;
+  const avatarInflight = new Map<string, Promise<{ readonly bytes: Buffer; readonly mime: string } | null>>();
+  const avatarFailedAt = new Map<string, number>();
+  let avatarActive = 0;
+  const avatarWaiters: (() => void)[] = [];
   let queue: Promise<unknown> = Promise.resolve();
   let ensuring: Promise<void> | null = null;
+
+  const acquireAvatarSlot = async (): Promise<void> => {
+    if (avatarActive < MAX_AVATAR_CONCURRENCY) { avatarActive += 1; return; }
+    await new Promise<void>((resolve) => { avatarWaiters.push(resolve); });
+    avatarActive += 1;
+  };
+  const releaseAvatarSlot = (): void => {
+    avatarActive = Math.max(0, avatarActive - 1);
+    avatarWaiters.shift()?.();
+  };
+
+  /** 디스크에 캐시된 GitHub owner 아바타 — 매직 바이트와 크기 상한을 매번 확인한다. */
+  const readCachedAvatar = (owner: string): { readonly bytes: Buffer; readonly mime: string; readonly fresh: boolean } | null => {
+    const file = path.join(avatarCacheDir, `${owner}.img`);
+    let stat: fs.Stats;
+    try { stat = fs.statSync(file); } catch { return null; }
+    if (!stat.isFile() || stat.size === 0 || stat.size > MAX_PLUGIN_ICON_BYTES) return null;
+    let bytes: Buffer;
+    try { bytes = fs.readFileSync(file); } catch { return null; }
+    const mime = detectRasterMime(bytes);
+    if (!mime) return null;
+    return { bytes, mime, fresh: now() - stat.mtimeMs < AVATAR_CACHE_TTL_MS };
+  };
+
+  const writeCachedAvatar = (owner: string, bytes: Buffer): void => {
+    const file = path.join(avatarCacheDir, `${owner}.img`);
+    const tmp = `${file}.${process.pid}.${Math.random().toString(36).slice(2, 8)}.tmp`;
+    try {
+      fs.mkdirSync(avatarCacheDir, { recursive: true });
+      fs.writeFileSync(tmp, bytes, { mode: 0o600 });
+      fs.renameSync(tmp, file);
+    } catch {
+      try { fs.rmSync(tmp, { force: true }); } catch { /* ignore */ }
+      return;
+    }
+    try {
+      const entries = fs.readdirSync(avatarCacheDir).filter((name) => name.endsWith(".img"));
+      if (entries.length <= MAX_AVATAR_CACHE_ENTRIES) return;
+      const stamped = entries.map((name) => {
+        const full = path.join(avatarCacheDir, name);
+        let mtime = 0;
+        try { mtime = fs.statSync(full).mtimeMs; } catch { mtime = 0; }
+        return { full, mtime };
+      }).sort((a, b) => a.mtime - b.mtime);
+      for (const old of stamped.slice(0, stamped.length - MAX_AVATAR_CACHE_ENTRIES)) {
+        try { fs.rmSync(old.full, { force: true }); } catch { /* ignore */ }
+      }
+    } catch { /* ignore */ }
+  };
+
+  /**
+   * GitHub owner 아바타 — owner 단위로 디스크에 7일 캐시하고 동시 요청은 하나로 합친다.
+   * 만료 뒤 갱신에 실패하면 이전 캐시(stale)를 돌려줘 오프라인에서도 깨지지 않게 한다.
+   */
+  const readGitHubAvatar = async (owner: string | null): Promise<{ readonly bytes: Buffer; readonly mime: string } | null> => {
+    const safeOwner = normalizeGitHubOwner(owner);
+    if (!safeOwner) return null;
+    const cached = readCachedAvatar(safeOwner);
+    if (cached?.fresh) return { bytes: cached.bytes, mime: cached.mime };
+    const failedAt = avatarFailedAt.get(safeOwner);
+    if (failedAt !== undefined && now() - failedAt < AVATAR_FAILURE_TTL_MS) {
+      return cached ? { bytes: cached.bytes, mime: cached.mime } : null;
+    }
+    let pending = avatarInflight.get(safeOwner);
+    if (!pending) {
+      pending = (async () => {
+        await acquireAvatarSlot();
+        try {
+          const fetched = await fetchAvatar(safeOwner);
+          if (fetched && fetched.bytes.byteLength > 0 && fetched.bytes.byteLength <= MAX_PLUGIN_ICON_BYTES) {
+            const mime = detectRasterMime(fetched.bytes);
+            if (mime) {
+              avatarFailedAt.delete(safeOwner);
+              writeCachedAvatar(safeOwner, fetched.bytes);
+              return { bytes: fetched.bytes, mime };
+            }
+          }
+          avatarFailedAt.set(safeOwner, now());
+          return cached ? { bytes: cached.bytes, mime: cached.mime } : null;
+        } catch {
+          avatarFailedAt.set(safeOwner, now());
+          return cached ? { bytes: cached.bytes, mime: cached.mime } : null;
+        } finally {
+          releaseAvatarSlot();
+          avatarInflight.delete(safeOwner);
+        }
+      })();
+      avatarInflight.set(safeOwner, pending);
+    }
+    return await pending;
+  };
 
   /** CLI 는 같은 홈의 파일을 고쳐 쓰므로 한 번에 하나씩만 돈다. */
   const serial = <T>(task: () => Promise<T>): Promise<T> => {
@@ -748,8 +1038,8 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
   };
 
   /**
-   * 카드에 보일 표시 필드. 항목 값이 먼저이고, 없으면 읽을 수 있는 폴더의 plugin.json 값이다. 아이콘은 plugin.json 에만 있다
-   * (marketplace 항목은 디렉터리 목록 필드를 받지 않는다).
+   * 카드에 보일 표시 필드. 항목 값이 먼저이고, 없으면 읽을 수 있는 폴더의 plugin.json 값이다.
+   * 아이콘은 로컬 폴더(선언·동료 매니페스트·관례 파일) 또는 외부 GitHub 출처의 owner 아바타가 있으면 true 다.
    */
   const display = (entry: MarketplaceEntry, dir: string | null, descriptionMax = MAX_PLUGIN_CARD_DESCRIPTION): Pick<PluginCatalogEntry, "description" | "displayName" | "category" | "author" | "homepage" | "license" | "repository" | "keywords" | "icon"> => {
     const manifest = dir ? manifestOf(dir) : {};
@@ -761,7 +1051,8 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     const license = licenseOf(entry.license) ?? licenseOf(manifest.license);
     const repository = repositoryOf(entry.repository) ?? repositoryOf(manifest.repository);
     const keywords = keywordsOf(entry.keywords) ?? keywordsOf(manifest.keywords);
-    const icon = dir !== null && iconFileOf(dir, manifest.icon) !== null;
+    const localIcon = dir !== null && pluginLocalIconCandidates(dir, manifest).some((candidate) => iconFileOf(dir, candidate) !== null);
+    const icon = localIcon || (!hasExplicitIcon(manifest) && githubOwnerOfPlugin(entry) !== null);
     return {
       ...(description ? { description } : {}), ...(displayName ? { displayName } : {}), ...(category ? { category } : {}),
       ...(author ? { author } : {}), ...(homepage ? { homepage } : {}), ...(license ? { license } : {}),
@@ -789,14 +1080,17 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     (installs[id] ? loadDirOf(id) : null) ?? bundledDirOf(document, entry);
 
   const view = (row: RegistryMarketplace): MarketplaceView => {
-    const raw = documentOf(row.name)?.raw;
+    const document = documentOf(row.name);
+    const raw = document?.raw;
     const description = raw ? text(raw.description, 300) ?? (isRecord(raw.metadata) ? text(raw.metadata.description, 300) : undefined) : undefined;
     const owner = raw ? personName(raw.owner) : undefined;
+    const hasLocalIcon = Boolean(document?.root && MARKETPLACE_CONVENTION_ICONS.some((candidate) => iconFileOf(document.root!, candidate) !== null));
+    const icon = hasLocalIcon || githubOwnerOfMarketplace(row) !== null;
     return {
       name: row.name, kind: row.kind, locator: row.locator, ...(row.ref ? { ref: row.ref } : {}),
       preset: row.preset, enabled: row.enabled, status: row.status, ...(row.error ? { error: row.error } : {}),
       ...(row.updatedAt ? { updatedAt: row.updatedAt } : {}), pluginCount: entriesOf(row.name).length,
-      ...(description ? { description } : {}), ...(owner ? { owner } : {}),
+      ...(description ? { description } : {}), ...(owner ? { owner } : {}), ...(icon ? { icon: true as const } : {}),
     };
   };
   /**
@@ -951,19 +1245,35 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     };
   });
 
-  /** 아이콘 그림 — 등록된 마켓플레이스의 항목이고, 읽을 수 있는 폴더 안의 검사를 지난 그림일 때만. 플러그인 코드는 실행하지 않는다. */
-  const icon = (id: string): { readonly bytes: Buffer; readonly mime: string } | null => {
+  /**
+   * 아이콘 그림 — 로컬 플러그인 폴더 안 검증된 그림을 먼저 찾고, 명시된 로컬 선언이 없으면 외부 GitHub 출처의 owner 아바타로 폴백한다.
+   * 플러그인 코드는 실행하지 않는다.
+   */
+  const icon = async (id: string): Promise<{ readonly bytes: Buffer; readonly mime: string } | null> => {
     const { marketplace } = splitPluginId(id);
     if (!readRegistry().marketplaces.some((row) => row.name === marketplace)) return null;
     const entry = entryOf(id);
     if (!entry) return null;
     const dir = displayDirOf(id, documentOf(marketplace), entry, installed());
-    if (!dir) return null;
-    const found = iconFileOf(dir, manifestOf(dir).icon);
-    if (!found) return null;
-    let bytes: Buffer;
-    try { bytes = fs.readFileSync(found.file); } catch { return null; }
-    return bytes.byteLength <= MAX_PLUGIN_ICON_BYTES && looksLike(found.mime, bytes) ? { bytes, mime: found.mime } : null;
+    const manifest = dir ? manifestOf(dir) : {};
+    if (dir) {
+      const local = readVerifiedIconFile(dir, pluginLocalIconCandidates(dir, manifest));
+      if (local) return local;
+      if (hasExplicitIcon(manifest)) return null;
+    }
+    return await readGitHubAvatar(githubOwnerOfPlugin(entry));
+  };
+
+  /** 마켓플레이스 아이콘 — 로컬 `.claude-plugin/icon.*` 이 있으면 먼저, 없으면 출처 GitHub owner 아바타. */
+  const marketplaceIcon = async (name: string): Promise<{ readonly bytes: Buffer; readonly mime: string } | null> => {
+    const row = readRegistry().marketplaces.find((item) => item.name === name);
+    if (!row) return null;
+    const root = documentOf(name)?.root;
+    if (root) {
+      const local = readVerifiedIconFile(root, MARKETPLACE_CONVENTION_ICONS);
+      if (local) return local;
+    }
+    return await readGitHubAvatar(githubOwnerOfMarketplace(row));
   };
 
   /**
@@ -1110,6 +1420,7 @@ export function createCommodorePlugins(options: CommodorePluginsOptions) {
     inspect,
     detail,
     icon,
+    marketplaceIcon,
     /** 설치 전 확인 — 실행 명령이 있고 이 버전을 신뢰한 적이 없으면 trust_required. trusted 면 기록한다. */
     async prepareInstall(id: string, trusted: boolean): Promise<void> {
       const entry = await inspect(id);

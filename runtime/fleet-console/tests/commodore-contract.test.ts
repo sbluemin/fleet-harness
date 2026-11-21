@@ -1258,23 +1258,51 @@ describe("commodore theater state", () => {
     const root = path.join(h.objectivesDir, "commodore-plugins");
     const market = path.join(root, "markets", "team");
     const pluginDir = path.join(market, "plugins", "tool");
-    for (const dir of [path.join(pluginDir, ".claude-plugin"), path.join(market, ".claude-plugin"), path.join(root, "claude", "plugins")]) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({ name: "team", owner: { name: "Team" }, plugins: [{ name: "tool", source: "./plugins/tool" }] }));
+    const relativeExternalDir = path.join(market, "external_plugins", "linear");
+    for (const dir of [path.join(pluginDir, ".claude-plugin"), path.join(relativeExternalDir, ".claude-plugin"), path.join(market, ".claude-plugin"), path.join(root, "claude", "plugins")]) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(relativeExternalDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "linear" }));
+    fs.writeFileSync(path.join(market, ".claude-plugin", "marketplace.json"), JSON.stringify({
+      name: "team",
+      owner: { name: "Team" },
+      plugins: [
+        { name: "tool", source: "./plugins/tool" },
+        { name: "linear", source: "./external_plugins/linear" },
+        { name: "cloudflare", source: { source: "url", url: "https://github.com/Cloudflare/skills.git" } },
+        { name: "bad-remote", source: { source: "github", repo: "evil/plugin" } },
+      ],
+    }));
     fs.writeFileSync(path.join(root, "claude", "plugins", "known_marketplaces.json"), JSON.stringify({ team: { installLocation: market } }));
     fs.writeFileSync(path.join(root, "registry.json"), JSON.stringify({ version: 1, marketplaces: [{ name: "team", kind: "github", locator: "org/team", preset: false, enabled: true, status: "ready" }], trusted: {} }));
     const png = Buffer.from("89504e470d0a1a0a0000000d49484452", "hex");
+    const jpg = Buffer.from("ffd8ffe000104a4649460001", "hex");
     const declare = (icon: string) => fs.writeFileSync(path.join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool", icon }));
     let cliCalls = 0;
-    const hooks = { plugins: createCommodorePlugins({ root, executable: async () => { cliCalls += 1; return "false"; } }) };
+    const avatarCalls: string[] = [];
+    const hooks = {
+      plugins: createCommodorePlugins({
+        root,
+        executable: async () => { cliCalls += 1; return "false"; },
+        fetchAvatar: async (owner) => {
+          avatarCalls.push(owner);
+          if (owner === "cloudflare") return { bytes: jpg, mime: "image/jpeg" };
+          if (owner === "org") return { bytes: png, mime: "image/png" };
+          if (owner === "evil") return { bytes: Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'></svg>"), mime: "image/svg+xml" };
+          return null;
+        },
+      }),
+    };
     const icon = (pluginId = "tool@team") => h.route("commodore/plugins/icon", { pluginId }, hooks);
+    const marketIcon = (name = "team") => h.route("commodore/marketplaces/icon", { name }, hooks);
 
     fs.writeFileSync(path.join(pluginDir, "icon.png"), png);
     declare("./icon.png");
     expect(await icon()).toMatchObject({ status: 200, value: { bytes: png, headers: { "Content-Type": "image/png", "Content-Security-Policy": expect.stringContaining("sandbox") } } });
     h.setAuthorized(false);
     expect((await icon()).status).toBe(401);
+    expect((await marketIcon()).status).toBe(401);
     h.setAuthorized(true);
     expect((await icon("../tool@team")).status).toBe(400);
+    expect((await marketIcon("../team")).status).toBe(400);
     // 플러그인 폴더 밖 — 어휘 탈출과, 폴더 안 이름이지만 밖을 가리키는 링크 모두 그림이 없는 것으로 친다.
     fs.writeFileSync(path.join(market, "secret.png"), png);
     declare("../../secret.png");
@@ -1289,6 +1317,15 @@ describe("commodore theater state", () => {
     fs.writeFileSync(path.join(pluginDir, "notes.html"), "<svg></svg>");
     declare("./notes.html");
     expect((await icon()).status).toBe(404);
+
+    // plugin.json 에 icon 선언이 없으면 동료 매니페스트·관례 파일로 폴백한다.
+    fs.writeFileSync(path.join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({ name: "tool" }));
+    fs.mkdirSync(path.join(pluginDir, ".antigravity-plugin"), { recursive: true });
+    fs.writeFileSync(path.join(pluginDir, "brand.jpg"), jpg);
+    fs.writeFileSync(path.join(pluginDir, ".antigravity-plugin", "plugin.json"), JSON.stringify({ name: "tool", logo: "brand.jpg" }));
+    expect(await icon()).toMatchObject({ status: 200, value: { bytes: jpg, headers: { "Content-Type": "image/jpeg" } } });
+    fs.rmSync(path.join(pluginDir, ".antigravity-plugin"), { recursive: true, force: true });
+    expect(await icon()).toMatchObject({ status: 200, value: { bytes: png, headers: { "Content-Type": "image/png" } } });
 
     // 상세는 마켓 안 폴더를 받기(CLI) 없이 읽는다. README 는 폴더 안 텍스트만이고, 밖을 가리키는 링크·선언 경로는 본문에 섞이지 않는다.
     fs.mkdirSync(path.join(pluginDir, "skills", "review"), { recursive: true });
@@ -1329,6 +1366,23 @@ describe("commodore theater state", () => {
     expect(JSON.stringify(escaped.value)).not.toContain("SECRET_OUTSIDE");
     expect((escaped.value.plugin as { readme?: string }).readme).toBeUndefined();
     expect(cliCalls).toBe(0);
+
+    // 외부 GitHub 플러그인은 owner 아바타로 폴백하고 디스크 캐시를 재사용한다. 마켓 안 상대 출처는 마켓 owner 를 상속하지 않는다.
+    const listed = hooks.plugins.catalog();
+    expect(listed.plugins.find((entry) => entry.id === "cloudflare@team")?.icon).toBe(true);
+    expect(listed.plugins.find((entry) => entry.id === "linear@team")?.icon).toBeUndefined();
+    expect(listed.marketplaces.find((row) => row.name === "team")?.icon).toBe(true);
+    expect(avatarCalls).toEqual([]);
+    expect(await icon("cloudflare@team")).toMatchObject({ status: 200, value: { bytes: jpg, headers: { "Content-Type": "image/jpeg", "Content-Security-Policy": expect.stringContaining("sandbox") } } });
+    expect(await icon("cloudflare@team")).toMatchObject({ status: 200, value: { bytes: jpg } });
+    expect(avatarCalls.filter((owner) => owner === "cloudflare")).toHaveLength(1);
+    expect((await icon("linear@team")).status).toBe(404);
+    // 원격 아바타는 래스터만 허용한다(SVG 등 능동 문서는 거절).
+    expect((await icon("bad-remote@team")).status).toBe(404);
+    // 마켓플레이스 카드 아이콘도 GitHub owner 아바타를 캐시해 내준다.
+    expect(await marketIcon("team")).toMatchObject({ status: 200, value: { bytes: png, headers: { "Content-Type": "image/png", "Content-Security-Policy": expect.stringContaining("sandbox") } } });
+    expect(await marketIcon("team")).toMatchObject({ status: 200, value: { bytes: png } });
+    expect(avatarCalls.filter((owner) => owner === "org")).toHaveLength(1);
 
     // README 의 raw style 은 공유 렌더러를 통과한 뒤에도 문서 밖(body)으로 새면 안 된다. 하이라이트 class 는 남긴다.
     const require = createRequire(import.meta.url);
