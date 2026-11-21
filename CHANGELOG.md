@@ -5,6 +5,47 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.315.0] - 2026-11-21
+
+### fleet-cli
+
+#### Removed
+- `fleet gateway` Providers no longer offers TypeSafe sign-in.
+
+### fleet-console
+
+#### Added
+- Show plugin and marketplace icons using local plugin icon assets and cached GitHub owner avatars when a plugin manifest omits an icon.
+- Sign in to OAuth MCP servers and configure API keys directly for global plugins, with inline connection controls across global, Commodore, and plugin detail views.
+
+#### Changed
+- Replace the Commodore fixed right sidebar with floating Goals and Routines chips, a top-pill profile popover, and a collapsible Neural Map inspector so the chat canvas stays full-width.
+- Apply the Fleet Pastel palette to 3D plush Commander and member avatars while keeping Plush Vivid for regular Commodores and Fleet Pastel for promoted Quaker Commodores.
+- Streamline the mobile navigation flow with a Home command hub featuring inline objective shortcuts, cross-Commodore attention items, unified search across Commodores and objectives, direct segmented objective inspection, context-preserving back navigation, and compact top-bar and quota controls.
+- Allow adding the current folder directly and choosing the target Commodore in the mobile folder picker, and separate device-only display settings from Console-wide settings.
+- Redesign the plugin manager with contextual search and filtering in the main pane, explicit marketplace toggles and browse links, component badges, and progressive "Show more" catalog expansion.
+- Keep only `claude-plugins-official` and `claude-community` as included default marketplaces, while preserving previously installed plugins from retired presets as removable custom marketplaces.
+- Replace the numeric percentage list above the composer with compact provider ring indicators that preview per-provider usage on hover and highlight the selected provider when opening the full usage panel.
+- Redesigned Remote Access settings into a guided three-step setup that preselects detected networks and opens the QR pairing view right after turning on, then switches to a device-management dashboard with advanced network and identity controls tucked away.
+- Remove the Commander and Objective fixed right sidebar and move avatar editing, inline rename, and Goal & Members access into the top title popover so the conversation stays full-width.
+- Updated the Remote Access settings icon on desktop and mobile so it is visually distinct from Browser and Language.
+- Renamed "AI Gateway" to "Model Gateway" across Console settings, prompts, onboarding, and CLI help.
+
+#### Fixed
+- Fix opening not-started objectives on mobile and restore visible section labels for settled objectives in the mobile commander sheet.
+- Neural map details in the right sidebar no longer scroll sideways when a memory or its source has a long title.
+
+#### Removed
+- GPT-6-Astra and GPT-6.1-Sol are no longer offered in the Codex models. Commodores, Commanders, members, and routing pools that chose them now use GPT-6.2-Astra and GPT-6.2-Sol with the same effort and speed.
+- TypeSafe sign-in is gone from the AI Gateway provider list. A TypeSafe key you saved earlier stays on disk but is no longer used.
+
+### fleet-desktop
+
+#### Changed
+- Redesign the Desktop launch and quit screens around the new Commodore Pennant F emblem with minimal typography, smooth entrance and handoff animations, and unified progress feedback.
+- Fleet Browser's address bar and tab strip share the page's background again in both light and dark themes, so the address bar no longer stands out as a separate band; horizontal tabs float as rounded tabs again.
+- In the light theme, the address field is white with a thin outline and the active tab is a soft gray.
+
 ## [1.314.0] - 2026-11-20
 
 ### fleet-console
