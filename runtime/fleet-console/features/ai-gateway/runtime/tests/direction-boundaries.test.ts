@@ -16,15 +16,11 @@ const HARNESS_ROOT = "downstream/harness";
 /**
  * Every upstream folder. `anthropic` is the native passthrough and declares no request
  * policy — it carries no gateway target, so the caller's request is forwarded byte for
- * byte and never reaches a policy. `typesafe` declares none for the opposite reason: no
- * inbound wire reaches it at all. Its caller is Fleet code, not an Agent CLI, so the
- * router never dispatches to it and no gateway model can name it. It is listed here so
- * the cross-provider import ban still covers it.
+ * byte and never reaches a policy.
  */
 const UPSTREAM_FOLDERS = [
   "anthropic",
   "codex",
-  "typesafe",
   "xai",
 ] as const;
 

@@ -16,7 +16,7 @@ import {
   type XaiEndpointPreference,
 } from "../../settings/client/execution-settings.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore, type ModelAuthProviderState } from "./model-auth.js";
-import { launchProviderFromModelId, launchProviderGlyph, serviceGlyph, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
+import { launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
 
 const PROVIDER_LABEL = {
   anthropic: "terminal.settings.aiGatewayProviderAnthropic",
@@ -124,10 +124,9 @@ export function AiGatewayCompactCard(): React.ReactElement {
   }
 
   const providers = orderAiGatewayProviders(state.aiGatewayCatalog.providers);
-  const services = auth.state?.providers.filter((entry) => entry.kind === "service") ?? [];
   // 카탈로그 공급자 중 API 키로 로그인하는 것. 그 공급자 줄이 키 입력을 진다.
   const keyAuthOf = (providerId: string): ModelAuthProviderState | undefined =>
-    auth.state?.providers.find((entry) => entry.kind === "model-provider" && entry.provider === providerId);
+    auth.state?.providers.find((entry) => entry.provider === providerId);
   const pool = poolProviders(state.aiGateway?.models);
 
   return (
@@ -143,9 +142,6 @@ export function AiGatewayCompactCard(): React.ReactElement {
             keyAuth={keyAuthOf(provider.id)}
             busy={auth.busyProvider === provider.id}
           />
-        ))}
-        {services.map((service) => (
-          <ServiceLoginRow key={service.provider} service={service} busy={auth.busyProvider === service.provider} />
         ))}
       </SettingsGroup>
       <SettingsGroup ariaLabel={t("terminal.settings.aiGatewayRoutingPool")}>
@@ -249,23 +245,6 @@ function XaiEndpointSegments(): React.ReactElement | null {
   );
 }
 
-function ServiceLoginRow({ service, busy }: { readonly service: ModelAuthProviderState; readonly busy: boolean }): React.ReactElement {
-  const mobile = useMobileSettingsHost() !== null;
-  const t = getT(useTerminalLocale(), mobile);
-  return (
-    <div className="ai-gateway-login-row">
-      <span className="ai-gateway-service-mark" aria-hidden="true">{serviceGlyph("typesafe")}</span>
-      <span className="ai-gateway-provider-heading">
-        <span className="ai-gateway-provider-name">{service.displayName}</span>
-        <span className="ai-gateway-transport">{t("terminal.settings.aiGatewayTransportApiKey")}</span>
-      </span>
-      <span className="ai-gateway-login-control">
-        <ApiKeyLoginControl credential={service} name={service.displayName} busy={busy} />
-      </span>
-    </div>
-  );
-}
-
 /** API 키 하나로 로그인하는 자격의 입력과 로그아웃. 키는 서버가 검증한 뒤에만 저장된다. */
 function ApiKeyLoginControl({ credential, name, busy }: {
   readonly credential: ModelAuthProviderState;
@@ -279,7 +258,7 @@ function ApiKeyLoginControl({ credential, name, busy }: {
     if (!ok) return;
     setApiKey("");
     // 카탈로그 공급자의 로그인 상태는 설정 상태가 나른다. 키가 바뀌면 다시 읽는다.
-    if (credential.kind === "model-provider") void loadSystemPromptSettings();
+    void loadSystemPromptSettings();
   };
   return credential.signedIn ? (
     <button type="button" className="ai-gateway-signout" disabled={busy} onClick={() => void signOutModel(credential.provider).then(afterChange)}>

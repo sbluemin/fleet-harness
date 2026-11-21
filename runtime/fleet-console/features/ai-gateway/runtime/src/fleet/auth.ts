@@ -1,7 +1,6 @@
 import { ANTHROPIC_AUTH_PROVIDER_ID, validateAnthropicApiKey } from "../upstream/anthropic/index.js";
 import { GEMINI_AUTH_PROVIDER_ID, validateGeminiApiKey } from "../upstream/gemini/index.js";
 import { OPENCODE_AUTH_PROVIDER_ID, OPENCODE_GO_API_BASE_URL, validateOpencodeGoApiKey } from "../upstream/opencode-go/index.js";
-import { TYPESAFE_API_BASE_URL, TYPESAFE_AUTH_PROVIDER_ID, validateTypesafeApiKey } from "../upstream/typesafe/index.js";
 import { isAuthValidationSuccess } from "../auth/validation.js";
 import { type AuthValidationFailureResult, type AuthValidationFailureStatus, type AuthValidationResult } from "../auth/types.js";
 
@@ -10,8 +9,6 @@ import { type AuthValidationFailureResult, type AuthValidationFailureStatus, typ
 export {
   OPENCODE_AUTH_PROVIDER_ID,
   OPENCODE_GO_API_BASE_URL,
-  TYPESAFE_API_BASE_URL,
-  TYPESAFE_AUTH_PROVIDER_ID,
 };
 
 export type AuthKeyValidationResult =
@@ -19,20 +16,8 @@ export type AuthKeyValidationResult =
   | { readonly providerId: string; readonly status: "success" };
 
 /**
- * TypeSafe는 Anthropic Messages wire를 말하지 않으므로 Anthropic 호환 키 검증 기구를 쓸 수 없다.
- * 대신 공급자 폴더가 소유한 프로브(모델 목록 조회)가 토큰을 쓰지 않고 키만 확인한다.
- */
-export async function validateTypesafeAuthKey(apiKey: string): Promise<AuthKeyValidationResult> {
-  return toKeyValidationResult(await validateTypesafeApiKey({
-    providerId: TYPESAFE_AUTH_PROVIDER_ID,
-    apiKey,
-    baseUrl: TYPESAFE_API_BASE_URL,
-  }));
-}
-
-/**
- * OpenCode Go도 같은 이유로 공급자 폴더의 모델 목록 프로브를 쓴다 — 범위 안의 두 모델은 모두
- * OpenAI wire라 예전의 Anthropic 1토큰 프로브가 닿을 모델이 없다.
+ * OpenCode Go는 공급자 폴더의 모델 목록 프로브로 키를 확인한다 — 범위 안의 두 모델은 모두
+ * OpenAI wire라 예전의 Anthropic 1토큰 프로브가 닿을 모델이 없다. 추론 토큰을 쓰지 않는다.
  */
 export async function validateOpencodeGoAuthKey(apiKey: string): Promise<AuthKeyValidationResult> {
   return toKeyValidationResult(await validateOpencodeGoApiKey({

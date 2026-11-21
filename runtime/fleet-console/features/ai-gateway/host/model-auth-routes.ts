@@ -13,7 +13,7 @@ interface ModelAuthHostContext {
 }
 import type http from "node:http";
 
-import { validateAnthropicAuthKey, validateGeminiAuthKey, validateOpencodeGoAuthKey, validateTypesafeAuthKey } from "@fleet-console/ai-gateway";
+import { validateAnthropicAuthKey, validateGeminiAuthKey, validateOpencodeGoAuthKey } from "@fleet-console/ai-gateway";
 import type { AuthService, AuthValidationFailureResult } from "@fleet-console/ai-gateway";
 
 import {
@@ -45,7 +45,6 @@ const MODEL_AUTH_VALIDATORS: Readonly<Record<TerminalModelAuthProviderId, (apiKe
   opencode: validateOpencodeGoAuthKey,
   gemini: validateGeminiAuthKey,
   anthropic: validateAnthropicAuthKey,
-  typesafe: validateTypesafeAuthKey,
 };
 
 export function registerTerminalModelAuthRoutes(

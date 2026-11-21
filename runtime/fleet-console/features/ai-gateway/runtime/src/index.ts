@@ -143,12 +143,9 @@ export {
 export {
   OPENCODE_AUTH_PROVIDER_ID,
   OPENCODE_GO_API_BASE_URL,
-  TYPESAFE_API_BASE_URL,
-  TYPESAFE_AUTH_PROVIDER_ID,
   validateAnthropicAuthKey,
   validateGeminiAuthKey,
   validateOpencodeGoAuthKey,
-  validateTypesafeAuthKey,
 } from "./fleet/auth.js";
 export type { AuthKeyValidationResult } from "./fleet/auth.js";
 
