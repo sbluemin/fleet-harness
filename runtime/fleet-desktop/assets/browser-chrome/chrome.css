@@ -120,22 +120,35 @@
   --aurora-glow: oklch(50% 0.1 210 / 15%);
 }
 /* ==== /Console 테마 토큰 ==== */
-/* ---- 브라우저 크롬의 면 — 탭줄(가로 탭 표시줄·세로 레일)과 주소줄 띠(도구줄)는 아래 페이지와 같은 바탕(--surface) 한 면이다.
-   그 위에서 주소 필드(--ink-veil)와 보는 탭(--ink-rim)만 한 단 올라서고, 페이지와의 경계는 hairline 한 줄이다. 다크·라이트가 같은 관계다.
-   주소줄 띠만 따로 밝은 면으로 떠 탭줄과 어긋나 보였던 Chrome 면 사다리(#2644)를 걷고 그 이전 색으로 되돌린 값이다.
+/* ---- 브라우저 크롬의 면 — 탭줄(가로 탭 표시줄·세로 레일)과 주소줄 띠(도구줄)는 아래 페이지와 같은 바탕(--surface) 한 면이고,
+   페이지와의 경계는 hairline 한 줄이다. 주소줄 띠만 따로 밝은 면으로 떠 탭줄과 어긋나 보였던 Chrome 면 사다리(#2644)를 걷은 값이다.
+   다크는 그 이전 색이다 — 주소 필드(--ink-veil)와 보는 탭(--ink-rim), 새 탭 단추(--ink-veil)만 한 단 밝다.
+   라이트는 흰 바탕 위에서 주소 필드가 흰 면에 옅은 테두리로 서고, 보는 탭은 아주 옅은 회색, 새 탭 단추는 바탕 없이 둔다.
+   보고 있지 않은 탭의 호버(--chrome-tab-hover)는 보는 탭보다 한 단 옅다.
    크롬의 규칙은 원료 잉크 토큰 대신 이 역할 이름을 쓴다. 값은 Console 이 준다(스냅샷 21 토큰 + 첫 프레임 미러 블록) — 여기서 새 색을 정하지 않는다.
    `--ink-mid` 는 스냅샷에 없으므로 쓰지 않는다. ---- */
 :root {
   --chrome-frame: var(--surface);
   --chrome-field: var(--ink-veil);
+  --chrome-field-edge: transparent;
   --chrome-toolbar: var(--surface);
   --chrome-tab: var(--ink-rim);
+  --chrome-tab-hover: var(--ink-veil);
+  --chrome-new: var(--ink-veil);
+  --chrome-new-hover: var(--ink-rim);
   --chrome-divider: var(--hairline);
   --chrome-ink: var(--text-secondary);
   --chrome-field-hover: var(--ink-rim);
   --chrome-panel-shadow: var(--popover-ring), 0 8px 24px oklch(0% 0 0 / 45%);
 }
 :root[data-scheme="light"] {
+  --chrome-field: var(--popover-face);
+  --chrome-field-edge: var(--hairline);
+  --chrome-field-hover: var(--ink-deep);
+  --chrome-tab: var(--ink-deep);
+  --chrome-tab-hover: var(--ink-abyss);
+  --chrome-new: transparent;
+  --chrome-new-hover: var(--ink-abyss);
   --chrome-panel-shadow: var(--popover-surface-shadow);
 }
 * { box-sizing: border-box; }
@@ -161,7 +174,7 @@ html[data-role="bar"] .strip { background: var(--chrome-toolbar); }
 .reload.loading svg { animation: spin 1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .url { position: relative; flex: 1; min-width: 80px; height: 34px; }
-.url-box { position: relative; width: 100%; height: 34px; display: flex; flex-direction: column; background: var(--chrome-field); border: 1px solid transparent; border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
+.url-box { position: relative; width: 100%; height: 34px; display: flex; flex-direction: column; background: var(--chrome-field); border: 1px solid var(--chrome-field-edge); border-radius: var(--radius-pill); transition: background var(--motion-tap), border-color var(--motion-tap), box-shadow var(--motion-tap); }
 .url:not(.is-expanded):hover .url-box { background: var(--chrome-field-hover); }
 .url:not(.is-expanded):focus-within .url-box { box-shadow: var(--field-focus-edge); }
 .url.is-expanded .url-box { position: absolute; left: -4px; right: -4px; top: -4px; width: auto; height: auto; z-index: 4; padding: 4px; background: var(--chrome-toolbar); border: 0; border-radius: var(--radius-lg); box-shadow: var(--chrome-panel-shadow); }
@@ -312,12 +325,12 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 .scroll { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: var(--space-1); overflow-x: hidden; overflow-y: auto; scrollbar-width: none; }
 .rail.open .scroll { scrollbar-width: thin; }
 .row { flex: none; display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; overflow: hidden; padding: 0 12px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--chrome-ink); font-size: var(--t-sm); text-align: start; white-space: nowrap; cursor: pointer; }
-.row:hover:not(:disabled), .tab:hover { background: var(--ink-veil); color: var(--text-primary); }
+.row:hover:not(:disabled), .tab:hover { background: var(--chrome-tab-hover); color: var(--text-primary); }
 .row:disabled { opacity: var(--control-disabled-opacity); cursor: default; }
 .row.set { color: var(--brass-ink); }
-.row.new { justify-content: center; padding: 0; background: var(--ink-veil); }
+.row.new { justify-content: center; padding: 0; background: var(--chrome-new); }
 .row.new .glyph { width: auto; height: auto; font-size: 20px; font-weight: 300; }
-.row.new:hover:not(:disabled) { background: var(--ink-rim); }
+.row.new:hover:not(:disabled) { background: var(--chrome-new-hover); }
 .row:focus-visible, .tab:focus-visible, .tab-close:focus-visible { box-shadow: var(--focus-face); }
 .glyph { flex: none; width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; line-height: 1; }
 .glyph svg { width: 14px; height: 14px; }
@@ -357,37 +370,28 @@ html[data-role="rail"] body { width: var(--rail-expanded); }
 /* ---- 가로 탭 표시줄: 같은 문서가 주소줄 위 한 줄로 눕는다. 맨 위 줄이므로 신호등·캡션 자리를 비우고(.pad), 그 여백으로 창을 끈다.
    탭이 놓이는 자리는 끌기 영역이 아니다 — 끌기 영역은 우클릭을 받지 못해 표시줄 메뉴가 뜨지 않는다. ---- */
 html[data-role="rail"][data-orientation="horizontal"] body { width: 100%; }
-/* 가로 탭은 아래 도구줄 띠와 한 면으로 이어진다 — 탭 줄은 위 8px를 프레임으로 비우고 바닥까지 차며(탭 상자는 모두 공유한다),
-   보는 탭만 아래 양 모서리가 바깥으로 말려 도구줄로 녹는다(Chrome 의 역곡선). 상자를 공유하므로 탭을 오갈 때
-   글자·아이콘의 세로 자리가 움직이지 않고, 아래 띠와의 사이에는 어떤 선도 놓지 않는다. */
-.rail.horizontal { --tab-flare: 8px; right: 0; bottom: auto; width: auto; height: var(--strip); flex-direction: row; align-items: center; gap: var(--space-1); padding: 8px var(--space-2) 0; border-right: 0; transition: none; }
-.rail.horizontal > .pad { position: relative; z-index: 2; display: block; flex: none; height: 100%; -webkit-app-region: drag; }
+/* 가로 탭은 줄의 세로 가운데에 뜬 둥근 상자다 — 보는 탭은 아래 주소줄 띠와 같은 바탕 위에서 한 단 밝은 면으로만 구분되고,
+   띠에 닿거나 녹아들지 않는다. 호버도 같은 상자 하나다. */
+.rail.horizontal { right: 0; bottom: auto; width: auto; height: var(--strip); flex-direction: row; align-items: center; gap: var(--space-1); padding: 0 var(--space-2); border-right: 0; transition: none; }
+.rail.horizontal > .pad { display: block; flex: none; height: 100%; -webkit-app-region: drag; }
 .rail.horizontal :is(.rail-pin, .divider) { display: none; }
-/* 첫 탭의 말림도 잘리지 않게 스크롤 상자의 안쪽 여백을 양옆으로 주고 같은 만큼 바깥 여백으로 되돌린다. */
-.rail.horizontal .scroll { flex: 1 1 auto; min-width: 0; height: 100%; flex-direction: row; align-items: stretch; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; padding-inline: var(--tab-flare); margin-inline: calc(-1 * var(--tab-flare)); }
-.rail.horizontal .tabs { flex: 0 1 auto; flex-direction: row; align-items: stretch; gap: 0; min-width: 0; }
-.rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; height: 100%; }
+.rail.horizontal .scroll { flex: 1 1 auto; min-width: 0; height: 100%; flex-direction: row; align-items: center; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.rail.horizontal .tabs { flex: 0 1 auto; flex-direction: row; align-items: center; min-width: 0; }
+.rail.horizontal .tab { flex: 0 1 184px; width: auto; min-width: 44px; }
 .rail.horizontal .tab-title { flex: 1 1 auto; }
-/* 보고 있지 않은 탭의 호버는 탭 상자(바닥까지)가 아니라 글자 줄 높이의 둥근 면으로 남는다 — 보는 탭의 합류와 헷갈리지 않게. */
-.rail.horizontal .tab:not(.active)::before { content: ""; position: absolute; inset: 5px 0; border-radius: var(--radius-md); pointer-events: none; }
-.rail.horizontal .tab:not(.active):hover { background: transparent; color: var(--text-primary); }
-.rail.horizontal .tab:not(.active):hover::before { background: var(--ink-veil); }
-/* 비활성 탭 사이의 1px 세로 구분선. 보는 탭과 호버 중인 탭 양옆에서는 걷힌다 — 그 자리는 합류와 호버 면이 대신한다. */
+/* 비활성 탭 사이의 1px 세로 구분선. 보는 탭과 호버 중인 탭 양옆에서는 걷힌다 — 그 자리는 그 탭의 면이 대신한다. */
 .rail.horizontal .tab:not(.active)::after { content: ""; position: absolute; top: 50%; right: 0; width: 1px; height: 16px; translate: 0 -50%; background: var(--hairline-strong); pointer-events: none; }
 .rail.horizontal .tab:not(.active):hover::after,
 .rail.horizontal .tab:not(.active):last-child::after,
 .rail.horizontal .tab:not(.active):has(+ .tab.active)::after,
 .rail.horizontal .tab:not(.active):has(+ .tab:hover)::after { display: none; }
 /* 보는 탭은 닫기 단추가 탭 안에 다 보일 만큼은 남는다(여백 12+8, 아이콘 14, 닫기 22, 간격 10×2 = 76; 에이전트 표식이 붙으면 +24). 넘치면 줄이 옆으로 넘어간다. */
-.rail.horizontal .tab.active { z-index: 1; min-width: 76px; overflow: visible; border-radius: var(--radius-md) var(--radius-md) 0 0; }
-.rail.horizontal .tab.active::before, .rail.horizontal .tab.active::after { content: ""; position: absolute; bottom: 0; width: var(--tab-flare); height: var(--tab-flare); background: var(--chrome-tab); pointer-events: none; }
-.rail.horizontal .tab.active::before { right: 100%; -webkit-mask: radial-gradient(circle at 0 0, transparent calc(var(--tab-flare) - 0.5px), #000 var(--tab-flare)); mask: radial-gradient(circle at 0 0, transparent calc(var(--tab-flare) - 0.5px), #000 var(--tab-flare)); }
-.rail.horizontal .tab.active::after { left: 100%; -webkit-mask: radial-gradient(circle at 100% 0, transparent calc(var(--tab-flare) - 0.5px), #000 var(--tab-flare)); mask: radial-gradient(circle at 100% 0, transparent calc(var(--tab-flare) - 0.5px), #000 var(--tab-flare)); }
+.rail.horizontal .tab.active { min-width: 76px; }
 .rail.horizontal .tab.active.is-agent { min-width: 100px; }
 /* 탭이 좁아지면(문서가 .tight 를 건다) 보고 있지 않은 탭은 닫기 단추를 접어 제목에 자리를 준다 — 보는 탭의 닫기는 남는다.
    컨테이너 질의는 쓰지 않는다: 탭에 크기 격리를 걸면 탭 줄의 폭 계산에서 탭이 0 으로 세어져 모든 탭이 최소 폭으로 쪼그라든다. */
 .rail.horizontal .tabs.tight .tab:not(.active) .tab-close { display: none; }
-.rail.horizontal .row.new { flex: none; align-self: center; width: 34px; border-radius: var(--radius-pill); }
+.rail.horizontal .row.new { flex: none; width: 34px; border-radius: var(--radius-pill); }
 /* 주소줄 단추 — 사령관 스페이스를 보는 동안 글리프가 그 스페이스의 색을 입는다. */
 .spaces-button { border-radius: var(--radius-pill); }
 .spaces-button svg { width: 16px; height: 16px; }
