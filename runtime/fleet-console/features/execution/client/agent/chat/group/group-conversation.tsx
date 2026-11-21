@@ -118,6 +118,9 @@ export interface BoardActionRecordRequest {
 const USER_SCROLL_MS = 250;
 /** 기록을 움직이는 키 — 그 밖의 키 입력은 스크롤 의도가 아니다. */
 const SCROLL_KEYS: ReadonlySet<string> = new Set(["ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End", " "]);
+// 짧은 대화는 실측 높이를 쓰고, 긴 대화도 새 줄과 그 주변은 즉시 배치한다.
+const DEFER_LAYOUT_MIN_ITEMS = 100;
+const EAGER_TAIL_ITEMS = 8;
 
 export function GroupConversation({ snapshot, language, accessibleNames, onOpenLedger, onOpenNameplate, nameplateLabel, onOpenCommodoreRecord, cards, composer, composerTopEnd, composerTopEntries = false, renderComposerWithWorking, boardActionLabel, empty, older, reveal, fold = false, overlay, decision = null, computerActor = null, commodoreActivity = null, onOpenUISend, speakerMarks }: GroupConversationProps) {
   const t = getGroupT(language);
@@ -385,6 +388,7 @@ export function GroupConversation({ snapshot, language, accessibleNames, onOpenL
                   onOpenCommodoreRecord={onOpenCommodoreRecord}
                   boardActionLabel={boardActionLabel}
                   capped={fold}
+                  deferLayout={fold && items.length >= DEFER_LAYOUT_MIN_ITEMS && index < items.length - EAGER_TAIL_ITEMS}
                   report={item.report}
                   showMark={showMark}
                   onOpenRelay={relay.open}
@@ -735,7 +739,7 @@ function tailExcerpt(text: string, max: number): string {
   return last.length > max ? `…${last.slice(-max)}` : last;
 }
 
-const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenNameplate, nameplateLabel, onOpenCommodoreRecord, boardActionLabel, capped = false, report, showMark = true, onOpenRelay, onOpenUISend }: {
+const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, breakBefore, tail, live, participants, language, onOpenLedger, onOpenNameplate, nameplateLabel, onOpenCommodoreRecord, boardActionLabel, capped = false, deferLayout, report, showMark = true, onOpenRelay, onOpenUISend }: {
   readonly entry: AgentConversationEntry;
   readonly previous: AgentConversationEntry | undefined;
   /** 이 말 앞에 가운데 시각 줄이 선다 — 같은 발화자의 이어진 말이어도 새 묶음의 머리다. */
@@ -750,6 +754,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly onOpenCommodoreRecord: GroupConversationProps["onOpenCommodoreRecord"];
   readonly boardActionLabel: string | undefined;
   readonly capped?: boolean;
+  readonly deferLayout: boolean;
   readonly report?: DelegationEntry | undefined;
   /** 말풍선 옆 아바타. 상대가 하나뿐인 대화에서는 끄고, 그 칸은 말풍선이 쓴다. */
   readonly showMark?: boolean;
@@ -758,7 +763,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   readonly onOpenUISend?: GroupConversationProps["onOpenUISend"];
 }) {
   switch (entry.kind) {
-    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} onOpenNameplate={onOpenNameplate} nameplateLabel={nameplateLabel} capped={capped} report={report} showMark={showMark} onOpenUISend={onOpenUISend} />;
+    case "message": return <MessageBubble entry={entry} continued={sameSpeaker(previous, entry) && !breakBefore} tail={tail} live={live} participants={participants} language={language} onOpenLedger={onOpenLedger} onOpenNameplate={onOpenNameplate} nameplateLabel={nameplateLabel} capped={capped} deferLayout={deferLayout} report={report} showMark={showMark} onOpenUISend={onOpenUISend} />;
     case "delegation": return <RelayLine entry={entry} language={language} onOpen={onOpenRelay} />;
     case "member-joined":
     case "member-left": return <MembershipLine entry={entry} language={language} />;
@@ -769,7 +774,7 @@ const TimelineEntry = React.memo(function TimelineEntry({ entry, previous, break
   }
 }, (before, after) => {
   if (before.entry !== after.entry || before.live !== after.live || before.language !== after.language || before.onOpenLedger !== after.onOpenLedger || before.onOpenNameplate !== after.onOpenNameplate || before.nameplateLabel !== after.nameplateLabel || before.onOpenCommodoreRecord !== after.onOpenCommodoreRecord || before.boardActionLabel !== after.boardActionLabel || before.onOpenRelay !== after.onOpenRelay || before.onOpenUISend !== after.onOpenUISend) return false;
-  if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.report !== after.report || before.showMark !== after.showMark) return false;
+  if (before.breakBefore !== after.breakBefore || before.tail !== after.tail || before.capped !== after.capped || before.deferLayout !== after.deferLayout || before.report !== after.report || before.showMark !== after.showMark) return false;
   // 결정 답 줄은 받는 이(지휘관)를 참여자에서 읽는다 — 명부가 늦게 와도 그 표식이 선다.
   if (after.entry.kind === "decision-answer") {
     const commander = (participants: readonly ConversationParticipant[]) => participants.find((participant) => participant.speaker.kind === "commander")?.speaker;
@@ -812,7 +817,7 @@ function showsSpeakerMarks(participants: readonly ConversationParticipant[]): bo
   return false;
 }
 
-function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, onOpenNameplate, nameplateLabel, capped = false, report, showMark = true, onOpenUISend }: {
+function MessageBubble({ entry, continued, tail, live, participants, language, onOpenLedger, onOpenNameplate, nameplateLabel, capped = false, deferLayout, report, showMark = true, onOpenUISend }: {
   readonly entry: Extract<GroupTimelineEntry, { kind: "message" }>;
   readonly continued: boolean;
   readonly tail: boolean;
@@ -824,6 +829,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   readonly nameplateLabel?: string | undefined;
   /** 턴 접기 — 구성원 말풍선에 높이 상한을 두고 넘치면 「전체 보기」로 펼친다. 구성원이 아닌 말에는 걸지 않는다. */
   readonly capped?: boolean;
+  readonly deferLayout: boolean;
   /** 턴 접기 — 이 말풍선으로 옮긴 보고 줄. 머리의 꼬리표가 되고 누르면 보고 전문이 펼쳐진다. */
   readonly report?: DelegationEntry | undefined;
   /** 말풍선 옆 아바타. 상대가 하나뿐이면 끄고 이름만 남긴다. 원장을 여는 이름 단추는 그대로다. */
@@ -840,7 +846,8 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   // 이 대화의 주인 사령관 — 사령관 자기 대화에서는 그 사령관의 말을 왼쪽 자기 말풍선으로 세운다.
   const ownerCommodore = React.useContext(ConversationCommodoreContext);
   // 높이 상한은 구성원 말풍선만. 그 밖의 지휘관·보드 없는 루트·사령관 말은 접기를 켜도 상한 없이 선다.
-  const clip = useBubbleClip(capped && entry.speaker.kind === "member");
+  const canDeferLayout = deferLayout && !entry.streaming && !entry.pending;
+  const clip = useBubbleClip(capped && entry.speaker.kind === "member", canDeferLayout);
   const [reportOpen, setReportOpen] = React.useState(false);
   const reportId = React.useId();
   // 문면이 없는 말(표시 문면 없이 보낸 플러그인 지시 등)은 빈 말풍선으로 세우지 않는다. 흐르는 중이면 「쓰는 중」이 선다.
@@ -853,7 +860,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
     // 받는 이가 여럿이면 차례로 선다. 묶음은 받는 이를 이름으로 읽어 스크린리더에도 그 자리가 남는다.
     const recipients = entry.recipient ? [entry.recipient] : [];
     return (
-      <div className="group-chat-human" data-entry-id={entry.id}>
+      <div className="group-chat-human" data-entry-id={entry.id} data-defer-layout={canDeferLayout || undefined}>
         <div className={`group-chat-bubble is-human${entry.pending ? " is-pending" : ""}${entry.format === "markdown" ? " is-markdown" : ""}`}>
           {entry.attachments?.length ? <ChatDispatchAttachments attachments={entry.attachments} language={language ?? "en"} /> : null}
           {recipients.length > 0 ? (
@@ -939,7 +946,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
   // 이 행 attrs만으로는 보이는 것이 바뀌지 않는다(읽는 규칙은 `.taskforce-conversation` 아래에만 둔다).
   const rowTone = speakerTone(speaker);
   return (
-    <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id} data-speaker-tone={rowTone ?? undefined} style={speakerNameStyle(rowTone)}>
+    <div className={`group-chat-agent${continued ? " is-continued" : ""}${showMark ? "" : " is-solo"}`} data-entry-id={entry.id} data-defer-layout={canDeferLayout || undefined} data-speaker-tone={rowTone ?? undefined} style={speakerNameStyle(rowTone)}>
       {showMark ? (
         <span className="group-chat-agent-mark">
           {open && mark ? <button type="button" className="group-chat-speaker-hit is-mark" tabIndex={-1} aria-hidden="true" title={label} onClick={open}>{mark}</button> : mark}
@@ -982,7 +989,7 @@ function MessageBubble({ entry, continued, tail, live, participants, language, o
  * 턴 접기에서 흐르는 구성원 말은 말풍선이 아니라 「쓰는 중」 칩으로 서므로(foldTimeline) 상한이 걸린 말풍선은 이미 완성된 구성원 말이다.
  * 펼친 말풍선은 이 화면을 보는 동안 펼친 채다(같은 말은 완성 때도 같은 key 라 펼침이 이어진다).
  */
-function useBubbleClip(enabled: boolean): { readonly ref: React.RefCallback<HTMLDivElement>; readonly className: string; readonly clipped: boolean; readonly expand: () => void } {
+function useBubbleClip(enabled: boolean, deferLayout: boolean): { readonly ref: React.RefCallback<HTMLDivElement>; readonly className: string; readonly clipped: boolean; readonly expand: () => void } {
   const [element, setElement] = React.useState<HTMLDivElement | null>(null);
   const [expanded, setExpanded] = React.useState(false);
   const [overflowing, setOverflowing] = React.useState(false);
@@ -993,17 +1000,21 @@ function useBubbleClip(enabled: boolean): { readonly ref: React.RefCallback<HTML
   React.useLayoutEffect(() => {
     if (!active || !element) { setOverflowing(false); setScrolled(false); setAtEnd(false); return; }
     const read = () => {
-      setOverflowing(element.scrollHeight > element.clientHeight + 1);
-      setScrolled(element.scrollTop > 1);
-      setAtEnd(element.scrollTop + element.clientHeight >= element.scrollHeight - 1);
+      // 건너뛴 본문의 치수를 직접 읽으면 레이아웃 지연이 풀린다. 마지막으로 잰 가장자리를 그대로 둔다.
+      if (deferLayout && element.checkVisibility?.({ contentVisibilityAuto: true }) === false) return;
+      const { scrollHeight, clientHeight, scrollTop } = element;
+      setOverflowing(scrollHeight > clientHeight + 1);
+      setScrolled(scrollTop > 1);
+      setAtEnd(scrollTop + clientHeight >= scrollHeight - 1);
     };
-    read();
-    element.addEventListener("scroll", read, { passive: true });
     // 본문 칸 자체는 상한에서 멈추므로 자라는 자식들(첨부·본문)을 함께 본다.
     const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(read);
+    // 지연할 수 있는 줄은 첫 레이아웃 뒤 관찰 통지에서 잰다. 커밋에서 초기 치수를 강제로 읽지 않는다.
+    if (!deferLayout || !observer) read();
+    element.addEventListener("scroll", read, { passive: true });
     if (observer) for (const target of [element, ...Array.from(element.children)]) observer.observe(target);
     return () => { element.removeEventListener("scroll", read); observer?.disconnect(); };
-  }, [active, element]);
+  }, [active, deferLayout, element]);
   const expand = React.useCallback(() => setExpanded(true), []);
   const edges = overflowing ? `${scrolled ? " is-scrolled" : ""}${atEnd ? " is-at-end" : ""}` : "";
   return { ref: setElement, className: active ? ` is-capped${overflowing ? " is-clipped" : ""}${edges}` : "", clipped: active && overflowing, expand };
